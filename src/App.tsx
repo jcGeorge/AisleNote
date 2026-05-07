@@ -3,6 +3,7 @@ import { Editor } from '@toast-ui/editor'
 import JSZip from 'jszip'
 import '@toast-ui/editor/dist/toastui-editor.css'
 import './App.css'
+import { appStateStore } from './storage/app-state-store'
 
 type AppTheme = 'dark' | 'light'
 type ViewMode = 'spaces' | 'main' | 'trash' | 'settings'
@@ -159,7 +160,6 @@ type NavLocation = {
   trashSubTabId: string | null
 }
 
-const STORAGE_KEY = 'data/notes/index.json'
 const TRASH_HOME_ID = '__trash_home__'
 const DEFAULT_AUTO_REMOVE_DAYS = 7
 const MIN_AUTO_REMOVE_DAYS = 1
@@ -171,6 +171,9 @@ const DEFAULT_SHORTCUTS: Record<ShortcutId, string> = {
   cycleSubTabNext: 'Ctrl+Tab',
   cycleSubTabPrev: 'Ctrl+Shift+Tab',
 }
+const INDENT_TOKEN = '\u2060\u2003\u2003'
+const INDENT_PREFIX_PATTERN = /^(?:\u2060\u2003\u2003|\u2003\u2003|\u00A0{1,4}| {1,4}|\t)/
+const EXPORT_TAB_SPACES = '    '
 
 function normalizeShortcutValue(raw: unknown, fallback: string): string {
   if (typeof raw !== 'string') return fallback
@@ -204,6 +207,95 @@ function normalizeHotkeySettings(raw: unknown): AppState['hotkeys'] {
 
 function isModifierToken(token: string): boolean {
   return token === 'mod' || token === 'ctrl' || token === 'meta' || token === 'alt' || token === 'shift'
+}
+
+function getIndentPrefixLength(text: string): number {
+  const match = text.match(INDENT_PREFIX_PATTERN)
+  return match ? match[0].length : 0
+}
+
+function countLeadingIndentUnits(text: string): number {
+  let count = 0
+  let remaining = text
+  while (true) {
+    const length = getIndentPrefixLength(remaining)
+    if (length <= 0) return count
+    count += 1
+    remaining = remaining.slice(length)
+  }
+}
+
+function stripAllIndentPrefixes(text: string): string {
+  let remaining = text
+  while (true) {
+    const length = getIndentPrefixLength(remaining)
+    if (length <= 0) return remaining
+    remaining = remaining.slice(length)
+  }
+}
+
+function buildNormalizedIndentPrefix(levels: number): string {
+  return levels > 0 ? INDENT_TOKEN.repeat(levels) : ''
+}
+
+function getTrailingIndentPrefixLength(text: string): number {
+  const match = text.match(/(?:\u2060\u2003\u2003|\u2003\u2003|\u00A0{1,4}| {1,4}|\t)$/)
+  return match ? match[0].length : 0
+}
+
+function repairBrokenDataImageMarkdown(markdown: string): string {
+  let next = String(markdown ?? '')
+
+  next = next.replace(/!\[([^\]]*)\]\(dat\s*\n+\s*(a:image\/[a-zA-Z0-9+.-]+;base64,[^)]+)\)/g, '![$1](dat$2)')
+  next = next.replace(/!\[([^\]]*)\]\(\s*(data:image\/[a-zA-Z0-9+.-]+;base64,[\s\S]*?)\)/g, (_all, alt: string, src: string) => {
+    const collapsed = src.replace(/\s+/g, '')
+    return `![${alt}](${collapsed})`
+  })
+
+  return next
+}
+
+function normalizeMarkdownForPersistence(markdown: string): string {
+  const repaired = repairBrokenDataImageMarkdown(markdown)
+  return repaired.replace(/(?<!\u2060)\u2003\u2003/g, INDENT_TOKEN)
+}
+
+function convertInternalTabsForExport(markdown: string): string {
+  return String(markdown ?? '')
+    .replace(/\u2060\u2003\u2003/g, EXPORT_TAB_SPACES)
+    .replace(/\u2003\u2003/g, EXPORT_TAB_SPACES)
+    .replace(/\u00A0/g, ' ')
+}
+
+function mergeLeadingIndentsFromWysiwyg(editor: Editor | null, markdown: string): string {
+  const wwView = (editor as any)?.wwEditor?.view
+  if (!wwView?.state?.doc || !markdown) return markdown
+
+  const indentedBlockQueue = new Map<string, string[]>()
+  wwView.state.doc.nodesBetween(0, wwView.state.doc.content.size, (node: any) => {
+    if (!node?.isTextblock) return
+    const text = node.textContent ?? ''
+    const indentLevels = countLeadingIndentUnits(text)
+    if (indentLevels <= 0) return
+    const plain = stripAllIndentPrefixes(text)
+    if (!plain) return
+    const indentPrefix = buildNormalizedIndentPrefix(indentLevels)
+    const existing = indentedBlockQueue.get(plain) ?? []
+    existing.push(indentPrefix)
+    indentedBlockQueue.set(plain, existing)
+  })
+
+  if (indentedBlockQueue.size === 0) return markdown
+
+  const nextLines = markdown.split('\n').map((line) => {
+    const plain = stripAllIndentPrefixes(line)
+    const queue = indentedBlockQueue.get(plain)
+    if (!queue || queue.length === 0) return line
+    const indentPrefix = queue.shift() ?? ''
+    return `${indentPrefix}${plain}`
+  })
+
+  return nextLines.join('\n')
 }
 
 function getEventKeyToken(event: KeyboardEvent): string | null {
@@ -511,9 +603,9 @@ function normalizeWorkspaceData(raw: unknown): WorkspaceData {
       const legacyHome = normalizedSubTabs.find((sub) => sub.isHome)
       const visibleSubTabs = normalizedSubTabs
         .filter((sub) => !sub.isHome)
-        .map(({ id, title, content }) => ({ id, title, content }))
+        .map(({ id, title, content }) => ({ id, title, content: normalizeMarkdownForPersistence(content) }))
       const explicitHome = typeof tabLike.homeContent === 'string' ? tabLike.homeContent : ''
-      const homeContent = explicitHome || legacyHome?.content || ''
+      const homeContent = normalizeMarkdownForPersistence(explicitHome || legacyHome?.content || '')
       const rawActiveSubTabId = typeof tabLike.activeSubTabId === 'string' ? tabLike.activeSubTabId : null
       const activeSubTabId =
         rawActiveSubTabId && visibleSubTabs.some((sub) => sub.id === rawActiveSubTabId) ? rawActiveSubTabId : null
@@ -541,14 +633,14 @@ function normalizeWorkspaceData(raw: unknown): WorkspaceData {
       const maybeTab = entry.tab && typeof entry.tab === 'object' ? (entry.tab as Record<string, unknown>) : entry
       const id = typeof entry.id === 'string' ? entry.id : `deleted-tab-${index}-${createId()}`
       const title = typeof maybeTab.title === 'string' && maybeTab.title.trim() ? maybeTab.title : `deleted tab ${index + 1}`
-      const homeContent = typeof maybeTab.homeContent === 'string' ? maybeTab.homeContent : ''
+      const homeContent = normalizeMarkdownForPersistence(typeof maybeTab.homeContent === 'string' ? maybeTab.homeContent : '')
       const rawSubTabs = Array.isArray(maybeTab.subTabs) ? maybeTab.subTabs : []
       const subTabs: SubTab[] = rawSubTabs
         .filter((sub): sub is Record<string, unknown> => Boolean(sub) && typeof sub === 'object')
         .map((sub, subIndex) => ({
           id: typeof sub.id === 'string' ? sub.id : `${id}-sub-${subIndex}-${createId()}`,
           title: typeof sub.title === 'string' && sub.title.trim() ? sub.title : `Note ${subIndex + 1}`,
-          content: typeof sub.content === 'string' ? sub.content : '',
+          content: normalizeMarkdownForPersistence(typeof sub.content === 'string' ? sub.content : ''),
         }))
       const rawDeletedActive = typeof maybeTab.activeSubTabId === 'string' ? maybeTab.activeSubTabId : null
       const activeSubTabId = rawDeletedActive && subTabs.some((sub) => sub.id === rawDeletedActive) ? rawDeletedActive : null
@@ -583,7 +675,7 @@ function normalizeWorkspaceData(raw: unknown): WorkspaceData {
         subTab: {
           id: typeof sub.id === 'string' ? sub.id : `deleted-note-${index}-${createId()}`,
           title: typeof sub.title === 'string' && sub.title.trim() ? sub.title : `deleted note ${index + 1}`,
-          content: typeof sub.content === 'string' ? sub.content : '',
+          content: normalizeMarkdownForPersistence(typeof sub.content === 'string' ? sub.content : ''),
         },
       }
     })
@@ -672,8 +764,54 @@ function parseSavedState(raw: string | null): AppState {
   }
 }
 
+function applyMarkdownToAppState(
+  previous: AppState,
+  spaceId: string,
+  tabId: string,
+  subTabId: string | null,
+  markdown: string,
+): AppState {
+  const normalizedMarkdown = normalizeMarkdownForPersistence(markdown)
+  let stateChanged = false
+
+  const spaces = previous.spaces.map((space) => {
+    if (space.id !== spaceId) return space
+
+    let spaceChanged = false
+    const data = space.data
+    const tabs = data.tabs.map((tab) => {
+      if (tab.id !== tabId) return tab
+
+      if (subTabId === null) {
+        if (tab.homeContent === normalizedMarkdown) return tab
+        spaceChanged = true
+        return { ...tab, homeContent: normalizedMarkdown }
+      }
+
+      let tabChanged = false
+      const subTabs = tab.subTabs.map((sub) => {
+        if (sub.id !== subTabId || sub.content === normalizedMarkdown) return sub
+        tabChanged = true
+        return { ...sub, content: normalizedMarkdown }
+      })
+
+      if (!tabChanged) return tab
+      spaceChanged = true
+      return { ...tab, subTabs }
+    })
+
+    if (!spaceChanged) return space
+    stateChanged = true
+    return { ...space, data: { ...data, tabs } }
+  })
+
+  return stateChanged ? { ...previous, spaces } : previous
+}
+
 function App() {
-  const [state, setState] = useState<AppState>(() => parseSavedState(localStorage.getItem(STORAGE_KEY)))
+  const initialSerializedState = useMemo(() => appStateStore.load(), [])
+  const [state, setState] = useState<AppState>(() => parseSavedState(initialSerializedState))
+  const [storageHydrated, setStorageHydrated] = useState(() => typeof appStateStore.hydrate !== 'function')
   const [viewMode, setViewMode] = useState<ViewMode>('spaces')
   const [editing, setEditing] = useState<{ type: 'tab' | 'subtab' | 'space'; id: string } | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
@@ -734,6 +872,9 @@ function App() {
   const saveTimerRef = useRef<number | null>(null)
   const normalizingContentRef = useRef(false)
   const lastEditorMarkdownRef = useRef('')
+  const stateRef = useRef(state)
+  const initialStateJsonRef = useRef<string>(JSON.stringify(parseSavedState(initialSerializedState)))
+  const stateDirtySinceBootRef = useRef(false)
 
   const activeSpaceIdRef = useRef<string>('')
   const activeTabIdRef = useRef<string>('')
@@ -743,10 +884,38 @@ function App() {
   const navIndexRef = useRef(-1)
   const isHistoryNavigationRef = useRef(false)
   const lastTabLikeViewRef = useRef<'main' | 'trash'>('main')
+  stateRef.current = state
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-  }, [state])
+    if (typeof appStateStore.hydrate !== 'function') return
+
+    let disposed = false
+    Promise.resolve(
+      appStateStore.hydrate((serializedState) => {
+        if (disposed || stateDirtySinceBootRef.current) return
+        const nextState = parseSavedState(serializedState)
+        const nextSerializedState = JSON.stringify(nextState)
+        initialStateJsonRef.current = nextSerializedState
+        if (nextSerializedState === JSON.stringify(stateRef.current)) return
+        setState(nextState)
+      }),
+    ).finally(() => {
+      if (!disposed) {
+        setStorageHydrated(true)
+      }
+    })
+
+    return () => {
+      disposed = true
+    }
+  }, [])
+
+  useEffect(() => {
+    const serializedState = JSON.stringify(state)
+    stateDirtySinceBootRef.current = serializedState !== initialStateJsonRef.current
+    if (!storageHydrated) return
+    appStateStore.save(serializedState)
+  }, [state, storageHydrated])
 
   useEffect(() => {
     const closeOverlays = () => {
@@ -969,35 +1138,42 @@ function App() {
   }
 
   const applyContentToTarget = (spaceId: string, tabId: string, subTabId: string | null, markdown: string) => {
-    setState((previous) => ({
-      ...previous,
-      spaces: previous.spaces.map((space) => {
-        if (space.id !== spaceId) return space
-        let changed = false
-        const data = space.data
-        const tabs = data.tabs.map((tab) => {
-          if (tab.id !== tabId) return tab
-
-          if (subTabId === null) {
-            if (tab.homeContent === markdown) return tab
-            changed = true
-            return { ...tab, homeContent: markdown }
-          }
-
-          return {
-            ...tab,
-            subTabs: tab.subTabs.map((sub) => {
-              if (sub.id !== subTabId || sub.content === markdown) return sub
-              changed = true
-              return { ...sub, content: markdown }
-            }),
-          }
-        })
-
-        return changed ? { ...space, data: { ...data, tabs } } : space
-      }),
-    }))
+    setState((previous) => applyMarkdownToAppState(previous, spaceId, tabId, subTabId, markdown))
   }
+
+  const buildStateWithLatestEditorContent = () => {
+    let nextState = stateRef.current
+    const pending = pendingContentRef.current
+    if (pending) {
+      return applyMarkdownToAppState(nextState, pending.spaceId, pending.tabId, pending.subTabId, pending.markdown)
+    }
+
+    if (!isMainViewRef.current) return nextState
+
+    if (!editorRef.current) return nextState
+    const markdown = lastEditorMarkdownRef.current
+
+    nextState = applyMarkdownToAppState(
+      nextState,
+      activeSpaceIdRef.current,
+      activeTabIdRef.current,
+      activeSubTabIdRef.current,
+      markdown,
+    )
+    return nextState
+  }
+
+  const persistLatestStateSnapshot = () => {
+    const latestState = buildStateWithLatestEditorContent()
+    appStateStore.save(JSON.stringify(latestState))
+  }
+
+  useEffect(() => {
+    window.__tabsGetLatestAppState = () => JSON.stringify(buildStateWithLatestEditorContent())
+    return () => {
+      delete window.__tabsGetLatestAppState
+    }
+  }, [])
 
   const flushPendingContent = () => {
     if (saveTimerRef.current !== null) {
@@ -1014,13 +1190,15 @@ function App() {
 
     if (!isMainViewRef.current) return
 
-    const markdown = editorRef.current?.getMarkdown()
-    if (!markdown) return
+    if (!editorRef.current) return
+    const markdown = lastEditorMarkdownRef.current
     applyContentToTarget(activeSpaceIdRef.current, activeTabIdRef.current, activeSubTabIdRef.current, markdown)
   }
 
   const scheduleContentCommit = (markdown: string, spaceId: string, tabId: string, subTabId: string | null) => {
-    pendingContentRef.current = { spaceId, tabId, subTabId, markdown }
+    const normalizedMarkdown = normalizeMarkdownForPersistence(markdown)
+    lastEditorMarkdownRef.current = normalizedMarkdown
+    pendingContentRef.current = { spaceId, tabId, subTabId, markdown: normalizedMarkdown }
 
     if (saveTimerRef.current !== null) {
       window.clearTimeout(saveTimerRef.current)
@@ -1040,45 +1218,148 @@ function App() {
 
   const commitCurrentEditorContent = () => {
     if (!isMainViewRef.current) return
-    const markdown = editorRef.current?.getMarkdown()
-    if (!markdown) return
+    if (!editorRef.current) return
+    const markdown = lastEditorMarkdownRef.current
     scheduleContentCommit(markdown, activeSpaceIdRef.current, activeTabIdRef.current, activeSubTabIdRef.current)
   }
+
+  useEffect(() => {
+    const flushOnExit = () => {
+      if (saveTimerRef.current !== null) {
+        window.clearTimeout(saveTimerRef.current)
+        saveTimerRef.current = null
+      }
+      persistLatestStateSnapshot()
+    }
+
+    window.addEventListener('beforeunload', flushOnExit)
+    window.addEventListener('pagehide', flushOnExit)
+    return () => {
+      window.removeEventListener('beforeunload', flushOnExit)
+      window.removeEventListener('pagehide', flushOnExit)
+    }
+  }, [])
 
   const tryApplyMultilineIndent = (outdent: boolean) => {
     const currentEditor = editorRef.current as
       | (Editor & {
-          getSelection?: () => unknown
-          getSelectedText?: (start?: number, end?: number) => string
-          replaceSelection?: (text: string, start?: number, end?: number) => void
-          setSelection?: (start: number, end?: number) => void
+          wwEditor?: {
+            view?: any
+          }
         })
       | null
-    if (!currentEditor?.getSelection || !currentEditor.getSelectedText || !currentEditor.replaceSelection || !currentEditor.setSelection) {
+
+    const view = currentEditor?.wwEditor?.view
+    if (!currentEditor || !view) {
       return false
     }
 
-    const selection = currentEditor.getSelection()
-    if (!Array.isArray(selection) || selection.length < 2) return false
-    const start = selection[0]
-    const end = selection[1]
-    if (typeof start !== 'number' || typeof end !== 'number' || start === end) return false
+    const { state } = view
+    const { from, to, $from } = state.selection
+    const isCollapsedSelection = from === to
+    const selectedText = state.doc.textBetween(from, to, '\n')
 
-    const selectedText = currentEditor.getSelectedText(start, end)
-    if (!selectedText.includes('\n')) return false
+    if (!selectedText.includes('\n')) {
+      let tr: any = state.tr
 
-    const lines = selectedText.split('\n')
-    const updatedLines = lines.map((line) => (outdent ? line.replace(/^(?: {1,4}|\t)/, '') : `    ${line}`))
-    const updatedText = updatedLines.join('\n')
-    if (updatedText === selectedText) return false
+      if (outdent) {
+        const parentText = $from.parent.textContent ?? ''
+        const parentStart = $from.start()
+        const offsetInParent = Math.max(0, from - parentStart)
+        const beforeCursor = parentText.slice(0, offsetInParent)
+        const inlinePrefixLength = getTrailingIndentPrefixLength(beforeCursor)
+        if (inlinePrefixLength > 0) {
+          tr = tr.delete(from - inlinePrefixLength, from)
+        } else {
+          const linePrefixLength = getIndentPrefixLength(parentText)
+          if (linePrefixLength <= 0) return false
+          tr = tr.delete(parentStart, parentStart + linePrefixLength)
+        }
+      } else if (isCollapsedSelection) {
+        tr = tr.insertText(INDENT_TOKEN, from)
+      } else {
+        tr = tr.insertText(INDENT_TOKEN, from)
+      }
 
-    currentEditor.replaceSelection(updatedText, start, end)
+      const nextCaret = tr.mapping.map(from, 1)
+      const nextFrom = tr.mapping.map(from, 1)
+      const nextTo = tr.mapping.map(to, 1)
+      view.dispatch(tr)
+      const markdownAfterInlineIndent = normalizeMarkdownForPersistence(
+        mergeLeadingIndentsFromWysiwyg(currentEditor, currentEditor.getMarkdown()),
+      )
+      lastEditorMarkdownRef.current = markdownAfterInlineIndent
+      scheduleContentCommit(
+        markdownAfterInlineIndent,
+        activeSpaceIdRef.current,
+        activeTabIdRef.current,
+        activeSubTabIdRef.current,
+      )
+      window.requestAnimationFrame(() => {
+        if (isCollapsedSelection) {
+          ;(currentEditor as any).setSelection?.(nextCaret, nextCaret)
+        } else {
+          ;(currentEditor as any).setSelection?.(nextFrom, nextTo)
+        }
+        currentEditor.focus()
+      })
+      return true
+    }
 
+    const blockTargets: Array<{ pos: number; removeLength: number }> = []
+    const seenBlockPositions = new Set<number>()
+    const addBlockTarget = (node: any, contentStartPos: number) => {
+      if (!node?.isTextblock || seenBlockPositions.has(contentStartPos)) return
+      seenBlockPositions.add(contentStartPos)
+      const text = node.textContent ?? ''
+      const removeLength = outdent ? getIndentPrefixLength(text) : 0
+      if (!outdent || removeLength > 0) {
+        blockTargets.push({ pos: contentStartPos, removeLength })
+      }
+    }
+
+    if (from === to) {
+      addBlockTarget($from.parent, $from.start())
+    } else {
+      state.doc.nodesBetween(from, to, (node: any, pos: number) => {
+        if (!node.isTextblock) return
+        addBlockTarget(node, pos + 1)
+        return false
+      })
+      if (blockTargets.length === 0) {
+        addBlockTarget($from.parent, $from.start())
+      }
+    }
+
+    if (blockTargets.length === 0) return false
+
+    let tr: any = state.tr
+    for (const target of [...blockTargets].sort((a, b) => b.pos - a.pos)) {
+      tr = outdent ? tr.delete(target.pos, target.pos + target.removeLength) : tr.insertText(INDENT_TOKEN, target.pos)
+    }
+
+    const nextFrom = tr.mapping.map(from, -1)
+    const nextTo = tr.mapping.map(to, 1)
+    const nextCaret = tr.mapping.map(from, outdent ? -1 : 1)
+    view.dispatch(tr)
+    const markdownAfterIndent = normalizeMarkdownForPersistence(
+      mergeLeadingIndentsFromWysiwyg(currentEditor, currentEditor.getMarkdown()),
+    )
+    lastEditorMarkdownRef.current = markdownAfterIndent
+    scheduleContentCommit(
+      markdownAfterIndent,
+      activeSpaceIdRef.current,
+      activeTabIdRef.current,
+      activeSubTabIdRef.current,
+    )
     window.requestAnimationFrame(() => {
-      currentEditor.setSelection?.(start, start + updatedText.length)
-      commitCurrentEditorContent()
+      if (isCollapsedSelection) {
+        ;(currentEditor as any).setSelection?.(nextCaret, nextCaret)
+      } else {
+        ;(currentEditor as any).setSelection?.(nextFrom, nextTo)
+      }
+      currentEditor.focus()
     })
-
     return true
   }
 
@@ -1402,13 +1683,20 @@ function App() {
           if (!isMainViewRef.current) return
           const currentEditor = editorRef.current
           if (!currentEditor) return
-          const markdown = currentEditor.getMarkdown()
+          const markdown = normalizeMarkdownForPersistence(
+            mergeLeadingIndentsFromWysiwyg(currentEditor, currentEditor.getMarkdown()),
+          )
           const previousMarkdown = lastEditorMarkdownRef.current
 
           if (normalizingContentRef.current) {
             normalizingContentRef.current = false
-            lastEditorMarkdownRef.current = markdown
-            scheduleContentCommit(markdown, activeSpaceIdRef.current, activeTabIdRef.current, activeSubTabIdRef.current)
+            const normalizedMarkdown = lastEditorMarkdownRef.current
+            scheduleContentCommit(
+              normalizedMarkdown,
+              activeSpaceIdRef.current,
+              activeTabIdRef.current,
+              activeSubTabIdRef.current,
+            )
             return
           }
 
@@ -1596,7 +1884,7 @@ function App() {
               pending.spaceId === activeSpaceIdRef.current &&
               pending.tabId === data.activeTabId &&
               pending.subTabId === id
-            const latest = pendingMatches ? pending.markdown : editorRef.current?.getMarkdown() ?? sub.content
+            const latest = pendingMatches ? pending.markdown : editorRef.current ? lastEditorMarkdownRef.current : sub.content
             return { ...sub, title, content: latest }
           }),
         }
@@ -1767,7 +2055,8 @@ function App() {
 
   const rewriteMarkdownImages = (markdown: string, spaceFolder: string, imageBank: Map<string, Uint8Array>) => {
     let counter = imageBank.size + 1
-    const nextMarkdown = markdown.replace(/!\[([^\]]*)\]\((data:image\/[^)]+)\)/g, (_all, alt: string, src: string) => {
+    const exportReadyMarkdown = convertInternalTabsForExport(markdown)
+    const nextMarkdown = exportReadyMarkdown.replace(/!\[([^\]]*)\]\((data:image\/[^)]+)\)/g, (_all, alt: string, src: string) => {
       const extensionMatch = src.match(/^data:image\/([a-zA-Z0-9+.-]+);base64,/)
       const extRaw = extensionMatch?.[1]?.toLowerCase() ?? 'png'
       const ext = extRaw === 'jpeg' ? 'jpg' : extRaw.replace(/[^a-z0-9]/g, '') || 'png'
@@ -1785,14 +2074,42 @@ function App() {
   const exportData = async (scope: 'space' | 'all') => {
     try {
       setExportStatus('building export...')
+      const latestState = buildStateWithLatestEditorContent()
+      const exportState: AppState =
+        scope === 'space'
+          ? {
+              ...latestState,
+              activeSpaceId: activeSpace.id,
+              spaces: latestState.spaces.filter((space) => space.id === activeSpace.id),
+            }
+          : latestState
+      const defaultName = scope === 'space' ? `${sanitizeName(activeSpace.name)}-export.zip` : 'notes-export-all.zip'
+
+      if (window.electronAPI?.exportAppState) {
+        const result = await window.electronAPI.exportAppState({
+          defaultPath: defaultName,
+          serializedState: JSON.stringify(exportState),
+        })
+        if (result?.canceled) {
+          setExportStatus('export canceled')
+          return
+        }
+        if (result?.error) {
+          setExportStatus('export failed')
+          return
+        }
+        setExportStatus('export saved')
+        return
+      }
+
       const zip = new JSZip()
-      const spacesToExport = scope === 'space' ? [activeSpace] : state.spaces
+      const spacesToExport = scope === 'space' ? [activeSpace] : exportState.spaces
       const imageBank = new Map<string, Uint8Array>()
       const manifest = {
         exportedAt: new Date().toISOString(),
         scope,
         version: 1,
-        theme: state.theme,
+        theme: exportState.theme,
         spaces: [] as Array<{
           id: string
           name: string
@@ -1848,7 +2165,6 @@ function App() {
       const zipBytes = await zip.generateAsync({ type: 'uint8array' })
       const exportArray = Uint8Array.from(zipBytes)
       const exportBuffer = exportArray.buffer as ArrayBuffer
-      const defaultName = scope === 'space' ? `${sanitizeName(activeSpace.name)}-export.zip` : 'notes-export-all.zip'
 
       if (window.electronAPI?.saveFile) {
         const result = await window.electronAPI.saveFile({
@@ -2281,9 +2597,9 @@ function App() {
       const isCommandBracketForward =
         event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && event.key === ']'
       const isAltArrowBack =
-        event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey && event.key === 'ArrowLeft'
+        !isMacPlatform && event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey && event.key === 'ArrowLeft'
       const isAltArrowForward =
-        event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey && event.key === 'ArrowRight'
+        !isMacPlatform && event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey && event.key === 'ArrowRight'
       const isBrowserBackKey = event.key === 'BrowserBack'
       const isBrowserForwardKey = event.key === 'BrowserForward'
 
@@ -2637,6 +2953,7 @@ function App() {
                 export all
               </button>
             </div>
+            <p className="settings-help">exports convert internal tab markers to four spaces for clean markdown files.</p>
             {exportStatus && <p className="settings-help">{exportStatus}</p>}
           </div>
         </section>

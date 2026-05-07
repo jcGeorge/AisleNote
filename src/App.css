@@ -722,6 +722,14 @@
   padding-inline: 0.3125rem;
 }
 
+.toastui-editor .ProseMirror p,
+.toastui-editor .ProseMirror li,
+.toastui-editor-contents p,
+.toastui-editor-contents li {
+  white-space: pre-wrap !important;
+  tab-size: 4 !important;
+}
+
 .toastui-editor-contents h1 {
   font-size: 1.35rem !important;
   margin: 0.6rem 0 0.45rem !important;
