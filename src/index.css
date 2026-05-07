@@ -1,0 +1,16 @@
+:root {
+  color-scheme: dark;
+  color: #e9ecef;
+  background-color: #0b1220;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  color: #e9ecef;
+  background:
+    radial-gradient(circle at 10% 10%, #18243b 0%, transparent 35%),
+    radial-gradient(circle at 90% 0%, #1a2f4e 0%, transparent 30%),
+    linear-gradient(180deg, #0b1220 0%, #0f1a2f 100%);
+}
