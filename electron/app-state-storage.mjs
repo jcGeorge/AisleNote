@@ -371,6 +371,9 @@ function buildRootManifest(appState) {
         enableMouseBackForward: true,
         enableGenericHistoryHotkeys: true,
       },
+      ui: appState.ui ?? {
+        showParentHomeTab: true,
+      },
     },
     topics: [{ id: DEFAULT_TOPIC_ID, title: DEFAULT_TOPIC_TITLE }],
     activeTopicId: DEFAULT_TOPIC_ID,
@@ -651,6 +654,7 @@ function readHybridAppStateFromRoot(rootPath) {
       activeSpaceId,
       spaces,
       hotkeys: rootManifest?.globalSettings?.hotkeys,
+      ui: rootManifest?.globalSettings?.ui,
     })
   }
 

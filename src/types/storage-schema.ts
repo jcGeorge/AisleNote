@@ -30,6 +30,9 @@ export type StorageGlobalSettings = {
     enableMouseBackForward: boolean
     enableGenericHistoryHotkeys: boolean
   }
+  ui: {
+    showParentHomeTab: boolean
+  }
 }
 
 export type StorageTopicIndexEntry = {
