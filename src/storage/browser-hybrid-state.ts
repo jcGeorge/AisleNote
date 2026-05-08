@@ -257,6 +257,14 @@ function buildRootManifest(appState: Record<string, unknown>) {
               enableMouseBackForward: true,
               enableGenericHistoryHotkeys: true,
             },
+      ui:
+        isRecord(appState.ui)
+          ? appState.ui
+          : {
+              showParentHomeTab: true,
+              stageManagerOpenDestinationAfterApply: true,
+              tabButtonScale: 1,
+            },
     },
     topics: [{ id: DEFAULT_TOPIC_ID, title: DEFAULT_TOPIC_TITLE }],
     activeTopicId: DEFAULT_TOPIC_ID,
@@ -626,6 +634,7 @@ export function readSerializedStateFromHybridFileMap(fileMap: Map<string, Browse
     activeSpaceId,
     spaces,
     hotkeys: isRecord(rootManifest.globalSettings) ? rootManifest.globalSettings.hotkeys : undefined,
+    ui: isRecord(rootManifest.globalSettings) ? rootManifest.globalSettings.ui : undefined,
   })
 }
 

@@ -6,8 +6,8 @@ import './App.css'
 import { appStateStore } from './storage/app-state-store'
 
 type AppTheme = 'dark' | 'light'
-type ViewMode = 'spaces' | 'main' | 'trash' | 'settings'
-type ShortcutId = 'toggleTabTrash' | 'openSpaces' | 'newSubTab' | 'cycleSubTabNext' | 'cycleSubTabPrev'
+type ViewMode = 'spaces' | 'main' | 'trash' | 'settings' | 'stage-manager'
+type ShortcutId = 'toggleTabTrash' | 'openSpaces' | 'newTab' | 'newSubTab' | 'cycleSubTabNext' | 'cycleSubTabPrev'
 
 type SubTab = {
   id: string
@@ -66,6 +66,8 @@ type AppState = {
   }
   ui: {
     showParentHomeTab: boolean
+    stageManagerOpenDestinationAfterApply: boolean
+    tabButtonScale: number
   }
 }
 
@@ -95,6 +97,67 @@ type ArrangeModeState = {
   overParentInsert: ArrangeInsertPosition | null
   overSubTabId: string | null
   overSubTabInsert: ArrangeInsertPosition | null
+}
+
+type ArrangeTapCandidate =
+  | { key: string; type: 'tab'; tabId: string; startX: number; startY: number; dragged: boolean }
+  | { key: string; type: 'subtab'; subTabId: string; startX: number; startY: number; dragged: boolean }
+  | { key: string; type: 'home'; startX: number; startY: number; dragged: boolean }
+
+type ArrangeTapCandidateSeed =
+  | { key: string; type: 'tab'; tabId: string }
+  | { key: string; type: 'subtab'; subTabId: string }
+  | { key: string; type: 'home' }
+
+type StageManagerStep = 'select' | 'action' | 'configure' | 'review'
+type StageManagerAction = 'migrate' | 'promote' | 'demote' | 'mass-delete'
+type StageManagerPartialDirection = 'toward-none' | 'toward-all'
+type StageManagerParentSelectionMode = 'none' | 'partial' | 'full'
+type StageManagerPromoteSpaceMode = 'existing' | 'new'
+type StageManagerDestinationSpaceMode = 'existing' | 'new'
+type StageManagerDestinationParentMode = 'existing' | 'new'
+type StageManagerMigrateTarget = 'space' | 'parent'
+type StageManagerMigrateParentSpaceMode = 'current' | 'existing' | 'new'
+type StageManagerStrayHandlingMode = 'promote' | 'selected-parent' | 'existing-parent' | 'new-parent'
+type StageManagerMassDeleteMode = 'trash' | 'permanent'
+
+type StageManagerParentSelection = {
+  mode: StageManagerParentSelectionMode
+  selectedSubTabIds: string[]
+  cachedPartialSubTabIds: string[] | null
+  partialDirection: StageManagerPartialDirection | null
+}
+
+type StageManagerSelectionState = Record<string, StageManagerParentSelection>
+
+type StageManagerDraft = {
+  promoteSpaceMode: StageManagerPromoteSpaceMode
+  promoteSpaceId: string
+  newSpaceName: string
+  demoteParentMode: StageManagerDestinationParentMode
+  demoteParentId: string
+  demoteNewParentName: string
+  migrateTarget: StageManagerMigrateTarget
+  migrateSpaceMode: StageManagerDestinationSpaceMode
+  migrateSpaceId: string
+  migrateParentSpaceMode: StageManagerMigrateParentSpaceMode
+  migrateParentSpaceId: string
+  migrateParentMode: StageManagerDestinationParentMode
+  migrateParentId: string
+  migrateNewParentName: string
+  strayHandlingMode: StageManagerStrayHandlingMode
+  straySelectedParentId: string
+  strayExistingParentId: string
+  strayNewParentName: string
+  massDeleteMode: StageManagerMassDeleteMode
+}
+
+type StageManagerSelectionSnapshot = {
+  fullParents: Tab[]
+  partialParents: Array<{ tab: Tab; selectedSubTabs: SubTab[] }>
+  looseSubTabs: Array<{ parentTab: Tab; subTab: SubTab }>
+  fullParentIds: Set<string>
+  hasSelection: boolean
 }
 
 type ToastTone = 'success' | 'warning' | 'error'
@@ -133,9 +196,16 @@ type LinkPromptState = {
   text: string
 }
 
+type MultiLineEditState = {
+  anchorBlockIndex: number
+  headBlockIndex: number
+  columnOffset: number
+}
+
 type ContextMenuState =
   | { x: number; y: number; type: 'tab'; tabId: string }
   | { x: number; y: number; type: 'subtab'; tabId: string; subTabId: string }
+  | { x: number; y: number; type: 'image' }
   | {
       x: number
       y: number
@@ -197,6 +267,7 @@ const DEFAULT_AUTO_REMOVE_DAYS = 7
 const MIN_AUTO_REMOVE_DAYS = 1
 const MAX_AUTO_REMOVE_DAYS = 365
 const ARRANGE_PRESS_DELAY_MS = 380
+const ARRANGE_TAP_SLOP_PX = 6
 const DEFAULT_ARRANGE_MODE: ArrangeModeState = {
   active: false,
   source: null,
@@ -209,6 +280,7 @@ const DEFAULT_ARRANGE_MODE: ArrangeModeState = {
 const DEFAULT_SHORTCUTS: Record<ShortcutId, string> = {
   toggleTabTrash: 'Mod+T',
   openSpaces: 'Mod+S',
+  newTab: 'Mod+Shift+N',
   newSubTab: 'Mod+N',
   cycleSubTabNext: 'Ctrl+Tab',
   cycleSubTabPrev: 'Ctrl+Shift+Tab',
@@ -218,6 +290,18 @@ const INDENT_PREFIX_PATTERN = /^(?:\u2060\u2003\u2003|\u2003\u2003|\u00A0{1,4}| 
 const EXPORT_TAB_SPACES = '    '
 const DEFAULT_UI_SETTINGS: AppState['ui'] = {
   showParentHomeTab: true,
+  stageManagerOpenDestinationAfterApply: true,
+  tabButtonScale: 1,
+}
+
+const MIN_TAB_BUTTON_SCALE = 1
+const MAX_TAB_BUTTON_SCALE = 1.6
+const TAB_BUTTON_SCALE_STEP = 0.05
+
+function clampTabButtonScale(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_UI_SETTINGS.tabButtonScale
+  const rounded = Math.round(value / TAB_BUTTON_SCALE_STEP) * TAB_BUTTON_SCALE_STEP
+  return Math.min(MAX_TAB_BUTTON_SCALE, Math.max(MIN_TAB_BUTTON_SCALE, Number(rounded.toFixed(2))))
 }
 
 function normalizeShortcutValue(raw: unknown, fallback: string): string {
@@ -256,6 +340,14 @@ function normalizeUiSettings(raw: unknown): AppState['ui'] {
   return {
     showParentHomeTab:
       typeof obj.showParentHomeTab === 'boolean' ? obj.showParentHomeTab : DEFAULT_UI_SETTINGS.showParentHomeTab,
+    stageManagerOpenDestinationAfterApply:
+      typeof obj.stageManagerOpenDestinationAfterApply === 'boolean'
+        ? obj.stageManagerOpenDestinationAfterApply
+        : DEFAULT_UI_SETTINGS.stageManagerOpenDestinationAfterApply,
+    tabButtonScale:
+      typeof obj.tabButtonScale === 'number'
+        ? clampTabButtonScale(obj.tabButtonScale)
+        : DEFAULT_UI_SETTINGS.tabButtonScale,
   }
 }
 
@@ -421,6 +513,127 @@ function formatShortcutLabel(shortcut: string, isMac: boolean): string {
 
 function createId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+}
+
+function createEmptyStageManagerParentSelection(): StageManagerParentSelection {
+  return {
+    mode: 'none',
+    selectedSubTabIds: [],
+    cachedPartialSubTabIds: null,
+    partialDirection: null,
+  }
+}
+
+function createStageManagerSelectionState(tabs: Tab[]): StageManagerSelectionState {
+  return Object.fromEntries(tabs.map((tab) => [tab.id, createEmptyStageManagerParentSelection()]))
+}
+
+function createDefaultStageManagerDraft(): StageManagerDraft {
+  return {
+    promoteSpaceMode: 'existing',
+    promoteSpaceId: '',
+    newSpaceName: '',
+    demoteParentMode: 'existing',
+    demoteParentId: '',
+    demoteNewParentName: '',
+    migrateTarget: 'space',
+    migrateSpaceMode: 'existing',
+    migrateSpaceId: '',
+    migrateParentSpaceMode: 'current',
+    migrateParentSpaceId: '',
+    migrateParentMode: 'existing',
+    migrateParentId: '',
+    migrateNewParentName: '',
+    strayHandlingMode: 'promote',
+    straySelectedParentId: '',
+    strayExistingParentId: '',
+    strayNewParentName: '',
+    massDeleteMode: 'trash',
+  }
+}
+
+function orderStageManagerSubTabIds(tab: Tab, subTabIds: string[]): string[] {
+  const idSet = new Set(subTabIds)
+  return tab.subTabs.filter((subTab) => idSet.has(subTab.id)).map((subTab) => subTab.id)
+}
+
+function normalizeStageManagerParentSelection(tab: Tab, selection?: StageManagerParentSelection): StageManagerParentSelection {
+  const base = selection ?? createEmptyStageManagerParentSelection()
+  const orderedSelectedIds = orderStageManagerSubTabIds(tab, base.selectedSubTabIds)
+  const orderedCachedIds =
+    base.cachedPartialSubTabIds && base.cachedPartialSubTabIds.length > 0
+      ? orderStageManagerSubTabIds(tab, base.cachedPartialSubTabIds)
+      : null
+
+  if (tab.subTabs.length === 0) {
+    return base.mode === 'full'
+      ? {
+          mode: 'full',
+          selectedSubTabIds: [],
+          cachedPartialSubTabIds: null,
+          partialDirection: null,
+        }
+      : createEmptyStageManagerParentSelection()
+  }
+
+  if (base.mode === 'full' || orderedSelectedIds.length >= tab.subTabs.length) {
+    return {
+      mode: 'full',
+      selectedSubTabIds: tab.subTabs.map((subTab) => subTab.id),
+      cachedPartialSubTabIds: orderedCachedIds && orderedCachedIds.length > 0 ? orderedCachedIds : null,
+      partialDirection: null,
+    }
+  }
+
+  if (orderedSelectedIds.length === 0) {
+    return {
+      mode: 'none',
+      selectedSubTabIds: [],
+      cachedPartialSubTabIds: orderedCachedIds && orderedCachedIds.length > 0 ? orderedCachedIds : null,
+      partialDirection: null,
+    }
+  }
+
+  return {
+    mode: 'partial',
+    selectedSubTabIds: orderedSelectedIds,
+    cachedPartialSubTabIds: orderedCachedIds && orderedCachedIds.length > 0 ? orderedCachedIds : orderedSelectedIds,
+    partialDirection: base.partialDirection === 'toward-none' ? 'toward-none' : 'toward-all',
+  }
+}
+
+function buildStageManagerSelectionSnapshot(
+  tabs: Tab[],
+  selections: StageManagerSelectionState,
+): StageManagerSelectionSnapshot {
+  const fullParents: Tab[] = []
+  const partialParents: Array<{ tab: Tab; selectedSubTabs: SubTab[] }> = []
+  const looseSubTabs: Array<{ parentTab: Tab; subTab: SubTab }> = []
+
+  for (const tab of tabs) {
+    const selection = normalizeStageManagerParentSelection(tab, selections[tab.id])
+    if (selection.mode === 'full') {
+      fullParents.push(tab)
+      continue
+    }
+
+    if (selection.mode !== 'partial') continue
+
+    const selectedIdSet = new Set(selection.selectedSubTabIds)
+    const selectedSubTabs = tab.subTabs.filter((subTab) => selectedIdSet.has(subTab.id))
+    partialParents.push({ tab, selectedSubTabs })
+    for (const subTab of selectedSubTabs) {
+      looseSubTabs.push({ parentTab: tab, subTab })
+    }
+  }
+
+  return {
+    fullParents,
+    partialParents,
+    looseSubTabs,
+    fullParentIds: new Set(fullParents.map((tab) => tab.id)),
+    hasSelection: fullParents.length > 0 || looseSubTabs.length > 0,
+  }
 }
 
 function getArrangeInsertPositionFromClientX(clientX: number, rect: DOMRect): ArrangeInsertPosition {
@@ -700,12 +913,61 @@ function createSpace(name: string): Space {
   }
 }
 
+function createWorkspaceDataFromTabs(
+  tabs: Tab[],
+  options?: {
+    activeTabId?: string
+    deletedTabs?: DeletedTabEntry[]
+    deletedSubTabs?: DeletedSubTabEntry[]
+  },
+): WorkspaceData {
+  const safeTabs = tabs.length > 0 ? tabs : [createTab('tab')]
+  const requestedActiveTabId = options?.activeTabId ?? null
+  const activeTabId = requestedActiveTabId && safeTabs.some((tab) => tab.id === requestedActiveTabId) ? requestedActiveTabId : safeTabs[0].id
+  return {
+    activeTabId,
+    tabs: safeTabs.map((tab) => ({
+      ...tab,
+      activeSubTabId: tab.activeSubTabId && tab.subTabs.some((subTab) => subTab.id === tab.activeSubTabId) ? tab.activeSubTabId : null,
+      subTabs: tab.subTabs.map((subTab) => ({ ...subTab })),
+    })),
+    deletedTabs: options?.deletedTabs ? options.deletedTabs.map((entry) => ({ ...entry, tab: { ...entry.tab, subTabs: entry.tab.subTabs.map((subTab) => ({ ...subTab })) } })) : [],
+    deletedSubTabs: options?.deletedSubTabs
+      ? options.deletedSubTabs.map((entry) => ({ ...entry, subTab: { ...entry.subTab } }))
+      : [],
+  }
+}
+
 function applyAutoPurgeToWorkspace(data: WorkspaceData, autoRemoveDeletedDays: number): WorkspaceData {
   const cutoff = Date.now() - clampAutoRemoveDays(autoRemoveDeletedDays) * 24 * 60 * 60 * 1000
+  const nextDeletedTabs = data.deletedTabs.filter((entry) => entry.deletedAt >= cutoff)
+  const nextDeletedSubTabs = data.deletedSubTabs.filter((entry) => entry.deletedAt >= cutoff)
+  if (nextDeletedTabs.length === data.deletedTabs.length && nextDeletedSubTabs.length === data.deletedSubTabs.length) {
+    return data
+  }
   return {
     ...data,
-    deletedTabs: data.deletedTabs.filter((entry) => entry.deletedAt >= cutoff),
-    deletedSubTabs: data.deletedSubTabs.filter((entry) => entry.deletedAt >= cutoff),
+    deletedTabs: nextDeletedTabs,
+    deletedSubTabs: nextDeletedSubTabs,
+  }
+}
+
+function applyAutoPurgeToAppState(appState: AppState): AppState {
+  let spacesChanged = false
+  const spaces = appState.spaces.map((space) => {
+    const nextData = applyAutoPurgeToWorkspace(space.data, space.settings.autoRemoveDeletedDays)
+    if (nextData === space.data) return space
+    spacesChanged = true
+    return {
+      ...space,
+      data: nextData,
+    }
+  })
+
+  if (!spacesChanged) return appState
+  return {
+    ...appState,
+    spaces,
   }
 }
 
@@ -948,9 +1210,9 @@ function applyMarkdownToAppState(
 
 function App() {
   const initialSerializedState = useMemo(() => appStateStore.load(), [])
-  const [state, setState] = useState<AppState>(() => parseSavedState(initialSerializedState))
+  const [state, setState] = useState<AppState>(() => applyAutoPurgeToAppState(parseSavedState(initialSerializedState)))
   const [storageHydrated, setStorageHydrated] = useState(() => typeof appStateStore.hydrate !== 'function')
-  const [viewMode, setViewMode] = useState<ViewMode>('spaces')
+  const [viewMode, setViewMode] = useState<ViewMode>('main')
   const [editing, setEditing] = useState<{ type: 'tab' | 'subtab' | 'space'; id: string } | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [modal, setModal] = useState<ModalState | null>(null)
@@ -962,10 +1224,16 @@ function App() {
   const [mouseBackForwardEnabledDraft, setMouseBackForwardEnabledDraft] = useState(true)
   const [genericHistoryHotkeysEnabledDraft, setGenericHistoryHotkeysEnabledDraft] = useState(true)
   const [showParentHomeTabDraft, setShowParentHomeTabDraft] = useState(DEFAULT_UI_SETTINGS.showParentHomeTab)
+  const [tabButtonScaleDraft, setTabButtonScaleDraft] = useState(DEFAULT_UI_SETTINGS.tabButtonScale)
   const [menuOpen, setMenuOpen] = useState(false)
   const [trashTabId, setTrashTabId] = useState<string>(TRASH_HOME_ID)
   const [trashSubTabId, setTrashSubTabId] = useState<string | null>(null)
   const [arrangeMode, setArrangeMode] = useState<ArrangeModeState>(DEFAULT_ARRANGE_MODE)
+  const [stageManagerStep, setStageManagerStep] = useState<StageManagerStep>('select')
+  const [stageManagerAction, setStageManagerAction] = useState<StageManagerAction | null>(null)
+  const [stageManagerSelections, setStageManagerSelections] = useState<StageManagerSelectionState>({})
+  const [stageManagerDraft, setStageManagerDraft] = useState<StageManagerDraft>(createDefaultStageManagerDraft)
+  const [arrangeDraggingItem, setArrangeDraggingItem] = useState<ArrangeDragItem | null>(null)
   const [exportStatus, setExportStatus] = useState<string>('')
   const [toast, setToast] = useState<ToastState | null>(null)
   const [imageTools, setImageTools] = useState<ImageToolsState>({
@@ -1015,11 +1283,13 @@ function App() {
   const pendingCreatedEditRef = useRef<PendingCreatedEdit | null>(null)
   const skipRenameBlurRef = useRef<{ type: 'tab' | 'subtab' | 'space'; id: string } | null>(null)
   const arrangePressTimerRef = useRef<number | null>(null)
+  const arrangeTapCandidateRef = useRef<ArrangeTapCandidate | null>(null)
   const suppressArrangeClickRef = useRef<Set<string>>(new Set())
   const saveTimerRef = useRef<number | null>(null)
   const toastTimerRef = useRef<number | null>(null)
   const normalizingContentRef = useRef(false)
   const lastEditorMarkdownRef = useRef('')
+  const multiLineEditRef = useRef<MultiLineEditState | null>(null)
   const stateRef = useRef(state)
   const initialStateJsonRef = useRef<string>(JSON.stringify(parseSavedState(initialSerializedState)))
   const stateDirtySinceBootRef = useRef(false)
@@ -1041,7 +1311,7 @@ function App() {
     Promise.resolve(
       appStateStore.hydrate((serializedState) => {
         if (disposed || stateDirtySinceBootRef.current) return
-        const nextState = parseSavedState(serializedState)
+        const nextState = applyAutoPurgeToAppState(parseSavedState(serializedState))
         const nextSerializedState = JSON.stringify(nextState)
         initialStateJsonRef.current = nextSerializedState
         if (nextSerializedState === JSON.stringify(stateRef.current)) return
@@ -1059,11 +1329,39 @@ function App() {
   }, [])
 
   useEffect(() => {
-    const serializedState = JSON.stringify(state)
+    const sanitizedState = applyAutoPurgeToAppState(state)
+    if (sanitizedState !== state) {
+      stateRef.current = sanitizedState
+      setState(sanitizedState)
+      return
+    }
+    const serializedState = JSON.stringify(sanitizedState)
     stateDirtySinceBootRef.current = serializedState !== initialStateJsonRef.current
     if (!storageHydrated) return
     appStateStore.save(serializedState)
   }, [state, storageHydrated])
+
+  useEffect(() => {
+    const runAutoPurgeSweep = () => {
+      setState((previous) => applyAutoPurgeToAppState(previous))
+    }
+
+    const intervalId = window.setInterval(runAutoPurgeSweep, 60_000)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        runAutoPurgeSweep()
+      }
+    }
+
+    window.addEventListener('focus', runAutoPurgeSweep)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.clearInterval(intervalId)
+      window.removeEventListener('focus', runAutoPurgeSweep)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [])
 
   useEffect(() => {
     const closeOverlays = () => {
@@ -1112,11 +1410,254 @@ function App() {
 
   const workspace = activeSpace.data
 
+  const pushToast = (message: string, tone: ToastTone = 'warning') => {
+    setToast({
+      id: Date.now(),
+      message,
+      tone,
+    })
+  }
+
+  const getStageManagerParentSelection = (tab: Tab) => normalizeStageManagerParentSelection(tab, stageManagerSelections[tab.id])
+
+  const updateStageManagerSelectionForTab = (
+    tab: Tab,
+    updater: (selection: StageManagerParentSelection) => StageManagerParentSelection,
+  ) => {
+    setStageManagerSelections((previous) => {
+      const currentSelection = normalizeStageManagerParentSelection(tab, previous[tab.id])
+      return {
+        ...previous,
+        [tab.id]: normalizeStageManagerParentSelection(tab, updater(currentSelection)),
+      }
+    })
+  }
+
+  const resetStageManagerState = (tabs: Tab[] = workspace.tabs) => {
+    setStageManagerStep('select')
+    setStageManagerAction(null)
+    setStageManagerSelections(createStageManagerSelectionState(tabs))
+    setStageManagerDraft(createDefaultStageManagerDraft())
+  }
+
+  const updateStageManagerDraft = (patch: Partial<StageManagerDraft>) => {
+    setStageManagerDraft((previous) => ({
+      ...previous,
+      ...patch,
+    }))
+  }
+
+  const selectAllStageManagerItems = () => {
+    setStageManagerSelections(
+      Object.fromEntries(
+        workspace.tabs.map((tab) => [
+          tab.id,
+          {
+            mode: 'full',
+            selectedSubTabIds: tab.subTabs.map((subTab) => subTab.id),
+            cachedPartialSubTabIds: null,
+            partialDirection: null,
+          } satisfies StageManagerParentSelection,
+        ]),
+      ),
+    )
+  }
+
+  const deselectAllStageManagerItems = () => {
+    setStageManagerSelections(createStageManagerSelectionState(workspace.tabs))
+  }
+
+  const cycleStageManagerParentSelection = (tab: Tab) => {
+    updateStageManagerSelectionForTab(tab, (selection) => {
+      const allSubTabIds = tab.subTabs.map((subTab) => subTab.id)
+      const cachedPartial = selection.mode === 'partial' ? selection.selectedSubTabIds : selection.cachedPartialSubTabIds
+
+      if (selection.mode === 'none') {
+        if (cachedPartial && cachedPartial.length > 0) {
+          return {
+            mode: 'partial',
+            selectedSubTabIds: cachedPartial,
+            cachedPartialSubTabIds: cachedPartial,
+            partialDirection: 'toward-all',
+          }
+        }
+
+        return {
+          mode: 'full',
+          selectedSubTabIds: allSubTabIds,
+          cachedPartialSubTabIds: null,
+          partialDirection: null,
+        }
+      }
+
+      if (selection.mode === 'full') {
+        if (cachedPartial && cachedPartial.length > 0) {
+          return {
+            mode: 'partial',
+            selectedSubTabIds: cachedPartial,
+            cachedPartialSubTabIds: cachedPartial,
+            partialDirection: 'toward-none',
+          }
+        }
+
+        return createEmptyStageManagerParentSelection()
+      }
+
+      if (selection.partialDirection === 'toward-none') {
+        return {
+          mode: 'none',
+          selectedSubTabIds: [],
+          cachedPartialSubTabIds: selection.selectedSubTabIds,
+          partialDirection: null,
+        }
+      }
+
+      return {
+        mode: 'full',
+        selectedSubTabIds: allSubTabIds,
+        cachedPartialSubTabIds: selection.selectedSubTabIds,
+        partialDirection: null,
+      }
+    })
+  }
+
+  const toggleStageManagerSubTabSelection = (tab: Tab, subTabId: string) => {
+    updateStageManagerSelectionForTab(tab, (selection) => {
+      const allSubTabIds = tab.subTabs.map((subTab) => subTab.id)
+      const selectedIds = new Set(selection.mode === 'full' ? allSubTabIds : selection.selectedSubTabIds)
+      const wasSelected = selectedIds.has(subTabId)
+      const selectionBeforeChange = Array.from(selectedIds)
+
+      if (wasSelected) {
+        selectedIds.delete(subTabId)
+      } else {
+        selectedIds.add(subTabId)
+      }
+
+      const orderedSelectedIds = orderStageManagerSubTabIds(tab, Array.from(selectedIds))
+
+      if (orderedSelectedIds.length === 0) {
+        return {
+          mode: 'none',
+          selectedSubTabIds: [],
+          cachedPartialSubTabIds:
+            selectionBeforeChange.length > 0 ? orderStageManagerSubTabIds(tab, selectionBeforeChange) : selection.cachedPartialSubTabIds,
+          partialDirection: null,
+        }
+      }
+
+      if (orderedSelectedIds.length >= allSubTabIds.length) {
+        return {
+          mode: 'full',
+          selectedSubTabIds: allSubTabIds,
+          cachedPartialSubTabIds:
+            selectionBeforeChange.length > 0 && selectionBeforeChange.length < allSubTabIds.length
+              ? orderStageManagerSubTabIds(tab, selectionBeforeChange)
+              : selection.cachedPartialSubTabIds,
+          partialDirection: null,
+        }
+      }
+
+      return {
+        mode: 'partial',
+        selectedSubTabIds: orderedSelectedIds,
+        cachedPartialSubTabIds: orderedSelectedIds,
+        partialDirection: wasSelected ? 'toward-none' : 'toward-all',
+      }
+    })
+  }
+
+  const getStageManagerActionValidation = (
+    action: StageManagerAction,
+    snapshot: StageManagerSelectionSnapshot = buildStageManagerSelectionSnapshot(workspace.tabs, stageManagerSelections),
+  ) => {
+    if (!snapshot.hasSelection) {
+      return {
+        valid: false,
+        message: 'select at least one parent or sub-tab before choosing an action.',
+      }
+    }
+
+    if (action === 'promote' && snapshot.fullParents.length > 1) {
+      return {
+        valid: false,
+        message: 'multiple parent tabs cannot be promoted at the same time.',
+      }
+    }
+
+    if (action === 'demote' && snapshot.fullParents.length === 0) {
+      return {
+        valid: false,
+        message: 'demote requires at least one fully selected parent tab.',
+      }
+    }
+
+    return {
+      valid: true,
+      message: '',
+    }
+  }
+
+  const selectStageManagerAction = (action: StageManagerAction) => {
+    const snapshot = buildStageManagerSelectionSnapshot(workspace.tabs, stageManagerSelections)
+    const validation = getStageManagerActionValidation(action, snapshot)
+    if (!validation.valid) {
+      setStageManagerAction(null)
+      pushToast(validation.message, 'warning')
+      return
+    }
+
+    setStageManagerAction(action)
+
+    if (action === 'promote' && snapshot.fullParents.length === 1 && stageManagerDraft.newSpaceName.trim().length === 0) {
+      updateStageManagerDraft({ newSpaceName: snapshot.fullParents[0].title })
+    }
+  }
+
   const clearArrangePressTimer = () => {
     if (arrangePressTimerRef.current !== null) {
       window.clearTimeout(arrangePressTimerRef.current)
       arrangePressTimerRef.current = null
     }
+  }
+
+  const clearArrangeTapCandidate = () => {
+    arrangeTapCandidateRef.current = null
+  }
+
+  const startArrangeTapCandidate = (candidate: ArrangeTapCandidateSeed, event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!arrangeMode.active || event.button !== 0) return
+    arrangeTapCandidateRef.current = {
+      ...candidate,
+      startX: event.clientX,
+      startY: event.clientY,
+      dragged: false,
+    }
+  }
+
+  const markArrangeTapDragged = (key: string) => {
+    const candidate = arrangeTapCandidateRef.current
+    if (!candidate || candidate.key !== key) return
+    arrangeTapCandidateRef.current = {
+      ...candidate,
+      dragged: true,
+    }
+  }
+
+  const finalizeArrangeTapCandidate = (
+    key: string,
+    event: ReactPointerEvent<HTMLButtonElement>,
+    onActivate: () => void,
+  ) => {
+    if (!arrangeMode.active) return
+    const candidate = arrangeTapCandidateRef.current
+    arrangeTapCandidateRef.current = null
+    if (!candidate || candidate.key !== key || candidate.dragged) return
+    const deltaX = event.clientX - candidate.startX
+    const deltaY = event.clientY - candidate.startY
+    if (Math.hypot(deltaX, deltaY) > ARRANGE_TAP_SLOP_PX) return
+    if (consumeArrangeClickSuppression(key)) return
+    onActivate()
   }
 
   const markArrangeClickSuppressed = (...keys: string[]) => {
@@ -1151,7 +1692,9 @@ function App() {
 
   const exitArrangeMode = () => {
     clearArrangePressTimer()
+    clearArrangeTapCandidate()
     suppressArrangeClickRef.current.clear()
+    setArrangeDraggingItem(null)
     setArrangeMode(DEFAULT_ARRANGE_MODE)
   }
 
@@ -1190,19 +1733,31 @@ function App() {
     enterArrangeMode('context', dragItem)
   }
 
+  const prepareArrangeModeForDrag = (dragItem: ArrangeDragItem) => {
+    flushPendingContent()
+    clearArrangePressTimer()
+    clearArrangeTapCandidate()
+    setMenuOpen(false)
+    setContextMenu(null)
+    setEditing(null)
+    setArrangeDraggingItem(dragItem)
+    setArrangeMode({
+      active: true,
+      source: 'press',
+      dragItem,
+      overParentTabId: dragItem.type === 'tab' ? dragItem.tabId : null,
+      overParentInsert: dragItem.type === 'tab' ? 'after' : null,
+      overSubTabId: dragItem.type === 'subtab' ? dragItem.subTabId : null,
+      overSubTabInsert: dragItem.type === 'subtab' ? 'after' : null,
+    })
+  }
+
   const beginArrangeTabDrag = (event: ReactDragEvent<HTMLButtonElement>, tabId: string) => {
-    if (!arrangeMode.active || viewMode !== 'main') return
+    if (viewMode !== 'main') return
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.setData('text/plain', tabId)
-    markArrangeClickSuppressed(`tab:${tabId}`)
-    setArrangeMode((previous) => ({
-      ...previous,
-      dragItem: { type: 'tab', tabId },
-      overParentTabId: tabId,
-      overParentInsert: 'after',
-      overSubTabId: null,
-      overSubTabInsert: null,
-    }))
+    markArrangeTapDragged(`tab:${tabId}`)
+    prepareArrangeModeForDrag({ type: 'tab', tabId })
   }
 
   const handleArrangeTabDragOver = (event: ReactDragEvent<HTMLButtonElement>, tabId: string) => {
@@ -1290,6 +1845,7 @@ function App() {
           }
         : previous,
     )
+    setArrangeDraggingItem(null)
   }
 
   const handleArrangeTabRailDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
@@ -1358,6 +1914,8 @@ function App() {
   }
 
   const endArrangeTabDrag = () => {
+    clearArrangeTapCandidate()
+    setArrangeDraggingItem(null)
     setArrangeMode((previous) =>
       previous.active
         ? {
@@ -1373,18 +1931,11 @@ function App() {
   }
 
   const beginArrangeSubTabDrag = (event: ReactDragEvent<HTMLButtonElement>, parentTabId: string, subTabId: string) => {
-    if (!arrangeMode.active || viewMode !== 'main') return
+    if (viewMode !== 'main') return
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.setData('text/plain', subTabId)
-    markArrangeClickSuppressed(`subtab:${subTabId}`)
-    setArrangeMode((previous) => ({
-      ...previous,
-      dragItem: { type: 'subtab', parentTabId, subTabId },
-      overParentTabId: null,
-      overParentInsert: null,
-      overSubTabId: subTabId,
-      overSubTabInsert: 'after',
-    }))
+    markArrangeTapDragged(`subtab:${subTabId}`)
+    prepareArrangeModeForDrag({ type: 'subtab', parentTabId, subTabId })
   }
 
   const handleArrangeSubTabDragOver = (event: ReactDragEvent<HTMLButtonElement>, subTabId: string) => {
@@ -1442,6 +1993,7 @@ function App() {
           }
         : previous,
     )
+    setArrangeDraggingItem(null)
   }
 
   const handleArrangeSubTabRailDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
@@ -1570,9 +2122,13 @@ function App() {
           }
         : previous,
     )
+    setArrangeDraggingItem(null)
+    clearArrangeTapCandidate()
   }
 
   const endArrangeSubTabDrag = () => {
+    clearArrangeTapCandidate()
+    setArrangeDraggingItem(null)
     setArrangeMode((previous) =>
       previous.active
         ? {
@@ -1594,15 +2150,24 @@ function App() {
       setMouseBackForwardEnabledDraft(state.hotkeys.enableMouseBackForward)
       setGenericHistoryHotkeysEnabledDraft(state.hotkeys.enableGenericHistoryHotkeys)
       setShowParentHomeTabDraft(state.ui.showParentHomeTab)
+      setTabButtonScaleDraft(state.ui.tabButtonScale)
       setEditingShortcut(null)
     }
-  }, [viewMode, activeSpace.settings.autoRemoveDeletedDays, state.hotkeys, state.ui.showParentHomeTab])
+  }, [viewMode, activeSpace.settings.autoRemoveDeletedDays, state.hotkeys, state.ui.showParentHomeTab, state.ui.tabButtonScale])
 
   useEffect(() => () => clearArrangePressTimer(), [])
 
   useEffect(() => {
     if (viewMode === 'main') return
     setArrangeMode((previous) => (previous.active ? DEFAULT_ARRANGE_MODE : previous))
+  }, [viewMode])
+
+  useEffect(() => {
+    if (viewMode === 'stage-manager') return
+    setStageManagerStep('select')
+    setStageManagerAction(null)
+    setStageManagerSelections({})
+    setStageManagerDraft(createDefaultStageManagerDraft())
   }, [viewMode])
 
   const activeTab = useMemo(
@@ -1617,6 +2182,129 @@ function App() {
         : null,
     [activeTab],
   )
+
+  const stageManagerSelectionSnapshot = useMemo(
+    () => buildStageManagerSelectionSnapshot(workspace.tabs, stageManagerSelections),
+    [workspace.tabs, stageManagerSelections],
+  )
+  const stageManagerSelectionCounts = useMemo(
+    () => ({
+      fullParentCount: stageManagerSelectionSnapshot.fullParents.length,
+      partialParentCount: stageManagerSelectionSnapshot.partialParents.length,
+      selectedSubTabCount:
+        stageManagerSelectionSnapshot.fullParents.reduce((count, tab) => count + tab.subTabs.length, 0) +
+        stageManagerSelectionSnapshot.looseSubTabs.length,
+      hasSelection: stageManagerSelectionSnapshot.hasSelection,
+    }),
+    [stageManagerSelectionSnapshot],
+  )
+  const stageManagerOtherSpaces = useMemo(
+    () => state.spaces.filter((space) => space.id !== activeSpace.id),
+    [activeSpace.id, state.spaces],
+  )
+  const stageManagerPromoteDestinationSpaces = state.spaces
+  const stageManagerDemoteParentOptions = useMemo(
+    () => workspace.tabs.filter((tab) => !stageManagerSelectionSnapshot.fullParentIds.has(tab.id)),
+    [stageManagerSelectionSnapshot.fullParentIds, workspace.tabs],
+  )
+  const stageManagerSelectedPromoteSpace =
+    stageManagerDraft.promoteSpaceMode === 'existing'
+      ? stageManagerPromoteDestinationSpaces.find((space) => space.id === stageManagerDraft.promoteSpaceId) ?? null
+      : null
+  const stageManagerSelectedMigrateSpace =
+    stageManagerDraft.migrateSpaceMode === 'existing'
+      ? stageManagerOtherSpaces.find((space) => space.id === stageManagerDraft.migrateSpaceId) ?? null
+      : null
+  const stageManagerSelectedMigrateParentSpace =
+    stageManagerDraft.migrateParentSpaceMode === 'current'
+      ? activeSpace
+      : stageManagerDraft.migrateParentSpaceMode === 'existing'
+        ? state.spaces.find((space) => space.id === stageManagerDraft.migrateParentSpaceId) ?? null
+        : null
+  const stageManagerMigrateParentOptions = useMemo(() => {
+    const destinationSpace = stageManagerSelectedMigrateParentSpace
+    if (!destinationSpace) return []
+    return destinationSpace.data.tabs.filter(
+      (tab) => destinationSpace.id !== activeSpace.id || !stageManagerSelectionSnapshot.fullParentIds.has(tab.id),
+    )
+  }, [activeSpace.id, stageManagerSelectedMigrateParentSpace, stageManagerSelectionSnapshot.fullParentIds])
+  const stageManagerStrayExistingParentOptions = useMemo(() => {
+    const destinationSpace = stageManagerSelectedMigrateSpace
+    if (!destinationSpace) return []
+    return destinationSpace.data.tabs
+  }, [stageManagerSelectedMigrateSpace])
+  const stageManagerStrayHandlingSelectValue =
+    stageManagerDraft.strayHandlingMode === 'selected-parent'
+      ? `selected-parent:${stageManagerDraft.straySelectedParentId}`
+      : stageManagerDraft.strayHandlingMode
+
+  useEffect(() => {
+    if (viewMode !== 'stage-manager') return
+
+    setStageManagerDraft((previous) => {
+      let changed = false
+      let next = previous
+
+      if (previous.promoteSpaceId && !stageManagerPromoteDestinationSpaces.some((space) => space.id === previous.promoteSpaceId)) {
+        next = { ...next, promoteSpaceId: '' }
+        changed = true
+      }
+
+      if (previous.demoteParentId && !stageManagerDemoteParentOptions.some((tab) => tab.id === previous.demoteParentId)) {
+        next = { ...next, demoteParentId: '' }
+        changed = true
+      }
+
+      if (previous.migrateSpaceId && !stageManagerOtherSpaces.some((space) => space.id === previous.migrateSpaceId)) {
+        next = { ...next, migrateSpaceId: '' }
+        changed = true
+      }
+
+      if (
+        previous.migrateParentSpaceId &&
+        previous.migrateParentSpaceMode === 'existing' &&
+        !stageManagerOtherSpaces.some((space) => space.id === previous.migrateParentSpaceId)
+      ) {
+        next = { ...next, migrateParentSpaceId: '' }
+        changed = true
+      }
+
+      if (previous.migrateParentId && !stageManagerMigrateParentOptions.some((tab) => tab.id === previous.migrateParentId)) {
+        next = { ...next, migrateParentId: '' }
+        changed = true
+      }
+
+      if (
+        previous.straySelectedParentId &&
+        !stageManagerSelectionSnapshot.fullParents.some((tab) => tab.id === previous.straySelectedParentId)
+      ) {
+        next = {
+          ...next,
+          straySelectedParentId: '',
+          strayHandlingMode: previous.strayHandlingMode === 'selected-parent' ? 'promote' : previous.strayHandlingMode,
+        }
+        changed = true
+      }
+
+      if (
+        previous.strayExistingParentId &&
+        !stageManagerStrayExistingParentOptions.some((tab) => tab.id === previous.strayExistingParentId)
+      ) {
+        next = { ...next, strayExistingParentId: '' }
+        changed = true
+      }
+
+      return changed ? next : previous
+    })
+  }, [
+    viewMode,
+    stageManagerDemoteParentOptions,
+    stageManagerMigrateParentOptions,
+    stageManagerOtherSpaces,
+    stageManagerPromoteDestinationSpaces,
+    stageManagerSelectionSnapshot.fullParents,
+    stageManagerStrayExistingParentOptions,
+  ])
 
   useEffect(() => {
     if (!arrangeMode.active || viewMode !== 'main') return
@@ -1752,12 +2440,20 @@ function App() {
   isMainViewRef.current = viewMode === 'main'
 
   const updateActiveSpaceData = (updater: (data: WorkspaceData) => WorkspaceData) => {
-    setState((previous) => ({
-      ...previous,
-      spaces: previous.spaces.map((space) =>
-        space.id === previous.activeSpaceId ? { ...space, data: updater(space.data) } : space,
-      ),
-    }))
+    setState((previous) => {
+      const sanitizedPrevious = applyAutoPurgeToAppState(previous)
+      return {
+        ...sanitizedPrevious,
+        spaces: sanitizedPrevious.spaces.map((space) =>
+          space.id === sanitizedPrevious.activeSpaceId
+            ? {
+                ...space,
+                data: applyAutoPurgeToWorkspace(updater(space.data), space.settings.autoRemoveDeletedDays),
+              }
+            : space,
+        ),
+      }
+    })
   }
 
   const areNavLocationsEqual = (a: NavLocation, b: NavLocation) =>
@@ -1858,12 +2554,14 @@ function App() {
     let nextState = stateRef.current
     const pending = pendingContentRef.current
     if (pending) {
-      return applyMarkdownToAppState(nextState, pending.spaceId, pending.tabId, pending.subTabId, pending.markdown)
+      return applyAutoPurgeToAppState(
+        applyMarkdownToAppState(nextState, pending.spaceId, pending.tabId, pending.subTabId, pending.markdown),
+      )
     }
 
-    if (!isMainViewRef.current) return nextState
+    if (!isMainViewRef.current) return applyAutoPurgeToAppState(nextState)
 
-    if (!editorRef.current) return nextState
+    if (!editorRef.current) return applyAutoPurgeToAppState(nextState)
     const markdown = lastEditorMarkdownRef.current
 
     nextState = applyMarkdownToAppState(
@@ -1873,7 +2571,7 @@ function App() {
       activeSubTabIdRef.current,
       markdown,
     )
-    return nextState
+    return applyAutoPurgeToAppState(nextState)
   }
 
   const persistLatestStateSnapshot = () => {
@@ -2076,6 +2774,258 @@ function App() {
     return true
   }
 
+  const getEditorTextBlockRanges = (view: any) => {
+    const blockRanges: Array<{ start: number; end: number; length: number }> = []
+    view.state.doc.nodesBetween(0, view.state.doc.content.size, (node: any, pos: number) => {
+      if (!node?.isTextblock) return
+      const start = pos + 1
+      const length = Math.max(0, node.content.size)
+      const end = start + length
+      blockRanges.push({ start, end, length })
+      return false
+    })
+    return blockRanges
+  }
+
+  const clearMultiLineEdit = (collapseToHead = false) => {
+    const currentEditor = editorRef.current as
+      | (Editor & {
+          wwEditor?: {
+            view?: any
+          }
+        })
+      | null
+    const view = currentEditor?.wwEditor?.view
+    const previous = multiLineEditRef.current
+    multiLineEditRef.current = null
+    if (!collapseToHead || !view || !previous) return
+
+    const blockRanges = getEditorTextBlockRanges(view)
+    const clampedHeadIndex = Math.max(0, Math.min(blockRanges.length - 1, previous.headBlockIndex))
+    const headRange = blockRanges[clampedHeadIndex]
+    if (!headRange) return
+    const caretPos = Math.min(headRange.end, headRange.start + previous.columnOffset)
+    const SelectionCtor = view.state.selection.constructor as {
+      create?: (doc: unknown, anchor: number, head?: number) => unknown
+    }
+    if (typeof SelectionCtor.create !== 'function') return
+    const nextSelection = SelectionCtor.create(view.state.doc, caretPos, caretPos)
+    view.dispatch(view.state.tr.setSelection(nextSelection).scrollIntoView())
+  }
+
+  const syncMultiLineEditVisualSelection = () => {
+    const currentEditor = editorRef.current as
+      | (Editor & {
+          wwEditor?: {
+            view?: any
+          }
+        })
+      | null
+    const view = currentEditor?.wwEditor?.view
+    const multiLineEdit = multiLineEditRef.current
+    if (!currentEditor || !view || !multiLineEdit) return false
+
+    const blockRanges = getEditorTextBlockRanges(view)
+    if (blockRanges.length === 0) {
+      multiLineEditRef.current = null
+      return false
+    }
+
+    const anchorIndex = Math.max(0, Math.min(blockRanges.length - 1, multiLineEdit.anchorBlockIndex))
+    const headIndex = Math.max(0, Math.min(blockRanges.length - 1, multiLineEdit.headBlockIndex))
+    const anchorRange = blockRanges[anchorIndex]
+    const headRange = blockRanges[headIndex]
+    if (!anchorRange || !headRange) {
+      multiLineEditRef.current = null
+      return false
+    }
+
+    if (anchorIndex === headIndex) {
+      multiLineEditRef.current = null
+      const caretPos = Math.min(headRange.end, headRange.start + multiLineEdit.columnOffset)
+      const SelectionCtor = view.state.selection.constructor as {
+        create?: (doc: unknown, anchor: number, head?: number) => unknown
+      }
+      if (typeof SelectionCtor.create !== 'function') return false
+      const nextSelection = SelectionCtor.create(view.state.doc, caretPos, caretPos)
+      view.dispatch(view.state.tr.setSelection(nextSelection).scrollIntoView())
+      return false
+    }
+
+    multiLineEditRef.current = {
+      ...multiLineEdit,
+      anchorBlockIndex: anchorIndex,
+      headBlockIndex: headIndex,
+    }
+
+    const anchorPos = Math.min(anchorRange.end, anchorRange.start + multiLineEdit.columnOffset)
+    const headPos = Math.min(headRange.end, headRange.start + multiLineEdit.columnOffset)
+    const SelectionCtor = view.state.selection.constructor as {
+      create?: (doc: unknown, anchor: number, head?: number) => unknown
+    }
+    if (typeof SelectionCtor.create !== 'function') return false
+    const nextSelection = SelectionCtor.create(view.state.doc, anchorPos, headPos)
+    view.dispatch(view.state.tr.setSelection(nextSelection).scrollIntoView())
+    currentEditor.focus()
+    return true
+  }
+
+  const tryExpandMultilineSelection = (direction: 'up' | 'down') => {
+    const currentEditor = editorRef.current as
+      | (Editor & {
+          wwEditor?: {
+            view?: any
+          }
+          setSelection?: (start: number, end: number) => void
+        })
+      | null
+
+    const view = currentEditor?.wwEditor?.view
+    if (!currentEditor || !view) {
+      return false
+    }
+
+    const { state } = view
+    const blockRanges = getEditorTextBlockRanges(view)
+    if (blockRanges.length === 0) return false
+
+    const existing = multiLineEditRef.current
+    if (existing) {
+      const nextHeadIndex =
+        direction === 'down'
+          ? Math.min(blockRanges.length - 1, existing.headBlockIndex + 1)
+          : Math.max(0, existing.headBlockIndex - 1)
+      if (nextHeadIndex === existing.headBlockIndex) return false
+      multiLineEditRef.current = {
+        ...existing,
+        headBlockIndex: nextHeadIndex,
+      }
+      return syncMultiLineEditVisualSelection()
+    }
+
+    const headBlockIndex = blockRanges.findIndex((range) => range.start === state.selection.$head.start())
+    if (headBlockIndex < 0) return false
+
+    const targetIndex =
+      direction === 'down'
+        ? Math.min(blockRanges.length - 1, headBlockIndex + 1)
+        : Math.max(0, headBlockIndex - 1)
+    if (targetIndex === headBlockIndex) return false
+
+    const currentHeadBlock = blockRanges[headBlockIndex]
+    const columnOffset = Math.max(0, Math.min(currentHeadBlock.length, state.selection.head - currentHeadBlock.start))
+    multiLineEditRef.current = {
+      anchorBlockIndex: headBlockIndex,
+      headBlockIndex: targetIndex,
+      columnOffset,
+    }
+    return syncMultiLineEditVisualSelection()
+  }
+
+  const tryApplyMultiLineEditInput = (
+    input:
+      | { type: 'insert-text'; text: string }
+      | { type: 'backspace' }
+      | { type: 'delete' }
+      | { type: 'split-line' },
+  ) => {
+    const currentEditor = editorRef.current as
+      | (Editor & {
+          wwEditor?: {
+            view?: any
+          }
+        })
+      | null
+    const view = currentEditor?.wwEditor?.view
+    const multiLineEdit = multiLineEditRef.current
+    if (!currentEditor || !view || !multiLineEdit) return false
+
+    const blockRanges = getEditorTextBlockRanges(view)
+    if (blockRanges.length === 0) {
+      multiLineEditRef.current = null
+      return false
+    }
+
+    const startIndex = Math.min(multiLineEdit.anchorBlockIndex, multiLineEdit.headBlockIndex)
+    const endIndex = Math.max(multiLineEdit.anchorBlockIndex, multiLineEdit.headBlockIndex)
+    const selectedIndices = Array.from({ length: endIndex - startIndex + 1 }, (_, index) => startIndex + index).filter(
+      (index) => blockRanges[index],
+    )
+    if (selectedIndices.length < 2) {
+      clearMultiLineEdit(true)
+      return false
+    }
+
+    let tr = view.state.tr
+    let changed = false
+    let nextColumnOffset = multiLineEdit.columnOffset
+
+    for (const blockIndex of [...selectedIndices].sort((a, b) => b - a)) {
+      const range = blockRanges[blockIndex]
+      if (!range) continue
+      const cursorPos = Math.min(range.end, range.start + multiLineEdit.columnOffset)
+
+      if (input.type === 'insert-text') {
+        tr = tr.insertText(input.text, cursorPos, cursorPos)
+        changed = true
+        continue
+      }
+
+      if (input.type === 'backspace') {
+        if (cursorPos <= range.start) continue
+        tr = tr.delete(cursorPos - 1, cursorPos)
+        changed = true
+        continue
+      }
+
+      if (input.type === 'delete') {
+        if (cursorPos >= range.end) continue
+        tr = tr.delete(cursorPos, cursorPos + 1)
+        changed = true
+        continue
+      }
+
+      if (input.type === 'split-line') {
+        const mappedPos = tr.mapping.map(cursorPos, 1)
+        tr = tr.split(mappedPos)
+        changed = true
+      }
+    }
+
+    if (!changed) return false
+
+    if (input.type === 'insert-text') {
+      nextColumnOffset += input.text.length
+    } else if (input.type === 'backspace') {
+      nextColumnOffset = Math.max(0, nextColumnOffset - 1)
+    } else if (input.type === 'split-line') {
+      clearMultiLineEdit(false)
+    }
+
+    view.dispatch(tr.scrollIntoView())
+    if (input.type === 'split-line') {
+      return true
+    }
+
+    multiLineEditRef.current = {
+      ...multiLineEdit,
+      columnOffset: nextColumnOffset,
+    }
+    syncMultiLineEditVisualSelection()
+    const markdownAfterMultiLineEdit = normalizeMarkdownForPersistence(
+      mergeLeadingIndentsFromWysiwyg(currentEditor, currentEditor.getMarkdown()),
+    )
+    lastEditorMarkdownRef.current = markdownAfterMultiLineEdit
+    scheduleContentCommit(
+      markdownAfterMultiLineEdit,
+      activeSpaceIdRef.current,
+      activeTabIdRef.current,
+      activeSubTabIdRef.current,
+    )
+    currentEditor.focus()
+    return true
+  }
+
   const isLikelyUrl = (value: string) => {
     try {
       const normalized = value.trim()
@@ -2170,6 +3120,66 @@ function App() {
   const selectImageForTools = (image: HTMLImageElement) => {
     activeImageRef.current = image
     refreshImageToolsPosition()
+  }
+
+  const buildClipboardImagePayload = async (image: HTMLImageElement) => {
+    if (!image.complete || image.naturalWidth <= 0 || image.naturalHeight <= 0) {
+      await new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve()
+        image.onerror = () => reject(new Error('image load failed'))
+      })
+    }
+
+    const width = image.naturalWidth || image.width
+    const height = image.naturalHeight || image.height
+    if (width <= 0 || height <= 0) return null
+
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const context = canvas.getContext('2d')
+    if (!context) return null
+
+    context.drawImage(image, 0, 0, width, height)
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((nextBlob) => resolve(nextBlob), 'image/png')
+    })
+    if (!blob) return null
+
+    return {
+      blob,
+      dataUrl: canvas.toDataURL('image/png'),
+    }
+  }
+
+  const copySelectedImageToClipboard = async () => {
+    const image = activeImageRef.current
+    if (!image) {
+      pushToast('no image selected to copy.', 'warning')
+      return false
+    }
+
+    try {
+      const payload = await buildClipboardImagePayload(image)
+      if (!payload) throw new Error('clipboard image payload failed')
+
+      if (window.electronAPI?.copyImageDataUrl) {
+        const result = await window.electronAPI.copyImageDataUrl(payload.dataUrl)
+        if (!result?.ok) {
+          throw new Error(result?.error ?? 'clipboard write failed')
+        }
+      } else if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+        await navigator.clipboard.write([new ClipboardItem({ [payload.blob.type]: payload.blob })])
+      } else {
+        throw new Error('clipboard image write unsupported')
+      }
+
+      pushToast('image copied.', 'success')
+      return true
+    } catch {
+      pushToast('could not copy image.', 'warning')
+      return false
+    }
   }
 
   const beginImageResize = (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -2446,6 +3456,7 @@ function App() {
 
   useEffect(() => {
     if (viewMode !== 'main') {
+      clearMultiLineEdit(false)
       closeImageTools()
       closeLinkPrompt()
       return
@@ -2455,6 +3466,7 @@ function App() {
     if (!root) return
 
     const handlePointerDown = (event: Event) => {
+      clearMultiLineEdit(false)
       const target = event.target
       if (!(target instanceof HTMLElement)) {
         closeImageTools()
@@ -2488,6 +3500,21 @@ function App() {
       closeLinkPrompt()
     }
 
+    const handleContextMenu = (event: Event) => {
+      const mouseEvent = event as globalThis.MouseEvent
+      const target = mouseEvent.target
+      if (!(target instanceof HTMLElement)) return
+      const image = target.closest('img')
+      if (!(image instanceof HTMLImageElement)) return
+      mouseEvent.preventDefault()
+      selectImageForTools(image)
+      setContextMenu({
+        type: 'image',
+        x: mouseEvent.clientX,
+        y: mouseEvent.clientY,
+      })
+    }
+
     const handleScrollOrResize = () => {
       if (!activeImageRef.current) return
       refreshImageToolsPosition()
@@ -2495,6 +3522,13 @@ function App() {
 
     const handlePaste = (event: Event) => {
       const pasteEvent = event as ClipboardEvent
+      if (multiLineEditRef.current) {
+        const text = pasteEvent.clipboardData?.getData('text/plain') ?? ''
+        if (text.length > 0 && tryApplyMultiLineEditInput({ type: 'insert-text', text })) {
+          pasteEvent.preventDefault()
+          return
+        }
+      }
       const text = pasteEvent.clipboardData?.getData('text/plain')?.trim() ?? ''
       if (!text || !isLikelyUrl(text)) return
 
@@ -2510,8 +3544,66 @@ function App() {
       )
     }
 
+    const handleCopy = (event: Event) => {
+      const clipboardEvent = event as ClipboardEvent
+      const selection = window.getSelection()
+      const hasTextSelection = Boolean(selection && selection.toString().trim().length > 0)
+      if (!activeImageRef.current || hasTextSelection) return
+      clipboardEvent.preventDefault()
+      void copySelectedImageToClipboard()
+    }
+
     const handleKeyDown = (event: Event) => {
       const keyboardEvent = event as KeyboardEvent
+      const isMultiLineSelectionArrow = keyboardEvent.key === 'ArrowUp' || keyboardEvent.key === 'ArrowDown'
+      const isMacMultilineSelectionShortcut =
+        isMacPlatform &&
+        keyboardEvent.altKey &&
+        keyboardEvent.metaKey &&
+        !keyboardEvent.ctrlKey &&
+        !keyboardEvent.shiftKey &&
+        isMultiLineSelectionArrow
+      const isNonMacMultilineSelectionShortcut =
+        !isMacPlatform &&
+        keyboardEvent.altKey &&
+        keyboardEvent.shiftKey &&
+        !keyboardEvent.ctrlKey &&
+        !keyboardEvent.metaKey &&
+        isMultiLineSelectionArrow
+
+      if (isMacMultilineSelectionShortcut || isNonMacMultilineSelectionShortcut) {
+        const handled = tryExpandMultilineSelection(keyboardEvent.key === 'ArrowUp' ? 'up' : 'down')
+        if (!handled) return
+        keyboardEvent.preventDefault()
+        keyboardEvent.stopPropagation()
+        return
+      }
+      if (multiLineEditRef.current) {
+        let handled = false
+        if (keyboardEvent.key === 'Backspace') {
+          handled = tryApplyMultiLineEditInput({ type: 'backspace' })
+        } else if (keyboardEvent.key === 'Delete') {
+          handled = tryApplyMultiLineEditInput({ type: 'delete' })
+        } else if (keyboardEvent.key === 'Enter') {
+          handled = tryApplyMultiLineEditInput({ type: 'split-line' })
+        } else if (keyboardEvent.key === 'Escape') {
+          clearMultiLineEdit(true)
+          handled = true
+        } else if (
+          keyboardEvent.key.startsWith('Arrow') ||
+          keyboardEvent.key === 'Home' ||
+          keyboardEvent.key === 'End' ||
+          keyboardEvent.key === 'PageUp' ||
+          keyboardEvent.key === 'PageDown'
+        ) {
+          clearMultiLineEdit(true)
+        }
+        if (handled) {
+          keyboardEvent.preventDefault()
+          keyboardEvent.stopPropagation()
+          return
+        }
+      }
       if (keyboardEvent.key !== 'Tab' || keyboardEvent.altKey || keyboardEvent.ctrlKey || keyboardEvent.metaKey) return
       const handled = tryApplyMultilineIndent(keyboardEvent.shiftKey)
       if (!handled) return
@@ -2519,15 +3611,35 @@ function App() {
       keyboardEvent.stopPropagation()
     }
 
+    const handleBeforeInput = (event: Event) => {
+      const inputEvent = event as InputEvent
+      if (!multiLineEditRef.current) return
+      if (inputEvent.isComposing) return
+      if (inputEvent.inputType === 'insertText' || inputEvent.inputType === 'insertCompositionText') {
+        const text = inputEvent.data ?? ''
+        if (!text) return
+        const handled = tryApplyMultiLineEditInput({ type: 'insert-text', text })
+        if (!handled) return
+        inputEvent.preventDefault()
+        inputEvent.stopPropagation()
+      }
+    }
+
     root.addEventListener('pointerdown', handlePointerDown, true)
+    root.addEventListener('contextmenu', handleContextMenu, true)
     root.addEventListener('paste', handlePaste, true)
+    root.addEventListener('copy', handleCopy, true)
     root.addEventListener('keydown', handleKeyDown, true)
+    root.addEventListener('beforeinput', handleBeforeInput, true)
     window.addEventListener('scroll', handleScrollOrResize, true)
     window.addEventListener('resize', handleScrollOrResize)
     return () => {
       root.removeEventListener('pointerdown', handlePointerDown, true)
+      root.removeEventListener('contextmenu', handleContextMenu, true)
       root.removeEventListener('paste', handlePaste, true)
+      root.removeEventListener('copy', handleCopy, true)
       root.removeEventListener('keydown', handleKeyDown, true)
+      root.removeEventListener('beforeinput', handleBeforeInput, true)
       window.removeEventListener('scroll', handleScrollOrResize, true)
       window.removeEventListener('resize', handleScrollOrResize)
     }
@@ -2713,6 +3825,7 @@ function App() {
   }
 
   const selectTab = (tabId: string) => {
+    if (activeTab.id === tabId && activeTab.activeSubTabId === null) return
     flushPendingContent()
     updateActiveSpaceData((data) => ({
       ...data,
@@ -2722,6 +3835,7 @@ function App() {
   }
 
   const selectSubTab = (subTabId: string) => {
+    if (activeTab.activeSubTabId === subTabId) return
     flushPendingContent()
     updateActiveSpaceData((data) => ({
       ...data,
@@ -2732,6 +3846,7 @@ function App() {
   }
 
   const selectParentHomeTab = () => {
+    if (activeTab.activeSubTabId === null) return
     flushPendingContent()
     updateActiveSpaceData((data) => ({
       ...data,
@@ -2796,6 +3911,43 @@ function App() {
     setViewMode('settings')
   }
 
+  const openStageManager = () => {
+    if (viewMode !== 'main') return
+    flushPendingContent()
+    setMenuOpen(false)
+    setContextMenu(null)
+    setEditing(null)
+    exitArrangeMode()
+    resetStageManagerState()
+    setViewMode('stage-manager')
+  }
+
+  const returnToLastTabLikeView = () => {
+    setMenuOpen(false)
+    setContextMenu(null)
+    setEditing(null)
+    if (navigateToLastTabLikeLocation()) return
+    setViewMode(lastTabLikeViewRef.current)
+  }
+
+  const endStageManager = () => {
+    resetStageManagerState()
+    returnToLastTabLikeView()
+  }
+
+  const closeSettingsView = () => {
+    returnToLastTabLikeView()
+  }
+
+  const commitImmediateSettingsState = (buildNextState: (previous: AppState) => AppState) => {
+    const nextState = applyAutoPurgeToAppState(buildNextState(stateRef.current))
+    stateRef.current = nextState
+    setState(nextState)
+    if (storageHydrated) {
+      appStateStore.save(JSON.stringify(nextState))
+    }
+  }
+
   const updateAutoRemoveDaysSetting = (rawValue: string, normalizeInvalid = false) => {
     setSettingsDaysDraft(rawValue)
     const parsed = Number.parseInt(rawValue, 10)
@@ -2807,7 +3959,7 @@ function App() {
     }
 
     const nextDays = clampAutoRemoveDays(parsed)
-    setState((previous) => ({
+    commitImmediateSettingsState((previous) => ({
       ...previous,
       spaces: previous.spaces.map((space) =>
         space.id === previous.activeSpaceId
@@ -2826,7 +3978,7 @@ function App() {
 
   const updateMouseBackForwardSetting = (checked: boolean) => {
     setMouseBackForwardEnabledDraft(checked)
-    setState((previous) => ({
+    commitImmediateSettingsState((previous) => ({
       ...previous,
       hotkeys: {
         ...previous.hotkeys,
@@ -2837,7 +3989,7 @@ function App() {
 
   const updateGenericHistoryHotkeysSetting = (checked: boolean) => {
     setGenericHistoryHotkeysEnabledDraft(checked)
-    setState((previous) => ({
+    commitImmediateSettingsState((previous) => ({
       ...previous,
       hotkeys: {
         ...previous.hotkeys,
@@ -2848,7 +4000,7 @@ function App() {
 
   const updateShowParentHomeTabSetting = (checked: boolean) => {
     setShowParentHomeTabDraft(checked)
-    setState((previous) => ({
+    commitImmediateSettingsState((previous) => ({
       ...previous,
       ui: {
         ...previous.ui,
@@ -2857,9 +4009,21 @@ function App() {
     }))
   }
 
+  const updateTabButtonScaleSetting = (rawValue: string) => {
+    const nextScale = clampTabButtonScale(Number.parseFloat(rawValue))
+    setTabButtonScaleDraft(nextScale)
+    commitImmediateSettingsState((previous) => ({
+      ...previous,
+      ui: {
+        ...previous.ui,
+        tabButtonScale: nextScale,
+      },
+    }))
+  }
+
   const updateShortcutSetting = (shortcutId: ShortcutId, nextShortcut: string) => {
     setShortcutDrafts((previous) => ({ ...previous, [shortcutId]: nextShortcut }))
-    setState((previous) => ({
+    commitImmediateSettingsState((previous) => ({
       ...previous,
       hotkeys: {
         ...previous.hotkeys,
@@ -2869,6 +4033,950 @@ function App() {
         },
       },
     }))
+  }
+
+  const updateStageManagerOpenDestinationSetting = (checked: boolean) => {
+    commitImmediateSettingsState((previous) => ({
+      ...previous,
+      ui: {
+        ...previous.ui,
+        stageManagerOpenDestinationAfterApply: checked,
+      },
+    }))
+  }
+
+  const handleStageManagerParentClick = (tab: Tab) => {
+    if (stageManagerStep !== 'select') {
+      pushToast('go back to the selection step to change selected items.', 'error')
+      return
+    }
+
+    if (workspace.activeTabId !== tab.id) {
+      selectTab(tab.id)
+      return
+    }
+
+    cycleStageManagerParentSelection(tab)
+  }
+
+  const handleStageManagerSubTabClick = (tab: Tab, subTabId: string) => {
+    if (stageManagerStep !== 'select') {
+      pushToast('go back to the selection step to change selected items.', 'error')
+      return
+    }
+
+    toggleStageManagerSubTabSelection(tab, subTabId)
+  }
+
+  const handleStageManagerHomeClick = () => {
+    if (stageManagerStep !== 'select') {
+      pushToast('go back to the selection step to change selected items.', 'error')
+      return
+    }
+
+    pushToast('home is selected automatically when the parent tab is fully selected.', 'error')
+  }
+
+  const getStageManagerConfigureValidation = () => {
+    if (!stageManagerAction) {
+      return {
+        valid: false,
+        message: 'choose a director action before continuing.',
+      }
+    }
+
+    if (stageManagerAction === 'promote') {
+      if (stageManagerSelectionSnapshot.fullParents.length === 1) {
+        if (!stageManagerDraft.newSpaceName.trim()) {
+          return {
+            valid: false,
+            message: 'name the new space for this promoted parent tab before continuing.',
+          }
+        }
+
+        return { valid: true, message: '' }
+      }
+
+      if (stageManagerDraft.promoteSpaceMode === 'existing') {
+        if (!stageManagerSelectedPromoteSpace) {
+          return {
+            valid: false,
+            message: 'choose the destination space for the promoted sub-tabs before continuing.',
+          }
+        }
+      } else if (!stageManagerDraft.newSpaceName.trim()) {
+        return {
+          valid: false,
+          message: 'name the new destination space for the promoted sub-tabs before continuing.',
+        }
+      }
+
+      return { valid: true, message: '' }
+    }
+
+    if (stageManagerAction === 'demote') {
+      if (stageManagerDraft.demoteParentMode === 'existing') {
+        if (!stageManagerDraft.demoteParentId) {
+          return {
+            valid: false,
+            message: 'choose the parent tab that will receive the demoted items before continuing.',
+          }
+        }
+
+        if (!stageManagerDemoteParentOptions.some((tab) => tab.id === stageManagerDraft.demoteParentId)) {
+          return {
+            valid: false,
+            message: 'choose a valid destination parent for the demoted items before continuing.',
+          }
+        }
+
+        if (stageManagerSelectionSnapshot.fullParentIds.has(stageManagerDraft.demoteParentId)) {
+          return {
+            valid: false,
+            message: 'a selected parent tab cannot receive demoted items. choose a different destination parent.',
+          }
+        }
+      } else if (!stageManagerDraft.demoteNewParentName.trim()) {
+        return {
+          valid: false,
+          message: 'name the new parent tab that will receive the demoted items before continuing.',
+        }
+      }
+
+      return { valid: true, message: '' }
+    }
+
+    if (stageManagerAction === 'migrate') {
+      if (stageManagerDraft.migrateTarget === 'space') {
+        if (stageManagerDraft.migrateSpaceMode === 'existing') {
+          if (!stageManagerSelectedMigrateSpace) {
+            return {
+              valid: false,
+              message: 'choose the destination space for this migration before continuing.',
+            }
+          }
+        } else if (!stageManagerDraft.newSpaceName.trim()) {
+          return {
+            valid: false,
+            message: 'name the new destination space before continuing.',
+          }
+        }
+
+        if (stageManagerSelectionSnapshot.looseSubTabs.length > 0) {
+          if (stageManagerDraft.strayHandlingMode === 'selected-parent') {
+            if (!stageManagerDraft.straySelectedParentId || !stageManagerSelectionSnapshot.fullParentIds.has(stageManagerDraft.straySelectedParentId)) {
+              return {
+                valid: false,
+                message: 'choose which selected parent should receive the stray sub-tabs before continuing.',
+              }
+            }
+          } else if (stageManagerDraft.strayHandlingMode === 'existing-parent') {
+            if (stageManagerDraft.migrateSpaceMode !== 'existing') {
+              return {
+                valid: false,
+                message: 'existing destination parents are only available when migrating into an existing space.',
+              }
+            }
+            if (
+              !stageManagerDraft.strayExistingParentId ||
+              !stageManagerStrayExistingParentOptions.some((tab) => tab.id === stageManagerDraft.strayExistingParentId)
+            ) {
+              return {
+                valid: false,
+                message: 'choose the destination parent for the stray sub-tabs before continuing.',
+              }
+            }
+          } else if (stageManagerDraft.strayHandlingMode === 'new-parent' && !stageManagerDraft.strayNewParentName.trim()) {
+            return {
+              valid: false,
+              message: 'name the new destination parent for the stray sub-tabs before continuing.',
+            }
+          }
+        }
+
+        return { valid: true, message: '' }
+      }
+
+      if (stageManagerDraft.migrateParentSpaceMode === 'existing' && !stageManagerDraft.migrateParentSpaceId) {
+        return {
+          valid: false,
+          message: 'choose the destination space that contains the target parent before continuing.',
+        }
+      }
+
+      if (stageManagerDraft.migrateParentSpaceMode === 'new') {
+        if (!stageManagerDraft.newSpaceName.trim()) {
+          return {
+            valid: false,
+            message: 'name the new destination space before continuing.',
+          }
+        }
+
+        if (!stageManagerDraft.migrateNewParentName.trim()) {
+          return {
+            valid: false,
+            message: 'name the new destination parent before continuing.',
+          }
+        }
+
+        return { valid: true, message: '' }
+      }
+
+      if (stageManagerDraft.migrateParentMode === 'existing') {
+        if (!stageManagerDraft.migrateParentId) {
+          return {
+            valid: false,
+            message: 'choose the destination parent before continuing.',
+          }
+        }
+
+        if (!stageManagerMigrateParentOptions.some((tab) => tab.id === stageManagerDraft.migrateParentId)) {
+          return {
+            valid: false,
+            message: 'choose a valid destination parent before continuing.',
+          }
+        }
+
+        if (
+          stageManagerSelectedMigrateParentSpace?.id === activeSpace.id &&
+          stageManagerSelectionSnapshot.fullParentIds.has(stageManagerDraft.migrateParentId)
+        ) {
+          return {
+            valid: false,
+            message: 'a selected parent tab cannot receive migrated items. choose a different destination parent.',
+          }
+        }
+      } else if (!stageManagerDraft.migrateNewParentName.trim()) {
+        return {
+          valid: false,
+          message: 'name the new destination parent before continuing.',
+        }
+      }
+
+      return { valid: true, message: '' }
+    }
+
+    return { valid: true, message: '' }
+  }
+
+  const getStageManagerReviewDetails = () => {
+    if (!stageManagerAction) return ['action: none selected']
+
+    const details = [
+      `selected parent tabs: ${stageManagerSelectionCounts.fullParentCount}`,
+      `selected sub-tabs: ${stageManagerSelectionCounts.selectedSubTabCount}`,
+      `action: ${stageManagerAction.replace('-', ' ')}`,
+    ]
+
+    if (stageManagerAction === 'promote') {
+      if (stageManagerSelectionSnapshot.fullParents.length === 1) {
+        details.push(`new space: ${sanitizeName(stageManagerDraft.newSpaceName || stageManagerSelectionSnapshot.fullParents[0].title)}`)
+      } else if (stageManagerDraft.promoteSpaceMode === 'existing') {
+        details.push(`destination space: ${stageManagerSelectedPromoteSpace?.name ?? 'none selected'}`)
+      } else {
+        details.push(`new space: ${sanitizeName(stageManagerDraft.newSpaceName || 'untitled')}`)
+      }
+    } else if (stageManagerAction === 'demote') {
+      if (stageManagerDraft.demoteParentMode === 'existing') {
+        details.push(
+          `destination parent: ${
+            stageManagerDemoteParentOptions.find((tab) => tab.id === stageManagerDraft.demoteParentId)?.title ?? 'none selected'
+          }`,
+        )
+      } else {
+        details.push(`new parent: ${sanitizeName(stageManagerDraft.demoteNewParentName || 'untitled')}`)
+      }
+    } else if (stageManagerAction === 'migrate') {
+      if (stageManagerDraft.migrateTarget === 'space') {
+        if (stageManagerDraft.migrateSpaceMode === 'existing') {
+          details.push(`destination space: ${stageManagerSelectedMigrateSpace?.name ?? 'none selected'}`)
+        } else {
+          details.push(`new space: ${sanitizeName(stageManagerDraft.newSpaceName || 'untitled')}`)
+        }
+        if (stageManagerSelectionSnapshot.looseSubTabs.length > 0) {
+          if (stageManagerDraft.strayHandlingMode === 'promote') {
+            details.push('stray sub-tabs: promote to own prime tabs')
+          } else if (stageManagerDraft.strayHandlingMode === 'selected-parent') {
+            details.push(
+              `stray sub-tabs: include under ${
+                stageManagerSelectionSnapshot.fullParents.find((tab) => tab.id === stageManagerDraft.straySelectedParentId)?.title ??
+                'selected parent'
+              }`,
+            )
+          } else if (stageManagerDraft.strayHandlingMode === 'existing-parent') {
+            details.push(
+              `stray sub-tabs: include under ${
+                stageManagerStrayExistingParentOptions.find((tab) => tab.id === stageManagerDraft.strayExistingParentId)?.title ??
+                'existing parent'
+              }`,
+            )
+          } else {
+            details.push(`stray sub-tabs: include under new parent ${sanitizeName(stageManagerDraft.strayNewParentName || 'untitled')}`)
+          }
+        }
+      } else {
+        if (stageManagerDraft.migrateParentSpaceMode === 'current') {
+          details.push(`destination space: ${activeSpace.name}`)
+        } else if (stageManagerDraft.migrateParentSpaceMode === 'existing') {
+          details.push(
+            `destination space: ${
+              state.spaces.find((space) => space.id === stageManagerDraft.migrateParentSpaceId)?.name ?? 'none selected'
+            }`,
+          )
+        } else {
+          details.push(`new space: ${sanitizeName(stageManagerDraft.newSpaceName || 'untitled')}`)
+        }
+
+        if (stageManagerDraft.migrateParentSpaceMode === 'new' || stageManagerDraft.migrateParentMode === 'new') {
+          details.push(`destination parent: ${sanitizeName(stageManagerDraft.migrateNewParentName || 'untitled')}`)
+        } else {
+          details.push(
+            `destination parent: ${
+              stageManagerMigrateParentOptions.find((tab) => tab.id === stageManagerDraft.migrateParentId)?.title ?? 'none selected'
+            }`,
+          )
+        }
+      }
+    } else if (stageManagerAction === 'mass-delete') {
+      details.push(`mode: ${stageManagerDraft.massDeleteMode === 'trash' ? 'move to trash' : 'delete for real'}`)
+    }
+
+    return details
+  }
+
+  const getStageManagerReviewWarning = () => {
+    if (stageManagerAction === 'mass-delete' && stageManagerDraft.massDeleteMode === 'permanent') {
+      return 'This will permanently delete the current selection.'
+    }
+    if (stageManagerAction === 'migrate' && stageManagerDraft.migrateTarget === 'parent') {
+      return 'Moving a parent into another parent demotes it into a sub-tab under that destination parent.'
+    }
+    if (stageManagerAction === 'demote') {
+      return 'Each demoted parent becomes one sub-tab whose content comes from that parent home note.'
+    }
+    return ''
+  }
+
+  const getStageManagerApplyToastMessage = () => {
+    if (stageManagerAction === 'mass-delete') {
+      return stageManagerDraft.massDeleteMode === 'trash' ? 'selected items have been moved to trash.' : 'selected items have been deleted.'
+    }
+    if (stageManagerAction === 'promote') return 'selected items have been promoted.'
+    if (stageManagerAction === 'demote') return 'selected items have been demoted.'
+    if (stageManagerAction === 'migrate') return 'selected items have been migrated.'
+    return 'director changes applied.'
+  }
+
+  const cloneSubTabForTransfer = (subTab: SubTab): SubTab => ({
+    ...subTab,
+  })
+
+  const cloneTabForTransfer = (tab: Tab): Tab => ({
+    ...tab,
+    subTabs: tab.subTabs.map(cloneSubTabForTransfer),
+  })
+
+  const createPromotedParentTab = (subTab: SubTab): Tab => ({
+    id: createId(),
+    title: subTab.title,
+    homeContent: subTab.content,
+    activeSubTabId: null,
+    subTabs: [],
+  })
+
+  const createDemotedParentSubTab = (tab: Tab): SubTab => ({
+    id: createId(),
+    title: tab.title,
+    content: tab.homeContent,
+  })
+
+  const buildStageManagerLooseSelectionMap = (snapshot: StageManagerSelectionSnapshot) => {
+    const map = new Map<string, Set<string>>()
+    for (const { parentTab, subTab } of snapshot.looseSubTabs) {
+      const current = map.get(parentTab.id) ?? new Set<string>()
+      current.add(subTab.id)
+      map.set(parentTab.id, current)
+    }
+    return map
+  }
+
+  const stripStageManagerSelectionsFromWorkspace = (
+    data: WorkspaceData,
+    snapshot: StageManagerSelectionSnapshot,
+  ): WorkspaceData => {
+    const looseMap = buildStageManagerLooseSelectionMap(snapshot)
+    const nextTabs = data.tabs
+      .filter((tab) => !snapshot.fullParentIds.has(tab.id))
+      .map((tab) => {
+        const selectedLooseIds = looseMap.get(tab.id)
+        if (!selectedLooseIds || selectedLooseIds.size === 0) {
+          return cloneTabForTransfer(tab)
+        }
+
+        return {
+          ...tab,
+          activeSubTabId: tab.activeSubTabId && selectedLooseIds.has(tab.activeSubTabId) ? null : tab.activeSubTabId,
+          subTabs: tab.subTabs.filter((subTab) => !selectedLooseIds.has(subTab.id)).map(cloneSubTabForTransfer),
+        }
+      })
+
+    return createWorkspaceDataFromTabs(nextTabs, {
+      activeTabId: data.activeTabId,
+      deletedTabs: data.deletedTabs,
+      deletedSubTabs: data.deletedSubTabs,
+    })
+  }
+
+  const appendSubTabsToParent = (tabs: Tab[], parentId: string, appendedSubTabs: SubTab[], forceParentHomeOpen = false): Tab[] =>
+    tabs.map((tab) =>
+      tab.id !== parentId
+        ? cloneTabForTransfer(tab)
+        : {
+            ...tab,
+            activeSubTabId: forceParentHomeOpen ? null : tab.activeSubTabId,
+            subTabs: [...tab.subTabs.map(cloneSubTabForTransfer), ...appendedSubTabs.map(cloneSubTabForTransfer)],
+          },
+    )
+
+  const buildStageManagerMovedSubTabs = (snapshot: StageManagerSelectionSnapshot): SubTab[] => {
+    const moved: SubTab[] = []
+
+    for (const parentTab of snapshot.fullParents) {
+      moved.push(createDemotedParentSubTab(parentTab))
+      moved.push(...parentTab.subTabs.map(cloneSubTabForTransfer))
+    }
+
+    for (const { subTab } of snapshot.looseSubTabs) {
+      moved.push(cloneSubTabForTransfer(subTab))
+    }
+
+    return moved
+  }
+
+  const finishStageManagerApply = (nextState: AppState, toastMessage: string, tone: ToastTone = 'success') => {
+    const sanitizedState = applyAutoPurgeToAppState(nextState)
+    stateRef.current = sanitizedState
+    setState(sanitizedState)
+    if (storageHydrated) {
+      appStateStore.save(JSON.stringify(sanitizedState))
+    }
+    setViewMode('main')
+    setMenuOpen(false)
+    setContextMenu(null)
+    setEditing(null)
+    setToast({
+      id: Date.now(),
+      message: toastMessage,
+      tone,
+    })
+  }
+
+  const handleStageManagerApply = () => {
+    if (!stageManagerAction) {
+      pushToast('choose a director action before applying.', 'warning')
+      return
+    }
+
+    const validation = getStageManagerConfigureValidation()
+    if (!validation.valid) {
+      pushToast(validation.message, 'warning')
+      return
+    }
+
+    const latestState = buildStateWithLatestEditorContent()
+    const currentSpace = latestState.spaces.find((space) => space.id === latestState.activeSpaceId)
+    if (!currentSpace) return
+
+    const snapshot = buildStageManagerSelectionSnapshot(currentSpace.data.tabs, stageManagerSelections)
+    if (!snapshot.hasSelection) {
+      pushToast('select at least one parent or sub-tab before applying director.', 'warning')
+      return
+    }
+
+    if (stageManagerAction === 'mass-delete') {
+      const nextSpaces = latestState.spaces.map((space) => {
+        if (space.id !== latestState.activeSpaceId) return space
+
+        const deletedTabs =
+          stageManagerDraft.massDeleteMode === 'trash'
+            ? [
+                ...space.data.deletedTabs.map((entry) => ({ ...entry, tab: cloneTabForTransfer(entry.tab) })),
+                ...snapshot.fullParents.map((tab) => ({
+                  id: createId(),
+                  tab: cloneTabForTransfer(tab),
+                  deletedAt: Date.now(),
+                })),
+              ]
+            : space.data.deletedTabs.map((entry) => ({ ...entry, tab: cloneTabForTransfer(entry.tab) }))
+
+        const deletedSubTabs =
+          stageManagerDraft.massDeleteMode === 'trash'
+            ? [
+                ...space.data.deletedSubTabs.map((entry) => ({ ...entry, subTab: cloneSubTabForTransfer(entry.subTab) })),
+                ...snapshot.looseSubTabs.map(({ parentTab, subTab }) => ({
+                  id: createId(),
+                  parentTabId: parentTab.id,
+                  parentTabTitle: parentTab.title,
+                  subTab: cloneSubTabForTransfer(subTab),
+                  deletedAt: Date.now(),
+                })),
+              ]
+            : space.data.deletedSubTabs.map((entry) => ({ ...entry, subTab: cloneSubTabForTransfer(entry.subTab) }))
+
+        const stripped = stripStageManagerSelectionsFromWorkspace(space.data, snapshot)
+        return {
+          ...space,
+          data: createWorkspaceDataFromTabs(stripped.tabs, {
+            activeTabId: stripped.activeTabId,
+            deletedTabs,
+            deletedSubTabs,
+          }),
+        }
+      })
+
+      finishStageManagerApply(
+        {
+          ...latestState,
+          spaces: nextSpaces,
+        },
+        getStageManagerApplyToastMessage(),
+      )
+      return
+    }
+
+    if (stageManagerAction === 'promote') {
+      const loosePromotedTabs = snapshot.looseSubTabs.map(({ subTab }) => createPromotedParentTab(subTab))
+      const strippedCurrentData = stripStageManagerSelectionsFromWorkspace(currentSpace.data, snapshot)
+      const nextSpaces = latestState.spaces.map((space) =>
+        space.id === currentSpace.id ? { ...space, data: strippedCurrentData } : space,
+      )
+
+      if (snapshot.fullParents.length === 1) {
+        const promotedParent = snapshot.fullParents[0]
+        const mainTab: Tab = {
+          id: createId(),
+          title: 'main',
+          homeContent: promotedParent.homeContent,
+          activeSubTabId: null,
+          subTabs: [],
+        }
+        const movedTabs = [
+          mainTab,
+          ...promotedParent.subTabs.map((subTab) => createPromotedParentTab(subTab)),
+          ...loosePromotedTabs,
+        ]
+        const newSpaceId = createId()
+        const newSpace: Space = {
+          id: newSpaceId,
+          name: sanitizeName(stageManagerDraft.newSpaceName || promotedParent.title),
+          settings: { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
+          data: createWorkspaceDataFromTabs(movedTabs, { activeTabId: mainTab.id }),
+        }
+
+        finishStageManagerApply(
+          {
+            ...latestState,
+            activeSpaceId: state.ui.stageManagerOpenDestinationAfterApply ? newSpace.id : latestState.activeSpaceId,
+            spaces: [...nextSpaces, newSpace],
+          },
+          getStageManagerApplyToastMessage(),
+        )
+        return
+      }
+
+      if (stageManagerDraft.promoteSpaceMode === 'new') {
+        const firstTabId = loosePromotedTabs[0]?.id ?? null
+        const newSpace: Space = {
+          id: createId(),
+          name: sanitizeName(stageManagerDraft.newSpaceName || 'untitled'),
+          settings: { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
+          data: createWorkspaceDataFromTabs(loosePromotedTabs, { activeTabId: firstTabId ?? undefined }),
+        }
+
+        finishStageManagerApply(
+          {
+            ...latestState,
+            activeSpaceId: state.ui.stageManagerOpenDestinationAfterApply ? newSpace.id : latestState.activeSpaceId,
+            spaces: [...nextSpaces, newSpace],
+          },
+          getStageManagerApplyToastMessage(),
+        )
+        return
+      }
+
+      const destinationSpaceId = stageManagerDraft.promoteSpaceId
+      const destinationFirstTabId = loosePromotedTabs[0]?.id ?? null
+      finishStageManagerApply(
+        {
+          ...latestState,
+          activeSpaceId:
+            state.ui.stageManagerOpenDestinationAfterApply && destinationSpaceId
+              ? destinationSpaceId
+              : latestState.activeSpaceId,
+          spaces: nextSpaces.map((space) => {
+            if (space.id !== destinationSpaceId) return space
+            const destinationTabs = [...space.data.tabs.map(cloneTabForTransfer), ...loosePromotedTabs]
+            return {
+              ...space,
+              data: createWorkspaceDataFromTabs(destinationTabs, {
+                activeTabId:
+                  state.ui.stageManagerOpenDestinationAfterApply && destinationFirstTabId
+                    ? destinationFirstTabId
+                    : space.data.activeTabId,
+                deletedTabs: space.data.deletedTabs,
+                deletedSubTabs: space.data.deletedSubTabs,
+              }),
+            }
+          }),
+        },
+        getStageManagerApplyToastMessage(),
+      )
+      return
+    }
+
+    if (stageManagerAction === 'demote') {
+      const movedSubTabs = buildStageManagerMovedSubTabs(snapshot)
+      const strippedCurrentData = stripStageManagerSelectionsFromWorkspace(currentSpace.data, snapshot)
+
+      let destinationParentId: string
+      let nextCurrentTabs: Tab[]
+      if (stageManagerDraft.demoteParentMode === 'new') {
+        destinationParentId = createId()
+        const newParent: Tab = {
+          id: destinationParentId,
+          title: sanitizeName(stageManagerDraft.demoteNewParentName || 'untitled'),
+          homeContent: '',
+          activeSubTabId: null,
+          subTabs: movedSubTabs.map(cloneSubTabForTransfer),
+        }
+        nextCurrentTabs = [...strippedCurrentData.tabs.map(cloneTabForTransfer), newParent]
+      } else {
+        destinationParentId = stageManagerDraft.demoteParentId
+        nextCurrentTabs = appendSubTabsToParent(
+          strippedCurrentData.tabs,
+          destinationParentId,
+          movedSubTabs,
+          state.ui.stageManagerOpenDestinationAfterApply,
+        )
+      }
+
+      finishStageManagerApply(
+        {
+          ...latestState,
+          spaces: latestState.spaces.map((space) =>
+            space.id !== currentSpace.id
+              ? space
+              : {
+                  ...space,
+                  data: createWorkspaceDataFromTabs(nextCurrentTabs, {
+                    activeTabId:
+                      state.ui.stageManagerOpenDestinationAfterApply && destinationParentId
+                        ? destinationParentId
+                        : strippedCurrentData.activeTabId,
+                    deletedTabs: strippedCurrentData.deletedTabs,
+                    deletedSubTabs: strippedCurrentData.deletedSubTabs,
+                  }),
+                },
+          ),
+        },
+        getStageManagerApplyToastMessage(),
+      )
+      return
+    }
+
+    const strippedCurrentData = stripStageManagerSelectionsFromWorkspace(currentSpace.data, snapshot)
+    const movedParentTabs = snapshot.fullParents.map(cloneTabForTransfer)
+    const looseMovedSubTabs = snapshot.looseSubTabs.map(({ subTab }) => cloneSubTabForTransfer(subTab))
+
+    if (stageManagerDraft.migrateTarget === 'space') {
+      const movedParentCopies = movedParentTabs.map(cloneTabForTransfer)
+      const additionalDestinationTabs: Tab[] = []
+
+      if (snapshot.looseSubTabs.length > 0) {
+        if (stageManagerDraft.strayHandlingMode === 'promote') {
+          additionalDestinationTabs.push(...looseMovedSubTabs.map((subTab) => createPromotedParentTab(subTab)))
+        } else if (stageManagerDraft.strayHandlingMode === 'selected-parent') {
+          const targetParentId = stageManagerDraft.straySelectedParentId
+          const targetIndex = movedParentCopies.findIndex((tab) => tab.id === targetParentId)
+          if (targetIndex >= 0) {
+            movedParentCopies[targetIndex] = {
+              ...movedParentCopies[targetIndex],
+              subTabs: [...movedParentCopies[targetIndex].subTabs, ...looseMovedSubTabs.map(cloneSubTabForTransfer)],
+            }
+          }
+        } else if (stageManagerDraft.strayHandlingMode === 'new-parent') {
+          additionalDestinationTabs.push({
+            id: createId(),
+            title: sanitizeName(stageManagerDraft.strayNewParentName || 'untitled'),
+            homeContent: '',
+            activeSubTabId: null,
+            subTabs: looseMovedSubTabs.map(cloneSubTabForTransfer),
+          })
+        }
+      }
+
+      if (stageManagerDraft.migrateSpaceMode === 'new') {
+        const newSpaceId = createId()
+        const destinationTabs =
+          stageManagerDraft.strayHandlingMode === 'existing-parent'
+            ? [...movedParentCopies]
+            : [...movedParentCopies, ...additionalDestinationTabs]
+        const fallbackTab = destinationTabs[0]?.id
+        const newSpace: Space = {
+          id: newSpaceId,
+          name: sanitizeName(stageManagerDraft.newSpaceName || 'untitled'),
+          settings: { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
+          data: createWorkspaceDataFromTabs(destinationTabs, { activeTabId: fallbackTab }),
+        }
+
+        finishStageManagerApply(
+          {
+            ...latestState,
+            activeSpaceId: state.ui.stageManagerOpenDestinationAfterApply ? newSpace.id : latestState.activeSpaceId,
+            spaces: [
+              ...latestState.spaces.map((space) =>
+                space.id === currentSpace.id ? { ...space, data: strippedCurrentData } : space,
+              ),
+              newSpace,
+            ],
+          },
+          getStageManagerApplyToastMessage(),
+        )
+        return
+      }
+
+      const destinationSpaceId = stageManagerDraft.migrateSpaceId
+      finishStageManagerApply(
+        {
+          ...latestState,
+          activeSpaceId:
+            state.ui.stageManagerOpenDestinationAfterApply && destinationSpaceId
+              ? destinationSpaceId
+              : latestState.activeSpaceId,
+          spaces: latestState.spaces.map((space) => {
+            if (space.id === currentSpace.id) {
+              return { ...space, data: strippedCurrentData }
+            }
+            if (space.id !== destinationSpaceId) return space
+
+            let destinationTabs = [...space.data.tabs.map(cloneTabForTransfer), ...movedParentCopies]
+            let destinationActiveTabId = state.ui.stageManagerOpenDestinationAfterApply
+              ? movedParentCopies[0]?.id ?? additionalDestinationTabs[0]?.id ?? space.data.activeTabId
+              : space.data.activeTabId
+
+            if (stageManagerDraft.strayHandlingMode === 'existing-parent') {
+              destinationTabs = appendSubTabsToParent(
+                destinationTabs,
+                stageManagerDraft.strayExistingParentId,
+                looseMovedSubTabs,
+                state.ui.stageManagerOpenDestinationAfterApply,
+              )
+              if (state.ui.stageManagerOpenDestinationAfterApply) {
+                destinationActiveTabId = stageManagerDraft.strayExistingParentId
+              }
+            } else {
+              destinationTabs = [...destinationTabs, ...additionalDestinationTabs]
+            }
+
+            return {
+              ...space,
+              data: createWorkspaceDataFromTabs(destinationTabs, {
+                activeTabId: destinationActiveTabId,
+                deletedTabs: space.data.deletedTabs,
+                deletedSubTabs: space.data.deletedSubTabs,
+              }),
+            }
+          }),
+        },
+        getStageManagerApplyToastMessage(),
+      )
+      return
+    }
+
+    const movedSubTabs = buildStageManagerMovedSubTabs(snapshot)
+
+    if (stageManagerDraft.migrateParentSpaceMode === 'current') {
+      let destinationParentId: string
+      let destinationTabs: Tab[]
+      if (stageManagerDraft.migrateParentMode === 'new') {
+        destinationParentId = createId()
+        const newParent: Tab = {
+          id: destinationParentId,
+          title: sanitizeName(stageManagerDraft.migrateNewParentName || 'untitled'),
+          homeContent: '',
+          activeSubTabId: null,
+          subTabs: movedSubTabs.map(cloneSubTabForTransfer),
+        }
+        destinationTabs = [...strippedCurrentData.tabs.map(cloneTabForTransfer), newParent]
+      } else {
+        destinationParentId = stageManagerDraft.migrateParentId
+        destinationTabs = appendSubTabsToParent(
+          strippedCurrentData.tabs,
+          destinationParentId,
+          movedSubTabs,
+          state.ui.stageManagerOpenDestinationAfterApply,
+        )
+      }
+
+      finishStageManagerApply(
+        {
+          ...latestState,
+          spaces: latestState.spaces.map((space) =>
+            space.id !== currentSpace.id
+              ? space
+              : {
+                  ...space,
+                  data: createWorkspaceDataFromTabs(destinationTabs, {
+                    activeTabId:
+                      state.ui.stageManagerOpenDestinationAfterApply && destinationParentId
+                        ? destinationParentId
+                        : strippedCurrentData.activeTabId,
+                    deletedTabs: strippedCurrentData.deletedTabs,
+                    deletedSubTabs: strippedCurrentData.deletedSubTabs,
+                  }),
+                },
+          ),
+        },
+        getStageManagerApplyToastMessage(),
+      )
+      return
+    }
+
+    if (stageManagerDraft.migrateParentSpaceMode === 'new') {
+      const destinationParentId = createId()
+      const newSpaceId = createId()
+      const newParent: Tab = {
+        id: destinationParentId,
+        title: sanitizeName(stageManagerDraft.migrateNewParentName || 'untitled'),
+        homeContent: '',
+        activeSubTabId: null,
+        subTabs: movedSubTabs.map(cloneSubTabForTransfer),
+      }
+      const newSpace: Space = {
+        id: newSpaceId,
+        name: sanitizeName(stageManagerDraft.newSpaceName || 'untitled'),
+        settings: { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
+        data: createWorkspaceDataFromTabs([newParent], { activeTabId: destinationParentId }),
+      }
+
+      finishStageManagerApply(
+        {
+          ...latestState,
+          activeSpaceId: state.ui.stageManagerOpenDestinationAfterApply ? newSpace.id : latestState.activeSpaceId,
+          spaces: [
+            ...latestState.spaces.map((space) =>
+              space.id === currentSpace.id ? { ...space, data: strippedCurrentData } : space,
+            ),
+            newSpace,
+          ],
+        },
+        getStageManagerApplyToastMessage(),
+      )
+      return
+    }
+
+    const destinationSpaceId = stageManagerDraft.migrateParentSpaceId
+    finishStageManagerApply(
+      {
+        ...latestState,
+        activeSpaceId:
+          state.ui.stageManagerOpenDestinationAfterApply && destinationSpaceId
+            ? destinationSpaceId
+            : latestState.activeSpaceId,
+        spaces: latestState.spaces.map((space) => {
+          if (space.id === currentSpace.id) {
+            return { ...space, data: strippedCurrentData }
+          }
+          if (space.id !== destinationSpaceId) return space
+
+          let destinationParentId: string
+          let destinationTabs: Tab[]
+          if (stageManagerDraft.migrateParentMode === 'new') {
+            destinationParentId = createId()
+            const newParent: Tab = {
+              id: destinationParentId,
+              title: sanitizeName(stageManagerDraft.migrateNewParentName || 'untitled'),
+              homeContent: '',
+              activeSubTabId: null,
+              subTabs: movedSubTabs.map(cloneSubTabForTransfer),
+            }
+            destinationTabs = [...space.data.tabs.map(cloneTabForTransfer), newParent]
+          } else {
+            destinationParentId = stageManagerDraft.migrateParentId
+            destinationTabs = appendSubTabsToParent(
+              space.data.tabs,
+              destinationParentId,
+              movedSubTabs,
+              state.ui.stageManagerOpenDestinationAfterApply,
+            )
+          }
+
+          return {
+            ...space,
+            data: createWorkspaceDataFromTabs(destinationTabs, {
+              activeTabId:
+                state.ui.stageManagerOpenDestinationAfterApply && destinationParentId
+                  ? destinationParentId
+                  : space.data.activeTabId,
+              deletedTabs: space.data.deletedTabs,
+              deletedSubTabs: space.data.deletedSubTabs,
+            }),
+          }
+        }),
+      },
+      getStageManagerApplyToastMessage(),
+    )
+  }
+
+  const handleStageManagerPrevious = () => {
+    if (stageManagerStep === 'select') return
+    if (stageManagerStep === 'action') {
+      setStageManagerStep('select')
+      return
+    }
+    if (stageManagerStep === 'configure') {
+      setStageManagerStep('action')
+      return
+    }
+    setStageManagerStep('configure')
+  }
+
+  const handleStageManagerNext = () => {
+    if (stageManagerStep === 'select') {
+      if (!stageManagerSelectionSnapshot.hasSelection) {
+        pushToast('select at least one parent or sub-tab before continuing.', 'warning')
+        return
+      }
+      setStageManagerStep('action')
+      return
+    }
+
+    if (stageManagerStep === 'action') {
+      if (!stageManagerAction) {
+        pushToast('choose a director action before continuing.', 'warning')
+        return
+      }
+      const validation = getStageManagerActionValidation(stageManagerAction, stageManagerSelectionSnapshot)
+      if (!validation.valid) {
+        setStageManagerAction(null)
+        pushToast(validation.message, 'warning')
+        return
+      }
+      setStageManagerStep('configure')
+      return
+    }
+
+    if (stageManagerStep === 'configure') {
+      const validation = getStageManagerConfigureValidation()
+      if (!validation.valid) {
+        pushToast(validation.message, 'warning')
+        return
+      }
+      setStageManagerStep('review')
+      return
+    }
+
+    pushToast('director execution will be added in the next chunk.', 'warning')
   }
 
   const sanitizeName = (value: string): string => {
@@ -3124,6 +5232,8 @@ function App() {
       ? { type: 'tab', tabId: contextMenu.tabId }
       : contextMenu.type === 'subtab'
         ? { type: 'subtab', tabId: contextMenu.tabId, subTabId: contextMenu.subTabId }
+        : contextMenu.type === 'image'
+          ? null
         : contextMenu.type === 'trash-tab'
           ? {
               type: 'trash-tab',
@@ -3566,6 +5676,13 @@ function App() {
 
       if (arrangeMode.active) return
 
+      const isCommandNewTab = eventMatchesShortcut(event, state.hotkeys.shortcuts.newTab, isMacPlatform)
+      if (isCommandNewTab) {
+        event.preventDefault()
+        addTab()
+        return
+      }
+
       const isCommandNewSubTab = eventMatchesShortcut(event, state.hotkeys.shortcuts.newSubTab, isMacPlatform)
       if (isCommandNewSubTab) {
         event.preventDefault()
@@ -3659,27 +5776,60 @@ function App() {
             },
           ]
         : []),
+      ...(viewMode === 'settings'
+        ? [
+            {
+              key: 'settings-view',
+              label: 'settings',
+              selected: false,
+              className: 'btn btn-sm tab-btn topbar-action-btn topbar-context-btn',
+              onClick: closeSettingsView,
+            },
+          ]
+        : []),
+      ...(viewMode === 'stage-manager'
+        ? [
+            {
+              key: 'end-stage-manager',
+              label: 'director',
+              selected: false,
+              className: 'btn btn-sm tab-btn topbar-action-btn topbar-context-btn',
+              onClick: endStageManager,
+            },
+          ]
+        : []),
       ...(arrangeMode.active
         ? [
             {
               key: 'end-arrangement',
-              label: 'end arrangement',
+              label: 'arrangement',
               selected: false,
-              className: 'btn btn-sm topbar-action-btn topbar-end-arrangement-btn',
+              className: 'btn btn-sm tab-btn topbar-action-btn topbar-context-btn',
               onClick: exitArrangeMode,
             },
           ]
         : []),
     ]
+  const topbarShowsCloseControl = viewMode === 'settings' || viewMode === 'stage-manager' || arrangeMode.active
 
+  const isNoteWorkspaceView = viewMode === 'main' || viewMode === 'stage-manager'
+  const stageManagerStepLabels: Array<[StageManagerStep, string]> = [
+    ['select', 'select items'],
+    ['action', 'choose action'],
+    ['configure', 'configure'],
+    ['review', 'review'],
+  ]
   const arrangeableParentTabClassName = arrangeMode.active && viewMode === 'main' ? 'is-arrangeable' : ''
   const arrangeableSubTabClassName = arrangeMode.active && viewMode === 'main' ? 'is-arrangeable' : ''
-  const draggingParentTabId = arrangeMode.active && arrangeMode.dragItem?.type === 'tab' ? arrangeMode.dragItem.tabId : null
-  const draggingSubTabId = arrangeMode.active && arrangeMode.dragItem?.type === 'subtab' ? arrangeMode.dragItem.subTabId : null
+  const draggingParentTabId =
+    arrangeMode.active && arrangeDraggingItem?.type === 'tab' ? arrangeDraggingItem.tabId : null
+  const draggingSubTabId =
+    arrangeMode.active && arrangeDraggingItem?.type === 'subtab' ? arrangeDraggingItem.subTabId : null
 
   return (
     <main
       className={`app-shell ${state.theme === 'light' ? 'theme-light' : 'theme-dark'} ${viewMode === 'trash' ? 'view-trash' : 'view-main'}`}
+      style={{ '--tab-button-scale': String(state.ui.tabButtonScale) } as React.CSSProperties}
     >
       {viewMode !== 'spaces' && (
         <header className={`tabbar ${arrangeMode.active && viewMode === 'main' ? 'is-arranging' : ''}`}>
@@ -3691,9 +5841,7 @@ function App() {
               onDrop={handleArrangeTabRailDrop}
               {...primaryTablistProps}
             >
-              {viewMode === 'settings' && <span className="settings-page-title">settings</span>}
-
-              {viewMode === 'main' &&
+              {isNoteWorkspaceView &&
                 workspace.tabs.map((tab) =>
                   editing?.type === 'tab' && editing.id === tab.id ? (
                     <input
@@ -3720,6 +5868,7 @@ function App() {
                     />
                   ) : (
                     (() => {
+                      const stageManagerSelection = viewMode === 'stage-manager' ? getStageManagerParentSelection(tab) : null
                       const isArrangeMoveTarget =
                         arrangeMode.active &&
                         arrangeMode.dragItem?.type === 'subtab' &&
@@ -3741,21 +5890,53 @@ function App() {
                           type="button"
                           role="tab"
                           aria-selected={tab.id === activeTab.id}
-                          draggable={arrangeMode.active}
-                          className={`btn btn-sm ${tab.id === activeTab.id ? 'btn-primary' : 'btn-outline-secondary'} tab-btn parent-tab-btn ${arrangeableParentTabClassName} ${isArrangeMoveTarget ? 'is-arrange-target' : ''} ${isArrangeBeforeTarget ? 'is-arrange-target-before' : ''} ${isArrangeAfterTarget ? 'is-arrange-target-after' : ''} ${draggingParentTabId === tab.id ? 'is-dragging' : ''}`}
+                          draggable={viewMode === 'main'}
+                          className={`btn btn-sm ${tab.id === activeTab.id ? 'btn-primary' : 'btn-outline-secondary'} tab-btn parent-tab-btn ${arrangeableParentTabClassName} ${isArrangeMoveTarget ? 'is-arrange-target' : ''} ${isArrangeBeforeTarget ? 'is-arrange-target-before' : ''} ${isArrangeAfterTarget ? 'is-arrange-target-after' : ''} ${draggingParentTabId === tab.id ? 'is-dragging' : ''} ${
+                            stageManagerSelection?.mode === 'partial' ? 'stage-manager-parent-partial' : ''
+                          } ${stageManagerSelection?.mode === 'full' ? 'stage-manager-parent-full' : ''}`}
                           onClick={() => {
+                            if (viewMode === 'stage-manager') {
+                              handleStageManagerParentClick(tab)
+                              return
+                            }
                             if (consumeArrangeClickSuppression(`tab:${tab.id}`)) return
                             selectTab(tab.id)
                           }}
                           onDoubleClick={() => {
-                            if (arrangeMode.active) return
+                            if (viewMode !== 'main' || arrangeMode.active) return
                             setEditing({ type: 'tab', id: tab.id })
                           }}
-                          onContextMenu={(event) => openContextMenuForTab(event, tab.id)}
-                          onPointerDown={(event) => startArrangePress(event, { type: 'tab', tabId: tab.id }, `tab:${tab.id}`)}
-                          onPointerUp={clearArrangePressTimer}
-                          onPointerLeave={clearArrangePressTimer}
-                          onPointerCancel={clearArrangePressTimer}
+                          onContextMenu={(event) => {
+                            if (viewMode !== 'main') return
+                            openContextMenuForTab(event, tab.id)
+                          }}
+                          onPointerDown={(event) => {
+                            if (viewMode !== 'main') return
+                            if (arrangeMode.active) {
+                              startArrangeTapCandidate({ key: `tab:${tab.id}`, type: 'tab', tabId: tab.id }, event)
+                              return
+                            }
+                            startArrangePress(event, { type: 'tab', tabId: tab.id }, `tab:${tab.id}`)
+                          }}
+                          onPointerUp={(event) => {
+                            if (viewMode !== 'main') return
+                            if (arrangeMode.active) {
+                              finalizeArrangeTapCandidate(`tab:${tab.id}`, event, () => selectTab(tab.id))
+                              return
+                            }
+                            clearArrangePressTimer()
+                          }}
+                          onPointerLeave={() => {
+                            if (viewMode !== 'main') return
+                            if (!arrangeMode.active) {
+                              clearArrangePressTimer()
+                            }
+                          }}
+                          onPointerCancel={() => {
+                            if (viewMode !== 'main') return
+                            clearArrangePressTimer()
+                            clearArrangeTapCandidate()
+                          }}
                           onDragStart={(event) => beginArrangeTabDrag(event, tab.id)}
                           onDragOver={(event) => handleArrangeTabDragOver(event, tab.id)}
                           onDrop={(event) => handleArrangeTabDrop(event, tab.id)}
@@ -3819,14 +6000,39 @@ function App() {
               )}
 
               <div className="menu-wrap" onClick={(event) => event.stopPropagation()}>
-                <button type="button" className="menu-btn" onClick={() => setMenuOpen((open) => !open)} aria-label="Menu">
-                  ☰
+                <button
+                  type="button"
+                  className={`menu-btn ${topbarShowsCloseControl ? 'is-close' : ''}`}
+                  onClick={() => {
+                    if (arrangeMode.active) {
+                      exitArrangeMode()
+                      return
+                    }
+                    if (viewMode === 'stage-manager') {
+                      endStageManager()
+                      return
+                    }
+                    if (viewMode === 'settings') {
+                      closeSettingsView()
+                      return
+                    }
+                    setMenuOpen((open) => !open)
+                  }}
+                  aria-label={topbarShowsCloseControl ? 'Close' : 'Menu'}
+                >
+                  <span className="menu-btn-line" />
+                  <span className="menu-btn-line" />
                 </button>
-                {menuOpen && (
+                {!topbarShowsCloseControl && menuOpen && (
                   <div className="menu-dropdown">
                     <button type="button" className="menu-item" onClick={openSpacesView}>
                       spaces
                     </button>
+                    {viewMode === 'main' && (
+                      <button type="button" className="menu-item" onClick={openStageManager}>
+                        director
+                      </button>
+                    )}
                     <button type="button" className="menu-item" onClick={toggleTrashView}>
                       {viewMode === 'trash' ? 'tabs' : 'trash'}
                     </button>
@@ -3915,6 +6121,7 @@ function App() {
                 [
                   ['toggleTabTrash', 'toggle tabs/trash'],
                   ['openSpaces', 'open spaces'],
+                  ['newTab', 'new parent tab'],
                   ['newSubTab', 'new sub tab'],
                   ['cycleSubTabNext', 'next sub tab'],
                   ['cycleSubTabPrev', 'previous sub tab'],
@@ -3968,6 +6175,25 @@ function App() {
             <p className="settings-help">
               generic hotkeys: {isMacPlatform ? 'cmd+[ and cmd+]' : 'alt+left and alt+right'}.
             </p>
+            <div className="settings-hotkey-row settings-slider-row">
+              <label className="settings-hotkey-label" htmlFor="settings-tab-button-scale">
+                tab button size
+              </label>
+              <div className="settings-slider-wrap">
+                <input
+                  id="settings-tab-button-scale"
+                  className="form-range settings-range-input"
+                  type="range"
+                  min={MIN_TAB_BUTTON_SCALE}
+                  max={MAX_TAB_BUTTON_SCALE}
+                  step={TAB_BUTTON_SCALE_STEP}
+                  value={tabButtonScaleDraft}
+                  onChange={(event) => updateTabButtonScaleSetting(event.target.value)}
+                />
+                <span className="settings-range-value">{Math.round(tabButtonScaleDraft * 100)}%</span>
+              </div>
+            </div>
+            <p className="settings-help">adjusts the size of the parent and sub-tab buttons together.</p>
             <div className="settings-hotkey-row">
               <label
                 className="settings-hotkey-label"
@@ -4004,19 +6230,23 @@ function App() {
         </section>
       ) : (
         <>
-          {(viewMode === 'main' || (viewMode === 'trash' && Boolean(selectedTrashTab))) && (
+          {(isNoteWorkspaceView || (viewMode === 'trash' && Boolean(selectedTrashTab))) && (
             <header
               className={`subtabbar ${arrangeMode.active && viewMode === 'main' ? 'is-arranging' : ''}`}
               role="tablist"
               aria-label="Nested note tabs"
             >
               <div ref={subTabRailRef} className="tabbar-scroll" onDragOver={handleArrangeSubTabRailDragOver} onDrop={handleArrangeSubTabRailDrop}>
-                {viewMode === 'main' && state.ui.showParentHomeTab && (
+                {isNoteWorkspaceView && state.ui.showParentHomeTab && (
                   <button
                     type="button"
                     role="tab"
-                    aria-selected={!activeSubTab}
-                    className={`btn btn-sm ${!activeSubTab ? 'btn-info' : 'btn-outline-info'} tab-btn subtab-btn home-subtab-btn ${arrangeableSubTabClassName} ${arrangeMode.active ? 'is-arrange-fixed' : ''} ${
+                    aria-selected={viewMode === 'main' && !activeSubTab}
+                    className={`btn btn-sm ${viewMode === 'main' && !activeSubTab ? 'btn-info' : 'btn-outline-info'} tab-btn subtab-btn home-subtab-btn ${arrangeableSubTabClassName} ${
+                      viewMode === 'stage-manager' && getStageManagerParentSelection(activeTab).mode === 'full'
+                        ? 'stage-manager-home-selected'
+                        : ''
+                    } ${arrangeMode.active ? 'is-arrange-fixed' : ''} ${
                       arrangeMode.active &&
                       arrangeMode.dragItem?.type === 'subtab' &&
                       arrangeMode.dragItem.parentTabId === activeTab.id &&
@@ -4027,14 +6257,41 @@ function App() {
                         : ''
                     }`}
                     onClick={() => {
+                      if (viewMode === 'stage-manager') {
+                        handleStageManagerHomeClick()
+                        return
+                      }
                       if (consumeArrangeClickSuppression(`home:${activeTab.id}`)) return
                       selectParentHomeTab()
                     }}
                     title="home note"
-                    onPointerDown={(event) => startArrangePress(event, null, `home:${activeTab.id}`)}
-                    onPointerUp={clearArrangePressTimer}
-                    onPointerLeave={clearArrangePressTimer}
-                    onPointerCancel={clearArrangePressTimer}
+                    onPointerDown={(event) => {
+                      if (viewMode !== 'main') return
+                      if (arrangeMode.active) {
+                        startArrangeTapCandidate({ key: `home:${activeTab.id}`, type: 'home' }, event)
+                        return
+                      }
+                      startArrangePress(event, null, `home:${activeTab.id}`)
+                    }}
+                    onPointerUp={(event) => {
+                      if (viewMode !== 'main') return
+                      if (arrangeMode.active) {
+                        finalizeArrangeTapCandidate(`home:${activeTab.id}`, event, selectParentHomeTab)
+                        return
+                      }
+                      clearArrangePressTimer()
+                    }}
+                    onPointerLeave={() => {
+                      if (viewMode !== 'main') return
+                      if (!arrangeMode.active) {
+                        clearArrangePressTimer()
+                      }
+                    }}
+                    onPointerCancel={() => {
+                      if (viewMode !== 'main') return
+                      clearArrangePressTimer()
+                      clearArrangeTapCandidate()
+                    }}
                     onDragOver={handleArrangeHomeSubTabDragOver}
                     onDrop={handleArrangeHomeSubTabDrop}
                   >
@@ -4042,7 +6299,7 @@ function App() {
                   </button>
                 )}
 
-                {viewMode === 'main' &&
+                {isNoteWorkspaceView &&
                   activeTab.subTabs.map((subTab) =>
                     editing?.type === 'subtab' && editing.id === subTab.id ? (
                       <input
@@ -4073,9 +6330,9 @@ function App() {
                         data-arrange-subtab-id={subTab.id}
                         type="button"
                         role="tab"
-                        aria-selected={subTab.id === activeSubTab?.id}
-                        draggable={arrangeMode.active}
-                        className={`btn btn-sm ${subTab.id === activeSubTab?.id ? 'btn-info' : 'btn-outline-info'} tab-btn subtab-btn ${arrangeableSubTabClassName} ${
+                        aria-selected={viewMode === 'main' && subTab.id === activeSubTab?.id}
+                        draggable={viewMode === 'main'}
+                        className={`btn btn-sm ${viewMode === 'main' && subTab.id === activeSubTab?.id ? 'btn-info' : 'btn-outline-info'} tab-btn subtab-btn ${arrangeableSubTabClassName} ${
                           arrangeMode.active &&
                           arrangeMode.dragItem?.type === 'subtab' &&
                           arrangeMode.dragItem.parentTabId === activeTab.id &&
@@ -4091,22 +6348,54 @@ function App() {
                           arrangeMode.overSubTabInsert === 'after'
                             ? 'is-arrange-target-after'
                             : ''
-                        } ${draggingSubTabId === subTab.id ? 'is-dragging' : ''}`}
+                        } ${draggingSubTabId === subTab.id ? 'is-dragging' : ''} ${
+                          viewMode === 'stage-manager' && getStageManagerParentSelection(activeTab).selectedSubTabIds.includes(subTab.id)
+                            ? 'stage-manager-subtab-selected'
+                            : ''
+                        }`}
                         onClick={() => {
+                          if (viewMode === 'stage-manager') {
+                            handleStageManagerSubTabClick(activeTab, subTab.id)
+                            return
+                          }
                           if (consumeArrangeClickSuppression(`subtab:${subTab.id}`)) return
                           selectSubTab(subTab.id)
                         }}
                         onDoubleClick={() => {
-                          if (arrangeMode.active) return
+                          if (viewMode !== 'main' || arrangeMode.active) return
                           setEditing({ type: 'subtab', id: subTab.id })
                         }}
-                        onContextMenu={(event) => openContextMenuForSubTab(event, activeTab.id, subTab.id)}
-                        onPointerDown={(event) =>
+                        onContextMenu={(event) => {
+                          if (viewMode !== 'main') return
+                          openContextMenuForSubTab(event, activeTab.id, subTab.id)
+                        }}
+                        onPointerDown={(event) => {
+                          if (viewMode !== 'main') return
+                          if (arrangeMode.active) {
+                            startArrangeTapCandidate({ key: `subtab:${subTab.id}`, type: 'subtab', subTabId: subTab.id }, event)
+                            return
+                          }
                           startArrangePress(event, { type: 'subtab', parentTabId: activeTab.id, subTabId: subTab.id }, `subtab:${subTab.id}`)
-                        }
-                        onPointerUp={clearArrangePressTimer}
-                        onPointerLeave={clearArrangePressTimer}
-                        onPointerCancel={clearArrangePressTimer}
+                        }}
+                        onPointerUp={(event) => {
+                          if (viewMode !== 'main') return
+                          if (arrangeMode.active) {
+                            finalizeArrangeTapCandidate(`subtab:${subTab.id}`, event, () => selectSubTab(subTab.id))
+                            return
+                          }
+                          clearArrangePressTimer()
+                        }}
+                        onPointerLeave={() => {
+                          if (viewMode !== 'main') return
+                          if (!arrangeMode.active) {
+                            clearArrangePressTimer()
+                          }
+                        }}
+                        onPointerCancel={() => {
+                          if (viewMode !== 'main') return
+                          clearArrangePressTimer()
+                          clearArrangeTapCandidate()
+                        }}
                         onDragStart={(event) => beginArrangeSubTabDrag(event, activeTab.id, subTab.id)}
                         onDragOver={(event) => handleArrangeSubTabDragOver(event, subTab.id)}
                         onDrop={(event) => handleArrangeSubTabDrop(event, subTab.id)}
@@ -4149,7 +6438,543 @@ function App() {
             </header>
           )}
 
-          {isTrashHomeSelected ? (
+          {viewMode === 'stage-manager' ? (
+            <section className="stage-manager-shell">
+              <div className="stage-manager-card">
+                <div className="stage-manager-steps" aria-label="Director steps">
+                  {stageManagerStepLabels.map(([step, label], index) => (
+                    <div
+                      key={step}
+                      className={`stage-manager-step-pill ${stageManagerStep === step ? 'is-active' : ''} ${
+                        stageManagerStepLabels.findIndex(([candidate]) => candidate === stageManagerStep) > index ? 'is-complete' : ''
+                      }`}
+                    >
+                      <span className="stage-manager-step-index">{index + 1}</span>
+                      <span>{label}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {stageManagerStep === 'select' && (
+                  <div className="stage-manager-panel">
+                    <h2>director</h2>
+                    <p>select the parent tabs and sub-tabs you want to work with in this space.</p>
+                    <div className="stage-manager-actions-row">
+                      <button type="button" className="btn btn-sm btn-outline-light" onClick={selectAllStageManagerItems}>
+                        select all
+                      </button>
+                      <button type="button" className="btn btn-sm btn-outline-light" onClick={deselectAllStageManagerItems}>
+                        deselect all
+                      </button>
+                    </div>
+                    <p className="stage-manager-help">
+                      selected parent tabs: {stageManagerSelectionCounts.fullParentCount}. selected sub-tabs:{' '}
+                      {stageManagerSelectionCounts.selectedSubTabCount}.
+                    </p>
+                  </div>
+                )}
+
+                {stageManagerStep === 'action' && (
+                  <div className="stage-manager-panel">
+                    <h2>choose action</h2>
+                    <p>pick what you want to do with the current selection.</p>
+                    <div className="stage-manager-action-grid">
+                      {([
+                        ['migrate', 'migrate'],
+                        ['promote', 'promote'],
+                        ['demote', 'demote'],
+                        ['mass-delete', 'mass delete'],
+                      ] as Array<[StageManagerAction, string]>).map(([action, label]) => (
+                        <button
+                          key={action}
+                          type="button"
+                          className={`btn btn-sm stage-manager-action-btn ${stageManagerAction === action ? 'is-selected' : ''}`}
+                          onClick={() => selectStageManagerAction(action)}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    {stageManagerAction === 'migrate' && (
+                      <p className="stage-manager-help">
+                        migration changes location. moving a parent tab into another parent will demote that parent into a sub-tab.
+                      </p>
+                    )}
+                    {stageManagerAction === 'promote' && (
+                      <p className="stage-manager-help">
+                        promotion changes level. one fully selected parent can become a new space. selected sub-tabs can become prime tabs.
+                      </p>
+                    )}
+                    {stageManagerAction === 'demote' && (
+                      <p className="stage-manager-help">
+                        demotion changes level. selected parent tabs become sub-tabs under the destination parent, and selected loose sub-tabs move with them.
+                      </p>
+                    )}
+                    {stageManagerAction === 'mass-delete' && (
+                      <p className="stage-manager-help">
+                        mass delete can either move the selection into trash or permanently remove it.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {stageManagerStep === 'configure' && (
+                  <div className="stage-manager-panel">
+                    <h2>configure</h2>
+                    {stageManagerAction === 'promote' && stageManagerSelectionSnapshot.fullParents.length === 1 && (
+                      <>
+                        <p>this fully selected parent will become a new space. its home note becomes a prime tab named <code>main</code>.</p>
+                        <div className="stage-manager-field-grid">
+                          <label className="stage-manager-field">
+                            <span>new space name</span>
+                            <input
+                              type="text"
+                              className="form-control form-control-sm"
+                              value={stageManagerDraft.newSpaceName}
+                              onChange={(event) => updateStageManagerDraft({ newSpaceName: event.target.value })}
+                              placeholder={stageManagerSelectionSnapshot.fullParents[0]?.title ?? 'new space'}
+                            />
+                          </label>
+                        </div>
+                      </>
+                    )}
+
+                    {stageManagerAction === 'promote' && stageManagerSelectionSnapshot.fullParents.length === 0 && (
+                      <>
+                        <p>selected sub-tabs will be promoted into prime tabs in the destination space.</p>
+                        <div className="stage-manager-actions-row">
+                          <button
+                            type="button"
+                            className={`btn btn-sm stage-manager-action-btn ${stageManagerDraft.promoteSpaceMode === 'existing' ? 'is-selected' : ''}`}
+                            onClick={() => updateStageManagerDraft({ promoteSpaceMode: 'existing' })}
+                          >
+                            existing space
+                          </button>
+                          <button
+                            type="button"
+                            className={`btn btn-sm stage-manager-action-btn ${stageManagerDraft.promoteSpaceMode === 'new' ? 'is-selected' : ''}`}
+                            onClick={() => updateStageManagerDraft({ promoteSpaceMode: 'new' })}
+                          >
+                            new space
+                          </button>
+                        </div>
+                        <div className="stage-manager-field-grid">
+                          {stageManagerDraft.promoteSpaceMode === 'existing' ? (
+                            <label className="stage-manager-field">
+                              <span>destination space</span>
+                              <select
+                                className="form-select form-select-sm"
+                                value={stageManagerDraft.promoteSpaceId}
+                                onChange={(event) => updateStageManagerDraft({ promoteSpaceId: event.target.value })}
+                              >
+                                <option value="">select a space</option>
+                                {stageManagerPromoteDestinationSpaces.map((space) => (
+                                  <option key={space.id} value={space.id}>
+                                    {space.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          ) : (
+                            <label className="stage-manager-field">
+                              <span>new space name</span>
+                              <input
+                                type="text"
+                                className="form-control form-control-sm"
+                                value={stageManagerDraft.newSpaceName}
+                                onChange={(event) => updateStageManagerDraft({ newSpaceName: event.target.value })}
+                                placeholder="new space"
+                              />
+                            </label>
+                          )}
+                        </div>
+                      </>
+                    )}
+
+                    {stageManagerAction === 'demote' && (
+                      <>
+                        <p>selected parent tabs will become sub-tabs under the destination parent. their old home notes become their new note content.</p>
+                        <div className="stage-manager-actions-row">
+                          <button
+                            type="button"
+                            className={`btn btn-sm stage-manager-action-btn ${stageManagerDraft.demoteParentMode === 'existing' ? 'is-selected' : ''}`}
+                            onClick={() => updateStageManagerDraft({ demoteParentMode: 'existing' })}
+                          >
+                            existing parent
+                          </button>
+                          <button
+                            type="button"
+                            className={`btn btn-sm stage-manager-action-btn ${stageManagerDraft.demoteParentMode === 'new' ? 'is-selected' : ''}`}
+                            onClick={() => updateStageManagerDraft({ demoteParentMode: 'new' })}
+                          >
+                            new parent
+                          </button>
+                        </div>
+                        <div className="stage-manager-field-grid">
+                          {stageManagerDraft.demoteParentMode === 'existing' ? (
+                            <label className="stage-manager-field">
+                              <span>destination parent</span>
+                              <select
+                                className="form-select form-select-sm"
+                                value={stageManagerDraft.demoteParentId}
+                                onChange={(event) => updateStageManagerDraft({ demoteParentId: event.target.value })}
+                              >
+                                <option value="">select a parent tab</option>
+                                {stageManagerDemoteParentOptions.map((tab) => (
+                                  <option key={tab.id} value={tab.id}>
+                                    {tab.title}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          ) : (
+                            <label className="stage-manager-field">
+                              <span>new parent name</span>
+                              <input
+                                type="text"
+                                className="form-control form-control-sm"
+                                value={stageManagerDraft.demoteNewParentName}
+                                onChange={(event) => updateStageManagerDraft({ demoteNewParentName: event.target.value })}
+                                placeholder="new parent"
+                              />
+                            </label>
+                          )}
+                        </div>
+                      </>
+                    )}
+
+                    {stageManagerAction === 'migrate' && (
+                      <>
+                        <p>choose whether the selection moves to another space or underneath a destination parent tab.</p>
+                        <div className="stage-manager-actions-row">
+                          <button
+                            type="button"
+                            className={`btn btn-sm stage-manager-action-btn ${stageManagerDraft.migrateTarget === 'space' ? 'is-selected' : ''}`}
+                            onClick={() => updateStageManagerDraft({ migrateTarget: 'space' })}
+                          >
+                            migrate to space
+                          </button>
+                          <button
+                            type="button"
+                            className={`btn btn-sm stage-manager-action-btn ${stageManagerDraft.migrateTarget === 'parent' ? 'is-selected' : ''}`}
+                            onClick={() => updateStageManagerDraft({ migrateTarget: 'parent' })}
+                          >
+                            migrate to parent
+                          </button>
+                        </div>
+
+                        {stageManagerDraft.migrateTarget === 'space' && (
+                          <>
+                            <div className="stage-manager-actions-row">
+                              <button
+                                type="button"
+                                className={`btn btn-sm stage-manager-action-btn ${stageManagerDraft.migrateSpaceMode === 'existing' ? 'is-selected' : ''}`}
+                                onClick={() => updateStageManagerDraft({ migrateSpaceMode: 'existing' })}
+                              >
+                                existing space
+                              </button>
+                              <button
+                                type="button"
+                                className={`btn btn-sm stage-manager-action-btn ${stageManagerDraft.migrateSpaceMode === 'new' ? 'is-selected' : ''}`}
+                                onClick={() => updateStageManagerDraft({ migrateSpaceMode: 'new' })}
+                              >
+                                new space
+                              </button>
+                            </div>
+                            <div className="stage-manager-field-grid">
+                              {stageManagerDraft.migrateSpaceMode === 'existing' ? (
+                                <label className="stage-manager-field">
+                                  <span>destination space</span>
+                                  <select
+                                    className="form-select form-select-sm"
+                                    value={stageManagerDraft.migrateSpaceId}
+                                    onChange={(event) => updateStageManagerDraft({ migrateSpaceId: event.target.value })}
+                                  >
+                                    <option value="">select a space</option>
+                                    {stageManagerOtherSpaces.map((space) => (
+                                      <option key={space.id} value={space.id}>
+                                        {space.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              ) : (
+                                <label className="stage-manager-field">
+                                  <span>new space name</span>
+                                  <input
+                                    type="text"
+                                    className="form-control form-control-sm"
+                                    value={stageManagerDraft.newSpaceName}
+                                    onChange={(event) => updateStageManagerDraft({ newSpaceName: event.target.value })}
+                                    placeholder="new space"
+                                  />
+                                </label>
+                              )}
+                            </div>
+
+                            {stageManagerSelectionSnapshot.looseSubTabs.length > 0 && (
+                              <>
+                                <label className="stage-manager-field">
+                                  <span>how do we handle stray sub-tabs?</span>
+                                  <select
+                                    className="form-select form-select-sm"
+                                    value={stageManagerStrayHandlingSelectValue}
+                                    onChange={(event) => {
+                                      const value = event.target.value
+                                      if (value.startsWith('selected-parent:')) {
+                                        updateStageManagerDraft({
+                                          strayHandlingMode: 'selected-parent',
+                                          straySelectedParentId: value.slice('selected-parent:'.length),
+                                        })
+                                        return
+                                      }
+                                      updateStageManagerDraft({ strayHandlingMode: value as StageManagerStrayHandlingMode })
+                                    }}
+                                  >
+                                    <option value="promote">promote to own prime tabs</option>
+                                    {stageManagerSelectionSnapshot.fullParents.map((tab) => (
+                                      <option key={tab.id} value={`selected-parent:${tab.id}`}>
+                                        include under {tab.title}
+                                      </option>
+                                    ))}
+                                    <option value="existing-parent">include under existing parent...</option>
+                                    <option value="new-parent">create new parent tab...</option>
+                                  </select>
+                                </label>
+
+                                {stageManagerDraft.strayHandlingMode === 'existing-parent' && (
+                                  <label className="stage-manager-field">
+                                    <span>destination parent</span>
+                                    <select
+                                      className="form-select form-select-sm"
+                                      value={stageManagerDraft.strayExistingParentId}
+                                      onChange={(event) => updateStageManagerDraft({ strayExistingParentId: event.target.value })}
+                                    >
+                                      <option value="">select a parent tab</option>
+                                      {stageManagerStrayExistingParentOptions.map((tab) => (
+                                        <option key={tab.id} value={tab.id}>
+                                          {tab.title}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                )}
+
+                                {stageManagerDraft.strayHandlingMode === 'new-parent' && (
+                                  <label className="stage-manager-field">
+                                    <span>new parent name</span>
+                                    <input
+                                      type="text"
+                                      className="form-control form-control-sm"
+                                      value={stageManagerDraft.strayNewParentName}
+                                      onChange={(event) => updateStageManagerDraft({ strayNewParentName: event.target.value })}
+                                      placeholder="new parent"
+                                    />
+                                  </label>
+                                )}
+                              </>
+                            )}
+                          </>
+                        )}
+
+                        {stageManagerDraft.migrateTarget === 'parent' && (
+                          <>
+                            <div className="stage-manager-actions-row">
+                              <button
+                                type="button"
+                                className={`btn btn-sm stage-manager-action-btn ${stageManagerDraft.migrateParentSpaceMode === 'current' ? 'is-selected' : ''}`}
+                                onClick={() => updateStageManagerDraft({ migrateParentSpaceMode: 'current' })}
+                              >
+                                current space
+                              </button>
+                              <button
+                                type="button"
+                                className={`btn btn-sm stage-manager-action-btn ${stageManagerDraft.migrateParentSpaceMode === 'existing' ? 'is-selected' : ''}`}
+                                onClick={() => updateStageManagerDraft({ migrateParentSpaceMode: 'existing' })}
+                              >
+                                existing space
+                              </button>
+                              <button
+                                type="button"
+                                className={`btn btn-sm stage-manager-action-btn ${stageManagerDraft.migrateParentSpaceMode === 'new' ? 'is-selected' : ''}`}
+                                onClick={() => updateStageManagerDraft({ migrateParentSpaceMode: 'new' })}
+                              >
+                                new space
+                              </button>
+                            </div>
+
+                            {stageManagerDraft.migrateParentSpaceMode === 'existing' && (
+                              <label className="stage-manager-field">
+                                <span>destination space</span>
+                                <select
+                                  className="form-select form-select-sm"
+                                  value={stageManagerDraft.migrateParentSpaceId}
+                                  onChange={(event) => updateStageManagerDraft({ migrateParentSpaceId: event.target.value })}
+                                >
+                                  <option value="">select a space</option>
+                                  {stageManagerOtherSpaces.map((space) => (
+                                    <option key={space.id} value={space.id}>
+                                      {space.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                            )}
+
+                            {stageManagerDraft.migrateParentSpaceMode === 'new' && (
+                              <label className="stage-manager-field">
+                                <span>new space name</span>
+                                <input
+                                  type="text"
+                                  className="form-control form-control-sm"
+                                  value={stageManagerDraft.newSpaceName}
+                                  onChange={(event) => updateStageManagerDraft({ newSpaceName: event.target.value })}
+                                  placeholder="new space"
+                                />
+                              </label>
+                            )}
+
+                            {stageManagerDraft.migrateParentSpaceMode !== 'new' && (
+                              <div className="stage-manager-actions-row">
+                                <button
+                                  type="button"
+                                  className={`btn btn-sm stage-manager-action-btn ${stageManagerDraft.migrateParentMode === 'existing' ? 'is-selected' : ''}`}
+                                  onClick={() => updateStageManagerDraft({ migrateParentMode: 'existing' })}
+                                >
+                                  existing parent
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`btn btn-sm stage-manager-action-btn ${stageManagerDraft.migrateParentMode === 'new' ? 'is-selected' : ''}`}
+                                  onClick={() => updateStageManagerDraft({ migrateParentMode: 'new' })}
+                                >
+                                  new parent
+                                </button>
+                              </div>
+                            )}
+
+                            <div className="stage-manager-field-grid">
+                              {stageManagerDraft.migrateParentSpaceMode !== 'new' && stageManagerDraft.migrateParentMode === 'existing' ? (
+                                <label className="stage-manager-field">
+                                  <span>destination parent</span>
+                                  <select
+                                    className="form-select form-select-sm"
+                                    value={stageManagerDraft.migrateParentId}
+                                    onChange={(event) => updateStageManagerDraft({ migrateParentId: event.target.value })}
+                                  >
+                                    <option value="">select a parent tab</option>
+                                    {stageManagerMigrateParentOptions.map((tab) => (
+                                      <option key={tab.id} value={tab.id}>
+                                        {tab.title}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              ) : (
+                                <label className="stage-manager-field">
+                                  <span>new parent name</span>
+                                  <input
+                                    type="text"
+                                    className="form-control form-control-sm"
+                                    value={stageManagerDraft.migrateNewParentName}
+                                    onChange={(event) => updateStageManagerDraft({ migrateNewParentName: event.target.value })}
+                                    placeholder="new parent"
+                                  />
+                                </label>
+                              )}
+                            </div>
+                          </>
+                        )}
+
+                        <p className="stage-manager-help">
+                          migrating a parent tab into another parent will demote that parent into a sub-tab under the destination parent.
+                        </p>
+                      </>
+                    )}
+
+                    {stageManagerAction === 'mass-delete' && (
+                      <>
+                        <p>choose whether the current selection should move into trash or be deleted permanently.</p>
+                        <div className="stage-manager-actions-row">
+                          <button
+                            type="button"
+                            className={`btn btn-sm stage-manager-action-btn ${stageManagerDraft.massDeleteMode === 'trash' ? 'is-selected' : ''}`}
+                            onClick={() => updateStageManagerDraft({ massDeleteMode: 'trash' })}
+                          >
+                            move to trash
+                          </button>
+                          <button
+                            type="button"
+                            className={`btn btn-sm stage-manager-action-btn ${stageManagerDraft.massDeleteMode === 'permanent' ? 'is-selected' : ''}`}
+                            onClick={() => updateStageManagerDraft({ massDeleteMode: 'permanent' })}
+                          >
+                            delete for real
+                          </button>
+                        </div>
+                        <p className="stage-manager-help">
+                          the review step is the confirmation point for mass delete.
+                        </p>
+                      </>
+                    )}
+
+                    {stageManagerAction !== 'mass-delete' && (
+                      <div className="stage-manager-switch-row">
+                        <label className="settings-hotkey-label" htmlFor="stage-manager-open-destination">
+                          open destination after apply
+                        </label>
+                        <div className="form-check form-switch settings-switch">
+                          <input
+                            id="stage-manager-open-destination"
+                            className="form-check-input"
+                            type="checkbox"
+                            role="switch"
+                            checked={state.ui.stageManagerOpenDestinationAfterApply}
+                            onChange={(event) => updateStageManagerOpenDestinationSetting(event.target.checked)}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {stageManagerStep === 'review' && (
+                  <div className="stage-manager-panel">
+                    <h2>review</h2>
+                    <ul className="stage-manager-review-list">
+                      {getStageManagerReviewDetails().map((detail) => (
+                        <li key={detail}>{detail}</li>
+                      ))}
+                    </ul>
+                    {getStageManagerReviewWarning() ? (
+                      <div className="stage-manager-warning" role="note">
+                        {getStageManagerReviewWarning()}
+                      </div>
+                    ) : (
+                      <p className="stage-manager-help">review the destination and apply when it looks right.</p>
+                    )}
+                  </div>
+                )}
+
+                <div className="stage-manager-footer">
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-light stage-manager-nav-btn"
+                    onClick={handleStageManagerPrevious}
+                    disabled={stageManagerStep === 'select'}
+                  >
+                    previous
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-primary stage-manager-nav-btn"
+                    onClick={stageManagerStep === 'review' ? handleStageManagerApply : handleStageManagerNext}
+                  >
+                    {stageManagerStep === 'review' ? 'apply' : 'next'}
+                  </button>
+                </div>
+              </div>
+            </section>
+          ) : isTrashHomeSelected ? (
             <section className="trash-home-note">
               <p>Items moved here are pending deletion.</p>
               <ul>
@@ -4282,6 +7107,17 @@ function App() {
                 delete Space
               </button>
             </>
+          ) : contextMenu.type === 'image' ? (
+            <button
+              type="button"
+              className="tab-context-delete"
+              onClick={() => {
+                setContextMenu(null)
+                void copySelectedImageToClipboard()
+              }}
+            >
+              copy image
+            </button>
           ) : contextMenu.type === 'trash-tab' || contextMenu.type === 'trash-subtab' ? (
             <button
               type="button"
@@ -4296,14 +7132,14 @@ function App() {
                 arrange
               </button>
               <button type="button" className="tab-context-delete" onClick={deleteFromContext}>
-                delete
+                move to trash
               </button>
               <button
                 type="button"
                 className="tab-context-delete tab-context-danger"
                 onClick={() => openDeleteModalFromContext(true)}
               >
-                delete for real
+                delete now
               </button>
             </>
           )}

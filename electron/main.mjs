@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage } from 'electron'
 import { writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -94,6 +94,23 @@ app.whenReady().then(() => {
     const bytes = Buffer.from(new Uint8Array(data))
     writeFileSync(saveResult.filePath, bytes)
     return { canceled: false, filePath: saveResult.filePath }
+  })
+
+  ipcMain.handle('copy-image-data-url', async (_event, dataUrl) => {
+    try {
+      if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) {
+        return { ok: false, error: 'Invalid image payload' }
+      }
+      const image = nativeImage.createFromDataURL(dataUrl)
+      if (image.isEmpty()) {
+        return { ok: false, error: 'Empty image payload' }
+      }
+      clipboard.writeImage(image)
+      return { ok: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      return { ok: false, error: message }
+    }
   })
 
   ipcMain.handle('export-app-state', async (_event, payload) => {

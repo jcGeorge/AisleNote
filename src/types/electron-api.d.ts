@@ -19,6 +19,10 @@ declare global {
         filePath?: string
         error?: string
       }>
+      copyImageDataUrl: (dataUrl: string) => Promise<{
+        ok: boolean
+        error?: string
+      }>
     }
     __tabsGetLatestAppState?: () => string
   }

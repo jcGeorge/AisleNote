@@ -373,6 +373,8 @@ function buildRootManifest(appState) {
       },
       ui: appState.ui ?? {
         showParentHomeTab: true,
+        stageManagerOpenDestinationAfterApply: true,
+        tabButtonScale: 1,
       },
     },
     topics: [{ id: DEFAULT_TOPIC_ID, title: DEFAULT_TOPIC_TITLE }],
