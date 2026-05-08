@@ -245,6 +245,11 @@
   gap: 0.75rem;
 }
 
+.spaces-grid.is-arranging {
+  box-shadow: inset 0 0 0 1px rgba(122, 151, 203, 0.08);
+  border-radius: 0.8rem;
+}
+
 .space-card {
   border: 1px solid #2f4672;
   background: #0f1b32;
@@ -256,6 +261,41 @@
   align-items: center;
   justify-content: center;
   padding: 0.6rem 0.7rem;
+}
+
+.space-card.is-arrangeable {
+  animation: arrangeJiggle 0.18s ease-in-out infinite alternate;
+  transform-origin: center;
+  box-shadow: 0 0 0 1px rgba(121, 151, 202, 0.16) inset !important;
+  cursor: grab;
+  user-select: none;
+}
+
+.space-card.is-arrangeable:hover {
+  animation-play-state: paused;
+}
+
+.space-card.is-arrangeable.is-dragging {
+  opacity: 0.92;
+  cursor: grabbing;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24), 0 0 0 1px rgba(121, 151, 202, 0.3) inset !important;
+}
+
+.space-card.is-arrange-target {
+  box-shadow: 0 0 0 1px rgba(121, 151, 202, 0.32), inset 0 0 0 2px rgba(121, 151, 202, 0.68) !important;
+}
+
+.space-card.is-arrange-target-before {
+  box-shadow: inset 4px 0 0 #7ba2ef, 0 0 0 1px rgba(121, 151, 202, 0.26) !important;
+}
+
+.space-card.is-arrange-target-after {
+  box-shadow: inset -4px 0 0 #7ba2ef, 0 0 0 1px rgba(121, 151, 202, 0.26) !important;
+}
+
+.space-card-add.is-arrange-fixed {
+  box-shadow: 0 0 0 1px rgba(121, 151, 202, 0.12) inset !important;
+  cursor: default !important;
 }
 
 .space-card:hover {
@@ -1085,6 +1125,35 @@
   align-items: center !important;
 }
 
+.toastui-editor-defaultUI-toolbar button.more,
+.toastui-editor-toolbar button.more {
+  display: none !important;
+}
+
+.toastui-editor-defaultUI-toolbar .toastui-editor-toolbar-group:has(> button.more),
+.toastui-editor-toolbar .toastui-editor-toolbar-group:has(> button.more) {
+  display: none !important;
+}
+
+.clear-note-toolbar-group {
+  margin-left: 0.15rem !important;
+}
+
+.toastui-editor-defaultUI-toolbar button.clear-note-toolbar-btn,
+.toastui-editor-toolbar button.clear-note-toolbar-btn {
+  width: 26px !important;
+  min-width: 26px !important;
+  padding: 0 !important;
+  font-size: 14px !important;
+  line-height: 1 !important;
+  font-weight: 600 !important;
+  color: #a8b7cf !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  opacity: 0.92 !important;
+}
+
 .toastui-editor-dropdown-toolbar,
 .toastui-editor-popup {
   background-color: #0f1b32 !important;
@@ -1654,6 +1723,30 @@
   background: #f6f9ff;
 }
 
+.theme-light .space-card.is-arrangeable {
+  box-shadow: 0 0 0 1px rgba(102, 141, 214, 0.14) inset !important;
+}
+
+.theme-light .space-card.is-arrangeable.is-dragging {
+  box-shadow: 0 10px 20px rgba(46, 77, 133, 0.14), 0 0 0 1px rgba(102, 141, 214, 0.24) inset !important;
+}
+
+.theme-light .space-card.is-arrange-target {
+  box-shadow: 0 0 0 1px rgba(102, 141, 214, 0.2), inset 0 0 0 2px rgba(82, 126, 210, 0.7) !important;
+}
+
+.theme-light .space-card.is-arrange-target-before {
+  box-shadow: inset 4px 0 0 #5d84d8, 0 0 0 1px rgba(102, 141, 214, 0.18) !important;
+}
+
+.theme-light .space-card.is-arrange-target-after {
+  box-shadow: inset -4px 0 0 #5d84d8, 0 0 0 1px rgba(102, 141, 214, 0.18) !important;
+}
+
+.theme-light .space-card-add.is-arrange-fixed {
+  box-shadow: 0 0 0 1px rgba(102, 141, 214, 0.12) inset !important;
+}
+
 .theme-light .space-rename-input {
   background: #ffffff;
   color: #1d2a44;
@@ -1911,6 +2004,11 @@
   box-shadow: inset 0 0 0 1px #8eaee0 !important;
 }
 
+.theme-light .toastui-editor-defaultUI-toolbar button.clear-note-toolbar-btn,
+.theme-light .toastui-editor-toolbar button.clear-note-toolbar-btn {
+  color: #5b6982 !important;
+}
+
 .theme-light .toastui-editor-toolbar-icons,
 .theme-light .toastui-editor-toolbar-divider {
   filter: none !important;
@@ -1975,6 +2073,7 @@
 .toastui-editor-tooltip {
   padding: 4px 8px !important;
   line-height: 1.25 !important;
+  transform: translateX(calc(-50% + 7px)) !important;
 }
 
 .toastui-editor-tooltip .arrow {

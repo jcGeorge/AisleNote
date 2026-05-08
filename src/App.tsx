@@ -84,30 +84,43 @@ type PendingCreatedEdit =
 
 type ArrangeSource = 'context' | 'press'
 type ArrangeInsertPosition = 'before' | 'after'
+type ArrangeScope = 'tabs' | 'spaces'
 
 type ArrangeDragItem =
   | { type: 'tab'; tabId: string }
   | { type: 'subtab'; parentTabId: string; subTabId: string }
+  | { type: 'space'; spaceId: string }
 
 type ArrangeModeState = {
   active: boolean
+  scope: ArrangeScope | null
   source: ArrangeSource | null
   dragItem: ArrangeDragItem | null
   overParentTabId: string | null
   overParentInsert: ArrangeInsertPosition | null
   overSubTabId: string | null
   overSubTabInsert: ArrangeInsertPosition | null
+  overSpaceId: string | null
+  overSpaceInsert: ArrangeInsertPosition | null
 }
 
 type ArrangeTapCandidate =
   | { key: string; type: 'tab'; tabId: string; startX: number; startY: number; dragged: boolean }
   | { key: string; type: 'subtab'; subTabId: string; startX: number; startY: number; dragged: boolean }
+  | { key: string; type: 'space'; spaceId: string; startX: number; startY: number; dragged: boolean }
   | { key: string; type: 'home'; startX: number; startY: number; dragged: boolean }
 
 type ArrangeTapCandidateSeed =
   | { key: string; type: 'tab'; tabId: string }
   | { key: string; type: 'subtab'; subTabId: string }
+  | { key: string; type: 'space'; spaceId: string }
   | { key: string; type: 'home' }
+
+type ArrangeDragSeed = {
+  key: string
+  startX: number
+  startY: number
+}
 
 type StageManagerStep = 'select' | 'action' | 'configure' | 'review'
 type StageManagerAction = 'migrate' | 'promote' | 'demote' | 'mass-delete'
@@ -268,14 +281,18 @@ const MIN_AUTO_REMOVE_DAYS = 1
 const MAX_AUTO_REMOVE_DAYS = 365
 const ARRANGE_PRESS_DELAY_MS = 380
 const ARRANGE_TAP_SLOP_PX = 6
+const ARRANGE_DRAG_START_SLOP_PX = 12
 const DEFAULT_ARRANGE_MODE: ArrangeModeState = {
   active: false,
+  scope: null,
   source: null,
   dragItem: null,
   overParentTabId: null,
   overParentInsert: null,
   overSubTabId: null,
   overSubTabInsert: null,
+  overSpaceId: null,
+  overSpaceInsert: null,
 }
 const DEFAULT_SHORTCUTS: Record<ShortcutId, string> = {
   toggleTabTrash: 'Mod+T',
@@ -875,6 +892,82 @@ function thematicBreakShortcutPlugin(context: {
   }
 }
 
+function multiLineSelectionShortcutPlugin(context: {
+  pmState: {
+    Plugin: new (spec: {
+      props?: {
+        handleDOMEvents?: {
+          keydown?: (view: unknown, event: KeyboardEvent) => boolean
+        }
+      }
+    }) => unknown
+  }
+  pmKeymap: { keymap: (bindings: Record<string, unknown>) => unknown }
+  onExpand: (direction: 'up' | 'down') => boolean
+}) {
+  const { Plugin } = context.pmState
+  const { keymap } = context.pmKeymap
+  const { onExpand } = context
+
+  const createDomKeydownPlugin = () =>
+    new Plugin({
+      props: {
+        handleDOMEvents: {
+          keydown: (_view, event) => {
+            const direction = getMultilineSelectionShortcutDirection(event)
+            if (!direction) return false
+            const handled = onExpand(direction)
+            if (!handled) return false
+            event.preventDefault()
+            event.stopPropagation()
+            return true
+          },
+        },
+      },
+    })
+
+  return {
+    wysiwygPlugins: [
+      createDomKeydownPlugin,
+      () =>
+        keymap({
+          'Mod-Alt-ArrowUp': () => onExpand('up'),
+          'Mod-Alt-ArrowDown': () => onExpand('down'),
+          'Mod-Alt-Home': () => onExpand('up'),
+          'Mod-Alt-End': () => onExpand('down'),
+          'Shift-Alt-ArrowUp': () => onExpand('up'),
+          'Shift-Alt-ArrowDown': () => onExpand('down'),
+        }),
+    ],
+  }
+}
+
+function getMultilineSelectionShortcutDirection(event: KeyboardEvent): 'up' | 'down' | null {
+  const isMac = typeof navigator !== 'undefined' ? /mac/i.test(navigator.platform) : false
+  const isArrowUp =
+    event.key === 'ArrowUp' ||
+    event.key === 'Up' ||
+    event.code === 'ArrowUp' ||
+    (isMac && (event.key === 'Home' || event.code === 'Home' || event.keyCode === 36))
+  const isArrowDown =
+    event.key === 'ArrowDown' ||
+    event.key === 'Down' ||
+    event.code === 'ArrowDown' ||
+    (isMac && (event.key === 'End' || event.code === 'End' || event.keyCode === 35))
+
+  if (isMac) {
+    if (!event.metaKey || !event.altKey || event.ctrlKey || event.shiftKey) return null
+    if (isArrowUp) return 'up'
+    if (isArrowDown) return 'down'
+    return null
+  }
+
+  if (!event.altKey || !event.shiftKey || event.metaKey || event.ctrlKey) return null
+  if (isArrowUp) return 'up'
+  if (isArrowDown) return 'down'
+  return null
+}
+
 const EDITOR_TOOLBAR_ITEMS: string[][] = [
   ['heading', 'bold', 'italic', 'strike'],
   ['hr', 'quote'],
@@ -882,6 +975,53 @@ const EDITOR_TOOLBAR_ITEMS: string[][] = [
   ['table', 'image', 'link'],
   ['code', 'codeblock'],
 ]
+
+function bindClearToolbarTooltip(root: HTMLElement, toolbar: HTMLElement, button: HTMLButtonElement) {
+  const tooltip = root.querySelector('.toastui-editor-tooltip')
+  const tooltipText = tooltip?.querySelector('.text')
+  if (!(tooltip instanceof HTMLElement) || !(tooltipText instanceof HTMLElement)) return
+
+  const showTooltip = () => {
+    const toolbarRect = toolbar.getBoundingClientRect()
+    const buttonRect = button.getBoundingClientRect()
+    tooltip.style.display = 'block'
+    tooltip.style.left = `${buttonRect.left - toolbarRect.left + 6}px`
+    tooltip.style.top = `${buttonRect.top - toolbarRect.top + button.offsetHeight + 6}px`
+    tooltipText.textContent = 'clear contents'
+  }
+
+  const hideTooltip = () => {
+    tooltip.style.display = 'none'
+  }
+
+  button.addEventListener('mouseover', showTooltip)
+  button.addEventListener('mouseout', hideTooltip)
+  button.addEventListener('focus', showTooltip)
+  button.addEventListener('blur', hideTooltip)
+}
+
+function installClearToolbarButton(root: HTMLElement, onClear: () => void) {
+  const toolbar = root.querySelector('.toastui-editor-defaultUI-toolbar')
+  if (!(toolbar instanceof HTMLElement)) return
+  if (toolbar.querySelector('.clear-note-toolbar-btn')) return
+
+  const group = document.createElement('div')
+  group.className = 'toastui-editor-toolbar-group clear-note-toolbar-group'
+
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className = 'clear-note-toolbar-btn'
+  button.textContent = '⌫'
+  button.setAttribute('aria-label', 'clear contents')
+  button.addEventListener('click', (event) => {
+    event.preventDefault()
+    onClear()
+  })
+  bindClearToolbarTooltip(root, toolbar, button)
+
+  group.appendChild(button)
+  toolbar.appendChild(group)
+}
 
 let renameInputMeasureContext: CanvasRenderingContext2D | null = null
 
@@ -910,6 +1050,103 @@ function createSpace(name: string): Space {
     name,
     settings: { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
     data: createDefaultWorkspaceData(),
+  }
+}
+
+function createDuplicateSpaceName(name: string, existingNames: string[]): string {
+  const baseName = `${name} copy`
+  if (!existingNames.includes(baseName)) return baseName
+
+  let suffix = 2
+  while (existingNames.includes(`${baseName} ${suffix}`)) {
+    suffix += 1
+  }
+  return `${baseName} ${suffix}`
+}
+
+function duplicateWorkspaceData(data: WorkspaceData): WorkspaceData {
+  const liveTabIdMap = new Map<string, string>()
+
+  const duplicatedTabs = data.tabs.map((tab) => {
+    const nextTabId = createId()
+    liveTabIdMap.set(tab.id, nextTabId)
+
+    const subTabIdMap = new Map<string, string>()
+    const duplicatedSubTabs = tab.subTabs.map((subTab) => {
+      const nextSubTabId = createId()
+      subTabIdMap.set(subTab.id, nextSubTabId)
+      return {
+        ...subTab,
+        id: nextSubTabId,
+      }
+    })
+
+    return {
+      ...tab,
+      id: nextTabId,
+      activeSubTabId: tab.activeSubTabId ? subTabIdMap.get(tab.activeSubTabId) ?? null : null,
+      subTabs: duplicatedSubTabs,
+    }
+  })
+
+  const duplicatedDeletedTabs = data.deletedTabs.map((entry) => {
+    const duplicatedTabId = createId()
+    const deletedSubTabIdMap = new Map<string, string>()
+    const duplicatedDeletedSubTabs = entry.tab.subTabs.map((subTab) => {
+      const nextSubTabId = createId()
+      deletedSubTabIdMap.set(subTab.id, nextSubTabId)
+      return {
+        ...subTab,
+        id: nextSubTabId,
+      }
+    })
+
+    return {
+      ...entry,
+      id: createId(),
+      tab: {
+        ...entry.tab,
+        id: duplicatedTabId,
+        activeSubTabId: entry.tab.activeSubTabId ? deletedSubTabIdMap.get(entry.tab.activeSubTabId) ?? null : null,
+        subTabs: duplicatedDeletedSubTabs,
+      },
+    }
+  })
+
+  const orphanDeletedParentIdMap = new Map<string, string>()
+  const resolveDeletedSubParentId = (parentTabId: string) => {
+    const liveMatch = liveTabIdMap.get(parentTabId)
+    if (liveMatch) return liveMatch
+    const existing = orphanDeletedParentIdMap.get(parentTabId)
+    if (existing) return existing
+    const nextId = createId()
+    orphanDeletedParentIdMap.set(parentTabId, nextId)
+    return nextId
+  }
+
+  const duplicatedDeletedSubTabs = data.deletedSubTabs.map((entry) => ({
+    ...entry,
+    id: createId(),
+    parentTabId: resolveDeletedSubParentId(entry.parentTabId),
+    subTab: {
+      ...entry.subTab,
+      id: createId(),
+    },
+  }))
+
+  return createWorkspaceDataFromTabs(duplicatedTabs, {
+    activeTabId: liveTabIdMap.get(data.activeTabId) ?? duplicatedTabs[0]?.id,
+    deletedTabs: duplicatedDeletedTabs,
+    deletedSubTabs: duplicatedDeletedSubTabs,
+  })
+}
+
+function duplicateSpace(source: Space, existingNames: string[]): Space {
+  return {
+    id: createId(),
+    name: createDuplicateSpaceName(source.name, existingNames),
+    settings: { ...source.settings },
+    data: duplicateWorkspaceData(source.data),
   }
 }
 
@@ -1216,7 +1453,6 @@ function App() {
   const [editing, setEditing] = useState<{ type: 'tab' | 'subtab' | 'space'; id: string } | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [modal, setModal] = useState<ModalState | null>(null)
-  const [spaceDeleteAcknowledge, setSpaceDeleteAcknowledge] = useState(false)
   const [settingsDaysDraft, setSettingsDaysDraft] = useState<string>(String(DEFAULT_AUTO_REMOVE_DAYS))
   const isMacPlatform = typeof navigator !== 'undefined' ? /mac/i.test(navigator.platform) : false
   const [shortcutDrafts, setShortcutDrafts] = useState<Record<ShortcutId, string>>(DEFAULT_SHORTCUTS)
@@ -1267,6 +1503,7 @@ function App() {
   const editorRef = useRef<Editor | null>(null)
   const primaryTabRailRef = useRef<HTMLDivElement | null>(null)
   const subTabRailRef = useRef<HTMLDivElement | null>(null)
+  const spacesGridRef = useRef<HTMLDivElement | null>(null)
   const activeImageRef = useRef<HTMLImageElement | null>(null)
   const imageResizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const inlineCropDragRef = useRef<{
@@ -1284,6 +1521,7 @@ function App() {
   const skipRenameBlurRef = useRef<{ type: 'tab' | 'subtab' | 'space'; id: string } | null>(null)
   const arrangePressTimerRef = useRef<number | null>(null)
   const arrangeTapCandidateRef = useRef<ArrangeTapCandidate | null>(null)
+  const arrangeDragSeedRef = useRef<ArrangeDragSeed | null>(null)
   const suppressArrangeClickRef = useRef<Set<string>>(new Set())
   const saveTimerRef = useRef<number | null>(null)
   const toastTimerRef = useRef<number | null>(null)
@@ -1395,13 +1633,6 @@ function App() {
       }
     }
   }, [toast])
-
-  useEffect(() => {
-    const isSpaceDeleteModal = modal?.type === 'delete-target' && modal.target.type === 'space'
-    if (!isSpaceDeleteModal) {
-      setSpaceDeleteAcknowledge(false)
-    }
-  }, [modal])
 
   const activeSpace = useMemo(
     () => state.spaces.find((space) => space.id === state.activeSpaceId) ?? state.spaces[0],
@@ -1625,6 +1856,27 @@ function App() {
     arrangeTapCandidateRef.current = null
   }
 
+  const clearArrangeDragSeed = () => {
+    arrangeDragSeedRef.current = null
+  }
+
+  const startArrangeDragSeed = (key: string, event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) return
+    arrangeDragSeedRef.current = {
+      key,
+      startX: event.clientX,
+      startY: event.clientY,
+    }
+  }
+
+  const shouldAllowArrangeDragStart = (key: string, event: ReactDragEvent<HTMLButtonElement>) => {
+    const seed = arrangeDragSeedRef.current
+    if (!seed || seed.key !== key) return false
+    const deltaX = event.clientX - seed.startX
+    const deltaY = event.clientY - seed.startY
+    return Math.hypot(deltaX, deltaY) >= ARRANGE_DRAG_START_SLOP_PX
+  }
+
   const startArrangeTapCandidate = (candidate: ArrangeTapCandidateSeed, event: ReactPointerEvent<HTMLButtonElement>) => {
     if (!arrangeMode.active || event.button !== 0) return
     arrangeTapCandidateRef.current = {
@@ -1673,26 +1925,32 @@ function App() {
   const enterArrangeMode = (source: ArrangeSource, dragItem: ArrangeDragItem | null = null, suppressClickKey?: string) => {
     flushPendingContent()
     clearArrangePressTimer()
+    clearArrangeDragSeed()
     setMenuOpen(false)
     setContextMenu(null)
     setEditing(null)
     if (suppressClickKey) {
       markArrangeClickSuppressed(suppressClickKey)
     }
+    const scope: ArrangeScope | null = viewMode === 'spaces' ? 'spaces' : viewMode === 'main' ? 'tabs' : null
     setArrangeMode({
       active: true,
+      scope,
       source,
       dragItem,
       overParentTabId: null,
       overParentInsert: null,
       overSubTabId: null,
       overSubTabInsert: null,
+      overSpaceId: null,
+      overSpaceInsert: null,
     })
   }
 
   const exitArrangeMode = () => {
     clearArrangePressTimer()
     clearArrangeTapCandidate()
+    clearArrangeDragSeed()
     suppressArrangeClickRef.current.clear()
     setArrangeDraggingItem(null)
     setArrangeMode(DEFAULT_ARRANGE_MODE)
@@ -1703,7 +1961,7 @@ function App() {
     dragItem: ArrangeDragItem | null,
     suppressClickKey: string,
   ) => {
-    if (viewMode !== 'main' || editing || arrangeMode.active) return
+    if ((viewMode !== 'main' && viewMode !== 'spaces') || editing || arrangeMode.active) return
     if (event.button !== 0) return
     clearArrangePressTimer()
     arrangePressTimerRef.current = window.setTimeout(() => {
@@ -1724,6 +1982,9 @@ function App() {
         subTabId: contextMenu.subTabId,
       }
     }
+    if (contextMenu.type === 'space') {
+      return { type: 'space', spaceId: contextMenu.spaceId }
+    }
     return null
   }
 
@@ -1737,23 +1998,169 @@ function App() {
     flushPendingContent()
     clearArrangePressTimer()
     clearArrangeTapCandidate()
+    clearArrangeDragSeed()
     setMenuOpen(false)
     setContextMenu(null)
     setEditing(null)
     setArrangeDraggingItem(dragItem)
+    const scope: ArrangeScope = dragItem.type === 'space' ? 'spaces' : 'tabs'
     setArrangeMode({
       active: true,
+      scope,
       source: 'press',
       dragItem,
       overParentTabId: dragItem.type === 'tab' ? dragItem.tabId : null,
       overParentInsert: dragItem.type === 'tab' ? 'after' : null,
       overSubTabId: dragItem.type === 'subtab' ? dragItem.subTabId : null,
       overSubTabInsert: dragItem.type === 'subtab' ? 'after' : null,
+      overSpaceId: dragItem.type === 'space' ? dragItem.spaceId : null,
+      overSpaceInsert: dragItem.type === 'space' ? 'after' : null,
     })
+  }
+
+  const beginArrangeSpaceDrag = (event: ReactDragEvent<HTMLButtonElement>, spaceId: string) => {
+    if (viewMode !== 'spaces') return
+    if (!shouldAllowArrangeDragStart(`space:${spaceId}`, event)) {
+      event.preventDefault()
+      return
+    }
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', spaceId)
+    markArrangeTapDragged(`space:${spaceId}`)
+    prepareArrangeModeForDrag({ type: 'space', spaceId })
+  }
+
+  const handleArrangeSpaceDragOver = (event: ReactDragEvent<HTMLButtonElement>, spaceId: string) => {
+    if (!arrangeMode.active || arrangeMode.dragItem?.type !== 'space') return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    const position = getArrangeInsertPositionFromClientX(event.clientX, event.currentTarget.getBoundingClientRect())
+    setArrangeMode((previous) =>
+      previous.overSpaceId === spaceId && previous.overSpaceInsert === position
+        ? previous
+        : {
+            ...previous,
+            overParentTabId: null,
+            overParentInsert: null,
+            overSubTabId: null,
+            overSubTabInsert: null,
+            overSpaceId: spaceId,
+            overSpaceInsert: position,
+          },
+    )
+  }
+
+  const handleArrangeSpaceDrop = (event: ReactDragEvent<HTMLButtonElement>, targetSpaceId: string) => {
+    if (!arrangeMode.active || arrangeMode.dragItem?.type !== 'space') return
+    event.preventDefault()
+    const draggedSpaceId = arrangeMode.dragItem.spaceId
+    const position = getArrangeInsertPositionFromClientX(event.clientX, event.currentTarget.getBoundingClientRect())
+    markArrangeClickSuppressed(`space:${draggedSpaceId}`, `space:${targetSpaceId}`)
+    if (draggedSpaceId !== targetSpaceId) {
+      setState((previous) => {
+        const fromIndex = previous.spaces.findIndex((space) => space.id === draggedSpaceId)
+        const toIndex = previous.spaces.findIndex((space) => space.id === targetSpaceId)
+        if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return previous
+        return {
+          ...previous,
+          spaces: moveItemByInsertion(previous.spaces, fromIndex, toIndex, position),
+        }
+      })
+    }
+
+    setArrangeMode((previous) =>
+      previous.active
+        ? {
+            ...previous,
+            dragItem: null,
+            overParentTabId: null,
+            overParentInsert: null,
+            overSubTabId: null,
+            overSubTabInsert: null,
+            overSpaceId: null,
+            overSpaceInsert: null,
+          }
+        : previous,
+    )
+    setArrangeDraggingItem(null)
+  }
+
+  const handleArrangeSpaceGridDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (!arrangeMode.active || arrangeMode.dragItem?.type !== 'space') return
+    if (event.target !== event.currentTarget) return
+    const grid = spacesGridRef.current
+    if (!grid) return
+    const insertionTarget = getArrangeRailInsertionTarget(
+      grid,
+      '[data-arrange-space-id]',
+      'data-arrange-space-id',
+      event.clientX,
+      event.clientY,
+    )
+    if (!insertionTarget) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    setArrangeMode((previous) => ({
+      ...previous,
+      overParentTabId: null,
+      overParentInsert: null,
+      overSubTabId: null,
+      overSubTabInsert: null,
+      overSpaceId: insertionTarget.targetId,
+      overSpaceInsert: insertionTarget.position,
+    }))
+  }
+
+  const handleArrangeSpaceGridDrop = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (!arrangeMode.active || arrangeMode.dragItem?.type !== 'space') return
+    if (event.target !== event.currentTarget) return
+    const grid = spacesGridRef.current
+    if (!grid) return
+    const insertionTarget = getArrangeRailInsertionTarget(
+      grid,
+      '[data-arrange-space-id]',
+      'data-arrange-space-id',
+      event.clientX,
+      event.clientY,
+    )
+    if (!insertionTarget) return
+    event.preventDefault()
+    const draggedSpaceId = arrangeMode.dragItem.spaceId
+    markArrangeClickSuppressed(`space:${draggedSpaceId}`, `space:${insertionTarget.targetId}`)
+    if (draggedSpaceId !== insertionTarget.targetId) {
+      setState((previous) => {
+        const fromIndex = previous.spaces.findIndex((space) => space.id === draggedSpaceId)
+        const toIndex = previous.spaces.findIndex((space) => space.id === insertionTarget.targetId)
+        if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return previous
+        return {
+          ...previous,
+          spaces: moveItemByInsertion(previous.spaces, fromIndex, toIndex, insertionTarget.position),
+        }
+      })
+    }
+    setArrangeMode((previous) =>
+      previous.active
+        ? {
+            ...previous,
+            dragItem: null,
+            overParentTabId: null,
+            overParentInsert: null,
+            overSubTabId: null,
+            overSubTabInsert: null,
+            overSpaceId: null,
+            overSpaceInsert: null,
+          }
+        : previous,
+    )
+    setArrangeDraggingItem(null)
   }
 
   const beginArrangeTabDrag = (event: ReactDragEvent<HTMLButtonElement>, tabId: string) => {
     if (viewMode !== 'main') return
+    if (!shouldAllowArrangeDragStart(`tab:${tabId}`, event)) {
+      event.preventDefault()
+      return
+    }
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.setData('text/plain', tabId)
     markArrangeTapDragged(`tab:${tabId}`)
@@ -1798,7 +2205,7 @@ function App() {
           }
         })
       }
-    } else {
+    } else if (arrangeMode.dragItem.type === 'subtab') {
       const { parentTabId: sourceParentTabId, subTabId } = arrangeMode.dragItem
       markArrangeClickSuppressed(`subtab:${subTabId}`, `tab:${targetTabId}`)
       if (sourceParentTabId !== targetTabId) {
@@ -1915,6 +2322,7 @@ function App() {
 
   const endArrangeTabDrag = () => {
     clearArrangeTapCandidate()
+    clearArrangeDragSeed()
     setArrangeDraggingItem(null)
     setArrangeMode((previous) =>
       previous.active
@@ -1925,6 +2333,8 @@ function App() {
             overParentInsert: null,
             overSubTabId: null,
             overSubTabInsert: null,
+            overSpaceId: null,
+            overSpaceInsert: null,
           }
         : previous,
     )
@@ -1932,6 +2342,10 @@ function App() {
 
   const beginArrangeSubTabDrag = (event: ReactDragEvent<HTMLButtonElement>, parentTabId: string, subTabId: string) => {
     if (viewMode !== 'main') return
+    if (!shouldAllowArrangeDragStart(`subtab:${subTabId}`, event)) {
+      event.preventDefault()
+      return
+    }
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.setData('text/plain', subTabId)
     markArrangeTapDragged(`subtab:${subTabId}`)
@@ -2128,6 +2542,7 @@ function App() {
 
   const endArrangeSubTabDrag = () => {
     clearArrangeTapCandidate()
+    clearArrangeDragSeed()
     setArrangeDraggingItem(null)
     setArrangeMode((previous) =>
       previous.active
@@ -2307,7 +2722,7 @@ function App() {
   ])
 
   useEffect(() => {
-    if (!arrangeMode.active || viewMode !== 'main') return
+    if (!arrangeMode.active || arrangeMode.scope !== 'tabs' || viewMode !== 'main') return
 
     setArrangeMode((previous) => {
       if (!previous.active) return previous
@@ -2368,7 +2783,48 @@ function App() {
         overSubTabInsert: nextOverSubTabInsert,
       }
     })
-  }, [arrangeMode.active, viewMode, workspace.tabs, activeTab.subTabs])
+  }, [arrangeMode.active, arrangeMode.scope, viewMode, workspace.tabs, activeTab.subTabs])
+
+  useEffect(() => {
+    if (!arrangeMode.active || arrangeMode.scope !== 'spaces' || viewMode !== 'spaces') return
+
+    setArrangeMode((previous) => {
+      if (!previous.active || previous.scope !== 'spaces') return previous
+
+      const validSpaceIds = new Set(state.spaces.map((space) => space.id))
+      let nextDragItem = previous.dragItem
+      let nextOverSpaceId = previous.overSpaceId
+      let nextOverSpaceInsert = previous.overSpaceInsert
+
+      if (nextDragItem?.type === 'space' && !validSpaceIds.has(nextDragItem.spaceId)) {
+        nextDragItem = null
+      }
+
+      if (nextOverSpaceId && !validSpaceIds.has(nextOverSpaceId)) {
+        nextOverSpaceId = null
+        nextOverSpaceInsert = null
+      }
+
+      if (nextDragItem?.type !== 'space' && nextOverSpaceInsert) {
+        nextOverSpaceInsert = null
+      }
+
+      if (
+        nextDragItem === previous.dragItem &&
+        nextOverSpaceId === previous.overSpaceId &&
+        nextOverSpaceInsert === previous.overSpaceInsert
+      ) {
+        return previous
+      }
+
+      return {
+        ...previous,
+        dragItem: nextDragItem,
+        overSpaceId: nextOverSpaceId,
+        overSpaceInsert: nextOverSpaceInsert,
+      }
+    })
+  }, [arrangeMode.active, arrangeMode.scope, viewMode, state.spaces])
 
   const activeContent = activeSubTab ? activeSubTab.content : activeTab.homeContent
 
@@ -2634,6 +3090,60 @@ function App() {
     scheduleContentCommit(markdown, activeSpaceIdRef.current, activeTabIdRef.current, activeSubTabIdRef.current)
   }
 
+  const focusEditorAtDocumentStart = () => {
+    const currentEditor = editorRef.current as
+      | (Editor & {
+          wwEditor?: {
+            view?: any
+          }
+        })
+      | null
+
+    const view = currentEditor?.wwEditor?.view
+    if (!currentEditor || !view) {
+      currentEditor?.focus()
+      return
+    }
+
+    const firstPos = Math.min(1, Math.max(0, view.state.doc.content.size))
+    const SelectionCtor = view.state.selection.constructor as {
+      create?: (doc: unknown, anchor: number, head?: number) => unknown
+    }
+
+    if (typeof SelectionCtor.create === 'function') {
+      const nextSelection = SelectionCtor.create(view.state.doc, firstPos, firstPos)
+      view.dispatch(view.state.tr.setSelection(nextSelection).scrollIntoView())
+    }
+
+    currentEditor.focus()
+  }
+
+  const clearActiveNoteContent = () => {
+    if (!isMainViewRef.current) return
+    const currentEditor = editorRef.current
+    if (!currentEditor) return
+
+    closeImageTools()
+    closeLinkPrompt()
+    clearMultiLineEdit(false)
+    setContextMenu(null)
+
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+    }
+
+    pendingContentRef.current = null
+    normalizingContentRef.current = false
+    lastEditorMarkdownRef.current = ''
+    currentEditor.setMarkdown('', false)
+    scheduleContentCommit('', activeSpaceIdRef.current, activeTabIdRef.current, activeSubTabIdRef.current)
+
+    window.requestAnimationFrame(() => {
+      focusEditorAtDocumentStart()
+    })
+  }
+
   useEffect(() => {
     const flushOnExit = () => {
       if (saveTimerRef.current !== null) {
@@ -2787,6 +3297,9 @@ function App() {
     return blockRanges
   }
 
+  const findEditorTextBlockIndex = (blockRanges: Array<{ start: number; end: number; length: number }>, position: number) =>
+    blockRanges.findIndex((range) => position >= range.start && position <= range.end + 1)
+
   const clearMultiLineEdit = (collapseToHead = false) => {
     const currentEditor = editorRef.current as
       | (Editor & {
@@ -2903,7 +3416,7 @@ function App() {
       return syncMultiLineEditVisualSelection()
     }
 
-    const headBlockIndex = blockRanges.findIndex((range) => range.start === state.selection.$head.start())
+    const headBlockIndex = findEditorTextBlockIndex(blockRanges, state.selection.head)
     if (headBlockIndex < 0) return false
 
     const targetIndex =
@@ -3389,7 +3902,25 @@ function App() {
       toolbarItems: EDITOR_TOOLBAR_ITEMS,
       height: '100%',
       usageStatistics: false,
-      plugins: [thematicBreakShortcutPlugin],
+      plugins: [
+        thematicBreakShortcutPlugin,
+        (context: {
+          pmState: {
+            Plugin: new (spec: {
+              props?: {
+                handleDOMEvents?: {
+                  keydown?: (view: unknown, event: KeyboardEvent) => boolean
+                }
+              }
+            }) => unknown
+          }
+          pmKeymap: { keymap: (bindings: Record<string, unknown>) => unknown }
+        }) =>
+          multiLineSelectionShortcutPlugin({
+            ...context,
+            onExpand: tryExpandMultilineSelection,
+          }),
+      ],
       hooks: {
         addImageBlobHook: (blob: Blob | File, callback: (url: string, text?: string) => void) => {
           const reader = new FileReader()
@@ -3446,11 +3977,20 @@ function App() {
       },
     })
 
+    installClearToolbarButton(editorMountRef.current, clearActiveNoteContent)
+
     return () => {
       flushPendingContent()
       closeImageTools()
-      editorRef.current?.destroy()
+      try {
+        editorRef.current?.destroy()
+      } catch {
+        // Toast UI can throw during teardown if the toolbar DOM was customized.
+      }
       editorRef.current = null
+      if (editorMountRef.current) {
+        editorMountRef.current.innerHTML = ''
+      }
     }
   }, [isEditorView])
 
@@ -3555,27 +4095,13 @@ function App() {
 
     const handleKeyDown = (event: Event) => {
       const keyboardEvent = event as KeyboardEvent
-      const isMultiLineSelectionArrow = keyboardEvent.key === 'ArrowUp' || keyboardEvent.key === 'ArrowDown'
-      const isMacMultilineSelectionShortcut =
-        isMacPlatform &&
-        keyboardEvent.altKey &&
-        keyboardEvent.metaKey &&
-        !keyboardEvent.ctrlKey &&
-        !keyboardEvent.shiftKey &&
-        isMultiLineSelectionArrow
-      const isNonMacMultilineSelectionShortcut =
-        !isMacPlatform &&
-        keyboardEvent.altKey &&
-        keyboardEvent.shiftKey &&
-        !keyboardEvent.ctrlKey &&
-        !keyboardEvent.metaKey &&
-        isMultiLineSelectionArrow
-
-      if (isMacMultilineSelectionShortcut || isNonMacMultilineSelectionShortcut) {
-        const handled = tryExpandMultilineSelection(keyboardEvent.key === 'ArrowUp' ? 'up' : 'down')
-        if (!handled) return
-        keyboardEvent.preventDefault()
-        keyboardEvent.stopPropagation()
+      const multiLineDirection = getMultilineSelectionShortcutDirection(keyboardEvent)
+      if (multiLineDirection) {
+        const handled = tryExpandMultilineSelection(multiLineDirection)
+        if (handled) {
+          keyboardEvent.preventDefault()
+          keyboardEvent.stopPropagation()
+        }
         return
       }
       if (multiLineEditRef.current) {
@@ -3858,6 +4384,9 @@ function App() {
 
   const openSpace = (spaceId: string) => {
     flushPendingContent()
+    if (arrangeMode.active) {
+      exitArrangeMode()
+    }
     setState((previous) => ({ ...previous, activeSpaceId: spaceId }))
     setViewMode('main')
     setMenuOpen(false)
@@ -3876,6 +4405,34 @@ function App() {
     setViewMode('spaces')
     setEditing({ type: 'space', id: newSpace.id })
     setMenuOpen(false)
+  }
+
+  const duplicateSpaceFromContext = () => {
+    if (!contextMenu || contextMenu.type !== 'space') return
+    const sourceSpace = state.spaces.find((space) => space.id === contextMenu.spaceId)
+    if (!sourceSpace) {
+      setContextMenu(null)
+      return
+    }
+
+    const duplicatedSpace = duplicateSpace(sourceSpace, state.spaces.map((space) => space.name))
+
+    setState((previous) => {
+      const sourceIndex = previous.spaces.findIndex((space) => space.id === sourceSpace.id)
+      if (sourceIndex < 0) return previous
+      const nextSpaces = [...previous.spaces]
+      nextSpaces.splice(sourceIndex + 1, 0, duplicatedSpace)
+      return {
+        ...previous,
+        activeSpaceId: duplicatedSpace.id,
+        spaces: nextSpaces,
+      }
+    })
+
+    setViewMode('spaces')
+    setEditing({ type: 'space', id: duplicatedSpace.id })
+    setMenuOpen(false)
+    setContextMenu(null)
   }
 
   const toggleTheme = () => {
@@ -5483,56 +6040,56 @@ function App() {
   }
 
   const modalText = (() => {
-    if (!modal) return { title: '', body: '', action: 'Confirm' }
+    if (!modal) return { title: '', body: '', action: 'confirm' }
 
     if (modal.type === 'trash-delete-all') {
       return {
-        title: 'delete all Trash?',
-        body: 'This permanently removes every deleted tab and sub-tab in this space.',
+        title: 'delete all trash?',
+        body: 'this permanently removes every deleted tab and sub-tab in this space.',
         action: 'delete all',
       }
     }
 
     if (modal.type === 'trash-restore-all') {
       return {
-        title: 'Restore All Trash?',
-        body: 'This restores every deleted tab and sub-tab in this space.',
-        action: 'Restore All',
+        title: 'restore all trash?',
+        body: 'this restores every deleted tab and sub-tab in this space.',
+        action: 'restore all',
       }
     }
 
     if (modal.target.type === 'space') {
       if (state.spaces.length <= 1) {
         return {
-          title: 'Cannot delete Space',
-          body: 'At least one space must remain.',
-          action: 'OK',
+          title: 'cannot delete space',
+          body: 'at least one space must remain.',
+          action: 'ok',
         }
       }
       return {
-        title: 'delete Space?',
-        body: 'deleted Spaces cannot be recovered, are you sure you want to do this?',
-        action: 'delete Space',
+        title: 'delete space?',
+        body: 'deleted spaces cannot be recovered, are you sure you want to do this?',
+        action: 'delete space',
       }
     }
 
     if (modal.target.type === 'trash-tab' && modal.target.source === 'subtabs-only') {
       return {
-        title: 'delete Sub-tabs For Real?',
-        body: 'This permanently deletes the trashed sub-tabs under this tab. The parent tab (and its other sub-tabs) will remain.',
-        action: 'delete For Real',
+        title: 'delete sub-tabs for real?',
+        body: 'this permanently deletes the trashed sub-tabs under this tab. The parent tab (and its other sub-tabs) will remain.',
+        action: 'delete for real',
       }
     }
 
     return modal.permanent
       ? {
-          title: 'delete For Real?',
-          body: 'This permanently deletes the selected item and skips Trash.',
-          action: 'delete For Real',
+          title: 'delete for real?',
+          body: 'this permanently deletes the selected item and skips trash.',
+          action: 'delete for real',
         }
       : {
-          title: 'Move To Trash?',
-          body: 'This moves the selected item into Trash.',
+          title: 'move to trash?',
+          body: 'this moves the selected item into trash.',
           action: 'delete',
         }
   })()
@@ -5540,8 +6097,6 @@ function App() {
   const editorReadOnly = viewMode !== 'main'
 
   const canDeleteSpace = state.spaces.length > 1
-  const requiresSpaceDeleteAcknowledge = modal?.type === 'delete-target' && modal.target.type === 'space' && canDeleteSpace
-  const canConfirmModal = !requiresSpaceDeleteAcknowledge || spaceDeleteAcknowledge
 
   useEffect(() => {
     if (viewMode === 'main' || viewMode === 'trash') {
@@ -5638,6 +6193,9 @@ function App() {
       const isTabTrashShortcut = eventMatchesShortcut(event, state.hotkeys.shortcuts.toggleTabTrash, isMacPlatform)
       if (isTabTrashShortcut) {
         event.preventDefault()
+        if (viewMode === 'spaces' && arrangeMode.active && arrangeMode.scope === 'spaces') {
+          return
+        }
         if (viewMode === 'main' || viewMode === 'trash') {
           toggleTrashView()
           return
@@ -5798,7 +6356,7 @@ function App() {
             },
           ]
         : []),
-      ...(arrangeMode.active
+      ...(arrangeMode.active && arrangeMode.scope === 'tabs'
         ? [
             {
               key: 'end-arrangement',
@@ -5810,7 +6368,8 @@ function App() {
           ]
         : []),
     ]
-  const topbarShowsCloseControl = viewMode === 'settings' || viewMode === 'stage-manager' || arrangeMode.active
+  const topbarShowsCloseControl =
+    viewMode === 'settings' || viewMode === 'stage-manager' || (arrangeMode.active && arrangeMode.scope === 'tabs')
 
   const isNoteWorkspaceView = viewMode === 'main' || viewMode === 'stage-manager'
   const stageManagerStepLabels: Array<[StageManagerStep, string]> = [
@@ -5819,12 +6378,15 @@ function App() {
     ['configure', 'configure'],
     ['review', 'review'],
   ]
-  const arrangeableParentTabClassName = arrangeMode.active && viewMode === 'main' ? 'is-arrangeable' : ''
-  const arrangeableSubTabClassName = arrangeMode.active && viewMode === 'main' ? 'is-arrangeable' : ''
+  const arrangeableParentTabClassName = arrangeMode.active && arrangeMode.scope === 'tabs' && viewMode === 'main' ? 'is-arrangeable' : ''
+  const arrangeableSubTabClassName = arrangeMode.active && arrangeMode.scope === 'tabs' && viewMode === 'main' ? 'is-arrangeable' : ''
   const draggingParentTabId =
     arrangeMode.active && arrangeDraggingItem?.type === 'tab' ? arrangeDraggingItem.tabId : null
   const draggingSubTabId =
     arrangeMode.active && arrangeDraggingItem?.type === 'subtab' ? arrangeDraggingItem.subTabId : null
+  const arrangeableSpaceClassName = arrangeMode.active && arrangeMode.scope === 'spaces' && viewMode === 'spaces' ? 'is-arrangeable' : ''
+  const draggingSpaceId =
+    arrangeMode.active && arrangeDraggingItem?.type === 'space' ? arrangeDraggingItem.spaceId : null
 
   return (
     <main
@@ -5912,6 +6474,7 @@ function App() {
                           }}
                           onPointerDown={(event) => {
                             if (viewMode !== 'main') return
+                            startArrangeDragSeed(`tab:${tab.id}`, event)
                             if (arrangeMode.active) {
                               startArrangeTapCandidate({ key: `tab:${tab.id}`, type: 'tab', tabId: tab.id }, event)
                               return
@@ -5920,6 +6483,7 @@ function App() {
                           }}
                           onPointerUp={(event) => {
                             if (viewMode !== 'main') return
+                            clearArrangeDragSeed()
                             if (arrangeMode.active) {
                               finalizeArrangeTapCandidate(`tab:${tab.id}`, event, () => selectTab(tab.id))
                               return
@@ -5935,6 +6499,7 @@ function App() {
                           onPointerCancel={() => {
                             if (viewMode !== 'main') return
                             clearArrangePressTimer()
+                            clearArrangeDragSeed()
                             clearArrangeTapCandidate()
                           }}
                           onDragStart={(event) => beginArrangeTabDrag(event, tab.id)}
@@ -6051,8 +6616,20 @@ function App() {
       )}
 
       {viewMode === 'spaces' ? (
-        <section className="spaces-grid-wrap">
-          <div className="spaces-grid">
+        <section
+          className="spaces-grid-wrap"
+          onClick={() => {
+            if (arrangeMode.active && arrangeMode.scope === 'spaces') {
+              exitArrangeMode()
+            }
+          }}
+        >
+          <div
+            ref={spacesGridRef}
+            className={`spaces-grid ${arrangeMode.active && arrangeMode.scope === 'spaces' ? 'is-arranging' : ''}`}
+            onDragOver={handleArrangeSpaceGridDragOver}
+            onDrop={handleArrangeSpaceGridDrop}
+          >
             {state.spaces.map((space) =>
               editing?.type === 'space' && editing.id === space.id ? (
                 <input
@@ -6076,19 +6653,86 @@ function App() {
                     }
                   }}
                 />
-              ) : (
+                  ) : (
+                (() => {
+                  const isArrangeSpaceTarget =
+                    arrangeMode.active &&
+                    arrangeMode.scope === 'spaces' &&
+                    arrangeMode.dragItem?.type === 'space' &&
+                    arrangeMode.overSpaceId === space.id
+                  const isArrangeSpaceBeforeTarget = isArrangeSpaceTarget && arrangeMode.overSpaceInsert === 'before'
+                  const isArrangeSpaceAfterTarget = isArrangeSpaceTarget && arrangeMode.overSpaceInsert === 'after'
+                  return (
                 <button
                   key={space.id}
                   type="button"
-                  className={`space-card ${space.id === state.activeSpaceId ? 'is-active' : ''}`}
-                  onClick={() => openSpace(space.id)}
+                  data-arrange-space-id={space.id}
+                  draggable={viewMode === 'spaces'}
+                  className={`space-card ${space.id === state.activeSpaceId ? 'is-active' : ''} ${arrangeableSpaceClassName} ${
+                    isArrangeSpaceTarget ? 'is-arrange-target' : ''
+                  } ${isArrangeSpaceBeforeTarget ? 'is-arrange-target-before' : ''} ${
+                    isArrangeSpaceAfterTarget ? 'is-arrange-target-after' : ''
+                  } ${draggingSpaceId === space.id ? 'is-dragging' : ''}`}
+                  onClick={(event) => {
+                    if (arrangeMode.active && arrangeMode.scope === 'spaces') {
+                      event.stopPropagation()
+                      if (consumeArrangeClickSuppression(`space:${space.id}`)) return
+                      exitArrangeMode()
+                      return
+                    }
+                    openSpace(space.id)
+                  }}
                   onContextMenu={(event) => openContextMenuForSpace(event, space.id)}
+                  onPointerDown={(event) => {
+                    startArrangeDragSeed(`space:${space.id}`, event)
+                    if (arrangeMode.active && arrangeMode.scope === 'spaces') {
+                      startArrangeTapCandidate({ key: `space:${space.id}`, type: 'space', spaceId: space.id }, event)
+                      return
+                    }
+                    startArrangePress(event, { type: 'space', spaceId: space.id }, `space:${space.id}`)
+                  }}
+                  onPointerUp={(event) => {
+                    clearArrangeDragSeed()
+                    if (arrangeMode.active && arrangeMode.scope === 'spaces') {
+                      finalizeArrangeTapCandidate(`space:${space.id}`, event, exitArrangeMode)
+                      return
+                    }
+                    clearArrangePressTimer()
+                  }}
+                  onPointerLeave={() => {
+                    if (!arrangeMode.active) {
+                      clearArrangePressTimer()
+                    }
+                  }}
+                  onPointerCancel={() => {
+                    clearArrangePressTimer()
+                    clearArrangeDragSeed()
+                    clearArrangeTapCandidate()
+                  }}
+                  onDragStart={(event) => beginArrangeSpaceDrag(event, space.id)}
+                  onDragOver={(event) => handleArrangeSpaceDragOver(event, space.id)}
+                  onDrop={(event) => handleArrangeSpaceDrop(event, space.id)}
+                  onDragEnd={endArrangeTabDrag}
                 >
                   <span className="space-card-name">{space.name}</span>
                 </button>
+                  )
+                })()
               ),
             )}
-            <button type="button" className="space-card space-card-add" onClick={addSpace} aria-label="Add space">
+            <button
+              type="button"
+              className={`space-card space-card-add ${arrangeMode.active && arrangeMode.scope === 'spaces' ? 'is-arrange-fixed' : ''}`}
+              onClick={(event) => {
+                if (arrangeMode.active && arrangeMode.scope === 'spaces') {
+                  event.stopPropagation()
+                  exitArrangeMode()
+                  return
+                }
+                addSpace()
+              }}
+              aria-label="Add space"
+            >
               +
             </button>
           </div>
@@ -6371,6 +7015,7 @@ function App() {
                         }}
                         onPointerDown={(event) => {
                           if (viewMode !== 'main') return
+                          startArrangeDragSeed(`subtab:${subTab.id}`, event)
                           if (arrangeMode.active) {
                             startArrangeTapCandidate({ key: `subtab:${subTab.id}`, type: 'subtab', subTabId: subTab.id }, event)
                             return
@@ -6379,6 +7024,7 @@ function App() {
                         }}
                         onPointerUp={(event) => {
                           if (viewMode !== 'main') return
+                          clearArrangeDragSeed()
                           if (arrangeMode.active) {
                             finalizeArrangeTapCandidate(`subtab:${subTab.id}`, event, () => selectSubTab(subTab.id))
                             return
@@ -6394,6 +7040,7 @@ function App() {
                         onPointerCancel={() => {
                           if (viewMode !== 'main') return
                           clearArrangePressTimer()
+                          clearArrangeDragSeed()
                           clearArrangeTapCandidate()
                         }}
                         onDragStart={(event) => beginArrangeSubTabDrag(event, activeTab.id, subTab.id)}
@@ -7089,8 +7736,14 @@ function App() {
         >
           {contextMenu.type === 'space' ? (
             <>
+              <button type="button" className="tab-context-delete" onClick={enterArrangeModeFromContext}>
+                arrange
+              </button>
+              <button type="button" className="tab-context-delete" onClick={duplicateSpaceFromContext}>
+                duplicate
+              </button>
               <button type="button" className="tab-context-delete" onClick={beginRenameSpaceFromContext}>
-                Rename Space
+                rename
               </button>
               <button
                 type="button"
@@ -7104,7 +7757,7 @@ function App() {
                 }}
                 disabled={!canDeleteSpace}
               >
-                delete Space
+                delete
               </button>
             </>
           ) : contextMenu.type === 'image' ? (
@@ -7151,24 +7804,13 @@ function App() {
           <div className="delete-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <h2>{modalText.title}</h2>
             <p>{modalText.body}</p>
-            {requiresSpaceDeleteAcknowledge && (
-              <label className="delete-ack-row">
-                <input
-                  type="checkbox"
-                  checked={spaceDeleteAcknowledge}
-                  onChange={(event) => setSpaceDeleteAcknowledge(event.target.checked)}
-                />
-                <span>I understand this data cannot be recovered.</span>
-              </label>
-            )}
             <div className="delete-modal-actions">
               <button type="button" className="btn btn-sm btn-outline-light modal-cancel-btn" onClick={() => setModal(null)}>
-                Cancel
+                cancel
               </button>
               <button
                 type="button"
                 className="btn btn-sm btn-danger"
-                disabled={!canConfirmModal}
                 onClick={() => {
                   if (modal.type === 'delete-target' && modal.target.type === 'space' && state.spaces.length <= 1) {
                     setModal(null)
