@@ -25,5 +25,6 @@ declare global {
       }>
     }
     __tabsGetLatestAppState?: () => string
+    __tabsHandleMultilineShortcut?: (direction: 'up' | 'down') => boolean
   }
 }

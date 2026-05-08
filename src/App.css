@@ -1238,6 +1238,23 @@
   tab-size: 4 !important;
 }
 
+.multiline-cursor-widget {
+  display: inline-block;
+  width: 2px;
+  height: 1.15em;
+  margin-left: -1px;
+  vertical-align: -0.18em;
+  background: #e9ecef !important;
+  pointer-events: none;
+  animation: multiline-cursor-blink 1s steps(2, start) infinite;
+}
+
+@keyframes multiline-cursor-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
 .toastui-editor-contents h1 {
   font-size: 1.35rem !important;
   margin: 0.6rem 0 0.45rem !important;
@@ -2012,6 +2029,10 @@
 .theme-light .toastui-editor-toolbar-icons,
 .theme-light .toastui-editor-toolbar-divider {
   filter: none !important;
+}
+
+.theme-light .multiline-cursor-widget {
+  background: #1a2538 !important;
 }
 
 .theme-light .toastui-editor-popup,

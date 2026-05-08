@@ -894,24 +894,72 @@ function thematicBreakShortcutPlugin(context: {
 
 function multiLineSelectionShortcutPlugin(context: {
   pmState: {
+    PluginKey: new (name?: string) => {
+      getState: (state: unknown) => number[] | undefined
+    }
     Plugin: new (spec: {
+      key?: unknown
+      state?: {
+        init: () => number[]
+        apply: (tr: { getMeta: (key: unknown) => unknown }, previous: number[]) => number[]
+      }
       props?: {
+        decorations?: (state: unknown) => unknown
         handleDOMEvents?: {
           keydown?: (view: unknown, event: KeyboardEvent) => boolean
         }
       }
     }) => unknown
   }
+  pmView: {
+    Decoration: {
+      widget: (pos: number, toDOM: () => HTMLElement, spec?: Record<string, unknown>) => unknown
+    }
+    DecorationSet: {
+      create: (doc: unknown, decorations: unknown[]) => unknown
+    }
+  }
   pmKeymap: { keymap: (bindings: Record<string, unknown>) => unknown }
   onExpand: (direction: 'up' | 'down') => boolean
+  onPluginKeyReady: (pluginKey: unknown) => void
 }) {
-  const { Plugin } = context.pmState
+  const { Plugin, PluginKey } = context.pmState
+  const { Decoration, DecorationSet } = context.pmView
   const { keymap } = context.pmKeymap
-  const { onExpand } = context
+  const { onExpand, onPluginKeyReady } = context
+  const pluginKey = new PluginKey('tabs-multiline-cursors')
+  onPluginKeyReady(pluginKey)
+
+  const createCursorWidget = () => {
+    const cursor = document.createElement('span')
+    cursor.className = 'multiline-cursor-widget'
+    return cursor
+  }
 
   const createDomKeydownPlugin = () =>
     new Plugin({
+      key: pluginKey,
+      state: {
+        init: () => [],
+        apply: (tr, previous) => {
+          const nextPositions = tr.getMeta(pluginKey)
+          return Array.isArray(nextPositions) ? nextPositions.filter((pos) => typeof pos === 'number') : previous
+        },
+      },
       props: {
+        decorations: (state) => {
+          const positions = pluginKey.getState(state) ?? []
+          return DecorationSet.create(
+            (state as { doc: unknown }).doc,
+            positions.map((pos) =>
+              Decoration.widget(pos, createCursorWidget, {
+                key: `multiline-cursor-${pos}`,
+                side: 1,
+                ignoreSelection: true,
+              }),
+            ),
+          )
+        },
         handleDOMEvents: {
           keydown: (_view, event) => {
             const direction = getMultilineSelectionShortcutDirection(event)
@@ -1528,6 +1576,7 @@ function App() {
   const normalizingContentRef = useRef(false)
   const lastEditorMarkdownRef = useRef('')
   const multiLineEditRef = useRef<MultiLineEditState | null>(null)
+  const multiLineCursorPluginKeyRef = useRef<any>(null)
   const stateRef = useRef(state)
   const initialStateJsonRef = useRef<string>(JSON.stringify(parseSavedState(initialSerializedState)))
   const stateDirtySinceBootRef = useRef(false)
@@ -3288,10 +3337,25 @@ function App() {
     const blockRanges: Array<{ start: number; end: number; length: number }> = []
     view.state.doc.nodesBetween(0, view.state.doc.content.size, (node: any, pos: number) => {
       if (!node?.isTextblock) return
-      const start = pos + 1
-      const length = Math.max(0, node.content.size)
-      const end = start + length
-      blockRanges.push({ start, end, length })
+      let lineStart = pos + 1
+      const contentEnd = pos + 1 + Math.max(0, node.content.size)
+
+      node.forEach((child: any, childOffset: number) => {
+        if (child?.type?.name !== 'hardBreak') return
+        const breakStart = pos + 1 + childOffset
+        blockRanges.push({
+          start: lineStart,
+          end: breakStart,
+          length: Math.max(0, breakStart - lineStart),
+        })
+        lineStart = breakStart + Math.max(1, child.nodeSize ?? 1)
+      })
+
+      blockRanges.push({
+        start: lineStart,
+        end: contentEnd,
+        length: Math.max(0, contentEnd - lineStart),
+      })
       return false
     })
     return blockRanges
@@ -3299,6 +3363,12 @@ function App() {
 
   const findEditorTextBlockIndex = (blockRanges: Array<{ start: number; end: number; length: number }>, position: number) =>
     blockRanges.findIndex((range) => position >= range.start && position <= range.end + 1)
+
+  const setMultiLineCursorWidgets = (view: any, positions: number[]) => {
+    const pluginKey = multiLineCursorPluginKeyRef.current
+    if (!pluginKey) return
+    view.dispatch(view.state.tr.setMeta(pluginKey, positions))
+  }
 
   const clearMultiLineEdit = (collapseToHead = false) => {
     const currentEditor = editorRef.current as
@@ -3311,6 +3381,9 @@ function App() {
     const view = currentEditor?.wwEditor?.view
     const previous = multiLineEditRef.current
     multiLineEditRef.current = null
+    if (view) {
+      setMultiLineCursorWidgets(view, [])
+    }
     if (!collapseToHead || !view || !previous) return
 
     const blockRanges = getEditorTextBlockRanges(view)
@@ -3355,6 +3428,7 @@ function App() {
 
     if (anchorIndex === headIndex) {
       multiLineEditRef.current = null
+      setMultiLineCursorWidgets(view, [])
       const caretPos = Math.min(headRange.end, headRange.start + multiLineEdit.columnOffset)
       const SelectionCtor = view.state.selection.constructor as {
         create?: (doc: unknown, anchor: number, head?: number) => unknown
@@ -3371,14 +3445,25 @@ function App() {
       headBlockIndex: headIndex,
     }
 
-    const anchorPos = Math.min(anchorRange.end, anchorRange.start + multiLineEdit.columnOffset)
     const headPos = Math.min(headRange.end, headRange.start + multiLineEdit.columnOffset)
+    const selectedStartIndex = Math.min(anchorIndex, headIndex)
+    const selectedEndIndex = Math.max(anchorIndex, headIndex)
+    const cursorPositions = blockRanges
+      .slice(selectedStartIndex, selectedEndIndex + 1)
+      .map((range) => Math.min(range.end, range.start + multiLineEdit.columnOffset))
+      .filter((pos) => pos !== headPos)
+
     const SelectionCtor = view.state.selection.constructor as {
       create?: (doc: unknown, anchor: number, head?: number) => unknown
     }
     if (typeof SelectionCtor.create !== 'function') return false
-    const nextSelection = SelectionCtor.create(view.state.doc, anchorPos, headPos)
-    view.dispatch(view.state.tr.setSelection(nextSelection).scrollIntoView())
+    const nextSelection = SelectionCtor.create(view.state.doc, headPos, headPos)
+    let tr = view.state.tr.setSelection(nextSelection).scrollIntoView()
+    const pluginKey = multiLineCursorPluginKeyRef.current
+    if (pluginKey) {
+      tr = tr.setMeta(pluginKey, cursorPositions)
+    }
+    view.dispatch(tr)
     currentEditor.focus()
     return true
   }
@@ -3434,6 +3519,18 @@ function App() {
     }
     return syncMultiLineEditVisualSelection()
   }
+
+  useEffect(() => {
+    window.__tabsHandleMultilineShortcut = (direction) => {
+      if (!isEditorView) return false
+      return tryExpandMultilineSelection(direction)
+    }
+    return () => {
+      if (window.__tabsHandleMultilineShortcut) {
+        delete window.__tabsHandleMultilineShortcut
+      }
+    }
+  }, [isEditorView])
 
   const tryApplyMultiLineEditInput = (
     input:
@@ -3906,19 +4003,39 @@ function App() {
         thematicBreakShortcutPlugin,
         (context: {
           pmState: {
+            PluginKey: new (name?: string) => {
+              getState: (state: unknown) => number[] | undefined
+            }
             Plugin: new (spec: {
+              key?: unknown
+              state?: {
+                init: () => number[]
+                apply: (tr: { getMeta: (key: unknown) => unknown }, previous: number[]) => number[]
+              }
               props?: {
+                decorations?: (state: unknown) => unknown
                 handleDOMEvents?: {
                   keydown?: (view: unknown, event: KeyboardEvent) => boolean
                 }
               }
             }) => unknown
           }
+          pmView: {
+            Decoration: {
+              widget: (pos: number, toDOM: () => HTMLElement, spec?: Record<string, unknown>) => unknown
+            }
+            DecorationSet: {
+              create: (doc: unknown, decorations: unknown[]) => unknown
+            }
+          }
           pmKeymap: { keymap: (bindings: Record<string, unknown>) => unknown }
         }) =>
           multiLineSelectionShortcutPlugin({
             ...context,
             onExpand: tryExpandMultilineSelection,
+            onPluginKeyReady: (pluginKey) => {
+              multiLineCursorPluginKeyRef.current = pluginKey
+            },
           }),
       ],
       hooks: {
@@ -3988,6 +4105,7 @@ function App() {
         // Toast UI can throw during teardown if the toolbar DOM was customized.
       }
       editorRef.current = null
+      multiLineCursorPluginKeyRef.current = null
       if (editorMountRef.current) {
         editorMountRef.current.innerHTML = ''
       }
@@ -4115,6 +4233,13 @@ function App() {
         } else if (keyboardEvent.key === 'Escape') {
           clearMultiLineEdit(true)
           handled = true
+        } else if (
+          keyboardEvent.key.length === 1 &&
+          !keyboardEvent.metaKey &&
+          !keyboardEvent.ctrlKey &&
+          !keyboardEvent.altKey
+        ) {
+          handled = tryApplyMultiLineEditInput({ type: 'insert-text', text: keyboardEvent.key })
         } else if (
           keyboardEvent.key.startsWith('Arrow') ||
           keyboardEvent.key === 'Home' ||

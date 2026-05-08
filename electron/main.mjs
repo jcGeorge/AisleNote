@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage } from 'electron'
+import { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, nativeImage } from 'electron'
 import { writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -6,6 +6,92 @@ import { buildAppStateExportArchive, loadAppState, saveAppState } from './app-st
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
+
+function sendMultilineShortcutToWindow(window, direction) {
+  if (!window || window.isDestroyed()) return
+  void window.webContents.executeJavaScript(`window.__tabsHandleMultilineShortcut?.(${JSON.stringify(direction)})`, true)
+}
+
+function sendMultilineShortcut(direction) {
+  sendMultilineShortcutToWindow(BrowserWindow.getFocusedWindow(), direction)
+}
+
+function installApplicationMenu() {
+  const isMac = process.platform === 'darwin'
+  const template = [
+    ...(isMac
+      ? [
+          {
+            label: app.name,
+            submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }],
+          },
+        ]
+      : []),
+    {
+      label: 'Edit',
+      submenu: [
+        {
+          label: 'Add Cursor Above',
+          accelerator: isMac ? 'Command+Alt+Up' : 'Alt+Shift+Up',
+          visible: false,
+          acceleratorWorksWhenHidden: true,
+          registerAccelerator: true,
+          click: () => sendMultilineShortcut('up'),
+        },
+        {
+          label: 'Add Cursor Below',
+          accelerator: isMac ? 'Command+Alt+Down' : 'Alt+Shift+Down',
+          visible: false,
+          acceleratorWorksWhenHidden: true,
+          registerAccelerator: true,
+          click: () => sendMultilineShortcut('down'),
+        },
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' },
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [{ role: 'reload' }, { role: 'forceReload' }, { role: 'toggleDevTools' }, { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }],
+    },
+    {
+      label: 'Window',
+      submenu: [{ role: 'minimize' }, { role: 'close' }],
+    },
+  ]
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+}
+
+function getMultilineShortcutDirection(input) {
+  const isMac = process.platform === 'darwin'
+  const key = typeof input.key === 'string' ? input.key.toLowerCase() : ''
+  const code = typeof input.code === 'string' ? input.code.toLowerCase() : ''
+  const isUp =
+    key === 'up' || key === 'arrowup' || key === 'home' || code === 'arrowup' || code === 'home' || code === 'uparrow'
+  const isDown =
+    key === 'down' ||
+    key === 'arrowdown' ||
+    key === 'end' ||
+    code === 'arrowdown' ||
+    code === 'end' ||
+    code === 'downarrow'
+
+  if (!isUp && !isDown) return null
+
+  if (isMac) {
+    if (!input.meta || !input.alt || input.control || input.shift) return null
+    return isUp ? 'up' : 'down'
+  }
+
+  if (!input.alt || !input.shift || input.meta || input.control) return null
+  return isUp ? 'up' : 'down'
+}
 
 function createWindow() {
   const window = new BrowserWindow({
@@ -22,6 +108,14 @@ function createWindow() {
   })
   let allowImmediateClose = false
   let closeFlushInProgress = false
+
+  window.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return
+    const direction = getMultilineShortcutDirection(input)
+    if (!direction) return
+    event.preventDefault()
+    sendMultilineShortcutToWindow(window, direction)
+  })
 
   window.on('close', (event) => {
     if (allowImmediateClose || window.isDestroyed()) return
@@ -62,6 +156,8 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  installApplicationMenu()
+
   ipcMain.on('load-app-state', (event) => {
     event.returnValue = loadAppState(app.getPath('userData'))
   })
