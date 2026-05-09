@@ -213,6 +213,14 @@ type MultiLineEditState = {
   anchorBlockIndex: number
   headBlockIndex: number
   columnOffset: number
+  columnOffsets?: Record<number, number>
+}
+
+type EditorTextLineRange = {
+  start: number
+  end: number
+  length: number
+  text: string
 }
 
 type ContextMenuState =
@@ -3333,36 +3341,66 @@ function App() {
     return true
   }
 
-  const getEditorTextBlockRanges = (view: any) => {
-    const blockRanges: Array<{ start: number; end: number; length: number }> = []
+  const getEditorTextBlockRanges = (view: any): EditorTextLineRange[] => {
+    const blockRanges: EditorTextLineRange[] = []
     view.state.doc.nodesBetween(0, view.state.doc.content.size, (node: any, pos: number) => {
       if (!node?.isTextblock) return
       let lineStart = pos + 1
+      let lineText = ''
       const contentEnd = pos + 1 + Math.max(0, node.content.size)
 
       node.forEach((child: any, childOffset: number) => {
-        if (child?.type?.name !== 'hardBreak') return
+        if (child?.type?.name !== 'hardBreak') {
+          lineText += child?.textContent ?? ''
+          return
+        }
         const breakStart = pos + 1 + childOffset
         blockRanges.push({
           start: lineStart,
           end: breakStart,
           length: Math.max(0, breakStart - lineStart),
+          text: lineText,
         })
         lineStart = breakStart + Math.max(1, child.nodeSize ?? 1)
+        lineText = ''
       })
 
       blockRanges.push({
         start: lineStart,
         end: contentEnd,
         length: Math.max(0, contentEnd - lineStart),
+        text: lineText,
       })
       return false
     })
     return blockRanges
   }
 
-  const findEditorTextBlockIndex = (blockRanges: Array<{ start: number; end: number; length: number }>, position: number) =>
+  const findEditorTextBlockIndex = (blockRanges: EditorTextLineRange[], position: number) =>
     blockRanges.findIndex((range) => position >= range.start && position <= range.end + 1)
+
+  const getMultiLineSelectedBlockIndices = (multiLineEdit: MultiLineEditState, blockRanges: EditorTextLineRange[]) => {
+    const startIndex = Math.min(multiLineEdit.anchorBlockIndex, multiLineEdit.headBlockIndex)
+    const endIndex = Math.max(multiLineEdit.anchorBlockIndex, multiLineEdit.headBlockIndex)
+    return Array.from({ length: endIndex - startIndex + 1 }, (_, index) => startIndex + index).filter((index) => blockRanges[index])
+  }
+
+  const getMultiLineColumnOffset = (multiLineEdit: MultiLineEditState, blockIndex: number, range: EditorTextLineRange) =>
+    Math.max(0, Math.min(range.length, multiLineEdit.columnOffsets?.[blockIndex] ?? multiLineEdit.columnOffset))
+
+  const findPreviousWordColumn = (text: string, column: number) => {
+    let index = Math.max(0, Math.min(text.length, column))
+    while (index > 0 && /\s/.test(text[index - 1] ?? '')) index -= 1
+    while (index > 0 && !/\s/.test(text[index - 1] ?? '')) index -= 1
+    return index
+  }
+
+  const findNextWordColumn = (text: string, column: number) => {
+    let index = Math.max(0, Math.min(text.length, column))
+    while (index < text.length && /\s/.test(text[index] ?? '')) index += 1
+    while (index < text.length && !/\s/.test(text[index] ?? '')) index += 1
+    return index
+  }
 
   const setMultiLineCursorWidgets = (view: any, positions: number[]) => {
     const pluginKey = multiLineCursorPluginKeyRef.current
@@ -3429,7 +3467,7 @@ function App() {
     if (anchorIndex === headIndex) {
       multiLineEditRef.current = null
       setMultiLineCursorWidgets(view, [])
-      const caretPos = Math.min(headRange.end, headRange.start + multiLineEdit.columnOffset)
+      const caretPos = Math.min(headRange.end, headRange.start + getMultiLineColumnOffset(multiLineEdit, headIndex, headRange))
       const SelectionCtor = view.state.selection.constructor as {
         create?: (doc: unknown, anchor: number, head?: number) => unknown
       }
@@ -3445,13 +3483,16 @@ function App() {
       headBlockIndex: headIndex,
     }
 
-    const headPos = Math.min(headRange.end, headRange.start + multiLineEdit.columnOffset)
+    const headOffset = getMultiLineColumnOffset(multiLineEdit, headIndex, headRange)
+    const headPos = Math.min(headRange.end, headRange.start + headOffset)
     const selectedStartIndex = Math.min(anchorIndex, headIndex)
     const selectedEndIndex = Math.max(anchorIndex, headIndex)
-    const cursorPositions = blockRanges
-      .slice(selectedStartIndex, selectedEndIndex + 1)
-      .map((range) => Math.min(range.end, range.start + multiLineEdit.columnOffset))
-      .filter((pos) => pos !== headPos)
+    const cursorPositions = Array.from({ length: selectedEndIndex - selectedStartIndex + 1 }, (_, index) => selectedStartIndex + index)
+      .map((blockIndex) => {
+        const range = blockRanges[blockIndex]
+        return range ? Math.min(range.end, range.start + getMultiLineColumnOffset(multiLineEdit, blockIndex, range)) : null
+      })
+      .filter((pos): pos is number => typeof pos === 'number' && pos !== headPos)
 
     const SelectionCtor = view.state.selection.constructor as {
       create?: (doc: unknown, anchor: number, head?: number) => unknown
@@ -3537,6 +3578,10 @@ function App() {
       | { type: 'insert-text'; text: string }
       | { type: 'backspace' }
       | { type: 'delete' }
+      | { type: 'delete-word-backward' }
+      | { type: 'delete-word-forward' }
+      | { type: 'delete-to-line-start' }
+      | { type: 'delete-to-line-end' }
       | { type: 'split-line' },
   ) => {
     const currentEditor = editorRef.current as
@@ -3556,11 +3601,7 @@ function App() {
       return false
     }
 
-    const startIndex = Math.min(multiLineEdit.anchorBlockIndex, multiLineEdit.headBlockIndex)
-    const endIndex = Math.max(multiLineEdit.anchorBlockIndex, multiLineEdit.headBlockIndex)
-    const selectedIndices = Array.from({ length: endIndex - startIndex + 1 }, (_, index) => startIndex + index).filter(
-      (index) => blockRanges[index],
-    )
+    const selectedIndices = getMultiLineSelectedBlockIndices(multiLineEdit, blockRanges)
     if (selectedIndices.length < 2) {
       clearMultiLineEdit(true)
       return false
@@ -3568,15 +3609,17 @@ function App() {
 
     let tr = view.state.tr
     let changed = false
-    let nextColumnOffset = multiLineEdit.columnOffset
+    const nextColumnOffsets: Record<number, number> = { ...(multiLineEdit.columnOffsets ?? {}) }
 
     for (const blockIndex of [...selectedIndices].sort((a, b) => b - a)) {
       const range = blockRanges[blockIndex]
       if (!range) continue
-      const cursorPos = Math.min(range.end, range.start + multiLineEdit.columnOffset)
+      const currentOffset = getMultiLineColumnOffset(multiLineEdit, blockIndex, range)
+      const cursorPos = Math.min(range.end, range.start + currentOffset)
 
       if (input.type === 'insert-text') {
         tr = tr.insertText(input.text, cursorPos, cursorPos)
+        nextColumnOffsets[blockIndex] = currentOffset + input.text.length
         changed = true
         continue
       }
@@ -3584,6 +3627,7 @@ function App() {
       if (input.type === 'backspace') {
         if (cursorPos <= range.start) continue
         tr = tr.delete(cursorPos - 1, cursorPos)
+        nextColumnOffsets[blockIndex] = Math.max(0, currentOffset - 1)
         changed = true
         continue
       }
@@ -3591,6 +3635,38 @@ function App() {
       if (input.type === 'delete') {
         if (cursorPos >= range.end) continue
         tr = tr.delete(cursorPos, cursorPos + 1)
+        changed = true
+        continue
+      }
+
+      if (input.type === 'delete-word-backward') {
+        const nextOffset = findPreviousWordColumn(range.text, currentOffset)
+        if (nextOffset === currentOffset) continue
+        tr = tr.delete(range.start + nextOffset, cursorPos)
+        nextColumnOffsets[blockIndex] = nextOffset
+        changed = true
+        continue
+      }
+
+      if (input.type === 'delete-word-forward') {
+        const nextOffset = findNextWordColumn(range.text, currentOffset)
+        if (nextOffset === currentOffset) continue
+        tr = tr.delete(cursorPos, range.start + nextOffset)
+        changed = true
+        continue
+      }
+
+      if (input.type === 'delete-to-line-start') {
+        if (currentOffset <= 0) continue
+        tr = tr.delete(range.start, cursorPos)
+        nextColumnOffsets[blockIndex] = 0
+        changed = true
+        continue
+      }
+
+      if (input.type === 'delete-to-line-end') {
+        if (currentOffset >= range.length) continue
+        tr = tr.delete(cursorPos, range.end)
         changed = true
         continue
       }
@@ -3604,10 +3680,10 @@ function App() {
 
     if (!changed) return false
 
-    if (input.type === 'insert-text') {
-      nextColumnOffset += input.text.length
-    } else if (input.type === 'backspace') {
-      nextColumnOffset = Math.max(0, nextColumnOffset - 1)
+    if (input.type === 'delete-to-line-start') {
+      for (const blockIndex of selectedIndices) {
+        nextColumnOffsets[blockIndex] = 0
+      }
     } else if (input.type === 'split-line') {
       clearMultiLineEdit(false)
     }
@@ -3619,7 +3695,8 @@ function App() {
 
     multiLineEditRef.current = {
       ...multiLineEdit,
-      columnOffset: nextColumnOffset,
+      columnOffset: nextColumnOffsets[multiLineEdit.headBlockIndex] ?? multiLineEdit.columnOffset,
+      columnOffsets: nextColumnOffsets,
     }
     syncMultiLineEditVisualSelection()
     const markdownAfterMultiLineEdit = normalizeMarkdownForPersistence(
@@ -3633,6 +3710,89 @@ function App() {
       activeSubTabIdRef.current,
     )
     currentEditor.focus()
+    return true
+  }
+
+  const tryMoveMultiLineCursors = (
+    movement: 'left' | 'right' | 'word-left' | 'word-right' | 'line-start' | 'line-end' | 'up' | 'down',
+  ) => {
+    const currentEditor = editorRef.current as
+      | (Editor & {
+          wwEditor?: {
+            view?: any
+          }
+        })
+      | null
+    const view = currentEditor?.wwEditor?.view
+    const multiLineEdit = multiLineEditRef.current
+    if (!currentEditor || !view || !multiLineEdit) return false
+
+    const blockRanges = getEditorTextBlockRanges(view)
+    if (blockRanges.length === 0) {
+      multiLineEditRef.current = null
+      return false
+    }
+
+    const selectedIndices = getMultiLineSelectedBlockIndices(multiLineEdit, blockRanges)
+    if (selectedIndices.length < 2) {
+      clearMultiLineEdit(true)
+      return false
+    }
+    const startIndex = Math.min(...selectedIndices)
+    const endIndex = Math.max(...selectedIndices)
+
+    let nextAnchorIndex = multiLineEdit.anchorBlockIndex
+    let nextHeadIndex = multiLineEdit.headBlockIndex
+    const nextColumnOffsets: Record<number, number> = {}
+
+    if (movement === 'up') {
+      if (startIndex <= 0) return true
+      nextAnchorIndex = multiLineEdit.anchorBlockIndex - 1
+      nextHeadIndex = multiLineEdit.headBlockIndex - 1
+      for (const blockIndex of selectedIndices) {
+        const range = blockRanges[blockIndex]
+        const nextRange = blockRanges[blockIndex - 1]
+        if (!range || !nextRange) continue
+        nextColumnOffsets[blockIndex - 1] = Math.min(nextRange.length, getMultiLineColumnOffset(multiLineEdit, blockIndex, range))
+      }
+    } else if (movement === 'down') {
+      if (endIndex >= blockRanges.length - 1) return true
+      nextAnchorIndex = multiLineEdit.anchorBlockIndex + 1
+      nextHeadIndex = multiLineEdit.headBlockIndex + 1
+      for (const blockIndex of selectedIndices) {
+        const range = blockRanges[blockIndex]
+        const nextRange = blockRanges[blockIndex + 1]
+        if (!range || !nextRange) continue
+        nextColumnOffsets[blockIndex + 1] = Math.min(nextRange.length, getMultiLineColumnOffset(multiLineEdit, blockIndex, range))
+      }
+    } else {
+      for (const blockIndex of selectedIndices) {
+        const range = blockRanges[blockIndex]
+        if (!range) continue
+        const currentOffset = getMultiLineColumnOffset(multiLineEdit, blockIndex, range)
+        nextColumnOffsets[blockIndex] =
+          movement === 'left'
+            ? Math.max(0, currentOffset - 1)
+            : movement === 'right'
+              ? Math.min(range.length, currentOffset + 1)
+              : movement === 'word-left'
+                ? findPreviousWordColumn(range.text, currentOffset)
+                : movement === 'word-right'
+                  ? findNextWordColumn(range.text, currentOffset)
+                  : movement === 'line-start'
+                    ? 0
+                    : range.length
+      }
+    }
+
+    multiLineEditRef.current = {
+      ...multiLineEdit,
+      anchorBlockIndex: nextAnchorIndex,
+      headBlockIndex: nextHeadIndex,
+      columnOffset: nextColumnOffsets[nextHeadIndex] ?? multiLineEdit.columnOffset,
+      columnOffsets: nextColumnOffsets,
+    }
+    syncMultiLineEditVisualSelection()
     return true
   }
 
@@ -4225,14 +4385,46 @@ function App() {
       if (multiLineEditRef.current) {
         let handled = false
         if (keyboardEvent.key === 'Backspace') {
-          handled = tryApplyMultiLineEditInput({ type: 'backspace' })
+          if (keyboardEvent.metaKey) {
+            handled = tryApplyMultiLineEditInput({ type: 'delete-to-line-start' }) || true
+          } else if (keyboardEvent.altKey) {
+            handled = tryApplyMultiLineEditInput({ type: 'delete-word-backward' }) || true
+          } else {
+            handled = tryApplyMultiLineEditInput({ type: 'backspace' }) || true
+          }
         } else if (keyboardEvent.key === 'Delete') {
-          handled = tryApplyMultiLineEditInput({ type: 'delete' })
+          if (keyboardEvent.metaKey) {
+            handled = tryApplyMultiLineEditInput({ type: 'delete-to-line-end' }) || true
+          } else if (keyboardEvent.altKey) {
+            handled = tryApplyMultiLineEditInput({ type: 'delete-word-forward' }) || true
+          } else {
+            handled = tryApplyMultiLineEditInput({ type: 'delete' }) || true
+          }
         } else if (keyboardEvent.key === 'Enter') {
           handled = tryApplyMultiLineEditInput({ type: 'split-line' })
         } else if (keyboardEvent.key === 'Escape') {
           clearMultiLineEdit(true)
           handled = true
+        } else if (keyboardEvent.key === 'Tab' && !keyboardEvent.metaKey && !keyboardEvent.ctrlKey && !keyboardEvent.altKey) {
+          handled = keyboardEvent.shiftKey
+            ? tryApplyMultiLineEditInput({ type: 'backspace' })
+            : tryApplyMultiLineEditInput({ type: 'insert-text', text: INDENT_TOKEN })
+        } else if (keyboardEvent.key === 'ArrowLeft') {
+          handled = tryMoveMultiLineCursors(
+            keyboardEvent.altKey ? 'word-left' : keyboardEvent.metaKey || keyboardEvent.ctrlKey ? 'line-start' : 'left',
+          )
+        } else if (keyboardEvent.key === 'ArrowRight') {
+          handled = tryMoveMultiLineCursors(
+            keyboardEvent.altKey ? 'word-right' : keyboardEvent.metaKey || keyboardEvent.ctrlKey ? 'line-end' : 'right',
+          )
+        } else if (keyboardEvent.key === 'ArrowUp') {
+          handled = tryMoveMultiLineCursors('up')
+        } else if (keyboardEvent.key === 'ArrowDown') {
+          handled = tryMoveMultiLineCursors('down')
+        } else if (keyboardEvent.key === 'Home') {
+          handled = tryMoveMultiLineCursors('line-start')
+        } else if (keyboardEvent.key === 'End') {
+          handled = tryMoveMultiLineCursors('line-end')
         } else if (
           keyboardEvent.key.length === 1 &&
           !keyboardEvent.metaKey &&
@@ -4240,14 +4432,8 @@ function App() {
           !keyboardEvent.altKey
         ) {
           handled = tryApplyMultiLineEditInput({ type: 'insert-text', text: keyboardEvent.key })
-        } else if (
-          keyboardEvent.key.startsWith('Arrow') ||
-          keyboardEvent.key === 'Home' ||
-          keyboardEvent.key === 'End' ||
-          keyboardEvent.key === 'PageUp' ||
-          keyboardEvent.key === 'PageDown'
-        ) {
-          clearMultiLineEdit(true)
+        } else if (keyboardEvent.key === 'PageUp' || keyboardEvent.key === 'PageDown') {
+          handled = true
         }
         if (handled) {
           keyboardEvent.preventDefault()

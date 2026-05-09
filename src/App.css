@@ -1238,7 +1238,8 @@
   tab-size: 4 !important;
 }
 
-.multiline-cursor-widget {
+.toastui-editor .ProseMirror .multiline-cursor-widget,
+.toastui-editor-contents .multiline-cursor-widget {
   display: inline-block;
   width: 2px;
   height: 1.15em;
@@ -1246,13 +1247,6 @@
   vertical-align: -0.18em;
   background: #e9ecef !important;
   pointer-events: none;
-  animation: multiline-cursor-blink 1s steps(2, start) infinite;
-}
-
-@keyframes multiline-cursor-blink {
-  50% {
-    opacity: 0;
-  }
 }
 
 .toastui-editor-contents h1 {
@@ -2031,7 +2025,8 @@
   filter: none !important;
 }
 
-.theme-light .multiline-cursor-widget {
+.theme-light .toastui-editor .ProseMirror .multiline-cursor-widget,
+.theme-light .toastui-editor-contents .multiline-cursor-widget {
   background: #1a2538 !important;
 }
 
