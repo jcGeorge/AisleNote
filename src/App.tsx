@@ -1,4 +1,4 @@
-import { type DragEvent as ReactDragEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { type MouseEvent, type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { Editor } from '@toast-ui/editor'
 import JSZip from 'jszip'
 import '@toast-ui/editor/dist/toastui-editor.css'
@@ -8,6 +8,7 @@ import { appStateStore } from './storage/app-state-store'
 type AppTheme = 'dark' | 'light'
 type ViewMode = 'spaces' | 'main' | 'trash' | 'settings' | 'stage-manager'
 type ShortcutId = 'toggleTabTrash' | 'openSpaces' | 'newTab' | 'newSubTab' | 'cycleSubTabNext' | 'cycleSubTabPrev'
+type SettingsSection = 'hotkeys' | 'data' | 'visuals'
 
 type SubTab = {
   id: string
@@ -68,6 +69,7 @@ type AppState = {
     showParentHomeTab: boolean
     stageManagerOpenDestinationAfterApply: boolean
     tabButtonScale: number
+    noteFontScale: number
   }
 }
 
@@ -90,6 +92,8 @@ type ArrangeDragItem =
   | { type: 'tab'; tabId: string }
   | { type: 'subtab'; parentTabId: string; subTabId: string }
   | { type: 'space'; spaceId: string }
+
+type TabArrangeDragItem = Exclude<ArrangeDragItem, { type: 'space' }>
 
 type ArrangeModeState = {
   active: boolean
@@ -120,6 +124,29 @@ type ArrangeDragSeed = {
   key: string
   startX: number
   startY: number
+}
+
+type SpaceArrangeDragPreview = {
+  spaceId: string
+  label: string
+  currentX: number
+  currentY: number
+  offsetX: number
+  offsetY: number
+  width: number
+  height: number
+}
+
+type TabArrangeDragPreview = {
+  item: TabArrangeDragItem
+  label: string
+  variant: 'parent' | 'subtab'
+  currentX: number
+  currentY: number
+  offsetX: number
+  offsetY: number
+  width: number
+  height: number
 }
 
 type StageManagerStep = 'select' | 'action' | 'configure' | 'review'
@@ -179,6 +206,7 @@ type ToastState = {
   id: number
   message: string
   tone: ToastTone
+  durationMs: number
 }
 
 type ImageToolsState = {
@@ -263,6 +291,7 @@ type ModalState =
   | { type: 'delete-target'; target: DeleteTarget; permanent: boolean }
   | { type: 'trash-delete-all' }
   | { type: 'trash-restore-all' }
+  | { type: 'export-space'; spaceId: string }
 
 type TrashParentBucket = {
   id: string
@@ -317,16 +346,42 @@ const DEFAULT_UI_SETTINGS: AppState['ui'] = {
   showParentHomeTab: true,
   stageManagerOpenDestinationAfterApply: true,
   tabButtonScale: 1,
+  noteFontScale: 1,
 }
 
 const MIN_TAB_BUTTON_SCALE = 1
 const MAX_TAB_BUTTON_SCALE = 1.6
 const TAB_BUTTON_SCALE_STEP = 0.05
+const MIN_NOTE_FONT_SCALE = 0.9
+const MAX_NOTE_FONT_SCALE = 1.8
+const NOTE_FONT_SCALE_STEP = 0.05
+const COMPLETED_TASK_HOLD_MS = 500
+const COMPLETED_TASK_POINTER_SLOP_PX = 6
+const COMPLETED_TASK_UNDO_HINT_COOLDOWN_MS = 10 * 60 * 1000
+const COMPLETED_TASK_UNDO_HINT_DETECTION_MS = 60 * 1000
+const COMPLETED_TASK_UNDO_HINT_MESSAGE =
+  'hold the task button for half a second to turn off its value, quick tap deletes it.'
+const DEFAULT_TOAST_DURATION_MS = 3000
+const HOVERED_TOAST_DURATION_MS = 2000
+const COMPLETED_TASK_UNDO_HINT_TOAST_DURATION_MS = 5000
+const TASK_REORDER_DRAG_SLOP_PX = 8
+const TASK_REORDER_PREVIEW_MAX_CHARS = 30
+const TASK_REORDER_MARKER_GAP_OFFSET_PX = 4
+const TASK_REORDER_SLOT_HYSTERESIS_PX = 6
+const TASK_REORDER_MARKER_MIN_WIDTH_PX = 72
+const TASK_REORDER_MARKER_EXTRA_WIDTH_PX = 34
+const TASK_REORDER_GHOST_CURSOR_X_PERCENT = 25
 
 function clampTabButtonScale(value: number): number {
   if (!Number.isFinite(value)) return DEFAULT_UI_SETTINGS.tabButtonScale
   const rounded = Math.round(value / TAB_BUTTON_SCALE_STEP) * TAB_BUTTON_SCALE_STEP
   return Math.min(MAX_TAB_BUTTON_SCALE, Math.max(MIN_TAB_BUTTON_SCALE, Number(rounded.toFixed(2))))
+}
+
+function clampNoteFontScale(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_UI_SETTINGS.noteFontScale
+  const rounded = Math.round(value / NOTE_FONT_SCALE_STEP) * NOTE_FONT_SCALE_STEP
+  return Math.min(MAX_NOTE_FONT_SCALE, Math.max(MIN_NOTE_FONT_SCALE, Number(rounded.toFixed(2))))
 }
 
 function normalizeShortcutValue(raw: unknown, fallback: string): string {
@@ -373,6 +428,10 @@ function normalizeUiSettings(raw: unknown): AppState['ui'] {
       typeof obj.tabButtonScale === 'number'
         ? clampTabButtonScale(obj.tabButtonScale)
         : DEFAULT_UI_SETTINGS.tabButtonScale,
+    noteFontScale:
+      typeof obj.noteFontScale === 'number'
+        ? clampNoteFontScale(obj.noteFontScale)
+        : DEFAULT_UI_SETTINGS.noteFontScale,
   }
 }
 
@@ -661,10 +720,6 @@ function buildStageManagerSelectionSnapshot(
   }
 }
 
-function getArrangeInsertPositionFromClientX(clientX: number, rect: DOMRect): ArrangeInsertPosition {
-  return clientX < rect.left + rect.width / 2 ? 'before' : 'after'
-}
-
 function moveItemByInsertion<T>(
   items: T[],
   fromIndex: number,
@@ -762,14 +817,10 @@ function normalizeHeadingMarkers(markdown: string): string {
     }
     if (inFencedCode) return line
 
-    const match = line.match(/^\s*(#{1,6})(.*)$/)
+    const match = line.match(/^(\s*)(#{1,6})\s*$/)
     if (!match) return line
 
-    const hashes = match[1]
-    const remainder = match[2]
-    if (remainder.length > 0 && !/^\s/.test(remainder)) return line
-
-    const normalized = remainder.trim().length > 0 ? `${hashes} ${remainder.trim()}` : `${hashes} `
+    const normalized = `${match[1]}${match[2]} `
     if (normalized !== line) changed = true
     return normalized
   })
@@ -893,6 +944,82 @@ function thematicBreakShortcutPlugin(context: {
               scrollIntoView: () => unknown
             }
             dispatch?.(nextTrWithSelection.scrollIntoView())
+            return true
+          },
+        }),
+    ],
+  }
+}
+
+function headingSpaceShortcutPlugin(context: {
+  pmKeymap: { keymap: (bindings: Record<string, unknown>) => unknown }
+  pmState: {
+    TextSelection: {
+      create: (doc: unknown, anchor: number, head?: number) => unknown
+    }
+  }
+}) {
+  const { keymap } = context.pmKeymap
+  const { TextSelection } = context.pmState
+
+  return {
+    wysiwygPlugins: [
+      () =>
+        keymap({
+          Space: (state: {
+            selection: {
+              empty: boolean
+              $from: {
+                parent: {
+                  textContent: string
+                  type: { name: string }
+                  attrs?: { level?: number }
+                  content: { size: number }
+                }
+                parentOffset: number
+                depth: number
+                before: (depth: number) => number
+                after: (depth: number) => number
+              }
+            }
+            schema: { nodes: Record<string, { create: (attrs?: Record<string, unknown>) => unknown } | undefined> }
+            tr: {
+              replaceWith: (from: number, to: number, content: unknown) => unknown
+              doc: { resolve: (pos: number) => unknown; content: { size: number } }
+              setSelection: (selection: unknown) => unknown
+              scrollIntoView: () => unknown
+            }
+          }, dispatch?: (tr: unknown) => void) => {
+            const { selection, schema, tr } = state
+            if (!selection.empty) return false
+
+            const { $from } = selection
+            if ($from.parent.type.name !== 'paragraph' && $from.parent.type.name !== 'heading') return false
+            if ($from.parentOffset !== $from.parent.content.size) return false
+
+            const match = ($from.parent.textContent ?? '').match(/^\s*(#{1,6})$/)
+            if (!match) return false
+
+            const currentHeadingLevel =
+              $from.parent.type.name === 'heading' && typeof $from.parent.attrs?.level === 'number' ? $from.parent.attrs.level : 0
+            const nextLevel = Math.min(6, currentHeadingLevel + match[1].length)
+            const headingNode = schema.nodes.heading?.create({
+              level: nextLevel,
+              headingType: 'atx',
+            })
+            if (!headingNode) return false
+
+            const blockDepth = $from.depth
+            const from = $from.before(blockDepth)
+            const to = $from.after(blockDepth)
+
+            const nextTr = tr.replaceWith(from, to, headingNode) as {
+              doc: { content: { size: number } }
+              setSelection: (selection: unknown) => { scrollIntoView: () => unknown }
+            }
+            const caretPos = Math.min(from + 1, nextTr.doc.content.size)
+            const nextSelection = TextSelection.create(nextTr.doc, caretPos, caretPos)
+            dispatch?.(nextTr.setSelection(nextSelection).scrollIntoView())
             return true
           },
         }),
@@ -1077,6 +1204,713 @@ function installClearToolbarButton(root: HTMLElement, onClear: () => void) {
 
   group.appendChild(button)
   toolbar.appendChild(group)
+}
+
+function getActiveHeadingLevel(editor: Editor | null): number | null {
+  const view = (editor as any)?.wwEditor?.view
+  const state = view?.state
+  const selection = state?.selection
+  if (!state || !selection) return null
+
+  const fromParent = selection.$from?.parent
+  const toParent = selection.$to?.parent
+  if (fromParent && fromParent === toParent) {
+    if (fromParent.type?.name === 'heading') return Number(fromParent.attrs?.level) || null
+    if (fromParent.type?.name === 'paragraph') return 0
+  }
+
+  const headingLevels = new Set<number>()
+  let paragraphSelected = false
+
+  state.doc?.nodesBetween?.(selection.from, selection.to, (node: any) => {
+    if (node.type?.name === 'heading') {
+      headingLevels.add(Number(node.attrs?.level))
+      return false
+    }
+    if (node.type?.name === 'paragraph') {
+      paragraphSelected = true
+      return false
+    }
+    return true
+  })
+
+  if (headingLevels.size === 1 && !paragraphSelected) return Array.from(headingLevels)[0] ?? null
+  if (headingLevels.size === 0 && paragraphSelected) return 0
+  return null
+}
+
+function syncHeadingPopupActiveState(root: HTMLElement, editor: Editor | null) {
+  const popup = root.querySelector('.toastui-editor-popup-add-heading')
+  if (!(popup instanceof HTMLElement)) return
+
+  const activeLevel = getActiveHeadingLevel(editor)
+  popup.querySelectorAll<HTMLElement>('li[data-type]').forEach((item) => {
+    item.classList.remove('is-active-heading-choice')
+    item.removeAttribute('aria-current')
+  })
+
+  const selector =
+    activeLevel === 0
+      ? 'li[data-type="Paragraph"]'
+      : typeof activeLevel === 'number'
+        ? `li[data-type="Heading"][data-level="${activeLevel}"]`
+        : ''
+  if (!selector) return
+
+  const activeItem = popup.querySelector<HTMLElement>(selector)
+  if (!activeItem) return
+  activeItem.classList.add('is-active-heading-choice')
+  activeItem.setAttribute('aria-current', 'true')
+}
+
+function installHeadingPopupActiveState(root: HTMLElement, getEditor: () => Editor | null) {
+  const sync = () => window.requestAnimationFrame(() => syncHeadingPopupActiveState(root, getEditor()))
+  const observer = new MutationObserver(sync)
+
+  observer.observe(root, { childList: true, subtree: true })
+  root.addEventListener('click', sync, true)
+  root.addEventListener('keyup', sync, true)
+  root.addEventListener('mouseup', sync, true)
+
+  return () => {
+    observer.disconnect()
+    root.removeEventListener('click', sync, true)
+    root.removeEventListener('keyup', sync, true)
+    root.removeEventListener('mouseup', sync, true)
+  }
+}
+
+type TaskListItemHit = {
+  node: any
+  offset: number
+}
+
+function getWysiwygView(editor: Editor | null): any | null {
+  return (editor as any)?.wwEditor?.view ?? null
+}
+
+function parseCssPixel(value: string | null | undefined, fallback: number): number {
+  if (!value) return fallback
+  const parsed = Number.parseFloat(value)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
+function isTaskCheckboxHit(listItemElement: HTMLElement, event: globalThis.MouseEvent): boolean {
+  const style = window.getComputedStyle(listItemElement, '::before')
+  const rect = listItemElement.getBoundingClientRect()
+  const boxLeft = parseCssPixel(style.left, 0)
+  const boxTop = parseCssPixel(style.top, 1)
+  const boxWidth = parseCssPixel(style.width, 18)
+  const boxHeight = parseCssPixel(style.height, 18)
+  const x = event.clientX - rect.left
+  const y = event.clientY - rect.top
+
+  return x >= boxLeft && x <= boxLeft + boxWidth && y >= boxTop && y <= boxTop + boxHeight
+}
+
+function getElementFromEventTarget(target: EventTarget | null): Element | null {
+  if (target instanceof Element) return target
+  if (target instanceof Text) return target.parentElement
+  return null
+}
+
+function findListItemHitFromResolvedPos(resolvedPos: any): TaskListItemHit | null {
+  for (let depth = resolvedPos.depth; depth > 0; depth -= 1) {
+    const node = resolvedPos.node(depth)
+    if (node?.type?.name === 'listItem') {
+      return {
+        node,
+        offset: resolvedPos.before(depth),
+      }
+    }
+  }
+  return null
+}
+
+function findTaskListItemHit(view: any, listItemElement: HTMLElement, event: globalThis.MouseEvent): TaskListItemHit | null {
+  try {
+    const domPos = view.posAtDOM(listItemElement, 0)
+    const resolved = view.state.doc.resolve(domPos)
+    if (resolved.nodeAfter?.type?.name === 'listItem') {
+      return { node: resolved.nodeAfter, offset: domPos }
+    }
+    const fromDom = findListItemHitFromResolvedPos(resolved)
+    if (fromDom) return fromDom
+  } catch {
+    // Fall back to coordinates; pseudo-element clicks can be awkward for DOM mapping.
+  }
+
+  const coords = view.posAtCoords({ left: event.clientX, top: event.clientY })
+  if (!coords) return null
+  return findListItemHitFromResolvedPos(view.state.doc.resolve(coords.pos))
+}
+
+function getCompletedTaskCheckboxHit(view: any, event: globalThis.MouseEvent): TaskListItemHit | null {
+  if (event.button !== 0) return null
+  const target = getElementFromEventTarget(event.target)
+  if (!target) return null
+  const listItemElement = target.closest('li.task-list-item[data-task]')
+  if (!(listItemElement instanceof HTMLElement)) return null
+  if (!view.dom.contains(listItemElement)) return null
+  if (!listItemElement.classList.contains('checked') && !listItemElement.hasAttribute('data-task-checked')) return null
+  if (!isTaskCheckboxHit(listItemElement, event)) return null
+
+  const hit = findTaskListItemHit(view, listItemElement, event)
+  if (!hit?.node?.attrs?.task || !hit.node.attrs.checked) return null
+  return hit
+}
+
+function uncheckCompletedTaskListItem(view: any, hit: TaskListItemHit) {
+  const attrs = hit.node.attrs ?? {}
+  view.dispatch(view.state.tr.setNodeMarkup(hit.offset, null, { ...attrs, checked: false }).scrollIntoView())
+}
+
+function deleteTaskListItem(view: any, hit: TaskListItemHit) {
+  const { state } = view
+  const { doc, schema } = state
+  const itemStart = hit.offset
+  const itemEnd = itemStart + hit.node.nodeSize
+  const resolvedItemStart = doc.resolve(itemStart)
+  const parentList = resolvedItemStart.parent
+
+  if (parentList?.type?.name !== 'bulletList' && parentList?.type?.name !== 'orderedList') {
+    view.dispatch(state.tr.delete(itemStart, itemEnd).scrollIntoView())
+    return
+  }
+
+  if (parentList.childCount > 1) {
+    view.dispatch(state.tr.delete(itemStart, itemEnd).scrollIntoView())
+    return
+  }
+
+  const listDepth = resolvedItemStart.depth
+  const listStart = resolvedItemStart.before(listDepth)
+  const listEnd = listStart + parentList.nodeSize
+  const onlyDocumentBlock = listDepth === 1 && doc.childCount === 1
+  const replacement = onlyDocumentBlock ? schema.nodes.paragraph.create() : null
+  const tr = replacement ? state.tr.replaceWith(listStart, listEnd, replacement) : state.tr.delete(listStart, listEnd)
+  view.dispatch(tr.scrollIntoView())
+}
+
+function installCompletedTaskCheckboxBehavior(
+  root: HTMLElement,
+  getEditor: () => Editor | null,
+  onQuickDelete: (beforeMarkdown: string) => void,
+) {
+  type PendingTaskAction = {
+    view: any
+    hit: TaskListItemHit
+    beforeMarkdown: string
+    startX: number
+    startY: number
+    held: boolean
+    timer: number
+  }
+
+  let pending: PendingTaskAction | null = null
+  let suppressNextClick = false
+
+  const clearPending = () => {
+    if (pending) window.clearTimeout(pending.timer)
+    pending = null
+    window.removeEventListener('mouseup', handleMouseUp, true)
+    window.removeEventListener('mousemove', handleMouseMove, true)
+    window.removeEventListener('blur', handleCancel, true)
+  }
+
+  const handleCancel = () => {
+    clearPending()
+  }
+
+  const handleMouseMove = (event: globalThis.MouseEvent) => {
+    if (!pending) return
+    const distance = Math.hypot(event.clientX - pending.startX, event.clientY - pending.startY)
+    if (distance > COMPLETED_TASK_POINTER_SLOP_PX && !pending.held) {
+      clearPending()
+    }
+  }
+
+  const handleMouseUp = (event: globalThis.MouseEvent) => {
+    if (!pending) return
+    event.preventDefault()
+    event.stopPropagation()
+    suppressNextClick = true
+
+    const action = pending
+    clearPending()
+    if (action.held) return
+
+    onQuickDelete(action.beforeMarkdown)
+    deleteTaskListItem(action.view, action.hit)
+  }
+
+  const handleMouseDown = (event: globalThis.MouseEvent) => {
+    const editor = getEditor()
+    const view = getWysiwygView(editor)
+    if (!editor || !view) return
+
+    const hit = getCompletedTaskCheckboxHit(view, event)
+    if (!hit) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    suppressNextClick = true
+
+    clearPending()
+    pending = {
+      view,
+      hit,
+      beforeMarkdown: normalizeMarkdownForPersistence(editor.getMarkdown()),
+      startX: event.clientX,
+      startY: event.clientY,
+      held: false,
+      timer: window.setTimeout(() => {
+        if (!pending) return
+        pending.held = true
+        uncheckCompletedTaskListItem(pending.view, pending.hit)
+      }, COMPLETED_TASK_HOLD_MS),
+    }
+
+    window.addEventListener('mouseup', handleMouseUp, true)
+    window.addEventListener('mousemove', handleMouseMove, true)
+    window.addEventListener('blur', handleCancel, true)
+  }
+
+  const handleClick = (event: globalThis.MouseEvent) => {
+    if (!suppressNextClick) return
+    suppressNextClick = false
+    event.preventDefault()
+    event.stopPropagation()
+  }
+
+  root.addEventListener('mousedown', handleMouseDown, true)
+  root.addEventListener('click', handleClick, true)
+
+  return () => {
+    clearPending()
+    root.removeEventListener('mousedown', handleMouseDown, true)
+    root.removeEventListener('click', handleClick, true)
+  }
+}
+
+type TaskReorderDropTarget = {
+  element: HTMLElement
+  insertIndex: number
+  markerY: number
+}
+
+function getTaskListTextDragElement(view: any, event: globalThis.MouseEvent): HTMLElement | null {
+  if (event.button !== 0) return null
+  const target = getElementFromEventTarget(event.target)
+  if (!target) return null
+  if (target.closest('a, button, input, textarea, select, img')) return null
+
+  const listItemElement = target.closest('li.task-list-item[data-task]')
+  if (!(listItemElement instanceof HTMLElement)) return null
+  if (!view.dom.contains(listItemElement)) return null
+  if (isTaskCheckboxHit(listItemElement, event)) return null
+
+  const textBlock = target.closest('p')
+  if (!(textBlock instanceof HTMLElement) || !listItemElement.contains(textBlock)) return null
+
+  return listItemElement
+}
+
+function normalizeTaskReorderText(text: string): string {
+  return text
+    .replace(/[`*_~]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function getTaskMarkdownLineText(line: string): string | null {
+  const match = line.match(/^\s*(?:[-*+]|\d+[.)])\s+\[[ xX]\]\s+(.*)$/)
+  return match ? normalizeTaskReorderText(match[1]) : null
+}
+
+function reorderTaskMarkdownLines(
+  markdown: string,
+  taskElements: HTMLElement[],
+  sourceIndex: number,
+  insertIndex: number,
+): string | null {
+  if (sourceIndex < 0 || sourceIndex >= taskElements.length || insertIndex < 0 || insertIndex > taskElements.length) return null
+
+  const adjustedInsertIndex = sourceIndex < insertIndex ? insertIndex - 1 : insertIndex
+  if (adjustedInsertIndex === sourceIndex) return null
+
+  const domTaskTexts = taskElements.map((element) =>
+    normalizeTaskReorderText(element.querySelector<HTMLElement>('p')?.innerText ?? element.innerText),
+  )
+  const lines = markdown.split('\n')
+  const taskLineInfos = lines
+    .map((line, index) => ({
+      index,
+      text: getTaskMarkdownLineText(line),
+    }))
+    .filter((info): info is { index: number; text: string } => info.text !== null)
+
+  for (let start = 0; start <= taskLineInfos.length - domTaskTexts.length; start += 1) {
+    const candidate = taskLineInfos.slice(start, start + domTaskTexts.length)
+    const matches = candidate.every((info, index) => info.text === domTaskTexts[index])
+    if (!matches) continue
+
+    const reorderedLines = candidate.map((info) => lines[info.index])
+    const [movedLine] = reorderedLines.splice(sourceIndex, 1)
+    if (movedLine === undefined) return null
+    reorderedLines.splice(adjustedInsertIndex, 0, movedLine)
+
+    const nextLines = [...lines]
+    candidate.forEach((info, index) => {
+      nextLines[info.index] = reorderedLines[index]
+    })
+    return nextLines.join('\n')
+  }
+
+  return null
+}
+
+function clearTaskReorderClasses(root: HTMLElement) {
+  root
+    .querySelectorAll<HTMLElement>('.task-reorder-source, .task-reorder-target')
+    .forEach((element) => {
+      element.classList.remove('task-reorder-source', 'task-reorder-target')
+    })
+}
+
+function getDirectTaskListItems(listElement: HTMLElement): HTMLElement[] {
+  return Array.from(listElement.children).filter(
+    (child): child is HTMLElement => child instanceof HTMLElement && child.matches('li.task-list-item[data-task]'),
+  )
+}
+
+function getTaskSlotMarkerY(taskElements: HTMLElement[], insertIndex: number): number {
+  const firstRect = taskElements[0]?.getBoundingClientRect()
+  const lastRect = taskElements[taskElements.length - 1]?.getBoundingClientRect()
+  if (!firstRect || !lastRect) return 0
+
+  if (insertIndex <= 0) return firstRect.top - TASK_REORDER_MARKER_GAP_OFFSET_PX
+  if (insertIndex >= taskElements.length) return lastRect.bottom + TASK_REORDER_MARKER_GAP_OFFSET_PX
+
+  const previousRect = taskElements[insertIndex - 1].getBoundingClientRect()
+  const nextRect = taskElements[insertIndex].getBoundingClientRect()
+  const gap = nextRect.top - previousRect.bottom
+  if (gap > 2) return previousRect.bottom + gap / 2
+
+  return nextRect.top - TASK_REORDER_MARKER_GAP_OFFSET_PX
+}
+
+function getTaskDropTargetFromList(
+  sourceIndex: number,
+  listElement: HTMLElement,
+  event: globalThis.MouseEvent,
+  previousInsertIndex: number | null,
+): TaskReorderDropTarget | null {
+  const taskElements = getDirectTaskListItems(listElement)
+  if (taskElements.length < 2 || sourceIndex < 0) return null
+
+  const centers = taskElements.map((element) => {
+    const rect = element.getBoundingClientRect()
+    return rect.top + rect.height / 2
+  })
+  let insertIndex = 0
+  while (insertIndex < centers.length && event.clientY >= centers[insertIndex]) {
+    insertIndex += 1
+  }
+
+  if (previousInsertIndex !== null && Math.abs(insertIndex - previousInsertIndex) === 1) {
+    if (insertIndex > previousInsertIndex) {
+      const boundary = centers[previousInsertIndex]
+      if (boundary !== undefined && event.clientY < boundary + TASK_REORDER_SLOT_HYSTERESIS_PX) {
+        insertIndex = previousInsertIndex
+      }
+    } else {
+      const boundary = centers[insertIndex]
+      if (boundary !== undefined && event.clientY > boundary - TASK_REORDER_SLOT_HYSTERESIS_PX) {
+        insertIndex = previousInsertIndex
+      }
+    }
+  }
+
+  return {
+    element: taskElements[Math.min(insertIndex, taskElements.length - 1)],
+    insertIndex,
+    markerY: getTaskSlotMarkerY(taskElements, insertIndex),
+  }
+}
+
+function getTaskDragPreviewText(element: HTMLElement): string {
+  const paragraph = element.querySelector<HTMLElement>('p')
+  const text = (paragraph?.innerText ?? element.innerText).replace(/\s+/g, ' ').trim()
+  if (!text) return 'task'
+  return text.length > TASK_REORDER_PREVIEW_MAX_CHARS
+    ? `${text.slice(0, TASK_REORDER_PREVIEW_MAX_CHARS).trimEnd()}...`
+    : text
+}
+
+function createTaskReorderGhost(root: HTMLElement, text: string): HTMLElement {
+  const ghost = document.createElement('div')
+  ghost.className = 'task-reorder-ghost'
+  ghost.textContent = text
+  root.appendChild(ghost)
+  return ghost
+}
+
+function createTaskReorderMarker(root: HTMLElement): HTMLElement {
+  const marker = document.createElement('div')
+  marker.className = 'task-reorder-marker'
+  root.appendChild(marker)
+  return marker
+}
+
+function positionTaskReorderGhost(ghost: HTMLElement, event: globalThis.MouseEvent) {
+  ghost.style.transform = `translate(${event.clientX}px, ${event.clientY}px) translate(-${TASK_REORDER_GHOST_CURSOR_X_PERCENT}%, -50%)`
+}
+
+function positionTaskReorderMarker(
+  marker: HTMLElement,
+  targetElement: HTMLElement,
+  markerY: number,
+) {
+  const rect = targetElement.getBoundingClientRect()
+  const textRect = targetElement.querySelector<HTMLElement>('p')?.getBoundingClientRect()
+  const markerLeft = Math.max(8, rect.left - 28)
+  const contentWidth = textRect?.width && textRect.width > 0 ? textRect.width : rect.width
+  const markerWidth = Math.min(
+    Math.max(contentWidth + TASK_REORDER_MARKER_EXTRA_WIDTH_PX, TASK_REORDER_MARKER_MIN_WIDTH_PX),
+    window.innerWidth - markerLeft - 12,
+  )
+
+  marker.style.width = `${markerWidth}px`
+  marker.style.transform = `translate(${markerLeft}px, ${markerY}px) translateY(-50%)`
+  marker.classList.add('is-visible')
+}
+
+function hideTaskReorderMarker(marker: HTMLElement | null) {
+  if (!marker) return
+  marker.classList.remove('is-visible')
+}
+
+function placeTaskCaretAtPoint(view: any, clientX: number, clientY: number) {
+  const coords = view.posAtCoords({ left: clientX, top: clientY })
+  if (!coords) {
+    view.focus()
+    return
+  }
+
+  const SelectionCtor = view.state.selection.constructor as {
+    create?: (doc: unknown, anchor: number, head?: number) => unknown
+    near?: (resolvedPos: unknown, bias?: number) => unknown
+  }
+
+  let nextSelection: unknown | null = null
+  if (typeof SelectionCtor.create === 'function') {
+    try {
+      nextSelection = SelectionCtor.create(view.state.doc, coords.pos, coords.pos)
+    } catch {
+      nextSelection = null
+    }
+  }
+  if (!nextSelection && typeof SelectionCtor.near === 'function') {
+    try {
+      nextSelection = SelectionCtor.near(view.state.doc.resolve(coords.pos), 1)
+    } catch {
+      nextSelection = null
+    }
+  }
+
+  if (nextSelection) {
+    view.dispatch(view.state.tr.setSelection(nextSelection).scrollIntoView())
+  }
+  view.focus()
+}
+
+function installTaskTextReorderBehavior(root: HTMLElement, getEditor: () => Editor | null) {
+  type DragState = {
+    editor: Editor
+    view: any
+    sourceElement: HTMLElement
+    sourceIndex: number
+    listElement: HTMLElement
+    insertIndex: number | null
+    ghost: HTMLElement | null
+    marker: HTMLElement | null
+    previewText: string
+    startX: number
+    startY: number
+    dragging: boolean
+  }
+
+  let dragState: DragState | null = null
+  let suppressNextClick = false
+
+  const updateDropTarget = (event: globalThis.MouseEvent) => {
+    if (!dragState?.dragging) return
+    clearTaskReorderClasses(root)
+    dragState.sourceElement.classList.add('task-reorder-source')
+
+    const nextTarget = getTaskDropTargetFromList(dragState.sourceIndex, dragState.listElement, event, dragState.insertIndex)
+    if (!nextTarget) {
+      dragState.insertIndex = null
+      hideTaskReorderMarker(dragState.marker)
+      return
+    }
+
+    dragState.insertIndex = nextTarget.insertIndex
+    nextTarget.element.classList.add('task-reorder-target')
+    if (dragState.marker) {
+      positionTaskReorderMarker(
+        dragState.marker,
+        nextTarget.element,
+        nextTarget.markerY,
+      )
+    }
+  }
+
+  const endDrag = () => {
+    if (dragState?.ghost) {
+      dragState.ghost.remove()
+    }
+    if (dragState?.marker) {
+      dragState.marker.remove()
+    }
+    clearTaskReorderClasses(root)
+    root.classList.remove('task-reorder-pending')
+    root.classList.remove('task-reorder-active')
+    window.removeEventListener('mousemove', handleMouseMove, true)
+    window.removeEventListener('mouseup', handleMouseUp, true)
+    window.removeEventListener('blur', handleCancel, true)
+    window.removeEventListener('selectstart', handleSelectStart, true)
+    window.removeEventListener('dragstart', handleNativeDragStart, true)
+    dragState = null
+  }
+
+  const handleCancel = () => {
+    endDrag()
+  }
+
+  const handleMouseMove = (event: globalThis.MouseEvent) => {
+    if (!dragState) return
+    event.preventDefault()
+    event.stopPropagation()
+    window.getSelection()?.removeAllRanges()
+
+    const distance = Math.hypot(event.clientX - dragState.startX, event.clientY - dragState.startY)
+    if (!dragState.dragging && distance < TASK_REORDER_DRAG_SLOP_PX) return
+
+    if (!dragState.dragging) {
+      dragState.dragging = true
+      suppressNextClick = true
+      root.classList.add('task-reorder-active')
+      dragState.sourceElement.classList.add('task-reorder-source')
+      dragState.ghost = createTaskReorderGhost(root, dragState.previewText)
+      dragState.marker = createTaskReorderMarker(root)
+      window.getSelection()?.removeAllRanges()
+    }
+
+    if (dragState.ghost) positionTaskReorderGhost(dragState.ghost, event)
+    updateDropTarget(event)
+  }
+
+  const handleMouseUp = (event: globalThis.MouseEvent) => {
+    if (!dragState) return
+    if (!dragState.dragging) {
+      event.preventDefault()
+      event.stopPropagation()
+      suppressNextClick = true
+      const { view, startX, startY } = dragState
+      endDrag()
+      placeTaskCaretAtPoint(view, startX, startY)
+      return
+    }
+
+    event.preventDefault()
+    event.stopPropagation()
+    suppressNextClick = true
+
+    const { editor, sourceIndex, insertIndex, listElement } = dragState
+    endDrag()
+    if (insertIndex !== null) {
+      const taskElements = getDirectTaskListItems(listElement)
+      const nextMarkdown = reorderTaskMarkdownLines(
+        normalizeMarkdownForPersistence(editor.getMarkdown()),
+        taskElements,
+        sourceIndex,
+        insertIndex,
+      )
+      if (nextMarkdown !== null) {
+        editor.setMarkdown(nextMarkdown, false)
+        editor.focus()
+      }
+    }
+  }
+
+  const handleMouseDown = (event: globalThis.MouseEvent) => {
+    const editor = getEditor()
+    const view = getWysiwygView(editor)
+    if (!editor || !view) return
+
+    const sourceElement = getTaskListTextDragElement(view, event)
+    if (!sourceElement) return
+    const listElement = sourceElement.parentElement
+    if (!(listElement instanceof HTMLElement)) return
+    const sourceIndex = getDirectTaskListItems(listElement).indexOf(sourceElement)
+    if (sourceIndex < 0) return
+
+    dragState = {
+      editor,
+      view,
+      sourceElement,
+      sourceIndex,
+      listElement,
+      insertIndex: null,
+      ghost: null,
+      marker: null,
+      previewText: getTaskDragPreviewText(sourceElement),
+      startX: event.clientX,
+      startY: event.clientY,
+      dragging: false,
+    }
+    root.classList.add('task-reorder-pending')
+    event.preventDefault()
+    event.stopPropagation()
+    window.getSelection()?.removeAllRanges()
+
+    window.addEventListener('mousemove', handleMouseMove, true)
+    window.addEventListener('mouseup', handleMouseUp, true)
+    window.addEventListener('blur', handleCancel, true)
+    window.addEventListener('selectstart', handleSelectStart, true)
+    window.addEventListener('dragstart', handleNativeDragStart, true)
+  }
+
+  const handleSelectStart = (event: Event) => {
+    if (!dragState) return
+    event.preventDefault()
+    event.stopPropagation()
+    window.getSelection()?.removeAllRanges()
+  }
+
+  const handleNativeDragStart = (event: Event) => {
+    if (!dragState) return
+    event.preventDefault()
+    event.stopPropagation()
+  }
+
+  const handleClick = (event: globalThis.MouseEvent) => {
+    if (!suppressNextClick) return
+    suppressNextClick = false
+    event.preventDefault()
+    event.stopPropagation()
+  }
+
+  root.addEventListener('mousedown', handleMouseDown, true)
+  root.addEventListener('click', handleClick, true)
+
+  return () => {
+    endDrag()
+    root.removeEventListener('mousedown', handleMouseDown, true)
+    root.removeEventListener('click', handleClick, true)
+  }
 }
 
 let renameInputMeasureContext: CanvasRenderingContext2D | null = null
@@ -1509,6 +2343,7 @@ function App() {
   const [editing, setEditing] = useState<{ type: 'tab' | 'subtab' | 'space'; id: string } | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [modal, setModal] = useState<ModalState | null>(null)
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>('hotkeys')
   const [settingsDaysDraft, setSettingsDaysDraft] = useState<string>(String(DEFAULT_AUTO_REMOVE_DAYS))
   const isMacPlatform = typeof navigator !== 'undefined' ? /mac/i.test(navigator.platform) : false
   const [shortcutDrafts, setShortcutDrafts] = useState<Record<ShortcutId, string>>(DEFAULT_SHORTCUTS)
@@ -1517,6 +2352,7 @@ function App() {
   const [genericHistoryHotkeysEnabledDraft, setGenericHistoryHotkeysEnabledDraft] = useState(true)
   const [showParentHomeTabDraft, setShowParentHomeTabDraft] = useState(DEFAULT_UI_SETTINGS.showParentHomeTab)
   const [tabButtonScaleDraft, setTabButtonScaleDraft] = useState(DEFAULT_UI_SETTINGS.tabButtonScale)
+  const [noteFontScaleDraft, setNoteFontScaleDraft] = useState(DEFAULT_UI_SETTINGS.noteFontScale)
   const [menuOpen, setMenuOpen] = useState(false)
   const [trashTabId, setTrashTabId] = useState<string>(TRASH_HOME_ID)
   const [trashSubTabId, setTrashSubTabId] = useState<string | null>(null)
@@ -1526,8 +2362,12 @@ function App() {
   const [stageManagerSelections, setStageManagerSelections] = useState<StageManagerSelectionState>({})
   const [stageManagerDraft, setStageManagerDraft] = useState<StageManagerDraft>(createDefaultStageManagerDraft)
   const [arrangeDraggingItem, setArrangeDraggingItem] = useState<ArrangeDragItem | null>(null)
+  const [spaceArrangeDragPreview, setSpaceArrangeDragPreview] = useState<SpaceArrangeDragPreview | null>(null)
+  const [tabArrangeDragPreview, setTabArrangeDragPreview] = useState<TabArrangeDragPreview | null>(null)
   const [exportStatus, setExportStatus] = useState<string>('')
   const [toast, setToast] = useState<ToastState | null>(null)
+  const [toastHovered, setToastHovered] = useState(false)
+  const [toastWasHovered, setToastWasHovered] = useState(false)
   const [imageTools, setImageTools] = useState<ImageToolsState>({
     visible: false,
     cropTop: 0,
@@ -1578,10 +2418,15 @@ function App() {
   const arrangePressTimerRef = useRef<number | null>(null)
   const arrangeTapCandidateRef = useRef<ArrangeTapCandidate | null>(null)
   const arrangeDragSeedRef = useRef<ArrangeDragSeed | null>(null)
+  const spaceArrangeDragRef = useRef<SpaceArrangeDragPreview | null>(null)
+  const tabArrangeDragRef = useRef<TabArrangeDragPreview | null>(null)
   const suppressArrangeClickRef = useRef<Set<string>>(new Set())
+  const suppressNextSpaceArrangeExitRef = useRef(false)
   const saveTimerRef = useRef<number | null>(null)
   const toastTimerRef = useRef<number | null>(null)
   const normalizingContentRef = useRef(false)
+  const completedTaskDeleteUndoCandidateRef = useRef<{ beforeMarkdown: string; deletedAt: number } | null>(null)
+  const completedTaskUndoToastAtRef = useRef(0)
   const lastEditorMarkdownRef = useRef('')
   const multiLineEditRef = useRef<MultiLineEditState | null>(null)
   const multiLineCursorPluginKeyRef = useRef<any>(null)
@@ -1677,11 +2522,15 @@ function App() {
     if (!toast) return
     if (toastTimerRef.current !== null) {
       window.clearTimeout(toastTimerRef.current)
+      toastTimerRef.current = null
     }
+    if (toastHovered) return
+
+    const durationMs = toastWasHovered ? HOVERED_TOAST_DURATION_MS : toast.durationMs
     toastTimerRef.current = window.setTimeout(() => {
       toastTimerRef.current = null
       setToast(null)
-    }, 2000)
+    }, durationMs)
 
     return () => {
       if (toastTimerRef.current !== null) {
@@ -1689,7 +2538,13 @@ function App() {
         toastTimerRef.current = null
       }
     }
-  }, [toast])
+  }, [toast, toastHovered, toastWasHovered])
+
+  useEffect(() => {
+    if (!toast) return
+    setToastHovered(false)
+    setToastWasHovered(false)
+  }, [toast?.id])
 
   const activeSpace = useMemo(
     () => state.spaces.find((space) => space.id === state.activeSpaceId) ?? state.spaces[0],
@@ -1698,12 +2553,39 @@ function App() {
 
   const workspace = activeSpace.data
 
-  const pushToast = (message: string, tone: ToastTone = 'warning') => {
+  const pushToast = (message: string, tone: ToastTone = 'warning', durationMs = DEFAULT_TOAST_DURATION_MS) => {
     setToast({
       id: Date.now(),
       message,
       tone,
+      durationMs,
     })
+  }
+
+  const trackCompletedTaskQuickDelete = (beforeMarkdown: string) => {
+    completedTaskDeleteUndoCandidateRef.current = {
+      beforeMarkdown: normalizeMarkdownForPersistence(beforeMarkdown),
+      deletedAt: Date.now(),
+    }
+  }
+
+  const maybeShowCompletedTaskUndoHint = (markdown: string) => {
+    const candidate = completedTaskDeleteUndoCandidateRef.current
+    if (!candidate) return
+
+    const now = Date.now()
+    if (now - candidate.deletedAt > COMPLETED_TASK_UNDO_HINT_DETECTION_MS) {
+      completedTaskDeleteUndoCandidateRef.current = null
+      return
+    }
+
+    if (normalizeMarkdownForPersistence(markdown) !== candidate.beforeMarkdown) return
+
+    completedTaskDeleteUndoCandidateRef.current = null
+    if (now - completedTaskUndoToastAtRef.current < COMPLETED_TASK_UNDO_HINT_COOLDOWN_MS) return
+
+    completedTaskUndoToastAtRef.current = now
+    pushToast(COMPLETED_TASK_UNDO_HINT_MESSAGE, 'warning', COMPLETED_TASK_UNDO_HINT_TOAST_DURATION_MS)
   }
 
   const getStageManagerParentSelection = (tab: Tab) => normalizeStageManagerParentSelection(tab, stageManagerSelections[tab.id])
@@ -1926,14 +2808,6 @@ function App() {
     }
   }
 
-  const shouldAllowArrangeDragStart = (key: string, event: ReactDragEvent<HTMLButtonElement>) => {
-    const seed = arrangeDragSeedRef.current
-    if (!seed || seed.key !== key) return false
-    const deltaX = event.clientX - seed.startX
-    const deltaY = event.clientY - seed.startY
-    return Math.hypot(deltaX, deltaY) >= ARRANGE_DRAG_START_SLOP_PX
-  }
-
   const startArrangeTapCandidate = (candidate: ArrangeTapCandidateSeed, event: ReactPointerEvent<HTMLButtonElement>) => {
     if (!arrangeMode.active || event.button !== 0) return
     arrangeTapCandidateRef.current = {
@@ -2009,7 +2883,12 @@ function App() {
     clearArrangeTapCandidate()
     clearArrangeDragSeed()
     suppressArrangeClickRef.current.clear()
+    spaceArrangeDragRef.current = null
+    tabArrangeDragRef.current = null
+    suppressNextSpaceArrangeExitRef.current = false
     setArrangeDraggingItem(null)
+    setSpaceArrangeDragPreview(null)
+    setTabArrangeDragPreview(null)
     setArrangeMode(DEFAULT_ARRANGE_MODE)
   }
 
@@ -2075,309 +2954,129 @@ function App() {
     })
   }
 
-  const beginArrangeSpaceDrag = (event: ReactDragEvent<HTMLButtonElement>, spaceId: string) => {
+  const getArrangeSpaceInsertionTargetFromPoint = (clientX: number, clientY: number) => {
+    const grid = spacesGridRef.current
+    if (!grid) return null
+    return getArrangeRailInsertionTarget(
+      grid,
+      '[data-arrange-space-id]',
+      'data-arrange-space-id',
+      clientX,
+      clientY,
+    )
+  }
+
+  const clearArrangeSpaceDropTarget = () => {
+    setArrangeMode((previous) =>
+      previous.active
+        ? {
+            ...previous,
+            overSpaceId: null,
+            overSpaceInsert: null,
+          }
+        : previous,
+    )
+  }
+
+  const updateArrangeSpaceDropTarget = (clientX: number, clientY: number) => {
+    const insertionTarget = getArrangeSpaceInsertionTargetFromPoint(clientX, clientY)
+    if (!insertionTarget) {
+      clearArrangeSpaceDropTarget()
+      return null
+    }
+
+    setArrangeMode((previous) =>
+      previous.overSpaceId === insertionTarget.targetId && previous.overSpaceInsert === insertionTarget.position
+        ? previous
+        : {
+            ...previous,
+            overParentTabId: null,
+            overParentInsert: null,
+            overSubTabId: null,
+            overSubTabInsert: null,
+            overSpaceId: insertionTarget.targetId,
+            overSpaceInsert: insertionTarget.position,
+          },
+    )
+    return insertionTarget
+  }
+
+  const clearArrangeSpacePointerDrag = () => {
+    spaceArrangeDragRef.current = null
+    setSpaceArrangeDragPreview(null)
+  }
+
+  const suppressNextSpaceArrangeExitClick = () => {
+    suppressNextSpaceArrangeExitRef.current = true
+    window.setTimeout(() => {
+      suppressNextSpaceArrangeExitRef.current = false
+    }, 0)
+  }
+
+  const startArrangeSpacePointerDrag = (event: ReactPointerEvent<HTMLButtonElement>, space: Space) => {
     if (viewMode !== 'spaces') return
-    if (!shouldAllowArrangeDragStart(`space:${spaceId}`, event)) {
-      event.preventDefault()
-      return
-    }
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('text/plain', spaceId)
-    markArrangeTapDragged(`space:${spaceId}`)
-    prepareArrangeModeForDrag({ type: 'space', spaceId })
-  }
-
-  const handleArrangeSpaceDragOver = (event: ReactDragEvent<HTMLButtonElement>, spaceId: string) => {
-    if (!arrangeMode.active || arrangeMode.dragItem?.type !== 'space') return
-    event.preventDefault()
-    event.dataTransfer.dropEffect = 'move'
-    const position = getArrangeInsertPositionFromClientX(event.clientX, event.currentTarget.getBoundingClientRect())
-    setArrangeMode((previous) =>
-      previous.overSpaceId === spaceId && previous.overSpaceInsert === position
-        ? previous
-        : {
-            ...previous,
-            overParentTabId: null,
-            overParentInsert: null,
-            overSubTabId: null,
-            overSubTabInsert: null,
-            overSpaceId: spaceId,
-            overSpaceInsert: position,
-          },
-    )
-  }
-
-  const handleArrangeSpaceDrop = (event: ReactDragEvent<HTMLButtonElement>, targetSpaceId: string) => {
-    if (!arrangeMode.active || arrangeMode.dragItem?.type !== 'space') return
-    event.preventDefault()
-    const draggedSpaceId = arrangeMode.dragItem.spaceId
-    const position = getArrangeInsertPositionFromClientX(event.clientX, event.currentTarget.getBoundingClientRect())
-    markArrangeClickSuppressed(`space:${draggedSpaceId}`, `space:${targetSpaceId}`)
-    if (draggedSpaceId !== targetSpaceId) {
-      setState((previous) => {
-        const fromIndex = previous.spaces.findIndex((space) => space.id === draggedSpaceId)
-        const toIndex = previous.spaces.findIndex((space) => space.id === targetSpaceId)
-        if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return previous
-        return {
-          ...previous,
-          spaces: moveItemByInsertion(previous.spaces, fromIndex, toIndex, position),
-        }
-      })
+    const rect = event.currentTarget.getBoundingClientRect()
+    const nextDrag: SpaceArrangeDragPreview = {
+      spaceId: space.id,
+      label: space.name,
+      currentX: event.clientX,
+      currentY: event.clientY,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+      width: rect.width,
+      height: rect.height,
     }
 
-    setArrangeMode((previous) =>
-      previous.active
-        ? {
-            ...previous,
-            dragItem: null,
-            overParentTabId: null,
-            overParentInsert: null,
-            overSubTabId: null,
-            overSubTabInsert: null,
-            overSpaceId: null,
-            overSpaceInsert: null,
-          }
-        : previous,
-    )
-    setArrangeDraggingItem(null)
+    clearArrangePressTimer()
+    markArrangeTapDragged(`space:${space.id}`)
+    prepareArrangeModeForDrag({ type: 'space', spaceId: space.id })
+    spaceArrangeDragRef.current = nextDrag
+    setSpaceArrangeDragPreview(nextDrag)
+    updateArrangeSpaceDropTarget(event.clientX, event.clientY)
   }
 
-  const handleArrangeSpaceGridDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
-    if (!arrangeMode.active || arrangeMode.dragItem?.type !== 'space') return
-    if (event.target !== event.currentTarget) return
-    const grid = spacesGridRef.current
-    if (!grid) return
-    const insertionTarget = getArrangeRailInsertionTarget(
-      grid,
-      '[data-arrange-space-id]',
-      'data-arrange-space-id',
-      event.clientX,
-      event.clientY,
-    )
-    if (!insertionTarget) return
-    event.preventDefault()
-    event.dataTransfer.dropEffect = 'move'
-    setArrangeMode((previous) => ({
-      ...previous,
-      overParentTabId: null,
-      overParentInsert: null,
-      overSubTabId: null,
-      overSubTabInsert: null,
-      overSpaceId: insertionTarget.targetId,
-      overSpaceInsert: insertionTarget.position,
-    }))
-  }
-
-  const handleArrangeSpaceGridDrop = (event: ReactDragEvent<HTMLDivElement>) => {
-    if (!arrangeMode.active || arrangeMode.dragItem?.type !== 'space') return
-    if (event.target !== event.currentTarget) return
-    const grid = spacesGridRef.current
-    if (!grid) return
-    const insertionTarget = getArrangeRailInsertionTarget(
-      grid,
-      '[data-arrange-space-id]',
-      'data-arrange-space-id',
-      event.clientX,
-      event.clientY,
-    )
-    if (!insertionTarget) return
-    event.preventDefault()
-    const draggedSpaceId = arrangeMode.dragItem.spaceId
-    markArrangeClickSuppressed(`space:${draggedSpaceId}`, `space:${insertionTarget.targetId}`)
-    if (draggedSpaceId !== insertionTarget.targetId) {
-      setState((previous) => {
-        const fromIndex = previous.spaces.findIndex((space) => space.id === draggedSpaceId)
-        const toIndex = previous.spaces.findIndex((space) => space.id === insertionTarget.targetId)
-        if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return previous
-        return {
-          ...previous,
-          spaces: moveItemByInsertion(previous.spaces, fromIndex, toIndex, insertionTarget.position),
-        }
-      })
+  const updateArrangeSpacePointerDrag = (clientX: number, clientY: number) => {
+    const drag = spaceArrangeDragRef.current
+    if (!drag) return
+    const nextDrag: SpaceArrangeDragPreview = {
+      ...drag,
+      currentX: clientX,
+      currentY: clientY,
     }
-    setArrangeMode((previous) =>
-      previous.active
-        ? {
-            ...previous,
-            dragItem: null,
-            overParentTabId: null,
-            overParentInsert: null,
-            overSubTabId: null,
-            overSubTabInsert: null,
-            overSpaceId: null,
-            overSpaceInsert: null,
-          }
-        : previous,
-    )
-    setArrangeDraggingItem(null)
+    spaceArrangeDragRef.current = nextDrag
+    setSpaceArrangeDragPreview(nextDrag)
+    updateArrangeSpaceDropTarget(clientX, clientY)
   }
 
-  const beginArrangeTabDrag = (event: ReactDragEvent<HTMLButtonElement>, tabId: string) => {
-    if (viewMode !== 'main') return
-    if (!shouldAllowArrangeDragStart(`tab:${tabId}`, event)) {
-      event.preventDefault()
-      return
-    }
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('text/plain', tabId)
-    markArrangeTapDragged(`tab:${tabId}`)
-    prepareArrangeModeForDrag({ type: 'tab', tabId })
-  }
-
-  const handleArrangeTabDragOver = (event: ReactDragEvent<HTMLButtonElement>, tabId: string) => {
-    if (!arrangeMode.active || !arrangeMode.dragItem) return
-    event.preventDefault()
-    event.dataTransfer.dropEffect = 'move'
-    const position = getArrangeInsertPositionFromClientX(event.clientX, event.currentTarget.getBoundingClientRect())
-    setArrangeMode((previous) =>
-      previous.overParentTabId === tabId &&
-      previous.overParentInsert === (previous.dragItem?.type === 'tab' ? position : previous.overParentInsert)
-        ? previous
-        : {
-            ...previous,
-            overParentTabId: tabId,
-            overParentInsert: previous.dragItem?.type === 'tab' ? position : null,
-            overSubTabId: null,
-            overSubTabInsert: null,
-          },
-    )
-  }
-
-  const handleArrangeTabDrop = (event: ReactDragEvent<HTMLButtonElement>, targetTabId: string) => {
-    if (!arrangeMode.active || !arrangeMode.dragItem) return
-    event.preventDefault()
-    if (arrangeMode.dragItem.type === 'tab') {
-      const draggedTabId = arrangeMode.dragItem.tabId
-      const position = getArrangeInsertPositionFromClientX(event.clientX, event.currentTarget.getBoundingClientRect())
-      markArrangeClickSuppressed(`tab:${draggedTabId}`, `tab:${targetTabId}`)
-      if (draggedTabId !== targetTabId) {
-        updateActiveSpaceData((data) => {
-          const fromIndex = data.tabs.findIndex((tab) => tab.id === draggedTabId)
-          const toIndex = data.tabs.findIndex((tab) => tab.id === targetTabId)
-          if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return data
-
-          return {
-            ...data,
-            tabs: moveItemByInsertion(data.tabs, fromIndex, toIndex, position),
-          }
-        })
+  const moveArrangeSpaceToTarget = (
+    draggedSpaceId: string,
+    insertionTarget: { targetId: string; position: ArrangeInsertPosition },
+  ) => {
+    if (draggedSpaceId === insertionTarget.targetId) return
+    setState((previous) => {
+      const fromIndex = previous.spaces.findIndex((space) => space.id === draggedSpaceId)
+      const toIndex = previous.spaces.findIndex((space) => space.id === insertionTarget.targetId)
+      if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return previous
+      return {
+        ...previous,
+        spaces: moveItemByInsertion(previous.spaces, fromIndex, toIndex, insertionTarget.position),
       }
-    } else if (arrangeMode.dragItem.type === 'subtab') {
-      const { parentTabId: sourceParentTabId, subTabId } = arrangeMode.dragItem
-      markArrangeClickSuppressed(`subtab:${subTabId}`, `tab:${targetTabId}`)
-      if (sourceParentTabId !== targetTabId) {
-        updateActiveSpaceData((data) => {
-          const sourceParent = data.tabs.find((tab) => tab.id === sourceParentTabId)
-          const targetParent = data.tabs.find((tab) => tab.id === targetTabId)
-          if (!sourceParent || !targetParent) return data
-          const movedSubTab = sourceParent.subTabs.find((subTab) => subTab.id === subTabId)
-          if (!movedSubTab) return data
-          if (targetParent.subTabs.some((subTab) => subTab.id === subTabId)) return data
+    })
+  }
 
-          return {
-            ...data,
-            tabs: data.tabs.map((tab) => {
-              if (tab.id === sourceParentTabId) {
-                return {
-                  ...tab,
-                  activeSubTabId: tab.activeSubTabId === subTabId ? null : tab.activeSubTabId,
-                  subTabs: tab.subTabs.filter((subTab) => subTab.id !== subTabId),
-                }
-              }
-              if (tab.id === targetTabId) {
-                return {
-                  ...tab,
-                  subTabs: [...tab.subTabs, movedSubTab],
-                }
-              }
-              return tab
-            }),
-          }
-        })
-      }
+  const finishArrangeSpacePointerDrag = (clientX: number, clientY: number) => {
+    const drag = spaceArrangeDragRef.current
+    if (!drag) return false
+
+    const insertionTarget = getArrangeSpaceInsertionTargetFromPoint(clientX, clientY)
+    markArrangeClickSuppressed(`space:${drag.spaceId}`)
+    if (insertionTarget) {
+      markArrangeClickSuppressed(`space:${insertionTarget.targetId}`)
+      moveArrangeSpaceToTarget(drag.spaceId, insertionTarget)
     }
 
-    setArrangeMode((previous) =>
-      previous.active
-        ? {
-            ...previous,
-            dragItem: null,
-            overParentTabId: null,
-            overParentInsert: null,
-            overSubTabId: null,
-            overSubTabInsert: null,
-          }
-        : previous,
-    )
-    setArrangeDraggingItem(null)
-  }
-
-  const handleArrangeTabRailDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
-    if (!arrangeMode.active || arrangeMode.dragItem?.type !== 'tab') return
-    if (event.target !== event.currentTarget) return
-    const rail = primaryTabRailRef.current
-    if (!rail) return
-    const insertionTarget = getArrangeRailInsertionTarget(
-      rail,
-      '[data-arrange-tab-id]',
-      'data-arrange-tab-id',
-      event.clientX,
-      event.clientY,
-    )
-    if (!insertionTarget) return
-    event.preventDefault()
-    event.dataTransfer.dropEffect = 'move'
-    setArrangeMode((previous) => ({
-      ...previous,
-      overParentTabId: insertionTarget.targetId,
-      overParentInsert: insertionTarget.position,
-      overSubTabId: null,
-      overSubTabInsert: null,
-    }))
-  }
-
-  const handleArrangeTabRailDrop = (event: ReactDragEvent<HTMLDivElement>) => {
-    if (!arrangeMode.active || arrangeMode.dragItem?.type !== 'tab') return
-    if (event.target !== event.currentTarget) return
-    const rail = primaryTabRailRef.current
-    if (!rail) return
-    const insertionTarget = getArrangeRailInsertionTarget(
-      rail,
-      '[data-arrange-tab-id]',
-      'data-arrange-tab-id',
-      event.clientX,
-      event.clientY,
-    )
-    if (!insertionTarget) return
-    event.preventDefault()
-    const draggedTabId = arrangeMode.dragItem.tabId
-    markArrangeClickSuppressed(`tab:${draggedTabId}`, `tab:${insertionTarget.targetId}`)
-    if (draggedTabId !== insertionTarget.targetId) {
-      updateActiveSpaceData((data) => {
-        const fromIndex = data.tabs.findIndex((tab) => tab.id === draggedTabId)
-        const toIndex = data.tabs.findIndex((tab) => tab.id === insertionTarget.targetId)
-        if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return data
-        return {
-          ...data,
-          tabs: moveItemByInsertion(data.tabs, fromIndex, toIndex, insertionTarget.position),
-        }
-      })
-    }
-    setArrangeMode((previous) =>
-      previous.active
-        ? {
-            ...previous,
-            dragItem: null,
-            overParentTabId: null,
-            overParentInsert: null,
-            overSubTabId: null,
-            overSubTabInsert: null,
-          }
-        : previous,
-    )
-  }
-
-  const endArrangeTabDrag = () => {
+    suppressNextSpaceArrangeExitClick()
+    clearArrangeSpacePointerDrag()
     clearArrangeTapCandidate()
     clearArrangeDragSeed()
     setArrangeDraggingItem(null)
@@ -2395,68 +3094,95 @@ function App() {
           }
         : previous,
     )
+    return true
   }
 
-  const beginArrangeSubTabDrag = (event: ReactDragEvent<HTMLButtonElement>, parentTabId: string, subTabId: string) => {
-    if (viewMode !== 'main') return
-    if (!shouldAllowArrangeDragStart(`subtab:${subTabId}`, event)) {
-      event.preventDefault()
-      return
-    }
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('text/plain', subTabId)
-    markArrangeTapDragged(`subtab:${subTabId}`)
-    prepareArrangeModeForDrag({ type: 'subtab', parentTabId, subTabId })
-  }
-
-  const handleArrangeSubTabDragOver = (event: ReactDragEvent<HTMLButtonElement>, subTabId: string) => {
-    if (!arrangeMode.active || arrangeMode.dragItem?.type !== 'subtab') return
-    if (arrangeMode.dragItem.parentTabId !== activeTab.id) return
-    event.preventDefault()
-    event.dataTransfer.dropEffect = 'move'
-    const position = getArrangeInsertPositionFromClientX(event.clientX, event.currentTarget.getBoundingClientRect())
-    setArrangeMode((previous) =>
-      previous.overSubTabId === subTabId && previous.overSubTabInsert === position
-        ? previous
-        : {
-            ...previous,
-            overParentTabId: null,
-            overParentInsert: null,
-            overSubTabId: subTabId,
-            overSubTabInsert: position,
-          },
-    )
-  }
-
-  const handleArrangeSubTabDrop = (event: ReactDragEvent<HTMLButtonElement>, targetSubTabId: string) => {
-    if (!arrangeMode.active || arrangeMode.dragItem?.type !== 'subtab') return
-    if (arrangeMode.dragItem.parentTabId !== activeTab.id) return
-    event.preventDefault()
-    const draggedSubTabId = arrangeMode.dragItem.subTabId
-    const position = getArrangeInsertPositionFromClientX(event.clientX, event.currentTarget.getBoundingClientRect())
-    markArrangeClickSuppressed(`subtab:${draggedSubTabId}`, `subtab:${targetSubTabId}`)
-    if (draggedSubTabId !== targetSubTabId) {
-      updateActiveSpaceData((data) => ({
-        ...data,
-        tabs: data.tabs.map((tab) => {
-          if (tab.id !== activeTab.id) return tab
-          const fromIndex = tab.subTabs.findIndex((subTab) => subTab.id === draggedSubTabId)
-          const toIndex = tab.subTabs.findIndex((subTab) => subTab.id === targetSubTabId)
-          if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return tab
-
-          return {
-            ...tab,
-            subTabs: moveItemByInsertion(tab.subTabs, fromIndex, toIndex, position),
-          }
-        }),
-      }))
-    }
-
+  const cancelArrangeSpacePointerDrag = () => {
+    clearArrangeSpacePointerDrag()
+    clearArrangeTapCandidate()
+    clearArrangeDragSeed()
+    clearArrangePressTimer()
+    setArrangeDraggingItem(null)
     setArrangeMode((previous) =>
       previous.active
         ? {
             ...previous,
             dragItem: null,
+            overSpaceId: null,
+            overSpaceInsert: null,
+          }
+        : previous,
+    )
+  }
+
+  const handleArrangeSpacePointerMove = (event: ReactPointerEvent<HTMLButtonElement>, space: Space) => {
+    if (event.buttons !== 1) return
+
+    const activeDrag = spaceArrangeDragRef.current
+    if (activeDrag?.spaceId === space.id) {
+      event.preventDefault()
+      markArrangeTapDragged(`space:${space.id}`)
+      updateArrangeSpacePointerDrag(event.clientX, event.clientY)
+      return
+    }
+
+    const seed = arrangeDragSeedRef.current
+    if (!seed || seed.key !== `space:${space.id}`) return
+    const deltaX = event.clientX - seed.startX
+    const deltaY = event.clientY - seed.startY
+    if (Math.hypot(deltaX, deltaY) < ARRANGE_DRAG_START_SLOP_PX) return
+
+    event.preventDefault()
+    startArrangeSpacePointerDrag(event, space)
+  }
+
+  const handleArrangeSpacePointerUp = (event: ReactPointerEvent<HTMLButtonElement>, spaceId: string) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+
+    if (finishArrangeSpacePointerDrag(event.clientX, event.clientY)) {
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
+
+    clearArrangeDragSeed()
+    if (arrangeMode.active && arrangeMode.scope === 'spaces') {
+      finalizeArrangeTapCandidate(`space:${spaceId}`, event, exitArrangeMode)
+      return
+    }
+    clearArrangePressTimer()
+  }
+
+  const isPointInsideElement = (element: HTMLElement | null, clientX: number, clientY: number, padding = 10) => {
+    if (!element) return false
+    const rect = element.getBoundingClientRect()
+    return (
+      clientX >= rect.left - padding &&
+      clientX <= rect.right + padding &&
+      clientY >= rect.top - padding &&
+      clientY <= rect.bottom + padding
+    )
+  }
+
+  const getArrangeParentInsertionTargetFromPoint = (clientX: number, clientY: number) => {
+    const rail = primaryTabRailRef.current
+    if (!rail || !isPointInsideElement(rail, clientX, clientY, 14)) return null
+    return getArrangeRailInsertionTarget(rail, '[data-arrange-tab-id]', 'data-arrange-tab-id', clientX, clientY)
+  }
+
+  const getArrangeSubTabInsertionTargetFromPoint = (clientX: number, clientY: number) => {
+    const rail = subTabRailRef.current
+    if (!rail || !isPointInsideElement(rail, clientX, clientY, 14)) return null
+    return getArrangeRailInsertionTarget(rail, '[data-arrange-subtab-id]', 'data-arrange-subtab-id', clientX, clientY)
+  }
+
+  const clearArrangeTabDropTarget = () => {
+    setArrangeMode((previous) =>
+      previous.active
+        ? {
+            ...previous,
             overParentTabId: null,
             overParentInsert: null,
             overSubTabId: null,
@@ -2464,140 +3190,213 @@ function App() {
           }
         : previous,
     )
-    setArrangeDraggingItem(null)
   }
 
-  const handleArrangeSubTabRailDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
-    if (!arrangeMode.active || arrangeMode.dragItem?.type !== 'subtab') return
-    if (arrangeMode.dragItem.parentTabId !== activeTab.id) return
-    if (event.target !== event.currentTarget) return
-    const rail = subTabRailRef.current
-    if (!rail) return
-    const insertionTarget = getArrangeRailInsertionTarget(
-      rail,
-      '[data-arrange-subtab-id]',
-      'data-arrange-subtab-id',
-      event.clientX,
-      event.clientY,
-    )
-    if (!insertionTarget) return
-    event.preventDefault()
-    event.dataTransfer.dropEffect = 'move'
-    setArrangeMode((previous) => ({
-      ...previous,
-      overParentTabId: null,
-      overParentInsert: null,
-      overSubTabId: insertionTarget.targetId,
-      overSubTabInsert: insertionTarget.position,
+  const updateArrangeTabDropTarget = (item: TabArrangeDragItem, clientX: number, clientY: number) => {
+    if (item.type === 'tab') {
+      const parentTarget = getArrangeParentInsertionTargetFromPoint(clientX, clientY)
+      if (!parentTarget) {
+        clearArrangeTabDropTarget()
+        return null
+      }
+
+      setArrangeMode((previous) =>
+        previous.overParentTabId === parentTarget.targetId && previous.overParentInsert === parentTarget.position
+          ? previous
+          : {
+              ...previous,
+              overParentTabId: parentTarget.targetId,
+              overParentInsert: parentTarget.position,
+              overSubTabId: null,
+              overSubTabInsert: null,
+            },
+      )
+      return { type: 'parent' as const, target: parentTarget }
+    }
+
+    if (item.type === 'subtab') {
+      const parentTarget = getArrangeParentInsertionTargetFromPoint(clientX, clientY)
+      if (parentTarget) {
+        setArrangeMode((previous) =>
+          previous.overParentTabId === parentTarget.targetId &&
+          previous.overParentInsert === null &&
+          previous.overSubTabId === null &&
+          previous.overSubTabInsert === null
+            ? previous
+            : {
+                ...previous,
+                overParentTabId: parentTarget.targetId,
+                overParentInsert: null,
+                overSubTabId: null,
+                overSubTabInsert: null,
+              },
+        )
+        return { type: 'parent' as const, target: parentTarget }
+      }
+
+      const subTabTarget = getArrangeSubTabInsertionTargetFromPoint(clientX, clientY)
+      if (subTabTarget && item.parentTabId === activeTab.id) {
+        setArrangeMode((previous) =>
+          previous.overSubTabId === subTabTarget.targetId && previous.overSubTabInsert === subTabTarget.position
+            ? previous
+            : {
+                ...previous,
+                overParentTabId: null,
+                overParentInsert: null,
+                overSubTabId: subTabTarget.targetId,
+                overSubTabInsert: subTabTarget.position,
+              },
+        )
+        return { type: 'subtab' as const, target: subTabTarget }
+      }
+    }
+
+    clearArrangeTabDropTarget()
+    return null
+  }
+
+  const clearArrangeTabPointerDrag = () => {
+    tabArrangeDragRef.current = null
+    setTabArrangeDragPreview(null)
+  }
+
+  const startArrangeTabPointerDrag = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    item: TabArrangeDragItem,
+    label: string,
+    variant: TabArrangeDragPreview['variant'],
+  ) => {
+    if (viewMode !== 'main') return
+    const rect = event.currentTarget.getBoundingClientRect()
+    const nextDrag: TabArrangeDragPreview = {
+      item,
+      label,
+      variant,
+      currentX: event.clientX,
+      currentY: event.clientY,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+      width: rect.width,
+      height: rect.height,
+    }
+
+    clearArrangePressTimer()
+    markArrangeTapDragged(item.type === 'tab' ? `tab:${item.tabId}` : `subtab:${item.subTabId}`)
+    prepareArrangeModeForDrag(item)
+    tabArrangeDragRef.current = nextDrag
+    setTabArrangeDragPreview(nextDrag)
+    updateArrangeTabDropTarget(item, event.clientX, event.clientY)
+  }
+
+  const updateArrangeTabPointerDrag = (clientX: number, clientY: number) => {
+    const drag = tabArrangeDragRef.current
+    if (!drag) return
+    const nextDrag: TabArrangeDragPreview = {
+      ...drag,
+      currentX: clientX,
+      currentY: clientY,
+    }
+    tabArrangeDragRef.current = nextDrag
+    setTabArrangeDragPreview(nextDrag)
+    updateArrangeTabDropTarget(drag.item, clientX, clientY)
+  }
+
+  const moveArrangeParentTabToTarget = (
+    draggedTabId: string,
+    insertionTarget: { targetId: string; position: ArrangeInsertPosition },
+  ) => {
+    if (draggedTabId === insertionTarget.targetId) return
+    updateActiveSpaceData((data) => {
+      const fromIndex = data.tabs.findIndex((tab) => tab.id === draggedTabId)
+      const toIndex = data.tabs.findIndex((tab) => tab.id === insertionTarget.targetId)
+      if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return data
+      return {
+        ...data,
+        tabs: moveItemByInsertion(data.tabs, fromIndex, toIndex, insertionTarget.position),
+      }
+    })
+  }
+
+  const moveArrangeSubTabToParent = (sourceParentTabId: string, subTabId: string, targetParentTabId: string) => {
+    if (sourceParentTabId === targetParentTabId) return
+    updateActiveSpaceData((data) => {
+      const sourceParent = data.tabs.find((tab) => tab.id === sourceParentTabId)
+      const targetParent = data.tabs.find((tab) => tab.id === targetParentTabId)
+      if (!sourceParent || !targetParent) return data
+      const movedSubTab = sourceParent.subTabs.find((subTab) => subTab.id === subTabId)
+      if (!movedSubTab || targetParent.subTabs.some((subTab) => subTab.id === subTabId)) return data
+
+      return {
+        ...data,
+        tabs: data.tabs.map((tab) => {
+          if (tab.id === sourceParentTabId) {
+            return {
+              ...tab,
+              activeSubTabId: tab.activeSubTabId === subTabId ? null : tab.activeSubTabId,
+              subTabs: tab.subTabs.filter((subTab) => subTab.id !== subTabId),
+            }
+          }
+          if (tab.id === targetParentTabId) {
+            return {
+              ...tab,
+              subTabs: [...tab.subTabs, movedSubTab],
+            }
+          }
+          return tab
+        }),
+      }
+    })
+  }
+
+  const moveArrangeSubTabToTarget = (
+    parentTabId: string,
+    subTabId: string,
+    insertionTarget: { targetId: string; position: ArrangeInsertPosition },
+  ) => {
+    if (subTabId === insertionTarget.targetId) return
+    updateActiveSpaceData((data) => ({
+      ...data,
+      tabs: data.tabs.map((tab) => {
+        if (tab.id !== parentTabId) return tab
+        const fromIndex = tab.subTabs.findIndex((subTab) => subTab.id === subTabId)
+        const toIndex = tab.subTabs.findIndex((subTab) => subTab.id === insertionTarget.targetId)
+        if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return tab
+        return {
+          ...tab,
+          subTabs: moveItemByInsertion(tab.subTabs, fromIndex, toIndex, insertionTarget.position),
+        }
+      }),
     }))
   }
 
-  const handleArrangeSubTabRailDrop = (event: ReactDragEvent<HTMLDivElement>) => {
-    if (!arrangeMode.active || arrangeMode.dragItem?.type !== 'subtab') return
-    if (arrangeMode.dragItem.parentTabId !== activeTab.id) return
-    if (event.target !== event.currentTarget) return
-    const rail = subTabRailRef.current
-    if (!rail) return
-    const insertionTarget = getArrangeRailInsertionTarget(
-      rail,
-      '[data-arrange-subtab-id]',
-      'data-arrange-subtab-id',
-      event.clientX,
-      event.clientY,
-    )
-    if (!insertionTarget) return
-    event.preventDefault()
-    const draggedSubTabId = arrangeMode.dragItem.subTabId
-    markArrangeClickSuppressed(`subtab:${draggedSubTabId}`, `subtab:${insertionTarget.targetId}`)
-    if (draggedSubTabId !== insertionTarget.targetId) {
-      updateActiveSpaceData((data) => ({
-        ...data,
-        tabs: data.tabs.map((tab) => {
-          if (tab.id !== activeTab.id) return tab
-          const fromIndex = tab.subTabs.findIndex((subTab) => subTab.id === draggedSubTabId)
-          const toIndex = tab.subTabs.findIndex((subTab) => subTab.id === insertionTarget.targetId)
-          if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return tab
-          return {
-            ...tab,
-            subTabs: moveItemByInsertion(tab.subTabs, fromIndex, toIndex, insertionTarget.position),
-          }
-        }),
-      }))
+  const finishArrangeTabPointerDrag = (clientX: number, clientY: number) => {
+    const drag = tabArrangeDragRef.current
+    if (!drag) return false
+
+    const { item } = drag
+    if (item.type === 'tab') {
+      const parentTarget = getArrangeParentInsertionTargetFromPoint(clientX, clientY)
+      markArrangeClickSuppressed(`tab:${item.tabId}`)
+      if (parentTarget) {
+        markArrangeClickSuppressed(`tab:${parentTarget.targetId}`)
+        moveArrangeParentTabToTarget(item.tabId, parentTarget)
+      }
+    } else if (item.type === 'subtab') {
+      const parentTarget = getArrangeParentInsertionTargetFromPoint(clientX, clientY)
+      markArrangeClickSuppressed(`subtab:${item.subTabId}`)
+      if (parentTarget) {
+        markArrangeClickSuppressed(`tab:${parentTarget.targetId}`)
+        moveArrangeSubTabToParent(item.parentTabId, item.subTabId, parentTarget.targetId)
+      } else {
+        const subTabTarget = getArrangeSubTabInsertionTargetFromPoint(clientX, clientY)
+        if (subTabTarget && item.parentTabId === activeTab.id) {
+          markArrangeClickSuppressed(`subtab:${subTabTarget.targetId}`)
+          moveArrangeSubTabToTarget(item.parentTabId, item.subTabId, subTabTarget)
+        }
+      }
     }
-    setArrangeMode((previous) =>
-      previous.active
-        ? {
-            ...previous,
-            dragItem: null,
-            overParentTabId: null,
-            overParentInsert: null,
-            overSubTabId: null,
-            overSubTabInsert: null,
-          }
-        : previous,
-    )
-  }
 
-  const handleArrangeHomeSubTabDragOver = (event: ReactDragEvent<HTMLButtonElement>) => {
-    if (!arrangeMode.active || arrangeMode.dragItem?.type !== 'subtab') return
-    if (arrangeMode.dragItem.parentTabId !== activeTab.id) return
-    const firstSubTab = activeTab.subTabs[0]
-    if (!firstSubTab) return
-    event.preventDefault()
-    event.dataTransfer.dropEffect = 'move'
-    setArrangeMode((previous) =>
-      previous.overSubTabId === firstSubTab.id && previous.overSubTabInsert === 'before'
-        ? previous
-        : {
-            ...previous,
-            overParentTabId: null,
-            overParentInsert: null,
-            overSubTabId: firstSubTab.id,
-            overSubTabInsert: 'before',
-          },
-    )
-  }
-
-  const handleArrangeHomeSubTabDrop = (event: ReactDragEvent<HTMLButtonElement>) => {
-    if (!arrangeMode.active || arrangeMode.dragItem?.type !== 'subtab') return
-    if (arrangeMode.dragItem.parentTabId !== activeTab.id) return
-    const firstSubTab = activeTab.subTabs[0]
-    if (!firstSubTab) return
-    event.preventDefault()
-    const draggedSubTabId = arrangeMode.dragItem.subTabId
-    markArrangeClickSuppressed(`subtab:${draggedSubTabId}`, `home:${activeTab.id}`)
-    if (draggedSubTabId !== firstSubTab.id) {
-      updateActiveSpaceData((data) => ({
-        ...data,
-        tabs: data.tabs.map((tab) => {
-          if (tab.id !== activeTab.id) return tab
-          const fromIndex = tab.subTabs.findIndex((subTab) => subTab.id === draggedSubTabId)
-          const toIndex = tab.subTabs.findIndex((subTab) => subTab.id === firstSubTab.id)
-          if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return tab
-          return {
-            ...tab,
-            subTabs: moveItemByInsertion(tab.subTabs, fromIndex, toIndex, 'before'),
-          }
-        }),
-      }))
-    }
-    setArrangeMode((previous) =>
-      previous.active
-        ? {
-            ...previous,
-            dragItem: null,
-            overParentTabId: null,
-            overParentInsert: null,
-            overSubTabId: null,
-            overSubTabInsert: null,
-          }
-        : previous,
-    )
-    setArrangeDraggingItem(null)
-    clearArrangeTapCandidate()
-  }
-
-  const endArrangeSubTabDrag = () => {
+    clearArrangeTabPointerDrag()
     clearArrangeTapCandidate()
     clearArrangeDragSeed()
     setArrangeDraggingItem(null)
@@ -2610,9 +3409,83 @@ function App() {
             overParentInsert: null,
             overSubTabId: null,
             overSubTabInsert: null,
+            overSpaceId: null,
+            overSpaceInsert: null,
           }
         : previous,
     )
+    return true
+  }
+
+  const cancelArrangeTabPointerDrag = () => {
+    clearArrangeTabPointerDrag()
+    clearArrangeTapCandidate()
+    clearArrangeDragSeed()
+    clearArrangePressTimer()
+    setArrangeDraggingItem(null)
+    setArrangeMode((previous) =>
+      previous.active
+        ? {
+            ...previous,
+            dragItem: null,
+            overParentTabId: null,
+            overParentInsert: null,
+            overSubTabId: null,
+            overSubTabInsert: null,
+          }
+        : previous,
+    )
+  }
+
+  const handleArrangeTabPointerMove = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    item: TabArrangeDragItem,
+    label: string,
+    variant: TabArrangeDragPreview['variant'],
+  ) => {
+    if (event.buttons !== 1) return
+
+    const activeDrag = tabArrangeDragRef.current
+    if (activeDrag) {
+      event.preventDefault()
+      const key = activeDrag.item.type === 'tab' ? `tab:${activeDrag.item.tabId}` : `subtab:${activeDrag.item.subTabId}`
+      markArrangeTapDragged(key)
+      updateArrangeTabPointerDrag(event.clientX, event.clientY)
+      return
+    }
+
+    const key = item.type === 'tab' ? `tab:${item.tabId}` : `subtab:${item.subTabId}`
+    const seed = arrangeDragSeedRef.current
+    if (!seed || seed.key !== key) return
+    const deltaX = event.clientX - seed.startX
+    const deltaY = event.clientY - seed.startY
+    if (Math.hypot(deltaX, deltaY) < ARRANGE_DRAG_START_SLOP_PX) return
+
+    event.preventDefault()
+    startArrangeTabPointerDrag(event, item, label, variant)
+  }
+
+  const handleArrangeTabPointerUp = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    key: string,
+    onTapWhileArranging: () => void,
+  ) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+
+    if (finishArrangeTabPointerDrag(event.clientX, event.clientY)) {
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
+
+    clearArrangeDragSeed()
+    if (arrangeMode.active) {
+      finalizeArrangeTapCandidate(key, event, onTapWhileArranging)
+      return
+    }
+    clearArrangePressTimer()
   }
 
   useEffect(() => {
@@ -2623,9 +3496,17 @@ function App() {
       setGenericHistoryHotkeysEnabledDraft(state.hotkeys.enableGenericHistoryHotkeys)
       setShowParentHomeTabDraft(state.ui.showParentHomeTab)
       setTabButtonScaleDraft(state.ui.tabButtonScale)
+      setNoteFontScaleDraft(state.ui.noteFontScale)
       setEditingShortcut(null)
     }
-  }, [viewMode, activeSpace.settings.autoRemoveDeletedDays, state.hotkeys, state.ui.showParentHomeTab, state.ui.tabButtonScale])
+  }, [
+    viewMode,
+    activeSpace.settings.autoRemoveDeletedDays,
+    state.hotkeys,
+    state.ui.showParentHomeTab,
+    state.ui.tabButtonScale,
+    state.ui.noteFontScale,
+  ])
 
   useEffect(() => () => clearArrangePressTimer(), [])
 
@@ -4160,6 +5041,7 @@ function App() {
       height: '100%',
       usageStatistics: false,
       plugins: [
+        headingSpaceShortcutPlugin,
         thematicBreakShortcutPlugin,
         (context: {
           pmState: {
@@ -4234,9 +5116,8 @@ function App() {
 
           const normalized = normalizeHeadingMarkers(markdown)
           if (normalized !== markdown) {
-            normalizingContentRef.current = true
             lastEditorMarkdownRef.current = normalized
-            currentEditor.setMarkdown(normalized, false)
+            scheduleContentCommit(normalized, activeSpaceIdRef.current, activeTabIdRef.current, activeSubTabIdRef.current)
             return
           }
 
@@ -4248,6 +5129,7 @@ function App() {
             return
           }
 
+          maybeShowCompletedTaskUndoHint(markdown)
           lastEditorMarkdownRef.current = markdown
           scheduleContentCommit(markdown, activeSpaceIdRef.current, activeTabIdRef.current, activeSubTabIdRef.current)
         },
@@ -4255,8 +5137,18 @@ function App() {
     })
 
     installClearToolbarButton(editorMountRef.current, clearActiveNoteContent)
+    const cleanupHeadingPopupActiveState = installHeadingPopupActiveState(editorMountRef.current, () => editorRef.current)
+    const cleanupCompletedTaskCheckboxBehavior = installCompletedTaskCheckboxBehavior(
+      editorMountRef.current,
+      () => editorRef.current,
+      trackCompletedTaskQuickDelete,
+    )
+    const cleanupTaskTextReorderBehavior = installTaskTextReorderBehavior(editorMountRef.current, () => editorRef.current)
 
     return () => {
+      cleanupTaskTextReorderBehavior()
+      cleanupCompletedTaskCheckboxBehavior()
+      cleanupHeadingPopupActiveState()
       flushPendingContent()
       closeImageTools()
       try {
@@ -4889,6 +5781,18 @@ function App() {
     }))
   }
 
+  const updateNoteFontScaleSetting = (rawValue: string) => {
+    const nextScale = clampNoteFontScale(Number.parseFloat(rawValue))
+    setNoteFontScaleDraft(nextScale)
+    commitImmediateSettingsState((previous) => ({
+      ...previous,
+      ui: {
+        ...previous.ui,
+        noteFontScale: nextScale,
+      },
+    }))
+  }
+
   const updateShortcutSetting = (shortcutId: ShortcutId, nextShortcut: string) => {
     setShortcutDrafts((previous) => ({ ...previous, [shortcutId]: nextShortcut }))
     commitImmediateSettingsState((previous) => ({
@@ -5336,6 +6240,7 @@ function App() {
       id: Date.now(),
       message: toastMessage,
       tone,
+      durationMs: DEFAULT_TOAST_DURATION_MS,
     })
   }
 
@@ -5884,19 +6789,35 @@ function App() {
     return nextMarkdown
   }
 
-  const exportData = async (scope: 'space' | 'all') => {
+  const exportData = async (scope: 'space' | 'all', spaceId?: string) => {
     try {
       setExportStatus('building export...')
       const latestState = buildStateWithLatestEditorContent()
-      const exportState: AppState =
-        scope === 'space'
-          ? {
-              ...latestState,
-              activeSpaceId: activeSpace.id,
-              spaces: latestState.spaces.filter((space) => space.id === activeSpace.id),
-            }
-          : latestState
-      const defaultName = scope === 'space' ? `${sanitizeName(activeSpace.name)}-export.zip` : 'notes-export-all.zip'
+      let exportState: AppState
+      let defaultName: string
+      let spacesToExport: Space[]
+
+      if (scope === 'space') {
+        const selectedSpace =
+          latestState.spaces.find((space) => space.id === (spaceId ?? latestState.activeSpaceId)) ??
+          latestState.spaces.find((space) => space.id === latestState.activeSpaceId) ??
+          latestState.spaces[0]
+        if (!selectedSpace) {
+          setExportStatus('export failed')
+          return
+        }
+        exportState = {
+          ...latestState,
+          activeSpaceId: selectedSpace.id,
+          spaces: [selectedSpace],
+        }
+        defaultName = `${sanitizeName(selectedSpace.name)}-export.zip`
+        spacesToExport = [selectedSpace]
+      } else {
+        exportState = latestState
+        defaultName = 'notes-export-all.zip'
+        spacesToExport = exportState.spaces
+      }
 
       if (window.electronAPI?.exportAppState) {
         const result = await window.electronAPI.exportAppState({
@@ -5916,7 +6837,6 @@ function App() {
       }
 
       const zip = new JSZip()
-      const spacesToExport = scope === 'space' ? [activeSpace] : exportState.spaces
       const imageBank = new Map<string, Uint8Array>()
       const manifest = {
         exportedAt: new Date().toISOString(),
@@ -6285,6 +7205,7 @@ function App() {
         id: Date.now(),
         message: nextToastMessage,
         tone: 'success',
+        durationMs: DEFAULT_TOAST_DURATION_MS,
       })
     }
   }
@@ -6340,6 +7261,13 @@ function App() {
   const confirmModal = () => {
     if (!modal) return
 
+    if (modal.type === 'export-space') {
+      const spaceId = modal.spaceId
+      setModal(null)
+      void exportData('space', spaceId)
+      return
+    }
+
     if (modal.type === 'delete-target') {
       deleteTarget(modal.target, modal.permanent)
     }
@@ -6366,6 +7294,14 @@ function App() {
         title: 'restore all trash?',
         body: 'this restores every deleted tab and sub-tab in this space.',
         action: 'restore all',
+      }
+    }
+
+    if (modal.type === 'export-space') {
+      return {
+        title: 'export space',
+        body: 'choose the space to export. the current space is selected by default.',
+        action: 'export',
       }
     }
 
@@ -6430,11 +7366,12 @@ function App() {
       return
     }
 
-    const current = history[navIndexRef.current]
+    const activeHistory = history.slice(0, navIndexRef.current + 1)
+    const current = activeHistory[activeHistory.length - 1]
     if (current && areNavLocationsEqual(current, snapshot)) return
 
-    history.splice(navIndexRef.current + 1)
-    history.push(snapshot)
+    const collapsedHistory = activeHistory.filter((entry) => !areNavLocationsEqual(entry, snapshot))
+    history.splice(0, history.length, ...collapsedHistory, snapshot)
     navIndexRef.current = history.length - 1
   }, [viewMode, activeSpace.id, workspace.activeTabId, activeTab.activeSubTabId, trashTabId, trashSubTabId])
 
@@ -6702,7 +7639,12 @@ function App() {
   return (
     <main
       className={`app-shell ${state.theme === 'light' ? 'theme-light' : 'theme-dark'} ${viewMode === 'trash' ? 'view-trash' : 'view-main'}`}
-      style={{ '--tab-button-scale': String(state.ui.tabButtonScale) } as React.CSSProperties}
+      style={
+        {
+          '--tab-button-scale': String(state.ui.tabButtonScale),
+          '--note-font-scale': String(state.ui.noteFontScale),
+        } as React.CSSProperties
+      }
     >
       {viewMode !== 'spaces' && (
         <header className={`tabbar ${arrangeMode.active && viewMode === 'main' ? 'is-arranging' : ''}`}>
@@ -6710,8 +7652,6 @@ function App() {
             <div
               ref={primaryTabRailRef}
               className="tabbar-scroll tabbar-primary"
-              onDragOver={handleArrangeTabRailDragOver}
-              onDrop={handleArrangeTabRailDrop}
               {...primaryTablistProps}
             >
               {isNoteWorkspaceView &&
@@ -6763,7 +7703,7 @@ function App() {
                           type="button"
                           role="tab"
                           aria-selected={tab.id === activeTab.id}
-                          draggable={viewMode === 'main'}
+                          draggable={false}
                           className={`btn btn-sm ${tab.id === activeTab.id ? 'btn-primary' : 'btn-outline-secondary'} tab-btn parent-tab-btn ${arrangeableParentTabClassName} ${isArrangeMoveTarget ? 'is-arrange-target' : ''} ${isArrangeBeforeTarget ? 'is-arrange-target-before' : ''} ${isArrangeAfterTarget ? 'is-arrange-target-after' : ''} ${draggingParentTabId === tab.id ? 'is-dragging' : ''} ${
                             stageManagerSelection?.mode === 'partial' ? 'stage-manager-parent-partial' : ''
                           } ${stageManagerSelection?.mode === 'full' ? 'stage-manager-parent-full' : ''}`}
@@ -6785,6 +7725,9 @@ function App() {
                           }}
                           onPointerDown={(event) => {
                             if (viewMode !== 'main') return
+                            if (event.button === 0) {
+                              event.currentTarget.setPointerCapture(event.pointerId)
+                            }
                             startArrangeDragSeed(`tab:${tab.id}`, event)
                             if (arrangeMode.active) {
                               startArrangeTapCandidate({ key: `tab:${tab.id}`, type: 'tab', tabId: tab.id }, event)
@@ -6792,14 +7735,12 @@ function App() {
                             }
                             startArrangePress(event, { type: 'tab', tabId: tab.id }, `tab:${tab.id}`)
                           }}
+                          onPointerMove={(event) =>
+                            handleArrangeTabPointerMove(event, { type: 'tab', tabId: tab.id }, tab.title, 'parent')
+                          }
                           onPointerUp={(event) => {
                             if (viewMode !== 'main') return
-                            clearArrangeDragSeed()
-                            if (arrangeMode.active) {
-                              finalizeArrangeTapCandidate(`tab:${tab.id}`, event, () => selectTab(tab.id))
-                              return
-                            }
-                            clearArrangePressTimer()
+                            handleArrangeTabPointerUp(event, `tab:${tab.id}`, () => selectTab(tab.id))
                           }}
                           onPointerLeave={() => {
                             if (viewMode !== 'main') return
@@ -6809,14 +7750,8 @@ function App() {
                           }}
                           onPointerCancel={() => {
                             if (viewMode !== 'main') return
-                            clearArrangePressTimer()
-                            clearArrangeDragSeed()
-                            clearArrangeTapCandidate()
+                            cancelArrangeTabPointerDrag()
                           }}
-                          onDragStart={(event) => beginArrangeTabDrag(event, tab.id)}
-                          onDragOver={(event) => handleArrangeTabDragOver(event, tab.id)}
-                          onDrop={(event) => handleArrangeTabDrop(event, tab.id)}
-                          onDragEnd={endArrangeTabDrag}
                         >
                           {tab.title}
                         </button>
@@ -6926,11 +7861,29 @@ function App() {
         </header>
       )}
 
+      {tabArrangeDragPreview && (
+        <div
+          className={`tab-arrange-preview ${tabArrangeDragPreview.variant === 'subtab' ? 'is-subtab' : 'is-parent'}`}
+          style={{
+            left: `${tabArrangeDragPreview.currentX - tabArrangeDragPreview.offsetX}px`,
+            top: `${tabArrangeDragPreview.currentY - tabArrangeDragPreview.offsetY}px`,
+            width: `${tabArrangeDragPreview.width}px`,
+            height: `${tabArrangeDragPreview.height}px`,
+          }}
+        >
+          <span>{tabArrangeDragPreview.label}</span>
+        </div>
+      )}
+
       {viewMode === 'spaces' ? (
         <section
           className="spaces-grid-wrap"
           onClick={() => {
             if (arrangeMode.active && arrangeMode.scope === 'spaces') {
+              if (suppressNextSpaceArrangeExitRef.current) {
+                suppressNextSpaceArrangeExitRef.current = false
+                return
+              }
               exitArrangeMode()
             }
           }}
@@ -6938,8 +7891,6 @@ function App() {
           <div
             ref={spacesGridRef}
             className={`spaces-grid ${arrangeMode.active && arrangeMode.scope === 'spaces' ? 'is-arranging' : ''}`}
-            onDragOver={handleArrangeSpaceGridDragOver}
-            onDrop={handleArrangeSpaceGridDrop}
           >
             {state.spaces.map((space) =>
               editing?.type === 'space' && editing.id === space.id ? (
@@ -6978,16 +7929,19 @@ function App() {
                   key={space.id}
                   type="button"
                   data-arrange-space-id={space.id}
-                  draggable={viewMode === 'spaces'}
+                  draggable={false}
                   className={`space-card ${space.id === state.activeSpaceId ? 'is-active' : ''} ${arrangeableSpaceClassName} ${
                     isArrangeSpaceTarget ? 'is-arrange-target' : ''
                   } ${isArrangeSpaceBeforeTarget ? 'is-arrange-target-before' : ''} ${
                     isArrangeSpaceAfterTarget ? 'is-arrange-target-after' : ''
                   } ${draggingSpaceId === space.id ? 'is-dragging' : ''}`}
                   onClick={(event) => {
+                    if (consumeArrangeClickSuppression(`space:${space.id}`)) {
+                      event.stopPropagation()
+                      return
+                    }
                     if (arrangeMode.active && arrangeMode.scope === 'spaces') {
                       event.stopPropagation()
-                      if (consumeArrangeClickSuppression(`space:${space.id}`)) return
                       exitArrangeMode()
                       return
                     }
@@ -6995,6 +7949,9 @@ function App() {
                   }}
                   onContextMenu={(event) => openContextMenuForSpace(event, space.id)}
                   onPointerDown={(event) => {
+                    if (event.button === 0) {
+                      event.currentTarget.setPointerCapture(event.pointerId)
+                    }
                     startArrangeDragSeed(`space:${space.id}`, event)
                     if (arrangeMode.active && arrangeMode.scope === 'spaces') {
                       startArrangeTapCandidate({ key: `space:${space.id}`, type: 'space', spaceId: space.id }, event)
@@ -7002,28 +7959,16 @@ function App() {
                     }
                     startArrangePress(event, { type: 'space', spaceId: space.id }, `space:${space.id}`)
                   }}
-                  onPointerUp={(event) => {
-                    clearArrangeDragSeed()
-                    if (arrangeMode.active && arrangeMode.scope === 'spaces') {
-                      finalizeArrangeTapCandidate(`space:${space.id}`, event, exitArrangeMode)
-                      return
-                    }
-                    clearArrangePressTimer()
-                  }}
+                  onPointerMove={(event) => handleArrangeSpacePointerMove(event, space)}
+                  onPointerUp={(event) => handleArrangeSpacePointerUp(event, space.id)}
                   onPointerLeave={() => {
                     if (!arrangeMode.active) {
                       clearArrangePressTimer()
                     }
                   }}
                   onPointerCancel={() => {
-                    clearArrangePressTimer()
-                    clearArrangeDragSeed()
-                    clearArrangeTapCandidate()
+                    cancelArrangeSpacePointerDrag()
                   }}
-                  onDragStart={(event) => beginArrangeSpaceDrag(event, space.id)}
-                  onDragOver={(event) => handleArrangeSpaceDragOver(event, space.id)}
-                  onDrop={(event) => handleArrangeSpaceDrop(event, space.id)}
-                  onDragEnd={endArrangeTabDrag}
                 >
                   <span className="space-card-name">{space.name}</span>
                 </button>
@@ -7047,140 +7992,207 @@ function App() {
               +
             </button>
           </div>
+          {spaceArrangeDragPreview && (
+            <div
+              className="space-arrange-preview"
+              style={{
+                left: `${spaceArrangeDragPreview.currentX - spaceArrangeDragPreview.offsetX}px`,
+                top: `${spaceArrangeDragPreview.currentY - spaceArrangeDragPreview.offsetY}px`,
+                width: `${spaceArrangeDragPreview.width}px`,
+                height: `${spaceArrangeDragPreview.height}px`,
+              }}
+            >
+              <span className="space-card-name">{spaceArrangeDragPreview.label}</span>
+            </div>
+          )}
         </section>
       ) : viewMode === 'settings' ? (
         <section className="settings-page-wrap">
           <div className="settings-page-card">
-            <h2>settings</h2>
-            <p>automatically remove deleted items after:</p>
-            <div className="settings-field-row">
-              <input
-                type="number"
-                className="settings-number-input"
-                min={MIN_AUTO_REMOVE_DAYS}
-                max={MAX_AUTO_REMOVE_DAYS}
-                step={1}
-                value={settingsDaysDraft}
-                onChange={(event) => updateAutoRemoveDaysSetting(event.target.value)}
-                onBlur={() => updateAutoRemoveDaysSetting(settingsDaysDraft, true)}
-              />
-              <span className="settings-field-suffix">days</span>
-            </div>
-            <p className="settings-help">
-              min {MIN_AUTO_REMOVE_DAYS} day, max {MAX_AUTO_REMOVE_DAYS} days. default is {DEFAULT_AUTO_REMOVE_DAYS}.
-            </p>
-            <div className="settings-divider" />
-            <p>hotkeys ({isMacPlatform ? 'mac' : 'windows'}):</p>
-            <div className="settings-hotkeys-list">
-              {(
-                [
-                  ['toggleTabTrash', 'toggle tabs/trash'],
-                  ['openSpaces', 'open spaces'],
-                  ['newTab', 'new parent tab'],
-                  ['newSubTab', 'new sub tab'],
-                  ['cycleSubTabNext', 'next sub tab'],
-                  ['cycleSubTabPrev', 'previous sub tab'],
-                ] as Array<[ShortcutId, string]>
-              ).map(([shortcutId, label]) => (
-                <div key={shortcutId} className="settings-hotkey-row">
-                  <span className="settings-hotkey-label">{label}</span>
-                  <button
-                    type="button"
-                    className={`settings-shortcut-btn ${editingShortcut === shortcutId ? 'is-recording' : ''}`}
-                    onClick={() => setEditingShortcut((current) => (current === shortcutId ? null : shortcutId))}
-                  >
-                    {editingShortcut === shortcutId
-                      ? 'press keys...'
-                      : formatShortcutLabel(shortcutDrafts[shortcutId], isMacPlatform)}
-                  </button>
-                </div>
+            <div className="settings-section-tabs" role="tablist" aria-label="settings sections">
+              {(['hotkeys', 'data', 'visuals'] as SettingsSection[]).map((section) => (
+                <button
+                  key={section}
+                  type="button"
+                  role="tab"
+                  aria-selected={settingsSection === section}
+                  className={`settings-section-tab ${settingsSection === section ? 'is-active' : ''}`}
+                  onClick={() => {
+                    setSettingsSection(section)
+                    if (section !== 'hotkeys') setEditingShortcut(null)
+                  }}
+                >
+                  {section}
+                </button>
               ))}
             </div>
-            <p className="settings-help">click a hotkey and press a new key combination. press escape to cancel.</p>
-            <div className="settings-hotkey-row">
-              <label className="settings-hotkey-label" htmlFor="settings-mouse-back-forward">
-                enable mouse back/forward buttons
-              </label>
-              <div className="form-check form-switch settings-switch">
-                <input
-                  id="settings-mouse-back-forward"
-                  className="form-check-input"
-                  type="checkbox"
-                  role="switch"
-                  checked={mouseBackForwardEnabledDraft}
-                  onChange={(event) => updateMouseBackForwardSetting(event.target.checked)}
-                />
+
+            {settingsSection === 'hotkeys' && (
+              <div className="settings-section-panel" role="tabpanel">
+                <p>hotkeys ({isMacPlatform ? 'mac' : 'windows'}):</p>
+                <div className="settings-hotkeys-list">
+                  {(
+                    [
+                      ['toggleTabTrash', 'toggle tabs/trash'],
+                      ['openSpaces', 'open spaces'],
+                      ['newTab', 'new parent tab'],
+                      ['newSubTab', 'new sub tab'],
+                      ['cycleSubTabNext', 'next sub tab'],
+                      ['cycleSubTabPrev', 'previous sub tab'],
+                    ] as Array<[ShortcutId, string]>
+                  ).map(([shortcutId, label]) => (
+                    <div key={shortcutId} className="settings-hotkey-row">
+                      <span className="settings-hotkey-label">{label}</span>
+                      <button
+                        type="button"
+                        className={`settings-shortcut-btn ${editingShortcut === shortcutId ? 'is-recording' : ''}`}
+                        onClick={() => setEditingShortcut((current) => (current === shortcutId ? null : shortcutId))}
+                      >
+                        {editingShortcut === shortcutId
+                          ? 'press keys...'
+                          : formatShortcutLabel(shortcutDrafts[shortcutId], isMacPlatform)}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <p className="settings-help">click a hotkey and press a new key combination. press escape to cancel.</p>
+                <div className="settings-hotkey-row">
+                  <label className="settings-hotkey-label" htmlFor="settings-mouse-back-forward">
+                    enable mouse back/forward buttons
+                  </label>
+                  <div className="form-check form-switch settings-switch">
+                    <input
+                      id="settings-mouse-back-forward"
+                      className="form-check-input"
+                      type="checkbox"
+                      role="switch"
+                      checked={mouseBackForwardEnabledDraft}
+                      onChange={(event) => updateMouseBackForwardSetting(event.target.checked)}
+                    />
+                  </div>
+                </div>
+                <div className="settings-hotkey-row">
+                  <label className="settings-hotkey-label" htmlFor="settings-generic-history-hotkeys">
+                    enable generic back/forward hotkeys
+                  </label>
+                  <div className="form-check form-switch settings-switch">
+                    <input
+                      id="settings-generic-history-hotkeys"
+                      className="form-check-input"
+                      type="checkbox"
+                      role="switch"
+                      checked={genericHistoryHotkeysEnabledDraft}
+                      onChange={(event) => updateGenericHistoryHotkeysSetting(event.target.checked)}
+                    />
+                  </div>
+                </div>
+                <p className="settings-help">
+                  generic hotkeys: {isMacPlatform ? 'cmd+[ and cmd+]' : 'alt+left and alt+right'}.
+                </p>
               </div>
-            </div>
-            <div className="settings-hotkey-row">
-              <label className="settings-hotkey-label" htmlFor="settings-generic-history-hotkeys">
-                enable generic back/forward hotkeys
-              </label>
-              <div className="form-check form-switch settings-switch">
-                <input
-                  id="settings-generic-history-hotkeys"
-                  className="form-check-input"
-                  type="checkbox"
-                  role="switch"
-                  checked={genericHistoryHotkeysEnabledDraft}
-                  onChange={(event) => updateGenericHistoryHotkeysSetting(event.target.checked)}
-                />
+            )}
+
+            {settingsSection === 'data' && (
+              <div className="settings-section-panel" role="tabpanel">
+                <p>automatically remove deleted items after:</p>
+                <div className="settings-field-row">
+                  <input
+                    type="number"
+                    className="settings-number-input"
+                    min={MIN_AUTO_REMOVE_DAYS}
+                    max={MAX_AUTO_REMOVE_DAYS}
+                    step={1}
+                    value={settingsDaysDraft}
+                    onChange={(event) => updateAutoRemoveDaysSetting(event.target.value)}
+                    onBlur={() => updateAutoRemoveDaysSetting(settingsDaysDraft, true)}
+                  />
+                  <span className="settings-field-suffix">days</span>
+                </div>
+                <p className="settings-help">
+                  min {MIN_AUTO_REMOVE_DAYS} day, max {MAX_AUTO_REMOVE_DAYS} days. default is {DEFAULT_AUTO_REMOVE_DAYS}.
+                </p>
+                <div className="settings-divider" />
+                <div className="settings-page-actions">
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-light"
+                    onClick={() => setModal({ type: 'export-space', spaceId: activeSpace.id })}
+                  >
+                    export space
+                  </button>
+                  <button type="button" className="btn btn-sm btn-outline-light" onClick={() => exportData('all')}>
+                    export all
+                  </button>
+                </div>
+                <p className="settings-help">exports convert internal tab markers to four spaces for clean markdown files.</p>
+                {exportStatus && <p className="settings-help">{exportStatus}</p>}
               </div>
-            </div>
-            <p className="settings-help">
-              generic hotkeys: {isMacPlatform ? 'cmd+[ and cmd+]' : 'alt+left and alt+right'}.
-            </p>
-            <div className="settings-hotkey-row settings-slider-row">
-              <label className="settings-hotkey-label" htmlFor="settings-tab-button-scale">
-                tab button size
-              </label>
-              <div className="settings-slider-wrap">
-                <input
-                  id="settings-tab-button-scale"
-                  className="form-range settings-range-input"
-                  type="range"
-                  min={MIN_TAB_BUTTON_SCALE}
-                  max={MAX_TAB_BUTTON_SCALE}
-                  step={TAB_BUTTON_SCALE_STEP}
-                  value={tabButtonScaleDraft}
-                  onChange={(event) => updateTabButtonScaleSetting(event.target.value)}
-                />
-                <span className="settings-range-value">{Math.round(tabButtonScaleDraft * 100)}%</span>
+            )}
+
+            {settingsSection === 'visuals' && (
+              <div className="settings-section-panel" role="tabpanel">
+                <div className="settings-hotkey-row settings-slider-row">
+                  <label className="settings-hotkey-label" htmlFor="settings-tab-button-scale">
+                    tab button size
+                  </label>
+                  <div className="settings-slider-wrap">
+                    <input
+                      id="settings-tab-button-scale"
+                      className="form-range settings-range-input"
+                      type="range"
+                      min={MIN_TAB_BUTTON_SCALE}
+                      max={MAX_TAB_BUTTON_SCALE}
+                      step={TAB_BUTTON_SCALE_STEP}
+                      value={tabButtonScaleDraft}
+                      onChange={(event) => updateTabButtonScaleSetting(event.target.value)}
+                    />
+                    <span className="settings-range-value">{Math.round(tabButtonScaleDraft * 100)}%</span>
+                  </div>
+                </div>
+                <p className="settings-help">adjusts the size of the parent and sub-tab buttons together.</p>
+                <div className="settings-hotkey-row settings-slider-row">
+                  <label className="settings-hotkey-label" htmlFor="settings-note-font-scale">
+                    note font size
+                  </label>
+                  <div className="settings-slider-wrap">
+                    <input
+                      id="settings-note-font-scale"
+                      className="form-range settings-range-input"
+                      type="range"
+                      min={MIN_NOTE_FONT_SCALE}
+                      max={MAX_NOTE_FONT_SCALE}
+                      step={NOTE_FONT_SCALE_STEP}
+                      value={noteFontScaleDraft}
+                      onChange={(event) => updateNoteFontScaleSetting(event.target.value)}
+                    />
+                    <span className="settings-range-value">{Math.round(noteFontScaleDraft * 100)}%</span>
+                  </div>
+                </div>
+                <p className="settings-help">adjusts note text size without changing tabs or toolbar controls.</p>
+                <div className="settings-hotkey-row">
+                  <label
+                    className="settings-hotkey-label"
+                    htmlFor="settings-show-parent-home-tab"
+                    title='adds a fixed first sub-tab named "home" for each parent tab.'
+                  >
+                    show parent home tab with the other sub-tabs
+                  </label>
+                  <div className="form-check form-switch settings-switch">
+                    <input
+                      id="settings-show-parent-home-tab"
+                      className="form-check-input"
+                      type="checkbox"
+                      role="switch"
+                      checked={showParentHomeTabDraft}
+                      onChange={(event) => updateShowParentHomeTabSetting(event.target.checked)}
+                    />
+                  </div>
+                </div>
+                <p className="settings-help">
+                  when enabled, a locked <code>home</code> sub-tab appears first. it cannot be renamed or deleted.
+                </p>
               </div>
-            </div>
-            <p className="settings-help">adjusts the size of the parent and sub-tab buttons together.</p>
-            <div className="settings-hotkey-row">
-              <label
-                className="settings-hotkey-label"
-                htmlFor="settings-show-parent-home-tab"
-                title='adds a fixed first sub-tab named "home" for each parent tab.'
-              >
-                show parent home tab with the other sub-tabs
-              </label>
-              <div className="form-check form-switch settings-switch">
-                <input
-                  id="settings-show-parent-home-tab"
-                  className="form-check-input"
-                  type="checkbox"
-                  role="switch"
-                  checked={showParentHomeTabDraft}
-                  onChange={(event) => updateShowParentHomeTabSetting(event.target.checked)}
-                />
-              </div>
-            </div>
-            <p className="settings-help">
-              when enabled, a locked <code>home</code> sub-tab appears first. it cannot be renamed or deleted.
-            </p>
-            <div className="settings-page-actions">
-              <button type="button" className="btn btn-sm btn-outline-light" onClick={() => exportData('space')}>
-                export space
-              </button>
-              <button type="button" className="btn btn-sm btn-outline-light" onClick={() => exportData('all')}>
-                export all
-              </button>
-            </div>
-            <p className="settings-help">exports convert internal tab markers to four spaces for clean markdown files.</p>
-            {exportStatus && <p className="settings-help">{exportStatus}</p>}
+            )}
           </div>
         </section>
       ) : (
@@ -7191,7 +8203,7 @@ function App() {
               role="tablist"
               aria-label="Nested note tabs"
             >
-              <div ref={subTabRailRef} className="tabbar-scroll" onDragOver={handleArrangeSubTabRailDragOver} onDrop={handleArrangeSubTabRailDrop}>
+              <div ref={subTabRailRef} className="tabbar-scroll">
                 {isNoteWorkspaceView && state.ui.showParentHomeTab && (
                   <button
                     type="button"
@@ -7247,8 +8259,6 @@ function App() {
                       clearArrangePressTimer()
                       clearArrangeTapCandidate()
                     }}
-                    onDragOver={handleArrangeHomeSubTabDragOver}
-                    onDrop={handleArrangeHomeSubTabDrop}
                   >
                     home
                   </button>
@@ -7286,7 +8296,7 @@ function App() {
                         type="button"
                         role="tab"
                         aria-selected={viewMode === 'main' && subTab.id === activeSubTab?.id}
-                        draggable={viewMode === 'main'}
+                        draggable={false}
                         className={`btn btn-sm ${viewMode === 'main' && subTab.id === activeSubTab?.id ? 'btn-info' : 'btn-outline-info'} tab-btn subtab-btn ${arrangeableSubTabClassName} ${
                           arrangeMode.active &&
                           arrangeMode.dragItem?.type === 'subtab' &&
@@ -7326,6 +8336,9 @@ function App() {
                         }}
                         onPointerDown={(event) => {
                           if (viewMode !== 'main') return
+                          if (event.button === 0) {
+                            event.currentTarget.setPointerCapture(event.pointerId)
+                          }
                           startArrangeDragSeed(`subtab:${subTab.id}`, event)
                           if (arrangeMode.active) {
                             startArrangeTapCandidate({ key: `subtab:${subTab.id}`, type: 'subtab', subTabId: subTab.id }, event)
@@ -7333,14 +8346,17 @@ function App() {
                           }
                           startArrangePress(event, { type: 'subtab', parentTabId: activeTab.id, subTabId: subTab.id }, `subtab:${subTab.id}`)
                         }}
+                        onPointerMove={(event) =>
+                          handleArrangeTabPointerMove(
+                            event,
+                            { type: 'subtab', parentTabId: activeTab.id, subTabId: subTab.id },
+                            subTab.title,
+                            'subtab',
+                          )
+                        }
                         onPointerUp={(event) => {
                           if (viewMode !== 'main') return
-                          clearArrangeDragSeed()
-                          if (arrangeMode.active) {
-                            finalizeArrangeTapCandidate(`subtab:${subTab.id}`, event, () => selectSubTab(subTab.id))
-                            return
-                          }
-                          clearArrangePressTimer()
+                          handleArrangeTabPointerUp(event, `subtab:${subTab.id}`, () => selectSubTab(subTab.id))
                         }}
                         onPointerLeave={() => {
                           if (viewMode !== 'main') return
@@ -7350,14 +8366,8 @@ function App() {
                         }}
                         onPointerCancel={() => {
                           if (viewMode !== 'main') return
-                          clearArrangePressTimer()
-                          clearArrangeDragSeed()
-                          clearArrangeTapCandidate()
+                          cancelArrangeTabPointerDrag()
                         }}
-                        onDragStart={(event) => beginArrangeSubTabDrag(event, activeTab.id, subTab.id)}
-                        onDragOver={(event) => handleArrangeSubTabDragOver(event, subTab.id)}
-                        onDrop={(event) => handleArrangeSubTabDrop(event, subTab.id)}
-                        onDragEnd={endArrangeSubTabDrag}
                       >
                         {subTab.title}
                       </button>
@@ -8112,16 +9122,37 @@ function App() {
 
       {modal && (
         <div className="delete-modal-backdrop" onClick={() => setModal(null)}>
-          <div className="delete-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+          <div
+            className={`delete-modal ${modal.type === 'export-space' ? 'settings-modal' : ''}`}
+            role="dialog"
+            aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
+          >
             <h2>{modalText.title}</h2>
             <p>{modalText.body}</p>
+            {modal.type === 'export-space' && (
+              <label className="settings-modal-field">
+                <span>space</span>
+                <select
+                  className="settings-select-input"
+                  value={state.spaces.some((space) => space.id === modal.spaceId) ? modal.spaceId : activeSpace.id}
+                  onChange={(event) => setModal({ type: 'export-space', spaceId: event.target.value })}
+                >
+                  {state.spaces.map((space) => (
+                    <option key={space.id} value={space.id}>
+                      {space.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <div className="delete-modal-actions">
               <button type="button" className="btn btn-sm btn-outline-light modal-cancel-btn" onClick={() => setModal(null)}>
                 cancel
               </button>
               <button
                 type="button"
-                className="btn btn-sm btn-danger"
+                className={`btn btn-sm ${modal.type === 'export-space' ? 'modal-primary-btn' : 'btn-danger'}`}
                 onClick={() => {
                   if (modal.type === 'delete-target' && modal.target.type === 'space' && state.spaces.length <= 1) {
                     setModal(null)
@@ -8139,7 +9170,18 @@ function App() {
 
       {toast && (
         <div className="app-toast-layer" aria-live="polite" aria-atomic="true">
-          <div key={toast.id} className={`app-toast app-toast-${toast.tone}`}>
+          <div
+            key={toast.id}
+            className={`app-toast app-toast-${toast.tone}`}
+            onMouseEnter={() => {
+              setToastHovered(true)
+              setToastWasHovered(true)
+            }}
+            onMouseLeave={() => {
+              setToastHovered(false)
+              setToastWasHovered(true)
+            }}
+          >
             {toast.message}
           </div>
         </div>

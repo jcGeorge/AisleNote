@@ -32,6 +32,9 @@ export type StorageGlobalSettings = {
   }
   ui: {
     showParentHomeTab: boolean
+    stageManagerOpenDestinationAfterApply: boolean
+    tabButtonScale: number
+    noteFontScale: number
   }
 }
 
