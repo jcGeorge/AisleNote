@@ -1,10 +1,12 @@
 export type StorageSchemaVersion = 1
 
 export type StorageEntityId = string
-export type StorageTheme = 'dark' | 'light'
+export type StorageTheme = 'dark' | 'light' | 'dusk'
 export type StorageShortcutId =
   | 'toggleTabTrash'
+  | 'openDomains'
   | 'openSpaces'
+  | 'newTab'
   | 'newSubTab'
   | 'cycleSubTabNext'
   | 'cycleSubTabPrev'
@@ -58,7 +60,7 @@ export type StorageRootManifest = {
     spaceId: StorageEntityId
     parentTabId: StorageEntityId | null
     subTabId: StorageEntityId | null
-    viewMode: 'spaces' | 'main' | 'trash' | 'settings'
+    viewMode: 'domains' | 'spaces' | 'main' | 'trash' | 'settings' | 'stage-manager'
   }
 }
 

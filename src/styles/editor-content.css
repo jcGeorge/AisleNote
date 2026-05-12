@@ -1,0 +1,181 @@
+.toastui-editor-popup-body input[type='text'] {
+  background-color: #101d34 !important;
+  color: #e9ecef !important;
+  border: 1px solid #334e79 !important;
+}
+
+.toastui-editor-popup-body input[type='text']:focus {
+  border-color: #5f89dc !important;
+  box-shadow: none !important;
+}
+
+.toastui-editor-popup-add-table {
+  background-color: #0f1b32 !important;
+}
+
+.toastui-editor-popup-add-table .toastui-editor-table-selection {
+  background-color: #111f37 !important;
+  border: 1px solid #35517d !important;
+}
+
+.toastui-editor-popup-add-table .toastui-editor-table-cell {
+  background-color: #13223b !important;
+  border: 1px solid #2f4770 !important;
+}
+
+.toastui-editor-popup-add-table .toastui-editor-table-selection-layer {
+  background-color: rgba(79, 124, 255, 0.32) !important;
+  border: 1px solid #6f94e6 !important;
+}
+
+.toastui-editor-popup-add-table .toastui-editor-table-description {
+  color: #e8f1ff !important;
+}
+
+.toastui-editor-md-container,
+.toastui-editor-ww-container,
+.toastui-editor-contents,
+.toastui-editor-contents p,
+.toastui-editor-contents li,
+.toastui-editor-contents span,
+.toastui-editor-contents div,
+.toastui-editor-contents strong,
+.toastui-editor-contents em,
+.toastui-editor-contents code,
+.toastui-editor-contents blockquote,
+.toastui-editor-contents th,
+.toastui-editor-contents td,
+.toastui-editor-contents a,
+.toastui-editor .ProseMirror,
+.toastui-editor .ProseMirror p {
+  background-color: #0b1528 !important;
+  color: #e9ecef !important;
+}
+
+.toastui-editor .ProseMirror,
+.toastui-editor .ProseMirror * {
+  color: #e9ecef !important;
+}
+
+.toastui-editor-contents {
+  padding-inline: 0.3125rem;
+}
+
+.toastui-editor-contents,
+.toastui-editor .ProseMirror {
+  font-size: calc(1rem * var(--note-font-scale, 1)) !important;
+}
+
+.toastui-editor-contents p,
+.toastui-editor-contents li,
+.toastui-editor-contents span,
+.toastui-editor-contents div,
+.toastui-editor-contents strong,
+.toastui-editor-contents em,
+.toastui-editor-contents code,
+.toastui-editor-contents blockquote,
+.toastui-editor-contents th,
+.toastui-editor-contents td,
+.toastui-editor-contents a,
+.toastui-editor .ProseMirror p,
+.toastui-editor .ProseMirror li,
+.toastui-editor .ProseMirror span,
+.toastui-editor .ProseMirror div,
+.toastui-editor .ProseMirror strong,
+.toastui-editor .ProseMirror em,
+.toastui-editor .ProseMirror code,
+.toastui-editor .ProseMirror blockquote,
+.toastui-editor .ProseMirror th,
+.toastui-editor .ProseMirror td,
+.toastui-editor .ProseMirror a {
+  font-size: inherit !important;
+}
+
+.toastui-editor .ProseMirror p,
+.toastui-editor .ProseMirror li,
+.toastui-editor-contents p,
+.toastui-editor-contents li {
+  white-space: pre-wrap !important;
+  tab-size: 4 !important;
+}
+
+.toastui-editor .ProseMirror .multiline-cursor-widget,
+.toastui-editor-contents .multiline-cursor-widget {
+  display: inline-block;
+  width: 2px;
+  height: 1.15em;
+  margin-left: -1px;
+  vertical-align: -0.18em;
+  background: #e9ecef !important;
+  pointer-events: none;
+}
+
+.toastui-editor .ProseMirror .multiline-selection-range,
+.toastui-editor-contents .multiline-selection-range {
+  background: rgba(83, 137, 238, 0.34) !important;
+  color: inherit !important;
+}
+
+.toastui-editor-contents h1,
+.toastui-editor .ProseMirror h1 {
+  font-size: calc(1.35rem * var(--note-font-scale, 1)) !important;
+  margin: 0.6rem 0 0.45rem !important;
+  border-bottom: 0 !important;
+  padding-bottom: 0 !important;
+  color: #f3f6fb !important;
+}
+
+.toastui-editor-contents h2,
+.toastui-editor .ProseMirror h2 {
+  font-size: calc(1.15rem * var(--note-font-scale, 1)) !important;
+  border-bottom: 0 !important;
+  padding-bottom: 0 !important;
+  color: #f3f6fb !important;
+}
+
+.toastui-editor-contents h3,
+.toastui-editor-contents h4,
+.toastui-editor-contents h5,
+.toastui-editor-contents h6,
+.toastui-editor .ProseMirror h1,
+.toastui-editor .ProseMirror h2,
+.toastui-editor .ProseMirror h3,
+.toastui-editor .ProseMirror h4,
+.toastui-editor .ProseMirror h5,
+.toastui-editor .ProseMirror h6 {
+  color: #f3f6fb !important;
+}
+
+.toastui-editor-contents hr {
+  display: block !important;
+  border: 0 !important;
+  margin: 0.95rem 0 !important;
+  height: 2px !important;
+  opacity: 0.74 !important;
+  background: linear-gradient(
+    90deg,
+    transparent 0,
+    rgba(62, 81, 111, 0.92) 20px,
+    rgba(62, 81, 111, 0.92) calc(100% - 20px),
+    transparent 100%
+  ) !important;
+}
+
+.toastui-editor .ProseMirror pre,
+.toastui-editor-contents pre {
+  background: #07090f !important;
+  border: 1px solid #1f2a3d !important;
+  color: #e9ecef !important;
+}
+
+.toastui-editor .ProseMirror pre code,
+.toastui-editor-contents pre code {
+  background: transparent !important;
+  color: #e9ecef !important;
+}
+
+.toastui-editor .ProseMirror code,
+.toastui-editor-contents code {
+  background: #121826 !important;
+  color: #e9ecef !important;
+}

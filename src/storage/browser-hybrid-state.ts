@@ -40,6 +40,8 @@ const BROWSER_DB_VERSION = 1
 const BROWSER_FILE_STORE = 'files'
 const DEFAULT_TOPIC_ID = 'default-topic'
 const DEFAULT_TOPIC_TITLE = 'Default'
+const DEFAULT_DOMAIN_ID = 'humble-beginnings-domain'
+const DEFAULT_DOMAIN_NAME = 'humble beginnings'
 const DEFAULT_AUTO_REMOVE_DAYS = 7
 const IMAGE_MARKDOWN_PATTERN = /!\[([^\]]*)\]\(([^)]+)\)/g
 
@@ -49,6 +51,72 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function ensureArray<T = unknown>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : []
+}
+
+function getDomainId(domain: Record<string, unknown>, fallback = DEFAULT_DOMAIN_ID): string {
+  return typeof domain.id === 'string' && domain.id ? domain.id : fallback
+}
+
+function getDomainTitle(domain: Record<string, unknown>, fallback = DEFAULT_DOMAIN_NAME): string {
+  if (typeof domain.name === 'string' && domain.name.trim()) return domain.name
+  if (typeof domain.title === 'string' && domain.title.trim()) return domain.title
+  return fallback
+}
+
+function getDomainsFromAppState(appState: Record<string, unknown>): Array<Record<string, unknown>> {
+  const domains = ensureArray<Record<string, unknown>>(appState.domains).filter(isRecord)
+  if (domains.length > 0) return domains
+
+  const spaces = ensureArray<Record<string, unknown>>(appState.spaces).filter(isRecord)
+  if (spaces.length === 0) return []
+
+  const activeSpaceId =
+    typeof appState.activeSpaceId === 'string' && spaces.some((space) => space.id === appState.activeSpaceId)
+      ? appState.activeSpaceId
+      : typeof spaces[0]?.id === 'string'
+        ? spaces[0].id
+        : ''
+
+  return [
+    {
+      id: DEFAULT_DOMAIN_ID,
+      name: DEFAULT_DOMAIN_NAME,
+      activeSpaceId,
+      spaces,
+    },
+  ]
+}
+
+function getActiveDomainFromAppState(
+  appState: Record<string, unknown>,
+  domains: Array<Record<string, unknown>>,
+): Record<string, unknown> | null {
+  if (domains.length === 0) return null
+  if (typeof appState.activeDomainId === 'string') {
+    const activeDomain = domains.find((domain) => domain.id === appState.activeDomainId)
+    if (activeDomain) return activeDomain
+  }
+  return domains[0]
+}
+
+function getActiveSpaceFromDomain(
+  domain: Record<string, unknown> | null,
+  fallbackActiveSpaceId?: unknown,
+): Record<string, unknown> | null {
+  if (!domain) return null
+  const spaces = ensureArray<Record<string, unknown>>(domain.spaces).filter(isRecord)
+  if (spaces.length === 0) return null
+  const activeSpaceId =
+    typeof domain.activeSpaceId === 'string'
+      ? domain.activeSpaceId
+      : typeof fallbackActiveSpaceId === 'string'
+        ? fallbackActiveSpaceId
+        : ''
+  return spaces.find((space) => space.id === activeSpaceId) ?? spaces[0]
+}
+
+function getThemeForStorage(appState: Record<string, unknown>): string {
+  return appState.theme === 'light' || appState.theme === 'dusk' ? appState.theme : 'dark'
 }
 
 function normalizePosixPath(value: string): string {
@@ -239,16 +307,18 @@ function inlineMarkdownImages(markdown: string, notePath: string, fileMap: Map<s
 }
 
 function buildRootManifest(appState: Record<string, unknown>) {
-  const spaces = ensureArray<Record<string, unknown>>(appState.spaces)
-  const activeSpace = spaces.find((space) => space.id === appState.activeSpaceId) ?? spaces[0] ?? null
+  const domains = getDomainsFromAppState(appState)
+  const activeDomain = getActiveDomainFromAppState(appState, domains)
+  const activeSpace = getActiveSpaceFromDomain(activeDomain, appState.activeSpaceId)
   const activeSpaceData = isRecord(activeSpace?.data) ? activeSpace.data : null
   const activeTabs = ensureArray<Record<string, unknown>>(activeSpaceData?.tabs)
   const activeTab = activeTabs.find((tab) => tab.id === activeSpaceData?.activeTabId) ?? activeTabs[0] ?? null
+  const activeDomainId = activeDomain ? getDomainId(activeDomain) : DEFAULT_TOPIC_ID
 
   return {
     schemaVersion: STORAGE_SCHEMA_VERSION,
     globalSettings: {
-      theme: appState.theme === 'light' ? 'light' : 'dark',
+      theme: getThemeForStorage(appState),
       hotkeys:
         isRecord(appState.hotkeys)
           ? appState.hotkeys
@@ -267,11 +337,17 @@ function buildRootManifest(appState: Record<string, unknown>) {
               noteFontScale: 1,
             },
     },
-    topics: [{ id: DEFAULT_TOPIC_ID, title: DEFAULT_TOPIC_TITLE }],
-    activeTopicId: DEFAULT_TOPIC_ID,
+    topics:
+      domains.length > 0
+        ? domains.map((domain) => ({
+            id: getDomainId(domain),
+            title: getDomainTitle(domain),
+          }))
+        : [{ id: DEFAULT_TOPIC_ID, title: DEFAULT_TOPIC_TITLE }],
+    activeTopicId: activeDomainId,
     lastOpened: activeSpace
       ? {
-          topicId: DEFAULT_TOPIC_ID,
+          topicId: activeDomainId,
           spaceId: typeof activeSpace.id === 'string' ? activeSpace.id : '',
           parentTabId: typeof activeTab?.id === 'string' ? activeTab.id : null,
           subTabId: typeof activeTab?.activeSubTabId === 'string' ? activeTab.activeSubTabId : null,
@@ -281,18 +357,19 @@ function buildRootManifest(appState: Record<string, unknown>) {
   }
 }
 
-function buildTopicManifest(appState: Record<string, unknown>) {
-  const spaces = ensureArray<Record<string, unknown>>(appState.spaces)
+function buildTopicManifest(domain: Record<string, unknown>) {
+  const spaces = ensureArray<Record<string, unknown>>(domain.spaces)
+  const domainId = getDomainId(domain)
   return {
-    id: DEFAULT_TOPIC_ID,
-    title: DEFAULT_TOPIC_TITLE,
+    id: domainId,
+    title: getDomainTitle(domain),
     spaces: spaces.map((space) => ({
       id: typeof space.id === 'string' ? space.id : '',
       title: typeof space.name === 'string' ? space.name : 'Untitled Space',
     })),
     activeSpaceId:
-      typeof appState.activeSpaceId === 'string' && spaces.some((space) => space.id === appState.activeSpaceId)
-        ? appState.activeSpaceId
+      typeof domain.activeSpaceId === 'string' && spaces.some((space) => space.id === domain.activeSpaceId)
+        ? domain.activeSpaceId
         : (typeof spaces[0]?.id === 'string' ? spaces[0].id : ''),
   }
 }
@@ -303,14 +380,14 @@ function writeAssetBank(fileMap: Map<string, BrowserStoredFile>, basePath: strin
   }
 }
 
-function writeSpaceFiles(fileMap: Map<string, BrowserStoredFile>, space: Record<string, unknown>) {
+function writeSpaceFiles(fileMap: Map<string, BrowserStoredFile>, topicId: string, space: Record<string, unknown>) {
   const spaceId = typeof space.id === 'string' ? space.id : ''
   if (!spaceId) return
 
   const spaceRoot = joinPosix(
     STORAGE_ROOT_DIR,
     STORAGE_TOPICS_DIR,
-    DEFAULT_TOPIC_ID,
+    topicId,
     STORAGE_SPACES_DIR,
     spaceId,
   )
@@ -390,7 +467,7 @@ function writeSpaceFiles(fileMap: Map<string, BrowserStoredFile>, space: Record<
       file: homeNoteFile,
       deletedAt: typeof entry.deletedAt === 'number' ? entry.deletedAt : Date.now(),
       original: {
-        topicId: DEFAULT_TOPIC_ID,
+        topicId,
         spaceId,
         parentTabId: typeof deletedTab.id === 'string' ? deletedTab.id : entryId,
         subTabId: null,
@@ -418,7 +495,7 @@ function writeSpaceFiles(fileMap: Map<string, BrowserStoredFile>, space: Record<
       deletedAt: typeof entry.deletedAt === 'number' ? entry.deletedAt : Date.now(),
       parentTabTitle: typeof entry.parentTabTitle === 'string' ? entry.parentTabTitle : 'Unknown Tab',
       original: {
-        topicId: DEFAULT_TOPIC_ID,
+        topicId,
         spaceId,
         parentTabId: typeof entry.parentTabId === 'string' ? entry.parentTabId : '',
         subTabId: typeof subTab.id === 'string' ? subTab.id : null,
@@ -460,16 +537,20 @@ function writeSpaceFiles(fileMap: Map<string, BrowserStoredFile>, space: Record<
 export function buildHybridFileMapFromSerializedState(serializedState: string): Map<string, BrowserStoredFile> {
   const parsed = JSON.parse(serializedState) as Record<string, unknown>
   const fileMap = new Map<string, BrowserStoredFile>()
+  const domains = getDomainsFromAppState(parsed)
 
   setTextFile(fileMap, joinPosix(STORAGE_ROOT_DIR, STORAGE_MANIFEST_FILE), JSON.stringify(buildRootManifest(parsed), null, 2))
-  setTextFile(
-    fileMap,
-    joinPosix(STORAGE_ROOT_DIR, STORAGE_TOPICS_DIR, DEFAULT_TOPIC_ID, STORAGE_MANIFEST_FILE),
-    JSON.stringify(buildTopicManifest(parsed), null, 2),
-  )
+  domains.forEach((domain) => {
+    const domainId = getDomainId(domain)
+    setTextFile(
+      fileMap,
+      joinPosix(STORAGE_ROOT_DIR, STORAGE_TOPICS_DIR, domainId, STORAGE_MANIFEST_FILE),
+      JSON.stringify(buildTopicManifest(domain), null, 2),
+    )
 
-  ensureArray<Record<string, unknown>>(parsed.spaces).forEach((space) => {
-    writeSpaceFiles(fileMap, space)
+    ensureArray<Record<string, unknown>>(domain.spaces).forEach((space) => {
+      writeSpaceFiles(fileMap, domainId, space)
+    })
   })
 
   return fileMap
@@ -478,6 +559,132 @@ export function buildHybridFileMapFromSerializedState(serializedState: string): 
 function readTextFileWithInlinedImages(fileMap: Map<string, BrowserStoredFile>, path: string): string {
   const text = getTextFile(fileMap, path) ?? ''
   return inlineMarkdownImages(text, path, fileMap)
+}
+
+function readSpaceFromHybridFileMap(
+  fileMap: Map<string, BrowserStoredFile>,
+  topicId: string,
+  spaceEntry: Record<string, unknown>,
+): Record<string, unknown> | null {
+  const spaceId = typeof spaceEntry.id === 'string' ? spaceEntry.id : ''
+  if (!spaceId) return null
+
+  const spaceRoot = joinPosix(STORAGE_ROOT_DIR, STORAGE_TOPICS_DIR, topicId, STORAGE_SPACES_DIR, spaceId)
+  const spaceManifestRaw = getTextFile(fileMap, joinPosix(spaceRoot, STORAGE_MANIFEST_FILE))
+  if (!spaceManifestRaw) return null
+
+  let spaceManifest: Record<string, unknown>
+  try {
+    spaceManifest = JSON.parse(spaceManifestRaw) as Record<string, unknown>
+  } catch {
+    return null
+  }
+
+  const tabs = ensureArray<Record<string, unknown>>(spaceManifest.tabs).map((tabRecord) => {
+    const tabId = typeof tabRecord.id === 'string' ? tabRecord.id : ''
+    const homeNoteFile = typeof tabRecord.homeNoteFile === 'string' ? tabRecord.homeNoteFile : ''
+    return {
+      id: tabId,
+      title: typeof tabRecord.title === 'string' ? tabRecord.title : 'tab',
+      homeContent: readTextFileWithInlinedImages(fileMap, joinPosix(spaceRoot, homeNoteFile)),
+      activeSubTabId: typeof tabRecord.activeSubTabId === 'string' ? tabRecord.activeSubTabId : null,
+      subTabs: ensureArray<Record<string, unknown>>(tabRecord.subTabs).map((subTabRecord) => ({
+        id: typeof subTabRecord.id === 'string' ? subTabRecord.id : '',
+        title: typeof subTabRecord.title === 'string' ? subTabRecord.title : 'tab',
+        content: readTextFileWithInlinedImages(
+          fileMap,
+          joinPosix(spaceRoot, typeof subTabRecord.file === 'string' ? subTabRecord.file : ''),
+        ),
+      })),
+    }
+  })
+
+  const trashManifestRaw = getTextFile(
+    fileMap,
+    joinPosix(
+      spaceRoot,
+      typeof spaceManifest.trashManifestFile === 'string'
+        ? spaceManifest.trashManifestFile
+        : `${STORAGE_TRASH_DIR}/${STORAGE_MANIFEST_FILE}`,
+    ),
+  )
+
+  let trashItems: Array<Record<string, unknown>> = []
+  if (trashManifestRaw) {
+    try {
+      const parsedTrash = JSON.parse(trashManifestRaw) as Record<string, unknown>
+      trashItems = ensureArray<Record<string, unknown>>(parsedTrash.items)
+    } catch {
+      trashItems = []
+    }
+  }
+
+  const trashRoot = joinPosix(spaceRoot, STORAGE_TRASH_DIR)
+  const deletedTabs = trashItems
+    .filter((item) => item.type === 'parent-tab')
+    .map((item) => ({
+      id: typeof item.id === 'string' ? item.id : '',
+      deletedAt: typeof item.deletedAt === 'number' ? item.deletedAt : Date.now(),
+      tab: {
+        id: isRecord(item.original) && typeof item.original.parentTabId === 'string' ? item.original.parentTabId : '',
+        title: typeof item.title === 'string' ? item.title : 'deleted tab',
+        homeContent: readTextFileWithInlinedImages(
+          fileMap,
+          joinPosix(trashRoot, typeof item.file === 'string' ? item.file : ''),
+        ),
+        activeSubTabId: typeof item.activeSubTabId === 'string' ? item.activeSubTabId : null,
+        subTabs: ensureArray<Record<string, unknown>>(item.subTabs).map((subTabRecord) => ({
+          id: typeof subTabRecord.id === 'string' ? subTabRecord.id : '',
+          title: typeof subTabRecord.title === 'string' ? subTabRecord.title : 'tab',
+          content: readTextFileWithInlinedImages(
+            fileMap,
+            joinPosix(trashRoot, typeof subTabRecord.file === 'string' ? subTabRecord.file : ''),
+          ),
+        })),
+      },
+    }))
+
+  const deletedSubTabs = trashItems
+    .filter((item) => item.type === 'subtab')
+    .map((item) => ({
+      id: typeof item.id === 'string' ? item.id : '',
+      parentTabId:
+        isRecord(item.original) && typeof item.original.parentTabId === 'string' ? item.original.parentTabId : '',
+      parentTabTitle: typeof item.parentTabTitle === 'string' ? item.parentTabTitle : 'Unknown Tab',
+      deletedAt: typeof item.deletedAt === 'number' ? item.deletedAt : Date.now(),
+      subTab: {
+        id: isRecord(item.original) && typeof item.original.subTabId === 'string' ? item.original.subTabId : '',
+        title: typeof item.title === 'string' ? item.title : 'deleted note',
+        content: readTextFileWithInlinedImages(
+          fileMap,
+          joinPosix(trashRoot, typeof item.file === 'string' ? item.file : ''),
+        ),
+      },
+    }))
+
+  return {
+    id: typeof spaceManifest.id === 'string' ? spaceManifest.id : spaceId,
+    name:
+      typeof spaceManifest.title === 'string'
+        ? spaceManifest.title
+        : typeof spaceEntry.title === 'string'
+          ? spaceEntry.title
+          : 'Untitled Space',
+    settings: isRecord(spaceManifest.settings)
+      ? spaceManifest.settings
+      : { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
+    data: {
+      activeTabId:
+        typeof spaceManifest.activeTabId === 'string' && tabs.some((tab) => tab.id === spaceManifest.activeTabId)
+          ? spaceManifest.activeTabId
+          : typeof tabs[0]?.id === 'string'
+            ? tabs[0].id
+            : '',
+      tabs,
+      deletedTabs,
+      deletedSubTabs,
+    },
+  }
 }
 
 export function readSerializedStateFromHybridFileMap(fileMap: Map<string, BrowserStoredFile>): string | null {
@@ -493,147 +700,101 @@ export function readSerializedStateFromHybridFileMap(fileMap: Map<string, Browse
 
   if (rootManifest.schemaVersion !== STORAGE_SCHEMA_VERSION) return null
 
-  const topicManifestRaw = getTextFile(
-    fileMap,
-    joinPosix(STORAGE_ROOT_DIR, STORAGE_TOPICS_DIR, DEFAULT_TOPIC_ID, STORAGE_MANIFEST_FILE),
-  )
-  if (!topicManifestRaw) return null
+  const topicEntries = ensureArray<Record<string, unknown>>(rootManifest.topics)
+  const readableTopicEntries =
+    topicEntries.length > 0 ? topicEntries : [{ id: DEFAULT_TOPIC_ID, title: DEFAULT_TOPIC_TITLE }]
+  const lastOpened = isRecord(rootManifest.lastOpened) ? rootManifest.lastOpened : null
 
-  let topicManifest: Record<string, unknown>
-  try {
-    topicManifest = JSON.parse(topicManifestRaw) as Record<string, unknown>
-  } catch {
-    return null
-  }
+  const domains = readableTopicEntries
+    .map((topicEntry): Record<string, unknown> | null => {
+      const topicId = typeof topicEntry.id === 'string' && topicEntry.id ? topicEntry.id : DEFAULT_TOPIC_ID
+      const topicManifestRaw = getTextFile(
+        fileMap,
+        joinPosix(STORAGE_ROOT_DIR, STORAGE_TOPICS_DIR, topicId, STORAGE_MANIFEST_FILE),
+      )
+      if (!topicManifestRaw) return null
 
-  const spaces = ensureArray<Record<string, unknown>>(topicManifest.spaces)
-    .map((spaceEntry) => {
-      const spaceId = typeof spaceEntry.id === 'string' ? spaceEntry.id : ''
-      if (!spaceId) return null
-
-      const spaceRoot = joinPosix(STORAGE_ROOT_DIR, STORAGE_TOPICS_DIR, DEFAULT_TOPIC_ID, STORAGE_SPACES_DIR, spaceId)
-      const spaceManifestRaw = getTextFile(fileMap, joinPosix(spaceRoot, STORAGE_MANIFEST_FILE))
-      if (!spaceManifestRaw) return null
-
-      let spaceManifest: Record<string, unknown>
+      let topicManifest: Record<string, unknown>
       try {
-        spaceManifest = JSON.parse(spaceManifestRaw) as Record<string, unknown>
+        topicManifest = JSON.parse(topicManifestRaw) as Record<string, unknown>
       } catch {
         return null
       }
 
-      const tabs = ensureArray<Record<string, unknown>>(spaceManifest.tabs).map((tabRecord) => {
-        const tabId = typeof tabRecord.id === 'string' ? tabRecord.id : ''
-        const homeNoteFile = typeof tabRecord.homeNoteFile === 'string' ? tabRecord.homeNoteFile : ''
-        return {
-          id: tabId,
-          title: typeof tabRecord.title === 'string' ? tabRecord.title : 'tab',
-          homeContent: readTextFileWithInlinedImages(fileMap, joinPosix(spaceRoot, homeNoteFile)),
-          activeSubTabId: typeof tabRecord.activeSubTabId === 'string' ? tabRecord.activeSubTabId : null,
-          subTabs: ensureArray<Record<string, unknown>>(tabRecord.subTabs).map((subTabRecord) => ({
-            id: typeof subTabRecord.id === 'string' ? subTabRecord.id : '',
-            title: typeof subTabRecord.title === 'string' ? subTabRecord.title : 'tab',
-            content: readTextFileWithInlinedImages(
-              fileMap,
-              joinPosix(spaceRoot, typeof subTabRecord.file === 'string' ? subTabRecord.file : ''),
-            ),
-          })),
-        }
-      })
+      const spaces = ensureArray<Record<string, unknown>>(topicManifest.spaces)
+        .map((spaceEntry) => readSpaceFromHybridFileMap(fileMap, topicId, spaceEntry))
+        .filter((space): space is Record<string, unknown> => space !== null)
 
-      const trashManifestRaw = getTextFile(
-        fileMap,
-        joinPosix(spaceRoot, typeof spaceManifest.trashManifestFile === 'string' ? spaceManifest.trashManifestFile : `${STORAGE_TRASH_DIR}/${STORAGE_MANIFEST_FILE}`),
-      )
+      if (spaces.length === 0) return null
 
-      let trashItems: Array<Record<string, unknown>> = []
-      if (trashManifestRaw) {
-        try {
-          const parsedTrash = JSON.parse(trashManifestRaw) as Record<string, unknown>
-          trashItems = ensureArray<Record<string, unknown>>(parsedTrash.items)
-        } catch {
-          trashItems = []
-        }
-      }
+      const lastOpenedSpaceId =
+        lastOpened &&
+        lastOpened.topicId === topicId &&
+        typeof lastOpened.spaceId === 'string'
+          ? lastOpened.spaceId
+          : null
+      const activeSpaceId =
+        lastOpenedSpaceId && spaces.some((space) => space.id === lastOpenedSpaceId)
+          ? lastOpenedSpaceId
+          : typeof topicManifest.activeSpaceId === 'string' &&
+              spaces.some((space) => space.id === topicManifest.activeSpaceId)
+            ? topicManifest.activeSpaceId
+            : typeof spaces[0]?.id === 'string'
+              ? spaces[0].id
+              : ''
 
-      const trashRoot = joinPosix(spaceRoot, STORAGE_TRASH_DIR)
-      const deletedTabs = trashItems
-        .filter((item) => item.type === 'parent-tab')
-        .map((item) => ({
-          id: typeof item.id === 'string' ? item.id : '',
-          deletedAt: typeof item.deletedAt === 'number' ? item.deletedAt : Date.now(),
-          tab: {
-            id: isRecord(item.original) && typeof item.original.parentTabId === 'string' ? item.original.parentTabId : '',
-            title: typeof item.title === 'string' ? item.title : 'deleted tab',
-            homeContent: readTextFileWithInlinedImages(
-              fileMap,
-              joinPosix(trashRoot, typeof item.file === 'string' ? item.file : ''),
-            ),
-            activeSubTabId: typeof item.activeSubTabId === 'string' ? item.activeSubTabId : null,
-            subTabs: ensureArray<Record<string, unknown>>(item.subTabs).map((subTabRecord) => ({
-              id: typeof subTabRecord.id === 'string' ? subTabRecord.id : '',
-              title: typeof subTabRecord.title === 'string' ? subTabRecord.title : 'tab',
-              content: readTextFileWithInlinedImages(
-                fileMap,
-                joinPosix(trashRoot, typeof subTabRecord.file === 'string' ? subTabRecord.file : ''),
-              ),
-            })),
-          },
-        }))
-
-      const deletedSubTabs = trashItems
-        .filter((item) => item.type === 'subtab')
-        .map((item) => ({
-          id: typeof item.id === 'string' ? item.id : '',
-          parentTabId:
-            isRecord(item.original) && typeof item.original.parentTabId === 'string' ? item.original.parentTabId : '',
-          parentTabTitle: typeof item.parentTabTitle === 'string' ? item.parentTabTitle : 'Unknown Tab',
-          deletedAt: typeof item.deletedAt === 'number' ? item.deletedAt : Date.now(),
-          subTab: {
-            id: isRecord(item.original) && typeof item.original.subTabId === 'string' ? item.original.subTabId : '',
-            title: typeof item.title === 'string' ? item.title : 'deleted note',
-            content: readTextFileWithInlinedImages(
-              fileMap,
-              joinPosix(trashRoot, typeof item.file === 'string' ? item.file : ''),
-            ),
-          },
-        }))
+      const domainName =
+        typeof topicManifest.title === 'string'
+          ? topicManifest.title
+          : typeof topicEntry.title === 'string'
+            ? topicEntry.title
+            : DEFAULT_DOMAIN_NAME
 
       return {
-        id: typeof spaceManifest.id === 'string' ? spaceManifest.id : spaceId,
-        name: typeof spaceManifest.title === 'string' ? spaceManifest.title : typeof spaceEntry.title === 'string' ? spaceEntry.title : 'Untitled Space',
-        settings:
-          isRecord(spaceManifest.settings)
-            ? spaceManifest.settings
-            : { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
-        data: {
-          activeTabId:
-            typeof spaceManifest.activeTabId === 'string' && tabs.some((tab) => tab.id === spaceManifest.activeTabId)
-              ? spaceManifest.activeTabId
-              : (typeof tabs[0]?.id === 'string' ? tabs[0].id : ''),
-          tabs,
-          deletedTabs,
-          deletedSubTabs,
-        },
+        id: typeof topicManifest.id === 'string' ? topicManifest.id : topicId,
+        name: topicId === DEFAULT_TOPIC_ID && domainName === DEFAULT_TOPIC_TITLE ? DEFAULT_DOMAIN_NAME : domainName,
+        activeSpaceId,
+        spaces,
       }
     })
-    .filter((space) => space !== null)
+    .filter((domain): domain is Record<string, unknown> => domain !== null)
 
-  if (spaces.length === 0) return null
+  if (domains.length === 0) return null
 
-  const activeSpaceId =
-    isRecord(rootManifest.lastOpened) && typeof rootManifest.lastOpened.spaceId === 'string'
-      ? rootManifest.lastOpened.spaceId
-      : typeof topicManifest.activeSpaceId === 'string'
-        ? topicManifest.activeSpaceId
-        : typeof spaces[0]?.id === 'string'
-          ? spaces[0].id
+  const lastOpenedDomainId =
+    lastOpened && typeof lastOpened.topicId === 'string'
+      ? lastOpened.topicId
+      : null
+  const activeDomainId =
+    lastOpenedDomainId && domains.some((domain) => domain.id === lastOpenedDomainId)
+      ? lastOpenedDomainId
+      : typeof rootManifest.activeTopicId === 'string' && domains.some((domain) => domain.id === rootManifest.activeTopicId)
+        ? rootManifest.activeTopicId
+        : typeof domains[0]?.id === 'string'
+          ? domains[0].id
           : ''
+  const activeDomain = domains.find((domain) => domain.id === activeDomainId) ?? domains[0]
+  const activeSpaces = ensureArray<Record<string, unknown>>(activeDomain.spaces)
+  const activeSpaceId =
+    lastOpened &&
+    lastOpened.topicId === activeDomainId &&
+    typeof lastOpened.spaceId === 'string' &&
+    activeSpaces.some((space) => space.id === lastOpened.spaceId)
+      ? lastOpened.spaceId
+      : typeof activeDomain.activeSpaceId === 'string'
+        ? activeDomain.activeSpaceId
+        : typeof activeSpaces[0]?.id === 'string'
+          ? activeSpaces[0].id
+          : ''
+  const globalSettings = isRecord(rootManifest.globalSettings) ? rootManifest.globalSettings : {}
+  const theme = globalSettings.theme === 'light' || globalSettings.theme === 'dusk' ? globalSettings.theme : 'dark'
 
   return JSON.stringify({
-    theme: isRecord(rootManifest.globalSettings) && rootManifest.globalSettings.theme === 'light' ? 'light' : 'dark',
+    theme,
+    activeDomainId,
+    domains,
     activeSpaceId,
-    spaces,
+    spaces: activeSpaces,
     hotkeys: isRecord(rootManifest.globalSettings) ? rootManifest.globalSettings.hotkeys : undefined,
     ui: isRecord(rootManifest.globalSettings) ? rootManifest.globalSettings.ui : undefined,
   })

@@ -1,0 +1,227 @@
+.stage-manager-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  overflow: hidden;
+  padding: 1rem 1rem 0;
+}
+
+.stage-manager-card {
+  width: min(760px, 100%);
+  max-width: 760px;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1rem;
+  min-height: 0;
+  max-height: 100%;
+  margin: 0 auto;
+  padding: 1rem 0 0.9rem;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.stage-manager-steps {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.55rem;
+}
+
+.stage-manager-step-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.38rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--stage-step-border);
+  color: var(--stage-step-text);
+  background: var(--stage-step-bg);
+  font-size: 0.84rem;
+}
+
+.stage-manager-step-pill.is-active {
+  border-color: var(--stage-step-active-border);
+  color: var(--stage-step-active-text);
+  background: var(--stage-step-active-bg);
+}
+
+.stage-manager-step-pill.is-complete {
+  border-color: var(--stage-step-complete-border);
+  color: var(--stage-step-complete-text);
+}
+
+.stage-manager-step-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 999px;
+  background: var(--stage-step-index-bg);
+  font-size: 0.76rem;
+}
+
+.stage-manager-panel {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.8rem;
+  min-height: 0;
+  overflow: auto;
+  padding-bottom: 0.35rem;
+  text-align: center;
+  color: var(--stage-panel-text);
+}
+
+.stage-manager-panel h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--stage-heading-text);
+}
+
+.stage-manager-panel p {
+  margin: 0;
+}
+
+.stage-manager-actions-row,
+.stage-manager-action-grid,
+.stage-manager-switch-row,
+.stage-manager-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.stage-manager-actions-row,
+.stage-manager-action-grid {
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.stage-manager-switch-row {
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.stage-manager-field-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: min(520px, 100%);
+  margin: 0 auto;
+}
+
+.stage-manager-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  text-align: left;
+}
+
+.stage-manager-field span {
+  font-size: 0.84rem;
+  color: var(--stage-field-label-text);
+}
+
+.stage-manager-panel code {
+  color: inherit;
+  background: transparent;
+  padding: 0;
+}
+
+.stage-manager-review-list {
+  width: min(520px, 100%);
+  margin: 0 auto;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  text-align: left;
+}
+
+.stage-manager-review-list li {
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.7rem;
+  border: 1px solid var(--stage-review-border);
+  background: var(--stage-review-bg);
+}
+
+.stage-manager-warning {
+  width: min(520px, 100%);
+  margin: 0 auto;
+  padding: 0.75rem 0.9rem;
+  border-radius: 0.8rem;
+  border: 1px solid var(--stage-warning-border);
+  background: var(--stage-warning-bg);
+  color: var(--stage-warning-text);
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.stage-manager-action-btn {
+  min-width: 120px;
+  border-color: var(--stage-action-border) !important;
+  color: var(--stage-action-text) !important;
+  background: var(--stage-action-bg) !important;
+}
+
+.stage-manager-action-btn.is-selected {
+  border-color: var(--stage-action-selected-border) !important;
+  color: var(--stage-action-selected-text) !important;
+  background: var(--stage-action-selected-bg) !important;
+}
+
+.stage-manager-help {
+  color: var(--stage-help-text);
+  font-size: 0.88rem;
+}
+
+.stage-manager-footer {
+  justify-content: space-between;
+  margin-top: auto;
+  padding: 0.85rem 0 0.1rem;
+  background: transparent;
+  border-top: 0;
+}
+
+.stage-manager-nav-btn {
+  min-width: calc(108px * var(--tab-button-scale));
+  min-height: var(--tab-control-height);
+  padding: calc(0.32rem * var(--tab-button-scale)) calc(0.78rem * var(--tab-button-scale));
+  border-radius: calc(0.45rem * var(--tab-button-scale));
+  font-size: calc(0.95rem * var(--tab-button-scale));
+  line-height: 1.1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.parent-tab-btn.stage-manager-parent-partial {
+  border-color: var(--stage-parent-partial-border) !important;
+  background-color: var(--stage-parent-partial-bg) !important;
+  box-shadow: var(--stage-parent-partial-shadow) !important;
+}
+
+.parent-tab-btn.stage-manager-parent-full {
+  border-color: var(--stage-parent-full-border) !important;
+  background-color: var(--stage-parent-full-bg) !important;
+  box-shadow: var(--stage-parent-full-shadow) !important;
+}
+
+.subtab-btn.stage-manager-subtab-selected {
+  border-color: var(--stage-subtab-selected-border) !important;
+  background-color: var(--stage-subtab-selected-bg) !important;
+  box-shadow: var(--stage-subtab-selected-shadow) !important;
+}
+
+.home-subtab-btn.stage-manager-home-selected {
+  border-color: var(--stage-subtab-selected-border) !important;
+  background-color: var(--stage-subtab-selected-bg) !important;
+  box-shadow: var(--stage-subtab-selected-shadow) !important;
+}

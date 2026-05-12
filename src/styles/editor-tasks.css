@@ -1,0 +1,85 @@
+.task-reorder-pending .toastui-editor-contents,
+.task-reorder-active .toastui-editor-contents {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
+.task-reorder-pending .toastui-editor-contents *,
+.task-reorder-active .toastui-editor-contents * {
+  user-select: none !important;
+}
+
+.toastui-editor-contents li.task-list-item.task-reorder-source {
+  opacity: 0.34;
+  border-radius: 0.35rem;
+  background: rgba(111, 160, 255, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(111, 160, 255, 0.16);
+}
+
+.toastui-editor-contents li.task-list-item.task-reorder-target {
+  border-radius: 0.35rem;
+  background: rgba(111, 160, 255, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(111, 160, 255, 0.14);
+}
+
+.task-reorder-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 2600;
+  width: max-content;
+  max-width: min(16rem, calc(100vw - 2rem));
+  padding: 0.48rem 0.62rem;
+  border: 1px solid rgba(111, 160, 255, 0.56);
+  border-radius: 0.5rem;
+  background: rgba(11, 21, 40, 0.95);
+  color: #f3f7ff;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.34), 0 0 0 1px rgba(111, 160, 255, 0.15);
+  font-size: 0.84rem;
+  line-height: 1.2;
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+}
+
+.task-reorder-marker {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 2590;
+  height: 14px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 80ms ease;
+}
+
+.task-reorder-marker.is-visible {
+  opacity: 1;
+}
+
+.task-reorder-marker::before,
+.task-reorder-marker::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: #77a7ff;
+}
+
+.task-reorder-marker::before {
+  left: 0;
+  width: 9px;
+  height: 14px;
+  box-shadow: none;
+}
+
+.task-reorder-marker::after {
+  left: 7px;
+  right: 0;
+  height: 2px;
+  background: #77a7ff;
+  box-shadow: none;
+}

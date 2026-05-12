@@ -1,0 +1,488 @@
+/* Light theme overrides */
+.theme-light {
+  --app-bg: #ffffff;
+  --app-page-bg: radial-gradient(circle at 20% 0%, #f0f5fd 0%, #e8eef8 45%);
+  --app-surface: #ffffff;
+  --app-surface-raised: #ffffff;
+  --app-border: #c8d4e8;
+  --app-border-muted: #d2dbe9;
+  --app-text: #1a2538;
+  --app-text-bright: #1d2a44;
+  --app-text-strong: #1a2538;
+  --app-text-heading: #1a2538;
+  --app-text-soft: #2e4468;
+  --app-text-muted: #41587d;
+  --app-text-subtle: #536d95;
+  --app-primary: #2f67de;
+  --app-primary-hover: #2f6de0;
+  --app-primary-action: #3f7df0;
+  --app-primary-border: #5f8fe8;
+  --app-primary-border-strong: #5f8fe8;
+  --app-shadow-popover: 0 8px 20px rgba(20, 45, 86, 0.16);
+  --app-shadow-toast: 0 12px 32px rgba(28, 45, 78, 0.16);
+
+  --tabbar-border: #d2dbe9;
+  --tabbar-bg: linear-gradient(180deg, #f7f9fc 0%, #ecf2fa 100%);
+  --subtabbar-bg: linear-gradient(180deg, #f1f5fb 0%, #e8eef8 100%);
+  --topbar-action-bg: #edf4ff;
+  --topbar-action-border: #9fb9e6;
+  --topbar-action-text: #213758;
+  --topbar-action-hover-bg: #e1edff;
+  --topbar-action-hover-border: #799fdc;
+  --topbar-action-hover-text: #152743;
+  --menu-button-text: #1d2a44;
+  --menu-bg: #ffffff;
+  --menu-border: #c8d4e8;
+  --menu-item-text: #1d2a44;
+  --menu-item-hover-bg: #ecf3ff;
+
+  --spaces-heading-text: #1d2a44;
+  --spaces-page-bg: var(--app-page-bg);
+  --space-card-bg: #ffffff;
+  --space-card-text: #1d2a44;
+  --space-card-border: #c8d4e8;
+  --space-card-hover-bg: #f6f9ff;
+  --space-card-hover-border: #9fb5da;
+  --space-arrangeable-shadow: 0 0 0 1px rgba(102, 141, 214, 0.14) inset;
+  --space-dragging-shadow: 0 10px 20px rgba(46, 77, 133, 0.14), 0 0 0 1px rgba(102, 141, 214, 0.24) inset;
+  --space-target-shadow: 0 0 0 1px rgba(102, 141, 214, 0.2), inset 0 0 0 2px rgba(82, 126, 210, 0.7);
+  --space-target-marker: #5d84d8;
+  --space-target-edge-outline: rgba(102, 141, 214, 0.18);
+  --space-fixed-shadow: 0 0 0 1px rgba(102, 141, 214, 0.12) inset;
+  --space-arrange-preview-bg: rgba(255, 255, 255, 0.97);
+  --space-arrange-preview-border: #5d84d8;
+  --space-arrange-preview-text: #1d2a44;
+  --space-arrange-preview-shadow: 0 16px 28px rgba(46, 77, 133, 0.18), inset 0 0 0 1px rgba(93, 132, 216, 0.42);
+  --space-rename-bg: #ffffff;
+  --space-rename-text: #1d2a44;
+  --space-rename-border: #6f94e6;
+  --space-rename-focus-border: #6f94e6;
+
+  --tab-btn-text: #24406b;
+  --tab-btn-bg: #eef4ff;
+  --tab-btn-border: #bfd0ea;
+  --tab-btn-hover-text: #18345a;
+  --tab-btn-hover-bg: #e4eeff;
+  --tab-btn-hover-border: #9eb7df;
+  --tab-arrangeable-shadow: 0 0 0 1px rgba(112, 142, 189, 0.18) inset;
+  --tab-dragging-shadow: 0 0 0 1px rgba(102, 136, 189, 0.22) inset, 0 8px 18px rgba(40, 61, 96, 0.14);
+  --tab-arrange-preview-bg: rgba(255, 255, 255, 0.97);
+  --tab-arrange-preview-border: #5d84d8;
+  --tab-arrange-preview-text: #1d2a44;
+  --tab-arrange-preview-shadow: 0 14px 24px rgba(46, 77, 133, 0.18), inset 0 0 0 1px rgba(93, 132, 216, 0.38);
+  --subtab-arrange-preview-border: #58b886;
+  --subtab-arrange-preview-shadow: 0 14px 24px rgba(46, 77, 133, 0.18), inset 0 0 0 1px rgba(88, 184, 134, 0.32);
+  --home-subtab-fixed-shadow: 0 0 0 1px rgba(112, 142, 189, 0.14) inset;
+  --home-subtab-target-border: #58b886;
+  --home-subtab-target-shadow: inset -3px 0 0 #58b886, 0 0 0 1px rgba(88, 184, 134, 0.18);
+  --parent-tab-target-border: #6e95df;
+  --parent-tab-target-shadow: 0 0 0 2px rgba(110, 149, 223, 0.24) inset, 0 3px 10px rgba(77, 109, 164, 0.14);
+  --parent-tab-target-before-shadow: inset 3px 0 0 #6e95df, 0 0 0 1px rgba(110, 149, 223, 0.2);
+  --parent-tab-target-after-shadow: inset -3px 0 0 #6e95df, 0 0 0 1px rgba(110, 149, 223, 0.2);
+  --subtab-target-border: #58b886;
+  --subtab-target-shadow: 0 0 0 2px rgba(88, 184, 134, 0.2) inset, 0 3px 10px rgba(71, 143, 105, 0.12);
+  --subtab-target-before-shadow: inset 3px 0 0 #58b886, 0 0 0 1px rgba(88, 184, 134, 0.18);
+  --subtab-target-after-shadow: inset -3px 0 0 #58b886, 0 0 0 1px rgba(88, 184, 134, 0.18);
+  --parent-tab-selected-text: #ffffff;
+  --parent-tab-selected-bg: linear-gradient(180deg, #3f7be8 0%, #2f64cb 100%);
+  --parent-tab-selected-border: #5e8fea;
+  --subtab-btn-text: #1e5d46;
+  --subtab-btn-bg: #eaf8f1;
+  --subtab-btn-border: #a8d7bf;
+  --subtab-btn-hover-text: #174c39;
+  --subtab-btn-hover-bg: #def3e9;
+  --subtab-btn-hover-border: #86c5a8;
+  --subtab-selected-text: #ffffff;
+  --subtab-selected-bg: linear-gradient(180deg, #27a96f 0%, #1f885a 100%);
+  --subtab-selected-border: #47bd88;
+  --trash-home-text: #1f2d45;
+  --trash-home-bg: #ffffff;
+  --trash-home-border: #c8d4e8;
+  --trash-home-hover-bg: #f8fbff;
+  --trash-home-hover-border: #b7c8e2;
+  --trash-home-selected-border: #9ab3d8;
+  --trash-home-selected-shadow: #9ab3d8;
+  --trash-parent-text: #8d2433;
+  --trash-parent-bg: transparent;
+  --trash-parent-border: #e3a3ad;
+  --trash-parent-hover-text: #7a1f2c;
+  --trash-parent-hover-bg: rgba(209, 74, 93, 0.12);
+  --trash-parent-hover-border: #d98794;
+  --trash-parent-selected-text: #ffffff;
+  --trash-parent-selected-bg: #c64053;
+  --trash-parent-selected-border: #d95f70;
+  --trash-subtab-text: #8f4d0f;
+  --trash-subtab-bg: transparent;
+  --trash-subtab-border: #ddb37f;
+  --trash-subtab-hover-text: #7a410d;
+  --trash-subtab-hover-bg: rgba(218, 138, 58, 0.14);
+  --trash-subtab-hover-border: #d69a5d;
+  --trash-subtab-selected-text: #ffffff;
+  --trash-subtab-selected-bg: #c7792f;
+  --trash-subtab-selected-border: #da9351;
+  --add-tab-text: #1c3863;
+  --add-tab-bg: #e7efff;
+  --add-tab-border: transparent;
+  --add-tab-hover-bg: #dfe9ff;
+  --add-tab-hover-border: #7f9fce;
+  --tab-rename-bg: #ffffff;
+  --tab-rename-text: #1d2a44;
+  --tab-rename-border: #6f94e6;
+
+  --stage-step-border: #c4d2e7;
+  --stage-step-text: #42608e;
+  --stage-step-bg: rgba(234, 241, 252, 0.9);
+  --stage-step-active-border: #6f94e6;
+  --stage-step-active-text: #214572;
+  --stage-step-active-bg: rgba(111, 148, 230, 0.18);
+  --stage-step-complete-border: #9db8e7;
+  --stage-step-complete-text: #30517e;
+  --stage-step-index-bg: rgba(47, 103, 222, 0.12);
+  --stage-panel-text: #284062;
+  --stage-heading-text: #1e3556;
+  --stage-field-label-text: #486385;
+  --stage-review-border: rgba(144, 166, 205, 0.65);
+  --stage-review-bg: rgba(241, 246, 255, 0.95);
+  --stage-warning-border: rgba(208, 141, 141, 0.56);
+  --stage-warning-bg: rgba(255, 238, 238, 0.96);
+  --stage-warning-text: #7a2a2a;
+  --stage-action-border: #b8cae6;
+  --stage-action-text: #214572;
+  --stage-action-bg: #f6f9ff;
+  --stage-action-selected-border: #5e8fea;
+  --stage-action-selected-text: #ffffff;
+  --stage-action-selected-bg: #3f7be8;
+  --stage-help-text: #5a7397;
+  --stage-parent-partial-border: #5f89dc;
+  --stage-parent-partial-bg: #dde8fb;
+  --stage-parent-partial-shadow: inset 0 0 0 2px rgba(95, 137, 220, 0.78), 0 0 0 2px rgba(95, 137, 220, 0.18);
+  --stage-parent-full-border: #345385;
+  --stage-parent-full-bg: #cfdcf3;
+  --stage-parent-full-shadow: inset 0 0 0 2px rgba(52, 83, 133, 0.82), 0 0 0 2px rgba(52, 83, 133, 0.18);
+  --stage-subtab-selected-border: #46a56f;
+  --stage-subtab-selected-bg: #dff3e7;
+  --stage-subtab-selected-shadow: inset 0 0 0 2px rgba(70, 165, 111, 0.78), 0 0 0 2px rgba(70, 165, 111, 0.16);
+
+  --settings-control-bg: #ffffff;
+  --settings-control-text: #1a2538;
+  --settings-control-border: #c0cee4;
+  --settings-control-focus-border: #c0cee4;
+  --settings-select-focus-border: #5f8fe8;
+  --settings-field-suffix-text: #2f4264;
+  --settings-help-text: #536d95;
+  --settings-page-bg: var(--app-page-bg);
+  --settings-card-bg: #ffffff;
+  --settings-card-border: #c8d4e8;
+  --settings-card-text: #1d2a44;
+  --settings-card-body-text: #41587d;
+  --settings-section-tab-bg: #edf3fb;
+  --settings-section-tab-border: #b8c9e4;
+  --settings-section-tab-text: #244368;
+  --settings-section-tab-hover-bg: #e0eafd;
+  --settings-section-tab-hover-text: #18365d;
+  --settings-section-tab-active-bg: #3f7df0;
+  --settings-section-tab-active-border: #2f68ca;
+  --settings-section-tab-active-text: #ffffff;
+  --settings-divider-bg: #c7d3e5;
+  --settings-hotkey-label-text: #1f3960;
+  --settings-range-value-text: #5a7397;
+  --settings-switch-bg: #ffffff;
+  --settings-switch-border: #a5b7d4;
+  --settings-switch-focus-border: #a5b7d4;
+  --settings-switch-checked-bg: #2f67de;
+  --settings-switch-checked-border: #2f67de;
+  --theme-switch-bg: #e8f0fb;
+  --theme-switch-border: #9bb6de;
+  --theme-switch-option-text: #315179;
+  --theme-switch-option-hover-bg: #dbe8f9;
+  --theme-switch-option-hover-text: #1c3b65;
+  --theme-switch-option-selected-bg: #3f7df0;
+  --theme-switch-option-selected-text: #ffffff;
+  --settings-shortcut-bg: #e8f0fb;
+  --settings-shortcut-text: #1a3761;
+  --settings-shortcut-border: #9bb6de;
+  --settings-shortcut-hover-bg: #dbe8f9;
+  --settings-shortcut-recording-border: #9bb6de;
+  --settings-shortcut-recording-shadow: #6f94e6;
+
+  --toast-bg: rgba(255, 255, 255, 0.96);
+  --toast-border: #c4d2e8;
+  --toast-text: #1a2538;
+  --toast-shadow: var(--app-shadow-toast);
+
+  --context-menu-bg: #ffffff;
+  --context-menu-border: #c8d4e8;
+  --context-menu-shadow: var(--app-shadow-popover);
+  --context-menu-item-text: #1d2a44;
+  --context-menu-item-hover-bg: rgba(53, 103, 193, 0.12);
+  --context-menu-danger-text: #a33c4a;
+  --context-menu-danger-hover-bg: rgba(211, 74, 93, 0.14);
+  --modal-bg: #ffffff;
+  --modal-border: #c8d4e8;
+  --modal-text: #1d2a44;
+  --modal-body-text: #41587d;
+  --modal-muted-text: #2e4468;
+  --modal-cancel-text: #2b466f;
+  --modal-cancel-border: #9eb5da;
+  --modal-cancel-bg: #f7faff;
+  --modal-cancel-hover-text: #1d3558;
+  --modal-cancel-hover-border: #7f9fce;
+  --modal-cancel-hover-bg: #edf3ff;
+  --modal-primary-text: #ffffff;
+  --modal-primary-border: #2f68ca;
+  --modal-primary-bg: #3f7df0;
+  --modal-primary-hover-bg: #2f6de0;
+  --modal-primary-hover-border: #245ab2;
+}
+
+.theme-light .editor-shell {
+  background: #f5f8fd;
+}
+
+.theme-light .trash-home-note {
+  background: #f5f8fd;
+  color: #1a2538;
+}
+
+.theme-light .trash-home-note h2 {
+  color: #1a2538;
+}
+
+.theme-light .trash-home-actions .btn-outline-light {
+  color: #1d355d !important;
+  background: #ffffff !important;
+  border-color: #b8c9e3 !important;
+}
+
+.theme-light .trash-home-actions .btn-outline-light:hover {
+  color: #173052 !important;
+  background: #edf3ff !important;
+  border-color: #97afd5 !important;
+}
+
+.theme-light .toastui-editor-defaultUI,
+.theme-light .toastui-editor-md-container,
+.theme-light .toastui-editor-ww-container,
+.theme-light .toastui-editor-contents,
+.theme-light .toastui-editor .ProseMirror,
+.theme-light .toastui-editor .ProseMirror * {
+  background-color: #ffffff !important;
+  color: #1a2538 !important;
+}
+
+.theme-light .toastui-editor-toolbar,
+.theme-light .toastui-editor-defaultUI-toolbar {
+  background-color: #f4f7fc !important;
+  border-bottom-color: #d2dbe9 !important;
+  color: #1a2538 !important;
+}
+
+.theme-light .toastui-editor-defaultUI-toolbar .toastui-editor-toolbar-group,
+.theme-light .toastui-editor-defaultUI-toolbar .toastui-editor-toolbar-divider {
+  background: #f4f7fc !important;
+  color: #1a2538 !important;
+}
+
+.theme-light .toastui-editor-defaultUI-toolbar button,
+.theme-light .toastui-editor-toolbar button {
+  background-color: transparent !important;
+  box-shadow: inset 0 0 0 1px transparent !important;
+}
+
+.theme-light .toastui-editor-defaultUI-toolbar button:hover,
+.theme-light .toastui-editor-toolbar button:hover {
+  background-color: #e5eeff !important;
+  box-shadow: inset 0 0 0 1px #aec2e4 !important;
+}
+
+.theme-light .toastui-editor-defaultUI-toolbar button.active,
+.theme-light .toastui-editor-toolbar button.active {
+  background-color: #cfe0ff !important;
+  box-shadow: inset 0 0 0 1px #8eaee0 !important;
+}
+
+.theme-light .toastui-editor-defaultUI-toolbar button.clear-note-toolbar-btn,
+.theme-light .toastui-editor-toolbar button.clear-note-toolbar-btn {
+  color: #5b6982 !important;
+}
+
+.theme-light .toastui-editor-toolbar-icons,
+.theme-light .toastui-editor-toolbar-divider {
+  filter: none !important;
+}
+
+.theme-light .toastui-editor .ProseMirror .multiline-cursor-widget,
+.theme-light .toastui-editor-contents .multiline-cursor-widget {
+  background: #1a2538 !important;
+}
+
+.theme-light .toastui-editor .ProseMirror .multiline-selection-range,
+.theme-light .toastui-editor-contents .multiline-selection-range {
+  background: rgba(47, 103, 222, 0.22) !important;
+}
+
+.theme-light .toastui-editor-popup,
+.theme-light .toastui-editor-dropdown-toolbar,
+.theme-light .toastui-editor-popup-body,
+.theme-light .toastui-editor-popup-body label {
+  background: #ffffff !important;
+  color: #1a2538 !important;
+  border-color: #d2dbe9 !important;
+}
+
+.theme-light .toastui-editor-popup-add-heading li.is-active-heading-choice {
+  background: #dbe8ff !important;
+  box-shadow: inset 3px 0 0 #3f7df0 !important;
+  color: #173760 !important;
+}
+
+.theme-light .toastui-editor-contents li.task-list-item.task-reorder-source {
+  background: rgba(63, 125, 240, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(63, 125, 240, 0.14);
+}
+
+.theme-light .toastui-editor-contents li.task-list-item.task-reorder-target {
+  background: rgba(63, 125, 240, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(63, 125, 240, 0.14);
+}
+
+.theme-light .task-reorder-ghost {
+  border-color: rgba(63, 125, 240, 0.52);
+  background: rgba(255, 255, 255, 0.96);
+  color: #17243a;
+  box-shadow: 0 12px 28px rgba(27, 47, 83, 0.2), 0 0 0 1px rgba(63, 125, 240, 0.12);
+}
+
+.theme-light .task-reorder-marker::before,
+.theme-light .task-reorder-marker::after {
+  background: #2f67de;
+}
+
+.theme-light .task-reorder-marker::before {
+  box-shadow: none;
+}
+
+.theme-light .task-reorder-marker::after {
+  background: #2f67de;
+  box-shadow: none;
+}
+
+.theme-light .toastui-editor-popup-body input[type='text'] {
+  background: #ffffff !important;
+  color: #1a2538 !important;
+  border-color: #c0cee4 !important;
+}
+
+.theme-light .toastui-editor-popup-add-table {
+  background: #ffffff !important;
+}
+
+.theme-light .toastui-editor-popup-add-table .toastui-editor-table-selection {
+  background: #ffffff !important;
+  border-color: #ced9eb !important;
+}
+
+.theme-light .toastui-editor-popup-add-table .toastui-editor-table-cell {
+  background: #f7faff !important;
+  border-color: #c7d5ea !important;
+}
+
+.theme-light .toastui-editor-popup-add-table .toastui-editor-table-description {
+  color: #233452 !important;
+}
+
+.theme-light .toastui-editor-contents hr {
+  background: linear-gradient(
+    90deg,
+    transparent 0,
+    rgba(108, 116, 128, 0.92) 20px,
+    rgba(108, 116, 128, 0.92) calc(100% - 20px),
+    transparent 100%
+  ) !important;
+  opacity: 1 !important;
+}
+
+.theme-light .toastui-editor-tooltip {
+  background-color: #ffffff !important;
+  color: #1a2538 !important;
+  border: 1px solid #c8d4e8;
+  box-shadow: 0 4px 12px rgba(20, 45, 86, 0.16);
+}
+
+.theme-light .toastui-editor-tooltip .arrow {
+  background-color: #ffffff !important;
+  border: 0 !important;
+}
+
+.toastui-editor-tooltip {
+  padding: 4px 8px !important;
+  line-height: 1.25 !important;
+  transform: translateX(calc(-50% + 7px)) !important;
+}
+
+.toastui-editor-tooltip .arrow {
+  left: 50% !important;
+  top: -5px !important;
+  transform: translateX(-50%) rotate(45deg) !important;
+}
+
+.theme-light .image-tools {
+  background: transparent;
+}
+
+.theme-light .image-tool-btn {
+  border-color: #8eaad3;
+  background: #e7f0fc;
+  color: #1d3b65;
+}
+
+.theme-light .image-tool-btn:hover {
+  background: #d9e8fb;
+}
+
+.theme-light .image-resize-handle {
+  border-color: #1f2c45;
+  background: #ffffff;
+}
+
+.theme-light .image-resize-handle::before {
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 2px,
+    #1b2a42 2px 3px
+  );
+}
+
+.theme-light .image-resize-handle:hover {
+  filter: brightness(0.98);
+}
+
+.theme-light .inline-crop-box {
+  border-color: #2d67d9;
+}
+
+.theme-light .inline-crop-resize-handle {
+  border-color: #2b66d6;
+  background: #e9f1ff;
+}
+
+.theme-light .link-prompt {
+  border-color: #b7c9e3;
+  background: rgba(244, 248, 254, 0.98);
+}
+
+.theme-light .link-prompt-input {
+  border-color: #9eb8dc;
+  background: #ffffff;
+  color: #1f3d66;
+}
+
+.theme-light .link-prompt-btn {
+  border-color: #8aaad6;
+  background: #dbe9fb;
+  color: #1f3d66;
+}
+
+.theme-light .link-prompt-btn:hover {
+  background: #cfe1f9;
+}

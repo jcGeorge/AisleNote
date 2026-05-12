@@ -1,0 +1,17 @@
+@media (max-width: 980px) {
+  .spaces-grid {
+    grid-template-columns: repeat(3, minmax(180px, 220px));
+  }
+}
+
+@media (max-width: 740px) {
+  .spaces-grid {
+    grid-template-columns: repeat(2, minmax(180px, 220px));
+  }
+}
+
+@media (max-width: 500px) {
+  .spaces-grid {
+    grid-template-columns: minmax(180px, 220px);
+  }
+}

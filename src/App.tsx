@@ -3,358 +3,168 @@ import { Editor } from '@toast-ui/editor'
 import JSZip from 'jszip'
 import '@toast-ui/editor/dist/toastui-editor.css'
 import './App.css'
+import {
+  ARRANGE_DRAG_START_SLOP_PX,
+  ARRANGE_PRESS_DELAY_MS,
+  ARRANGE_TAP_SLOP_PX,
+  DEFAULT_ARRANGE_MODE,
+  getArrangeRailInsertionTarget,
+  isPointInsideElement,
+  moveItemByInsertion,
+} from './arrange/arrange-utils'
+import { DomainsPage } from './components/domains/DomainsPage'
+import { SpacesPage } from './components/spaces/SpacesPage'
+import {
+  EDITOR_TOOLBAR_ITEMS,
+  getMultilineSelectionShortcutDirection,
+  headingSpaceShortcutPlugin,
+  installClearToolbarButton,
+  installHeadingPopupActiveState,
+  multiLineSelectionShortcutPlugin,
+  thematicBreakShortcutPlugin,
+} from './editor/editor-setup'
+import {
+  buildSplitLineMultiLineState,
+  cloneMultiLineEditState,
+  findNextWordColumn,
+  findPreviousWordColumn,
+  getMultiLineColumnOffset,
+  getMultiLineHeadColumnOffset,
+  getMultiLineSelectionRange,
+  getMultiLineSelectionRanges,
+  getMultiLineSelectedBlockIndices,
+  getMultiLineSplitPlan,
+  moveMultiLineCursorState,
+  type MultiLineCursorMovement,
+  type MultiLineEditInput,
+} from './editor/multiline-edit'
+import {
+  findEditorTextLineRangeIndex,
+  getEditorTextLineRanges,
+  isCodeBlockTextLineRange,
+} from './editor/multiline-ranges'
+import {
+  buildShortcutFromKeyboardEvent,
+  DEFAULT_SHORTCUTS,
+  eventMatchesShortcut,
+  formatShortcutLabel,
+} from './hotkeys/shortcuts'
+import {
+  convertInternalTabsForExport,
+  getIndentPrefixLength,
+  getTrailingIndentPrefixLength,
+  INDENT_TOKEN,
+  materializeHorizontalRuleShortcut,
+  mergeLeadingIndentsFromWysiwyg,
+  normalizeHeadingMarkers,
+  normalizeMarkdownForPersistence,
+} from './markdown/markdown-utils'
+import {
+  clampAutoRemoveDays,
+  clampNoteFontScale,
+  clampTabButtonScale,
+  DEFAULT_AUTO_REMOVE_DAYS,
+  DEFAULT_UI_SETTINGS,
+  MAX_AUTO_REMOVE_DAYS,
+  MAX_NOTE_FONT_SCALE,
+  MAX_TAB_BUTTON_SCALE,
+  MIN_AUTO_REMOVE_DAYS,
+  MIN_NOTE_FONT_SCALE,
+  MIN_TAB_BUTTON_SCALE,
+  NOTE_FONT_SCALE_STEP,
+  TAB_BUTTON_SCALE_STEP,
+} from './settings/defaults'
+import { applyAutoPurgeToAppState, applyMarkdownToAppState, parseSavedState } from './state/app-state'
+import {
+  addDomain,
+  addSpaceToActiveDomain,
+  createDomain,
+  insertSpaceAfterInActiveDomain,
+  moveSpaceWithinActiveDomain,
+  removeSpaceFromActiveDomain,
+  renameDomain,
+  renameSpaceInActiveDomain,
+  setActiveDomain,
+  setActiveSpaceInActiveDomain,
+  updateActiveSpaceDataInActiveDomain,
+  updateSpaceInActiveDomain,
+} from './state/domains'
+import {
+  applyAutoPurgeToWorkspace,
+  createId,
+  createSpace,
+  createSubTab,
+  createTab,
+  createWorkspaceDataFromTabs,
+  duplicateSpace,
+} from './state/workspace'
+import {
+  buildStageManagerSelectionSnapshot,
+  createDefaultStageManagerDraft,
+  createEmptyStageManagerParentSelection,
+  createStageManagerSelectionState,
+  normalizeStageManagerParentSelection,
+  orderStageManagerSubTabIds,
+} from './stage-manager/selection'
+import {
+  appendSubTabsToParent,
+  buildStageManagerMovedSubTabs,
+  cloneTabForTransfer,
+  cloneSubTabForTransfer,
+  createPromotedParentTab,
+  stripStageManagerSelectionsFromWorkspace,
+} from './stage-manager/transforms'
 import { appStateStore } from './storage/app-state-store'
-
-type AppTheme = 'dark' | 'light'
-type ViewMode = 'spaces' | 'main' | 'trash' | 'settings' | 'stage-manager'
-type ShortcutId = 'toggleTabTrash' | 'openSpaces' | 'newTab' | 'newSubTab' | 'cycleSubTabNext' | 'cycleSubTabPrev'
-type SettingsSection = 'hotkeys' | 'data' | 'visuals'
-
-type SubTab = {
-  id: string
-  title: string
-  content: string
-}
-
-type Tab = {
-  id: string
-  title: string
-  homeContent: string
-  activeSubTabId: string | null
-  subTabs: SubTab[]
-}
-
-type DeletedSubTabEntry = {
-  id: string
-  parentTabId: string
-  parentTabTitle: string
-  subTab: SubTab
-  deletedAt: number
-}
-
-type DeletedTabEntry = {
-  id: string
-  tab: Tab
-  deletedAt: number
-}
-
-type WorkspaceData = {
-  activeTabId: string
-  tabs: Tab[]
-  deletedTabs: DeletedTabEntry[]
-  deletedSubTabs: DeletedSubTabEntry[]
-}
-
-type SpaceSettings = {
-  autoRemoveDeletedDays: number
-}
-
-type Space = {
-  id: string
-  name: string
-  settings: SpaceSettings
-  data: WorkspaceData
-}
-
-type AppState = {
-  theme: AppTheme
-  activeSpaceId: string
-  spaces: Space[]
-  hotkeys: {
-    shortcuts: Record<ShortcutId, string>
-    enableMouseBackForward: boolean
-    enableGenericHistoryHotkeys: boolean
-  }
-  ui: {
-    showParentHomeTab: boolean
-    stageManagerOpenDestinationAfterApply: boolean
-    tabButtonScale: number
-    noteFontScale: number
-  }
-}
-
-type PendingContent = {
-  spaceId: string
-  tabId: string
-  subTabId: string | null
-  markdown: string
-}
-
-type PendingCreatedEdit =
-  | { type: 'tab'; id: string; previousTabId: string }
-  | { type: 'subtab'; id: string; parentTabId: string; previousSubTabId: string | null }
-
-type ArrangeSource = 'context' | 'press'
-type ArrangeInsertPosition = 'before' | 'after'
-type ArrangeScope = 'tabs' | 'spaces'
-
-type ArrangeDragItem =
-  | { type: 'tab'; tabId: string }
-  | { type: 'subtab'; parentTabId: string; subTabId: string }
-  | { type: 'space'; spaceId: string }
-
-type TabArrangeDragItem = Exclude<ArrangeDragItem, { type: 'space' }>
-
-type ArrangeModeState = {
-  active: boolean
-  scope: ArrangeScope | null
-  source: ArrangeSource | null
-  dragItem: ArrangeDragItem | null
-  overParentTabId: string | null
-  overParentInsert: ArrangeInsertPosition | null
-  overSubTabId: string | null
-  overSubTabInsert: ArrangeInsertPosition | null
-  overSpaceId: string | null
-  overSpaceInsert: ArrangeInsertPosition | null
-}
-
-type ArrangeTapCandidate =
-  | { key: string; type: 'tab'; tabId: string; startX: number; startY: number; dragged: boolean }
-  | { key: string; type: 'subtab'; subTabId: string; startX: number; startY: number; dragged: boolean }
-  | { key: string; type: 'space'; spaceId: string; startX: number; startY: number; dragged: boolean }
-  | { key: string; type: 'home'; startX: number; startY: number; dragged: boolean }
-
-type ArrangeTapCandidateSeed =
-  | { key: string; type: 'tab'; tabId: string }
-  | { key: string; type: 'subtab'; subTabId: string }
-  | { key: string; type: 'space'; spaceId: string }
-  | { key: string; type: 'home' }
-
-type ArrangeDragSeed = {
-  key: string
-  startX: number
-  startY: number
-}
-
-type SpaceArrangeDragPreview = {
-  spaceId: string
-  label: string
-  currentX: number
-  currentY: number
-  offsetX: number
-  offsetY: number
-  width: number
-  height: number
-}
-
-type TabArrangeDragPreview = {
-  item: TabArrangeDragItem
-  label: string
-  variant: 'parent' | 'subtab'
-  currentX: number
-  currentY: number
-  offsetX: number
-  offsetY: number
-  width: number
-  height: number
-}
-
-type StageManagerStep = 'select' | 'action' | 'configure' | 'review'
-type StageManagerAction = 'migrate' | 'promote' | 'demote' | 'mass-delete'
-type StageManagerPartialDirection = 'toward-none' | 'toward-all'
-type StageManagerParentSelectionMode = 'none' | 'partial' | 'full'
-type StageManagerPromoteSpaceMode = 'existing' | 'new'
-type StageManagerDestinationSpaceMode = 'existing' | 'new'
-type StageManagerDestinationParentMode = 'existing' | 'new'
-type StageManagerMigrateTarget = 'space' | 'parent'
-type StageManagerMigrateParentSpaceMode = 'current' | 'existing' | 'new'
-type StageManagerStrayHandlingMode = 'promote' | 'selected-parent' | 'existing-parent' | 'new-parent'
-type StageManagerMassDeleteMode = 'trash' | 'permanent'
-
-type StageManagerParentSelection = {
-  mode: StageManagerParentSelectionMode
-  selectedSubTabIds: string[]
-  cachedPartialSubTabIds: string[] | null
-  partialDirection: StageManagerPartialDirection | null
-}
-
-type StageManagerSelectionState = Record<string, StageManagerParentSelection>
-
-type StageManagerDraft = {
-  promoteSpaceMode: StageManagerPromoteSpaceMode
-  promoteSpaceId: string
-  newSpaceName: string
-  demoteParentMode: StageManagerDestinationParentMode
-  demoteParentId: string
-  demoteNewParentName: string
-  migrateTarget: StageManagerMigrateTarget
-  migrateSpaceMode: StageManagerDestinationSpaceMode
-  migrateSpaceId: string
-  migrateParentSpaceMode: StageManagerMigrateParentSpaceMode
-  migrateParentSpaceId: string
-  migrateParentMode: StageManagerDestinationParentMode
-  migrateParentId: string
-  migrateNewParentName: string
-  strayHandlingMode: StageManagerStrayHandlingMode
-  straySelectedParentId: string
-  strayExistingParentId: string
-  strayNewParentName: string
-  massDeleteMode: StageManagerMassDeleteMode
-}
-
-type StageManagerSelectionSnapshot = {
-  fullParents: Tab[]
-  partialParents: Array<{ tab: Tab; selectedSubTabs: SubTab[] }>
-  looseSubTabs: Array<{ parentTab: Tab; subTab: SubTab }>
-  fullParentIds: Set<string>
-  hasSelection: boolean
-}
-
-type ToastTone = 'success' | 'warning' | 'error'
-
-type ToastState = {
-  id: number
-  message: string
-  tone: ToastTone
-  durationMs: number
-}
-
-type ImageToolsState = {
-  visible: boolean
-  cropTop: number
-  cropLeft: number
-  resizeTop: number
-  resizeLeft: number
-}
-
-type InlineCropState = {
-  active: boolean
-  relX: number
-  relY: number
-  relWidth: number
-  relHeight: number
-  top: number
-  left: number
-  width: number
-  height: number
-}
-
-type LinkPromptState = {
-  open: boolean
-  top: number
-  left: number
-  url: string
-  text: string
-}
-
-type MultiLineEditState = {
-  anchorBlockIndex: number
-  headBlockIndex: number
-  columnOffset: number
-  columnOffsets?: Record<number, number>
-}
-
-type EditorTextLineRange = {
-  start: number
-  end: number
-  length: number
-  text: string
-}
-
-type ContextMenuState =
-  | { x: number; y: number; type: 'tab'; tabId: string }
-  | { x: number; y: number; type: 'subtab'; tabId: string; subTabId: string }
-  | { x: number; y: number; type: 'image' }
-  | {
-      x: number
-      y: number
-      type: 'trash-tab'
-      source: 'deleted-tab' | 'subtabs-only'
-      deletedTabEntryId: string | null
-      parentTabId: string
-    }
-  | {
-      x: number
-      y: number
-      type: 'trash-subtab'
-      source: 'deleted-tab' | 'subtabs-only'
-      deletedTabEntryId: string | null
-      parentTabId: string
-      subTabId: string
-    }
-  | { x: number; y: number; type: 'space'; spaceId: string }
-
-type DeleteTarget =
-  | { type: 'tab'; tabId: string }
-  | { type: 'subtab'; tabId: string; subTabId: string }
-  | { type: 'trash-tab'; source: 'deleted-tab' | 'subtabs-only'; deletedTabEntryId: string | null; parentTabId: string }
-  | {
-      type: 'trash-subtab'
-      source: 'deleted-tab' | 'subtabs-only'
-      deletedTabEntryId: string | null
-      parentTabId: string
-      subTabId: string
-    }
-  | { type: 'space'; spaceId: string }
-
-type ModalState =
-  | { type: 'delete-target'; target: DeleteTarget; permanent: boolean }
-  | { type: 'trash-delete-all' }
-  | { type: 'trash-restore-all' }
-  | { type: 'export-space'; spaceId: string }
-
-type TrashParentBucket = {
-  id: string
-  title: string
-  source: 'deleted-tab' | 'subtabs-only'
-  deletedTabEntryId: string | null
-  parentTabId: string
-  homeContent: string
-  subTabs: SubTab[]
-}
-
-type NavLocation = {
-  viewMode: ViewMode
-  activeSpaceId: string
-  mainTabId: string
-  mainSubTabId: string | null
-  trashTabId: string
-  trashSubTabId: string | null
-}
+import type {
+  AppState,
+  AppTheme,
+  ArrangeDragItem,
+  ArrangeDragSeed,
+  ArrangeInsertPosition,
+  ArrangeModeState,
+  ArrangeScope,
+  ArrangeSource,
+  ArrangeTapCandidate,
+  ArrangeTapCandidateSeed,
+  ContextMenuState,
+  DeleteTarget,
+  DeletedSubTabEntry,
+  ImageToolsState,
+  InlineCropState,
+  LinkPromptState,
+  ModalState,
+  MultiLineEditState,
+  NavLocation,
+  PendingContent,
+  PendingCreatedEdit,
+  SettingsSection,
+  ShortcutId,
+  Space,
+  SpaceArrangeDragPreview,
+  SpaceSettings,
+  StageManagerAction,
+  StageManagerDraft,
+  StageManagerParentSelection,
+  StageManagerSelectionSnapshot,
+  StageManagerSelectionState,
+  StageManagerStep,
+  StageManagerStrayHandlingMode,
+  Tab,
+  TabArrangeDragItem,
+  TabArrangeDragPreview,
+  ToastState,
+  ToastTone,
+  TrashParentBucket,
+  ViewMode,
+  WorkspaceData,
+} from './types/app'
 
 const TRASH_HOME_ID = '__trash_home__'
-const DEFAULT_AUTO_REMOVE_DAYS = 7
-const MIN_AUTO_REMOVE_DAYS = 1
-const MAX_AUTO_REMOVE_DAYS = 365
-const ARRANGE_PRESS_DELAY_MS = 380
-const ARRANGE_TAP_SLOP_PX = 6
-const ARRANGE_DRAG_START_SLOP_PX = 12
-const DEFAULT_ARRANGE_MODE: ArrangeModeState = {
-  active: false,
-  scope: null,
-  source: null,
-  dragItem: null,
-  overParentTabId: null,
-  overParentInsert: null,
-  overSubTabId: null,
-  overSubTabInsert: null,
-  overSpaceId: null,
-  overSpaceInsert: null,
-}
-const DEFAULT_SHORTCUTS: Record<ShortcutId, string> = {
-  toggleTabTrash: 'Mod+T',
-  openSpaces: 'Mod+S',
-  newTab: 'Mod+Shift+N',
-  newSubTab: 'Mod+N',
-  cycleSubTabNext: 'Ctrl+Tab',
-  cycleSubTabPrev: 'Ctrl+Shift+Tab',
-}
-const INDENT_TOKEN = '\u2060\u2003\u2003'
-const INDENT_PREFIX_PATTERN = /^(?:\u2060\u2003\u2003|\u2003\u2003|\u00A0{1,4}| {1,4}|\t)/
-const EXPORT_TAB_SPACES = '    '
-const DEFAULT_UI_SETTINGS: AppState['ui'] = {
-  showParentHomeTab: true,
-  stageManagerOpenDestinationAfterApply: true,
-  tabButtonScale: 1,
-  noteFontScale: 1,
-}
-
-const MIN_TAB_BUTTON_SCALE = 1
-const MAX_TAB_BUTTON_SCALE = 1.6
-const TAB_BUTTON_SCALE_STEP = 0.05
-const MIN_NOTE_FONT_SCALE = 0.9
-const MAX_NOTE_FONT_SCALE = 1.8
-const NOTE_FONT_SCALE_STEP = 0.05
+const THEME_OPTIONS: Array<{ id: AppTheme; label: string }> = [
+  { id: 'dark', label: 'dark' },
+  { id: 'light', label: 'light' },
+  { id: 'dusk', label: 'dusk' },
+]
 const COMPLETED_TASK_HOLD_MS = 500
 const COMPLETED_TASK_POINTER_SLOP_PX = 6
 const COMPLETED_TASK_UNDO_HINT_COOLDOWN_MS = 10 * 60 * 1000
@@ -372,912 +182,14 @@ const TASK_REORDER_MARKER_MIN_WIDTH_PX = 72
 const TASK_REORDER_MARKER_EXTRA_WIDTH_PX = 34
 const TASK_REORDER_GHOST_CURSOR_X_PERCENT = 25
 
-function clampTabButtonScale(value: number): number {
-  if (!Number.isFinite(value)) return DEFAULT_UI_SETTINGS.tabButtonScale
-  const rounded = Math.round(value / TAB_BUTTON_SCALE_STEP) * TAB_BUTTON_SCALE_STEP
-  return Math.min(MAX_TAB_BUTTON_SCALE, Math.max(MIN_TAB_BUTTON_SCALE, Number(rounded.toFixed(2))))
-}
-
-function clampNoteFontScale(value: number): number {
-  if (!Number.isFinite(value)) return DEFAULT_UI_SETTINGS.noteFontScale
-  const rounded = Math.round(value / NOTE_FONT_SCALE_STEP) * NOTE_FONT_SCALE_STEP
-  return Math.min(MAX_NOTE_FONT_SCALE, Math.max(MIN_NOTE_FONT_SCALE, Number(rounded.toFixed(2))))
-}
-
-function normalizeShortcutValue(raw: unknown, fallback: string): string {
-  if (typeof raw !== 'string') return fallback
-  const trimmed = raw.trim()
-  return trimmed.length > 0 ? trimmed : fallback
-}
-
-function normalizeHotkeySettings(raw: unknown): AppState['hotkeys'] {
-  const fallback: AppState['hotkeys'] = {
-    shortcuts: DEFAULT_SHORTCUTS,
-    enableMouseBackForward: true,
-    enableGenericHistoryHotkeys: true,
-  }
-  if (!raw || typeof raw !== 'object') return fallback
-  const obj = raw as Record<string, unknown>
-  const rawShortcuts = obj.shortcuts && typeof obj.shortcuts === 'object' ? (obj.shortcuts as Record<string, unknown>) : {}
-
-  const shortcuts = Object.entries(DEFAULT_SHORTCUTS).reduce<Record<ShortcutId, string>>((acc, [key, value]) => {
-    const shortcutKey = key as ShortcutId
-    acc[shortcutKey] = normalizeShortcutValue(rawShortcuts[key], value)
-    return acc
-  }, {} as Record<ShortcutId, string>)
-
-  return {
-    shortcuts,
-    enableMouseBackForward: typeof obj.enableMouseBackForward === 'boolean' ? obj.enableMouseBackForward : true,
-    enableGenericHistoryHotkeys:
-      typeof obj.enableGenericHistoryHotkeys === 'boolean' ? obj.enableGenericHistoryHotkeys : true,
-  }
-}
-
-function normalizeUiSettings(raw: unknown): AppState['ui'] {
-  if (!raw || typeof raw !== 'object') return DEFAULT_UI_SETTINGS
-  const obj = raw as Record<string, unknown>
-  return {
-    showParentHomeTab:
-      typeof obj.showParentHomeTab === 'boolean' ? obj.showParentHomeTab : DEFAULT_UI_SETTINGS.showParentHomeTab,
-    stageManagerOpenDestinationAfterApply:
-      typeof obj.stageManagerOpenDestinationAfterApply === 'boolean'
-        ? obj.stageManagerOpenDestinationAfterApply
-        : DEFAULT_UI_SETTINGS.stageManagerOpenDestinationAfterApply,
-    tabButtonScale:
-      typeof obj.tabButtonScale === 'number'
-        ? clampTabButtonScale(obj.tabButtonScale)
-        : DEFAULT_UI_SETTINGS.tabButtonScale,
-    noteFontScale:
-      typeof obj.noteFontScale === 'number'
-        ? clampNoteFontScale(obj.noteFontScale)
-        : DEFAULT_UI_SETTINGS.noteFontScale,
-  }
-}
-
-function isModifierToken(token: string): boolean {
-  return token === 'mod' || token === 'ctrl' || token === 'meta' || token === 'alt' || token === 'shift'
-}
-
-function getIndentPrefixLength(text: string): number {
-  const match = text.match(INDENT_PREFIX_PATTERN)
-  return match ? match[0].length : 0
-}
-
-function countLeadingIndentUnits(text: string): number {
-  let count = 0
-  let remaining = text
-  while (true) {
-    const length = getIndentPrefixLength(remaining)
-    if (length <= 0) return count
-    count += 1
-    remaining = remaining.slice(length)
-  }
-}
-
-function stripAllIndentPrefixes(text: string): string {
-  let remaining = text
-  while (true) {
-    const length = getIndentPrefixLength(remaining)
-    if (length <= 0) return remaining
-    remaining = remaining.slice(length)
-  }
-}
-
-function buildNormalizedIndentPrefix(levels: number): string {
-  return levels > 0 ? INDENT_TOKEN.repeat(levels) : ''
-}
-
-function getTrailingIndentPrefixLength(text: string): number {
-  const match = text.match(/(?:\u2060\u2003\u2003|\u2003\u2003|\u00A0{1,4}| {1,4}|\t)$/)
-  return match ? match[0].length : 0
-}
-
-function repairBrokenDataImageMarkdown(markdown: string): string {
-  let next = String(markdown ?? '')
-
-  next = next.replace(/!\[([^\]]*)\]\(dat\s*\n+\s*(a:image\/[a-zA-Z0-9+.-]+;base64,[^)]+)\)/g, '![$1](dat$2)')
-  next = next.replace(/!\[([^\]]*)\]\(\s*(data:image\/[a-zA-Z0-9+.-]+;base64,[\s\S]*?)\)/g, (_all, alt: string, src: string) => {
-    const collapsed = src.replace(/\s+/g, '')
-    return `![${alt}](${collapsed})`
-  })
-
-  return next
-}
-
-function normalizeMarkdownForPersistence(markdown: string): string {
-  const repaired = repairBrokenDataImageMarkdown(markdown)
-  return repaired.replace(/(?<!\u2060)\u2003\u2003/g, INDENT_TOKEN)
-}
-
-function convertInternalTabsForExport(markdown: string): string {
-  return String(markdown ?? '')
-    .replace(/\u2060\u2003\u2003/g, EXPORT_TAB_SPACES)
-    .replace(/\u2003\u2003/g, EXPORT_TAB_SPACES)
-    .replace(/\u00A0/g, ' ')
-}
-
-function mergeLeadingIndentsFromWysiwyg(editor: Editor | null, markdown: string): string {
-  const wwView = (editor as any)?.wwEditor?.view
-  if (!wwView?.state?.doc || !markdown) return markdown
-
-  const indentedBlockQueue = new Map<string, string[]>()
-  wwView.state.doc.nodesBetween(0, wwView.state.doc.content.size, (node: any) => {
-    if (!node?.isTextblock) return
-    const text = node.textContent ?? ''
-    const indentLevels = countLeadingIndentUnits(text)
-    if (indentLevels <= 0) return
-    const plain = stripAllIndentPrefixes(text)
-    if (!plain) return
-    const indentPrefix = buildNormalizedIndentPrefix(indentLevels)
-    const existing = indentedBlockQueue.get(plain) ?? []
-    existing.push(indentPrefix)
-    indentedBlockQueue.set(plain, existing)
-  })
-
-  if (indentedBlockQueue.size === 0) return markdown
-
-  const nextLines = markdown.split('\n').map((line) => {
-    const plain = stripAllIndentPrefixes(line)
-    const queue = indentedBlockQueue.get(plain)
-    if (!queue || queue.length === 0) return line
-    const indentPrefix = queue.shift() ?? ''
-    return `${indentPrefix}${plain}`
-  })
-
-  return nextLines.join('\n')
-}
-
-function getEventKeyToken(event: KeyboardEvent): string | null {
-  if (event.code === 'Backquote') return 'Backquote'
-  if (event.key === 'Tab') return 'Tab'
-  if (event.key.length === 1) return event.key.toUpperCase()
-  return null
-}
-
-function eventMatchesShortcut(event: KeyboardEvent, shortcut: string, isMac: boolean): boolean {
-  const tokens = shortcut
-    .split('+')
-    .map((token) => token.trim().toLowerCase())
-    .filter((token) => token.length > 0)
-  if (tokens.length === 0) return false
-
-  const keyToken = tokens.find((token) => !isModifierToken(token))
-  if (!keyToken) return false
-
-  const requiresMod = tokens.includes('mod')
-  const requiresCtrl = tokens.includes('ctrl')
-  const requiresMeta = tokens.includes('meta')
-  const requiresAlt = tokens.includes('alt')
-  const requiresShift = tokens.includes('shift')
-
-  const expectedCtrl = requiresCtrl || (requiresMod && !isMac)
-  const expectedMeta = requiresMeta || (requiresMod && isMac)
-
-  if (event.ctrlKey !== expectedCtrl) return false
-  if (event.metaKey !== expectedMeta) return false
-  if (event.altKey !== requiresAlt) return false
-  if (event.shiftKey !== requiresShift) return false
-
-  const eventToken = getEventKeyToken(event)
-  if (!eventToken) return false
-  return eventToken.toLowerCase() === keyToken
-}
-
-function buildShortcutFromKeyboardEvent(event: KeyboardEvent, isMac: boolean): string | null {
-  const keyToken = getEventKeyToken(event)
-  if (!keyToken) return null
-
-  const parts: string[] = []
-  const usesPrimaryMod = isMac ? event.metaKey : event.ctrlKey
-  if (usesPrimaryMod) parts.push('Mod')
-  if (event.ctrlKey && !(usesPrimaryMod && !isMac)) parts.push('Ctrl')
-  if (event.metaKey && !(usesPrimaryMod && isMac)) parts.push('Meta')
-  if (event.altKey) parts.push('Alt')
-  if (event.shiftKey) parts.push('Shift')
-  parts.push(keyToken)
-  return parts.join('+')
-}
-
-function formatShortcutLabel(shortcut: string, isMac: boolean): string {
-  return shortcut
-    .split('+')
-    .map((token) => {
-      const lower = token.toLowerCase()
-      if (lower === 'mod') return isMac ? 'cmd' : 'ctrl'
-      if (lower === 'meta') return 'cmd'
-      if (lower === 'ctrl') return 'ctrl'
-      if (lower === 'alt') return isMac ? 'option' : 'alt'
-      if (lower === 'shift') return 'shift'
-      if (lower === 'backquote') return '`'
-      return token.length === 1 ? token.toLowerCase() : token.toLowerCase()
-    })
-    .join('+')
-}
-
-function createId() {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
-}
-
-function createEmptyStageManagerParentSelection(): StageManagerParentSelection {
-  return {
-    mode: 'none',
-    selectedSubTabIds: [],
-    cachedPartialSubTabIds: null,
-    partialDirection: null,
-  }
-}
-
-function createStageManagerSelectionState(tabs: Tab[]): StageManagerSelectionState {
-  return Object.fromEntries(tabs.map((tab) => [tab.id, createEmptyStageManagerParentSelection()]))
-}
-
-function createDefaultStageManagerDraft(): StageManagerDraft {
-  return {
-    promoteSpaceMode: 'existing',
-    promoteSpaceId: '',
-    newSpaceName: '',
-    demoteParentMode: 'existing',
-    demoteParentId: '',
-    demoteNewParentName: '',
-    migrateTarget: 'space',
-    migrateSpaceMode: 'existing',
-    migrateSpaceId: '',
-    migrateParentSpaceMode: 'current',
-    migrateParentSpaceId: '',
-    migrateParentMode: 'existing',
-    migrateParentId: '',
-    migrateNewParentName: '',
-    strayHandlingMode: 'promote',
-    straySelectedParentId: '',
-    strayExistingParentId: '',
-    strayNewParentName: '',
-    massDeleteMode: 'trash',
-  }
-}
-
-function orderStageManagerSubTabIds(tab: Tab, subTabIds: string[]): string[] {
-  const idSet = new Set(subTabIds)
-  return tab.subTabs.filter((subTab) => idSet.has(subTab.id)).map((subTab) => subTab.id)
-}
-
-function normalizeStageManagerParentSelection(tab: Tab, selection?: StageManagerParentSelection): StageManagerParentSelection {
-  const base = selection ?? createEmptyStageManagerParentSelection()
-  const orderedSelectedIds = orderStageManagerSubTabIds(tab, base.selectedSubTabIds)
-  const orderedCachedIds =
-    base.cachedPartialSubTabIds && base.cachedPartialSubTabIds.length > 0
-      ? orderStageManagerSubTabIds(tab, base.cachedPartialSubTabIds)
-      : null
-
-  if (tab.subTabs.length === 0) {
-    return base.mode === 'full'
-      ? {
-          mode: 'full',
-          selectedSubTabIds: [],
-          cachedPartialSubTabIds: null,
-          partialDirection: null,
-        }
-      : createEmptyStageManagerParentSelection()
-  }
-
-  if (base.mode === 'full' || orderedSelectedIds.length >= tab.subTabs.length) {
-    return {
-      mode: 'full',
-      selectedSubTabIds: tab.subTabs.map((subTab) => subTab.id),
-      cachedPartialSubTabIds: orderedCachedIds && orderedCachedIds.length > 0 ? orderedCachedIds : null,
-      partialDirection: null,
-    }
-  }
-
-  if (orderedSelectedIds.length === 0) {
-    return {
-      mode: 'none',
-      selectedSubTabIds: [],
-      cachedPartialSubTabIds: orderedCachedIds && orderedCachedIds.length > 0 ? orderedCachedIds : null,
-      partialDirection: null,
-    }
-  }
-
-  return {
-    mode: 'partial',
-    selectedSubTabIds: orderedSelectedIds,
-    cachedPartialSubTabIds: orderedCachedIds && orderedCachedIds.length > 0 ? orderedCachedIds : orderedSelectedIds,
-    partialDirection: base.partialDirection === 'toward-none' ? 'toward-none' : 'toward-all',
-  }
-}
-
-function buildStageManagerSelectionSnapshot(
-  tabs: Tab[],
-  selections: StageManagerSelectionState,
-): StageManagerSelectionSnapshot {
-  const fullParents: Tab[] = []
-  const partialParents: Array<{ tab: Tab; selectedSubTabs: SubTab[] }> = []
-  const looseSubTabs: Array<{ parentTab: Tab; subTab: SubTab }> = []
-
-  for (const tab of tabs) {
-    const selection = normalizeStageManagerParentSelection(tab, selections[tab.id])
-    if (selection.mode === 'full') {
-      fullParents.push(tab)
-      continue
-    }
-
-    if (selection.mode !== 'partial') continue
-
-    const selectedIdSet = new Set(selection.selectedSubTabIds)
-    const selectedSubTabs = tab.subTabs.filter((subTab) => selectedIdSet.has(subTab.id))
-    partialParents.push({ tab, selectedSubTabs })
-    for (const subTab of selectedSubTabs) {
-      looseSubTabs.push({ parentTab: tab, subTab })
-    }
-  }
-
-  return {
-    fullParents,
-    partialParents,
-    looseSubTabs,
-    fullParentIds: new Set(fullParents.map((tab) => tab.id)),
-    hasSelection: fullParents.length > 0 || looseSubTabs.length > 0,
-  }
-}
-
-function moveItemByInsertion<T>(
-  items: T[],
-  fromIndex: number,
-  targetIndex: number,
-  position: ArrangeInsertPosition,
-): T[] {
-  if (fromIndex < 0 || targetIndex < 0 || fromIndex === targetIndex) return items
-  const nextItems = [...items]
-  const [movedItem] = nextItems.splice(fromIndex, 1)
-  const rawInsertIndex = targetIndex + (position === 'after' ? 1 : 0)
-  const insertIndex = fromIndex < rawInsertIndex ? rawInsertIndex - 1 : rawInsertIndex
-  nextItems.splice(insertIndex, 0, movedItem)
-  return nextItems
-}
-
-function getArrangeRailInsertionTarget(
-  rail: HTMLElement,
-  selector: string,
-  attributeName: string,
-  clientX: number,
-  clientY: number,
-): { targetId: string; position: ArrangeInsertPosition } | null {
-  const elements = Array.from(rail.querySelectorAll<HTMLElement>(selector))
-  if (elements.length === 0) return null
-
-  const rects = elements.map((element) => ({
-    element,
-    rect: element.getBoundingClientRect(),
-    id: element.getAttribute(attributeName) ?? '',
-  }))
-  const validRects = rects.filter((entry) => entry.id)
-  if (validRects.length === 0) return null
-
-  const closestRowAnchor = validRects.reduce((closest, current) => {
-    const closestDistance = Math.abs(clientY - (closest.rect.top + closest.rect.height / 2))
-    const currentDistance = Math.abs(clientY - (current.rect.top + current.rect.height / 2))
-    return currentDistance < closestDistance ? current : closest
-  })
-
-  const rowRects = validRects
-    .filter((entry) => Math.abs(entry.rect.top - closestRowAnchor.rect.top) <= 6)
-    .sort((left, right) => left.rect.left - right.rect.left)
-
-  if (rowRects.length === 0) return null
-
-  for (const entry of rowRects) {
-    const midpoint = entry.rect.left + entry.rect.width / 2
-    if (clientX < midpoint) {
-      return {
-        targetId: entry.id,
-        position: 'before',
-      }
-    }
-  }
-
-  const lastEntry = rowRects[rowRects.length - 1]
-  return {
-    targetId: lastEntry.id,
-    position: 'after',
-  }
-}
-
-function createSubTab(title = 'tab', content?: string): SubTab {
-  return {
-    id: createId(),
-    title,
-    content: content ?? '',
-  }
-}
-
-function createTab(title = 'tab'): Tab {
-  return {
-    id: createId(),
-    title,
-    homeContent: '',
-    activeSubTabId: null,
-    subTabs: [],
-  }
-}
-
-function clampAutoRemoveDays(value: number): number {
-  if (!Number.isFinite(value)) return DEFAULT_AUTO_REMOVE_DAYS
-  return Math.min(MAX_AUTO_REMOVE_DAYS, Math.max(MIN_AUTO_REMOVE_DAYS, Math.floor(value)))
-}
-
-function normalizeHeadingMarkers(markdown: string): string {
-  const lines = markdown.split('\n')
-  let inFencedCode = false
-  let changed = false
-
-  const nextLines = lines.map((line) => {
-    if (/^\s*```/.test(line)) {
-      inFencedCode = !inFencedCode
-      return line
-    }
-    if (inFencedCode) return line
-
-    const match = line.match(/^(\s*)(#{1,6})\s*$/)
-    if (!match) return line
-
-    const normalized = `${match[1]}${match[2]} `
-    if (normalized !== line) changed = true
-    return normalized
-  })
-
-  return changed ? nextLines.join('\n') : markdown
-}
-
-function isHorizontalRuleMarkerLine(line: string): boolean {
-  return /^\s*(?:-{3,}|\*{3,})\s*$/.test(line)
-}
-
-function materializeHorizontalRuleShortcut(previousMarkdown: string, currentMarkdown: string): string | null {
-  if (currentMarkdown.length <= previousMarkdown.length) return null
-
-  let prefixLength = 0
-  while (
-    prefixLength < previousMarkdown.length &&
-    prefixLength < currentMarkdown.length &&
-    previousMarkdown[prefixLength] === currentMarkdown[prefixLength]
-  ) {
-    prefixLength += 1
-  }
-
-  let suffixLength = 0
-  while (
-    suffixLength < previousMarkdown.length - prefixLength &&
-    suffixLength < currentMarkdown.length - prefixLength &&
-    previousMarkdown[previousMarkdown.length - 1 - suffixLength] === currentMarkdown[currentMarkdown.length - 1 - suffixLength]
-  ) {
-    suffixLength += 1
-  }
-
-  const inserted = currentMarkdown.slice(prefixLength, currentMarkdown.length - suffixLength)
-  const removed = previousMarkdown.slice(prefixLength, previousMarkdown.length - suffixLength)
-  if (removed.length > 0) return null
-  if (!inserted.includes('\n')) return null
-  if (/[^\n]/.test(inserted)) return null
-
-  const lineStart = currentMarkdown.lastIndexOf('\n', prefixLength - 1) + 1
-  const lineBeforeInsertedNewline = currentMarkdown.slice(lineStart, prefixLength)
-  if (!isHorizontalRuleMarkerLine(lineBeforeInsertedNewline)) return null
-
-  const lineIndentMatch = lineBeforeInsertedNewline.match(/^(\s*)/)
-  const indent = lineIndentMatch?.[1] ?? ''
-  const beforeLine = currentMarkdown.slice(0, lineStart)
-  const afterInsertedNewlines = currentMarkdown.slice(prefixLength + inserted.length)
-  const normalizedRuleBlock = `${indent}---\n\n`
-  return `${beforeLine}${normalizedRuleBlock}${afterInsertedNewlines}`
-}
-
-function thematicBreakShortcutPlugin(context: {
-  pmKeymap: { keymap: (bindings: Record<string, unknown>) => unknown }
-  pmModel: { Fragment: { fromArray: (nodes: unknown[]) => unknown } }
-  pmState: {
-    Selection: { near: (resolvedPos: unknown, bias?: number) => unknown }
-  }
-  instance: {
-    getMarkdown: () => string
-    setMarkdown: (markdown: string, cursorToEnd?: boolean) => void
-    setSelection: (start: number | [number, number], end?: number | [number, number]) => void
-    convertPosToMatchEditorMode: (
-      start: number | [number, number],
-      end?: number | [number, number],
-      mode?: 'markdown' | 'wysiwyg',
-    ) => [number | [number, number], number | [number, number]]
-    isWysiwygMode: () => boolean
-  }
-}) {
-  const { keymap } = context.pmKeymap
-  const { Fragment } = context.pmModel
-  const { Selection } = context.pmState
-
-  return {
-    wysiwygPlugins: [
-      () =>
-        keymap({
-          Enter: (state: {
-            selection: {
-              empty: boolean
-              $from: {
-                parent: { textContent: string; type: { name: string } }
-                depth: number
-                before: (depth: number) => number
-                after: (depth: number) => number
-              }
-            }
-            schema: { nodes: Record<string, { create: () => unknown } | undefined> }
-            tr: {
-              replaceWith: (from: number, to: number, content: unknown) => unknown
-              doc: { resolve: (pos: number) => unknown; content: { size: number } }
-              setSelection: (selection: unknown) => unknown
-              scrollIntoView: () => unknown
-            }
-          }, dispatch?: (tr: unknown) => void) => {
-            const { selection, schema, tr } = state
-            if (!selection.empty) return false
-
-            const { $from } = selection
-            if ($from.parent.type.name !== 'paragraph') return false
-
-            const currentLine = ($from.parent.textContent ?? '').replace(/\u200b/g, '')
-            if (!isHorizontalRuleMarkerLine(currentLine)) return false
-
-            const thematicBreakNode = schema.nodes.thematicBreak?.create()
-            const paragraphNode = schema.nodes.paragraph?.create()
-            if (!thematicBreakNode || !paragraphNode) return false
-
-            const blockDepth = $from.depth
-            const from = $from.before(blockDepth)
-            const to = $from.after(blockDepth)
-
-            const nextTr = tr.replaceWith(from, to, Fragment.fromArray([thematicBreakNode, paragraphNode])) as {
-              doc: { resolve: (pos: number) => unknown; content: { size: number } }
-              setSelection: (selection: unknown) => unknown
-              scrollIntoView: () => unknown
-            }
-
-            const selectionPos = Math.min(from + 2, nextTr.doc.content.size)
-            const nextSelection = Selection.near(nextTr.doc.resolve(selectionPos), 1)
-            const nextTrWithSelection = nextTr.setSelection(nextSelection) as {
-              scrollIntoView: () => unknown
-            }
-            dispatch?.(nextTrWithSelection.scrollIntoView())
-            return true
-          },
-        }),
-    ],
-  }
-}
-
-function headingSpaceShortcutPlugin(context: {
-  pmKeymap: { keymap: (bindings: Record<string, unknown>) => unknown }
-  pmState: {
-    TextSelection: {
-      create: (doc: unknown, anchor: number, head?: number) => unknown
-    }
-  }
-}) {
-  const { keymap } = context.pmKeymap
-  const { TextSelection } = context.pmState
-
-  return {
-    wysiwygPlugins: [
-      () =>
-        keymap({
-          Space: (state: {
-            selection: {
-              empty: boolean
-              $from: {
-                parent: {
-                  textContent: string
-                  type: { name: string }
-                  attrs?: { level?: number }
-                  content: { size: number }
-                }
-                parentOffset: number
-                depth: number
-                before: (depth: number) => number
-                after: (depth: number) => number
-              }
-            }
-            schema: { nodes: Record<string, { create: (attrs?: Record<string, unknown>) => unknown } | undefined> }
-            tr: {
-              replaceWith: (from: number, to: number, content: unknown) => unknown
-              doc: { resolve: (pos: number) => unknown; content: { size: number } }
-              setSelection: (selection: unknown) => unknown
-              scrollIntoView: () => unknown
-            }
-          }, dispatch?: (tr: unknown) => void) => {
-            const { selection, schema, tr } = state
-            if (!selection.empty) return false
-
-            const { $from } = selection
-            if ($from.parent.type.name !== 'paragraph' && $from.parent.type.name !== 'heading') return false
-            if ($from.parentOffset !== $from.parent.content.size) return false
-
-            const match = ($from.parent.textContent ?? '').match(/^\s*(#{1,6})$/)
-            if (!match) return false
-
-            const currentHeadingLevel =
-              $from.parent.type.name === 'heading' && typeof $from.parent.attrs?.level === 'number' ? $from.parent.attrs.level : 0
-            const nextLevel = Math.min(6, currentHeadingLevel + match[1].length)
-            const headingNode = schema.nodes.heading?.create({
-              level: nextLevel,
-              headingType: 'atx',
-            })
-            if (!headingNode) return false
-
-            const blockDepth = $from.depth
-            const from = $from.before(blockDepth)
-            const to = $from.after(blockDepth)
-
-            const nextTr = tr.replaceWith(from, to, headingNode) as {
-              doc: { content: { size: number } }
-              setSelection: (selection: unknown) => { scrollIntoView: () => unknown }
-            }
-            const caretPos = Math.min(from + 1, nextTr.doc.content.size)
-            const nextSelection = TextSelection.create(nextTr.doc, caretPos, caretPos)
-            dispatch?.(nextTr.setSelection(nextSelection).scrollIntoView())
-            return true
-          },
-        }),
-    ],
-  }
-}
-
-function multiLineSelectionShortcutPlugin(context: {
-  pmState: {
-    PluginKey: new (name?: string) => {
-      getState: (state: unknown) => number[] | undefined
-    }
-    Plugin: new (spec: {
-      key?: unknown
-      state?: {
-        init: () => number[]
-        apply: (tr: { getMeta: (key: unknown) => unknown }, previous: number[]) => number[]
-      }
-      props?: {
-        decorations?: (state: unknown) => unknown
-        handleDOMEvents?: {
-          keydown?: (view: unknown, event: KeyboardEvent) => boolean
-        }
-      }
-    }) => unknown
-  }
-  pmView: {
-    Decoration: {
-      widget: (pos: number, toDOM: () => HTMLElement, spec?: Record<string, unknown>) => unknown
-    }
-    DecorationSet: {
-      create: (doc: unknown, decorations: unknown[]) => unknown
-    }
-  }
-  pmKeymap: { keymap: (bindings: Record<string, unknown>) => unknown }
-  onExpand: (direction: 'up' | 'down') => boolean
-  onPluginKeyReady: (pluginKey: unknown) => void
-}) {
-  const { Plugin, PluginKey } = context.pmState
-  const { Decoration, DecorationSet } = context.pmView
-  const { keymap } = context.pmKeymap
-  const { onExpand, onPluginKeyReady } = context
-  const pluginKey = new PluginKey('tabs-multiline-cursors')
-  onPluginKeyReady(pluginKey)
-
-  const createCursorWidget = () => {
-    const cursor = document.createElement('span')
-    cursor.className = 'multiline-cursor-widget'
-    return cursor
-  }
-
-  const createDomKeydownPlugin = () =>
-    new Plugin({
-      key: pluginKey,
-      state: {
-        init: () => [],
-        apply: (tr, previous) => {
-          const nextPositions = tr.getMeta(pluginKey)
-          return Array.isArray(nextPositions) ? nextPositions.filter((pos) => typeof pos === 'number') : previous
-        },
-      },
-      props: {
-        decorations: (state) => {
-          const positions = pluginKey.getState(state) ?? []
-          return DecorationSet.create(
-            (state as { doc: unknown }).doc,
-            positions.map((pos) =>
-              Decoration.widget(pos, createCursorWidget, {
-                key: `multiline-cursor-${pos}`,
-                side: 1,
-                ignoreSelection: true,
-              }),
-            ),
-          )
-        },
-        handleDOMEvents: {
-          keydown: (_view, event) => {
-            const direction = getMultilineSelectionShortcutDirection(event)
-            if (!direction) return false
-            const handled = onExpand(direction)
-            if (!handled) return false
-            event.preventDefault()
-            event.stopPropagation()
-            return true
-          },
-        },
-      },
-    })
-
-  return {
-    wysiwygPlugins: [
-      createDomKeydownPlugin,
-      () =>
-        keymap({
-          'Mod-Alt-ArrowUp': () => onExpand('up'),
-          'Mod-Alt-ArrowDown': () => onExpand('down'),
-          'Mod-Alt-Home': () => onExpand('up'),
-          'Mod-Alt-End': () => onExpand('down'),
-          'Shift-Alt-ArrowUp': () => onExpand('up'),
-          'Shift-Alt-ArrowDown': () => onExpand('down'),
-        }),
-    ],
-  }
-}
-
-function getMultilineSelectionShortcutDirection(event: KeyboardEvent): 'up' | 'down' | null {
-  const isMac = typeof navigator !== 'undefined' ? /mac/i.test(navigator.platform) : false
-  const isArrowUp =
-    event.key === 'ArrowUp' ||
-    event.key === 'Up' ||
-    event.code === 'ArrowUp' ||
-    (isMac && (event.key === 'Home' || event.code === 'Home' || event.keyCode === 36))
-  const isArrowDown =
-    event.key === 'ArrowDown' ||
-    event.key === 'Down' ||
-    event.code === 'ArrowDown' ||
-    (isMac && (event.key === 'End' || event.code === 'End' || event.keyCode === 35))
-
-  if (isMac) {
-    if (!event.metaKey || !event.altKey || event.ctrlKey || event.shiftKey) return null
-    if (isArrowUp) return 'up'
-    if (isArrowDown) return 'down'
-    return null
-  }
-
-  if (!event.altKey || !event.shiftKey || event.metaKey || event.ctrlKey) return null
-  if (isArrowUp) return 'up'
-  if (isArrowDown) return 'down'
-  return null
-}
-
-const EDITOR_TOOLBAR_ITEMS: string[][] = [
-  ['heading', 'bold', 'italic', 'strike'],
-  ['hr', 'quote'],
-  ['ul', 'ol', 'task'],
-  ['table', 'image', 'link'],
-  ['code', 'codeblock'],
-]
-
-function bindClearToolbarTooltip(root: HTMLElement, toolbar: HTMLElement, button: HTMLButtonElement) {
-  const tooltip = root.querySelector('.toastui-editor-tooltip')
-  const tooltipText = tooltip?.querySelector('.text')
-  if (!(tooltip instanceof HTMLElement) || !(tooltipText instanceof HTMLElement)) return
-
-  const showTooltip = () => {
-    const toolbarRect = toolbar.getBoundingClientRect()
-    const buttonRect = button.getBoundingClientRect()
-    tooltip.style.display = 'block'
-    tooltip.style.left = `${buttonRect.left - toolbarRect.left + 6}px`
-    tooltip.style.top = `${buttonRect.top - toolbarRect.top + button.offsetHeight + 6}px`
-    tooltipText.textContent = 'clear contents'
-  }
-
-  const hideTooltip = () => {
-    tooltip.style.display = 'none'
-  }
-
-  button.addEventListener('mouseover', showTooltip)
-  button.addEventListener('mouseout', hideTooltip)
-  button.addEventListener('focus', showTooltip)
-  button.addEventListener('blur', hideTooltip)
-}
-
-function installClearToolbarButton(root: HTMLElement, onClear: () => void) {
-  const toolbar = root.querySelector('.toastui-editor-defaultUI-toolbar')
-  if (!(toolbar instanceof HTMLElement)) return
-  if (toolbar.querySelector('.clear-note-toolbar-btn')) return
-
-  const group = document.createElement('div')
-  group.className = 'toastui-editor-toolbar-group clear-note-toolbar-group'
-
-  const button = document.createElement('button')
-  button.type = 'button'
-  button.className = 'clear-note-toolbar-btn'
-  button.textContent = '⌫'
-  button.setAttribute('aria-label', 'clear contents')
-  button.addEventListener('click', (event) => {
-    event.preventDefault()
-    onClear()
-  })
-  bindClearToolbarTooltip(root, toolbar, button)
-
-  group.appendChild(button)
-  toolbar.appendChild(group)
-}
-
-function getActiveHeadingLevel(editor: Editor | null): number | null {
-  const view = (editor as any)?.wwEditor?.view
-  const state = view?.state
-  const selection = state?.selection
-  if (!state || !selection) return null
-
-  const fromParent = selection.$from?.parent
-  const toParent = selection.$to?.parent
-  if (fromParent && fromParent === toParent) {
-    if (fromParent.type?.name === 'heading') return Number(fromParent.attrs?.level) || null
-    if (fromParent.type?.name === 'paragraph') return 0
-  }
-
-  const headingLevels = new Set<number>()
-  let paragraphSelected = false
-
-  state.doc?.nodesBetween?.(selection.from, selection.to, (node: any) => {
-    if (node.type?.name === 'heading') {
-      headingLevels.add(Number(node.attrs?.level))
-      return false
-    }
-    if (node.type?.name === 'paragraph') {
-      paragraphSelected = true
-      return false
-    }
-    return true
-  })
-
-  if (headingLevels.size === 1 && !paragraphSelected) return Array.from(headingLevels)[0] ?? null
-  if (headingLevels.size === 0 && paragraphSelected) return 0
-  return null
-}
-
-function syncHeadingPopupActiveState(root: HTMLElement, editor: Editor | null) {
-  const popup = root.querySelector('.toastui-editor-popup-add-heading')
-  if (!(popup instanceof HTMLElement)) return
-
-  const activeLevel = getActiveHeadingLevel(editor)
-  popup.querySelectorAll<HTMLElement>('li[data-type]').forEach((item) => {
-    item.classList.remove('is-active-heading-choice')
-    item.removeAttribute('aria-current')
-  })
-
-  const selector =
-    activeLevel === 0
-      ? 'li[data-type="Paragraph"]'
-      : typeof activeLevel === 'number'
-        ? `li[data-type="Heading"][data-level="${activeLevel}"]`
-        : ''
-  if (!selector) return
-
-  const activeItem = popup.querySelector<HTMLElement>(selector)
-  if (!activeItem) return
-  activeItem.classList.add('is-active-heading-choice')
-  activeItem.setAttribute('aria-current', 'true')
-}
-
-function installHeadingPopupActiveState(root: HTMLElement, getEditor: () => Editor | null) {
-  const sync = () => window.requestAnimationFrame(() => syncHeadingPopupActiveState(root, getEditor()))
-  const observer = new MutationObserver(sync)
-
-  observer.observe(root, { childList: true, subtree: true })
-  root.addEventListener('click', sync, true)
-  root.addEventListener('keyup', sync, true)
-  root.addEventListener('mouseup', sync, true)
-
-  return () => {
-    observer.disconnect()
-    root.removeEventListener('click', sync, true)
-    root.removeEventListener('keyup', sync, true)
-    root.removeEventListener('mouseup', sync, true)
-  }
+type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
+
+type MultiLineEditHistoryEntry = {
+  noteKey: string
+  beforeMarkdown: string
+  afterMarkdown: string
+  beforeState: MultiLineEditState
+  afterState: MultiLineEditState
 }
 
 type TaskListItemHit = {
@@ -1915,432 +827,12 @@ function installTaskTextReorderBehavior(root: HTMLElement, getEditor: () => Edit
 
 let renameInputMeasureContext: CanvasRenderingContext2D | null = null
 
-function createDefaultWorkspaceData(): WorkspaceData {
-  const welcomeTabId = 'home-tab'
-  return {
-    activeTabId: welcomeTabId,
-    tabs: [
-      {
-        id: welcomeTabId,
-        title: 'Welcome',
-        homeContent:
-          '- This is the hidden home note for this top-level tab.\n- Click this parent tab to edit this note.\n- Sub-tabs are separate notes and start empty.\n',
-        activeSubTabId: null,
-        subTabs: [createSubTab('Checklist', '1. Add parent tab\n2. Add sub-tab\n3. Each note keeps separate content\n')],
-      },
-    ],
-    deletedTabs: [],
-    deletedSubTabs: [],
-  }
-}
-
-function createSpace(name: string): Space {
-  return {
-    id: createId(),
-    name,
-    settings: { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
-    data: createDefaultWorkspaceData(),
-  }
-}
-
-function createDuplicateSpaceName(name: string, existingNames: string[]): string {
-  const baseName = `${name} copy`
-  if (!existingNames.includes(baseName)) return baseName
-
-  let suffix = 2
-  while (existingNames.includes(`${baseName} ${suffix}`)) {
-    suffix += 1
-  }
-  return `${baseName} ${suffix}`
-}
-
-function duplicateWorkspaceData(data: WorkspaceData): WorkspaceData {
-  const liveTabIdMap = new Map<string, string>()
-
-  const duplicatedTabs = data.tabs.map((tab) => {
-    const nextTabId = createId()
-    liveTabIdMap.set(tab.id, nextTabId)
-
-    const subTabIdMap = new Map<string, string>()
-    const duplicatedSubTabs = tab.subTabs.map((subTab) => {
-      const nextSubTabId = createId()
-      subTabIdMap.set(subTab.id, nextSubTabId)
-      return {
-        ...subTab,
-        id: nextSubTabId,
-      }
-    })
-
-    return {
-      ...tab,
-      id: nextTabId,
-      activeSubTabId: tab.activeSubTabId ? subTabIdMap.get(tab.activeSubTabId) ?? null : null,
-      subTabs: duplicatedSubTabs,
-    }
-  })
-
-  const duplicatedDeletedTabs = data.deletedTabs.map((entry) => {
-    const duplicatedTabId = createId()
-    const deletedSubTabIdMap = new Map<string, string>()
-    const duplicatedDeletedSubTabs = entry.tab.subTabs.map((subTab) => {
-      const nextSubTabId = createId()
-      deletedSubTabIdMap.set(subTab.id, nextSubTabId)
-      return {
-        ...subTab,
-        id: nextSubTabId,
-      }
-    })
-
-    return {
-      ...entry,
-      id: createId(),
-      tab: {
-        ...entry.tab,
-        id: duplicatedTabId,
-        activeSubTabId: entry.tab.activeSubTabId ? deletedSubTabIdMap.get(entry.tab.activeSubTabId) ?? null : null,
-        subTabs: duplicatedDeletedSubTabs,
-      },
-    }
-  })
-
-  const orphanDeletedParentIdMap = new Map<string, string>()
-  const resolveDeletedSubParentId = (parentTabId: string) => {
-    const liveMatch = liveTabIdMap.get(parentTabId)
-    if (liveMatch) return liveMatch
-    const existing = orphanDeletedParentIdMap.get(parentTabId)
-    if (existing) return existing
-    const nextId = createId()
-    orphanDeletedParentIdMap.set(parentTabId, nextId)
-    return nextId
-  }
-
-  const duplicatedDeletedSubTabs = data.deletedSubTabs.map((entry) => ({
-    ...entry,
-    id: createId(),
-    parentTabId: resolveDeletedSubParentId(entry.parentTabId),
-    subTab: {
-      ...entry.subTab,
-      id: createId(),
-    },
-  }))
-
-  return createWorkspaceDataFromTabs(duplicatedTabs, {
-    activeTabId: liveTabIdMap.get(data.activeTabId) ?? duplicatedTabs[0]?.id,
-    deletedTabs: duplicatedDeletedTabs,
-    deletedSubTabs: duplicatedDeletedSubTabs,
-  })
-}
-
-function duplicateSpace(source: Space, existingNames: string[]): Space {
-  return {
-    id: createId(),
-    name: createDuplicateSpaceName(source.name, existingNames),
-    settings: { ...source.settings },
-    data: duplicateWorkspaceData(source.data),
-  }
-}
-
-function createWorkspaceDataFromTabs(
-  tabs: Tab[],
-  options?: {
-    activeTabId?: string
-    deletedTabs?: DeletedTabEntry[]
-    deletedSubTabs?: DeletedSubTabEntry[]
-  },
-): WorkspaceData {
-  const safeTabs = tabs.length > 0 ? tabs : [createTab('tab')]
-  const requestedActiveTabId = options?.activeTabId ?? null
-  const activeTabId = requestedActiveTabId && safeTabs.some((tab) => tab.id === requestedActiveTabId) ? requestedActiveTabId : safeTabs[0].id
-  return {
-    activeTabId,
-    tabs: safeTabs.map((tab) => ({
-      ...tab,
-      activeSubTabId: tab.activeSubTabId && tab.subTabs.some((subTab) => subTab.id === tab.activeSubTabId) ? tab.activeSubTabId : null,
-      subTabs: tab.subTabs.map((subTab) => ({ ...subTab })),
-    })),
-    deletedTabs: options?.deletedTabs ? options.deletedTabs.map((entry) => ({ ...entry, tab: { ...entry.tab, subTabs: entry.tab.subTabs.map((subTab) => ({ ...subTab })) } })) : [],
-    deletedSubTabs: options?.deletedSubTabs
-      ? options.deletedSubTabs.map((entry) => ({ ...entry, subTab: { ...entry.subTab } }))
-      : [],
-  }
-}
-
-function applyAutoPurgeToWorkspace(data: WorkspaceData, autoRemoveDeletedDays: number): WorkspaceData {
-  const cutoff = Date.now() - clampAutoRemoveDays(autoRemoveDeletedDays) * 24 * 60 * 60 * 1000
-  const nextDeletedTabs = data.deletedTabs.filter((entry) => entry.deletedAt >= cutoff)
-  const nextDeletedSubTabs = data.deletedSubTabs.filter((entry) => entry.deletedAt >= cutoff)
-  if (nextDeletedTabs.length === data.deletedTabs.length && nextDeletedSubTabs.length === data.deletedSubTabs.length) {
-    return data
-  }
-  return {
-    ...data,
-    deletedTabs: nextDeletedTabs,
-    deletedSubTabs: nextDeletedSubTabs,
-  }
-}
-
-function applyAutoPurgeToAppState(appState: AppState): AppState {
-  let spacesChanged = false
-  const spaces = appState.spaces.map((space) => {
-    const nextData = applyAutoPurgeToWorkspace(space.data, space.settings.autoRemoveDeletedDays)
-    if (nextData === space.data) return space
-    spacesChanged = true
-    return {
-      ...space,
-      data: nextData,
-    }
-  })
-
-  if (!spacesChanged) return appState
-  return {
-    ...appState,
-    spaces,
-  }
-}
-
-function normalizeWorkspaceData(raw: unknown): WorkspaceData {
-  const fallback = createDefaultWorkspaceData()
-  if (!raw || typeof raw !== 'object') return fallback
-
-  const obj = raw as Record<string, unknown>
-  const rawTabs = Array.isArray(obj.tabs) ? obj.tabs : []
-  const tabs: Tab[] = rawTabs
-    .map((rawTab, index) => {
-      if (!rawTab || typeof rawTab !== 'object') return null
-      const tabLike = rawTab as Record<string, unknown>
-      const tabId = typeof tabLike.id === 'string' ? tabLike.id : `tab-${index}-${createId()}`
-      const tabTitle = typeof tabLike.title === 'string' && tabLike.title.trim() ? tabLike.title : `Tab ${index + 1}`
-      const rawSubTabs = Array.isArray(tabLike.subTabs) ? tabLike.subTabs : []
-      const normalizedSubTabs: Array<SubTab & { isHome: boolean }> = rawSubTabs
-        .filter((sub): sub is Record<string, unknown> => Boolean(sub) && typeof sub === 'object')
-        .map((sub, subIndex) => ({
-          id: typeof sub.id === 'string' ? sub.id : `${tabId}-sub-${subIndex}-${createId()}`,
-          title: typeof sub.title === 'string' && sub.title.trim() ? sub.title : `Note ${subIndex + 1}`,
-          content: typeof sub.content === 'string' ? sub.content : '',
-          isHome: Boolean(sub.isHome),
-        }))
-      const legacyHome = normalizedSubTabs.find((sub) => sub.isHome)
-      const visibleSubTabs = normalizedSubTabs
-        .filter((sub) => !sub.isHome)
-        .map(({ id, title, content }) => ({ id, title, content: normalizeMarkdownForPersistence(content) }))
-      const explicitHome = typeof tabLike.homeContent === 'string' ? tabLike.homeContent : ''
-      const homeContent = normalizeMarkdownForPersistence(explicitHome || legacyHome?.content || '')
-      const rawActiveSubTabId = typeof tabLike.activeSubTabId === 'string' ? tabLike.activeSubTabId : null
-      const activeSubTabId =
-        rawActiveSubTabId && visibleSubTabs.some((sub) => sub.id === rawActiveSubTabId) ? rawActiveSubTabId : null
-      return {
-        id: tabId,
-        title: tabTitle,
-        homeContent,
-        activeSubTabId,
-        subTabs: visibleSubTabs,
-      }
-    })
-    .filter((tab): tab is Tab => tab !== null)
-
-  const safeTabs = tabs.length > 0 ? tabs : fallback.tabs
-  const rawActiveTabId = typeof obj.activeTabId === 'string' ? obj.activeTabId : null
-  const activeTabId = rawActiveTabId && safeTabs.some((tab) => tab.id === rawActiveTabId) ? rawActiveTabId : safeTabs[0].id
-
-  const rawDeletedTabs = Array.isArray(obj.deletedTabs) ? obj.deletedTabs : []
-  const deletedTabs: DeletedTabEntry[] = rawDeletedTabs
-    .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object')
-    .map((entry, index) => {
-      // Backward compatibility:
-      // old shape: deletedTabs: Tab[]
-      // new shape: deletedTabs: { id, tab, deletedAt }[]
-      const maybeTab = entry.tab && typeof entry.tab === 'object' ? (entry.tab as Record<string, unknown>) : entry
-      const id = typeof entry.id === 'string' ? entry.id : `deleted-tab-${index}-${createId()}`
-      const title = typeof maybeTab.title === 'string' && maybeTab.title.trim() ? maybeTab.title : `deleted tab ${index + 1}`
-      const homeContent = normalizeMarkdownForPersistence(typeof maybeTab.homeContent === 'string' ? maybeTab.homeContent : '')
-      const rawSubTabs = Array.isArray(maybeTab.subTabs) ? maybeTab.subTabs : []
-      const subTabs: SubTab[] = rawSubTabs
-        .filter((sub): sub is Record<string, unknown> => Boolean(sub) && typeof sub === 'object')
-        .map((sub, subIndex) => ({
-          id: typeof sub.id === 'string' ? sub.id : `${id}-sub-${subIndex}-${createId()}`,
-          title: typeof sub.title === 'string' && sub.title.trim() ? sub.title : `Note ${subIndex + 1}`,
-          content: normalizeMarkdownForPersistence(typeof sub.content === 'string' ? sub.content : ''),
-        }))
-      const rawDeletedActive = typeof maybeTab.activeSubTabId === 'string' ? maybeTab.activeSubTabId : null
-      const activeSubTabId = rawDeletedActive && subTabs.some((sub) => sub.id === rawDeletedActive) ? rawDeletedActive : null
-      const tabId = typeof maybeTab.id === 'string' ? maybeTab.id : `deleted-tab-inner-${index}-${createId()}`
-      const deletedAt =
-        typeof entry.deletedAt === 'number' && Number.isFinite(entry.deletedAt) ? entry.deletedAt : Date.now()
-      return {
-        id,
-        deletedAt,
-        tab: {
-          id: tabId,
-          title,
-          homeContent,
-          activeSubTabId,
-          subTabs,
-        },
-      }
-    })
-
-  const rawDeletedSubTabs = Array.isArray(obj.deletedSubTabs) ? obj.deletedSubTabs : []
-  const deletedSubTabs: DeletedSubTabEntry[] = rawDeletedSubTabs
-    .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object')
-    .map((entry, index) => {
-      const sub = entry.subTab && typeof entry.subTab === 'object' ? (entry.subTab as Record<string, unknown>) : {}
-      return {
-        id: typeof entry.id === 'string' ? entry.id : `deleted-subtab-${index}-${createId()}`,
-        parentTabId: typeof entry.parentTabId === 'string' ? entry.parentTabId : `unknown-parent-${index}`,
-        parentTabTitle:
-          typeof entry.parentTabTitle === 'string' && entry.parentTabTitle.trim() ? entry.parentTabTitle : 'Unknown Tab',
-        deletedAt:
-          typeof entry.deletedAt === 'number' && Number.isFinite(entry.deletedAt) ? entry.deletedAt : Date.now(),
-        subTab: {
-          id: typeof sub.id === 'string' ? sub.id : `deleted-note-${index}-${createId()}`,
-          title: typeof sub.title === 'string' && sub.title.trim() ? sub.title : `deleted note ${index + 1}`,
-          content: normalizeMarkdownForPersistence(typeof sub.content === 'string' ? sub.content : ''),
-        },
-      }
-    })
-
-  return {
-    activeTabId,
-    tabs: safeTabs,
-    deletedTabs,
-    deletedSubTabs,
-  }
-}
-
-const DEFAULT_STATE: AppState = {
-  theme: 'dark',
-  activeSpaceId: 'getting-started-space',
-  spaces: [
-    {
-      id: 'getting-started-space',
-      name: 'Getting Started',
-      settings: { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
-      data: createDefaultWorkspaceData(),
-    },
-  ],
-  hotkeys: {
-    shortcuts: DEFAULT_SHORTCUTS,
-    enableMouseBackForward: true,
-    enableGenericHistoryHotkeys: true,
-  },
-  ui: DEFAULT_UI_SETTINGS,
-}
-
-function parseSavedState(raw: string | null): AppState {
-  if (!raw) return DEFAULT_STATE
-
-  try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>
-    const theme: AppTheme = parsed.theme === 'light' ? 'light' : 'dark'
-
-    if (Array.isArray(parsed.spaces) && parsed.spaces.length > 0) {
-      const spaces: Space[] = parsed.spaces
-        .filter((space): space is Record<string, unknown> => Boolean(space) && typeof space === 'object')
-        .map((space, index) => {
-          const id = typeof space.id === 'string' ? space.id : `space-${index}-${createId()}`
-          const name = typeof space.name === 'string' && space.name.trim() ? space.name : `Space ${index + 1}`
-          const rawSettings =
-            space.settings && typeof space.settings === 'object' ? (space.settings as Record<string, unknown>) : {}
-          const settings: SpaceSettings = {
-            autoRemoveDeletedDays: clampAutoRemoveDays(
-              typeof rawSettings.autoRemoveDeletedDays === 'number'
-                ? rawSettings.autoRemoveDeletedDays
-                : DEFAULT_AUTO_REMOVE_DAYS,
-            ),
-          }
-          const data = applyAutoPurgeToWorkspace(normalizeWorkspaceData(space.data), settings.autoRemoveDeletedDays)
-          return {
-            id,
-            name,
-            settings,
-            data,
-          }
-        })
-
-      if (spaces.length === 0) return { ...DEFAULT_STATE, theme }
-
-      const rawActiveSpaceId = typeof parsed.activeSpaceId === 'string' ? parsed.activeSpaceId : null
-      const activeSpaceId =
-        rawActiveSpaceId && spaces.some((space) => space.id === rawActiveSpaceId) ? rawActiveSpaceId : spaces[0].id
-
-      return {
-        theme,
-        activeSpaceId,
-        spaces,
-        hotkeys: normalizeHotkeySettings(parsed.hotkeys),
-        ui: normalizeUiSettings(parsed.ui),
-      }
-    }
-
-    // Legacy single-workspace migration
-    const migratedSpace: Space = {
-      id: 'getting-started-space',
-      name: 'Getting Started',
-      settings: { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
-      data: applyAutoPurgeToWorkspace(normalizeWorkspaceData(parsed), DEFAULT_AUTO_REMOVE_DAYS),
-    }
-    return {
-      theme,
-      activeSpaceId: migratedSpace.id,
-      spaces: [migratedSpace],
-      hotkeys: normalizeHotkeySettings(parsed.hotkeys),
-      ui: normalizeUiSettings(parsed.ui),
-    }
-  } catch {
-    return DEFAULT_STATE
-  }
-}
-
-function applyMarkdownToAppState(
-  previous: AppState,
-  spaceId: string,
-  tabId: string,
-  subTabId: string | null,
-  markdown: string,
-): AppState {
-  const normalizedMarkdown = normalizeMarkdownForPersistence(markdown)
-  let stateChanged = false
-
-  const spaces = previous.spaces.map((space) => {
-    if (space.id !== spaceId) return space
-
-    let spaceChanged = false
-    const data = space.data
-    const tabs = data.tabs.map((tab) => {
-      if (tab.id !== tabId) return tab
-
-      if (subTabId === null) {
-        if (tab.homeContent === normalizedMarkdown) return tab
-        spaceChanged = true
-        return { ...tab, homeContent: normalizedMarkdown }
-      }
-
-      let tabChanged = false
-      const subTabs = tab.subTabs.map((sub) => {
-        if (sub.id !== subTabId || sub.content === normalizedMarkdown) return sub
-        tabChanged = true
-        return { ...sub, content: normalizedMarkdown }
-      })
-
-      if (!tabChanged) return tab
-      spaceChanged = true
-      return { ...tab, subTabs }
-    })
-
-    if (!spaceChanged) return space
-    stateChanged = true
-    return { ...space, data: { ...data, tabs } }
-  })
-
-  return stateChanged ? { ...previous, spaces } : previous
-}
-
 function App() {
   const initialSerializedState = useMemo(() => appStateStore.load(), [])
   const [state, setState] = useState<AppState>(() => applyAutoPurgeToAppState(parseSavedState(initialSerializedState)))
   const [storageHydrated, setStorageHydrated] = useState(() => typeof appStateStore.hydrate !== 'function')
   const [viewMode, setViewMode] = useState<ViewMode>('main')
-  const [editing, setEditing] = useState<{ type: 'tab' | 'subtab' | 'space'; id: string } | null>(null)
+  const [editing, setEditing] = useState<{ type: EditableEntityType; id: string } | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [modal, setModal] = useState<ModalState | null>(null)
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('hotkeys')
@@ -2414,7 +906,7 @@ function App() {
 
   const pendingContentRef = useRef<PendingContent | null>(null)
   const pendingCreatedEditRef = useRef<PendingCreatedEdit | null>(null)
-  const skipRenameBlurRef = useRef<{ type: 'tab' | 'subtab' | 'space'; id: string } | null>(null)
+  const skipRenameBlurRef = useRef<{ type: EditableEntityType; id: string } | null>(null)
   const arrangePressTimerRef = useRef<number | null>(null)
   const arrangeTapCandidateRef = useRef<ArrangeTapCandidate | null>(null)
   const arrangeDragSeedRef = useRef<ArrangeDragSeed | null>(null)
@@ -2430,6 +922,7 @@ function App() {
   const lastEditorMarkdownRef = useRef('')
   const multiLineEditRef = useRef<MultiLineEditState | null>(null)
   const multiLineCursorPluginKeyRef = useRef<any>(null)
+  const multiLineEditHistoryRef = useRef<MultiLineEditHistoryEntry[]>([])
   const stateRef = useRef(state)
   const initialStateJsonRef = useRef<string>(JSON.stringify(parseSavedState(initialSerializedState)))
   const stateDirtySinceBootRef = useRef(false)
@@ -3053,15 +1546,9 @@ function App() {
     insertionTarget: { targetId: string; position: ArrangeInsertPosition },
   ) => {
     if (draggedSpaceId === insertionTarget.targetId) return
-    setState((previous) => {
-      const fromIndex = previous.spaces.findIndex((space) => space.id === draggedSpaceId)
-      const toIndex = previous.spaces.findIndex((space) => space.id === insertionTarget.targetId)
-      if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return previous
-      return {
-        ...previous,
-        spaces: moveItemByInsertion(previous.spaces, fromIndex, toIndex, insertionTarget.position),
-      }
-    })
+    setState((previous) =>
+      moveSpaceWithinActiveDomain(previous, draggedSpaceId, insertionTarget.targetId, insertionTarget.position),
+    )
   }
 
   const finishArrangeSpacePointerDrag = (clientX: number, clientY: number) => {
@@ -3153,17 +1640,6 @@ function App() {
       return
     }
     clearArrangePressTimer()
-  }
-
-  const isPointInsideElement = (element: HTMLElement | null, clientX: number, clientY: number, padding = 10) => {
-    if (!element) return false
-    const rect = element.getBoundingClientRect()
-    return (
-      clientX >= rect.left - padding &&
-      clientX <= rect.right + padding &&
-      clientY >= rect.top - padding &&
-      clientY <= rect.bottom + padding
-    )
   }
 
   const getArrangeParentInsertionTargetFromPoint = (clientX: number, clientY: number) => {
@@ -3836,17 +2312,7 @@ function App() {
   const updateActiveSpaceData = (updater: (data: WorkspaceData) => WorkspaceData) => {
     setState((previous) => {
       const sanitizedPrevious = applyAutoPurgeToAppState(previous)
-      return {
-        ...sanitizedPrevious,
-        spaces: sanitizedPrevious.spaces.map((space) =>
-          space.id === sanitizedPrevious.activeSpaceId
-            ? {
-                ...space,
-                data: applyAutoPurgeToWorkspace(updater(space.data), space.settings.autoRemoveDeletedDays),
-              }
-            : space,
-        ),
-      }
+      return updateActiveSpaceDataInActiveDomain(sanitizedPrevious, updater)
     })
   }
 
@@ -3869,13 +2335,13 @@ function App() {
 
   const applyNavLocation = (location: NavLocation) => {
     setState((previous) => {
-      const fallbackSpace = previous.spaces[0]
+      const projected = setActiveSpaceInActiveDomain(previous, location.activeSpaceId)
+      const fallbackSpace = projected.spaces[0]
       const resolvedSpace =
-        previous.spaces.find((space) => space.id === location.activeSpaceId) ?? fallbackSpace
-      const resolvedSpaceId = resolvedSpace?.id ?? previous.activeSpaceId
+        projected.spaces.find((space) => space.id === location.activeSpaceId) ?? fallbackSpace
+      const resolvedSpaceId = resolvedSpace?.id ?? projected.activeSpaceId
 
-      const spaces = previous.spaces.map((space) => {
-        if (space.id !== resolvedSpaceId) return space
+      return updateSpaceInActiveDomain(setActiveSpaceInActiveDomain(projected, resolvedSpaceId), resolvedSpaceId, (space) => {
         const data = space.data
         const resolvedTabId = data.tabs.some((tab) => tab.id === location.mainTabId)
           ? location.mainTabId
@@ -3899,12 +2365,6 @@ function App() {
           },
         }
       })
-
-      return {
-        ...previous,
-        activeSpaceId: resolvedSpaceId,
-        spaces,
-      }
     })
 
     setTrashTabId(location.trashTabId)
@@ -4082,6 +2542,63 @@ function App() {
     })
   }
 
+  const getActiveNoteHistoryKey = () =>
+    [activeSpaceIdRef.current, activeTabIdRef.current, activeSubTabIdRef.current ?? '__home__'].join('::')
+
+  const getNormalizedEditorMarkdown = (editor: Editor) =>
+    normalizeMarkdownForPersistence(mergeLeadingIndentsFromWysiwyg(editor, editor.getMarkdown()))
+
+  const recordMultiLineEditHistory = (
+    beforeMarkdown: string,
+    beforeState: MultiLineEditState,
+    afterMarkdown: string,
+    afterState: MultiLineEditState,
+  ) => {
+    if (beforeMarkdown === afterMarkdown) return
+    multiLineEditHistoryRef.current = [
+      ...multiLineEditHistoryRef.current.slice(-99),
+      {
+        noteKey: getActiveNoteHistoryKey(),
+        beforeMarkdown,
+        afterMarkdown,
+        beforeState: cloneMultiLineEditState(beforeState),
+        afterState: cloneMultiLineEditState(afterState),
+      },
+    ]
+  }
+
+  const scheduleMultiLineHistoryRestore = (direction: 'undo' | 'redo') => {
+    const noteKey = getActiveNoteHistoryKey()
+    window.requestAnimationFrame(() => {
+      if (noteKey !== getActiveNoteHistoryKey()) return
+      const currentEditor = editorRef.current
+      if (!currentEditor) return
+
+      const markdown = getNormalizedEditorMarkdown(currentEditor)
+      const entries = multiLineEditHistoryRef.current
+      const entry = [...entries]
+        .reverse()
+        .find((candidate) =>
+          candidate.noteKey === noteKey &&
+          (direction === 'undo' ? candidate.beforeMarkdown === markdown : candidate.afterMarkdown === markdown),
+        )
+      if (!entry) return
+
+      multiLineEditRef.current = cloneMultiLineEditState(direction === 'undo' ? entry.beforeState : entry.afterState)
+      syncMultiLineEditVisualSelection()
+    })
+  }
+
+  const getEditorHistoryDirection = (event: KeyboardEvent): 'undo' | 'redo' | null => {
+    const key = event.key.toLowerCase()
+    const isMod = isMacPlatform ? event.metaKey : event.ctrlKey
+    if (!isMod || event.altKey) return null
+    if (key === 'z' && !event.shiftKey) return 'undo'
+    if (key === 'z' && event.shiftKey) return 'redo'
+    if (!isMacPlatform && key === 'y' && !event.shiftKey) return 'redo'
+    return null
+  }
+
   useEffect(() => {
     const flushOnExit = () => {
       if (saveTimerRef.current !== null) {
@@ -4222,71 +2739,10 @@ function App() {
     return true
   }
 
-  const getEditorTextBlockRanges = (view: any): EditorTextLineRange[] => {
-    const blockRanges: EditorTextLineRange[] = []
-    view.state.doc.nodesBetween(0, view.state.doc.content.size, (node: any, pos: number) => {
-      if (!node?.isTextblock) return
-      let lineStart = pos + 1
-      let lineText = ''
-      const contentEnd = pos + 1 + Math.max(0, node.content.size)
-
-      node.forEach((child: any, childOffset: number) => {
-        if (child?.type?.name !== 'hardBreak') {
-          lineText += child?.textContent ?? ''
-          return
-        }
-        const breakStart = pos + 1 + childOffset
-        blockRanges.push({
-          start: lineStart,
-          end: breakStart,
-          length: Math.max(0, breakStart - lineStart),
-          text: lineText,
-        })
-        lineStart = breakStart + Math.max(1, child.nodeSize ?? 1)
-        lineText = ''
-      })
-
-      blockRanges.push({
-        start: lineStart,
-        end: contentEnd,
-        length: Math.max(0, contentEnd - lineStart),
-        text: lineText,
-      })
-      return false
-    })
-    return blockRanges
-  }
-
-  const findEditorTextBlockIndex = (blockRanges: EditorTextLineRange[], position: number) =>
-    blockRanges.findIndex((range) => position >= range.start && position <= range.end + 1)
-
-  const getMultiLineSelectedBlockIndices = (multiLineEdit: MultiLineEditState, blockRanges: EditorTextLineRange[]) => {
-    const startIndex = Math.min(multiLineEdit.anchorBlockIndex, multiLineEdit.headBlockIndex)
-    const endIndex = Math.max(multiLineEdit.anchorBlockIndex, multiLineEdit.headBlockIndex)
-    return Array.from({ length: endIndex - startIndex + 1 }, (_, index) => startIndex + index).filter((index) => blockRanges[index])
-  }
-
-  const getMultiLineColumnOffset = (multiLineEdit: MultiLineEditState, blockIndex: number, range: EditorTextLineRange) =>
-    Math.max(0, Math.min(range.length, multiLineEdit.columnOffsets?.[blockIndex] ?? multiLineEdit.columnOffset))
-
-  const findPreviousWordColumn = (text: string, column: number) => {
-    let index = Math.max(0, Math.min(text.length, column))
-    while (index > 0 && /\s/.test(text[index - 1] ?? '')) index -= 1
-    while (index > 0 && !/\s/.test(text[index - 1] ?? '')) index -= 1
-    return index
-  }
-
-  const findNextWordColumn = (text: string, column: number) => {
-    let index = Math.max(0, Math.min(text.length, column))
-    while (index < text.length && /\s/.test(text[index] ?? '')) index += 1
-    while (index < text.length && !/\s/.test(text[index] ?? '')) index += 1
-    return index
-  }
-
-  const setMultiLineCursorWidgets = (view: any, positions: number[]) => {
+  const setMultiLineCursorWidgets = (view: any, positions: number[], selections: Array<{ from: number; to: number }> = []) => {
     const pluginKey = multiLineCursorPluginKeyRef.current
     if (!pluginKey) return
-    view.dispatch(view.state.tr.setMeta(pluginKey, positions))
+    view.dispatch(view.state.tr.setMeta(pluginKey, { cursors: positions, selections }).setMeta('addToHistory', false))
   }
 
   const clearMultiLineEdit = (collapseToHead = false) => {
@@ -4305,11 +2761,11 @@ function App() {
     }
     if (!collapseToHead || !view || !previous) return
 
-    const blockRanges = getEditorTextBlockRanges(view)
+    const blockRanges = getEditorTextLineRanges(view)
     const clampedHeadIndex = Math.max(0, Math.min(blockRanges.length - 1, previous.headBlockIndex))
     const headRange = blockRanges[clampedHeadIndex]
     if (!headRange) return
-    const caretPos = Math.min(headRange.end, headRange.start + previous.columnOffset)
+    const caretPos = Math.min(headRange.end, headRange.start + getMultiLineColumnOffset(previous, clampedHeadIndex, headRange))
     const SelectionCtor = view.state.selection.constructor as {
       create?: (doc: unknown, anchor: number, head?: number) => unknown
     }
@@ -4330,14 +2786,25 @@ function App() {
     const multiLineEdit = multiLineEditRef.current
     if (!currentEditor || !view || !multiLineEdit) return false
 
-    const blockRanges = getEditorTextBlockRanges(view)
+    const blockRanges = getEditorTextLineRanges(view)
     if (blockRanges.length === 0) {
       multiLineEditRef.current = null
       return false
     }
 
-    const anchorIndex = Math.max(0, Math.min(blockRanges.length - 1, multiLineEdit.anchorBlockIndex))
-    const headIndex = Math.max(0, Math.min(blockRanges.length - 1, multiLineEdit.headBlockIndex))
+    const selectedIndices = getMultiLineSelectedBlockIndices(multiLineEdit, blockRanges)
+    if (selectedIndices.length === 0) {
+      multiLineEditRef.current = null
+      setMultiLineCursorWidgets(view, [])
+      return false
+    }
+
+    const anchorIndex = selectedIndices.includes(multiLineEdit.anchorBlockIndex)
+      ? multiLineEdit.anchorBlockIndex
+      : selectedIndices[0]
+    const headIndex = selectedIndices.includes(multiLineEdit.headBlockIndex)
+      ? multiLineEdit.headBlockIndex
+      : selectedIndices[selectedIndices.length - 1]
     const anchorRange = blockRanges[anchorIndex]
     const headRange = blockRanges[headIndex]
     if (!anchorRange || !headRange) {
@@ -4345,7 +2812,7 @@ function App() {
       return false
     }
 
-    if (anchorIndex === headIndex) {
+    if (selectedIndices.length < 2) {
       multiLineEditRef.current = null
       setMultiLineCursorWidgets(view, [])
       const caretPos = Math.min(headRange.end, headRange.start + getMultiLineColumnOffset(multiLineEdit, headIndex, headRange))
@@ -4358,32 +2825,44 @@ function App() {
       return false
     }
 
-    multiLineEditRef.current = {
+    const selectionAnchorOffsets = selectedIndices.reduce<Record<number, number>>((acc, blockIndex) => {
+      const rawOffset = multiLineEdit.selectionAnchorOffsets?.[blockIndex]
+      const range = blockRanges[blockIndex]
+      if (typeof rawOffset === 'number' && range) {
+        acc[blockIndex] = Math.max(0, Math.min(range.length, rawOffset))
+      }
+      return acc
+    }, {})
+    const normalizedMultiLineEdit: MultiLineEditState = {
       ...multiLineEdit,
       anchorBlockIndex: anchorIndex,
       headBlockIndex: headIndex,
+      cursorBlockIndices: multiLineEdit.cursorBlockIndices ? selectedIndices : undefined,
+      selectionAnchorOffsets: Object.keys(selectionAnchorOffsets).length > 0 ? selectionAnchorOffsets : undefined,
     }
+    multiLineEditRef.current = normalizedMultiLineEdit
 
-    const headOffset = getMultiLineColumnOffset(multiLineEdit, headIndex, headRange)
+    const headOffset = getMultiLineColumnOffset(normalizedMultiLineEdit, headIndex, headRange)
     const headPos = Math.min(headRange.end, headRange.start + headOffset)
-    const selectedStartIndex = Math.min(anchorIndex, headIndex)
-    const selectedEndIndex = Math.max(anchorIndex, headIndex)
-    const cursorPositions = Array.from({ length: selectedEndIndex - selectedStartIndex + 1 }, (_, index) => selectedStartIndex + index)
+    const cursorPositions = selectedIndices
       .map((blockIndex) => {
         const range = blockRanges[blockIndex]
-        return range ? Math.min(range.end, range.start + getMultiLineColumnOffset(multiLineEdit, blockIndex, range)) : null
+        return range ? Math.min(range.end, range.start + getMultiLineColumnOffset(normalizedMultiLineEdit, blockIndex, range)) : null
       })
       .filter((pos): pos is number => typeof pos === 'number' && pos !== headPos)
+    const selectionDecorations = getMultiLineSelectionRanges(normalizedMultiLineEdit, selectedIndices, blockRanges).map(
+      ({ from, to }) => ({ from, to }),
+    )
 
     const SelectionCtor = view.state.selection.constructor as {
       create?: (doc: unknown, anchor: number, head?: number) => unknown
     }
     if (typeof SelectionCtor.create !== 'function') return false
     const nextSelection = SelectionCtor.create(view.state.doc, headPos, headPos)
-    let tr = view.state.tr.setSelection(nextSelection).scrollIntoView()
+    let tr = view.state.tr.setSelection(nextSelection).setMeta('addToHistory', false).scrollIntoView()
     const pluginKey = multiLineCursorPluginKeyRef.current
     if (pluginKey) {
-      tr = tr.setMeta(pluginKey, cursorPositions)
+      tr = tr.setMeta(pluginKey, { cursors: cursorPositions, selections: selectionDecorations })
     }
     view.dispatch(tr)
     currentEditor.focus()
@@ -4406,11 +2885,34 @@ function App() {
     }
 
     const { state } = view
-    const blockRanges = getEditorTextBlockRanges(view)
+    const blockRanges = getEditorTextLineRanges(view)
     if (blockRanges.length === 0) return false
 
     const existing = multiLineEditRef.current
     if (existing) {
+      if (existing.cursorBlockIndices?.length) {
+        const existingIndices = getMultiLineSelectedBlockIndices(existing, blockRanges)
+        const nextHeadIndex =
+          direction === 'down'
+            ? Math.min(blockRanges.length - 1, existing.headBlockIndex + 1)
+            : Math.max(0, existing.headBlockIndex - 1)
+        if (nextHeadIndex === existing.headBlockIndex || existingIndices.includes(nextHeadIndex)) return false
+        const nextHeadRange = blockRanges[nextHeadIndex]
+        if (!nextHeadRange) return false
+        const nextColumn = Math.min(nextHeadRange.length, getMultiLineHeadColumnOffset(existing, blockRanges))
+        multiLineEditRef.current = {
+          ...existing,
+          headBlockIndex: nextHeadIndex,
+          columnOffset: nextColumn,
+          columnOffsets: {
+            ...(existing.columnOffsets ?? {}),
+            [nextHeadIndex]: nextColumn,
+          },
+          cursorBlockIndices: [...existingIndices, nextHeadIndex].sort((a, b) => a - b),
+        }
+        return syncMultiLineEditVisualSelection()
+      }
+
       const nextHeadIndex =
         direction === 'down'
           ? Math.min(blockRanges.length - 1, existing.headBlockIndex + 1)
@@ -4423,7 +2925,7 @@ function App() {
       return syncMultiLineEditVisualSelection()
     }
 
-    const headBlockIndex = findEditorTextBlockIndex(blockRanges, state.selection.head)
+    const headBlockIndex = findEditorTextLineRangeIndex(blockRanges, state.selection.head)
     if (headBlockIndex < 0) return false
 
     const targetIndex =
@@ -4454,17 +2956,7 @@ function App() {
     }
   }, [isEditorView])
 
-  const tryApplyMultiLineEditInput = (
-    input:
-      | { type: 'insert-text'; text: string }
-      | { type: 'backspace' }
-      | { type: 'delete' }
-      | { type: 'delete-word-backward' }
-      | { type: 'delete-word-forward' }
-      | { type: 'delete-to-line-start' }
-      | { type: 'delete-to-line-end' }
-      | { type: 'split-line' },
-  ) => {
+  const tryApplyMultiLineEditInput = (input: MultiLineEditInput) => {
     const currentEditor = editorRef.current as
       | (Editor & {
           wwEditor?: {
@@ -4476,7 +2968,7 @@ function App() {
     const multiLineEdit = multiLineEditRef.current
     if (!currentEditor || !view || !multiLineEdit) return false
 
-    const blockRanges = getEditorTextBlockRanges(view)
+    const blockRanges = getEditorTextLineRanges(view)
     if (blockRanges.length === 0) {
       multiLineEditRef.current = null
       return false
@@ -4488,6 +2980,8 @@ function App() {
       return false
     }
 
+    const beforeMarkdown = getNormalizedEditorMarkdown(currentEditor)
+    const beforeState = cloneMultiLineEditState(multiLineEdit)
     let tr = view.state.tr
     let changed = false
     const nextColumnOffsets: Record<number, number> = { ...(multiLineEdit.columnOffsets ?? {}) }
@@ -4497,6 +2991,21 @@ function App() {
       if (!range) continue
       const currentOffset = getMultiLineColumnOffset(multiLineEdit, blockIndex, range)
       const cursorPos = Math.min(range.end, range.start + currentOffset)
+      const selectionRange = getMultiLineSelectionRange(multiLineEdit, blockIndex, range)
+
+      if (selectionRange && input.type !== 'split-line') {
+        const mappedFrom = tr.mapping.map(selectionRange.from, -1)
+        const mappedTo = tr.mapping.map(selectionRange.to, 1)
+        if (input.type === 'insert-text') {
+          tr = tr.insertText(input.text, mappedFrom, mappedTo)
+          nextColumnOffsets[blockIndex] = selectionRange.fromOffset + input.text.length
+        } else {
+          tr = tr.delete(mappedFrom, mappedTo)
+          nextColumnOffsets[blockIndex] = selectionRange.fromOffset
+        }
+        changed = true
+        continue
+      }
 
       if (input.type === 'insert-text') {
         tr = tr.insertText(input.text, cursorPos, cursorPos)
@@ -4553,36 +3062,45 @@ function App() {
       }
 
       if (input.type === 'split-line') {
-        const mappedPos = tr.mapping.map(cursorPos, 1)
-        tr = tr.split(mappedPos)
+        const splitPos = selectionRange?.from ?? cursorPos
+        const splitOffset = selectionRange?.fromOffset ?? currentOffset
+        if (selectionRange) {
+          const mappedFrom = tr.mapping.map(selectionRange.from, -1)
+          const mappedTo = tr.mapping.map(selectionRange.to, 1)
+          tr = tr.delete(mappedFrom, mappedTo)
+          nextColumnOffsets[blockIndex] = splitOffset
+        }
+        const mappedPos = tr.mapping.map(splitPos, 1)
+        if (isCodeBlockTextLineRange(range)) {
+          tr = tr.insertText('\n', mappedPos, mappedPos)
+          changed = true
+          continue
+        }
+        const splitPlan = getMultiLineSplitPlan(tr.doc, mappedPos)
+        if (!splitPlan) continue
+        tr = tr.split(mappedPos, splitPlan.depth, splitPlan.typesAfter)
         changed = true
       }
     }
 
     if (!changed) return false
 
-    if (input.type === 'delete-to-line-start') {
-      for (const blockIndex of selectedIndices) {
-        nextColumnOffsets[blockIndex] = 0
-      }
-    } else if (input.type === 'split-line') {
-      clearMultiLineEdit(false)
-    }
-
+    let nextMultiLineEditState: MultiLineEditState | null = null
     view.dispatch(tr.scrollIntoView())
     if (input.type === 'split-line') {
-      return true
+      nextMultiLineEditState = buildSplitLineMultiLineState(multiLineEdit, selectedIndices)
+    } else {
+      nextMultiLineEditState = {
+        ...multiLineEdit,
+        columnOffset: nextColumnOffsets[multiLineEdit.headBlockIndex] ?? multiLineEdit.columnOffset,
+        columnOffsets: nextColumnOffsets,
+        selectionAnchorOffsets: undefined,
+      }
     }
 
-    multiLineEditRef.current = {
-      ...multiLineEdit,
-      columnOffset: nextColumnOffsets[multiLineEdit.headBlockIndex] ?? multiLineEdit.columnOffset,
-      columnOffsets: nextColumnOffsets,
-    }
+    multiLineEditRef.current = nextMultiLineEditState
     syncMultiLineEditVisualSelection()
-    const markdownAfterMultiLineEdit = normalizeMarkdownForPersistence(
-      mergeLeadingIndentsFromWysiwyg(currentEditor, currentEditor.getMarkdown()),
-    )
+    const markdownAfterMultiLineEdit = getNormalizedEditorMarkdown(currentEditor)
     lastEditorMarkdownRef.current = markdownAfterMultiLineEdit
     scheduleContentCommit(
       markdownAfterMultiLineEdit,
@@ -4590,13 +3108,14 @@ function App() {
       activeTabIdRef.current,
       activeSubTabIdRef.current,
     )
+    if (multiLineEditRef.current) {
+      recordMultiLineEditHistory(beforeMarkdown, beforeState, markdownAfterMultiLineEdit, multiLineEditRef.current)
+    }
     currentEditor.focus()
     return true
   }
 
-  const tryMoveMultiLineCursors = (
-    movement: 'left' | 'right' | 'word-left' | 'word-right' | 'line-start' | 'line-end' | 'up' | 'down',
-  ) => {
+  const tryMoveMultiLineCursors = (movement: MultiLineCursorMovement, extendSelection = false) => {
     const currentEditor = editorRef.current as
       | (Editor & {
           wwEditor?: {
@@ -4608,7 +3127,7 @@ function App() {
     const multiLineEdit = multiLineEditRef.current
     if (!currentEditor || !view || !multiLineEdit) return false
 
-    const blockRanges = getEditorTextBlockRanges(view)
+    const blockRanges = getEditorTextLineRanges(view)
     if (blockRanges.length === 0) {
       multiLineEditRef.current = null
       return false
@@ -4619,61 +3138,103 @@ function App() {
       clearMultiLineEdit(true)
       return false
     }
-    const startIndex = Math.min(...selectedIndices)
-    const endIndex = Math.max(...selectedIndices)
 
-    let nextAnchorIndex = multiLineEdit.anchorBlockIndex
-    let nextHeadIndex = multiLineEdit.headBlockIndex
-    const nextColumnOffsets: Record<number, number> = {}
+    const nextState = moveMultiLineCursorState(multiLineEdit, selectedIndices, blockRanges, movement, { extendSelection })
+    if (!nextState) return false
+    multiLineEditRef.current = nextState
+    syncMultiLineEditVisualSelection()
+    return true
+  }
 
-    if (movement === 'up') {
-      if (startIndex <= 0) return true
-      nextAnchorIndex = multiLineEdit.anchorBlockIndex - 1
-      nextHeadIndex = multiLineEdit.headBlockIndex - 1
-      for (const blockIndex of selectedIndices) {
-        const range = blockRanges[blockIndex]
-        const nextRange = blockRanges[blockIndex - 1]
-        if (!range || !nextRange) continue
-        nextColumnOffsets[blockIndex - 1] = Math.min(nextRange.length, getMultiLineColumnOffset(multiLineEdit, blockIndex, range))
-      }
-    } else if (movement === 'down') {
-      if (endIndex >= blockRanges.length - 1) return true
-      nextAnchorIndex = multiLineEdit.anchorBlockIndex + 1
-      nextHeadIndex = multiLineEdit.headBlockIndex + 1
-      for (const blockIndex of selectedIndices) {
-        const range = blockRanges[blockIndex]
-        const nextRange = blockRanges[blockIndex + 1]
-        if (!range || !nextRange) continue
-        nextColumnOffsets[blockIndex + 1] = Math.min(nextRange.length, getMultiLineColumnOffset(multiLineEdit, blockIndex, range))
-      }
-    } else {
-      for (const blockIndex of selectedIndices) {
-        const range = blockRanges[blockIndex]
-        if (!range) continue
-        const currentOffset = getMultiLineColumnOffset(multiLineEdit, blockIndex, range)
-        nextColumnOffsets[blockIndex] =
-          movement === 'left'
-            ? Math.max(0, currentOffset - 1)
-            : movement === 'right'
-              ? Math.min(range.length, currentOffset + 1)
-              : movement === 'word-left'
-                ? findPreviousWordColumn(range.text, currentOffset)
-                : movement === 'word-right'
-                  ? findNextWordColumn(range.text, currentOffset)
-                  : movement === 'line-start'
-                    ? 0
-                    : range.length
-      }
+  const getActiveMultiLineSelectionContext = () => {
+    const currentEditor = editorRef.current as
+      | (Editor & {
+          wwEditor?: {
+            view?: any
+          }
+        })
+      | null
+    const view = currentEditor?.wwEditor?.view
+    const multiLineEdit = multiLineEditRef.current
+    if (!currentEditor || !view || !multiLineEdit) return null
+
+    const blockRanges = getEditorTextLineRanges(view)
+    if (blockRanges.length === 0) return null
+    const selectedIndices = getMultiLineSelectedBlockIndices(multiLineEdit, blockRanges)
+    if (selectedIndices.length < 2) return null
+    const selectionRanges = getMultiLineSelectionRanges(multiLineEdit, selectedIndices, blockRanges)
+    if (selectionRanges.length === 0) return null
+
+    return {
+      currentEditor,
+      view,
+      multiLineEdit,
+      selectedIndices,
+      selectionRanges,
+    }
+  }
+
+  const writeClipboardText = (clipboardData: DataTransfer | null, text: string) => {
+    if (clipboardData) {
+      clipboardData.setData('text/plain', text)
+      return true
+    }
+    if (navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(text)
+      return true
+    }
+    return false
+  }
+
+  const copyMultiLineSelectionToClipboard = (clipboardData: DataTransfer | null) => {
+    const context = getActiveMultiLineSelectionContext()
+    if (!context) return false
+
+    const text = context.selectionRanges.map((range) => range.text).join('\n')
+    return writeClipboardText(clipboardData, text)
+  }
+
+  const cutMultiLineSelectionToClipboard = (clipboardData: DataTransfer | null) => {
+    const context = getActiveMultiLineSelectionContext()
+    if (!context) return false
+
+    const text = context.selectionRanges.map((range) => range.text).join('\n')
+    if (!writeClipboardText(clipboardData, text)) return false
+
+    const { currentEditor, view, multiLineEdit, selectionRanges } = context
+    const beforeMarkdown = getNormalizedEditorMarkdown(currentEditor)
+    const beforeState = cloneMultiLineEditState(multiLineEdit)
+    const nextColumnOffsets: Record<number, number> = { ...(multiLineEdit.columnOffsets ?? {}) }
+    let tr = view.state.tr
+
+    for (const selectionRange of [...selectionRanges].sort((a, b) => b.from - a.from)) {
+      const mappedFrom = tr.mapping.map(selectionRange.from, -1)
+      const mappedTo = tr.mapping.map(selectionRange.to, 1)
+      tr = tr.delete(mappedFrom, mappedTo)
+      nextColumnOffsets[selectionRange.blockIndex] = selectionRange.fromOffset
     }
 
+    view.dispatch(tr.scrollIntoView())
     multiLineEditRef.current = {
       ...multiLineEdit,
-      anchorBlockIndex: nextAnchorIndex,
-      headBlockIndex: nextHeadIndex,
-      columnOffset: nextColumnOffsets[nextHeadIndex] ?? multiLineEdit.columnOffset,
+      columnOffset: nextColumnOffsets[multiLineEdit.headBlockIndex] ?? multiLineEdit.columnOffset,
       columnOffsets: nextColumnOffsets,
+      selectionAnchorOffsets: undefined,
     }
     syncMultiLineEditVisualSelection()
+
+    const markdownAfterCut = getNormalizedEditorMarkdown(currentEditor)
+    lastEditorMarkdownRef.current = markdownAfterCut
+    scheduleContentCommit(
+      markdownAfterCut,
+      activeSpaceIdRef.current,
+      activeTabIdRef.current,
+      activeSubTabIdRef.current,
+    )
+    if (multiLineEditRef.current) {
+      recordMultiLineEditHistory(beforeMarkdown, beforeState, markdownAfterCut, multiLineEditRef.current)
+    }
+    currentEditor.focus()
     return true
   }
 
@@ -5046,13 +3607,30 @@ function App() {
         (context: {
           pmState: {
             PluginKey: new (name?: string) => {
-              getState: (state: unknown) => number[] | undefined
+              getState: (state: unknown) =>
+                | {
+                    cursors: number[]
+                    selections: Array<{ from: number; to: number }>
+                  }
+                | undefined
             }
             Plugin: new (spec: {
               key?: unknown
               state?: {
-                init: () => number[]
-                apply: (tr: { getMeta: (key: unknown) => unknown }, previous: number[]) => number[]
+                init: () => {
+                  cursors: number[]
+                  selections: Array<{ from: number; to: number }>
+                }
+                apply: (
+                  tr: { getMeta: (key: unknown) => unknown },
+                  previous: {
+                    cursors: number[]
+                    selections: Array<{ from: number; to: number }>
+                  },
+                ) => {
+                  cursors: number[]
+                  selections: Array<{ from: number; to: number }>
+                }
               }
               props?: {
                 decorations?: (state: unknown) => unknown
@@ -5064,6 +3642,7 @@ function App() {
           }
           pmView: {
             Decoration: {
+              inline: (from: number, to: number, attrs: Record<string, string>, spec?: Record<string, unknown>) => unknown
               widget: (pos: number, toDOM: () => HTMLElement, spec?: Record<string, unknown>) => unknown
             }
             DecorationSet: {
@@ -5256,6 +3835,10 @@ function App() {
 
     const handleCopy = (event: Event) => {
       const clipboardEvent = event as ClipboardEvent
+      if (copyMultiLineSelectionToClipboard(clipboardEvent.clipboardData)) {
+        clipboardEvent.preventDefault()
+        return
+      }
       const selection = window.getSelection()
       const hasTextSelection = Boolean(selection && selection.toString().trim().length > 0)
       if (!activeImageRef.current || hasTextSelection) return
@@ -5263,8 +3846,20 @@ function App() {
       void copySelectedImageToClipboard()
     }
 
+    const handleCut = (event: Event) => {
+      const clipboardEvent = event as ClipboardEvent
+      if (!cutMultiLineSelectionToClipboard(clipboardEvent.clipboardData)) return
+      clipboardEvent.preventDefault()
+      clipboardEvent.stopPropagation()
+    }
+
     const handleKeyDown = (event: Event) => {
       const keyboardEvent = event as KeyboardEvent
+      const editorHistoryDirection = getEditorHistoryDirection(keyboardEvent)
+      if (editorHistoryDirection) {
+        scheduleMultiLineHistoryRestore(editorHistoryDirection)
+      }
+
       const multiLineDirection = getMultilineSelectionShortcutDirection(keyboardEvent)
       if (multiLineDirection) {
         const handled = tryExpandMultilineSelection(multiLineDirection)
@@ -5304,19 +3899,21 @@ function App() {
         } else if (keyboardEvent.key === 'ArrowLeft') {
           handled = tryMoveMultiLineCursors(
             keyboardEvent.altKey ? 'word-left' : keyboardEvent.metaKey || keyboardEvent.ctrlKey ? 'line-start' : 'left',
+            keyboardEvent.shiftKey,
           )
         } else if (keyboardEvent.key === 'ArrowRight') {
           handled = tryMoveMultiLineCursors(
             keyboardEvent.altKey ? 'word-right' : keyboardEvent.metaKey || keyboardEvent.ctrlKey ? 'line-end' : 'right',
+            keyboardEvent.shiftKey,
           )
         } else if (keyboardEvent.key === 'ArrowUp') {
           handled = tryMoveMultiLineCursors('up')
         } else if (keyboardEvent.key === 'ArrowDown') {
           handled = tryMoveMultiLineCursors('down')
         } else if (keyboardEvent.key === 'Home') {
-          handled = tryMoveMultiLineCursors('line-start')
+          handled = tryMoveMultiLineCursors('line-start', keyboardEvent.shiftKey)
         } else if (keyboardEvent.key === 'End') {
-          handled = tryMoveMultiLineCursors('line-end')
+          handled = tryMoveMultiLineCursors('line-end', keyboardEvent.shiftKey)
         } else if (
           keyboardEvent.key.length === 1 &&
           !keyboardEvent.metaKey &&
@@ -5342,6 +3939,10 @@ function App() {
 
     const handleBeforeInput = (event: Event) => {
       const inputEvent = event as InputEvent
+      if (inputEvent.inputType === 'historyUndo' || inputEvent.inputType === 'historyRedo') {
+        scheduleMultiLineHistoryRestore(inputEvent.inputType === 'historyUndo' ? 'undo' : 'redo')
+        return
+      }
       if (!multiLineEditRef.current) return
       if (inputEvent.isComposing) return
       if (inputEvent.inputType === 'insertText' || inputEvent.inputType === 'insertCompositionText') {
@@ -5358,6 +3959,7 @@ function App() {
     root.addEventListener('contextmenu', handleContextMenu, true)
     root.addEventListener('paste', handlePaste, true)
     root.addEventListener('copy', handleCopy, true)
+    root.addEventListener('cut', handleCut, true)
     root.addEventListener('keydown', handleKeyDown, true)
     root.addEventListener('beforeinput', handleBeforeInput, true)
     window.addEventListener('scroll', handleScrollOrResize, true)
@@ -5367,6 +3969,7 @@ function App() {
       root.removeEventListener('contextmenu', handleContextMenu, true)
       root.removeEventListener('paste', handlePaste, true)
       root.removeEventListener('copy', handleCopy, true)
+      root.removeEventListener('cut', handleCut, true)
       root.removeEventListener('keydown', handleKeyDown, true)
       root.removeEventListener('beforeinput', handleBeforeInput, true)
       window.removeEventListener('scroll', handleScrollOrResize, true)
@@ -5393,22 +3996,28 @@ function App() {
     }
   }, [displayContent, viewMode, activeSpace.id, activeTab.id, activeSubTab?.id, trashTabId, trashSubTabId])
 
-  const commitRename = (type: 'tab' | 'subtab' | 'space', id: string, nextTitle: string) => {
-    if (type !== 'space') {
+  const commitRename = (type: EditableEntityType, id: string, nextTitle: string) => {
+    if (type === 'tab' || type === 'subtab') {
       flushPendingContent()
     }
     const title = nextTitle.trim()
     setEditing(null)
-    if (type !== 'space' && pendingCreatedEditRef.current?.type === type && pendingCreatedEditRef.current.id === id) {
+    if (
+      (type === 'tab' || type === 'subtab') &&
+      pendingCreatedEditRef.current?.type === type &&
+      pendingCreatedEditRef.current.id === id
+    ) {
       pendingCreatedEditRef.current = null
     }
     if (!title) return
 
+    if (type === 'domain') {
+      setState((previous) => renameDomain(previous, id, title))
+      return
+    }
+
     if (type === 'space') {
-      setState((previous) => ({
-        ...previous,
-        spaces: previous.spaces.map((space) => (space.id === id ? { ...space, name: title } : space)),
-      }))
+      setState((previous) => renameSpaceInActiveDomain(previous, id, title))
       return
     }
 
@@ -5458,7 +4067,7 @@ function App() {
     focusEditorSoon()
   }
 
-  const shouldSkipRenameBlur = (type: 'tab' | 'subtab' | 'space', id: string) => {
+  const shouldSkipRenameBlur = (type: EditableEntityType, id: string) => {
     const next = skipRenameBlurRef.current
     if (!next || next.type !== type || next.id !== id) return false
     skipRenameBlurRef.current = null
@@ -5505,9 +4114,9 @@ function App() {
     }))
   }
 
-  const cancelRename = (type: 'tab' | 'subtab' | 'space', id: string) => {
+  const cancelRename = (type: EditableEntityType, id: string) => {
     skipRenameBlurRef.current = { type, id }
-    if (type === 'space') {
+    if (type === 'space' || type === 'domain') {
       setEditing(null)
       return
     }
@@ -5590,7 +4199,7 @@ function App() {
     if (arrangeMode.active) {
       exitArrangeMode()
     }
-    setState((previous) => ({ ...previous, activeSpaceId: spaceId }))
+    setState((previous) => setActiveSpaceInActiveDomain(previous, spaceId))
     setViewMode('main')
     setMenuOpen(false)
     setContextMenu(null)
@@ -5600,11 +4209,7 @@ function App() {
   const addSpace = () => {
     flushPendingContent()
     const newSpace = createSpace('New Space')
-    setState((previous) => ({
-      ...previous,
-      activeSpaceId: newSpace.id,
-      spaces: [...previous.spaces, newSpace],
-    }))
+    setState((previous) => addSpaceToActiveDomain(previous, newSpace))
     setViewMode('spaces')
     setEditing({ type: 'space', id: newSpace.id })
     setMenuOpen(false)
@@ -5620,17 +4225,7 @@ function App() {
 
     const duplicatedSpace = duplicateSpace(sourceSpace, state.spaces.map((space) => space.name))
 
-    setState((previous) => {
-      const sourceIndex = previous.spaces.findIndex((space) => space.id === sourceSpace.id)
-      if (sourceIndex < 0) return previous
-      const nextSpaces = [...previous.spaces]
-      nextSpaces.splice(sourceIndex + 1, 0, duplicatedSpace)
-      return {
-        ...previous,
-        activeSpaceId: duplicatedSpace.id,
-        spaces: nextSpaces,
-      }
-    })
+    setState((previous) => insertSpaceAfterInActiveDomain(previous, sourceSpace.id, duplicatedSpace))
 
     setViewMode('spaces')
     setEditing({ type: 'space', id: duplicatedSpace.id })
@@ -5638,14 +4233,45 @@ function App() {
     setContextMenu(null)
   }
 
-  const toggleTheme = () => {
-    setState((previous) => ({ ...previous, theme: previous.theme === 'dark' ? 'light' : 'dark' }))
-    setMenuOpen(false)
-  }
-
   const openSpacesView = () => {
     flushPendingContent()
+    if (arrangeMode.active) {
+      exitArrangeMode()
+    }
     setViewMode('spaces')
+    setMenuOpen(false)
+    setContextMenu(null)
+  }
+
+  const openDomainsView = () => {
+    flushPendingContent()
+    if (arrangeMode.active) {
+      exitArrangeMode()
+    }
+    setViewMode('domains')
+    setMenuOpen(false)
+    setContextMenu(null)
+    setEditing(null)
+  }
+
+  const openDomain = (domainId: string) => {
+    flushPendingContent()
+    if (arrangeMode.active) {
+      exitArrangeMode()
+    }
+    setState((previous) => setActiveDomain(previous, domainId))
+    setViewMode('spaces')
+    setMenuOpen(false)
+    setContextMenu(null)
+    setEditing(null)
+  }
+
+  const addDomainFromPage = () => {
+    flushPendingContent()
+    const newDomain = createDomain('New Domain')
+    setState((previous) => addDomain(previous, newDomain))
+    setViewMode('domains')
+    setEditing({ type: 'domain', id: newDomain.id })
     setMenuOpen(false)
     setContextMenu(null)
   }
@@ -5664,7 +4290,7 @@ function App() {
   }
 
   const openSettings = () => {
-    if (viewMode === 'spaces') return
+    if (viewMode === 'spaces' || viewMode === 'domains') return
     flushPendingContent()
     setMenuOpen(false)
     setContextMenu(null)
@@ -5719,18 +4345,13 @@ function App() {
     }
 
     const nextDays = clampAutoRemoveDays(parsed)
-    commitImmediateSettingsState((previous) => ({
-      ...previous,
-      spaces: previous.spaces.map((space) =>
-        space.id === previous.activeSpaceId
-          ? {
-              ...space,
-              settings: { ...space.settings, autoRemoveDeletedDays: nextDays },
-              data: applyAutoPurgeToWorkspace(space.data, nextDays),
-            }
-          : space,
-      ),
-    }))
+    commitImmediateSettingsState((previous) =>
+      updateSpaceInActiveDomain(previous, previous.activeSpaceId, (space) => ({
+        ...space,
+        settings: { ...space.settings, autoRemoveDeletedDays: nextDays },
+        data: applyAutoPurgeToWorkspace(space.data, nextDays),
+      })),
+    )
     if (String(nextDays) !== rawValue.trim()) {
       setSettingsDaysDraft(String(nextDays))
     }
@@ -5791,6 +4412,10 @@ function App() {
         noteFontScale: nextScale,
       },
     }))
+  }
+
+  const updateThemeSetting = (theme: AppTheme) => {
+    commitImmediateSettingsState((previous) => (previous.theme === theme ? previous : { ...previous, theme }))
   }
 
   const updateShortcutSetting = (shortcutId: ShortcutId, nextShortcut: string) => {
@@ -6137,92 +4762,6 @@ function App() {
     if (stageManagerAction === 'demote') return 'selected items have been demoted.'
     if (stageManagerAction === 'migrate') return 'selected items have been migrated.'
     return 'director changes applied.'
-  }
-
-  const cloneSubTabForTransfer = (subTab: SubTab): SubTab => ({
-    ...subTab,
-  })
-
-  const cloneTabForTransfer = (tab: Tab): Tab => ({
-    ...tab,
-    subTabs: tab.subTabs.map(cloneSubTabForTransfer),
-  })
-
-  const createPromotedParentTab = (subTab: SubTab): Tab => ({
-    id: createId(),
-    title: subTab.title,
-    homeContent: subTab.content,
-    activeSubTabId: null,
-    subTabs: [],
-  })
-
-  const createDemotedParentSubTab = (tab: Tab): SubTab => ({
-    id: createId(),
-    title: tab.title,
-    content: tab.homeContent,
-  })
-
-  const buildStageManagerLooseSelectionMap = (snapshot: StageManagerSelectionSnapshot) => {
-    const map = new Map<string, Set<string>>()
-    for (const { parentTab, subTab } of snapshot.looseSubTabs) {
-      const current = map.get(parentTab.id) ?? new Set<string>()
-      current.add(subTab.id)
-      map.set(parentTab.id, current)
-    }
-    return map
-  }
-
-  const stripStageManagerSelectionsFromWorkspace = (
-    data: WorkspaceData,
-    snapshot: StageManagerSelectionSnapshot,
-  ): WorkspaceData => {
-    const looseMap = buildStageManagerLooseSelectionMap(snapshot)
-    const nextTabs = data.tabs
-      .filter((tab) => !snapshot.fullParentIds.has(tab.id))
-      .map((tab) => {
-        const selectedLooseIds = looseMap.get(tab.id)
-        if (!selectedLooseIds || selectedLooseIds.size === 0) {
-          return cloneTabForTransfer(tab)
-        }
-
-        return {
-          ...tab,
-          activeSubTabId: tab.activeSubTabId && selectedLooseIds.has(tab.activeSubTabId) ? null : tab.activeSubTabId,
-          subTabs: tab.subTabs.filter((subTab) => !selectedLooseIds.has(subTab.id)).map(cloneSubTabForTransfer),
-        }
-      })
-
-    return createWorkspaceDataFromTabs(nextTabs, {
-      activeTabId: data.activeTabId,
-      deletedTabs: data.deletedTabs,
-      deletedSubTabs: data.deletedSubTabs,
-    })
-  }
-
-  const appendSubTabsToParent = (tabs: Tab[], parentId: string, appendedSubTabs: SubTab[], forceParentHomeOpen = false): Tab[] =>
-    tabs.map((tab) =>
-      tab.id !== parentId
-        ? cloneTabForTransfer(tab)
-        : {
-            ...tab,
-            activeSubTabId: forceParentHomeOpen ? null : tab.activeSubTabId,
-            subTabs: [...tab.subTabs.map(cloneSubTabForTransfer), ...appendedSubTabs.map(cloneSubTabForTransfer)],
-          },
-    )
-
-  const buildStageManagerMovedSubTabs = (snapshot: StageManagerSelectionSnapshot): SubTab[] => {
-    const moved: SubTab[] = []
-
-    for (const parentTab of snapshot.fullParents) {
-      moved.push(createDemotedParentSubTab(parentTab))
-      moved.push(...parentTab.subTabs.map(cloneSubTabForTransfer))
-    }
-
-    for (const { subTab } of snapshot.looseSubTabs) {
-      moved.push(cloneSubTabForTransfer(subTab))
-    }
-
-    return moved
   }
 
   const finishStageManagerApply = (nextState: AppState, toastMessage: string, tone: ToastTone = 'success') => {
@@ -7014,13 +5553,20 @@ function App() {
     setContextMenu({ type: 'space', spaceId, x: event.clientX, y: event.clientY })
   }
 
+  const openContextMenuForDomain = (event: MouseEvent<HTMLButtonElement>, domainId: string) => {
+    if (viewMode !== 'domains') return
+    event.preventDefault()
+    setMenuOpen(false)
+    setContextMenu({ type: 'domain', domainId, x: event.clientX, y: event.clientY })
+  }
+
   const buildDeleteTargetFromContextMenu = (): DeleteTarget | null => {
     if (!contextMenu) return null
     return contextMenu.type === 'tab'
       ? { type: 'tab', tabId: contextMenu.tabId }
       : contextMenu.type === 'subtab'
         ? { type: 'subtab', tabId: contextMenu.tabId, subTabId: contextMenu.subTabId }
-        : contextMenu.type === 'image'
+        : contextMenu.type === 'image' || contextMenu.type === 'domain'
           ? null
         : contextMenu.type === 'trash-tab'
           ? {
@@ -7060,18 +5606,14 @@ function App() {
     setContextMenu(null)
   }
 
+  const beginRenameDomainFromContext = () => {
+    if (!contextMenu || contextMenu.type !== 'domain') return
+    setEditing({ type: 'domain', id: contextMenu.domainId })
+    setContextMenu(null)
+  }
+
   const deleteSpace = (spaceId: string) => {
-    setState((previous) => {
-      if (previous.spaces.length <= 1) return previous
-      const remaining = previous.spaces.filter((space) => space.id !== spaceId)
-      const nextActive =
-        previous.activeSpaceId === spaceId ? remaining[0]?.id ?? previous.activeSpaceId : previous.activeSpaceId
-      return {
-        ...previous,
-        activeSpaceId: nextActive,
-        spaces: remaining,
-      }
-    })
+    setState((previous) => removeSpaceFromActiveDomain(previous, spaceId))
   }
 
   const deleteTarget = (target: DeleteTarget, permanent: boolean) => {
@@ -7478,6 +6020,13 @@ function App() {
         return
       }
 
+      const isDomainsShortcut = eventMatchesShortcut(event, state.hotkeys.shortcuts.openDomains, isMacPlatform)
+      if (isDomainsShortcut) {
+        event.preventDefault()
+        openDomainsView()
+        return
+      }
+
       if (viewMode !== 'main') return
 
       if (arrangeMode.active) return
@@ -7638,7 +6187,7 @@ function App() {
 
   return (
     <main
-      className={`app-shell ${state.theme === 'light' ? 'theme-light' : 'theme-dark'} ${viewMode === 'trash' ? 'view-trash' : 'view-main'}`}
+      className={`app-shell theme-${state.theme} ${viewMode === 'trash' ? 'view-trash' : 'view-main'}`}
       style={
         {
           '--tab-button-scale': String(state.ui.tabButtonScale),
@@ -7646,7 +6195,7 @@ function App() {
         } as React.CSSProperties
       }
     >
-      {viewMode !== 'spaces' && (
+      {viewMode !== 'spaces' && viewMode !== 'domains' && (
         <header className={`tabbar ${arrangeMode.active && viewMode === 'main' ? 'is-arranging' : ''}`}>
           <div className="tabbar-row">
             <div
@@ -7836,6 +6385,9 @@ function App() {
                 </button>
                 {!topbarShowsCloseControl && menuOpen && (
                   <div className="menu-dropdown">
+                    <button type="button" className="menu-item" onClick={openDomainsView}>
+                      domains
+                    </button>
                     <button type="button" className="menu-item" onClick={openSpacesView}>
                       spaces
                     </button>
@@ -7846,9 +6398,6 @@ function App() {
                     )}
                     <button type="button" className="menu-item" onClick={toggleTrashView}>
                       {viewMode === 'trash' ? 'tabs' : 'trash'}
-                    </button>
-                    <button type="button" className="menu-item" onClick={toggleTheme}>
-                      {state.theme === 'dark' ? 'light mode' : 'dark mode'}
                     </button>
                     <button type="button" className="menu-item" onClick={openSettings}>
                       settings
@@ -7875,10 +6424,29 @@ function App() {
         </div>
       )}
 
-      {viewMode === 'spaces' ? (
-        <section
-          className="spaces-grid-wrap"
-          onClick={() => {
+      {viewMode === 'domains' ? (
+        <DomainsPage
+          domains={state.domains}
+          activeDomainId={state.activeDomainId}
+          editingDomainId={editing?.type === 'domain' ? editing.id : null}
+          onAddDomain={addDomainFromPage}
+          onOpenDomain={openDomain}
+          onCommitRename={(domainId, name) => commitRename('domain', domainId, name)}
+          onCancelRename={(domainId) => cancelRename('domain', domainId)}
+          onShouldSkipRenameBlur={(domainId) => shouldSkipRenameBlur('domain', domainId)}
+          onOpenContextMenu={openContextMenuForDomain}
+        />
+      ) : viewMode === 'spaces' ? (
+        <SpacesPage
+          spaces={state.spaces}
+          activeSpaceId={state.activeSpaceId}
+          editingSpaceId={editing?.type === 'space' ? editing.id : null}
+          arrangeMode={arrangeMode}
+          arrangeableSpaceClassName={arrangeableSpaceClassName}
+          draggingSpaceId={draggingSpaceId}
+          spaceArrangeDragPreview={spaceArrangeDragPreview}
+          spacesGridRef={spacesGridRef}
+          onBackgroundClick={() => {
             if (arrangeMode.active && arrangeMode.scope === 'spaces') {
               if (suppressNextSpaceArrangeExitRef.current) {
                 suppressNextSpaceArrangeExitRef.current = false
@@ -7887,125 +6455,23 @@ function App() {
               exitArrangeMode()
             }
           }}
-        >
-          <div
-            ref={spacesGridRef}
-            className={`spaces-grid ${arrangeMode.active && arrangeMode.scope === 'spaces' ? 'is-arranging' : ''}`}
-          >
-            {state.spaces.map((space) =>
-              editing?.type === 'space' && editing.id === space.id ? (
-                <input
-                  key={space.id}
-                  className="space-rename-input"
-                  defaultValue={space.name}
-                  autoFocus
-                  onBlur={(event) => {
-                    if (shouldSkipRenameBlur('space', space.id)) return
-                    commitRename('space', space.id, event.target.value)
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault()
-                      commitRename('space', space.id, (event.target as HTMLInputElement).value)
-                      openSpace(space.id)
-                    }
-                    if (event.key === 'Escape') {
-                      event.preventDefault()
-                      cancelRename('space', space.id)
-                    }
-                  }}
-                />
-                  ) : (
-                (() => {
-                  const isArrangeSpaceTarget =
-                    arrangeMode.active &&
-                    arrangeMode.scope === 'spaces' &&
-                    arrangeMode.dragItem?.type === 'space' &&
-                    arrangeMode.overSpaceId === space.id
-                  const isArrangeSpaceBeforeTarget = isArrangeSpaceTarget && arrangeMode.overSpaceInsert === 'before'
-                  const isArrangeSpaceAfterTarget = isArrangeSpaceTarget && arrangeMode.overSpaceInsert === 'after'
-                  return (
-                <button
-                  key={space.id}
-                  type="button"
-                  data-arrange-space-id={space.id}
-                  draggable={false}
-                  className={`space-card ${space.id === state.activeSpaceId ? 'is-active' : ''} ${arrangeableSpaceClassName} ${
-                    isArrangeSpaceTarget ? 'is-arrange-target' : ''
-                  } ${isArrangeSpaceBeforeTarget ? 'is-arrange-target-before' : ''} ${
-                    isArrangeSpaceAfterTarget ? 'is-arrange-target-after' : ''
-                  } ${draggingSpaceId === space.id ? 'is-dragging' : ''}`}
-                  onClick={(event) => {
-                    if (consumeArrangeClickSuppression(`space:${space.id}`)) {
-                      event.stopPropagation()
-                      return
-                    }
-                    if (arrangeMode.active && arrangeMode.scope === 'spaces') {
-                      event.stopPropagation()
-                      exitArrangeMode()
-                      return
-                    }
-                    openSpace(space.id)
-                  }}
-                  onContextMenu={(event) => openContextMenuForSpace(event, space.id)}
-                  onPointerDown={(event) => {
-                    if (event.button === 0) {
-                      event.currentTarget.setPointerCapture(event.pointerId)
-                    }
-                    startArrangeDragSeed(`space:${space.id}`, event)
-                    if (arrangeMode.active && arrangeMode.scope === 'spaces') {
-                      startArrangeTapCandidate({ key: `space:${space.id}`, type: 'space', spaceId: space.id }, event)
-                      return
-                    }
-                    startArrangePress(event, { type: 'space', spaceId: space.id }, `space:${space.id}`)
-                  }}
-                  onPointerMove={(event) => handleArrangeSpacePointerMove(event, space)}
-                  onPointerUp={(event) => handleArrangeSpacePointerUp(event, space.id)}
-                  onPointerLeave={() => {
-                    if (!arrangeMode.active) {
-                      clearArrangePressTimer()
-                    }
-                  }}
-                  onPointerCancel={() => {
-                    cancelArrangeSpacePointerDrag()
-                  }}
-                >
-                  <span className="space-card-name">{space.name}</span>
-                </button>
-                  )
-                })()
-              ),
-            )}
-            <button
-              type="button"
-              className={`space-card space-card-add ${arrangeMode.active && arrangeMode.scope === 'spaces' ? 'is-arrange-fixed' : ''}`}
-              onClick={(event) => {
-                if (arrangeMode.active && arrangeMode.scope === 'spaces') {
-                  event.stopPropagation()
-                  exitArrangeMode()
-                  return
-                }
-                addSpace()
-              }}
-              aria-label="Add space"
-            >
-              +
-            </button>
-          </div>
-          {spaceArrangeDragPreview && (
-            <div
-              className="space-arrange-preview"
-              style={{
-                left: `${spaceArrangeDragPreview.currentX - spaceArrangeDragPreview.offsetX}px`,
-                top: `${spaceArrangeDragPreview.currentY - spaceArrangeDragPreview.offsetY}px`,
-                width: `${spaceArrangeDragPreview.width}px`,
-                height: `${spaceArrangeDragPreview.height}px`,
-              }}
-            >
-              <span className="space-card-name">{spaceArrangeDragPreview.label}</span>
-            </div>
-          )}
-        </section>
+          onOpenDomains={openDomainsView}
+          onOpenSpace={openSpace}
+          onAddSpace={addSpace}
+          onExitArrangeMode={exitArrangeMode}
+          onCommitRename={(spaceId, name) => commitRename('space', spaceId, name)}
+          onCancelRename={(spaceId) => cancelRename('space', spaceId)}
+          onShouldSkipRenameBlur={(spaceId) => shouldSkipRenameBlur('space', spaceId)}
+          onOpenContextMenu={openContextMenuForSpace}
+          onConsumeArrangeClickSuppression={consumeArrangeClickSuppression}
+          onStartArrangeDragSeed={startArrangeDragSeed}
+          onStartArrangeTapCandidate={startArrangeTapCandidate}
+          onStartArrangePress={startArrangePress}
+          onHandleArrangeSpacePointerMove={handleArrangeSpacePointerMove}
+          onHandleArrangeSpacePointerUp={handleArrangeSpacePointerUp}
+          onClearArrangePressTimer={clearArrangePressTimer}
+          onCancelArrangeSpacePointerDrag={cancelArrangeSpacePointerDrag}
+        />
       ) : viewMode === 'settings' ? (
         <section className="settings-page-wrap">
           <div className="settings-page-card">
@@ -8034,6 +6500,7 @@ function App() {
                   {(
                     [
                       ['toggleTabTrash', 'toggle tabs/trash'],
+                      ['openDomains', 'open domains'],
                       ['openSpaces', 'open spaces'],
                       ['newTab', 'new parent tab'],
                       ['newSubTab', 'new sub tab'],
@@ -8131,6 +6598,26 @@ function App() {
 
             {settingsSection === 'visuals' && (
               <div className="settings-section-panel" role="tabpanel">
+                <div className="settings-hotkey-row">
+                  <span className="settings-hotkey-label" id="settings-theme-label">
+                    theme
+                  </span>
+                  <div className="theme-switch" role="radiogroup" aria-labelledby="settings-theme-label">
+                    {THEME_OPTIONS.map((theme) => (
+                      <button
+                        key={theme.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={state.theme === theme.id}
+                        className={`theme-switch-option ${state.theme === theme.id ? 'is-selected' : ''}`}
+                        onClick={() => updateThemeSetting(theme.id)}
+                      >
+                        {theme.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <p className="settings-help">dusk is available as a selection now; its visual treatment can be added later.</p>
                 <div className="settings-hotkey-row settings-slider-row">
                   <label className="settings-hotkey-label" htmlFor="settings-tab-button-scale">
                     tab button size
@@ -9081,6 +7568,10 @@ function App() {
                 delete
               </button>
             </>
+          ) : contextMenu.type === 'domain' ? (
+            <button type="button" className="tab-context-delete" onClick={beginRenameDomainFromContext}>
+              rename
+            </button>
           ) : contextMenu.type === 'image' ? (
             <button
               type="button"

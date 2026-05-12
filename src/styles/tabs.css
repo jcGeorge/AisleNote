@@ -1,0 +1,241 @@
+.tab-btn,
+.add-tab-btn {
+  flex: 0 0 auto;
+  max-width: calc(300px * var(--tab-button-scale));
+  min-width: calc(56px * var(--tab-button-scale));
+  min-height: var(--tab-control-height);
+  padding: calc(0.2rem * var(--tab-button-scale)) calc(0.5rem * var(--tab-button-scale));
+  font-size: calc(0.95rem * var(--tab-button-scale));
+  line-height: calc(1.1 * var(--tab-button-scale));
+  border-radius: calc(0.42rem * var(--tab-button-scale));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-width: 1px !important;
+  box-shadow: none !important;
+}
+
+.tab-btn.btn {
+  color: var(--tab-btn-text);
+  background-color: var(--tab-btn-bg);
+  border-color: var(--tab-btn-border);
+}
+
+.tab-btn.btn:hover {
+  color: var(--tab-btn-hover-text);
+  background-color: var(--tab-btn-hover-bg);
+  border-color: var(--tab-btn-hover-border);
+}
+
+.tab-btn.is-arrangeable {
+  animation: arrangeJiggle 0.18s ease-in-out infinite alternate;
+  transform-origin: center;
+  box-shadow: var(--tab-arrangeable-shadow) !important;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.tab-btn.is-arrangeable:hover {
+  animation-play-state: paused;
+}
+
+.tab-btn.is-arrangeable:active {
+  cursor: grabbing;
+}
+
+.tab-btn.is-arrangeable.is-dragging {
+  cursor: grabbing;
+  opacity: 0.35;
+  box-shadow: var(--tab-dragging-shadow) !important;
+}
+
+.tab-arrange-preview {
+  position: fixed;
+  z-index: 80;
+  pointer-events: none;
+  border: 1px solid var(--tab-arrange-preview-border);
+  background: var(--tab-arrange-preview-bg);
+  border-radius: calc(0.42rem * var(--tab-button-scale));
+  color: var(--tab-arrange-preview-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: calc(0.2rem * var(--tab-button-scale)) calc(0.5rem * var(--tab-button-scale));
+  box-shadow: var(--tab-arrange-preview-shadow);
+  box-sizing: border-box;
+  font-size: calc(0.95rem * var(--tab-button-scale));
+  line-height: calc(1.1 * var(--tab-button-scale));
+  white-space: nowrap;
+}
+
+.tab-arrange-preview.is-subtab {
+  border-color: var(--subtab-arrange-preview-border);
+  box-shadow: var(--subtab-arrange-preview-shadow);
+}
+
+.tab-arrange-preview span {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.home-subtab-btn.is-arrange-fixed {
+  box-shadow: var(--home-subtab-fixed-shadow) !important;
+}
+
+.home-subtab-btn.is-arrange-home-target {
+  border-color: var(--home-subtab-target-border) !important;
+  box-shadow: var(--home-subtab-target-shadow) !important;
+}
+
+.parent-tab-btn.is-arrange-target {
+  border-color: var(--parent-tab-target-border) !important;
+  box-shadow: var(--parent-tab-target-shadow) !important;
+}
+
+.subtab-btn.is-arrange-target {
+  border-color: var(--subtab-target-border) !important;
+  box-shadow: var(--subtab-target-shadow) !important;
+}
+
+.parent-tab-btn.is-arrange-target-before {
+  border-color: var(--parent-tab-target-border) !important;
+  box-shadow: var(--parent-tab-target-before-shadow) !important;
+}
+
+.parent-tab-btn.is-arrange-target-after {
+  border-color: var(--parent-tab-target-border) !important;
+  box-shadow: var(--parent-tab-target-after-shadow) !important;
+}
+
+.subtab-btn.is-arrange-target-before {
+  border-color: var(--subtab-target-border) !important;
+  box-shadow: var(--subtab-target-before-shadow) !important;
+}
+
+.subtab-btn.is-arrange-target-after {
+  border-color: var(--subtab-target-border) !important;
+  box-shadow: var(--subtab-target-after-shadow) !important;
+}
+
+.parent-tab-btn[aria-selected='true'] {
+  color: var(--parent-tab-selected-text) !important;
+  background: var(--parent-tab-selected-bg) !important;
+  border-color: var(--parent-tab-selected-border) !important;
+}
+
+.subtab-btn.btn {
+  color: var(--subtab-btn-text);
+  background-color: var(--subtab-btn-bg);
+  border-color: var(--subtab-btn-border);
+}
+
+.subtab-btn.btn:hover {
+  color: var(--subtab-btn-hover-text);
+  background-color: var(--subtab-btn-hover-bg);
+  border-color: var(--subtab-btn-hover-border);
+}
+
+.subtab-btn[aria-selected='true'] {
+  color: var(--subtab-selected-text) !important;
+  background: var(--subtab-selected-bg) !important;
+  border-color: var(--subtab-selected-border) !important;
+}
+
+.trash-home-tab {
+  color: var(--trash-home-text) !important;
+  background: var(--trash-home-bg) !important;
+  border-color: var(--trash-home-border) !important;
+}
+
+.trash-home-tab:hover {
+  background: var(--trash-home-hover-bg) !important;
+  border-color: var(--trash-home-hover-border) !important;
+}
+
+.trash-home-tab.is-selected {
+  border-color: var(--trash-home-selected-border) !important;
+  box-shadow: inset 0 0 0 1px var(--trash-home-selected-shadow);
+}
+
+.trash-parent-tab {
+  color: var(--trash-parent-text) !important;
+  background: var(--trash-parent-bg) !important;
+  border-color: var(--trash-parent-border) !important;
+}
+
+.trash-parent-tab:hover {
+  color: var(--trash-parent-hover-text) !important;
+  background: var(--trash-parent-hover-bg) !important;
+  border-color: var(--trash-parent-hover-border) !important;
+}
+
+.trash-parent-tab.is-selected {
+  color: var(--trash-parent-selected-text) !important;
+  background: var(--trash-parent-selected-bg) !important;
+  border-color: var(--trash-parent-selected-border) !important;
+}
+
+.trash-subtab-btn {
+  color: var(--trash-subtab-text) !important;
+  background: var(--trash-subtab-bg) !important;
+  border-color: var(--trash-subtab-border) !important;
+}
+
+.trash-subtab-btn:hover {
+  color: var(--trash-subtab-hover-text) !important;
+  background: var(--trash-subtab-hover-bg) !important;
+  border-color: var(--trash-subtab-hover-border) !important;
+}
+
+.trash-subtab-btn.is-selected {
+  color: var(--trash-subtab-selected-text) !important;
+  background: var(--trash-subtab-selected-bg) !important;
+  border-color: var(--trash-subtab-selected-border) !important;
+}
+
+.add-tab-btn {
+  max-width: calc(28px * var(--tab-button-scale));
+  min-width: calc(28px * var(--tab-button-scale));
+  font-weight: 700;
+  padding: calc(0.15rem * var(--tab-button-scale)) 0 !important;
+  color: var(--add-tab-text) !important;
+  background-color: var(--add-tab-bg) !important;
+  border-color: var(--add-tab-border) !important;
+  box-shadow: none !important;
+}
+
+.add-tab-btn:hover {
+  background-color: var(--add-tab-hover-bg) !important;
+  border-color: var(--add-tab-hover-border) !important;
+}
+
+.add-tab-btn:focus,
+.add-tab-btn:focus-visible,
+.add-tab-btn:active,
+.add-tab-btn.active,
+.show > .add-tab-btn.dropdown-toggle {
+  background-color: var(--add-tab-bg) !important;
+  border-color: var(--add-tab-border) !important;
+  box-shadow: none !important;
+}
+
+.tab-rename-input {
+  flex: 0 0 auto;
+  width: 6ch;
+  min-width: 5ch;
+  max-width: 370px;
+  min-height: var(--tab-control-height);
+  padding: calc(0.2rem * var(--tab-button-scale)) calc(0.35rem * var(--tab-button-scale));
+  font-size: calc(0.95rem * var(--tab-button-scale));
+  line-height: calc(1.1 * var(--tab-button-scale));
+  border-radius: 0.35rem;
+  border: 1px solid var(--tab-rename-border);
+  background: var(--tab-rename-bg);
+  color: var(--tab-rename-text);
+  box-sizing: border-box;
+}
