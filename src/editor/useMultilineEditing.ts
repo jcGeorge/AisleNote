@@ -1,0 +1,754 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps */
+import { useEffect, useRef, type MutableRefObject } from 'react'
+import type { Editor } from '@toast-ui/editor'
+import {
+  buildSplitLineMultiLineState,
+  cloneMultiLineEditState,
+  findNextWordColumn,
+  findPreviousWordColumn,
+  getMultiLineColumnOffset,
+  getMultiLineHeadColumnOffset,
+  getMultiLineSelectionRange,
+  getMultiLineSelectionRanges,
+  getMultiLineSelectedBlockIndices,
+  getMultiLineSplitPlan,
+  moveMultiLineCursorState,
+  type MultiLineCursorMovement,
+  type MultiLineEditInput,
+} from './multiline-edit'
+import {
+  findEditorTextLineRangeIndex,
+  getEditorTextLineRanges,
+  isCodeBlockTextLineRange,
+} from './multiline-ranges'
+import {
+  CODE_BLOCK_INDENT_TEXT,
+  getCodeBlockOutdentRemoveLength,
+} from './prosemirror-utils'
+import {
+  getIndentPrefixLength,
+  getTrailingIndentPrefixLength,
+  INDENT_TOKEN,
+  mergeLeadingIndentsFromWysiwyg,
+  normalizeMarkdownForPersistence,
+} from '../markdown/markdown-utils'
+import type { MultiLineEditState } from '../types/app'
+
+type MultiLineEditHistoryEntry = {
+  noteKey: string
+  beforeMarkdown: string
+  afterMarkdown: string
+  beforeState: MultiLineEditState
+  afterState: MultiLineEditState
+}
+
+type EditorWithWysiwyg = Editor & {
+  wwEditor?: {
+    view?: any
+  }
+  setSelection?: (start: number, end: number) => void
+}
+
+type UseMultilineEditingOptions = {
+  editorRef: MutableRefObject<Editor | null>
+  lastEditorMarkdownRef: MutableRefObject<string>
+  activeSpaceIdRef: MutableRefObject<string>
+  activeTabIdRef: MutableRefObject<string>
+  activeSubTabIdRef: MutableRefObject<string | null>
+  activeAisleIdRef: MutableRefObject<string>
+  isEditorView: boolean
+  shortcutDependency: unknown
+  getActiveNoteHistoryKey: () => string
+  getNormalizedEditorMarkdown: (editor: Editor) => string
+  scheduleContentCommit: (
+    markdown: string,
+    spaceId: string,
+    tabId: string,
+    subTabId: string | null,
+    aisleId: string,
+  ) => void
+}
+
+export function useMultilineEditing({
+  editorRef,
+  lastEditorMarkdownRef,
+  activeSpaceIdRef,
+  activeTabIdRef,
+  activeSubTabIdRef,
+  activeAisleIdRef,
+  isEditorView,
+  shortcutDependency,
+  getActiveNoteHistoryKey,
+  getNormalizedEditorMarkdown,
+  scheduleContentCommit,
+}: UseMultilineEditingOptions) {
+  const editStateRef = useRef<MultiLineEditState | null>(null)
+  const pluginKeyRef = useRef<any>(null)
+  const historyRef = useRef<MultiLineEditHistoryEntry[]>([])
+
+  const getCurrentEditorAndView = () => {
+    const currentEditor = editorRef.current as EditorWithWysiwyg | null
+    const view = currentEditor?.wwEditor?.view
+    return { currentEditor, view }
+  }
+
+  const commitMarkdown = (markdown: string) => {
+    lastEditorMarkdownRef.current = markdown
+    scheduleContentCommit(
+      markdown,
+      activeSpaceIdRef.current,
+      activeTabIdRef.current,
+      activeSubTabIdRef.current,
+      activeAisleIdRef.current,
+    )
+  }
+
+  const recordHistory = (
+    beforeMarkdown: string,
+    beforeState: MultiLineEditState,
+    afterMarkdown: string,
+    afterState: MultiLineEditState,
+  ) => {
+    if (beforeMarkdown === afterMarkdown) return
+    historyRef.current = [
+      ...historyRef.current.slice(-99),
+      {
+        noteKey: getActiveNoteHistoryKey(),
+        beforeMarkdown,
+        afterMarkdown,
+        beforeState: cloneMultiLineEditState(beforeState),
+        afterState: cloneMultiLineEditState(afterState),
+      },
+    ]
+  }
+
+  const setCursorWidgets = (view: any, positions: number[], selections: Array<{ from: number; to: number }> = []) => {
+    const pluginKey = pluginKeyRef.current
+    if (!pluginKey) return
+    view.dispatch(view.state.tr.setMeta(pluginKey, { cursors: positions, selections }).setMeta('addToHistory', false))
+  }
+
+  const clear = (collapseToHead = false) => {
+    const { currentEditor, view } = getCurrentEditorAndView()
+    const previous = editStateRef.current
+    editStateRef.current = null
+    if (view) {
+      setCursorWidgets(view, [])
+    }
+    if (!collapseToHead || !view || !previous) return
+
+    const blockRanges = getEditorTextLineRanges(view)
+    const clampedHeadIndex = Math.max(0, Math.min(blockRanges.length - 1, previous.headBlockIndex))
+    const headRange = blockRanges[clampedHeadIndex]
+    if (!headRange) return
+    const caretPos = Math.min(headRange.end, headRange.start + getMultiLineColumnOffset(previous, clampedHeadIndex, headRange))
+    const SelectionCtor = view.state.selection.constructor as {
+      create?: (doc: unknown, anchor: number, head?: number) => unknown
+    }
+    if (typeof SelectionCtor.create !== 'function') return
+    const nextSelection = SelectionCtor.create(view.state.doc, caretPos, caretPos)
+    view.dispatch(view.state.tr.setSelection(nextSelection).scrollIntoView())
+    currentEditor?.focus()
+  }
+
+  const syncVisualSelection = () => {
+    const { currentEditor, view } = getCurrentEditorAndView()
+    const multiLineEdit = editStateRef.current
+    if (!currentEditor || !view || !multiLineEdit) return false
+
+    const blockRanges = getEditorTextLineRanges(view)
+    if (blockRanges.length === 0) {
+      editStateRef.current = null
+      return false
+    }
+
+    const selectedIndices = getMultiLineSelectedBlockIndices(multiLineEdit, blockRanges)
+    if (selectedIndices.length === 0) {
+      editStateRef.current = null
+      setCursorWidgets(view, [])
+      return false
+    }
+
+    const anchorIndex = selectedIndices.includes(multiLineEdit.anchorBlockIndex)
+      ? multiLineEdit.anchorBlockIndex
+      : selectedIndices[0]
+    const headIndex = selectedIndices.includes(multiLineEdit.headBlockIndex)
+      ? multiLineEdit.headBlockIndex
+      : selectedIndices[selectedIndices.length - 1]
+    const anchorRange = blockRanges[anchorIndex]
+    const headRange = blockRanges[headIndex]
+    if (!anchorRange || !headRange) {
+      editStateRef.current = null
+      return false
+    }
+
+    if (selectedIndices.length < 2) {
+      editStateRef.current = null
+      setCursorWidgets(view, [])
+      const caretPos = Math.min(headRange.end, headRange.start + getMultiLineColumnOffset(multiLineEdit, headIndex, headRange))
+      const SelectionCtor = view.state.selection.constructor as {
+        create?: (doc: unknown, anchor: number, head?: number) => unknown
+      }
+      if (typeof SelectionCtor.create !== 'function') return false
+      const nextSelection = SelectionCtor.create(view.state.doc, caretPos, caretPos)
+      view.dispatch(view.state.tr.setSelection(nextSelection).scrollIntoView())
+      return false
+    }
+
+    const selectionAnchorOffsets = selectedIndices.reduce<Record<number, number>>((acc, blockIndex) => {
+      const rawOffset = multiLineEdit.selectionAnchorOffsets?.[blockIndex]
+      const range = blockRanges[blockIndex]
+      if (typeof rawOffset === 'number' && range) {
+        acc[blockIndex] = Math.max(0, Math.min(range.length, rawOffset))
+      }
+      return acc
+    }, {})
+    const normalizedMultiLineEdit: MultiLineEditState = {
+      ...multiLineEdit,
+      anchorBlockIndex: anchorIndex,
+      headBlockIndex: headIndex,
+      cursorBlockIndices: multiLineEdit.cursorBlockIndices ? selectedIndices : undefined,
+      selectionAnchorOffsets: Object.keys(selectionAnchorOffsets).length > 0 ? selectionAnchorOffsets : undefined,
+    }
+    editStateRef.current = normalizedMultiLineEdit
+
+    const headOffset = getMultiLineColumnOffset(normalizedMultiLineEdit, headIndex, headRange)
+    const headPos = Math.min(headRange.end, headRange.start + headOffset)
+    const cursorPositions = selectedIndices
+      .map((blockIndex) => {
+        const range = blockRanges[blockIndex]
+        return range ? Math.min(range.end, range.start + getMultiLineColumnOffset(normalizedMultiLineEdit, blockIndex, range)) : null
+      })
+      .filter((pos): pos is number => typeof pos === 'number' && pos !== headPos)
+    const selectionDecorations = getMultiLineSelectionRanges(normalizedMultiLineEdit, selectedIndices, blockRanges).map(
+      ({ from, to }) => ({ from, to }),
+    )
+
+    const SelectionCtor = view.state.selection.constructor as {
+      create?: (doc: unknown, anchor: number, head?: number) => unknown
+    }
+    if (typeof SelectionCtor.create !== 'function') return false
+    const nextSelection = SelectionCtor.create(view.state.doc, headPos, headPos)
+    let tr = view.state.tr.setSelection(nextSelection).setMeta('addToHistory', false).scrollIntoView()
+    const pluginKey = pluginKeyRef.current
+    if (pluginKey) {
+      tr = tr.setMeta(pluginKey, { cursors: cursorPositions, selections: selectionDecorations })
+    }
+    view.dispatch(tr)
+    currentEditor.focus()
+    return true
+  }
+
+  const scheduleHistoryRestore = (direction: 'undo' | 'redo') => {
+    const noteKey = getActiveNoteHistoryKey()
+    window.requestAnimationFrame(() => {
+      if (noteKey !== getActiveNoteHistoryKey()) return
+      const currentEditor = editorRef.current
+      if (!currentEditor) return
+
+      const markdown = getNormalizedEditorMarkdown(currentEditor)
+      const entry = [...historyRef.current]
+        .reverse()
+        .find((candidate) =>
+          candidate.noteKey === noteKey &&
+          (direction === 'undo' ? candidate.beforeMarkdown === markdown : candidate.afterMarkdown === markdown),
+        )
+      if (!entry) return
+
+      editStateRef.current = cloneMultiLineEditState(direction === 'undo' ? entry.beforeState : entry.afterState)
+      syncVisualSelection()
+    })
+  }
+
+  const getEditorHistoryDirection = (event: KeyboardEvent): 'undo' | 'redo' | null => {
+    const key = event.key.toLowerCase()
+    const isMacPlatform = navigator.platform.toLowerCase().includes('mac')
+    const isMod = isMacPlatform ? event.metaKey : event.ctrlKey
+    if (!isMod || event.altKey) return null
+    if (key === 'z' && !event.shiftKey) return 'undo'
+    if (key === 'z' && event.shiftKey) return 'redo'
+    if (!isMacPlatform && key === 'y' && !event.shiftKey) return 'redo'
+    return null
+  }
+
+  const tryApplyIndent = (outdent: boolean) => {
+    const { currentEditor, view } = getCurrentEditorAndView()
+    if (!currentEditor || !view) return false
+
+    const { state } = view
+    const { from, to, $from } = state.selection
+    const isCollapsedSelection = from === to
+    const selectedText = state.doc.textBetween(from, to, '\n')
+    const selectionFrom = Math.min(from, to)
+    const selectionTo = Math.max(from, to)
+    const touchedLineRanges = getEditorTextLineRanges(view).filter((range) =>
+      isCollapsedSelection
+        ? selectionFrom >= range.start && selectionFrom <= range.end + 1
+        : range.start <= selectionTo && range.end >= selectionFrom,
+    )
+    const codeBlockLineRanges = touchedLineRanges.filter(isCodeBlockTextLineRange)
+
+    if (!isCollapsedSelection && codeBlockLineRanges.length > 1 && codeBlockLineRanges.length === touchedLineRanges.length) {
+      const targets = codeBlockLineRanges
+        .map((range) => ({
+          pos: range.start,
+          removeLength: outdent ? getCodeBlockOutdentRemoveLength(range.text) : 0,
+        }))
+        .filter((target) => !outdent || target.removeLength > 0)
+
+      if (targets.length === 0) return false
+
+      let tr: any = state.tr
+      for (const target of [...targets].sort((a, b) => b.pos - a.pos)) {
+        tr = outdent
+          ? tr.delete(target.pos, target.pos + target.removeLength)
+          : tr.insertText(CODE_BLOCK_INDENT_TEXT, target.pos)
+      }
+
+      const nextFrom = tr.mapping.map(from, outdent ? -1 : 1)
+      const nextTo = tr.mapping.map(to, outdent ? -1 : 1)
+      view.dispatch(tr)
+      const markdownAfterCodeIndent = normalizeMarkdownForPersistence(
+        mergeLeadingIndentsFromWysiwyg(currentEditor, currentEditor.getMarkdown()),
+      )
+      commitMarkdown(markdownAfterCodeIndent)
+      window.requestAnimationFrame(() => {
+        currentEditor.setSelection?.(nextFrom, nextTo)
+        currentEditor.focus()
+      })
+      return true
+    }
+
+    if (!selectedText.includes('\n')) {
+      let tr: any = state.tr
+
+      if (outdent) {
+        const parentText = $from.parent.textContent ?? ''
+        const parentStart = $from.start()
+        const offsetInParent = Math.max(0, from - parentStart)
+        const beforeCursor = parentText.slice(0, offsetInParent)
+        const inlinePrefixLength = getTrailingIndentPrefixLength(beforeCursor)
+        if (inlinePrefixLength > 0) {
+          tr = tr.delete(from - inlinePrefixLength, from)
+        } else {
+          const linePrefixLength = getIndentPrefixLength(parentText)
+          if (linePrefixLength <= 0) return false
+          tr = tr.delete(parentStart, parentStart + linePrefixLength)
+        }
+      } else {
+        tr = tr.insertText(INDENT_TOKEN, from)
+      }
+
+      const nextCaret = tr.mapping.map(from, 1)
+      const nextFrom = tr.mapping.map(from, 1)
+      const nextTo = tr.mapping.map(to, 1)
+      view.dispatch(tr)
+      const markdownAfterInlineIndent = normalizeMarkdownForPersistence(
+        mergeLeadingIndentsFromWysiwyg(currentEditor, currentEditor.getMarkdown()),
+      )
+      commitMarkdown(markdownAfterInlineIndent)
+      window.requestAnimationFrame(() => {
+        if (isCollapsedSelection) {
+          currentEditor.setSelection?.(nextCaret, nextCaret)
+        } else {
+          currentEditor.setSelection?.(nextFrom, nextTo)
+        }
+        currentEditor.focus()
+      })
+      return true
+    }
+
+    const blockTargets: Array<{ pos: number; removeLength: number }> = []
+    const seenBlockPositions = new Set<number>()
+    const addBlockTarget = (node: any, contentStartPos: number) => {
+      if (!node?.isTextblock || seenBlockPositions.has(contentStartPos)) return
+      seenBlockPositions.add(contentStartPos)
+      const text = node.textContent ?? ''
+      const removeLength = outdent ? getIndentPrefixLength(text) : 0
+      if (!outdent || removeLength > 0) {
+        blockTargets.push({ pos: contentStartPos, removeLength })
+      }
+    }
+
+    if (from === to) {
+      addBlockTarget($from.parent, $from.start())
+    } else {
+      state.doc.nodesBetween(from, to, (node: any, pos: number) => {
+        if (!node.isTextblock) return
+        addBlockTarget(node, pos + 1)
+        return false
+      })
+      if (blockTargets.length === 0) {
+        addBlockTarget($from.parent, $from.start())
+      }
+    }
+
+    if (blockTargets.length === 0) return false
+
+    let tr: any = state.tr
+    for (const target of [...blockTargets].sort((a, b) => b.pos - a.pos)) {
+      tr = outdent ? tr.delete(target.pos, target.pos + target.removeLength) : tr.insertText(INDENT_TOKEN, target.pos)
+    }
+
+    const nextFrom = tr.mapping.map(from, -1)
+    const nextTo = tr.mapping.map(to, 1)
+    const nextCaret = tr.mapping.map(from, outdent ? -1 : 1)
+    view.dispatch(tr)
+    const markdownAfterIndent = normalizeMarkdownForPersistence(
+      mergeLeadingIndentsFromWysiwyg(currentEditor, currentEditor.getMarkdown()),
+    )
+    commitMarkdown(markdownAfterIndent)
+    window.requestAnimationFrame(() => {
+      if (isCollapsedSelection) {
+        currentEditor.setSelection?.(nextCaret, nextCaret)
+      } else {
+        currentEditor.setSelection?.(nextFrom, nextTo)
+      }
+      currentEditor.focus()
+    })
+    return true
+  }
+
+  const tryExpandSelection = (direction: 'up' | 'down') => {
+    const { currentEditor, view } = getCurrentEditorAndView()
+    if (!currentEditor || !view) return false
+
+    const { state } = view
+    const blockRanges = getEditorTextLineRanges(view)
+    if (blockRanges.length === 0) return false
+
+    const existing = editStateRef.current
+    if (existing) {
+      if (existing.cursorBlockIndices?.length) {
+        const existingIndices = getMultiLineSelectedBlockIndices(existing, blockRanges)
+        const nextHeadIndex =
+          direction === 'down'
+            ? Math.min(blockRanges.length - 1, existing.headBlockIndex + 1)
+            : Math.max(0, existing.headBlockIndex - 1)
+        if (nextHeadIndex === existing.headBlockIndex || existingIndices.includes(nextHeadIndex)) return false
+        const nextHeadRange = blockRanges[nextHeadIndex]
+        if (!nextHeadRange) return false
+        const nextColumn = Math.min(nextHeadRange.length, getMultiLineHeadColumnOffset(existing, blockRanges))
+        editStateRef.current = {
+          ...existing,
+          headBlockIndex: nextHeadIndex,
+          columnOffset: nextColumn,
+          columnOffsets: {
+            ...(existing.columnOffsets ?? {}),
+            [nextHeadIndex]: nextColumn,
+          },
+          cursorBlockIndices: [...existingIndices, nextHeadIndex].sort((a, b) => a - b),
+        }
+        return syncVisualSelection()
+      }
+
+      const nextHeadIndex =
+        direction === 'down'
+          ? Math.min(blockRanges.length - 1, existing.headBlockIndex + 1)
+          : Math.max(0, existing.headBlockIndex - 1)
+      if (nextHeadIndex === existing.headBlockIndex) return false
+      editStateRef.current = {
+        ...existing,
+        headBlockIndex: nextHeadIndex,
+      }
+      return syncVisualSelection()
+    }
+
+    const headBlockIndex = findEditorTextLineRangeIndex(blockRanges, state.selection.head)
+    if (headBlockIndex < 0) return false
+
+    const targetIndex =
+      direction === 'down'
+        ? Math.min(blockRanges.length - 1, headBlockIndex + 1)
+        : Math.max(0, headBlockIndex - 1)
+    if (targetIndex === headBlockIndex) return false
+
+    const currentHeadBlock = blockRanges[headBlockIndex]
+    const columnOffset = Math.max(0, Math.min(currentHeadBlock.length, state.selection.head - currentHeadBlock.start))
+    editStateRef.current = {
+      anchorBlockIndex: headBlockIndex,
+      headBlockIndex: targetIndex,
+      columnOffset,
+    }
+    return syncVisualSelection()
+  }
+
+  useEffect(() => {
+    window.__tabsHandleMultilineShortcut = (direction) => {
+      if (!isEditorView) return false
+      return tryExpandSelection(direction)
+    }
+    return () => {
+      if (window.__tabsHandleMultilineShortcut) {
+        delete window.__tabsHandleMultilineShortcut
+      }
+    }
+  }, [isEditorView, shortcutDependency])
+
+  const tryApplyInput = (input: MultiLineEditInput) => {
+    const { currentEditor, view } = getCurrentEditorAndView()
+    const multiLineEdit = editStateRef.current
+    if (!currentEditor || !view || !multiLineEdit) return false
+
+    const blockRanges = getEditorTextLineRanges(view)
+    if (blockRanges.length === 0) {
+      editStateRef.current = null
+      return false
+    }
+
+    const selectedIndices = getMultiLineSelectedBlockIndices(multiLineEdit, blockRanges)
+    if (selectedIndices.length < 2) {
+      clear(true)
+      return false
+    }
+
+    const beforeMarkdown = getNormalizedEditorMarkdown(currentEditor)
+    const beforeState = cloneMultiLineEditState(multiLineEdit)
+    let tr = view.state.tr
+    let changed = false
+    const nextColumnOffsets: Record<number, number> = { ...(multiLineEdit.columnOffsets ?? {}) }
+
+    for (const blockIndex of [...selectedIndices].sort((a, b) => b - a)) {
+      const range = blockRanges[blockIndex]
+      if (!range) continue
+      const currentOffset = getMultiLineColumnOffset(multiLineEdit, blockIndex, range)
+      const cursorPos = Math.min(range.end, range.start + currentOffset)
+      const selectionRange = getMultiLineSelectionRange(multiLineEdit, blockIndex, range)
+
+      if (selectionRange && input.type !== 'split-line') {
+        const mappedFrom = tr.mapping.map(selectionRange.from, -1)
+        const mappedTo = tr.mapping.map(selectionRange.to, 1)
+        if (input.type === 'insert-text') {
+          tr = tr.insertText(input.text, mappedFrom, mappedTo)
+          nextColumnOffsets[blockIndex] = selectionRange.fromOffset + input.text.length
+        } else {
+          tr = tr.delete(mappedFrom, mappedTo)
+          nextColumnOffsets[blockIndex] = selectionRange.fromOffset
+        }
+        changed = true
+        continue
+      }
+
+      if (input.type === 'insert-text') {
+        tr = tr.insertText(input.text, cursorPos, cursorPos)
+        nextColumnOffsets[blockIndex] = currentOffset + input.text.length
+        changed = true
+        continue
+      }
+
+      if (input.type === 'backspace') {
+        if (cursorPos <= range.start) continue
+        tr = tr.delete(cursorPos - 1, cursorPos)
+        nextColumnOffsets[blockIndex] = Math.max(0, currentOffset - 1)
+        changed = true
+        continue
+      }
+
+      if (input.type === 'delete') {
+        if (cursorPos >= range.end) continue
+        tr = tr.delete(cursorPos, cursorPos + 1)
+        changed = true
+        continue
+      }
+
+      if (input.type === 'delete-word-backward') {
+        const nextOffset = findPreviousWordColumn(range.text, currentOffset)
+        if (nextOffset === currentOffset) continue
+        tr = tr.delete(range.start + nextOffset, cursorPos)
+        nextColumnOffsets[blockIndex] = nextOffset
+        changed = true
+        continue
+      }
+
+      if (input.type === 'delete-word-forward') {
+        const nextOffset = findNextWordColumn(range.text, currentOffset)
+        if (nextOffset === currentOffset) continue
+        tr = tr.delete(cursorPos, range.start + nextOffset)
+        changed = true
+        continue
+      }
+
+      if (input.type === 'delete-to-line-start') {
+        if (currentOffset <= 0) continue
+        tr = tr.delete(range.start, cursorPos)
+        nextColumnOffsets[blockIndex] = 0
+        changed = true
+        continue
+      }
+
+      if (input.type === 'delete-to-line-end') {
+        if (currentOffset >= range.length) continue
+        tr = tr.delete(cursorPos, range.end)
+        changed = true
+        continue
+      }
+
+      if (input.type === 'split-line') {
+        const splitPos = selectionRange?.from ?? cursorPos
+        const splitOffset = selectionRange?.fromOffset ?? currentOffset
+        if (selectionRange) {
+          const mappedFrom = tr.mapping.map(selectionRange.from, -1)
+          const mappedTo = tr.mapping.map(selectionRange.to, 1)
+          tr = tr.delete(mappedFrom, mappedTo)
+          nextColumnOffsets[blockIndex] = splitOffset
+        }
+        const mappedPos = tr.mapping.map(splitPos, 1)
+        if (isCodeBlockTextLineRange(range)) {
+          tr = tr.insertText('\n', mappedPos, mappedPos)
+          changed = true
+          continue
+        }
+        const splitPlan = getMultiLineSplitPlan(tr.doc, mappedPos)
+        if (!splitPlan) continue
+        tr = tr.split(mappedPos, splitPlan.depth, splitPlan.typesAfter)
+        changed = true
+      }
+    }
+
+    if (!changed) return false
+
+    view.dispatch(tr.scrollIntoView())
+    const nextMultiLineEditState =
+      input.type === 'split-line'
+        ? buildSplitLineMultiLineState(multiLineEdit, selectedIndices)
+        : {
+            ...multiLineEdit,
+            columnOffset: nextColumnOffsets[multiLineEdit.headBlockIndex] ?? multiLineEdit.columnOffset,
+            columnOffsets: nextColumnOffsets,
+            selectionAnchorOffsets: undefined,
+          }
+
+    editStateRef.current = nextMultiLineEditState
+    syncVisualSelection()
+    const markdownAfterMultiLineEdit = getNormalizedEditorMarkdown(currentEditor)
+    commitMarkdown(markdownAfterMultiLineEdit)
+    if (editStateRef.current) {
+      recordHistory(beforeMarkdown, beforeState, markdownAfterMultiLineEdit, editStateRef.current)
+    }
+    currentEditor.focus()
+    return true
+  }
+
+  const tryApplyTabInput = (shiftKey: boolean) =>
+    shiftKey ? tryApplyInput({ type: 'backspace' }) : tryApplyInput({ type: 'insert-text', text: INDENT_TOKEN })
+
+  const tryMoveCursors = (movement: MultiLineCursorMovement, extendSelection = false) => {
+    const { currentEditor, view } = getCurrentEditorAndView()
+    const multiLineEdit = editStateRef.current
+    if (!currentEditor || !view || !multiLineEdit) return false
+
+    const blockRanges = getEditorTextLineRanges(view)
+    if (blockRanges.length === 0) {
+      editStateRef.current = null
+      return false
+    }
+
+    const selectedIndices = getMultiLineSelectedBlockIndices(multiLineEdit, blockRanges)
+    if (selectedIndices.length < 2) {
+      clear(true)
+      return false
+    }
+
+    const nextState = moveMultiLineCursorState(multiLineEdit, selectedIndices, blockRanges, movement, { extendSelection })
+    if (!nextState) return false
+    editStateRef.current = nextState
+    syncVisualSelection()
+    return true
+  }
+
+  const getActiveSelectionContext = () => {
+    const { currentEditor, view } = getCurrentEditorAndView()
+    const multiLineEdit = editStateRef.current
+    if (!currentEditor || !view || !multiLineEdit) return null
+
+    const blockRanges = getEditorTextLineRanges(view)
+    if (blockRanges.length === 0) return null
+    const selectedIndices = getMultiLineSelectedBlockIndices(multiLineEdit, blockRanges)
+    if (selectedIndices.length < 2) return null
+    const selectionRanges = getMultiLineSelectionRanges(multiLineEdit, selectedIndices, blockRanges)
+    if (selectionRanges.length === 0) return null
+
+    return {
+      currentEditor,
+      view,
+      multiLineEdit,
+      selectedIndices,
+      selectionRanges,
+    }
+  }
+
+  const writeClipboardText = (clipboardData: DataTransfer | null, text: string) => {
+    if (clipboardData) {
+      clipboardData.setData('text/plain', text)
+      return true
+    }
+    if (navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(text)
+      return true
+    }
+    return false
+  }
+
+  const copySelectionToClipboard = (clipboardData: DataTransfer | null) => {
+    const context = getActiveSelectionContext()
+    if (!context) return false
+
+    const text = context.selectionRanges.map((range) => range.text).join('\n')
+    return writeClipboardText(clipboardData, text)
+  }
+
+  const cutSelectionToClipboard = (clipboardData: DataTransfer | null) => {
+    const context = getActiveSelectionContext()
+    if (!context) return false
+
+    const text = context.selectionRanges.map((range) => range.text).join('\n')
+    if (!writeClipboardText(clipboardData, text)) return false
+
+    const { currentEditor, view, multiLineEdit, selectionRanges } = context
+    const beforeMarkdown = getNormalizedEditorMarkdown(currentEditor)
+    const beforeState = cloneMultiLineEditState(multiLineEdit)
+    const nextColumnOffsets: Record<number, number> = { ...(multiLineEdit.columnOffsets ?? {}) }
+    let tr = view.state.tr
+
+    for (const selectionRange of [...selectionRanges].sort((a, b) => b.from - a.from)) {
+      const mappedFrom = tr.mapping.map(selectionRange.from, -1)
+      const mappedTo = tr.mapping.map(selectionRange.to, 1)
+      tr = tr.delete(mappedFrom, mappedTo)
+      nextColumnOffsets[selectionRange.blockIndex] = selectionRange.fromOffset
+    }
+
+    view.dispatch(tr.scrollIntoView())
+    editStateRef.current = {
+      ...multiLineEdit,
+      columnOffset: nextColumnOffsets[multiLineEdit.headBlockIndex] ?? multiLineEdit.columnOffset,
+      columnOffsets: nextColumnOffsets,
+      selectionAnchorOffsets: undefined,
+    }
+    syncVisualSelection()
+
+    const markdownAfterCut = getNormalizedEditorMarkdown(currentEditor)
+    commitMarkdown(markdownAfterCut)
+    if (editStateRef.current) {
+      recordHistory(beforeMarkdown, beforeState, markdownAfterCut, editStateRef.current)
+    }
+    currentEditor.focus()
+    return true
+  }
+
+  return {
+    editStateRef,
+    pluginKeyRef,
+    clear,
+    syncVisualSelection,
+    tryApplyIndent,
+    tryExpandSelection,
+    tryApplyInput,
+    tryApplyTabInput,
+    tryMoveCursors,
+    copySelectionToClipboard,
+    cutSelectionToClipboard,
+    scheduleHistoryRestore,
+    getEditorHistoryDirection,
+    hasActiveEdit: () => Boolean(editStateRef.current),
+  }
+}

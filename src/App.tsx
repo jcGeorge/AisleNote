@@ -4,11 +4,8 @@ import '@toast-ui/editor/dist/toastui-editor.css'
 import './App.css'
 import { useArrangeMode } from './arrange/useArrangeMode'
 import { DomainsPage } from './components/domains/DomainsPage'
-import { EditorToolbarPopovers } from './components/editor/EditorToolbarPopovers'
 import { ImageToolsOverlay } from './components/editor/ImageToolsOverlay'
 import { LegacyEditorShell } from './components/editor/LegacyEditorShell'
-import { SharedEditorToolbar } from './components/editor/SharedEditorToolbar'
-import { DEFAULT_TOOLBAR_FORMAT_STATE, type ToolbarFormatKey, type ToolbarFormatState } from './components/editor/toolbar-state'
 import { NoteWorkspace } from './components/notes/NoteWorkspace'
 import { SubTabRail } from './components/navigation/SubTabRail'
 import { TopBar } from './components/navigation/TopBar'
@@ -19,62 +16,28 @@ import { SettingsPage } from './components/settings/SettingsPage'
 import { SpacesPage } from './components/spaces/SpacesPage'
 import { StageManagerView } from './components/stage-manager/StageManagerView'
 import { TrashHomeNote } from './components/trash/TrashHomeNote'
-import { buildAisleEditorKey, type AisleEditorMeta } from './editor/aisle-editor'
+import { buildAisleEditorKey } from './editor/aisle-editor'
+import { useLegacyEditor } from './editor/useLegacyEditor'
 import {
-  EDITOR_TOOLBAR_ITEMS,
-  getMultilineSelectionShortcutDirection,
-  headingSpaceShortcutPlugin,
-  installClearToolbarButton,
-  installHeadingPopupActiveState,
-  multiLineSelectionShortcutPlugin,
-  thematicBreakShortcutPlugin,
-} from './editor/editor-setup'
-import {
-  CODE_BLOCK_INDENT_TEXT,
-  getCodeBlockOutdentRemoveLength,
   getCommandCapableEditor,
-  getElementFromEventTarget,
   getInternalNoteLinkHitAtDocPosition,
   getWysiwygView,
 } from './editor/prosemirror-utils'
-import { createContextPreviewPlugin } from './editor/note-preview-plugin'
+import { useAisleEditors } from './editor/useAisleEditors'
+import { useEditorDomEvents } from './editor/useEditorDomEvents'
+import { useEditorToolbarLayer } from './editor/useEditorToolbarLayer'
+import { useEditorToolbarState } from './editor/useEditorToolbarState'
 import { useImageTools } from './editor/useImageTools'
+import { useMultilineEditing } from './editor/useMultilineEditing'
 import {
   COMPLETED_TASK_UNDO_HINT_COOLDOWN_MS,
   COMPLETED_TASK_UNDO_HINT_DETECTION_MS,
   COMPLETED_TASK_UNDO_HINT_MESSAGE,
   COMPLETED_TASK_UNDO_HINT_TOAST_DURATION_MS,
-  installCompletedTaskCheckboxBehavior,
-  installTaskTextReorderBehavior,
 } from './editor/task-behavior'
 import { exportAppData, type ExportScope } from './export/export-data'
-import {
-  buildSplitLineMultiLineState,
-  cloneMultiLineEditState,
-  findNextWordColumn,
-  findPreviousWordColumn,
-  getMultiLineColumnOffset,
-  getMultiLineHeadColumnOffset,
-  getMultiLineSelectionRange,
-  getMultiLineSelectionRanges,
-  getMultiLineSelectedBlockIndices,
-  getMultiLineSplitPlan,
-  moveMultiLineCursorState,
-  type MultiLineCursorMovement,
-  type MultiLineEditInput,
-} from './editor/multiline-edit'
-import {
-  findEditorTextLineRangeIndex,
-  getEditorTextLineRanges,
-  isCodeBlockTextLineRange,
-} from './editor/multiline-ranges'
-import { eventMatchesShortcut } from './hotkeys/shortcuts'
 import { useGlobalHotkeys } from './hotkeys/useGlobalHotkeys'
 import {
-  getIndentPrefixLength,
-  getTrailingIndentPrefixLength,
-  INDENT_TOKEN,
-  materializeHorizontalRuleShortcut,
   mergeLeadingIndentsFromWysiwyg,
   normalizeEmptyHeadingMarkersFromWysiwyg,
   normalizeMarkdownForPersistence,
@@ -93,10 +56,8 @@ import {
   buildInternalNoteUrl,
   escapeMarkdownLinkLabel,
   getContextReferenceSignature,
-  type InternalNoteLinkHit,
   type NoteContextReferencePayload,
   parseContextReferences,
-  parseInternalNoteUrl,
   replaceInternalNoteLinkByOccurrence,
   replaceContextTokenById,
   wouldCreateContextCycle,
@@ -134,7 +95,6 @@ import type {
   DeleteTarget,
   LinkPromptState,
   ModalState,
-  MultiLineEditState,
   NoteAisle,
   NoteBody,
   NoteLocation,
@@ -154,15 +114,6 @@ type AisleDeleteConfirmationState = {
   left: number
 }
 
-type ToolbarPopoverKind = 'heading' | 'aisles'
-
-type ToolbarPopoverPosition = {
-  top: number
-  left: number
-}
-
-const TOOLBAR_POPOVER_WIDTH_PX = 168
-const TOOLBAR_POPOVER_VIEWPORT_MARGIN_PX = 8
 const AISLE_DELETE_CONFIRMATION_WIDTH_PX = 248
 const AISLE_DELETE_CONFIRMATION_HEIGHT_PX = 104
 
@@ -170,14 +121,6 @@ const DEFAULT_TOAST_DURATION_MS = 3000
 const HOVERED_TOAST_DURATION_MS = 2000
 
 type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
-
-type MultiLineEditHistoryEntry = {
-  noteKey: string
-  beforeMarkdown: string
-  afterMarkdown: string
-  beforeState: MultiLineEditState
-  afterState: MultiLineEditState
-}
 
 let renameInputMeasureContext: CanvasRenderingContext2D | null = null
 
@@ -204,44 +147,30 @@ function App() {
     url: '',
     text: '',
   })
-  const [toolbarFormatState, setToolbarFormatState] = useState<ToolbarFormatState>(DEFAULT_TOOLBAR_FORMAT_STATE)
-  const [toolbarShortcutFeedback, setToolbarShortcutFeedback] = useState<ToolbarFormatKey | null>(null)
-  const [noteToolsOpen, setNoteToolsOpen] = useState(false)
-  const [headingMenuOpen, setHeadingMenuOpen] = useState(false)
   const [aisleDeleteConfirmation, setAisleDeleteConfirmation] = useState<AisleDeleteConfirmationState | null>(null)
-  const [toolbarPopoverPosition, setToolbarPopoverPosition] = useState<Record<ToolbarPopoverKind, ToolbarPopoverPosition | null>>({
-    heading: null,
-    aisles: null,
-  })
   const [aisleDeleteMode, setAisleDeleteMode] = useState(false)
   const linkPromptInputRef = useRef<HTMLInputElement | null>(null)
   const aisleDeleteConfirmButtonRef = useRef<HTMLButtonElement | null>(null)
 
   const editorMountRef = useRef<HTMLDivElement | null>(null)
   const editorRef = useRef<Editor | null>(null)
-  const headingToolbarButtonRef = useRef<HTMLButtonElement | null>(null)
-  const aisleToolbarButtonRef = useRef<HTMLButtonElement | null>(null)
   const aisleScrollRef = useRef<HTMLDivElement | null>(null)
   const aisleHorizontalScrollByBodyRef = useRef<Map<string, number>>(new Map())
   const pendingScrollToAisleIdRef = useRef<string | null>(null)
   const editorEventRootRef = useRef<HTMLElement | null>(null)
-  const aisleEditorRootsRef = useRef<Map<string, HTMLElement>>(new Map())
-  const aisleEditorMetaRef = useRef<Map<string, AisleEditorMeta>>(new Map())
   const pendingContentRef = useRef<PendingContent | null>(null)
   const pendingCreatedEditRef = useRef<PendingCreatedEdit | null>(null)
   const skipRenameBlurRef = useRef<{ type: EditableEntityType; id: string } | null>(null)
   const saveTimerRef = useRef<number | null>(null)
   const toastTimerRef = useRef<number | null>(null)
-  const toolbarShortcutFeedbackTimerRef = useRef<number | null>(null)
+  const closeImageToolsRef = useRef<() => void>(() => {})
+  const closeImageToolsIfSelectedImageMissingRef = useRef<() => void>(() => {})
   const normalizingContentRef = useRef(false)
   const completedTaskDeleteUndoCandidateRef = useRef<{ beforeMarkdown: string; deletedAt: number } | null>(null)
   const completedTaskUndoToastAtRef = useRef(0)
   const lastEditorMarkdownRef = useRef('')
   const lastEditorMarkdownByAisleRef = useRef<Map<string, string>>(new Map())
   const normalizingAisleIdsRef = useRef<Set<string>>(new Set())
-  const multiLineEditRef = useRef<MultiLineEditState | null>(null)
-  const multiLineCursorPluginKeyRef = useRef<any>(null)
-  const multiLineEditHistoryRef = useRef<MultiLineEditHistoryEntry[]>([])
   const stateRef = useRef(state)
   const initialStateJsonRef = useRef<string>(JSON.stringify(parseSavedState(initialSerializedState)))
   const stateDirtySinceBootRef = useRef(false)
@@ -252,64 +181,6 @@ function App() {
   const activeAisleIdRef = useRef<string>('')
   const isMainViewRef = useRef(true)
   stateRef.current = state
-
-  const getToolbarPopoverButton = (kind: ToolbarPopoverKind) =>
-    kind === 'aisles' ? aisleToolbarButtonRef.current : headingToolbarButtonRef.current
-
-  const getToolbarPopoverPosition = (kind: ToolbarPopoverKind): ToolbarPopoverPosition | null => {
-    const button = getToolbarPopoverButton(kind)
-    if (!button || !button.isConnected) return null
-    const rect = button.getBoundingClientRect()
-    const viewportWidth = window.innerWidth || document.documentElement.clientWidth
-    const maxLeft = Math.max(TOOLBAR_POPOVER_VIEWPORT_MARGIN_PX, viewportWidth - TOOLBAR_POPOVER_WIDTH_PX - TOOLBAR_POPOVER_VIEWPORT_MARGIN_PX)
-    return {
-      top: rect.bottom + 6,
-      left: Math.min(Math.max(TOOLBAR_POPOVER_VIEWPORT_MARGIN_PX, rect.left), maxLeft),
-    }
-  }
-
-  const refreshToolbarPopoverPosition = (kind: ToolbarPopoverKind) => {
-    const position = getToolbarPopoverPosition(kind)
-    if (!position) {
-      setHeadingMenuOpen(false)
-      setNoteToolsOpen(false)
-      return
-    }
-    setToolbarPopoverPosition((previous) => ({ ...previous, [kind]: position }))
-  }
-
-  const closeToolbarPopovers = () => {
-    setHeadingMenuOpen(false)
-    setNoteToolsOpen(false)
-  }
-
-  useEffect(() => {
-    const openPopoverKind: ToolbarPopoverKind | null = noteToolsOpen ? 'aisles' : headingMenuOpen ? 'heading' : null
-    if (!openPopoverKind) return
-
-    const refreshPosition = () => refreshToolbarPopoverPosition(openPopoverKind)
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = getElementFromEventTarget(event.target)
-      const button = getToolbarPopoverButton(openPopoverKind)
-      if (
-        target?.closest('.note-toolbar-heading-popover, .note-toolbar-aisle-popover') ||
-        (button && event.target instanceof Node && button.contains(event.target))
-      ) {
-        return
-      }
-      closeToolbarPopovers()
-    }
-
-    refreshPosition()
-    window.addEventListener('resize', refreshPosition)
-    window.addEventListener('scroll', refreshPosition, true)
-    window.addEventListener('pointerdown', handlePointerDown, true)
-    return () => {
-      window.removeEventListener('resize', refreshPosition)
-      window.removeEventListener('scroll', refreshPosition, true)
-      window.removeEventListener('pointerdown', handlePointerDown, true)
-    }
-  }, [headingMenuOpen, noteToolsOpen, viewMode])
 
   useEffect(() => {
     if (typeof appStateStore.hydrate !== 'function') return
@@ -991,165 +862,123 @@ function App() {
       normalizeMarkdownForPersistence(mergeLeadingIndentsFromWysiwyg(editor, editor.getMarkdown())),
     )
 
+  const multilineEditing = useMultilineEditing({
+    editorRef,
+    lastEditorMarkdownRef,
+    activeSpaceIdRef,
+    activeTabIdRef,
+    activeSubTabIdRef,
+    activeAisleIdRef,
+    isEditorView,
+    shortcutDependency: resolvedActiveAisleId,
+    getActiveNoteHistoryKey,
+    getNormalizedEditorMarkdown,
+    scheduleContentCommit,
+  })
+  const multiLineEditRef = multilineEditing.editStateRef
+  const multiLineCursorPluginKeyRef = multilineEditing.pluginKeyRef
+  const clearMultiLineEdit = multilineEditing.clear
+  const tryApplyMultilineIndent = multilineEditing.tryApplyIndent
+  const tryExpandMultilineSelection = multilineEditing.tryExpandSelection
+  const tryApplyMultiLineEditInput = multilineEditing.tryApplyInput
+  const tryApplyMultiLineTabInput = multilineEditing.tryApplyTabInput
+  const tryMoveMultiLineCursors = multilineEditing.tryMoveCursors
+  const copyMultiLineSelectionToClipboard = multilineEditing.copySelectionToClipboard
+  const cutMultiLineSelectionToClipboard = multilineEditing.cutSelectionToClipboard
+  const scheduleMultiLineHistoryRestore = multilineEditing.scheduleHistoryRestore
+  const getEditorHistoryDirection = multilineEditing.getEditorHistoryDirection
+
   const isPendingCreatedRenameActive = () => {
     return Boolean(pendingCreatedEditRef.current)
   }
 
-  const areToolbarFormatStatesEqual = (first: ToolbarFormatState, second: ToolbarFormatState) =>
-    first.bold === second.bold && first.italic === second.italic && first.strike === second.strike
+  const editorToolbar = useEditorToolbarState({
+    viewMode,
+    isMacPlatform,
+    editorRef,
+    stateRef,
+  })
+  const headingToolbarButtonRef = editorToolbar.headingToolbarButtonRef
+  const aisleToolbarButtonRef = editorToolbar.aisleToolbarButtonRef
+  const toolbarFormatState = editorToolbar.toolbarFormatState
+  const toolbarShortcutFeedback = editorToolbar.toolbarShortcutFeedback
+  const noteToolsOpen = editorToolbar.noteToolsOpen
+  const headingMenuOpen = editorToolbar.headingMenuOpen
+  const toolbarPopoverPosition = editorToolbar.toolbarPopoverPosition
+  const setNoteToolsOpen = editorToolbar.setNoteToolsOpen
+  const setHeadingMenuOpen = editorToolbar.setHeadingMenuOpen
+  const setToolbarPopoverPosition = editorToolbar.setToolbarPopoverPosition
+  const refreshToolbarPopoverPosition = editorToolbar.refreshToolbarPopoverPosition
+  const closeToolbarPopovers = editorToolbar.closeToolbarPopovers
+  const getToolbarFormatShortcut = editorToolbar.getToolbarFormatShortcut
+  const queueToolbarShortcutFeedback = editorToolbar.queueToolbarShortcutFeedback
+  const syncToolbarFormatState = editorToolbar.syncToolbarFormatState
+  const scheduleToolbarFormatStateSync = editorToolbar.scheduleToolbarFormatStateSync
 
-  const hasActiveEditorMark = (view: any, markName: string) => {
-    const markType = view?.state?.schema?.marks?.[markName]
-    if (!markType) return false
+  const getContextPreviewData = (payload: NoteContextReferencePayload, sourceNoteBodyId: string) => {
+    const latestState = stateRef.current
+    const targetInfo = getLocationInfo(latestState, payload.target)
+    const targetBody = latestState.noteBodies.find((body) => body.id === targetInfo.noteBodyId) ?? null
+    const selectedAisles =
+      targetBody && payload.aisleIds && payload.aisleIds.length > 0
+        ? targetBody.aisles.filter((aisle) => payload.aisleIds?.includes(aisle.id))
+        : targetBody?.aisles ?? []
+    const recursiveBlocked =
+      !targetBody ||
+      !targetInfo.noteBodyId ||
+      targetInfo.noteBodyId === sourceNoteBodyId ||
+      wouldCreateContextCycle(latestState, targetInfo.noteBodyId, sourceNoteBodyId)
+    const previewText = selectedAisles
+      .map((aisle) => aisle.markdown.trim())
+      .filter(Boolean)
+      .join('\n\n')
+    const locationLabel = targetInfo.domain && targetInfo.space && targetInfo.tab
+      ? `${targetInfo.domain.name} / ${targetInfo.space.name} / ${targetInfo.tab.title}${targetInfo.subTab ? ` / ${targetInfo.subTab.title}` : ' / index'}`
+      : 'missing note'
+    const displayTitle = targetInfo.tab
+      ? `${targetInfo.tab.title} > ${targetInfo.subTab ? targetInfo.subTab.title : 'index'}`
+      : targetInfo.title
 
-    const { state } = view
-    const { selection } = state
-    if (selection.empty) {
-      const marks = state.storedMarks ?? selection.$from?.marks?.() ?? []
-      return marks.some((mark: any) => mark?.type === markType)
-    }
-
-    return state.doc.rangeHasMark(selection.from, selection.to, markType)
+    return { targetInfo, targetBody, selectedAisles, recursiveBlocked, previewText, locationLabel, displayTitle }
   }
 
-  const getCurrentToolbarFormatState = (): ToolbarFormatState => {
-    const view = getWysiwygView(editorRef.current)
-    if (!view) return DEFAULT_TOOLBAR_FORMAT_STATE
-    return {
-      bold: hasActiveEditorMark(view, 'strong'),
-      italic: hasActiveEditorMark(view, 'emph'),
-      strike: hasActiveEditorMark(view, 'strike'),
-    }
-  }
-
-  const syncToolbarFormatState = () => {
-    const nextState = getCurrentToolbarFormatState()
-    setToolbarFormatState((previous) => (areToolbarFormatStatesEqual(previous, nextState) ? previous : nextState))
-  }
-
-  const scheduleToolbarFormatStateSync = () => {
-    window.requestAnimationFrame(syncToolbarFormatState)
-  }
-
-  const getToolbarFormatShortcut = (event: KeyboardEvent): ToolbarFormatKey | null => {
-    const key = event.key.toLowerCase()
-    const isMod = isMacPlatform ? event.metaKey : event.ctrlKey
-    if (!isMod || event.altKey) return null
-    if (key === 'b') return 'bold'
-    if (key === 'i') return 'italic'
-    if (key === 's' && !eventMatchesShortcut(event, stateRef.current.hotkeys.shortcuts.openSpaces, isMacPlatform)) return 'strike'
-    return null
-  }
-
-  const queueToolbarShortcutFeedback = (format: ToolbarFormatKey) => {
-    if (toolbarShortcutFeedbackTimerRef.current !== null) {
-      window.clearTimeout(toolbarShortcutFeedbackTimerRef.current)
-    }
-    setToolbarShortcutFeedback(format)
-    toolbarShortcutFeedbackTimerRef.current = window.setTimeout(() => {
-      toolbarShortcutFeedbackTimerRef.current = null
-      setToolbarShortcutFeedback((current) => (current === format ? null : current))
-    }, 650)
-  }
-
-  const activateAisleEditor = (
-    editorKey: string,
-    options: { flushPrevious?: boolean; focus?: boolean; allowDuringPendingRename?: boolean } = {},
-  ) => {
-    if (isPendingCreatedRenameActive() && !options.allowDuringPendingRename) return false
-    const meta = aisleEditorMetaRef.current.get(editorKey)
-    if (!meta) return false
-
-    const switchingAisle = activeAisleIdRef.current !== meta.aisleId
-    if (switchingAisle && options.flushPrevious) {
-      flushPendingContent()
-      clearMultiLineEdit(false)
-      closeImageTools()
-    }
-
-    editorRef.current = meta.editor
-    activeAisleIdRef.current = meta.aisleId
-    multiLineCursorPluginKeyRef.current = meta.pluginKey
-    const markdown = getNormalizedEditorMarkdown(meta.editor)
-    lastEditorMarkdownRef.current = markdown
-    lastEditorMarkdownByAisleRef.current.set(meta.aisleId, markdown)
-    if (activeAisleId !== meta.aisleId) {
-      setActiveAisleId(meta.aisleId)
-    }
-    if (options.focus) {
-      meta.editor.focus()
-    }
-    scheduleToolbarFormatStateSync()
-    return true
-  }
-
-  const activateEditorFromEventTarget = (target: EventTarget | null) => {
-    const element = getElementFromEventTarget(target)
-    if (!element) return false
-    const host = element.closest('[data-aisle-editor-key]')
-    if (!(host instanceof HTMLElement)) return false
-    const editorKey = host.dataset.aisleEditorKey
-    return editorKey ? activateAisleEditor(editorKey, { flushPrevious: true }) : false
-  }
-
-  const registerAisleEditorRoot = (editorKey: string, node: HTMLElement | null) => {
-    if (node) {
-      aisleEditorRootsRef.current.set(editorKey, node)
-    } else {
-      aisleEditorRootsRef.current.delete(editorKey)
-    }
-  }
-
-  const recordMultiLineEditHistory = (
-    beforeMarkdown: string,
-    beforeState: MultiLineEditState,
-    afterMarkdown: string,
-    afterState: MultiLineEditState,
-  ) => {
-    if (beforeMarkdown === afterMarkdown) return
-    multiLineEditHistoryRef.current = [
-      ...multiLineEditHistoryRef.current.slice(-99),
-      {
-        noteKey: getActiveNoteHistoryKey(),
-        beforeMarkdown,
-        afterMarkdown,
-        beforeState: cloneMultiLineEditState(beforeState),
-        afterState: cloneMultiLineEditState(afterState),
-      },
-    ]
-  }
-
-  const scheduleMultiLineHistoryRestore = (direction: 'undo' | 'redo') => {
-    const noteKey = getActiveNoteHistoryKey()
-    window.requestAnimationFrame(() => {
-      if (noteKey !== getActiveNoteHistoryKey()) return
-      const currentEditor = editorRef.current
-      if (!currentEditor) return
-
-      const markdown = getNormalizedEditorMarkdown(currentEditor)
-      const entries = multiLineEditHistoryRef.current
-      const entry = [...entries]
-        .reverse()
-        .find((candidate) =>
-          candidate.noteKey === noteKey &&
-          (direction === 'undo' ? candidate.beforeMarkdown === markdown : candidate.afterMarkdown === markdown),
-        )
-      if (!entry) return
-
-      multiLineEditRef.current = cloneMultiLineEditState(direction === 'undo' ? entry.beforeState : entry.afterState)
-      syncMultiLineEditVisualSelection()
-    })
-  }
-
-  const getEditorHistoryDirection = (event: KeyboardEvent): 'undo' | 'redo' | null => {
-    const key = event.key.toLowerCase()
-    const isMod = isMacPlatform ? event.metaKey : event.ctrlKey
-    if (!isMod || event.altKey) return null
-    if (key === 'z' && !event.shiftKey) return 'undo'
-    if (key === 'z' && event.shiftKey) return 'redo'
-    if (!isMacPlatform && key === 'y' && !event.shiftKey) return 'redo'
-    return null
-  }
+  const aisleEditors = useAisleEditors({
+    viewMode,
+    activeNoteBodyId,
+    activeNoteAisles,
+    resolvedActiveAisleId,
+    activeAisleId,
+    setActiveAisleId,
+    editorRef,
+    multiLineCursorPluginKeyRef,
+    lastEditorMarkdownRef,
+    lastEditorMarkdownByAisleRef,
+    normalizingContentRef,
+    normalizingAisleIdsRef,
+    pendingContentRef,
+    activeSpaceIdRef,
+    activeTabIdRef,
+    activeSubTabIdRef,
+    activeAisleIdRef,
+    isMainViewRef,
+    closeImageToolsRef,
+    closeImageToolsIfSelectedImageMissingRef,
+    isPendingCreatedRenameActive,
+    flushPendingContent,
+    clearMultiLineEdit,
+    getNormalizedEditorMarkdown,
+    scheduleContentCommit,
+    commitCurrentEditorContent,
+    maybeShowCompletedTaskUndoHint,
+    trackCompletedTaskQuickDelete,
+    tryExpandMultilineSelection,
+    scheduleToolbarFormatStateSync,
+    getContextPreviewData,
+    navigateToNoteLocation,
+  })
+  const activateAisleEditor = aisleEditors.activateAisleEditor
+  const activateEditorFromEventTarget = aisleEditors.activateEditorFromEventTarget
+  const registerAisleEditorRoot = aisleEditors.registerAisleEditorRoot
 
   useEffect(() => {
     const flushOnExit = () => {
@@ -1167,688 +996,6 @@ function App() {
       window.removeEventListener('pagehide', flushOnExit)
     }
   }, [])
-
-  const tryApplyMultilineIndent = (outdent: boolean) => {
-    const currentEditor = editorRef.current as
-      | (Editor & {
-          wwEditor?: {
-            view?: any
-          }
-        })
-      | null
-
-    const view = currentEditor?.wwEditor?.view
-    if (!currentEditor || !view) {
-      return false
-    }
-
-    const { state } = view
-    const { from, to, $from } = state.selection
-    const isCollapsedSelection = from === to
-    const selectedText = state.doc.textBetween(from, to, '\n')
-    const selectionFrom = Math.min(from, to)
-    const selectionTo = Math.max(from, to)
-    const touchedLineRanges = getEditorTextLineRanges(view).filter((range) =>
-      isCollapsedSelection
-        ? selectionFrom >= range.start && selectionFrom <= range.end + 1
-        : range.start <= selectionTo && range.end >= selectionFrom,
-    )
-    const codeBlockLineRanges = touchedLineRanges.filter(isCodeBlockTextLineRange)
-
-    if (!isCollapsedSelection && codeBlockLineRanges.length > 1 && codeBlockLineRanges.length === touchedLineRanges.length) {
-      const targets = codeBlockLineRanges
-        .map((range) => ({
-          pos: range.start,
-          removeLength: outdent ? getCodeBlockOutdentRemoveLength(range.text) : 0,
-        }))
-        .filter((target) => !outdent || target.removeLength > 0)
-
-      if (targets.length === 0) return false
-
-      let tr: any = state.tr
-      for (const target of [...targets].sort((a, b) => b.pos - a.pos)) {
-        tr = outdent
-          ? tr.delete(target.pos, target.pos + target.removeLength)
-          : tr.insertText(CODE_BLOCK_INDENT_TEXT, target.pos)
-      }
-
-      const nextFrom = tr.mapping.map(from, outdent ? -1 : 1)
-      const nextTo = tr.mapping.map(to, outdent ? -1 : 1)
-      view.dispatch(tr)
-      const markdownAfterCodeIndent = normalizeMarkdownForPersistence(
-        mergeLeadingIndentsFromWysiwyg(currentEditor, currentEditor.getMarkdown()),
-      )
-      lastEditorMarkdownRef.current = markdownAfterCodeIndent
-      scheduleContentCommit(
-        markdownAfterCodeIndent,
-        activeSpaceIdRef.current,
-        activeTabIdRef.current,
-        activeSubTabIdRef.current,
-        activeAisleIdRef.current,
-      )
-      window.requestAnimationFrame(() => {
-        ;(currentEditor as any).setSelection?.(nextFrom, nextTo)
-        currentEditor.focus()
-      })
-      return true
-    }
-
-    if (!selectedText.includes('\n')) {
-      let tr: any = state.tr
-
-      if (outdent) {
-        const parentText = $from.parent.textContent ?? ''
-        const parentStart = $from.start()
-        const offsetInParent = Math.max(0, from - parentStart)
-        const beforeCursor = parentText.slice(0, offsetInParent)
-        const inlinePrefixLength = getTrailingIndentPrefixLength(beforeCursor)
-        if (inlinePrefixLength > 0) {
-          tr = tr.delete(from - inlinePrefixLength, from)
-        } else {
-          const linePrefixLength = getIndentPrefixLength(parentText)
-          if (linePrefixLength <= 0) return false
-          tr = tr.delete(parentStart, parentStart + linePrefixLength)
-        }
-      } else if (isCollapsedSelection) {
-        tr = tr.insertText(INDENT_TOKEN, from)
-      } else {
-        tr = tr.insertText(INDENT_TOKEN, from)
-      }
-
-      const nextCaret = tr.mapping.map(from, 1)
-      const nextFrom = tr.mapping.map(from, 1)
-      const nextTo = tr.mapping.map(to, 1)
-      view.dispatch(tr)
-      const markdownAfterInlineIndent = normalizeMarkdownForPersistence(
-        mergeLeadingIndentsFromWysiwyg(currentEditor, currentEditor.getMarkdown()),
-      )
-      lastEditorMarkdownRef.current = markdownAfterInlineIndent
-      scheduleContentCommit(
-        markdownAfterInlineIndent,
-        activeSpaceIdRef.current,
-        activeTabIdRef.current,
-        activeSubTabIdRef.current,
-        activeAisleIdRef.current,
-      )
-      window.requestAnimationFrame(() => {
-        if (isCollapsedSelection) {
-          ;(currentEditor as any).setSelection?.(nextCaret, nextCaret)
-        } else {
-          ;(currentEditor as any).setSelection?.(nextFrom, nextTo)
-        }
-        currentEditor.focus()
-      })
-      return true
-    }
-
-    const blockTargets: Array<{ pos: number; removeLength: number }> = []
-    const seenBlockPositions = new Set<number>()
-    const addBlockTarget = (node: any, contentStartPos: number) => {
-      if (!node?.isTextblock || seenBlockPositions.has(contentStartPos)) return
-      seenBlockPositions.add(contentStartPos)
-      const text = node.textContent ?? ''
-      const removeLength = outdent ? getIndentPrefixLength(text) : 0
-      if (!outdent || removeLength > 0) {
-        blockTargets.push({ pos: contentStartPos, removeLength })
-      }
-    }
-
-    if (from === to) {
-      addBlockTarget($from.parent, $from.start())
-    } else {
-      state.doc.nodesBetween(from, to, (node: any, pos: number) => {
-        if (!node.isTextblock) return
-        addBlockTarget(node, pos + 1)
-        return false
-      })
-      if (blockTargets.length === 0) {
-        addBlockTarget($from.parent, $from.start())
-      }
-    }
-
-    if (blockTargets.length === 0) return false
-
-    let tr: any = state.tr
-    for (const target of [...blockTargets].sort((a, b) => b.pos - a.pos)) {
-      tr = outdent ? tr.delete(target.pos, target.pos + target.removeLength) : tr.insertText(INDENT_TOKEN, target.pos)
-    }
-
-    const nextFrom = tr.mapping.map(from, -1)
-    const nextTo = tr.mapping.map(to, 1)
-    const nextCaret = tr.mapping.map(from, outdent ? -1 : 1)
-    view.dispatch(tr)
-    const markdownAfterIndent = normalizeMarkdownForPersistence(
-      mergeLeadingIndentsFromWysiwyg(currentEditor, currentEditor.getMarkdown()),
-    )
-    lastEditorMarkdownRef.current = markdownAfterIndent
-    scheduleContentCommit(
-      markdownAfterIndent,
-      activeSpaceIdRef.current,
-      activeTabIdRef.current,
-      activeSubTabIdRef.current,
-      activeAisleIdRef.current,
-    )
-    window.requestAnimationFrame(() => {
-      if (isCollapsedSelection) {
-        ;(currentEditor as any).setSelection?.(nextCaret, nextCaret)
-      } else {
-        ;(currentEditor as any).setSelection?.(nextFrom, nextTo)
-      }
-      currentEditor.focus()
-    })
-    return true
-  }
-
-  const setMultiLineCursorWidgets = (view: any, positions: number[], selections: Array<{ from: number; to: number }> = []) => {
-    const pluginKey = multiLineCursorPluginKeyRef.current
-    if (!pluginKey) return
-    view.dispatch(view.state.tr.setMeta(pluginKey, { cursors: positions, selections }).setMeta('addToHistory', false))
-  }
-
-  const clearMultiLineEdit = (collapseToHead = false) => {
-    const currentEditor = editorRef.current as
-      | (Editor & {
-          wwEditor?: {
-            view?: any
-          }
-        })
-      | null
-    const view = currentEditor?.wwEditor?.view
-    const previous = multiLineEditRef.current
-    multiLineEditRef.current = null
-    if (view) {
-      setMultiLineCursorWidgets(view, [])
-    }
-    if (!collapseToHead || !view || !previous) return
-
-    const blockRanges = getEditorTextLineRanges(view)
-    const clampedHeadIndex = Math.max(0, Math.min(blockRanges.length - 1, previous.headBlockIndex))
-    const headRange = blockRanges[clampedHeadIndex]
-    if (!headRange) return
-    const caretPos = Math.min(headRange.end, headRange.start + getMultiLineColumnOffset(previous, clampedHeadIndex, headRange))
-    const SelectionCtor = view.state.selection.constructor as {
-      create?: (doc: unknown, anchor: number, head?: number) => unknown
-    }
-    if (typeof SelectionCtor.create !== 'function') return
-    const nextSelection = SelectionCtor.create(view.state.doc, caretPos, caretPos)
-    view.dispatch(view.state.tr.setSelection(nextSelection).scrollIntoView())
-  }
-
-  const syncMultiLineEditVisualSelection = () => {
-    const currentEditor = editorRef.current as
-      | (Editor & {
-          wwEditor?: {
-            view?: any
-          }
-        })
-      | null
-    const view = currentEditor?.wwEditor?.view
-    const multiLineEdit = multiLineEditRef.current
-    if (!currentEditor || !view || !multiLineEdit) return false
-
-    const blockRanges = getEditorTextLineRanges(view)
-    if (blockRanges.length === 0) {
-      multiLineEditRef.current = null
-      return false
-    }
-
-    const selectedIndices = getMultiLineSelectedBlockIndices(multiLineEdit, blockRanges)
-    if (selectedIndices.length === 0) {
-      multiLineEditRef.current = null
-      setMultiLineCursorWidgets(view, [])
-      return false
-    }
-
-    const anchorIndex = selectedIndices.includes(multiLineEdit.anchorBlockIndex)
-      ? multiLineEdit.anchorBlockIndex
-      : selectedIndices[0]
-    const headIndex = selectedIndices.includes(multiLineEdit.headBlockIndex)
-      ? multiLineEdit.headBlockIndex
-      : selectedIndices[selectedIndices.length - 1]
-    const anchorRange = blockRanges[anchorIndex]
-    const headRange = blockRanges[headIndex]
-    if (!anchorRange || !headRange) {
-      multiLineEditRef.current = null
-      return false
-    }
-
-    if (selectedIndices.length < 2) {
-      multiLineEditRef.current = null
-      setMultiLineCursorWidgets(view, [])
-      const caretPos = Math.min(headRange.end, headRange.start + getMultiLineColumnOffset(multiLineEdit, headIndex, headRange))
-      const SelectionCtor = view.state.selection.constructor as {
-        create?: (doc: unknown, anchor: number, head?: number) => unknown
-      }
-      if (typeof SelectionCtor.create !== 'function') return false
-      const nextSelection = SelectionCtor.create(view.state.doc, caretPos, caretPos)
-      view.dispatch(view.state.tr.setSelection(nextSelection).scrollIntoView())
-      return false
-    }
-
-    const selectionAnchorOffsets = selectedIndices.reduce<Record<number, number>>((acc, blockIndex) => {
-      const rawOffset = multiLineEdit.selectionAnchorOffsets?.[blockIndex]
-      const range = blockRanges[blockIndex]
-      if (typeof rawOffset === 'number' && range) {
-        acc[blockIndex] = Math.max(0, Math.min(range.length, rawOffset))
-      }
-      return acc
-    }, {})
-    const normalizedMultiLineEdit: MultiLineEditState = {
-      ...multiLineEdit,
-      anchorBlockIndex: anchorIndex,
-      headBlockIndex: headIndex,
-      cursorBlockIndices: multiLineEdit.cursorBlockIndices ? selectedIndices : undefined,
-      selectionAnchorOffsets: Object.keys(selectionAnchorOffsets).length > 0 ? selectionAnchorOffsets : undefined,
-    }
-    multiLineEditRef.current = normalizedMultiLineEdit
-
-    const headOffset = getMultiLineColumnOffset(normalizedMultiLineEdit, headIndex, headRange)
-    const headPos = Math.min(headRange.end, headRange.start + headOffset)
-    const cursorPositions = selectedIndices
-      .map((blockIndex) => {
-        const range = blockRanges[blockIndex]
-        return range ? Math.min(range.end, range.start + getMultiLineColumnOffset(normalizedMultiLineEdit, blockIndex, range)) : null
-      })
-      .filter((pos): pos is number => typeof pos === 'number' && pos !== headPos)
-    const selectionDecorations = getMultiLineSelectionRanges(normalizedMultiLineEdit, selectedIndices, blockRanges).map(
-      ({ from, to }) => ({ from, to }),
-    )
-
-    const SelectionCtor = view.state.selection.constructor as {
-      create?: (doc: unknown, anchor: number, head?: number) => unknown
-    }
-    if (typeof SelectionCtor.create !== 'function') return false
-    const nextSelection = SelectionCtor.create(view.state.doc, headPos, headPos)
-    let tr = view.state.tr.setSelection(nextSelection).setMeta('addToHistory', false).scrollIntoView()
-    const pluginKey = multiLineCursorPluginKeyRef.current
-    if (pluginKey) {
-      tr = tr.setMeta(pluginKey, { cursors: cursorPositions, selections: selectionDecorations })
-    }
-    view.dispatch(tr)
-    currentEditor.focus()
-    return true
-  }
-
-  const tryExpandMultilineSelection = (direction: 'up' | 'down') => {
-    const currentEditor = editorRef.current as
-      | (Editor & {
-          wwEditor?: {
-            view?: any
-          }
-          setSelection?: (start: number, end: number) => void
-        })
-      | null
-
-    const view = currentEditor?.wwEditor?.view
-    if (!currentEditor || !view) {
-      return false
-    }
-
-    const { state } = view
-    const blockRanges = getEditorTextLineRanges(view)
-    if (blockRanges.length === 0) return false
-
-    const existing = multiLineEditRef.current
-    if (existing) {
-      if (existing.cursorBlockIndices?.length) {
-        const existingIndices = getMultiLineSelectedBlockIndices(existing, blockRanges)
-        const nextHeadIndex =
-          direction === 'down'
-            ? Math.min(blockRanges.length - 1, existing.headBlockIndex + 1)
-            : Math.max(0, existing.headBlockIndex - 1)
-        if (nextHeadIndex === existing.headBlockIndex || existingIndices.includes(nextHeadIndex)) return false
-        const nextHeadRange = blockRanges[nextHeadIndex]
-        if (!nextHeadRange) return false
-        const nextColumn = Math.min(nextHeadRange.length, getMultiLineHeadColumnOffset(existing, blockRanges))
-        multiLineEditRef.current = {
-          ...existing,
-          headBlockIndex: nextHeadIndex,
-          columnOffset: nextColumn,
-          columnOffsets: {
-            ...(existing.columnOffsets ?? {}),
-            [nextHeadIndex]: nextColumn,
-          },
-          cursorBlockIndices: [...existingIndices, nextHeadIndex].sort((a, b) => a - b),
-        }
-        return syncMultiLineEditVisualSelection()
-      }
-
-      const nextHeadIndex =
-        direction === 'down'
-          ? Math.min(blockRanges.length - 1, existing.headBlockIndex + 1)
-          : Math.max(0, existing.headBlockIndex - 1)
-      if (nextHeadIndex === existing.headBlockIndex) return false
-      multiLineEditRef.current = {
-        ...existing,
-        headBlockIndex: nextHeadIndex,
-      }
-      return syncMultiLineEditVisualSelection()
-    }
-
-    const headBlockIndex = findEditorTextLineRangeIndex(blockRanges, state.selection.head)
-    if (headBlockIndex < 0) return false
-
-    const targetIndex =
-      direction === 'down'
-        ? Math.min(blockRanges.length - 1, headBlockIndex + 1)
-        : Math.max(0, headBlockIndex - 1)
-    if (targetIndex === headBlockIndex) return false
-
-    const currentHeadBlock = blockRanges[headBlockIndex]
-    const columnOffset = Math.max(0, Math.min(currentHeadBlock.length, state.selection.head - currentHeadBlock.start))
-    multiLineEditRef.current = {
-      anchorBlockIndex: headBlockIndex,
-      headBlockIndex: targetIndex,
-      columnOffset,
-    }
-    return syncMultiLineEditVisualSelection()
-  }
-
-  useEffect(() => {
-    window.__tabsHandleMultilineShortcut = (direction) => {
-      if (!isEditorView) return false
-      return tryExpandMultilineSelection(direction)
-    }
-    return () => {
-      if (window.__tabsHandleMultilineShortcut) {
-        delete window.__tabsHandleMultilineShortcut
-      }
-    }
-  }, [isEditorView, resolvedActiveAisleId])
-
-  const tryApplyMultiLineEditInput = (input: MultiLineEditInput) => {
-    const currentEditor = editorRef.current as
-      | (Editor & {
-          wwEditor?: {
-            view?: any
-          }
-        })
-      | null
-    const view = currentEditor?.wwEditor?.view
-    const multiLineEdit = multiLineEditRef.current
-    if (!currentEditor || !view || !multiLineEdit) return false
-
-    const blockRanges = getEditorTextLineRanges(view)
-    if (blockRanges.length === 0) {
-      multiLineEditRef.current = null
-      return false
-    }
-
-    const selectedIndices = getMultiLineSelectedBlockIndices(multiLineEdit, blockRanges)
-    if (selectedIndices.length < 2) {
-      clearMultiLineEdit(true)
-      return false
-    }
-
-    const beforeMarkdown = getNormalizedEditorMarkdown(currentEditor)
-    const beforeState = cloneMultiLineEditState(multiLineEdit)
-    let tr = view.state.tr
-    let changed = false
-    const nextColumnOffsets: Record<number, number> = { ...(multiLineEdit.columnOffsets ?? {}) }
-
-    for (const blockIndex of [...selectedIndices].sort((a, b) => b - a)) {
-      const range = blockRanges[blockIndex]
-      if (!range) continue
-      const currentOffset = getMultiLineColumnOffset(multiLineEdit, blockIndex, range)
-      const cursorPos = Math.min(range.end, range.start + currentOffset)
-      const selectionRange = getMultiLineSelectionRange(multiLineEdit, blockIndex, range)
-
-      if (selectionRange && input.type !== 'split-line') {
-        const mappedFrom = tr.mapping.map(selectionRange.from, -1)
-        const mappedTo = tr.mapping.map(selectionRange.to, 1)
-        if (input.type === 'insert-text') {
-          tr = tr.insertText(input.text, mappedFrom, mappedTo)
-          nextColumnOffsets[blockIndex] = selectionRange.fromOffset + input.text.length
-        } else {
-          tr = tr.delete(mappedFrom, mappedTo)
-          nextColumnOffsets[blockIndex] = selectionRange.fromOffset
-        }
-        changed = true
-        continue
-      }
-
-      if (input.type === 'insert-text') {
-        tr = tr.insertText(input.text, cursorPos, cursorPos)
-        nextColumnOffsets[blockIndex] = currentOffset + input.text.length
-        changed = true
-        continue
-      }
-
-      if (input.type === 'backspace') {
-        if (cursorPos <= range.start) continue
-        tr = tr.delete(cursorPos - 1, cursorPos)
-        nextColumnOffsets[blockIndex] = Math.max(0, currentOffset - 1)
-        changed = true
-        continue
-      }
-
-      if (input.type === 'delete') {
-        if (cursorPos >= range.end) continue
-        tr = tr.delete(cursorPos, cursorPos + 1)
-        changed = true
-        continue
-      }
-
-      if (input.type === 'delete-word-backward') {
-        const nextOffset = findPreviousWordColumn(range.text, currentOffset)
-        if (nextOffset === currentOffset) continue
-        tr = tr.delete(range.start + nextOffset, cursorPos)
-        nextColumnOffsets[blockIndex] = nextOffset
-        changed = true
-        continue
-      }
-
-      if (input.type === 'delete-word-forward') {
-        const nextOffset = findNextWordColumn(range.text, currentOffset)
-        if (nextOffset === currentOffset) continue
-        tr = tr.delete(cursorPos, range.start + nextOffset)
-        changed = true
-        continue
-      }
-
-      if (input.type === 'delete-to-line-start') {
-        if (currentOffset <= 0) continue
-        tr = tr.delete(range.start, cursorPos)
-        nextColumnOffsets[blockIndex] = 0
-        changed = true
-        continue
-      }
-
-      if (input.type === 'delete-to-line-end') {
-        if (currentOffset >= range.length) continue
-        tr = tr.delete(cursorPos, range.end)
-        changed = true
-        continue
-      }
-
-      if (input.type === 'split-line') {
-        const splitPos = selectionRange?.from ?? cursorPos
-        const splitOffset = selectionRange?.fromOffset ?? currentOffset
-        if (selectionRange) {
-          const mappedFrom = tr.mapping.map(selectionRange.from, -1)
-          const mappedTo = tr.mapping.map(selectionRange.to, 1)
-          tr = tr.delete(mappedFrom, mappedTo)
-          nextColumnOffsets[blockIndex] = splitOffset
-        }
-        const mappedPos = tr.mapping.map(splitPos, 1)
-        if (isCodeBlockTextLineRange(range)) {
-          tr = tr.insertText('\n', mappedPos, mappedPos)
-          changed = true
-          continue
-        }
-        const splitPlan = getMultiLineSplitPlan(tr.doc, mappedPos)
-        if (!splitPlan) continue
-        tr = tr.split(mappedPos, splitPlan.depth, splitPlan.typesAfter)
-        changed = true
-      }
-    }
-
-    if (!changed) return false
-
-    let nextMultiLineEditState: MultiLineEditState | null = null
-    view.dispatch(tr.scrollIntoView())
-    if (input.type === 'split-line') {
-      nextMultiLineEditState = buildSplitLineMultiLineState(multiLineEdit, selectedIndices)
-    } else {
-      nextMultiLineEditState = {
-        ...multiLineEdit,
-        columnOffset: nextColumnOffsets[multiLineEdit.headBlockIndex] ?? multiLineEdit.columnOffset,
-        columnOffsets: nextColumnOffsets,
-        selectionAnchorOffsets: undefined,
-      }
-    }
-
-    multiLineEditRef.current = nextMultiLineEditState
-    syncMultiLineEditVisualSelection()
-    const markdownAfterMultiLineEdit = getNormalizedEditorMarkdown(currentEditor)
-    lastEditorMarkdownRef.current = markdownAfterMultiLineEdit
-    scheduleContentCommit(
-      markdownAfterMultiLineEdit,
-      activeSpaceIdRef.current,
-      activeTabIdRef.current,
-      activeSubTabIdRef.current,
-      activeAisleIdRef.current,
-    )
-    if (multiLineEditRef.current) {
-      recordMultiLineEditHistory(beforeMarkdown, beforeState, markdownAfterMultiLineEdit, multiLineEditRef.current)
-    }
-    currentEditor.focus()
-    return true
-  }
-
-  const tryMoveMultiLineCursors = (movement: MultiLineCursorMovement, extendSelection = false) => {
-    const currentEditor = editorRef.current as
-      | (Editor & {
-          wwEditor?: {
-            view?: any
-          }
-        })
-      | null
-    const view = currentEditor?.wwEditor?.view
-    const multiLineEdit = multiLineEditRef.current
-    if (!currentEditor || !view || !multiLineEdit) return false
-
-    const blockRanges = getEditorTextLineRanges(view)
-    if (blockRanges.length === 0) {
-      multiLineEditRef.current = null
-      return false
-    }
-
-    const selectedIndices = getMultiLineSelectedBlockIndices(multiLineEdit, blockRanges)
-    if (selectedIndices.length < 2) {
-      clearMultiLineEdit(true)
-      return false
-    }
-
-    const nextState = moveMultiLineCursorState(multiLineEdit, selectedIndices, blockRanges, movement, { extendSelection })
-    if (!nextState) return false
-    multiLineEditRef.current = nextState
-    syncMultiLineEditVisualSelection()
-    return true
-  }
-
-  const getActiveMultiLineSelectionContext = () => {
-    const currentEditor = editorRef.current as
-      | (Editor & {
-          wwEditor?: {
-            view?: any
-          }
-        })
-      | null
-    const view = currentEditor?.wwEditor?.view
-    const multiLineEdit = multiLineEditRef.current
-    if (!currentEditor || !view || !multiLineEdit) return null
-
-    const blockRanges = getEditorTextLineRanges(view)
-    if (blockRanges.length === 0) return null
-    const selectedIndices = getMultiLineSelectedBlockIndices(multiLineEdit, blockRanges)
-    if (selectedIndices.length < 2) return null
-    const selectionRanges = getMultiLineSelectionRanges(multiLineEdit, selectedIndices, blockRanges)
-    if (selectionRanges.length === 0) return null
-
-    return {
-      currentEditor,
-      view,
-      multiLineEdit,
-      selectedIndices,
-      selectionRanges,
-    }
-  }
-
-  const writeClipboardText = (clipboardData: DataTransfer | null, text: string) => {
-    if (clipboardData) {
-      clipboardData.setData('text/plain', text)
-      return true
-    }
-    if (navigator.clipboard?.writeText) {
-      void navigator.clipboard.writeText(text)
-      return true
-    }
-    return false
-  }
-
-  const copyMultiLineSelectionToClipboard = (clipboardData: DataTransfer | null) => {
-    const context = getActiveMultiLineSelectionContext()
-    if (!context) return false
-
-    const text = context.selectionRanges.map((range) => range.text).join('\n')
-    return writeClipboardText(clipboardData, text)
-  }
-
-  const cutMultiLineSelectionToClipboard = (clipboardData: DataTransfer | null) => {
-    const context = getActiveMultiLineSelectionContext()
-    if (!context) return false
-
-    const text = context.selectionRanges.map((range) => range.text).join('\n')
-    if (!writeClipboardText(clipboardData, text)) return false
-
-    const { currentEditor, view, multiLineEdit, selectionRanges } = context
-    const beforeMarkdown = getNormalizedEditorMarkdown(currentEditor)
-    const beforeState = cloneMultiLineEditState(multiLineEdit)
-    const nextColumnOffsets: Record<number, number> = { ...(multiLineEdit.columnOffsets ?? {}) }
-    let tr = view.state.tr
-
-    for (const selectionRange of [...selectionRanges].sort((a, b) => b.from - a.from)) {
-      const mappedFrom = tr.mapping.map(selectionRange.from, -1)
-      const mappedTo = tr.mapping.map(selectionRange.to, 1)
-      tr = tr.delete(mappedFrom, mappedTo)
-      nextColumnOffsets[selectionRange.blockIndex] = selectionRange.fromOffset
-    }
-
-    view.dispatch(tr.scrollIntoView())
-    multiLineEditRef.current = {
-      ...multiLineEdit,
-      columnOffset: nextColumnOffsets[multiLineEdit.headBlockIndex] ?? multiLineEdit.columnOffset,
-      columnOffsets: nextColumnOffsets,
-      selectionAnchorOffsets: undefined,
-    }
-    syncMultiLineEditVisualSelection()
-
-    const markdownAfterCut = getNormalizedEditorMarkdown(currentEditor)
-    lastEditorMarkdownRef.current = markdownAfterCut
-    scheduleContentCommit(
-      markdownAfterCut,
-      activeSpaceIdRef.current,
-      activeTabIdRef.current,
-      activeSubTabIdRef.current,
-      activeAisleIdRef.current,
-    )
-    if (multiLineEditRef.current) {
-      recordMultiLineEditHistory(beforeMarkdown, beforeState, markdownAfterCut, multiLineEditRef.current)
-    }
-    currentEditor.focus()
-    return true
-  }
-
-  const isLikelyUrl = (value: string) => {
-    try {
-      const normalized = value.trim()
-      const url = new URL(normalized)
-      return url.protocol === 'http:' || url.protocol === 'https:'
-    } catch {
-      return false
-    }
-  }
 
   const openLinkPrompt = (url: string, top: number, left: number, text?: string) => {
     setLinkPrompt({
@@ -1912,6 +1059,8 @@ function App() {
   const cancelInlineCrop = imageToolsController.cancelCrop
   const applyInlineCrop = imageToolsController.applyCrop
   const beginInlineCropMouseDrag = imageToolsController.beginCropMouseDrag
+  closeImageToolsRef.current = closeImageTools
+  closeImageToolsIfSelectedImageMissingRef.current = closeImageToolsIfSelectedImageMissing
 
   const runActiveEditorCommand = (command: string, payload?: Record<string, unknown>) => {
     const currentEditor = editorRef.current
@@ -2041,808 +1190,81 @@ function App() {
     return true
   }
 
-  const handleAisleEditorChange = (editorKey: string, aisleId: string, editor: Editor) => {
-    if (!isMainViewRef.current) return
-    activateAisleEditor(editorKey)
-    closeImageToolsIfSelectedImageMissing()
-    const markdown = getNormalizedEditorMarkdown(editor)
-    const previousMarkdown = lastEditorMarkdownByAisleRef.current.get(aisleId) ?? ''
+  useLegacyEditor({
+    viewMode,
+    isEditorView,
+    displayContent,
+    syncKey: [
+      activeSpace.id,
+      activeTab.id,
+      activeSubTab?.id ?? '',
+      resolvedActiveAisleId,
+      trashTabId,
+      trashSubTabId ?? '',
+    ].join('::'),
+    editorMountRef,
+    editorRef,
+    multiLineCursorPluginKeyRef,
+    lastEditorMarkdownRef,
+    normalizingContentRef,
+    activeSpaceIdRef,
+    activeTabIdRef,
+    activeSubTabIdRef,
+    activeAisleIdRef,
+    isMainViewRef,
+    getNormalizedEditorMarkdown,
+    scheduleContentCommit,
+    commitCurrentEditorContent,
+    clearActiveNoteContent,
+    flushPendingContent,
+    closeImageTools,
+    maybeShowCompletedTaskUndoHint,
+    trackCompletedTaskQuickDelete,
+    tryExpandMultilineSelection,
+  })
 
-    if (normalizingAisleIdsRef.current.has(aisleId)) {
-      normalizingAisleIdsRef.current.delete(aisleId)
-      const normalizedMarkdown = lastEditorMarkdownByAisleRef.current.get(aisleId) ?? markdown
-      lastEditorMarkdownRef.current = normalizedMarkdown
-      scheduleContentCommit(
-        normalizedMarkdown,
-        activeSpaceIdRef.current,
-        activeTabIdRef.current,
-        activeSubTabIdRef.current,
-        aisleId,
-      )
-      return
-    }
-
-    if (normalizingContentRef.current && activeAisleIdRef.current === aisleId) {
-      normalizingContentRef.current = false
-      const normalizedMarkdown = lastEditorMarkdownRef.current
-      lastEditorMarkdownByAisleRef.current.set(aisleId, normalizedMarkdown)
-      scheduleContentCommit(
-        normalizedMarkdown,
-        activeSpaceIdRef.current,
-        activeTabIdRef.current,
-        activeSubTabIdRef.current,
-        aisleId,
-      )
-      return
-    }
-
-    const materializedHorizontalRule = materializeHorizontalRuleShortcut(previousMarkdown, markdown)
-    if (materializedHorizontalRule && materializedHorizontalRule !== markdown) {
-      normalizingAisleIdsRef.current.add(aisleId)
-      lastEditorMarkdownRef.current = materializedHorizontalRule
-      lastEditorMarkdownByAisleRef.current.set(aisleId, materializedHorizontalRule)
-      editor.setMarkdown(materializedHorizontalRule, false)
-      return
-    }
-
-    maybeShowCompletedTaskUndoHint(markdown)
-    lastEditorMarkdownRef.current = markdown
-    lastEditorMarkdownByAisleRef.current.set(aisleId, markdown)
-    scheduleContentCommit(
-      markdown,
-      activeSpaceIdRef.current,
-      activeTabIdRef.current,
-      activeSubTabIdRef.current,
-      aisleId,
-    )
-  }
-
-  const getContextPreviewData = (payload: NoteContextReferencePayload, sourceNoteBodyId: string) => {
-    const latestState = stateRef.current
-    const targetInfo = getLocationInfo(latestState, payload.target)
-    const targetBody = latestState.noteBodies.find((body) => body.id === targetInfo.noteBodyId) ?? null
-    const selectedAisles =
-      targetBody && payload.aisleIds && payload.aisleIds.length > 0
-        ? targetBody.aisles.filter((aisle) => payload.aisleIds?.includes(aisle.id))
-        : targetBody?.aisles ?? []
-    const recursiveBlocked =
-      !targetBody ||
-      !targetInfo.noteBodyId ||
-      targetInfo.noteBodyId === sourceNoteBodyId ||
-      wouldCreateContextCycle(latestState, targetInfo.noteBodyId, sourceNoteBodyId)
-    const previewText = selectedAisles
-      .map((aisle) => aisle.markdown.trim())
-      .filter(Boolean)
-      .join('\n\n')
-    const locationLabel = targetInfo.domain && targetInfo.space && targetInfo.tab
-      ? `${targetInfo.domain.name} / ${targetInfo.space.name} / ${targetInfo.tab.title}${targetInfo.subTab ? ` / ${targetInfo.subTab.title}` : ' / index'}`
-      : 'missing note'
-    const displayTitle = targetInfo.tab
-      ? `${targetInfo.tab.title} > ${targetInfo.subTab ? targetInfo.subTab.title : 'index'}`
-      : targetInfo.title
-
-    return { targetInfo, targetBody, selectedAisles, recursiveBlocked, previewText, locationLabel, displayTitle }
-  }
-
-  const destroyAisleEditor = (editorKey: string) => {
-    const meta = aisleEditorMetaRef.current.get(editorKey)
-    if (!meta) return
-    meta.cleanup()
-    aisleEditorMetaRef.current.delete(editorKey)
-    lastEditorMarkdownByAisleRef.current.delete(meta.aisleId)
-    normalizingAisleIdsRef.current.delete(meta.aisleId)
-    if (editorRef.current === meta.editor) {
-      editorRef.current = null
-      multiLineCursorPluginKeyRef.current = null
-    }
-  }
-
-  const destroyAllAisleEditors = () => {
-    Array.from(aisleEditorMetaRef.current.keys()).forEach((editorKey) => destroyAisleEditor(editorKey))
-  }
-
-  useEffect(() => {
-    if (viewMode !== 'main' || !activeNoteBodyId) {
-      destroyAllAisleEditors()
-      return
-    }
-
-    const expectedKeys = new Set(activeNoteAisles.map((aisle) => buildAisleEditorKey(activeNoteBodyId, aisle.id)))
-
-    for (const editorKey of Array.from(aisleEditorMetaRef.current.keys())) {
-      if (!expectedKeys.has(editorKey)) {
-        destroyAisleEditor(editorKey)
-      }
-    }
-
-    for (const aisle of activeNoteAisles) {
-      const editorKey = buildAisleEditorKey(activeNoteBodyId, aisle.id)
-      const root = aisleEditorRootsRef.current.get(editorKey)
-      if (!root || aisleEditorMetaRef.current.has(editorKey)) continue
-
-      let pluginKey: unknown = null
-      let editor: Editor
-      editor = new Editor({
-        el: root,
-        initialValue: aisle.markdown,
-        initialEditType: 'wysiwyg',
-        previewStyle: 'tab',
-        hideModeSwitch: true,
-        toolbarItems: EDITOR_TOOLBAR_ITEMS,
-        height: '100%',
-        autofocus: false,
-        usageStatistics: false,
-        plugins: [
-          headingSpaceShortcutPlugin,
-          thematicBreakShortcutPlugin,
-          (context: any) =>
-            createContextPreviewPlugin(context, {
-              sourceNoteBodyId: activeNoteBodyId,
-              getContextPreviewData,
-              navigateToNoteLocation,
-            }),
-          (context: {
-            pmState: {
-              PluginKey: new (name?: string) => {
-                getState: (state: unknown) =>
-                  | {
-                      cursors: number[]
-                      selections: Array<{ from: number; to: number }>
-                    }
-                  | undefined
-              }
-              Plugin: new (spec: {
-                key?: unknown
-                state?: {
-                  init: () => {
-                    cursors: number[]
-                    selections: Array<{ from: number; to: number }>
-                  }
-                  apply: (
-                    tr: { getMeta: (key: unknown) => unknown },
-                    previous: {
-                      cursors: number[]
-                      selections: Array<{ from: number; to: number }>
-                    },
-                  ) => {
-                    cursors: number[]
-                    selections: Array<{ from: number; to: number }>
-                  }
-                }
-                props?: {
-                  decorations?: (state: unknown) => unknown
-                  handleDOMEvents?: {
-                    keydown?: (view: unknown, event: KeyboardEvent) => boolean
-                  }
-                }
-              }) => unknown
-            }
-            pmView: {
-              Decoration: {
-                inline: (from: number, to: number, attrs: Record<string, string>, spec?: Record<string, unknown>) => unknown
-                widget: (pos: number, toDOM: () => HTMLElement, spec?: Record<string, unknown>) => unknown
-              }
-              DecorationSet: {
-                create: (doc: unknown, decorations: unknown[]) => unknown
-              }
-            }
-            pmKeymap: { keymap: (bindings: Record<string, unknown>) => unknown }
-          }) =>
-            multiLineSelectionShortcutPlugin({
-              ...context,
-              onExpand: tryExpandMultilineSelection,
-              onPluginKeyReady: (nextPluginKey) => {
-                pluginKey = nextPluginKey
-              },
-            }),
-        ],
-        hooks: {
-          addImageBlobHook: (blob: Blob | File, callback: (url: string, text?: string) => void) => {
-            const reader = new FileReader()
-            reader.onload = () => {
-              const dataUrl = typeof reader.result === 'string' ? reader.result : ''
-              if (!dataUrl) return
-              callback(dataUrl, blob instanceof File ? blob.name : 'image')
-              window.setTimeout(() => commitCurrentEditorContent(), 30)
-            }
-            reader.readAsDataURL(blob)
-          },
-        },
-        events: {
-          change: () => handleAisleEditorChange(editorKey, aisle.id, editor),
-          focus: () => activateAisleEditor(editorKey, { flushPrevious: true }),
-        },
-      })
-
-      const activate = () => activateAisleEditor(editorKey, { flushPrevious: true })
-      root.addEventListener('focusin', activate)
-      root.addEventListener('pointerdown', activate, true)
-      const cleanupHeadingPopupActiveState = installHeadingPopupActiveState(root, () => editor)
-      const cleanupCompletedTaskCheckboxBehavior = installCompletedTaskCheckboxBehavior(
-        root,
-        () => editor,
-        trackCompletedTaskQuickDelete,
-      )
-      const cleanupTaskTextReorderBehavior = installTaskTextReorderBehavior(root, () => editor)
-
-      aisleEditorMetaRef.current.set(editorKey, {
-        editor,
-        root,
-        aisleId: aisle.id,
-        pluginKey,
-        cleanup: () => {
-          cleanupTaskTextReorderBehavior()
-          cleanupCompletedTaskCheckboxBehavior()
-          cleanupHeadingPopupActiveState()
-          root.removeEventListener('focusin', activate)
-          root.removeEventListener('pointerdown', activate, true)
-          try {
-            editor.destroy()
-          } catch {
-            // Toast UI can throw during teardown if the toolbar DOM was customized.
-          }
-          root.innerHTML = ''
-        },
-      })
-      lastEditorMarkdownByAisleRef.current.set(aisle.id, normalizeMarkdownForPersistence(aisle.markdown))
-    }
-
-    const activeEditorKey = buildAisleEditorKey(activeNoteBodyId, resolvedActiveAisleId)
-    if (aisleEditorMetaRef.current.has(activeEditorKey)) {
-      activateAisleEditor(activeEditorKey)
-    }
-  }, [viewMode, activeNoteBodyId, activeNoteAisles, resolvedActiveAisleId])
-
-  useEffect(() => () => destroyAllAisleEditors(), [])
-
-  useEffect(() => {
-    if (viewMode !== 'main' || !activeNoteBodyId) return
-    for (const aisle of activeNoteAisles) {
-      const editorKey = buildAisleEditorKey(activeNoteBodyId, aisle.id)
-      const meta = aisleEditorMetaRef.current.get(editorKey)
-      if (!meta) continue
-      const pending = pendingContentRef.current
-      const pendingMatches =
-        pending &&
-        pending.spaceId === activeSpaceIdRef.current &&
-        pending.tabId === activeTabIdRef.current &&
-        pending.subTabId === activeSubTabIdRef.current &&
-        pending.aisleId === aisle.id
-      const expectedMarkdown = pendingMatches ? pending.markdown : aisle.markdown
-      const currentMarkdown = getNormalizedEditorMarkdown(meta.editor)
-      if (currentMarkdown !== expectedMarkdown) {
-        lastEditorMarkdownByAisleRef.current.set(aisle.id, normalizeMarkdownForPersistence(expectedMarkdown))
-        if (activeAisleIdRef.current === aisle.id) {
-          lastEditorMarkdownRef.current = normalizeMarkdownForPersistence(expectedMarkdown)
-        }
-        meta.editor.setMarkdown(expectedMarkdown, false)
-      }
-    }
-  }, [viewMode, activeNoteBodyId, activeNoteAisles, activeSpace.id, activeTab.id, activeSubTab?.id])
-
-  useEffect(() => {
-    if (viewMode === 'main') return
-    if (!isEditorView) return
-    if (!editorMountRef.current || editorRef.current) return
-
-    lastEditorMarkdownRef.current = displayContent
-    editorRef.current = new Editor({
-      el: editorMountRef.current,
-      initialValue: displayContent,
-      initialEditType: 'wysiwyg',
-      previewStyle: 'tab',
-      hideModeSwitch: true,
-      toolbarItems: EDITOR_TOOLBAR_ITEMS,
-      height: '100%',
-      usageStatistics: false,
-      plugins: [
-        headingSpaceShortcutPlugin,
-        thematicBreakShortcutPlugin,
-        (context: {
-          pmState: {
-            PluginKey: new (name?: string) => {
-              getState: (state: unknown) =>
-                | {
-                    cursors: number[]
-                    selections: Array<{ from: number; to: number }>
-                  }
-                | undefined
-            }
-            Plugin: new (spec: {
-              key?: unknown
-              state?: {
-                init: () => {
-                  cursors: number[]
-                  selections: Array<{ from: number; to: number }>
-                }
-                apply: (
-                  tr: { getMeta: (key: unknown) => unknown },
-                  previous: {
-                    cursors: number[]
-                    selections: Array<{ from: number; to: number }>
-                  },
-                ) => {
-                  cursors: number[]
-                  selections: Array<{ from: number; to: number }>
-                }
-              }
-              props?: {
-                decorations?: (state: unknown) => unknown
-                handleDOMEvents?: {
-                  keydown?: (view: unknown, event: KeyboardEvent) => boolean
-                }
-              }
-            }) => unknown
-          }
-          pmView: {
-            Decoration: {
-              inline: (from: number, to: number, attrs: Record<string, string>, spec?: Record<string, unknown>) => unknown
-              widget: (pos: number, toDOM: () => HTMLElement, spec?: Record<string, unknown>) => unknown
-            }
-            DecorationSet: {
-              create: (doc: unknown, decorations: unknown[]) => unknown
-            }
-          }
-          pmKeymap: { keymap: (bindings: Record<string, unknown>) => unknown }
-        }) =>
-          multiLineSelectionShortcutPlugin({
-            ...context,
-            onExpand: tryExpandMultilineSelection,
-            onPluginKeyReady: (pluginKey) => {
-              multiLineCursorPluginKeyRef.current = pluginKey
-            },
-          }),
-      ],
-      hooks: {
-        addImageBlobHook: (blob: Blob | File, callback: (url: string, text?: string) => void) => {
-          const reader = new FileReader()
-          reader.onload = () => {
-            const dataUrl = typeof reader.result === 'string' ? reader.result : ''
-            if (!dataUrl) return
-            callback(dataUrl, blob instanceof File ? blob.name : 'image')
-            window.setTimeout(() => commitCurrentEditorContent(), 30)
-          }
-          reader.readAsDataURL(blob)
-        },
-      },
-      events: {
-        change: () => {
-          if (!isMainViewRef.current) return
-          const currentEditor = editorRef.current
-          if (!currentEditor) return
-          const markdown = getNormalizedEditorMarkdown(currentEditor)
-          const previousMarkdown = lastEditorMarkdownRef.current
-
-          if (normalizingContentRef.current) {
-            normalizingContentRef.current = false
-            const normalizedMarkdown = lastEditorMarkdownRef.current
-            scheduleContentCommit(
-              normalizedMarkdown,
-              activeSpaceIdRef.current,
-              activeTabIdRef.current,
-              activeSubTabIdRef.current,
-              activeAisleIdRef.current,
-            )
-            return
-          }
-
-          const materializedHorizontalRule = materializeHorizontalRuleShortcut(previousMarkdown, markdown)
-          if (materializedHorizontalRule && materializedHorizontalRule !== markdown) {
-            normalizingContentRef.current = true
-            lastEditorMarkdownRef.current = materializedHorizontalRule
-            currentEditor.setMarkdown(materializedHorizontalRule, false)
-            return
-          }
-
-          maybeShowCompletedTaskUndoHint(markdown)
-          lastEditorMarkdownRef.current = markdown
-          scheduleContentCommit(
-            markdown,
-            activeSpaceIdRef.current,
-            activeTabIdRef.current,
-            activeSubTabIdRef.current,
-            activeAisleIdRef.current,
-          )
-        },
-      },
-    })
-
-    installClearToolbarButton(editorMountRef.current, clearActiveNoteContent)
-    const cleanupHeadingPopupActiveState = installHeadingPopupActiveState(editorMountRef.current, () => editorRef.current)
-    const cleanupCompletedTaskCheckboxBehavior = installCompletedTaskCheckboxBehavior(
-      editorMountRef.current,
-      () => editorRef.current,
-      trackCompletedTaskQuickDelete,
-    )
-    const cleanupTaskTextReorderBehavior = installTaskTextReorderBehavior(editorMountRef.current, () => editorRef.current)
-
-    return () => {
-      cleanupTaskTextReorderBehavior()
-      cleanupCompletedTaskCheckboxBehavior()
-      cleanupHeadingPopupActiveState()
-      flushPendingContent()
-      closeImageTools()
-      try {
-        editorRef.current?.destroy()
-      } catch {
-        // Toast UI can throw during teardown if the toolbar DOM was customized.
-      }
-      editorRef.current = null
-      multiLineCursorPluginKeyRef.current = null
-      if (editorMountRef.current) {
-        editorMountRef.current.innerHTML = ''
-      }
-    }
-  }, [isEditorView, viewMode])
-
-  useEffect(() => {
-    if (viewMode !== 'main') {
-      clearMultiLineEdit(false)
-      closeImageTools()
-      closeLinkPrompt()
-      return
-    }
-
-    const root = viewMode === 'main' ? editorEventRootRef.current : editorMountRef.current
-    if (!root) return
-
-    let internalLinkHandledOnPointerDown = false
-
-    const isPrimaryMouseActivation = (event: Event) => !(event instanceof MouseEvent) || event.button === 0
-
-    const handleAnchorInteraction = (event: Event, target: Element, allowExternalPrompt: boolean) => {
-      if (!isPrimaryMouseActivation(event)) return false
-      const anchor = target.closest('a')
-      if (!(anchor instanceof HTMLAnchorElement)) return false
-
-      const href = anchor.getAttribute('href') || anchor.href
-      const internalLocation = parseInternalNoteUrl(href) ?? parseInternalNoteUrl(anchor.href)
-      if (internalLocation) {
-        event.preventDefault()
-        event.stopPropagation()
-        internalLinkHandledOnPointerDown = event.type === 'pointerdown'
-        navigateToNoteLocation(internalLocation)
-        return true
-      }
-
-      if (!allowExternalPrompt) return false
-      event.preventDefault()
-      event.stopPropagation()
-      const rect = anchor.getBoundingClientRect()
-      const text = anchor.textContent ?? ''
-      openLinkPrompt(href, Math.max(8, rect.bottom + 6), Math.max(8, rect.left), text)
-      return true
-    }
-
-    const getInternalLinkHitAtPointerPosition = (event: Event): InternalNoteLinkHit | null => {
-      if (!(event instanceof MouseEvent)) return null
-      const view = getWysiwygView(editorRef.current)
-      const coords = view?.posAtCoords?.({ left: event.clientX, top: event.clientY })
-      if (!view || !coords) return null
-      return getInternalNoteLinkHitAtDocPosition(view.state.doc, coords.pos)
-    }
-
-    const handleInternalLinkAtPointerPosition = (event: Event) => {
-      if (!isPrimaryMouseActivation(event)) return false
-      const internalLinkHit = getInternalLinkHitAtPointerPosition(event)
-      if (!internalLinkHit) return false
-      event.preventDefault()
-      event.stopPropagation()
-      internalLinkHandledOnPointerDown = event.type === 'pointerdown'
-      navigateToNoteLocation(internalLinkHit.target)
-      return true
-    }
-
-    const handlePointerDown = (event: Event) => {
-      const target = getElementFromEventTarget(event.target)
-      if (!target) {
-        if (!isImageCropActive()) {
-          closeImageTools()
-        }
-        closeLinkPrompt()
-        return
-      }
-      activateEditorFromEventTarget(target)
-      clearMultiLineEdit(false)
-      if (
-        target.closest('.image-tools') ||
-        target.closest('.image-resize-handle') ||
-        target.closest('.inline-crop-box') ||
-        target.closest('.inline-crop-edge-handle') ||
-        target.closest('.inline-crop-resize-handle') ||
-        target.closest('.link-prompt')
-      ) {
-        return
-      }
-      const image = target.closest('img')
-      if (image instanceof HTMLImageElement) {
-        selectImageForTools(image)
-        return
-      }
-      if (handleAnchorInteraction(event, target, true)) return
-      if (handleInternalLinkAtPointerPosition(event)) return
-      if (!isImageCropActive()) {
-        closeImageTools()
-      }
-      closeLinkPrompt()
-    }
-
-    const handleClick = (event: Event) => {
-      const target = getElementFromEventTarget(event.target)
-      if (!target) return
-      if (internalLinkHandledOnPointerDown) {
-        internalLinkHandledOnPointerDown = false
-        event.preventDefault()
-        event.stopPropagation()
-        return
-      }
-      if (handleAnchorInteraction(event, target, false)) return
-      handleInternalLinkAtPointerPosition(event)
-    }
-
-    const handleContextMenu = (event: Event) => {
-      const mouseEvent = event as globalThis.MouseEvent
-      const target = getElementFromEventTarget(mouseEvent.target)
-      if (!target) return
-      activateEditorFromEventTarget(target)
-      const internalLinkHit = getInternalLinkHitAtPointerPosition(mouseEvent)
-      if (internalLinkHit) {
-        mouseEvent.preventDefault()
-        mouseEvent.stopPropagation()
-        closeImageTools()
-        closeLinkPrompt()
-        setMenuOpen(false)
-        setContextMenu({
-          type: 'internal-note-link',
-          x: mouseEvent.clientX,
-          y: mouseEvent.clientY,
-          label: internalLinkHit.label,
-          href: internalLinkHit.href,
-          target: internalLinkHit.target,
-          from: internalLinkHit.from,
-          to: internalLinkHit.to,
-          occurrence: internalLinkHit.occurrence,
-        })
-        return
-      }
-      const image = target.closest('img')
-      if (!(image instanceof HTMLImageElement)) return
-      mouseEvent.preventDefault()
-      selectImageForTools(image)
-      setContextMenu({
-        type: 'image',
-        x: mouseEvent.clientX,
-        y: mouseEvent.clientY,
-      })
-    }
-
-    const handleScrollOrResize = () => {
-      if (!activeImageRef.current) return
-      refreshImageToolsPosition()
-    }
-
-    const handlePaste = (event: Event) => {
-      const pasteEvent = event as ClipboardEvent
-      activateEditorFromEventTarget(pasteEvent.target)
-      if (multiLineEditRef.current) {
-        const text = pasteEvent.clipboardData?.getData('text/plain') ?? ''
-        if (text.length > 0 && tryApplyMultiLineEditInput({ type: 'insert-text', text })) {
-          pasteEvent.preventDefault()
-          return
-        }
-      }
-      const text = pasteEvent.clipboardData?.getData('text/plain')?.trim() ?? ''
-      if (!text || !isLikelyUrl(text)) return
-
-      const selection = window.getSelection()
-      if (!selection || !selection.rangeCount) return
-      const rangeRect = selection.getRangeAt(0).getBoundingClientRect()
-      pasteEvent.preventDefault()
-      openLinkPrompt(
-        text,
-        Math.max(8, rangeRect.bottom + 8),
-        Math.max(8, rangeRect.left),
-        '',
-      )
-    }
-
-    const handleCopy = (event: Event) => {
-      const clipboardEvent = event as ClipboardEvent
-      activateEditorFromEventTarget(clipboardEvent.target)
-      if (copyMultiLineSelectionToClipboard(clipboardEvent.clipboardData)) {
-        clipboardEvent.preventDefault()
-        return
-      }
-      const selection = window.getSelection()
-      const hasTextSelection = Boolean(selection && selection.toString().trim().length > 0)
-      if (!activeImageRef.current || hasTextSelection) return
-      clipboardEvent.preventDefault()
-      void copySelectedImageToClipboard()
-    }
-
-    const handleCut = (event: Event) => {
-      const clipboardEvent = event as ClipboardEvent
-      activateEditorFromEventTarget(clipboardEvent.target)
-      if (!cutMultiLineSelectionToClipboard(clipboardEvent.clipboardData)) return
-      clipboardEvent.preventDefault()
-      clipboardEvent.stopPropagation()
-    }
-
-    const handleKeyDown = (event: Event) => {
-      const keyboardEvent = event as KeyboardEvent
-      activateEditorFromEventTarget(keyboardEvent.target)
-      const toolbarFormatShortcut = getToolbarFormatShortcut(keyboardEvent)
-      if (toolbarFormatShortcut) {
-        queueToolbarShortcutFeedback(toolbarFormatShortcut)
-        window.setTimeout(syncToolbarFormatState, 0)
-      }
-      const editorHistoryDirection = getEditorHistoryDirection(keyboardEvent)
-      if (editorHistoryDirection) {
-        scheduleMultiLineHistoryRestore(editorHistoryDirection)
-      }
-
-      const targetElement = getElementFromEventTarget(keyboardEvent.target)
-      const isTextInputTarget = Boolean(targetElement?.closest('input, textarea, select, .link-prompt'))
-      if (!isTextInputTarget && (keyboardEvent.key === 'Backspace' || keyboardEvent.key === 'Delete') && activeImageRef.current) {
-        if (deleteActiveEditorImageNode()) {
-          keyboardEvent.preventDefault()
-          keyboardEvent.stopPropagation()
-          return
-        }
-      }
-
-      const multiLineDirection = getMultilineSelectionShortcutDirection(keyboardEvent)
-      if (multiLineDirection) {
-        const handled = tryExpandMultilineSelection(multiLineDirection)
-        if (handled) {
-          keyboardEvent.preventDefault()
-          keyboardEvent.stopPropagation()
-        }
-        return
-      }
-      if (multiLineEditRef.current) {
-        let handled = false
-        if (keyboardEvent.key === 'Backspace') {
-          if (keyboardEvent.metaKey) {
-            handled = tryApplyMultiLineEditInput({ type: 'delete-to-line-start' }) || true
-          } else if (keyboardEvent.altKey) {
-            handled = tryApplyMultiLineEditInput({ type: 'delete-word-backward' }) || true
-          } else {
-            handled = tryApplyMultiLineEditInput({ type: 'backspace' }) || true
-          }
-        } else if (keyboardEvent.key === 'Delete') {
-          if (keyboardEvent.metaKey) {
-            handled = tryApplyMultiLineEditInput({ type: 'delete-to-line-end' }) || true
-          } else if (keyboardEvent.altKey) {
-            handled = tryApplyMultiLineEditInput({ type: 'delete-word-forward' }) || true
-          } else {
-            handled = tryApplyMultiLineEditInput({ type: 'delete' }) || true
-          }
-        } else if (keyboardEvent.key === 'Enter') {
-          handled = tryApplyMultiLineEditInput({ type: 'split-line' })
-        } else if (keyboardEvent.key === 'Escape') {
-          clearMultiLineEdit(true)
-          handled = true
-        } else if (keyboardEvent.key === 'Tab' && !keyboardEvent.metaKey && !keyboardEvent.ctrlKey && !keyboardEvent.altKey) {
-          handled = keyboardEvent.shiftKey
-            ? tryApplyMultiLineEditInput({ type: 'backspace' })
-            : tryApplyMultiLineEditInput({ type: 'insert-text', text: INDENT_TOKEN })
-        } else if (keyboardEvent.key === 'ArrowLeft') {
-          handled = tryMoveMultiLineCursors(
-            keyboardEvent.altKey ? 'word-left' : keyboardEvent.metaKey || keyboardEvent.ctrlKey ? 'line-start' : 'left',
-            keyboardEvent.shiftKey,
-          )
-        } else if (keyboardEvent.key === 'ArrowRight') {
-          handled = tryMoveMultiLineCursors(
-            keyboardEvent.altKey ? 'word-right' : keyboardEvent.metaKey || keyboardEvent.ctrlKey ? 'line-end' : 'right',
-            keyboardEvent.shiftKey,
-          )
-        } else if (keyboardEvent.key === 'ArrowUp') {
-          handled = tryMoveMultiLineCursors('up')
-        } else if (keyboardEvent.key === 'ArrowDown') {
-          handled = tryMoveMultiLineCursors('down')
-        } else if (keyboardEvent.key === 'Home') {
-          handled = tryMoveMultiLineCursors('line-start', keyboardEvent.shiftKey)
-        } else if (keyboardEvent.key === 'End') {
-          handled = tryMoveMultiLineCursors('line-end', keyboardEvent.shiftKey)
-        } else if (
-          keyboardEvent.key.length === 1 &&
-          !keyboardEvent.metaKey &&
-          !keyboardEvent.ctrlKey &&
-          !keyboardEvent.altKey
-        ) {
-          handled = tryApplyMultiLineEditInput({ type: 'insert-text', text: keyboardEvent.key })
-        } else if (keyboardEvent.key === 'PageUp' || keyboardEvent.key === 'PageDown') {
-          handled = true
-        }
-        if (handled) {
-          keyboardEvent.preventDefault()
-          keyboardEvent.stopPropagation()
-          return
-        }
-      }
-      if (keyboardEvent.key !== 'Tab' || keyboardEvent.altKey || keyboardEvent.ctrlKey || keyboardEvent.metaKey) return
-      const handled = tryApplyMultilineIndent(keyboardEvent.shiftKey)
-      if (!handled) return
-      keyboardEvent.preventDefault()
-      keyboardEvent.stopPropagation()
-    }
-
-    const handleBeforeInput = (event: Event) => {
-      const inputEvent = event as InputEvent
-      activateEditorFromEventTarget(inputEvent.target)
-      if (inputEvent.inputType === 'historyUndo' || inputEvent.inputType === 'historyRedo') {
-        scheduleMultiLineHistoryRestore(inputEvent.inputType === 'historyUndo' ? 'undo' : 'redo')
-        return
-      }
-      if (!multiLineEditRef.current) return
-      if (inputEvent.isComposing) return
-      if (inputEvent.inputType === 'insertText' || inputEvent.inputType === 'insertCompositionText') {
-        const text = inputEvent.data ?? ''
-        if (!text) return
-        const handled = tryApplyMultiLineEditInput({ type: 'insert-text', text })
-        if (!handled) return
-        inputEvent.preventDefault()
-        inputEvent.stopPropagation()
-      }
-    }
-
-    const handleToolbarSelectionSync = () => {
-      scheduleToolbarFormatStateSync()
-    }
-
-    root.addEventListener('pointerdown', handlePointerDown, true)
-    root.addEventListener('click', handleClick, true)
-    root.addEventListener('contextmenu', handleContextMenu, true)
-    root.addEventListener('paste', handlePaste, true)
-    root.addEventListener('copy', handleCopy, true)
-    root.addEventListener('cut', handleCut, true)
-    root.addEventListener('keydown', handleKeyDown, true)
-    root.addEventListener('beforeinput', handleBeforeInput, true)
-    root.addEventListener('keyup', handleToolbarSelectionSync, true)
-    root.addEventListener('mouseup', handleToolbarSelectionSync, true)
-    root.addEventListener('focusin', handleToolbarSelectionSync, true)
-    window.addEventListener('scroll', handleScrollOrResize, true)
-    window.addEventListener('resize', handleScrollOrResize)
-    return () => {
-      root.removeEventListener('pointerdown', handlePointerDown, true)
-      root.removeEventListener('click', handleClick, true)
-      root.removeEventListener('contextmenu', handleContextMenu, true)
-      root.removeEventListener('paste', handlePaste, true)
-      root.removeEventListener('copy', handleCopy, true)
-      root.removeEventListener('cut', handleCut, true)
-      root.removeEventListener('keydown', handleKeyDown, true)
-      root.removeEventListener('beforeinput', handleBeforeInput, true)
-      root.removeEventListener('keyup', handleToolbarSelectionSync, true)
-      root.removeEventListener('mouseup', handleToolbarSelectionSync, true)
-      root.removeEventListener('focusin', handleToolbarSelectionSync, true)
-      window.removeEventListener('scroll', handleScrollOrResize, true)
-      window.removeEventListener('resize', handleScrollOrResize)
-    }
-  }, [viewMode, displayContent, activeNoteAisles.length])
+  useEditorDomEvents({
+    viewMode,
+    displayContent,
+    activeNoteAisleCount: activeNoteAisles.length,
+    editorEventRootRef,
+    editorRef,
+    activeImageRef,
+    multiLineEditRef,
+    activateEditorFromEventTarget,
+    clearMultiLineEdit,
+    closeImageTools,
+    closeLinkPrompt,
+    isImageCropActive,
+    selectImageForTools,
+    refreshImageToolsPosition,
+    copySelectedImageToClipboard,
+    deleteActiveEditorImageNode,
+    setMenuOpen,
+    setContextMenu,
+    navigateToNoteLocation,
+    openLinkPrompt,
+    getToolbarFormatShortcut,
+    queueToolbarShortcutFeedback,
+    syncToolbarFormatState,
+    getEditorHistoryDirection,
+    scheduleMultiLineHistoryRestore,
+    tryExpandMultilineSelection,
+    tryApplyMultiLineEditInput,
+    tryApplyMultiLineTabInput,
+    tryMoveMultiLineCursors,
+    tryApplyMultilineIndent,
+    copyMultiLineSelectionToClipboard,
+    cutMultiLineSelectionToClipboard,
+  })
 
   useEffect(() => {
     return () => {
       if (saveTimerRef.current !== null) {
         window.clearTimeout(saveTimerRef.current)
       }
-      if (toolbarShortcutFeedbackTimerRef.current !== null) {
-        window.clearTimeout(toolbarShortcutFeedbackTimerRef.current)
-      }
     }
   }, [])
-
-  useEffect(() => {
-    if (viewMode === 'main') return
-    const instance = editorRef.current
-    if (!instance) return
-
-    const existing = instance.getMarkdown()
-    if (existing !== displayContent) {
-      lastEditorMarkdownRef.current = displayContent
-      instance.setMarkdown(displayContent, false)
-    }
-  }, [displayContent, viewMode, activeSpace.id, activeTab.id, activeSubTab?.id, resolvedActiveAisleId, trashTabId, trashSubTabId])
 
   const commitRename = (type: EditableEntityType, id: string, nextTitle: string) => {
     const isPendingCreatedRename =
@@ -3749,134 +2171,34 @@ function App() {
 
   const editorReadOnly = viewMode !== 'main'
 
-  const executeToolbarCommand = (command: string, payload?: Record<string, unknown>) => {
-    setHeadingMenuOpen(false)
-    setNoteToolsOpen(false)
-    if (!runActiveEditorCommand(command, payload)) {
-      pushToast('open a note before using the toolbar.', 'warning')
-    }
-  }
-
-  const insertImageFromToolbar = () => {
-    setHeadingMenuOpen(false)
-    setNoteToolsOpen(false)
-    const currentEditor = editorRef.current
-    if (!currentEditor) {
-      pushToast('open a note before inserting an image.', 'warning')
-      return
-    }
-
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = 'image/*'
-    input.onchange = () => {
-      const file = input.files?.[0]
-      if (!file) return
-      const reader = new FileReader()
-      reader.onload = () => {
-        const dataUrl = typeof reader.result === 'string' ? reader.result : ''
-        if (!dataUrl) return
-        currentEditor.focus()
-        getCommandCapableEditor(currentEditor).exec('addImage', { imageUrl: dataUrl, altText: file.name })
-        commitActiveEditorMarkdownNow(currentEditor)
-      }
-      reader.readAsDataURL(file)
-    }
-    input.click()
-  }
-
-  const insertWebLinkFromToolbar = () => {
-    setHeadingMenuOpen(false)
-    setNoteToolsOpen(false)
-    const currentEditor = editorRef.current
-    if (!currentEditor) {
-      pushToast('open a note before inserting a link.', 'warning')
-      return
-    }
-    const url = window.prompt('link url')
-    if (!url) return
-    const selectedText = getCommandCapableEditor(currentEditor).getSelectedText().trim()
-    const label = window.prompt('link text', selectedText || url)
-    insertLinkIntoActiveEditor((label ?? '').trim() || url, url)
-  }
-
-  const renderEditorToolbarPopovers = () => (
-    <EditorToolbarPopovers
-      headingMenuOpen={headingMenuOpen}
-      noteToolsOpen={noteToolsOpen}
-      toolbarPopoverPosition={toolbarPopoverPosition}
-      aisleDeleteMode={aisleDeleteMode}
-      aisleDeleteConfirmation={aisleDeleteConfirmation}
-      activeNoteAisles={activeNoteAisles}
-      aisleDeleteConfirmButtonRef={aisleDeleteConfirmButtonRef}
-      onExecuteToolbarCommand={executeToolbarCommand}
-      onCloseAislePopover={() => {
-        setNoteToolsOpen(false)
-        setHeadingMenuOpen(false)
-      }}
-      onAddAisle={addAisleToActiveNote}
-      onEnterAisleDeleteMode={() => {
-        setAisleDeleteConfirmation(null)
-        setAisleDeleteMode(true)
-      }}
-      onCancelAisleDeleteConfirmation={() => setAisleDeleteConfirmation(null)}
-      onDeleteAisle={deleteAisleFromActiveNote}
-      onWarn={(message) => pushToast(message, 'warning')}
-    />
-  )
-
-  const openNoteReferenceFromToolbar = () => {
-    setHeadingMenuOpen(false)
-    setNoteToolsOpen(false)
-    setToolbarPopoverPosition({ heading: null, aisles: null })
-    openNoteReferenceModal()
-  }
-
-  const toggleAisleToolbarPopover = () => {
-    setHeadingMenuOpen(false)
-    setToolbarPopoverPosition((previous) => ({ ...previous, heading: null }))
-    const nextOpen = !noteToolsOpen
-    setNoteToolsOpen(nextOpen)
-    if (nextOpen) {
-      refreshToolbarPopoverPosition('aisles')
-    } else {
-      setToolbarPopoverPosition((previous) => ({ ...previous, aisles: null }))
-    }
-  }
-
-  const toggleHeadingToolbarPopover = () => {
-    setNoteToolsOpen(false)
-    setToolbarPopoverPosition((previous) => ({ ...previous, aisles: null }))
-    const nextOpen = !headingMenuOpen
-    setHeadingMenuOpen(nextOpen)
-    if (nextOpen) {
-      refreshToolbarPopoverPosition('heading')
-    } else {
-      setToolbarPopoverPosition((previous) => ({ ...previous, heading: null }))
-    }
-  }
-
-  const clearActiveNoteFromToolbar = () => {
-    setHeadingMenuOpen(false)
-    setNoteToolsOpen(false)
-    clearActiveNoteContent()
-  }
-
-  const renderSharedToolbar = () => (
-    <SharedEditorToolbar
-      headingButtonRef={headingToolbarButtonRef}
-      aisleButtonRef={aisleToolbarButtonRef}
-      toolbarFormatState={toolbarFormatState}
-      toolbarShortcutFeedback={toolbarShortcutFeedback}
-      onOpenNoteReference={openNoteReferenceFromToolbar}
-      onToggleAisles={toggleAisleToolbarPopover}
-      onToggleHeading={toggleHeadingToolbarPopover}
-      onCommand={executeToolbarCommand}
-      onInsertImage={insertImageFromToolbar}
-      onInsertWebLink={insertWebLinkFromToolbar}
-      onClear={clearActiveNoteFromToolbar}
-    />
-  )
+  const editorToolbarLayer = useEditorToolbarLayer({
+    editorRef,
+    headingToolbarButtonRef,
+    aisleToolbarButtonRef,
+    toolbarFormatState,
+    toolbarShortcutFeedback,
+    noteToolsOpen,
+    headingMenuOpen,
+    toolbarPopoverPosition,
+    aisleDeleteMode,
+    aisleDeleteConfirmation,
+    activeNoteAisles,
+    aisleDeleteConfirmButtonRef,
+    setNoteToolsOpen,
+    setHeadingMenuOpen,
+    setToolbarPopoverPosition,
+    setAisleDeleteMode,
+    setAisleDeleteConfirmation,
+    refreshToolbarPopoverPosition,
+    runActiveEditorCommand,
+    commitActiveEditorMarkdownNow,
+    insertLinkIntoActiveEditor,
+    clearActiveNoteContent,
+    openNoteReferenceModal,
+    addAisleToActiveNote,
+    deleteAisleFromActiveNote,
+    pushToast,
+  })
 
   const renderImageToolsOverlay = () => (
     <ImageToolsOverlay
@@ -3994,10 +2316,7 @@ function App() {
         onCloseSettingsView={closeSettingsView}
         onSetMenuOpen={setMenuOpen}
         onSetContextMenu={setContextMenu}
-        onCloseNotePopovers={() => {
-          setNoteToolsOpen(false)
-          setHeadingMenuOpen(false)
-        }}
+        onCloseNotePopovers={closeToolbarPopovers}
         onOpenDomains={openDomainsView}
         onOpenSpaces={openSpacesView}
         onOpenStageManager={stageManager.open}
@@ -4182,8 +2501,8 @@ function App() {
               editorReadOnly={editorReadOnly}
               aisleDeleteMode={aisleDeleteMode}
               aisleScrollRef={aisleScrollRef}
-              toolbar={renderSharedToolbar()}
-              headingPopover={renderEditorToolbarPopovers()}
+              toolbar={editorToolbarLayer.toolbar}
+              headingPopover={editorToolbarLayer.popovers}
               aislePopover={null}
               deleteConfirmation={null}
               imageToolsOverlay={renderImageToolsOverlay()}

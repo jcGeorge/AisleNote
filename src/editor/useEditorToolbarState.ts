@@ -1,0 +1,194 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps */
+import { useEffect, useRef, useState, type MutableRefObject } from 'react'
+import type { Editor } from '@toast-ui/editor'
+import {
+  DEFAULT_TOOLBAR_FORMAT_STATE,
+  type ToolbarFormatKey,
+  type ToolbarFormatState,
+} from '../components/editor/toolbar-state'
+import { eventMatchesShortcut } from '../hotkeys/shortcuts'
+import type { AppState, ViewMode } from '../types/app'
+import { getWysiwygView } from './prosemirror-utils'
+
+type ToolbarPopoverKind = 'heading' | 'aisles'
+
+type ToolbarPopoverPosition = {
+  top: number
+  left: number
+}
+
+const TOOLBAR_POPOVER_WIDTH_PX = 168
+const TOOLBAR_POPOVER_VIEWPORT_MARGIN_PX = 8
+
+type UseEditorToolbarStateOptions = {
+  viewMode: ViewMode
+  isMacPlatform: boolean
+  editorRef: MutableRefObject<Editor | null>
+  stateRef: MutableRefObject<AppState>
+}
+
+const areToolbarFormatStatesEqual = (first: ToolbarFormatState, second: ToolbarFormatState) =>
+  first.bold === second.bold && first.italic === second.italic && first.strike === second.strike
+
+const hasActiveEditorMark = (view: any, markName: string) => {
+  const markType = view?.state?.schema?.marks?.[markName]
+  if (!markType) return false
+
+  const { state } = view
+  const { selection } = state
+  if (selection.empty) {
+    const marks = state.storedMarks ?? selection.$from?.marks?.() ?? []
+    return marks.some((mark: any) => mark?.type === markType)
+  }
+
+  return state.doc.rangeHasMark(selection.from, selection.to, markType)
+}
+
+export function useEditorToolbarState({
+  viewMode,
+  isMacPlatform,
+  editorRef,
+  stateRef,
+}: UseEditorToolbarStateOptions) {
+  const [toolbarFormatState, setToolbarFormatState] = useState<ToolbarFormatState>(DEFAULT_TOOLBAR_FORMAT_STATE)
+  const [toolbarShortcutFeedback, setToolbarShortcutFeedback] = useState<ToolbarFormatKey | null>(null)
+  const [noteToolsOpen, setNoteToolsOpen] = useState(false)
+  const [headingMenuOpen, setHeadingMenuOpen] = useState(false)
+  const [toolbarPopoverPosition, setToolbarPopoverPosition] = useState<Record<ToolbarPopoverKind, ToolbarPopoverPosition | null>>({
+    heading: null,
+    aisles: null,
+  })
+  const headingToolbarButtonRef = useRef<HTMLButtonElement | null>(null)
+  const aisleToolbarButtonRef = useRef<HTMLButtonElement | null>(null)
+  const shortcutFeedbackTimerRef = useRef<number | null>(null)
+
+  const getToolbarPopoverButton = (kind: ToolbarPopoverKind) =>
+    kind === 'aisles' ? aisleToolbarButtonRef.current : headingToolbarButtonRef.current
+
+  const getToolbarPopoverPosition = (kind: ToolbarPopoverKind): ToolbarPopoverPosition | null => {
+    const button = getToolbarPopoverButton(kind)
+    if (!button || !button.isConnected) return null
+    const rect = button.getBoundingClientRect()
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth
+    const maxLeft = Math.max(
+      TOOLBAR_POPOVER_VIEWPORT_MARGIN_PX,
+      viewportWidth - TOOLBAR_POPOVER_WIDTH_PX - TOOLBAR_POPOVER_VIEWPORT_MARGIN_PX,
+    )
+    return {
+      top: rect.bottom + 6,
+      left: Math.min(Math.max(TOOLBAR_POPOVER_VIEWPORT_MARGIN_PX, rect.left), maxLeft),
+    }
+  }
+
+  const refreshToolbarPopoverPosition = (kind: ToolbarPopoverKind) => {
+    const position = getToolbarPopoverPosition(kind)
+    setToolbarPopoverPosition((previous) => ({
+      ...previous,
+      [kind]: position,
+    }))
+    return position
+  }
+
+  const closeToolbarPopovers = () => {
+    setNoteToolsOpen(false)
+    setHeadingMenuOpen(false)
+    setToolbarPopoverPosition({ heading: null, aisles: null })
+  }
+
+  useEffect(() => {
+    const openPopoverKind: ToolbarPopoverKind | null = noteToolsOpen ? 'aisles' : headingMenuOpen ? 'heading' : null
+    if (!openPopoverKind || viewMode !== 'main') return
+
+    const refreshPosition = () => refreshToolbarPopoverPosition(openPopoverKind)
+    refreshPosition()
+    const handleDocumentPointerDown = (event: PointerEvent) => {
+      const button = getToolbarPopoverButton(openPopoverKind)
+      const targetNode = event.target instanceof Node ? event.target : null
+      const targetElement = event.target instanceof Element ? event.target : null
+      if (
+        targetElement?.closest(
+          '.note-toolbar-heading-popover, .note-toolbar-aisle-popover, .note-aisle-delete-confirmation',
+        )
+      ) {
+        return
+      }
+      if (button && targetNode && button.contains(targetNode)) return
+      closeToolbarPopovers()
+    }
+    window.addEventListener('resize', refreshPosition)
+    window.addEventListener('scroll', refreshPosition, true)
+    document.addEventListener('pointerdown', handleDocumentPointerDown, true)
+    return () => {
+      window.removeEventListener('resize', refreshPosition)
+      window.removeEventListener('scroll', refreshPosition, true)
+      document.removeEventListener('pointerdown', handleDocumentPointerDown, true)
+    }
+  }, [headingMenuOpen, noteToolsOpen, viewMode])
+
+  useEffect(() => {
+    return () => {
+      if (shortcutFeedbackTimerRef.current !== null) {
+        window.clearTimeout(shortcutFeedbackTimerRef.current)
+      }
+    }
+  }, [])
+
+  const getCurrentToolbarFormatState = (): ToolbarFormatState => {
+    const view = getWysiwygView(editorRef.current)
+    if (!view) return DEFAULT_TOOLBAR_FORMAT_STATE
+    return {
+      bold: hasActiveEditorMark(view, 'strong'),
+      italic: hasActiveEditorMark(view, 'emph'),
+      strike: hasActiveEditorMark(view, 'strike'),
+    }
+  }
+
+  const syncToolbarFormatState = () => {
+    const nextState = getCurrentToolbarFormatState()
+    setToolbarFormatState((previous) => (areToolbarFormatStatesEqual(previous, nextState) ? previous : nextState))
+  }
+
+  const scheduleToolbarFormatStateSync = () => {
+    window.requestAnimationFrame(syncToolbarFormatState)
+  }
+
+  const getToolbarFormatShortcut = (event: KeyboardEvent): ToolbarFormatKey | null => {
+    const key = event.key.toLowerCase()
+    const isMod = isMacPlatform ? event.metaKey : event.ctrlKey
+    if (!isMod || event.altKey) return null
+    if (key === 'b') return 'bold'
+    if (key === 'i') return 'italic'
+    if (key === 's' && !eventMatchesShortcut(event, stateRef.current.hotkeys.shortcuts.openSpaces, isMacPlatform)) return 'strike'
+    return null
+  }
+
+  const queueToolbarShortcutFeedback = (format: ToolbarFormatKey) => {
+    if (shortcutFeedbackTimerRef.current !== null) {
+      window.clearTimeout(shortcutFeedbackTimerRef.current)
+    }
+    setToolbarShortcutFeedback(format)
+    shortcutFeedbackTimerRef.current = window.setTimeout(() => {
+      shortcutFeedbackTimerRef.current = null
+      setToolbarShortcutFeedback((current) => (current === format ? null : current))
+    }, 650)
+  }
+
+  return {
+    headingToolbarButtonRef,
+    aisleToolbarButtonRef,
+    toolbarFormatState,
+    toolbarShortcutFeedback,
+    noteToolsOpen,
+    headingMenuOpen,
+    toolbarPopoverPosition,
+    setNoteToolsOpen,
+    setHeadingMenuOpen,
+    setToolbarPopoverPosition,
+    refreshToolbarPopoverPosition,
+    closeToolbarPopovers,
+    getToolbarFormatShortcut,
+    queueToolbarShortcutFeedback,
+    syncToolbarFormatState,
+    scheduleToolbarFormatStateSync,
+  }
+}
