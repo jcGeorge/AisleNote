@@ -94,6 +94,44 @@ export function mergeLeadingIndentsFromWysiwyg(editor: Editor | null, markdown: 
   return nextLines.join('\n')
 }
 
+export function normalizeEmptyHeadingMarkersFromWysiwyg(editor: Editor | null, markdown: string): string {
+  const wwView = (editor as any)?.wwEditor?.view
+  if (!wwView?.state?.doc || !markdown) return markdown
+
+  const emptyHeadingLevels: number[] = []
+  wwView.state.doc.descendants((node: any) => {
+    if (node?.type?.name !== 'heading') return
+    const textContent = String(node.textContent ?? '').replace(/\u200b/g, '').trim()
+    if (textContent) return
+    const level = Number(node.attrs?.level) || 1
+    emptyHeadingLevels.push(Math.min(6, Math.max(1, level)))
+  })
+
+  if (emptyHeadingLevels.length === 0) return markdown
+
+  const remainingByLevel = new Map<number, number>()
+  emptyHeadingLevels.forEach((level) => {
+    remainingByLevel.set(level, (remainingByLevel.get(level) ?? 0) + 1)
+  })
+
+  let changed = false
+  const nextLines = markdown.split('\n').map((line) => {
+    const match = line.match(/^(\s*)(#{1,6})\s*$/)
+    if (!match) return line
+
+    const level = match[2].length
+    const remaining = remainingByLevel.get(level) ?? 0
+    if (remaining <= 0) return line
+
+    remainingByLevel.set(level, remaining - 1)
+    const normalized = `${match[1]}${match[2]} `
+    if (normalized !== line) changed = true
+    return normalized
+  })
+
+  return changed ? nextLines.join('\n') : markdown
+}
+
 export function normalizeHeadingMarkers(markdown: string): string {
   const lines = markdown.split('\n')
   let inFencedCode = false

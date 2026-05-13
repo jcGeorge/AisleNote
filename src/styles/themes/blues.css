@@ -420,6 +420,18 @@
   color: #111c32 !important;
 }
 
+.theme-blues .toastui-editor-contents ul > li:not(.task-list-item)::before,
+.theme-blues .toastui-editor .ProseMirror ul > li:not(.task-list-item)::before {
+  background-color: var(--monet-editor-text) !important;
+  opacity: 0.9 !important;
+}
+
+.theme-blues .toastui-editor-contents ol > li::before,
+.theme-blues .toastui-editor .ProseMirror ol > li::before {
+  color: var(--monet-editor-text) !important;
+  opacity: 0.9 !important;
+}
+
 .theme-blues .toastui-editor-contents li.task-list-item.task-reorder-source {
   background: rgba(169, 154, 93, 0.12);
   box-shadow: inset 0 0 0 1px rgba(169, 154, 93, 0.16);

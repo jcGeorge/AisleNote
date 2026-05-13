@@ -1,19 +1,11 @@
-import { type MouseEvent, type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { type MouseEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { Editor } from '@toast-ui/editor'
 import '@toast-ui/editor/dist/toastui-editor.css'
 import './App.css'
-import {
-  ARRANGE_DRAG_START_SLOP_PX,
-  ARRANGE_PRESS_DELAY_MS,
-  ARRANGE_TAP_SLOP_PX,
-  DEFAULT_ARRANGE_MODE,
-  getArrangeRailInsertionTarget,
-  isPointInsideElement,
-  moveItemByInsertion,
-} from './arrange/arrange-utils'
+import { useArrangeMode } from './arrange/useArrangeMode'
 import { DomainsPage } from './components/domains/DomainsPage'
 import { EditorToolbarPopovers } from './components/editor/EditorToolbarPopovers'
-import { ImageToolsOverlay, type InlineCropDragMode } from './components/editor/ImageToolsOverlay'
+import { ImageToolsOverlay } from './components/editor/ImageToolsOverlay'
 import { LegacyEditorShell } from './components/editor/LegacyEditorShell'
 import { SharedEditorToolbar } from './components/editor/SharedEditorToolbar'
 import { DEFAULT_TOOLBAR_FORMAT_STATE, type ToolbarFormatKey, type ToolbarFormatState } from './components/editor/toolbar-state'
@@ -46,6 +38,7 @@ import {
   getWysiwygView,
 } from './editor/prosemirror-utils'
 import { createContextPreviewPlugin } from './editor/note-preview-plugin'
+import { useImageTools } from './editor/useImageTools'
 import {
   COMPLETED_TASK_UNDO_HINT_COOLDOWN_MS,
   COMPLETED_TASK_UNDO_HINT_DETECTION_MS,
@@ -54,7 +47,7 @@ import {
   installCompletedTaskCheckboxBehavior,
   installTaskTextReorderBehavior,
 } from './editor/task-behavior'
-import { exportAppData, sanitizeName, type ExportScope } from './export/export-data'
+import { exportAppData, type ExportScope } from './export/export-data'
 import {
   buildSplitLineMultiLineState,
   cloneMultiLineEditState,
@@ -83,7 +76,7 @@ import {
   INDENT_TOKEN,
   materializeHorizontalRuleShortcut,
   mergeLeadingIndentsFromWysiwyg,
-  normalizeHeadingMarkers,
+  normalizeEmptyHeadingMarkersFromWysiwyg,
   normalizeMarkdownForPersistence,
 } from './markdown/markdown-utils'
 import { useNavigationHistory } from './navigation/useNavigationHistory'
@@ -108,7 +101,6 @@ import {
   replaceContextTokenById,
   wouldCreateContextCycle,
 } from './notes/note-references'
-import { DEFAULT_AUTO_REMOVE_DAYS } from './settings/defaults'
 import { useSettingsController } from './settings/useSettingsController'
 import { applyAutoPurgeToAppState, applyMarkdownToAppState, ensureNoteBodiesForAppState, parseSavedState } from './state/app-state'
 import {
@@ -116,7 +108,6 @@ import {
   addSpaceToActiveDomain,
   createDomain,
   insertSpaceAfterInActiveDomain,
-  moveSpaceWithinActiveDomain,
   removeSpaceFromActiveDomain,
   renameDomain,
   renameSpaceInActiveDomain,
@@ -131,43 +122,16 @@ import {
   createSpace,
   createSubTab,
   createTab,
-  createWorkspaceDataFromTabs,
   duplicateSpace,
   MAX_NOTE_AISLES,
 } from './state/workspace'
-import {
-  buildStageManagerSelectionSnapshot,
-  createDefaultStageManagerDraft,
-  createEmptyStageManagerParentSelection,
-  createStageManagerSelectionState,
-  normalizeStageManagerParentSelection,
-  orderStageManagerSubTabIds,
-} from './stage-manager/selection'
-import {
-  appendSubTabsToParent,
-  buildStageManagerMovedSubTabs,
-  cloneTabForTransfer,
-  cloneSubTabForTransfer,
-  createPromotedParentTab,
-  stripStageManagerSelectionsFromWorkspace,
-} from './stage-manager/transforms'
+import { useStageManagerController } from './stage-manager/useStageManagerController'
 import { appStateStore } from './storage/app-state-store'
 import { buildTrashParentBuckets, resolveTrashContentDisplay, TRASH_HOME_ID } from './trash/trash-model'
 import type {
   AppState,
-  ArrangeDragItem,
-  ArrangeDragSeed,
-  ArrangeInsertPosition,
-  ArrangeModeState,
-  ArrangeScope,
-  ArrangeSource,
-  ArrangeTapCandidate,
-  ArrangeTapCandidateSeed,
   ContextMenuState,
   DeleteTarget,
-  Domain,
-  ImageToolsState,
-  InlineCropState,
   LinkPromptState,
   ModalState,
   MultiLineEditState,
@@ -176,17 +140,6 @@ import type {
   NoteLocation,
   PendingContent,
   PendingCreatedEdit,
-  Space,
-  SpaceArrangeDragPreview,
-  StageManagerAction,
-  StageManagerDraft,
-  StageManagerParentSelection,
-  StageManagerSelectionSnapshot,
-  StageManagerSelectionState,
-  StageManagerStep,
-  Tab,
-  TabArrangeDragItem,
-  TabArrangeDragPreview,
   ToastState,
   ToastTone,
   TrashParentBucket,
@@ -240,72 +193,10 @@ function App() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [trashTabId, setTrashTabId] = useState<string>(TRASH_HOME_ID)
   const [trashSubTabId, setTrashSubTabId] = useState<string | null>(null)
-  const [arrangeMode, setArrangeMode] = useState<ArrangeModeState>(DEFAULT_ARRANGE_MODE)
-  const [stageManagerStep, setStageManagerStep] = useState<StageManagerStep>('select')
-  const [stageManagerAction, setStageManagerAction] = useState<StageManagerAction | null>(null)
-  const [stageManagerSelections, setStageManagerSelections] = useState<StageManagerSelectionState>({})
-  const [stageManagerDraft, setStageManagerDraft] = useState<StageManagerDraft>(createDefaultStageManagerDraft)
   const [activeAisleId, setActiveAisleId] = useState<string>('')
-  const [arrangeDraggingItem, setArrangeDraggingItem] = useState<ArrangeDragItem | null>(null)
-  const [spaceArrangeDragPreview, setSpaceArrangeDragPreview] = useState<SpaceArrangeDragPreview | null>(null)
-  const [tabArrangeDragPreview, setTabArrangeDragPreview] = useState<TabArrangeDragPreview | null>(null)
   const [toast, setToast] = useState<ToastState | null>(null)
   const [toastHovered, setToastHovered] = useState(false)
   const [toastWasHovered, setToastWasHovered] = useState(false)
-  const [imageTools, setImageTools] = useState<ImageToolsState>({
-    visible: false,
-    cropTop: 0,
-    cropLeft: 0,
-    resizeTop: 0,
-    resizeLeft: 0,
-  })
-  const [inlineCrop, setInlineCrop] = useState<InlineCropState>({
-    active: false,
-    relX: 0,
-    relY: 0,
-    relWidth: 1,
-    relHeight: 1,
-    top: 0,
-    left: 0,
-    width: 0,
-    height: 0,
-  })
-  const inlineCropRef = useRef<InlineCropState>(inlineCrop)
-  const updateInlineCrop = (updater: InlineCropState | ((previous: InlineCropState) => InlineCropState)) => {
-    const previous = inlineCropRef.current
-    const nextInlineCrop =
-      typeof updater === 'function'
-        ? (updater as (previous: InlineCropState) => InlineCropState)(previous)
-        : updater
-    inlineCropRef.current = nextInlineCrop
-    setInlineCrop(nextInlineCrop)
-    return nextInlineCrop
-  }
-  const resetInlineCropDrag = () => {
-    inlineCropDragRef.current = {
-      mode: null,
-      startX: 0,
-      startY: 0,
-      startRelX: 0,
-      startRelY: 0,
-      startRelWidth: 1,
-      startRelHeight: 1,
-    }
-  }
-  const startInlineCropDrag = (mode: InlineCropDragMode, clientX: number, clientY: number) => {
-    const crop = inlineCropRef.current
-    if (!crop.active) return false
-    inlineCropDragRef.current = {
-      mode,
-      startX: clientX,
-      startY: clientY,
-      startRelX: crop.relX,
-      startRelY: crop.relY,
-      startRelWidth: crop.relWidth,
-      startRelHeight: crop.relHeight,
-    }
-    return true
-  }
   const [linkPrompt, setLinkPrompt] = useState<LinkPromptState>({
     open: false,
     top: 0,
@@ -336,31 +227,9 @@ function App() {
   const editorEventRootRef = useRef<HTMLElement | null>(null)
   const aisleEditorRootsRef = useRef<Map<string, HTMLElement>>(new Map())
   const aisleEditorMetaRef = useRef<Map<string, AisleEditorMeta>>(new Map())
-  const primaryTabRailRef = useRef<HTMLDivElement | null>(null)
-  const subTabRailRef = useRef<HTMLDivElement | null>(null)
-  const spacesGridRef = useRef<HTMLDivElement | null>(null)
-  const activeImageRef = useRef<HTMLImageElement | null>(null)
-  const imageResizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
-  const inlineCropDragRef = useRef<{
-    mode: InlineCropDragMode | null
-    startX: number
-    startY: number
-    startRelX: number
-    startRelY: number
-    startRelWidth: number
-    startRelHeight: number
-  }>({ mode: null, startX: 0, startY: 0, startRelX: 0, startRelY: 0, startRelWidth: 1, startRelHeight: 1 })
-
   const pendingContentRef = useRef<PendingContent | null>(null)
   const pendingCreatedEditRef = useRef<PendingCreatedEdit | null>(null)
   const skipRenameBlurRef = useRef<{ type: EditableEntityType; id: string } | null>(null)
-  const arrangePressTimerRef = useRef<number | null>(null)
-  const arrangeTapCandidateRef = useRef<ArrangeTapCandidate | null>(null)
-  const arrangeDragSeedRef = useRef<ArrangeDragSeed | null>(null)
-  const spaceArrangeDragRef = useRef<SpaceArrangeDragPreview | null>(null)
-  const tabArrangeDragRef = useRef<TabArrangeDragPreview | null>(null)
-  const suppressArrangeClickRef = useRef<Set<string>>(new Set())
-  const suppressNextSpaceArrangeExitRef = useRef(false)
   const saveTimerRef = useRef<number | null>(null)
   const toastTimerRef = useRef<number | null>(null)
   const toolbarShortcutFeedbackTimerRef = useRef<number | null>(null)
@@ -594,909 +463,10 @@ function App() {
     pushToast(COMPLETED_TASK_UNDO_HINT_MESSAGE, 'warning', COMPLETED_TASK_UNDO_HINT_TOAST_DURATION_MS)
   }
 
-  const getStageManagerParentSelection = (tab: Tab) => normalizeStageManagerParentSelection(tab, stageManagerSelections[tab.id])
-
-  const updateStageManagerSelectionForTab = (
-    tab: Tab,
-    updater: (selection: StageManagerParentSelection) => StageManagerParentSelection,
-  ) => {
-    setStageManagerSelections((previous) => {
-      const currentSelection = normalizeStageManagerParentSelection(tab, previous[tab.id])
-      return {
-        ...previous,
-        [tab.id]: normalizeStageManagerParentSelection(tab, updater(currentSelection)),
-      }
-    })
-  }
-
-  const resetStageManagerState = (tabs: Tab[] = workspace.tabs) => {
-    setStageManagerStep('select')
-    setStageManagerAction(null)
-    setStageManagerSelections(createStageManagerSelectionState(tabs))
-    setStageManagerDraft(createDefaultStageManagerDraft())
-  }
-
-  const updateStageManagerDraft = (patch: Partial<StageManagerDraft>) => {
-    setStageManagerDraft((previous) => ({
-      ...previous,
-      ...patch,
-    }))
-  }
-
-  const selectAllStageManagerItems = () => {
-    setStageManagerSelections(
-      Object.fromEntries(
-        workspace.tabs.map((tab) => [
-          tab.id,
-          {
-            mode: 'full',
-            selectedSubTabIds: tab.subTabs.map((subTab) => subTab.id),
-            cachedPartialSubTabIds: null,
-            partialDirection: null,
-          } satisfies StageManagerParentSelection,
-        ]),
-      ),
-    )
-  }
-
-  const deselectAllStageManagerItems = () => {
-    setStageManagerSelections(createStageManagerSelectionState(workspace.tabs))
-  }
-
-  const cycleStageManagerParentSelection = (tab: Tab) => {
-    updateStageManagerSelectionForTab(tab, (selection) => {
-      const allSubTabIds = tab.subTabs.map((subTab) => subTab.id)
-      const cachedPartial = selection.mode === 'partial' ? selection.selectedSubTabIds : selection.cachedPartialSubTabIds
-
-      if (selection.mode === 'none') {
-        if (cachedPartial && cachedPartial.length > 0) {
-          return {
-            mode: 'partial',
-            selectedSubTabIds: cachedPartial,
-            cachedPartialSubTabIds: cachedPartial,
-            partialDirection: 'toward-all',
-          }
-        }
-
-        return {
-          mode: 'full',
-          selectedSubTabIds: allSubTabIds,
-          cachedPartialSubTabIds: null,
-          partialDirection: null,
-        }
-      }
-
-      if (selection.mode === 'full') {
-        if (cachedPartial && cachedPartial.length > 0) {
-          return {
-            mode: 'partial',
-            selectedSubTabIds: cachedPartial,
-            cachedPartialSubTabIds: cachedPartial,
-            partialDirection: 'toward-none',
-          }
-        }
-
-        return createEmptyStageManagerParentSelection()
-      }
-
-      if (selection.partialDirection === 'toward-none') {
-        return {
-          mode: 'none',
-          selectedSubTabIds: [],
-          cachedPartialSubTabIds: selection.selectedSubTabIds,
-          partialDirection: null,
-        }
-      }
-
-      return {
-        mode: 'full',
-        selectedSubTabIds: allSubTabIds,
-        cachedPartialSubTabIds: selection.selectedSubTabIds,
-        partialDirection: null,
-      }
-    })
-  }
-
-  const toggleStageManagerSubTabSelection = (tab: Tab, subTabId: string) => {
-    updateStageManagerSelectionForTab(tab, (selection) => {
-      const allSubTabIds = tab.subTabs.map((subTab) => subTab.id)
-      const selectedIds = new Set(selection.mode === 'full' ? allSubTabIds : selection.selectedSubTabIds)
-      const wasSelected = selectedIds.has(subTabId)
-      const selectionBeforeChange = Array.from(selectedIds)
-
-      if (wasSelected) {
-        selectedIds.delete(subTabId)
-      } else {
-        selectedIds.add(subTabId)
-      }
-
-      const orderedSelectedIds = orderStageManagerSubTabIds(tab, Array.from(selectedIds))
-
-      if (orderedSelectedIds.length === 0) {
-        return {
-          mode: 'none',
-          selectedSubTabIds: [],
-          cachedPartialSubTabIds:
-            selectionBeforeChange.length > 0 ? orderStageManagerSubTabIds(tab, selectionBeforeChange) : selection.cachedPartialSubTabIds,
-          partialDirection: null,
-        }
-      }
-
-      if (orderedSelectedIds.length >= allSubTabIds.length) {
-        return {
-          mode: 'full',
-          selectedSubTabIds: allSubTabIds,
-          cachedPartialSubTabIds:
-            selectionBeforeChange.length > 0 && selectionBeforeChange.length < allSubTabIds.length
-              ? orderStageManagerSubTabIds(tab, selectionBeforeChange)
-              : selection.cachedPartialSubTabIds,
-          partialDirection: null,
-        }
-      }
-
-      return {
-        mode: 'partial',
-        selectedSubTabIds: orderedSelectedIds,
-        cachedPartialSubTabIds: orderedSelectedIds,
-        partialDirection: wasSelected ? 'toward-none' : 'toward-all',
-      }
-    })
-  }
-
-  const getStageManagerActionValidation = (
-    action: StageManagerAction,
-    snapshot: StageManagerSelectionSnapshot = buildStageManagerSelectionSnapshot(workspace.tabs, stageManagerSelections),
-  ) => {
-    if (!snapshot.hasSelection) {
-      return {
-        valid: false,
-        message: 'select at least one parent or sub-tab before choosing an action.',
-      }
-    }
-
-    if (action === 'promote' && snapshot.fullParents.length > 1) {
-      return {
-        valid: false,
-        message: 'multiple parent tabs cannot be promoted at the same time.',
-      }
-    }
-
-    if (action === 'demote' && snapshot.fullParents.length === 0) {
-      return {
-        valid: false,
-        message: 'demote requires at least one fully selected parent tab.',
-      }
-    }
-
-    return {
-      valid: true,
-      message: '',
-    }
-  }
-
-  const selectStageManagerAction = (action: StageManagerAction) => {
-    const snapshot = buildStageManagerSelectionSnapshot(workspace.tabs, stageManagerSelections)
-    const validation = getStageManagerActionValidation(action, snapshot)
-    if (!validation.valid) {
-      setStageManagerAction(null)
-      pushToast(validation.message, 'warning')
-      return
-    }
-
-    setStageManagerAction(action)
-
-    if (action === 'promote' && snapshot.fullParents.length === 1 && stageManagerDraft.newSpaceName.trim().length === 0) {
-      updateStageManagerDraft({ newSpaceName: snapshot.fullParents[0].title })
-    }
-  }
-
-  const clearArrangePressTimer = () => {
-    if (arrangePressTimerRef.current !== null) {
-      window.clearTimeout(arrangePressTimerRef.current)
-      arrangePressTimerRef.current = null
-    }
-  }
-
-  const clearArrangeTapCandidate = () => {
-    arrangeTapCandidateRef.current = null
-  }
-
-  const clearArrangeDragSeed = () => {
-    arrangeDragSeedRef.current = null
-  }
-
-  const startArrangeDragSeed = (key: string, event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (event.button !== 0) return
-    arrangeDragSeedRef.current = {
-      key,
-      startX: event.clientX,
-      startY: event.clientY,
-    }
-  }
-
-  const startArrangeTapCandidate = (candidate: ArrangeTapCandidateSeed, event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (!arrangeMode.active || event.button !== 0) return
-    arrangeTapCandidateRef.current = {
-      ...candidate,
-      startX: event.clientX,
-      startY: event.clientY,
-      dragged: false,
-    }
-  }
-
-  const markArrangeTapDragged = (key: string) => {
-    const candidate = arrangeTapCandidateRef.current
-    if (!candidate || candidate.key !== key) return
-    arrangeTapCandidateRef.current = {
-      ...candidate,
-      dragged: true,
-    }
-  }
-
-  const finalizeArrangeTapCandidate = (
-    key: string,
-    event: ReactPointerEvent<HTMLButtonElement>,
-    onActivate: () => void,
-  ) => {
-    if (!arrangeMode.active) return
-    const candidate = arrangeTapCandidateRef.current
-    arrangeTapCandidateRef.current = null
-    if (!candidate || candidate.key !== key || candidate.dragged) return
-    const deltaX = event.clientX - candidate.startX
-    const deltaY = event.clientY - candidate.startY
-    if (Math.hypot(deltaX, deltaY) > ARRANGE_TAP_SLOP_PX) return
-    if (consumeArrangeClickSuppression(key)) return
-    onActivate()
-  }
-
-  const markArrangeClickSuppressed = (...keys: string[]) => {
-    keys.forEach((key) => suppressArrangeClickRef.current.add(key))
-  }
-
-  const consumeArrangeClickSuppression = (key: string) => {
-    if (!suppressArrangeClickRef.current.has(key)) return false
-    suppressArrangeClickRef.current.delete(key)
-    return true
-  }
-
   const exitAisleDeleteMode = () => {
     setAisleDeleteMode(false)
     setAisleDeleteConfirmation(null)
   }
-
-  const enterArrangeMode = (source: ArrangeSource, dragItem: ArrangeDragItem | null = null, suppressClickKey?: string) => {
-    flushPendingContent()
-    clearArrangePressTimer()
-    clearArrangeDragSeed()
-    setMenuOpen(false)
-    setContextMenu(null)
-    setEditing(null)
-    exitAisleDeleteMode()
-    if (suppressClickKey) {
-      markArrangeClickSuppressed(suppressClickKey)
-    }
-    const scope: ArrangeScope | null = viewMode === 'spaces' ? 'spaces' : viewMode === 'main' ? 'tabs' : null
-    setArrangeMode({
-      active: true,
-      scope,
-      source,
-      dragItem,
-      overParentTabId: null,
-      overParentInsert: null,
-      overSubTabId: null,
-      overSubTabInsert: null,
-      overSpaceId: null,
-      overSpaceInsert: null,
-    })
-  }
-
-  const exitArrangeMode = () => {
-    clearArrangePressTimer()
-    clearArrangeTapCandidate()
-    clearArrangeDragSeed()
-    suppressArrangeClickRef.current.clear()
-    spaceArrangeDragRef.current = null
-    tabArrangeDragRef.current = null
-    suppressNextSpaceArrangeExitRef.current = false
-    setArrangeDraggingItem(null)
-    setSpaceArrangeDragPreview(null)
-    setTabArrangeDragPreview(null)
-    setArrangeMode(DEFAULT_ARRANGE_MODE)
-  }
-
-  const startArrangePress = (
-    event: ReactPointerEvent<HTMLButtonElement>,
-    dragItem: ArrangeDragItem | null,
-    suppressClickKey: string,
-  ) => {
-    if ((viewMode !== 'main' && viewMode !== 'spaces') || editing || arrangeMode.active) return
-    if (event.button !== 0) return
-    clearArrangePressTimer()
-    arrangePressTimerRef.current = window.setTimeout(() => {
-      arrangePressTimerRef.current = null
-      enterArrangeMode('press', dragItem, suppressClickKey)
-    }, ARRANGE_PRESS_DELAY_MS)
-  }
-
-  const buildArrangeDragItemFromContextMenu = (): ArrangeDragItem | null => {
-    if (!contextMenu) return null
-    if (contextMenu.type === 'tab') {
-      return { type: 'tab', tabId: contextMenu.tabId }
-    }
-    if (contextMenu.type === 'subtab') {
-      return {
-        type: 'subtab',
-        parentTabId: contextMenu.tabId,
-        subTabId: contextMenu.subTabId,
-      }
-    }
-    if (contextMenu.type === 'space') {
-      return { type: 'space', spaceId: contextMenu.spaceId }
-    }
-    return null
-  }
-
-  const enterArrangeModeFromContext = () => {
-    const dragItem = buildArrangeDragItemFromContextMenu()
-    if (!dragItem) return
-    enterArrangeMode('context', dragItem)
-  }
-
-  const prepareArrangeModeForDrag = (dragItem: ArrangeDragItem) => {
-    flushPendingContent()
-    clearArrangePressTimer()
-    clearArrangeTapCandidate()
-    clearArrangeDragSeed()
-    setMenuOpen(false)
-    setContextMenu(null)
-    setEditing(null)
-    setArrangeDraggingItem(dragItem)
-    const scope: ArrangeScope = dragItem.type === 'space' ? 'spaces' : 'tabs'
-    setArrangeMode({
-      active: true,
-      scope,
-      source: 'press',
-      dragItem,
-      overParentTabId: dragItem.type === 'tab' ? dragItem.tabId : null,
-      overParentInsert: dragItem.type === 'tab' ? 'after' : null,
-      overSubTabId: dragItem.type === 'subtab' ? dragItem.subTabId : null,
-      overSubTabInsert: dragItem.type === 'subtab' ? 'after' : null,
-      overSpaceId: dragItem.type === 'space' ? dragItem.spaceId : null,
-      overSpaceInsert: dragItem.type === 'space' ? 'after' : null,
-    })
-  }
-
-  const getArrangeSpaceInsertionTargetFromPoint = (clientX: number, clientY: number) => {
-    const grid = spacesGridRef.current
-    if (!grid) return null
-    return getArrangeRailInsertionTarget(
-      grid,
-      '[data-arrange-space-id]',
-      'data-arrange-space-id',
-      clientX,
-      clientY,
-    )
-  }
-
-  const clearArrangeSpaceDropTarget = () => {
-    setArrangeMode((previous) =>
-      previous.active
-        ? {
-            ...previous,
-            overSpaceId: null,
-            overSpaceInsert: null,
-          }
-        : previous,
-    )
-  }
-
-  const updateArrangeSpaceDropTarget = (clientX: number, clientY: number) => {
-    const insertionTarget = getArrangeSpaceInsertionTargetFromPoint(clientX, clientY)
-    if (!insertionTarget) {
-      clearArrangeSpaceDropTarget()
-      return null
-    }
-
-    setArrangeMode((previous) =>
-      previous.overSpaceId === insertionTarget.targetId && previous.overSpaceInsert === insertionTarget.position
-        ? previous
-        : {
-            ...previous,
-            overParentTabId: null,
-            overParentInsert: null,
-            overSubTabId: null,
-            overSubTabInsert: null,
-            overSpaceId: insertionTarget.targetId,
-            overSpaceInsert: insertionTarget.position,
-          },
-    )
-    return insertionTarget
-  }
-
-  const clearArrangeSpacePointerDrag = () => {
-    spaceArrangeDragRef.current = null
-    setSpaceArrangeDragPreview(null)
-  }
-
-  const suppressNextSpaceArrangeExitClick = () => {
-    suppressNextSpaceArrangeExitRef.current = true
-    window.setTimeout(() => {
-      suppressNextSpaceArrangeExitRef.current = false
-    }, 0)
-  }
-
-  const startArrangeSpacePointerDrag = (event: ReactPointerEvent<HTMLButtonElement>, space: Space) => {
-    if (viewMode !== 'spaces') return
-    const rect = event.currentTarget.getBoundingClientRect()
-    const nextDrag: SpaceArrangeDragPreview = {
-      spaceId: space.id,
-      label: space.name,
-      currentX: event.clientX,
-      currentY: event.clientY,
-      offsetX: event.clientX - rect.left,
-      offsetY: event.clientY - rect.top,
-      width: rect.width,
-      height: rect.height,
-    }
-
-    clearArrangePressTimer()
-    markArrangeTapDragged(`space:${space.id}`)
-    prepareArrangeModeForDrag({ type: 'space', spaceId: space.id })
-    spaceArrangeDragRef.current = nextDrag
-    setSpaceArrangeDragPreview(nextDrag)
-    updateArrangeSpaceDropTarget(event.clientX, event.clientY)
-  }
-
-  const updateArrangeSpacePointerDrag = (clientX: number, clientY: number) => {
-    const drag = spaceArrangeDragRef.current
-    if (!drag) return
-    const nextDrag: SpaceArrangeDragPreview = {
-      ...drag,
-      currentX: clientX,
-      currentY: clientY,
-    }
-    spaceArrangeDragRef.current = nextDrag
-    setSpaceArrangeDragPreview(nextDrag)
-    updateArrangeSpaceDropTarget(clientX, clientY)
-  }
-
-  const moveArrangeSpaceToTarget = (
-    draggedSpaceId: string,
-    insertionTarget: { targetId: string; position: ArrangeInsertPosition },
-  ) => {
-    if (draggedSpaceId === insertionTarget.targetId) return
-    setState((previous) =>
-      moveSpaceWithinActiveDomain(previous, draggedSpaceId, insertionTarget.targetId, insertionTarget.position),
-    )
-  }
-
-  const finishArrangeSpacePointerDrag = (clientX: number, clientY: number) => {
-    const drag = spaceArrangeDragRef.current
-    if (!drag) return false
-
-    const insertionTarget = getArrangeSpaceInsertionTargetFromPoint(clientX, clientY)
-    markArrangeClickSuppressed(`space:${drag.spaceId}`)
-    if (insertionTarget) {
-      markArrangeClickSuppressed(`space:${insertionTarget.targetId}`)
-      moveArrangeSpaceToTarget(drag.spaceId, insertionTarget)
-    }
-
-    suppressNextSpaceArrangeExitClick()
-    clearArrangeSpacePointerDrag()
-    clearArrangeTapCandidate()
-    clearArrangeDragSeed()
-    setArrangeDraggingItem(null)
-    setArrangeMode((previous) =>
-      previous.active
-        ? {
-            ...previous,
-            dragItem: null,
-            overParentTabId: null,
-            overParentInsert: null,
-            overSubTabId: null,
-            overSubTabInsert: null,
-            overSpaceId: null,
-            overSpaceInsert: null,
-          }
-        : previous,
-    )
-    return true
-  }
-
-  const cancelArrangeSpacePointerDrag = () => {
-    clearArrangeSpacePointerDrag()
-    clearArrangeTapCandidate()
-    clearArrangeDragSeed()
-    clearArrangePressTimer()
-    setArrangeDraggingItem(null)
-    setArrangeMode((previous) =>
-      previous.active
-        ? {
-            ...previous,
-            dragItem: null,
-            overSpaceId: null,
-            overSpaceInsert: null,
-          }
-        : previous,
-    )
-  }
-
-  const handleArrangeSpacePointerMove = (event: ReactPointerEvent<HTMLButtonElement>, space: Space) => {
-    if (event.buttons !== 1) return
-
-    const activeDrag = spaceArrangeDragRef.current
-    if (activeDrag?.spaceId === space.id) {
-      event.preventDefault()
-      markArrangeTapDragged(`space:${space.id}`)
-      updateArrangeSpacePointerDrag(event.clientX, event.clientY)
-      return
-    }
-
-    const seed = arrangeDragSeedRef.current
-    if (!seed || seed.key !== `space:${space.id}`) return
-    const deltaX = event.clientX - seed.startX
-    const deltaY = event.clientY - seed.startY
-    if (Math.hypot(deltaX, deltaY) < ARRANGE_DRAG_START_SLOP_PX) return
-
-    event.preventDefault()
-    startArrangeSpacePointerDrag(event, space)
-  }
-
-  const handleArrangeSpacePointerUp = (event: ReactPointerEvent<HTMLButtonElement>, spaceId: string) => {
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId)
-    }
-
-    if (finishArrangeSpacePointerDrag(event.clientX, event.clientY)) {
-      event.preventDefault()
-      event.stopPropagation()
-      return
-    }
-
-    clearArrangeDragSeed()
-    if (arrangeMode.active && arrangeMode.scope === 'spaces') {
-      finalizeArrangeTapCandidate(`space:${spaceId}`, event, exitArrangeMode)
-      return
-    }
-    clearArrangePressTimer()
-  }
-
-  const getArrangeParentInsertionTargetFromPoint = (clientX: number, clientY: number) => {
-    const rail = primaryTabRailRef.current
-    if (!rail || !isPointInsideElement(rail, clientX, clientY, 14)) return null
-    return getArrangeRailInsertionTarget(rail, '[data-arrange-tab-id]', 'data-arrange-tab-id', clientX, clientY)
-  }
-
-  const getArrangeSubTabInsertionTargetFromPoint = (clientX: number, clientY: number) => {
-    const rail = subTabRailRef.current
-    if (!rail || !isPointInsideElement(rail, clientX, clientY, 14)) return null
-    return getArrangeRailInsertionTarget(rail, '[data-arrange-subtab-id]', 'data-arrange-subtab-id', clientX, clientY)
-  }
-
-  const clearArrangeTabDropTarget = () => {
-    setArrangeMode((previous) =>
-      previous.active
-        ? {
-            ...previous,
-            overParentTabId: null,
-            overParentInsert: null,
-            overSubTabId: null,
-            overSubTabInsert: null,
-          }
-        : previous,
-    )
-  }
-
-  const updateArrangeTabDropTarget = (item: TabArrangeDragItem, clientX: number, clientY: number) => {
-    if (item.type === 'tab') {
-      const parentTarget = getArrangeParentInsertionTargetFromPoint(clientX, clientY)
-      if (!parentTarget) {
-        clearArrangeTabDropTarget()
-        return null
-      }
-
-      setArrangeMode((previous) =>
-        previous.overParentTabId === parentTarget.targetId && previous.overParentInsert === parentTarget.position
-          ? previous
-          : {
-              ...previous,
-              overParentTabId: parentTarget.targetId,
-              overParentInsert: parentTarget.position,
-              overSubTabId: null,
-              overSubTabInsert: null,
-            },
-      )
-      return { type: 'parent' as const, target: parentTarget }
-    }
-
-    if (item.type === 'subtab') {
-      const parentTarget = getArrangeParentInsertionTargetFromPoint(clientX, clientY)
-      if (parentTarget) {
-        setArrangeMode((previous) =>
-          previous.overParentTabId === parentTarget.targetId &&
-          previous.overParentInsert === null &&
-          previous.overSubTabId === null &&
-          previous.overSubTabInsert === null
-            ? previous
-            : {
-                ...previous,
-                overParentTabId: parentTarget.targetId,
-                overParentInsert: null,
-                overSubTabId: null,
-                overSubTabInsert: null,
-              },
-        )
-        return { type: 'parent' as const, target: parentTarget }
-      }
-
-      const subTabTarget = getArrangeSubTabInsertionTargetFromPoint(clientX, clientY)
-      if (subTabTarget && item.parentTabId === activeTab.id) {
-        setArrangeMode((previous) =>
-          previous.overSubTabId === subTabTarget.targetId && previous.overSubTabInsert === subTabTarget.position
-            ? previous
-            : {
-                ...previous,
-                overParentTabId: null,
-                overParentInsert: null,
-                overSubTabId: subTabTarget.targetId,
-                overSubTabInsert: subTabTarget.position,
-              },
-        )
-        return { type: 'subtab' as const, target: subTabTarget }
-      }
-    }
-
-    clearArrangeTabDropTarget()
-    return null
-  }
-
-  const clearArrangeTabPointerDrag = () => {
-    tabArrangeDragRef.current = null
-    setTabArrangeDragPreview(null)
-  }
-
-  const startArrangeTabPointerDrag = (
-    event: ReactPointerEvent<HTMLButtonElement>,
-    item: TabArrangeDragItem,
-    label: string,
-    variant: TabArrangeDragPreview['variant'],
-  ) => {
-    if (viewMode !== 'main') return
-    const rect = event.currentTarget.getBoundingClientRect()
-    const nextDrag: TabArrangeDragPreview = {
-      item,
-      label,
-      variant,
-      currentX: event.clientX,
-      currentY: event.clientY,
-      offsetX: event.clientX - rect.left,
-      offsetY: event.clientY - rect.top,
-      width: rect.width,
-      height: rect.height,
-    }
-
-    clearArrangePressTimer()
-    markArrangeTapDragged(item.type === 'tab' ? `tab:${item.tabId}` : `subtab:${item.subTabId}`)
-    prepareArrangeModeForDrag(item)
-    tabArrangeDragRef.current = nextDrag
-    setTabArrangeDragPreview(nextDrag)
-    updateArrangeTabDropTarget(item, event.clientX, event.clientY)
-  }
-
-  const updateArrangeTabPointerDrag = (clientX: number, clientY: number) => {
-    const drag = tabArrangeDragRef.current
-    if (!drag) return
-    const nextDrag: TabArrangeDragPreview = {
-      ...drag,
-      currentX: clientX,
-      currentY: clientY,
-    }
-    tabArrangeDragRef.current = nextDrag
-    setTabArrangeDragPreview(nextDrag)
-    updateArrangeTabDropTarget(drag.item, clientX, clientY)
-  }
-
-  const moveArrangeParentTabToTarget = (
-    draggedTabId: string,
-    insertionTarget: { targetId: string; position: ArrangeInsertPosition },
-  ) => {
-    if (draggedTabId === insertionTarget.targetId) return
-    updateActiveSpaceData((data) => {
-      const fromIndex = data.tabs.findIndex((tab) => tab.id === draggedTabId)
-      const toIndex = data.tabs.findIndex((tab) => tab.id === insertionTarget.targetId)
-      if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return data
-      return {
-        ...data,
-        tabs: moveItemByInsertion(data.tabs, fromIndex, toIndex, insertionTarget.position),
-      }
-    })
-  }
-
-  const moveArrangeSubTabToParent = (sourceParentTabId: string, subTabId: string, targetParentTabId: string) => {
-    if (sourceParentTabId === targetParentTabId) return
-    updateActiveSpaceData((data) => {
-      const sourceParent = data.tabs.find((tab) => tab.id === sourceParentTabId)
-      const targetParent = data.tabs.find((tab) => tab.id === targetParentTabId)
-      if (!sourceParent || !targetParent) return data
-      const movedSubTab = sourceParent.subTabs.find((subTab) => subTab.id === subTabId)
-      if (!movedSubTab || targetParent.subTabs.some((subTab) => subTab.id === subTabId)) return data
-
-      return {
-        ...data,
-        tabs: data.tabs.map((tab) => {
-          if (tab.id === sourceParentTabId) {
-            return {
-              ...tab,
-              activeSubTabId: tab.activeSubTabId === subTabId ? null : tab.activeSubTabId,
-              subTabs: tab.subTabs.filter((subTab) => subTab.id !== subTabId),
-            }
-          }
-          if (tab.id === targetParentTabId) {
-            return {
-              ...tab,
-              subTabs: [...tab.subTabs, movedSubTab],
-            }
-          }
-          return tab
-        }),
-      }
-    })
-  }
-
-  const moveArrangeSubTabToTarget = (
-    parentTabId: string,
-    subTabId: string,
-    insertionTarget: { targetId: string; position: ArrangeInsertPosition },
-  ) => {
-    if (subTabId === insertionTarget.targetId) return
-    updateActiveSpaceData((data) => ({
-      ...data,
-      tabs: data.tabs.map((tab) => {
-        if (tab.id !== parentTabId) return tab
-        const fromIndex = tab.subTabs.findIndex((subTab) => subTab.id === subTabId)
-        const toIndex = tab.subTabs.findIndex((subTab) => subTab.id === insertionTarget.targetId)
-        if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return tab
-        return {
-          ...tab,
-          subTabs: moveItemByInsertion(tab.subTabs, fromIndex, toIndex, insertionTarget.position),
-        }
-      }),
-    }))
-  }
-
-  const finishArrangeTabPointerDrag = (clientX: number, clientY: number) => {
-    const drag = tabArrangeDragRef.current
-    if (!drag) return false
-
-    const { item } = drag
-    if (item.type === 'tab') {
-      const parentTarget = getArrangeParentInsertionTargetFromPoint(clientX, clientY)
-      markArrangeClickSuppressed(`tab:${item.tabId}`)
-      if (parentTarget) {
-        markArrangeClickSuppressed(`tab:${parentTarget.targetId}`)
-        moveArrangeParentTabToTarget(item.tabId, parentTarget)
-      }
-    } else if (item.type === 'subtab') {
-      const parentTarget = getArrangeParentInsertionTargetFromPoint(clientX, clientY)
-      markArrangeClickSuppressed(`subtab:${item.subTabId}`)
-      if (parentTarget) {
-        markArrangeClickSuppressed(`tab:${parentTarget.targetId}`)
-        moveArrangeSubTabToParent(item.parentTabId, item.subTabId, parentTarget.targetId)
-      } else {
-        const subTabTarget = getArrangeSubTabInsertionTargetFromPoint(clientX, clientY)
-        if (subTabTarget && item.parentTabId === activeTab.id) {
-          markArrangeClickSuppressed(`subtab:${subTabTarget.targetId}`)
-          moveArrangeSubTabToTarget(item.parentTabId, item.subTabId, subTabTarget)
-        }
-      }
-    }
-
-    clearArrangeTabPointerDrag()
-    clearArrangeTapCandidate()
-    clearArrangeDragSeed()
-    setArrangeDraggingItem(null)
-    setArrangeMode((previous) =>
-      previous.active
-        ? {
-            ...previous,
-            dragItem: null,
-            overParentTabId: null,
-            overParentInsert: null,
-            overSubTabId: null,
-            overSubTabInsert: null,
-            overSpaceId: null,
-            overSpaceInsert: null,
-          }
-        : previous,
-    )
-    return true
-  }
-
-  const cancelArrangeTabPointerDrag = () => {
-    clearArrangeTabPointerDrag()
-    clearArrangeTapCandidate()
-    clearArrangeDragSeed()
-    clearArrangePressTimer()
-    setArrangeDraggingItem(null)
-    setArrangeMode((previous) =>
-      previous.active
-        ? {
-            ...previous,
-            dragItem: null,
-            overParentTabId: null,
-            overParentInsert: null,
-            overSubTabId: null,
-            overSubTabInsert: null,
-          }
-        : previous,
-    )
-  }
-
-  const handleArrangeTabPointerMove = (
-    event: ReactPointerEvent<HTMLButtonElement>,
-    item: TabArrangeDragItem,
-    label: string,
-    variant: TabArrangeDragPreview['variant'],
-  ) => {
-    if (event.buttons !== 1) return
-
-    const activeDrag = tabArrangeDragRef.current
-    if (activeDrag) {
-      event.preventDefault()
-      const key = activeDrag.item.type === 'tab' ? `tab:${activeDrag.item.tabId}` : `subtab:${activeDrag.item.subTabId}`
-      markArrangeTapDragged(key)
-      updateArrangeTabPointerDrag(event.clientX, event.clientY)
-      return
-    }
-
-    const key = item.type === 'tab' ? `tab:${item.tabId}` : `subtab:${item.subTabId}`
-    const seed = arrangeDragSeedRef.current
-    if (!seed || seed.key !== key) return
-    const deltaX = event.clientX - seed.startX
-    const deltaY = event.clientY - seed.startY
-    if (Math.hypot(deltaX, deltaY) < ARRANGE_DRAG_START_SLOP_PX) return
-
-    event.preventDefault()
-    startArrangeTabPointerDrag(event, item, label, variant)
-  }
-
-  const handleArrangeTabPointerUp = (
-    event: ReactPointerEvent<HTMLButtonElement>,
-    key: string,
-    onTapWhileArranging: () => void,
-  ) => {
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId)
-    }
-
-    if (finishArrangeTabPointerDrag(event.clientX, event.clientY)) {
-      event.preventDefault()
-      event.stopPropagation()
-      return
-    }
-
-    clearArrangeDragSeed()
-    if (arrangeMode.active) {
-      finalizeArrangeTapCandidate(key, event, onTapWhileArranging)
-      return
-    }
-    clearArrangePressTimer()
-  }
-
-  useEffect(() => () => clearArrangePressTimer(), [])
-
-  useEffect(() => {
-    if (viewMode === 'main') return
-    setArrangeMode((previous) => (previous.active ? DEFAULT_ARRANGE_MODE : previous))
-  }, [viewMode])
-
-  useEffect(() => {
-    if (viewMode === 'stage-manager') return
-    setStageManagerStep('select')
-    setStageManagerAction(null)
-    setStageManagerSelections({})
-    setStageManagerDraft(createDefaultStageManagerDraft())
-  }, [viewMode])
 
   const activeTab = useMemo(
     () => workspace.tabs.find((tab) => tab.id === workspace.activeTabId) ?? workspace.tabs[0],
@@ -1561,290 +531,6 @@ function App() {
     if (!activeNoteBodyId || activeNoteBody) return
     setState((previous) => ensureNoteBodiesForAppState(previous))
   }, [activeNoteBody, activeNoteBodyId])
-
-  const stageManagerSelectionSnapshot = useMemo(
-    () => buildStageManagerSelectionSnapshot(workspace.tabs, stageManagerSelections),
-    [workspace.tabs, stageManagerSelections],
-  )
-  const stageManagerSelectionCounts = useMemo(
-    () => ({
-      fullParentCount: stageManagerSelectionSnapshot.fullParents.length,
-      partialParentCount: stageManagerSelectionSnapshot.partialParents.length,
-      selectedSubTabCount:
-        stageManagerSelectionSnapshot.fullParents.reduce((count, tab) => count + tab.subTabs.length, 0) +
-        stageManagerSelectionSnapshot.looseSubTabs.length,
-      hasSelection: stageManagerSelectionSnapshot.hasSelection,
-    }),
-    [stageManagerSelectionSnapshot],
-  )
-  const getDraftDomainId = (draftDomainId: string) =>
-    draftDomainId && state.domains.some((domain) => domain.id === draftDomainId) ? draftDomainId : state.activeDomainId
-  const getDomainSpaces = (domainId: string) => state.domains.find((domain) => domain.id === domainId)?.spaces ?? []
-  const stageManagerPromoteDomainId = getDraftDomainId(stageManagerDraft.promoteDomainId)
-  const stageManagerDemoteDomainId = getDraftDomainId(stageManagerDraft.demoteDomainId)
-  const stageManagerMigrateDomainId = getDraftDomainId(stageManagerDraft.migrateDomainId)
-  const stageManagerMigrateParentDomainId = getDraftDomainId(stageManagerDraft.migrateParentDomainId)
-  const stageManagerPromoteDestinationSpaces = getDomainSpaces(stageManagerPromoteDomainId)
-  const stageManagerDemoteSpaces = getDomainSpaces(stageManagerDemoteDomainId)
-  const stageManagerMigrateParentSpaces = getDomainSpaces(stageManagerMigrateParentDomainId)
-  const stageManagerDemoteSpace =
-    stageManagerDemoteSpaces.find((space) => space.id === stageManagerDraft.demoteSpaceId) ??
-    (stageManagerDemoteDomainId === state.activeDomainId ? activeSpace : stageManagerDemoteSpaces[0]) ??
-    null
-  const stageManagerOtherSpaces = useMemo(
-    () =>
-      getDomainSpaces(stageManagerMigrateDomainId).filter(
-        (space) => !(stageManagerMigrateDomainId === state.activeDomainId && space.id === activeSpace.id),
-      ),
-    [activeSpace.id, stageManagerMigrateDomainId, state.activeDomainId, state.domains],
-  )
-  const stageManagerDemoteParentOptions = useMemo(
-    () =>
-      (stageManagerDemoteSpace?.data.tabs ?? []).filter(
-        (tab) =>
-          !(stageManagerDemoteDomainId === state.activeDomainId && stageManagerDemoteSpace?.id === activeSpace.id) ||
-          !stageManagerSelectionSnapshot.fullParentIds.has(tab.id),
-      ),
-    [
-      activeSpace.id,
-      stageManagerDemoteDomainId,
-      stageManagerDemoteSpace,
-      stageManagerSelectionSnapshot.fullParentIds,
-      state.activeDomainId,
-    ],
-  )
-  const stageManagerSelectedPromoteSpace =
-    stageManagerDraft.promoteSpaceMode === 'existing'
-      ? stageManagerPromoteDestinationSpaces.find((space) => space.id === stageManagerDraft.promoteSpaceId) ?? null
-      : null
-  const stageManagerSelectedMigrateSpace =
-    stageManagerDraft.migrateSpaceMode === 'existing'
-      ? stageManagerOtherSpaces.find((space) => space.id === stageManagerDraft.migrateSpaceId) ?? null
-      : null
-  const stageManagerSelectedMigrateParentSpace =
-    stageManagerDraft.migrateParentSpaceMode === 'current'
-      ? activeSpace
-      : stageManagerDraft.migrateParentSpaceMode === 'existing'
-        ? stageManagerMigrateParentSpaces.find((space) => space.id === stageManagerDraft.migrateParentSpaceId) ?? null
-        : null
-  const stageManagerMigrateParentOptions = useMemo(() => {
-    const destinationSpace = stageManagerSelectedMigrateParentSpace
-    if (!destinationSpace) return []
-    return destinationSpace.data.tabs.filter(
-      (tab) => destinationSpace.id !== activeSpace.id || !stageManagerSelectionSnapshot.fullParentIds.has(tab.id),
-    )
-  }, [activeSpace.id, stageManagerSelectedMigrateParentSpace, stageManagerSelectionSnapshot.fullParentIds])
-  const stageManagerStrayExistingParentOptions = useMemo(() => {
-    const destinationSpace = stageManagerSelectedMigrateSpace
-    if (!destinationSpace) return []
-    return destinationSpace.data.tabs
-  }, [stageManagerSelectedMigrateSpace])
-  const stageManagerStrayHandlingSelectValue =
-    stageManagerDraft.strayHandlingMode === 'selected-parent'
-      ? `selected-parent:${stageManagerDraft.straySelectedParentId}`
-      : stageManagerDraft.strayHandlingMode
-
-  useEffect(() => {
-    if (viewMode !== 'stage-manager') return
-
-    setStageManagerDraft((previous) => {
-      let changed = false
-      let next = previous
-
-      if (previous.promoteSpaceId && !stageManagerPromoteDestinationSpaces.some((space) => space.id === previous.promoteSpaceId)) {
-        next = { ...next, promoteSpaceId: '' }
-        changed = true
-      }
-
-      if (!previous.promoteDomainId) {
-        next = { ...next, promoteDomainId: state.activeDomainId }
-        changed = true
-      }
-
-      if (!previous.demoteDomainId) {
-        next = { ...next, demoteDomainId: state.activeDomainId, demoteSpaceId: activeSpace.id }
-        changed = true
-      }
-
-      if (previous.demoteSpaceId && !stageManagerDemoteSpaces.some((space) => space.id === previous.demoteSpaceId)) {
-        next = { ...next, demoteSpaceId: stageManagerDemoteSpaces[0]?.id ?? '' }
-        changed = true
-      }
-
-      if (previous.demoteParentId && !stageManagerDemoteParentOptions.some((tab) => tab.id === previous.demoteParentId)) {
-        next = { ...next, demoteParentId: '' }
-        changed = true
-      }
-
-      if (!previous.migrateDomainId) {
-        next = { ...next, migrateDomainId: state.activeDomainId }
-        changed = true
-      }
-
-      if (previous.migrateSpaceId && !stageManagerOtherSpaces.some((space) => space.id === previous.migrateSpaceId)) {
-        next = { ...next, migrateSpaceId: '' }
-        changed = true
-      }
-
-      if (
-        previous.migrateParentSpaceId &&
-        previous.migrateParentSpaceMode === 'existing' &&
-        !stageManagerMigrateParentSpaces.some((space) => space.id === previous.migrateParentSpaceId)
-      ) {
-        next = { ...next, migrateParentSpaceId: '' }
-        changed = true
-      }
-
-      if (!previous.migrateParentDomainId) {
-        next = { ...next, migrateParentDomainId: state.activeDomainId }
-        changed = true
-      }
-
-      if (previous.migrateParentId && !stageManagerMigrateParentOptions.some((tab) => tab.id === previous.migrateParentId)) {
-        next = { ...next, migrateParentId: '' }
-        changed = true
-      }
-
-      if (
-        previous.straySelectedParentId &&
-        !stageManagerSelectionSnapshot.fullParents.some((tab) => tab.id === previous.straySelectedParentId)
-      ) {
-        next = {
-          ...next,
-          straySelectedParentId: '',
-          strayHandlingMode: previous.strayHandlingMode === 'selected-parent' ? 'promote' : previous.strayHandlingMode,
-        }
-        changed = true
-      }
-
-      if (
-        previous.strayExistingParentId &&
-        !stageManagerStrayExistingParentOptions.some((tab) => tab.id === previous.strayExistingParentId)
-      ) {
-        next = { ...next, strayExistingParentId: '' }
-        changed = true
-      }
-
-      return changed ? next : previous
-    })
-  }, [
-    viewMode,
-    stageManagerDemoteParentOptions,
-    stageManagerDemoteSpaces,
-    stageManagerMigrateParentOptions,
-    stageManagerOtherSpaces,
-    stageManagerPromoteDestinationSpaces,
-    stageManagerMigrateParentSpaces,
-    stageManagerSelectionSnapshot.fullParents,
-    stageManagerStrayExistingParentOptions,
-    state.activeDomainId,
-    activeSpace.id,
-  ])
-
-  useEffect(() => {
-    if (!arrangeMode.active || arrangeMode.scope !== 'tabs' || viewMode !== 'main') return
-
-    setArrangeMode((previous) => {
-      if (!previous.active) return previous
-
-      const validParentTabIds = new Set(workspace.tabs.map((tab) => tab.id))
-      let nextDragItem = previous.dragItem
-      let nextOverParentTabId = previous.overParentTabId
-      let nextOverParentInsert = previous.overParentInsert
-      let nextOverSubTabId = previous.overSubTabId
-      let nextOverSubTabInsert = previous.overSubTabInsert
-
-      if (nextDragItem?.type === 'tab' && !validParentTabIds.has(nextDragItem.tabId)) {
-        nextDragItem = null
-      }
-
-      const currentDragItem = nextDragItem
-      if (currentDragItem?.type === 'subtab') {
-        const sourceParent = workspace.tabs.find((tab) => tab.id === currentDragItem.parentTabId)
-        if (!sourceParent || !sourceParent.subTabs.some((subTab) => subTab.id === currentDragItem.subTabId)) {
-          nextDragItem = null
-        }
-      }
-
-      if (nextOverParentTabId && !validParentTabIds.has(nextOverParentTabId)) {
-        nextOverParentTabId = null
-        nextOverParentInsert = null
-      }
-
-      if (nextOverSubTabId && !activeTab.subTabs.some((subTab) => subTab.id === nextOverSubTabId)) {
-        nextOverSubTabId = null
-        nextOverSubTabInsert = null
-      }
-
-      if (nextDragItem?.type !== 'tab' && nextOverParentInsert) {
-        nextOverParentInsert = null
-      }
-
-      if (nextDragItem?.type !== 'subtab' && nextOverSubTabInsert) {
-        nextOverSubTabInsert = null
-      }
-
-      if (
-        nextDragItem === previous.dragItem &&
-        nextOverParentTabId === previous.overParentTabId &&
-        nextOverParentInsert === previous.overParentInsert &&
-        nextOverSubTabId === previous.overSubTabId &&
-        nextOverSubTabInsert === previous.overSubTabInsert
-      ) {
-        return previous
-      }
-
-      return {
-        ...previous,
-        dragItem: nextDragItem,
-        overParentTabId: nextOverParentTabId,
-        overParentInsert: nextOverParentInsert,
-        overSubTabId: nextOverSubTabId,
-        overSubTabInsert: nextOverSubTabInsert,
-      }
-    })
-  }, [arrangeMode.active, arrangeMode.scope, viewMode, workspace.tabs, activeTab.subTabs])
-
-  useEffect(() => {
-    if (!arrangeMode.active || arrangeMode.scope !== 'spaces' || viewMode !== 'spaces') return
-
-    setArrangeMode((previous) => {
-      if (!previous.active || previous.scope !== 'spaces') return previous
-
-      const validSpaceIds = new Set(state.spaces.map((space) => space.id))
-      let nextDragItem = previous.dragItem
-      let nextOverSpaceId = previous.overSpaceId
-      let nextOverSpaceInsert = previous.overSpaceInsert
-
-      if (nextDragItem?.type === 'space' && !validSpaceIds.has(nextDragItem.spaceId)) {
-        nextDragItem = null
-      }
-
-      if (nextOverSpaceId && !validSpaceIds.has(nextOverSpaceId)) {
-        nextOverSpaceId = null
-        nextOverSpaceInsert = null
-      }
-
-      if (nextDragItem?.type !== 'space' && nextOverSpaceInsert) {
-        nextOverSpaceInsert = null
-      }
-
-      if (
-        nextDragItem === previous.dragItem &&
-        nextOverSpaceId === previous.overSpaceId &&
-        nextOverSpaceInsert === previous.overSpaceInsert
-      ) {
-        return previous
-      }
-
-      return {
-        ...previous,
-        dragItem: nextDragItem,
-        overSpaceId: nextOverSpaceId,
-        overSpaceInsert: nextOverSpaceInsert,
-      }
-    })
-  }, [arrangeMode.active, arrangeMode.scope, viewMode, state.spaces])
 
   const activeContent = getNoteBodyMarkdown(activeNoteBody, resolvedActiveAisleId)
 
@@ -2007,6 +693,45 @@ function App() {
       markdown,
     )
   }
+
+  const arrange = useArrangeMode({
+    state,
+    setState,
+    viewMode,
+    editing,
+    contextMenu,
+    workspace,
+    activeTab,
+    flushPendingContent,
+    updateActiveSpaceData,
+    setMenuOpen,
+    setContextMenu,
+    setEditing,
+    exitAisleDeleteMode,
+  })
+  const arrangeMode = arrange.mode
+  const arrangeDraggingItem = arrange.draggingItem
+  const spaceArrangeDragPreview = arrange.spaceDragPreview
+  const tabArrangeDragPreview = arrange.tabDragPreview
+  const primaryTabRailRef = arrange.primaryTabRailRef
+  const subTabRailRef = arrange.subTabRailRef
+  const spacesGridRef = arrange.spacesGridRef
+  const suppressNextSpaceArrangeExitRef = arrange.suppressNextSpaceArrangeExitRef
+  const clearArrangePressTimer = arrange.clearPressTimer
+  const clearArrangeTapCandidate = arrange.clearTapCandidate
+  const consumeArrangeClickSuppression = arrange.consumeClickSuppression
+  const enterArrangeModeFromContext = arrange.enterFromContext
+  const exitArrangeMode = arrange.exit
+  const startArrangeDragSeed = arrange.startDragSeed
+  const startArrangeTapCandidate = arrange.startTapCandidate
+  const startArrangePress = arrange.startPress
+  const finalizeArrangeTapCandidate = arrange.finalizeTapCandidate
+  const handleArrangeSpacePointerMove = arrange.handleSpacePointerMove
+  const handleArrangeSpacePointerUp = arrange.handleSpacePointerUp
+  const cancelArrangeSpacePointerDrag = arrange.cancelSpacePointerDrag
+  const handleArrangeTabPointerMove = arrange.handleTabPointerMove
+  const handleArrangeTabPointerUp = arrange.handleTabPointerUp
+  const cancelArrangeTabPointerDrag = arrange.cancelTabPointerDrag
 
   const { navigateHistoryBy, returnToLastTabLikeView } = useNavigationHistory({
     viewMode,
@@ -2261,7 +986,10 @@ function App() {
     ].join('::')
 
   const getNormalizedEditorMarkdown = (editor: Editor) =>
-    normalizeMarkdownForPersistence(mergeLeadingIndentsFromWysiwyg(editor, editor.getMarkdown()))
+    normalizeEmptyHeadingMarkersFromWysiwyg(
+      editor,
+      normalizeMarkdownForPersistence(mergeLeadingIndentsFromWysiwyg(editor, editor.getMarkdown())),
+    )
 
   const isPendingCreatedRenameActive = () => {
     return Boolean(pendingCreatedEditRef.current)
@@ -3161,6 +1889,30 @@ function App() {
     return normalized
   }
 
+  const imageToolsController = useImageTools({
+    editorRef,
+    editorEventRootRef,
+    activateEditorFromEventTarget,
+    commitCurrentEditorContent,
+    commitActiveEditorMarkdownNow,
+    pushToast,
+  })
+  const imageTools = imageToolsController.imageTools
+  const inlineCrop = imageToolsController.inlineCrop
+  const activeImageRef = imageToolsController.activeImageRef
+  const isImageCropActive = imageToolsController.isCropActive
+  const closeImageTools = imageToolsController.close
+  const closeImageToolsIfSelectedImageMissing = imageToolsController.closeIfSelectedImageMissing
+  const refreshImageToolsPosition = imageToolsController.refreshPosition
+  const selectImageForTools = imageToolsController.select
+  const copySelectedImageToClipboard = imageToolsController.copySelectedToClipboard
+  const deleteActiveEditorImageNode = imageToolsController.deleteSelectedImage
+  const beginImageResize = imageToolsController.beginResize
+  const startInlineCrop = imageToolsController.startCrop
+  const cancelInlineCrop = imageToolsController.cancelCrop
+  const applyInlineCrop = imageToolsController.applyCrop
+  const beginInlineCropMouseDrag = imageToolsController.beginCropMouseDrag
+
   const runActiveEditorCommand = (command: string, payload?: Record<string, unknown>) => {
     const currentEditor = editorRef.current
     if (!currentEditor) return false
@@ -3324,20 +2076,6 @@ function App() {
       return
     }
 
-    const normalized = normalizeHeadingMarkers(markdown)
-    if (normalized !== markdown) {
-      lastEditorMarkdownRef.current = normalized
-      lastEditorMarkdownByAisleRef.current.set(aisleId, normalized)
-      scheduleContentCommit(
-        normalized,
-        activeSpaceIdRef.current,
-        activeTabIdRef.current,
-        activeSubTabIdRef.current,
-        aisleId,
-      )
-      return
-    }
-
     const materializedHorizontalRule = materializeHorizontalRuleShortcut(previousMarkdown, markdown)
     if (materializedHorizontalRule && materializedHorizontalRule !== markdown) {
       normalizingAisleIdsRef.current.add(aisleId)
@@ -3358,494 +2096,6 @@ function App() {
       aisleId,
     )
   }
-
-  const closeImageTools = () => {
-    activeImageRef.current = null
-    imageResizeRef.current = null
-    resetInlineCropDrag()
-    updateInlineCrop({ active: false, relX: 0, relY: 0, relWidth: 1, relHeight: 1, top: 0, left: 0, width: 0, height: 0 })
-    setImageTools({ visible: false, cropTop: 0, cropLeft: 0, resizeTop: 0, resizeLeft: 0 })
-  }
-
-  const closeImageToolsIfSelectedImageMissing = () => {
-    const image = activeImageRef.current
-    if (!image) return
-    const editorRoot = editorEventRootRef.current
-    if (!image.isConnected || (editorRoot && !editorRoot.contains(image))) {
-      closeImageTools()
-    }
-  }
-
-  const refreshImageToolsPosition = () => {
-    const image = activeImageRef.current
-    if (!image || !image.isConnected) {
-      closeImageTools()
-      return
-    }
-    const rect = image.getBoundingClientRect()
-    setImageTools({
-      visible: true,
-      cropTop: Math.max(8, rect.top + 4),
-      cropLeft: Math.max(8, rect.left + 4),
-      resizeTop: Math.max(8, rect.bottom - 2),
-      resizeLeft: Math.max(8, rect.right - 2),
-    })
-
-    updateInlineCrop((previous) => {
-      if (!previous.active) return previous
-      const width = Math.max(24, previous.relWidth * rect.width)
-      const height = Math.max(24, previous.relHeight * rect.height)
-      const x = Math.max(0, Math.min(rect.width - width, previous.relX * rect.width))
-      const y = Math.max(0, Math.min(rect.height - height, previous.relY * rect.height))
-      return {
-        ...previous,
-        relX: rect.width > 0 ? x / rect.width : 0,
-        relY: rect.height > 0 ? y / rect.height : 0,
-        relWidth: rect.width > 0 ? width / rect.width : previous.relWidth,
-        relHeight: rect.height > 0 ? height / rect.height : previous.relHeight,
-        top: rect.top + y,
-        left: rect.left + x,
-        width,
-        height,
-      }
-    })
-  }
-
-  const selectImageForTools = (image: HTMLImageElement) => {
-    activeImageRef.current = image
-    activateEditorFromEventTarget(image)
-    editorRef.current?.focus()
-    refreshImageToolsPosition()
-  }
-
-  const buildClipboardImagePayload = async (image: HTMLImageElement) => {
-    if (!image.complete || image.naturalWidth <= 0 || image.naturalHeight <= 0) {
-      await new Promise<void>((resolve, reject) => {
-        image.onload = () => resolve()
-        image.onerror = () => reject(new Error('image load failed'))
-      })
-    }
-
-    const width = image.naturalWidth || image.width
-    const height = image.naturalHeight || image.height
-    if (width <= 0 || height <= 0) return null
-
-    const canvas = document.createElement('canvas')
-    canvas.width = width
-    canvas.height = height
-    const context = canvas.getContext('2d')
-    if (!context) return null
-
-    context.drawImage(image, 0, 0, width, height)
-    const blob = await new Promise<Blob | null>((resolve) => {
-      canvas.toBlob((nextBlob) => resolve(nextBlob), 'image/png')
-    })
-    if (!blob) return null
-
-    return {
-      blob,
-      dataUrl: canvas.toDataURL('image/png'),
-    }
-  }
-
-  const copySelectedImageToClipboard = async () => {
-    const image = activeImageRef.current
-    if (!image) {
-      pushToast('no image selected to copy.', 'warning')
-      return false
-    }
-
-    try {
-      const payload = await buildClipboardImagePayload(image)
-      if (!payload) throw new Error('clipboard image payload failed')
-
-      if (window.electronAPI?.copyImageDataUrl) {
-        const result = await window.electronAPI.copyImageDataUrl(payload.dataUrl)
-        if (!result?.ok) {
-          throw new Error(result?.error ?? 'clipboard write failed')
-        }
-      } else if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
-        await navigator.clipboard.write([new ClipboardItem({ [payload.blob.type]: payload.blob })])
-      } else {
-        throw new Error('clipboard image write unsupported')
-      }
-
-      pushToast('image copied.', 'success')
-      return true
-    } catch {
-      pushToast('could not copy image.', 'warning')
-      return false
-    }
-  }
-
-  const findImageNodeHitForElement = (view: any, image: HTMLImageElement): { node: any; pos: number } | null => {
-    if (!view?.dom?.contains(image)) return null
-    const docSize = view.state.doc.content.size
-    const clampPos = (pos: number) => Math.max(0, Math.min(docSize, pos))
-    const inspectPos = (rawPos: number) => {
-      const pos = clampPos(rawPos)
-      const nodeAt = view.state.doc.nodeAt(pos)
-      if (nodeAt?.type?.name === 'image') return { node: nodeAt, pos }
-
-      const resolved = view.state.doc.resolve(pos)
-      if (resolved.nodeAfter?.type?.name === 'image') return { node: resolved.nodeAfter, pos }
-      if (resolved.nodeBefore?.type?.name === 'image') {
-        return { node: resolved.nodeBefore, pos: Math.max(0, pos - resolved.nodeBefore.nodeSize) }
-      }
-      return null
-    }
-
-    try {
-      const domPos = view.posAtDOM(image, 0)
-      for (const candidatePos of [domPos, domPos - 1, domPos + 1]) {
-        const hit = inspectPos(candidatePos)
-        if (hit) return hit
-      }
-    } catch {
-      // Fall back to matching below.
-    }
-
-    const imageUrl = image.getAttribute('src') ?? ''
-    const altText = image.getAttribute('alt') ?? ''
-    let fallback: { node: any; pos: number } | null = null
-    view.state.doc.descendants((node: any, pos: number) => {
-      if (fallback || node?.type?.name !== 'image') return
-      const attrs = node.attrs ?? {}
-      if ((attrs.imageUrl ?? '') === imageUrl && (attrs.altText ?? '') === altText) {
-        fallback = { node, pos }
-      }
-    })
-    return fallback
-  }
-
-  const updateActiveEditorImageNode = (image: HTMLImageElement, attrs: { imageUrl?: string; altText?: string | null }) => {
-    activateEditorFromEventTarget(image)
-    const currentEditor = editorRef.current
-    const view = getWysiwygView(currentEditor)
-    if (!currentEditor || !view) return false
-
-    const hit = findImageNodeHitForElement(view, image)
-    if (!hit) return false
-
-    view.dispatch(
-      view.state.tr
-        .setNodeMarkup(hit.pos, null, {
-          ...(hit.node.attrs ?? {}),
-          ...attrs,
-        })
-        .scrollIntoView(),
-    )
-    commitActiveEditorMarkdownNow(currentEditor)
-    return true
-  }
-
-  const deleteActiveEditorImageNode = () => {
-    const image = activeImageRef.current
-    if (!image || !image.isConnected) return false
-    activateEditorFromEventTarget(image)
-    const currentEditor = editorRef.current
-    const view = getWysiwygView(currentEditor)
-    if (!currentEditor || !view) return false
-
-    const hit = findImageNodeHitForElement(view, image)
-    if (!hit) return false
-
-    view.dispatch(view.state.tr.delete(hit.pos, hit.pos + hit.node.nodeSize).scrollIntoView())
-    commitActiveEditorMarkdownNow(currentEditor)
-    closeImageTools()
-    return true
-  }
-
-  const renderImageToDataUrl = async (image: HTMLImageElement, width: number, height: number) => {
-    const sourceImage = new Image()
-    sourceImage.src = image.src
-    await new Promise<void>((resolve, reject) => {
-      sourceImage.onload = () => resolve()
-      sourceImage.onerror = () => reject(new Error('image load failed'))
-    })
-
-    const outputWidth = Math.max(8, Math.round(width))
-    const outputHeight = Math.max(8, Math.round(height))
-    const canvas = document.createElement('canvas')
-    canvas.width = outputWidth
-    canvas.height = outputHeight
-    const context = canvas.getContext('2d')
-    if (!context) return null
-
-    context.drawImage(sourceImage, 0, 0, outputWidth, outputHeight)
-    return canvas.toDataURL('image/png')
-  }
-
-  const commitResizedActiveImageToEditor = async () => {
-    const image = activeImageRef.current
-    if (!image || !image.isConnected) {
-      commitCurrentEditorContent()
-      return
-    }
-
-    const rect = image.getBoundingClientRect()
-    if (rect.width <= 0 || rect.height <= 0) {
-      commitCurrentEditorContent()
-      return
-    }
-
-    try {
-      const nextDataUrl = await renderImageToDataUrl(image, rect.width, rect.height)
-      if (!nextDataUrl) {
-        commitCurrentEditorContent()
-        return
-      }
-      if (!updateActiveEditorImageNode(image, { imageUrl: nextDataUrl, altText: image.alt || null })) {
-        image.src = nextDataUrl
-        commitCurrentEditorContent()
-      }
-      refreshImageToolsPosition()
-    } catch {
-      commitCurrentEditorContent()
-    }
-  }
-
-  const beginImageResize = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    event.preventDefault()
-    event.stopPropagation()
-    if (inlineCrop.active) return
-    const image = activeImageRef.current
-    if (!image || !image.isConnected) return
-    imageResizeRef.current = {
-      startX: event.clientX,
-      startWidth: image.getBoundingClientRect().width || image.width || image.naturalWidth || 160,
-    }
-  }
-
-  const continueImageResize = (clientX: number) => {
-    const image = activeImageRef.current
-    const resize = imageResizeRef.current
-    if (!image || !resize) return
-    const nextWidth = Math.max(80, Math.round(resize.startWidth + (clientX - resize.startX)))
-    image.style.width = `${nextWidth}px`
-    image.style.maxWidth = '100%'
-    image.style.height = 'auto'
-    image.setAttribute('width', String(nextWidth))
-    refreshImageToolsPosition()
-  }
-
-  const startInlineCrop = () => {
-    const image = activeImageRef.current
-    if (!image || !image.isConnected) return
-    const rect = image.getBoundingClientRect()
-    const width = Math.max(24, rect.width * 0.8)
-    const height = Math.max(24, rect.height * 0.8)
-    const left = rect.left + (rect.width - width) / 2
-    const top = rect.top + (rect.height - height) / 2
-    const nextInlineCrop = {
-      active: true,
-      relX: rect.width > 0 ? (left - rect.left) / rect.width : 0,
-      relY: rect.height > 0 ? (top - rect.top) / rect.height : 0,
-      relWidth: rect.width > 0 ? width / rect.width : 0.8,
-      relHeight: rect.height > 0 ? height / rect.height : 0.8,
-      top,
-      left,
-      width,
-      height,
-    }
-    updateInlineCrop(nextInlineCrop)
-  }
-
-  const cancelInlineCrop = () => {
-    resetInlineCropDrag()
-    updateInlineCrop((previous) => ({ ...previous, active: false, top: 0, left: 0, width: 0, height: 0 }))
-  }
-
-  const applyInlineCrop = async () => {
-    const image = activeImageRef.current
-    const crop = inlineCropRef.current
-    if (!image || !crop.active || !image.src) return
-
-    const sourceImage = new Image()
-    sourceImage.src = image.src
-    await new Promise<void>((resolve, reject) => {
-      sourceImage.onload = () => resolve()
-      sourceImage.onerror = () => reject(new Error('image load failed'))
-    })
-
-    const naturalWidth = sourceImage.naturalWidth
-    const naturalHeight = sourceImage.naturalHeight
-    if (naturalWidth <= 0 || naturalHeight <= 0) return
-
-    const rect = image.getBoundingClientRect()
-    if (rect.width <= 0 || rect.height <= 0) return
-
-    const widthPx = crop.width
-    const heightPx = crop.height
-    const xPx = crop.left - rect.left
-    const yPx = crop.top - rect.top
-
-    const sourceLeft = Math.max(0, Math.min(naturalWidth, (xPx / rect.width) * naturalWidth))
-    const sourceTop = Math.max(0, Math.min(naturalHeight, (yPx / rect.height) * naturalHeight))
-    const sourceRight = Math.max(sourceLeft, Math.min(naturalWidth, ((xPx + widthPx) / rect.width) * naturalWidth))
-    const sourceBottom = Math.max(sourceTop, Math.min(naturalHeight, ((yPx + heightPx) / rect.height) * naturalHeight))
-    const sourceX = Math.max(0, Math.min(naturalWidth - 1, Math.floor(sourceLeft)))
-    const sourceY = Math.max(0, Math.min(naturalHeight - 1, Math.floor(sourceTop)))
-    const sourceEndX = Math.max(sourceX + 1, Math.min(naturalWidth, Math.ceil(sourceRight)))
-    const sourceEndY = Math.max(sourceY + 1, Math.min(naturalHeight, Math.ceil(sourceBottom)))
-    const sourceWidth = sourceEndX - sourceX
-    const sourceHeight = sourceEndY - sourceY
-    const renderedWidth = Math.max(8, Math.round(crop.width))
-    const renderedHeight = Math.max(8, Math.round(crop.height))
-    const outputWidth = sourceWidth
-    const outputHeight = sourceHeight
-
-    const canvas = document.createElement('canvas')
-    canvas.width = outputWidth
-    canvas.height = outputHeight
-    const context = canvas.getContext('2d')
-    if (!context) return
-
-    context.imageSmoothingEnabled = false
-    context.drawImage(sourceImage, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, outputWidth, outputHeight)
-    const nextDataUrl = canvas.toDataURL('image/png')
-
-    if (!updateActiveEditorImageNode(image, { imageUrl: nextDataUrl, altText: image.alt || null })) {
-      image.src = nextDataUrl
-      commitCurrentEditorContent()
-    }
-    image.style.width = `${renderedWidth}px`
-    image.style.height = `${renderedHeight}px`
-    image.setAttribute('width', String(renderedWidth))
-    image.setAttribute('height', String(renderedHeight))
-    image.style.maxWidth = 'none'
-    cancelInlineCrop()
-    refreshImageToolsPosition()
-  }
-
-  const beginInlineCropMouseDrag = (mode: InlineCropDragMode, event: MouseEvent<HTMLElement>) => {
-    event.preventDefault()
-    event.stopPropagation()
-    startInlineCropDrag(mode, event.clientX, event.clientY)
-  }
-
-  useEffect(() => {
-    const stopCropMouseEvent = (event: globalThis.MouseEvent) => {
-      if (event.cancelable) {
-        event.preventDefault()
-      }
-      event.stopPropagation()
-      event.stopImmediatePropagation()
-    }
-
-    const applyInlineCropDrag = (clientX: number, clientY: number) => {
-      const drag = inlineCropDragRef.current
-      const crop = inlineCropRef.current
-      if (!drag.mode || !crop.active) return false
-
-      const image = activeImageRef.current
-      if (!image || !image.isConnected) return false
-      const rect = image.getBoundingClientRect()
-      if (rect.width <= 0 || rect.height <= 0) return false
-
-      const startX = drag.startRelX * rect.width
-      const startY = drag.startRelY * rect.height
-      const startWidth = Math.max(24, drag.startRelWidth * rect.width)
-      const startHeight = Math.max(24, drag.startRelHeight * rect.height)
-      const dx = clientX - drag.startX
-      const dy = clientY - drag.startY
-
-      const commitCropPixels = (x: number, y: number, width: number, height: number) => {
-        const nextX = Math.max(0, Math.min(rect.width - width, x))
-        const nextY = Math.max(0, Math.min(rect.height - height, y))
-        const nextWidth = Math.max(24, Math.min(width, rect.width - nextX))
-        const nextHeight = Math.max(24, Math.min(height, rect.height - nextY))
-        updateInlineCrop((previous) => ({
-          ...previous,
-          relX: rect.width > 0 ? nextX / rect.width : 0,
-          relY: rect.height > 0 ? nextY / rect.height : 0,
-          relWidth: rect.width > 0 ? nextWidth / rect.width : previous.relWidth,
-          relHeight: rect.height > 0 ? nextHeight / rect.height : previous.relHeight,
-          top: rect.top + nextY,
-          left: rect.left + nextX,
-          width: nextWidth,
-          height: nextHeight,
-        }))
-      }
-
-      if (drag.mode === 'move') {
-        const nextX = Math.max(0, Math.min(rect.width - startWidth, startX + dx))
-        const nextY = Math.max(0, Math.min(rect.height - startHeight, startY + dy))
-        commitCropPixels(nextX, nextY, startWidth, startHeight)
-        return true
-      }
-
-      if (drag.mode === 'resize-e') {
-        commitCropPixels(startX, startY, startWidth + dx, startHeight)
-        return true
-      }
-
-      if (drag.mode === 'resize-s') {
-        commitCropPixels(startX, startY, startWidth, startHeight + dy)
-        return true
-      }
-
-      if (drag.mode === 'resize-se') {
-        commitCropPixels(startX, startY, startWidth + dx, startHeight + dy)
-        return true
-      }
-
-      if (drag.mode === 'resize-w') {
-        const nextX = Math.max(0, Math.min(startX + startWidth - 24, startX + dx))
-        commitCropPixels(nextX, startY, startWidth + startX - nextX, startHeight)
-        return true
-      }
-
-      if (drag.mode === 'resize-n') {
-        const nextY = Math.max(0, Math.min(startY + startHeight - 24, startY + dy))
-        commitCropPixels(startX, nextY, startWidth, startHeight + startY - nextY)
-        return true
-      }
-
-      return true
-    }
-
-    const handlePointerMove = (event: PointerEvent) => {
-      if (imageResizeRef.current) {
-        continueImageResize(event.clientX)
-      }
-    }
-
-    const handlePointerUp = () => {
-      if (imageResizeRef.current) {
-        imageResizeRef.current = null
-        void commitResizedActiveImageToEditor()
-      }
-    }
-
-    const handleMouseMove = (event: globalThis.MouseEvent) => {
-      if (applyInlineCropDrag(event.clientX, event.clientY)) {
-        stopCropMouseEvent(event)
-      }
-    }
-
-    const handleMouseUp = (event: globalThis.MouseEvent) => {
-      const hadCropDrag = Boolean(inlineCropDragRef.current.mode && inlineCropRef.current.active)
-      if (hadCropDrag) {
-        stopCropMouseEvent(event)
-      }
-      resetInlineCropDrag()
-    }
-
-    const listenerOptions: AddEventListenerOptions = { capture: true }
-    document.addEventListener('pointermove', handlePointerMove, listenerOptions)
-    document.addEventListener('pointerup', handlePointerUp, listenerOptions)
-    document.addEventListener('pointercancel', handlePointerUp, listenerOptions)
-    document.addEventListener('mousemove', handleMouseMove, listenerOptions)
-    document.addEventListener('mouseup', handleMouseUp, listenerOptions)
-    return () => {
-      document.removeEventListener('pointermove', handlePointerMove, listenerOptions)
-      document.removeEventListener('pointerup', handlePointerUp, listenerOptions)
-      document.removeEventListener('pointercancel', handlePointerUp, listenerOptions)
-      document.removeEventListener('mousemove', handleMouseMove, listenerOptions)
-      document.removeEventListener('mouseup', handleMouseUp, listenerOptions)
-    }
-  }, [])
 
   const getContextPreviewData = (payload: NoteContextReferencePayload, sourceNoteBodyId: string) => {
     const latestState = stateRef.current
@@ -4160,9 +2410,7 @@ function App() {
           if (!isMainViewRef.current) return
           const currentEditor = editorRef.current
           if (!currentEditor) return
-          const markdown = normalizeMarkdownForPersistence(
-            mergeLeadingIndentsFromWysiwyg(currentEditor, currentEditor.getMarkdown()),
-          )
+          const markdown = getNormalizedEditorMarkdown(currentEditor)
           const previousMarkdown = lastEditorMarkdownRef.current
 
           if (normalizingContentRef.current) {
@@ -4170,19 +2418,6 @@ function App() {
             const normalizedMarkdown = lastEditorMarkdownRef.current
             scheduleContentCommit(
               normalizedMarkdown,
-              activeSpaceIdRef.current,
-              activeTabIdRef.current,
-              activeSubTabIdRef.current,
-              activeAisleIdRef.current,
-            )
-            return
-          }
-
-          const normalized = normalizeHeadingMarkers(markdown)
-          if (normalized !== markdown) {
-            lastEditorMarkdownRef.current = normalized
-            scheduleContentCommit(
-              normalized,
               activeSpaceIdRef.current,
               activeTabIdRef.current,
               activeSubTabIdRef.current,
@@ -4301,7 +2536,9 @@ function App() {
     const handlePointerDown = (event: Event) => {
       const target = getElementFromEventTarget(event.target)
       if (!target) {
-        closeImageTools()
+        if (!isImageCropActive()) {
+          closeImageTools()
+        }
         closeLinkPrompt()
         return
       }
@@ -4324,7 +2561,9 @@ function App() {
       }
       if (handleAnchorInteraction(event, target, true)) return
       if (handleInternalLinkAtPointerPosition(event)) return
-      closeImageTools()
+      if (!isImageCropActive()) {
+        closeImageTools()
+      }
       closeLinkPrompt()
     }
 
@@ -4827,6 +3066,26 @@ function App() {
     }))
   }
 
+  const stageManager = useStageManagerController({
+    state,
+    stateRef,
+    setState,
+    storageHydrated,
+    activeSpace,
+    workspace,
+    viewMode,
+    setViewMode,
+    setMenuOpen,
+    setContextMenu,
+    setEditing,
+    flushPendingContent,
+    exitArrangeMode,
+    returnToLastTabLikeView,
+    selectTab,
+    buildStateWithLatestEditorContent,
+    pushToast,
+  })
+
   const openSpace = (spaceId: string) => {
     flushPendingContent()
     closeImageTools()
@@ -4931,950 +3190,8 @@ function App() {
     setViewMode('settings')
   }
 
-  const openStageManager = () => {
-    if (viewMode !== 'main') return
-    flushPendingContent()
-    setMenuOpen(false)
-    setContextMenu(null)
-    setEditing(null)
-    exitArrangeMode()
-    resetStageManagerState()
-    setViewMode('stage-manager')
-  }
-
-  const endStageManager = () => {
-    resetStageManagerState()
-    returnToLastTabLikeView()
-  }
-
   const closeSettingsView = () => {
     returnToLastTabLikeView()
-  }
-
-  const handleStageManagerParentClick = (tab: Tab) => {
-    if (stageManagerStep !== 'select') {
-      pushToast('go back to the selection step to change selected items.', 'error')
-      return
-    }
-
-    if (workspace.activeTabId !== tab.id) {
-      selectTab(tab.id)
-      return
-    }
-
-    cycleStageManagerParentSelection(tab)
-  }
-
-  const handleStageManagerSubTabClick = (tab: Tab, subTabId: string) => {
-    if (stageManagerStep !== 'select') {
-      pushToast('go back to the selection step to change selected items.', 'error')
-      return
-    }
-
-    toggleStageManagerSubTabSelection(tab, subTabId)
-  }
-
-  const handleStageManagerHomeClick = () => {
-    if (stageManagerStep !== 'select') {
-      pushToast('go back to the selection step to change selected items.', 'error')
-      return
-    }
-
-    pushToast('home is selected automatically when the parent tab is fully selected.', 'error')
-  }
-
-  const getStageManagerConfigureValidation = () => {
-    if (!stageManagerAction) {
-      return {
-        valid: false,
-        message: 'choose a director action before continuing.',
-      }
-    }
-
-    if (stageManagerAction === 'promote') {
-      if (stageManagerSelectionSnapshot.fullParents.length === 1) {
-        if (!stageManagerDraft.newSpaceName.trim()) {
-          return {
-            valid: false,
-            message: 'name the new space for this promoted parent tab before continuing.',
-          }
-        }
-
-        return { valid: true, message: '' }
-      }
-
-      if (stageManagerDraft.promoteSpaceMode === 'existing') {
-        if (!stageManagerSelectedPromoteSpace) {
-          return {
-            valid: false,
-            message: 'choose the destination space for the promoted sub-tabs before continuing.',
-          }
-        }
-      } else if (!stageManagerDraft.newSpaceName.trim()) {
-        return {
-          valid: false,
-          message: 'name the new destination space for the promoted sub-tabs before continuing.',
-        }
-      }
-
-      return { valid: true, message: '' }
-    }
-
-    if (stageManagerAction === 'demote') {
-      if (stageManagerDraft.demoteParentMode === 'existing') {
-        if (!stageManagerDraft.demoteParentId) {
-          return {
-            valid: false,
-            message: 'choose the parent tab that will receive the demoted items before continuing.',
-          }
-        }
-
-        if (!stageManagerDemoteParentOptions.some((tab) => tab.id === stageManagerDraft.demoteParentId)) {
-          return {
-            valid: false,
-            message: 'choose a valid destination parent for the demoted items before continuing.',
-          }
-        }
-
-        if (stageManagerSelectionSnapshot.fullParentIds.has(stageManagerDraft.demoteParentId)) {
-          return {
-            valid: false,
-            message: 'a selected parent tab cannot receive demoted items. choose a different destination parent.',
-          }
-        }
-      } else if (!stageManagerDraft.demoteNewParentName.trim()) {
-        return {
-          valid: false,
-          message: 'name the new parent tab that will receive the demoted items before continuing.',
-        }
-      }
-
-      return { valid: true, message: '' }
-    }
-
-    if (stageManagerAction === 'migrate') {
-      if (stageManagerDraft.migrateTarget === 'space') {
-        if (stageManagerDraft.migrateSpaceMode === 'existing') {
-          if (!stageManagerSelectedMigrateSpace) {
-            return {
-              valid: false,
-              message: 'choose the destination space for this migration before continuing.',
-            }
-          }
-        } else if (!stageManagerDraft.newSpaceName.trim()) {
-          return {
-            valid: false,
-            message: 'name the new destination space before continuing.',
-          }
-        }
-
-        if (stageManagerSelectionSnapshot.looseSubTabs.length > 0) {
-          if (stageManagerDraft.strayHandlingMode === 'selected-parent') {
-            if (!stageManagerDraft.straySelectedParentId || !stageManagerSelectionSnapshot.fullParentIds.has(stageManagerDraft.straySelectedParentId)) {
-              return {
-                valid: false,
-                message: 'choose which selected parent should receive the stray sub-tabs before continuing.',
-              }
-            }
-          } else if (stageManagerDraft.strayHandlingMode === 'existing-parent') {
-            if (stageManagerDraft.migrateSpaceMode !== 'existing') {
-              return {
-                valid: false,
-                message: 'existing destination parents are only available when migrating into an existing space.',
-              }
-            }
-            if (
-              !stageManagerDraft.strayExistingParentId ||
-              !stageManagerStrayExistingParentOptions.some((tab) => tab.id === stageManagerDraft.strayExistingParentId)
-            ) {
-              return {
-                valid: false,
-                message: 'choose the destination parent for the stray sub-tabs before continuing.',
-              }
-            }
-          } else if (stageManagerDraft.strayHandlingMode === 'new-parent' && !stageManagerDraft.strayNewParentName.trim()) {
-            return {
-              valid: false,
-              message: 'name the new destination parent for the stray sub-tabs before continuing.',
-            }
-          }
-        }
-
-        return { valid: true, message: '' }
-      }
-
-      if (stageManagerDraft.migrateParentSpaceMode === 'existing' && !stageManagerDraft.migrateParentSpaceId) {
-        return {
-          valid: false,
-          message: 'choose the destination space that contains the target parent before continuing.',
-        }
-      }
-
-      if (stageManagerDraft.migrateParentSpaceMode === 'new') {
-        if (!stageManagerDraft.newSpaceName.trim()) {
-          return {
-            valid: false,
-            message: 'name the new destination space before continuing.',
-          }
-        }
-
-        if (!stageManagerDraft.migrateNewParentName.trim()) {
-          return {
-            valid: false,
-            message: 'name the new destination parent before continuing.',
-          }
-        }
-
-        return { valid: true, message: '' }
-      }
-
-      if (stageManagerDraft.migrateParentMode === 'existing') {
-        if (!stageManagerDraft.migrateParentId) {
-          return {
-            valid: false,
-            message: 'choose the destination parent before continuing.',
-          }
-        }
-
-        if (!stageManagerMigrateParentOptions.some((tab) => tab.id === stageManagerDraft.migrateParentId)) {
-          return {
-            valid: false,
-            message: 'choose a valid destination parent before continuing.',
-          }
-        }
-
-        if (
-          stageManagerSelectedMigrateParentSpace?.id === activeSpace.id &&
-          stageManagerSelectionSnapshot.fullParentIds.has(stageManagerDraft.migrateParentId)
-        ) {
-          return {
-            valid: false,
-            message: 'a selected parent tab cannot receive migrated items. choose a different destination parent.',
-          }
-        }
-      } else if (!stageManagerDraft.migrateNewParentName.trim()) {
-        return {
-          valid: false,
-          message: 'name the new destination parent before continuing.',
-        }
-      }
-
-      return { valid: true, message: '' }
-    }
-
-    return { valid: true, message: '' }
-  }
-
-  const getStageManagerReviewDetails = () => {
-    if (!stageManagerAction) return ['action: none selected']
-
-    const details = [
-      `selected parent tabs: ${stageManagerSelectionCounts.fullParentCount}`,
-      `selected sub-tabs: ${stageManagerSelectionCounts.selectedSubTabCount}`,
-      `action: ${stageManagerAction.replace('-', ' ')}`,
-    ]
-
-    if (stageManagerAction === 'promote') {
-      if (stageManagerSelectionSnapshot.fullParents.length === 1) {
-        details.push(`new space: ${sanitizeName(stageManagerDraft.newSpaceName || stageManagerSelectionSnapshot.fullParents[0].title)}`)
-      } else if (stageManagerDraft.promoteSpaceMode === 'existing') {
-        details.push(`destination space: ${stageManagerSelectedPromoteSpace?.name ?? 'none selected'}`)
-      } else {
-        details.push(`new space: ${sanitizeName(stageManagerDraft.newSpaceName || 'untitled')}`)
-      }
-    } else if (stageManagerAction === 'demote') {
-      if (stageManagerDraft.demoteParentMode === 'existing') {
-        details.push(
-          `destination parent: ${
-            stageManagerDemoteParentOptions.find((tab) => tab.id === stageManagerDraft.demoteParentId)?.title ?? 'none selected'
-          }`,
-        )
-      } else {
-        details.push(`new parent: ${sanitizeName(stageManagerDraft.demoteNewParentName || 'untitled')}`)
-      }
-    } else if (stageManagerAction === 'migrate') {
-      if (stageManagerDraft.migrateTarget === 'space') {
-        if (stageManagerDraft.migrateSpaceMode === 'existing') {
-          details.push(`destination space: ${stageManagerSelectedMigrateSpace?.name ?? 'none selected'}`)
-        } else {
-          details.push(`new space: ${sanitizeName(stageManagerDraft.newSpaceName || 'untitled')}`)
-        }
-        if (stageManagerSelectionSnapshot.looseSubTabs.length > 0) {
-          if (stageManagerDraft.strayHandlingMode === 'promote') {
-            details.push('stray sub-tabs: promote to own prime tabs')
-          } else if (stageManagerDraft.strayHandlingMode === 'selected-parent') {
-            details.push(
-              `stray sub-tabs: include under ${
-                stageManagerSelectionSnapshot.fullParents.find((tab) => tab.id === stageManagerDraft.straySelectedParentId)?.title ??
-                'selected parent'
-              }`,
-            )
-          } else if (stageManagerDraft.strayHandlingMode === 'existing-parent') {
-            details.push(
-              `stray sub-tabs: include under ${
-                stageManagerStrayExistingParentOptions.find((tab) => tab.id === stageManagerDraft.strayExistingParentId)?.title ??
-                'existing parent'
-              }`,
-            )
-          } else {
-            details.push(`stray sub-tabs: include under new parent ${sanitizeName(stageManagerDraft.strayNewParentName || 'untitled')}`)
-          }
-        }
-      } else {
-        if (stageManagerDraft.migrateParentSpaceMode === 'current') {
-          details.push(`destination space: ${activeSpace.name}`)
-        } else if (stageManagerDraft.migrateParentSpaceMode === 'existing') {
-          details.push(
-            `destination space: ${
-              state.spaces.find((space) => space.id === stageManagerDraft.migrateParentSpaceId)?.name ?? 'none selected'
-            }`,
-          )
-        } else {
-          details.push(`new space: ${sanitizeName(stageManagerDraft.newSpaceName || 'untitled')}`)
-        }
-
-        if (stageManagerDraft.migrateParentSpaceMode === 'new' || stageManagerDraft.migrateParentMode === 'new') {
-          details.push(`destination parent: ${sanitizeName(stageManagerDraft.migrateNewParentName || 'untitled')}`)
-        } else {
-          details.push(
-            `destination parent: ${
-              stageManagerMigrateParentOptions.find((tab) => tab.id === stageManagerDraft.migrateParentId)?.title ?? 'none selected'
-            }`,
-          )
-        }
-      }
-    } else if (stageManagerAction === 'mass-delete') {
-      details.push(`mode: ${stageManagerDraft.massDeleteMode === 'trash' ? 'move to trash' : 'delete for real'}`)
-    }
-
-    return details
-  }
-
-  const getStageManagerReviewWarning = () => {
-    if (stageManagerAction === 'mass-delete' && stageManagerDraft.massDeleteMode === 'permanent') {
-      return 'This will permanently delete the current selection.'
-    }
-    if (stageManagerAction === 'migrate' && stageManagerDraft.migrateTarget === 'parent') {
-      return 'Moving a parent into another parent demotes it into a sub-tab under that destination parent.'
-    }
-    if (stageManagerAction === 'demote') {
-      return 'Each demoted parent becomes one sub-tab whose content comes from that parent home note.'
-    }
-    return ''
-  }
-
-  const getStageManagerApplyToastMessage = () => {
-    if (stageManagerAction === 'mass-delete') {
-      return stageManagerDraft.massDeleteMode === 'trash' ? 'selected items have been moved to trash.' : 'selected items have been deleted.'
-    }
-    if (stageManagerAction === 'promote') return 'selected items have been promoted.'
-    if (stageManagerAction === 'demote') return 'selected items have been demoted.'
-    if (stageManagerAction === 'migrate') return 'selected items have been migrated.'
-    return 'director changes applied.'
-  }
-
-  const finishStageManagerApply = (nextState: AppState, toastMessage: string, tone: ToastTone = 'success') => {
-    const sanitizedState = applyAutoPurgeToAppState(nextState)
-    stateRef.current = sanitizedState
-    setState(sanitizedState)
-    if (storageHydrated) {
-      appStateStore.save(JSON.stringify(sanitizedState))
-    }
-    setViewMode('main')
-    setMenuOpen(false)
-    setContextMenu(null)
-    setEditing(null)
-    setToast({
-      id: Date.now(),
-      message: toastMessage,
-      tone,
-      durationMs: DEFAULT_TOAST_DURATION_MS,
-    })
-  }
-
-  const handleStageManagerApply = () => {
-    if (!stageManagerAction) {
-      pushToast('choose a director action before applying.', 'warning')
-      return
-    }
-
-    const validation = getStageManagerConfigureValidation()
-    if (!validation.valid) {
-      pushToast(validation.message, 'warning')
-      return
-    }
-
-    const latestState = buildStateWithLatestEditorContent()
-    const currentSpace = latestState.spaces.find((space) => space.id === latestState.activeSpaceId)
-    if (!currentSpace) return
-    const projectedDomains = latestState.domains.map((domain) =>
-      domain.id === latestState.activeDomainId
-        ? { ...domain, activeSpaceId: latestState.activeSpaceId, spaces: latestState.spaces }
-        : domain,
-    )
-    const getSpacesFromDomains = (domains: Domain[], domainId: string) =>
-      domains.find((domain) => domain.id === domainId)?.spaces ?? []
-    const replaceDomainSpaces = (domains: Domain[], domainId: string, spaces: Space[], activeSpaceId?: string) =>
-      domains.map((domain) =>
-        domain.id === domainId
-          ? {
-              ...domain,
-              spaces,
-              activeSpaceId:
-                activeSpaceId && spaces.some((space) => space.id === activeSpaceId)
-                  ? activeSpaceId
-                  : spaces.some((space) => space.id === domain.activeSpaceId)
-                    ? domain.activeSpaceId
-                    : spaces[0]?.id ?? domain.activeSpaceId,
-            }
-          : domain,
-      )
-    const buildDomainAwareState = (domains: Domain[], activeDomainId = latestState.activeDomainId, activeSpaceId = latestState.activeSpaceId) => {
-      const activeDomain = domains.find((domain) => domain.id === activeDomainId) ?? domains[0]
-      const spaces = activeDomain?.spaces ?? []
-      const resolvedSpaceId = spaces.some((space) => space.id === activeSpaceId) ? activeSpaceId : activeDomain?.activeSpaceId ?? spaces[0]?.id ?? ''
-      return {
-        ...latestState,
-        activeDomainId: activeDomain?.id ?? latestState.activeDomainId,
-        activeSpaceId: resolvedSpaceId,
-        spaces,
-        domains,
-      }
-    }
-
-    const snapshot = buildStageManagerSelectionSnapshot(currentSpace.data.tabs, stageManagerSelections)
-    if (!snapshot.hasSelection) {
-      pushToast('select at least one parent or sub-tab before applying director.', 'warning')
-      return
-    }
-
-    if (stageManagerAction === 'mass-delete') {
-      const nextSpaces = latestState.spaces.map((space) => {
-        if (space.id !== latestState.activeSpaceId) return space
-
-        const deletedTabs =
-          stageManagerDraft.massDeleteMode === 'trash'
-            ? [
-                ...space.data.deletedTabs.map((entry) => ({ ...entry, tab: cloneTabForTransfer(entry.tab) })),
-                ...snapshot.fullParents.map((tab) => ({
-                  id: createId(),
-                  tab: cloneTabForTransfer(tab),
-                  deletedAt: Date.now(),
-                })),
-              ]
-            : space.data.deletedTabs.map((entry) => ({ ...entry, tab: cloneTabForTransfer(entry.tab) }))
-
-        const deletedSubTabs =
-          stageManagerDraft.massDeleteMode === 'trash'
-            ? [
-                ...space.data.deletedSubTabs.map((entry) => ({ ...entry, subTab: cloneSubTabForTransfer(entry.subTab) })),
-                ...snapshot.looseSubTabs.map(({ parentTab, subTab }) => ({
-                  id: createId(),
-                  parentTabId: parentTab.id,
-                  parentTabTitle: parentTab.title,
-                  subTab: cloneSubTabForTransfer(subTab),
-                  deletedAt: Date.now(),
-                })),
-              ]
-            : space.data.deletedSubTabs.map((entry) => ({ ...entry, subTab: cloneSubTabForTransfer(entry.subTab) }))
-
-        const stripped = stripStageManagerSelectionsFromWorkspace(space.data, snapshot)
-        return {
-          ...space,
-          data: createWorkspaceDataFromTabs(stripped.tabs, {
-            activeTabId: stripped.activeTabId,
-            deletedTabs,
-            deletedSubTabs,
-          }),
-        }
-      })
-
-      finishStageManagerApply(
-        {
-          ...latestState,
-          spaces: nextSpaces,
-        },
-        getStageManagerApplyToastMessage(),
-      )
-      return
-    }
-
-    if (stageManagerAction === 'promote') {
-      const loosePromotedTabs = snapshot.looseSubTabs.map(({ subTab }) => createPromotedParentTab(subTab))
-      const strippedCurrentData = stripStageManagerSelectionsFromWorkspace(currentSpace.data, snapshot)
-      const nextSpaces = latestState.spaces.map((space) =>
-        space.id === currentSpace.id ? { ...space, data: strippedCurrentData } : space,
-      )
-
-      if (snapshot.fullParents.length === 1) {
-        const promotedParent = snapshot.fullParents[0]
-        const mainTab: Tab = {
-          id: createId(),
-          title: 'main',
-          noteBodyId: promotedParent.noteBodyId,
-          homeContent: promotedParent.homeContent,
-          activeSubTabId: null,
-          subTabs: [],
-        }
-        const movedTabs = [
-          mainTab,
-          ...promotedParent.subTabs.map((subTab) => createPromotedParentTab(subTab)),
-          ...loosePromotedTabs,
-        ]
-        const newSpaceId = createId()
-        const newSpace: Space = {
-          id: newSpaceId,
-          name: sanitizeName(stageManagerDraft.newSpaceName || promotedParent.title),
-          settings: { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
-          data: createWorkspaceDataFromTabs(movedTabs, { activeTabId: mainTab.id }),
-        }
-        const destinationDomainId = stageManagerPromoteDomainId
-        let nextDomains = replaceDomainSpaces(projectedDomains, latestState.activeDomainId, nextSpaces, latestState.activeSpaceId)
-        const destinationBaseSpaces =
-          destinationDomainId === latestState.activeDomainId ? nextSpaces : getSpacesFromDomains(nextDomains, destinationDomainId)
-        const destinationSpaces = [...destinationBaseSpaces, newSpace]
-        nextDomains = replaceDomainSpaces(nextDomains, destinationDomainId, destinationSpaces, newSpace.id)
-
-        finishStageManagerApply(
-          buildDomainAwareState(
-            nextDomains,
-            state.ui.stageManagerOpenDestinationAfterApply ? destinationDomainId : latestState.activeDomainId,
-            state.ui.stageManagerOpenDestinationAfterApply ? newSpace.id : latestState.activeSpaceId,
-          ),
-          getStageManagerApplyToastMessage(),
-        )
-        return
-      }
-
-      if (stageManagerDraft.promoteSpaceMode === 'new') {
-        const firstTabId = loosePromotedTabs[0]?.id ?? null
-        const newSpace: Space = {
-          id: createId(),
-          name: sanitizeName(stageManagerDraft.newSpaceName || 'untitled'),
-          settings: { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
-          data: createWorkspaceDataFromTabs(loosePromotedTabs, { activeTabId: firstTabId ?? undefined }),
-        }
-        const destinationDomainId = stageManagerPromoteDomainId
-        let nextDomains = replaceDomainSpaces(projectedDomains, latestState.activeDomainId, nextSpaces, latestState.activeSpaceId)
-        const destinationBaseSpaces =
-          destinationDomainId === latestState.activeDomainId ? nextSpaces : getSpacesFromDomains(nextDomains, destinationDomainId)
-        const destinationSpaces = [...destinationBaseSpaces, newSpace]
-        nextDomains = replaceDomainSpaces(nextDomains, destinationDomainId, destinationSpaces, newSpace.id)
-
-        finishStageManagerApply(
-          buildDomainAwareState(
-            nextDomains,
-            state.ui.stageManagerOpenDestinationAfterApply ? destinationDomainId : latestState.activeDomainId,
-            state.ui.stageManagerOpenDestinationAfterApply ? newSpace.id : latestState.activeSpaceId,
-          ),
-          getStageManagerApplyToastMessage(),
-        )
-        return
-      }
-
-      const destinationDomainId = stageManagerPromoteDomainId
-      const destinationSpaceId = stageManagerDraft.promoteSpaceId
-      const destinationFirstTabId = loosePromotedTabs[0]?.id ?? null
-      const domainsWithSource = replaceDomainSpaces(projectedDomains, latestState.activeDomainId, nextSpaces, latestState.activeSpaceId)
-      const destinationSpaces = getSpacesFromDomains(domainsWithSource, destinationDomainId).map((space) => {
-        if (space.id !== destinationSpaceId) return space
-        const destinationTabs = [...space.data.tabs.map(cloneTabForTransfer), ...loosePromotedTabs]
-        return {
-          ...space,
-          data: createWorkspaceDataFromTabs(destinationTabs, {
-            activeTabId:
-              state.ui.stageManagerOpenDestinationAfterApply && destinationFirstTabId
-                ? destinationFirstTabId
-                : space.data.activeTabId,
-            deletedTabs: space.data.deletedTabs,
-            deletedSubTabs: space.data.deletedSubTabs,
-          }),
-        }
-      })
-      const nextDomains = replaceDomainSpaces(domainsWithSource, destinationDomainId, destinationSpaces, destinationSpaceId)
-      finishStageManagerApply(
-        buildDomainAwareState(
-          nextDomains,
-          state.ui.stageManagerOpenDestinationAfterApply && destinationSpaceId ? destinationDomainId : latestState.activeDomainId,
-          state.ui.stageManagerOpenDestinationAfterApply && destinationSpaceId ? destinationSpaceId : latestState.activeSpaceId,
-        ),
-        getStageManagerApplyToastMessage(),
-      )
-      return
-    }
-
-    if (stageManagerAction === 'demote') {
-      const movedSubTabs = buildStageManagerMovedSubTabs(snapshot)
-      const strippedCurrentData = stripStageManagerSelectionsFromWorkspace(currentSpace.data, snapshot)
-      const destinationDomainId = stageManagerDemoteDomainId
-      const destinationSpaceId = stageManagerDemoteSpace?.id ?? latestState.activeSpaceId
-      const sameDestinationSpace = destinationDomainId === latestState.activeDomainId && destinationSpaceId === currentSpace.id
-
-      let destinationParentId: string
-      let destinationTabs: Tab[]
-      const destinationSourceTabs = sameDestinationSpace
-        ? strippedCurrentData.tabs
-        : getSpacesFromDomains(projectedDomains, destinationDomainId).find((space) => space.id === destinationSpaceId)?.data.tabs ?? []
-      if (stageManagerDraft.demoteParentMode === 'new') {
-        destinationParentId = createId()
-        const newParent: Tab = {
-          id: destinationParentId,
-          title: sanitizeName(stageManagerDraft.demoteNewParentName || 'untitled'),
-          noteBodyId: createId(),
-          homeContent: '',
-          activeSubTabId: null,
-          subTabs: movedSubTabs.map(cloneSubTabForTransfer),
-        }
-        destinationTabs = [...destinationSourceTabs.map(cloneTabForTransfer), newParent]
-      } else {
-        destinationParentId = stageManagerDraft.demoteParentId
-        destinationTabs = appendSubTabsToParent(
-          destinationSourceTabs,
-          destinationParentId,
-          movedSubTabs,
-          state.ui.stageManagerOpenDestinationAfterApply,
-        )
-      }
-      const sourceSpaces = latestState.spaces.map((space) =>
-        space.id !== currentSpace.id ? space : { ...space, data: strippedCurrentData },
-      )
-      let nextDomains = replaceDomainSpaces(projectedDomains, latestState.activeDomainId, sourceSpaces, latestState.activeSpaceId)
-      const destinationSpaces = getSpacesFromDomains(nextDomains, destinationDomainId).map((space) =>
-        space.id !== destinationSpaceId
-          ? space
-          : {
-              ...space,
-              data: createWorkspaceDataFromTabs(destinationTabs, {
-                activeTabId:
-                  state.ui.stageManagerOpenDestinationAfterApply && destinationParentId
-                    ? destinationParentId
-                    : sameDestinationSpace
-                      ? strippedCurrentData.activeTabId
-                      : space.data.activeTabId,
-                deletedTabs: space.data.deletedTabs,
-                deletedSubTabs: space.data.deletedSubTabs,
-              }),
-            },
-      )
-      nextDomains = replaceDomainSpaces(nextDomains, destinationDomainId, destinationSpaces, destinationSpaceId)
-
-      finishStageManagerApply(
-        buildDomainAwareState(
-          nextDomains,
-          state.ui.stageManagerOpenDestinationAfterApply ? destinationDomainId : latestState.activeDomainId,
-          state.ui.stageManagerOpenDestinationAfterApply ? destinationSpaceId : latestState.activeSpaceId,
-        ),
-        getStageManagerApplyToastMessage(),
-      )
-      return
-    }
-
-    const strippedCurrentData = stripStageManagerSelectionsFromWorkspace(currentSpace.data, snapshot)
-    const movedParentTabs = snapshot.fullParents.map(cloneTabForTransfer)
-    const looseMovedSubTabs = snapshot.looseSubTabs.map(({ subTab }) => cloneSubTabForTransfer(subTab))
-
-    if (stageManagerDraft.migrateTarget === 'space') {
-      const movedParentCopies = movedParentTabs.map(cloneTabForTransfer)
-      const additionalDestinationTabs: Tab[] = []
-
-      if (snapshot.looseSubTabs.length > 0) {
-        if (stageManagerDraft.strayHandlingMode === 'promote') {
-          additionalDestinationTabs.push(...looseMovedSubTabs.map((subTab) => createPromotedParentTab(subTab)))
-        } else if (stageManagerDraft.strayHandlingMode === 'selected-parent') {
-          const targetParentId = stageManagerDraft.straySelectedParentId
-          const targetIndex = movedParentCopies.findIndex((tab) => tab.id === targetParentId)
-          if (targetIndex >= 0) {
-            movedParentCopies[targetIndex] = {
-              ...movedParentCopies[targetIndex],
-              subTabs: [...movedParentCopies[targetIndex].subTabs, ...looseMovedSubTabs.map(cloneSubTabForTransfer)],
-            }
-          }
-        } else if (stageManagerDraft.strayHandlingMode === 'new-parent') {
-          additionalDestinationTabs.push({
-            id: createId(),
-            title: sanitizeName(stageManagerDraft.strayNewParentName || 'untitled'),
-            noteBodyId: createId(),
-            homeContent: '',
-            activeSubTabId: null,
-            subTabs: looseMovedSubTabs.map(cloneSubTabForTransfer),
-          })
-        }
-      }
-
-      if (stageManagerDraft.migrateSpaceMode === 'new') {
-        const newSpaceId = createId()
-        const destinationTabs =
-          stageManagerDraft.strayHandlingMode === 'existing-parent'
-            ? [...movedParentCopies]
-            : [...movedParentCopies, ...additionalDestinationTabs]
-        const fallbackTab = destinationTabs[0]?.id
-        const newSpace: Space = {
-          id: newSpaceId,
-          name: sanitizeName(stageManagerDraft.newSpaceName || 'untitled'),
-          settings: { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
-          data: createWorkspaceDataFromTabs(destinationTabs, { activeTabId: fallbackTab }),
-        }
-        const destinationDomainId = stageManagerMigrateDomainId
-        const sourceSpaces = latestState.spaces.map((space) =>
-          space.id === currentSpace.id ? { ...space, data: strippedCurrentData } : space,
-        )
-        let nextDomains = replaceDomainSpaces(projectedDomains, latestState.activeDomainId, sourceSpaces, latestState.activeSpaceId)
-        const destinationBaseSpaces =
-          destinationDomainId === latestState.activeDomainId ? sourceSpaces : getSpacesFromDomains(nextDomains, destinationDomainId)
-        const destinationSpaces = [...destinationBaseSpaces, newSpace]
-        nextDomains = replaceDomainSpaces(nextDomains, destinationDomainId, destinationSpaces, newSpace.id)
-
-        finishStageManagerApply(
-          buildDomainAwareState(
-            nextDomains,
-            state.ui.stageManagerOpenDestinationAfterApply ? destinationDomainId : latestState.activeDomainId,
-            state.ui.stageManagerOpenDestinationAfterApply ? newSpace.id : latestState.activeSpaceId,
-          ),
-          getStageManagerApplyToastMessage(),
-        )
-        return
-      }
-
-      const destinationDomainId = stageManagerMigrateDomainId
-      const destinationSpaceId = stageManagerDraft.migrateSpaceId
-      const sourceSpaces = latestState.spaces.map((space) =>
-        space.id === currentSpace.id ? { ...space, data: strippedCurrentData } : space,
-      )
-      let nextDomains = replaceDomainSpaces(projectedDomains, latestState.activeDomainId, sourceSpaces, latestState.activeSpaceId)
-      const destinationSpaces = getSpacesFromDomains(nextDomains, destinationDomainId).map((space) => {
-        if (space.id !== destinationSpaceId) return space
-
-        let destinationTabs = [...space.data.tabs.map(cloneTabForTransfer), ...movedParentCopies]
-        let destinationActiveTabId = state.ui.stageManagerOpenDestinationAfterApply
-          ? movedParentCopies[0]?.id ?? additionalDestinationTabs[0]?.id ?? space.data.activeTabId
-          : space.data.activeTabId
-
-        if (stageManagerDraft.strayHandlingMode === 'existing-parent') {
-          destinationTabs = appendSubTabsToParent(
-            destinationTabs,
-            stageManagerDraft.strayExistingParentId,
-            looseMovedSubTabs,
-            state.ui.stageManagerOpenDestinationAfterApply,
-          )
-          if (state.ui.stageManagerOpenDestinationAfterApply) {
-            destinationActiveTabId = stageManagerDraft.strayExistingParentId
-          }
-        } else {
-          destinationTabs = [...destinationTabs, ...additionalDestinationTabs]
-        }
-
-        return {
-          ...space,
-          data: createWorkspaceDataFromTabs(destinationTabs, {
-            activeTabId: destinationActiveTabId,
-            deletedTabs: space.data.deletedTabs,
-            deletedSubTabs: space.data.deletedSubTabs,
-          }),
-        }
-      })
-      nextDomains = replaceDomainSpaces(nextDomains, destinationDomainId, destinationSpaces, destinationSpaceId)
-      finishStageManagerApply(
-        buildDomainAwareState(
-          nextDomains,
-          state.ui.stageManagerOpenDestinationAfterApply && destinationSpaceId ? destinationDomainId : latestState.activeDomainId,
-          state.ui.stageManagerOpenDestinationAfterApply && destinationSpaceId ? destinationSpaceId : latestState.activeSpaceId,
-        ),
-        getStageManagerApplyToastMessage(),
-      )
-      return
-    }
-
-    const movedSubTabs = buildStageManagerMovedSubTabs(snapshot)
-
-    if (stageManagerDraft.migrateParentSpaceMode === 'current') {
-      let destinationParentId: string
-      let destinationTabs: Tab[]
-      if (stageManagerDraft.migrateParentMode === 'new') {
-        destinationParentId = createId()
-        const newParent: Tab = {
-          id: destinationParentId,
-          title: sanitizeName(stageManagerDraft.migrateNewParentName || 'untitled'),
-          noteBodyId: createId(),
-          homeContent: '',
-          activeSubTabId: null,
-          subTabs: movedSubTabs.map(cloneSubTabForTransfer),
-        }
-        destinationTabs = [...strippedCurrentData.tabs.map(cloneTabForTransfer), newParent]
-      } else {
-        destinationParentId = stageManagerDraft.migrateParentId
-        destinationTabs = appendSubTabsToParent(
-          strippedCurrentData.tabs,
-          destinationParentId,
-          movedSubTabs,
-          state.ui.stageManagerOpenDestinationAfterApply,
-        )
-      }
-
-      finishStageManagerApply(
-        {
-          ...latestState,
-          spaces: latestState.spaces.map((space) =>
-            space.id !== currentSpace.id
-              ? space
-              : {
-                  ...space,
-                  data: createWorkspaceDataFromTabs(destinationTabs, {
-                    activeTabId:
-                      state.ui.stageManagerOpenDestinationAfterApply && destinationParentId
-                        ? destinationParentId
-                        : strippedCurrentData.activeTabId,
-                    deletedTabs: strippedCurrentData.deletedTabs,
-                    deletedSubTabs: strippedCurrentData.deletedSubTabs,
-                  }),
-                },
-          ),
-        },
-        getStageManagerApplyToastMessage(),
-      )
-      return
-    }
-
-    if (stageManagerDraft.migrateParentSpaceMode === 'new') {
-      const destinationParentId = createId()
-      const newSpaceId = createId()
-      const destinationDomainId = stageManagerMigrateParentDomainId
-      const newParent: Tab = {
-        id: destinationParentId,
-        title: sanitizeName(stageManagerDraft.migrateNewParentName || 'untitled'),
-        noteBodyId: createId(),
-        homeContent: '',
-        activeSubTabId: null,
-        subTabs: movedSubTabs.map(cloneSubTabForTransfer),
-      }
-      const newSpace: Space = {
-        id: newSpaceId,
-        name: sanitizeName(stageManagerDraft.newSpaceName || 'untitled'),
-        settings: { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
-        data: createWorkspaceDataFromTabs([newParent], { activeTabId: destinationParentId }),
-      }
-      const sourceSpaces = latestState.spaces.map((space) =>
-        space.id === currentSpace.id ? { ...space, data: strippedCurrentData } : space,
-      )
-      let nextDomains = replaceDomainSpaces(projectedDomains, latestState.activeDomainId, sourceSpaces, latestState.activeSpaceId)
-      const destinationBaseSpaces =
-        destinationDomainId === latestState.activeDomainId ? sourceSpaces : getSpacesFromDomains(nextDomains, destinationDomainId)
-      nextDomains = replaceDomainSpaces(nextDomains, destinationDomainId, [...destinationBaseSpaces, newSpace], newSpace.id)
-
-      finishStageManagerApply(
-        buildDomainAwareState(
-          nextDomains,
-          state.ui.stageManagerOpenDestinationAfterApply ? destinationDomainId : latestState.activeDomainId,
-          state.ui.stageManagerOpenDestinationAfterApply ? newSpace.id : latestState.activeSpaceId,
-        ),
-        getStageManagerApplyToastMessage(),
-      )
-      return
-    }
-
-    const destinationDomainId = stageManagerMigrateParentDomainId
-    const destinationSpaceId = stageManagerDraft.migrateParentSpaceId
-    const sourceSpaces = latestState.spaces.map((space) =>
-      space.id === currentSpace.id ? { ...space, data: strippedCurrentData } : space,
-    )
-    let nextDomains = replaceDomainSpaces(projectedDomains, latestState.activeDomainId, sourceSpaces, latestState.activeSpaceId)
-    const destinationSpaces = getSpacesFromDomains(nextDomains, destinationDomainId).map((space) => {
-      if (space.id !== destinationSpaceId) return space
-
-      let destinationParentId: string
-      let destinationTabs: Tab[]
-      if (stageManagerDraft.migrateParentMode === 'new') {
-        destinationParentId = createId()
-        const newParent: Tab = {
-          id: destinationParentId,
-          title: sanitizeName(stageManagerDraft.migrateNewParentName || 'untitled'),
-          noteBodyId: createId(),
-          homeContent: '',
-          activeSubTabId: null,
-          subTabs: movedSubTabs.map(cloneSubTabForTransfer),
-        }
-        destinationTabs = [...space.data.tabs.map(cloneTabForTransfer), newParent]
-      } else {
-        destinationParentId = stageManagerDraft.migrateParentId
-        destinationTabs = appendSubTabsToParent(
-          space.data.tabs,
-          destinationParentId,
-          movedSubTabs,
-          state.ui.stageManagerOpenDestinationAfterApply,
-        )
-      }
-
-      return {
-        ...space,
-        data: createWorkspaceDataFromTabs(destinationTabs, {
-          activeTabId:
-            state.ui.stageManagerOpenDestinationAfterApply && destinationParentId
-              ? destinationParentId
-              : space.data.activeTabId,
-          deletedTabs: space.data.deletedTabs,
-          deletedSubTabs: space.data.deletedSubTabs,
-        }),
-      }
-    })
-    nextDomains = replaceDomainSpaces(nextDomains, destinationDomainId, destinationSpaces, destinationSpaceId)
-    finishStageManagerApply(
-      buildDomainAwareState(
-        nextDomains,
-        state.ui.stageManagerOpenDestinationAfterApply && destinationSpaceId ? destinationDomainId : latestState.activeDomainId,
-        state.ui.stageManagerOpenDestinationAfterApply && destinationSpaceId ? destinationSpaceId : latestState.activeSpaceId,
-      ),
-      getStageManagerApplyToastMessage(),
-    )
-  }
-
-  const handleStageManagerPrevious = () => {
-    if (stageManagerStep === 'select') return
-    if (stageManagerStep === 'action') {
-      setStageManagerStep('select')
-      return
-    }
-    if (stageManagerStep === 'configure') {
-      setStageManagerStep('action')
-      return
-    }
-    setStageManagerStep('configure')
-  }
-
-  const handleStageManagerNext = () => {
-    if (stageManagerStep === 'select') {
-      if (!stageManagerSelectionSnapshot.hasSelection) {
-        pushToast('select at least one parent or sub-tab before continuing.', 'warning')
-        return
-      }
-      setStageManagerStep('action')
-      return
-    }
-
-    if (stageManagerStep === 'action') {
-      if (!stageManagerAction) {
-        pushToast('choose a director action before continuing.', 'warning')
-        return
-      }
-      const validation = getStageManagerActionValidation(stageManagerAction, stageManagerSelectionSnapshot)
-      if (!validation.valid) {
-        setStageManagerAction(null)
-        pushToast(validation.message, 'warning')
-        return
-      }
-      setStageManagerStep('configure')
-      return
-    }
-
-    if (stageManagerStep === 'configure') {
-      const validation = getStageManagerConfigureValidation()
-      if (!validation.valid) {
-        pushToast(validation.message, 'warning')
-        return
-      }
-      setStageManagerStep('review')
-      return
-    }
-
-    pushToast('director execution will be added in the next chunk.', 'warning')
   }
 
   const exportData = (scope: ExportScope, spaceId?: string) =>
@@ -6654,8 +3971,8 @@ function App() {
         onShouldSkipRenameBlur={shouldSkipRenameBlur}
         onCommitRename={commitRename}
         onCancelRename={cancelRename}
-        onGetStageManagerParentSelection={getStageManagerParentSelection}
-        onStageManagerParentClick={handleStageManagerParentClick}
+        onGetStageManagerParentSelection={stageManager.getParentSelection}
+        onStageManagerParentClick={stageManager.handleParentClick}
         onConsumeArrangeClickSuppression={consumeArrangeClickSuppression}
         onSelectTab={selectTab}
         onBeginEdit={setEditing}
@@ -6673,7 +3990,7 @@ function App() {
         onAddTab={addTab}
         onExitArrangeMode={exitArrangeMode}
         onExitAisleDeleteMode={exitAisleDeleteMode}
-        onEndStageManager={endStageManager}
+        onEndStageManager={stageManager.end}
         onCloseSettingsView={closeSettingsView}
         onSetMenuOpen={setMenuOpen}
         onSetContextMenu={setContextMenu}
@@ -6683,7 +4000,7 @@ function App() {
         }}
         onOpenDomains={openDomainsView}
         onOpenSpaces={openSpacesView}
-        onOpenStageManager={openStageManager}
+        onOpenStageManager={stageManager.open}
         onToggleTrash={toggleTrashView}
         onOpenSettings={openSettings}
       />
@@ -6797,9 +4114,9 @@ function App() {
             onShouldSkipRenameBlur={shouldSkipRenameBlur}
             onCommitRename={commitRename}
             onCancelRename={cancelRename}
-            onGetStageManagerParentSelection={getStageManagerParentSelection}
-            onStageManagerHomeClick={handleStageManagerHomeClick}
-            onStageManagerSubTabClick={handleStageManagerSubTabClick}
+            onGetStageManagerParentSelection={stageManager.getParentSelection}
+            onStageManagerHomeClick={stageManager.handleHomeClick}
+            onStageManagerSubTabClick={stageManager.handleSubTabClick}
             onConsumeArrangeClickSuppression={consumeArrangeClickSuppression}
             onSelectParentHomeTab={selectParentHomeTab}
             onSelectSubTab={selectSubTab}
@@ -6822,35 +4139,35 @@ function App() {
           {viewMode === 'stage-manager' ? (
             <StageManagerView
               domains={state.domains}
-              step={stageManagerStep}
-              action={stageManagerAction}
-              draft={stageManagerDraft}
-              selectionSnapshot={stageManagerSelectionSnapshot}
-              selectionCounts={stageManagerSelectionCounts}
-              promoteDomainId={stageManagerPromoteDomainId}
-              promoteDestinationSpaces={stageManagerPromoteDestinationSpaces}
-              demoteDomainId={stageManagerDemoteDomainId}
-              demoteSpaces={stageManagerDemoteSpaces}
-              demoteSpace={stageManagerDemoteSpace}
-              demoteParentOptions={stageManagerDemoteParentOptions}
-              migrateDomainId={stageManagerMigrateDomainId}
-              otherSpaces={stageManagerOtherSpaces}
-              strayHandlingSelectValue={stageManagerStrayHandlingSelectValue}
-              strayExistingParentOptions={stageManagerStrayExistingParentOptions}
-              migrateParentDomainId={stageManagerMigrateParentDomainId}
-              migrateParentSpaces={stageManagerMigrateParentSpaces}
-              migrateParentOptions={stageManagerMigrateParentOptions}
+              step={stageManager.step}
+              action={stageManager.action}
+              draft={stageManager.draft}
+              selectionSnapshot={stageManager.selectionSnapshot}
+              selectionCounts={stageManager.selectionCounts}
+              promoteDomainId={stageManager.promoteDomainId}
+              promoteDestinationSpaces={stageManager.promoteDestinationSpaces}
+              demoteDomainId={stageManager.demoteDomainId}
+              demoteSpaces={stageManager.demoteSpaces}
+              demoteSpace={stageManager.demoteSpace}
+              demoteParentOptions={stageManager.demoteParentOptions}
+              migrateDomainId={stageManager.migrateDomainId}
+              otherSpaces={stageManager.otherSpaces}
+              strayHandlingSelectValue={stageManager.strayHandlingSelectValue}
+              strayExistingParentOptions={stageManager.strayExistingParentOptions}
+              migrateParentDomainId={stageManager.migrateParentDomainId}
+              migrateParentSpaces={stageManager.migrateParentSpaces}
+              migrateParentOptions={stageManager.migrateParentOptions}
               openDestinationAfterApply={state.ui.stageManagerOpenDestinationAfterApply}
-              reviewDetails={getStageManagerReviewDetails()}
-              reviewWarning={getStageManagerReviewWarning()}
-              onSelectAll={selectAllStageManagerItems}
-              onDeselectAll={deselectAllStageManagerItems}
-              onSelectAction={selectStageManagerAction}
-              onDraftChange={updateStageManagerDraft}
+              reviewDetails={stageManager.reviewDetails}
+              reviewWarning={stageManager.reviewWarning}
+              onSelectAll={stageManager.selectAll}
+              onDeselectAll={stageManager.deselectAll}
+              onSelectAction={stageManager.selectAction}
+              onDraftChange={stageManager.updateDraft}
               onOpenDestinationChange={settingsController.updateStageManagerOpenDestinationSetting}
-              onPrevious={handleStageManagerPrevious}
-              onNext={handleStageManagerNext}
-              onApply={handleStageManagerApply}
+              onPrevious={stageManager.previous}
+              onNext={stageManager.next}
+              onApply={stageManager.apply}
             />
           ) : isTrashHomeSelected ? (
             <TrashHomeNote

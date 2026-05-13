@@ -92,10 +92,86 @@ export function headingSpaceShortcutPlugin(context: {
   const { keymap } = context.pmKeymap
   const { TextSelection } = context.pmState
 
+  const isEmptyTextBlock = (node: any) => {
+    return String(node?.textContent ?? '').replace(/\u200b/g, '').trim().length === 0
+  }
+
+  const getBlockContext = (state: any) => {
+    const { selection } = state
+    if (!selection.empty) return null
+
+    const { $from } = selection
+    const blockDepth = $from.depth
+    if (blockDepth <= 0) return null
+
+    const parentDepth = blockDepth - 1
+    const parentNode = $from.node(parentDepth)
+    const blockIndex = $from.index(parentDepth)
+    const from = $from.before(blockDepth)
+    const to = $from.after(blockDepth)
+
+    return {
+      $from,
+      parentNode,
+      blockIndex,
+      from,
+      to,
+      currentNode: $from.parent,
+      previousNode: blockIndex > 0 ? parentNode.child(blockIndex - 1) : null,
+      nextNode: blockIndex < parentNode.childCount - 1 ? parentNode.child(blockIndex + 1) : null,
+    }
+  }
+
+  const handleBackspaceFromHeadingAfterEmptyParagraph = (state: any, dispatch?: (tr: unknown) => void) => {
+    const context = getBlockContext(state)
+    if (!context) return false
+    const { $from, currentNode, previousNode, from, to } = context
+    if (currentNode.type.name !== 'heading') return false
+    if ($from.parentOffset !== 0) return false
+    if (!previousNode || previousNode.type.name !== 'paragraph' || !isEmptyTextBlock(previousNode)) return false
+
+    const previousFrom = from - previousNode.nodeSize
+    const paragraphType = state.schema.nodes.paragraph
+    if (!paragraphType) return false
+
+    let nextTr =
+      isEmptyTextBlock(currentNode)
+        ? state.tr.replaceWith(previousFrom, to, paragraphType.create())
+        : state.tr.delete(previousFrom, from)
+    const caretPos = Math.min(previousFrom + 1, nextTr.doc.content.size)
+    nextTr = nextTr.setSelection(TextSelection.create(nextTr.doc, caretPos, caretPos)).scrollIntoView()
+    dispatch?.(nextTr)
+    return true
+  }
+
+  const handleDeleteFromEmptyParagraphBeforeHeading = (state: any, dispatch?: (tr: unknown) => void) => {
+    const context = getBlockContext(state)
+    if (!context) return false
+    const { $from, currentNode, nextNode, from, to } = context
+    if (currentNode.type.name !== 'paragraph') return false
+    if (!isEmptyTextBlock(currentNode)) return false
+    if ($from.parentOffset !== currentNode.content.size) return false
+    if (!nextNode || nextNode.type.name !== 'heading') return false
+
+    const paragraphType = state.schema.nodes.paragraph
+    if (!paragraphType) return false
+
+    let nextTr =
+      isEmptyTextBlock(nextNode)
+        ? state.tr.replaceWith(from, to + nextNode.nodeSize, paragraphType.create())
+        : state.tr.delete(from, to)
+    const caretPos = Math.min(from + 1, nextTr.doc.content.size)
+    nextTr = nextTr.setSelection(TextSelection.create(nextTr.doc, caretPos, caretPos)).scrollIntoView()
+    dispatch?.(nextTr)
+    return true
+  }
+
   return {
     wysiwygPlugins: [
       () =>
         keymap({
+          Backspace: handleBackspaceFromHeadingAfterEmptyParagraph,
+          Delete: handleDeleteFromEmptyParagraphBeforeHeading,
           Space: (state: any, dispatch?: (tr: unknown) => void) => {
             const { selection, schema, tr } = state
             if (!selection.empty) return false
@@ -117,12 +193,11 @@ export function headingSpaceShortcutPlugin(context: {
             if (headingMatch) {
               const headingType = schema.nodes.heading
               if (!headingType) return false
-              const nextTr = tr
-                .setNodeMarkup(from, headingType, {
-                  level: headingMatch[1].length,
-                  headingType: 'atx',
-                })
-                .delete(from + 1, from + 1 + $from.parent.content.size)
+              const headingNode = headingType.create({
+                level: headingMatch[1].length,
+                headingType: 'atx',
+              })
+              const nextTr = tr.replaceWith(from, to, headingNode)
               const caretPos = Math.min(from + 1, nextTr.doc.content.size)
               const nextSelection = TextSelection.create(nextTr.doc, caretPos, caretPos)
               dispatch?.(nextTr.setSelection(nextSelection).scrollIntoView())

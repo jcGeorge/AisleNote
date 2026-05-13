@@ -305,6 +305,35 @@ function placeTaskCaretAtParagraphEnd(view: any, editor: Editor, listItemElement
   }
 }
 
+function placeTaskCaretAtPointerPosition(
+  view: any,
+  editor: Editor,
+  listItemElement: HTMLElement,
+  clientX: number,
+  clientY: number,
+) {
+  if (!view.dom.contains(listItemElement)) return
+
+  try {
+    const coords = view.posAtCoords({ left: clientX, top: clientY })
+    if (!coords) {
+      editor.focus()
+      return
+    }
+
+    const pos = Math.max(0, Math.min(coords.pos, view.state.doc.content.size))
+    const SelectionCtor = view.state.selection.constructor as {
+      create?: (doc: unknown, anchor: number, head?: number) => unknown
+    }
+    if (typeof SelectionCtor.create !== 'function') return
+    const nextSelection = SelectionCtor.create(view.state.doc, pos, pos)
+    view.dispatch(view.state.tr.setSelection(nextSelection).scrollIntoView())
+    editor.focus()
+  } catch {
+    editor.focus()
+  }
+}
+
 function getTaskListTextDragElement(view: any, event: globalThis.MouseEvent): HTMLElement | null {
   if (event.button !== 0) return null
   const target = getElementFromEventTarget(event.target)
@@ -598,11 +627,18 @@ export function installTaskTextReorderBehavior(root: HTMLElement, getEditor: () 
     if (!dragState.dragging) {
       const { editor, sourceElement, startedOnTrailingTaskSpace } = dragState
       const view = getWysiwygView(editor)
-      const shouldPlaceCaretAtEnd =
-        startedOnTrailingTaskSpace && view && isMouseUpInsideTaskElement(sourceElement, event)
+      const shouldPlaceCaret = Boolean(view && isMouseUpInsideTaskElement(sourceElement, event))
+      const clientX = event.clientX
+      const clientY = event.clientY
       endDrag()
-      if (shouldPlaceCaretAtEnd) {
-        window.setTimeout(() => placeTaskCaretAtParagraphEnd(view, editor, sourceElement), 0)
+      if (shouldPlaceCaret) {
+        window.setTimeout(() => {
+          if (startedOnTrailingTaskSpace) {
+            placeTaskCaretAtParagraphEnd(view, editor, sourceElement)
+            return
+          }
+          placeTaskCaretAtPointerPosition(view, editor, sourceElement, clientX, clientY)
+        }, 0)
       }
       return
     }
@@ -668,7 +704,7 @@ export function installTaskTextReorderBehavior(root: HTMLElement, getEditor: () 
 
   const handleSelectStart = (event: Event) => {
     if (!dragState) return
-    dragState.suppressingSelection = true
+    if (!dragState.dragging && !dragState.suppressingSelection) return
     event.preventDefault()
     event.stopPropagation()
     window.getSelection()?.removeAllRanges()

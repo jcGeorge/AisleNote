@@ -147,7 +147,7 @@ export function ImageToolsOverlay({
             onBeginCropDrag={onBeginCropDrag}
           />
           <CropHandle
-            className="image-crop-resize-handle"
+            className="inline-crop-resize-handle"
             style={{
               top: `${inlineCrop.top + inlineCrop.height}px`,
               left: `${inlineCrop.left + inlineCrop.width}px`,
