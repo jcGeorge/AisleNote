@@ -14,8 +14,14 @@ import {
   moveItemByInsertion,
 } from './arrange/arrange-utils'
 import { DomainsPage } from './components/domains/DomainsPage'
-import { NoteLocationPicker, type NoteLocationPickerValue } from './components/notes/NoteLocationPicker'
+import { NoteWorkspace } from './components/notes/NoteWorkspace'
+import { ContextMenuHost } from './components/overlays/ContextMenuHost'
+import { ModalHost } from './components/overlays/ModalHost'
+import { ToastHost } from './components/overlays/ToastHost'
+import { SettingsPage } from './components/settings/SettingsPage'
 import { SpacesPage } from './components/spaces/SpacesPage'
+import { TrashHomeNote } from './components/trash/TrashHomeNote'
+import { buildAisleEditorKey, type AisleEditorMeta } from './editor/aisle-editor'
 import {
   EDITOR_TOOLBAR_ITEMS,
   getMultilineSelectionShortcutDirection,
@@ -49,7 +55,6 @@ import {
   buildShortcutFromKeyboardEvent,
   DEFAULT_SHORTCUTS,
   eventMatchesShortcut,
-  formatShortcutLabel,
 } from './hotkeys/shortcuts'
 import {
   convertInternalTabsForExport,
@@ -61,20 +66,37 @@ import {
   normalizeHeadingMarkers,
   normalizeMarkdownForPersistence,
 } from './markdown/markdown-utils'
+import { cloneNoteBodyAsIndependentCopy, getNoteBodyMarkdown } from './notes/note-markdown'
+import {
+  buildNoteLocationKey,
+  getDefaultNoteReferenceTarget,
+  getLocationInfo,
+  listNoteLocationsForBody,
+  updateNoteLocationBody,
+} from './notes/note-locations'
+import {
+  buildContextToken,
+  buildInternalNoteUrl,
+  decodeContextPayload,
+  escapeMarkdownLinkLabel,
+  getContextReferenceSignature,
+  getMarkdownLinkLabel,
+  INTERNAL_NOTE_LINK_MARKDOWN_RE,
+  type InternalNoteLinkHit,
+  NOTE_CONTEXT_REFERENCE_RE,
+  type NoteContextReferencePayload,
+  parseContextReferences,
+  parseInternalNoteUrl,
+  replaceInternalNoteLinkByOccurrence,
+  replaceContextTokenById,
+  wouldCreateContextCycle,
+} from './notes/note-references'
 import {
   clampAutoRemoveDays,
   clampNoteFontScale,
   clampTabButtonScale,
   DEFAULT_AUTO_REMOVE_DAYS,
   DEFAULT_UI_SETTINGS,
-  MAX_AUTO_REMOVE_DAYS,
-  MAX_NOTE_FONT_SCALE,
-  MAX_TAB_BUTTON_SCALE,
-  MIN_AUTO_REMOVE_DAYS,
-  MIN_NOTE_FONT_SCALE,
-  MIN_TAB_BUTTON_SCALE,
-  NOTE_FONT_SCALE_STEP,
-  TAB_BUTTON_SCALE_STEP,
 } from './settings/defaults'
 import { applyAutoPurgeToAppState, applyMarkdownToAppState, ensureNoteBodiesForAppState, parseSavedState } from './state/app-state'
 import {
@@ -119,6 +141,7 @@ import {
   stripStageManagerSelectionsFromWorkspace,
 } from './stage-manager/transforms'
 import { appStateStore } from './storage/app-state-store'
+import { buildTrashParentBuckets, resolveTrashContentDisplay, TRASH_HOME_ID } from './trash/trash-model'
 import type {
   AppState,
   AppTheme,
@@ -132,7 +155,6 @@ import type {
   ArrangeTapCandidateSeed,
   ContextMenuState,
   DeleteTarget,
-  DeletedSubTabEntry,
   Domain,
   ImageToolsState,
   InlineCropState,
@@ -157,7 +179,6 @@ import type {
   StageManagerSelectionState,
   StageManagerStep,
   StageManagerStrayHandlingMode,
-  SubTab,
   Tab,
   TabArrangeDragItem,
   TabArrangeDragPreview,
@@ -168,14 +189,7 @@ import type {
   WorkspaceData,
 } from './types/app'
 
-const TRASH_HOME_ID = '__trash_home__'
 const CODE_BLOCK_INDENT_TEXT = '    '
-const THEME_OPTIONS: Array<{ id: AppTheme; label: string }> = [
-  { id: 'dark', label: 'dark' },
-  { id: 'light', label: 'light' },
-  { id: 'dawn', label: 'dawn' },
-  { id: 'blues', label: 'blues' },
-]
 type ToolbarFormatKey = 'bold' | 'italic' | 'strike'
 type ToolbarFormatState = Record<ToolbarFormatKey, boolean>
 type InlineCropDragMode = 'move' | 'resize-n' | 'resize-e' | 'resize-s' | 'resize-w' | 'resize-se'
@@ -195,189 +209,15 @@ type AisleDeleteConfirmationState = {
   top: number
   left: number
 }
-type TrashContentDisplay = {
-  mode: 'home' | 'deleted-parent' | 'deleted-subtab' | 'subtabs-only-parent'
-  markdown: string
-}
-
-function resolveTrashContentDisplay({
-  trashTabId,
-  trashHomeContent,
-  selectedTrashTab,
-  selectedTrashSubTab,
-}: {
-  trashTabId: string
-  trashHomeContent: string
-  selectedTrashTab: TrashParentBucket | null
-  selectedTrashSubTab: SubTab | null
-}): TrashContentDisplay {
-  if (trashTabId === TRASH_HOME_ID || !selectedTrashTab) {
-    return { mode: 'home', markdown: trashHomeContent }
-  }
-
-  if (selectedTrashSubTab) {
-    return { mode: 'deleted-subtab', markdown: selectedTrashSubTab.content }
-  }
-
-  return {
-    mode: selectedTrashTab.source === 'subtabs-only' ? 'subtabs-only-parent' : 'deleted-parent',
-    markdown: selectedTrashTab.homeContent,
-  }
-}
-
-function getPrimaryAisle(body: NoteBody | null | undefined): NoteAisle | null {
-  return body?.aisles[0] ?? null
-}
-
-function getNoteBodyMarkdown(body: NoteBody | null | undefined, aisleId: string | null | undefined): string {
-  if (!body) return ''
-  return body.aisles.find((aisle) => aisle.id === aisleId)?.markdown ?? getPrimaryAisle(body)?.markdown ?? ''
-}
 
 function getCodeBlockOutdentRemoveLength(text: string): number {
   if (text.startsWith('\t')) return 1
   return text.match(/^ {1,4}/)?.[0].length ?? 0
 }
 
-function buildNoteLocationKey(location: NoteLocation): string {
-  return [location.domainId, location.spaceId, location.tabId, location.subTabId ?? '__home__'].join('::')
-}
-
-type NoteContextReferencePayload = {
-  id: string
-  target: NoteLocation
-  aisleIds?: string[]
-}
-
-type ParsedNoteContextReference = {
-  token: string
-  payload: NoteContextReferencePayload
-}
-
-const NOTE_CONTEXT_REFERENCE_RE = /\{\{tabs-context:([A-Za-z0-9_-]+)\}\}/g
-const INTERNAL_NOTE_LINK_MARKDOWN_RE = /!?\[([^\]\n]+)\]\(([^)\n]+)\)/g
-const INTERNAL_NOTE_LINK_SCHEME = 'tabs://note'
-const INTERNAL_NOTE_LINK_HASH_PREFIX = '#tabs-note'
-const MAX_CONTEXT_RENDER_DEPTH = 3
-
-function encodeContextPayload(payload: NoteContextReferencePayload): string {
-  const bytes = new TextEncoder().encode(JSON.stringify(payload))
-  let binary = ''
-  bytes.forEach((byte) => {
-    binary += String.fromCharCode(byte)
-  })
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
-}
-
-function decodeContextPayload(encoded: string): NoteContextReferencePayload | null {
-  try {
-    const padded = encoded.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (encoded.length % 4)) % 4)
-    const binary = atob(padded)
-    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0))
-    const parsed = JSON.parse(new TextDecoder().decode(bytes)) as Partial<NoteContextReferencePayload>
-    if (!parsed || typeof parsed.id !== 'string' || !parsed.target) return null
-    const target = parsed.target as Partial<NoteLocation>
-    if (
-      typeof target.domainId !== 'string' ||
-      typeof target.spaceId !== 'string' ||
-      typeof target.tabId !== 'string' ||
-      (typeof target.subTabId !== 'string' && target.subTabId !== null)
-    ) {
-      return null
-    }
-    return {
-      id: parsed.id,
-      target: {
-        domainId: target.domainId,
-        spaceId: target.spaceId,
-        tabId: target.tabId,
-        subTabId: target.subTabId,
-      },
-      aisleIds: Array.isArray(parsed.aisleIds) ? parsed.aisleIds.filter((aisleId): aisleId is string => typeof aisleId === 'string') : undefined,
-    }
-  } catch {
-    return null
-  }
-}
-
-function parseContextReferences(markdown: string): ParsedNoteContextReference[] {
-  const references: ParsedNoteContextReference[] = []
-  for (const match of markdown.matchAll(NOTE_CONTEXT_REFERENCE_RE)) {
-    const payload = decodeContextPayload(match[1])
-    if (!payload) continue
-    references.push({ token: match[0], payload })
-  }
-  return references
-}
-
-function buildContextToken(payload: NoteContextReferencePayload): string {
-  return `{{tabs-context:${encodeContextPayload(payload)}}}`
-}
-
-function buildInternalNoteUrl(noteBodyId: string, target: NoteLocation): string {
-  const params = new URLSearchParams({
-    domainId: target.domainId,
-    spaceId: target.spaceId,
-    tabId: target.tabId,
-  })
-  if (target.subTabId) params.set('subTabId', target.subTabId)
-  return `${INTERNAL_NOTE_LINK_HASH_PREFIX}/${encodeURIComponent(noteBodyId)}?${params.toString()}`
-}
-
-function parseNoteLocationParams(params: URLSearchParams): NoteLocation | null {
-  const domainId = params.get('domainId')
-  const spaceId = params.get('spaceId')
-  const tabId = params.get('tabId')
-  if (!domainId || !spaceId || !tabId) return null
-  return {
-    domainId,
-    spaceId,
-    tabId,
-    subTabId: params.get('subTabId'),
-  }
-}
-
-function parseInternalNoteUrl(rawUrl: string): NoteLocation | null {
-  const cleanedUrl = rawUrl.trim().replace(/&amp;/g, '&')
-  if (!cleanedUrl) return null
-  const hashIndex = cleanedUrl.indexOf(INTERNAL_NOTE_LINK_HASH_PREFIX)
-  if (hashIndex >= 0) {
-    const hash = cleanedUrl.slice(hashIndex)
-    const queryIndex = hash.indexOf('?')
-    if (queryIndex < 0) return null
-    return parseNoteLocationParams(new URLSearchParams(hash.slice(queryIndex + 1)))
-  }
-
-  try {
-    const url = new URL(cleanedUrl)
-    if (url.hash.startsWith(INTERNAL_NOTE_LINK_HASH_PREFIX)) {
-      const queryIndex = url.hash.indexOf('?')
-      if (queryIndex < 0) return null
-      return parseNoteLocationParams(new URLSearchParams(url.hash.slice(queryIndex + 1)))
-    }
-    if (`${url.protocol}//${url.hostname}` !== INTERNAL_NOTE_LINK_SCHEME) return null
-    return parseNoteLocationParams(url.searchParams)
-  } catch {
-    return null
-  }
-}
-
-function getMarkdownLinkLabel(label: string): string {
-  return label.replace(/\\([\\[\]])/g, '$1').trim() || 'linked note'
-}
-
 type ProseMirrorTextPositionMap = {
   text: string
   positions: number[]
-}
-
-type InternalNoteLinkHit = {
-  label: string
-  href: string
-  target: NoteLocation
-  from: number
-  to: number
-  occurrence: number
 }
 
 type ToolbarPopoverKind = 'heading' | 'aisles'
@@ -393,19 +233,6 @@ const AISLE_DELETE_CONFIRMATION_WIDTH_PX = 248
 const AISLE_DELETE_CONFIRMATION_HEIGHT_PX = 104
 const NOTE_PREVIEW_DEFAULT_HEIGHT_REM = 20
 const NOTE_PREVIEW_EXPANDED_HEIGHT_REM = 30
-
-function cloneNoteBodyAsIndependentCopy(body: NoteBody): NoteBody {
-  return {
-    id: createId(),
-    aisles:
-      body.aisles.length > 0
-        ? body.aisles.map((aisle) => ({
-            id: createId(),
-            markdown: aisle.markdown,
-          }))
-        : [{ id: createId(), markdown: '' }],
-  }
-}
 
 function collectProseMirrorTextPositions(doc: any): ProseMirrorTextPositionMap {
   let text = ''
@@ -459,36 +286,6 @@ function getInternalNoteLinkHitAtDocPosition(doc: any, docPosition: number): Int
     occurrence += 1
   }
   return null
-}
-
-function escapeMarkdownLinkLabel(label: string): string {
-  return label.replace(/\\/g, '\\\\').replace(/\[/g, '\\[').replace(/\]/g, '\\]')
-}
-
-function replaceInternalNoteLinkByOccurrence(markdown: string, hit: InternalNoteLinkHit, nextSyntax: string): string {
-  let occurrence = 0
-  return markdown.replace(INTERNAL_NOTE_LINK_MARKDOWN_RE, (source, _label, href) => {
-    if (source.startsWith('!') || !parseInternalNoteUrl(href)) return source
-    const shouldReplace = occurrence === hit.occurrence && href === hit.href
-    occurrence += 1
-    return shouldReplace ? nextSyntax : source
-  })
-}
-
-function normalizeAisleSelection(aisleIds: string[] | undefined): string {
-  return aisleIds && aisleIds.length > 0 ? [...aisleIds].sort().join(',') : '__all__'
-}
-
-function buildAisleEditorKey(noteBodyId: string, aisleId: string): string {
-  return `${noteBodyId}::${aisleId}`
-}
-
-type AisleEditorMeta = {
-  editor: Editor
-  root: HTMLElement
-  aisleId: string
-  pluginKey: unknown
-  cleanup: () => void
 }
 
 type CommandCapableEditor = Editor & {
@@ -2860,46 +2657,10 @@ function App() {
 
   const activeContent = getNoteBodyMarkdown(activeNoteBody, resolvedActiveAisleId)
 
-  const trashParentTabs = useMemo(() => {
-    const buckets: TrashParentBucket[] = workspace.deletedTabs.map((entry) => ({
-      id: entry.id,
-      title: entry.tab.title,
-      source: 'deleted-tab',
-      deletedTabEntryId: entry.id,
-      parentTabId: entry.tab.id,
-      homeContent: entry.tab.homeContent,
-      subTabs: entry.tab.subTabs,
-    }))
-
-    const deletedParentIds = new Set(workspace.deletedTabs.map((entry) => entry.tab.id))
-    const subtabsOnlyMap = new Map<string, { title: string; entries: DeletedSubTabEntry[] }>()
-    for (const entry of workspace.deletedSubTabs) {
-      if (deletedParentIds.has(entry.parentTabId)) continue
-      if (!subtabsOnlyMap.has(entry.parentTabId)) {
-        subtabsOnlyMap.set(entry.parentTabId, { title: entry.parentTabTitle, entries: [] })
-      }
-      subtabsOnlyMap.get(entry.parentTabId)?.entries.push(entry)
-    }
-
-    for (const [parentTabId, group] of subtabsOnlyMap.entries()) {
-      buckets.push({
-        id: `subtabs-only-${parentTabId}`,
-        title: group.title,
-        source: 'subtabs-only',
-        deletedTabEntryId: null,
-        parentTabId,
-        homeContent: `# ${group.title}\n\ndeleted sub-tabs from this tab are shown below.`,
-        subTabs: group.entries.map((entry) => ({
-          id: entry.id,
-          title: entry.subTab.title,
-          noteBodyId: entry.subTab.noteBodyId,
-          content: entry.subTab.content,
-        })),
-      })
-    }
-
-    return buckets
-  }, [workspace.deletedTabs, workspace.deletedSubTabs])
+  const trashParentTabs = useMemo(
+    () => buildTrashParentBuckets(workspace),
+    [workspace.deletedTabs, workspace.deletedSubTabs],
+  )
 
   const selectedTrashTab = useMemo(
     () => (trashTabId === TRASH_HOME_ID ? null : trashParentTabs.find((entry) => entry.id === trashTabId) ?? null),
@@ -2943,180 +2704,6 @@ function App() {
     tabId: activeTab.id,
     subTabId: activeSubTab?.id ?? null,
   })
-
-  const getLocationInfo = (sourceState: AppState, location: NoteLocation) => {
-    const activeDomain = sourceState.domains.find((candidate) => candidate.id === sourceState.activeDomainId) ?? null
-    const domain =
-      location.domainId === sourceState.activeDomainId && activeDomain
-        ? { ...activeDomain, spaces: sourceState.spaces }
-        : sourceState.domains.find((candidate) => candidate.id === location.domainId) ?? null
-    const space = domain?.spaces.find((candidate) => candidate.id === location.spaceId) ?? null
-    const tab = space?.data.tabs.find((candidate) => candidate.id === location.tabId) ?? null
-    const subTab = location.subTabId && tab ? tab.subTabs.find((candidate) => candidate.id === location.subTabId) ?? null : null
-    const noteBodyId = subTab?.noteBodyId ?? tab?.noteBodyId ?? ''
-    const title = subTab?.title ?? tab?.title ?? 'note'
-    return { domain, space, tab, subTab, noteBodyId, title }
-  }
-
-  const getFirstNoteLocation = (sourceState: AppState, excludedLocation?: NoteLocation): NoteLocation => {
-    const excludedKey = excludedLocation ? buildNoteLocationKey(excludedLocation) : ''
-    const domains = sourceState.domains.map((domain) =>
-      domain.id === sourceState.activeDomainId ? { ...domain, spaces: sourceState.spaces } : domain,
-    )
-    let fallback: NoteLocation | null = null
-    for (const domain of domains) {
-      for (const space of domain.spaces) {
-        for (const tab of space.data.tabs) {
-          const homeLocation = { domainId: domain.id, spaceId: space.id, tabId: tab.id, subTabId: null }
-          fallback ??= homeLocation
-          if (buildNoteLocationKey(homeLocation) !== excludedKey) return homeLocation
-          for (const subTab of tab.subTabs) {
-            const subTabLocation = { domainId: domain.id, spaceId: space.id, tabId: tab.id, subTabId: subTab.id }
-            if (buildNoteLocationKey(subTabLocation) !== excludedKey) return subTabLocation
-          }
-        }
-      }
-    }
-    return fallback ?? getCurrentNoteLocation()
-  }
-
-  const getDefaultNoteReferenceTarget = (sourceState: AppState, source: NoteLocation): NoteLocation => {
-    const sourceInfo = getLocationInfo(sourceState, source)
-    if (!sourceInfo.domain || !sourceInfo.space || !sourceInfo.tab) {
-      return getFirstNoteLocation(sourceState, source)
-    }
-
-    const candidates: NoteLocation[] = [
-      {
-        domainId: source.domainId,
-        spaceId: source.spaceId,
-        tabId: source.tabId,
-        subTabId: null,
-      },
-      ...sourceInfo.tab.subTabs.map((subTab) => ({
-        domainId: source.domainId,
-        spaceId: source.spaceId,
-        tabId: source.tabId,
-        subTabId: subTab.id,
-      })),
-    ]
-    const sourceKey = buildNoteLocationKey(source)
-    return candidates.find((candidate) => buildNoteLocationKey(candidate) !== sourceKey) ?? source
-  }
-
-  const listNoteLocationsForBody = (sourceState: AppState, noteBodyId: string): Array<NoteLocation & { title: string; label: string }> => {
-    const domains = sourceState.domains.map((domain) =>
-      domain.id === sourceState.activeDomainId ? { ...domain, spaces: sourceState.spaces } : domain,
-    )
-    const locations: Array<NoteLocation & { title: string; label: string }> = []
-    for (const domain of domains) {
-      for (const space of domain.spaces) {
-        for (const tab of space.data.tabs) {
-          if (tab.noteBodyId === noteBodyId) {
-            locations.push({
-              domainId: domain.id,
-              spaceId: space.id,
-              tabId: tab.id,
-              subTabId: null,
-              title: tab.title,
-              label: `${domain.name} / ${space.name} / ${tab.title} / home`,
-            })
-          }
-          for (const subTab of tab.subTabs) {
-            if (subTab.noteBodyId !== noteBodyId) continue
-            locations.push({
-              domainId: domain.id,
-              spaceId: space.id,
-              tabId: tab.id,
-              subTabId: subTab.id,
-              title: subTab.title,
-              label: `${domain.name} / ${space.name} / ${tab.title} / ${subTab.title}`,
-            })
-          }
-        }
-      }
-    }
-    return locations
-  }
-
-  const noteLocationHasContent = (sourceState: AppState, location: NoteLocation) => {
-    const noteBodyId = getLocationInfo(sourceState, location).noteBodyId
-    const body = noteBodyId ? sourceState.noteBodies.find((candidate) => candidate.id === noteBodyId) : null
-    return Boolean(body?.aisles.some((aisle) => aisle.markdown.trim().length > 0))
-  }
-
-  const updateNoteLocationBody = (sourceState: AppState, location: NoteLocation, noteBodyId: string): AppState => {
-    const domains = sourceState.domains.map((domain) =>
-      domain.id === sourceState.activeDomainId ? { ...domain, activeSpaceId: sourceState.activeSpaceId, spaces: sourceState.spaces } : domain,
-    )
-    const nextDomains = domains.map((domain) => {
-      if (domain.id !== location.domainId) return domain
-      return {
-        ...domain,
-        spaces: domain.spaces.map((space) => {
-          if (space.id !== location.spaceId) return space
-          return {
-            ...space,
-            data: {
-              ...space.data,
-              tabs: space.data.tabs.map((tab) => {
-                if (tab.id !== location.tabId) return tab
-                if (location.subTabId === null) return { ...tab, noteBodyId }
-                return {
-                  ...tab,
-                  subTabs: tab.subTabs.map((subTab) =>
-                    subTab.id === location.subTabId ? { ...subTab, noteBodyId } : subTab,
-                  ),
-                }
-              }),
-            },
-          }
-        }),
-      }
-    })
-    const activeDomain = nextDomains.find((domain) => domain.id === sourceState.activeDomainId) ?? nextDomains[0]
-    return {
-      ...sourceState,
-      domains: nextDomains,
-      spaces: activeDomain?.spaces ?? sourceState.spaces,
-      activeSpaceId: activeDomain?.activeSpaceId ?? sourceState.activeSpaceId,
-    }
-  }
-
-  const getContextReferenceSignature = (sourceState: AppState, payload: NoteContextReferencePayload) => {
-    const targetBodyId = getLocationInfo(sourceState, payload.target).noteBodyId
-    return `${targetBodyId || buildNoteLocationKey(payload.target)}::${normalizeAisleSelection(payload.aisleIds)}`
-  }
-
-  const wouldCreateContextCycle = (
-    sourceState: AppState,
-    targetNoteBodyId: string,
-    blockedNoteBodyId: string,
-    visited = new Set<string>(),
-  ): boolean => {
-    if (!targetNoteBodyId || !blockedNoteBodyId) return false
-    if (targetNoteBodyId === blockedNoteBodyId) return true
-    if (visited.has(targetNoteBodyId)) return false
-    if (visited.size >= MAX_CONTEXT_RENDER_DEPTH * 8) return true
-
-    visited.add(targetNoteBodyId)
-    const targetBody = sourceState.noteBodies.find((body) => body.id === targetNoteBodyId)
-    if (!targetBody) return false
-
-    for (const aisle of targetBody.aisles) {
-      for (const reference of parseContextReferences(aisle.markdown)) {
-        const childBodyId = getLocationInfo(sourceState, reference.payload.target).noteBodyId
-        if (wouldCreateContextCycle(sourceState, childBodyId, blockedNoteBodyId, visited)) return true
-      }
-    }
-    return false
-  }
-
-  const replaceContextTokenById = (markdown: string, tokenId: string, nextToken: string) =>
-    markdown.replace(NOTE_CONTEXT_REFERENCE_RE, (token, encoded) => {
-      const payload = decodeContextPayload(encoded)
-      return payload?.id === tokenId ? nextToken : token
-    })
 
   const navigateToNoteLocation = (location: NoteLocation) => {
     flushPendingContent()
@@ -8214,104 +7801,6 @@ function App() {
     setModal(null)
   }
 
-  const modalText = (() => {
-    if (!modal) return { title: '', body: '', action: 'confirm' }
-
-    if (modal.type === 'trash-delete-all') {
-      return {
-        title: 'delete all trash?',
-        body: 'this permanently removes every deleted tab and sub-tab in this space.',
-        action: 'delete all',
-      }
-    }
-
-    if (modal.type === 'trash-restore-all') {
-      return {
-        title: 'restore all trash?',
-        body: 'this restores every deleted tab and sub-tab in this space.',
-        action: 'restore all',
-      }
-    }
-
-    if (modal.type === 'export-space') {
-      return {
-        title: 'export space',
-        body: 'choose the space to export. the current space is selected by default.',
-        action: 'export',
-      }
-    }
-
-    if (modal.type === 'duplicate-note') {
-      return {
-        title: 'make duplicate',
-        body: 'the selected note will share the target note body. Existing text in the selected note is replaced by the shared body.',
-        action: 'link duplicate',
-      }
-    }
-
-    if (modal.type === 'copy-note') {
-      const hasExistingContent = noteLocationHasContent(state, modal.source)
-      return {
-        title: 'make copy',
-        body: hasExistingContent
-          ? 'the selected note will be replaced with an independent copy of the target note, including all aisles.'
-          : 'the selected note will receive an independent copy of the target note, including all aisles.',
-        action: 'copy note',
-      }
-    }
-
-    if (modal.type === 'deduplicate-note') {
-      return {
-        title: 'de-duplicate',
-        body: 'checked notes remain linked. Unchecked notes become empty independent notes.',
-        action: 'apply',
-      }
-    }
-
-    if (modal.type === 'insert-note-reference') {
-      return {
-        title: 'insert note link or preview',
-        body: 'choose a target note and insert it as a link or note preview.',
-        action: 'insert',
-      }
-    }
-
-    if (modal.target.type === 'space') {
-      if (state.spaces.length <= 1) {
-        return {
-          title: 'cannot delete space',
-          body: 'at least one space must remain.',
-          action: 'ok',
-        }
-      }
-      return {
-        title: 'delete space?',
-        body: 'deleted spaces cannot be recovered, are you sure you want to do this?',
-        action: 'delete space',
-      }
-    }
-
-    if (modal.target.type === 'trash-tab' && modal.target.source === 'subtabs-only') {
-      return {
-        title: 'delete sub-tabs for real?',
-        body: 'this permanently deletes the trashed sub-tabs under this tab. The parent tab (and its other sub-tabs) will remain.',
-        action: 'delete for real',
-      }
-    }
-
-    return modal.permanent
-      ? {
-          title: 'delete for real?',
-          body: 'this permanently deletes the selected item and skips trash.',
-          action: 'delete for real',
-        }
-      : {
-          title: 'move to trash?',
-          body: 'this moves the selected item into trash.',
-          action: 'delete',
-        }
-  })()
-
   const editorReadOnly = viewMode !== 'main'
 
   const executeToolbarCommand = (command: string, payload?: Record<string, unknown>) => {
@@ -9429,206 +8918,35 @@ function App() {
           onCancelArrangeSpacePointerDrag={cancelArrangeSpacePointerDrag}
         />
       ) : viewMode === 'settings' ? (
-        <section className="settings-page-wrap">
-          <div className="settings-page-card">
-            <div className="settings-section-tabs" role="tablist" aria-label="settings sections">
-              {(['hotkeys', 'data', 'visuals'] as SettingsSection[]).map((section) => (
-                <button
-                  key={section}
-                  type="button"
-                  role="tab"
-                  aria-selected={settingsSection === section}
-                  className={`settings-section-tab ${settingsSection === section ? 'is-active' : ''}`}
-                  onClick={() => {
-                    setSettingsSection(section)
-                    if (section !== 'hotkeys') setEditingShortcut(null)
-                  }}
-                >
-                  {section}
-                </button>
-              ))}
-            </div>
-
-            {settingsSection === 'hotkeys' && (
-              <div className="settings-section-panel" role="tabpanel">
-                <p>hotkeys ({isMacPlatform ? 'mac' : 'windows'}):</p>
-                <div className="settings-hotkeys-list">
-                  {(
-                    [
-                      ['toggleTabTrash', 'toggle tabs/trash'],
-                      ['openDomains', 'open domains'],
-                      ['openSpaces', 'open spaces'],
-                      ['newTab', 'new parent tab'],
-                      ['newSubTab', 'new sub tab'],
-                      ['cycleSubTabNext', 'next sub tab'],
-                      ['cycleSubTabPrev', 'previous sub tab'],
-                    ] as Array<[ShortcutId, string]>
-                  ).map(([shortcutId, label]) => (
-                    <div key={shortcutId} className="settings-hotkey-row">
-                      <span className="settings-hotkey-label">{label}</span>
-                      <button
-                        type="button"
-                        className={`settings-shortcut-btn ${editingShortcut === shortcutId ? 'is-recording' : ''}`}
-                        onClick={() => setEditingShortcut((current) => (current === shortcutId ? null : shortcutId))}
-                      >
-                        {editingShortcut === shortcutId
-                          ? 'press keys...'
-                          : formatShortcutLabel(shortcutDrafts[shortcutId], isMacPlatform)}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                <p className="settings-help">select a hotkey to enter new combination, escape to cancel.</p>
-                <div className="settings-hotkey-row">
-                  <label className="settings-hotkey-label" htmlFor="settings-mouse-back-forward">
-                    enable mouse back/forward buttons
-                  </label>
-                  <div className="form-check form-switch settings-switch">
-                    <input
-                      id="settings-mouse-back-forward"
-                      className="form-check-input"
-                      type="checkbox"
-                      role="switch"
-                      checked={mouseBackForwardEnabledDraft}
-                      onChange={(event) => updateMouseBackForwardSetting(event.target.checked)}
-                    />
-                  </div>
-                </div>
-                <div className="settings-hotkey-row">
-                  <label className="settings-hotkey-label" htmlFor="settings-generic-history-hotkeys">
-                    enable generic back/forward hotkeys
-                  </label>
-                  <div className="form-check form-switch settings-switch">
-                    <input
-                      id="settings-generic-history-hotkeys"
-                      className="form-check-input"
-                      type="checkbox"
-                      role="switch"
-                      checked={genericHistoryHotkeysEnabledDraft}
-                      onChange={(event) => updateGenericHistoryHotkeysSetting(event.target.checked)}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {settingsSection === 'data' && (
-              <div className="settings-section-panel" role="tabpanel">
-                <p>automatically remove deleted items after:</p>
-                <div className="settings-field-row">
-                  <input
-                    type="number"
-                    className="settings-number-input settings-number-input-half"
-                    min={MIN_AUTO_REMOVE_DAYS}
-                    max={MAX_AUTO_REMOVE_DAYS}
-                    step={1}
-                    value={settingsDaysDraft}
-                    onChange={(event) => updateAutoRemoveDaysSetting(event.target.value)}
-                    onBlur={() => updateAutoRemoveDaysSetting(settingsDaysDraft, true)}
-                  />
-                  <span className="settings-field-suffix">days</span>
-                </div>
-                <div className="settings-divider" />
-                <div className="settings-page-actions">
-                  <button
-                    type="button"
-                    className="btn btn-sm settings-action-btn"
-                    onClick={() => setModal({ type: 'export-space', spaceId: activeSpace.id })}
-                  >
-                    export space
-                  </button>
-                  <button type="button" className="btn btn-sm settings-action-btn" onClick={() => exportData('all')}>
-                    export all
-                  </button>
-                </div>
-                <p className="settings-help">exports convert internal tab markers to four spaces for clean markdown files.</p>
-                {exportStatus && <p className="settings-help">{exportStatus}</p>}
-              </div>
-            )}
-
-            {settingsSection === 'visuals' && (
-              <div className="settings-section-panel" role="tabpanel">
-                <div className="settings-hotkey-row">
-                  <span className="settings-hotkey-label" id="settings-theme-label">
-                    theme
-                  </span>
-                  <div className="theme-switch" role="radiogroup" aria-labelledby="settings-theme-label">
-                    {THEME_OPTIONS.map((theme) => (
-                      <button
-                        key={theme.id}
-                        type="button"
-                        role="radio"
-                        aria-checked={state.theme === theme.id}
-                        className={`theme-switch-option ${state.theme === theme.id ? 'is-selected' : ''}`}
-                        onClick={() => updateThemeSetting(theme.id)}
-                      >
-                        {theme.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="settings-hotkey-row settings-slider-row">
-                  <label className="settings-hotkey-label" htmlFor="settings-tab-button-scale">
-                    tab button size
-                  </label>
-                  <div className="settings-slider-wrap">
-                    <input
-                      id="settings-tab-button-scale"
-                      className="form-range settings-range-input"
-                      type="range"
-                      min={MIN_TAB_BUTTON_SCALE}
-                      max={MAX_TAB_BUTTON_SCALE}
-                      step={TAB_BUTTON_SCALE_STEP}
-                      value={tabButtonScaleDraft}
-                      onChange={(event) => updateTabButtonScaleSetting(event.target.value)}
-                    />
-                    <span className="settings-range-value">{Math.round(tabButtonScaleDraft * 100)}%</span>
-                  </div>
-                </div>
-                <div className="settings-hotkey-row settings-slider-row">
-                  <label className="settings-hotkey-label" htmlFor="settings-note-font-scale">
-                    note font size
-                  </label>
-                  <div className="settings-slider-wrap">
-                    <input
-                      id="settings-note-font-scale"
-                      className="form-range settings-range-input"
-                      type="range"
-                      min={MIN_NOTE_FONT_SCALE}
-                      max={MAX_NOTE_FONT_SCALE}
-                      step={NOTE_FONT_SCALE_STEP}
-                      value={noteFontScaleDraft}
-                      onChange={(event) => updateNoteFontScaleSetting(event.target.value)}
-                    />
-                    <span className="settings-range-value">{Math.round(noteFontScaleDraft * 100)}%</span>
-                  </div>
-                </div>
-                <div className="settings-hotkey-row">
-                  <label
-                    className="settings-hotkey-label"
-                    htmlFor="settings-show-parent-home-tab"
-                    title='adds a fixed first sub-tab named "home" for each parent tab.'
-                  >
-                    show parent home tab with the other sub-tabs
-                  </label>
-                  <div className="form-check form-switch settings-switch">
-                    <input
-                      id="settings-show-parent-home-tab"
-                      className="form-check-input"
-                      type="checkbox"
-                      role="switch"
-                      checked={showParentHomeTabDraft}
-                      onChange={(event) => updateShowParentHomeTabSetting(event.target.checked)}
-                    />
-                  </div>
-                </div>
-                <p className="settings-help">
-                  when enabled, a locked <code>home</code> sub-tab appears first. it cannot be renamed or deleted.
-                </p>
-              </div>
-            )}
-          </div>
-        </section>
+        <SettingsPage
+          state={state}
+          section={settingsSection}
+          isMacPlatform={isMacPlatform}
+          shortcutDrafts={shortcutDrafts}
+          editingShortcut={editingShortcut}
+          mouseBackForwardEnabled={mouseBackForwardEnabledDraft}
+          genericHistoryHotkeysEnabled={genericHistoryHotkeysEnabledDraft}
+          settingsDaysDraft={settingsDaysDraft}
+          activeSpaceId={activeSpace.id}
+          exportStatus={exportStatus}
+          tabButtonScaleDraft={tabButtonScaleDraft}
+          noteFontScaleDraft={noteFontScaleDraft}
+          showParentHomeTabDraft={showParentHomeTabDraft}
+          onSectionChange={(section) => {
+            setSettingsSection(section)
+            if (section !== 'hotkeys') setEditingShortcut(null)
+          }}
+          onToggleShortcutEdit={(shortcutId) => setEditingShortcut((current) => (current === shortcutId ? null : shortcutId))}
+          onMouseBackForwardChange={updateMouseBackForwardSetting}
+          onGenericHistoryHotkeysChange={updateGenericHistoryHotkeysSetting}
+          onAutoRemoveDaysChange={updateAutoRemoveDaysSetting}
+          onExportSpace={(spaceId) => setModal({ type: 'export-space', spaceId })}
+          onExportAll={() => exportData('all')}
+          onThemeChange={updateThemeSetting}
+          onTabButtonScaleChange={updateTabButtonScaleSetting}
+          onNoteFontScaleChange={updateNoteFontScaleSetting}
+          onShowParentHomeTabChange={updateShowParentHomeTabSetting}
+        />
       ) : (
         <>
           {(isNoteWorkspaceView || (viewMode === 'trash' && Boolean(selectedTrashTab))) && (
@@ -10487,334 +9805,82 @@ function App() {
               </div>
             </section>
           ) : isTrashHomeSelected ? (
-            <section className="trash-home-note">
-              <p>Items moved here are pending deletion.</p>
-              <ul>
-                <li>Use <strong>Restore All</strong> to move everything back into notes.</li>
-                <li>Use <strong>delete all</strong> to permanently remove all items in Trash.</li>
-                <li>This Trash note is read-only.</li>
-              </ul>
-              <div className="trash-home-actions">
-                <button type="button" className="btn btn-sm btn-outline-light" onClick={() => setModal({ type: 'trash-restore-all' })}>
-                  restore all
-                </button>
-                <button type="button" className="btn btn-sm app-danger-btn" onClick={() => setModal({ type: 'trash-delete-all' })}>
-                  delete all
-                </button>
-              </div>
-            </section>
+            <TrashHomeNote
+              onRestoreAll={() => setModal({ type: 'trash-restore-all' })}
+              onDeleteAll={() => setModal({ type: 'trash-delete-all' })}
+            />
           ) : viewMode === 'main' ? (
-            <section
-              ref={(node) => {
+            <NoteWorkspace
+              noteBodyId={activeNoteBodyId}
+              aisles={activeNoteAisles}
+              activeAisleId={resolvedActiveAisleId}
+              editorReadOnly={editorReadOnly}
+              aisleDeleteMode={aisleDeleteMode}
+              aisleScrollRef={aisleScrollRef}
+              toolbar={renderSharedToolbar()}
+              headingPopover={renderHeadingPopover()}
+              aislePopover={renderAisleToolbarPopover()}
+              deleteConfirmation={renderAisleDeleteConfirmation()}
+              imageToolsOverlay={renderImageToolsOverlay()}
+              onRootChange={(node) => {
                 editorEventRootRef.current = node
               }}
-              className={`note-aisles-shell ${activeNoteAisles.length <= 1 ? 'is-single' : 'is-split'} ${
-                aisleDeleteMode ? 'is-delete-mode' : ''
-              }`}
-            >
-              {renderSharedToolbar()}
-              {renderHeadingPopover()}
-              {renderAisleToolbarPopover()}
-              {renderAisleDeleteConfirmation()}
-              {renderImageToolsOverlay()}
-              <div
-                ref={aisleScrollRef}
-                className="note-aisle-scroll"
-                onScroll={(event) => {
-                  if (!activeNoteBodyId) return
-                  aisleHorizontalScrollByBodyRef.current.set(activeNoteBodyId, event.currentTarget.scrollLeft)
-                }}
-              >
-                {activeNoteAisles.map((aisle, index) => {
-                  const editorKey = buildAisleEditorKey(activeNoteBodyId, aisle.id)
-                  return (
-                    <section
-                      key={aisle.id}
-                      className={`note-aisle-pane ${aisle.id === resolvedActiveAisleId ? 'is-active' : ''}`}
-                      aria-label={`Aisle ${index + 1}`}
-                      data-aisle-id={aisle.id}
-                      data-aisle-editor-key={editorKey}
-                      onPointerDown={() => activateAisleEditor(editorKey, { flushPrevious: true })}
-                    >
-                      {aisleDeleteMode && activeNoteAisles.length > 1 && (
-                        <button
-                          type="button"
-                          className="note-aisle-delete-float"
-                          onPointerDown={(event) => event.stopPropagation()}
-                          onClick={(event) => {
-                            event.preventDefault()
-                            event.stopPropagation()
-                            requestDeleteAisleFromActiveNote(aisle, index, event.currentTarget)
-                          }}
-                          title={`Delete aisle ${index + 1}`}
-                          aria-label={`Delete aisle ${index + 1}`}
-                        >
-                          <span className="note-aisle-delete-icon" aria-hidden="true" />
-                        </button>
-                      )}
-                      <section className={`editor-shell note-aisle-editor-shell ${editorReadOnly ? 'editor-readonly' : ''}`}>
-                        <div
-                          ref={(node) => registerAisleEditorRoot(editorKey, node)}
-                          className="toast-editor-host"
-                          data-aisle-editor-key={editorKey}
-                        />
-                      </section>
-                    </section>
-                  )
-                })}
-              </div>
-            </section>
+              onAisleScroll={(scrollLeft) => {
+                if (!activeNoteBodyId) return
+                aisleHorizontalScrollByBodyRef.current.set(activeNoteBodyId, scrollLeft)
+              }}
+              onActivateAisle={(editorKey) => activateAisleEditor(editorKey, { flushPrevious: true })}
+              onRegisterAisleEditorRoot={registerAisleEditorRoot}
+              onRequestDeleteAisle={requestDeleteAisleFromActiveNote}
+            />
           ) : (
             renderEditorShell()
           )}
         </>
       )}
 
-      {contextMenu && (
-        <div
-          className="tab-context-menu"
-          style={{ top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }}
-          role="menu"
-          onClick={(event) => event.stopPropagation()}
-        >
-          {contextMenu.type === 'space' ? (
-            <>
-              <button type="button" className="tab-context-delete" onClick={enterArrangeModeFromContext}>
-                arrange
-              </button>
-              <button type="button" className="tab-context-delete" onClick={duplicateSpaceFromContext}>
-                duplicate
-              </button>
-              <button type="button" className="tab-context-delete" onClick={beginRenameSpaceFromContext}>
-                rename
-              </button>
-              <button
-                type="button"
-                className="tab-context-delete"
-                onClick={() => {
-                  if (!canDeleteSpace) {
-                    setContextMenu(null)
-                    return
-                  }
-                  openDeleteModalFromContext(false)
-                }}
-                disabled={!canDeleteSpace}
-              >
-                delete
-              </button>
-            </>
-          ) : contextMenu.type === 'domain' ? (
-            <button type="button" className="tab-context-delete" onClick={beginRenameDomainFromContext}>
-              rename
-            </button>
-          ) : contextMenu.type === 'image' ? (
-            <button
-              type="button"
-              className="tab-context-delete"
-              onClick={() => {
-                setContextMenu(null)
-                void copySelectedImageToClipboard()
-              }}
-            >
-              copy image
-            </button>
-          ) : contextMenu.type === 'internal-note-link' ? (
-            <>
-              <button type="button" className="tab-context-delete" onClick={openInternalNoteLinkFromContext}>
-                open linked note
-              </button>
-              <button type="button" className="tab-context-delete" onClick={renameInternalNoteLinkFromContext}>
-                edit link name
-              </button>
-            </>
-          ) : contextMenu.type === 'trash-tab' || contextMenu.type === 'trash-subtab' ? (
-            <button
-              type="button"
-              className="tab-context-delete tab-context-danger"
-              onClick={() => openDeleteModalFromContext(true)}
-            >
-              delete for real
-            </button>
-          ) : (
-            <>
-              <button type="button" className="tab-context-delete" onClick={enterArrangeModeFromContext}>
-                arrange
-              </button>
-              {getCurrentDuplicateCount() <= 1 ? (
-                <button type="button" className="tab-context-delete" onClick={openDuplicateModalFromContext}>
-                  make duplicate
-                </button>
-              ) : (
-                <button type="button" className="tab-context-delete" onClick={openDeduplicateModalFromContext}>
-                  de-duplicate
-                </button>
-              )}
-              <button type="button" className="tab-context-delete" onClick={openCopyModalFromContext}>
-                make copy
-              </button>
-              <button type="button" className="tab-context-delete" onClick={deleteFromContext}>
-                move to trash
-              </button>
-              <button
-                type="button"
-                className="tab-context-delete tab-context-danger"
-                onClick={() => openDeleteModalFromContext(true)}
-              >
-                delete now
-              </button>
-            </>
-          )}
-        </div>
-      )}
+      <ContextMenuHost
+        contextMenu={contextMenu}
+        canDeleteSpace={canDeleteSpace}
+        duplicateCount={getCurrentDuplicateCount()}
+        onClose={() => setContextMenu(null)}
+        onEnterArrangeMode={enterArrangeModeFromContext}
+        onDuplicateSpace={duplicateSpaceFromContext}
+        onRenameSpace={beginRenameSpaceFromContext}
+        onRenameDomain={beginRenameDomainFromContext}
+        onCopyImage={() => {
+          setContextMenu(null)
+          void copySelectedImageToClipboard()
+        }}
+        onOpenInternalNoteLink={openInternalNoteLinkFromContext}
+        onRenameInternalNoteLink={renameInternalNoteLinkFromContext}
+        onOpenDeleteModal={openDeleteModalFromContext}
+        onOpenDuplicateModal={openDuplicateModalFromContext}
+        onOpenDeduplicateModal={openDeduplicateModalFromContext}
+        onOpenCopyModal={openCopyModalFromContext}
+        onMoveToTrash={deleteFromContext}
+      />
 
-      {modal && (
-        <div className="delete-modal-backdrop" onClick={() => setModal(null)}>
-          <div
-            className={`delete-modal ${
-              modal.type === 'export-space' ||
-              modal.type === 'duplicate-note' ||
-              modal.type === 'copy-note' ||
-              modal.type === 'deduplicate-note' ||
-              modal.type === 'insert-note-reference'
-                ? 'settings-modal'
-                : ''
-            } ${
-              modal.type === 'duplicate-note' || modal.type === 'copy-note' || modal.type === 'insert-note-reference'
-                ? 'note-picker-modal'
-                : ''
-            }`}
-            role="dialog"
-            aria-modal="true"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <h2>{modalText.title}</h2>
-            <p>{modalText.body}</p>
-            {modal.type === 'export-space' && (
-              <label className="settings-modal-field">
-                <span>space</span>
-                <select
-                  className="settings-select-input"
-                  value={state.spaces.some((space) => space.id === modal.spaceId) ? modal.spaceId : activeSpace.id}
-                  onChange={(event) => setModal({ type: 'export-space', spaceId: event.target.value })}
-                >
-                  {state.spaces.map((space) => (
-                    <option key={space.id} value={space.id}>
-                      {space.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            {modal.type === 'duplicate-note' && (
-              <NoteLocationPicker
-                domains={domainsForPickers}
-                noteBodies={state.noteBodies}
-                value={modal.target}
-                onChange={(target: NoteLocationPickerValue) => setModal({ ...modal, target })}
-              />
-            )}
-            {modal.type === 'copy-note' && (
-              <NoteLocationPicker
-                domains={domainsForPickers}
-                noteBodies={state.noteBodies}
-                value={modal.target}
-                onChange={(target: NoteLocationPickerValue) => setModal({ ...modal, target })}
-              />
-            )}
-            {modal.type === 'deduplicate-note' && (
-              <div className="duplicate-note-list">
-                {listNoteLocationsForBody(state, modal.noteBodyId).map((location) => {
-                  const locationKey = buildNoteLocationKey(location)
-                  return (
-                    <label key={locationKey} className="duplicate-note-choice">
-                      <input
-                        type="checkbox"
-                        checked={modal.keepLocationKeys.includes(locationKey)}
-                        onChange={(event) => {
-                          const keepLocationKeys = event.target.checked
-                            ? [...modal.keepLocationKeys, locationKey]
-                            : modal.keepLocationKeys.filter((key) => key !== locationKey)
-                          setModal({ ...modal, keepLocationKeys })
-                        }}
-                      />
-                      <span>{location.label}</span>
-                    </label>
-                  )
-                })}
-              </div>
-            )}
-            {modal.type === 'insert-note-reference' && (
-              <div className="note-reference-modal">
-                <div className="note-reference-mode" role="group" aria-label="Reference type">
-                  <button
-                    type="button"
-                    className={`note-reference-mode-btn ${modal.insertAs === 'link' ? 'is-active' : ''}`}
-                    onClick={() => setModal({ ...modal, insertAs: 'link', editingTokenId: undefined })}
-                    disabled={Boolean(modal.editingTokenId)}
-                  >
-                    link a note
-                  </button>
-                  <button
-                    type="button"
-                    className={`note-reference-mode-btn ${modal.insertAs === 'context' ? 'is-active' : ''}`}
-                    onClick={() => setModal({ ...modal, insertAs: 'context' })}
-                  >
-                    note preview
-                  </button>
-                </div>
-                <NoteLocationPicker
-                  domains={domainsForPickers}
-                  noteBodies={state.noteBodies}
-                  value={modal.target}
-                  includeAisles={modal.insertAs === 'context'}
-                  allowAllAisles
-                  onChange={(target: NoteLocationPickerValue) => setModal({ ...modal, target })}
-                />
-              </div>
-            )}
-            <div className="delete-modal-actions">
-              <button type="button" className="btn btn-sm btn-outline-light modal-cancel-btn" onClick={() => setModal(null)}>
-                cancel
-              </button>
-              <button
-                type="button"
-                className={`btn btn-sm ${
-                  modal.type === 'delete-target' || modal.type === 'trash-delete-all' ? 'app-danger-btn' : 'modal-primary-btn'
-                }`}
-                disabled={modal.type === 'deduplicate-note' && modal.keepLocationKeys.length === 0}
-                onClick={() => {
-                  if (modal.type === 'delete-target' && modal.target.type === 'space' && state.spaces.length <= 1) {
-                    setModal(null)
-                    return
-                  }
-                  confirmModal()
-                }}
-              >
-                {modalText.action}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ModalHost
+        modal={modal}
+        state={state}
+        activeSpace={activeSpace}
+        domainsForPickers={domainsForPickers}
+        onModalChange={setModal}
+        onConfirm={confirmModal}
+      />
 
-      {toast && (
-        <div className="app-toast-layer" aria-live="polite" aria-atomic="true">
-          <div
-            key={toast.id}
-            className={`app-toast app-toast-${toast.tone}`}
-            onMouseEnter={() => {
-              setToastHovered(true)
-              setToastWasHovered(true)
-            }}
-            onMouseLeave={() => {
-              setToastHovered(false)
-              setToastWasHovered(true)
-            }}
-          >
-            {toast.message}
-          </div>
-        </div>
-      )}
+      <ToastHost
+        toast={toast}
+        onToastMouseEnter={() => {
+          setToastHovered(true)
+          setToastWasHovered(true)
+        }}
+        onToastMouseLeave={() => {
+          setToastHovered(false)
+          setToastWasHovered(true)
+        }}
+      />
 
     </main>
   )

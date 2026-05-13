@@ -1,14 +1,7 @@
 import type { AppState, ShortcutId } from '../types/app'
+import { DEFAULT_COMMAND_SHORTCUTS } from '../commands/app-commands'
 
-export const DEFAULT_SHORTCUTS: Record<ShortcutId, string> = {
-  toggleTabTrash: 'Mod+T',
-  openDomains: 'Mod+D',
-  openSpaces: 'Mod+S',
-  newTab: 'Mod+Shift+N',
-  newSubTab: 'Mod+N',
-  cycleSubTabNext: 'Ctrl+Tab',
-  cycleSubTabPrev: 'Ctrl+Shift+Tab',
-}
+export const DEFAULT_SHORTCUTS: Record<ShortcutId, string> = DEFAULT_COMMAND_SHORTCUTS
 
 function normalizeShortcutValue(raw: unknown, fallback: string): string {
   if (typeof raw !== 'string') return fallback

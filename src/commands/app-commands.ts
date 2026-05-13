@@ -1,0 +1,35 @@
+import type { ShortcutId } from '../types/app'
+
+export type AppCommandId = ShortcutId
+
+export type AppCommandDefinition = {
+  id: AppCommandId
+  label: string
+  defaultShortcut: string
+}
+
+export const APP_COMMANDS: AppCommandDefinition[] = [
+  { id: 'toggleTabTrash', label: 'toggle tabs/trash', defaultShortcut: 'Mod+T' },
+  { id: 'openDomains', label: 'open domains', defaultShortcut: 'Mod+D' },
+  { id: 'openSpaces', label: 'open spaces', defaultShortcut: 'Mod+S' },
+  { id: 'newTab', label: 'new parent tab', defaultShortcut: 'Mod+Shift+N' },
+  { id: 'newSubTab', label: 'new sub tab', defaultShortcut: 'Mod+N' },
+  { id: 'cycleSubTabNext', label: 'next sub tab', defaultShortcut: 'Ctrl+Tab' },
+  { id: 'cycleSubTabPrev', label: 'previous sub tab', defaultShortcut: 'Ctrl+Shift+Tab' },
+]
+
+export const APP_COMMAND_LABELS = APP_COMMANDS.reduce<Record<AppCommandId, string>>(
+  (labels, command) => ({
+    ...labels,
+    [command.id]: command.label,
+  }),
+  {} as Record<AppCommandId, string>,
+)
+
+export const DEFAULT_COMMAND_SHORTCUTS = APP_COMMANDS.reduce<Record<ShortcutId, string>>(
+  (shortcuts, command) => ({
+    ...shortcuts,
+    [command.id]: command.defaultShortcut,
+  }),
+  {} as Record<ShortcutId, string>,
+)
