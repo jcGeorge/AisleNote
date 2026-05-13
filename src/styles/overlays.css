@@ -103,6 +103,10 @@
   width: min(420px, calc(100vw - 2rem));
 }
 
+.settings-modal.note-picker-modal {
+  width: min(350px, calc(100vw - 2rem));
+}
+
 .settings-modal-field {
   display: flex;
   flex-direction: column;
@@ -140,14 +144,29 @@
 
 .note-location-picker {
   display: grid;
-  gap: 0.65rem;
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
   text-align: left;
+}
+
+.note-location-picker .settings-modal-field {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  margin: 0;
+}
+
+.note-picker-modal .note-location-picker {
+  margin-bottom: 0.95rem;
 }
 
 .note-picker-aisles {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
+  padding-left: 8.25rem;
 }
 
 .note-picker-aisle-choice {
@@ -168,7 +187,7 @@
 .duplicate-note-list,
 .note-reference-modal {
   display: grid;
-  gap: 0.7rem;
+  gap: 0.6rem;
   text-align: left;
 }
 
@@ -191,6 +210,37 @@
 .note-reference-mode {
   display: inline-flex;
   gap: 0.25rem;
+}
+
+.note-picker-modal .delete-modal-actions {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr);
+  gap: 0.75rem;
+}
+
+.note-picker-modal .delete-modal-actions .btn {
+  font-size: calc(0.875rem * var(--note-font-scale, 1));
+}
+
+.note-picker-modal .delete-modal-actions .modal-cancel-btn {
+  justify-self: start;
+}
+
+.note-picker-modal .delete-modal-actions .modal-primary-btn,
+.note-picker-modal .delete-modal-actions .app-danger-btn {
+  justify-self: end;
+}
+
+@media (max-width: 520px) {
+  .note-location-picker .settings-modal-field,
+  .note-picker-modal .delete-modal-actions {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+  }
+
+  .note-picker-aisles {
+    padding-left: 0;
+  }
 }
 
 .note-reference-mode-btn {

@@ -1,4 +1,5 @@
 import { type MouseEvent, type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Editor } from '@toast-ui/editor'
 import JSZip from 'jszip'
 import '@toast-ui/editor/dist/toastui-editor.css'
@@ -168,12 +169,32 @@ import type {
 } from './types/app'
 
 const TRASH_HOME_ID = '__trash_home__'
+const CODE_BLOCK_INDENT_TEXT = '    '
 const THEME_OPTIONS: Array<{ id: AppTheme; label: string }> = [
   { id: 'dark', label: 'dark' },
   { id: 'light', label: 'light' },
   { id: 'dawn', label: 'dawn' },
   { id: 'blues', label: 'blues' },
 ]
+type ToolbarFormatKey = 'bold' | 'italic' | 'strike'
+type ToolbarFormatState = Record<ToolbarFormatKey, boolean>
+type InlineCropDragMode = 'move' | 'resize-n' | 'resize-e' | 'resize-s' | 'resize-w' | 'resize-se'
+const DEFAULT_TOOLBAR_FORMAT_STATE: ToolbarFormatState = {
+  bold: false,
+  italic: false,
+  strike: false,
+}
+const TOOLBAR_FORMAT_LABELS: Record<ToolbarFormatKey, string> = {
+  bold: 'Bold',
+  italic: 'Italic',
+  strike: 'Strikethrough',
+}
+type AisleDeleteConfirmationState = {
+  aisleId: string
+  aisleIndex: number
+  top: number
+  left: number
+}
 type TrashContentDisplay = {
   mode: 'home' | 'deleted-parent' | 'deleted-subtab' | 'subtabs-only-parent'
   markdown: string
@@ -211,6 +232,11 @@ function getPrimaryAisle(body: NoteBody | null | undefined): NoteAisle | null {
 function getNoteBodyMarkdown(body: NoteBody | null | undefined, aisleId: string | null | undefined): string {
   if (!body) return ''
   return body.aisles.find((aisle) => aisle.id === aisleId)?.markdown ?? getPrimaryAisle(body)?.markdown ?? ''
+}
+
+function getCodeBlockOutdentRemoveLength(text: string): number {
+  if (text.startsWith('\t')) return 1
+  return text.match(/^ {1,4}/)?.[0].length ?? 0
 }
 
 function buildNoteLocationKey(location: NoteLocation): string {
@@ -363,8 +389,23 @@ type ToolbarPopoverPosition = {
 
 const TOOLBAR_POPOVER_WIDTH_PX = 168
 const TOOLBAR_POPOVER_VIEWPORT_MARGIN_PX = 8
+const AISLE_DELETE_CONFIRMATION_WIDTH_PX = 248
+const AISLE_DELETE_CONFIRMATION_HEIGHT_PX = 104
 const NOTE_PREVIEW_DEFAULT_HEIGHT_REM = 20
 const NOTE_PREVIEW_EXPANDED_HEIGHT_REM = 30
+
+function cloneNoteBodyAsIndependentCopy(body: NoteBody): NoteBody {
+  return {
+    id: createId(),
+    aisles:
+      body.aisles.length > 0
+        ? body.aisles.map((aisle) => ({
+            id: createId(),
+            markdown: aisle.markdown,
+          }))
+        : [{ id: createId(), markdown: '' }],
+  }
+}
 
 function collectProseMirrorTextPositions(doc: any): ProseMirrorTextPositionMap {
   let text = ''
@@ -470,6 +511,7 @@ const DEFAULT_TOAST_DURATION_MS = 3000
 const HOVERED_TOAST_DURATION_MS = 2000
 const COMPLETED_TASK_UNDO_HINT_TOAST_DURATION_MS = 5000
 const TASK_REORDER_DRAG_SLOP_PX = 8
+const TASK_REORDER_SELECTION_SLOP_PX = 2
 const TASK_REORDER_PREVIEW_MAX_CHARS = 30
 const TASK_REORDER_MARKER_GAP_OFFSET_PX = 4
 const TASK_REORDER_SLOT_HYSTERESIS_PX = 6
@@ -706,6 +748,78 @@ type TaskReorderDropTarget = {
   markerY: number
 }
 
+function getTaskParagraphElement(listItemElement: HTMLElement): HTMLElement | null {
+  const paragraph = listItemElement.querySelector('p')
+  return paragraph instanceof HTMLElement ? paragraph : null
+}
+
+function getParagraphLineRects(paragraph: HTMLElement): DOMRect[] {
+  const range = document.createRange()
+  range.selectNodeContents(paragraph)
+  const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0)
+  range.detach()
+  return rects
+}
+
+function getClosestParagraphLineRect(paragraph: HTMLElement, event: globalThis.MouseEvent): DOMRect | null {
+  const rects = getParagraphLineRects(paragraph)
+  if (rects.length === 0) return paragraph.getBoundingClientRect()
+
+  const containingLine = rects.find((rect) => event.clientY >= rect.top - 2 && event.clientY <= rect.bottom + 2)
+  if (containingLine) return containingLine
+
+  return rects.reduce((closest, rect) => {
+    const closestCenter = closest.top + closest.height / 2
+    const rectCenter = rect.top + rect.height / 2
+    return Math.abs(event.clientY - rectCenter) < Math.abs(event.clientY - closestCenter) ? rect : closest
+  }, rects[0])
+}
+
+function isTaskTrailingEmptySpaceClick(listItemElement: HTMLElement, event: globalThis.MouseEvent) {
+  const paragraph = getTaskParagraphElement(listItemElement)
+  if (!paragraph) return false
+
+  const paragraphRect = paragraph.getBoundingClientRect()
+  if (
+    event.clientY < paragraphRect.top - 2 ||
+    event.clientY > paragraphRect.bottom + 2 ||
+    event.clientX > paragraphRect.right + 2
+  ) {
+    return false
+  }
+
+  const lineRect = getClosestParagraphLineRect(paragraph, event)
+  if (!lineRect) return false
+  return event.clientX > lineRect.right + 2 && event.clientX >= lineRect.left
+}
+
+function isMouseUpInsideTaskElement(listItemElement: HTMLElement, event: globalThis.MouseEvent) {
+  const elementAtPoint = document.elementFromPoint(event.clientX, event.clientY)
+  if (elementAtPoint && listItemElement.contains(elementAtPoint)) return true
+
+  const target = getElementFromEventTarget(event.target)
+  return Boolean(target && listItemElement.contains(target))
+}
+
+function placeTaskCaretAtParagraphEnd(view: any, editor: Editor, listItemElement: HTMLElement) {
+  const paragraph = getTaskParagraphElement(listItemElement)
+  if (!paragraph || !view.dom.contains(paragraph)) return
+
+  try {
+    const rawPos = view.posAtDOM(paragraph, paragraph.childNodes.length)
+    const pos = Math.max(0, Math.min(rawPos, view.state.doc.content.size))
+    const SelectionCtor = view.state.selection.constructor as {
+      create?: (doc: unknown, anchor: number, head?: number) => unknown
+    }
+    if (typeof SelectionCtor.create !== 'function') return
+    const nextSelection = SelectionCtor.create(view.state.doc, pos, pos)
+    view.dispatch(view.state.tr.setSelection(nextSelection).scrollIntoView())
+    editor.focus()
+  } catch {
+    editor.focus()
+  }
+}
+
 function getTaskListTextDragElement(view: any, event: globalThis.MouseEvent): HTMLElement | null {
   if (event.button !== 0) return null
   const target = getElementFromEventTarget(event.target)
@@ -718,7 +832,8 @@ function getTaskListTextDragElement(view: any, event: globalThis.MouseEvent): HT
   if (isTaskCheckboxHit(listItemElement, event)) return null
 
   const textBlock = target.closest('p')
-  if (!(textBlock instanceof HTMLElement) || !listItemElement.contains(textBlock)) return null
+  if (textBlock instanceof HTMLElement && listItemElement.contains(textBlock)) return listItemElement
+  if (!isTaskTrailingEmptySpaceClick(listItemElement, event)) return null
 
   return listItemElement
 }
@@ -910,6 +1025,8 @@ function installTaskTextReorderBehavior(root: HTMLElement, getEditor: () => Edit
     previewText: string
     startX: number
     startY: number
+    startedOnTrailingTaskSpace: boolean
+    suppressingSelection: boolean
     dragging: boolean
   }
 
@@ -963,12 +1080,19 @@ function installTaskTextReorderBehavior(root: HTMLElement, getEditor: () => Edit
 
   const handleMouseMove = (event: globalThis.MouseEvent) => {
     if (!dragState) return
+
+    const distance = Math.hypot(event.clientX - dragState.startX, event.clientY - dragState.startY)
+    if (!dragState.suppressingSelection && distance >= TASK_REORDER_SELECTION_SLOP_PX) {
+      dragState.suppressingSelection = true
+      event.preventDefault()
+      event.stopPropagation()
+      window.getSelection()?.removeAllRanges()
+    }
+    if (!dragState.dragging && distance < TASK_REORDER_DRAG_SLOP_PX) return
+
     event.preventDefault()
     event.stopPropagation()
     window.getSelection()?.removeAllRanges()
-
-    const distance = Math.hypot(event.clientX - dragState.startX, event.clientY - dragState.startY)
-    if (!dragState.dragging && distance < TASK_REORDER_DRAG_SLOP_PX) return
 
     if (!dragState.dragging) {
       dragState.dragging = true
@@ -987,7 +1111,14 @@ function installTaskTextReorderBehavior(root: HTMLElement, getEditor: () => Edit
   const handleMouseUp = (event: globalThis.MouseEvent) => {
     if (!dragState) return
     if (!dragState.dragging) {
+      const { editor, sourceElement, startedOnTrailingTaskSpace } = dragState
+      const view = getWysiwygView(editor)
+      const shouldPlaceCaretAtEnd =
+        startedOnTrailingTaskSpace && view && isMouseUpInsideTaskElement(sourceElement, event)
       endDrag()
+      if (shouldPlaceCaretAtEnd) {
+        window.setTimeout(() => placeTaskCaretAtParagraphEnd(view, editor, sourceElement), 0)
+      }
       return
     }
 
@@ -1037,6 +1168,8 @@ function installTaskTextReorderBehavior(root: HTMLElement, getEditor: () => Edit
       previewText: getTaskDragPreviewText(sourceElement),
       startX: event.clientX,
       startY: event.clientY,
+      startedOnTrailingTaskSpace: isTaskTrailingEmptySpaceClick(sourceElement, event),
+      suppressingSelection: false,
       dragging: false,
     }
     root.classList.add('task-reorder-pending')
@@ -1050,6 +1183,7 @@ function installTaskTextReorderBehavior(root: HTMLElement, getEditor: () => Edit
 
   const handleSelectStart = (event: Event) => {
     if (!dragState) return
+    dragState.suppressingSelection = true
     event.preventDefault()
     event.stopPropagation()
     window.getSelection()?.removeAllRanges()
@@ -1132,6 +1266,42 @@ function App() {
     width: 0,
     height: 0,
   })
+  const inlineCropRef = useRef<InlineCropState>(inlineCrop)
+  const updateInlineCrop = (updater: InlineCropState | ((previous: InlineCropState) => InlineCropState)) => {
+    const previous = inlineCropRef.current
+    const nextInlineCrop =
+      typeof updater === 'function'
+        ? (updater as (previous: InlineCropState) => InlineCropState)(previous)
+        : updater
+    inlineCropRef.current = nextInlineCrop
+    setInlineCrop(nextInlineCrop)
+    return nextInlineCrop
+  }
+  const resetInlineCropDrag = () => {
+    inlineCropDragRef.current = {
+      mode: null,
+      startX: 0,
+      startY: 0,
+      startRelX: 0,
+      startRelY: 0,
+      startRelWidth: 1,
+      startRelHeight: 1,
+    }
+  }
+  const startInlineCropDrag = (mode: InlineCropDragMode, clientX: number, clientY: number) => {
+    const crop = inlineCropRef.current
+    if (!crop.active) return false
+    inlineCropDragRef.current = {
+      mode,
+      startX: clientX,
+      startY: clientY,
+      startRelX: crop.relX,
+      startRelY: crop.relY,
+      startRelWidth: crop.relWidth,
+      startRelHeight: crop.relHeight,
+    }
+    return true
+  }
   const [linkPrompt, setLinkPrompt] = useState<LinkPromptState>({
     open: false,
     top: 0,
@@ -1139,19 +1309,26 @@ function App() {
     url: '',
     text: '',
   })
+  const [toolbarFormatState, setToolbarFormatState] = useState<ToolbarFormatState>(DEFAULT_TOOLBAR_FORMAT_STATE)
+  const [toolbarShortcutFeedback, setToolbarShortcutFeedback] = useState<ToolbarFormatKey | null>(null)
   const [noteToolsOpen, setNoteToolsOpen] = useState(false)
   const [headingMenuOpen, setHeadingMenuOpen] = useState(false)
+  const [aisleDeleteConfirmation, setAisleDeleteConfirmation] = useState<AisleDeleteConfirmationState | null>(null)
   const [toolbarPopoverPosition, setToolbarPopoverPosition] = useState<Record<ToolbarPopoverKind, ToolbarPopoverPosition | null>>({
     heading: null,
     aisles: null,
   })
   const [aisleDeleteMode, setAisleDeleteMode] = useState(false)
   const linkPromptInputRef = useRef<HTMLInputElement | null>(null)
+  const aisleDeleteConfirmButtonRef = useRef<HTMLButtonElement | null>(null)
 
   const editorMountRef = useRef<HTMLDivElement | null>(null)
   const editorRef = useRef<Editor | null>(null)
   const headingToolbarButtonRef = useRef<HTMLButtonElement | null>(null)
   const aisleToolbarButtonRef = useRef<HTMLButtonElement | null>(null)
+  const aisleScrollRef = useRef<HTMLDivElement | null>(null)
+  const aisleHorizontalScrollByBodyRef = useRef<Map<string, number>>(new Map())
+  const pendingScrollToAisleIdRef = useRef<string | null>(null)
   const editorEventRootRef = useRef<HTMLElement | null>(null)
   const aisleEditorRootsRef = useRef<Map<string, HTMLElement>>(new Map())
   const aisleEditorMetaRef = useRef<Map<string, AisleEditorMeta>>(new Map())
@@ -1161,7 +1338,7 @@ function App() {
   const activeImageRef = useRef<HTMLImageElement | null>(null)
   const imageResizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const inlineCropDragRef = useRef<{
-    mode: 'move' | 'resize' | null
+    mode: InlineCropDragMode | null
     startX: number
     startY: number
     startRelX: number
@@ -1182,6 +1359,7 @@ function App() {
   const suppressNextSpaceArrangeExitRef = useRef(false)
   const saveTimerRef = useRef<number | null>(null)
   const toastTimerRef = useRef<number | null>(null)
+  const toolbarShortcutFeedbackTimerRef = useRef<number | null>(null)
   const normalizingContentRef = useRef(false)
   const completedTaskDeleteUndoCandidateRef = useRef<{ beforeMarkdown: string; deletedAt: number } | null>(null)
   const completedTaskUndoToastAtRef = useRef(0)
@@ -1673,6 +1851,11 @@ function App() {
     return true
   }
 
+  const exitAisleDeleteMode = () => {
+    setAisleDeleteMode(false)
+    setAisleDeleteConfirmation(null)
+  }
+
   const enterArrangeMode = (source: ArrangeSource, dragItem: ArrangeDragItem | null = null, suppressClickKey?: string) => {
     flushPendingContent()
     clearArrangePressTimer()
@@ -1680,6 +1863,7 @@ function App() {
     setMenuOpen(false)
     setContextMenu(null)
     setEditing(null)
+    exitAisleDeleteMode()
     if (suppressClickKey) {
       markArrangeClickSuppressed(suppressClickKey)
     }
@@ -2352,10 +2536,38 @@ function App() {
   )
 
   useEffect(() => {
+    closeImageTools()
+  }, [activeSpace.id, activeTab.id, activeSubTab?.id, activeNoteBodyId, viewMode])
+
+  useEffect(() => {
     if (resolvedActiveAisleId && resolvedActiveAisleId !== activeAisleId) {
       setActiveAisleId(resolvedActiveAisleId)
     }
   }, [activeAisleId, resolvedActiveAisleId])
+
+  useEffect(() => {
+    const scrollNode = aisleScrollRef.current
+    if (viewMode !== 'main' || !activeNoteBodyId || !scrollNode) return
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      const pendingAisleId = pendingScrollToAisleIdRef.current
+      if (pendingAisleId) {
+        const escapedAisleId = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(pendingAisleId) : pendingAisleId
+        const pendingPane = scrollNode.querySelector<HTMLElement>(`[data-aisle-id="${escapedAisleId}"]`)
+        if (pendingPane) {
+          pendingPane.scrollIntoView({ block: 'nearest', inline: 'end' })
+          aisleHorizontalScrollByBodyRef.current.set(activeNoteBodyId, scrollNode.scrollLeft)
+          pendingScrollToAisleIdRef.current = null
+          return
+        }
+        pendingScrollToAisleIdRef.current = null
+      }
+
+      scrollNode.scrollLeft = aisleHorizontalScrollByBodyRef.current.get(activeNoteBodyId) ?? 0
+    })
+
+    return () => window.cancelAnimationFrame(animationFrame)
+  }, [viewMode, activeNoteBodyId, activeNoteAisles.length])
 
   useEffect(() => {
     if (!activeNoteBodyId || activeNoteBody) return
@@ -2827,6 +3039,12 @@ function App() {
     return locations
   }
 
+  const noteLocationHasContent = (sourceState: AppState, location: NoteLocation) => {
+    const noteBodyId = getLocationInfo(sourceState, location).noteBodyId
+    const body = noteBodyId ? sourceState.noteBodies.find((candidate) => candidate.id === noteBodyId) : null
+    return Boolean(body?.aisles.some((aisle) => aisle.markdown.trim().length > 0))
+  }
+
   const updateNoteLocationBody = (sourceState: AppState, location: NoteLocation, noteBodyId: string): AppState => {
     const domains = sourceState.domains.map((domain) =>
       domain.id === sourceState.activeDomainId ? { ...domain, activeSpaceId: sourceState.activeSpaceId, spaces: sourceState.spaces } : domain,
@@ -3145,7 +3363,8 @@ function App() {
       }
     })
     setActiveAisleId(newAisle.id)
-    setAisleDeleteMode(false)
+    pendingScrollToAisleIdRef.current = newAisle.id
+    exitAisleDeleteMode()
   }
 
   const deleteAisleFromActiveNote = (aisleId: string) => {
@@ -3155,12 +3374,10 @@ function App() {
       return
     }
 
-    const aisle = activeNoteBody.aisles.find((candidate) => candidate.id === aisleId)
-    if (!aisle) return
-    if (aisle.markdown.trim().length > 0 && !window.confirm('delete this aisle and its text?')) return
-
+    if (!activeNoteBody.aisles.some((candidate) => candidate.id === aisleId)) return
     flushPendingContent()
     const fallbackAisleId = activeNoteBody.aisles.find((candidate) => candidate.id !== aisleId)?.id ?? ''
+    setAisleDeleteConfirmation(null)
     setState((previous) => ({
       ...previous,
       noteBodies: previous.noteBodies.map((body) =>
@@ -3174,11 +3391,53 @@ function App() {
     }
   }
 
-  useEffect(() => {
-    if (activeNoteAisles.length <= 1 && aisleDeleteMode) {
-      setAisleDeleteMode(false)
+  const getAisleDeleteConfirmationPosition = (anchor: HTMLElement): Pick<AisleDeleteConfirmationState, 'top' | 'left'> => {
+    const rect = anchor.getBoundingClientRect()
+    const margin = 8
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight
+    return {
+      top: Math.max(
+        margin,
+        Math.min(viewportHeight - AISLE_DELETE_CONFIRMATION_HEIGHT_PX - margin, rect.bottom + margin),
+      ),
+      left: Math.max(
+        margin,
+        Math.min(viewportWidth - AISLE_DELETE_CONFIRMATION_WIDTH_PX - margin, rect.right - AISLE_DELETE_CONFIRMATION_WIDTH_PX),
+      ),
     }
-  }, [activeNoteAisles.length, aisleDeleteMode])
+  }
+
+  const requestDeleteAisleFromActiveNote = (aisle: NoteAisle, aisleIndex: number, anchor: HTMLElement) => {
+    if (!activeNoteBody || activeNoteBody.aisles.length <= 1) {
+      pushToast('a note must keep at least one aisle.', 'warning')
+      return
+    }
+
+    if (aisle.markdown.trim().length <= 0) {
+      deleteAisleFromActiveNote(aisle.id)
+      return
+    }
+
+    setAisleDeleteConfirmation({
+      aisleId: aisle.id,
+      aisleIndex,
+      ...getAisleDeleteConfirmationPosition(anchor),
+    })
+    window.requestAnimationFrame(() => {
+      aisleDeleteConfirmButtonRef.current?.focus()
+    })
+  }
+
+  useEffect(() => {
+    if ((viewMode !== 'main' || activeNoteAisles.length <= 1) && aisleDeleteMode) {
+      exitAisleDeleteMode()
+      return
+    }
+    if (aisleDeleteConfirmation && !activeNoteAisles.some((aisle) => aisle.id === aisleDeleteConfirmation.aisleId)) {
+      setAisleDeleteConfirmation(null)
+    }
+  }, [activeNoteAisles, aisleDeleteConfirmation, aisleDeleteMode, viewMode])
 
   useEffect(() => {
     if (viewMode !== 'trash') return
@@ -3204,8 +3463,11 @@ function App() {
 
   const commitCurrentEditorContent = () => {
     if (!isMainViewRef.current) return
-    if (!editorRef.current) return
-    const markdown = lastEditorMarkdownRef.current
+    const currentEditor = editorRef.current
+    if (!currentEditor) return
+    const markdown = getNormalizedEditorMarkdown(currentEditor)
+    lastEditorMarkdownRef.current = markdown
+    lastEditorMarkdownByAisleRef.current.set(activeAisleIdRef.current, markdown)
     scheduleContentCommit(
       markdown,
       activeSpaceIdRef.current,
@@ -3292,6 +3554,63 @@ function App() {
     return Boolean(pendingCreatedEditRef.current)
   }
 
+  const areToolbarFormatStatesEqual = (first: ToolbarFormatState, second: ToolbarFormatState) =>
+    first.bold === second.bold && first.italic === second.italic && first.strike === second.strike
+
+  const hasActiveEditorMark = (view: any, markName: string) => {
+    const markType = view?.state?.schema?.marks?.[markName]
+    if (!markType) return false
+
+    const { state } = view
+    const { selection } = state
+    if (selection.empty) {
+      const marks = state.storedMarks ?? selection.$from?.marks?.() ?? []
+      return marks.some((mark: any) => mark?.type === markType)
+    }
+
+    return state.doc.rangeHasMark(selection.from, selection.to, markType)
+  }
+
+  const getCurrentToolbarFormatState = (): ToolbarFormatState => {
+    const view = getWysiwygView(editorRef.current)
+    if (!view) return DEFAULT_TOOLBAR_FORMAT_STATE
+    return {
+      bold: hasActiveEditorMark(view, 'strong'),
+      italic: hasActiveEditorMark(view, 'emph'),
+      strike: hasActiveEditorMark(view, 'strike'),
+    }
+  }
+
+  const syncToolbarFormatState = () => {
+    const nextState = getCurrentToolbarFormatState()
+    setToolbarFormatState((previous) => (areToolbarFormatStatesEqual(previous, nextState) ? previous : nextState))
+  }
+
+  const scheduleToolbarFormatStateSync = () => {
+    window.requestAnimationFrame(syncToolbarFormatState)
+  }
+
+  const getToolbarFormatShortcut = (event: KeyboardEvent): ToolbarFormatKey | null => {
+    const key = event.key.toLowerCase()
+    const isMod = isMacPlatform ? event.metaKey : event.ctrlKey
+    if (!isMod || event.altKey) return null
+    if (key === 'b') return 'bold'
+    if (key === 'i') return 'italic'
+    if (key === 's' && !eventMatchesShortcut(event, stateRef.current.hotkeys.shortcuts.openSpaces, isMacPlatform)) return 'strike'
+    return null
+  }
+
+  const queueToolbarShortcutFeedback = (format: ToolbarFormatKey) => {
+    if (toolbarShortcutFeedbackTimerRef.current !== null) {
+      window.clearTimeout(toolbarShortcutFeedbackTimerRef.current)
+    }
+    setToolbarShortcutFeedback(format)
+    toolbarShortcutFeedbackTimerRef.current = window.setTimeout(() => {
+      toolbarShortcutFeedbackTimerRef.current = null
+      setToolbarShortcutFeedback((current) => (current === format ? null : current))
+    }, 650)
+  }
+
   const activateAisleEditor = (
     editorKey: string,
     options: { flushPrevious?: boolean; focus?: boolean; allowDuringPendingRename?: boolean } = {},
@@ -3319,6 +3638,7 @@ function App() {
     if (options.focus) {
       meta.editor.focus()
     }
+    scheduleToolbarFormatStateSync()
     return true
   }
 
@@ -3425,6 +3745,52 @@ function App() {
     const { from, to, $from } = state.selection
     const isCollapsedSelection = from === to
     const selectedText = state.doc.textBetween(from, to, '\n')
+    const selectionFrom = Math.min(from, to)
+    const selectionTo = Math.max(from, to)
+    const touchedLineRanges = getEditorTextLineRanges(view).filter((range) =>
+      isCollapsedSelection
+        ? selectionFrom >= range.start && selectionFrom <= range.end + 1
+        : range.start <= selectionTo && range.end >= selectionFrom,
+    )
+    const codeBlockLineRanges = touchedLineRanges.filter(isCodeBlockTextLineRange)
+
+    if (!isCollapsedSelection && codeBlockLineRanges.length > 1 && codeBlockLineRanges.length === touchedLineRanges.length) {
+      const targets = codeBlockLineRanges
+        .map((range) => ({
+          pos: range.start,
+          removeLength: outdent ? getCodeBlockOutdentRemoveLength(range.text) : 0,
+        }))
+        .filter((target) => !outdent || target.removeLength > 0)
+
+      if (targets.length === 0) return false
+
+      let tr: any = state.tr
+      for (const target of [...targets].sort((a, b) => b.pos - a.pos)) {
+        tr = outdent
+          ? tr.delete(target.pos, target.pos + target.removeLength)
+          : tr.insertText(CODE_BLOCK_INDENT_TEXT, target.pos)
+      }
+
+      const nextFrom = tr.mapping.map(from, outdent ? -1 : 1)
+      const nextTo = tr.mapping.map(to, outdent ? -1 : 1)
+      view.dispatch(tr)
+      const markdownAfterCodeIndent = normalizeMarkdownForPersistence(
+        mergeLeadingIndentsFromWysiwyg(currentEditor, currentEditor.getMarkdown()),
+      )
+      lastEditorMarkdownRef.current = markdownAfterCodeIndent
+      scheduleContentCommit(
+        markdownAfterCodeIndent,
+        activeSpaceIdRef.current,
+        activeTabIdRef.current,
+        activeSubTabIdRef.current,
+        activeAisleIdRef.current,
+      )
+      window.requestAnimationFrame(() => {
+        ;(currentEditor as any).setSelection?.(nextFrom, nextTo)
+        currentEditor.focus()
+      })
+      return true
+    }
 
     if (!selectedText.includes('\n')) {
       let tr: any = state.tr
@@ -4090,6 +4456,7 @@ function App() {
     window.setTimeout(() => {
       if (editorRef.current === currentEditor) {
         commitActiveEditorMarkdownNow(currentEditor)
+        syncToolbarFormatState()
       }
     }, 0)
     return true
@@ -4212,6 +4579,7 @@ function App() {
   const handleAisleEditorChange = (editorKey: string, aisleId: string, editor: Editor) => {
     if (!isMainViewRef.current) return
     activateAisleEditor(editorKey)
+    closeImageToolsIfSelectedImageMissing()
     const markdown = getNormalizedEditorMarkdown(editor)
     const previousMarkdown = lastEditorMarkdownByAisleRef.current.get(aisleId) ?? ''
 
@@ -4281,17 +4649,18 @@ function App() {
   const closeImageTools = () => {
     activeImageRef.current = null
     imageResizeRef.current = null
-    inlineCropDragRef.current = {
-      mode: null,
-      startX: 0,
-      startY: 0,
-      startRelX: 0,
-      startRelY: 0,
-      startRelWidth: 1,
-      startRelHeight: 1,
-    }
-    setInlineCrop({ active: false, relX: 0, relY: 0, relWidth: 1, relHeight: 1, top: 0, left: 0, width: 0, height: 0 })
+    resetInlineCropDrag()
+    updateInlineCrop({ active: false, relX: 0, relY: 0, relWidth: 1, relHeight: 1, top: 0, left: 0, width: 0, height: 0 })
     setImageTools({ visible: false, cropTop: 0, cropLeft: 0, resizeTop: 0, resizeLeft: 0 })
+  }
+
+  const closeImageToolsIfSelectedImageMissing = () => {
+    const image = activeImageRef.current
+    if (!image) return
+    const editorRoot = editorEventRootRef.current
+    if (!image.isConnected || (editorRoot && !editorRoot.contains(image))) {
+      closeImageTools()
+    }
   }
 
   const refreshImageToolsPosition = () => {
@@ -4309,7 +4678,7 @@ function App() {
       resizeLeft: Math.max(8, rect.right - 2),
     })
 
-    setInlineCrop((previous) => {
+    updateInlineCrop((previous) => {
       if (!previous.active) return previous
       const width = Math.max(24, previous.relWidth * rect.width)
       const height = Math.max(24, previous.relHeight * rect.height)
@@ -4394,6 +4763,116 @@ function App() {
     }
   }
 
+  const findImageNodeHitForElement = (view: any, image: HTMLImageElement): { node: any; pos: number } | null => {
+    if (!view?.dom?.contains(image)) return null
+    const docSize = view.state.doc.content.size
+    const clampPos = (pos: number) => Math.max(0, Math.min(docSize, pos))
+    const inspectPos = (rawPos: number) => {
+      const pos = clampPos(rawPos)
+      const nodeAt = view.state.doc.nodeAt(pos)
+      if (nodeAt?.type?.name === 'image') return { node: nodeAt, pos }
+
+      const resolved = view.state.doc.resolve(pos)
+      if (resolved.nodeAfter?.type?.name === 'image') return { node: resolved.nodeAfter, pos }
+      if (resolved.nodeBefore?.type?.name === 'image') {
+        return { node: resolved.nodeBefore, pos: Math.max(0, pos - resolved.nodeBefore.nodeSize) }
+      }
+      return null
+    }
+
+    try {
+      const domPos = view.posAtDOM(image, 0)
+      for (const candidatePos of [domPos, domPos - 1, domPos + 1]) {
+        const hit = inspectPos(candidatePos)
+        if (hit) return hit
+      }
+    } catch {
+      // Fall back to matching below.
+    }
+
+    const imageUrl = image.getAttribute('src') ?? ''
+    const altText = image.getAttribute('alt') ?? ''
+    let fallback: { node: any; pos: number } | null = null
+    view.state.doc.descendants((node: any, pos: number) => {
+      if (fallback || node?.type?.name !== 'image') return
+      const attrs = node.attrs ?? {}
+      if ((attrs.imageUrl ?? '') === imageUrl && (attrs.altText ?? '') === altText) {
+        fallback = { node, pos }
+      }
+    })
+    return fallback
+  }
+
+  const updateActiveEditorImageNode = (image: HTMLImageElement, attrs: { imageUrl?: string; altText?: string | null }) => {
+    activateEditorFromEventTarget(image)
+    const currentEditor = editorRef.current
+    const view = getWysiwygView(currentEditor)
+    if (!currentEditor || !view) return false
+
+    const hit = findImageNodeHitForElement(view, image)
+    if (!hit) return false
+
+    view.dispatch(
+      view.state.tr
+        .setNodeMarkup(hit.pos, null, {
+          ...(hit.node.attrs ?? {}),
+          ...attrs,
+        })
+        .scrollIntoView(),
+    )
+    commitActiveEditorMarkdownNow(currentEditor)
+    return true
+  }
+
+  const renderImageToDataUrl = async (image: HTMLImageElement, width: number, height: number) => {
+    const sourceImage = new Image()
+    sourceImage.src = image.src
+    await new Promise<void>((resolve, reject) => {
+      sourceImage.onload = () => resolve()
+      sourceImage.onerror = () => reject(new Error('image load failed'))
+    })
+
+    const outputWidth = Math.max(8, Math.round(width))
+    const outputHeight = Math.max(8, Math.round(height))
+    const canvas = document.createElement('canvas')
+    canvas.width = outputWidth
+    canvas.height = outputHeight
+    const context = canvas.getContext('2d')
+    if (!context) return null
+
+    context.drawImage(sourceImage, 0, 0, outputWidth, outputHeight)
+    return canvas.toDataURL('image/png')
+  }
+
+  const commitResizedActiveImageToEditor = async () => {
+    const image = activeImageRef.current
+    if (!image || !image.isConnected) {
+      commitCurrentEditorContent()
+      return
+    }
+
+    const rect = image.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) {
+      commitCurrentEditorContent()
+      return
+    }
+
+    try {
+      const nextDataUrl = await renderImageToDataUrl(image, rect.width, rect.height)
+      if (!nextDataUrl) {
+        commitCurrentEditorContent()
+        return
+      }
+      if (!updateActiveEditorImageNode(image, { imageUrl: nextDataUrl, altText: image.alt || null })) {
+        image.src = nextDataUrl
+        commitCurrentEditorContent()
+      }
+      refreshImageToolsPosition()
+    } catch {
+      commitCurrentEditorContent()
+    }
+  }
+
   const beginImageResize = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault()
     event.stopPropagation()
@@ -4422,35 +4901,33 @@ function App() {
     const image = activeImageRef.current
     if (!image || !image.isConnected) return
     const rect = image.getBoundingClientRect()
-    setInlineCrop({
+    const width = Math.max(24, rect.width * 0.8)
+    const height = Math.max(24, rect.height * 0.8)
+    const left = rect.left + (rect.width - width) / 2
+    const top = rect.top + (rect.height - height) / 2
+    const nextInlineCrop = {
       active: true,
-      relX: 0,
-      relY: 0,
-      relWidth: 1,
-      relHeight: 1,
-      top: rect.top,
-      left: rect.left,
-      width: rect.width,
-      height: rect.height,
-    })
+      relX: rect.width > 0 ? (left - rect.left) / rect.width : 0,
+      relY: rect.height > 0 ? (top - rect.top) / rect.height : 0,
+      relWidth: rect.width > 0 ? width / rect.width : 0.8,
+      relHeight: rect.height > 0 ? height / rect.height : 0.8,
+      top,
+      left,
+      width,
+      height,
+    }
+    updateInlineCrop(nextInlineCrop)
   }
 
   const cancelInlineCrop = () => {
-    inlineCropDragRef.current = {
-      mode: null,
-      startX: 0,
-      startY: 0,
-      startRelX: 0,
-      startRelY: 0,
-      startRelWidth: 1,
-      startRelHeight: 1,
-    }
-    setInlineCrop((previous) => ({ ...previous, active: false, top: 0, left: 0, width: 0, height: 0 }))
+    resetInlineCropDrag()
+    updateInlineCrop((previous) => ({ ...previous, active: false, top: 0, left: 0, width: 0, height: 0 }))
   }
 
   const applyInlineCrop = async () => {
     const image = activeImageRef.current
-    if (!image || !inlineCrop.active || !image.src) return
+    const crop = inlineCropRef.current
+    if (!image || !crop.active || !image.src) return
 
     const sourceImage = new Image()
     sourceImage.src = image.src
@@ -4466,17 +4943,25 @@ function App() {
     const rect = image.getBoundingClientRect()
     if (rect.width <= 0 || rect.height <= 0) return
 
-    const widthPx = inlineCrop.width
-    const heightPx = inlineCrop.height
-    const xPx = inlineCrop.left - rect.left
-    const yPx = inlineCrop.top - rect.top
+    const widthPx = crop.width
+    const heightPx = crop.height
+    const xPx = crop.left - rect.left
+    const yPx = crop.top - rect.top
 
-    const sourceX = Math.max(0, Math.min(naturalWidth, (xPx / rect.width) * naturalWidth))
-    const sourceY = Math.max(0, Math.min(naturalHeight, (yPx / rect.height) * naturalHeight))
-    const sourceWidth = Math.max(8, Math.min((widthPx / rect.width) * naturalWidth, naturalWidth - sourceX))
-    const sourceHeight = Math.max(8, Math.min((heightPx / rect.height) * naturalHeight, naturalHeight - sourceY))
-    const outputWidth = Math.max(8, Math.round(sourceWidth))
-    const outputHeight = Math.max(8, Math.round(sourceHeight))
+    const sourceLeft = Math.max(0, Math.min(naturalWidth, (xPx / rect.width) * naturalWidth))
+    const sourceTop = Math.max(0, Math.min(naturalHeight, (yPx / rect.height) * naturalHeight))
+    const sourceRight = Math.max(sourceLeft, Math.min(naturalWidth, ((xPx + widthPx) / rect.width) * naturalWidth))
+    const sourceBottom = Math.max(sourceTop, Math.min(naturalHeight, ((yPx + heightPx) / rect.height) * naturalHeight))
+    const sourceX = Math.max(0, Math.min(naturalWidth - 1, Math.floor(sourceLeft)))
+    const sourceY = Math.max(0, Math.min(naturalHeight - 1, Math.floor(sourceTop)))
+    const sourceEndX = Math.max(sourceX + 1, Math.min(naturalWidth, Math.ceil(sourceRight)))
+    const sourceEndY = Math.max(sourceY + 1, Math.min(naturalHeight, Math.ceil(sourceBottom)))
+    const sourceWidth = sourceEndX - sourceX
+    const sourceHeight = sourceEndY - sourceY
+    const renderedWidth = Math.max(8, Math.round(crop.width))
+    const renderedHeight = Math.max(8, Math.round(crop.height))
+    const outputWidth = sourceWidth
+    const outputHeight = sourceHeight
 
     const canvas = document.createElement('canvas')
     canvas.width = outputWidth
@@ -4484,108 +4969,151 @@ function App() {
     const context = canvas.getContext('2d')
     if (!context) return
 
+    context.imageSmoothingEnabled = false
     context.drawImage(sourceImage, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, outputWidth, outputHeight)
     const nextDataUrl = canvas.toDataURL('image/png')
 
-    const renderedWidth = inlineCrop.width
-    const renderedHeight = inlineCrop.height
-    image.src = nextDataUrl
-    image.style.width = `${Math.round(renderedWidth)}px`
-    image.style.height = `${Math.round(renderedHeight)}px`
-    image.setAttribute('width', String(Math.round(renderedWidth)))
-    image.setAttribute('height', String(Math.round(renderedHeight)))
+    if (!updateActiveEditorImageNode(image, { imageUrl: nextDataUrl, altText: image.alt || null })) {
+      image.src = nextDataUrl
+      commitCurrentEditorContent()
+    }
+    image.style.width = `${renderedWidth}px`
+    image.style.height = `${renderedHeight}px`
+    image.setAttribute('width', String(renderedWidth))
+    image.setAttribute('height', String(renderedHeight))
     image.style.maxWidth = 'none'
     cancelInlineCrop()
     refreshImageToolsPosition()
-    commitCurrentEditorContent()
   }
 
-  const beginInlineCropDrag = (mode: 'move' | 'resize', event: React.PointerEvent<HTMLElement>) => {
-    if (!inlineCrop.active) return
+  const beginInlineCropMouseDrag = (mode: InlineCropDragMode, event: MouseEvent<HTMLElement>) => {
     event.preventDefault()
     event.stopPropagation()
-    inlineCropDragRef.current = {
-      mode,
-      startX: event.clientX,
-      startY: event.clientY,
-      startRelX: inlineCrop.relX,
-      startRelY: inlineCrop.relY,
-      startRelWidth: inlineCrop.relWidth,
-      startRelHeight: inlineCrop.relHeight,
-    }
+    startInlineCropDrag(mode, event.clientX, event.clientY)
   }
 
   useEffect(() => {
-    const handlePointerMove = (event: PointerEvent) => {
-      if (imageResizeRef.current) {
-        continueImageResize(event.clientX)
+    const stopCropMouseEvent = (event: globalThis.MouseEvent) => {
+      if (event.cancelable) {
+        event.preventDefault()
       }
+      event.stopPropagation()
+      event.stopImmediatePropagation()
+    }
 
+    const applyInlineCropDrag = (clientX: number, clientY: number) => {
       const drag = inlineCropDragRef.current
-      if (!drag.mode || !inlineCrop.active) return
+      const crop = inlineCropRef.current
+      if (!drag.mode || !crop.active) return false
+
       const image = activeImageRef.current
-      if (!image || !image.isConnected) return
+      if (!image || !image.isConnected) return false
       const rect = image.getBoundingClientRect()
-      if (rect.width <= 0 || rect.height <= 0) return
+      if (rect.width <= 0 || rect.height <= 0) return false
 
       const startX = drag.startRelX * rect.width
       const startY = drag.startRelY * rect.height
       const startWidth = Math.max(24, drag.startRelWidth * rect.width)
       const startHeight = Math.max(24, drag.startRelHeight * rect.height)
-      const dx = event.clientX - drag.startX
-      const dy = event.clientY - drag.startY
+      const dx = clientX - drag.startX
+      const dy = clientY - drag.startY
+
+      const commitCropPixels = (x: number, y: number, width: number, height: number) => {
+        const nextX = Math.max(0, Math.min(rect.width - width, x))
+        const nextY = Math.max(0, Math.min(rect.height - height, y))
+        const nextWidth = Math.max(24, Math.min(width, rect.width - nextX))
+        const nextHeight = Math.max(24, Math.min(height, rect.height - nextY))
+        updateInlineCrop((previous) => ({
+          ...previous,
+          relX: rect.width > 0 ? nextX / rect.width : 0,
+          relY: rect.height > 0 ? nextY / rect.height : 0,
+          relWidth: rect.width > 0 ? nextWidth / rect.width : previous.relWidth,
+          relHeight: rect.height > 0 ? nextHeight / rect.height : previous.relHeight,
+          top: rect.top + nextY,
+          left: rect.left + nextX,
+          width: nextWidth,
+          height: nextHeight,
+        }))
+      }
 
       if (drag.mode === 'move') {
         const nextX = Math.max(0, Math.min(rect.width - startWidth, startX + dx))
         const nextY = Math.max(0, Math.min(rect.height - startHeight, startY + dy))
-        setInlineCrop((previous) => ({
-          ...previous,
-          relX: rect.width > 0 ? nextX / rect.width : 0,
-          relY: rect.height > 0 ? nextY / rect.height : 0,
-          top: rect.top + nextY,
-          left: rect.left + nextX,
-          width: startWidth,
-          height: startHeight,
-        }))
-        return
+        commitCropPixels(nextX, nextY, startWidth, startHeight)
+        return true
       }
 
-      const nextWidth = Math.max(24, Math.min(rect.width - startX, startWidth + dx))
-      const nextHeight = Math.max(24, Math.min(rect.height - startY, startHeight + dy))
-      setInlineCrop((previous) => ({
-        ...previous,
-        relWidth: rect.width > 0 ? nextWidth / rect.width : previous.relWidth,
-        relHeight: rect.height > 0 ? nextHeight / rect.height : previous.relHeight,
-        top: rect.top + startY,
-        left: rect.left + startX,
-        width: nextWidth,
-        height: nextHeight,
-      }))
+      if (drag.mode === 'resize-e') {
+        commitCropPixels(startX, startY, startWidth + dx, startHeight)
+        return true
+      }
+
+      if (drag.mode === 'resize-s') {
+        commitCropPixels(startX, startY, startWidth, startHeight + dy)
+        return true
+      }
+
+      if (drag.mode === 'resize-se') {
+        commitCropPixels(startX, startY, startWidth + dx, startHeight + dy)
+        return true
+      }
+
+      if (drag.mode === 'resize-w') {
+        const nextX = Math.max(0, Math.min(startX + startWidth - 24, startX + dx))
+        commitCropPixels(nextX, startY, startWidth + startX - nextX, startHeight)
+        return true
+      }
+
+      if (drag.mode === 'resize-n') {
+        const nextY = Math.max(0, Math.min(startY + startHeight - 24, startY + dy))
+        commitCropPixels(startX, nextY, startWidth, startHeight + startY - nextY)
+        return true
+      }
+
+      return true
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (imageResizeRef.current) {
+        continueImageResize(event.clientX)
+      }
     }
 
     const handlePointerUp = () => {
       if (imageResizeRef.current) {
         imageResizeRef.current = null
-        commitCurrentEditorContent()
-      }
-      inlineCropDragRef.current = {
-        mode: null,
-        startX: 0,
-        startY: 0,
-        startRelX: 0,
-        startRelY: 0,
-        startRelWidth: 1,
-        startRelHeight: 1,
+        void commitResizedActiveImageToEditor()
       }
     }
 
-    window.addEventListener('pointermove', handlePointerMove)
-    window.addEventListener('pointerup', handlePointerUp)
-    return () => {
-      window.removeEventListener('pointermove', handlePointerMove)
-      window.removeEventListener('pointerup', handlePointerUp)
+    const handleMouseMove = (event: globalThis.MouseEvent) => {
+      if (applyInlineCropDrag(event.clientX, event.clientY)) {
+        stopCropMouseEvent(event)
+      }
     }
-  }, [inlineCrop.active])
+
+    const handleMouseUp = (event: globalThis.MouseEvent) => {
+      const hadCropDrag = Boolean(inlineCropDragRef.current.mode && inlineCropRef.current.active)
+      if (hadCropDrag) {
+        stopCropMouseEvent(event)
+      }
+      resetInlineCropDrag()
+    }
+
+    const listenerOptions: AddEventListenerOptions = { capture: true }
+    document.addEventListener('pointermove', handlePointerMove, listenerOptions)
+    document.addEventListener('pointerup', handlePointerUp, listenerOptions)
+    document.addEventListener('pointercancel', handlePointerUp, listenerOptions)
+    document.addEventListener('mousemove', handleMouseMove, listenerOptions)
+    document.addEventListener('mouseup', handleMouseUp, listenerOptions)
+    return () => {
+      document.removeEventListener('pointermove', handlePointerMove, listenerOptions)
+      document.removeEventListener('pointerup', handlePointerUp, listenerOptions)
+      document.removeEventListener('pointercancel', handlePointerUp, listenerOptions)
+      document.removeEventListener('mousemove', handleMouseMove, listenerOptions)
+      document.removeEventListener('mouseup', handleMouseUp, listenerOptions)
+    }
+  }, [])
 
   const getContextPreviewData = (payload: NoteContextReferencePayload, sourceNoteBodyId: string) => {
     const latestState = stateRef.current
@@ -4895,7 +5423,7 @@ function App() {
         hideModeSwitch: true,
         toolbarItems: EDITOR_TOOLBAR_ITEMS,
         height: '100%',
-        autofocus: !isPendingCreatedRenameActive(),
+        autofocus: false,
         usageStatistics: false,
         plugins: [
           headingSpaceShortcutPlugin,
@@ -5281,6 +5809,7 @@ function App() {
         target.closest('.image-tools') ||
         target.closest('.image-resize-handle') ||
         target.closest('.inline-crop-box') ||
+        target.closest('.inline-crop-edge-handle') ||
         target.closest('.inline-crop-resize-handle') ||
         target.closest('.link-prompt')
       ) {
@@ -5401,6 +5930,11 @@ function App() {
     const handleKeyDown = (event: Event) => {
       const keyboardEvent = event as KeyboardEvent
       activateEditorFromEventTarget(keyboardEvent.target)
+      const toolbarFormatShortcut = getToolbarFormatShortcut(keyboardEvent)
+      if (toolbarFormatShortcut) {
+        queueToolbarShortcutFeedback(toolbarFormatShortcut)
+        window.setTimeout(syncToolbarFormatState, 0)
+      }
       const editorHistoryDirection = getEditorHistoryDirection(keyboardEvent)
       if (editorHistoryDirection) {
         scheduleMultiLineHistoryRestore(editorHistoryDirection)
@@ -5502,6 +6036,10 @@ function App() {
       }
     }
 
+    const handleToolbarSelectionSync = () => {
+      scheduleToolbarFormatStateSync()
+    }
+
     root.addEventListener('pointerdown', handlePointerDown, true)
     root.addEventListener('click', handleClick, true)
     root.addEventListener('contextmenu', handleContextMenu, true)
@@ -5510,6 +6048,9 @@ function App() {
     root.addEventListener('cut', handleCut, true)
     root.addEventListener('keydown', handleKeyDown, true)
     root.addEventListener('beforeinput', handleBeforeInput, true)
+    root.addEventListener('keyup', handleToolbarSelectionSync, true)
+    root.addEventListener('mouseup', handleToolbarSelectionSync, true)
+    root.addEventListener('focusin', handleToolbarSelectionSync, true)
     window.addEventListener('scroll', handleScrollOrResize, true)
     window.addEventListener('resize', handleScrollOrResize)
     return () => {
@@ -5521,6 +6062,9 @@ function App() {
       root.removeEventListener('cut', handleCut, true)
       root.removeEventListener('keydown', handleKeyDown, true)
       root.removeEventListener('beforeinput', handleBeforeInput, true)
+      root.removeEventListener('keyup', handleToolbarSelectionSync, true)
+      root.removeEventListener('mouseup', handleToolbarSelectionSync, true)
+      root.removeEventListener('focusin', handleToolbarSelectionSync, true)
       window.removeEventListener('scroll', handleScrollOrResize, true)
       window.removeEventListener('resize', handleScrollOrResize)
     }
@@ -5530,6 +6074,9 @@ function App() {
     return () => {
       if (saveTimerRef.current !== null) {
         window.clearTimeout(saveTimerRef.current)
+      }
+      if (toolbarShortcutFeedbackTimerRef.current !== null) {
+        window.clearTimeout(toolbarShortcutFeedbackTimerRef.current)
       }
     }
   }, [])
@@ -5736,6 +6283,7 @@ function App() {
   const selectTab = (tabId: string) => {
     if (activeTab.id === tabId && activeTab.activeSubTabId === null) return
     flushPendingContent()
+    closeImageTools()
     updateActiveSpaceData((data) => ({
       ...data,
       activeTabId: tabId,
@@ -5746,6 +6294,7 @@ function App() {
   const selectSubTab = (subTabId: string) => {
     if (activeTab.activeSubTabId === subTabId) return
     flushPendingContent()
+    closeImageTools()
     updateActiveSpaceData((data) => ({
       ...data,
       tabs: data.tabs.map((tab) =>
@@ -5757,6 +6306,7 @@ function App() {
   const selectParentHomeTab = () => {
     if (activeTab.activeSubTabId === null) return
     flushPendingContent()
+    closeImageTools()
     updateActiveSpaceData((data) => ({
       ...data,
       tabs: data.tabs.map((tab) =>
@@ -5767,6 +6317,7 @@ function App() {
 
   const openSpace = (spaceId: string) => {
     flushPendingContent()
+    closeImageTools()
     if (arrangeMode.active) {
       exitArrangeMode()
     }
@@ -7266,6 +7817,24 @@ function App() {
     setContextMenu(null)
   }
 
+  const openCopyModalFromContext = () => {
+    if (!contextMenu || (contextMenu.type !== 'tab' && contextMenu.type !== 'subtab')) return
+    flushPendingContent()
+    const source: NoteLocation = {
+      domainId: state.activeDomainId,
+      spaceId: activeSpace.id,
+      tabId: contextMenu.tabId,
+      subTabId: contextMenu.type === 'subtab' ? contextMenu.subTabId : null,
+    }
+    const target = getDefaultNoteReferenceTarget(state, source)
+    setModal({
+      type: 'copy-note',
+      source,
+      target,
+    })
+    setContextMenu(null)
+  }
+
   const openDeduplicateModalFromContext = () => {
     if (!contextMenu || (contextMenu.type !== 'tab' && contextMenu.type !== 'subtab')) return
     const source: NoteLocation = {
@@ -7572,6 +8141,38 @@ function App() {
       return
     }
 
+    if (modal.type === 'copy-note') {
+      const targetInfo = getLocationInfo(stateRef.current, modal.target)
+      const targetBody = targetInfo.noteBodyId
+        ? stateRef.current.noteBodies.find((candidate) => candidate.id === targetInfo.noteBodyId)
+        : null
+      if (!targetBody) {
+        setModal(null)
+        pushToast('choose an existing note.', 'warning')
+        return
+      }
+
+      setState((previous) => {
+        const latestTargetInfo = getLocationInfo(previous, modal.target)
+        const targetBody = latestTargetInfo.noteBodyId
+          ? previous.noteBodies.find((candidate) => candidate.id === latestTargetInfo.noteBodyId)
+          : null
+        if (!targetBody) return previous
+        const copiedBody = cloneNoteBodyAsIndependentCopy(targetBody)
+        return updateNoteLocationBody(
+          {
+            ...previous,
+            noteBodies: [...previous.noteBodies, copiedBody],
+          },
+          modal.source,
+          copiedBody.id,
+        )
+      })
+      setModal(null)
+      pushToast('note copied.', 'success')
+      return
+    }
+
     if (modal.type === 'deduplicate-note') {
       const keepKeys = new Set(modal.keepLocationKeys)
       if (keepKeys.size === 0) {
@@ -7645,6 +8246,17 @@ function App() {
         title: 'make duplicate',
         body: 'the selected note will share the target note body. Existing text in the selected note is replaced by the shared body.',
         action: 'link duplicate',
+      }
+    }
+
+    if (modal.type === 'copy-note') {
+      const hasExistingContent = noteLocationHasContent(state, modal.source)
+      return {
+        title: 'make copy',
+        body: hasExistingContent
+          ? 'the selected note will be replaced with an independent copy of the target note, including all aisles.'
+          : 'the selected note will receive an independent copy of the target note, including all aisles.',
+        action: 'copy note',
       }
     }
 
@@ -7758,10 +8370,13 @@ function App() {
     iconClassName: string,
     onClick: () => void,
     extraClassName = '',
+    formatKey?: ToolbarFormatKey,
   ) => (
     <button
       type="button"
-      className={`toastui-editor-toolbar-icons ${iconClassName} ${extraClassName}`}
+      className={`toastui-editor-toolbar-icons ${iconClassName} ${extraClassName} ${
+        formatKey && toolbarFormatState[formatKey] ? 'active' : ''
+      } ${formatKey && toolbarShortcutFeedback === formatKey ? 'is-shortcut-feedback' : ''}`}
       title={label}
       aria-label={label}
       onMouseDown={(event) => event.preventDefault()}
@@ -7773,8 +8388,10 @@ function App() {
     />
   )
 
-  const renderHeadingPopover = () =>
-    headingMenuOpen && toolbarPopoverPosition.heading ? (
+  const renderHeadingPopover = () => {
+    if (!headingMenuOpen || !toolbarPopoverPosition.heading || typeof document === 'undefined') return null
+    const portalRoot = document.querySelector('.app-shell') ?? document.body
+    return createPortal(
       <div
         className="note-toolbar-heading-popover"
         role="menu"
@@ -7810,11 +8427,15 @@ function App() {
         >
           paragraph
         </button>
-      </div>
-    ) : null
+      </div>,
+      portalRoot,
+    )
+  }
 
-  const renderAisleToolbarPopover = () =>
-    noteToolsOpen && toolbarPopoverPosition.aisles ? (
+  const renderAisleToolbarPopover = () => {
+    if (!noteToolsOpen || !toolbarPopoverPosition.aisles || typeof document === 'undefined') return null
+    const portalRoot = document.querySelector('.app-shell') ?? document.body
+    return createPortal(
       <div
         className="note-toolbar-aisle-popover"
         role="menu"
@@ -7845,18 +8466,62 @@ function App() {
             event.preventDefault()
             event.stopPropagation()
             setNoteToolsOpen(false)
+            setHeadingMenuOpen(false)
             if (activeNoteAisles.length <= 1) {
               pushToast('a note must keep at least one aisle.', 'warning')
               return
             }
-            setAisleDeleteMode((active) => !active)
+            setAisleDeleteConfirmation(null)
+            setAisleDeleteMode(true)
           }}
           disabled={activeNoteAisles.length <= 1}
         >
-          {aisleDeleteMode ? 'finish deleting' : 'delete aisle'}
+          delete aisle
         </button>
-      </div>
-    ) : null
+      </div>,
+      portalRoot,
+    )
+  }
+
+  const renderAisleDeleteConfirmation = () => {
+    if (!aisleDeleteMode || !aisleDeleteConfirmation || typeof document === 'undefined') return null
+    const aisle = activeNoteAisles.find((candidate) => candidate.id === aisleDeleteConfirmation.aisleId)
+    if (!aisle) return null
+
+    const portalRoot = document.querySelector('.app-shell') ?? document.body
+    return createPortal(
+      <div
+        className="note-aisle-delete-confirmation"
+        role="dialog"
+        aria-modal="false"
+        aria-label={`Confirm delete aisle ${aisleDeleteConfirmation.aisleIndex + 1}`}
+        style={{ top: `${aisleDeleteConfirmation.top}px`, left: `${aisleDeleteConfirmation.left}px` }}
+        onPointerDown={(event) => event.stopPropagation()}
+        onMouseDown={(event) => event.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <p>this delete is permanent</p>
+        <div className="note-aisle-delete-confirmation-actions">
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-light"
+            onClick={() => setAisleDeleteConfirmation(null)}
+          >
+            cancel
+          </button>
+          <button
+            ref={aisleDeleteConfirmButtonRef}
+            type="button"
+            className="btn btn-sm app-danger-btn"
+            onClick={() => deleteAisleFromActiveNote(aisle.id)}
+          >
+            delete
+          </button>
+        </div>
+      </div>,
+      portalRoot,
+    )
+  }
 
   const renderSharedToolbar = () => (
     <div
@@ -7871,7 +8536,6 @@ function App() {
           <button
             type="button"
             className="note-link-toolbar-btn"
-            title="Link a note"
             aria-label="Link a note"
             onMouseDown={(event) => event.preventDefault()}
             onClick={(event) => {
@@ -7893,7 +8557,6 @@ function App() {
               ref={aisleToolbarButtonRef}
               type="button"
               className="aisles-toolbar-btn"
-              title="Aisles"
               aria-label="Aisles"
               onMouseDown={(event) => event.preventDefault()}
               onClick={(event) => {
@@ -7914,7 +8577,7 @@ function App() {
             </button>
           </span>
         </div>
-        <div className="toastui-editor-toolbar-group">
+        <div className="toastui-editor-toolbar-group note-format-toolbar-group">
           <span className="note-toolbar-menu-anchor">
             <button
               ref={headingToolbarButtonRef}
@@ -7938,9 +8601,14 @@ function App() {
               }}
             />
           </span>
-          {renderToolbarIconButton('Bold', 'bold', () => executeToolbarCommand('bold'))}
-          {renderToolbarIconButton('Italic', 'italic', () => executeToolbarCommand('italic'))}
-          {renderToolbarIconButton('Strike', 'strike', () => executeToolbarCommand('strike'))}
+          {renderToolbarIconButton('Bold', 'bold', () => executeToolbarCommand('bold'), '', 'bold')}
+          {renderToolbarIconButton('Italic', 'italic', () => executeToolbarCommand('italic'), '', 'italic')}
+          {renderToolbarIconButton('Strike', 'strike', () => executeToolbarCommand('strike'), '', 'strike')}
+          {toolbarShortcutFeedback && (
+            <span className="note-toolbar-shortcut-feedback" role="status">
+              {TOOLBAR_FORMAT_LABELS[toolbarShortcutFeedback]}
+            </span>
+          )}
         </div>
         <div className="toastui-editor-toolbar-group">
           {renderToolbarIconButton('Line', 'hrline', () => executeToolbarCommand('hr'))}
@@ -7982,6 +8650,124 @@ function App() {
     </div>
   )
 
+  const renderImageToolsOverlay = () =>
+    viewMode === 'main' && imageTools.visible ? (
+      <>
+        <div className="image-tools" style={{ top: `${imageTools.cropTop}px`, left: `${imageTools.cropLeft}px` }}>
+          {!inlineCrop.active ? (
+            <button type="button" className="image-tool-btn" onClick={startInlineCrop} title="Crop">
+              crop
+            </button>
+          ) : (
+            <>
+              <button type="button" className="image-tool-btn" onClick={applyInlineCrop} title="Apply crop">
+                apply
+              </button>
+              <button type="button" className="image-tool-btn" onClick={cancelInlineCrop} title="Cancel crop">
+                cancel
+              </button>
+            </>
+          )}
+        </div>
+        {!inlineCrop.active && (
+          <button
+            type="button"
+            className="image-resize-handle"
+            style={{ top: `${imageTools.resizeTop}px`, left: `${imageTools.resizeLeft}px` }}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={(event) => event.preventDefault()}
+            onPointerDown={beginImageResize}
+            aria-label="Resize image"
+            title="Drag to resize"
+          />
+        )}
+        {inlineCrop.active && (
+          <>
+            <div
+              className="inline-crop-box"
+              style={{
+                top: `${inlineCrop.top}px`,
+                left: `${inlineCrop.left}px`,
+                width: `${inlineCrop.width}px`,
+                height: `${inlineCrop.height}px`,
+              }}
+              onMouseDown={(event) => beginInlineCropMouseDrag('move', event)}
+            />
+            <button
+              type="button"
+              className="inline-crop-edge-handle inline-crop-edge-handle-n"
+              style={{
+                top: `${inlineCrop.top}px`,
+                left: `${inlineCrop.left + inlineCrop.width / 2}px`,
+              }}
+              draggable={false}
+              onMouseDown={(event) => beginInlineCropMouseDrag('resize-n', event)}
+              onDragStart={(event) => event.preventDefault()}
+              onClick={(event) => event.preventDefault()}
+              aria-label="Resize crop area from top"
+              title="Drag to resize crop area from top"
+            />
+            <button
+              type="button"
+              className="inline-crop-edge-handle inline-crop-edge-handle-e"
+              style={{
+                top: `${inlineCrop.top + inlineCrop.height / 2}px`,
+                left: `${inlineCrop.left + inlineCrop.width}px`,
+              }}
+              draggable={false}
+              onMouseDown={(event) => beginInlineCropMouseDrag('resize-e', event)}
+              onDragStart={(event) => event.preventDefault()}
+              onClick={(event) => event.preventDefault()}
+              aria-label="Resize crop area from right"
+              title="Drag to resize crop area from right"
+            />
+            <button
+              type="button"
+              className="inline-crop-edge-handle inline-crop-edge-handle-s"
+              style={{
+                top: `${inlineCrop.top + inlineCrop.height}px`,
+                left: `${inlineCrop.left + inlineCrop.width / 2}px`,
+              }}
+              draggable={false}
+              onMouseDown={(event) => beginInlineCropMouseDrag('resize-s', event)}
+              onDragStart={(event) => event.preventDefault()}
+              onClick={(event) => event.preventDefault()}
+              aria-label="Resize crop area from bottom"
+              title="Drag to resize crop area from bottom"
+            />
+            <button
+              type="button"
+              className="inline-crop-edge-handle inline-crop-edge-handle-w"
+              style={{
+                top: `${inlineCrop.top + inlineCrop.height / 2}px`,
+                left: `${inlineCrop.left}px`,
+              }}
+              draggable={false}
+              onMouseDown={(event) => beginInlineCropMouseDrag('resize-w', event)}
+              onDragStart={(event) => event.preventDefault()}
+              onClick={(event) => event.preventDefault()}
+              aria-label="Resize crop area from left"
+              title="Drag to resize crop area from left"
+            />
+            <button
+              type="button"
+              className="inline-crop-resize-handle"
+              style={{
+                top: `${inlineCrop.top + inlineCrop.height}px`,
+                left: `${inlineCrop.left + inlineCrop.width}px`,
+              }}
+              draggable={false}
+              onMouseDown={(event) => beginInlineCropMouseDrag('resize-se', event)}
+              onDragStart={(event) => event.preventDefault()}
+              onClick={(event) => event.preventDefault()}
+              aria-label="Resize crop area"
+              title="Drag to resize crop area"
+            />
+          </>
+        )}
+      </>
+    ) : null
+
   const renderEditorShell = () => (
     <section className={`editor-shell ${editorReadOnly ? 'editor-readonly' : ''}`}>
       {viewMode === 'main' && (
@@ -7997,59 +8783,7 @@ function App() {
         </button>
       )}
       <div ref={editorMountRef} className="toast-editor-host" />
-      {viewMode === 'main' && imageTools.visible && (
-        <>
-          <div className="image-tools" style={{ top: `${imageTools.cropTop}px`, left: `${imageTools.cropLeft}px` }}>
-            {!inlineCrop.active ? (
-              <button type="button" className="image-tool-btn" onClick={startInlineCrop} title="Crop">
-                crop
-              </button>
-            ) : (
-              <>
-                <button type="button" className="image-tool-btn" onClick={applyInlineCrop} title="Apply crop">
-                  apply
-                </button>
-                <button type="button" className="image-tool-btn" onClick={cancelInlineCrop} title="Cancel crop">
-                  cancel
-                </button>
-              </>
-            )}
-          </div>
-          {!inlineCrop.active && (
-            <button
-              type="button"
-              className="image-resize-handle"
-              style={{ top: `${imageTools.resizeTop}px`, left: `${imageTools.resizeLeft}px` }}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={(event) => event.preventDefault()}
-              onPointerDown={beginImageResize}
-              aria-label="Resize image"
-              title="Drag to resize"
-            />
-          )}
-          {inlineCrop.active && (
-            <div
-              className="inline-crop-box"
-              style={{
-                top: `${inlineCrop.top}px`,
-                left: `${inlineCrop.left}px`,
-                width: `${inlineCrop.width}px`,
-                height: `${inlineCrop.height}px`,
-              }}
-              onPointerDown={(event) => beginInlineCropDrag('move', event)}
-            >
-              <button
-                type="button"
-                className="inline-crop-resize-handle"
-                onPointerDown={(event) => beginInlineCropDrag('resize', event)}
-                onClick={(event) => event.preventDefault()}
-                aria-label="Resize crop area"
-                title="Drag to resize crop area"
-              />
-            </div>
-          )}
-        </>
-      )}
+      {renderImageToolsOverlay()}
       {viewMode === 'main' && linkPrompt.open && (
         <div
           className="link-prompt"
@@ -8353,16 +9087,36 @@ function App() {
         ? [
             {
               key: 'end-arrangement',
-              label: 'arrangement',
+              label: 'end arrangement',
               selected: false,
               className: 'btn btn-sm tab-btn topbar-action-btn topbar-context-btn',
               onClick: exitArrangeMode,
             },
           ]
         : []),
+      ...(viewMode === 'main' && !arrangeMode.active && aisleDeleteMode
+        ? [
+            {
+              key: 'end-delete-aisle',
+              label: 'end delete',
+              selected: false,
+              className: 'btn btn-sm tab-btn topbar-action-btn topbar-context-btn',
+              onClick: () => {
+                setMenuOpen(false)
+                setContextMenu(null)
+                setNoteToolsOpen(false)
+                setHeadingMenuOpen(false)
+                exitAisleDeleteMode()
+              },
+            },
+          ]
+        : []),
     ]
   const topbarShowsCloseControl =
-    viewMode === 'settings' || viewMode === 'stage-manager' || (arrangeMode.active && arrangeMode.scope === 'tabs')
+    viewMode === 'settings' ||
+    viewMode === 'stage-manager' ||
+    (arrangeMode.active && arrangeMode.scope === 'tabs') ||
+    aisleDeleteMode
 
   const isNoteWorkspaceView = viewMode === 'main' || viewMode === 'stage-manager'
   const stageManagerStepLabels: Array<[StageManagerStep, string]> = [
@@ -8383,7 +9137,7 @@ function App() {
 
   return (
     <main
-      className={`app-shell theme-${state.theme} ${viewMode === 'trash' ? 'view-trash' : 'view-main'} ${
+      className={`app-shell theme-${state.theme} view-${viewMode} ${
         viewMode === 'stage-manager' ? 'view-stage-manager' : ''
       }`}
       style={
@@ -8564,6 +9318,10 @@ function App() {
                   onClick={() => {
                     if (arrangeMode.active) {
                       exitArrangeMode()
+                      return
+                    }
+                    if (aisleDeleteMode) {
+                      exitAisleDeleteMode()
                       return
                     }
                     if (viewMode === 'stage-manager') {
@@ -8852,7 +9610,7 @@ function App() {
                     <span className="settings-range-value">{Math.round(noteFontScaleDraft * 100)}%</span>
                   </div>
                 </div>
-                <p className="settings-help">adjusts note and settings text size without changing tabs or toolbar controls.</p>
+                <p className="settings-help">adjusts note, settings, director, trash, and menu text size.</p>
                 <div className="settings-hotkey-row">
                   <label
                     className="settings-hotkey-label"
@@ -9765,7 +10523,16 @@ function App() {
               {renderSharedToolbar()}
               {renderHeadingPopover()}
               {renderAisleToolbarPopover()}
-              <div className="note-aisle-scroll">
+              {renderAisleDeleteConfirmation()}
+              {renderImageToolsOverlay()}
+              <div
+                ref={aisleScrollRef}
+                className="note-aisle-scroll"
+                onScroll={(event) => {
+                  if (!activeNoteBodyId) return
+                  aisleHorizontalScrollByBodyRef.current.set(activeNoteBodyId, event.currentTarget.scrollLeft)
+                }}
+              >
                 {activeNoteAisles.map((aisle, index) => {
                   const editorKey = buildAisleEditorKey(activeNoteBodyId, aisle.id)
                   return (
@@ -9773,6 +10540,7 @@ function App() {
                       key={aisle.id}
                       className={`note-aisle-pane ${aisle.id === resolvedActiveAisleId ? 'is-active' : ''}`}
                       aria-label={`Aisle ${index + 1}`}
+                      data-aisle-id={aisle.id}
                       data-aisle-editor-key={editorKey}
                       onPointerDown={() => activateAisleEditor(editorKey, { flushPrevious: true })}
                     >
@@ -9780,14 +10548,16 @@ function App() {
                         <button
                           type="button"
                           className="note-aisle-delete-float"
+                          onPointerDown={(event) => event.stopPropagation()}
                           onClick={(event) => {
+                            event.preventDefault()
                             event.stopPropagation()
-                            deleteAisleFromActiveNote(aisle.id)
+                            requestDeleteAisleFromActiveNote(aisle, index, event.currentTarget)
                           }}
                           title={`Delete aisle ${index + 1}`}
                           aria-label={`Delete aisle ${index + 1}`}
                         >
-                          x
+                          <span className="note-aisle-delete-icon" aria-hidden="true" />
                         </button>
                       )}
                       <section className={`editor-shell note-aisle-editor-shell ${editorReadOnly ? 'editor-readonly' : ''}`}>
@@ -9887,6 +10657,9 @@ function App() {
                   de-duplicate
                 </button>
               )}
+              <button type="button" className="tab-context-delete" onClick={openCopyModalFromContext}>
+                make copy
+              </button>
               <button type="button" className="tab-context-delete" onClick={deleteFromContext}>
                 move to trash
               </button>
@@ -9908,9 +10681,14 @@ function App() {
             className={`delete-modal ${
               modal.type === 'export-space' ||
               modal.type === 'duplicate-note' ||
+              modal.type === 'copy-note' ||
               modal.type === 'deduplicate-note' ||
               modal.type === 'insert-note-reference'
                 ? 'settings-modal'
+                : ''
+            } ${
+              modal.type === 'duplicate-note' || modal.type === 'copy-note' || modal.type === 'insert-note-reference'
+                ? 'note-picker-modal'
                 : ''
             }`}
             role="dialog"
@@ -9936,6 +10714,14 @@ function App() {
               </label>
             )}
             {modal.type === 'duplicate-note' && (
+              <NoteLocationPicker
+                domains={domainsForPickers}
+                noteBodies={state.noteBodies}
+                value={modal.target}
+                onChange={(target: NoteLocationPickerValue) => setModal({ ...modal, target })}
+              />
+            )}
+            {modal.type === 'copy-note' && (
               <NoteLocationPicker
                 domains={domainsForPickers}
                 noteBodies={state.noteBodies}

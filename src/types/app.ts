@@ -352,6 +352,11 @@ export type ModalState =
       target: NoteLocation & { aisleIds?: string[] }
     }
   | {
+      type: 'copy-note'
+      source: NoteLocation
+      target: NoteLocation & { aisleIds?: string[] }
+    }
+  | {
       type: 'deduplicate-note'
       noteBodyId: string
       keepLocationKeys: string[]

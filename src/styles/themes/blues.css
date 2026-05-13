@@ -577,9 +577,19 @@
   border-color: #a99a5d;
 }
 
+.theme-blues .inline-crop-edge-handle,
 .theme-blues .inline-crop-resize-handle {
   border-color: #a99a5d;
   background: #8fa0b8;
+}
+
+.theme-blues .inline-crop-edge-handle::before,
+.theme-blues .inline-crop-resize-handle::before {
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 2px,
+    #17223a 2px 3px
+  );
 }
 
 .theme-blues .link-prompt {

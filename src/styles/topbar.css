@@ -82,6 +82,12 @@
   color: var(--topbar-action-hover-text) !important;
 }
 
+.view-settings .topbar-context-btn,
+.view-stage-manager .topbar-context-btn {
+  font-size: calc(1rem * var(--note-font-scale, 1)) !important;
+  line-height: 1.1 !important;
+}
+
 .menu-wrap {
   position: relative;
   flex: 0 0 auto;
@@ -144,6 +150,7 @@
   box-shadow: var(--app-shadow-popover);
   padding: 0.25rem;
   z-index: 2100;
+  font-size: calc(1rem * var(--note-font-scale, 1));
 }
 
 .menu-item {
@@ -154,7 +161,7 @@
   text-align: left;
   padding: 0.38rem 0.48rem;
   border-radius: 0.3rem;
-  font-size: 0.85rem;
+  font-size: 1em;
 }
 
 .menu-item:hover {

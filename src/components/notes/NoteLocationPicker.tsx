@@ -116,7 +116,7 @@ export function NoteLocationPicker({
         </select>
       </label>
       <label className="settings-modal-field">
-        <span>prime tab</span>
+        <span>parent tab</span>
         <select className="settings-select-input" value={selectedTab?.id ?? ''} onChange={(event) => commitTab(event.target.value)}>
           {selectedSpace?.data.tabs.map((tab) => (
             <option key={tab.id} value={tab.id}>
@@ -140,7 +140,7 @@ export function NoteLocationPicker({
           ))}
         </select>
       </label>
-      {includeAisles && selectedBody && (
+      {includeAisles && selectedBody && selectedBody.aisles.length > 1 && (
         <div className="note-picker-aisles">
           {allowAllAisles && (
             <button

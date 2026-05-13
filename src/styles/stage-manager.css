@@ -1,4 +1,5 @@
 .stage-manager-shell {
+  --stage-text-scale: var(--note-font-scale, 1);
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
@@ -7,6 +8,7 @@
   overflow: hidden;
   padding: 1rem 1rem 0;
   background: var(--stage-page-bg);
+  font-size: calc(1rem * var(--stage-text-scale, 1));
 }
 
 .stage-manager-card {
@@ -41,7 +43,7 @@
   border: 1px solid var(--stage-step-border);
   color: var(--stage-step-text);
   background: var(--stage-step-bg);
-  font-size: 0.84rem;
+  font-size: 0.95em;
 }
 
 .stage-manager-step-pill.is-active {
@@ -64,7 +66,7 @@
   border-radius: 999px;
   background: var(--stage-step-index-bg);
   color: var(--stage-step-index-text);
-  font-size: 0.76rem;
+  font-size: 0.85em;
 }
 
 .stage-manager-step-pill.is-active .stage-manager-step-index {
@@ -86,7 +88,7 @@
 
 .stage-manager-panel h2 {
   margin: 0;
-  font-size: 1.05rem;
+  font-size: 1.15em;
   font-weight: 600;
   color: var(--stage-heading-text);
 }
@@ -131,7 +133,7 @@
 }
 
 .stage-manager-field span {
-  font-size: 0.84rem;
+  font-size: 1em;
   color: var(--stage-field-label-text);
 }
 
@@ -140,6 +142,7 @@
   border-color: var(--settings-control-border);
   background-color: var(--settings-control-bg);
   color: var(--settings-control-text);
+  font-size: 1em;
 }
 
 .stage-manager-field .form-control:focus,
@@ -181,7 +184,7 @@
   background: var(--stage-warning-bg);
   color: var(--stage-warning-text);
   text-align: left;
-  font-size: 0.9rem;
+  font-size: 1em;
 }
 
 .stage-manager-action-btn {
@@ -189,6 +192,7 @@
   border-color: var(--stage-action-border) !important;
   color: var(--stage-action-text) !important;
   background: var(--stage-action-bg) !important;
+  font-size: 1em !important;
 }
 
 .stage-manager-action-btn:not(.is-selected):hover {
@@ -213,6 +217,7 @@
   border-color: var(--stage-secondary-border) !important;
   color: var(--stage-secondary-text) !important;
   background: var(--stage-secondary-bg) !important;
+  font-size: 1em !important;
 }
 
 .stage-manager-secondary-btn:hover {
@@ -236,7 +241,7 @@
 
 .stage-manager-help {
   color: var(--stage-help-text);
-  font-size: 0.88rem;
+  font-size: 0.95em;
 }
 
 .stage-manager-footer {
@@ -252,7 +257,7 @@
   min-height: var(--tab-control-height);
   padding: calc(0.32rem * var(--tab-button-scale)) calc(0.78rem * var(--tab-button-scale));
   border-radius: calc(0.45rem * var(--tab-button-scale));
-  font-size: calc(0.95rem * var(--tab-button-scale));
+  font-size: 1em;
   line-height: 1.1;
   display: inline-flex;
   align-items: center;
@@ -264,6 +269,14 @@
   background: var(--stage-rail-active-bg) !important;
   color: var(--stage-rail-active-text) !important;
   box-shadow: var(--stage-rail-active-shadow) !important;
+}
+
+.view-stage-manager .parent-tab-btn,
+.view-stage-manager .subtab-btn,
+.view-stage-manager .home-subtab-btn,
+.view-stage-manager .topbar-context-btn {
+  font-size: calc(1rem * var(--note-font-scale, 1)) !important;
+  line-height: 1.1 !important;
 }
 
 .view-stage-manager .parent-tab-btn.stage-manager-parent-partial {

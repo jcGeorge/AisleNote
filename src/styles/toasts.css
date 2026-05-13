@@ -11,10 +11,10 @@
 
 .app-toast {
   max-width: min(44rem, calc(100vw - 2rem));
-  padding: 0.7rem 1rem 0.7rem 0.95rem;
+  padding: 0.7rem 1rem 0.7rem 1.05rem;
   border-radius: 0.65rem;
   border: 1px solid var(--toast-border);
-  border-right: 4px solid var(--toast-success);
+  border-left: 4px solid var(--toast-success);
   background: var(--toast-bg);
   color: var(--toast-text);
   box-shadow: var(--toast-shadow);
@@ -27,15 +27,15 @@
 }
 
 .app-toast-success {
-  border-right-color: var(--toast-success);
+  border-left-color: var(--toast-success);
 }
 
 .app-toast-warning {
-  border-right-color: var(--toast-warning);
+  border-left-color: var(--toast-warning);
 }
 
 .app-toast-error {
-  border-right-color: var(--toast-error);
+  border-left-color: var(--toast-error);
 }
 
 @keyframes toastFadeIn {

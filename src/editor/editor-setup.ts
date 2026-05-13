@@ -96,58 +96,50 @@ export function headingSpaceShortcutPlugin(context: {
     wysiwygPlugins: [
       () =>
         keymap({
-          Space: (state: {
-            selection: {
-              empty: boolean
-              $from: {
-                parent: {
-                  textContent: string
-                  type: { name: string }
-                  attrs?: { level?: number }
-                  content: { size: number }
-                }
-                parentOffset: number
-                depth: number
-                before: (depth: number) => number
-                after: (depth: number) => number
-              }
-            }
-            schema: { nodes: Record<string, { create: (attrs?: Record<string, unknown>) => unknown } | undefined> }
-            tr: {
-              replaceWith: (from: number, to: number, content: unknown) => unknown
-              doc: { resolve: (pos: number) => unknown; content: { size: number } }
-              setSelection: (selection: unknown) => unknown
-              scrollIntoView: () => unknown
-            }
-          }, dispatch?: (tr: unknown) => void) => {
+          Space: (state: any, dispatch?: (tr: unknown) => void) => {
             const { selection, schema, tr } = state
             if (!selection.empty) return false
 
             const { $from } = selection
-            if ($from.parent.type.name !== 'paragraph' && $from.parent.type.name !== 'heading') return false
+            if ($from.parent.type.name !== 'paragraph') return false
             if ($from.parentOffset !== $from.parent.content.size) return false
 
-            const match = ($from.parent.textContent ?? '').match(/^\s*(#{1,6})$/)
-            if (!match) return false
-
-            const currentHeadingLevel =
-              $from.parent.type.name === 'heading' && typeof $from.parent.attrs?.level === 'number' ? $from.parent.attrs.level : 0
-            const nextLevel = Math.min(6, currentHeadingLevel + match[1].length)
-            const headingNode = schema.nodes.heading?.create({
-              level: nextLevel,
-              headingType: 'atx',
-            })
-            if (!headingNode) return false
+            const markerText = ($from.parent.textContent ?? '').replace(/\u200b/g, '')
+            const headingMatch = markerText.match(/^\s*(#{1,6})$/)
+            const bulletMatch = markerText.match(/^\s*[-*+]$/)
+            const orderedMatch = markerText.match(/^\s*(\d+)[.)]$/)
+            if (!headingMatch && !bulletMatch && !orderedMatch) return false
 
             const blockDepth = $from.depth
             const from = $from.before(blockDepth)
             const to = $from.after(blockDepth)
 
-            const nextTr = tr.replaceWith(from, to, headingNode) as {
-              doc: { content: { size: number } }
-              setSelection: (selection: unknown) => { scrollIntoView: () => unknown }
+            if (headingMatch) {
+              const headingType = schema.nodes.heading
+              if (!headingType) return false
+              const nextTr = tr
+                .setNodeMarkup(from, headingType, {
+                  level: headingMatch[1].length,
+                  headingType: 'atx',
+                })
+                .delete(from + 1, from + 1 + $from.parent.content.size)
+              const caretPos = Math.min(from + 1, nextTr.doc.content.size)
+              const nextSelection = TextSelection.create(nextTr.doc, caretPos, caretPos)
+              dispatch?.(nextTr.setSelection(nextSelection).scrollIntoView())
+              return true
             }
-            const caretPos = Math.min(from + 1, nextTr.doc.content.size)
+
+            const listType = orderedMatch ? schema.nodes.orderedList : schema.nodes.bulletList
+            const listItemType = schema.nodes.listItem
+            const paragraphType = schema.nodes.paragraph
+            if (!listType || !listItemType || !paragraphType) return false
+
+            const paragraphNode = paragraphType.create()
+            const listItemNode = listItemType.create(null, paragraphNode)
+            const listAttrs = orderedMatch ? { order: Number(orderedMatch[1]) || 1 } : null
+            const listNode = listType.create(listAttrs, listItemNode)
+            const nextTr = tr.replaceWith(from, to, listNode)
+            const caretPos = Math.min(from + 3, nextTr.doc.content.size)
             const nextSelection = TextSelection.create(nextTr.doc, caretPos, caretPos)
             dispatch?.(nextTr.setSelection(nextSelection).scrollIntoView())
             return true
@@ -284,8 +276,6 @@ export function multiLineSelectionShortcutPlugin(context: {
           'Mod-Alt-ArrowDown': () => onExpand('down'),
           'Mod-Alt-Home': () => onExpand('up'),
           'Mod-Alt-End': () => onExpand('down'),
-          'Shift-Alt-ArrowUp': () => onExpand('up'),
-          'Shift-Alt-ArrowDown': () => onExpand('down'),
         }),
     ],
   }

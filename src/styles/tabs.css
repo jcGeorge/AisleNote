@@ -198,6 +198,13 @@
   border-color: var(--trash-subtab-selected-border) !important;
 }
 
+.view-trash .trash-home-tab,
+.view-trash .trash-parent-tab,
+.view-trash .trash-subtab-btn {
+  font-size: calc(1rem * var(--note-font-scale, 1)) !important;
+  line-height: 1.1 !important;
+}
+
 .add-tab-btn {
   max-width: calc(28px * var(--tab-button-scale));
   min-width: calc(28px * var(--tab-button-scale));

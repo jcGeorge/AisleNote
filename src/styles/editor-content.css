@@ -99,6 +99,11 @@
   tab-size: 4 !important;
 }
 
+.toastui-editor-contents .task-list-item::before,
+.toastui-editor .ProseMirror .task-list-item::before {
+  top: 0.24em !important;
+}
+
 .toastui-editor .ProseMirror .multiline-cursor-widget,
 .toastui-editor-contents .multiline-cursor-widget {
   display: inline-block;

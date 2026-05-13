@@ -502,9 +502,19 @@
   border-color: #2d67d9;
 }
 
+.theme-light .inline-crop-edge-handle,
 .theme-light .inline-crop-resize-handle {
   border-color: #2b66d6;
   background: #e9f1ff;
+}
+
+.theme-light .inline-crop-edge-handle::before,
+.theme-light .inline-crop-resize-handle::before {
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 2px,
+    #1b2a42 2px 3px
+  );
 }
 
 .theme-light .link-prompt {
