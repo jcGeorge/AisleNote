@@ -1,7 +1,7 @@
 export type StorageSchemaVersion = 1
 
 export type StorageEntityId = string
-export type StorageTheme = 'dark' | 'light' | 'dusk'
+export type StorageTheme = 'dark' | 'light' | 'dawn' | 'blues'
 export type StorageShortcutId =
   | 'toggleTabTrash'
   | 'openDomains'
@@ -17,7 +17,9 @@ export const STORAGE_ROOT_DIR = 'notes-data' as const
 export const STORAGE_TOPICS_DIR = 'topics' as const
 export const STORAGE_SPACES_DIR = 'spaces' as const
 export const STORAGE_NOTES_DIR = 'notes' as const
+export const STORAGE_NOTE_BODIES_DIR = 'note-bodies' as const
 export const STORAGE_SUBTABS_DIR = 'subtabs' as const
+export const STORAGE_AISLES_DIR = 'aisles' as const
 export const STORAGE_ASSETS_DIR = 'assets' as const
 export const STORAGE_TRASH_DIR = 'trash' as const
 export const STORAGE_MANIFEST_FILE = 'manifest.json' as const
@@ -50,10 +52,21 @@ export type StorageSpaceIndexEntry = {
   title: string
 }
 
+export type StorageNoteAisleRecord = {
+  id: StorageEntityId
+  file: string
+}
+
+export type StorageNoteBodyRecord = {
+  id: StorageEntityId
+  aisles: StorageNoteAisleRecord[]
+}
+
 export type StorageRootManifest = {
   schemaVersion: StorageSchemaVersion
   globalSettings: StorageGlobalSettings
   topics: StorageTopicIndexEntry[]
+  noteBodies?: StorageNoteBodyRecord[]
   activeTopicId: StorageEntityId
   lastOpened?: {
     topicId: StorageEntityId
@@ -80,6 +93,7 @@ export type StorageSpaceSettings = {
 export type StorageSubTabRecord = {
   id: StorageEntityId
   title: string
+  noteBodyId?: StorageEntityId
   file: string
   createdAt?: number
   updatedAt?: number
@@ -88,6 +102,7 @@ export type StorageSubTabRecord = {
 export type StorageTabRecord = {
   id: StorageEntityId
   title: string
+  noteBodyId?: StorageEntityId
   homeNoteFile: string
   subTabs: StorageSubTabRecord[]
   activeSubTabId: StorageEntityId | null

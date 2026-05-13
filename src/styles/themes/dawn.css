@@ -1,0 +1,640 @@
+/* Dawn theme overrides inspired by Monet's warm Rouen Cathedral palette. */
+.theme-dawn {
+  --app-bg: #776238;
+  --app-page-bg: #8a744a;
+  --app-surface: #d4c39a;
+  --app-surface-raised: #decea8;
+  --app-border: #8a744a;
+  --app-border-muted: #a28b5b;
+  --app-text: #253047;
+  --app-text-bright: #1f2d45;
+  --app-text-strong: #1c293f;
+  --app-text-heading: #1f2c43;
+  --app-text-soft: #3d485c;
+  --app-text-muted: #5d5f63;
+  --app-text-subtle: #705d39;
+  --app-primary: #3f6f4f;
+  --app-primary-hover: #4f805f;
+  --app-primary-action: #477856;
+  --app-primary-border: #6f936d;
+  --app-primary-border-strong: #3f6f4f;
+  --app-shadow-popover: 0 10px 24px rgba(50, 41, 25, 0.26);
+  --app-shadow-toast: 0 12px 32px rgba(43, 35, 22, 0.28);
+  --editor-shell-padding-inline: 0rem;
+
+  --tabbar-border: #8a744a;
+  --tabbar-bg: linear-gradient(180deg, #d1bd7b 0%, #b8953d 100%);
+  --subtabbar-bg: linear-gradient(180deg, #c4aa62 0%, #9d7b34 100%);
+  --topbar-action-bg: #d8c797;
+  --topbar-action-border: #7f734f;
+  --topbar-action-text: #253047;
+  --topbar-action-hover-bg: #e1d19f;
+  --topbar-action-hover-border: #3f6f4f;
+  --topbar-action-hover-text: #1c293f;
+  --menu-button-text: #253047;
+  --menu-bg: #d4c39a;
+  --menu-border: #8a744a;
+  --menu-item-text: #253047;
+  --menu-item-hover-bg: #c6b37f;
+
+  --spaces-heading-text: #f3ead2;
+  --spaces-page-bg: radial-gradient(circle at 20% 0%, #968052 0%, #8a744a 44%, #806b43 100%);
+  --space-card-bg: #d4c39a;
+  --space-card-text: #253047;
+  --space-card-border: #8a744a;
+  --space-card-hover-bg: #dfcea0;
+  --space-card-hover-border: #6f936d;
+  --space-card-active-border: #3f6f4f;
+  --space-arrangeable-shadow: 0 0 0 1px rgba(63, 111, 79, 0.16) inset;
+  --space-dragging-shadow: 0 10px 22px rgba(51, 43, 25, 0.24), 0 0 0 1px rgba(63, 111, 79, 0.24) inset;
+  --space-target-shadow: 0 0 0 1px rgba(63, 111, 79, 0.26), inset 0 0 0 2px rgba(63, 111, 79, 0.68);
+  --space-target-marker: #3f6f4f;
+  --space-target-edge-outline: rgba(63, 111, 79, 0.2);
+  --space-fixed-shadow: 0 0 0 1px rgba(63, 111, 79, 0.12) inset;
+  --space-arrange-preview-bg: rgba(212, 195, 154, 0.97);
+  --space-arrange-preview-border: #3f6f4f;
+  --space-arrange-preview-text: #253047;
+  --space-arrange-preview-shadow: 0 16px 28px rgba(51, 43, 25, 0.24), inset 0 0 0 1px rgba(63, 111, 79, 0.36);
+  --space-rename-bg: #decea8;
+  --space-rename-text: #253047;
+  --space-rename-border: #3f6f4f;
+  --space-rename-focus-border: #4f805f;
+
+  --tab-btn-text: #273247;
+  --tab-btn-bg: #c9b66f;
+  --tab-btn-border: #8b743f;
+  --tab-btn-hover-text: #1d2a40;
+  --tab-btn-hover-bg: #d3c280;
+  --tab-btn-hover-border: #6f936d;
+  --tab-arrangeable-shadow: 0 0 0 1px rgba(63, 111, 79, 0.16) inset;
+  --tab-dragging-shadow: 0 0 0 1px rgba(63, 111, 79, 0.24) inset, 0 8px 18px rgba(51, 43, 25, 0.2);
+  --tab-arrange-preview-bg: rgba(212, 195, 154, 0.97);
+  --tab-arrange-preview-border: #3f6f4f;
+  --tab-arrange-preview-text: #253047;
+  --tab-arrange-preview-shadow: 0 14px 24px rgba(51, 43, 25, 0.22), inset 0 0 0 1px rgba(63, 111, 79, 0.34);
+  --subtab-arrange-preview-border: #9b6726;
+  --subtab-arrange-preview-shadow: 0 14px 24px rgba(51, 43, 25, 0.22), inset 0 0 0 1px rgba(155, 103, 38, 0.34);
+  --home-subtab-fixed-shadow: 0 0 0 1px rgba(63, 111, 79, 0.12) inset;
+  --home-subtab-target-border: #9b6726;
+  --home-subtab-target-shadow: inset -3px 0 0 #9b6726, 0 0 0 1px rgba(155, 103, 38, 0.2);
+  --parent-tab-target-border: #6f936d;
+  --parent-tab-target-shadow: 0 0 0 2px rgba(111, 147, 109, 0.3) inset, 0 3px 10px rgba(48, 63, 89, 0.18);
+  --parent-tab-target-before-shadow: inset 3px 0 0 #6f936d, 0 0 0 1px rgba(111, 147, 109, 0.24);
+  --parent-tab-target-after-shadow: inset -3px 0 0 #6f936d, 0 0 0 1px rgba(111, 147, 109, 0.24);
+  --subtab-target-border: #9b6726;
+  --subtab-target-shadow: 0 0 0 2px rgba(155, 103, 38, 0.28) inset, 0 3px 10px rgba(82, 64, 26, 0.16);
+  --subtab-target-before-shadow: inset 3px 0 0 #9b6726, 0 0 0 1px rgba(155, 103, 38, 0.22);
+  --subtab-target-after-shadow: inset -3px 0 0 #9b6726, 0 0 0 1px rgba(155, 103, 38, 0.22);
+  --parent-tab-selected-text: #f3ead2;
+  --parent-tab-selected-bg: linear-gradient(180deg, #4f805f 0%, #3f6f4f 100%);
+  --parent-tab-selected-border: #6f936d;
+  --subtab-btn-text: #3f3828;
+  --subtab-btn-bg: #cdbb87;
+  --subtab-btn-border: #9b8658;
+  --subtab-btn-hover-text: #302918;
+  --subtab-btn-hover-bg: #d8c99a;
+  --subtab-btn-hover-border: #6f936d;
+  --subtab-selected-text: #f3ead2;
+  --subtab-selected-bg: linear-gradient(180deg, #a68142 0%, #86612f 100%);
+  --subtab-selected-border: #c3ad72;
+  --trash-home-text: #253047;
+  --trash-home-bg: #d4c39a;
+  --trash-home-border: #8a744a;
+  --trash-home-hover-bg: #decea8;
+  --trash-home-hover-border: #a28b5b;
+  --trash-home-selected-border: #6f936d;
+  --trash-home-selected-shadow: #6f936d;
+  --trash-parent-text: #5d2f2c;
+  --trash-parent-bg: #d7b99a;
+  --trash-parent-border: #a46d5d;
+  --trash-parent-hover-text: #4d2624;
+  --trash-parent-hover-bg: #dfc3a5;
+  --trash-parent-hover-border: #8f5d50;
+  --trash-parent-selected-text: #f3ead2;
+  --trash-parent-selected-bg: #8a4d44;
+  --trash-parent-selected-border: #b17867;
+  --trash-subtab-text: #5a3923;
+  --trash-subtab-bg: #d0b184;
+  --trash-subtab-border: #9a7550;
+  --trash-subtab-hover-text: #49301f;
+  --trash-subtab-hover-bg: #dac094;
+  --trash-subtab-hover-border: #846345;
+  --trash-subtab-selected-text: #f3ead2;
+  --trash-subtab-selected-bg: #7c5635;
+  --trash-subtab-selected-border: #aa8158;
+  --add-tab-text: #253047;
+  --add-tab-bg: rgba(216, 201, 86, 0.28);
+  --add-tab-border: transparent;
+  --add-tab-hover-bg: rgba(216, 201, 86, 0.42);
+  --add-tab-hover-border: #8a744a;
+  --tab-rename-bg: #decea8;
+  --tab-rename-text: #253047;
+  --tab-rename-border: #3f6f4f;
+
+  --stage-page-bg: #c1ad76;
+  --stage-step-border: #8f7a50;
+  --stage-step-text: #253047;
+  --stage-step-bg: #d8c797;
+  --stage-step-active-border: #3f6f4f;
+  --stage-step-active-text: #1c293f;
+  --stage-step-active-bg: #c8c996;
+  --stage-step-complete-border: #6f936d;
+  --stage-step-complete-text: #253047;
+  --stage-step-index-bg: rgba(63, 111, 79, 0.16);
+  --stage-step-index-text: #253047;
+  --stage-step-active-index-bg: #3f6f4f;
+  --stage-step-active-index-text: #f3ead2;
+  --stage-panel-text: #1f2d45;
+  --stage-heading-text: #1c293f;
+  --stage-field-label-text: #30394d;
+  --stage-review-border: rgba(126, 105, 66, 0.7);
+  --stage-review-bg: rgba(222, 206, 168, 0.96);
+  --stage-warning-border: rgba(129, 77, 45, 0.62);
+  --stage-warning-bg: rgba(224, 201, 151, 0.9);
+  --stage-warning-text: #5a2b22;
+  --stage-action-border: #9b8658;
+  --stage-action-text: #253047;
+  --stage-action-bg: #decea8;
+  --stage-action-selected-border: #6f936d;
+  --stage-action-selected-text: #f3ead2;
+  --stage-action-selected-bg: #3f6f4f;
+  --stage-secondary-border: #9b8658;
+  --stage-secondary-text: #253047;
+  --stage-secondary-bg: #decea8;
+  --stage-secondary-hover-border: #3f6f4f;
+  --stage-secondary-hover-text: #1c293f;
+  --stage-secondary-hover-bg: #e6d7b3;
+  --stage-secondary-focus-shadow: 0 0 0 0.2rem rgba(63, 111, 79, 0.22);
+  --stage-secondary-disabled-text: #6d634d;
+  --stage-secondary-disabled-border: #a99567;
+  --stage-secondary-disabled-bg: rgba(212, 195, 154, 0.72);
+  --stage-help-text: #3d485c;
+  --stage-rail-active-text: #f3ead2;
+  --stage-rail-active-bg: linear-gradient(180deg, #4f805f 0%, #3f6f4f 100%);
+  --stage-rail-active-border: #6f936d;
+  --stage-rail-active-shadow: none;
+  --stage-parent-partial-border: #6f936d;
+  --stage-parent-partial-text: #253047;
+  --stage-parent-partial-bg: #c1b484;
+  --stage-parent-partial-shadow: inset 0 0 0 2px rgba(111, 147, 109, 0.7), 0 0 0 2px rgba(111, 147, 109, 0.18);
+  --stage-parent-full-border: #3f6f4f;
+  --stage-parent-full-text: #1c293f;
+  --stage-parent-full-bg: #bcc09f;
+  --stage-parent-full-shadow: inset 0 0 0 2px rgba(63, 111, 79, 0.72), 0 0 0 2px rgba(63, 111, 79, 0.16);
+  --stage-subtab-selected-border: #6f936d;
+  --stage-subtab-selected-text: #253047;
+  --stage-subtab-selected-bg: #c8c996;
+  --stage-subtab-selected-shadow: inset 0 0 0 2px rgba(111, 147, 109, 0.72), 0 0 0 2px rgba(111, 147, 109, 0.16);
+
+  --settings-control-bg: #decea8;
+  --settings-control-text: #253047;
+  --settings-control-border: #8a744a;
+  --settings-control-focus-border: #3f6f4f;
+  --settings-select-focus-border: #3f6f4f;
+  --settings-field-suffix-text: #3d485c;
+  --settings-help-text: #705d39;
+  --settings-page-bg: #8a744a;
+  --settings-card-bg: #d4c39a;
+  --settings-card-border: #8a744a;
+  --settings-card-text: #253047;
+  --settings-card-body-text: #5d5f63;
+  --settings-section-tab-bg: #cbb987;
+  --settings-section-tab-border: #8a744a;
+  --settings-section-tab-text: #253047;
+  --settings-section-tab-hover-bg: #d8c797;
+  --settings-section-tab-hover-text: #1c293f;
+  --settings-section-tab-active-bg: #3f6f4f;
+  --settings-section-tab-active-border: #6f936d;
+  --settings-section-tab-active-text: #f3ead2;
+  --settings-divider-bg: #8a744a;
+  --settings-hotkey-label-text: #253047;
+  --settings-range-value-text: #705d39;
+  --settings-switch-bg: #decea8;
+  --settings-switch-border: #8a744a;
+  --settings-switch-focus-border: #3f6f4f;
+  --settings-switch-focus-shadow: 0 0 0 0.2rem rgba(63, 111, 79, 0.22);
+  --settings-switch-checked-bg: #3f6f4f;
+  --settings-switch-checked-border: #3f6f4f;
+  --settings-switch-checked-focus-shadow: 0 0 0 0.2rem rgba(63, 111, 79, 0.24);
+  --theme-switch-bg: #cbb987;
+  --theme-switch-border: #8a744a;
+  --theme-switch-option-text: #253047;
+  --theme-switch-option-hover-bg: #decea8;
+  --theme-switch-option-hover-text: #1c293f;
+  --theme-switch-option-selected-bg: #3f6f4f;
+  --theme-switch-option-selected-text: #f3ead2;
+  --settings-shortcut-bg: #decea8;
+  --settings-shortcut-text: #253047;
+  --settings-shortcut-border: #8a744a;
+  --settings-shortcut-hover-bg: #e4d4a8;
+  --settings-shortcut-recording-border: #3f6f4f;
+  --settings-shortcut-recording-shadow: #3f6f4f;
+  --settings-action-bg: #d8c797;
+  --settings-action-text: #253047;
+  --settings-action-border: #8a744a;
+  --settings-action-hover-bg: #decea8;
+  --settings-action-hover-text: #1c293f;
+  --settings-action-hover-border: #3f6f4f;
+  --settings-action-focus-shadow: 0 0 0 0.2rem rgba(63, 111, 79, 0.22);
+  --settings-action-disabled-bg: rgba(212, 195, 154, 0.58);
+  --settings-action-disabled-text: #827962;
+  --settings-action-disabled-border: #b4a67e;
+
+  --toast-bg: rgba(212, 195, 154, 0.96);
+  --toast-border: #8a744a;
+  --toast-text: #253047;
+  --toast-shadow: var(--app-shadow-toast);
+
+  --context-menu-bg: #d4c39a;
+  --context-menu-border: #8a744a;
+  --context-menu-shadow: var(--app-shadow-popover);
+  --context-menu-item-text: #253047;
+  --context-menu-item-hover-bg: rgba(63, 111, 79, 0.16);
+  --context-menu-danger-text: #7a2d2d;
+  --context-menu-danger-hover-bg: rgba(143, 61, 53, 0.16);
+  --app-danger-text: #f3ead2;
+  --app-danger-border: #c27a4f;
+  --app-danger-bg: #a95f35;
+  --app-danger-hover-text: #fff4df;
+  --app-danger-hover-border: #d0915d;
+  --app-danger-hover-bg: #b86b3e;
+  --app-danger-focus-shadow: 0 0 0 0.2rem rgba(169, 95, 53, 0.22);
+  --app-danger-disabled-text: #8a7358;
+  --app-danger-disabled-border: #b99a78;
+  --app-danger-disabled-bg: rgba(169, 95, 53, 0.32);
+  --modal-bg: #d4c39a;
+  --modal-border: #8a744a;
+  --modal-text: #253047;
+  --modal-body-text: #5d5f63;
+  --modal-muted-text: #3d485c;
+  --modal-cancel-text: #253047;
+  --modal-cancel-border: #8a744a;
+  --modal-cancel-bg: #decea8;
+  --modal-cancel-hover-text: #1c293f;
+  --modal-cancel-hover-border: #3f6f4f;
+  --modal-cancel-hover-bg: #e4d4a8;
+  --modal-primary-text: #f3ead2;
+  --modal-primary-border: #6f936d;
+  --modal-primary-bg: #3f6f4f;
+  --modal-primary-hover-bg: #4f805f;
+  --modal-primary-hover-border: #86a17c;
+
+  --monet-editor-bg: #d8c9a3;
+  --monet-editor-panel-bg: #cbb987;
+  --monet-editor-toolbar-bg: #c7b37a;
+  --monet-editor-toolbar-hover-bg: #dbc98e;
+  --monet-editor-toolbar-active-bg: #aac06e;
+  --monet-editor-border: #8a744a;
+  --monet-editor-border-strong: #3f6f4f;
+  --monet-editor-text: #253047;
+  --monet-editor-muted-text: #5d5f63;
+  --monet-editor-heading-text: #1c293f;
+  --monet-editor-selection-bg: rgba(63, 111, 79, 0.26);
+  --monet-editor-code-bg: #c6b27e;
+  --monet-editor-popup-bg: #d8c9a3;
+}
+
+.theme-dawn .editor-shell {
+  background: var(--monet-editor-bg);
+}
+
+.theme-dawn .settings-range-input {
+  accent-color: #3f6f4f;
+}
+
+.theme-dawn .settings-range-input::-webkit-slider-runnable-track {
+  background-color: #c7b37a;
+}
+
+.theme-dawn .settings-range-input::-webkit-slider-thumb {
+  border: 1px solid #6f936d;
+  background-color: #3f6f4f;
+}
+
+.theme-dawn .settings-range-input:focus::-webkit-slider-thumb {
+  box-shadow: 0 0 0 0.2rem rgba(63, 111, 79, 0.24);
+}
+
+.theme-dawn .settings-range-input::-moz-range-track {
+  background-color: #c7b37a;
+}
+
+.theme-dawn .settings-range-input::-moz-range-progress {
+  background-color: #3f6f4f;
+}
+
+.theme-dawn .settings-range-input::-moz-range-thumb {
+  border: 1px solid #6f936d;
+  background-color: #3f6f4f;
+}
+
+.theme-dawn .settings-range-input:focus::-moz-range-thumb {
+  box-shadow: 0 0 0 0.2rem rgba(63, 111, 79, 0.24);
+}
+
+.theme-dawn .trash-home-note {
+  background: var(--monet-editor-bg);
+  color: var(--monet-editor-text);
+}
+
+.theme-dawn .trash-home-note h2 {
+  color: var(--monet-editor-heading-text);
+}
+
+.theme-dawn .trash-home-actions .btn-outline-light {
+  color: #253047 !important;
+  background: #d8c797 !important;
+  border-color: #8a744a !important;
+}
+
+.theme-dawn .trash-home-actions .btn-outline-light:hover {
+  color: #1c293f !important;
+  background: #decea8 !important;
+  border-color: #3f6f4f !important;
+}
+
+.theme-dawn .toast-editor-host,
+.theme-dawn .toastui-editor-defaultUI,
+.theme-dawn .toastui-editor-main,
+.theme-dawn .toastui-editor-main-container,
+.theme-dawn .toastui-editor,
+.theme-dawn .toastui-editor-md-container,
+.theme-dawn .toastui-editor-md-container .toastui-editor,
+.theme-dawn .toastui-editor-md-container .toastui-editor-md-preview,
+.theme-dawn .toastui-editor-ww-container,
+.theme-dawn .toastui-editor-ww-container > .toastui-editor,
+.theme-dawn .toastui-editor-contents,
+.theme-dawn .toastui-editor .ProseMirror,
+.theme-dawn .toastui-editor .ProseMirror * {
+  background-color: var(--monet-editor-bg) !important;
+  color: var(--monet-editor-text) !important;
+}
+
+.theme-dawn .toastui-editor-main .toastui-editor-md-splitter {
+  background-color: var(--monet-editor-border) !important;
+}
+
+.theme-dawn .toastui-editor-toolbar,
+.theme-dawn .toastui-editor-defaultUI-toolbar,
+.theme-dawn .toastui-editor-defaultUI .toastui-editor-md-tab-container,
+.theme-dawn .toastui-editor-mode-switch {
+  background-color: var(--monet-editor-toolbar-bg) !important;
+  border-color: var(--monet-editor-border) !important;
+  color: var(--monet-editor-text) !important;
+}
+
+.theme-dawn .toastui-editor-defaultUI-toolbar .toastui-editor-toolbar-group,
+.theme-dawn .toastui-editor-defaultUI-toolbar .toastui-editor-toolbar-divider {
+  background: var(--monet-editor-toolbar-bg) !important;
+  color: var(--monet-editor-text) !important;
+}
+
+.theme-dawn .toastui-editor-md-tab-container .tab-item,
+.theme-dawn .toastui-editor-mode-switch .tab-item {
+  background: var(--monet-editor-panel-bg) !important;
+  border-color: var(--monet-editor-border) !important;
+  color: var(--monet-editor-muted-text) !important;
+}
+
+.theme-dawn .toastui-editor-md-tab-container .tab-item.active,
+.theme-dawn .toastui-editor-mode-switch .tab-item.active {
+  background: var(--monet-editor-bg) !important;
+  border-color: var(--monet-editor-border) !important;
+  color: var(--monet-editor-text) !important;
+}
+
+.theme-dawn .toastui-editor-defaultUI-toolbar button,
+.theme-dawn .toastui-editor-toolbar button {
+  background-color: transparent !important;
+  box-shadow: inset 0 0 0 1px transparent !important;
+}
+
+.theme-dawn .toastui-editor-defaultUI-toolbar button:hover,
+.theme-dawn .toastui-editor-toolbar button:hover {
+  background-color: var(--monet-editor-toolbar-hover-bg) !important;
+  box-shadow: inset 0 0 0 1px var(--monet-editor-border) !important;
+}
+
+.theme-dawn .toastui-editor-defaultUI-toolbar button.active,
+.theme-dawn .toastui-editor-toolbar button.active {
+  background-color: var(--monet-editor-toolbar-active-bg) !important;
+  box-shadow: inset 0 0 0 1px var(--monet-editor-border-strong) !important;
+}
+
+.theme-dawn .toastui-editor-defaultUI-toolbar button.clear-note-toolbar-btn,
+.theme-dawn .toastui-editor-toolbar button.clear-note-toolbar-btn {
+  color: var(--monet-editor-muted-text) !important;
+}
+
+.theme-dawn .toastui-editor-toolbar-icons,
+.theme-dawn .toastui-editor-toolbar-divider {
+  filter: none !important;
+}
+
+.theme-dawn .toastui-editor .ProseMirror .multiline-cursor-widget,
+.theme-dawn .toastui-editor-contents .multiline-cursor-widget {
+  background: var(--monet-editor-text) !important;
+}
+
+.theme-dawn .toastui-editor .ProseMirror .multiline-selection-range,
+.theme-dawn .toastui-editor-contents .multiline-selection-range {
+  background: var(--monet-editor-selection-bg) !important;
+}
+
+.theme-dawn .toastui-editor-popup,
+.theme-dawn .toastui-editor-dropdown-toolbar,
+.theme-dawn .toastui-editor-popup-body,
+.theme-dawn .toastui-editor-popup-body label {
+  background: var(--monet-editor-popup-bg) !important;
+  color: var(--monet-editor-text) !important;
+  border-color: var(--monet-editor-border) !important;
+}
+
+.theme-dawn .toastui-editor-popup-add-heading li.is-active-heading-choice {
+  background: #c4b173 !important;
+  box-shadow: inset 3px 0 0 #3f6f4f !important;
+  color: #1c293f !important;
+}
+
+.theme-dawn .toastui-editor-contents li.task-list-item.task-reorder-source {
+  background: rgba(63, 111, 79, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(63, 111, 79, 0.18);
+}
+
+.theme-dawn .toastui-editor-contents li.task-list-item.task-reorder-target {
+  background: rgba(63, 111, 79, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(63, 111, 79, 0.18);
+}
+
+.theme-dawn .task-reorder-ghost {
+  border-color: rgba(63, 111, 79, 0.56);
+  background: rgba(216, 201, 163, 0.96);
+  color: #253047;
+  box-shadow: 0 12px 28px rgba(51, 43, 25, 0.24), 0 0 0 1px rgba(63, 111, 79, 0.14);
+}
+
+.theme-dawn .task-reorder-marker::before,
+.theme-dawn .task-reorder-marker::after {
+  background: #3f6f4f;
+}
+
+.theme-dawn .task-reorder-marker::before {
+  box-shadow: none;
+}
+
+.theme-dawn .task-reorder-marker::after {
+  background: #3f6f4f;
+  box-shadow: none;
+}
+
+.theme-dawn .toastui-editor-popup-body input[type='text'] {
+  background: #decea8 !important;
+  color: var(--monet-editor-text) !important;
+  border-color: var(--monet-editor-border) !important;
+}
+
+.theme-dawn .toastui-editor-popup-add-table {
+  background: var(--monet-editor-popup-bg) !important;
+}
+
+.theme-dawn .toastui-editor-popup-add-table .toastui-editor-table-selection {
+  background: #d4c39a !important;
+  border-color: var(--monet-editor-border) !important;
+}
+
+.theme-dawn .toastui-editor-popup-add-table .toastui-editor-table-cell {
+  background: #e0d0a5 !important;
+  border-color: #a28b5b !important;
+}
+
+.theme-dawn .toastui-editor-popup-add-table .toastui-editor-table-selection-layer {
+  background-color: rgba(63, 111, 79, 0.24) !important;
+  border-color: #3f6f4f !important;
+}
+
+.theme-dawn .toastui-editor-popup-add-table .toastui-editor-table-description {
+  color: var(--monet-editor-text) !important;
+}
+
+.theme-dawn .toastui-editor-contents h1,
+.theme-dawn .toastui-editor-contents h2,
+.theme-dawn .toastui-editor-contents h3,
+.theme-dawn .toastui-editor-contents h4,
+.theme-dawn .toastui-editor-contents h5,
+.theme-dawn .toastui-editor-contents h6,
+.theme-dawn .toastui-editor .ProseMirror h1,
+.theme-dawn .toastui-editor .ProseMirror h2,
+.theme-dawn .toastui-editor .ProseMirror h3,
+.theme-dawn .toastui-editor .ProseMirror h4,
+.theme-dawn .toastui-editor .ProseMirror h5,
+.theme-dawn .toastui-editor .ProseMirror h6 {
+  color: var(--monet-editor-heading-text) !important;
+}
+
+.theme-dawn .toastui-editor-contents a,
+.theme-dawn .toastui-editor .ProseMirror a {
+  color: #3f6f4f !important;
+}
+
+.theme-dawn .toastui-editor-contents hr {
+  background: linear-gradient(
+    90deg,
+    transparent 0,
+    rgba(113, 93, 57, 0.92) 20px,
+    rgba(113, 93, 57, 0.92) calc(100% - 20px),
+    transparent 100%
+  ) !important;
+  opacity: 1 !important;
+}
+
+.theme-dawn .toastui-editor .ProseMirror pre,
+.theme-dawn .toastui-editor-contents pre {
+  background: var(--monet-editor-code-bg) !important;
+  border: 1px solid var(--monet-editor-border) !important;
+  color: var(--monet-editor-text) !important;
+}
+
+.theme-dawn .toastui-editor .ProseMirror pre code,
+.theme-dawn .toastui-editor-contents pre code {
+  background: transparent !important;
+  color: var(--monet-editor-text) !important;
+}
+
+.theme-dawn .toastui-editor .ProseMirror code,
+.theme-dawn .toastui-editor-contents code {
+  background: #c6b27e !important;
+  color: var(--monet-editor-text) !important;
+}
+
+.theme-dawn .toastui-editor-tooltip {
+  background-color: #d8c9a3 !important;
+  color: var(--monet-editor-text) !important;
+  border: 1px solid var(--monet-editor-border);
+  box-shadow: 0 4px 12px rgba(51, 43, 25, 0.22);
+}
+
+.theme-dawn .toastui-editor-tooltip .arrow {
+  background-color: #d8c9a3 !important;
+  border: 0 !important;
+}
+
+.theme-dawn .image-tools {
+  background: transparent;
+}
+
+.theme-dawn .image-tool-btn {
+  border-color: #8a744a;
+  background: #d8c797;
+  color: #253047;
+}
+
+.theme-dawn .image-tool-btn:hover {
+  background: #decea8;
+}
+
+.theme-dawn .image-resize-handle {
+  border-color: #253047;
+  background: #d8c9a3;
+}
+
+.theme-dawn .image-resize-handle::before {
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 2px,
+    #253047 2px 3px
+  );
+}
+
+.theme-dawn .image-resize-handle:hover {
+  filter: brightness(0.98);
+}
+
+.theme-dawn .inline-crop-box {
+  border-color: #3f6f4f;
+}
+
+.theme-dawn .inline-crop-resize-handle {
+  border-color: #3f6f4f;
+  background: #d8c797;
+}
+
+.theme-dawn .link-prompt {
+  border-color: #8a744a;
+  background: rgba(216, 201, 163, 0.98);
+}
+
+.theme-dawn .link-prompt-input {
+  border-color: #8a744a;
+  background: #decea8;
+  color: #253047;
+}
+
+.theme-dawn .link-prompt-btn {
+  border-color: #6f936d;
+  background: #c7b37a;
+  color: #253047;
+}
+
+.theme-dawn .link-prompt-btn:hover {
+  background: #d8c956;
+}

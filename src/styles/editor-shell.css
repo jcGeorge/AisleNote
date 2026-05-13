@@ -1,18 +1,409 @@
 .editor-shell {
   flex: 1 1 auto;
   min-height: 0;
-  padding-inline: 0.3125rem;
+  padding-inline: var(--editor-shell-padding-inline, 0.3125rem);
   background-color: #0b1528;
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 .toast-editor-host {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+}
+
+.note-reference-btn {
+  position: absolute;
+  top: 0.58rem;
+  right: 0.72rem;
+  z-index: 9;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--stage-action-border);
+  border-radius: 0.35rem;
+  background: var(--stage-action-bg);
+  color: var(--stage-action-text);
+}
+
+.note-reference-btn:hover,
+.note-reference-btn:focus-visible {
+  border-color: var(--stage-action-selected-border);
+  background: var(--stage-action-selected-bg);
+}
+
+.note-reference-paper {
+  position: absolute;
+  top: 0.42rem;
+  left: 0.48rem;
+  width: 0.72rem;
+  height: 0.88rem;
+  border: 1.5px solid currentColor;
+  border-radius: 0.1rem;
+}
+
+.note-reference-paper::after {
+  content: '';
+  position: absolute;
+  top: -0.06rem;
+  right: -0.06rem;
+  width: 0.28rem;
+  height: 0.28rem;
+  border-left: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  background: inherit;
+}
+
+.note-reference-chain {
+  position: absolute;
+  right: 0.4rem;
+  bottom: 0.45rem;
+  width: 0.74rem;
+  height: 0.32rem;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+  transform: rotate(-25deg);
+}
+
+.note-reference-chain::after {
+  content: '';
+  position: absolute;
+  left: -0.42rem;
+  top: -0.02rem;
+  width: 0.74rem;
+  height: 0.32rem;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+}
+
+.context-bars-list {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.45rem 0.2rem 0.3rem;
+  border-top: 1px solid var(--app-border);
+  background: var(--app-surface);
+  max-height: 42%;
+  overflow: auto;
+}
+
+.context-bar {
+  display: grid;
+  grid-template-rows: auto auto;
+  border: 1px solid var(--app-border);
+  background: var(--app-bg);
+}
+
+.note-context-token-hidden {
+  display: none !important;
+}
+
+.note-context-widget {
+  display: block;
+  margin: 0.65rem 0;
+  border: 0;
+  background: transparent;
+}
+
+.note-context-widget .context-bar-top,
+.note-context-widget .context-bar-lower {
+  width: 100%;
+  background: var(--app-bg);
+}
+
+.note-context-widget .context-bar-top {
+  border-bottom: 1px solid var(--app-border);
+}
+
+.note-context-widget .context-bar-lower {
+  border-bottom: 1px solid var(--app-border);
+}
+
+.context-bar.is-blocked {
+  border-color: var(--app-danger-border);
+}
+
+.note-context-widget.is-blocked .context-bar-top,
+.note-context-widget.is-blocked .context-bar-lower {
+  border-color: var(--app-danger-border);
+}
+
+.context-bar-top,
+.context-bar-lower {
+  min-height: 2.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+}
+
+.context-bar-top {
+  justify-content: space-between;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.context-bar-title {
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--app-text);
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-context-widget .context-bar-title {
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.context-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.context-bar-icon-btn {
+  width: 1.65rem;
+  height: 1.65rem;
+  border: 1px solid var(--stage-action-border);
+  border-radius: 0.25rem;
+  background: var(--stage-action-bg);
+  color: var(--stage-action-text);
+  font-size: 0.75rem;
+}
+
+.context-bar-icon-btn.is-active {
+  border-color: var(--stage-action-selected-border);
+  background: var(--stage-action-selected-bg);
+  color: var(--stage-action-selected-text);
+}
+
+.context-bar-icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.context-bar-minimize-btn::before {
+  content: '';
+  display: block;
+  width: 0.7rem;
+  height: 0;
+  margin: 0 auto;
+  border-bottom: 2px solid currentColor;
+}
+
+.context-bar-minimize-btn.is-restore::before {
+  width: 0.58rem;
+  height: 0.45rem;
+  border: 1.5px solid currentColor;
+}
+
+.context-bar-lower {
+  align-items: stretch;
+  color: var(--app-text);
+}
+
+.context-bar-lower[hidden] {
+  display: none !important;
+}
+
+.context-bar-editors {
+  width: 100%;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.context-bar-editor {
+  display: grid;
+  gap: 0.25rem;
+  color: var(--app-muted-text);
+  font-size: 0.78rem;
+}
+
+.context-preview-editor-host {
+  display: block;
+  min-height: var(--note-preview-editor-height, 20rem);
+  height: var(--note-preview-editor-height, 20rem);
+  border: 0;
+  background: transparent;
+}
+
+.context-preview-editor-host .toastui-editor-toolbar {
+  display: none !important;
+}
+
+.context-preview-editor-host .toastui-editor-defaultUI {
+  min-height: var(--note-preview-editor-height, 20rem);
+  height: var(--note-preview-editor-height, 20rem);
+  background: transparent !important;
+}
+
+.context-preview-editor-host .toastui-editor-main,
+.context-preview-editor-host .toastui-editor-ww-container,
+.context-preview-editor-host .toastui-editor-contents,
+.context-preview-editor-host .ProseMirror {
+  min-height: var(--note-preview-editor-height, 20rem);
+  height: var(--note-preview-editor-height, 20rem);
+  background: transparent !important;
+}
+
+.context-preview-editor-host .toastui-editor-contents {
+  padding-inline: 0;
+}
+
+.note-aisles-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #0b1528;
+  position: relative;
+}
+
+.note-tools-item {
+  border: 0;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: var(--context-menu-item-text);
+  padding: 0.38rem 0.45rem;
+  font: inherit;
+  font-size: 0.86rem;
+  text-align: left;
+}
+
+.note-tools-item:hover,
+.note-tools-item:focus-visible {
+  background: var(--context-menu-item-hover-bg);
+}
+
+.note-tools-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.note-shared-toolbar {
+  position: relative;
+  z-index: 18;
+  flex: 0 0 auto;
+  min-height: 2rem;
+  border-bottom: 1px solid var(--app-border);
+  background: #0f1b32;
+  padding: 0.125rem 0.25rem;
+  overflow: visible;
+}
+
+.note-shared-toolbar .app-shared-editor-toolbar {
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  row-gap: 0.15rem !important;
+  width: 100% !important;
+  border-bottom: 0 !important;
+}
+
+.note-toolbar-menu-anchor {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+}
+
+.note-toolbar-heading-popover,
+.note-toolbar-aisle-popover {
+  position: fixed;
+  z-index: 3201;
+  width: 10.5rem;
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.35rem;
+  border: 1px solid var(--context-menu-border);
+  border-radius: 0.35rem;
+  background: var(--context-menu-bg);
+  box-shadow: var(--context-menu-shadow);
+}
+
+.note-aisle-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(30rem, 1fr);
+  gap: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0;
+}
+
+.note-aisles-shell.is-single .note-aisle-scroll {
+  display: block;
+  overflow: hidden;
+}
+
+.note-aisle-pane {
+  position: relative;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 30rem;
+  border: 0;
+  border-right: 1px solid var(--app-border);
+  background: var(--app-surface);
+}
+
+.note-aisles-shell.is-single .note-aisle-pane {
+  width: 100%;
+  min-width: 0;
   height: 100%;
+  border-right: 0;
+}
+
+.note-aisle-pane.is-active {
+  border-color: var(--stage-action-selected-border);
+}
+
+.note-aisle-editor-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding-inline: 0;
+}
+
+.note-aisle-editor-shell .toastui-editor-toolbar {
+  display: none !important;
+}
+
+.note-aisle-delete-float {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 16;
+  width: 1.8rem;
+  height: 1.8rem;
+  border: 1px solid var(--app-danger-border);
+  border-radius: 0.3rem;
+  background: var(--app-danger-bg);
+  color: var(--app-danger-text);
+  font: inherit;
+  line-height: 1;
+}
+
+.note-aisle-delete-float:hover,
+.note-aisle-delete-float:focus-visible {
+  border-color: var(--app-danger-hover-border);
+  background: var(--app-danger-hover-bg);
+  color: var(--app-danger-hover-text);
 }
 
 .editor-lock {
   position: absolute;
-  inset: 0.25rem 0.3125rem 0 0.3125rem;
+  inset: 0.25rem var(--editor-shell-padding-inline, 0.3125rem) 0 var(--editor-shell-padding-inline, 0.3125rem);
   z-index: 10;
   background: transparent;
 }

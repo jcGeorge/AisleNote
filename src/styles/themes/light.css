@@ -129,6 +129,7 @@
   --tab-rename-text: #1d2a44;
   --tab-rename-border: #6f94e6;
 
+  --stage-page-bg: var(--app-page-bg);
   --stage-step-border: #c4d2e7;
   --stage-step-text: #42608e;
   --stage-step-bg: rgba(234, 241, 252, 0.9);
@@ -138,6 +139,9 @@
   --stage-step-complete-border: #9db8e7;
   --stage-step-complete-text: #30517e;
   --stage-step-index-bg: rgba(47, 103, 222, 0.12);
+  --stage-step-index-text: #30517e;
+  --stage-step-active-index-bg: #ffffff;
+  --stage-step-active-index-text: #244a7c;
   --stage-panel-text: #284062;
   --stage-heading-text: #1e3556;
   --stage-field-label-text: #486385;
@@ -152,14 +156,31 @@
   --stage-action-selected-border: #5e8fea;
   --stage-action-selected-text: #ffffff;
   --stage-action-selected-bg: #3f7be8;
+  --stage-secondary-border: #a8bbd9;
+  --stage-secondary-text: #244368;
+  --stage-secondary-bg: #ffffff;
+  --stage-secondary-hover-border: #7f9fce;
+  --stage-secondary-hover-text: #173052;
+  --stage-secondary-hover-bg: #edf3ff;
+  --stage-secondary-focus-shadow: 0 0 0 0.2rem rgba(95, 137, 220, 0.18);
+  --stage-secondary-disabled-text: #8da0bd;
+  --stage-secondary-disabled-border: #d1dbea;
+  --stage-secondary-disabled-bg: #f4f7fb;
   --stage-help-text: #5a7397;
+  --stage-rail-active-text: #1d355d;
+  --stage-rail-active-bg: #ffffff;
+  --stage-rail-active-border: #8faadd;
+  --stage-rail-active-shadow: inset 0 0 0 1px rgba(95, 137, 220, 0.34);
   --stage-parent-partial-border: #5f89dc;
+  --stage-parent-partial-text: #1e4c86;
   --stage-parent-partial-bg: #dde8fb;
   --stage-parent-partial-shadow: inset 0 0 0 2px rgba(95, 137, 220, 0.78), 0 0 0 2px rgba(95, 137, 220, 0.18);
   --stage-parent-full-border: #345385;
-  --stage-parent-full-bg: #cfdcf3;
-  --stage-parent-full-shadow: inset 0 0 0 2px rgba(52, 83, 133, 0.82), 0 0 0 2px rgba(52, 83, 133, 0.18);
+  --stage-parent-full-text: #1c3763;
+  --stage-parent-full-bg: #e3edfc;
+  --stage-parent-full-shadow: inset 0 0 0 2px rgba(52, 83, 133, 0.62), 0 0 0 2px rgba(52, 83, 133, 0.14);
   --stage-subtab-selected-border: #46a56f;
+  --stage-subtab-selected-text: #17543a;
   --stage-subtab-selected-bg: #dff3e7;
   --stage-subtab-selected-shadow: inset 0 0 0 2px rgba(70, 165, 111, 0.78), 0 0 0 2px rgba(70, 165, 111, 0.16);
 
@@ -204,6 +225,16 @@
   --settings-shortcut-hover-bg: #dbe8f9;
   --settings-shortcut-recording-border: #9bb6de;
   --settings-shortcut-recording-shadow: #6f94e6;
+  --settings-action-bg: #ffffff;
+  --settings-action-text: #244368;
+  --settings-action-border: #a8bbd9;
+  --settings-action-hover-bg: #edf3ff;
+  --settings-action-hover-text: #173052;
+  --settings-action-hover-border: #7f9fce;
+  --settings-action-focus-shadow: 0 0 0 0.2rem rgba(95, 137, 220, 0.18);
+  --settings-action-disabled-bg: #f4f7fb;
+  --settings-action-disabled-text: #8da0bd;
+  --settings-action-disabled-border: #d1dbea;
 
   --toast-bg: rgba(255, 255, 255, 0.96);
   --toast-border: #c4d2e8;
@@ -217,6 +248,16 @@
   --context-menu-item-hover-bg: rgba(53, 103, 193, 0.12);
   --context-menu-danger-text: #a33c4a;
   --context-menu-danger-hover-bg: rgba(211, 74, 93, 0.14);
+  --app-danger-text: #ffffff;
+  --app-danger-border: #b95748;
+  --app-danger-bg: #c76545;
+  --app-danger-hover-text: #ffffff;
+  --app-danger-hover-border: #9d453b;
+  --app-danger-hover-bg: #ad4f3e;
+  --app-danger-focus-shadow: 0 0 0 0.2rem rgba(199, 101, 69, 0.2);
+  --app-danger-disabled-text: #9f7a75;
+  --app-danger-disabled-border: #d7aaa2;
+  --app-danger-disabled-bg: #e8c9c3;
   --modal-bg: #ffffff;
   --modal-border: #c8d4e8;
   --modal-text: #1d2a44;

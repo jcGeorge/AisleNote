@@ -1,15 +1,32 @@
 import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
 import { clampAutoRemoveDays, DEFAULT_AUTO_REMOVE_DAYS } from '../settings/defaults'
-import type { DeletedSubTabEntry, DeletedTabEntry, Space, SubTab, Tab, WorkspaceData } from '../types/app'
+import type { DeletedSubTabEntry, DeletedTabEntry, NoteAisle, NoteBody, Space, SubTab, Tab, WorkspaceData } from '../types/app'
+
+export const MAX_NOTE_AISLES = 8
 
 export function createId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+}
+
+export function createNoteAisle(markdown = ''): NoteAisle {
+  return {
+    id: createId(),
+    markdown: normalizeMarkdownForPersistence(markdown),
+  }
+}
+
+export function createNoteBody(markdown = ''): NoteBody {
+  return {
+    id: createId(),
+    aisles: [createNoteAisle(markdown)],
+  }
 }
 
 export function createSubTab(title = 'tab', content?: string): SubTab {
   return {
     id: createId(),
     title,
+    noteBodyId: createId(),
     content: content ?? '',
   }
 }
@@ -18,6 +35,7 @@ export function createTab(title = 'tab'): Tab {
   return {
     id: createId(),
     title,
+    noteBodyId: createId(),
     homeContent: '',
     activeSubTabId: null,
     subTabs: [],
@@ -32,6 +50,7 @@ export function createDefaultWorkspaceData(): WorkspaceData {
       {
         id: welcomeTabId,
         title: 'Welcome',
+        noteBodyId: createId(),
         homeContent:
           '- This is the hidden home note for this top-level tab.\n- Click this parent tab to edit this note.\n- Sub-tabs are separate notes and start empty.\n',
         activeSubTabId: null,
@@ -71,18 +90,20 @@ export function duplicateWorkspaceData(data: WorkspaceData): WorkspaceData {
     liveTabIdMap.set(tab.id, nextTabId)
 
     const subTabIdMap = new Map<string, string>()
-    const duplicatedSubTabs = tab.subTabs.map((subTab) => {
-      const nextSubTabId = createId()
-      subTabIdMap.set(subTab.id, nextSubTabId)
-      return {
-        ...subTab,
-        id: nextSubTabId,
-      }
-    })
+      const duplicatedSubTabs = tab.subTabs.map((subTab) => {
+        const nextSubTabId = createId()
+        subTabIdMap.set(subTab.id, nextSubTabId)
+        return {
+          ...subTab,
+          id: nextSubTabId,
+          noteBodyId: createId(),
+        }
+      })
 
     return {
       ...tab,
       id: nextTabId,
+      noteBodyId: createId(),
       activeSubTabId: tab.activeSubTabId ? subTabIdMap.get(tab.activeSubTabId) ?? null : null,
       subTabs: duplicatedSubTabs,
     }
@@ -97,6 +118,7 @@ export function duplicateWorkspaceData(data: WorkspaceData): WorkspaceData {
       return {
         ...subTab,
         id: nextSubTabId,
+        noteBodyId: createId(),
       }
     })
 
@@ -106,6 +128,7 @@ export function duplicateWorkspaceData(data: WorkspaceData): WorkspaceData {
       tab: {
         ...entry.tab,
         id: duplicatedTabId,
+        noteBodyId: createId(),
         activeSubTabId: entry.tab.activeSubTabId ? deletedSubTabIdMap.get(entry.tab.activeSubTabId) ?? null : null,
         subTabs: duplicatedDeletedSubTabs,
       },
@@ -130,6 +153,7 @@ export function duplicateWorkspaceData(data: WorkspaceData): WorkspaceData {
     subTab: {
       ...entry.subTab,
       id: createId(),
+      noteBodyId: createId(),
     },
   }))
 
@@ -164,12 +188,25 @@ export function createWorkspaceDataFromTabs(
     activeTabId,
     tabs: safeTabs.map((tab) => ({
       ...tab,
+      noteBodyId: tab.noteBodyId || createId(),
       activeSubTabId: tab.activeSubTabId && tab.subTabs.some((subTab) => subTab.id === tab.activeSubTabId) ? tab.activeSubTabId : null,
-      subTabs: tab.subTabs.map((subTab) => ({ ...subTab })),
+      subTabs: tab.subTabs.map((subTab) => ({ ...subTab, noteBodyId: subTab.noteBodyId || createId() })),
     })),
-    deletedTabs: options?.deletedTabs ? options.deletedTabs.map((entry) => ({ ...entry, tab: { ...entry.tab, subTabs: entry.tab.subTabs.map((subTab) => ({ ...subTab })) } })) : [],
+    deletedTabs: options?.deletedTabs
+      ? options.deletedTabs.map((entry) => ({
+          ...entry,
+          tab: {
+            ...entry.tab,
+            noteBodyId: entry.tab.noteBodyId || createId(),
+            subTabs: entry.tab.subTabs.map((subTab) => ({ ...subTab, noteBodyId: subTab.noteBodyId || createId() })),
+          },
+        }))
+      : [],
     deletedSubTabs: options?.deletedSubTabs
-      ? options.deletedSubTabs.map((entry) => ({ ...entry, subTab: { ...entry.subTab } }))
+      ? options.deletedSubTabs.map((entry) => ({
+          ...entry,
+          subTab: { ...entry.subTab, noteBodyId: entry.subTab.noteBodyId || createId() },
+        }))
       : [],
   }
 }
@@ -206,6 +243,7 @@ export function normalizeWorkspaceData(raw: unknown): WorkspaceData {
         .map((sub, subIndex) => ({
           id: typeof sub.id === 'string' ? sub.id : `${tabId}-sub-${subIndex}-${createId()}`,
           title: typeof sub.title === 'string' && sub.title.trim() ? sub.title : `Note ${subIndex + 1}`,
+          noteBodyId: typeof sub.noteBodyId === 'string' && sub.noteBodyId ? sub.noteBodyId : createId(),
           content: typeof sub.content === 'string' ? sub.content : '',
           isHome: Boolean(sub.isHome),
         }))
@@ -221,9 +259,13 @@ export function normalizeWorkspaceData(raw: unknown): WorkspaceData {
       return {
         id: tabId,
         title: tabTitle,
+        noteBodyId: typeof tabLike.noteBodyId === 'string' && tabLike.noteBodyId ? tabLike.noteBodyId : createId(),
         homeContent,
         activeSubTabId,
-        subTabs: visibleSubTabs,
+        subTabs: visibleSubTabs.map((subTab) => ({
+          ...subTab,
+          noteBodyId: normalizedSubTabs.find((candidate) => candidate.id === subTab.id)?.noteBodyId ?? createId(),
+        })),
       }
     })
     .filter((tab): tab is Tab => tab !== null)
@@ -249,6 +291,7 @@ export function normalizeWorkspaceData(raw: unknown): WorkspaceData {
         .map((sub, subIndex) => ({
           id: typeof sub.id === 'string' ? sub.id : `${id}-sub-${subIndex}-${createId()}`,
           title: typeof sub.title === 'string' && sub.title.trim() ? sub.title : `Note ${subIndex + 1}`,
+          noteBodyId: typeof sub.noteBodyId === 'string' && sub.noteBodyId ? sub.noteBodyId : createId(),
           content: normalizeMarkdownForPersistence(typeof sub.content === 'string' ? sub.content : ''),
         }))
       const rawDeletedActive = typeof maybeTab.activeSubTabId === 'string' ? maybeTab.activeSubTabId : null
@@ -262,6 +305,7 @@ export function normalizeWorkspaceData(raw: unknown): WorkspaceData {
         tab: {
           id: tabId,
           title,
+          noteBodyId: typeof maybeTab.noteBodyId === 'string' && maybeTab.noteBodyId ? maybeTab.noteBodyId : createId(),
           homeContent,
           activeSubTabId,
           subTabs,
@@ -284,6 +328,7 @@ export function normalizeWorkspaceData(raw: unknown): WorkspaceData {
         subTab: {
           id: typeof sub.id === 'string' ? sub.id : `deleted-note-${index}-${createId()}`,
           title: typeof sub.title === 'string' && sub.title.trim() ? sub.title : `deleted note ${index + 1}`,
+          noteBodyId: typeof sub.noteBodyId === 'string' && sub.noteBodyId ? sub.noteBodyId : createId(),
           content: normalizeMarkdownForPersistence(typeof sub.content === 'string' ? sub.content : ''),
         },
       }

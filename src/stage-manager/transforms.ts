@@ -18,6 +18,7 @@ export function createPromotedParentTab(subTab: SubTab): Tab {
   return {
     id: createId(),
     title: subTab.title,
+    noteBodyId: subTab.noteBodyId,
     homeContent: subTab.content,
     activeSubTabId: null,
     subTabs: [],
@@ -28,6 +29,7 @@ export function createDemotedParentSubTab(tab: Tab): SubTab {
   return {
     id: createId(),
     title: tab.title,
+    noteBodyId: tab.noteBodyId,
     content: tab.homeContent,
   }
 }

@@ -1,4 +1,4 @@
-export type AppTheme = 'dark' | 'light' | 'dusk'
+export type AppTheme = 'dark' | 'light' | 'dawn' | 'blues'
 export type ViewMode = 'domains' | 'spaces' | 'main' | 'trash' | 'settings' | 'stage-manager'
 export type ShortcutId =
   | 'toggleTabTrash'
@@ -10,15 +10,36 @@ export type ShortcutId =
   | 'cycleSubTabPrev'
 export type SettingsSection = 'hotkeys' | 'data' | 'visuals'
 
+export type NoteAisle = {
+  id: string
+  markdown: string
+}
+
+export type NoteBody = {
+  id: string
+  aisles: NoteAisle[]
+}
+
+export type NoteLocation = {
+  domainId: string
+  spaceId: string
+  tabId: string
+  subTabId: string | null
+}
+
 export type SubTab = {
   id: string
   title: string
+  noteBodyId: string
+  /** Legacy mirror for older persisted states and export fallbacks. */
   content: string
 }
 
 export type Tab = {
   id: string
   title: string
+  noteBodyId: string
+  /** Legacy mirror for older persisted states and export fallbacks. */
   homeContent: string
   activeSubTabId: string | null
   subTabs: SubTab[]
@@ -67,6 +88,7 @@ export type AppState = {
   theme: AppTheme
   activeDomainId: string
   domains: Domain[]
+  noteBodies: NoteBody[]
   /** Transitional projection of the active domain. Remove after App.tsx is fully domain-scoped. */
   activeSpaceId: string
   /** Transitional projection of the active domain. Remove after App.tsx is fully domain-scoped. */
@@ -88,6 +110,7 @@ export type PendingContent = {
   spaceId: string
   tabId: string
   subTabId: string | null
+  aisleId: string
   markdown: string
 }
 
@@ -182,15 +205,20 @@ export type StageManagerParentSelection = {
 export type StageManagerSelectionState = Record<string, StageManagerParentSelection>
 
 export type StageManagerDraft = {
+  promoteDomainId: string
   promoteSpaceMode: StageManagerPromoteSpaceMode
   promoteSpaceId: string
   newSpaceName: string
+  demoteDomainId: string
+  demoteSpaceId: string
   demoteParentMode: StageManagerDestinationParentMode
   demoteParentId: string
   demoteNewParentName: string
   migrateTarget: StageManagerMigrateTarget
+  migrateDomainId: string
   migrateSpaceMode: StageManagerDestinationSpaceMode
   migrateSpaceId: string
+  migrateParentDomainId: string
   migrateParentSpaceMode: StageManagerMigrateParentSpaceMode
   migrateParentSpaceId: string
   migrateParentMode: StageManagerDestinationParentMode
@@ -272,6 +300,17 @@ export type ContextMenuState =
   | {
       x: number
       y: number
+      type: 'internal-note-link'
+      label: string
+      href: string
+      target: NoteLocation
+      from: number
+      to: number
+      occurrence: number
+    }
+  | {
+      x: number
+      y: number
       type: 'trash-tab'
       source: 'deleted-tab' | 'subtabs-only'
       deletedTabEntryId: string | null
@@ -307,6 +346,22 @@ export type ModalState =
   | { type: 'trash-delete-all' }
   | { type: 'trash-restore-all' }
   | { type: 'export-space'; spaceId: string }
+  | {
+      type: 'duplicate-note'
+      source: NoteLocation
+      target: NoteLocation & { aisleIds?: string[] }
+    }
+  | {
+      type: 'deduplicate-note'
+      noteBodyId: string
+      keepLocationKeys: string[]
+    }
+  | {
+      type: 'insert-note-reference'
+      insertAs: 'link' | 'context'
+      target: NoteLocation & { aisleIds?: string[] }
+      editingTokenId?: string
+    }
 
 export type TrashParentBucket = {
   id: string

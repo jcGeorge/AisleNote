@@ -1,7 +1,9 @@
 import {
   STORAGE_ASSETS_DIR,
+  STORAGE_AISLES_DIR,
   STORAGE_HOME_NOTE_FILE,
   STORAGE_MANIFEST_FILE,
+  STORAGE_NOTE_BODIES_DIR,
   STORAGE_NOTES_DIR,
   STORAGE_ROOT_DIR,
   STORAGE_SCHEMA_VERSION,
@@ -115,8 +117,26 @@ function getActiveSpaceFromDomain(
   return spaces.find((space) => space.id === activeSpaceId) ?? spaces[0]
 }
 
+function getNoteBodiesFromAppState(appState: Record<string, unknown>): Array<Record<string, unknown>> {
+  return ensureArray<Record<string, unknown>>(appState.noteBodies).filter(isRecord)
+}
+
+function getNoteBodyFirstMarkdown(noteBodyMap: Map<string, Record<string, unknown>>, noteBodyId: unknown, fallback: string): string {
+  if (typeof noteBodyId !== 'string' || !noteBodyId) return fallback
+  const body = noteBodyMap.get(noteBodyId)
+  const aisles = ensureArray<Record<string, unknown>>(body?.aisles)
+  const first = aisles[0]
+  return typeof first?.markdown === 'string' ? first.markdown : fallback
+}
+
+function normalizeStorageTheme(value: unknown): string {
+  if (value === 'dark' || value === 'light' || value === 'dawn' || value === 'blues') return value
+  if (value === 'dusk') return 'blues'
+  return 'dawn'
+}
+
 function getThemeForStorage(appState: Record<string, unknown>): string {
-  return appState.theme === 'light' || appState.theme === 'dusk' ? appState.theme : 'dark'
+  return normalizeStorageTheme(appState.theme)
 }
 
 function normalizePosixPath(value: string): string {
@@ -308,6 +328,7 @@ function inlineMarkdownImages(markdown: string, notePath: string, fileMap: Map<s
 
 function buildRootManifest(appState: Record<string, unknown>) {
   const domains = getDomainsFromAppState(appState)
+  const noteBodies = getNoteBodiesFromAppState(appState)
   const activeDomain = getActiveDomainFromAppState(appState, domains)
   const activeSpace = getActiveSpaceFromDomain(activeDomain, appState.activeSpaceId)
   const activeSpaceData = isRecord(activeSpace?.data) ? activeSpace.data : null
@@ -344,6 +365,19 @@ function buildRootManifest(appState: Record<string, unknown>) {
             title: getDomainTitle(domain),
           }))
         : [{ id: DEFAULT_TOPIC_ID, title: DEFAULT_TOPIC_TITLE }],
+    noteBodies: noteBodies.map((body) => {
+      const bodyId = typeof body.id === 'string' ? body.id : ''
+      return {
+        id: bodyId,
+        aisles: ensureArray<Record<string, unknown>>(body.aisles).map((aisle) => {
+          const aisleId = typeof aisle.id === 'string' ? aisle.id : ''
+          return {
+            id: aisleId,
+            file: joinPosix(STORAGE_NOTE_BODIES_DIR, bodyId, STORAGE_AISLES_DIR, `${aisleId}.md`),
+          }
+        }),
+      }
+    }),
     activeTopicId: activeDomainId,
     lastOpened: activeSpace
       ? {
@@ -380,7 +414,28 @@ function writeAssetBank(fileMap: Map<string, BrowserStoredFile>, basePath: strin
   }
 }
 
-function writeSpaceFiles(fileMap: Map<string, BrowserStoredFile>, topicId: string, space: Record<string, unknown>) {
+function writeNoteBodyFiles(fileMap: Map<string, BrowserStoredFile>, noteBodies: Array<Record<string, unknown>>) {
+  const assetBank = createAssetBank(STORAGE_ASSETS_DIR)
+  noteBodies.forEach((body) => {
+    const bodyId = typeof body.id === 'string' ? body.id : ''
+    if (!bodyId) return
+    ensureArray<Record<string, unknown>>(body.aisles).forEach((aisle) => {
+      const aisleId = typeof aisle.id === 'string' ? aisle.id : ''
+      if (!aisleId) return
+      const file = joinPosix(STORAGE_NOTE_BODIES_DIR, bodyId, STORAGE_AISLES_DIR, `${aisleId}.md`)
+      const markdown = typeof aisle.markdown === 'string' ? aisle.markdown : ''
+      setTextFile(fileMap, joinPosix(STORAGE_ROOT_DIR, file), externalizeMarkdownImages(markdown, file, assetBank))
+    })
+  })
+  writeAssetBank(fileMap, STORAGE_ROOT_DIR, assetBank)
+}
+
+function writeSpaceFiles(
+  fileMap: Map<string, BrowserStoredFile>,
+  topicId: string,
+  space: Record<string, unknown>,
+  noteBodyMap: Map<string, Record<string, unknown>>,
+) {
   const spaceId = typeof space.id === 'string' ? space.id : ''
   if (!spaceId) return
 
@@ -399,7 +454,11 @@ function writeSpaceFiles(fileMap: Map<string, BrowserStoredFile>, topicId: strin
   const tabManifest = tabs.map((tab) => {
     const tabId = typeof tab.id === 'string' ? tab.id : ''
     const homeNoteFile = joinPosix(STORAGE_NOTES_DIR, tabId, STORAGE_HOME_NOTE_FILE)
-    const homeContent = typeof tab.homeContent === 'string' ? tab.homeContent : ''
+    const homeContent = getNoteBodyFirstMarkdown(
+      noteBodyMap,
+      tab.noteBodyId,
+      typeof tab.homeContent === 'string' ? tab.homeContent : '',
+    )
     setTextFile(
       fileMap,
       joinPosix(spaceRoot, homeNoteFile),
@@ -409,11 +468,16 @@ function writeSpaceFiles(fileMap: Map<string, BrowserStoredFile>, topicId: strin
     const subTabs = ensureArray<Record<string, unknown>>(tab.subTabs).map((subTab) => {
       const subTabId = typeof subTab.id === 'string' ? subTab.id : ''
       const file = joinPosix(STORAGE_NOTES_DIR, tabId, STORAGE_SUBTABS_DIR, `${subTabId}.md`)
-      const content = typeof subTab.content === 'string' ? subTab.content : ''
+      const content = getNoteBodyFirstMarkdown(
+        noteBodyMap,
+        subTab.noteBodyId,
+        typeof subTab.content === 'string' ? subTab.content : '',
+      )
       setTextFile(fileMap, joinPosix(spaceRoot, file), externalizeMarkdownImages(content, file, activeAssetBank))
       return {
         id: subTabId,
         title: typeof subTab.title === 'string' ? subTab.title : 'tab',
+        noteBodyId: typeof subTab.noteBodyId === 'string' ? subTab.noteBodyId : '',
         file,
       }
     })
@@ -421,6 +485,7 @@ function writeSpaceFiles(fileMap: Map<string, BrowserStoredFile>, topicId: strin
     return {
       id: tabId,
       title: typeof tab.title === 'string' ? tab.title : 'tab',
+      noteBodyId: typeof tab.noteBodyId === 'string' ? tab.noteBodyId : '',
       homeNoteFile,
       subTabs,
       activeSubTabId: typeof tab.activeSubTabId === 'string' ? tab.activeSubTabId : null,
@@ -439,7 +504,11 @@ function writeSpaceFiles(fileMap: Map<string, BrowserStoredFile>, topicId: strin
       fileMap,
       joinPosix(trashRoot, homeNoteFile),
       externalizeMarkdownImages(
-        typeof deletedTab.homeContent === 'string' ? deletedTab.homeContent : '',
+        getNoteBodyFirstMarkdown(
+          noteBodyMap,
+          deletedTab.noteBodyId,
+          typeof deletedTab.homeContent === 'string' ? deletedTab.homeContent : '',
+        ),
         homeNoteFile,
         trashAssetBank,
       ),
@@ -451,11 +520,20 @@ function writeSpaceFiles(fileMap: Map<string, BrowserStoredFile>, topicId: strin
       setTextFile(
         fileMap,
         joinPosix(trashRoot, file),
-        externalizeMarkdownImages(typeof subTab.content === 'string' ? subTab.content : '', file, trashAssetBank),
+        externalizeMarkdownImages(
+          getNoteBodyFirstMarkdown(
+            noteBodyMap,
+            subTab.noteBodyId,
+            typeof subTab.content === 'string' ? subTab.content : '',
+          ),
+          file,
+          trashAssetBank,
+        ),
       )
       return {
         id: subTabId,
         title: typeof subTab.title === 'string' ? subTab.title : 'tab',
+        noteBodyId: typeof subTab.noteBodyId === 'string' ? subTab.noteBodyId : '',
         file,
       }
     })
@@ -464,6 +542,7 @@ function writeSpaceFiles(fileMap: Map<string, BrowserStoredFile>, topicId: strin
       id: entryId,
       type: 'parent-tab',
       title: typeof deletedTab.title === 'string' ? deletedTab.title : 'deleted tab',
+      noteBodyId: typeof deletedTab.noteBodyId === 'string' ? deletedTab.noteBodyId : '',
       file: homeNoteFile,
       deletedAt: typeof entry.deletedAt === 'number' ? entry.deletedAt : Date.now(),
       original: {
@@ -484,13 +563,18 @@ function writeSpaceFiles(fileMap: Map<string, BrowserStoredFile>, topicId: strin
     setTextFile(
       fileMap,
       joinPosix(trashRoot, file),
-      externalizeMarkdownImages(typeof subTab.content === 'string' ? subTab.content : '', file, trashAssetBank),
+      externalizeMarkdownImages(
+        getNoteBodyFirstMarkdown(noteBodyMap, subTab.noteBodyId, typeof subTab.content === 'string' ? subTab.content : ''),
+        file,
+        trashAssetBank,
+      ),
     )
 
     trashItems.push({
       id: entryId,
       type: 'subtab',
       title: typeof subTab.title === 'string' ? subTab.title : 'deleted note',
+      noteBodyId: typeof subTab.noteBodyId === 'string' ? subTab.noteBodyId : '',
       file,
       deletedAt: typeof entry.deletedAt === 'number' ? entry.deletedAt : Date.now(),
       parentTabTitle: typeof entry.parentTabTitle === 'string' ? entry.parentTabTitle : 'Unknown Tab',
@@ -538,8 +622,11 @@ export function buildHybridFileMapFromSerializedState(serializedState: string): 
   const parsed = JSON.parse(serializedState) as Record<string, unknown>
   const fileMap = new Map<string, BrowserStoredFile>()
   const domains = getDomainsFromAppState(parsed)
+  const noteBodies = getNoteBodiesFromAppState(parsed)
+  const noteBodyMap = new Map(noteBodies.map((body) => [typeof body.id === 'string' ? body.id : '', body]))
 
   setTextFile(fileMap, joinPosix(STORAGE_ROOT_DIR, STORAGE_MANIFEST_FILE), JSON.stringify(buildRootManifest(parsed), null, 2))
+  writeNoteBodyFiles(fileMap, noteBodies)
   domains.forEach((domain) => {
     const domainId = getDomainId(domain)
     setTextFile(
@@ -549,7 +636,7 @@ export function buildHybridFileMapFromSerializedState(serializedState: string): 
     )
 
     ensureArray<Record<string, unknown>>(domain.spaces).forEach((space) => {
-      writeSpaceFiles(fileMap, domainId, space)
+      writeSpaceFiles(fileMap, domainId, space, noteBodyMap)
     })
   })
 
@@ -559,6 +646,32 @@ export function buildHybridFileMapFromSerializedState(serializedState: string): 
 function readTextFileWithInlinedImages(fileMap: Map<string, BrowserStoredFile>, path: string): string {
   const text = getTextFile(fileMap, path) ?? ''
   return inlineMarkdownImages(text, path, fileMap)
+}
+
+function readNoteBodiesFromRootManifest(
+  fileMap: Map<string, BrowserStoredFile>,
+  rootManifest: Record<string, unknown>,
+): Array<Record<string, unknown>> {
+  const noteBodies: Array<Record<string, unknown>> = []
+  for (const body of ensureArray<Record<string, unknown>>(rootManifest.noteBodies)) {
+    const bodyId = typeof body.id === 'string' ? body.id : ''
+    if (!bodyId) continue
+    const aisles: Array<Record<string, unknown>> = []
+    for (const aisle of ensureArray<Record<string, unknown>>(body.aisles)) {
+      const aisleId = typeof aisle.id === 'string' ? aisle.id : ''
+      if (!aisleId) continue
+      const file =
+        typeof aisle.file === 'string'
+          ? aisle.file
+          : joinPosix(STORAGE_NOTE_BODIES_DIR, bodyId, STORAGE_AISLES_DIR, `${aisleId}.md`)
+      aisles.push({
+        id: aisleId,
+        markdown: readTextFileWithInlinedImages(fileMap, joinPosix(STORAGE_ROOT_DIR, file)),
+      })
+    }
+    noteBodies.push({ id: bodyId, aisles })
+  }
+  return noteBodies
 }
 
 function readSpaceFromHybridFileMap(
@@ -586,11 +699,13 @@ function readSpaceFromHybridFileMap(
     return {
       id: tabId,
       title: typeof tabRecord.title === 'string' ? tabRecord.title : 'tab',
+      noteBodyId: typeof tabRecord.noteBodyId === 'string' ? tabRecord.noteBodyId : '',
       homeContent: readTextFileWithInlinedImages(fileMap, joinPosix(spaceRoot, homeNoteFile)),
       activeSubTabId: typeof tabRecord.activeSubTabId === 'string' ? tabRecord.activeSubTabId : null,
       subTabs: ensureArray<Record<string, unknown>>(tabRecord.subTabs).map((subTabRecord) => ({
         id: typeof subTabRecord.id === 'string' ? subTabRecord.id : '',
         title: typeof subTabRecord.title === 'string' ? subTabRecord.title : 'tab',
+        noteBodyId: typeof subTabRecord.noteBodyId === 'string' ? subTabRecord.noteBodyId : '',
         content: readTextFileWithInlinedImages(
           fileMap,
           joinPosix(spaceRoot, typeof subTabRecord.file === 'string' ? subTabRecord.file : ''),
@@ -628,6 +743,7 @@ function readSpaceFromHybridFileMap(
       tab: {
         id: isRecord(item.original) && typeof item.original.parentTabId === 'string' ? item.original.parentTabId : '',
         title: typeof item.title === 'string' ? item.title : 'deleted tab',
+        noteBodyId: typeof item.noteBodyId === 'string' ? item.noteBodyId : '',
         homeContent: readTextFileWithInlinedImages(
           fileMap,
           joinPosix(trashRoot, typeof item.file === 'string' ? item.file : ''),
@@ -636,6 +752,7 @@ function readSpaceFromHybridFileMap(
         subTabs: ensureArray<Record<string, unknown>>(item.subTabs).map((subTabRecord) => ({
           id: typeof subTabRecord.id === 'string' ? subTabRecord.id : '',
           title: typeof subTabRecord.title === 'string' ? subTabRecord.title : 'tab',
+          noteBodyId: typeof subTabRecord.noteBodyId === 'string' ? subTabRecord.noteBodyId : '',
           content: readTextFileWithInlinedImages(
             fileMap,
             joinPosix(trashRoot, typeof subTabRecord.file === 'string' ? subTabRecord.file : ''),
@@ -655,6 +772,7 @@ function readSpaceFromHybridFileMap(
       subTab: {
         id: isRecord(item.original) && typeof item.original.subTabId === 'string' ? item.original.subTabId : '',
         title: typeof item.title === 'string' ? item.title : 'deleted note',
+        noteBodyId: typeof item.noteBodyId === 'string' ? item.noteBodyId : '',
         content: readTextFileWithInlinedImages(
           fileMap,
           joinPosix(trashRoot, typeof item.file === 'string' ? item.file : ''),
@@ -700,6 +818,7 @@ export function readSerializedStateFromHybridFileMap(fileMap: Map<string, Browse
 
   if (rootManifest.schemaVersion !== STORAGE_SCHEMA_VERSION) return null
 
+  const noteBodies = readNoteBodiesFromRootManifest(fileMap, rootManifest)
   const topicEntries = ensureArray<Record<string, unknown>>(rootManifest.topics)
   const readableTopicEntries =
     topicEntries.length > 0 ? topicEntries : [{ id: DEFAULT_TOPIC_ID, title: DEFAULT_TOPIC_TITLE }]
@@ -787,12 +906,13 @@ export function readSerializedStateFromHybridFileMap(fileMap: Map<string, Browse
           ? activeSpaces[0].id
           : ''
   const globalSettings = isRecord(rootManifest.globalSettings) ? rootManifest.globalSettings : {}
-  const theme = globalSettings.theme === 'light' || globalSettings.theme === 'dusk' ? globalSettings.theme : 'dark'
+  const theme = normalizeStorageTheme(globalSettings.theme)
 
   return JSON.stringify({
     theme,
     activeDomainId,
     domains,
+    noteBodies,
     activeSpaceId,
     spaces: activeSpaces,
     hotkeys: isRecord(rootManifest.globalSettings) ? rootManifest.globalSettings.hotkeys : undefined,

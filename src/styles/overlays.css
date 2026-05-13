@@ -137,3 +137,105 @@
   background: var(--modal-primary-hover-bg) !important;
   border-color: var(--modal-primary-hover-border) !important;
 }
+
+.note-location-picker {
+  display: grid;
+  gap: 0.65rem;
+  text-align: left;
+}
+
+.note-picker-aisles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.note-picker-aisle-choice {
+  border: 1px solid var(--stage-action-border);
+  border-radius: 0.35rem;
+  background: var(--stage-action-bg);
+  color: var(--stage-action-text);
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+}
+
+.note-picker-aisle-choice.is-active {
+  border-color: var(--stage-action-selected-border);
+  background: var(--stage-action-selected-bg);
+  color: var(--stage-action-selected-text);
+}
+
+.duplicate-note-list,
+.note-reference-modal {
+  display: grid;
+  gap: 0.7rem;
+  text-align: left;
+}
+
+.duplicate-note-list {
+  max-height: min(22rem, 50vh);
+  overflow: auto;
+  padding: 0.25rem;
+}
+
+.duplicate-note-choice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0.5rem;
+  padding: 0.4rem 0.2rem;
+  color: var(--app-text);
+  font-size: 0.88rem;
+}
+
+.note-reference-mode {
+  display: inline-flex;
+  gap: 0.25rem;
+}
+
+.note-reference-mode-btn {
+  border: 1px solid var(--stage-action-border);
+  border-radius: 0.35rem;
+  background: var(--stage-action-bg);
+  color: var(--stage-action-text);
+  padding: 0.3rem 0.6rem;
+  font: inherit;
+}
+
+.note-reference-mode-btn.is-active {
+  border-color: var(--stage-action-selected-border);
+  background: var(--stage-action-selected-bg);
+  color: var(--stage-action-selected-text);
+}
+
+.note-reference-mode-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.app-danger-btn {
+  color: var(--app-danger-text) !important;
+  border: 1px solid var(--app-danger-border) !important;
+  background: var(--app-danger-bg) !important;
+}
+
+.app-danger-btn:hover,
+.app-danger-btn:focus,
+.app-danger-btn:focus-visible {
+  color: var(--app-danger-hover-text) !important;
+  border-color: var(--app-danger-hover-border) !important;
+  background: var(--app-danger-hover-bg) !important;
+}
+
+.app-danger-btn:focus,
+.app-danger-btn:focus-visible {
+  box-shadow: var(--app-danger-focus-shadow) !important;
+}
+
+.app-danger-btn:disabled,
+.app-danger-btn.disabled {
+  color: var(--app-danger-disabled-text) !important;
+  border-color: var(--app-danger-disabled-border) !important;
+  background: var(--app-danger-disabled-bg) !important;
+  opacity: 1;
+}

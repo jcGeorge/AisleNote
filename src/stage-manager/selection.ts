@@ -22,15 +22,20 @@ export function createStageManagerSelectionState(tabs: Tab[]): StageManagerSelec
 
 export function createDefaultStageManagerDraft(): StageManagerDraft {
   return {
+    promoteDomainId: '',
     promoteSpaceMode: 'existing',
     promoteSpaceId: '',
     newSpaceName: '',
+    demoteDomainId: '',
+    demoteSpaceId: '',
     demoteParentMode: 'existing',
     demoteParentId: '',
     demoteNewParentName: '',
     migrateTarget: 'space',
+    migrateDomainId: '',
     migrateSpaceMode: 'existing',
     migrateSpaceId: '',
+    migrateParentDomainId: '',
     migrateParentSpaceMode: 'current',
     migrateParentSpaceId: '',
     migrateParentMode: 'existing',

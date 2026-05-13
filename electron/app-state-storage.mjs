@@ -9,6 +9,8 @@ const LEGACY_APP_STATE_RELATIVE_PATH = path.join('data', 'notes', 'index.json')
 const HYBRID_ROOT_DIR = 'notes-data'
 const DEFAULT_TOPIC_ID = 'default-topic'
 const DEFAULT_TOPIC_TITLE = 'Default'
+const DEFAULT_DOMAIN_ID = 'humble-beginnings-domain'
+const DEFAULT_DOMAIN_NAME = 'humble beginnings'
 const SCHEMA_VERSION = 1
 const IMAGE_MARKDOWN_PATTERN = /!\[([^\]]*)\]\(([^)]+)\)/g
 const INTERNAL_INDENT_TOKEN = '\u2060\u2003\u2003'
@@ -67,6 +69,13 @@ function convertInternalTabsForExport(markdown) {
 function normalizeAppStateForExport(appState) {
   return {
     ...appState,
+    noteBodies: ensureArray(appState?.noteBodies).map((body) => ({
+      ...body,
+      aisles: ensureArray(body?.aisles).map((aisle) => ({
+        ...aisle,
+        markdown: convertInternalTabsForExport(aisle?.markdown),
+      })),
+    })),
     spaces: ensureArray(appState?.spaces).map((space) => ({
       ...space,
       data: {
@@ -144,6 +153,7 @@ function buildRecoveredTabsFromFilesystem(spaceRoot) {
       return {
         id: subTabId,
         title: subTabId,
+        noteBodyId: '',
         content: readMarkdownFile(spaceRoot, file),
       }
     })
@@ -151,6 +161,7 @@ function buildRecoveredTabsFromFilesystem(spaceRoot) {
     return {
       id: tabId,
       title: tabId,
+      noteBodyId: '',
       homeContent: readMarkdownFile(spaceRoot, homeNoteFile),
       activeSubTabId: null,
       subTabs,
@@ -172,11 +183,13 @@ function buildTrashDataFromManifestItems(trashItems, trashRoot) {
               ? item.id
               : '',
         title: typeof item.title === 'string' ? item.title : 'deleted tab',
+        noteBodyId: typeof item.noteBodyId === 'string' ? item.noteBodyId : '',
         homeContent: typeof item.file === 'string' ? readMarkdownFile(trashRoot, item.file) : '',
         activeSubTabId: typeof item.activeSubTabId === 'string' ? item.activeSubTabId : null,
         subTabs: ensureArray(item.subTabs).map((subTabRecord) => ({
           id: typeof subTabRecord?.id === 'string' ? subTabRecord.id : '',
           title: typeof subTabRecord?.title === 'string' ? subTabRecord.title : 'tab',
+          noteBodyId: typeof subTabRecord?.noteBodyId === 'string' ? subTabRecord.noteBodyId : '',
           content: typeof subTabRecord?.file === 'string' ? readMarkdownFile(trashRoot, subTabRecord.file) : '',
         })),
       },
@@ -193,6 +206,7 @@ function buildTrashDataFromManifestItems(trashItems, trashRoot) {
       subTab: {
         id: typeof item?.original?.subTabId === 'string' ? item.original.subTabId : typeof item.id === 'string' ? item.id : '',
         title: typeof item.title === 'string' ? item.title : 'deleted note',
+        noteBodyId: typeof item.noteBodyId === 'string' ? item.noteBodyId : '',
         content: typeof item.file === 'string' ? readMarkdownFile(trashRoot, item.file) : '',
       },
     }))
@@ -358,14 +372,86 @@ function ensureArray(value) {
   return Array.isArray(value) ? value : []
 }
 
+function isRecord(value) {
+  return Boolean(value) && typeof value === 'object'
+}
+
+function getDomainId(domain, fallback = DEFAULT_DOMAIN_ID) {
+  return typeof domain?.id === 'string' && domain.id ? domain.id : fallback
+}
+
+function getDomainTitle(domain, fallback = DEFAULT_DOMAIN_NAME) {
+  if (typeof domain?.name === 'string' && domain.name.trim()) return domain.name
+  if (typeof domain?.title === 'string' && domain.title.trim()) return domain.title
+  return fallback
+}
+
+function getDomainsFromAppState(appState) {
+  const domains = ensureArray(appState?.domains).filter(isRecord)
+  if (domains.length > 0) return domains
+
+  const spaces = ensureArray(appState?.spaces).filter(isRecord)
+  if (spaces.length === 0) return []
+  const activeSpaceId =
+    typeof appState?.activeSpaceId === 'string' && spaces.some((space) => space.id === appState.activeSpaceId)
+      ? appState.activeSpaceId
+      : spaces[0]?.id ?? ''
+  return [
+    {
+      id: DEFAULT_DOMAIN_ID,
+      name: DEFAULT_DOMAIN_NAME,
+      activeSpaceId,
+      spaces,
+    },
+  ]
+}
+
+function getActiveDomainFromAppState(appState, domains) {
+  if (domains.length === 0) return null
+  if (typeof appState?.activeDomainId === 'string') {
+    const activeDomain = domains.find((domain) => domain.id === appState.activeDomainId)
+    if (activeDomain) return activeDomain
+  }
+  return domains[0]
+}
+
+function getActiveSpaceFromDomain(domain, fallbackActiveSpaceId) {
+  if (!domain) return null
+  const spaces = ensureArray(domain.spaces).filter(isRecord)
+  if (spaces.length === 0) return null
+  const activeSpaceId =
+    typeof domain.activeSpaceId === 'string'
+      ? domain.activeSpaceId
+      : typeof fallbackActiveSpaceId === 'string'
+        ? fallbackActiveSpaceId
+        : ''
+  return spaces.find((space) => space.id === activeSpaceId) ?? spaces[0]
+}
+
+function getNoteBodiesFromAppState(appState) {
+  return ensureArray(appState?.noteBodies).filter(isRecord)
+}
+
+function getNoteBodyFirstMarkdown(noteBodyMap, noteBodyId, fallback) {
+  if (typeof noteBodyId !== 'string' || !noteBodyId) return fallback
+  const body = noteBodyMap.get(noteBodyId)
+  const aisles = ensureArray(body?.aisles)
+  const first = aisles[0]
+  return typeof first?.markdown === 'string' ? first.markdown : fallback
+}
+
 function buildRootManifest(appState) {
-  const activeSpace = ensureArray(appState.spaces).find((space) => space?.id === appState.activeSpaceId) ?? appState.spaces?.[0] ?? null
+  const domains = getDomainsFromAppState(appState)
+  const noteBodies = getNoteBodiesFromAppState(appState)
+  const activeDomain = getActiveDomainFromAppState(appState, domains)
+  const activeSpace = getActiveSpaceFromDomain(activeDomain, appState.activeSpaceId)
   const activeTab = activeSpace?.data?.tabs?.find((tab) => tab?.id === activeSpace?.data?.activeTabId) ?? activeSpace?.data?.tabs?.[0] ?? null
+  const activeTopicId = activeDomain ? getDomainId(activeDomain) : DEFAULT_TOPIC_ID
 
   return {
     schemaVersion: SCHEMA_VERSION,
     globalSettings: {
-      theme: appState.theme === 'light' ? 'light' : 'dark',
+      theme: ['dark', 'light', 'dawn', 'blues'].includes(appState.theme) ? appState.theme : 'dawn',
       hotkeys: appState.hotkeys ?? {
         shortcuts: {},
         enableMouseBackForward: true,
@@ -375,13 +461,33 @@ function buildRootManifest(appState) {
         showParentHomeTab: true,
         stageManagerOpenDestinationAfterApply: true,
         tabButtonScale: 1,
+        noteFontScale: 1,
       },
     },
-    topics: [{ id: DEFAULT_TOPIC_ID, title: DEFAULT_TOPIC_TITLE }],
-    activeTopicId: DEFAULT_TOPIC_ID,
+    topics:
+      domains.length > 0
+        ? domains.map((domain) => ({
+            id: getDomainId(domain),
+            title: getDomainTitle(domain),
+          }))
+        : [{ id: DEFAULT_TOPIC_ID, title: DEFAULT_TOPIC_TITLE }],
+    noteBodies: noteBodies.map((body) => {
+      const bodyId = typeof body.id === 'string' ? body.id : ''
+      return {
+        id: bodyId,
+        aisles: ensureArray(body.aisles).map((aisle) => {
+          const aisleId = typeof aisle.id === 'string' ? aisle.id : ''
+          return {
+            id: aisleId,
+            file: path.posix.join('note-bodies', bodyId, 'aisles', `${aisleId}.md`),
+          }
+        }),
+      }
+    }),
+    activeTopicId,
     lastOpened: activeSpace
       ? {
-          topicId: DEFAULT_TOPIC_ID,
+          topicId: activeTopicId,
           spaceId: activeSpace.id,
           parentTabId: activeTab?.id ?? null,
           subTabId: activeTab?.activeSubTabId ?? null,
@@ -391,25 +497,26 @@ function buildRootManifest(appState) {
   }
 }
 
-function buildTopicManifest(appState) {
-  const spaces = ensureArray(appState.spaces)
+function buildTopicManifest(domain) {
+  const spaces = ensureArray(domain?.spaces)
+  const domainId = getDomainId(domain)
   return {
-    id: DEFAULT_TOPIC_ID,
-    title: DEFAULT_TOPIC_TITLE,
+    id: domainId,
+    title: getDomainTitle(domain),
     spaces: spaces.map((space) => ({
       id: typeof space?.id === 'string' ? space.id : '',
       title: typeof space?.name === 'string' ? space.name : 'Untitled Space',
     })),
     activeSpaceId:
-      typeof appState.activeSpaceId === 'string' && spaces.some((space) => space?.id === appState.activeSpaceId)
-        ? appState.activeSpaceId
+      typeof domain?.activeSpaceId === 'string' && spaces.some((space) => space?.id === domain.activeSpaceId)
+        ? domain.activeSpaceId
         : spaces[0]?.id ?? '',
   }
 }
 
-function buildAndWriteSpace(tempRoot, space) {
+function buildAndWriteSpace(tempRoot, topicId, space, noteBodyMap) {
   const posixPath = path.posix
-  const spaceRoot = path.join(tempRoot, 'topics', DEFAULT_TOPIC_ID, 'spaces', space.id)
+  const spaceRoot = path.join(tempRoot, 'topics', topicId, 'spaces', space.id)
   const trashRoot = path.join(spaceRoot, 'trash')
   const tabs = ensureArray(space?.data?.tabs)
   const activeAssetBank = createAssetBank('assets')
@@ -424,16 +531,25 @@ function buildAndWriteSpace(tempRoot, space) {
     settings: space.settings ?? { autoRemoveDeletedDays: 7 },
     tabs: tabs.map((tab) => {
       const homeNoteFile = posixPath.join('notes', tab.id, 'home.md')
-      const homeMarkdown = externalizeMarkdownImages(tab.homeContent, homeNoteFile, activeAssetBank)
+      const homeMarkdown = externalizeMarkdownImages(
+        getNoteBodyFirstMarkdown(noteBodyMap, tab.noteBodyId, tab.homeContent),
+        homeNoteFile,
+        activeAssetBank,
+      )
       writeTextFile(path.join(spaceRoot, homeNoteFile), homeMarkdown)
 
       const subTabs = ensureArray(tab.subTabs).map((subTab) => {
         const file = posixPath.join('notes', tab.id, 'subtabs', `${subTab.id}.md`)
-        const markdown = externalizeMarkdownImages(subTab.content, file, activeAssetBank)
+        const markdown = externalizeMarkdownImages(
+          getNoteBodyFirstMarkdown(noteBodyMap, subTab.noteBodyId, subTab.content),
+          file,
+          activeAssetBank,
+        )
         writeTextFile(path.join(spaceRoot, file), markdown)
         return {
           id: subTab.id,
           title: typeof subTab.title === 'string' ? subTab.title : 'tab',
+          noteBodyId: typeof subTab.noteBodyId === 'string' ? subTab.noteBodyId : '',
           file,
         }
       })
@@ -441,6 +557,7 @@ function buildAndWriteSpace(tempRoot, space) {
       return {
         id: tab.id,
         title: typeof tab.title === 'string' ? tab.title : 'tab',
+        noteBodyId: typeof tab.noteBodyId === 'string' ? tab.noteBodyId : '',
         homeNoteFile,
         subTabs,
         activeSubTabId: typeof tab.activeSubTabId === 'string' ? tab.activeSubTabId : null,
@@ -460,16 +577,25 @@ function buildAndWriteSpace(tempRoot, space) {
   for (const entry of deletedTabs) {
     const deletedTab = entry?.tab ?? {}
     const homeNoteFile = posixPath.join('notes', entry.id, 'home.md')
-    const deletedHomeMarkdown = externalizeMarkdownImages(deletedTab.homeContent, homeNoteFile, trashAssetBank)
+    const deletedHomeMarkdown = externalizeMarkdownImages(
+      getNoteBodyFirstMarkdown(noteBodyMap, deletedTab.noteBodyId, deletedTab.homeContent),
+      homeNoteFile,
+      trashAssetBank,
+    )
     writeTextFile(path.join(trashRoot, homeNoteFile), deletedHomeMarkdown)
 
     const subTabs = ensureArray(deletedTab.subTabs).map((subTab) => {
       const file = posixPath.join('notes', entry.id, 'subtabs', `${subTab.id}.md`)
-      const markdown = externalizeMarkdownImages(subTab.content, file, trashAssetBank)
+      const markdown = externalizeMarkdownImages(
+        getNoteBodyFirstMarkdown(noteBodyMap, subTab.noteBodyId, subTab.content),
+        file,
+        trashAssetBank,
+      )
       writeTextFile(path.join(trashRoot, file), markdown)
       return {
         id: subTab.id,
         title: typeof subTab.title === 'string' ? subTab.title : 'tab',
+        noteBodyId: typeof subTab.noteBodyId === 'string' ? subTab.noteBodyId : '',
         file,
       }
     })
@@ -478,10 +604,11 @@ function buildAndWriteSpace(tempRoot, space) {
       id: entry.id,
       type: 'parent-tab',
       title: typeof deletedTab.title === 'string' ? deletedTab.title : 'deleted tab',
+      noteBodyId: typeof deletedTab.noteBodyId === 'string' ? deletedTab.noteBodyId : '',
       file: homeNoteFile,
       deletedAt: typeof entry.deletedAt === 'number' ? entry.deletedAt : Date.now(),
       original: {
-        topicId: DEFAULT_TOPIC_ID,
+        topicId,
         spaceId: space.id,
         parentTabId: typeof deletedTab.id === 'string' ? deletedTab.id : entry.id,
         subTabId: null,
@@ -493,17 +620,22 @@ function buildAndWriteSpace(tempRoot, space) {
 
   for (const entry of deletedSubTabs) {
     const file = posixPath.join('notes', `${entry.id}.md`)
-    const markdown = externalizeMarkdownImages(entry?.subTab?.content, file, trashAssetBank)
+    const markdown = externalizeMarkdownImages(
+      getNoteBodyFirstMarkdown(noteBodyMap, entry?.subTab?.noteBodyId, entry?.subTab?.content),
+      file,
+      trashAssetBank,
+    )
     writeTextFile(path.join(trashRoot, file), markdown)
     trashItems.push({
       id: entry.id,
       type: 'subtab',
       title: typeof entry?.subTab?.title === 'string' ? entry.subTab.title : 'deleted note',
+      noteBodyId: typeof entry?.subTab?.noteBodyId === 'string' ? entry.subTab.noteBodyId : '',
       file,
       deletedAt: typeof entry.deletedAt === 'number' ? entry.deletedAt : Date.now(),
       parentTabTitle: typeof entry.parentTabTitle === 'string' ? entry.parentTabTitle : 'Unknown Tab',
       original: {
-        topicId: DEFAULT_TOPIC_ID,
+        topicId,
         spaceId: space.id,
         parentTabId: typeof entry.parentTabId === 'string' ? entry.parentTabId : '',
         subTabId: typeof entry?.subTab?.id === 'string' ? entry.subTab.id : null,
@@ -517,19 +649,70 @@ function buildAndWriteSpace(tempRoot, space) {
   writeJsonFile(path.join(trashRoot, 'manifest.json'), { items: trashItems })
 }
 
+function writeNoteBodyFiles(tempRoot, noteBodies) {
+  const posixPath = path.posix
+  const assetBank = createAssetBank('assets')
+  mkdirSync(path.join(tempRoot, 'assets'), { recursive: true })
+  for (const body of ensureArray(noteBodies)) {
+    const bodyId = typeof body?.id === 'string' ? body.id : ''
+    if (!bodyId) continue
+    for (const aisle of ensureArray(body.aisles)) {
+      const aisleId = typeof aisle?.id === 'string' ? aisle.id : ''
+      if (!aisleId) continue
+      const file = posixPath.join('note-bodies', bodyId, 'aisles', `${aisleId}.md`)
+      const markdown = externalizeMarkdownImages(aisle.markdown, file, assetBank)
+      writeTextFile(path.join(tempRoot, file), markdown)
+    }
+  }
+  writeAssetBank(tempRoot, assetBank)
+}
+
 function writeHybridStorage(tempRoot, serializedState) {
   const parsedState = JSON.parse(serializedState)
+  const domains = getDomainsFromAppState(parsedState)
+  const noteBodies = getNoteBodiesFromAppState(parsedState)
+  const noteBodyMap = new Map(noteBodies.map((body) => [typeof body.id === 'string' ? body.id : '', body]))
   const rootManifest = buildRootManifest(parsedState)
-  const topicManifest = buildTopicManifest(parsedState)
 
   mkdirSync(tempRoot, { recursive: true })
   writeJsonFile(path.join(tempRoot, 'manifest.json'), rootManifest)
-  writeJsonFile(path.join(tempRoot, 'topics', DEFAULT_TOPIC_ID, 'manifest.json'), topicManifest)
+  writeNoteBodyFiles(tempRoot, noteBodies)
 
-  for (const space of ensureArray(parsedState.spaces)) {
-    if (!space || typeof space.id !== 'string' || space.id.length === 0) continue
-    buildAndWriteSpace(tempRoot, space)
+  for (const domain of domains) {
+    const topicId = getDomainId(domain)
+    writeJsonFile(path.join(tempRoot, 'topics', topicId, 'manifest.json'), buildTopicManifest(domain))
+    for (const space of ensureArray(domain.spaces)) {
+      if (!space || typeof space.id !== 'string' || space.id.length === 0) continue
+      buildAndWriteSpace(tempRoot, topicId, space, noteBodyMap)
+    }
   }
+}
+
+function readNoteBodiesFromRoot(rootPath, rootManifest) {
+  return ensureArray(rootManifest?.noteBodies)
+    .map((body) => {
+      const bodyId = typeof body?.id === 'string' ? body.id : ''
+      if (!bodyId) return null
+      const aisles = ensureArray(body.aisles)
+        .map((aisle) => {
+          const aisleId = typeof aisle?.id === 'string' ? aisle.id : ''
+          if (!aisleId) return null
+          const file =
+            typeof aisle?.file === 'string'
+              ? aisle.file
+              : path.posix.join('note-bodies', bodyId, 'aisles', `${aisleId}.md`)
+          return {
+            id: aisleId,
+            markdown: readMarkdownFile(rootPath, file),
+          }
+        })
+        .filter(Boolean)
+      return {
+        id: bodyId,
+        aisles,
+      }
+    })
+    .filter(Boolean)
 }
 
 function addDirectoryToZip(zip, directoryPath, zipPrefix) {
@@ -555,12 +738,14 @@ function readHybridSpace(spaceRoot, spaceId, spaceTitle) {
     .map((tabRecord) => ({
       id: typeof tabRecord?.id === 'string' ? tabRecord.id : '',
       title: typeof tabRecord?.title === 'string' ? tabRecord.title : 'tab',
+      noteBodyId: typeof tabRecord?.noteBodyId === 'string' ? tabRecord.noteBodyId : '',
       homeContent:
         typeof tabRecord?.homeNoteFile === 'string' ? readMarkdownFile(spaceRoot, tabRecord.homeNoteFile) : '',
       activeSubTabId: typeof tabRecord?.activeSubTabId === 'string' ? tabRecord.activeSubTabId : null,
       subTabs: ensureArray(tabRecord?.subTabs).map((subTabRecord) => ({
         id: typeof subTabRecord?.id === 'string' ? subTabRecord.id : '',
         title: typeof subTabRecord?.title === 'string' ? subTabRecord.title : 'tab',
+        noteBodyId: typeof subTabRecord?.noteBodyId === 'string' ? subTabRecord.noteBodyId : '',
         content: typeof subTabRecord?.file === 'string' ? readMarkdownFile(spaceRoot, subTabRecord.file) : '',
       })),
     }))
@@ -605,6 +790,7 @@ function readHybridAppStateFromRoot(rootPath) {
   const rootManifest = readJsonFileIfExists(path.join(rootPath, 'manifest.json'))
   if (!isSupportedRootManifest(rootManifest)) return null
 
+  const noteBodies = readNoteBodiesFromRoot(rootPath, rootManifest)
   const topicsRoot = path.join(rootPath, 'topics')
   const topicIds = Array.from(
     new Set([
@@ -616,6 +802,7 @@ function readHybridAppStateFromRoot(rootPath) {
     ]),
   )
 
+  const domains = []
   for (const topicId of topicIds) {
     const topicRoot = path.join(topicsRoot, topicId)
     const topicManifest = readJsonFileIfExists(path.join(topicRoot, 'manifest.json'))
@@ -641,7 +828,9 @@ function readHybridAppStateFromRoot(rootPath) {
     if (spaces.length === 0) continue
 
     const activeSpaceIdFromRoot =
-      typeof rootManifest?.lastOpened?.spaceId === 'string' ? rootManifest.lastOpened.spaceId : null
+      rootManifest?.lastOpened?.topicId === topicId && typeof rootManifest?.lastOpened?.spaceId === 'string'
+        ? rootManifest.lastOpened.spaceId
+        : null
     const activeSpaceIdFromTopic =
       topicManifest && typeof topicManifest === 'object' && typeof topicManifest.activeSpaceId === 'string'
         ? topicManifest.activeSpaceId
@@ -651,16 +840,41 @@ function readHybridAppStateFromRoot(rootPath) {
       (activeSpaceIdFromTopic && spaces.some((space) => space.id === activeSpaceIdFromTopic) && activeSpaceIdFromTopic) ||
       spaces[0].id
 
-    return JSON.stringify({
-      theme: rootManifest?.globalSettings?.theme === 'light' ? 'light' : 'dark',
+    domains.push({
+      id: topicManifest && typeof topicManifest.id === 'string' ? topicManifest.id : topicId,
+      name: (() => {
+        if (topicManifest && typeof topicManifest.title === 'string') return topicManifest.title
+        const topicEntry = ensureArray(rootManifest.topics).find((topic) => topic?.id === topicId)
+        return typeof topicEntry?.title === 'string' ? topicEntry.title : DEFAULT_DOMAIN_NAME
+      })(),
       activeSpaceId,
       spaces,
-      hotkeys: rootManifest?.globalSettings?.hotkeys,
-      ui: rootManifest?.globalSettings?.ui,
     })
   }
 
-  return null
+  if (domains.length === 0) return null
+  const activeDomainId =
+    typeof rootManifest?.lastOpened?.topicId === 'string' &&
+    domains.some((domain) => domain.id === rootManifest.lastOpened.topicId)
+      ? rootManifest.lastOpened.topicId
+      : typeof rootManifest.activeTopicId === 'string' && domains.some((domain) => domain.id === rootManifest.activeTopicId)
+        ? rootManifest.activeTopicId
+        : domains[0].id
+  const activeDomain = domains.find((domain) => domain.id === activeDomainId) ?? domains[0]
+  const theme = ['dark', 'light', 'dawn', 'blues'].includes(rootManifest?.globalSettings?.theme)
+    ? rootManifest.globalSettings.theme
+    : 'dawn'
+
+  return JSON.stringify({
+    theme,
+    activeDomainId,
+    domains,
+    noteBodies,
+    activeSpaceId: activeDomain.activeSpaceId,
+    spaces: activeDomain.spaces,
+    hotkeys: rootManifest?.globalSettings?.hotkeys,
+    ui: rootManifest?.globalSettings?.ui,
+  })
 }
 
 export function loadAppState(userDataPath) {

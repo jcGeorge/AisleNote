@@ -6,6 +6,7 @@
   justify-content: stretch;
   overflow: hidden;
   padding: 1rem 1rem 0;
+  background: var(--stage-page-bg);
 }
 
 .stage-manager-card {
@@ -62,7 +63,13 @@
   height: 1.25rem;
   border-radius: 999px;
   background: var(--stage-step-index-bg);
+  color: var(--stage-step-index-text);
   font-size: 0.76rem;
+}
+
+.stage-manager-step-pill.is-active .stage-manager-step-index {
+  background: var(--stage-step-active-index-bg);
+  color: var(--stage-step-active-index-text);
 }
 
 .stage-manager-panel {
@@ -128,6 +135,19 @@
   color: var(--stage-field-label-text);
 }
 
+.stage-manager-field .form-control,
+.stage-manager-field .form-select {
+  border-color: var(--settings-control-border);
+  background-color: var(--settings-control-bg);
+  color: var(--settings-control-text);
+}
+
+.stage-manager-field .form-control:focus,
+.stage-manager-field .form-select:focus {
+  border-color: var(--settings-select-focus-border);
+  box-shadow: var(--stage-secondary-focus-shadow);
+}
+
 .stage-manager-panel code {
   color: inherit;
   background: transparent;
@@ -171,10 +191,47 @@
   background: var(--stage-action-bg) !important;
 }
 
+.stage-manager-action-btn:not(.is-selected):hover {
+  border-color: var(--stage-secondary-hover-border) !important;
+  color: var(--stage-secondary-hover-text) !important;
+  background: var(--stage-secondary-hover-bg) !important;
+}
+
 .stage-manager-action-btn.is-selected {
   border-color: var(--stage-action-selected-border) !important;
   color: var(--stage-action-selected-text) !important;
   background: var(--stage-action-selected-bg) !important;
+}
+
+.stage-manager-action-btn:focus,
+.stage-manager-action-btn:focus-visible {
+  box-shadow: var(--stage-secondary-focus-shadow) !important;
+}
+
+.stage-manager-secondary-btn {
+  min-width: 106px;
+  border-color: var(--stage-secondary-border) !important;
+  color: var(--stage-secondary-text) !important;
+  background: var(--stage-secondary-bg) !important;
+}
+
+.stage-manager-secondary-btn:hover {
+  border-color: var(--stage-secondary-hover-border) !important;
+  color: var(--stage-secondary-hover-text) !important;
+  background: var(--stage-secondary-hover-bg) !important;
+}
+
+.stage-manager-secondary-btn:focus,
+.stage-manager-secondary-btn:focus-visible {
+  border-color: var(--stage-secondary-hover-border) !important;
+  box-shadow: var(--stage-secondary-focus-shadow) !important;
+}
+
+.stage-manager-secondary-btn:disabled {
+  border-color: var(--stage-secondary-disabled-border) !important;
+  color: var(--stage-secondary-disabled-text) !important;
+  background: var(--stage-secondary-disabled-bg) !important;
+  opacity: 1;
 }
 
 .stage-manager-help {
@@ -202,26 +259,37 @@
   justify-content: center;
 }
 
-.parent-tab-btn.stage-manager-parent-partial {
+.view-stage-manager .parent-tab-btn[aria-selected='true'] {
+  border-color: var(--stage-rail-active-border) !important;
+  background: var(--stage-rail-active-bg) !important;
+  color: var(--stage-rail-active-text) !important;
+  box-shadow: var(--stage-rail-active-shadow) !important;
+}
+
+.view-stage-manager .parent-tab-btn.stage-manager-parent-partial {
   border-color: var(--stage-parent-partial-border) !important;
-  background-color: var(--stage-parent-partial-bg) !important;
+  background: var(--stage-parent-partial-bg) !important;
+  color: var(--stage-parent-partial-text) !important;
   box-shadow: var(--stage-parent-partial-shadow) !important;
 }
 
-.parent-tab-btn.stage-manager-parent-full {
+.view-stage-manager .parent-tab-btn.stage-manager-parent-full {
   border-color: var(--stage-parent-full-border) !important;
-  background-color: var(--stage-parent-full-bg) !important;
+  background: var(--stage-parent-full-bg) !important;
+  color: var(--stage-parent-full-text) !important;
   box-shadow: var(--stage-parent-full-shadow) !important;
 }
 
-.subtab-btn.stage-manager-subtab-selected {
+.view-stage-manager .subtab-btn.stage-manager-subtab-selected {
   border-color: var(--stage-subtab-selected-border) !important;
-  background-color: var(--stage-subtab-selected-bg) !important;
+  background: var(--stage-subtab-selected-bg) !important;
+  color: var(--stage-subtab-selected-text) !important;
   box-shadow: var(--stage-subtab-selected-shadow) !important;
 }
 
-.home-subtab-btn.stage-manager-home-selected {
+.view-stage-manager .home-subtab-btn.stage-manager-home-selected {
   border-color: var(--stage-subtab-selected-border) !important;
-  background-color: var(--stage-subtab-selected-bg) !important;
+  background: var(--stage-subtab-selected-bg) !important;
+  color: var(--stage-subtab-selected-text) !important;
   box-shadow: var(--stage-subtab-selected-shadow) !important;
 }

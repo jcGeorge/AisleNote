@@ -166,8 +166,16 @@
   margin-left: 0.15rem !important;
 }
 
+.note-tools-toolbar-group {
+  margin-left: 0.15rem !important;
+}
+
 .toastui-editor-defaultUI-toolbar button.clear-note-toolbar-btn,
-.toastui-editor-toolbar button.clear-note-toolbar-btn {
+.toastui-editor-toolbar button.clear-note-toolbar-btn,
+.toastui-editor-defaultUI-toolbar button.note-link-toolbar-btn,
+.toastui-editor-toolbar button.note-link-toolbar-btn,
+.toastui-editor-defaultUI-toolbar button.aisles-toolbar-btn,
+.toastui-editor-toolbar button.aisles-toolbar-btn {
   width: 26px !important;
   min-width: 26px !important;
   padding: 0 !important;
@@ -179,6 +187,93 @@
   align-items: center !important;
   justify-content: center !important;
   opacity: 0.92 !important;
+}
+
+.toastui-editor-defaultUI-toolbar button.note-link-toolbar-btn,
+.toastui-editor-toolbar button.note-link-toolbar-btn,
+.toastui-editor-defaultUI-toolbar button.aisles-toolbar-btn,
+.toastui-editor-toolbar button.aisles-toolbar-btn {
+  position: relative !important;
+}
+
+.toastui-editor-defaultUI-toolbar button.note-link-toolbar-btn,
+.toastui-editor-toolbar button.note-link-toolbar-btn,
+.toastui-editor-defaultUI-toolbar button.aisles-toolbar-btn,
+.toastui-editor-toolbar button.aisles-toolbar-btn {
+  font-weight: 700 !important;
+  letter-spacing: 0 !important;
+}
+
+.note-reference-toolbar-icon {
+  position: relative;
+  width: 1.25rem;
+  height: 1.25rem;
+  display: block;
+}
+
+.note-reference-toolbar-paper {
+  position: absolute;
+  top: 0.12rem;
+  left: 0.16rem;
+  width: 0.62rem;
+  height: 0.78rem;
+  border: 1.5px solid currentColor;
+  border-radius: 0.08rem;
+}
+
+.note-reference-toolbar-paper::after {
+  content: '';
+  position: absolute;
+  top: -0.06rem;
+  right: -0.06rem;
+  width: 0.24rem;
+  height: 0.24rem;
+  border-left: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  background: #0f1b32;
+}
+
+.note-reference-toolbar-chain {
+  position: absolute;
+  right: 0.1rem;
+  bottom: 0.2rem;
+  width: 0.58rem;
+  height: 0.26rem;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+  transform: rotate(-25deg);
+}
+
+.note-reference-toolbar-chain::after {
+  content: '';
+  position: absolute;
+  left: -0.34rem;
+  top: -0.02rem;
+  width: 0.58rem;
+  height: 0.26rem;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+}
+
+.aisles-toolbar-icon {
+  width: 1rem;
+  height: 1rem;
+  display: inline-grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.14rem;
+}
+
+.aisles-toolbar-icon::before,
+.aisles-toolbar-icon::after,
+.aisles-toolbar-btn .aisles-toolbar-icon {
+  color: inherit;
+}
+
+.aisles-toolbar-icon {
+  background:
+    linear-gradient(currentColor, currentColor) left center / 0.18rem 0.95rem no-repeat,
+    linear-gradient(currentColor, currentColor) center center / 0.18rem 0.95rem no-repeat,
+    linear-gradient(currentColor, currentColor) right center / 0.18rem 0.95rem no-repeat;
 }
 
 .toastui-editor-dropdown-toolbar,

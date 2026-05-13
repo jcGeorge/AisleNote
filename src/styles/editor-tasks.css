@@ -1,10 +1,8 @@
-.task-reorder-pending .toastui-editor-contents,
 .task-reorder-active .toastui-editor-contents {
   cursor: grabbing !important;
   user-select: none !important;
 }
 
-.task-reorder-pending .toastui-editor-contents *,
 .task-reorder-active .toastui-editor-contents * {
   user-select: none !important;
 }

@@ -13,6 +13,7 @@ import {
   moveItemByInsertion,
 } from './arrange/arrange-utils'
 import { DomainsPage } from './components/domains/DomainsPage'
+import { NoteLocationPicker, type NoteLocationPickerValue } from './components/notes/NoteLocationPicker'
 import { SpacesPage } from './components/spaces/SpacesPage'
 import {
   EDITOR_TOOLBAR_ITEMS,
@@ -74,7 +75,7 @@ import {
   NOTE_FONT_SCALE_STEP,
   TAB_BUTTON_SCALE_STEP,
 } from './settings/defaults'
-import { applyAutoPurgeToAppState, applyMarkdownToAppState, parseSavedState } from './state/app-state'
+import { applyAutoPurgeToAppState, applyMarkdownToAppState, ensureNoteBodiesForAppState, parseSavedState } from './state/app-state'
 import {
   addDomain,
   addSpaceToActiveDomain,
@@ -92,11 +93,13 @@ import {
 import {
   applyAutoPurgeToWorkspace,
   createId,
+  createNoteBody,
   createSpace,
   createSubTab,
   createTab,
   createWorkspaceDataFromTabs,
   duplicateSpace,
+  MAX_NOTE_AISLES,
 } from './state/workspace'
 import {
   buildStageManagerSelectionSnapshot,
@@ -129,12 +132,16 @@ import type {
   ContextMenuState,
   DeleteTarget,
   DeletedSubTabEntry,
+  Domain,
   ImageToolsState,
   InlineCropState,
   LinkPromptState,
   ModalState,
   MultiLineEditState,
   NavLocation,
+  NoteAisle,
+  NoteBody,
+  NoteLocation,
   PendingContent,
   PendingCreatedEdit,
   SettingsSection,
@@ -149,6 +156,7 @@ import type {
   StageManagerSelectionState,
   StageManagerStep,
   StageManagerStrayHandlingMode,
+  SubTab,
   Tab,
   TabArrangeDragItem,
   TabArrangeDragPreview,
@@ -163,8 +171,295 @@ const TRASH_HOME_ID = '__trash_home__'
 const THEME_OPTIONS: Array<{ id: AppTheme; label: string }> = [
   { id: 'dark', label: 'dark' },
   { id: 'light', label: 'light' },
-  { id: 'dusk', label: 'dusk' },
+  { id: 'dawn', label: 'dawn' },
+  { id: 'blues', label: 'blues' },
 ]
+type TrashContentDisplay = {
+  mode: 'home' | 'deleted-parent' | 'deleted-subtab' | 'subtabs-only-parent'
+  markdown: string
+}
+
+function resolveTrashContentDisplay({
+  trashTabId,
+  trashHomeContent,
+  selectedTrashTab,
+  selectedTrashSubTab,
+}: {
+  trashTabId: string
+  trashHomeContent: string
+  selectedTrashTab: TrashParentBucket | null
+  selectedTrashSubTab: SubTab | null
+}): TrashContentDisplay {
+  if (trashTabId === TRASH_HOME_ID || !selectedTrashTab) {
+    return { mode: 'home', markdown: trashHomeContent }
+  }
+
+  if (selectedTrashSubTab) {
+    return { mode: 'deleted-subtab', markdown: selectedTrashSubTab.content }
+  }
+
+  return {
+    mode: selectedTrashTab.source === 'subtabs-only' ? 'subtabs-only-parent' : 'deleted-parent',
+    markdown: selectedTrashTab.homeContent,
+  }
+}
+
+function getPrimaryAisle(body: NoteBody | null | undefined): NoteAisle | null {
+  return body?.aisles[0] ?? null
+}
+
+function getNoteBodyMarkdown(body: NoteBody | null | undefined, aisleId: string | null | undefined): string {
+  if (!body) return ''
+  return body.aisles.find((aisle) => aisle.id === aisleId)?.markdown ?? getPrimaryAisle(body)?.markdown ?? ''
+}
+
+function buildNoteLocationKey(location: NoteLocation): string {
+  return [location.domainId, location.spaceId, location.tabId, location.subTabId ?? '__home__'].join('::')
+}
+
+type NoteContextReferencePayload = {
+  id: string
+  target: NoteLocation
+  aisleIds?: string[]
+}
+
+type ParsedNoteContextReference = {
+  token: string
+  payload: NoteContextReferencePayload
+}
+
+const NOTE_CONTEXT_REFERENCE_RE = /\{\{tabs-context:([A-Za-z0-9_-]+)\}\}/g
+const INTERNAL_NOTE_LINK_MARKDOWN_RE = /!?\[([^\]\n]+)\]\(([^)\n]+)\)/g
+const INTERNAL_NOTE_LINK_SCHEME = 'tabs://note'
+const INTERNAL_NOTE_LINK_HASH_PREFIX = '#tabs-note'
+const MAX_CONTEXT_RENDER_DEPTH = 3
+
+function encodeContextPayload(payload: NoteContextReferencePayload): string {
+  const bytes = new TextEncoder().encode(JSON.stringify(payload))
+  let binary = ''
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte)
+  })
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+}
+
+function decodeContextPayload(encoded: string): NoteContextReferencePayload | null {
+  try {
+    const padded = encoded.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (encoded.length % 4)) % 4)
+    const binary = atob(padded)
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0))
+    const parsed = JSON.parse(new TextDecoder().decode(bytes)) as Partial<NoteContextReferencePayload>
+    if (!parsed || typeof parsed.id !== 'string' || !parsed.target) return null
+    const target = parsed.target as Partial<NoteLocation>
+    if (
+      typeof target.domainId !== 'string' ||
+      typeof target.spaceId !== 'string' ||
+      typeof target.tabId !== 'string' ||
+      (typeof target.subTabId !== 'string' && target.subTabId !== null)
+    ) {
+      return null
+    }
+    return {
+      id: parsed.id,
+      target: {
+        domainId: target.domainId,
+        spaceId: target.spaceId,
+        tabId: target.tabId,
+        subTabId: target.subTabId,
+      },
+      aisleIds: Array.isArray(parsed.aisleIds) ? parsed.aisleIds.filter((aisleId): aisleId is string => typeof aisleId === 'string') : undefined,
+    }
+  } catch {
+    return null
+  }
+}
+
+function parseContextReferences(markdown: string): ParsedNoteContextReference[] {
+  const references: ParsedNoteContextReference[] = []
+  for (const match of markdown.matchAll(NOTE_CONTEXT_REFERENCE_RE)) {
+    const payload = decodeContextPayload(match[1])
+    if (!payload) continue
+    references.push({ token: match[0], payload })
+  }
+  return references
+}
+
+function buildContextToken(payload: NoteContextReferencePayload): string {
+  return `{{tabs-context:${encodeContextPayload(payload)}}}`
+}
+
+function buildInternalNoteUrl(noteBodyId: string, target: NoteLocation): string {
+  const params = new URLSearchParams({
+    domainId: target.domainId,
+    spaceId: target.spaceId,
+    tabId: target.tabId,
+  })
+  if (target.subTabId) params.set('subTabId', target.subTabId)
+  return `${INTERNAL_NOTE_LINK_HASH_PREFIX}/${encodeURIComponent(noteBodyId)}?${params.toString()}`
+}
+
+function parseNoteLocationParams(params: URLSearchParams): NoteLocation | null {
+  const domainId = params.get('domainId')
+  const spaceId = params.get('spaceId')
+  const tabId = params.get('tabId')
+  if (!domainId || !spaceId || !tabId) return null
+  return {
+    domainId,
+    spaceId,
+    tabId,
+    subTabId: params.get('subTabId'),
+  }
+}
+
+function parseInternalNoteUrl(rawUrl: string): NoteLocation | null {
+  const cleanedUrl = rawUrl.trim().replace(/&amp;/g, '&')
+  if (!cleanedUrl) return null
+  const hashIndex = cleanedUrl.indexOf(INTERNAL_NOTE_LINK_HASH_PREFIX)
+  if (hashIndex >= 0) {
+    const hash = cleanedUrl.slice(hashIndex)
+    const queryIndex = hash.indexOf('?')
+    if (queryIndex < 0) return null
+    return parseNoteLocationParams(new URLSearchParams(hash.slice(queryIndex + 1)))
+  }
+
+  try {
+    const url = new URL(cleanedUrl)
+    if (url.hash.startsWith(INTERNAL_NOTE_LINK_HASH_PREFIX)) {
+      const queryIndex = url.hash.indexOf('?')
+      if (queryIndex < 0) return null
+      return parseNoteLocationParams(new URLSearchParams(url.hash.slice(queryIndex + 1)))
+    }
+    if (`${url.protocol}//${url.hostname}` !== INTERNAL_NOTE_LINK_SCHEME) return null
+    return parseNoteLocationParams(url.searchParams)
+  } catch {
+    return null
+  }
+}
+
+function getMarkdownLinkLabel(label: string): string {
+  return label.replace(/\\([\\[\]])/g, '$1').trim() || 'linked note'
+}
+
+type ProseMirrorTextPositionMap = {
+  text: string
+  positions: number[]
+}
+
+type InternalNoteLinkHit = {
+  label: string
+  href: string
+  target: NoteLocation
+  from: number
+  to: number
+  occurrence: number
+}
+
+type ToolbarPopoverKind = 'heading' | 'aisles'
+
+type ToolbarPopoverPosition = {
+  top: number
+  left: number
+}
+
+const TOOLBAR_POPOVER_WIDTH_PX = 168
+const TOOLBAR_POPOVER_VIEWPORT_MARGIN_PX = 8
+const NOTE_PREVIEW_DEFAULT_HEIGHT_REM = 20
+const NOTE_PREVIEW_EXPANDED_HEIGHT_REM = 30
+
+function collectProseMirrorTextPositions(doc: any): ProseMirrorTextPositionMap {
+  let text = ''
+  const positions: number[] = []
+  let previousTextEnd: number | null = null
+
+  doc.descendants((node: any, pos: number) => {
+    if (!node.isText || typeof node.text !== 'string') return
+
+    if (previousTextEnd !== null && pos > previousTextEnd) {
+      text += '\n'
+      positions.push(-1)
+    }
+
+    for (let index = 0; index < node.text.length; index += 1) {
+      text += node.text[index]
+      positions.push(pos + index)
+    }
+    previousTextEnd = pos + node.text.length
+  })
+
+  return { text, positions }
+}
+
+function getInternalNoteLinkHitAtDocPosition(doc: any, docPosition: number): InternalNoteLinkHit | null {
+  const docText = collectProseMirrorTextPositions(doc)
+  let occurrence = 0
+  for (const match of docText.text.matchAll(INTERNAL_NOTE_LINK_MARKDOWN_RE)) {
+    if (match[0].startsWith('!')) continue
+    const target = parseInternalNoteUrl(match[2])
+    if (!target) continue
+
+    const startIndex = match.index ?? 0
+    const endIndex = startIndex + match[0].length - 1
+    const from = docText.positions[startIndex]
+    const last = docText.positions[endIndex]
+    const rangePositions = docText.positions.slice(startIndex, endIndex + 1)
+    if (from === undefined || last === undefined || from < 0 || last < from || rangePositions.some((position) => position < 0)) {
+      continue
+    }
+    if (docPosition >= from && docPosition <= last + 1) {
+      return {
+        label: getMarkdownLinkLabel(match[1]),
+        href: match[2],
+        target,
+        from,
+        to: last + 1,
+        occurrence,
+      }
+    }
+    occurrence += 1
+  }
+  return null
+}
+
+function escapeMarkdownLinkLabel(label: string): string {
+  return label.replace(/\\/g, '\\\\').replace(/\[/g, '\\[').replace(/\]/g, '\\]')
+}
+
+function replaceInternalNoteLinkByOccurrence(markdown: string, hit: InternalNoteLinkHit, nextSyntax: string): string {
+  let occurrence = 0
+  return markdown.replace(INTERNAL_NOTE_LINK_MARKDOWN_RE, (source, _label, href) => {
+    if (source.startsWith('!') || !parseInternalNoteUrl(href)) return source
+    const shouldReplace = occurrence === hit.occurrence && href === hit.href
+    occurrence += 1
+    return shouldReplace ? nextSyntax : source
+  })
+}
+
+function normalizeAisleSelection(aisleIds: string[] | undefined): string {
+  return aisleIds && aisleIds.length > 0 ? [...aisleIds].sort().join(',') : '__all__'
+}
+
+function buildAisleEditorKey(noteBodyId: string, aisleId: string): string {
+  return `${noteBodyId}::${aisleId}`
+}
+
+type AisleEditorMeta = {
+  editor: Editor
+  root: HTMLElement
+  aisleId: string
+  pluginKey: unknown
+  cleanup: () => void
+}
+
+type CommandCapableEditor = Editor & {
+  exec: (name: string, payload?: Record<string, unknown>) => void
+  insertText: (text: string) => void
+  getSelectedText: () => string
+}
+
+function getCommandCapableEditor(editor: Editor): CommandCapableEditor {
+  return editor as unknown as CommandCapableEditor
+}
+
 const COMPLETED_TASK_HOLD_MS = 500
 const COMPLETED_TASK_POINTER_SLOP_PX = 6
 const COMPLETED_TASK_UNDO_HINT_COOLDOWN_MS = 10 * 60 * 1000
@@ -603,44 +898,9 @@ function hideTaskReorderMarker(marker: HTMLElement | null) {
   marker.classList.remove('is-visible')
 }
 
-function placeTaskCaretAtPoint(view: any, clientX: number, clientY: number) {
-  const coords = view.posAtCoords({ left: clientX, top: clientY })
-  if (!coords) {
-    view.focus()
-    return
-  }
-
-  const SelectionCtor = view.state.selection.constructor as {
-    create?: (doc: unknown, anchor: number, head?: number) => unknown
-    near?: (resolvedPos: unknown, bias?: number) => unknown
-  }
-
-  let nextSelection: unknown | null = null
-  if (typeof SelectionCtor.create === 'function') {
-    try {
-      nextSelection = SelectionCtor.create(view.state.doc, coords.pos, coords.pos)
-    } catch {
-      nextSelection = null
-    }
-  }
-  if (!nextSelection && typeof SelectionCtor.near === 'function') {
-    try {
-      nextSelection = SelectionCtor.near(view.state.doc.resolve(coords.pos), 1)
-    } catch {
-      nextSelection = null
-    }
-  }
-
-  if (nextSelection) {
-    view.dispatch(view.state.tr.setSelection(nextSelection).scrollIntoView())
-  }
-  view.focus()
-}
-
 function installTaskTextReorderBehavior(root: HTMLElement, getEditor: () => Editor | null) {
   type DragState = {
     editor: Editor
-    view: any
     sourceElement: HTMLElement
     sourceIndex: number
     listElement: HTMLElement
@@ -727,12 +987,7 @@ function installTaskTextReorderBehavior(root: HTMLElement, getEditor: () => Edit
   const handleMouseUp = (event: globalThis.MouseEvent) => {
     if (!dragState) return
     if (!dragState.dragging) {
-      event.preventDefault()
-      event.stopPropagation()
-      suppressNextClick = true
-      const { view, startX, startY } = dragState
       endDrag()
-      placeTaskCaretAtPoint(view, startX, startY)
       return
     }
 
@@ -758,6 +1013,8 @@ function installTaskTextReorderBehavior(root: HTMLElement, getEditor: () => Edit
   }
 
   const handleMouseDown = (event: globalThis.MouseEvent) => {
+    if (event.detail > 1) return
+
     const editor = getEditor()
     const view = getWysiwygView(editor)
     if (!editor || !view) return
@@ -771,7 +1028,6 @@ function installTaskTextReorderBehavior(root: HTMLElement, getEditor: () => Edit
 
     dragState = {
       editor,
-      view,
       sourceElement,
       sourceIndex,
       listElement,
@@ -784,9 +1040,6 @@ function installTaskTextReorderBehavior(root: HTMLElement, getEditor: () => Edit
       dragging: false,
     }
     root.classList.add('task-reorder-pending')
-    event.preventDefault()
-    event.stopPropagation()
-    window.getSelection()?.removeAllRanges()
 
     window.addEventListener('mousemove', handleMouseMove, true)
     window.addEventListener('mouseup', handleMouseUp, true)
@@ -853,6 +1106,7 @@ function App() {
   const [stageManagerAction, setStageManagerAction] = useState<StageManagerAction | null>(null)
   const [stageManagerSelections, setStageManagerSelections] = useState<StageManagerSelectionState>({})
   const [stageManagerDraft, setStageManagerDraft] = useState<StageManagerDraft>(createDefaultStageManagerDraft)
+  const [activeAisleId, setActiveAisleId] = useState<string>('')
   const [arrangeDraggingItem, setArrangeDraggingItem] = useState<ArrangeDragItem | null>(null)
   const [spaceArrangeDragPreview, setSpaceArrangeDragPreview] = useState<SpaceArrangeDragPreview | null>(null)
   const [tabArrangeDragPreview, setTabArrangeDragPreview] = useState<TabArrangeDragPreview | null>(null)
@@ -885,10 +1139,22 @@ function App() {
     url: '',
     text: '',
   })
+  const [noteToolsOpen, setNoteToolsOpen] = useState(false)
+  const [headingMenuOpen, setHeadingMenuOpen] = useState(false)
+  const [toolbarPopoverPosition, setToolbarPopoverPosition] = useState<Record<ToolbarPopoverKind, ToolbarPopoverPosition | null>>({
+    heading: null,
+    aisles: null,
+  })
+  const [aisleDeleteMode, setAisleDeleteMode] = useState(false)
   const linkPromptInputRef = useRef<HTMLInputElement | null>(null)
 
   const editorMountRef = useRef<HTMLDivElement | null>(null)
   const editorRef = useRef<Editor | null>(null)
+  const headingToolbarButtonRef = useRef<HTMLButtonElement | null>(null)
+  const aisleToolbarButtonRef = useRef<HTMLButtonElement | null>(null)
+  const editorEventRootRef = useRef<HTMLElement | null>(null)
+  const aisleEditorRootsRef = useRef<Map<string, HTMLElement>>(new Map())
+  const aisleEditorMetaRef = useRef<Map<string, AisleEditorMeta>>(new Map())
   const primaryTabRailRef = useRef<HTMLDivElement | null>(null)
   const subTabRailRef = useRef<HTMLDivElement | null>(null)
   const spacesGridRef = useRef<HTMLDivElement | null>(null)
@@ -920,6 +1186,8 @@ function App() {
   const completedTaskDeleteUndoCandidateRef = useRef<{ beforeMarkdown: string; deletedAt: number } | null>(null)
   const completedTaskUndoToastAtRef = useRef(0)
   const lastEditorMarkdownRef = useRef('')
+  const lastEditorMarkdownByAisleRef = useRef<Map<string, string>>(new Map())
+  const normalizingAisleIdsRef = useRef<Set<string>>(new Set())
   const multiLineEditRef = useRef<MultiLineEditState | null>(null)
   const multiLineCursorPluginKeyRef = useRef<any>(null)
   const multiLineEditHistoryRef = useRef<MultiLineEditHistoryEntry[]>([])
@@ -930,12 +1198,71 @@ function App() {
   const activeSpaceIdRef = useRef<string>('')
   const activeTabIdRef = useRef<string>('')
   const activeSubTabIdRef = useRef<string | null>(null)
+  const activeAisleIdRef = useRef<string>('')
   const isMainViewRef = useRef(true)
   const navHistoryRef = useRef<NavLocation[]>([])
   const navIndexRef = useRef(-1)
   const isHistoryNavigationRef = useRef(false)
   const lastTabLikeViewRef = useRef<'main' | 'trash'>('main')
   stateRef.current = state
+
+  const getToolbarPopoverButton = (kind: ToolbarPopoverKind) =>
+    kind === 'aisles' ? aisleToolbarButtonRef.current : headingToolbarButtonRef.current
+
+  const getToolbarPopoverPosition = (kind: ToolbarPopoverKind): ToolbarPopoverPosition | null => {
+    const button = getToolbarPopoverButton(kind)
+    if (!button || !button.isConnected) return null
+    const rect = button.getBoundingClientRect()
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth
+    const maxLeft = Math.max(TOOLBAR_POPOVER_VIEWPORT_MARGIN_PX, viewportWidth - TOOLBAR_POPOVER_WIDTH_PX - TOOLBAR_POPOVER_VIEWPORT_MARGIN_PX)
+    return {
+      top: rect.bottom + 6,
+      left: Math.min(Math.max(TOOLBAR_POPOVER_VIEWPORT_MARGIN_PX, rect.left), maxLeft),
+    }
+  }
+
+  const refreshToolbarPopoverPosition = (kind: ToolbarPopoverKind) => {
+    const position = getToolbarPopoverPosition(kind)
+    if (!position) {
+      setHeadingMenuOpen(false)
+      setNoteToolsOpen(false)
+      return
+    }
+    setToolbarPopoverPosition((previous) => ({ ...previous, [kind]: position }))
+  }
+
+  const closeToolbarPopovers = () => {
+    setHeadingMenuOpen(false)
+    setNoteToolsOpen(false)
+  }
+
+  useEffect(() => {
+    const openPopoverKind: ToolbarPopoverKind | null = noteToolsOpen ? 'aisles' : headingMenuOpen ? 'heading' : null
+    if (!openPopoverKind) return
+
+    const refreshPosition = () => refreshToolbarPopoverPosition(openPopoverKind)
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = getElementFromEventTarget(event.target)
+      const button = getToolbarPopoverButton(openPopoverKind)
+      if (
+        target?.closest('.note-toolbar-heading-popover, .note-toolbar-aisle-popover') ||
+        (button && event.target instanceof Node && button.contains(event.target))
+      ) {
+        return
+      }
+      closeToolbarPopovers()
+    }
+
+    refreshPosition()
+    window.addEventListener('resize', refreshPosition)
+    window.addEventListener('scroll', refreshPosition, true)
+    window.addEventListener('pointerdown', handlePointerDown, true)
+    return () => {
+      window.removeEventListener('resize', refreshPosition)
+      window.removeEventListener('scroll', refreshPosition, true)
+      window.removeEventListener('pointerdown', handlePointerDown, true)
+    }
+  }, [headingMenuOpen, noteToolsOpen, viewMode])
 
   useEffect(() => {
     if (typeof appStateStore.hydrate !== 'function') return
@@ -2011,6 +2338,29 @@ function App() {
         : null,
     [activeTab],
   )
+  const activeNoteBodyId = activeSubTab?.noteBodyId ?? activeTab.noteBodyId
+  const activeNoteBody = useMemo(
+    () => state.noteBodies.find((body) => body.id === activeNoteBodyId) ?? null,
+    [activeNoteBodyId, state.noteBodies],
+  )
+  const activeNoteAisles = activeNoteBody?.aisles ?? []
+  const resolvedActiveAisleId =
+    activeNoteAisles.some((aisle) => aisle.id === activeAisleId) ? activeAisleId : activeNoteAisles[0]?.id ?? ''
+  const domainsForPickers = useMemo(
+    () => state.domains.map((domain) => (domain.id === state.activeDomainId ? { ...domain, spaces: state.spaces } : domain)),
+    [state.activeDomainId, state.domains, state.spaces],
+  )
+
+  useEffect(() => {
+    if (resolvedActiveAisleId && resolvedActiveAisleId !== activeAisleId) {
+      setActiveAisleId(resolvedActiveAisleId)
+    }
+  }, [activeAisleId, resolvedActiveAisleId])
+
+  useEffect(() => {
+    if (!activeNoteBodyId || activeNoteBody) return
+    setState((previous) => ensureNoteBodiesForAppState(previous))
+  }, [activeNoteBody, activeNoteBodyId])
 
   const stageManagerSelectionSnapshot = useMemo(
     () => buildStageManagerSelectionSnapshot(workspace.tabs, stageManagerSelections),
@@ -2027,14 +2377,41 @@ function App() {
     }),
     [stageManagerSelectionSnapshot],
   )
+  const getDraftDomainId = (draftDomainId: string) =>
+    draftDomainId && state.domains.some((domain) => domain.id === draftDomainId) ? draftDomainId : state.activeDomainId
+  const getDomainSpaces = (domainId: string) => state.domains.find((domain) => domain.id === domainId)?.spaces ?? []
+  const stageManagerPromoteDomainId = getDraftDomainId(stageManagerDraft.promoteDomainId)
+  const stageManagerDemoteDomainId = getDraftDomainId(stageManagerDraft.demoteDomainId)
+  const stageManagerMigrateDomainId = getDraftDomainId(stageManagerDraft.migrateDomainId)
+  const stageManagerMigrateParentDomainId = getDraftDomainId(stageManagerDraft.migrateParentDomainId)
+  const stageManagerPromoteDestinationSpaces = getDomainSpaces(stageManagerPromoteDomainId)
+  const stageManagerDemoteSpaces = getDomainSpaces(stageManagerDemoteDomainId)
+  const stageManagerMigrateParentSpaces = getDomainSpaces(stageManagerMigrateParentDomainId)
+  const stageManagerDemoteSpace =
+    stageManagerDemoteSpaces.find((space) => space.id === stageManagerDraft.demoteSpaceId) ??
+    (stageManagerDemoteDomainId === state.activeDomainId ? activeSpace : stageManagerDemoteSpaces[0]) ??
+    null
   const stageManagerOtherSpaces = useMemo(
-    () => state.spaces.filter((space) => space.id !== activeSpace.id),
-    [activeSpace.id, state.spaces],
+    () =>
+      getDomainSpaces(stageManagerMigrateDomainId).filter(
+        (space) => !(stageManagerMigrateDomainId === state.activeDomainId && space.id === activeSpace.id),
+      ),
+    [activeSpace.id, stageManagerMigrateDomainId, state.activeDomainId, state.domains],
   )
-  const stageManagerPromoteDestinationSpaces = state.spaces
   const stageManagerDemoteParentOptions = useMemo(
-    () => workspace.tabs.filter((tab) => !stageManagerSelectionSnapshot.fullParentIds.has(tab.id)),
-    [stageManagerSelectionSnapshot.fullParentIds, workspace.tabs],
+    () =>
+      (stageManagerDemoteSpace?.data.tabs ?? []).filter(
+        (tab) =>
+          !(stageManagerDemoteDomainId === state.activeDomainId && stageManagerDemoteSpace?.id === activeSpace.id) ||
+          !stageManagerSelectionSnapshot.fullParentIds.has(tab.id),
+      ),
+    [
+      activeSpace.id,
+      stageManagerDemoteDomainId,
+      stageManagerDemoteSpace,
+      stageManagerSelectionSnapshot.fullParentIds,
+      state.activeDomainId,
+    ],
   )
   const stageManagerSelectedPromoteSpace =
     stageManagerDraft.promoteSpaceMode === 'existing'
@@ -2048,7 +2425,7 @@ function App() {
     stageManagerDraft.migrateParentSpaceMode === 'current'
       ? activeSpace
       : stageManagerDraft.migrateParentSpaceMode === 'existing'
-        ? state.spaces.find((space) => space.id === stageManagerDraft.migrateParentSpaceId) ?? null
+        ? stageManagerMigrateParentSpaces.find((space) => space.id === stageManagerDraft.migrateParentSpaceId) ?? null
         : null
   const stageManagerMigrateParentOptions = useMemo(() => {
     const destinationSpace = stageManagerSelectedMigrateParentSpace
@@ -2079,8 +2456,28 @@ function App() {
         changed = true
       }
 
+      if (!previous.promoteDomainId) {
+        next = { ...next, promoteDomainId: state.activeDomainId }
+        changed = true
+      }
+
+      if (!previous.demoteDomainId) {
+        next = { ...next, demoteDomainId: state.activeDomainId, demoteSpaceId: activeSpace.id }
+        changed = true
+      }
+
+      if (previous.demoteSpaceId && !stageManagerDemoteSpaces.some((space) => space.id === previous.demoteSpaceId)) {
+        next = { ...next, demoteSpaceId: stageManagerDemoteSpaces[0]?.id ?? '' }
+        changed = true
+      }
+
       if (previous.demoteParentId && !stageManagerDemoteParentOptions.some((tab) => tab.id === previous.demoteParentId)) {
         next = { ...next, demoteParentId: '' }
+        changed = true
+      }
+
+      if (!previous.migrateDomainId) {
+        next = { ...next, migrateDomainId: state.activeDomainId }
         changed = true
       }
 
@@ -2092,9 +2489,14 @@ function App() {
       if (
         previous.migrateParentSpaceId &&
         previous.migrateParentSpaceMode === 'existing' &&
-        !stageManagerOtherSpaces.some((space) => space.id === previous.migrateParentSpaceId)
+        !stageManagerMigrateParentSpaces.some((space) => space.id === previous.migrateParentSpaceId)
       ) {
         next = { ...next, migrateParentSpaceId: '' }
+        changed = true
+      }
+
+      if (!previous.migrateParentDomainId) {
+        next = { ...next, migrateParentDomainId: state.activeDomainId }
         changed = true
       }
 
@@ -2128,11 +2530,15 @@ function App() {
   }, [
     viewMode,
     stageManagerDemoteParentOptions,
+    stageManagerDemoteSpaces,
     stageManagerMigrateParentOptions,
     stageManagerOtherSpaces,
     stageManagerPromoteDestinationSpaces,
+    stageManagerMigrateParentSpaces,
     stageManagerSelectionSnapshot.fullParents,
     stageManagerStrayExistingParentOptions,
+    state.activeDomainId,
+    activeSpace.id,
   ])
 
   useEffect(() => {
@@ -2240,7 +2646,7 @@ function App() {
     })
   }, [arrangeMode.active, arrangeMode.scope, viewMode, state.spaces])
 
-  const activeContent = activeSubTab ? activeSubTab.content : activeTab.homeContent
+  const activeContent = getNoteBodyMarkdown(activeNoteBody, resolvedActiveAisleId)
 
   const trashParentTabs = useMemo(() => {
     const buckets: TrashParentBucket[] = workspace.deletedTabs.map((entry) => ({
@@ -2274,6 +2680,7 @@ function App() {
         subTabs: group.entries.map((entry) => ({
           id: entry.id,
           title: entry.subTab.title,
+          noteBodyId: entry.subTab.noteBodyId,
           content: entry.subTab.content,
         })),
       })
@@ -2296,17 +2703,19 @@ function App() {
 
   const trashHomeContent = `# Trash\n\nItems moved here are pending deletion.\n\n- Use **Restore All** to move everything back into notes.\n- Use **delete all** to permanently remove all items in Trash.\n- This Trash note is read-only.`
 
-  const trashContent = selectedTrashSubTab
-    ? selectedTrashSubTab.content
-    : selectedTrashTab
-      ? selectedTrashTab.homeContent
-      : trashHomeContent
+  const trashDisplay = resolveTrashContentDisplay({
+    trashTabId,
+    trashHomeContent,
+    selectedTrashTab,
+    selectedTrashSubTab,
+  })
 
-  const displayContent = viewMode === 'trash' ? trashContent : activeContent
+  const displayContent = viewMode === 'trash' ? trashDisplay.markdown : activeContent
 
   activeSpaceIdRef.current = activeSpace.id
   activeTabIdRef.current = activeTab.id
   activeSubTabIdRef.current = activeSubTab?.id ?? null
+  activeAisleIdRef.current = resolvedActiveAisleId
   isMainViewRef.current = viewMode === 'main'
 
   const updateActiveSpaceData = (updater: (data: WorkspaceData) => WorkspaceData) => {
@@ -2314,6 +2723,213 @@ function App() {
       const sanitizedPrevious = applyAutoPurgeToAppState(previous)
       return updateActiveSpaceDataInActiveDomain(sanitizedPrevious, updater)
     })
+  }
+
+  const getCurrentNoteLocation = (): NoteLocation => ({
+    domainId: state.activeDomainId,
+    spaceId: activeSpace.id,
+    tabId: activeTab.id,
+    subTabId: activeSubTab?.id ?? null,
+  })
+
+  const getLocationInfo = (sourceState: AppState, location: NoteLocation) => {
+    const activeDomain = sourceState.domains.find((candidate) => candidate.id === sourceState.activeDomainId) ?? null
+    const domain =
+      location.domainId === sourceState.activeDomainId && activeDomain
+        ? { ...activeDomain, spaces: sourceState.spaces }
+        : sourceState.domains.find((candidate) => candidate.id === location.domainId) ?? null
+    const space = domain?.spaces.find((candidate) => candidate.id === location.spaceId) ?? null
+    const tab = space?.data.tabs.find((candidate) => candidate.id === location.tabId) ?? null
+    const subTab = location.subTabId && tab ? tab.subTabs.find((candidate) => candidate.id === location.subTabId) ?? null : null
+    const noteBodyId = subTab?.noteBodyId ?? tab?.noteBodyId ?? ''
+    const title = subTab?.title ?? tab?.title ?? 'note'
+    return { domain, space, tab, subTab, noteBodyId, title }
+  }
+
+  const getFirstNoteLocation = (sourceState: AppState, excludedLocation?: NoteLocation): NoteLocation => {
+    const excludedKey = excludedLocation ? buildNoteLocationKey(excludedLocation) : ''
+    const domains = sourceState.domains.map((domain) =>
+      domain.id === sourceState.activeDomainId ? { ...domain, spaces: sourceState.spaces } : domain,
+    )
+    let fallback: NoteLocation | null = null
+    for (const domain of domains) {
+      for (const space of domain.spaces) {
+        for (const tab of space.data.tabs) {
+          const homeLocation = { domainId: domain.id, spaceId: space.id, tabId: tab.id, subTabId: null }
+          fallback ??= homeLocation
+          if (buildNoteLocationKey(homeLocation) !== excludedKey) return homeLocation
+          for (const subTab of tab.subTabs) {
+            const subTabLocation = { domainId: domain.id, spaceId: space.id, tabId: tab.id, subTabId: subTab.id }
+            if (buildNoteLocationKey(subTabLocation) !== excludedKey) return subTabLocation
+          }
+        }
+      }
+    }
+    return fallback ?? getCurrentNoteLocation()
+  }
+
+  const getDefaultNoteReferenceTarget = (sourceState: AppState, source: NoteLocation): NoteLocation => {
+    const sourceInfo = getLocationInfo(sourceState, source)
+    if (!sourceInfo.domain || !sourceInfo.space || !sourceInfo.tab) {
+      return getFirstNoteLocation(sourceState, source)
+    }
+
+    const candidates: NoteLocation[] = [
+      {
+        domainId: source.domainId,
+        spaceId: source.spaceId,
+        tabId: source.tabId,
+        subTabId: null,
+      },
+      ...sourceInfo.tab.subTabs.map((subTab) => ({
+        domainId: source.domainId,
+        spaceId: source.spaceId,
+        tabId: source.tabId,
+        subTabId: subTab.id,
+      })),
+    ]
+    const sourceKey = buildNoteLocationKey(source)
+    return candidates.find((candidate) => buildNoteLocationKey(candidate) !== sourceKey) ?? source
+  }
+
+  const listNoteLocationsForBody = (sourceState: AppState, noteBodyId: string): Array<NoteLocation & { title: string; label: string }> => {
+    const domains = sourceState.domains.map((domain) =>
+      domain.id === sourceState.activeDomainId ? { ...domain, spaces: sourceState.spaces } : domain,
+    )
+    const locations: Array<NoteLocation & { title: string; label: string }> = []
+    for (const domain of domains) {
+      for (const space of domain.spaces) {
+        for (const tab of space.data.tabs) {
+          if (tab.noteBodyId === noteBodyId) {
+            locations.push({
+              domainId: domain.id,
+              spaceId: space.id,
+              tabId: tab.id,
+              subTabId: null,
+              title: tab.title,
+              label: `${domain.name} / ${space.name} / ${tab.title} / home`,
+            })
+          }
+          for (const subTab of tab.subTabs) {
+            if (subTab.noteBodyId !== noteBodyId) continue
+            locations.push({
+              domainId: domain.id,
+              spaceId: space.id,
+              tabId: tab.id,
+              subTabId: subTab.id,
+              title: subTab.title,
+              label: `${domain.name} / ${space.name} / ${tab.title} / ${subTab.title}`,
+            })
+          }
+        }
+      }
+    }
+    return locations
+  }
+
+  const updateNoteLocationBody = (sourceState: AppState, location: NoteLocation, noteBodyId: string): AppState => {
+    const domains = sourceState.domains.map((domain) =>
+      domain.id === sourceState.activeDomainId ? { ...domain, activeSpaceId: sourceState.activeSpaceId, spaces: sourceState.spaces } : domain,
+    )
+    const nextDomains = domains.map((domain) => {
+      if (domain.id !== location.domainId) return domain
+      return {
+        ...domain,
+        spaces: domain.spaces.map((space) => {
+          if (space.id !== location.spaceId) return space
+          return {
+            ...space,
+            data: {
+              ...space.data,
+              tabs: space.data.tabs.map((tab) => {
+                if (tab.id !== location.tabId) return tab
+                if (location.subTabId === null) return { ...tab, noteBodyId }
+                return {
+                  ...tab,
+                  subTabs: tab.subTabs.map((subTab) =>
+                    subTab.id === location.subTabId ? { ...subTab, noteBodyId } : subTab,
+                  ),
+                }
+              }),
+            },
+          }
+        }),
+      }
+    })
+    const activeDomain = nextDomains.find((domain) => domain.id === sourceState.activeDomainId) ?? nextDomains[0]
+    return {
+      ...sourceState,
+      domains: nextDomains,
+      spaces: activeDomain?.spaces ?? sourceState.spaces,
+      activeSpaceId: activeDomain?.activeSpaceId ?? sourceState.activeSpaceId,
+    }
+  }
+
+  const getContextReferenceSignature = (sourceState: AppState, payload: NoteContextReferencePayload) => {
+    const targetBodyId = getLocationInfo(sourceState, payload.target).noteBodyId
+    return `${targetBodyId || buildNoteLocationKey(payload.target)}::${normalizeAisleSelection(payload.aisleIds)}`
+  }
+
+  const wouldCreateContextCycle = (
+    sourceState: AppState,
+    targetNoteBodyId: string,
+    blockedNoteBodyId: string,
+    visited = new Set<string>(),
+  ): boolean => {
+    if (!targetNoteBodyId || !blockedNoteBodyId) return false
+    if (targetNoteBodyId === blockedNoteBodyId) return true
+    if (visited.has(targetNoteBodyId)) return false
+    if (visited.size >= MAX_CONTEXT_RENDER_DEPTH * 8) return true
+
+    visited.add(targetNoteBodyId)
+    const targetBody = sourceState.noteBodies.find((body) => body.id === targetNoteBodyId)
+    if (!targetBody) return false
+
+    for (const aisle of targetBody.aisles) {
+      for (const reference of parseContextReferences(aisle.markdown)) {
+        const childBodyId = getLocationInfo(sourceState, reference.payload.target).noteBodyId
+        if (wouldCreateContextCycle(sourceState, childBodyId, blockedNoteBodyId, visited)) return true
+      }
+    }
+    return false
+  }
+
+  const replaceContextTokenById = (markdown: string, tokenId: string, nextToken: string) =>
+    markdown.replace(NOTE_CONTEXT_REFERENCE_RE, (token, encoded) => {
+      const payload = decodeContextPayload(encoded)
+      return payload?.id === tokenId ? nextToken : token
+    })
+
+  const navigateToNoteLocation = (location: NoteLocation) => {
+    flushPendingContent()
+    const targetInfo = getLocationInfo(stateRef.current, location)
+    if (!targetInfo.domain || !targetInfo.space || !targetInfo.tab || (location.subTabId && !targetInfo.subTab)) {
+      pushToast('that note no longer exists.', 'warning')
+      return
+    }
+
+    if (arrangeMode.active) {
+      exitArrangeMode()
+    }
+
+    setState((previous) => {
+      const domainState = setActiveDomain(previous, location.domainId)
+      const spaceState = setActiveSpaceInActiveDomain(domainState, location.spaceId)
+      return updateSpaceInActiveDomain(spaceState, location.spaceId, (space) => ({
+        ...space,
+        data: {
+          ...space.data,
+          activeTabId: location.tabId,
+          tabs: space.data.tabs.map((tab) =>
+            tab.id === location.tabId ? { ...tab, activeSubTabId: location.subTabId ?? null } : tab,
+          ),
+        },
+      }))
+    })
+    setViewMode('main')
+    setMenuOpen(false)
+    setContextMenu(null)
+    setEditing(null)
   }
 
   const areNavLocationsEqual = (a: NavLocation, b: NavLocation) =>
@@ -2400,8 +3016,14 @@ function App() {
     return false
   }
 
-  const applyContentToTarget = (spaceId: string, tabId: string, subTabId: string | null, markdown: string) => {
-    setState((previous) => applyMarkdownToAppState(previous, spaceId, tabId, subTabId, markdown))
+  const applyContentToTarget = (
+    spaceId: string,
+    tabId: string,
+    subTabId: string | null,
+    aisleId: string,
+    markdown: string,
+  ) => {
+    setState((previous) => applyMarkdownToAppState(previous, spaceId, tabId, subTabId, aisleId, markdown))
   }
 
   const buildStateWithLatestEditorContent = () => {
@@ -2409,7 +3031,14 @@ function App() {
     const pending = pendingContentRef.current
     if (pending) {
       return applyAutoPurgeToAppState(
-        applyMarkdownToAppState(nextState, pending.spaceId, pending.tabId, pending.subTabId, pending.markdown),
+        applyMarkdownToAppState(
+          nextState,
+          pending.spaceId,
+          pending.tabId,
+          pending.subTabId,
+          pending.aisleId,
+          pending.markdown,
+        ),
       )
     }
 
@@ -2423,6 +3052,7 @@ function App() {
       activeSpaceIdRef.current,
       activeTabIdRef.current,
       activeSubTabIdRef.current,
+      activeAisleIdRef.current,
       markdown,
     )
     return applyAutoPurgeToAppState(nextState)
@@ -2449,7 +3079,7 @@ function App() {
     if (pendingContentRef.current) {
       const pending = pendingContentRef.current
       pendingContentRef.current = null
-      applyContentToTarget(pending.spaceId, pending.tabId, pending.subTabId, pending.markdown)
+      applyContentToTarget(pending.spaceId, pending.tabId, pending.subTabId, pending.aisleId, pending.markdown)
       return
     }
 
@@ -2457,13 +3087,27 @@ function App() {
 
     if (!editorRef.current) return
     const markdown = lastEditorMarkdownRef.current
-    applyContentToTarget(activeSpaceIdRef.current, activeTabIdRef.current, activeSubTabIdRef.current, markdown)
+    applyContentToTarget(
+      activeSpaceIdRef.current,
+      activeTabIdRef.current,
+      activeSubTabIdRef.current,
+      activeAisleIdRef.current,
+      markdown,
+    )
   }
 
-  const scheduleContentCommit = (markdown: string, spaceId: string, tabId: string, subTabId: string | null) => {
+  const scheduleContentCommit = (
+    markdown: string,
+    spaceId: string,
+    tabId: string,
+    subTabId: string | null,
+    aisleId: string,
+  ) => {
     const normalizedMarkdown = normalizeMarkdownForPersistence(markdown)
-    lastEditorMarkdownRef.current = normalizedMarkdown
-    pendingContentRef.current = { spaceId, tabId, subTabId, markdown: normalizedMarkdown }
+    if (aisleId === activeAisleIdRef.current) {
+      lastEditorMarkdownRef.current = normalizedMarkdown
+    }
+    pendingContentRef.current = { spaceId, tabId, subTabId, aisleId, markdown: normalizedMarkdown }
 
     if (saveTimerRef.current !== null) {
       window.clearTimeout(saveTimerRef.current)
@@ -2474,18 +3118,101 @@ function App() {
       if (!pendingContentRef.current) return
       const next = pendingContentRef.current
       pendingContentRef.current = null
-      applyContentToTarget(next.spaceId, next.tabId, next.subTabId, next.markdown)
+      applyContentToTarget(next.spaceId, next.tabId, next.subTabId, next.aisleId, next.markdown)
     }, 180)
   }
 
-  const isTrashHomeSelected = viewMode === 'trash' && trashTabId === TRASH_HOME_ID
+  const addAisleToActiveNote = () => {
+    if (!activeNoteBodyId) return
+    const currentAisleCount = activeNoteBody?.aisles.length ?? 0
+    if (currentAisleCount <= 0) return
+    if (currentAisleCount >= MAX_NOTE_AISLES) {
+      pushToast(`notes can have at most ${MAX_NOTE_AISLES} aisles.`, 'warning')
+      return
+    }
+
+    const newAisle: NoteAisle = { id: createId(), markdown: '' }
+    flushPendingContent()
+    setState((previous) => {
+      const body = previous.noteBodies.find((candidate) => candidate.id === activeNoteBodyId)
+      if (!body) return previous
+      if (body.aisles.length >= MAX_NOTE_AISLES) return previous
+      return {
+        ...previous,
+        noteBodies: previous.noteBodies.map((candidate) =>
+          candidate.id === activeNoteBodyId ? { ...candidate, aisles: [...candidate.aisles, newAisle] } : candidate,
+        ),
+      }
+    })
+    setActiveAisleId(newAisle.id)
+    setAisleDeleteMode(false)
+  }
+
+  const deleteAisleFromActiveNote = (aisleId: string) => {
+    if (!activeNoteBody) return
+    if (activeNoteBody.aisles.length <= 1) {
+      pushToast('a note must keep at least one aisle.', 'warning')
+      return
+    }
+
+    const aisle = activeNoteBody.aisles.find((candidate) => candidate.id === aisleId)
+    if (!aisle) return
+    if (aisle.markdown.trim().length > 0 && !window.confirm('delete this aisle and its text?')) return
+
+    flushPendingContent()
+    const fallbackAisleId = activeNoteBody.aisles.find((candidate) => candidate.id !== aisleId)?.id ?? ''
+    setState((previous) => ({
+      ...previous,
+      noteBodies: previous.noteBodies.map((body) =>
+        body.id === activeNoteBody.id
+          ? { ...body, aisles: body.aisles.filter((candidate) => candidate.id !== aisleId) }
+          : body,
+      ),
+    }))
+    if (activeAisleIdRef.current === aisleId) {
+      setActiveAisleId(fallbackAisleId)
+    }
+  }
+
+  useEffect(() => {
+    if (activeNoteAisles.length <= 1 && aisleDeleteMode) {
+      setAisleDeleteMode(false)
+    }
+  }, [activeNoteAisles.length, aisleDeleteMode])
+
+  useEffect(() => {
+    if (viewMode !== 'trash') return
+
+    if (trashTabId === TRASH_HOME_ID) {
+      if (trashSubTabId !== null) setTrashSubTabId(null)
+      return
+    }
+
+    if (!selectedTrashTab) {
+      setTrashTabId(TRASH_HOME_ID)
+      setTrashSubTabId(null)
+      return
+    }
+
+    if (trashSubTabId && !selectedTrashSubTab) {
+      setTrashSubTabId(null)
+    }
+  }, [viewMode, trashTabId, trashSubTabId, selectedTrashTab, selectedTrashSubTab])
+
+  const isTrashHomeSelected = viewMode === 'trash' && trashDisplay.mode === 'home'
   const isEditorView = viewMode === 'main' || (viewMode === 'trash' && !isTrashHomeSelected)
 
   const commitCurrentEditorContent = () => {
     if (!isMainViewRef.current) return
     if (!editorRef.current) return
     const markdown = lastEditorMarkdownRef.current
-    scheduleContentCommit(markdown, activeSpaceIdRef.current, activeTabIdRef.current, activeSubTabIdRef.current)
+    scheduleContentCommit(
+      markdown,
+      activeSpaceIdRef.current,
+      activeTabIdRef.current,
+      activeSubTabIdRef.current,
+      activeAisleIdRef.current,
+    )
   }
 
   const focusEditorAtDocumentStart = () => {
@@ -2533,9 +3260,17 @@ function App() {
 
     pendingContentRef.current = null
     normalizingContentRef.current = false
+    normalizingAisleIdsRef.current.delete(activeAisleIdRef.current)
     lastEditorMarkdownRef.current = ''
+    lastEditorMarkdownByAisleRef.current.set(activeAisleIdRef.current, '')
     currentEditor.setMarkdown('', false)
-    scheduleContentCommit('', activeSpaceIdRef.current, activeTabIdRef.current, activeSubTabIdRef.current)
+    scheduleContentCommit(
+      '',
+      activeSpaceIdRef.current,
+      activeTabIdRef.current,
+      activeSubTabIdRef.current,
+      activeAisleIdRef.current,
+    )
 
     window.requestAnimationFrame(() => {
       focusEditorAtDocumentStart()
@@ -2543,10 +3278,66 @@ function App() {
   }
 
   const getActiveNoteHistoryKey = () =>
-    [activeSpaceIdRef.current, activeTabIdRef.current, activeSubTabIdRef.current ?? '__home__'].join('::')
+    [
+      activeSpaceIdRef.current,
+      activeTabIdRef.current,
+      activeSubTabIdRef.current ?? '__home__',
+      activeAisleIdRef.current,
+    ].join('::')
 
   const getNormalizedEditorMarkdown = (editor: Editor) =>
     normalizeMarkdownForPersistence(mergeLeadingIndentsFromWysiwyg(editor, editor.getMarkdown()))
+
+  const isPendingCreatedRenameActive = () => {
+    return Boolean(pendingCreatedEditRef.current)
+  }
+
+  const activateAisleEditor = (
+    editorKey: string,
+    options: { flushPrevious?: boolean; focus?: boolean; allowDuringPendingRename?: boolean } = {},
+  ) => {
+    if (isPendingCreatedRenameActive() && !options.allowDuringPendingRename) return false
+    const meta = aisleEditorMetaRef.current.get(editorKey)
+    if (!meta) return false
+
+    const switchingAisle = activeAisleIdRef.current !== meta.aisleId
+    if (switchingAisle && options.flushPrevious) {
+      flushPendingContent()
+      clearMultiLineEdit(false)
+      closeImageTools()
+    }
+
+    editorRef.current = meta.editor
+    activeAisleIdRef.current = meta.aisleId
+    multiLineCursorPluginKeyRef.current = meta.pluginKey
+    const markdown = getNormalizedEditorMarkdown(meta.editor)
+    lastEditorMarkdownRef.current = markdown
+    lastEditorMarkdownByAisleRef.current.set(meta.aisleId, markdown)
+    if (activeAisleId !== meta.aisleId) {
+      setActiveAisleId(meta.aisleId)
+    }
+    if (options.focus) {
+      meta.editor.focus()
+    }
+    return true
+  }
+
+  const activateEditorFromEventTarget = (target: EventTarget | null) => {
+    const element = getElementFromEventTarget(target)
+    if (!element) return false
+    const host = element.closest('[data-aisle-editor-key]')
+    if (!(host instanceof HTMLElement)) return false
+    const editorKey = host.dataset.aisleEditorKey
+    return editorKey ? activateAisleEditor(editorKey, { flushPrevious: true }) : false
+  }
+
+  const registerAisleEditorRoot = (editorKey: string, node: HTMLElement | null) => {
+    if (node) {
+      aisleEditorRootsRef.current.set(editorKey, node)
+    } else {
+      aisleEditorRootsRef.current.delete(editorKey)
+    }
+  }
 
   const recordMultiLineEditHistory = (
     beforeMarkdown: string,
@@ -2670,6 +3461,7 @@ function App() {
         activeSpaceIdRef.current,
         activeTabIdRef.current,
         activeSubTabIdRef.current,
+        activeAisleIdRef.current,
       )
       window.requestAnimationFrame(() => {
         if (isCollapsedSelection) {
@@ -2727,6 +3519,7 @@ function App() {
       activeSpaceIdRef.current,
       activeTabIdRef.current,
       activeSubTabIdRef.current,
+      activeAisleIdRef.current,
     )
     window.requestAnimationFrame(() => {
       if (isCollapsedSelection) {
@@ -2954,7 +3747,7 @@ function App() {
         delete window.__tabsHandleMultilineShortcut
       }
     }
-  }, [isEditorView])
+  }, [isEditorView, resolvedActiveAisleId])
 
   const tryApplyMultiLineEditInput = (input: MultiLineEditInput) => {
     const currentEditor = editorRef.current as
@@ -3107,6 +3900,7 @@ function App() {
       activeSpaceIdRef.current,
       activeTabIdRef.current,
       activeSubTabIdRef.current,
+      activeAisleIdRef.current,
     )
     if (multiLineEditRef.current) {
       recordMultiLineEditHistory(beforeMarkdown, beforeState, markdownAfterMultiLineEdit, multiLineEditRef.current)
@@ -3230,6 +4024,7 @@ function App() {
       activeSpaceIdRef.current,
       activeTabIdRef.current,
       activeSubTabIdRef.current,
+      activeAisleIdRef.current,
     )
     if (multiLineEditRef.current) {
       recordMultiLineEditHistory(beforeMarkdown, beforeState, markdownAfterCut, multiLineEditRef.current)
@@ -3268,14 +4063,219 @@ function App() {
     setLinkPrompt({ open: false, top: 0, left: 0, url: '', text: '' })
   }
 
+  const commitActiveEditorMarkdownNow = (editor: Editor) => {
+    const normalized = getNormalizedEditorMarkdown(editor)
+    lastEditorMarkdownRef.current = normalized
+    lastEditorMarkdownByAisleRef.current.set(activeAisleIdRef.current, normalized)
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+    }
+    pendingContentRef.current = null
+    applyContentToTarget(
+      activeSpaceIdRef.current,
+      activeTabIdRef.current,
+      activeSubTabIdRef.current,
+      activeAisleIdRef.current,
+      normalized,
+    )
+    return normalized
+  }
+
+  const runActiveEditorCommand = (command: string, payload?: Record<string, unknown>) => {
+    const currentEditor = editorRef.current
+    if (!currentEditor) return false
+    currentEditor.focus()
+    getCommandCapableEditor(currentEditor).exec(command, payload)
+    window.setTimeout(() => {
+      if (editorRef.current === currentEditor) {
+        commitActiveEditorMarkdownNow(currentEditor)
+      }
+    }, 0)
+    return true
+  }
+
+  const insertLinkIntoActiveEditor = (label: string, url: string) => {
+    const currentEditor = editorRef.current
+    if (!currentEditor) return false
+    currentEditor.focus()
+    getCommandCapableEditor(currentEditor).exec('addLink', { linkUrl: url, linkText: label })
+    commitActiveEditorMarkdownNow(currentEditor)
+    return true
+  }
+
   const insertNamedLinkFromPrompt = () => {
     if (!linkPrompt.url) return
     const label = linkPrompt.text.trim() || linkPrompt.url
-    const markdownLink = `[${label}](${linkPrompt.url})`
-    editorRef.current?.focus()
-    document.execCommand('insertText', false, markdownLink)
+    insertLinkIntoActiveEditor(label, linkPrompt.url)
     closeLinkPrompt()
-    commitCurrentEditorContent()
+  }
+
+  const insertTextIntoActiveEditor = (text: string) => {
+    const currentEditor = editorRef.current
+    if (!currentEditor) return false
+    currentEditor.focus()
+    getCommandCapableEditor(currentEditor).insertText(text)
+    commitActiveEditorMarkdownNow(currentEditor)
+    return true
+  }
+
+  const replaceActiveEditorMarkdown = (markdown: string) => {
+    const normalized = normalizeMarkdownForPersistence(markdown)
+    lastEditorMarkdownRef.current = normalized
+    const currentEditor = editorRef.current
+    currentEditor?.setMarkdown(normalized, false)
+    if (currentEditor) {
+      commitActiveEditorMarkdownNow(currentEditor)
+      return
+    }
+    scheduleContentCommit(
+      normalized,
+      activeSpaceIdRef.current,
+      activeTabIdRef.current,
+      activeSubTabIdRef.current,
+      activeAisleIdRef.current,
+    )
+  }
+
+  const getActiveEditorMarkdown = () =>
+    editorRef.current ? getNormalizedEditorMarkdown(editorRef.current) : getNoteBodyMarkdown(activeNoteBody, resolvedActiveAisleId)
+
+  const insertNoteReference = (modalState: Extract<ModalState, { type: 'insert-note-reference' }>) => {
+    const latestState = stateRef.current
+    const targetInfo = getLocationInfo(latestState, modalState.target)
+    if (!targetInfo.domain || !targetInfo.space || !targetInfo.tab || !targetInfo.noteBodyId) {
+      pushToast('choose an existing note.', 'warning')
+      return false
+    }
+
+    if (modalState.insertAs === 'link') {
+      if (!insertLinkIntoActiveEditor(targetInfo.title, buildInternalNoteUrl(targetInfo.noteBodyId, modalState.target))) {
+        pushToast('open a note before inserting a link.', 'warning')
+        return false
+      }
+      pushToast('note link inserted.', 'success')
+      return true
+    }
+
+    if (!activeNoteBodyId || targetInfo.noteBodyId === activeNoteBodyId) {
+      pushToast('a note cannot preview itself.', 'warning')
+      return false
+    }
+
+    if (wouldCreateContextCycle(latestState, targetInfo.noteBodyId, activeNoteBodyId)) {
+      pushToast('note preview blocked to prevent recursion.', 'warning')
+      return false
+    }
+
+    const markdown = getActiveEditorMarkdown()
+    const nextPayload: NoteContextReferencePayload = {
+      id: modalState.editingTokenId ?? createId(),
+      target: {
+        domainId: modalState.target.domainId,
+        spaceId: modalState.target.spaceId,
+        tabId: modalState.target.tabId,
+        subTabId: modalState.target.subTabId,
+      },
+      aisleIds: modalState.target.aisleIds && modalState.target.aisleIds.length > 0 ? modalState.target.aisleIds : undefined,
+    }
+    const nextSignature = getContextReferenceSignature(latestState, nextPayload)
+    const activeBody = latestState.noteBodies.find((body) => body.id === activeNoteBodyId) ?? null
+    const noteMarkdowns = activeBody
+      ? activeBody.aisles.map((aisle) => (aisle.id === activeAisleIdRef.current ? markdown : aisle.markdown))
+      : [markdown]
+    const duplicateReference = noteMarkdowns.flatMap(parseContextReferences).find(
+      (reference) =>
+        reference.payload.id !== modalState.editingTokenId &&
+        getContextReferenceSignature(latestState, reference.payload) === nextSignature,
+    )
+    if (duplicateReference) {
+      pushToast('that note preview already exists in this note.', 'warning')
+      return false
+    }
+
+    const token = buildContextToken(nextPayload)
+    if (modalState.editingTokenId) {
+      replaceActiveEditorMarkdown(replaceContextTokenById(markdown, modalState.editingTokenId, token))
+      pushToast('note preview settings updated.', 'success')
+      return true
+    }
+
+    if (!insertTextIntoActiveEditor(`\n\n${token}\n\n`)) {
+      pushToast('open a note before inserting a note preview.', 'warning')
+      return false
+    }
+    pushToast('note preview inserted.', 'success')
+    return true
+  }
+
+  const handleAisleEditorChange = (editorKey: string, aisleId: string, editor: Editor) => {
+    if (!isMainViewRef.current) return
+    activateAisleEditor(editorKey)
+    const markdown = getNormalizedEditorMarkdown(editor)
+    const previousMarkdown = lastEditorMarkdownByAisleRef.current.get(aisleId) ?? ''
+
+    if (normalizingAisleIdsRef.current.has(aisleId)) {
+      normalizingAisleIdsRef.current.delete(aisleId)
+      const normalizedMarkdown = lastEditorMarkdownByAisleRef.current.get(aisleId) ?? markdown
+      lastEditorMarkdownRef.current = normalizedMarkdown
+      scheduleContentCommit(
+        normalizedMarkdown,
+        activeSpaceIdRef.current,
+        activeTabIdRef.current,
+        activeSubTabIdRef.current,
+        aisleId,
+      )
+      return
+    }
+
+    if (normalizingContentRef.current && activeAisleIdRef.current === aisleId) {
+      normalizingContentRef.current = false
+      const normalizedMarkdown = lastEditorMarkdownRef.current
+      lastEditorMarkdownByAisleRef.current.set(aisleId, normalizedMarkdown)
+      scheduleContentCommit(
+        normalizedMarkdown,
+        activeSpaceIdRef.current,
+        activeTabIdRef.current,
+        activeSubTabIdRef.current,
+        aisleId,
+      )
+      return
+    }
+
+    const normalized = normalizeHeadingMarkers(markdown)
+    if (normalized !== markdown) {
+      lastEditorMarkdownRef.current = normalized
+      lastEditorMarkdownByAisleRef.current.set(aisleId, normalized)
+      scheduleContentCommit(
+        normalized,
+        activeSpaceIdRef.current,
+        activeTabIdRef.current,
+        activeSubTabIdRef.current,
+        aisleId,
+      )
+      return
+    }
+
+    const materializedHorizontalRule = materializeHorizontalRuleShortcut(previousMarkdown, markdown)
+    if (materializedHorizontalRule && materializedHorizontalRule !== markdown) {
+      normalizingAisleIdsRef.current.add(aisleId)
+      lastEditorMarkdownRef.current = materializedHorizontalRule
+      lastEditorMarkdownByAisleRef.current.set(aisleId, materializedHorizontalRule)
+      editor.setMarkdown(materializedHorizontalRule, false)
+      return
+    }
+
+    maybeShowCompletedTaskUndoHint(markdown)
+    lastEditorMarkdownRef.current = markdown
+    lastEditorMarkdownByAisleRef.current.set(aisleId, markdown)
+    scheduleContentCommit(
+      markdown,
+      activeSpaceIdRef.current,
+      activeTabIdRef.current,
+      activeSubTabIdRef.current,
+      aisleId,
+    )
   }
 
   const closeImageTools = () => {
@@ -3587,7 +4587,461 @@ function App() {
     }
   }, [inlineCrop.active])
 
+  const getContextPreviewData = (payload: NoteContextReferencePayload, sourceNoteBodyId: string) => {
+    const latestState = stateRef.current
+    const targetInfo = getLocationInfo(latestState, payload.target)
+    const targetBody = latestState.noteBodies.find((body) => body.id === targetInfo.noteBodyId) ?? null
+    const selectedAisles =
+      targetBody && payload.aisleIds && payload.aisleIds.length > 0
+        ? targetBody.aisles.filter((aisle) => payload.aisleIds?.includes(aisle.id))
+        : targetBody?.aisles ?? []
+    const recursiveBlocked =
+      !targetBody ||
+      !targetInfo.noteBodyId ||
+      targetInfo.noteBodyId === sourceNoteBodyId ||
+      wouldCreateContextCycle(latestState, targetInfo.noteBodyId, sourceNoteBodyId)
+    const previewText = selectedAisles
+      .map((aisle) => aisle.markdown.trim())
+      .filter(Boolean)
+      .join('\n\n')
+    const locationLabel = targetInfo.domain && targetInfo.space && targetInfo.tab
+      ? `${targetInfo.domain.name} / ${targetInfo.space.name} / ${targetInfo.tab.title}${targetInfo.subTab ? ` / ${targetInfo.subTab.title}` : ' / index'}`
+      : 'missing note'
+    const displayTitle = targetInfo.tab
+      ? `${targetInfo.tab.title} > ${targetInfo.subTab ? targetInfo.subTab.title : 'index'}`
+      : targetInfo.title
+
+    return { targetInfo, targetBody, selectedAisles, recursiveBlocked, previewText, locationLabel, displayTitle }
+  }
+
+  const createContextPreviewWidgetElement = (payload: NoteContextReferencePayload, sourceNoteBodyId: string) => {
+    const wrapper = document.createElement('span')
+    wrapper.className = 'context-bar note-context-widget'
+    wrapper.setAttribute('contenteditable', 'false')
+
+    const topBar = document.createElement('span')
+    topBar.className = 'context-bar-top'
+    const titleButton = document.createElement('button')
+    titleButton.type = 'button'
+    titleButton.className = 'context-bar-title'
+    const actions = document.createElement('span')
+    actions.className = 'context-bar-actions'
+    const minimizeButton = document.createElement('button')
+    minimizeButton.type = 'button'
+    minimizeButton.className = 'context-bar-icon-btn context-bar-minimize-btn'
+    const expandButton = document.createElement('button')
+    expandButton.type = 'button'
+    expandButton.className = 'context-bar-icon-btn'
+    const lowerBar = document.createElement('span')
+    lowerBar.className = 'context-bar-lower'
+
+    let expanded = false
+    let minimized = false
+    let contextEditorCleanups: Array<() => void> = []
+
+    const stopWidgetEvent = (event: Event) => {
+      event.preventDefault()
+      event.stopPropagation()
+    }
+
+    const clearLowerBar = () => {
+      contextEditorCleanups.forEach((cleanup) => cleanup())
+      contextEditorCleanups = []
+      lowerBar.replaceChildren()
+    }
+
+    const renderContextEditor = (aisle: NoteAisle) => {
+      const shell = document.createElement('span')
+      shell.className = 'context-bar-editor'
+      const editorHost = document.createElement('span')
+      editorHost.className = 'context-preview-editor-host is-readonly'
+      const heightRem = expanded ? NOTE_PREVIEW_EXPANDED_HEIGHT_REM : NOTE_PREVIEW_DEFAULT_HEIGHT_REM
+      editorHost.style.setProperty('--note-preview-editor-height', `${heightRem}rem`)
+
+      const stopOuterEditorEvent = (event: Event) => {
+        event.stopPropagation()
+        if (event.type === 'keydown' || event.type === 'beforeinput' || event.type === 'paste' || event.type === 'drop') {
+          event.preventDefault()
+        }
+      }
+      ;['pointerdown', 'mousedown', 'click', 'keydown', 'beforeinput', 'paste', 'drop'].forEach((eventName) => {
+        editorHost.addEventListener(eventName, stopOuterEditorEvent, true)
+      })
+
+      const editor = new Editor({
+        el: editorHost,
+        initialValue: aisle.markdown,
+        initialEditType: 'wysiwyg',
+        previewStyle: 'tab',
+        hideModeSwitch: true,
+        toolbarItems: [],
+        height: `${heightRem}rem`,
+        autofocus: false,
+        usageStatistics: false,
+        plugins: [headingSpaceShortcutPlugin, thematicBreakShortcutPlugin],
+      })
+
+      const view = getWysiwygView(editor)
+      if (view?.setProps) {
+        view.setProps({ editable: () => false })
+        view.dom?.setAttribute?.('contenteditable', 'false')
+      }
+
+      contextEditorCleanups.push(() => {
+        ;['pointerdown', 'mousedown', 'click', 'keydown', 'beforeinput', 'paste', 'drop'].forEach((eventName) => {
+          editorHost.removeEventListener(eventName, stopOuterEditorEvent, true)
+        })
+        try {
+          editor.destroy()
+        } catch {
+          // Toast UI can throw if an embedded editor is destroyed during ProseMirror widget cleanup.
+        }
+      })
+
+      shell.append(editorHost)
+      return shell
+    }
+
+    const renderLowerBar = () => {
+      const data = getContextPreviewData(payload, sourceNoteBodyId)
+      wrapper.classList.toggle('is-blocked', data.recursiveBlocked)
+      wrapper.classList.toggle('is-minimized', minimized)
+      titleButton.textContent = data.displayTitle
+      titleButton.title = data.locationLabel
+      minimizeButton.classList.toggle('is-restore', minimized)
+      minimizeButton.title = minimized ? 'Restore note preview' : 'Minimize note preview'
+      minimizeButton.setAttribute('aria-label', minimizeButton.title)
+      expandButton.textContent = expanded ? '-' : '+'
+      expandButton.title = expanded ? 'Shrink note preview' : 'Expand note preview'
+      expandButton.setAttribute('aria-label', expandButton.title)
+      clearLowerBar()
+
+      lowerBar.hidden = minimized
+      if (minimized) return
+
+      if (data.recursiveBlocked) {
+        lowerBar.textContent = 'note preview blocked to prevent recursive rendering.'
+        return
+      }
+
+      const editorGroup = document.createElement('span')
+      editorGroup.className = 'context-bar-editors'
+      data.selectedAisles.forEach((aisle) => {
+        editorGroup.append(renderContextEditor(aisle))
+      })
+      lowerBar.append(editorGroup)
+    }
+
+    titleButton.addEventListener('mousedown', stopWidgetEvent)
+    titleButton.addEventListener('click', (event) => {
+      stopWidgetEvent(event)
+      const data = getContextPreviewData(payload, sourceNoteBodyId)
+      if (!data.recursiveBlocked) navigateToNoteLocation(payload.target)
+    })
+    minimizeButton.addEventListener('mousedown', stopWidgetEvent)
+    minimizeButton.addEventListener('click', (event) => {
+      stopWidgetEvent(event)
+      minimized = !minimized
+      renderLowerBar()
+    })
+    expandButton.addEventListener('mousedown', stopWidgetEvent)
+    expandButton.addEventListener('click', (event) => {
+      stopWidgetEvent(event)
+      expanded = !expanded
+      renderLowerBar()
+    })
+
+    actions.append(minimizeButton, expandButton)
+    topBar.append(titleButton, actions)
+    wrapper.append(topBar, lowerBar)
+    renderLowerBar()
+    ;(wrapper as HTMLElement & { destroyNotePreview?: () => void }).destroyNotePreview = () => {
+      clearLowerBar()
+    }
+    return wrapper
+  }
+
+  const createInternalNoteLinkWidgetElement = (label: string, target: NoteLocation, href: string) => {
+    const link = document.createElement('a')
+    link.className = 'internal-note-link-widget'
+    link.href = href
+    link.textContent = getMarkdownLinkLabel(label)
+    link.title = 'Open linked note'
+    link.setAttribute('contenteditable', 'false')
+    link.setAttribute('data-internal-note-link', 'true')
+
+    const stopEditingEvent = (event: Event) => {
+      event.preventDefault()
+      event.stopPropagation()
+    }
+    const activate = (event: Event) => {
+      stopEditingEvent(event)
+      navigateToNoteLocation(target)
+    }
+
+    link.addEventListener('pointerdown', stopEditingEvent)
+    link.addEventListener('mousedown', stopEditingEvent)
+    link.addEventListener('click', activate)
+    link.addEventListener('keydown', (event) => {
+      const keyboardEvent = event as KeyboardEvent
+      if (keyboardEvent.key !== 'Enter' && keyboardEvent.key !== ' ') return
+      activate(keyboardEvent)
+    })
+
+    return link
+  }
+
+  const createContextPreviewPlugin = (context: any, sourceNoteBodyId: string) => {
+    const { Plugin } = context.pmState
+    const { Decoration, DecorationSet } = context.pmView
+    return {
+      wysiwygPlugins: [
+        () =>
+          new Plugin({
+            props: {
+              decorations: (editorState: any) => {
+                const decorations: unknown[] = []
+                const docText = collectProseMirrorTextPositions(editorState.doc)
+                editorState.doc.descendants((node: any, pos: number) => {
+                  if (!node.isText || typeof node.text !== 'string') return
+                  for (const match of node.text.matchAll(NOTE_CONTEXT_REFERENCE_RE)) {
+                    const payload = decodeContextPayload(match[1])
+                    if (!payload) continue
+                    const from = pos + (match.index ?? 0)
+                    const to = from + match[0].length
+                    decorations.push(
+                      Decoration.widget(from, () => createContextPreviewWidgetElement(payload, sourceNoteBodyId), {
+                        key: `note-preview-${payload.id}`,
+                        side: -1,
+                        destroy: (node: HTMLElement & { destroyNotePreview?: () => void }) => node.destroyNotePreview?.(),
+                      }),
+                    )
+                    decorations.push(Decoration.inline(from, to, { class: 'note-context-token-hidden' }))
+                  }
+                })
+                for (const match of docText.text.matchAll(INTERNAL_NOTE_LINK_MARKDOWN_RE)) {
+                  if (match[0].startsWith('!')) continue
+                  const target = parseInternalNoteUrl(match[2])
+                  if (!target) continue
+
+                  const startIndex = match.index ?? 0
+                  const endIndex = startIndex + match[0].length - 1
+                  const from = docText.positions[startIndex]
+                  const last = docText.positions[endIndex]
+                  const rangePositions = docText.positions.slice(startIndex, endIndex + 1)
+                  if (from === undefined || last === undefined || from < 0 || last < from || rangePositions.some((position) => position < 0)) {
+                    continue
+                  }
+
+                  decorations.push(
+                    Decoration.widget(from, () => createInternalNoteLinkWidgetElement(match[1], target, match[2]), {
+                      key: `internal-note-link-${from}-${last}-${match[2]}`,
+                      side: -1,
+                    }),
+                  )
+                  decorations.push(Decoration.inline(from, last + 1, { class: 'internal-note-link-source-hidden' }))
+                }
+                return DecorationSet.create(editorState.doc, decorations)
+              },
+            },
+          }),
+      ],
+    }
+  }
+
+  const destroyAisleEditor = (editorKey: string) => {
+    const meta = aisleEditorMetaRef.current.get(editorKey)
+    if (!meta) return
+    meta.cleanup()
+    aisleEditorMetaRef.current.delete(editorKey)
+    lastEditorMarkdownByAisleRef.current.delete(meta.aisleId)
+    normalizingAisleIdsRef.current.delete(meta.aisleId)
+    if (editorRef.current === meta.editor) {
+      editorRef.current = null
+      multiLineCursorPluginKeyRef.current = null
+    }
+  }
+
+  const destroyAllAisleEditors = () => {
+    Array.from(aisleEditorMetaRef.current.keys()).forEach((editorKey) => destroyAisleEditor(editorKey))
+  }
+
   useEffect(() => {
+    if (viewMode !== 'main' || !activeNoteBodyId) {
+      destroyAllAisleEditors()
+      return
+    }
+
+    const expectedKeys = new Set(activeNoteAisles.map((aisle) => buildAisleEditorKey(activeNoteBodyId, aisle.id)))
+
+    for (const editorKey of Array.from(aisleEditorMetaRef.current.keys())) {
+      if (!expectedKeys.has(editorKey)) {
+        destroyAisleEditor(editorKey)
+      }
+    }
+
+    for (const aisle of activeNoteAisles) {
+      const editorKey = buildAisleEditorKey(activeNoteBodyId, aisle.id)
+      const root = aisleEditorRootsRef.current.get(editorKey)
+      if (!root || aisleEditorMetaRef.current.has(editorKey)) continue
+
+      let pluginKey: unknown = null
+      let editor: Editor
+      editor = new Editor({
+        el: root,
+        initialValue: aisle.markdown,
+        initialEditType: 'wysiwyg',
+        previewStyle: 'tab',
+        hideModeSwitch: true,
+        toolbarItems: EDITOR_TOOLBAR_ITEMS,
+        height: '100%',
+        autofocus: !isPendingCreatedRenameActive(),
+        usageStatistics: false,
+        plugins: [
+          headingSpaceShortcutPlugin,
+          thematicBreakShortcutPlugin,
+          (context: any) => createContextPreviewPlugin(context, activeNoteBodyId),
+          (context: {
+            pmState: {
+              PluginKey: new (name?: string) => {
+                getState: (state: unknown) =>
+                  | {
+                      cursors: number[]
+                      selections: Array<{ from: number; to: number }>
+                    }
+                  | undefined
+              }
+              Plugin: new (spec: {
+                key?: unknown
+                state?: {
+                  init: () => {
+                    cursors: number[]
+                    selections: Array<{ from: number; to: number }>
+                  }
+                  apply: (
+                    tr: { getMeta: (key: unknown) => unknown },
+                    previous: {
+                      cursors: number[]
+                      selections: Array<{ from: number; to: number }>
+                    },
+                  ) => {
+                    cursors: number[]
+                    selections: Array<{ from: number; to: number }>
+                  }
+                }
+                props?: {
+                  decorations?: (state: unknown) => unknown
+                  handleDOMEvents?: {
+                    keydown?: (view: unknown, event: KeyboardEvent) => boolean
+                  }
+                }
+              }) => unknown
+            }
+            pmView: {
+              Decoration: {
+                inline: (from: number, to: number, attrs: Record<string, string>, spec?: Record<string, unknown>) => unknown
+                widget: (pos: number, toDOM: () => HTMLElement, spec?: Record<string, unknown>) => unknown
+              }
+              DecorationSet: {
+                create: (doc: unknown, decorations: unknown[]) => unknown
+              }
+            }
+            pmKeymap: { keymap: (bindings: Record<string, unknown>) => unknown }
+          }) =>
+            multiLineSelectionShortcutPlugin({
+              ...context,
+              onExpand: tryExpandMultilineSelection,
+              onPluginKeyReady: (nextPluginKey) => {
+                pluginKey = nextPluginKey
+              },
+            }),
+        ],
+        hooks: {
+          addImageBlobHook: (blob: Blob | File, callback: (url: string, text?: string) => void) => {
+            const reader = new FileReader()
+            reader.onload = () => {
+              const dataUrl = typeof reader.result === 'string' ? reader.result : ''
+              if (!dataUrl) return
+              callback(dataUrl, blob instanceof File ? blob.name : 'image')
+              window.setTimeout(() => commitCurrentEditorContent(), 30)
+            }
+            reader.readAsDataURL(blob)
+          },
+        },
+        events: {
+          change: () => handleAisleEditorChange(editorKey, aisle.id, editor),
+          focus: () => activateAisleEditor(editorKey, { flushPrevious: true }),
+        },
+      })
+
+      const activate = () => activateAisleEditor(editorKey, { flushPrevious: true })
+      root.addEventListener('focusin', activate)
+      root.addEventListener('pointerdown', activate, true)
+      const cleanupHeadingPopupActiveState = installHeadingPopupActiveState(root, () => editor)
+      const cleanupCompletedTaskCheckboxBehavior = installCompletedTaskCheckboxBehavior(
+        root,
+        () => editor,
+        trackCompletedTaskQuickDelete,
+      )
+      const cleanupTaskTextReorderBehavior = installTaskTextReorderBehavior(root, () => editor)
+
+      aisleEditorMetaRef.current.set(editorKey, {
+        editor,
+        root,
+        aisleId: aisle.id,
+        pluginKey,
+        cleanup: () => {
+          cleanupTaskTextReorderBehavior()
+          cleanupCompletedTaskCheckboxBehavior()
+          cleanupHeadingPopupActiveState()
+          root.removeEventListener('focusin', activate)
+          root.removeEventListener('pointerdown', activate, true)
+          try {
+            editor.destroy()
+          } catch {
+            // Toast UI can throw during teardown if the toolbar DOM was customized.
+          }
+          root.innerHTML = ''
+        },
+      })
+      lastEditorMarkdownByAisleRef.current.set(aisle.id, normalizeMarkdownForPersistence(aisle.markdown))
+    }
+
+    const activeEditorKey = buildAisleEditorKey(activeNoteBodyId, resolvedActiveAisleId)
+    if (aisleEditorMetaRef.current.has(activeEditorKey)) {
+      activateAisleEditor(activeEditorKey)
+    }
+  }, [viewMode, activeNoteBodyId, activeNoteAisles, resolvedActiveAisleId])
+
+  useEffect(() => () => destroyAllAisleEditors(), [])
+
+  useEffect(() => {
+    if (viewMode !== 'main' || !activeNoteBodyId) return
+    for (const aisle of activeNoteAisles) {
+      const editorKey = buildAisleEditorKey(activeNoteBodyId, aisle.id)
+      const meta = aisleEditorMetaRef.current.get(editorKey)
+      if (!meta) continue
+      const pending = pendingContentRef.current
+      const pendingMatches =
+        pending &&
+        pending.spaceId === activeSpaceIdRef.current &&
+        pending.tabId === activeTabIdRef.current &&
+        pending.subTabId === activeSubTabIdRef.current &&
+        pending.aisleId === aisle.id
+      const expectedMarkdown = pendingMatches ? pending.markdown : aisle.markdown
+      const currentMarkdown = getNormalizedEditorMarkdown(meta.editor)
+      if (currentMarkdown !== expectedMarkdown) {
+        lastEditorMarkdownByAisleRef.current.set(aisle.id, normalizeMarkdownForPersistence(expectedMarkdown))
+        if (activeAisleIdRef.current === aisle.id) {
+          lastEditorMarkdownRef.current = normalizeMarkdownForPersistence(expectedMarkdown)
+        }
+        meta.editor.setMarkdown(expectedMarkdown, false)
+      }
+    }
+  }, [viewMode, activeNoteBodyId, activeNoteAisles, activeSpace.id, activeTab.id, activeSubTab?.id])
+
+  useEffect(() => {
+    if (viewMode === 'main') return
     if (!isEditorView) return
     if (!editorMountRef.current || editorRef.current) return
 
@@ -3689,6 +5143,7 @@ function App() {
               activeSpaceIdRef.current,
               activeTabIdRef.current,
               activeSubTabIdRef.current,
+              activeAisleIdRef.current,
             )
             return
           }
@@ -3696,7 +5151,13 @@ function App() {
           const normalized = normalizeHeadingMarkers(markdown)
           if (normalized !== markdown) {
             lastEditorMarkdownRef.current = normalized
-            scheduleContentCommit(normalized, activeSpaceIdRef.current, activeTabIdRef.current, activeSubTabIdRef.current)
+            scheduleContentCommit(
+              normalized,
+              activeSpaceIdRef.current,
+              activeTabIdRef.current,
+              activeSubTabIdRef.current,
+              activeAisleIdRef.current,
+            )
             return
           }
 
@@ -3710,7 +5171,13 @@ function App() {
 
           maybeShowCompletedTaskUndoHint(markdown)
           lastEditorMarkdownRef.current = markdown
-          scheduleContentCommit(markdown, activeSpaceIdRef.current, activeTabIdRef.current, activeSubTabIdRef.current)
+          scheduleContentCommit(
+            markdown,
+            activeSpaceIdRef.current,
+            activeTabIdRef.current,
+            activeSubTabIdRef.current,
+            activeAisleIdRef.current,
+          )
         },
       },
     })
@@ -3741,7 +5208,7 @@ function App() {
         editorMountRef.current.innerHTML = ''
       }
     }
-  }, [isEditorView])
+  }, [isEditorView, viewMode])
 
   useEffect(() => {
     if (viewMode !== 'main') {
@@ -3751,17 +5218,65 @@ function App() {
       return
     }
 
-    const root = editorMountRef.current
+    const root = viewMode === 'main' ? editorEventRootRef.current : editorMountRef.current
     if (!root) return
 
+    let internalLinkHandledOnPointerDown = false
+
+    const isPrimaryMouseActivation = (event: Event) => !(event instanceof MouseEvent) || event.button === 0
+
+    const handleAnchorInteraction = (event: Event, target: Element, allowExternalPrompt: boolean) => {
+      if (!isPrimaryMouseActivation(event)) return false
+      const anchor = target.closest('a')
+      if (!(anchor instanceof HTMLAnchorElement)) return false
+
+      const href = anchor.getAttribute('href') || anchor.href
+      const internalLocation = parseInternalNoteUrl(href) ?? parseInternalNoteUrl(anchor.href)
+      if (internalLocation) {
+        event.preventDefault()
+        event.stopPropagation()
+        internalLinkHandledOnPointerDown = event.type === 'pointerdown'
+        navigateToNoteLocation(internalLocation)
+        return true
+      }
+
+      if (!allowExternalPrompt) return false
+      event.preventDefault()
+      event.stopPropagation()
+      const rect = anchor.getBoundingClientRect()
+      const text = anchor.textContent ?? ''
+      openLinkPrompt(href, Math.max(8, rect.bottom + 6), Math.max(8, rect.left), text)
+      return true
+    }
+
+    const getInternalLinkHitAtPointerPosition = (event: Event): InternalNoteLinkHit | null => {
+      if (!(event instanceof MouseEvent)) return null
+      const view = getWysiwygView(editorRef.current)
+      const coords = view?.posAtCoords?.({ left: event.clientX, top: event.clientY })
+      if (!view || !coords) return null
+      return getInternalNoteLinkHitAtDocPosition(view.state.doc, coords.pos)
+    }
+
+    const handleInternalLinkAtPointerPosition = (event: Event) => {
+      if (!isPrimaryMouseActivation(event)) return false
+      const internalLinkHit = getInternalLinkHitAtPointerPosition(event)
+      if (!internalLinkHit) return false
+      event.preventDefault()
+      event.stopPropagation()
+      internalLinkHandledOnPointerDown = event.type === 'pointerdown'
+      navigateToNoteLocation(internalLinkHit.target)
+      return true
+    }
+
     const handlePointerDown = (event: Event) => {
-      clearMultiLineEdit(false)
-      const target = event.target
-      if (!(target instanceof HTMLElement)) {
+      const target = getElementFromEventTarget(event.target)
+      if (!target) {
         closeImageTools()
         closeLinkPrompt()
         return
       }
+      activateEditorFromEventTarget(target)
+      clearMultiLineEdit(false)
       if (
         target.closest('.image-tools') ||
         target.closest('.image-resize-handle') ||
@@ -3776,23 +5291,50 @@ function App() {
         selectImageForTools(image)
         return
       }
-      const anchor = target.closest('a')
-      if (anchor instanceof HTMLAnchorElement) {
-        event.preventDefault()
-        const rect = anchor.getBoundingClientRect()
-        const href = anchor.getAttribute('href') ?? ''
-        const text = anchor.textContent ?? ''
-        openLinkPrompt(href, Math.max(8, rect.bottom + 6), Math.max(8, rect.left), text)
-        return
-      }
+      if (handleAnchorInteraction(event, target, true)) return
+      if (handleInternalLinkAtPointerPosition(event)) return
       closeImageTools()
       closeLinkPrompt()
     }
 
+    const handleClick = (event: Event) => {
+      const target = getElementFromEventTarget(event.target)
+      if (!target) return
+      if (internalLinkHandledOnPointerDown) {
+        internalLinkHandledOnPointerDown = false
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+      if (handleAnchorInteraction(event, target, false)) return
+      handleInternalLinkAtPointerPosition(event)
+    }
+
     const handleContextMenu = (event: Event) => {
       const mouseEvent = event as globalThis.MouseEvent
-      const target = mouseEvent.target
-      if (!(target instanceof HTMLElement)) return
+      const target = getElementFromEventTarget(mouseEvent.target)
+      if (!target) return
+      activateEditorFromEventTarget(target)
+      const internalLinkHit = getInternalLinkHitAtPointerPosition(mouseEvent)
+      if (internalLinkHit) {
+        mouseEvent.preventDefault()
+        mouseEvent.stopPropagation()
+        closeImageTools()
+        closeLinkPrompt()
+        setMenuOpen(false)
+        setContextMenu({
+          type: 'internal-note-link',
+          x: mouseEvent.clientX,
+          y: mouseEvent.clientY,
+          label: internalLinkHit.label,
+          href: internalLinkHit.href,
+          target: internalLinkHit.target,
+          from: internalLinkHit.from,
+          to: internalLinkHit.to,
+          occurrence: internalLinkHit.occurrence,
+        })
+        return
+      }
       const image = target.closest('img')
       if (!(image instanceof HTMLImageElement)) return
       mouseEvent.preventDefault()
@@ -3811,6 +5353,7 @@ function App() {
 
     const handlePaste = (event: Event) => {
       const pasteEvent = event as ClipboardEvent
+      activateEditorFromEventTarget(pasteEvent.target)
       if (multiLineEditRef.current) {
         const text = pasteEvent.clipboardData?.getData('text/plain') ?? ''
         if (text.length > 0 && tryApplyMultiLineEditInput({ type: 'insert-text', text })) {
@@ -3835,6 +5378,7 @@ function App() {
 
     const handleCopy = (event: Event) => {
       const clipboardEvent = event as ClipboardEvent
+      activateEditorFromEventTarget(clipboardEvent.target)
       if (copyMultiLineSelectionToClipboard(clipboardEvent.clipboardData)) {
         clipboardEvent.preventDefault()
         return
@@ -3848,6 +5392,7 @@ function App() {
 
     const handleCut = (event: Event) => {
       const clipboardEvent = event as ClipboardEvent
+      activateEditorFromEventTarget(clipboardEvent.target)
       if (!cutMultiLineSelectionToClipboard(clipboardEvent.clipboardData)) return
       clipboardEvent.preventDefault()
       clipboardEvent.stopPropagation()
@@ -3855,6 +5400,7 @@ function App() {
 
     const handleKeyDown = (event: Event) => {
       const keyboardEvent = event as KeyboardEvent
+      activateEditorFromEventTarget(keyboardEvent.target)
       const editorHistoryDirection = getEditorHistoryDirection(keyboardEvent)
       if (editorHistoryDirection) {
         scheduleMultiLineHistoryRestore(editorHistoryDirection)
@@ -3939,6 +5485,7 @@ function App() {
 
     const handleBeforeInput = (event: Event) => {
       const inputEvent = event as InputEvent
+      activateEditorFromEventTarget(inputEvent.target)
       if (inputEvent.inputType === 'historyUndo' || inputEvent.inputType === 'historyRedo') {
         scheduleMultiLineHistoryRestore(inputEvent.inputType === 'historyUndo' ? 'undo' : 'redo')
         return
@@ -3956,6 +5503,7 @@ function App() {
     }
 
     root.addEventListener('pointerdown', handlePointerDown, true)
+    root.addEventListener('click', handleClick, true)
     root.addEventListener('contextmenu', handleContextMenu, true)
     root.addEventListener('paste', handlePaste, true)
     root.addEventListener('copy', handleCopy, true)
@@ -3966,6 +5514,7 @@ function App() {
     window.addEventListener('resize', handleScrollOrResize)
     return () => {
       root.removeEventListener('pointerdown', handlePointerDown, true)
+      root.removeEventListener('click', handleClick, true)
       root.removeEventListener('contextmenu', handleContextMenu, true)
       root.removeEventListener('paste', handlePaste, true)
       root.removeEventListener('copy', handleCopy, true)
@@ -3975,7 +5524,7 @@ function App() {
       window.removeEventListener('scroll', handleScrollOrResize, true)
       window.removeEventListener('resize', handleScrollOrResize)
     }
-  }, [viewMode, displayContent])
+  }, [viewMode, displayContent, activeNoteAisles.length])
 
   useEffect(() => {
     return () => {
@@ -3986,6 +5535,7 @@ function App() {
   }, [])
 
   useEffect(() => {
+    if (viewMode === 'main') return
     const instance = editorRef.current
     if (!instance) return
 
@@ -3994,19 +5544,20 @@ function App() {
       lastEditorMarkdownRef.current = displayContent
       instance.setMarkdown(displayContent, false)
     }
-  }, [displayContent, viewMode, activeSpace.id, activeTab.id, activeSubTab?.id, trashTabId, trashSubTabId])
+  }, [displayContent, viewMode, activeSpace.id, activeTab.id, activeSubTab?.id, resolvedActiveAisleId, trashTabId, trashSubTabId])
 
   const commitRename = (type: EditableEntityType, id: string, nextTitle: string) => {
-    if (type === 'tab' || type === 'subtab') {
+    const isPendingCreatedRename =
+      (type === 'tab' || type === 'subtab') &&
+      pendingCreatedEditRef.current?.type === type &&
+      pendingCreatedEditRef.current.id === id
+
+    if ((type === 'tab' || type === 'subtab') && !isPendingCreatedRename) {
       flushPendingContent()
     }
     const title = nextTitle.trim()
     setEditing(null)
-    if (
-      (type === 'tab' || type === 'subtab') &&
-      pendingCreatedEditRef.current?.type === type &&
-      pendingCreatedEditRef.current.id === id
-    ) {
+    if (isPendingCreatedRename) {
       pendingCreatedEditRef.current = null
     }
     if (!title) return
@@ -4024,6 +5575,9 @@ function App() {
     const focusEditorSoon = () => {
       if (viewMode !== 'main') return
       window.requestAnimationFrame(() => {
+        const editorKey =
+          activeNoteBodyId && resolvedActiveAisleId ? buildAisleEditorKey(activeNoteBodyId, resolvedActiveAisleId) : ''
+        if (editorKey && activateAisleEditor(editorKey, { focus: true, allowDuringPendingRename: true })) return
         editorRef.current?.focus()
       })
     }
@@ -4125,16 +5679,25 @@ function App() {
 
   const addTab = () => {
     flushPendingContent()
+    const noteBody = createNoteBody('')
     const newTab = {
       ...createTab('tab'),
+      noteBodyId: noteBody.id,
       homeContent: '',
     }
 
-    updateActiveSpaceData((data) => ({
-      ...data,
-      activeTabId: newTab.id,
-      tabs: [...data.tabs, newTab],
-    }))
+    setState((previous) => {
+      const sanitizedPrevious = applyAutoPurgeToAppState(previous)
+      const next = updateActiveSpaceDataInActiveDomain(sanitizedPrevious, (data) => ({
+        ...data,
+        activeTabId: newTab.id,
+        tabs: [...data.tabs, newTab],
+      }))
+      return {
+        ...next,
+        noteBodies: next.noteBodies.some((body) => body.id === noteBody.id) ? next.noteBodies : [...next.noteBodies, noteBody],
+      }
+    })
 
     pendingCreatedEditRef.current = { type: 'tab', id: newTab.id, previousTabId: workspace.activeTabId }
     setEditing({ type: 'tab', id: newTab.id })
@@ -4142,16 +5705,24 @@ function App() {
 
   const addSubTab = () => {
     flushPendingContent()
-    const newSubTab = createSubTab('tab', '')
+    const noteBody = createNoteBody('')
+    const newSubTab = { ...createSubTab('tab', ''), noteBodyId: noteBody.id }
 
-    updateActiveSpaceData((data) => ({
-      ...data,
-      tabs: data.tabs.map((tab) =>
-        tab.id === data.activeTabId
-          ? { ...tab, activeSubTabId: newSubTab.id, subTabs: [...tab.subTabs, newSubTab] }
-          : tab,
-      ),
-    }))
+    setState((previous) => {
+      const sanitizedPrevious = applyAutoPurgeToAppState(previous)
+      const next = updateActiveSpaceDataInActiveDomain(sanitizedPrevious, (data) => ({
+        ...data,
+        tabs: data.tabs.map((tab) =>
+          tab.id === data.activeTabId
+            ? { ...tab, activeSubTabId: newSubTab.id, subTabs: [...tab.subTabs, newSubTab] }
+            : tab,
+        ),
+      }))
+      return {
+        ...next,
+        noteBodies: next.noteBodies.some((body) => body.id === noteBody.id) ? next.noteBodies : [...next.noteBodies, noteBody],
+      }
+    })
 
     pendingCreatedEditRef.current = {
       type: 'subtab',
@@ -4798,6 +6369,40 @@ function App() {
     const latestState = buildStateWithLatestEditorContent()
     const currentSpace = latestState.spaces.find((space) => space.id === latestState.activeSpaceId)
     if (!currentSpace) return
+    const projectedDomains = latestState.domains.map((domain) =>
+      domain.id === latestState.activeDomainId
+        ? { ...domain, activeSpaceId: latestState.activeSpaceId, spaces: latestState.spaces }
+        : domain,
+    )
+    const getSpacesFromDomains = (domains: Domain[], domainId: string) =>
+      domains.find((domain) => domain.id === domainId)?.spaces ?? []
+    const replaceDomainSpaces = (domains: Domain[], domainId: string, spaces: Space[], activeSpaceId?: string) =>
+      domains.map((domain) =>
+        domain.id === domainId
+          ? {
+              ...domain,
+              spaces,
+              activeSpaceId:
+                activeSpaceId && spaces.some((space) => space.id === activeSpaceId)
+                  ? activeSpaceId
+                  : spaces.some((space) => space.id === domain.activeSpaceId)
+                    ? domain.activeSpaceId
+                    : spaces[0]?.id ?? domain.activeSpaceId,
+            }
+          : domain,
+      )
+    const buildDomainAwareState = (domains: Domain[], activeDomainId = latestState.activeDomainId, activeSpaceId = latestState.activeSpaceId) => {
+      const activeDomain = domains.find((domain) => domain.id === activeDomainId) ?? domains[0]
+      const spaces = activeDomain?.spaces ?? []
+      const resolvedSpaceId = spaces.some((space) => space.id === activeSpaceId) ? activeSpaceId : activeDomain?.activeSpaceId ?? spaces[0]?.id ?? ''
+      return {
+        ...latestState,
+        activeDomainId: activeDomain?.id ?? latestState.activeDomainId,
+        activeSpaceId: resolvedSpaceId,
+        spaces,
+        domains,
+      }
+    }
 
     const snapshot = buildStageManagerSelectionSnapshot(currentSpace.data.tabs, stageManagerSelections)
     if (!snapshot.hasSelection) {
@@ -4868,6 +6473,7 @@ function App() {
         const mainTab: Tab = {
           id: createId(),
           title: 'main',
+          noteBodyId: promotedParent.noteBodyId,
           homeContent: promotedParent.homeContent,
           activeSubTabId: null,
           subTabs: [],
@@ -4884,13 +6490,19 @@ function App() {
           settings: { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
           data: createWorkspaceDataFromTabs(movedTabs, { activeTabId: mainTab.id }),
         }
+        const destinationDomainId = stageManagerPromoteDomainId
+        let nextDomains = replaceDomainSpaces(projectedDomains, latestState.activeDomainId, nextSpaces, latestState.activeSpaceId)
+        const destinationBaseSpaces =
+          destinationDomainId === latestState.activeDomainId ? nextSpaces : getSpacesFromDomains(nextDomains, destinationDomainId)
+        const destinationSpaces = [...destinationBaseSpaces, newSpace]
+        nextDomains = replaceDomainSpaces(nextDomains, destinationDomainId, destinationSpaces, newSpace.id)
 
         finishStageManagerApply(
-          {
-            ...latestState,
-            activeSpaceId: state.ui.stageManagerOpenDestinationAfterApply ? newSpace.id : latestState.activeSpaceId,
-            spaces: [...nextSpaces, newSpace],
-          },
+          buildDomainAwareState(
+            nextDomains,
+            state.ui.stageManagerOpenDestinationAfterApply ? destinationDomainId : latestState.activeDomainId,
+            state.ui.stageManagerOpenDestinationAfterApply ? newSpace.id : latestState.activeSpaceId,
+          ),
           getStageManagerApplyToastMessage(),
         )
         return
@@ -4904,43 +6516,50 @@ function App() {
           settings: { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
           data: createWorkspaceDataFromTabs(loosePromotedTabs, { activeTabId: firstTabId ?? undefined }),
         }
+        const destinationDomainId = stageManagerPromoteDomainId
+        let nextDomains = replaceDomainSpaces(projectedDomains, latestState.activeDomainId, nextSpaces, latestState.activeSpaceId)
+        const destinationBaseSpaces =
+          destinationDomainId === latestState.activeDomainId ? nextSpaces : getSpacesFromDomains(nextDomains, destinationDomainId)
+        const destinationSpaces = [...destinationBaseSpaces, newSpace]
+        nextDomains = replaceDomainSpaces(nextDomains, destinationDomainId, destinationSpaces, newSpace.id)
 
         finishStageManagerApply(
-          {
-            ...latestState,
-            activeSpaceId: state.ui.stageManagerOpenDestinationAfterApply ? newSpace.id : latestState.activeSpaceId,
-            spaces: [...nextSpaces, newSpace],
-          },
+          buildDomainAwareState(
+            nextDomains,
+            state.ui.stageManagerOpenDestinationAfterApply ? destinationDomainId : latestState.activeDomainId,
+            state.ui.stageManagerOpenDestinationAfterApply ? newSpace.id : latestState.activeSpaceId,
+          ),
           getStageManagerApplyToastMessage(),
         )
         return
       }
 
+      const destinationDomainId = stageManagerPromoteDomainId
       const destinationSpaceId = stageManagerDraft.promoteSpaceId
       const destinationFirstTabId = loosePromotedTabs[0]?.id ?? null
-      finishStageManagerApply(
-        {
-          ...latestState,
-          activeSpaceId:
-            state.ui.stageManagerOpenDestinationAfterApply && destinationSpaceId
-              ? destinationSpaceId
-              : latestState.activeSpaceId,
-          spaces: nextSpaces.map((space) => {
-            if (space.id !== destinationSpaceId) return space
-            const destinationTabs = [...space.data.tabs.map(cloneTabForTransfer), ...loosePromotedTabs]
-            return {
-              ...space,
-              data: createWorkspaceDataFromTabs(destinationTabs, {
-                activeTabId:
-                  state.ui.stageManagerOpenDestinationAfterApply && destinationFirstTabId
-                    ? destinationFirstTabId
-                    : space.data.activeTabId,
-                deletedTabs: space.data.deletedTabs,
-                deletedSubTabs: space.data.deletedSubTabs,
-              }),
-            }
+      const domainsWithSource = replaceDomainSpaces(projectedDomains, latestState.activeDomainId, nextSpaces, latestState.activeSpaceId)
+      const destinationSpaces = getSpacesFromDomains(domainsWithSource, destinationDomainId).map((space) => {
+        if (space.id !== destinationSpaceId) return space
+        const destinationTabs = [...space.data.tabs.map(cloneTabForTransfer), ...loosePromotedTabs]
+        return {
+          ...space,
+          data: createWorkspaceDataFromTabs(destinationTabs, {
+            activeTabId:
+              state.ui.stageManagerOpenDestinationAfterApply && destinationFirstTabId
+                ? destinationFirstTabId
+                : space.data.activeTabId,
+            deletedTabs: space.data.deletedTabs,
+            deletedSubTabs: space.data.deletedSubTabs,
           }),
-        },
+        }
+      })
+      const nextDomains = replaceDomainSpaces(domainsWithSource, destinationDomainId, destinationSpaces, destinationSpaceId)
+      finishStageManagerApply(
+        buildDomainAwareState(
+          nextDomains,
+          state.ui.stageManagerOpenDestinationAfterApply && destinationSpaceId ? destinationDomainId : latestState.activeDomainId,
+          state.ui.stageManagerOpenDestinationAfterApply && destinationSpaceId ? destinationSpaceId : latestState.activeSpaceId,
+        ),
         getStageManagerApplyToastMessage(),
       )
       return
@@ -4949,48 +6568,64 @@ function App() {
     if (stageManagerAction === 'demote') {
       const movedSubTabs = buildStageManagerMovedSubTabs(snapshot)
       const strippedCurrentData = stripStageManagerSelectionsFromWorkspace(currentSpace.data, snapshot)
+      const destinationDomainId = stageManagerDemoteDomainId
+      const destinationSpaceId = stageManagerDemoteSpace?.id ?? latestState.activeSpaceId
+      const sameDestinationSpace = destinationDomainId === latestState.activeDomainId && destinationSpaceId === currentSpace.id
 
       let destinationParentId: string
-      let nextCurrentTabs: Tab[]
+      let destinationTabs: Tab[]
+      const destinationSourceTabs = sameDestinationSpace
+        ? strippedCurrentData.tabs
+        : getSpacesFromDomains(projectedDomains, destinationDomainId).find((space) => space.id === destinationSpaceId)?.data.tabs ?? []
       if (stageManagerDraft.demoteParentMode === 'new') {
         destinationParentId = createId()
         const newParent: Tab = {
           id: destinationParentId,
           title: sanitizeName(stageManagerDraft.demoteNewParentName || 'untitled'),
+          noteBodyId: createId(),
           homeContent: '',
           activeSubTabId: null,
           subTabs: movedSubTabs.map(cloneSubTabForTransfer),
         }
-        nextCurrentTabs = [...strippedCurrentData.tabs.map(cloneTabForTransfer), newParent]
+        destinationTabs = [...destinationSourceTabs.map(cloneTabForTransfer), newParent]
       } else {
         destinationParentId = stageManagerDraft.demoteParentId
-        nextCurrentTabs = appendSubTabsToParent(
-          strippedCurrentData.tabs,
+        destinationTabs = appendSubTabsToParent(
+          destinationSourceTabs,
           destinationParentId,
           movedSubTabs,
           state.ui.stageManagerOpenDestinationAfterApply,
         )
       }
+      const sourceSpaces = latestState.spaces.map((space) =>
+        space.id !== currentSpace.id ? space : { ...space, data: strippedCurrentData },
+      )
+      let nextDomains = replaceDomainSpaces(projectedDomains, latestState.activeDomainId, sourceSpaces, latestState.activeSpaceId)
+      const destinationSpaces = getSpacesFromDomains(nextDomains, destinationDomainId).map((space) =>
+        space.id !== destinationSpaceId
+          ? space
+          : {
+              ...space,
+              data: createWorkspaceDataFromTabs(destinationTabs, {
+                activeTabId:
+                  state.ui.stageManagerOpenDestinationAfterApply && destinationParentId
+                    ? destinationParentId
+                    : sameDestinationSpace
+                      ? strippedCurrentData.activeTabId
+                      : space.data.activeTabId,
+                deletedTabs: space.data.deletedTabs,
+                deletedSubTabs: space.data.deletedSubTabs,
+              }),
+            },
+      )
+      nextDomains = replaceDomainSpaces(nextDomains, destinationDomainId, destinationSpaces, destinationSpaceId)
 
       finishStageManagerApply(
-        {
-          ...latestState,
-          spaces: latestState.spaces.map((space) =>
-            space.id !== currentSpace.id
-              ? space
-              : {
-                  ...space,
-                  data: createWorkspaceDataFromTabs(nextCurrentTabs, {
-                    activeTabId:
-                      state.ui.stageManagerOpenDestinationAfterApply && destinationParentId
-                        ? destinationParentId
-                        : strippedCurrentData.activeTabId,
-                    deletedTabs: strippedCurrentData.deletedTabs,
-                    deletedSubTabs: strippedCurrentData.deletedSubTabs,
-                  }),
-                },
-          ),
-        },
+        buildDomainAwareState(
+          nextDomains,
+          state.ui.stageManagerOpenDestinationAfterApply ? destinationDomainId : latestState.activeDomainId,
+          state.ui.stageManagerOpenDestinationAfterApply ? destinationSpaceId : latestState.activeSpaceId,
+        ),
         getStageManagerApplyToastMessage(),
       )
       return
@@ -5020,6 +6655,7 @@ function App() {
           additionalDestinationTabs.push({
             id: createId(),
             title: sanitizeName(stageManagerDraft.strayNewParentName || 'untitled'),
+            noteBodyId: createId(),
             homeContent: '',
             activeSubTabId: null,
             subTabs: looseMovedSubTabs.map(cloneSubTabForTransfer),
@@ -5040,66 +6676,71 @@ function App() {
           settings: { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
           data: createWorkspaceDataFromTabs(destinationTabs, { activeTabId: fallbackTab }),
         }
+        const destinationDomainId = stageManagerMigrateDomainId
+        const sourceSpaces = latestState.spaces.map((space) =>
+          space.id === currentSpace.id ? { ...space, data: strippedCurrentData } : space,
+        )
+        let nextDomains = replaceDomainSpaces(projectedDomains, latestState.activeDomainId, sourceSpaces, latestState.activeSpaceId)
+        const destinationBaseSpaces =
+          destinationDomainId === latestState.activeDomainId ? sourceSpaces : getSpacesFromDomains(nextDomains, destinationDomainId)
+        const destinationSpaces = [...destinationBaseSpaces, newSpace]
+        nextDomains = replaceDomainSpaces(nextDomains, destinationDomainId, destinationSpaces, newSpace.id)
 
         finishStageManagerApply(
-          {
-            ...latestState,
-            activeSpaceId: state.ui.stageManagerOpenDestinationAfterApply ? newSpace.id : latestState.activeSpaceId,
-            spaces: [
-              ...latestState.spaces.map((space) =>
-                space.id === currentSpace.id ? { ...space, data: strippedCurrentData } : space,
-              ),
-              newSpace,
-            ],
-          },
+          buildDomainAwareState(
+            nextDomains,
+            state.ui.stageManagerOpenDestinationAfterApply ? destinationDomainId : latestState.activeDomainId,
+            state.ui.stageManagerOpenDestinationAfterApply ? newSpace.id : latestState.activeSpaceId,
+          ),
           getStageManagerApplyToastMessage(),
         )
         return
       }
 
+      const destinationDomainId = stageManagerMigrateDomainId
       const destinationSpaceId = stageManagerDraft.migrateSpaceId
-      finishStageManagerApply(
-        {
-          ...latestState,
-          activeSpaceId:
-            state.ui.stageManagerOpenDestinationAfterApply && destinationSpaceId
-              ? destinationSpaceId
-              : latestState.activeSpaceId,
-          spaces: latestState.spaces.map((space) => {
-            if (space.id === currentSpace.id) {
-              return { ...space, data: strippedCurrentData }
-            }
-            if (space.id !== destinationSpaceId) return space
+      const sourceSpaces = latestState.spaces.map((space) =>
+        space.id === currentSpace.id ? { ...space, data: strippedCurrentData } : space,
+      )
+      let nextDomains = replaceDomainSpaces(projectedDomains, latestState.activeDomainId, sourceSpaces, latestState.activeSpaceId)
+      const destinationSpaces = getSpacesFromDomains(nextDomains, destinationDomainId).map((space) => {
+        if (space.id !== destinationSpaceId) return space
 
-            let destinationTabs = [...space.data.tabs.map(cloneTabForTransfer), ...movedParentCopies]
-            let destinationActiveTabId = state.ui.stageManagerOpenDestinationAfterApply
-              ? movedParentCopies[0]?.id ?? additionalDestinationTabs[0]?.id ?? space.data.activeTabId
-              : space.data.activeTabId
+        let destinationTabs = [...space.data.tabs.map(cloneTabForTransfer), ...movedParentCopies]
+        let destinationActiveTabId = state.ui.stageManagerOpenDestinationAfterApply
+          ? movedParentCopies[0]?.id ?? additionalDestinationTabs[0]?.id ?? space.data.activeTabId
+          : space.data.activeTabId
 
-            if (stageManagerDraft.strayHandlingMode === 'existing-parent') {
-              destinationTabs = appendSubTabsToParent(
-                destinationTabs,
-                stageManagerDraft.strayExistingParentId,
-                looseMovedSubTabs,
-                state.ui.stageManagerOpenDestinationAfterApply,
-              )
-              if (state.ui.stageManagerOpenDestinationAfterApply) {
-                destinationActiveTabId = stageManagerDraft.strayExistingParentId
-              }
-            } else {
-              destinationTabs = [...destinationTabs, ...additionalDestinationTabs]
-            }
+        if (stageManagerDraft.strayHandlingMode === 'existing-parent') {
+          destinationTabs = appendSubTabsToParent(
+            destinationTabs,
+            stageManagerDraft.strayExistingParentId,
+            looseMovedSubTabs,
+            state.ui.stageManagerOpenDestinationAfterApply,
+          )
+          if (state.ui.stageManagerOpenDestinationAfterApply) {
+            destinationActiveTabId = stageManagerDraft.strayExistingParentId
+          }
+        } else {
+          destinationTabs = [...destinationTabs, ...additionalDestinationTabs]
+        }
 
-            return {
-              ...space,
-              data: createWorkspaceDataFromTabs(destinationTabs, {
-                activeTabId: destinationActiveTabId,
-                deletedTabs: space.data.deletedTabs,
-                deletedSubTabs: space.data.deletedSubTabs,
-              }),
-            }
+        return {
+          ...space,
+          data: createWorkspaceDataFromTabs(destinationTabs, {
+            activeTabId: destinationActiveTabId,
+            deletedTabs: space.data.deletedTabs,
+            deletedSubTabs: space.data.deletedSubTabs,
           }),
-        },
+        }
+      })
+      nextDomains = replaceDomainSpaces(nextDomains, destinationDomainId, destinationSpaces, destinationSpaceId)
+      finishStageManagerApply(
+        buildDomainAwareState(
+          nextDomains,
+          state.ui.stageManagerOpenDestinationAfterApply && destinationSpaceId ? destinationDomainId : latestState.activeDomainId,
+          state.ui.stageManagerOpenDestinationAfterApply && destinationSpaceId ? destinationSpaceId : latestState.activeSpaceId,
+        ),
         getStageManagerApplyToastMessage(),
       )
       return
@@ -5115,6 +6756,7 @@ function App() {
         const newParent: Tab = {
           id: destinationParentId,
           title: sanitizeName(stageManagerDraft.migrateNewParentName || 'untitled'),
+          noteBodyId: createId(),
           homeContent: '',
           activeSubTabId: null,
           subTabs: movedSubTabs.map(cloneSubTabForTransfer),
@@ -5157,9 +6799,11 @@ function App() {
     if (stageManagerDraft.migrateParentSpaceMode === 'new') {
       const destinationParentId = createId()
       const newSpaceId = createId()
+      const destinationDomainId = stageManagerMigrateParentDomainId
       const newParent: Tab = {
         id: destinationParentId,
         title: sanitizeName(stageManagerDraft.migrateNewParentName || 'untitled'),
+        noteBodyId: createId(),
         homeContent: '',
         activeSubTabId: null,
         subTabs: movedSubTabs.map(cloneSubTabForTransfer),
@@ -5170,72 +6814,76 @@ function App() {
         settings: { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
         data: createWorkspaceDataFromTabs([newParent], { activeTabId: destinationParentId }),
       }
+      const sourceSpaces = latestState.spaces.map((space) =>
+        space.id === currentSpace.id ? { ...space, data: strippedCurrentData } : space,
+      )
+      let nextDomains = replaceDomainSpaces(projectedDomains, latestState.activeDomainId, sourceSpaces, latestState.activeSpaceId)
+      const destinationBaseSpaces =
+        destinationDomainId === latestState.activeDomainId ? sourceSpaces : getSpacesFromDomains(nextDomains, destinationDomainId)
+      nextDomains = replaceDomainSpaces(nextDomains, destinationDomainId, [...destinationBaseSpaces, newSpace], newSpace.id)
 
       finishStageManagerApply(
-        {
-          ...latestState,
-          activeSpaceId: state.ui.stageManagerOpenDestinationAfterApply ? newSpace.id : latestState.activeSpaceId,
-          spaces: [
-            ...latestState.spaces.map((space) =>
-              space.id === currentSpace.id ? { ...space, data: strippedCurrentData } : space,
-            ),
-            newSpace,
-          ],
-        },
+        buildDomainAwareState(
+          nextDomains,
+          state.ui.stageManagerOpenDestinationAfterApply ? destinationDomainId : latestState.activeDomainId,
+          state.ui.stageManagerOpenDestinationAfterApply ? newSpace.id : latestState.activeSpaceId,
+        ),
         getStageManagerApplyToastMessage(),
       )
       return
     }
 
+    const destinationDomainId = stageManagerMigrateParentDomainId
     const destinationSpaceId = stageManagerDraft.migrateParentSpaceId
-    finishStageManagerApply(
-      {
-        ...latestState,
-        activeSpaceId:
-          state.ui.stageManagerOpenDestinationAfterApply && destinationSpaceId
-            ? destinationSpaceId
-            : latestState.activeSpaceId,
-        spaces: latestState.spaces.map((space) => {
-          if (space.id === currentSpace.id) {
-            return { ...space, data: strippedCurrentData }
-          }
-          if (space.id !== destinationSpaceId) return space
+    const sourceSpaces = latestState.spaces.map((space) =>
+      space.id === currentSpace.id ? { ...space, data: strippedCurrentData } : space,
+    )
+    let nextDomains = replaceDomainSpaces(projectedDomains, latestState.activeDomainId, sourceSpaces, latestState.activeSpaceId)
+    const destinationSpaces = getSpacesFromDomains(nextDomains, destinationDomainId).map((space) => {
+      if (space.id !== destinationSpaceId) return space
 
-          let destinationParentId: string
-          let destinationTabs: Tab[]
-          if (stageManagerDraft.migrateParentMode === 'new') {
-            destinationParentId = createId()
-            const newParent: Tab = {
-              id: destinationParentId,
-              title: sanitizeName(stageManagerDraft.migrateNewParentName || 'untitled'),
-              homeContent: '',
-              activeSubTabId: null,
-              subTabs: movedSubTabs.map(cloneSubTabForTransfer),
-            }
-            destinationTabs = [...space.data.tabs.map(cloneTabForTransfer), newParent]
-          } else {
-            destinationParentId = stageManagerDraft.migrateParentId
-            destinationTabs = appendSubTabsToParent(
-              space.data.tabs,
-              destinationParentId,
-              movedSubTabs,
-              state.ui.stageManagerOpenDestinationAfterApply,
-            )
-          }
+      let destinationParentId: string
+      let destinationTabs: Tab[]
+      if (stageManagerDraft.migrateParentMode === 'new') {
+        destinationParentId = createId()
+        const newParent: Tab = {
+          id: destinationParentId,
+          title: sanitizeName(stageManagerDraft.migrateNewParentName || 'untitled'),
+          noteBodyId: createId(),
+          homeContent: '',
+          activeSubTabId: null,
+          subTabs: movedSubTabs.map(cloneSubTabForTransfer),
+        }
+        destinationTabs = [...space.data.tabs.map(cloneTabForTransfer), newParent]
+      } else {
+        destinationParentId = stageManagerDraft.migrateParentId
+        destinationTabs = appendSubTabsToParent(
+          space.data.tabs,
+          destinationParentId,
+          movedSubTabs,
+          state.ui.stageManagerOpenDestinationAfterApply,
+        )
+      }
 
-          return {
-            ...space,
-            data: createWorkspaceDataFromTabs(destinationTabs, {
-              activeTabId:
-                state.ui.stageManagerOpenDestinationAfterApply && destinationParentId
-                  ? destinationParentId
-                  : space.data.activeTabId,
-              deletedTabs: space.data.deletedTabs,
-              deletedSubTabs: space.data.deletedSubTabs,
-            }),
-          }
+      return {
+        ...space,
+        data: createWorkspaceDataFromTabs(destinationTabs, {
+          activeTabId:
+            state.ui.stageManagerOpenDestinationAfterApply && destinationParentId
+              ? destinationParentId
+              : space.data.activeTabId,
+          deletedTabs: space.data.deletedTabs,
+          deletedSubTabs: space.data.deletedSubTabs,
         }),
-      },
+      }
+    })
+    nextDomains = replaceDomainSpaces(nextDomains, destinationDomainId, destinationSpaces, destinationSpaceId)
+    finishStageManagerApply(
+      buildDomainAwareState(
+        nextDomains,
+        state.ui.stageManagerOpenDestinationAfterApply && destinationSpaceId ? destinationDomainId : latestState.activeDomainId,
+        state.ui.stageManagerOpenDestinationAfterApply && destinationSpaceId ? destinationSpaceId : latestState.activeSpaceId,
+      ),
       getStageManagerApplyToastMessage(),
     )
   }
@@ -5566,7 +7214,7 @@ function App() {
       ? { type: 'tab', tabId: contextMenu.tabId }
       : contextMenu.type === 'subtab'
         ? { type: 'subtab', tabId: contextMenu.tabId, subTabId: contextMenu.subTabId }
-        : contextMenu.type === 'image' || contextMenu.type === 'domain'
+        : contextMenu.type === 'image' || contextMenu.type === 'domain' || contextMenu.type === 'internal-note-link'
           ? null
         : contextMenu.type === 'trash-tab'
           ? {
@@ -5598,6 +7246,107 @@ function App() {
     if (!target) return
     setContextMenu(null)
     deleteTarget(target, false)
+  }
+
+  const openDuplicateModalFromContext = () => {
+    if (!contextMenu || (contextMenu.type !== 'tab' && contextMenu.type !== 'subtab')) return
+    flushPendingContent()
+    const source: NoteLocation = {
+      domainId: state.activeDomainId,
+      spaceId: activeSpace.id,
+      tabId: contextMenu.tabId,
+      subTabId: contextMenu.type === 'subtab' ? contextMenu.subTabId : null,
+    }
+    const target = getDefaultNoteReferenceTarget(state, source)
+    setModal({
+      type: 'duplicate-note',
+      source,
+      target,
+    })
+    setContextMenu(null)
+  }
+
+  const openDeduplicateModalFromContext = () => {
+    if (!contextMenu || (contextMenu.type !== 'tab' && contextMenu.type !== 'subtab')) return
+    const source: NoteLocation = {
+      domainId: state.activeDomainId,
+      spaceId: activeSpace.id,
+      tabId: contextMenu.tabId,
+      subTabId: contextMenu.type === 'subtab' ? contextMenu.subTabId : null,
+    }
+    const noteBodyId = getLocationInfo(state, source).noteBodyId
+    if (!noteBodyId) return
+    const locations = listNoteLocationsForBody(state, noteBodyId)
+    setModal({
+      type: 'deduplicate-note',
+      noteBodyId,
+      keepLocationKeys: locations.map((location) => buildNoteLocationKey(location)),
+    })
+    setContextMenu(null)
+  }
+
+  const getCurrentDuplicateCount = () => {
+    const location = contextMenu && (contextMenu.type === 'tab' || contextMenu.type === 'subtab')
+      ? {
+          domainId: state.activeDomainId,
+          spaceId: activeSpace.id,
+          tabId: contextMenu.tabId,
+          subTabId: contextMenu.type === 'subtab' ? contextMenu.subTabId : null,
+        }
+      : null
+    if (!location) return 0
+    const noteBodyId = getLocationInfo(state, location).noteBodyId
+    return noteBodyId ? listNoteLocationsForBody(state, noteBodyId).length : 0
+  }
+
+  const openNoteReferenceModal = () => {
+    flushPendingContent()
+    const source = getCurrentNoteLocation()
+    const target = getDefaultNoteReferenceTarget(stateRef.current, source)
+    setModal({
+      type: 'insert-note-reference',
+      insertAs: 'link',
+      target,
+    })
+  }
+
+  const openInternalNoteLinkFromContext = () => {
+    if (!contextMenu || contextMenu.type !== 'internal-note-link') return
+    const target = contextMenu.target
+    setContextMenu(null)
+    navigateToNoteLocation(target)
+  }
+
+  const renameInternalNoteLinkFromContext = () => {
+    if (!contextMenu || contextMenu.type !== 'internal-note-link') return
+    const linkContext = contextMenu
+    const nextLabel = window.prompt('link name', linkContext.label)?.trim()
+    if (!nextLabel || nextLabel === linkContext.label) {
+      setContextMenu(null)
+      return
+    }
+
+    const nextSyntax = `[${escapeMarkdownLinkLabel(nextLabel)}](${linkContext.href})`
+    const currentEditor = editorRef.current
+    const view = getWysiwygView(currentEditor)
+
+    if (currentEditor && view) {
+      try {
+        const currentHit = getInternalNoteLinkHitAtDocPosition(view.state.doc, linkContext.from)
+        const from = currentHit?.href === linkContext.href ? currentHit.from : linkContext.from
+        const to = currentHit?.href === linkContext.href ? currentHit.to : linkContext.to
+        view.dispatch(view.state.tr.insertText(nextSyntax, from, to).scrollIntoView())
+        currentEditor.focus()
+        commitActiveEditorMarkdownNow(currentEditor)
+        setContextMenu(null)
+        return
+      } catch {
+        // Fall back to markdown replacement below if the document position shifted.
+      }
+    }
+
+    replaceActiveEditorMarkdown(replaceInternalNoteLinkByOccurrence(getActiveEditorMarkdown(), linkContext, nextSyntax))
+    setContextMenu(null)
   }
 
   const beginRenameSpaceFromContext = () => {
@@ -5773,6 +7522,7 @@ function App() {
             {
               id: entry.parentTabId,
               title: entry.parentTabTitle,
+              noteBodyId: createId(),
               homeContent: '',
               activeSubTabId: null,
               subTabs: [entry.subTab],
@@ -5807,6 +7557,49 @@ function App() {
       const spaceId = modal.spaceId
       setModal(null)
       void exportData('space', spaceId)
+      return
+    }
+
+    if (modal.type === 'duplicate-note') {
+      const targetInfo = getLocationInfo(stateRef.current, modal.target)
+      if (!targetInfo.noteBodyId) {
+        setModal(null)
+        return
+      }
+      setState((previous) => updateNoteLocationBody(previous, modal.source, targetInfo.noteBodyId))
+      setModal(null)
+      pushToast('note duplicate linked.', 'success')
+      return
+    }
+
+    if (modal.type === 'deduplicate-note') {
+      const keepKeys = new Set(modal.keepLocationKeys)
+      if (keepKeys.size === 0) {
+        pushToast('keep at least one duplicate linked.', 'warning')
+        return
+      }
+      const locations = listNoteLocationsForBody(stateRef.current, modal.noteBodyId)
+      let nextState = stateRef.current
+      const newBodies: NoteBody[] = []
+      for (const location of locations) {
+        if (keepKeys.has(buildNoteLocationKey(location))) continue
+        const emptyBody: NoteBody = {
+          id: createId(),
+          aisles: [{ id: createId(), markdown: '' }],
+        }
+        newBodies.push(emptyBody)
+        nextState = updateNoteLocationBody(nextState, location, emptyBody.id)
+      }
+      setState({ ...nextState, noteBodies: [...nextState.noteBodies, ...newBodies] })
+      setModal(null)
+      pushToast('duplicates updated.', 'success')
+      return
+    }
+
+    if (modal.type === 'insert-note-reference') {
+      if (insertNoteReference(modal)) {
+        setModal(null)
+      }
       return
     }
 
@@ -5847,6 +7640,30 @@ function App() {
       }
     }
 
+    if (modal.type === 'duplicate-note') {
+      return {
+        title: 'make duplicate',
+        body: 'the selected note will share the target note body. Existing text in the selected note is replaced by the shared body.',
+        action: 'link duplicate',
+      }
+    }
+
+    if (modal.type === 'deduplicate-note') {
+      return {
+        title: 'de-duplicate',
+        body: 'checked notes remain linked. Unchecked notes become empty independent notes.',
+        action: 'apply',
+      }
+    }
+
+    if (modal.type === 'insert-note-reference') {
+      return {
+        title: 'insert note link or preview',
+        body: 'choose a target note and insert it as a link or note preview.',
+        action: 'insert',
+      }
+    }
+
     if (modal.target.type === 'space') {
       if (state.spaces.length <= 1) {
         return {
@@ -5884,6 +7701,385 @@ function App() {
   })()
 
   const editorReadOnly = viewMode !== 'main'
+
+  const executeToolbarCommand = (command: string, payload?: Record<string, unknown>) => {
+    setHeadingMenuOpen(false)
+    setNoteToolsOpen(false)
+    if (!runActiveEditorCommand(command, payload)) {
+      pushToast('open a note before using the toolbar.', 'warning')
+    }
+  }
+
+  const insertImageFromToolbar = () => {
+    setHeadingMenuOpen(false)
+    setNoteToolsOpen(false)
+    const currentEditor = editorRef.current
+    if (!currentEditor) {
+      pushToast('open a note before inserting an image.', 'warning')
+      return
+    }
+
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*'
+    input.onchange = () => {
+      const file = input.files?.[0]
+      if (!file) return
+      const reader = new FileReader()
+      reader.onload = () => {
+        const dataUrl = typeof reader.result === 'string' ? reader.result : ''
+        if (!dataUrl) return
+        currentEditor.focus()
+        getCommandCapableEditor(currentEditor).exec('addImage', { imageUrl: dataUrl, altText: file.name })
+        commitActiveEditorMarkdownNow(currentEditor)
+      }
+      reader.readAsDataURL(file)
+    }
+    input.click()
+  }
+
+  const insertWebLinkFromToolbar = () => {
+    setHeadingMenuOpen(false)
+    setNoteToolsOpen(false)
+    const currentEditor = editorRef.current
+    if (!currentEditor) {
+      pushToast('open a note before inserting a link.', 'warning')
+      return
+    }
+    const url = window.prompt('link url')
+    if (!url) return
+    const selectedText = getCommandCapableEditor(currentEditor).getSelectedText().trim()
+    const label = window.prompt('link text', selectedText || url)
+    insertLinkIntoActiveEditor((label ?? '').trim() || url, url)
+  }
+
+  const renderToolbarIconButton = (
+    label: string,
+    iconClassName: string,
+    onClick: () => void,
+    extraClassName = '',
+  ) => (
+    <button
+      type="button"
+      className={`toastui-editor-toolbar-icons ${iconClassName} ${extraClassName}`}
+      title={label}
+      aria-label={label}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        onClick()
+      }}
+    />
+  )
+
+  const renderHeadingPopover = () =>
+    headingMenuOpen && toolbarPopoverPosition.heading ? (
+      <div
+        className="note-toolbar-heading-popover"
+        role="menu"
+        style={{ top: `${toolbarPopoverPosition.heading.top}px`, left: `${toolbarPopoverPosition.heading.left}px` }}
+        onPointerDown={(event) => event.stopPropagation()}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={(event) => event.stopPropagation()}
+      >
+        {[1, 2, 3, 4, 5, 6].map((level) => (
+          <button
+            key={level}
+            type="button"
+            className="note-tools-item"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              executeToolbarCommand('heading', { level })
+            }}
+          >
+            heading {level}
+          </button>
+        ))}
+        <button
+          type="button"
+          className="note-tools-item"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+            executeToolbarCommand('heading', { level: 0 })
+          }}
+        >
+          paragraph
+        </button>
+      </div>
+    ) : null
+
+  const renderAisleToolbarPopover = () =>
+    noteToolsOpen && toolbarPopoverPosition.aisles ? (
+      <div
+        className="note-toolbar-aisle-popover"
+        role="menu"
+        style={{ top: `${toolbarPopoverPosition.aisles.top}px`, left: `${toolbarPopoverPosition.aisles.left}px` }}
+        onPointerDown={(event) => event.stopPropagation()}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <button
+          type="button"
+          className="note-tools-item"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+            setNoteToolsOpen(false)
+            addAisleToActiveNote()
+          }}
+          disabled={activeNoteAisles.length >= MAX_NOTE_AISLES}
+        >
+          add aisle
+        </button>
+        <button
+          type="button"
+          className="note-tools-item"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+            setNoteToolsOpen(false)
+            if (activeNoteAisles.length <= 1) {
+              pushToast('a note must keep at least one aisle.', 'warning')
+              return
+            }
+            setAisleDeleteMode((active) => !active)
+          }}
+          disabled={activeNoteAisles.length <= 1}
+        >
+          {aisleDeleteMode ? 'finish deleting' : 'delete aisle'}
+        </button>
+      </div>
+    ) : null
+
+  const renderSharedToolbar = () => (
+    <div
+      className="note-shared-toolbar toastui-editor-toolbar"
+      role="toolbar"
+      aria-label="Note formatting toolbar"
+      onPointerDown={(event) => event.stopPropagation()}
+      onMouseDown={(event) => event.preventDefault()}
+    >
+      <div className="toastui-editor-defaultUI-toolbar app-shared-editor-toolbar">
+        <div className="toastui-editor-toolbar-group note-tools-toolbar-group">
+          <button
+            type="button"
+            className="note-link-toolbar-btn"
+            title="Link a note"
+            aria-label="Link a note"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              setHeadingMenuOpen(false)
+              setNoteToolsOpen(false)
+              setToolbarPopoverPosition({ heading: null, aisles: null })
+              openNoteReferenceModal()
+            }}
+          >
+            <span className="note-reference-toolbar-icon" aria-hidden="true">
+              <span className="note-reference-toolbar-paper" />
+              <span className="note-reference-toolbar-chain" />
+            </span>
+          </button>
+          <span className="note-toolbar-menu-anchor">
+            <button
+              ref={aisleToolbarButtonRef}
+              type="button"
+              className="aisles-toolbar-btn"
+              title="Aisles"
+              aria-label="Aisles"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                setHeadingMenuOpen(false)
+                setToolbarPopoverPosition((previous) => ({ ...previous, heading: null }))
+                const nextOpen = !noteToolsOpen
+                setNoteToolsOpen(nextOpen)
+                if (nextOpen) {
+                  refreshToolbarPopoverPosition('aisles')
+                } else {
+                  setToolbarPopoverPosition((previous) => ({ ...previous, aisles: null }))
+                }
+              }}
+            >
+              <span className="aisles-toolbar-icon" aria-hidden="true" />
+            </button>
+          </span>
+        </div>
+        <div className="toastui-editor-toolbar-group">
+          <span className="note-toolbar-menu-anchor">
+            <button
+              ref={headingToolbarButtonRef}
+              type="button"
+              className="toastui-editor-toolbar-icons heading"
+              title="Headings"
+              aria-label="Headings"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                setNoteToolsOpen(false)
+                setToolbarPopoverPosition((previous) => ({ ...previous, aisles: null }))
+                const nextOpen = !headingMenuOpen
+                setHeadingMenuOpen(nextOpen)
+                if (nextOpen) {
+                  refreshToolbarPopoverPosition('heading')
+                } else {
+                  setToolbarPopoverPosition((previous) => ({ ...previous, heading: null }))
+                }
+              }}
+            />
+          </span>
+          {renderToolbarIconButton('Bold', 'bold', () => executeToolbarCommand('bold'))}
+          {renderToolbarIconButton('Italic', 'italic', () => executeToolbarCommand('italic'))}
+          {renderToolbarIconButton('Strike', 'strike', () => executeToolbarCommand('strike'))}
+        </div>
+        <div className="toastui-editor-toolbar-group">
+          {renderToolbarIconButton('Line', 'hrline', () => executeToolbarCommand('hr'))}
+          {renderToolbarIconButton('Blockquote', 'quote', () => executeToolbarCommand('blockQuote'))}
+        </div>
+        <div className="toastui-editor-toolbar-group">
+          {renderToolbarIconButton('Unordered list', 'bullet-list', () => executeToolbarCommand('bulletList'))}
+          {renderToolbarIconButton('Ordered list', 'ordered-list', () => executeToolbarCommand('orderedList'))}
+          {renderToolbarIconButton('Task', 'task-list', () => executeToolbarCommand('taskList'))}
+        </div>
+        <div className="toastui-editor-toolbar-group">
+          {renderToolbarIconButton('Insert table', 'table', () => executeToolbarCommand('addTable', { rowCount: 2, columnCount: 2 }))}
+          {renderToolbarIconButton('Insert image', 'image', insertImageFromToolbar)}
+          {renderToolbarIconButton('Insert link', 'link', insertWebLinkFromToolbar)}
+        </div>
+        <div className="toastui-editor-toolbar-group">
+          {renderToolbarIconButton('Code', 'code', () => executeToolbarCommand('code'))}
+          {renderToolbarIconButton('Insert CodeBlock', 'codeblock', () => executeToolbarCommand('codeBlock'))}
+        </div>
+        <div className="toastui-editor-toolbar-group clear-note-toolbar-group">
+          <button
+            type="button"
+            className="clear-note-toolbar-btn"
+            title="Clear contents"
+            aria-label="Clear contents"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              setHeadingMenuOpen(false)
+              setNoteToolsOpen(false)
+              clearActiveNoteContent()
+            }}
+          >
+            ⌫
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+
+  const renderEditorShell = () => (
+    <section className={`editor-shell ${editorReadOnly ? 'editor-readonly' : ''}`}>
+      {viewMode === 'main' && (
+        <button
+          type="button"
+          className="note-reference-btn"
+          onClick={openNoteReferenceModal}
+          title="Insert note link or note preview"
+          aria-label="Insert note link or note preview"
+        >
+          <span className="note-reference-paper" aria-hidden="true" />
+          <span className="note-reference-chain" aria-hidden="true" />
+        </button>
+      )}
+      <div ref={editorMountRef} className="toast-editor-host" />
+      {viewMode === 'main' && imageTools.visible && (
+        <>
+          <div className="image-tools" style={{ top: `${imageTools.cropTop}px`, left: `${imageTools.cropLeft}px` }}>
+            {!inlineCrop.active ? (
+              <button type="button" className="image-tool-btn" onClick={startInlineCrop} title="Crop">
+                crop
+              </button>
+            ) : (
+              <>
+                <button type="button" className="image-tool-btn" onClick={applyInlineCrop} title="Apply crop">
+                  apply
+                </button>
+                <button type="button" className="image-tool-btn" onClick={cancelInlineCrop} title="Cancel crop">
+                  cancel
+                </button>
+              </>
+            )}
+          </div>
+          {!inlineCrop.active && (
+            <button
+              type="button"
+              className="image-resize-handle"
+              style={{ top: `${imageTools.resizeTop}px`, left: `${imageTools.resizeLeft}px` }}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={(event) => event.preventDefault()}
+              onPointerDown={beginImageResize}
+              aria-label="Resize image"
+              title="Drag to resize"
+            />
+          )}
+          {inlineCrop.active && (
+            <div
+              className="inline-crop-box"
+              style={{
+                top: `${inlineCrop.top}px`,
+                left: `${inlineCrop.left}px`,
+                width: `${inlineCrop.width}px`,
+                height: `${inlineCrop.height}px`,
+              }}
+              onPointerDown={(event) => beginInlineCropDrag('move', event)}
+            >
+              <button
+                type="button"
+                className="inline-crop-resize-handle"
+                onPointerDown={(event) => beginInlineCropDrag('resize', event)}
+                onClick={(event) => event.preventDefault()}
+                aria-label="Resize crop area"
+                title="Drag to resize crop area"
+              />
+            </div>
+          )}
+        </>
+      )}
+      {viewMode === 'main' && linkPrompt.open && (
+        <div
+          className="link-prompt"
+          style={{ top: `${linkPrompt.top}px`, left: `${linkPrompt.left}px` }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <input
+            ref={linkPromptInputRef}
+            className="link-prompt-input"
+            value={linkPrompt.text}
+            placeholder="link name"
+            onChange={(event) => setLinkPrompt((previous) => ({ ...previous, text: event.target.value }))}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                insertNamedLinkFromPrompt()
+              } else if (event.key === 'Escape') {
+                event.preventDefault()
+                closeLinkPrompt()
+              }
+            }}
+          />
+          <button type="button" className="link-prompt-btn" onClick={insertNamedLinkFromPrompt}>
+            done
+          </button>
+        </div>
+      )}
+      {editorReadOnly && <div className="editor-lock" aria-hidden="true" />}
+    </section>
+  )
 
   const canDeleteSpace = state.spaces.length > 1
 
@@ -6138,7 +8334,7 @@ function App() {
               label: 'settings',
               selected: false,
               className: 'btn btn-sm tab-btn topbar-action-btn topbar-context-btn',
-              onClick: closeSettingsView,
+              onClick: () => undefined,
             },
           ]
         : []),
@@ -6149,7 +8345,7 @@ function App() {
               label: 'director',
               selected: false,
               className: 'btn btn-sm tab-btn topbar-action-btn topbar-context-btn',
-              onClick: endStageManager,
+              onClick: () => undefined,
             },
           ]
         : []),
@@ -6187,7 +8383,9 @@ function App() {
 
   return (
     <main
-      className={`app-shell theme-${state.theme} ${viewMode === 'trash' ? 'view-trash' : 'view-main'}`}
+      className={`app-shell theme-${state.theme} ${viewMode === 'trash' ? 'view-trash' : 'view-main'} ${
+        viewMode === 'stage-manager' ? 'view-stage-manager' : ''
+      }`}
       style={
         {
           '--tab-button-scale': String(state.ui.tabButtonScale),
@@ -6582,12 +8780,12 @@ function App() {
                 <div className="settings-page-actions">
                   <button
                     type="button"
-                    className="btn btn-sm btn-outline-light"
+                    className="btn btn-sm settings-action-btn"
                     onClick={() => setModal({ type: 'export-space', spaceId: activeSpace.id })}
                   >
                     export space
                   </button>
-                  <button type="button" className="btn btn-sm btn-outline-light" onClick={() => exportData('all')}>
+                  <button type="button" className="btn btn-sm settings-action-btn" onClick={() => exportData('all')}>
                     export all
                   </button>
                 </div>
@@ -6617,7 +8815,6 @@ function App() {
                     ))}
                   </div>
                 </div>
-                <p className="settings-help">dusk is available as a selection now; its visual treatment can be added later.</p>
                 <div className="settings-hotkey-row settings-slider-row">
                   <label className="settings-hotkey-label" htmlFor="settings-tab-button-scale">
                     tab button size
@@ -6655,7 +8852,7 @@ function App() {
                     <span className="settings-range-value">{Math.round(noteFontScaleDraft * 100)}%</span>
                   </div>
                 </div>
-                <p className="settings-help">adjusts note text size without changing tabs or toolbar controls.</p>
+                <p className="settings-help">adjusts note and settings text size without changing tabs or toolbar controls.</p>
                 <div className="settings-hotkey-row">
                   <label
                     className="settings-hotkey-label"
@@ -6915,10 +9112,10 @@ function App() {
                     <h2>director</h2>
                     <p>select the parent tabs and sub-tabs you want to work with in this space.</p>
                     <div className="stage-manager-actions-row">
-                      <button type="button" className="btn btn-sm btn-outline-light" onClick={selectAllStageManagerItems}>
+                      <button type="button" className="btn btn-sm stage-manager-secondary-btn" onClick={selectAllStageManagerItems}>
                         select all
                       </button>
-                      <button type="button" className="btn btn-sm btn-outline-light" onClick={deselectAllStageManagerItems}>
+                      <button type="button" className="btn btn-sm stage-manager-secondary-btn" onClick={deselectAllStageManagerItems}>
                         deselect all
                       </button>
                     </div>
@@ -6981,6 +9178,20 @@ function App() {
                         <p>this fully selected parent will become a new space. its home note becomes a prime tab named <code>main</code>.</p>
                         <div className="stage-manager-field-grid">
                           <label className="stage-manager-field">
+                            <span>destination domain</span>
+                            <select
+                              className="form-select form-select-sm"
+                              value={stageManagerPromoteDomainId}
+                              onChange={(event) => updateStageManagerDraft({ promoteDomainId: event.target.value })}
+                            >
+                              {state.domains.map((domain) => (
+                                <option key={domain.id} value={domain.id}>
+                                  {domain.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="stage-manager-field">
                             <span>new space name</span>
                             <input
                               type="text"
@@ -7014,6 +9225,20 @@ function App() {
                           </button>
                         </div>
                         <div className="stage-manager-field-grid">
+                          <label className="stage-manager-field">
+                            <span>destination domain</span>
+                            <select
+                              className="form-select form-select-sm"
+                              value={stageManagerPromoteDomainId}
+                              onChange={(event) => updateStageManagerDraft({ promoteDomainId: event.target.value, promoteSpaceId: '' })}
+                            >
+                              {state.domains.map((domain) => (
+                                <option key={domain.id} value={domain.id}>
+                                  {domain.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
                           {stageManagerDraft.promoteSpaceMode === 'existing' ? (
                             <label className="stage-manager-field">
                               <span>destination space</span>
@@ -7049,6 +9274,36 @@ function App() {
                     {stageManagerAction === 'demote' && (
                       <>
                         <p>selected parent tabs will become sub-tabs under the destination parent. their old home notes become their new note content.</p>
+                        <div className="stage-manager-field-grid">
+                          <label className="stage-manager-field">
+                            <span>destination domain</span>
+                            <select
+                              className="form-select form-select-sm"
+                              value={stageManagerDemoteDomainId}
+                              onChange={(event) => updateStageManagerDraft({ demoteDomainId: event.target.value, demoteSpaceId: '', demoteParentId: '' })}
+                            >
+                              {state.domains.map((domain) => (
+                                <option key={domain.id} value={domain.id}>
+                                  {domain.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="stage-manager-field">
+                            <span>destination space</span>
+                            <select
+                              className="form-select form-select-sm"
+                              value={stageManagerDemoteSpace?.id ?? ''}
+                              onChange={(event) => updateStageManagerDraft({ demoteSpaceId: event.target.value, demoteParentId: '' })}
+                            >
+                              {stageManagerDemoteSpaces.map((space) => (
+                                <option key={space.id} value={space.id}>
+                                  {space.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
                         <div className="stage-manager-actions-row">
                           <button
                             type="button"
@@ -7137,6 +9392,20 @@ function App() {
                               </button>
                             </div>
                             <div className="stage-manager-field-grid">
+                              <label className="stage-manager-field">
+                                <span>destination domain</span>
+                                <select
+                                  className="form-select form-select-sm"
+                                  value={stageManagerMigrateDomainId}
+                                  onChange={(event) => updateStageManagerDraft({ migrateDomainId: event.target.value, migrateSpaceId: '' })}
+                                >
+                                  {state.domains.map((domain) => (
+                                    <option key={domain.id} value={domain.id}>
+                                      {domain.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
                               {stageManagerDraft.migrateSpaceMode === 'existing' ? (
                                 <label className="stage-manager-field">
                                   <span>destination space</span>
@@ -7259,34 +9528,72 @@ function App() {
                             </div>
 
                             {stageManagerDraft.migrateParentSpaceMode === 'existing' && (
-                              <label className="stage-manager-field">
-                                <span>destination space</span>
-                                <select
-                                  className="form-select form-select-sm"
-                                  value={stageManagerDraft.migrateParentSpaceId}
-                                  onChange={(event) => updateStageManagerDraft({ migrateParentSpaceId: event.target.value })}
-                                >
-                                  <option value="">select a space</option>
-                                  {stageManagerOtherSpaces.map((space) => (
-                                    <option key={space.id} value={space.id}>
-                                      {space.name}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
+                              <div className="stage-manager-field-grid">
+                                <label className="stage-manager-field">
+                                  <span>destination domain</span>
+                                  <select
+                                    className="form-select form-select-sm"
+                                    value={stageManagerMigrateParentDomainId}
+                                    onChange={(event) =>
+                                      updateStageManagerDraft({
+                                        migrateParentDomainId: event.target.value,
+                                        migrateParentSpaceId: '',
+                                        migrateParentId: '',
+                                      })
+                                    }
+                                  >
+                                    {state.domains.map((domain) => (
+                                      <option key={domain.id} value={domain.id}>
+                                        {domain.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <label className="stage-manager-field">
+                                  <span>destination space</span>
+                                  <select
+                                    className="form-select form-select-sm"
+                                    value={stageManagerDraft.migrateParentSpaceId}
+                                    onChange={(event) => updateStageManagerDraft({ migrateParentSpaceId: event.target.value, migrateParentId: '' })}
+                                  >
+                                    <option value="">select a space</option>
+                                    {stageManagerMigrateParentSpaces.map((space) => (
+                                      <option key={space.id} value={space.id}>
+                                        {space.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              </div>
                             )}
 
                             {stageManagerDraft.migrateParentSpaceMode === 'new' && (
-                              <label className="stage-manager-field">
-                                <span>new space name</span>
-                                <input
-                                  type="text"
-                                  className="form-control form-control-sm"
-                                  value={stageManagerDraft.newSpaceName}
-                                  onChange={(event) => updateStageManagerDraft({ newSpaceName: event.target.value })}
-                                  placeholder="new space"
-                                />
-                              </label>
+                              <div className="stage-manager-field-grid">
+                                <label className="stage-manager-field">
+                                  <span>destination domain</span>
+                                  <select
+                                    className="form-select form-select-sm"
+                                    value={stageManagerMigrateParentDomainId}
+                                    onChange={(event) => updateStageManagerDraft({ migrateParentDomainId: event.target.value })}
+                                  >
+                                    {state.domains.map((domain) => (
+                                      <option key={domain.id} value={domain.id}>
+                                        {domain.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <label className="stage-manager-field">
+                                  <span>new space name</span>
+                                  <input
+                                    type="text"
+                                    className="form-control form-control-sm"
+                                    value={stageManagerDraft.newSpaceName}
+                                    onChange={(event) => updateStageManagerDraft({ newSpaceName: event.target.value })}
+                                    placeholder="new space"
+                                  />
+                                </label>
+                              </div>
                             )}
 
                             {stageManagerDraft.migrateParentSpaceMode !== 'new' && (
@@ -7413,7 +9720,7 @@ function App() {
                 <div className="stage-manager-footer">
                   <button
                     type="button"
-                    className="btn btn-sm btn-outline-light stage-manager-nav-btn"
+                    className="btn btn-sm stage-manager-secondary-btn stage-manager-nav-btn"
                     onClick={handleStageManagerPrevious}
                     disabled={stageManagerStep === 'select'}
                   >
@@ -7441,96 +9748,62 @@ function App() {
                 <button type="button" className="btn btn-sm btn-outline-light" onClick={() => setModal({ type: 'trash-restore-all' })}>
                   restore all
                 </button>
-                <button type="button" className="btn btn-sm btn-danger" onClick={() => setModal({ type: 'trash-delete-all' })}>
+                <button type="button" className="btn btn-sm app-danger-btn" onClick={() => setModal({ type: 'trash-delete-all' })}>
                   delete all
                 </button>
               </div>
             </section>
-          ) : (
-            <section className={`editor-shell ${editorReadOnly ? 'editor-readonly' : ''}`}>
-              <div ref={editorMountRef} className="toast-editor-host" />
-              {viewMode === 'main' && imageTools.visible && (
-                <>
-                  <div className="image-tools" style={{ top: `${imageTools.cropTop}px`, left: `${imageTools.cropLeft}px` }}>
-                    {!inlineCrop.active ? (
-                      <button type="button" className="image-tool-btn" onClick={startInlineCrop} title="Crop">
-                        crop
-                      </button>
-                    ) : (
-                      <>
-                        <button type="button" className="image-tool-btn" onClick={applyInlineCrop} title="Apply crop">
-                          apply
-                        </button>
-                        <button type="button" className="image-tool-btn" onClick={cancelInlineCrop} title="Cancel crop">
-                          cancel
-                        </button>
-                      </>
-                    )}
-                  </div>
-                  {!inlineCrop.active && (
-                    <button
-                      type="button"
-                      className="image-resize-handle"
-                      style={{ top: `${imageTools.resizeTop}px`, left: `${imageTools.resizeLeft}px` }}
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={(event) => event.preventDefault()}
-                      onPointerDown={beginImageResize}
-                      aria-label="Resize image"
-                      title="Drag to resize"
-                    />
-                  )}
-                  {inlineCrop.active && (
-                    <div
-                      className="inline-crop-box"
-                      style={{
-                        top: `${inlineCrop.top}px`,
-                        left: `${inlineCrop.left}px`,
-                        width: `${inlineCrop.width}px`,
-                        height: `${inlineCrop.height}px`,
-                      }}
-                      onPointerDown={(event) => beginInlineCropDrag('move', event)}
+          ) : viewMode === 'main' ? (
+            <section
+              ref={(node) => {
+                editorEventRootRef.current = node
+              }}
+              className={`note-aisles-shell ${activeNoteAisles.length <= 1 ? 'is-single' : 'is-split'} ${
+                aisleDeleteMode ? 'is-delete-mode' : ''
+              }`}
+            >
+              {renderSharedToolbar()}
+              {renderHeadingPopover()}
+              {renderAisleToolbarPopover()}
+              <div className="note-aisle-scroll">
+                {activeNoteAisles.map((aisle, index) => {
+                  const editorKey = buildAisleEditorKey(activeNoteBodyId, aisle.id)
+                  return (
+                    <section
+                      key={aisle.id}
+                      className={`note-aisle-pane ${aisle.id === resolvedActiveAisleId ? 'is-active' : ''}`}
+                      aria-label={`Aisle ${index + 1}`}
+                      data-aisle-editor-key={editorKey}
+                      onPointerDown={() => activateAisleEditor(editorKey, { flushPrevious: true })}
                     >
-                      <button
-                        type="button"
-                        className="inline-crop-resize-handle"
-                        onPointerDown={(event) => beginInlineCropDrag('resize', event)}
-                        onClick={(event) => event.preventDefault()}
-                        aria-label="Resize crop area"
-                        title="Drag to resize crop area"
-                      />
-                    </div>
-                  )}
-                </>
-              )}
-              {viewMode === 'main' && linkPrompt.open && (
-                <div
-                  className="link-prompt"
-                  style={{ top: `${linkPrompt.top}px`, left: `${linkPrompt.left}px` }}
-                  onMouseDown={(event) => event.stopPropagation()}
-                >
-                  <input
-                    ref={linkPromptInputRef}
-                    className="link-prompt-input"
-                    value={linkPrompt.text}
-                    placeholder="link name"
-                    onChange={(event) => setLinkPrompt((previous) => ({ ...previous, text: event.target.value }))}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        event.preventDefault()
-                        insertNamedLinkFromPrompt()
-                      } else if (event.key === 'Escape') {
-                        event.preventDefault()
-                        closeLinkPrompt()
-                      }
-                    }}
-                  />
-                  <button type="button" className="link-prompt-btn" onClick={insertNamedLinkFromPrompt}>
-                    done
-                  </button>
-                </div>
-              )}
-              {editorReadOnly && <div className="editor-lock" aria-hidden="true" />}
+                      {aisleDeleteMode && activeNoteAisles.length > 1 && (
+                        <button
+                          type="button"
+                          className="note-aisle-delete-float"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            deleteAisleFromActiveNote(aisle.id)
+                          }}
+                          title={`Delete aisle ${index + 1}`}
+                          aria-label={`Delete aisle ${index + 1}`}
+                        >
+                          x
+                        </button>
+                      )}
+                      <section className={`editor-shell note-aisle-editor-shell ${editorReadOnly ? 'editor-readonly' : ''}`}>
+                        <div
+                          ref={(node) => registerAisleEditorRoot(editorKey, node)}
+                          className="toast-editor-host"
+                          data-aisle-editor-key={editorKey}
+                        />
+                      </section>
+                    </section>
+                  )
+                })}
+              </div>
             </section>
+          ) : (
+            renderEditorShell()
           )}
         </>
       )}
@@ -7583,6 +9856,15 @@ function App() {
             >
               copy image
             </button>
+          ) : contextMenu.type === 'internal-note-link' ? (
+            <>
+              <button type="button" className="tab-context-delete" onClick={openInternalNoteLinkFromContext}>
+                open linked note
+              </button>
+              <button type="button" className="tab-context-delete" onClick={renameInternalNoteLinkFromContext}>
+                edit link name
+              </button>
+            </>
           ) : contextMenu.type === 'trash-tab' || contextMenu.type === 'trash-subtab' ? (
             <button
               type="button"
@@ -7596,6 +9878,15 @@ function App() {
               <button type="button" className="tab-context-delete" onClick={enterArrangeModeFromContext}>
                 arrange
               </button>
+              {getCurrentDuplicateCount() <= 1 ? (
+                <button type="button" className="tab-context-delete" onClick={openDuplicateModalFromContext}>
+                  make duplicate
+                </button>
+              ) : (
+                <button type="button" className="tab-context-delete" onClick={openDeduplicateModalFromContext}>
+                  de-duplicate
+                </button>
+              )}
               <button type="button" className="tab-context-delete" onClick={deleteFromContext}>
                 move to trash
               </button>
@@ -7614,7 +9905,14 @@ function App() {
       {modal && (
         <div className="delete-modal-backdrop" onClick={() => setModal(null)}>
           <div
-            className={`delete-modal ${modal.type === 'export-space' ? 'settings-modal' : ''}`}
+            className={`delete-modal ${
+              modal.type === 'export-space' ||
+              modal.type === 'duplicate-note' ||
+              modal.type === 'deduplicate-note' ||
+              modal.type === 'insert-note-reference'
+                ? 'settings-modal'
+                : ''
+            }`}
             role="dialog"
             aria-modal="true"
             onClick={(event) => event.stopPropagation()}
@@ -7637,13 +9935,75 @@ function App() {
                 </select>
               </label>
             )}
+            {modal.type === 'duplicate-note' && (
+              <NoteLocationPicker
+                domains={domainsForPickers}
+                noteBodies={state.noteBodies}
+                value={modal.target}
+                onChange={(target: NoteLocationPickerValue) => setModal({ ...modal, target })}
+              />
+            )}
+            {modal.type === 'deduplicate-note' && (
+              <div className="duplicate-note-list">
+                {listNoteLocationsForBody(state, modal.noteBodyId).map((location) => {
+                  const locationKey = buildNoteLocationKey(location)
+                  return (
+                    <label key={locationKey} className="duplicate-note-choice">
+                      <input
+                        type="checkbox"
+                        checked={modal.keepLocationKeys.includes(locationKey)}
+                        onChange={(event) => {
+                          const keepLocationKeys = event.target.checked
+                            ? [...modal.keepLocationKeys, locationKey]
+                            : modal.keepLocationKeys.filter((key) => key !== locationKey)
+                          setModal({ ...modal, keepLocationKeys })
+                        }}
+                      />
+                      <span>{location.label}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+            {modal.type === 'insert-note-reference' && (
+              <div className="note-reference-modal">
+                <div className="note-reference-mode" role="group" aria-label="Reference type">
+                  <button
+                    type="button"
+                    className={`note-reference-mode-btn ${modal.insertAs === 'link' ? 'is-active' : ''}`}
+                    onClick={() => setModal({ ...modal, insertAs: 'link', editingTokenId: undefined })}
+                    disabled={Boolean(modal.editingTokenId)}
+                  >
+                    link a note
+                  </button>
+                  <button
+                    type="button"
+                    className={`note-reference-mode-btn ${modal.insertAs === 'context' ? 'is-active' : ''}`}
+                    onClick={() => setModal({ ...modal, insertAs: 'context' })}
+                  >
+                    note preview
+                  </button>
+                </div>
+                <NoteLocationPicker
+                  domains={domainsForPickers}
+                  noteBodies={state.noteBodies}
+                  value={modal.target}
+                  includeAisles={modal.insertAs === 'context'}
+                  allowAllAisles
+                  onChange={(target: NoteLocationPickerValue) => setModal({ ...modal, target })}
+                />
+              </div>
+            )}
             <div className="delete-modal-actions">
               <button type="button" className="btn btn-sm btn-outline-light modal-cancel-btn" onClick={() => setModal(null)}>
                 cancel
               </button>
               <button
                 type="button"
-                className={`btn btn-sm ${modal.type === 'export-space' ? 'modal-primary-btn' : 'btn-danger'}`}
+                className={`btn btn-sm ${
+                  modal.type === 'delete-target' || modal.type === 'trash-delete-all' ? 'app-danger-btn' : 'modal-primary-btn'
+                }`}
+                disabled={modal.type === 'deduplicate-note' && modal.keepLocationKeys.length === 0}
                 onClick={() => {
                   if (modal.type === 'delete-target' && modal.target.type === 'space' && state.spaces.length <= 1) {
                     setModal(null)

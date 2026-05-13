@@ -12,7 +12,7 @@
   background: var(--settings-control-bg);
   color: var(--settings-control-text);
   padding: 0.34rem 0.42rem;
-  font-size: 0.9rem;
+  font-size: calc(0.9rem * var(--settings-text-scale, 1));
 }
 
 .settings-number-input:focus {
@@ -21,17 +21,18 @@
 }
 
 .settings-field-suffix {
-  font-size: 0.9rem;
+  font-size: calc(0.9rem * var(--settings-text-scale, 1));
   color: var(--settings-field-suffix-text);
 }
 
 .settings-help {
   margin-bottom: 0.8rem !important;
-  font-size: 0.8rem !important;
+  font-size: calc(0.8rem * var(--settings-text-scale, 1)) !important;
   color: var(--settings-help-text) !important;
 }
 
 .settings-page-wrap {
+  --settings-text-scale: var(--note-font-scale, 1);
   flex: 1 1 auto;
   min-height: 0;
   padding: 1rem;
@@ -49,14 +50,14 @@
 
 .settings-page-card h2 {
   margin: 0 0 0.45rem;
-  font-size: 1.05rem;
+  font-size: calc(1.05rem * var(--settings-text-scale, 1));
   text-transform: lowercase;
 }
 
 .settings-page-card p {
   margin: 0 0 0.75rem;
   color: var(--settings-card-body-text);
-  font-size: 0.9rem;
+  font-size: calc(0.9rem * var(--settings-text-scale, 1));
 }
 
 .settings-page-card code {
@@ -76,7 +77,7 @@
   background: var(--settings-section-tab-bg);
   color: var(--settings-section-tab-text);
   padding: 0.46rem 0.55rem;
-  font-size: 0.9rem;
+  font-size: calc(0.9rem * var(--settings-text-scale, 1));
   text-transform: lowercase;
 }
 
@@ -100,6 +101,33 @@
   justify-content: flex-start;
   gap: 0.4rem;
   flex-wrap: wrap;
+}
+
+.settings-action-btn {
+  border: 1px solid var(--settings-action-border) !important;
+  background: var(--settings-action-bg) !important;
+  color: var(--settings-action-text) !important;
+  border-radius: 0.42rem;
+  font-size: calc(0.875rem * var(--settings-text-scale, 1)) !important;
+  min-width: 104px;
+}
+
+.settings-action-btn:hover {
+  border-color: var(--settings-action-hover-border) !important;
+  background: var(--settings-action-hover-bg) !important;
+  color: var(--settings-action-hover-text) !important;
+}
+
+.settings-action-btn:focus,
+.settings-action-btn:focus-visible {
+  border-color: var(--settings-action-hover-border) !important;
+  box-shadow: var(--settings-action-focus-shadow) !important;
+}
+
+.settings-action-btn:disabled {
+  border-color: var(--settings-action-disabled-border) !important;
+  background: var(--settings-action-disabled-bg) !important;
+  color: var(--settings-action-disabled-text) !important;
 }
 
 .settings-divider {
@@ -127,7 +155,7 @@
 }
 
 .settings-hotkey-label {
-  font-size: 0.86rem;
+  font-size: calc(0.86rem * var(--settings-text-scale, 1));
   color: var(--settings-hotkey-label-text);
 }
 
@@ -146,7 +174,7 @@
 .settings-range-value {
   min-width: 3rem;
   text-align: right;
-  font-size: 0.84rem;
+  font-size: calc(0.84rem * var(--settings-text-scale, 1));
   color: var(--settings-range-value-text);
 }
 
@@ -182,9 +210,9 @@
 
 .theme-switch {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.18rem;
-  min-width: 220px;
+  min-width: 260px;
   padding: 0.18rem;
   border: 1px solid var(--theme-switch-border);
   border-radius: 0.42rem;
@@ -196,7 +224,7 @@
   border-radius: 0.32rem;
   background: transparent;
   color: var(--theme-switch-option-text);
-  font-size: 0.8rem;
+  font-size: calc(0.8rem * var(--settings-text-scale, 1));
   line-height: 1.2;
   padding: 0.28rem 0.45rem;
   text-transform: lowercase;
@@ -217,7 +245,7 @@
   background: var(--settings-shortcut-bg);
   color: var(--settings-shortcut-text);
   border-radius: 0.36rem;
-  font-size: 0.8rem;
+  font-size: calc(0.8rem * var(--settings-text-scale, 1));
   line-height: 1.2;
   padding: 0.24rem 0.46rem;
   min-width: 115px;

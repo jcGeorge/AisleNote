@@ -325,7 +325,7 @@ export const EDITOR_TOOLBAR_ITEMS: string[][] = [
   ['code', 'codeblock'],
 ]
 
-function bindClearToolbarTooltip(root: HTMLElement, toolbar: HTMLElement, button: HTMLButtonElement) {
+function bindToolbarTooltip(root: HTMLElement, toolbar: HTMLElement, button: HTMLButtonElement, label: string) {
   const tooltip = root.querySelector('.toastui-editor-tooltip')
   const tooltipText = tooltip?.querySelector('.text')
   if (!(tooltip instanceof HTMLElement) || !(tooltipText instanceof HTMLElement)) return
@@ -336,7 +336,7 @@ function bindClearToolbarTooltip(root: HTMLElement, toolbar: HTMLElement, button
     tooltip.style.display = 'block'
     tooltip.style.left = `${buttonRect.left - toolbarRect.left + 6}px`
     tooltip.style.top = `${buttonRect.top - toolbarRect.top + button.offsetHeight + 6}px`
-    tooltipText.textContent = 'clear contents'
+    tooltipText.textContent = label
   }
 
   const hideTooltip = () => {
@@ -347,6 +347,20 @@ function bindClearToolbarTooltip(root: HTMLElement, toolbar: HTMLElement, button
   button.addEventListener('mouseout', hideTooltip)
   button.addEventListener('focus', showTooltip)
   button.addEventListener('blur', hideTooltip)
+}
+
+function createToolbarTextButton(className: string, label: string, text: string, onClick: () => void) {
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className = className
+  button.textContent = text
+  button.setAttribute('aria-label', label)
+  button.addEventListener('click', (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    onClick()
+  })
+  return button
 }
 
 export function installClearToolbarButton(root: HTMLElement, onClear: () => void) {
@@ -366,9 +380,33 @@ export function installClearToolbarButton(root: HTMLElement, onClear: () => void
     event.preventDefault()
     onClear()
   })
-  bindClearToolbarTooltip(root, toolbar, button)
+  bindToolbarTooltip(root, toolbar, button, 'Clear contents')
 
   group.appendChild(button)
+  toolbar.appendChild(group)
+}
+
+export function installNoteToolsToolbarButtons(
+  root: HTMLElement,
+  options: {
+    onNoteLink: () => void
+    onAisles: () => void
+  },
+) {
+  const toolbar = root.querySelector('.toastui-editor-defaultUI-toolbar')
+  if (!(toolbar instanceof HTMLElement)) return
+  if (toolbar.querySelector('.note-link-toolbar-btn') || toolbar.querySelector('.aisles-toolbar-btn')) return
+
+  const group = document.createElement('div')
+  group.className = 'toastui-editor-toolbar-group note-tools-toolbar-group'
+
+  const noteLinkButton = createToolbarTextButton('note-link-toolbar-btn', 'note link', 'N', options.onNoteLink)
+  const aisleButton = createToolbarTextButton('aisles-toolbar-btn', 'aisles', 'A', options.onAisles)
+  bindToolbarTooltip(root, toolbar, noteLinkButton, 'Note link')
+  bindToolbarTooltip(root, toolbar, aisleButton, 'Aisles')
+
+  group.appendChild(noteLinkButton)
+  group.appendChild(aisleButton)
   toolbar.appendChild(group)
 }
 
