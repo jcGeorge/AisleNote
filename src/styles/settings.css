@@ -15,6 +15,10 @@
   font-size: 1em;
 }
 
+.settings-number-input-half {
+  width: 61px;
+}
+
 .settings-number-input:focus {
   outline: none;
   border-color: var(--settings-control-focus-border);

@@ -9478,7 +9478,7 @@ function App() {
                     </div>
                   ))}
                 </div>
-                <p className="settings-help">click a hotkey and press a new key combination. press escape to cancel.</p>
+                <p className="settings-help">select a hotkey to enter new combination, escape to cancel.</p>
                 <div className="settings-hotkey-row">
                   <label className="settings-hotkey-label" htmlFor="settings-mouse-back-forward">
                     enable mouse back/forward buttons
@@ -9509,9 +9509,6 @@ function App() {
                     />
                   </div>
                 </div>
-                <p className="settings-help">
-                  generic hotkeys: {isMacPlatform ? 'cmd+[ and cmd+]' : 'alt+left and alt+right'}.
-                </p>
               </div>
             )}
 
@@ -9521,7 +9518,7 @@ function App() {
                 <div className="settings-field-row">
                   <input
                     type="number"
-                    className="settings-number-input"
+                    className="settings-number-input settings-number-input-half"
                     min={MIN_AUTO_REMOVE_DAYS}
                     max={MAX_AUTO_REMOVE_DAYS}
                     step={1}
@@ -9531,9 +9528,6 @@ function App() {
                   />
                   <span className="settings-field-suffix">days</span>
                 </div>
-                <p className="settings-help">
-                  min {MIN_AUTO_REMOVE_DAYS} day, max {MAX_AUTO_REMOVE_DAYS} days. default is {DEFAULT_AUTO_REMOVE_DAYS}.
-                </p>
                 <div className="settings-divider" />
                 <div className="settings-page-actions">
                   <button
@@ -9591,7 +9585,6 @@ function App() {
                     <span className="settings-range-value">{Math.round(tabButtonScaleDraft * 100)}%</span>
                   </div>
                 </div>
-                <p className="settings-help">adjusts the size of the parent and sub-tab buttons together.</p>
                 <div className="settings-hotkey-row settings-slider-row">
                   <label className="settings-hotkey-label" htmlFor="settings-note-font-scale">
                     note font size
@@ -9610,7 +9603,6 @@ function App() {
                     <span className="settings-range-value">{Math.round(noteFontScaleDraft * 100)}%</span>
                   </div>
                 </div>
-                <p className="settings-help">adjusts note, settings, director, trash, and menu text size.</p>
                 <div className="settings-hotkey-row">
                   <label
                     className="settings-hotkey-label"
