@@ -1,7 +1,5 @@
 import { type MouseEvent, type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { Editor } from '@toast-ui/editor'
-import JSZip from 'jszip'
 import '@toast-ui/editor/dist/toastui-editor.css'
 import './App.css'
 import {
@@ -14,12 +12,20 @@ import {
   moveItemByInsertion,
 } from './arrange/arrange-utils'
 import { DomainsPage } from './components/domains/DomainsPage'
+import { EditorToolbarPopovers } from './components/editor/EditorToolbarPopovers'
+import { ImageToolsOverlay, type InlineCropDragMode } from './components/editor/ImageToolsOverlay'
+import { LegacyEditorShell } from './components/editor/LegacyEditorShell'
+import { SharedEditorToolbar } from './components/editor/SharedEditorToolbar'
+import { DEFAULT_TOOLBAR_FORMAT_STATE, type ToolbarFormatKey, type ToolbarFormatState } from './components/editor/toolbar-state'
 import { NoteWorkspace } from './components/notes/NoteWorkspace'
+import { SubTabRail } from './components/navigation/SubTabRail'
+import { TopBar } from './components/navigation/TopBar'
 import { ContextMenuHost } from './components/overlays/ContextMenuHost'
 import { ModalHost } from './components/overlays/ModalHost'
 import { ToastHost } from './components/overlays/ToastHost'
 import { SettingsPage } from './components/settings/SettingsPage'
 import { SpacesPage } from './components/spaces/SpacesPage'
+import { StageManagerView } from './components/stage-manager/StageManagerView'
 import { TrashHomeNote } from './components/trash/TrashHomeNote'
 import { buildAisleEditorKey, type AisleEditorMeta } from './editor/aisle-editor'
 import {
@@ -31,6 +37,24 @@ import {
   multiLineSelectionShortcutPlugin,
   thematicBreakShortcutPlugin,
 } from './editor/editor-setup'
+import {
+  CODE_BLOCK_INDENT_TEXT,
+  getCodeBlockOutdentRemoveLength,
+  getCommandCapableEditor,
+  getElementFromEventTarget,
+  getInternalNoteLinkHitAtDocPosition,
+  getWysiwygView,
+} from './editor/prosemirror-utils'
+import { createContextPreviewPlugin } from './editor/note-preview-plugin'
+import {
+  COMPLETED_TASK_UNDO_HINT_COOLDOWN_MS,
+  COMPLETED_TASK_UNDO_HINT_DETECTION_MS,
+  COMPLETED_TASK_UNDO_HINT_MESSAGE,
+  COMPLETED_TASK_UNDO_HINT_TOAST_DURATION_MS,
+  installCompletedTaskCheckboxBehavior,
+  installTaskTextReorderBehavior,
+} from './editor/task-behavior'
+import { exportAppData, sanitizeName, type ExportScope } from './export/export-data'
 import {
   buildSplitLineMultiLineState,
   cloneMultiLineEditState,
@@ -51,13 +75,9 @@ import {
   getEditorTextLineRanges,
   isCodeBlockTextLineRange,
 } from './editor/multiline-ranges'
+import { eventMatchesShortcut } from './hotkeys/shortcuts'
+import { useGlobalHotkeys } from './hotkeys/useGlobalHotkeys'
 import {
-  buildShortcutFromKeyboardEvent,
-  DEFAULT_SHORTCUTS,
-  eventMatchesShortcut,
-} from './hotkeys/shortcuts'
-import {
-  convertInternalTabsForExport,
   getIndentPrefixLength,
   getTrailingIndentPrefixLength,
   INDENT_TOKEN,
@@ -66,6 +86,7 @@ import {
   normalizeHeadingMarkers,
   normalizeMarkdownForPersistence,
 } from './markdown/markdown-utils'
+import { useNavigationHistory } from './navigation/useNavigationHistory'
 import { cloneNoteBodyAsIndependentCopy, getNoteBodyMarkdown } from './notes/note-markdown'
 import {
   buildNoteLocationKey,
@@ -77,13 +98,9 @@ import {
 import {
   buildContextToken,
   buildInternalNoteUrl,
-  decodeContextPayload,
   escapeMarkdownLinkLabel,
   getContextReferenceSignature,
-  getMarkdownLinkLabel,
-  INTERNAL_NOTE_LINK_MARKDOWN_RE,
   type InternalNoteLinkHit,
-  NOTE_CONTEXT_REFERENCE_RE,
   type NoteContextReferencePayload,
   parseContextReferences,
   parseInternalNoteUrl,
@@ -91,13 +108,8 @@ import {
   replaceContextTokenById,
   wouldCreateContextCycle,
 } from './notes/note-references'
-import {
-  clampAutoRemoveDays,
-  clampNoteFontScale,
-  clampTabButtonScale,
-  DEFAULT_AUTO_REMOVE_DAYS,
-  DEFAULT_UI_SETTINGS,
-} from './settings/defaults'
+import { DEFAULT_AUTO_REMOVE_DAYS } from './settings/defaults'
+import { useSettingsController } from './settings/useSettingsController'
 import { applyAutoPurgeToAppState, applyMarkdownToAppState, ensureNoteBodiesForAppState, parseSavedState } from './state/app-state'
 import {
   addDomain,
@@ -114,7 +126,6 @@ import {
   updateSpaceInActiveDomain,
 } from './state/domains'
 import {
-  applyAutoPurgeToWorkspace,
   createId,
   createNoteBody,
   createSpace,
@@ -144,7 +155,6 @@ import { appStateStore } from './storage/app-state-store'
 import { buildTrashParentBuckets, resolveTrashContentDisplay, TRASH_HOME_ID } from './trash/trash-model'
 import type {
   AppState,
-  AppTheme,
   ArrangeDragItem,
   ArrangeDragSeed,
   ArrangeInsertPosition,
@@ -161,24 +171,19 @@ import type {
   LinkPromptState,
   ModalState,
   MultiLineEditState,
-  NavLocation,
   NoteAisle,
   NoteBody,
   NoteLocation,
   PendingContent,
   PendingCreatedEdit,
-  SettingsSection,
-  ShortcutId,
   Space,
   SpaceArrangeDragPreview,
-  SpaceSettings,
   StageManagerAction,
   StageManagerDraft,
   StageManagerParentSelection,
   StageManagerSelectionSnapshot,
   StageManagerSelectionState,
   StageManagerStep,
-  StageManagerStrayHandlingMode,
   Tab,
   TabArrangeDragItem,
   TabArrangeDragPreview,
@@ -189,35 +194,11 @@ import type {
   WorkspaceData,
 } from './types/app'
 
-const CODE_BLOCK_INDENT_TEXT = '    '
-type ToolbarFormatKey = 'bold' | 'italic' | 'strike'
-type ToolbarFormatState = Record<ToolbarFormatKey, boolean>
-type InlineCropDragMode = 'move' | 'resize-n' | 'resize-e' | 'resize-s' | 'resize-w' | 'resize-se'
-const DEFAULT_TOOLBAR_FORMAT_STATE: ToolbarFormatState = {
-  bold: false,
-  italic: false,
-  strike: false,
-}
-const TOOLBAR_FORMAT_LABELS: Record<ToolbarFormatKey, string> = {
-  bold: 'Bold',
-  italic: 'Italic',
-  strike: 'Strikethrough',
-}
 type AisleDeleteConfirmationState = {
   aisleId: string
   aisleIndex: number
   top: number
   left: number
-}
-
-function getCodeBlockOutdentRemoveLength(text: string): number {
-  if (text.startsWith('\t')) return 1
-  return text.match(/^ {1,4}/)?.[0].length ?? 0
-}
-
-type ProseMirrorTextPositionMap = {
-  text: string
-  positions: number[]
 }
 
 type ToolbarPopoverKind = 'heading' | 'aisles'
@@ -231,90 +212,9 @@ const TOOLBAR_POPOVER_WIDTH_PX = 168
 const TOOLBAR_POPOVER_VIEWPORT_MARGIN_PX = 8
 const AISLE_DELETE_CONFIRMATION_WIDTH_PX = 248
 const AISLE_DELETE_CONFIRMATION_HEIGHT_PX = 104
-const NOTE_PREVIEW_DEFAULT_HEIGHT_REM = 20
-const NOTE_PREVIEW_EXPANDED_HEIGHT_REM = 30
 
-function collectProseMirrorTextPositions(doc: any): ProseMirrorTextPositionMap {
-  let text = ''
-  const positions: number[] = []
-  let previousTextEnd: number | null = null
-
-  doc.descendants((node: any, pos: number) => {
-    if (!node.isText || typeof node.text !== 'string') return
-
-    if (previousTextEnd !== null && pos > previousTextEnd) {
-      text += '\n'
-      positions.push(-1)
-    }
-
-    for (let index = 0; index < node.text.length; index += 1) {
-      text += node.text[index]
-      positions.push(pos + index)
-    }
-    previousTextEnd = pos + node.text.length
-  })
-
-  return { text, positions }
-}
-
-function getInternalNoteLinkHitAtDocPosition(doc: any, docPosition: number): InternalNoteLinkHit | null {
-  const docText = collectProseMirrorTextPositions(doc)
-  let occurrence = 0
-  for (const match of docText.text.matchAll(INTERNAL_NOTE_LINK_MARKDOWN_RE)) {
-    if (match[0].startsWith('!')) continue
-    const target = parseInternalNoteUrl(match[2])
-    if (!target) continue
-
-    const startIndex = match.index ?? 0
-    const endIndex = startIndex + match[0].length - 1
-    const from = docText.positions[startIndex]
-    const last = docText.positions[endIndex]
-    const rangePositions = docText.positions.slice(startIndex, endIndex + 1)
-    if (from === undefined || last === undefined || from < 0 || last < from || rangePositions.some((position) => position < 0)) {
-      continue
-    }
-    if (docPosition >= from && docPosition <= last + 1) {
-      return {
-        label: getMarkdownLinkLabel(match[1]),
-        href: match[2],
-        target,
-        from,
-        to: last + 1,
-        occurrence,
-      }
-    }
-    occurrence += 1
-  }
-  return null
-}
-
-type CommandCapableEditor = Editor & {
-  exec: (name: string, payload?: Record<string, unknown>) => void
-  insertText: (text: string) => void
-  getSelectedText: () => string
-}
-
-function getCommandCapableEditor(editor: Editor): CommandCapableEditor {
-  return editor as unknown as CommandCapableEditor
-}
-
-const COMPLETED_TASK_HOLD_MS = 500
-const COMPLETED_TASK_POINTER_SLOP_PX = 6
-const COMPLETED_TASK_UNDO_HINT_COOLDOWN_MS = 10 * 60 * 1000
-const COMPLETED_TASK_UNDO_HINT_DETECTION_MS = 60 * 1000
-const COMPLETED_TASK_UNDO_HINT_MESSAGE =
-  'hold the task button for half a second to turn off its value, quick tap deletes it.'
 const DEFAULT_TOAST_DURATION_MS = 3000
 const HOVERED_TOAST_DURATION_MS = 2000
-const COMPLETED_TASK_UNDO_HINT_TOAST_DURATION_MS = 5000
-const TASK_REORDER_DRAG_SLOP_PX = 8
-const TASK_REORDER_SELECTION_SLOP_PX = 2
-const TASK_REORDER_PREVIEW_MAX_CHARS = 30
-const TASK_REORDER_MARKER_GAP_OFFSET_PX = 4
-const TASK_REORDER_SLOT_HYSTERESIS_PX = 6
-const TASK_REORDER_MARKER_MIN_WIDTH_PX = 72
-const TASK_REORDER_MARKER_EXTRA_WIDTH_PX = 34
-const TASK_REORDER_GHOST_CURSOR_X_PERCENT = 25
 
 type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
 
@@ -324,689 +224,6 @@ type MultiLineEditHistoryEntry = {
   afterMarkdown: string
   beforeState: MultiLineEditState
   afterState: MultiLineEditState
-}
-
-type TaskListItemHit = {
-  node: any
-  offset: number
-}
-
-function getWysiwygView(editor: Editor | null): any | null {
-  return (editor as any)?.wwEditor?.view ?? null
-}
-
-function parseCssPixel(value: string | null | undefined, fallback: number): number {
-  if (!value) return fallback
-  const parsed = Number.parseFloat(value)
-  return Number.isFinite(parsed) ? parsed : fallback
-}
-
-function isTaskCheckboxHit(listItemElement: HTMLElement, event: globalThis.MouseEvent): boolean {
-  const style = window.getComputedStyle(listItemElement, '::before')
-  const rect = listItemElement.getBoundingClientRect()
-  const boxLeft = parseCssPixel(style.left, 0)
-  const boxTop = parseCssPixel(style.top, 1)
-  const boxWidth = parseCssPixel(style.width, 18)
-  const boxHeight = parseCssPixel(style.height, 18)
-  const x = event.clientX - rect.left
-  const y = event.clientY - rect.top
-
-  return x >= boxLeft && x <= boxLeft + boxWidth && y >= boxTop && y <= boxTop + boxHeight
-}
-
-function getElementFromEventTarget(target: EventTarget | null): Element | null {
-  if (target instanceof Element) return target
-  if (target instanceof Text) return target.parentElement
-  return null
-}
-
-function findListItemHitFromResolvedPos(resolvedPos: any): TaskListItemHit | null {
-  for (let depth = resolvedPos.depth; depth > 0; depth -= 1) {
-    const node = resolvedPos.node(depth)
-    if (node?.type?.name === 'listItem') {
-      return {
-        node,
-        offset: resolvedPos.before(depth),
-      }
-    }
-  }
-  return null
-}
-
-function findTaskListItemHit(view: any, listItemElement: HTMLElement, event: globalThis.MouseEvent): TaskListItemHit | null {
-  try {
-    const domPos = view.posAtDOM(listItemElement, 0)
-    const resolved = view.state.doc.resolve(domPos)
-    if (resolved.nodeAfter?.type?.name === 'listItem') {
-      return { node: resolved.nodeAfter, offset: domPos }
-    }
-    const fromDom = findListItemHitFromResolvedPos(resolved)
-    if (fromDom) return fromDom
-  } catch {
-    // Fall back to coordinates; pseudo-element clicks can be awkward for DOM mapping.
-  }
-
-  const coords = view.posAtCoords({ left: event.clientX, top: event.clientY })
-  if (!coords) return null
-  return findListItemHitFromResolvedPos(view.state.doc.resolve(coords.pos))
-}
-
-function getCompletedTaskCheckboxHit(view: any, event: globalThis.MouseEvent): TaskListItemHit | null {
-  if (event.button !== 0) return null
-  const target = getElementFromEventTarget(event.target)
-  if (!target) return null
-  const listItemElement = target.closest('li.task-list-item[data-task]')
-  if (!(listItemElement instanceof HTMLElement)) return null
-  if (!view.dom.contains(listItemElement)) return null
-  if (!listItemElement.classList.contains('checked') && !listItemElement.hasAttribute('data-task-checked')) return null
-  if (!isTaskCheckboxHit(listItemElement, event)) return null
-
-  const hit = findTaskListItemHit(view, listItemElement, event)
-  if (!hit?.node?.attrs?.task || !hit.node.attrs.checked) return null
-  return hit
-}
-
-function uncheckCompletedTaskListItem(view: any, hit: TaskListItemHit) {
-  const attrs = hit.node.attrs ?? {}
-  view.dispatch(view.state.tr.setNodeMarkup(hit.offset, null, { ...attrs, checked: false }).scrollIntoView())
-}
-
-function deleteTaskListItem(view: any, hit: TaskListItemHit) {
-  const { state } = view
-  const { doc, schema } = state
-  const itemStart = hit.offset
-  const itemEnd = itemStart + hit.node.nodeSize
-  const resolvedItemStart = doc.resolve(itemStart)
-  const parentList = resolvedItemStart.parent
-
-  if (parentList?.type?.name !== 'bulletList' && parentList?.type?.name !== 'orderedList') {
-    view.dispatch(state.tr.delete(itemStart, itemEnd).scrollIntoView())
-    return
-  }
-
-  if (parentList.childCount > 1) {
-    view.dispatch(state.tr.delete(itemStart, itemEnd).scrollIntoView())
-    return
-  }
-
-  const listDepth = resolvedItemStart.depth
-  const listStart = resolvedItemStart.before(listDepth)
-  const listEnd = listStart + parentList.nodeSize
-  const onlyDocumentBlock = listDepth === 1 && doc.childCount === 1
-  const replacement = onlyDocumentBlock ? schema.nodes.paragraph.create() : null
-  const tr = replacement ? state.tr.replaceWith(listStart, listEnd, replacement) : state.tr.delete(listStart, listEnd)
-  view.dispatch(tr.scrollIntoView())
-}
-
-function installCompletedTaskCheckboxBehavior(
-  root: HTMLElement,
-  getEditor: () => Editor | null,
-  onQuickDelete: (beforeMarkdown: string) => void,
-) {
-  type PendingTaskAction = {
-    view: any
-    hit: TaskListItemHit
-    beforeMarkdown: string
-    startX: number
-    startY: number
-    held: boolean
-    timer: number
-  }
-
-  let pending: PendingTaskAction | null = null
-  let suppressNextClick = false
-
-  const clearPending = () => {
-    if (pending) window.clearTimeout(pending.timer)
-    pending = null
-    window.removeEventListener('mouseup', handleMouseUp, true)
-    window.removeEventListener('mousemove', handleMouseMove, true)
-    window.removeEventListener('blur', handleCancel, true)
-  }
-
-  const handleCancel = () => {
-    clearPending()
-  }
-
-  const handleMouseMove = (event: globalThis.MouseEvent) => {
-    if (!pending) return
-    const distance = Math.hypot(event.clientX - pending.startX, event.clientY - pending.startY)
-    if (distance > COMPLETED_TASK_POINTER_SLOP_PX && !pending.held) {
-      clearPending()
-    }
-  }
-
-  const handleMouseUp = (event: globalThis.MouseEvent) => {
-    if (!pending) return
-    event.preventDefault()
-    event.stopPropagation()
-    suppressNextClick = true
-
-    const action = pending
-    clearPending()
-    if (action.held) return
-
-    onQuickDelete(action.beforeMarkdown)
-    deleteTaskListItem(action.view, action.hit)
-  }
-
-  const handleMouseDown = (event: globalThis.MouseEvent) => {
-    const editor = getEditor()
-    const view = getWysiwygView(editor)
-    if (!editor || !view) return
-
-    const hit = getCompletedTaskCheckboxHit(view, event)
-    if (!hit) return
-
-    event.preventDefault()
-    event.stopPropagation()
-    suppressNextClick = true
-
-    clearPending()
-    pending = {
-      view,
-      hit,
-      beforeMarkdown: normalizeMarkdownForPersistence(editor.getMarkdown()),
-      startX: event.clientX,
-      startY: event.clientY,
-      held: false,
-      timer: window.setTimeout(() => {
-        if (!pending) return
-        pending.held = true
-        uncheckCompletedTaskListItem(pending.view, pending.hit)
-      }, COMPLETED_TASK_HOLD_MS),
-    }
-
-    window.addEventListener('mouseup', handleMouseUp, true)
-    window.addEventListener('mousemove', handleMouseMove, true)
-    window.addEventListener('blur', handleCancel, true)
-  }
-
-  const handleClick = (event: globalThis.MouseEvent) => {
-    if (!suppressNextClick) return
-    suppressNextClick = false
-    event.preventDefault()
-    event.stopPropagation()
-  }
-
-  root.addEventListener('mousedown', handleMouseDown, true)
-  root.addEventListener('click', handleClick, true)
-
-  return () => {
-    clearPending()
-    root.removeEventListener('mousedown', handleMouseDown, true)
-    root.removeEventListener('click', handleClick, true)
-  }
-}
-
-type TaskReorderDropTarget = {
-  element: HTMLElement
-  insertIndex: number
-  markerY: number
-}
-
-function getTaskParagraphElement(listItemElement: HTMLElement): HTMLElement | null {
-  const paragraph = listItemElement.querySelector('p')
-  return paragraph instanceof HTMLElement ? paragraph : null
-}
-
-function getParagraphLineRects(paragraph: HTMLElement): DOMRect[] {
-  const range = document.createRange()
-  range.selectNodeContents(paragraph)
-  const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0)
-  range.detach()
-  return rects
-}
-
-function getClosestParagraphLineRect(paragraph: HTMLElement, event: globalThis.MouseEvent): DOMRect | null {
-  const rects = getParagraphLineRects(paragraph)
-  if (rects.length === 0) return paragraph.getBoundingClientRect()
-
-  const containingLine = rects.find((rect) => event.clientY >= rect.top - 2 && event.clientY <= rect.bottom + 2)
-  if (containingLine) return containingLine
-
-  return rects.reduce((closest, rect) => {
-    const closestCenter = closest.top + closest.height / 2
-    const rectCenter = rect.top + rect.height / 2
-    return Math.abs(event.clientY - rectCenter) < Math.abs(event.clientY - closestCenter) ? rect : closest
-  }, rects[0])
-}
-
-function isTaskTrailingEmptySpaceClick(listItemElement: HTMLElement, event: globalThis.MouseEvent) {
-  const paragraph = getTaskParagraphElement(listItemElement)
-  if (!paragraph) return false
-
-  const paragraphRect = paragraph.getBoundingClientRect()
-  if (
-    event.clientY < paragraphRect.top - 2 ||
-    event.clientY > paragraphRect.bottom + 2 ||
-    event.clientX > paragraphRect.right + 2
-  ) {
-    return false
-  }
-
-  const lineRect = getClosestParagraphLineRect(paragraph, event)
-  if (!lineRect) return false
-  return event.clientX > lineRect.right + 2 && event.clientX >= lineRect.left
-}
-
-function isMouseUpInsideTaskElement(listItemElement: HTMLElement, event: globalThis.MouseEvent) {
-  const elementAtPoint = document.elementFromPoint(event.clientX, event.clientY)
-  if (elementAtPoint && listItemElement.contains(elementAtPoint)) return true
-
-  const target = getElementFromEventTarget(event.target)
-  return Boolean(target && listItemElement.contains(target))
-}
-
-function placeTaskCaretAtParagraphEnd(view: any, editor: Editor, listItemElement: HTMLElement) {
-  const paragraph = getTaskParagraphElement(listItemElement)
-  if (!paragraph || !view.dom.contains(paragraph)) return
-
-  try {
-    const rawPos = view.posAtDOM(paragraph, paragraph.childNodes.length)
-    const pos = Math.max(0, Math.min(rawPos, view.state.doc.content.size))
-    const SelectionCtor = view.state.selection.constructor as {
-      create?: (doc: unknown, anchor: number, head?: number) => unknown
-    }
-    if (typeof SelectionCtor.create !== 'function') return
-    const nextSelection = SelectionCtor.create(view.state.doc, pos, pos)
-    view.dispatch(view.state.tr.setSelection(nextSelection).scrollIntoView())
-    editor.focus()
-  } catch {
-    editor.focus()
-  }
-}
-
-function getTaskListTextDragElement(view: any, event: globalThis.MouseEvent): HTMLElement | null {
-  if (event.button !== 0) return null
-  const target = getElementFromEventTarget(event.target)
-  if (!target) return null
-  if (target.closest('a, button, input, textarea, select, img')) return null
-
-  const listItemElement = target.closest('li.task-list-item[data-task]')
-  if (!(listItemElement instanceof HTMLElement)) return null
-  if (!view.dom.contains(listItemElement)) return null
-  if (isTaskCheckboxHit(listItemElement, event)) return null
-
-  const textBlock = target.closest('p')
-  if (textBlock instanceof HTMLElement && listItemElement.contains(textBlock)) return listItemElement
-  if (!isTaskTrailingEmptySpaceClick(listItemElement, event)) return null
-
-  return listItemElement
-}
-
-function normalizeTaskReorderText(text: string): string {
-  return text
-    .replace(/[`*_~]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-function getTaskMarkdownLineText(line: string): string | null {
-  const match = line.match(/^\s*(?:[-*+]|\d+[.)])\s+\[[ xX]\]\s+(.*)$/)
-  return match ? normalizeTaskReorderText(match[1]) : null
-}
-
-function reorderTaskMarkdownLines(
-  markdown: string,
-  taskElements: HTMLElement[],
-  sourceIndex: number,
-  insertIndex: number,
-): string | null {
-  if (sourceIndex < 0 || sourceIndex >= taskElements.length || insertIndex < 0 || insertIndex > taskElements.length) return null
-
-  const adjustedInsertIndex = sourceIndex < insertIndex ? insertIndex - 1 : insertIndex
-  if (adjustedInsertIndex === sourceIndex) return null
-
-  const domTaskTexts = taskElements.map((element) =>
-    normalizeTaskReorderText(element.querySelector<HTMLElement>('p')?.innerText ?? element.innerText),
-  )
-  const lines = markdown.split('\n')
-  const taskLineInfos = lines
-    .map((line, index) => ({
-      index,
-      text: getTaskMarkdownLineText(line),
-    }))
-    .filter((info): info is { index: number; text: string } => info.text !== null)
-
-  for (let start = 0; start <= taskLineInfos.length - domTaskTexts.length; start += 1) {
-    const candidate = taskLineInfos.slice(start, start + domTaskTexts.length)
-    const matches = candidate.every((info, index) => info.text === domTaskTexts[index])
-    if (!matches) continue
-
-    const reorderedLines = candidate.map((info) => lines[info.index])
-    const [movedLine] = reorderedLines.splice(sourceIndex, 1)
-    if (movedLine === undefined) return null
-    reorderedLines.splice(adjustedInsertIndex, 0, movedLine)
-
-    const nextLines = [...lines]
-    candidate.forEach((info, index) => {
-      nextLines[info.index] = reorderedLines[index]
-    })
-    return nextLines.join('\n')
-  }
-
-  return null
-}
-
-function clearTaskReorderClasses(root: HTMLElement) {
-  root
-    .querySelectorAll<HTMLElement>('.task-reorder-source, .task-reorder-target')
-    .forEach((element) => {
-      element.classList.remove('task-reorder-source', 'task-reorder-target')
-    })
-}
-
-function getDirectTaskListItems(listElement: HTMLElement): HTMLElement[] {
-  return Array.from(listElement.children).filter(
-    (child): child is HTMLElement => child instanceof HTMLElement && child.matches('li.task-list-item[data-task]'),
-  )
-}
-
-function getTaskSlotMarkerY(taskElements: HTMLElement[], insertIndex: number): number {
-  const firstRect = taskElements[0]?.getBoundingClientRect()
-  const lastRect = taskElements[taskElements.length - 1]?.getBoundingClientRect()
-  if (!firstRect || !lastRect) return 0
-
-  if (insertIndex <= 0) return firstRect.top - TASK_REORDER_MARKER_GAP_OFFSET_PX
-  if (insertIndex >= taskElements.length) return lastRect.bottom + TASK_REORDER_MARKER_GAP_OFFSET_PX
-
-  const previousRect = taskElements[insertIndex - 1].getBoundingClientRect()
-  const nextRect = taskElements[insertIndex].getBoundingClientRect()
-  const gap = nextRect.top - previousRect.bottom
-  if (gap > 2) return previousRect.bottom + gap / 2
-
-  return nextRect.top - TASK_REORDER_MARKER_GAP_OFFSET_PX
-}
-
-function getTaskDropTargetFromList(
-  sourceIndex: number,
-  listElement: HTMLElement,
-  event: globalThis.MouseEvent,
-  previousInsertIndex: number | null,
-): TaskReorderDropTarget | null {
-  const taskElements = getDirectTaskListItems(listElement)
-  if (taskElements.length < 2 || sourceIndex < 0) return null
-
-  const centers = taskElements.map((element) => {
-    const rect = element.getBoundingClientRect()
-    return rect.top + rect.height / 2
-  })
-  let insertIndex = 0
-  while (insertIndex < centers.length && event.clientY >= centers[insertIndex]) {
-    insertIndex += 1
-  }
-
-  if (previousInsertIndex !== null && Math.abs(insertIndex - previousInsertIndex) === 1) {
-    if (insertIndex > previousInsertIndex) {
-      const boundary = centers[previousInsertIndex]
-      if (boundary !== undefined && event.clientY < boundary + TASK_REORDER_SLOT_HYSTERESIS_PX) {
-        insertIndex = previousInsertIndex
-      }
-    } else {
-      const boundary = centers[insertIndex]
-      if (boundary !== undefined && event.clientY > boundary - TASK_REORDER_SLOT_HYSTERESIS_PX) {
-        insertIndex = previousInsertIndex
-      }
-    }
-  }
-
-  return {
-    element: taskElements[Math.min(insertIndex, taskElements.length - 1)],
-    insertIndex,
-    markerY: getTaskSlotMarkerY(taskElements, insertIndex),
-  }
-}
-
-function getTaskDragPreviewText(element: HTMLElement): string {
-  const paragraph = element.querySelector<HTMLElement>('p')
-  const text = (paragraph?.innerText ?? element.innerText).replace(/\s+/g, ' ').trim()
-  if (!text) return 'task'
-  return text.length > TASK_REORDER_PREVIEW_MAX_CHARS
-    ? `${text.slice(0, TASK_REORDER_PREVIEW_MAX_CHARS).trimEnd()}...`
-    : text
-}
-
-function createTaskReorderGhost(root: HTMLElement, text: string): HTMLElement {
-  const ghost = document.createElement('div')
-  ghost.className = 'task-reorder-ghost'
-  ghost.textContent = text
-  root.appendChild(ghost)
-  return ghost
-}
-
-function createTaskReorderMarker(root: HTMLElement): HTMLElement {
-  const marker = document.createElement('div')
-  marker.className = 'task-reorder-marker'
-  root.appendChild(marker)
-  return marker
-}
-
-function positionTaskReorderGhost(ghost: HTMLElement, event: globalThis.MouseEvent) {
-  ghost.style.transform = `translate(${event.clientX}px, ${event.clientY}px) translate(-${TASK_REORDER_GHOST_CURSOR_X_PERCENT}%, -50%)`
-}
-
-function positionTaskReorderMarker(
-  marker: HTMLElement,
-  targetElement: HTMLElement,
-  markerY: number,
-) {
-  const rect = targetElement.getBoundingClientRect()
-  const textRect = targetElement.querySelector<HTMLElement>('p')?.getBoundingClientRect()
-  const markerLeft = Math.max(8, rect.left - 28)
-  const contentWidth = textRect?.width && textRect.width > 0 ? textRect.width : rect.width
-  const markerWidth = Math.min(
-    Math.max(contentWidth + TASK_REORDER_MARKER_EXTRA_WIDTH_PX, TASK_REORDER_MARKER_MIN_WIDTH_PX),
-    window.innerWidth - markerLeft - 12,
-  )
-
-  marker.style.width = `${markerWidth}px`
-  marker.style.transform = `translate(${markerLeft}px, ${markerY}px) translateY(-50%)`
-  marker.classList.add('is-visible')
-}
-
-function hideTaskReorderMarker(marker: HTMLElement | null) {
-  if (!marker) return
-  marker.classList.remove('is-visible')
-}
-
-function installTaskTextReorderBehavior(root: HTMLElement, getEditor: () => Editor | null) {
-  type DragState = {
-    editor: Editor
-    sourceElement: HTMLElement
-    sourceIndex: number
-    listElement: HTMLElement
-    insertIndex: number | null
-    ghost: HTMLElement | null
-    marker: HTMLElement | null
-    previewText: string
-    startX: number
-    startY: number
-    startedOnTrailingTaskSpace: boolean
-    suppressingSelection: boolean
-    dragging: boolean
-  }
-
-  let dragState: DragState | null = null
-  let suppressNextClick = false
-
-  const updateDropTarget = (event: globalThis.MouseEvent) => {
-    if (!dragState?.dragging) return
-    clearTaskReorderClasses(root)
-    dragState.sourceElement.classList.add('task-reorder-source')
-
-    const nextTarget = getTaskDropTargetFromList(dragState.sourceIndex, dragState.listElement, event, dragState.insertIndex)
-    if (!nextTarget) {
-      dragState.insertIndex = null
-      hideTaskReorderMarker(dragState.marker)
-      return
-    }
-
-    dragState.insertIndex = nextTarget.insertIndex
-    nextTarget.element.classList.add('task-reorder-target')
-    if (dragState.marker) {
-      positionTaskReorderMarker(
-        dragState.marker,
-        nextTarget.element,
-        nextTarget.markerY,
-      )
-    }
-  }
-
-  const endDrag = () => {
-    if (dragState?.ghost) {
-      dragState.ghost.remove()
-    }
-    if (dragState?.marker) {
-      dragState.marker.remove()
-    }
-    clearTaskReorderClasses(root)
-    root.classList.remove('task-reorder-pending')
-    root.classList.remove('task-reorder-active')
-    window.removeEventListener('mousemove', handleMouseMove, true)
-    window.removeEventListener('mouseup', handleMouseUp, true)
-    window.removeEventListener('blur', handleCancel, true)
-    window.removeEventListener('selectstart', handleSelectStart, true)
-    window.removeEventListener('dragstart', handleNativeDragStart, true)
-    dragState = null
-  }
-
-  const handleCancel = () => {
-    endDrag()
-  }
-
-  const handleMouseMove = (event: globalThis.MouseEvent) => {
-    if (!dragState) return
-
-    const distance = Math.hypot(event.clientX - dragState.startX, event.clientY - dragState.startY)
-    if (!dragState.suppressingSelection && distance >= TASK_REORDER_SELECTION_SLOP_PX) {
-      dragState.suppressingSelection = true
-      event.preventDefault()
-      event.stopPropagation()
-      window.getSelection()?.removeAllRanges()
-    }
-    if (!dragState.dragging && distance < TASK_REORDER_DRAG_SLOP_PX) return
-
-    event.preventDefault()
-    event.stopPropagation()
-    window.getSelection()?.removeAllRanges()
-
-    if (!dragState.dragging) {
-      dragState.dragging = true
-      suppressNextClick = true
-      root.classList.add('task-reorder-active')
-      dragState.sourceElement.classList.add('task-reorder-source')
-      dragState.ghost = createTaskReorderGhost(root, dragState.previewText)
-      dragState.marker = createTaskReorderMarker(root)
-      window.getSelection()?.removeAllRanges()
-    }
-
-    if (dragState.ghost) positionTaskReorderGhost(dragState.ghost, event)
-    updateDropTarget(event)
-  }
-
-  const handleMouseUp = (event: globalThis.MouseEvent) => {
-    if (!dragState) return
-    if (!dragState.dragging) {
-      const { editor, sourceElement, startedOnTrailingTaskSpace } = dragState
-      const view = getWysiwygView(editor)
-      const shouldPlaceCaretAtEnd =
-        startedOnTrailingTaskSpace && view && isMouseUpInsideTaskElement(sourceElement, event)
-      endDrag()
-      if (shouldPlaceCaretAtEnd) {
-        window.setTimeout(() => placeTaskCaretAtParagraphEnd(view, editor, sourceElement), 0)
-      }
-      return
-    }
-
-    event.preventDefault()
-    event.stopPropagation()
-    suppressNextClick = true
-
-    const { editor, sourceIndex, insertIndex, listElement } = dragState
-    endDrag()
-    if (insertIndex !== null) {
-      const taskElements = getDirectTaskListItems(listElement)
-      const nextMarkdown = reorderTaskMarkdownLines(
-        normalizeMarkdownForPersistence(editor.getMarkdown()),
-        taskElements,
-        sourceIndex,
-        insertIndex,
-      )
-      if (nextMarkdown !== null) {
-        editor.setMarkdown(nextMarkdown, false)
-        editor.focus()
-      }
-    }
-  }
-
-  const handleMouseDown = (event: globalThis.MouseEvent) => {
-    if (event.detail > 1) return
-
-    const editor = getEditor()
-    const view = getWysiwygView(editor)
-    if (!editor || !view) return
-
-    const sourceElement = getTaskListTextDragElement(view, event)
-    if (!sourceElement) return
-    const listElement = sourceElement.parentElement
-    if (!(listElement instanceof HTMLElement)) return
-    const sourceIndex = getDirectTaskListItems(listElement).indexOf(sourceElement)
-    if (sourceIndex < 0) return
-
-    dragState = {
-      editor,
-      sourceElement,
-      sourceIndex,
-      listElement,
-      insertIndex: null,
-      ghost: null,
-      marker: null,
-      previewText: getTaskDragPreviewText(sourceElement),
-      startX: event.clientX,
-      startY: event.clientY,
-      startedOnTrailingTaskSpace: isTaskTrailingEmptySpaceClick(sourceElement, event),
-      suppressingSelection: false,
-      dragging: false,
-    }
-    root.classList.add('task-reorder-pending')
-
-    window.addEventListener('mousemove', handleMouseMove, true)
-    window.addEventListener('mouseup', handleMouseUp, true)
-    window.addEventListener('blur', handleCancel, true)
-    window.addEventListener('selectstart', handleSelectStart, true)
-    window.addEventListener('dragstart', handleNativeDragStart, true)
-  }
-
-  const handleSelectStart = (event: Event) => {
-    if (!dragState) return
-    dragState.suppressingSelection = true
-    event.preventDefault()
-    event.stopPropagation()
-    window.getSelection()?.removeAllRanges()
-  }
-
-  const handleNativeDragStart = (event: Event) => {
-    if (!dragState) return
-    event.preventDefault()
-    event.stopPropagation()
-  }
-
-  const handleClick = (event: globalThis.MouseEvent) => {
-    if (!suppressNextClick) return
-    suppressNextClick = false
-    event.preventDefault()
-    event.stopPropagation()
-  }
-
-  root.addEventListener('mousedown', handleMouseDown, true)
-  root.addEventListener('click', handleClick, true)
-
-  return () => {
-    endDrag()
-    root.removeEventListener('mousedown', handleMouseDown, true)
-    root.removeEventListener('click', handleClick, true)
-  }
 }
 
 let renameInputMeasureContext: CanvasRenderingContext2D | null = null
@@ -1019,16 +236,7 @@ function App() {
   const [editing, setEditing] = useState<{ type: EditableEntityType; id: string } | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [modal, setModal] = useState<ModalState | null>(null)
-  const [settingsSection, setSettingsSection] = useState<SettingsSection>('hotkeys')
-  const [settingsDaysDraft, setSettingsDaysDraft] = useState<string>(String(DEFAULT_AUTO_REMOVE_DAYS))
   const isMacPlatform = typeof navigator !== 'undefined' ? /mac/i.test(navigator.platform) : false
-  const [shortcutDrafts, setShortcutDrafts] = useState<Record<ShortcutId, string>>(DEFAULT_SHORTCUTS)
-  const [editingShortcut, setEditingShortcut] = useState<ShortcutId | null>(null)
-  const [mouseBackForwardEnabledDraft, setMouseBackForwardEnabledDraft] = useState(true)
-  const [genericHistoryHotkeysEnabledDraft, setGenericHistoryHotkeysEnabledDraft] = useState(true)
-  const [showParentHomeTabDraft, setShowParentHomeTabDraft] = useState(DEFAULT_UI_SETTINGS.showParentHomeTab)
-  const [tabButtonScaleDraft, setTabButtonScaleDraft] = useState(DEFAULT_UI_SETTINGS.tabButtonScale)
-  const [noteFontScaleDraft, setNoteFontScaleDraft] = useState(DEFAULT_UI_SETTINGS.noteFontScale)
   const [menuOpen, setMenuOpen] = useState(false)
   const [trashTabId, setTrashTabId] = useState<string>(TRASH_HOME_ID)
   const [trashSubTabId, setTrashSubTabId] = useState<string | null>(null)
@@ -1041,7 +249,6 @@ function App() {
   const [arrangeDraggingItem, setArrangeDraggingItem] = useState<ArrangeDragItem | null>(null)
   const [spaceArrangeDragPreview, setSpaceArrangeDragPreview] = useState<SpaceArrangeDragPreview | null>(null)
   const [tabArrangeDragPreview, setTabArrangeDragPreview] = useState<TabArrangeDragPreview | null>(null)
-  const [exportStatus, setExportStatus] = useState<string>('')
   const [toast, setToast] = useState<ToastState | null>(null)
   const [toastHovered, setToastHovered] = useState(false)
   const [toastWasHovered, setToastWasHovered] = useState(false)
@@ -1175,10 +382,6 @@ function App() {
   const activeSubTabIdRef = useRef<string | null>(null)
   const activeAisleIdRef = useRef<string>('')
   const isMainViewRef = useRef(true)
-  const navHistoryRef = useRef<NavLocation[]>([])
-  const navIndexRef = useRef(-1)
-  const isHistoryNavigationRef = useRef(false)
-  const lastTabLikeViewRef = useRef<'main' | 'trash'>('main')
   stateRef.current = state
 
   const getToolbarPopoverButton = (kind: ToolbarPopoverKind) =>
@@ -1347,6 +550,14 @@ function App() {
   )
 
   const workspace = activeSpace.data
+  const settingsController = useSettingsController({
+    state,
+    stateRef,
+    setState,
+    activeSpace,
+    viewMode,
+    storageHydrated,
+  })
 
   const pushToast = (message: string, tone: ToastTone = 'warning', durationMs = DEFAULT_TOAST_DURATION_MS) => {
     setToast({
@@ -2272,26 +1483,6 @@ function App() {
     clearArrangePressTimer()
   }
 
-  useEffect(() => {
-    if (viewMode === 'settings') {
-      setSettingsDaysDraft(String(activeSpace.settings.autoRemoveDeletedDays))
-      setShortcutDrafts(state.hotkeys.shortcuts)
-      setMouseBackForwardEnabledDraft(state.hotkeys.enableMouseBackForward)
-      setGenericHistoryHotkeysEnabledDraft(state.hotkeys.enableGenericHistoryHotkeys)
-      setShowParentHomeTabDraft(state.ui.showParentHomeTab)
-      setTabButtonScaleDraft(state.ui.tabButtonScale)
-      setNoteFontScaleDraft(state.ui.noteFontScale)
-      setEditingShortcut(null)
-    }
-  }, [
-    viewMode,
-    activeSpace.settings.autoRemoveDeletedDays,
-    state.hotkeys,
-    state.ui.showParentHomeTab,
-    state.ui.tabButtonScale,
-    state.ui.noteFontScale,
-  ])
-
   useEffect(() => () => clearArrangePressTimer(), [])
 
   useEffect(() => {
@@ -2737,90 +1928,6 @@ function App() {
     setEditing(null)
   }
 
-  const areNavLocationsEqual = (a: NavLocation, b: NavLocation) =>
-    a.viewMode === b.viewMode &&
-    a.activeSpaceId === b.activeSpaceId &&
-    a.mainTabId === b.mainTabId &&
-    a.mainSubTabId === b.mainSubTabId &&
-    a.trashTabId === b.trashTabId &&
-    a.trashSubTabId === b.trashSubTabId
-
-  const buildNavLocation = (): NavLocation => ({
-    viewMode,
-    activeSpaceId: activeSpace.id,
-    mainTabId: workspace.activeTabId,
-    mainSubTabId: activeTab.activeSubTabId,
-    trashTabId,
-    trashSubTabId,
-  })
-
-  const applyNavLocation = (location: NavLocation) => {
-    setState((previous) => {
-      const projected = setActiveSpaceInActiveDomain(previous, location.activeSpaceId)
-      const fallbackSpace = projected.spaces[0]
-      const resolvedSpace =
-        projected.spaces.find((space) => space.id === location.activeSpaceId) ?? fallbackSpace
-      const resolvedSpaceId = resolvedSpace?.id ?? projected.activeSpaceId
-
-      return updateSpaceInActiveDomain(setActiveSpaceInActiveDomain(projected, resolvedSpaceId), resolvedSpaceId, (space) => {
-        const data = space.data
-        const resolvedTabId = data.tabs.some((tab) => tab.id === location.mainTabId)
-          ? location.mainTabId
-          : data.tabs[0]?.id ?? data.activeTabId
-
-        const tabs = data.tabs.map((tab) => {
-          if (tab.id !== resolvedTabId) return tab
-          const resolvedSubTabId =
-            location.mainSubTabId && tab.subTabs.some((sub) => sub.id === location.mainSubTabId)
-              ? location.mainSubTabId
-              : null
-          return tab.activeSubTabId === resolvedSubTabId ? tab : { ...tab, activeSubTabId: resolvedSubTabId }
-        })
-
-        return {
-          ...space,
-          data: {
-            ...data,
-            activeTabId: resolvedTabId,
-            tabs,
-          },
-        }
-      })
-    })
-
-    setTrashTabId(location.trashTabId)
-    setTrashSubTabId(location.trashSubTabId)
-    setViewMode(location.viewMode)
-    setMenuOpen(false)
-    setContextMenu(null)
-    setEditing(null)
-  }
-
-  const navigateHistoryBy = (delta: number) => {
-    const history = navHistoryRef.current
-    if (history.length === 0) return
-    const nextIndex = navIndexRef.current + delta
-    if (nextIndex < 0 || nextIndex >= history.length) return
-    flushPendingContent()
-    navIndexRef.current = nextIndex
-    isHistoryNavigationRef.current = true
-    applyNavLocation(history[nextIndex])
-  }
-
-  const navigateToLastTabLikeLocation = () => {
-    const history = navHistoryRef.current
-    for (let index = navIndexRef.current - 1; index >= 0; index -= 1) {
-      const candidate = history[index]
-      if (candidate.viewMode !== 'main' && candidate.viewMode !== 'trash') continue
-      flushPendingContent()
-      navIndexRef.current = index
-      isHistoryNavigationRef.current = true
-      applyNavLocation(candidate)
-      return true
-    }
-    return false
-  }
-
   const applyContentToTarget = (
     spaceId: string,
     tabId: string,
@@ -2900,6 +2007,25 @@ function App() {
       markdown,
     )
   }
+
+  const { navigateHistoryBy, returnToLastTabLikeView } = useNavigationHistory({
+    viewMode,
+    activeSpaceId: activeSpace.id,
+    mainTabId: workspace.activeTabId,
+    mainSubTabId: activeTab.activeSubTabId,
+    trashTabId,
+    trashSubTabId,
+    setState,
+    setViewMode,
+    setTrashTabId,
+    setTrashSubTabId,
+    flushPendingContent,
+    clearTransientUi: () => {
+      setMenuOpen(false)
+      setContextMenu(null)
+      setEditing(null)
+    },
+  })
 
   const scheduleContentCommit = (
     markdown: string,
@@ -4287,6 +3413,8 @@ function App() {
 
   const selectImageForTools = (image: HTMLImageElement) => {
     activeImageRef.current = image
+    activateEditorFromEventTarget(image)
+    editorRef.current?.focus()
     refreshImageToolsPosition()
   }
 
@@ -4411,6 +3539,23 @@ function App() {
     return true
   }
 
+  const deleteActiveEditorImageNode = () => {
+    const image = activeImageRef.current
+    if (!image || !image.isConnected) return false
+    activateEditorFromEventTarget(image)
+    const currentEditor = editorRef.current
+    const view = getWysiwygView(currentEditor)
+    if (!currentEditor || !view) return false
+
+    const hit = findImageNodeHitForElement(view, image)
+    if (!hit) return false
+
+    view.dispatch(view.state.tr.delete(hit.pos, hit.pos + hit.node.nodeSize).scrollIntoView())
+    commitActiveEditorMarkdownNow(currentEditor)
+    closeImageTools()
+    return true
+  }
+
   const renderImageToDataUrl = async (image: HTMLImageElement, width: number, height: number) => {
     const sourceImage = new Image()
     sourceImage.src = image.src
@@ -4460,7 +3605,7 @@ function App() {
     }
   }
 
-  const beginImageResize = (event: React.MouseEvent<HTMLButtonElement>) => {
+  const beginImageResize = (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault()
     event.stopPropagation()
     if (inlineCrop.active) return
@@ -4729,241 +3874,6 @@ function App() {
     return { targetInfo, targetBody, selectedAisles, recursiveBlocked, previewText, locationLabel, displayTitle }
   }
 
-  const createContextPreviewWidgetElement = (payload: NoteContextReferencePayload, sourceNoteBodyId: string) => {
-    const wrapper = document.createElement('span')
-    wrapper.className = 'context-bar note-context-widget'
-    wrapper.setAttribute('contenteditable', 'false')
-
-    const topBar = document.createElement('span')
-    topBar.className = 'context-bar-top'
-    const titleButton = document.createElement('button')
-    titleButton.type = 'button'
-    titleButton.className = 'context-bar-title'
-    const actions = document.createElement('span')
-    actions.className = 'context-bar-actions'
-    const minimizeButton = document.createElement('button')
-    minimizeButton.type = 'button'
-    minimizeButton.className = 'context-bar-icon-btn context-bar-minimize-btn'
-    const expandButton = document.createElement('button')
-    expandButton.type = 'button'
-    expandButton.className = 'context-bar-icon-btn'
-    const lowerBar = document.createElement('span')
-    lowerBar.className = 'context-bar-lower'
-
-    let expanded = false
-    let minimized = false
-    let contextEditorCleanups: Array<() => void> = []
-
-    const stopWidgetEvent = (event: Event) => {
-      event.preventDefault()
-      event.stopPropagation()
-    }
-
-    const clearLowerBar = () => {
-      contextEditorCleanups.forEach((cleanup) => cleanup())
-      contextEditorCleanups = []
-      lowerBar.replaceChildren()
-    }
-
-    const renderContextEditor = (aisle: NoteAisle) => {
-      const shell = document.createElement('span')
-      shell.className = 'context-bar-editor'
-      const editorHost = document.createElement('span')
-      editorHost.className = 'context-preview-editor-host is-readonly'
-      const heightRem = expanded ? NOTE_PREVIEW_EXPANDED_HEIGHT_REM : NOTE_PREVIEW_DEFAULT_HEIGHT_REM
-      editorHost.style.setProperty('--note-preview-editor-height', `${heightRem}rem`)
-
-      const stopOuterEditorEvent = (event: Event) => {
-        event.stopPropagation()
-        if (event.type === 'keydown' || event.type === 'beforeinput' || event.type === 'paste' || event.type === 'drop') {
-          event.preventDefault()
-        }
-      }
-      ;['pointerdown', 'mousedown', 'click', 'keydown', 'beforeinput', 'paste', 'drop'].forEach((eventName) => {
-        editorHost.addEventListener(eventName, stopOuterEditorEvent, true)
-      })
-
-      const editor = new Editor({
-        el: editorHost,
-        initialValue: aisle.markdown,
-        initialEditType: 'wysiwyg',
-        previewStyle: 'tab',
-        hideModeSwitch: true,
-        toolbarItems: [],
-        height: `${heightRem}rem`,
-        autofocus: false,
-        usageStatistics: false,
-        plugins: [headingSpaceShortcutPlugin, thematicBreakShortcutPlugin],
-      })
-
-      const view = getWysiwygView(editor)
-      if (view?.setProps) {
-        view.setProps({ editable: () => false })
-        view.dom?.setAttribute?.('contenteditable', 'false')
-      }
-
-      contextEditorCleanups.push(() => {
-        ;['pointerdown', 'mousedown', 'click', 'keydown', 'beforeinput', 'paste', 'drop'].forEach((eventName) => {
-          editorHost.removeEventListener(eventName, stopOuterEditorEvent, true)
-        })
-        try {
-          editor.destroy()
-        } catch {
-          // Toast UI can throw if an embedded editor is destroyed during ProseMirror widget cleanup.
-        }
-      })
-
-      shell.append(editorHost)
-      return shell
-    }
-
-    const renderLowerBar = () => {
-      const data = getContextPreviewData(payload, sourceNoteBodyId)
-      wrapper.classList.toggle('is-blocked', data.recursiveBlocked)
-      wrapper.classList.toggle('is-minimized', minimized)
-      titleButton.textContent = data.displayTitle
-      titleButton.title = data.locationLabel
-      minimizeButton.classList.toggle('is-restore', minimized)
-      minimizeButton.title = minimized ? 'Restore note preview' : 'Minimize note preview'
-      minimizeButton.setAttribute('aria-label', minimizeButton.title)
-      expandButton.textContent = expanded ? '-' : '+'
-      expandButton.title = expanded ? 'Shrink note preview' : 'Expand note preview'
-      expandButton.setAttribute('aria-label', expandButton.title)
-      clearLowerBar()
-
-      lowerBar.hidden = minimized
-      if (minimized) return
-
-      if (data.recursiveBlocked) {
-        lowerBar.textContent = 'note preview blocked to prevent recursive rendering.'
-        return
-      }
-
-      const editorGroup = document.createElement('span')
-      editorGroup.className = 'context-bar-editors'
-      data.selectedAisles.forEach((aisle) => {
-        editorGroup.append(renderContextEditor(aisle))
-      })
-      lowerBar.append(editorGroup)
-    }
-
-    titleButton.addEventListener('mousedown', stopWidgetEvent)
-    titleButton.addEventListener('click', (event) => {
-      stopWidgetEvent(event)
-      const data = getContextPreviewData(payload, sourceNoteBodyId)
-      if (!data.recursiveBlocked) navigateToNoteLocation(payload.target)
-    })
-    minimizeButton.addEventListener('mousedown', stopWidgetEvent)
-    minimizeButton.addEventListener('click', (event) => {
-      stopWidgetEvent(event)
-      minimized = !minimized
-      renderLowerBar()
-    })
-    expandButton.addEventListener('mousedown', stopWidgetEvent)
-    expandButton.addEventListener('click', (event) => {
-      stopWidgetEvent(event)
-      expanded = !expanded
-      renderLowerBar()
-    })
-
-    actions.append(minimizeButton, expandButton)
-    topBar.append(titleButton, actions)
-    wrapper.append(topBar, lowerBar)
-    renderLowerBar()
-    ;(wrapper as HTMLElement & { destroyNotePreview?: () => void }).destroyNotePreview = () => {
-      clearLowerBar()
-    }
-    return wrapper
-  }
-
-  const createInternalNoteLinkWidgetElement = (label: string, target: NoteLocation, href: string) => {
-    const link = document.createElement('a')
-    link.className = 'internal-note-link-widget'
-    link.href = href
-    link.textContent = getMarkdownLinkLabel(label)
-    link.title = 'Open linked note'
-    link.setAttribute('contenteditable', 'false')
-    link.setAttribute('data-internal-note-link', 'true')
-
-    const stopEditingEvent = (event: Event) => {
-      event.preventDefault()
-      event.stopPropagation()
-    }
-    const activate = (event: Event) => {
-      stopEditingEvent(event)
-      navigateToNoteLocation(target)
-    }
-
-    link.addEventListener('pointerdown', stopEditingEvent)
-    link.addEventListener('mousedown', stopEditingEvent)
-    link.addEventListener('click', activate)
-    link.addEventListener('keydown', (event) => {
-      const keyboardEvent = event as KeyboardEvent
-      if (keyboardEvent.key !== 'Enter' && keyboardEvent.key !== ' ') return
-      activate(keyboardEvent)
-    })
-
-    return link
-  }
-
-  const createContextPreviewPlugin = (context: any, sourceNoteBodyId: string) => {
-    const { Plugin } = context.pmState
-    const { Decoration, DecorationSet } = context.pmView
-    return {
-      wysiwygPlugins: [
-        () =>
-          new Plugin({
-            props: {
-              decorations: (editorState: any) => {
-                const decorations: unknown[] = []
-                const docText = collectProseMirrorTextPositions(editorState.doc)
-                editorState.doc.descendants((node: any, pos: number) => {
-                  if (!node.isText || typeof node.text !== 'string') return
-                  for (const match of node.text.matchAll(NOTE_CONTEXT_REFERENCE_RE)) {
-                    const payload = decodeContextPayload(match[1])
-                    if (!payload) continue
-                    const from = pos + (match.index ?? 0)
-                    const to = from + match[0].length
-                    decorations.push(
-                      Decoration.widget(from, () => createContextPreviewWidgetElement(payload, sourceNoteBodyId), {
-                        key: `note-preview-${payload.id}`,
-                        side: -1,
-                        destroy: (node: HTMLElement & { destroyNotePreview?: () => void }) => node.destroyNotePreview?.(),
-                      }),
-                    )
-                    decorations.push(Decoration.inline(from, to, { class: 'note-context-token-hidden' }))
-                  }
-                })
-                for (const match of docText.text.matchAll(INTERNAL_NOTE_LINK_MARKDOWN_RE)) {
-                  if (match[0].startsWith('!')) continue
-                  const target = parseInternalNoteUrl(match[2])
-                  if (!target) continue
-
-                  const startIndex = match.index ?? 0
-                  const endIndex = startIndex + match[0].length - 1
-                  const from = docText.positions[startIndex]
-                  const last = docText.positions[endIndex]
-                  const rangePositions = docText.positions.slice(startIndex, endIndex + 1)
-                  if (from === undefined || last === undefined || from < 0 || last < from || rangePositions.some((position) => position < 0)) {
-                    continue
-                  }
-
-                  decorations.push(
-                    Decoration.widget(from, () => createInternalNoteLinkWidgetElement(match[1], target, match[2]), {
-                      key: `internal-note-link-${from}-${last}-${match[2]}`,
-                      side: -1,
-                    }),
-                  )
-                  decorations.push(Decoration.inline(from, last + 1, { class: 'internal-note-link-source-hidden' }))
-                }
-                return DecorationSet.create(editorState.doc, decorations)
-              },
-            },
-          }),
-      ],
-    }
-  }
-
   const destroyAisleEditor = (editorKey: string) => {
     const meta = aisleEditorMetaRef.current.get(editorKey)
     if (!meta) return
@@ -5015,7 +3925,12 @@ function App() {
         plugins: [
           headingSpaceShortcutPlugin,
           thematicBreakShortcutPlugin,
-          (context: any) => createContextPreviewPlugin(context, activeNoteBodyId),
+          (context: any) =>
+            createContextPreviewPlugin(context, {
+              sourceNoteBodyId: activeNoteBodyId,
+              getContextPreviewData,
+              navigateToNoteLocation,
+            }),
           (context: {
             pmState: {
               PluginKey: new (name?: string) => {
@@ -5527,6 +4442,16 @@ function App() {
         scheduleMultiLineHistoryRestore(editorHistoryDirection)
       }
 
+      const targetElement = getElementFromEventTarget(keyboardEvent.target)
+      const isTextInputTarget = Boolean(targetElement?.closest('input, textarea, select, .link-prompt'))
+      if (!isTextInputTarget && (keyboardEvent.key === 'Backspace' || keyboardEvent.key === 'Delete') && activeImageRef.current) {
+        if (deleteActiveEditorImageNode()) {
+          keyboardEvent.preventDefault()
+          keyboardEvent.stopPropagation()
+          return
+        }
+      }
+
       const multiLineDirection = getMultilineSelectionShortcutDirection(keyboardEvent)
       if (multiLineDirection) {
         const handled = tryExpandMultilineSelection(multiLineDirection)
@@ -6017,14 +4942,6 @@ function App() {
     setViewMode('stage-manager')
   }
 
-  const returnToLastTabLikeView = () => {
-    setMenuOpen(false)
-    setContextMenu(null)
-    setEditing(null)
-    if (navigateToLastTabLikeLocation()) return
-    setViewMode(lastTabLikeViewRef.current)
-  }
-
   const endStageManager = () => {
     resetStageManagerState()
     returnToLastTabLikeView()
@@ -6032,123 +4949,6 @@ function App() {
 
   const closeSettingsView = () => {
     returnToLastTabLikeView()
-  }
-
-  const commitImmediateSettingsState = (buildNextState: (previous: AppState) => AppState) => {
-    const nextState = applyAutoPurgeToAppState(buildNextState(stateRef.current))
-    stateRef.current = nextState
-    setState(nextState)
-    if (storageHydrated) {
-      appStateStore.save(JSON.stringify(nextState))
-    }
-  }
-
-  const updateAutoRemoveDaysSetting = (rawValue: string, normalizeInvalid = false) => {
-    setSettingsDaysDraft(rawValue)
-    const parsed = Number.parseInt(rawValue, 10)
-    if (!Number.isFinite(parsed)) {
-      if (normalizeInvalid) {
-        setSettingsDaysDraft(String(activeSpace.settings.autoRemoveDeletedDays))
-      }
-      return
-    }
-
-    const nextDays = clampAutoRemoveDays(parsed)
-    commitImmediateSettingsState((previous) =>
-      updateSpaceInActiveDomain(previous, previous.activeSpaceId, (space) => ({
-        ...space,
-        settings: { ...space.settings, autoRemoveDeletedDays: nextDays },
-        data: applyAutoPurgeToWorkspace(space.data, nextDays),
-      })),
-    )
-    if (String(nextDays) !== rawValue.trim()) {
-      setSettingsDaysDraft(String(nextDays))
-    }
-  }
-
-  const updateMouseBackForwardSetting = (checked: boolean) => {
-    setMouseBackForwardEnabledDraft(checked)
-    commitImmediateSettingsState((previous) => ({
-      ...previous,
-      hotkeys: {
-        ...previous.hotkeys,
-        enableMouseBackForward: checked,
-      },
-    }))
-  }
-
-  const updateGenericHistoryHotkeysSetting = (checked: boolean) => {
-    setGenericHistoryHotkeysEnabledDraft(checked)
-    commitImmediateSettingsState((previous) => ({
-      ...previous,
-      hotkeys: {
-        ...previous.hotkeys,
-        enableGenericHistoryHotkeys: checked,
-      },
-    }))
-  }
-
-  const updateShowParentHomeTabSetting = (checked: boolean) => {
-    setShowParentHomeTabDraft(checked)
-    commitImmediateSettingsState((previous) => ({
-      ...previous,
-      ui: {
-        ...previous.ui,
-        showParentHomeTab: checked,
-      },
-    }))
-  }
-
-  const updateTabButtonScaleSetting = (rawValue: string) => {
-    const nextScale = clampTabButtonScale(Number.parseFloat(rawValue))
-    setTabButtonScaleDraft(nextScale)
-    commitImmediateSettingsState((previous) => ({
-      ...previous,
-      ui: {
-        ...previous.ui,
-        tabButtonScale: nextScale,
-      },
-    }))
-  }
-
-  const updateNoteFontScaleSetting = (rawValue: string) => {
-    const nextScale = clampNoteFontScale(Number.parseFloat(rawValue))
-    setNoteFontScaleDraft(nextScale)
-    commitImmediateSettingsState((previous) => ({
-      ...previous,
-      ui: {
-        ...previous.ui,
-        noteFontScale: nextScale,
-      },
-    }))
-  }
-
-  const updateThemeSetting = (theme: AppTheme) => {
-    commitImmediateSettingsState((previous) => (previous.theme === theme ? previous : { ...previous, theme }))
-  }
-
-  const updateShortcutSetting = (shortcutId: ShortcutId, nextShortcut: string) => {
-    setShortcutDrafts((previous) => ({ ...previous, [shortcutId]: nextShortcut }))
-    commitImmediateSettingsState((previous) => ({
-      ...previous,
-      hotkeys: {
-        ...previous.hotkeys,
-        shortcuts: {
-          ...previous.hotkeys.shortcuts,
-          [shortcutId]: nextShortcut,
-        },
-      },
-    }))
-  }
-
-  const updateStageManagerOpenDestinationSetting = (checked: boolean) => {
-    commitImmediateSettingsState((previous) => ({
-      ...previous,
-      ui: {
-        ...previous.ui,
-        stageManagerOpenDestinationAfterApply: checked,
-      },
-    }))
   }
 
   const handleStageManagerParentClick = (tab: Tab) => {
@@ -7077,184 +5877,13 @@ function App() {
     pushToast('director execution will be added in the next chunk.', 'warning')
   }
 
-  const sanitizeName = (value: string): string => {
-    const safe = value.trim().replace(/[<>:"/\\|?*\x00-\x1F]/g, '').replace(/\s+/g, ' ')
-    return safe.length > 0 ? safe : 'untitled'
-  }
-
-  const decodeDataUrl = (dataUrl: string): Uint8Array | null => {
-    const commaIndex = dataUrl.indexOf(',')
-    if (commaIndex < 0) return null
-    const base64 = dataUrl.slice(commaIndex + 1)
-    try {
-      const binary = atob(base64)
-      const bytes = new Uint8Array(binary.length)
-      for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
-      return bytes
-    } catch {
-      return null
-    }
-  }
-
-  const rewriteMarkdownImages = (markdown: string, spaceFolder: string, imageBank: Map<string, Uint8Array>) => {
-    let counter = imageBank.size + 1
-    const exportReadyMarkdown = convertInternalTabsForExport(markdown)
-    const nextMarkdown = exportReadyMarkdown.replace(/!\[([^\]]*)\]\((data:image\/[^)]+)\)/g, (_all, alt: string, src: string) => {
-      const extensionMatch = src.match(/^data:image\/([a-zA-Z0-9+.-]+);base64,/)
-      const extRaw = extensionMatch?.[1]?.toLowerCase() ?? 'png'
-      const ext = extRaw === 'jpeg' ? 'jpg' : extRaw.replace(/[^a-z0-9]/g, '') || 'png'
-      const fileName = `image-${String(counter).padStart(4, '0')}.${ext}`
-      counter += 1
-      const bytes = decodeDataUrl(src)
-      if (bytes) {
-        imageBank.set(`${spaceFolder}/assets/${fileName}`, bytes)
-      }
-      return `![${alt}](${`assets/${fileName}`})`
+  const exportData = (scope: ExportScope, spaceId?: string) =>
+    exportAppData({
+      scope,
+      spaceId,
+      getLatestState: buildStateWithLatestEditorContent,
+      setStatus: settingsController.setExportStatus,
     })
-    return nextMarkdown
-  }
-
-  const exportData = async (scope: 'space' | 'all', spaceId?: string) => {
-    try {
-      setExportStatus('building export...')
-      const latestState = buildStateWithLatestEditorContent()
-      let exportState: AppState
-      let defaultName: string
-      let spacesToExport: Space[]
-
-      if (scope === 'space') {
-        const selectedSpace =
-          latestState.spaces.find((space) => space.id === (spaceId ?? latestState.activeSpaceId)) ??
-          latestState.spaces.find((space) => space.id === latestState.activeSpaceId) ??
-          latestState.spaces[0]
-        if (!selectedSpace) {
-          setExportStatus('export failed')
-          return
-        }
-        exportState = {
-          ...latestState,
-          activeSpaceId: selectedSpace.id,
-          spaces: [selectedSpace],
-        }
-        defaultName = `${sanitizeName(selectedSpace.name)}-export.zip`
-        spacesToExport = [selectedSpace]
-      } else {
-        exportState = latestState
-        defaultName = 'notes-export-all.zip'
-        spacesToExport = exportState.spaces
-      }
-
-      if (window.electronAPI?.exportAppState) {
-        const result = await window.electronAPI.exportAppState({
-          defaultPath: defaultName,
-          serializedState: JSON.stringify(exportState),
-        })
-        if (result?.canceled) {
-          setExportStatus('export canceled')
-          return
-        }
-        if (result?.error) {
-          setExportStatus('export failed')
-          return
-        }
-        setExportStatus('export saved')
-        return
-      }
-
-      const zip = new JSZip()
-      const imageBank = new Map<string, Uint8Array>()
-      const manifest = {
-        exportedAt: new Date().toISOString(),
-        scope,
-        version: 1,
-        theme: exportState.theme,
-        spaces: [] as Array<{
-          id: string
-          name: string
-          settings: SpaceSettings
-          activeTabId: string
-          tabs: Array<{ id: string; title: string; homeNote: string; subTabs: Array<{ id: string; title: string; file: string }> }>
-        }>,
-      }
-
-      for (const space of spacesToExport) {
-        const spaceFolder = `spaces/${sanitizeName(space.name)}-${space.id.slice(0, 8)}`
-        const tabManifest: Array<{ id: string; title: string; homeNote: string; subTabs: Array<{ id: string; title: string; file: string }> }> = []
-
-        for (const tab of space.data.tabs) {
-          const tabFolder = `${spaceFolder}/${sanitizeName(tab.title)}-${tab.id.slice(0, 8)}`
-          const homeMarkdown = rewriteMarkdownImages(tab.homeContent ?? '', spaceFolder, imageBank)
-          zip.file(`${tabFolder}/home.md`, homeMarkdown)
-
-          const subManifest: Array<{ id: string; title: string; file: string }> = []
-          tab.subTabs.forEach((subTab, index) => {
-            const subFileName = `${String(index + 1).padStart(2, '0')}-${sanitizeName(subTab.title)}.md`
-            const rewritten = rewriteMarkdownImages(subTab.content ?? '', spaceFolder, imageBank)
-            zip.file(`${tabFolder}/${subFileName}`, rewritten)
-            subManifest.push({ id: subTab.id, title: subTab.title, file: subFileName })
-          })
-
-          tabManifest.push({
-            id: tab.id,
-            title: tab.title,
-            homeNote: 'home.md',
-            subTabs: subManifest,
-          })
-        }
-
-        manifest.spaces.push({
-          id: space.id,
-          name: space.name,
-          settings: space.settings,
-          activeTabId: space.data.activeTabId,
-          tabs: tabManifest,
-        })
-      }
-
-      imageBank.forEach((bytes, path) => {
-        zip.file(path, bytes)
-      })
-      zip.file('manifest.json', JSON.stringify(manifest, null, 2))
-      zip.file(
-        'README.txt',
-        'This export contains markdown notes by space/tab and a manifest.json with metadata. Images are in assets/.',
-      )
-
-      const zipBytes = await zip.generateAsync({ type: 'uint8array' })
-      const exportArray = Uint8Array.from(zipBytes)
-      const exportBuffer = exportArray.buffer as ArrayBuffer
-
-      if (window.electronAPI?.saveFile) {
-        const result = await window.electronAPI.saveFile({
-          defaultPath: defaultName,
-          data: exportBuffer,
-        })
-        if (result?.canceled) {
-          setExportStatus('export canceled')
-          return
-        }
-        setExportStatus('export saved')
-        return
-      }
-
-      const blob = new Blob([exportBuffer], { type: 'application/zip' })
-      const url = URL.createObjectURL(blob)
-      const anchor = document.createElement('a')
-      anchor.href = url
-      anchor.download = defaultName
-      anchor.click()
-      URL.revokeObjectURL(url)
-      setExportStatus('export saved')
-    } catch {
-      setExportStatus('export failed')
-    }
-  }
-
-  const getShortcutIndex = (key: string): number | null => {
-    if (key >= '1' && key <= '9') return Number(key) - 1
-    if (key === '0') return 9
-    return null
-  }
 
   const autoSizeRenameInput = (input: HTMLInputElement) => {
     if (!renameInputMeasureContext) {
@@ -7854,766 +6483,137 @@ function App() {
     insertLinkIntoActiveEditor((label ?? '').trim() || url, url)
   }
 
-  const renderToolbarIconButton = (
-    label: string,
-    iconClassName: string,
-    onClick: () => void,
-    extraClassName = '',
-    formatKey?: ToolbarFormatKey,
-  ) => (
-    <button
-      type="button"
-      className={`toastui-editor-toolbar-icons ${iconClassName} ${extraClassName} ${
-        formatKey && toolbarFormatState[formatKey] ? 'active' : ''
-      } ${formatKey && toolbarShortcutFeedback === formatKey ? 'is-shortcut-feedback' : ''}`}
-      title={label}
-      aria-label={label}
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={(event) => {
-        event.preventDefault()
-        event.stopPropagation()
-        onClick()
+  const renderEditorToolbarPopovers = () => (
+    <EditorToolbarPopovers
+      headingMenuOpen={headingMenuOpen}
+      noteToolsOpen={noteToolsOpen}
+      toolbarPopoverPosition={toolbarPopoverPosition}
+      aisleDeleteMode={aisleDeleteMode}
+      aisleDeleteConfirmation={aisleDeleteConfirmation}
+      activeNoteAisles={activeNoteAisles}
+      aisleDeleteConfirmButtonRef={aisleDeleteConfirmButtonRef}
+      onExecuteToolbarCommand={executeToolbarCommand}
+      onCloseAislePopover={() => {
+        setNoteToolsOpen(false)
+        setHeadingMenuOpen(false)
       }}
+      onAddAisle={addAisleToActiveNote}
+      onEnterAisleDeleteMode={() => {
+        setAisleDeleteConfirmation(null)
+        setAisleDeleteMode(true)
+      }}
+      onCancelAisleDeleteConfirmation={() => setAisleDeleteConfirmation(null)}
+      onDeleteAisle={deleteAisleFromActiveNote}
+      onWarn={(message) => pushToast(message, 'warning')}
     />
   )
 
-  const renderHeadingPopover = () => {
-    if (!headingMenuOpen || !toolbarPopoverPosition.heading || typeof document === 'undefined') return null
-    const portalRoot = document.querySelector('.app-shell') ?? document.body
-    return createPortal(
-      <div
-        className="note-toolbar-heading-popover"
-        role="menu"
-        style={{ top: `${toolbarPopoverPosition.heading.top}px`, left: `${toolbarPopoverPosition.heading.left}px` }}
-        onPointerDown={(event) => event.stopPropagation()}
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={(event) => event.stopPropagation()}
-      >
-        {[1, 2, 3, 4, 5, 6].map((level) => (
-          <button
-            key={level}
-            type="button"
-            className="note-tools-item"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={(event) => {
-              event.preventDefault()
-              event.stopPropagation()
-              executeToolbarCommand('heading', { level })
-            }}
-          >
-            heading {level}
-          </button>
-        ))}
-        <button
-          type="button"
-          className="note-tools-item"
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={(event) => {
-            event.preventDefault()
-            event.stopPropagation()
-            executeToolbarCommand('heading', { level: 0 })
-          }}
-        >
-          paragraph
-        </button>
-      </div>,
-      portalRoot,
-    )
+  const openNoteReferenceFromToolbar = () => {
+    setHeadingMenuOpen(false)
+    setNoteToolsOpen(false)
+    setToolbarPopoverPosition({ heading: null, aisles: null })
+    openNoteReferenceModal()
   }
 
-  const renderAisleToolbarPopover = () => {
-    if (!noteToolsOpen || !toolbarPopoverPosition.aisles || typeof document === 'undefined') return null
-    const portalRoot = document.querySelector('.app-shell') ?? document.body
-    return createPortal(
-      <div
-        className="note-toolbar-aisle-popover"
-        role="menu"
-        style={{ top: `${toolbarPopoverPosition.aisles.top}px`, left: `${toolbarPopoverPosition.aisles.left}px` }}
-        onPointerDown={(event) => event.stopPropagation()}
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <button
-          type="button"
-          className="note-tools-item"
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={(event) => {
-            event.preventDefault()
-            event.stopPropagation()
-            setNoteToolsOpen(false)
-            addAisleToActiveNote()
-          }}
-          disabled={activeNoteAisles.length >= MAX_NOTE_AISLES}
-        >
-          add aisle
-        </button>
-        <button
-          type="button"
-          className="note-tools-item"
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={(event) => {
-            event.preventDefault()
-            event.stopPropagation()
-            setNoteToolsOpen(false)
-            setHeadingMenuOpen(false)
-            if (activeNoteAisles.length <= 1) {
-              pushToast('a note must keep at least one aisle.', 'warning')
-              return
-            }
-            setAisleDeleteConfirmation(null)
-            setAisleDeleteMode(true)
-          }}
-          disabled={activeNoteAisles.length <= 1}
-        >
-          delete aisle
-        </button>
-      </div>,
-      portalRoot,
-    )
+  const toggleAisleToolbarPopover = () => {
+    setHeadingMenuOpen(false)
+    setToolbarPopoverPosition((previous) => ({ ...previous, heading: null }))
+    const nextOpen = !noteToolsOpen
+    setNoteToolsOpen(nextOpen)
+    if (nextOpen) {
+      refreshToolbarPopoverPosition('aisles')
+    } else {
+      setToolbarPopoverPosition((previous) => ({ ...previous, aisles: null }))
+    }
   }
 
-  const renderAisleDeleteConfirmation = () => {
-    if (!aisleDeleteMode || !aisleDeleteConfirmation || typeof document === 'undefined') return null
-    const aisle = activeNoteAisles.find((candidate) => candidate.id === aisleDeleteConfirmation.aisleId)
-    if (!aisle) return null
+  const toggleHeadingToolbarPopover = () => {
+    setNoteToolsOpen(false)
+    setToolbarPopoverPosition((previous) => ({ ...previous, aisles: null }))
+    const nextOpen = !headingMenuOpen
+    setHeadingMenuOpen(nextOpen)
+    if (nextOpen) {
+      refreshToolbarPopoverPosition('heading')
+    } else {
+      setToolbarPopoverPosition((previous) => ({ ...previous, heading: null }))
+    }
+  }
 
-    const portalRoot = document.querySelector('.app-shell') ?? document.body
-    return createPortal(
-      <div
-        className="note-aisle-delete-confirmation"
-        role="dialog"
-        aria-modal="false"
-        aria-label={`Confirm delete aisle ${aisleDeleteConfirmation.aisleIndex + 1}`}
-        style={{ top: `${aisleDeleteConfirmation.top}px`, left: `${aisleDeleteConfirmation.left}px` }}
-        onPointerDown={(event) => event.stopPropagation()}
-        onMouseDown={(event) => event.stopPropagation()}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <p>this delete is permanent</p>
-        <div className="note-aisle-delete-confirmation-actions">
-          <button
-            type="button"
-            className="btn btn-sm btn-outline-light"
-            onClick={() => setAisleDeleteConfirmation(null)}
-          >
-            cancel
-          </button>
-          <button
-            ref={aisleDeleteConfirmButtonRef}
-            type="button"
-            className="btn btn-sm app-danger-btn"
-            onClick={() => deleteAisleFromActiveNote(aisle.id)}
-          >
-            delete
-          </button>
-        </div>
-      </div>,
-      portalRoot,
-    )
+  const clearActiveNoteFromToolbar = () => {
+    setHeadingMenuOpen(false)
+    setNoteToolsOpen(false)
+    clearActiveNoteContent()
   }
 
   const renderSharedToolbar = () => (
-    <div
-      className="note-shared-toolbar toastui-editor-toolbar"
-      role="toolbar"
-      aria-label="Note formatting toolbar"
-      onPointerDown={(event) => event.stopPropagation()}
-      onMouseDown={(event) => event.preventDefault()}
-    >
-      <div className="toastui-editor-defaultUI-toolbar app-shared-editor-toolbar">
-        <div className="toastui-editor-toolbar-group note-tools-toolbar-group">
-          <button
-            type="button"
-            className="note-link-toolbar-btn"
-            aria-label="Link a note"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={(event) => {
-              event.preventDefault()
-              event.stopPropagation()
-              setHeadingMenuOpen(false)
-              setNoteToolsOpen(false)
-              setToolbarPopoverPosition({ heading: null, aisles: null })
-              openNoteReferenceModal()
-            }}
-          >
-            <span className="note-reference-toolbar-icon" aria-hidden="true">
-              <span className="note-reference-toolbar-paper" />
-              <span className="note-reference-toolbar-chain" />
-            </span>
-          </button>
-          <span className="note-toolbar-menu-anchor">
-            <button
-              ref={aisleToolbarButtonRef}
-              type="button"
-              className="aisles-toolbar-btn"
-              aria-label="Aisles"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={(event) => {
-                event.preventDefault()
-                event.stopPropagation()
-                setHeadingMenuOpen(false)
-                setToolbarPopoverPosition((previous) => ({ ...previous, heading: null }))
-                const nextOpen = !noteToolsOpen
-                setNoteToolsOpen(nextOpen)
-                if (nextOpen) {
-                  refreshToolbarPopoverPosition('aisles')
-                } else {
-                  setToolbarPopoverPosition((previous) => ({ ...previous, aisles: null }))
-                }
-              }}
-            >
-              <span className="aisles-toolbar-icon" aria-hidden="true" />
-            </button>
-          </span>
-        </div>
-        <div className="toastui-editor-toolbar-group note-format-toolbar-group">
-          <span className="note-toolbar-menu-anchor">
-            <button
-              ref={headingToolbarButtonRef}
-              type="button"
-              className="toastui-editor-toolbar-icons heading"
-              title="Headings"
-              aria-label="Headings"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={(event) => {
-                event.preventDefault()
-                event.stopPropagation()
-                setNoteToolsOpen(false)
-                setToolbarPopoverPosition((previous) => ({ ...previous, aisles: null }))
-                const nextOpen = !headingMenuOpen
-                setHeadingMenuOpen(nextOpen)
-                if (nextOpen) {
-                  refreshToolbarPopoverPosition('heading')
-                } else {
-                  setToolbarPopoverPosition((previous) => ({ ...previous, heading: null }))
-                }
-              }}
-            />
-          </span>
-          {renderToolbarIconButton('Bold', 'bold', () => executeToolbarCommand('bold'), '', 'bold')}
-          {renderToolbarIconButton('Italic', 'italic', () => executeToolbarCommand('italic'), '', 'italic')}
-          {renderToolbarIconButton('Strike', 'strike', () => executeToolbarCommand('strike'), '', 'strike')}
-          {toolbarShortcutFeedback && (
-            <span className="note-toolbar-shortcut-feedback" role="status">
-              {TOOLBAR_FORMAT_LABELS[toolbarShortcutFeedback]}
-            </span>
-          )}
-        </div>
-        <div className="toastui-editor-toolbar-group">
-          {renderToolbarIconButton('Line', 'hrline', () => executeToolbarCommand('hr'))}
-          {renderToolbarIconButton('Blockquote', 'quote', () => executeToolbarCommand('blockQuote'))}
-        </div>
-        <div className="toastui-editor-toolbar-group">
-          {renderToolbarIconButton('Unordered list', 'bullet-list', () => executeToolbarCommand('bulletList'))}
-          {renderToolbarIconButton('Ordered list', 'ordered-list', () => executeToolbarCommand('orderedList'))}
-          {renderToolbarIconButton('Task', 'task-list', () => executeToolbarCommand('taskList'))}
-        </div>
-        <div className="toastui-editor-toolbar-group">
-          {renderToolbarIconButton('Insert table', 'table', () => executeToolbarCommand('addTable', { rowCount: 2, columnCount: 2 }))}
-          {renderToolbarIconButton('Insert image', 'image', insertImageFromToolbar)}
-          {renderToolbarIconButton('Insert link', 'link', insertWebLinkFromToolbar)}
-        </div>
-        <div className="toastui-editor-toolbar-group">
-          {renderToolbarIconButton('Code', 'code', () => executeToolbarCommand('code'))}
-          {renderToolbarIconButton('Insert CodeBlock', 'codeblock', () => executeToolbarCommand('codeBlock'))}
-        </div>
-        <div className="toastui-editor-toolbar-group clear-note-toolbar-group">
-          <button
-            type="button"
-            className="clear-note-toolbar-btn"
-            title="Clear contents"
-            aria-label="Clear contents"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={(event) => {
-              event.preventDefault()
-              event.stopPropagation()
-              setHeadingMenuOpen(false)
-              setNoteToolsOpen(false)
-              clearActiveNoteContent()
-            }}
-          >
-            ⌫
-          </button>
-        </div>
-      </div>
-    </div>
+    <SharedEditorToolbar
+      headingButtonRef={headingToolbarButtonRef}
+      aisleButtonRef={aisleToolbarButtonRef}
+      toolbarFormatState={toolbarFormatState}
+      toolbarShortcutFeedback={toolbarShortcutFeedback}
+      onOpenNoteReference={openNoteReferenceFromToolbar}
+      onToggleAisles={toggleAisleToolbarPopover}
+      onToggleHeading={toggleHeadingToolbarPopover}
+      onCommand={executeToolbarCommand}
+      onInsertImage={insertImageFromToolbar}
+      onInsertWebLink={insertWebLinkFromToolbar}
+      onClear={clearActiveNoteFromToolbar}
+    />
   )
 
-  const renderImageToolsOverlay = () =>
-    viewMode === 'main' && imageTools.visible ? (
-      <>
-        <div className="image-tools" style={{ top: `${imageTools.cropTop}px`, left: `${imageTools.cropLeft}px` }}>
-          {!inlineCrop.active ? (
-            <button type="button" className="image-tool-btn" onClick={startInlineCrop} title="Crop">
-              crop
-            </button>
-          ) : (
-            <>
-              <button type="button" className="image-tool-btn" onClick={applyInlineCrop} title="Apply crop">
-                apply
-              </button>
-              <button type="button" className="image-tool-btn" onClick={cancelInlineCrop} title="Cancel crop">
-                cancel
-              </button>
-            </>
-          )}
-        </div>
-        {!inlineCrop.active && (
-          <button
-            type="button"
-            className="image-resize-handle"
-            style={{ top: `${imageTools.resizeTop}px`, left: `${imageTools.resizeLeft}px` }}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={(event) => event.preventDefault()}
-            onPointerDown={beginImageResize}
-            aria-label="Resize image"
-            title="Drag to resize"
-          />
-        )}
-        {inlineCrop.active && (
-          <>
-            <div
-              className="inline-crop-box"
-              style={{
-                top: `${inlineCrop.top}px`,
-                left: `${inlineCrop.left}px`,
-                width: `${inlineCrop.width}px`,
-                height: `${inlineCrop.height}px`,
-              }}
-              onMouseDown={(event) => beginInlineCropMouseDrag('move', event)}
-            />
-            <button
-              type="button"
-              className="inline-crop-edge-handle inline-crop-edge-handle-n"
-              style={{
-                top: `${inlineCrop.top}px`,
-                left: `${inlineCrop.left + inlineCrop.width / 2}px`,
-              }}
-              draggable={false}
-              onMouseDown={(event) => beginInlineCropMouseDrag('resize-n', event)}
-              onDragStart={(event) => event.preventDefault()}
-              onClick={(event) => event.preventDefault()}
-              aria-label="Resize crop area from top"
-              title="Drag to resize crop area from top"
-            />
-            <button
-              type="button"
-              className="inline-crop-edge-handle inline-crop-edge-handle-e"
-              style={{
-                top: `${inlineCrop.top + inlineCrop.height / 2}px`,
-                left: `${inlineCrop.left + inlineCrop.width}px`,
-              }}
-              draggable={false}
-              onMouseDown={(event) => beginInlineCropMouseDrag('resize-e', event)}
-              onDragStart={(event) => event.preventDefault()}
-              onClick={(event) => event.preventDefault()}
-              aria-label="Resize crop area from right"
-              title="Drag to resize crop area from right"
-            />
-            <button
-              type="button"
-              className="inline-crop-edge-handle inline-crop-edge-handle-s"
-              style={{
-                top: `${inlineCrop.top + inlineCrop.height}px`,
-                left: `${inlineCrop.left + inlineCrop.width / 2}px`,
-              }}
-              draggable={false}
-              onMouseDown={(event) => beginInlineCropMouseDrag('resize-s', event)}
-              onDragStart={(event) => event.preventDefault()}
-              onClick={(event) => event.preventDefault()}
-              aria-label="Resize crop area from bottom"
-              title="Drag to resize crop area from bottom"
-            />
-            <button
-              type="button"
-              className="inline-crop-edge-handle inline-crop-edge-handle-w"
-              style={{
-                top: `${inlineCrop.top + inlineCrop.height / 2}px`,
-                left: `${inlineCrop.left}px`,
-              }}
-              draggable={false}
-              onMouseDown={(event) => beginInlineCropMouseDrag('resize-w', event)}
-              onDragStart={(event) => event.preventDefault()}
-              onClick={(event) => event.preventDefault()}
-              aria-label="Resize crop area from left"
-              title="Drag to resize crop area from left"
-            />
-            <button
-              type="button"
-              className="inline-crop-resize-handle"
-              style={{
-                top: `${inlineCrop.top + inlineCrop.height}px`,
-                left: `${inlineCrop.left + inlineCrop.width}px`,
-              }}
-              draggable={false}
-              onMouseDown={(event) => beginInlineCropMouseDrag('resize-se', event)}
-              onDragStart={(event) => event.preventDefault()}
-              onClick={(event) => event.preventDefault()}
-              aria-label="Resize crop area"
-              title="Drag to resize crop area"
-            />
-          </>
-        )}
-      </>
-    ) : null
+  const renderImageToolsOverlay = () => (
+    <ImageToolsOverlay
+      visible={viewMode === 'main'}
+      imageTools={imageTools}
+      inlineCrop={inlineCrop}
+      onStartCrop={startInlineCrop}
+      onApplyCrop={applyInlineCrop}
+      onCancelCrop={cancelInlineCrop}
+      onBeginResize={beginImageResize}
+      onBeginCropDrag={beginInlineCropMouseDrag}
+    />
+  )
 
   const renderEditorShell = () => (
-    <section className={`editor-shell ${editorReadOnly ? 'editor-readonly' : ''}`}>
-      {viewMode === 'main' && (
-        <button
-          type="button"
-          className="note-reference-btn"
-          onClick={openNoteReferenceModal}
-          title="Insert note link or note preview"
-          aria-label="Insert note link or note preview"
-        >
-          <span className="note-reference-paper" aria-hidden="true" />
-          <span className="note-reference-chain" aria-hidden="true" />
-        </button>
-      )}
-      <div ref={editorMountRef} className="toast-editor-host" />
-      {renderImageToolsOverlay()}
-      {viewMode === 'main' && linkPrompt.open && (
-        <div
-          className="link-prompt"
-          style={{ top: `${linkPrompt.top}px`, left: `${linkPrompt.left}px` }}
-          onMouseDown={(event) => event.stopPropagation()}
-        >
-          <input
-            ref={linkPromptInputRef}
-            className="link-prompt-input"
-            value={linkPrompt.text}
-            placeholder="link name"
-            onChange={(event) => setLinkPrompt((previous) => ({ ...previous, text: event.target.value }))}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault()
-                insertNamedLinkFromPrompt()
-              } else if (event.key === 'Escape') {
-                event.preventDefault()
-                closeLinkPrompt()
-              }
-            }}
-          />
-          <button type="button" className="link-prompt-btn" onClick={insertNamedLinkFromPrompt}>
-            done
-          </button>
-        </div>
-      )}
-      {editorReadOnly && <div className="editor-lock" aria-hidden="true" />}
-    </section>
+    <LegacyEditorShell
+      viewMode={viewMode}
+      editorReadOnly={editorReadOnly}
+      editorMountRef={editorMountRef}
+      linkPromptInputRef={linkPromptInputRef}
+      linkPrompt={linkPrompt}
+      imageToolsOverlay={renderImageToolsOverlay()}
+      onOpenNoteReference={openNoteReferenceModal}
+      onLinkPromptTextChange={(text) => setLinkPrompt((previous) => ({ ...previous, text }))}
+      onInsertNamedLink={insertNamedLinkFromPrompt}
+      onCloseLinkPrompt={closeLinkPrompt}
+    />
   )
 
   const canDeleteSpace = state.spaces.length > 1
 
-  useEffect(() => {
-    if (viewMode === 'main' || viewMode === 'trash') {
-      lastTabLikeViewRef.current = viewMode
-    }
-  }, [viewMode])
-
-  useEffect(() => {
-    const snapshot = buildNavLocation()
-    const history = navHistoryRef.current
-
-    if (isHistoryNavigationRef.current) {
-      isHistoryNavigationRef.current = false
-      return
-    }
-
-    if (history.length === 0) {
-      history.push(snapshot)
-      navIndexRef.current = 0
-      return
-    }
-
-    const activeHistory = history.slice(0, navIndexRef.current + 1)
-    const current = activeHistory[activeHistory.length - 1]
-    if (current && areNavLocationsEqual(current, snapshot)) return
-
-    const collapsedHistory = activeHistory.filter((entry) => !areNavLocationsEqual(entry, snapshot))
-    history.splice(0, history.length, ...collapsedHistory, snapshot)
-    navIndexRef.current = history.length - 1
-  }, [viewMode, activeSpace.id, workspace.activeTabId, activeTab.activeSubTabId, trashTabId, trashSubTabId])
-
-  useEffect(() => {
-    const handleKeydown = (event: KeyboardEvent) => {
-      if (viewMode === 'settings' && editingShortcut) {
-        event.preventDefault()
-        if (event.key === 'Escape') {
-          setEditingShortcut(null)
-          return
-        }
-        const nextShortcut = buildShortcutFromKeyboardEvent(event, isMacPlatform)
-        if (!nextShortcut) return
-        updateShortcutSetting(editingShortcut, nextShortcut)
-        setEditingShortcut(null)
-        return
-      }
-
-      if (arrangeMode.active && event.key === 'Escape') {
-        event.preventDefault()
-        exitArrangeMode()
-        return
-      }
-
-      const isSettingsShortcut =
-        isMacPlatform &&
-        event.metaKey &&
-        !event.ctrlKey &&
-        !event.altKey &&
-        !event.shiftKey &&
-        (event.key === ',' || event.code === 'Comma')
-      if (isSettingsShortcut) {
-        event.preventDefault()
-        openSettings()
-        return
-      }
-
-      const isCommandBracketBack =
-        event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && event.key === '['
-      const isCommandBracketForward =
-        event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && event.key === ']'
-      const isAltArrowBack =
-        !isMacPlatform && event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey && event.key === 'ArrowLeft'
-      const isAltArrowForward =
-        !isMacPlatform && event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey && event.key === 'ArrowRight'
-      const isBrowserBackKey = event.key === 'BrowserBack'
-      const isBrowserForwardKey = event.key === 'BrowserForward'
-
-      if (
-        state.hotkeys.enableGenericHistoryHotkeys &&
-        (isCommandBracketBack || isAltArrowBack || isBrowserBackKey)
-      ) {
-        event.preventDefault()
-        navigateHistoryBy(-1)
-        return
-      }
-
-      if (
-        state.hotkeys.enableGenericHistoryHotkeys &&
-        (isCommandBracketForward || isAltArrowForward || isBrowserForwardKey)
-      ) {
-        event.preventDefault()
-        navigateHistoryBy(1)
-        return
-      }
-
-      const isTabTrashShortcut = eventMatchesShortcut(event, state.hotkeys.shortcuts.toggleTabTrash, isMacPlatform)
-      if (isTabTrashShortcut) {
-        event.preventDefault()
-        if (viewMode === 'spaces' && arrangeMode.active && arrangeMode.scope === 'spaces') {
-          return
-        }
-        if (viewMode === 'main' || viewMode === 'trash') {
-          toggleTrashView()
-          return
-        }
-        if (navigateToLastTabLikeLocation()) return
-        setViewMode(lastTabLikeViewRef.current)
-        setMenuOpen(false)
-        setContextMenu(null)
-        return
-      }
-
-      const isHistoryBackShortcut =
-        (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.code === 'Backquote'
-      if (isHistoryBackShortcut) {
-        event.preventDefault()
-        navigateHistoryBy(-1)
-        return
-      }
-
-      const isHistoryForwardShortcut =
-        (event.metaKey || event.ctrlKey) && !event.altKey && event.shiftKey && event.code === 'Backquote'
-      if (isHistoryForwardShortcut) {
-        event.preventDefault()
-        navigateHistoryBy(1)
-        return
-      }
-
-      const isSpacesShortcut = eventMatchesShortcut(event, state.hotkeys.shortcuts.openSpaces, isMacPlatform)
-      if (isSpacesShortcut) {
-        event.preventDefault()
-        openSpacesView()
-        return
-      }
-
-      const isDomainsShortcut = eventMatchesShortcut(event, state.hotkeys.shortcuts.openDomains, isMacPlatform)
-      if (isDomainsShortcut) {
-        event.preventDefault()
-        openDomainsView()
-        return
-      }
-
-      if (viewMode !== 'main') return
-
-      if (arrangeMode.active) return
-
-      const isCommandNewTab = eventMatchesShortcut(event, state.hotkeys.shortcuts.newTab, isMacPlatform)
-      if (isCommandNewTab) {
-        event.preventDefault()
-        addTab()
-        return
-      }
-
-      const isCommandNewSubTab = eventMatchesShortcut(event, state.hotkeys.shortcuts.newSubTab, isMacPlatform)
-      if (isCommandNewSubTab) {
-        event.preventDefault()
-        addSubTab()
-        return
-      }
-
-      const shortcutIndex = getShortcutIndex(event.key)
-      const usesCommand = event.metaKey && !event.ctrlKey && !event.altKey
-      const childJumpModifierMatch = usesCommand
-
-      if (childJumpModifierMatch && !event.shiftKey && shortcutIndex !== null) {
-        event.preventDefault()
-
-        const childTargets: Array<string | null> = [null, ...activeTab.subTabs.map((sub) => sub.id)]
-        const nextChild = childTargets[shortcutIndex]
-        if (nextChild === undefined) return
-        if (nextChild === null) {
-          selectTab(activeTab.id)
-          return
-        }
-        selectSubTab(nextChild)
-        return
-      }
-
-      const childTargets: Array<string | null> = [null, ...activeTab.subTabs.map((sub) => sub.id)]
-      if (childTargets.length === 0) return
-
-      const isCycleNextShortcut = eventMatchesShortcut(event, state.hotkeys.shortcuts.cycleSubTabNext, isMacPlatform)
-      const isCyclePrevShortcut = eventMatchesShortcut(event, state.hotkeys.shortcuts.cycleSubTabPrev, isMacPlatform)
-      if (!isCycleNextShortcut && !isCyclePrevShortcut) return
-
-      event.preventDefault()
-
-      const currentIndex = activeTab.activeSubTabId ? childTargets.findIndex((id) => id === activeTab.activeSubTabId) : 0
-      const safeCurrentIndex = currentIndex >= 0 ? currentIndex : 0
-      const direction = isCyclePrevShortcut ? -1 : 1
-      const nextIndex = (safeCurrentIndex + direction + childTargets.length) % childTargets.length
-      const nextChild = childTargets[nextIndex]
-
-      if (nextChild === null) {
-        selectTab(activeTab.id)
-        return
-      }
-
-      selectSubTab(nextChild)
-    }
-
-    const handleMouseNavigation = (event: globalThis.MouseEvent) => {
-      if (!state.hotkeys.enableMouseBackForward) return
-      if (event.button === 3) {
-        event.preventDefault()
-        navigateHistoryBy(-1)
-        return
-      }
-      if (event.button === 4) {
-        event.preventDefault()
-        navigateHistoryBy(1)
-      }
-    }
-
-    window.addEventListener('keydown', handleKeydown)
-    window.addEventListener('mouseup', handleMouseNavigation)
-    return () => {
-      window.removeEventListener('keydown', handleKeydown)
-      window.removeEventListener('mouseup', handleMouseNavigation)
-    }
-  }, [viewMode, workspace.tabs, activeTab.id, activeTab.subTabs, activeTab.activeSubTabId, editingShortcut, isMacPlatform, state.hotkeys, arrangeMode.active])
-
-  const primaryTablistProps =
-    viewMode === 'settings'
-      ? {}
-      : ({
-          role: 'tablist',
-          'aria-label': 'Primary tabs',
-        } as const)
-
-  const topbarActions =
-    [
-      ...(viewMode === 'trash'
-        ? [
-            {
-              key: 'trash-home',
-              label: 'trash',
-              selected: trashTabId === TRASH_HOME_ID,
-              className: 'btn btn-sm tab-btn trash-home-tab topbar-action-btn',
-              onClick: () => {
-                setTrashTabId(TRASH_HOME_ID)
-                setTrashSubTabId(null)
-              },
-            },
-          ]
-        : []),
-      ...(viewMode === 'settings'
-        ? [
-            {
-              key: 'settings-view',
-              label: 'settings',
-              selected: false,
-              className: 'btn btn-sm tab-btn topbar-action-btn topbar-context-btn',
-              onClick: () => undefined,
-            },
-          ]
-        : []),
-      ...(viewMode === 'stage-manager'
-        ? [
-            {
-              key: 'end-stage-manager',
-              label: 'director',
-              selected: false,
-              className: 'btn btn-sm tab-btn topbar-action-btn topbar-context-btn',
-              onClick: () => undefined,
-            },
-          ]
-        : []),
-      ...(arrangeMode.active && arrangeMode.scope === 'tabs'
-        ? [
-            {
-              key: 'end-arrangement',
-              label: 'end arrangement',
-              selected: false,
-              className: 'btn btn-sm tab-btn topbar-action-btn topbar-context-btn',
-              onClick: exitArrangeMode,
-            },
-          ]
-        : []),
-      ...(viewMode === 'main' && !arrangeMode.active && aisleDeleteMode
-        ? [
-            {
-              key: 'end-delete-aisle',
-              label: 'end delete',
-              selected: false,
-              className: 'btn btn-sm tab-btn topbar-action-btn topbar-context-btn',
-              onClick: () => {
-                setMenuOpen(false)
-                setContextMenu(null)
-                setNoteToolsOpen(false)
-                setHeadingMenuOpen(false)
-                exitAisleDeleteMode()
-              },
-            },
-          ]
-        : []),
-    ]
-  const topbarShowsCloseControl =
-    viewMode === 'settings' ||
-    viewMode === 'stage-manager' ||
-    (arrangeMode.active && arrangeMode.scope === 'tabs') ||
-    aisleDeleteMode
+  useGlobalHotkeys({
+    viewMode,
+    activeTab,
+    arrangeMode,
+    hotkeys: state.hotkeys,
+    isMacPlatform,
+    editingShortcut: settingsController.editingShortcut,
+    setEditingShortcut: settingsController.setEditingShortcut,
+    updateShortcutSetting: settingsController.updateShortcutSetting,
+    exitArrangeMode,
+    openSettings,
+    openSpacesView,
+    openDomainsView,
+    toggleTrashView,
+    returnToLastTabLikeView,
+    navigateHistoryBy,
+    addTab,
+    addSubTab,
+    selectTab,
+    selectSubTab,
+  })
 
   const isNoteWorkspaceView = viewMode === 'main' || viewMode === 'stage-manager'
-  const stageManagerStepLabels: Array<[StageManagerStep, string]> = [
-    ['select', 'select items'],
-    ['action', 'choose action'],
-    ['configure', 'configure'],
-    ['review', 'review'],
-  ]
   const arrangeableParentTabClassName = arrangeMode.active && arrangeMode.scope === 'tabs' && viewMode === 'main' ? 'is-arrangeable' : ''
   const arrangeableSubTabClassName = arrangeMode.active && arrangeMode.scope === 'tabs' && viewMode === 'main' ? 'is-arrangeable' : ''
   const draggingParentTabId =
@@ -8636,224 +6636,57 @@ function App() {
         } as React.CSSProperties
       }
     >
-      {viewMode !== 'spaces' && viewMode !== 'domains' && (
-        <header className={`tabbar ${arrangeMode.active && viewMode === 'main' ? 'is-arranging' : ''}`}>
-          <div className="tabbar-row">
-            <div
-              ref={primaryTabRailRef}
-              className="tabbar-scroll tabbar-primary"
-              {...primaryTablistProps}
-            >
-              {isNoteWorkspaceView &&
-                workspace.tabs.map((tab) =>
-                  editing?.type === 'tab' && editing.id === tab.id ? (
-                    <input
-                      key={tab.id}
-                    className="tab-rename-input"
-                    defaultValue={tab.title}
-                    autoFocus
-                    onFocus={(event) => {
-                      autoSizeRenameInput(event.currentTarget)
-                      event.currentTarget.select()
-                    }}
-                    onInput={(event) => autoSizeRenameInput(event.currentTarget)}
-                    onBlur={(event) => {
-                      if (shouldSkipRenameBlur('tab', tab.id)) return
-                      commitRename('tab', tab.id, event.target.value)
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') commitRename('tab', tab.id, (event.target as HTMLInputElement).value)
-                      if (event.key === 'Escape') {
-                        event.preventDefault()
-                        cancelRename('tab', tab.id)
-                      }
-                    }}
-                    />
-                  ) : (
-                    (() => {
-                      const stageManagerSelection = viewMode === 'stage-manager' ? getStageManagerParentSelection(tab) : null
-                      const isArrangeMoveTarget =
-                        arrangeMode.active &&
-                        arrangeMode.dragItem?.type === 'subtab' &&
-                        arrangeMode.overParentTabId === tab.id
-                      const isArrangeBeforeTarget =
-                        arrangeMode.active &&
-                        arrangeMode.dragItem?.type === 'tab' &&
-                        arrangeMode.overParentTabId === tab.id &&
-                        arrangeMode.overParentInsert === 'before'
-                      const isArrangeAfterTarget =
-                        arrangeMode.active &&
-                        arrangeMode.dragItem?.type === 'tab' &&
-                        arrangeMode.overParentTabId === tab.id &&
-                        arrangeMode.overParentInsert === 'after'
-                      return (
-                        <button
-                          key={tab.id}
-                          data-arrange-tab-id={tab.id}
-                          type="button"
-                          role="tab"
-                          aria-selected={tab.id === activeTab.id}
-                          draggable={false}
-                          className={`btn btn-sm ${tab.id === activeTab.id ? 'btn-primary' : 'btn-outline-secondary'} tab-btn parent-tab-btn ${arrangeableParentTabClassName} ${isArrangeMoveTarget ? 'is-arrange-target' : ''} ${isArrangeBeforeTarget ? 'is-arrange-target-before' : ''} ${isArrangeAfterTarget ? 'is-arrange-target-after' : ''} ${draggingParentTabId === tab.id ? 'is-dragging' : ''} ${
-                            stageManagerSelection?.mode === 'partial' ? 'stage-manager-parent-partial' : ''
-                          } ${stageManagerSelection?.mode === 'full' ? 'stage-manager-parent-full' : ''}`}
-                          onClick={() => {
-                            if (viewMode === 'stage-manager') {
-                              handleStageManagerParentClick(tab)
-                              return
-                            }
-                            if (consumeArrangeClickSuppression(`tab:${tab.id}`)) return
-                            selectTab(tab.id)
-                          }}
-                          onDoubleClick={() => {
-                            if (viewMode !== 'main' || arrangeMode.active) return
-                            setEditing({ type: 'tab', id: tab.id })
-                          }}
-                          onContextMenu={(event) => {
-                            if (viewMode !== 'main') return
-                            openContextMenuForTab(event, tab.id)
-                          }}
-                          onPointerDown={(event) => {
-                            if (viewMode !== 'main') return
-                            if (event.button === 0) {
-                              event.currentTarget.setPointerCapture(event.pointerId)
-                            }
-                            startArrangeDragSeed(`tab:${tab.id}`, event)
-                            if (arrangeMode.active) {
-                              startArrangeTapCandidate({ key: `tab:${tab.id}`, type: 'tab', tabId: tab.id }, event)
-                              return
-                            }
-                            startArrangePress(event, { type: 'tab', tabId: tab.id }, `tab:${tab.id}`)
-                          }}
-                          onPointerMove={(event) =>
-                            handleArrangeTabPointerMove(event, { type: 'tab', tabId: tab.id }, tab.title, 'parent')
-                          }
-                          onPointerUp={(event) => {
-                            if (viewMode !== 'main') return
-                            handleArrangeTabPointerUp(event, `tab:${tab.id}`, () => selectTab(tab.id))
-                          }}
-                          onPointerLeave={() => {
-                            if (viewMode !== 'main') return
-                            if (!arrangeMode.active) {
-                              clearArrangePressTimer()
-                            }
-                          }}
-                          onPointerCancel={() => {
-                            if (viewMode !== 'main') return
-                            cancelArrangeTabPointerDrag()
-                          }}
-                        >
-                          {tab.title}
-                        </button>
-                      )
-                    })()
-                  ),
-                )}
-
-              {viewMode === 'trash' && (
-                <>
-                  {trashParentTabs.map((entry) => (
-                    <button
-                      key={entry.id}
-                      type="button"
-                      role="tab"
-                      aria-selected={trashTabId === entry.id}
-                      className={`btn btn-sm tab-btn trash-parent-tab ${trashTabId === entry.id ? 'is-selected' : ''}`}
-                      onClick={() => {
-                        setTrashTabId(entry.id)
-                        setTrashSubTabId(null)
-                      }}
-                      onContextMenu={(event) => openContextMenuForTrashTab(event, entry)}
-                    >
-                      {entry.title}
-                    </button>
-                  ))}
-                </>
-              )}
-
-              {viewMode === 'main' && !arrangeMode.active && (
-                <button
-                  type="button"
-                  className="btn btn-sm btn-outline-light add-tab-btn"
-                  onClick={addTab}
-                  title="Add tab"
-                >
-                  +
-                </button>
-              )}
-            </div>
-
-            <div className="tabbar-controls">
-              {topbarActions.length > 0 && (
-                <div className="topbar-actions" role="group" aria-label="Top bar actions">
-                  {topbarActions.map((action) => (
-                    <button
-                      key={action.key}
-                      type="button"
-                      aria-pressed={action.selected}
-                      className={`${action.className} ${action.selected ? 'is-selected' : ''}`}
-                      onClick={action.onClick}
-                    >
-                      {action.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              <div className="menu-wrap" onClick={(event) => event.stopPropagation()}>
-                <button
-                  type="button"
-                  className={`menu-btn ${topbarShowsCloseControl ? 'is-close' : ''}`}
-                  onClick={() => {
-                    if (arrangeMode.active) {
-                      exitArrangeMode()
-                      return
-                    }
-                    if (aisleDeleteMode) {
-                      exitAisleDeleteMode()
-                      return
-                    }
-                    if (viewMode === 'stage-manager') {
-                      endStageManager()
-                      return
-                    }
-                    if (viewMode === 'settings') {
-                      closeSettingsView()
-                      return
-                    }
-                    setMenuOpen((open) => !open)
-                  }}
-                  aria-label={topbarShowsCloseControl ? 'Close' : 'Menu'}
-                >
-                  <span className="menu-btn-line" />
-                  <span className="menu-btn-line" />
-                </button>
-                {!topbarShowsCloseControl && menuOpen && (
-                  <div className="menu-dropdown">
-                    <button type="button" className="menu-item" onClick={openDomainsView}>
-                      domains
-                    </button>
-                    <button type="button" className="menu-item" onClick={openSpacesView}>
-                      spaces
-                    </button>
-                    {viewMode === 'main' && (
-                      <button type="button" className="menu-item" onClick={openStageManager}>
-                        director
-                      </button>
-                    )}
-                    <button type="button" className="menu-item" onClick={toggleTrashView}>
-                      {viewMode === 'trash' ? 'tabs' : 'trash'}
-                    </button>
-                    <button type="button" className="menu-item" onClick={openSettings}>
-                      settings
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </header>
-      )}
+      <TopBar
+        viewMode={viewMode}
+        workspace={workspace}
+        activeTab={activeTab}
+        editing={editing}
+        arrangeMode={arrangeMode}
+        primaryTabRailRef={primaryTabRailRef}
+        isNoteWorkspaceView={isNoteWorkspaceView}
+        arrangeableParentTabClassName={arrangeableParentTabClassName}
+        draggingParentTabId={draggingParentTabId}
+        trashParentTabs={trashParentTabs}
+        trashTabId={trashTabId}
+        menuOpen={menuOpen}
+        aisleDeleteMode={aisleDeleteMode}
+        onAutoSizeRenameInput={autoSizeRenameInput}
+        onShouldSkipRenameBlur={shouldSkipRenameBlur}
+        onCommitRename={commitRename}
+        onCancelRename={cancelRename}
+        onGetStageManagerParentSelection={getStageManagerParentSelection}
+        onStageManagerParentClick={handleStageManagerParentClick}
+        onConsumeArrangeClickSuppression={consumeArrangeClickSuppression}
+        onSelectTab={selectTab}
+        onBeginEdit={setEditing}
+        onOpenContextMenuForTab={openContextMenuForTab}
+        onStartArrangeDragSeed={startArrangeDragSeed}
+        onStartArrangeTapCandidate={startArrangeTapCandidate}
+        onStartArrangePress={startArrangePress}
+        onHandleArrangeTabPointerMove={handleArrangeTabPointerMove}
+        onHandleArrangeTabPointerUp={handleArrangeTabPointerUp}
+        onClearArrangePressTimer={clearArrangePressTimer}
+        onCancelArrangeTabPointerDrag={cancelArrangeTabPointerDrag}
+        onSetTrashTabId={setTrashTabId}
+        onSetTrashSubTabId={setTrashSubTabId}
+        onOpenContextMenuForTrashTab={openContextMenuForTrashTab}
+        onAddTab={addTab}
+        onExitArrangeMode={exitArrangeMode}
+        onExitAisleDeleteMode={exitAisleDeleteMode}
+        onEndStageManager={endStageManager}
+        onCloseSettingsView={closeSettingsView}
+        onSetMenuOpen={setMenuOpen}
+        onSetContextMenu={setContextMenu}
+        onCloseNotePopovers={() => {
+          setNoteToolsOpen(false)
+          setHeadingMenuOpen(false)
+        }}
+        onOpenDomains={openDomainsView}
+        onOpenSpaces={openSpacesView}
+        onOpenStageManager={openStageManager}
+        onToggleTrash={toggleTrashView}
+        onOpenSettings={openSettings}
+      />
 
       {tabArrangeDragPreview && (
         <div
@@ -8920,890 +6753,105 @@ function App() {
       ) : viewMode === 'settings' ? (
         <SettingsPage
           state={state}
-          section={settingsSection}
+          section={settingsController.section}
           isMacPlatform={isMacPlatform}
-          shortcutDrafts={shortcutDrafts}
-          editingShortcut={editingShortcut}
-          mouseBackForwardEnabled={mouseBackForwardEnabledDraft}
-          genericHistoryHotkeysEnabled={genericHistoryHotkeysEnabledDraft}
-          settingsDaysDraft={settingsDaysDraft}
+          shortcutDrafts={settingsController.shortcutDrafts}
+          editingShortcut={settingsController.editingShortcut}
+          mouseBackForwardEnabled={settingsController.mouseBackForwardEnabledDraft}
+          genericHistoryHotkeysEnabled={settingsController.genericHistoryHotkeysEnabledDraft}
+          settingsDaysDraft={settingsController.settingsDaysDraft}
           activeSpaceId={activeSpace.id}
-          exportStatus={exportStatus}
-          tabButtonScaleDraft={tabButtonScaleDraft}
-          noteFontScaleDraft={noteFontScaleDraft}
-          showParentHomeTabDraft={showParentHomeTabDraft}
-          onSectionChange={(section) => {
-            setSettingsSection(section)
-            if (section !== 'hotkeys') setEditingShortcut(null)
-          }}
-          onToggleShortcutEdit={(shortcutId) => setEditingShortcut((current) => (current === shortcutId ? null : shortcutId))}
-          onMouseBackForwardChange={updateMouseBackForwardSetting}
-          onGenericHistoryHotkeysChange={updateGenericHistoryHotkeysSetting}
-          onAutoRemoveDaysChange={updateAutoRemoveDaysSetting}
+          exportStatus={settingsController.exportStatus}
+          tabButtonScaleDraft={settingsController.tabButtonScaleDraft}
+          noteFontScaleDraft={settingsController.noteFontScaleDraft}
+          showParentHomeTabDraft={settingsController.showParentHomeTabDraft}
+          onSectionChange={settingsController.changeSection}
+          onToggleShortcutEdit={settingsController.toggleShortcutEdit}
+          onMouseBackForwardChange={settingsController.updateMouseBackForwardSetting}
+          onGenericHistoryHotkeysChange={settingsController.updateGenericHistoryHotkeysSetting}
+          onAutoRemoveDaysChange={settingsController.updateAutoRemoveDaysSetting}
           onExportSpace={(spaceId) => setModal({ type: 'export-space', spaceId })}
           onExportAll={() => exportData('all')}
-          onThemeChange={updateThemeSetting}
-          onTabButtonScaleChange={updateTabButtonScaleSetting}
-          onNoteFontScaleChange={updateNoteFontScaleSetting}
-          onShowParentHomeTabChange={updateShowParentHomeTabSetting}
+          onThemeChange={settingsController.updateThemeSetting}
+          onTabButtonScaleChange={settingsController.updateTabButtonScaleSetting}
+          onNoteFontScaleChange={settingsController.updateNoteFontScaleSetting}
+          onShowParentHomeTabChange={settingsController.updateShowParentHomeTabSetting}
         />
       ) : (
         <>
-          {(isNoteWorkspaceView || (viewMode === 'trash' && Boolean(selectedTrashTab))) && (
-            <header
-              className={`subtabbar ${arrangeMode.active && viewMode === 'main' ? 'is-arranging' : ''}`}
-              role="tablist"
-              aria-label="Nested note tabs"
-            >
-              <div ref={subTabRailRef} className="tabbar-scroll">
-                {isNoteWorkspaceView && state.ui.showParentHomeTab && (
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={viewMode === 'main' && !activeSubTab}
-                    className={`btn btn-sm ${viewMode === 'main' && !activeSubTab ? 'btn-info' : 'btn-outline-info'} tab-btn subtab-btn home-subtab-btn ${arrangeableSubTabClassName} ${
-                      viewMode === 'stage-manager' && getStageManagerParentSelection(activeTab).mode === 'full'
-                        ? 'stage-manager-home-selected'
-                        : ''
-                    } ${arrangeMode.active ? 'is-arrange-fixed' : ''} ${
-                      arrangeMode.active &&
-                      arrangeMode.dragItem?.type === 'subtab' &&
-                      arrangeMode.dragItem.parentTabId === activeTab.id &&
-                      activeTab.subTabs[0] &&
-                      arrangeMode.overSubTabId === activeTab.subTabs[0].id &&
-                      arrangeMode.overSubTabInsert === 'before'
-                        ? 'is-arrange-home-target'
-                        : ''
-                    }`}
-                    onClick={() => {
-                      if (viewMode === 'stage-manager') {
-                        handleStageManagerHomeClick()
-                        return
-                      }
-                      if (consumeArrangeClickSuppression(`home:${activeTab.id}`)) return
-                      selectParentHomeTab()
-                    }}
-                    title="home note"
-                    onPointerDown={(event) => {
-                      if (viewMode !== 'main') return
-                      if (arrangeMode.active) {
-                        startArrangeTapCandidate({ key: `home:${activeTab.id}`, type: 'home' }, event)
-                        return
-                      }
-                      startArrangePress(event, null, `home:${activeTab.id}`)
-                    }}
-                    onPointerUp={(event) => {
-                      if (viewMode !== 'main') return
-                      if (arrangeMode.active) {
-                        finalizeArrangeTapCandidate(`home:${activeTab.id}`, event, selectParentHomeTab)
-                        return
-                      }
-                      clearArrangePressTimer()
-                    }}
-                    onPointerLeave={() => {
-                      if (viewMode !== 'main') return
-                      if (!arrangeMode.active) {
-                        clearArrangePressTimer()
-                      }
-                    }}
-                    onPointerCancel={() => {
-                      if (viewMode !== 'main') return
-                      clearArrangePressTimer()
-                      clearArrangeTapCandidate()
-                    }}
-                  >
-                    home
-                  </button>
-                )}
-
-                {isNoteWorkspaceView &&
-                  activeTab.subTabs.map((subTab) =>
-                    editing?.type === 'subtab' && editing.id === subTab.id ? (
-                      <input
-                        key={subTab.id}
-                        className="tab-rename-input"
-                        defaultValue={subTab.title}
-                        autoFocus
-                        onFocus={(event) => {
-                          autoSizeRenameInput(event.currentTarget)
-                          event.currentTarget.select()
-                        }}
-                        onInput={(event) => autoSizeRenameInput(event.currentTarget)}
-                        onBlur={(event) => {
-                          if (shouldSkipRenameBlur('subtab', subTab.id)) return
-                          commitRename('subtab', subTab.id, event.target.value)
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter') commitRename('subtab', subTab.id, (event.target as HTMLInputElement).value)
-                          if (event.key === 'Escape') {
-                            event.preventDefault()
-                            cancelRename('subtab', subTab.id)
-                          }
-                        }}
-                      />
-                    ) : (
-                      <button
-                        key={subTab.id}
-                        data-arrange-subtab-id={subTab.id}
-                        type="button"
-                        role="tab"
-                        aria-selected={viewMode === 'main' && subTab.id === activeSubTab?.id}
-                        draggable={false}
-                        className={`btn btn-sm ${viewMode === 'main' && subTab.id === activeSubTab?.id ? 'btn-info' : 'btn-outline-info'} tab-btn subtab-btn ${arrangeableSubTabClassName} ${
-                          arrangeMode.active &&
-                          arrangeMode.dragItem?.type === 'subtab' &&
-                          arrangeMode.dragItem.parentTabId === activeTab.id &&
-                          arrangeMode.overSubTabId === subTab.id &&
-                          arrangeMode.overSubTabInsert === 'before'
-                            ? 'is-arrange-target-before'
-                            : ''
-                        } ${
-                          arrangeMode.active &&
-                          arrangeMode.dragItem?.type === 'subtab' &&
-                          arrangeMode.dragItem.parentTabId === activeTab.id &&
-                          arrangeMode.overSubTabId === subTab.id &&
-                          arrangeMode.overSubTabInsert === 'after'
-                            ? 'is-arrange-target-after'
-                            : ''
-                        } ${draggingSubTabId === subTab.id ? 'is-dragging' : ''} ${
-                          viewMode === 'stage-manager' && getStageManagerParentSelection(activeTab).selectedSubTabIds.includes(subTab.id)
-                            ? 'stage-manager-subtab-selected'
-                            : ''
-                        }`}
-                        onClick={() => {
-                          if (viewMode === 'stage-manager') {
-                            handleStageManagerSubTabClick(activeTab, subTab.id)
-                            return
-                          }
-                          if (consumeArrangeClickSuppression(`subtab:${subTab.id}`)) return
-                          selectSubTab(subTab.id)
-                        }}
-                        onDoubleClick={() => {
-                          if (viewMode !== 'main' || arrangeMode.active) return
-                          setEditing({ type: 'subtab', id: subTab.id })
-                        }}
-                        onContextMenu={(event) => {
-                          if (viewMode !== 'main') return
-                          openContextMenuForSubTab(event, activeTab.id, subTab.id)
-                        }}
-                        onPointerDown={(event) => {
-                          if (viewMode !== 'main') return
-                          if (event.button === 0) {
-                            event.currentTarget.setPointerCapture(event.pointerId)
-                          }
-                          startArrangeDragSeed(`subtab:${subTab.id}`, event)
-                          if (arrangeMode.active) {
-                            startArrangeTapCandidate({ key: `subtab:${subTab.id}`, type: 'subtab', subTabId: subTab.id }, event)
-                            return
-                          }
-                          startArrangePress(event, { type: 'subtab', parentTabId: activeTab.id, subTabId: subTab.id }, `subtab:${subTab.id}`)
-                        }}
-                        onPointerMove={(event) =>
-                          handleArrangeTabPointerMove(
-                            event,
-                            { type: 'subtab', parentTabId: activeTab.id, subTabId: subTab.id },
-                            subTab.title,
-                            'subtab',
-                          )
-                        }
-                        onPointerUp={(event) => {
-                          if (viewMode !== 'main') return
-                          handleArrangeTabPointerUp(event, `subtab:${subTab.id}`, () => selectSubTab(subTab.id))
-                        }}
-                        onPointerLeave={() => {
-                          if (viewMode !== 'main') return
-                          if (!arrangeMode.active) {
-                            clearArrangePressTimer()
-                          }
-                        }}
-                        onPointerCancel={() => {
-                          if (viewMode !== 'main') return
-                          cancelArrangeTabPointerDrag()
-                        }}
-                      >
-                        {subTab.title}
-                      </button>
-                    ),
-                  )}
-
-                {viewMode === 'trash' &&
-                  trashSubTabs.map((subTab) => (
-                    <button
-                      key={subTab.id}
-                      type="button"
-                      role="tab"
-                      aria-selected={subTab.id === selectedTrashSubTab?.id}
-                      className={`btn btn-sm tab-btn trash-subtab-btn ${subTab.id === selectedTrashSubTab?.id ? 'is-selected' : ''}`}
-                      onClick={() => setTrashSubTabId(subTab.id)}
-                      onContextMenu={(event) => {
-                        if (!selectedTrashTab) return
-                        openContextMenuForTrashSubTab(event, selectedTrashTab, subTab.id)
-                      }}
-                    >
-                      {subTab.title}
-                    </button>
-                  ))}
-
-                {viewMode === 'main' && !arrangeMode.active && (
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-outline-light add-tab-btn"
-                    onClick={addSubTab}
-                    title="Add note tab"
-                  >
-                    +
-                  </button>
-                )}
-              </div>
-            </header>
-          )}
+          <SubTabRail
+            viewMode={viewMode}
+            activeTab={activeTab}
+            activeSubTabId={activeSubTab?.id ?? null}
+            editing={editing}
+            arrangeMode={arrangeMode}
+            showParentHomeTab={state.ui.showParentHomeTab}
+            isNoteWorkspaceView={isNoteWorkspaceView}
+            selectedTrashTab={selectedTrashTab}
+            trashSubTabs={trashSubTabs}
+            selectedTrashSubTabId={selectedTrashSubTab?.id ?? null}
+            subTabRailRef={subTabRailRef}
+            arrangeableSubTabClassName={arrangeableSubTabClassName}
+            draggingSubTabId={draggingSubTabId}
+            onAutoSizeRenameInput={autoSizeRenameInput}
+            onShouldSkipRenameBlur={shouldSkipRenameBlur}
+            onCommitRename={commitRename}
+            onCancelRename={cancelRename}
+            onGetStageManagerParentSelection={getStageManagerParentSelection}
+            onStageManagerHomeClick={handleStageManagerHomeClick}
+            onStageManagerSubTabClick={handleStageManagerSubTabClick}
+            onConsumeArrangeClickSuppression={consumeArrangeClickSuppression}
+            onSelectParentHomeTab={selectParentHomeTab}
+            onSelectSubTab={selectSubTab}
+            onBeginEdit={setEditing}
+            onOpenContextMenuForSubTab={openContextMenuForSubTab}
+            onStartArrangeDragSeed={startArrangeDragSeed}
+            onStartArrangeTapCandidate={startArrangeTapCandidate}
+            onStartArrangePress={startArrangePress}
+            onFinalizeArrangeTapCandidate={finalizeArrangeTapCandidate}
+            onHandleArrangeTabPointerMove={handleArrangeTabPointerMove}
+            onHandleArrangeTabPointerUp={handleArrangeTabPointerUp}
+            onClearArrangePressTimer={clearArrangePressTimer}
+            onClearArrangeTapCandidate={clearArrangeTapCandidate}
+            onCancelArrangeTabPointerDrag={cancelArrangeTabPointerDrag}
+            onSetTrashSubTabId={setTrashSubTabId}
+            onOpenContextMenuForTrashSubTab={openContextMenuForTrashSubTab}
+            onAddSubTab={addSubTab}
+          />
 
           {viewMode === 'stage-manager' ? (
-            <section className="stage-manager-shell">
-              <div className="stage-manager-card">
-                <div className="stage-manager-steps" aria-label="Director steps">
-                  {stageManagerStepLabels.map(([step, label], index) => (
-                    <div
-                      key={step}
-                      className={`stage-manager-step-pill ${stageManagerStep === step ? 'is-active' : ''} ${
-                        stageManagerStepLabels.findIndex(([candidate]) => candidate === stageManagerStep) > index ? 'is-complete' : ''
-                      }`}
-                    >
-                      <span className="stage-manager-step-index">{index + 1}</span>
-                      <span>{label}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {stageManagerStep === 'select' && (
-                  <div className="stage-manager-panel">
-                    <h2>director</h2>
-                    <p>select the parent tabs and sub-tabs you want to work with in this space.</p>
-                    <div className="stage-manager-actions-row">
-                      <button type="button" className="btn btn-sm stage-manager-secondary-btn" onClick={selectAllStageManagerItems}>
-                        select all
-                      </button>
-                      <button type="button" className="btn btn-sm stage-manager-secondary-btn" onClick={deselectAllStageManagerItems}>
-                        deselect all
-                      </button>
-                    </div>
-                    <p className="stage-manager-help">
-                      selected parent tabs: {stageManagerSelectionCounts.fullParentCount}. selected sub-tabs:{' '}
-                      {stageManagerSelectionCounts.selectedSubTabCount}.
-                    </p>
-                  </div>
-                )}
-
-                {stageManagerStep === 'action' && (
-                  <div className="stage-manager-panel">
-                    <h2>choose action</h2>
-                    <p>pick what you want to do with the current selection.</p>
-                    <div className="stage-manager-action-grid">
-                      {([
-                        ['migrate', 'migrate'],
-                        ['promote', 'promote'],
-                        ['demote', 'demote'],
-                        ['mass-delete', 'mass delete'],
-                      ] as Array<[StageManagerAction, string]>).map(([action, label]) => (
-                        <button
-                          key={action}
-                          type="button"
-                          className={`btn btn-sm stage-manager-action-btn ${stageManagerAction === action ? 'is-selected' : ''}`}
-                          onClick={() => selectStageManagerAction(action)}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                    {stageManagerAction === 'migrate' && (
-                      <p className="stage-manager-help">
-                        migration changes location. moving a parent tab into another parent will demote that parent into a sub-tab.
-                      </p>
-                    )}
-                    {stageManagerAction === 'promote' && (
-                      <p className="stage-manager-help">
-                        promotion changes level. one fully selected parent can become a new space. selected sub-tabs can become prime tabs.
-                      </p>
-                    )}
-                    {stageManagerAction === 'demote' && (
-                      <p className="stage-manager-help">
-                        demotion changes level. selected parent tabs become sub-tabs under the destination parent, and selected loose sub-tabs move with them.
-                      </p>
-                    )}
-                    {stageManagerAction === 'mass-delete' && (
-                      <p className="stage-manager-help">
-                        mass delete can either move the selection into trash or permanently remove it.
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {stageManagerStep === 'configure' && (
-                  <div className="stage-manager-panel">
-                    <h2>configure</h2>
-                    {stageManagerAction === 'promote' && stageManagerSelectionSnapshot.fullParents.length === 1 && (
-                      <>
-                        <p>this fully selected parent will become a new space. its home note becomes a prime tab named <code>main</code>.</p>
-                        <div className="stage-manager-field-grid">
-                          <label className="stage-manager-field">
-                            <span>destination domain</span>
-                            <select
-                              className="form-select form-select-sm"
-                              value={stageManagerPromoteDomainId}
-                              onChange={(event) => updateStageManagerDraft({ promoteDomainId: event.target.value })}
-                            >
-                              {state.domains.map((domain) => (
-                                <option key={domain.id} value={domain.id}>
-                                  {domain.name}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <label className="stage-manager-field">
-                            <span>new space name</span>
-                            <input
-                              type="text"
-                              className="form-control form-control-sm"
-                              value={stageManagerDraft.newSpaceName}
-                              onChange={(event) => updateStageManagerDraft({ newSpaceName: event.target.value })}
-                              placeholder={stageManagerSelectionSnapshot.fullParents[0]?.title ?? 'new space'}
-                            />
-                          </label>
-                        </div>
-                      </>
-                    )}
-
-                    {stageManagerAction === 'promote' && stageManagerSelectionSnapshot.fullParents.length === 0 && (
-                      <>
-                        <p>selected sub-tabs will be promoted into prime tabs in the destination space.</p>
-                        <div className="stage-manager-actions-row">
-                          <button
-                            type="button"
-                            className={`btn btn-sm stage-manager-action-btn ${stageManagerDraft.promoteSpaceMode === 'existing' ? 'is-selected' : ''}`}
-                            onClick={() => updateStageManagerDraft({ promoteSpaceMode: 'existing' })}
-                          >
-                            existing space
-                          </button>
-                          <button
-                            type="button"
-                            className={`btn btn-sm stage-manager-action-btn ${stageManagerDraft.promoteSpaceMode === 'new' ? 'is-selected' : ''}`}
-                            onClick={() => updateStageManagerDraft({ promoteSpaceMode: 'new' })}
-                          >
-                            new space
-                          </button>
-                        </div>
-                        <div className="stage-manager-field-grid">
-                          <label className="stage-manager-field">
-                            <span>destination domain</span>
-                            <select
-                              className="form-select form-select-sm"
-                              value={stageManagerPromoteDomainId}
-                              onChange={(event) => updateStageManagerDraft({ promoteDomainId: event.target.value, promoteSpaceId: '' })}
-                            >
-                              {state.domains.map((domain) => (
-                                <option key={domain.id} value={domain.id}>
-                                  {domain.name}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          {stageManagerDraft.promoteSpaceMode === 'existing' ? (
-                            <label className="stage-manager-field">
-                              <span>destination space</span>
-                              <select
-                                className="form-select form-select-sm"
-                                value={stageManagerDraft.promoteSpaceId}
-                                onChange={(event) => updateStageManagerDraft({ promoteSpaceId: event.target.value })}
-                              >
-                                <option value="">select a space</option>
-                                {stageManagerPromoteDestinationSpaces.map((space) => (
-                                  <option key={space.id} value={space.id}>
-                                    {space.name}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                          ) : (
-                            <label className="stage-manager-field">
-                              <span>new space name</span>
-                              <input
-                                type="text"
-                                className="form-control form-control-sm"
-                                value={stageManagerDraft.newSpaceName}
-                                onChange={(event) => updateStageManagerDraft({ newSpaceName: event.target.value })}
-                                placeholder="new space"
-                              />
-                            </label>
-                          )}
-                        </div>
-                      </>
-                    )}
-
-                    {stageManagerAction === 'demote' && (
-                      <>
-                        <p>selected parent tabs will become sub-tabs under the destination parent. their old home notes become their new note content.</p>
-                        <div className="stage-manager-field-grid">
-                          <label className="stage-manager-field">
-                            <span>destination domain</span>
-                            <select
-                              className="form-select form-select-sm"
-                              value={stageManagerDemoteDomainId}
-                              onChange={(event) => updateStageManagerDraft({ demoteDomainId: event.target.value, demoteSpaceId: '', demoteParentId: '' })}
-                            >
-                              {state.domains.map((domain) => (
-                                <option key={domain.id} value={domain.id}>
-                                  {domain.name}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <label className="stage-manager-field">
-                            <span>destination space</span>
-                            <select
-                              className="form-select form-select-sm"
-                              value={stageManagerDemoteSpace?.id ?? ''}
-                              onChange={(event) => updateStageManagerDraft({ demoteSpaceId: event.target.value, demoteParentId: '' })}
-                            >
-                              {stageManagerDemoteSpaces.map((space) => (
-                                <option key={space.id} value={space.id}>
-                                  {space.name}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        </div>
-                        <div className="stage-manager-actions-row">
-                          <button
-                            type="button"
-                            className={`btn btn-sm stage-manager-action-btn ${stageManagerDraft.demoteParentMode === 'existing' ? 'is-selected' : ''}`}
-                            onClick={() => updateStageManagerDraft({ demoteParentMode: 'existing' })}
-                          >
-                            existing parent
-                          </button>
-                          <button
-                            type="button"
-                            className={`btn btn-sm stage-manager-action-btn ${stageManagerDraft.demoteParentMode === 'new' ? 'is-selected' : ''}`}
-                            onClick={() => updateStageManagerDraft({ demoteParentMode: 'new' })}
-                          >
-                            new parent
-                          </button>
-                        </div>
-                        <div className="stage-manager-field-grid">
-                          {stageManagerDraft.demoteParentMode === 'existing' ? (
-                            <label className="stage-manager-field">
-                              <span>destination parent</span>
-                              <select
-                                className="form-select form-select-sm"
-                                value={stageManagerDraft.demoteParentId}
-                                onChange={(event) => updateStageManagerDraft({ demoteParentId: event.target.value })}
-                              >
-                                <option value="">select a parent tab</option>
-                                {stageManagerDemoteParentOptions.map((tab) => (
-                                  <option key={tab.id} value={tab.id}>
-                                    {tab.title}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                          ) : (
-                            <label className="stage-manager-field">
-                              <span>new parent name</span>
-                              <input
-                                type="text"
-                                className="form-control form-control-sm"
-                                value={stageManagerDraft.demoteNewParentName}
-                                onChange={(event) => updateStageManagerDraft({ demoteNewParentName: event.target.value })}
-                                placeholder="new parent"
-                              />
-                            </label>
-                          )}
-                        </div>
-                      </>
-                    )}
-
-                    {stageManagerAction === 'migrate' && (
-                      <>
-                        <p>choose whether the selection moves to another space or underneath a destination parent tab.</p>
-                        <div className="stage-manager-actions-row">
-                          <button
-                            type="button"
-                            className={`btn btn-sm stage-manager-action-btn ${stageManagerDraft.migrateTarget === 'space' ? 'is-selected' : ''}`}
-                            onClick={() => updateStageManagerDraft({ migrateTarget: 'space' })}
-                          >
-                            migrate to space
-                          </button>
-                          <button
-                            type="button"
-                            className={`btn btn-sm stage-manager-action-btn ${stageManagerDraft.migrateTarget === 'parent' ? 'is-selected' : ''}`}
-                            onClick={() => updateStageManagerDraft({ migrateTarget: 'parent' })}
-                          >
-                            migrate to parent
-                          </button>
-                        </div>
-
-                        {stageManagerDraft.migrateTarget === 'space' && (
-                          <>
-                            <div className="stage-manager-actions-row">
-                              <button
-                                type="button"
-                                className={`btn btn-sm stage-manager-action-btn ${stageManagerDraft.migrateSpaceMode === 'existing' ? 'is-selected' : ''}`}
-                                onClick={() => updateStageManagerDraft({ migrateSpaceMode: 'existing' })}
-                              >
-                                existing space
-                              </button>
-                              <button
-                                type="button"
-                                className={`btn btn-sm stage-manager-action-btn ${stageManagerDraft.migrateSpaceMode === 'new' ? 'is-selected' : ''}`}
-                                onClick={() => updateStageManagerDraft({ migrateSpaceMode: 'new' })}
-                              >
-                                new space
-                              </button>
-                            </div>
-                            <div className="stage-manager-field-grid">
-                              <label className="stage-manager-field">
-                                <span>destination domain</span>
-                                <select
-                                  className="form-select form-select-sm"
-                                  value={stageManagerMigrateDomainId}
-                                  onChange={(event) => updateStageManagerDraft({ migrateDomainId: event.target.value, migrateSpaceId: '' })}
-                                >
-                                  {state.domains.map((domain) => (
-                                    <option key={domain.id} value={domain.id}>
-                                      {domain.name}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                              {stageManagerDraft.migrateSpaceMode === 'existing' ? (
-                                <label className="stage-manager-field">
-                                  <span>destination space</span>
-                                  <select
-                                    className="form-select form-select-sm"
-                                    value={stageManagerDraft.migrateSpaceId}
-                                    onChange={(event) => updateStageManagerDraft({ migrateSpaceId: event.target.value })}
-                                  >
-                                    <option value="">select a space</option>
-                                    {stageManagerOtherSpaces.map((space) => (
-                                      <option key={space.id} value={space.id}>
-                                        {space.name}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </label>
-                              ) : (
-                                <label className="stage-manager-field">
-                                  <span>new space name</span>
-                                  <input
-                                    type="text"
-                                    className="form-control form-control-sm"
-                                    value={stageManagerDraft.newSpaceName}
-                                    onChange={(event) => updateStageManagerDraft({ newSpaceName: event.target.value })}
-                                    placeholder="new space"
-                                  />
-                                </label>
-                              )}
-                            </div>
-
-                            {stageManagerSelectionSnapshot.looseSubTabs.length > 0 && (
-                              <>
-                                <label className="stage-manager-field">
-                                  <span>how do we handle stray sub-tabs?</span>
-                                  <select
-                                    className="form-select form-select-sm"
-                                    value={stageManagerStrayHandlingSelectValue}
-                                    onChange={(event) => {
-                                      const value = event.target.value
-                                      if (value.startsWith('selected-parent:')) {
-                                        updateStageManagerDraft({
-                                          strayHandlingMode: 'selected-parent',
-                                          straySelectedParentId: value.slice('selected-parent:'.length),
-                                        })
-                                        return
-                                      }
-                                      updateStageManagerDraft({ strayHandlingMode: value as StageManagerStrayHandlingMode })
-                                    }}
-                                  >
-                                    <option value="promote">promote to own prime tabs</option>
-                                    {stageManagerSelectionSnapshot.fullParents.map((tab) => (
-                                      <option key={tab.id} value={`selected-parent:${tab.id}`}>
-                                        include under {tab.title}
-                                      </option>
-                                    ))}
-                                    <option value="existing-parent">include under existing parent...</option>
-                                    <option value="new-parent">create new parent tab...</option>
-                                  </select>
-                                </label>
-
-                                {stageManagerDraft.strayHandlingMode === 'existing-parent' && (
-                                  <label className="stage-manager-field">
-                                    <span>destination parent</span>
-                                    <select
-                                      className="form-select form-select-sm"
-                                      value={stageManagerDraft.strayExistingParentId}
-                                      onChange={(event) => updateStageManagerDraft({ strayExistingParentId: event.target.value })}
-                                    >
-                                      <option value="">select a parent tab</option>
-                                      {stageManagerStrayExistingParentOptions.map((tab) => (
-                                        <option key={tab.id} value={tab.id}>
-                                          {tab.title}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </label>
-                                )}
-
-                                {stageManagerDraft.strayHandlingMode === 'new-parent' && (
-                                  <label className="stage-manager-field">
-                                    <span>new parent name</span>
-                                    <input
-                                      type="text"
-                                      className="form-control form-control-sm"
-                                      value={stageManagerDraft.strayNewParentName}
-                                      onChange={(event) => updateStageManagerDraft({ strayNewParentName: event.target.value })}
-                                      placeholder="new parent"
-                                    />
-                                  </label>
-                                )}
-                              </>
-                            )}
-                          </>
-                        )}
-
-                        {stageManagerDraft.migrateTarget === 'parent' && (
-                          <>
-                            <div className="stage-manager-actions-row">
-                              <button
-                                type="button"
-                                className={`btn btn-sm stage-manager-action-btn ${stageManagerDraft.migrateParentSpaceMode === 'current' ? 'is-selected' : ''}`}
-                                onClick={() => updateStageManagerDraft({ migrateParentSpaceMode: 'current' })}
-                              >
-                                current space
-                              </button>
-                              <button
-                                type="button"
-                                className={`btn btn-sm stage-manager-action-btn ${stageManagerDraft.migrateParentSpaceMode === 'existing' ? 'is-selected' : ''}`}
-                                onClick={() => updateStageManagerDraft({ migrateParentSpaceMode: 'existing' })}
-                              >
-                                existing space
-                              </button>
-                              <button
-                                type="button"
-                                className={`btn btn-sm stage-manager-action-btn ${stageManagerDraft.migrateParentSpaceMode === 'new' ? 'is-selected' : ''}`}
-                                onClick={() => updateStageManagerDraft({ migrateParentSpaceMode: 'new' })}
-                              >
-                                new space
-                              </button>
-                            </div>
-
-                            {stageManagerDraft.migrateParentSpaceMode === 'existing' && (
-                              <div className="stage-manager-field-grid">
-                                <label className="stage-manager-field">
-                                  <span>destination domain</span>
-                                  <select
-                                    className="form-select form-select-sm"
-                                    value={stageManagerMigrateParentDomainId}
-                                    onChange={(event) =>
-                                      updateStageManagerDraft({
-                                        migrateParentDomainId: event.target.value,
-                                        migrateParentSpaceId: '',
-                                        migrateParentId: '',
-                                      })
-                                    }
-                                  >
-                                    {state.domains.map((domain) => (
-                                      <option key={domain.id} value={domain.id}>
-                                        {domain.name}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </label>
-                                <label className="stage-manager-field">
-                                  <span>destination space</span>
-                                  <select
-                                    className="form-select form-select-sm"
-                                    value={stageManagerDraft.migrateParentSpaceId}
-                                    onChange={(event) => updateStageManagerDraft({ migrateParentSpaceId: event.target.value, migrateParentId: '' })}
-                                  >
-                                    <option value="">select a space</option>
-                                    {stageManagerMigrateParentSpaces.map((space) => (
-                                      <option key={space.id} value={space.id}>
-                                        {space.name}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </label>
-                              </div>
-                            )}
-
-                            {stageManagerDraft.migrateParentSpaceMode === 'new' && (
-                              <div className="stage-manager-field-grid">
-                                <label className="stage-manager-field">
-                                  <span>destination domain</span>
-                                  <select
-                                    className="form-select form-select-sm"
-                                    value={stageManagerMigrateParentDomainId}
-                                    onChange={(event) => updateStageManagerDraft({ migrateParentDomainId: event.target.value })}
-                                  >
-                                    {state.domains.map((domain) => (
-                                      <option key={domain.id} value={domain.id}>
-                                        {domain.name}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </label>
-                                <label className="stage-manager-field">
-                                  <span>new space name</span>
-                                  <input
-                                    type="text"
-                                    className="form-control form-control-sm"
-                                    value={stageManagerDraft.newSpaceName}
-                                    onChange={(event) => updateStageManagerDraft({ newSpaceName: event.target.value })}
-                                    placeholder="new space"
-                                  />
-                                </label>
-                              </div>
-                            )}
-
-                            {stageManagerDraft.migrateParentSpaceMode !== 'new' && (
-                              <div className="stage-manager-actions-row">
-                                <button
-                                  type="button"
-                                  className={`btn btn-sm stage-manager-action-btn ${stageManagerDraft.migrateParentMode === 'existing' ? 'is-selected' : ''}`}
-                                  onClick={() => updateStageManagerDraft({ migrateParentMode: 'existing' })}
-                                >
-                                  existing parent
-                                </button>
-                                <button
-                                  type="button"
-                                  className={`btn btn-sm stage-manager-action-btn ${stageManagerDraft.migrateParentMode === 'new' ? 'is-selected' : ''}`}
-                                  onClick={() => updateStageManagerDraft({ migrateParentMode: 'new' })}
-                                >
-                                  new parent
-                                </button>
-                              </div>
-                            )}
-
-                            <div className="stage-manager-field-grid">
-                              {stageManagerDraft.migrateParentSpaceMode !== 'new' && stageManagerDraft.migrateParentMode === 'existing' ? (
-                                <label className="stage-manager-field">
-                                  <span>destination parent</span>
-                                  <select
-                                    className="form-select form-select-sm"
-                                    value={stageManagerDraft.migrateParentId}
-                                    onChange={(event) => updateStageManagerDraft({ migrateParentId: event.target.value })}
-                                  >
-                                    <option value="">select a parent tab</option>
-                                    {stageManagerMigrateParentOptions.map((tab) => (
-                                      <option key={tab.id} value={tab.id}>
-                                        {tab.title}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </label>
-                              ) : (
-                                <label className="stage-manager-field">
-                                  <span>new parent name</span>
-                                  <input
-                                    type="text"
-                                    className="form-control form-control-sm"
-                                    value={stageManagerDraft.migrateNewParentName}
-                                    onChange={(event) => updateStageManagerDraft({ migrateNewParentName: event.target.value })}
-                                    placeholder="new parent"
-                                  />
-                                </label>
-                              )}
-                            </div>
-                          </>
-                        )}
-
-                        <p className="stage-manager-help">
-                          migrating a parent tab into another parent will demote that parent into a sub-tab under the destination parent.
-                        </p>
-                      </>
-                    )}
-
-                    {stageManagerAction === 'mass-delete' && (
-                      <>
-                        <p>choose whether the current selection should move into trash or be deleted permanently.</p>
-                        <div className="stage-manager-actions-row">
-                          <button
-                            type="button"
-                            className={`btn btn-sm stage-manager-action-btn ${stageManagerDraft.massDeleteMode === 'trash' ? 'is-selected' : ''}`}
-                            onClick={() => updateStageManagerDraft({ massDeleteMode: 'trash' })}
-                          >
-                            move to trash
-                          </button>
-                          <button
-                            type="button"
-                            className={`btn btn-sm stage-manager-action-btn ${stageManagerDraft.massDeleteMode === 'permanent' ? 'is-selected' : ''}`}
-                            onClick={() => updateStageManagerDraft({ massDeleteMode: 'permanent' })}
-                          >
-                            delete for real
-                          </button>
-                        </div>
-                        <p className="stage-manager-help">
-                          the review step is the confirmation point for mass delete.
-                        </p>
-                      </>
-                    )}
-
-                    {stageManagerAction !== 'mass-delete' && (
-                      <div className="stage-manager-switch-row">
-                        <label className="settings-hotkey-label" htmlFor="stage-manager-open-destination">
-                          open destination after apply
-                        </label>
-                        <div className="form-check form-switch settings-switch">
-                          <input
-                            id="stage-manager-open-destination"
-                            className="form-check-input"
-                            type="checkbox"
-                            role="switch"
-                            checked={state.ui.stageManagerOpenDestinationAfterApply}
-                            onChange={(event) => updateStageManagerOpenDestinationSetting(event.target.checked)}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {stageManagerStep === 'review' && (
-                  <div className="stage-manager-panel">
-                    <h2>review</h2>
-                    <ul className="stage-manager-review-list">
-                      {getStageManagerReviewDetails().map((detail) => (
-                        <li key={detail}>{detail}</li>
-                      ))}
-                    </ul>
-                    {getStageManagerReviewWarning() ? (
-                      <div className="stage-manager-warning" role="note">
-                        {getStageManagerReviewWarning()}
-                      </div>
-                    ) : (
-                      <p className="stage-manager-help">review the destination and apply when it looks right.</p>
-                    )}
-                  </div>
-                )}
-
-                <div className="stage-manager-footer">
-                  <button
-                    type="button"
-                    className="btn btn-sm stage-manager-secondary-btn stage-manager-nav-btn"
-                    onClick={handleStageManagerPrevious}
-                    disabled={stageManagerStep === 'select'}
-                  >
-                    previous
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-primary stage-manager-nav-btn"
-                    onClick={stageManagerStep === 'review' ? handleStageManagerApply : handleStageManagerNext}
-                  >
-                    {stageManagerStep === 'review' ? 'apply' : 'next'}
-                  </button>
-                </div>
-              </div>
-            </section>
+            <StageManagerView
+              domains={state.domains}
+              step={stageManagerStep}
+              action={stageManagerAction}
+              draft={stageManagerDraft}
+              selectionSnapshot={stageManagerSelectionSnapshot}
+              selectionCounts={stageManagerSelectionCounts}
+              promoteDomainId={stageManagerPromoteDomainId}
+              promoteDestinationSpaces={stageManagerPromoteDestinationSpaces}
+              demoteDomainId={stageManagerDemoteDomainId}
+              demoteSpaces={stageManagerDemoteSpaces}
+              demoteSpace={stageManagerDemoteSpace}
+              demoteParentOptions={stageManagerDemoteParentOptions}
+              migrateDomainId={stageManagerMigrateDomainId}
+              otherSpaces={stageManagerOtherSpaces}
+              strayHandlingSelectValue={stageManagerStrayHandlingSelectValue}
+              strayExistingParentOptions={stageManagerStrayExistingParentOptions}
+              migrateParentDomainId={stageManagerMigrateParentDomainId}
+              migrateParentSpaces={stageManagerMigrateParentSpaces}
+              migrateParentOptions={stageManagerMigrateParentOptions}
+              openDestinationAfterApply={state.ui.stageManagerOpenDestinationAfterApply}
+              reviewDetails={getStageManagerReviewDetails()}
+              reviewWarning={getStageManagerReviewWarning()}
+              onSelectAll={selectAllStageManagerItems}
+              onDeselectAll={deselectAllStageManagerItems}
+              onSelectAction={selectStageManagerAction}
+              onDraftChange={updateStageManagerDraft}
+              onOpenDestinationChange={settingsController.updateStageManagerOpenDestinationSetting}
+              onPrevious={handleStageManagerPrevious}
+              onNext={handleStageManagerNext}
+              onApply={handleStageManagerApply}
+            />
           ) : isTrashHomeSelected ? (
             <TrashHomeNote
               onRestoreAll={() => setModal({ type: 'trash-restore-all' })}
@@ -9818,9 +6866,9 @@ function App() {
               aisleDeleteMode={aisleDeleteMode}
               aisleScrollRef={aisleScrollRef}
               toolbar={renderSharedToolbar()}
-              headingPopover={renderHeadingPopover()}
-              aislePopover={renderAisleToolbarPopover()}
-              deleteConfirmation={renderAisleDeleteConfirmation()}
+              headingPopover={renderEditorToolbarPopovers()}
+              aislePopover={null}
+              deleteConfirmation={null}
               imageToolsOverlay={renderImageToolsOverlay()}
               onRootChange={(node) => {
                 editorEventRootRef.current = node
