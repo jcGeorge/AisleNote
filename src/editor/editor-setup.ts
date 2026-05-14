@@ -1,5 +1,72 @@
 import type { Editor } from '@toast-ui/editor'
+import { canSplit } from 'prosemirror-transform'
+import { applyBulletListMarkerCommand } from './list-marker-commands'
+import {
+  isEmptyEditorTextBlock,
+  shouldDeleteEmptyParagraphAtListBoundary,
+} from './empty-paragraph-list-delete'
+import {
+  applyBulletListMarkerToHtmlToken,
+  createBulletListAttrs,
+  getBulletListMarkdownDelimiter,
+  getBulletListMarkerFromMarkdownChar,
+} from './list-markers'
 import { isHorizontalRuleMarkerLine } from '../markdown/markdown-utils'
+
+type ToastHtmlOpenTagToken = {
+  type?: string
+  tagName?: string
+  attributes?: Record<string, unknown>
+  classNames?: string[]
+  [key: string]: unknown
+}
+
+type ToastHtmlToken = ToastHtmlOpenTagToken | ToastHtmlOpenTagToken[] | null
+
+type ToastListMdNode = {
+  listData?: { type?: string; bulletChar?: string } | null
+}
+
+export function listMarkerPlugin(context: { instance: Editor }) {
+  const contextEditor = context.instance
+
+  return {
+    toHTMLRenderers: {
+      list: (node: ToastListMdNode, context: { entering: boolean; origin?: () => ToastHtmlToken }) => {
+        const originalToken = context.origin?.() ?? null
+        const listData = node.listData
+        if (!context.entering || listData?.type !== 'bullet') return originalToken
+        return applyBulletListMarkerToHtmlToken(
+          originalToken,
+          getBulletListMarkerFromMarkdownChar(listData.bulletChar),
+        ) as ToastHtmlToken
+      },
+    },
+    toMarkdownRenderers: {
+      bulletList: (nodeInfo?: { node?: { attrs?: unknown } }) => ({
+        delim: getBulletListMarkdownDelimiter(nodeInfo?.node?.attrs),
+      }),
+    },
+    wysiwygCommands: {
+      dashList: () => {
+        return applyBulletListMarkerCommand(contextEditor, 'dash')
+      },
+    },
+    toolbarItems: [
+      {
+        groupIndex: 2,
+        itemIndex: 0,
+        item: {
+          name: 'dashList',
+          className: 'dash-list',
+          command: 'dashList',
+          tooltip: 'Dash list',
+          state: 'bulletList',
+        },
+      },
+    ],
+  }
+}
 
 export function thematicBreakShortcutPlugin(context: {
   pmKeymap: { keymap: (bindings: Record<string, unknown>) => unknown }
@@ -81,20 +148,60 @@ export function thematicBreakShortcutPlugin(context: {
   }
 }
 
+function splitCheckedTaskListItemWithUncheckedNext(state: any, dispatch?: (tr: unknown) => void) {
+  const { selection, tr } = state
+  const { $from, $to } = selection
+  if (!selection.empty) return false
+  if ($from.depth < 2 || !$from.sameParent($to)) return false
+
+  const listItemNode = $from.node(-1)
+  if (listItemNode?.type?.name !== 'listItem') return false
+  if (!listItemNode.attrs?.task || !listItemNode.attrs?.checked) return false
+
+  const nextType = $to.pos === $from.end() ? listItemNode.contentMatchAt(0).defaultType : null
+  const typesAfter = [
+    {
+      type: listItemNode.type,
+      attrs: {
+        ...listItemNode.attrs,
+        checked: false,
+      },
+    },
+    nextType ? { type: nextType } : null,
+  ]
+
+  if (!canSplit(tr.doc, $from.pos, 2, typesAfter)) return false
+  tr.split($from.pos, 2, typesAfter)
+  dispatch?.(tr.scrollIntoView())
+  return true
+}
+
+export function uncheckedTaskEnterPlugin(context: {
+  pmKeymap: { keymap: (bindings: Record<string, unknown>) => unknown }
+}) {
+  const { keymap } = context.pmKeymap
+
+  return {
+    wysiwygPlugins: [
+      () =>
+        keymap({
+          Enter: splitCheckedTaskListItemWithUncheckedNext,
+        }),
+    ],
+  }
+}
+
 export function headingSpaceShortcutPlugin(context: {
   pmKeymap: { keymap: (bindings: Record<string, unknown>) => unknown }
   pmState: {
+    Selection: { near: (resolvedPos: unknown, bias?: number) => unknown }
     TextSelection: {
       create: (doc: unknown, anchor: number, head?: number) => unknown
     }
   }
 }) {
   const { keymap } = context.pmKeymap
-  const { TextSelection } = context.pmState
-
-  const isEmptyTextBlock = (node: any) => {
-    return String(node?.textContent ?? '').replace(/\u200b/g, '').trim().length === 0
-  }
+  const { Selection, TextSelection } = context.pmState
 
   const getBlockContext = (state: any) => {
     const { selection } = state
@@ -122,20 +229,71 @@ export function headingSpaceShortcutPlugin(context: {
     }
   }
 
+  const deleteEmptyParagraphAndPlaceSelectionNear = (
+    state: any,
+    dispatch: ((tr: unknown) => void) | undefined,
+    from: number,
+    to: number,
+    selectionPos: number,
+    bias: number,
+  ) => {
+    let nextTr = state.tr.delete(from, to)
+    const docSize = nextTr.doc.content.size
+    const safePos = Math.max(0, Math.min(docSize, selectionPos))
+    const nextSelection = Selection.near(nextTr.doc.resolve(safePos), bias)
+    nextTr = nextTr.setSelection(nextSelection).scrollIntoView()
+    dispatch?.(nextTr)
+    return true
+  }
+
+  const handleBackspaceFromEmptyParagraphAfterList = (state: any, dispatch?: (tr: unknown) => void) => {
+    const context = getBlockContext(state)
+    if (!context) return false
+    const { $from, currentNode, previousNode, from, to } = context
+    if (
+      !shouldDeleteEmptyParagraphAtListBoundary({
+        currentNode,
+        previousNode,
+        parentOffset: $from.parentOffset,
+        direction: 'backward',
+      })
+    ) {
+      return false
+    }
+    return deleteEmptyParagraphAndPlaceSelectionNear(state, dispatch, from, to, from - 1, -1)
+  }
+
+  const handleDeleteFromEmptyParagraphBeforeList = (state: any, dispatch?: (tr: unknown) => void) => {
+    const context = getBlockContext(state)
+    if (!context) return false
+    const { $from, currentNode, nextNode, from, to } = context
+    if (
+      !shouldDeleteEmptyParagraphAtListBoundary({
+        currentNode,
+        nextNode,
+        parentOffset: $from.parentOffset,
+        direction: 'forward',
+      })
+    ) {
+      return false
+    }
+    return deleteEmptyParagraphAndPlaceSelectionNear(state, dispatch, from, to, from, 1)
+  }
+
   const handleBackspaceFromHeadingAfterEmptyParagraph = (state: any, dispatch?: (tr: unknown) => void) => {
     const context = getBlockContext(state)
     if (!context) return false
     const { $from, currentNode, previousNode, from, to } = context
     if (currentNode.type.name !== 'heading') return false
     if ($from.parentOffset !== 0) return false
-    if (!previousNode || previousNode.type.name !== 'paragraph' || !isEmptyTextBlock(previousNode)) return false
+    if (!previousNode || previousNode.type.name !== 'paragraph' || !isEmptyEditorTextBlock(previousNode)) return false
 
     const previousFrom = from - previousNode.nodeSize
     const paragraphType = state.schema.nodes.paragraph
     if (!paragraphType) return false
 
     let nextTr =
-      isEmptyTextBlock(currentNode)
+      isEmptyEditorTextBlock(currentNode)
         ? state.tr.replaceWith(previousFrom, to, paragraphType.create())
         : state.tr.delete(previousFrom, from)
     const caretPos = Math.min(previousFrom + 1, nextTr.doc.content.size)
@@ -149,7 +307,7 @@ export function headingSpaceShortcutPlugin(context: {
     if (!context) return false
     const { $from, currentNode, nextNode, from, to } = context
     if (currentNode.type.name !== 'paragraph') return false
-    if (!isEmptyTextBlock(currentNode)) return false
+    if (!isEmptyEditorTextBlock(currentNode)) return false
     if ($from.parentOffset !== currentNode.content.size) return false
     if (!nextNode || nextNode.type.name !== 'heading') return false
 
@@ -157,7 +315,7 @@ export function headingSpaceShortcutPlugin(context: {
     if (!paragraphType) return false
 
     let nextTr =
-      isEmptyTextBlock(nextNode)
+      isEmptyEditorTextBlock(nextNode)
         ? state.tr.replaceWith(from, to + nextNode.nodeSize, paragraphType.create())
         : state.tr.delete(from, to)
     const caretPos = Math.min(from + 1, nextTr.doc.content.size)
@@ -170,8 +328,12 @@ export function headingSpaceShortcutPlugin(context: {
     wysiwygPlugins: [
       () =>
         keymap({
-          Backspace: handleBackspaceFromHeadingAfterEmptyParagraph,
-          Delete: handleDeleteFromEmptyParagraphBeforeHeading,
+          Backspace: (state: any, dispatch?: (tr: unknown) => void) =>
+            handleBackspaceFromHeadingAfterEmptyParagraph(state, dispatch) ||
+            handleBackspaceFromEmptyParagraphAfterList(state, dispatch),
+          Delete: (state: any, dispatch?: (tr: unknown) => void) =>
+            handleDeleteFromEmptyParagraphBeforeHeading(state, dispatch) ||
+            handleDeleteFromEmptyParagraphBeforeList(state, dispatch),
           Space: (state: any, dispatch?: (tr: unknown) => void) => {
             const { selection, schema, tr } = state
             if (!selection.empty) return false
@@ -182,9 +344,10 @@ export function headingSpaceShortcutPlugin(context: {
 
             const markerText = ($from.parent.textContent ?? '').replace(/\u200b/g, '')
             const headingMatch = markerText.match(/^\s*(#{1,6})$/)
-            const bulletMatch = markerText.match(/^\s*[-*+]$/)
+            const dashMatch = markerText.match(/^\s*-$/)
+            const bulletMatch = markerText.match(/^\s*[*+]$/)
             const orderedMatch = markerText.match(/^\s*(\d+)[.)]$/)
-            if (!headingMatch && !bulletMatch && !orderedMatch) return false
+            if (!headingMatch && !dashMatch && !bulletMatch && !orderedMatch) return false
 
             const blockDepth = $from.depth
             const from = $from.before(blockDepth)
@@ -211,7 +374,9 @@ export function headingSpaceShortcutPlugin(context: {
 
             const paragraphNode = paragraphType.create()
             const listItemNode = listItemType.create(null, paragraphNode)
-            const listAttrs = orderedMatch ? { order: Number(orderedMatch[1]) || 1 } : null
+            const listAttrs = orderedMatch
+              ? { order: Number(orderedMatch[1]) || 1 }
+              : createBulletListAttrs(dashMatch ? 'dash' : 'bullet')
             const listNode = listType.create(listAttrs, listItemNode)
             const nextTr = tr.replaceWith(from, to, listNode)
             const caretPos = Math.min(from + 3, nextTr.doc.content.size)
@@ -475,7 +640,7 @@ export function installNoteToolsToolbarButtons(
   toolbar.appendChild(group)
 }
 
-function getActiveHeadingLevel(editor: Editor | null): number | null {
+export function getActiveHeadingLevel(editor: Editor | null): number | null {
   const view = (editor as any)?.wwEditor?.view
   const state = view?.state
   const selection = state?.selection

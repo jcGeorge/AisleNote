@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps */
+/* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, useRef, type MutableRefObject } from 'react'
 import type { Editor } from '@toast-ui/editor'
 import {

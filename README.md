@@ -1,73 +1,52 @@
-# React + TypeScript + Vite
+# Tabs
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Tabs is a local-first React/Electron note workspace with domains, spaces, parent tabs, sub-tabs, trash, aisles, image handling, keyboard shortcuts, and a Stage Manager for bulk note movement.
 
-Currently, two official plugins are available:
+## Architecture Map
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- `src/App.tsx` is still the main shell, but persistence and trash selection live in focused hooks under `src/storage/` and `src/trash/`.
+- `src/state/` owns durable app-state normalization, domain projection, workspace creation, trash purging, and legacy migration.
+- `src/editor/` wraps Toast UI Editor and ProseMirror internals. Keep editor-specific `any` usage inside this boundary.
+- `src/stage-manager/` owns Director/Stage Manager selection, validation helpers, domain-aware transforms, and UI coordination.
+- `src/storage/` owns the hybrid manifest/Markdown storage adapter. Browser IndexedDB and Electron filesystem storage share common helpers in `hybrid-storage-core.js`.
+- `electron/` owns the desktop shell, preload bridge, filesystem storage adapter, export archive creation, and native menu shortcuts.
 
-## React Compiler
+## Storage Model
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Runtime state remains an `AppState` object, but durable storage is moving toward the manifest/Markdown/assets model documented in `docs/storage-schema.md`.
 
-## Expanding the ESLint configuration
+- Manifests hold structure, IDs, ordering, active locations, settings, and trash metadata.
+- Markdown note bodies are written separately from manifests.
+- Images are externalized into `assets/` when possible and inlined again for editor/runtime loading.
+- Stable IDs are the source of truth. Visible names are UI labels and do not need to be unique.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+When changing storage behavior, add or update a round-trip test before editing serializer logic.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Editor Caveats
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+- Toast UI Editor exposes ProseMirror internals that are not fully typed. Keep those accesses behind `src/editor/` helpers where practical.
+- Markdown persistence normalizes internal indentation tokens and repairs broken data-image Markdown.
+- Aisles are part of note bodies, not separate tabs. Keep the legacy `homeContent` and `content` mirrors synchronized with `noteBodies`.
+- Keyboard and multiline editing behavior has Electron menu integration; verify desktop shortcuts when changing editor event handling.
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Commands
+
+```sh
+npm run dev
+npm run electron:dev
+npm run lint
+npx tsc -b --pretty false --noEmit
+npm test
+npm run build
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+`npm run lint` is expected to exit successfully. Existing `react-hooks/exhaustive-deps` warnings mark known ref-heavy areas that should be retired as those controllers are split.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Do Not Break
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+- Legacy JSON state must still parse through `parseSavedState`.
+- Browser hybrid storage must round-trip manifest and Markdown content.
+- Electron storage must preserve the same logical schema as browser storage.
+- Stage Manager must preserve selected note bodies when promoting, demoting, migrating, or deleting.
+- Trash restore/delete flows must preserve original parent/sub-tab relationships.
+- Export should keep Markdown readable and externalize image assets where possible.

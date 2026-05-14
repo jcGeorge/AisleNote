@@ -6,6 +6,7 @@ export const DEFAULT_SHORTCUTS: Record<ShortcutId, string> = DEFAULT_COMMAND_SHO
 export const NEWLINE_OPERATIONS: Array<{ id: NewlineOperationId; label: string }> = [
   { id: 'normalNewLine', label: 'normal new line' },
   { id: 'task', label: 'task' },
+  { id: 'dashList', label: 'dash list' },
   { id: 'bulletList', label: 'bullet list' },
   { id: 'numberedList', label: 'numbered list' },
   { id: 'aisle', label: 'aisle' },
@@ -26,6 +27,7 @@ export const NEWLINE_OPERATION_LABELS = NEWLINE_OPERATIONS.reduce<Record<Newline
 
 export const NEWLINE_MENU_ELIGIBLE_OPERATIONS: NewlineOperationId[] = [
   'task',
+  'dashList',
   'bulletList',
   'numberedList',
   'aisle',

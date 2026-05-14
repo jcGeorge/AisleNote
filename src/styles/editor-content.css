@@ -104,6 +104,17 @@
   top: 0.24em !important;
 }
 
+.toastui-editor-contents ul.tabs-dash-list > li:not(.task-list-item)::before,
+.toastui-editor-contents ul[data-tabs-list-marker='dash'] > li:not(.task-list-item)::before,
+.toastui-editor .ProseMirror ul.tabs-dash-list > li:not(.task-list-item)::before,
+.toastui-editor .ProseMirror ul[data-tabs-list-marker='dash'] > li:not(.task-list-item)::before {
+  width: 0.65em !important;
+  height: 2px !important;
+  margin-top: 0.72em !important;
+  margin-left: -18px !important;
+  border-radius: 1px !important;
+}
+
 .toastui-editor .ProseMirror .multiline-cursor-widget,
 .toastui-editor-contents .multiline-cursor-widget {
   display: inline-block;

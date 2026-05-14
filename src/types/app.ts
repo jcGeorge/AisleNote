@@ -13,6 +13,7 @@ export type SettingsSection = 'hotkeys' | 'shortcuts' | 'data' | 'visuals'
 export type NewlineOperationId =
   | 'normalNewLine'
   | 'task'
+  | 'dashList'
   | 'bulletList'
   | 'numberedList'
   | 'aisle'
@@ -44,6 +45,25 @@ export type NoteLocation = {
   spaceId: string
   tabId: string
   subTabId: string | null
+}
+
+export type NoteCursorEndpoint = {
+  blockIndex: number
+  offset: number
+}
+
+export type NoteCursorSelection = {
+  anchor: number
+  head: number
+  anchorBlock?: NoteCursorEndpoint
+  headBlock?: NoteCursorEndpoint
+  updatedAt: number
+}
+
+export type NoteCursorLocation = {
+  activeAisleId: string
+  aisles: Record<string, NoteCursorSelection>
+  updatedAt: number
 }
 
 export type SubTab = {
@@ -123,6 +143,7 @@ export type AppState = {
     stageManagerOpenDestinationAfterApply: boolean
     tabButtonScale: number
     noteFontScale: number
+    noteCursorLocations: Record<string, NoteCursorLocation>
   }
 }
 

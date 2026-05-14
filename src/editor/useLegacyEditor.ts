@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps */
+/* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, type MutableRefObject } from 'react'
 import { Editor } from '@toast-ui/editor'
 import {
@@ -6,8 +6,10 @@ import {
   headingSpaceShortcutPlugin,
   installClearToolbarButton,
   installHeadingPopupActiveState,
+  listMarkerPlugin,
   multiLineSelectionShortcutPlugin,
   thematicBreakShortcutPlugin,
+  uncheckedTaskEnterPlugin,
 } from './editor-setup'
 import {
   installCompletedTaskCheckboxBehavior,
@@ -89,6 +91,8 @@ export function useLegacyEditor({
       height: '100%',
       usageStatistics: false,
       plugins: [
+        listMarkerPlugin,
+        uncheckedTaskEnterPlugin,
         headingSpaceShortcutPlugin,
         thematicBreakShortcutPlugin,
         (context: any) =>

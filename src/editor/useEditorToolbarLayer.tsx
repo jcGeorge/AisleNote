@@ -2,7 +2,7 @@ import type { Dispatch, MutableRefObject, RefObject, SetStateAction } from 'reac
 import type { Editor } from '@toast-ui/editor'
 import { EditorToolbarPopovers } from '../components/editor/EditorToolbarPopovers'
 import { SharedEditorToolbar } from '../components/editor/SharedEditorToolbar'
-import type { ToolbarFormatKey, ToolbarFormatState } from '../components/editor/toolbar-state'
+import type { ToolbarFormatKey, ToolbarFormatState, ToolbarHeadingLevel } from '../components/editor/toolbar-state'
 import type { NoteAisle, ToastTone } from '../types/app'
 import { getCommandCapableEditor } from './prosemirror-utils'
 
@@ -23,6 +23,7 @@ type UseEditorToolbarLayerOptions = {
   headingToolbarButtonRef: RefObject<HTMLButtonElement | null>
   aisleToolbarButtonRef: RefObject<HTMLButtonElement | null>
   toolbarFormatState: ToolbarFormatState
+  activeHeadingLevel: ToolbarHeadingLevel
   toolbarShortcutFeedback: ToolbarFormatKey | null
   noteToolsOpen: boolean
   headingMenuOpen: boolean
@@ -55,6 +56,7 @@ export function useEditorToolbarLayer({
   headingToolbarButtonRef,
   aisleToolbarButtonRef,
   toolbarFormatState,
+  activeHeadingLevel,
   toolbarShortcutFeedback,
   noteToolsOpen,
   headingMenuOpen,
@@ -172,6 +174,7 @@ export function useEditorToolbarLayer({
         headingButtonRef={headingToolbarButtonRef}
         aisleButtonRef={aisleToolbarButtonRef}
         toolbarFormatState={toolbarFormatState}
+        activeHeadingLevel={activeHeadingLevel}
         toolbarShortcutFeedback={toolbarShortcutFeedback}
         onOpenNoteReference={openNoteReferenceFromToolbar}
         onToggleAisles={toggleAisleToolbarPopover}
@@ -186,6 +189,7 @@ export function useEditorToolbarLayer({
       <EditorToolbarPopovers
         headingMenuOpen={headingMenuOpen}
         noteToolsOpen={noteToolsOpen}
+        activeHeadingLevel={activeHeadingLevel}
         toolbarPopoverPosition={toolbarPopoverPosition}
         aisleDeleteMode={aisleDeleteMode}
         aisleDeleteConfirmation={aisleDeleteConfirmation}

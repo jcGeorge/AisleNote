@@ -206,6 +206,34 @@
   border: 1.5px solid currentColor;
 }
 
+.context-bar-delete-btn {
+  position: relative;
+}
+
+.context-bar-delete-btn::before,
+.context-bar-delete-btn::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.context-bar-delete-btn::before {
+  top: 0.43rem;
+  width: 0.68rem;
+  height: 0.14rem;
+  border-top: 2px solid currentColor;
+}
+
+.context-bar-delete-btn::after {
+  top: 0.62rem;
+  width: 0.52rem;
+  height: 0.62rem;
+  border: 1px solid currentColor;
+  border-top: 0;
+  border-radius: 0 0 0.08rem 0.08rem;
+}
+
 .context-bar-lower {
   align-items: stretch;
   color: var(--app-text);
@@ -287,6 +315,53 @@
 .note-tools-item:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.note-heading-choice {
+  display: block;
+  width: 100%;
+  line-height: 1.12;
+}
+
+.note-heading-choice-level-1 {
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.note-heading-choice-level-2 {
+  font-size: 1.2rem;
+  font-weight: 760;
+}
+
+.note-heading-choice-level-3 {
+  font-size: 1.08rem;
+  font-weight: 720;
+}
+
+.note-heading-choice-level-4 {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.note-heading-choice-level-5 {
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.note-heading-choice-level-6 {
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.note-heading-choice-paragraph {
+  font-size: 0.86rem;
+  font-weight: 400;
+}
+
+.note-toolbar-heading-popover .note-tools-item.is-active-heading-choice {
+  background: var(--context-menu-item-hover-bg);
+  box-shadow: inset 3px 0 0 var(--app-primary-border, #6fa0ff);
+  color: var(--app-text-strong, #f4f8ff);
 }
 
 .note-shared-toolbar {
@@ -518,7 +593,8 @@
 }
 
 .newline-operations-menu-item:hover,
-.newline-operations-menu-item:focus-visible {
+.newline-operations-menu-item:focus-visible,
+.newline-operations-menu-item.is-active {
   background: var(--context-menu-item-hover-bg, rgba(60, 103, 190, 0.2));
 }
 

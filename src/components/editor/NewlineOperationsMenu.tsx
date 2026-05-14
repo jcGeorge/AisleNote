@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { NEWLINE_OPERATION_LABELS } from '../../hotkeys/shortcuts'
 import type { NewlineOperationId } from '../../types/app'
 
@@ -5,6 +6,8 @@ type NewlineOperationsMenuProps = {
   top: number
   left: number
   operations: NewlineOperationId[]
+  activeIndex: number
+  onHighlight: (index: number) => void
   onRun: (operation: NewlineOperationId) => void
 }
 
@@ -16,14 +19,24 @@ export function NewlineOperationsMenu({
   top,
   left,
   operations,
+  activeIndex,
+  onHighlight,
   onRun,
 }: NewlineOperationsMenuProps) {
+  const menuRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    menuRef.current?.focus({ preventScroll: true })
+  }, [])
+
   return (
     <div
+      ref={menuRef}
       className="newline-operations-menu"
       style={{ top: `${top}px`, left: `${left}px` }}
       role="menu"
       aria-label="New line menu"
+      tabIndex={-1}
       onPointerDown={(event) => event.stopPropagation()}
     >
       {operations.length > 0 ? (
@@ -31,8 +44,10 @@ export function NewlineOperationsMenu({
           <button
             key={operation}
             type="button"
-            className="newline-operations-menu-item"
+            className={`newline-operations-menu-item${index === activeIndex ? ' is-active' : ''}`}
             role="menuitem"
+            aria-current={index === activeIndex ? 'true' : undefined}
+            onMouseEnter={() => onHighlight(index)}
             onClick={(event) => {
               event.preventDefault()
               event.stopPropagation()

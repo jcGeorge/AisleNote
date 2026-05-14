@@ -13,7 +13,10 @@ type ExportAppDataOptions = {
 }
 
 export function sanitizeName(value: string): string {
-  const safe = value.trim().replace(/[<>:"/\\|?*\x00-\x1F]/g, '').replace(/\s+/g, ' ')
+  const withoutControlCharacters = Array.from(value.trim())
+    .filter((char) => char.charCodeAt(0) >= 32)
+    .join('')
+  const safe = withoutControlCharacters.replace(/[<>:"/\\|?*]/g, '').replace(/\s+/g, ' ')
   return safe.length > 0 ? safe : 'untitled'
 }
 

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps */
+/* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, useRef, type MutableRefObject } from 'react'
 import { Editor } from '@toast-ui/editor'
 import { buildAisleEditorKey, type AisleEditorMeta } from './aisle-editor'
@@ -6,8 +6,10 @@ import {
   EDITOR_TOOLBAR_ITEMS,
   headingSpaceShortcutPlugin,
   installHeadingPopupActiveState,
+  listMarkerPlugin,
   multiLineSelectionShortcutPlugin,
   thematicBreakShortcutPlugin,
+  uncheckedTaskEnterPlugin,
 } from './editor-setup'
 import { createContextPreviewPlugin, type ContextPreviewData } from './note-preview-plugin'
 import { getElementFromEventTarget } from './prosemirror-utils'
@@ -50,6 +52,7 @@ type UseAisleEditorsOptions = {
   closeImageToolsRef: MutableRefObject<() => void>
   closeImageToolsIfSelectedImageMissingRef: MutableRefObject<() => void>
   isPendingCreatedRenameActive: () => boolean
+  saveActiveCursorLocation: () => void
   flushPendingContent: () => void
   clearMultiLineEdit: (collapseToHead?: boolean) => void
   getNormalizedEditorMarkdown: (editor: Editor) => string
@@ -67,6 +70,7 @@ type UseAisleEditorsOptions = {
   scheduleToolbarFormatStateSync: () => void
   getContextPreviewData: (payload: NoteContextReferencePayload, sourceNoteBodyId: string) => ContextPreviewData
   navigateToNoteLocation: (location: NoteLocation) => void
+  deleteContextPreview: (tokenId: string) => void
 }
 
 export function useAisleEditors({
@@ -91,6 +95,7 @@ export function useAisleEditors({
   closeImageToolsRef,
   closeImageToolsIfSelectedImageMissingRef,
   isPendingCreatedRenameActive,
+  saveActiveCursorLocation,
   flushPendingContent,
   clearMultiLineEdit,
   getNormalizedEditorMarkdown,
@@ -102,6 +107,7 @@ export function useAisleEditors({
   scheduleToolbarFormatStateSync,
   getContextPreviewData,
   navigateToNoteLocation,
+  deleteContextPreview,
 }: UseAisleEditorsOptions) {
   const aisleEditorRootsRef = useRef<Map<string, HTMLElement>>(new Map())
   const aisleEditorMetaRef = useRef<Map<string, AisleEditorMeta>>(new Map())
@@ -116,6 +122,7 @@ export function useAisleEditors({
 
     const switchingAisle = activeAisleIdRef.current !== meta.aisleId
     if (switchingAisle && options.flushPrevious) {
+      saveActiveCursorLocation()
       flushPendingContent()
       clearMultiLineEdit(false)
       closeImageToolsRef.current()
@@ -258,6 +265,8 @@ export function useAisleEditors({
         autofocus: false,
         usageStatistics: false,
         plugins: [
+          listMarkerPlugin,
+          uncheckedTaskEnterPlugin,
           headingSpaceShortcutPlugin,
           thematicBreakShortcutPlugin,
           (context: any) =>
@@ -265,6 +274,7 @@ export function useAisleEditors({
               sourceNoteBodyId: activeNoteBodyId,
               getContextPreviewData,
               navigateToNoteLocation,
+              deleteContextPreview,
             }),
           (context: any) =>
             multiLineSelectionShortcutPlugin({

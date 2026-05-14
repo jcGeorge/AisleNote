@@ -1,4 +1,5 @@
 import type { AppState } from '../types/app'
+import { normalizeNoteCursorLocations } from '../notes/note-cursors'
 
 export const DEFAULT_AUTO_REMOVE_DAYS = 7
 export const MIN_AUTO_REMOVE_DAYS = 1
@@ -9,6 +10,7 @@ export const DEFAULT_UI_SETTINGS: AppState['ui'] = {
   stageManagerOpenDestinationAfterApply: true,
   tabButtonScale: 1,
   noteFontScale: 1,
+  noteCursorLocations: {},
 }
 
 export const MIN_TAB_BUTTON_SCALE = 1
@@ -53,5 +55,6 @@ export function normalizeUiSettings(raw: unknown): AppState['ui'] {
       typeof obj.noteFontScale === 'number'
         ? clampNoteFontScale(obj.noteFontScale)
         : DEFAULT_UI_SETTINGS.noteFontScale,
+    noteCursorLocations: normalizeNoteCursorLocations(obj.noteCursorLocations),
   }
 }

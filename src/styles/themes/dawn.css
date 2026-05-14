@@ -506,12 +506,12 @@
   opacity: 0.9 !important;
 }
 
-.theme-dawn .toastui-editor-contents li.task-list-item.task-reorder-source {
+.theme-dawn .toastui-editor-contents li.task-reorder-source {
   background: rgba(63, 111, 79, 0.12);
   box-shadow: inset 0 0 0 1px rgba(63, 111, 79, 0.18);
 }
 
-.theme-dawn .toastui-editor-contents li.task-list-item.task-reorder-target {
+.theme-dawn .toastui-editor-contents li.task-reorder-target {
   background: rgba(63, 111, 79, 0.12);
   box-shadow: inset 0 0 0 1px rgba(63, 111, 79, 0.18);
 }

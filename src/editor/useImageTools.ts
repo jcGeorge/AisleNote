@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps */
+/* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, useRef, useState, type MouseEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react'
 import type { Editor } from '@toast-ui/editor'
 import type { InlineCropDragMode } from '../components/editor/ImageToolsOverlay'
@@ -7,6 +7,7 @@ import {
   stripImageResizeMetadataFromUrl,
   withImageResizeMetadata,
 } from '../markdown/image-metadata'
+import { isInsideReadonlyNotePreview } from './note-preview-dom'
 import { getWysiwygView } from './prosemirror-utils'
 import type { ImageToolsState, InlineCropState, ToastTone } from '../types/app'
 
@@ -229,6 +230,10 @@ export function useImageTools({
   }
 
   const select = (image: HTMLImageElement) => {
+    if (isInsideReadonlyNotePreview(image)) {
+      close()
+      return
+    }
     activeImageRef.current = image
     syncImageDisplayMetadata(image)
     activateEditorFromEventTarget(image)

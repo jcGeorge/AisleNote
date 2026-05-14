@@ -13,6 +13,27 @@ import {
   STORAGE_TRASH_DIR,
 } from '../types/storage-schema'
 import { splitImageResizeMetadataFromUrl } from '../markdown/image-metadata'
+import {
+  DEFAULT_AUTO_REMOVE_DAYS,
+  DEFAULT_DOMAIN_NAME,
+  DEFAULT_TOPIC_ID,
+  DEFAULT_TOPIC_TITLE,
+  IMAGE_MARKDOWN_PATTERN,
+  ensureArray,
+  getActiveDomainFromAppState,
+  getActiveSpaceFromDomain,
+  getDomainId,
+  getDomainTitle,
+  getDomainsFromAppState,
+  getExtensionFromMimeType,
+  getMimeTypeFromExtension,
+  getNoteBodiesFromAppState,
+  getNoteBodyFirstMarkdown,
+  getThemeForStorage,
+  isRecord,
+  normalizeImageExtension,
+  normalizeStorageTheme,
+} from './hybrid-storage-core.js'
 
 type BrowserStoredFile =
   | {
@@ -41,104 +62,6 @@ type AssetBank = {
 const BROWSER_DB_NAME = 'tabs-hybrid-storage'
 const BROWSER_DB_VERSION = 1
 const BROWSER_FILE_STORE = 'files'
-const DEFAULT_TOPIC_ID = 'default-topic'
-const DEFAULT_TOPIC_TITLE = 'Default'
-const DEFAULT_DOMAIN_ID = 'humble-beginnings-domain'
-const DEFAULT_DOMAIN_NAME = 'humble beginnings'
-const DEFAULT_AUTO_REMOVE_DAYS = 7
-const IMAGE_MARKDOWN_PATTERN = /!\[([^\]]*)\]\(([^)]+)\)/g
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object'
-}
-
-function ensureArray<T = unknown>(value: unknown): T[] {
-  return Array.isArray(value) ? (value as T[]) : []
-}
-
-function getDomainId(domain: Record<string, unknown>, fallback = DEFAULT_DOMAIN_ID): string {
-  return typeof domain.id === 'string' && domain.id ? domain.id : fallback
-}
-
-function getDomainTitle(domain: Record<string, unknown>, fallback = DEFAULT_DOMAIN_NAME): string {
-  if (typeof domain.name === 'string' && domain.name.trim()) return domain.name
-  if (typeof domain.title === 'string' && domain.title.trim()) return domain.title
-  return fallback
-}
-
-function getDomainsFromAppState(appState: Record<string, unknown>): Array<Record<string, unknown>> {
-  const domains = ensureArray<Record<string, unknown>>(appState.domains).filter(isRecord)
-  if (domains.length > 0) return domains
-
-  const spaces = ensureArray<Record<string, unknown>>(appState.spaces).filter(isRecord)
-  if (spaces.length === 0) return []
-
-  const activeSpaceId =
-    typeof appState.activeSpaceId === 'string' && spaces.some((space) => space.id === appState.activeSpaceId)
-      ? appState.activeSpaceId
-      : typeof spaces[0]?.id === 'string'
-        ? spaces[0].id
-        : ''
-
-  return [
-    {
-      id: DEFAULT_DOMAIN_ID,
-      name: DEFAULT_DOMAIN_NAME,
-      activeSpaceId,
-      spaces,
-    },
-  ]
-}
-
-function getActiveDomainFromAppState(
-  appState: Record<string, unknown>,
-  domains: Array<Record<string, unknown>>,
-): Record<string, unknown> | null {
-  if (domains.length === 0) return null
-  if (typeof appState.activeDomainId === 'string') {
-    const activeDomain = domains.find((domain) => domain.id === appState.activeDomainId)
-    if (activeDomain) return activeDomain
-  }
-  return domains[0]
-}
-
-function getActiveSpaceFromDomain(
-  domain: Record<string, unknown> | null,
-  fallbackActiveSpaceId?: unknown,
-): Record<string, unknown> | null {
-  if (!domain) return null
-  const spaces = ensureArray<Record<string, unknown>>(domain.spaces).filter(isRecord)
-  if (spaces.length === 0) return null
-  const activeSpaceId =
-    typeof domain.activeSpaceId === 'string'
-      ? domain.activeSpaceId
-      : typeof fallbackActiveSpaceId === 'string'
-        ? fallbackActiveSpaceId
-        : ''
-  return spaces.find((space) => space.id === activeSpaceId) ?? spaces[0]
-}
-
-function getNoteBodiesFromAppState(appState: Record<string, unknown>): Array<Record<string, unknown>> {
-  return ensureArray<Record<string, unknown>>(appState.noteBodies).filter(isRecord)
-}
-
-function getNoteBodyFirstMarkdown(noteBodyMap: Map<string, Record<string, unknown>>, noteBodyId: unknown, fallback: string): string {
-  if (typeof noteBodyId !== 'string' || !noteBodyId) return fallback
-  const body = noteBodyMap.get(noteBodyId)
-  const aisles = ensureArray<Record<string, unknown>>(body?.aisles)
-  const first = aisles[0]
-  return typeof first?.markdown === 'string' ? first.markdown : fallback
-}
-
-function normalizeStorageTheme(value: unknown): string {
-  if (value === 'dark' || value === 'light' || value === 'dawn' || value === 'blues') return value
-  if (value === 'dusk') return 'blues'
-  return 'dawn'
-}
-
-function getThemeForStorage(appState: Record<string, unknown>): string {
-  return normalizeStorageTheme(appState.theme)
-}
 
 function normalizePosixPath(value: string): string {
   const isAbsolute = value.startsWith('/')
@@ -201,24 +124,6 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   const copy = new Uint8Array(bytes.byteLength)
   copy.set(bytes)
   return copy.buffer
-}
-
-function normalizeImageExtension(raw: string): string {
-  const normalized = raw.toLowerCase().replace(/[^a-z0-9]/g, '')
-  if (normalized === 'jpeg') return 'jpg'
-  return normalized || 'png'
-}
-
-function getExtensionFromMimeType(mimeType: string): string {
-  if (!mimeType.startsWith('image/')) return 'png'
-  return normalizeImageExtension(mimeType.slice('image/'.length))
-}
-
-function getMimeTypeFromExtension(extension: string): string {
-  const normalized = normalizeImageExtension(extension)
-  if (normalized === 'jpg') return 'image/jpeg'
-  if (normalized === 'svg') return 'image/svg+xml'
-  return `image/${normalized}`
 }
 
 function decodeDataUrl(dataUrl: string): { bytes: Uint8Array; extension: string } | null {
@@ -359,6 +264,7 @@ function buildRootManifest(appState: Record<string, unknown>) {
               stageManagerOpenDestinationAfterApply: true,
               tabButtonScale: 1,
               noteFontScale: 1,
+              noteCursorLocations: {},
             },
     },
     topics:

@@ -63,6 +63,35 @@
   background-position-x: -155px !important;
 }
 
+.toastui-editor-toolbar-icons.dash-list {
+  position: relative !important;
+  background-image: none !important;
+  color: #111827 !important;
+}
+
+.toastui-editor-toolbar-icons.dash-list::before,
+.toastui-editor-toolbar-icons.dash-list::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  width: 5px;
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+  box-shadow: 0 6px 0 currentColor, 0 12px 0 currentColor;
+}
+
+.toastui-editor-toolbar-icons.dash-list::before {
+  top: 7px;
+}
+
+.toastui-editor-toolbar-icons.dash-list::after {
+  top: 7px;
+  left: 13px;
+  width: 8px;
+  opacity: 0.85;
+}
+
 .toastui-editor-toolbar-icons.ordered-list {
   background-position-x: -181px !important;
 }

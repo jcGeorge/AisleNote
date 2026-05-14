@@ -18,5 +18,20 @@ export default defineConfig([
     languageOptions: {
       globals: globals.browser,
     },
+    rules: {
+      // React Compiler-adjacent rules are too noisy for the current ref-heavy editor shell.
+      // Keep the core hooks rules active while the shell is split into smaller controllers.
+      'react-hooks/immutability': 'off',
+      'react-hooks/preserve-manual-memoization': 'off',
+      'react-hooks/refs': 'off',
+      'react-hooks/set-state-in-effect': 'off',
+    },
+  },
+  {
+    files: ['src/editor/**/*.{ts,tsx}', 'src/markdown/markdown-utils.ts'],
+    rules: {
+      // Toast UI exposes ProseMirror internals without stable public TypeScript types.
+      '@typescript-eslint/no-explicit-any': 'off',
+    },
   },
 ])

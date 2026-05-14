@@ -109,6 +109,7 @@ Stores:
 
 - schema version
 - app-level settings
+- persisted note cursor locations
 - topic ordering
 - active topic
 - optional last-opened navigation context
@@ -178,6 +179,7 @@ Use these principles consistently:
 
 - `id`: stable opaque identifier
 - `title`: human-facing label
+- `globalSettings.ui.noteCursorLocations`: optional map keyed by topic/space/parent/sub-tab location; values store the last active aisle plus per-aisle cursor anchor/head positions, optional logical text-block endpoints, and timestamps
 - `file`: relative path to a markdown file
 - `deletedAt`: Unix epoch milliseconds
 - `createdAt` / `updatedAt`: Unix epoch milliseconds where needed

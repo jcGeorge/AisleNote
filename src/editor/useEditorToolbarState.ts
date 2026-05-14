@@ -1,13 +1,15 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps */
+/* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, useRef, useState, type MutableRefObject } from 'react'
 import type { Editor } from '@toast-ui/editor'
 import {
   DEFAULT_TOOLBAR_FORMAT_STATE,
   type ToolbarFormatKey,
+  type ToolbarHeadingLevel,
   type ToolbarFormatState,
 } from '../components/editor/toolbar-state'
 import { eventMatchesShortcut } from '../hotkeys/shortcuts'
 import type { AppState, ViewMode } from '../types/app'
+import { getActiveHeadingLevel } from './editor-setup'
 import { getWysiwygView } from './prosemirror-utils'
 
 type ToolbarPopoverKind = 'heading' | 'aisles'
@@ -30,6 +32,13 @@ type UseEditorToolbarStateOptions = {
 const areToolbarFormatStatesEqual = (first: ToolbarFormatState, second: ToolbarFormatState) =>
   first.bold === second.bold && first.italic === second.italic && first.strike === second.strike
 
+const normalizeToolbarHeadingLevel = (level: number | null): ToolbarHeadingLevel => {
+  if (level === 0 || level === 1 || level === 2 || level === 3 || level === 4 || level === 5 || level === 6) {
+    return level
+  }
+  return null
+}
+
 const hasActiveEditorMark = (view: any, markName: string) => {
   const markType = view?.state?.schema?.marks?.[markName]
   if (!markType) return false
@@ -51,6 +60,7 @@ export function useEditorToolbarState({
   stateRef,
 }: UseEditorToolbarStateOptions) {
   const [toolbarFormatState, setToolbarFormatState] = useState<ToolbarFormatState>(DEFAULT_TOOLBAR_FORMAT_STATE)
+  const [activeHeadingLevel, setActiveHeadingLevel] = useState<ToolbarHeadingLevel>(null)
   const [toolbarShortcutFeedback, setToolbarShortcutFeedback] = useState<ToolbarFormatKey | null>(null)
   const [noteToolsOpen, setNoteToolsOpen] = useState(false)
   const [headingMenuOpen, setHeadingMenuOpen] = useState(false)
@@ -145,7 +155,9 @@ export function useEditorToolbarState({
 
   const syncToolbarFormatState = () => {
     const nextState = getCurrentToolbarFormatState()
+    const nextHeadingLevel = normalizeToolbarHeadingLevel(getActiveHeadingLevel(editorRef.current))
     setToolbarFormatState((previous) => (areToolbarFormatStatesEqual(previous, nextState) ? previous : nextState))
+    setActiveHeadingLevel((previous) => (previous === nextHeadingLevel ? previous : nextHeadingLevel))
   }
 
   const scheduleToolbarFormatStateSync = () => {
@@ -177,6 +189,7 @@ export function useEditorToolbarState({
     headingToolbarButtonRef,
     aisleToolbarButtonRef,
     toolbarFormatState,
+    activeHeadingLevel,
     toolbarShortcutFeedback,
     noteToolsOpen,
     headingMenuOpen,

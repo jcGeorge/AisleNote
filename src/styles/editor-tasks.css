@@ -1,7 +1,7 @@
-.task-reorder-pending .toastui-editor-contents li.task-list-item,
-.task-reorder-pending .toastui-editor-contents li.task-list-item *,
-.task-reorder-pending.toastui-editor-contents li.task-list-item,
-.task-reorder-pending.toastui-editor-contents li.task-list-item * {
+.task-reorder-pending .toastui-editor-contents li,
+.task-reorder-pending .toastui-editor-contents li *,
+.task-reorder-pending.toastui-editor-contents li,
+.task-reorder-pending.toastui-editor-contents li * {
   user-select: none !important;
   -webkit-user-select: none !important;
 }
@@ -17,14 +17,14 @@
   -webkit-user-select: none !important;
 }
 
-.toastui-editor-contents li.task-list-item.task-reorder-source {
+.toastui-editor-contents li.task-reorder-source {
   opacity: 0.34;
   border-radius: 0.35rem;
   background: rgba(111, 160, 255, 0.08);
   box-shadow: inset 0 0 0 1px rgba(111, 160, 255, 0.16);
 }
 
-.toastui-editor-contents li.task-list-item.task-reorder-target {
+.toastui-editor-contents li.task-reorder-target {
   border-radius: 0.35rem;
   background: rgba(111, 160, 255, 0.08);
   box-shadow: inset 0 0 0 1px rgba(111, 160, 255, 0.14);

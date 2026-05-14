@@ -29,6 +29,7 @@ export type StorageShortcutMap = Record<StorageShortcutId, string>
 export type StorageNewlineOperationId =
   | 'normalNewLine'
   | 'task'
+  | 'dashList'
   | 'bulletList'
   | 'numberedList'
   | 'aisle'
@@ -55,6 +56,29 @@ export type StorageGlobalSettings = {
     stageManagerOpenDestinationAfterApply: boolean
     tabButtonScale: number
     noteFontScale: number
+    noteCursorLocations?: Record<
+      string,
+      {
+        activeAisleId: StorageEntityId
+        aisles: Record<
+          StorageEntityId,
+          {
+            anchor: number
+            head: number
+            anchorBlock?: {
+              blockIndex: number
+              offset: number
+            }
+            headBlock?: {
+              blockIndex: number
+              offset: number
+            }
+            updatedAt: number
+          }
+        >
+        updatedAt: number
+      }
+    >
   }
 }
 

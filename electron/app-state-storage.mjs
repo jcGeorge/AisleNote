@@ -4,15 +4,30 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import JSZip from 'jszip'
+import {
+  DEFAULT_AUTO_REMOVE_DAYS,
+  DEFAULT_DOMAIN_ID,
+  DEFAULT_DOMAIN_NAME,
+  DEFAULT_TOPIC_ID,
+  DEFAULT_TOPIC_TITLE,
+  IMAGE_MARKDOWN_PATTERN,
+  ensureArray,
+  getActiveDomainFromAppState,
+  getActiveSpaceFromDomain,
+  getDomainId,
+  getDomainTitle,
+  getDomainsFromAppState,
+  getExtensionFromMimeType,
+  getMimeTypeFromExtension,
+  getNoteBodiesFromAppState,
+  getNoteBodyFirstMarkdown,
+  isRecord,
+  normalizeImageExtension,
+} from '../src/storage/hybrid-storage-core.js'
 
 const LEGACY_APP_STATE_RELATIVE_PATH = path.join('data', 'notes', 'index.json')
 const HYBRID_ROOT_DIR = 'notes-data'
-const DEFAULT_TOPIC_ID = 'default-topic'
-const DEFAULT_TOPIC_TITLE = 'Default'
-const DEFAULT_DOMAIN_ID = 'humble-beginnings-domain'
-const DEFAULT_DOMAIN_NAME = 'humble beginnings'
 const SCHEMA_VERSION = 1
-const IMAGE_MARKDOWN_PATTERN = /!\[([^\]]*)\]\(([^)]+)\)/g
 const IMAGE_METADATA_FRAGMENT_PREFIX = '#tabs-image='
 const INTERNAL_INDENT_TOKEN = '\u2060\u2003\u2003'
 const EXPORT_TAB_SPACES = '    '
@@ -27,25 +42,6 @@ function splitImageMetadataFromUrl(url) {
     imageUrl: source.slice(0, index),
     metadataFragment: source.slice(index),
   }
-}
-
-function normalizeImageExtension(extRaw) {
-  const normalized = String(extRaw ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
-  if (normalized === 'jpeg') return 'jpg'
-  return normalized || 'png'
-}
-
-function getExtensionFromMimeType(mimeType) {
-  const raw = String(mimeType ?? '').toLowerCase()
-  if (!raw.startsWith('image/')) return 'png'
-  return normalizeImageExtension(raw.slice('image/'.length))
-}
-
-function getMimeTypeFromExtension(extension) {
-  const ext = normalizeImageExtension(extension)
-  if (ext === 'jpg') return 'image/jpeg'
-  if (ext === 'svg') return 'image/svg+xml'
-  return `image/${ext}`
 }
 
 function getMimeTypeFromFilePath(filePath) {
@@ -383,78 +379,6 @@ function readMarkdownFile(baseDirectory, relativeFile) {
   return inlineMarkdownImages(markdown, absolutePath)
 }
 
-function ensureArray(value) {
-  return Array.isArray(value) ? value : []
-}
-
-function isRecord(value) {
-  return Boolean(value) && typeof value === 'object'
-}
-
-function getDomainId(domain, fallback = DEFAULT_DOMAIN_ID) {
-  return typeof domain?.id === 'string' && domain.id ? domain.id : fallback
-}
-
-function getDomainTitle(domain, fallback = DEFAULT_DOMAIN_NAME) {
-  if (typeof domain?.name === 'string' && domain.name.trim()) return domain.name
-  if (typeof domain?.title === 'string' && domain.title.trim()) return domain.title
-  return fallback
-}
-
-function getDomainsFromAppState(appState) {
-  const domains = ensureArray(appState?.domains).filter(isRecord)
-  if (domains.length > 0) return domains
-
-  const spaces = ensureArray(appState?.spaces).filter(isRecord)
-  if (spaces.length === 0) return []
-  const activeSpaceId =
-    typeof appState?.activeSpaceId === 'string' && spaces.some((space) => space.id === appState.activeSpaceId)
-      ? appState.activeSpaceId
-      : spaces[0]?.id ?? ''
-  return [
-    {
-      id: DEFAULT_DOMAIN_ID,
-      name: DEFAULT_DOMAIN_NAME,
-      activeSpaceId,
-      spaces,
-    },
-  ]
-}
-
-function getActiveDomainFromAppState(appState, domains) {
-  if (domains.length === 0) return null
-  if (typeof appState?.activeDomainId === 'string') {
-    const activeDomain = domains.find((domain) => domain.id === appState.activeDomainId)
-    if (activeDomain) return activeDomain
-  }
-  return domains[0]
-}
-
-function getActiveSpaceFromDomain(domain, fallbackActiveSpaceId) {
-  if (!domain) return null
-  const spaces = ensureArray(domain.spaces).filter(isRecord)
-  if (spaces.length === 0) return null
-  const activeSpaceId =
-    typeof domain.activeSpaceId === 'string'
-      ? domain.activeSpaceId
-      : typeof fallbackActiveSpaceId === 'string'
-        ? fallbackActiveSpaceId
-        : ''
-  return spaces.find((space) => space.id === activeSpaceId) ?? spaces[0]
-}
-
-function getNoteBodiesFromAppState(appState) {
-  return ensureArray(appState?.noteBodies).filter(isRecord)
-}
-
-function getNoteBodyFirstMarkdown(noteBodyMap, noteBodyId, fallback) {
-  if (typeof noteBodyId !== 'string' || !noteBodyId) return fallback
-  const body = noteBodyMap.get(noteBodyId)
-  const aisles = ensureArray(body?.aisles)
-  const first = aisles[0]
-  return typeof first?.markdown === 'string' ? first.markdown : fallback
-}
-
 function buildRootManifest(appState) {
   const domains = getDomainsFromAppState(appState)
   const noteBodies = getNoteBodiesFromAppState(appState)
@@ -477,6 +401,7 @@ function buildRootManifest(appState) {
         stageManagerOpenDestinationAfterApply: true,
         tabButtonScale: 1,
         noteFontScale: 1,
+        noteCursorLocations: {},
       },
     },
     topics:

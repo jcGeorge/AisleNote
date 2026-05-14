@@ -1,12 +1,14 @@
 import { Editor } from '@toast-ui/editor'
 import {
   headingSpaceShortcutPlugin,
+  listMarkerPlugin,
   thematicBreakShortcutPlugin,
 } from './editor-setup'
 import {
   collectProseMirrorTextPositions,
   getWysiwygView,
 } from './prosemirror-utils'
+import { NOTE_PREVIEW_EDITOR_HOST_CLASS } from './note-preview-dom'
 import {
   decodeContextPayload,
   getMarkdownLinkLabel,
@@ -31,6 +33,7 @@ type NotePreviewPluginOptions = {
   sourceNoteBodyId: string
   getContextPreviewData: (payload: NoteContextReferencePayload, sourceNoteBodyId: string) => ContextPreviewData
   navigateToNoteLocation: (target: NoteLocation) => void
+  deleteContextPreview: (tokenId: string) => void
 }
 
 function createContextPreviewWidgetElement(
@@ -54,6 +57,9 @@ function createContextPreviewWidgetElement(
   const expandButton = document.createElement('button')
   expandButton.type = 'button'
   expandButton.className = 'context-bar-icon-btn'
+  const deleteButton = document.createElement('button')
+  deleteButton.type = 'button'
+  deleteButton.className = 'context-bar-icon-btn context-bar-delete-btn'
   const lowerBar = document.createElement('span')
   lowerBar.className = 'context-bar-lower'
 
@@ -76,7 +82,7 @@ function createContextPreviewWidgetElement(
     const shell = document.createElement('span')
     shell.className = 'context-bar-editor'
     const editorHost = document.createElement('span')
-    editorHost.className = 'context-preview-editor-host is-readonly'
+    editorHost.className = `${NOTE_PREVIEW_EDITOR_HOST_CLASS} is-readonly`
     const heightRem = expanded ? NOTE_PREVIEW_EXPANDED_HEIGHT_REM : NOTE_PREVIEW_DEFAULT_HEIGHT_REM
     editorHost.style.setProperty('--note-preview-editor-height', `${heightRem}rem`)
 
@@ -100,7 +106,7 @@ function createContextPreviewWidgetElement(
       height: `${heightRem}rem`,
       autofocus: false,
       usageStatistics: false,
-      plugins: [headingSpaceShortcutPlugin, thematicBreakShortcutPlugin],
+      plugins: [listMarkerPlugin, headingSpaceShortcutPlugin, thematicBreakShortcutPlugin],
     })
 
     const view = getWysiwygView(editor)
@@ -136,6 +142,8 @@ function createContextPreviewWidgetElement(
     expandButton.textContent = expanded ? '-' : '+'
     expandButton.title = expanded ? 'Shrink note preview' : 'Expand note preview'
     expandButton.setAttribute('aria-label', expandButton.title)
+    deleteButton.title = 'Delete note preview'
+    deleteButton.setAttribute('aria-label', deleteButton.title)
     clearLowerBar()
 
     lowerBar.hidden = minimized
@@ -172,8 +180,13 @@ function createContextPreviewWidgetElement(
     expanded = !expanded
     renderLowerBar()
   })
+  deleteButton.addEventListener('mousedown', stopWidgetEvent)
+  deleteButton.addEventListener('click', (event) => {
+    stopWidgetEvent(event)
+    options.deleteContextPreview(payload.id)
+  })
 
-  actions.append(minimizeButton, expandButton)
+  actions.append(minimizeButton, expandButton, deleteButton)
   topBar.append(titleButton, actions)
   wrapper.append(topBar, lowerBar)
   renderLowerBar()

@@ -6,6 +6,7 @@ import type { AppState, ContextMenuState, MultiLineEditState, NewlineOperationId
 import { getNewlineShortcutIdForEvent } from '../hotkeys/shortcuts'
 import { getMultilineSelectionShortcutDirection } from './editor-setup'
 import type { MultiLineCursorMovement, MultiLineEditInput } from './multiline-edit'
+import { isInsideReadonlyNotePreview } from './note-preview-dom'
 import {
   getElementFromEventTarget,
   getInternalNoteLinkHitAtDocPosition,
@@ -40,6 +41,8 @@ type UseEditorDomEventsOptions = {
   queueToolbarShortcutFeedback: (format: ToolbarFormatKey) => void
   syncToolbarFormatState: () => void
   getEditorHistoryDirection: (event: KeyboardEvent) => 'undo' | 'redo' | null
+  onEditorSelectionChange: () => void
+  onEditorHistoryFallback: (direction: 'undo' | 'redo') => void
   onRunNewlineOperation: (operation: NewlineOperationId) => boolean
   onOpenNewlineOperationsMenu: () => void
   scheduleMultiLineHistoryRestore: (direction: 'undo' | 'redo') => void
@@ -89,6 +92,8 @@ export function useEditorDomEvents({
   queueToolbarShortcutFeedback,
   syncToolbarFormatState,
   getEditorHistoryDirection,
+  onEditorSelectionChange,
+  onEditorHistoryFallback,
   onRunNewlineOperation,
   onOpenNewlineOperationsMenu,
   scheduleMultiLineHistoryRestore,
@@ -167,6 +172,13 @@ export function useEditorDomEvents({
         closeLinkPrompt()
         return
       }
+      if (isInsideReadonlyNotePreview(target)) {
+        if (!isImageCropActive()) {
+          closeImageTools()
+        }
+        closeLinkPrompt()
+        return
+      }
       activateEditorFromEventTarget(target)
       clearMultiLineEdit(false)
       if (
@@ -209,6 +221,11 @@ export function useEditorDomEvents({
       const mouseEvent = event as globalThis.MouseEvent
       const target = getElementFromEventTarget(mouseEvent.target)
       if (!target) return
+      if (isInsideReadonlyNotePreview(target)) {
+        closeImageTools()
+        closeLinkPrompt()
+        return
+      }
       activateEditorFromEventTarget(target)
       const internalLinkHit = getInternalLinkHitAtPointerPosition(mouseEvent)
       if (internalLinkHit) {
@@ -304,6 +321,7 @@ export function useEditorDomEvents({
       const editorHistoryDirection = getEditorHistoryDirection(keyboardEvent)
       if (editorHistoryDirection) {
         scheduleMultiLineHistoryRestore(editorHistoryDirection)
+        onEditorHistoryFallback(editorHistoryDirection)
       }
 
       const targetElement = getElementFromEventTarget(keyboardEvent.target)
@@ -409,7 +427,9 @@ export function useEditorDomEvents({
       const inputEvent = event as InputEvent
       activateEditorFromEventTarget(inputEvent.target)
       if (inputEvent.inputType === 'historyUndo' || inputEvent.inputType === 'historyRedo') {
-        scheduleMultiLineHistoryRestore(inputEvent.inputType === 'historyUndo' ? 'undo' : 'redo')
+        const direction = inputEvent.inputType === 'historyUndo' ? 'undo' : 'redo'
+        scheduleMultiLineHistoryRestore(direction)
+        onEditorHistoryFallback(direction)
         return
       }
       if (!multiLineEditRef.current) return
@@ -424,8 +444,48 @@ export function useEditorDomEvents({
       }
     }
 
-    const handleToolbarSelectionSync = () => {
+    let toolbarSelectionSyncFrame: number | null = null
+    let toolbarSelectionSyncTimer: number | null = null
+
+    const clearScheduledToolbarSelectionSync = () => {
+      if (toolbarSelectionSyncFrame !== null) {
+        window.cancelAnimationFrame(toolbarSelectionSyncFrame)
+        toolbarSelectionSyncFrame = null
+      }
+      if (toolbarSelectionSyncTimer !== null) {
+        window.clearTimeout(toolbarSelectionSyncTimer)
+        toolbarSelectionSyncTimer = null
+      }
+    }
+
+    const runToolbarSelectionSync = () => {
+      toolbarSelectionSyncFrame = null
+      if (toolbarSelectionSyncTimer !== null) {
+        window.clearTimeout(toolbarSelectionSyncTimer)
+        toolbarSelectionSyncTimer = null
+      }
       syncToolbarFormatState()
+      onEditorSelectionChange()
+    }
+
+    const handleToolbarSelectionSync = () => {
+      if (toolbarSelectionSyncFrame !== null) {
+        window.cancelAnimationFrame(toolbarSelectionSyncFrame)
+      }
+      if (toolbarSelectionSyncTimer !== null) {
+        window.clearTimeout(toolbarSelectionSyncTimer)
+      }
+
+      toolbarSelectionSyncFrame = window.requestAnimationFrame(runToolbarSelectionSync)
+      toolbarSelectionSyncTimer = window.setTimeout(() => {
+        if (toolbarSelectionSyncFrame !== null) {
+          window.cancelAnimationFrame(toolbarSelectionSyncFrame)
+          toolbarSelectionSyncFrame = null
+        }
+        toolbarSelectionSyncTimer = null
+        syncToolbarFormatState()
+        onEditorSelectionChange()
+      }, 50)
     }
 
     root.addEventListener('pointerdown', handlePointerDown, true)
@@ -455,6 +515,7 @@ export function useEditorDomEvents({
       root.removeEventListener('focusin', handleToolbarSelectionSync, true)
       window.removeEventListener('scroll', handleScrollOrResize, true)
       window.removeEventListener('resize', handleScrollOrResize)
+      clearScheduledToolbarSelectionSync()
     }
   }, [viewMode, displayContent, activeNoteAisleCount, hotkeys, isMacPlatform])
 }

@@ -1,8 +1,13 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { Editor } from '@toast-ui/editor'
 import { Fragment, type Node as ProseMirrorNode } from 'prosemirror-model'
 import { Selection, TextSelection } from 'prosemirror-state'
 import type { NewlineOperationId } from '../types/app'
+import { isCompatibleListNodeForOperation, isListNewlineOperation } from './list-operation-compatibility'
+import {
+  createOperationListItems,
+  createOperationListNode,
+  createOperationNodes,
+} from './newline-operation-nodes'
 import { getEditorTextLineRanges } from './multiline-ranges'
 import { getCommandCapableEditor, getWysiwygView } from './prosemirror-utils'
 
@@ -13,6 +18,7 @@ type EditorNewlineOperationResult =
 const TEXT_CARRYING_BLOCK_OPERATIONS = new Set<NewlineOperationId>([
   'normalNewLine',
   'task',
+  'dashList',
   'bulletList',
   'numberedList',
   'codeBlock',
@@ -26,56 +32,6 @@ function getSelectionText(view: any): string {
 
 function getCarriedText(view: any): string {
   return getSelectionText(view).trim()
-}
-
-function getTextLines(text: string): string[] {
-  return text
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-}
-
-function getInlineText(text: string): string {
-  return getTextLines(text).join(' ')
-}
-
-function createParagraph(schema: any, text = ''): ProseMirrorNode {
-  const inlineText = getInlineText(text)
-  return schema.nodes.paragraph.create(null, inlineText ? schema.text(inlineText) : undefined)
-}
-
-function createListItem(schema: any, text: string, task: boolean): ProseMirrorNode {
-  return schema.nodes.listItem.create(
-    task ? { task: true, checked: false } : null,
-    createParagraph(schema, text),
-  )
-}
-
-function createOperationNodes(schema: any, operation: NewlineOperationId, text = ''): ProseMirrorNode[] {
-  if (operation === 'horizontalLine') {
-    return [schema.nodes.thematicBreak.create(), schema.nodes.paragraph.create()]
-  }
-
-  if (operation === 'codeBlock') {
-    return [schema.nodes.codeBlock.create(null, text ? schema.text(text) : undefined)]
-  }
-
-  if (operation === 'blockQuote') {
-    const lines = getTextLines(text)
-    const paragraphs = lines.length > 0 ? lines.map((line) => createParagraph(schema, line)) : [createParagraph(schema)]
-    return [schema.nodes.blockQuote.create(null, paragraphs)]
-  }
-
-  if (operation === 'task' || operation === 'bulletList' || operation === 'numberedList') {
-    const lines = getTextLines(text)
-    const itemTexts = lines.length > 0 ? lines : ['']
-    const isTask = operation === 'task'
-    const listType = operation === 'numberedList' ? schema.nodes.orderedList : schema.nodes.bulletList
-    const listAttrs = operation === 'numberedList' ? { order: 1 } : null
-    return [listType.create(listAttrs, itemTexts.map((line) => createListItem(schema, line, isTask)))]
-  }
-
-  return [createParagraph(schema, text)]
 }
 
 function findTopLevelRange(state: any, from: number, to: number) {
@@ -131,7 +87,181 @@ function setSelectionNearInsertedContent(tr: any, from: number, to: number) {
   }
 }
 
+function getTopLevelStartByIndex(doc: any, index: number): number {
+  let position = 0
+  for (let currentIndex = 0; currentIndex < index; currentIndex += 1) {
+    position += doc.child(currentIndex).nodeSize
+  }
+  return position
+}
+
+function findTopLevelChildAtStart(doc: any, start: number): { node: ProseMirrorNode; index: number; start: number } | null {
+  let position = 0
+  for (let index = 0; index < doc.childCount; index += 1) {
+    const node = doc.child(index)
+    if (position === start) return { node, index, start: position }
+    position += node.nodeSize
+  }
+  return null
+}
+
+function getListChildNodes(node: any): ProseMirrorNode[] {
+  const children: ProseMirrorNode[] = []
+  node.forEach((child: ProseMirrorNode) => {
+    children.push(child)
+  })
+  return children
+}
+
+function setSelectionNearListItems(tr: any, listStart: number, firstItemIndex: number, itemCount: number) {
+  const listNode = tr.doc.nodeAt(listStart)
+  if (!listNode) return setSelectionNearInsertedContent(tr, listStart, listStart)
+
+  let itemStart = listStart + 1
+  for (let index = 0; index < firstItemIndex && index < listNode.childCount; index += 1) {
+    itemStart += listNode.child(index).nodeSize
+  }
+
+  let itemEnd = itemStart
+  const lastIndex = Math.min(listNode.childCount, firstItemIndex + Math.max(1, itemCount))
+  for (let index = firstItemIndex; index < lastIndex; index += 1) {
+    itemEnd += listNode.child(index).nodeSize
+  }
+
+  return setSelectionNearInsertedContent(tr, itemStart, itemEnd)
+}
+
+function mergeCompatibleTopLevelLists(
+  tr: any,
+  operation: NewlineOperationId,
+  insertedListStart: number,
+  insertedItemCount: number,
+) {
+  const hit = findTopLevelChildAtStart(tr.doc, insertedListStart)
+  if (!hit || !isCompatibleListNodeForOperation(hit.node, operation)) {
+    return {
+      tr,
+      selectionFrom: insertedListStart,
+      selectionTo: insertedListStart + (hit?.node?.nodeSize ?? 0),
+    }
+  }
+
+  let startIndex = hit.index
+  let endIndex = hit.index
+  while (startIndex > 0 && isCompatibleListNodeForOperation(tr.doc.child(startIndex - 1), operation)) {
+    startIndex -= 1
+  }
+  while (endIndex < tr.doc.childCount - 1 && isCompatibleListNodeForOperation(tr.doc.child(endIndex + 1), operation)) {
+    endIndex += 1
+  }
+
+  if (startIndex === endIndex) {
+    return {
+      tr,
+      selectionFrom: hit.start,
+      selectionTo: hit.start + hit.node.nodeSize,
+      listStart: hit.start,
+      insertedItemIndex: 0,
+      insertedItemCount,
+    }
+  }
+
+  const mergeStart = getTopLevelStartByIndex(tr.doc, startIndex)
+  let mergeEnd = mergeStart
+  const mergedItems: ProseMirrorNode[] = []
+  let insertedItemIndex = 0
+  for (let index = startIndex; index <= endIndex; index += 1) {
+    const listNode = tr.doc.child(index)
+    if (index < hit.index) insertedItemIndex += listNode.childCount
+    mergeEnd += listNode.nodeSize
+    mergedItems.push(...getListChildNodes(listNode))
+  }
+
+  const firstList = tr.doc.child(startIndex)
+  const mergedList = firstList.type.create(firstList.attrs, Fragment.fromArray(mergedItems))
+  tr = tr.replaceWith(mergeStart, mergeEnd, mergedList)
+  return {
+    tr,
+    selectionFrom: mergeStart,
+    selectionTo: mergeStart + mergedList.nodeSize,
+    listStart: mergeStart,
+    insertedItemIndex,
+    insertedItemCount,
+  }
+}
+
+function findCompatibleListContext(state: any, operation: NewlineOperationId) {
+  const { $from } = state.selection
+  let listDepth: number | null = null
+
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    const node = $from.node(depth)
+    if (isCompatibleListNodeForOperation(node, operation)) {
+      listDepth = depth
+      break
+    }
+  }
+  if (listDepth === null) return null
+
+  for (let depth = $from.depth; depth > listDepth; depth -= 1) {
+    if ($from.node(depth)?.type?.name === 'listItem' && $from.node(depth - 1) === $from.node(listDepth)) {
+      return {
+        listDepth,
+        itemDepth: depth,
+        itemEnd: $from.after(depth),
+      }
+    }
+  }
+
+  return null
+}
+
+function insertListItemsIntoCurrentList(view: any, operation: NewlineOperationId, text: string): boolean {
+  if (!view.state.selection.empty) return false
+  const context = findCompatibleListContext(view.state, operation)
+  if (!context) return false
+
+  const items = createOperationListItems(view.state.schema, operation, text)
+  const fragment = Fragment.fromArray(items)
+  const insertPos = context.itemEnd
+  let tr = view.state.tr.insert(insertPos, fragment)
+  tr = setSelectionNearInsertedContent(tr, insertPos, insertPos + fragment.size)
+  view.dispatch(tr.scrollIntoView())
+  return true
+}
+
+function insertListOperationBelow(view: any, operation: NewlineOperationId, text: string) {
+  if (insertListItemsIntoCurrentList(view, operation, text)) return
+
+  const { state } = view
+  const { from, to } = state.selection
+  const selectionFrom = Math.min(from, to)
+  const selectionTo = Math.max(from, to)
+  const insertAfter = findTopLevelAfter(state, selectionFrom)
+  const listNode = createOperationListNode(state.schema, operation, text)
+  if (!listNode) return
+  let tr = state.tr
+
+  if (selectionFrom !== selectionTo) {
+    tr = tr.delete(selectionFrom, selectionTo)
+  }
+
+  const insertPos = tr.mapping.map(insertAfter, -1)
+  tr = tr.insert(insertPos, listNode)
+  const merged = mergeCompatibleTopLevelLists(tr, operation, insertPos, listNode.childCount)
+  tr =
+    typeof merged.listStart === 'number'
+      ? setSelectionNearListItems(merged.tr, merged.listStart, merged.insertedItemIndex, merged.insertedItemCount)
+      : setSelectionNearInsertedContent(merged.tr, merged.selectionFrom, merged.selectionTo)
+  view.dispatch(tr.scrollIntoView())
+}
+
 function insertOperationBelow(view: any, operation: NewlineOperationId, text: string) {
+  if (isListNewlineOperation(operation)) {
+    insertListOperationBelow(view, operation, text)
+    return
+  }
+
   const { state } = view
   const { from, to } = state.selection
   const selectionFrom = Math.min(from, to)
@@ -154,10 +284,24 @@ function replaceSelectedLine(view: any, operation: NewlineOperationId, text: str
   const { state } = view
   const { from, to } = state.selection
   const range = findTopLevelRange(state, Math.min(from, to), Math.max(from, to))
+
+  if (isListNewlineOperation(operation)) {
+    const listNode = createOperationListNode(state.schema, operation, text)
+    if (!listNode) return
+    let tr = state.tr.replaceWith(range.from, range.to, listNode)
+    const merged = mergeCompatibleTopLevelLists(tr, operation, range.from, listNode.childCount)
+    tr =
+      typeof merged.listStart === 'number'
+        ? setSelectionNearListItems(merged.tr, merged.listStart, merged.insertedItemIndex, merged.insertedItemCount)
+        : setSelectionNearInsertedContent(merged.tr, merged.selectionFrom, merged.selectionTo)
+    view.dispatch(tr.setMeta('addToHistory', false).scrollIntoView())
+    return
+  }
+
   const fragment = Fragment.fromArray(createOperationNodes(state.schema, operation, text))
   let tr = state.tr.replaceWith(range.from, range.to, fragment)
   tr = setSelectionNearInsertedContent(tr, range.from, range.from + fragment.size)
-  view.dispatch(tr.scrollIntoView())
+  view.dispatch(tr.setMeta('addToHistory', false).scrollIntoView())
 }
 
 function deleteSelectionAndInsertHorizontalRule(view: any) {

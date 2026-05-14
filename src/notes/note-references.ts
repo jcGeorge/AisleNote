@@ -89,6 +89,13 @@ export function replaceContextTokenById(markdown: string, tokenId: string, nextT
   })
 }
 
+export function removeContextTokenById(markdown: string, tokenId: string): string {
+  return markdown.replace(NOTE_CONTEXT_REFERENCE_RE, (token, encoded) => {
+    const payload = decodeContextPayload(encoded)
+    return payload?.id === tokenId ? '' : token
+  })
+}
+
 export function buildInternalNoteUrl(noteBodyId: string, target: NoteLocation): string {
   const params = new URLSearchParams({
     domainId: target.domainId,

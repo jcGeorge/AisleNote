@@ -1,4 +1,4 @@
-/* eslint-disable react-hooks/set-state-in-effect, react-hooks/preserve-manual-memoization, react-hooks/exhaustive-deps */
+/* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, useMemo, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import { sanitizeName } from '../export/export-data'
 import { DEFAULT_AUTO_REMOVE_DAYS } from '../settings/defaults'
@@ -23,12 +23,18 @@ import type {
 } from '../types/app'
 import {
   buildStageManagerSelectionSnapshot,
+  cycleStageManagerParentSelection,
   createDefaultStageManagerDraft,
-  createEmptyStageManagerParentSelection,
   createStageManagerSelectionState,
   normalizeStageManagerParentSelection,
-  orderStageManagerSubTabIds,
+  toggleStageManagerSubTabSelection,
 } from './selection'
+import {
+  buildStageManagerDomainAwareState,
+  getStageManagerDomainSpaces,
+  projectStageManagerDomains,
+  replaceStageManagerDomainSpaces,
+} from './domain-operations'
 import {
   appendSubTabsToParent,
   buildStageManagerMovedSubTabs,
@@ -156,101 +162,13 @@ export function useStageManagerController({
 
   const cycleParentSelection = (tab: Tab) => {
     updateSelectionForTab(tab, (selection) => {
-      const allSubTabIds = tab.subTabs.map((subTab) => subTab.id)
-      const cachedPartial = selection.mode === 'partial' ? selection.selectedSubTabIds : selection.cachedPartialSubTabIds
-
-      if (selection.mode === 'none') {
-        if (cachedPartial && cachedPartial.length > 0) {
-          return {
-            mode: 'partial',
-            selectedSubTabIds: cachedPartial,
-            cachedPartialSubTabIds: cachedPartial,
-            partialDirection: 'toward-all',
-          }
-        }
-
-        return {
-          mode: 'full',
-          selectedSubTabIds: allSubTabIds,
-          cachedPartialSubTabIds: null,
-          partialDirection: null,
-        }
-      }
-
-      if (selection.mode === 'full') {
-        if (cachedPartial && cachedPartial.length > 0) {
-          return {
-            mode: 'partial',
-            selectedSubTabIds: cachedPartial,
-            cachedPartialSubTabIds: cachedPartial,
-            partialDirection: 'toward-none',
-          }
-        }
-
-        return createEmptyStageManagerParentSelection()
-      }
-
-      if (selection.partialDirection === 'toward-none') {
-        return {
-          mode: 'none',
-          selectedSubTabIds: [],
-          cachedPartialSubTabIds: selection.selectedSubTabIds,
-          partialDirection: null,
-        }
-      }
-
-      return {
-        mode: 'full',
-        selectedSubTabIds: allSubTabIds,
-        cachedPartialSubTabIds: selection.selectedSubTabIds,
-        partialDirection: null,
-      }
+      return cycleStageManagerParentSelection(tab, selection)
     })
   }
 
   const toggleSubTabSelection = (tab: Tab, subTabId: string) => {
     updateSelectionForTab(tab, (selection) => {
-      const allSubTabIds = tab.subTabs.map((subTab) => subTab.id)
-      const selectedIds = new Set(selection.mode === 'full' ? allSubTabIds : selection.selectedSubTabIds)
-      const wasSelected = selectedIds.has(subTabId)
-      const selectionBeforeChange = Array.from(selectedIds)
-
-      if (wasSelected) {
-        selectedIds.delete(subTabId)
-      } else {
-        selectedIds.add(subTabId)
-      }
-
-      const orderedSelectedIds = orderStageManagerSubTabIds(tab, Array.from(selectedIds))
-
-      if (orderedSelectedIds.length === 0) {
-        return {
-          mode: 'none',
-          selectedSubTabIds: [],
-          cachedPartialSubTabIds:
-            selectionBeforeChange.length > 0 ? orderStageManagerSubTabIds(tab, selectionBeforeChange) : selection.cachedPartialSubTabIds,
-          partialDirection: null,
-        }
-      }
-
-      if (orderedSelectedIds.length >= allSubTabIds.length) {
-        return {
-          mode: 'full',
-          selectedSubTabIds: allSubTabIds,
-          cachedPartialSubTabIds:
-            selectionBeforeChange.length > 0 && selectionBeforeChange.length < allSubTabIds.length
-              ? orderStageManagerSubTabIds(tab, selectionBeforeChange)
-              : selection.cachedPartialSubTabIds,
-          partialDirection: null,
-        }
-      }
-
-      return {
-        mode: 'partial',
-        selectedSubTabIds: orderedSelectedIds,
-        cachedPartialSubTabIds: orderedSelectedIds,
-        partialDirection: wasSelected ? 'toward-none' : 'toward-all',
-      }
+      return toggleStageManagerSubTabSelection(tab, selection, subTabId)
     })
   }
 
@@ -823,46 +741,11 @@ export function useStageManagerController({
     const latestState = buildStateWithLatestEditorContent()
     const currentSpace = latestState.spaces.find((space) => space.id === latestState.activeSpaceId)
     if (!currentSpace) return
-    const projectedDomains = latestState.domains.map((domain) =>
-      domain.id === latestState.activeDomainId
-        ? { ...domain, activeSpaceId: latestState.activeSpaceId, spaces: latestState.spaces }
-        : domain,
-    )
-    const getSpacesFromDomains = (domains: Domain[], domainId: string) =>
-      domains.find((domain) => domain.id === domainId)?.spaces ?? []
-    const replaceDomainSpaces = (domains: Domain[], domainId: string, spaces: Space[], activeSpaceId?: string) =>
-      domains.map((domain) =>
-        domain.id === domainId
-          ? {
-              ...domain,
-              spaces,
-              activeSpaceId:
-                activeSpaceId && spaces.some((space) => space.id === activeSpaceId)
-                  ? activeSpaceId
-                  : spaces.some((space) => space.id === domain.activeSpaceId)
-                    ? domain.activeSpaceId
-                    : spaces[0]?.id ?? domain.activeSpaceId,
-            }
-          : domain,
-      )
-    const buildDomainAwareState = (
-      domains: Domain[],
-      activeDomainId = latestState.activeDomainId,
-      activeSpaceId = latestState.activeSpaceId,
-    ) => {
-      const activeDomain = domains.find((domain) => domain.id === activeDomainId) ?? domains[0]
-      const spaces = activeDomain?.spaces ?? []
-      const resolvedSpaceId = spaces.some((space) => space.id === activeSpaceId)
-        ? activeSpaceId
-        : activeDomain?.activeSpaceId ?? spaces[0]?.id ?? ''
-      return {
-        ...latestState,
-        activeDomainId: activeDomain?.id ?? latestState.activeDomainId,
-        activeSpaceId: resolvedSpaceId,
-        spaces,
-        domains,
-      }
-    }
+    const projectedDomains = projectStageManagerDomains(latestState)
+    const getSpacesFromDomains = getStageManagerDomainSpaces
+    const replaceDomainSpaces = replaceStageManagerDomainSpaces
+    const buildDomainAwareState = (domains: Domain[], activeDomainId = latestState.activeDomainId, activeSpaceId = latestState.activeSpaceId) =>
+      buildStageManagerDomainAwareState(latestState, domains, activeDomainId, activeSpaceId)
 
     const snapshot = buildStageManagerSelectionSnapshot(currentSpace.data.tabs, selections)
     if (!snapshot.hasSelection) {

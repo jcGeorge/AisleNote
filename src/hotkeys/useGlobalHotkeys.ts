@@ -5,6 +5,7 @@ import type { AppState, ArrangeModeState, ShortcutId, Tab, ViewMode } from '../t
 type UseGlobalHotkeysParams = {
   viewMode: ViewMode
   activeTab: Tab
+  primeTabs: Tab[]
   arrangeMode: ArrangeModeState
   hotkeys: AppState['hotkeys']
   isMacPlatform: boolean
@@ -30,9 +31,14 @@ const getShortcutIndex = (key: string): number | null => {
   return null
 }
 
+export function getNumberedPrimeTabTarget(tabs: Tab[], shortcutIndex: number): string | null {
+  return tabs[shortcutIndex]?.id ?? null
+}
+
 export function useGlobalHotkeys({
   viewMode,
   activeTab,
+  primeTabs,
   arrangeMode,
   hotkeys,
   isMacPlatform,
@@ -175,14 +181,9 @@ export function useGlobalHotkeys({
       if (usesCommand && !event.shiftKey && shortcutIndex !== null) {
         event.preventDefault()
 
-        const childTargets: Array<string | null> = [null, ...activeTab.subTabs.map((sub) => sub.id)]
-        const nextChild = childTargets[shortcutIndex]
-        if (nextChild === undefined) return
-        if (nextChild === null) {
-          selectTab(activeTab.id)
-          return
-        }
-        selectSubTab(nextChild)
+        const nextPrimeTabId = getNumberedPrimeTabTarget(primeTabs, shortcutIndex)
+        if (!nextPrimeTabId) return
+        selectTab(nextPrimeTabId)
         return
       }
 
@@ -233,6 +234,7 @@ export function useGlobalHotkeys({
     activeTab.id,
     activeTab.subTabs,
     activeTab.activeSubTabId,
+    primeTabs,
     editingShortcut,
     isMacPlatform,
     hotkeys,

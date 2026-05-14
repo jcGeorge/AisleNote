@@ -1,5 +1,5 @@
 import type { RefObject } from 'react'
-import type { ToolbarFormatKey, ToolbarFormatState } from './toolbar-state'
+import type { ToolbarFormatKey, ToolbarFormatState, ToolbarHeadingLevel } from './toolbar-state'
 
 const TOOLBAR_FORMAT_LABELS: Record<ToolbarFormatKey, string> = {
   bold: 'Bold',
@@ -11,6 +11,7 @@ type SharedEditorToolbarProps = {
   headingButtonRef: RefObject<HTMLButtonElement | null>
   aisleButtonRef: RefObject<HTMLButtonElement | null>
   toolbarFormatState: ToolbarFormatState
+  activeHeadingLevel: ToolbarHeadingLevel
   toolbarShortcutFeedback: ToolbarFormatKey | null
   onOpenNoteReference: () => void
   onToggleAisles: () => void
@@ -58,6 +59,7 @@ export function SharedEditorToolbar({
   headingButtonRef,
   aisleButtonRef,
   toolbarFormatState,
+  activeHeadingLevel,
   toolbarShortcutFeedback,
   onOpenNoteReference,
   onToggleAisles,
@@ -131,7 +133,9 @@ export function SharedEditorToolbar({
             <button
               ref={headingButtonRef}
               type="button"
-              className="toastui-editor-toolbar-icons heading"
+              className={`toastui-editor-toolbar-icons heading ${
+                typeof activeHeadingLevel === 'number' && activeHeadingLevel > 0 ? 'active' : ''
+              }`}
               title="Headings"
               aria-label="Headings"
               onMouseDown={(event) => event.preventDefault()}
@@ -144,7 +148,7 @@ export function SharedEditorToolbar({
           </span>
           {renderToolbarIconButton('Bold', 'bold', () => onCommand('bold'), 'bold')}
           {renderToolbarIconButton('Italic', 'italic', () => onCommand('italic'), 'italic')}
-          {renderToolbarIconButton('Strike', 'strike', () => onCommand('strike'), 'strike')}
+          {renderToolbarIconButton('Strikethrough', 'strike', () => onCommand('strike'), 'strike')}
           {toolbarShortcutFeedback && (
             <span className="note-toolbar-shortcut-feedback" role="status">
               {TOOLBAR_FORMAT_LABELS[toolbarShortcutFeedback]}
@@ -152,10 +156,11 @@ export function SharedEditorToolbar({
           )}
         </div>
         <div className="toastui-editor-toolbar-group">
-          {renderToolbarIconButton('Line', 'hrline', () => onCommand('hr'))}
+          {renderToolbarIconButton('Horizontal line', 'hrline', () => onCommand('hr'))}
           {renderToolbarIconButton('Blockquote', 'quote', () => onCommand('blockQuote'))}
         </div>
         <div className="toastui-editor-toolbar-group">
+          {renderToolbarIconButton('Dash list', 'dash-list', () => onCommand('dashList'))}
           {renderToolbarIconButton('Unordered list', 'bullet-list', () => onCommand('bulletList'))}
           {renderToolbarIconButton('Ordered list', 'ordered-list', () => onCommand('orderedList'))}
           {renderToolbarIconButton('Task', 'task-list', () => onCommand('taskList'))}

@@ -2,6 +2,7 @@ import { createPortal } from 'react-dom'
 import type { RefObject } from 'react'
 import { MAX_NOTE_AISLES } from '../../state/workspace'
 import type { NoteAisle } from '../../types/app'
+import type { ToolbarHeadingLevel } from './toolbar-state'
 
 type ToolbarPopoverPosition = {
   top: number
@@ -18,6 +19,7 @@ type AisleDeleteConfirmationState = {
 type EditorToolbarPopoversProps = {
   headingMenuOpen: boolean
   noteToolsOpen: boolean
+  activeHeadingLevel: ToolbarHeadingLevel
   toolbarPopoverPosition: {
     heading: ToolbarPopoverPosition | null
     aisles: ToolbarPopoverPosition | null
@@ -38,6 +40,7 @@ type EditorToolbarPopoversProps = {
 export function EditorToolbarPopovers({
   headingMenuOpen,
   noteToolsOpen,
+  activeHeadingLevel,
   toolbarPopoverPosition,
   aisleDeleteMode,
   aisleDeleteConfirmation,
@@ -71,7 +74,10 @@ export function EditorToolbarPopovers({
               <button
                 key={level}
                 type="button"
-                className="note-tools-item"
+                className={`note-tools-item note-heading-choice note-heading-choice-level-${level} ${
+                  activeHeadingLevel === level ? 'is-active-heading-choice' : ''
+                }`}
+                aria-current={activeHeadingLevel === level ? 'true' : undefined}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={(event) => {
                   event.preventDefault()
@@ -84,7 +90,10 @@ export function EditorToolbarPopovers({
             ))}
             <button
               type="button"
-              className="note-tools-item"
+              className={`note-tools-item note-heading-choice note-heading-choice-paragraph ${
+                activeHeadingLevel === 0 ? 'is-active-heading-choice' : ''
+              }`}
+              aria-current={activeHeadingLevel === 0 ? 'true' : undefined}
               onMouseDown={(event) => event.preventDefault()}
               onClick={(event) => {
                 event.preventDefault()
