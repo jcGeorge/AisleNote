@@ -69,6 +69,14 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
     }
   }
 
+  if (modal.type === 'newline-menu-settings') {
+    return {
+      title: 'new line menu',
+      body: 'drag operations into the numbered slots.',
+      action: 'done',
+    }
+  }
+
   if (modal.target.type === 'space') {
     if (state.spaces.length <= 1) {
       return {

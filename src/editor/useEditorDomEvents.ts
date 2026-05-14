@@ -2,7 +2,8 @@
 import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import type { Editor } from '@toast-ui/editor'
 import type { ToolbarFormatKey } from '../components/editor/toolbar-state'
-import type { ContextMenuState, MultiLineEditState, NoteLocation, ViewMode } from '../types/app'
+import type { AppState, ContextMenuState, MultiLineEditState, NewlineOperationId, NoteLocation, ViewMode } from '../types/app'
+import { getNewlineShortcutIdForEvent } from '../hotkeys/shortcuts'
 import { getMultilineSelectionShortcutDirection } from './editor-setup'
 import type { MultiLineCursorMovement, MultiLineEditInput } from './multiline-edit'
 import {
@@ -16,6 +17,8 @@ type UseEditorDomEventsOptions = {
   viewMode: ViewMode
   displayContent: string
   activeNoteAisleCount: number
+  hotkeys: AppState['hotkeys']
+  isMacPlatform: boolean
   editorEventRootRef: MutableRefObject<HTMLElement | null>
   editorRef: MutableRefObject<Editor | null>
   activeImageRef: MutableRefObject<HTMLImageElement | null>
@@ -37,6 +40,8 @@ type UseEditorDomEventsOptions = {
   queueToolbarShortcutFeedback: (format: ToolbarFormatKey) => void
   syncToolbarFormatState: () => void
   getEditorHistoryDirection: (event: KeyboardEvent) => 'undo' | 'redo' | null
+  onRunNewlineOperation: (operation: NewlineOperationId) => boolean
+  onOpenNewlineOperationsMenu: () => void
   scheduleMultiLineHistoryRestore: (direction: 'undo' | 'redo') => void
   tryExpandMultilineSelection: (direction: 'up' | 'down') => boolean
   tryApplyMultiLineEditInput: (input: MultiLineEditInput) => boolean
@@ -61,6 +66,8 @@ export function useEditorDomEvents({
   viewMode,
   displayContent,
   activeNoteAisleCount,
+  hotkeys,
+  isMacPlatform,
   editorEventRootRef,
   editorRef,
   activeImageRef,
@@ -82,6 +89,8 @@ export function useEditorDomEvents({
   queueToolbarShortcutFeedback,
   syncToolbarFormatState,
   getEditorHistoryDirection,
+  onRunNewlineOperation,
+  onOpenNewlineOperationsMenu,
   scheduleMultiLineHistoryRestore,
   tryExpandMultilineSelection,
   tryApplyMultiLineEditInput,
@@ -299,6 +308,20 @@ export function useEditorDomEvents({
 
       const targetElement = getElementFromEventTarget(keyboardEvent.target)
       const isTextInputTarget = Boolean(targetElement?.closest('input, textarea, select, .link-prompt'))
+      if (!isTextInputTarget) {
+        const newlineShortcutId = getNewlineShortcutIdForEvent(keyboardEvent, isMacPlatform)
+        const newlineOperation = newlineShortcutId ? hotkeys.newlineShortcuts.shortcuts[newlineShortcutId] : null
+        if (newlineOperation) {
+          keyboardEvent.preventDefault()
+          keyboardEvent.stopPropagation()
+          if (newlineOperation === 'operationsMenu') {
+            onOpenNewlineOperationsMenu()
+            return
+          }
+          onRunNewlineOperation(newlineOperation)
+          return
+        }
+      }
       if (!isTextInputTarget && (keyboardEvent.key === 'Backspace' || keyboardEvent.key === 'Delete') && activeImageRef.current) {
         if (deleteActiveEditorImageNode()) {
           keyboardEvent.preventDefault()
@@ -433,5 +456,5 @@ export function useEditorDomEvents({
       window.removeEventListener('scroll', handleScrollOrResize, true)
       window.removeEventListener('resize', handleScrollOrResize)
     }
-  }, [viewMode, displayContent, activeNoteAisleCount])
+  }, [viewMode, displayContent, activeNoteAisleCount, hotkeys, isMacPlatform])
 }

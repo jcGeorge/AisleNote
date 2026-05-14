@@ -12,6 +12,7 @@ import {
   STORAGE_TOPICS_DIR,
   STORAGE_TRASH_DIR,
 } from '../types/storage-schema'
+import { splitImageResizeMetadataFromUrl } from '../markdown/image-metadata'
 
 type BrowserStoredFile =
   | {
@@ -300,14 +301,15 @@ function getBinaryFile(fileMap: Map<string, BrowserStoredFile>, path: string): U
 function externalizeMarkdownImages(markdown: string, noteFileRelative: string, assetBank: AssetBank): string {
   return markdown.replace(IMAGE_MARKDOWN_PATTERN, (fullMatch, altText: string, srcRaw: string) => {
     const src = srcRaw.trim()
-    if (!src.startsWith('data:image/')) return fullMatch
-    const decoded = decodeDataUrl(src)
+    const { imageUrl, metadataFragment } = splitImageResizeMetadataFromUrl(src)
+    if (!imageUrl.startsWith('data:image/')) return fullMatch
+    const decoded = decodeDataUrl(imageUrl)
     if (!decoded) return fullMatch
 
     const assetRelativePath = addAssetToBank(assetBank, decoded.bytes, decoded.extension)
     const noteDirectory = dirnamePosix(noteFileRelative)
     const nextSrc = relativePosix(noteDirectory, assetRelativePath)
-    return `![${altText}](${nextSrc})`
+    return `![${altText}](${nextSrc}${metadataFragment})`
   })
 }
 
@@ -315,14 +317,15 @@ function inlineMarkdownImages(markdown: string, notePath: string, fileMap: Map<s
   return markdown.replace(IMAGE_MARKDOWN_PATTERN, (fullMatch, altText: string, srcRaw: string) => {
     const src = srcRaw.trim()
     if (!src || src.startsWith('data:')) return fullMatch
-    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(src) && !src.startsWith('file://')) return fullMatch
+    const { imageUrl, metadataFragment } = splitImageResizeMetadataFromUrl(src)
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(imageUrl) && !imageUrl.startsWith('file://')) return fullMatch
 
-    const assetPath = normalizePosixPath(joinPosix(dirnamePosix(notePath), src))
+    const assetPath = normalizePosixPath(joinPosix(dirnamePosix(notePath), imageUrl))
     const assetBytes = getBinaryFile(fileMap, assetPath)
     if (!assetBytes) return fullMatch
 
     const extension = normalizeImageExtension(assetPath.split('.').pop() ?? 'png')
-    return `![${altText}](${encodeDataUrl(assetBytes, extension)})`
+    return `![${altText}](${encodeDataUrl(assetBytes, extension)}${metadataFragment})`
   })
 }
 

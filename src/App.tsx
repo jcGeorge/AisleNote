@@ -6,6 +6,7 @@ import { useArrangeMode } from './arrange/useArrangeMode'
 import { DomainsPage } from './components/domains/DomainsPage'
 import { ImageToolsOverlay } from './components/editor/ImageToolsOverlay'
 import { LegacyEditorShell } from './components/editor/LegacyEditorShell'
+import { NewlineOperationsMenu } from './components/editor/NewlineOperationsMenu'
 import { NoteWorkspace } from './components/notes/NoteWorkspace'
 import { SubTabRail } from './components/navigation/SubTabRail'
 import { TopBar } from './components/navigation/TopBar'
@@ -17,6 +18,7 @@ import { SpacesPage } from './components/spaces/SpacesPage'
 import { StageManagerView } from './components/stage-manager/StageManagerView'
 import { TrashHomeNote } from './components/trash/TrashHomeNote'
 import { buildAisleEditorKey } from './editor/aisle-editor'
+import { applyEditorNewlineOperation } from './editor/newline-operations'
 import { useLegacyEditor } from './editor/useLegacyEditor'
 import {
   getCommandCapableEditor,
@@ -95,6 +97,7 @@ import type {
   DeleteTarget,
   LinkPromptState,
   ModalState,
+  NewlineOperationId,
   NoteAisle,
   NoteBody,
   NoteLocation,
@@ -112,6 +115,12 @@ type AisleDeleteConfirmationState = {
   aisleIndex: number
   top: number
   left: number
+}
+
+type NewlineOperationsMenuState = {
+  top: number
+  left: number
+  operations: NewlineOperationId[]
 }
 
 const AISLE_DELETE_CONFIRMATION_WIDTH_PX = 248
@@ -132,6 +141,7 @@ function App() {
   const [editing, setEditing] = useState<{ type: EditableEntityType; id: string } | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [modal, setModal] = useState<ModalState | null>(null)
+  const [newlineOperationsMenu, setNewlineOperationsMenu] = useState<NewlineOperationsMenuState | null>(null)
   const isMacPlatform = typeof navigator !== 'undefined' ? /mac/i.test(navigator.platform) : false
   const [menuOpen, setMenuOpen] = useState(false)
   const [trashTabId, setTrashTabId] = useState<string>(TRASH_HOME_ID)
@@ -157,6 +167,7 @@ function App() {
   const aisleScrollRef = useRef<HTMLDivElement | null>(null)
   const aisleHorizontalScrollByBodyRef = useRef<Map<string, number>>(new Map())
   const pendingScrollToAisleIdRef = useRef<string | null>(null)
+  const pendingFocusToAisleIdRef = useRef<string | null>(null)
   const editorEventRootRef = useRef<HTMLElement | null>(null)
   const pendingContentRef = useRef<PendingContent | null>(null)
   const pendingCreatedEditRef = useRef<PendingCreatedEdit | null>(null)
@@ -649,7 +660,7 @@ function App() {
     }, 180)
   }
 
-  const addAisleToActiveNote = () => {
+  const addAisleToActiveNote = (markdown = '') => {
     if (!activeNoteBodyId) return
     const currentAisleCount = activeNoteBody?.aisles.length ?? 0
     if (currentAisleCount <= 0) return
@@ -658,7 +669,7 @@ function App() {
       return
     }
 
-    const newAisle: NoteAisle = { id: createId(), markdown: '' }
+    const newAisle: NoteAisle = { id: createId(), markdown: normalizeMarkdownForPersistence(markdown) }
     flushPendingContent()
     setState((previous) => {
       const body = previous.noteBodies.find((candidate) => candidate.id === activeNoteBodyId)
@@ -673,6 +684,7 @@ function App() {
     })
     setActiveAisleId(newAisle.id)
     pendingScrollToAisleIdRef.current = newAisle.id
+    pendingFocusToAisleIdRef.current = newAisle.id
     exitAisleDeleteMode()
   }
 
@@ -981,6 +993,20 @@ function App() {
   const registerAisleEditorRoot = aisleEditors.registerAisleEditorRoot
 
   useEffect(() => {
+    const pendingAisleId = pendingFocusToAisleIdRef.current
+    if (viewMode !== 'main' || !activeNoteBodyId || !pendingAisleId) return
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      const editorKey = buildAisleEditorKey(activeNoteBodyId, pendingAisleId)
+      if (activateAisleEditor(editorKey, { focus: true, allowDuringPendingRename: true })) {
+        pendingFocusToAisleIdRef.current = null
+      }
+    })
+
+    return () => window.cancelAnimationFrame(animationFrame)
+  }, [viewMode, activeNoteBodyId, activeNoteAisles.length, resolvedActiveAisleId])
+
+  useEffect(() => {
     const flushOnExit = () => {
       if (saveTimerRef.current !== null) {
         window.clearTimeout(saveTimerRef.current)
@@ -1075,6 +1101,113 @@ function App() {
     }, 0)
     return true
   }
+
+  const runActiveNewlineOperation = (operation: NewlineOperationId) => {
+    const currentEditor = editorRef.current
+    if (!currentEditor) return false
+    if (operation === 'operationsMenu') {
+      openNewlineOperationsMenu()
+      return true
+    }
+    if (operation === 'aisle' && activeNoteAisles.length >= MAX_NOTE_AISLES) {
+      pushToast(`notes can have at most ${MAX_NOTE_AISLES} aisles.`, 'warning')
+      return false
+    }
+
+    const result = applyEditorNewlineOperation(currentEditor, operation)
+    if (!result.handled) return false
+
+    commitActiveEditorMarkdownNow(currentEditor)
+    syncToolbarFormatState()
+    if (operation === 'aisle') {
+      addAisleToActiveNote(result.aisleMarkdown ?? '')
+    }
+    return true
+  }
+
+  const getNewlineOperationsMenuPosition = (operationCount: number): Pick<NewlineOperationsMenuState, 'top' | 'left'> => {
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight
+    const estimatedHeight = Math.min(380, Math.max(48, operationCount * 36 + 18))
+    const menuWidth = Math.min(256, Math.max(0, viewportWidth - 16))
+    const view = getWysiwygView(editorRef.current)
+
+    try {
+      const position = view?.state?.selection?.from
+      const coords = typeof position === 'number' ? view?.coordsAtPos?.(position) : null
+      if (coords) {
+        return {
+          top: Math.max(8, Math.min(viewportHeight - estimatedHeight - 8, coords.top - estimatedHeight - 8)),
+          left: Math.max(8, Math.min(viewportWidth - menuWidth - 8, coords.left)),
+        }
+      }
+    } catch {
+      // Fall back to the active aisle pane below.
+    }
+
+    const escapedAisleId =
+      typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(activeAisleIdRef.current) : activeAisleIdRef.current
+    const activePane = editorEventRootRef.current?.querySelector<HTMLElement>(`[data-aisle-id="${escapedAisleId}"]`)
+    const rect = activePane?.getBoundingClientRect()
+    return {
+      top: Math.max(8, Math.min(viewportHeight - estimatedHeight - 8, (rect?.top ?? 84) + 12)),
+      left: Math.max(8, Math.min(viewportWidth - menuWidth - 8, (rect?.left ?? 16) + 12)),
+    }
+  }
+
+  const openNewlineOperationsMenu = () => {
+    if (viewMode !== 'main' || !editorRef.current) return
+    const operations = stateRef.current.hotkeys.newlineShortcuts.menuOperations
+    setNewlineOperationsMenu({
+      ...getNewlineOperationsMenuPosition(operations.length),
+      operations,
+    })
+  }
+
+  const runNewlineOperationFromMenu = (operation: NewlineOperationId) => {
+    setNewlineOperationsMenu(null)
+    runActiveNewlineOperation(operation)
+  }
+
+  useEffect(() => {
+    if (!newlineOperationsMenu) return
+
+    const getMenuIndex = (key: string) => {
+      if (key >= '1' && key <= '9') return Number(key) - 1
+      if (key === '0') return 9
+      return null
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopPropagation()
+        setNewlineOperationsMenu(null)
+        return
+      }
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return
+      const index = getMenuIndex(event.key)
+      if (index === null) return
+      const operation = newlineOperationsMenu.operations[index]
+      if (!operation) return
+      event.preventDefault()
+      event.stopPropagation()
+      runNewlineOperationFromMenu(operation)
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target instanceof Element ? event.target : null
+      if (target?.closest('.newline-operations-menu')) return
+      setNewlineOperationsMenu(null)
+    }
+
+    document.addEventListener('keydown', handleKeyDown, true)
+    document.addEventListener('pointerdown', handlePointerDown, true)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown, true)
+      document.removeEventListener('pointerdown', handlePointerDown, true)
+    }
+  }, [newlineOperationsMenu])
 
   const insertLinkIntoActiveEditor = (label: string, url: string) => {
     const currentEditor = editorRef.current
@@ -1227,6 +1360,8 @@ function App() {
     viewMode,
     displayContent,
     activeNoteAisleCount: activeNoteAisles.length,
+    hotkeys: state.hotkeys,
+    isMacPlatform,
     editorEventRootRef,
     editorRef,
     activeImageRef,
@@ -1248,6 +1383,8 @@ function App() {
     queueToolbarShortcutFeedback,
     syncToolbarFormatState,
     getEditorHistoryDirection,
+    onRunNewlineOperation: runActiveNewlineOperation,
+    onOpenNewlineOperationsMenu: openNewlineOperationsMenu,
     scheduleMultiLineHistoryRestore,
     tryExpandMultilineSelection,
     tryApplyMultiLineEditInput,
@@ -2392,6 +2529,7 @@ function App() {
           section={settingsController.section}
           isMacPlatform={isMacPlatform}
           shortcutDrafts={settingsController.shortcutDrafts}
+          newlineShortcutDrafts={settingsController.newlineShortcutDrafts}
           editingShortcut={settingsController.editingShortcut}
           mouseBackForwardEnabled={settingsController.mouseBackForwardEnabledDraft}
           genericHistoryHotkeysEnabled={settingsController.genericHistoryHotkeysEnabledDraft}
@@ -2403,6 +2541,8 @@ function App() {
           showParentHomeTabDraft={settingsController.showParentHomeTabDraft}
           onSectionChange={settingsController.changeSection}
           onToggleShortcutEdit={settingsController.toggleShortcutEdit}
+          onNewlineShortcutChange={settingsController.updateNewlineShortcutSetting}
+          onOpenNewlineMenuSettings={() => setModal({ type: 'newline-menu-settings' })}
           onMouseBackForwardChange={settingsController.updateMouseBackForwardSetting}
           onGenericHistoryHotkeysChange={settingsController.updateGenericHistoryHotkeysSetting}
           onAutoRemoveDaysChange={settingsController.updateAutoRemoveDaysSetting}
@@ -2523,6 +2663,15 @@ function App() {
         </>
       )}
 
+      {newlineOperationsMenu && (
+        <NewlineOperationsMenu
+          top={newlineOperationsMenu.top}
+          left={newlineOperationsMenu.left}
+          operations={newlineOperationsMenu.operations}
+          onRun={runNewlineOperationFromMenu}
+        />
+      )}
+
       <ContextMenuHost
         contextMenu={contextMenu}
         canDeleteSpace={canDeleteSpace}
@@ -2550,7 +2699,9 @@ function App() {
         state={state}
         activeSpace={activeSpace}
         domainsForPickers={domainsForPickers}
+        newlineMenuOperations={settingsController.newlineMenuOperationsDraft}
         onModalChange={setModal}
+        onNewlineMenuOperationsChange={settingsController.updateNewlineMenuOperationsSetting}
         onConfirm={confirmModal}
       />
 

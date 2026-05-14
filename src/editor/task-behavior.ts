@@ -596,7 +596,7 @@ export function installTaskTextReorderBehavior(root: HTMLElement, getEditor: () 
     if (!dragState) return
 
     const distance = Math.hypot(event.clientX - dragState.startX, event.clientY - dragState.startY)
-    if (!dragState.suppressingSelection && distance >= TASK_REORDER_SELECTION_SLOP_PX) {
+    if (distance >= TASK_REORDER_SELECTION_SLOP_PX) {
       dragState.suppressingSelection = true
       event.preventDefault()
       event.stopPropagation()
@@ -678,6 +678,8 @@ export function installTaskTextReorderBehavior(root: HTMLElement, getEditor: () 
     const sourceIndex = getDirectTaskListItems(listElement).indexOf(sourceElement)
     if (sourceIndex < 0) return
 
+    event.preventDefault()
+
     dragState = {
       editor,
       sourceElement,
@@ -690,7 +692,7 @@ export function installTaskTextReorderBehavior(root: HTMLElement, getEditor: () 
       startX: event.clientX,
       startY: event.clientY,
       startedOnTrailingTaskSpace: isTaskTrailingEmptySpaceClick(sourceElement, event),
-      suppressingSelection: false,
+      suppressingSelection: true,
       dragging: false,
     }
     root.classList.add('task-reorder-pending')
@@ -704,7 +706,6 @@ export function installTaskTextReorderBehavior(root: HTMLElement, getEditor: () 
 
   const handleSelectStart = (event: Event) => {
     if (!dragState) return
-    if (!dragState.dragging && !dragState.suppressingSelection) return
     event.preventDefault()
     event.stopPropagation()
     window.getSelection()?.removeAllRanges()

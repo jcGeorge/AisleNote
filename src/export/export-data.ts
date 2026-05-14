@@ -1,4 +1,5 @@
 import JSZip from 'jszip'
+import { splitImageResizeMetadataFromUrl } from '../markdown/image-metadata'
 import { convertInternalTabsForExport } from '../markdown/markdown-utils'
 import type { AppState, Space, SpaceSettings } from '../types/app'
 
@@ -30,20 +31,33 @@ function decodeDataUrl(dataUrl: string): Uint8Array | null {
   }
 }
 
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
 function rewriteMarkdownImages(markdown: string, spaceFolder: string, imageBank: Map<string, Uint8Array>) {
   let counter = imageBank.size + 1
   const exportReadyMarkdown = convertInternalTabsForExport(markdown)
   const nextMarkdown = exportReadyMarkdown.replace(/!\[([^\]]*)\]\((data:image\/[^)]+)\)/g, (_all, alt: string, src: string) => {
-    const extensionMatch = src.match(/^data:image\/([a-zA-Z0-9+.-]+);base64,/)
+    const { imageUrl, metadata } = splitImageResizeMetadataFromUrl(src)
+    const extensionMatch = imageUrl.match(/^data:image\/([a-zA-Z0-9+.-]+);base64,/)
     const extRaw = extensionMatch?.[1]?.toLowerCase() ?? 'png'
     const ext = extRaw === 'jpeg' ? 'jpg' : extRaw.replace(/[^a-z0-9]/g, '') || 'png'
     const fileName = `image-${String(counter).padStart(4, '0')}.${ext}`
     counter += 1
-    const bytes = decodeDataUrl(src)
+    const bytes = decodeDataUrl(imageUrl)
     if (bytes) {
       imageBank.set(`${spaceFolder}/assets/${fileName}`, bytes)
     }
-    return `![${alt}](${`assets/${fileName}`})`
+    const nextSrc = `assets/${fileName}`
+    if (metadata) {
+      return `<img src="${escapeHtmlAttribute(nextSrc)}" alt="${escapeHtmlAttribute(alt)}" width="${metadata.w}">`
+    }
+    return `![${alt}](${nextSrc})`
   })
   return nextMarkdown
 }

@@ -1,4 +1,4 @@
-import { DEFAULT_SHORTCUTS, normalizeHotkeySettings } from '../hotkeys/shortcuts'
+import { DEFAULT_NEWLINE_SHORTCUT_SETTINGS, DEFAULT_SHORTCUTS, normalizeHotkeySettings } from '../hotkeys/shortcuts'
 import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
 import {
   DEFAULT_AUTO_REMOVE_DAYS,
@@ -30,6 +30,7 @@ const RAW_DEFAULT_STATE: AppState = {
   spaces: DEFAULT_DOMAIN.spaces,
   hotkeys: {
     shortcuts: DEFAULT_SHORTCUTS,
+    newlineShortcuts: DEFAULT_NEWLINE_SHORTCUT_SETTINGS,
     enableMouseBackForward: true,
     enableGenericHistoryHotkeys: true,
   },

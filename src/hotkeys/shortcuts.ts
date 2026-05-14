@@ -1,7 +1,51 @@
-import type { AppState, ShortcutId } from '../types/app'
+import type { AppState, NewlineOperationId, NewlineShortcutId, ShortcutId } from '../types/app'
 import { DEFAULT_COMMAND_SHORTCUTS } from '../commands/app-commands'
 
 export const DEFAULT_SHORTCUTS: Record<ShortcutId, string> = DEFAULT_COMMAND_SHORTCUTS
+
+export const NEWLINE_OPERATIONS: Array<{ id: NewlineOperationId; label: string }> = [
+  { id: 'normalNewLine', label: 'normal new line' },
+  { id: 'task', label: 'task' },
+  { id: 'bulletList', label: 'bullet list' },
+  { id: 'numberedList', label: 'numbered list' },
+  { id: 'aisle', label: 'aisle' },
+  { id: 'horizontalLine', label: 'horizontal line' },
+  { id: 'codeBlock', label: 'code block' },
+  { id: 'inlineCode', label: 'inline code block' },
+  { id: 'blockQuote', label: 'block quote' },
+  { id: 'operationsMenu', label: 'new line menu' },
+]
+
+export const NEWLINE_OPERATION_LABELS = NEWLINE_OPERATIONS.reduce<Record<NewlineOperationId, string>>(
+  (labels, operation) => ({
+    ...labels,
+    [operation.id]: operation.label,
+  }),
+  {} as Record<NewlineOperationId, string>,
+)
+
+export const NEWLINE_MENU_ELIGIBLE_OPERATIONS: NewlineOperationId[] = [
+  'task',
+  'bulletList',
+  'numberedList',
+  'aisle',
+  'horizontalLine',
+  'codeBlock',
+  'inlineCode',
+  'blockQuote',
+]
+
+export const DEFAULT_NEWLINE_SHORTCUT_SETTINGS: AppState['hotkeys']['newlineShortcuts'] = {
+  shortcuts: {
+    controlEnter: 'aisle',
+    shiftEnter: 'task',
+    commandEnter: 'operationsMenu',
+  },
+  menuOperations: NEWLINE_MENU_ELIGIBLE_OPERATIONS,
+}
+
+const NEWLINE_OPERATION_IDS = new Set<NewlineOperationId>(NEWLINE_OPERATIONS.map((operation) => operation.id))
+const NEWLINE_MENU_ELIGIBLE_OPERATION_IDS = new Set<NewlineOperationId>(NEWLINE_MENU_ELIGIBLE_OPERATIONS)
 
 function normalizeShortcutValue(raw: unknown, fallback: string): string {
   if (typeof raw !== 'string') return fallback
@@ -12,6 +56,7 @@ function normalizeShortcutValue(raw: unknown, fallback: string): string {
 export function normalizeHotkeySettings(raw: unknown): AppState['hotkeys'] {
   const fallback: AppState['hotkeys'] = {
     shortcuts: DEFAULT_SHORTCUTS,
+    newlineShortcuts: DEFAULT_NEWLINE_SHORTCUT_SETTINGS,
     enableMouseBackForward: true,
     enableGenericHistoryHotkeys: true,
   }
@@ -27,9 +72,49 @@ export function normalizeHotkeySettings(raw: unknown): AppState['hotkeys'] {
 
   return {
     shortcuts,
+    newlineShortcuts: normalizeNewlineShortcutSettings(obj.newlineShortcuts),
     enableMouseBackForward: typeof obj.enableMouseBackForward === 'boolean' ? obj.enableMouseBackForward : true,
     enableGenericHistoryHotkeys:
       typeof obj.enableGenericHistoryHotkeys === 'boolean' ? obj.enableGenericHistoryHotkeys : true,
+  }
+}
+
+function normalizeNewlineOperation(value: unknown, fallback: NewlineOperationId): NewlineOperationId {
+  return typeof value === 'string' && NEWLINE_OPERATION_IDS.has(value as NewlineOperationId)
+    ? (value as NewlineOperationId)
+    : fallback
+}
+
+function normalizeNewlineShortcutSettings(raw: unknown): AppState['hotkeys']['newlineShortcuts'] {
+  if (!raw || typeof raw !== 'object') return DEFAULT_NEWLINE_SHORTCUT_SETTINGS
+  const obj = raw as Record<string, unknown>
+  const rawShortcutMap =
+    obj.shortcuts && typeof obj.shortcuts === 'object' ? (obj.shortcuts as Record<string, unknown>) : {}
+  const rawMenuOperations = Array.isArray(obj.menuOperations) ? obj.menuOperations : []
+  const menuOperations = rawMenuOperations.filter(
+    (operation): operation is NewlineOperationId =>
+      typeof operation === 'string' &&
+      NEWLINE_MENU_ELIGIBLE_OPERATION_IDS.has(operation as NewlineOperationId),
+  )
+  const dedupedMenuOperations = Array.from(new Set(menuOperations)).slice(0, 10)
+
+  return {
+    shortcuts: {
+      controlEnter: normalizeNewlineOperation(
+        rawShortcutMap.controlEnter,
+        DEFAULT_NEWLINE_SHORTCUT_SETTINGS.shortcuts.controlEnter,
+      ),
+      shiftEnter: normalizeNewlineOperation(
+        rawShortcutMap.shiftEnter,
+        DEFAULT_NEWLINE_SHORTCUT_SETTINGS.shortcuts.shiftEnter,
+      ),
+      commandEnter: normalizeNewlineOperation(
+        rawShortcutMap.commandEnter,
+        DEFAULT_NEWLINE_SHORTCUT_SETTINGS.shortcuts.commandEnter,
+      ),
+    },
+    menuOperations:
+      dedupedMenuOperations.length > 0 ? dedupedMenuOperations : DEFAULT_NEWLINE_SHORTCUT_SETTINGS.menuOperations,
   }
 }
 
@@ -102,4 +187,26 @@ export function formatShortcutLabel(shortcut: string, isMac: boolean): string {
       return token.length === 1 ? token.toLowerCase() : token.toLowerCase()
     })
     .join('+')
+}
+
+export function formatFixedNewlineShortcutLabel(shortcutId: NewlineShortcutId, isMac: boolean): string {
+  if (shortcutId === 'shiftEnter') return 'shift+enter'
+  if (shortcutId === 'controlEnter') return isMac ? 'ctrl+enter' : 'alt+enter'
+  return isMac ? 'cmd+enter' : 'ctrl+enter'
+}
+
+export function getNewlineShortcutIdForEvent(event: KeyboardEvent, isMac: boolean): NewlineShortcutId | null {
+  if (event.key !== 'Enter') return null
+
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.shiftKey) return 'shiftEnter'
+
+  if (isMac) {
+    if (event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) return 'controlEnter'
+    if (event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) return 'commandEnter'
+    return null
+  }
+
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) return 'controlEnter'
+  if (event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) return 'commandEnter'
+  return null
 }

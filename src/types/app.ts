@@ -8,7 +8,26 @@ export type ShortcutId =
   | 'newSubTab'
   | 'cycleSubTabNext'
   | 'cycleSubTabPrev'
-export type SettingsSection = 'hotkeys' | 'data' | 'visuals'
+export type SettingsSection = 'hotkeys' | 'shortcuts' | 'data' | 'visuals'
+
+export type NewlineOperationId =
+  | 'normalNewLine'
+  | 'task'
+  | 'bulletList'
+  | 'numberedList'
+  | 'aisle'
+  | 'horizontalLine'
+  | 'codeBlock'
+  | 'inlineCode'
+  | 'blockQuote'
+  | 'operationsMenu'
+
+export type NewlineShortcutId = 'controlEnter' | 'shiftEnter' | 'commandEnter'
+
+export type NewlineShortcutSettings = {
+  shortcuts: Record<NewlineShortcutId, NewlineOperationId>
+  menuOperations: NewlineOperationId[]
+}
 
 export type NoteAisle = {
   id: string
@@ -95,6 +114,7 @@ export type AppState = {
   spaces: Space[]
   hotkeys: {
     shortcuts: Record<ShortcutId, string>
+    newlineShortcuts: NewlineShortcutSettings
     enableMouseBackForward: boolean
     enableGenericHistoryHotkeys: boolean
   }
@@ -367,6 +387,7 @@ export type ModalState =
       target: NoteLocation & { aisleIds?: string[] }
       editingTokenId?: string
     }
+  | { type: 'newline-menu-settings' }
 
 export type TrashParentBucket = {
   id: string

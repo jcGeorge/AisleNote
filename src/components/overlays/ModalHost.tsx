@@ -1,6 +1,11 @@
+import { useState, type DragEvent } from 'react'
 import { NoteLocationPicker, type NoteLocationPickerValue } from '../notes/NoteLocationPicker'
+import {
+  NEWLINE_MENU_ELIGIBLE_OPERATIONS,
+  NEWLINE_OPERATION_LABELS,
+} from '../../hotkeys/shortcuts'
 import { buildNoteLocationKey, listNoteLocationsForBody } from '../../notes/note-locations'
-import type { AppState, Domain, ModalState, Space } from '../../types/app'
+import type { AppState, Domain, ModalState, NewlineOperationId, Space } from '../../types/app'
 import { getModalText } from './modal-text'
 
 type ModalHostProps = {
@@ -8,8 +13,141 @@ type ModalHostProps = {
   state: AppState
   activeSpace: Space
   domainsForPickers: Domain[]
+  newlineMenuOperations: NewlineOperationId[]
   onModalChange: (modal: ModalState | null) => void
+  onNewlineMenuOperationsChange: (operations: NewlineOperationId[]) => void
   onConfirm: () => void
+}
+
+const MENU_SLOT_LABELS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']
+const NEWLINE_DRAG_MIME = 'application/x-tabs-newline-operation'
+
+function NewlineMenuSettings({
+  operations,
+  onChange,
+}: {
+  operations: NewlineOperationId[]
+  onChange: (operations: NewlineOperationId[]) => void
+}) {
+  const [draggedOperation, setDraggedOperation] = useState<NewlineOperationId | null>(null)
+  const [dropTarget, setDropTarget] = useState<{ type: 'slot'; index: number } | { type: 'pool' } | null>(null)
+  const selected = operations.filter((operation) => NEWLINE_MENU_ELIGIBLE_OPERATIONS.includes(operation))
+  const available = NEWLINE_MENU_ELIGIBLE_OPERATIONS.filter((operation) => !selected.includes(operation))
+
+  const moveOperationToSlot = (operation: NewlineOperationId, slotIndex: number) => {
+    const next = selected.filter((candidate) => candidate !== operation)
+    next.splice(Math.min(slotIndex, next.length), 0, operation)
+    onChange(next.slice(0, MENU_SLOT_LABELS.length))
+  }
+
+  const removeOperation = (operation: NewlineOperationId) => {
+    onChange(selected.filter((candidate) => candidate !== operation))
+  }
+
+  const getDraggedOperation = (event: DragEvent) => {
+    const operation = event.dataTransfer.getData(NEWLINE_DRAG_MIME) || event.dataTransfer.getData('text/plain')
+    return NEWLINE_MENU_ELIGIBLE_OPERATIONS.includes(operation as NewlineOperationId)
+      ? (operation as NewlineOperationId)
+      : null
+  }
+
+  const startDrag = (event: DragEvent, operation: NewlineOperationId) => {
+    setDraggedOperation(operation)
+    setDropTarget(null)
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData(NEWLINE_DRAG_MIME, operation)
+    event.dataTransfer.setData('text/plain', operation)
+  }
+
+  const finishDrag = () => {
+    setDraggedOperation(null)
+    setDropTarget(null)
+  }
+
+  return (
+    <div className="newline-menu-settings">
+      <div className="newline-menu-slots" aria-label="New line menu order">
+        {MENU_SLOT_LABELS.map((slotLabel, index) => {
+          const operation = selected[index]
+          const isDropTarget = dropTarget?.type === 'slot' && dropTarget.index === index
+          const isDragSource = Boolean(draggedOperation && operation === draggedOperation)
+          return (
+            <div
+              key={slotLabel}
+              className={`newline-menu-slot ${operation ? 'has-operation' : ''} ${isDropTarget ? 'is-drop-target' : ''} ${
+                isDragSource ? 'is-drag-source' : ''
+              }`}
+              onDragEnter={() => setDropTarget({ type: 'slot', index })}
+              onDragOver={(event) => {
+                event.preventDefault()
+                event.dataTransfer.dropEffect = 'move'
+                setDropTarget({ type: 'slot', index })
+              }}
+              onDrop={(event) => {
+                event.preventDefault()
+                const draggedOperation = getDraggedOperation(event)
+                if (draggedOperation) moveOperationToSlot(draggedOperation, index)
+                finishDrag()
+              }}
+            >
+              <span className="newline-menu-slot-number">{slotLabel}</span>
+              {operation ? (
+                <button
+                  type="button"
+                  draggable
+                  className={`newline-menu-operation-chip ${draggedOperation === operation ? 'is-dragging' : ''}`}
+                  onDragStart={(event) => startDrag(event, operation)}
+                  onDragEnd={finishDrag}
+                  onClick={() => removeOperation(operation)}
+                  title="Click to remove"
+                >
+                  {NEWLINE_OPERATION_LABELS[operation]}
+                </button>
+              ) : (
+                <span className="newline-menu-empty-slot">unassigned</span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+      <div
+        className={`newline-menu-pool ${dropTarget?.type === 'pool' ? 'is-drop-target' : ''}`}
+        onDragEnter={() => setDropTarget({ type: 'pool' })}
+        onDragOver={(event) => {
+          event.preventDefault()
+          event.dataTransfer.dropEffect = 'move'
+          setDropTarget({ type: 'pool' })
+        }}
+        onDrop={(event) => {
+          event.preventDefault()
+          const operation = getDraggedOperation(event)
+          if (operation) removeOperation(operation)
+          finishDrag()
+        }}
+      >
+        <span className="newline-menu-pool-label">available</span>
+        <div className="newline-menu-pool-items">
+          {available.length > 0 ? (
+            available.map((operation) => (
+              <button
+                key={operation}
+                type="button"
+                draggable
+                className={`newline-menu-operation-chip ${draggedOperation === operation ? 'is-dragging' : ''}`}
+                onDragStart={(event) => startDrag(event, operation)}
+                onDragEnd={finishDrag}
+                onClick={() => moveOperationToSlot(operation, selected.length)}
+              >
+                {NEWLINE_OPERATION_LABELS[operation]}
+              </button>
+            ))
+          ) : (
+            <span className="newline-menu-pool-empty">all operations are in the menu</span>
+          )}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export function ModalHost({
@@ -17,7 +155,9 @@ export function ModalHost({
   state,
   activeSpace,
   domainsForPickers,
+  newlineMenuOperations,
   onModalChange,
+  onNewlineMenuOperationsChange,
   onConfirm,
 }: ModalHostProps) {
   if (!modal) return null
@@ -28,14 +168,17 @@ export function ModalHost({
     modal.type === 'duplicate-note' ||
     modal.type === 'copy-note' ||
     modal.type === 'deduplicate-note' ||
-    modal.type === 'insert-note-reference'
+    modal.type === 'insert-note-reference' ||
+    modal.type === 'newline-menu-settings'
   const isNotePickerModal =
     modal.type === 'duplicate-note' || modal.type === 'copy-note' || modal.type === 'insert-note-reference'
 
   return (
     <div className="delete-modal-backdrop" onClick={() => onModalChange(null)}>
       <div
-        className={`delete-modal ${isPickerModal ? 'settings-modal' : ''} ${isNotePickerModal ? 'note-picker-modal' : ''}`}
+        className={`delete-modal ${isPickerModal ? 'settings-modal' : ''} ${isNotePickerModal ? 'note-picker-modal' : ''} ${
+          modal.type === 'newline-menu-settings' ? 'newline-settings-modal' : ''
+        }`}
         role="dialog"
         aria-modal="true"
         onClick={(event) => event.stopPropagation()}
@@ -124,6 +267,9 @@ export function ModalHost({
               onChange={(target: NoteLocationPickerValue) => onModalChange({ ...modal, target })}
             />
           </div>
+        )}
+        {modal.type === 'newline-menu-settings' && (
+          <NewlineMenuSettings operations={newlineMenuOperations} onChange={onNewlineMenuOperationsChange} />
         )}
         <div className="delete-modal-actions">
           <button type="button" className="btn btn-sm btn-outline-light modal-cancel-btn" onClick={() => onModalChange(null)}>

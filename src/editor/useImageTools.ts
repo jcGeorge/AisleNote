@@ -2,6 +2,11 @@
 import { useEffect, useRef, useState, type MouseEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react'
 import type { Editor } from '@toast-ui/editor'
 import type { InlineCropDragMode } from '../components/editor/ImageToolsOverlay'
+import {
+  getImageResizeMetadata,
+  stripImageResizeMetadataFromUrl,
+  withImageResizeMetadata,
+} from '../markdown/image-metadata'
 import { getWysiwygView } from './prosemirror-utils'
 import type { ImageToolsState, InlineCropState, ToastTone } from '../types/app'
 
@@ -52,6 +57,28 @@ export function useImageTools({
     startRelWidth: number
     startRelHeight: number
   }>({ mode: null, startX: 0, startY: 0, startRelX: 0, startRelY: 0, startRelWidth: 1, startRelHeight: 1 })
+
+  const syncImageDisplayMetadata = (image: HTMLImageElement) => {
+    const metadata = getImageResizeMetadata(image.getAttribute('src') ?? image.src)
+    if (!metadata) return false
+
+    image.style.width = `${metadata.w}px`
+    image.style.height = 'auto'
+    image.style.maxWidth = '100%'
+    image.setAttribute('width', String(metadata.w))
+    image.removeAttribute('height')
+    return true
+  }
+
+  const syncEditorImageDisplayMetadata = () => {
+    const root = editorEventRootRef.current
+    if (!root) return
+    root.querySelectorAll('img').forEach((image) => {
+      if (image instanceof HTMLImageElement) {
+        syncImageDisplayMetadata(image)
+      }
+    })
+  }
 
   const updateInlineCrop = (updater: InlineCropState | ((previous: InlineCropState) => InlineCropState)) => {
     const previous = inlineCropRef.current
@@ -115,6 +142,47 @@ export function useImageTools({
     }
   }, [])
 
+  useEffect(() => {
+    let observer: MutationObserver | null = null
+    let frameId = 0
+    let retryId = 0
+    let cancelled = false
+
+    const scheduleSync = () => {
+      if (frameId) return
+      frameId = window.requestAnimationFrame(() => {
+        frameId = 0
+        syncEditorImageDisplayMetadata()
+      })
+    }
+
+    const attachObserver = () => {
+      if (cancelled) return
+      const root = editorEventRootRef.current
+      if (!root) {
+        retryId = window.setTimeout(attachObserver, 100)
+        return
+      }
+
+      syncEditorImageDisplayMetadata()
+      observer = new MutationObserver(scheduleSync)
+      observer.observe(root, {
+        attributes: true,
+        attributeFilter: ['src'],
+        childList: true,
+        subtree: true,
+      })
+    }
+
+    attachObserver()
+    return () => {
+      cancelled = true
+      if (observer) observer.disconnect()
+      if (frameId) window.cancelAnimationFrame(frameId)
+      if (retryId) window.clearTimeout(retryId)
+    }
+  }, [])
+
   const closeIfSelectedImageMissing = () => {
     const image = activeImageRef.current
     if (!image) return
@@ -125,6 +193,7 @@ export function useImageTools({
   }
 
   const refreshPosition = () => {
+    syncEditorImageDisplayMetadata()
     const image = activeImageRef.current
     if (!image || !image.isConnected) {
       close()
@@ -161,6 +230,7 @@ export function useImageTools({
 
   const select = (image: HTMLImageElement) => {
     activeImageRef.current = image
+    syncImageDisplayMetadata(image)
     activateEditorFromEventTarget(image)
     editorRef.current?.focus()
     refreshPosition()
@@ -184,7 +254,14 @@ export function useImageTools({
     const context = canvas.getContext('2d')
     if (!context) return null
 
-    context.drawImage(image, 0, 0, width, height)
+    const sourceImage = new Image()
+    sourceImage.src = stripImageResizeMetadataFromUrl(image.getAttribute('src') ?? image.src)
+    await new Promise<void>((resolve, reject) => {
+      sourceImage.onload = () => resolve()
+      sourceImage.onerror = () => reject(new Error('image load failed'))
+    })
+
+    context.drawImage(sourceImage, 0, 0, width, height)
     const blob = await new Promise<Blob | null>((resolve) => {
       canvas.toBlob((nextBlob) => resolve(nextBlob), 'image/png')
     })
@@ -304,26 +381,6 @@ export function useImageTools({
     return true
   }
 
-  const renderImageToDataUrl = async (image: HTMLImageElement, width: number, height: number) => {
-    const sourceImage = new Image()
-    sourceImage.src = image.src
-    await new Promise<void>((resolve, reject) => {
-      sourceImage.onload = () => resolve()
-      sourceImage.onerror = () => reject(new Error('image load failed'))
-    })
-
-    const outputWidth = Math.max(8, Math.round(width))
-    const outputHeight = Math.max(8, Math.round(height))
-    const canvas = document.createElement('canvas')
-    canvas.width = outputWidth
-    canvas.height = outputHeight
-    const context = canvas.getContext('2d')
-    if (!context) return null
-
-    context.drawImage(sourceImage, 0, 0, outputWidth, outputHeight)
-    return canvas.toDataURL('image/png')
-  }
-
   const commitResizedImage = async () => {
     const image = activeImageRef.current
     if (!image || !image.isConnected) {
@@ -338,15 +395,14 @@ export function useImageTools({
     }
 
     try {
-      const nextDataUrl = await renderImageToDataUrl(image, rect.width, rect.height)
-      if (!nextDataUrl) {
-        commitCurrentEditorContent()
-        return
-      }
-      if (!updateEditorImageNode(image, { imageUrl: nextDataUrl, altText: image.alt || null })) {
-        image.src = nextDataUrl
+      const displayWidth = Math.max(8, Math.round(rect.width))
+      const sourceUrl = image.getAttribute('src') ?? image.src
+      const nextImageUrl = withImageResizeMetadata(sourceUrl, { v: 1, w: displayWidth })
+      if (!updateEditorImageNode(image, { imageUrl: nextImageUrl, altText: image.alt || null })) {
+        image.src = nextImageUrl
         commitCurrentEditorContent()
       }
+      syncImageDisplayMetadata(image)
       refreshPosition()
     } catch {
       commitCurrentEditorContent()
@@ -409,7 +465,7 @@ export function useImageTools({
     if (!image || !crop.active || !image.src) return
 
     const sourceImage = new Image()
-    sourceImage.src = image.src
+    sourceImage.src = stripImageResizeMetadataFromUrl(image.getAttribute('src') ?? image.src)
     await new Promise<void>((resolve, reject) => {
       sourceImage.onload = () => resolve()
       sourceImage.onerror = () => reject(new Error('image load failed'))
@@ -448,7 +504,7 @@ export function useImageTools({
 
     context.imageSmoothingEnabled = false
     context.drawImage(sourceImage, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, sourceWidth, sourceHeight)
-    const nextDataUrl = canvas.toDataURL('image/png')
+    const nextDataUrl = withImageResizeMetadata(canvas.toDataURL('image/png'), { v: 1, w: renderedWidth })
 
     if (!updateEditorImageNode(image, { imageUrl: nextDataUrl, altText: image.alt || null })) {
       image.src = nextDataUrl

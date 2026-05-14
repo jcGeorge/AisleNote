@@ -1,5 +1,10 @@
 import { APP_COMMANDS } from '../../commands/app-commands'
-import { formatShortcutLabel } from '../../hotkeys/shortcuts'
+import {
+  formatFixedNewlineShortcutLabel,
+  formatShortcutLabel,
+  NEWLINE_OPERATION_LABELS,
+  NEWLINE_OPERATIONS,
+} from '../../hotkeys/shortcuts'
 import {
   MAX_AUTO_REMOVE_DAYS,
   MAX_NOTE_FONT_SCALE,
@@ -10,7 +15,7 @@ import {
   NOTE_FONT_SCALE_STEP,
   TAB_BUTTON_SCALE_STEP,
 } from '../../settings/defaults'
-import type { AppState, AppTheme, SettingsSection, ShortcutId } from '../../types/app'
+import type { AppState, AppTheme, NewlineOperationId, NewlineShortcutId, SettingsSection, ShortcutId } from '../../types/app'
 
 const THEME_OPTIONS: Array<{ id: AppTheme; label: string }> = [
   { id: 'dark', label: 'dark' },
@@ -19,11 +24,18 @@ const THEME_OPTIONS: Array<{ id: AppTheme; label: string }> = [
   { id: 'blues', label: 'blues' },
 ]
 
+const NEWLINE_SHORTCUT_ROWS: Array<{ id: NewlineShortcutId; label: string }> = [
+  { id: 'controlEnter', label: 'aisle shortcut' },
+  { id: 'shiftEnter', label: 'task shortcut' },
+  { id: 'commandEnter', label: 'menu shortcut' },
+]
+
 type SettingsPageProps = {
   state: AppState
   section: SettingsSection
   isMacPlatform: boolean
   shortcutDrafts: Record<ShortcutId, string>
+  newlineShortcutDrafts: Record<NewlineShortcutId, NewlineOperationId>
   editingShortcut: ShortcutId | null
   mouseBackForwardEnabled: boolean
   genericHistoryHotkeysEnabled: boolean
@@ -35,6 +47,8 @@ type SettingsPageProps = {
   showParentHomeTabDraft: boolean
   onSectionChange: (section: SettingsSection) => void
   onToggleShortcutEdit: (shortcutId: ShortcutId) => void
+  onNewlineShortcutChange: (shortcutId: NewlineShortcutId, operation: NewlineOperationId) => void
+  onOpenNewlineMenuSettings: () => void
   onMouseBackForwardChange: (enabled: boolean) => void
   onGenericHistoryHotkeysChange: (enabled: boolean) => void
   onAutoRemoveDaysChange: (value: string, commit?: boolean) => void
@@ -51,6 +65,7 @@ export function SettingsPage({
   section,
   isMacPlatform,
   shortcutDrafts,
+  newlineShortcutDrafts,
   editingShortcut,
   mouseBackForwardEnabled,
   genericHistoryHotkeysEnabled,
@@ -62,6 +77,8 @@ export function SettingsPage({
   showParentHomeTabDraft,
   onSectionChange,
   onToggleShortcutEdit,
+  onNewlineShortcutChange,
+  onOpenNewlineMenuSettings,
   onMouseBackForwardChange,
   onGenericHistoryHotkeysChange,
   onAutoRemoveDaysChange,
@@ -76,7 +93,7 @@ export function SettingsPage({
     <section className="settings-page-wrap">
       <div className="settings-page-card">
         <div className="settings-section-tabs" role="tablist" aria-label="settings sections">
-          {(['hotkeys', 'data', 'visuals'] as SettingsSection[]).map((settingsSection) => (
+          {(['hotkeys', 'shortcuts', 'data', 'visuals'] as SettingsSection[]).map((settingsSection) => (
             <button
               key={settingsSection}
               type="button"
@@ -138,6 +155,42 @@ export function SettingsPage({
                 />
               </div>
             </div>
+          </div>
+        )}
+
+        {section === 'shortcuts' && (
+          <div className="settings-section-panel" role="tabpanel">
+            <p>shortcuts ({isMacPlatform ? 'mac' : 'windows'}):</p>
+            <div className="settings-hotkeys-list">
+              {NEWLINE_SHORTCUT_ROWS.map((row) => (
+                <label key={row.id} className="settings-hotkey-row" htmlFor={`settings-newline-${row.id}`}>
+                  <span className="settings-hotkey-label">
+                    {formatFixedNewlineShortcutLabel(row.id, isMacPlatform)}
+                  </span>
+                  <select
+                    id={`settings-newline-${row.id}`}
+                    className="settings-select-input settings-shortcut-select"
+                    value={newlineShortcutDrafts[row.id]}
+                    onChange={(event) => onNewlineShortcutChange(row.id, event.target.value as NewlineOperationId)}
+                    aria-label={row.label}
+                  >
+                    {NEWLINE_OPERATIONS.map((operation) => (
+                      <option key={operation.id} value={operation.id}>
+                        {operation.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </div>
+            <div className="settings-divider" />
+            <div className="settings-hotkey-row">
+              <span className="settings-hotkey-label">{NEWLINE_OPERATION_LABELS.operationsMenu}</span>
+              <button type="button" className="btn btn-sm settings-action-btn" onClick={onOpenNewlineMenuSettings}>
+                configure
+              </button>
+            </div>
+            <p className="settings-help">numbered menu entries use 1-9, then 0.</p>
           </div>
         )}
 

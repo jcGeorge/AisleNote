@@ -13,8 +13,21 @@ const DEFAULT_DOMAIN_ID = 'humble-beginnings-domain'
 const DEFAULT_DOMAIN_NAME = 'humble beginnings'
 const SCHEMA_VERSION = 1
 const IMAGE_MARKDOWN_PATTERN = /!\[([^\]]*)\]\(([^)]+)\)/g
+const IMAGE_METADATA_FRAGMENT_PREFIX = '#tabs-image='
 const INTERNAL_INDENT_TOKEN = '\u2060\u2003\u2003'
 const EXPORT_TAB_SPACES = '    '
+
+function splitImageMetadataFromUrl(url) {
+  const source = String(url ?? '')
+  const index = source.indexOf(IMAGE_METADATA_FRAGMENT_PREFIX)
+  if (index < 0) {
+    return { imageUrl: source, metadataFragment: '' }
+  }
+  return {
+    imageUrl: source.slice(0, index),
+    metadataFragment: source.slice(index),
+  }
+}
 
 function normalizeImageExtension(extRaw) {
   const normalized = String(extRaw ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
@@ -270,14 +283,15 @@ function externalizeMarkdownImages(markdown, noteFileRelative, assetBank) {
   return String(markdown ?? '').replace(IMAGE_MARKDOWN_PATTERN, (fullMatch, altText, srcRaw) => {
     const src = String(srcRaw ?? '').trim()
     if (!src) return fullMatch
+    const { imageUrl, metadataFragment } = splitImageMetadataFromUrl(src)
 
     let decoded = null
 
-    if (src.startsWith('data:image/')) {
-      decoded = decodeImageDataUrl(src)
-    } else if (src.startsWith('file://')) {
+    if (imageUrl.startsWith('data:image/')) {
+      decoded = decodeImageDataUrl(imageUrl)
+    } else if (imageUrl.startsWith('file://')) {
       try {
-        const absolutePath = fileURLToPath(src)
+        const absolutePath = fileURLToPath(imageUrl)
         if (existsSync(absolutePath)) {
           decoded = {
             bytes: readFileSync(absolutePath),
@@ -294,7 +308,7 @@ function externalizeMarkdownImages(markdown, noteFileRelative, assetBank) {
     const assetRelativePath = addAssetToBank(assetBank, decoded.bytes, decoded.extension)
     const noteDirectory = path.posix.dirname(noteFileRelative)
     const nextSrc = path.posix.relative(noteDirectory, assetRelativePath) || path.posix.basename(assetRelativePath)
-    return `![${altText}](${nextSrc})`
+    return `![${altText}](${nextSrc}${metadataFragment})`
   })
 }
 
@@ -302,24 +316,25 @@ function inlineMarkdownImages(markdown, noteFilePath) {
   return String(markdown ?? '').replace(IMAGE_MARKDOWN_PATTERN, (fullMatch, altText, srcRaw) => {
     const src = String(srcRaw ?? '').trim()
     if (!src || src.startsWith('data:')) return fullMatch
-    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(src) && !src.startsWith('file://')) return fullMatch
+    const { imageUrl, metadataFragment } = splitImageMetadataFromUrl(src)
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(imageUrl) && !imageUrl.startsWith('file://')) return fullMatch
 
     let absolutePath = null
-    if (src.startsWith('file://')) {
+    if (imageUrl.startsWith('file://')) {
       try {
-        absolutePath = fileURLToPath(src)
+        absolutePath = fileURLToPath(imageUrl)
       } catch {
         absolutePath = null
       }
     } else {
-      absolutePath = path.resolve(path.dirname(noteFilePath), src)
+      absolutePath = path.resolve(path.dirname(noteFilePath), imageUrl)
     }
 
     if (!absolutePath || !existsSync(absolutePath)) return fullMatch
 
     try {
       const bytes = readFileSync(absolutePath)
-      return `![${altText}](${buildImageDataUrl(bytes, absolutePath)})`
+      return `![${altText}](${buildImageDataUrl(bytes, absolutePath)}${metadataFragment})`
     } catch {
       return fullMatch
     }

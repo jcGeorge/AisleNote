@@ -26,11 +26,27 @@ export const STORAGE_MANIFEST_FILE = 'manifest.json' as const
 export const STORAGE_HOME_NOTE_FILE = 'home.md' as const
 
 export type StorageShortcutMap = Record<StorageShortcutId, string>
+export type StorageNewlineOperationId =
+  | 'normalNewLine'
+  | 'task'
+  | 'bulletList'
+  | 'numberedList'
+  | 'aisle'
+  | 'horizontalLine'
+  | 'codeBlock'
+  | 'inlineCode'
+  | 'blockQuote'
+  | 'operationsMenu'
+export type StorageNewlineShortcutId = 'controlEnter' | 'shiftEnter' | 'commandEnter'
 
 export type StorageGlobalSettings = {
   theme: StorageTheme
   hotkeys: {
     shortcuts: StorageShortcutMap
+    newlineShortcuts?: {
+      shortcuts: Record<StorageNewlineShortcutId, StorageNewlineOperationId>
+      menuOperations: StorageNewlineOperationId[]
+    }
     enableMouseBackForward: boolean
     enableGenericHistoryHotkeys: boolean
   }

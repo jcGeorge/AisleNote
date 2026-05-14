@@ -5,14 +5,14 @@ import {
   type MutableRefObject,
   type SetStateAction,
 } from 'react'
-import { DEFAULT_SHORTCUTS } from '../hotkeys/shortcuts'
+import { DEFAULT_NEWLINE_SHORTCUT_SETTINGS, DEFAULT_SHORTCUTS } from '../hotkeys/shortcuts'
 import {
   applyAutoPurgeToAppState,
 } from '../state/app-state'
 import { updateSpaceInActiveDomain } from '../state/domains'
 import { applyAutoPurgeToWorkspace } from '../state/workspace'
 import { appStateStore } from '../storage/app-state-store'
-import type { AppState, AppTheme, SettingsSection, ShortcutId, Space, ViewMode } from '../types/app'
+import type { AppState, AppTheme, NewlineOperationId, NewlineShortcutId, SettingsSection, ShortcutId, Space, ViewMode } from '../types/app'
 import {
   clampAutoRemoveDays,
   clampNoteFontScale,
@@ -41,6 +41,12 @@ export function useSettingsController({
   const [section, setSection] = useState<SettingsSection>('hotkeys')
   const [settingsDaysDraft, setSettingsDaysDraft] = useState<string>(String(DEFAULT_AUTO_REMOVE_DAYS))
   const [shortcutDrafts, setShortcutDrafts] = useState<Record<ShortcutId, string>>(DEFAULT_SHORTCUTS)
+  const [newlineShortcutDrafts, setNewlineShortcutDrafts] = useState<Record<NewlineShortcutId, NewlineOperationId>>(
+    DEFAULT_NEWLINE_SHORTCUT_SETTINGS.shortcuts,
+  )
+  const [newlineMenuOperationsDraft, setNewlineMenuOperationsDraft] = useState<NewlineOperationId[]>(
+    DEFAULT_NEWLINE_SHORTCUT_SETTINGS.menuOperations,
+  )
   const [editingShortcut, setEditingShortcut] = useState<ShortcutId | null>(null)
   const [mouseBackForwardEnabledDraft, setMouseBackForwardEnabledDraft] = useState(true)
   const [genericHistoryHotkeysEnabledDraft, setGenericHistoryHotkeysEnabledDraft] = useState(true)
@@ -53,6 +59,8 @@ export function useSettingsController({
     if (viewMode !== 'settings') return
     setSettingsDaysDraft(String(activeSpace.settings.autoRemoveDeletedDays))
     setShortcutDrafts(state.hotkeys.shortcuts)
+    setNewlineShortcutDrafts(state.hotkeys.newlineShortcuts.shortcuts)
+    setNewlineMenuOperationsDraft(state.hotkeys.newlineShortcuts.menuOperations)
     setMouseBackForwardEnabledDraft(state.hotkeys.enableMouseBackForward)
     setGenericHistoryHotkeysEnabledDraft(state.hotkeys.enableGenericHistoryHotkeys)
     setShowParentHomeTabDraft(state.ui.showParentHomeTab)
@@ -184,6 +192,37 @@ export function useSettingsController({
     }))
   }
 
+  const updateNewlineShortcutSetting = (shortcutId: NewlineShortcutId, operation: NewlineOperationId) => {
+    setNewlineShortcutDrafts((previous) => ({ ...previous, [shortcutId]: operation }))
+    commitImmediateSettingsState((previous) => ({
+      ...previous,
+      hotkeys: {
+        ...previous.hotkeys,
+        newlineShortcuts: {
+          ...previous.hotkeys.newlineShortcuts,
+          shortcuts: {
+            ...previous.hotkeys.newlineShortcuts.shortcuts,
+            [shortcutId]: operation,
+          },
+        },
+      },
+    }))
+  }
+
+  const updateNewlineMenuOperationsSetting = (menuOperations: NewlineOperationId[]) => {
+    setNewlineMenuOperationsDraft(menuOperations)
+    commitImmediateSettingsState((previous) => ({
+      ...previous,
+      hotkeys: {
+        ...previous.hotkeys,
+        newlineShortcuts: {
+          ...previous.hotkeys.newlineShortcuts,
+          menuOperations,
+        },
+      },
+    }))
+  }
+
   const updateStageManagerOpenDestinationSetting = (checked: boolean) => {
     commitImmediateSettingsState((previous) => ({
       ...previous,
@@ -197,6 +236,8 @@ export function useSettingsController({
   return {
     section,
     shortcutDrafts,
+    newlineShortcutDrafts,
+    newlineMenuOperationsDraft,
     editingShortcut,
     mouseBackForwardEnabledDraft,
     genericHistoryHotkeysEnabledDraft,
@@ -217,6 +258,8 @@ export function useSettingsController({
     updateNoteFontScaleSetting,
     updateThemeSetting,
     updateShortcutSetting,
+    updateNewlineShortcutSetting,
+    updateNewlineMenuOperationsSetting,
     updateStageManagerOpenDestinationSetting,
   }
 }

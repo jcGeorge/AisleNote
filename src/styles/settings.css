@@ -75,7 +75,7 @@
 
 .settings-section-tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.35rem;
   margin-bottom: 0.9rem;
 }
@@ -259,6 +259,11 @@
   padding: 0.24rem 0.46rem;
   min-width: 115px;
   text-align: center;
+}
+
+.settings-shortcut-select {
+  width: min(220px, 48vw);
+  font-size: 0.95em;
 }
 
 .settings-shortcut-btn:hover {
