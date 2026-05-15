@@ -25,6 +25,55 @@ const TEXT_CARRYING_BLOCK_OPERATIONS = new Set<NewlineOperationId>([
   'blockQuote',
 ])
 
+const EMPTY_LINE_REPLACEMENT_OPERATIONS = new Set<NewlineOperationId>([
+  'task',
+  'dashList',
+  'bulletList',
+  'numberedList',
+  'horizontalLine',
+  'codeBlock',
+  'blockQuote',
+])
+
+export function getEmptyLineReplacementRangeForOperation(
+  operation: NewlineOperationId,
+  state: any,
+): { from: number; to: number } | null {
+  if (!EMPTY_LINE_REPLACEMENT_OPERATIONS.has(operation)) return null
+  const selection = state?.selection
+  const $from = selection?.$from
+  if (!selection?.empty || !$from) return null
+  const parent = $from.parent
+  if ($from.depth !== 1 || parent?.type?.name !== 'paragraph') return null
+  if (!isEmptyTextOnlyParagraph(parent)) return null
+  return {
+    from: $from.before(1),
+    to: $from.after(1),
+  }
+}
+
+function isBlankEditorText(value: string) {
+  return value.replace(/\u200b/g, '').trim().length <= 0
+}
+
+function isEmptyTextOnlyParagraph(paragraph: any) {
+  const paragraphText = typeof paragraph?.textContent === 'string' ? paragraph.textContent : ''
+  if (!isBlankEditorText(paragraphText)) return false
+  if (typeof paragraph?.childCount !== 'number' || typeof paragraph?.child !== 'function') return true
+  for (let index = 0; index < paragraph.childCount; index += 1) {
+    const child = paragraph.child(index)
+    if (!child?.isText && child?.type?.name !== 'text') return false
+    const childText =
+      typeof child.text === 'string'
+        ? child.text
+        : typeof child.textContent === 'string'
+          ? child.textContent
+          : ''
+    if (!isBlankEditorText(childText)) return false
+  }
+  return true
+}
+
 function getSelectionText(view: any): string {
   const { from, to } = view.state.selection
   return view.state.doc.textBetween(Math.min(from, to), Math.max(from, to), '\n').replace(/\u200b/g, '')
@@ -304,6 +353,30 @@ function replaceSelectedLine(view: any, operation: NewlineOperationId, text: str
   view.dispatch(tr.setMeta('addToHistory', false).scrollIntoView())
 }
 
+function replaceEmptyLineWithOperation(view: any, operation: NewlineOperationId, text = ''): boolean {
+  const range = getEmptyLineReplacementRangeForOperation(operation, view.state)
+  if (!range) return false
+
+  if (isListNewlineOperation(operation)) {
+    const listNode = createOperationListNode(view.state.schema, operation, text)
+    if (!listNode) return false
+    let tr = view.state.tr.replaceWith(range.from, range.to, listNode)
+    const merged = mergeCompatibleTopLevelLists(tr, operation, range.from, listNode.childCount)
+    tr =
+      typeof merged.listStart === 'number'
+        ? setSelectionNearListItems(merged.tr, merged.listStart, merged.insertedItemIndex, merged.insertedItemCount)
+        : setSelectionNearInsertedContent(merged.tr, merged.selectionFrom, merged.selectionTo)
+    view.dispatch(tr.scrollIntoView())
+    return true
+  }
+
+  const fragment = Fragment.fromArray(createOperationNodes(view.state.schema, operation, text))
+  let tr = view.state.tr.replaceWith(range.from, range.to, fragment)
+  tr = setSelectionNearInsertedContent(tr, range.from, range.from + fragment.size)
+  view.dispatch(tr.scrollIntoView())
+  return true
+}
+
 function deleteSelectionAndInsertHorizontalRule(view: any) {
   const { state } = view
   const { from, to } = state.selection
@@ -368,6 +441,10 @@ export function applyEditorNewlineOperation(
   }
 
   if (operation === 'horizontalLine') {
+    if (replaceEmptyLineWithOperation(view, operation)) {
+      editor.focus()
+      return { handled: true }
+    }
     deleteSelectionAndInsertHorizontalRule(view)
     editor.focus()
     return { handled: true }
@@ -379,8 +456,12 @@ export function applyEditorNewlineOperation(
   const text = getCarriedText(view)
   if (!empty && isWholeLineSelection(view)) {
     replaceSelectedLine(view, operation, text)
+  } else if (empty) {
+    if (!replaceEmptyLineWithOperation(view, operation)) {
+      insertOperationBelow(view, operation, '')
+    }
   } else {
-    insertOperationBelow(view, operation, empty ? '' : text)
+    insertOperationBelow(view, operation, text)
   }
 
   editor.focus()

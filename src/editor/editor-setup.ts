@@ -8,9 +8,8 @@ import {
 import {
   applyAnnotationLineClassToHtmlToken,
   applyAnnotationMarkerToTextHtmlToken,
-  isAnnotationLine,
+  getAnnotationLineClassNames,
   parseAnnotationLine,
-  ANNOTATION_LINE_CLASS_NAME,
   ANNOTATION_LINE_MARKER_CLASS_NAME,
   getToastNodeText,
 } from './annotation-line'
@@ -36,9 +35,85 @@ type ToastListMdNode = {
   listData?: { type?: string; bulletChar?: string } | null
 }
 
+function getTextOffsetDecorationRange(
+  node: any,
+  nodePosition: number,
+  fromOffset: number,
+  toOffset: number,
+): { from: number; to: number } | null {
+  let textOffset = 0
+  let from: number | null = null
+  let to: number | null = null
+
+  if (typeof node?.descendants === 'function') {
+    node.descendants((child: any, childPosition: number) => {
+      if (!child?.isText || typeof child.text !== 'string') return true
+
+      const childTextStart = textOffset
+      const childTextEnd = childTextStart + child.text.length
+      const overlapStart = Math.max(fromOffset, childTextStart)
+      const overlapEnd = Math.min(toOffset, childTextEnd)
+
+      if (overlapEnd > overlapStart) {
+        const childDocStart = nodePosition + 1 + childPosition
+        const overlapFrom = childDocStart + (overlapStart - childTextStart)
+        const overlapTo = childDocStart + (overlapEnd - childTextStart)
+        from = from === null ? overlapFrom : Math.min(from, overlapFrom)
+        to = to === null ? overlapTo : Math.max(to, overlapTo)
+      }
+
+      textOffset = childTextEnd
+      return true
+    })
+  }
+
+  if (from !== null && to !== null && to > from) {
+    return { from, to }
+  }
+
+  const contentStart = nodePosition + 1
+  const contentEnd = Math.max(contentStart, nodePosition + node.nodeSize - 1)
+  const fallbackFrom = Math.min(contentStart + fromOffset, contentEnd)
+  const fallbackTo = Math.min(contentStart + toOffset, contentEnd)
+  return fallbackTo > fallbackFrom ? { from: fallbackFrom, to: fallbackTo } : null
+}
+
+function getTextOffsetDocPosition(node: any, nodePosition: number, offset: number): number | null {
+  let textOffset = 0
+  let found: number | null = null
+
+  if (typeof node?.descendants === 'function') {
+    node.descendants((child: any, childPosition: number) => {
+      if (found !== null) return false
+      if (!child?.isText || typeof child.text !== 'string') return true
+
+      const childTextStart = textOffset
+      const childTextEnd = childTextStart + child.text.length
+      if (offset >= childTextStart && offset <= childTextEnd) {
+        found = nodePosition + 1 + childPosition + (offset - childTextStart)
+        return false
+      }
+
+      textOffset = childTextEnd
+      return true
+    })
+  }
+
+  if (found !== null) return found
+  const contentStart = nodePosition + 1
+  const contentEnd = Math.max(contentStart, nodePosition + node.nodeSize - 1)
+  if (offset < 0 || offset > String(node.textContent ?? '').length) return null
+  return Math.min(contentStart + offset, contentEnd)
+}
+
 export function annotationLinePlugin(context: {
   pmState: {
     Plugin: new (spec: {
+      appendTransaction?: (
+        transactions: Array<{ docChanged?: boolean }>,
+        oldState: unknown,
+        newState: { doc: any; tr: any },
+      ) => unknown
       props?: {
         decorations?: (state: { doc: any }) => unknown
       }
@@ -70,8 +145,9 @@ export function annotationLinePlugin(context: {
         const originalToken = rendererContext.origin?.() ?? null
         if (!rendererContext.entering) return originalToken
         const paragraphText = getToastNodeText(node, rendererContext.getChildrenText)
-        if (!isAnnotationLine(paragraphText)) return originalToken
-        return applyAnnotationLineClassToHtmlToken(originalToken) as ToastHtmlToken
+        const match = parseAnnotationLine(paragraphText)
+        if (!match) return originalToken
+        return applyAnnotationLineClassToHtmlToken(originalToken, match) as ToastHtmlToken
       },
       text: (node: unknown, rendererContext: { origin?: () => ToastHtmlToken }) => {
         const originalToken = rendererContext.origin?.() ?? null
@@ -95,22 +171,24 @@ export function annotationLinePlugin(context: {
                   Decoration.node(
                     from,
                     to,
-                    { class: ANNOTATION_LINE_CLASS_NAME },
+                    { class: getAnnotationLineClassNames(match).join(' ') },
                     { key: `annotation-line-${from}-${to}` },
                   ),
                 )
 
-                const contentStart = position + 1
-                const contentEnd = Math.max(contentStart, to - 1)
-                const markerFrom = Math.min(contentStart + match.markerStart, contentEnd)
-                const markerTo = Math.min(contentStart + match.prefixEnd, contentEnd)
-                if (markerTo > markerFrom) {
+                const markerRange = getTextOffsetDecorationRange(
+                  node,
+                  position,
+                  match.markerRemovalStart,
+                  match.markerRemovalEnd,
+                )
+                if (markerRange) {
                   decorations.push(
                     Decoration.inline(
-                      markerFrom,
-                      markerTo,
+                      markerRange.from,
+                      markerRange.to,
                       { class: ANNOTATION_LINE_MARKER_CLASS_NAME },
-                      { key: `annotation-marker-${markerFrom}-${markerTo}` },
+                      { key: `annotation-marker-${markerRange.from}-${markerRange.to}` },
                     ),
                   )
                 }
@@ -118,6 +196,33 @@ export function annotationLinePlugin(context: {
               })
               return DecorationSet.create(state.doc, decorations)
             },
+          },
+          appendTransaction: (transactions, _oldState, newState) => {
+            if (!transactions.some((transaction) => transaction.docChanged)) return null
+            const tr = newState.tr
+            let changed = false
+
+            newState.doc.descendants((node: any, position: number) => {
+              if (changed || node?.type?.name !== 'paragraph') return !changed
+              const match = parseAnnotationLine(node.textContent ?? '')
+              if (!match || match.marker.kind !== 'arrow' || match.markerStart <= match.indent.length) {
+                return true
+              }
+
+              const deleteFrom = getTextOffsetDocPosition(node, position, match.markerRemovalStart)
+              const deleteTo = getTextOffsetDocPosition(node, position, match.markerRemovalEnd)
+              const insertAt = getTextOffsetDocPosition(node, position, match.indent.length)
+              if (deleteFrom === null || deleteTo === null || insertAt === null || deleteTo <= deleteFrom) {
+                return true
+              }
+
+              tr.delete(deleteFrom, deleteTo)
+              tr.insertText(`${match.marker.raw} `, insertAt)
+              changed = true
+              return false
+            })
+
+            return changed ? tr : null
           },
         }),
     ],

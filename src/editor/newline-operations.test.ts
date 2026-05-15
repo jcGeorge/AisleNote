@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { getBulletListMarkerFromAttrs } from './list-markers'
 import { isCompatibleListNodeForOperation } from './list-operation-compatibility'
+import { getEmptyLineReplacementRangeForOperation } from './newline-operations'
 import { createOperationNodes } from './newline-operation-nodes'
+import type { NewlineOperationId } from '../types/app'
 
 type TestNode = {
   type: string
@@ -44,6 +46,54 @@ function createPmNode(typeName: string, attrs: unknown = null, children: any[] =
   }
 }
 
+function createSelectionState({
+  empty = true,
+  depth = 1,
+  typeName = 'paragraph',
+  textContent = '',
+  children,
+  from = 4,
+  to = 6,
+}: {
+  empty?: boolean
+  depth?: number
+  typeName?: string
+  textContent?: string
+  children?: Array<{ typeName: string; text?: string; textContent?: string; isText?: boolean }>
+  from?: number
+  to?: number
+} = {}) {
+  const parentChildren = children ?? null
+  return {
+    selection: {
+      empty,
+      $from: {
+        depth,
+        parent: {
+          type: { name: typeName },
+          textContent,
+          ...(parentChildren
+            ? {
+                childCount: parentChildren.length,
+                child: (index: number) => {
+                  const child = parentChildren[index]
+                  return {
+                    type: { name: child.typeName },
+                    text: child.text,
+                    textContent: child.textContent,
+                    isText: child.isText ?? child.typeName === 'text',
+                  }
+                },
+              }
+            : {}),
+        },
+        before: () => from,
+        after: () => to,
+      },
+    },
+  }
+}
+
 describe('editor newline operations', () => {
   it('creates dash-list nodes with dash marker attrs', () => {
     const [node] = createOperationNodes(createTestSchema(), 'dashList', 'one\ntwo') as unknown as TestNode[]
@@ -78,5 +128,57 @@ describe('editor newline operations', () => {
     expect(isCompatibleListNodeForOperation(dashList, 'dashList')).toBe(true)
     expect(isCompatibleListNodeForOperation(orderedList, 'numberedList')).toBe(true)
     expect(isCompatibleListNodeForOperation(orderedList, 'bulletList')).toBe(false)
+  })
+
+  it('replaces an empty top-level paragraph for list shortcuts', () => {
+    const operations: NewlineOperationId[] = ['task', 'dashList', 'bulletList', 'numberedList']
+
+    operations.forEach((operation) => {
+      expect(getEmptyLineReplacementRangeForOperation(operation, createSelectionState())).toEqual({ from: 4, to: 6 })
+    })
+  })
+
+  it('replaces an empty top-level paragraph for block shortcuts', () => {
+    const operations: NewlineOperationId[] = ['codeBlock', 'blockQuote', 'horizontalLine']
+
+    operations.forEach((operation) => {
+      expect(getEmptyLineReplacementRangeForOperation(operation, createSelectionState())).toEqual({ from: 4, to: 6 })
+    })
+  })
+
+  it('does not replace empty lines for non-block shortcut operations', () => {
+    const operations: NewlineOperationId[] = ['normalNewLine', 'aisle', 'inlineCode']
+
+    operations.forEach((operation) => {
+      expect(getEmptyLineReplacementRangeForOperation(operation, createSelectionState())).toBeNull()
+    })
+  })
+
+  it('does not replace a non-empty paragraph', () => {
+    expect(
+      getEmptyLineReplacementRangeForOperation('bulletList', createSelectionState({ textContent: 'already here' })),
+    ).toBeNull()
+  })
+
+  it('does not replace selected ranges', () => {
+    expect(getEmptyLineReplacementRangeForOperation('bulletList', createSelectionState({ empty: false }))).toBeNull()
+  })
+
+  it('treats whitespace and zero-width placeholders as empty paragraph content', () => {
+    expect(
+      getEmptyLineReplacementRangeForOperation('bulletList', createSelectionState({ textContent: ' \u200b\t ' })),
+    ).toEqual({ from: 4, to: 6 })
+  })
+
+  it('does not replace nested empty list item paragraphs', () => {
+    expect(getEmptyLineReplacementRangeForOperation('bulletList', createSelectionState({ depth: 3 }))).toBeNull()
+  })
+
+  it('does not replace paragraphs containing non-text inline nodes', () => {
+    expect(
+      getEmptyLineReplacementRangeForOperation('bulletList', createSelectionState({
+        children: [{ typeName: 'image', textContent: '' }],
+      })),
+    ).toBeNull()
   })
 })

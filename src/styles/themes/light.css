@@ -503,7 +503,9 @@
 }
 
 .theme-light .toastui-editor-contents .tabs-annotation-line-marker,
-.theme-light .toastui-editor .ProseMirror .tabs-annotation-line-marker {
+.theme-light .toastui-editor-contents .tabs-annotation-line-marker *,
+.theme-light .toastui-editor .ProseMirror .tabs-annotation-line-marker,
+.theme-light .toastui-editor .ProseMirror .tabs-annotation-line-marker * {
   color: transparent !important;
 }
 
