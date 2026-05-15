@@ -82,6 +82,46 @@
   color: var(--topbar-action-hover-text) !important;
 }
 
+.topbar-arrange-trash-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.topbar-action-size-label {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.topbar-action-visible-label {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: inherit;
+}
+
+.topbar-arrange-trash-btn.is-trash-mode {
+  color: var(--trash-parent-text) !important;
+  border-color: var(--trash-parent-border) !important;
+}
+
+.topbar-arrange-trash-btn.is-trash-mode:hover {
+  color: var(--trash-parent-hover-text) !important;
+  background: var(--trash-parent-hover-bg) !important;
+  border-color: var(--trash-parent-hover-border) !important;
+}
+
+.topbar-arrange-trash-btn.is-trash-drop-target,
+.topbar-arrange-trash-btn.is-trash-drop-target:hover {
+  color: var(--trash-parent-selected-text) !important;
+  background: var(--trash-parent-selected-bg) !important;
+  border-color: var(--trash-parent-selected-border) !important;
+  box-shadow:
+    inset 0 0 0 1px var(--trash-parent-selected-border),
+    0 0 0 2px color-mix(in srgb, var(--trash-parent-selected-border) 28%, transparent);
+}
+
 .view-settings .topbar-context-btn,
 .view-stage-manager .topbar-context-btn {
   font-size: calc(1rem * var(--note-font-scale, 1)) !important;

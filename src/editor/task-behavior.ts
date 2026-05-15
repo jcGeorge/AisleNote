@@ -34,11 +34,26 @@ type TaskReorderDropTarget = {
   markerY: number
 }
 
-export function getListReorderPointerDecision(distancePx: number): {
+type TextLineRect = {
+  top: number
+  bottom: number
+  left: number
+  right: number
+  width: number
+  height: number
+}
+
+export function getListReorderPointerDecision(deltaX: number, deltaY: number): {
   shouldSuppressSelection: boolean
   shouldStartDrag: boolean
 } {
-  const shouldStartDrag = Number.isFinite(distancePx) && distancePx >= TASK_REORDER_DRAG_SLOP_PX
+  const horizontalDistance = Math.abs(deltaX)
+  const verticalDistance = Math.abs(deltaY)
+  const shouldStartDrag =
+    Number.isFinite(horizontalDistance) &&
+    Number.isFinite(verticalDistance) &&
+    verticalDistance >= TASK_REORDER_DRAG_SLOP_PX &&
+    verticalDistance > horizontalDistance
   return {
     shouldSuppressSelection: shouldStartDrag,
     shouldStartDrag,
@@ -49,6 +64,30 @@ export function shouldUseManualListCaretPlacement(startedOnTrailingSpace: boolea
   return startedOnTrailingSpace && pointerUpInsideItem
 }
 
+export function mergeInlineRectsIntoLineRects(rects: TextLineRect[]): TextLineRect[] {
+  const visibleRects = rects
+    .filter((rect) => rect.width > 0 && rect.height > 0)
+    .sort((a, b) => (Math.abs(a.top - b.top) <= 2 ? a.left - b.left : a.top - b.top))
+  const lines: TextLineRect[] = []
+
+  for (const rect of visibleRects) {
+    const rectCenter = rect.top + rect.height / 2
+    const existingLine = lines.find((line) => rectCenter >= line.top - 2 && rectCenter <= line.bottom + 2)
+    if (!existingLine) {
+      lines.push({ ...rect })
+      continue
+    }
+
+    existingLine.top = Math.min(existingLine.top, rect.top)
+    existingLine.bottom = Math.max(existingLine.bottom, rect.bottom)
+    existingLine.left = Math.min(existingLine.left, rect.left)
+    existingLine.right = Math.max(existingLine.right, rect.right)
+    existingLine.width = existingLine.right - existingLine.left
+    existingLine.height = existingLine.bottom - existingLine.top
+  }
+
+  return lines
+}
 
 function parseCssPixel(value: string | null | undefined, fallback: number): number {
   if (!value) return fallback
@@ -259,15 +298,15 @@ function getListItemParagraphElement(listItemElement: HTMLElement): HTMLElement 
   return paragraph instanceof HTMLElement ? paragraph : null
 }
 
-function getParagraphLineRects(paragraph: HTMLElement): DOMRect[] {
+function getParagraphLineRects(paragraph: HTMLElement): TextLineRect[] {
   const range = document.createRange()
   range.selectNodeContents(paragraph)
-  const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0)
+  const rects = mergeInlineRectsIntoLineRects(Array.from(range.getClientRects()))
   range.detach()
   return rects
 }
 
-function getClosestParagraphLineRect(paragraph: HTMLElement, event: globalThis.MouseEvent): DOMRect | null {
+function getClosestParagraphLineRect(paragraph: HTMLElement, event: globalThis.MouseEvent): TextLineRect | null {
   const rects = getParagraphLineRects(paragraph)
   if (rects.length === 0) return paragraph.getBoundingClientRect()
 
@@ -346,6 +385,10 @@ function getRenderedListItemKind(listItemElement: HTMLElement): ReorderListKind 
   return getRenderedListKind(listElement)
 }
 
+function isInlineFormattedTextTarget(target: Element): boolean {
+  return Boolean(target.closest('strong, em, s, del, code'))
+}
+
 function getListTextDragElement(
   view: any,
   event: globalThis.MouseEvent,
@@ -354,6 +397,7 @@ function getListTextDragElement(
   const target = getElementFromEventTarget(event.target)
   if (!target) return null
   if (target.closest('a, button, input, textarea, select, img')) return null
+  if (isInlineFormattedTextTarget(target)) return null
 
   const listItemElement = target.closest('li')
   if (!(listItemElement instanceof HTMLElement)) return null
@@ -571,8 +615,7 @@ export function installTaskTextReorderBehavior(root: HTMLElement, getEditor: () 
   const handleMouseMove = (event: globalThis.MouseEvent) => {
     if (!dragState) return
 
-    const distance = Math.hypot(event.clientX - dragState.startX, event.clientY - dragState.startY)
-    const decision = getListReorderPointerDecision(distance)
+    const decision = getListReorderPointerDecision(event.clientX - dragState.startX, event.clientY - dragState.startY)
     if (!dragState.dragging && !decision.shouldStartDrag) return
 
     if (decision.shouldSuppressSelection || dragState.dragging) {

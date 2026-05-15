@@ -7,6 +7,7 @@ import { getNewlineShortcutIdForEvent } from '../hotkeys/shortcuts'
 import { getMultilineSelectionShortcutDirection } from './editor-setup'
 import type { MultiLineCursorMovement, MultiLineEditInput } from './multiline-edit'
 import { isInsideReadonlyNotePreview } from './note-preview-dom'
+import { isInsideTerminalBlockLandingZone } from './terminal-block-landing'
 import {
   getElementFromEventTarget,
   getInternalNoteLinkHitAtDocPosition,
@@ -207,6 +208,7 @@ export function useEditorDomEvents({
     const handleClick = (event: Event) => {
       const target = getElementFromEventTarget(event.target)
       if (!target) return
+      if (isInsideTerminalBlockLandingZone(target)) return
       if (internalLinkHandledOnPointerDown) {
         internalLinkHandledOnPointerDown = false
         event.preventDefault()
@@ -265,6 +267,7 @@ export function useEditorDomEvents({
 
     const handlePaste = (event: Event) => {
       const pasteEvent = event as ClipboardEvent
+      if (isInsideTerminalBlockLandingZone(getElementFromEventTarget(pasteEvent.target))) return
       activateEditorFromEventTarget(pasteEvent.target)
       if (multiLineEditRef.current) {
         const text = pasteEvent.clipboardData?.getData('text/plain') ?? ''
@@ -312,6 +315,7 @@ export function useEditorDomEvents({
 
     const handleKeyDown = (event: Event) => {
       const keyboardEvent = event as KeyboardEvent
+      if (isInsideTerminalBlockLandingZone(getElementFromEventTarget(keyboardEvent.target))) return
       activateEditorFromEventTarget(keyboardEvent.target)
       const toolbarFormatShortcut = getToolbarFormatShortcut(keyboardEvent)
       if (toolbarFormatShortcut) {
@@ -425,6 +429,7 @@ export function useEditorDomEvents({
 
     const handleBeforeInput = (event: Event) => {
       const inputEvent = event as InputEvent
+      if (isInsideTerminalBlockLandingZone(getElementFromEventTarget(inputEvent.target))) return
       activateEditorFromEventTarget(inputEvent.target)
       if (inputEvent.inputType === 'historyUndo' || inputEvent.inputType === 'historyRedo') {
         const direction = inputEvent.inputType === 'historyUndo' ? 'undo' : 'redo'

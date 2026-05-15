@@ -94,3 +94,17 @@ export function isPointInsideElement(
     clientY <= rect.bottom + padding
   )
 }
+
+type RectLike = Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom'>
+
+export function isPointInsideRect(rect: RectLike, clientX: number, clientY: number): boolean {
+  return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom
+}
+
+export function isPointInsideElementExact(
+  element: HTMLElement | HTMLButtonElement | null,
+  clientX: number,
+  clientY: number,
+): boolean {
+  return element ? isPointInsideRect(element.getBoundingClientRect(), clientX, clientY) : false
+}

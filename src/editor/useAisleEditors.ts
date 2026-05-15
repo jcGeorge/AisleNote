@@ -3,6 +3,7 @@ import { useEffect, useRef, type MutableRefObject } from 'react'
 import { Editor } from '@toast-ui/editor'
 import { buildAisleEditorKey, type AisleEditorMeta } from './aisle-editor'
 import {
+  annotationLinePlugin,
   EDITOR_TOOLBAR_ITEMS,
   headingSpaceShortcutPlugin,
   installHeadingPopupActiveState,
@@ -11,6 +12,7 @@ import {
   thematicBreakShortcutPlugin,
   uncheckedTaskEnterPlugin,
 } from './editor-setup'
+import { terminalBlockLandingPlugin } from './terminal-block-landing'
 import { createContextPreviewPlugin, type ContextPreviewData } from './note-preview-plugin'
 import { getElementFromEventTarget } from './prosemirror-utils'
 import {
@@ -266,6 +268,8 @@ export function useAisleEditors({
         usageStatistics: false,
         plugins: [
           listMarkerPlugin,
+          annotationLinePlugin,
+          terminalBlockLandingPlugin,
           uncheckedTaskEnterPlugin,
           headingSpaceShortcutPlugin,
           thematicBreakShortcutPlugin,

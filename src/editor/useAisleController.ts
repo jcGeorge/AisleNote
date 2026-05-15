@@ -1,0 +1,403 @@
+import { Editor } from '@toast-ui/editor'
+import { useEffect, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
+import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
+import { buildNoteCursorLocationKey } from '../notes/note-cursors'
+import { getLocationInfo } from '../notes/note-locations'
+import {
+  applyCursorLocationSnapshot,
+  applyNoteLocationToState,
+  cloneAisles,
+  getAisleSignature,
+  syncNoteBodyAislesInState,
+} from '../notes/note-state'
+import { createId, MAX_NOTE_AISLES } from '../state/workspace'
+import type {
+  AppState,
+  ContextMenuState,
+  NoteAisle,
+  NoteBody,
+  NoteCursorLocation,
+  NoteLocation,
+  ToastTone,
+  ViewMode,
+} from '../types/app'
+import type { PendingCursorRestore } from './useNoteCursorPersistence'
+
+export type AisleDeleteConfirmationState = {
+  aisleId: string
+  aisleIndex: number
+  top: number
+  left: number
+}
+
+type AisleStructuralSnapshot = {
+  location: NoteLocation
+  locationKey: string
+  noteBodyId: string
+  aisles: NoteAisle[]
+  activeAisleId: string
+  cursorLocation: NoteCursorLocation | null
+}
+
+type AisleStructuralHistoryEntry = {
+  type: 'add-aisle' | 'delete-aisle'
+  noteBodyId: string
+  before: AisleStructuralSnapshot
+  after: AisleStructuralSnapshot
+  beforeSignature: string
+  afterSignature: string
+}
+
+type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
+
+type UseAisleControllerParams = {
+  stateRef: MutableRefObject<AppState>
+  setState: Dispatch<SetStateAction<AppState>>
+  viewMode: ViewMode
+  activeNoteBodyId: string
+  activeNoteBody: NoteBody | null
+  activeNoteAisles: NoteAisle[]
+  activeDomainIdRef: MutableRefObject<string>
+  activeSpaceIdRef: MutableRefObject<string>
+  activeTabIdRef: MutableRefObject<string>
+  activeSubTabIdRef: MutableRefObject<string | null>
+  activeAisleIdRef: MutableRefObject<string>
+  editorRef: MutableRefObject<Editor | null>
+  pendingScrollToAisleIdRef: MutableRefObject<string | null>
+  pendingFocusToAisleIdRef: MutableRefObject<string | null>
+  pendingCursorRestoreRef: MutableRefObject<PendingCursorRestore | null>
+  setViewMode: Dispatch<SetStateAction<ViewMode>>
+  setActiveAisleId: Dispatch<SetStateAction<string>>
+  setContextMenu: Dispatch<SetStateAction<ContextMenuState | null>>
+  setMenuOpen: Dispatch<SetStateAction<boolean>>
+  setEditing: Dispatch<SetStateAction<{ type: EditableEntityType; id: string } | null>>
+  buildStateWithLatestEditorContent: () => AppState
+  flushPendingContent: () => void
+  saveActiveCursorLocation: () => void
+  getActiveNoteHistoryKey: () => string
+  getNormalizedEditorMarkdown: (editor: Editor) => string
+  pushToast: (message: string, tone?: ToastTone, durationMs?: number) => void
+}
+
+const AISLE_DELETE_CONFIRMATION_WIDTH_PX = 248
+const AISLE_DELETE_CONFIRMATION_HEIGHT_PX = 104
+
+export const useAisleController = ({
+  stateRef,
+  setState,
+  viewMode,
+  activeNoteBodyId,
+  activeNoteBody,
+  activeNoteAisles,
+  activeDomainIdRef,
+  activeSpaceIdRef,
+  activeTabIdRef,
+  activeSubTabIdRef,
+  activeAisleIdRef,
+  editorRef,
+  pendingScrollToAisleIdRef,
+  pendingFocusToAisleIdRef,
+  pendingCursorRestoreRef,
+  setViewMode,
+  setActiveAisleId,
+  setContextMenu,
+  setMenuOpen,
+  setEditing,
+  buildStateWithLatestEditorContent,
+  flushPendingContent,
+  saveActiveCursorLocation,
+  getActiveNoteHistoryKey,
+  getNormalizedEditorMarkdown,
+  pushToast,
+}: UseAisleControllerParams) => {
+  const [aisleDeleteConfirmation, setAisleDeleteConfirmation] = useState<AisleDeleteConfirmationState | null>(null)
+  const [aisleDeleteMode, setAisleDeleteMode] = useState(false)
+  const aisleDeleteConfirmButtonRef = useRef<HTMLButtonElement | null>(null)
+  const structuralUndoStackRef = useRef<AisleStructuralHistoryEntry[]>([])
+  const structuralRedoStackRef = useRef<AisleStructuralHistoryEntry[]>([])
+  const runAisleStructuralHistoryRef = useRef<(direction: 'undo' | 'redo') => boolean>(() => false)
+
+  const exitAisleDeleteMode = () => {
+    setAisleDeleteMode(false)
+    setAisleDeleteConfirmation(null)
+  }
+
+  const captureActiveAisleStructuralSnapshot = (
+    sourceState = buildStateWithLatestEditorContent(),
+  ): AisleStructuralSnapshot | null => {
+    const location: NoteLocation = {
+      domainId: activeDomainIdRef.current,
+      spaceId: activeSpaceIdRef.current,
+      tabId: activeTabIdRef.current,
+      subTabId: activeSubTabIdRef.current,
+    }
+    const locationInfo = getLocationInfo(sourceState, location)
+    const body = sourceState.noteBodies.find((candidate) => candidate.id === locationInfo.noteBodyId) ?? null
+    if (!locationInfo.noteBodyId || !body) return null
+    const locationKey = buildNoteCursorLocationKey(location)
+    return {
+      location,
+      locationKey,
+      noteBodyId: locationInfo.noteBodyId,
+      aisles: cloneAisles(body.aisles),
+      activeAisleId: activeAisleIdRef.current,
+      cursorLocation: sourceState.ui.noteCursorLocations[locationKey] ?? null,
+    }
+  }
+
+  const pushAisleStructuralHistory = (
+    type: AisleStructuralHistoryEntry['type'],
+    before: AisleStructuralSnapshot,
+    after: AisleStructuralSnapshot,
+  ) => {
+    if (before.noteBodyId !== after.noteBodyId) return
+    structuralUndoStackRef.current = [
+      ...structuralUndoStackRef.current.slice(-99),
+      {
+        type,
+        noteBodyId: before.noteBodyId,
+        before,
+        after,
+        beforeSignature: getAisleSignature(before.aisles),
+        afterSignature: getAisleSignature(after.aisles),
+      },
+    ]
+    structuralRedoStackRef.current = []
+  }
+
+  const getCurrentAisleSignature = (entry: AisleStructuralHistoryEntry) => {
+    const body = stateRef.current.noteBodies.find((candidate) => candidate.id === entry.noteBodyId) ?? null
+    return body ? getAisleSignature(body.aisles) : ''
+  }
+
+  const canApplyAisleStructuralEntry = (entry: AisleStructuralHistoryEntry, direction: 'undo' | 'redo') => {
+    const expectedSignature = direction === 'undo' ? entry.afterSignature : entry.beforeSignature
+    return getCurrentAisleSignature(entry) === expectedSignature
+  }
+
+  const applyAisleStructuralEntry = (entry: AisleStructuralHistoryEntry, direction: 'undo' | 'redo') => {
+    if (!canApplyAisleStructuralEntry(entry, direction)) return false
+    saveActiveCursorLocation()
+
+    const target = direction === 'undo' ? entry.before : entry.after
+    const source = direction === 'undo' ? entry.after : entry.before
+    setState((previous) => {
+      const body = previous.noteBodies.find((candidate) => candidate.id === entry.noteBodyId) ?? null
+      if (!body || getAisleSignature(body.aisles) !== getAisleSignature(source.aisles)) return previous
+      const withAisles = syncNoteBodyAislesInState(previous, entry.noteBodyId, target.aisles)
+      const withLocation = applyNoteLocationToState(withAisles, target.location)
+      return applyCursorLocationSnapshot(withLocation, target.locationKey, target.cursorLocation)
+    })
+
+    setViewMode('main')
+    setActiveAisleId(target.activeAisleId)
+    pendingScrollToAisleIdRef.current = target.activeAisleId
+    pendingFocusToAisleIdRef.current = target.activeAisleId
+    pendingCursorRestoreRef.current = {
+      noteLocationKey: target.locationKey,
+      aisleId: target.activeAisleId,
+      selection: target.cursorLocation?.aisles[target.activeAisleId] ?? null,
+    }
+    setContextMenu(null)
+    setMenuOpen(false)
+    setEditing(null)
+    exitAisleDeleteMode()
+    return true
+  }
+
+  const runAisleStructuralHistory = (direction: 'undo' | 'redo') => {
+    const sourceStack = direction === 'undo' ? structuralUndoStackRef.current : structuralRedoStackRef.current
+    const entry = sourceStack[sourceStack.length - 1]
+    if (!entry || !applyAisleStructuralEntry(entry, direction)) return false
+    if (direction === 'undo') {
+      structuralUndoStackRef.current = structuralUndoStackRef.current.slice(0, -1)
+      structuralRedoStackRef.current = [...structuralRedoStackRef.current, entry]
+    } else {
+      structuralRedoStackRef.current = structuralRedoStackRef.current.slice(0, -1)
+      structuralUndoStackRef.current = [...structuralUndoStackRef.current, entry]
+    }
+    return true
+  }
+  runAisleStructuralHistoryRef.current = runAisleStructuralHistory
+
+  const scheduleAisleStructuralHistoryFallback = (direction: 'undo' | 'redo') => {
+    const noteHistoryKey = getActiveNoteHistoryKey()
+    const editorAtStart = editorRef.current
+    const beforeMarkdown = editorAtStart ? getNormalizedEditorMarkdown(editorAtStart) : null
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        if (noteHistoryKey !== getActiveNoteHistoryKey()) return
+        const editorAfter = editorRef.current
+        const afterMarkdown = editorAfter ? getNormalizedEditorMarkdown(editorAfter) : null
+        if (beforeMarkdown !== null && afterMarkdown !== beforeMarkdown) return
+        runAisleStructuralHistoryRef.current(direction)
+      })
+    })
+  }
+
+  const addAisleToActiveNote = (
+    markdown = '',
+    options: { beforeSnapshot?: AisleStructuralSnapshot | null; recordHistory?: boolean } = {},
+  ) => {
+    if (!activeNoteBodyId) return
+    const currentAisleCount = activeNoteBody?.aisles.length ?? 0
+    if (currentAisleCount <= 0) return
+    if (currentAisleCount >= MAX_NOTE_AISLES) {
+      pushToast(`notes can have at most ${MAX_NOTE_AISLES} aisles.`, 'warning')
+      return
+    }
+
+    const beforeSnapshot = options.beforeSnapshot ?? captureActiveAisleStructuralSnapshot()
+    if (!beforeSnapshot) return
+    const newAisle: NoteAisle = { id: createId(), markdown: normalizeMarkdownForPersistence(markdown) }
+    const latestBeforeAddState = buildStateWithLatestEditorContent()
+    const latestBeforeAddBody =
+      latestBeforeAddState.noteBodies.find((candidate) => candidate.id === beforeSnapshot.noteBodyId) ?? null
+    const baseAisles = latestBeforeAddBody ? cloneAisles(latestBeforeAddBody.aisles) : beforeSnapshot.aisles
+    flushPendingContent()
+    const afterAisles = [...baseAisles, newAisle]
+    const afterCursorLocation: NoteCursorLocation = {
+      activeAisleId: newAisle.id,
+      aisles: {
+        ...(beforeSnapshot.cursorLocation?.aisles ?? {}),
+        [newAisle.id]: {
+          anchor: 1,
+          head: 1,
+          updatedAt: Date.now(),
+        },
+      },
+      updatedAt: Date.now(),
+    }
+    const afterSnapshot: AisleStructuralSnapshot = {
+      ...beforeSnapshot,
+      aisles: afterAisles,
+      activeAisleId: newAisle.id,
+      cursorLocation: afterCursorLocation,
+    }
+    setState((previous) => {
+      const body = previous.noteBodies.find((candidate) => candidate.id === activeNoteBodyId)
+      if (!body) return previous
+      if (body.aisles.length >= MAX_NOTE_AISLES) return previous
+      const withAisles = syncNoteBodyAislesInState(previous, activeNoteBodyId, [...body.aisles, newAisle])
+      return applyCursorLocationSnapshot(withAisles, afterSnapshot.locationKey, afterSnapshot.cursorLocation)
+    })
+    if (options.recordHistory !== false) {
+      pushAisleStructuralHistory('add-aisle', beforeSnapshot, afterSnapshot)
+    }
+    setActiveAisleId(newAisle.id)
+    pendingScrollToAisleIdRef.current = newAisle.id
+    pendingFocusToAisleIdRef.current = newAisle.id
+    exitAisleDeleteMode()
+  }
+
+  const deleteAisleFromActiveNote = (aisleId: string) => {
+    if (!activeNoteBody) return
+    if (activeNoteBody.aisles.length <= 1) {
+      pushToast('a note must keep at least one aisle.', 'warning')
+      return
+    }
+
+    if (!activeNoteBody.aisles.some((candidate) => candidate.id === aisleId)) return
+    const beforeSnapshot = captureActiveAisleStructuralSnapshot()
+    if (!beforeSnapshot) return
+    flushPendingContent()
+    const fallbackAisleId =
+      beforeSnapshot.activeAisleId === aisleId
+        ? beforeSnapshot.aisles.find((candidate) => candidate.id !== aisleId)?.id ?? ''
+        : beforeSnapshot.activeAisleId
+    const afterAisles = beforeSnapshot.aisles.filter((candidate) => candidate.id !== aisleId)
+    const afterAisleCursors = { ...(beforeSnapshot.cursorLocation?.aisles ?? {}) }
+    delete afterAisleCursors[aisleId]
+    const afterCursorLocation: NoteCursorLocation = {
+      activeAisleId: fallbackAisleId,
+      aisles: afterAisleCursors,
+      updatedAt: Date.now(),
+    }
+    const afterSnapshot: AisleStructuralSnapshot = {
+      ...beforeSnapshot,
+      aisles: afterAisles,
+      activeAisleId: fallbackAisleId,
+      cursorLocation: afterCursorLocation,
+    }
+    setAisleDeleteConfirmation(null)
+    setState((previous) => {
+      const body = previous.noteBodies.find((candidate) => candidate.id === activeNoteBody.id)
+      if (!body || body.aisles.length <= 1) return previous
+      const withAisles = syncNoteBodyAislesInState(
+        previous,
+        activeNoteBody.id,
+        body.aisles.filter((candidate) => candidate.id !== aisleId),
+      )
+      return applyCursorLocationSnapshot(withAisles, afterSnapshot.locationKey, afterSnapshot.cursorLocation)
+    })
+    pushAisleStructuralHistory('delete-aisle', beforeSnapshot, afterSnapshot)
+    if (activeAisleIdRef.current === aisleId) {
+      setActiveAisleId(fallbackAisleId)
+      pendingScrollToAisleIdRef.current = fallbackAisleId
+      pendingFocusToAisleIdRef.current = fallbackAisleId
+    }
+  }
+
+  const getAisleDeleteConfirmationPosition = (anchor: HTMLElement): Pick<AisleDeleteConfirmationState, 'top' | 'left'> => {
+    const rect = anchor.getBoundingClientRect()
+    const margin = 8
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight
+    return {
+      top: Math.max(
+        margin,
+        Math.min(viewportHeight - AISLE_DELETE_CONFIRMATION_HEIGHT_PX - margin, rect.bottom + margin),
+      ),
+      left: Math.max(
+        margin,
+        Math.min(viewportWidth - AISLE_DELETE_CONFIRMATION_WIDTH_PX - margin, rect.right - AISLE_DELETE_CONFIRMATION_WIDTH_PX),
+      ),
+    }
+  }
+
+  const requestDeleteAisleFromActiveNote = (aisle: NoteAisle, aisleIndex: number, anchor: HTMLElement) => {
+    if (!activeNoteBody || activeNoteBody.aisles.length <= 1) {
+      pushToast('a note must keep at least one aisle.', 'warning')
+      return
+    }
+
+    if (aisle.markdown.trim().length <= 0) {
+      deleteAisleFromActiveNote(aisle.id)
+      return
+    }
+
+    setAisleDeleteConfirmation({
+      aisleId: aisle.id,
+      aisleIndex,
+      ...getAisleDeleteConfirmationPosition(anchor),
+    })
+    window.requestAnimationFrame(() => {
+      aisleDeleteConfirmButtonRef.current?.focus()
+    })
+  }
+
+  useEffect(() => {
+    if ((viewMode !== 'main' || activeNoteAisles.length <= 1) && aisleDeleteMode) {
+      exitAisleDeleteMode()
+      return
+    }
+    if (aisleDeleteConfirmation && !activeNoteAisles.some((aisle) => aisle.id === aisleDeleteConfirmation.aisleId)) {
+      setAisleDeleteConfirmation(null)
+    }
+  }, [activeNoteAisles, aisleDeleteConfirmation, aisleDeleteMode, viewMode])
+
+  return {
+    aisleDeleteConfirmation,
+    setAisleDeleteConfirmation,
+    aisleDeleteMode,
+    setAisleDeleteMode,
+    aisleDeleteConfirmButtonRef,
+    exitAisleDeleteMode,
+    captureActiveAisleStructuralSnapshot,
+    runAisleStructuralHistory,
+    scheduleAisleStructuralHistoryFallback,
+    addAisleToActiveNote,
+    deleteAisleFromActiveNote,
+    requestDeleteAisleFromActiveNote,
+  }
+}

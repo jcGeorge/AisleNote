@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { EMPTY_LIST_ITEM_PLACEHOLDER, reorderListMarkdownLines } from './list-reorder-markdown'
 import {
   getListReorderPointerDecision,
+  mergeInlineRectsIntoLineRects,
   shouldUseManualListCaretPlacement,
 } from './task-behavior'
 
@@ -40,21 +41,46 @@ describe('list markdown reordering', () => {
 })
 
 describe('list reorder pointer handling', () => {
-  it('does not suppress normal text clicks before drag movement', () => {
-    expect(getListReorderPointerDecision(0)).toEqual({
+  it('merges inline mark fragments into one visual line before trailing-space checks', () => {
+    expect(
+      mergeInlineRectsIntoLineRects([
+        { top: 10, bottom: 24, left: 20, right: 72, width: 52, height: 14 },
+        { top: 10, bottom: 24, left: 72, right: 132, width: 60, height: 14 },
+      ]),
+    ).toEqual([{ top: 10, bottom: 24, left: 20, right: 132, width: 112, height: 14 }])
+  })
+
+  it('keeps separate wrapped lines separate when merging inline fragments', () => {
+    expect(
+      mergeInlineRectsIntoLineRects([
+        { top: 10, bottom: 24, left: 20, right: 72, width: 52, height: 14 },
+        { top: 30, bottom: 44, left: 20, right: 92, width: 72, height: 14 },
+      ]),
+    ).toEqual([
+      { top: 10, bottom: 24, left: 20, right: 72, width: 52, height: 14 },
+      { top: 30, bottom: 44, left: 20, right: 92, width: 72, height: 14 },
+    ])
+  })
+
+  it('does not suppress normal text clicks or horizontal text selection movement', () => {
+    expect(getListReorderPointerDecision(0, 0)).toEqual({
       shouldSuppressSelection: false,
       shouldStartDrag: false,
     })
-    expect(getListReorderPointerDecision(7.9)).toEqual({
+    expect(getListReorderPointerDecision(20, 2)).toEqual({
       shouldSuppressSelection: false,
       shouldStartDrag: false,
     })
   })
 
-  it('suppresses native selection only once drag starts', () => {
-    expect(getListReorderPointerDecision(8)).toEqual({
+  it('suppresses native selection only once vertical reorder drag starts', () => {
+    expect(getListReorderPointerDecision(2, 8)).toEqual({
       shouldSuppressSelection: true,
       shouldStartDrag: true,
+    })
+    expect(getListReorderPointerDecision(10, 8)).toEqual({
+      shouldSuppressSelection: false,
+      shouldStartDrag: false,
     })
   })
 

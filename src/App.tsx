@@ -1,7 +1,8 @@
-import { type MouseEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Editor } from '@toast-ui/editor'
 import '@toast-ui/editor/dist/toastui-editor.css'
 import './App.css'
+import { useActiveNoteModel } from './app/useActiveNoteModel'
 import { useArrangeMode } from './arrange/useArrangeMode'
 import { DomainsPage } from './components/domains/DomainsPage'
 import { ImageToolsOverlay } from './components/editor/ImageToolsOverlay'
@@ -21,23 +22,22 @@ import { SettingsPage } from './components/settings/SettingsPage'
 import { SpacesPage } from './components/spaces/SpacesPage'
 import { StageManagerView } from './components/stage-manager/StageManagerView'
 import { TrashHomeNote } from './components/trash/TrashHomeNote'
-import { buildAisleEditorKey } from './editor/aisle-editor'
 import { applyListToolbarCommand, type ToolbarListCommand } from './editor/list-marker-commands'
 import { applyEditorNewlineOperation } from './editor/newline-operations'
+import { useAisleController } from './editor/useAisleController'
 import { useLegacyEditor } from './editor/useLegacyEditor'
 import {
-  getEditorCursorSelection,
   getCommandCapableEditor,
-  getInternalNoteLinkHitAtDocPosition,
   getWysiwygView,
-  restoreEditorCursorSelection,
 } from './editor/prosemirror-utils'
 import { useAisleEditors } from './editor/useAisleEditors'
 import { useEditorDomEvents } from './editor/useEditorDomEvents'
+import { useEditorPersistence } from './editor/useEditorPersistence'
 import { useEditorToolbarLayer } from './editor/useEditorToolbarLayer'
 import { useEditorToolbarState } from './editor/useEditorToolbarState'
 import { useImageTools } from './editor/useImageTools'
 import { useMultilineEditing } from './editor/useMultilineEditing'
+import { useNoteCursorPersistence, usePendingNoteCursorRestore } from './editor/useNoteCursorPersistence'
 import {
   COMPLETED_TASK_UNDO_HINT_COOLDOWN_MS,
   COMPLETED_TASK_UNDO_HINT_DETECTION_MS,
@@ -52,121 +52,45 @@ import {
   normalizeMarkdownForPersistence,
 } from './markdown/markdown-utils'
 import { useNavigationHistory } from './navigation/useNavigationHistory'
+import { useAppNavigationActions } from './navigation/useAppNavigationActions'
 import {
-  buildNoteCursorLocationKey,
-  clampNoteCursorSelection,
-  noteCursorSelectionsEqual,
-  pruneNoteCursorLocations,
-} from './notes/note-cursors'
-import { cloneNoteBodyAsIndependentCopy, getNoteBodyMarkdown } from './notes/note-markdown'
-import {
-  buildNoteLocationKey,
-  getDefaultNoteReferenceTarget,
   getLocationInfo,
-  listNoteLocationsForBody,
-  updateNoteLocationBody,
 } from './notes/note-locations'
-import {
-  buildContextToken,
-  buildInternalNoteUrl,
-  escapeMarkdownLinkLabel,
-  getContextReferenceSignature,
-  type NoteContextReferencePayload,
-  parseContextReferences,
-  replaceInternalNoteLinkByOccurrence,
-  replaceContextTokenById,
-  removeContextTokenById,
-  wouldCreateContextCycle,
-} from './notes/note-references'
+import { useNoteReferenceActions } from './notes/useNoteReferenceActions'
+import { useAppOverlayActions } from './overlays/useAppOverlayActions'
 import { useSettingsController } from './settings/useSettingsController'
-import { applyAutoPurgeToAppState, applyMarkdownToAppState, ensureNoteBodiesForAppState } from './state/app-state'
+import { applyAutoPurgeToAppState, ensureNoteBodiesForAppState } from './state/app-state'
 import {
-  addDomain,
-  addSpaceToActiveDomain,
-  createDomain,
-  insertSpaceAfterInActiveDomain,
-  removeSpaceFromActiveDomain,
-  renameDomain,
-  renameSpaceInActiveDomain,
   setActiveDomain,
   setActiveSpaceInActiveDomain,
   updateActiveSpaceDataInActiveDomain,
   updateSpaceInActiveDomain,
 } from './state/domains'
 import {
-  createId,
-  createNoteBody,
-  createSpace,
-  createSubTab,
-  createTab,
-  duplicateSpace,
   MAX_NOTE_AISLES,
 } from './state/workspace'
 import { useStageManagerController } from './stage-manager/useStageManagerController'
-import { appStateStore } from './storage/app-state-store'
 import { usePersistentAppState } from './storage/usePersistentAppState'
 import { TRASH_HOME_ID } from './trash/trash-model'
 import { useTrashSelection } from './trash/useTrashSelection'
 import type {
-  AppState,
   ContextMenuState,
-  DeleteTarget,
   LinkPromptState,
   ModalState,
   NewlineOperationId,
-  NoteAisle,
-  NoteBody,
-  NoteCursorLocation,
-  NoteCursorSelection,
   NoteLocation,
-  PendingContent,
   PendingCreatedEdit,
   ToastState,
   ToastTone,
-  TrashParentBucket,
   ViewMode,
   WorkspaceData,
 } from './types/app'
-
-type AisleDeleteConfirmationState = {
-  aisleId: string
-  aisleIndex: number
-  top: number
-  left: number
-}
 
 type NewlineOperationsMenuState = {
   top: number
   left: number
   operations: NewlineOperationId[]
 }
-
-type AisleStructuralSnapshot = {
-  location: NoteLocation
-  locationKey: string
-  noteBodyId: string
-  aisles: NoteAisle[]
-  activeAisleId: string
-  cursorLocation: NoteCursorLocation | null
-}
-
-type AisleStructuralHistoryEntry = {
-  type: 'add-aisle' | 'delete-aisle'
-  noteBodyId: string
-  before: AisleStructuralSnapshot
-  after: AisleStructuralSnapshot
-  beforeSignature: string
-  afterSignature: string
-}
-
-type PendingCursorRestore = {
-  noteLocationKey: string
-  aisleId: string
-  selection: NoteCursorSelection | null
-}
-
-const AISLE_DELETE_CONFIRMATION_WIDTH_PX = 248
-const AISLE_DELETE_CONFIRMATION_HEIGHT_PX = 104
 
 const DEFAULT_TOAST_DURATION_MS = 3000
 const HOVERED_TOAST_DURATION_MS = 2000
@@ -198,10 +122,7 @@ function App() {
     url: '',
     text: '',
   })
-  const [aisleDeleteConfirmation, setAisleDeleteConfirmation] = useState<AisleDeleteConfirmationState | null>(null)
-  const [aisleDeleteMode, setAisleDeleteMode] = useState(false)
   const linkPromptInputRef = useRef<HTMLInputElement | null>(null)
-  const aisleDeleteConfirmButtonRef = useRef<HTMLButtonElement | null>(null)
 
   const editorMountRef = useRef<HTMLDivElement | null>(null)
   const editorRef = useRef<Editor | null>(null)
@@ -212,30 +133,25 @@ function App() {
   const editorEventRootRef = useRef<HTMLElement | null>(null)
   const runNewlineOperationFromMenuRef = useRef<(operation: NewlineOperationId) => void>(() => {})
   const deleteContextPreviewRef = useRef<(tokenId: string) => void>(() => {})
-  const pendingContentRef = useRef<PendingContent | null>(null)
   const pendingCreatedEditRef = useRef<PendingCreatedEdit | null>(null)
   const skipRenameBlurRef = useRef<{ type: EditableEntityType; id: string } | null>(null)
-  const saveTimerRef = useRef<number | null>(null)
   const toastTimerRef = useRef<number | null>(null)
   const closeImageToolsRef = useRef<() => void>(() => {})
   const closeImageToolsIfSelectedImageMissingRef = useRef<() => void>(() => {})
-  const normalizingContentRef = useRef(false)
+  const activateAisleEditorRef = useRef<
+    (
+      editorKey: string,
+      options?: { focus?: boolean; flushPrevious?: boolean; allowDuringPendingRename?: boolean },
+    ) => boolean
+  >(() => false)
   const completedTaskDeleteUndoCandidateRef = useRef<{ beforeMarkdown: string; deletedAt: number } | null>(null)
   const completedTaskUndoToastAtRef = useRef(0)
-  const lastEditorMarkdownRef = useRef('')
-  const lastEditorMarkdownByAisleRef = useRef<Map<string, string>>(new Map())
-  const normalizingAisleIdsRef = useRef<Set<string>>(new Set())
-  const structuralUndoStackRef = useRef<AisleStructuralHistoryEntry[]>([])
-  const structuralRedoStackRef = useRef<AisleStructuralHistoryEntry[]>([])
-  const runAisleStructuralHistoryRef = useRef<(direction: 'undo' | 'redo') => boolean>(() => false)
   const activeSpaceIdRef = useRef<string>('')
   const activeDomainIdRef = useRef<string>('')
   const activeTabIdRef = useRef<string>('')
   const activeSubTabIdRef = useRef<string | null>(null)
   const activeAisleIdRef = useRef<string>('')
   const activeNoteLocationKeyRef = useRef<string>('')
-  const previousNoteLocationKeyRef = useRef<string>('')
-  const pendingCursorRestoreRef = useRef<PendingCursorRestore | null>(null)
   const isMainViewRef = useRef(true)
 
   useEffect(() => {
@@ -281,12 +197,24 @@ function App() {
     setToastWasHovered(false)
   }, [toast?.id])
 
-  const activeSpace = useMemo(
-    () => state.spaces.find((space) => space.id === state.activeSpaceId) ?? state.spaces[0],
-    [state.activeSpaceId, state.spaces],
-  )
+  const {
+    activeSpace,
+    workspace,
+    activeTab,
+    activeSubTab,
+    activeNoteBodyId,
+    activeNoteBody,
+    activeNoteAisles,
+    activeNoteLocation,
+    activeNoteLocationKey,
+    resolvedActiveAisleId,
+    domainsForPickers,
+    activeContent,
+  } = useActiveNoteModel({
+    state,
+    activeAisleId,
+  })
 
-  const workspace = activeSpace.data
   const settingsController = useSettingsController({
     state,
     stateRef,
@@ -331,53 +259,6 @@ function App() {
     pushToast(COMPLETED_TASK_UNDO_HINT_MESSAGE, 'warning', COMPLETED_TASK_UNDO_HINT_TOAST_DURATION_MS)
   }
 
-  const exitAisleDeleteMode = () => {
-    setAisleDeleteMode(false)
-    setAisleDeleteConfirmation(null)
-  }
-
-  const activeTab = useMemo(
-    () => workspace.tabs.find((tab) => tab.id === workspace.activeTabId) ?? workspace.tabs[0],
-    [workspace.activeTabId, workspace.tabs],
-  )
-
-  const activeSubTab = useMemo(
-    () =>
-      activeTab.activeSubTabId
-        ? activeTab.subTabs.find((sub) => sub.id === activeTab.activeSubTabId) ?? null
-        : null,
-    [activeTab],
-  )
-  const activeNoteBodyId = activeSubTab?.noteBodyId ?? activeTab.noteBodyId
-  const activeNoteBody = useMemo(
-    () => state.noteBodies.find((body) => body.id === activeNoteBodyId) ?? null,
-    [activeNoteBodyId, state.noteBodies],
-  )
-  const activeNoteAisles = useMemo(() => activeNoteBody?.aisles ?? [], [activeNoteBody?.aisles])
-  const activeNoteLocation = useMemo<NoteLocation>(
-    () => ({
-      domainId: state.activeDomainId,
-      spaceId: activeSpace.id,
-      tabId: activeTab.id,
-      subTabId: activeSubTab?.id ?? null,
-    }),
-    [state.activeDomainId, activeSpace.id, activeTab.id, activeSubTab?.id],
-  )
-  const activeNoteLocationKey = buildNoteCursorLocationKey(activeNoteLocation)
-  const savedCursorLocation = state.ui.noteCursorLocations[activeNoteLocationKey] ?? null
-  const savedActiveAisleId =
-    savedCursorLocation && activeNoteAisles.some((aisle) => aisle.id === savedCursorLocation.activeAisleId)
-      ? savedCursorLocation.activeAisleId
-      : ''
-  const resolvedActiveAisleId =
-    activeNoteAisles.some((aisle) => aisle.id === activeAisleId)
-      ? activeAisleId
-      : savedActiveAisleId || (activeNoteAisles[0]?.id ?? '')
-  const domainsForPickers = useMemo(
-    () => state.domains.map((domain) => (domain.id === state.activeDomainId ? { ...domain, spaces: state.spaces } : domain)),
-    [state.activeDomainId, state.domains, state.spaces],
-  )
-
   useEffect(() => {
     closeImageTools()
   }, [activeSpace.id, activeTab.id, activeSubTab?.id, activeNoteBodyId, viewMode])
@@ -387,32 +268,6 @@ function App() {
       setActiveAisleId(resolvedActiveAisleId)
     }
   }, [activeAisleId, resolvedActiveAisleId])
-
-  useEffect(() => {
-    if (viewMode !== 'main' || !activeNoteBodyId) return
-    if (previousNoteLocationKeyRef.current === activeNoteLocationKey) return
-    previousNoteLocationKeyRef.current = activeNoteLocationKey
-
-    const savedLocation = state.ui.noteCursorLocations[activeNoteLocationKey] ?? null
-    const preferredAisleId =
-      savedLocation && activeNoteAisles.some((aisle) => aisle.id === savedLocation.activeAisleId)
-        ? savedLocation.activeAisleId
-        : activeNoteAisles[0]?.id ?? ''
-    if (!preferredAisleId) {
-      pendingCursorRestoreRef.current = null
-      return
-    }
-
-    pendingCursorRestoreRef.current = {
-      noteLocationKey: activeNoteLocationKey,
-      aisleId: preferredAisleId,
-      selection: savedLocation?.aisles[preferredAisleId] ?? null,
-    }
-    pendingScrollToAisleIdRef.current = preferredAisleId
-    if (preferredAisleId !== activeAisleId) {
-      setActiveAisleId(preferredAisleId)
-    }
-  }, [viewMode, activeNoteBodyId, activeNoteLocationKey, activeNoteAisles, activeAisleId, state.ui.noteCursorLocations])
 
   useEffect(() => {
     const scrollNode = aisleScrollRef.current
@@ -442,8 +297,6 @@ function App() {
     if (!activeNoteBodyId || activeNoteBody) return
     setState((previous) => ensureNoteBodiesForAppState(previous))
   }, [activeNoteBody, activeNoteBodyId])
-
-  const activeContent = getNoteBodyMarkdown(activeNoteBody, resolvedActiveAisleId)
 
   const {
     trashParentTabs,
@@ -479,135 +332,112 @@ function App() {
 
   const getCurrentNoteLocation = (): NoteLocation => activeNoteLocation
 
-  const cloneAisles = (aisles: NoteAisle[]): NoteAisle[] =>
-    aisles.map((aisle) => ({ id: aisle.id, markdown: normalizeMarkdownForPersistence(aisle.markdown) }))
+  const getNormalizedEditorMarkdown = (editor: Editor) =>
+    normalizeEmptyHeadingMarkersFromWysiwyg(
+      editor,
+      normalizeMarkdownForPersistence(mergeLeadingIndentsFromWysiwyg(editor, editor.getMarkdown())),
+    )
 
-  const getAisleSignature = (aisles: NoteAisle[]) =>
-    JSON.stringify(aisles.map((aisle) => [aisle.id, normalizeMarkdownForPersistence(aisle.markdown)]))
+  const cursorPersistence = useNoteCursorPersistence({
+    setState,
+    editorRef,
+    viewMode,
+    activeNoteBodyId,
+    activeNoteLocationKey,
+    activeNoteAisles,
+    activeAisleId,
+    activeAisleIdRef,
+    activeNoteLocationKeyRef,
+    isMainViewRef,
+    noteCursorLocations: state.ui.noteCursorLocations,
+    pendingScrollToAisleIdRef,
+    setActiveAisleId,
+  })
+  const pendingCursorRestoreRef = cursorPersistence.pendingCursorRestoreRef
+  const applyActiveCursorToState = cursorPersistence.applyActiveCursorToState
+  const saveActiveCursorLocation = cursorPersistence.saveActiveCursorLocation
 
-  const syncNoteBodyAislesInState = (previous: AppState, noteBodyId: string, aisles: NoteAisle[]): AppState => {
-    const normalizedAisles = cloneAisles(aisles)
-    const firstMarkdown = normalizedAisles[0]?.markdown ?? ''
-    const syncTabs = (tabs: typeof previous.spaces[number]['data']['tabs']) =>
-      tabs.map((tab) => ({
-        ...tab,
-        homeContent: tab.noteBodyId === noteBodyId ? firstMarkdown : tab.homeContent,
-        subTabs: tab.subTabs.map((subTab) =>
-          subTab.noteBodyId === noteBodyId ? { ...subTab, content: firstMarkdown } : subTab,
-        ),
-      }))
-    const syncSpace = (space: typeof previous.spaces[number]) => ({
-      ...space,
-      data: {
-        ...space.data,
-        tabs: syncTabs(space.data.tabs),
-        deletedTabs: space.data.deletedTabs.map((entry) => ({
-          ...entry,
-          tab: {
-            ...entry.tab,
-            homeContent: entry.tab.noteBodyId === noteBodyId ? firstMarkdown : entry.tab.homeContent,
-            subTabs: entry.tab.subTabs.map((subTab) =>
-              subTab.noteBodyId === noteBodyId ? { ...subTab, content: firstMarkdown } : subTab,
-            ),
-          },
-        })),
-        deletedSubTabs: space.data.deletedSubTabs.map((entry) => ({
-          ...entry,
-          subTab:
-            entry.subTab.noteBodyId === noteBodyId ? { ...entry.subTab, content: firstMarkdown } : entry.subTab,
-        })),
-      },
-    })
-
-    return {
-      ...previous,
-      noteBodies: previous.noteBodies.map((body) =>
-        body.id === noteBodyId ? { ...body, aisles: normalizedAisles } : body,
-      ),
-      domains: previous.domains.map((domain) => ({
-        ...domain,
-        spaces: domain.spaces.map(syncSpace),
-      })),
-      spaces: previous.spaces.map(syncSpace),
-    }
-  }
-
-  const applyNoteLocationToState = (previous: AppState, location: NoteLocation): AppState => {
-    const domainState = setActiveDomain(previous, location.domainId)
-    const spaceState = setActiveSpaceInActiveDomain(domainState, location.spaceId)
-    return updateSpaceInActiveDomain(spaceState, location.spaceId, (space) => ({
-      ...space,
-      data: {
-        ...space.data,
-        activeTabId: location.tabId,
-        tabs: space.data.tabs.map((tab) =>
-          tab.id === location.tabId ? { ...tab, activeSubTabId: location.subTabId ?? null } : tab,
-        ),
-      },
-    }))
-  }
-
-  const updateCursorLocationInState = (
-    previous: AppState,
-    noteLocationKey: string,
-    aisleId: string,
-    selection: NoteCursorSelection | null,
-    now = Date.now(),
-  ): AppState => {
-    if (!noteLocationKey || !aisleId) return previous
-    const current = previous.ui.noteCursorLocations[noteLocationKey]
-    const currentSelection = current?.aisles[aisleId] ?? null
-    const nextSelection = selection ? { ...selection, updatedAt: now } : currentSelection
-    const nextAisles = nextSelection ? { ...(current?.aisles ?? {}), [aisleId]: nextSelection } : current?.aisles ?? {}
-    const nextLocation: NoteCursorLocation = {
-      activeAisleId: aisleId,
-      aisles: nextAisles,
-      updatedAt: now,
-    }
-
-    if (
-      current &&
-      current.activeAisleId === nextLocation.activeAisleId &&
-      noteCursorSelectionsEqual(currentSelection, nextSelection)
-    ) {
-      return previous
-    }
-
-    return {
-      ...previous,
-      ui: {
-        ...previous.ui,
-        noteCursorLocations: pruneNoteCursorLocations({
-          ...previous.ui.noteCursorLocations,
-          [noteLocationKey]: nextLocation,
-        }),
-      },
-    }
-  }
-
-  const applyActiveCursorToState = (previous: AppState): AppState => {
-    if (!isMainViewRef.current) return previous
-    const currentEditor = editorRef.current
-    const view = getWysiwygView(currentEditor)
-    const aisleId = activeAisleIdRef.current
-    const noteLocationKey = activeNoteLocationKeyRef.current
-    if (!currentEditor || !view || !aisleId || !noteLocationKey) return previous
-
-    const rawSelection = getEditorCursorSelection(currentEditor)
-    const selection = rawSelection
-      ? clampNoteCursorSelection({ ...rawSelection, updatedAt: Date.now() }, view.state.doc.content.size)
-      : null
-    return updateCursorLocationInState(previous, noteLocationKey, aisleId, selection)
-  }
-
-  const saveActiveCursorLocation = () => {
-    setState((previous) => applyActiveCursorToState(previous))
-  }
+  const editorPersistence = useEditorPersistence({
+    stateRef,
+    setState,
+    editorRef,
+    activeSpaceIdRef,
+    activeTabIdRef,
+    activeSubTabIdRef,
+    activeAisleIdRef,
+    isMainViewRef,
+    activeNoteBody,
+    resolvedActiveAisleId,
+    getNormalizedEditorMarkdown,
+    applyActiveCursorToState,
+  })
+  const pendingContentRef = editorPersistence.pendingContentRef
+  const saveTimerRef = editorPersistence.saveTimerRef
+  const lastEditorMarkdownRef = editorPersistence.lastEditorMarkdownRef
+  const lastEditorMarkdownByAisleRef = editorPersistence.lastEditorMarkdownByAisleRef
+  const normalizingContentRef = editorPersistence.normalizingContentRef
+  const normalizingAisleIdsRef = editorPersistence.normalizingAisleIdsRef
+  const buildStateWithLatestEditorContent = editorPersistence.buildStateWithLatestEditorContent
+  const flushPendingContent = editorPersistence.flushPendingContent
+  const scheduleContentCommit = editorPersistence.scheduleContentCommit
+  const commitCurrentEditorContent = editorPersistence.commitCurrentEditorContent
+  const commitActiveEditorMarkdownNow = editorPersistence.commitActiveEditorMarkdownNow
+  const replaceActiveEditorMarkdown = editorPersistence.replaceActiveEditorMarkdown
+  const getActiveEditorMarkdown = editorPersistence.getActiveEditorMarkdown
 
   const saveActiveCursorBeforeNavigation = () => {
     saveActiveCursorLocation()
     flushPendingContent()
   }
+
+  const getActiveNoteHistoryKey = () =>
+    [
+      activeSpaceIdRef.current,
+      activeTabIdRef.current,
+      activeSubTabIdRef.current ?? '__home__',
+      activeAisleIdRef.current,
+    ].join('::')
+
+  const aisleController = useAisleController({
+    stateRef,
+    setState,
+    viewMode,
+    activeNoteBodyId,
+    activeNoteBody,
+    activeNoteAisles,
+    activeDomainIdRef,
+    activeSpaceIdRef,
+    activeTabIdRef,
+    activeSubTabIdRef,
+    activeAisleIdRef,
+    editorRef,
+    pendingScrollToAisleIdRef,
+    pendingFocusToAisleIdRef,
+    pendingCursorRestoreRef,
+    setViewMode,
+    setActiveAisleId,
+    setContextMenu,
+    setMenuOpen,
+    setEditing,
+    buildStateWithLatestEditorContent,
+    flushPendingContent,
+    saveActiveCursorLocation,
+    getActiveNoteHistoryKey,
+    getNormalizedEditorMarkdown,
+    pushToast,
+  })
+  const aisleDeleteConfirmation = aisleController.aisleDeleteConfirmation
+  const setAisleDeleteConfirmation = aisleController.setAisleDeleteConfirmation
+  const aisleDeleteMode = aisleController.aisleDeleteMode
+  const setAisleDeleteMode = aisleController.setAisleDeleteMode
+  const aisleDeleteConfirmButtonRef = aisleController.aisleDeleteConfirmButtonRef
+  const exitAisleDeleteMode = aisleController.exitAisleDeleteMode
+  const captureActiveAisleStructuralSnapshot = aisleController.captureActiveAisleStructuralSnapshot
+  const runAisleStructuralHistory = aisleController.runAisleStructuralHistory
+  const scheduleAisleStructuralHistoryFallback = aisleController.scheduleAisleStructuralHistoryFallback
+  const addAisleToActiveNote = aisleController.addAisleToActiveNote
+  const deleteAisleFromActiveNote = aisleController.deleteAisleFromActiveNote
+  const requestDeleteAisleFromActiveNote = aisleController.requestDeleteAisleFromActiveNote
 
   const navigateToNoteLocation = (location: NoteLocation) => {
     saveActiveCursorBeforeNavigation()
@@ -641,214 +471,6 @@ function App() {
     setEditing(null)
   }
 
-  const applyContentToTarget = (
-    spaceId: string,
-    tabId: string,
-    subTabId: string | null,
-    aisleId: string,
-    markdown: string,
-  ) => {
-    setState((previous) => applyMarkdownToAppState(previous, spaceId, tabId, subTabId, aisleId, markdown))
-  }
-
-  const buildStateWithLatestEditorContent = () => {
-    let nextState = stateRef.current
-    const pending = pendingContentRef.current
-    if (pending) {
-      return applyActiveCursorToState(applyAutoPurgeToAppState(
-        applyMarkdownToAppState(
-          nextState,
-          pending.spaceId,
-          pending.tabId,
-          pending.subTabId,
-          pending.aisleId,
-          pending.markdown,
-        ),
-      ))
-    }
-
-    if (!isMainViewRef.current) return applyAutoPurgeToAppState(nextState)
-
-    if (!editorRef.current) return applyActiveCursorToState(applyAutoPurgeToAppState(nextState))
-    const markdown = lastEditorMarkdownRef.current
-
-    nextState = applyMarkdownToAppState(
-      nextState,
-      activeSpaceIdRef.current,
-      activeTabIdRef.current,
-      activeSubTabIdRef.current,
-      activeAisleIdRef.current,
-      markdown,
-    )
-    return applyActiveCursorToState(applyAutoPurgeToAppState(nextState))
-  }
-
-  const captureActiveAisleStructuralSnapshot = (sourceState = buildStateWithLatestEditorContent()): AisleStructuralSnapshot | null => {
-    const location: NoteLocation = {
-      domainId: activeDomainIdRef.current,
-      spaceId: activeSpaceIdRef.current,
-      tabId: activeTabIdRef.current,
-      subTabId: activeSubTabIdRef.current,
-    }
-    const locationInfo = getLocationInfo(sourceState, location)
-    const body = sourceState.noteBodies.find((candidate) => candidate.id === locationInfo.noteBodyId) ?? null
-    if (!locationInfo.noteBodyId || !body) return null
-    const locationKey = buildNoteCursorLocationKey(location)
-    return {
-      location,
-      locationKey,
-      noteBodyId: locationInfo.noteBodyId,
-      aisles: cloneAisles(body.aisles),
-      activeAisleId: activeAisleIdRef.current,
-      cursorLocation: sourceState.ui.noteCursorLocations[locationKey] ?? null,
-    }
-  }
-
-  const pushAisleStructuralHistory = (
-    type: AisleStructuralHistoryEntry['type'],
-    before: AisleStructuralSnapshot,
-    after: AisleStructuralSnapshot,
-  ) => {
-    if (before.noteBodyId !== after.noteBodyId) return
-    structuralUndoStackRef.current = [
-      ...structuralUndoStackRef.current.slice(-99),
-      {
-        type,
-        noteBodyId: before.noteBodyId,
-        before,
-        after,
-        beforeSignature: getAisleSignature(before.aisles),
-        afterSignature: getAisleSignature(after.aisles),
-      },
-    ]
-    structuralRedoStackRef.current = []
-  }
-
-  const getCurrentAisleSignature = (entry: AisleStructuralHistoryEntry) => {
-    const body = stateRef.current.noteBodies.find((candidate) => candidate.id === entry.noteBodyId) ?? null
-    return body ? getAisleSignature(body.aisles) : ''
-  }
-
-  const canApplyAisleStructuralEntry = (entry: AisleStructuralHistoryEntry, direction: 'undo' | 'redo') => {
-    const expectedSignature = direction === 'undo' ? entry.afterSignature : entry.beforeSignature
-    return getCurrentAisleSignature(entry) === expectedSignature
-  }
-
-  const applyCursorLocationSnapshot = (
-    previous: AppState,
-    snapshot: AisleStructuralSnapshot,
-  ): AppState => {
-    if (!snapshot.cursorLocation) return previous
-    return {
-      ...previous,
-      ui: {
-        ...previous.ui,
-        noteCursorLocations: pruneNoteCursorLocations({
-          ...previous.ui.noteCursorLocations,
-          [snapshot.locationKey]: snapshot.cursorLocation,
-        }),
-      },
-    }
-  }
-
-  const applyAisleStructuralEntry = (entry: AisleStructuralHistoryEntry, direction: 'undo' | 'redo') => {
-    if (!canApplyAisleStructuralEntry(entry, direction)) return false
-    saveActiveCursorLocation()
-
-    const target = direction === 'undo' ? entry.before : entry.after
-    const source = direction === 'undo' ? entry.after : entry.before
-    setState((previous) => {
-      const body = previous.noteBodies.find((candidate) => candidate.id === entry.noteBodyId) ?? null
-      if (!body || getAisleSignature(body.aisles) !== getAisleSignature(source.aisles)) return previous
-      const withAisles = syncNoteBodyAislesInState(previous, entry.noteBodyId, target.aisles)
-      const withLocation = applyNoteLocationToState(withAisles, target.location)
-      return applyCursorLocationSnapshot(withLocation, target)
-    })
-
-    setViewMode('main')
-    setActiveAisleId(target.activeAisleId)
-    pendingScrollToAisleIdRef.current = target.activeAisleId
-    pendingFocusToAisleIdRef.current = target.activeAisleId
-    pendingCursorRestoreRef.current = {
-      noteLocationKey: target.locationKey,
-      aisleId: target.activeAisleId,
-      selection: target.cursorLocation?.aisles[target.activeAisleId] ?? null,
-    }
-    setContextMenu(null)
-    setMenuOpen(false)
-    setEditing(null)
-    exitAisleDeleteMode()
-    return true
-  }
-
-  const runAisleStructuralHistory = (direction: 'undo' | 'redo') => {
-    const sourceStack = direction === 'undo' ? structuralUndoStackRef.current : structuralRedoStackRef.current
-    const entry = sourceStack[sourceStack.length - 1]
-    if (!entry || !applyAisleStructuralEntry(entry, direction)) return false
-    if (direction === 'undo') {
-      structuralUndoStackRef.current = structuralUndoStackRef.current.slice(0, -1)
-      structuralRedoStackRef.current = [...structuralRedoStackRef.current, entry]
-    } else {
-      structuralRedoStackRef.current = structuralRedoStackRef.current.slice(0, -1)
-      structuralUndoStackRef.current = [...structuralUndoStackRef.current, entry]
-    }
-    return true
-  }
-  runAisleStructuralHistoryRef.current = runAisleStructuralHistory
-
-  const scheduleAisleStructuralHistoryFallback = (direction: 'undo' | 'redo') => {
-    const noteHistoryKey = getActiveNoteHistoryKey()
-    const editorAtStart = editorRef.current
-    const beforeMarkdown = editorAtStart ? getNormalizedEditorMarkdown(editorAtStart) : null
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        if (noteHistoryKey !== getActiveNoteHistoryKey()) return
-        const editorAfter = editorRef.current
-        const afterMarkdown = editorAfter ? getNormalizedEditorMarkdown(editorAfter) : null
-        if (beforeMarkdown !== null && afterMarkdown !== beforeMarkdown) return
-        runAisleStructuralHistoryRef.current(direction)
-      })
-    })
-  }
-
-  const persistLatestStateSnapshot = () => {
-    const latestState = buildStateWithLatestEditorContent()
-    appStateStore.save(JSON.stringify(latestState))
-  }
-
-  useEffect(() => {
-    window.__tabsGetLatestAppState = () => JSON.stringify(buildStateWithLatestEditorContent())
-    return () => {
-      delete window.__tabsGetLatestAppState
-    }
-  }, [])
-
-  const flushPendingContent = () => {
-    if (saveTimerRef.current !== null) {
-      window.clearTimeout(saveTimerRef.current)
-      saveTimerRef.current = null
-    }
-
-    if (pendingContentRef.current) {
-      const pending = pendingContentRef.current
-      pendingContentRef.current = null
-      applyContentToTarget(pending.spaceId, pending.tabId, pending.subTabId, pending.aisleId, pending.markdown)
-      return
-    }
-
-    if (!isMainViewRef.current) return
-
-    if (!editorRef.current) return
-    const markdown = lastEditorMarkdownRef.current
-    applyContentToTarget(
-      activeSpaceIdRef.current,
-      activeTabIdRef.current,
-      activeSubTabIdRef.current,
-      activeAisleIdRef.current,
-      markdown,
-    )
-  }
-
   const arrange = useArrangeMode({
     state,
     setState,
@@ -871,6 +493,8 @@ function App() {
   const primaryTabRailRef = arrange.primaryTabRailRef
   const subTabRailRef = arrange.subTabRailRef
   const spacesGridRef = arrange.spacesGridRef
+  const arrangeTrashDropRef = arrange.trashDropRef
+  const isDraggingOverArrangeTrashDrop = arrange.isDraggingOverTrashDrop
   const suppressNextSpaceArrangeExitRef = arrange.suppressNextSpaceArrangeExitRef
   const clearArrangePressTimer = arrange.clearPressTimer
   const clearArrangeTapCandidate = arrange.clearTapCandidate
@@ -887,6 +511,55 @@ function App() {
   const handleArrangeTabPointerMove = arrange.handleTabPointerMove
   const handleArrangeTabPointerUp = arrange.handleTabPointerUp
   const cancelArrangeTabPointerDrag = arrange.cancelTabPointerDrag
+
+  const navigationActions = useAppNavigationActions({
+    state,
+    setState,
+    viewMode,
+    setViewMode,
+    contextMenu,
+    setContextMenu,
+    setMenuOpen,
+    setEditing,
+    workspace,
+    activeTab,
+    activeNoteBodyId,
+    resolvedActiveAisleId,
+    activeSpaceIdRef,
+    editorRef,
+    pendingContentRef,
+    pendingCreatedEditRef,
+    skipRenameBlurRef,
+    saveTimerRef,
+    lastEditorMarkdownRef,
+    pendingFocusToAisleIdRef,
+    pendingCursorRestoreRef,
+    closeImageToolsRef,
+    activateAisleEditorRef,
+    arrangeModeActive: arrangeMode.active,
+    exitArrangeMode,
+    saveActiveCursorBeforeNavigation,
+    updateActiveSpaceData,
+    setTrashTabId,
+    setTrashSubTabId,
+  })
+  const commitRename = navigationActions.commitRename
+  const shouldSkipRenameBlur = navigationActions.shouldSkipRenameBlur
+  const cancelRename = navigationActions.cancelRename
+  const addTab = navigationActions.addTab
+  const addSubTab = navigationActions.addSubTab
+  const selectTab = navigationActions.selectTab
+  const selectSubTab = navigationActions.selectSubTab
+  const selectParentHomeTab = navigationActions.selectParentHomeTab
+  const openSpace = navigationActions.openSpace
+  const addSpace = navigationActions.addSpace
+  const duplicateSpaceFromContext = navigationActions.duplicateSpaceFromContext
+  const openSpacesView = navigationActions.openSpacesView
+  const openDomainsView = navigationActions.openDomainsView
+  const openDomain = navigationActions.openDomain
+  const addDomainFromPage = navigationActions.addDomainFromPage
+  const toggleTrashView = navigationActions.toggleTrashView
+  const openSettings = navigationActions.openSettings
 
   const { navigateHistoryBy, returnToLastTabLikeView } = useNavigationHistory({
     viewMode,
@@ -907,201 +580,8 @@ function App() {
     },
   })
 
-  const scheduleContentCommit = (
-    markdown: string,
-    spaceId: string,
-    tabId: string,
-    subTabId: string | null,
-    aisleId: string,
-  ) => {
-    const normalizedMarkdown = normalizeMarkdownForPersistence(markdown)
-    if (aisleId === activeAisleIdRef.current) {
-      lastEditorMarkdownRef.current = normalizedMarkdown
-    }
-    pendingContentRef.current = { spaceId, tabId, subTabId, aisleId, markdown: normalizedMarkdown }
-
-    if (saveTimerRef.current !== null) {
-      window.clearTimeout(saveTimerRef.current)
-    }
-
-    saveTimerRef.current = window.setTimeout(() => {
-      saveTimerRef.current = null
-      if (!pendingContentRef.current) return
-      const next = pendingContentRef.current
-      pendingContentRef.current = null
-      applyContentToTarget(next.spaceId, next.tabId, next.subTabId, next.aisleId, next.markdown)
-    }, 180)
-  }
-
-  const addAisleToActiveNote = (
-    markdown = '',
-    options: { beforeSnapshot?: AisleStructuralSnapshot | null; recordHistory?: boolean } = {},
-  ) => {
-    if (!activeNoteBodyId) return
-    const currentAisleCount = activeNoteBody?.aisles.length ?? 0
-    if (currentAisleCount <= 0) return
-    if (currentAisleCount >= MAX_NOTE_AISLES) {
-      pushToast(`notes can have at most ${MAX_NOTE_AISLES} aisles.`, 'warning')
-      return
-    }
-
-    const beforeSnapshot = options.beforeSnapshot ?? captureActiveAisleStructuralSnapshot()
-    if (!beforeSnapshot) return
-    const newAisle: NoteAisle = { id: createId(), markdown: normalizeMarkdownForPersistence(markdown) }
-    const latestBeforeAddState = buildStateWithLatestEditorContent()
-    const latestBeforeAddBody =
-      latestBeforeAddState.noteBodies.find((candidate) => candidate.id === beforeSnapshot.noteBodyId) ?? null
-    const baseAisles = latestBeforeAddBody ? cloneAisles(latestBeforeAddBody.aisles) : beforeSnapshot.aisles
-    flushPendingContent()
-    const afterAisles = [...baseAisles, newAisle]
-    const afterCursorLocation: NoteCursorLocation = {
-      activeAisleId: newAisle.id,
-      aisles: {
-        ...(beforeSnapshot.cursorLocation?.aisles ?? {}),
-        [newAisle.id]: {
-          anchor: 1,
-          head: 1,
-          updatedAt: Date.now(),
-        },
-      },
-      updatedAt: Date.now(),
-    }
-    const afterSnapshot: AisleStructuralSnapshot = {
-      ...beforeSnapshot,
-      aisles: afterAisles,
-      activeAisleId: newAisle.id,
-      cursorLocation: afterCursorLocation,
-    }
-    setState((previous) => {
-      const body = previous.noteBodies.find((candidate) => candidate.id === activeNoteBodyId)
-      if (!body) return previous
-      if (body.aisles.length >= MAX_NOTE_AISLES) return previous
-      const withAisles = syncNoteBodyAislesInState(previous, activeNoteBodyId, [...body.aisles, newAisle])
-      return applyCursorLocationSnapshot(withAisles, afterSnapshot)
-    })
-    if (options.recordHistory !== false) {
-      pushAisleStructuralHistory('add-aisle', beforeSnapshot, afterSnapshot)
-    }
-    setActiveAisleId(newAisle.id)
-    pendingScrollToAisleIdRef.current = newAisle.id
-    pendingFocusToAisleIdRef.current = newAisle.id
-    exitAisleDeleteMode()
-  }
-
-  const deleteAisleFromActiveNote = (aisleId: string) => {
-    if (!activeNoteBody) return
-    if (activeNoteBody.aisles.length <= 1) {
-      pushToast('a note must keep at least one aisle.', 'warning')
-      return
-    }
-
-    if (!activeNoteBody.aisles.some((candidate) => candidate.id === aisleId)) return
-    const beforeSnapshot = captureActiveAisleStructuralSnapshot()
-    if (!beforeSnapshot) return
-    flushPendingContent()
-    const fallbackAisleId =
-      beforeSnapshot.activeAisleId === aisleId
-        ? beforeSnapshot.aisles.find((candidate) => candidate.id !== aisleId)?.id ?? ''
-        : beforeSnapshot.activeAisleId
-    const afterAisles = beforeSnapshot.aisles.filter((candidate) => candidate.id !== aisleId)
-    const afterAisleCursors = { ...(beforeSnapshot.cursorLocation?.aisles ?? {}) }
-    delete afterAisleCursors[aisleId]
-    const afterCursorLocation: NoteCursorLocation = {
-      activeAisleId: fallbackAisleId,
-      aisles: afterAisleCursors,
-      updatedAt: Date.now(),
-    }
-    const afterSnapshot: AisleStructuralSnapshot = {
-      ...beforeSnapshot,
-      aisles: afterAisles,
-      activeAisleId: fallbackAisleId,
-      cursorLocation: afterCursorLocation,
-    }
-    setAisleDeleteConfirmation(null)
-    setState((previous) => {
-      const body = previous.noteBodies.find((candidate) => candidate.id === activeNoteBody.id)
-      if (!body || body.aisles.length <= 1) return previous
-      const withAisles = syncNoteBodyAislesInState(
-        previous,
-        activeNoteBody.id,
-        body.aisles.filter((candidate) => candidate.id !== aisleId),
-      )
-      return applyCursorLocationSnapshot(withAisles, afterSnapshot)
-    })
-    pushAisleStructuralHistory('delete-aisle', beforeSnapshot, afterSnapshot)
-    if (activeAisleIdRef.current === aisleId) {
-      setActiveAisleId(fallbackAisleId)
-      pendingScrollToAisleIdRef.current = fallbackAisleId
-      pendingFocusToAisleIdRef.current = fallbackAisleId
-    }
-  }
-
-  const getAisleDeleteConfirmationPosition = (anchor: HTMLElement): Pick<AisleDeleteConfirmationState, 'top' | 'left'> => {
-    const rect = anchor.getBoundingClientRect()
-    const margin = 8
-    const viewportWidth = window.innerWidth || document.documentElement.clientWidth
-    const viewportHeight = window.innerHeight || document.documentElement.clientHeight
-    return {
-      top: Math.max(
-        margin,
-        Math.min(viewportHeight - AISLE_DELETE_CONFIRMATION_HEIGHT_PX - margin, rect.bottom + margin),
-      ),
-      left: Math.max(
-        margin,
-        Math.min(viewportWidth - AISLE_DELETE_CONFIRMATION_WIDTH_PX - margin, rect.right - AISLE_DELETE_CONFIRMATION_WIDTH_PX),
-      ),
-    }
-  }
-
-  const requestDeleteAisleFromActiveNote = (aisle: NoteAisle, aisleIndex: number, anchor: HTMLElement) => {
-    if (!activeNoteBody || activeNoteBody.aisles.length <= 1) {
-      pushToast('a note must keep at least one aisle.', 'warning')
-      return
-    }
-
-    if (aisle.markdown.trim().length <= 0) {
-      deleteAisleFromActiveNote(aisle.id)
-      return
-    }
-
-    setAisleDeleteConfirmation({
-      aisleId: aisle.id,
-      aisleIndex,
-      ...getAisleDeleteConfirmationPosition(anchor),
-    })
-    window.requestAnimationFrame(() => {
-      aisleDeleteConfirmButtonRef.current?.focus()
-    })
-  }
-
-  useEffect(() => {
-    if ((viewMode !== 'main' || activeNoteAisles.length <= 1) && aisleDeleteMode) {
-      exitAisleDeleteMode()
-      return
-    }
-    if (aisleDeleteConfirmation && !activeNoteAisles.some((aisle) => aisle.id === aisleDeleteConfirmation.aisleId)) {
-      setAisleDeleteConfirmation(null)
-    }
-  }, [activeNoteAisles, aisleDeleteConfirmation, aisleDeleteMode, viewMode])
-
   const isTrashHomeSelected = viewMode === 'trash' && trashDisplay.mode === 'home'
   const isEditorView = viewMode === 'main' || (viewMode === 'trash' && !isTrashHomeSelected)
-
-  const commitCurrentEditorContent = () => {
-    if (!isMainViewRef.current) return
-    const currentEditor = editorRef.current
-    if (!currentEditor) return
-    const markdown = getNormalizedEditorMarkdown(currentEditor)
-    lastEditorMarkdownRef.current = markdown
-    lastEditorMarkdownByAisleRef.current.set(activeAisleIdRef.current, markdown)
-    scheduleContentCommit(
-      markdown,
-      activeSpaceIdRef.current,
-      activeTabIdRef.current,
-      activeSubTabIdRef.current,
-      activeAisleIdRef.current,
-    )
-  }
 
   const focusEditorAtDocumentStart = () => {
     const currentEditor = editorRef.current
@@ -1158,20 +638,6 @@ function App() {
     })
   }
 
-  const getActiveNoteHistoryKey = () =>
-    [
-      activeSpaceIdRef.current,
-      activeTabIdRef.current,
-      activeSubTabIdRef.current ?? '__home__',
-      activeAisleIdRef.current,
-    ].join('::')
-
-  const getNormalizedEditorMarkdown = (editor: Editor) =>
-    normalizeEmptyHeadingMarkersFromWysiwyg(
-      editor,
-      normalizeMarkdownForPersistence(mergeLeadingIndentsFromWysiwyg(editor, editor.getMarkdown())),
-    )
-
   const multilineEditing = useMultilineEditing({
     editorRef,
     lastEditorMarkdownRef,
@@ -1208,14 +674,14 @@ function App() {
       if (target instanceof Element && target.closest('input, textarea, select, [contenteditable="true"], .link-prompt')) {
         return
       }
-      if (!runAisleStructuralHistoryRef.current(direction)) return
+      if (!runAisleStructuralHistory(direction)) return
       event.preventDefault()
       event.stopPropagation()
     }
 
     window.addEventListener('keydown', handleStructuralHistoryKeydown, true)
     return () => window.removeEventListener('keydown', handleStructuralHistoryKeydown, true)
-  }, [viewMode, getEditorHistoryDirection])
+  }, [viewMode, getEditorHistoryDirection, runAisleStructuralHistory])
 
   const isPendingCreatedRenameActive = () => {
     return Boolean(pendingCreatedEditRef.current)
@@ -1245,32 +711,29 @@ function App() {
   const syncToolbarFormatState = editorToolbar.syncToolbarFormatState
   const scheduleToolbarFormatStateSync = editorToolbar.scheduleToolbarFormatStateSync
 
-  const getContextPreviewData = (payload: NoteContextReferencePayload, sourceNoteBodyId: string) => {
-    const latestState = stateRef.current
-    const targetInfo = getLocationInfo(latestState, payload.target)
-    const targetBody = latestState.noteBodies.find((body) => body.id === targetInfo.noteBodyId) ?? null
-    const selectedAisles =
-      targetBody && payload.aisleIds && payload.aisleIds.length > 0
-        ? targetBody.aisles.filter((aisle) => payload.aisleIds?.includes(aisle.id))
-        : targetBody?.aisles ?? []
-    const recursiveBlocked =
-      !targetBody ||
-      !targetInfo.noteBodyId ||
-      targetInfo.noteBodyId === sourceNoteBodyId ||
-      wouldCreateContextCycle(latestState, targetInfo.noteBodyId, sourceNoteBodyId)
-    const previewText = selectedAisles
-      .map((aisle) => aisle.markdown.trim())
-      .filter(Boolean)
-      .join('\n\n')
-    const locationLabel = targetInfo.domain && targetInfo.space && targetInfo.tab
-      ? `${targetInfo.domain.name} / ${targetInfo.space.name} / ${targetInfo.tab.title}${targetInfo.subTab ? ` / ${targetInfo.subTab.title}` : ' / index'}`
-      : 'missing note'
-    const displayTitle = targetInfo.tab
-      ? `${targetInfo.tab.title} > ${targetInfo.subTab ? targetInfo.subTab.title : 'index'}`
-      : targetInfo.title
-
-    return { targetInfo, targetBody, selectedAisles, recursiveBlocked, previewText, locationLabel, displayTitle }
-  }
+  const noteReferenceActions = useNoteReferenceActions({
+    stateRef,
+    contextMenu,
+    setContextMenu,
+    setModal,
+    editorRef,
+    activeNoteBodyId,
+    activeAisleIdRef,
+    getCurrentNoteLocation,
+    getActiveEditorMarkdown,
+    replaceActiveEditorMarkdown,
+    commitActiveEditorMarkdownNow,
+    saveActiveCursorBeforeNavigation,
+    navigateToNoteLocation,
+    pushToast,
+  })
+  const getContextPreviewData = noteReferenceActions.getContextPreviewData
+  const insertLinkIntoActiveEditor = noteReferenceActions.insertLinkIntoActiveEditor
+  const insertNoteReference = noteReferenceActions.insertNoteReference
+  const deleteContextPreview = noteReferenceActions.deleteContextPreview
+  const openNoteReferenceModal = noteReferenceActions.openNoteReferenceModal
+  const openInternalNoteLinkFromContext = noteReferenceActions.openInternalNoteLinkFromContext
+  const renameInternalNoteLinkFromContext = noteReferenceActions.renameInternalNoteLinkFromContext
 
   const aisleEditors = useAisleEditors({
     viewMode,
@@ -1311,51 +774,21 @@ function App() {
   const activateAisleEditor = aisleEditors.activateAisleEditor
   const activateEditorFromEventTarget = aisleEditors.activateEditorFromEventTarget
   const registerAisleEditorRoot = aisleEditors.registerAisleEditorRoot
+  activateAisleEditorRef.current = activateAisleEditor
 
-  useEffect(() => {
-    const pendingAisleId = pendingFocusToAisleIdRef.current
-    const pendingCursorRestore = pendingCursorRestoreRef.current
-    const restoreAisleId =
-      pendingCursorRestore?.noteLocationKey === activeNoteLocationKey ? pendingCursorRestore.aisleId : ''
-    const targetAisleId = pendingAisleId || restoreAisleId
-    if (viewMode !== 'main' || !activeNoteBodyId || !targetAisleId) return
-    if (pendingCreatedEditRef.current) return
-
-    const animationFrame = window.requestAnimationFrame(() => {
-      const editorKey = buildAisleEditorKey(activeNoteBodyId, targetAisleId)
-      if (activateAisleEditor(editorKey, { focus: true })) {
-        if (pendingFocusToAisleIdRef.current === targetAisleId) {
-          pendingFocusToAisleIdRef.current = null
-        }
-        const pending = pendingCursorRestoreRef.current
-        if (pending?.noteLocationKey === activeNoteLocationKey && pending.aisleId === targetAisleId) {
-          if (pending.selection) {
-            restoreEditorCursorSelection(editorRef.current, pending.selection)
-          }
-          pendingCursorRestoreRef.current = null
-        }
-      }
-    })
-
-    return () => window.cancelAnimationFrame(animationFrame)
-  }, [viewMode, activeNoteBodyId, activeNoteAisles.length, resolvedActiveAisleId, activeNoteLocationKey, editing])
-
-  useEffect(() => {
-    const flushOnExit = () => {
-      if (saveTimerRef.current !== null) {
-        window.clearTimeout(saveTimerRef.current)
-        saveTimerRef.current = null
-      }
-      persistLatestStateSnapshot()
-    }
-
-    window.addEventListener('beforeunload', flushOnExit)
-    window.addEventListener('pagehide', flushOnExit)
-    return () => {
-      window.removeEventListener('beforeunload', flushOnExit)
-      window.removeEventListener('pagehide', flushOnExit)
-    }
-  }, [])
+  usePendingNoteCursorRestore({
+    viewMode,
+    activeNoteBodyId,
+    activeNoteAisles,
+    resolvedActiveAisleId,
+    activeNoteLocationKey,
+    editing,
+    editorRef,
+    pendingCreatedEditRef,
+    pendingFocusToAisleIdRef,
+    pendingCursorRestoreRef,
+    activateAisleEditor,
+  })
 
   const openLinkPrompt = (url: string, top: number, left: number, text?: string) => {
     setLinkPrompt({
@@ -1375,25 +808,6 @@ function App() {
 
   const closeLinkPrompt = () => {
     setLinkPrompt({ open: false, top: 0, left: 0, url: '', text: '' })
-  }
-
-  const commitActiveEditorMarkdownNow = (editor: Editor) => {
-    const normalized = getNormalizedEditorMarkdown(editor)
-    lastEditorMarkdownRef.current = normalized
-    lastEditorMarkdownByAisleRef.current.set(activeAisleIdRef.current, normalized)
-    if (saveTimerRef.current !== null) {
-      window.clearTimeout(saveTimerRef.current)
-      saveTimerRef.current = null
-    }
-    pendingContentRef.current = null
-    applyContentToTarget(
-      activeSpaceIdRef.current,
-      activeTabIdRef.current,
-      activeSubTabIdRef.current,
-      activeAisleIdRef.current,
-      normalized,
-    )
-    return normalized
   }
 
   const imageToolsController = useImageTools({
@@ -1554,15 +968,6 @@ function App() {
     }
   }, [newlineOperationsMenu, newlineOperationsMenuActiveIndex])
 
-  const insertLinkIntoActiveEditor = (label: string, url: string) => {
-    const currentEditor = editorRef.current
-    if (!currentEditor) return false
-    currentEditor.focus()
-    getCommandCapableEditor(currentEditor).exec('addLink', { linkUrl: url, linkText: label })
-    commitActiveEditorMarkdownNow(currentEditor)
-    return true
-  }
-
   const insertNamedLinkFromPrompt = () => {
     if (!linkPrompt.url) return
     const label = linkPrompt.text.trim() || linkPrompt.url
@@ -1570,114 +975,6 @@ function App() {
     closeLinkPrompt()
   }
 
-  const insertTextIntoActiveEditor = (text: string) => {
-    const currentEditor = editorRef.current
-    if (!currentEditor) return false
-    currentEditor.focus()
-    getCommandCapableEditor(currentEditor).insertText(text)
-    commitActiveEditorMarkdownNow(currentEditor)
-    return true
-  }
-
-  const replaceActiveEditorMarkdown = (markdown: string) => {
-    const normalized = normalizeMarkdownForPersistence(markdown)
-    lastEditorMarkdownRef.current = normalized
-    const currentEditor = editorRef.current
-    currentEditor?.setMarkdown(normalized, false)
-    if (currentEditor) {
-      commitActiveEditorMarkdownNow(currentEditor)
-      return
-    }
-    scheduleContentCommit(
-      normalized,
-      activeSpaceIdRef.current,
-      activeTabIdRef.current,
-      activeSubTabIdRef.current,
-      activeAisleIdRef.current,
-    )
-  }
-
-  const getActiveEditorMarkdown = () =>
-    editorRef.current ? getNormalizedEditorMarkdown(editorRef.current) : getNoteBodyMarkdown(activeNoteBody, resolvedActiveAisleId)
-
-  const insertNoteReference = (modalState: Extract<ModalState, { type: 'insert-note-reference' }>) => {
-    const latestState = stateRef.current
-    const targetInfo = getLocationInfo(latestState, modalState.target)
-    if (!targetInfo.domain || !targetInfo.space || !targetInfo.tab || !targetInfo.noteBodyId) {
-      pushToast('choose an existing note.', 'warning')
-      return false
-    }
-
-    if (modalState.insertAs === 'link') {
-      if (!insertLinkIntoActiveEditor(targetInfo.title, buildInternalNoteUrl(targetInfo.noteBodyId, modalState.target))) {
-        pushToast('open a note before inserting a link.', 'warning')
-        return false
-      }
-      pushToast('note link inserted.', 'success')
-      return true
-    }
-
-    if (!activeNoteBodyId || targetInfo.noteBodyId === activeNoteBodyId) {
-      pushToast('a note cannot preview itself.', 'warning')
-      return false
-    }
-
-    if (wouldCreateContextCycle(latestState, targetInfo.noteBodyId, activeNoteBodyId)) {
-      pushToast('note preview blocked to prevent recursion.', 'warning')
-      return false
-    }
-
-    const markdown = getActiveEditorMarkdown()
-    const nextPayload: NoteContextReferencePayload = {
-      id: modalState.editingTokenId ?? createId(),
-      target: {
-        domainId: modalState.target.domainId,
-        spaceId: modalState.target.spaceId,
-        tabId: modalState.target.tabId,
-        subTabId: modalState.target.subTabId,
-      },
-      aisleIds: modalState.target.aisleIds && modalState.target.aisleIds.length > 0 ? modalState.target.aisleIds : undefined,
-    }
-    const nextSignature = getContextReferenceSignature(latestState, nextPayload)
-    const activeBody = latestState.noteBodies.find((body) => body.id === activeNoteBodyId) ?? null
-    const noteMarkdowns = activeBody
-      ? activeBody.aisles.map((aisle) => (aisle.id === activeAisleIdRef.current ? markdown : aisle.markdown))
-      : [markdown]
-    const duplicateReference = noteMarkdowns.flatMap(parseContextReferences).find(
-      (reference) =>
-        reference.payload.id !== modalState.editingTokenId &&
-        getContextReferenceSignature(latestState, reference.payload) === nextSignature,
-    )
-    if (duplicateReference) {
-      pushToast('that note preview already exists in this note.', 'warning')
-      return false
-    }
-
-    const token = buildContextToken(nextPayload)
-    if (modalState.editingTokenId) {
-      replaceActiveEditorMarkdown(replaceContextTokenById(markdown, modalState.editingTokenId, token))
-      pushToast('note preview settings updated.', 'success')
-      return true
-    }
-
-    if (!insertTextIntoActiveEditor(`\n\n${token}\n\n`)) {
-      pushToast('open a note before inserting a note preview.', 'warning')
-      return false
-    }
-    pushToast('note preview inserted.', 'success')
-    return true
-  }
-
-  const deleteContextPreview = (tokenId: string) => {
-    const markdown = getActiveEditorMarkdown()
-    const nextMarkdown = removeContextTokenById(markdown, tokenId)
-    if (nextMarkdown === markdown) {
-      pushToast('note preview not found.', 'warning')
-      return
-    }
-    replaceActiveEditorMarkdown(nextMarkdown)
-    pushToast('note preview deleted.', 'success')
-  }
   deleteContextPreviewRef.current = deleteContextPreview
 
   useLegacyEditor({
@@ -1754,240 +1051,6 @@ function App() {
     cutMultiLineSelectionToClipboard,
   })
 
-  useEffect(() => {
-    return () => {
-      if (saveTimerRef.current !== null) {
-        window.clearTimeout(saveTimerRef.current)
-      }
-    }
-  }, [])
-
-  const commitRename = (type: EditableEntityType, id: string, nextTitle: string) => {
-    const isPendingCreatedRename =
-      (type === 'tab' || type === 'subtab') &&
-      pendingCreatedEditRef.current?.type === type &&
-      pendingCreatedEditRef.current.id === id
-
-    if ((type === 'tab' || type === 'subtab') && !isPendingCreatedRename) {
-      flushPendingContent()
-    }
-    const title = nextTitle.trim()
-    setEditing(null)
-    if (isPendingCreatedRename) {
-      pendingCreatedEditRef.current = null
-    }
-    if (!title) return
-
-    if (type === 'domain') {
-      setState((previous) => renameDomain(previous, id, title))
-      return
-    }
-
-    if (type === 'space') {
-      setState((previous) => renameSpaceInActiveDomain(previous, id, title))
-      return
-    }
-
-    const focusEditorSoon = () => {
-      if (viewMode !== 'main') return
-      window.requestAnimationFrame(() => {
-        const editorKey =
-          activeNoteBodyId && resolvedActiveAisleId ? buildAisleEditorKey(activeNoteBodyId, resolvedActiveAisleId) : ''
-        if (editorKey && activateAisleEditor(editorKey, { focus: true, allowDuringPendingRename: true })) return
-        editorRef.current?.focus()
-      })
-    }
-
-    if (type === 'tab') {
-      updateActiveSpaceData((data) => ({
-        ...data,
-        tabs: data.tabs.map((tab) => (tab.id === id ? { ...tab, title } : tab)),
-      }))
-      focusEditorSoon()
-      return
-    }
-
-    updateActiveSpaceData((data) => ({
-      ...data,
-      tabs: data.tabs.map((tab) => {
-        if (tab.id !== data.activeTabId) return tab
-        return {
-          ...tab,
-          subTabs: tab.subTabs.map((sub) => {
-            if (sub.id !== id) return sub
-            const pending = pendingContentRef.current
-            const pendingMatches =
-              pending &&
-              pending.spaceId === activeSpaceIdRef.current &&
-              pending.tabId === data.activeTabId &&
-              pending.subTabId === id
-            const latest = pendingMatches ? pending.markdown : editorRef.current ? lastEditorMarkdownRef.current : sub.content
-            return { ...sub, title, content: latest }
-          }),
-        }
-      }),
-    }))
-
-    pendingContentRef.current = null
-    if (saveTimerRef.current !== null) {
-      window.clearTimeout(saveTimerRef.current)
-      saveTimerRef.current = null
-    }
-
-    focusEditorSoon()
-  }
-
-  const shouldSkipRenameBlur = (type: EditableEntityType, id: string) => {
-    const next = skipRenameBlurRef.current
-    if (!next || next.type !== type || next.id !== id) return false
-    skipRenameBlurRef.current = null
-    return true
-  }
-
-  const discardPendingCreatedEdit = (type: 'tab' | 'subtab', id: string) => {
-    const pending = pendingCreatedEditRef.current
-    if (!pending || pending.type !== type || pending.id !== id) {
-      setEditing(null)
-      return
-    }
-
-    pendingCreatedEditRef.current = null
-    setEditing(null)
-
-    if (pending.type === 'tab') {
-      updateActiveSpaceData((data) => {
-        const remainingTabs = data.tabs.filter((tab) => tab.id !== id)
-        const fallbackTabId =
-          remainingTabs.find((tab) => tab.id === pending.previousTabId)?.id ?? remainingTabs[0]?.id ?? data.activeTabId
-        return {
-          ...data,
-          activeTabId: fallbackTabId,
-          tabs: remainingTabs,
-        }
-      })
-      return
-    }
-
-    updateActiveSpaceData((data) => ({
-      ...data,
-      tabs: data.tabs.map((tab) => {
-        if (tab.id !== pending.parentTabId) return tab
-        const remainingSubTabs = tab.subTabs.filter((subTab) => subTab.id !== id)
-        const fallbackSubTabId =
-          remainingSubTabs.find((subTab) => subTab.id === pending.previousSubTabId)?.id ?? null
-        return {
-          ...tab,
-          activeSubTabId: fallbackSubTabId,
-          subTabs: remainingSubTabs,
-        }
-      }),
-    }))
-  }
-
-  const cancelRename = (type: EditableEntityType, id: string) => {
-    skipRenameBlurRef.current = { type, id }
-    if (type === 'space' || type === 'domain') {
-      setEditing(null)
-      return
-    }
-    discardPendingCreatedEdit(type, id)
-  }
-
-  const addTab = () => {
-    saveActiveCursorBeforeNavigation()
-    pendingFocusToAisleIdRef.current = null
-    pendingCursorRestoreRef.current = null
-    const noteBody = createNoteBody('')
-    const newTab = {
-      ...createTab('tab'),
-      noteBodyId: noteBody.id,
-      homeContent: '',
-    }
-
-    setState((previous) => {
-      const sanitizedPrevious = applyAutoPurgeToAppState(previous)
-      const next = updateActiveSpaceDataInActiveDomain(sanitizedPrevious, (data) => ({
-        ...data,
-        activeTabId: newTab.id,
-        tabs: [...data.tabs, newTab],
-      }))
-      return {
-        ...next,
-        noteBodies: next.noteBodies.some((body) => body.id === noteBody.id) ? next.noteBodies : [...next.noteBodies, noteBody],
-      }
-    })
-
-    pendingCreatedEditRef.current = { type: 'tab', id: newTab.id, previousTabId: workspace.activeTabId }
-    setEditing({ type: 'tab', id: newTab.id })
-  }
-
-  const addSubTab = () => {
-    saveActiveCursorBeforeNavigation()
-    pendingFocusToAisleIdRef.current = null
-    pendingCursorRestoreRef.current = null
-    const noteBody = createNoteBody('')
-    const newSubTab = { ...createSubTab('tab', ''), noteBodyId: noteBody.id }
-
-    setState((previous) => {
-      const sanitizedPrevious = applyAutoPurgeToAppState(previous)
-      const next = updateActiveSpaceDataInActiveDomain(sanitizedPrevious, (data) => ({
-        ...data,
-        tabs: data.tabs.map((tab) =>
-          tab.id === data.activeTabId
-            ? { ...tab, activeSubTabId: newSubTab.id, subTabs: [...tab.subTabs, newSubTab] }
-            : tab,
-        ),
-      }))
-      return {
-        ...next,
-        noteBodies: next.noteBodies.some((body) => body.id === noteBody.id) ? next.noteBodies : [...next.noteBodies, noteBody],
-      }
-    })
-
-    pendingCreatedEditRef.current = {
-      type: 'subtab',
-      id: newSubTab.id,
-      parentTabId: activeTab.id,
-      previousSubTabId: activeTab.activeSubTabId,
-    }
-    setEditing({ type: 'subtab', id: newSubTab.id })
-  }
-
-  const selectTab = (tabId: string) => {
-    if (activeTab.id === tabId && activeTab.activeSubTabId === null) return
-    saveActiveCursorBeforeNavigation()
-    closeImageTools()
-    updateActiveSpaceData((data) => ({
-      ...data,
-      activeTabId: tabId,
-      tabs: data.tabs.map((tab) => (tab.id === tabId ? { ...tab, activeSubTabId: null } : tab)),
-    }))
-  }
-
-  const selectSubTab = (subTabId: string) => {
-    if (activeTab.activeSubTabId === subTabId) return
-    saveActiveCursorBeforeNavigation()
-    closeImageTools()
-    updateActiveSpaceData((data) => ({
-      ...data,
-      tabs: data.tabs.map((tab) =>
-        tab.id === data.activeTabId ? { ...tab, activeSubTabId: subTabId } : tab,
-      ),
-    }))
-  }
-
-  const selectParentHomeTab = () => {
-    if (activeTab.activeSubTabId === null) return
-    saveActiveCursorBeforeNavigation()
-    closeImageTools()
-    updateActiveSpaceData((data) => ({
-      ...data,
-      tabs: data.tabs.map((tab) =>
-        tab.id === data.activeTabId ? { ...tab, activeSubTabId: null } : tab,
-      ),
-    }))
-  }
-
   const stageManager = useStageManagerController({
     state,
     stateRef,
@@ -2008,110 +1071,6 @@ function App() {
     pushToast,
   })
 
-  const openSpace = (spaceId: string) => {
-    saveActiveCursorBeforeNavigation()
-    closeImageTools()
-    if (arrangeMode.active) {
-      exitArrangeMode()
-    }
-    setState((previous) => setActiveSpaceInActiveDomain(previous, spaceId))
-    setViewMode('main')
-    setMenuOpen(false)
-    setContextMenu(null)
-    setEditing(null)
-  }
-
-  const addSpace = () => {
-    saveActiveCursorBeforeNavigation()
-    const newSpace = createSpace('New Space')
-    setState((previous) => addSpaceToActiveDomain(previous, newSpace))
-    setViewMode('spaces')
-    setEditing({ type: 'space', id: newSpace.id })
-    setMenuOpen(false)
-  }
-
-  const duplicateSpaceFromContext = () => {
-    if (!contextMenu || contextMenu.type !== 'space') return
-    const sourceSpace = state.spaces.find((space) => space.id === contextMenu.spaceId)
-    if (!sourceSpace) {
-      setContextMenu(null)
-      return
-    }
-
-    const duplicatedSpace = duplicateSpace(sourceSpace, state.spaces.map((space) => space.name))
-
-    setState((previous) => insertSpaceAfterInActiveDomain(previous, sourceSpace.id, duplicatedSpace))
-
-    setViewMode('spaces')
-    setEditing({ type: 'space', id: duplicatedSpace.id })
-    setMenuOpen(false)
-    setContextMenu(null)
-  }
-
-  const openSpacesView = () => {
-    saveActiveCursorBeforeNavigation()
-    if (arrangeMode.active) {
-      exitArrangeMode()
-    }
-    setViewMode('spaces')
-    setMenuOpen(false)
-    setContextMenu(null)
-  }
-
-  const openDomainsView = () => {
-    saveActiveCursorBeforeNavigation()
-    if (arrangeMode.active) {
-      exitArrangeMode()
-    }
-    setViewMode('domains')
-    setMenuOpen(false)
-    setContextMenu(null)
-    setEditing(null)
-  }
-
-  const openDomain = (domainId: string) => {
-    saveActiveCursorBeforeNavigation()
-    if (arrangeMode.active) {
-      exitArrangeMode()
-    }
-    setState((previous) => setActiveDomain(previous, domainId))
-    setViewMode('spaces')
-    setMenuOpen(false)
-    setContextMenu(null)
-    setEditing(null)
-  }
-
-  const addDomainFromPage = () => {
-    saveActiveCursorBeforeNavigation()
-    const newDomain = createDomain('New Domain')
-    setState((previous) => addDomain(previous, newDomain))
-    setViewMode('domains')
-    setEditing({ type: 'domain', id: newDomain.id })
-    setMenuOpen(false)
-    setContextMenu(null)
-  }
-
-  const toggleTrashView = () => {
-    saveActiveCursorBeforeNavigation()
-    setMenuOpen(false)
-    setContextMenu(null)
-
-    setViewMode((previous) => {
-      if (previous === 'trash') return 'main'
-      setTrashTabId(TRASH_HOME_ID)
-      setTrashSubTabId(null)
-      return 'trash'
-    })
-  }
-
-  const openSettings = () => {
-    if (viewMode === 'spaces' || viewMode === 'domains') return
-    saveActiveCursorBeforeNavigation()
-    setMenuOpen(false)
-    setContextMenu(null)
-    setViewMode('settings')
-  }
-
   const closeSettingsView = () => {
     returnToLastTabLikeView()
   }
@@ -2123,6 +1082,42 @@ function App() {
       getLatestState: buildStateWithLatestEditorContent,
       setStatus: settingsController.setExportStatus,
     })
+
+  const overlayActions = useAppOverlayActions({
+    state,
+    stateRef,
+    setState,
+    viewMode,
+    contextMenu,
+    setContextMenu,
+    modal,
+    setModal,
+    setMenuOpen,
+    setEditing,
+    activeSpaceId: activeSpace.id,
+    updateActiveSpaceData,
+    saveActiveCursorBeforeNavigation,
+    setTrashTabId,
+    setTrashSubTabId,
+    insertNoteReference,
+    exportData,
+    pushToast,
+  })
+  const openContextMenuForTab = overlayActions.openContextMenuForTab
+  const openContextMenuForSubTab = overlayActions.openContextMenuForSubTab
+  const openContextMenuForTrashTab = overlayActions.openContextMenuForTrashTab
+  const openContextMenuForTrashSubTab = overlayActions.openContextMenuForTrashSubTab
+  const openContextMenuForSpace = overlayActions.openContextMenuForSpace
+  const openContextMenuForDomain = overlayActions.openContextMenuForDomain
+  const openDeleteModalFromContext = overlayActions.openDeleteModalFromContext
+  const deleteFromContext = overlayActions.deleteFromContext
+  const openDuplicateModalFromContext = overlayActions.openDuplicateModalFromContext
+  const openCopyModalFromContext = overlayActions.openCopyModalFromContext
+  const openDeduplicateModalFromContext = overlayActions.openDeduplicateModalFromContext
+  const getCurrentDuplicateCount = overlayActions.getCurrentDuplicateCount
+  const beginRenameSpaceFromContext = overlayActions.beginRenameSpaceFromContext
+  const beginRenameDomainFromContext = overlayActions.beginRenameDomainFromContext
+  const confirmModal = overlayActions.confirmModal
 
   const autoSizeRenameInput = (input: HTMLInputElement) => {
     if (!renameInputMeasureContext) {
@@ -2151,522 +1146,6 @@ function App() {
     const textWidth = context.measureText(value).width + extraLetterSpacing
     const nextWidth = Math.min(maxWidth, Math.max(minWidth, Math.ceil(textWidth + horizontalChrome + 2)))
     input.style.width = `${nextWidth}px`
-  }
-
-  const openContextMenuForTab = (event: MouseEvent<HTMLButtonElement>, tabId: string) => {
-    if (viewMode !== 'main') return
-    event.preventDefault()
-    setMenuOpen(false)
-    setContextMenu({ type: 'tab', tabId, x: event.clientX, y: event.clientY })
-  }
-
-  const openContextMenuForSubTab = (event: MouseEvent<HTMLButtonElement>, tabId: string, subTabId: string) => {
-    if (viewMode !== 'main') return
-    event.preventDefault()
-    setMenuOpen(false)
-    setContextMenu({ type: 'subtab', tabId, subTabId, x: event.clientX, y: event.clientY })
-  }
-
-  const openContextMenuForTrashTab = (event: MouseEvent<HTMLButtonElement>, trashParent: TrashParentBucket) => {
-    if (viewMode !== 'trash') return
-    event.preventDefault()
-    setMenuOpen(false)
-    setContextMenu({
-      type: 'trash-tab',
-      source: trashParent.source,
-      deletedTabEntryId: trashParent.deletedTabEntryId,
-      parentTabId: trashParent.parentTabId,
-      x: event.clientX,
-      y: event.clientY,
-    })
-  }
-
-  const openContextMenuForTrashSubTab = (
-    event: MouseEvent<HTMLButtonElement>,
-    trashParent: TrashParentBucket,
-    currentSubTabId: string,
-  ) => {
-    if (viewMode !== 'trash') return
-    event.preventDefault()
-    setMenuOpen(false)
-    setContextMenu({
-      type: 'trash-subtab',
-      source: trashParent.source,
-      deletedTabEntryId: trashParent.deletedTabEntryId,
-      parentTabId: trashParent.parentTabId,
-      subTabId: currentSubTabId,
-      x: event.clientX,
-      y: event.clientY,
-    })
-  }
-
-  const openContextMenuForSpace = (event: MouseEvent<HTMLButtonElement>, spaceId: string) => {
-    if (viewMode !== 'spaces') return
-    event.preventDefault()
-    setMenuOpen(false)
-    setContextMenu({ type: 'space', spaceId, x: event.clientX, y: event.clientY })
-  }
-
-  const openContextMenuForDomain = (event: MouseEvent<HTMLButtonElement>, domainId: string) => {
-    if (viewMode !== 'domains') return
-    event.preventDefault()
-    setMenuOpen(false)
-    setContextMenu({ type: 'domain', domainId, x: event.clientX, y: event.clientY })
-  }
-
-  const buildDeleteTargetFromContextMenu = (): DeleteTarget | null => {
-    if (!contextMenu) return null
-    return contextMenu.type === 'tab'
-      ? { type: 'tab', tabId: contextMenu.tabId }
-      : contextMenu.type === 'subtab'
-        ? { type: 'subtab', tabId: contextMenu.tabId, subTabId: contextMenu.subTabId }
-        : contextMenu.type === 'image' || contextMenu.type === 'domain' || contextMenu.type === 'internal-note-link'
-          ? null
-        : contextMenu.type === 'trash-tab'
-          ? {
-              type: 'trash-tab',
-              source: contextMenu.source,
-              deletedTabEntryId: contextMenu.deletedTabEntryId,
-              parentTabId: contextMenu.parentTabId,
-            }
-          : contextMenu.type === 'trash-subtab'
-            ? {
-                type: 'trash-subtab',
-                source: contextMenu.source,
-                deletedTabEntryId: contextMenu.deletedTabEntryId,
-                parentTabId: contextMenu.parentTabId,
-                subTabId: contextMenu.subTabId,
-              }
-            : { type: 'space', spaceId: contextMenu.spaceId }
-  }
-
-  const openDeleteModalFromContext = (permanent: boolean) => {
-    const target = buildDeleteTargetFromContextMenu()
-    if (!target) return
-    setModal({ type: 'delete-target', target, permanent })
-    setContextMenu(null)
-  }
-
-  const deleteFromContext = () => {
-    const target = buildDeleteTargetFromContextMenu()
-    if (!target) return
-    setContextMenu(null)
-    deleteTarget(target, false)
-  }
-
-  const openDuplicateModalFromContext = () => {
-    if (!contextMenu || (contextMenu.type !== 'tab' && contextMenu.type !== 'subtab')) return
-    saveActiveCursorBeforeNavigation()
-    const source: NoteLocation = {
-      domainId: state.activeDomainId,
-      spaceId: activeSpace.id,
-      tabId: contextMenu.tabId,
-      subTabId: contextMenu.type === 'subtab' ? contextMenu.subTabId : null,
-    }
-    const target = getDefaultNoteReferenceTarget(state, source)
-    setModal({
-      type: 'duplicate-note',
-      source,
-      target,
-    })
-    setContextMenu(null)
-  }
-
-  const openCopyModalFromContext = () => {
-    if (!contextMenu || (contextMenu.type !== 'tab' && contextMenu.type !== 'subtab')) return
-    saveActiveCursorBeforeNavigation()
-    const source: NoteLocation = {
-      domainId: state.activeDomainId,
-      spaceId: activeSpace.id,
-      tabId: contextMenu.tabId,
-      subTabId: contextMenu.type === 'subtab' ? contextMenu.subTabId : null,
-    }
-    const target = getDefaultNoteReferenceTarget(state, source)
-    setModal({
-      type: 'copy-note',
-      source,
-      target,
-    })
-    setContextMenu(null)
-  }
-
-  const openDeduplicateModalFromContext = () => {
-    if (!contextMenu || (contextMenu.type !== 'tab' && contextMenu.type !== 'subtab')) return
-    const source: NoteLocation = {
-      domainId: state.activeDomainId,
-      spaceId: activeSpace.id,
-      tabId: contextMenu.tabId,
-      subTabId: contextMenu.type === 'subtab' ? contextMenu.subTabId : null,
-    }
-    const noteBodyId = getLocationInfo(state, source).noteBodyId
-    if (!noteBodyId) return
-    const locations = listNoteLocationsForBody(state, noteBodyId)
-    setModal({
-      type: 'deduplicate-note',
-      noteBodyId,
-      keepLocationKeys: locations.map((location) => buildNoteLocationKey(location)),
-    })
-    setContextMenu(null)
-  }
-
-  const getCurrentDuplicateCount = () => {
-    const location = contextMenu && (contextMenu.type === 'tab' || contextMenu.type === 'subtab')
-      ? {
-          domainId: state.activeDomainId,
-          spaceId: activeSpace.id,
-          tabId: contextMenu.tabId,
-          subTabId: contextMenu.type === 'subtab' ? contextMenu.subTabId : null,
-        }
-      : null
-    if (!location) return 0
-    const noteBodyId = getLocationInfo(state, location).noteBodyId
-    return noteBodyId ? listNoteLocationsForBody(state, noteBodyId).length : 0
-  }
-
-  const openNoteReferenceModal = () => {
-    saveActiveCursorBeforeNavigation()
-    const source = getCurrentNoteLocation()
-    const target = getDefaultNoteReferenceTarget(stateRef.current, source)
-    setModal({
-      type: 'insert-note-reference',
-      insertAs: 'link',
-      target,
-    })
-  }
-
-  const openInternalNoteLinkFromContext = () => {
-    if (!contextMenu || contextMenu.type !== 'internal-note-link') return
-    const target = contextMenu.target
-    setContextMenu(null)
-    navigateToNoteLocation(target)
-  }
-
-  const renameInternalNoteLinkFromContext = () => {
-    if (!contextMenu || contextMenu.type !== 'internal-note-link') return
-    const linkContext = contextMenu
-    const nextLabel = window.prompt('link name', linkContext.label)?.trim()
-    if (!nextLabel || nextLabel === linkContext.label) {
-      setContextMenu(null)
-      return
-    }
-
-    const nextSyntax = `[${escapeMarkdownLinkLabel(nextLabel)}](${linkContext.href})`
-    const currentEditor = editorRef.current
-    const view = getWysiwygView(currentEditor)
-
-    if (currentEditor && view) {
-      try {
-        const currentHit = getInternalNoteLinkHitAtDocPosition(view.state.doc, linkContext.from)
-        const from = currentHit?.href === linkContext.href ? currentHit.from : linkContext.from
-        const to = currentHit?.href === linkContext.href ? currentHit.to : linkContext.to
-        view.dispatch(view.state.tr.insertText(nextSyntax, from, to).scrollIntoView())
-        currentEditor.focus()
-        commitActiveEditorMarkdownNow(currentEditor)
-        setContextMenu(null)
-        return
-      } catch {
-        // Fall back to markdown replacement below if the document position shifted.
-      }
-    }
-
-    replaceActiveEditorMarkdown(replaceInternalNoteLinkByOccurrence(getActiveEditorMarkdown(), linkContext, nextSyntax))
-    setContextMenu(null)
-  }
-
-  const beginRenameSpaceFromContext = () => {
-    if (!contextMenu || contextMenu.type !== 'space') return
-    setEditing({ type: 'space', id: contextMenu.spaceId })
-    setContextMenu(null)
-  }
-
-  const beginRenameDomainFromContext = () => {
-    if (!contextMenu || contextMenu.type !== 'domain') return
-    setEditing({ type: 'domain', id: contextMenu.domainId })
-    setContextMenu(null)
-  }
-
-  const deleteSpace = (spaceId: string) => {
-    setState((previous) => removeSpaceFromActiveDomain(previous, spaceId))
-  }
-
-  const deleteTarget = (target: DeleteTarget, permanent: boolean) => {
-    saveActiveCursorBeforeNavigation()
-    let nextToastMessage: string | null = null
-
-    if (target.type === 'space') {
-      deleteSpace(target.spaceId)
-      return
-    }
-
-    updateActiveSpaceData((data) => {
-      if (target.type === 'trash-tab') {
-        if (target.source === 'subtabs-only') {
-          return {
-            ...data,
-            deletedSubTabs: data.deletedSubTabs.filter((entry) => entry.parentTabId !== target.parentTabId),
-          }
-        }
-
-        return {
-          ...data,
-          deletedTabs: data.deletedTabs.filter((entry) => entry.id !== target.deletedTabEntryId),
-        }
-      }
-
-      if (target.type === 'trash-subtab') {
-        if (target.source === 'deleted-tab' && target.deletedTabEntryId) {
-          return {
-            ...data,
-            deletedTabs: data.deletedTabs.map((entry) =>
-              entry.id !== target.deletedTabEntryId
-                ? entry
-                : {
-                    ...entry,
-                    tab: {
-                      ...entry.tab,
-                      subTabs: entry.tab.subTabs.filter((sub) => sub.id !== target.subTabId),
-                    },
-                  },
-            ),
-          }
-        }
-
-        return {
-          ...data,
-          deletedSubTabs: data.deletedSubTabs.filter((entry) => entry.id !== target.subTabId),
-        }
-      }
-
-      if (target.type === 'tab') {
-        const tabToDelete = data.tabs.find((tab) => tab.id === target.tabId)
-        if (!tabToDelete) return data
-        if (!permanent) {
-          nextToastMessage = 'tab has been moved to trash.'
-        }
-
-        const remaining = data.tabs.filter((tab) => tab.id !== target.tabId)
-        const deletedTabs = permanent
-          ? data.deletedTabs
-          : [
-              ...data.deletedTabs,
-              {
-                id: createId(),
-                tab: tabToDelete,
-                deletedAt: Date.now(),
-              },
-            ]
-
-        if (remaining.length === 0) {
-          const fallback = createTab('tab')
-          return {
-            ...data,
-            activeTabId: fallback.id,
-            tabs: [fallback],
-            deletedTabs,
-          }
-        }
-
-        const nextActiveId = data.activeTabId === target.tabId ? remaining[0].id : data.activeTabId
-        return {
-          ...data,
-          activeTabId: nextActiveId,
-          tabs: remaining.map((tab) => (tab.id === nextActiveId ? { ...tab, activeSubTabId: null } : tab)),
-          deletedTabs,
-        }
-      }
-
-      const parent = data.tabs.find((tab) => tab.id === target.tabId)
-      if (!parent) return data
-      const subToDelete = parent.subTabs.find((sub) => sub.id === target.subTabId)
-      if (!subToDelete) return data
-      if (!permanent) {
-        nextToastMessage = 'tab has been moved to trash.'
-      }
-
-      return {
-        ...data,
-        tabs: data.tabs.map((tab) =>
-          tab.id === target.tabId
-            ? {
-                ...tab,
-                activeSubTabId: tab.activeSubTabId === target.subTabId ? null : tab.activeSubTabId,
-                subTabs: tab.subTabs.filter((sub) => sub.id !== target.subTabId),
-              }
-            : tab,
-        ),
-        deletedSubTabs: permanent
-          ? data.deletedSubTabs
-          : [
-              ...data.deletedSubTabs,
-              {
-                id: createId(),
-                parentTabId: parent.id,
-                parentTabTitle: parent.title,
-                subTab: subToDelete,
-                deletedAt: Date.now(),
-              },
-            ],
-      }
-    })
-    if (target.type === 'trash-tab') {
-      setTrashTabId(TRASH_HOME_ID)
-      setTrashSubTabId(null)
-    }
-    if (target.type === 'trash-subtab') {
-      setTrashSubTabId(null)
-    }
-    if (nextToastMessage) {
-      setToast({
-        id: Date.now(),
-        message: nextToastMessage,
-        tone: 'success',
-        durationMs: DEFAULT_TOAST_DURATION_MS,
-      })
-    }
-  }
-
-  const restoreAllTrash = () => {
-    updateActiveSpaceData((data) => {
-      let tabs = [...data.tabs]
-      for (const entry of data.deletedTabs) {
-        if (tabs.some((tab) => tab.id === entry.tab.id)) continue
-        tabs = [...tabs, entry.tab]
-      }
-
-      for (const entry of data.deletedSubTabs) {
-        const parentIndex = tabs.findIndex((tab) => tab.id === entry.parentTabId)
-        if (parentIndex >= 0) {
-          const parent = tabs[parentIndex]
-          if (!parent.subTabs.some((sub) => sub.id === entry.subTab.id)) {
-            tabs[parentIndex] = { ...parent, subTabs: [...parent.subTabs, entry.subTab] }
-          }
-        } else {
-          tabs = [
-            ...tabs,
-            {
-              id: entry.parentTabId,
-              title: entry.parentTabTitle,
-              noteBodyId: createId(),
-              homeContent: '',
-              activeSubTabId: null,
-              subTabs: [entry.subTab],
-            },
-          ]
-        }
-      }
-
-      return {
-        ...data,
-        activeTabId: tabs.some((tab) => tab.id === data.activeTabId) ? data.activeTabId : tabs[0].id,
-        tabs,
-        deletedTabs: [],
-        deletedSubTabs: [],
-      }
-    })
-
-    setTrashTabId(TRASH_HOME_ID)
-    setTrashSubTabId(null)
-  }
-
-  const deleteAllTrash = () => {
-    updateActiveSpaceData((data) => ({ ...data, deletedTabs: [], deletedSubTabs: [] }))
-    setTrashTabId(TRASH_HOME_ID)
-    setTrashSubTabId(null)
-  }
-
-  const confirmModal = () => {
-    if (!modal) return
-
-    if (modal.type === 'export-space') {
-      const spaceId = modal.spaceId
-      setModal(null)
-      void exportData('space', spaceId)
-      return
-    }
-
-    if (modal.type === 'duplicate-note') {
-      const targetInfo = getLocationInfo(stateRef.current, modal.target)
-      if (!targetInfo.noteBodyId) {
-        setModal(null)
-        return
-      }
-      setState((previous) => updateNoteLocationBody(previous, modal.source, targetInfo.noteBodyId))
-      setModal(null)
-      pushToast('note duplicate linked.', 'success')
-      return
-    }
-
-    if (modal.type === 'copy-note') {
-      const targetInfo = getLocationInfo(stateRef.current, modal.target)
-      const targetBody = targetInfo.noteBodyId
-        ? stateRef.current.noteBodies.find((candidate) => candidate.id === targetInfo.noteBodyId)
-        : null
-      if (!targetBody) {
-        setModal(null)
-        pushToast('choose an existing note.', 'warning')
-        return
-      }
-
-      setState((previous) => {
-        const latestTargetInfo = getLocationInfo(previous, modal.target)
-        const targetBody = latestTargetInfo.noteBodyId
-          ? previous.noteBodies.find((candidate) => candidate.id === latestTargetInfo.noteBodyId)
-          : null
-        if (!targetBody) return previous
-        const copiedBody = cloneNoteBodyAsIndependentCopy(targetBody)
-        return updateNoteLocationBody(
-          {
-            ...previous,
-            noteBodies: [...previous.noteBodies, copiedBody],
-          },
-          modal.source,
-          copiedBody.id,
-        )
-      })
-      setModal(null)
-      pushToast('note copied.', 'success')
-      return
-    }
-
-    if (modal.type === 'deduplicate-note') {
-      const keepKeys = new Set(modal.keepLocationKeys)
-      if (keepKeys.size === 0) {
-        pushToast('keep at least one duplicate linked.', 'warning')
-        return
-      }
-      const locations = listNoteLocationsForBody(stateRef.current, modal.noteBodyId)
-      let nextState = stateRef.current
-      const newBodies: NoteBody[] = []
-      for (const location of locations) {
-        if (keepKeys.has(buildNoteLocationKey(location))) continue
-        const emptyBody: NoteBody = {
-          id: createId(),
-          aisles: [{ id: createId(), markdown: '' }],
-        }
-        newBodies.push(emptyBody)
-        nextState = updateNoteLocationBody(nextState, location, emptyBody.id)
-      }
-      setState({ ...nextState, noteBodies: [...nextState.noteBodies, ...newBodies] })
-      setModal(null)
-      pushToast('duplicates updated.', 'success')
-      return
-    }
-
-    if (modal.type === 'insert-note-reference') {
-      if (insertNoteReference(modal)) {
-        setModal(null)
-      }
-      return
-    }
-
-    if (modal.type === 'delete-target') {
-      deleteTarget(modal.target, modal.permanent)
-    }
-
-    if (modal.type === 'trash-restore-all') restoreAllTrash()
-    if (modal.type === 'trash-delete-all') deleteAllTrash()
-
-    setModal(null)
   }
 
   const editorReadOnly = viewMode !== 'main'
@@ -2787,6 +1266,9 @@ function App() {
         isNoteWorkspaceView={isNoteWorkspaceView}
         arrangeableParentTabClassName={arrangeableParentTabClassName}
         draggingParentTabId={draggingParentTabId}
+        draggingSubTabId={draggingSubTabId}
+        arrangeTrashDropRef={arrangeTrashDropRef}
+        isArrangeTrashDropTarget={isDraggingOverArrangeTrashDrop}
         trashParentTabs={trashParentTabs}
         trashTabId={trashTabId}
         menuOpen={menuOpen}

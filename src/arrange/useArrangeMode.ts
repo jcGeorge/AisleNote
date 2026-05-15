@@ -6,8 +6,10 @@ import {
   DEFAULT_ARRANGE_MODE,
   getArrangeRailInsertionTarget,
   isPointInsideElement,
+  isPointInsideElementExact,
   moveItemByInsertion,
 } from './arrange-utils'
+import { moveArrangeItemToTrash } from './arrange-trash'
 import { moveSpaceWithinActiveDomain } from '../state/domains'
 import type {
   AppState,
@@ -70,6 +72,7 @@ export function useArrangeMode({
   const primaryTabRailRef = useRef<HTMLDivElement | null>(null)
   const subTabRailRef = useRef<HTMLDivElement | null>(null)
   const spacesGridRef = useRef<HTMLDivElement | null>(null)
+  const trashDropRef = useRef<HTMLButtonElement | null>(null)
   const pressTimerRef = useRef<number | null>(null)
   const tapCandidateRef = useRef<ArrangeTapCandidate | null>(null)
   const dragSeedRef = useRef<ArrangeDragSeed | null>(null)
@@ -77,6 +80,8 @@ export function useArrangeMode({
   const tabDragRef = useRef<TabArrangeDragPreview | null>(null)
   const suppressClickRef = useRef<Set<string>>(new Set())
   const suppressNextSpaceArrangeExitRef = useRef(false)
+  const isDraggingOverTrashDropRef = useRef(false)
+  const [isDraggingOverTrashDrop, setIsDraggingOverTrashDrop] = useState(false)
 
   const clearPressTimer = () => {
     if (pressTimerRef.current !== null) {
@@ -91,6 +96,12 @@ export function useArrangeMode({
 
   const clearDragSeed = () => {
     dragSeedRef.current = null
+  }
+
+  const setTrashDropTarget = (active: boolean) => {
+    if (isDraggingOverTrashDropRef.current === active) return
+    isDraggingOverTrashDropRef.current = active
+    setIsDraggingOverTrashDrop(active)
   }
 
   const startDragSeed = (key: string, event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -181,6 +192,7 @@ export function useArrangeMode({
     spaceDragRef.current = null
     tabDragRef.current = null
     suppressNextSpaceArrangeExitRef.current = false
+    setTrashDropTarget(false)
     setDraggingItem(null)
     setSpaceDragPreview(null)
     setTabDragPreview(null)
@@ -234,6 +246,7 @@ export function useArrangeMode({
     setContextMenu(null)
     setEditing(null)
     setDraggingItem(dragItem)
+    setTrashDropTarget(false)
     const scope: ArrangeScope = dragItem.type === 'space' ? 'spaces' : 'tabs'
     setMode({
       active: true,
@@ -470,7 +483,18 @@ export function useArrangeMode({
     )
   }
 
+  const isPointOverTrashDrop = (clientX: number, clientY: number) =>
+    isPointInsideElementExact(trashDropRef.current, clientX, clientY)
+
   const updateTabDropTarget = (item: TabArrangeDragItem, clientX: number, clientY: number) => {
+    if (isPointOverTrashDrop(clientX, clientY)) {
+      setTrashDropTarget(true)
+      clearTabDropTarget()
+      return { type: 'trash' as const }
+    }
+
+    setTrashDropTarget(false)
+
     if (item.type === 'tab') {
       const parentTarget = getParentInsertionTargetFromPoint(clientX, clientY)
       if (!parentTarget) {
@@ -536,6 +560,28 @@ export function useArrangeMode({
   const clearTabPointerDrag = () => {
     tabDragRef.current = null
     setTabDragPreview(null)
+  }
+
+  const cleanupFinishedTabPointerDrag = () => {
+    clearTabPointerDrag()
+    clearTapCandidate()
+    clearDragSeed()
+    setTrashDropTarget(false)
+    setDraggingItem(null)
+    setMode((previous) =>
+      previous.active
+        ? {
+            ...previous,
+            dragItem: null,
+            overParentTabId: null,
+            overParentInsert: null,
+            overSubTabId: null,
+            overSubTabInsert: null,
+            overSpaceId: null,
+            overSpaceInsert: null,
+          }
+        : previous,
+    )
   }
 
   const startTabPointerDrag = (
@@ -647,21 +693,32 @@ export function useArrangeMode({
     }))
   }
 
+  const moveTabItemToTrash = (item: TabArrangeDragItem) => {
+    updateActiveSpaceData((data) => moveArrangeItemToTrash(data, item))
+  }
+
   const finishTabPointerDrag = (clientX: number, clientY: number) => {
     const drag = tabDragRef.current
     if (!drag) return false
 
     const { item } = drag
+    const sourceKey = item.type === 'tab' ? `tab:${item.tabId}` : `subtab:${item.subTabId}`
+    markClickSuppressed(sourceKey)
+
+    if (isPointOverTrashDrop(clientX, clientY)) {
+      moveTabItemToTrash(item)
+      cleanupFinishedTabPointerDrag()
+      return true
+    }
+
     if (item.type === 'tab') {
       const parentTarget = getParentInsertionTargetFromPoint(clientX, clientY)
-      markClickSuppressed(`tab:${item.tabId}`)
       if (parentTarget) {
         markClickSuppressed(`tab:${parentTarget.targetId}`)
         moveParentTabToTarget(item.tabId, parentTarget)
       }
     } else if (item.type === 'subtab') {
       const parentTarget = getParentInsertionTargetFromPoint(clientX, clientY)
-      markClickSuppressed(`subtab:${item.subTabId}`)
       if (parentTarget) {
         markClickSuppressed(`tab:${parentTarget.targetId}`)
         moveSubTabToParent(item.parentTabId, item.subTabId, parentTarget.targetId)
@@ -674,24 +731,7 @@ export function useArrangeMode({
       }
     }
 
-    clearTabPointerDrag()
-    clearTapCandidate()
-    clearDragSeed()
-    setDraggingItem(null)
-    setMode((previous) =>
-      previous.active
-        ? {
-            ...previous,
-            dragItem: null,
-            overParentTabId: null,
-            overParentInsert: null,
-            overSubTabId: null,
-            overSubTabInsert: null,
-            overSpaceId: null,
-            overSpaceInsert: null,
-          }
-        : previous,
-    )
+    cleanupFinishedTabPointerDrag()
     return true
   }
 
@@ -700,6 +740,7 @@ export function useArrangeMode({
     clearTapCandidate()
     clearDragSeed()
     clearPressTimer()
+    setTrashDropTarget(false)
     setDraggingItem(null)
     setMode((previous) =>
       previous.active
@@ -770,6 +811,8 @@ export function useArrangeMode({
 
   useEffect(() => {
     if (viewMode === 'main') return
+    isDraggingOverTrashDropRef.current = false
+    setIsDraggingOverTrashDrop(false)
     setMode((previous) => (previous.active ? DEFAULT_ARRANGE_MODE : previous))
   }, [viewMode])
 
@@ -886,6 +929,8 @@ export function useArrangeMode({
     primaryTabRailRef,
     subTabRailRef,
     spacesGridRef,
+    trashDropRef,
+    isDraggingOverTrashDrop,
     suppressNextSpaceArrangeExitRef,
     clearPressTimer,
     clearTapCandidate,

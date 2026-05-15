@@ -389,6 +389,25 @@
   opacity: 0.92 !important;
 }
 
+.theme-light .toastui-editor-contents p.tabs-annotation-line,
+.theme-light .toastui-editor .ProseMirror p.tabs-annotation-line {
+  color: #4a5f82 !important;
+}
+
+.theme-light .toastui-editor-contents p.tabs-annotation-line::before,
+.theme-light .toastui-editor .ProseMirror p.tabs-annotation-line::before {
+  background: #5f7fb5 !important;
+}
+
+.theme-light .toastui-editor-contents .tabs-annotation-line-marker,
+.theme-light .toastui-editor .ProseMirror .tabs-annotation-line-marker {
+  color: #5f7fb5 !important;
+}
+
+.theme-light .toastui-editor .ProseMirror .tabs-terminal-block-landing-zone::before {
+  background: rgba(95, 127, 181, 0.86) !important;
+}
+
 .theme-light .toastui-editor-contents li.task-reorder-source {
   background: rgba(63, 125, 240, 0.08);
   box-shadow: inset 0 0 0 1px rgba(63, 125, 240, 0.14);

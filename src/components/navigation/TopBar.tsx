@@ -26,6 +26,9 @@ type TopBarProps = {
   isNoteWorkspaceView: boolean
   arrangeableParentTabClassName: string
   draggingParentTabId: string | null
+  draggingSubTabId: string | null
+  arrangeTrashDropRef: RefObject<HTMLButtonElement | null>
+  isArrangeTrashDropTarget: boolean
   trashParentTabs: TrashParentBucket[]
   trashTabId: string
   menuOpen: boolean
@@ -78,6 +81,17 @@ type TopBarProps = {
   onOpenSettings: () => void
 }
 
+type TopbarAction = {
+  key: string
+  label: string
+  visibleLabel?: string
+  sizeLabel?: string
+  selected: boolean
+  className: string
+  buttonRef?: RefObject<HTMLButtonElement | null>
+  onClick: () => void
+}
+
 export function TopBar({
   viewMode,
   workspace,
@@ -88,6 +102,9 @@ export function TopBar({
   isNoteWorkspaceView,
   arrangeableParentTabClassName,
   draggingParentTabId,
+  draggingSubTabId,
+  arrangeTrashDropRef,
+  isArrangeTrashDropTarget,
   trashParentTabs,
   trashTabId,
   menuOpen,
@@ -136,7 +153,8 @@ export function TopBar({
           'aria-label': 'Primary tabs',
         } as const)
 
-  const topbarActions = [
+  const isDraggingTabArrangeItem = Boolean(draggingParentTabId || draggingSubTabId)
+  const topbarActions: TopbarAction[] = [
     ...(viewMode === 'trash'
       ? [
           {
@@ -178,8 +196,13 @@ export function TopBar({
           {
             key: 'end-arrangement',
             label: 'end arrangement',
+            visibleLabel: isDraggingTabArrangeItem ? 'trash' : 'end arrangement',
+            sizeLabel: 'end arrangement',
             selected: false,
-            className: 'btn btn-sm tab-btn topbar-action-btn topbar-context-btn',
+            className: `btn btn-sm tab-btn topbar-action-btn topbar-context-btn topbar-arrange-trash-btn ${
+              isDraggingTabArrangeItem ? 'is-trash-mode' : ''
+            } ${isArrangeTrashDropTarget ? 'is-trash-drop-target' : ''}`,
+            buttonRef: arrangeTrashDropRef,
             onClick: onExitArrangeMode,
           },
         ]
@@ -351,12 +374,22 @@ export function TopBar({
               {topbarActions.map((action) => (
                 <button
                   key={action.key}
+                  ref={action.buttonRef}
                   type="button"
                   aria-pressed={action.selected}
                   className={`${action.className} ${action.selected ? 'is-selected' : ''}`}
                   onClick={action.onClick}
                 >
-                  {action.label}
+                  {action.sizeLabel ? (
+                    <>
+                      <span className="topbar-action-size-label" aria-hidden="true">
+                        {action.sizeLabel}
+                      </span>
+                      <span className="topbar-action-visible-label">{action.visibleLabel ?? action.label}</span>
+                    </>
+                  ) : (
+                    action.label
+                  )}
                 </button>
               ))}
             </div>

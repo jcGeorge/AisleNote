@@ -6,6 +6,15 @@ import {
   shouldDeleteEmptyParagraphAtListBoundary,
 } from './empty-paragraph-list-delete'
 import {
+  applyAnnotationLineClassToHtmlToken,
+  applyAnnotationMarkerToTextHtmlToken,
+  isAnnotationLine,
+  parseAnnotationLine,
+  ANNOTATION_LINE_CLASS_NAME,
+  ANNOTATION_LINE_MARKER_CLASS_NAME,
+  getToastNodeText,
+} from './annotation-line'
+import {
   applyBulletListMarkerToHtmlToken,
   createBulletListAttrs,
   getBulletListMarkdownDelimiter,
@@ -25,6 +34,94 @@ type ToastHtmlToken = ToastHtmlOpenTagToken | ToastHtmlOpenTagToken[] | null
 
 type ToastListMdNode = {
   listData?: { type?: string; bulletChar?: string } | null
+}
+
+export function annotationLinePlugin(context: {
+  pmState: {
+    Plugin: new (spec: {
+      props?: {
+        decorations?: (state: { doc: any }) => unknown
+      }
+    }) => unknown
+  }
+  pmView: {
+    Decoration: {
+      node: (from: number, to: number, attrs: Record<string, string>, spec?: Record<string, unknown>) => unknown
+      inline: (from: number, to: number, attrs: Record<string, string>, spec?: Record<string, unknown>) => unknown
+    }
+    DecorationSet: {
+      create: (doc: unknown, decorations: unknown[]) => unknown
+    }
+  }
+}) {
+  const { Plugin } = context.pmState
+  const { Decoration, DecorationSet } = context.pmView
+
+  return {
+    toHTMLRenderers: {
+      paragraph: (
+        node: unknown,
+        rendererContext: {
+          entering: boolean
+          getChildrenText?: (node: unknown) => string
+          origin?: () => ToastHtmlToken
+        },
+      ) => {
+        const originalToken = rendererContext.origin?.() ?? null
+        if (!rendererContext.entering) return originalToken
+        const paragraphText = getToastNodeText(node, rendererContext.getChildrenText)
+        if (!isAnnotationLine(paragraphText)) return originalToken
+        return applyAnnotationLineClassToHtmlToken(originalToken) as ToastHtmlToken
+      },
+      text: (node: unknown, rendererContext: { origin?: () => ToastHtmlToken }) => {
+        const originalToken = rendererContext.origin?.() ?? null
+        return applyAnnotationMarkerToTextHtmlToken(node, originalToken) as ToastHtmlToken
+      },
+    },
+    wysiwygPlugins: [
+      () =>
+        new Plugin({
+          props: {
+            decorations: (state: { doc: any }) => {
+              const decorations: unknown[] = []
+              state.doc.descendants((node: any, position: number) => {
+                if (node?.type?.name !== 'paragraph') return true
+                const match = parseAnnotationLine(node.textContent ?? '')
+                if (!match) return true
+
+                const from = position
+                const to = position + node.nodeSize
+                decorations.push(
+                  Decoration.node(
+                    from,
+                    to,
+                    { class: ANNOTATION_LINE_CLASS_NAME },
+                    { key: `annotation-line-${from}-${to}` },
+                  ),
+                )
+
+                const contentStart = position + 1
+                const contentEnd = Math.max(contentStart, to - 1)
+                const markerFrom = Math.min(contentStart + match.markerStart, contentEnd)
+                const markerTo = Math.min(contentStart + match.prefixEnd, contentEnd)
+                if (markerTo > markerFrom) {
+                  decorations.push(
+                    Decoration.inline(
+                      markerFrom,
+                      markerTo,
+                      { class: ANNOTATION_LINE_MARKER_CLASS_NAME },
+                      { key: `annotation-marker-${markerFrom}-${markerTo}` },
+                    ),
+                  )
+                }
+                return true
+              })
+              return DecorationSet.create(state.doc, decorations)
+            },
+          },
+        }),
+    ],
+  }
 }
 
 export function listMarkerPlugin(context: { instance: Editor }) {

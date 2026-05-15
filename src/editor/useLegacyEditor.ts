@@ -2,6 +2,7 @@
 import { useEffect, type MutableRefObject } from 'react'
 import { Editor } from '@toast-ui/editor'
 import {
+  annotationLinePlugin,
   EDITOR_TOOLBAR_ITEMS,
   headingSpaceShortcutPlugin,
   installClearToolbarButton,
@@ -11,6 +12,7 @@ import {
   thematicBreakShortcutPlugin,
   uncheckedTaskEnterPlugin,
 } from './editor-setup'
+import { terminalBlockLandingPlugin } from './terminal-block-landing'
 import {
   installCompletedTaskCheckboxBehavior,
   installTaskTextReorderBehavior,
@@ -92,6 +94,8 @@ export function useLegacyEditor({
       usageStatistics: false,
       plugins: [
         listMarkerPlugin,
+        annotationLinePlugin,
+        terminalBlockLandingPlugin,
         uncheckedTaskEnterPlugin,
         headingSpaceShortcutPlugin,
         thematicBreakShortcutPlugin,
