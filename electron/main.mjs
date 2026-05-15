@@ -3,7 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { registerClipboardIpc } from './ipc-clipboard.mjs'
 import { registerFileIpc } from './ipc-files.mjs'
-import { registerStorageIpc, saveAppStateSnapshot } from './ipc-storage.mjs'
+import { registerStorageIpc } from './ipc-storage.mjs'
 import { registerUpdateIpc } from './ipc-updates.mjs'
 import { finishCloseAfterFlush } from './quit-flow.mjs'
 import { createNoopUpdateService } from './update-service.mjs'
@@ -12,6 +12,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
 let quitRequested = false
+let storageSession = null
 
 function focusExistingWindow() {
   const window = BrowserWindow.getAllWindows()[0]
@@ -21,6 +22,12 @@ function focusExistingWindow() {
   }
   window.show()
   window.focus()
+  return true
+}
+
+function openAppWindow() {
+  if (!storageSession) return focusExistingWindow()
+  createWindow(storageSession)
   return true
 }
 
@@ -43,7 +50,7 @@ function sendMultilineShortcut(direction) {
   sendMultilineShortcutToWindow(BrowserWindow.getFocusedWindow(), direction)
 }
 
-function installApplicationMenu() {
+function installApplicationMenu({ onNewWindow }) {
   const isMac = process.platform === 'darwin'
   const template = [
     ...(isMac
@@ -54,6 +61,16 @@ function installApplicationMenu() {
           },
         ]
       : []),
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'New Window',
+          accelerator: 'CommandOrControl+N',
+          click: onNewWindow,
+        },
+      ],
+    },
     {
       label: 'Edit',
       submenu: [
@@ -153,15 +170,23 @@ function createWindow(storageSession) {
 
     void (async () => {
       try {
-        const serializedState = await withTimeout(
+        const stateSnapshot = await withTimeout(
           window.webContents.executeJavaScript(
-            'window.__tabsGetLatestAppState?.() ?? null',
+            `(() => {
+              const serializedState = window.__tabsGetLatestAppState?.() ?? null
+              const baseRevision = window.__tabsGetAppStateRevision?.() ?? null
+              return { serializedState, baseRevision }
+            })()`,
             true,
           ),
           1500,
         )
-        if (typeof serializedState === 'string' && storageSession.canWriteAppState()) {
-          saveAppStateSnapshot(app.getPath('userData'), serializedState)
+        if (
+          typeof stateSnapshot?.serializedState === 'string' &&
+          Number.isInteger(stateSnapshot.baseRevision) &&
+          storageSession.canWriteAppState()
+        ) {
+          storageSession.saveAppStateSnapshot(stateSnapshot, window.webContents.id)
         }
       } catch {
         // Fall through to close even if the renderer snapshot cannot be collected.
@@ -193,22 +218,22 @@ if (!gotSingleInstanceLock) {
   })
 
   app.on('second-instance', () => {
-    focusExistingWindow()
+    openAppWindow()
   })
 
   app.whenReady().then(() => {
-    installApplicationMenu()
     const updateService = createNoopUpdateService(app)
-    const storageSession = registerStorageIpc({ ipcMain, app })
+    storageSession = registerStorageIpc({ ipcMain, app, BrowserWindow })
+    installApplicationMenu({ onNewWindow: openAppWindow })
     registerFileIpc({ ipcMain, dialog })
     registerClipboardIpc({ ipcMain, clipboard, nativeImage })
     registerUpdateIpc({ ipcMain, updateService })
 
-    createWindow(storageSession)
+    openAppWindow()
 
     app.on('activate', () => {
       if (!focusExistingWindow()) {
-        createWindow(storageSession)
+        openAppWindow()
       }
     })
   })

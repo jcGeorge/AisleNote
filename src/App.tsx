@@ -423,7 +423,6 @@ function App() {
     ].join('::')
 
   const aisleController = useAisleController({
-    stateRef,
     setState,
     viewMode,
     activeNoteBodyId,
@@ -446,7 +445,6 @@ function App() {
     buildStateWithLatestEditorContent,
     flushPendingContent,
     saveActiveCursorLocation,
-    getActiveNoteHistoryKey,
     getNormalizedEditorMarkdown,
     pushToast,
   })
@@ -1070,6 +1068,7 @@ function App() {
     syncToolbarFormatState,
     getEditorHistoryDirection,
     onEditorSelectionChange: saveActiveCursorLocation,
+    onRunStructuralHistory: runAisleStructuralHistory,
     onEditorHistoryFallback: scheduleAisleStructuralHistoryFallback,
     onRunNewlineOperation: runActiveNewlineOperation,
     onOpenNewlineOperationsMenu: openNewlineOperationsMenu,

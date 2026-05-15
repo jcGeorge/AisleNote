@@ -17,6 +17,7 @@ export function usePersistentAppState(): PersistentAppStateController {
   const stateRef = useRef(state)
   const initialStateJsonRef = useRef<string>(JSON.stringify(parseSavedState(initialSerializedState)))
   const stateDirtySinceBootRef = useRef(false)
+  const externallyAppliedStateJsonRef = useRef<string | null>(null)
 
   useEffect(() => {
     stateRef.current = state
@@ -48,6 +49,28 @@ export function usePersistentAppState(): PersistentAppStateController {
   }, [])
 
   useEffect(() => {
+    if (typeof appPersistenceService.subscribeSerializedState !== 'function') return
+
+    let disposed = false
+    const unsubscribe = appPersistenceService.subscribeSerializedState((serializedState) => {
+      if (disposed) return
+      const nextState = applyAutoPurgeToAppState(parseSavedState(serializedState))
+      const nextSerializedState = JSON.stringify(nextState)
+      initialStateJsonRef.current = nextSerializedState
+      stateDirtySinceBootRef.current = false
+      if (nextSerializedState === JSON.stringify(stateRef.current)) return
+      externallyAppliedStateJsonRef.current = nextSerializedState
+      stateRef.current = nextState
+      setState(nextState)
+    })
+
+    return () => {
+      disposed = true
+      unsubscribe()
+    }
+  }, [])
+
+  useEffect(() => {
     const sanitizedState = applyAutoPurgeToAppState(state)
     if (sanitizedState !== state) {
       stateRef.current = sanitizedState
@@ -57,6 +80,11 @@ export function usePersistentAppState(): PersistentAppStateController {
 
     stateRef.current = sanitizedState
     const serializedState = JSON.stringify(sanitizedState)
+    if (externallyAppliedStateJsonRef.current === serializedState) {
+      externallyAppliedStateJsonRef.current = null
+      stateDirtySinceBootRef.current = false
+      return
+    }
     stateDirtySinceBootRef.current = serializedState !== initialStateJsonRef.current
     if (!storageHydrated) return
     appPersistenceService.saveSerializedState(serializedState)

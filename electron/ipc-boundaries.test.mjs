@@ -23,6 +23,12 @@ function createIpcMain() {
   }
 }
 
+function createBrowserWindow(windows = []) {
+  return {
+    getAllWindows: vi.fn(() => windows),
+  }
+}
+
 function withTempUserDataPath(run) {
   const userDataPath = mkdtempSync(path.join(os.tmpdir(), 'tabs-ipc-user-data-'))
   try {
@@ -82,19 +88,56 @@ describe('electron ipc boundaries', () => {
       const storageSession = registerStorageIpc({
         ipcMain,
         app: { getPath: () => userDataPath },
+        BrowserWindow: createBrowserWindow(),
       })
 
       const loadEvent = { returnValue: null }
       ipcMain.listeners.get('load-app-state-result')(loadEvent)
 
       const saveEvent = { returnValue: null }
-      ipcMain.listeners.get('save-app-state')(saveEvent, '{"theme":"dawn"}')
+      ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: '{"theme":"dawn"}', baseRevision: 0 })
 
       expect(loadEvent.returnValue.ok).toBe(false)
       expect(storageSession.canWriteAppState()).toBe(false)
       expect(saveEvent.returnValue).toEqual({
         ok: false,
+        reason: 'load-failed',
         error: 'App state did not load; refusing to overwrite existing data.',
+        currentRevision: 0,
+        serializedState: null,
+      })
+    }))
+
+  it('broadcasts successful revisioned app-state saves to other windows', () =>
+    withTempUserDataPath((userDataPath) => {
+      const ipcMain = createIpcMain()
+      const sourceSender = { id: 1 }
+      const sourceWindow = {
+        isDestroyed: vi.fn(() => false),
+        webContents: { id: 1, send: vi.fn() },
+      }
+      const otherWindow = {
+        isDestroyed: vi.fn(() => false),
+        webContents: { id: 2, send: vi.fn() },
+      }
+      registerStorageIpc({
+        ipcMain,
+        app: { getPath: () => userDataPath },
+        BrowserWindow: createBrowserWindow([sourceWindow, otherWindow]),
+      })
+
+      const saveEvent = { sender: sourceSender, returnValue: null }
+      ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: '{"theme":"dawn"}', baseRevision: 0 })
+
+      expect(saveEvent.returnValue).toEqual({
+        ok: true,
+        serializedState: '{"theme":"dawn"}',
+        revision: 1,
+      })
+      expect(sourceWindow.webContents.send).not.toHaveBeenCalled()
+      expect(otherWindow.webContents.send).toHaveBeenCalledWith('app-state-updated', {
+        serializedState: '{"theme":"dawn"}',
+        revision: 1,
       })
     }))
 })

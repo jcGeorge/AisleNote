@@ -43,6 +43,7 @@ type UseEditorDomEventsOptions = {
   syncToolbarFormatState: () => void
   getEditorHistoryDirection: (event: KeyboardEvent) => 'undo' | 'redo' | null
   onEditorSelectionChange: () => void
+  onRunStructuralHistory: (direction: 'undo' | 'redo') => boolean
   onEditorHistoryFallback: (direction: 'undo' | 'redo') => void
   onRunNewlineOperation: (operation: NewlineOperationId) => boolean
   onOpenNewlineOperationsMenu: () => void
@@ -94,6 +95,7 @@ export function useEditorDomEvents({
   syncToolbarFormatState,
   getEditorHistoryDirection,
   onEditorSelectionChange,
+  onRunStructuralHistory,
   onEditorHistoryFallback,
   onRunNewlineOperation,
   onOpenNewlineOperationsMenu,
@@ -324,6 +326,11 @@ export function useEditorDomEvents({
       }
       const editorHistoryDirection = getEditorHistoryDirection(keyboardEvent)
       if (editorHistoryDirection) {
+        if (onRunStructuralHistory(editorHistoryDirection)) {
+          keyboardEvent.preventDefault()
+          keyboardEvent.stopPropagation()
+          return
+        }
         scheduleMultiLineHistoryRestore(editorHistoryDirection)
         onEditorHistoryFallback(editorHistoryDirection)
       }
@@ -433,6 +440,11 @@ export function useEditorDomEvents({
       activateEditorFromEventTarget(inputEvent.target)
       if (inputEvent.inputType === 'historyUndo' || inputEvent.inputType === 'historyRedo') {
         const direction = inputEvent.inputType === 'historyUndo' ? 'undo' : 'redo'
+        if (onRunStructuralHistory(direction)) {
+          inputEvent.preventDefault()
+          inputEvent.stopPropagation()
+          return
+        }
         scheduleMultiLineHistoryRestore(direction)
         onEditorHistoryFallback(direction)
         return

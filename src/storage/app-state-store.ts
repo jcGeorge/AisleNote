@@ -7,6 +7,7 @@ export interface AppStateStore {
   load(): string | null
   save(serializedState: string): void
   hydrate?(onHydratedState: (serializedState: string) => void): Promise<void> | void
+  subscribe?(onUpdatedState: (serializedState: string) => void): () => void
 }
 
 class BrowserLocalStorageAppStateStore implements AppStateStore {
@@ -80,7 +81,13 @@ class BrowserIndexedDbHybridAppStateStore implements AppStateStore {
 
 class ElectronAppStateStore implements AppStateStore {
   private readonly legacyRendererStore = new BrowserLocalStorageAppStateStore(LEGACY_APP_STATE_STORAGE_KEY)
+  private readonly subscribers = new Set<(serializedState: string) => void>()
   private savesBlockedByLoadFailure = false
+  private revision = 0
+
+  constructor() {
+    window.__tabsGetAppStateRevision = () => this.revision
+  }
 
   load(): string | null {
     try {
@@ -88,10 +95,12 @@ class ElectronAppStateStore implements AppStateStore {
       const loadResult = window.electronAPI?.loadAppStateResult?.()
       if (loadResult) {
         this.savesBlockedByLoadFailure = !loadResult.ok
+        this.revision = loadResult.revision
         return loadResult.ok ? loadResult.serializedState : null
       }
 
       this.savesBlockedByLoadFailure = false
+      this.revision = 0
       return window.electronAPI?.loadAppState() ?? null
     } catch {
       this.savesBlockedByLoadFailure = true
@@ -102,10 +111,42 @@ class ElectronAppStateStore implements AppStateStore {
   save(serializedState: string): void {
     if (this.savesBlockedByLoadFailure) return
     try {
-      window.electronAPI?.saveAppState(serializedState)
+      const result = window.electronAPI?.saveAppState({
+        serializedState,
+        baseRevision: this.revision,
+      })
+      if (result?.ok) {
+        this.revision = result.revision
+        return
+      }
+      if (result && !result.ok && typeof result.currentRevision === 'number') {
+        this.revision = result.currentRevision
+      }
+      if (typeof result?.serializedState === 'string') {
+        this.notifySubscribers(result.serializedState)
+      }
     } catch {
       // Keep current behavior non-fatal until a dedicated error surface is added.
     }
+  }
+
+  subscribe(onUpdatedState: (serializedState: string) => void): () => void {
+    this.subscribers.add(onUpdatedState)
+    const unsubscribeFromIpc =
+      window.electronAPI?.onAppStateUpdated?.((payload) => {
+        if (!payload || typeof payload.serializedState !== 'string' || !Number.isInteger(payload.revision)) return
+        this.revision = payload.revision
+        this.notifySubscribers(payload.serializedState)
+      }) ?? (() => undefined)
+
+    return () => {
+      this.subscribers.delete(onUpdatedState)
+      unsubscribeFromIpc()
+    }
+  }
+
+  private notifySubscribers(serializedState: string): void {
+    this.subscribers.forEach((subscriber) => subscriber(serializedState))
   }
 }
 

@@ -39,6 +39,20 @@ describe('app persistence service', () => {
 
     expect(hydrate).toHaveBeenCalledOnce()
   })
+
+  it('exposes subscriptions when the active store supports state updates', () => {
+    const subscribe = vi.fn(() => () => undefined)
+    const store: AppStateStore = {
+      load: () => null,
+      save: vi.fn(),
+      subscribe,
+    }
+
+    const service = createAppPersistenceService(store)
+    service.subscribeSerializedState?.(() => undefined)
+
+    expect(subscribe).toHaveBeenCalledOnce()
+  })
 })
 
 describe('Electron app state store', () => {
@@ -51,6 +65,7 @@ describe('Electron app state store', () => {
           serializedState: null,
           source: 'hybrid',
           error: 'Existing app state could not be loaded.',
+          revision: 0,
         }),
         saveAppState,
       },
@@ -71,8 +86,13 @@ describe('Electron app state store', () => {
           ok: true,
           serializedState: '{"theme":"dawn"}',
           source: 'hybrid',
+          revision: 1,
         }),
-        saveAppState,
+        saveAppState: saveAppState.mockReturnValue({
+          ok: true,
+          serializedState: '{"theme":"light"}',
+          revision: 2,
+        }),
       },
     })
 
@@ -80,7 +100,10 @@ describe('Electron app state store', () => {
 
     expect(store.load()).toBe('{"theme":"dawn"}')
     store.save('{"theme":"light"}')
-    expect(saveAppState).toHaveBeenCalledWith('{"theme":"light"}')
+    expect(saveAppState).toHaveBeenCalledWith({
+      serializedState: '{"theme":"light"}',
+      baseRevision: 1,
+    })
   })
 
   it('allows saves after a truly empty profile load result', () => {
@@ -91,8 +114,13 @@ describe('Electron app state store', () => {
           ok: true,
           serializedState: null,
           source: 'empty',
+          revision: 0,
         }),
-        saveAppState,
+        saveAppState: saveAppState.mockReturnValue({
+          ok: true,
+          serializedState: '{"theme":"dawn"}',
+          revision: 1,
+        }),
       },
     })
 
@@ -100,6 +128,40 @@ describe('Electron app state store', () => {
 
     expect(store.load()).toBeNull()
     store.save('{"theme":"dawn"}')
-    expect(saveAppState).toHaveBeenCalledWith('{"theme":"dawn"}')
+    expect(saveAppState).toHaveBeenCalledWith({
+      serializedState: '{"theme":"dawn"}',
+      baseRevision: 0,
+    })
+  })
+
+  it('subscribes to accepted app-state updates from other windows', () => {
+    let updateHandler: ((payload: { serializedState: string; revision: number }) => void) | undefined
+    const unsubscribe = vi.fn()
+    vi.stubGlobal('window', {
+      electronAPI: {
+        loadAppStateResult: () => ({
+          ok: true,
+          serializedState: '{"theme":"dawn"}',
+          source: 'hybrid',
+          revision: 1,
+        }),
+        saveAppState: vi.fn(),
+        onAppStateUpdated: vi.fn((handler) => {
+          updateHandler = handler
+          return unsubscribe
+        }),
+      },
+    })
+
+    const store = createAppStateStore()
+    const onUpdatedState = vi.fn()
+    const stop = store.subscribe?.(onUpdatedState)
+
+    if (!updateHandler) throw new Error('missing app state update handler')
+    updateHandler({ serializedState: '{"theme":"light"}', revision: 2 })
+    stop?.()
+
+    expect(onUpdatedState).toHaveBeenCalledWith('{"theme":"light"}')
+    expect(unsubscribe).toHaveBeenCalledOnce()
   })
 })

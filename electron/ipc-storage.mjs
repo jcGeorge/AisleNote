@@ -1,49 +1,62 @@
-import { loadAppStateResult, saveAppState } from './app-state-storage.mjs'
+import { createAppStateCoordinator, LOAD_FAILED_SAVE_ERROR } from './app-state-coordinator.mjs'
 
-export function saveAppStateSnapshot(userDataPath, serializedState) {
-  if (typeof serializedState !== 'string') return false
-  saveAppState(userDataPath, serializedState)
-  return true
-}
+export function registerStorageIpc({ ipcMain, app, BrowserWindow }) {
+  const coordinator = createAppStateCoordinator({ userDataPath: app.getPath('userData') })
 
-export function registerStorageIpc({ ipcMain, app }) {
-  let writesBlockedByLoadFailure = false
-  const userDataPath = () => app.getPath('userData')
+  const broadcastAppStateUpdate = (payload, sourceWebContentsId) => {
+    if (!BrowserWindow || typeof BrowserWindow.getAllWindows !== 'function') return
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window || window.isDestroyed?.()) continue
+      if (window.webContents?.id === sourceWebContentsId) continue
+      window.webContents?.send?.('app-state-updated', payload)
+    }
+  }
 
-  const readAppStateResult = () => {
-    const result = loadAppStateResult(userDataPath())
-    writesBlockedByLoadFailure = !result.ok
+  const saveRevisionedState = (payload, sourceWebContentsId) => {
+    const result = coordinator.saveRevisionedState(payload)
+    if (result.ok) {
+      broadcastAppStateUpdate(
+        {
+          serializedState: result.serializedState,
+          revision: result.revision,
+        },
+        sourceWebContentsId,
+      )
+    }
     return result
   }
 
   ipcMain.on('load-app-state', (event) => {
-    const result = readAppStateResult()
+    const result = coordinator.getLoadResult()
     event.returnValue = result.ok ? result.serializedState : null
   })
 
   ipcMain.on('load-app-state-result', (event) => {
-    event.returnValue = readAppStateResult()
+    event.returnValue = coordinator.getLoadResult()
   })
 
-  ipcMain.on('save-app-state', (event, serializedState) => {
+  ipcMain.on('save-app-state', (event, payload) => {
     try {
-      if (writesBlockedByLoadFailure) {
-        event.returnValue = { ok: false, error: 'App state did not load; refusing to overwrite existing data.' }
+      if (!coordinator.canWriteAppState()) {
+        event.returnValue = {
+          ok: false,
+          reason: 'load-failed',
+          error: LOAD_FAILED_SAVE_ERROR,
+          currentRevision: coordinator.getLoadResult().revision,
+          serializedState: coordinator.getLoadResult().serializedState,
+        }
         return
       }
-      if (typeof serializedState !== 'string') {
-        event.returnValue = { ok: false, error: 'Invalid payload' }
-        return
-      }
-      saveAppStateSnapshot(userDataPath(), serializedState)
-      event.returnValue = { ok: true }
+      event.returnValue = saveRevisionedState(payload, event.sender?.id)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error'
-      event.returnValue = { ok: false, error: message }
+      event.returnValue = { ok: false, reason: 'save-failed', error: message }
     }
   })
 
   return {
-    canWriteAppState: () => !writesBlockedByLoadFailure,
+    canWriteAppState: coordinator.canWriteAppState,
+    getLoadResult: coordinator.getLoadResult,
+    saveAppStateSnapshot: saveRevisionedState,
   }
 }

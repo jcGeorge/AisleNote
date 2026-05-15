@@ -7,7 +7,6 @@ import {
   applyCursorLocationSnapshot,
   applyNoteLocationToState,
   cloneAisles,
-  getAisleSignature,
   syncNoteBodyAislesInState,
 } from '../notes/note-state'
 import { createId, MAX_NOTE_AISLES } from '../state/workspace'
@@ -21,6 +20,13 @@ import type {
   ToastTone,
   ViewMode,
 } from '../types/app'
+import {
+  canApplyAisleStructuralEntryToAisles,
+  createAisleStructuralHistoryEntry,
+  getAisleStructuralTargetSnapshot,
+  type AisleStructuralHistoryEntry,
+  type AisleStructuralSnapshot,
+} from './aisle-structural-history'
 import type { PendingCursorRestore } from './useNoteCursorPersistence'
 
 export type AisleDeleteConfirmationState = {
@@ -30,28 +36,9 @@ export type AisleDeleteConfirmationState = {
   left: number
 }
 
-type AisleStructuralSnapshot = {
-  location: NoteLocation
-  locationKey: string
-  noteBodyId: string
-  aisles: NoteAisle[]
-  activeAisleId: string
-  cursorLocation: NoteCursorLocation | null
-}
-
-type AisleStructuralHistoryEntry = {
-  type: 'add-aisle' | 'delete-aisle'
-  noteBodyId: string
-  before: AisleStructuralSnapshot
-  after: AisleStructuralSnapshot
-  beforeSignature: string
-  afterSignature: string
-}
-
 type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
 
 type UseAisleControllerParams = {
-  stateRef: MutableRefObject<AppState>
   setState: Dispatch<SetStateAction<AppState>>
   viewMode: ViewMode
   activeNoteBodyId: string
@@ -74,7 +61,6 @@ type UseAisleControllerParams = {
   buildStateWithLatestEditorContent: () => AppState
   flushPendingContent: () => void
   saveActiveCursorLocation: () => void
-  getActiveNoteHistoryKey: () => string
   getNormalizedEditorMarkdown: (editor: Editor) => string
   pushToast: (message: string, tone?: ToastTone, durationMs?: number) => void
 }
@@ -83,7 +69,6 @@ const AISLE_DELETE_CONFIRMATION_WIDTH_PX = 248
 const AISLE_DELETE_CONFIRMATION_HEIGHT_PX = 104
 
 export const useAisleController = ({
-  stateRef,
   setState,
   viewMode,
   activeNoteBodyId,
@@ -106,7 +91,6 @@ export const useAisleController = ({
   buildStateWithLatestEditorContent,
   flushPendingContent,
   saveActiveCursorLocation,
-  getActiveNoteHistoryKey,
   getNormalizedEditorMarkdown,
   pushToast,
 }: UseAisleControllerParams) => {
@@ -153,37 +137,37 @@ export const useAisleController = ({
     if (before.noteBodyId !== after.noteBodyId) return
     structuralUndoStackRef.current = [
       ...structuralUndoStackRef.current.slice(-99),
-      {
-        type,
-        noteBodyId: before.noteBodyId,
-        before,
-        after,
-        beforeSignature: getAisleSignature(before.aisles),
-        afterSignature: getAisleSignature(after.aisles),
-      },
+      createAisleStructuralHistoryEntry(type, before, after),
     ]
     structuralRedoStackRef.current = []
   }
 
-  const getCurrentAisleSignature = (entry: AisleStructuralHistoryEntry) => {
-    const body = stateRef.current.noteBodies.find((candidate) => candidate.id === entry.noteBodyId) ?? null
-    return body ? getAisleSignature(body.aisles) : ''
+  const getActiveNoteStructuralScopeKey = () =>
+    [
+      activeSpaceIdRef.current,
+      activeTabIdRef.current,
+      activeSubTabIdRef.current ?? '__home__',
+    ].join('::')
+
+  const getCurrentAislesForEntry = (entry: AisleStructuralHistoryEntry, sourceState = buildStateWithLatestEditorContent()) => {
+    const body = sourceState.noteBodies.find((candidate) => candidate.id === entry.noteBodyId) ?? null
+    return body?.aisles ?? null
   }
 
   const canApplyAisleStructuralEntry = (entry: AisleStructuralHistoryEntry, direction: 'undo' | 'redo') => {
-    const expectedSignature = direction === 'undo' ? entry.afterSignature : entry.beforeSignature
-    return getCurrentAisleSignature(entry) === expectedSignature
+    const currentAisles = getCurrentAislesForEntry(entry)
+    return currentAisles ? canApplyAisleStructuralEntryToAisles(entry, direction, currentAisles) : false
   }
 
   const applyAisleStructuralEntry = (entry: AisleStructuralHistoryEntry, direction: 'undo' | 'redo') => {
     if (!canApplyAisleStructuralEntry(entry, direction)) return false
     saveActiveCursorLocation()
+    flushPendingContent()
 
-    const target = direction === 'undo' ? entry.before : entry.after
-    const source = direction === 'undo' ? entry.after : entry.before
+    const target = getAisleStructuralTargetSnapshot(entry, direction)
     setState((previous) => {
       const body = previous.noteBodies.find((candidate) => candidate.id === entry.noteBodyId) ?? null
-      if (!body || getAisleSignature(body.aisles) !== getAisleSignature(source.aisles)) return previous
+      if (!body || !canApplyAisleStructuralEntryToAisles(entry, direction, body.aisles)) return previous
       const withAisles = syncNoteBodyAislesInState(previous, entry.noteBodyId, target.aisles)
       const withLocation = applyNoteLocationToState(withAisles, target.location)
       return applyCursorLocationSnapshot(withLocation, target.locationKey, target.cursorLocation)
@@ -221,15 +205,15 @@ export const useAisleController = ({
   runAisleStructuralHistoryRef.current = runAisleStructuralHistory
 
   const scheduleAisleStructuralHistoryFallback = (direction: 'undo' | 'redo') => {
-    const noteHistoryKey = getActiveNoteHistoryKey()
+    const noteScopeKey = getActiveNoteStructuralScopeKey()
     const editorAtStart = editorRef.current
     const beforeMarkdown = editorAtStart ? getNormalizedEditorMarkdown(editorAtStart) : null
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
-        if (noteHistoryKey !== getActiveNoteHistoryKey()) return
+        if (noteScopeKey !== getActiveNoteStructuralScopeKey()) return
         const editorAfter = editorRef.current
         const afterMarkdown = editorAfter ? getNormalizedEditorMarkdown(editorAfter) : null
-        if (beforeMarkdown !== null && afterMarkdown !== beforeMarkdown) return
+        if (editorAfter === editorAtStart && beforeMarkdown !== null && afterMarkdown !== beforeMarkdown) return
         runAisleStructuralHistoryRef.current(direction)
       })
     })
