@@ -12,6 +12,16 @@ function sendMultilineShortcutToWindow(window, direction) {
   void window.webContents.executeJavaScript(`window.__tabsHandleMultilineShortcut?.(${JSON.stringify(direction)})`, true)
 }
 
+function withTimeout(promise, timeoutMs) {
+  let timeoutId
+  const timeout = new Promise((_resolve, reject) => {
+    timeoutId = setTimeout(() => reject(new Error('Timed out.')), timeoutMs)
+  })
+  return Promise.race([promise, timeout]).finally(() => {
+    clearTimeout(timeoutId)
+  })
+}
+
 function sendMultilineShortcut(direction) {
   sendMultilineShortcutToWindow(BrowserWindow.getFocusedWindow(), direction)
 }
@@ -126,9 +136,12 @@ function createWindow() {
 
     void (async () => {
       try {
-        const serializedState = await window.webContents.executeJavaScript(
-          'window.__tabsGetLatestAppState?.() ?? null',
-          true,
+        const serializedState = await withTimeout(
+          window.webContents.executeJavaScript(
+            'window.__tabsGetLatestAppState?.() ?? null',
+            true,
+          ),
+          1500,
         )
         if (typeof serializedState === 'string') {
           saveAppState(app.getPath('userData'), serializedState)

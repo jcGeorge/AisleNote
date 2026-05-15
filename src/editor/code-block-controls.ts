@@ -1,5 +1,3 @@
-import { NOTE_PREVIEW_EDITOR_HOST_CLASS } from './note-preview-dom'
-
 export const CODE_BLOCK_CONTROLS_ATTR = 'data-tabs-code-block-controls'
 export const CODE_BLOCK_WRAPPER_SELECTOR = '.toastui-editor-ww-code-block'
 
@@ -14,14 +12,24 @@ type TextSelectionConstructor = {
 }
 
 type ProseMirrorPluginConstructor = new (spec: {
-  view?: (view: CodeBlockControlsView) => {
-    update?: (view: CodeBlockControlsView) => void
-    destroy?: () => void
-  }
   props?: {
+    decorations?: (state: { doc: any }) => unknown
     handleDOMEvents?: Record<string, (view: CodeBlockControlsView, event: Event) => boolean>
   }
 }) => unknown
+
+type ProseMirrorDecoration = {
+  node: (from: number, to: number, attrs: Record<string, string>, spec?: Record<string, unknown>) => unknown
+  widget: (
+    pos: number,
+    toDOM: (view: CodeBlockControlsView) => HTMLElement,
+    spec?: Record<string, unknown>,
+  ) => unknown
+}
+
+type ProseMirrorDecorationSet = {
+  create: (doc: unknown, decorations: unknown[]) => unknown
+}
 
 export type CodeBlockControlsView = {
   dom?: Element
@@ -231,13 +239,9 @@ function createControlButton(kind: 'copy' | 'trash') {
   return button
 }
 
-function getRenderedCodeText(wrapper: Element): string {
-  return wrapper.querySelector('code')?.textContent ?? ''
-}
-
 function createControlsElement(
   view: CodeBlockControlsView,
-  wrapper: Element,
+  position: number,
   options: CodeBlockControlsOptions,
   TextSelection: TextSelectionConstructor,
 ) {
@@ -254,15 +258,13 @@ function createControlsElement(
 
   copyButton.addEventListener('click', (event) => {
     stopControlEvent(event)
-    const position = findCodeBlockPositionForElement(view, wrapper)
-    const nodeText = position === null ? null : getCodeBlockNodeText(view.state.doc.nodeAt(position))
-    void copyCodeBlockText(nodeText ?? getRenderedCodeText(wrapper), options.pushToast)
+    const nodeText = getCodeBlockNodeText(view.state.doc.nodeAt(position))
+    void copyCodeBlockText(nodeText ?? '', options.pushToast)
   })
 
   deleteButton.addEventListener('click', (event) => {
     stopControlEvent(event)
-    const position = findCodeBlockPositionForElement(view, wrapper)
-    if (position === null || !deleteCodeBlockAtPosition(view, position, TextSelection)) {
+    if (!deleteCodeBlockAtPosition(view, position, TextSelection)) {
       options.pushToast?.('could not delete code block.', 'warning')
     }
   })
@@ -271,20 +273,42 @@ function createControlsElement(
   return controls
 }
 
-function syncCodeBlockControls(
-  view: CodeBlockControlsView,
+function createCodeBlockControlDecorations(
+  state: { doc: any },
   options: CodeBlockControlsOptions,
   TextSelection: TextSelectionConstructor,
+  Decoration: ProseMirrorDecoration,
+  DecorationSet: ProseMirrorDecorationSet,
 ) {
-  const root = view.dom
-  if (!root) return
-  const blocks = root.querySelectorAll(CODE_BLOCK_WRAPPER_SELECTOR)
-  blocks.forEach((block) => {
-    if (block.closest(`.${NOTE_PREVIEW_EDITOR_HOST_CLASS}`)) return
-    block.classList.add('tabs-code-block-has-controls')
-    if (block.querySelector(`[${CODE_BLOCK_CONTROLS_ATTR}]`)) return
-    block.appendChild(createControlsElement(view, block, options, TextSelection))
+  const decorations: unknown[] = []
+  state.doc.descendants?.((node: any, position: number) => {
+    if (!isCodeBlockNode(node)) return true
+    const to = position + node.nodeSize
+    decorations.push(
+      Decoration.node(
+        position,
+        to,
+        { class: 'tabs-code-block-has-controls' },
+        { key: `tabs-code-block-node-controls-${position}-${to}` },
+      ),
+      Decoration.widget(
+        position + 1,
+        (view) => createControlsElement(view, position, options, TextSelection),
+        {
+          key: `tabs-code-block-controls-${position}-${to}`,
+          side: -1,
+          ignoreSelection: true,
+          stopEvent: (event: Event) =>
+            event.type === 'click' ||
+            event.type === 'mousedown' ||
+            event.type === 'pointerdown' ||
+            event.type === 'dragstart',
+        },
+      ),
+    )
+    return false
   })
+  return DecorationSet.create(state.doc, decorations)
 }
 
 export function createCodeBlockControlsPlugin(options: CodeBlockControlsOptions = {}) {
@@ -293,13 +317,20 @@ export function createCodeBlockControlsPlugin(options: CodeBlockControlsOptions 
       Plugin: ProseMirrorPluginConstructor
       TextSelection: TextSelectionConstructor
     }
+    pmView: {
+      Decoration: ProseMirrorDecoration
+      DecorationSet: ProseMirrorDecorationSet
+    }
   }) => {
     const { Plugin, TextSelection } = context.pmState
+    const { Decoration, DecorationSet } = context.pmView
     return {
       wysiwygPlugins: [
         () =>
           new Plugin({
             props: {
+              decorations: (state: { doc: any }) =>
+                createCodeBlockControlDecorations(state, options, TextSelection, Decoration, DecorationSet),
               handleDOMEvents: {
                 pointerdown: (_view, event) => {
                   if (!(event.target instanceof Element)) return false
@@ -320,17 +351,6 @@ export function createCodeBlockControlsPlugin(options: CodeBlockControlsOptions 
                   return true
                 },
               },
-            },
-            view: (view) => {
-              window.setTimeout(() => syncCodeBlockControls(view, options, TextSelection), 0)
-              return {
-                update: (nextView) => {
-                  syncCodeBlockControls(nextView, options, TextSelection)
-                },
-                destroy: () => {
-                  view.dom?.querySelectorAll(`[${CODE_BLOCK_CONTROLS_ATTR}]`).forEach((node) => node.remove())
-                },
-              }
             },
           }),
       ],
