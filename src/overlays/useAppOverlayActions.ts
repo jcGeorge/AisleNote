@@ -1,6 +1,5 @@
 import type { MouseEvent, Dispatch, SetStateAction, MutableRefObject } from 'react'
 import type { ExportScope } from '../export/export-data'
-import { cloneNoteBodyAsIndependentCopy } from '../notes/note-markdown'
 import {
   buildNoteLocationKey,
   getDefaultNoteReferenceTarget,
@@ -8,6 +7,7 @@ import {
   listNoteLocationsForBody,
   updateNoteLocationBody,
 } from '../notes/note-locations'
+import { applyNoteCopyToState } from './note-copy'
 import { removeSpaceFromActiveDomain } from '../state/domains'
 import { createId, createTab } from '../state/workspace'
 import { TRASH_HOME_ID } from '../trash/trash-model'
@@ -17,6 +17,7 @@ import type {
   DeleteTarget,
   ModalState,
   NoteBody,
+  NoteCopyMode,
   NoteLocation,
   ToastTone,
   TrashParentBucket,
@@ -38,6 +39,7 @@ type UseAppOverlayActionsParams = {
   setMenuOpen: Dispatch<SetStateAction<boolean>>
   setEditing: Dispatch<SetStateAction<{ type: EditableEntityType; id: string } | null>>
   activeSpaceId: string
+  activeNoteLocation: NoteLocation
   updateActiveSpaceData: (updater: (data: WorkspaceData) => WorkspaceData) => void
   saveActiveCursorBeforeNavigation: () => void
   setTrashTabId: Dispatch<SetStateAction<string>>
@@ -59,6 +61,7 @@ export const useAppOverlayActions = ({
   setMenuOpen,
   setEditing,
   activeSpaceId,
+  activeNoteLocation,
   updateActiveSpaceData,
   saveActiveCursorBeforeNavigation,
   setTrashTabId,
@@ -81,6 +84,13 @@ export const useAppOverlayActions = ({
     event.preventDefault()
     setMenuOpen(false)
     setContextMenu({ type: 'subtab', tabId, subTabId, x: event.clientX, y: event.clientY })
+  }
+
+  const openContextMenuForHomeTab = (event: MouseEvent<HTMLButtonElement>, tabId: string) => {
+    if (viewMode !== 'main') return
+    event.preventDefault()
+    setMenuOpen(false)
+    setContextMenu({ type: 'home-tab', tabId, x: event.clientX, y: event.clientY })
   }
 
   const openContextMenuForTrashTab = (event: MouseEvent<HTMLButtonElement>, trashParent: TrashParentBucket) => {
@@ -136,7 +146,10 @@ export const useAppOverlayActions = ({
       ? { type: 'tab', tabId: contextMenu.tabId }
       : contextMenu.type === 'subtab'
         ? { type: 'subtab', tabId: contextMenu.tabId, subTabId: contextMenu.subTabId }
-        : contextMenu.type === 'image' || contextMenu.type === 'domain' || contextMenu.type === 'internal-note-link'
+        : contextMenu.type === 'image' ||
+            contextMenu.type === 'domain' ||
+            contextMenu.type === 'internal-note-link' ||
+            contextMenu.type === 'home-tab'
           ? null
         : contextMenu.type === 'trash-tab'
           ? {
@@ -305,40 +318,31 @@ export const useAppOverlayActions = ({
     deleteTarget(target, false)
   }
 
-  const openDuplicateModalFromContext = () => {
-    if (!contextMenu || (contextMenu.type !== 'tab' && contextMenu.type !== 'subtab')) return
+  const openCopyModalForLocation = (source: NoteLocation, mode: NoteCopyMode = 'independent') => {
     saveActiveCursorBeforeNavigation()
-    const source: NoteLocation = {
+    const target = getDefaultNoteReferenceTarget(state, source)
+    setModal({
+      type: 'copy-note',
+      mode,
+      source,
+      target,
+    })
+  }
+
+  const openCopyModalFromContext = () => {
+    if (!contextMenu || (contextMenu.type !== 'tab' && contextMenu.type !== 'subtab' && contextMenu.type !== 'home-tab')) return
+    openCopyModalForLocation({
       domainId: state.activeDomainId,
       spaceId: activeSpace.id,
       tabId: contextMenu.tabId,
       subTabId: contextMenu.type === 'subtab' ? contextMenu.subTabId : null,
-    }
-    const target = getDefaultNoteReferenceTarget(state, source)
-    setModal({
-      type: 'duplicate-note',
-      source,
-      target,
     })
     setContextMenu(null)
   }
 
-  const openCopyModalFromContext = () => {
-    if (!contextMenu || (contextMenu.type !== 'tab' && contextMenu.type !== 'subtab')) return
-    saveActiveCursorBeforeNavigation()
-    const source: NoteLocation = {
-      domainId: state.activeDomainId,
-      spaceId: activeSpace.id,
-      tabId: contextMenu.tabId,
-      subTabId: contextMenu.type === 'subtab' ? contextMenu.subTabId : null,
-    }
-    const target = getDefaultNoteReferenceTarget(state, source)
-    setModal({
-      type: 'copy-note',
-      source,
-      target,
-    })
-    setContextMenu(null)
+  const openCopyModalForActiveNote = () => {
+    if (viewMode !== 'main') return
+    openCopyModalForLocation(activeNoteLocation)
   }
 
   const openDeduplicateModalFromContext = () => {
@@ -445,47 +449,23 @@ export const useAppOverlayActions = ({
       return
     }
 
-    if (modal.type === 'duplicate-note') {
-      const targetInfo = getLocationInfo(stateRef.current, modal.target)
-      if (!targetInfo.noteBodyId) {
-        setModal(null)
-        return
-      }
-      setState((previous) => updateNoteLocationBody(previous, modal.source, targetInfo.noteBodyId))
-      setModal(null)
-      pushToast('note duplicate linked.', 'success')
-      return
-    }
-
     if (modal.type === 'copy-note') {
       const targetInfo = getLocationInfo(stateRef.current, modal.target)
       const targetBody = targetInfo.noteBodyId
         ? stateRef.current.noteBodies.find((candidate) => candidate.id === targetInfo.noteBodyId)
         : null
-      if (!targetBody) {
+      if (!targetInfo.noteBodyId || (modal.mode === 'independent' && !targetBody)) {
         setModal(null)
         pushToast('choose an existing note.', 'warning')
         return
       }
 
       setState((previous) => {
-        const latestTargetInfo = getLocationInfo(previous, modal.target)
-        const targetBody = latestTargetInfo.noteBodyId
-          ? previous.noteBodies.find((candidate) => candidate.id === latestTargetInfo.noteBodyId)
-          : null
-        if (!targetBody) return previous
-        const copiedBody = cloneNoteBodyAsIndependentCopy(targetBody)
-        return updateNoteLocationBody(
-          {
-            ...previous,
-            noteBodies: [...previous.noteBodies, copiedBody],
-          },
-          modal.source,
-          copiedBody.id,
-        )
+        const result = applyNoteCopyToState(previous, modal.source, modal.target, modal.mode)
+        return result.state
       })
       setModal(null)
-      pushToast('note copied.', 'success')
+      pushToast(modal.mode === 'linked' ? 'linked copy created.' : 'note copied.', 'success')
       return
     }
 
@@ -533,14 +513,15 @@ export const useAppOverlayActions = ({
   return {
     openContextMenuForTab,
     openContextMenuForSubTab,
+    openContextMenuForHomeTab,
     openContextMenuForTrashTab,
     openContextMenuForTrashSubTab,
     openContextMenuForSpace,
     openContextMenuForDomain,
     openDeleteModalFromContext,
     deleteFromContext,
-    openDuplicateModalFromContext,
     openCopyModalFromContext,
+    openCopyModalForActiveNote,
     openDeduplicateModalFromContext,
     getCurrentDuplicateCount,
     beginRenameSpaceFromContext,

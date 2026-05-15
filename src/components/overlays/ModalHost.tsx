@@ -1,4 +1,4 @@
-import { useState, type DragEvent } from 'react'
+import { useEffect, useState, type DragEvent } from 'react'
 import { NoteLocationPicker, type NoteLocationPickerValue } from '../notes/NoteLocationPicker'
 import {
   NEWLINE_MENU_ELIGIBLE_OPERATIONS,
@@ -160,18 +160,33 @@ export function ModalHost({
   onNewlineMenuOperationsChange,
   onConfirm,
 }: ModalHostProps) {
+  useEffect(() => {
+    if (!modal) return
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopPropagation()
+      if (typeof event.stopImmediatePropagation === 'function') {
+        event.stopImmediatePropagation()
+      }
+      onModalChange(null)
+    }
+
+    document.addEventListener('keydown', handleKeyDown, true)
+    return () => document.removeEventListener('keydown', handleKeyDown, true)
+  }, [modal, onModalChange])
+
   if (!modal) return null
 
   const modalText = getModalText(modal, state)
   const isPickerModal =
     modal.type === 'export-space' ||
-    modal.type === 'duplicate-note' ||
     modal.type === 'copy-note' ||
     modal.type === 'deduplicate-note' ||
     modal.type === 'insert-note-reference' ||
     modal.type === 'newline-menu-settings'
-  const isNotePickerModal =
-    modal.type === 'duplicate-note' || modal.type === 'copy-note' || modal.type === 'insert-note-reference'
+  const isNotePickerModal = modal.type === 'copy-note' || modal.type === 'insert-note-reference'
 
   return (
     <div className="delete-modal-backdrop" onClick={() => onModalChange(null)}>
@@ -201,21 +216,31 @@ export function ModalHost({
             </select>
           </label>
         )}
-        {modal.type === 'duplicate-note' && (
-          <NoteLocationPicker
-            domains={domainsForPickers}
-            noteBodies={state.noteBodies}
-            value={modal.target}
-            onChange={(target: NoteLocationPickerValue) => onModalChange({ ...modal, target })}
-          />
-        )}
         {modal.type === 'copy-note' && (
-          <NoteLocationPicker
-            domains={domainsForPickers}
-            noteBodies={state.noteBodies}
-            value={modal.target}
-            onChange={(target: NoteLocationPickerValue) => onModalChange({ ...modal, target })}
-          />
+          <div className="note-copy-modal">
+            <div className="note-reference-mode" role="group" aria-label="Copy type">
+              <button
+                type="button"
+                className={`note-reference-mode-btn ${modal.mode === 'independent' ? 'is-active' : ''}`}
+                onClick={() => onModalChange({ ...modal, mode: 'independent' })}
+              >
+                independent
+              </button>
+              <button
+                type="button"
+                className={`note-reference-mode-btn ${modal.mode === 'linked' ? 'is-active' : ''}`}
+                onClick={() => onModalChange({ ...modal, mode: 'linked' })}
+              >
+                linked
+              </button>
+            </div>
+            <NoteLocationPicker
+              domains={domainsForPickers}
+              noteBodies={state.noteBodies}
+              value={modal.target}
+              onChange={(target: NoteLocationPickerValue) => onModalChange({ ...modal, target })}
+            />
+          </div>
         )}
         {modal.type === 'deduplicate-note' && (
           <div className="duplicate-note-list">

@@ -10,6 +10,7 @@ type DomainsPageProps = {
   onCommitRename: (domainId: string, name: string) => void
   onCancelRename: (domainId: string) => void
   onShouldSkipRenameBlur: (domainId: string) => boolean
+  onRenameDraftChange: (domainId: string, value: string) => void
   onOpenContextMenu: (event: MouseEvent<HTMLButtonElement>, domainId: string) => void
 }
 
@@ -22,6 +23,7 @@ export function DomainsPage({
   onCommitRename,
   onCancelRename,
   onShouldSkipRenameBlur,
+  onRenameDraftChange,
   onOpenContextMenu,
 }: DomainsPageProps) {
   return (
@@ -34,6 +36,8 @@ export function DomainsPage({
               className="space-rename-input"
               defaultValue={domain.name}
               autoFocus
+              onFocus={(event) => onRenameDraftChange(domain.id, event.currentTarget.value)}
+              onInput={(event) => onRenameDraftChange(domain.id, event.currentTarget.value)}
               onBlur={(event) => {
                 if (onShouldSkipRenameBlur(domain.id)) return
                 onCommitRename(domain.id, event.target.value)

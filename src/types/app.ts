@@ -291,6 +291,7 @@ export type ToastState = {
 
 export type ImageToolsState = {
   visible: boolean
+  menuMode: 'start' | 'transform'
   cropTop: number
   cropLeft: number
   resizeTop: number
@@ -337,6 +338,7 @@ export type EditorTextLineRange = {
 export type ContextMenuState =
   | { x: number; y: number; type: 'tab'; tabId: string }
   | { x: number; y: number; type: 'subtab'; tabId: string; subTabId: string }
+  | { x: number; y: number; type: 'home-tab'; tabId: string }
   | { x: number; y: number; type: 'image' }
   | {
       x: number
@@ -382,18 +384,16 @@ export type DeleteTarget =
     }
   | { type: 'space'; spaceId: string }
 
+export type NoteCopyMode = 'independent' | 'linked'
+
 export type ModalState =
   | { type: 'delete-target'; target: DeleteTarget; permanent: boolean }
   | { type: 'trash-delete-all' }
   | { type: 'trash-restore-all' }
   | { type: 'export-space'; spaceId: string }
   | {
-      type: 'duplicate-note'
-      source: NoteLocation
-      target: NoteLocation & { aisleIds?: string[] }
-    }
-  | {
       type: 'copy-note'
+      mode: NoteCopyMode
       source: NoteLocation
       target: NoteLocation & { aisleIds?: string[] }
     }

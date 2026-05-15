@@ -1,6 +1,8 @@
 .app-shell {
   --tab-button-scale: 1;
   --tab-control-height: calc(32px * var(--tab-button-scale));
+
+  /* App foundation */
   --app-bg: #0b1528;
   --app-page-bg: radial-gradient(circle at 20% 0%, #152643 0%, #0b1528 45%);
   --app-surface: #0f1b32;
@@ -22,6 +24,7 @@
   --app-shadow-popover: 0 8px 20px rgba(0, 0, 0, 0.35);
   --app-shadow-toast: 0 12px 32px rgba(0, 0, 0, 0.34);
 
+  /* Navigation */
   --tabbar-border: var(--app-border-muted);
   --tabbar-bg: linear-gradient(180deg, #111c31 0%, #0d172b 100%);
   --subtabbar-bg: linear-gradient(180deg, #0f182d 0%, #0b1427 100%);
@@ -131,6 +134,7 @@
   --tab-rename-text: var(--app-text);
   --tab-rename-border: #4f7cff;
 
+  /* Stage manager */
   --stage-page-bg: var(--app-page-bg);
   --stage-step-border: #334c76;
   --stage-step-text: #b9cae6;
@@ -186,6 +190,7 @@
   --stage-subtab-selected-bg: #123125;
   --stage-subtab-selected-shadow: inset 0 0 0 2px rgba(126, 210, 166, 0.72), 0 0 0 1px rgba(126, 210, 166, 0.24);
 
+  /* Settings */
   --settings-control-bg: var(--app-bg);
   --settings-control-text: var(--app-text);
   --settings-control-border: #3b5685;
@@ -240,6 +245,7 @@
   --settings-action-disabled-text: #8195b7;
   --settings-action-disabled-border: #2b3f61;
 
+  /* Feedback */
   --toast-bg: rgba(11, 21, 40, 0.94);
   --toast-border: var(--app-border);
   --toast-text: var(--app-text-bright);
@@ -248,6 +254,7 @@
   --toast-warning: #d9a441;
   --toast-error: #d35c5c;
 
+  /* Overlays */
   --context-menu-bg: var(--app-surface);
   --context-menu-border: var(--app-border);
   --context-menu-shadow: var(--app-shadow-popover);
@@ -281,6 +288,102 @@
   --modal-primary-bg: var(--app-primary-action);
   --modal-primary-hover-bg: var(--app-primary-hover);
   --modal-primary-hover-border: #7da8ff;
+
+  /* Editor */
+  --editor-bg: #0b1528;
+  --editor-panel-bg: #0f1b32;
+  --editor-toolbar-bg: #0f1b32;
+  --editor-toolbar-hover-bg: #1a2a45;
+  --editor-toolbar-hover-border: #2f4672;
+  --editor-toolbar-active-bg: #22406d;
+  --editor-border: #24334d;
+  --editor-border-strong: #4e73ad;
+  --editor-text: #e9ecef;
+  --editor-muted-text: #d8e6ff;
+  --editor-heading-text: #f3f6fb;
+  --editor-blockquote-text: #d8e6ff;
+  --editor-blockquote-border: #4e73ad;
+  --editor-blockquote-bg: transparent;
+  --editor-selection-bg: rgba(83, 137, 238, 0.34);
+  --editor-code-bg: #121826;
+  --editor-popup-bg: #0f1b32;
+  --editor-link-text: #9bbcff;
+  --editor-tooltip-bg: #0f1b32;
+  --editor-tooltip-border: #2f4672;
+  --editor-tooltip-text: #dce9ff;
+  --editor-caret: #e9ecef;
+  --editor-annotation-text: #c7d5ed;
+  --editor-terminal-caret: rgba(134, 168, 232, 0.86);
+  --editor-toolbar-dash-icon-text: #111827;
+  --editor-heading-choice-active-bg: #22406d;
+  --editor-heading-choice-active-marker: #6fa0ff;
+  --editor-heading-choice-active-text: #f4f8ff;
+  --editor-popup-input-bg: #101d34;
+  --editor-popup-input-border: #334e79;
+  --editor-popup-input-focus-border: #5f89dc;
+  --editor-table-selection-bg: #111f37;
+  --editor-table-selection-border: #35517d;
+  --editor-table-cell-bg: #13223b;
+  --editor-table-cell-border: #2f4770;
+  --editor-table-selection-layer-bg: rgba(79, 124, 255, 0.32);
+  --editor-table-selection-layer-border: #6f94e6;
+  --editor-table-description-text: #e8f1ff;
+  --editor-link-hover-text: #c4d7ff;
+  --editor-hr-line: rgba(62, 81, 111, 0.92);
+  --editor-pre-bg: #07090f;
+  --editor-pre-border: #1f2a3d;
+  --editor-tooltip-shadow: 0 4px 12px rgba(0, 0, 0, 0.28);
+  --editor-floating-action-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+
+  --task-reorder-source-bg: rgba(111, 160, 255, 0.08);
+  --task-reorder-source-shadow: inset 0 0 0 1px rgba(111, 160, 255, 0.16);
+  --task-reorder-target-bg: rgba(111, 160, 255, 0.08);
+  --task-reorder-target-shadow: inset 0 0 0 1px rgba(111, 160, 255, 0.14);
+  --task-reorder-ghost-border: rgba(111, 160, 255, 0.56);
+  --task-reorder-ghost-bg: rgba(11, 21, 40, 0.95);
+  --task-reorder-ghost-text: #f3f7ff;
+  --task-reorder-ghost-shadow: 0 12px 28px rgba(0, 0, 0, 0.34), 0 0 0 1px rgba(111, 160, 255, 0.15);
+  --task-reorder-marker: #77a7ff;
+
+  --image-tool-btn-border: #4c72ad;
+  --image-tool-btn-bg: #142542;
+  --image-tool-btn-text: #e9f1ff;
+  --image-tool-btn-hover-bg: #20385f;
+  --image-tool-btn-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
+  --image-tool-handle-border: #c9d5e7;
+  --image-tool-handle-bg: #101621;
+  --image-tool-handle-stripe: #f3f7ff;
+  --image-tool-handle-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  --image-tool-crop-border: #69a4ff;
+  --image-tool-crop-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  --image-tool-crop-handle-border: #8cb5ff;
+  --image-tool-crop-handle-bg: #17315e;
+
+  --link-prompt-border: #2f4672;
+  --link-prompt-bg: rgba(15, 27, 50, 0.96);
+  --link-prompt-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  --link-prompt-input-border: #45679e;
+  --link-prompt-input-bg: #0c1730;
+  --link-prompt-input-text: #eaf2ff;
+  --link-prompt-input-focus-border: #6f94e6;
+  --link-prompt-btn-border: #4770b0;
+  --link-prompt-btn-bg: #16305a;
+  --link-prompt-btn-text: #eaf2ff;
+  --link-prompt-btn-hover-bg: #21407a;
+
+  --monet-editor-bg: var(--editor-bg);
+  --monet-editor-panel-bg: var(--editor-panel-bg);
+  --monet-editor-toolbar-bg: var(--editor-toolbar-bg);
+  --monet-editor-toolbar-hover-bg: var(--editor-toolbar-hover-bg);
+  --monet-editor-toolbar-active-bg: var(--editor-toolbar-active-bg);
+  --monet-editor-border: var(--editor-border);
+  --monet-editor-border-strong: var(--editor-border-strong);
+  --monet-editor-text: var(--editor-text);
+  --monet-editor-muted-text: var(--editor-muted-text);
+  --monet-editor-heading-text: var(--editor-heading-text);
+  --monet-editor-selection-bg: var(--editor-selection-bg);
+  --monet-editor-code-bg: var(--editor-code-bg);
+  --monet-editor-popup-bg: var(--editor-popup-bg);
 
   height: 100vh;
   width: 100%;

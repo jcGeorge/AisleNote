@@ -31,6 +31,8 @@ type SubTabRailProps = {
   onShouldSkipRenameBlur: (type: EditableEntityType, id: string) => boolean
   onCommitRename: (type: EditableEntityType, id: string, name: string) => void
   onCancelRename: (type: EditableEntityType, id: string) => void
+  onRenameDraftChange: (type: EditableEntityType, id: string, value: string) => void
+  onClearRenameDraft: (type: EditableEntityType, id: string) => void
   onGetStageManagerParentSelection: (tab: Tab) => StageManagerParentSelection
   onStageManagerHomeClick: () => void
   onStageManagerSubTabClick: (tab: Tab, subTabId: string) => void
@@ -38,6 +40,7 @@ type SubTabRailProps = {
   onSelectParentHomeTab: () => void
   onSelectSubTab: (subTabId: string) => void
   onBeginEdit: (editing: { type: EditableEntityType; id: string }) => void
+  onOpenContextMenuForHomeTab: (event: MouseEvent<HTMLButtonElement>, tabId: string) => void
   onOpenContextMenuForSubTab: (event: MouseEvent<HTMLButtonElement>, tabId: string, subTabId: string) => void
   onStartArrangeDragSeed: (key: string, event: ReactPointerEvent<HTMLButtonElement>) => void
   onStartArrangeTapCandidate: (candidate: ArrangeTapCandidateSeed, event: ReactPointerEvent<HTMLButtonElement>) => void
@@ -92,6 +95,8 @@ export function SubTabRail({
   onShouldSkipRenameBlur,
   onCommitRename,
   onCancelRename,
+  onRenameDraftChange,
+  onClearRenameDraft,
   onGetStageManagerParentSelection,
   onStageManagerHomeClick,
   onStageManagerSubTabClick,
@@ -99,6 +104,7 @@ export function SubTabRail({
   onSelectParentHomeTab,
   onSelectSubTab,
   onBeginEdit,
+  onOpenContextMenuForHomeTab,
   onOpenContextMenuForSubTab,
   onStartArrangeDragSeed,
   onStartArrangeTapCandidate,
@@ -150,6 +156,10 @@ export function SubTabRail({
               onSelectParentHomeTab()
             }}
             title="home note"
+            onContextMenu={(event) => {
+              if (viewMode !== 'main') return
+              onOpenContextMenuForHomeTab(event, activeTab.id)
+            }}
             onPointerDown={(event) => {
               if (viewMode !== 'main') return
               if (arrangeMode.active) {
@@ -191,12 +201,19 @@ export function SubTabRail({
                 defaultValue={subTab.title}
                 autoFocus
                 onFocus={(event) => {
+                  onRenameDraftChange('subtab', subTab.id, event.currentTarget.value)
                   onAutoSizeRenameInput(event.currentTarget)
                   event.currentTarget.select()
                 }}
-                onInput={(event) => onAutoSizeRenameInput(event.currentTarget)}
+                onInput={(event) => {
+                  onRenameDraftChange('subtab', subTab.id, event.currentTarget.value)
+                  onAutoSizeRenameInput(event.currentTarget)
+                }}
                 onBlur={(event) => {
-                  if (onShouldSkipRenameBlur('subtab', subTab.id)) return
+                  if (onShouldSkipRenameBlur('subtab', subTab.id)) {
+                    onClearRenameDraft('subtab', subTab.id)
+                    return
+                  }
                   onCommitRename('subtab', subTab.id, event.target.value)
                 }}
                 onKeyDown={(event) => {

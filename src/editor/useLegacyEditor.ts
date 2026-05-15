@@ -1,6 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, type MutableRefObject } from 'react'
 import { Editor } from '@toast-ui/editor'
+import { createCodeBlockControlsPlugin } from './code-block-controls'
 import {
   annotationLinePlugin,
   EDITOR_TOOLBAR_ITEMS,
@@ -18,7 +19,7 @@ import {
   installTaskTextReorderBehavior,
 } from './task-behavior'
 import { materializeHorizontalRuleShortcut } from '../markdown/markdown-utils'
-import type { ViewMode } from '../types/app'
+import type { ToastTone, ViewMode } from '../types/app'
 
 type UseLegacyEditorOptions = {
   viewMode: ViewMode
@@ -47,6 +48,7 @@ type UseLegacyEditorOptions = {
   clearActiveNoteContent: () => void
   flushPendingContent: () => void
   closeImageTools: () => void
+  pushToast: (message: string, tone?: ToastTone, durationMs?: number) => void
   maybeShowCompletedTaskUndoHint: (markdown: string) => void
   trackCompletedTaskQuickDelete: (beforeMarkdown: string) => void
   tryExpandMultilineSelection: (direction: 'up' | 'down') => boolean
@@ -73,6 +75,7 @@ export function useLegacyEditor({
   clearActiveNoteContent,
   flushPendingContent,
   closeImageTools,
+  pushToast,
   maybeShowCompletedTaskUndoHint,
   trackCompletedTaskQuickDelete,
   tryExpandMultilineSelection,
@@ -96,6 +99,7 @@ export function useLegacyEditor({
         listMarkerPlugin,
         annotationLinePlugin,
         terminalBlockLandingPlugin,
+        createCodeBlockControlsPlugin({ pushToast }),
         uncheckedTaskEnterPlugin,
         headingSpaceShortcutPlugin,
         thematicBreakShortcutPlugin,

@@ -1,4 +1,5 @@
 import type { MouseEvent, PointerEvent, ReactNode } from 'react'
+import type { ImageTransformOperation } from '../../editor/image-transform'
 import type { ImageToolsState, InlineCropState } from '../../types/app'
 
 export type InlineCropDragMode = 'move' | 'resize-n' | 'resize-e' | 'resize-s' | 'resize-w' | 'resize-se'
@@ -8,6 +9,9 @@ type ImageToolsOverlayProps = {
   imageTools: ImageToolsState
   inlineCrop: InlineCropState
   onStartCrop: () => void
+  onOpenTransform: () => void
+  onReturnToStart: () => void
+  onTransformImage: (operation: ImageTransformOperation) => void | Promise<unknown>
   onApplyCrop: () => void
   onCancelCrop: () => void
   onBeginResize: (event: PointerEvent<HTMLButtonElement>) => void
@@ -50,11 +54,42 @@ function CropButton({ children, onClick, title }: { children: ReactNode; onClick
   )
 }
 
+function ImageTransformButton({
+  operation,
+  label,
+  iconClassName,
+  onTransformImage,
+}: {
+  operation: ImageTransformOperation
+  label: string
+  iconClassName: string
+  onTransformImage: (operation: ImageTransformOperation) => void | Promise<unknown>
+}) {
+  return (
+    <button
+      type="button"
+      className="image-tool-btn image-transform-btn"
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={(event) => {
+        event.preventDefault()
+        void onTransformImage(operation)
+      }}
+      title={label}
+      aria-label={label}
+    >
+      <span className={`image-transform-icon ${iconClassName}`} aria-hidden="true" />
+    </button>
+  )
+}
+
 export function ImageToolsOverlay({
   visible,
   imageTools,
   inlineCrop,
   onStartCrop,
+  onOpenTransform,
+  onReturnToStart,
+  onTransformImage,
   onApplyCrop,
   onCancelCrop,
   onBeginResize,
@@ -66,9 +101,56 @@ export function ImageToolsOverlay({
     <>
       <div className="image-tools" style={{ top: `${imageTools.cropTop}px`, left: `${imageTools.cropLeft}px` }}>
         {!inlineCrop.active ? (
-          <CropButton onClick={onStartCrop} title="Crop">
-            crop
-          </CropButton>
+          imageTools.menuMode === 'transform' ? (
+            <>
+              <ImageTransformButton
+                operation="rotate-ccw"
+                label="Rotate counterclockwise"
+                iconClassName="is-rotate-ccw"
+                onTransformImage={onTransformImage}
+              />
+              <ImageTransformButton
+                operation="rotate-cw"
+                label="Rotate clockwise"
+                iconClassName="is-rotate-cw"
+                onTransformImage={onTransformImage}
+              />
+              <ImageTransformButton
+                operation="flip-horizontal"
+                label="Flip horizontal"
+                iconClassName="is-flip-horizontal"
+                onTransformImage={onTransformImage}
+              />
+              <ImageTransformButton
+                operation="flip-vertical"
+                label="Flip vertical"
+                iconClassName="is-flip-vertical"
+                onTransformImage={onTransformImage}
+              />
+              <button
+                type="button"
+                className="image-tool-btn image-transform-btn"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={(event) => {
+                  event.preventDefault()
+                  onReturnToStart()
+                }}
+                title="Return to image tools"
+                aria-label="Return to image tools"
+              >
+                <span className="image-transform-icon is-return" aria-hidden="true" />
+              </button>
+            </>
+          ) : (
+            <>
+              <CropButton onClick={onStartCrop} title="Crop">
+                crop
+              </CropButton>
+              <CropButton onClick={onOpenTransform} title="Transform">
+                transform
+              </CropButton>
+            </>
+          )
         ) : (
           <>
             <CropButton onClick={onApplyCrop} title="Apply crop">
@@ -85,7 +167,7 @@ export function ImageToolsOverlay({
         <button
           type="button"
           className="image-resize-handle"
-            style={{ top: `${imageTools.resizeTop}px`, left: `${imageTools.resizeLeft}px` }}
+          style={{ top: `${imageTools.resizeTop}px`, left: `${imageTools.resizeLeft}px` }}
           onMouseDown={(event) => event.preventDefault()}
           onClick={(event) => event.preventDefault()}
           onPointerDown={onBeginResize}

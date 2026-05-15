@@ -15,6 +15,13 @@ import {
 } from '../state/domains'
 import { createNoteBody, createSpace, createSubTab, createTab, duplicateSpace } from '../state/workspace'
 import { TRASH_HOME_ID } from '../trash/trash-model'
+import {
+  clearRenameDraftIfMatching,
+  getRenameDraftCommitRequest,
+  type RenameDraft,
+  type RenameEntityType,
+  type RenameTarget,
+} from './rename-draft'
 import type {
   AppState,
   ContextMenuState,
@@ -27,6 +34,10 @@ import type {
 import type { PendingCursorRestore } from '../editor/useNoteCursorPersistence'
 
 type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
+
+type CommitRenameOptions = {
+  focusEditor?: boolean
+}
 
 type ActivateAisleEditor = (
   editorKey: string,
@@ -42,6 +53,8 @@ type UseAppNavigationActionsParams = {
   setContextMenu: Dispatch<SetStateAction<ContextMenuState | null>>
   setMenuOpen: Dispatch<SetStateAction<boolean>>
   setEditing: Dispatch<SetStateAction<{ type: EditableEntityType; id: string } | null>>
+  editingRef: MutableRefObject<RenameTarget | null>
+  renameDraftRef: MutableRefObject<RenameDraft | null>
   workspace: WorkspaceData
   activeTab: Tab
   activeNoteBodyId: string
@@ -74,6 +87,8 @@ export const useAppNavigationActions = ({
   setContextMenu,
   setMenuOpen,
   setEditing,
+  editingRef,
+  renameDraftRef,
   workspace,
   activeTab,
   activeNoteBodyId,
@@ -96,7 +111,16 @@ export const useAppNavigationActions = ({
   setTrashTabId,
   setTrashSubTabId,
 }: UseAppNavigationActionsParams) => {
-  const commitRename = (type: EditableEntityType, id: string, nextTitle: string) => {
+  const clearRenameDraft = (type: RenameEntityType, id: string) => {
+    renameDraftRef.current = clearRenameDraftIfMatching(renameDraftRef.current, type, id)
+  }
+
+  const commitRename = (
+    type: EditableEntityType,
+    id: string,
+    nextTitle: string,
+    options: CommitRenameOptions = {},
+  ) => {
     const isPendingCreatedRename =
       (type === 'tab' || type === 'subtab') &&
       pendingCreatedEditRef.current?.type === type &&
@@ -107,6 +131,7 @@ export const useAppNavigationActions = ({
     }
     const title = nextTitle.trim()
     setEditing(null)
+    clearRenameDraft(type, id)
     if (isPendingCreatedRename) {
       pendingCreatedEditRef.current = null
     }
@@ -137,7 +162,7 @@ export const useAppNavigationActions = ({
         ...data,
         tabs: data.tabs.map((tab) => (tab.id === id ? { ...tab, title } : tab)),
       }))
-      focusEditorSoon()
+      if (options.focusEditor !== false) focusEditorSoon()
       return
     }
 
@@ -168,7 +193,15 @@ export const useAppNavigationActions = ({
       saveTimerRef.current = null
     }
 
-    focusEditorSoon()
+    if (options.focusEditor !== false) focusEditorSoon()
+  }
+
+  const commitActiveRenameBeforeAction = () => {
+    const request = getRenameDraftCommitRequest(renameDraftRef.current, editingRef.current)
+    if (!request) return false
+    skipRenameBlurRef.current = { type: request.type, id: request.id }
+    commitRename(request.type, request.id, request.value, { focusEditor: request.focusEditor })
+    return true
   }
 
   const shouldSkipRenameBlur = (type: EditableEntityType, id: string) => {
@@ -182,11 +215,13 @@ export const useAppNavigationActions = ({
     const pending = pendingCreatedEditRef.current
     if (!pending || pending.type !== type || pending.id !== id) {
       setEditing(null)
+      clearRenameDraft(type, id)
       return
     }
 
     pendingCreatedEditRef.current = null
     setEditing(null)
+    clearRenameDraft(type, id)
 
     if (pending.type === 'tab') {
       updateActiveSpaceData((data) => {
@@ -220,6 +255,7 @@ export const useAppNavigationActions = ({
 
   const cancelRename = (type: EditableEntityType, id: string) => {
     skipRenameBlurRef.current = { type, id }
+    clearRenameDraft(type, id)
     if (type === 'space' || type === 'domain') {
       setEditing(null)
       return
@@ -228,6 +264,7 @@ export const useAppNavigationActions = ({
   }
 
   const addTab = () => {
+    commitActiveRenameBeforeAction()
     saveActiveCursorBeforeNavigation()
     pendingFocusToAisleIdRef.current = null
     pendingCursorRestoreRef.current = null
@@ -256,6 +293,7 @@ export const useAppNavigationActions = ({
   }
 
   const addSubTab = () => {
+    commitActiveRenameBeforeAction()
     saveActiveCursorBeforeNavigation()
     pendingFocusToAisleIdRef.current = null
     pendingCursorRestoreRef.current = null
@@ -289,6 +327,7 @@ export const useAppNavigationActions = ({
 
   const selectTab = (tabId: string) => {
     if (activeTab.id === tabId && activeTab.activeSubTabId === null) return
+    commitActiveRenameBeforeAction()
     saveActiveCursorBeforeNavigation()
     closeImageToolsRef.current()
     updateActiveSpaceData((data) => ({
@@ -300,6 +339,7 @@ export const useAppNavigationActions = ({
 
   const selectSubTab = (subTabId: string) => {
     if (activeTab.activeSubTabId === subTabId) return
+    commitActiveRenameBeforeAction()
     saveActiveCursorBeforeNavigation()
     closeImageToolsRef.current()
     updateActiveSpaceData((data) => ({
@@ -312,6 +352,7 @@ export const useAppNavigationActions = ({
 
   const selectParentHomeTab = () => {
     if (activeTab.activeSubTabId === null) return
+    commitActiveRenameBeforeAction()
     saveActiveCursorBeforeNavigation()
     closeImageToolsRef.current()
     updateActiveSpaceData((data) => ({
@@ -323,6 +364,7 @@ export const useAppNavigationActions = ({
   }
 
   const openSpace = (spaceId: string) => {
+    commitActiveRenameBeforeAction()
     saveActiveCursorBeforeNavigation()
     closeImageToolsRef.current()
     if (arrangeModeActive) {
@@ -336,6 +378,7 @@ export const useAppNavigationActions = ({
   }
 
   const addSpace = () => {
+    commitActiveRenameBeforeAction()
     saveActiveCursorBeforeNavigation()
     const newSpace = createSpace('New Space')
     setState((previous) => addSpaceToActiveDomain(previous, newSpace))
@@ -346,6 +389,7 @@ export const useAppNavigationActions = ({
 
   const duplicateSpaceFromContext = () => {
     if (!contextMenu || contextMenu.type !== 'space') return
+    commitActiveRenameBeforeAction()
     const sourceSpace = state.spaces.find((space) => space.id === contextMenu.spaceId)
     if (!sourceSpace) {
       setContextMenu(null)
@@ -363,6 +407,7 @@ export const useAppNavigationActions = ({
   }
 
   const openSpacesView = () => {
+    commitActiveRenameBeforeAction()
     saveActiveCursorBeforeNavigation()
     if (arrangeModeActive) {
       exitArrangeMode()
@@ -373,6 +418,7 @@ export const useAppNavigationActions = ({
   }
 
   const openDomainsView = () => {
+    commitActiveRenameBeforeAction()
     saveActiveCursorBeforeNavigation()
     if (arrangeModeActive) {
       exitArrangeMode()
@@ -384,6 +430,7 @@ export const useAppNavigationActions = ({
   }
 
   const openDomain = (domainId: string) => {
+    commitActiveRenameBeforeAction()
     saveActiveCursorBeforeNavigation()
     if (arrangeModeActive) {
       exitArrangeMode()
@@ -396,6 +443,7 @@ export const useAppNavigationActions = ({
   }
 
   const addDomainFromPage = () => {
+    commitActiveRenameBeforeAction()
     saveActiveCursorBeforeNavigation()
     const newDomain = createDomain('New Domain')
     setState((previous) => addDomain(previous, newDomain))
@@ -406,6 +454,7 @@ export const useAppNavigationActions = ({
   }
 
   const toggleTrashView = () => {
+    commitActiveRenameBeforeAction()
     saveActiveCursorBeforeNavigation()
     setMenuOpen(false)
     setContextMenu(null)
@@ -420,6 +469,7 @@ export const useAppNavigationActions = ({
 
   const openSettings = () => {
     if (viewMode === 'spaces' || viewMode === 'domains') return
+    commitActiveRenameBeforeAction()
     saveActiveCursorBeforeNavigation()
     setMenuOpen(false)
     setContextMenu(null)
@@ -428,6 +478,7 @@ export const useAppNavigationActions = ({
 
   return {
     commitRename,
+    commitActiveRenameBeforeAction,
     shouldSkipRenameBlur,
     cancelRename,
     addTab,

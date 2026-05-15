@@ -37,6 +37,8 @@ type TopBarProps = {
   onShouldSkipRenameBlur: (type: EditableEntityType, id: string) => boolean
   onCommitRename: (type: EditableEntityType, id: string, name: string) => void
   onCancelRename: (type: EditableEntityType, id: string) => void
+  onRenameDraftChange: (type: EditableEntityType, id: string, value: string) => void
+  onClearRenameDraft: (type: EditableEntityType, id: string) => void
   onGetStageManagerParentSelection: (tab: Tab) => StageManagerParentSelection
   onStageManagerParentClick: (tab: Tab) => void
   onConsumeArrangeClickSuppression: (key: string) => boolean
@@ -113,6 +115,8 @@ export function TopBar({
   onShouldSkipRenameBlur,
   onCommitRename,
   onCancelRename,
+  onRenameDraftChange,
+  onClearRenameDraft,
   onGetStageManagerParentSelection,
   onStageManagerParentClick,
   onConsumeArrangeClickSuppression,
@@ -195,9 +199,9 @@ export function TopBar({
       ? [
           {
             key: 'end-arrangement',
-            label: 'end arrangement',
-            visibleLabel: isDraggingTabArrangeItem ? 'trash' : 'end arrangement',
-            sizeLabel: 'end arrangement',
+            label: 'arrangements',
+            visibleLabel: isDraggingTabArrangeItem ? 'trash' : 'arrangements',
+            sizeLabel: 'arrangements',
             selected: false,
             className: `btn btn-sm tab-btn topbar-action-btn topbar-context-btn topbar-arrange-trash-btn ${
               isDraggingTabArrangeItem ? 'is-trash-mode' : ''
@@ -243,12 +247,19 @@ export function TopBar({
                   defaultValue={tab.title}
                   autoFocus
                   onFocus={(event) => {
+                    onRenameDraftChange('tab', tab.id, event.currentTarget.value)
                     onAutoSizeRenameInput(event.currentTarget)
                     event.currentTarget.select()
                   }}
-                  onInput={(event) => onAutoSizeRenameInput(event.currentTarget)}
+                  onInput={(event) => {
+                    onRenameDraftChange('tab', tab.id, event.currentTarget.value)
+                    onAutoSizeRenameInput(event.currentTarget)
+                  }}
                   onBlur={(event) => {
-                    if (onShouldSkipRenameBlur('tab', tab.id)) return
+                    if (onShouldSkipRenameBlur('tab', tab.id)) {
+                      onClearRenameDraft('tab', tab.id)
+                      return
+                    }
                     onCommitRename('tab', tab.id, event.target.value)
                   }}
                   onKeyDown={(event) => {

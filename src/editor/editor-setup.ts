@@ -288,6 +288,28 @@ export function uncheckedTaskEnterPlugin(context: {
   }
 }
 
+export type ParagraphSpaceShortcut =
+  | { kind: 'heading'; level: number }
+  | { kind: 'dashList' }
+  | { kind: 'bulletList' }
+  | { kind: 'numberedList'; order: number }
+  | { kind: 'blockQuote' }
+
+export function getParagraphSpaceShortcut(markerText: string): ParagraphSpaceShortcut | null {
+  const normalizedMarker = markerText.replace(/\u200b/g, '')
+  const headingMatch = normalizedMarker.match(/^\s*(#{1,6})$/)
+  if (headingMatch) return { kind: 'heading', level: headingMatch[1].length }
+
+  if (/^\s*>$/.test(normalizedMarker)) return { kind: 'blockQuote' }
+  if (/^\s*-$/.test(normalizedMarker)) return { kind: 'dashList' }
+  if (/^\s*[*+]$/.test(normalizedMarker)) return { kind: 'bulletList' }
+
+  const orderedMatch = normalizedMarker.match(/^\s*(\d+)[.)]$/)
+  if (orderedMatch) return { kind: 'numberedList', order: Number(orderedMatch[1]) || 1 }
+
+  return null
+}
+
 export function headingSpaceShortcutPlugin(context: {
   pmKeymap: { keymap: (bindings: Record<string, unknown>) => unknown }
   pmState: {
@@ -439,22 +461,18 @@ export function headingSpaceShortcutPlugin(context: {
             if ($from.parent.type.name !== 'paragraph') return false
             if ($from.parentOffset !== $from.parent.content.size) return false
 
-            const markerText = ($from.parent.textContent ?? '').replace(/\u200b/g, '')
-            const headingMatch = markerText.match(/^\s*(#{1,6})$/)
-            const dashMatch = markerText.match(/^\s*-$/)
-            const bulletMatch = markerText.match(/^\s*[*+]$/)
-            const orderedMatch = markerText.match(/^\s*(\d+)[.)]$/)
-            if (!headingMatch && !dashMatch && !bulletMatch && !orderedMatch) return false
+            const shortcut = getParagraphSpaceShortcut($from.parent.textContent ?? '')
+            if (!shortcut) return false
 
             const blockDepth = $from.depth
             const from = $from.before(blockDepth)
             const to = $from.after(blockDepth)
 
-            if (headingMatch) {
+            if (shortcut.kind === 'heading') {
               const headingType = schema.nodes.heading
               if (!headingType) return false
               const headingNode = headingType.create({
-                level: headingMatch[1].length,
+                level: shortcut.level,
                 headingType: 'atx',
               })
               const nextTr = tr.replaceWith(from, to, headingNode)
@@ -464,16 +482,30 @@ export function headingSpaceShortcutPlugin(context: {
               return true
             }
 
-            const listType = orderedMatch ? schema.nodes.orderedList : schema.nodes.bulletList
+            if (shortcut.kind === 'blockQuote') {
+              const blockQuoteType = schema.nodes.blockQuote
+              const paragraphType = schema.nodes.paragraph
+              if (!blockQuoteType || !paragraphType) return false
+
+              const blockQuoteNode = blockQuoteType.create(null, paragraphType.create())
+              const nextTr = tr.replaceWith(from, to, blockQuoteNode)
+              const caretPos = Math.min(from + 2, nextTr.doc.content.size)
+              const nextSelection = TextSelection.create(nextTr.doc, caretPos, caretPos)
+              dispatch?.(nextTr.setSelection(nextSelection).scrollIntoView())
+              return true
+            }
+
+            const listType = shortcut.kind === 'numberedList' ? schema.nodes.orderedList : schema.nodes.bulletList
             const listItemType = schema.nodes.listItem
             const paragraphType = schema.nodes.paragraph
             if (!listType || !listItemType || !paragraphType) return false
 
             const paragraphNode = paragraphType.create()
             const listItemNode = listItemType.create(null, paragraphNode)
-            const listAttrs = orderedMatch
-              ? { order: Number(orderedMatch[1]) || 1 }
-              : createBulletListAttrs(dashMatch ? 'dash' : 'bullet')
+            const listAttrs =
+              shortcut.kind === 'numberedList'
+                ? { order: shortcut.order }
+                : createBulletListAttrs(shortcut.kind === 'dashList' ? 'dash' : 'bullet')
             const listNode = listType.create(listAttrs, listItemNode)
             const nextTr = tr.replaceWith(from, to, listNode)
             const caretPos = Math.min(from + 3, nextTr.doc.content.size)

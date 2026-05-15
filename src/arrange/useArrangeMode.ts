@@ -78,6 +78,7 @@ export function useArrangeMode({
   const dragSeedRef = useRef<ArrangeDragSeed | null>(null)
   const spaceDragRef = useRef<SpaceArrangeDragPreview | null>(null)
   const tabDragRef = useRef<TabArrangeDragPreview | null>(null)
+  const tabDragWindowCleanupRef = useRef<(() => void) | null>(null)
   const suppressClickRef = useRef<Set<string>>(new Set())
   const suppressNextSpaceArrangeExitRef = useRef(false)
   const isDraggingOverTrashDropRef = useRef(false)
@@ -102,6 +103,11 @@ export function useArrangeMode({
     if (isDraggingOverTrashDropRef.current === active) return
     isDraggingOverTrashDropRef.current = active
     setIsDraggingOverTrashDrop(active)
+  }
+
+  const detachTabDragWindowListeners = () => {
+    tabDragWindowCleanupRef.current?.()
+    tabDragWindowCleanupRef.current = null
   }
 
   const startDragSeed = (key: string, event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -191,6 +197,7 @@ export function useArrangeMode({
     suppressClickRef.current.clear()
     spaceDragRef.current = null
     tabDragRef.current = null
+    detachTabDragWindowListeners()
     suppressNextSpaceArrangeExitRef.current = false
     setTrashDropTarget(false)
     setDraggingItem(null)
@@ -559,6 +566,7 @@ export function useArrangeMode({
 
   const clearTabPointerDrag = () => {
     tabDragRef.current = null
+    detachTabDragWindowListeners()
     setTabDragPreview(null)
   }
 
@@ -609,6 +617,7 @@ export function useArrangeMode({
     prepareForDrag(item)
     tabDragRef.current = nextDrag
     setTabDragPreview(nextDrag)
+    attachTabDragWindowListeners()
     updateTabDropTarget(item, event.clientX, event.clientY)
   }
 
@@ -754,6 +763,54 @@ export function useArrangeMode({
           }
         : previous,
     )
+  }
+
+  const attachTabDragWindowListeners = () => {
+    detachTabDragWindowListeners()
+
+    const getActiveDragKey = () => {
+      const activeDrag = tabDragRef.current
+      if (!activeDrag) return null
+      return activeDrag.item.type === 'tab' ? `tab:${activeDrag.item.tabId}` : `subtab:${activeDrag.item.subTabId}`
+    }
+
+    const handleWindowPointerMove = (event: PointerEvent) => {
+      const activeDrag = tabDragRef.current
+      if (!activeDrag) return
+      const key = getActiveDragKey()
+      if (key) markTapDragged(key)
+
+      if (event.buttons === 0) {
+        finishTabPointerDrag(activeDrag.currentX, activeDrag.currentY)
+        return
+      }
+
+      event.preventDefault()
+      updateTabPointerDrag(event.clientX, event.clientY)
+    }
+
+    const handleWindowPointerUp = (event: PointerEvent) => {
+      if (!tabDragRef.current) return
+      event.preventDefault()
+      event.stopPropagation()
+      finishTabPointerDrag(event.clientX, event.clientY)
+    }
+
+    const handleWindowPointerCancel = () => {
+      if (!tabDragRef.current) return
+      cancelTabPointerDrag()
+    }
+
+    window.addEventListener('pointermove', handleWindowPointerMove, true)
+    window.addEventListener('pointerup', handleWindowPointerUp, true)
+    window.addEventListener('pointercancel', handleWindowPointerCancel, true)
+    window.addEventListener('blur', handleWindowPointerCancel)
+    tabDragWindowCleanupRef.current = () => {
+      window.removeEventListener('pointermove', handleWindowPointerMove, true)
+      window.removeEventListener('pointerup', handleWindowPointerUp, true)
+      window.removeEventListener('pointercancel', handleWindowPointerCancel, true)
+      window.removeEventListener('blur', handleWindowPointerCancel)
+    }
   }
 
   const handleTabPointerMove = (

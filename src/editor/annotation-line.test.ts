@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   ANNOTATION_LINE_CLASS_NAME,
-  ANNOTATION_LINE_MARKER_CLASS_NAME,
   applyAnnotationLineClassToHtmlToken,
   applyAnnotationMarkerToTextHtmlToken,
   parseAnnotationLine,
@@ -30,10 +29,17 @@ describe('annotation line detection', () => {
       prefixEnd: 3,
       content: '',
     })
+    expect(parseAnnotationLine('--  text')).toMatchObject({
+      markerStart: 0,
+      markerEnd: 2,
+      prefixEnd: 4,
+      content: 'text',
+    })
   })
 
   it('does not match dash lists, inline dashes, tight double dashes, or horizontal rules', () => {
     expect(parseAnnotationLine('- text')).toBeNull()
+    expect(parseAnnotationLine('--')).toBeNull()
     expect(parseAnnotationLine('--text')).toBeNull()
     expect(parseAnnotationLine('---')).toBeNull()
     expect(parseAnnotationLine('hello -- text')).toBeNull()
@@ -52,7 +58,7 @@ describe('annotation line html helpers', () => {
     expect(token.classNames).toEqual(['existing', ANNOTATION_LINE_CLASS_NAME])
   })
 
-  it('wraps the canonical marker in the rendered text token', () => {
+  it('removes the canonical marker from the rendered text token', () => {
     const parent: { type: string; firstChild?: unknown } = { type: 'paragraph' }
     const node = { literal: '-- note', parent }
     parent.firstChild = node
@@ -62,12 +68,6 @@ describe('annotation line html helpers', () => {
       content: '-- note',
     }) as Array<{ type: string; tagName?: string; classNames?: string[]; content?: string }>
 
-    expect(tokens[0]).toMatchObject({
-      type: 'openTag',
-      tagName: 'span',
-      classNames: [ANNOTATION_LINE_MARKER_CLASS_NAME],
-    })
-    expect(tokens[1]).toMatchObject({ type: 'text', content: '-- ' })
-    expect(tokens[3]).toMatchObject({ type: 'text', content: 'note' })
+    expect(tokens).toEqual([{ type: 'text', content: 'note' }])
   })
 })

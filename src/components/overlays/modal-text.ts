@@ -34,22 +34,24 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
     }
   }
 
-  if (modal.type === 'duplicate-note') {
-    return {
-      title: 'make duplicate',
-      body: 'the selected note will share the target note body. Existing text in the selected note is replaced by the shared body.',
-      action: 'link duplicate',
-    }
-  }
-
   if (modal.type === 'copy-note') {
     const hasExistingContent = noteLocationHasContent(state, modal.source)
+    if (modal.mode === 'linked') {
+      return {
+        title: 'make copy',
+        body: hasExistingContent
+          ? 'the selected note will be replaced with a linked copy of the target note. edits in either location will affect both.'
+          : 'the selected note will become a linked copy of the target note. edits in either location will affect both.',
+        action: 'make copy',
+      }
+    }
+
     return {
       title: 'make copy',
       body: hasExistingContent
         ? 'the selected note will be replaced with an independent copy of the target note, including all aisles.'
         : 'the selected note will receive an independent copy of the target note, including all aisles.',
-      action: 'copy note',
+      action: 'make copy',
     }
   }
 

@@ -31,19 +31,18 @@ function normalizeAnnotationText(text: string) {
 
 export function parseAnnotationLine(text: string): AnnotationLineMatch | null {
   const normalizedText = normalizeAnnotationText(text)
-  const match = normalizedText.match(/^([ \t]*)--(?:[ \t](.*)|$)/)
+  const match = normalizedText.match(/^([ \t]*)--([ \t]+)(.*)$/)
   if (!match) return null
 
   const indent = match[1] ?? ''
   const markerStart = indent.length
   const markerEnd = markerStart + 2
-  const prefixMatch = normalizedText.match(/^([ \t]*)--[ \t]*/)
   return {
     indent,
     markerStart,
     markerEnd,
-    prefixEnd: prefixMatch ? prefixMatch[0].length : markerEnd,
-    content: match[2] ?? '',
+    prefixEnd: markerEnd + (match[2]?.length ?? 0),
+    content: match[3] ?? '',
   }
 }
 
@@ -135,11 +134,6 @@ export function applyAnnotationMarkerToTextHtmlToken(node: unknown, token: unkno
   if (markerFrom > 0) {
     tokens.push({ ...originalTextToken, content: content.slice(0, markerFrom) })
   }
-  tokens.push(
-    { type: 'openTag', tagName: 'span', classNames: [ANNOTATION_LINE_MARKER_CLASS_NAME] },
-    { ...originalTextToken, content: content.slice(markerFrom, markerTo) },
-    { type: 'closeTag', tagName: 'span' },
-  )
   if (markerTo < content.length) {
     tokens.push({ ...originalTextToken, content: content.slice(markerTo) })
   }

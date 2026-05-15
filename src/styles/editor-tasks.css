@@ -20,14 +20,14 @@
 .toastui-editor-contents li.task-reorder-source {
   opacity: 0.34;
   border-radius: 0.35rem;
-  background: rgba(111, 160, 255, 0.08);
-  box-shadow: inset 0 0 0 1px rgba(111, 160, 255, 0.16);
+  background: var(--task-reorder-source-bg);
+  box-shadow: var(--task-reorder-source-shadow);
 }
 
 .toastui-editor-contents li.task-reorder-target {
   border-radius: 0.35rem;
-  background: rgba(111, 160, 255, 0.08);
-  box-shadow: inset 0 0 0 1px rgba(111, 160, 255, 0.14);
+  background: var(--task-reorder-target-bg);
+  box-shadow: var(--task-reorder-target-shadow);
 }
 
 .task-reorder-ghost {
@@ -38,11 +38,11 @@
   width: max-content;
   max-width: min(16rem, calc(100vw - 2rem));
   padding: 0.48rem 0.62rem;
-  border: 1px solid rgba(111, 160, 255, 0.56);
+  border: 1px solid var(--task-reorder-ghost-border);
   border-radius: 0.5rem;
-  background: rgba(11, 21, 40, 0.95);
-  color: #f3f7ff;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.34), 0 0 0 1px rgba(111, 160, 255, 0.15);
+  background: var(--task-reorder-ghost-bg);
+  color: var(--task-reorder-ghost-text);
+  box-shadow: var(--task-reorder-ghost-shadow);
   font-size: 0.84rem;
   line-height: 1.2;
   pointer-events: none;
@@ -74,7 +74,7 @@
   top: 50%;
   transform: translateY(-50%);
   border-radius: 999px;
-  background: #77a7ff;
+  background: var(--task-reorder-marker);
 }
 
 .task-reorder-marker::before {
@@ -88,6 +88,6 @@
   left: 7px;
   right: 0;
   height: 2px;
-  background: #77a7ff;
+  background: var(--task-reorder-marker);
   box-shadow: none;
 }

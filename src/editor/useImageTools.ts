@@ -7,6 +7,13 @@ import {
   stripImageResizeMetadataFromUrl,
   withImageResizeMetadata,
 } from '../markdown/image-metadata'
+import {
+  drawImageTransform,
+  getImageTransformDimensions,
+  getImageTransformDisplayWidth,
+  type ImageTransformOperation,
+  withPreservedImageTransformDisplayWidth,
+} from './image-transform'
 import { isInsideReadonlyNotePreview } from './note-preview-dom'
 import { getWysiwygView } from './prosemirror-utils'
 import type { ImageToolsState, InlineCropState, ToastTone } from '../types/app'
@@ -30,6 +37,7 @@ export function useImageTools({
 }: UseImageToolsParams) {
   const [imageTools, setImageTools] = useState<ImageToolsState>({
     visible: false,
+    menuMode: 'start',
     cropTop: 0,
     cropLeft: 0,
     resizeTop: 0,
@@ -124,7 +132,7 @@ export function useImageTools({
     imageResizeRef.current = null
     resetInlineCropDrag()
     updateInlineCrop({ active: false, relX: 0, relY: 0, relWidth: 1, relHeight: 1, top: 0, left: 0, width: 0, height: 0 })
-    setImageTools({ visible: false, cropTop: 0, cropLeft: 0, resizeTop: 0, resizeLeft: 0 })
+    setImageTools({ visible: false, menuMode: 'start', cropTop: 0, cropLeft: 0, resizeTop: 0, resizeLeft: 0 })
   }
 
   useEffect(() => {
@@ -201,13 +209,14 @@ export function useImageTools({
       return
     }
     const rect = image.getBoundingClientRect()
-    setImageTools({
+    setImageTools((previous) => ({
       visible: true,
+      menuMode: previous.visible ? previous.menuMode : 'start',
       cropTop: Math.max(8, rect.top + 4),
       cropLeft: Math.max(8, rect.left + 4),
       resizeTop: Math.max(8, rect.bottom - 2),
       resizeLeft: Math.max(8, rect.right - 2),
-    })
+    }))
 
     updateInlineCrop((previous) => {
       if (!previous.active) return previous
@@ -238,6 +247,7 @@ export function useImageTools({
     syncImageDisplayMetadata(image)
     activateEditorFromEventTarget(image)
     editorRef.current?.focus()
+    setImageTools((previous) => ({ ...previous, menuMode: 'start' }))
     refreshPosition()
   }
 
@@ -459,6 +469,15 @@ export function useImageTools({
     })
   }
 
+  const openTransformMenu = () => {
+    if (inlineCropRef.current.active) return
+    setImageTools((previous) => (previous.visible ? { ...previous, menuMode: 'transform' } : previous))
+  }
+
+  const returnToStartMenu = () => {
+    setImageTools((previous) => (previous.visible ? { ...previous, menuMode: 'start' } : previous))
+  }
+
   const cancelCrop = () => {
     resetInlineCropDrag()
     updateInlineCrop((previous) => ({ ...previous, active: false, top: 0, left: 0, width: 0, height: 0 }))
@@ -522,6 +541,56 @@ export function useImageTools({
     image.style.maxWidth = 'none'
     cancelCrop()
     refreshPosition()
+  }
+
+  const transformSelectedImage = async (operation: ImageTransformOperation) => {
+    const image = activeImageRef.current
+    if (!image || !image.isConnected || !image.src || inlineCropRef.current.active) return false
+
+    try {
+      const sourceUrl = image.getAttribute('src') ?? image.src
+      const sourceImage = new Image()
+      sourceImage.src = stripImageResizeMetadataFromUrl(sourceUrl)
+      await new Promise<void>((resolve, reject) => {
+        sourceImage.onload = () => resolve()
+        sourceImage.onerror = () => reject(new Error('image load failed'))
+      })
+
+      const sourceWidth = sourceImage.naturalWidth || sourceImage.width
+      const sourceHeight = sourceImage.naturalHeight || sourceImage.height
+      if (sourceWidth <= 0 || sourceHeight <= 0) throw new Error('invalid image dimensions')
+
+      const dimensions = getImageTransformDimensions(sourceWidth, sourceHeight, operation)
+      const canvas = document.createElement('canvas')
+      canvas.width = dimensions.width
+      canvas.height = dimensions.height
+      const context = canvas.getContext('2d')
+      if (!context) throw new Error('canvas context unavailable')
+
+      context.imageSmoothingEnabled = false
+      drawImageTransform(context, sourceImage, sourceWidth, sourceHeight, operation)
+
+      const renderedWidth = image.getBoundingClientRect().width || image.width || sourceWidth
+      const nextDataUrl = withPreservedImageTransformDisplayWidth(canvas.toDataURL('image/png'), sourceUrl, renderedWidth)
+      const displayWidth = getImageTransformDisplayWidth(nextDataUrl, renderedWidth)
+
+      if (!updateEditorImageNode(image, { imageUrl: nextDataUrl, altText: image.alt || null })) {
+        image.src = nextDataUrl
+        commitCurrentEditorContent()
+      }
+      image.src = nextDataUrl
+      image.style.width = `${displayWidth}px`
+      image.style.height = 'auto'
+      image.style.maxWidth = '100%'
+      image.setAttribute('width', String(displayWidth))
+      image.removeAttribute('height')
+      refreshPosition()
+      setImageTools((previous) => (previous.visible ? { ...previous, menuMode: 'transform' } : previous))
+      return true
+    } catch {
+      pushToast('could not transform image.', 'warning')
+      return false
+    }
   }
 
   const beginCropMouseDrag = (mode: InlineCropDragMode, event: MouseEvent<HTMLElement>) => {
@@ -666,6 +735,9 @@ export function useImageTools({
     deleteSelectedImage,
     beginResize,
     startCrop,
+    openTransformMenu,
+    returnToStartMenu,
+    transformSelectedImage,
     cancelCrop,
     applyCrop,
     beginCropMouseDrag,

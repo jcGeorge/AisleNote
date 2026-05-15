@@ -2,6 +2,7 @@
 import { useEffect, useRef, type MutableRefObject } from 'react'
 import { Editor } from '@toast-ui/editor'
 import { buildAisleEditorKey, type AisleEditorMeta } from './aisle-editor'
+import { createCodeBlockControlsPlugin } from './code-block-controls'
 import {
   annotationLinePlugin,
   EDITOR_TOOLBAR_ITEMS,
@@ -23,7 +24,7 @@ import {
   materializeHorizontalRuleShortcut,
   normalizeMarkdownForPersistence,
 } from '../markdown/markdown-utils'
-import type { NoteAisle, NoteLocation, PendingContent, ViewMode } from '../types/app'
+import type { NoteAisle, NoteLocation, PendingContent, ToastTone, ViewMode } from '../types/app'
 import type { NoteContextReferencePayload } from '../notes/note-references'
 
 type ActivateAisleEditorOptions = {
@@ -66,6 +67,7 @@ type UseAisleEditorsOptions = {
     aisleId: string,
   ) => void
   commitCurrentEditorContent: () => void
+  pushToast: (message: string, tone?: ToastTone, durationMs?: number) => void
   maybeShowCompletedTaskUndoHint: (markdown: string) => void
   trackCompletedTaskQuickDelete: (beforeMarkdown: string) => void
   tryExpandMultilineSelection: (direction: 'up' | 'down') => boolean
@@ -103,6 +105,7 @@ export function useAisleEditors({
   getNormalizedEditorMarkdown,
   scheduleContentCommit,
   commitCurrentEditorContent,
+  pushToast,
   maybeShowCompletedTaskUndoHint,
   trackCompletedTaskQuickDelete,
   tryExpandMultilineSelection,
@@ -270,6 +273,7 @@ export function useAisleEditors({
           listMarkerPlugin,
           annotationLinePlugin,
           terminalBlockLandingPlugin,
+          createCodeBlockControlsPlugin({ pushToast }),
           uncheckedTaskEnterPlugin,
           headingSpaceShortcutPlugin,
           thematicBreakShortcutPlugin,

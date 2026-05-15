@@ -54,6 +54,12 @@ import {
 import { useNavigationHistory } from './navigation/useNavigationHistory'
 import { useAppNavigationActions } from './navigation/useAppNavigationActions'
 import {
+  clearRenameDraftIfMatching,
+  createRenameDraft,
+  type RenameDraft,
+  type RenameEntityType,
+} from './navigation/rename-draft'
+import {
   getLocationInfo,
 } from './notes/note-locations'
 import { useNoteReferenceActions } from './notes/useNoteReferenceActions'
@@ -134,6 +140,8 @@ function App() {
   const runNewlineOperationFromMenuRef = useRef<(operation: NewlineOperationId) => void>(() => {})
   const deleteContextPreviewRef = useRef<(tokenId: string) => void>(() => {})
   const pendingCreatedEditRef = useRef<PendingCreatedEdit | null>(null)
+  const editingRef = useRef<{ type: EditableEntityType; id: string } | null>(null)
+  const renameDraftRef = useRef<RenameDraft | null>(null)
   const skipRenameBlurRef = useRef<{ type: EditableEntityType; id: string } | null>(null)
   const toastTimerRef = useRef<number | null>(null)
   const closeImageToolsRef = useRef<() => void>(() => {})
@@ -168,6 +176,22 @@ function App() {
       window.removeEventListener('scroll', closeOverlays, true)
     }
   }, [])
+
+  const trackRenameDraft = (type: RenameEntityType, id: string, value: string) => {
+    renameDraftRef.current = createRenameDraft(type, id, value)
+  }
+
+  const clearRenameDraft = (type: RenameEntityType, id: string) => {
+    renameDraftRef.current = clearRenameDraftIfMatching(renameDraftRef.current, type, id)
+  }
+
+  useEffect(() => {
+    editingRef.current = editing
+    const draft = renameDraftRef.current
+    if (!draft) return
+    if (editing && editing.type === draft.type && editing.id === draft.id) return
+    renameDraftRef.current = null
+  }, [editing])
 
   useEffect(() => {
     if (!toast) return
@@ -521,6 +545,8 @@ function App() {
     setContextMenu,
     setMenuOpen,
     setEditing,
+    editingRef,
+    renameDraftRef,
     workspace,
     activeTab,
     activeNoteBodyId,
@@ -763,6 +789,7 @@ function App() {
     getNormalizedEditorMarkdown,
     scheduleContentCommit,
     commitCurrentEditorContent,
+    pushToast,
     maybeShowCompletedTaskUndoHint,
     trackCompletedTaskQuickDelete,
     tryExpandMultilineSelection,
@@ -830,6 +857,9 @@ function App() {
   const deleteActiveEditorImageNode = imageToolsController.deleteSelectedImage
   const beginImageResize = imageToolsController.beginResize
   const startInlineCrop = imageToolsController.startCrop
+  const openImageTransformMenu = imageToolsController.openTransformMenu
+  const returnToImageToolsMenu = imageToolsController.returnToStartMenu
+  const transformSelectedImage = imageToolsController.transformSelectedImage
   const cancelInlineCrop = imageToolsController.cancelCrop
   const applyInlineCrop = imageToolsController.applyCrop
   const beginInlineCropMouseDrag = imageToolsController.beginCropMouseDrag
@@ -1005,6 +1035,7 @@ function App() {
     clearActiveNoteContent,
     flushPendingContent,
     closeImageTools,
+    pushToast,
     maybeShowCompletedTaskUndoHint,
     trackCompletedTaskQuickDelete,
     tryExpandMultilineSelection,
@@ -1095,6 +1126,7 @@ function App() {
     setMenuOpen,
     setEditing,
     activeSpaceId: activeSpace.id,
+    activeNoteLocation,
     updateActiveSpaceData,
     saveActiveCursorBeforeNavigation,
     setTrashTabId,
@@ -1105,14 +1137,15 @@ function App() {
   })
   const openContextMenuForTab = overlayActions.openContextMenuForTab
   const openContextMenuForSubTab = overlayActions.openContextMenuForSubTab
+  const openContextMenuForHomeTab = overlayActions.openContextMenuForHomeTab
   const openContextMenuForTrashTab = overlayActions.openContextMenuForTrashTab
   const openContextMenuForTrashSubTab = overlayActions.openContextMenuForTrashSubTab
   const openContextMenuForSpace = overlayActions.openContextMenuForSpace
   const openContextMenuForDomain = overlayActions.openContextMenuForDomain
   const openDeleteModalFromContext = overlayActions.openDeleteModalFromContext
   const deleteFromContext = overlayActions.deleteFromContext
-  const openDuplicateModalFromContext = overlayActions.openDuplicateModalFromContext
   const openCopyModalFromContext = overlayActions.openCopyModalFromContext
+  const openCopyModalForActiveNote = overlayActions.openCopyModalForActiveNote
   const openDeduplicateModalFromContext = overlayActions.openDeduplicateModalFromContext
   const getCurrentDuplicateCount = overlayActions.getCurrentDuplicateCount
   const beginRenameSpaceFromContext = overlayActions.beginRenameSpaceFromContext
@@ -1175,6 +1208,7 @@ function App() {
     insertLinkIntoActiveEditor,
     clearActiveNoteContent,
     openNoteReferenceModal,
+    openCopyModalForActiveNote,
     addAisleToActiveNote,
     deleteAisleFromActiveNote,
     pushToast,
@@ -1186,6 +1220,9 @@ function App() {
       imageTools={imageTools}
       inlineCrop={inlineCrop}
       onStartCrop={startInlineCrop}
+      onOpenTransform={openImageTransformMenu}
+      onReturnToStart={returnToImageToolsMenu}
+      onTransformImage={transformSelectedImage}
       onApplyCrop={applyInlineCrop}
       onCancelCrop={cancelInlineCrop}
       onBeginResize={beginImageResize}
@@ -1277,6 +1314,8 @@ function App() {
         onShouldSkipRenameBlur={shouldSkipRenameBlur}
         onCommitRename={commitRename}
         onCancelRename={cancelRename}
+        onRenameDraftChange={trackRenameDraft}
+        onClearRenameDraft={clearRenameDraft}
         onGetStageManagerParentSelection={stageManager.getParentSelection}
         onStageManagerParentClick={stageManager.handleParentClick}
         onConsumeArrangeClickSuppression={consumeArrangeClickSuppression}
@@ -1332,6 +1371,7 @@ function App() {
           onCommitRename={(domainId, name) => commitRename('domain', domainId, name)}
           onCancelRename={(domainId) => cancelRename('domain', domainId)}
           onShouldSkipRenameBlur={(domainId) => shouldSkipRenameBlur('domain', domainId)}
+          onRenameDraftChange={(domainId, value) => trackRenameDraft('domain', domainId, value)}
           onOpenContextMenu={openContextMenuForDomain}
         />
       ) : viewMode === 'spaces' ? (
@@ -1360,6 +1400,7 @@ function App() {
           onCommitRename={(spaceId, name) => commitRename('space', spaceId, name)}
           onCancelRename={(spaceId) => cancelRename('space', spaceId)}
           onShouldSkipRenameBlur={(spaceId) => shouldSkipRenameBlur('space', spaceId)}
+          onRenameDraftChange={(spaceId, value) => trackRenameDraft('space', spaceId, value)}
           onOpenContextMenu={openContextMenuForSpace}
           onConsumeArrangeClickSuppression={consumeArrangeClickSuppression}
           onStartArrangeDragSeed={startArrangeDragSeed}
@@ -1420,6 +1461,8 @@ function App() {
             onShouldSkipRenameBlur={shouldSkipRenameBlur}
             onCommitRename={commitRename}
             onCancelRename={cancelRename}
+            onRenameDraftChange={trackRenameDraft}
+            onClearRenameDraft={clearRenameDraft}
             onGetStageManagerParentSelection={stageManager.getParentSelection}
             onStageManagerHomeClick={stageManager.handleHomeClick}
             onStageManagerSubTabClick={stageManager.handleSubTabClick}
@@ -1427,6 +1470,7 @@ function App() {
             onSelectParentHomeTab={selectParentHomeTab}
             onSelectSubTab={selectSubTab}
             onBeginEdit={setEditing}
+            onOpenContextMenuForHomeTab={openContextMenuForHomeTab}
             onOpenContextMenuForSubTab={openContextMenuForSubTab}
             onStartArrangeDragSeed={startArrangeDragSeed}
             onStartArrangeTapCandidate={startArrangeTapCandidate}
@@ -1543,7 +1587,6 @@ function App() {
         onOpenInternalNoteLink={openInternalNoteLinkFromContext}
         onRenameInternalNoteLink={renameInternalNoteLinkFromContext}
         onOpenDeleteModal={openDeleteModalFromContext}
-        onOpenDuplicateModal={openDuplicateModalFromContext}
         onOpenDeduplicateModal={openDeduplicateModalFromContext}
         onOpenCopyModal={openCopyModalFromContext}
         onMoveToTrash={deleteFromContext}

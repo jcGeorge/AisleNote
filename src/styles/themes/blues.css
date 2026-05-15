@@ -277,32 +277,103 @@
   --modal-primary-hover-bg: #456aa7;
   --modal-primary-hover-border: #a99a5d;
 
-  --monet-editor-bg: #aeb8c6;
-  --monet-editor-panel-bg: #99a7bc;
-  --monet-editor-toolbar-bg: #8fa0b8;
-  --monet-editor-toolbar-hover-bg: #bcc4cd;
-  --monet-editor-toolbar-active-bg: #a8b3c1;
-  --monet-editor-border: #61728f;
-  --monet-editor-border-strong: #a99a5d;
-  --monet-editor-text: #17223a;
-  --monet-editor-muted-text: #42506a;
-  --monet-editor-heading-text: #111c32;
-  --monet-editor-selection-bg: rgba(169, 154, 93, 0.2);
-  --monet-editor-code-bg: #8f9bad;
-  --monet-editor-popup-bg: #aeb8c6;
+  --editor-bg: #aeb8c6;
+  --editor-panel-bg: #99a7bc;
+  --editor-toolbar-bg: #8fa0b8;
+  --editor-toolbar-hover-bg: #bcc4cd;
+  --editor-toolbar-hover-border: #61728f;
+  --editor-toolbar-active-bg: #a8b3c1;
+  --editor-border: #61728f;
+  --editor-border-strong: #a99a5d;
+  --editor-text: #17223a;
+  --editor-muted-text: #42506a;
+  --editor-heading-text: #111c32;
+  --editor-blockquote-text: #2f3c56;
+  --editor-blockquote-border: #61728f;
+  --editor-blockquote-bg: transparent;
+  --editor-selection-bg: rgba(169, 154, 93, 0.2);
+  --editor-code-bg: #8f9bad;
+  --editor-popup-bg: #aeb8c6;
+  --editor-link-text: #38568f;
+  --editor-tooltip-bg: #aeb8c6;
+  --editor-tooltip-border: #61728f;
+  --editor-tooltip-text: #17223a;
+  --editor-caret: #17223a;
+  --editor-annotation-text: #283854;
+  --editor-terminal-caret: rgba(56, 86, 143, 0.86);
+  --editor-heading-choice-active-bg: #b4ad8a;
+  --editor-heading-choice-active-marker: #38568f;
+  --editor-heading-choice-active-text: #111c32;
+  --editor-popup-input-bg: #bcc4cd;
+  --editor-popup-input-border: #61728f;
+  --editor-popup-input-focus-border: #a99a5d;
+  --editor-table-selection-bg: #aeb8c6;
+  --editor-table-selection-border: #61728f;
+  --editor-table-cell-bg: #bcc4cd;
+  --editor-table-cell-border: #78879d;
+  --editor-table-selection-layer-bg: rgba(169, 154, 93, 0.18);
+  --editor-table-selection-layer-border: #a99a5d;
+  --editor-table-description-text: #17223a;
+  --editor-hr-line: rgba(56, 86, 143, 0.92);
+  --editor-tooltip-shadow: 0 4px 12px rgba(14, 22, 39, 0.28);
+
+  --task-reorder-source-bg: rgba(169, 154, 93, 0.12);
+  --task-reorder-source-shadow: inset 0 0 0 1px rgba(169, 154, 93, 0.16);
+  --task-reorder-target-bg: rgba(169, 154, 93, 0.12);
+  --task-reorder-target-shadow: inset 0 0 0 1px rgba(169, 154, 93, 0.16);
+  --task-reorder-ghost-border: rgba(169, 154, 93, 0.42);
+  --task-reorder-ghost-bg: rgba(174, 184, 198, 0.96);
+  --task-reorder-ghost-text: #17223a;
+  --task-reorder-ghost-shadow: 0 12px 28px rgba(14, 22, 39, 0.28), 0 0 0 1px rgba(169, 154, 93, 0.12);
+  --task-reorder-marker: #a99a5d;
+
+  --image-tool-btn-border: #61728f;
+  --image-tool-btn-bg: #aeb8c6;
+  --image-tool-btn-text: #17223a;
+  --image-tool-btn-hover-bg: #bcc4cd;
+  --image-tool-handle-border: #17223a;
+  --image-tool-handle-bg: #aeb8c6;
+  --image-tool-handle-stripe: #17223a;
+  --image-tool-crop-border: #a99a5d;
+  --image-tool-crop-handle-border: #a99a5d;
+  --image-tool-crop-handle-bg: #8fa0b8;
+
+  --link-prompt-border: #61728f;
+  --link-prompt-bg: rgba(174, 184, 198, 0.98);
+  --link-prompt-input-border: #61728f;
+  --link-prompt-input-bg: #bcc4cd;
+  --link-prompt-input-text: #17223a;
+  --link-prompt-btn-border: #38568f;
+  --link-prompt-btn-bg: #8fa0b8;
+  --link-prompt-btn-text: #17223a;
+  --link-prompt-btn-hover-bg: #a8b3c1;
+
+  --monet-editor-bg: var(--editor-bg);
+  --monet-editor-panel-bg: var(--editor-panel-bg);
+  --monet-editor-toolbar-bg: var(--editor-toolbar-bg);
+  --monet-editor-toolbar-hover-bg: var(--editor-toolbar-hover-bg);
+  --monet-editor-toolbar-active-bg: var(--editor-toolbar-active-bg);
+  --monet-editor-border: var(--editor-border);
+  --monet-editor-border-strong: var(--editor-border-strong);
+  --monet-editor-text: var(--editor-text);
+  --monet-editor-muted-text: var(--editor-muted-text);
+  --monet-editor-heading-text: var(--editor-heading-text);
+  --monet-editor-selection-bg: var(--editor-selection-bg);
+  --monet-editor-code-bg: var(--editor-code-bg);
+  --monet-editor-popup-bg: var(--editor-popup-bg);
 }
 
 .theme-blues .editor-shell {
-  background: var(--monet-editor-bg);
+  background: var(--editor-bg);
 }
 
 .theme-blues .trash-home-note {
-  background: var(--monet-editor-bg);
-  color: var(--monet-editor-text);
+  background: var(--editor-bg);
+  color: var(--editor-text);
 }
 
 .theme-blues .trash-home-note h2 {
-  color: var(--monet-editor-heading-text);
+  color: var(--editor-heading-text);
 }
 
 .theme-blues .trash-home-actions .btn-outline-light {
@@ -330,41 +401,61 @@
 .theme-blues .toastui-editor-contents,
 .theme-blues .toastui-editor .ProseMirror,
 .theme-blues .toastui-editor .ProseMirror * {
-  background-color: var(--monet-editor-bg) !important;
-  color: var(--monet-editor-text) !important;
+  background-color: var(--editor-bg) !important;
+  color: var(--editor-text) !important;
+}
+
+.theme-blues .toastui-editor-contents blockquote,
+.theme-blues .toastui-editor .ProseMirror blockquote {
+  background: var(--editor-blockquote-bg) !important;
+  border-left-color: var(--editor-blockquote-border) !important;
+  color: var(--editor-blockquote-text) !important;
+}
+
+.theme-blues .toastui-editor-contents blockquote p,
+.theme-blues .toastui-editor .ProseMirror blockquote p,
+.theme-blues .toastui-editor-contents blockquote li,
+.theme-blues .toastui-editor .ProseMirror blockquote li,
+.theme-blues .toastui-editor-contents blockquote span,
+.theme-blues .toastui-editor .ProseMirror blockquote span,
+.theme-blues .toastui-editor-contents blockquote strong,
+.theme-blues .toastui-editor .ProseMirror blockquote strong,
+.theme-blues .toastui-editor-contents blockquote em,
+.theme-blues .toastui-editor .ProseMirror blockquote em {
+  color: inherit !important;
 }
 
 .theme-blues .toastui-editor-main .toastui-editor-md-splitter {
-  background-color: var(--monet-editor-border) !important;
+  background-color: var(--editor-border) !important;
 }
 
 .theme-blues .toastui-editor-toolbar,
 .theme-blues .toastui-editor-defaultUI-toolbar,
 .theme-blues .toastui-editor-defaultUI .toastui-editor-md-tab-container,
 .theme-blues .toastui-editor-mode-switch {
-  background-color: var(--monet-editor-toolbar-bg) !important;
-  border-color: var(--monet-editor-border) !important;
-  color: var(--monet-editor-text) !important;
+  background-color: var(--editor-toolbar-bg) !important;
+  border-color: var(--editor-border) !important;
+  color: var(--editor-text) !important;
 }
 
 .theme-blues .toastui-editor-defaultUI-toolbar .toastui-editor-toolbar-group,
 .theme-blues .toastui-editor-defaultUI-toolbar .toastui-editor-toolbar-divider {
-  background: var(--monet-editor-toolbar-bg) !important;
-  color: var(--monet-editor-text) !important;
+  background: var(--editor-toolbar-bg) !important;
+  color: var(--editor-text) !important;
 }
 
 .theme-blues .toastui-editor-md-tab-container .tab-item,
 .theme-blues .toastui-editor-mode-switch .tab-item {
-  background: var(--monet-editor-panel-bg) !important;
-  border-color: var(--monet-editor-border) !important;
-  color: var(--monet-editor-muted-text) !important;
+  background: var(--editor-panel-bg) !important;
+  border-color: var(--editor-border) !important;
+  color: var(--editor-muted-text) !important;
 }
 
 .theme-blues .toastui-editor-md-tab-container .tab-item.active,
 .theme-blues .toastui-editor-mode-switch .tab-item.active {
-  background: var(--monet-editor-bg) !important;
-  border-color: var(--monet-editor-border) !important;
-  color: var(--monet-editor-text) !important;
+  background: var(--editor-bg) !important;
+  border-color: var(--editor-border) !important;
+  color: var(--editor-text) !important;
 }
 
 .theme-blues .toastui-editor-defaultUI-toolbar button,
@@ -375,19 +466,19 @@
 
 .theme-blues .toastui-editor-defaultUI-toolbar button:hover,
 .theme-blues .toastui-editor-toolbar button:hover {
-  background-color: var(--monet-editor-toolbar-hover-bg) !important;
-  box-shadow: inset 0 0 0 1px var(--monet-editor-border) !important;
+  background-color: var(--editor-toolbar-hover-bg) !important;
+  box-shadow: inset 0 0 0 1px var(--editor-toolbar-hover-border) !important;
 }
 
 .theme-blues .toastui-editor-defaultUI-toolbar button.active,
 .theme-blues .toastui-editor-toolbar button.active {
-  background-color: var(--monet-editor-toolbar-active-bg) !important;
-  box-shadow: inset 0 0 0 1px var(--monet-editor-border-strong) !important;
+  background-color: var(--editor-toolbar-active-bg) !important;
+  box-shadow: inset 0 0 0 1px var(--editor-border-strong) !important;
 }
 
 .theme-blues .toastui-editor-defaultUI-toolbar button.clear-note-toolbar-btn,
 .theme-blues .toastui-editor-toolbar button.clear-note-toolbar-btn {
-  color: var(--monet-editor-muted-text) !important;
+  color: var(--editor-muted-text) !important;
 }
 
 .theme-blues .toastui-editor-toolbar-icons,
@@ -397,80 +488,80 @@
 
 .theme-blues .toastui-editor .ProseMirror .multiline-cursor-widget,
 .theme-blues .toastui-editor-contents .multiline-cursor-widget {
-  background: var(--monet-editor-text) !important;
+  background: var(--editor-text) !important;
 }
 
 .theme-blues .toastui-editor .ProseMirror .multiline-selection-range,
 .theme-blues .toastui-editor-contents .multiline-selection-range {
-  background: var(--monet-editor-selection-bg) !important;
+  background: var(--editor-selection-bg) !important;
 }
 
 .theme-blues .toastui-editor-popup,
 .theme-blues .toastui-editor-dropdown-toolbar,
 .theme-blues .toastui-editor-popup-body,
 .theme-blues .toastui-editor-popup-body label {
-  background: var(--monet-editor-popup-bg) !important;
-  color: var(--monet-editor-text) !important;
-  border-color: var(--monet-editor-border) !important;
+  background: var(--editor-popup-bg) !important;
+  color: var(--editor-text) !important;
+  border-color: var(--editor-border) !important;
 }
 
 .theme-blues .toastui-editor-popup-add-heading li.is-active-heading-choice {
-  background: #b4ad8a !important;
-  box-shadow: inset 3px 0 0 #38568f !important;
-  color: #111c32 !important;
+  background: var(--editor-heading-choice-active-bg) !important;
+  box-shadow: inset 3px 0 0 var(--editor-heading-choice-active-marker) !important;
+  color: var(--editor-heading-choice-active-text) !important;
 }
 
 .theme-blues .toastui-editor-contents ul > li:not(.task-list-item)::before,
 .theme-blues .toastui-editor .ProseMirror ul > li:not(.task-list-item)::before {
-  background-color: var(--monet-editor-text) !important;
+  background-color: var(--editor-text) !important;
   opacity: 0.9 !important;
 }
 
 .theme-blues .toastui-editor-contents ol > li::before,
 .theme-blues .toastui-editor .ProseMirror ol > li::before {
-  color: var(--monet-editor-text) !important;
+  color: var(--editor-text) !important;
   opacity: 0.9 !important;
 }
 
 .theme-blues .toastui-editor-contents p.tabs-annotation-line,
 .theme-blues .toastui-editor .ProseMirror p.tabs-annotation-line {
-  color: #283854 !important;
+  color: var(--editor-annotation-text) !important;
 }
 
 .theme-blues .toastui-editor-contents p.tabs-annotation-line::before,
 .theme-blues .toastui-editor .ProseMirror p.tabs-annotation-line::before {
-  background: #38568f !important;
+  background: currentColor !important;
 }
 
 .theme-blues .toastui-editor-contents .tabs-annotation-line-marker,
 .theme-blues .toastui-editor .ProseMirror .tabs-annotation-line-marker {
-  color: #38568f !important;
+  color: transparent !important;
 }
 
 .theme-blues .toastui-editor .ProseMirror .tabs-terminal-block-landing-zone::before {
-  background: rgba(56, 86, 143, 0.86) !important;
+  background: var(--editor-terminal-caret) !important;
 }
 
 .theme-blues .toastui-editor-contents li.task-reorder-source {
-  background: rgba(169, 154, 93, 0.12);
-  box-shadow: inset 0 0 0 1px rgba(169, 154, 93, 0.16);
+  background: var(--task-reorder-source-bg);
+  box-shadow: var(--task-reorder-source-shadow);
 }
 
 .theme-blues .toastui-editor-contents li.task-reorder-target {
-  background: rgba(169, 154, 93, 0.12);
-  box-shadow: inset 0 0 0 1px rgba(169, 154, 93, 0.16);
+  background: var(--task-reorder-target-bg);
+  box-shadow: var(--task-reorder-target-shadow);
 }
 
 .theme-blues .task-reorder-ghost {
-  border-color: rgba(169, 154, 93, 0.42);
-  background: rgba(174, 184, 198, 0.96);
-  color: #17223a;
-  box-shadow: 0 12px 28px rgba(14, 22, 39, 0.28), 0 0 0 1px rgba(169, 154, 93, 0.12);
+  border-color: var(--task-reorder-ghost-border);
+  background: var(--task-reorder-ghost-bg);
+  color: var(--task-reorder-ghost-text);
+  box-shadow: var(--task-reorder-ghost-shadow);
 }
 
 .theme-blues .task-reorder-marker::before,
 .theme-blues .task-reorder-marker::after {
-  background: #a99a5d;
+  background: var(--task-reorder-marker);
 }
 
 .theme-blues .task-reorder-marker::before {
@@ -478,37 +569,37 @@
 }
 
 .theme-blues .task-reorder-marker::after {
-  background: #a99a5d;
+  background: var(--task-reorder-marker);
   box-shadow: none;
 }
 
 .theme-blues .toastui-editor-popup-body input[type='text'] {
-  background: #bcc4cd !important;
-  color: var(--monet-editor-text) !important;
-  border-color: var(--monet-editor-border) !important;
+  background: var(--editor-popup-input-bg) !important;
+  color: var(--editor-text) !important;
+  border-color: var(--editor-popup-input-border) !important;
 }
 
 .theme-blues .toastui-editor-popup-add-table {
-  background: var(--monet-editor-popup-bg) !important;
+  background: var(--editor-popup-bg) !important;
 }
 
 .theme-blues .toastui-editor-popup-add-table .toastui-editor-table-selection {
-  background: #aeb8c6 !important;
-  border-color: var(--monet-editor-border) !important;
+  background: var(--editor-table-selection-bg) !important;
+  border-color: var(--editor-table-selection-border) !important;
 }
 
 .theme-blues .toastui-editor-popup-add-table .toastui-editor-table-cell {
-  background: #bcc4cd !important;
-  border-color: #78879d !important;
+  background: var(--editor-table-cell-bg) !important;
+  border-color: var(--editor-table-cell-border) !important;
 }
 
 .theme-blues .toastui-editor-popup-add-table .toastui-editor-table-selection-layer {
-  background-color: rgba(169, 154, 93, 0.18) !important;
-  border-color: #a99a5d !important;
+  background-color: var(--editor-table-selection-layer-bg) !important;
+  border-color: var(--editor-table-selection-layer-border) !important;
 }
 
 .theme-blues .toastui-editor-popup-add-table .toastui-editor-table-description {
-  color: var(--monet-editor-text) !important;
+  color: var(--editor-table-description-text) !important;
 }
 
 .theme-blues .toastui-editor-contents h1,
@@ -523,20 +614,20 @@
 .theme-blues .toastui-editor .ProseMirror h4,
 .theme-blues .toastui-editor .ProseMirror h5,
 .theme-blues .toastui-editor .ProseMirror h6 {
-  color: var(--monet-editor-heading-text) !important;
+  color: var(--editor-heading-text) !important;
 }
 
 .theme-blues .toastui-editor-contents a,
 .theme-blues .toastui-editor .ProseMirror a {
-  color: #38568f !important;
+  color: var(--editor-link-text) !important;
 }
 
 .theme-blues .toastui-editor-contents hr {
   background: linear-gradient(
     90deg,
     transparent 0,
-    rgba(56, 86, 143, 0.92) 20px,
-    rgba(56, 86, 143, 0.92) calc(100% - 20px),
+    var(--editor-hr-line) 20px,
+    var(--editor-hr-line) calc(100% - 20px),
     transparent 100%
   ) !important;
   opacity: 1 !important;
@@ -544,32 +635,32 @@
 
 .theme-blues .toastui-editor .ProseMirror pre,
 .theme-blues .toastui-editor-contents pre {
-  background: var(--monet-editor-code-bg) !important;
-  border: 1px solid var(--monet-editor-border) !important;
-  color: var(--monet-editor-text) !important;
+  background: var(--editor-code-bg) !important;
+  border: 1px solid var(--editor-border) !important;
+  color: var(--editor-text) !important;
 }
 
 .theme-blues .toastui-editor .ProseMirror pre code,
 .theme-blues .toastui-editor-contents pre code {
   background: transparent !important;
-  color: var(--monet-editor-text) !important;
+  color: var(--editor-text) !important;
 }
 
 .theme-blues .toastui-editor .ProseMirror code,
 .theme-blues .toastui-editor-contents code {
-  background: #8f9bad !important;
-  color: var(--monet-editor-text) !important;
+  background: var(--editor-code-bg) !important;
+  color: var(--editor-text) !important;
 }
 
 .theme-blues .toastui-editor-tooltip {
-  background-color: #aeb8c6 !important;
-  color: var(--monet-editor-text) !important;
-  border: 1px solid var(--monet-editor-border);
-  box-shadow: 0 4px 12px rgba(14, 22, 39, 0.28);
+  background-color: var(--editor-tooltip-bg) !important;
+  color: var(--editor-tooltip-text) !important;
+  border: 1px solid var(--editor-tooltip-border);
+  box-shadow: var(--editor-tooltip-shadow);
 }
 
 .theme-blues .toastui-editor-tooltip .arrow {
-  background-color: #aeb8c6 !important;
+  background-color: var(--editor-tooltip-bg) !important;
   border: 0 !important;
 }
 
@@ -578,25 +669,25 @@
 }
 
 .theme-blues .image-tool-btn {
-  border-color: #61728f;
-  background: #aeb8c6;
-  color: #17223a;
+  border-color: var(--image-tool-btn-border);
+  background: var(--image-tool-btn-bg);
+  color: var(--image-tool-btn-text);
 }
 
 .theme-blues .image-tool-btn:hover {
-  background: #bcc4cd;
+  background: var(--image-tool-btn-hover-bg);
 }
 
 .theme-blues .image-resize-handle {
-  border-color: #17223a;
-  background: #aeb8c6;
+  border-color: var(--image-tool-handle-border);
+  background: var(--image-tool-handle-bg);
 }
 
 .theme-blues .image-resize-handle::before {
   background: repeating-linear-gradient(
     -45deg,
     transparent 0 2px,
-    #17223a 2px 3px
+    var(--image-tool-handle-stripe) 2px 3px
   );
 }
 
@@ -605,13 +696,13 @@
 }
 
 .theme-blues .inline-crop-box {
-  border-color: #a99a5d;
+  border-color: var(--image-tool-crop-border);
 }
 
 .theme-blues .inline-crop-edge-handle,
 .theme-blues .inline-crop-resize-handle {
-  border-color: #a99a5d;
-  background: #8fa0b8;
+  border-color: var(--image-tool-crop-handle-border);
+  background: var(--image-tool-crop-handle-bg);
 }
 
 .theme-blues .inline-crop-edge-handle::before,
@@ -619,27 +710,27 @@
   background: repeating-linear-gradient(
     -45deg,
     transparent 0 2px,
-    #17223a 2px 3px
+    var(--image-tool-handle-stripe) 2px 3px
   );
 }
 
 .theme-blues .link-prompt {
-  border-color: #61728f;
-  background: rgba(174, 184, 198, 0.98);
+  border-color: var(--link-prompt-border);
+  background: var(--link-prompt-bg);
 }
 
 .theme-blues .link-prompt-input {
-  border-color: #61728f;
-  background: #bcc4cd;
-  color: #17223a;
+  border-color: var(--link-prompt-input-border);
+  background: var(--link-prompt-input-bg);
+  color: var(--link-prompt-input-text);
 }
 
 .theme-blues .link-prompt-btn {
-  border-color: #38568f;
-  background: #8fa0b8;
-  color: #17223a;
+  border-color: var(--link-prompt-btn-border);
+  background: var(--link-prompt-btn-bg);
+  color: var(--link-prompt-btn-text);
 }
 
 .theme-blues .link-prompt-btn:hover {
-  background: #a8b3c1;
+  background: var(--link-prompt-btn-hover-bg);
 }

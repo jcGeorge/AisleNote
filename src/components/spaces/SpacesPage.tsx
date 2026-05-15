@@ -28,6 +28,7 @@ type SpacesPageProps = {
   onCommitRename: (spaceId: string, name: string) => void
   onCancelRename: (spaceId: string) => void
   onShouldSkipRenameBlur: (spaceId: string) => boolean
+  onRenameDraftChange: (spaceId: string, value: string) => void
   onOpenContextMenu: (event: MouseEvent<HTMLButtonElement>, spaceId: string) => void
   onConsumeArrangeClickSuppression: (key: string) => boolean
   onStartArrangeDragSeed: (key: string, event: ReactPointerEvent<HTMLButtonElement>) => void
@@ -60,6 +61,7 @@ export function SpacesPage({
   onCommitRename,
   onCancelRename,
   onShouldSkipRenameBlur,
+  onRenameDraftChange,
   onOpenContextMenu,
   onConsumeArrangeClickSuppression,
   onStartArrangeDragSeed,
@@ -97,6 +99,8 @@ export function SpacesPage({
                 className="space-rename-input"
                 defaultValue={space.name}
                 autoFocus
+                onFocus={(event) => onRenameDraftChange(space.id, event.currentTarget.value)}
+                onInput={(event) => onRenameDraftChange(space.id, event.currentTarget.value)}
                 onBlur={(event) => {
                   if (onShouldSkipRenameBlur(space.id)) return
                   onCommitRename(space.id, event.target.value)

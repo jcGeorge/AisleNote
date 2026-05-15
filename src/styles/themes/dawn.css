@@ -279,23 +279,94 @@
   --modal-primary-hover-bg: #4f805f;
   --modal-primary-hover-border: #86a17c;
 
-  --monet-editor-bg: #d8c9a3;
-  --monet-editor-panel-bg: #cbb987;
-  --monet-editor-toolbar-bg: #c7b37a;
-  --monet-editor-toolbar-hover-bg: #dbc98e;
-  --monet-editor-toolbar-active-bg: #aac06e;
-  --monet-editor-border: #8a744a;
-  --monet-editor-border-strong: #3f6f4f;
-  --monet-editor-text: #253047;
-  --monet-editor-muted-text: #5d5f63;
-  --monet-editor-heading-text: #1c293f;
-  --monet-editor-selection-bg: rgba(63, 111, 79, 0.26);
-  --monet-editor-code-bg: #c6b27e;
-  --monet-editor-popup-bg: #d8c9a3;
+  --editor-bg: #d8c9a3;
+  --editor-panel-bg: #cbb987;
+  --editor-toolbar-bg: #c7b37a;
+  --editor-toolbar-hover-bg: #dbc98e;
+  --editor-toolbar-hover-border: #8a744a;
+  --editor-toolbar-active-bg: #aac06e;
+  --editor-border: #8a744a;
+  --editor-border-strong: #3f6f4f;
+  --editor-text: #253047;
+  --editor-muted-text: #5d5f63;
+  --editor-heading-text: #1c293f;
+  --editor-blockquote-text: #3d485c;
+  --editor-blockquote-border: #8a744a;
+  --editor-blockquote-bg: transparent;
+  --editor-selection-bg: rgba(63, 111, 79, 0.26);
+  --editor-code-bg: #c6b27e;
+  --editor-popup-bg: #d8c9a3;
+  --editor-link-text: #3f6f4f;
+  --editor-tooltip-bg: #d8c9a3;
+  --editor-tooltip-border: #8a744a;
+  --editor-tooltip-text: #253047;
+  --editor-caret: #253047;
+  --editor-annotation-text: #4d4c46;
+  --editor-terminal-caret: rgba(123, 96, 48, 0.9);
+  --editor-heading-choice-active-bg: #c4b173;
+  --editor-heading-choice-active-marker: #3f6f4f;
+  --editor-heading-choice-active-text: #1c293f;
+  --editor-popup-input-bg: #decea8;
+  --editor-popup-input-border: #8a744a;
+  --editor-popup-input-focus-border: #3f6f4f;
+  --editor-table-selection-bg: #d4c39a;
+  --editor-table-selection-border: #8a744a;
+  --editor-table-cell-bg: #e0d0a5;
+  --editor-table-cell-border: #a28b5b;
+  --editor-table-selection-layer-bg: rgba(63, 111, 79, 0.24);
+  --editor-table-selection-layer-border: #3f6f4f;
+  --editor-table-description-text: #253047;
+  --editor-hr-line: rgba(113, 93, 57, 0.92);
+  --editor-tooltip-shadow: 0 4px 12px rgba(51, 43, 25, 0.22);
+
+  --task-reorder-source-bg: rgba(63, 111, 79, 0.12);
+  --task-reorder-source-shadow: inset 0 0 0 1px rgba(63, 111, 79, 0.18);
+  --task-reorder-target-bg: rgba(63, 111, 79, 0.12);
+  --task-reorder-target-shadow: inset 0 0 0 1px rgba(63, 111, 79, 0.18);
+  --task-reorder-ghost-border: rgba(63, 111, 79, 0.56);
+  --task-reorder-ghost-bg: rgba(216, 201, 163, 0.96);
+  --task-reorder-ghost-text: #253047;
+  --task-reorder-ghost-shadow: 0 12px 28px rgba(51, 43, 25, 0.24), 0 0 0 1px rgba(63, 111, 79, 0.14);
+  --task-reorder-marker: #3f6f4f;
+
+  --image-tool-btn-border: #8a744a;
+  --image-tool-btn-bg: #d8c797;
+  --image-tool-btn-text: #253047;
+  --image-tool-btn-hover-bg: #decea8;
+  --image-tool-handle-border: #253047;
+  --image-tool-handle-bg: #d8c9a3;
+  --image-tool-handle-stripe: #253047;
+  --image-tool-crop-border: #3f6f4f;
+  --image-tool-crop-handle-border: #3f6f4f;
+  --image-tool-crop-handle-bg: #d8c797;
+
+  --link-prompt-border: #8a744a;
+  --link-prompt-bg: rgba(216, 201, 163, 0.98);
+  --link-prompt-input-border: #8a744a;
+  --link-prompt-input-bg: #decea8;
+  --link-prompt-input-text: #253047;
+  --link-prompt-btn-border: #6f936d;
+  --link-prompt-btn-bg: #c7b37a;
+  --link-prompt-btn-text: #253047;
+  --link-prompt-btn-hover-bg: #d8c956;
+
+  --monet-editor-bg: var(--editor-bg);
+  --monet-editor-panel-bg: var(--editor-panel-bg);
+  --monet-editor-toolbar-bg: var(--editor-toolbar-bg);
+  --monet-editor-toolbar-hover-bg: var(--editor-toolbar-hover-bg);
+  --monet-editor-toolbar-active-bg: var(--editor-toolbar-active-bg);
+  --monet-editor-border: var(--editor-border);
+  --monet-editor-border-strong: var(--editor-border-strong);
+  --monet-editor-text: var(--editor-text);
+  --monet-editor-muted-text: var(--editor-muted-text);
+  --monet-editor-heading-text: var(--editor-heading-text);
+  --monet-editor-selection-bg: var(--editor-selection-bg);
+  --monet-editor-code-bg: var(--editor-code-bg);
+  --monet-editor-popup-bg: var(--editor-popup-bg);
 }
 
 .theme-dawn .editor-shell {
-  background: var(--monet-editor-bg);
+  background: var(--editor-bg);
 }
 
 .theme-dawn .settings-range-input {
@@ -333,12 +404,12 @@
 }
 
 .theme-dawn .trash-home-note {
-  background: var(--monet-editor-bg);
-  color: var(--monet-editor-text);
+  background: var(--editor-bg);
+  color: var(--editor-text);
 }
 
 .theme-dawn .trash-home-note h2 {
-  color: var(--monet-editor-heading-text);
+  color: var(--editor-heading-text);
 }
 
 .theme-dawn .trash-home-actions .btn-outline-light {
@@ -366,41 +437,61 @@
 .theme-dawn .toastui-editor-contents,
 .theme-dawn .toastui-editor .ProseMirror,
 .theme-dawn .toastui-editor .ProseMirror * {
-  background-color: var(--monet-editor-bg) !important;
-  color: var(--monet-editor-text) !important;
+  background-color: var(--editor-bg) !important;
+  color: var(--editor-text) !important;
+}
+
+.theme-dawn .toastui-editor-contents blockquote,
+.theme-dawn .toastui-editor .ProseMirror blockquote {
+  background: var(--editor-blockquote-bg) !important;
+  border-left-color: var(--editor-blockquote-border) !important;
+  color: var(--editor-blockquote-text) !important;
+}
+
+.theme-dawn .toastui-editor-contents blockquote p,
+.theme-dawn .toastui-editor .ProseMirror blockquote p,
+.theme-dawn .toastui-editor-contents blockquote li,
+.theme-dawn .toastui-editor .ProseMirror blockquote li,
+.theme-dawn .toastui-editor-contents blockquote span,
+.theme-dawn .toastui-editor .ProseMirror blockquote span,
+.theme-dawn .toastui-editor-contents blockquote strong,
+.theme-dawn .toastui-editor .ProseMirror blockquote strong,
+.theme-dawn .toastui-editor-contents blockquote em,
+.theme-dawn .toastui-editor .ProseMirror blockquote em {
+  color: inherit !important;
 }
 
 .theme-dawn .toastui-editor-main .toastui-editor-md-splitter {
-  background-color: var(--monet-editor-border) !important;
+  background-color: var(--editor-border) !important;
 }
 
 .theme-dawn .toastui-editor-toolbar,
 .theme-dawn .toastui-editor-defaultUI-toolbar,
 .theme-dawn .toastui-editor-defaultUI .toastui-editor-md-tab-container,
 .theme-dawn .toastui-editor-mode-switch {
-  background-color: var(--monet-editor-toolbar-bg) !important;
-  border-color: var(--monet-editor-border) !important;
-  color: var(--monet-editor-text) !important;
+  background-color: var(--editor-toolbar-bg) !important;
+  border-color: var(--editor-border) !important;
+  color: var(--editor-text) !important;
 }
 
 .theme-dawn .toastui-editor-defaultUI-toolbar .toastui-editor-toolbar-group,
 .theme-dawn .toastui-editor-defaultUI-toolbar .toastui-editor-toolbar-divider {
-  background: var(--monet-editor-toolbar-bg) !important;
-  color: var(--monet-editor-text) !important;
+  background: var(--editor-toolbar-bg) !important;
+  color: var(--editor-text) !important;
 }
 
 .theme-dawn .toastui-editor-md-tab-container .tab-item,
 .theme-dawn .toastui-editor-mode-switch .tab-item {
-  background: var(--monet-editor-panel-bg) !important;
-  border-color: var(--monet-editor-border) !important;
-  color: var(--monet-editor-muted-text) !important;
+  background: var(--editor-panel-bg) !important;
+  border-color: var(--editor-border) !important;
+  color: var(--editor-muted-text) !important;
 }
 
 .theme-dawn .toastui-editor-md-tab-container .tab-item.active,
 .theme-dawn .toastui-editor-mode-switch .tab-item.active {
-  background: var(--monet-editor-bg) !important;
-  border-color: var(--monet-editor-border) !important;
-  color: var(--monet-editor-text) !important;
+  background: var(--editor-bg) !important;
+  border-color: var(--editor-border) !important;
+  color: var(--editor-text) !important;
 }
 
 .theme-dawn .toastui-editor-defaultUI-toolbar button,
@@ -411,19 +502,19 @@
 
 .theme-dawn .toastui-editor-defaultUI-toolbar button:hover,
 .theme-dawn .toastui-editor-toolbar button:hover {
-  background-color: var(--monet-editor-toolbar-hover-bg) !important;
-  box-shadow: inset 0 0 0 1px var(--monet-editor-border) !important;
+  background-color: var(--editor-toolbar-hover-bg) !important;
+  box-shadow: inset 0 0 0 1px var(--editor-toolbar-hover-border) !important;
 }
 
 .theme-dawn .toastui-editor-defaultUI-toolbar button.active,
 .theme-dawn .toastui-editor-toolbar button.active {
-  background-color: var(--monet-editor-toolbar-active-bg) !important;
-  box-shadow: inset 0 0 0 1px var(--monet-editor-border-strong) !important;
+  background-color: var(--editor-toolbar-active-bg) !important;
+  box-shadow: inset 0 0 0 1px var(--editor-border-strong) !important;
 }
 
 .theme-dawn .toastui-editor-defaultUI-toolbar button.clear-note-toolbar-btn,
 .theme-dawn .toastui-editor-toolbar button.clear-note-toolbar-btn {
-  color: var(--monet-editor-muted-text) !important;
+  color: var(--editor-muted-text) !important;
 }
 
 .theme-dawn .toastui-editor-toolbar-icons,
@@ -464,75 +555,75 @@
   top: 10px;
   width: 8px;
   height: 5px;
-  border-left: 2px solid var(--monet-editor-muted-text);
-  border-bottom: 2px solid var(--monet-editor-muted-text);
+  border-left: 2px solid var(--editor-muted-text);
+  border-bottom: 2px solid var(--editor-muted-text);
   transform: rotate(-45deg);
 }
 
 .theme-dawn .toastui-editor .ProseMirror .multiline-cursor-widget,
 .theme-dawn .toastui-editor-contents .multiline-cursor-widget {
-  background: var(--monet-editor-text) !important;
+  background: var(--editor-text) !important;
 }
 
 .theme-dawn .toastui-editor .ProseMirror .multiline-selection-range,
 .theme-dawn .toastui-editor-contents .multiline-selection-range {
-  background: var(--monet-editor-selection-bg) !important;
+  background: var(--editor-selection-bg) !important;
 }
 
 .theme-dawn .toastui-editor-popup,
 .theme-dawn .toastui-editor-dropdown-toolbar,
 .theme-dawn .toastui-editor-popup-body,
 .theme-dawn .toastui-editor-popup-body label {
-  background: var(--monet-editor-popup-bg) !important;
-  color: var(--monet-editor-text) !important;
-  border-color: var(--monet-editor-border) !important;
+  background: var(--editor-popup-bg) !important;
+  color: var(--editor-text) !important;
+  border-color: var(--editor-border) !important;
 }
 
 .theme-dawn .toastui-editor-popup-add-heading li.is-active-heading-choice {
-  background: #c4b173 !important;
-  box-shadow: inset 3px 0 0 #3f6f4f !important;
-  color: #1c293f !important;
+  background: var(--editor-heading-choice-active-bg) !important;
+  box-shadow: inset 3px 0 0 var(--editor-heading-choice-active-marker) !important;
+  color: var(--editor-heading-choice-active-text) !important;
 }
 
 .theme-dawn .toastui-editor-contents ul > li:not(.task-list-item)::before,
 .theme-dawn .toastui-editor .ProseMirror ul > li:not(.task-list-item)::before {
-  background-color: var(--monet-editor-text) !important;
+  background-color: var(--editor-text) !important;
   opacity: 0.9 !important;
 }
 
 .theme-dawn .toastui-editor-contents ol > li::before,
 .theme-dawn .toastui-editor .ProseMirror ol > li::before {
-  color: var(--monet-editor-text) !important;
+  color: var(--editor-text) !important;
   opacity: 0.9 !important;
 }
 
 .theme-dawn .toastui-editor-contents p.tabs-annotation-line,
 .theme-dawn .toastui-editor .ProseMirror p.tabs-annotation-line {
-  color: #4d4c46 !important;
+  color: var(--editor-annotation-text) !important;
 }
 
 .theme-dawn .toastui-editor-contents p.tabs-annotation-line::before,
 .theme-dawn .toastui-editor .ProseMirror p.tabs-annotation-line::before {
-  background: #7b6030 !important;
+  background: currentColor !important;
 }
 
 .theme-dawn .toastui-editor-contents .tabs-annotation-line-marker,
 .theme-dawn .toastui-editor .ProseMirror .tabs-annotation-line-marker {
-  color: #7b6030 !important;
+  color: transparent !important;
 }
 
 .theme-dawn .toastui-editor .ProseMirror .tabs-terminal-block-landing-zone::before {
-  background: rgba(123, 96, 48, 0.9) !important;
+  background: var(--editor-terminal-caret) !important;
 }
 
 .theme-dawn .toastui-editor-contents li.task-reorder-source {
-  background: rgba(63, 111, 79, 0.12);
-  box-shadow: inset 0 0 0 1px rgba(63, 111, 79, 0.18);
+  background: var(--task-reorder-source-bg);
+  box-shadow: var(--task-reorder-source-shadow);
 }
 
 .theme-dawn .toastui-editor-contents li.task-reorder-target {
-  background: rgba(63, 111, 79, 0.12);
-  box-shadow: inset 0 0 0 1px rgba(63, 111, 79, 0.18);
+  background: var(--task-reorder-target-bg);
+  box-shadow: var(--task-reorder-target-shadow);
 }
 
 .theme-dawn .toastui-editor-contents .task-list-item::before,
@@ -546,15 +637,15 @@
 }
 
 .theme-dawn .task-reorder-ghost {
-  border-color: rgba(63, 111, 79, 0.56);
-  background: rgba(216, 201, 163, 0.96);
-  color: #253047;
-  box-shadow: 0 12px 28px rgba(51, 43, 25, 0.24), 0 0 0 1px rgba(63, 111, 79, 0.14);
+  border-color: var(--task-reorder-ghost-border);
+  background: var(--task-reorder-ghost-bg);
+  color: var(--task-reorder-ghost-text);
+  box-shadow: var(--task-reorder-ghost-shadow);
 }
 
 .theme-dawn .task-reorder-marker::before,
 .theme-dawn .task-reorder-marker::after {
-  background: #3f6f4f;
+  background: var(--task-reorder-marker);
 }
 
 .theme-dawn .task-reorder-marker::before {
@@ -562,37 +653,37 @@
 }
 
 .theme-dawn .task-reorder-marker::after {
-  background: #3f6f4f;
+  background: var(--task-reorder-marker);
   box-shadow: none;
 }
 
 .theme-dawn .toastui-editor-popup-body input[type='text'] {
-  background: #decea8 !important;
-  color: var(--monet-editor-text) !important;
-  border-color: var(--monet-editor-border) !important;
+  background: var(--editor-popup-input-bg) !important;
+  color: var(--editor-text) !important;
+  border-color: var(--editor-popup-input-border) !important;
 }
 
 .theme-dawn .toastui-editor-popup-add-table {
-  background: var(--monet-editor-popup-bg) !important;
+  background: var(--editor-popup-bg) !important;
 }
 
 .theme-dawn .toastui-editor-popup-add-table .toastui-editor-table-selection {
-  background: #d4c39a !important;
-  border-color: var(--monet-editor-border) !important;
+  background: var(--editor-table-selection-bg) !important;
+  border-color: var(--editor-table-selection-border) !important;
 }
 
 .theme-dawn .toastui-editor-popup-add-table .toastui-editor-table-cell {
-  background: #e0d0a5 !important;
-  border-color: #a28b5b !important;
+  background: var(--editor-table-cell-bg) !important;
+  border-color: var(--editor-table-cell-border) !important;
 }
 
 .theme-dawn .toastui-editor-popup-add-table .toastui-editor-table-selection-layer {
-  background-color: rgba(63, 111, 79, 0.24) !important;
-  border-color: #3f6f4f !important;
+  background-color: var(--editor-table-selection-layer-bg) !important;
+  border-color: var(--editor-table-selection-layer-border) !important;
 }
 
 .theme-dawn .toastui-editor-popup-add-table .toastui-editor-table-description {
-  color: var(--monet-editor-text) !important;
+  color: var(--editor-table-description-text) !important;
 }
 
 .theme-dawn .toastui-editor-contents h1,
@@ -607,20 +698,20 @@
 .theme-dawn .toastui-editor .ProseMirror h4,
 .theme-dawn .toastui-editor .ProseMirror h5,
 .theme-dawn .toastui-editor .ProseMirror h6 {
-  color: var(--monet-editor-heading-text) !important;
+  color: var(--editor-heading-text) !important;
 }
 
 .theme-dawn .toastui-editor-contents a,
 .theme-dawn .toastui-editor .ProseMirror a {
-  color: #3f6f4f !important;
+  color: var(--editor-link-text) !important;
 }
 
 .theme-dawn .toastui-editor-contents hr {
   background: linear-gradient(
     90deg,
     transparent 0,
-    rgba(113, 93, 57, 0.92) 20px,
-    rgba(113, 93, 57, 0.92) calc(100% - 20px),
+    var(--editor-hr-line) 20px,
+    var(--editor-hr-line) calc(100% - 20px),
     transparent 100%
   ) !important;
   opacity: 1 !important;
@@ -628,32 +719,32 @@
 
 .theme-dawn .toastui-editor .ProseMirror pre,
 .theme-dawn .toastui-editor-contents pre {
-  background: var(--monet-editor-code-bg) !important;
-  border: 1px solid var(--monet-editor-border) !important;
-  color: var(--monet-editor-text) !important;
+  background: var(--editor-code-bg) !important;
+  border: 1px solid var(--editor-border) !important;
+  color: var(--editor-text) !important;
 }
 
 .theme-dawn .toastui-editor .ProseMirror pre code,
 .theme-dawn .toastui-editor-contents pre code {
   background: transparent !important;
-  color: var(--monet-editor-text) !important;
+  color: var(--editor-text) !important;
 }
 
 .theme-dawn .toastui-editor .ProseMirror code,
 .theme-dawn .toastui-editor-contents code {
-  background: #c6b27e !important;
-  color: var(--monet-editor-text) !important;
+  background: var(--editor-code-bg) !important;
+  color: var(--editor-text) !important;
 }
 
 .theme-dawn .toastui-editor-tooltip {
-  background-color: #d8c9a3 !important;
-  color: var(--monet-editor-text) !important;
-  border: 1px solid var(--monet-editor-border);
-  box-shadow: 0 4px 12px rgba(51, 43, 25, 0.22);
+  background-color: var(--editor-tooltip-bg) !important;
+  color: var(--editor-tooltip-text) !important;
+  border: 1px solid var(--editor-tooltip-border);
+  box-shadow: var(--editor-tooltip-shadow);
 }
 
 .theme-dawn .toastui-editor-tooltip .arrow {
-  background-color: #d8c9a3 !important;
+  background-color: var(--editor-tooltip-bg) !important;
   border: 0 !important;
 }
 
@@ -662,25 +753,25 @@
 }
 
 .theme-dawn .image-tool-btn {
-  border-color: #8a744a;
-  background: #d8c797;
-  color: #253047;
+  border-color: var(--image-tool-btn-border);
+  background: var(--image-tool-btn-bg);
+  color: var(--image-tool-btn-text);
 }
 
 .theme-dawn .image-tool-btn:hover {
-  background: #decea8;
+  background: var(--image-tool-btn-hover-bg);
 }
 
 .theme-dawn .image-resize-handle {
-  border-color: #253047;
-  background: #d8c9a3;
+  border-color: var(--image-tool-handle-border);
+  background: var(--image-tool-handle-bg);
 }
 
 .theme-dawn .image-resize-handle::before {
   background: repeating-linear-gradient(
     -45deg,
     transparent 0 2px,
-    #253047 2px 3px
+    var(--image-tool-handle-stripe) 2px 3px
   );
 }
 
@@ -689,13 +780,13 @@
 }
 
 .theme-dawn .inline-crop-box {
-  border-color: #3f6f4f;
+  border-color: var(--image-tool-crop-border);
 }
 
 .theme-dawn .inline-crop-edge-handle,
 .theme-dawn .inline-crop-resize-handle {
-  border-color: #3f6f4f;
-  background: #d8c797;
+  border-color: var(--image-tool-crop-handle-border);
+  background: var(--image-tool-crop-handle-bg);
 }
 
 .theme-dawn .inline-crop-edge-handle::before,
@@ -703,27 +794,27 @@
   background: repeating-linear-gradient(
     -45deg,
     transparent 0 2px,
-    #253047 2px 3px
+    var(--image-tool-handle-stripe) 2px 3px
   );
 }
 
 .theme-dawn .link-prompt {
-  border-color: #8a744a;
-  background: rgba(216, 201, 163, 0.98);
+  border-color: var(--link-prompt-border);
+  background: var(--link-prompt-bg);
 }
 
 .theme-dawn .link-prompt-input {
-  border-color: #8a744a;
-  background: #decea8;
-  color: #253047;
+  border-color: var(--link-prompt-input-border);
+  background: var(--link-prompt-input-bg);
+  color: var(--link-prompt-input-text);
 }
 
 .theme-dawn .link-prompt-btn {
-  border-color: #6f936d;
-  background: #c7b37a;
-  color: #253047;
+  border-color: var(--link-prompt-btn-border);
+  background: var(--link-prompt-btn-bg);
+  color: var(--link-prompt-btn-text);
 }
 
 .theme-dawn .link-prompt-btn:hover {
-  background: #d8c956;
+  background: var(--link-prompt-btn-hover-bg);
 }

@@ -13,7 +13,6 @@ type ContextMenuHostProps = {
   onOpenInternalNoteLink: () => void
   onRenameInternalNoteLink: () => void
   onOpenDeleteModal: (permanent: boolean) => void
-  onOpenDuplicateModal: () => void
   onOpenDeduplicateModal: () => void
   onOpenCopyModal: () => void
   onMoveToTrash: () => void
@@ -32,7 +31,6 @@ export function ContextMenuHost({
   onOpenInternalNoteLink,
   onRenameInternalNoteLink,
   onOpenDeleteModal,
-  onOpenDuplicateModal,
   onOpenDeduplicateModal,
   onOpenCopyModal,
   onMoveToTrash,
@@ -93,23 +91,23 @@ export function ContextMenuHost({
         <button type="button" className="tab-context-delete tab-context-danger" onClick={() => onOpenDeleteModal(true)}>
           delete for real
         </button>
+      ) : contextMenu.type === 'home-tab' ? (
+        <button type="button" className="tab-context-delete" onClick={onOpenCopyModal}>
+          make copy
+        </button>
       ) : (
         <>
           <button type="button" className="tab-context-delete" onClick={onEnterArrangeMode}>
             arrange
           </button>
-          {duplicateCount <= 1 ? (
-            <button type="button" className="tab-context-delete" onClick={onOpenDuplicateModal}>
-              make duplicate
-            </button>
-          ) : (
+          <button type="button" className="tab-context-delete" onClick={onOpenCopyModal}>
+            make copy
+          </button>
+          {duplicateCount > 1 && (
             <button type="button" className="tab-context-delete" onClick={onOpenDeduplicateModal}>
               de-duplicate
             </button>
           )}
-          <button type="button" className="tab-context-delete" onClick={onOpenCopyModal}>
-            make copy
-          </button>
           <button type="button" className="tab-context-delete" onClick={onMoveToTrash}>
             move to trash
           </button>
