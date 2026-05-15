@@ -24,6 +24,7 @@ import {
   isRecord,
   normalizeImageExtension,
 } from '../src/storage/hybrid-storage-core.js'
+import { migrateStorageRootManifest } from './storage-migrations.mjs'
 
 const LEGACY_APP_STATE_RELATIVE_PATH = path.join('data', 'notes', 'index.json')
 const HYBRID_ROOT_DIR = 'notes-data'
@@ -717,18 +718,11 @@ function readHybridSpace(spaceRoot, spaceId, spaceTitle) {
   }
 }
 
-function isSupportedRootManifest(rootManifest) {
-  return Boolean(
-    rootManifest &&
-      typeof rootManifest === 'object' &&
-      typeof rootManifest.schemaVersion === 'number' &&
-      rootManifest.schemaVersion === SCHEMA_VERSION,
-  )
-}
-
 function readHybridAppStateFromRoot(rootPath) {
-  const rootManifest = readJsonFileIfExists(path.join(rootPath, 'manifest.json'))
-  if (!isSupportedRootManifest(rootManifest)) return null
+  const rawRootManifest = readJsonFileIfExists(path.join(rootPath, 'manifest.json'))
+  const rootManifestMigration = migrateStorageRootManifest(rawRootManifest, SCHEMA_VERSION)
+  if (!rootManifestMigration.ok) return null
+  const rootManifest = rootManifestMigration.manifest
 
   const noteBodies = readNoteBodiesFromRoot(rootPath, rootManifest)
   const topicsRoot = path.join(rootPath, 'topics')
@@ -818,13 +812,52 @@ function readHybridAppStateFromRoot(rootPath) {
 }
 
 export function loadAppState(userDataPath) {
+  const result = loadAppStateResult(userDataPath)
+  return result.ok ? result.serializedState : null
+}
+
+export function loadAppStateResult(userDataPath) {
   const finalRoot = getHybridStorageRoot(userDataPath)
   const backupRoot = `${finalRoot}.bak`
+  const legacyPath = getLegacyAppStatePath(userDataPath)
+  const finalExists = existsSync(finalRoot)
+  const backupExists = existsSync(backupRoot)
+  const legacyExists = existsSync(legacyPath)
+
   const hybridState = readHybridAppStateFromRoot(finalRoot)
-  if (hybridState !== null) return hybridState
+  if (hybridState !== null) {
+    return { ok: true, serializedState: hybridState, source: 'hybrid' }
+  }
+
   const backupState = readHybridAppStateFromRoot(backupRoot)
-  if (backupState !== null) return backupState
-  return readTextFileIfExists(getLegacyAppStatePath(userDataPath))
+  if (backupState !== null) {
+    return { ok: true, serializedState: backupState, source: 'hybrid-backup' }
+  }
+
+  if (finalExists || backupExists) {
+    return {
+      ok: false,
+      serializedState: null,
+      source: finalExists ? 'hybrid' : 'hybrid-backup',
+      error: 'Existing app state could not be loaded.',
+    }
+  }
+
+  const legacyState = readTextFileIfExists(legacyPath)
+  if (legacyState !== null) {
+    return { ok: true, serializedState: legacyState, source: 'legacy' }
+  }
+
+  if (!legacyExists) {
+    return { ok: true, serializedState: null, source: 'empty' }
+  }
+
+  return {
+    ok: false,
+    serializedState: null,
+    source: finalExists ? 'hybrid' : backupExists ? 'hybrid-backup' : 'legacy',
+    error: 'Existing app state could not be loaded.',
+  }
 }
 
 export function saveAppState(userDataPath, serializedState) {
@@ -837,10 +870,7 @@ export function saveAppState(userDataPath, serializedState) {
   writeHybridStorage(tempRoot, serializedState)
 
   try {
-    if (existsSync(finalRoot)) {
-      rmSync(backupRoot, { recursive: true, force: true })
-      renameSync(finalRoot, backupRoot)
-    }
+    createPreWriteStorageSnapshot(finalRoot, backupRoot)
     renameSync(tempRoot, finalRoot)
   } catch (error) {
     if (!existsSync(finalRoot) && existsSync(backupRoot)) {
@@ -850,6 +880,13 @@ export function saveAppState(userDataPath, serializedState) {
   } finally {
     rmSync(tempRoot, { recursive: true, force: true })
   }
+}
+
+export function createPreWriteStorageSnapshot(finalRoot, backupRoot) {
+  if (!existsSync(finalRoot)) return false
+  rmSync(backupRoot, { recursive: true, force: true })
+  renameSync(finalRoot, backupRoot)
+  return true
 }
 
 export async function buildAppStateExportArchive(serializedState) {

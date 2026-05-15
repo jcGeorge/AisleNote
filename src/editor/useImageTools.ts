@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type MouseEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react'
 import type { Editor } from '@toast-ui/editor'
 import type { InlineCropDragMode } from '../components/editor/ImageToolsOverlay'
-import { getImageToolPlacement } from './image-tool-placement'
+import { getImageToolPlacement, isUsableImageToolPlacementRect } from './image-tool-placement'
 import {
   getImageResizeMetadata,
   stripImageResizeMetadataFromUrl,
@@ -41,7 +41,6 @@ export function useImageTools({
     menuMode: 'start',
     toolbarTop: 0,
     toolbarLeft: 0,
-    toolbarMinWidth: 0,
     resizeTop: 0,
     resizeLeft: 0,
   })
@@ -58,7 +57,8 @@ export function useImageTools({
   })
   const activeImageRef = useRef<HTMLImageElement | null>(null)
   const imageResizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
-  const imageTransformRebindInProgressRef = useRef(false)
+  const imageRebindInProgressRef = useRef(false)
+  const imageRebindTokenRef = useRef(0)
   const inlineCropRef = useRef<InlineCropState>(inlineCrop)
   const inlineCropDragRef = useRef<{
     mode: InlineCropDragMode | null
@@ -115,6 +115,41 @@ export function useImageTools({
     }
   }
 
+  const captureScrollSnapshot = (source: HTMLElement | null) => {
+    const elements: Array<{ element: HTMLElement; top: number; left: number }> = []
+    const seen = new Set<HTMLElement>()
+    let current = source?.parentElement ?? null
+    while (current) {
+      if (
+        !seen.has(current) &&
+        (current.scrollHeight > current.clientHeight || current.scrollWidth > current.clientWidth)
+      ) {
+        seen.add(current)
+        elements.push({ element: current, top: current.scrollTop, left: current.scrollLeft })
+      }
+      current = current.parentElement
+    }
+
+    const scrollingElement = document.scrollingElement
+    if (scrollingElement instanceof HTMLElement && !seen.has(scrollingElement)) {
+      elements.push({ element: scrollingElement, top: scrollingElement.scrollTop, left: scrollingElement.scrollLeft })
+    }
+
+    return {
+      windowTop: window.scrollY,
+      windowLeft: window.scrollX,
+      elements,
+    }
+  }
+
+  const restoreScrollSnapshot = (snapshot: ReturnType<typeof captureScrollSnapshot>) => {
+    snapshot.elements.forEach(({ element, top, left }) => {
+      element.scrollTop = top
+      element.scrollLeft = left
+    })
+    window.scrollTo(snapshot.windowLeft, snapshot.windowTop)
+  }
+
   const startInlineCropDrag = (mode: InlineCropDragMode, clientX: number, clientY: number) => {
     const crop = inlineCropRef.current
     if (!crop.active) return false
@@ -131,6 +166,8 @@ export function useImageTools({
   }
 
   const close = () => {
+    imageRebindTokenRef.current += 1
+    imageRebindInProgressRef.current = false
     activeImageRef.current = null
     imageResizeRef.current = null
     resetInlineCropDrag()
@@ -140,7 +177,6 @@ export function useImageTools({
       menuMode: 'start',
       toolbarTop: 0,
       toolbarLeft: 0,
-      toolbarMinWidth: 0,
       resizeTop: 0,
       resizeLeft: 0,
     })
@@ -208,7 +244,7 @@ export function useImageTools({
     if (!image) return
     const editorRoot = editorEventRootRef.current
     if (!image.isConnected || (editorRoot && !editorRoot.contains(image))) {
-      if (imageTransformRebindInProgressRef.current) return
+      if (imageRebindInProgressRef.current) return
       close()
     }
   }
@@ -220,16 +256,21 @@ export function useImageTools({
       if (options.closeOnMissing !== false) {
         close()
       }
-      return
+      return false
     }
     const rect = image.getBoundingClientRect()
+    if (!isUsableImageToolPlacementRect(rect)) {
+      if (options.closeOnMissing !== false && !imageRebindInProgressRef.current) {
+        close()
+      }
+      return false
+    }
     const placement = getImageToolPlacement(rect)
     setImageTools((previous) => ({
       visible: true,
       menuMode: previous.visible ? previous.menuMode : 'start',
       toolbarTop: placement.toolbarTop,
       toolbarLeft: placement.toolbarLeft,
-      toolbarMinWidth: placement.toolbarMinWidth,
       resizeTop: placement.resizeTop,
       resizeLeft: placement.resizeLeft,
     }))
@@ -252,6 +293,7 @@ export function useImageTools({
         height,
       }
     })
+    return true
   }
 
   const select = (image: HTMLImageElement) => {
@@ -390,6 +432,7 @@ export function useImageTools({
     const expectedAlt = altText ?? ''
     for (const image of root.querySelectorAll('img')) {
       if (!(image instanceof HTMLImageElement)) continue
+      if (isInsideReadonlyNotePreview(image)) continue
       const candidateUrl = image.getAttribute('src') ?? image.src
       if (candidateUrl !== sourceUrl && image.src !== sourceUrl) continue
       if (expectedAlt && image.alt !== expectedAlt) continue
@@ -410,23 +453,78 @@ export function useImageTools({
     return renderedImage
   }
 
-  const updateEditorImageNode = (image: HTMLImageElement, attrs: { imageUrl?: string; altText?: string | null }) => {
+  const scheduleImageRebindAndRefresh = (
+    sourceUrl: string,
+    fallback: HTMLImageElement,
+    altText: string | null,
+    token: number,
+    options: { menuMode?: ImageToolsState['menuMode']; scrollSnapshot?: ReturnType<typeof captureScrollSnapshot> } = {},
+  ) => {
+    let attempts = 0
+    const maxAttempts = 6
+
+    const attemptRefresh = () => {
+      if (imageRebindTokenRef.current !== token) return
+      attempts += 1
+
+      const renderedImage = rebindActiveImage(sourceUrl, fallback, altText)
+      if (renderedImage) {
+        syncImageDisplayMetadata(renderedImage)
+      }
+      setImageTools((previous) =>
+        previous.visible && options.menuMode ? { ...previous, menuMode: options.menuMode } : previous,
+      )
+
+      if (options.scrollSnapshot) {
+        restoreScrollSnapshot(options.scrollSnapshot)
+      }
+      const refreshed = refreshPosition({ closeOnMissing: false })
+      if (options.scrollSnapshot) {
+        restoreScrollSnapshot(options.scrollSnapshot)
+      }
+      if (refreshed || attempts >= maxAttempts) {
+        imageRebindInProgressRef.current = false
+        return
+      }
+      window.requestAnimationFrame(attemptRefresh)
+    }
+
+    window.requestAnimationFrame(attemptRefresh)
+    window.setTimeout(() => {
+      if (imageRebindTokenRef.current === token && imageRebindInProgressRef.current) {
+        attemptRefresh()
+      }
+    }, 80)
+  }
+
+  const updateEditorImageNode = (
+    image: HTMLImageElement,
+    attrs: { imageUrl?: string; altText?: string | null },
+    options: { preserveScroll?: boolean; scrollSnapshot?: ReturnType<typeof captureScrollSnapshot> } = {},
+  ) => {
+    const scrollSnapshot =
+      options.preserveScroll === false ? null : (options.scrollSnapshot ?? captureScrollSnapshot(image))
     activateEditorFromEventTarget(image)
     const currentEditor = editorRef.current
     const view = getWysiwygView(currentEditor)
-    if (!currentEditor || !view) return { updated: false, image: null }
+    if (!currentEditor || !view) {
+      if (scrollSnapshot) restoreScrollSnapshot(scrollSnapshot)
+      return { updated: false, image: null }
+    }
 
     const hit = findImageNodeHitForElement(view, image)
-    if (!hit) return { updated: false, image: null }
+    if (!hit) {
+      if (scrollSnapshot) restoreScrollSnapshot(scrollSnapshot)
+      return { updated: false, image: null }
+    }
 
     view.dispatch(
-      view.state.tr
-        .setNodeMarkup(hit.pos, null, {
-          ...(hit.node.attrs ?? {}),
-          ...attrs,
-        })
-        .scrollIntoView(),
+      view.state.tr.setNodeMarkup(hit.pos, null, {
+        ...(hit.node.attrs ?? {}),
+        ...attrs,
+      }),
     )
+    if (scrollSnapshot) restoreScrollSnapshot(scrollSnapshot)
     const renderedImage =
       getRenderedImageAtPosition(view, hit.pos) ??
       (attrs.imageUrl ? findRenderedImageBySource(attrs.imageUrl, attrs.altText) : null)
@@ -434,6 +532,10 @@ export function useImageTools({
       activeImageRef.current = renderedImage
     }
     commitActiveEditorMarkdownNow(currentEditor)
+    if (scrollSnapshot) {
+      restoreScrollSnapshot(scrollSnapshot)
+      window.requestAnimationFrame(() => restoreScrollSnapshot(scrollSnapshot))
+    }
     return { updated: true, image: renderedImage }
   }
 
@@ -468,10 +570,14 @@ export function useImageTools({
     }
 
     try {
+      const scrollSnapshot = captureScrollSnapshot(image)
+      const rebindToken = imageRebindTokenRef.current + 1
+      imageRebindTokenRef.current = rebindToken
+      imageRebindInProgressRef.current = true
       const displayWidth = Math.max(8, Math.round(rect.width))
       const sourceUrl = image.getAttribute('src') ?? image.src
       const nextImageUrl = withImageResizeMetadata(sourceUrl, { v: 1, w: displayWidth })
-      const updateResult = updateEditorImageNode(image, { imageUrl: nextImageUrl, altText: image.alt || null })
+      const updateResult = updateEditorImageNode(image, { imageUrl: nextImageUrl, altText: image.alt || null }, { scrollSnapshot })
       const selectedImage = updateResult.image ?? rebindActiveImage(nextImageUrl, image, image.alt || null) ?? image
       if (!updateResult.updated) {
         image.src = nextImageUrl
@@ -479,8 +585,14 @@ export function useImageTools({
       }
       activeImageRef.current = selectedImage
       syncImageDisplayMetadata(selectedImage)
-      refreshPosition()
+      restoreScrollSnapshot(scrollSnapshot)
+      refreshPosition({ closeOnMissing: false })
+      restoreScrollSnapshot(scrollSnapshot)
+      scheduleImageRebindAndRefresh(nextImageUrl, selectedImage, selectedImage.alt || null, rebindToken, {
+        scrollSnapshot,
+      })
     } catch {
+      imageRebindInProgressRef.current = false
       commitCurrentEditorContent()
     }
   }
@@ -591,7 +703,11 @@ export function useImageTools({
     context.drawImage(sourceImage, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, sourceWidth, sourceHeight)
     const nextDataUrl = withImageResizeMetadata(canvas.toDataURL('image/png'), { v: 1, w: renderedWidth })
 
-    const updateResult = updateEditorImageNode(image, { imageUrl: nextDataUrl, altText: image.alt || null })
+    const scrollSnapshot = captureScrollSnapshot(image)
+    const rebindToken = imageRebindTokenRef.current + 1
+    imageRebindTokenRef.current = rebindToken
+    imageRebindInProgressRef.current = true
+    const updateResult = updateEditorImageNode(image, { imageUrl: nextDataUrl, altText: image.alt || null }, { scrollSnapshot })
     const selectedImage = updateResult.image ?? rebindActiveImage(nextDataUrl, image, image.alt || null) ?? image
     if (!updateResult.updated) {
       image.src = nextDataUrl
@@ -605,15 +721,23 @@ export function useImageTools({
     selectedImage.setAttribute('height', String(renderedHeight))
     selectedImage.style.maxWidth = 'none'
     cancelCrop()
-    refreshPosition()
+    restoreScrollSnapshot(scrollSnapshot)
+    refreshPosition({ closeOnMissing: false })
+    restoreScrollSnapshot(scrollSnapshot)
+    scheduleImageRebindAndRefresh(nextDataUrl, selectedImage, selectedImage.alt || null, rebindToken, {
+      scrollSnapshot,
+    })
   }
 
   const transformSelectedImage = async (operation: ImageTransformOperation) => {
     const image = activeImageRef.current
     if (!image || !image.isConnected || !image.src || inlineCropRef.current.active) return false
 
-    imageTransformRebindInProgressRef.current = true
+    const rebindToken = imageRebindTokenRef.current + 1
+    imageRebindTokenRef.current = rebindToken
+    imageRebindInProgressRef.current = true
     try {
+      const scrollSnapshot = captureScrollSnapshot(image)
       const sourceUrl = image.getAttribute('src') ?? image.src
       const sourceImage = new Image()
       sourceImage.src = stripImageResizeMetadataFromUrl(sourceUrl)
@@ -640,7 +764,7 @@ export function useImageTools({
       const nextDataUrl = withPreservedImageTransformDisplayWidth(canvas.toDataURL('image/png'), sourceUrl, renderedWidth)
       const displayWidth = getImageTransformDisplayWidth(nextDataUrl, renderedWidth)
 
-      const updateResult = updateEditorImageNode(image, { imageUrl: nextDataUrl, altText: image.alt || null })
+      const updateResult = updateEditorImageNode(image, { imageUrl: nextDataUrl, altText: image.alt || null }, { scrollSnapshot })
       const selectedImage = updateResult.image ?? rebindActiveImage(nextDataUrl, image, image.alt || null) ?? image
       if (!updateResult.updated) {
         image.src = nextDataUrl
@@ -654,16 +778,18 @@ export function useImageTools({
       selectedImage.setAttribute('width', String(displayWidth))
       selectedImage.removeAttribute('height')
       setImageTools((previous) => (previous.visible ? { ...previous, menuMode: 'transform' } : previous))
+      restoreScrollSnapshot(scrollSnapshot)
       refreshPosition({ closeOnMissing: false })
-      window.requestAnimationFrame(() => {
-        rebindActiveImage(nextDataUrl, selectedImage, selectedImage.alt || null)
-        setImageTools((previous) => (previous.visible ? { ...previous, menuMode: 'transform' } : previous))
-        refreshPosition({ closeOnMissing: false })
-        imageTransformRebindInProgressRef.current = false
+      restoreScrollSnapshot(scrollSnapshot)
+      scheduleImageRebindAndRefresh(nextDataUrl, selectedImage, selectedImage.alt || null, rebindToken, {
+        menuMode: 'transform',
+        scrollSnapshot,
       })
       return true
     } catch {
-      imageTransformRebindInProgressRef.current = false
+      if (imageRebindTokenRef.current === rebindToken) {
+        imageRebindInProgressRef.current = false
+      }
       pushToast('could not transform image.', 'warning')
       return false
     }

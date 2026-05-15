@@ -903,6 +903,7 @@ function App() {
     commitActiveEditorMarkdownNow(currentEditor)
     syncToolbarFormatState()
     if (operation === 'aisle') {
+      closeImageTools()
       addAisleToActiveNote(result.aisleMarkdown ?? '', { beforeSnapshot: beforeAisleSnapshot })
     }
     return true
@@ -1209,7 +1210,10 @@ function App() {
     clearActiveNoteContent,
     openNoteReferenceModal,
     openCopyModalForActiveNote,
-    addAisleToActiveNote,
+    addAisleToActiveNote: () => {
+      closeImageTools()
+      addAisleToActiveNote()
+    },
     deleteAisleFromActiveNote,
     pushToast,
   })

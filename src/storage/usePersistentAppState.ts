@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import { applyAutoPurgeToAppState, parseSavedState } from '../state/app-state'
 import type { AppState } from '../types/app'
-import { appStateStore } from './app-state-store'
+import { appPersistenceService } from './app-persistence-service'
 
 type PersistentAppStateController = {
   state: AppState
@@ -11,9 +11,9 @@ type PersistentAppStateController = {
 }
 
 export function usePersistentAppState(): PersistentAppStateController {
-  const initialSerializedState = useMemo(() => appStateStore.load(), [])
+  const initialSerializedState = useMemo(() => appPersistenceService.loadSerializedState(), [])
   const [state, setState] = useState<AppState>(() => applyAutoPurgeToAppState(parseSavedState(initialSerializedState)))
-  const [storageHydrated, setStorageHydrated] = useState(() => typeof appStateStore.hydrate !== 'function')
+  const [storageHydrated, setStorageHydrated] = useState(() => typeof appPersistenceService.hydrateSerializedState !== 'function')
   const stateRef = useRef(state)
   const initialStateJsonRef = useRef<string>(JSON.stringify(parseSavedState(initialSerializedState)))
   const stateDirtySinceBootRef = useRef(false)
@@ -23,11 +23,11 @@ export function usePersistentAppState(): PersistentAppStateController {
   }, [state])
 
   useEffect(() => {
-    if (typeof appStateStore.hydrate !== 'function') return
+    if (typeof appPersistenceService.hydrateSerializedState !== 'function') return
 
     let disposed = false
     Promise.resolve(
-      appStateStore.hydrate((serializedState) => {
+      appPersistenceService.hydrateSerializedState((serializedState) => {
         if (disposed || stateDirtySinceBootRef.current) return
         const nextState = applyAutoPurgeToAppState(parseSavedState(serializedState))
         const nextSerializedState = JSON.stringify(nextState)
@@ -59,7 +59,7 @@ export function usePersistentAppState(): PersistentAppStateController {
     const serializedState = JSON.stringify(sanitizedState)
     stateDirtySinceBootRef.current = serializedState !== initialStateJsonRef.current
     if (!storageHydrated) return
-    appStateStore.save(serializedState)
+    appPersistenceService.saveSerializedState(serializedState)
   }, [state, storageHydrated])
 
   useEffect(() => {

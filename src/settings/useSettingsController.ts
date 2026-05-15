@@ -11,7 +11,7 @@ import {
 } from '../state/app-state'
 import { updateSpaceInActiveDomain } from '../state/domains'
 import { applyAutoPurgeToWorkspace } from '../state/workspace'
-import { appStateStore } from '../storage/app-state-store'
+import { appPersistenceService } from '../storage/app-persistence-service'
 import type { AppState, AppTheme, NewlineOperationId, NewlineShortcutId, SettingsSection, ShortcutId, Space, ViewMode } from '../types/app'
 import {
   clampAutoRemoveDays,
@@ -81,7 +81,7 @@ export function useSettingsController({
     stateRef.current = nextState
     setState(nextState)
     if (storageHydrated) {
-      appStateStore.save(JSON.stringify(nextState))
+      appPersistenceService.saveSerializedState(JSON.stringify(nextState))
     }
   }
 

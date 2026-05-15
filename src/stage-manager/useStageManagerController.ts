@@ -4,7 +4,7 @@ import { sanitizeName } from '../export/export-data'
 import { DEFAULT_AUTO_REMOVE_DAYS } from '../settings/defaults'
 import { applyAutoPurgeToAppState } from '../state/app-state'
 import { createId, createWorkspaceDataFromTabs } from '../state/workspace'
-import { appStateStore } from '../storage/app-state-store'
+import { appPersistenceService } from '../storage/app-persistence-service'
 import type {
   AppState,
   ContextMenuState,
@@ -717,7 +717,7 @@ export function useStageManagerController({
     stateRef.current = sanitizedState
     setState(sanitizedState)
     if (storageHydrated) {
-      appStateStore.save(JSON.stringify(sanitizedState))
+      appPersistenceService.saveSerializedState(JSON.stringify(sanitizedState))
     }
     setViewMode('main')
     setMenuOpen(false)

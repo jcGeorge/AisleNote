@@ -8,7 +8,6 @@ const baseImageTools: ImageToolsState = {
   menuMode: 'start',
   toolbarTop: 10,
   toolbarLeft: 20,
-  toolbarMinWidth: 160,
   resizeTop: 100,
   resizeLeft: 120,
 }
@@ -77,10 +76,10 @@ describe('ImageToolsOverlay transform menu', () => {
     expect(html).not.toContain('Return to image tools')
   })
 
-  it('renders the transparent toolbar hit zone at the selected image width', () => {
+  it('does not render a transparent selected-image-width hit zone', () => {
     const html = renderOverlay(baseImageTools)
 
-    expect(html).toContain('min-width:160px')
+    expect(html).not.toContain('min-width:')
   })
 
   it('only shows apply and cancel controls while crop is active', () => {

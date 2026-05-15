@@ -18,6 +18,7 @@ import {
   createId,
   normalizeWorkspaceData,
 } from './workspace'
+import { migrateRawAppData } from './app-migrations'
 
 const DEFAULT_DOMAIN = createDefaultDomain()
 
@@ -211,7 +212,10 @@ export function parseSavedState(raw: string | null): AppState {
   if (!raw) return DEFAULT_STATE
 
   try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>
+    const rawParsed = JSON.parse(raw) as Record<string, unknown>
+    const migration = migrateRawAppData(rawParsed)
+    if (!migration.ok) return DEFAULT_STATE
+    const parsed = migration.data
     const theme = normalizeAppTheme(parsed.theme)
     const parsedDomains = normalizeDomains(parsed.domains)
 
@@ -248,7 +252,7 @@ export function parseSavedState(raw: string | null): AppState {
     // Legacy single-workspace migration
     const migratedSpace: Space = {
       id: 'getting-started-space',
-      name: 'Getting Started',
+      name: 'getting started',
       settings: { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
       data: applyAutoPurgeToWorkspace(normalizeWorkspaceData(parsed), DEFAULT_AUTO_REMOVE_DAYS),
     }

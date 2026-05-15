@@ -14,6 +14,14 @@ import {
 } from '../types/storage-schema'
 import { splitImageResizeMetadataFromUrl } from '../markdown/image-metadata'
 import {
+  storageError,
+  storageReadOk,
+  storageWriteOk,
+  type StorageBackend,
+  type StorageFileEntry,
+} from './storage-backend'
+import { migrateStorageRootManifest } from './storage-migrations'
+import {
   DEFAULT_AUTO_REMOVE_DAYS,
   DEFAULT_DOMAIN_NAME,
   DEFAULT_TOPIC_ID,
@@ -725,7 +733,9 @@ export function readSerializedStateFromHybridFileMap(fileMap: Map<string, Browse
     return null
   }
 
-  if (rootManifest.schemaVersion !== STORAGE_SCHEMA_VERSION) return null
+  const manifestMigration = migrateStorageRootManifest(rootManifest, STORAGE_SCHEMA_VERSION)
+  if (!manifestMigration.ok) return null
+  rootManifest = manifestMigration.manifest
 
   const noteBodies = readNoteBodiesFromRootManifest(fileMap, rootManifest)
   const topicEntries = ensureArray<Record<string, unknown>>(rootManifest.topics)
@@ -851,62 +861,175 @@ function waitForTransaction(transaction: IDBTransaction): Promise<void> {
   })
 }
 
-async function readFileMapFromIndexedDb(): Promise<Map<string, BrowserStoredFile>> {
-  const database = await openDatabase()
-  try {
-    const transaction = database.transaction(BROWSER_FILE_STORE, 'readonly')
-    const store = transaction.objectStore(BROWSER_FILE_STORE)
-    const request = store.getAll()
+class BrowserIndexedDbStorageBackend implements StorageBackend {
+  async readTextFile(path: string) {
+    try {
+      const record = await this.getRecord(path)
+      const value = record?.kind === 'text' && typeof record.data === 'string' ? record.data : null
+      return storageReadOk<string>(value)
+    } catch (error) {
+      return storageError(error)
+    }
+  }
 
-    const records = await new Promise<BrowserStorageRecord[]>((resolve, reject) => {
-      request.onsuccess = () => resolve((request.result as BrowserStorageRecord[]) ?? [])
-      request.onerror = () => reject(request.error ?? new Error('IndexedDB getAll failed'))
-    })
-    await waitForTransaction(transaction)
+  async writeTextFile(path: string, contents: string) {
+    try {
+      await this.putRecord({ path, kind: 'text', data: contents })
+      return storageWriteOk()
+    } catch (error) {
+      return storageError(error)
+    }
+  }
 
-    const fileMap = new Map<string, BrowserStoredFile>()
-    records.forEach((record) => {
-      if (record.kind === 'text' && typeof record.data === 'string') {
-        fileMap.set(record.path, { path: record.path, kind: 'text', text: record.data })
-        return
+  async readBinaryFile(path: string) {
+    try {
+      const record = await this.getRecord(path)
+      const value = record?.kind === 'binary' && record.data instanceof ArrayBuffer ? record.data : null
+      return storageReadOk<ArrayBuffer>(value)
+    } catch (error) {
+      return storageError(error)
+    }
+  }
+
+  async writeBinaryFile(path: string, contents: ArrayBuffer) {
+    try {
+      await this.putRecord({ path, kind: 'binary', data: contents })
+      return storageWriteOk()
+    } catch (error) {
+      return storageError(error)
+    }
+  }
+
+  async listFiles(prefix = '') {
+    try {
+      const records = await this.getAllRecords()
+      return storageReadOk<StorageFileEntry[]>(
+        records
+          .filter((record) => !prefix || record.path.startsWith(prefix))
+          .map((record) => ({ path: record.path, kind: record.kind })),
+      )
+    } catch (error) {
+      return storageError(error)
+    }
+  }
+
+  async deleteFile(path: string) {
+    try {
+      const database = await openDatabase()
+      try {
+        const transaction = database.transaction(BROWSER_FILE_STORE, 'readwrite')
+        transaction.objectStore(BROWSER_FILE_STORE).delete(path)
+        await waitForTransaction(transaction)
+      } finally {
+        database.close()
       }
-      if (record.kind === 'binary' && record.data instanceof ArrayBuffer) {
-        fileMap.set(record.path, { path: record.path, kind: 'binary', bytes: new Uint8Array(record.data) })
-      }
-    })
-    return fileMap
-  } finally {
-    database.close()
+      return storageWriteOk()
+    } catch (error) {
+      return storageError(error)
+    }
+  }
+
+  async exists(path: string) {
+    try {
+      return storageReadOk(Boolean(await this.getRecord(path)))
+    } catch (error) {
+      return storageError(error)
+    }
+  }
+
+  private async getRecord(path: string): Promise<BrowserStorageRecord | null> {
+    const database = await openDatabase()
+    try {
+      const transaction = database.transaction(BROWSER_FILE_STORE, 'readonly')
+      const request = transaction.objectStore(BROWSER_FILE_STORE).get(path)
+      const record = await new Promise<BrowserStorageRecord | undefined>((resolve, reject) => {
+        request.onsuccess = () => resolve(request.result as BrowserStorageRecord | undefined)
+        request.onerror = () => reject(request.error ?? new Error('IndexedDB get failed'))
+      })
+      await waitForTransaction(transaction)
+      return record ?? null
+    } finally {
+      database.close()
+    }
+  }
+
+  private async getAllRecords(): Promise<BrowserStorageRecord[]> {
+    const database = await openDatabase()
+    try {
+      const transaction = database.transaction(BROWSER_FILE_STORE, 'readonly')
+      const request = transaction.objectStore(BROWSER_FILE_STORE).getAll()
+      const records = await new Promise<BrowserStorageRecord[]>((resolve, reject) => {
+        request.onsuccess = () => resolve((request.result as BrowserStorageRecord[]) ?? [])
+        request.onerror = () => reject(request.error ?? new Error('IndexedDB getAll failed'))
+      })
+      await waitForTransaction(transaction)
+      return records
+    } finally {
+      database.close()
+    }
+  }
+
+  private async putRecord(record: BrowserStorageRecord): Promise<void> {
+    const database = await openDatabase()
+    try {
+      const transaction = database.transaction(BROWSER_FILE_STORE, 'readwrite')
+      transaction.objectStore(BROWSER_FILE_STORE).put(record)
+      await waitForTransaction(transaction)
+    } finally {
+      database.close()
+    }
   }
 }
 
-async function writeFileMapToIndexedDb(fileMap: Map<string, BrowserStoredFile>): Promise<void> {
-  const database = await openDatabase()
-  try {
-    const transaction = database.transaction(BROWSER_FILE_STORE, 'readwrite')
-    const store = transaction.objectStore(BROWSER_FILE_STORE)
-    store.clear()
+export async function readFileMapFromStorageBackend(backend: StorageBackend): Promise<Map<string, BrowserStoredFile>> {
+  const listed = await backend.listFiles()
+  if (!listed.ok) throw new Error(listed.error)
+  const fileMap = new Map<string, BrowserStoredFile>()
+  for (const entry of listed.value ?? []) {
+    if (entry.kind === 'text') {
+      const result = await backend.readTextFile(entry.path)
+      if (result.ok && result.value !== null) {
+        fileMap.set(entry.path, { path: entry.path, kind: 'text', text: result.value })
+      }
+      continue
+    }
 
-    fileMap.forEach((entry) => {
-      const record: BrowserStorageRecord =
-        entry.kind === 'text'
-          ? { path: entry.path, kind: 'text', data: entry.text }
-          : { path: entry.path, kind: 'binary', data: toArrayBuffer(entry.bytes) }
-      store.put(record)
-    })
+    const result = await backend.readBinaryFile(entry.path)
+    if (result.ok && result.value !== null) {
+      fileMap.set(entry.path, { path: entry.path, kind: 'binary', bytes: new Uint8Array(result.value) })
+    }
+  }
+  return fileMap
+}
 
-    await waitForTransaction(transaction)
-  } finally {
-    database.close()
+export async function writeFileMapToStorageBackend(
+  backend: StorageBackend,
+  fileMap: Map<string, BrowserStoredFile>,
+): Promise<void> {
+  const listed = await backend.listFiles()
+  if (!listed.ok) throw new Error(listed.error)
+  await Promise.all((listed.value ?? []).map((entry) => backend.deleteFile(entry.path)))
+
+  for (const entry of fileMap.values()) {
+    const result =
+      entry.kind === 'text'
+        ? await backend.writeTextFile(entry.path, entry.text)
+        : await backend.writeBinaryFile(entry.path, toArrayBuffer(entry.bytes))
+    if (!result.ok) throw new Error(result.error)
   }
 }
 
 export class BrowserHybridStateAdapter {
+  private readonly backend: StorageBackend
   private saveQueue: Promise<void> = Promise.resolve()
+
+  constructor(backend: StorageBackend = new BrowserIndexedDbStorageBackend()) {
+    this.backend = backend
+  }
 
   async loadSerializedState(): Promise<string | null> {
     try {
-      const fileMap = await readFileMapFromIndexedDb()
+      const fileMap = await readFileMapFromStorageBackend(this.backend)
       if (fileMap.size === 0) return null
       return readSerializedStateFromHybridFileMap(fileMap)
     } catch {
@@ -919,7 +1042,7 @@ export class BrowserHybridStateAdapter {
       .catch(() => undefined)
       .then(async () => {
         const fileMap = buildHybridFileMapFromSerializedState(serializedState)
-        await writeFileMapToIndexedDb(fileMap)
+        await writeFileMapToStorageBackend(this.backend, fileMap)
       })
 
     return this.saveQueue

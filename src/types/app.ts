@@ -294,7 +294,6 @@ export type ImageToolsState = {
   menuMode: 'start' | 'transform'
   toolbarTop: number
   toolbarLeft: number
-  toolbarMinWidth: number
   resizeTop: number
   resizeLeft: number
 }

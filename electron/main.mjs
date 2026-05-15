@@ -1,11 +1,28 @@
 import { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, nativeImage } from 'electron'
-import { writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { buildAppStateExportArchive, loadAppState, saveAppState } from './app-state-storage.mjs'
+import { registerClipboardIpc } from './ipc-clipboard.mjs'
+import { registerFileIpc } from './ipc-files.mjs'
+import { registerStorageIpc, saveAppStateSnapshot } from './ipc-storage.mjs'
+import { registerUpdateIpc } from './ipc-updates.mjs'
+import { finishCloseAfterFlush } from './quit-flow.mjs'
+import { createNoopUpdateService } from './update-service.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
+let quitRequested = false
+
+function focusExistingWindow() {
+  const window = BrowserWindow.getAllWindows()[0]
+  if (!window || window.isDestroyed()) return false
+  if (window.isMinimized()) {
+    window.restore()
+  }
+  window.show()
+  window.focus()
+  return true
+}
 
 function sendMultilineShortcutToWindow(window, direction) {
   if (!window || window.isDestroyed()) return
@@ -103,7 +120,7 @@ function getMultilineShortcutDirection(input) {
   return isUp ? 'up' : 'down'
 }
 
-function createWindow() {
+function createWindow(storageSession) {
   const window = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -143,17 +160,15 @@ function createWindow() {
           ),
           1500,
         )
-        if (typeof serializedState === 'string') {
-          saveAppState(app.getPath('userData'), serializedState)
+        if (typeof serializedState === 'string' && storageSession.canWriteAppState()) {
+          saveAppStateSnapshot(app.getPath('userData'), serializedState)
         }
       } catch {
         // Fall through to close even if the renderer snapshot cannot be collected.
       } finally {
         closeFlushInProgress = false
         allowImmediateClose = true
-        if (!window.isDestroyed()) {
-          window.close()
-        }
+        finishCloseAfterFlush({ app, window, quitRequested })
       }
     })()
   })
@@ -166,94 +181,41 @@ function createWindow() {
   } else {
     window.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
   }
+
+  return window
 }
 
-app.whenReady().then(() => {
-  installApplicationMenu()
-
-  ipcMain.on('load-app-state', (event) => {
-    event.returnValue = loadAppState(app.getPath('userData'))
+if (!gotSingleInstanceLock) {
+  app.quit()
+} else {
+  app.on('before-quit', () => {
+    quitRequested = true
   })
 
-  ipcMain.on('save-app-state', (event, serializedState) => {
-    try {
-      if (typeof serializedState !== 'string') {
-        event.returnValue = { ok: false, error: 'Invalid payload' }
-        return
+  app.on('second-instance', () => {
+    focusExistingWindow()
+  })
+
+  app.whenReady().then(() => {
+    installApplicationMenu()
+    const updateService = createNoopUpdateService(app)
+    const storageSession = registerStorageIpc({ ipcMain, app })
+    registerFileIpc({ ipcMain, dialog })
+    registerClipboardIpc({ ipcMain, clipboard, nativeImage })
+    registerUpdateIpc({ ipcMain, updateService })
+
+    createWindow(storageSession)
+
+    app.on('activate', () => {
+      if (!focusExistingWindow()) {
+        createWindow(storageSession)
       }
-      saveAppState(app.getPath('userData'), serializedState)
-      event.returnValue = { ok: true }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      event.returnValue = { ok: false, error: message }
-    }
-  })
-
-  ipcMain.handle('save-file', async (_event, payload) => {
-    const { defaultPath, data } = payload ?? {}
-    if (!(data instanceof ArrayBuffer)) return { canceled: true, error: 'Invalid payload' }
-
-    const saveResult = await dialog.showSaveDialog({
-      defaultPath: typeof defaultPath === 'string' ? defaultPath : 'notes-export.zip',
-      filters: [{ name: 'Zip Archive', extensions: ['zip'] }],
     })
-
-    if (saveResult.canceled || !saveResult.filePath) return { canceled: true }
-
-    const bytes = Buffer.from(new Uint8Array(data))
-    writeFileSync(saveResult.filePath, bytes)
-    return { canceled: false, filePath: saveResult.filePath }
   })
 
-  ipcMain.handle('copy-image-data-url', async (_event, dataUrl) => {
-    try {
-      if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) {
-        return { ok: false, error: 'Invalid image payload' }
-      }
-      const image = nativeImage.createFromDataURL(dataUrl)
-      if (image.isEmpty()) {
-        return { ok: false, error: 'Empty image payload' }
-      }
-      clipboard.writeImage(image)
-      return { ok: true }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      return { ok: false, error: message }
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') {
+      app.quit()
     }
   })
-
-  ipcMain.handle('export-app-state', async (_event, payload) => {
-    const { defaultPath, serializedState } = payload ?? {}
-    if (typeof serializedState !== 'string') return { canceled: true, error: 'Invalid payload' }
-
-    const saveResult = await dialog.showSaveDialog({
-      defaultPath: typeof defaultPath === 'string' ? defaultPath : 'notes-export.zip',
-      filters: [{ name: 'Zip Archive', extensions: ['zip'] }],
-    })
-
-    if (saveResult.canceled || !saveResult.filePath) return { canceled: true }
-
-    try {
-      const bytes = await buildAppStateExportArchive(serializedState)
-      writeFileSync(saveResult.filePath, bytes)
-      return { canceled: false, filePath: saveResult.filePath }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      return { canceled: false, error: message }
-    }
-  })
-
-  createWindow()
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow()
-    }
-  })
-})
-
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
-})
+}

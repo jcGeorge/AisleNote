@@ -3,7 +3,7 @@ import { useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateA
 import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
 import { getNoteBodyMarkdown } from '../notes/note-markdown'
 import { applyAutoPurgeToAppState, applyMarkdownToAppState } from '../state/app-state'
-import { appStateStore } from '../storage/app-state-store'
+import { appPersistenceService } from '../storage/app-persistence-service'
 import type { AppState, NoteBody, PendingContent } from '../types/app'
 
 type UseEditorPersistenceParams = {
@@ -86,7 +86,7 @@ export const useEditorPersistence = ({
 
   const persistLatestStateSnapshot = () => {
     const latestState = buildStateWithLatestEditorContent()
-    appStateStore.save(JSON.stringify(latestState))
+    appPersistenceService.saveSerializedState(JSON.stringify(latestState))
   }
 
   const flushPendingContent = () => {

@@ -122,7 +122,6 @@ export function ImageToolsOverlay({
         style={{
           top: `${imageTools.toolbarTop}px`,
           left: `${imageTools.toolbarLeft}px`,
-          minWidth: `${imageTools.toolbarMinWidth}px`,
         }}
         onPointerDown={stopToolbarPointerEvent}
         onMouseDown={stopToolbarMouseEvent}
