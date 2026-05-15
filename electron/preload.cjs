@@ -1,10 +1,10 @@
-import { contextBridge, ipcRenderer } from 'electron'
+const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
   loadAppState: () => ipcRenderer.sendSync('load-app-state'),
   loadAppStateResult: () => ipcRenderer.sendSync('load-app-state-result'),
-  saveAppState: (serializedState) => ipcRenderer.sendSync('save-app-state', serializedState),
+  saveAppState: (payload) => ipcRenderer.sendSync('save-app-state', payload),
   onAppStateUpdated: (handler) => {
     const listener = (_event, payload) => handler(payload)
     ipcRenderer.on('app-state-updated', listener)

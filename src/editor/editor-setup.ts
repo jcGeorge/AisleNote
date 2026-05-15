@@ -1,4 +1,5 @@
 import type { Editor } from '@toast-ui/editor'
+import { TextSelection } from 'prosemirror-state'
 import { canSplit } from 'prosemirror-transform'
 import { applyBulletListMarkerCommand } from './list-marker-commands'
 import {
@@ -8,8 +9,10 @@ import {
 import {
   applyAnnotationLineClassToHtmlToken,
   applyAnnotationMarkerToTextHtmlToken,
+  getAnnotationInlineArrowClassNames,
   getAnnotationLineClassNames,
   parseAnnotationLine,
+  parseAnnotationLineMarkers,
   ANNOTATION_LINE_MARKER_CLASS_NAME,
   getToastNodeText,
 } from './annotation-line'
@@ -78,44 +81,91 @@ function getTextOffsetDecorationRange(
   return fallbackTo > fallbackFrom ? { from: fallbackFrom, to: fallbackTo } : null
 }
 
-function getTextOffsetDocPosition(node: any, nodePosition: number, offset: number): number | null {
-  let textOffset = 0
-  let found: number | null = null
+function createInlineArrowWidget(classNames: string[]) {
+  const element = document.createElement('span')
+  element.className = classNames.join(' ')
+  element.setAttribute('aria-hidden', 'true')
+  return element
+}
 
-  if (typeof node?.descendants === 'function') {
-    node.descendants((child: any, childPosition: number) => {
-      if (found !== null) return false
-      if (!child?.isText || typeof child.text !== 'string') return true
+function getArrowMarkerDocRanges(doc: any): Array<{ from: number; to: number }> {
+  const ranges: Array<{ from: number; to: number }> = []
 
-      const childTextStart = textOffset
-      const childTextEnd = childTextStart + child.text.length
-      if (offset >= childTextStart && offset <= childTextEnd) {
-        found = nodePosition + 1 + childPosition + (offset - childTextStart)
-        return false
-      }
-
-      textOffset = childTextEnd
-      return true
+  if (typeof doc?.descendants !== 'function') return ranges
+  doc.descendants((node: any, position: number) => {
+    if (node?.type?.name !== 'paragraph') return true
+    parseAnnotationLineMarkers(node.textContent ?? '').forEach((match) => {
+      if (match.marker.kind !== 'arrow') return
+      const markerRange = getTextOffsetDecorationRange(node, position, match.markerStart, match.markerEnd)
+      if (markerRange) ranges.push(markerRange)
     })
+    return true
+  })
+
+  return ranges
+}
+
+export function getArrowMarkerDeletionRange(
+  state: { doc?: any; selection?: { empty?: boolean; from?: number; to?: number } },
+  key: string,
+): { from: number; to: number } | null {
+  if (key !== 'Backspace' && key !== 'Delete') return null
+
+  const selection = state?.selection
+  if (!selection || !state?.doc || typeof selection.from !== 'number' || typeof selection.to !== 'number') {
+    return null
   }
 
-  if (found !== null) return found
-  const contentStart = nodePosition + 1
-  const contentEnd = Math.max(contentStart, nodePosition + node.nodeSize - 1)
-  if (offset < 0 || offset > String(node.textContent ?? '').length) return null
-  return Math.min(contentStart + offset, contentEnd)
+  const markerRanges = getArrowMarkerDocRanges(state.doc)
+  if (!selection.empty) {
+    const selectionFrom = Math.min(selection.from, selection.to)
+    const selectionTo = Math.max(selection.from, selection.to)
+    const touchedRanges = markerRanges.filter((range) => range.from < selectionTo && range.to > selectionFrom)
+    if (touchedRanges.length === 0) return null
+    return {
+      from: Math.min(selectionFrom, ...touchedRanges.map((range) => range.from)),
+      to: Math.max(selectionTo, ...touchedRanges.map((range) => range.to)),
+    }
+  }
+
+  const cursor = selection.from
+  return markerRanges.find((range) => {
+    if (key === 'Backspace') return cursor > range.from && cursor <= range.to
+    return cursor >= range.from && cursor < range.to
+  }) ?? null
+}
+
+export function getArrowMarkerNavigationPosition(
+  state: { doc?: any; selection?: { empty?: boolean; from?: number } },
+  key: string,
+): number | null {
+  if (key !== 'ArrowLeft' && key !== 'ArrowRight') return null
+
+  const selection = state?.selection
+  if (!selection?.empty || !state?.doc || typeof selection.from !== 'number') return null
+
+  const cursor = selection.from
+  const markerRanges = getArrowMarkerDocRanges(state.doc)
+
+  if (key === 'ArrowRight') {
+    const range = markerRanges.find((candidate) => cursor >= candidate.from && cursor < candidate.to)
+    return range ? range.to : null
+  }
+
+  for (let index = markerRanges.length - 1; index >= 0; index -= 1) {
+    const range = markerRanges[index]
+    if (cursor > range.from && cursor <= range.to) return range.from
+  }
+
+  return null
 }
 
 export function annotationLinePlugin(context: {
   pmState: {
     Plugin: new (spec: {
-      appendTransaction?: (
-        transactions: Array<{ docChanged?: boolean }>,
-        oldState: unknown,
-        newState: { doc: any; tr: any },
-      ) => unknown
       props?: {
         decorations?: (state: { doc: any }) => unknown
+        handleKeyDown?: (view: any, event: KeyboardEvent) => boolean
       }
     }) => unknown
   }
@@ -123,6 +173,7 @@ export function annotationLinePlugin(context: {
     Decoration: {
       node: (from: number, to: number, attrs: Record<string, string>, spec?: Record<string, unknown>) => unknown
       inline: (from: number, to: number, attrs: Record<string, string>, spec?: Record<string, unknown>) => unknown
+      widget: (pos: number, toDOM: () => HTMLElement, spec?: Record<string, unknown>) => unknown
     }
     DecorationSet: {
       create: (doc: unknown, decorations: unknown[]) => unknown
@@ -146,7 +197,7 @@ export function annotationLinePlugin(context: {
         if (!rendererContext.entering) return originalToken
         const paragraphText = getToastNodeText(node, rendererContext.getChildrenText)
         const match = parseAnnotationLine(paragraphText)
-        if (!match) return originalToken
+        if (!match || match.marker.kind === 'arrow') return originalToken
         return applyAnnotationLineClassToHtmlToken(originalToken, match) as ToastHtmlToken
       },
       text: (node: unknown, rendererContext: { origin?: () => ToastHtmlToken }) => {
@@ -158,71 +209,87 @@ export function annotationLinePlugin(context: {
       () =>
         new Plugin({
           props: {
+            handleKeyDown: (view: any, event: KeyboardEvent) => {
+              const markerRange = getArrowMarkerDeletionRange(view?.state, event.key)
+              if (markerRange) {
+                event.preventDefault()
+                view.dispatch?.(view.state.tr.delete(markerRange.from, markerRange.to).scrollIntoView())
+                return true
+              }
+
+              if (!event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey) {
+                const nextPosition = getArrowMarkerNavigationPosition(view?.state, event.key)
+                if (nextPosition !== null) {
+                  event.preventDefault()
+                  const tr = view.state.tr.setSelection(TextSelection.create(view.state.doc, nextPosition, nextPosition))
+                  view.dispatch?.(tr.scrollIntoView())
+                  return true
+                }
+              }
+
+              return false
+            },
             decorations: (state: { doc: any }) => {
               const decorations: unknown[] = []
               state.doc.descendants((node: any, position: number) => {
                 if (node?.type?.name !== 'paragraph') return true
-                const match = parseAnnotationLine(node.textContent ?? '')
-                if (!match) return true
+                const matches = parseAnnotationLineMarkers(node.textContent ?? '')
+                if (matches.length === 0) return true
 
                 const from = position
                 const to = position + node.nodeSize
-                decorations.push(
-                  Decoration.node(
-                    from,
-                    to,
-                    { class: getAnnotationLineClassNames(match).join(' ') },
-                    { key: `annotation-line-${from}-${to}` },
-                  ),
-                )
-
-                const markerRange = getTextOffsetDecorationRange(
-                  node,
-                  position,
-                  match.markerRemovalStart,
-                  match.markerRemovalEnd,
-                )
-                if (markerRange) {
+                const lineMatch = matches.find((annotationMatch) => annotationMatch.marker.kind === 'line') ?? null
+                if (lineMatch) {
                   decorations.push(
-                    Decoration.inline(
-                      markerRange.from,
-                      markerRange.to,
-                      { class: ANNOTATION_LINE_MARKER_CLASS_NAME },
-                      { key: `annotation-marker-${markerRange.from}-${markerRange.to}` },
+                    Decoration.node(
+                      from,
+                      to,
+                      { class: getAnnotationLineClassNames(lineMatch).join(' ') },
+                      { key: `annotation-line-${from}-${to}` },
                     ),
                   )
                 }
+
+                matches.forEach((markerMatch, index) => {
+                  const markerStart =
+                    markerMatch.marker.kind === 'arrow'
+                      ? markerMatch.markerStart
+                      : markerMatch.markerRemovalStart
+                  const markerEnd =
+                    markerMatch.marker.kind === 'arrow'
+                      ? markerMatch.markerEnd
+                      : markerMatch.markerRemovalEnd
+                  const markerRange = getTextOffsetDecorationRange(
+                    node,
+                    position,
+                    markerStart,
+                    markerEnd,
+                  )
+                  if (markerRange) {
+                    if (markerMatch.marker.kind === 'arrow') {
+                      const classNames = getAnnotationInlineArrowClassNames(markerMatch)
+                      decorations.push(
+                        Decoration.widget(
+                          markerRange.from,
+                          () => createInlineArrowWidget(classNames),
+                          { key: `annotation-arrow-${index}-${markerRange.from}`, classNames, relaxedSide: true, side: 1 },
+                        ),
+                      )
+                    }
+                    decorations.push(
+                      Decoration.inline(
+                        markerRange.from,
+                        markerRange.to,
+                        { class: ANNOTATION_LINE_MARKER_CLASS_NAME },
+                        { key: `annotation-marker-${index}-${markerRange.from}-${markerRange.to}` },
+                      ),
+                    )
+                  }
+                })
                 return true
               })
               return DecorationSet.create(state.doc, decorations)
             },
-          },
-          appendTransaction: (transactions, _oldState, newState) => {
-            if (!transactions.some((transaction) => transaction.docChanged)) return null
-            const tr = newState.tr
-            let changed = false
-
-            newState.doc.descendants((node: any, position: number) => {
-              if (changed || node?.type?.name !== 'paragraph') return !changed
-              const match = parseAnnotationLine(node.textContent ?? '')
-              if (!match || match.marker.kind !== 'arrow' || match.markerStart <= match.indent.length) {
-                return true
-              }
-
-              const deleteFrom = getTextOffsetDocPosition(node, position, match.markerRemovalStart)
-              const deleteTo = getTextOffsetDocPosition(node, position, match.markerRemovalEnd)
-              const insertAt = getTextOffsetDocPosition(node, position, match.indent.length)
-              if (deleteFrom === null || deleteTo === null || insertAt === null || deleteTo <= deleteFrom) {
-                return true
-              }
-
-              tr.delete(deleteFrom, deleteTo)
-              tr.insertText(`${match.marker.raw} `, insertAt)
-              changed = true
-              return false
-            })
-
-            return changed ? tr : null
           },
         }),
     ],

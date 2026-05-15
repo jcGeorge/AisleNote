@@ -56,6 +56,7 @@ export function useImageTools({
     height: 0,
   })
   const activeImageRef = useRef<HTMLImageElement | null>(null)
+  const activeImageLookupRef = useRef<{ sourceUrl: string; altText: string | null; position: number | null } | null>(null)
   const imageResizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const imageRebindInProgressRef = useRef(false)
   const imageRebindTokenRef = useRef(0)
@@ -169,6 +170,7 @@ export function useImageTools({
     imageRebindTokenRef.current += 1
     imageRebindInProgressRef.current = false
     activeImageRef.current = null
+    activeImageLookupRef.current = null
     imageResizeRef.current = null
     resetInlineCropDrag()
     updateInlineCrop({ active: false, relX: 0, relY: 0, relWidth: 1, relHeight: 1, top: 0, left: 0, width: 0, height: 0 })
@@ -240,18 +242,26 @@ export function useImageTools({
   }, [])
 
   const closeIfSelectedImageMissing = () => {
-    const image = activeImageRef.current
+    let image = activeImageRef.current
     if (!image) return
     const editorRoot = editorEventRootRef.current
     if (!image.isConnected || (editorRoot && !editorRoot.contains(image))) {
+      image = recoverActiveImage()
+      if (image?.isConnected && (!editorRoot || editorRoot.contains(image))) return
       if (imageRebindInProgressRef.current) return
       close()
     }
   }
 
   const refreshPosition = (options: { closeOnMissing?: boolean } = {}) => {
-    syncEditorImageDisplayMetadata()
-    const image = activeImageRef.current
+    // During a resize drag, the live width intentionally differs from the last committed metadata.
+    if (!imageResizeRef.current) {
+      syncEditorImageDisplayMetadata()
+    }
+    let image = activeImageRef.current
+    if (!image || !image.isConnected) {
+      image = recoverActiveImage()
+    }
     if (!image || !image.isConnected) {
       if (options.closeOnMissing !== false) {
         close()
@@ -302,6 +312,11 @@ export function useImageTools({
       return
     }
     activeImageRef.current = image
+    activeImageLookupRef.current = {
+      sourceUrl: image.getAttribute('src') ?? image.src,
+      altText: image.alt || null,
+      position: activeImageLookupRef.current?.position ?? null,
+    }
     syncImageDisplayMetadata(image)
     activateEditorFromEventTarget(image)
     editorRef.current?.focus()
@@ -443,14 +458,30 @@ export function useImageTools({
 
   const rebindActiveImage = (
     sourceUrl: string,
-    fallback: HTMLImageElement,
+    fallback: HTMLImageElement | null,
     altText?: string | null,
+    position?: number | null,
   ): HTMLImageElement | null => {
-    const renderedImage = findRenderedImageBySource(sourceUrl, altText) ?? (fallback.isConnected ? fallback : null)
+    const view = getWysiwygView(editorRef.current)
+    const renderedImage =
+      (typeof position === 'number' ? getRenderedImageAtPosition(view, position) : null) ??
+      findRenderedImageBySource(sourceUrl, altText) ??
+      (fallback?.isConnected ? fallback : null)
     if (renderedImage) {
       activeImageRef.current = renderedImage
+      activeImageLookupRef.current = {
+        sourceUrl,
+        altText: altText ?? (renderedImage.alt || null),
+        position: position ?? activeImageLookupRef.current?.position ?? null,
+      }
     }
     return renderedImage
+  }
+
+  const recoverActiveImage = (): HTMLImageElement | null => {
+    const lookup = activeImageLookupRef.current
+    if (!lookup) return null
+    return rebindActiveImage(lookup.sourceUrl, activeImageRef.current, lookup.altText, lookup.position)
   }
 
   const scheduleImageRebindAndRefresh = (
@@ -458,16 +489,21 @@ export function useImageTools({
     fallback: HTMLImageElement,
     altText: string | null,
     token: number,
-    options: { menuMode?: ImageToolsState['menuMode']; scrollSnapshot?: ReturnType<typeof captureScrollSnapshot> } = {},
+    options: {
+      menuMode?: ImageToolsState['menuMode']
+      position?: number | null
+      scrollSnapshot?: ReturnType<typeof captureScrollSnapshot>
+    } = {},
   ) => {
     let attempts = 0
+    const minAttempts = 3
     const maxAttempts = 6
 
     const attemptRefresh = () => {
       if (imageRebindTokenRef.current !== token) return
       attempts += 1
 
-      const renderedImage = rebindActiveImage(sourceUrl, fallback, altText)
+      const renderedImage = rebindActiveImage(sourceUrl, fallback, altText, options.position)
       if (renderedImage) {
         syncImageDisplayMetadata(renderedImage)
       }
@@ -482,7 +518,7 @@ export function useImageTools({
       if (options.scrollSnapshot) {
         restoreScrollSnapshot(options.scrollSnapshot)
       }
-      if (refreshed || attempts >= maxAttempts) {
+      if ((refreshed && attempts >= minAttempts) || attempts >= maxAttempts) {
         imageRebindInProgressRef.current = false
         return
       }
@@ -509,13 +545,13 @@ export function useImageTools({
     const view = getWysiwygView(currentEditor)
     if (!currentEditor || !view) {
       if (scrollSnapshot) restoreScrollSnapshot(scrollSnapshot)
-      return { updated: false, image: null }
+      return { updated: false, image: null, position: null }
     }
 
     const hit = findImageNodeHitForElement(view, image)
     if (!hit) {
       if (scrollSnapshot) restoreScrollSnapshot(scrollSnapshot)
-      return { updated: false, image: null }
+      return { updated: false, image: null, position: null }
     }
 
     view.dispatch(
@@ -530,13 +566,18 @@ export function useImageTools({
       (attrs.imageUrl ? findRenderedImageBySource(attrs.imageUrl, attrs.altText) : null)
     if (renderedImage) {
       activeImageRef.current = renderedImage
+      activeImageLookupRef.current = {
+        sourceUrl: attrs.imageUrl ?? (renderedImage.getAttribute('src') ?? renderedImage.src),
+        altText: attrs.altText ?? (renderedImage.alt || null),
+        position: hit.pos,
+      }
     }
     commitActiveEditorMarkdownNow(currentEditor)
     if (scrollSnapshot) {
       restoreScrollSnapshot(scrollSnapshot)
       window.requestAnimationFrame(() => restoreScrollSnapshot(scrollSnapshot))
     }
-    return { updated: true, image: renderedImage }
+    return { updated: true, image: renderedImage, position: hit.pos }
   }
 
   const deleteSelectedImage = () => {
@@ -557,7 +598,10 @@ export function useImageTools({
   }
 
   const commitResizedImage = async () => {
-    const image = activeImageRef.current
+    let image = activeImageRef.current
+    if (!image || !image.isConnected) {
+      image = recoverActiveImage()
+    }
     if (!image || !image.isConnected) {
       commitCurrentEditorContent()
       return
@@ -578,17 +622,26 @@ export function useImageTools({
       const sourceUrl = image.getAttribute('src') ?? image.src
       const nextImageUrl = withImageResizeMetadata(sourceUrl, { v: 1, w: displayWidth })
       const updateResult = updateEditorImageNode(image, { imageUrl: nextImageUrl, altText: image.alt || null }, { scrollSnapshot })
-      const selectedImage = updateResult.image ?? rebindActiveImage(nextImageUrl, image, image.alt || null) ?? image
+      const selectedImage =
+        updateResult.image ??
+        rebindActiveImage(nextImageUrl, image, image.alt || null, updateResult.position) ??
+        image
       if (!updateResult.updated) {
         image.src = nextImageUrl
         commitCurrentEditorContent()
       }
       activeImageRef.current = selectedImage
+      activeImageLookupRef.current = {
+        sourceUrl: nextImageUrl,
+        altText: selectedImage.alt || null,
+        position: updateResult.position,
+      }
       syncImageDisplayMetadata(selectedImage)
       restoreScrollSnapshot(scrollSnapshot)
       refreshPosition({ closeOnMissing: false })
       restoreScrollSnapshot(scrollSnapshot)
       scheduleImageRebindAndRefresh(nextImageUrl, selectedImage, selectedImage.alt || null, rebindToken, {
+        position: updateResult.position,
         scrollSnapshot,
       })
     } catch {
@@ -601,7 +654,10 @@ export function useImageTools({
     event.preventDefault()
     event.stopPropagation()
     if (inlineCrop.active) return
-    const image = activeImageRef.current
+    let image = activeImageRef.current
+    if (!image || !image.isConnected) {
+      image = recoverActiveImage()
+    }
     if (!image || !image.isConnected) return
     imageResizeRef.current = {
       startX: event.clientX,
@@ -610,7 +666,7 @@ export function useImageTools({
   }
 
   const continueResize = (clientX: number) => {
-    const image = activeImageRef.current
+    const image = activeImageRef.current?.isConnected ? activeImageRef.current : recoverActiveImage()
     const resize = imageResizeRef.current
     if (!image || !resize) return
     const nextWidth = Math.max(80, Math.round(resize.startWidth + (clientX - resize.startX)))
@@ -657,7 +713,7 @@ export function useImageTools({
   }
 
   const applyCrop = async () => {
-    const image = activeImageRef.current
+    const image = activeImageRef.current?.isConnected ? activeImageRef.current : recoverActiveImage()
     const crop = inlineCropRef.current
     if (!image || !crop.active || !image.src) return
 
@@ -708,12 +764,20 @@ export function useImageTools({
     imageRebindTokenRef.current = rebindToken
     imageRebindInProgressRef.current = true
     const updateResult = updateEditorImageNode(image, { imageUrl: nextDataUrl, altText: image.alt || null }, { scrollSnapshot })
-    const selectedImage = updateResult.image ?? rebindActiveImage(nextDataUrl, image, image.alt || null) ?? image
+    const selectedImage =
+      updateResult.image ??
+      rebindActiveImage(nextDataUrl, image, image.alt || null, updateResult.position) ??
+      image
     if (!updateResult.updated) {
       image.src = nextDataUrl
       commitCurrentEditorContent()
     }
     activeImageRef.current = selectedImage
+    activeImageLookupRef.current = {
+      sourceUrl: nextDataUrl,
+      altText: selectedImage.alt || null,
+      position: updateResult.position,
+    }
     selectedImage.src = nextDataUrl
     selectedImage.style.width = `${renderedWidth}px`
     selectedImage.style.height = `${renderedHeight}px`
@@ -725,12 +789,13 @@ export function useImageTools({
     refreshPosition({ closeOnMissing: false })
     restoreScrollSnapshot(scrollSnapshot)
     scheduleImageRebindAndRefresh(nextDataUrl, selectedImage, selectedImage.alt || null, rebindToken, {
+      position: updateResult.position,
       scrollSnapshot,
     })
   }
 
   const transformSelectedImage = async (operation: ImageTransformOperation) => {
-    const image = activeImageRef.current
+    const image = activeImageRef.current?.isConnected ? activeImageRef.current : recoverActiveImage()
     if (!image || !image.isConnected || !image.src || inlineCropRef.current.active) return false
 
     const rebindToken = imageRebindTokenRef.current + 1
@@ -765,12 +830,20 @@ export function useImageTools({
       const displayWidth = getImageTransformDisplayWidth(nextDataUrl, renderedWidth)
 
       const updateResult = updateEditorImageNode(image, { imageUrl: nextDataUrl, altText: image.alt || null }, { scrollSnapshot })
-      const selectedImage = updateResult.image ?? rebindActiveImage(nextDataUrl, image, image.alt || null) ?? image
+      const selectedImage =
+        updateResult.image ??
+        rebindActiveImage(nextDataUrl, image, image.alt || null, updateResult.position) ??
+        image
       if (!updateResult.updated) {
         image.src = nextDataUrl
         commitCurrentEditorContent()
       }
       activeImageRef.current = selectedImage
+      activeImageLookupRef.current = {
+        sourceUrl: nextDataUrl,
+        altText: selectedImage.alt || null,
+        position: updateResult.position,
+      }
       selectedImage.src = nextDataUrl
       selectedImage.style.width = `${displayWidth}px`
       selectedImage.style.height = 'auto'
@@ -783,6 +856,7 @@ export function useImageTools({
       restoreScrollSnapshot(scrollSnapshot)
       scheduleImageRebindAndRefresh(nextDataUrl, selectedImage, selectedImage.alt || null, rebindToken, {
         menuMode: 'transform',
+        position: updateResult.position,
         scrollSnapshot,
       })
       return true

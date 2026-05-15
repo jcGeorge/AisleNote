@@ -145,7 +145,7 @@ function createWindow(storageSession) {
     minHeight: 640,
     backgroundColor: '#0b1220',
     webPreferences: {
-      preload: path.join(__dirname, 'preload.mjs'),
+      preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
     },

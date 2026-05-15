@@ -4,12 +4,19 @@ import {
   ANNOTATION_LINE_ARROW_CLASS_NAME,
   ANNOTATION_LINE_ARROW_DOWN_CLASS_NAME,
   ANNOTATION_LINE_ARROW_UP_CLASS_NAME,
+  ANNOTATION_INLINE_ARROW_CLASS_NAME,
   ANNOTATION_LINE_MARKER_CLASS_NAME,
   ANNOTATION_LINE_TAIL_LEFT_CLASS_NAME,
   ANNOTATION_LINE_TAIL_RIGHT_CLASS_NAME,
 } from './annotation-line'
 import { shouldDeleteEmptyParagraphAtListBoundary } from './empty-paragraph-list-delete'
-import { annotationLinePlugin, getActiveHeadingLevel, getParagraphSpaceShortcut } from './editor-setup'
+import {
+  annotationLinePlugin,
+  getActiveHeadingLevel,
+  getArrowMarkerDeletionRange,
+  getArrowMarkerNavigationPosition,
+  getParagraphSpaceShortcut,
+} from './editor-setup'
 
 function node(typeName: string, textContent = '', contentSize = 0) {
   return {
@@ -110,10 +117,13 @@ describe('paragraph space shortcuts', () => {
 })
 
 type DecorationCall = {
-  kind: 'node' | 'inline'
+  kind: 'node' | 'inline' | 'widget'
   from: number
-  to: number
-  attrs: Record<string, string>
+  to?: number
+  attrs?: Record<string, string>
+  classNames?: string[]
+  side?: unknown
+  relaxedSide?: unknown
 }
 
 function getAnnotationDecorationCalls(
@@ -141,6 +151,16 @@ function getAnnotationDecorationCalls(
         },
         inline: (from: number, to: number, attrs: Record<string, string>) => {
           calls.push({ kind: 'inline', from, to, attrs })
+          return calls.at(-1)
+        },
+        widget: (from: number, _toDOM: () => HTMLElement, spec?: Record<string, unknown>) => {
+          calls.push({
+            kind: 'widget',
+            from,
+            classNames: Array.isArray(spec?.classNames) ? spec.classNames as string[] : [],
+            relaxedSide: spec?.relaxedSide,
+            side: spec?.side,
+          })
           return calls.at(-1)
         },
       },
@@ -179,74 +199,23 @@ function getAnnotationDecorationCalls(
   return calls
 }
 
-function createParagraphNode(textContent: string, textChildren?: Array<{ text: string; position: number }>) {
-  const contentSize = textChildren
-    ? Math.max(textContent.length, ...textChildren.map((child) => child.position + child.text.length))
-    : textContent.length
-
+function editorDoc(textContent: string, position = 0) {
   return {
-    type: { name: 'paragraph' },
-    textContent,
-    nodeSize: contentSize + 2,
-    descendants: textChildren
-      ? (childVisitor: (node: unknown, position: number) => unknown) => {
-          textChildren.forEach((child) => {
-            childVisitor({ isText: true, text: child.text }, child.position)
-          })
-        }
-      : undefined,
-  }
-}
-
-function getAnnotationAppendTransactionOps(
-  textContent: string,
-  textChildren?: Array<{ text: string; position: number }>,
-) {
-  const pluginBundle = annotationLinePlugin({
-    pmState: {
-      Plugin: class {
-        spec: any
-
-        constructor(spec: any) {
-          this.spec = spec
-        }
-      },
-    },
-    pmView: {
-      Decoration: {
-        node: () => null,
-        inline: () => null,
-      },
-      DecorationSet: {
-        create: () => [],
-      },
-    },
-  })
-
-  const plugin = pluginBundle.wysiwygPlugins[0]() as { spec: any }
-  const ops: Array<{ kind: 'delete'; from: number; to: number } | { kind: 'insertText'; text: string; position: number }> = []
-  const tr = {
-    delete: (from: number, to: number) => {
-      ops.push({ kind: 'delete', from, to })
-      return tr
-    },
-    insertText: (text: string, position: number) => {
-      ops.push({ kind: 'insertText', text, position })
-      return tr
+    descendants: (visitor: (node: unknown, pos: number) => unknown) => {
+      visitor(
+        {
+          type: { name: 'paragraph' },
+          textContent,
+          nodeSize: textContent.length + 2,
+        },
+        position,
+      )
     },
   }
-  const doc = {
-    descendants: (visitor: (node: unknown, position: number) => unknown) => {
-      visitor(createParagraphNode(textContent, textChildren), 0)
-    },
-  }
-
-  const result = plugin.spec.appendTransaction([{ docChanged: true }], {}, { doc, tr })
-  return result ? ops : []
 }
 
 describe('annotation line WYSIWYG decorations', () => {
-  it('decorates arrow markers anywhere in the paragraph', () => {
+  it('adds inline arrow widgets anywhere in the paragraph', () => {
     const cases = [
       ['^-- note', ANNOTATION_LINE_ARROW_UP_CLASS_NAME, ANNOTATION_LINE_TAIL_RIGHT_CLASS_NAME],
       ['note --^', ANNOTATION_LINE_ARROW_UP_CLASS_NAME, ANNOTATION_LINE_TAIL_LEFT_CLASS_NAME],
@@ -255,9 +224,10 @@ describe('annotation line WYSIWYG decorations', () => {
     ] as const
 
     cases.forEach(([source, directionClassName, tailClassName]) => {
-      const nodeDecoration = getAnnotationDecorationCalls(source).find((call) => call.kind === 'node')
-      expect(nodeDecoration?.attrs.class.split(' ')).toEqual(
+      const widgetDecoration = getAnnotationDecorationCalls(source).find((call) => call.kind === 'widget')
+      expect(widgetDecoration?.classNames).toEqual(
         expect.arrayContaining([
+          ANNOTATION_INLINE_ARROW_CLASS_NAME,
           ANNOTATION_LINE_ARROW_CLASS_NAME,
           directionClassName,
           tailClassName,
@@ -268,14 +238,14 @@ describe('annotation line WYSIWYG decorations', () => {
 
   it('hides suffix and middle arrow markers in the live editor decoration range', () => {
     expect(getAnnotationDecorationCalls('asdf --^').find((call) => call.kind === 'inline')).toMatchObject({
-      from: 5,
+      from: 6,
       to: 9,
       attrs: { class: ANNOTATION_LINE_MARKER_CLASS_NAME },
     })
 
     expect(getAnnotationDecorationCalls('one --v two').find((call) => call.kind === 'inline')).toMatchObject({
       from: 5,
-      to: 9,
+      to: 8,
       attrs: { class: ANNOTATION_LINE_MARKER_CLASS_NAME },
     })
   })
@@ -287,40 +257,143 @@ describe('annotation line WYSIWYG decorations', () => {
         { text: '--^', position: 6 },
       ]).find((call) => call.kind === 'inline'),
     ).toMatchObject({
-      from: 5,
+      from: 7,
       to: 10,
       attrs: { class: ANNOTATION_LINE_MARKER_CLASS_NAME },
     })
   })
 
-  it('normalizes suffix arrow markers into the canonical prefix form in the live editor', () => {
-    expect(getAnnotationAppendTransactionOps('asdf --^')).toEqual([
-      { kind: 'delete', from: 5, to: 9 },
-      { kind: 'insertText', text: '--^ ', position: 1 },
+  it('adds a widget and hides the raw marker for every arrow marker without moving text', () => {
+    const calls = getAnnotationDecorationCalls('one --^ two v-- three')
+    const inlineDecorations = calls.filter((call) => call.kind === 'inline')
+    const widgetDecorations = calls.filter((call) => call.kind === 'widget')
+
+    expect(inlineDecorations).toEqual([
+      {
+        kind: 'inline',
+        from: 5,
+        to: 8,
+        attrs: { class: ANNOTATION_LINE_MARKER_CLASS_NAME },
+      },
+      {
+        kind: 'inline',
+        from: 13,
+        to: 16,
+        attrs: { class: ANNOTATION_LINE_MARKER_CLASS_NAME },
+      },
     ])
+    expect(widgetDecorations.map((call) => call.from)).toEqual([5, 13])
+    expect(widgetDecorations.map((call) => call.side)).toEqual([1, 1])
+    expect(widgetDecorations.map((call) => call.relaxedSide)).toEqual([true, true])
+    expect(widgetDecorations.map((call, index) => call.from === inlineDecorations[index].from)).toEqual([true, true])
   })
 
-  it('normalizes middle arrow markers while preserving later marker text', () => {
-    expect(getAnnotationAppendTransactionOps('one --v two --^ three')).toEqual([
-      { kind: 'delete', from: 5, to: 9 },
-      { kind: 'insertText', text: '--v ', position: 1 },
-    ])
+  it('places a start-of-line arrow widget after the paragraph-start cursor position', () => {
+    const calls = getAnnotationDecorationCalls('--^ note')
+    const inlineDecoration = calls.find((call) => call.kind === 'inline')
+    const widgetDecoration = calls.find((call) => call.kind === 'widget')
+
+    expect(inlineDecoration).toMatchObject({
+      from: 1,
+      to: 4,
+      attrs: { class: ANNOTATION_LINE_MARKER_CLASS_NAME },
+    })
+    expect(widgetDecoration).toMatchObject({
+      from: 1,
+      side: 1,
+      relaxedSide: true,
+    })
+  })
+})
+
+describe('annotation arrow deletion', () => {
+  it('deletes the full arrow marker when backspacing from its right edge', () => {
+    expect(getArrowMarkerDeletionRange({
+      doc: editorDoc('asdf --^'),
+      selection: { empty: true, from: 9, to: 9 },
+    }, 'Backspace')).toEqual({ from: 6, to: 9 })
   })
 
-  it('normalizes suffix markers through split ProseMirror text children', () => {
-    expect(
-      getAnnotationAppendTransactionOps('asdf --^', [
-        { text: 'asdf ', position: 0 },
-        { text: '--^', position: 6 },
-      ]),
-    ).toEqual([
-      { kind: 'delete', from: 5, to: 10 },
-      { kind: 'insertText', text: '--^ ', position: 1 },
-    ])
+  it('deletes the full arrow marker when deleting from its left edge', () => {
+    expect(getArrowMarkerDeletionRange({
+      doc: editorDoc('asdf --^'),
+      selection: { empty: true, from: 6, to: 6 },
+    }, 'Delete')).toEqual({ from: 6, to: 9 })
   })
 
-  it('leaves start-of-line arrow markers and regular annotations alone', () => {
-    expect(getAnnotationAppendTransactionOps('--^ asdf')).toEqual([])
-    expect(getAnnotationAppendTransactionOps('-- asdf')).toEqual([])
+  it('expands a partial marker selection to the full arrow marker', () => {
+    expect(getArrowMarkerDeletionRange({
+      doc: editorDoc('one --^ two'),
+      selection: { empty: false, from: 6, to: 7 },
+    }, 'Backspace')).toEqual({ from: 5, to: 8 })
+  })
+
+  it('does not intercept regular annotation lines or non-delete keys', () => {
+    expect(getArrowMarkerDeletionRange({
+      doc: editorDoc('-- text'),
+      selection: { empty: true, from: 2, to: 2 },
+    }, 'Backspace')).toBeNull()
+
+    expect(getArrowMarkerDeletionRange({
+      doc: editorDoc('asdf --^'),
+      selection: { empty: true, from: 9, to: 9 },
+    }, 'Enter')).toBeNull()
+  })
+})
+
+describe('annotation arrow navigation', () => {
+  it('skips the full arrow marker when moving right from its left edge', () => {
+    expect(getArrowMarkerNavigationPosition({
+      doc: editorDoc('asdf --^'),
+      selection: { empty: true, from: 6 },
+    }, 'ArrowRight')).toBe(9)
+  })
+
+  it('skips the full arrow marker when moving left from its right edge', () => {
+    expect(getArrowMarkerNavigationPosition({
+      doc: editorDoc('asdf --^'),
+      selection: { empty: true, from: 9 },
+    }, 'ArrowLeft')).toBe(6)
+  })
+
+  it('moves out of the full marker when the cursor is already inside it', () => {
+    expect(getArrowMarkerNavigationPosition({
+      doc: editorDoc('asdf --^'),
+      selection: { empty: true, from: 7 },
+    }, 'ArrowRight')).toBe(9)
+
+    expect(getArrowMarkerNavigationPosition({
+      doc: editorDoc('asdf --^'),
+      selection: { empty: true, from: 7 },
+    }, 'ArrowLeft')).toBe(6)
+  })
+
+  it('skips the matching marker when multiple arrow markers are present', () => {
+    expect(getArrowMarkerNavigationPosition({
+      doc: editorDoc('one --^ two v-- three'),
+      selection: { empty: true, from: 13 },
+    }, 'ArrowRight')).toBe(16)
+
+    expect(getArrowMarkerNavigationPosition({
+      doc: editorDoc('one --^ two v-- three'),
+      selection: { empty: true, from: 16 },
+    }, 'ArrowLeft')).toBe(13)
+  })
+
+  it('does not intercept regular lines, non-arrow keys, or range selections', () => {
+    expect(getArrowMarkerNavigationPosition({
+      doc: editorDoc('-- text'),
+      selection: { empty: true, from: 2 },
+    }, 'ArrowRight')).toBeNull()
+
+    expect(getArrowMarkerNavigationPosition({
+      doc: editorDoc('asdf --^'),
+      selection: { empty: true, from: 6 },
+    }, 'ArrowDown')).toBeNull()
+
+    expect(getArrowMarkerNavigationPosition({
+      doc: editorDoc('asdf --^'),
+      selection: { empty: false, from: 6 },
+    }, 'ArrowRight')).toBeNull()
   })
 })

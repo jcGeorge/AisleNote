@@ -1,5 +1,6 @@
 export const ANNOTATION_LINE_CLASS_NAME = 'tabs-annotation-line'
 export const ANNOTATION_LINE_MARKER_CLASS_NAME = 'tabs-annotation-line-marker'
+export const ANNOTATION_INLINE_ARROW_CLASS_NAME = 'tabs-annotation-inline-arrow'
 export const ANNOTATION_LINE_ARROW_CLASS_NAME = 'tabs-annotation-line-arrow'
 export const ANNOTATION_LINE_ARROW_UP_CLASS_NAME = 'tabs-annotation-line-arrow-up'
 export const ANNOTATION_LINE_ARROW_DOWN_CLASS_NAME = 'tabs-annotation-line-arrow-down'
@@ -23,7 +24,10 @@ type HtmlOpenTagToken = {
   [key: string]: unknown
 }
 
-export type HtmlToken = HtmlOpenTagToken | HtmlOpenTagToken[] | null
+type HtmlTextToken = { type: 'text'; content?: unknown; [key: string]: unknown }
+type HtmlTokenItem = HtmlOpenTagToken | HtmlTextToken
+
+export type HtmlToken = HtmlTokenItem | HtmlTokenItem[] | null
 
 export type AnnotationLineMatch = {
   indent: string
@@ -92,28 +96,39 @@ function buildAnnotationMatch(
   }
 }
 
-function parseArrowAnnotationLine(normalizedText: string): AnnotationLineMatch | null {
-  const match = /(\^--|--\^|v--|--v)/.exec(normalizedText)
-  if (!match) return null
-  const marker = parseAnnotationMarker(match[1] ?? '')
-  if (!marker) return null
+function parseArrowAnnotationLines(normalizedText: string): AnnotationLineMatch[] {
+  const markerPattern = /\^--|--\^|v--|--v/g
+  const matches: AnnotationLineMatch[] = []
+  let match: RegExpExecArray | null
 
-  const markerStart = match.index
-  const markerEnd = markerStart + marker.raw.length
-  const leadingWhitespaceStart = getWhitespaceRunStart(normalizedText, markerStart)
-  const trailingWhitespaceEnd = getWhitespaceRunEnd(normalizedText, markerEnd)
-  const hasLeadingWhitespace = leadingWhitespaceStart < markerStart
-  const hasTrailingWhitespace = trailingWhitespaceEnd > markerEnd
-  const markerRemovalStart = markerStart === 0 || hasTrailingWhitespace ? markerStart : hasLeadingWhitespace ? leadingWhitespaceStart : markerStart
-  const markerRemovalEnd = hasTrailingWhitespace ? trailingWhitespaceEnd : markerEnd
-  return buildAnnotationMatch(
-    normalizedText,
-    marker,
-    markerStart,
-    markerEnd,
-    markerRemovalStart,
-    markerRemovalEnd,
-  )
+  while ((match = markerPattern.exec(normalizedText)) !== null) {
+    const marker = parseAnnotationMarker(match[0] ?? '')
+    if (!marker) continue
+
+    const markerStart = match.index
+    const markerEnd = markerStart + marker.raw.length
+    const leadingWhitespaceStart = getWhitespaceRunStart(normalizedText, markerStart)
+    const trailingWhitespaceEnd = getWhitespaceRunEnd(normalizedText, markerEnd)
+    const hasLeadingWhitespace = leadingWhitespaceStart < markerStart
+    const hasTrailingWhitespace = trailingWhitespaceEnd > markerEnd
+    const markerRemovalStart = markerStart === 0 || hasTrailingWhitespace ? markerStart : hasLeadingWhitespace ? leadingWhitespaceStart : markerStart
+    const markerRemovalEnd = hasTrailingWhitespace ? trailingWhitespaceEnd : markerEnd
+
+    matches.push(buildAnnotationMatch(
+      normalizedText,
+      marker,
+      markerStart,
+      markerEnd,
+      markerRemovalStart,
+      markerRemovalEnd,
+    ))
+  }
+
+  return matches
+}
+
+function parseArrowAnnotationLine(normalizedText: string): AnnotationLineMatch | null {
+  return parseArrowAnnotationLines(normalizedText)[0] ?? null
 }
 
 function parseLineAnnotationLine(normalizedText: string): AnnotationLineMatch | null {
@@ -140,6 +155,14 @@ export function parseAnnotationLine(text: string): AnnotationLineMatch | null {
   return parseArrowAnnotationLine(normalizedText) ?? parseLineAnnotationLine(normalizedText)
 }
 
+export function parseAnnotationLineMarkers(text: string): AnnotationLineMatch[] {
+  const normalizedText = normalizeAnnotationText(text)
+  const arrowMatches = parseArrowAnnotationLines(normalizedText)
+  if (arrowMatches.length > 0) return arrowMatches
+  const lineMatch = parseLineAnnotationLine(normalizedText)
+  return lineMatch ? [lineMatch] : []
+}
+
 export function isAnnotationLine(text: string): boolean {
   return parseAnnotationLine(text) !== null
 }
@@ -153,6 +176,16 @@ export function getAnnotationLineClassNames(match: AnnotationLineMatch): string[
     match.marker.tailDirection === 'left' ? ANNOTATION_LINE_TAIL_LEFT_CLASS_NAME : ANNOTATION_LINE_TAIL_RIGHT_CLASS_NAME,
   )
   return classNames
+}
+
+export function getAnnotationInlineArrowClassNames(match: AnnotationLineMatch): string[] {
+  if (match.marker.kind !== 'arrow') return []
+  return [
+    ANNOTATION_INLINE_ARROW_CLASS_NAME,
+    ANNOTATION_LINE_ARROW_CLASS_NAME,
+    match.marker.arrowDirection === 'up' ? ANNOTATION_LINE_ARROW_UP_CLASS_NAME : ANNOTATION_LINE_ARROW_DOWN_CLASS_NAME,
+    match.marker.tailDirection === 'left' ? ANNOTATION_LINE_TAIL_LEFT_CLASS_NAME : ANNOTATION_LINE_TAIL_RIGHT_CLASS_NAME,
+  ]
 }
 
 function addAnnotationClassToOpenTagToken(token: HtmlOpenTagToken, match: AnnotationLineMatch | null): HtmlOpenTagToken {
@@ -223,6 +256,18 @@ function getTextOffsetInParent(node: unknown): number | null {
   return null
 }
 
+function createInlineArrowHtmlTokens(match: AnnotationLineMatch): HtmlOpenTagToken[] {
+  return [
+    {
+      type: 'openTag',
+      tagName: 'span',
+      classNames: getAnnotationInlineArrowClassNames(match),
+      attributes: { 'aria-hidden': 'true' },
+    },
+    { type: 'closeTag', tagName: 'span' },
+  ]
+}
+
 export function applyAnnotationMarkerToTextHtmlToken(node: unknown, token: unknown): unknown {
   const parent = (node as { parent?: { type?: unknown; firstChild?: unknown } | null } | null)?.parent ?? null
   const parentType = parent?.type
@@ -230,8 +275,8 @@ export function applyAnnotationMarkerToTextHtmlToken(node: unknown, token: unkno
 
   const literal = getLiteralText(node)
   const parentText = parent ? getToastNodeText(parent) : literal
-  const annotationMatch = parseAnnotationLine(parentText || literal)
-  if (!annotationMatch) return token
+  const annotationMatches = parseAnnotationLineMarkers(parentText || literal)
+  if (annotationMatches.length === 0) return token
 
   const originalTextToken =
     token && typeof token === 'object' && !Array.isArray(token) && (token as { type?: unknown }).type === 'text'
@@ -241,16 +286,54 @@ export function applyAnnotationMarkerToTextHtmlToken(node: unknown, token: unkno
   const content = typeof originalTextToken.content === 'string' ? originalTextToken.content : literal
   const offset = getTextOffsetInParent(node)
   if (offset === null) return token
-  const markerFrom = Math.max(0, annotationMatch.markerRemovalStart - offset)
-  const markerTo = Math.min(content.length, annotationMatch.markerRemovalEnd - offset)
-  if (markerTo <= markerFrom || markerTo <= 0 || markerFrom >= content.length) return token
+
+  const markerRanges = annotationMatches
+    .map((annotationMatch) => {
+      const removeStart =
+        annotationMatch.marker.kind === 'arrow'
+          ? annotationMatch.markerStart
+          : annotationMatch.markerRemovalStart
+      const removeEnd =
+        annotationMatch.marker.kind === 'arrow'
+          ? annotationMatch.markerEnd
+          : annotationMatch.markerRemovalEnd
+      const arrowStartsInToken =
+        annotationMatch.marker.kind === 'arrow' &&
+        annotationMatch.markerStart >= offset &&
+        annotationMatch.markerStart < offset + content.length
+
+      return {
+        from: Math.max(0, removeStart - offset),
+        to: Math.min(content.length, removeEnd - offset),
+        arrowMatch: arrowStartsInToken ? annotationMatch : null,
+      }
+    })
+    .filter((range) => range.to > range.from && range.to > 0 && range.from < content.length)
+    .sort((first, second) => first.from - second.from || first.to - second.to)
+    .reduce<Array<{ from: number; to: number; arrowMatch: AnnotationLineMatch | null }>>((ranges, range) => {
+      const previous = ranges.at(-1)
+      if (!previous || range.from > previous.to) {
+        ranges.push(range)
+      } else {
+        previous.to = Math.max(previous.to, range.to)
+        previous.arrowMatch = previous.arrowMatch ?? range.arrowMatch
+      }
+      return ranges
+    }, [])
+
+  if (markerRanges.length === 0) return token
 
   const tokens: unknown[] = []
-  if (markerFrom > 0) {
-    tokens.push({ ...originalTextToken, content: content.slice(0, markerFrom) })
-  }
-  if (markerTo < content.length) {
-    tokens.push({ ...originalTextToken, content: content.slice(markerTo) })
-  }
-  return tokens
+  let cursor = 0
+  markerRanges.forEach((range) => {
+    if (range.from > cursor) {
+      tokens.push({ ...originalTextToken, content: content.slice(cursor, range.from) })
+    }
+    if (range.arrowMatch) {
+      tokens.push(...createInlineArrowHtmlTokens(range.arrowMatch))
+    }
+    cursor = Math.max(cursor, range.to)
+  })
+  if (cursor < content.length) tokens.push({ ...originalTextToken, content: content.slice(cursor) })
+  return tokens.length > 0 ? tokens : [{ ...originalTextToken, content: '' }]
 }

@@ -607,6 +607,17 @@
   background: currentColor !important;
 }
 
+.theme-dawn .toastui-editor-contents .tabs-annotation-inline-arrow,
+.theme-dawn .toastui-editor .ProseMirror .tabs-annotation-inline-arrow {
+  color: var(--editor-text) !important;
+  background: transparent !important;
+}
+
+.theme-dawn .toastui-editor-contents .tabs-annotation-inline-arrow::before,
+.theme-dawn .toastui-editor .ProseMirror .tabs-annotation-inline-arrow::before {
+  background: currentColor !important;
+}
+
 .theme-dawn .toastui-editor-contents .tabs-annotation-line-marker,
 .theme-dawn .toastui-editor-contents .tabs-annotation-line-marker *,
 .theme-dawn .toastui-editor .ProseMirror .tabs-annotation-line-marker,
