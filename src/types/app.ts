@@ -292,8 +292,9 @@ export type ToastState = {
 export type ImageToolsState = {
   visible: boolean
   menuMode: 'start' | 'transform'
-  cropTop: number
-  cropLeft: number
+  toolbarTop: number
+  toolbarLeft: number
+  toolbarMinWidth: number
   resizeTop: number
   resizeLeft: number
 }

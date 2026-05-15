@@ -48,7 +48,16 @@ function CropHandle({
 
 function CropButton({ children, onClick, title }: { children: ReactNode; onClick: () => void; title: string }) {
   return (
-    <button type="button" className="image-tool-btn" onClick={onClick} title={title}>
+    <button
+      type="button"
+      className="image-tool-btn"
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={(event) => {
+        event.preventDefault()
+        onClick()
+      }}
+      title={title}
+    >
       {children}
     </button>
   )
@@ -97,9 +106,28 @@ export function ImageToolsOverlay({
 }: ImageToolsOverlayProps) {
   if (!visible || !imageTools.visible) return null
 
+  const stopToolbarPointerEvent = (event: PointerEvent<HTMLElement>) => {
+    event.stopPropagation()
+  }
+
+  const stopToolbarMouseEvent = (event: MouseEvent<HTMLElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+  }
+
   return (
     <>
-      <div className="image-tools" style={{ top: `${imageTools.cropTop}px`, left: `${imageTools.cropLeft}px` }}>
+      <div
+        className="image-tools"
+        style={{
+          top: `${imageTools.toolbarTop}px`,
+          left: `${imageTools.toolbarLeft}px`,
+          minWidth: `${imageTools.toolbarMinWidth}px`,
+        }}
+        onPointerDown={stopToolbarPointerEvent}
+        onMouseDown={stopToolbarMouseEvent}
+        onClick={stopToolbarMouseEvent}
+      >
         {!inlineCrop.active ? (
           imageTools.menuMode === 'transform' ? (
             <>
@@ -129,16 +157,16 @@ export function ImageToolsOverlay({
               />
               <button
                 type="button"
-                className="image-tool-btn image-transform-btn"
+                className="image-tool-btn image-transform-cancel-btn"
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={(event) => {
                   event.preventDefault()
                   onReturnToStart()
                 }}
-                title="Return to image tools"
-                aria-label="Return to image tools"
+                title="Cancel transform"
+                aria-label="Cancel transform"
               >
-                <span className="image-transform-icon is-return" aria-hidden="true" />
+                cancel
               </button>
             </>
           ) : (

@@ -634,11 +634,15 @@
   z-index: 2150;
   display: inline-flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 0.22rem;
+  width: max-content;
+  min-height: 1.9rem;
   padding: 0;
   border: 0;
   background: transparent;
   box-shadow: none;
+  pointer-events: auto;
 }
 
 .image-tool-btn {
@@ -665,6 +669,12 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.image-transform-cancel-btn {
+  height: 1.75rem;
+  min-width: 3.45rem;
+  padding: 0 0.62rem;
 }
 
 .image-transform-icon {

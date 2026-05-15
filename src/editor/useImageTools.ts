@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, type MouseEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react'
 import type { Editor } from '@toast-ui/editor'
 import type { InlineCropDragMode } from '../components/editor/ImageToolsOverlay'
+import { getImageToolPlacement } from './image-tool-placement'
 import {
   getImageResizeMetadata,
   stripImageResizeMetadataFromUrl,
@@ -38,8 +39,9 @@ export function useImageTools({
   const [imageTools, setImageTools] = useState<ImageToolsState>({
     visible: false,
     menuMode: 'start',
-    cropTop: 0,
-    cropLeft: 0,
+    toolbarTop: 0,
+    toolbarLeft: 0,
+    toolbarMinWidth: 0,
     resizeTop: 0,
     resizeLeft: 0,
   })
@@ -56,6 +58,7 @@ export function useImageTools({
   })
   const activeImageRef = useRef<HTMLImageElement | null>(null)
   const imageResizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
+  const imageTransformRebindInProgressRef = useRef(false)
   const inlineCropRef = useRef<InlineCropState>(inlineCrop)
   const inlineCropDragRef = useRef<{
     mode: InlineCropDragMode | null
@@ -132,7 +135,15 @@ export function useImageTools({
     imageResizeRef.current = null
     resetInlineCropDrag()
     updateInlineCrop({ active: false, relX: 0, relY: 0, relWidth: 1, relHeight: 1, top: 0, left: 0, width: 0, height: 0 })
-    setImageTools({ visible: false, menuMode: 'start', cropTop: 0, cropLeft: 0, resizeTop: 0, resizeLeft: 0 })
+    setImageTools({
+      visible: false,
+      menuMode: 'start',
+      toolbarTop: 0,
+      toolbarLeft: 0,
+      toolbarMinWidth: 0,
+      resizeTop: 0,
+      resizeLeft: 0,
+    })
   }
 
   useEffect(() => {
@@ -197,25 +208,30 @@ export function useImageTools({
     if (!image) return
     const editorRoot = editorEventRootRef.current
     if (!image.isConnected || (editorRoot && !editorRoot.contains(image))) {
+      if (imageTransformRebindInProgressRef.current) return
       close()
     }
   }
 
-  const refreshPosition = () => {
+  const refreshPosition = (options: { closeOnMissing?: boolean } = {}) => {
     syncEditorImageDisplayMetadata()
     const image = activeImageRef.current
     if (!image || !image.isConnected) {
-      close()
+      if (options.closeOnMissing !== false) {
+        close()
+      }
       return
     }
     const rect = image.getBoundingClientRect()
+    const placement = getImageToolPlacement(rect)
     setImageTools((previous) => ({
       visible: true,
       menuMode: previous.visible ? previous.menuMode : 'start',
-      cropTop: Math.max(8, rect.top + 4),
-      cropLeft: Math.max(8, rect.left + 4),
-      resizeTop: Math.max(8, rect.bottom - 2),
-      resizeLeft: Math.max(8, rect.right - 2),
+      toolbarTop: placement.toolbarTop,
+      toolbarLeft: placement.toolbarLeft,
+      toolbarMinWidth: placement.toolbarMinWidth,
+      resizeTop: placement.resizeTop,
+      resizeLeft: placement.resizeLeft,
     }))
 
     updateInlineCrop((previous) => {
@@ -358,14 +374,50 @@ export function useImageTools({
     return fallback
   }
 
+  const getRenderedImageAtPosition = (view: any, position: number): HTMLImageElement | null => {
+    const renderedNode = view?.nodeDOM?.(position) ?? null
+    if (renderedNode instanceof HTMLImageElement) return renderedNode
+    if (renderedNode instanceof Element) {
+      const image = renderedNode.querySelector('img')
+      return image instanceof HTMLImageElement ? image : null
+    }
+    return null
+  }
+
+  const findRenderedImageBySource = (sourceUrl: string, altText?: string | null): HTMLImageElement | null => {
+    const root = editorEventRootRef.current
+    if (!root) return null
+    const expectedAlt = altText ?? ''
+    for (const image of root.querySelectorAll('img')) {
+      if (!(image instanceof HTMLImageElement)) continue
+      const candidateUrl = image.getAttribute('src') ?? image.src
+      if (candidateUrl !== sourceUrl && image.src !== sourceUrl) continue
+      if (expectedAlt && image.alt !== expectedAlt) continue
+      return image
+    }
+    return null
+  }
+
+  const rebindActiveImage = (
+    sourceUrl: string,
+    fallback: HTMLImageElement,
+    altText?: string | null,
+  ): HTMLImageElement | null => {
+    const renderedImage = findRenderedImageBySource(sourceUrl, altText) ?? (fallback.isConnected ? fallback : null)
+    if (renderedImage) {
+      activeImageRef.current = renderedImage
+    }
+    return renderedImage
+  }
+
   const updateEditorImageNode = (image: HTMLImageElement, attrs: { imageUrl?: string; altText?: string | null }) => {
     activateEditorFromEventTarget(image)
     const currentEditor = editorRef.current
     const view = getWysiwygView(currentEditor)
-    if (!currentEditor || !view) return false
+    if (!currentEditor || !view) return { updated: false, image: null }
 
     const hit = findImageNodeHitForElement(view, image)
-    if (!hit) return false
+    if (!hit) return { updated: false, image: null }
 
     view.dispatch(
       view.state.tr
@@ -375,8 +427,14 @@ export function useImageTools({
         })
         .scrollIntoView(),
     )
+    const renderedImage =
+      getRenderedImageAtPosition(view, hit.pos) ??
+      (attrs.imageUrl ? findRenderedImageBySource(attrs.imageUrl, attrs.altText) : null)
+    if (renderedImage) {
+      activeImageRef.current = renderedImage
+    }
     commitActiveEditorMarkdownNow(currentEditor)
-    return true
+    return { updated: true, image: renderedImage }
   }
 
   const deleteSelectedImage = () => {
@@ -413,11 +471,14 @@ export function useImageTools({
       const displayWidth = Math.max(8, Math.round(rect.width))
       const sourceUrl = image.getAttribute('src') ?? image.src
       const nextImageUrl = withImageResizeMetadata(sourceUrl, { v: 1, w: displayWidth })
-      if (!updateEditorImageNode(image, { imageUrl: nextImageUrl, altText: image.alt || null })) {
+      const updateResult = updateEditorImageNode(image, { imageUrl: nextImageUrl, altText: image.alt || null })
+      const selectedImage = updateResult.image ?? rebindActiveImage(nextImageUrl, image, image.alt || null) ?? image
+      if (!updateResult.updated) {
         image.src = nextImageUrl
         commitCurrentEditorContent()
       }
-      syncImageDisplayMetadata(image)
+      activeImageRef.current = selectedImage
+      syncImageDisplayMetadata(selectedImage)
       refreshPosition()
     } catch {
       commitCurrentEditorContent()
@@ -530,15 +591,19 @@ export function useImageTools({
     context.drawImage(sourceImage, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, sourceWidth, sourceHeight)
     const nextDataUrl = withImageResizeMetadata(canvas.toDataURL('image/png'), { v: 1, w: renderedWidth })
 
-    if (!updateEditorImageNode(image, { imageUrl: nextDataUrl, altText: image.alt || null })) {
+    const updateResult = updateEditorImageNode(image, { imageUrl: nextDataUrl, altText: image.alt || null })
+    const selectedImage = updateResult.image ?? rebindActiveImage(nextDataUrl, image, image.alt || null) ?? image
+    if (!updateResult.updated) {
       image.src = nextDataUrl
       commitCurrentEditorContent()
     }
-    image.style.width = `${renderedWidth}px`
-    image.style.height = `${renderedHeight}px`
-    image.setAttribute('width', String(renderedWidth))
-    image.setAttribute('height', String(renderedHeight))
-    image.style.maxWidth = 'none'
+    activeImageRef.current = selectedImage
+    selectedImage.src = nextDataUrl
+    selectedImage.style.width = `${renderedWidth}px`
+    selectedImage.style.height = `${renderedHeight}px`
+    selectedImage.setAttribute('width', String(renderedWidth))
+    selectedImage.setAttribute('height', String(renderedHeight))
+    selectedImage.style.maxWidth = 'none'
     cancelCrop()
     refreshPosition()
   }
@@ -547,6 +612,7 @@ export function useImageTools({
     const image = activeImageRef.current
     if (!image || !image.isConnected || !image.src || inlineCropRef.current.active) return false
 
+    imageTransformRebindInProgressRef.current = true
     try {
       const sourceUrl = image.getAttribute('src') ?? image.src
       const sourceImage = new Image()
@@ -574,20 +640,30 @@ export function useImageTools({
       const nextDataUrl = withPreservedImageTransformDisplayWidth(canvas.toDataURL('image/png'), sourceUrl, renderedWidth)
       const displayWidth = getImageTransformDisplayWidth(nextDataUrl, renderedWidth)
 
-      if (!updateEditorImageNode(image, { imageUrl: nextDataUrl, altText: image.alt || null })) {
+      const updateResult = updateEditorImageNode(image, { imageUrl: nextDataUrl, altText: image.alt || null })
+      const selectedImage = updateResult.image ?? rebindActiveImage(nextDataUrl, image, image.alt || null) ?? image
+      if (!updateResult.updated) {
         image.src = nextDataUrl
         commitCurrentEditorContent()
       }
-      image.src = nextDataUrl
-      image.style.width = `${displayWidth}px`
-      image.style.height = 'auto'
-      image.style.maxWidth = '100%'
-      image.setAttribute('width', String(displayWidth))
-      image.removeAttribute('height')
-      refreshPosition()
+      activeImageRef.current = selectedImage
+      selectedImage.src = nextDataUrl
+      selectedImage.style.width = `${displayWidth}px`
+      selectedImage.style.height = 'auto'
+      selectedImage.style.maxWidth = '100%'
+      selectedImage.setAttribute('width', String(displayWidth))
+      selectedImage.removeAttribute('height')
       setImageTools((previous) => (previous.visible ? { ...previous, menuMode: 'transform' } : previous))
+      refreshPosition({ closeOnMissing: false })
+      window.requestAnimationFrame(() => {
+        rebindActiveImage(nextDataUrl, selectedImage, selectedImage.alt || null)
+        setImageTools((previous) => (previous.visible ? { ...previous, menuMode: 'transform' } : previous))
+        refreshPosition({ closeOnMissing: false })
+        imageTransformRebindInProgressRef.current = false
+      })
       return true
     } catch {
+      imageTransformRebindInProgressRef.current = false
       pushToast('could not transform image.', 'warning')
       return false
     }

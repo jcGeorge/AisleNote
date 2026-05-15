@@ -6,8 +6,9 @@ import { ImageToolsOverlay } from './ImageToolsOverlay'
 const baseImageTools: ImageToolsState = {
   visible: true,
   menuMode: 'start',
-  cropTop: 10,
-  cropLeft: 20,
+  toolbarTop: 10,
+  toolbarLeft: 20,
+  toolbarMinWidth: 160,
   resizeTop: 100,
   resizeLeft: 120,
 }
@@ -64,15 +65,22 @@ describe('ImageToolsOverlay transform menu', () => {
     expect(html).not.toContain('Rotate clockwise')
   })
 
-  it('shows four transform icon buttons plus return in transform mode', () => {
+  it('shows four transform icon buttons plus cancel in transform mode', () => {
     const html = renderOverlay({ ...baseImageTools, menuMode: 'transform' })
 
-    expect(html.match(/image-transform-btn/g)).toHaveLength(5)
+    expect(html.match(/image-transform-btn/g)).toHaveLength(4)
     expect(html).toContain('Rotate counterclockwise')
     expect(html).toContain('Rotate clockwise')
     expect(html).toContain('Flip horizontal')
     expect(html).toContain('Flip vertical')
-    expect(html).toContain('Return to image tools')
+    expect(html).toContain('cancel')
+    expect(html).not.toContain('Return to image tools')
+  })
+
+  it('renders the transparent toolbar hit zone at the selected image width', () => {
+    const html = renderOverlay(baseImageTools)
+
+    expect(html).toContain('min-width:160px')
   })
 
   it('only shows apply and cancel controls while crop is active', () => {

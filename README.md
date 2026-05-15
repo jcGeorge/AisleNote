@@ -34,11 +34,15 @@ When changing storage behavior, add or update a round-trip test before editing s
 ```sh
 npm run dev
 npm run electron:dev
+npm run start:mac
+npm run start:windows
 npm run lint
 npx tsc -b --pretty false --noEmit
 npm test
 npm run build
 ```
+
+`npm run start:mac` and `npm run start:windows` both build the app and launch Electron through the cross-platform Node launcher in `scripts/start-electron.mjs`.
 
 `npm run lint` is expected to exit successfully. Existing `react-hooks/exhaustive-deps` warnings mark known ref-heavy areas that should be retired as those controllers are split.
 
