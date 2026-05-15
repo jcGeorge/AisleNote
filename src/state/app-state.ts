@@ -1,4 +1,10 @@
 import { DEFAULT_NEWLINE_SHORTCUT_SETTINGS, DEFAULT_SHORTCUTS, normalizeHotkeySettings } from '../hotkeys/shortcuts'
+import {
+  DEFAULT_FRONTMATTER_SETTINGS,
+  extractMarkdownFrontmatter,
+  normalizeFrontmatterData,
+  normalizeFrontmatterSettings,
+} from '../frontmatter/frontmatter'
 import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
 import {
   DEFAULT_AUTO_REMOVE_DAYS,
@@ -35,12 +41,14 @@ const RAW_DEFAULT_STATE: AppState = {
     enableMouseBackForward: true,
     enableGenericHistoryHotkeys: true,
   },
+  frontmatter: DEFAULT_FRONTMATTER_SETTINGS,
   ui: DEFAULT_UI_SETTINGS,
 }
 
 function createNoteBodyWithId(id: string, markdown = ''): NoteBody {
   return {
     id,
+    frontmatter: null,
     aisles: [
       {
         id: createId(),
@@ -71,17 +79,32 @@ function normalizeNoteBodies(raw: unknown): NoteBody[] {
     if (seen.has(id)) continue
     seen.add(id)
     const aisles = normalizeNoteAisles(candidate.aisles)
+    const fallbackAisles =
+      aisles.length > 0
+        ? aisles
+        : [
+            {
+              id: createId(),
+              markdown: normalizeMarkdownForPersistence(typeof candidate.markdown === 'string' ? candidate.markdown : ''),
+            },
+          ]
+    const savedFrontmatter = normalizeFrontmatterData(candidate.frontmatter)
+    const extracted = !savedFrontmatter && fallbackAisles[0]?.markdown
+      ? extractMarkdownFrontmatter(fallbackAisles[0].markdown)
+      : null
+    const normalizedAisles = extracted?.frontmatter
+      ? [
+          {
+            ...fallbackAisles[0],
+            markdown: normalizeMarkdownForPersistence(extracted.markdown),
+          },
+          ...fallbackAisles.slice(1),
+        ]
+      : fallbackAisles
     bodies.push({
       id,
-      aisles:
-        aisles.length > 0
-          ? aisles
-          : [
-              {
-                id: createId(),
-                markdown: normalizeMarkdownForPersistence(typeof candidate.markdown === 'string' ? candidate.markdown : ''),
-              },
-            ],
+      frontmatter: savedFrontmatter ?? extracted?.frontmatter ?? null,
+      aisles: normalizedAisles,
     })
   }
   return bodies
@@ -245,6 +268,7 @@ export function parseSavedState(raw: string | null): AppState {
         activeSpaceId,
         spaces,
         hotkeys: normalizeHotkeySettings(parsed.hotkeys),
+        frontmatter: normalizeFrontmatterSettings(parsed.frontmatter),
         ui: normalizeUiSettings(parsed.ui),
       }))
     }
@@ -265,6 +289,7 @@ export function parseSavedState(raw: string | null): AppState {
       activeSpaceId: migratedSpace.id,
       spaces: [migratedSpace],
       hotkeys: normalizeHotkeySettings(parsed.hotkeys),
+      frontmatter: normalizeFrontmatterSettings(parsed.frontmatter),
       ui: normalizeUiSettings(parsed.ui),
     }))
   } catch {

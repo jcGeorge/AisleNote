@@ -1,6 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, useMemo, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import { sanitizeName } from '../export/export-data'
+import { applyTemplateToStageManagerSelection } from '../frontmatter/frontmatter-state'
 import { DEFAULT_AUTO_REMOVE_DAYS } from '../settings/defaults'
 import { applyAutoPurgeToAppState } from '../state/app-state'
 import { createId, createWorkspaceDataFromTabs } from '../state/workspace'
@@ -392,6 +393,9 @@ export function useStageManagerController({
     if (nextAction === 'promote' && snapshot.fullParents.length === 1 && draft.newSpaceName.trim().length === 0) {
       updateDraft({ newSpaceName: snapshot.fullParents[0].title })
     }
+    if (nextAction === 'frontmatter' && !draft.frontmatterTemplateId) {
+      updateDraft({ frontmatterTemplateId: state.frontmatter.activeTemplateId })
+    }
   }
 
   const handleParentClick = (tab: Tab) => {
@@ -599,6 +603,16 @@ export function useStageManagerController({
       return { valid: true, message: '' }
     }
 
+    if (action === 'frontmatter') {
+      if (!state.frontmatter.templates.some((template) => template.id === draft.frontmatterTemplateId)) {
+        return {
+          valid: false,
+          message: 'choose a frontmatter template before continuing.',
+        }
+      }
+      return { valid: true, message: '' }
+    }
+
     return { valid: true, message: '' }
   }
 
@@ -670,6 +684,10 @@ export function useStageManagerController({
           )
         }
       }
+    } else if (action === 'frontmatter') {
+      const template = state.frontmatter.templates.find((candidate) => candidate.id === draft.frontmatterTemplateId)
+      details.push(`template: ${template?.name ?? 'none selected'}`)
+      details.push(`mode: ${draft.frontmatterApplyMode}`)
     } else if (action === 'mass-delete') {
       details.push(`mode: ${draft.massDeleteMode === 'trash' ? 'move to trash' : 'delete for real'}`)
     }
@@ -685,6 +703,7 @@ export function useStageManagerController({
     selectedPromoteSpace,
     selectionCounts,
     selectionSnapshot,
+    state.frontmatter.templates,
     state.spaces,
     strayExistingParentOptions,
   ])
@@ -709,6 +728,7 @@ export function useStageManagerController({
     if (action === 'promote') return 'selected items have been promoted.'
     if (action === 'demote') return 'selected items have been demoted.'
     if (action === 'migrate') return 'selected items have been migrated.'
+    if (action === 'frontmatter') return 'frontmatter has been applied.'
     return 'director changes applied.'
   }
 
@@ -750,6 +770,25 @@ export function useStageManagerController({
     const snapshot = buildStageManagerSelectionSnapshot(currentSpace.data.tabs, selections)
     if (!snapshot.hasSelection) {
       pushToast('select at least one parent or sub-tab before applying director.', 'warning')
+      return
+    }
+
+    if (action === 'frontmatter') {
+      const template = latestState.frontmatter.templates.find((candidate) => candidate.id === draft.frontmatterTemplateId)
+      if (!template) {
+        pushToast('choose a frontmatter template before applying director.', 'warning')
+        return
+      }
+      finishApply(
+        applyTemplateToStageManagerSelection(
+          latestState,
+          latestState.activeSpaceId,
+          snapshot,
+          template,
+          draft.frontmatterApplyMode,
+        ),
+        getApplyToastMessage(),
+      )
       return
     }
 

@@ -1,5 +1,6 @@
 import type { MouseEvent, Dispatch, SetStateAction, MutableRefObject } from 'react'
 import type { ExportScope } from '../export/export-data'
+import { updateNoteBodyFrontmatterFromYaml } from '../frontmatter/frontmatter-state'
 import {
   buildNoteLocationKey,
   getDefaultNoteReferenceTarget,
@@ -482,6 +483,7 @@ export const useAppOverlayActions = ({
         if (keepKeys.has(buildNoteLocationKey(location))) continue
         const emptyBody: NoteBody = {
           id: createId(),
+          frontmatter: null,
           aisles: [{ id: createId(), markdown: '' }],
         }
         newBodies.push(emptyBody)
@@ -497,6 +499,19 @@ export const useAppOverlayActions = ({
       if (insertNoteReference(modal)) {
         setModal(null)
       }
+      return
+    }
+
+    if (modal.type === 'frontmatter-note') {
+      const result = updateNoteBodyFrontmatterFromYaml(stateRef.current, modal.noteBodyId, modal.draftYaml)
+      if (!result.ok) {
+        pushToast(result.message, 'error')
+        return
+      }
+      stateRef.current = result.state
+      setState(result.state)
+      setModal(null)
+      pushToast(result.state.noteBodies.find((body) => body.id === modal.noteBodyId)?.frontmatter ? 'frontmatter saved.' : 'frontmatter removed.', 'success')
       return
     }
 

@@ -5,7 +5,7 @@ import {
   NEWLINE_OPERATION_LABELS,
 } from '../../hotkeys/shortcuts'
 import { buildNoteLocationKey, listNoteLocationsForBody } from '../../notes/note-locations'
-import type { AppState, Domain, ModalState, NewlineOperationId, Space } from '../../types/app'
+import type { AppState, Domain, FrontmatterApplyMode, ModalState, NewlineOperationId, Space } from '../../types/app'
 import { getModalText } from './modal-text'
 
 type ModalHostProps = {
@@ -16,6 +16,13 @@ type ModalHostProps = {
   newlineMenuOperations: NewlineOperationId[]
   onModalChange: (modal: ModalState | null) => void
   onNewlineMenuOperationsChange: (operations: NewlineOperationId[]) => void
+  onBuildFrontmatterTemplateDraft: (
+    noteBodyId: string,
+    templateId: string,
+    rawYaml: string,
+    mode: FrontmatterApplyMode,
+  ) => { ok: true; yaml: string } | { ok: false; message: string }
+  onWarn: (message: string) => void
   onConfirm: () => void
 }
 
@@ -158,6 +165,8 @@ export function ModalHost({
   newlineMenuOperations,
   onModalChange,
   onNewlineMenuOperationsChange,
+  onBuildFrontmatterTemplateDraft,
+  onWarn,
   onConfirm,
 }: ModalHostProps) {
   useEffect(() => {
@@ -185,6 +194,7 @@ export function ModalHost({
     modal.type === 'copy-note' ||
     modal.type === 'deduplicate-note' ||
     modal.type === 'insert-note-reference' ||
+    modal.type === 'frontmatter-note' ||
     modal.type === 'newline-menu-settings'
   const isNotePickerModal = modal.type === 'copy-note' || modal.type === 'insert-note-reference'
 
@@ -295,6 +305,65 @@ export function ModalHost({
         )}
         {modal.type === 'newline-menu-settings' && (
           <NewlineMenuSettings operations={newlineMenuOperations} onChange={onNewlineMenuOperationsChange} />
+        )}
+        {modal.type === 'frontmatter-note' && (
+          <div className="frontmatter-note-modal">
+            <div className="frontmatter-note-toolbar">
+              <select
+                className="settings-select-input"
+                value={modal.selectedTemplateId}
+                onChange={(event) => onModalChange({ ...modal, selectedTemplateId: event.target.value })}
+              >
+                {state.frontmatter.templates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="settings-select-input frontmatter-apply-mode-select"
+                value={modal.applyMode}
+                onChange={(event) => onModalChange({ ...modal, applyMode: event.target.value as FrontmatterApplyMode })}
+              >
+                <option value="merge">merge</option>
+                <option value="replace">replace</option>
+              </select>
+              <button
+                type="button"
+                className="btn btn-sm settings-action-btn"
+                onClick={() => {
+                  const result = onBuildFrontmatterTemplateDraft(
+                    modal.noteBodyId,
+                    modal.selectedTemplateId,
+                    modal.draftYaml,
+                    modal.applyMode,
+                  )
+                  if (!result.ok) {
+                    onWarn(result.message)
+                    return
+                  }
+                  onModalChange({ ...modal, draftYaml: result.yaml })
+                }}
+                disabled={!modal.selectedTemplateId}
+              >
+                apply template
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm settings-action-btn"
+                onClick={() => onModalChange({ ...modal, draftYaml: '' })}
+              >
+                remove
+              </button>
+            </div>
+            <textarea
+              className="frontmatter-yaml-textarea"
+              value={modal.draftYaml}
+              spellCheck={false}
+              onChange={(event) => onModalChange({ ...modal, draftYaml: event.target.value })}
+              aria-label="frontmatter YAML"
+            />
+          </div>
         )}
         <div className="delete-modal-actions">
           <button type="button" className="btn btn-sm btn-outline-light modal-cancel-btn" onClick={() => onModalChange(null)}>

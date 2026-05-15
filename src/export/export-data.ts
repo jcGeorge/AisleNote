@@ -1,4 +1,5 @@
 import JSZip from 'jszip'
+import { prependMarkdownFrontmatter } from '../frontmatter/frontmatter'
 import { splitImageResizeMetadataFromUrl } from '../markdown/image-metadata'
 import { convertInternalTabsForExport } from '../markdown/markdown-utils'
 import type { AppState, Space, SpaceSettings } from '../types/app'
@@ -63,6 +64,18 @@ function rewriteMarkdownImages(markdown: string, spaceFolder: string, imageBank:
     return `![${alt}](${nextSrc})`
   })
   return nextMarkdown
+}
+
+function getExportMarkdownForBody(
+  state: AppState,
+  noteBodyId: string,
+  fallbackMarkdown: string,
+  spaceFolder: string,
+  imageBank: Map<string, Uint8Array>,
+): string {
+  const body = state.noteBodies.find((candidate) => candidate.id === noteBodyId) ?? null
+  const markdown = body?.aisles[0]?.markdown ?? fallbackMarkdown
+  return prependMarkdownFrontmatter(rewriteMarkdownImages(markdown, spaceFolder, imageBank), body?.frontmatter ?? null)
 }
 
 export async function exportAppData({
@@ -139,13 +152,13 @@ export async function exportAppData({
 
       for (const tab of space.data.tabs) {
         const tabFolder = `${spaceFolder}/${sanitizeName(tab.title)}-${tab.id.slice(0, 8)}`
-        const homeMarkdown = rewriteMarkdownImages(tab.homeContent ?? '', spaceFolder, imageBank)
+        const homeMarkdown = getExportMarkdownForBody(exportState, tab.noteBodyId, tab.homeContent ?? '', spaceFolder, imageBank)
         zip.file(`${tabFolder}/home.md`, homeMarkdown)
 
         const subManifest: Array<{ id: string; title: string; file: string }> = []
         tab.subTabs.forEach((subTab, index) => {
           const subFileName = `${String(index + 1).padStart(2, '0')}-${sanitizeName(subTab.title)}.md`
-          const rewritten = rewriteMarkdownImages(subTab.content ?? '', spaceFolder, imageBank)
+          const rewritten = getExportMarkdownForBody(exportState, subTab.noteBodyId, subTab.content ?? '', spaceFolder, imageBank)
           zip.file(`${tabFolder}/${subFileName}`, rewritten)
           subManifest.push({ id: subTab.id, title: subTab.title, file: subFileName })
         })

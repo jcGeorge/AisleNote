@@ -1,5 +1,6 @@
 import { useEffect, useRef, type Dispatch, type SetStateAction } from 'react'
 import { setActiveSpaceInActiveDomain, updateSpaceInActiveDomain } from '../state/domains'
+import { applyWorkspaceNavigationLocation } from '../state/navigation-memory'
 import type { AppState, NavLocation, ViewMode } from '../types/app'
 
 type UseNavigationHistoryParams = {
@@ -61,27 +62,9 @@ export function useNavigationHistory({
       const resolvedSpaceId = resolvedSpace?.id ?? projected.activeSpaceId
 
       return updateSpaceInActiveDomain(setActiveSpaceInActiveDomain(projected, resolvedSpaceId), resolvedSpaceId, (space) => {
-        const data = space.data
-        const resolvedTabId = data.tabs.some((tab) => tab.id === location.mainTabId)
-          ? location.mainTabId
-          : data.tabs[0]?.id ?? data.activeTabId
-
-        const tabs = data.tabs.map((tab) => {
-          if (tab.id !== resolvedTabId) return tab
-          const resolvedSubTabId =
-            location.mainSubTabId && tab.subTabs.some((sub) => sub.id === location.mainSubTabId)
-              ? location.mainSubTabId
-              : null
-          return tab.activeSubTabId === resolvedSubTabId ? tab : { ...tab, activeSubTabId: resolvedSubTabId }
-        })
-
         return {
           ...space,
-          data: {
-            ...data,
-            activeTabId: resolvedTabId,
-            tabs,
-          },
+          data: applyWorkspaceNavigationLocation(space.data, location.mainTabId, location.mainSubTabId),
         }
       })
     })

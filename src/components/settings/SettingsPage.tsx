@@ -15,7 +15,17 @@ import {
   NOTE_FONT_SCALE_STEP,
   TAB_BUTTON_SCALE_STEP,
 } from '../../settings/defaults'
-import type { AppState, AppTheme, NewlineOperationId, NewlineShortcutId, SettingsSection, ShortcutId } from '../../types/app'
+import { FRONTMATTER_COMPUTED_VALUES, FRONTMATTER_FIELD_TYPES } from '../../frontmatter/frontmatter'
+import type {
+  AppState,
+  AppTheme,
+  FrontmatterTemplate,
+  FrontmatterTemplateField,
+  NewlineOperationId,
+  NewlineShortcutId,
+  SettingsSection,
+  ShortcutId,
+} from '../../types/app'
 
 const THEME_OPTIONS: Array<{ id: AppTheme; label: string }> = [
   { id: 'dark', label: 'dark' },
@@ -58,6 +68,17 @@ type SettingsPageProps = {
   onTabButtonScaleChange: (value: string) => void
   onNoteFontScaleChange: (value: string) => void
   onShowParentHomeTabChange: (enabled: boolean) => void
+  onActiveFrontmatterTemplateChange: (templateId: string) => void
+  onCreateFrontmatterTemplate: () => void
+  onUpdateFrontmatterTemplate: (templateId: string, patch: Partial<Pick<FrontmatterTemplate, 'name'>>) => void
+  onDeleteFrontmatterTemplate: (templateId: string) => void
+  onAddFrontmatterTemplateField: (templateId: string) => void
+  onUpdateFrontmatterTemplateField: (
+    templateId: string,
+    fieldId: string,
+    patch: Partial<FrontmatterTemplateField>,
+  ) => void
+  onDeleteFrontmatterTemplateField: (templateId: string, fieldId: string) => void
 }
 
 export function SettingsPage({
@@ -88,12 +109,23 @@ export function SettingsPage({
   onTabButtonScaleChange,
   onNoteFontScaleChange,
   onShowParentHomeTabChange,
+  onActiveFrontmatterTemplateChange,
+  onCreateFrontmatterTemplate,
+  onUpdateFrontmatterTemplate,
+  onDeleteFrontmatterTemplate,
+  onAddFrontmatterTemplateField,
+  onUpdateFrontmatterTemplateField,
+  onDeleteFrontmatterTemplateField,
 }: SettingsPageProps) {
+  const activeFrontmatterTemplate =
+    state.frontmatter.templates.find((template) => template.id === state.frontmatter.activeTemplateId) ??
+    state.frontmatter.templates[0]
+
   return (
     <section className="settings-page-wrap">
       <div className="settings-page-card">
         <div className="settings-section-tabs" role="tablist" aria-label="settings sections">
-          {(['hotkeys', 'shortcuts', 'data', 'visuals'] as SettingsSection[]).map((settingsSection) => (
+          {(['hotkeys', 'shortcuts', 'data', 'visuals', 'frontmatter'] as SettingsSection[]).map((settingsSection) => (
             <button
               key={settingsSection}
               type="button"
@@ -303,6 +335,129 @@ export function SettingsPage({
             <p className="settings-help">
               when enabled, a locked <code>home</code> sub-tab appears first. it cannot be renamed or deleted.
             </p>
+          </div>
+        )}
+
+        {section === 'frontmatter' && (
+          <div className="settings-section-panel" role="tabpanel">
+            <div className="settings-hotkey-row">
+              <label className="settings-hotkey-label" htmlFor="settings-frontmatter-template">
+                template
+              </label>
+              <select
+                id="settings-frontmatter-template"
+                className="settings-select-input settings-shortcut-select"
+                value={activeFrontmatterTemplate?.id ?? ''}
+                onChange={(event) => onActiveFrontmatterTemplateChange(event.target.value)}
+              >
+                {state.frontmatter.templates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="settings-page-actions">
+              <button type="button" className="btn btn-sm settings-action-btn" onClick={onCreateFrontmatterTemplate}>
+                new template
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm settings-action-btn"
+                onClick={() => activeFrontmatterTemplate && onDeleteFrontmatterTemplate(activeFrontmatterTemplate.id)}
+                disabled={!activeFrontmatterTemplate || state.frontmatter.templates.length <= 1}
+              >
+                delete template
+              </button>
+            </div>
+
+            {activeFrontmatterTemplate && (
+              <>
+                <label className="settings-modal-field">
+                  <span>name</span>
+                  <input
+                    type="text"
+                    className="settings-text-input"
+                    value={activeFrontmatterTemplate.name}
+                    onChange={(event) => onUpdateFrontmatterTemplate(activeFrontmatterTemplate.id, { name: event.target.value })}
+                  />
+                </label>
+                <div className="settings-divider" />
+                <div className="frontmatter-template-fields">
+                  {activeFrontmatterTemplate.fields.map((field) => (
+                    <div key={field.id} className="frontmatter-template-field-row">
+                      <input
+                        type="text"
+                        className="settings-text-input frontmatter-key-input"
+                        value={field.key}
+                        aria-label="frontmatter key"
+                        onChange={(event) =>
+                          onUpdateFrontmatterTemplateField(activeFrontmatterTemplate.id, field.id, { key: event.target.value })
+                        }
+                      />
+                      <select
+                        className="settings-select-input frontmatter-type-select"
+                        value={field.type}
+                        aria-label="frontmatter type"
+                        onChange={(event) =>
+                          onUpdateFrontmatterTemplateField(activeFrontmatterTemplate.id, field.id, {
+                            type: event.target.value as FrontmatterTemplateField['type'],
+                          })
+                        }
+                      >
+                        {FRONTMATTER_FIELD_TYPES.map((type) => (
+                          <option key={type} value={type}>
+                            {type}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        className="settings-select-input frontmatter-computed-select"
+                        value={field.computed}
+                        aria-label="frontmatter computed value"
+                        onChange={(event) =>
+                          onUpdateFrontmatterTemplateField(activeFrontmatterTemplate.id, field.id, {
+                            computed: event.target.value as FrontmatterTemplateField['computed'],
+                          })
+                        }
+                      >
+                        {FRONTMATTER_COMPUTED_VALUES.map((computed) => (
+                          <option key={computed} value={computed}>
+                            {computed}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        className="settings-text-input frontmatter-default-input"
+                        value={field.defaultValue}
+                        aria-label="frontmatter default value"
+                        placeholder="default"
+                        onChange={(event) =>
+                          onUpdateFrontmatterTemplateField(activeFrontmatterTemplate.id, field.id, {
+                            defaultValue: event.target.value,
+                          })
+                        }
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-sm settings-action-btn"
+                        onClick={() => onDeleteFrontmatterTemplateField(activeFrontmatterTemplate.id, field.id)}
+                      >
+                        remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-sm settings-action-btn"
+                  onClick={() => onAddFrontmatterTemplateField(activeFrontmatterTemplate.id)}
+                >
+                  add field
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>

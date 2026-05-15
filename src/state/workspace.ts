@@ -18,6 +18,7 @@ export function createNoteAisle(markdown = ''): NoteAisle {
 export function createNoteBody(markdown = ''): NoteBody {
   return {
     id: createId(),
+    frontmatter: null,
     aisles: [createNoteAisle(markdown)],
   }
 }

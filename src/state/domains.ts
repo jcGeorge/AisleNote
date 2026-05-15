@@ -1,4 +1,5 @@
 import { clampAutoRemoveDays, DEFAULT_AUTO_REMOVE_DAYS } from '../settings/defaults'
+import { normalizeWorkspaceNavigationMemory } from './navigation-memory'
 import type { AppState, ArrangeInsertPosition, Domain, Space, SpaceSettings, WorkspaceData } from '../types/app'
 import {
   applyAutoPurgeToWorkspace,
@@ -212,12 +213,17 @@ export function setActiveDomain(appState: AppState, domainId: string): AppState 
   const nextDomain = projected.domains.find((domain) => domain.id === domainId)
   if (!nextDomain) return projected
   if (projected.activeDomainId === nextDomain.id && projected.spaces === nextDomain.spaces) return projected
+  const nextSpaces = nextDomain.spaces.map((space) => {
+    if (space.id !== nextDomain.activeSpaceId) return space
+    const data = normalizeWorkspaceNavigationMemory(space.data)
+    return data === space.data ? space : { ...space, data }
+  })
 
   return projectActiveDomainState({
     ...projected,
     activeDomainId: nextDomain.id,
     activeSpaceId: nextDomain.activeSpaceId,
-    spaces: nextDomain.spaces,
+    spaces: nextSpaces,
   })
 }
 
@@ -255,8 +261,16 @@ export function renameDomain(appState: AppState, domainId: string, name: string)
 export function setActiveSpaceInActiveDomain(appState: AppState, spaceId: string): AppState {
   const projected = projectActiveDomainState(appState)
   if (!projected.spaces.some((space) => space.id === spaceId)) return projected
-  if (projected.activeSpaceId === spaceId) return projected
-  return updateActiveDomainSpaces(projected, projected.spaces, spaceId)
+  let changed = false
+  const nextSpaces = projected.spaces.map((space) => {
+    if (space.id !== spaceId) return space
+    const data = normalizeWorkspaceNavigationMemory(space.data)
+    if (data === space.data) return space
+    changed = true
+    return { ...space, data }
+  })
+  if (projected.activeSpaceId === spaceId && !changed) return projected
+  return updateActiveDomainSpaces(projected, nextSpaces, spaceId)
 }
 
 export function addSpaceToActiveDomain(appState: AppState, space: Space, makeActive = true): AppState {

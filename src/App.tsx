@@ -45,6 +45,10 @@ import {
   COMPLETED_TASK_UNDO_HINT_TOAST_DURATION_MS,
 } from './editor/task-behavior'
 import { exportAppData, type ExportScope } from './export/export-data'
+import {
+  buildTemplateYamlForNote,
+  getNoteBodyFrontmatterYaml,
+} from './frontmatter/frontmatter-state'
 import { useGlobalHotkeys } from './hotkeys/useGlobalHotkeys'
 import {
   mergeLeadingIndentsFromWysiwyg,
@@ -84,6 +88,7 @@ import type {
   LinkPromptState,
   ModalState,
   NewlineOperationId,
+  FrontmatterApplyMode,
   NoteLocation,
   PendingCreatedEdit,
   ToastState,
@@ -1114,6 +1119,31 @@ function App() {
       setStatus: settingsController.setExportStatus,
     })
 
+  const openFrontmatterModalForActiveNote = () => {
+    if (viewMode !== 'main' || !activeNoteBodyId) return
+    saveActiveCursorBeforeNavigation()
+    const noteBody = stateRef.current.noteBodies.find((body) => body.id === activeNoteBodyId)
+    setModal({
+      type: 'frontmatter-note',
+      noteBodyId: activeNoteBodyId,
+      draftYaml: getNoteBodyFrontmatterYaml(noteBody),
+      selectedTemplateId: stateRef.current.frontmatter.activeTemplateId,
+      applyMode: 'merge',
+    })
+  }
+
+  const buildFrontmatterTemplateDraft = (
+    noteBodyId: string,
+    templateId: string,
+    rawYaml: string,
+    mode: FrontmatterApplyMode,
+  ) => {
+    const latestState = stateRef.current
+    const template = latestState.frontmatter.templates.find((candidate) => candidate.id === templateId)
+    if (!template) return { ok: false as const, message: 'choose a frontmatter template.' }
+    return buildTemplateYamlForNote(latestState, noteBodyId, activeNoteLocation, template, mode, rawYaml)
+  }
+
   const overlayActions = useAppOverlayActions({
     state,
     stateRef,
@@ -1209,6 +1239,7 @@ function App() {
     clearActiveNoteContent,
     openNoteReferenceModal,
     openCopyModalForActiveNote,
+    openFrontmatterModalForActiveNote,
     addAisleToActiveNote: () => {
       closeImageTools()
       addAisleToActiveNote()
@@ -1443,6 +1474,13 @@ function App() {
           onTabButtonScaleChange={settingsController.updateTabButtonScaleSetting}
           onNoteFontScaleChange={settingsController.updateNoteFontScaleSetting}
           onShowParentHomeTabChange={settingsController.updateShowParentHomeTabSetting}
+          onActiveFrontmatterTemplateChange={settingsController.setActiveFrontmatterTemplate}
+          onCreateFrontmatterTemplate={settingsController.createFrontmatterTemplate}
+          onUpdateFrontmatterTemplate={settingsController.updateFrontmatterTemplate}
+          onDeleteFrontmatterTemplate={settingsController.deleteFrontmatterTemplate}
+          onAddFrontmatterTemplateField={settingsController.addFrontmatterTemplateField}
+          onUpdateFrontmatterTemplateField={settingsController.updateFrontmatterTemplateField}
+          onDeleteFrontmatterTemplateField={settingsController.deleteFrontmatterTemplateField}
         />
       ) : (
         <>
@@ -1510,6 +1548,7 @@ function App() {
               migrateParentDomainId={stageManager.migrateParentDomainId}
               migrateParentSpaces={stageManager.migrateParentSpaces}
               migrateParentOptions={stageManager.migrateParentOptions}
+              frontmatterTemplates={state.frontmatter.templates}
               openDestinationAfterApply={state.ui.stageManagerOpenDestinationAfterApply}
               reviewDetails={stageManager.reviewDetails}
               reviewWarning={stageManager.reviewWarning}
@@ -1603,6 +1642,8 @@ function App() {
         newlineMenuOperations={settingsController.newlineMenuOperationsDraft}
         onModalChange={setModal}
         onNewlineMenuOperationsChange={settingsController.updateNewlineMenuOperationsSetting}
+        onBuildFrontmatterTemplateDraft={buildFrontmatterTemplateDraft}
+        onWarn={(message) => pushToast(message, 'warning')}
         onConfirm={confirmModal}
       />
 

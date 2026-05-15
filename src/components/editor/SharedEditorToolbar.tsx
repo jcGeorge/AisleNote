@@ -15,6 +15,7 @@ type SharedEditorToolbarProps = {
   toolbarShortcutFeedback: ToolbarFormatKey | null
   onOpenNoteReference: () => void
   onOpenCopy: () => void
+  onOpenFrontmatter: () => void
   onToggleAisles: () => void
   onToggleHeading: () => void
   onCommand: (command: string, payload?: Record<string, unknown>) => void
@@ -64,6 +65,7 @@ export function SharedEditorToolbar({
   toolbarShortcutFeedback,
   onOpenNoteReference,
   onOpenCopy,
+  onOpenFrontmatter,
   onToggleAisles,
   onToggleHeading,
   onCommand,
@@ -130,6 +132,20 @@ export function SharedEditorToolbar({
               <span className="note-copy-toolbar-page note-copy-toolbar-page-front" />
               <span className="note-copy-toolbar-chain" />
             </span>
+          </button>
+          <button
+            type="button"
+            className="frontmatter-toolbar-btn"
+            title="Frontmatter"
+            aria-label="Frontmatter"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              onOpenFrontmatter()
+            }}
+          >
+            <span className="frontmatter-toolbar-icon" aria-hidden="true" />
           </button>
           <span className="note-toolbar-menu-anchor">
             <button

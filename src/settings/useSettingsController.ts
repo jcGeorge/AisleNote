@@ -10,9 +10,20 @@ import {
   applyAutoPurgeToAppState,
 } from '../state/app-state'
 import { updateSpaceInActiveDomain } from '../state/domains'
-import { applyAutoPurgeToWorkspace } from '../state/workspace'
+import { applyAutoPurgeToWorkspace, createId } from '../state/workspace'
 import { appPersistenceService } from '../storage/app-persistence-service'
-import type { AppState, AppTheme, NewlineOperationId, NewlineShortcutId, SettingsSection, ShortcutId, Space, ViewMode } from '../types/app'
+import type {
+  AppState,
+  AppTheme,
+  FrontmatterTemplate,
+  FrontmatterTemplateField,
+  NewlineOperationId,
+  NewlineShortcutId,
+  SettingsSection,
+  ShortcutId,
+  Space,
+  ViewMode,
+} from '../types/app'
 import {
   clampAutoRemoveDays,
   clampNoteFontScale,
@@ -233,6 +244,122 @@ export function useSettingsController({
     }))
   }
 
+  const updateFrontmatterSettings = (updater: (templates: FrontmatterTemplate[], activeTemplateId: string) => {
+    templates: FrontmatterTemplate[]
+    activeTemplateId: string
+  }) => {
+    commitImmediateSettingsState((previous) => ({
+      ...previous,
+      frontmatter: updater(previous.frontmatter.templates, previous.frontmatter.activeTemplateId),
+    }))
+  }
+
+  const setActiveFrontmatterTemplate = (templateId: string) => {
+    updateFrontmatterSettings((templates, activeTemplateId) => ({
+      templates,
+      activeTemplateId: templates.some((template) => template.id === templateId) ? templateId : activeTemplateId,
+    }))
+  }
+
+  const createFrontmatterTemplate = () => {
+    const template: FrontmatterTemplate = {
+      id: createId(),
+      name: 'new template',
+      fields: [],
+    }
+    updateFrontmatterSettings((templates) => ({
+      templates: [...templates, template],
+      activeTemplateId: template.id,
+    }))
+  }
+
+  const updateFrontmatterTemplate = (templateId: string, patch: Partial<Pick<FrontmatterTemplate, 'name'>>) => {
+    updateFrontmatterSettings((templates, activeTemplateId) => ({
+      templates: templates.map((template) =>
+        template.id === templateId
+          ? {
+              ...template,
+              ...patch,
+              name: typeof patch.name === 'string' ? patch.name : template.name,
+            }
+          : template,
+      ),
+      activeTemplateId,
+    }))
+  }
+
+  const deleteFrontmatterTemplate = (templateId: string) => {
+    updateFrontmatterSettings((templates, activeTemplateId) => {
+      if (templates.length <= 1) return { templates, activeTemplateId }
+      const nextTemplates = templates.filter((template) => template.id !== templateId)
+      return {
+        templates: nextTemplates,
+        activeTemplateId: activeTemplateId === templateId ? nextTemplates[0].id : activeTemplateId,
+      }
+    })
+  }
+
+  const addFrontmatterTemplateField = (templateId: string) => {
+    const field: FrontmatterTemplateField = {
+      id: createId(),
+      key: 'field',
+      type: 'text',
+      defaultValue: '',
+      computed: 'none',
+    }
+    updateFrontmatterSettings((templates, activeTemplateId) => ({
+      templates: templates.map((template) =>
+        template.id === templateId
+          ? {
+              ...template,
+              fields: [...template.fields, field],
+            }
+          : template,
+      ),
+      activeTemplateId,
+    }))
+  }
+
+  const updateFrontmatterTemplateField = (
+    templateId: string,
+    fieldId: string,
+    patch: Partial<FrontmatterTemplateField>,
+  ) => {
+    updateFrontmatterSettings((templates, activeTemplateId) => ({
+      templates: templates.map((template) =>
+        template.id === templateId
+          ? {
+              ...template,
+              fields: template.fields.map((field) =>
+                field.id === fieldId
+                  ? {
+                      ...field,
+                      ...patch,
+                      key: typeof patch.key === 'string' ? patch.key : field.key,
+                    }
+                  : field,
+              ),
+            }
+          : template,
+      ),
+      activeTemplateId,
+    }))
+  }
+
+  const deleteFrontmatterTemplateField = (templateId: string, fieldId: string) => {
+    updateFrontmatterSettings((templates, activeTemplateId) => ({
+      templates: templates.map((template) =>
+        template.id === templateId
+          ? {
+              ...template,
+              fields: template.fields.filter((field) => field.id !== fieldId),
+            }
+          : template,
+      ),
+      activeTemplateId,
+    }))
+  }
+
   return {
     section,
     shortcutDrafts,
@@ -261,5 +388,12 @@ export function useSettingsController({
     updateNewlineShortcutSetting,
     updateNewlineMenuOperationsSetting,
     updateStageManagerOpenDestinationSetting,
+    setActiveFrontmatterTemplate,
+    createFrontmatterTemplate,
+    updateFrontmatterTemplate,
+    deleteFrontmatterTemplate,
+    addFrontmatterTemplateField,
+    updateFrontmatterTemplateField,
+    deleteFrontmatterTemplateField,
   }
 }

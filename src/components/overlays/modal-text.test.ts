@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { DEFAULT_FRONTMATTER_SETTINGS } from '../../frontmatter/frontmatter'
 import type { AppState, ModalState, NoteLocation, Space } from '../../types/app'
 import { getModalText } from './modal-text'
 
@@ -39,8 +40,8 @@ function createModalTextState(): AppState {
     domains: [{ id: 'domain-1', name: 'Domain', activeSpaceId: 'space-1', spaces: [space] }],
     spaces: [space],
     noteBodies: [
-      { id: 'body-1', aisles: [{ id: 'aisle-1', markdown: 'existing' }] },
-      { id: 'body-2', aisles: [{ id: 'aisle-2', markdown: 'target' }] },
+      { id: 'body-1', frontmatter: null, aisles: [{ id: 'aisle-1', markdown: 'existing' }] },
+      { id: 'body-2', frontmatter: null, aisles: [{ id: 'aisle-2', markdown: 'target' }] },
     ],
     hotkeys: {
       shortcuts: {
@@ -63,6 +64,7 @@ function createModalTextState(): AppState {
       enableMouseBackForward: true,
       enableGenericHistoryHotkeys: true,
     },
+    frontmatter: DEFAULT_FRONTMATTER_SETTINGS,
     ui: {
       showParentHomeTab: true,
       stageManagerOpenDestinationAfterApply: true,

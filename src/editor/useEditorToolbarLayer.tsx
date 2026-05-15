@@ -47,6 +47,7 @@ type UseEditorToolbarLayerOptions = {
   clearActiveNoteContent: () => void
   openNoteReferenceModal: () => void
   openCopyModalForActiveNote: () => void
+  openFrontmatterModalForActiveNote: () => void
   addAisleToActiveNote: () => void
   deleteAisleFromActiveNote: (aisleId: string) => void
   pushToast: (message: string, tone?: ToastTone) => void
@@ -78,6 +79,7 @@ export function useEditorToolbarLayer({
   clearActiveNoteContent,
   openNoteReferenceModal,
   openCopyModalForActiveNote,
+  openFrontmatterModalForActiveNote,
   addAisleToActiveNote,
   deleteAisleFromActiveNote,
   pushToast,
@@ -186,6 +188,7 @@ export function useEditorToolbarLayer({
         toolbarShortcutFeedback={toolbarShortcutFeedback}
         onOpenNoteReference={openNoteReferenceFromToolbar}
         onOpenCopy={openCopyModalFromToolbar}
+        onOpenFrontmatter={openFrontmatterModalForActiveNote}
         onToggleAisles={toggleAisleToolbarPopover}
         onToggleHeading={toggleHeadingToolbarPopover}
         onCommand={executeToolbarCommand}

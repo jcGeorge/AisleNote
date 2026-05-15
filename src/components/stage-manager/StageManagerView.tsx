@@ -1,5 +1,6 @@
 import type {
   Domain,
+  FrontmatterTemplate,
   Space,
   StageManagerAction,
   StageManagerDraft,
@@ -34,6 +35,7 @@ type StageManagerViewProps = {
   migrateParentDomainId: string
   migrateParentSpaces: Space[]
   migrateParentOptions: Tab[]
+  frontmatterTemplates: FrontmatterTemplate[]
   openDestinationAfterApply: boolean
   reviewDetails: string[]
   reviewWarning: string
@@ -58,6 +60,7 @@ const ACTIONS: Array<[StageManagerAction, string]> = [
   ['migrate', 'migrate'],
   ['promote', 'promote'],
   ['demote', 'demote'],
+  ['frontmatter', 'frontmatter'],
   ['mass-delete', 'mass delete'],
 ]
 
@@ -125,6 +128,7 @@ export function StageManagerView({
   migrateParentDomainId,
   migrateParentSpaces,
   migrateParentOptions,
+  frontmatterTemplates,
   openDestinationAfterApply,
   reviewDetails,
   reviewWarning,
@@ -201,6 +205,11 @@ export function StageManagerView({
             {action === 'demote' && (
               <p className="stage-manager-help">
                 demotion changes level. selected parent tabs become sub-tabs under the destination parent, and selected loose sub-tabs move with them.
+              </p>
+            )}
+            {action === 'frontmatter' && (
+              <p className="stage-manager-help">
+                frontmatter applies a saved YAML template to the selected notes.
               </p>
             )}
             {action === 'mass-delete' && (
@@ -652,7 +661,43 @@ export function StageManagerView({
               </>
             )}
 
-            {action !== 'mass-delete' && (
+            {action === 'frontmatter' && (
+              <>
+                <p>choose a template and whether template fields merge into or replace existing frontmatter.</p>
+                <div className="stage-manager-field-grid">
+                  <label className="stage-manager-field">
+                    <span>template</span>
+                    <select
+                      className="form-select form-select-sm"
+                      value={draft.frontmatterTemplateId}
+                      onChange={(event) => onDraftChange({ frontmatterTemplateId: event.target.value })}
+                    >
+                      <option value="">select a template</option>
+                      {frontmatterTemplates.map((template) => (
+                        <option key={template.id} value={template.id}>
+                          {template.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="stage-manager-field">
+                    <span>mode</span>
+                    <select
+                      className="form-select form-select-sm"
+                      value={draft.frontmatterApplyMode}
+                      onChange={(event) =>
+                        onDraftChange({ frontmatterApplyMode: event.target.value === 'replace' ? 'replace' : 'merge' })
+                      }
+                    >
+                      <option value="merge">merge fields</option>
+                      <option value="replace">replace frontmatter</option>
+                    </select>
+                  </label>
+                </div>
+              </>
+            )}
+
+            {action !== 'mass-delete' && action !== 'frontmatter' && (
               <div className="stage-manager-switch-row">
                 <label className="settings-hotkey-label" htmlFor="stage-manager-open-destination">
                   open destination after apply

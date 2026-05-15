@@ -71,6 +71,14 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
     }
   }
 
+  if (modal.type === 'frontmatter-note') {
+    return {
+      title: 'frontmatter',
+      body: 'edit YAML metadata for this note or apply a saved template.',
+      action: 'save',
+    }
+  }
+
   if (modal.type === 'newline-menu-settings') {
     return {
       title: 'new line menu',

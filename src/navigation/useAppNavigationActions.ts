@@ -14,6 +14,11 @@ import {
   updateActiveSpaceDataInActiveDomain,
 } from '../state/domains'
 import { createNoteBody, createSpace, createSubTab, createTab, duplicateSpace } from '../state/workspace'
+import {
+  selectActivePrimeTabHome,
+  selectPrimeTabWithMemory,
+  selectSubTabWithMemory,
+} from '../state/navigation-memory'
 import { TRASH_HOME_ID } from '../trash/trash-model'
 import {
   clearRenameDraftIfMatching,
@@ -326,15 +331,13 @@ export const useAppNavigationActions = ({
   }
 
   const selectTab = (tabId: string) => {
+    const target = workspace.tabs.find((tab) => tab.id === tabId)
+    if (!target) return
     if (activeTab.id === tabId && activeTab.activeSubTabId === null) return
     commitActiveRenameBeforeAction()
     saveActiveCursorBeforeNavigation()
     closeImageToolsRef.current()
-    updateActiveSpaceData((data) => ({
-      ...data,
-      activeTabId: tabId,
-      tabs: data.tabs.map((tab) => (tab.id === tabId ? { ...tab, activeSubTabId: null } : tab)),
-    }))
+    updateActiveSpaceData((data) => selectPrimeTabWithMemory(data, tabId))
   }
 
   const selectSubTab = (subTabId: string) => {
@@ -342,12 +345,7 @@ export const useAppNavigationActions = ({
     commitActiveRenameBeforeAction()
     saveActiveCursorBeforeNavigation()
     closeImageToolsRef.current()
-    updateActiveSpaceData((data) => ({
-      ...data,
-      tabs: data.tabs.map((tab) =>
-        tab.id === data.activeTabId ? { ...tab, activeSubTabId: subTabId } : tab,
-      ),
-    }))
+    updateActiveSpaceData((data) => selectSubTabWithMemory(data, subTabId))
   }
 
   const selectParentHomeTab = () => {
@@ -355,12 +353,7 @@ export const useAppNavigationActions = ({
     commitActiveRenameBeforeAction()
     saveActiveCursorBeforeNavigation()
     closeImageToolsRef.current()
-    updateActiveSpaceData((data) => ({
-      ...data,
-      tabs: data.tabs.map((tab) =>
-        tab.id === data.activeTabId ? { ...tab, activeSubTabId: null } : tab,
-      ),
-    }))
+    updateActiveSpaceData((data) => selectActivePrimeTabHome(data))
   }
 
   const openSpace = (spaceId: string) => {

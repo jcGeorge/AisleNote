@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { DEFAULT_FRONTMATTER_SETTINGS } from '../frontmatter/frontmatter'
 import type { AppState, Space } from '../types/app'
 import {
   applyCursorLocationSnapshot,
@@ -77,8 +78,8 @@ const createTestState = (): AppState => {
     ],
     spaces: [spaceOne, spaceTwo],
     noteBodies: [
-      { id: 'body-1', aisles: [{ id: 'aisle-1', markdown: '' }] },
-      { id: 'body-2', aisles: [{ id: 'aisle-2', markdown: '' }] },
+      { id: 'body-1', frontmatter: null, aisles: [{ id: 'aisle-1', markdown: '' }] },
+      { id: 'body-2', frontmatter: null, aisles: [{ id: 'aisle-2', markdown: '' }] },
     ],
     hotkeys: {
       shortcuts: {
@@ -101,6 +102,7 @@ const createTestState = (): AppState => {
       enableMouseBackForward: true,
       enableGenericHistoryHotkeys: true,
     },
+    frontmatter: DEFAULT_FRONTMATTER_SETTINGS,
     ui: {
       showParentHomeTab: true,
       stageManagerOpenDestinationAfterApply: true,

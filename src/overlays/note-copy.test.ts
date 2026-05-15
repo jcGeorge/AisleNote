@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { DEFAULT_FRONTMATTER_SETTINGS } from '../frontmatter/frontmatter'
 import { getLocationInfo } from '../notes/note-locations'
 import type { AppState, NoteLocation, Space } from '../types/app'
 import { applyNoteCopyToState } from './note-copy'
@@ -54,8 +55,8 @@ function createCopyTestState(): AppState {
     domains: [{ id: 'domain-1', name: 'Domain', activeSpaceId: 'space-1', spaces: [space] }],
     spaces: [space],
     noteBodies: [
-      { id: 'body-source', aisles: [{ id: 'aisle-source', markdown: 'source text' }] },
-      { id: 'body-target', aisles: [{ id: 'aisle-target', markdown: 'target text' }] },
+      { id: 'body-source', frontmatter: null, aisles: [{ id: 'aisle-source', markdown: 'source text' }] },
+      { id: 'body-target', frontmatter: null, aisles: [{ id: 'aisle-target', markdown: 'target text' }] },
     ],
     hotkeys: {
       shortcuts: {
@@ -78,6 +79,7 @@ function createCopyTestState(): AppState {
       enableMouseBackForward: true,
       enableGenericHistoryHotkeys: true,
     },
+    frontmatter: DEFAULT_FRONTMATTER_SETTINGS,
     ui: {
       showParentHomeTab: true,
       stageManagerOpenDestinationAfterApply: true,

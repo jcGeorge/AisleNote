@@ -113,6 +113,10 @@
   overflow: auto;
 }
 
+.settings-modal:has(.frontmatter-note-modal) {
+  width: min(560px, calc(100vw - 2rem));
+}
+
 .settings-modal-field {
   display: flex;
   flex-direction: column;
@@ -133,6 +137,36 @@
 }
 
 .settings-select-input:focus {
+  outline: none;
+  border-color: var(--settings-select-focus-border);
+}
+
+.frontmatter-note-modal {
+  display: grid;
+  gap: 0.65rem;
+  text-align: left;
+}
+
+.frontmatter-note-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(6.5rem, 0.6fr) auto auto;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.frontmatter-yaml-textarea {
+  width: 100%;
+  min-height: 15rem;
+  resize: vertical;
+  border: 1px solid var(--settings-control-border);
+  border-radius: 0.42rem;
+  background: var(--settings-control-bg);
+  color: var(--settings-control-text);
+  padding: 0.55rem 0.6rem;
+  font: 0.88rem/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.frontmatter-yaml-textarea:focus {
   outline: none;
   border-color: var(--settings-select-focus-border);
 }

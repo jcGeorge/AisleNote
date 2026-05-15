@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { DEFAULT_FRONTMATTER_SETTINGS } from '../frontmatter/frontmatter'
 import type { AppState, Domain, Space } from '../types/app'
 import {
   buildStageManagerDomainAwareState,
@@ -56,6 +57,7 @@ const state: AppState = {
     enableMouseBackForward: true,
     enableGenericHistoryHotkeys: true,
   },
+  frontmatter: DEFAULT_FRONTMATTER_SETTINGS,
   ui: {
     showParentHomeTab: true,
     stageManagerOpenDestinationAfterApply: true,

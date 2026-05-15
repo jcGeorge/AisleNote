@@ -24,6 +24,21 @@
   border-color: var(--settings-control-focus-border);
 }
 
+.settings-text-input {
+  width: 100%;
+  border: 1px solid var(--settings-control-border);
+  border-radius: 0.42rem;
+  background: var(--settings-control-bg);
+  color: var(--settings-control-text);
+  padding: 0.42rem 0.48rem;
+  font-size: 0.9rem;
+}
+
+.settings-text-input:focus {
+  outline: none;
+  border-color: var(--settings-control-focus-border);
+}
+
 .settings-field-suffix {
   font-size: 1em;
   color: var(--settings-field-suffix-text);
@@ -75,7 +90,7 @@
 
 .settings-section-tabs {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0.35rem;
   margin-bottom: 0.9rem;
 }
@@ -150,6 +165,23 @@
   flex-direction: column;
   gap: 0.35rem;
   margin-bottom: 0.35rem;
+}
+
+.frontmatter-template-fields {
+  display: grid;
+  gap: 0.4rem;
+  margin-bottom: 0.6rem;
+}
+
+.frontmatter-template-field-row {
+  display: grid;
+  grid-template-columns: minmax(6rem, 1fr) minmax(5.5rem, 0.8fr) minmax(7rem, 1fr) minmax(7rem, 1fr) auto;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.frontmatter-template-field-row .settings-action-btn {
+  min-width: 4.75rem;
 }
 
 .settings-hotkey-row {

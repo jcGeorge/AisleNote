@@ -45,6 +45,8 @@ export function createDefaultStageManagerDraft(): StageManagerDraft {
     straySelectedParentId: '',
     strayExistingParentId: '',
     strayNewParentName: '',
+    frontmatterTemplateId: '',
+    frontmatterApplyMode: 'merge',
     massDeleteMode: 'trash',
   }
 }

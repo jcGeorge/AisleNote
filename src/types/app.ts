@@ -8,7 +8,7 @@ export type ShortcutId =
   | 'newSubTab'
   | 'cycleSubTabNext'
   | 'cycleSubTabPrev'
-export type SettingsSection = 'hotkeys' | 'shortcuts' | 'data' | 'visuals'
+export type SettingsSection = 'hotkeys' | 'shortcuts' | 'data' | 'visuals' | 'frontmatter'
 
 export type NewlineOperationId =
   | 'normalNewLine'
@@ -35,9 +35,35 @@ export type NoteAisle = {
   markdown: string
 }
 
+export type FrontmatterValue = unknown
+export type FrontmatterData = Record<string, FrontmatterValue>
+export type FrontmatterFieldType = 'text' | 'number' | 'boolean' | 'date' | 'datetime' | 'list'
+export type FrontmatterComputedValue = 'none' | 'createdAt' | 'updatedAt' | 'noteTitle' | 'spaceName' | 'domainName'
+export type FrontmatterApplyMode = 'merge' | 'replace'
+
+export type FrontmatterTemplateField = {
+  id: string
+  key: string
+  type: FrontmatterFieldType
+  defaultValue: string
+  computed: FrontmatterComputedValue
+}
+
+export type FrontmatterTemplate = {
+  id: string
+  name: string
+  fields: FrontmatterTemplateField[]
+}
+
+export type FrontmatterSettings = {
+  templates: FrontmatterTemplate[]
+  activeTemplateId: string
+}
+
 export type NoteBody = {
   id: string
   aisles: NoteAisle[]
+  frontmatter: FrontmatterData | null
 }
 
 export type NoteLocation = {
@@ -138,6 +164,7 @@ export type AppState = {
     enableMouseBackForward: boolean
     enableGenericHistoryHotkeys: boolean
   }
+  frontmatter: FrontmatterSettings
   ui: {
     showParentHomeTab: boolean
     stageManagerOpenDestinationAfterApply: boolean
@@ -225,7 +252,7 @@ export type TabArrangeDragPreview = {
 }
 
 export type StageManagerStep = 'select' | 'action' | 'configure' | 'review'
-export type StageManagerAction = 'migrate' | 'promote' | 'demote' | 'mass-delete'
+export type StageManagerAction = 'migrate' | 'promote' | 'demote' | 'frontmatter' | 'mass-delete'
 export type StageManagerPartialDirection = 'toward-none' | 'toward-all'
 export type StageManagerParentSelectionMode = 'none' | 'partial' | 'full'
 export type StageManagerPromoteSpaceMode = 'existing' | 'new'
@@ -269,6 +296,8 @@ export type StageManagerDraft = {
   straySelectedParentId: string
   strayExistingParentId: string
   strayNewParentName: string
+  frontmatterTemplateId: string
+  frontmatterApplyMode: FrontmatterApplyMode
   massDeleteMode: StageManagerMassDeleteMode
 }
 
@@ -407,6 +436,13 @@ export type ModalState =
       insertAs: 'link' | 'context'
       target: NoteLocation & { aisleIds?: string[] }
       editingTokenId?: string
+    }
+  | {
+      type: 'frontmatter-note'
+      noteBodyId: string
+      draftYaml: string
+      selectedTemplateId: string
+      applyMode: FrontmatterApplyMode
     }
   | { type: 'newline-menu-settings' }
 

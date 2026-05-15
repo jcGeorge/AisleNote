@@ -13,6 +13,7 @@ export function getNoteBodyMarkdown(body: NoteBody | null | undefined, aisleId: 
 export function cloneNoteBodyAsIndependentCopy(body: NoteBody): NoteBody {
   return {
     id: createId(),
+    frontmatter: body.frontmatter ? { ...body.frontmatter } : null,
     aisles:
       body.aisles.length > 0
         ? body.aisles.map((aisle) => ({
