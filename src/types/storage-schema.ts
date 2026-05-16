@@ -42,6 +42,7 @@ export type StorageNewlineShortcutId = 'controlEnter' | 'shiftEnter' | 'commandE
 
 export type StorageGlobalSettings = {
   theme: StorageTheme
+  frontmatter?: Record<string, unknown>
   hotkeys: {
     shortcuts: StorageShortcutMap
     newlineShortcuts?: {
@@ -99,6 +100,15 @@ export type StorageNoteAisleRecord = {
 
 export type StorageNoteBodyRecord = {
   id: StorageEntityId
+  createdAt?: string
+  updatedAt?: string
+  frontmatter?: Record<string, unknown> | null
+  frontmatterTemplateId?: string
+  frontmatterTemplateDerived?: boolean
+  frontmatterTemplateFieldOrigins?: Record<string, { templateId: string; fieldId: string }>
+  frontmatterTemplateRemovedFieldIds?: string[]
+  frontmatterComputedFields?: Record<string, unknown>
+  frontmatterTemplateDetachedKeys?: string[]
   aisles: StorageNoteAisleRecord[]
 }
 

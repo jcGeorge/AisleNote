@@ -18,6 +18,7 @@ import { TopBar } from './components/navigation/TopBar'
 import { ContextMenuHost } from './components/overlays/ContextMenuHost'
 import { ModalHost } from './components/overlays/ModalHost'
 import { ToastHost } from './components/overlays/ToastHost'
+import { appendToastToStack } from './components/overlays/toast-stack'
 import { SettingsPage } from './components/settings/SettingsPage'
 import { SpacesPage } from './components/spaces/SpacesPage'
 import { StageManagerView } from './components/stage-manager/StageManagerView'
@@ -45,10 +46,7 @@ import {
   COMPLETED_TASK_UNDO_HINT_TOAST_DURATION_MS,
 } from './editor/task-behavior'
 import { exportAppData, type ExportScope } from './export/export-data'
-import {
-  buildTemplateYamlForNote,
-  getNoteBodyFrontmatterYaml,
-} from './frontmatter/frontmatter-state'
+import { buildFrontmatterModalDraftForNote } from './frontmatter/frontmatter-state'
 import { useGlobalHotkeys } from './hotkeys/useGlobalHotkeys'
 import {
   mergeLeadingIndentsFromWysiwyg,
@@ -88,7 +86,6 @@ import type {
   LinkPromptState,
   ModalState,
   NewlineOperationId,
-  FrontmatterApplyMode,
   NoteLocation,
   PendingCreatedEdit,
   ToastState,
@@ -123,9 +120,7 @@ function App() {
   const [trashTabId, setTrashTabId] = useState<string>(TRASH_HOME_ID)
   const [trashSubTabId, setTrashSubTabId] = useState<string | null>(null)
   const [activeAisleId, setActiveAisleId] = useState<string>('')
-  const [toast, setToast] = useState<ToastState | null>(null)
-  const [toastHovered, setToastHovered] = useState(false)
-  const [toastWasHovered, setToastWasHovered] = useState(false)
+  const [toasts, setToasts] = useState<ToastState[]>([])
   const [linkPrompt, setLinkPrompt] = useState<LinkPromptState>({
     open: false,
     top: 0,
@@ -148,7 +143,10 @@ function App() {
   const editingRef = useRef<{ type: EditableEntityType; id: string } | null>(null)
   const renameDraftRef = useRef<RenameDraft | null>(null)
   const skipRenameBlurRef = useRef<{ type: EditableEntityType; id: string } | null>(null)
-  const toastTimerRef = useRef<number | null>(null)
+  const toastTimersRef = useRef<Map<number, number>>(new Map())
+  const toastHoveredRef = useRef(false)
+  const toastIdRef = useRef(0)
+  const toastsRef = useRef<ToastState[]>([])
   const closeImageToolsRef = useRef<() => void>(() => {})
   const closeImageToolsIfSelectedImageMissingRef = useRef<() => void>(() => {})
   const activateAisleEditorRef = useRef<
@@ -167,6 +165,39 @@ function App() {
   const activeNoteLocationKeyRef = useRef<string>('')
   const isMainViewRef = useRef(true)
 
+  function clearToastTimer(toastId: number) {
+    const timer = toastTimersRef.current.get(toastId)
+    if (timer === undefined) return
+    window.clearTimeout(timer)
+    toastTimersRef.current.delete(toastId)
+  }
+
+  function clearToastTimers() {
+    toastTimersRef.current.forEach((timer) => window.clearTimeout(timer))
+    toastTimersRef.current.clear()
+  }
+
+  function dismissToast(toastId: number) {
+    clearToastTimer(toastId)
+    setToasts((currentToasts) => {
+      const nextToasts = currentToasts.filter((toast) => toast.id !== toastId)
+      toastsRef.current = nextToasts
+      return nextToasts
+    })
+  }
+
+  function scheduleToastDismiss(toastId: number, durationMs: number) {
+    clearToastTimer(toastId)
+    const timer = window.setTimeout(() => dismissToast(toastId), durationMs)
+    toastTimersRef.current.set(toastId, timer)
+  }
+
+  function createToastId() {
+    const id = Math.max(Date.now(), toastIdRef.current + 1)
+    toastIdRef.current = id
+    return id
+  }
+
   useEffect(() => {
     const closeOverlays = () => {
       setContextMenu(null)
@@ -180,6 +211,11 @@ function App() {
       window.removeEventListener('resize', closeOverlays)
       window.removeEventListener('scroll', closeOverlays, true)
     }
+  }, [])
+
+  useEffect(() => () => {
+    toastTimersRef.current.forEach((timer) => window.clearTimeout(timer))
+    toastTimersRef.current.clear()
   }, [])
 
   const trackRenameDraft = (type: RenameEntityType, id: string, value: string) => {
@@ -197,34 +233,6 @@ function App() {
     if (editing && editing.type === draft.type && editing.id === draft.id) return
     renameDraftRef.current = null
   }, [editing])
-
-  useEffect(() => {
-    if (!toast) return
-    if (toastTimerRef.current !== null) {
-      window.clearTimeout(toastTimerRef.current)
-      toastTimerRef.current = null
-    }
-    if (toastHovered) return
-
-    const durationMs = toastWasHovered ? HOVERED_TOAST_DURATION_MS : toast.durationMs
-    toastTimerRef.current = window.setTimeout(() => {
-      toastTimerRef.current = null
-      setToast(null)
-    }, durationMs)
-
-    return () => {
-      if (toastTimerRef.current !== null) {
-        window.clearTimeout(toastTimerRef.current)
-        toastTimerRef.current = null
-      }
-    }
-  }, [toast, toastHovered, toastWasHovered])
-
-  useEffect(() => {
-    if (!toast) return
-    setToastHovered(false)
-    setToastWasHovered(false)
-  }, [toast?.id])
 
   const {
     activeSpace,
@@ -254,12 +262,26 @@ function App() {
   })
 
   const pushToast = (message: string, tone: ToastTone = 'warning', durationMs = DEFAULT_TOAST_DURATION_MS) => {
-    setToast({
-      id: Date.now(),
+    const nextToast = {
+      id: createToastId(),
       message,
       tone,
       durationMs,
+    }
+
+    setToasts((currentToasts) => {
+      const nextToasts = appendToastToStack(currentToasts, nextToast)
+      const nextToastIds = new Set(nextToasts.map((toast) => toast.id))
+      currentToasts.forEach((toast) => {
+        if (!nextToastIds.has(toast.id)) clearToastTimer(toast.id)
+      })
+      toastsRef.current = nextToasts
+      return nextToasts
     })
+
+    if (!toastHoveredRef.current) {
+      scheduleToastDismiss(nextToast.id, durationMs)
+    }
   }
 
   const trackCompletedTaskQuickDelete = (beforeMarkdown: string) => {
@@ -1122,26 +1144,24 @@ function App() {
   const openFrontmatterModalForActiveNote = () => {
     if (viewMode !== 'main' || !activeNoteBodyId) return
     saveActiveCursorBeforeNavigation()
-    const noteBody = stateRef.current.noteBodies.find((body) => body.id === activeNoteBodyId)
+    const latestState = stateRef.current
+    const draft = buildFrontmatterModalDraftForNote(latestState, activeNoteBodyId, activeNoteLocation)
     setModal({
       type: 'frontmatter-note',
       noteBodyId: activeNoteBodyId,
-      draftYaml: getNoteBodyFrontmatterYaml(noteBody),
-      selectedTemplateId: stateRef.current.frontmatter.activeTemplateId,
-      applyMode: 'merge',
+      location: activeNoteLocation,
+      rows: draft.rows,
+      selectedTemplateId: draft.selectedTemplateId,
+      templateDerived: draft.templateDerived,
+      isTemplateSuggestionDraft: draft.isTemplateSuggestionDraft,
     })
   }
 
-  const buildFrontmatterTemplateDraft = (
-    noteBodyId: string,
-    templateId: string,
-    rawYaml: string,
-    mode: FrontmatterApplyMode,
-  ) => {
-    const latestState = stateRef.current
-    const template = latestState.frontmatter.templates.find((candidate) => candidate.id === templateId)
-    if (!template) return { ok: false as const, message: 'choose a frontmatter template.' }
-    return buildTemplateYamlForNote(latestState, noteBodyId, activeNoteLocation, template, mode, rawYaml)
+  const openFrontmatterTemplateSettings = (templateId: string) => {
+    settingsController.setSettingsFrontmatterTemplate(templateId)
+    settingsController.changeSection('frontmatter')
+    setModal(null)
+    openSettings()
   }
 
   const overlayActions = useAppOverlayActions({
@@ -1461,6 +1481,8 @@ function App() {
           tabButtonScaleDraft={settingsController.tabButtonScaleDraft}
           noteFontScaleDraft={settingsController.noteFontScaleDraft}
           showParentHomeTabDraft={settingsController.showParentHomeTabDraft}
+          frontmatterDraft={settingsController.frontmatterDraft}
+          frontmatterDraftDirty={settingsController.frontmatterDraftDirty}
           onSectionChange={settingsController.changeSection}
           onToggleShortcutEdit={settingsController.toggleShortcutEdit}
           onNewlineShortcutChange={settingsController.updateNewlineShortcutSetting}
@@ -1474,13 +1496,15 @@ function App() {
           onTabButtonScaleChange={settingsController.updateTabButtonScaleSetting}
           onNoteFontScaleChange={settingsController.updateNoteFontScaleSetting}
           onShowParentHomeTabChange={settingsController.updateShowParentHomeTabSetting}
-          onActiveFrontmatterTemplateChange={settingsController.setActiveFrontmatterTemplate}
+          onSettingsFrontmatterTemplateChange={settingsController.setSettingsFrontmatterTemplate}
           onCreateFrontmatterTemplate={settingsController.createFrontmatterTemplate}
           onUpdateFrontmatterTemplate={settingsController.updateFrontmatterTemplate}
           onDeleteFrontmatterTemplate={settingsController.deleteFrontmatterTemplate}
           onAddFrontmatterTemplateField={settingsController.addFrontmatterTemplateField}
           onUpdateFrontmatterTemplateField={settingsController.updateFrontmatterTemplateField}
           onDeleteFrontmatterTemplateField={settingsController.deleteFrontmatterTemplateField}
+          onSaveFrontmatterTemplates={settingsController.saveFrontmatterTemplates}
+          onDiscardFrontmatterTemplateChanges={settingsController.discardFrontmatterTemplateChanges}
         />
       ) : (
         <>
@@ -1642,20 +1666,21 @@ function App() {
         newlineMenuOperations={settingsController.newlineMenuOperationsDraft}
         onModalChange={setModal}
         onNewlineMenuOperationsChange={settingsController.updateNewlineMenuOperationsSetting}
-        onBuildFrontmatterTemplateDraft={buildFrontmatterTemplateDraft}
+        onEditFrontmatterTemplate={openFrontmatterTemplateSettings}
         onWarn={(message) => pushToast(message, 'warning')}
+        onError={(message) => pushToast(message, 'error')}
         onConfirm={confirmModal}
       />
 
       <ToastHost
-        toast={toast}
+        toasts={toasts}
         onToastMouseEnter={() => {
-          setToastHovered(true)
-          setToastWasHovered(true)
+          toastHoveredRef.current = true
+          clearToastTimers()
         }}
         onToastMouseLeave={() => {
-          setToastHovered(false)
-          setToastWasHovered(true)
+          toastHoveredRef.current = false
+          toastsRef.current.forEach((toast) => scheduleToastDismiss(toast.id, HOVERED_TOAST_DURATION_MS))
         }}
       />
 

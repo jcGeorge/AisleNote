@@ -36,9 +36,31 @@ describe('browser hybrid storage', () => {
           },
         ],
         noteBodies: [
-          { id: 'body-tab', aisles: [{ id: 'aisle-tab', markdown: 'home body' }] },
+          {
+            id: 'body-tab',
+            frontmatter: { created: '2024-01-01' },
+            frontmatterTemplateId: 'template-1',
+            frontmatterTemplateDerived: true,
+            frontmatterTemplateFieldOrigins: {
+              created: { templateId: 'template-1', fieldId: 'field-1' },
+            },
+            frontmatterTemplateRemovedFieldIds: ['field-2'],
+            frontmatterComputedFields: { created: 'createdAt' },
+            aisles: [{ id: 'aisle-tab', markdown: 'home body' }],
+          },
           { id: 'body-sub', aisles: [{ id: 'aisle-sub', markdown: 'sub body' }] },
         ],
+        frontmatter: {
+          settingsTemplateId: 'template-1',
+          lastAppliedTemplateId: 'template-1',
+          templates: [
+            {
+              id: 'template-1',
+              name: 'template',
+              fields: [{ id: 'field-1', key: 'status', type: 'text', defaultValue: 'draft', computed: 'none' }],
+            },
+          ],
+        },
         ui: {
           noteCursorLocations: {
             'domain::space-1::tab-1::__home__': {
@@ -67,7 +89,17 @@ describe('browser hybrid storage', () => {
 
     expect(serialized).not.toBeNull()
     expect(homeBody?.aisles[0]?.markdown).toBe('home body')
+    expect(homeBody?.frontmatter).toEqual({ created: '2024-01-01' })
+    expect(homeBody?.frontmatterTemplateId).toBe('template-1')
+    expect(homeBody?.frontmatterTemplateDerived).toBe(true)
+    expect(homeBody?.frontmatterTemplateFieldOrigins).toEqual({
+      created: { templateId: 'template-1', fieldId: 'field-1' },
+    })
+    expect(homeBody?.frontmatterTemplateRemovedFieldIds).toEqual(['field-2'])
+    expect(homeBody?.frontmatterComputedFields).toEqual({ created: 'createdAt' })
     expect(subBody?.aisles[0]?.markdown).toBe('sub body')
+    expect(roundTripped.frontmatter.settingsTemplateId).toBe('template-1')
+    expect(roundTripped.frontmatter.lastAppliedTemplateId).toBe('template-1')
     expect(roundTripped.ui.noteCursorLocations['domain::space-1::tab-1::__home__']).toEqual({
       activeAisleId: 'aisle-tab',
       aisles: {

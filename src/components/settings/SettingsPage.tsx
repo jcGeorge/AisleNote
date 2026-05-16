@@ -15,10 +15,15 @@ import {
   NOTE_FONT_SCALE_STEP,
   TAB_BUTTON_SCALE_STEP,
 } from '../../settings/defaults'
-import { FRONTMATTER_COMPUTED_VALUES, FRONTMATTER_FIELD_TYPES } from '../../frontmatter/frontmatter'
+import {
+  FRONTMATTER_FIELD_TYPES,
+  getFrontmatterComputedValuesForFieldType,
+  isFrontmatterComputedValueCompatibleWithFieldType,
+} from '../../frontmatter/frontmatter'
 import type {
   AppState,
   AppTheme,
+  FrontmatterSettings,
   FrontmatterTemplate,
   FrontmatterTemplateField,
   NewlineOperationId,
@@ -40,6 +45,11 @@ const NEWLINE_SHORTCUT_ROWS: Array<{ id: NewlineShortcutId; label: string }> = [
   { id: 'commandEnter', label: 'menu shortcut' },
 ]
 
+function isFrontmatterBooleanTrue(value: string) {
+  const normalized = value.trim().toLowerCase()
+  return normalized === 'true' || normalized === 'yes' || normalized === 'on' || normalized === '1'
+}
+
 type SettingsPageProps = {
   state: AppState
   section: SettingsSection
@@ -55,6 +65,8 @@ type SettingsPageProps = {
   tabButtonScaleDraft: number
   noteFontScaleDraft: number
   showParentHomeTabDraft: boolean
+  frontmatterDraft: FrontmatterSettings
+  frontmatterDraftDirty: boolean
   onSectionChange: (section: SettingsSection) => void
   onToggleShortcutEdit: (shortcutId: ShortcutId) => void
   onNewlineShortcutChange: (shortcutId: NewlineShortcutId, operation: NewlineOperationId) => void
@@ -68,7 +80,7 @@ type SettingsPageProps = {
   onTabButtonScaleChange: (value: string) => void
   onNoteFontScaleChange: (value: string) => void
   onShowParentHomeTabChange: (enabled: boolean) => void
-  onActiveFrontmatterTemplateChange: (templateId: string) => void
+  onSettingsFrontmatterTemplateChange: (templateId: string) => void
   onCreateFrontmatterTemplate: () => void
   onUpdateFrontmatterTemplate: (templateId: string, patch: Partial<Pick<FrontmatterTemplate, 'name'>>) => void
   onDeleteFrontmatterTemplate: (templateId: string) => void
@@ -79,6 +91,8 @@ type SettingsPageProps = {
     patch: Partial<FrontmatterTemplateField>,
   ) => void
   onDeleteFrontmatterTemplateField: (templateId: string, fieldId: string) => void
+  onSaveFrontmatterTemplates: () => void
+  onDiscardFrontmatterTemplateChanges: () => void
 }
 
 export function SettingsPage({
@@ -96,6 +110,8 @@ export function SettingsPage({
   tabButtonScaleDraft,
   noteFontScaleDraft,
   showParentHomeTabDraft,
+  frontmatterDraft,
+  frontmatterDraftDirty,
   onSectionChange,
   onToggleShortcutEdit,
   onNewlineShortcutChange,
@@ -109,17 +125,59 @@ export function SettingsPage({
   onTabButtonScaleChange,
   onNoteFontScaleChange,
   onShowParentHomeTabChange,
-  onActiveFrontmatterTemplateChange,
+  onSettingsFrontmatterTemplateChange,
   onCreateFrontmatterTemplate,
   onUpdateFrontmatterTemplate,
   onDeleteFrontmatterTemplate,
   onAddFrontmatterTemplateField,
   onUpdateFrontmatterTemplateField,
   onDeleteFrontmatterTemplateField,
+  onSaveFrontmatterTemplates,
+  onDiscardFrontmatterTemplateChanges,
 }: SettingsPageProps) {
   const activeFrontmatterTemplate =
-    state.frontmatter.templates.find((template) => template.id === state.frontmatter.activeTemplateId) ??
-    state.frontmatter.templates[0]
+    frontmatterDraft.templates.find((template) => template.id === frontmatterDraft.settingsTemplateId) ??
+    frontmatterDraft.templates[0]
+
+  const renderFrontmatterDefaultControl = (templateId: string, field: FrontmatterTemplateField) => {
+    if (field.type === 'boolean') {
+      const checked = isFrontmatterBooleanTrue(field.defaultValue)
+      return (
+        <label className="frontmatter-boolean-switch form-check form-switch settings-switch frontmatter-default-input">
+          <input
+            className="form-check-input"
+            type="checkbox"
+            role="switch"
+            checked={checked}
+            disabled={field.computed !== 'none'}
+            aria-label="frontmatter default boolean value"
+            onChange={(event) =>
+              onUpdateFrontmatterTemplateField(templateId, field.id, {
+                defaultValue: event.target.checked ? 'true' : 'false',
+              })
+            }
+          />
+          <span className="frontmatter-boolean-switch-label">{checked ? 'true' : 'false'}</span>
+        </label>
+      )
+    }
+
+    return (
+      <input
+        type="text"
+        className="settings-text-input frontmatter-default-input"
+        value={field.defaultValue}
+        aria-label="frontmatter default value"
+        placeholder={field.computed === 'none' ? 'default' : 'computed'}
+        disabled={field.computed !== 'none'}
+        onChange={(event) =>
+          onUpdateFrontmatterTemplateField(templateId, field.id, {
+            defaultValue: event.target.value,
+          })
+        }
+      />
+    )
+  }
 
   return (
     <section className="settings-page-wrap">
@@ -348,9 +406,9 @@ export function SettingsPage({
                 id="settings-frontmatter-template"
                 className="settings-select-input settings-shortcut-select"
                 value={activeFrontmatterTemplate?.id ?? ''}
-                onChange={(event) => onActiveFrontmatterTemplateChange(event.target.value)}
+                onChange={(event) => onSettingsFrontmatterTemplateChange(event.target.value)}
               >
-                {state.frontmatter.templates.map((template) => (
+                {frontmatterDraft.templates.map((template) => (
                   <option key={template.id} value={template.id}>
                     {template.name}
                   </option>
@@ -365,11 +423,28 @@ export function SettingsPage({
                 type="button"
                 className="btn btn-sm settings-action-btn"
                 onClick={() => activeFrontmatterTemplate && onDeleteFrontmatterTemplate(activeFrontmatterTemplate.id)}
-                disabled={!activeFrontmatterTemplate || state.frontmatter.templates.length <= 1}
+                disabled={!activeFrontmatterTemplate || frontmatterDraft.templates.length <= 1}
               >
                 delete template
               </button>
+              <button
+                type="button"
+                className="btn btn-sm settings-action-btn"
+                onClick={onDiscardFrontmatterTemplateChanges}
+                disabled={!frontmatterDraftDirty}
+              >
+                discard changes
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm settings-action-btn"
+                onClick={onSaveFrontmatterTemplates}
+                disabled={!frontmatterDraftDirty}
+              >
+                save template
+              </button>
             </div>
+            <p className="settings-help">template changes apply only after saving.</p>
 
             {activeFrontmatterTemplate && (
               <>
@@ -384,8 +459,16 @@ export function SettingsPage({
                 </label>
                 <div className="settings-divider" />
                 <div className="frontmatter-template-fields">
+                  <div className="frontmatter-template-field-row frontmatter-template-field-header" aria-hidden="true">
+                    <span>key</span>
+                    <span>type</span>
+                    <span>computed</span>
+                    <span>default</span>
+                    <span>lock</span>
+                    <span>action</span>
+                  </div>
                   {activeFrontmatterTemplate.fields.map((field) => (
-                    <div key={field.id} className="frontmatter-template-field-row">
+                    <div key={field.id} className={`frontmatter-template-field-row ${field.computed !== 'none' ? 'is-computed' : ''}`}>
                       <input
                         type="text"
                         className="settings-text-input frontmatter-key-input"
@@ -399,11 +482,18 @@ export function SettingsPage({
                         className="settings-select-input frontmatter-type-select"
                         value={field.type}
                         aria-label="frontmatter type"
-                        onChange={(event) =>
+                        onChange={(event) => {
+                          const type = event.target.value as FrontmatterTemplateField['type']
                           onUpdateFrontmatterTemplateField(activeFrontmatterTemplate.id, field.id, {
-                            type: event.target.value as FrontmatterTemplateField['type'],
+                            type,
+                            defaultValue: type === 'boolean'
+                              ? (isFrontmatterBooleanTrue(field.defaultValue) ? 'true' : 'false')
+                              : field.defaultValue,
+                            computed: isFrontmatterComputedValueCompatibleWithFieldType(field.computed, type)
+                              ? field.computed
+                              : 'none',
                           })
-                        }
+                        }}
                       >
                         {FRONTMATTER_FIELD_TYPES.map((type) => (
                           <option key={type} value={type}>
@@ -421,24 +511,20 @@ export function SettingsPage({
                           })
                         }
                       >
-                        {FRONTMATTER_COMPUTED_VALUES.map((computed) => (
+                        {getFrontmatterComputedValuesForFieldType(field.type).map((computed) => (
                           <option key={computed} value={computed}>
                             {computed}
                           </option>
                         ))}
                       </select>
-                      <input
-                        type="text"
-                        className="settings-text-input frontmatter-default-input"
-                        value={field.defaultValue}
-                        aria-label="frontmatter default value"
-                        placeholder="default"
-                        onChange={(event) =>
-                          onUpdateFrontmatterTemplateField(activeFrontmatterTemplate.id, field.id, {
-                            defaultValue: event.target.value,
-                          })
-                        }
-                      />
+                      {renderFrontmatterDefaultControl(activeFrontmatterTemplate.id, field)}
+                      <span
+                        className={`frontmatter-computed-lock ${field.computed !== 'none' ? 'is-visible' : ''}`}
+                        title={field.computed !== 'none' ? 'computed values cannot be manually changed.' : undefined}
+                        aria-label={field.computed !== 'none' ? 'computed values cannot be manually changed.' : undefined}
+                      >
+                        {field.computed !== 'none' ? 'lock' : ''}
+                      </span>
                       <button
                         type="button"
                         className="btn btn-sm settings-action-btn"

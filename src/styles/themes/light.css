@@ -520,6 +520,10 @@
   color: transparent !important;
 }
 
+.theme-light .toastui-editor .ProseMirror .tabs-annotation-line-marker.tabs-annotation-inline-arrow::before {
+  background: var(--editor-text) !important;
+}
+
 .theme-light .toastui-editor .ProseMirror .tabs-terminal-block-landing-zone::before {
   background: var(--editor-terminal-caret) !important;
 }

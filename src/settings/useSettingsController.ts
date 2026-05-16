@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useRef,
   useState,
   type Dispatch,
   type MutableRefObject,
@@ -12,9 +13,11 @@ import {
 import { updateSpaceInActiveDomain } from '../state/domains'
 import { applyAutoPurgeToWorkspace, createId } from '../state/workspace'
 import { appPersistenceService } from '../storage/app-persistence-service'
+import { isFrontmatterComputedValueCompatibleWithFieldType } from '../frontmatter/frontmatter'
 import type {
   AppState,
   AppTheme,
+  FrontmatterSettings,
   FrontmatterTemplate,
   FrontmatterTemplateField,
   NewlineOperationId,
@@ -41,6 +44,11 @@ type UseSettingsControllerParams = {
   storageHydrated: boolean
 }
 
+function isFrontmatterBooleanDefaultTrue(value: string) {
+  const normalized = value.trim().toLowerCase()
+  return normalized === 'true' || normalized === 'yes' || normalized === 'on' || normalized === '1'
+}
+
 export function useSettingsController({
   state,
   stateRef,
@@ -64,7 +72,9 @@ export function useSettingsController({
   const [showParentHomeTabDraft, setShowParentHomeTabDraft] = useState(DEFAULT_UI_SETTINGS.showParentHomeTab)
   const [tabButtonScaleDraft, setTabButtonScaleDraft] = useState(DEFAULT_UI_SETTINGS.tabButtonScale)
   const [noteFontScaleDraft, setNoteFontScaleDraft] = useState(DEFAULT_UI_SETTINGS.noteFontScale)
+  const [frontmatterDraft, setFrontmatterDraft] = useState<FrontmatterSettings>(state.frontmatter)
   const [exportStatus, setExportStatus] = useState<string>('')
+  const pendingSettingsFrontmatterTemplateIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (viewMode !== 'settings') return
@@ -86,6 +96,19 @@ export function useSettingsController({
     state.ui.tabButtonScale,
     state.ui.noteFontScale,
   ])
+
+  useEffect(() => {
+    if (viewMode !== 'settings') return
+    const pendingTemplateId = pendingSettingsFrontmatterTemplateIdRef.current
+    pendingSettingsFrontmatterTemplateIdRef.current = null
+    setFrontmatterDraft({
+      ...state.frontmatter,
+      settingsTemplateId:
+        pendingTemplateId && state.frontmatter.templates.some((template) => template.id === pendingTemplateId)
+          ? pendingTemplateId
+          : state.frontmatter.settingsTemplateId,
+    })
+  }, [viewMode, state.frontmatter])
 
   const commitImmediateSettingsState = (buildNextState: (previous: AppState) => AppState) => {
     const nextState = applyAutoPurgeToAppState(buildNextState(stateRef.current))
@@ -244,20 +267,28 @@ export function useSettingsController({
     }))
   }
 
-  const updateFrontmatterSettings = (updater: (templates: FrontmatterTemplate[], activeTemplateId: string) => {
+  const frontmatterDraftDirty = JSON.stringify(frontmatterDraft) !== JSON.stringify(state.frontmatter)
+
+  const updateFrontmatterDraft = (updater: (
+    templates: FrontmatterTemplate[],
+    settingsTemplateId: string,
+    lastAppliedTemplateId: string,
+  ) => {
     templates: FrontmatterTemplate[]
-    activeTemplateId: string
+    settingsTemplateId: string
+    lastAppliedTemplateId: string
   }) => {
-    commitImmediateSettingsState((previous) => ({
-      ...previous,
-      frontmatter: updater(previous.frontmatter.templates, previous.frontmatter.activeTemplateId),
-    }))
+    setFrontmatterDraft((previous) => updater(previous.templates, previous.settingsTemplateId, previous.lastAppliedTemplateId))
   }
 
-  const setActiveFrontmatterTemplate = (templateId: string) => {
-    updateFrontmatterSettings((templates, activeTemplateId) => ({
+  const setSettingsFrontmatterTemplate = (templateId: string) => {
+    if (viewMode !== 'settings') {
+      pendingSettingsFrontmatterTemplateIdRef.current = templateId
+    }
+    updateFrontmatterDraft((templates, settingsTemplateId, lastAppliedTemplateId) => ({
       templates,
-      activeTemplateId: templates.some((template) => template.id === templateId) ? templateId : activeTemplateId,
+      settingsTemplateId: templateId === '' || templates.some((template) => template.id === templateId) ? templateId : settingsTemplateId,
+      lastAppliedTemplateId,
     }))
   }
 
@@ -267,14 +298,15 @@ export function useSettingsController({
       name: 'new template',
       fields: [],
     }
-    updateFrontmatterSettings((templates) => ({
+    updateFrontmatterDraft((templates, _settingsTemplateId, lastAppliedTemplateId) => ({
       templates: [...templates, template],
-      activeTemplateId: template.id,
+      settingsTemplateId: template.id,
+      lastAppliedTemplateId,
     }))
   }
 
   const updateFrontmatterTemplate = (templateId: string, patch: Partial<Pick<FrontmatterTemplate, 'name'>>) => {
-    updateFrontmatterSettings((templates, activeTemplateId) => ({
+    updateFrontmatterDraft((templates, settingsTemplateId, lastAppliedTemplateId) => ({
       templates: templates.map((template) =>
         template.id === templateId
           ? {
@@ -284,39 +316,51 @@ export function useSettingsController({
             }
           : template,
       ),
-      activeTemplateId,
+      settingsTemplateId,
+      lastAppliedTemplateId,
     }))
   }
 
   const deleteFrontmatterTemplate = (templateId: string) => {
-    updateFrontmatterSettings((templates, activeTemplateId) => {
-      if (templates.length <= 1) return { templates, activeTemplateId }
+    updateFrontmatterDraft((templates, settingsTemplateId, lastAppliedTemplateId) => {
+      if (templates.length <= 1) return { templates, settingsTemplateId, lastAppliedTemplateId }
       const nextTemplates = templates.filter((template) => template.id !== templateId)
       return {
         templates: nextTemplates,
-        activeTemplateId: activeTemplateId === templateId ? nextTemplates[0].id : activeTemplateId,
+        settingsTemplateId: settingsTemplateId === templateId ? '' : settingsTemplateId,
+        lastAppliedTemplateId: lastAppliedTemplateId === templateId ? '' : lastAppliedTemplateId,
       }
     })
   }
 
   const addFrontmatterTemplateField = (templateId: string) => {
-    const field: FrontmatterTemplateField = {
-      id: createId(),
-      key: 'field',
-      type: 'text',
-      defaultValue: '',
-      computed: 'none',
-    }
-    updateFrontmatterSettings((templates, activeTemplateId) => ({
+    updateFrontmatterDraft((templates, settingsTemplateId, lastAppliedTemplateId) => ({
       templates: templates.map((template) =>
         template.id === templateId
-          ? {
-              ...template,
-              fields: [...template.fields, field],
-            }
+          ? (() => {
+              const existingKeys = new Set(template.fields.map((field) => field.key.trim()).filter(Boolean))
+              let key = 'field'
+              let index = 2
+              while (existingKeys.has(key)) {
+                key = `field ${index}`
+                index += 1
+              }
+              const field: FrontmatterTemplateField = {
+                id: createId(),
+                key,
+                type: 'text',
+                defaultValue: '',
+                computed: 'none',
+              }
+              return {
+                ...template,
+                fields: [...template.fields, field],
+              }
+            })()
           : template,
       ),
-      activeTemplateId,
+      settingsTemplateId,
+      lastAppliedTemplateId,
     }))
   }
 
@@ -325,29 +369,43 @@ export function useSettingsController({
     fieldId: string,
     patch: Partial<FrontmatterTemplateField>,
   ) => {
-    updateFrontmatterSettings((templates, activeTemplateId) => ({
+    updateFrontmatterDraft((templates, settingsTemplateId, lastAppliedTemplateId) => ({
       templates: templates.map((template) =>
         template.id === templateId
           ? {
               ...template,
-              fields: template.fields.map((field) =>
-                field.id === fieldId
-                  ? {
-                      ...field,
-                      ...patch,
-                      key: typeof patch.key === 'string' ? patch.key : field.key,
-                    }
-                  : field,
-              ),
+              fields: template.fields.map((field) => {
+                if (field.id !== fieldId) return field
+                const requestedKey = typeof patch.key === 'string' ? patch.key.trim() : field.key
+                const duplicateKey = template.fields.some(
+                  (candidate) => candidate.id !== fieldId && candidate.key.trim() === requestedKey,
+                )
+                const nextType = patch.type ?? field.type
+                const requestedComputed = patch.computed ?? field.computed
+                const nextDefaultValue = nextType === 'boolean'
+                  ? (isFrontmatterBooleanDefaultTrue(patch.defaultValue ?? field.defaultValue) ? 'true' : 'false')
+                  : patch.defaultValue ?? field.defaultValue
+                return {
+                  ...field,
+                  ...patch,
+                  type: nextType,
+                  defaultValue: nextDefaultValue,
+                  computed: isFrontmatterComputedValueCompatibleWithFieldType(requestedComputed, nextType)
+                    ? requestedComputed
+                    : 'none',
+                  key: requestedKey && !duplicateKey ? requestedKey : field.key,
+                }
+              }),
             }
           : template,
       ),
-      activeTemplateId,
+      settingsTemplateId,
+      lastAppliedTemplateId,
     }))
   }
 
   const deleteFrontmatterTemplateField = (templateId: string, fieldId: string) => {
-    updateFrontmatterSettings((templates, activeTemplateId) => ({
+    updateFrontmatterDraft((templates, settingsTemplateId, lastAppliedTemplateId) => ({
       templates: templates.map((template) =>
         template.id === templateId
           ? {
@@ -356,8 +414,20 @@ export function useSettingsController({
             }
           : template,
       ),
-      activeTemplateId,
+      settingsTemplateId,
+      lastAppliedTemplateId,
     }))
+  }
+
+  const saveFrontmatterTemplates = () => {
+    commitImmediateSettingsState((previous) => ({
+      ...previous,
+      frontmatter: frontmatterDraft,
+    }))
+  }
+
+  const discardFrontmatterTemplateChanges = () => {
+    setFrontmatterDraft(stateRef.current.frontmatter)
   }
 
   return {
@@ -373,6 +443,8 @@ export function useSettingsController({
     tabButtonScaleDraft,
     noteFontScaleDraft,
     showParentHomeTabDraft,
+    frontmatterDraft,
+    frontmatterDraftDirty,
     setEditingShortcut,
     setExportStatus,
     changeSection,
@@ -388,12 +460,14 @@ export function useSettingsController({
     updateNewlineShortcutSetting,
     updateNewlineMenuOperationsSetting,
     updateStageManagerOpenDestinationSetting,
-    setActiveFrontmatterTemplate,
+    setSettingsFrontmatterTemplate,
     createFrontmatterTemplate,
     updateFrontmatterTemplate,
     deleteFrontmatterTemplate,
     addFrontmatterTemplateField,
     updateFrontmatterTemplateField,
     deleteFrontmatterTemplateField,
+    saveFrontmatterTemplates,
+    discardFrontmatterTemplateChanges,
   }
 }

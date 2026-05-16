@@ -39,7 +39,6 @@ export type FrontmatterValue = unknown
 export type FrontmatterData = Record<string, FrontmatterValue>
 export type FrontmatterFieldType = 'text' | 'number' | 'boolean' | 'date' | 'datetime' | 'list'
 export type FrontmatterComputedValue = 'none' | 'createdAt' | 'updatedAt' | 'noteTitle' | 'spaceName' | 'domainName'
-export type FrontmatterApplyMode = 'merge' | 'replace'
 
 export type FrontmatterTemplateField = {
   id: string
@@ -57,13 +56,52 @@ export type FrontmatterTemplate = {
 
 export type FrontmatterSettings = {
   templates: FrontmatterTemplate[]
-  activeTemplateId: string
+  settingsTemplateId: string
+  lastAppliedTemplateId: string
+}
+
+export type FrontmatterFieldOrigin = {
+  templateId: string
+  fieldId: string
+}
+
+export type FrontmatterFieldOriginMap = Record<string, FrontmatterFieldOrigin>
+export type FrontmatterComputedFieldMap = Record<string, FrontmatterComputedValue>
+
+export type FrontmatterSaveOptions = {
+  templateId: string | null
+  templateDerived: boolean
+  templateFieldOrigins: FrontmatterFieldOriginMap
+  templateRemovedFieldIds?: string[]
+  computedFields?: FrontmatterComputedFieldMap
 }
 
 export type NoteBody = {
   id: string
+  createdAt?: string
+  updatedAt?: string
   aisles: NoteAisle[]
   frontmatter: FrontmatterData | null
+  frontmatterTemplateId?: string
+  frontmatterTemplateDerived?: boolean
+  frontmatterTemplateFieldOrigins?: FrontmatterFieldOriginMap
+  frontmatterTemplateRemovedFieldIds?: string[]
+  frontmatterComputedFields?: FrontmatterComputedFieldMap
+  /** Legacy row-level template behavior. Ignored by the current frontmatter modal. */
+  frontmatterTemplateDetachedKeys?: string[]
+}
+
+export type FrontmatterRowDraft = {
+  id: string
+  key: string
+  type: FrontmatterFieldType
+  value: string
+  computed: FrontmatterComputedValue
+  computedEnabled?: boolean
+  computedLocked?: boolean
+  locked: boolean
+  templateFieldId?: string
+  derived?: boolean
 }
 
 export type NoteLocation = {
@@ -297,7 +335,6 @@ export type StageManagerDraft = {
   strayExistingParentId: string
   strayNewParentName: string
   frontmatterTemplateId: string
-  frontmatterApplyMode: FrontmatterApplyMode
   massDeleteMode: StageManagerMassDeleteMode
 }
 
@@ -440,9 +477,11 @@ export type ModalState =
   | {
       type: 'frontmatter-note'
       noteBodyId: string
-      draftYaml: string
+      location: NoteLocation
+      rows: FrontmatterRowDraft[]
       selectedTemplateId: string
-      applyMode: FrontmatterApplyMode
+      templateDerived: boolean
+      isTemplateSuggestionDraft: boolean
     }
   | { type: 'newline-menu-settings' }
 

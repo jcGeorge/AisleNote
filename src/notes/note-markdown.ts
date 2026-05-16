@@ -1,4 +1,4 @@
-import { createId } from '../state/workspace'
+import { createId, createTimestamp } from '../state/workspace'
 import type { NoteAisle, NoteBody } from '../types/app'
 
 export function getPrimaryAisle(body: NoteBody | null | undefined): NoteAisle | null {
@@ -11,9 +11,26 @@ export function getNoteBodyMarkdown(body: NoteBody | null | undefined, aisleId: 
 }
 
 export function cloneNoteBodyAsIndependentCopy(body: NoteBody): NoteBody {
+  const timestamp = createTimestamp()
   return {
     id: createId(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
     frontmatter: body.frontmatter ? { ...body.frontmatter } : null,
+    frontmatterTemplateId: body.frontmatterTemplateId,
+    frontmatterTemplateDerived: body.frontmatterTemplateDerived,
+    frontmatterTemplateFieldOrigins: body.frontmatterTemplateFieldOrigins
+      ? Object.fromEntries(Object.entries(body.frontmatterTemplateFieldOrigins).map(([key, origin]) => [key, { ...origin }]))
+      : undefined,
+    frontmatterTemplateRemovedFieldIds: body.frontmatterTemplateRemovedFieldIds
+      ? [...body.frontmatterTemplateRemovedFieldIds]
+      : undefined,
+    frontmatterComputedFields: body.frontmatterComputedFields
+      ? { ...body.frontmatterComputedFields }
+      : undefined,
+    frontmatterTemplateDetachedKeys: body.frontmatterTemplateDetachedKeys
+      ? [...body.frontmatterTemplateDetachedKeys]
+      : undefined,
     aisles:
       body.aisles.length > 0
         ? body.aisles.map((aisle) => ({

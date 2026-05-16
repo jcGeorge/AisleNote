@@ -1,5 +1,6 @@
 import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
 import { setActiveDomain, setActiveSpaceInActiveDomain, updateSpaceInActiveDomain } from '../state/domains'
+import { createTimestamp } from '../state/workspace'
 import type { AppState, NoteAisle, NoteCursorLocation, NoteCursorSelection, NoteLocation } from '../types/app'
 import { noteCursorSelectionsEqual, pruneNoteCursorLocations } from './note-cursors'
 
@@ -11,6 +12,9 @@ export const getAisleSignature = (aisles: NoteAisle[]) =>
 
 export const syncNoteBodyAislesInState = (previous: AppState, noteBodyId: string, aisles: NoteAisle[]): AppState => {
   const normalizedAisles = cloneAisles(aisles)
+  const currentBody = previous.noteBodies.find((body) => body.id === noteBodyId)
+  const aislesChanged = currentBody ? getAisleSignature(currentBody.aisles) !== getAisleSignature(normalizedAisles) : true
+  const updatedAt = aislesChanged ? createTimestamp() : undefined
   const firstMarkdown = normalizedAisles[0]?.markdown ?? ''
   const syncTabs = (tabs: typeof previous.spaces[number]['data']['tabs']) =>
     tabs.map((tab) => ({
@@ -45,7 +49,13 @@ export const syncNoteBodyAislesInState = (previous: AppState, noteBodyId: string
   return {
     ...previous,
     noteBodies: previous.noteBodies.map((body) =>
-      body.id === noteBodyId ? { ...body, aisles: normalizedAisles } : body,
+      body.id === noteBodyId
+        ? {
+            ...body,
+            ...(updatedAt ? { updatedAt } : {}),
+            aisles: normalizedAisles,
+          }
+        : body,
     ),
     domains: previous.domains.map((domain) => ({
       ...domain,

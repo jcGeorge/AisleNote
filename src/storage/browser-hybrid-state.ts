@@ -274,6 +274,7 @@ function buildRootManifest(appState: Record<string, unknown>) {
               noteFontScale: 1,
               noteCursorLocations: {},
             },
+      frontmatter: isRecord(appState.frontmatter) ? appState.frontmatter : undefined,
     },
     topics:
       domains.length > 0
@@ -286,6 +287,24 @@ function buildRootManifest(appState: Record<string, unknown>) {
       const bodyId = typeof body.id === 'string' ? body.id : ''
       return {
         id: bodyId,
+        createdAt: typeof body.createdAt === 'string' ? body.createdAt : undefined,
+        updatedAt: typeof body.updatedAt === 'string' ? body.updatedAt : undefined,
+        frontmatter: isRecord(body.frontmatter) ? body.frontmatter : null,
+        frontmatterTemplateId: typeof body.frontmatterTemplateId === 'string' ? body.frontmatterTemplateId : undefined,
+        frontmatterTemplateDerived:
+          typeof body.frontmatterTemplateDerived === 'boolean' ? body.frontmatterTemplateDerived : undefined,
+        frontmatterTemplateFieldOrigins: isRecord(body.frontmatterTemplateFieldOrigins)
+          ? body.frontmatterTemplateFieldOrigins
+          : undefined,
+        frontmatterTemplateRemovedFieldIds: ensureArray<string>(body.frontmatterTemplateRemovedFieldIds).filter(
+          (fieldId): fieldId is string => typeof fieldId === 'string' && fieldId.trim().length > 0,
+        ),
+        frontmatterComputedFields: isRecord(body.frontmatterComputedFields)
+          ? body.frontmatterComputedFields
+          : undefined,
+        frontmatterTemplateDetachedKeys: ensureArray<string>(body.frontmatterTemplateDetachedKeys).filter(
+          (key): key is string => typeof key === 'string' && key.trim().length > 0,
+        ),
         aisles: ensureArray<Record<string, unknown>>(body.aisles).map((aisle) => {
           const aisleId = typeof aisle.id === 'string' ? aisle.id : ''
           return {
@@ -586,7 +605,28 @@ function readNoteBodiesFromRootManifest(
         markdown: readTextFileWithInlinedImages(fileMap, joinPosix(STORAGE_ROOT_DIR, file)),
       })
     }
-    noteBodies.push({ id: bodyId, aisles })
+    noteBodies.push({
+      id: bodyId,
+      createdAt: typeof body.createdAt === 'string' ? body.createdAt : undefined,
+      updatedAt: typeof body.updatedAt === 'string' ? body.updatedAt : undefined,
+      frontmatter: isRecord(body.frontmatter) ? body.frontmatter : null,
+      frontmatterTemplateId: typeof body.frontmatterTemplateId === 'string' ? body.frontmatterTemplateId : undefined,
+      frontmatterTemplateDerived:
+        typeof body.frontmatterTemplateDerived === 'boolean' ? body.frontmatterTemplateDerived : undefined,
+      frontmatterTemplateFieldOrigins: isRecord(body.frontmatterTemplateFieldOrigins)
+        ? body.frontmatterTemplateFieldOrigins
+        : undefined,
+      frontmatterTemplateRemovedFieldIds: ensureArray<string>(body.frontmatterTemplateRemovedFieldIds).filter(
+        (fieldId): fieldId is string => typeof fieldId === 'string' && fieldId.trim().length > 0,
+      ),
+      frontmatterComputedFields: isRecord(body.frontmatterComputedFields)
+        ? body.frontmatterComputedFields
+        : undefined,
+      frontmatterTemplateDetachedKeys: ensureArray<string>(body.frontmatterTemplateDetachedKeys).filter(
+        (key): key is string => typeof key === 'string' && key.trim().length > 0,
+      ),
+      aisles,
+    })
   }
   return noteBodies
 }
@@ -835,6 +875,7 @@ export function readSerializedStateFromHybridFileMap(fileMap: Map<string, Browse
     activeSpaceId,
     spaces: activeSpaces,
     hotkeys: isRecord(rootManifest.globalSettings) ? rootManifest.globalSettings.hotkeys : undefined,
+    frontmatter: isRecord(rootManifest.globalSettings) ? rootManifest.globalSettings.frontmatter : undefined,
     ui: isRecord(rootManifest.globalSettings) ? rootManifest.globalSettings.ui : undefined,
   })
 }

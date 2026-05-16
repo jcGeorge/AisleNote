@@ -8,6 +8,10 @@ export function createId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 }
 
+export function createTimestamp(now = new Date()) {
+  return now.toISOString()
+}
+
 export function createNoteAisle(markdown = ''): NoteAisle {
   return {
     id: createId(),
@@ -16,8 +20,11 @@ export function createNoteAisle(markdown = ''): NoteAisle {
 }
 
 export function createNoteBody(markdown = ''): NoteBody {
+  const timestamp = createTimestamp()
   return {
     id: createId(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
     frontmatter: null,
     aisles: [createNoteAisle(markdown)],
   }

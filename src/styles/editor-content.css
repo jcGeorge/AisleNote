@@ -174,7 +174,7 @@
 }
 
 .toastui-editor-contents .tabs-annotation-inline-arrow,
-.toastui-editor .ProseMirror .tabs-annotation-inline-arrow {
+.toastui-editor .ProseMirror .tabs-annotation-inline-arrow:not(.tabs-annotation-line-marker) {
   display: inline-block;
   position: relative;
   width: 1.116rem;
@@ -253,11 +253,6 @@
 }
 
 .toastui-editor .ProseMirror .tabs-annotation-line-marker {
-  display: inline-block;
-  width: 0;
-  min-width: 0;
-  max-width: 0;
-  overflow: hidden;
   white-space: nowrap;
   color: transparent !important;
   caret-color: var(--editor-caret) !important;
@@ -265,6 +260,59 @@
   opacity: 1;
   user-select: none;
   vertical-align: baseline;
+}
+
+.toastui-editor .ProseMirror .tabs-annotation-line-marker:not(.tabs-annotation-inline-arrow) {
+  display: inline-block;
+  width: 0;
+  min-width: 0;
+  max-width: 0;
+  overflow: hidden;
+}
+
+.toastui-editor .ProseMirror .tabs-annotation-line-marker.tabs-annotation-inline-arrow {
+  position: relative;
+  overflow: visible;
+  color: transparent !important;
+  caret-color: transparent !important;
+  font-size: inherit !important;
+  line-height: inherit !important;
+}
+
+.toastui-editor .ProseMirror .tabs-annotation-line-marker.tabs-annotation-inline-arrow::before {
+  background: var(--editor-text) !important;
+}
+
+.toastui-editor .ProseMirror .tabs-annotation-arrow-boundary-caret {
+  display: inline-block;
+  position: relative;
+  z-index: 6;
+  width: 0;
+  min-width: 0;
+  max-width: 0;
+  height: 1em;
+  margin: 0;
+  overflow: visible;
+  vertical-align: -0.08em;
+  background: transparent !important;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.toastui-editor .ProseMirror .tabs-annotation-arrow-boundary-caret::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 50%;
+  z-index: 6;
+  display: block;
+  width: 1px;
+  height: 0.95em;
+  border-radius: 999px;
+  background: var(--editor-caret) !important;
+  opacity: 1;
+  pointer-events: none;
+  transform: translateY(-50%);
 }
 
 .toastui-editor .ProseMirror .tabs-annotation-line-marker * {

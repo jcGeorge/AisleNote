@@ -1,24 +1,28 @@
 import type { ToastState } from '../../types/app'
+import { orderToastsForDisplay } from './toast-stack'
 
 type ToastHostProps = {
-  toast: ToastState | null
+  toasts: ToastState[]
   onToastMouseEnter: () => void
   onToastMouseLeave: () => void
 }
 
-export function ToastHost({ toast, onToastMouseEnter, onToastMouseLeave }: ToastHostProps) {
-  if (!toast) return null
+export function ToastHost({ toasts, onToastMouseEnter, onToastMouseLeave }: ToastHostProps) {
+  if (toasts.length === 0) return null
 
   return (
-    <div className="app-toast-layer" aria-live="polite" aria-atomic="true">
-      <div
-        key={toast.id}
-        className={`app-toast app-toast-${toast.tone}`}
-        onMouseEnter={onToastMouseEnter}
-        onMouseLeave={onToastMouseLeave}
-      >
-        {toast.message}
-      </div>
+    <div
+      className="app-toast-layer"
+      aria-live="polite"
+      aria-atomic="false"
+      onMouseEnter={onToastMouseEnter}
+      onMouseLeave={onToastMouseLeave}
+    >
+      {orderToastsForDisplay(toasts).map((toast) => (
+        <div key={toast.id} className={`app-toast app-toast-${toast.tone}`}>
+          {toast.message}
+        </div>
+      ))}
     </div>
   )
 }

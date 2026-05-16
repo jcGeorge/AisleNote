@@ -404,6 +404,7 @@ function buildRootManifest(appState) {
         noteFontScale: 1,
         noteCursorLocations: {},
       },
+      frontmatter: isRecord(appState.frontmatter) ? appState.frontmatter : undefined,
     },
     topics:
       domains.length > 0
@@ -416,6 +417,24 @@ function buildRootManifest(appState) {
       const bodyId = typeof body.id === 'string' ? body.id : ''
       return {
         id: bodyId,
+        createdAt: typeof body.createdAt === 'string' ? body.createdAt : undefined,
+        updatedAt: typeof body.updatedAt === 'string' ? body.updatedAt : undefined,
+        frontmatter: isRecord(body.frontmatter) ? body.frontmatter : null,
+        frontmatterTemplateId: typeof body.frontmatterTemplateId === 'string' ? body.frontmatterTemplateId : undefined,
+        frontmatterTemplateDerived:
+          typeof body.frontmatterTemplateDerived === 'boolean' ? body.frontmatterTemplateDerived : undefined,
+        frontmatterTemplateFieldOrigins: isRecord(body.frontmatterTemplateFieldOrigins)
+          ? body.frontmatterTemplateFieldOrigins
+          : undefined,
+        frontmatterTemplateRemovedFieldIds: ensureArray(body.frontmatterTemplateRemovedFieldIds).filter(
+          (fieldId) => typeof fieldId === 'string' && fieldId.trim().length > 0,
+        ),
+        frontmatterComputedFields: isRecord(body.frontmatterComputedFields)
+          ? body.frontmatterComputedFields
+          : undefined,
+        frontmatterTemplateDetachedKeys: ensureArray(body.frontmatterTemplateDetachedKeys).filter(
+          (key) => typeof key === 'string' && key.trim().length > 0,
+        ),
         aisles: ensureArray(body.aisles).map((aisle) => {
           const aisleId = typeof aisle.id === 'string' ? aisle.id : ''
           return {
@@ -650,6 +669,24 @@ function readNoteBodiesFromRoot(rootPath, rootManifest) {
         .filter(Boolean)
       return {
         id: bodyId,
+        createdAt: typeof body.createdAt === 'string' ? body.createdAt : undefined,
+        updatedAt: typeof body.updatedAt === 'string' ? body.updatedAt : undefined,
+        frontmatter: isRecord(body.frontmatter) ? body.frontmatter : null,
+        frontmatterTemplateId: typeof body.frontmatterTemplateId === 'string' ? body.frontmatterTemplateId : undefined,
+        frontmatterTemplateDerived:
+          typeof body.frontmatterTemplateDerived === 'boolean' ? body.frontmatterTemplateDerived : undefined,
+        frontmatterTemplateFieldOrigins: isRecord(body.frontmatterTemplateFieldOrigins)
+          ? body.frontmatterTemplateFieldOrigins
+          : undefined,
+        frontmatterTemplateRemovedFieldIds: ensureArray(body.frontmatterTemplateRemovedFieldIds).filter(
+          (fieldId) => typeof fieldId === 'string' && fieldId.trim().length > 0,
+        ),
+        frontmatterComputedFields: isRecord(body.frontmatterComputedFields)
+          ? body.frontmatterComputedFields
+          : undefined,
+        frontmatterTemplateDetachedKeys: ensureArray(body.frontmatterTemplateDetachedKeys).filter(
+          (key) => typeof key === 'string' && key.trim().length > 0,
+        ),
         aisles,
       }
     })
@@ -807,6 +844,7 @@ function readHybridAppStateFromRoot(rootPath) {
     activeSpaceId: activeDomain.activeSpaceId,
     spaces: activeDomain.spaces,
     hotkeys: rootManifest?.globalSettings?.hotkeys,
+    frontmatter: rootManifest?.globalSettings?.frontmatter,
     ui: rootManifest?.globalSettings?.ui,
   })
 }

@@ -394,7 +394,7 @@ export function useStageManagerController({
       updateDraft({ newSpaceName: snapshot.fullParents[0].title })
     }
     if (nextAction === 'frontmatter' && !draft.frontmatterTemplateId) {
-      updateDraft({ frontmatterTemplateId: state.frontmatter.activeTemplateId })
+      updateDraft({ frontmatterTemplateId: state.frontmatter.lastAppliedTemplateId })
     }
   }
 
@@ -687,7 +687,6 @@ export function useStageManagerController({
     } else if (action === 'frontmatter') {
       const template = state.frontmatter.templates.find((candidate) => candidate.id === draft.frontmatterTemplateId)
       details.push(`template: ${template?.name ?? 'none selected'}`)
-      details.push(`mode: ${draft.frontmatterApplyMode}`)
     } else if (action === 'mass-delete') {
       details.push(`mode: ${draft.massDeleteMode === 'trash' ? 'move to trash' : 'delete for real'}`)
     }
@@ -785,7 +784,6 @@ export function useStageManagerController({
           latestState.activeSpaceId,
           snapshot,
           template,
-          draft.frontmatterApplyMode,
         ),
         getApplyToastMessage(),
       )

@@ -3,9 +3,11 @@
   left: 1rem;
   bottom: 1rem;
   display: flex;
-  align-items: flex-end;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-start;
   justify-content: flex-start;
-  pointer-events: none;
+  pointer-events: auto;
   z-index: 2400;
 }
 

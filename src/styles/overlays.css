@@ -114,7 +114,7 @@
 }
 
 .settings-modal:has(.frontmatter-note-modal) {
-  width: min(560px, calc(100vw - 2rem));
+  width: min(640px, calc(100vw - 2rem));
 }
 
 .settings-modal-field {
@@ -149,26 +149,149 @@
 
 .frontmatter-note-toolbar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(6.5rem, 0.6fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   gap: 0.4rem;
   align-items: center;
 }
 
-.frontmatter-yaml-textarea {
-  width: 100%;
-  min-height: 15rem;
-  resize: vertical;
+.frontmatter-derived-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  color: var(--modal-text);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.frontmatter-derived-switch input {
+  width: 2.2rem;
+  height: 1.15rem;
+  margin: 0;
+  accent-color: var(--modal-primary-bg);
+}
+
+.frontmatter-template-suggestion-banner {
   border: 1px solid var(--settings-control-border);
   border-radius: 0.42rem;
   background: var(--settings-control-bg);
-  color: var(--settings-control-text);
-  padding: 0.55rem 0.6rem;
-  font: 0.88rem/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--modal-body-text);
+  padding: 0.5rem 0.6rem;
+  font-size: 0.84rem;
+  line-height: 1.35;
 }
 
-.frontmatter-yaml-textarea:focus {
-  outline: none;
-  border-color: var(--settings-select-focus-border);
+.frontmatter-row-editor {
+  display: grid;
+  gap: 0.4rem;
+  max-height: min(42vh, 22rem);
+  overflow: auto;
+}
+
+.frontmatter-row {
+  display: grid;
+  grid-template-columns: minmax(5.5rem, 1fr) minmax(5rem, 0.65fr) minmax(7rem, 1.2fr) 2.75rem 2.75rem auto;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.frontmatter-row-header {
+  color: var(--modal-muted-text);
+  font-size: 0.72rem;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.frontmatter-row .settings-action-btn {
+  min-width: 4.75rem;
+}
+
+.frontmatter-row.is-locked {
+  opacity: 0.86;
+}
+
+.frontmatter-row.is-locked .frontmatter-row-value-input {
+  font-style: italic;
+}
+
+.frontmatter-note-modal .frontmatter-boolean-switch {
+  color: var(--modal-text);
+}
+
+.frontmatter-computed-switch.form-check {
+  padding-left: 0;
+  justify-self: center;
+}
+
+.frontmatter-computed-switch .form-check-input {
+  margin: 0 !important;
+}
+
+.frontmatter-computed-lock {
+  position: relative;
+  display: inline-block;
+  width: 1.2rem;
+  height: 1.2rem;
+  justify-self: center;
+  color: var(--modal-text);
+  font-size: 0;
+  opacity: 0;
+}
+
+.frontmatter-computed-lock.is-visible {
+  opacity: 0.85;
+}
+
+.frontmatter-computed-lock::before {
+  content: '';
+  position: absolute;
+  left: 0.32rem;
+  top: 0.08rem;
+  width: 0.56rem;
+  height: 0.58rem;
+  border: 0.14rem solid currentColor;
+  border-bottom: 0;
+  border-radius: 0.45rem 0.45rem 0 0;
+}
+
+.frontmatter-computed-lock::after {
+  content: '';
+  position: absolute;
+  left: 0.23rem;
+  top: 0.56rem;
+  width: 0.74rem;
+  height: 0.55rem;
+  border-radius: 0.12rem;
+  background: currentColor;
+}
+
+.frontmatter-derived-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: center;
+  min-height: 1.15rem;
+  color: var(--modal-muted-text);
+}
+
+.frontmatter-derived-indicator.is-derived {
+  color: var(--modal-text);
+}
+
+.frontmatter-derived-indicator input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: var(--modal-primary-bg);
+  pointer-events: none;
+}
+
+.frontmatter-empty-state {
+  border: 1px dashed var(--settings-control-border);
+  border-radius: 0.42rem;
+  color: var(--modal-muted-text);
+  padding: 0.75rem;
+  text-align: center;
 }
 
 .modal-primary-btn {

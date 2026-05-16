@@ -1,6 +1,5 @@
 import { parseDocument, stringify as stringifyYaml } from 'yaml'
 import type {
-  FrontmatterApplyMode,
   FrontmatterComputedValue,
   FrontmatterData,
   FrontmatterFieldType,
@@ -11,8 +10,15 @@ import type {
 
 export type FrontmatterTemplateContext = {
   now: Date
+  noteBodyId: string
+  noteCreatedAt: string
+  noteUpdatedAt: string
   noteTitle: string
+  tabId: string
+  subTabId: string | null
+  spaceId: string
   spaceName: string
+  domainId: string
   domainName: string
 }
 
@@ -39,8 +45,25 @@ export const FRONTMATTER_COMPUTED_VALUES: FrontmatterComputedValue[] = [
   'domainName',
 ]
 
+export function isFrontmatterComputedValueCompatibleWithFieldType(
+  computed: FrontmatterComputedValue,
+  type: FrontmatterFieldType,
+) {
+  if (computed === 'none') return true
+  if (computed === 'createdAt' || computed === 'updatedAt') return type === 'date' || type === 'datetime'
+  if (computed === 'noteTitle' || computed === 'spaceName' || computed === 'domainName') return type === 'text'
+  return false
+}
+
+export function getFrontmatterComputedValuesForFieldType(type: FrontmatterFieldType) {
+  return FRONTMATTER_COMPUTED_VALUES.filter((computed) =>
+    isFrontmatterComputedValueCompatibleWithFieldType(computed, type),
+  )
+}
+
 export const DEFAULT_FRONTMATTER_SETTINGS: FrontmatterSettings = {
-  activeTemplateId: DEFAULT_TEMPLATE_ID,
+  settingsTemplateId: '',
+  lastAppliedTemplateId: '',
   templates: [
     {
       id: DEFAULT_TEMPLATE_ID,
@@ -150,7 +173,7 @@ export function prependMarkdownFrontmatter(markdown: string, frontmatter: Frontm
   return `---\n${yaml}\n---\n${markdown}`
 }
 
-function coerceString(value: unknown): string {
+export function coerceFrontmatterString(value: unknown): string {
   if (value == null) return ''
   if (value instanceof Date) return value.toISOString()
   if (Array.isArray(value)) return value.join(', ')
@@ -164,15 +187,15 @@ function formatDateOnly(value: Date): string {
 
 function parseBoolean(value: unknown): boolean {
   if (typeof value === 'boolean') return value
-  const normalized = coerceString(value).trim().toLowerCase()
+  const normalized = coerceFrontmatterString(value).trim().toLowerCase()
   return normalized === 'true' || normalized === 'yes' || normalized === 'on' || normalized === '1'
 }
 
 function parseList(value: unknown): string[] {
   if (Array.isArray(value)) {
-    return value.map((entry) => coerceString(entry).trim()).filter(Boolean)
+    return value.map((entry) => coerceFrontmatterString(entry).trim()).filter(Boolean)
   }
-  return coerceString(value)
+  return coerceFrontmatterString(value)
     .split(/\r?\n|,/)
     .map((entry) => entry.trim())
     .filter(Boolean)
@@ -187,32 +210,41 @@ function isCompatibleValue(type: FrontmatterFieldType, value: unknown): boolean 
   return false
 }
 
+export function isFrontmatterReferenceComputedValue(computed: FrontmatterComputedValue) {
+  return computed === 'noteTitle' || computed === 'spaceName' || computed === 'domainName'
+}
+
 function getComputedValue(computed: FrontmatterComputedValue, context: FrontmatterTemplateContext): unknown {
-  if (computed === 'createdAt') return formatDateOnly(context.now)
-  if (computed === 'updatedAt') return context.now.toISOString()
-  if (computed === 'noteTitle') return context.noteTitle
-  if (computed === 'spaceName') return context.spaceName
-  if (computed === 'domainName') return context.domainName
+  if (computed === 'createdAt') return context.noteCreatedAt
+  if (computed === 'updatedAt') return context.noteUpdatedAt
+  if (computed === 'noteTitle') return { id: context.noteBodyId, title: context.noteTitle }
+  if (computed === 'spaceName') return { id: context.spaceId, name: context.spaceName }
+  if (computed === 'domainName') return { id: context.domainId, name: context.domainName }
   return undefined
 }
 
-function coerceFieldValue(type: FrontmatterFieldType, value: unknown): unknown {
-  if (type === 'text') return coerceString(value)
+export function coerceFrontmatterFieldValue(type: FrontmatterFieldType, value: unknown): unknown {
+  if (type === 'text') return coerceFrontmatterString(value)
   if (type === 'number') {
-    const parsed = typeof value === 'number' ? value : Number.parseFloat(coerceString(value))
+    const parsed = typeof value === 'number' ? value : Number.parseFloat(coerceFrontmatterString(value))
     return Number.isFinite(parsed) ? parsed : 0
   }
   if (type === 'boolean') return parseBoolean(value)
   if (type === 'date') {
-    const date = value instanceof Date ? value : new Date(coerceString(value))
-    return Number.isNaN(date.getTime()) ? coerceString(value) : formatDateOnly(date)
+    const date = value instanceof Date ? value : new Date(coerceFrontmatterString(value))
+    return Number.isNaN(date.getTime()) ? coerceFrontmatterString(value) : formatDateOnly(date)
   }
   if (type === 'datetime') {
-    const date = value instanceof Date ? value : new Date(coerceString(value))
-    return Number.isNaN(date.getTime()) ? coerceString(value) : date.toISOString()
+    const date = value instanceof Date ? value : new Date(coerceFrontmatterString(value))
+    return Number.isNaN(date.getTime()) ? coerceFrontmatterString(value) : date.toISOString()
   }
   if (type === 'list') return parseList(value)
   return value
+}
+
+export function formatFrontmatterFieldValue(type: FrontmatterFieldType, value: unknown): string {
+  if (type === 'boolean') return parseBoolean(value) ? 'true' : 'false'
+  return coerceFrontmatterString(value)
 }
 
 function resolveFieldValue(
@@ -221,24 +253,29 @@ function resolveFieldValue(
   context: FrontmatterTemplateContext,
 ): unknown {
   const currentValue = existing[field.key]
-  if (field.computed === 'createdAt' && isCompatibleValue(field.type, currentValue)) {
-    return coerceFieldValue(field.type, currentValue)
-  }
-
   const computedValue = getComputedValue(field.computed, context)
-  if (computedValue !== undefined) return coerceFieldValue(field.type, computedValue)
-  if (isCompatibleValue(field.type, currentValue)) return coerceFieldValue(field.type, currentValue)
-  return coerceFieldValue(field.type, field.defaultValue)
+  if (computedValue !== undefined) {
+    return isFrontmatterReferenceComputedValue(field.computed) ? computedValue : coerceFrontmatterFieldValue(field.type, computedValue)
+  }
+  if (isCompatibleValue(field.type, currentValue)) return coerceFrontmatterFieldValue(field.type, currentValue)
+  return coerceFrontmatterFieldValue(field.type, field.defaultValue)
+}
+
+export function resolveFrontmatterTemplateFieldValue(
+  field: FrontmatterTemplateField,
+  existing: FrontmatterData | null,
+  context: FrontmatterTemplateContext,
+): unknown {
+  return resolveFieldValue(field, existing ?? {}, context)
 }
 
 export function applyFrontmatterTemplate(
   existing: FrontmatterData | null,
   template: FrontmatterTemplate,
   context: FrontmatterTemplateContext,
-  mode: FrontmatterApplyMode = 'merge',
 ): FrontmatterData {
   const source = existing ?? {}
-  const next: FrontmatterData = mode === 'replace' ? {} : { ...source }
+  const next: FrontmatterData = {}
 
   for (const field of template.fields) {
     const key = field.key.trim()
@@ -259,12 +296,13 @@ function normalizeField(raw: unknown, index: number): FrontmatterTemplateField |
   const computed = FRONTMATTER_COMPUTED_VALUES.includes(raw.computed as FrontmatterComputedValue)
     ? (raw.computed as FrontmatterComputedValue)
     : 'none'
+  const normalizedComputed = isFrontmatterComputedValueCompatibleWithFieldType(computed, type) ? computed : 'none'
   return {
     id: typeof raw.id === 'string' && raw.id ? raw.id : stableId('fm-field', key, index),
     key,
     type,
-    defaultValue: typeof raw.defaultValue === 'string' ? raw.defaultValue : coerceString(raw.defaultValue),
-    computed,
+    defaultValue: typeof raw.defaultValue === 'string' ? raw.defaultValue : coerceFrontmatterString(raw.defaultValue),
+    computed: normalizedComputed,
   }
 }
 
@@ -290,12 +328,13 @@ export function normalizeFrontmatterSettings(raw: unknown): FrontmatterSettings 
     ? raw.templates.map(normalizeTemplate).filter((template): template is FrontmatterTemplate => Boolean(template))
     : []
   const normalizedTemplates = templates.length > 0 ? templates : DEFAULT_FRONTMATTER_SETTINGS.templates
-  const activeTemplateId =
-    typeof raw.activeTemplateId === 'string' && normalizedTemplates.some((template) => template.id === raw.activeTemplateId)
-      ? raw.activeTemplateId
-      : normalizedTemplates[0].id
+  const normalizeTemplateId = (value: unknown) =>
+    typeof value === 'string' && normalizedTemplates.some((template) => template.id === value) ? value : ''
+  const settingsTemplateId = normalizeTemplateId(raw.settingsTemplateId ?? raw.activeTemplateId)
+  const lastAppliedTemplateId = normalizeTemplateId(raw.lastAppliedTemplateId)
   return {
     templates: normalizedTemplates,
-    activeTemplateId,
+    settingsTemplateId,
+    lastAppliedTemplateId,
   }
 }

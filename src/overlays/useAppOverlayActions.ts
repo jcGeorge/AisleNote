@@ -1,6 +1,6 @@
 import type { MouseEvent, Dispatch, SetStateAction, MutableRefObject } from 'react'
 import type { ExportScope } from '../export/export-data'
-import { updateNoteBodyFrontmatterFromYaml } from '../frontmatter/frontmatter-state'
+import { buildFrontmatterDataFromRows, updateNoteBodyFrontmatter } from '../frontmatter/frontmatter-state'
 import {
   buildNoteLocationKey,
   getDefaultNoteReferenceTarget,
@@ -10,7 +10,7 @@ import {
 } from '../notes/note-locations'
 import { applyNoteCopyToState } from './note-copy'
 import { removeSpaceFromActiveDomain } from '../state/domains'
-import { createId, createTab } from '../state/workspace'
+import { createId, createTab, createTimestamp } from '../state/workspace'
 import { TRASH_HOME_ID } from '../trash/trash-model'
 import type {
   AppState,
@@ -481,8 +481,11 @@ export const useAppOverlayActions = ({
       const newBodies: NoteBody[] = []
       for (const location of locations) {
         if (keepKeys.has(buildNoteLocationKey(location))) continue
+        const timestamp = createTimestamp()
         const emptyBody: NoteBody = {
           id: createId(),
+          createdAt: timestamp,
+          updatedAt: timestamp,
           frontmatter: null,
           aisles: [{ id: createId(), markdown: '' }],
         }
@@ -503,15 +506,31 @@ export const useAppOverlayActions = ({
     }
 
     if (modal.type === 'frontmatter-note') {
-      const result = updateNoteBodyFrontmatterFromYaml(stateRef.current, modal.noteBodyId, modal.draftYaml)
+      const result = buildFrontmatterDataFromRows(stateRef.current, modal.noteBodyId, modal.location, modal.rows, {
+        selectedTemplateId: modal.selectedTemplateId,
+        templateDerived: modal.templateDerived,
+      })
       if (!result.ok) {
         pushToast(result.message, 'error')
         return
       }
-      stateRef.current = result.state
-      setState(result.state)
+      const nextState = updateNoteBodyFrontmatter(
+        stateRef.current,
+        modal.noteBodyId,
+        result.frontmatter,
+        {
+          templateId: modal.selectedTemplateId || null,
+          templateDerived: modal.templateDerived,
+          templateFieldOrigins: result.templateFieldOrigins,
+          templateRemovedFieldIds: result.templateRemovedFieldIds,
+          computedFields: result.computedFields,
+        },
+      )
+      stateRef.current = nextState
+      setState(nextState)
       setModal(null)
-      pushToast(result.state.noteBodies.find((body) => body.id === modal.noteBodyId)?.frontmatter ? 'frontmatter saved.' : 'frontmatter removed.', 'success')
+      result.warnings.forEach((warning) => pushToast(warning, 'warning'))
+      pushToast(nextState.noteBodies.find((body) => body.id === modal.noteBodyId)?.frontmatter ? 'frontmatter saved.' : 'frontmatter removed.', 'success')
       return
     }
 

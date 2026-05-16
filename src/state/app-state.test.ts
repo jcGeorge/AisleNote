@@ -52,6 +52,91 @@ describe('app state normalization', () => {
     expect(nextBody?.aisles[0]?.markdown).toBe('updated')
   })
 
+  it('backfills note body timestamps from existing frontmatter', () => {
+    const state = parseSavedState(
+      JSON.stringify({
+        spaces: [
+          {
+            id: 'space-1',
+            name: 'Space',
+            data: {
+              activeTabId: 'tab-1',
+              tabs: [
+                {
+                  id: 'tab-1',
+                  title: 'Tab',
+                  noteBodyId: 'body-1',
+                  homeContent: '',
+                  activeSubTabId: null,
+                  subTabs: [],
+                },
+              ],
+              deletedTabs: [],
+              deletedSubTabs: [],
+            },
+          },
+        ],
+        noteBodies: [
+          {
+            id: 'body-1',
+            frontmatter: {
+              created: '2024-01-02',
+              updatedAt: '2026-05-15T12:30:00.000Z',
+            },
+            aisles: [{ id: 'aisle-1', markdown: 'body' }],
+          },
+        ],
+      }),
+    )
+
+    const body = state.noteBodies.find((candidate) => candidate.id === 'body-1')
+
+    expect(body?.createdAt).toBe('2024-01-02T00:00:00.000Z')
+    expect(body?.updatedAt).toBe('2026-05-15T12:30:00.000Z')
+  })
+
+  it('updates note body updatedAt on content edits while preserving createdAt', () => {
+    const state = parseSavedState(
+      JSON.stringify({
+        spaces: [
+          {
+            id: 'space-1',
+            name: 'Space',
+            data: {
+              activeTabId: 'tab-1',
+              tabs: [
+                {
+                  id: 'tab-1',
+                  title: 'Tab',
+                  noteBodyId: 'body-1',
+                  homeContent: 'before',
+                  activeSubTabId: null,
+                  subTabs: [],
+                },
+              ],
+              deletedTabs: [],
+              deletedSubTabs: [],
+            },
+          },
+        ],
+        noteBodies: [
+          {
+            id: 'body-1',
+            createdAt: '2024-01-02T00:00:00.000Z',
+            updatedAt: '2024-01-03T00:00:00.000Z',
+            aisles: [{ id: 'aisle-1', markdown: 'before' }],
+          },
+        ],
+      }),
+    )
+
+    const next = applyMarkdownToAppState(state, 'space-1', 'tab-1', null, 'aisle-1', 'after')
+    const body = next.noteBodies.find((candidate) => candidate.id === 'body-1')
+
+    expect(body?.createdAt).toBe('2024-01-02T00:00:00.000Z')
+    expect(body?.updatedAt).not.toBe('2024-01-03T00:00:00.000Z')
+  })
+
   it('normalizes persisted note cursor locations', () => {
     const state = parseSavedState(
       JSON.stringify({

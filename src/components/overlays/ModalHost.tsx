@@ -1,11 +1,19 @@
-import { useEffect, useState, type DragEvent } from 'react'
+import { useEffect, useState, type DragEvent, type MouseEvent as ReactMouseEvent } from 'react'
 import { NoteLocationPicker, type NoteLocationPickerValue } from '../notes/NoteLocationPicker'
 import {
   NEWLINE_MENU_ELIGIBLE_OPERATIONS,
   NEWLINE_OPERATION_LABELS,
 } from '../../hotkeys/shortcuts'
+import {
+  FRONTMATTER_FIELD_TYPES,
+  getFrontmatterComputedValuesForFieldType,
+  isFrontmatterComputedValueCompatibleWithFieldType,
+} from '../../frontmatter/frontmatter'
+import { buildFrontmatterRowsForNote } from '../../frontmatter/frontmatter-state'
 import { buildNoteLocationKey, listNoteLocationsForBody } from '../../notes/note-locations'
-import type { AppState, Domain, FrontmatterApplyMode, ModalState, NewlineOperationId, Space } from '../../types/app'
+import { createId } from '../../state/workspace'
+import type { AppState, Domain, FrontmatterRowDraft, ModalState, NewlineOperationId, Space } from '../../types/app'
+import { makeFrontmatterRowsManual, normalizeFrontmatterModalRows } from './frontmatter-modal-state'
 import { getModalText } from './modal-text'
 
 type ModalHostProps = {
@@ -16,13 +24,9 @@ type ModalHostProps = {
   newlineMenuOperations: NewlineOperationId[]
   onModalChange: (modal: ModalState | null) => void
   onNewlineMenuOperationsChange: (operations: NewlineOperationId[]) => void
-  onBuildFrontmatterTemplateDraft: (
-    noteBodyId: string,
-    templateId: string,
-    rawYaml: string,
-    mode: FrontmatterApplyMode,
-  ) => { ok: true; yaml: string } | { ok: false; message: string }
+  onEditFrontmatterTemplate: (templateId: string) => void
   onWarn: (message: string) => void
+  onError: (message: string) => void
   onConfirm: () => void
 }
 
@@ -165,8 +169,9 @@ export function ModalHost({
   newlineMenuOperations,
   onModalChange,
   onNewlineMenuOperationsChange,
-  onBuildFrontmatterTemplateDraft,
+  onEditFrontmatterTemplate,
   onWarn,
+  onError,
   onConfirm,
 }: ModalHostProps) {
   useEffect(() => {
@@ -198,8 +203,179 @@ export function ModalHost({
     modal.type === 'newline-menu-settings'
   const isNotePickerModal = modal.type === 'copy-note' || modal.type === 'insert-note-reference'
 
+  const updateFrontmatterRows = (updater: (rows: FrontmatterRowDraft[]) => FrontmatterRowDraft[]) => {
+    if (modal.type !== 'frontmatter-note') return
+    onModalChange(normalizeFrontmatterModalRows(modal, updater(modal.rows)))
+  }
+
+  const updateFrontmatterRow = (rowId: string, patch: Partial<FrontmatterRowDraft>) => {
+    updateFrontmatterRows((rows) => rows.map((row) => (row.id === rowId ? { ...row, ...patch } : row)))
+  }
+
+  const createFrontmatterRowKey = (rows: FrontmatterRowDraft[]) => {
+    const existingKeys = new Set(rows.map((row) => row.key.trim()).filter(Boolean))
+    let key = 'field'
+    let index = 2
+    while (existingKeys.has(key)) {
+      key = `field ${index}`
+      index += 1
+    }
+    return key
+  }
+
+  const isFrontmatterBooleanTrue = (value: string) => {
+    const normalized = value.trim().toLowerCase()
+    return normalized === 'true' || normalized === 'yes' || normalized === 'on' || normalized === '1'
+  }
+
+  const isComputedEnabled = (row: FrontmatterRowDraft) => row.computedEnabled ?? row.computed !== 'none'
+  const isComputedLocked = (row: FrontmatterRowDraft) => Boolean(row.computedLocked || (row.derived && row.computed !== 'none'))
+  const isDerivedNormalRow = (row: FrontmatterRowDraft) => Boolean(row.derived && row.computed === 'none')
+  const getComputedLockedMessage = (row: FrontmatterRowDraft) => (
+    row.derived
+      ? 'computed fields that are derived can not be changed here, edit the fm template'
+      : 'computed fields, once set, can not be changed'
+  )
+
+  const warnComputedLocked = (row: FrontmatterRowDraft) => {
+    onWarn(getComputedLockedMessage(row))
+  }
+
+  const warnDerivedComputedBlocked = () => {
+    onError('derived fields can not be made into computed fields, change the fm template to accomodate')
+  }
+
+  const warnDerivedKeyLocked = () => {
+    onWarn('derived fields cannot have their names changed')
+  }
+
+  const warnReadOnlyRowName = (row: FrontmatterRowDraft) => {
+    if (row.derived) warnDerivedKeyLocked()
+    else if (isComputedLocked(row)) warnComputedLocked(row)
+  }
+
+  const handleComputedLockedMouseDown = (event: ReactMouseEvent, row: FrontmatterRowDraft) => {
+    event.preventDefault()
+    warnComputedLocked(row)
+  }
+
+  const renderFrontmatterValueControl = (row: FrontmatterRowDraft) => {
+    const computedEnabled = isComputedEnabled(row)
+
+    if (computedEnabled) {
+      const computedOptions = getFrontmatterComputedValuesForFieldType(row.type).filter((computed) => computed !== 'none')
+      return (
+        <select
+          className="settings-select-input frontmatter-row-value-input"
+          value={row.computed !== 'none' && isFrontmatterComputedValueCompatibleWithFieldType(row.computed, row.type) ? row.computed : ''}
+          aria-label="computed frontmatter value"
+          title={isComputedLocked(row) ? getComputedLockedMessage(row) : undefined}
+          onMouseDown={isComputedLocked(row) ? (event) => handleComputedLockedMouseDown(event, row) : undefined}
+          onKeyDown={isComputedLocked(row) ? (event) => {
+            event.preventDefault()
+            warnComputedLocked(row)
+          } : undefined}
+          onChange={(event) => {
+            if (isComputedLocked(row)) {
+              warnComputedLocked(row)
+              return
+            }
+            const computed = event.target.value === '' ? 'none' : event.target.value as FrontmatterRowDraft['computed']
+            updateFrontmatterRow(row.id, {
+              computed,
+              locked: computed !== 'none',
+            })
+          }}
+        >
+          <option value="">computed value</option>
+          {computedOptions.map((computed) => (
+            <option key={computed} value={computed}>
+              {computed}
+            </option>
+          ))}
+        </select>
+      )
+    }
+
+    if (row.type === 'boolean') {
+      const checked = isFrontmatterBooleanTrue(row.value)
+      return (
+        <label className="frontmatter-boolean-switch form-check form-switch settings-switch frontmatter-row-value-input">
+          <input
+            className="form-check-input"
+            type="checkbox"
+            role="switch"
+            checked={checked}
+            aria-label="frontmatter boolean value"
+            onChange={(event) => updateFrontmatterRow(row.id, { value: event.target.checked ? 'true' : 'false' })}
+          />
+          <span className="frontmatter-boolean-switch-label">{checked ? 'true' : 'false'}</span>
+        </label>
+      )
+    }
+
+    return (
+      <input
+        type={row.type === 'number' ? 'number' : row.type === 'date' ? 'date' : 'text'}
+        className="settings-text-input frontmatter-row-value-input"
+        value={row.value}
+        aria-label="frontmatter value"
+        placeholder={row.type === 'list' ? 'one, two' : 'value'}
+        onChange={(event) => updateFrontmatterRow(row.id, { value: event.target.value })}
+      />
+    )
+  }
+
+  const renderFrontmatterComputedControl = (row: FrontmatterRowDraft) => {
+    const checked = isComputedEnabled(row)
+    const derivedComputedBlocked = isDerivedNormalRow(row) && !checked
+    return (
+      <label className="frontmatter-computed-switch form-check form-switch settings-switch">
+        <input
+          className="form-check-input"
+          type="checkbox"
+          role="switch"
+          checked={checked}
+          aria-label="frontmatter computed"
+          title={isComputedLocked(row) ? getComputedLockedMessage(row) : undefined}
+          onKeyDown={(event) => {
+            if (isComputedLocked(row)) {
+              event.preventDefault()
+              warnComputedLocked(row)
+              return
+            }
+            if (derivedComputedBlocked && (event.key === ' ' || event.key === 'Enter')) {
+              event.preventDefault()
+              warnDerivedComputedBlocked()
+            }
+          }}
+          onChange={(event) => {
+            if (isComputedLocked(row)) {
+              warnComputedLocked(row)
+              return
+            }
+            if (isDerivedNormalRow(row) && event.target.checked) {
+              warnDerivedComputedBlocked()
+              return
+            }
+            updateFrontmatterRow(row.id, {
+              computedEnabled: event.target.checked,
+              computed: event.target.checked ? row.computed : 'none',
+              locked: event.target.checked,
+            })
+          }}
+        />
+      </label>
+    )
+  }
+
   return (
-    <div className="delete-modal-backdrop" onClick={() => onModalChange(null)}>
+    <div
+      className="delete-modal-backdrop"
+      onClick={() => {
+        if (modal.type !== 'frontmatter-note') onModalChange(null)
+      }}
+    >
       <div
         className={`delete-modal ${isPickerModal ? 'settings-modal' : ''} ${isNotePickerModal ? 'note-picker-modal' : ''} ${
           modal.type === 'newline-menu-settings' ? 'newline-settings-modal' : ''
@@ -312,57 +488,204 @@ export function ModalHost({
               <select
                 className="settings-select-input"
                 value={modal.selectedTemplateId}
-                onChange={(event) => onModalChange({ ...modal, selectedTemplateId: event.target.value })}
+                aria-label="frontmatter template"
+                onChange={(event) => {
+                  const templateId = event.target.value
+                  const template = state.frontmatter.templates.find((candidate) => candidate.id === templateId) ?? null
+                  if (!template) {
+                    onModalChange({
+                      ...modal,
+                      selectedTemplateId: '',
+                      templateDerived: false,
+                      isTemplateSuggestionDraft: false,
+                      rows: makeFrontmatterRowsManual(modal.rows),
+                    })
+                    return
+                  }
+                  onModalChange({
+                    ...modal,
+                    selectedTemplateId: templateId,
+                    templateDerived: true,
+                    isTemplateSuggestionDraft: modal.isTemplateSuggestionDraft,
+                    rows: buildFrontmatterRowsForNote(state, modal.noteBodyId, modal.location, template, {
+                      includeExisting: false,
+                      derived: true,
+                    }),
+                  })
+                }}
               >
+                <option value="">no template</option>
                 {state.frontmatter.templates.map((template) => (
                   <option key={template.id} value={template.id}>
                     {template.name}
                   </option>
                 ))}
               </select>
-              <select
-                className="settings-select-input frontmatter-apply-mode-select"
-                value={modal.applyMode}
-                onChange={(event) => onModalChange({ ...modal, applyMode: event.target.value as FrontmatterApplyMode })}
-              >
-                <option value="merge">merge</option>
-                <option value="replace">replace</option>
-              </select>
               <button
                 type="button"
                 className="btn btn-sm settings-action-btn"
-                onClick={() => {
-                  const result = onBuildFrontmatterTemplateDraft(
-                    modal.noteBodyId,
-                    modal.selectedTemplateId,
-                    modal.draftYaml,
-                    modal.applyMode,
-                  )
-                  if (!result.ok) {
-                    onWarn(result.message)
-                    return
-                  }
-                  onModalChange({ ...modal, draftYaml: result.yaml })
-                }}
+                onClick={() => onEditFrontmatterTemplate(modal.selectedTemplateId)}
                 disabled={!modal.selectedTemplateId}
               >
-                apply template
+                edit template
               </button>
+              <label className="frontmatter-derived-switch">
+                <span>derived</span>
+                <input
+                  type="checkbox"
+                  role="switch"
+                  checked={Boolean(modal.selectedTemplateId && modal.templateDerived)}
+                  disabled={!modal.selectedTemplateId}
+                  aria-label="derive frontmatter from selected template"
+                  onChange={(event) => {
+                    const template = state.frontmatter.templates.find((candidate) => candidate.id === modal.selectedTemplateId) ?? null
+                    if (!template) return
+                    if (!event.target.checked) {
+                      onModalChange({
+                        ...modal,
+                        templateDerived: false,
+                        rows: makeFrontmatterRowsManual(modal.rows),
+                      })
+                      return
+                    }
+                    onModalChange({
+                      ...modal,
+                      templateDerived: true,
+                      rows: buildFrontmatterRowsForNote(state, modal.noteBodyId, modal.location, template, {
+                        includeExisting: true,
+                        derived: true,
+                      }),
+                    })
+                  }}
+                />
+              </label>
               <button
                 type="button"
                 className="btn btn-sm settings-action-btn"
-                onClick={() => onModalChange({ ...modal, draftYaml: '' })}
+                onClick={() =>
+                  updateFrontmatterRows((rows) => [
+                    ...rows,
+                    {
+                      id: createId(),
+                      key: createFrontmatterRowKey(rows),
+                      type: 'text',
+                      value: '',
+                      computed: 'none',
+                      computedEnabled: false,
+                      computedLocked: false,
+                      locked: false,
+                      derived: false,
+                    },
+                  ])
+                }
               >
-                remove
+                add row
               </button>
             </div>
-            <textarea
-              className="frontmatter-yaml-textarea"
-              value={modal.draftYaml}
-              spellCheck={false}
-              onChange={(event) => onModalChange({ ...modal, draftYaml: event.target.value })}
-              aria-label="frontmatter YAML"
-            />
+            {modal.isTemplateSuggestionDraft && modal.selectedTemplateId && (
+              <div className="frontmatter-template-suggestion-banner" role="note">
+                Suggested from &ldquo;{state.frontmatter.templates.find((template) => template.id === modal.selectedTemplateId)?.name ?? 'template'}&rdquo;. These rows are not saved on this note yet.
+              </div>
+            )}
+            <div className="frontmatter-row-editor" aria-label="frontmatter rows">
+              <div className="frontmatter-row frontmatter-row-header" aria-hidden="true">
+                <span>key</span>
+                <span>type</span>
+                <span>value</span>
+                <span>computed</span>
+                <span>derived</span>
+                <span>action</span>
+              </div>
+              {modal.rows.length > 0 ? (
+                modal.rows.map((row) => {
+                  const template = state.frontmatter.templates.find((candidate) => candidate.id === modal.selectedTemplateId) ?? null
+                  const derivedTitle = row.derived && template ? template.name : undefined
+                  return (
+                    <div key={row.id} className={`frontmatter-row ${isComputedLocked(row) ? 'is-locked' : ''}`}>
+                      <input
+                        type="text"
+                        className="settings-text-input frontmatter-row-key-input"
+                        value={row.key}
+                        aria-label="frontmatter key"
+                        readOnly={Boolean(row.derived || isComputedLocked(row))}
+                        onClick={() => warnReadOnlyRowName(row)}
+                        onFocus={() => warnReadOnlyRowName(row)}
+                        onKeyDown={(event) => {
+                          if (!row.derived && !isComputedLocked(row)) return
+                          event.preventDefault()
+                          warnReadOnlyRowName(row)
+                        }}
+                        onChange={(event) => {
+                          if (row.derived || isComputedLocked(row)) {
+                            warnReadOnlyRowName(row)
+                            return
+                          }
+                          updateFrontmatterRow(row.id, { key: event.target.value })
+                        }}
+                      />
+                      <select
+                        className="settings-select-input frontmatter-row-type-select"
+                        value={row.type}
+                        aria-label="frontmatter type"
+                        onMouseDown={isComputedLocked(row) ? (event) => handleComputedLockedMouseDown(event, row) : undefined}
+                        onKeyDown={isComputedLocked(row) ? (event) => {
+                          event.preventDefault()
+                          warnComputedLocked(row)
+                        } : undefined}
+                        onChange={(event) => {
+                          if (isComputedLocked(row)) {
+                            warnComputedLocked(row)
+                            return
+                          }
+                          const nextType = event.target.value as FrontmatterRowDraft['type']
+                          const nextComputed = isFrontmatterComputedValueCompatibleWithFieldType(row.computed, nextType)
+                            ? row.computed
+                            : 'none'
+                          updateFrontmatterRow(row.id, {
+                            type: nextType,
+                            value: nextType === 'boolean'
+                              ? (isFrontmatterBooleanTrue(row.value) ? 'true' : 'false')
+                              : row.value,
+                            computed: nextComputed,
+                            locked: isComputedEnabled(row),
+                          })
+                        }}
+                      >
+                        {FRONTMATTER_FIELD_TYPES.map((type) => (
+                          <option key={type} value={type}>
+                            {type}
+                          </option>
+                        ))}
+                      </select>
+                      {renderFrontmatterValueControl(row)}
+                      {renderFrontmatterComputedControl(row)}
+                      <span
+                        className={`frontmatter-derived-indicator ${row.derived ? 'is-derived' : ''}`}
+                        title={derivedTitle}
+                        aria-label={derivedTitle ? `derived from ${derivedTitle}` : 'not derived from a template'}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={Boolean(row.derived)}
+                          readOnly
+                          tabIndex={-1}
+                          aria-label={derivedTitle ? `derived from ${derivedTitle}` : 'not derived from a template'}
+                        />
+                      </span>
+                      <button
+                        type="button"
+                        className="btn btn-sm settings-action-btn"
+                        onClick={() => updateFrontmatterRows((rows) => rows.filter((candidate) => candidate.id !== row.id))}
+                      >
+                        remove
+                      </button>
+                    </div>
+                  )
+                })
+              ) : (
+                <div className="frontmatter-empty-state">no frontmatter rows</div>
+              )}
+            </div>
           </div>
         )}
         <div className="delete-modal-actions">

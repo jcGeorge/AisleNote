@@ -663,7 +663,7 @@ export function StageManagerView({
 
             {action === 'frontmatter' && (
               <>
-                <p>choose a template and whether template fields merge into or replace existing frontmatter.</p>
+                <p>choose a template to replace frontmatter with its fields.</p>
                 <div className="stage-manager-field-grid">
                   <label className="stage-manager-field">
                     <span>template</span>
@@ -678,19 +678,6 @@ export function StageManagerView({
                           {template.name}
                         </option>
                       ))}
-                    </select>
-                  </label>
-                  <label className="stage-manager-field">
-                    <span>mode</span>
-                    <select
-                      className="form-select form-select-sm"
-                      value={draft.frontmatterApplyMode}
-                      onChange={(event) =>
-                        onDraftChange({ frontmatterApplyMode: event.target.value === 'replace' ? 'replace' : 'merge' })
-                      }
-                    >
-                      <option value="merge">merge fields</option>
-                      <option value="replace">replace frontmatter</option>
                     </select>
                   </label>
                 </div>

@@ -1,5 +1,6 @@
 import { DEFAULT_NEWLINE_SHORTCUT_SETTINGS, DEFAULT_SHORTCUTS, normalizeHotkeySettings } from '../hotkeys/shortcuts'
 import {
+  FRONTMATTER_COMPUTED_VALUES,
   DEFAULT_FRONTMATTER_SETTINGS,
   extractMarkdownFrontmatter,
   normalizeFrontmatterData,
@@ -11,7 +12,18 @@ import {
   DEFAULT_UI_SETTINGS,
   normalizeUiSettings,
 } from '../settings/defaults'
-import type { AppState, AppTheme, Domain, NoteAisle, NoteBody, Space, SubTab, Tab } from '../types/app'
+import type {
+  AppState,
+  AppTheme,
+  Domain,
+  FrontmatterComputedFieldMap,
+  FrontmatterFieldOriginMap,
+  NoteAisle,
+  NoteBody,
+  Space,
+  SubTab,
+  Tab,
+} from '../types/app'
 import {
   createDefaultDomain,
   createLegacyWrappedDomain,
@@ -22,6 +34,7 @@ import {
 import {
   applyAutoPurgeToWorkspace,
   createId,
+  createTimestamp,
   normalizeWorkspaceData,
 } from './workspace'
 import { migrateRawAppData } from './app-migrations'
@@ -46,8 +59,11 @@ const RAW_DEFAULT_STATE: AppState = {
 }
 
 function createNoteBodyWithId(id: string, markdown = ''): NoteBody {
+  const timestamp = createTimestamp()
   return {
     id,
+    createdAt: timestamp,
+    updatedAt: timestamp,
     frontmatter: null,
     aisles: [
       {
@@ -56,6 +72,53 @@ function createNoteBodyWithId(id: string, markdown = ''): NoteBody {
       },
     ],
   }
+}
+
+function normalizeTimestamp(value: unknown, fallback: string): string {
+  if (typeof value !== 'string' && typeof value !== 'number' && !(value instanceof Date)) return fallback
+  const date = value instanceof Date ? value : new Date(value)
+  return Number.isNaN(date.getTime()) ? fallback : date.toISOString()
+}
+
+function frontmatterTimestamp(frontmatter: NoteBody['frontmatter'], keys: string[]): unknown {
+  if (!frontmatter) return undefined
+  for (const key of keys) {
+    const value = frontmatter[key]
+    if (value != null) return value
+  }
+  return undefined
+}
+
+function normalizeStringList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const entries = Array.from(new Set(value.map((entry) => (typeof entry === 'string' ? entry.trim() : '')).filter(Boolean)))
+  return entries.length > 0 ? entries : undefined
+}
+
+function normalizeFrontmatterFieldOrigins(value: unknown): FrontmatterFieldOriginMap | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const origins: FrontmatterFieldOriginMap = {}
+  Object.entries(value as Record<string, unknown>).forEach(([key, entry]) => {
+    if (!key.trim() || !entry || typeof entry !== 'object' || Array.isArray(entry)) return
+    const candidate = entry as Record<string, unknown>
+    const templateId = typeof candidate.templateId === 'string' ? candidate.templateId.trim() : ''
+    const fieldId = typeof candidate.fieldId === 'string' ? candidate.fieldId.trim() : ''
+    if (!templateId || !fieldId) return
+    origins[key] = { templateId, fieldId }
+  })
+  return origins
+}
+
+function normalizeFrontmatterComputedFields(value: unknown): FrontmatterComputedFieldMap | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const computedFields: FrontmatterComputedFieldMap = {}
+  Object.entries(value as Record<string, unknown>).forEach(([key, entry]) => {
+    const normalizedKey = key.trim()
+    if (!normalizedKey || typeof entry !== 'string' || entry === 'none') return
+    if (!FRONTMATTER_COMPUTED_VALUES.includes(entry as FrontmatterComputedFieldMap[string])) return
+    computedFields[normalizedKey] = entry as FrontmatterComputedFieldMap[string]
+  })
+  return Object.keys(computedFields).length > 0 ? computedFields : undefined
 }
 
 function normalizeNoteAisles(raw: unknown): NoteAisle[] {
@@ -72,6 +135,7 @@ function normalizeNoteBodies(raw: unknown): NoteBody[] {
   if (!Array.isArray(raw)) return []
   const seen = new Set<string>()
   const bodies: NoteBody[] = []
+  const fallbackTimestamp = createTimestamp()
   for (const entry of raw) {
     if (!entry || typeof entry !== 'object') continue
     const candidate = entry as Record<string, unknown>
@@ -101,9 +165,30 @@ function normalizeNoteBodies(raw: unknown): NoteBody[] {
           ...fallbackAisles.slice(1),
         ]
       : fallbackAisles
+    const frontmatter = savedFrontmatter ?? extracted?.frontmatter ?? null
+    const createdAt = normalizeTimestamp(
+      candidate.createdAt ?? frontmatterTimestamp(frontmatter, ['createdAt', 'created']),
+      fallbackTimestamp,
+    )
+    const updatedAt = normalizeTimestamp(
+      candidate.updatedAt ?? frontmatterTimestamp(frontmatter, ['updatedAt', 'updated']),
+      fallbackTimestamp,
+    )
     bodies.push({
       id,
-      frontmatter: savedFrontmatter ?? extracted?.frontmatter ?? null,
+      createdAt,
+      updatedAt,
+      frontmatter,
+      frontmatterTemplateId: typeof candidate.frontmatterTemplateId === 'string'
+        ? candidate.frontmatterTemplateId.trim()
+        : undefined,
+      frontmatterTemplateDerived: typeof candidate.frontmatterTemplateDerived === 'boolean'
+        ? candidate.frontmatterTemplateDerived
+        : undefined,
+      frontmatterTemplateFieldOrigins: normalizeFrontmatterFieldOrigins(candidate.frontmatterTemplateFieldOrigins),
+      frontmatterTemplateRemovedFieldIds: normalizeStringList(candidate.frontmatterTemplateRemovedFieldIds),
+      frontmatterComputedFields: normalizeFrontmatterComputedFields(candidate.frontmatterComputedFields),
+      frontmatterTemplateDetachedKeys: normalizeStringList(candidate.frontmatterTemplateDetachedKeys),
       aisles: normalizedAisles,
     })
   }
@@ -345,6 +430,7 @@ export function applyMarkdownToAppState(
   if (!targetNoteBodyId) return projected
 
   let bodyChanged = false
+  const updatedAt = createTimestamp()
   const noteBodies = projected.noteBodies.map((body) => {
     if (body.id !== targetNoteBodyId) return body
     const targetAisleId = aisleId || body.aisles[0]?.id || createId()
@@ -362,10 +448,11 @@ export function applyMarkdownToAppState(
       bodyChanged = true
       return {
         ...body,
+        updatedAt,
         aisles: [...aisles, { id: targetAisleId, markdown: normalizedMarkdown }],
       }
     }
-    return bodyChanged ? { ...body, aisles } : body
+    return bodyChanged ? { ...body, updatedAt, aisles } : body
   })
 
   if (!bodyChanged && spaces === projected.spaces) return projected

@@ -74,8 +74,8 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
   if (modal.type === 'frontmatter-note') {
     return {
       title: 'frontmatter',
-      body: 'edit YAML metadata for this note or apply a saved template.',
-      action: 'save',
+      body: 'edit metadata rows for this note.',
+      action: modal.isTemplateSuggestionDraft && modal.selectedTemplateId ? 'add frontmatter' : 'save',
     }
   }
 

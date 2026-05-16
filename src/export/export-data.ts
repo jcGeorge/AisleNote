@@ -1,5 +1,6 @@
 import JSZip from 'jszip'
 import { prependMarkdownFrontmatter } from '../frontmatter/frontmatter'
+import { resolveFrontmatterReferencesForState } from '../frontmatter/frontmatter-state'
 import { splitImageResizeMetadataFromUrl } from '../markdown/image-metadata'
 import { convertInternalTabsForExport } from '../markdown/markdown-utils'
 import type { AppState, Space, SpaceSettings } from '../types/app'
@@ -75,7 +76,10 @@ function getExportMarkdownForBody(
 ): string {
   const body = state.noteBodies.find((candidate) => candidate.id === noteBodyId) ?? null
   const markdown = body?.aisles[0]?.markdown ?? fallbackMarkdown
-  return prependMarkdownFrontmatter(rewriteMarkdownImages(markdown, spaceFolder, imageBank), body?.frontmatter ?? null)
+  return prependMarkdownFrontmatter(
+    rewriteMarkdownImages(markdown, spaceFolder, imageBank),
+    resolveFrontmatterReferencesForState(state, body?.frontmatter ?? null),
+  )
 }
 
 export async function exportAppData({

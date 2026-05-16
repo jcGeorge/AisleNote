@@ -4,9 +4,24 @@ import {
   extractMarkdownFrontmatter,
   parseFrontmatterYaml,
   prependMarkdownFrontmatter,
+  normalizeFrontmatterSettings,
   stringifyFrontmatterYaml,
 } from './frontmatter'
 import type { FrontmatterTemplate } from '../types/app'
+
+const context = {
+  now: new Date('2026-05-15T12:30:00.000Z'),
+  noteBodyId: 'body-1',
+  noteCreatedAt: '2024-01-01T08:00:00.000Z',
+  noteUpdatedAt: '2026-05-14T09:30:00.000Z',
+  noteTitle: 'Roadmap',
+  tabId: 'tab-1',
+  subTabId: null,
+  spaceId: 'space-1',
+  spaceName: 'Product',
+  domainId: 'domain-1',
+  domainName: 'Tabs',
+}
 
 const template: FrontmatterTemplate = {
   id: 'template',
@@ -49,60 +64,89 @@ describe('frontmatter parsing', () => {
 })
 
 describe('frontmatter templates', () => {
+  it('splits settings template selection from last applied template history', () => {
+    expect(normalizeFrontmatterSettings(null).settingsTemplateId).toBe('')
+    expect(normalizeFrontmatterSettings(null).lastAppliedTemplateId).toBe('')
+    expect(
+      normalizeFrontmatterSettings({
+        settingsTemplateId: 'template',
+        lastAppliedTemplateId: 'template',
+        templates: [template],
+      }),
+    ).toMatchObject({
+      settingsTemplateId: 'template',
+      lastAppliedTemplateId: 'template',
+    })
+    expect(
+      normalizeFrontmatterSettings({
+        activeTemplateId: 'template',
+        templates: [template],
+      }).settingsTemplateId,
+    ).toBe('template')
+    expect(
+      normalizeFrontmatterSettings({
+        activeTemplateId: 'template',
+        templates: [template],
+      }).lastAppliedTemplateId,
+    ).toBe('')
+    expect(
+      normalizeFrontmatterSettings({
+        activeTemplateId: '',
+        templates: [template],
+      }).settingsTemplateId,
+    ).toBe('')
+  })
+
+  it('normalizes computed values that do not match the field type', () => {
+    const normalized = normalizeFrontmatterSettings({
+      templates: [
+        {
+          id: 'bad-template',
+          name: 'Bad',
+          fields: [
+            { id: 'flag', key: 'flag', type: 'boolean', defaultValue: '', computed: 'createdAt' },
+            { id: 'created', key: 'created', type: 'date', defaultValue: '', computed: 'createdAt' },
+            { id: 'title', key: 'title', type: 'text', defaultValue: '', computed: 'noteTitle' },
+          ],
+        },
+      ],
+    })
+
+    expect(normalized.templates[0]?.fields.map((field) => field.computed)).toEqual([
+      'none',
+      'createdAt',
+      'noteTitle',
+    ])
+  })
+
   it('applies typed defaults and computed values', () => {
-    const result = applyFrontmatterTemplate(
-      null,
-      template,
-      {
-        now: new Date('2026-05-15T12:30:00.000Z'),
-        noteTitle: 'Roadmap',
-        spaceName: 'Product',
-        domainName: 'Tabs',
-      },
-      'merge',
-    )
+    const result = applyFrontmatterTemplate(null, template, context)
 
     expect(result).toEqual({
       status: 'draft',
       count: 3,
       tags: ['one', 'two'],
-      created: '2026-05-15',
-      updated: '2026-05-15T12:30:00.000Z',
-      title: 'Roadmap',
+      created: '2024-01-01',
+      updated: '2026-05-14T09:30:00.000Z',
+      title: { id: 'body-1', title: 'Roadmap' },
     })
   })
 
-  it('preserves an existing created date while updating changed fields', () => {
+  it('preserves compatible existing values for editable template fields', () => {
     const result = applyFrontmatterTemplate(
       { created: '2024-01-01', status: 'ready', extra: true },
       template,
-      {
-        now: new Date('2026-05-15T12:30:00.000Z'),
-        noteTitle: 'Roadmap',
-        spaceName: 'Product',
-        domainName: 'Tabs',
-      },
-      'merge',
+      context,
     )
 
-    expect(result.created).toBe('2024-01-01')
     expect(result.status).toBe('ready')
-    expect(result.extra).toBe(true)
-    expect(result.updated).toBe('2026-05-15T12:30:00.000Z')
+    expect(result.extra).toBeUndefined()
+    expect(result.created).toBe('2024-01-01')
+    expect(result.updated).toBe('2026-05-14T09:30:00.000Z')
   })
 
-  it('can replace frontmatter with only template fields', () => {
-    const result = applyFrontmatterTemplate(
-      { extra: true },
-      template,
-      {
-        now: new Date('2026-05-15T12:30:00.000Z'),
-        noteTitle: 'Roadmap',
-        spaceName: 'Product',
-        domainName: 'Tabs',
-      },
-      'replace',
-    )
+  it('applies frontmatter as template fields only', () => {
+    const result = applyFrontmatterTemplate({ extra: true }, template, context)
 
     expect(result.extra).toBeUndefined()
     expect(stringifyFrontmatterYaml(result)).toContain('status: draft')

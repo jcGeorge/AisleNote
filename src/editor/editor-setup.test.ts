@@ -15,6 +15,7 @@ import {
   getActiveHeadingLevel,
   getArrowMarkerDeletionRange,
   getArrowMarkerNavigationPosition,
+  getArrowMarkerSelectionSnapPosition,
   getParagraphSpaceShortcut,
 } from './editor-setup'
 
@@ -129,6 +130,7 @@ type DecorationCall = {
 function getAnnotationDecorationCalls(
   textContent: string,
   textChildren?: Array<{ text: string; position: number }>,
+  selectionFrom?: number,
 ) {
   const calls: DecorationCall[] = []
   class FakePlugin {
@@ -195,7 +197,10 @@ function getAnnotationDecorationCalls(
     },
   }
 
-  plugin.spec.props.decorations({ doc })
+  plugin.spec.props.decorations({
+    doc,
+    selection: typeof selectionFrom === 'number' ? { empty: true, from: selectionFrom } : undefined,
+  })
   return calls
 }
 
@@ -215,7 +220,7 @@ function editorDoc(textContent: string, position = 0) {
 }
 
 describe('annotation line WYSIWYG decorations', () => {
-  it('adds inline arrow widgets anywhere in the paragraph', () => {
+  it('adds inline arrow replacement classes anywhere in the paragraph', () => {
     const cases = [
       ['^-- note', ANNOTATION_LINE_ARROW_UP_CLASS_NAME, ANNOTATION_LINE_TAIL_RIGHT_CLASS_NAME],
       ['note --^', ANNOTATION_LINE_ARROW_UP_CLASS_NAME, ANNOTATION_LINE_TAIL_LEFT_CLASS_NAME],
@@ -224,15 +229,14 @@ describe('annotation line WYSIWYG decorations', () => {
     ] as const
 
     cases.forEach(([source, directionClassName, tailClassName]) => {
-      const widgetDecoration = getAnnotationDecorationCalls(source).find((call) => call.kind === 'widget')
-      expect(widgetDecoration?.classNames).toEqual(
-        expect.arrayContaining([
-          ANNOTATION_INLINE_ARROW_CLASS_NAME,
-          ANNOTATION_LINE_ARROW_CLASS_NAME,
-          directionClassName,
-          tailClassName,
-        ]),
-      )
+      const inlineDecoration = getAnnotationDecorationCalls(source).find((call) => call.kind === 'inline')
+      expect(inlineDecoration?.attrs?.class?.split(' ')).toEqual(expect.arrayContaining([
+        ANNOTATION_LINE_MARKER_CLASS_NAME,
+        ANNOTATION_INLINE_ARROW_CLASS_NAME,
+        ANNOTATION_LINE_ARROW_CLASS_NAME,
+        directionClassName,
+        tailClassName,
+      ]))
     })
   })
 
@@ -240,13 +244,13 @@ describe('annotation line WYSIWYG decorations', () => {
     expect(getAnnotationDecorationCalls('asdf --^').find((call) => call.kind === 'inline')).toMatchObject({
       from: 6,
       to: 9,
-      attrs: { class: ANNOTATION_LINE_MARKER_CLASS_NAME },
+      attrs: { class: expect.stringContaining(ANNOTATION_LINE_MARKER_CLASS_NAME) },
     })
 
     expect(getAnnotationDecorationCalls('one --v two').find((call) => call.kind === 'inline')).toMatchObject({
       from: 5,
       to: 8,
-      attrs: { class: ANNOTATION_LINE_MARKER_CLASS_NAME },
+      attrs: { class: expect.stringContaining(ANNOTATION_LINE_MARKER_CLASS_NAME) },
     })
   })
 
@@ -259,47 +263,55 @@ describe('annotation line WYSIWYG decorations', () => {
     ).toMatchObject({
       from: 7,
       to: 10,
-      attrs: { class: ANNOTATION_LINE_MARKER_CLASS_NAME },
+      attrs: { class: expect.stringContaining(ANNOTATION_LINE_MARKER_CLASS_NAME) },
     })
   })
 
-  it('adds a widget and hides the raw marker for every arrow marker without moving text', () => {
+  it('replaces every arrow marker in place without moving text', () => {
     const calls = getAnnotationDecorationCalls('one --^ two v-- three')
     const inlineDecorations = calls.filter((call) => call.kind === 'inline')
-    const widgetDecorations = calls.filter((call) => call.kind === 'widget')
 
-    expect(inlineDecorations).toEqual([
-      {
-        kind: 'inline',
-        from: 5,
-        to: 8,
-        attrs: { class: ANNOTATION_LINE_MARKER_CLASS_NAME },
-      },
-      {
-        kind: 'inline',
-        from: 13,
-        to: 16,
-        attrs: { class: ANNOTATION_LINE_MARKER_CLASS_NAME },
-      },
+    expect(inlineDecorations.map((call) => ({ from: call.from, to: call.to }))).toEqual([
+      { from: 5, to: 8 },
+      { from: 13, to: 16 },
     ])
-    expect(widgetDecorations.map((call) => call.from)).toEqual([5, 13])
-    expect(widgetDecorations.map((call) => call.side)).toEqual([1, 1])
-    expect(widgetDecorations.map((call) => call.relaxedSide)).toEqual([true, true])
-    expect(widgetDecorations.map((call, index) => call.from === inlineDecorations[index].from)).toEqual([true, true])
+    inlineDecorations.forEach((call) => {
+      expect(call.attrs?.class?.split(' ')).toEqual(expect.arrayContaining([
+        ANNOTATION_LINE_MARKER_CLASS_NAME,
+        ANNOTATION_INLINE_ARROW_CLASS_NAME,
+        ANNOTATION_LINE_ARROW_CLASS_NAME,
+      ]))
+    })
   })
 
-  it('places a start-of-line arrow widget after the paragraph-start cursor position', () => {
+  it('places a start-of-line arrow replacement after the paragraph-start cursor position', () => {
     const calls = getAnnotationDecorationCalls('--^ note')
     const inlineDecoration = calls.find((call) => call.kind === 'inline')
-    const widgetDecoration = calls.find((call) => call.kind === 'widget')
 
     expect(inlineDecoration).toMatchObject({
       from: 1,
       to: 4,
-      attrs: { class: ANNOTATION_LINE_MARKER_CLASS_NAME },
+      attrs: { class: expect.stringContaining(ANNOTATION_INLINE_ARROW_CLASS_NAME) },
     })
-    expect(widgetDecoration).toMatchObject({
-      from: 1,
+  })
+
+  it('adds a visible caret proxy at arrow marker boundaries', () => {
+    expect(
+      getAnnotationDecorationCalls('asdf --^', undefined, 6).find((call) =>
+        call.kind === 'widget' && call.classNames?.includes('tabs-annotation-arrow-boundary-caret'),
+      ),
+    ).toMatchObject({
+      from: 6,
+      side: -1,
+      relaxedSide: true,
+    })
+
+    expect(
+      getAnnotationDecorationCalls('asdf --^', undefined, 9).find((call) =>
+        call.kind === 'widget' && call.classNames?.includes('tabs-annotation-arrow-boundary-caret'),
+      ),
+    ).toMatchObject({
+      from: 9,
       side: 1,
       relaxedSide: true,
     })
@@ -393,7 +405,38 @@ describe('annotation arrow navigation', () => {
 
     expect(getArrowMarkerNavigationPosition({
       doc: editorDoc('asdf --^'),
+      selection: { empty: true, from: 6 },
+    }, 'ArrowUp')).toBeNull()
+
+    expect(getArrowMarkerNavigationPosition({
+      doc: editorDoc('asdf --^'),
       selection: { empty: false, from: 6 },
     }, 'ArrowRight')).toBeNull()
+  })
+})
+
+describe('annotation arrow cursor normalization', () => {
+  it('snaps mouse selections out of the hidden marker', () => {
+    expect(getArrowMarkerSelectionSnapPosition({
+      doc: editorDoc('asdf --^'),
+      selection: { empty: true, from: 7 },
+    })).toBe(6)
+
+    expect(getArrowMarkerSelectionSnapPosition({
+      doc: editorDoc('asdf --^'),
+      selection: { empty: true, from: 8 },
+    })).toBe(9)
+  })
+
+  it('leaves visible marker edges and non-arrow selections alone', () => {
+    expect(getArrowMarkerSelectionSnapPosition({
+      doc: editorDoc('asdf --^'),
+      selection: { empty: true, from: 6 },
+    })).toBeNull()
+
+    expect(getArrowMarkerSelectionSnapPosition({
+      doc: editorDoc('-- note'),
+      selection: { empty: true, from: 2 },
+    })).toBeNull()
   })
 })

@@ -175,9 +175,24 @@
 
 .frontmatter-template-field-row {
   display: grid;
-  grid-template-columns: minmax(6rem, 1fr) minmax(5.5rem, 0.8fr) minmax(7rem, 1fr) minmax(7rem, 1fr) auto;
+  grid-template-columns: minmax(5rem, 1fr) minmax(5rem, 0.8fr) minmax(6.25rem, 1fr) minmax(6.25rem, 1fr) 2.75rem auto;
   gap: 0.4rem;
   align-items: center;
+}
+
+.frontmatter-template-field-header {
+  color: var(--settings-help-text);
+  font-size: 0.72rem;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.frontmatter-template-field-row.is-computed {
+  opacity: 0.88;
+}
+
+.frontmatter-template-field-row .frontmatter-computed-lock {
+  color: var(--settings-card-text);
 }
 
 .frontmatter-template-field-row .settings-action-btn {
@@ -247,6 +262,28 @@
 
 .settings-switch .form-check-input:checked:focus {
   box-shadow: var(--settings-switch-checked-focus-shadow);
+}
+
+.frontmatter-boolean-switch.form-check {
+  padding-left: 0;
+}
+
+.frontmatter-boolean-switch {
+  width: 100%;
+  justify-self: stretch;
+  gap: 0.45rem;
+  color: var(--settings-card-text);
+}
+
+.frontmatter-boolean-switch .form-check-input {
+  flex: 0 0 auto;
+}
+
+.frontmatter-boolean-switch-label {
+  min-width: 2.4rem;
+  font-size: 0.82rem;
+  line-height: 1;
+  color: inherit;
 }
 
 .theme-switch {

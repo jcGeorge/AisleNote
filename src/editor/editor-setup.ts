@@ -38,6 +38,8 @@ type ToastListMdNode = {
   listData?: { type?: string; bulletChar?: string } | null
 }
 
+const ANNOTATION_ARROW_BOUNDARY_CARET_CLASS_NAME = 'tabs-annotation-arrow-boundary-caret'
+
 function getTextOffsetDecorationRange(
   node: any,
   nodePosition: number,
@@ -81,9 +83,9 @@ function getTextOffsetDecorationRange(
   return fallbackTo > fallbackFrom ? { from: fallbackFrom, to: fallbackTo } : null
 }
 
-function createInlineArrowWidget(classNames: string[]) {
+function createArrowBoundaryCaretWidget() {
   const element = document.createElement('span')
-  element.className = classNames.join(' ')
+  element.className = ANNOTATION_ARROW_BOUNDARY_CARET_CLASS_NAME
   element.setAttribute('aria-hidden', 'true')
   return element
 }
@@ -160,6 +162,34 @@ export function getArrowMarkerNavigationPosition(
   return null
 }
 
+function getArrowMarkerBoundaryForCursor(
+  markerRanges: Array<{ from: number; to: number }>,
+  cursor: number,
+): { pos: number; side: -1 | 1; inside: boolean } | null {
+  for (const range of markerRanges) {
+    if (cursor === range.from) return { pos: range.from, side: -1, inside: false }
+    if (cursor === range.to) return { pos: range.to, side: 1, inside: false }
+    if (cursor > range.from && cursor < range.to) {
+      const useRightEdge = cursor >= (range.from + range.to) / 2
+      return {
+        pos: useRightEdge ? range.to : range.from,
+        side: useRightEdge ? 1 : -1,
+        inside: true,
+      }
+    }
+  }
+  return null
+}
+
+export function getArrowMarkerSelectionSnapPosition(
+  state: { doc?: any; selection?: { empty?: boolean; from?: number } },
+): number | null {
+  const selection = state?.selection
+  if (!selection?.empty || !state?.doc || typeof selection.from !== 'number') return null
+  const boundary = getArrowMarkerBoundaryForCursor(getArrowMarkerDocRanges(state.doc), selection.from)
+  return boundary?.inside ? boundary.pos : null
+}
+
 export function annotationLinePlugin(context: {
   pmState: {
     Plugin: new (spec: {
@@ -167,6 +197,7 @@ export function annotationLinePlugin(context: {
         decorations?: (state: { doc: any }) => unknown
         handleKeyDown?: (view: any, event: KeyboardEvent) => boolean
       }
+      appendTransaction?: (transactions: unknown[], oldState: unknown, newState: { doc: any; selection?: { empty?: boolean; from?: number }; tr: any }) => unknown
     }) => unknown
   }
   pmView: {
@@ -208,6 +239,13 @@ export function annotationLinePlugin(context: {
     wysiwygPlugins: [
       () =>
         new Plugin({
+          appendTransaction: (_transactions: unknown[], _oldState: unknown, newState: { doc: any; selection?: { empty?: boolean; from?: number }; tr: any }) => {
+            const snapPosition = getArrowMarkerSelectionSnapPosition(newState)
+            if (snapPosition === null) return null
+            return newState.tr
+              .setSelection(TextSelection.create(newState.doc, snapPosition, snapPosition))
+              .setMeta('addToHistory', false)
+          },
           props: {
             handleKeyDown: (view: any, event: KeyboardEvent) => {
               const markerRange = getArrowMarkerDeletionRange(view?.state, event.key)
@@ -229,8 +267,9 @@ export function annotationLinePlugin(context: {
 
               return false
             },
-            decorations: (state: { doc: any }) => {
+            decorations: (state: { doc: any; selection?: { empty?: boolean; from?: number } }) => {
               const decorations: unknown[] = []
+              const arrowMarkerRanges: Array<{ from: number; to: number }> = []
               state.doc.descendants((node: any, position: number) => {
                 if (node?.type?.name !== 'paragraph') return true
                 const matches = parseAnnotationLineMarkers(node.textContent ?? '')
@@ -266,21 +305,16 @@ export function annotationLinePlugin(context: {
                     markerEnd,
                   )
                   if (markerRange) {
+                    const markerClassNames = [ANNOTATION_LINE_MARKER_CLASS_NAME]
                     if (markerMatch.marker.kind === 'arrow') {
-                      const classNames = getAnnotationInlineArrowClassNames(markerMatch)
-                      decorations.push(
-                        Decoration.widget(
-                          markerRange.from,
-                          () => createInlineArrowWidget(classNames),
-                          { key: `annotation-arrow-${index}-${markerRange.from}`, classNames, relaxedSide: true, side: 1 },
-                        ),
-                      )
+                      arrowMarkerRanges.push(markerRange)
+                      markerClassNames.push(...getAnnotationInlineArrowClassNames(markerMatch))
                     }
                     decorations.push(
                       Decoration.inline(
                         markerRange.from,
                         markerRange.to,
-                        { class: ANNOTATION_LINE_MARKER_CLASS_NAME },
+                        { class: markerClassNames.join(' ') },
                         { key: `annotation-marker-${index}-${markerRange.from}-${markerRange.to}` },
                       ),
                     )
@@ -288,6 +322,22 @@ export function annotationLinePlugin(context: {
                 })
                 return true
               })
+              const cursor = state.selection?.empty && typeof state.selection.from === 'number' ? state.selection.from : null
+              const boundary = cursor === null ? null : getArrowMarkerBoundaryForCursor(arrowMarkerRanges, cursor)
+              if (boundary) {
+                decorations.push(
+                  Decoration.widget(
+                    boundary.pos,
+                    createArrowBoundaryCaretWidget,
+                    {
+                      key: `annotation-arrow-caret-${boundary.pos}`,
+                      classNames: [ANNOTATION_ARROW_BOUNDARY_CARET_CLASS_NAME],
+                      relaxedSide: true,
+                      side: boundary.side,
+                    },
+                  ),
+                )
+              }
               return DecorationSet.create(state.doc, decorations)
             },
           },
