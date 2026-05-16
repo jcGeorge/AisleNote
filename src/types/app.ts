@@ -355,6 +355,21 @@ export type ToastState = {
   durationMs: number
 }
 
+export type StorageProfileStatus = {
+  status: 'ready' | 'error'
+  event?: string
+  profileRootPath: string
+  notesDataPath: string
+  isDefault: boolean
+  hasProfile: boolean
+  canWrite: boolean
+  source?: 'hybrid' | 'legacy' | 'empty'
+  schemaVersion?: number | null
+  conflicts?: string[]
+  revision?: number
+  error?: string
+}
+
 export type ImageToolsState = {
   visible: boolean
   menuMode: 'start' | 'transform'

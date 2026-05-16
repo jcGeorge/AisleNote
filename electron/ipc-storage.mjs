@@ -1,20 +1,98 @@
+import { existsSync } from 'node:fs'
+import path from 'node:path'
 import { createAppStateCoordinator, LOAD_FAILED_SAVE_ERROR } from './app-state-coordinator.mjs'
+import { getHybridStorageRoot, loadAppStateResult, saveAppState } from './app-state-storage.mjs'
+import {
+  getStorageProfileNotesPath,
+  resolveStorageProfile,
+  writeStorageProfileConfig,
+} from './storage-profile.mjs'
+import { createStorageProfileWatcher } from './storage-watcher.mjs'
 
-export function registerStorageIpc({ ipcMain, app, BrowserWindow }) {
-  const coordinator = createAppStateCoordinator({ userDataPath: app.getPath('userData') })
+function createStorageStatus({ profile, coordinator, event = 'ready', error = null }) {
+  const loadResult = coordinator.getLoadResult()
+  const hasProfile = existsSync(getHybridStorageRoot(profile.profileRootPath))
+  return {
+    status: loadResult.ok ? 'ready' : 'error',
+    event,
+    profileRootPath: profile.profileRootPath,
+    notesDataPath: getStorageProfileNotesPath(profile.profileRootPath),
+    isDefault: profile.isDefault,
+    hasProfile,
+    canWrite: coordinator.canWriteAppState(),
+    source: loadResult.source,
+    schemaVersion: loadResult.schemaVersion,
+    conflicts: loadResult.conflicts,
+    revision: loadResult.revision,
+    error: error ?? (loadResult.ok ? undefined : loadResult.error),
+  }
+}
+
+function getAllWindows(BrowserWindow) {
+  return BrowserWindow && typeof BrowserWindow.getAllWindows === 'function'
+    ? BrowserWindow.getAllWindows()
+    : []
+}
+
+export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null, shell = null }) {
+  const userDataPath = app.getPath('userData')
+  let profile = resolveStorageProfile(userDataPath)
+  const coordinator = createAppStateCoordinator({
+    userDataPath,
+    profileRootPath: profile.profileRootPath,
+  })
+  let watcher = null
+  let status = createStorageStatus({ profile, coordinator })
 
   const broadcastAppStateUpdate = (payload, sourceWebContentsId) => {
-    if (!BrowserWindow || typeof BrowserWindow.getAllWindows !== 'function') return
-    for (const window of BrowserWindow.getAllWindows()) {
+    for (const window of getAllWindows(BrowserWindow)) {
       if (!window || window.isDestroyed?.()) continue
       if (window.webContents?.id === sourceWebContentsId) continue
       window.webContents?.send?.('app-state-updated', payload)
     }
   }
 
+  const broadcastStorageStatus = () => {
+    for (const window of getAllWindows(BrowserWindow)) {
+      if (!window || window.isDestroyed?.()) continue
+      window.webContents?.send?.('storage-profile-status-updated', status)
+    }
+  }
+
+  const updateStatus = (event = 'ready', error = null) => {
+    status = createStorageStatus({ profile, coordinator, event, error })
+    broadcastStorageStatus()
+    return status
+  }
+
+  const startWatcher = () => {
+    watcher?.close()
+    watcher = createStorageProfileWatcher({
+      getProfileRootPath: () => profile.profileRootPath,
+      onExternalChange: () => {
+        const previousSerializedState = coordinator.getSerializedState()
+        const result = coordinator.reloadProfileRoot(profile.profileRootPath, {
+          requireSerializedState: previousSerializedState !== null,
+        })
+        if (result.ok && typeof result.serializedState === 'string') {
+          updateStatus('external-loaded')
+          broadcastAppStateUpdate({
+            serializedState: result.serializedState,
+            revision: result.revision,
+          })
+          watcher?.reset()
+          return
+        }
+        updateStatus('external-error', result.error ?? 'Existing app state could not be loaded.')
+      },
+    })
+  }
+
   const saveRevisionedState = (payload, sourceWebContentsId) => {
     const result = coordinator.saveRevisionedState(payload)
     if (result.ok) {
+      watcher?.markAppWrite()
+      updateStatus('saved')
       broadcastAppStateUpdate(
         {
           serializedState: result.serializedState,
@@ -25,6 +103,122 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow }) {
     }
     return result
   }
+
+  const getCurrentSerializedStateForProfileMove = () => {
+    const currentSerializedState = coordinator.getSerializedState()
+    if (typeof currentSerializedState === 'string') return currentSerializedState
+    const loadResult = coordinator.getLoadResult()
+    if (loadResult.ok && typeof loadResult.serializedState === 'string') return loadResult.serializedState
+    return null
+  }
+
+  const switchToProfileRoot = (profileRootPath, event = 'profile-changed') => {
+    const previousProfile = profile
+    const result = coordinator.reloadProfileRoot(profileRootPath)
+    if (!result.ok) {
+      coordinator.reloadProfileRoot(previousProfile.profileRootPath)
+      updateStatus('profile-error', result.error)
+      return { ok: false, status, error: result.error }
+    }
+    profile = writeStorageProfileConfig(userDataPath, profileRootPath)
+    updateStatus(result.ok ? event : 'profile-error', result.ok ? null : result.error)
+    startWatcher()
+    if (result.ok && typeof result.serializedState === 'string') {
+      broadcastAppStateUpdate({
+        serializedState: result.serializedState,
+        revision: result.revision,
+      })
+    }
+    return { ok: true, status }
+  }
+
+  const replaceProfileWithCurrentData = (profileRootPath) => {
+    const serializedState = getCurrentSerializedStateForProfileMove()
+    if (serializedState === null) {
+      return { ok: false, error: 'Current app state is not ready to move.', status }
+    }
+    try {
+      saveAppState(profileRootPath, serializedState, { userDataPath, replaceExisting: true })
+      return switchToProfileRoot(profileRootPath, 'profile-moved')
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : 'Storage profile could not be written.',
+        status,
+      }
+    }
+  }
+
+  const chooseProfileRoot = async (mode) => {
+    if (!dialog || typeof dialog.showOpenDialog !== 'function') {
+      return { ok: false, error: 'Folder selection is unavailable.', status }
+    }
+
+    const selection = await dialog.showOpenDialog({
+      title: mode === 'move' ? 'Move Tabs data to sync folder' : 'Choose Tabs sync folder',
+      properties: ['openDirectory', 'createDirectory'],
+    })
+    if (selection.canceled || !selection.filePaths?.[0]) return { canceled: true, status }
+
+    const profileRootPath = path.resolve(selection.filePaths[0])
+    if (profileRootPath === profile.profileRootPath) return { ok: true, status }
+
+    const targetResult = loadAppStateResult(profileRootPath)
+    const targetHasProfile = existsSync(getHybridStorageRoot(profileRootPath))
+
+    if (mode === 'move') {
+      if (targetHasProfile && dialog?.showMessageBox) {
+        const overwrite = await dialog.showMessageBox({
+          type: 'warning',
+          buttons: ['Replace with current data', 'Cancel'],
+          cancelId: 1,
+          defaultId: 0,
+          message: 'This folder already contains Tabs data.',
+          detail: 'Replacing it will write your current Tabs profile into this folder. The current source profile is left in place.',
+        })
+        if (overwrite.response !== 0) return { canceled: true, status }
+      }
+      return replaceProfileWithCurrentData(profileRootPath)
+    }
+
+    if (targetResult.ok && typeof targetResult.serializedState === 'string') {
+      if (!dialog?.showMessageBox) return switchToProfileRoot(profileRootPath)
+      const choice = await dialog.showMessageBox({
+        type: 'question',
+        buttons: ['Use this profile', 'Replace with current data', 'Cancel'],
+        cancelId: 2,
+        defaultId: 0,
+        message: 'This folder already contains Tabs data.',
+        detail: 'Use the existing profile in this folder, or replace it with your current Tabs data.',
+      })
+      if (choice.response === 0) return switchToProfileRoot(profileRootPath)
+      if (choice.response === 1) return replaceProfileWithCurrentData(profileRootPath)
+      return { canceled: true, status }
+    }
+
+    if (targetHasProfile && !targetResult.ok) {
+      return {
+        ok: false,
+        error: 'This folder contains Tabs data that could not be loaded.',
+        status,
+      }
+    }
+
+    if (dialog?.showMessageBox) {
+      const initialize = await dialog.showMessageBox({
+        type: 'question',
+        buttons: ['Move current data', 'Cancel'],
+        cancelId: 1,
+        defaultId: 0,
+        message: 'Use this folder for Tabs data?',
+        detail: 'Tabs will create a notes-data folder here and copy your current data into it.',
+      })
+      if (initialize.response !== 0) return { canceled: true, status }
+    }
+    return replaceProfileWithCurrentData(profileRootPath)
+  }
+
+  startWatcher()
 
   ipcMain.on('load-app-state', (event) => {
     const result = coordinator.getLoadResult()
@@ -54,9 +248,36 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow }) {
     }
   })
 
+  ipcMain.handle?.('get-storage-profile-status', async () => status)
+  ipcMain.handle?.('choose-storage-folder', async () => chooseProfileRoot('choose'))
+  ipcMain.handle?.('move-storage-profile', async () => chooseProfileRoot('move'))
+  ipcMain.handle?.('reveal-storage-profile', async () => {
+    if (!shell || typeof shell.openPath !== 'function') {
+      return { ok: false, error: 'Reveal is unavailable.' }
+    }
+    const error = await shell.openPath(profile.profileRootPath)
+    return error ? { ok: false, error } : { ok: true }
+  })
+  ipcMain.handle?.('retry-storage-profile', async () => {
+    const result = coordinator.reloadProfileRoot(profile.profileRootPath, {
+      requireSerializedState: coordinator.getSerializedState() !== null,
+    })
+    updateStatus(result.ok ? 'retry-loaded' : 'retry-error', result.ok ? null : result.error)
+    if (result.ok && typeof result.serializedState === 'string') {
+      broadcastAppStateUpdate({
+        serializedState: result.serializedState,
+        revision: result.revision,
+      })
+      watcher?.reset()
+    }
+    return { ok: result.ok, status, error: result.ok ? undefined : result.error }
+  })
+
   return {
     canWriteAppState: coordinator.canWriteAppState,
     getLoadResult: coordinator.getLoadResult,
+    getStorageProfileStatus: () => status,
     saveAppStateSnapshot: saveRevisionedState,
+    close: () => watcher?.close(),
   }
 }

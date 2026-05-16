@@ -224,6 +224,20 @@ export const useEditorPersistence = ({
   }, [])
 
   useEffect(() => {
+    const clearPendingLocalWrite = () => {
+      if (saveTimerRef.current !== null) {
+        window.clearTimeout(saveTimerRef.current)
+        saveTimerRef.current = null
+      }
+      pendingContentRef.current = null
+      lastEditorMarkdownByAisleRef.current.clear()
+    }
+
+    window.addEventListener('tabs:external-app-state-updated', clearPendingLocalWrite)
+    return () => window.removeEventListener('tabs:external-app-state-updated', clearPendingLocalWrite)
+  }, [])
+
+  useEffect(() => {
     return () => {
       if (saveTimerRef.current !== null) {
         window.clearTimeout(saveTimerRef.current)

@@ -136,6 +136,9 @@ class ElectronAppStateStore implements AppStateStore {
       window.electronAPI?.onAppStateUpdated?.((payload) => {
         if (!payload || typeof payload.serializedState !== 'string' || !Number.isInteger(payload.revision)) return
         this.revision = payload.revision
+        if (typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+          window.dispatchEvent(new CustomEvent('tabs:external-app-state-updated'))
+        }
         this.notifySubscribers(payload.serializedState)
       }) ?? (() => undefined)
 

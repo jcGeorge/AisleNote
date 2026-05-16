@@ -87,6 +87,7 @@ function renderSettingsPage(frontmatterDraft: FrontmatterSettings, frontmatterDr
       showParentHomeTabDraft
       frontmatterDraft={frontmatterDraft}
       frontmatterDraftDirty={frontmatterDraftDirty}
+      storageProfileStatus={null}
       onSectionChange={() => undefined}
       onToggleShortcutEdit={() => undefined}
       onNewlineShortcutChange={() => undefined}
@@ -109,6 +110,10 @@ function renderSettingsPage(frontmatterDraft: FrontmatterSettings, frontmatterDr
       onDeleteFrontmatterTemplateField={() => undefined}
       onSaveFrontmatterTemplates={() => undefined}
       onDiscardFrontmatterTemplateChanges={() => undefined}
+      onChooseStorageFolder={() => undefined}
+      onMoveStorageProfile={() => undefined}
+      onRevealStorageProfile={() => undefined}
+      onRetryStorageProfile={() => undefined}
     />,
   )
 }

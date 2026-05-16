@@ -1,4 +1,4 @@
-export type StorageSchemaVersion = 1
+export type StorageSchemaVersion = 1 | 2
 
 export type StorageEntityId = string
 export type StorageTheme = 'dark' | 'light' | 'dawn' | 'blues'
@@ -11,9 +11,10 @@ export type StorageShortcutId =
   | 'cycleSubTabNext'
   | 'cycleSubTabPrev'
 
-export const STORAGE_SCHEMA_VERSION: StorageSchemaVersion = 1
+export const STORAGE_SCHEMA_VERSION: StorageSchemaVersion = 2
 
 export const STORAGE_ROOT_DIR = 'notes-data' as const
+export const STORAGE_DOMAINS_DIR = 'domains' as const
 export const STORAGE_TOPICS_DIR = 'topics' as const
 export const STORAGE_SPACES_DIR = 'spaces' as const
 export const STORAGE_NOTES_DIR = 'notes' as const
@@ -88,6 +89,10 @@ export type StorageTopicIndexEntry = {
   title: string
 }
 
+export type StorageDomainIndexEntry = StorageTopicIndexEntry & {
+  path?: string
+}
+
 export type StorageSpaceIndexEntry = {
   id: StorageEntityId
   title: string
@@ -115,13 +120,17 @@ export type StorageNoteBodyRecord = {
 export type StorageRootManifest = {
   schemaVersion: StorageSchemaVersion
   globalSettings: StorageGlobalSettings
-  topics: StorageTopicIndexEntry[]
+  topics?: StorageTopicIndexEntry[]
+  domains?: StorageDomainIndexEntry[]
   noteBodies?: StorageNoteBodyRecord[]
-  activeTopicId: StorageEntityId
+  activeTopicId?: StorageEntityId
+  activeDomainId?: StorageEntityId
   lastOpened?: {
-    topicId: StorageEntityId
+    topicId?: StorageEntityId
+    domainId?: StorageEntityId
     spaceId: StorageEntityId
-    parentTabId: StorageEntityId | null
+    parentTabId?: StorageEntityId | null
+    primeTabId?: StorageEntityId | null
     subTabId: StorageEntityId | null
     viewMode: 'domains' | 'spaces' | 'main' | 'trash' | 'settings' | 'stage-manager'
   }

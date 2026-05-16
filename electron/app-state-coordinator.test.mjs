@@ -30,7 +30,7 @@ describe('Electron app state coordinator', () => {
       serializedState: '{"theme":"dawn"}',
       revision: 1,
     })
-    expect(save).toHaveBeenCalledWith('/tmp/tabs', '{"theme":"dawn"}')
+    expect(save).toHaveBeenCalledWith('/tmp/tabs', '{"theme":"dawn"}', { userDataPath: '/tmp/tabs' })
   })
 
   it('increments revision after a matching save', () => {
@@ -85,6 +85,60 @@ describe('Electron app state coordinator', () => {
       error: LOAD_FAILED_SAVE_ERROR,
       currentRevision: 0,
       serializedState: null,
+    })
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  it('reloads valid external profile changes and increments revision', () => {
+    let serializedState = '{"theme":"dawn"}'
+    const coordinator = createAppStateCoordinator({
+      userDataPath: '/tmp/tabs',
+      load: () => ({ ok: true, serializedState, source: 'hybrid' }),
+      save: vi.fn(),
+    })
+
+    serializedState = '{"theme":"light"}'
+
+    expect(coordinator.reloadProfileRoot('/tmp/tabs')).toEqual({
+      ok: true,
+      serializedState: '{"theme":"light"}',
+      source: 'hybrid',
+      revision: 2,
+    })
+  })
+
+  it('blocks saves after a corrupt external profile reload', () => {
+    let corrupt = false
+    const save = vi.fn()
+    const coordinator = createAppStateCoordinator({
+      userDataPath: '/tmp/tabs',
+      load: () =>
+        corrupt
+          ? {
+              ok: false,
+              serializedState: null,
+              source: 'hybrid',
+              error: 'Existing app state could not be loaded.',
+            }
+          : { ok: true, serializedState: '{"theme":"dawn"}', source: 'hybrid' },
+      save,
+    })
+
+    corrupt = true
+
+    expect(coordinator.reloadProfileRoot('/tmp/tabs')).toEqual({
+      ok: false,
+      serializedState: null,
+      source: 'hybrid',
+      error: 'Existing app state could not be loaded.',
+      revision: 1,
+    })
+    expect(coordinator.saveRevisionedState({ serializedState: '{"theme":"light"}', baseRevision: 1 })).toEqual({
+      ok: false,
+      reason: 'load-failed',
+      error: LOAD_FAILED_SAVE_ERROR,
+      currentRevision: 1,
+      serializedState: '{"theme":"dawn"}',
     })
     expect(save).not.toHaveBeenCalled()
   })

@@ -1,5 +1,15 @@
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -9,7 +19,6 @@ import {
   DEFAULT_DOMAIN_ID,
   DEFAULT_DOMAIN_NAME,
   DEFAULT_TOPIC_ID,
-  DEFAULT_TOPIC_TITLE,
   IMAGE_MARKDOWN_PATTERN,
   ensureArray,
   getActiveDomainFromAppState,
@@ -20,15 +29,18 @@ import {
   getExtensionFromMimeType,
   getMimeTypeFromExtension,
   getNoteBodiesFromAppState,
-  getNoteBodyFirstMarkdown,
   isRecord,
   normalizeImageExtension,
 } from '../src/storage/hybrid-storage-core.js'
 import { migrateStorageRootManifest } from './storage-migrations.mjs'
 
 const LEGACY_APP_STATE_RELATIVE_PATH = path.join('data', 'notes', 'index.json')
-const HYBRID_ROOT_DIR = 'notes-data'
-const SCHEMA_VERSION = 1
+export const HYBRID_ROOT_DIR = 'notes-data'
+const SCHEMA_VERSION = 2
+const LEGACY_SCHEMA_VERSION = 1
+const DOMAINS_DIR = 'domains'
+const LEGACY_TOPICS_DIR = 'topics'
+const STORAGE_RECOVERY_DIR = 'storage-recovery'
 const IMAGE_METADATA_FRAGMENT_PREFIX = '#tabs-image='
 const INTERNAL_INDENT_TOKEN = '\u2060\u2003\u2003'
 const EXPORT_TAB_SPACES = '    '
@@ -268,14 +280,6 @@ function addAssetToBank(assetBank, bytes, extension) {
   return relativeAssetPath
 }
 
-function writeAssetBank(baseDirectory, assetBank) {
-  for (const [relativePath, bytes] of assetBank.files.entries()) {
-    const absolutePath = path.join(baseDirectory, relativePath)
-    mkdirSync(path.dirname(absolutePath), { recursive: true })
-    writeFileSync(absolutePath, bytes)
-  }
-}
-
 function externalizeMarkdownImages(markdown, noteFileRelative, assetBank) {
   return String(markdown ?? '').replace(IMAGE_MARKDOWN_PATTERN, (fullMatch, altText, srcRaw) => {
     const src = String(srcRaw ?? '').trim()
@@ -338,12 +342,12 @@ function inlineMarkdownImages(markdown, noteFilePath) {
   })
 }
 
-function getLegacyAppStatePath(userDataPath) {
-  return path.join(userDataPath, LEGACY_APP_STATE_RELATIVE_PATH)
+function getLegacyAppStatePath(profileRootPath) {
+  return path.join(profileRootPath, LEGACY_APP_STATE_RELATIVE_PATH)
 }
 
-function getHybridStorageRoot(userDataPath) {
-  return path.join(userDataPath, HYBRID_ROOT_DIR)
+export function getHybridStorageRoot(profileRootPath) {
+  return path.join(profileRootPath, HYBRID_ROOT_DIR)
 }
 
 function readTextFileIfExists(filePath) {
@@ -365,13 +369,26 @@ function readJsonFileIfExists(filePath) {
   }
 }
 
-function writeTextFile(filePath, contents) {
-  mkdirSync(path.dirname(filePath), { recursive: true })
-  writeFileSync(filePath, contents, 'utf8')
+function writeTextFileAtomic(rootPath, relativeFile, contents) {
+  const absolutePath = path.join(rootPath, relativeFile)
+  mkdirSync(path.dirname(absolutePath), { recursive: true })
+  const tempPath = path.join(
+    path.dirname(absolutePath),
+    `.${path.basename(absolutePath)}.${process.pid}.${Date.now()}.tmp`,
+  )
+  writeFileSync(tempPath, contents, 'utf8')
+  renameSync(tempPath, absolutePath)
 }
 
-function writeJsonFile(filePath, value) {
-  writeTextFile(filePath, `${JSON.stringify(value, null, 2)}\n`)
+function writeBinaryFileAtomic(rootPath, relativeFile, contents) {
+  const absolutePath = path.join(rootPath, relativeFile)
+  mkdirSync(path.dirname(absolutePath), { recursive: true })
+  const tempPath = path.join(
+    path.dirname(absolutePath),
+    `.${path.basename(absolutePath)}.${process.pid}.${Date.now()}.tmp`,
+  )
+  writeFileSync(tempPath, contents)
+  renameSync(tempPath, absolutePath)
 }
 
 function readMarkdownFile(baseDirectory, relativeFile) {
@@ -380,13 +397,194 @@ function readMarkdownFile(baseDirectory, relativeFile) {
   return inlineMarkdownImages(markdown, absolutePath)
 }
 
-function buildRootManifest(appState) {
-  const domains = getDomainsFromAppState(appState)
-  const noteBodies = getNoteBodiesFromAppState(appState)
-  const activeDomain = getActiveDomainFromAppState(appState, domains)
+function sanitizePathSegment(value, fallback) {
+  const normalized = String(value ?? '')
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/^\.+|\.+$/g, '')
+    .trim()
+  return normalized || fallback
+}
+
+function shortStableId(id) {
+  const source = String(id ?? '')
+  if (!source) return createHash('sha1').update('tabs').digest('hex').slice(0, 6)
+  return createHash('sha1').update(source).digest('hex').slice(0, 6)
+}
+
+function createPathAllocator() {
+  const used = new Set()
+  return (title, id, fallback) => {
+    const base = `${sanitizePathSegment(title, fallback)}--${shortStableId(id)}`
+    let candidate = base
+    let index = 2
+    while (used.has(candidate)) {
+      candidate = `${base}-${index}`
+      index += 1
+    }
+    used.add(candidate)
+    return candidate
+  }
+}
+
+function hasCloudConflictName(name) {
+  return (
+    /^notes-data(?: \d+)?\.bak$/i.test(name) ||
+    /^notes-data \d+$/i.test(name) ||
+    /^(topics|domains|note-bodies|assets|trash|manifest)(?: \d+)$/i.test(name) ||
+    /\.bak$/i.test(name)
+  )
+}
+
+function detectStorageConflicts(profileRootPath, rootPath) {
+  const conflicts = []
+  for (const entry of listDirectoryEntries(profileRootPath)) {
+    if (entry.name === HYBRID_ROOT_DIR) continue
+    if (hasCloudConflictName(entry.name)) conflicts.push(entry.name)
+  }
+  for (const entry of listDirectoryEntries(rootPath)) {
+    if (hasCloudConflictName(entry.name)) conflicts.push(path.posix.join(HYBRID_ROOT_DIR, entry.name))
+  }
+  return conflicts
+}
+
+function removeStorageConflictPaths(profileRootPath, rootPath) {
+  for (const entry of listDirectoryEntries(profileRootPath)) {
+    if (entry.name === HYBRID_ROOT_DIR) continue
+    if (hasCloudConflictName(entry.name)) rmSync(path.join(profileRootPath, entry.name), { recursive: true, force: true })
+  }
+  for (const entry of listDirectoryEntries(rootPath)) {
+    if (hasCloudConflictName(entry.name)) rmSync(path.join(rootPath, entry.name), { recursive: true, force: true })
+  }
+}
+
+function pruneStorageRoot(rootPath, expectedRelativeFiles) {
+  const expected = new Set(expectedRelativeFiles)
+
+  function pruneDirectory(currentPath) {
+    for (const entry of listDirectoryEntries(currentPath)) {
+      const absolutePath = path.join(currentPath, entry.name)
+      const relativePath = path.relative(rootPath, absolutePath).split(path.sep).join(path.posix.sep)
+      if (entry.isDirectory()) {
+        pruneDirectory(absolutePath)
+        try {
+          if (readdirSync(absolutePath).length === 0) rmSync(absolutePath, { recursive: true, force: true })
+        } catch {
+          // Ignore cloud-provider races while pruning stale paths.
+        }
+        continue
+      }
+      if (!entry.isFile()) continue
+      if (!expected.has(relativePath)) rmSync(absolutePath, { force: true })
+    }
+  }
+
+  if (existsSync(rootPath)) pruneDirectory(rootPath)
+}
+
+function createRecoverySnapshot(rootPath, userDataPath) {
+  if (!existsSync(rootPath)) return null
+  const recoveryParent = path.join(userDataPath, STORAGE_RECOVERY_DIR)
+  mkdirSync(recoveryParent, { recursive: true })
+  const snapshotPath = path.join(recoveryParent, `${HYBRID_ROOT_DIR}-${Date.now()}`)
+  cpSync(rootPath, snapshotPath, { recursive: true, force: true })
+  return snapshotPath
+}
+
+function setStorageTextFile(fileMap, relativeFile, contents) {
+  fileMap.set(relativeFile, { kind: 'text', contents: String(contents ?? '') })
+}
+
+function setStorageJsonFile(fileMap, relativeFile, value) {
+  setStorageTextFile(fileMap, relativeFile, `${JSON.stringify(value, null, 2)}\n`)
+}
+
+function setStorageBinaryFile(fileMap, relativeFile, contents) {
+  fileMap.set(relativeFile, { kind: 'binary', contents: Buffer.from(contents) })
+}
+
+function addAssetBankToStorageFileMap(fileMap, assetBank) {
+  for (const [relativeFile, bytes] of assetBank.files.entries()) {
+    setStorageBinaryFile(fileMap, relativeFile, bytes)
+  }
+}
+
+function buildNoteBodyManifestRecord(body, aisles) {
+  return {
+    id: typeof body?.id === 'string' ? body.id : '',
+    createdAt: typeof body?.createdAt === 'string' ? body.createdAt : undefined,
+    updatedAt: typeof body?.updatedAt === 'string' ? body.updatedAt : undefined,
+    frontmatter: isRecord(body?.frontmatter) ? body.frontmatter : null,
+    frontmatterTemplateId: typeof body?.frontmatterTemplateId === 'string' ? body.frontmatterTemplateId : undefined,
+    frontmatterTemplateDerived:
+      typeof body?.frontmatterTemplateDerived === 'boolean' ? body.frontmatterTemplateDerived : undefined,
+    frontmatterTemplateFieldOrigins: isRecord(body?.frontmatterTemplateFieldOrigins)
+      ? body.frontmatterTemplateFieldOrigins
+      : undefined,
+    frontmatterTemplateRemovedFieldIds: ensureArray(body?.frontmatterTemplateRemovedFieldIds).filter(
+      (fieldId) => typeof fieldId === 'string' && fieldId.trim().length > 0,
+    ),
+    frontmatterComputedFields: isRecord(body?.frontmatterComputedFields) ? body.frontmatterComputedFields : undefined,
+    frontmatterTemplateDetachedKeys: ensureArray(body?.frontmatterTemplateDetachedKeys).filter(
+      (key) => typeof key === 'string' && key.trim().length > 0,
+    ),
+    aisles,
+  }
+}
+
+function writeNoteBodyAtPath({
+  fileMap,
+  noteBodyMap,
+  noteBodyRecords,
+  noteBodyId,
+  fallbackMarkdown,
+  noteRootRelative,
+  assetBank,
+}) {
+  const posixPath = path.posix
+  const body = typeof noteBodyId === 'string' && noteBodyId ? noteBodyMap.get(noteBodyId) : null
+  const sourceAisles = ensureArray(body?.aisles)
+  const homeFile = posixPath.join(noteRootRelative, 'home.md')
+
+  if (body && noteBodyRecords.has(noteBodyId)) {
+    const firstAisle = ensureArray(body.aisles)[0]
+    const markdown = typeof firstAisle?.markdown === 'string' ? firstAisle.markdown : fallbackMarkdown
+    setStorageTextFile(fileMap, homeFile, externalizeMarkdownImages(markdown, homeFile, assetBank))
+    return homeFile
+  }
+
+  if (!body || sourceAisles.length === 0) {
+    setStorageTextFile(fileMap, homeFile, externalizeMarkdownImages(fallbackMarkdown, homeFile, assetBank))
+    if (body && noteBodyId) {
+      const aisleId = `${noteBodyId}-home`
+      noteBodyRecords.set(noteBodyId, buildNoteBodyManifestRecord(body, [{ id: aisleId, file: homeFile }]))
+    }
+    return homeFile
+  }
+
+  const aisleRecords = []
+  sourceAisles.forEach((aisle, index) => {
+    const aisleId = typeof aisle?.id === 'string' && aisle.id ? aisle.id : `${noteBodyId}-aisle-${index + 1}`
+    const file =
+      index === 0
+        ? homeFile
+        : posixPath.join(noteRootRelative, 'aisles', `${sanitizePathSegment(`Aisle ${index + 1}`, 'Aisle')}--${shortStableId(aisleId)}.md`)
+    const markdown = typeof aisle?.markdown === 'string' ? aisle.markdown : index === 0 ? fallbackMarkdown : ''
+    setStorageTextFile(fileMap, file, externalizeMarkdownImages(markdown, file, assetBank))
+    aisleRecords.push({ id: aisleId, file })
+  })
+  noteBodyRecords.set(noteBodyId, buildNoteBodyManifestRecord(body, aisleRecords))
+  return homeFile
+}
+
+function buildRootManifestV2(appState, domainEntries, noteBodyEntries) {
+  const activeDomain = getActiveDomainFromAppState(appState, getDomainsFromAppState(appState))
   const activeSpace = getActiveSpaceFromDomain(activeDomain, appState.activeSpaceId)
-  const activeTab = activeSpace?.data?.tabs?.find((tab) => tab?.id === activeSpace?.data?.activeTabId) ?? activeSpace?.data?.tabs?.[0] ?? null
-  const activeTopicId = activeDomain ? getDomainId(activeDomain) : DEFAULT_TOPIC_ID
+  const activeTab =
+    activeSpace?.data?.tabs?.find((tab) => tab?.id === activeSpace?.data?.activeTabId) ??
+    activeSpace?.data?.tabs?.[0] ??
+    null
+  const activeDomainId = activeDomain ? getDomainId(activeDomain) : DEFAULT_TOPIC_ID
 
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -406,50 +604,14 @@ function buildRootManifest(appState) {
       },
       frontmatter: isRecord(appState.frontmatter) ? appState.frontmatter : undefined,
     },
-    topics:
-      domains.length > 0
-        ? domains.map((domain) => ({
-            id: getDomainId(domain),
-            title: getDomainTitle(domain),
-          }))
-        : [{ id: DEFAULT_TOPIC_ID, title: DEFAULT_TOPIC_TITLE }],
-    noteBodies: noteBodies.map((body) => {
-      const bodyId = typeof body.id === 'string' ? body.id : ''
-      return {
-        id: bodyId,
-        createdAt: typeof body.createdAt === 'string' ? body.createdAt : undefined,
-        updatedAt: typeof body.updatedAt === 'string' ? body.updatedAt : undefined,
-        frontmatter: isRecord(body.frontmatter) ? body.frontmatter : null,
-        frontmatterTemplateId: typeof body.frontmatterTemplateId === 'string' ? body.frontmatterTemplateId : undefined,
-        frontmatterTemplateDerived:
-          typeof body.frontmatterTemplateDerived === 'boolean' ? body.frontmatterTemplateDerived : undefined,
-        frontmatterTemplateFieldOrigins: isRecord(body.frontmatterTemplateFieldOrigins)
-          ? body.frontmatterTemplateFieldOrigins
-          : undefined,
-        frontmatterTemplateRemovedFieldIds: ensureArray(body.frontmatterTemplateRemovedFieldIds).filter(
-          (fieldId) => typeof fieldId === 'string' && fieldId.trim().length > 0,
-        ),
-        frontmatterComputedFields: isRecord(body.frontmatterComputedFields)
-          ? body.frontmatterComputedFields
-          : undefined,
-        frontmatterTemplateDetachedKeys: ensureArray(body.frontmatterTemplateDetachedKeys).filter(
-          (key) => typeof key === 'string' && key.trim().length > 0,
-        ),
-        aisles: ensureArray(body.aisles).map((aisle) => {
-          const aisleId = typeof aisle.id === 'string' ? aisle.id : ''
-          return {
-            id: aisleId,
-            file: path.posix.join('note-bodies', bodyId, 'aisles', `${aisleId}.md`),
-          }
-        }),
-      }
-    }),
-    activeTopicId,
+    domains: domainEntries,
+    noteBodies: noteBodyEntries,
+    activeDomainId,
     lastOpened: activeSpace
       ? {
-          topicId: activeTopicId,
+          domainId: activeDomainId,
           spaceId: activeSpace.id,
-          parentTabId: activeTab?.id ?? null,
+          primeTabId: activeTab?.id ?? null,
           subTabId: activeTab?.activeSubTabId ?? null,
           viewMode: 'main',
         }
@@ -457,16 +619,12 @@ function buildRootManifest(appState) {
   }
 }
 
-function buildTopicManifest(domain) {
+function buildDomainManifestV2(domain, spaceEntries) {
   const spaces = ensureArray(domain?.spaces)
-  const domainId = getDomainId(domain)
   return {
-    id: domainId,
+    id: getDomainId(domain),
     title: getDomainTitle(domain),
-    spaces: spaces.map((space) => ({
-      id: typeof space?.id === 'string' ? space.id : '',
-      title: typeof space?.name === 'string' ? space.name : 'Untitled Space',
-    })),
+    spaces: spaceEntries,
     activeSpaceId:
       typeof domain?.activeSpaceId === 'string' && spaces.some((space) => space?.id === domain.activeSpaceId)
         ? domain.activeSpaceId
@@ -474,103 +632,120 @@ function buildTopicManifest(domain) {
   }
 }
 
-function buildAndWriteSpace(tempRoot, topicId, space, noteBodyMap) {
+function buildSpaceFilesV2({ fileMap, spaceRoot, space, noteBodyMap, noteBodyRecords, assetBank }) {
   const posixPath = path.posix
-  const spaceRoot = path.join(tempRoot, 'topics', topicId, 'spaces', space.id)
-  const trashRoot = path.join(spaceRoot, 'trash')
   const tabs = ensureArray(space?.data?.tabs)
-  const activeAssetBank = createAssetBank('assets')
-  const trashAssetBank = createAssetBank('assets')
+  const tabPathForTitle = createPathAllocator()
+  const tabManifest = []
 
-  mkdirSync(path.join(spaceRoot, 'assets'), { recursive: true })
-  mkdirSync(path.join(trashRoot, 'assets'), { recursive: true })
+  for (const tab of tabs) {
+    const tabId = typeof tab?.id === 'string' ? tab.id : ''
+    if (!tabId) continue
+    const tabSegment = tabPathForTitle(typeof tab.title === 'string' ? tab.title : 'tab', tabId, 'tab')
+    const tabRoot = posixPath.join(spaceRoot, tabSegment)
+    const homeNoteFile = posixPath.relative(spaceRoot, posixPath.join(tabRoot, 'home.md'))
+    writeNoteBodyAtPath({
+      fileMap,
+      noteBodyMap,
+      noteBodyRecords,
+      noteBodyId: tab.noteBodyId,
+      fallbackMarkdown: typeof tab.homeContent === 'string' ? tab.homeContent : '',
+      noteRootRelative: tabRoot,
+      assetBank,
+    })
 
-  const spaceManifest = {
-    id: space.id,
-    title: typeof space.name === 'string' ? space.name : 'Untitled Space',
-    settings: space.settings ?? { autoRemoveDeletedDays: 7 },
-    tabs: tabs.map((tab) => {
-      const homeNoteFile = posixPath.join('notes', tab.id, 'home.md')
-      const homeMarkdown = externalizeMarkdownImages(
-        getNoteBodyFirstMarkdown(noteBodyMap, tab.noteBodyId, tab.homeContent),
-        homeNoteFile,
-        activeAssetBank,
-      )
-      writeTextFile(path.join(spaceRoot, homeNoteFile), homeMarkdown)
-
-      const subTabs = ensureArray(tab.subTabs).map((subTab) => {
-        const file = posixPath.join('notes', tab.id, 'subtabs', `${subTab.id}.md`)
-        const markdown = externalizeMarkdownImages(
-          getNoteBodyFirstMarkdown(noteBodyMap, subTab.noteBodyId, subTab.content),
-          file,
-          activeAssetBank,
-        )
-        writeTextFile(path.join(spaceRoot, file), markdown)
-        return {
-          id: subTab.id,
-          title: typeof subTab.title === 'string' ? subTab.title : 'tab',
-          noteBodyId: typeof subTab.noteBodyId === 'string' ? subTab.noteBodyId : '',
-          file,
-        }
+    const subTabPathForTitle = createPathAllocator()
+    const subTabs = ensureArray(tab.subTabs).map((subTab) => {
+      const subTabId = typeof subTab?.id === 'string' ? subTab.id : ''
+      const subTabSegment = subTabPathForTitle(typeof subTab?.title === 'string' ? subTab.title : 'tab', subTabId, 'tab')
+      const subTabRoot = posixPath.join(tabRoot, subTabSegment)
+      const file = posixPath.relative(spaceRoot, posixPath.join(subTabRoot, 'home.md'))
+      writeNoteBodyAtPath({
+        fileMap,
+        noteBodyMap,
+        noteBodyRecords,
+        noteBodyId: subTab.noteBodyId,
+        fallbackMarkdown: typeof subTab.content === 'string' ? subTab.content : '',
+        noteRootRelative: subTabRoot,
+        assetBank,
       })
-
       return {
-        id: tab.id,
-        title: typeof tab.title === 'string' ? tab.title : 'tab',
-        noteBodyId: typeof tab.noteBodyId === 'string' ? tab.noteBodyId : '',
-        homeNoteFile,
-        subTabs,
-        activeSubTabId: typeof tab.activeSubTabId === 'string' ? tab.activeSubTabId : null,
+        id: subTabId,
+        title: typeof subTab.title === 'string' ? subTab.title : 'tab',
+        path: posixPath.relative(spaceRoot, subTabRoot),
+        noteBodyId: typeof subTab.noteBodyId === 'string' ? subTab.noteBodyId : '',
+        file,
       }
-    }),
-    activeTabId:
-      typeof space?.data?.activeTabId === 'string' && tabs.some((tab) => tab?.id === space.data.activeTabId)
-        ? space.data.activeTabId
-        : tabs[0]?.id ?? '',
-    trashManifestFile: 'trash/manifest.json',
+    })
+
+    tabManifest.push({
+      id: tabId,
+      title: typeof tab.title === 'string' ? tab.title : 'tab',
+      path: tabSegment,
+      noteBodyId: typeof tab.noteBodyId === 'string' ? tab.noteBodyId : '',
+      homeNoteFile,
+      subTabs,
+      activeSubTabId: typeof tab.activeSubTabId === 'string' ? tab.activeSubTabId : null,
+    })
   }
 
+  const trashRoot = posixPath.join(spaceRoot, 'trash')
+  const trashItems = []
   const deletedTabs = ensureArray(space?.data?.deletedTabs)
   const deletedSubTabs = ensureArray(space?.data?.deletedSubTabs)
-  const trashItems = []
+  const trashPathForTitle = createPathAllocator()
 
   for (const entry of deletedTabs) {
     const deletedTab = entry?.tab ?? {}
-    const homeNoteFile = posixPath.join('notes', entry.id, 'home.md')
-    const deletedHomeMarkdown = externalizeMarkdownImages(
-      getNoteBodyFirstMarkdown(noteBodyMap, deletedTab.noteBodyId, deletedTab.homeContent),
-      homeNoteFile,
-      trashAssetBank,
-    )
-    writeTextFile(path.join(trashRoot, homeNoteFile), deletedHomeMarkdown)
+    const entryId = typeof entry?.id === 'string' ? entry.id : ''
+    const deletedTabId = typeof deletedTab?.id === 'string' ? deletedTab.id : entryId
+    const deletedSegment = trashPathForTitle(typeof deletedTab.title === 'string' ? deletedTab.title : 'deleted tab', entryId, 'deleted tab')
+    const deletedRoot = posixPath.join(trashRoot, deletedSegment)
+    const homeNoteFile = posixPath.relative(trashRoot, posixPath.join(deletedRoot, 'home.md'))
+    writeNoteBodyAtPath({
+      fileMap,
+      noteBodyMap,
+      noteBodyRecords,
+      noteBodyId: deletedTab.noteBodyId,
+      fallbackMarkdown: typeof deletedTab.homeContent === 'string' ? deletedTab.homeContent : '',
+      noteRootRelative: deletedRoot,
+      assetBank,
+    })
 
+    const deletedSubTabPathForTitle = createPathAllocator()
     const subTabs = ensureArray(deletedTab.subTabs).map((subTab) => {
-      const file = posixPath.join('notes', entry.id, 'subtabs', `${subTab.id}.md`)
-      const markdown = externalizeMarkdownImages(
-        getNoteBodyFirstMarkdown(noteBodyMap, subTab.noteBodyId, subTab.content),
-        file,
-        trashAssetBank,
-      )
-      writeTextFile(path.join(trashRoot, file), markdown)
+      const subTabId = typeof subTab?.id === 'string' ? subTab.id : ''
+      const subTabSegment = deletedSubTabPathForTitle(typeof subTab?.title === 'string' ? subTab.title : 'tab', subTabId, 'tab')
+      const subTabRoot = posixPath.join(deletedRoot, subTabSegment)
+      const file = posixPath.relative(trashRoot, posixPath.join(subTabRoot, 'home.md'))
+      writeNoteBodyAtPath({
+        fileMap,
+        noteBodyMap,
+        noteBodyRecords,
+        noteBodyId: subTab.noteBodyId,
+        fallbackMarkdown: typeof subTab.content === 'string' ? subTab.content : '',
+        noteRootRelative: subTabRoot,
+        assetBank,
+      })
       return {
-        id: subTab.id,
+        id: subTabId,
         title: typeof subTab.title === 'string' ? subTab.title : 'tab',
+        path: posixPath.relative(trashRoot, subTabRoot),
         noteBodyId: typeof subTab.noteBodyId === 'string' ? subTab.noteBodyId : '',
         file,
       }
     })
 
     trashItems.push({
-      id: entry.id,
+      id: entryId,
       type: 'parent-tab',
       title: typeof deletedTab.title === 'string' ? deletedTab.title : 'deleted tab',
+      path: deletedSegment,
       noteBodyId: typeof deletedTab.noteBodyId === 'string' ? deletedTab.noteBodyId : '',
       file: homeNoteFile,
       deletedAt: typeof entry.deletedAt === 'number' ? entry.deletedAt : Date.now(),
       original: {
-        topicId,
-        spaceId: space.id,
-        parentTabId: typeof deletedTab.id === 'string' ? deletedTab.id : entry.id,
+        parentTabId: deletedTabId,
         subTabId: null,
       },
       activeSubTabId: typeof deletedTab.activeSubTabId === 'string' ? deletedTab.activeSubTabId : null,
@@ -579,73 +754,128 @@ function buildAndWriteSpace(tempRoot, topicId, space, noteBodyMap) {
   }
 
   for (const entry of deletedSubTabs) {
-    const file = posixPath.join('notes', `${entry.id}.md`)
-    const markdown = externalizeMarkdownImages(
-      getNoteBodyFirstMarkdown(noteBodyMap, entry?.subTab?.noteBodyId, entry?.subTab?.content),
-      file,
-      trashAssetBank,
-    )
-    writeTextFile(path.join(trashRoot, file), markdown)
+    const subTab = entry?.subTab ?? {}
+    const entryId = typeof entry?.id === 'string' ? entry.id : ''
+    const deletedSegment = trashPathForTitle(typeof subTab.title === 'string' ? subTab.title : 'deleted note', entryId, 'deleted note')
+    const deletedRoot = posixPath.join(trashRoot, deletedSegment)
+    const file = posixPath.relative(trashRoot, posixPath.join(deletedRoot, 'home.md'))
+    writeNoteBodyAtPath({
+      fileMap,
+      noteBodyMap,
+      noteBodyRecords,
+      noteBodyId: subTab.noteBodyId,
+      fallbackMarkdown: typeof subTab.content === 'string' ? subTab.content : '',
+      noteRootRelative: deletedRoot,
+      assetBank,
+    })
     trashItems.push({
-      id: entry.id,
+      id: entryId,
       type: 'subtab',
-      title: typeof entry?.subTab?.title === 'string' ? entry.subTab.title : 'deleted note',
-      noteBodyId: typeof entry?.subTab?.noteBodyId === 'string' ? entry.subTab.noteBodyId : '',
+      title: typeof subTab.title === 'string' ? subTab.title : 'deleted note',
+      path: deletedSegment,
+      noteBodyId: typeof subTab.noteBodyId === 'string' ? subTab.noteBodyId : '',
       file,
       deletedAt: typeof entry.deletedAt === 'number' ? entry.deletedAt : Date.now(),
       parentTabTitle: typeof entry.parentTabTitle === 'string' ? entry.parentTabTitle : 'Unknown Tab',
       original: {
-        topicId,
-        spaceId: space.id,
         parentTabId: typeof entry.parentTabId === 'string' ? entry.parentTabId : '',
-        subTabId: typeof entry?.subTab?.id === 'string' ? entry.subTab.id : null,
+        subTabId: typeof subTab.id === 'string' ? subTab.id : null,
       },
     })
   }
 
-  writeAssetBank(spaceRoot, activeAssetBank)
-  writeAssetBank(trashRoot, trashAssetBank)
-  writeJsonFile(path.join(spaceRoot, 'manifest.json'), spaceManifest)
-  writeJsonFile(path.join(trashRoot, 'manifest.json'), { items: trashItems })
-}
+  setStorageJsonFile(fileMap, posixPath.join(spaceRoot, 'manifest.json'), {
+    id: space.id,
+    title: typeof space.name === 'string' ? space.name : 'Untitled Space',
+    settings: space.settings ?? { autoRemoveDeletedDays: 7 },
+    tabs: tabManifest,
+    activeTabId:
+      typeof space?.data?.activeTabId === 'string' && tabs.some((tab) => tab?.id === space.data.activeTabId)
+        ? space.data.activeTabId
+        : tabManifest[0]?.id ?? '',
+    trashManifestFile: 'trash/manifest.json',
+  })
+  setStorageJsonFile(fileMap, posixPath.join(trashRoot, 'manifest.json'), { items: trashItems })
 
-function writeNoteBodyFiles(tempRoot, noteBodies) {
-  const posixPath = path.posix
-  const assetBank = createAssetBank('assets')
-  mkdirSync(path.join(tempRoot, 'assets'), { recursive: true })
-  for (const body of ensureArray(noteBodies)) {
-    const bodyId = typeof body?.id === 'string' ? body.id : ''
-    if (!bodyId) continue
-    for (const aisle of ensureArray(body.aisles)) {
-      const aisleId = typeof aisle?.id === 'string' ? aisle.id : ''
-      if (!aisleId) continue
-      const file = posixPath.join('note-bodies', bodyId, 'aisles', `${aisleId}.md`)
-      const markdown = externalizeMarkdownImages(aisle.markdown, file, assetBank)
-      writeTextFile(path.join(tempRoot, file), markdown)
-    }
+  return {
+    id: typeof space.id === 'string' ? space.id : '',
+    title: typeof space.name === 'string' ? space.name : 'Untitled Space',
   }
-  writeAssetBank(tempRoot, assetBank)
 }
 
 function writeHybridStorage(tempRoot, serializedState) {
+  const posixPath = path.posix
   const parsedState = JSON.parse(serializedState)
   const domains = getDomainsFromAppState(parsedState)
   const noteBodies = getNoteBodiesFromAppState(parsedState)
   const noteBodyMap = new Map(noteBodies.map((body) => [typeof body.id === 'string' ? body.id : '', body]))
-  const rootManifest = buildRootManifest(parsedState)
-
-  mkdirSync(tempRoot, { recursive: true })
-  writeJsonFile(path.join(tempRoot, 'manifest.json'), rootManifest)
-  writeNoteBodyFiles(tempRoot, noteBodies)
+  const noteBodyRecords = new Map()
+  const fileMap = new Map()
+  const assetBank = createAssetBank('assets')
+  const domainPathForTitle = createPathAllocator()
+  const domainEntries = []
 
   for (const domain of domains) {
-    const topicId = getDomainId(domain)
-    writeJsonFile(path.join(tempRoot, 'topics', topicId, 'manifest.json'), buildTopicManifest(domain))
+    const domainId = getDomainId(domain)
+    const domainSegment = domainPathForTitle(getDomainTitle(domain), domainId, 'domain')
+    const domainRoot = posixPath.join(DOMAINS_DIR, domainSegment)
+    const spacePathForTitle = createPathAllocator()
+    const spaceEntries = []
+
     for (const space of ensureArray(domain.spaces)) {
       if (!space || typeof space.id !== 'string' || space.id.length === 0) continue
-      buildAndWriteSpace(tempRoot, topicId, space, noteBodyMap)
+      const spaceSegment = spacePathForTitle(typeof space.name === 'string' ? space.name : 'Untitled Space', space.id, 'space')
+      const spaceRoot = posixPath.join(domainRoot, spaceSegment)
+      const spaceEntry = buildSpaceFilesV2({
+        fileMap,
+        spaceRoot,
+        space,
+        noteBodyMap,
+        noteBodyRecords,
+        assetBank,
+      })
+      spaceEntries.push({ ...spaceEntry, path: spaceSegment })
     }
+
+    setStorageJsonFile(fileMap, posixPath.join(domainRoot, 'manifest.json'), buildDomainManifestV2(domain, spaceEntries))
+    domainEntries.push({
+      id: domainId,
+      title: getDomainTitle(domain),
+      path: domainSegment,
+    })
   }
+
+  const orphanPathForId = createPathAllocator()
+  for (const body of noteBodies) {
+    const bodyId = typeof body?.id === 'string' ? body.id : ''
+    if (!bodyId || noteBodyRecords.has(bodyId)) continue
+    const orphanSegment = orphanPathForId('Orphan Note Body', bodyId, 'orphan note body')
+    writeNoteBodyAtPath({
+      fileMap,
+      noteBodyMap,
+      noteBodyRecords,
+      noteBodyId: bodyId,
+      fallbackMarkdown: '',
+      noteRootRelative: posixPath.join('_internal', 'orphan-bodies', orphanSegment),
+      assetBank,
+    })
+  }
+
+  addAssetBankToStorageFileMap(fileMap, assetBank)
+  const noteBodyEntries = noteBodies
+    .map((body) => (typeof body?.id === 'string' ? noteBodyRecords.get(body.id) : null))
+    .filter(Boolean)
+  setStorageJsonFile(fileMap, 'manifest.json', buildRootManifestV2(parsedState, domainEntries, noteBodyEntries))
+
+  mkdirSync(tempRoot, { recursive: true })
+  for (const [relativeFile, entry] of fileMap.entries()) {
+    if (relativeFile === 'manifest.json') continue
+    if (entry.kind === 'text') writeTextFileAtomic(tempRoot, relativeFile, entry.contents)
+    else writeBinaryFileAtomic(tempRoot, relativeFile, entry.contents)
+  }
+  const rootManifest = fileMap.get('manifest.json')
+  writeTextFileAtomic(tempRoot, 'manifest.json', rootManifest.contents)
+  pruneStorageRoot(tempRoot, fileMap.keys())
 }
 
 function readNoteBodiesFromRoot(rootPath, rootManifest) {
@@ -709,7 +939,7 @@ function addDirectoryToZip(zip, directoryPath, zipPrefix) {
 function readHybridSpace(spaceRoot, spaceId, spaceTitle) {
   const spaceManifest = readJsonFileIfExists(path.join(spaceRoot, 'manifest.json'))
   if (!spaceManifest || typeof spaceManifest !== 'object') {
-    return recoverSpaceFromFilesystem(spaceRoot, spaceId, spaceTitle)
+    return null
   }
 
   const manifestTabs = ensureArray(spaceManifest.tabs)
@@ -729,8 +959,7 @@ function readHybridSpace(spaceRoot, spaceId, spaceTitle) {
     }))
     .filter((tab) => tab.id)
 
-  const recoveredTabs = buildRecoveredTabsFromFilesystem(spaceRoot)
-  const tabs = manifestTabs.length > 0 ? manifestTabs : recoveredTabs
+  const tabs = manifestTabs
   const { deletedTabs, deletedSubTabs } = readTrashData(
     spaceRoot,
     typeof spaceManifest.trashManifestFile === 'string' ? spaceManifest.trashManifestFile : null,
@@ -755,14 +984,9 @@ function readHybridSpace(spaceRoot, spaceId, spaceTitle) {
   }
 }
 
-function readHybridAppStateFromRoot(rootPath) {
-  const rawRootManifest = readJsonFileIfExists(path.join(rootPath, 'manifest.json'))
-  const rootManifestMigration = migrateStorageRootManifest(rawRootManifest, SCHEMA_VERSION)
-  if (!rootManifestMigration.ok) return null
-  const rootManifest = rootManifestMigration.manifest
-
+function readV1HybridAppStateFromRoot(rootPath, rootManifest) {
   const noteBodies = readNoteBodiesFromRoot(rootPath, rootManifest)
-  const topicsRoot = path.join(rootPath, 'topics')
+  const topicsRoot = path.join(rootPath, LEGACY_TOPICS_DIR)
   const topicIds = Array.from(
     new Set([
       typeof rootManifest.activeTopicId === 'string' ? rootManifest.activeTopicId : DEFAULT_TOPIC_ID,
@@ -791,7 +1015,7 @@ function readHybridAppStateFromRoot(rootPath) {
     const spaces = spaceIds
       .map((spaceId) => {
         const spaceEntry = manifestSpaceEntries.find((entry) => entry?.id === spaceId)
-        const fallbackTitle = typeof spaceEntry?.title === 'string' ? spaceEntry.title : 'Recovered Space'
+        const fallbackTitle = typeof spaceEntry?.title === 'string' ? spaceEntry.title : 'Untitled Space'
         return readHybridSpace(path.join(topicRoot, 'spaces', spaceId), spaceId, fallbackTitle)
       })
       .filter(Boolean)
@@ -849,34 +1073,189 @@ function readHybridAppStateFromRoot(rootPath) {
   })
 }
 
-export function loadAppState(userDataPath) {
-  const result = loadAppStateResult(userDataPath)
+function readV2Space(rootPath, spaceRootRelative, spaceEntry) {
+  const spaceRoot = path.join(rootPath, spaceRootRelative)
+  const spaceManifest = readJsonFileIfExists(path.join(spaceRoot, 'manifest.json'))
+  if (!spaceManifest || typeof spaceManifest !== 'object') return null
+
+  const tabs = ensureArray(spaceManifest.tabs)
+    .map((tabRecord) => ({
+      id: typeof tabRecord?.id === 'string' ? tabRecord.id : '',
+      title: typeof tabRecord?.title === 'string' ? tabRecord.title : 'tab',
+      noteBodyId: typeof tabRecord?.noteBodyId === 'string' ? tabRecord.noteBodyId : '',
+      homeContent:
+        typeof tabRecord?.homeNoteFile === 'string' ? readMarkdownFile(spaceRoot, tabRecord.homeNoteFile) : '',
+      activeSubTabId: typeof tabRecord?.activeSubTabId === 'string' ? tabRecord.activeSubTabId : null,
+      subTabs: ensureArray(tabRecord?.subTabs).map((subTabRecord) => ({
+        id: typeof subTabRecord?.id === 'string' ? subTabRecord.id : '',
+        title: typeof subTabRecord?.title === 'string' ? subTabRecord.title : 'tab',
+        noteBodyId: typeof subTabRecord?.noteBodyId === 'string' ? subTabRecord.noteBodyId : '',
+        content: typeof subTabRecord?.file === 'string' ? readMarkdownFile(spaceRoot, subTabRecord.file) : '',
+      })),
+    }))
+    .filter((tab) => tab.id)
+
+  const { deletedTabs, deletedSubTabs } = readTrashData(
+    spaceRoot,
+    typeof spaceManifest.trashManifestFile === 'string' ? spaceManifest.trashManifestFile : null,
+  )
+
+  return {
+    id: typeof spaceManifest.id === 'string' ? spaceManifest.id : spaceEntry.id,
+    name:
+      typeof spaceManifest.title === 'string'
+        ? spaceManifest.title
+        : typeof spaceEntry.title === 'string'
+          ? spaceEntry.title
+          : 'Untitled Space',
+    settings:
+      spaceManifest.settings && typeof spaceManifest.settings === 'object'
+        ? spaceManifest.settings
+        : { autoRemoveDeletedDays: 7 },
+    data: {
+      activeTabId:
+        typeof spaceManifest.activeTabId === 'string' && tabs.some((tab) => tab.id === spaceManifest.activeTabId)
+          ? spaceManifest.activeTabId
+          : tabs[0]?.id ?? '',
+      tabs,
+      deletedTabs,
+      deletedSubTabs,
+    },
+  }
+}
+
+function readV2HybridAppStateFromRoot(rootPath, rootManifest) {
+  const noteBodies = readNoteBodiesFromRoot(rootPath, rootManifest)
+  const domainEntries = ensureArray(rootManifest.domains)
+  if (domainEntries.length === 0) return null
+
+  const domains = []
+  for (const domainEntry of domainEntries) {
+    const domainId = typeof domainEntry?.id === 'string' ? domainEntry.id : ''
+    const domainPath = typeof domainEntry?.path === 'string' ? domainEntry.path : ''
+    if (!domainId || !domainPath) return null
+    const domainRootRelative = path.posix.join(DOMAINS_DIR, domainPath)
+    const domainManifest = readJsonFileIfExists(path.join(rootPath, domainRootRelative, 'manifest.json'))
+    if (!domainManifest || typeof domainManifest !== 'object') return null
+
+    const spaceEntries = ensureArray(domainManifest.spaces)
+    const spaces = []
+    for (const spaceEntry of spaceEntries) {
+      const spaceId = typeof spaceEntry?.id === 'string' ? spaceEntry.id : ''
+      const spacePath = typeof spaceEntry?.path === 'string' ? spaceEntry.path : ''
+      if (!spaceId || !spacePath) return null
+      const space = readV2Space(rootPath, path.posix.join(domainRootRelative, spacePath), spaceEntry)
+      if (!space) return null
+      spaces.push(space)
+    }
+    if (spaces.length === 0) return null
+
+    const lastOpened = isRecord(rootManifest.lastOpened) ? rootManifest.lastOpened : null
+    const lastOpenedSpaceId =
+      lastOpened &&
+      (lastOpened.domainId === domainId || lastOpened.topicId === domainId) &&
+      typeof lastOpened.spaceId === 'string'
+        ? lastOpened.spaceId
+        : null
+    const activeSpaceId =
+      (lastOpenedSpaceId && spaces.some((space) => space.id === lastOpenedSpaceId) && lastOpenedSpaceId) ||
+      (typeof domainManifest.activeSpaceId === 'string' &&
+        spaces.some((space) => space.id === domainManifest.activeSpaceId) &&
+        domainManifest.activeSpaceId) ||
+      spaces[0].id
+
+    domains.push({
+      id: typeof domainManifest.id === 'string' ? domainManifest.id : domainId,
+      name:
+        typeof domainManifest.title === 'string'
+          ? domainManifest.title
+          : typeof domainEntry.title === 'string'
+            ? domainEntry.title
+            : DEFAULT_DOMAIN_NAME,
+      activeSpaceId,
+      spaces,
+    })
+  }
+
+  const lastOpened = isRecord(rootManifest.lastOpened) ? rootManifest.lastOpened : null
+  const lastOpenedDomainId =
+    lastOpened && typeof lastOpened.domainId === 'string'
+      ? lastOpened.domainId
+      : lastOpened && typeof lastOpened.topicId === 'string'
+        ? lastOpened.topicId
+        : null
+  const activeDomainId =
+    (lastOpenedDomainId && domains.some((domain) => domain.id === lastOpenedDomainId) && lastOpenedDomainId) ||
+    (typeof rootManifest.activeDomainId === 'string' &&
+      domains.some((domain) => domain.id === rootManifest.activeDomainId) &&
+      rootManifest.activeDomainId) ||
+    domains[0].id
+  const activeDomain = domains.find((domain) => domain.id === activeDomainId) ?? domains[0]
+  const theme = ['dark', 'light', 'dawn', 'blues'].includes(rootManifest?.globalSettings?.theme)
+    ? rootManifest.globalSettings.theme
+    : 'dawn'
+
+  return JSON.stringify({
+    theme,
+    activeDomainId,
+    domains,
+    noteBodies,
+    activeSpaceId: activeDomain.activeSpaceId,
+    spaces: activeDomain.spaces,
+    hotkeys: rootManifest?.globalSettings?.hotkeys,
+    frontmatter: rootManifest?.globalSettings?.frontmatter,
+    ui: rootManifest?.globalSettings?.ui,
+  })
+}
+
+function readHybridAppStateFromRoot(rootPath) {
+  const rawRootManifest = readJsonFileIfExists(path.join(rootPath, 'manifest.json'))
+  const rootManifestMigration = migrateStorageRootManifest(rawRootManifest, SCHEMA_VERSION)
+  if (!rootManifestMigration.ok) return null
+  const rootManifest = rootManifestMigration.manifest
+  if (rootManifest.schemaVersion === SCHEMA_VERSION) return readV2HybridAppStateFromRoot(rootPath, rootManifest)
+  if (rootManifest.schemaVersion === LEGACY_SCHEMA_VERSION) return readV1HybridAppStateFromRoot(rootPath, rootManifest)
+  return null
+}
+
+export function loadAppState(profileRootPath) {
+  const result = loadAppStateResult(profileRootPath)
   return result.ok ? result.serializedState : null
 }
 
-export function loadAppStateResult(userDataPath) {
-  const finalRoot = getHybridStorageRoot(userDataPath)
-  const backupRoot = `${finalRoot}.bak`
-  const legacyPath = getLegacyAppStatePath(userDataPath)
+export function loadAppStateResult(profileRootPath) {
+  const finalRoot = getHybridStorageRoot(profileRootPath)
+  const legacyPath = getLegacyAppStatePath(profileRootPath)
   const finalExists = existsSync(finalRoot)
-  const backupExists = existsSync(backupRoot)
   const legacyExists = existsSync(legacyPath)
+  const conflicts = detectStorageConflicts(profileRootPath, finalRoot)
 
-  const hybridState = readHybridAppStateFromRoot(finalRoot)
-  if (hybridState !== null) {
-    return { ok: true, serializedState: hybridState, source: 'hybrid' }
-  }
-
-  const backupState = readHybridAppStateFromRoot(backupRoot)
-  if (backupState !== null) {
-    return { ok: true, serializedState: backupState, source: 'hybrid-backup' }
-  }
-
-  if (finalExists || backupExists) {
+  if (conflicts.length > 0) {
     return {
       ok: false,
       serializedState: null,
-      source: finalExists ? 'hybrid' : 'hybrid-backup',
+      source: 'hybrid',
+      error: `Storage profile contains cloud conflict folders: ${conflicts.join(', ')}`,
+      conflicts,
+    }
+  }
+
+  const hybridState = readHybridAppStateFromRoot(finalRoot)
+  if (hybridState !== null) {
+    const rootManifest = readJsonFileIfExists(path.join(finalRoot, 'manifest.json'))
+    return {
+      ok: true,
+      serializedState: hybridState,
+      source: 'hybrid',
+      schemaVersion: typeof rootManifest?.schemaVersion === 'number' ? rootManifest.schemaVersion : null,
+    }
+  }
+
+  if (finalExists) {
+    return {
+      ok: false,
+      serializedState: null,
+      source: 'hybrid',
       error: 'Existing app state could not be loaded.',
     }
   }
@@ -893,31 +1272,23 @@ export function loadAppStateResult(userDataPath) {
   return {
     ok: false,
     serializedState: null,
-    source: finalExists ? 'hybrid' : backupExists ? 'hybrid-backup' : 'legacy',
+    source: finalExists ? 'hybrid' : 'legacy',
     error: 'Existing app state could not be loaded.',
   }
 }
 
-export function saveAppState(userDataPath, serializedState) {
-  const finalRoot = getHybridStorageRoot(userDataPath)
-  const tempRoot = `${finalRoot}.tmp`
-  const backupRoot = `${finalRoot}.bak`
+export function saveAppState(profileRootPath, serializedState, options = {}) {
+  const finalRoot = getHybridStorageRoot(profileRootPath)
+  const recoveryRoot = typeof options.userDataPath === 'string' ? options.userDataPath : profileRootPath
 
-  rmSync(tempRoot, { recursive: true, force: true })
-
-  writeHybridStorage(tempRoot, serializedState)
-
-  try {
-    createPreWriteStorageSnapshot(finalRoot, backupRoot)
-    renameSync(tempRoot, finalRoot)
-  } catch (error) {
-    if (!existsSync(finalRoot) && existsSync(backupRoot)) {
-      renameSync(backupRoot, finalRoot)
-    }
-    throw error
-  } finally {
-    rmSync(tempRoot, { recursive: true, force: true })
+  if (options.replaceExisting === true) {
+    removeStorageConflictPaths(profileRootPath, finalRoot)
+    rmSync(finalRoot, { recursive: true, force: true })
+  } else {
+    createRecoverySnapshot(finalRoot, recoveryRoot)
   }
+
+  writeHybridStorage(finalRoot, serializedState)
 }
 
 export function createPreWriteStorageSnapshot(finalRoot, backupRoot) {

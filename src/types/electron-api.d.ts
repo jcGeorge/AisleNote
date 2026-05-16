@@ -1,5 +1,7 @@
 export {}
 
+import type { StorageProfileStatus } from './app'
+
 declare global {
   interface Window {
     electronAPI?: {
@@ -9,14 +11,16 @@ declare global {
         | {
             ok: true
             serializedState: string | null
-            source: 'hybrid' | 'hybrid-backup' | 'legacy' | 'empty'
+            source: 'hybrid' | 'legacy' | 'empty'
+            schemaVersion?: number | null
             revision: number
           }
         | {
             ok: false
             serializedState: null
-            source: 'hybrid' | 'hybrid-backup' | 'legacy'
+            source: 'hybrid' | 'legacy'
             error: string
+            conflicts?: string[]
             revision: number
           }
       saveAppState: (payload: { serializedState: string; baseRevision: number }) =>
@@ -33,6 +37,22 @@ declare global {
             serializedState?: string | null
           }
       onAppStateUpdated?: (handler: (payload: { serializedState: string; revision: number }) => void) => () => void
+      getStorageProfileStatus?: () => Promise<StorageProfileStatus>
+      chooseStorageFolder?: () => Promise<
+        | { canceled: true; status: StorageProfileStatus }
+        | { ok: true; status: StorageProfileStatus }
+        | { ok: false; error: string; status: StorageProfileStatus }
+      >
+      moveStorageProfile?: () => Promise<
+        | { canceled: true; status: StorageProfileStatus }
+        | { ok: true; status: StorageProfileStatus }
+        | { ok: false; error: string; status: StorageProfileStatus }
+      >
+      revealStorageProfile?: () => Promise<{ ok: true } | { ok: false; error: string }>
+      retryStorageProfile?: () => Promise<
+        { ok: true; status: StorageProfileStatus } | { ok: false; error?: string; status: StorageProfileStatus }
+      >
+      onStorageProfileStatusUpdated?: (handler: (payload: StorageProfileStatus) => void) => () => void
       exportAppState: (payload: { defaultPath: string; serializedState: string }) => Promise<{
         canceled: boolean
         filePath?: string

@@ -4,10 +4,12 @@ export const LOAD_FAILED_SAVE_ERROR = 'App state did not load; refusing to overw
 
 export function createAppStateCoordinator({
   userDataPath,
+  profileRootPath = userDataPath,
   load = loadAppStateResult,
   save = saveAppState,
 }) {
-  let loadResult = load(userDataPath)
+  let activeProfileRootPath = profileRootPath
+  let loadResult = load(activeProfileRootPath)
   let serializedState = loadResult.ok ? loadResult.serializedState : null
   let revision = loadResult.ok && serializedState !== null ? 1 : 0
 
@@ -55,7 +57,7 @@ export function createAppStateCoordinator({
     }
 
     try {
-      save(userDataPath, payload.serializedState)
+      save(activeProfileRootPath, payload.serializedState, { userDataPath })
       serializedState = payload.serializedState
       revision += 1
       loadResult = {
@@ -79,9 +81,33 @@ export function createAppStateCoordinator({
     }
   }
 
+  const reloadProfileRoot = (nextProfileRootPath = activeProfileRootPath, options = {}) => {
+    activeProfileRootPath = nextProfileRootPath
+    const nextLoadResult = load(activeProfileRootPath)
+    if (!nextLoadResult.ok || (options.requireSerializedState && nextLoadResult.serializedState === null)) {
+      loadResult = nextLoadResult.ok
+        ? {
+            ok: false,
+            serializedState: null,
+            source: nextLoadResult.source,
+            error: 'Existing app state could not be loaded.',
+          }
+        : nextLoadResult
+      return getLoadResult()
+    }
+
+    loadResult = nextLoadResult
+    serializedState = nextLoadResult.serializedState
+    revision = serializedState === null ? 0 : revision + 1
+    return getLoadResult()
+  }
+
   return {
     getLoadResult,
+    getProfileRootPath: () => activeProfileRootPath,
+    getSerializedState: () => serializedState,
     canWriteAppState: () => loadResult.ok,
+    reloadProfileRoot,
     saveRevisionedState,
   }
 }

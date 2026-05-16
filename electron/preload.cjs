@@ -10,6 +10,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('app-state-updated', listener)
     return () => ipcRenderer.removeListener('app-state-updated', listener)
   },
+  getStorageProfileStatus: () => ipcRenderer.invoke('get-storage-profile-status'),
+  chooseStorageFolder: () => ipcRenderer.invoke('choose-storage-folder'),
+  moveStorageProfile: () => ipcRenderer.invoke('move-storage-profile'),
+  revealStorageProfile: () => ipcRenderer.invoke('reveal-storage-profile'),
+  retryStorageProfile: () => ipcRenderer.invoke('retry-storage-profile'),
+  onStorageProfileStatusUpdated: (handler) => {
+    const listener = (_event, payload) => handler(payload)
+    ipcRenderer.on('storage-profile-status-updated', listener)
+    return () => ipcRenderer.removeListener('storage-profile-status-updated', listener)
+  },
   exportAppState: (payload) => ipcRenderer.invoke('export-app-state', payload),
   saveFile: (payload) => ipcRenderer.invoke('save-file', payload),
   copyImageDataUrl: (dataUrl) => ipcRenderer.invoke('copy-image-data-url', dataUrl),

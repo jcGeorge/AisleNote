@@ -57,12 +57,12 @@ export function createDefaultWorkspaceData(): WorkspaceData {
     tabs: [
       {
         id: welcomeTabId,
-        title: 'Welcome',
+        title: 'welcome',
         noteBodyId: createId(),
         homeContent:
-          '- This is the hidden home note for this top-level tab.\n- Click this parent tab to edit this note.\n- Sub-tabs are separate notes and start empty.\n',
+          '- This is the home note for this top-level (parent) tab.\n- Click this parent tab to edit this note.\n- Sub-tabs are separate notes and start empty.\n- You can hide the home tab in the settings.\n',
         activeSubTabId: null,
-        subTabs: [createSubTab('Checklist', '1. Add parent tab\n2. Add sub-tab\n3. Each note keeps separate content\n')],
+        subTabs: [createSubTab('list', '1. Add parent tab\n2. Add sub-tab\n3. Each note keeps separate content\n')],
       },
     ],
     deletedTabs: [],

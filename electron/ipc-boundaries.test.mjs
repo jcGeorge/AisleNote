@@ -6,6 +6,7 @@ import { registerClipboardIpc } from './ipc-clipboard.mjs'
 import { registerFileIpc } from './ipc-files.mjs'
 import { registerStorageIpc } from './ipc-storage.mjs'
 import { registerUpdateIpc } from './ipc-updates.mjs'
+import { loadAppStateResult, saveAppState } from './app-state-storage.mjs'
 import { createNoopUpdateService } from './update-service.mjs'
 
 function createIpcMain() {
@@ -36,6 +37,45 @@ function withTempUserDataPath(run) {
   } finally {
     rmSync(userDataPath, { recursive: true, force: true })
   }
+}
+
+function serializedAppState(theme = 'dawn') {
+  const space = {
+    id: 'space-1',
+    name: 'Space',
+    settings: { autoRemoveDeletedDays: 7 },
+    data: {
+      activeTabId: 'tab-1',
+      tabs: [
+        {
+          id: 'tab-1',
+          title: 'Tab',
+          noteBodyId: 'body-1',
+          homeContent: 'hello',
+          activeSubTabId: null,
+          subTabs: [],
+        },
+      ],
+      deletedTabs: [],
+      deletedSubTabs: [],
+    },
+  }
+
+  return JSON.stringify({
+    theme,
+    activeDomainId: 'domain-1',
+    domains: [
+      {
+        id: 'domain-1',
+        name: 'Domain',
+        activeSpaceId: space.id,
+        spaces: [space],
+      },
+    ],
+    noteBodies: [{ id: 'body-1', aisles: [{ id: 'aisle-1', markdown: 'hello' }] }],
+    activeSpaceId: space.id,
+    spaces: [space],
+  })
 }
 
 describe('electron ipc boundaries', () => {
@@ -134,10 +174,92 @@ describe('electron ipc boundaries', () => {
         serializedState: '{"theme":"dawn"}',
         revision: 1,
       })
-      expect(sourceWindow.webContents.send).not.toHaveBeenCalled()
+      expect(sourceWindow.webContents.send).not.toHaveBeenCalledWith('app-state-updated', expect.anything())
       expect(otherWindow.webContents.send).toHaveBeenCalledWith('app-state-updated', {
         serializedState: '{"theme":"dawn"}',
         revision: 1,
+      })
+    }))
+
+  it('reports the default storage profile status', async () =>
+    withTempUserDataPath(async (userDataPath) => {
+      const ipcMain = createIpcMain()
+      registerStorageIpc({
+        ipcMain,
+        app: { getPath: () => userDataPath },
+        BrowserWindow: createBrowserWindow(),
+      })
+
+      await expect(ipcMain.handlers.get('get-storage-profile-status')()).resolves.toMatchObject({
+        status: 'ready',
+        profileRootPath: userDataPath,
+        notesDataPath: path.join(userDataPath, 'notes-data'),
+        isDefault: true,
+        canWrite: true,
+        source: 'empty',
+      })
+    }))
+
+  it('moves current app data into a chosen sync folder without deleting the source profile', async () =>
+    withTempUserDataPath(async (userDataPath) => {
+      const targetRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-sync-target-'))
+      try {
+        const ipcMain = createIpcMain()
+        registerStorageIpc({
+          ipcMain,
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow(),
+          dialog: {
+            showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [targetRoot] })),
+            showMessageBox: vi.fn(async () => ({ response: 0 })),
+          },
+        })
+
+        const saveEvent = { returnValue: null }
+        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 0 })
+
+        await expect(ipcMain.handlers.get('move-storage-profile')()).resolves.toMatchObject({
+          ok: true,
+          status: {
+            profileRootPath: targetRoot,
+            isDefault: false,
+          },
+        })
+
+        expect(loadAppStateResult(userDataPath).ok).toBe(true)
+        expect(loadAppStateResult(targetRoot).ok).toBe(true)
+      } finally {
+        rmSync(targetRoot, { recursive: true, force: true })
+      }
+    }))
+
+  it('reloads valid external profile changes and broadcasts them to windows on retry', async () =>
+    withTempUserDataPath(async (userDataPath) => {
+      const window = {
+        isDestroyed: vi.fn(() => false),
+        webContents: { id: 2, send: vi.fn() },
+      }
+      const ipcMain = createIpcMain()
+      registerStorageIpc({
+        ipcMain,
+        app: { getPath: () => userDataPath },
+        BrowserWindow: createBrowserWindow([window]),
+      })
+
+      const saveEvent = { sender: { id: 1 }, returnValue: null }
+      ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 0 })
+      saveAppState(userDataPath, serializedAppState('light'))
+
+      await expect(ipcMain.handlers.get('retry-storage-profile')()).resolves.toMatchObject({
+        ok: true,
+        status: {
+          status: 'ready',
+          event: 'retry-loaded',
+        },
+      })
+      expect(window.webContents.send).toHaveBeenCalledWith('app-state-updated', {
+        serializedState: expect.stringContaining('"light"'),
+        revision: 2,
       })
     }))
 })

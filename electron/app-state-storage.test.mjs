@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -80,6 +80,10 @@ function serializedAppState() {
   })
 }
 
+function readJson(filePath) {
+  return JSON.parse(readFileSync(filePath, 'utf8'))
+}
+
 describe('Electron app state storage load result', () => {
   it('returns serialized state for a valid hybrid profile', () =>
     withTempUserDataPath((userDataPath) => {
@@ -103,6 +107,175 @@ describe('Electron app state storage load result', () => {
       expect(parsed.noteBodies[0].frontmatterComputedFields).toEqual({ created: 'createdAt' })
       expect(parsed.frontmatter.settingsTemplateId).toBe('template-1')
       expect(parsed.frontmatter.lastAppliedTemplateId).toBe('template-1')
+    }))
+
+  it('writes v2 human-readable domain paths without synced backups or note body folders', () =>
+    withTempUserDataPath((userDataPath) => {
+      saveAppState(userDataPath, serializedAppState())
+
+      const root = path.join(userDataPath, 'notes-data')
+      const manifest = readJson(path.join(root, 'manifest.json'))
+
+      expect(manifest.schemaVersion).toBe(2)
+      expect(manifest.domains[0]).toMatchObject({
+        id: 'domain-1',
+        title: 'Domain',
+      })
+      expect(manifest.domains[0].path).toMatch(/^Domain--[a-f0-9]{6}$/)
+      expect(existsSync(path.join(root, 'domains', manifest.domains[0].path, 'Space--'))).toBe(false)
+      expect(existsSync(path.join(root, 'domains'))).toBe(true)
+      expect(existsSync(path.join(root, 'topics'))).toBe(false)
+      expect(existsSync(path.join(root, 'note-bodies'))).toBe(false)
+      expect(existsSync(path.join(userDataPath, 'notes-data.bak'))).toBe(false)
+    }))
+
+  it('uses distinct readable paths for duplicate names', () =>
+    withTempUserDataPath((userDataPath) => {
+      const state = JSON.parse(serializedAppState())
+      state.domains = [
+        { ...state.domains[0], id: 'domain-a', name: 'Same Name' },
+        { ...state.domains[0], id: 'domain-b', name: 'Same Name' },
+      ]
+
+      saveAppState(userDataPath, JSON.stringify(state))
+      const manifest = readJson(path.join(userDataPath, 'notes-data', 'manifest.json'))
+
+      expect(manifest.domains).toHaveLength(2)
+      expect(manifest.domains[0].path).toMatch(/^Same Name--[a-f0-9]{6}$/)
+      expect(manifest.domains[1].path).toMatch(/^Same Name--[a-f0-9]{6}$/)
+      expect(manifest.domains[0].path).not.toBe(manifest.domains[1].path)
+    }))
+
+  it('stores prime tabs and sub-tabs inline under the domain and space hierarchy', () =>
+    withTempUserDataPath((userDataPath) => {
+      const state = JSON.parse(serializedAppState())
+      state.domains[0].spaces[0].data.tabs[0].subTabs = [
+        { id: 'sub-1', title: 'Sub Tab', noteBodyId: 'body-sub', content: 'sub fallback' },
+      ]
+      state.noteBodies.push({ id: 'body-sub', aisles: [{ id: 'aisle-sub', markdown: 'sub body' }] })
+
+      saveAppState(userDataPath, JSON.stringify(state))
+      const root = path.join(userDataPath, 'notes-data')
+      const rootManifest = readJson(path.join(root, 'manifest.json'))
+      const domainManifest = readJson(path.join(root, 'domains', rootManifest.domains[0].path, 'manifest.json'))
+      const spacePath = domainManifest.spaces[0].path
+      const spaceRoot = path.join(root, 'domains', rootManifest.domains[0].path, spacePath)
+      const spaceManifest = readJson(path.join(spaceRoot, 'manifest.json'))
+      const tab = spaceManifest.tabs[0]
+
+      expect(tab.path).toMatch(/^Tab--[a-f0-9]{6}$/)
+      expect(tab.homeNoteFile).toBe(`${tab.path}/home.md`)
+      expect(tab.subTabs[0].path).toMatch(new RegExp(`^${tab.path}/Sub Tab--[a-f0-9]{6}$`))
+      expect(tab.subTabs[0].file).toBe(`${tab.subTabs[0].path}/home.md`)
+      expect(readFileSync(path.join(spaceRoot, tab.subTabs[0].file), 'utf8')).toBe('sub body')
+    }))
+
+  it('loads a valid v1 profile and rewrites it as v2 on the next save', () =>
+    withTempUserDataPath((userDataPath) => {
+      const root = path.join(userDataPath, 'notes-data')
+      mkdirSync(path.join(root, 'topics', 'domain-1', 'spaces', 'space-1', 'notes', 'tab-1'), { recursive: true })
+      mkdirSync(path.join(root, 'note-bodies', 'body-1', 'aisles'), { recursive: true })
+      writeFileSync(
+        path.join(root, 'manifest.json'),
+        JSON.stringify({
+          schemaVersion: 1,
+          globalSettings: { theme: 'dawn', hotkeys: { shortcuts: {} }, ui: {} },
+          topics: [{ id: 'domain-1', title: 'Domain' }],
+          noteBodies: [{ id: 'body-1', aisles: [{ id: 'aisle-1', file: 'note-bodies/body-1/aisles/aisle-1.md' }] }],
+          activeTopicId: 'domain-1',
+        }),
+        'utf8',
+      )
+      writeFileSync(
+        path.join(root, 'topics', 'domain-1', 'manifest.json'),
+        JSON.stringify({
+          id: 'domain-1',
+          title: 'Domain',
+          spaces: [{ id: 'space-1', title: 'Space' }],
+          activeSpaceId: 'space-1',
+        }),
+        'utf8',
+      )
+      writeFileSync(
+        path.join(root, 'topics', 'domain-1', 'spaces', 'space-1', 'manifest.json'),
+        JSON.stringify({
+          id: 'space-1',
+          title: 'Space',
+          settings: { autoRemoveDeletedDays: 7 },
+          tabs: [
+            {
+              id: 'tab-1',
+              title: 'Tab',
+              noteBodyId: 'body-1',
+              homeNoteFile: 'notes/tab-1/home.md',
+              subTabs: [],
+              activeSubTabId: null,
+            },
+          ],
+          activeTabId: 'tab-1',
+          trashManifestFile: 'trash/manifest.json',
+        }),
+        'utf8',
+      )
+      writeFileSync(path.join(root, 'topics', 'domain-1', 'spaces', 'space-1', 'notes', 'tab-1', 'home.md'), 'hello', 'utf8')
+      writeFileSync(path.join(root, 'note-bodies', 'body-1', 'aisles', 'aisle-1.md'), 'body hello', 'utf8')
+
+      const result = loadAppStateResult(userDataPath)
+      expect(result).toMatchObject({ ok: true, source: 'hybrid', schemaVersion: 1 })
+      expect(JSON.parse(result.serializedState).noteBodies[0].aisles[0].markdown).toBe('body hello')
+
+      saveAppState(userDataPath, result.serializedState)
+      expect(readJson(path.join(root, 'manifest.json')).schemaVersion).toBe(2)
+      expect(existsSync(path.join(root, 'domains'))).toBe(true)
+      expect(existsSync(path.join(root, 'topics'))).toBe(false)
+      expect(existsSync(path.join(root, 'note-bodies'))).toBe(false)
+    }))
+
+  it('fails existing profiles with provider conflict folders', () =>
+    withTempUserDataPath((userDataPath) => {
+      const root = path.join(userDataPath, 'notes-data')
+      mkdirSync(path.join(root, 'topics 2'), { recursive: true })
+      writeFileSync(path.join(root, 'manifest.json'), JSON.stringify({ schemaVersion: 2 }), 'utf8')
+
+      expect(loadAppStateResult(userDataPath)).toMatchObject({
+        ok: false,
+        source: 'hybrid',
+        conflicts: ['notes-data/topics 2'],
+      })
+    }))
+
+  it('does not recover missing v1 space manifests as Recovered Space', () =>
+    withTempUserDataPath((userDataPath) => {
+      const root = path.join(userDataPath, 'notes-data')
+      mkdirSync(path.join(root, 'topics', 'domain-1', 'spaces', 'space-1', 'notes', 'tab-1'), { recursive: true })
+      writeFileSync(
+        path.join(root, 'manifest.json'),
+        JSON.stringify({
+          schemaVersion: 1,
+          globalSettings: { theme: 'dawn', hotkeys: { shortcuts: {} }, ui: {} },
+          topics: [{ id: 'domain-1', title: 'Domain' }],
+          activeTopicId: 'domain-1',
+        }),
+        'utf8',
+      )
+      writeFileSync(
+        path.join(root, 'topics', 'domain-1', 'manifest.json'),
+        JSON.stringify({
+          id: 'domain-1',
+          title: 'Domain',
+          spaces: [{ id: 'space-1', title: 'Space' }],
+          activeSpaceId: 'space-1',
+        }),
+        'utf8',
+      )
+      writeFileSync(path.join(root, 'topics', 'domain-1', 'spaces', 'space-1', 'notes', 'tab-1', 'home.md'), 'hello', 'utf8')
+
+      expect(loadAppStateResult(userDataPath)).toEqual({
+        ok: false,
+        serializedState: null,
+        source: 'hybrid',
+        error: 'Existing app state could not be loaded.',
+      })
     }))
 
   it('returns an empty writable result when no profile exists', () =>

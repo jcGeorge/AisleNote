@@ -30,6 +30,7 @@ import type {
   NewlineShortcutId,
   SettingsSection,
   ShortcutId,
+  StorageProfileStatus,
 } from '../../types/app'
 
 const THEME_OPTIONS: Array<{ id: AppTheme; label: string }> = [
@@ -67,6 +68,7 @@ type SettingsPageProps = {
   showParentHomeTabDraft: boolean
   frontmatterDraft: FrontmatterSettings
   frontmatterDraftDirty: boolean
+  storageProfileStatus: StorageProfileStatus | null
   onSectionChange: (section: SettingsSection) => void
   onToggleShortcutEdit: (shortcutId: ShortcutId) => void
   onNewlineShortcutChange: (shortcutId: NewlineShortcutId, operation: NewlineOperationId) => void
@@ -93,6 +95,10 @@ type SettingsPageProps = {
   onDeleteFrontmatterTemplateField: (templateId: string, fieldId: string) => void
   onSaveFrontmatterTemplates: () => void
   onDiscardFrontmatterTemplateChanges: () => void
+  onChooseStorageFolder: () => void
+  onMoveStorageProfile: () => void
+  onRevealStorageProfile: () => void
+  onRetryStorageProfile: () => void
 }
 
 export function SettingsPage({
@@ -112,6 +118,7 @@ export function SettingsPage({
   showParentHomeTabDraft,
   frontmatterDraft,
   frontmatterDraftDirty,
+  storageProfileStatus,
   onSectionChange,
   onToggleShortcutEdit,
   onNewlineShortcutChange,
@@ -134,6 +141,10 @@ export function SettingsPage({
   onDeleteFrontmatterTemplateField,
   onSaveFrontmatterTemplates,
   onDiscardFrontmatterTemplateChanges,
+  onChooseStorageFolder,
+  onMoveStorageProfile,
+  onRevealStorageProfile,
+  onRetryStorageProfile,
 }: SettingsPageProps) {
   const activeFrontmatterTemplate =
     frontmatterDraft.templates.find((template) => template.id === frontmatterDraft.settingsTemplateId) ??
@@ -286,6 +297,44 @@ export function SettingsPage({
 
         {section === 'data' && (
           <div className="settings-section-panel" role="tabpanel">
+            <p>cloud and storage:</p>
+            <div className={`storage-profile-card ${storageProfileStatus?.status === 'error' ? 'is-error' : ''}`}>
+              <div className="storage-profile-row">
+                <span className="settings-hotkey-label">current folder</span>
+                <code className="storage-profile-path">
+                  {storageProfileStatus?.profileRootPath ?? 'desktop storage unavailable'}
+                </code>
+              </div>
+              <div className="storage-profile-row">
+                <span className="settings-hotkey-label">status</span>
+                <span>{storageProfileStatus ? (storageProfileStatus.status === 'ready' ? 'ready' : 'error') : 'browser local'}</span>
+              </div>
+              {storageProfileStatus?.error && <p className="settings-help storage-profile-error">{storageProfileStatus.error}</p>}
+              <div className="settings-page-actions">
+                <button type="button" className="btn btn-sm settings-action-btn" onClick={onChooseStorageFolder}>
+                  choose sync folder
+                </button>
+                <button type="button" className="btn btn-sm settings-action-btn" onClick={onMoveStorageProfile}>
+                  move current data
+                </button>
+                <button type="button" className="btn btn-sm settings-action-btn" onClick={onRevealStorageProfile}>
+                  reveal folder
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm settings-action-btn"
+                  onClick={onRetryStorageProfile}
+                  disabled={storageProfileStatus?.status !== 'error'}
+                >
+                  retry
+                </button>
+              </div>
+              <p className="settings-help">
+                choose a local iCloud Drive, Dropbox, OneDrive, Google Drive, or plain folder; tabs stores a portable
+                <code>notes-data</code> profile inside it.
+              </p>
+            </div>
+            <div className="settings-divider" />
             <p>automatically remove deleted items after:</p>
             <div className="settings-field-row">
               <input
