@@ -1,4 +1,4 @@
-export type StorageSchemaVersion = 1 | 2
+export type StorageSchemaVersion = 2
 
 export type StorageEntityId = string
 export type StorageTheme = 'dark' | 'light' | 'dawn' | 'blues'
@@ -15,11 +15,6 @@ export const STORAGE_SCHEMA_VERSION: StorageSchemaVersion = 2
 
 export const STORAGE_ROOT_DIR = 'notes-data' as const
 export const STORAGE_DOMAINS_DIR = 'domains' as const
-export const STORAGE_TOPICS_DIR = 'topics' as const
-export const STORAGE_SPACES_DIR = 'spaces' as const
-export const STORAGE_NOTES_DIR = 'notes' as const
-export const STORAGE_NOTE_BODIES_DIR = 'note-bodies' as const
-export const STORAGE_SUBTABS_DIR = 'subtabs' as const
 export const STORAGE_AISLES_DIR = 'aisles' as const
 export const STORAGE_ASSETS_DIR = 'assets' as const
 export const STORAGE_TRASH_DIR = 'trash' as const
@@ -84,18 +79,16 @@ export type StorageGlobalSettings = {
   }
 }
 
-export type StorageTopicIndexEntry = {
+export type StorageDomainIndexEntry = {
   id: StorageEntityId
   title: string
-}
-
-export type StorageDomainIndexEntry = StorageTopicIndexEntry & {
-  path?: string
+  path: string
 }
 
 export type StorageSpaceIndexEntry = {
   id: StorageEntityId
   title: string
+  path: string
 }
 
 export type StorageNoteAisleRecord = {
@@ -120,29 +113,16 @@ export type StorageNoteBodyRecord = {
 export type StorageRootManifest = {
   schemaVersion: StorageSchemaVersion
   globalSettings: StorageGlobalSettings
-  topics?: StorageTopicIndexEntry[]
-  domains?: StorageDomainIndexEntry[]
+  domains: StorageDomainIndexEntry[]
   noteBodies?: StorageNoteBodyRecord[]
-  activeTopicId?: StorageEntityId
-  activeDomainId?: StorageEntityId
+  activeDomainId: StorageEntityId
   lastOpened?: {
-    topicId?: StorageEntityId
-    domainId?: StorageEntityId
+    domainId: StorageEntityId
     spaceId: StorageEntityId
-    parentTabId?: StorageEntityId | null
     primeTabId?: StorageEntityId | null
     subTabId: StorageEntityId | null
     viewMode: 'domains' | 'spaces' | 'main' | 'trash' | 'settings' | 'stage-manager'
   }
-}
-
-export type StorageTopicManifest = {
-  id: StorageEntityId
-  title: string
-  spaces: StorageSpaceIndexEntry[]
-  activeSpaceId: StorageEntityId
-  createdAt?: number
-  updatedAt?: number
 }
 
 export type StorageSpaceSettings = {
@@ -153,6 +133,7 @@ export type StorageSubTabRecord = {
   id: StorageEntityId
   title: string
   noteBodyId?: StorageEntityId
+  path: string
   file: string
   createdAt?: number
   updatedAt?: number
@@ -162,6 +143,7 @@ export type StorageTabRecord = {
   id: StorageEntityId
   title: string
   noteBodyId?: StorageEntityId
+  path: string
   homeNoteFile: string
   subTabs: StorageSubTabRecord[]
   activeSubTabId: StorageEntityId | null
@@ -186,15 +168,14 @@ export type StorageTrashItemRecord = {
   id: StorageEntityId
   type: StorageTrashItemType
   title: string
+  path: string
   file: string
   deletedAt: number
   parentTabTitle?: string
   activeSubTabId?: StorageEntityId | null
   subTabs?: StorageSubTabRecord[]
   original: {
-    topicId: StorageEntityId
-    spaceId: StorageEntityId
-    parentTabId: StorageEntityId
+    primeTabId: StorageEntityId
     subTabId: StorageEntityId | null
   }
 }
@@ -205,6 +186,5 @@ export type StorageTrashManifest = {
 
 export type StorageManifest =
   | StorageRootManifest
-  | StorageTopicManifest
   | StorageSpaceManifest
   | StorageTrashManifest

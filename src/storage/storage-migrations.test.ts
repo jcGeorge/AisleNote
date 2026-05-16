@@ -14,14 +14,11 @@ describe('storage manifest migrations', () => {
     })
   })
 
-  it('migrates v1 manifests to the current schema version', () => {
-    const manifest = { schemaVersion: 1, topics: [] }
-
-    expect(migrateStorageRootManifest(manifest)).toEqual({
-      ok: true,
-      manifest: { schemaVersion: STORAGE_SCHEMA_VERSION, topics: [] },
-      fromVersion: 1,
-      toVersion: STORAGE_SCHEMA_VERSION,
+  it('rejects older schema versions', () => {
+    expect(migrateStorageRootManifest({ schemaVersion: 1 })).toEqual({
+      ok: false,
+      reason: 'missing-migration',
+      version: 1,
     })
   })
 

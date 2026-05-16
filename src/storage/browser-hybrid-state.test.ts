@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { parseSavedState } from '../state/app-state'
 import { buildHybridFileMapFromSerializedState, readSerializedStateFromHybridFileMap } from './browser-hybrid-state'
 
+function getRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
+}
+
 describe('browser hybrid storage', () => {
   it('round trips markdown note bodies through the manifest file map', () => {
     const state = parseSavedState(
@@ -82,11 +86,23 @@ describe('browser hybrid storage', () => {
     )
 
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
+    const rootManifestEntry = fileMap.get('notes-data/manifest.json')
+    const rootManifest =
+      rootManifestEntry?.kind === 'text' ? (JSON.parse(rootManifestEntry.text) as Record<string, unknown>) : null
+    const firstDomain = getRecord(Array.isArray(rootManifest?.domains) ? rootManifest.domains[0] : null)
+    const paths = Array.from(fileMap.keys())
     const serialized = readSerializedStateFromHybridFileMap(fileMap)
     const roundTripped = parseSavedState(serialized)
     const homeBody = roundTripped.noteBodies.find((body) => body.id === 'body-tab')
     const subBody = roundTripped.noteBodies.find((body) => body.id === 'body-sub')
 
+    expect(rootManifest?.schemaVersion).toBe(2)
+    expect(firstDomain.path).toEqual(expect.stringMatching(/^humble beginnings--[a-f0-9]{6}$/))
+    expect(paths.some((path) => path.startsWith('notes-data/domains/'))).toBe(true)
+    expect(paths.some((path) => path.startsWith('notes-data/topics/'))).toBe(false)
+    expect(paths.some((path) => path.startsWith('notes-data/note-bodies/'))).toBe(false)
+    expect(paths.some((path) => /\/Tab--[a-f0-9]{6}\/home\.md$/.test(path))).toBe(true)
+    expect(paths.some((path) => /\/Tab--[a-f0-9]{6}\/Sub--[a-f0-9]{6}\/home\.md$/.test(path))).toBe(true)
     expect(serialized).not.toBeNull()
     expect(homeBody?.aisles[0]?.markdown).toBe('home body')
     expect(homeBody?.frontmatter).toEqual({ created: '2024-01-01' })
@@ -113,5 +129,32 @@ describe('browser hybrid storage', () => {
       },
       updatedAt: 100,
     })
+  })
+
+  it('does not read v1 topic/note-body file maps', () => {
+    const fileMap = new Map([
+      [
+        'notes-data/manifest.json',
+        {
+          path: 'notes-data/manifest.json',
+          kind: 'text' as const,
+          text: JSON.stringify({
+            schemaVersion: 1,
+            topics: [{ id: 'domain-1', title: 'Domain' }],
+            activeTopicId: 'domain-1',
+          }),
+        },
+      ],
+      [
+        'notes-data/topics/domain-1/manifest.json',
+        {
+          path: 'notes-data/topics/domain-1/manifest.json',
+          kind: 'text' as const,
+          text: JSON.stringify({ id: 'domain-1', title: 'Domain', spaces: [] }),
+        },
+      ],
+    ])
+
+    expect(readSerializedStateFromHybridFileMap(fileMap)).toBeNull()
   })
 })

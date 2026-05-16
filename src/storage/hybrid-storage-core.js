@@ -1,5 +1,3 @@
-export const DEFAULT_TOPIC_ID = 'default-topic'
-export const DEFAULT_TOPIC_TITLE = 'Default'
 export const DEFAULT_DOMAIN_ID = 'humble-beginnings-domain'
 export const DEFAULT_DOMAIN_NAME = 'humble beginnings'
 export const DEFAULT_AUTO_REMOVE_DAYS = 7

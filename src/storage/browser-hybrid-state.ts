@@ -1,15 +1,11 @@
 import {
   STORAGE_ASSETS_DIR,
   STORAGE_AISLES_DIR,
+  STORAGE_DOMAINS_DIR,
   STORAGE_HOME_NOTE_FILE,
   STORAGE_MANIFEST_FILE,
-  STORAGE_NOTE_BODIES_DIR,
-  STORAGE_NOTES_DIR,
   STORAGE_ROOT_DIR,
   STORAGE_SCHEMA_VERSION,
-  STORAGE_SPACES_DIR,
-  STORAGE_SUBTABS_DIR,
-  STORAGE_TOPICS_DIR,
   STORAGE_TRASH_DIR,
 } from '../types/storage-schema'
 import { splitImageResizeMetadataFromUrl } from '../markdown/image-metadata'
@@ -23,9 +19,8 @@ import {
 import { migrateStorageRootManifest } from './storage-migrations'
 import {
   DEFAULT_AUTO_REMOVE_DAYS,
+  DEFAULT_DOMAIN_ID,
   DEFAULT_DOMAIN_NAME,
-  DEFAULT_TOPIC_ID,
-  DEFAULT_TOPIC_TITLE,
   IMAGE_MARKDOWN_PATTERN,
   ensureArray,
   getActiveDomainFromAppState,
@@ -36,7 +31,6 @@ import {
   getExtensionFromMimeType,
   getMimeTypeFromExtension,
   getNoteBodiesFromAppState,
-  getNoteBodyFirstMarkdown,
   getThemeForStorage,
   isRecord,
   normalizeImageExtension,
@@ -242,15 +236,58 @@ function inlineMarkdownImages(markdown: string, notePath: string, fileMap: Map<s
   })
 }
 
-function buildRootManifest(appState: Record<string, unknown>) {
-  const domains = getDomainsFromAppState(appState)
-  const noteBodies = getNoteBodiesFromAppState(appState)
-  const activeDomain = getActiveDomainFromAppState(appState, domains)
+function sanitizePathSegment(value: unknown, fallback: string): string {
+  const illegalCharacters = new Set(['<', '>', ':', '"', '/', '\\', '|', '?', '*'])
+  const normalized = String(value ?? '')
+    .split('')
+    .map((character) => (illegalCharacters.has(character) || character.charCodeAt(0) < 32 ? ' ' : character))
+    .join('')
+    .replace(/\s+/g, ' ')
+    .replace(/^\.+|\.+$/g, '')
+    .trim()
+  return normalized || fallback
+}
+
+function createStringHash(value: unknown): string {
+  const source = String(value ?? '')
+  let hash = 2166136261
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index)
+    hash = Math.imul(hash, 16777619) >>> 0
+  }
+  return hash.toString(16).padStart(8, '0').slice(0, 6)
+}
+
+function createPathAllocator() {
+  const used = new Set<string>()
+  return (title: unknown, id: unknown, fallback: string): string => {
+    const base = `${sanitizePathSegment(title, fallback)}--${createStringHash(id)}`
+    let candidate = base
+    let index = 2
+    while (used.has(candidate)) {
+      candidate = `${base}-${index}`
+      index += 1
+    }
+    used.add(candidate)
+    return candidate
+  }
+}
+
+function setJsonFile(fileMap: Map<string, BrowserStoredFile>, path: string, value: Record<string, unknown>) {
+  setTextFile(fileMap, path, `${JSON.stringify(value, null, 2)}\n`)
+}
+
+function buildRootManifest(
+  appState: Record<string, unknown>,
+  domainEntries: Array<Record<string, unknown>>,
+  noteBodyEntries: Array<Record<string, unknown>>,
+) {
+  const activeDomain = getActiveDomainFromAppState(appState, getDomainsFromAppState(appState))
   const activeSpace = getActiveSpaceFromDomain(activeDomain, appState.activeSpaceId)
   const activeSpaceData = isRecord(activeSpace?.data) ? activeSpace.data : null
   const activeTabs = ensureArray<Record<string, unknown>>(activeSpaceData?.tabs)
   const activeTab = activeTabs.find((tab) => tab.id === activeSpaceData?.activeTabId) ?? activeTabs[0] ?? null
-  const activeDomainId = activeDomain ? getDomainId(activeDomain) : DEFAULT_TOPIC_ID
+  const activeDomainId = activeDomain ? getDomainId(activeDomain) : DEFAULT_DOMAIN_ID
 
   return {
     schemaVersion: STORAGE_SCHEMA_VERSION,
@@ -276,50 +313,14 @@ function buildRootManifest(appState: Record<string, unknown>) {
             },
       frontmatter: isRecord(appState.frontmatter) ? appState.frontmatter : undefined,
     },
-    topics:
-      domains.length > 0
-        ? domains.map((domain) => ({
-            id: getDomainId(domain),
-            title: getDomainTitle(domain),
-          }))
-        : [{ id: DEFAULT_TOPIC_ID, title: DEFAULT_TOPIC_TITLE }],
-    noteBodies: noteBodies.map((body) => {
-      const bodyId = typeof body.id === 'string' ? body.id : ''
-      return {
-        id: bodyId,
-        createdAt: typeof body.createdAt === 'string' ? body.createdAt : undefined,
-        updatedAt: typeof body.updatedAt === 'string' ? body.updatedAt : undefined,
-        frontmatter: isRecord(body.frontmatter) ? body.frontmatter : null,
-        frontmatterTemplateId: typeof body.frontmatterTemplateId === 'string' ? body.frontmatterTemplateId : undefined,
-        frontmatterTemplateDerived:
-          typeof body.frontmatterTemplateDerived === 'boolean' ? body.frontmatterTemplateDerived : undefined,
-        frontmatterTemplateFieldOrigins: isRecord(body.frontmatterTemplateFieldOrigins)
-          ? body.frontmatterTemplateFieldOrigins
-          : undefined,
-        frontmatterTemplateRemovedFieldIds: ensureArray<string>(body.frontmatterTemplateRemovedFieldIds).filter(
-          (fieldId): fieldId is string => typeof fieldId === 'string' && fieldId.trim().length > 0,
-        ),
-        frontmatterComputedFields: isRecord(body.frontmatterComputedFields)
-          ? body.frontmatterComputedFields
-          : undefined,
-        frontmatterTemplateDetachedKeys: ensureArray<string>(body.frontmatterTemplateDetachedKeys).filter(
-          (key): key is string => typeof key === 'string' && key.trim().length > 0,
-        ),
-        aisles: ensureArray<Record<string, unknown>>(body.aisles).map((aisle) => {
-          const aisleId = typeof aisle.id === 'string' ? aisle.id : ''
-          return {
-            id: aisleId,
-            file: joinPosix(STORAGE_NOTE_BODIES_DIR, bodyId, STORAGE_AISLES_DIR, `${aisleId}.md`),
-          }
-        }),
-      }
-    }),
-    activeTopicId: activeDomainId,
+    domains: domainEntries,
+    noteBodies: noteBodyEntries,
+    activeDomainId,
     lastOpened: activeSpace
       ? {
-          topicId: activeDomainId,
+          domainId: activeDomainId,
           spaceId: typeof activeSpace.id === 'string' ? activeSpace.id : '',
-          parentTabId: typeof activeTab?.id === 'string' ? activeTab.id : null,
+          primeTabId: typeof activeTab?.id === 'string' ? activeTab.id : null,
           subTabId: typeof activeTab?.activeSubTabId === 'string' ? activeTab.activeSubTabId : null,
           viewMode: 'main',
         }
@@ -327,16 +328,13 @@ function buildRootManifest(appState: Record<string, unknown>) {
   }
 }
 
-function buildTopicManifest(domain: Record<string, unknown>) {
+function buildDomainManifest(domain: Record<string, unknown>, spaceEntries: Array<Record<string, unknown>>) {
   const spaces = ensureArray<Record<string, unknown>>(domain.spaces)
   const domainId = getDomainId(domain)
   return {
     id: domainId,
     title: getDomainTitle(domain),
-    spaces: spaces.map((space) => ({
-      id: typeof space.id === 'string' ? space.id : '',
-      title: typeof space.name === 'string' ? space.name : 'Untitled Space',
-    })),
+    spaces: spaceEntries,
     activeSpaceId:
       typeof domain.activeSpaceId === 'string' && spaces.some((space) => space.id === domain.activeSpaceId)
         ? domain.activeSpaceId
@@ -350,79 +348,141 @@ function writeAssetBank(fileMap: Map<string, BrowserStoredFile>, basePath: strin
   }
 }
 
-function writeNoteBodyFiles(fileMap: Map<string, BrowserStoredFile>, noteBodies: Array<Record<string, unknown>>) {
-  const assetBank = createAssetBank(STORAGE_ASSETS_DIR)
-  noteBodies.forEach((body) => {
-    const bodyId = typeof body.id === 'string' ? body.id : ''
-    if (!bodyId) return
-    ensureArray<Record<string, unknown>>(body.aisles).forEach((aisle) => {
-      const aisleId = typeof aisle.id === 'string' ? aisle.id : ''
-      if (!aisleId) return
-      const file = joinPosix(STORAGE_NOTE_BODIES_DIR, bodyId, STORAGE_AISLES_DIR, `${aisleId}.md`)
-      const markdown = typeof aisle.markdown === 'string' ? aisle.markdown : ''
-      setTextFile(fileMap, joinPosix(STORAGE_ROOT_DIR, file), externalizeMarkdownImages(markdown, file, assetBank))
-    })
+function buildNoteBodyManifestRecord(body: Record<string, unknown>, aisles: Array<Record<string, unknown>>) {
+  return {
+    id: typeof body.id === 'string' ? body.id : '',
+    createdAt: typeof body.createdAt === 'string' ? body.createdAt : undefined,
+    updatedAt: typeof body.updatedAt === 'string' ? body.updatedAt : undefined,
+    frontmatter: isRecord(body.frontmatter) ? body.frontmatter : null,
+    frontmatterTemplateId: typeof body.frontmatterTemplateId === 'string' ? body.frontmatterTemplateId : undefined,
+    frontmatterTemplateDerived:
+      typeof body.frontmatterTemplateDerived === 'boolean' ? body.frontmatterTemplateDerived : undefined,
+    frontmatterTemplateFieldOrigins: isRecord(body.frontmatterTemplateFieldOrigins)
+      ? body.frontmatterTemplateFieldOrigins
+      : undefined,
+    frontmatterTemplateRemovedFieldIds: ensureArray<string>(body.frontmatterTemplateRemovedFieldIds).filter(
+      (fieldId): fieldId is string => typeof fieldId === 'string' && fieldId.trim().length > 0,
+    ),
+    frontmatterComputedFields: isRecord(body.frontmatterComputedFields) ? body.frontmatterComputedFields : undefined,
+    frontmatterTemplateDetachedKeys: ensureArray<string>(body.frontmatterTemplateDetachedKeys).filter(
+      (key): key is string => typeof key === 'string' && key.trim().length > 0,
+    ),
+    aisles,
+  }
+}
+
+function writeNoteBodyAtPath({
+  fileMap,
+  noteBodyMap,
+  noteBodyRecords,
+  noteBodyId,
+  fallbackMarkdown,
+  noteRootRelative,
+  assetBank,
+}: {
+  fileMap: Map<string, BrowserStoredFile>
+  noteBodyMap: Map<string, Record<string, unknown>>
+  noteBodyRecords: Map<string, Record<string, unknown>>
+  noteBodyId: unknown
+  fallbackMarkdown: string
+  noteRootRelative: string
+  assetBank: AssetBank
+}) {
+  const bodyId = typeof noteBodyId === 'string' ? noteBodyId : ''
+  const body = bodyId ? noteBodyMap.get(bodyId) : null
+  const sourceAisles = ensureArray<Record<string, unknown>>(body?.aisles)
+  const homeFile = joinPosix(noteRootRelative, STORAGE_HOME_NOTE_FILE)
+
+  if (body && noteBodyRecords.has(bodyId)) {
+    const firstAisle = sourceAisles[0]
+    const markdown = typeof firstAisle?.markdown === 'string' ? firstAisle.markdown : fallbackMarkdown
+    setTextFile(fileMap, joinPosix(STORAGE_ROOT_DIR, homeFile), externalizeMarkdownImages(markdown, homeFile, assetBank))
+    return homeFile
+  }
+
+  if (!body || sourceAisles.length === 0) {
+    setTextFile(
+      fileMap,
+      joinPosix(STORAGE_ROOT_DIR, homeFile),
+      externalizeMarkdownImages(fallbackMarkdown, homeFile, assetBank),
+    )
+    return homeFile
+  }
+
+  const aisleRecords: Array<Record<string, unknown>> = []
+  sourceAisles.forEach((aisle, index) => {
+    const aisleId = typeof aisle.id === 'string' && aisle.id ? aisle.id : `${bodyId}-aisle-${index + 1}`
+    const file =
+      index === 0
+        ? homeFile
+        : joinPosix(noteRootRelative, STORAGE_AISLES_DIR, `${sanitizePathSegment(`Aisle ${index + 1}`, 'Aisle')}--${createStringHash(aisleId)}.md`)
+    const markdown = typeof aisle.markdown === 'string' ? aisle.markdown : index === 0 ? fallbackMarkdown : ''
+    setTextFile(fileMap, joinPosix(STORAGE_ROOT_DIR, file), externalizeMarkdownImages(markdown, file, assetBank))
+    aisleRecords.push({ id: aisleId, file })
   })
-  writeAssetBank(fileMap, STORAGE_ROOT_DIR, assetBank)
+  noteBodyRecords.set(bodyId, buildNoteBodyManifestRecord(body, aisleRecords))
+  return homeFile
 }
 
 function writeSpaceFiles(
   fileMap: Map<string, BrowserStoredFile>,
-  topicId: string,
+  spaceRoot: string,
   space: Record<string, unknown>,
   noteBodyMap: Map<string, Record<string, unknown>>,
+  noteBodyRecords: Map<string, Record<string, unknown>>,
+  assetBank: AssetBank,
 ) {
   const spaceId = typeof space.id === 'string' ? space.id : ''
-  if (!spaceId) return
+  if (!spaceId) return null
 
-  const spaceRoot = joinPosix(
-    STORAGE_ROOT_DIR,
-    STORAGE_TOPICS_DIR,
-    topicId,
-    STORAGE_SPACES_DIR,
-    spaceId,
-  )
   const trashRoot = joinPosix(spaceRoot, STORAGE_TRASH_DIR)
   const tabs = ensureArray<Record<string, unknown>>(isRecord(space.data) ? space.data.tabs : [])
-  const activeAssetBank = createAssetBank(STORAGE_ASSETS_DIR)
-  const trashAssetBank = createAssetBank(STORAGE_ASSETS_DIR)
+  const tabPathForTitle = createPathAllocator()
 
   const tabManifest = tabs.map((tab) => {
     const tabId = typeof tab.id === 'string' ? tab.id : ''
-    const homeNoteFile = joinPosix(STORAGE_NOTES_DIR, tabId, STORAGE_HOME_NOTE_FILE)
-    const homeContent = getNoteBodyFirstMarkdown(
-      noteBodyMap,
-      tab.noteBodyId,
-      typeof tab.homeContent === 'string' ? tab.homeContent : '',
-    )
-    setTextFile(
+    const tabPath = tabPathForTitle(typeof tab.title === 'string' ? tab.title : 'tab', tabId, 'tab')
+    const homeNoteFile = writeNoteBodyAtPath({
       fileMap,
-      joinPosix(spaceRoot, homeNoteFile),
-      externalizeMarkdownImages(homeContent, homeNoteFile, activeAssetBank),
-    )
+      noteBodyMap,
+      noteBodyRecords,
+      noteBodyId: tab.noteBodyId,
+      fallbackMarkdown: typeof tab.homeContent === 'string' ? tab.homeContent : '',
+      noteRootRelative: joinPosix(spaceRoot, tabPath),
+      assetBank,
+    })
 
+    const subTabPathForTitle = createPathAllocator()
     const subTabs = ensureArray<Record<string, unknown>>(tab.subTabs).map((subTab) => {
       const subTabId = typeof subTab.id === 'string' ? subTab.id : ''
-      const file = joinPosix(STORAGE_NOTES_DIR, tabId, STORAGE_SUBTABS_DIR, `${subTabId}.md`)
-      const content = getNoteBodyFirstMarkdown(
-        noteBodyMap,
-        subTab.noteBodyId,
-        typeof subTab.content === 'string' ? subTab.content : '',
+      const subTabPath = joinPosix(
+        tabPath,
+        subTabPathForTitle(typeof subTab.title === 'string' ? subTab.title : 'tab', subTabId, 'tab'),
       )
-      setTextFile(fileMap, joinPosix(spaceRoot, file), externalizeMarkdownImages(content, file, activeAssetBank))
+      const file = writeNoteBodyAtPath({
+        fileMap,
+        noteBodyMap,
+        noteBodyRecords,
+        noteBodyId: subTab.noteBodyId,
+        fallbackMarkdown: typeof subTab.content === 'string' ? subTab.content : '',
+        noteRootRelative: joinPosix(spaceRoot, subTabPath),
+        assetBank,
+      })
       return {
         id: subTabId,
         title: typeof subTab.title === 'string' ? subTab.title : 'tab',
+        path: subTabPath,
         noteBodyId: typeof subTab.noteBodyId === 'string' ? subTab.noteBodyId : '',
-        file,
+        file: file.replace(`${spaceRoot}/`, ''),
       }
     })
 
     return {
       id: tabId,
       title: typeof tab.title === 'string' ? tab.title : 'tab',
+      path: tabPath,
       noteBodyId: typeof tab.noteBodyId === 'string' ? tab.noteBodyId : '',
-      homeNoteFile,
+      homeNoteFile: homeNoteFile.replace(`${spaceRoot}/`, ''),
       subTabs,
       activeSubTabId: typeof tab.activeSubTabId === 'string' ? tab.activeSubTabId : null,
     }
@@ -431,44 +491,42 @@ function writeSpaceFiles(
   const deletedTabs = ensureArray<Record<string, unknown>>(isRecord(space.data) ? space.data.deletedTabs : [])
   const deletedSubTabs = ensureArray<Record<string, unknown>>(isRecord(space.data) ? space.data.deletedSubTabs : [])
   const trashItems: Array<Record<string, unknown>> = []
+  const trashPathForTitle = createPathAllocator()
 
   deletedTabs.forEach((entry) => {
     const deletedTab = isRecord(entry.tab) ? entry.tab : {}
     const entryId = typeof entry.id === 'string' ? entry.id : ''
-    const homeNoteFile = joinPosix(STORAGE_NOTES_DIR, entryId, STORAGE_HOME_NOTE_FILE)
-    setTextFile(
+    const deletedPath = trashPathForTitle(typeof deletedTab.title === 'string' ? deletedTab.title : 'deleted tab', entryId, 'deleted tab')
+    const homeNoteFile = writeNoteBodyAtPath({
       fileMap,
-      joinPosix(trashRoot, homeNoteFile),
-      externalizeMarkdownImages(
-        getNoteBodyFirstMarkdown(
-          noteBodyMap,
-          deletedTab.noteBodyId,
-          typeof deletedTab.homeContent === 'string' ? deletedTab.homeContent : '',
-        ),
-        homeNoteFile,
-        trashAssetBank,
-      ),
-    )
+      noteBodyMap,
+      noteBodyRecords,
+      noteBodyId: deletedTab.noteBodyId,
+      fallbackMarkdown: typeof deletedTab.homeContent === 'string' ? deletedTab.homeContent : '',
+      noteRootRelative: joinPosix(trashRoot, deletedPath),
+      assetBank,
+    }).replace(`${trashRoot}/`, '')
 
+    const deletedSubTabPathForTitle = createPathAllocator()
     const subTabs = ensureArray<Record<string, unknown>>(deletedTab.subTabs).map((subTab) => {
       const subTabId = typeof subTab.id === 'string' ? subTab.id : ''
-      const file = joinPosix(STORAGE_NOTES_DIR, entryId, STORAGE_SUBTABS_DIR, `${subTabId}.md`)
-      setTextFile(
-        fileMap,
-        joinPosix(trashRoot, file),
-        externalizeMarkdownImages(
-          getNoteBodyFirstMarkdown(
-            noteBodyMap,
-            subTab.noteBodyId,
-            typeof subTab.content === 'string' ? subTab.content : '',
-          ),
-          file,
-          trashAssetBank,
-        ),
+      const subTabPath = joinPosix(
+        deletedPath,
+        deletedSubTabPathForTitle(typeof subTab.title === 'string' ? subTab.title : 'tab', subTabId, 'tab'),
       )
+      const file = writeNoteBodyAtPath({
+        fileMap,
+        noteBodyMap,
+        noteBodyRecords,
+        noteBodyId: subTab.noteBodyId,
+        fallbackMarkdown: typeof subTab.content === 'string' ? subTab.content : '',
+        noteRootRelative: joinPosix(trashRoot, subTabPath),
+        assetBank,
+      }).replace(`${trashRoot}/`, '')
       return {
         id: subTabId,
         title: typeof subTab.title === 'string' ? subTab.title : 'tab',
+        path: subTabPath,
         noteBodyId: typeof subTab.noteBodyId === 'string' ? subTab.noteBodyId : '',
         file,
       }
@@ -478,13 +536,12 @@ function writeSpaceFiles(
       id: entryId,
       type: 'parent-tab',
       title: typeof deletedTab.title === 'string' ? deletedTab.title : 'deleted tab',
+      path: deletedPath,
       noteBodyId: typeof deletedTab.noteBodyId === 'string' ? deletedTab.noteBodyId : '',
       file: homeNoteFile,
       deletedAt: typeof entry.deletedAt === 'number' ? entry.deletedAt : Date.now(),
       original: {
-        topicId,
-        spaceId,
-        parentTabId: typeof deletedTab.id === 'string' ? deletedTab.id : entryId,
+        primeTabId: typeof deletedTab.id === 'string' ? deletedTab.id : entryId,
         subTabId: null,
       },
       activeSubTabId: typeof deletedTab.activeSubTabId === 'string' ? deletedTab.activeSubTabId : null,
@@ -495,63 +552,61 @@ function writeSpaceFiles(
   deletedSubTabs.forEach((entry) => {
     const subTab = isRecord(entry.subTab) ? entry.subTab : {}
     const entryId = typeof entry.id === 'string' ? entry.id : ''
-    const file = joinPosix(STORAGE_NOTES_DIR, `${entryId}.md`)
-    setTextFile(
+    const deletedPath = trashPathForTitle(typeof subTab.title === 'string' ? subTab.title : 'deleted note', entryId, 'deleted note')
+    const file = writeNoteBodyAtPath({
       fileMap,
-      joinPosix(trashRoot, file),
-      externalizeMarkdownImages(
-        getNoteBodyFirstMarkdown(noteBodyMap, subTab.noteBodyId, typeof subTab.content === 'string' ? subTab.content : ''),
-        file,
-        trashAssetBank,
-      ),
-    )
+      noteBodyMap,
+      noteBodyRecords,
+      noteBodyId: subTab.noteBodyId,
+      fallbackMarkdown: typeof subTab.content === 'string' ? subTab.content : '',
+      noteRootRelative: joinPosix(trashRoot, deletedPath),
+      assetBank,
+    }).replace(`${trashRoot}/`, '')
 
     trashItems.push({
       id: entryId,
       type: 'subtab',
       title: typeof subTab.title === 'string' ? subTab.title : 'deleted note',
+      path: deletedPath,
       noteBodyId: typeof subTab.noteBodyId === 'string' ? subTab.noteBodyId : '',
       file,
       deletedAt: typeof entry.deletedAt === 'number' ? entry.deletedAt : Date.now(),
       parentTabTitle: typeof entry.parentTabTitle === 'string' ? entry.parentTabTitle : 'Unknown Tab',
       original: {
-        topicId,
-        spaceId,
-        parentTabId: typeof entry.parentTabId === 'string' ? entry.parentTabId : '',
+        primeTabId: typeof entry.parentTabId === 'string' ? entry.parentTabId : '',
         subTabId: typeof subTab.id === 'string' ? subTab.id : null,
       },
     })
   })
 
-  writeAssetBank(fileMap, spaceRoot, activeAssetBank)
-  writeAssetBank(fileMap, trashRoot, trashAssetBank)
+  const activeTabId =
+    isRecord(space.data) && typeof space.data.activeTabId === 'string'
+      ? space.data.activeTabId
+      : (typeof tabManifest[0]?.id === 'string' ? tabManifest[0].id : '')
 
-  setTextFile(
+  setJsonFile(
     fileMap,
-    joinPosix(spaceRoot, STORAGE_MANIFEST_FILE),
-    JSON.stringify(
-      {
-        id: spaceId,
-        title: typeof space.name === 'string' ? space.name : 'Untitled Space',
-        settings:
-          isRecord(space.settings) ? space.settings : { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
-        tabs: tabManifest,
-        activeTabId:
-          isRecord(space.data) && typeof space.data.activeTabId === 'string'
-            ? space.data.activeTabId
-            : (typeof tabManifest[0]?.id === 'string' ? tabManifest[0].id : ''),
-        trashManifestFile: `${STORAGE_TRASH_DIR}/${STORAGE_MANIFEST_FILE}`,
-      },
-      null,
-      2,
-    ),
+    joinPosix(STORAGE_ROOT_DIR, spaceRoot, STORAGE_MANIFEST_FILE),
+    {
+      id: spaceId,
+      title: typeof space.name === 'string' ? space.name : 'Untitled Space',
+      settings: isRecord(space.settings) ? space.settings : { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
+      tabs: tabManifest,
+      activeTabId,
+      trashManifestFile: `${STORAGE_TRASH_DIR}/${STORAGE_MANIFEST_FILE}`,
+    },
   )
 
-  setTextFile(
+  setJsonFile(
     fileMap,
-    joinPosix(trashRoot, STORAGE_MANIFEST_FILE),
-    JSON.stringify({ items: trashItems }, null, 2),
+    joinPosix(STORAGE_ROOT_DIR, trashRoot, STORAGE_MANIFEST_FILE),
+    { items: trashItems },
   )
+
+  return {
+    id: spaceId,
+    title: typeof space.name === 'string' ? space.name : 'Untitled Space',
+  }
 }
 
 export function buildHybridFileMapFromSerializedState(serializedState: string): Map<string, BrowserStoredFile> {
@@ -560,21 +615,66 @@ export function buildHybridFileMapFromSerializedState(serializedState: string): 
   const domains = getDomainsFromAppState(parsed)
   const noteBodies = getNoteBodiesFromAppState(parsed)
   const noteBodyMap = new Map(noteBodies.map((body) => [typeof body.id === 'string' ? body.id : '', body]))
+  const noteBodyRecords = new Map<string, Record<string, unknown>>()
+  const assetBank = createAssetBank(STORAGE_ASSETS_DIR)
+  const domainPathForTitle = createPathAllocator()
+  const domainEntries: Array<Record<string, unknown>> = []
 
-  setTextFile(fileMap, joinPosix(STORAGE_ROOT_DIR, STORAGE_MANIFEST_FILE), JSON.stringify(buildRootManifest(parsed), null, 2))
-  writeNoteBodyFiles(fileMap, noteBodies)
   domains.forEach((domain) => {
     const domainId = getDomainId(domain)
-    setTextFile(
-      fileMap,
-      joinPosix(STORAGE_ROOT_DIR, STORAGE_TOPICS_DIR, domainId, STORAGE_MANIFEST_FILE),
-      JSON.stringify(buildTopicManifest(domain), null, 2),
-    )
+    const domainPath = domainPathForTitle(getDomainTitle(domain), domainId, 'domain')
+    const domainRoot = joinPosix(STORAGE_DOMAINS_DIR, domainPath)
+    const spacePathForTitle = createPathAllocator()
+    const spaceEntries: Array<Record<string, unknown>> = []
 
     ensureArray<Record<string, unknown>>(domain.spaces).forEach((space) => {
-      writeSpaceFiles(fileMap, domainId, space, noteBodyMap)
+      const spaceId = typeof space.id === 'string' ? space.id : ''
+      if (!spaceId) return
+      const spacePath = spacePathForTitle(typeof space.name === 'string' ? space.name : 'Untitled Space', spaceId, 'space')
+      const spaceEntry = writeSpaceFiles(
+        fileMap,
+        joinPosix(domainRoot, spacePath),
+        space,
+        noteBodyMap,
+        noteBodyRecords,
+        assetBank,
+      )
+      if (spaceEntry) spaceEntries.push({ ...spaceEntry, path: spacePath })
+    })
+
+    setJsonFile(
+      fileMap,
+      joinPosix(STORAGE_ROOT_DIR, domainRoot, STORAGE_MANIFEST_FILE),
+      buildDomainManifest(domain, spaceEntries),
+    )
+
+    domainEntries.push({
+      id: domainId,
+      title: getDomainTitle(domain),
+      path: domainPath,
     })
   })
+
+  const orphanPathForId = createPathAllocator()
+  noteBodies.forEach((body) => {
+    const bodyId = typeof body.id === 'string' ? body.id : ''
+    if (!bodyId || noteBodyRecords.has(bodyId)) return
+    writeNoteBodyAtPath({
+      fileMap,
+      noteBodyMap,
+      noteBodyRecords,
+      noteBodyId: bodyId,
+      fallbackMarkdown: '',
+      noteRootRelative: joinPosix('_internal', 'orphan-bodies', orphanPathForId('Orphan Note Body', bodyId, 'orphan note body')),
+      assetBank,
+    })
+  })
+
+  writeAssetBank(fileMap, STORAGE_ROOT_DIR, assetBank)
+  const noteBodyEntries = noteBodies
+    .map((body) => (typeof body.id === 'string' ? noteBodyRecords.get(body.id) : null))
+    .filter((body): body is Record<string, unknown> => body !== null)
+  setJsonFile(fileMap, joinPosix(STORAGE_ROOT_DIR, STORAGE_MANIFEST_FILE), buildRootManifest(parsed, domainEntries, noteBodyEntries))
 
   return fileMap
 }
@@ -595,11 +695,8 @@ function readNoteBodiesFromRootManifest(
     const aisles: Array<Record<string, unknown>> = []
     for (const aisle of ensureArray<Record<string, unknown>>(body.aisles)) {
       const aisleId = typeof aisle.id === 'string' ? aisle.id : ''
-      if (!aisleId) continue
-      const file =
-        typeof aisle.file === 'string'
-          ? aisle.file
-          : joinPosix(STORAGE_NOTE_BODIES_DIR, bodyId, STORAGE_AISLES_DIR, `${aisleId}.md`)
+      const file = typeof aisle.file === 'string' ? aisle.file : ''
+      if (!aisleId || !file) continue
       aisles.push({
         id: aisleId,
         markdown: readTextFileWithInlinedImages(fileMap, joinPosix(STORAGE_ROOT_DIR, file)),
@@ -633,14 +730,13 @@ function readNoteBodiesFromRootManifest(
 
 function readSpaceFromHybridFileMap(
   fileMap: Map<string, BrowserStoredFile>,
-  topicId: string,
+  spaceRoot: string,
   spaceEntry: Record<string, unknown>,
 ): Record<string, unknown> | null {
   const spaceId = typeof spaceEntry.id === 'string' ? spaceEntry.id : ''
   if (!spaceId) return null
 
-  const spaceRoot = joinPosix(STORAGE_ROOT_DIR, STORAGE_TOPICS_DIR, topicId, STORAGE_SPACES_DIR, spaceId)
-  const spaceManifestRaw = getTextFile(fileMap, joinPosix(spaceRoot, STORAGE_MANIFEST_FILE))
+  const spaceManifestRaw = getTextFile(fileMap, joinPosix(STORAGE_ROOT_DIR, spaceRoot, STORAGE_MANIFEST_FILE))
   if (!spaceManifestRaw) return null
 
   let spaceManifest: Record<string, unknown>
@@ -657,7 +753,7 @@ function readSpaceFromHybridFileMap(
       id: tabId,
       title: typeof tabRecord.title === 'string' ? tabRecord.title : 'tab',
       noteBodyId: typeof tabRecord.noteBodyId === 'string' ? tabRecord.noteBodyId : '',
-      homeContent: readTextFileWithInlinedImages(fileMap, joinPosix(spaceRoot, homeNoteFile)),
+      homeContent: readTextFileWithInlinedImages(fileMap, joinPosix(STORAGE_ROOT_DIR, spaceRoot, homeNoteFile)),
       activeSubTabId: typeof tabRecord.activeSubTabId === 'string' ? tabRecord.activeSubTabId : null,
       subTabs: ensureArray<Record<string, unknown>>(tabRecord.subTabs).map((subTabRecord) => ({
         id: typeof subTabRecord.id === 'string' ? subTabRecord.id : '',
@@ -665,7 +761,7 @@ function readSpaceFromHybridFileMap(
         noteBodyId: typeof subTabRecord.noteBodyId === 'string' ? subTabRecord.noteBodyId : '',
         content: readTextFileWithInlinedImages(
           fileMap,
-          joinPosix(spaceRoot, typeof subTabRecord.file === 'string' ? subTabRecord.file : ''),
+          joinPosix(STORAGE_ROOT_DIR, spaceRoot, typeof subTabRecord.file === 'string' ? subTabRecord.file : ''),
         ),
       })),
     }
@@ -674,6 +770,7 @@ function readSpaceFromHybridFileMap(
   const trashManifestRaw = getTextFile(
     fileMap,
     joinPosix(
+      STORAGE_ROOT_DIR,
       spaceRoot,
       typeof spaceManifest.trashManifestFile === 'string'
         ? spaceManifest.trashManifestFile
@@ -698,12 +795,12 @@ function readSpaceFromHybridFileMap(
       id: typeof item.id === 'string' ? item.id : '',
       deletedAt: typeof item.deletedAt === 'number' ? item.deletedAt : Date.now(),
       tab: {
-        id: isRecord(item.original) && typeof item.original.parentTabId === 'string' ? item.original.parentTabId : '',
+        id: isRecord(item.original) && typeof item.original.primeTabId === 'string' ? item.original.primeTabId : '',
         title: typeof item.title === 'string' ? item.title : 'deleted tab',
         noteBodyId: typeof item.noteBodyId === 'string' ? item.noteBodyId : '',
         homeContent: readTextFileWithInlinedImages(
           fileMap,
-          joinPosix(trashRoot, typeof item.file === 'string' ? item.file : ''),
+          joinPosix(STORAGE_ROOT_DIR, trashRoot, typeof item.file === 'string' ? item.file : ''),
         ),
         activeSubTabId: typeof item.activeSubTabId === 'string' ? item.activeSubTabId : null,
         subTabs: ensureArray<Record<string, unknown>>(item.subTabs).map((subTabRecord) => ({
@@ -712,7 +809,7 @@ function readSpaceFromHybridFileMap(
           noteBodyId: typeof subTabRecord.noteBodyId === 'string' ? subTabRecord.noteBodyId : '',
           content: readTextFileWithInlinedImages(
             fileMap,
-            joinPosix(trashRoot, typeof subTabRecord.file === 'string' ? subTabRecord.file : ''),
+            joinPosix(STORAGE_ROOT_DIR, trashRoot, typeof subTabRecord.file === 'string' ? subTabRecord.file : ''),
           ),
         })),
       },
@@ -723,7 +820,7 @@ function readSpaceFromHybridFileMap(
     .map((item) => ({
       id: typeof item.id === 'string' ? item.id : '',
       parentTabId:
-        isRecord(item.original) && typeof item.original.parentTabId === 'string' ? item.original.parentTabId : '',
+        isRecord(item.original) && typeof item.original.primeTabId === 'string' ? item.original.primeTabId : '',
       parentTabTitle: typeof item.parentTabTitle === 'string' ? item.parentTabTitle : 'Unknown Tab',
       deletedAt: typeof item.deletedAt === 'number' ? item.deletedAt : Date.now(),
       subTab: {
@@ -732,7 +829,7 @@ function readSpaceFromHybridFileMap(
         noteBodyId: typeof item.noteBodyId === 'string' ? item.noteBodyId : '',
         content: readTextFileWithInlinedImages(
           fileMap,
-          joinPosix(trashRoot, typeof item.file === 'string' ? item.file : ''),
+          joinPosix(STORAGE_ROOT_DIR, trashRoot, typeof item.file === 'string' ? item.file : ''),
         ),
       },
     }))
@@ -778,59 +875,63 @@ export function readSerializedStateFromHybridFileMap(fileMap: Map<string, Browse
   rootManifest = manifestMigration.manifest
 
   const noteBodies = readNoteBodiesFromRootManifest(fileMap, rootManifest)
-  const topicEntries = ensureArray<Record<string, unknown>>(rootManifest.topics)
-  const readableTopicEntries =
-    topicEntries.length > 0 ? topicEntries : [{ id: DEFAULT_TOPIC_ID, title: DEFAULT_TOPIC_TITLE }]
+  const domainEntries = ensureArray<Record<string, unknown>>(rootManifest.domains)
   const lastOpened = isRecord(rootManifest.lastOpened) ? rootManifest.lastOpened : null
 
-  const domains = readableTopicEntries
-    .map((topicEntry): Record<string, unknown> | null => {
-      const topicId = typeof topicEntry.id === 'string' && topicEntry.id ? topicEntry.id : DEFAULT_TOPIC_ID
-      const topicManifestRaw = getTextFile(
+  const domains = domainEntries
+    .map((domainEntry): Record<string, unknown> | null => {
+      const domainId = typeof domainEntry.id === 'string' ? domainEntry.id : ''
+      const domainPath = typeof domainEntry.path === 'string' ? domainEntry.path : ''
+      if (!domainId || !domainPath) return null
+      const domainRoot = joinPosix(STORAGE_DOMAINS_DIR, domainPath)
+      const domainManifestRaw = getTextFile(
         fileMap,
-        joinPosix(STORAGE_ROOT_DIR, STORAGE_TOPICS_DIR, topicId, STORAGE_MANIFEST_FILE),
+        joinPosix(STORAGE_ROOT_DIR, domainRoot, STORAGE_MANIFEST_FILE),
       )
-      if (!topicManifestRaw) return null
+      if (!domainManifestRaw) return null
 
-      let topicManifest: Record<string, unknown>
+      let domainManifest: Record<string, unknown>
       try {
-        topicManifest = JSON.parse(topicManifestRaw) as Record<string, unknown>
+        domainManifest = JSON.parse(domainManifestRaw) as Record<string, unknown>
       } catch {
         return null
       }
 
-      const spaces = ensureArray<Record<string, unknown>>(topicManifest.spaces)
-        .map((spaceEntry) => readSpaceFromHybridFileMap(fileMap, topicId, spaceEntry))
+      const spaces = ensureArray<Record<string, unknown>>(domainManifest.spaces)
+        .map((spaceEntry) => {
+          const spacePath = typeof spaceEntry.path === 'string' ? spaceEntry.path : ''
+          return spacePath ? readSpaceFromHybridFileMap(fileMap, joinPosix(domainRoot, spacePath), spaceEntry) : null
+        })
         .filter((space): space is Record<string, unknown> => space !== null)
 
       if (spaces.length === 0) return null
 
       const lastOpenedSpaceId =
         lastOpened &&
-        lastOpened.topicId === topicId &&
+        lastOpened.domainId === domainId &&
         typeof lastOpened.spaceId === 'string'
           ? lastOpened.spaceId
           : null
       const activeSpaceId =
         lastOpenedSpaceId && spaces.some((space) => space.id === lastOpenedSpaceId)
           ? lastOpenedSpaceId
-          : typeof topicManifest.activeSpaceId === 'string' &&
-              spaces.some((space) => space.id === topicManifest.activeSpaceId)
-            ? topicManifest.activeSpaceId
+          : typeof domainManifest.activeSpaceId === 'string' &&
+              spaces.some((space) => space.id === domainManifest.activeSpaceId)
+            ? domainManifest.activeSpaceId
             : typeof spaces[0]?.id === 'string'
               ? spaces[0].id
               : ''
 
       const domainName =
-        typeof topicManifest.title === 'string'
-          ? topicManifest.title
-          : typeof topicEntry.title === 'string'
-            ? topicEntry.title
+        typeof domainManifest.title === 'string'
+          ? domainManifest.title
+          : typeof domainEntry.title === 'string'
+            ? domainEntry.title
             : DEFAULT_DOMAIN_NAME
 
       return {
-        id: typeof topicManifest.id === 'string' ? topicManifest.id : topicId,
-        name: topicId === DEFAULT_TOPIC_ID && domainName === DEFAULT_TOPIC_TITLE ? DEFAULT_DOMAIN_NAME : domainName,
+        id: typeof domainManifest.id === 'string' ? domainManifest.id : domainId,
+        name: domainName,
         activeSpaceId,
         spaces,
       }
@@ -840,14 +941,14 @@ export function readSerializedStateFromHybridFileMap(fileMap: Map<string, Browse
   if (domains.length === 0) return null
 
   const lastOpenedDomainId =
-    lastOpened && typeof lastOpened.topicId === 'string'
-      ? lastOpened.topicId
+    lastOpened && typeof lastOpened.domainId === 'string'
+      ? lastOpened.domainId
       : null
   const activeDomainId =
     lastOpenedDomainId && domains.some((domain) => domain.id === lastOpenedDomainId)
       ? lastOpenedDomainId
-      : typeof rootManifest.activeTopicId === 'string' && domains.some((domain) => domain.id === rootManifest.activeTopicId)
-        ? rootManifest.activeTopicId
+      : typeof rootManifest.activeDomainId === 'string' && domains.some((domain) => domain.id === rootManifest.activeDomainId)
+        ? rootManifest.activeDomainId
         : typeof domains[0]?.id === 'string'
           ? domains[0].id
           : ''
@@ -855,7 +956,7 @@ export function readSerializedStateFromHybridFileMap(fileMap: Map<string, Browse
   const activeSpaces = ensureArray<Record<string, unknown>>(activeDomain.spaces)
   const activeSpaceId =
     lastOpened &&
-    lastOpened.topicId === activeDomainId &&
+    lastOpened.domainId === activeDomainId &&
     typeof lastOpened.spaceId === 'string' &&
     activeSpaces.some((space) => space.id === lastOpened.spaceId)
       ? lastOpened.spaceId

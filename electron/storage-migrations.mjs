@@ -14,7 +14,7 @@ export function migrateStorageRootManifest(rootManifest, currentVersion = CURREN
     return { ok: false, reason: 'unsupported-version', version: schemaVersion }
   }
 
-  if (schemaVersion < currentVersion && schemaVersion !== 1) {
+  if (schemaVersion < currentVersion) {
     return { ok: false, reason: 'missing-migration', version: schemaVersion }
   }
 

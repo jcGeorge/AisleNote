@@ -170,65 +170,24 @@ describe('Electron app state storage load result', () => {
       expect(readFileSync(path.join(spaceRoot, tab.subTabs[0].file), 'utf8')).toBe('sub body')
     }))
 
-  it('loads a valid v1 profile and rewrites it as v2 on the next save', () =>
+  it('rejects an existing v1 profile instead of migrating it', () =>
     withTempUserDataPath((userDataPath) => {
       const root = path.join(userDataPath, 'notes-data')
-      mkdirSync(path.join(root, 'topics', 'domain-1', 'spaces', 'space-1', 'notes', 'tab-1'), { recursive: true })
-      mkdirSync(path.join(root, 'note-bodies', 'body-1', 'aisles'), { recursive: true })
+      mkdirSync(root, { recursive: true })
       writeFileSync(
         path.join(root, 'manifest.json'),
         JSON.stringify({
           schemaVersion: 1,
-          globalSettings: { theme: 'dawn', hotkeys: { shortcuts: {} }, ui: {} },
-          topics: [{ id: 'domain-1', title: 'Domain' }],
-          noteBodies: [{ id: 'body-1', aisles: [{ id: 'aisle-1', file: 'note-bodies/body-1/aisles/aisle-1.md' }] }],
-          activeTopicId: 'domain-1',
         }),
         'utf8',
       )
-      writeFileSync(
-        path.join(root, 'topics', 'domain-1', 'manifest.json'),
-        JSON.stringify({
-          id: 'domain-1',
-          title: 'Domain',
-          spaces: [{ id: 'space-1', title: 'Space' }],
-          activeSpaceId: 'space-1',
-        }),
-        'utf8',
-      )
-      writeFileSync(
-        path.join(root, 'topics', 'domain-1', 'spaces', 'space-1', 'manifest.json'),
-        JSON.stringify({
-          id: 'space-1',
-          title: 'Space',
-          settings: { autoRemoveDeletedDays: 7 },
-          tabs: [
-            {
-              id: 'tab-1',
-              title: 'Tab',
-              noteBodyId: 'body-1',
-              homeNoteFile: 'notes/tab-1/home.md',
-              subTabs: [],
-              activeSubTabId: null,
-            },
-          ],
-          activeTabId: 'tab-1',
-          trashManifestFile: 'trash/manifest.json',
-        }),
-        'utf8',
-      )
-      writeFileSync(path.join(root, 'topics', 'domain-1', 'spaces', 'space-1', 'notes', 'tab-1', 'home.md'), 'hello', 'utf8')
-      writeFileSync(path.join(root, 'note-bodies', 'body-1', 'aisles', 'aisle-1.md'), 'body hello', 'utf8')
 
-      const result = loadAppStateResult(userDataPath)
-      expect(result).toMatchObject({ ok: true, source: 'hybrid', schemaVersion: 1 })
-      expect(JSON.parse(result.serializedState).noteBodies[0].aisles[0].markdown).toBe('body hello')
-
-      saveAppState(userDataPath, result.serializedState)
-      expect(readJson(path.join(root, 'manifest.json')).schemaVersion).toBe(2)
-      expect(existsSync(path.join(root, 'domains'))).toBe(true)
-      expect(existsSync(path.join(root, 'topics'))).toBe(false)
-      expect(existsSync(path.join(root, 'note-bodies'))).toBe(false)
+      expect(loadAppStateResult(userDataPath)).toEqual({
+        ok: false,
+        serializedState: null,
+        source: 'hybrid',
+        error: 'Existing app state could not be loaded.',
+      })
     }))
 
   it('fails existing profiles with provider conflict folders', () =>
@@ -241,40 +200,6 @@ describe('Electron app state storage load result', () => {
         ok: false,
         source: 'hybrid',
         conflicts: ['notes-data/topics 2'],
-      })
-    }))
-
-  it('does not recover missing v1 space manifests as Recovered Space', () =>
-    withTempUserDataPath((userDataPath) => {
-      const root = path.join(userDataPath, 'notes-data')
-      mkdirSync(path.join(root, 'topics', 'domain-1', 'spaces', 'space-1', 'notes', 'tab-1'), { recursive: true })
-      writeFileSync(
-        path.join(root, 'manifest.json'),
-        JSON.stringify({
-          schemaVersion: 1,
-          globalSettings: { theme: 'dawn', hotkeys: { shortcuts: {} }, ui: {} },
-          topics: [{ id: 'domain-1', title: 'Domain' }],
-          activeTopicId: 'domain-1',
-        }),
-        'utf8',
-      )
-      writeFileSync(
-        path.join(root, 'topics', 'domain-1', 'manifest.json'),
-        JSON.stringify({
-          id: 'domain-1',
-          title: 'Domain',
-          spaces: [{ id: 'space-1', title: 'Space' }],
-          activeSpaceId: 'space-1',
-        }),
-        'utf8',
-      )
-      writeFileSync(path.join(root, 'topics', 'domain-1', 'spaces', 'space-1', 'notes', 'tab-1', 'home.md'), 'hello', 'utf8')
-
-      expect(loadAppStateResult(userDataPath)).toEqual({
-        ok: false,
-        serializedState: null,
-        source: 'hybrid',
-        error: 'Existing app state could not be loaded.',
       })
     }))
 

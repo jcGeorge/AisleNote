@@ -18,7 +18,6 @@ import {
   DEFAULT_AUTO_REMOVE_DAYS,
   DEFAULT_DOMAIN_ID,
   DEFAULT_DOMAIN_NAME,
-  DEFAULT_TOPIC_ID,
   IMAGE_MARKDOWN_PATTERN,
   ensureArray,
   getActiveDomainFromAppState,
@@ -37,9 +36,7 @@ import { migrateStorageRootManifest } from './storage-migrations.mjs'
 const LEGACY_APP_STATE_RELATIVE_PATH = path.join('data', 'notes', 'index.json')
 export const HYBRID_ROOT_DIR = 'notes-data'
 const SCHEMA_VERSION = 2
-const LEGACY_SCHEMA_VERSION = 1
 const DOMAINS_DIR = 'domains'
-const LEGACY_TOPICS_DIR = 'topics'
 const STORAGE_RECOVERY_DIR = 'storage-recovery'
 const IMAGE_METADATA_FRAGMENT_PREFIX = '#tabs-image='
 const INTERNAL_INDENT_TOKEN = '\u2060\u2003\u2003'
@@ -150,47 +147,6 @@ function listDirectoryEntries(directoryPath) {
   }
 }
 
-function listChildDirectories(directoryPath) {
-  return listDirectoryEntries(directoryPath)
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .sort((a, b) => a.localeCompare(b))
-}
-
-function listMarkdownFiles(directoryPath) {
-  return listDirectoryEntries(directoryPath)
-    .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.md'))
-    .map((entry) => entry.name)
-    .sort((a, b) => a.localeCompare(b))
-}
-
-function buildRecoveredTabsFromFilesystem(spaceRoot) {
-  const notesRoot = path.join(spaceRoot, 'notes')
-  return listChildDirectories(notesRoot).map((tabId) => {
-    const homeNoteFile = path.posix.join('notes', tabId, 'home.md')
-    const subTabsRoot = path.join(notesRoot, tabId, 'subtabs')
-    const subTabs = listMarkdownFiles(subTabsRoot).map((fileName) => {
-      const subTabId = path.basename(fileName, '.md')
-      const file = path.posix.join('notes', tabId, 'subtabs', fileName)
-      return {
-        id: subTabId,
-        title: subTabId,
-        noteBodyId: '',
-        content: readMarkdownFile(spaceRoot, file),
-      }
-    })
-
-    return {
-      id: tabId,
-      title: tabId,
-      noteBodyId: '',
-      homeContent: readMarkdownFile(spaceRoot, homeNoteFile),
-      activeSubTabId: null,
-      subTabs,
-    }
-  })
-}
-
 function buildTrashDataFromManifestItems(trashItems, trashRoot) {
   const deletedTabs = ensureArray(trashItems)
     .filter((item) => item?.type === 'parent-tab')
@@ -199,8 +155,8 @@ function buildTrashDataFromManifestItems(trashItems, trashRoot) {
       deletedAt: typeof item.deletedAt === 'number' ? item.deletedAt : Date.now(),
       tab: {
         id:
-          typeof item?.original?.parentTabId === 'string'
-            ? item.original.parentTabId
+          typeof item?.original?.primeTabId === 'string'
+            ? item.original.primeTabId
             : typeof item.id === 'string'
               ? item.id
               : '',
@@ -222,7 +178,7 @@ function buildTrashDataFromManifestItems(trashItems, trashRoot) {
     .filter((item) => item?.type === 'subtab')
     .map((item) => ({
       id: typeof item.id === 'string' ? item.id : '',
-      parentTabId: typeof item?.original?.parentTabId === 'string' ? item.original.parentTabId : '',
+      parentTabId: typeof item?.original?.primeTabId === 'string' ? item.original.primeTabId : '',
       parentTabTitle: typeof item.parentTabTitle === 'string' ? item.parentTabTitle : 'Unknown Tab',
       deletedAt: typeof item.deletedAt === 'number' ? item.deletedAt : Date.now(),
       subTab: {
@@ -247,23 +203,6 @@ function readTrashData(spaceRoot, trashManifestFile) {
     return { deletedTabs: [], deletedSubTabs: [] }
   }
   return buildTrashDataFromManifestItems(trashManifest.items, trashRoot)
-}
-
-function recoverSpaceFromFilesystem(spaceRoot, spaceId, spaceTitle) {
-  const tabs = buildRecoveredTabsFromFilesystem(spaceRoot)
-  if (tabs.length === 0) return null
-
-  return {
-    id: spaceId,
-    name: spaceTitle,
-    settings: { autoRemoveDeletedDays: 7 },
-    data: {
-      activeTabId: tabs[0]?.id ?? '',
-      tabs,
-      deletedTabs: [],
-      deletedSubTabs: [],
-    },
-  }
 }
 
 function addAssetToBank(assetBank, bytes, extension) {
@@ -584,7 +523,7 @@ function buildRootManifestV2(appState, domainEntries, noteBodyEntries) {
     activeSpace?.data?.tabs?.find((tab) => tab?.id === activeSpace?.data?.activeTabId) ??
     activeSpace?.data?.tabs?.[0] ??
     null
-  const activeDomainId = activeDomain ? getDomainId(activeDomain) : DEFAULT_TOPIC_ID
+  const activeDomainId = activeDomain ? getDomainId(activeDomain) : DEFAULT_DOMAIN_ID
 
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -745,7 +684,7 @@ function buildSpaceFilesV2({ fileMap, spaceRoot, space, noteBodyMap, noteBodyRec
       file: homeNoteFile,
       deletedAt: typeof entry.deletedAt === 'number' ? entry.deletedAt : Date.now(),
       original: {
-        parentTabId: deletedTabId,
+        primeTabId: deletedTabId,
         subTabId: null,
       },
       activeSubTabId: typeof deletedTab.activeSubTabId === 'string' ? deletedTab.activeSubTabId : null,
@@ -778,7 +717,7 @@ function buildSpaceFilesV2({ fileMap, spaceRoot, space, noteBodyMap, noteBodyRec
       deletedAt: typeof entry.deletedAt === 'number' ? entry.deletedAt : Date.now(),
       parentTabTitle: typeof entry.parentTabTitle === 'string' ? entry.parentTabTitle : 'Unknown Tab',
       original: {
-        parentTabId: typeof entry.parentTabId === 'string' ? entry.parentTabId : '',
+        primeTabId: typeof entry.parentTabId === 'string' ? entry.parentTabId : '',
         subTabId: typeof subTab.id === 'string' ? subTab.id : null,
       },
     })
@@ -886,11 +825,8 @@ function readNoteBodiesFromRoot(rootPath, rootManifest) {
       const aisles = ensureArray(body.aisles)
         .map((aisle) => {
           const aisleId = typeof aisle?.id === 'string' ? aisle.id : ''
-          if (!aisleId) return null
-          const file =
-            typeof aisle?.file === 'string'
-              ? aisle.file
-              : path.posix.join('note-bodies', bodyId, 'aisles', `${aisleId}.md`)
+          const file = typeof aisle?.file === 'string' ? aisle.file : ''
+          if (!aisleId || !file) return null
           return {
             id: aisleId,
             markdown: readMarkdownFile(rootPath, file),
@@ -934,143 +870,6 @@ function addDirectoryToZip(zip, directoryPath, zipPrefix) {
     }
     zip.file(relativePath, readFileSync(absolutePath))
   }
-}
-
-function readHybridSpace(spaceRoot, spaceId, spaceTitle) {
-  const spaceManifest = readJsonFileIfExists(path.join(spaceRoot, 'manifest.json'))
-  if (!spaceManifest || typeof spaceManifest !== 'object') {
-    return null
-  }
-
-  const manifestTabs = ensureArray(spaceManifest.tabs)
-    .map((tabRecord) => ({
-      id: typeof tabRecord?.id === 'string' ? tabRecord.id : '',
-      title: typeof tabRecord?.title === 'string' ? tabRecord.title : 'tab',
-      noteBodyId: typeof tabRecord?.noteBodyId === 'string' ? tabRecord.noteBodyId : '',
-      homeContent:
-        typeof tabRecord?.homeNoteFile === 'string' ? readMarkdownFile(spaceRoot, tabRecord.homeNoteFile) : '',
-      activeSubTabId: typeof tabRecord?.activeSubTabId === 'string' ? tabRecord.activeSubTabId : null,
-      subTabs: ensureArray(tabRecord?.subTabs).map((subTabRecord) => ({
-        id: typeof subTabRecord?.id === 'string' ? subTabRecord.id : '',
-        title: typeof subTabRecord?.title === 'string' ? subTabRecord.title : 'tab',
-        noteBodyId: typeof subTabRecord?.noteBodyId === 'string' ? subTabRecord.noteBodyId : '',
-        content: typeof subTabRecord?.file === 'string' ? readMarkdownFile(spaceRoot, subTabRecord.file) : '',
-      })),
-    }))
-    .filter((tab) => tab.id)
-
-  const tabs = manifestTabs
-  const { deletedTabs, deletedSubTabs } = readTrashData(
-    spaceRoot,
-    typeof spaceManifest.trashManifestFile === 'string' ? spaceManifest.trashManifestFile : null,
-  )
-
-  return {
-    id: typeof spaceManifest.id === 'string' ? spaceManifest.id : spaceId,
-    name: typeof spaceManifest.title === 'string' ? spaceManifest.title : spaceTitle,
-    settings:
-      spaceManifest.settings && typeof spaceManifest.settings === 'object'
-        ? spaceManifest.settings
-        : { autoRemoveDeletedDays: 7 },
-    data: {
-      activeTabId:
-        typeof spaceManifest.activeTabId === 'string' && tabs.some((tab) => tab.id === spaceManifest.activeTabId)
-          ? spaceManifest.activeTabId
-          : tabs[0]?.id ?? '',
-      tabs,
-      deletedTabs,
-      deletedSubTabs,
-    },
-  }
-}
-
-function readV1HybridAppStateFromRoot(rootPath, rootManifest) {
-  const noteBodies = readNoteBodiesFromRoot(rootPath, rootManifest)
-  const topicsRoot = path.join(rootPath, LEGACY_TOPICS_DIR)
-  const topicIds = Array.from(
-    new Set([
-      typeof rootManifest.activeTopicId === 'string' ? rootManifest.activeTopicId : DEFAULT_TOPIC_ID,
-      ...ensureArray(rootManifest.topics)
-        .map((topic) => (typeof topic?.id === 'string' ? topic.id : ''))
-        .filter(Boolean),
-      ...listChildDirectories(topicsRoot),
-    ]),
-  )
-
-  const domains = []
-  for (const topicId of topicIds) {
-    const topicRoot = path.join(topicsRoot, topicId)
-    const topicManifest = readJsonFileIfExists(path.join(topicRoot, 'manifest.json'))
-    const manifestSpaceEntries =
-      topicManifest && typeof topicManifest === 'object' ? ensureArray(topicManifest.spaces) : []
-    const spaceIds = Array.from(
-      new Set([
-        ...manifestSpaceEntries
-          .map((spaceEntry) => (typeof spaceEntry?.id === 'string' ? spaceEntry.id : ''))
-          .filter(Boolean),
-        ...listChildDirectories(path.join(topicRoot, 'spaces')),
-      ]),
-    )
-
-    const spaces = spaceIds
-      .map((spaceId) => {
-        const spaceEntry = manifestSpaceEntries.find((entry) => entry?.id === spaceId)
-        const fallbackTitle = typeof spaceEntry?.title === 'string' ? spaceEntry.title : 'Untitled Space'
-        return readHybridSpace(path.join(topicRoot, 'spaces', spaceId), spaceId, fallbackTitle)
-      })
-      .filter(Boolean)
-
-    if (spaces.length === 0) continue
-
-    const activeSpaceIdFromRoot =
-      rootManifest?.lastOpened?.topicId === topicId && typeof rootManifest?.lastOpened?.spaceId === 'string'
-        ? rootManifest.lastOpened.spaceId
-        : null
-    const activeSpaceIdFromTopic =
-      topicManifest && typeof topicManifest === 'object' && typeof topicManifest.activeSpaceId === 'string'
-        ? topicManifest.activeSpaceId
-        : null
-    const activeSpaceId =
-      (activeSpaceIdFromRoot && spaces.some((space) => space.id === activeSpaceIdFromRoot) && activeSpaceIdFromRoot) ||
-      (activeSpaceIdFromTopic && spaces.some((space) => space.id === activeSpaceIdFromTopic) && activeSpaceIdFromTopic) ||
-      spaces[0].id
-
-    domains.push({
-      id: topicManifest && typeof topicManifest.id === 'string' ? topicManifest.id : topicId,
-      name: (() => {
-        if (topicManifest && typeof topicManifest.title === 'string') return topicManifest.title
-        const topicEntry = ensureArray(rootManifest.topics).find((topic) => topic?.id === topicId)
-        return typeof topicEntry?.title === 'string' ? topicEntry.title : DEFAULT_DOMAIN_NAME
-      })(),
-      activeSpaceId,
-      spaces,
-    })
-  }
-
-  if (domains.length === 0) return null
-  const activeDomainId =
-    typeof rootManifest?.lastOpened?.topicId === 'string' &&
-    domains.some((domain) => domain.id === rootManifest.lastOpened.topicId)
-      ? rootManifest.lastOpened.topicId
-      : typeof rootManifest.activeTopicId === 'string' && domains.some((domain) => domain.id === rootManifest.activeTopicId)
-        ? rootManifest.activeTopicId
-        : domains[0].id
-  const activeDomain = domains.find((domain) => domain.id === activeDomainId) ?? domains[0]
-  const theme = ['dark', 'light', 'dawn', 'blues'].includes(rootManifest?.globalSettings?.theme)
-    ? rootManifest.globalSettings.theme
-    : 'dawn'
-
-  return JSON.stringify({
-    theme,
-    activeDomainId,
-    domains,
-    noteBodies,
-    activeSpaceId: activeDomain.activeSpaceId,
-    spaces: activeDomain.spaces,
-    hotkeys: rootManifest?.globalSettings?.hotkeys,
-    frontmatter: rootManifest?.globalSettings?.frontmatter,
-    ui: rootManifest?.globalSettings?.ui,
-  })
 }
 
 function readV2Space(rootPath, spaceRootRelative, spaceEntry) {
@@ -1153,7 +952,7 @@ function readV2HybridAppStateFromRoot(rootPath, rootManifest) {
     const lastOpened = isRecord(rootManifest.lastOpened) ? rootManifest.lastOpened : null
     const lastOpenedSpaceId =
       lastOpened &&
-      (lastOpened.domainId === domainId || lastOpened.topicId === domainId) &&
+      lastOpened.domainId === domainId &&
       typeof lastOpened.spaceId === 'string'
         ? lastOpened.spaceId
         : null
@@ -1181,9 +980,7 @@ function readV2HybridAppStateFromRoot(rootPath, rootManifest) {
   const lastOpenedDomainId =
     lastOpened && typeof lastOpened.domainId === 'string'
       ? lastOpened.domainId
-      : lastOpened && typeof lastOpened.topicId === 'string'
-        ? lastOpened.topicId
-        : null
+      : null
   const activeDomainId =
     (lastOpenedDomainId && domains.some((domain) => domain.id === lastOpenedDomainId) && lastOpenedDomainId) ||
     (typeof rootManifest.activeDomainId === 'string' &&
@@ -1214,7 +1011,6 @@ function readHybridAppStateFromRoot(rootPath) {
   if (!rootManifestMigration.ok) return null
   const rootManifest = rootManifestMigration.manifest
   if (rootManifest.schemaVersion === SCHEMA_VERSION) return readV2HybridAppStateFromRoot(rootPath, rootManifest)
-  if (rootManifest.schemaVersion === LEGACY_SCHEMA_VERSION) return readV1HybridAppStateFromRoot(rootPath, rootManifest)
   return null
 }
 
