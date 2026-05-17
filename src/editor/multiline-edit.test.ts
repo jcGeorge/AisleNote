@@ -18,6 +18,12 @@ const multilineEditSchema = new Schema({
   nodes: {
     doc: { content: 'block+' },
     text: { group: 'inline' },
+    hardBreak: {
+      inline: true,
+      group: 'inline',
+      selectable: false,
+      toDOM: () => ['br'],
+    },
     paragraph: {
       group: 'block',
       content: 'inline*',
@@ -67,6 +73,18 @@ const multilineEditSchema = new Schema({
 
 function paragraph(text: string) {
   return multilineEditSchema.nodes.paragraph.create(null, text ? multilineEditSchema.text(text) : undefined)
+}
+
+function hardBreak() {
+  return multilineEditSchema.nodes.hardBreak.create()
+}
+
+function paragraphWithInlineBreaks(parts: string[]) {
+  const children = parts.flatMap((part, index) => {
+    const nodes = part ? [multilineEditSchema.text(part)] : []
+    return index < parts.length - 1 ? [...nodes, hardBreak()] : nodes
+  })
+  return multilineEditSchema.nodes.paragraph.create(null, children)
 }
 
 function heading(text: string, level = 2) {
@@ -297,6 +315,86 @@ describe('multi-cursor forward boundary delete editing', () => {
     expect(result.nextState?.doc.child(0).textContent).toBe('onetwothree')
   })
 
+  it.each(['backspace', 'delete'] as const)('keeps cursors on preceding rows after %s deletes empty paragraph rows', (input) => {
+    const result = applyRealDeleteInput(
+      multilineEditSchema.nodes.doc.create(null, [
+        paragraph('header'),
+        paragraph(''),
+        paragraph('header'),
+        paragraph(''),
+        paragraph('header'),
+        paragraph(''),
+      ]),
+      [1, 3, 5],
+      input,
+    )
+
+    expect(result.plan?.deletedLineBlockIndices).toEqual([1, 3, 5])
+    expect(getEditorTextLineRanges({ state: result.nextState }).map((range) => range.text)).toEqual([
+      'header',
+      'header',
+      'header',
+    ])
+    expect(result.plan?.nextMultiLineEditState.cursorBlockIndices).toEqual([0, 1, 2])
+    expect(result.plan?.nextMultiLineEditState.columnOffsets).toEqual({ 0: 6, 1: 6, 2: 6 })
+    expect(result.plan?.nextMultiLineEditState.selectionAnchorOffsets).toBeUndefined()
+  })
+
+  it.each(['backspace', 'delete'] as const)('keeps cursors after %s deletes empty hard-break rows', (input) => {
+    const result = applyRealDeleteInput(
+      multilineEditSchema.nodes.doc.create(null, [paragraphWithInlineBreaks(['header', '', 'header', '', 'header', ''])]),
+      [1, 3, 5],
+      input,
+    )
+
+    expect(result.plan?.deletedLineBlockIndices).toEqual([1, 3, 5])
+    expect(getEditorTextLineRanges({ state: result.nextState }).map((range) => range.text)).toEqual([
+      'header',
+      'header',
+      'header',
+    ])
+    expect(result.plan?.nextMultiLineEditState.cursorBlockIndices).toEqual([0, 1, 2])
+    expect(result.plan?.nextMultiLineEditState.columnOffsets).toEqual({ 0: 6, 1: 6, 2: 6 })
+    expect(result.plan?.nextMultiLineEditState.selectionAnchorOffsets).toBeUndefined()
+  })
+
+  it('keeps cursors after deleting empty hard-break rows from a contiguous multi-line selection', () => {
+    const result = applyBoundaryDelete(
+      multilineEditSchema.nodes.doc.create(null, [paragraphWithInlineBreaks(['header', '', 'header', '', 'header', ''])]),
+      [0, 1, 2, 3, 4, 5],
+    )
+
+    expect(result.plan?.deletedLineBlockIndices).toEqual([1, 3, 5])
+    expect(getEditorTextLineRanges({ state: result.nextState }).map((range) => range.text)).toEqual([
+      'header',
+      'header',
+      'header',
+    ])
+    expect(result.plan?.nextMultiLineEditState.cursorBlockIndices).toEqual([0, 1, 2])
+    expect(result.plan?.nextMultiLineEditState.columnOffsets).toEqual({ 0: 6, 1: 6, 2: 6 })
+  })
+
+  it('keeps cursors on preceding task rows after deleting empty task rows', () => {
+    const result = applyBoundaryDelete(multilineEditSchema.nodes.doc.create(null, [taskList(['keep', '', 'keep', ''])]), [1, 3])
+
+    expect(result.plan?.deletedLineBlockIndices).toEqual([1, 3])
+    expect(getEditorTextLineRanges({ state: result.nextState }).map((range) => range.text)).toEqual(['keep', 'keep'])
+    expect(result.plan?.nextMultiLineEditState.cursorBlockIndices).toEqual([0, 1])
+    expect(result.plan?.nextMultiLineEditState.columnOffsets).toEqual({ 0: 4, 1: 4 })
+  })
+
+  it('places a deleted leading empty row cursor on the next surviving row', () => {
+    const result = applyBoundaryDelete(
+      multilineEditSchema.nodes.doc.create(null, [paragraph(''), paragraph('header'), paragraph('')]),
+      [0, 2],
+    )
+
+    expect(result.plan?.deletedLineBlockIndices).toEqual([0, 2])
+    expect(getEditorTextLineRanges({ state: result.nextState }).map((range) => range.text)).toEqual(['header'])
+    expect(result.plan?.nextMultiLineEditState.cursorBlockIndices).toEqual([0])
+    expect(result.plan?.nextMultiLineEditState.columnOffsets).toEqual({ 0: 0 })
+  })
+
   it('does not use row-end boundary deletion for mid-line cursors', () => {
     const view = createView(multilineEditSchema.nodes.doc.create(null, ['one', 'two'].map((text) => paragraph(text))))
     const ranges = getEditorTextLineRanges(view)
@@ -418,8 +516,9 @@ describe('multi-cursor forward boundary delete editing', () => {
 
     expect(result.plan?.consumedNextLineBlockIndices).toEqual([1, 3])
     expect(getEditorTextLineRanges({ state: result.nextState }).map((range) => range.text)).toEqual(['ab', 'cd', 'e'])
-    const nextMultiLineState = buildDeletedLineMultiLineState(result.state, [0, 2], result.plan!.consumedNextLineBlockIndices, result.ranges)
+    const nextMultiLineState = result.plan!.nextMultiLineEditState
     expect(nextMultiLineState.cursorBlockIndices).toEqual([0, 1])
+    expect(nextMultiLineState.columnOffsets).toEqual({ 0: 1, 1: 1 })
     expect(nextMultiLineState.selectionAnchorOffsets).toBeUndefined()
   })
 })

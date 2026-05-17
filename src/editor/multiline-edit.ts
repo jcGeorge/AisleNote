@@ -167,6 +167,7 @@ export type ForwardBoundaryDeletePlan = {
   transaction: any
   consumedNextLineBlockIndices: number[]
   deletedLineBlockIndices: number[]
+  nextMultiLineEditState: MultiLineEditState
   nextColumnOffsets: Record<number, number>
 }
 
@@ -193,6 +194,13 @@ type SelectedRowDeleteContext =
     }
 
 type DeleteCurrentRowContext = SelectedRowDeleteContext
+
+type InlineBreakDeleteContext = {
+  kind: 'inlineBreak'
+  blockIndex: number
+  from: number
+  to: number
+}
 
 function getTopLevelEmptyTextBlockDeleteTarget(
   doc: any,
@@ -252,8 +260,13 @@ function isEmptyVisibleRow(range: EditorTextLineRange): boolean {
 
 function addDeleteCurrentRowReplacement(
   replacements: Array<{ from: number; to: number; nodes: any[] }>,
-  context: DeleteCurrentRowContext,
+  context: DeleteCurrentRowContext | InlineBreakDeleteContext,
 ) {
+  if (context.kind === 'inlineBreak') {
+    replacements.push({ from: context.from, to: context.to, nodes: [] })
+    return
+  }
+
   if (context.kind === 'block') {
     replacements.push({ from: context.from, to: context.to, nodes: [] })
     return
@@ -293,6 +306,132 @@ function applyNodeReplacements(
   return nextTransaction
 }
 
+function getInlineBreakDeleteContext(
+  doc: any,
+  blockIndex: number,
+  range: EditorTextLineRange,
+): InlineBreakDeleteContext | null {
+  if (!isEmptyVisibleRow(range) || range.nodeType === 'codeBlock') return null
+
+  const resolved = resolveSafe(doc, range.start)
+  if (!resolved) return null
+
+  for (let depth = resolved.depth; depth > 0; depth -= 1) {
+    const node = resolved.node(depth)
+    if (!node?.isTextblock || node.content?.size === 0) continue
+    const contentStart = resolved.start(depth)
+    const contentEnd = resolved.end(depth)
+
+    if (range.start < contentEnd) {
+      const nodeAfter = doc.nodeAt(range.start)
+      if (nodeAfter?.type?.name === 'hardBreak') {
+        return {
+          kind: 'inlineBreak',
+          blockIndex,
+          from: range.start,
+          to: range.start + Math.max(1, nodeAfter.nodeSize ?? 1),
+        }
+      }
+    }
+
+    if (range.start > contentStart) {
+      const nodeBefore = resolved.nodeBefore
+      if (nodeBefore?.type?.name === 'hardBreak') {
+        return {
+          kind: 'inlineBreak',
+          blockIndex,
+          from: range.start - Math.max(1, nodeBefore.nodeSize ?? 1),
+          to: range.start,
+        }
+      }
+    }
+  }
+
+  return null
+}
+
+function findPreviousSurvivingBlockIndex(blockIndex: number, removedBlockIndices: Set<number>): number | null {
+  for (let index = blockIndex - 1; index >= 0; index -= 1) {
+    if (!removedBlockIndices.has(index)) return index
+  }
+  return null
+}
+
+function findNextSurvivingBlockIndex(
+  blockIndex: number,
+  blockRanges: EditorTextLineRange[],
+  removedBlockIndices: Set<number>,
+): number | null {
+  for (let index = blockIndex + 1; index < blockRanges.length; index += 1) {
+    if (!removedBlockIndices.has(index)) return index
+  }
+  return null
+}
+
+function mapSurvivingBlockIndex(blockIndex: number, removedBlockIndices: number[]): number {
+  return blockIndex - removedBlockIndices.filter((removedIndex) => removedIndex < blockIndex).length
+}
+
+function buildBoundaryDeleteMultiLineState(
+  multiLineEdit: MultiLineEditState,
+  blockRanges: EditorTextLineRange[],
+  sourceBlockIndices: number[],
+  deletedCurrentBlockIndices: number[],
+  consumedNextLineBlockIndices: number[],
+): MultiLineEditState {
+  const removedBlockIndices = [...new Set([...deletedCurrentBlockIndices, ...consumedNextLineBlockIndices])].sort((a, b) => a - b)
+  const removedSet = new Set(removedBlockIndices)
+  const cursorTargets = new Map<number, number>()
+  const nextBlockCount = Math.max(1, blockRanges.length - removedSet.size)
+
+  for (const blockIndex of [...new Set(sourceBlockIndices)].sort((a, b) => a - b)) {
+    const range = blockRanges[blockIndex]
+    if (!range) continue
+
+    let targetBlockIndex: number | null = blockIndex
+    let targetColumnOffset = getMultiLineColumnOffset(multiLineEdit, blockIndex, range)
+
+    if (removedSet.has(blockIndex)) {
+      const previousSurvivingIndex = findPreviousSurvivingBlockIndex(blockIndex, removedSet)
+      const nextSurvivingIndex = findNextSurvivingBlockIndex(blockIndex, blockRanges, removedSet)
+      targetBlockIndex = previousSurvivingIndex ?? nextSurvivingIndex
+      targetColumnOffset =
+        previousSurvivingIndex !== null
+          ? (blockRanges[previousSurvivingIndex]?.length ?? 0)
+          : 0
+    }
+
+    const mappedBlockIndex =
+      targetBlockIndex === null ? 0 : Math.max(0, Math.min(nextBlockCount - 1, mapSurvivingBlockIndex(targetBlockIndex, removedBlockIndices)))
+    if (!cursorTargets.has(mappedBlockIndex)) {
+      cursorTargets.set(mappedBlockIndex, Math.max(0, targetColumnOffset))
+    }
+  }
+
+  if (cursorTargets.size === 0) {
+    cursorTargets.set(0, 0)
+  }
+
+  const cursorBlockIndices = [...cursorTargets.keys()].sort((a, b) => a - b)
+  const columnOffsets = cursorBlockIndices.reduce<Record<number, number>>((acc, blockIndex) => {
+    acc[blockIndex] = cursorTargets.get(blockIndex) ?? 0
+    return acc
+  }, {})
+  const anchorBlockIndex = cursorBlockIndices[0] ?? 0
+  const headBlockIndex = cursorBlockIndices[cursorBlockIndices.length - 1] ?? anchorBlockIndex
+
+  return {
+    ...multiLineEdit,
+    anchorBlockIndex,
+    headBlockIndex,
+    columnOffset: columnOffsets[headBlockIndex] ?? 0,
+    columnOffsets,
+    cursorBlockIndices,
+    selectionAnchorOffsets: undefined,
+    activeInlineFormats: undefined,
+  }
+}
+
 export function buildForwardBoundaryDeletePlan(
   transaction: any,
   multiLineEdit: MultiLineEditState,
@@ -310,6 +449,12 @@ export function buildForwardBoundaryDeletePlan(
     if (!range || !isEmptyVisibleRow(range) || range.nodeType === 'codeBlock') continue
     const currentOffset = getMultiLineColumnOffset(multiLineEdit, blockIndex, range)
     if (currentOffset < range.length) continue
+    const inlineBreakContext = getInlineBreakDeleteContext(transaction.doc, blockIndex, range)
+    if (inlineBreakContext) {
+      addDeleteCurrentRowReplacement(replacements, inlineBreakContext)
+      deleteCurrentBlockIndices.push(blockIndex)
+      continue
+    }
     const context = getSelectedRowDeleteContext(transaction.doc, blockIndex, range)
     if (!context) continue
     deleteCurrentByBlockIndex.set(blockIndex, context)
@@ -367,10 +512,19 @@ export function buildForwardBoundaryDeletePlan(
   }
 
   if (consumedNextLineBlockIndices.length === 0 && deleteCurrentBlockIndices.length === 0) return null
+  const uniqueConsumedNextLineBlockIndices = [...new Set(consumedNextLineBlockIndices)].sort((a, b) => a - b)
+  const uniqueDeletedLineBlockIndices = [...new Set(deleteCurrentBlockIndices)].sort((a, b) => a - b)
   return {
     transaction: nextTransaction,
-    consumedNextLineBlockIndices: [...new Set(consumedNextLineBlockIndices)].sort((a, b) => a - b),
-    deletedLineBlockIndices: [...new Set(deleteCurrentBlockIndices)].sort((a, b) => a - b),
+    consumedNextLineBlockIndices: uniqueConsumedNextLineBlockIndices,
+    deletedLineBlockIndices: uniqueDeletedLineBlockIndices,
+    nextMultiLineEditState: buildBoundaryDeleteMultiLineState(
+      multiLineEdit,
+      blockRanges,
+      blockIndices,
+      uniqueDeletedLineBlockIndices,
+      uniqueConsumedNextLineBlockIndices,
+    ),
     nextColumnOffsets,
   }
 }

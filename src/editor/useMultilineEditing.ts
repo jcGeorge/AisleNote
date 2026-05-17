@@ -546,6 +546,7 @@ export function useMultilineEditing({
     const deletedEmptyBlockIndices: number[] = []
     const consumedForwardBoundaryBlockIndices: number[] = []
     const forwardBoundaryBlockIndices: number[] = []
+    let boundaryDeleteNextState: MultiLineEditState | null = null
     const selectedRowDeletePlan =
       input.type === 'delete' || input.type === 'backspace'
         ? buildSelectedRowDeletePlan(tr, multiLineEdit, blockRanges, selectedIndices)
@@ -569,6 +570,7 @@ export function useMultilineEditing({
         deletedEmptyBlockIndices.push(...boundaryDeletePlan.deletedLineBlockIndices)
         consumedForwardBoundaryBlockIndices.push(...boundaryDeletePlan.consumedNextLineBlockIndices)
         Object.assign(nextColumnOffsets, boundaryDeletePlan.nextColumnOffsets)
+        boundaryDeleteNextState = boundaryDeletePlan.nextMultiLineEditState
         changed = true
       }
     }
@@ -716,6 +718,8 @@ export function useMultilineEditing({
     const nextMultiLineEditState =
       input.type === 'split-line'
         ? buildSplitLineMultiLineState(multiLineEdit, selectedIndices)
+        : boundaryDeleteNextState
+          ? boundaryDeleteNextState
         : deletedEmptyBlockIndices.length > 0 || consumedForwardBoundaryBlockIndices.length > 0
           ? buildDeletedLineMultiLineState(
               multiLineEdit,
