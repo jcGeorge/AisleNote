@@ -12,6 +12,7 @@ export function createAppStateCoordinator({
   let loadResult = load(activeProfileRootPath)
   let serializedState = loadResult.ok ? loadResult.serializedState : null
   let revision = loadResult.ok && serializedState !== null ? 1 : 0
+  let lastSavedCanonicalState = null
 
   const getLoadResult = () =>
     loadResult.ok
@@ -58,6 +59,15 @@ export function createAppStateCoordinator({
 
     try {
       save(activeProfileRootPath, payload.serializedState, { userDataPath })
+      if (save === saveAppState) {
+        const persistedLoadResult = load(activeProfileRootPath)
+        lastSavedCanonicalState =
+          persistedLoadResult.ok && typeof persistedLoadResult.serializedState === 'string'
+            ? persistedLoadResult.serializedState
+            : null
+      } else {
+        lastSavedCanonicalState = null
+      }
       serializedState = payload.serializedState
       revision += 1
       loadResult = {
@@ -97,6 +107,18 @@ export function createAppStateCoordinator({
     }
 
     loadResult = nextLoadResult
+    if (
+      nextLoadResult.serializedState === serializedState ||
+      (typeof nextLoadResult.serializedState === 'string' && nextLoadResult.serializedState === lastSavedCanonicalState)
+    ) {
+      serializedState = nextLoadResult.serializedState
+      lastSavedCanonicalState = null
+      return {
+        ...getLoadResult(),
+        unchanged: true,
+      }
+    }
+
     serializedState = nextLoadResult.serializedState
     revision = serializedState === null ? 0 : revision + 1
     return getLoadResult()

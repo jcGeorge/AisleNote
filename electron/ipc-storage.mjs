@@ -75,6 +75,10 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
           requireSerializedState: previousSerializedState !== null,
         })
         if (result.ok && typeof result.serializedState === 'string') {
+          if (result.unchanged) {
+            watcher?.reset()
+            return
+          }
           updateStatus('external-loaded')
           broadcastAppStateUpdate({
             serializedState: result.serializedState,
@@ -89,9 +93,10 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
   }
 
   const saveRevisionedState = (payload, sourceWebContentsId) => {
+    watcher?.markAppWrite()
     const result = coordinator.saveRevisionedState(payload)
+    watcher?.markAppWrite()
     if (result.ok) {
-      watcher?.markAppWrite()
       updateStatus('saved')
       broadcastAppStateUpdate(
         {
@@ -263,7 +268,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
       requireSerializedState: coordinator.getSerializedState() !== null,
     })
     updateStatus(result.ok ? 'retry-loaded' : 'retry-error', result.ok ? null : result.error)
-    if (result.ok && typeof result.serializedState === 'string') {
+    if (result.ok && typeof result.serializedState === 'string' && !result.unchanged) {
       broadcastAppStateUpdate({
         serializedState: result.serializedState,
         revision: result.revision,

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Editor } from '@toast-ui/editor'
+import { Schema } from 'prosemirror-model'
+import { EditorState, TextSelection } from 'prosemirror-state'
 import {
   ANNOTATION_LINE_ARROW_CLASS_NAME,
   ANNOTATION_LINE_ARROW_DOWN_CLASS_NAME,
@@ -12,6 +14,7 @@ import {
 import { shouldDeleteEmptyParagraphAtListBoundary } from './empty-paragraph-list-delete'
 import {
   annotationLinePlugin,
+  deleteEmptyListItemBackward,
   getActiveHeadingLevel,
   getArrowMarkerDeletionRange,
   getArrowMarkerNavigationPosition,
@@ -114,6 +117,102 @@ describe('paragraph space shortcuts', () => {
     expect(getParagraphSpaceShortcut('-')).toEqual({ kind: 'dashList' })
     expect(getParagraphSpaceShortcut('*')).toEqual({ kind: 'bulletList' })
     expect(getParagraphSpaceShortcut('2.')).toEqual({ kind: 'numberedList', order: 2 })
+  })
+})
+
+const listBackspaceSchema = new Schema({
+  nodes: {
+    doc: { content: 'block+' },
+    text: { group: 'inline' },
+    paragraph: {
+      group: 'block',
+      content: 'inline*',
+      toDOM: () => ['p', 0],
+    },
+    bulletList: {
+      group: 'block',
+      content: 'listItem+',
+      toDOM: () => ['ul', 0],
+    },
+    orderedList: {
+      group: 'block',
+      content: 'listItem+',
+      toDOM: () => ['ol', 0],
+    },
+    listItem: {
+      content: 'paragraph block*',
+      toDOM: () => ['li', 0],
+    },
+  },
+})
+
+function pmParagraph(text: string) {
+  return text
+    ? listBackspaceSchema.nodes.paragraph.create(null, listBackspaceSchema.text(text))
+    : listBackspaceSchema.nodes.paragraph.create()
+}
+
+function pmListItem(text: string) {
+  return listBackspaceSchema.nodes.listItem.create(null, pmParagraph(text))
+}
+
+function findParagraphPosition(doc: any, textContent: string): number {
+  let found = -1
+  doc.descendants((candidate: any, position: number) => {
+    if (candidate.type.name === 'paragraph' && candidate.textContent === textContent && found < 0) {
+      found = position
+      return false
+    }
+    return true
+  })
+  return found
+}
+
+describe('empty list item Backspace behavior', () => {
+  it('deletes an empty middle list item and places the cursor at the previous item end', () => {
+    const list = listBackspaceSchema.nodes.bulletList.create(null, [
+      pmListItem('asdf 1'),
+      pmListItem(''),
+      pmListItem('asdf 3'),
+    ])
+    const doc = listBackspaceSchema.nodes.doc.create(null, [list])
+    const emptyParagraphPosition = findParagraphPosition(doc, '')
+    const state = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, emptyParagraphPosition + 1),
+    })
+    let nextState = state
+
+    expect(deleteEmptyListItemBackward(state, (tr) => {
+      nextState = state.apply(tr as any)
+    })).toBe(true)
+
+    const nextList = nextState.doc.child(0)
+    const previousParagraphPosition = findParagraphPosition(nextState.doc, 'asdf 1')
+    expect(nextList.childCount).toBe(2)
+    expect(nextList.child(0).textContent).toBe('asdf 1')
+    expect(nextList.child(1).textContent).toBe('asdf 3')
+    expect(nextState.selection.from).toBe(previousParagraphPosition + 1 + 'asdf 1'.length)
+  })
+
+  it('leaves non-empty and first list items to native Backspace behavior', () => {
+    const list = listBackspaceSchema.nodes.bulletList.create(null, [
+      pmListItem(''),
+      pmListItem('text'),
+    ])
+    const doc = listBackspaceSchema.nodes.doc.create(null, [list])
+    const firstParagraphPosition = findParagraphPosition(doc, '')
+    const textParagraphPosition = findParagraphPosition(doc, 'text')
+
+    expect(deleteEmptyListItemBackward(EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, firstParagraphPosition + 1),
+    }))).toBe(false)
+
+    expect(deleteEmptyListItemBackward(EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, textParagraphPosition + 1),
+    }))).toBe(false)
   })
 })
 

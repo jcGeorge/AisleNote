@@ -1,7 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
+  applyStructuralListIndent,
   getCompatibleListSiblingRange,
   getToolbarListKindForNode,
+  selectionTouchesListItem,
   selectionUsesOnlyListKind,
 } from './list-marker-commands'
 
@@ -96,11 +98,133 @@ describe('toolbar list command detection', () => {
     expect(selectionUsesOnlyListKind(numberedView, 'orderedList')).toBe(true)
   })
 
+  it('treats unmarked nested bullets inside dash lists as dash list selections', () => {
+    const nestedDashView = collapsedView([
+      node('doc'),
+      node('bulletList', { htmlAttrs: { 'data-tabs-list-marker': 'dash' } }),
+      node('listItem'),
+      node('bulletList'),
+      node('listItem'),
+      node('paragraph', null, { isTextblock: true }),
+    ])
+
+    expect(selectionUsesOnlyListKind(nestedDashView, 'dashList')).toBe(true)
+    expect(selectionUsesOnlyListKind(nestedDashView, 'bulletList')).toBe(false)
+  })
+
   it('does not treat normal paragraphs as active lists', () => {
     const view = collapsedView([node('doc'), node('paragraph', null, { isTextblock: true })])
 
     expect(selectionUsesOnlyListKind(view, 'bulletList')).toBe(false)
     expect(selectionUsesOnlyListKind(view, 'taskList')).toBe(false)
+  })
+
+  it('detects list selections for structural tab indentation', () => {
+    const listView = collapsedView([
+      node('doc'),
+      node('bulletList'),
+      node('listItem'),
+      node('paragraph', null, { isTextblock: true }),
+    ])
+    const paragraphView = collapsedView([node('doc'), node('paragraph', null, { isTextblock: true })])
+
+    expect(selectionTouchesListItem(listView)).toBe(true)
+    expect(selectionTouchesListItem(paragraphView)).toBe(false)
+  })
+
+  it('runs structural list indent commands only inside lists', () => {
+    const execCalls: string[] = []
+    const editor = {
+      focus: () => undefined,
+      exec: (command: string) => execCalls.push(command),
+      wwEditor: {
+        view: collapsedView([
+          node('doc'),
+          node('orderedList'),
+          node('listItem'),
+          node('paragraph', null, { isTextblock: true }),
+        ]),
+      },
+    }
+
+    expect(applyStructuralListIndent(editor as any, false)).toBe(true)
+    expect(applyStructuralListIndent(editor as any, true)).toBe(true)
+    expect(execCalls).toEqual(['indent', 'outdent'])
+  })
+
+  it('preserves dash markers when structurally indenting dash list items', () => {
+    const transaction = {
+      setNodeMarkup: vi.fn(() => transaction),
+      scrollIntoView: vi.fn(() => transaction),
+    }
+    const dispatch = vi.fn()
+    const view: any = {
+      ...collapsedView([
+        node('doc'),
+        node('bulletList', { htmlAttrs: { 'data-tabs-list-marker': 'dash' } }),
+        node('listItem'),
+        node('paragraph', null, { isTextblock: true }),
+      ]),
+      dispatch,
+    }
+    view.state.tr = transaction
+    const editor = {
+      focus: () => undefined,
+      exec: vi.fn(),
+      wwEditor: {
+        view,
+      },
+    }
+
+    expect(applyStructuralListIndent(editor as any, false)).toBe(true)
+
+    expect(editor.exec).toHaveBeenCalledWith('indent')
+    expect(transaction.setNodeMarkup).toHaveBeenCalledWith(
+      10,
+      undefined,
+      expect.objectContaining({
+        htmlAttrs: { 'data-tabs-list-marker': 'dash' },
+      }),
+    )
+    expect(dispatch).toHaveBeenCalledWith(transaction)
+  })
+
+  it('preserves dash markers when indenting inside inherited nested dash lists', () => {
+    const transaction = {
+      setNodeMarkup: vi.fn(() => transaction),
+      scrollIntoView: vi.fn(() => transaction),
+    }
+    const dispatch = vi.fn()
+    const view: any = {
+      ...collapsedView([
+        node('doc'),
+        node('bulletList', { htmlAttrs: { 'data-tabs-list-marker': 'dash' } }),
+        node('listItem'),
+        node('bulletList'),
+        node('listItem'),
+        node('paragraph', null, { isTextblock: true }),
+      ]),
+      dispatch,
+    }
+    view.state.tr = transaction
+    const editor = {
+      focus: () => undefined,
+      exec: vi.fn(),
+      wwEditor: {
+        view,
+      },
+    }
+
+    expect(applyStructuralListIndent(editor as any, false)).toBe(true)
+
+    expect(editor.exec).toHaveBeenCalledWith('indent')
+    expect(transaction.setNodeMarkup).toHaveBeenCalledWith(
+      30,
+      undefined,
+      expect.objectContaining({
+        htmlAttrs: { 'data-tabs-list-marker': 'dash' },
+      }),
+    )
   })
 
   it('classifies list node kinds without mixing task, bullet, dash, and numbered lists', () => {

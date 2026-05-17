@@ -597,6 +597,29 @@
   opacity: 0.9 !important;
 }
 
+.theme-dawn .toastui-editor-contents ul ul > li:not(.task-list-item)::before,
+.theme-dawn .toastui-editor .ProseMirror ul ul > li:not(.task-list-item)::before {
+  border-color: var(--editor-text) !important;
+  background-color: transparent !important;
+}
+
+.theme-dawn .toastui-editor-contents ul ul.tabs-dash-list > li:not(.task-list-item)::before,
+.theme-dawn .toastui-editor-contents ul ul[data-tabs-list-marker='dash'] > li:not(.task-list-item)::before,
+.theme-dawn .toastui-editor-contents ul.tabs-dash-list ul > li:not(.task-list-item)::before,
+.theme-dawn .toastui-editor-contents ul[data-tabs-list-marker='dash'] ul > li:not(.task-list-item)::before,
+.theme-dawn .toastui-editor .ProseMirror ul ul.tabs-dash-list > li:not(.task-list-item)::before,
+.theme-dawn .toastui-editor .ProseMirror ul ul[data-tabs-list-marker='dash'] > li:not(.task-list-item)::before,
+.theme-dawn .toastui-editor .ProseMirror ul.tabs-dash-list ul > li:not(.task-list-item)::before,
+.theme-dawn .toastui-editor .ProseMirror ul[data-tabs-list-marker='dash'] ul > li:not(.task-list-item)::before {
+  background-color: var(--editor-text) !important;
+}
+
+.theme-dawn .toastui-editor-contents ol ol > li::before,
+.theme-dawn .toastui-editor .ProseMirror ol ol > li::before {
+  content: counter(li, lower-alpha) '.' !important;
+  direction: ltr !important;
+}
+
 .theme-dawn .toastui-editor-contents p.tabs-annotation-line,
 .theme-dawn .toastui-editor .ProseMirror p.tabs-annotation-line {
   color: var(--editor-annotation-text) !important;

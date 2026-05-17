@@ -262,4 +262,32 @@ describe('electron ipc boundaries', () => {
         revision: 2,
       })
     }))
+
+  it('does not broadcast unchanged profile reloads on retry', async () =>
+    withTempUserDataPath(async (userDataPath) => {
+      const window = {
+        isDestroyed: vi.fn(() => false),
+        webContents: { id: 2, send: vi.fn() },
+      }
+      const ipcMain = createIpcMain()
+      registerStorageIpc({
+        ipcMain,
+        app: { getPath: () => userDataPath },
+        BrowserWindow: createBrowserWindow([window]),
+      })
+
+      const saveEvent = { sender: { id: 1 }, returnValue: null }
+      ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 0 })
+      window.webContents.send.mockClear()
+
+      await expect(ipcMain.handlers.get('retry-storage-profile')()).resolves.toMatchObject({
+        ok: true,
+        status: {
+          status: 'ready',
+          event: 'retry-loaded',
+          revision: 1,
+        },
+      })
+      expect(window.webContents.send).not.toHaveBeenCalledWith('app-state-updated', expect.anything())
+    }))
 })

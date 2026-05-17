@@ -107,6 +107,23 @@ describe('Electron app state coordinator', () => {
     })
   })
 
+  it('keeps revision stable when a reload returns identical serialized state', () => {
+    const coordinator = createAppStateCoordinator({
+      userDataPath: '/tmp/tabs',
+      load: () => ({ ok: true, serializedState: '{"theme":"dawn"}', source: 'hybrid' }),
+      save: vi.fn(),
+    })
+
+    expect(coordinator.reloadProfileRoot('/tmp/tabs')).toEqual({
+      ok: true,
+      serializedState: '{"theme":"dawn"}',
+      source: 'hybrid',
+      revision: 1,
+      unchanged: true,
+    })
+    expect(coordinator.getLoadResult().revision).toBe(1)
+  })
+
   it('blocks saves after a corrupt external profile reload', () => {
     let corrupt = false
     const save = vi.fn()

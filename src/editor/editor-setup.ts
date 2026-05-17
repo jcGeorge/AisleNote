@@ -532,6 +532,65 @@ export function getParagraphSpaceShortcut(markerText: string): ParagraphSpaceSho
   return null
 }
 
+function getListItemDepth(resolvedPos: any): number | null {
+  for (let depth = resolvedPos.depth; depth > 0; depth -= 1) {
+    if (resolvedPos.node(depth)?.type?.name === 'listItem') return depth
+  }
+  return null
+}
+
+function getTextSelectionPositionAtFirstTextBlockEnd(doc: any, listItemStart: number): number | null {
+  const listItem = doc.nodeAt(listItemStart)
+  if (!listItem) return null
+
+  let selectionPosition: number | null = null
+  listItem.descendants?.((node: any, position: number) => {
+    if (!node?.isTextblock) return true
+    const contentSize = typeof node.content?.size === 'number' ? node.content.size : 0
+    selectionPosition = listItemStart + 1 + position + 1 + contentSize
+    return false
+  })
+
+  if (selectionPosition === null) return null
+  return Math.max(0, Math.min(doc.content.size, selectionPosition))
+}
+
+export function deleteEmptyListItemBackward(state: any, dispatch?: (tr: unknown) => void): boolean {
+  const { selection } = state
+  if (!selection?.empty || !state?.doc || !state?.tr) return false
+
+  const { $from } = selection
+  if (!$from || $from.parent?.type?.name !== 'paragraph') return false
+  if ($from.parentOffset !== 0 || !isEmptyEditorTextBlock($from.parent)) return false
+
+  const listItemDepth = getListItemDepth($from)
+  if (listItemDepth === null) return false
+
+  const listItemNode = $from.node(listItemDepth)
+  const parentListDepth = listItemDepth - 1
+  const parentList = $from.node(parentListDepth)
+  if (listItemNode?.type?.name !== 'listItem') return false
+  if (parentList?.type?.name !== 'bulletList' && parentList?.type?.name !== 'orderedList') return false
+  if (listItemNode.childCount !== 1) return false
+
+  const itemIndex = $from.index(parentListDepth)
+  if (itemIndex <= 0) return false
+
+  const previousItem = parentList.child(itemIndex - 1)
+  const itemStart = $from.before(listItemDepth)
+  const itemEnd = $from.after(listItemDepth)
+  const previousItemStart = itemStart - previousItem.nodeSize
+
+  if (!dispatch) return true
+
+  let nextTr = state.tr.delete(itemStart, itemEnd)
+  const selectionPosition = getTextSelectionPositionAtFirstTextBlockEnd(nextTr.doc, previousItemStart)
+  if (selectionPosition === null) return false
+  nextTr = nextTr.setSelection(TextSelection.create(nextTr.doc, selectionPosition, selectionPosition)).scrollIntoView()
+  dispatch(nextTr)
+  return true
+}
+
 export function headingSpaceShortcutPlugin(context: {
   pmKeymap: { keymap: (bindings: Record<string, unknown>) => unknown }
   pmState: {
@@ -670,6 +729,7 @@ export function headingSpaceShortcutPlugin(context: {
       () =>
         keymap({
           Backspace: (state: any, dispatch?: (tr: unknown) => void) =>
+            deleteEmptyListItemBackward(state, dispatch) ||
             handleBackspaceFromHeadingAfterEmptyParagraph(state, dispatch) ||
             handleBackspaceFromEmptyParagraphAfterList(state, dispatch),
           Delete: (state: any, dispatch?: (tr: unknown) => void) =>

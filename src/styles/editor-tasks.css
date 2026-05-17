@@ -6,6 +6,24 @@
   -webkit-user-select: none !important;
 }
 
+.task-reorder-selection-suppressed,
+.task-reorder-selection-suppressed * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+.task-reorder-selection-suppressed::selection,
+.task-reorder-selection-suppressed ::selection {
+  color: inherit !important;
+  background: transparent !important;
+}
+
+.task-reorder-selection-suppressed::-moz-selection,
+.task-reorder-selection-suppressed ::-moz-selection {
+  color: inherit !important;
+  background: transparent !important;
+}
+
 .task-reorder-active .toastui-editor-contents {
   cursor: grabbing !important;
   user-select: none !important;

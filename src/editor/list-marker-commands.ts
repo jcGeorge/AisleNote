@@ -1,11 +1,16 @@
 import type { Editor } from '@toast-ui/editor'
 import { Fragment } from 'prosemirror-model'
 import { Selection, TextSelection } from 'prosemirror-state'
+import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
 import {
   getBulletListMarkerFromAttrs,
   setSelectedBulletListsMarker,
   type BulletListMarker,
 } from './list-markers'
+import {
+  unwrapMatchingListItemsMarkdown,
+  type ReorderListKind,
+} from './list-reorder-markdown'
 import { getCommandCapableEditor, getWysiwygView } from './prosemirror-utils'
 
 export type ToolbarListCommand = 'taskList' | 'bulletList' | 'dashList' | 'orderedList'
@@ -61,6 +66,40 @@ function getListKindForItem(parentList: ProseMirrorNodeLike | null, listItem: Pr
   return getBulletListMarkerFromAttrs(parentList.attrs) === 'dash' ? 'dashList' : 'bulletList'
 }
 
+function hasDashListAncestor(resolvedPos: ProseMirrorResolvedPosLike, parentListDepth: number): boolean {
+  for (let depth = parentListDepth - 1; depth > 0; depth -= 1) {
+    const node = resolvedPos.node(depth)
+    if (node?.type?.name === 'bulletList' && getBulletListMarkerFromAttrs(node.attrs) === 'dash') {
+      return true
+    }
+  }
+  return false
+}
+
+function getListKindForResolvedListItem(
+  resolvedPos: ProseMirrorResolvedPosLike,
+  listItemDepth: number,
+  listItem: ProseMirrorNodeLike,
+): ToolbarListCommand | null {
+  const parentListDepth = listItemDepth - 1
+  const parentList = resolvedPos.node(parentListDepth)
+  const kind = getListKindForItem(parentList, listItem)
+  if (kind !== 'bulletList') return kind
+  return hasDashListAncestor(resolvedPos, parentListDepth) ? 'dashList' : kind
+}
+
+function getListKindForResolvedParentList(
+  resolvedPos: ProseMirrorResolvedPosLike | null | undefined,
+  listItem: ProseMirrorNodeLike,
+): ToolbarListCommand | null {
+  if (!resolvedPos) return null
+  const parentListDepth = resolvedPos.depth
+  const parentList = resolvedPos.node(parentListDepth)
+  const kind = getListKindForItem(parentList, listItem)
+  if (kind !== 'bulletList') return kind
+  return hasDashListAncestor(resolvedPos, parentListDepth) ? 'dashList' : kind
+}
+
 export function getToolbarListKindForNode(node: ProseMirrorNodeLike | null | undefined): ToolbarListCommand | null {
   if (node?.type?.name === 'orderedList') return 'orderedList'
   if (node?.type?.name !== 'bulletList') return null
@@ -109,6 +148,26 @@ function hasListItemAncestor(resolvedPos: ProseMirrorResolvedPosLike | null | un
   return false
 }
 
+export function selectionTouchesListItem(view: unknown): boolean {
+  const proseMirrorView = view as ProseMirrorViewLike | null
+  const selection = proseMirrorView?.state?.selection
+  const doc = proseMirrorView?.state?.doc
+  if (!selection) return false
+  if (hasListItemAncestor(selection.$from) || hasListItemAncestor(selection.$to)) return true
+
+  let touchesListItem = false
+  if (!selection.empty && doc?.nodesBetween) {
+    doc.nodesBetween(Math.min(selection.from, selection.to), Math.max(selection.from, selection.to), (node) => {
+      if (node.type?.name === 'listItem') {
+        touchesListItem = true
+        return false
+      }
+      return !touchesListItem
+    })
+  }
+  return touchesListItem
+}
+
 function addListItemAncestorKinds(
   resolvedPos: ProseMirrorResolvedPosLike | null | undefined,
   listKindsByPosition: Map<number, ToolbarListCommand>,
@@ -117,8 +176,7 @@ function addListItemAncestorKinds(
   for (let depth = resolvedPos.depth; depth > 0; depth -= 1) {
     const listItem = resolvedPos.node(depth)
     if (listItem?.type?.name !== 'listItem') continue
-    const parentList = resolvedPos.node(depth - 1)
-    const kind = getListKindForItem(parentList, listItem)
+    const kind = getListKindForResolvedListItem(resolvedPos, depth, listItem)
     if (!kind) continue
     const position = resolvedPos.before?.(depth) ?? depth
     listKindsByPosition.set(position, kind)
@@ -145,8 +203,7 @@ function collectSelectionListKinds(view: ProseMirrorViewLike): {
     doc.nodesBetween(from, to, (node, position) => {
       if (node.type?.name === 'listItem') {
         const resolved = doc.resolve?.(Math.max(0, Math.min(position, docSize)))
-        const parentList = resolved?.node(resolved.depth)
-        const kind = getListKindForItem(parentList ?? null, node)
+        const kind = getListKindForResolvedParentList(resolved, node)
         if (kind) listKindsByPosition.set(position, kind)
         return true
       }
@@ -175,11 +232,36 @@ export function selectionUsesOnlyListKind(view: unknown, command: ToolbarListCom
   return !containsNonListTextblock && listKinds.size === 1 && listKinds.has(command)
 }
 
+function getOnlySelectedListKind(view: unknown): ToolbarListCommand | null {
+  const { listKinds, containsNonListTextblock } = collectSelectionListKinds(view as ProseMirrorViewLike)
+  if (containsNonListTextblock || listKinds.size !== 1) return null
+  return Array.from(listKinds)[0] ?? null
+}
+
 export function applyBulletListMarkerCommand(editor: Editor, marker: BulletListMarker): boolean {
   editor.focus()
   getCommandCapableEditor(editor).exec('bulletList')
   const view = getWysiwygView(editor)
   return setSelectedBulletListsMarker(view, marker)
+}
+
+export function applyStructuralListIndent(editor: Editor, outdent: boolean): boolean {
+  const view = getWysiwygView(editor)
+  if (!selectionTouchesListItem(view)) return false
+  const selectedListKind = getOnlySelectedListKind(view)
+  editor.focus()
+  getCommandCapableEditor(editor).exec(outdent ? 'outdent' : 'indent')
+  if (!outdent && selectedListKind === 'dashList') {
+    setSelectedBulletListsMarker(getWysiwygView(editor), 'dash')
+  }
+  return true
+}
+
+function getReorderListKindForToolbarCommand(command: ToolbarListCommand): ReorderListKind {
+  if (command === 'taskList') return 'task'
+  if (command === 'dashList') return 'dash'
+  if (command === 'orderedList') return 'numbered'
+  return 'bullet'
 }
 
 function getTopLevelChildStart(doc: { childCount?: number; child?: (index: number) => ProseMirrorNodeLike }, index: number) {
@@ -283,6 +365,18 @@ export function applyListToolbarCommand(editor: Editor, command: ToolbarListComm
   const view = getWysiwygView(editor)
   const commandEditor = getCommandCapableEditor(editor)
   if (selectionUsesOnlyListKind(view, command)) {
+    const selectedText = commandEditor.getSelectedText?.() ?? ''
+    const nextMarkdown = unwrapMatchingListItemsMarkdown(
+      normalizeMarkdownForPersistence(editor.getMarkdown()),
+      selectedText,
+      getReorderListKindForToolbarCommand(command),
+    )
+    if (nextMarkdown !== null) {
+      editor.setMarkdown(nextMarkdown, false)
+      editor.focus()
+      return true
+    }
+
     commandEditor.exec('outdent')
     return true
   }

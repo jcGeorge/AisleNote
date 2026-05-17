@@ -1,11 +1,8 @@
 import type { Editor } from '@toast-ui/editor'
+import { Selection, TextSelection } from 'prosemirror-state'
 import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
 import { DASH_LIST_CLASS_NAME, DASH_LIST_MARKER_ATTR, DASH_LIST_MARKER_VALUE } from './list-markers'
-import {
-  normalizeListReorderText,
-  reorderListMarkdownLines,
-  type ReorderListKind,
-} from './list-reorder-markdown'
+import type { ReorderListKind } from './list-reorder-markdown'
 import { getWysiwygView } from './prosemirror-utils'
 
 const COMPLETED_TASK_HOLD_MS = 500
@@ -15,6 +12,7 @@ export const COMPLETED_TASK_UNDO_HINT_DETECTION_MS = 60 * 1000
 export const COMPLETED_TASK_UNDO_HINT_MESSAGE =
   'hold the task button for half a second to turn off its value, quick tap deletes it.'
 export const COMPLETED_TASK_UNDO_HINT_TOAST_DURATION_MS = 5000
+const TASK_REORDER_SELECTION_SUPPRESS_PX = 4
 const TASK_REORDER_DRAG_SLOP_PX = 8
 const TASK_REORDER_PREVIEW_MAX_CHARS = 30
 const TASK_REORDER_MARKER_GAP_OFFSET_PX = 4
@@ -22,6 +20,7 @@ const TASK_REORDER_SLOT_HYSTERESIS_PX = 6
 const TASK_REORDER_MARKER_MIN_WIDTH_PX = 72
 const TASK_REORDER_MARKER_EXTRA_WIDTH_PX = 34
 const TASK_REORDER_GHOST_CURSOR_X_PERCENT = 25
+export const TASK_REORDER_SELECTION_SUPPRESSION_CLASS = 'task-reorder-selection-suppressed'
 
 type TaskListItemHit = {
   node: any
@@ -29,9 +28,22 @@ type TaskListItemHit = {
 }
 
 type TaskReorderDropTarget = {
+  listElement: HTMLElement
   element: HTMLElement
   insertIndex: number
   markerY: number
+}
+
+type ProseMirrorNodeHit = {
+  node: any
+  pos: number
+}
+
+export type CapturedListItemBranch = {
+  itemNode: any
+  itemPos: number
+  listNode: any
+  listPos: number
 }
 
 type TextLineRect = {
@@ -44,24 +56,200 @@ type TextLineRect = {
 }
 
 export function getListReorderPointerDecision(deltaX: number, deltaY: number): {
+  shouldCancelReorder: boolean
   shouldSuppressSelection: boolean
   shouldStartDrag: boolean
 } {
   const horizontalDistance = Math.abs(deltaX)
   const verticalDistance = Math.abs(deltaY)
+  const shouldCancelReorder =
+    Number.isFinite(horizontalDistance) &&
+    Number.isFinite(verticalDistance) &&
+    horizontalDistance >= TASK_REORDER_DRAG_SLOP_PX &&
+    verticalDistance < TASK_REORDER_SELECTION_SUPPRESS_PX
   const shouldStartDrag =
     Number.isFinite(horizontalDistance) &&
     Number.isFinite(verticalDistance) &&
+    !shouldCancelReorder &&
     verticalDistance >= TASK_REORDER_DRAG_SLOP_PX &&
-    verticalDistance > horizontalDistance
+    verticalDistance > 0
+  const shouldSuppressSelection =
+    Number.isFinite(horizontalDistance) &&
+    Number.isFinite(verticalDistance) &&
+    !shouldCancelReorder &&
+    verticalDistance >= TASK_REORDER_SELECTION_SUPPRESS_PX &&
+    verticalDistance > 0
   return {
-    shouldSuppressSelection: shouldStartDrag,
+    shouldCancelReorder,
+    shouldSuppressSelection,
     shouldStartDrag,
   }
 }
 
 export function shouldUseManualListCaretPlacement(startedOnTrailingSpace: boolean, pointerUpInsideItem: boolean): boolean {
   return startedOnTrailingSpace && pointerUpInsideItem
+}
+
+export function shouldSuppressListReorderSelectStart(isDragging: boolean): boolean {
+  return isDragging
+}
+
+export function setTaskReorderDocumentSelectionSuppressed(isSuppressed: boolean) {
+  if (typeof document === 'undefined') return
+  document.documentElement?.classList.toggle(TASK_REORDER_SELECTION_SUPPRESSION_CLASS, isSuppressed)
+  document.body?.classList.toggle(TASK_REORDER_SELECTION_SUPPRESSION_CLASS, isSuppressed)
+}
+
+export function clearTaskReorderNativeSelection() {
+  try {
+    if (typeof window !== 'undefined') {
+      window.getSelection?.()?.removeAllRanges()
+    }
+  } catch {
+    // Selection APIs can be unavailable in tests or during teardown.
+  }
+  try {
+    if (typeof document !== 'undefined') {
+      document.getSelection?.()?.removeAllRanges()
+    }
+  } catch {
+    // Keep drag cleanup best-effort.
+  }
+}
+
+export function scheduleTaskReorderNativeSelectionClear(onComplete?: () => void): () => void {
+  clearTaskReorderNativeSelection()
+
+  if (typeof window === 'undefined') {
+    onComplete?.()
+    return () => {}
+  }
+
+  let cancelled = false
+  let pendingCount = 0
+  let frameId: number | null = null
+  let timeoutId: number | null = null
+
+  const completeOne = () => {
+    if (cancelled) return
+    clearTaskReorderNativeSelection()
+    pendingCount -= 1
+    if (pendingCount <= 0) {
+      onComplete?.()
+    }
+  }
+
+  if (typeof window.requestAnimationFrame === 'function') {
+    pendingCount += 1
+    frameId = window.requestAnimationFrame(completeOne)
+  }
+
+  if (typeof window.setTimeout === 'function') {
+    pendingCount += 1
+    timeoutId = window.setTimeout(completeOne, 0)
+  }
+
+  if (pendingCount === 0) {
+    onComplete?.()
+  }
+
+  return () => {
+    cancelled = true
+    if (frameId !== null && typeof window.cancelAnimationFrame === 'function') {
+      window.cancelAnimationFrame(frameId)
+    }
+    if (timeoutId !== null && typeof window.clearTimeout === 'function') {
+      window.clearTimeout(timeoutId)
+    }
+  }
+}
+
+export function createTaskReorderSelectionSuppressionController() {
+  let isActive = false
+  let listenerInstalled = false
+  let pendingClearCancel: (() => void) | null = null
+  let releaseToken = 0
+
+  const handleSelectionChange = () => {
+    if (!isActive) return
+    clearTaskReorderNativeSelection()
+  }
+
+  const cancelPendingClear = () => {
+    pendingClearCancel?.()
+    pendingClearCancel = null
+  }
+
+  const installSelectionChangeGuard = () => {
+    if (listenerInstalled || typeof document === 'undefined') return
+    document.addEventListener('selectionchange', handleSelectionChange, true)
+    listenerInstalled = true
+  }
+
+  const removeSelectionChangeGuard = () => {
+    if (!listenerInstalled || typeof document === 'undefined') return
+    document.removeEventListener('selectionchange', handleSelectionChange, true)
+    listenerInstalled = false
+  }
+
+  const clearAfterBrowserPass = (onComplete?: () => void) => {
+    cancelPendingClear()
+    pendingClearCancel = scheduleTaskReorderNativeSelectionClear(() => {
+      pendingClearCancel = null
+      onComplete?.()
+    })
+  }
+
+  const begin = () => {
+    releaseToken += 1
+    isActive = true
+    setTaskReorderDocumentSelectionSuppressed(true)
+    installSelectionChangeGuard()
+    clearAfterBrowserPass()
+  }
+
+  const endWithoutClearing = () => {
+    releaseToken += 1
+    cancelPendingClear()
+    isActive = false
+    removeSelectionChangeGuard()
+    setTaskReorderDocumentSelectionSuppressed(false)
+  }
+
+  const endImmediately = () => {
+    const shouldClearSelection = isActive || listenerInstalled || pendingClearCancel !== null
+    endWithoutClearing()
+    if (shouldClearSelection) {
+      clearTaskReorderNativeSelection()
+    }
+  }
+
+  const endAfterBrowserPass = () => {
+    if (!isActive) {
+      endWithoutClearing()
+      return
+    }
+    const token = releaseToken + 1
+    releaseToken = token
+    clearAfterBrowserPass(() => {
+      if (token !== releaseToken) return
+      isActive = false
+      removeSelectionChangeGuard()
+      setTaskReorderDocumentSelectionSuppressed(false)
+    })
+  }
+
+  return {
+    begin,
+    clearAfterBrowserPass: () => {
+      if (!isActive) return
+      clearAfterBrowserPass()
+    },
+    endImmediately,
+    endAfterBrowserPass,
+    endWithoutClearing,
+    isActive: () => isActive,
+  }
 }
 
 export function mergeInlineRectsIntoLineRects(rects: TextLineRect[]): TextLineRect[] {
@@ -378,11 +566,47 @@ function getRenderedListKind(listElement: HTMLElement): ReorderListKind | null {
   return 'bullet'
 }
 
+function getInheritedRenderedListKind(listElement: HTMLElement): ReorderListKind | null {
+  const ownKind = getRenderedListKind(listElement)
+  if (ownKind !== 'bullet') return ownKind
+
+  let currentList: HTMLElement | null = listElement
+  while (currentList) {
+    const parentItem: Element | null = currentList.parentElement ? currentList.parentElement.closest('li') : null
+    const parentList: Element | null = parentItem?.parentElement ?? null
+    if (!isRenderedListElement(parentList)) break
+    if (getRenderedListKind(parentList) === 'dash') {
+      return 'dash'
+    }
+    currentList = parentList
+  }
+  return ownKind
+}
+
 function getRenderedListItemKind(listItemElement: HTMLElement): ReorderListKind | null {
   if (listItemElement.matches('li.task-list-item[data-task]')) return 'task'
   const listElement = listItemElement.parentElement
   if (!(listElement instanceof HTMLElement)) return null
-  return getRenderedListKind(listElement)
+  return getInheritedRenderedListKind(listElement)
+}
+
+function isRenderedListElement(element: Element | null): element is HTMLElement {
+  if (!(element instanceof HTMLElement)) return false
+  const tagName = element.tagName.toLowerCase()
+  return tagName === 'ul' || tagName === 'ol'
+}
+
+function getTopReorderListElement(listElement: HTMLElement, root: HTMLElement): HTMLElement {
+  let topList = listElement
+  let current: HTMLElement | null = listElement
+  while (current) {
+    const parentItem: Element | null = current.parentElement ? current.parentElement.closest('li') : null
+    const parentList: Element | null = parentItem?.parentElement ?? null
+    if (!isRenderedListElement(parentList) || !root.contains(parentList)) break
+    topList = parentList
+    current = parentList
+  }
+  return topList
 }
 
 function isInlineFormattedTextTarget(target: Element): boolean {
@@ -413,10 +637,6 @@ function getListTextDragElement(
   return { element: listItemElement, kind }
 }
 
-function getListItemReorderText(element: HTMLElement): string {
-  return normalizeListReorderText(element.querySelector<HTMLElement>('p')?.innerText ?? element.innerText)
-}
-
 function clearTaskReorderClasses(root: HTMLElement) {
   root
     .querySelectorAll<HTMLElement>('.task-reorder-source, .task-reorder-target')
@@ -432,6 +652,69 @@ function getDirectReorderListItems(listElement: HTMLElement, kind: ReorderListKi
       child.tagName.toLowerCase() === 'li' &&
       getRenderedListItemKind(child) === kind,
   )
+}
+
+function isCompatibleReorderListElement(
+  listElement: HTMLElement,
+  clusterElement: HTMLElement,
+  sourceElement: HTMLElement,
+  kind: ReorderListKind,
+): boolean {
+  if (listElement !== clusterElement && !clusterElement.contains(listElement)) return false
+  if (sourceElement.contains(listElement)) return false
+  return getDirectReorderListItems(listElement, kind).length > 0
+}
+
+function getPointerCompatibleListElement(
+  clusterElement: HTMLElement,
+  sourceElement: HTMLElement,
+  kind: ReorderListKind,
+  event: globalThis.MouseEvent,
+): HTMLElement | null {
+  const pointerElement = document.elementFromPoint(event.clientX, event.clientY)
+  if (!pointerElement) return null
+
+  const listItem = pointerElement.closest('li')
+  const listElement: Element | null = listItem?.parentElement ?? null
+  if (
+    isRenderedListElement(listElement) &&
+    isCompatibleReorderListElement(listElement, clusterElement, sourceElement, kind)
+  ) {
+    return listElement
+  }
+
+  const closestList = pointerElement.closest('ul, ol')
+  if (
+    isRenderedListElement(closestList) &&
+    isCompatibleReorderListElement(closestList, clusterElement, sourceElement, kind)
+  ) {
+    return closestList
+  }
+
+  return null
+}
+
+function getNearestCompatibleListElement(
+  clusterElement: HTMLElement,
+  sourceElement: HTMLElement,
+  kind: ReorderListKind,
+  event: globalThis.MouseEvent,
+): HTMLElement | null {
+  const candidateLists = [clusterElement, ...Array.from(clusterElement.querySelectorAll<HTMLElement>('ul, ol'))].filter(
+    (candidate) => isCompatibleReorderListElement(candidate, clusterElement, sourceElement, kind),
+  )
+  if (candidateLists.length === 0) return null
+
+  const getScore = (element: HTMLElement) => {
+    const rect = element.getBoundingClientRect()
+    const verticalDistance =
+      event.clientY < rect.top ? rect.top - event.clientY : event.clientY > rect.bottom ? event.clientY - rect.bottom : 0
+    const horizontalDistance =
+      event.clientX < rect.left ? rect.left - event.clientX : event.clientX > rect.right ? event.clientX - rect.right : 0
+    return verticalDistance * 4 + horizontalDistance
+  }
+
+  return candidateLists.reduce((best, candidate) => (getScore(candidate) < getScore(best) ? candidate : best), candidateLists[0])
 }
 
 function getTaskSlotMarkerY(listItems: HTMLElement[], insertIndex: number): number {
@@ -456,9 +739,10 @@ function getTaskDropTargetFromList(
   kind: ReorderListKind,
   event: globalThis.MouseEvent,
   previousInsertIndex: number | null,
+  isSourceList: boolean,
 ): TaskReorderDropTarget | null {
   const listItems = getDirectReorderListItems(listElement, kind)
-  if (listItems.length < 2 || sourceIndex < 0) return null
+  if (listItems.length < (isSourceList ? 2 : 1) || sourceIndex < 0) return null
 
   const centers = listItems.map((element) => {
     const rect = element.getBoundingClientRect()
@@ -484,6 +768,7 @@ function getTaskDropTargetFromList(
   }
 
   return {
+    listElement,
     element: listItems[Math.min(insertIndex, listItems.length - 1)],
     insertIndex,
     markerY: getTaskSlotMarkerY(listItems, insertIndex),
@@ -542,14 +827,255 @@ function hideTaskReorderMarker(marker: HTMLElement | null) {
   marker.classList.remove('is-visible')
 }
 
-export function installTaskTextReorderBehavior(root: HTMLElement, getEditor: () => Editor | null) {
+function getNodeHitAtDomElement(view: any, element: HTMLElement, typeNames: string[]): ProseMirrorNodeHit | null {
+  const typeNameSet = new Set(typeNames)
+  try {
+    const pos = view.posAtDOM(element, 0)
+    const resolved = view.state.doc.resolve(pos)
+    if (resolved.nodeAfter && typeNameSet.has(resolved.nodeAfter.type?.name)) {
+      return { node: resolved.nodeAfter, pos }
+    }
+
+    for (let depth = resolved.depth; depth > 0; depth -= 1) {
+      const node = resolved.node(depth)
+      if (!node || !typeNameSet.has(node.type?.name)) continue
+      return { node, pos: resolved.before(depth) }
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
+function getListItemHitForElement(view: any, element: HTMLElement): ProseMirrorNodeHit | null {
+  return getNodeHitAtDomElement(view, element, ['listItem'])
+}
+
+function getListHitForElement(view: any, element: HTMLElement): ProseMirrorNodeHit | null {
+  return getNodeHitAtDomElement(view, element, ['bulletList', 'orderedList'])
+}
+
+function getParentListHitForListItemPosition(doc: any, listItemPos: number): ProseMirrorNodeHit | null {
+  try {
+    const resolved = doc.resolve(listItemPos)
+    for (let depth = resolved.depth; depth > 0; depth -= 1) {
+      const node = resolved.node(depth)
+      if (node?.type?.name === 'bulletList' || node?.type?.name === 'orderedList') {
+        return { node, pos: resolved.before(depth) }
+      }
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
+export function captureListItemBranchInEditor(view: any, sourceElement: HTMLElement): CapturedListItemBranch | null {
+  if (!view?.state?.doc) return null
+  const sourceItem = getListItemHitForElement(view, sourceElement)
+  if (!sourceItem?.node || sourceItem.node.type?.name !== 'listItem') return null
+  const sourceList = getParentListHitForListItemPosition(view.state.doc, sourceItem.pos)
+  if (!sourceList) return null
+  return {
+    itemNode: sourceItem.node,
+    itemPos: sourceItem.pos,
+    listNode: sourceList.node,
+    listPos: sourceList.pos,
+  }
+}
+
+function getListInsertPosition(
+  view: any,
+  targetListElement: HTMLElement,
+  targetItems: HTMLElement[],
+  insertIndex: number,
+): number | null {
+  const targetList = getListHitForElement(view, targetListElement)
+  if (!targetList) return null
+
+  const nextItem = targetItems[insertIndex]
+  if (nextItem) {
+    return getListItemHitForElement(view, nextItem)?.pos ?? null
+  }
+
+  return targetList.pos + targetList.node.nodeSize - 1
+}
+
+function findTextSelectionPositionInsideListItem(doc: any, listItemStart: number): number {
+  const listItem = doc.nodeAt(listItemStart)
+  if (!listItem) return Math.max(0, Math.min(doc.content.size, listItemStart))
+
+  let selectionPosition = listItemStart + 1
+  listItem.descendants?.((node: any, position: number) => {
+    if (!node?.isTextblock) return true
+    const contentSize = typeof node.content?.size === 'number' ? node.content.size : 0
+    selectionPosition = listItemStart + 1 + position + 1 + contentSize
+    return false
+  })
+
+  return Math.max(0, Math.min(doc.content.size, selectionPosition))
+}
+
+type ScrollPositionSnapshot = {
+  element: Element
+  top: number
+  left: number
+}
+
+function isScrollableElement(element: Element): boolean {
+  if (typeof HTMLElement === 'undefined' || !(element instanceof HTMLElement)) return false
+  const style = window.getComputedStyle(element)
+  const canScrollY = style.overflowY === 'auto' || style.overflowY === 'scroll'
+  const canScrollX = style.overflowX === 'auto' || style.overflowX === 'scroll'
+  return (canScrollY && element.scrollHeight > element.clientHeight) ||
+    (canScrollX && element.scrollWidth > element.clientWidth)
+}
+
+function captureScrollPositions(element: Element | null | undefined): ScrollPositionSnapshot[] {
+  if (
+    typeof window === 'undefined' ||
+    typeof document === 'undefined' ||
+    typeof Element === 'undefined' ||
+    !(element instanceof Element)
+  ) {
+    return []
+  }
+  const snapshots: ScrollPositionSnapshot[] = []
+  let current: Element | null = element
+  while (current) {
+    if (isScrollableElement(current)) {
+      snapshots.push({
+        element: current,
+        top: current.scrollTop,
+        left: current.scrollLeft,
+      })
+    }
+    current = current.parentElement
+  }
+
+  const documentScroller = document.scrollingElement
+  if (documentScroller) {
+    snapshots.push({
+      element: documentScroller,
+      top: documentScroller.scrollTop,
+      left: documentScroller.scrollLeft,
+    })
+  }
+  return snapshots
+}
+
+function restoreScrollPositions(snapshots: ScrollPositionSnapshot[]) {
+  if (snapshots.length === 0 || typeof window === 'undefined') return
+  const restore = () => {
+    snapshots.forEach(({ element, top, left }) => {
+      element.scrollTop = top
+      element.scrollLeft = left
+    })
+  }
+  restore()
+  window.requestAnimationFrame?.(restore)
+}
+
+export function moveListItemBranchInEditor(
+  view: any,
+  sourceElement: HTMLElement,
+  _sourceListElement: HTMLElement,
+  sourceIndex: number,
+  targetListElement: HTMLElement,
+  targetItems: HTMLElement[],
+  insertIndex: number,
+): boolean {
+  const sourceBranch = captureListItemBranchInEditor(view, sourceElement)
+  if (!sourceBranch) return false
+  return moveCapturedListItemBranchInEditor(
+    view,
+    sourceBranch,
+    sourceIndex,
+    targetListElement,
+    targetItems,
+    insertIndex,
+  )
+}
+
+export function moveCapturedListItemBranchInEditor(
+  view: any,
+  sourceBranch: CapturedListItemBranch,
+  sourceIndex: number,
+  targetListElement: HTMLElement,
+  targetItems: HTMLElement[],
+  insertIndex: number,
+): boolean {
+  if (!view?.state?.doc || !view.dispatch) return false
+  if (sourceIndex < 0 || insertIndex < 0 || insertIndex > targetItems.length) return false
+
+  const sourceItem = view.state.doc.nodeAt(sourceBranch.itemPos)
+  const sourceList = view.state.doc.nodeAt(sourceBranch.listPos)
+  const targetList = getListHitForElement(view, targetListElement)
+  const insertPos = getListInsertPosition(view, targetListElement, targetItems, insertIndex)
+  if (!sourceItem || !sourceList || !targetList || insertPos === null) return false
+  if (sourceItem.type?.name !== 'listItem') return false
+  if (sourceBranch.itemNode && typeof sourceItem.eq === 'function' && !sourceItem.eq(sourceBranch.itemNode)) return false
+  if (sourceList.type?.name !== targetList.node.type?.name) return false
+
+  const adjustedTargetIndex =
+    sourceBranch.listPos === targetList.pos && sourceIndex < insertIndex ? insertIndex - 1 : insertIndex
+  if (sourceBranch.listPos === targetList.pos && adjustedTargetIndex === sourceIndex) return false
+
+  const sourceStart = sourceBranch.itemPos
+  const sourceEnd = sourceStart + sourceItem.nodeSize
+  if (targetList.pos > sourceStart && targetList.pos < sourceEnd) return false
+  if (insertPos > sourceStart && insertPos < sourceEnd) return false
+
+  const deleteWholeSourceList = sourceBranch.listPos !== targetList.pos && sourceList.childCount === 1
+  const deleteFrom = deleteWholeSourceList ? sourceBranch.listPos : sourceStart
+  const deleteTo = deleteWholeSourceList ? sourceBranch.listPos + sourceList.nodeSize : sourceEnd
+
+  let transaction: any
+  let mappedInsertPos: number
+  try {
+    transaction = view.state.tr.delete(deleteFrom, deleteTo)
+    mappedInsertPos = transaction.mapping.map(insertPos)
+    transaction = transaction.insert(mappedInsertPos, sourceItem)
+  } catch {
+    return false
+  }
+  const selectionPosition = findTextSelectionPositionInsideListItem(transaction.doc, mappedInsertPos)
+
+  try {
+    transaction = transaction.setSelection(TextSelection.create(transaction.doc, selectionPosition))
+  } catch {
+    try {
+      transaction = transaction.setSelection(Selection.near(transaction.doc.resolve(selectionPosition), 1))
+    } catch {
+      // The move itself is still valid; leave ProseMirror's mapped selection in place.
+    }
+  }
+
+  const scrollSnapshot = captureScrollPositions(view.dom)
+  view.dispatch(transaction)
+  restoreScrollPositions(scrollSnapshot)
+  return true
+}
+
+type TaskTextReorderBehaviorOptions = {
+  onReorderCommitted?: (editor: Editor) => void
+}
+
+export function installTaskTextReorderBehavior(
+  root: HTMLElement,
+  getEditor: () => Editor | null,
+  options: TaskTextReorderBehaviorOptions = {},
+) {
   type DragState = {
     editor: Editor
     sourceElement: HTMLElement
+    sourceBranch: CapturedListItemBranch
     sourceIndex: number
     listElement: HTMLElement
+    clusterElement: HTMLElement
     listKind: ReorderListKind
     insertIndex: number | null
+    targetListElement: HTMLElement | null
     ghost: HTMLElement | null
     marker: HTMLElement | null
     previewText: string
@@ -557,30 +1083,45 @@ export function installTaskTextReorderBehavior(root: HTMLElement, getEditor: () 
     startY: number
     startedOnTrailingSpace: boolean
     dragging: boolean
+    suppressingSelection: boolean
   }
 
   let dragState: DragState | null = null
   let suppressNextClick = false
+  const selectionSuppression = createTaskReorderSelectionSuppressionController()
 
   const updateDropTarget = (event: globalThis.MouseEvent) => {
     if (!dragState?.dragging) return
     clearTaskReorderClasses(root)
     dragState.sourceElement.classList.add('task-reorder-source')
 
+    const targetListElement =
+      getPointerCompatibleListElement(dragState.clusterElement, dragState.sourceElement, dragState.listKind, event) ??
+      getNearestCompatibleListElement(dragState.clusterElement, dragState.sourceElement, dragState.listKind, event)
+    if (!targetListElement) {
+      dragState.insertIndex = null
+      dragState.targetListElement = null
+      hideTaskReorderMarker(dragState.marker)
+      return
+    }
+
     const nextTarget = getTaskDropTargetFromList(
       dragState.sourceIndex,
-      dragState.listElement,
+      targetListElement,
       dragState.listKind,
       event,
-      dragState.insertIndex,
+      dragState.targetListElement === targetListElement ? dragState.insertIndex : null,
+      targetListElement === dragState.listElement,
     )
     if (!nextTarget) {
       dragState.insertIndex = null
+      dragState.targetListElement = null
       hideTaskReorderMarker(dragState.marker)
       return
     }
 
     dragState.insertIndex = nextTarget.insertIndex
+    dragState.targetListElement = nextTarget.listElement
     nextTarget.element.classList.add('task-reorder-target')
     if (dragState.marker) {
       positionTaskReorderMarker(
@@ -591,7 +1132,8 @@ export function installTaskTextReorderBehavior(root: HTMLElement, getEditor: () 
     }
   }
 
-  const endDrag = () => {
+  const endDrag = (options: { releaseSelectionAfterBrowserPass?: boolean } = {}) => {
+    const shouldClearSelection = Boolean(dragState?.suppressingSelection || dragState?.dragging)
     if (dragState?.ghost) {
       dragState.ghost.remove()
     }
@@ -599,7 +1141,15 @@ export function installTaskTextReorderBehavior(root: HTMLElement, getEditor: () 
       dragState.marker.remove()
     }
     clearTaskReorderClasses(root)
+    root.classList.remove('task-reorder-pending')
     root.classList.remove('task-reorder-active')
+    if (!shouldClearSelection) {
+      selectionSuppression.endWithoutClearing()
+    } else if (options.releaseSelectionAfterBrowserPass) {
+      selectionSuppression.endAfterBrowserPass()
+    } else {
+      selectionSuppression.endImmediately()
+    }
     window.removeEventListener('mousemove', handleMouseMove, true)
     window.removeEventListener('mouseup', handleMouseUp, true)
     window.removeEventListener('blur', handleCancel, true)
@@ -616,13 +1166,25 @@ export function installTaskTextReorderBehavior(root: HTMLElement, getEditor: () 
     if (!dragState) return
 
     const decision = getListReorderPointerDecision(event.clientX - dragState.startX, event.clientY - dragState.startY)
-    if (!dragState.dragging && !decision.shouldStartDrag) return
+    if (!dragState.suppressingSelection && !dragState.dragging && decision.shouldCancelReorder) {
+      endDrag()
+      return
+    }
 
-    if (decision.shouldSuppressSelection || dragState.dragging) {
+    if (decision.shouldSuppressSelection && !dragState.suppressingSelection) {
+      dragState.suppressingSelection = true
+      root.classList.add('task-reorder-pending')
+      selectionSuppression.begin()
+    }
+
+    if (dragState.suppressingSelection || dragState.dragging) {
       event.preventDefault()
       event.stopPropagation()
-      window.getSelection()?.removeAllRanges()
+      event.stopImmediatePropagation()
+      selectionSuppression.clearAfterBrowserPass()
     }
+
+    if (!dragState.dragging && !decision.shouldStartDrag) return
 
     if (!dragState.dragging) {
       dragState.dragging = true
@@ -631,7 +1193,7 @@ export function installTaskTextReorderBehavior(root: HTMLElement, getEditor: () 
       dragState.sourceElement.classList.add('task-reorder-source')
       dragState.ghost = createTaskReorderGhost(root, dragState.previewText)
       dragState.marker = createTaskReorderMarker(root)
-      window.getSelection()?.removeAllRanges()
+      selectionSuppression.clearAfterBrowserPass()
     }
 
     if (dragState.ghost) positionTaskReorderGhost(dragState.ghost, event)
@@ -660,22 +1222,27 @@ export function installTaskTextReorderBehavior(root: HTMLElement, getEditor: () 
 
     event.preventDefault()
     event.stopPropagation()
+    event.stopImmediatePropagation()
     suppressNextClick = true
 
-    const { editor, sourceIndex, insertIndex, listElement, listKind } = dragState
-    const listItems = getDirectReorderListItems(listElement, listKind)
-    endDrag()
-    if (insertIndex !== null) {
-      const nextMarkdown = reorderListMarkdownLines(
-        normalizeMarkdownForPersistence(editor.getMarkdown()),
-        listItems.map(getListItemReorderText),
-        listKind,
+    updateDropTarget(event)
+    const { editor, sourceBranch, sourceIndex, insertIndex, listKind, targetListElement } = dragState
+    const targetListItems = targetListElement ? getDirectReorderListItems(targetListElement, listKind) : []
+    const view = getWysiwygView(editor)
+    endDrag({ releaseSelectionAfterBrowserPass: true })
+    if (insertIndex !== null && targetListElement && view) {
+      const moved = moveCapturedListItemBranchInEditor(
+        view,
+        sourceBranch,
         sourceIndex,
+        targetListElement,
+        targetListItems,
         insertIndex,
       )
-      if (nextMarkdown !== null) {
-        editor.setMarkdown(nextMarkdown, false)
+      if (moved) {
         editor.focus()
+        options.onReorderCommitted?.(editor)
+        return
       }
     }
   }
@@ -693,6 +1260,9 @@ export function installTaskTextReorderBehavior(root: HTMLElement, getEditor: () 
     if (!(listElement instanceof HTMLElement)) return
     const sourceIndex = getDirectReorderListItems(listElement, source.kind).indexOf(source.element)
     if (sourceIndex < 0) return
+    const sourceBranch = captureListItemBranchInEditor(view, source.element)
+    if (!sourceBranch) return
+    const clusterElement = getTopReorderListElement(listElement, root)
 
     const startedOnTrailingSpace = isListItemTrailingEmptySpaceClick(source.element, event)
     if (startedOnTrailingSpace) {
@@ -703,10 +1273,13 @@ export function installTaskTextReorderBehavior(root: HTMLElement, getEditor: () 
     dragState = {
       editor,
       sourceElement: source.element,
+      sourceBranch,
       sourceIndex,
       listElement,
+      clusterElement,
       listKind: source.kind,
       insertIndex: null,
+      targetListElement: null,
       ghost: null,
       marker: null,
       previewText: getTaskDragPreviewText(source.element, source.kind),
@@ -714,6 +1287,7 @@ export function installTaskTextReorderBehavior(root: HTMLElement, getEditor: () 
       startY: event.clientY,
       startedOnTrailingSpace,
       dragging: false,
+      suppressingSelection: false,
     }
 
     window.addEventListener('mousemove', handleMouseMove, true)
@@ -724,16 +1298,18 @@ export function installTaskTextReorderBehavior(root: HTMLElement, getEditor: () 
   }
 
   const handleSelectStart = (event: Event) => {
-    if (!dragState?.dragging) return
+    if (!shouldSuppressListReorderSelectStart(Boolean(dragState?.suppressingSelection || dragState?.dragging))) return
     event.preventDefault()
     event.stopPropagation()
-    window.getSelection()?.removeAllRanges()
+    event.stopImmediatePropagation()
+    selectionSuppression.clearAfterBrowserPass()
   }
 
   const handleNativeDragStart = (event: Event) => {
-    if (!dragState) return
+    if (!dragState?.suppressingSelection && !dragState?.dragging) return
     event.preventDefault()
     event.stopPropagation()
+    selectionSuppression.clearAfterBrowserPass()
   }
 
   const handleClick = (event: globalThis.MouseEvent) => {

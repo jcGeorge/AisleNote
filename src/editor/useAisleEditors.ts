@@ -26,6 +26,7 @@ import {
 } from '../markdown/markdown-utils'
 import type { NoteAisle, NoteLocation, PendingContent, ToastTone, ViewMode } from '../types/app'
 import type { NoteContextReferencePayload } from '../notes/note-references'
+import type { PendingCursorRestore } from './useNoteCursorPersistence'
 
 type ActivateAisleEditorOptions = {
   flushPrevious?: boolean
@@ -47,6 +48,7 @@ type UseAisleEditorsOptions = {
   normalizingContentRef: MutableRefObject<boolean>
   normalizingAisleIdsRef: MutableRefObject<Set<string>>
   pendingContentRef: MutableRefObject<PendingContent | null>
+  pendingCursorRestoreRef: MutableRefObject<PendingCursorRestore | null>
   activeSpaceIdRef: MutableRefObject<string>
   activeTabIdRef: MutableRefObject<string>
   activeSubTabIdRef: MutableRefObject<string | null>
@@ -91,6 +93,7 @@ export function useAisleEditors({
   normalizingContentRef,
   normalizingAisleIdsRef,
   pendingContentRef,
+  pendingCursorRestoreRef,
   activeSpaceIdRef,
   activeTabIdRef,
   activeSubTabIdRef,
@@ -320,7 +323,21 @@ export function useAisleEditors({
         () => editor,
         trackCompletedTaskQuickDelete,
       )
-      const cleanupTaskTextReorderBehavior = installTaskTextReorderBehavior(root, () => editor)
+      const cleanupTaskTextReorderBehavior = installTaskTextReorderBehavior(root, () => editor, {
+        onReorderCommitted: (committedEditor) => {
+          pendingCursorRestoreRef.current = null
+          const markdown = getNormalizedEditorMarkdown(committedEditor)
+          lastEditorMarkdownRef.current = markdown
+          lastEditorMarkdownByAisleRef.current.set(aisle.id, markdown)
+          scheduleContentCommit(
+            markdown,
+            activeSpaceIdRef.current,
+            activeTabIdRef.current,
+            activeSubTabIdRef.current,
+            aisle.id,
+          )
+        },
+      })
 
       aisleEditorMetaRef.current.set(editorKey, {
         editor,

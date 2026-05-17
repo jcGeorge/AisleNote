@@ -1,6 +1,7 @@
 import type { Editor } from '@toast-ui/editor'
 
 export const INDENT_TOKEN = '\u2060\u2003\u2003'
+export const EDITOR_BLANK_LINE_PLACEHOLDER = '\u200b'
 
 const INDENT_PREFIX_PATTERN = /^(?:\u2060\u2003\u2003|\u2003\u2003|\u00A0{1,4}| {1,4}|\t)/
 const EXPORT_TAB_SPACES = '    '
@@ -56,11 +57,106 @@ export function normalizeMarkdownForPersistence(markdown: string): string {
   return repaired.replace(/(?<!\u2060)\u2003\u2003/g, INDENT_TOKEN)
 }
 
-export function convertInternalTabsForExport(markdown: string): string {
+function stripStandaloneBlankLinePlaceholders(markdown: string): string {
   return String(markdown ?? '')
+    .split('\n')
+    .map((line) => {
+      const withoutPlaceholder = line.replaceAll(EDITOR_BLANK_LINE_PLACEHOLDER, '')
+      return withoutPlaceholder.trim().length === 0 && line.includes(EDITOR_BLANK_LINE_PLACEHOLDER) ? '' : line
+    })
+    .join('\n')
+}
+
+export function convertInternalTabsForExport(markdown: string): string {
+  return stripStandaloneBlankLinePlaceholders(markdown)
     .replace(/\u2060\u2003\u2003/g, EXPORT_TAB_SPACES)
     .replace(/\u2003\u2003/g, EXPORT_TAB_SPACES)
     .replace(/\u00A0/g, ' ')
+}
+
+type MarkdownBlockChunk = {
+  lines: string[]
+}
+
+function isFenceBoundary(line: string, activeFence: string | null): string | null {
+  const trimmed = line.trim()
+  const match = trimmed.match(/^(`{3,}|~{3,})/)
+  if (!match) return activeFence
+  const fenceMarker = match[1][0]
+  if (!activeFence) return fenceMarker
+  return activeFence === fenceMarker ? null : activeFence
+}
+
+function splitMarkdownTopLevelChunks(markdown: string): MarkdownBlockChunk[] {
+  const lines = String(markdown ?? '').replace(/\r\n/g, '\n').split('\n')
+  const chunks: MarkdownBlockChunk[] = []
+  let current: string[] = []
+  let activeFence: string | null = null
+
+  const pushCurrent = () => {
+    if (current.length === 0) return
+    chunks.push({ lines: current })
+    current = []
+  }
+
+  lines.forEach((line) => {
+    if (!activeFence && line.trim().length === 0) {
+      pushCurrent()
+      return
+    }
+
+    current.push(line)
+    activeFence = isFenceBoundary(line, activeFence)
+  })
+  pushCurrent()
+
+  return chunks
+}
+
+function isBlankParagraphNode(node: any): boolean {
+  if (node?.type?.name !== 'paragraph') return false
+  const text = String(node.textContent ?? '').replaceAll(EDITOR_BLANK_LINE_PLACEHOLDER, '').trim()
+  if (text.length > 0) return false
+  if (typeof node.childCount !== 'number' || typeof node.child !== 'function') return true
+  for (let index = 0; index < node.childCount; index += 1) {
+    const child = node.child(index)
+    if (!child?.isText) return false
+    const childText = String(child.text ?? child.textContent ?? '')
+      .replaceAll(EDITOR_BLANK_LINE_PLACEHOLDER, '')
+      .trim()
+    if (childText.length > 0) return false
+  }
+  return true
+}
+
+export function preserveBlankParagraphsFromWysiwyg(editor: Editor | null, markdown: string): string {
+  const doc = (editor as any)?.wwEditor?.view?.state?.doc
+  if (!doc || typeof doc.forEach !== 'function') return markdown
+
+  const blockKinds: Array<'blank' | 'content'> = []
+  doc.forEach((node: any) => {
+    blockKinds.push(isBlankParagraphNode(node) ? 'blank' : 'content')
+  })
+
+  if (!blockKinds.includes('blank')) return markdown
+
+  const markdownChunks = splitMarkdownTopLevelChunks(markdown)
+  const contentBlockCount = blockKinds.filter((kind) => kind === 'content').length
+  if (contentBlockCount !== markdownChunks.length) {
+    return contentBlockCount === 0
+      ? blockKinds.map(() => EDITOR_BLANK_LINE_PLACEHOLDER).join('\n\n')
+      : markdown
+  }
+
+  let nextChunkIndex = 0
+  return blockKinds
+    .map((kind) => {
+      if (kind === 'blank') return EDITOR_BLANK_LINE_PLACEHOLDER
+      const chunk = markdownChunks[nextChunkIndex]
+      nextChunkIndex += 1
+      return chunk?.lines.join('\n') ?? ''
+    })
+    .join('\n\n')
 }
 
 export function mergeLeadingIndentsFromWysiwyg(editor: Editor | null, markdown: string): string {

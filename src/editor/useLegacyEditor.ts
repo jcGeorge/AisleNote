@@ -173,7 +173,9 @@ export function useLegacyEditor({
       () => editorRef.current,
       trackCompletedTaskQuickDelete,
     )
-    const cleanupTaskTextReorderBehavior = installTaskTextReorderBehavior(editorMountRef.current, () => editorRef.current)
+    const cleanupTaskTextReorderBehavior = installTaskTextReorderBehavior(editorMountRef.current, () => editorRef.current, {
+      onReorderCommitted: () => commitCurrentEditorContent(),
+    })
 
     return () => {
       cleanupTaskTextReorderBehavior()

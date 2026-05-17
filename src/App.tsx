@@ -52,6 +52,7 @@ import {
   mergeLeadingIndentsFromWysiwyg,
   normalizeEmptyHeadingMarkersFromWysiwyg,
   normalizeMarkdownForPersistence,
+  preserveBlankParagraphsFromWysiwyg,
 } from './markdown/markdown-utils'
 import { useNavigationHistory } from './navigation/useNavigationHistory'
 import { useAppNavigationActions } from './navigation/useAppNavigationActions'
@@ -467,7 +468,10 @@ function App() {
   const getNormalizedEditorMarkdown = (editor: Editor) =>
     normalizeEmptyHeadingMarkersFromWysiwyg(
       editor,
-      normalizeMarkdownForPersistence(mergeLeadingIndentsFromWysiwyg(editor, editor.getMarkdown())),
+      preserveBlankParagraphsFromWysiwyg(
+        editor,
+        normalizeMarkdownForPersistence(mergeLeadingIndentsFromWysiwyg(editor, editor.getMarkdown())),
+      ),
     )
 
   const cursorPersistence = useNoteCursorPersistence({
@@ -881,6 +885,7 @@ function App() {
     normalizingContentRef,
     normalizingAisleIdsRef,
     pendingContentRef,
+    pendingCursorRestoreRef,
     activeSpaceIdRef,
     activeTabIdRef,
     activeSubTabIdRef,

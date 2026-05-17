@@ -40,6 +40,7 @@ const DOMAINS_DIR = 'domains'
 const STORAGE_RECOVERY_DIR = 'storage-recovery'
 const IMAGE_METADATA_FRAGMENT_PREFIX = '#tabs-image='
 const INTERNAL_INDENT_TOKEN = '\u2060\u2003\u2003'
+const EDITOR_BLANK_LINE_PLACEHOLDER = '\u200b'
 const EXPORT_TAB_SPACES = '    '
 
 function splitImageMetadataFromUrl(url) {
@@ -80,6 +81,12 @@ function buildImageDataUrl(bytes, sourceFilePath) {
 
 function convertInternalTabsForExport(markdown) {
   return String(markdown ?? '')
+    .split('\n')
+    .map((line) => {
+      const withoutPlaceholder = line.replaceAll(EDITOR_BLANK_LINE_PLACEHOLDER, '')
+      return withoutPlaceholder.trim().length === 0 && line.includes(EDITOR_BLANK_LINE_PLACEHOLDER) ? '' : line
+    })
+    .join('\n')
     .replaceAll(INTERNAL_INDENT_TOKEN, EXPORT_TAB_SPACES)
     .replaceAll('\u2003\u2003', EXPORT_TAB_SPACES)
     .replaceAll('\u00A0', ' ')

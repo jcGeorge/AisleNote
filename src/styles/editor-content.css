@@ -135,6 +135,41 @@
   border-radius: 1px !important;
 }
 
+.toastui-editor-contents ul ul > li:not(.task-list-item)::before,
+.toastui-editor .ProseMirror ul ul > li:not(.task-list-item)::before {
+  width: 0.48em !important;
+  height: 0.48em !important;
+  margin-top: 0.52em !important;
+  margin-left: -17px !important;
+  border: 1.5px solid currentColor !important;
+  border-radius: 50% !important;
+  background-color: transparent !important;
+  box-sizing: border-box !important;
+}
+
+.toastui-editor-contents ul ul.tabs-dash-list > li:not(.task-list-item)::before,
+.toastui-editor-contents ul ul[data-tabs-list-marker='dash'] > li:not(.task-list-item)::before,
+.toastui-editor-contents ul.tabs-dash-list ul > li:not(.task-list-item)::before,
+.toastui-editor-contents ul[data-tabs-list-marker='dash'] ul > li:not(.task-list-item)::before,
+.toastui-editor .ProseMirror ul ul.tabs-dash-list > li:not(.task-list-item)::before,
+.toastui-editor .ProseMirror ul ul[data-tabs-list-marker='dash'] > li:not(.task-list-item)::before,
+.toastui-editor .ProseMirror ul.tabs-dash-list ul > li:not(.task-list-item)::before,
+.toastui-editor .ProseMirror ul[data-tabs-list-marker='dash'] ul > li:not(.task-list-item)::before {
+  width: 0.65em !important;
+  height: 2px !important;
+  margin-top: 0.72em !important;
+  margin-left: -18px !important;
+  border: 0 !important;
+  border-radius: 1px !important;
+  background-color: currentColor !important;
+}
+
+.toastui-editor-contents ol ol > li::before,
+.toastui-editor .ProseMirror ol ol > li::before {
+  content: counter(li, lower-alpha) '.' !important;
+  direction: ltr !important;
+}
+
 .toastui-editor-contents p.tabs-annotation-line,
 .toastui-editor .ProseMirror p.tabs-annotation-line {
   position: relative !important;

@@ -25,6 +25,7 @@ import {
   CODE_BLOCK_INDENT_TEXT,
   getCodeBlockOutdentRemoveLength,
 } from './prosemirror-utils'
+import { applyStructuralListIndent } from './list-marker-commands'
 import {
   getIndentPrefixLength,
   getTrailingIndentPrefixLength,
@@ -281,6 +282,16 @@ export function useMultilineEditing({
     const selectedText = state.doc.textBetween(from, to, '\n')
     const selectionFrom = Math.min(from, to)
     const selectionTo = Math.max(from, to)
+
+    if (applyStructuralListIndent(currentEditor, outdent)) {
+      const markdownAfterListIndent = normalizeMarkdownForPersistence(currentEditor.getMarkdown())
+      commitMarkdown(markdownAfterListIndent)
+      window.requestAnimationFrame(() => {
+        currentEditor.focus()
+      })
+      return true
+    }
+
     const touchedLineRanges = getEditorTextLineRanges(view).filter((range) =>
       isCollapsedSelection
         ? selectionFrom >= range.start && selectionFrom <= range.end + 1

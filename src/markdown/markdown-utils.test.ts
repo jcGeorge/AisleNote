@@ -1,0 +1,111 @@
+import { describe, expect, it } from 'vitest'
+import type { Editor } from '@toast-ui/editor'
+import {
+  convertInternalTabsForExport,
+  EDITOR_BLANK_LINE_PLACEHOLDER,
+  preserveBlankParagraphsFromWysiwyg,
+} from './markdown-utils'
+
+type FakeNode = {
+  type: { name: string }
+  textContent?: string
+  childCount?: number
+  child?: (index: number) => FakeNode | null
+  isText?: boolean
+  text?: string
+}
+
+function textNode(text: string): FakeNode {
+  return {
+    type: { name: 'text' },
+    isText: true,
+    text,
+    textContent: text,
+  }
+}
+
+function block(typeName: string, textContent = ''): FakeNode {
+  const children = textContent ? [textNode(textContent)] : []
+  return {
+    type: { name: typeName },
+    textContent,
+    childCount: children.length,
+    child: (index) => children[index] ?? null,
+  }
+}
+
+function emptyParagraph(): FakeNode {
+  return block('paragraph')
+}
+
+function editorForBlocks(blocks: FakeNode[]): Editor {
+  return {
+    wwEditor: {
+      view: {
+        state: {
+          doc: {
+            forEach: (visitor: (node: FakeNode) => void) => {
+              blocks.forEach(visitor)
+            },
+          },
+        },
+      },
+    },
+  } as unknown as Editor
+}
+
+describe('markdown WYSIWYG blank line preservation', () => {
+  it('stores an intentional empty paragraph between two paragraphs', () => {
+    const markdown = preserveBlankParagraphsFromWysiwyg(
+      editorForBlocks([
+        block('paragraph', 'one'),
+        emptyParagraph(),
+        block('paragraph', 'two'),
+      ]),
+      'one\n\ntwo',
+    )
+
+    expect(markdown).toBe(`one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`)
+  })
+
+  it('stores adjacent empty paragraphs as separate placeholder chunks', () => {
+    const markdown = preserveBlankParagraphsFromWysiwyg(
+      editorForBlocks([
+        block('paragraph', 'one'),
+        emptyParagraph(),
+        emptyParagraph(),
+        block('paragraph', 'two'),
+      ]),
+      'one\n\ntwo',
+    )
+
+    expect(markdown).toBe(`one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`)
+  })
+
+  it('preserves empty paragraphs around headings and lists', () => {
+    const markdown = preserveBlankParagraphsFromWysiwyg(
+      editorForBlocks([
+        emptyParagraph(),
+        block('heading', 'Head'),
+        emptyParagraph(),
+        block('bulletList', 'one'),
+        emptyParagraph(),
+      ]),
+      '## Head\n\n* one',
+    )
+
+    expect(markdown).toBe(`${EDITOR_BLANK_LINE_PLACEHOLDER}\n\n## Head\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\n* one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}`)
+  })
+
+  it('does not rewrite blank lines inside fenced code blocks', () => {
+    const source = '```\none\n\ntwo\n```'
+
+    expect(
+      preserveBlankParagraphsFromWysiwyg(editorForBlocks([block('codeBlock', 'one\n\ntwo')]), source),
+    ).toBe(source)
+  })
+
+  it('strips standalone blank-line placeholders from export markdown', () => {
+    expect(convertInternalTabsForExport(`one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`)).toBe('one\n\n\n\ntwo')
+  })
+})
