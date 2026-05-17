@@ -1,9 +1,26 @@
 import { describe, expect, it } from 'vitest'
 import { parseSavedState } from '../state/app-state'
 import { buildHybridFileMapFromSerializedState, readSerializedStateFromHybridFileMap } from './browser-hybrid-state'
+import { STORAGE_PATH_SEGMENT_MAX_LENGTH } from './storage-path-segments.js'
 
 function getRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
+}
+
+function getVisibleLength(value: string) {
+  const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+  return Array.from(segmenter.segment(value)).length
+}
+
+function expectPathSegmentsWithinLimit(pathValue: string) {
+  for (const segment of pathValue.split('/').filter(Boolean)) {
+    expect(getVisibleLength(segment)).toBeLessThanOrEqual(STORAGE_PATH_SEGMENT_MAX_LENGTH)
+  }
+}
+
+function getTextFileJson(fileMap: ReturnType<typeof buildHybridFileMapFromSerializedState>, path: string) {
+  const entry = fileMap.get(path)
+  return entry?.kind === 'text' ? (JSON.parse(entry.text) as Record<string, unknown>) : {}
 }
 
 describe('browser hybrid storage', () => {
@@ -129,6 +146,110 @@ describe('browser hybrid storage', () => {
       },
       updatedAt: 100,
     })
+  })
+
+  it('caps generated v2 path segments without truncating app titles', () => {
+    const longTitle = 'Very Long Cross Platform Folder Name With Emoji 👨‍👩‍👧‍👦 And Symbols <>:"/\\|?* '.repeat(4).trim()
+    const state = parseSavedState(
+      JSON.stringify({
+        theme: 'dawn',
+        activeDomainId: 'domain-long',
+        domains: [
+          {
+            id: 'domain-long',
+            name: longTitle,
+            activeSpaceId: 'space-long',
+            spaces: [
+              {
+                id: 'space-long',
+                name: longTitle,
+                settings: { autoRemoveDeletedDays: 7 },
+                data: {
+                  activeTabId: 'tab-long',
+                  tabs: [
+                    {
+                      id: 'tab-long',
+                      title: longTitle,
+                      noteBodyId: 'body-tab-long',
+                      homeContent: 'home',
+                      activeSubTabId: 'sub-long',
+                      subTabs: [{ id: 'sub-long', title: longTitle, noteBodyId: 'body-sub-long', content: 'sub' }],
+                    },
+                  ],
+                  deletedTabs: [
+                    {
+                      id: 'deleted-tab-entry-long',
+                      deletedAt: 1,
+                      tab: {
+                        id: 'deleted-tab-long',
+                        title: longTitle,
+                        noteBodyId: 'body-deleted-tab',
+                        homeContent: 'deleted tab',
+                        activeSubTabId: null,
+                        subTabs: [
+                          { id: 'deleted-sub-long', title: longTitle, noteBodyId: 'body-deleted-sub', content: 'deleted sub' },
+                        ],
+                      },
+                    },
+                  ],
+                  deletedSubTabs: [
+                    {
+                      id: 'deleted-sub-entry-long',
+                      parentTabId: 'tab-long',
+                      parentTabTitle: longTitle,
+                      deletedAt: 2,
+                      subTab: {
+                        id: 'deleted-loose-sub-long',
+                        title: longTitle,
+                        noteBodyId: 'body-deleted-loose-sub',
+                        content: 'deleted loose sub',
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+        noteBodies: [
+          {
+            id: 'body-tab-long',
+            aisles: [
+              { id: 'aisle-home-long', markdown: 'home' },
+              { id: 'aisle-second-long', markdown: 'second aisle' },
+            ],
+          },
+          { id: 'body-sub-long', aisles: [{ id: 'aisle-sub-long', markdown: 'sub' }] },
+          { id: 'body-deleted-tab', aisles: [{ id: 'aisle-deleted-tab', markdown: 'deleted tab' }] },
+          { id: 'body-deleted-sub', aisles: [{ id: 'aisle-deleted-sub', markdown: 'deleted sub' }] },
+          { id: 'body-deleted-loose-sub', aisles: [{ id: 'aisle-deleted-loose-sub', markdown: 'deleted loose sub' }] },
+          { id: 'body-orphan-long', aisles: [{ id: 'aisle-orphan-long', markdown: 'orphan' }] },
+        ],
+      }),
+    )
+
+    const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
+    const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
+    const domainEntry = getRecord(Array.isArray(rootManifest.domains) ? rootManifest.domains[0] : null)
+    const domainManifest = getTextFileJson(fileMap, `notes-data/domains/${String(domainEntry.path)}/manifest.json`)
+    const spaceEntry = getRecord(Array.isArray(domainManifest.spaces) ? domainManifest.spaces[0] : null)
+    const spaceManifest = getTextFileJson(
+      fileMap,
+      `notes-data/domains/${String(domainEntry.path)}/${String(spaceEntry.path)}/manifest.json`,
+    )
+    const firstTab = getRecord(Array.isArray(spaceManifest.tabs) ? spaceManifest.tabs[0] : null)
+    const firstSubTab = getRecord(Array.isArray(firstTab.subTabs) ? firstTab.subTabs[0] : null)
+
+    Array.from(fileMap.keys()).forEach(expectPathSegmentsWithinLimit)
+    expect(domainEntry.title).toBe(longTitle)
+    expect(domainManifest.title).toBe(longTitle)
+    expect(spaceManifest.title).toBe(longTitle)
+    expect(firstTab.title).toBe(longTitle)
+    expect(firstSubTab.title).toBe(longTitle)
+    expect(domainEntry.path).toEqual(expect.stringMatching(/--[a-f0-9]{6}$/))
+    expect(spaceEntry.path).toEqual(expect.stringMatching(/--[a-f0-9]{6}$/))
+    expect(firstTab.path).toEqual(expect.stringMatching(/--[a-f0-9]{6}$/))
+    expect(firstSubTab.path).toEqual(expect.stringMatching(/--[a-f0-9]{6}$/))
   })
 
   it('does not read v1 topic/note-body file maps', () => {

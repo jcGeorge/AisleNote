@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { loadAppStateResult, saveAppState } from './app-state-storage.mjs'
+import { STORAGE_PATH_SEGMENT_MAX_LENGTH } from '../src/storage/storage-path-segments.js'
 
 function createTempUserDataPath() {
   return mkdtempSync(path.join(os.tmpdir(), 'tabs-user-data-'))
@@ -82,6 +83,17 @@ function serializedAppState() {
 
 function readJson(filePath) {
   return JSON.parse(readFileSync(filePath, 'utf8'))
+}
+
+function getVisibleLength(value) {
+  const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+  return Array.from(segmenter.segment(value)).length
+}
+
+function expectRelativePathWithinSegmentLimit(relativePath) {
+  for (const segment of relativePath.split('/').filter(Boolean)) {
+    expect(getVisibleLength(segment)).toBeLessThanOrEqual(STORAGE_PATH_SEGMENT_MAX_LENGTH)
+  }
 }
 
 describe('Electron app state storage load result', () => {
@@ -168,6 +180,87 @@ describe('Electron app state storage load result', () => {
       expect(tab.subTabs[0].path).toMatch(new RegExp(`^${tab.path}/Sub Tab--[a-f0-9]{6}$`))
       expect(tab.subTabs[0].file).toBe(`${tab.subTabs[0].path}/home.md`)
       expect(readFileSync(path.join(spaceRoot, tab.subTabs[0].file), 'utf8')).toBe('sub body')
+    }))
+
+  it('caps generated v2 path segments while preserving app titles and ids', () =>
+    withTempUserDataPath((userDataPath) => {
+      const longTitle = 'Very Long Cross Platform Folder Name With Emoji 👨‍👩‍👧‍👦 And Symbols <>:"/\\|?* '.repeat(4).trim()
+      const state = JSON.parse(serializedAppState())
+      state.domains[0].name = longTitle
+      state.domains[0].spaces[0].name = longTitle
+      state.domains[0].spaces[0].data.tabs[0].title = longTitle
+      state.domains[0].spaces[0].data.tabs[0].subTabs = [
+        { id: 'sub-long', title: longTitle, noteBodyId: 'body-sub-long', content: 'sub fallback' },
+      ]
+      state.domains[0].spaces[0].data.deletedTabs = [
+        {
+          id: 'deleted-tab-entry-long',
+          deletedAt: 1,
+          tab: {
+            id: 'deleted-tab-long',
+            title: longTitle,
+            noteBodyId: 'body-deleted-tab',
+            homeContent: 'deleted tab',
+            activeSubTabId: null,
+            subTabs: [{ id: 'deleted-sub-long', title: longTitle, noteBodyId: 'body-deleted-sub', content: 'deleted sub' }],
+          },
+        },
+      ]
+      state.domains[0].spaces[0].data.deletedSubTabs = [
+        {
+          id: 'deleted-sub-entry-long',
+          parentTabId: 'tab-1',
+          parentTabTitle: longTitle,
+          deletedAt: 2,
+          subTab: { id: 'deleted-loose-sub-long', title: longTitle, noteBodyId: 'body-deleted-loose-sub', content: 'deleted loose sub' },
+        },
+      ]
+      state.noteBodies[0].aisles.push({ id: 'aisle-long', markdown: 'second aisle' })
+      state.noteBodies.push(
+        { id: 'body-sub-long', aisles: [{ id: 'aisle-sub-long', markdown: 'sub body' }] },
+        { id: 'body-deleted-tab', aisles: [{ id: 'aisle-deleted-tab', markdown: 'deleted tab' }] },
+        { id: 'body-deleted-sub', aisles: [{ id: 'aisle-deleted-sub', markdown: 'deleted sub' }] },
+        { id: 'body-deleted-loose-sub', aisles: [{ id: 'aisle-deleted-loose-sub', markdown: 'deleted loose sub' }] },
+        { id: 'body-orphan-long', aisles: [{ id: 'aisle-orphan-long', markdown: 'orphan' }] },
+      )
+
+      saveAppState(userDataPath, JSON.stringify(state))
+
+      const root = path.join(userDataPath, 'notes-data')
+      const rootManifest = readJson(path.join(root, 'manifest.json'))
+      const domainEntry = rootManifest.domains[0]
+      const domainManifest = readJson(path.join(root, 'domains', domainEntry.path, 'manifest.json'))
+      const spaceEntry = domainManifest.spaces[0]
+      const spaceRoot = path.join(root, 'domains', domainEntry.path, spaceEntry.path)
+      const spaceManifest = readJson(path.join(spaceRoot, 'manifest.json'))
+      const trashManifest = readJson(path.join(spaceRoot, 'trash', 'manifest.json'))
+      const tab = spaceManifest.tabs[0]
+      const bodyRecord = rootManifest.noteBodies.find((body) => body.id === 'body-1')
+      const orphanRecord = rootManifest.noteBodies.find((body) => body.id === 'body-orphan-long')
+      const generatedPaths = [
+        `domains/${domainEntry.path}`,
+        `domains/${domainEntry.path}/${spaceEntry.path}`,
+        `domains/${domainEntry.path}/${spaceEntry.path}/${tab.path}`,
+        `domains/${domainEntry.path}/${spaceEntry.path}/${tab.subTabs[0].path}`,
+        bodyRecord.aisles[1].file,
+        orphanRecord.aisles[0].file,
+        `domains/${domainEntry.path}/${spaceEntry.path}/trash/${spaceManifest.trashManifestFile}`,
+        `domains/${domainEntry.path}/${spaceEntry.path}/trash/${trashManifest.items[0].path}`,
+        `domains/${domainEntry.path}/${spaceEntry.path}/trash/${trashManifest.items[0].subTabs[0].path}`,
+        `domains/${domainEntry.path}/${spaceEntry.path}/trash/${trashManifest.items[1].path}`,
+      ]
+
+      expect(domainEntry.title).toBe(longTitle)
+      expect(domainManifest.title).toBe(longTitle)
+      expect(spaceManifest.title).toBe(longTitle)
+      expect(tab.title).toBe(longTitle)
+      expect(tab.subTabs[0].title).toBe(longTitle)
+      expect(domainEntry.path).toMatch(/--[a-f0-9]{6}$/)
+      expect(spaceEntry.path).toMatch(/--[a-f0-9]{6}$/)
+      expect(tab.path).toMatch(/--[a-f0-9]{6}$/)
+      expect(path.posix.basename(tab.subTabs[0].path)).toMatch(/--[a-f0-9]{6}$/)
+      expect(path.posix.basename(bodyRecord.aisles[1].file)).toMatch(/--[a-f0-9]{6}\.md$/)
+      generatedPaths.forEach(expectRelativePathWithinSegmentLimit)
     }))
 
   it('rejects an existing v1 profile instead of migrating it', () =>

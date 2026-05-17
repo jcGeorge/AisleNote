@@ -31,6 +31,7 @@ import {
   isRecord,
   normalizeImageExtension,
 } from '../src/storage/hybrid-storage-core.js'
+import { buildStoragePathFileName, createStoragePathAllocator } from '../src/storage/storage-path-segments.js'
 import { migrateStorageRootManifest } from './storage-migrations.mjs'
 
 const LEGACY_APP_STATE_RELATIVE_PATH = path.join('data', 'notes', 'index.json')
@@ -343,36 +344,6 @@ function readMarkdownFile(baseDirectory, relativeFile) {
   return inlineMarkdownImages(markdown, absolutePath)
 }
 
-function sanitizePathSegment(value, fallback) {
-  const normalized = String(value ?? '')
-    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .replace(/^\.+|\.+$/g, '')
-    .trim()
-  return normalized || fallback
-}
-
-function shortStableId(id) {
-  const source = String(id ?? '')
-  if (!source) return createHash('sha1').update('tabs').digest('hex').slice(0, 6)
-  return createHash('sha1').update(source).digest('hex').slice(0, 6)
-}
-
-function createPathAllocator() {
-  const used = new Set()
-  return (title, id, fallback) => {
-    const base = `${sanitizePathSegment(title, fallback)}--${shortStableId(id)}`
-    let candidate = base
-    let index = 2
-    while (used.has(candidate)) {
-      candidate = `${base}-${index}`
-      index += 1
-    }
-    used.add(candidate)
-    return candidate
-  }
-}
-
 function hasCloudConflictName(name) {
   return (
     /^notes-data(?: \d+)?\.bak$/i.test(name) ||
@@ -514,7 +485,7 @@ function writeNoteBodyAtPath({
     const file =
       index === 0
         ? homeFile
-        : posixPath.join(noteRootRelative, 'aisles', `${sanitizePathSegment(`Aisle ${index + 1}`, 'Aisle')}--${shortStableId(aisleId)}.md`)
+        : posixPath.join(noteRootRelative, 'aisles', buildStoragePathFileName(`Aisle ${index + 1}`, aisleId, 'Aisle', '.md'))
     const markdown = typeof aisle?.markdown === 'string' ? aisle.markdown : index === 0 ? fallbackMarkdown : ''
     setStorageTextFile(fileMap, file, externalizeMarkdownImages(markdown, file, assetBank))
     aisleRecords.push({ id: aisleId, file })
@@ -581,7 +552,7 @@ function buildDomainManifestV2(domain, spaceEntries) {
 function buildSpaceFilesV2({ fileMap, spaceRoot, space, noteBodyMap, noteBodyRecords, assetBank }) {
   const posixPath = path.posix
   const tabs = ensureArray(space?.data?.tabs)
-  const tabPathForTitle = createPathAllocator()
+  const tabPathForTitle = createStoragePathAllocator()
   const tabManifest = []
 
   for (const tab of tabs) {
@@ -600,7 +571,7 @@ function buildSpaceFilesV2({ fileMap, spaceRoot, space, noteBodyMap, noteBodyRec
       assetBank,
     })
 
-    const subTabPathForTitle = createPathAllocator()
+    const subTabPathForTitle = createStoragePathAllocator()
     const subTabs = ensureArray(tab.subTabs).map((subTab) => {
       const subTabId = typeof subTab?.id === 'string' ? subTab.id : ''
       const subTabSegment = subTabPathForTitle(typeof subTab?.title === 'string' ? subTab.title : 'tab', subTabId, 'tab')
@@ -639,7 +610,7 @@ function buildSpaceFilesV2({ fileMap, spaceRoot, space, noteBodyMap, noteBodyRec
   const trashItems = []
   const deletedTabs = ensureArray(space?.data?.deletedTabs)
   const deletedSubTabs = ensureArray(space?.data?.deletedSubTabs)
-  const trashPathForTitle = createPathAllocator()
+  const trashPathForTitle = createStoragePathAllocator()
 
   for (const entry of deletedTabs) {
     const deletedTab = entry?.tab ?? {}
@@ -658,7 +629,7 @@ function buildSpaceFilesV2({ fileMap, spaceRoot, space, noteBodyMap, noteBodyRec
       assetBank,
     })
 
-    const deletedSubTabPathForTitle = createPathAllocator()
+    const deletedSubTabPathForTitle = createStoragePathAllocator()
     const subTabs = ensureArray(deletedTab.subTabs).map((subTab) => {
       const subTabId = typeof subTab?.id === 'string' ? subTab.id : ''
       const subTabSegment = deletedSubTabPathForTitle(typeof subTab?.title === 'string' ? subTab.title : 'tab', subTabId, 'tab')
@@ -758,14 +729,14 @@ function writeHybridStorage(tempRoot, serializedState) {
   const noteBodyRecords = new Map()
   const fileMap = new Map()
   const assetBank = createAssetBank('assets')
-  const domainPathForTitle = createPathAllocator()
+  const domainPathForTitle = createStoragePathAllocator()
   const domainEntries = []
 
   for (const domain of domains) {
     const domainId = getDomainId(domain)
     const domainSegment = domainPathForTitle(getDomainTitle(domain), domainId, 'domain')
     const domainRoot = posixPath.join(DOMAINS_DIR, domainSegment)
-    const spacePathForTitle = createPathAllocator()
+    const spacePathForTitle = createStoragePathAllocator()
     const spaceEntries = []
 
     for (const space of ensureArray(domain.spaces)) {
@@ -791,7 +762,7 @@ function writeHybridStorage(tempRoot, serializedState) {
     })
   }
 
-  const orphanPathForId = createPathAllocator()
+  const orphanPathForId = createStoragePathAllocator()
   for (const body of noteBodies) {
     const bodyId = typeof body?.id === 'string' ? body.id : ''
     if (!bodyId || noteBodyRecords.has(bodyId)) continue

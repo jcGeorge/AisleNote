@@ -36,6 +36,7 @@ import {
   normalizeImageExtension,
   normalizeStorageTheme,
 } from './hybrid-storage-core.js'
+import { buildStoragePathFileName, createStoragePathAllocator } from './storage-path-segments.js'
 
 type BrowserStoredFile =
   | {
@@ -236,43 +237,6 @@ function inlineMarkdownImages(markdown: string, notePath: string, fileMap: Map<s
   })
 }
 
-function sanitizePathSegment(value: unknown, fallback: string): string {
-  const illegalCharacters = new Set(['<', '>', ':', '"', '/', '\\', '|', '?', '*'])
-  const normalized = String(value ?? '')
-    .split('')
-    .map((character) => (illegalCharacters.has(character) || character.charCodeAt(0) < 32 ? ' ' : character))
-    .join('')
-    .replace(/\s+/g, ' ')
-    .replace(/^\.+|\.+$/g, '')
-    .trim()
-  return normalized || fallback
-}
-
-function createStringHash(value: unknown): string {
-  const source = String(value ?? '')
-  let hash = 2166136261
-  for (let index = 0; index < source.length; index += 1) {
-    hash ^= source.charCodeAt(index)
-    hash = Math.imul(hash, 16777619) >>> 0
-  }
-  return hash.toString(16).padStart(8, '0').slice(0, 6)
-}
-
-function createPathAllocator() {
-  const used = new Set<string>()
-  return (title: unknown, id: unknown, fallback: string): string => {
-    const base = `${sanitizePathSegment(title, fallback)}--${createStringHash(id)}`
-    let candidate = base
-    let index = 2
-    while (used.has(candidate)) {
-      candidate = `${base}-${index}`
-      index += 1
-    }
-    used.add(candidate)
-    return candidate
-  }
-}
-
 function setJsonFile(fileMap: Map<string, BrowserStoredFile>, path: string, value: Record<string, unknown>) {
   setTextFile(fileMap, path, `${JSON.stringify(value, null, 2)}\n`)
 }
@@ -415,7 +379,7 @@ function writeNoteBodyAtPath({
     const file =
       index === 0
         ? homeFile
-        : joinPosix(noteRootRelative, STORAGE_AISLES_DIR, `${sanitizePathSegment(`Aisle ${index + 1}`, 'Aisle')}--${createStringHash(aisleId)}.md`)
+        : joinPosix(noteRootRelative, STORAGE_AISLES_DIR, buildStoragePathFileName(`Aisle ${index + 1}`, aisleId, 'Aisle', '.md'))
     const markdown = typeof aisle.markdown === 'string' ? aisle.markdown : index === 0 ? fallbackMarkdown : ''
     setTextFile(fileMap, joinPosix(STORAGE_ROOT_DIR, file), externalizeMarkdownImages(markdown, file, assetBank))
     aisleRecords.push({ id: aisleId, file })
@@ -437,7 +401,7 @@ function writeSpaceFiles(
 
   const trashRoot = joinPosix(spaceRoot, STORAGE_TRASH_DIR)
   const tabs = ensureArray<Record<string, unknown>>(isRecord(space.data) ? space.data.tabs : [])
-  const tabPathForTitle = createPathAllocator()
+  const tabPathForTitle = createStoragePathAllocator()
 
   const tabManifest = tabs.map((tab) => {
     const tabId = typeof tab.id === 'string' ? tab.id : ''
@@ -452,7 +416,7 @@ function writeSpaceFiles(
       assetBank,
     })
 
-    const subTabPathForTitle = createPathAllocator()
+    const subTabPathForTitle = createStoragePathAllocator()
     const subTabs = ensureArray<Record<string, unknown>>(tab.subTabs).map((subTab) => {
       const subTabId = typeof subTab.id === 'string' ? subTab.id : ''
       const subTabPath = joinPosix(
@@ -491,7 +455,7 @@ function writeSpaceFiles(
   const deletedTabs = ensureArray<Record<string, unknown>>(isRecord(space.data) ? space.data.deletedTabs : [])
   const deletedSubTabs = ensureArray<Record<string, unknown>>(isRecord(space.data) ? space.data.deletedSubTabs : [])
   const trashItems: Array<Record<string, unknown>> = []
-  const trashPathForTitle = createPathAllocator()
+  const trashPathForTitle = createStoragePathAllocator()
 
   deletedTabs.forEach((entry) => {
     const deletedTab = isRecord(entry.tab) ? entry.tab : {}
@@ -507,7 +471,7 @@ function writeSpaceFiles(
       assetBank,
     }).replace(`${trashRoot}/`, '')
 
-    const deletedSubTabPathForTitle = createPathAllocator()
+    const deletedSubTabPathForTitle = createStoragePathAllocator()
     const subTabs = ensureArray<Record<string, unknown>>(deletedTab.subTabs).map((subTab) => {
       const subTabId = typeof subTab.id === 'string' ? subTab.id : ''
       const subTabPath = joinPosix(
@@ -617,14 +581,14 @@ export function buildHybridFileMapFromSerializedState(serializedState: string): 
   const noteBodyMap = new Map(noteBodies.map((body) => [typeof body.id === 'string' ? body.id : '', body]))
   const noteBodyRecords = new Map<string, Record<string, unknown>>()
   const assetBank = createAssetBank(STORAGE_ASSETS_DIR)
-  const domainPathForTitle = createPathAllocator()
+  const domainPathForTitle = createStoragePathAllocator()
   const domainEntries: Array<Record<string, unknown>> = []
 
   domains.forEach((domain) => {
     const domainId = getDomainId(domain)
     const domainPath = domainPathForTitle(getDomainTitle(domain), domainId, 'domain')
     const domainRoot = joinPosix(STORAGE_DOMAINS_DIR, domainPath)
-    const spacePathForTitle = createPathAllocator()
+    const spacePathForTitle = createStoragePathAllocator()
     const spaceEntries: Array<Record<string, unknown>> = []
 
     ensureArray<Record<string, unknown>>(domain.spaces).forEach((space) => {
@@ -655,7 +619,7 @@ export function buildHybridFileMapFromSerializedState(serializedState: string): 
     })
   })
 
-  const orphanPathForId = createPathAllocator()
+  const orphanPathForId = createStoragePathAllocator()
   noteBodies.forEach((body) => {
     const bodyId = typeof body.id === 'string' ? body.id : ''
     if (!bodyId || noteBodyRecords.has(bodyId)) return
