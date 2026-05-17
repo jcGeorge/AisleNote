@@ -22,6 +22,11 @@ Runtime state remains an `AppState` object, but durable storage is moving toward
 
 When changing storage behavior, add or update a round-trip test before editing serializer logic.
 
+## Planning Docs
+
+- `docs/roadmap.md` tracks the recommended stabilization, refactor, UI/UX, desktop, and PWA/mobile sequence.
+- `docs/storage-schema.md` defines the target manifest/Markdown/assets storage model.
+
 ## Editor Caveats
 
 - Toast UI Editor exposes ProseMirror internals that are not fully typed. Keep those accesses behind `src/editor/` helpers where practical.
