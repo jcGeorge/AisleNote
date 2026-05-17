@@ -8,6 +8,9 @@ export type StorageShortcutId =
   | 'openSpaces'
   | 'newTab'
   | 'newSubTab'
+  | 'formatStrikethrough'
+  | 'cycleParentTabNext'
+  | 'cycleParentTabPrev'
   | 'cycleSubTabNext'
   | 'cycleSubTabPrev'
 
@@ -33,6 +36,7 @@ export type StorageNewlineOperationId =
   | 'codeBlock'
   | 'inlineCode'
   | 'blockQuote'
+  | 'strikethrough'
   | 'operationsMenu'
 export type StorageNewlineShortcutId = 'controlEnter' | 'shiftEnter' | 'commandEnter'
 

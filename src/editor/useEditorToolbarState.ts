@@ -165,6 +165,7 @@ export function useEditorToolbarState({
   }
 
   const getToolbarFormatShortcut = (event: KeyboardEvent): ToolbarFormatKey | null => {
+    if (eventMatchesShortcut(event, stateRef.current.hotkeys.shortcuts.formatStrikethrough, isMacPlatform)) return 'strike'
     const key = event.key.toLowerCase()
     const isMod = isMacPlatform ? event.metaKey : event.ctrlKey
     if (!isMod || event.altKey) return null

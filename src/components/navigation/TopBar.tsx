@@ -13,6 +13,7 @@ import type {
   ViewMode,
   WorkspaceData,
 } from '../../types/app'
+import { getRenameInputKeyAction } from '../../navigation/rename-draft'
 
 type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
 
@@ -263,8 +264,16 @@ export function TopBar({
                     onCommitRename('tab', tab.id, event.target.value)
                   }}
                   onKeyDown={(event) => {
-                    if (event.key === 'Enter') onCommitRename('tab', tab.id, (event.target as HTMLInputElement).value)
-                    if (event.key === 'Escape') {
+                    const action = getRenameInputKeyAction(event)
+                    if (action === 'commit') {
+                      event.preventDefault()
+                      onCommitRename('tab', tab.id, event.currentTarget.value)
+                    }
+                    if (action === 'commit-and-create') {
+                      event.preventDefault()
+                      onAddTab()
+                    }
+                    if (action === 'cancel') {
                       event.preventDefault()
                       onCancelRename('tab', tab.id)
                     }

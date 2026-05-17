@@ -14,6 +14,16 @@ export type RenameDraftCommitRequest = RenameDraft & {
   skipBlur: true
 }
 
+export type RenameInputKeyAction = 'commit' | 'cancel' | 'commit-and-create'
+
+export type RenameInputKeyEventLike = {
+  key: string
+  shiftKey?: boolean
+  ctrlKey?: boolean
+  metaKey?: boolean
+  altKey?: boolean
+}
+
 export function createRenameDraft(type: RenameEntityType, id: string, value: string): RenameDraft {
   return { type, id, value }
 }
@@ -40,4 +50,13 @@ export function getRenameDraftCommitRequest(
 ): RenameDraftCommitRequest | null {
   const activeDraft = getActiveRenameDraft(draft, editing)
   return activeDraft ? { ...activeDraft, focusEditor: false, skipBlur: true } : null
+}
+
+export function getRenameInputKeyAction(event: RenameInputKeyEventLike): RenameInputKeyAction | null {
+  if (event.key === 'Enter') return 'commit'
+  if (event.key === 'Escape') return 'cancel'
+  if (event.key === 'Tab' && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    return 'commit-and-create'
+  }
+  return null
 }

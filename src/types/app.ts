@@ -6,6 +6,9 @@ export type ShortcutId =
   | 'openSpaces'
   | 'newTab'
   | 'newSubTab'
+  | 'formatStrikethrough'
+  | 'cycleParentTabNext'
+  | 'cycleParentTabPrev'
   | 'cycleSubTabNext'
   | 'cycleSubTabPrev'
 export type SettingsSection = 'hotkeys' | 'shortcuts' | 'data' | 'visuals' | 'frontmatter'
@@ -21,6 +24,7 @@ export type NewlineOperationId =
   | 'codeBlock'
   | 'inlineCode'
   | 'blockQuote'
+  | 'strikethrough'
   | 'operationsMenu'
 
 export type NewlineShortcutId = 'controlEnter' | 'shiftEnter' | 'commandEnter'
@@ -415,7 +419,10 @@ export type MultiLineEditState = {
   columnOffsets?: Record<number, number>
   cursorBlockIndices?: number[]
   selectionAnchorOffsets?: Record<number, number>
+  activeInlineFormats?: MultiLineInlineFormat[]
 }
+
+export type MultiLineInlineFormat = 'bold' | 'italic' | 'strike'
 
 export type EditorTextLineRange = {
   start: number

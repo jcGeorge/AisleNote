@@ -31,6 +31,9 @@ function createState(): AppState {
         openSpaces: '',
         newTab: '',
         newSubTab: '',
+        formatStrikethrough: '',
+        cycleParentTabNext: '',
+        cycleParentTabPrev: '',
         cycleSubTabNext: '',
         cycleSubTabPrev: '',
       },
@@ -75,6 +78,9 @@ function renderSettingsPage(
         openSpaces: '',
         newTab: '',
         newSubTab: '',
+        formatStrikethrough: '',
+        cycleParentTabNext: '',
+        cycleParentTabPrev: '',
         cycleSubTabNext: '',
         cycleSubTabPrev: '',
       }}
@@ -127,6 +133,21 @@ function renderSettingsPage(
 }
 
 describe('frontmatter settings page', () => {
+  it('renders parent-tab cycle hotkey rows as unbound shortcuts', () => {
+    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'hotkeys' })
+
+    expect(html).toContain('next parent tab')
+    expect(html).toContain('previous parent tab')
+    expect(html).toContain('strikethrough')
+    expect(html).toContain('settings-shortcut-btn')
+  })
+
+  it('renders strikethrough as a selectable new-line operation', () => {
+    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'shortcuts' })
+
+    expect(html).toContain('<option value="strikethrough">strikethrough</option>')
+  })
+
   it('renders draft template changes behind explicit save controls', () => {
     const html = renderSettingsPage(
       {

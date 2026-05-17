@@ -2,7 +2,15 @@
 import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import type { Editor } from '@toast-ui/editor'
 import type { ToolbarFormatKey } from '../components/editor/toolbar-state'
-import type { AppState, ContextMenuState, MultiLineEditState, NewlineOperationId, NoteLocation, ViewMode } from '../types/app'
+import type {
+  AppState,
+  ContextMenuState,
+  MultiLineEditState,
+  MultiLineInlineFormat,
+  NewlineOperationId,
+  NoteLocation,
+  ViewMode,
+} from '../types/app'
 import { getNewlineShortcutIdForEvent } from '../hotkeys/shortcuts'
 import { getMultilineSelectionShortcutDirection } from './editor-setup'
 import type { MultiLineCursorMovement, MultiLineEditInput } from './multiline-edit'
@@ -14,6 +22,7 @@ import {
   getWysiwygView,
 } from './prosemirror-utils'
 import { parseInternalNoteUrl, type InternalNoteLinkHit } from '../notes/note-references'
+import { insertPastedListIntoView } from './list-paste'
 
 type UseEditorDomEventsOptions = {
   viewMode: ViewMode
@@ -41,6 +50,7 @@ type UseEditorDomEventsOptions = {
   getToolbarFormatShortcut: (event: KeyboardEvent) => ToolbarFormatKey | null
   queueToolbarShortcutFeedback: (format: ToolbarFormatKey) => void
   syncToolbarFormatState: () => void
+  onRunFormatCommand: (format: MultiLineInlineFormat) => boolean
   getEditorHistoryDirection: (event: KeyboardEvent) => 'undo' | 'redo' | null
   onEditorSelectionChange: () => void
   onRunStructuralHistory: (direction: 'undo' | 'redo') => boolean
@@ -50,6 +60,9 @@ type UseEditorDomEventsOptions = {
   scheduleMultiLineHistoryRestore: (direction: 'undo' | 'redo') => void
   tryExpandMultilineSelection: (direction: 'up' | 'down') => boolean
   tryApplyMultiLineEditInput: (input: MultiLineEditInput) => boolean
+  tryApplyMultiLineListMarkerShortcut: () => boolean
+  tryApplyMultiLineBlockMarkerShortcut: () => boolean
+  tryApplyMultiLineInlineMarkerShortcut: (inputText: string) => boolean
   tryApplyMultiLineTabInput: (shiftKey: boolean) => boolean
   tryMoveMultiLineCursors: (movement: MultiLineCursorMovement, extendSelection?: boolean) => boolean
   tryApplyMultilineIndent: (outdent: boolean) => boolean
@@ -65,6 +78,22 @@ function isLikelyUrl(value: string) {
   } catch {
     return false
   }
+}
+
+export function isEditorToolbarInteractionTarget(target: Element | null): boolean {
+  return Boolean(
+    target?.closest(
+      [
+        '.note-shared-toolbar',
+        '.note-toolbar-heading-popover',
+        '.note-toolbar-aisle-popover',
+        '.toastui-editor-defaultUI-toolbar',
+        '.toastui-editor-toolbar',
+        '.toastui-editor-toolbar-icons',
+        '.toastui-editor-tooltip',
+      ].join(', '),
+    ),
+  )
 }
 
 export function useEditorDomEvents({
@@ -93,6 +122,7 @@ export function useEditorDomEvents({
   getToolbarFormatShortcut,
   queueToolbarShortcutFeedback,
   syncToolbarFormatState,
+  onRunFormatCommand,
   getEditorHistoryDirection,
   onEditorSelectionChange,
   onRunStructuralHistory,
@@ -102,6 +132,9 @@ export function useEditorDomEvents({
   scheduleMultiLineHistoryRestore,
   tryExpandMultilineSelection,
   tryApplyMultiLineEditInput,
+  tryApplyMultiLineListMarkerShortcut,
+  tryApplyMultiLineBlockMarkerShortcut,
+  tryApplyMultiLineInlineMarkerShortcut,
   tryApplyMultiLineTabInput,
   tryMoveMultiLineCursors,
   tryApplyMultilineIndent,
@@ -182,6 +215,7 @@ export function useEditorDomEvents({
         closeLinkPrompt()
         return
       }
+      if (isEditorToolbarInteractionTarget(target)) return
       activateEditorFromEventTarget(target)
       clearMultiLineEdit(false)
       if (
@@ -278,7 +312,8 @@ export function useEditorDomEvents({
           return
         }
       }
-      const text = pasteEvent.clipboardData?.getData('text/plain')?.trim() ?? ''
+      const rawText = pasteEvent.clipboardData?.getData('text/plain') ?? ''
+      const text = rawText.trim()
       if (!text || !isLikelyUrl(text)) return
 
       const selection = window.getSelection()
@@ -291,6 +326,17 @@ export function useEditorDomEvents({
         Math.max(8, rangeRect.left),
         '',
       )
+      pasteEvent.stopPropagation()
+    }
+
+    const handlePastedList = (event: Event) => {
+      const pasteEvent = event as ClipboardEvent
+      const text = pasteEvent.clipboardData?.getData('text/plain') ?? ''
+      if (!text || multiLineEditRef.current) return
+      if (isLikelyUrl(text.trim())) return
+      if (!insertPastedListIntoView(getWysiwygView(editorRef.current), text)) return
+      pasteEvent.preventDefault()
+      pasteEvent.stopPropagation()
     }
 
     const handleCopy = (event: Event) => {
@@ -319,10 +365,17 @@ export function useEditorDomEvents({
       const keyboardEvent = event as KeyboardEvent
       if (isInsideTerminalBlockLandingZone(getElementFromEventTarget(keyboardEvent.target))) return
       activateEditorFromEventTarget(keyboardEvent.target)
-      const toolbarFormatShortcut = getToolbarFormatShortcut(keyboardEvent)
+      const targetElement = getElementFromEventTarget(keyboardEvent.target)
+      const isTextInputTarget = Boolean(targetElement?.closest('input, textarea, select, .link-prompt'))
+      const toolbarFormatShortcut = isTextInputTarget ? null : getToolbarFormatShortcut(keyboardEvent)
       if (toolbarFormatShortcut) {
-        queueToolbarShortcutFeedback(toolbarFormatShortcut)
-        window.setTimeout(syncToolbarFormatState, 0)
+        if (onRunFormatCommand(toolbarFormatShortcut)) {
+          keyboardEvent.preventDefault()
+          keyboardEvent.stopPropagation()
+          queueToolbarShortcutFeedback(toolbarFormatShortcut)
+          window.setTimeout(syncToolbarFormatState, 0)
+          return
+        }
       }
       const editorHistoryDirection = getEditorHistoryDirection(keyboardEvent)
       if (editorHistoryDirection) {
@@ -335,8 +388,6 @@ export function useEditorDomEvents({
         onEditorHistoryFallback(editorHistoryDirection)
       }
 
-      const targetElement = getElementFromEventTarget(keyboardEvent.target)
-      const isTextInputTarget = Boolean(targetElement?.closest('input, textarea, select, .link-prompt'))
       if (!isTextInputTarget) {
         const newlineShortcutId = getNewlineShortcutIdForEvent(keyboardEvent, isMacPlatform)
         const newlineOperation = newlineShortcutId ? hotkeys.newlineShortcuts.shortcuts[newlineShortcutId] : null
@@ -393,6 +444,16 @@ export function useEditorDomEvents({
           handled = true
         } else if (keyboardEvent.key === 'Tab' && !keyboardEvent.metaKey && !keyboardEvent.ctrlKey && !keyboardEvent.altKey) {
           handled = tryApplyMultiLineTabInput(keyboardEvent.shiftKey)
+        } else if (
+          (keyboardEvent.key === ' ' || keyboardEvent.key === 'Spacebar') &&
+          !keyboardEvent.metaKey &&
+          !keyboardEvent.ctrlKey &&
+          !keyboardEvent.altKey
+        ) {
+          handled =
+            tryApplyMultiLineBlockMarkerShortcut() ||
+            tryApplyMultiLineListMarkerShortcut() ||
+            tryApplyMultiLineEditInput({ type: 'insert-text', text: ' ' })
         } else if (keyboardEvent.key === 'ArrowLeft') {
           handled = tryMoveMultiLineCursors(
             keyboardEvent.altKey ? 'word-left' : keyboardEvent.metaKey || keyboardEvent.ctrlKey ? 'line-start' : 'left',
@@ -417,7 +478,9 @@ export function useEditorDomEvents({
           !keyboardEvent.ctrlKey &&
           !keyboardEvent.altKey
         ) {
-          handled = tryApplyMultiLineEditInput({ type: 'insert-text', text: keyboardEvent.key })
+          handled =
+            tryApplyMultiLineInlineMarkerShortcut(keyboardEvent.key) ||
+            tryApplyMultiLineEditInput({ type: 'insert-text', text: keyboardEvent.key })
         } else if (keyboardEvent.key === 'PageUp' || keyboardEvent.key === 'PageDown') {
           handled = true
         }
@@ -454,7 +517,12 @@ export function useEditorDomEvents({
       if (inputEvent.inputType === 'insertText' || inputEvent.inputType === 'insertCompositionText') {
         const text = inputEvent.data ?? ''
         if (!text) return
-        const handled = tryApplyMultiLineEditInput({ type: 'insert-text', text })
+        const handled =
+          text === ' '
+            ? tryApplyMultiLineBlockMarkerShortcut() ||
+              tryApplyMultiLineListMarkerShortcut() ||
+              tryApplyMultiLineEditInput({ type: 'insert-text', text })
+            : tryApplyMultiLineInlineMarkerShortcut(text) || tryApplyMultiLineEditInput({ type: 'insert-text', text })
         if (!handled) return
         inputEvent.preventDefault()
         inputEvent.stopPropagation()
@@ -509,6 +577,7 @@ export function useEditorDomEvents({
     root.addEventListener('click', handleClick, true)
     root.addEventListener('contextmenu', handleContextMenu, true)
     root.addEventListener('paste', handlePaste, true)
+    root.addEventListener('paste', handlePastedList, true)
     root.addEventListener('copy', handleCopy, true)
     root.addEventListener('cut', handleCut, true)
     root.addEventListener('keydown', handleKeyDown, true)
@@ -523,6 +592,7 @@ export function useEditorDomEvents({
       root.removeEventListener('click', handleClick, true)
       root.removeEventListener('contextmenu', handleContextMenu, true)
       root.removeEventListener('paste', handlePaste, true)
+      root.removeEventListener('paste', handlePastedList, true)
       root.removeEventListener('copy', handleCopy, true)
       root.removeEventListener('cut', handleCut, true)
       root.removeEventListener('keydown', handleKeyDown, true)

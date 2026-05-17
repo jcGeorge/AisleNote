@@ -21,6 +21,7 @@ type UseGlobalHotkeysParams = {
   navigateHistoryBy: (delta: number) => void
   addTab: () => void
   addSubTab: () => void
+  formatStrikethrough: () => void
   selectTab: (tabId: string) => void
   selectSubTab: (subTabId: string) => void
 }
@@ -33,6 +34,14 @@ const getShortcutIndex = (key: string): number | null => {
 
 export function getNumberedPrimeTabTarget(tabs: Tab[], shortcutIndex: number): string | null {
   return tabs[shortcutIndex]?.id ?? null
+}
+
+export function getCycledParentTabTarget(tabs: Tab[], activeTabId: string, direction: -1 | 1): string | null {
+  if (tabs.length === 0) return null
+  const activeIndex = tabs.findIndex((tab) => tab.id === activeTabId)
+  const safeActiveIndex = activeIndex >= 0 ? activeIndex : 0
+  const nextIndex = (safeActiveIndex + direction + tabs.length) % tabs.length
+  return tabs[nextIndex]?.id ?? null
 }
 
 export function useGlobalHotkeys({
@@ -54,6 +63,7 @@ export function useGlobalHotkeys({
   navigateHistoryBy,
   addTab,
   addSubTab,
+  formatStrikethrough,
   selectTab,
   selectSubTab,
 }: UseGlobalHotkeysParams) {
@@ -69,6 +79,7 @@ export function useGlobalHotkeys({
     navigateHistoryBy,
     addTab,
     addSubTab,
+    formatStrikethrough,
     selectTab,
     selectSubTab,
   })
@@ -85,6 +96,7 @@ export function useGlobalHotkeys({
     navigateHistoryBy,
     addTab,
     addSubTab,
+    formatStrikethrough,
     selectTab,
     selectSubTab,
   }
@@ -206,6 +218,24 @@ export function useGlobalHotkeys({
       if (isCommandNewSubTab) {
         event.preventDefault()
         actions.addSubTab()
+        return
+      }
+
+      const isFormatStrikethroughShortcut = eventMatchesShortcut(event, hotkeys.shortcuts.formatStrikethrough, isMacPlatform)
+      if (isFormatStrikethroughShortcut) {
+        event.preventDefault()
+        actions.formatStrikethrough()
+        return
+      }
+
+      const isCycleParentNextShortcut = eventMatchesShortcut(event, hotkeys.shortcuts.cycleParentTabNext, isMacPlatform)
+      const isCycleParentPrevShortcut = eventMatchesShortcut(event, hotkeys.shortcuts.cycleParentTabPrev, isMacPlatform)
+      if (isCycleParentNextShortcut || isCycleParentPrevShortcut) {
+        event.preventDefault()
+        const direction = isCycleParentPrevShortcut ? -1 : 1
+        const nextParentTabId = getCycledParentTabTarget(primeTabs, activeTab.id, direction)
+        if (!nextParentTabId || nextParentTabId === activeTab.id) return
+        actions.selectTab(nextParentTabId)
         return
       }
 

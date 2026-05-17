@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { getBulletListMarkerFromAttrs } from './list-markers'
 import { isCompatibleListNodeForOperation } from './list-operation-compatibility'
-import { getEmptyLineReplacementRangeForOperation } from './newline-operations'
+import { applyEditorNewlineOperation, getEmptyLineReplacementRangeForOperation } from './newline-operations'
 import { createOperationNodes } from './newline-operation-nodes'
 import type { NewlineOperationId } from '../types/app'
 
@@ -147,11 +147,20 @@ describe('editor newline operations', () => {
   })
 
   it('does not replace empty lines for non-block shortcut operations', () => {
-    const operations: NewlineOperationId[] = ['normalNewLine', 'aisle', 'inlineCode']
+    const operations: NewlineOperationId[] = ['normalNewLine', 'aisle', 'inlineCode', 'strikethrough']
 
     operations.forEach((operation) => {
       expect(getEmptyLineReplacementRangeForOperation(operation, createSelectionState())).toBeNull()
     })
+  })
+
+  it('runs strikethrough as an inline editor command', () => {
+    const exec = vi.fn()
+    const focus = vi.fn()
+
+    expect(applyEditorNewlineOperation({ exec, focus } as any, 'strikethrough')).toEqual({ handled: true })
+    expect(exec).toHaveBeenCalledWith('strike')
+    expect(focus).toHaveBeenCalled()
   })
 
   it('does not replace a non-empty paragraph', () => {

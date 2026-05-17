@@ -4,6 +4,7 @@ import {
   createRenameDraft,
   getActiveRenameDraft,
   getRenameDraftCommitRequest,
+  getRenameInputKeyAction,
 } from './rename-draft'
 
 describe('rename draft helper', () => {
@@ -47,5 +48,13 @@ describe('rename draft helper', () => {
 
     expect(clearRenameDraftIfMatching(draft, 'space', 'space-1')).toBeNull()
     expect(clearRenameDraftIfMatching(draft, 'domain', 'space-1')).toBe(draft)
+  })
+
+  it('maps rename input keys for commit, cancel, and tab-create behavior', () => {
+    expect(getRenameInputKeyAction({ key: 'Enter' })).toBe('commit')
+    expect(getRenameInputKeyAction({ key: 'Escape' })).toBe('cancel')
+    expect(getRenameInputKeyAction({ key: 'Tab' })).toBe('commit-and-create')
+    expect(getRenameInputKeyAction({ key: 'Tab', shiftKey: true })).toBeNull()
+    expect(getRenameInputKeyAction({ key: 'Tab', metaKey: true })).toBeNull()
   })
 })

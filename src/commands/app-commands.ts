@@ -14,6 +14,9 @@ export const APP_COMMANDS: AppCommandDefinition[] = [
   { id: 'openSpaces', label: 'open spaces', defaultShortcut: 'Mod+S' },
   { id: 'newTab', label: 'new parent tab', defaultShortcut: 'Mod+Shift+N' },
   { id: 'newSubTab', label: 'new sub tab', defaultShortcut: 'Mod+N' },
+  { id: 'formatStrikethrough', label: 'strikethrough', defaultShortcut: '' },
+  { id: 'cycleParentTabNext', label: 'next parent tab', defaultShortcut: '' },
+  { id: 'cycleParentTabPrev', label: 'previous parent tab', defaultShortcut: '' },
   { id: 'cycleSubTabNext', label: 'next sub tab', defaultShortcut: 'Ctrl+Tab' },
   { id: 'cycleSubTabPrev', label: 'previous sub tab', defaultShortcut: 'Ctrl+Shift+Tab' },
 ]

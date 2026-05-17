@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Editor } from '@toast-ui/editor'
 import { Schema } from 'prosemirror-model'
-import { EditorState, TextSelection } from 'prosemirror-state'
+import { EditorState, Selection, TextSelection } from 'prosemirror-state'
 import {
   ANNOTATION_LINE_ARROW_CLASS_NAME,
   ANNOTATION_LINE_ARROW_DOWN_CLASS_NAME,
@@ -20,6 +20,7 @@ import {
   getArrowMarkerNavigationPosition,
   getArrowMarkerSelectionSnapPosition,
   getParagraphSpaceShortcut,
+  headingSpaceShortcutPlugin,
 } from './editor-setup'
 
 function node(typeName: string, textContent = '', contentSize = 0) {
@@ -117,6 +118,84 @@ describe('paragraph space shortcuts', () => {
     expect(getParagraphSpaceShortcut('-')).toEqual({ kind: 'dashList' })
     expect(getParagraphSpaceShortcut('*')).toEqual({ kind: 'bulletList' })
     expect(getParagraphSpaceShortcut('2.')).toEqual({ kind: 'numberedList', order: 2 })
+  })
+})
+
+const paragraphShortcutSchema = new Schema({
+  nodes: {
+    doc: { content: 'block+' },
+    text: { group: 'inline' },
+    paragraph: {
+      group: 'block',
+      content: 'inline*',
+      toDOM: () => ['p', 0],
+    },
+    blockQuote: {
+      group: 'block',
+      content: 'block+',
+      toDOM: () => ['blockquote', 0],
+    },
+    heading: {
+      group: 'block',
+      content: 'inline*',
+      attrs: {
+        level: { default: 1 },
+        headingType: { default: 'atx' },
+      },
+      toDOM: () => ['h1', 0],
+    },
+    bulletList: {
+      group: 'block',
+      content: 'listItem+',
+      toDOM: () => ['ul', 0],
+    },
+    orderedList: {
+      group: 'block',
+      content: 'listItem+',
+      attrs: {
+        order: { default: 1 },
+      },
+      toDOM: () => ['ol', 0],
+    },
+    listItem: {
+      content: 'paragraph block*',
+      toDOM: () => ['li', 0],
+    },
+  },
+})
+
+describe('paragraph space shortcut WYSIWYG behavior', () => {
+  it('turns a bare greater-than marker into a blockquote on Space', () => {
+    const doc = paragraphShortcutSchema.nodes.doc.create(null, [
+      paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text('>')),
+    ])
+    const state = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, 2),
+    })
+    const pluginBundle = headingSpaceShortcutPlugin({
+      pmKeymap: {
+        keymap: (bindings: Record<string, unknown>) => bindings,
+      },
+      pmState: {
+        Selection: Selection as unknown as {
+          near: (resolvedPos: unknown, bias?: number) => unknown
+        },
+        TextSelection: TextSelection as unknown as {
+          create: (doc: unknown, anchor: number, head?: number) => unknown
+        },
+      },
+    })
+    const bindings = pluginBundle.wysiwygPlugins[0]() as Record<string, any>
+    let nextState = state
+
+    expect(bindings.Space(state, (transaction: any) => {
+      nextState = state.apply(transaction)
+    })).toBe(true)
+
+    expect(nextState.doc.child(0).type.name).toBe('blockQuote')
+    expect(nextState.doc.child(0).child(0).type.name).toBe('paragraph')
+    expect(nextState.doc.child(0).textContent).toBe('')
   })
 })
 

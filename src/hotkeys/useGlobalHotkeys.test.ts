@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Tab } from '../types/app'
-import { getNumberedPrimeTabTarget } from './useGlobalHotkeys'
+import { getCycledParentTabTarget, getNumberedPrimeTabTarget } from './useGlobalHotkeys'
 
 const makeTab = (id: string): Tab => ({
   id,
@@ -22,5 +22,22 @@ describe('global numbered hotkeys', () => {
 
   it('ignores numeric shortcuts beyond the available prime tabs', () => {
     expect(getNumberedPrimeTabTarget([makeTab('prime-1')], 9)).toBeNull()
+  })
+})
+
+describe('parent tab cycle hotkeys', () => {
+  it('wraps parent tab cycling in both directions', () => {
+    const tabs = [makeTab('prime-1'), makeTab('prime-2'), makeTab('prime-3')]
+
+    expect(getCycledParentTabTarget(tabs, 'prime-1', 1)).toBe('prime-2')
+    expect(getCycledParentTabTarget(tabs, 'prime-1', -1)).toBe('prime-3')
+    expect(getCycledParentTabTarget(tabs, 'prime-3', 1)).toBe('prime-1')
+  })
+
+  it('falls back to the first visible parent tab when the active tab is missing', () => {
+    const tabs = [makeTab('prime-1'), makeTab('prime-2')]
+
+    expect(getCycledParentTabTarget(tabs, 'missing', 1)).toBe('prime-2')
+    expect(getCycledParentTabTarget([], 'missing', 1)).toBeNull()
   })
 })

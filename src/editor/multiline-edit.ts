@@ -28,6 +28,7 @@ export function cloneMultiLineEditState(state: MultiLineEditState): MultiLineEdi
     columnOffsets: state.columnOffsets ? { ...state.columnOffsets } : undefined,
     cursorBlockIndices: state.cursorBlockIndices ? [...state.cursorBlockIndices] : undefined,
     selectionAnchorOffsets: state.selectionAnchorOffsets ? { ...state.selectionAnchorOffsets } : undefined,
+    activeInlineFormats: state.activeInlineFormats ? [...state.activeInlineFormats] : undefined,
   }
 }
 
@@ -125,7 +126,73 @@ export function getMultiLineSplitPlan(doc: any, pos: number): { depth: number; t
     }
   }
 
+  for (let depth = resolvedPos.depth; depth > 0; depth -= 1) {
+    const node = resolvedPos.node(depth)
+    if (!node?.isTextblock) continue
+    if (depth === 1 && node.type?.name === 'heading') {
+      const paragraphType = doc.type?.schema?.nodes?.paragraph
+      const typesAfter = paragraphType ? [{ type: paragraphType }] : undefined
+      if (typesAfter && canSplit(doc, pos, 1, typesAfter)) {
+        return { depth: 1, typesAfter }
+      }
+    }
+    break
+  }
+
   return canSplit(doc, pos, 1) ? { depth: 1 } : null
+}
+
+export type EmptyMultiLineBlockDeleteTarget = {
+  blockIndex: number
+  from: number
+  to: number
+}
+
+function getTopLevelEmptyTextBlockDeleteTarget(
+  doc: any,
+  blockIndex: number,
+  range: EditorTextLineRange,
+): EmptyMultiLineBlockDeleteTarget | null {
+  if (range.length !== 0 || range.text.replace(/\u200b/g, '').length !== 0) return null
+
+  let resolved: any
+  try {
+    resolved = doc.resolve(range.start)
+  } catch {
+    return null
+  }
+
+  for (let depth = resolved.depth; depth > 0; depth -= 1) {
+    const node = resolved.node(depth)
+    if (!node?.isTextblock) continue
+    if (depth !== 1 || node.content?.size !== 0) return null
+    return {
+      blockIndex,
+      from: resolved.before(depth),
+      to: resolved.after(depth),
+    }
+  }
+
+  return null
+}
+
+export function getEmptyMultiLineBlockDeleteTargets(
+  doc: any,
+  blockRanges: EditorTextLineRange[],
+  selectedIndices: number[],
+): EmptyMultiLineBlockDeleteTarget[] {
+  const targets = selectedIndices
+    .map((blockIndex) => {
+      const range = blockRanges[blockIndex]
+      return range ? getTopLevelEmptyTextBlockDeleteTarget(doc, blockIndex, range) : null
+    })
+    .filter((target): target is EmptyMultiLineBlockDeleteTarget => Boolean(target))
+
+  const uniqueTargets = Array.from(
+    new Map(targets.map((target) => [`${target.from}:${target.to}`, target])).values(),
+  ).sort((a, b) => a.blockIndex - b.blockIndex)
+  const maxDeletions = Math.max(0, (doc.childCount ?? 0) - 1)
+  return uniqueTargets.slice(0, maxDeletions)
 }
 
 export function buildSplitLineMultiLineState(
@@ -156,6 +223,42 @@ export function buildSplitLineMultiLineState(
     columnOffset: 0,
     columnOffsets,
     cursorBlockIndices,
+  }
+}
+
+export function buildDeletedLineMultiLineState(
+  multiLineEdit: MultiLineEditState,
+  selectedIndices: number[],
+  deletedIndices: number[],
+  blockRanges: EditorTextLineRange[],
+): MultiLineEditState {
+  const deletedSet = new Set(deletedIndices)
+  const deletedBefore = (blockIndex: number) => deletedIndices.filter((deletedIndex) => deletedIndex < blockIndex).length
+  const nextBlockCount = Math.max(0, blockRanges.length - deletedSet.size)
+  const nextSelectedIndices = selectedIndices
+    .filter((blockIndex) => !deletedSet.has(blockIndex))
+    .map((blockIndex) => blockIndex - deletedBefore(blockIndex))
+    .filter((blockIndex, index, indices) => blockIndex >= 0 && blockIndex < nextBlockCount && indices.indexOf(blockIndex) === index)
+
+  const fallbackIndex =
+    nextBlockCount > 0
+      ? Math.max(0, Math.min(nextBlockCount - 1, Math.min(...deletedIndices) - deletedBefore(Math.min(...deletedIndices))))
+      : 0
+  const cursorBlockIndices = nextSelectedIndices.length > 0 ? nextSelectedIndices : [fallbackIndex]
+  const columnOffsets = cursorBlockIndices.reduce<Record<number, number>>((acc, blockIndex) => {
+    acc[blockIndex] = 0
+    return acc
+  }, {})
+
+  return {
+    ...multiLineEdit,
+    anchorBlockIndex: cursorBlockIndices[0] ?? fallbackIndex,
+    headBlockIndex: cursorBlockIndices[cursorBlockIndices.length - 1] ?? fallbackIndex,
+    columnOffset: 0,
+    columnOffsets,
+    cursorBlockIndices,
+    selectionAnchorOffsets: undefined,
+    activeInlineFormats: undefined,
   }
 }
 

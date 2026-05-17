@@ -37,6 +37,8 @@ import { useEditorPersistence } from './editor/useEditorPersistence'
 import { useEditorToolbarLayer } from './editor/useEditorToolbarLayer'
 import { useEditorToolbarState } from './editor/useEditorToolbarState'
 import { useImageTools } from './editor/useImageTools'
+import type { MultiLineHeadingLevel } from './editor/multiline-format-operations'
+import type { MultiLineListOperation } from './editor/multiline-list-operations'
 import { useMultilineEditing } from './editor/useMultilineEditing'
 import { useNoteCursorPersistence, usePendingNoteCursorRestore } from './editor/useNoteCursorPersistence'
 import {
@@ -87,6 +89,7 @@ import type {
   ContextMenuState,
   LinkPromptState,
   ModalState,
+  MultiLineInlineFormat,
   NewlineOperationId,
   NoteLocation,
   PendingCreatedEdit,
@@ -100,6 +103,27 @@ type NewlineOperationsMenuState = {
   top: number
   left: number
   operations: NewlineOperationId[]
+}
+
+const TOOLBAR_LIST_COMMAND_TO_MULTILINE_OPERATION: Partial<Record<ToolbarListCommand, MultiLineListOperation>> = {
+  taskList: 'task',
+  dashList: 'dashList',
+  bulletList: 'bulletList',
+  orderedList: 'numberedList',
+}
+
+function getMultiLineListOperationForNewlineOperation(
+  operation: NewlineOperationId,
+): MultiLineListOperation | null {
+  if (
+    operation === 'task' ||
+    operation === 'dashList' ||
+    operation === 'bulletList' ||
+    operation === 'numberedList'
+  ) {
+    return operation
+  }
+  return null
 }
 
 const DEFAULT_TOAST_DURATION_MS = 3000
@@ -717,6 +741,12 @@ function App() {
   const tryExpandMultilineSelection = multilineEditing.tryExpandSelection
   const tryApplyMultiLineEditInput = multilineEditing.tryApplyInput
   const tryApplyMultiLineTabInput = multilineEditing.tryApplyTabInput
+  const tryApplyMultiLineListOperation = multilineEditing.tryApplyListOperation
+  const tryApplyMultiLineListMarkerShortcut = multilineEditing.tryApplyListMarkerShortcut
+  const tryApplyMultiLineHeadingOperation = multilineEditing.tryApplyHeadingOperation
+  const tryApplyMultiLineInlineFormat = multilineEditing.tryApplyInlineFormat
+  const tryApplyMultiLineBlockMarkerShortcut = multilineEditing.tryApplyBlockMarkerShortcut
+  const tryApplyMultiLineInlineMarkerShortcut = multilineEditing.tryApplyInlineMarkerShortcut
   const tryMoveMultiLineCursors = multilineEditing.tryMoveCursors
   const copyMultiLineSelectionToClipboard = multilineEditing.copySelectionToClipboard
   const cutMultiLineSelectionToClipboard = multilineEditing.cutSelectionToClipboard
@@ -900,21 +930,57 @@ function App() {
   closeImageToolsRef.current = closeImageTools
   closeImageToolsIfSelectedImageMissingRef.current = closeImageToolsIfSelectedImageMissing
 
-  const runActiveEditorCommand = (command: string, payload?: Record<string, unknown>) => {
-    const currentEditor = editorRef.current
-    if (!currentEditor) return false
-    currentEditor.focus()
-    if (command === 'dashList' || command === 'bulletList' || command === 'orderedList' || command === 'taskList') {
-      applyListToolbarCommand(currentEditor, command as ToolbarListCommand)
-    } else {
-      getCommandCapableEditor(currentEditor).exec(command, payload)
-    }
+  const scheduleActiveEditorCommandCommit = (currentEditor: Editor) => {
     window.setTimeout(() => {
       if (editorRef.current === currentEditor) {
         commitActiveEditorMarkdownNow(currentEditor)
         syncToolbarFormatState()
       }
     }, 0)
+  }
+
+  const runActiveEditorFormatCommand = (format: MultiLineInlineFormat) => {
+    const currentEditor = editorRef.current
+    if (!currentEditor) return false
+    currentEditor.focus()
+    if (multiLineEditRef.current) {
+      if (tryApplyMultiLineInlineFormat(format)) {
+        scheduleActiveEditorCommandCommit(currentEditor)
+      }
+      return true
+    }
+    getCommandCapableEditor(currentEditor).exec(format)
+    scheduleActiveEditorCommandCommit(currentEditor)
+    return true
+  }
+
+  const runActiveEditorCommand = (command: string, payload?: Record<string, unknown>) => {
+    const currentEditor = editorRef.current
+    if (!currentEditor) return false
+    currentEditor.focus()
+    if (command === 'bold' || command === 'italic' || command === 'strike') {
+      return runActiveEditorFormatCommand(command)
+    }
+    if (command === 'heading' && multiLineEditRef.current) {
+      const level = typeof payload?.level === 'number' ? payload.level : null
+      if (level !== null && level >= 0 && level <= 6) {
+        if (tryApplyMultiLineHeadingOperation(level as MultiLineHeadingLevel)) {
+          scheduleActiveEditorCommandCommit(currentEditor)
+        }
+        return true
+      }
+    }
+    if (command === 'dashList' || command === 'bulletList' || command === 'orderedList' || command === 'taskList') {
+      const listCommand = command as ToolbarListCommand
+      const multiLineOperation = TOOLBAR_LIST_COMMAND_TO_MULTILINE_OPERATION[listCommand] ?? null
+      if (!multiLineEditRef.current || !multiLineOperation || !tryApplyMultiLineListOperation(multiLineOperation)) {
+        if (multiLineEditRef.current) return true
+        applyListToolbarCommand(currentEditor, listCommand)
+      }
+    } else {
+      getCommandCapableEditor(currentEditor).exec(command, payload)
+    }
+    scheduleActiveEditorCommandCommit(currentEditor)
     return true
   }
 
@@ -925,9 +991,21 @@ function App() {
       openNewlineOperationsMenu()
       return true
     }
+    if (operation === 'strikethrough') {
+      return runActiveEditorFormatCommand('strike')
+    }
     if (operation === 'aisle' && activeNoteAisles.length >= MAX_NOTE_AISLES) {
       pushToast(`notes can have at most ${MAX_NOTE_AISLES} aisles.`, 'warning')
       return false
+    }
+
+    const multiLineOperation = getMultiLineListOperationForNewlineOperation(operation)
+    if (multiLineEditRef.current && multiLineOperation) {
+      if (tryApplyMultiLineListOperation(multiLineOperation)) {
+        commitActiveEditorMarkdownNow(currentEditor)
+        syncToolbarFormatState()
+      }
+      return true
     }
 
     const beforeAisleSnapshot = operation === 'aisle' ? captureActiveAisleStructuralSnapshot() : null
@@ -1102,6 +1180,7 @@ function App() {
     getToolbarFormatShortcut,
     queueToolbarShortcutFeedback,
     syncToolbarFormatState,
+    onRunFormatCommand: runActiveEditorFormatCommand,
     getEditorHistoryDirection,
     onEditorSelectionChange: saveActiveCursorLocation,
     onRunStructuralHistory: runAisleStructuralHistory,
@@ -1111,6 +1190,9 @@ function App() {
     scheduleMultiLineHistoryRestore,
     tryExpandMultilineSelection,
     tryApplyMultiLineEditInput,
+    tryApplyMultiLineListMarkerShortcut,
+    tryApplyMultiLineBlockMarkerShortcut,
+    tryApplyMultiLineInlineMarkerShortcut,
     tryApplyMultiLineTabInput,
     tryMoveMultiLineCursors,
     tryApplyMultilineIndent,
@@ -1329,6 +1411,7 @@ function App() {
     navigateHistoryBy,
     addTab,
     addSubTab,
+    formatStrikethrough: () => runActiveEditorFormatCommand('strike'),
     selectTab,
     selectSubTab,
   })

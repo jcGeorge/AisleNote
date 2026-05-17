@@ -68,24 +68,23 @@ Exit criteria:
 - Module ownership is clearer than before the refactor.
 - No unrelated UI redesign is bundled into refactor commits.
 
-## Phase 4: UI/UX Foundation
+## Phase 4: UI/UX Stabilization And Input Polish
 
-Goal: define the design system before redesigning individual surfaces.
+Goal: clean up known workflow and editor-input rough edges before the broader visual redesign.
 
-Foundation decisions:
+First-pass focus areas:
+
+- Tab-after-naming flow for parent tabs and sub-tabs.
+- Assignable previous/next parent-tab hotkeys, unbound by default.
+- Markdown input polish for blockquotes, pasted lists, and multi-cursor list commands.
+- Small positioning, icon, and theme fixes that are clearly bugs rather than redesign work.
+
+Later Phase 4 slices should define the design-system foundation before the full UI overhaul:
 
 - Spacing scale, typography scale, icon style, control sizing, focus states, disabled states, and touch targets.
 - Theme token model for app shell, editor, settings, modals, toolbars, Stage Manager, trash, and storage UI.
 - Accessibility expectations for keyboard flow, contrast, modal focus, tooltip controls, and screen-reader labels.
 - Mobile/touch rules for editor controls and navigation.
-
-Recommended surface order:
-
-1. Editor and tooltip controls.
-2. Navigation and tab/sub-tab interaction.
-3. Settings and frontmatter.
-4. Stage Manager.
-5. Trash, export, and storage profile UI.
 
 Custom user themes should wait until the internal token model is stable.
 

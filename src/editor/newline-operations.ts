@@ -430,6 +430,11 @@ export function applyEditorNewlineOperation(
 ): EditorNewlineOperationResult {
   if (operation === 'operationsMenu') return { handled: false }
   if (operation === 'aisle') return extractSelectionForAisle(editor)
+  if (operation === 'strikethrough') {
+    editor.focus()
+    getCommandCapableEditor(editor).exec('strike')
+    return { handled: true }
+  }
 
   const view = getWysiwygView(editor)
   if (!view) return { handled: false }

@@ -14,6 +14,7 @@ export const NEWLINE_OPERATIONS: Array<{ id: NewlineOperationId; label: string }
   { id: 'codeBlock', label: 'code block' },
   { id: 'inlineCode', label: 'inline code block' },
   { id: 'blockQuote', label: 'block quote' },
+  { id: 'strikethrough', label: 'strikethrough' },
   { id: 'operationsMenu', label: 'new line menu' },
 ]
 
@@ -35,6 +36,7 @@ export const NEWLINE_MENU_ELIGIBLE_OPERATIONS: NewlineOperationId[] = [
   'codeBlock',
   'inlineCode',
   'blockQuote',
+  'strikethrough',
 ]
 
 export const DEFAULT_NEWLINE_SHORTCUT_SETTINGS: AppState['hotkeys']['newlineShortcuts'] = {
@@ -99,6 +101,11 @@ function normalizeNewlineShortcutSettings(raw: unknown): AppState['hotkeys']['ne
       NEWLINE_MENU_ELIGIBLE_OPERATION_IDS.has(operation as NewlineOperationId),
   )
   const dedupedMenuOperations = Array.from(new Set(menuOperations)).slice(0, 10)
+  const normalizedMenuOperations =
+    dedupedMenuOperations.length > 0 ? [...dedupedMenuOperations] : [...DEFAULT_NEWLINE_SHORTCUT_SETTINGS.menuOperations]
+  if (!normalizedMenuOperations.includes('strikethrough') && normalizedMenuOperations.length < 10) {
+    normalizedMenuOperations.push('strikethrough')
+  }
 
   return {
     shortcuts: {
@@ -115,8 +122,7 @@ function normalizeNewlineShortcutSettings(raw: unknown): AppState['hotkeys']['ne
         DEFAULT_NEWLINE_SHORTCUT_SETTINGS.shortcuts.commandEnter,
       ),
     },
-    menuOperations:
-      dedupedMenuOperations.length > 0 ? dedupedMenuOperations : DEFAULT_NEWLINE_SHORTCUT_SETTINGS.menuOperations,
+    menuOperations: normalizedMenuOperations,
   }
 }
 

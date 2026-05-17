@@ -2,10 +2,12 @@
 import { useEffect, useRef, type MutableRefObject } from 'react'
 import type { Editor } from '@toast-ui/editor'
 import {
+  buildDeletedLineMultiLineState,
   buildSplitLineMultiLineState,
   cloneMultiLineEditState,
   findNextWordColumn,
   findPreviousWordColumn,
+  getEmptyMultiLineBlockDeleteTargets,
   getMultiLineColumnOffset,
   getMultiLineHeadColumnOffset,
   getMultiLineSelectionRange,
@@ -27,13 +29,27 @@ import {
 } from './prosemirror-utils'
 import { applyStructuralListIndent } from './list-marker-commands'
 import {
+  buildMultiLineListOperationPlan,
+  getMultiLineListMarkerShortcut,
+  type MultiLineListOperation,
+} from './multiline-list-operations'
+import {
+  applyActiveInlineFormatsToStoredMarks,
+  applyActiveInlineFormatsToInsertedText,
+  buildMultiLineHeadingOperationPlan,
+  buildMultiLineInlineFormatPlan,
+  buildMultiLineInlineMarkerOperationPlan,
+  getMultiLineHeadingMarkerShortcut,
+  type MultiLineHeadingLevel,
+} from './multiline-format-operations'
+import {
   getIndentPrefixLength,
   getTrailingIndentPrefixLength,
   INDENT_TOKEN,
   mergeLeadingIndentsFromWysiwyg,
   normalizeMarkdownForPersistence,
 } from '../markdown/markdown-utils'
-import type { MultiLineEditState } from '../types/app'
+import type { MultiLineEditState, MultiLineInlineFormat } from '../types/app'
 
 type MultiLineEditHistoryEntry = {
   noteKey: string
@@ -192,7 +208,9 @@ export function useMultilineEditing({
       }
       if (typeof SelectionCtor.create !== 'function') return false
       const nextSelection = SelectionCtor.create(view.state.doc, caretPos, caretPos)
-      view.dispatch(view.state.tr.setSelection(nextSelection).scrollIntoView())
+      let tr = view.state.tr.setSelection(nextSelection).scrollIntoView()
+      tr = applyActiveInlineFormatsToStoredMarks(tr, view.state.schema, undefined)
+      view.dispatch(tr)
       return false
     }
 
@@ -231,6 +249,7 @@ export function useMultilineEditing({
     if (typeof SelectionCtor.create !== 'function') return false
     const nextSelection = SelectionCtor.create(view.state.doc, headPos, headPos)
     let tr = view.state.tr.setSelection(nextSelection).setMeta('addToHistory', false).scrollIntoView()
+    tr = applyActiveInlineFormatsToStoredMarks(tr, view.state.schema, normalizedMultiLineEdit.activeInlineFormats)
     const pluginKey = pluginKeyRef.current
     if (pluginKey) {
       tr = tr.setMeta(pluginKey, { cursors: cursorPositions, selections: selectionDecorations })
@@ -518,6 +537,10 @@ export function useMultilineEditing({
     let tr = view.state.tr
     let changed = false
     const nextColumnOffsets: Record<number, number> = { ...(multiLineEdit.columnOffsets ?? {}) }
+    const emptyDeleteTargets =
+      input.type === 'delete' ? getEmptyMultiLineBlockDeleteTargets(view.state.doc, blockRanges, selectedIndices) : []
+    const emptyDeleteTargetByBlockIndex = new Map(emptyDeleteTargets.map((target) => [target.blockIndex, target]))
+    const deletedEmptyBlockIndices: number[] = []
 
     for (const blockIndex of [...selectedIndices].sort((a, b) => b - a)) {
       const range = blockRanges[blockIndex]
@@ -531,6 +554,13 @@ export function useMultilineEditing({
         const mappedTo = tr.mapping.map(selectionRange.to, 1)
         if (input.type === 'insert-text') {
           tr = tr.insertText(input.text, mappedFrom, mappedTo)
+          tr = applyActiveInlineFormatsToInsertedText(
+            tr,
+            view.state.schema,
+            mappedFrom,
+            input.text,
+            multiLineEdit.activeInlineFormats,
+          )
           nextColumnOffsets[blockIndex] = selectionRange.fromOffset + input.text.length
         } else {
           tr = tr.delete(mappedFrom, mappedTo)
@@ -542,6 +572,13 @@ export function useMultilineEditing({
 
       if (input.type === 'insert-text') {
         tr = tr.insertText(input.text, cursorPos, cursorPos)
+        tr = applyActiveInlineFormatsToInsertedText(
+          tr,
+          view.state.schema,
+          cursorPos,
+          input.text,
+          multiLineEdit.activeInlineFormats,
+        )
         nextColumnOffsets[blockIndex] = currentOffset + input.text.length
         changed = true
         continue
@@ -556,7 +593,18 @@ export function useMultilineEditing({
       }
 
       if (input.type === 'delete') {
-        if (cursorPos >= range.end) continue
+        if (cursorPos >= range.end) {
+          const deleteTarget = emptyDeleteTargetByBlockIndex.get(blockIndex)
+          if (!deleteTarget) continue
+          const mappedFrom = tr.mapping.map(deleteTarget.from, -1)
+          const mappedTo = tr.mapping.map(deleteTarget.to, 1)
+          if (mappedTo <= mappedFrom) continue
+          tr = tr.delete(mappedFrom, mappedTo)
+          deletedEmptyBlockIndices.push(blockIndex)
+          nextColumnOffsets[blockIndex] = 0
+          changed = true
+          continue
+        }
         tr = tr.delete(cursorPos, cursorPos + 1)
         changed = true
         continue
@@ -622,6 +670,8 @@ export function useMultilineEditing({
     const nextMultiLineEditState =
       input.type === 'split-line'
         ? buildSplitLineMultiLineState(multiLineEdit, selectedIndices)
+        : deletedEmptyBlockIndices.length > 0
+          ? buildDeletedLineMultiLineState(multiLineEdit, selectedIndices, deletedEmptyBlockIndices, blockRanges)
         : {
             ...multiLineEdit,
             columnOffset: nextColumnOffsets[multiLineEdit.headBlockIndex] ?? multiLineEdit.columnOffset,
@@ -642,6 +692,126 @@ export function useMultilineEditing({
 
   const tryApplyTabInput = (shiftKey: boolean) =>
     shiftKey ? tryApplyInput({ type: 'backspace' }) : tryApplyInput({ type: 'insert-text', text: INDENT_TOKEN })
+
+  const applyListOperationPlan = (
+    operation: MultiLineListOperation,
+    options: Parameters<typeof buildMultiLineListOperationPlan>[3] = {},
+  ) => {
+    const { currentEditor, view } = getCurrentEditorAndView()
+    const multiLineEdit = editStateRef.current
+    if (!currentEditor || !view || !multiLineEdit) return false
+
+    const beforeMarkdown = getNormalizedEditorMarkdown(currentEditor)
+    const beforeState = cloneMultiLineEditState(multiLineEdit)
+    const plan = buildMultiLineListOperationPlan(view, multiLineEdit, operation, options)
+    if (!plan) return false
+
+    view.dispatch(plan.transaction.scrollIntoView())
+    editStateRef.current = plan.nextState
+    syncVisualSelection()
+    const markdownAfterListOperation = getNormalizedEditorMarkdown(currentEditor)
+    commitMarkdown(markdownAfterListOperation)
+    if (editStateRef.current) {
+      recordHistory(beforeMarkdown, beforeState, markdownAfterListOperation, editStateRef.current)
+    }
+    currentEditor.focus()
+    return true
+  }
+
+  const tryApplyListOperation = (operation: MultiLineListOperation) => applyListOperationPlan(operation)
+
+  const applyHeadingOperationPlan = (
+    level: MultiLineHeadingLevel,
+    options: Parameters<typeof buildMultiLineHeadingOperationPlan>[3] = {},
+  ) => {
+    const { currentEditor, view } = getCurrentEditorAndView()
+    const multiLineEdit = editStateRef.current
+    if (!currentEditor || !view || !multiLineEdit) return false
+
+    const beforeMarkdown = getNormalizedEditorMarkdown(currentEditor)
+    const beforeState = cloneMultiLineEditState(multiLineEdit)
+    const plan = buildMultiLineHeadingOperationPlan(view, multiLineEdit, level, options)
+    if (!plan) return false
+
+    view.dispatch(plan.transaction.scrollIntoView())
+    editStateRef.current = plan.nextState
+    syncVisualSelection()
+    const markdownAfterHeadingOperation = getNormalizedEditorMarkdown(currentEditor)
+    commitMarkdown(markdownAfterHeadingOperation)
+    if (editStateRef.current) {
+      recordHistory(beforeMarkdown, beforeState, markdownAfterHeadingOperation, editStateRef.current)
+    }
+    currentEditor.focus()
+    return true
+  }
+
+  const tryApplyHeadingOperation = (level: MultiLineHeadingLevel) => applyHeadingOperationPlan(level)
+
+  const tryApplyInlineFormat = (format: MultiLineInlineFormat) => {
+    const { currentEditor, view } = getCurrentEditorAndView()
+    const multiLineEdit = editStateRef.current
+    if (!currentEditor || !view || !multiLineEdit) return false
+
+    const beforeMarkdown = getNormalizedEditorMarkdown(currentEditor)
+    const beforeState = cloneMultiLineEditState(multiLineEdit)
+    const plan = buildMultiLineInlineFormatPlan(view, multiLineEdit, format)
+    if (!plan) return false
+
+    view.dispatch(plan.transaction.scrollIntoView())
+    editStateRef.current = plan.nextState
+    syncVisualSelection()
+    const markdownAfterInlineOperation = getNormalizedEditorMarkdown(currentEditor)
+    commitMarkdown(markdownAfterInlineOperation)
+    if (editStateRef.current) {
+      recordHistory(beforeMarkdown, beforeState, markdownAfterInlineOperation, editStateRef.current)
+    }
+    currentEditor.focus()
+    return true
+  }
+
+  const tryApplyListMarkerShortcut = () => {
+    const { view } = getCurrentEditorAndView()
+    const multiLineEdit = editStateRef.current
+    if (!view || !multiLineEdit) return false
+
+    const shortcut = getMultiLineListMarkerShortcut(view, multiLineEdit)
+    if (!shortcut) return false
+    return applyListOperationPlan(shortcut.operation, { textByBlockIndex: shortcut.textByBlockIndex })
+  }
+
+  const tryApplyHeadingMarkerShortcut = () => {
+    const { view } = getCurrentEditorAndView()
+    const multiLineEdit = editStateRef.current
+    if (!view || !multiLineEdit) return false
+
+    const shortcut = getMultiLineHeadingMarkerShortcut(view, multiLineEdit)
+    if (!shortcut) return false
+    return applyHeadingOperationPlan(shortcut.level, { textByBlockIndex: shortcut.textByBlockIndex })
+  }
+
+  const tryApplyBlockMarkerShortcut = () => tryApplyHeadingMarkerShortcut() || tryApplyListMarkerShortcut()
+
+  const tryApplyInlineMarkerShortcut = (inputText: string) => {
+    const { currentEditor, view } = getCurrentEditorAndView()
+    const multiLineEdit = editStateRef.current
+    if (!currentEditor || !view || !multiLineEdit) return false
+
+    const beforeMarkdown = getNormalizedEditorMarkdown(currentEditor)
+    const beforeState = cloneMultiLineEditState(multiLineEdit)
+    const plan = buildMultiLineInlineMarkerOperationPlan(view, multiLineEdit, inputText)
+    if (!plan) return false
+
+    view.dispatch(plan.transaction.scrollIntoView())
+    editStateRef.current = plan.nextState
+    syncVisualSelection()
+    const markdownAfterInlineMarker = getNormalizedEditorMarkdown(currentEditor)
+    commitMarkdown(markdownAfterInlineMarker)
+    if (editStateRef.current) {
+      recordHistory(beforeMarkdown, beforeState, markdownAfterInlineMarker, editStateRef.current)
+    }
+    currentEditor.focus()
+    return true
+  }
 
   const tryMoveCursors = (movement: MultiLineCursorMovement, extendSelection = false) => {
     const { currentEditor, view } = getCurrentEditorAndView()
@@ -755,6 +925,12 @@ export function useMultilineEditing({
     tryExpandSelection,
     tryApplyInput,
     tryApplyTabInput,
+    tryApplyListOperation,
+    tryApplyListMarkerShortcut,
+    tryApplyHeadingOperation,
+    tryApplyInlineFormat,
+    tryApplyBlockMarkerShortcut,
+    tryApplyInlineMarkerShortcut,
     tryMoveCursors,
     copySelectionToClipboard,
     cutSelectionToClipboard,
