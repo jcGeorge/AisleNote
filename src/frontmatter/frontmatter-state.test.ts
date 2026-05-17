@@ -1,13 +1,21 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_FRONTMATTER_SETTINGS } from './frontmatter'
 import {
+  applyTemplateToStageManagerSelection,
   buildFrontmatterDataFromRows,
   buildFrontmatterModalDraftForNote,
   buildFrontmatterRowsForNote,
   resolveFrontmatterReferencesForState,
   updateNoteBodyFrontmatter,
 } from './frontmatter-state'
-import type { AppState, FrontmatterRowDraft, FrontmatterTemplate, NoteLocation, Space } from '../types/app'
+import type {
+  AppState,
+  FrontmatterRowDraft,
+  FrontmatterTemplate,
+  NoteLocation,
+  Space,
+  StageManagerSelectionSnapshot,
+} from '../types/app'
 
 const location: NoteLocation = {
   domainId: 'domain-1',
@@ -605,5 +613,93 @@ describe('frontmatter row state', () => {
       computedFields: {},
       warnings: ['computed field must have a computed value, status reverted to normal field'],
     })
+  })
+
+  it('applies a frontmatter template to every selected Stage Manager note body', () => {
+    const state = createFrontmatterState()
+    const subTab = { id: 'sub-1', title: 'Child Roadmap', noteBodyId: 'body-sub', content: '' }
+    const parentTab = {
+      ...state.spaces[0].data.tabs[0],
+      subTabs: [subTab],
+    }
+    const space: Space = {
+      ...state.spaces[0],
+      data: {
+        ...state.spaces[0].data,
+        tabs: [parentTab],
+      },
+    }
+    const stateWithSubTab: AppState = {
+      ...state,
+      spaces: [space],
+      domains: state.domains.map((domain) =>
+        domain.id === state.activeDomainId ? { ...domain, spaces: [space] } : domain,
+      ),
+      noteBodies: [
+        ...state.noteBodies,
+        {
+          id: 'body-sub',
+          createdAt: '2025-02-03T10:00:00.000Z',
+          updatedAt: '2025-02-04T11:00:00.000Z',
+          frontmatter: null,
+          aisles: [{ id: 'aisle-sub', markdown: 'sub body' }],
+        },
+      ],
+    }
+    const selection: StageManagerSelectionSnapshot = {
+      fullParents: [parentTab],
+      partialParents: [],
+      looseSubTabs: [],
+      fullParentIds: new Set([parentTab.id]),
+      hasSelection: true,
+    }
+    const stageTemplate: FrontmatterTemplate = {
+      id: 'stage-template',
+      name: 'stage template',
+      fields: [
+        { id: 'status', key: 'status', type: 'text', defaultValue: 'planned', computed: 'none' },
+        { id: 'title', key: 'title', type: 'text', defaultValue: '', computed: 'noteTitle' },
+        { id: 'created', key: 'created', type: 'date', defaultValue: '', computed: 'createdAt' },
+      ],
+    }
+
+    const next = applyTemplateToStageManagerSelection(
+      stateWithSubTab,
+      space.id,
+      selection,
+      stageTemplate,
+      new Date('2026-05-17T15:00:00.000Z'),
+    )
+    const parentBody = next.noteBodies.find((body) => body.id === 'body-1')
+    const subBody = next.noteBodies.find((body) => body.id === 'body-sub')
+
+    expect(parentBody).toMatchObject({
+      frontmatterTemplateId: stageTemplate.id,
+      frontmatterTemplateDerived: true,
+      frontmatter: {
+        status: 'ready',
+        title: { id: 'body-1', title: 'Roadmap' },
+        created: '2024-01-01',
+      },
+      frontmatterComputedFields: {
+        title: 'noteTitle',
+        created: 'createdAt',
+      },
+    })
+    expect(subBody).toMatchObject({
+      frontmatterTemplateId: stageTemplate.id,
+      frontmatterTemplateDerived: true,
+      frontmatter: {
+        status: 'planned',
+        title: { id: 'body-sub', title: 'Child Roadmap' },
+        created: '2025-02-03',
+      },
+      frontmatterTemplateFieldOrigins: {
+        status: { templateId: stageTemplate.id, fieldId: 'status' },
+        title: { templateId: stageTemplate.id, fieldId: 'title' },
+        created: { templateId: stageTemplate.id, fieldId: 'created' },
+      },
+    })
+    expect(next.frontmatter.lastAppliedTemplateId).toBe(stageTemplate.id)
   })
 })

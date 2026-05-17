@@ -8,6 +8,7 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs'
 import os from 'node:os'
@@ -43,6 +44,40 @@ const IMAGE_METADATA_FRAGMENT_PREFIX = '#tabs-image='
 const INTERNAL_INDENT_TOKEN = '\u2060\u2003\u2003'
 const EDITOR_BLANK_LINE_PLACEHOLDER = '\u200b'
 const EXPORT_TAB_SPACES = '    '
+
+function createStorageIssue(code, severity, pathValue, message) {
+  return {
+    code,
+    severity,
+    ...(pathValue ? { path: pathValue } : {}),
+    message,
+  }
+}
+
+function getStorageHealth(issues) {
+  if (issues.some((issue) => issue?.severity === 'error')) return 'error'
+  if (issues.length > 0) return 'warning'
+  return 'healthy'
+}
+
+function addStorageIssue(issues, code, severity, pathValue, message) {
+  if (!Array.isArray(issues)) return
+  issues.push(createStorageIssue(code, severity, pathValue, message))
+}
+
+function formatStorageIssuePath(rootPath, absolutePath) {
+  const relativePath = path.relative(rootPath, absolutePath).split(path.sep).join(path.posix.sep)
+  return relativePath && !relativePath.startsWith('..') ? path.posix.join(HYBRID_ROOT_DIR, relativePath) : absolutePath
+}
+
+function withStorageHealth(result, issues) {
+  const normalizedIssues = Array.isArray(issues) ? issues : []
+  return {
+    ...result,
+    health: result.ok === false ? 'error' : getStorageHealth(normalizedIssues),
+    issues: normalizedIssues,
+  }
+}
 
 function splitImageMetadataFromUrl(url) {
   const source = String(url ?? '')
@@ -155,7 +190,7 @@ function listDirectoryEntries(directoryPath) {
   }
 }
 
-function buildTrashDataFromManifestItems(trashItems, trashRoot) {
+function buildTrashDataFromManifestItems(trashItems, trashRoot, issues = null, issueRootPath = null) {
   const deletedTabs = ensureArray(trashItems)
     .filter((item) => item?.type === 'parent-tab')
     .map((item) => ({
@@ -170,13 +205,13 @@ function buildTrashDataFromManifestItems(trashItems, trashRoot) {
               : '',
         title: typeof item.title === 'string' ? item.title : 'deleted tab',
         noteBodyId: typeof item.noteBodyId === 'string' ? item.noteBodyId : '',
-        homeContent: typeof item.file === 'string' ? readMarkdownFile(trashRoot, item.file) : '',
+        homeContent: typeof item.file === 'string' ? readMarkdownFile(trashRoot, item.file, issues, issueRootPath) : '',
         activeSubTabId: typeof item.activeSubTabId === 'string' ? item.activeSubTabId : null,
         subTabs: ensureArray(item.subTabs).map((subTabRecord) => ({
           id: typeof subTabRecord?.id === 'string' ? subTabRecord.id : '',
           title: typeof subTabRecord?.title === 'string' ? subTabRecord.title : 'tab',
           noteBodyId: typeof subTabRecord?.noteBodyId === 'string' ? subTabRecord.noteBodyId : '',
-          content: typeof subTabRecord?.file === 'string' ? readMarkdownFile(trashRoot, subTabRecord.file) : '',
+          content: typeof subTabRecord?.file === 'string' ? readMarkdownFile(trashRoot, subTabRecord.file, issues, issueRootPath) : '',
         })),
       },
     }))
@@ -193,7 +228,7 @@ function buildTrashDataFromManifestItems(trashItems, trashRoot) {
         id: typeof item?.original?.subTabId === 'string' ? item.original.subTabId : typeof item.id === 'string' ? item.id : '',
         title: typeof item.title === 'string' ? item.title : 'deleted note',
         noteBodyId: typeof item.noteBodyId === 'string' ? item.noteBodyId : '',
-        content: typeof item.file === 'string' ? readMarkdownFile(trashRoot, item.file) : '',
+        content: typeof item.file === 'string' ? readMarkdownFile(trashRoot, item.file, issues, issueRootPath) : '',
       },
     }))
     .filter((entry) => entry.id && entry.parentTabId && entry.subTab.id)
@@ -201,16 +236,23 @@ function buildTrashDataFromManifestItems(trashItems, trashRoot) {
   return { deletedTabs, deletedSubTabs }
 }
 
-function readTrashData(spaceRoot, trashManifestFile) {
+function readTrashData(spaceRoot, trashManifestFile, issues = null, issueRootPath = null) {
   const trashRoot = path.join(spaceRoot, 'trash')
   const trashManifestPath = trashManifestFile
     ? path.join(spaceRoot, trashManifestFile)
     : path.join(trashRoot, 'manifest.json')
-  const trashManifest = readJsonFileIfExists(trashManifestPath)
+  const trashManifest = readJsonFileIfExists(trashManifestPath, issues, {
+    rootPath: issueRootPath,
+    missingCode: 'missing-trash-manifest',
+    parseCode: 'corrupt-trash-manifest',
+    severity: 'warning',
+    missingMessage: 'Trash manifest is missing; trash was loaded as empty for this space.',
+    parseMessage: 'Trash manifest is corrupt; trash was loaded as empty for this space.',
+  })
   if (!trashManifest || typeof trashManifest !== 'object') {
     return { deletedTabs: [], deletedSubTabs: [] }
   }
-  return buildTrashDataFromManifestItems(trashManifest.items, trashRoot)
+  return buildTrashDataFromManifestItems(trashManifest.items, trashRoot, issues, issueRootPath)
 }
 
 function addAssetToBank(assetBank, bytes, extension) {
@@ -260,7 +302,7 @@ function externalizeMarkdownImages(markdown, noteFileRelative, assetBank) {
   })
 }
 
-function inlineMarkdownImages(markdown, noteFilePath) {
+function inlineMarkdownImages(markdown, noteFilePath, issues = null, issueRootPath = null) {
   return String(markdown ?? '').replace(IMAGE_MARKDOWN_PATTERN, (fullMatch, altText, srcRaw) => {
     const src = String(srcRaw ?? '').trim()
     if (!src || src.startsWith('data:')) return fullMatch
@@ -278,12 +320,28 @@ function inlineMarkdownImages(markdown, noteFilePath) {
       absolutePath = path.resolve(path.dirname(noteFilePath), imageUrl)
     }
 
-    if (!absolutePath || !existsSync(absolutePath)) return fullMatch
+    if (!absolutePath || !existsSync(absolutePath)) {
+      addStorageIssue(
+        issues,
+        'missing-asset',
+        'warning',
+        absolutePath && issueRootPath ? formatStorageIssuePath(issueRootPath, absolutePath) : absolutePath,
+        'Referenced image asset is missing; the Markdown image reference was kept unchanged.',
+      )
+      return fullMatch
+    }
 
     try {
       const bytes = readFileSync(absolutePath)
       return `![${altText}](${buildImageDataUrl(bytes, absolutePath)}${metadataFragment})`
     } catch {
+      addStorageIssue(
+        issues,
+        'unreadable-asset',
+        'warning',
+        issueRootPath ? formatStorageIssuePath(issueRootPath, absolutePath) : absolutePath,
+        'Referenced image asset could not be read; the Markdown image reference was kept unchanged.',
+      )
       return fullMatch
     }
   })
@@ -297,21 +355,50 @@ export function getHybridStorageRoot(profileRootPath) {
   return path.join(profileRootPath, HYBRID_ROOT_DIR)
 }
 
-function readTextFileIfExists(filePath) {
+function readTextFileIfExists(filePath, issues = null, issueOptions = {}) {
   try {
-    if (!existsSync(filePath)) return null
+    if (!existsSync(filePath)) {
+      if (issueOptions.missingCode) {
+        addStorageIssue(
+          issues,
+          issueOptions.missingCode,
+          issueOptions.severity ?? 'warning',
+          issueOptions.rootPath ? formatStorageIssuePath(issueOptions.rootPath, filePath) : filePath,
+          issueOptions.missingMessage ?? 'Expected storage file is missing.',
+        )
+      }
+      return null
+    }
     return readFileSync(filePath, 'utf8')
   } catch {
+    if (issueOptions.readCode) {
+      addStorageIssue(
+        issues,
+        issueOptions.readCode,
+        issueOptions.severity ?? 'warning',
+        issueOptions.rootPath ? formatStorageIssuePath(issueOptions.rootPath, filePath) : filePath,
+        issueOptions.readMessage ?? 'Storage file could not be read.',
+      )
+    }
     return null
   }
 }
 
-function readJsonFileIfExists(filePath) {
-  const raw = readTextFileIfExists(filePath)
+function readJsonFileIfExists(filePath, issues = null, issueOptions = {}) {
+  const raw = readTextFileIfExists(filePath, issues, issueOptions)
   if (raw === null) return null
   try {
     return JSON.parse(raw)
   } catch {
+    if (issueOptions.parseCode) {
+      addStorageIssue(
+        issues,
+        issueOptions.parseCode,
+        issueOptions.severity ?? 'warning',
+        issueOptions.rootPath ? formatStorageIssuePath(issueOptions.rootPath, filePath) : filePath,
+        issueOptions.parseMessage ?? 'Storage JSON could not be parsed.',
+      )
+    }
     return null
   }
 }
@@ -338,10 +425,17 @@ function writeBinaryFileAtomic(rootPath, relativeFile, contents) {
   renameSync(tempPath, absolutePath)
 }
 
-function readMarkdownFile(baseDirectory, relativeFile) {
+function readMarkdownFile(baseDirectory, relativeFile, issues = null, issueRootPath = null) {
   const absolutePath = path.join(baseDirectory, relativeFile)
-  const markdown = readTextFileIfExists(absolutePath) ?? ''
-  return inlineMarkdownImages(markdown, absolutePath)
+  const markdown = readTextFileIfExists(absolutePath, issues, {
+    rootPath: issueRootPath,
+    missingCode: 'missing-markdown',
+    readCode: 'unreadable-markdown',
+    severity: 'warning',
+    missingMessage: 'Markdown file is missing; this note was loaded as empty.',
+    readMessage: 'Markdown file could not be read; this note was loaded as empty.',
+  }) ?? ''
+  return inlineMarkdownImages(markdown, absolutePath, issues, issueRootPath)
 }
 
 function hasCloudConflictName(name) {
@@ -406,6 +500,29 @@ function createRecoverySnapshot(rootPath, userDataPath) {
   const snapshotPath = path.join(recoveryParent, `${HYBRID_ROOT_DIR}-${Date.now()}`)
   cpSync(rootPath, snapshotPath, { recursive: true, force: true })
   return snapshotPath
+}
+
+export function listStorageRecoverySnapshots(userDataPath) {
+  const recoveryParent = path.join(userDataPath, STORAGE_RECOVERY_DIR)
+  return listDirectoryEntries(recoveryParent)
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith(`${HYBRID_ROOT_DIR}-`))
+    .map((entry) => {
+      const snapshotPath = path.join(recoveryParent, entry.name)
+      const timestamp = Number(entry.name.slice(`${HYBRID_ROOT_DIR}-`.length))
+      let modifiedAt = Number.isFinite(timestamp) ? timestamp : 0
+      try {
+        modifiedAt = Math.max(modifiedAt, Math.round(statSync(snapshotPath).mtimeMs))
+      } catch {
+        // Keep a stable best-effort timestamp for snapshots with unreadable metadata.
+      }
+      return {
+        name: entry.name,
+        path: snapshotPath,
+        createdAt: Number.isFinite(timestamp) ? timestamp : modifiedAt,
+        modifiedAt,
+      }
+    })
+    .sort((left, right) => right.modifiedAt - left.modifiedAt)
 }
 
 function setStorageTextFile(fileMap, relativeFile, contents) {
@@ -795,7 +912,7 @@ function writeHybridStorage(tempRoot, serializedState) {
   pruneStorageRoot(tempRoot, fileMap.keys())
 }
 
-function readNoteBodiesFromRoot(rootPath, rootManifest) {
+function readNoteBodiesFromRoot(rootPath, rootManifest, issues = null) {
   return ensureArray(rootManifest?.noteBodies)
     .map((body) => {
       const bodyId = typeof body?.id === 'string' ? body.id : ''
@@ -807,7 +924,7 @@ function readNoteBodiesFromRoot(rootPath, rootManifest) {
           if (!aisleId || !file) return null
           return {
             id: aisleId,
-            markdown: readMarkdownFile(rootPath, file),
+            markdown: readMarkdownFile(rootPath, file, issues, rootPath),
           }
         })
         .filter(Boolean)
@@ -850,9 +967,16 @@ function addDirectoryToZip(zip, directoryPath, zipPrefix) {
   }
 }
 
-function readV2Space(rootPath, spaceRootRelative, spaceEntry) {
+function readV2Space(rootPath, spaceRootRelative, spaceEntry, issues = null) {
   const spaceRoot = path.join(rootPath, spaceRootRelative)
-  const spaceManifest = readJsonFileIfExists(path.join(spaceRoot, 'manifest.json'))
+  const spaceManifest = readJsonFileIfExists(path.join(spaceRoot, 'manifest.json'), issues, {
+    rootPath,
+    missingCode: 'missing-space-manifest',
+    parseCode: 'corrupt-space-manifest',
+    severity: 'warning',
+    missingMessage: 'Space manifest is missing; this space was skipped.',
+    parseMessage: 'Space manifest is corrupt; this space was skipped.',
+  })
   if (!spaceManifest || typeof spaceManifest !== 'object') return null
 
   const tabs = ensureArray(spaceManifest.tabs)
@@ -861,13 +985,13 @@ function readV2Space(rootPath, spaceRootRelative, spaceEntry) {
       title: typeof tabRecord?.title === 'string' ? tabRecord.title : 'tab',
       noteBodyId: typeof tabRecord?.noteBodyId === 'string' ? tabRecord.noteBodyId : '',
       homeContent:
-        typeof tabRecord?.homeNoteFile === 'string' ? readMarkdownFile(spaceRoot, tabRecord.homeNoteFile) : '',
+        typeof tabRecord?.homeNoteFile === 'string' ? readMarkdownFile(spaceRoot, tabRecord.homeNoteFile, issues, rootPath) : '',
       activeSubTabId: typeof tabRecord?.activeSubTabId === 'string' ? tabRecord.activeSubTabId : null,
       subTabs: ensureArray(tabRecord?.subTabs).map((subTabRecord) => ({
         id: typeof subTabRecord?.id === 'string' ? subTabRecord.id : '',
         title: typeof subTabRecord?.title === 'string' ? subTabRecord.title : 'tab',
         noteBodyId: typeof subTabRecord?.noteBodyId === 'string' ? subTabRecord.noteBodyId : '',
-        content: typeof subTabRecord?.file === 'string' ? readMarkdownFile(spaceRoot, subTabRecord.file) : '',
+        content: typeof subTabRecord?.file === 'string' ? readMarkdownFile(spaceRoot, subTabRecord.file, issues, rootPath) : '',
       })),
     }))
     .filter((tab) => tab.id)
@@ -875,6 +999,8 @@ function readV2Space(rootPath, spaceRootRelative, spaceEntry) {
   const { deletedTabs, deletedSubTabs } = readTrashData(
     spaceRoot,
     typeof spaceManifest.trashManifestFile === 'string' ? spaceManifest.trashManifestFile : null,
+    issues,
+    rootPath,
   )
 
   return {
@@ -901,31 +1027,62 @@ function readV2Space(rootPath, spaceRootRelative, spaceEntry) {
   }
 }
 
-function readV2HybridAppStateFromRoot(rootPath, rootManifest) {
-  const noteBodies = readNoteBodiesFromRoot(rootPath, rootManifest)
+function readV2HybridAppStateFromRoot(rootPath, rootManifest, issues = null) {
+  const noteBodies = readNoteBodiesFromRoot(rootPath, rootManifest, issues)
   const domainEntries = ensureArray(rootManifest.domains)
-  if (domainEntries.length === 0) return null
+  if (domainEntries.length === 0) {
+    addStorageIssue(issues, 'missing-domain-index', 'error', path.posix.join(HYBRID_ROOT_DIR, 'manifest.json'), 'Root manifest has no domains.')
+    return null
+  }
 
   const domains = []
   for (const domainEntry of domainEntries) {
     const domainId = typeof domainEntry?.id === 'string' ? domainEntry.id : ''
     const domainPath = typeof domainEntry?.path === 'string' ? domainEntry.path : ''
-    if (!domainId || !domainPath) return null
+    if (!domainId || !domainPath) {
+      addStorageIssue(issues, 'invalid-domain-entry', 'warning', path.posix.join(HYBRID_ROOT_DIR, 'manifest.json'), 'Invalid domain entry was skipped.')
+      continue
+    }
     const domainRootRelative = path.posix.join(DOMAINS_DIR, domainPath)
-    const domainManifest = readJsonFileIfExists(path.join(rootPath, domainRootRelative, 'manifest.json'))
-    if (!domainManifest || typeof domainManifest !== 'object') return null
+    const domainManifest = readJsonFileIfExists(path.join(rootPath, domainRootRelative, 'manifest.json'), issues, {
+      rootPath,
+      missingCode: 'missing-domain-manifest',
+      parseCode: 'corrupt-domain-manifest',
+      severity: 'warning',
+      missingMessage: 'Domain manifest is missing; this domain was skipped.',
+      parseMessage: 'Domain manifest is corrupt; this domain was skipped.',
+    })
+    if (!domainManifest || typeof domainManifest !== 'object') continue
 
     const spaceEntries = ensureArray(domainManifest.spaces)
     const spaces = []
     for (const spaceEntry of spaceEntries) {
       const spaceId = typeof spaceEntry?.id === 'string' ? spaceEntry.id : ''
       const spacePath = typeof spaceEntry?.path === 'string' ? spaceEntry.path : ''
-      if (!spaceId || !spacePath) return null
-      const space = readV2Space(rootPath, path.posix.join(domainRootRelative, spacePath), spaceEntry)
-      if (!space) return null
+      if (!spaceId || !spacePath) {
+        addStorageIssue(
+          issues,
+          'invalid-space-entry',
+          'warning',
+          path.posix.join(HYBRID_ROOT_DIR, domainRootRelative, 'manifest.json'),
+          'Invalid space entry was skipped.',
+        )
+        continue
+      }
+      const space = readV2Space(rootPath, path.posix.join(domainRootRelative, spacePath), spaceEntry, issues)
+      if (!space) continue
       spaces.push(space)
     }
-    if (spaces.length === 0) return null
+    if (spaces.length === 0) {
+      addStorageIssue(
+        issues,
+        'domain-has-no-readable-spaces',
+        'warning',
+        path.posix.join(HYBRID_ROOT_DIR, domainRootRelative, 'manifest.json'),
+        'Domain has no readable spaces and was skipped.',
+      )
+      continue
+    }
 
     const lastOpened = isRecord(rootManifest.lastOpened) ? rootManifest.lastOpened : null
     const lastOpenedSpaceId =
@@ -952,6 +1109,11 @@ function readV2HybridAppStateFromRoot(rootPath, rootManifest) {
       activeSpaceId,
       spaces,
     })
+  }
+
+  if (domains.length === 0) {
+    addStorageIssue(issues, 'no-readable-domains', 'error', path.posix.join(HYBRID_ROOT_DIR, 'manifest.json'), 'No readable domains were found.')
+    return null
   }
 
   const lastOpened = isRecord(rootManifest.lastOpened) ? rootManifest.lastOpened : null
@@ -983,13 +1145,55 @@ function readV2HybridAppStateFromRoot(rootPath, rootManifest) {
   })
 }
 
-function readHybridAppStateFromRoot(rootPath) {
-  const rawRootManifest = readJsonFileIfExists(path.join(rootPath, 'manifest.json'))
+function readHybridAppStateResultFromRoot(rootPath) {
+  const issues = []
+  if (!existsSync(rootPath)) return { serializedState: null, schemaVersion: null, issues }
+
+  const rawRootManifest = readJsonFileIfExists(path.join(rootPath, 'manifest.json'), issues, {
+    rootPath,
+    missingCode: 'missing-root-manifest',
+    parseCode: 'corrupt-root-manifest',
+    severity: 'error',
+    missingMessage: 'Root manifest is missing.',
+    parseMessage: 'Root manifest is corrupt.',
+  })
   const rootManifestMigration = migrateStorageRootManifest(rawRootManifest, SCHEMA_VERSION)
-  if (!rootManifestMigration.ok) return null
+  if (!rootManifestMigration.ok) {
+    if (issues.length === 0) {
+      addStorageIssue(
+        issues,
+        'unsupported-root-manifest',
+        'error',
+        path.posix.join(HYBRID_ROOT_DIR, 'manifest.json'),
+        'Root manifest schema is unsupported.',
+      )
+    }
+    return {
+      serializedState: null,
+      schemaVersion: typeof rawRootManifest?.schemaVersion === 'number' ? rawRootManifest.schemaVersion : null,
+      issues,
+    }
+  }
   const rootManifest = rootManifestMigration.manifest
-  if (rootManifest.schemaVersion === SCHEMA_VERSION) return readV2HybridAppStateFromRoot(rootPath, rootManifest)
-  return null
+  if (rootManifest.schemaVersion === SCHEMA_VERSION) {
+    return {
+      serializedState: readV2HybridAppStateFromRoot(rootPath, rootManifest, issues),
+      schemaVersion: rootManifest.schemaVersion,
+      issues,
+    }
+  }
+  addStorageIssue(
+    issues,
+    'unsupported-root-manifest',
+    'error',
+    path.posix.join(HYBRID_ROOT_DIR, 'manifest.json'),
+    'Root manifest schema is unsupported.',
+  )
+  return { serializedState: null, schemaVersion: rootManifest.schemaVersion, issues }
+}
+
+function readHybridAppStateFromRoot(rootPath) {
+  return readHybridAppStateResultFromRoot(rootPath).serializedState
 }
 
 export function loadAppState(profileRootPath) {
@@ -1005,33 +1209,43 @@ export function loadAppStateResult(profileRootPath) {
   const conflicts = detectStorageConflicts(profileRootPath, finalRoot)
 
   if (conflicts.length > 0) {
-    return {
+    return withStorageHealth({
       ok: false,
       serializedState: null,
       source: 'hybrid',
       error: `Storage profile contains cloud conflict folders: ${conflicts.join(', ')}`,
       conflicts,
-    }
+    }, conflicts.map((conflictPath) =>
+      createStorageIssue(
+        'cloud-conflict',
+        'error',
+        conflictPath,
+        'Storage profile contains a cloud-provider conflict path.',
+      ),
+    ))
   }
 
-  const hybridState = readHybridAppStateFromRoot(finalRoot)
-  if (hybridState !== null) {
-    const rootManifest = readJsonFileIfExists(path.join(finalRoot, 'manifest.json'))
-    return {
+  const hybridResult = readHybridAppStateResultFromRoot(finalRoot)
+  if (hybridResult.serializedState !== null) {
+    return withStorageHealth({
       ok: true,
-      serializedState: hybridState,
+      serializedState: hybridResult.serializedState,
       source: 'hybrid',
-      schemaVersion: typeof rootManifest?.schemaVersion === 'number' ? rootManifest.schemaVersion : null,
-    }
+      schemaVersion: hybridResult.schemaVersion,
+    }, hybridResult.issues)
   }
 
   if (finalExists) {
-    return {
+    const issues = hybridResult.issues.length > 0
+      ? hybridResult.issues
+      : [createStorageIssue('unreadable-profile', 'error', HYBRID_ROOT_DIR, 'Existing app state could not be loaded.')]
+    return withStorageHealth({
       ok: false,
       serializedState: null,
       source: 'hybrid',
       error: 'Existing app state could not be loaded.',
-    }
+      schemaVersion: hybridResult.schemaVersion,
+    }, issues)
   }
 
   const legacyState = readTextFileIfExists(legacyPath)
@@ -1063,6 +1277,28 @@ export function saveAppState(profileRootPath, serializedState, options = {}) {
   }
 
   writeHybridStorage(finalRoot, serializedState)
+}
+
+export function restoreStorageRecoverySnapshot(profileRootPath, userDataPath, snapshotPath = null) {
+  const snapshots = listStorageRecoverySnapshots(userDataPath)
+  const selectedSnapshot = snapshotPath
+    ? snapshots.find((snapshot) => path.resolve(snapshot.path) === path.resolve(snapshotPath))
+    : snapshots[0]
+
+  if (!selectedSnapshot) {
+    return { ok: false, error: 'No recovery snapshot is available.' }
+  }
+
+  const snapshotResult = readHybridAppStateResultFromRoot(selectedSnapshot.path)
+  if (snapshotResult.serializedState === null) {
+    return { ok: false, error: 'Recovery snapshot could not be loaded.', snapshot: selectedSnapshot }
+  }
+
+  const finalRoot = getHybridStorageRoot(profileRootPath)
+  createRecoverySnapshot(finalRoot, userDataPath)
+  rmSync(finalRoot, { recursive: true, force: true })
+  cpSync(selectedSnapshot.path, finalRoot, { recursive: true, force: true })
+  return { ok: true, snapshot: selectedSnapshot, loadResult: loadAppStateResult(profileRootPath) }
 }
 
 export function createPreWriteStorageSnapshot(finalRoot, backupRoot) {

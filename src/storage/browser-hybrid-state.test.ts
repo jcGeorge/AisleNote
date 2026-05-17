@@ -23,6 +23,66 @@ function getTextFileJson(fileMap: ReturnType<typeof buildHybridFileMapFromSerial
   return entry?.kind === 'text' ? (JSON.parse(entry.text) as Record<string, unknown>) : {}
 }
 
+function createBrowserStorageState() {
+  const space = {
+    id: 'space-1',
+    name: 'Space',
+    settings: { autoRemoveDeletedDays: 7 },
+    data: {
+      activeTabId: 'tab-1',
+      tabs: [
+        {
+          id: 'tab-1',
+          title: 'Tab',
+          noteBodyId: 'body-1',
+          homeContent: 'home fallback',
+          activeSubTabId: null,
+          subTabs: [],
+        },
+      ],
+      deletedTabs: [],
+      deletedSubTabs: [],
+    },
+  }
+
+  return parseSavedState(
+    JSON.stringify({
+      theme: 'dawn',
+      activeDomainId: 'domain-1',
+      domains: [
+        {
+          id: 'domain-1',
+          name: 'Domain',
+          activeSpaceId: space.id,
+          spaces: [space],
+        },
+      ],
+      noteBodies: [{ id: 'body-1', aisles: [{ id: 'aisle-1', markdown: 'home body' }] }],
+      activeSpaceId: space.id,
+      spaces: [space],
+    }),
+  )
+}
+
+function getBrowserWorkspacePaths(fileMap: ReturnType<typeof buildHybridFileMapFromSerializedState>) {
+  const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
+  const domainEntry = getRecord(Array.isArray(rootManifest.domains) ? rootManifest.domains[0] : null)
+  const domainRoot = `notes-data/domains/${String(domainEntry.path)}`
+  const domainManifest = getTextFileJson(fileMap, `${domainRoot}/manifest.json`)
+  const spaceEntry = getRecord(Array.isArray(domainManifest.spaces) ? domainManifest.spaces[0] : null)
+  const spaceRoot = `${domainRoot}/${String(spaceEntry.path)}`
+  const spaceManifest = getTextFileJson(fileMap, `${spaceRoot}/manifest.json`)
+  return {
+    rootManifest,
+    domainEntry,
+    domainRoot,
+    domainManifest,
+    spaceEntry,
+    spaceRoot,
+    spaceManifest,
+  }
+}
+
 describe('browser hybrid storage', () => {
   it('round trips markdown note bodies through the manifest file map', () => {
     const state = parseSavedState(
@@ -277,5 +337,150 @@ describe('browser hybrid storage', () => {
     ])
 
     expect(readSerializedStateFromHybridFileMap(fileMap)).toBeNull()
+  })
+
+  it('loads missing markdown files as empty content', () => {
+    const state = createBrowserStorageState()
+    const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
+    const { spaceRoot, spaceManifest } = getBrowserWorkspacePaths(fileMap)
+    const firstTab = getRecord(Array.isArray(spaceManifest.tabs) ? spaceManifest.tabs[0] : null)
+    fileMap.delete(`${spaceRoot}/${String(firstTab.homeNoteFile)}`)
+
+    const serialized = readSerializedStateFromHybridFileMap(fileMap)
+    const roundTripped = parseSavedState(serialized ?? '')
+
+    expect(serialized).toEqual(expect.any(String))
+    expect(roundTripped.noteBodies[0]?.aisles[0]?.markdown).toBe('')
+    expect(roundTripped.domains[0]?.spaces[0]?.data.tabs[0]?.homeContent).toBe('')
+  })
+
+  it('keeps markdown references for missing image assets', () => {
+    const state = createBrowserStorageState()
+    state.noteBodies[0].aisles[0].markdown = 'image ![pixel](data:image/png;base64,iVBORw0KGgo=)'
+    const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
+    Array.from(fileMap.keys())
+      .filter((path) => path.startsWith('notes-data/assets/'))
+      .forEach((path) => fileMap.delete(path))
+
+    const serialized = readSerializedStateFromHybridFileMap(fileMap)
+    const roundTripped = parseSavedState(serialized ?? '')
+
+    expect(serialized).toEqual(expect.any(String))
+    expect(roundTripped.noteBodies[0]?.aisles[0]?.markdown).toContain('![pixel](')
+    expect(roundTripped.noteBodies[0]?.aisles[0]?.markdown).not.toContain('data:image/')
+  })
+
+  it('loads corrupt trash manifests as empty trash', () => {
+    const state = createBrowserStorageState()
+    state.domains[0].spaces[0].data.deletedTabs = [
+      {
+        id: 'deleted-parent-entry',
+        deletedAt: 10,
+        tab: {
+          id: 'deleted-parent',
+          title: 'Deleted Parent',
+          noteBodyId: 'body-deleted-parent',
+          homeContent: 'deleted body',
+          activeSubTabId: null,
+          subTabs: [],
+        },
+      },
+    ]
+    state.noteBodies.push({ id: 'body-deleted-parent', frontmatter: null, aisles: [{ id: 'aisle-deleted', markdown: 'deleted body' }] })
+    const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
+    const { spaceRoot, spaceManifest } = getBrowserWorkspacePaths(fileMap)
+    const trashManifestPath = `${spaceRoot}/${String(spaceManifest.trashManifestFile)}`
+    fileMap.set(trashManifestPath, { path: trashManifestPath, kind: 'text', text: '{bad' })
+
+    const serialized = readSerializedStateFromHybridFileMap(fileMap)
+    const roundTripped = parseSavedState(serialized ?? '')
+
+    expect(serialized).toEqual(expect.any(String))
+    expect(roundTripped.domains[0]?.spaces[0]?.data.deletedTabs).toEqual([])
+    expect(roundTripped.domains[0]?.spaces[0]?.data.deletedSubTabs).toEqual([])
+  })
+
+  it('skips corrupt space manifests while preserving readable spaces', () => {
+    const state = createBrowserStorageState()
+    const secondSpace = {
+      id: 'space-2',
+      name: 'Second Space',
+      settings: { autoRemoveDeletedDays: 14 },
+      data: {
+        activeTabId: 'tab-2',
+        tabs: [
+          {
+            id: 'tab-2',
+            title: 'Second Tab',
+            noteBodyId: 'body-2',
+            homeContent: 'second fallback',
+            activeSubTabId: null,
+            subTabs: [],
+          },
+        ],
+        deletedTabs: [],
+        deletedSubTabs: [],
+      },
+    }
+    state.domains[0].spaces.push(secondSpace)
+    state.spaces = state.domains[0].spaces
+    state.noteBodies.push({ id: 'body-2', frontmatter: null, aisles: [{ id: 'aisle-2', markdown: 'second body' }] })
+    const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
+    const { domainRoot, domainManifest } = getBrowserWorkspacePaths(fileMap)
+    const firstSpace = getRecord(Array.isArray(domainManifest.spaces) ? domainManifest.spaces[0] : null)
+    const firstSpaceManifestPath = `${domainRoot}/${String(firstSpace.path)}/manifest.json`
+    fileMap.set(firstSpaceManifestPath, { path: firstSpaceManifestPath, kind: 'text', text: '{bad' })
+
+    const serialized = readSerializedStateFromHybridFileMap(fileMap)
+    const roundTripped = parseSavedState(serialized ?? '')
+
+    expect(serialized).toEqual(expect.any(String))
+    expect(roundTripped.domains[0]?.spaces).toHaveLength(1)
+    expect(roundTripped.domains[0]?.spaces[0]?.id).toBe('space-2')
+    expect(roundTripped.activeSpaceId).toBe('space-2')
+  })
+
+  it('skips corrupt domain manifests while preserving readable domains', () => {
+    const state = createBrowserStorageState()
+    const secondSpace = {
+      id: 'space-2',
+      name: 'Second Space',
+      settings: { autoRemoveDeletedDays: 14 },
+      data: {
+        activeTabId: 'tab-2',
+        tabs: [
+          {
+            id: 'tab-2',
+            title: 'Second Tab',
+            noteBodyId: 'body-2',
+            homeContent: 'second fallback',
+            activeSubTabId: null,
+            subTabs: [],
+          },
+        ],
+        deletedTabs: [],
+        deletedSubTabs: [],
+      },
+    }
+    state.domains.push({
+      id: 'domain-2',
+      name: 'Second Domain',
+      activeSpaceId: 'space-2',
+      spaces: [secondSpace],
+    })
+    state.noteBodies.push({ id: 'body-2', frontmatter: null, aisles: [{ id: 'aisle-2', markdown: 'second body' }] })
+    const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
+    const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
+    const firstDomain = getRecord(Array.isArray(rootManifest.domains) ? rootManifest.domains[0] : null)
+    const firstDomainManifestPath = `notes-data/domains/${String(firstDomain.path)}/manifest.json`
+    fileMap.set(firstDomainManifestPath, { path: firstDomainManifestPath, kind: 'text', text: '{bad' })
+
+    const serialized = readSerializedStateFromHybridFileMap(fileMap)
+    const roundTripped = parseSavedState(serialized ?? '')
+
+    expect(serialized).toEqual(expect.any(String))
+    expect(roundTripped.domains).toHaveLength(1)
+    expect(roundTripped.domains[0]?.id).toBe('domain-2')
+    expect(roundTripped.activeDomainId).toBe('domain-2')
   })
 })

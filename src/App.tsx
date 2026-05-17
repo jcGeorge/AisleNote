@@ -366,6 +366,15 @@ function App() {
     handleStorageProfileResult(result, 'storage profile reloaded.')
   }
 
+  const restoreStorageRecoverySnapshot = async () => {
+    const result = await window.electronAPI?.restoreStorageRecoverySnapshot?.()
+    if (!result) {
+      pushToast('storage recovery is only available in the desktop app.', 'warning')
+      return
+    }
+    handleStorageProfileResult(result, 'latest recovery snapshot restored.')
+  }
+
   const trackCompletedTaskQuickDelete = (beforeMarkdown: string) => {
     completedTaskDeleteUndoCandidateRef.current = {
       beforeMarkdown: normalizeMarkdownForPersistence(beforeMarkdown),
@@ -1596,6 +1605,7 @@ function App() {
           onMoveStorageProfile={moveStorageProfile}
           onRevealStorageProfile={revealStorageProfile}
           onRetryStorageProfile={retryStorageProfile}
+          onRestoreStorageRecoverySnapshot={restoreStorageRecoverySnapshot}
         />
       ) : (
         <>

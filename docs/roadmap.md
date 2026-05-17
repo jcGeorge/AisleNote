@@ -48,6 +48,23 @@ Exit criteria:
 - Corrupt or missing content degrades safely instead of losing the whole workspace.
 - Users can export a backup, reveal the data folder, and recover from the most common storage failures.
 
+## Phase 2.5: Import Compatibility Spike
+
+Goal: understand external note-app exports before committing to importer UX.
+
+Focus areas:
+
+- Collect or synthesize fixtures for Obsidian, OneNote, Apple Notes, generic Markdown folders, and generic HTML exports.
+- Define fixture expectations for Markdown conversion, image assets, nested notebooks/folders, frontmatter-like metadata, links, tags, and unsupported content.
+- Add parser spikes and tests only where the export format is stable enough to evaluate.
+- Document what can be imported losslessly, what needs review, and what should be left unsupported.
+
+Exit criteria:
+
+- Importer risk is understood before any user-facing import UI is built.
+- A fixture matrix exists for the first supported importer target.
+- Import work does not weaken the current local-first storage model.
+
 ## Phase 3: Targeted Refactor
 
 Goal: reduce risk in future feature work without doing a broad rewrite.
@@ -145,7 +162,8 @@ Goal: prepare macOS and Windows releases before full PWA/mobile release.
 
 Focus areas:
 
-- App identity, icons, metadata, installer strategy, signing/notarization, and update channels.
+- Choose Electron Builder or Electron Forge and document the packaging workflow.
+- App identity, icons, metadata, installer strategy, Windows packaging, macOS packaging, signing/notarization, and update channels.
 - Crash-safe saves and storage migration guarantees.
 - Export/backup/recovery flows suitable for non-developer users.
 - Electron menu behavior and keyboard shortcuts on macOS and Windows.

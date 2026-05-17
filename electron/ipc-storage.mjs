@@ -1,7 +1,13 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { createAppStateCoordinator, LOAD_FAILED_SAVE_ERROR } from './app-state-coordinator.mjs'
-import { getHybridStorageRoot, loadAppStateResult, saveAppState } from './app-state-storage.mjs'
+import {
+  getHybridStorageRoot,
+  listStorageRecoverySnapshots,
+  loadAppStateResult,
+  restoreStorageRecoverySnapshot,
+  saveAppState,
+} from './app-state-storage.mjs'
 import {
   getStorageProfileNotesPath,
   resolveStorageProfile,
@@ -12,8 +18,11 @@ import { createStorageProfileWatcher } from './storage-watcher.mjs'
 function createStorageStatus({ profile, coordinator, event = 'ready', error = null }) {
   const loadResult = coordinator.getLoadResult()
   const hasProfile = existsSync(getHybridStorageRoot(profile.profileRootPath))
+  const recoverySnapshots = listStorageRecoverySnapshots(profile.userDataPath ?? profile.profileRootPath)
   return {
     status: loadResult.ok ? 'ready' : 'error',
+    health: loadResult.health ?? (loadResult.ok ? 'healthy' : 'error'),
+    issues: loadResult.issues ?? [],
     event,
     profileRootPath: profile.profileRootPath,
     notesDataPath: getStorageProfileNotesPath(profile.profileRootPath),
@@ -24,6 +33,8 @@ function createStorageStatus({ profile, coordinator, event = 'ready', error = nu
     schemaVersion: loadResult.schemaVersion,
     conflicts: loadResult.conflicts,
     revision: loadResult.revision,
+    recoverySnapshotCount: recoverySnapshots.length,
+    latestRecoverySnapshotPath: recoverySnapshots[0]?.path,
     error: error ?? (loadResult.ok ? undefined : loadResult.error),
   }
 }
@@ -36,7 +47,7 @@ function getAllWindows(BrowserWindow) {
 
 export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null, shell = null }) {
   const userDataPath = app.getPath('userData')
-  let profile = resolveStorageProfile(userDataPath)
+  let profile = { ...resolveStorageProfile(userDataPath), userDataPath }
   const coordinator = createAppStateCoordinator({
     userDataPath,
     profileRootPath: profile.profileRootPath,
@@ -125,7 +136,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
       updateStatus('profile-error', result.error)
       return { ok: false, status, error: result.error }
     }
-    profile = writeStorageProfileConfig(userDataPath, profileRootPath)
+    profile = { ...writeStorageProfileConfig(userDataPath, profileRootPath), userDataPath }
     updateStatus(result.ok ? event : 'profile-error', result.ok ? null : result.error)
     startWatcher()
     if (result.ok && typeof result.serializedState === 'string') {
@@ -269,6 +280,28 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     })
     updateStatus(result.ok ? 'retry-loaded' : 'retry-error', result.ok ? null : result.error)
     if (result.ok && typeof result.serializedState === 'string' && !result.unchanged) {
+      broadcastAppStateUpdate({
+        serializedState: result.serializedState,
+        revision: result.revision,
+      })
+      watcher?.reset()
+    }
+    return { ok: result.ok, status, error: result.ok ? undefined : result.error }
+  })
+  ipcMain.handle?.('restore-storage-recovery-snapshot', async (_event, payload = {}) => {
+    const restoreResult = restoreStorageRecoverySnapshot(
+      profile.profileRootPath,
+      userDataPath,
+      typeof payload?.snapshotPath === 'string' ? payload.snapshotPath : null,
+    )
+    if (!restoreResult.ok) {
+      updateStatus('recovery-error', restoreResult.error)
+      return { ok: false, status, error: restoreResult.error }
+    }
+
+    const result = coordinator.reloadProfileRoot(profile.profileRootPath)
+    updateStatus(result.ok ? 'recovery-restored' : 'recovery-error', result.ok ? null : result.error)
+    if (result.ok && typeof result.serializedState === 'string') {
       broadcastAppStateUpdate({
         serializedState: result.serializedState,
         revision: result.revision,

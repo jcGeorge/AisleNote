@@ -290,4 +290,43 @@ describe('electron ipc boundaries', () => {
       })
       expect(window.webContents.send).not.toHaveBeenCalledWith('app-state-updated', expect.anything())
     }))
+
+  it('restores the latest recovery snapshot through storage IPC', async () =>
+    withTempUserDataPath(async (userDataPath) => {
+      const window = {
+        isDestroyed: vi.fn(() => false),
+        webContents: { id: 2, send: vi.fn() },
+      }
+      const ipcMain = createIpcMain()
+      registerStorageIpc({
+        ipcMain,
+        app: { getPath: () => userDataPath },
+        BrowserWindow: createBrowserWindow([window]),
+      })
+
+      const firstSaveEvent = { sender: { id: 1 }, returnValue: null }
+      ipcMain.listeners.get('save-app-state')(firstSaveEvent, {
+        serializedState: serializedAppState('dawn'),
+        baseRevision: 0,
+      })
+      const secondSaveEvent = { sender: { id: 1 }, returnValue: null }
+      ipcMain.listeners.get('save-app-state')(secondSaveEvent, {
+        serializedState: serializedAppState('light'),
+        baseRevision: 1,
+      })
+      window.webContents.send.mockClear()
+
+      await expect(ipcMain.handlers.get('restore-storage-recovery-snapshot')()).resolves.toMatchObject({
+        ok: true,
+        status: {
+          status: 'ready',
+          event: 'recovery-restored',
+          recoverySnapshotCount: expect.any(Number),
+        },
+      })
+      expect(window.webContents.send).toHaveBeenCalledWith('app-state-updated', {
+        serializedState: expect.stringContaining('"dawn"'),
+        revision: 3,
+      })
+    }))
 })

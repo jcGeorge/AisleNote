@@ -64,7 +64,7 @@
 }
 
 .settings-page-card {
-  width: min(720px, 100%);
+  width: min(840px, 100%);
   background: var(--settings-card-bg);
   border: 1px solid var(--settings-card-border);
   border-radius: 0.65rem;
@@ -357,6 +357,10 @@
   border-color: var(--toast-error);
 }
 
+.storage-profile-card.is-warning {
+  border-color: var(--toast-warning);
+}
+
 .storage-profile-row {
   display: grid;
   grid-template-columns: minmax(9rem, 0.34fr) minmax(0, 1fr);
@@ -372,6 +376,23 @@
 
 .storage-profile-error {
   color: var(--toast-error);
+}
+
+.storage-profile-issues {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.storage-profile-issue {
+  margin-bottom: 0 !important;
+}
+
+.storage-profile-issue.is-warning {
+  color: var(--toast-warning) !important;
+}
+
+.storage-profile-issue.is-error {
+  color: var(--toast-error) !important;
 }
 
 .storage-status-banner {

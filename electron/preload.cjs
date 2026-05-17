@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   moveStorageProfile: () => ipcRenderer.invoke('move-storage-profile'),
   revealStorageProfile: () => ipcRenderer.invoke('reveal-storage-profile'),
   retryStorageProfile: () => ipcRenderer.invoke('retry-storage-profile'),
+  restoreStorageRecoverySnapshot: (payload) => ipcRenderer.invoke('restore-storage-recovery-snapshot', payload),
   onStorageProfileStatusUpdated: (handler) => {
     const listener = (_event, payload) => handler(payload)
     ipcRenderer.on('storage-profile-status-updated', listener)

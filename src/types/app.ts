@@ -357,6 +357,13 @@ export type ToastState = {
 
 export type StorageProfileStatus = {
   status: 'ready' | 'error'
+  health?: 'healthy' | 'warning' | 'error'
+  issues?: Array<{
+    code: string
+    severity: 'warning' | 'error'
+    path?: string
+    message: string
+  }>
   event?: string
   profileRootPath: string
   notesDataPath: string
@@ -367,6 +374,8 @@ export type StorageProfileStatus = {
   schemaVersion?: number | null
   conflicts?: string[]
   revision?: number
+  recoverySnapshotCount?: number
+  latestRecoverySnapshotPath?: string
   error?: string
 }
 

@@ -52,6 +52,9 @@ declare global {
       retryStorageProfile?: () => Promise<
         { ok: true; status: StorageProfileStatus } | { ok: false; error?: string; status: StorageProfileStatus }
       >
+      restoreStorageRecoverySnapshot?: (payload?: { snapshotPath?: string }) => Promise<
+        { ok: true; status: StorageProfileStatus } | { ok: false; error?: string; status: StorageProfileStatus }
+      >
       onStorageProfileStatusUpdated?: (handler: (payload: StorageProfileStatus) => void) => () => void
       exportAppState: (payload: { defaultPath: string; serializedState: string }) => Promise<{
         canceled: boolean

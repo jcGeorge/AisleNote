@@ -102,6 +102,7 @@ type SettingsPageProps = {
   onMoveStorageProfile: () => void
   onRevealStorageProfile: () => void
   onRetryStorageProfile: () => void
+  onRestoreStorageRecoverySnapshot: () => void
 }
 
 export function SettingsPage({
@@ -148,10 +149,19 @@ export function SettingsPage({
   onMoveStorageProfile,
   onRevealStorageProfile,
   onRetryStorageProfile,
+  onRestoreStorageRecoverySnapshot,
 }: SettingsPageProps) {
   const activeFrontmatterTemplate =
     frontmatterDraft.templates.find((template) => template.id === frontmatterDraft.settingsTemplateId) ??
     frontmatterDraft.templates[0]
+  const storageHealth =
+    storageProfileStatus?.health ?? (storageProfileStatus?.status === 'error' ? 'error' : 'healthy')
+  const storageIssues = storageProfileStatus?.issues ?? []
+  const storageProfileCardClassName = [
+    'storage-profile-card',
+    storageHealth === 'error' ? 'is-error' : '',
+    storageHealth === 'warning' ? 'is-warning' : '',
+  ].filter(Boolean).join(' ')
 
   const renderFrontmatterDefaultControl = (templateId: string, field: FrontmatterTemplateField) => {
     if (field.type === 'boolean') {
@@ -320,7 +330,7 @@ export function SettingsPage({
         {section === 'data' && (
           <div className="settings-section-panel" role="tabpanel">
             <p>cloud and storage:</p>
-            <div className={`storage-profile-card ${storageProfileStatus?.status === 'error' ? 'is-error' : ''}`}>
+            <div className={storageProfileCardClassName}>
               <div className="storage-profile-row">
                 <span className="settings-hotkey-label">current folder</span>
                 <code className="storage-profile-path">
@@ -331,7 +341,36 @@ export function SettingsPage({
                 <span className="settings-hotkey-label">status</span>
                 <span>{storageProfileStatus ? (storageProfileStatus.status === 'ready' ? 'ready' : 'error') : 'browser local'}</span>
               </div>
+              <div className="storage-profile-row">
+                <span className="settings-hotkey-label">health</span>
+                <span>{storageProfileStatus ? storageHealth : 'local'}</span>
+              </div>
+              <div className="storage-profile-row">
+                <span className="settings-hotkey-label">schema</span>
+                <span>{storageProfileStatus?.schemaVersion ?? 'n/a'}</span>
+              </div>
+              <div className="storage-profile-row">
+                <span className="settings-hotkey-label">writable</span>
+                <span>{storageProfileStatus ? (storageProfileStatus.canWrite ? 'yes' : 'paused') : 'browser local'}</span>
+              </div>
+              <div className="storage-profile-row">
+                <span className="settings-hotkey-label">recovery snapshots</span>
+                <span>{storageProfileStatus?.recoverySnapshotCount ?? 0}</span>
+              </div>
               {storageProfileStatus?.error && <p className="settings-help storage-profile-error">{storageProfileStatus.error}</p>}
+              {storageIssues.length > 0 && (
+                <div className="storage-profile-issues" aria-label="storage health issues">
+                  {storageIssues.map((issue, index) => (
+                    <p
+                      key={`${issue.code}-${issue.path ?? index}`}
+                      className={`settings-help storage-profile-issue ${issue.severity === 'error' ? 'is-error' : 'is-warning'}`}
+                    >
+                      {issue.message}
+                      {issue.path ? ` (${issue.path})` : ''}
+                    </p>
+                  ))}
+                </div>
+              )}
               <div className="settings-page-actions">
                 <button type="button" className="btn btn-sm settings-action-btn" onClick={onChooseStorageFolder}>
                   choose sync folder
@@ -342,13 +381,23 @@ export function SettingsPage({
                 <button type="button" className="btn btn-sm settings-action-btn" onClick={onRevealStorageProfile}>
                   reveal folder
                 </button>
+                <button type="button" className="btn btn-sm settings-action-btn" onClick={onExportAll}>
+                  export backup
+                </button>
                 <button
                   type="button"
                   className="btn btn-sm settings-action-btn"
                   onClick={onRetryStorageProfile}
-                  disabled={storageProfileStatus?.status !== 'error'}
                 >
                   retry
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm settings-action-btn"
+                  onClick={onRestoreStorageRecoverySnapshot}
+                  disabled={!storageProfileStatus || (storageProfileStatus.recoverySnapshotCount ?? 0) <= 0}
+                >
+                  restore latest snapshot
                 </button>
               </div>
               <p className="settings-help">

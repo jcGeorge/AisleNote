@@ -2,7 +2,12 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { loadAppStateResult, saveAppState } from './app-state-storage.mjs'
+import {
+  listStorageRecoverySnapshots,
+  loadAppStateResult,
+  restoreStorageRecoverySnapshot,
+  saveAppState,
+} from './app-state-storage.mjs'
 import { STORAGE_PATH_SEGMENT_MAX_LENGTH } from '../src/storage/storage-path-segments.js'
 
 function createTempUserDataPath() {
@@ -83,6 +88,29 @@ function serializedAppState() {
 
 function readJson(filePath) {
   return JSON.parse(readFileSync(filePath, 'utf8'))
+}
+
+function getStoredWorkspacePaths(profileRootPath, indexes = {}) {
+  const domainIndex = indexes.domainIndex ?? 0
+  const spaceIndex = indexes.spaceIndex ?? 0
+  const root = path.join(profileRootPath, 'notes-data')
+  const rootManifest = readJson(path.join(root, 'manifest.json'))
+  const domainEntry = rootManifest.domains[domainIndex]
+  const domainRoot = path.join(root, 'domains', domainEntry.path)
+  const domainManifest = readJson(path.join(domainRoot, 'manifest.json'))
+  const spaceEntry = domainManifest.spaces[spaceIndex]
+  const spaceRoot = path.join(domainRoot, spaceEntry.path)
+  const spaceManifest = readJson(path.join(spaceRoot, 'manifest.json'))
+  return {
+    root,
+    rootManifest,
+    domainEntry,
+    domainRoot,
+    domainManifest,
+    spaceEntry,
+    spaceRoot,
+    spaceManifest,
+  }
 }
 
 function getVisibleLength(value) {
@@ -182,6 +210,149 @@ describe('Electron app state storage load result', () => {
       expect(readFileSync(path.join(spaceRoot, tab.subTabs[0].file), 'utf8')).toBe('sub body')
     }))
 
+  it('round-trips renamed workspace data, frontmatter, trash, and note body identity', () =>
+    withTempUserDataPath((userDataPath) => {
+      const state = JSON.parse(serializedAppState())
+      const space = state.domains[0].spaces[0]
+      const tab = space.data.tabs[0]
+      state.domains[0].name = 'Renamed Domain'
+      space.name = 'Renamed Space'
+      tab.title = 'Renamed Parent'
+      tab.activeSubTabId = 'sub-renamed'
+      tab.subTabs = [
+        { id: 'sub-renamed', title: 'Renamed Child', noteBodyId: 'body-sub-renamed', content: 'stale child fallback' },
+      ]
+      space.data.deletedTabs = [
+        {
+          id: 'deleted-parent-entry',
+          deletedAt: 10,
+          tab: {
+            id: 'deleted-parent',
+            title: 'Deleted Parent',
+            noteBodyId: 'body-deleted-parent',
+            homeContent: 'stale deleted parent fallback',
+            activeSubTabId: 'deleted-child',
+            subTabs: [
+              {
+                id: 'deleted-child',
+                title: 'Deleted Child',
+                noteBodyId: 'body-deleted-child',
+                content: 'stale deleted child fallback',
+              },
+            ],
+          },
+        },
+      ]
+      space.data.deletedSubTabs = [
+        {
+          id: 'deleted-loose-entry',
+          parentTabId: tab.id,
+          parentTabTitle: tab.title,
+          deletedAt: 20,
+          subTab: {
+            id: 'deleted-loose-child',
+            title: 'Deleted Loose Child',
+            noteBodyId: 'body-deleted-loose',
+            content: 'stale deleted loose fallback',
+          },
+        },
+      ]
+      state.noteBodies[0] = {
+        ...state.noteBodies[0],
+        frontmatter: {
+          status: 'ready',
+          due: null,
+          starts: null,
+          created: '2024-01-01',
+        },
+        frontmatterTemplateRemovedFieldIds: ['field-2'],
+        aisles: [
+          { id: 'aisle-1', markdown: 'renamed parent body' },
+          { id: 'aisle-2', markdown: 'second aisle survives' },
+        ],
+      }
+      state.noteBodies.push(
+        { id: 'body-sub-renamed', aisles: [{ id: 'aisle-sub-renamed', markdown: 'renamed child body' }] },
+        { id: 'body-deleted-parent', aisles: [{ id: 'aisle-deleted-parent', markdown: 'deleted parent body' }] },
+        { id: 'body-deleted-child', aisles: [{ id: 'aisle-deleted-child', markdown: 'deleted child body' }] },
+        { id: 'body-deleted-loose', aisles: [{ id: 'aisle-deleted-loose', markdown: 'deleted loose body' }] },
+      )
+
+      saveAppState(userDataPath, JSON.stringify(state))
+      const result = loadAppStateResult(userDataPath)
+
+      expect(result.ok).toBe(true)
+      const parsed = JSON.parse(result.serializedState)
+      const parsedDomain = parsed.domains.find((domain) => domain.id === 'domain-1')
+      const parsedSpace = parsedDomain.spaces.find((candidate) => candidate.id === 'space-1')
+      const parsedTab = parsedSpace.data.tabs.find((candidate) => candidate.id === 'tab-1')
+      const parsedSubTab = parsedTab.subTabs.find((candidate) => candidate.id === 'sub-renamed')
+      const bodyById = new Map(parsed.noteBodies.map((body) => [body.id, body]))
+
+      expect(parsedDomain.name).toBe('Renamed Domain')
+      expect(parsedSpace.name).toBe('Renamed Space')
+      expect(parsedTab).toMatchObject({
+        id: 'tab-1',
+        title: 'Renamed Parent',
+        noteBodyId: 'body-1',
+        activeSubTabId: 'sub-renamed',
+        homeContent: 'renamed parent body',
+      })
+      expect(parsedSubTab).toMatchObject({
+        id: 'sub-renamed',
+        title: 'Renamed Child',
+        noteBodyId: 'body-sub-renamed',
+        content: 'renamed child body',
+      })
+      expect(bodyById.get('body-1')).toMatchObject({
+        frontmatter: {
+          status: 'ready',
+          due: null,
+          starts: null,
+          created: '2024-01-01',
+        },
+        frontmatterTemplateId: 'template-1',
+        frontmatterTemplateDerived: true,
+        frontmatterComputedFields: { created: 'createdAt' },
+        frontmatterTemplateRemovedFieldIds: ['field-2'],
+        aisles: [
+          { id: 'aisle-1', markdown: 'renamed parent body' },
+          { id: 'aisle-2', markdown: 'second aisle survives' },
+        ],
+      })
+      expect(parsedSpace.data.deletedTabs[0]).toMatchObject({
+        id: 'deleted-parent-entry',
+        deletedAt: 10,
+        tab: {
+          id: 'deleted-parent',
+          title: 'Deleted Parent',
+          noteBodyId: 'body-deleted-parent',
+          homeContent: 'deleted parent body',
+          activeSubTabId: 'deleted-child',
+          subTabs: [
+            {
+              id: 'deleted-child',
+              title: 'Deleted Child',
+              noteBodyId: 'body-deleted-child',
+              content: 'deleted child body',
+            },
+          ],
+        },
+      })
+      expect(parsedSpace.data.deletedSubTabs[0]).toMatchObject({
+        id: 'deleted-loose-entry',
+        parentTabId: 'tab-1',
+        parentTabTitle: 'Renamed Parent',
+        deletedAt: 20,
+        subTab: {
+          id: 'deleted-loose-child',
+          title: 'Deleted Loose Child',
+          noteBodyId: 'body-deleted-loose',
+          content: 'deleted loose body',
+        },
+      })
+    }))
+
   it('caps generated v2 path segments while preserving app titles and ids', () =>
     withTempUserDataPath((userDataPath) => {
       const longTitle = 'Very Long Cross Platform Folder Name With Emoji 👨‍👩‍👧‍👦 And Symbols <>:"/\\|?* '.repeat(4).trim()
@@ -275,11 +446,13 @@ describe('Electron app state storage load result', () => {
         'utf8',
       )
 
-      expect(loadAppStateResult(userDataPath)).toEqual({
+      expect(loadAppStateResult(userDataPath)).toMatchObject({
         ok: false,
         serializedState: null,
         source: 'hybrid',
         error: 'Existing app state could not be loaded.',
+        health: 'error',
+        issues: [expect.objectContaining({ code: 'unsupported-root-manifest', severity: 'error' })],
       })
     }))
 
@@ -293,6 +466,8 @@ describe('Electron app state storage load result', () => {
         ok: false,
         source: 'hybrid',
         conflicts: ['notes-data/topics 2'],
+        health: 'error',
+        issues: [expect.objectContaining({ code: 'cloud-conflict', severity: 'error' })],
       })
     }))
 
@@ -305,17 +480,19 @@ describe('Electron app state storage load result', () => {
       })
     }))
 
-  it('returns a failed result for an existing corrupt profile', () =>
+  it('returns a failed result for an existing corrupt root manifest', () =>
     withTempUserDataPath((userDataPath) => {
       const root = path.join(userDataPath, 'notes-data')
       mkdirSync(root, { recursive: true })
       writeFileSync(path.join(root, 'manifest.json'), '{nope', 'utf8')
 
-      expect(loadAppStateResult(userDataPath)).toEqual({
+      expect(loadAppStateResult(userDataPath)).toMatchObject({
         ok: false,
         serializedState: null,
         source: 'hybrid',
         error: 'Existing app state could not be loaded.',
+        health: 'error',
+        issues: [expect.objectContaining({ code: 'corrupt-root-manifest', severity: 'error' })],
       })
     }))
 
@@ -325,11 +502,284 @@ describe('Electron app state storage load result', () => {
       mkdirSync(root, { recursive: true })
       writeFileSync(path.join(root, 'manifest.json'), '{"schemaVersion":999}', 'utf8')
 
-      expect(loadAppStateResult(userDataPath)).toEqual({
+      expect(loadAppStateResult(userDataPath)).toMatchObject({
         ok: false,
         serializedState: null,
         source: 'hybrid',
         error: 'Existing app state could not be loaded.',
+        schemaVersion: 999,
+        health: 'error',
+        issues: [expect.objectContaining({ code: 'unsupported-root-manifest', severity: 'error' })],
       })
+    }))
+
+  it('loads missing markdown files as empty content with a warning', () =>
+    withTempUserDataPath((userDataPath) => {
+      saveAppState(userDataPath, serializedAppState())
+      const { spaceRoot, spaceManifest } = getStoredWorkspacePaths(userDataPath)
+      rmSync(path.join(spaceRoot, spaceManifest.tabs[0].homeNoteFile), { force: true })
+
+      const result = loadAppStateResult(userDataPath)
+
+      expect(result).toMatchObject({
+        ok: true,
+        source: 'hybrid',
+        health: 'warning',
+      })
+      expect(result.issues).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          code: 'missing-markdown',
+          severity: 'warning',
+          path: expect.stringContaining('/home.md'),
+        }),
+      ]))
+      const parsed = JSON.parse(result.serializedState)
+      expect(parsed.domains[0].spaces[0].data.tabs[0].homeContent).toBe('')
+      expect(parsed.noteBodies[0].aisles[0].markdown).toBe('')
+    }))
+
+  it('keeps markdown references for missing image assets with a warning', () =>
+    withTempUserDataPath((userDataPath) => {
+      const state = JSON.parse(serializedAppState())
+      state.noteBodies[0].aisles[0].markdown = 'image ![pixel](data:image/png;base64,iVBORw0KGgo=)'
+      saveAppState(userDataPath, JSON.stringify(state))
+      rmSync(path.join(userDataPath, 'notes-data', 'assets'), { recursive: true, force: true })
+
+      const result = loadAppStateResult(userDataPath)
+      const parsed = JSON.parse(result.serializedState)
+
+      expect(result).toMatchObject({
+        ok: true,
+        source: 'hybrid',
+        health: 'warning',
+      })
+      expect(result.issues).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          code: 'missing-asset',
+          severity: 'warning',
+          path: expect.stringContaining('notes-data/assets/'),
+        }),
+      ]))
+      expect(parsed.noteBodies[0].aisles[0].markdown).toContain('![pixel](')
+      expect(parsed.noteBodies[0].aisles[0].markdown).not.toContain('data:image/')
+    }))
+
+  it('loads missing trash manifests as empty trash with a warning', () =>
+    withTempUserDataPath((userDataPath) => {
+      const state = JSON.parse(serializedAppState())
+      state.domains[0].spaces[0].data.deletedTabs = [
+        {
+          id: 'deleted-parent-entry',
+          deletedAt: 1,
+          tab: {
+            id: 'deleted-parent',
+            title: 'Deleted Parent',
+            noteBodyId: 'body-deleted-parent',
+            homeContent: 'deleted body',
+            activeSubTabId: null,
+            subTabs: [],
+          },
+        },
+      ]
+      state.noteBodies.push({ id: 'body-deleted-parent', aisles: [{ id: 'aisle-deleted-parent', markdown: 'deleted body' }] })
+      saveAppState(userDataPath, JSON.stringify(state))
+      const { spaceRoot, spaceManifest } = getStoredWorkspacePaths(userDataPath)
+      rmSync(path.join(spaceRoot, spaceManifest.trashManifestFile), { force: true })
+
+      const result = loadAppStateResult(userDataPath)
+      const parsed = JSON.parse(result.serializedState)
+
+      expect(result).toMatchObject({
+        ok: true,
+        health: 'warning',
+        issues: [expect.objectContaining({ code: 'missing-trash-manifest', severity: 'warning' })],
+      })
+      expect(parsed.domains[0].spaces[0].data.deletedTabs).toEqual([])
+      expect(parsed.domains[0].spaces[0].data.deletedSubTabs).toEqual([])
+    }))
+
+  it('loads corrupt trash manifests as empty trash with a warning', () =>
+    withTempUserDataPath((userDataPath) => {
+      const state = JSON.parse(serializedAppState())
+      state.domains[0].spaces[0].data.deletedSubTabs = [
+        {
+          id: 'deleted-sub-entry',
+          parentTabId: 'tab-1',
+          parentTabTitle: 'Tab',
+          deletedAt: 2,
+          subTab: {
+            id: 'deleted-sub',
+            title: 'Deleted Sub',
+            noteBodyId: 'body-deleted-sub',
+            content: 'deleted sub body',
+          },
+        },
+      ]
+      state.noteBodies.push({ id: 'body-deleted-sub', aisles: [{ id: 'aisle-deleted-sub', markdown: 'deleted sub body' }] })
+      saveAppState(userDataPath, JSON.stringify(state))
+      const { spaceRoot, spaceManifest } = getStoredWorkspacePaths(userDataPath)
+      writeFileSync(path.join(spaceRoot, spaceManifest.trashManifestFile), '{bad', 'utf8')
+
+      const result = loadAppStateResult(userDataPath)
+      const parsed = JSON.parse(result.serializedState)
+
+      expect(result).toMatchObject({
+        ok: true,
+        health: 'warning',
+        issues: [expect.objectContaining({ code: 'corrupt-trash-manifest', severity: 'warning' })],
+      })
+      expect(parsed.domains[0].spaces[0].data.deletedTabs).toEqual([])
+      expect(parsed.domains[0].spaces[0].data.deletedSubTabs).toEqual([])
+    }))
+
+  it('skips corrupt space manifests while preserving readable spaces', () =>
+    withTempUserDataPath((userDataPath) => {
+      const state = JSON.parse(serializedAppState())
+      const secondSpace = {
+        id: 'space-2',
+        name: 'Second Space',
+        settings: { autoRemoveDeletedDays: 14 },
+        data: {
+          activeTabId: 'tab-2',
+          tabs: [
+            {
+              id: 'tab-2',
+              title: 'Second Tab',
+              noteBodyId: 'body-2',
+              homeContent: 'second',
+              activeSubTabId: null,
+              subTabs: [],
+            },
+          ],
+          deletedTabs: [],
+          deletedSubTabs: [],
+        },
+      }
+      state.domains[0].spaces.push(secondSpace)
+      state.spaces = state.domains[0].spaces
+      state.noteBodies.push({ id: 'body-2', aisles: [{ id: 'aisle-2', markdown: 'second' }] })
+      saveAppState(userDataPath, JSON.stringify(state))
+      const { domainRoot, domainManifest } = getStoredWorkspacePaths(userDataPath)
+      writeFileSync(path.join(domainRoot, domainManifest.spaces[0].path, 'manifest.json'), '{bad', 'utf8')
+
+      const result = loadAppStateResult(userDataPath)
+      const parsed = JSON.parse(result.serializedState)
+
+      expect(result).toMatchObject({
+        ok: true,
+        health: 'warning',
+        issues: [expect.objectContaining({ code: 'corrupt-space-manifest', severity: 'warning' })],
+      })
+      expect(parsed.domains[0].spaces).toHaveLength(1)
+      expect(parsed.domains[0].spaces[0].id).toBe('space-2')
+      expect(parsed.activeSpaceId).toBe('space-2')
+    }))
+
+  it('skips corrupt domain manifests while preserving readable domains', () =>
+    withTempUserDataPath((userDataPath) => {
+      const state = JSON.parse(serializedAppState())
+      const secondSpace = {
+        id: 'space-2',
+        name: 'Second Space',
+        settings: { autoRemoveDeletedDays: 14 },
+        data: {
+          activeTabId: 'tab-2',
+          tabs: [
+            {
+              id: 'tab-2',
+              title: 'Second Tab',
+              noteBodyId: 'body-2',
+              homeContent: 'second',
+              activeSubTabId: null,
+              subTabs: [],
+            },
+          ],
+          deletedTabs: [],
+          deletedSubTabs: [],
+        },
+      }
+      state.domains.push({
+        id: 'domain-2',
+        name: 'Second Domain',
+        activeSpaceId: 'space-2',
+        spaces: [secondSpace],
+      })
+      state.noteBodies.push({ id: 'body-2', aisles: [{ id: 'aisle-2', markdown: 'second' }] })
+      saveAppState(userDataPath, JSON.stringify(state))
+      const rootManifest = readJson(path.join(userDataPath, 'notes-data', 'manifest.json'))
+      writeFileSync(path.join(userDataPath, 'notes-data', 'domains', rootManifest.domains[0].path, 'manifest.json'), '{bad', 'utf8')
+
+      const result = loadAppStateResult(userDataPath)
+      const parsed = JSON.parse(result.serializedState)
+
+      expect(result).toMatchObject({
+        ok: true,
+        health: 'warning',
+        issues: [expect.objectContaining({ code: 'corrupt-domain-manifest', severity: 'warning' })],
+      })
+      expect(parsed.domains).toHaveLength(1)
+      expect(parsed.domains[0].id).toBe('domain-2')
+      expect(parsed.activeDomainId).toBe('domain-2')
+    }))
+
+  it('blocks writes when no domains are readable', () =>
+    withTempUserDataPath((userDataPath) => {
+      saveAppState(userDataPath, serializedAppState())
+      const rootManifest = readJson(path.join(userDataPath, 'notes-data', 'manifest.json'))
+      writeFileSync(path.join(userDataPath, 'notes-data', 'domains', rootManifest.domains[0].path, 'manifest.json'), '{bad', 'utf8')
+
+      expect(loadAppStateResult(userDataPath)).toMatchObject({
+        ok: false,
+        serializedState: null,
+        source: 'hybrid',
+        health: 'error',
+        issues: expect.arrayContaining([
+          expect.objectContaining({ code: 'corrupt-domain-manifest', severity: 'warning' }),
+          expect.objectContaining({ code: 'no-readable-domains', severity: 'error' }),
+        ]),
+      })
+    }))
+
+  it('creates interrupted-save recovery snapshots outside the synced notes-data tree', () =>
+    withTempUserDataPath((userDataPath) => {
+      const profileRootPath = mkdtempSync(path.join(os.tmpdir(), 'tabs-profile-'))
+      try {
+        const firstState = JSON.parse(serializedAppState())
+        const secondState = { ...firstState, theme: 'light' }
+        saveAppState(profileRootPath, JSON.stringify(firstState), { userDataPath })
+        saveAppState(profileRootPath, JSON.stringify(secondState), { userDataPath })
+
+        const snapshots = listStorageRecoverySnapshots(userDataPath)
+
+        expect(snapshots.length).toBeGreaterThanOrEqual(1)
+        expect(snapshots[0].path).toContain(path.join(userDataPath, 'storage-recovery'))
+        expect(snapshots[0].path).not.toContain(path.join(profileRootPath, 'notes-data', 'storage-recovery'))
+        expect(existsSync(path.join(profileRootPath, 'storage-recovery'))).toBe(false)
+      } finally {
+        rmSync(profileRootPath, { recursive: true, force: true })
+      }
+    }))
+
+  it('restores the latest valid recovery snapshot', () =>
+    withTempUserDataPath((userDataPath) => {
+      const profileRootPath = mkdtempSync(path.join(os.tmpdir(), 'tabs-profile-'))
+      try {
+        const firstState = JSON.parse(serializedAppState())
+        const secondState = { ...firstState, theme: 'light' }
+        saveAppState(profileRootPath, JSON.stringify(firstState), { userDataPath })
+        saveAppState(profileRootPath, JSON.stringify(secondState), { userDataPath })
+
+        const restoreResult = restoreStorageRecoverySnapshot(profileRootPath, userDataPath)
+        const loadResult = loadAppStateResult(profileRootPath)
+        const parsed = JSON.parse(loadResult.serializedState)
+
+        expect(restoreResult).toMatchObject({
+          ok: true,
+          loadResult: { ok: true },
+        })
+        expect(parsed.theme).toBe('dawn')
+      } finally {
+        rmSync(profileRootPath, { recursive: true, force: true })
+      }
     }))
 })

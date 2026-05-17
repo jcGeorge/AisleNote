@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_FRONTMATTER_SETTINGS } from '../../frontmatter/frontmatter'
-import type { AppState, FrontmatterSettings, Space } from '../../types/app'
+import type { AppState, FrontmatterSettings, SettingsSection, Space, StorageProfileStatus } from '../../types/app'
 import { SettingsPage } from './SettingsPage'
 
 const space: Space = {
@@ -56,11 +56,18 @@ function createState(): AppState {
   }
 }
 
-function renderSettingsPage(frontmatterDraft: FrontmatterSettings, frontmatterDraftDirty: boolean) {
+function renderSettingsPage(
+  frontmatterDraft: FrontmatterSettings,
+  frontmatterDraftDirty: boolean,
+  options: {
+    section?: SettingsSection
+    storageProfileStatus?: StorageProfileStatus | null
+  } = {},
+) {
   return renderToStaticMarkup(
     <SettingsPage
       state={createState()}
-      section="frontmatter"
+      section={options.section ?? 'frontmatter'}
       isMacPlatform={false}
       shortcutDrafts={{
         toggleTabTrash: '',
@@ -87,7 +94,7 @@ function renderSettingsPage(frontmatterDraft: FrontmatterSettings, frontmatterDr
       showParentHomeTabDraft
       frontmatterDraft={frontmatterDraft}
       frontmatterDraftDirty={frontmatterDraftDirty}
-      storageProfileStatus={null}
+      storageProfileStatus={options.storageProfileStatus ?? null}
       onSectionChange={() => undefined}
       onToggleShortcutEdit={() => undefined}
       onNewlineShortcutChange={() => undefined}
@@ -114,6 +121,7 @@ function renderSettingsPage(frontmatterDraft: FrontmatterSettings, frontmatterDr
       onMoveStorageProfile={() => undefined}
       onRevealStorageProfile={() => undefined}
       onRetryStorageProfile={() => undefined}
+      onRestoreStorageRecoverySnapshot={() => undefined}
     />,
   )
 }
@@ -184,5 +192,77 @@ describe('frontmatter settings page', () => {
 
     expect(html).toContain('type="date" class="settings-text-input frontmatter-default-input" aria-label="frontmatter default value" value=""')
     expect(html).toContain('type="datetime-local" class="settings-text-input frontmatter-default-input" aria-label="frontmatter default value" value=""')
+  })
+
+  it('renders warning storage health with recovery actions', () => {
+    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, {
+      section: 'data',
+      storageProfileStatus: {
+        status: 'ready',
+        health: 'warning',
+        issues: [
+          {
+            code: 'missing-markdown',
+            severity: 'warning',
+            path: 'notes-data/domains/domain/space/tab/home.md',
+            message: 'Markdown file is missing; this note was loaded as empty.',
+          },
+        ],
+        profileRootPath: '/tmp/tabs',
+        notesDataPath: '/tmp/tabs/notes-data',
+        isDefault: false,
+        hasProfile: true,
+        canWrite: true,
+        source: 'hybrid',
+        schemaVersion: 2,
+        recoverySnapshotCount: 2,
+        latestRecoverySnapshotPath: '/tmp/tabs/storage-recovery/notes-data-1',
+      },
+    })
+
+    expect(html).toContain('storage-profile-card is-warning')
+    expect(html).toContain('health</span><span>warning</span>')
+    expect(html).toContain('schema</span><span>2</span>')
+    expect(html).toContain('writable</span><span>yes</span>')
+    expect(html).toContain('recovery snapshots</span><span>2</span>')
+    expect(html).toContain('aria-label="storage health issues"')
+    expect(html).toContain('Markdown file is missing; this note was loaded as empty.')
+    expect(html).toContain('export backup')
+    expect(html).toContain('restore latest snapshot</button>')
+  })
+
+  it('renders error storage health with paused writes and disabled restore when no snapshots exist', () => {
+    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, {
+      section: 'data',
+      storageProfileStatus: {
+        status: 'error',
+        health: 'error',
+        issues: [
+          {
+            code: 'corrupt-root-manifest',
+            severity: 'error',
+            path: 'notes-data/manifest.json',
+            message: 'Root manifest is corrupt.',
+          },
+        ],
+        event: 'retry-error',
+        profileRootPath: '/tmp/tabs',
+        notesDataPath: '/tmp/tabs/notes-data',
+        isDefault: true,
+        hasProfile: true,
+        canWrite: false,
+        source: 'hybrid',
+        schemaVersion: null,
+        recoverySnapshotCount: 0,
+        error: 'Existing app state could not be loaded.',
+      },
+    })
+
+    expect(html).toContain('storage-profile-card is-error')
+    expect(html).toContain('health</span><span>error</span>')
+    expect(html).toContain('writable</span><span>paused</span>')
+    expect(html).toContain('Root manifest is corrupt.')
+    expect(html).toContain('restore latest snapshot</button>')
+    expect(html).toContain('disabled=""')
   })
 })
