@@ -11,7 +11,12 @@ import {
   unwrapMatchingListItemsMarkdown,
   type ReorderListKind,
 } from './list-reorder-markdown'
-import { getCommandCapableEditor, getWysiwygView } from './prosemirror-utils'
+import {
+  getCommandCapableEditor,
+  getEditorCursorSelection,
+  getWysiwygView,
+  restoreEditorCursorSelection,
+} from './prosemirror-utils'
 
 export type ToolbarListCommand = 'taskList' | 'bulletList' | 'dashList' | 'orderedList'
 
@@ -32,8 +37,36 @@ type ProseMirrorResolvedPosLike = {
   before?: (depth: number) => number
 }
 
+type ProseMirrorDocLike = {
+  type?: {
+    schema?: {
+      nodes?: {
+        bulletList?: any
+        orderedList?: any
+      }
+    }
+  }
+  child?: (index: number) => ProseMirrorNodeLike
+  childCount?: number
+  content?: { size?: number }
+  nodeAt?: (position: number) => ProseMirrorNodeLike | null
+  resolve?: (position: number) => ProseMirrorResolvedPosLike
+  nodesBetween?: (
+    from: number,
+    to: number,
+    callback: (node: ProseMirrorNodeLike, position: number) => boolean | void,
+  ) => void
+}
+
 type ProseMirrorViewLike = {
   state?: {
+    schema?: {
+      nodes?: {
+        bulletList?: any
+        orderedList?: any
+      }
+    }
+    tr?: any
     selection?: {
       empty?: boolean
       from: number
@@ -43,18 +76,7 @@ type ProseMirrorViewLike = {
       $from?: ProseMirrorResolvedPosLike
       $to?: ProseMirrorResolvedPosLike
     }
-    doc?: {
-      child?: (index: number) => ProseMirrorNodeLike
-      childCount?: number
-      content?: { size?: number }
-      nodeAt?: (position: number) => ProseMirrorNodeLike | null
-      resolve?: (position: number) => ProseMirrorResolvedPosLike
-      nodesBetween?: (
-        from: number,
-        to: number,
-        callback: (node: ProseMirrorNodeLike, position: number) => boolean | void,
-      ) => void
-    }
+    doc?: ProseMirrorDocLike
   }
   dispatch?: (transaction: unknown) => void
 }
@@ -238,6 +260,209 @@ function getOnlySelectedListKind(view: unknown): ToolbarListCommand | null {
   return Array.from(listKinds)[0] ?? null
 }
 
+function resolveSafe(doc: ProseMirrorDocLike | undefined, position: number) {
+  const docSize = Math.max(0, doc?.content?.size ?? position)
+  try {
+    return doc?.resolve?.(Math.max(0, Math.min(position, docSize)))
+  } catch {
+    return null
+  }
+}
+
+function isEffectivelyDashBulletList(doc: ProseMirrorDocLike | undefined, node: ProseMirrorNodeLike, position: number) {
+  if (node.type?.name !== 'bulletList') return false
+  if (getBulletListMarkerFromAttrs(node.attrs) === 'dash') return true
+
+  const resolvedInsideList = resolveSafe(doc, position + 1)
+  if (!resolvedInsideList) return false
+  for (let depth = resolvedInsideList.depth; depth > 0; depth -= 1) {
+    const ancestor = resolvedInsideList.node(depth)
+    if (ancestor?.type?.name === 'bulletList' && getBulletListMarkerFromAttrs(ancestor.attrs) === 'dash') {
+      return true
+    }
+  }
+  return false
+}
+
+function collectSelectedDashListPositions(view: ProseMirrorViewLike): Array<{ position: number; node: ProseMirrorNodeLike }> {
+  const selection = view.state?.selection
+  const doc = view.state?.doc
+  if (!selection || !doc) return []
+
+  if (selection.empty && selection.$from?.before) {
+    for (let depth = selection.$from.depth; depth > 0; depth -= 1) {
+      const node = selection.$from.node(depth)
+      const position = selection.$from.before(depth)
+      if (node?.type?.name === 'bulletList' && isEffectivelyDashBulletList(doc, node, position)) {
+        return [{ position, node }]
+      }
+    }
+    return []
+  }
+
+  const candidates: Array<{ position: number; node: ProseMirrorNodeLike }> = []
+  const from = Math.min(selection.from, selection.to)
+  const to = Math.max(selection.from, selection.to)
+  doc.nodesBetween?.(from, to, (node, position) => {
+    if (node.type?.name === 'bulletList' && isEffectivelyDashBulletList(doc, node, position)) {
+      candidates.push({ position, node })
+    }
+    return true
+  })
+
+  candidates.sort((a, b) => a.position - b.position)
+  const nonOverlapping: Array<{ position: number; node: ProseMirrorNodeLike }> = []
+  let lastEnd = -1
+  for (const candidate of candidates) {
+    if (candidate.position < lastEnd) continue
+    nonOverlapping.push(candidate)
+    lastEnd = candidate.position + (candidate.node.nodeSize ?? 0)
+  }
+  return nonOverlapping
+}
+
+function collectSelectedListPositionsByType(
+  view: ProseMirrorViewLike,
+  listTypeName: 'bulletList' | 'orderedList',
+): Array<{ position: number; node: ProseMirrorNodeLike }> {
+  const selection = view.state?.selection
+  const doc = view.state?.doc
+  if (!selection || !doc) return []
+
+  if (selection.empty && selection.$from?.before) {
+    for (let depth = selection.$from.depth; depth > 0; depth -= 1) {
+      const node = selection.$from.node(depth)
+      if (node?.type?.name === listTypeName) {
+        return [{ position: selection.$from.before(depth), node }]
+      }
+    }
+    return []
+  }
+
+  const candidates: Array<{ position: number; node: ProseMirrorNodeLike }> = []
+  const addNearestListAncestor = (resolvedPos: ProseMirrorResolvedPosLike | null | undefined) => {
+    if (!resolvedPos?.before) return
+    for (let depth = resolvedPos.depth; depth > 0; depth -= 1) {
+      const node = resolvedPos.node(depth)
+      if (node?.type?.name !== listTypeName) continue
+      candidates.push({ position: resolvedPos.before(depth), node })
+      return
+    }
+  }
+  addNearestListAncestor(selection.$from)
+  addNearestListAncestor(selection.$to)
+
+  const from = Math.min(selection.from, selection.to)
+  const to = Math.max(selection.from, selection.to)
+  doc.nodesBetween?.(from, to, (node, position) => {
+    if (node.type?.name === listTypeName) {
+      candidates.push({ position, node })
+    }
+    return true
+  })
+
+  candidates.sort((a, b) => a.position - b.position)
+  const nonOverlapping: Array<{ position: number; node: ProseMirrorNodeLike }> = []
+  let lastEnd = -1
+  for (const candidate of candidates) {
+    if (candidate.position < lastEnd) continue
+    nonOverlapping.push(candidate)
+    lastEnd = candidate.position + (candidate.node.nodeSize ?? 0)
+  }
+  return nonOverlapping
+}
+
+function getOrderedListAttrs(orderedListType: any, content: unknown): Record<string, unknown> | null {
+  try {
+    orderedListType.create({ order: 1 }, content)
+    return { order: 1 }
+  } catch {
+    return null
+  }
+}
+
+function getNodeChildren(node: ProseMirrorNodeLike): any[] {
+  const children: any[] = []
+  node.forEach?.((child) => children.push(child))
+  return children
+}
+
+function convertDashListBranchToOrderedList(node: any, orderedListType: any, inheritedDashList = false): any {
+  const isDashBulletList =
+    node?.type?.name === 'bulletList' &&
+    (inheritedDashList || getBulletListMarkerFromAttrs(node.attrs) === 'dash')
+  const childInheritedDashList = inheritedDashList || isDashBulletList
+  const children = getNodeChildren(node).map((child) =>
+    convertDashListBranchToOrderedList(child, orderedListType, childInheritedDashList),
+  )
+  const content = Fragment.fromArray(children)
+
+  if (isDashBulletList) {
+    return orderedListType.create(getOrderedListAttrs(orderedListType, content), content)
+  }
+
+  return children.length > 0 && typeof node?.copy === 'function' ? node.copy(content) : node
+}
+
+function getTaskListItemAttrs(attrs: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  return {
+    ...(attrs ?? {}),
+    task: true,
+    checked: attrs?.checked === true,
+  }
+}
+
+function convertOrderedListBranchToTaskList(node: any, bulletListType: any): any {
+  const children = getNodeChildren(node).map((child) => convertOrderedListBranchToTaskList(child, bulletListType))
+  const content = Fragment.fromArray(children)
+
+  if (node?.type?.name === 'orderedList') {
+    return bulletListType.create(null, content)
+  }
+
+  if (node?.type?.name === 'listItem') {
+    return node.type.create(getTaskListItemAttrs(node.attrs), content)
+  }
+
+  return children.length > 0 && typeof node?.copy === 'function' ? node.copy(content) : node
+}
+
+export function convertSelectedDashListsToOrderedList(view: unknown): boolean {
+  const proseMirrorView = view as ProseMirrorViewLike | null
+  const state = proseMirrorView?.state
+  const orderedListType = state?.schema?.nodes?.orderedList ?? state?.doc?.type?.schema?.nodes?.orderedList
+  if (!proseMirrorView?.dispatch || !state?.tr || !orderedListType) return false
+
+  const selectedDashLists = collectSelectedDashListPositions(proseMirrorView as ProseMirrorViewLike)
+  if (selectedDashLists.length === 0) return false
+
+  let transaction = state.tr
+  for (const { position, node } of [...selectedDashLists].sort((a, b) => b.position - a.position)) {
+    const orderedListNode = convertDashListBranchToOrderedList(node, orderedListType, true)
+    transaction = transaction.replaceWith(position, position + (node.nodeSize ?? 0), orderedListNode)
+  }
+  proseMirrorView.dispatch(transaction.scrollIntoView())
+  return true
+}
+
+export function convertSelectedOrderedListsToTaskList(view: unknown): boolean {
+  const proseMirrorView = view as ProseMirrorViewLike | null
+  const state = proseMirrorView?.state
+  const bulletListType = state?.schema?.nodes?.bulletList ?? state?.doc?.type?.schema?.nodes?.bulletList
+  if (!proseMirrorView?.dispatch || !state?.tr || !bulletListType) return false
+
+  const selectedOrderedLists = collectSelectedListPositionsByType(proseMirrorView as ProseMirrorViewLike, 'orderedList')
+  if (selectedOrderedLists.length === 0) return false
+
+  let transaction = state.tr
+  for (const { position, node } of [...selectedOrderedLists].sort((a, b) => b.position - a.position)) {
+    const taskListNode = convertOrderedListBranchToTaskList(node, bulletListType)
+    transaction = transaction.replaceWith(position, position + (node.nodeSize ?? 0), taskListNode)
+  }
+  proseMirrorView.dispatch(transaction.scrollIntoView())
+  return true
+}
+
 export function applyBulletListMarkerCommand(editor: Editor, marker: BulletListMarker): boolean {
   editor.focus()
   getCommandCapableEditor(editor).exec('bulletList')
@@ -364,6 +589,7 @@ export function applyListToolbarCommand(editor: Editor, command: ToolbarListComm
   editor.focus()
   const view = getWysiwygView(editor)
   const commandEditor = getCommandCapableEditor(editor)
+  const selectedListKind = getOnlySelectedListKind(view)
   if (selectionUsesOnlyListKind(view, command)) {
     const selectedText = commandEditor.getSelectedText?.() ?? ''
     const nextMarkdown = unwrapMatchingListItemsMarkdown(
@@ -372,8 +598,11 @@ export function applyListToolbarCommand(editor: Editor, command: ToolbarListComm
       getReorderListKindForToolbarCommand(command),
     )
     if (nextMarkdown !== null) {
+      const previousSelection = getEditorCursorSelection(editor)
       editor.setMarkdown(nextMarkdown, false)
-      editor.focus()
+      if (!previousSelection || !restoreEditorCursorSelection(editor, previousSelection)) {
+        editor.focus()
+      }
       return true
     }
 
@@ -381,7 +610,15 @@ export function applyListToolbarCommand(editor: Editor, command: ToolbarListComm
     return true
   }
 
-  if (command === 'dashList') {
+  const shouldRestoreConvertedSelection =
+    command === 'orderedList' || (command === 'taskList' && selectedListKind === 'orderedList')
+  const previousConvertedSelection = shouldRestoreConvertedSelection ? getEditorCursorSelection(editor) : null
+
+  if (command === 'orderedList' && selectedListKind === 'dashList' && convertSelectedDashListsToOrderedList(view)) {
+    editor.focus()
+  } else if (command === 'taskList' && selectedListKind === 'orderedList' && convertSelectedOrderedListsToTaskList(view)) {
+    editor.focus()
+  } else if (command === 'dashList') {
     applyBulletListMarkerCommand(editor, 'dash')
   } else if (command === 'bulletList') {
     applyBulletListMarkerCommand(editor, 'bullet')
@@ -390,5 +627,10 @@ export function applyListToolbarCommand(editor: Editor, command: ToolbarListComm
   }
 
   mergeAdjacentCompatibleLists(getWysiwygView(editor), command)
+  if (shouldRestoreConvertedSelection) {
+    if (!previousConvertedSelection || !restoreEditorCursorSelection(editor, previousConvertedSelection)) {
+      editor.focus()
+    }
+  }
   return true
 }
