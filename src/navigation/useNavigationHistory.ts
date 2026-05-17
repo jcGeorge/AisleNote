@@ -45,15 +45,6 @@ export function useNavigationHistory({
   const isHistoryNavigationRef = useRef(false)
   const lastTabLikeViewRef = useRef<'main' | 'trash'>('main')
 
-  const buildNavLocation = (): NavLocation => ({
-    viewMode,
-    activeSpaceId,
-    mainTabId,
-    mainSubTabId,
-    trashTabId,
-    trashSubTabId,
-  })
-
   const applyNavLocation = (location: NavLocation) => {
     setState((previous) => {
       const projected = setActiveSpaceInActiveDomain(previous, location.activeSpaceId)
@@ -113,7 +104,14 @@ export function useNavigationHistory({
   }, [viewMode])
 
   useEffect(() => {
-    const snapshot = buildNavLocation()
+    const snapshot: NavLocation = {
+      viewMode,
+      activeSpaceId,
+      mainTabId,
+      mainSubTabId,
+      trashTabId,
+      trashSubTabId,
+    }
     const history = navHistoryRef.current
 
     if (isHistoryNavigationRef.current) {

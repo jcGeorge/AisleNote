@@ -1,4 +1,4 @@
-import { useEffect, type Dispatch, type SetStateAction } from 'react'
+import { useEffect, useRef, type Dispatch, type SetStateAction } from 'react'
 import { buildShortcutFromKeyboardEvent, eventMatchesShortcut } from './shortcuts'
 import type { AppState, ArrangeModeState, ShortcutId, Tab, ViewMode } from '../types/app'
 
@@ -57,24 +57,58 @@ export function useGlobalHotkeys({
   selectTab,
   selectSubTab,
 }: UseGlobalHotkeysParams) {
+  const actionsRef = useRef({
+    setEditingShortcut,
+    updateShortcutSetting,
+    exitArrangeMode,
+    openSettings,
+    openSpacesView,
+    openDomainsView,
+    toggleTrashView,
+    returnToLastTabLikeView,
+    navigateHistoryBy,
+    addTab,
+    addSubTab,
+    selectTab,
+    selectSubTab,
+  })
+
+  actionsRef.current = {
+    setEditingShortcut,
+    updateShortcutSetting,
+    exitArrangeMode,
+    openSettings,
+    openSpacesView,
+    openDomainsView,
+    toggleTrashView,
+    returnToLastTabLikeView,
+    navigateHistoryBy,
+    addTab,
+    addSubTab,
+    selectTab,
+    selectSubTab,
+  }
+
   useEffect(() => {
     const handleKeydown = (event: KeyboardEvent) => {
+      const actions = actionsRef.current
+
       if (viewMode === 'settings' && editingShortcut) {
         event.preventDefault()
         if (event.key === 'Escape') {
-          setEditingShortcut(null)
+          actions.setEditingShortcut(null)
           return
         }
         const nextShortcut = buildShortcutFromKeyboardEvent(event, isMacPlatform)
         if (!nextShortcut) return
-        updateShortcutSetting(editingShortcut, nextShortcut)
-        setEditingShortcut(null)
+        actions.updateShortcutSetting(editingShortcut, nextShortcut)
+        actions.setEditingShortcut(null)
         return
       }
 
       if (arrangeMode.active && event.key === 'Escape') {
         event.preventDefault()
-        exitArrangeMode()
+        actions.exitArrangeMode()
         return
       }
 
@@ -87,7 +121,7 @@ export function useGlobalHotkeys({
         (event.key === ',' || event.code === 'Comma')
       if (isSettingsShortcut) {
         event.preventDefault()
-        openSettings()
+        actions.openSettings()
         return
       }
 
@@ -104,13 +138,13 @@ export function useGlobalHotkeys({
 
       if (hotkeys.enableGenericHistoryHotkeys && (isCommandBracketBack || isAltArrowBack || isBrowserBackKey)) {
         event.preventDefault()
-        navigateHistoryBy(-1)
+        actions.navigateHistoryBy(-1)
         return
       }
 
       if (hotkeys.enableGenericHistoryHotkeys && (isCommandBracketForward || isAltArrowForward || isBrowserForwardKey)) {
         event.preventDefault()
-        navigateHistoryBy(1)
+        actions.navigateHistoryBy(1)
         return
       }
 
@@ -121,10 +155,10 @@ export function useGlobalHotkeys({
           return
         }
         if (viewMode === 'main' || viewMode === 'trash') {
-          toggleTrashView()
+          actions.toggleTrashView()
           return
         }
-        returnToLastTabLikeView()
+        actions.returnToLastTabLikeView()
         return
       }
 
@@ -132,7 +166,7 @@ export function useGlobalHotkeys({
         (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.code === 'Backquote'
       if (isHistoryBackShortcut) {
         event.preventDefault()
-        navigateHistoryBy(-1)
+        actions.navigateHistoryBy(-1)
         return
       }
 
@@ -140,21 +174,21 @@ export function useGlobalHotkeys({
         (event.metaKey || event.ctrlKey) && !event.altKey && event.shiftKey && event.code === 'Backquote'
       if (isHistoryForwardShortcut) {
         event.preventDefault()
-        navigateHistoryBy(1)
+        actions.navigateHistoryBy(1)
         return
       }
 
       const isSpacesShortcut = eventMatchesShortcut(event, hotkeys.shortcuts.openSpaces, isMacPlatform)
       if (isSpacesShortcut) {
         event.preventDefault()
-        openSpacesView()
+        actions.openSpacesView()
         return
       }
 
       const isDomainsShortcut = eventMatchesShortcut(event, hotkeys.shortcuts.openDomains, isMacPlatform)
       if (isDomainsShortcut) {
         event.preventDefault()
-        openDomainsView()
+        actions.openDomainsView()
         return
       }
 
@@ -164,14 +198,14 @@ export function useGlobalHotkeys({
       const isCommandNewTab = eventMatchesShortcut(event, hotkeys.shortcuts.newTab, isMacPlatform)
       if (isCommandNewTab) {
         event.preventDefault()
-        addTab()
+        actions.addTab()
         return
       }
 
       const isCommandNewSubTab = eventMatchesShortcut(event, hotkeys.shortcuts.newSubTab, isMacPlatform)
       if (isCommandNewSubTab) {
         event.preventDefault()
-        addSubTab()
+        actions.addSubTab()
         return
       }
 
@@ -183,7 +217,7 @@ export function useGlobalHotkeys({
 
         const nextPrimeTabId = getNumberedPrimeTabTarget(primeTabs, shortcutIndex)
         if (!nextPrimeTabId) return
-        selectTab(nextPrimeTabId)
+        actions.selectTab(nextPrimeTabId)
         return
       }
 
@@ -203,23 +237,23 @@ export function useGlobalHotkeys({
       const nextChild = childTargets[nextIndex]
 
       if (nextChild === null) {
-        selectTab(activeTab.id)
+        actions.selectTab(activeTab.id)
         return
       }
 
-      selectSubTab(nextChild)
+      actions.selectSubTab(nextChild)
     }
 
     const handleMouseNavigation = (event: globalThis.MouseEvent) => {
       if (!hotkeys.enableMouseBackForward) return
       if (event.button === 3) {
         event.preventDefault()
-        navigateHistoryBy(-1)
+        actionsRef.current.navigateHistoryBy(-1)
         return
       }
       if (event.button === 4) {
         event.preventDefault()
-        navigateHistoryBy(1)
+        actionsRef.current.navigateHistoryBy(1)
       }
     }
 

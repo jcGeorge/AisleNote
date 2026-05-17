@@ -80,6 +80,7 @@ import {
 } from './state/workspace'
 import { useStageManagerController } from './stage-manager/useStageManagerController'
 import { usePersistentAppState } from './storage/usePersistentAppState'
+import { useStorageProfileController } from './storage/useStorageProfileController'
 import { TRASH_HOME_ID } from './trash/trash-model'
 import { useTrashSelection } from './trash/useTrashSelection'
 import type {
@@ -89,7 +90,6 @@ import type {
   NewlineOperationId,
   NoteLocation,
   PendingCreatedEdit,
-  StorageProfileStatus,
   ToastState,
   ToastTone,
   ViewMode,
@@ -122,7 +122,6 @@ function App() {
   const [trashTabId, setTrashTabId] = useState<string>(TRASH_HOME_ID)
   const [trashSubTabId, setTrashSubTabId] = useState<string | null>(null)
   const [activeAisleId, setActiveAisleId] = useState<string>('')
-  const [storageProfileStatus, setStorageProfileStatus] = useState<StorageProfileStatus | null>(null)
   const [toasts, setToasts] = useState<ToastState[]>([])
   const [linkPrompt, setLinkPrompt] = useState<LinkPromptState>({
     open: false,
@@ -287,93 +286,8 @@ function App() {
     }
   }
 
-  const applyStorageProfileStatus = (nextStatus: StorageProfileStatus) => {
-    setStorageProfileStatus(nextStatus)
-    if (nextStatus.event === 'external-loaded') {
-      pushToast('external storage changes loaded.', 'success')
-    } else if (nextStatus.status === 'error') {
-      pushToast(nextStatus.error ?? 'storage profile could not be loaded. saves are paused.', 'error', 6000)
-    }
-  }
-
-  useEffect(() => {
-    let disposed = false
-    void window.electronAPI?.getStorageProfileStatus?.().then((status) => {
-      if (!disposed && status) setStorageProfileStatus(status)
-    })
-    const unsubscribe =
-      window.electronAPI?.onStorageProfileStatusUpdated?.((status) => {
-        if (!disposed) applyStorageProfileStatus(status)
-      }) ?? (() => undefined)
-    return () => {
-      disposed = true
-      unsubscribe()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const handleStorageProfileResult = (
-    result:
-      | { canceled: true; status: StorageProfileStatus }
-      | { ok: true; status: StorageProfileStatus }
-      | { ok: false; error?: string; status: StorageProfileStatus },
-    successMessage: string,
-  ) => {
-    if ('status' in result && result.status) {
-      setStorageProfileStatus(result.status)
-    }
-    if ('canceled' in result && result.canceled) return
-    if ('ok' in result && result.ok) {
-      pushToast(successMessage, 'success')
-      return
-    }
-    pushToast('ok' in result ? result.error ?? 'storage profile action failed.' : 'storage profile action failed.', 'error', 6000)
-  }
-
-  const chooseStorageFolder = async () => {
-    const result = await window.electronAPI?.chooseStorageFolder?.()
-    if (!result) {
-      pushToast('sync folder selection is only available in the desktop app.', 'warning')
-      return
-    }
-    handleStorageProfileResult(result, 'storage folder updated.')
-  }
-
-  const moveStorageProfile = async () => {
-    const result = await window.electronAPI?.moveStorageProfile?.()
-    if (!result) {
-      pushToast('storage folder migration is only available in the desktop app.', 'warning')
-      return
-    }
-    handleStorageProfileResult(result, 'current data moved to storage folder.')
-  }
-
-  const revealStorageProfile = async () => {
-    const result = await window.electronAPI?.revealStorageProfile?.()
-    if (!result) {
-      pushToast('reveal folder is only available in the desktop app.', 'warning')
-      return
-    }
-    if (!result.ok) pushToast(result.error, 'error', 6000)
-  }
-
-  const retryStorageProfile = async () => {
-    const result = await window.electronAPI?.retryStorageProfile?.()
-    if (!result) {
-      pushToast('storage retry is only available in the desktop app.', 'warning')
-      return
-    }
-    handleStorageProfileResult(result, 'storage profile reloaded.')
-  }
-
-  const restoreStorageRecoverySnapshot = async () => {
-    const result = await window.electronAPI?.restoreStorageRecoverySnapshot?.()
-    if (!result) {
-      pushToast('storage recovery is only available in the desktop app.', 'warning')
-      return
-    }
-    handleStorageProfileResult(result, 'latest recovery snapshot restored.')
-  }
+  const storageProfileController = useStorageProfileController({ pushToast })
+  const storageProfileStatus = storageProfileController.storageProfileStatus
 
   const trackCompletedTaskQuickDelete = (beforeMarkdown: string) => {
     completedTaskDeleteUndoCandidateRef.current = {
@@ -402,7 +316,7 @@ function App() {
   }
 
   useEffect(() => {
-    closeImageTools()
+    closeImageToolsRef.current()
   }, [activeSpace.id, activeTab.id, activeSubTab?.id, activeNoteBodyId, viewMode])
 
   useEffect(() => {
@@ -438,7 +352,7 @@ function App() {
   useEffect(() => {
     if (!activeNoteBodyId || activeNoteBody) return
     setState((previous) => ensureNoteBodiesForAppState(previous))
-  }, [activeNoteBody, activeNoteBodyId])
+  }, [activeNoteBody, activeNoteBodyId, setState])
 
   const {
     trashParentTabs,
@@ -1601,11 +1515,11 @@ function App() {
           onDeleteFrontmatterTemplateField={settingsController.deleteFrontmatterTemplateField}
           onSaveFrontmatterTemplates={settingsController.saveFrontmatterTemplates}
           onDiscardFrontmatterTemplateChanges={settingsController.discardFrontmatterTemplateChanges}
-          onChooseStorageFolder={chooseStorageFolder}
-          onMoveStorageProfile={moveStorageProfile}
-          onRevealStorageProfile={revealStorageProfile}
-          onRetryStorageProfile={retryStorageProfile}
-          onRestoreStorageRecoverySnapshot={restoreStorageRecoverySnapshot}
+          onChooseStorageFolder={storageProfileController.chooseStorageFolder}
+          onMoveStorageProfile={storageProfileController.moveStorageProfile}
+          onRevealStorageProfile={storageProfileController.revealStorageProfile}
+          onRetryStorageProfile={storageProfileController.retryStorageProfile}
+          onRestoreStorageRecoverySnapshot={storageProfileController.restoreStorageRecoverySnapshot}
         />
       ) : (
         <>
@@ -1727,10 +1641,10 @@ function App() {
       {storageProfileStatus?.status === 'error' && (
         <div className="storage-status-banner" role="alert">
           <span>{storageProfileStatus.error ?? 'storage profile could not be loaded. saves are paused.'}</span>
-          <button type="button" className="btn btn-sm settings-action-btn" onClick={retryStorageProfile}>
+          <button type="button" className="btn btn-sm settings-action-btn" onClick={storageProfileController.retryStorageProfile}>
             retry
           </button>
-          <button type="button" className="btn btn-sm settings-action-btn" onClick={revealStorageProfile}>
+          <button type="button" className="btn btn-sm settings-action-btn" onClick={storageProfileController.revealStorageProfile}>
             reveal folder
           </button>
         </div>
