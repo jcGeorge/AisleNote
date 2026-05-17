@@ -17,7 +17,7 @@ import {
   getMultiLineSelectedBlockIndices,
   getMultiLineSplitPlan,
   moveMultiLineCursorState,
-  shouldApplyMultiLineBoundaryDelete,
+  shouldApplyMultiLineWholeSelectionBoundaryDelete,
   type MultiLineCursorMovement,
   type MultiLineEditInput,
 } from './multiline-edit'
@@ -39,9 +39,12 @@ import {
 import {
   applyActiveInlineFormatsToStoredMarks,
   applyActiveInlineFormatsToInsertedText,
+  buildMultiLineBlockQuoteOperationPlan,
+  buildMultiLineCodeBlockOperationPlan,
   buildMultiLineHeadingOperationPlan,
   buildMultiLineInlineFormatPlan,
   buildMultiLineInlineMarkerOperationPlan,
+  getMultiLineBlockQuoteMarkerShortcut,
   getMultiLineHeadingMarkerShortcut,
   type MultiLineHeadingLevel,
 } from './multiline-format-operations'
@@ -554,7 +557,7 @@ export function useMultilineEditing({
     const shouldApplyWholeSelectionBoundaryDelete =
       !selectedRowDeletePlan &&
       (input.type === 'delete' || input.type === 'backspace') &&
-      shouldApplyMultiLineBoundaryDelete(multiLineEdit, selectedIndices, blockRanges)
+      shouldApplyMultiLineWholeSelectionBoundaryDelete(input.type, multiLineEdit, selectedIndices, blockRanges)
 
     if (selectedRowDeletePlan) {
       tr = selectedRowDeletePlan.transaction
@@ -802,6 +805,54 @@ export function useMultilineEditing({
 
   const tryApplyHeadingOperation = (level: MultiLineHeadingLevel) => applyHeadingOperationPlan(level)
 
+  const applyBlockQuoteOperationPlan = (
+    options: Parameters<typeof buildMultiLineBlockQuoteOperationPlan>[2] = {},
+  ) => {
+    const { currentEditor, view } = getCurrentEditorAndView()
+    const multiLineEdit = editStateRef.current
+    if (!currentEditor || !view || !multiLineEdit) return false
+
+    const beforeMarkdown = getNormalizedEditorMarkdown(currentEditor)
+    const beforeState = cloneMultiLineEditState(multiLineEdit)
+    const plan = buildMultiLineBlockQuoteOperationPlan(view, multiLineEdit, options)
+    if (!plan) return false
+
+    view.dispatch(plan.transaction.scrollIntoView())
+    editStateRef.current = plan.nextState
+    syncVisualSelection()
+    const markdownAfterBlockQuoteOperation = getNormalizedEditorMarkdown(currentEditor)
+    commitMarkdown(markdownAfterBlockQuoteOperation)
+    if (editStateRef.current) {
+      recordHistory(beforeMarkdown, beforeState, markdownAfterBlockQuoteOperation, editStateRef.current)
+    }
+    currentEditor.focus()
+    return true
+  }
+
+  const tryApplyBlockQuoteOperation = () => applyBlockQuoteOperationPlan()
+
+  const tryApplyCodeBlockOperation = () => {
+    const { currentEditor, view } = getCurrentEditorAndView()
+    const multiLineEdit = editStateRef.current
+    if (!currentEditor || !view || !multiLineEdit) return false
+
+    const beforeMarkdown = getNormalizedEditorMarkdown(currentEditor)
+    const beforeState = cloneMultiLineEditState(multiLineEdit)
+    const plan = buildMultiLineCodeBlockOperationPlan(view, multiLineEdit)
+    if (!plan) return false
+
+    view.dispatch(plan.transaction.scrollIntoView())
+    editStateRef.current = plan.nextState
+    syncVisualSelection()
+    const markdownAfterCodeBlockOperation = getNormalizedEditorMarkdown(currentEditor)
+    commitMarkdown(markdownAfterCodeBlockOperation)
+    if (editStateRef.current) {
+      recordHistory(beforeMarkdown, beforeState, markdownAfterCodeBlockOperation, editStateRef.current)
+    }
+    currentEditor.focus()
+    return true
+  }
+
   const tryApplyInlineFormat = (format: MultiLineInlineFormat) => {
     const { currentEditor, view } = getCurrentEditorAndView()
     const multiLineEdit = editStateRef.current
@@ -844,7 +895,18 @@ export function useMultilineEditing({
     return applyHeadingOperationPlan(shortcut.level, { textByBlockIndex: shortcut.textByBlockIndex })
   }
 
-  const tryApplyBlockMarkerShortcut = () => tryApplyHeadingMarkerShortcut() || tryApplyListMarkerShortcut()
+  const tryApplyBlockQuoteMarkerShortcut = () => {
+    const { view } = getCurrentEditorAndView()
+    const multiLineEdit = editStateRef.current
+    if (!view || !multiLineEdit) return false
+
+    const shortcut = getMultiLineBlockQuoteMarkerShortcut(view, multiLineEdit)
+    if (!shortcut) return false
+    return applyBlockQuoteOperationPlan({ textByBlockIndex: shortcut.textByBlockIndex })
+  }
+
+  const tryApplyBlockMarkerShortcut = () =>
+    tryApplyHeadingMarkerShortcut() || tryApplyBlockQuoteMarkerShortcut() || tryApplyListMarkerShortcut()
 
   const tryApplyInlineMarkerShortcut = (inputText: string) => {
     const { currentEditor, view } = getCurrentEditorAndView()
@@ -983,6 +1045,8 @@ export function useMultilineEditing({
     tryApplyListOperation,
     tryApplyListMarkerShortcut,
     tryApplyHeadingOperation,
+    tryApplyBlockQuoteOperation,
+    tryApplyCodeBlockOperation,
     tryApplyInlineFormat,
     tryApplyBlockMarkerShortcut,
     tryApplyInlineMarkerShortcut,

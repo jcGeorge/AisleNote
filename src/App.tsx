@@ -744,6 +744,8 @@ function App() {
   const tryApplyMultiLineListOperation = multilineEditing.tryApplyListOperation
   const tryApplyMultiLineListMarkerShortcut = multilineEditing.tryApplyListMarkerShortcut
   const tryApplyMultiLineHeadingOperation = multilineEditing.tryApplyHeadingOperation
+  const tryApplyMultiLineBlockQuoteOperation = multilineEditing.tryApplyBlockQuoteOperation
+  const tryApplyMultiLineCodeBlockOperation = multilineEditing.tryApplyCodeBlockOperation
   const tryApplyMultiLineInlineFormat = multilineEditing.tryApplyInlineFormat
   const tryApplyMultiLineBlockMarkerShortcut = multilineEditing.tryApplyBlockMarkerShortcut
   const tryApplyMultiLineInlineMarkerShortcut = multilineEditing.tryApplyInlineMarkerShortcut
@@ -970,6 +972,18 @@ function App() {
         return true
       }
     }
+    if (command === 'blockQuote' && multiLineEditRef.current) {
+      if (tryApplyMultiLineBlockQuoteOperation()) {
+        scheduleActiveEditorCommandCommit(currentEditor)
+      }
+      return true
+    }
+    if (command === 'codeBlock' && multiLineEditRef.current) {
+      if (tryApplyMultiLineCodeBlockOperation()) {
+        scheduleActiveEditorCommandCommit(currentEditor)
+      }
+      return true
+    }
     if (command === 'dashList' || command === 'bulletList' || command === 'orderedList' || command === 'taskList') {
       const listCommand = command as ToolbarListCommand
       const multiLineOperation = TOOLBAR_LIST_COMMAND_TO_MULTILINE_OPERATION[listCommand] ?? null
@@ -1000,6 +1014,17 @@ function App() {
     }
 
     const multiLineOperation = getMultiLineListOperationForNewlineOperation(operation)
+    if (multiLineEditRef.current && (operation === 'blockQuote' || operation === 'codeBlock')) {
+      const handled =
+        operation === 'blockQuote'
+          ? tryApplyMultiLineBlockQuoteOperation()
+          : tryApplyMultiLineCodeBlockOperation()
+      if (handled) {
+        commitActiveEditorMarkdownNow(currentEditor)
+        syncToolbarFormatState()
+      }
+      return true
+    }
     if (multiLineEditRef.current && multiLineOperation) {
       if (tryApplyMultiLineListOperation(multiLineOperation)) {
         commitActiveEditorMarkdownNow(currentEditor)

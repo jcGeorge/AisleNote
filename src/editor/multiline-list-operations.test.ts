@@ -35,6 +35,11 @@ const multilineListSchema = new Schema({
       code: true,
       toDOM: () => ['pre', ['code', 0]],
     },
+    blockQuote: {
+      group: 'block',
+      content: 'block+',
+      toDOM: () => ['blockquote', 0],
+    },
     bulletList: {
       group: 'block',
       content: 'listItem+',
@@ -76,6 +81,10 @@ function heading(text: string, level = 2) {
 
 function codeBlock(text: string) {
   return multilineListSchema.nodes.codeBlock.create(null, text ? multilineListSchema.text(text) : undefined)
+}
+
+function blockQuote(texts: string[]) {
+  return multilineListSchema.nodes.blockQuote.create(null, texts.map((text) => paragraph(text)))
 }
 
 function listItem(text: string, attrs: Record<string, unknown> | null = null) {
@@ -354,9 +363,29 @@ describe('multi-cursor list operations', () => {
     expect(getMultiLineListMarkerShortcut(nonBareView, multiLineState([0, 1], 1))).toBeNull()
   })
 
-  it('does nothing when a selected multi-cursor line is inside a code block', () => {
-    const view = createView(multilineListSchema.nodes.doc.create(null, [paragraph('one'), codeBlock('two')]))
+  it('turns selected blockquote rows into lists and preserves unselected quoted rows', () => {
+    const doc = applyListOperation(
+      multilineListSchema.nodes.doc.create(null, [blockQuote(['keep', 'one', 'two', 'keep'])]),
+      [1, 2],
+      'bulletList',
+    )
 
-    expect(buildMultiLineListOperationPlan(view, multiLineState([0, 1]), 'task')).toBeNull()
+    expect(docChildTypes(doc)).toEqual(['blockQuote', 'bulletList', 'blockQuote'])
+    expect(doc.child(0).textContent).toBe('keep')
+    expect(listTexts(doc.child(1))).toEqual(['one', 'two'])
+    expect(doc.child(2).textContent).toBe('keep')
+  })
+
+  it('turns selected code block lines into lists and preserves unselected code lines', () => {
+    const doc = applyListOperation(
+      multilineListSchema.nodes.doc.create(null, [codeBlock('keep\none\ntwo\nkeep')]),
+      [1, 2],
+      'numberedList',
+    )
+
+    expect(docChildTypes(doc)).toEqual(['codeBlock', 'orderedList', 'codeBlock'])
+    expect(doc.child(0).textContent).toBe('keep')
+    expect(listTexts(doc.child(1))).toEqual(['one', 'two'])
+    expect(doc.child(2).textContent).toBe('keep')
   })
 })

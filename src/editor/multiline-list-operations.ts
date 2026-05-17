@@ -30,7 +30,27 @@ type ListItemRowContext = {
   itemNode: ProseMirrorNode
 }
 
-type RowContext = TextBlockRowContext | ListItemRowContext
+type BlockQuoteRowContext = {
+  kind: 'blockQuoteChild'
+  blockIndex: number
+  text: string
+  quoteStart: number
+  quoteEnd: number
+  childIndex: number
+  quoteNode: ProseMirrorNode
+}
+
+type CodeBlockLineRowContext = {
+  kind: 'codeBlockLine'
+  blockIndex: number
+  text: string
+  codeStart: number
+  codeEnd: number
+  lineIndex: number
+  codeNode: ProseMirrorNode
+}
+
+type RowContext = TextBlockRowContext | ListItemRowContext | BlockQuoteRowContext | CodeBlockLineRowContext
 
 type MultiLineListOperationOptions = {
   textByBlockIndex?: Map<number, string>
@@ -126,6 +146,17 @@ function createListNodeLikeOriginal(listNode: ProseMirrorNode, items: ProseMirro
   return listNode.type.create(listNode.attrs, Fragment.fromArray(items))
 }
 
+function createBlockQuoteNodeLikeOriginal(quoteNode: ProseMirrorNode, children: ProseMirrorNode[]): ProseMirrorNode | null {
+  if (children.length === 0) return null
+  return quoteNode.type.create(quoteNode.attrs, Fragment.fromArray(children))
+}
+
+function createCodeBlockNodeLikeOriginal(codeNode: ProseMirrorNode, lines: string[]): ProseMirrorNode | null {
+  if (lines.length === 0) return null
+  const text = lines.join('\n')
+  return codeNode.type.create(codeNode.attrs, text ? codeNode.type.schema.text(text) : undefined)
+}
+
 function getListItemTextBlocks(itemNode: ProseMirrorNode): ProseMirrorNode[] {
   const blocks: ProseMirrorNode[] = []
   itemNode.forEach((child) => {
@@ -165,12 +196,31 @@ function getListItemDepth(resolved: any): number | null {
   return null
 }
 
-function getRowContext(view: any, blockIndex: number, range: EditorTextLineRange): RowContext | null {
-  if (isCodeBlockTextLineRange(range)) return null
+function getCodeBlockLineIndex(codeNode: ProseMirrorNode, codeStart: number, range: EditorTextLineRange): number {
+  const lineStartOffset = Math.max(0, range.start - (codeStart + 1))
+  return (codeNode.textContent.slice(0, lineStartOffset).match(/\n/g) ?? []).length
+}
 
+function getRowContext(view: any, blockIndex: number, range: EditorTextLineRange): RowContext | null {
   const doc = view?.state?.doc
   const resolved = resolveSafe(doc, range.start)
   if (!resolved) return null
+
+  if (isCodeBlockTextLineRange(range)) {
+    const codeDepth = getTextBlockDepth(resolved)
+    const codeNode = codeDepth === null ? null : resolved.node(codeDepth)
+    if (codeDepth !== 1 || codeNode?.type?.name !== 'codeBlock') return null
+    const codeStart = resolved.before(codeDepth)
+    return {
+      kind: 'codeBlockLine',
+      blockIndex,
+      text: range.text,
+      codeStart,
+      codeEnd: resolved.after(codeDepth),
+      lineIndex: getCodeBlockLineIndex(codeNode, codeStart, range),
+      codeNode,
+    }
+  }
 
   const listItemDepth = getListItemDepth(resolved)
   if (listItemDepth !== null) {
@@ -195,7 +245,23 @@ function getRowContext(view: any, blockIndex: number, range: EditorTextLineRange
 
   const textBlockDepth = getTextBlockDepth(resolved)
   const textBlock = textBlockDepth === null ? null : resolved.node(textBlockDepth)
-  if (textBlockDepth !== 1 || (textBlock?.type?.name !== 'paragraph' && textBlock?.type?.name !== 'heading')) return null
+  if (textBlockDepth === null || (textBlock?.type?.name !== 'paragraph' && textBlock?.type?.name !== 'heading')) return null
+
+  const parentDepth = textBlockDepth - 1
+  const parentNode = parentDepth > 0 ? resolved.node(parentDepth) : null
+  if (parentNode?.type?.name === 'blockQuote') {
+    return {
+      kind: 'blockQuoteChild',
+      blockIndex,
+      text: range.text,
+      quoteStart: resolved.before(parentDepth),
+      quoteEnd: resolved.after(parentDepth),
+      childIndex: resolved.index(parentDepth),
+      quoteNode: parentNode,
+    }
+  }
+
+  if (textBlockDepth !== 1) return null
 
   return {
     kind: 'textBlock',
@@ -300,6 +366,95 @@ function buildListReplacementNodes(
   return nodes
 }
 
+function buildQuoteReplacementNodes(
+  schema: any,
+  quoteNode: ProseMirrorNode,
+  selectedContexts: BlockQuoteRowContext[],
+  operation: MultiLineListOperation,
+  textByBlockIndex: Map<number, string> | undefined,
+): ProseMirrorNode[] {
+  const selectedByChildIndex = new Map(selectedContexts.map((context) => [context.childIndex, context]))
+  const nodes: ProseMirrorNode[] = []
+  let runSelected: boolean | null = null
+  let runChildren: ProseMirrorNode[] = []
+  let runContexts: BlockQuoteRowContext[] = []
+
+  const flushRun = () => {
+    if (runSelected === null || runChildren.length === 0) return
+    if (!runSelected) {
+      const quote = createBlockQuoteNodeLikeOriginal(quoteNode, runChildren)
+      if (quote) nodes.push(quote)
+    } else {
+      const list = createMultiLineListNode(
+        schema,
+        operation,
+        runContexts.map((context) => textByBlockIndex?.get(context.blockIndex) ?? context.text),
+      )
+      if (list) nodes.push(list)
+    }
+    runSelected = null
+    runChildren = []
+    runContexts = []
+  }
+
+  for (let index = 0; index < quoteNode.childCount; index += 1) {
+    const context = selectedByChildIndex.get(index)
+    const selected = Boolean(context)
+    if (runSelected !== null && runSelected !== selected) flushRun()
+    runSelected = selected
+    runChildren.push(quoteNode.child(index))
+    if (context) runContexts.push(context)
+  }
+  flushRun()
+
+  return nodes
+}
+
+function buildCodeBlockReplacementNodes(
+  schema: any,
+  codeNode: ProseMirrorNode,
+  selectedContexts: CodeBlockLineRowContext[],
+  operation: MultiLineListOperation,
+  textByBlockIndex: Map<number, string> | undefined,
+): ProseMirrorNode[] {
+  const lines = codeNode.textContent.split('\n')
+  const selectedByLineIndex = new Map(selectedContexts.map((context) => [context.lineIndex, context]))
+  const nodes: ProseMirrorNode[] = []
+  let runSelected: boolean | null = null
+  let runLines: string[] = []
+  let runContexts: CodeBlockLineRowContext[] = []
+
+  const flushRun = () => {
+    if (runSelected === null || runLines.length === 0) return
+    if (!runSelected) {
+      const codeBlock = createCodeBlockNodeLikeOriginal(codeNode, runLines)
+      if (codeBlock) nodes.push(codeBlock)
+    } else {
+      const list = createMultiLineListNode(
+        schema,
+        operation,
+        runContexts.map((context) => textByBlockIndex?.get(context.blockIndex) ?? context.text),
+      )
+      if (list) nodes.push(list)
+    }
+    runSelected = null
+    runLines = []
+    runContexts = []
+  }
+
+  lines.forEach((line, index) => {
+    const context = selectedByLineIndex.get(index)
+    const selected = Boolean(context)
+    if (runSelected !== null && runSelected !== selected) flushRun()
+    runSelected = selected
+    runLines.push(line)
+    if (context) runContexts.push(context)
+  })
+  flushRun()
+
+  return nodes
+}
+
 function buildListReplacements(
   schema: any,
   listContexts: ListItemRowContext[],
@@ -320,6 +475,54 @@ function buildListReplacements(
       from: first.listStart,
       to: first.listEnd,
       nodes: buildListReplacementNodes(schema, first.listNode, sortedContexts, operation, textByBlockIndex),
+    }
+  })
+}
+
+function buildQuoteReplacements(
+  schema: any,
+  quoteContexts: BlockQuoteRowContext[],
+  operation: MultiLineListOperation,
+  textByBlockIndex: Map<number, string> | undefined,
+): Array<ReplacementRange & { nodes: ProseMirrorNode[] }> {
+  const contextsByQuoteStart = new Map<number, BlockQuoteRowContext[]>()
+  quoteContexts.forEach((context) => {
+    const existing = contextsByQuoteStart.get(context.quoteStart) ?? []
+    existing.push(context)
+    contextsByQuoteStart.set(context.quoteStart, existing)
+  })
+
+  return Array.from(contextsByQuoteStart.values()).map((contexts) => {
+    const first = contexts[0]
+    const sortedContexts = [...contexts].sort((a, b) => a.childIndex - b.childIndex)
+    return {
+      from: first.quoteStart,
+      to: first.quoteEnd,
+      nodes: buildQuoteReplacementNodes(schema, first.quoteNode, sortedContexts, operation, textByBlockIndex),
+    }
+  })
+}
+
+function buildCodeBlockReplacements(
+  schema: any,
+  codeContexts: CodeBlockLineRowContext[],
+  operation: MultiLineListOperation,
+  textByBlockIndex: Map<number, string> | undefined,
+): Array<ReplacementRange & { nodes: ProseMirrorNode[] }> {
+  const contextsByCodeStart = new Map<number, CodeBlockLineRowContext[]>()
+  codeContexts.forEach((context) => {
+    const existing = contextsByCodeStart.get(context.codeStart) ?? []
+    existing.push(context)
+    contextsByCodeStart.set(context.codeStart, existing)
+  })
+
+  return Array.from(contextsByCodeStart.values()).map((contexts) => {
+    const first = contexts[0]
+    const sortedContexts = [...contexts].sort((a, b) => a.lineIndex - b.lineIndex)
+    return {
+      from: first.codeStart,
+      to: first.codeEnd,
+      nodes: buildCodeBlockReplacementNodes(schema, first.codeNode, sortedContexts, operation, textByBlockIndex),
     }
   })
 }
@@ -356,9 +559,13 @@ export function buildMultiLineListOperationPlan(
   const schema = view.state.schema
   const paragraphContexts = context.contexts.filter((row): row is TextBlockRowContext => row.kind === 'textBlock')
   const listContexts = context.contexts.filter((row): row is ListItemRowContext => row.kind === 'listItem')
+  const quoteContexts = context.contexts.filter((row): row is BlockQuoteRowContext => row.kind === 'blockQuoteChild')
+  const codeContexts = context.contexts.filter((row): row is CodeBlockLineRowContext => row.kind === 'codeBlockLine')
   const replacements = [
     ...buildParagraphReplacements(schema, paragraphContexts, operation, options.textByBlockIndex),
     ...buildListReplacements(schema, listContexts, operation, options.textByBlockIndex),
+    ...buildQuoteReplacements(schema, quoteContexts, operation, options.textByBlockIndex),
+    ...buildCodeBlockReplacements(schema, codeContexts, operation, options.textByBlockIndex),
   ].filter((replacement) => replacement.nodes.length > 0)
   if (replacements.length === 0) return null
 

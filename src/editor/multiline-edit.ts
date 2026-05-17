@@ -192,6 +192,14 @@ type SelectedRowDeleteContext =
       itemIndex: number
       listNode: any
     }
+  | {
+      kind: 'blockQuoteChild'
+      blockIndex: number
+      quoteStart: number
+      quoteEnd: number
+      childIndex: number
+      quoteNode: any
+    }
 
 type DeleteCurrentRowContext = SelectedRowDeleteContext
 
@@ -258,6 +266,20 @@ function isEmptyVisibleRow(range: EditorTextLineRange): boolean {
   return range.length === 0 || range.text.replace(/\u200b/g, '').trim().length === 0
 }
 
+export function shouldApplyMultiLineWholeSelectionBoundaryDelete(
+  inputType: 'backspace' | 'delete',
+  multiLineEdit: MultiLineEditState,
+  selectedIndices: number[],
+  blockRanges: EditorTextLineRange[],
+): boolean {
+  if (!shouldApplyMultiLineBoundaryDelete(multiLineEdit, selectedIndices, blockRanges)) return false
+  if (inputType === 'delete') return true
+  return selectedIndices.every((blockIndex) => {
+    const range = blockRanges[blockIndex]
+    return range ? isEmptyVisibleRow(range) : false
+  })
+}
+
 function addDeleteCurrentRowReplacement(
   replacements: Array<{ from: number; to: number; nodes: any[] }>,
   context: DeleteCurrentRowContext | InlineBreakDeleteContext,
@@ -269,6 +291,15 @@ function addDeleteCurrentRowReplacement(
 
   if (context.kind === 'block') {
     replacements.push({ from: context.from, to: context.to, nodes: [] })
+    return
+  }
+
+  if (context.kind === 'blockQuoteChild') {
+    replacements.push({
+      from: context.quoteStart,
+      to: context.quoteEnd,
+      nodes: createBlockQuoteNodesWithoutSelectedChildren(context.quoteNode, new Set([context.childIndex])),
+    })
     return
   }
 
@@ -462,9 +493,16 @@ export function buildForwardBoundaryDeletePlan(
   }
 
   const listContextsByStart = new Map<number, Extract<DeleteCurrentRowContext, { kind: 'listItem' }>[]>()
+  const quoteContextsByStart = new Map<number, Extract<DeleteCurrentRowContext, { kind: 'blockQuoteChild' }>[]>()
   for (const context of deleteCurrentByBlockIndex.values()) {
     if (context.kind === 'block') {
       addDeleteCurrentRowReplacement(replacements, context)
+      continue
+    }
+    if (context.kind === 'blockQuoteChild') {
+      const existing = quoteContextsByStart.get(context.quoteStart) ?? []
+      existing.push(context)
+      quoteContextsByStart.set(context.quoteStart, existing)
       continue
     }
     const existing = listContextsByStart.get(context.listStart) ?? []
@@ -480,6 +518,18 @@ export function buildForwardBoundaryDeletePlan(
       nodes: createListNodesWithoutSelectedItems(
         first.listNode,
         new Set(contextsForList.map((context) => context.itemIndex)),
+      ),
+    })
+  }
+
+  for (const contextsForQuote of quoteContextsByStart.values()) {
+    const first = contextsForQuote[0]
+    replacements.push({
+      from: first.quoteStart,
+      to: first.quoteEnd,
+      nodes: createBlockQuoteNodesWithoutSelectedChildren(
+        first.quoteNode,
+        new Set(contextsForQuote.map((context) => context.childIndex)),
       ),
     })
   }
@@ -568,6 +618,18 @@ function getSelectedRowDeleteContext(
   for (let depth = resolved.depth; depth > 0; depth -= 1) {
     const node = resolved.node(depth)
     if (!node?.isTextblock) continue
+    const parentDepth = depth - 1
+    const parentNode = parentDepth > 0 ? resolved.node(parentDepth) : null
+    if (parentNode?.type?.name === 'blockQuote') {
+      return {
+        kind: 'blockQuoteChild',
+        blockIndex,
+        quoteStart: resolved.before(parentDepth),
+        quoteEnd: resolved.after(parentDepth),
+        childIndex: resolved.index(parentDepth),
+        quoteNode: parentNode,
+      }
+    }
     if (depth !== 1) return null
     return {
       kind: 'block',
@@ -601,6 +663,16 @@ function createListNodesWithoutSelectedItems(listNode: any, selectedItemIndices:
   return nodes
 }
 
+function createBlockQuoteNodesWithoutSelectedChildren(quoteNode: any, selectedChildIndices: Set<number>): any[] {
+  const children: any[] = []
+  for (let index = 0; index < quoteNode.childCount; index += 1) {
+    if (!selectedChildIndices.has(index)) {
+      children.push(quoteNode.child(index))
+    }
+  }
+  return children.length > 0 ? [quoteNode.type.create(quoteNode.attrs, children)] : []
+}
+
 export function buildSelectedRowDeletePlan(
   transaction: any,
   multiLineEdit: MultiLineEditState,
@@ -624,6 +696,7 @@ export function buildSelectedRowDeletePlan(
   const replacements: Array<{ from: number; to: number; nodes: any[] }> = []
   const blockContexts = contexts.filter((context): context is Extract<SelectedRowDeleteContext, { kind: 'block' }> => context.kind === 'block')
   const listContexts = contexts.filter((context): context is Extract<SelectedRowDeleteContext, { kind: 'listItem' }> => context.kind === 'listItem')
+  const quoteContexts = contexts.filter((context): context is Extract<SelectedRowDeleteContext, { kind: 'blockQuoteChild' }> => context.kind === 'blockQuoteChild')
 
   const blockContextsByIndex = new Map(blockContexts.map((context) => [context.blockIndex, context]))
   const blockGroups = [...new Set(blockContexts.map((context) => context.blockIndex))]
@@ -657,6 +730,23 @@ export function buildSelectedRowDeletePlan(
       from: first.listStart,
       to: first.listEnd,
       nodes: createListNodesWithoutSelectedItems(first.listNode, selectedItemIndices),
+    })
+  }
+
+  const quoteContextsByStart = new Map<number, typeof quoteContexts>()
+  for (const context of quoteContexts) {
+    const existing = quoteContextsByStart.get(context.quoteStart) ?? []
+    existing.push(context)
+    quoteContextsByStart.set(context.quoteStart, existing)
+  }
+
+  for (const contextsForQuote of quoteContextsByStart.values()) {
+    const first = contextsForQuote[0]
+    const selectedChildIndices = new Set(contextsForQuote.map((context) => context.childIndex))
+    replacements.push({
+      from: first.quoteStart,
+      to: first.quoteEnd,
+      nodes: createBlockQuoteNodesWithoutSelectedChildren(first.quoteNode, selectedChildIndices),
     })
   }
 

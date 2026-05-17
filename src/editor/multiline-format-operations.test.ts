@@ -5,10 +5,13 @@ import type { MultiLineEditState, MultiLineInlineFormat } from '../types/app'
 import {
   applyActiveInlineFormatsToStoredMarks,
   applyActiveInlineFormatsToInsertedText,
+  buildMultiLineBlockQuoteOperationPlan,
+  buildMultiLineCodeBlockOperationPlan,
   buildMultiLineHeadingOperationPlan,
   buildMultiLineInlineFormatPlan,
   buildMultiLineInlineMarkerOperationPlan,
   getActiveInlineFormatMarks,
+  getMultiLineBlockQuoteMarkerShortcut,
   getMultiLineHeadingMarkerShortcut,
   getMultiLineInlineMarkerShortcut,
   type MultiLineHeadingLevel,
@@ -31,6 +34,11 @@ const multilineFormatSchema = new Schema({
         headingType: { default: 'atx' },
       },
       toDOM: (node) => [`h${node.attrs.level}`, 0],
+    },
+    blockQuote: {
+      group: 'block',
+      content: 'block+',
+      toDOM: () => ['blockquote', 0],
     },
     codeBlock: {
       group: 'block',
@@ -70,11 +78,31 @@ function codeBlock(text: string) {
   return multilineFormatSchema.nodes.codeBlock.create(null, text ? multilineFormatSchema.text(text) : undefined)
 }
 
+function blockQuote(texts: string[]) {
+  return multilineFormatSchema.nodes.blockQuote.create(null, texts.map((text) => paragraph(text)))
+}
+
 function bulletList(texts: string[]) {
   return multilineFormatSchema.nodes.bulletList.create(
     null,
     texts.map((text) => multilineFormatSchema.nodes.listItem.create(null, paragraph(text))),
   )
+}
+
+function listTexts(listNode: any): string[] {
+  const texts: string[] = []
+  for (let index = 0; index < listNode.childCount; index += 1) {
+    texts.push(listNode.child(index).textContent)
+  }
+  return texts
+}
+
+function docChildTypes(doc: any): string[] {
+  const types: string[] = []
+  for (let index = 0; index < doc.childCount; index += 1) {
+    types.push(doc.child(index).type.name)
+  }
+  return types
 }
 
 function createView(doc: any) {
@@ -164,6 +192,182 @@ describe('multi-cursor heading operations', () => {
     expect(getMultiLineHeadingMarkerShortcut(nonBareView, multiLineState([0, 1], 1))).toBeNull()
     expect(getMultiLineHeadingMarkerShortcut(listView, multiLineState([0, 1], 1))).toBeNull()
     expect(getMultiLineHeadingMarkerShortcut(codeView, multiLineState([0, 1], 1))).toBeNull()
+  })
+})
+
+describe('multi-cursor blockquote operations', () => {
+  it('expands blockquote markers on Space across selected rows', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [paragraph('>'), paragraph('>')]))
+    const state = multiLineState([0, 1], 1)
+    const shortcut = getMultiLineBlockQuoteMarkerShortcut(view, state)
+
+    expect(shortcut).not.toBeNull()
+    const plan = shortcut
+      ? buildMultiLineBlockQuoteOperationPlan(view, state, { textByBlockIndex: shortcut.textByBlockIndex })
+      : null
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(nextState.doc.childCount).toBe(1)
+    expect(nextState.doc.child(0).type.name).toBe('blockQuote')
+    expect(nextState.doc.child(0).childCount).toBe(2)
+    expect(nextState.doc.child(0).child(0).type.name).toBe('paragraph')
+    expect(nextState.doc.child(0).child(0).textContent).toBe('')
+    expect(nextState.doc.child(0).child(1).textContent).toBe('')
+    expect(plan?.nextState.columnOffsets).toEqual({ 0: 0, 1: 0 })
+  })
+
+  it('applies toolbar blockquotes across selected paragraph and heading rows', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [paragraph('one'), heading('two', 3)]))
+    const plan = buildMultiLineBlockQuoteOperationPlan(view, multiLineState([0, 1], 3))
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(nextState.doc.childCount).toBe(1)
+    expect(nextState.doc.child(0).type.name).toBe('blockQuote')
+    expect(nextState.doc.child(0).childCount).toBe(2)
+    expect(nextState.doc.child(0).child(0).type.name).toBe('paragraph')
+    expect(nextState.doc.child(0).child(0).textContent).toBe('one')
+    expect(nextState.doc.child(0).child(1).type.name).toBe('paragraph')
+    expect(nextState.doc.child(0).child(1).textContent).toBe('two')
+  })
+
+  it('creates separate blockquotes for non-adjacent selected rows', () => {
+    const view = createView(
+      multilineFormatSchema.nodes.doc.create(null, [paragraph('one'), paragraph('middle'), paragraph('three')]),
+    )
+    const plan = buildMultiLineBlockQuoteOperationPlan(view, multiLineState([0, 2], 3))
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(nextState.doc.childCount).toBe(3)
+    expect(nextState.doc.child(0).type.name).toBe('blockQuote')
+    expect(nextState.doc.child(0).textContent).toBe('one')
+    expect(nextState.doc.child(1).type.name).toBe('paragraph')
+    expect(nextState.doc.child(1).textContent).toBe('middle')
+    expect(nextState.doc.child(2).type.name).toBe('blockQuote')
+    expect(nextState.doc.child(2).textContent).toBe('three')
+  })
+
+  it('does not expand mixed, non-bare, nested, or code blockquote markers', () => {
+    const mixedView = createView(multilineFormatSchema.nodes.doc.create(null, [paragraph('>'), paragraph('#')]))
+    const nonBareView = createView(multilineFormatSchema.nodes.doc.create(null, [paragraph('> quote'), paragraph('> quote')]))
+    const nestedView = createView(multilineFormatSchema.nodes.doc.create(null, [blockQuote(['>']), paragraph('>')]))
+    const codeView = createView(multilineFormatSchema.nodes.doc.create(null, [paragraph('>'), codeBlock('>')]))
+
+    expect(getMultiLineBlockQuoteMarkerShortcut(mixedView, multiLineState([0, 1], 1))).toBeNull()
+    expect(getMultiLineBlockQuoteMarkerShortcut(nonBareView, multiLineState([0, 1], 1))).toBeNull()
+    expect(getMultiLineBlockQuoteMarkerShortcut(nestedView, multiLineState([0, 1], 1))).toBeNull()
+    expect(getMultiLineBlockQuoteMarkerShortcut(codeView, multiLineState([0, 1], 1))).toBeNull()
+  })
+
+  it('converts selected list rows to blockquotes and preserves unselected list rows', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [bulletList(['keep', 'one', 'two', 'keep'])]))
+    const plan = buildMultiLineBlockQuoteOperationPlan(view, multiLineState([1, 2], 3))
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(docChildTypes(nextState.doc)).toEqual(['bulletList', 'blockQuote', 'bulletList'])
+    expect(listTexts(nextState.doc.child(0))).toEqual(['keep'])
+    expect(nextState.doc.child(1).textContent).toBe('onetwo')
+    expect(nextState.doc.child(1).childCount).toBe(2)
+    expect(listTexts(nextState.doc.child(2))).toEqual(['keep'])
+  })
+
+  it('converts selected code block lines to blockquotes and preserves unselected code lines', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [codeBlock('keep\none\ntwo\nkeep')]))
+    const plan = buildMultiLineBlockQuoteOperationPlan(view, multiLineState([1, 2], 3))
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(docChildTypes(nextState.doc)).toEqual(['codeBlock', 'blockQuote', 'codeBlock'])
+    expect(nextState.doc.child(0).textContent).toBe('keep')
+    expect(nextState.doc.child(1).childCount).toBe(2)
+    expect(nextState.doc.child(1).textContent).toBe('onetwo')
+    expect(nextState.doc.child(2).textContent).toBe('keep')
+  })
+})
+
+describe('multi-cursor code block operations', () => {
+  it('applies toolbar code blocks across adjacent paragraph and heading rows', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [paragraph('one'), heading('two', 3)]))
+    const plan = buildMultiLineCodeBlockOperationPlan(view, multiLineState([0, 1], 3))
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(nextState.doc.childCount).toBe(1)
+    expect(nextState.doc.child(0).type.name).toBe('codeBlock')
+    expect(nextState.doc.child(0).textContent).toBe('one\ntwo')
+    expect(plan?.nextState.columnOffsets).toEqual({ 0: 3, 1: 3 })
+  })
+
+  it('creates separate code blocks for non-adjacent selected rows', () => {
+    const view = createView(
+      multilineFormatSchema.nodes.doc.create(null, [paragraph('one'), paragraph('middle'), paragraph('three')]),
+    )
+    const plan = buildMultiLineCodeBlockOperationPlan(view, multiLineState([0, 2], 3))
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(nextState.doc.childCount).toBe(3)
+    expect(nextState.doc.child(0).type.name).toBe('codeBlock')
+    expect(nextState.doc.child(0).textContent).toBe('one')
+    expect(nextState.doc.child(1).type.name).toBe('paragraph')
+    expect(nextState.doc.child(1).textContent).toBe('middle')
+    expect(nextState.doc.child(2).type.name).toBe('codeBlock')
+    expect(nextState.doc.child(2).textContent).toBe('three')
+  })
+
+  it('preserves empty selected rows inside the generated code block', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [paragraph('one'), paragraph(''), paragraph('three')]))
+    const plan = buildMultiLineCodeBlockOperationPlan(view, multiLineState([0, 1, 2], 5))
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(nextState.doc.childCount).toBe(1)
+    expect(nextState.doc.child(0).type.name).toBe('codeBlock')
+    expect(nextState.doc.child(0).textContent).toBe('one\n\nthree')
+  })
+
+  it('converts selected list rows to code blocks and preserves unselected list rows', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [bulletList(['keep', 'one', 'two', 'keep'])]))
+    const plan = buildMultiLineCodeBlockOperationPlan(view, multiLineState([1, 2], 3))
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(docChildTypes(nextState.doc)).toEqual(['bulletList', 'codeBlock', 'bulletList'])
+    expect(listTexts(nextState.doc.child(0))).toEqual(['keep'])
+    expect(nextState.doc.child(1).textContent).toBe('one\ntwo')
+    expect(listTexts(nextState.doc.child(2))).toEqual(['keep'])
+  })
+
+  it('converts selected blockquote rows to code blocks and preserves unselected quoted rows', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [blockQuote(['keep', 'one', 'two', 'keep'])]))
+    const plan = buildMultiLineCodeBlockOperationPlan(view, multiLineState([1, 2], 3))
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(docChildTypes(nextState.doc)).toEqual(['blockQuote', 'codeBlock', 'blockQuote'])
+    expect(nextState.doc.child(0).textContent).toBe('keep')
+    expect(nextState.doc.child(1).textContent).toBe('one\ntwo')
+    expect(nextState.doc.child(2).textContent).toBe('keep')
+  })
+
+  it('converts non-code rows while leaving selected code block rows unchanged', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [paragraph('one'), codeBlock('two')]))
+    const plan = buildMultiLineCodeBlockOperationPlan(view, multiLineState([0, 1], 3))
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(docChildTypes(nextState.doc)).toEqual(['codeBlock', 'codeBlock'])
+    expect(nextState.doc.child(0).textContent).toBe('one')
+    expect(nextState.doc.child(1).textContent).toBe('two')
+  })
+
+  it('does not convert when all selected rows are already inside a code block', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [codeBlock('one\ntwo')]))
+
+    expect(buildMultiLineCodeBlockOperationPlan(view, multiLineState([0, 1], 3))).toBeNull()
   })
 })
 

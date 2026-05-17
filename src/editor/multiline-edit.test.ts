@@ -10,6 +10,7 @@ import {
   getEmptyMultiLineBlockDeleteTargets,
   getMultiLineSplitPlan,
   shouldApplyMultiLineBoundaryDelete,
+  shouldApplyMultiLineWholeSelectionBoundaryDelete,
 } from './multiline-edit'
 import { buildMultiLineHeadingOperationPlan } from './multiline-format-operations'
 import { getEditorTextLineRanges } from './multiline-ranges'
@@ -37,6 +38,11 @@ const multilineEditSchema = new Schema({
         headingType: { default: 'atx' },
       },
       toDOM: (node) => [`h${node.attrs.level}`, 0],
+    },
+    blockQuote: {
+      group: 'block',
+      content: 'block+',
+      toDOM: () => ['blockquote', 0],
     },
     codeBlock: {
       group: 'block',
@@ -96,6 +102,10 @@ function heading(text: string, level = 2) {
 
 function codeBlock(text: string) {
   return multilineEditSchema.nodes.codeBlock.create(null, text ? multilineEditSchema.text(text) : undefined)
+}
+
+function blockQuote(texts: string[]) {
+  return multilineEditSchema.nodes.blockQuote.create(null, texts.map((text) => paragraph(text)))
 }
 
 function taskItem(text: string) {
@@ -174,8 +184,7 @@ function applyRealDeleteInput(doc: any, indices: number[], input: 'backspace' | 
   const view = createView(doc)
   const ranges = getEditorTextLineRanges(view)
   const state = boundaryDeleteStateForRanges(ranges, indices)
-  const shouldUseBoundary =
-    (input === 'backspace' || input === 'delete') && shouldApplyMultiLineBoundaryDelete(state, indices, ranges)
+  const shouldUseBoundary = shouldApplyMultiLineWholeSelectionBoundaryDelete(input, state, indices, ranges)
   const plan = shouldUseBoundary ? buildForwardBoundaryDeletePlan(view.state.tr, state, ranges, indices) : null
   return {
     view,
@@ -303,16 +312,28 @@ describe('multi-cursor empty line delete editing', () => {
 })
 
 describe('multi-cursor forward boundary delete editing', () => {
-  it.each(['backspace', 'delete'] as const)('routes row-end %s through visible boundary deletion', (input) => {
+  it('routes row-end forward Delete through visible boundary deletion', () => {
     const result = applyRealDeleteInput(
       multilineEditSchema.nodes.doc.create(null, ['one', 'two', 'three'].map((text) => paragraph(text))),
       [0, 1, 2],
-      input,
+      'delete',
     )
 
     expect(result.shouldUseBoundary).toBe(true)
     expect(result.plan?.consumedNextLineBlockIndices).toEqual([1, 2])
     expect(result.nextState?.doc.child(0).textContent).toBe('onetwothree')
+  })
+
+  it.each([
+    ['paragraphs', multilineEditSchema.nodes.doc.create(null, ['asdf', 'asdf', 'asdf'].map((text) => paragraph(text)))],
+    ['tasks', multilineEditSchema.nodes.doc.create(null, [taskList(['asdf', 'asdf', 'asdf'])])],
+    ['bullets', multilineEditSchema.nodes.doc.create(null, [bulletList(['asdf', 'asdf', 'asdf'])])],
+    ['blockquotes', multilineEditSchema.nodes.doc.create(null, [blockQuote(['asdf', 'asdf', 'asdf'])])],
+  ])('does not route row-end Backspace on non-empty %s through boundary deletion', (_label, doc) => {
+    const result = applyRealDeleteInput(doc, [0, 1, 2], 'backspace')
+
+    expect(result.shouldUseBoundary).toBe(false)
+    expect(result.plan).toBeNull()
   })
 
   it.each(['backspace', 'delete'] as const)('keeps cursors on preceding rows after %s deletes empty paragraph rows', (input) => {
@@ -381,6 +402,20 @@ describe('multi-cursor forward boundary delete editing', () => {
     expect(getEditorTextLineRanges({ state: result.nextState }).map((range) => range.text)).toEqual(['keep', 'keep'])
     expect(result.plan?.nextMultiLineEditState.cursorBlockIndices).toEqual([0, 1])
     expect(result.plan?.nextMultiLineEditState.columnOffsets).toEqual({ 0: 4, 1: 4 })
+  })
+
+  it.each(['backspace', 'delete'] as const)('keeps cursors after %s deletes empty blockquote rows', (input) => {
+    const result = applyRealDeleteInput(
+      multilineEditSchema.nodes.doc.create(null, [blockQuote(['quote', '', 'quote', ''])]),
+      [1, 3],
+      input,
+    )
+
+    expect(result.plan?.deletedLineBlockIndices).toEqual([1, 3])
+    expect(getEditorTextLineRanges({ state: result.nextState }).map((range) => range.text)).toEqual(['quote', 'quote'])
+    expect(result.nextState?.doc.child(0).type.name).toBe('blockQuote')
+    expect(result.plan?.nextMultiLineEditState.cursorBlockIndices).toEqual([0, 1])
+    expect(result.plan?.nextMultiLineEditState.columnOffsets).toEqual({ 0: 5, 1: 5 })
   })
 
   it('places a deleted leading empty row cursor on the next surviving row', () => {
@@ -470,6 +505,44 @@ describe('multi-cursor forward boundary delete editing', () => {
     expect(result.nextState?.doc.childCount).toBe(1)
     expect(result.nextState?.doc.child(0).type.name).toBe('bulletList')
     expect(result.nextState?.doc.child(0).child(0).textContent).toBe('ab')
+  })
+
+  it('collapses selected blockquote row boundaries', () => {
+    const result = applyBoundaryDelete(multilineEditSchema.nodes.doc.create(null, [blockQuote(['a', 'b', 'c'])]), [0, 1, 2])
+
+    expect(result.plan?.consumedNextLineBlockIndices).toEqual([1, 2])
+    expect(result.nextState?.doc.childCount).toBe(1)
+    expect(result.nextState?.doc.child(0).type.name).toBe('blockQuote')
+    expect(result.nextState?.doc.child(0).childCount).toBe(1)
+    expect(result.nextState?.doc.child(0).textContent).toBe('abc')
+  })
+
+  it('removes a blockquote marker when a paragraph is before a quoted row', () => {
+    const result = applyBoundaryDelete(multilineEditSchema.nodes.doc.create(null, [paragraph('a'), blockQuote(['b'])]), [0, 1])
+
+    expect(result.plan?.consumedNextLineBlockIndices).toEqual([1])
+    expect(result.nextState?.doc.childCount).toBe(1)
+    expect(result.nextState?.doc.child(0).type.name).toBe('paragraph')
+    expect(result.nextState?.doc.child(0).textContent).toBe('ab')
+  })
+
+  it('removes an empty blockquote row instead of leaving its marker behind', () => {
+    const result = applyBoundaryDelete(multilineEditSchema.nodes.doc.create(null, [blockQuote(['', 'next'])]), [0])
+
+    expect(result.plan?.deletedLineBlockIndices).toEqual([0])
+    expect(result.nextState?.doc.childCount).toBe(1)
+    expect(result.nextState?.doc.child(0).type.name).toBe('blockQuote')
+    expect(result.nextState?.doc.child(0).childCount).toBe(1)
+    expect(result.nextState?.doc.child(0).textContent).toBe('next')
+  })
+
+  it('deletes empty blockquote rows and leaves an empty paragraph when they were the whole document', () => {
+    const result = applyBoundaryDelete(multilineEditSchema.nodes.doc.create(null, [blockQuote(['', ''])]), [0, 1])
+
+    expect(result.plan?.deletedLineBlockIndices).toEqual([0, 1])
+    expect(result.nextState?.doc.childCount).toBe(1)
+    expect(result.nextState?.doc.child(0).type.name).toBe('paragraph')
+    expect(result.nextState?.doc.child(0).textContent).toBe('')
   })
 
   it('deletes an empty task row instead of leaving its marker behind', () => {
@@ -572,6 +645,31 @@ describe('multi-cursor selected row delete editing', () => {
     expect(result.plan?.deletedLineBlockIndices).toEqual([1])
     expect(result.nextState?.doc.child(0).textContent).toBe('one')
     expect(result.nextState?.doc.child(1).textContent).toBe('three')
+  })
+
+  it('deletes fully selected blockquote rows and preserves unselected quoted rows', () => {
+    const result = applySelectedRowDelete(
+      multilineEditSchema.nodes.doc.create(null, [blockQuote(['keep', 'delete', 'delete', 'keep'])]),
+      [1, 2],
+    )
+
+    expect(result.plan?.deletedLineBlockIndices).toEqual([1, 2])
+    expect(result.nextState?.doc.childCount).toBe(1)
+    expect(result.nextState?.doc.child(0).type.name).toBe('blockQuote')
+    expect(result.nextState?.doc.child(0).childCount).toBe(2)
+    expect(getEditorTextLineRanges({ state: result.nextState }).map((range) => range.text)).toEqual(['keep', 'keep'])
+  })
+
+  it('deletes a fully selected blockquote and leaves an empty paragraph when it was the whole document', () => {
+    const result = applySelectedRowDelete(
+      multilineEditSchema.nodes.doc.create(null, [blockQuote(['one', 'two'])]),
+      [0, 1],
+    )
+
+    expect(result.plan?.deletedLineBlockIndices).toEqual([0, 1])
+    expect(result.nextState?.doc.childCount).toBe(1)
+    expect(result.nextState?.doc.child(0).type.name).toBe('paragraph')
+    expect(result.nextState?.doc.child(0).textContent).toBe('')
   })
 
   it('falls back when selected ranges do not cover complete rows', () => {
