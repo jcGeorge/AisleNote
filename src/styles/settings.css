@@ -64,7 +64,7 @@
 }
 
 .settings-page-card {
-  width: min(560px, 100%);
+  width: min(720px, 100%);
   background: var(--settings-card-bg);
   border: 1px solid var(--settings-card-border);
   border-radius: 0.65rem;
@@ -175,7 +175,7 @@
 
 .frontmatter-template-field-row {
   display: grid;
-  grid-template-columns: minmax(5rem, 1fr) minmax(5rem, 0.8fr) minmax(6.25rem, 1fr) minmax(6.25rem, 1fr) 2.75rem auto;
+  grid-template-columns: minmax(5rem, 1fr) minmax(5rem, 0.8fr) minmax(6.25rem, 1fr) minmax(9.5rem, 1.2fr) 2.75rem auto;
   gap: 0.4rem;
   align-items: center;
 }

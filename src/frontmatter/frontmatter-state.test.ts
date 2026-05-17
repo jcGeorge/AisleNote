@@ -224,6 +224,21 @@ describe('frontmatter row state', () => {
     })
   })
 
+  it('serializes empty date and datetime rows as null values', () => {
+    const rows: FrontmatterRowDraft[] = [
+      { id: 'due', key: 'due', type: 'date', value: '', computed: 'none', locked: false },
+      { id: 'starts', key: 'starts', type: 'datetime', value: '', computed: 'none', locked: false },
+    ]
+
+    expect(buildFrontmatterDataFromRows(createFrontmatterState(), 'body-1', location, rows)).toMatchObject({
+      ok: true,
+      frontmatter: {
+        due: null,
+        starts: null,
+      },
+    })
+  })
+
   it('rejects duplicate row keys', () => {
     const rows: FrontmatterRowDraft[] = [
       { id: 'a', key: 'status', type: 'text', value: 'one', computed: 'none', locked: false },

@@ -27,12 +27,41 @@ export function getImageTransformDisplayWidth(sourceUrl: string, renderedWidth: 
   return Number.isFinite(rounded) ? Math.max(8, rounded) : 8
 }
 
-export function withPreservedImageTransformDisplayWidth(
+export function getImageTransformDisplayWidthAfterOperation(
+  sourceUrl: string,
+  renderedWidth: number,
+  sourceWidth: number,
+  transformedWidth: number,
+  operation: ImageTransformOperation,
+): number {
+  const displayWidth = getImageTransformDisplayWidth(sourceUrl, renderedWidth)
+  if (operation !== 'rotate-ccw' && operation !== 'rotate-cw') return displayWidth
+
+  const roundedSourceWidth = Math.round(sourceWidth)
+  const roundedTransformedWidth = Math.round(transformedWidth)
+  if (
+    !Number.isFinite(roundedSourceWidth) ||
+    !Number.isFinite(roundedTransformedWidth) ||
+    roundedSourceWidth <= 0 ||
+    roundedTransformedWidth <= 0
+  ) {
+    return displayWidth
+  }
+  return Math.max(8, Math.round(displayWidth * (roundedTransformedWidth / roundedSourceWidth)))
+}
+
+export function withImageTransformDisplayWidth(
   dataUrl: string,
   sourceUrl: string,
   renderedWidth: number,
+  sourceWidth: number,
+  transformedWidth: number,
+  operation: ImageTransformOperation,
 ): string {
-  return withImageResizeMetadata(dataUrl, { v: 1, w: getImageTransformDisplayWidth(sourceUrl, renderedWidth) })
+  return withImageResizeMetadata(dataUrl, {
+    v: 1,
+    w: getImageTransformDisplayWidthAfterOperation(sourceUrl, renderedWidth, sourceWidth, transformedWidth, operation),
+  })
 }
 
 export function drawImageTransform(

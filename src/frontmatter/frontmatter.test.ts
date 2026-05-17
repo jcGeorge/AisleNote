@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyFrontmatterTemplate,
+  coerceFrontmatterFieldValue,
   extractMarkdownFrontmatter,
+  getFrontmatterDatetimePickerValue,
+  getFrontmatterDraftValueForType,
   parseFrontmatterYaml,
   prependMarkdownFrontmatter,
   normalizeFrontmatterSettings,
@@ -129,6 +132,42 @@ describe('frontmatter templates', () => {
       created: '2024-01-01',
       updated: '2026-05-14T09:30:00.000Z',
       title: { id: 'body-1', title: 'Roadmap' },
+    })
+  })
+
+  it('coerces blank date and datetime values to null', () => {
+    expect(coerceFrontmatterFieldValue('date', '')).toBeNull()
+    expect(coerceFrontmatterFieldValue('datetime', '')).toBeNull()
+    expect(coerceFrontmatterFieldValue('date', null)).toBeNull()
+    expect(coerceFrontmatterFieldValue('datetime', null)).toBeNull()
+  })
+
+  it('coerces picker date and datetime values', () => {
+    expect(coerceFrontmatterFieldValue('date', '2026-05-15')).toBe('2026-05-15')
+    expect(coerceFrontmatterFieldValue('datetime', '2026-05-15')).toBe(
+      new Date(2026, 4, 15, 15, 0, 0, 0).toISOString(),
+    )
+    expect(getFrontmatterDatetimePickerValue('2026-05-15')).toBe('2026-05-15T15:00')
+    expect(getFrontmatterDraftValueForType('datetime', '2026-05-15')).toBe('2026-05-15T15:00')
+  })
+
+  it('applies blank date and datetime template defaults as null', () => {
+    const result = applyFrontmatterTemplate(
+      null,
+      {
+        id: 'dates-template',
+        name: 'Dates',
+        fields: [
+          { id: 'due', key: 'due', type: 'date', defaultValue: '', computed: 'none' },
+          { id: 'starts', key: 'starts', type: 'datetime', defaultValue: '', computed: 'none' },
+        ],
+      },
+      context,
+    )
+
+    expect(result).toEqual({
+      due: null,
+      starts: null,
     })
   })
 

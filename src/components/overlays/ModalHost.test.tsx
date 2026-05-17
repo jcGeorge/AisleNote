@@ -226,6 +226,40 @@ describe('frontmatter modal rendering', () => {
     expect(html).not.toContain('<select class="settings-select-input frontmatter-row-value-input"')
   })
 
+  it('renders date and datetime row values as picker inputs', () => {
+    const html = renderFrontmatterModal({
+      type: 'frontmatter-note',
+      noteBodyId: 'body-1',
+      location: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
+      selectedTemplateId: '',
+      templateDerived: false,
+      isTemplateSuggestionDraft: false,
+      rows: [
+        {
+          id: 'manual:due',
+          key: 'due',
+          type: 'date',
+          value: '',
+          computed: 'none',
+          locked: false,
+          derived: false,
+        },
+        {
+          id: 'manual:starts',
+          key: 'starts',
+          type: 'datetime',
+          value: '',
+          computed: 'none',
+          locked: false,
+          derived: false,
+        },
+      ],
+    })
+
+    expect(html).toContain('type="date" class="settings-text-input frontmatter-row-value-input" aria-label="frontmatter value" placeholder="value" value=""')
+    expect(html).toContain('type="datetime-local" class="settings-text-input frontmatter-row-value-input" aria-label="frontmatter value" placeholder="value" value=""')
+  })
+
   it('renders manual computed rows with a computed switch and value dropdown', () => {
     const html = renderFrontmatterModal({
       type: 'frontmatter-note',

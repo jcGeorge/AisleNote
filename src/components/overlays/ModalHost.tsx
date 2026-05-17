@@ -6,6 +6,9 @@ import {
 } from '../../hotkeys/shortcuts'
 import {
   FRONTMATTER_FIELD_TYPES,
+  getFrontmatterDatePickerValue,
+  getFrontmatterDatetimePickerValue,
+  getFrontmatterDraftValueForType,
   getFrontmatterComputedValuesForFieldType,
   isFrontmatterComputedValueCompatibleWithFieldType,
 } from '../../frontmatter/frontmatter'
@@ -228,6 +231,19 @@ export function ModalHost({
     return normalized === 'true' || normalized === 'yes' || normalized === 'on' || normalized === '1'
   }
 
+  const getFrontmatterRowValueInputType = (type: FrontmatterRowDraft['type']) => {
+    if (type === 'number') return 'number'
+    if (type === 'date') return 'date'
+    if (type === 'datetime') return 'datetime-local'
+    return 'text'
+  }
+
+  const getFrontmatterRowValueInputValue = (row: FrontmatterRowDraft) => {
+    if (row.type === 'date') return getFrontmatterDatePickerValue(row.value)
+    if (row.type === 'datetime') return getFrontmatterDatetimePickerValue(row.value)
+    return row.value
+  }
+
   const isComputedEnabled = (row: FrontmatterRowDraft) => row.computedEnabled ?? row.computed !== 'none'
   const isComputedLocked = (row: FrontmatterRowDraft) => Boolean(row.computedLocked || (row.derived && row.computed !== 'none'))
   const isDerivedNormalRow = (row: FrontmatterRowDraft) => Boolean(row.derived && row.computed === 'none')
@@ -316,9 +332,9 @@ export function ModalHost({
 
     return (
       <input
-        type={row.type === 'number' ? 'number' : row.type === 'date' ? 'date' : 'text'}
+        type={getFrontmatterRowValueInputType(row.type)}
         className="settings-text-input frontmatter-row-value-input"
-        value={row.value}
+        value={getFrontmatterRowValueInputValue(row)}
         aria-label="frontmatter value"
         placeholder={row.type === 'list' ? 'one, two' : 'value'}
         onChange={(event) => updateFrontmatterRow(row.id, { value: event.target.value })}
@@ -645,6 +661,8 @@ export function ModalHost({
                             type: nextType,
                             value: nextType === 'boolean'
                               ? (isFrontmatterBooleanTrue(row.value) ? 'true' : 'false')
+                              : nextType === 'date' || nextType === 'datetime'
+                                ? getFrontmatterDraftValueForType(nextType, row.value)
                               : row.value,
                             computed: nextComputed,
                             locked: isComputedEnabled(row),

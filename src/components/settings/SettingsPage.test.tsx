@@ -162,4 +162,27 @@ describe('frontmatter settings page', () => {
     expect(html).toContain('checked=""')
     expect(html).not.toContain('aria-label="frontmatter default value"')
   })
+
+  it('renders date and datetime template defaults as picker inputs', () => {
+    const html = renderSettingsPage(
+      {
+        settingsTemplateId: 'draft-template',
+        lastAppliedTemplateId: '',
+        templates: [
+          {
+            id: 'draft-template',
+            name: 'draft template',
+            fields: [
+              { id: 'field-1', key: 'due', type: 'date', defaultValue: '', computed: 'none' },
+              { id: 'field-2', key: 'starts', type: 'datetime', defaultValue: '', computed: 'none' },
+            ],
+          },
+        ],
+      },
+      false,
+    )
+
+    expect(html).toContain('type="date" class="settings-text-input frontmatter-default-input" aria-label="frontmatter default value" value=""')
+    expect(html).toContain('type="datetime-local" class="settings-text-input frontmatter-default-input" aria-label="frontmatter default value" value=""')
+  })
 })

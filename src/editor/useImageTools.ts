@@ -13,7 +13,7 @@ import {
   getImageTransformDimensions,
   getImageTransformDisplayWidth,
   type ImageTransformOperation,
-  withPreservedImageTransformDisplayWidth,
+  withImageTransformDisplayWidth,
 } from './image-transform'
 import { isInsideReadonlyNotePreview } from './note-preview-dom'
 import { getWysiwygView } from './prosemirror-utils'
@@ -826,7 +826,14 @@ export function useImageTools({
       drawImageTransform(context, sourceImage, sourceWidth, sourceHeight, operation)
 
       const renderedWidth = image.getBoundingClientRect().width || image.width || sourceWidth
-      const nextDataUrl = withPreservedImageTransformDisplayWidth(canvas.toDataURL('image/png'), sourceUrl, renderedWidth)
+      const nextDataUrl = withImageTransformDisplayWidth(
+        canvas.toDataURL('image/png'),
+        sourceUrl,
+        renderedWidth,
+        sourceWidth,
+        dimensions.width,
+        operation,
+      )
       const displayWidth = getImageTransformDisplayWidth(nextDataUrl, renderedWidth)
 
       const updateResult = updateEditorImageNode(image, { imageUrl: nextDataUrl, altText: image.alt || null }, { scrollSnapshot })

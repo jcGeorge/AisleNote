@@ -181,8 +181,102 @@ export function coerceFrontmatterString(value: unknown): string {
   return String(value)
 }
 
-function formatDateOnly(value: Date): string {
-  return value.toISOString().slice(0, 10)
+const DATE_ONLY_RE = /^(\d{4})-(\d{2})-(\d{2})$/
+const DATE_PREFIX_RE = /^(\d{4}-\d{2}-\d{2})(?:$|[T\s])/
+const LOCAL_DATETIME_RE = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})(?::\d{2}(?:\.\d{1,3})?)?$/
+
+function padDatePart(value: number): string {
+  return String(value).padStart(2, '0')
+}
+
+function parseDateOnlyParts(value: string): { year: number; month: number; day: number } | null {
+  const match = value.match(DATE_ONLY_RE)
+  if (!match) return null
+  const year = Number.parseInt(match[1] ?? '', 10)
+  const month = Number.parseInt(match[2] ?? '', 10)
+  const day = Number.parseInt(match[3] ?? '', 10)
+  const date = new Date(year, month - 1, day)
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null
+  }
+  return { year, month, day }
+}
+
+function formatLocalDate(value: Date): string {
+  return `${value.getFullYear()}-${padDatePart(value.getMonth() + 1)}-${padDatePart(value.getDate())}`
+}
+
+function formatLocalDateTime(value: Date): string {
+  return `${formatLocalDate(value)}T${padDatePart(value.getHours())}:${padDatePart(value.getMinutes())}`
+}
+
+function dateAtLocalDefaultTime(dateValue: string): Date | null {
+  const parts = parseDateOnlyParts(dateValue)
+  if (!parts) return null
+  return new Date(parts.year, parts.month - 1, parts.day, 15, 0, 0, 0)
+}
+
+function isValidTime(hour: string, minute: string): boolean {
+  const parsedHour = Number.parseInt(hour, 10)
+  const parsedMinute = Number.parseInt(minute, 10)
+  return parsedHour >= 0 && parsedHour <= 23 && parsedMinute >= 0 && parsedMinute <= 59
+}
+
+export function getFrontmatterDatePickerValue(value: unknown): string {
+  if (value == null || value === '') return ''
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? '' : formatLocalDate(value)
+  }
+  const rawValue = coerceFrontmatterString(value).trim()
+  if (!rawValue) return ''
+  const dateOnly = parseDateOnlyParts(rawValue)
+  if (dateOnly) return rawValue
+  const prefix = rawValue.match(DATE_PREFIX_RE)?.[1] ?? ''
+  return prefix && parseDateOnlyParts(prefix) ? prefix : ''
+}
+
+export function getFrontmatterDatetimePickerValue(value: unknown): string {
+  if (value == null || value === '') return ''
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? '' : formatLocalDateTime(value)
+  }
+  const rawValue = coerceFrontmatterString(value).trim()
+  if (!rawValue) return ''
+  const dateOnly = parseDateOnlyParts(rawValue)
+  if (dateOnly) return `${rawValue}T15:00`
+
+  const localMatch = rawValue.match(LOCAL_DATETIME_RE)
+  if (localMatch) {
+    const [, dateValue, hour = '', minute = ''] = localMatch
+    if (dateValue && parseDateOnlyParts(dateValue) && isValidTime(hour, minute)) {
+      return `${dateValue}T${hour}:${minute}`
+    }
+  }
+
+  if (!DATE_PREFIX_RE.test(rawValue)) return ''
+  const date = new Date(rawValue)
+  return Number.isNaN(date.getTime()) ? '' : formatLocalDateTime(date)
+}
+
+export function getFrontmatterDefaultDatetimePickerValue(value: unknown, now = new Date()): string {
+  const dateValue = getFrontmatterDatePickerValue(value) || formatLocalDate(now)
+  return `${dateValue}T15:00`
+}
+
+export function getFrontmatterDraftValueForType(
+  type: FrontmatterFieldType,
+  value: unknown,
+): string {
+  if (type === 'date') return getFrontmatterDatePickerValue(value)
+  if (type === 'datetime') {
+    const datetimeValue = getFrontmatterDatetimePickerValue(value)
+    return datetimeValue || (getFrontmatterDatePickerValue(value) ? getFrontmatterDefaultDatetimePickerValue(value) : '')
+  }
+  return coerceFrontmatterString(value)
 }
 
 function parseBoolean(value: unknown): boolean {
@@ -231,11 +325,23 @@ export function coerceFrontmatterFieldValue(type: FrontmatterFieldType, value: u
   }
   if (type === 'boolean') return parseBoolean(value)
   if (type === 'date') {
-    const date = value instanceof Date ? value : new Date(coerceFrontmatterString(value))
-    return Number.isNaN(date.getTime()) ? coerceFrontmatterString(value) : formatDateOnly(date)
+    if (value == null) return null
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? coerceFrontmatterString(value) : formatLocalDate(value)
+    const rawValue = coerceFrontmatterString(value).trim()
+    if (!rawValue) return null
+    const pickerValue = getFrontmatterDatePickerValue(rawValue)
+    return pickerValue || coerceFrontmatterString(value)
   }
   if (type === 'datetime') {
-    const date = value instanceof Date ? value : new Date(coerceFrontmatterString(value))
+    if (value == null) return null
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? coerceFrontmatterString(value) : value.toISOString()
+    const rawValue = coerceFrontmatterString(value).trim()
+    if (!rawValue) return null
+    const dateOnlyDefault = dateAtLocalDefaultTime(rawValue)
+    if (dateOnlyDefault) return dateOnlyDefault.toISOString()
+    const localMatch = rawValue.match(LOCAL_DATETIME_RE)
+    const localValue = localMatch ? getFrontmatterDatetimePickerValue(rawValue) : ''
+    const date = localValue ? new Date(localValue) : new Date(rawValue)
     return Number.isNaN(date.getTime()) ? coerceFrontmatterString(value) : date.toISOString()
   }
   if (type === 'list') return parseList(value)

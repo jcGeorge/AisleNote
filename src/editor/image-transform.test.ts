@@ -3,7 +3,8 @@ import { withImageResizeMetadata } from '../markdown/image-metadata'
 import {
   getImageTransformDimensions,
   getImageTransformDisplayWidth,
-  withPreservedImageTransformDisplayWidth,
+  getImageTransformDisplayWidthAfterOperation,
+  withImageTransformDisplayWidth,
 } from './image-transform'
 
 describe('image transform helpers', () => {
@@ -25,11 +26,71 @@ describe('image transform helpers', () => {
     expect(getImageTransformDisplayWidth('data:image/png;base64,abc', 0)).toBe(8)
   })
 
-  it('writes preserved display width metadata to transformed data urls', () => {
+  it('preserves display scale for landscape rotate operations', () => {
+    expect(getImageTransformDisplayWidthAfterOperation(
+      'data:image/png;base64,abc',
+      40,
+      4,
+      2,
+      'rotate-cw',
+    )).toBe(20)
+    expect(getImageTransformDisplayWidthAfterOperation(
+      'data:image/png;base64,abc',
+      40,
+      4,
+      2,
+      'rotate-ccw',
+    )).toBe(20)
+  })
+
+  it('preserves display scale for portrait rotate operations', () => {
+    expect(getImageTransformDisplayWidthAfterOperation(
+      'data:image/png;base64,abc',
+      20,
+      2,
+      4,
+      'rotate-cw',
+    )).toBe(40)
+  })
+
+  it('keeps square rotate display width unchanged', () => {
+    expect(getImageTransformDisplayWidthAfterOperation(
+      'data:image/png;base64,abc',
+      36,
+      4,
+      4,
+      'rotate-cw',
+    )).toBe(36)
+  })
+
+  it('preserves display width for flip operations', () => {
+    expect(getImageTransformDisplayWidthAfterOperation(
+      'data:image/png;base64,abc',
+      40,
+      4,
+      2,
+      'flip-horizontal',
+    )).toBe(40)
+    expect(getImageTransformDisplayWidthAfterOperation(
+      'data:image/png;base64,abc',
+      40,
+      4,
+      2,
+      'flip-vertical',
+    )).toBe(40)
+  })
+
+  it('uses explicit display width metadata when preserving rotate scale', () => {
+    const sourceUrl = withImageResizeMetadata('data:image/png;base64,abc', { v: 1, w: 144 })
+
+    expect(getImageTransformDisplayWidthAfterOperation(sourceUrl, 220, 320, 180, 'rotate-cw')).toBe(81)
+  })
+
+  it('writes transformed display width metadata to transformed data urls', () => {
     const sourceUrl = withImageResizeMetadata('data:image/png;base64,abc', { v: 1, w: 96 })
-    const nextUrl = withPreservedImageTransformDisplayWidth('data:image/png;base64,def', sourceUrl, 240)
+    const nextUrl = withImageTransformDisplayWidth('data:image/png;base64,def', sourceUrl, 240, 320, 180, 'rotate-cw')
 
     expect(nextUrl).toContain('data:image/png;base64,def#tabs-image=')
-    expect(getImageTransformDisplayWidth(nextUrl, 240)).toBe(96)
+    expect(getImageTransformDisplayWidth(nextUrl, 240)).toBe(54)
   })
 })

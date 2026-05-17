@@ -17,6 +17,9 @@ import {
 } from '../../settings/defaults'
 import {
   FRONTMATTER_FIELD_TYPES,
+  getFrontmatterDatePickerValue,
+  getFrontmatterDatetimePickerValue,
+  getFrontmatterDraftValueForType,
   getFrontmatterComputedValuesForFieldType,
   isFrontmatterComputedValueCompatibleWithFieldType,
 } from '../../frontmatter/frontmatter'
@@ -170,6 +173,25 @@ export function SettingsPage({
           />
           <span className="frontmatter-boolean-switch-label">{checked ? 'true' : 'false'}</span>
         </label>
+      )
+    }
+
+    if (field.type === 'date' || field.type === 'datetime') {
+      return (
+        <input
+          type={field.type === 'date' ? 'date' : 'datetime-local'}
+          className="settings-text-input frontmatter-default-input"
+          value={field.type === 'date'
+            ? getFrontmatterDatePickerValue(field.defaultValue)
+            : getFrontmatterDatetimePickerValue(field.defaultValue)}
+          aria-label="frontmatter default value"
+          disabled={field.computed !== 'none'}
+          onChange={(event) =>
+            onUpdateFrontmatterTemplateField(templateId, field.id, {
+              defaultValue: event.target.value,
+            })
+          }
+        />
       )
     }
 
@@ -537,6 +559,8 @@ export function SettingsPage({
                             type,
                             defaultValue: type === 'boolean'
                               ? (isFrontmatterBooleanTrue(field.defaultValue) ? 'true' : 'false')
+                              : type === 'date' || type === 'datetime'
+                                ? getFrontmatterDraftValueForType(type, field.defaultValue)
                               : field.defaultValue,
                             computed: isFrontmatterComputedValueCompatibleWithFieldType(field.computed, type)
                               ? field.computed
