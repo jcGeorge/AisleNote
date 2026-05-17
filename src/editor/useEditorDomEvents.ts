@@ -96,6 +96,12 @@ export function isEditorToolbarInteractionTarget(target: Element | null): boolea
   )
 }
 
+export function getMultiLineDeleteInputForBeforeInputType(inputType: string): MultiLineEditInput | null {
+  if (inputType === 'deleteContentForward') return { type: 'delete' }
+  if (inputType === 'deleteContentBackward') return { type: 'backspace' }
+  return null
+}
+
 export function useEditorDomEvents({
   viewMode,
   displayContent,
@@ -514,6 +520,14 @@ export function useEditorDomEvents({
       }
       if (!multiLineEditRef.current) return
       if (inputEvent.isComposing) return
+      const deleteInput = getMultiLineDeleteInputForBeforeInputType(inputEvent.inputType)
+      if (deleteInput) {
+        const handled = tryApplyMultiLineEditInput(deleteInput)
+        if (!handled) return
+        inputEvent.preventDefault()
+        inputEvent.stopPropagation()
+        return
+      }
       if (inputEvent.inputType === 'insertText' || inputEvent.inputType === 'insertCompositionText') {
         const text = inputEvent.data ?? ''
         if (!text) return

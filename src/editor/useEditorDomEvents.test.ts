@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isEditorToolbarInteractionTarget } from './useEditorDomEvents'
+import { getMultiLineDeleteInputForBeforeInputType, isEditorToolbarInteractionTarget } from './useEditorDomEvents'
 
 function fakeTarget(matchedSelector: string | null): Element {
   return {
@@ -23,5 +23,11 @@ describe('editor DOM events', () => {
   it('does not treat normal editor content as a toolbar interaction target', () => {
     expect(isEditorToolbarInteractionTarget(fakeTarget(null))).toBe(false)
     expect(isEditorToolbarInteractionTarget(null)).toBe(false)
+  })
+
+  it('maps beforeinput delete events to multi-cursor delete inputs', () => {
+    expect(getMultiLineDeleteInputForBeforeInputType('deleteContentForward')).toEqual({ type: 'delete' })
+    expect(getMultiLineDeleteInputForBeforeInputType('deleteContentBackward')).toEqual({ type: 'backspace' })
+    expect(getMultiLineDeleteInputForBeforeInputType('insertText')).toBeNull()
   })
 })

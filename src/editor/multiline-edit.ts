@@ -100,6 +100,21 @@ export function getMultiLineSelectionRanges(
     .filter((range): range is MultiLineSelectionRange => Boolean(range))
 }
 
+export function shouldApplyMultiLineBoundaryDelete(
+  multiLineEdit: MultiLineEditState,
+  selectedIndices: number[],
+  blockRanges: EditorTextLineRange[],
+): boolean {
+  return selectedIndices.every((blockIndex) => {
+    const range = blockRanges[blockIndex]
+    return (
+      range &&
+      !getMultiLineSelectionRange(multiLineEdit, blockIndex, range) &&
+      getMultiLineColumnOffset(multiLineEdit, blockIndex, range) >= range.length
+    )
+  })
+}
+
 export function findPreviousWordColumn(text: string, column: number): number {
   let index = Math.max(0, Math.min(text.length, column))
   while (index > 0 && /\s/.test(text[index - 1] ?? '')) index -= 1
@@ -148,6 +163,37 @@ export type EmptyMultiLineBlockDeleteTarget = {
   to: number
 }
 
+export type ForwardBoundaryDeletePlan = {
+  transaction: any
+  consumedNextLineBlockIndices: number[]
+  deletedLineBlockIndices: number[]
+  nextColumnOffsets: Record<number, number>
+}
+
+export type SelectedRowDeletePlan = {
+  transaction: any
+  deletedLineBlockIndices: number[]
+  nextColumnOffsets: Record<number, number>
+}
+
+type SelectedRowDeleteContext =
+  | {
+      kind: 'block'
+      blockIndex: number
+      from: number
+      to: number
+    }
+  | {
+      kind: 'listItem'
+      blockIndex: number
+      listStart: number
+      listEnd: number
+      itemIndex: number
+      listNode: any
+    }
+
+type DeleteCurrentRowContext = SelectedRowDeleteContext
+
 function getTopLevelEmptyTextBlockDeleteTarget(
   doc: any,
   blockIndex: number,
@@ -195,6 +241,280 @@ export function getEmptyMultiLineBlockDeleteTargets(
   return uniqueTargets.slice(0, maxDeletions)
 }
 
+function isCodeBlockBoundaryDeleteAllowed(range: EditorTextLineRange, nextRange: EditorTextLineRange): boolean {
+  if (range.nodeType !== 'codeBlock' && nextRange.nodeType !== 'codeBlock') return true
+  return range.nodeType === 'codeBlock' && nextRange.nodeType === 'codeBlock' && nextRange.start === range.end + 1
+}
+
+function isEmptyVisibleRow(range: EditorTextLineRange): boolean {
+  return range.length === 0 || range.text.replace(/\u200b/g, '').trim().length === 0
+}
+
+function addDeleteCurrentRowReplacement(
+  replacements: Array<{ from: number; to: number; nodes: any[] }>,
+  context: DeleteCurrentRowContext,
+) {
+  if (context.kind === 'block') {
+    replacements.push({ from: context.from, to: context.to, nodes: [] })
+    return
+  }
+
+  replacements.push({
+    from: context.listStart,
+    to: context.listEnd,
+    nodes: createListNodesWithoutSelectedItems(context.listNode, new Set([context.itemIndex])),
+  })
+}
+
+function applyNodeReplacements(
+  transaction: any,
+  replacements: Array<{ from: number; to: number; nodes: any[] }>,
+): any {
+  let nextTransaction = transaction
+  const paragraphType = transaction.doc.type?.schema?.nodes?.paragraph
+
+  for (const replacement of replacements.sort((a, b) => b.from - a.from)) {
+    const mappedFrom = nextTransaction.mapping.map(replacement.from, -1)
+    const mappedTo = nextTransaction.mapping.map(replacement.to, 1)
+    if (mappedTo <= mappedFrom) continue
+
+    if (replacement.nodes.length > 0) {
+      nextTransaction = nextTransaction.replaceWith(mappedFrom, mappedTo, replacement.nodes)
+      continue
+    }
+
+    if (mappedFrom <= 0 && mappedTo >= nextTransaction.doc.content.size && paragraphType) {
+      nextTransaction = nextTransaction.replaceWith(mappedFrom, mappedTo, paragraphType.create())
+    } else {
+      nextTransaction = nextTransaction.delete(mappedFrom, mappedTo)
+    }
+  }
+
+  return nextTransaction
+}
+
+export function buildForwardBoundaryDeletePlan(
+  transaction: any,
+  multiLineEdit: MultiLineEditState,
+  blockRanges: EditorTextLineRange[],
+  blockIndices: number[],
+): ForwardBoundaryDeletePlan | null {
+  const replacements: Array<{ from: number; to: number; nodes: any[] }> = []
+  const deleteCurrentBlockIndices: number[] = []
+  const consumedNextLineBlockIndices: number[] = []
+  const nextColumnOffsets: Record<number, number> = {}
+  const deleteCurrentByBlockIndex = new Map<number, DeleteCurrentRowContext>()
+
+  for (const blockIndex of [...new Set(blockIndices)].sort((a, b) => a - b)) {
+    const range = blockRanges[blockIndex]
+    if (!range || !isEmptyVisibleRow(range) || range.nodeType === 'codeBlock') continue
+    const currentOffset = getMultiLineColumnOffset(multiLineEdit, blockIndex, range)
+    if (currentOffset < range.length) continue
+    const context = getSelectedRowDeleteContext(transaction.doc, blockIndex, range)
+    if (!context) continue
+    deleteCurrentByBlockIndex.set(blockIndex, context)
+    deleteCurrentBlockIndices.push(blockIndex)
+  }
+
+  const listContextsByStart = new Map<number, Extract<DeleteCurrentRowContext, { kind: 'listItem' }>[]>()
+  for (const context of deleteCurrentByBlockIndex.values()) {
+    if (context.kind === 'block') {
+      addDeleteCurrentRowReplacement(replacements, context)
+      continue
+    }
+    const existing = listContextsByStart.get(context.listStart) ?? []
+    existing.push(context)
+    listContextsByStart.set(context.listStart, existing)
+  }
+
+  for (const contextsForList of listContextsByStart.values()) {
+    const first = contextsForList[0]
+    replacements.push({
+      from: first.listStart,
+      to: first.listEnd,
+      nodes: createListNodesWithoutSelectedItems(
+        first.listNode,
+        new Set(contextsForList.map((context) => context.itemIndex)),
+      ),
+    })
+  }
+
+  let nextTransaction = applyNodeReplacements(transaction, replacements)
+  const deletedCurrentSet = new Set(deleteCurrentBlockIndices)
+
+  for (const blockIndex of [...new Set(blockIndices)].sort((a, b) => b - a)) {
+    if (deletedCurrentSet.has(blockIndex)) continue
+    const range = blockRanges[blockIndex]
+    const nextRange = blockRanges[blockIndex + 1]
+    if (!range || !nextRange) continue
+    const currentOffset = getMultiLineColumnOffset(multiLineEdit, blockIndex, range)
+    if (currentOffset < range.length) continue
+    if (deletedCurrentSet.has(blockIndex + 1)) continue
+    if (!isCodeBlockBoundaryDeleteAllowed(range, nextRange)) continue
+
+    const mappedFrom = nextTransaction.mapping.map(range.end, 1)
+    const mappedTo = nextTransaction.mapping.map(nextRange.start, -1)
+    if (mappedTo <= mappedFrom) continue
+
+    try {
+      nextTransaction = nextTransaction.delete(mappedFrom, mappedTo)
+    } catch {
+      continue
+    }
+
+    consumedNextLineBlockIndices.push(blockIndex + 1)
+    nextColumnOffsets[blockIndex] = currentOffset
+  }
+
+  if (consumedNextLineBlockIndices.length === 0 && deleteCurrentBlockIndices.length === 0) return null
+  return {
+    transaction: nextTransaction,
+    consumedNextLineBlockIndices: [...new Set(consumedNextLineBlockIndices)].sort((a, b) => a - b),
+    deletedLineBlockIndices: [...new Set(deleteCurrentBlockIndices)].sort((a, b) => a - b),
+    nextColumnOffsets,
+  }
+}
+
+function resolveSafe(doc: any, position: number) {
+  const docSize = Math.max(0, doc?.content?.size ?? 0)
+  const safePosition = Math.max(0, Math.min(docSize, position))
+  try {
+    return doc.resolve?.(safePosition) ?? null
+  } catch {
+    return null
+  }
+}
+
+function getSelectedRowDeleteContext(
+  doc: any,
+  blockIndex: number,
+  range: EditorTextLineRange,
+): SelectedRowDeleteContext | null {
+  if (range.nodeType === 'codeBlock') return null
+
+  const resolved = resolveSafe(doc, range.start)
+  if (!resolved) return null
+
+  for (let depth = resolved.depth; depth > 0; depth -= 1) {
+    const node = resolved.node(depth)
+    if (node?.type?.name !== 'listItem') continue
+    const listDepth = depth - 1
+    const listNode = resolved.node(listDepth)
+    if (!listNode || listDepth < 1) return null
+    return {
+      kind: 'listItem',
+      blockIndex,
+      listStart: resolved.before(listDepth),
+      listEnd: resolved.after(listDepth),
+      itemIndex: resolved.index(listDepth),
+      listNode,
+    }
+  }
+
+  for (let depth = resolved.depth; depth > 0; depth -= 1) {
+    const node = resolved.node(depth)
+    if (!node?.isTextblock) continue
+    if (depth !== 1) return null
+    return {
+      kind: 'block',
+      blockIndex,
+      from: resolved.before(depth),
+      to: resolved.after(depth),
+    }
+  }
+
+  return null
+}
+
+function createListNodesWithoutSelectedItems(listNode: any, selectedItemIndices: Set<number>): any[] {
+  const nodes: any[] = []
+  let runItems: any[] = []
+
+  const flushRun = () => {
+    if (runItems.length === 0) return
+    nodes.push(listNode.type.create(listNode.attrs, runItems))
+    runItems = []
+  }
+
+  for (let index = 0; index < listNode.childCount; index += 1) {
+    if (selectedItemIndices.has(index)) {
+      flushRun()
+      continue
+    }
+    runItems.push(listNode.child(index))
+  }
+  flushRun()
+  return nodes
+}
+
+export function buildSelectedRowDeletePlan(
+  transaction: any,
+  multiLineEdit: MultiLineEditState,
+  blockRanges: EditorTextLineRange[],
+  selectedIndices: number[],
+): SelectedRowDeletePlan | null {
+  const contexts: SelectedRowDeleteContext[] = []
+
+  for (const blockIndex of selectedIndices) {
+    const range = blockRanges[blockIndex]
+    if (!range) return null
+    const selectionRange = getMultiLineSelectionRange(multiLineEdit, blockIndex, range)
+    if (!selectionRange || selectionRange.fromOffset !== 0 || selectionRange.toOffset !== range.length) return null
+    const context = getSelectedRowDeleteContext(transaction.doc, blockIndex, range)
+    if (!context) return null
+    contexts.push(context)
+  }
+
+  if (contexts.length === 0) return null
+
+  const replacements: Array<{ from: number; to: number; nodes: any[] }> = []
+  const blockContexts = contexts.filter((context): context is Extract<SelectedRowDeleteContext, { kind: 'block' }> => context.kind === 'block')
+  const listContexts = contexts.filter((context): context is Extract<SelectedRowDeleteContext, { kind: 'listItem' }> => context.kind === 'listItem')
+
+  const blockContextsByIndex = new Map(blockContexts.map((context) => [context.blockIndex, context]))
+  const blockGroups = [...new Set(blockContexts.map((context) => context.blockIndex))]
+    .sort((a, b) => a - b)
+    .reduce<number[][]>((groups, blockIndex) => {
+      const current = groups.at(-1)
+      if (current && current.at(-1) === blockIndex - 1) current.push(blockIndex)
+      else groups.push([blockIndex])
+      return groups
+    }, [])
+
+  for (const group of blockGroups) {
+    const first = blockContextsByIndex.get(group[0])
+    const last = blockContextsByIndex.get(group[group.length - 1])
+    if (first && last) {
+      replacements.push({ from: first.from, to: last.to, nodes: [] })
+    }
+  }
+
+  const listContextsByStart = new Map<number, typeof listContexts>()
+  for (const context of listContexts) {
+    const existing = listContextsByStart.get(context.listStart) ?? []
+    existing.push(context)
+    listContextsByStart.set(context.listStart, existing)
+  }
+
+  for (const contextsForList of listContextsByStart.values()) {
+    const first = contextsForList[0]
+    const selectedItemIndices = new Set(contextsForList.map((context) => context.itemIndex))
+    replacements.push({
+      from: first.listStart,
+      to: first.listEnd,
+      nodes: createListNodesWithoutSelectedItems(first.listNode, selectedItemIndices),
+    })
+  }
+
+  if (replacements.length === 0) return null
+
+  return {
+    transaction: applyNodeReplacements(transaction, replacements),
+    deletedLineBlockIndices: [...new Set(contexts.map((context) => context.blockIndex))].sort((a, b) => a - b),
+    nextColumnOffsets: {},
+  }
+}
+
 export function buildSplitLineMultiLineState(
   multiLineEdit: MultiLineEditState,
   selectedIndices: number[],
@@ -232,17 +552,19 @@ export function buildDeletedLineMultiLineState(
   deletedIndices: number[],
   blockRanges: EditorTextLineRange[],
 ): MultiLineEditState {
-  const deletedSet = new Set(deletedIndices)
-  const deletedBefore = (blockIndex: number) => deletedIndices.filter((deletedIndex) => deletedIndex < blockIndex).length
+  const sortedDeletedIndices = [...new Set(deletedIndices)].sort((a, b) => a - b)
+  const deletedSet = new Set(sortedDeletedIndices)
+  const deletedBefore = (blockIndex: number) => sortedDeletedIndices.filter((deletedIndex) => deletedIndex < blockIndex).length
   const nextBlockCount = Math.max(0, blockRanges.length - deletedSet.size)
   const nextSelectedIndices = selectedIndices
     .filter((blockIndex) => !deletedSet.has(blockIndex))
     .map((blockIndex) => blockIndex - deletedBefore(blockIndex))
     .filter((blockIndex, index, indices) => blockIndex >= 0 && blockIndex < nextBlockCount && indices.indexOf(blockIndex) === index)
 
+  const firstDeletedIndex = sortedDeletedIndices[0] ?? 0
   const fallbackIndex =
     nextBlockCount > 0
-      ? Math.max(0, Math.min(nextBlockCount - 1, Math.min(...deletedIndices) - deletedBefore(Math.min(...deletedIndices))))
+      ? Math.max(0, Math.min(nextBlockCount - 1, firstDeletedIndex - deletedBefore(firstDeletedIndex)))
       : 0
   const cursorBlockIndices = nextSelectedIndices.length > 0 ? nextSelectedIndices : [fallbackIndex]
   const columnOffsets = cursorBlockIndices.reduce<Record<number, number>>((acc, blockIndex) => {

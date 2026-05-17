@@ -3,6 +3,8 @@ import { useEffect, useRef, type MutableRefObject } from 'react'
 import type { Editor } from '@toast-ui/editor'
 import {
   buildDeletedLineMultiLineState,
+  buildForwardBoundaryDeletePlan,
+  buildSelectedRowDeletePlan,
   buildSplitLineMultiLineState,
   cloneMultiLineEditState,
   findNextWordColumn,
@@ -15,6 +17,7 @@ import {
   getMultiLineSelectedBlockIndices,
   getMultiLineSplitPlan,
   moveMultiLineCursorState,
+  shouldApplyMultiLineBoundaryDelete,
   type MultiLineCursorMovement,
   type MultiLineEditInput,
 } from './multiline-edit'
@@ -541,8 +544,36 @@ export function useMultilineEditing({
       input.type === 'delete' ? getEmptyMultiLineBlockDeleteTargets(view.state.doc, blockRanges, selectedIndices) : []
     const emptyDeleteTargetByBlockIndex = new Map(emptyDeleteTargets.map((target) => [target.blockIndex, target]))
     const deletedEmptyBlockIndices: number[] = []
+    const consumedForwardBoundaryBlockIndices: number[] = []
+    const forwardBoundaryBlockIndices: number[] = []
+    const selectedRowDeletePlan =
+      input.type === 'delete' || input.type === 'backspace'
+        ? buildSelectedRowDeletePlan(tr, multiLineEdit, blockRanges, selectedIndices)
+        : null
+    const shouldApplyWholeSelectionBoundaryDelete =
+      !selectedRowDeletePlan &&
+      (input.type === 'delete' || input.type === 'backspace') &&
+      shouldApplyMultiLineBoundaryDelete(multiLineEdit, selectedIndices, blockRanges)
 
-    for (const blockIndex of [...selectedIndices].sort((a, b) => b - a)) {
+    if (selectedRowDeletePlan) {
+      tr = selectedRowDeletePlan.transaction
+      deletedEmptyBlockIndices.push(...selectedRowDeletePlan.deletedLineBlockIndices)
+      Object.assign(nextColumnOffsets, selectedRowDeletePlan.nextColumnOffsets)
+      changed = true
+    }
+
+    if (shouldApplyWholeSelectionBoundaryDelete) {
+      const boundaryDeletePlan = buildForwardBoundaryDeletePlan(tr, multiLineEdit, blockRanges, selectedIndices)
+      if (boundaryDeletePlan) {
+        tr = boundaryDeletePlan.transaction
+        deletedEmptyBlockIndices.push(...boundaryDeletePlan.deletedLineBlockIndices)
+        consumedForwardBoundaryBlockIndices.push(...boundaryDeletePlan.consumedNextLineBlockIndices)
+        Object.assign(nextColumnOffsets, boundaryDeletePlan.nextColumnOffsets)
+        changed = true
+      }
+    }
+
+    for (const blockIndex of selectedRowDeletePlan || shouldApplyWholeSelectionBoundaryDelete ? [] : [...selectedIndices].sort((a, b) => b - a)) {
       const range = blockRanges[blockIndex]
       if (!range) continue
       const currentOffset = getMultiLineColumnOffset(multiLineEdit, blockIndex, range)
@@ -595,14 +626,18 @@ export function useMultilineEditing({
       if (input.type === 'delete') {
         if (cursorPos >= range.end) {
           const deleteTarget = emptyDeleteTargetByBlockIndex.get(blockIndex)
-          if (!deleteTarget) continue
-          const mappedFrom = tr.mapping.map(deleteTarget.from, -1)
-          const mappedTo = tr.mapping.map(deleteTarget.to, 1)
-          if (mappedTo <= mappedFrom) continue
-          tr = tr.delete(mappedFrom, mappedTo)
-          deletedEmptyBlockIndices.push(blockIndex)
-          nextColumnOffsets[blockIndex] = 0
-          changed = true
+          if (deleteTarget) {
+            const mappedFrom = tr.mapping.map(deleteTarget.from, -1)
+            const mappedTo = tr.mapping.map(deleteTarget.to, 1)
+            if (mappedTo <= mappedFrom) continue
+            tr = tr.delete(mappedFrom, mappedTo)
+            deletedEmptyBlockIndices.push(blockIndex)
+            nextColumnOffsets[blockIndex] = 0
+            changed = true
+            continue
+          }
+
+          forwardBoundaryBlockIndices.push(blockIndex)
           continue
         }
         tr = tr.delete(cursorPos, cursorPos + 1)
@@ -664,14 +699,30 @@ export function useMultilineEditing({
       }
     }
 
+    if (input.type === 'delete' && forwardBoundaryBlockIndices.length > 0) {
+      const boundaryDeletePlan = buildForwardBoundaryDeletePlan(tr, multiLineEdit, blockRanges, forwardBoundaryBlockIndices)
+      if (boundaryDeletePlan) {
+        tr = boundaryDeletePlan.transaction
+        deletedEmptyBlockIndices.push(...boundaryDeletePlan.deletedLineBlockIndices)
+        consumedForwardBoundaryBlockIndices.push(...boundaryDeletePlan.consumedNextLineBlockIndices)
+        Object.assign(nextColumnOffsets, boundaryDeletePlan.nextColumnOffsets)
+        changed = true
+      }
+    }
+
     if (!changed) return false
 
     view.dispatch(tr.scrollIntoView())
     const nextMultiLineEditState =
       input.type === 'split-line'
         ? buildSplitLineMultiLineState(multiLineEdit, selectedIndices)
-        : deletedEmptyBlockIndices.length > 0
-          ? buildDeletedLineMultiLineState(multiLineEdit, selectedIndices, deletedEmptyBlockIndices, blockRanges)
+        : deletedEmptyBlockIndices.length > 0 || consumedForwardBoundaryBlockIndices.length > 0
+          ? buildDeletedLineMultiLineState(
+              multiLineEdit,
+              selectedIndices,
+              [...deletedEmptyBlockIndices, ...consumedForwardBoundaryBlockIndices],
+              blockRanges,
+            )
         : {
             ...multiLineEdit,
             columnOffset: nextColumnOffsets[multiLineEdit.headBlockIndex] ?? multiLineEdit.columnOffset,
