@@ -20,6 +20,15 @@ const multilineListSchema = new Schema({
       content: 'inline*',
       toDOM: () => ['p', 0],
     },
+    heading: {
+      group: 'block',
+      content: 'inline*',
+      attrs: {
+        level: { default: 1 },
+        headingType: { default: 'atx' },
+      },
+      toDOM: (node) => [`h${node.attrs.level}`, 0],
+    },
     codeBlock: {
       group: 'block',
       content: 'text*',
@@ -56,6 +65,13 @@ const multilineListSchema = new Schema({
 
 function paragraph(text: string) {
   return multilineListSchema.nodes.paragraph.create(null, text ? multilineListSchema.text(text) : undefined)
+}
+
+function heading(text: string, level = 2) {
+  return multilineListSchema.nodes.heading.create(
+    { level, headingType: 'atx' },
+    text ? multilineListSchema.text(text) : undefined,
+  )
 }
 
 function codeBlock(text: string) {
@@ -170,6 +186,56 @@ describe('multi-cursor list operations', () => {
     operations.forEach(([operation, nodeType, marker]) => {
       const doc = applyListOperation(
         multilineListSchema.nodes.doc.create(null, [paragraph('one'), paragraph('two')]),
+        [0, 1],
+        operation,
+      )
+
+      expect(doc.child(0).type.name).toBe(nodeType)
+      expect(listTexts(doc.child(0))).toEqual(['one', 'two'])
+      if (marker === 'dash' || marker === 'bullet') {
+        expect(getBulletListMarkerFromAttrs(doc.child(0).attrs)).toBe(marker)
+      }
+      if (marker === 'task') {
+        expect(doc.child(0).child(0).attrs).toMatchObject({ task: true, checked: false })
+      }
+    })
+  })
+
+  it('turns selected headings and paragraphs into lists while preserving row order', () => {
+    const doc = applyListOperation(
+      multilineListSchema.nodes.doc.create(null, [heading('title'), paragraph('body'), heading('tail', 3)]),
+      [0, 1, 2],
+      'bulletList',
+    )
+
+    expect(doc.childCount).toBe(1)
+    expect(doc.child(0).type.name).toBe('bulletList')
+    expect(listTexts(doc.child(0))).toEqual(['title', 'body', 'tail'])
+  })
+
+  it('turns empty headings into empty list items', () => {
+    const doc = applyListOperation(
+      multilineListSchema.nodes.doc.create(null, [heading(''), paragraph('body')]),
+      [0, 1],
+      'task',
+    )
+
+    expect(doc.child(0).type.name).toBe('bulletList')
+    expect(listTexts(doc.child(0))).toEqual(['', 'body'])
+    expect(doc.child(0).child(0).attrs).toMatchObject({ task: true, checked: false })
+  })
+
+  it('turns selected headings and paragraphs into each requested list kind', () => {
+    const operations: Array<[MultiLineListOperation, string, unknown]> = [
+      ['dashList', 'bulletList', 'dash'],
+      ['bulletList', 'bulletList', 'bullet'],
+      ['numberedList', 'orderedList', null],
+      ['task', 'bulletList', 'task'],
+    ]
+
+    operations.forEach(([operation, nodeType, marker]) => {
+      const doc = applyListOperation(
+        multilineListSchema.nodes.doc.create(null, [heading('one'), paragraph('two')]),
         [0, 1],
         operation,
       )

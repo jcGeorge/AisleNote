@@ -12,8 +12,8 @@ type ReplacementRange = {
   to: number
 }
 
-type ParagraphRowContext = ReplacementRange & {
-  kind: 'paragraph'
+type TextBlockRowContext = ReplacementRange & {
+  kind: 'textBlock'
   blockIndex: number
   text: string
 }
@@ -30,7 +30,7 @@ type ListItemRowContext = {
   itemNode: ProseMirrorNode
 }
 
-type RowContext = ParagraphRowContext | ListItemRowContext
+type RowContext = TextBlockRowContext | ListItemRowContext
 
 type MultiLineListOperationOptions = {
   textByBlockIndex?: Map<number, string>
@@ -195,10 +195,10 @@ function getRowContext(view: any, blockIndex: number, range: EditorTextLineRange
 
   const textBlockDepth = getTextBlockDepth(resolved)
   const textBlock = textBlockDepth === null ? null : resolved.node(textBlockDepth)
-  if (textBlockDepth !== 1 || textBlock?.type?.name !== 'paragraph') return null
+  if (textBlockDepth !== 1 || (textBlock?.type?.name !== 'paragraph' && textBlock?.type?.name !== 'heading')) return null
 
   return {
-    kind: 'paragraph',
+    kind: 'textBlock',
     blockIndex,
     text: range.text,
     from: resolved.before(textBlockDepth),
@@ -208,14 +208,14 @@ function getRowContext(view: any, blockIndex: number, range: EditorTextLineRange
 
 function buildParagraphReplacements(
   schema: any,
-  paragraphContexts: ParagraphRowContext[],
+  paragraphContexts: TextBlockRowContext[],
   operation: MultiLineListOperation,
   textByBlockIndex: Map<number, string> | undefined,
 ): Array<ReplacementRange & { nodes: ProseMirrorNode[] }> {
   const contextsByBlockIndex = new Map(paragraphContexts.map((context) => [context.blockIndex, context]))
   return getAdjacentIndexGroups(paragraphContexts.map((context) => context.blockIndex))
     .map((group) => {
-      const contexts = group.map((blockIndex) => contextsByBlockIndex.get(blockIndex)).filter(Boolean) as ParagraphRowContext[]
+      const contexts = group.map((blockIndex) => contextsByBlockIndex.get(blockIndex)).filter(Boolean) as TextBlockRowContext[]
       const first = contexts[0]
       const last = contexts[contexts.length - 1]
       const listNode = createMultiLineListNode(
@@ -354,7 +354,7 @@ export function buildMultiLineListOperationPlan(
   if (!context) return null
 
   const schema = view.state.schema
-  const paragraphContexts = context.contexts.filter((row): row is ParagraphRowContext => row.kind === 'paragraph')
+  const paragraphContexts = context.contexts.filter((row): row is TextBlockRowContext => row.kind === 'textBlock')
   const listContexts = context.contexts.filter((row): row is ListItemRowContext => row.kind === 'listItem')
   const replacements = [
     ...buildParagraphReplacements(schema, paragraphContexts, operation, options.textByBlockIndex),
@@ -395,7 +395,7 @@ export function getMultiLineListMarkerShortcut(
 ): { operation: MultiLineListOperation; textByBlockIndex: Map<number, string> } | null {
   const context = getMultiLineListOperationContexts(view, multiLineEdit)
   if (!context) return null
-  if (context.contexts.some((row) => row.kind !== 'paragraph')) return null
+  if (context.contexts.some((row) => row.kind !== 'textBlock')) return null
 
   let operation: MultiLineListOperation | null = null
   const textByBlockIndex = new Map<number, string>()
