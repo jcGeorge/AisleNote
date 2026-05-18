@@ -40,6 +40,8 @@ export const HYBRID_ROOT_DIR = 'notes-data'
 const SCHEMA_VERSION = 2
 const DOMAINS_DIR = 'domains'
 const STORAGE_RECOVERY_DIR = 'storage-recovery'
+export const RECOVERY_SNAPSHOT_MAX_ACTIVE_DAYS = 30
+export const RECOVERY_SNAPSHOT_MAX_PER_DAY = 2
 const IMAGE_METADATA_FRAGMENT_PREFIX = '#tabs-image='
 const INTERNAL_INDENT_TOKEN = '\u2060\u2003\u2003'
 const EDITOR_BLANK_LINE_PLACEHOLDER = '\u200b'
@@ -500,6 +502,65 @@ function createRecoverySnapshot(rootPath, userDataPath) {
   const snapshotPath = path.join(recoveryParent, `${HYBRID_ROOT_DIR}-${Date.now()}`)
   cpSync(rootPath, snapshotPath, { recursive: true, force: true })
   return snapshotPath
+}
+
+function getRecoverySnapshotDayKey(snapshot) {
+  const date = new Date(snapshot.createdAt || snapshot.modifiedAt || 0)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+export function pruneStorageRecoverySnapshots(
+  userDataPath,
+  {
+    maxActiveDays = RECOVERY_SNAPSHOT_MAX_ACTIVE_DAYS,
+    maxPerDay = RECOVERY_SNAPSHOT_MAX_PER_DAY,
+  } = {},
+) {
+  const snapshots = listStorageRecoverySnapshots(userDataPath)
+  if (snapshots.length === 0) return { removed: 0, kept: 0 }
+
+  const snapshotsByDay = new Map()
+  snapshots.forEach((snapshot) => {
+    const dayKey = getRecoverySnapshotDayKey(snapshot)
+    const daySnapshots = snapshotsByDay.get(dayKey) ?? []
+    daySnapshots.push(snapshot)
+    snapshotsByDay.set(dayKey, daySnapshots)
+  })
+
+  const keptPaths = new Set()
+  const activeDayKeys = Array.from(snapshotsByDay.entries())
+    .map(([dayKey, daySnapshots]) => ({
+      dayKey,
+      latestModifiedAt: Math.max(...daySnapshots.map((snapshot) => snapshot.modifiedAt)),
+    }))
+    .sort((left, right) => right.latestModifiedAt - left.latestModifiedAt)
+    .slice(0, Math.max(0, maxActiveDays))
+    .map((entry) => entry.dayKey)
+
+  activeDayKeys.forEach((dayKey) => {
+    const daySnapshots = [...(snapshotsByDay.get(dayKey) ?? [])].sort((left, right) => left.modifiedAt - right.modifiedAt)
+    if (daySnapshots.length <= maxPerDay) {
+      daySnapshots.forEach((snapshot) => keptPaths.add(path.resolve(snapshot.path)))
+      return
+    }
+
+    const earliestSnapshot = daySnapshots[0]
+    const latestSnapshot = daySnapshots[daySnapshots.length - 1]
+    if (maxPerDay >= 1 && earliestSnapshot) keptPaths.add(path.resolve(earliestSnapshot.path))
+    if (maxPerDay >= 2 && latestSnapshot) keptPaths.add(path.resolve(latestSnapshot.path))
+  })
+
+  let removed = 0
+  snapshots.forEach((snapshot) => {
+    if (keptPaths.has(path.resolve(snapshot.path))) return
+    rmSync(snapshot.path, { recursive: true, force: true })
+    removed += 1
+  })
+
+  return { removed, kept: keptPaths.size }
 }
 
 export function listStorageRecoverySnapshots(userDataPath) {
@@ -1274,6 +1335,7 @@ export function saveAppState(profileRootPath, serializedState, options = {}) {
     rmSync(finalRoot, { recursive: true, force: true })
   } else {
     createRecoverySnapshot(finalRoot, recoveryRoot)
+    pruneStorageRecoverySnapshots(recoveryRoot)
   }
 
   writeHybridStorage(finalRoot, serializedState)
@@ -1298,6 +1360,7 @@ export function restoreStorageRecoverySnapshot(profileRootPath, userDataPath, sn
   createRecoverySnapshot(finalRoot, userDataPath)
   rmSync(finalRoot, { recursive: true, force: true })
   cpSync(selectedSnapshot.path, finalRoot, { recursive: true, force: true })
+  pruneStorageRecoverySnapshots(userDataPath)
   return { ok: true, snapshot: selectedSnapshot, loadResult: loadAppStateResult(profileRootPath) }
 }
 

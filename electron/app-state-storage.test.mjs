@@ -1,10 +1,13 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   listStorageRecoverySnapshots,
   loadAppStateResult,
+  pruneStorageRecoverySnapshots,
+  RECOVERY_SNAPSHOT_MAX_ACTIVE_DAYS,
+  RECOVERY_SNAPSHOT_MAX_PER_DAY,
   restoreStorageRecoverySnapshot,
   saveAppState,
 } from './app-state-storage.mjs'
@@ -89,6 +92,29 @@ function serializedAppState() {
 function readJson(filePath) {
   return JSON.parse(readFileSync(filePath, 'utf8'))
 }
+
+function createRecoverySnapshotDirectory(userDataPath, timestamp) {
+  const snapshotPath = path.join(userDataPath, 'storage-recovery', `notes-data-${timestamp}`)
+  mkdirSync(snapshotPath, { recursive: true })
+  writeFileSync(path.join(snapshotPath, 'marker.txt'), String(timestamp), 'utf8')
+  const snapshotDate = new Date(timestamp)
+  utimesSync(snapshotPath, snapshotDate, snapshotDate)
+  return snapshotPath
+}
+
+function buildTimestamp(dayOffset, hour = 12, minute = 0) {
+  return new Date(2024, 0, 1 + dayOffset, hour, minute).getTime()
+}
+
+function serializedAppStateWithMarkdown(markdown) {
+  const state = JSON.parse(serializedAppState())
+  state.noteBodies[0].aisles[0].markdown = markdown
+  return JSON.stringify(state)
+}
+
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 function getStoredWorkspacePaths(profileRootPath, indexes = {}) {
   const domainIndex = indexes.domainIndex ?? 0
@@ -760,6 +786,40 @@ describe('Electron app state storage load result', () => {
       }
     }))
 
+  it('prunes recovery snapshots to the earliest and latest snapshot per active day', () =>
+    withTempUserDataPath((userDataPath) => {
+      const timestamps = [1, 2, 3, 4, 5].map((hour) => buildTimestamp(0, hour))
+      timestamps.forEach((timestamp) => createRecoverySnapshotDirectory(userDataPath, timestamp))
+
+      const result = pruneStorageRecoverySnapshots(userDataPath)
+      const snapshots = listStorageRecoverySnapshots(userDataPath)
+      const keptNames = snapshots.map((snapshot) => snapshot.name)
+
+      expect(result).toMatchObject({ removed: 3, kept: RECOVERY_SNAPSHOT_MAX_PER_DAY })
+      expect(snapshots).toHaveLength(2)
+      expect(keptNames).toContain(`notes-data-${timestamps[0]}`)
+      expect(keptNames).toContain(`notes-data-${timestamps[timestamps.length - 1]}`)
+      expect(existsSync(path.join(userDataPath, 'storage-recovery', `notes-data-${timestamps[2]}`))).toBe(false)
+    }))
+
+  it('prunes recovery snapshots to the latest 30 active days while skipping inactive days', () =>
+    withTempUserDataPath((userDataPath) => {
+      const timestamps = Array.from(
+        { length: RECOVERY_SNAPSHOT_MAX_ACTIVE_DAYS + 1 },
+        (_, index) => buildTimestamp(index * 2),
+      )
+      timestamps.forEach((timestamp) => createRecoverySnapshotDirectory(userDataPath, timestamp))
+
+      pruneStorageRecoverySnapshots(userDataPath)
+      const snapshots = listStorageRecoverySnapshots(userDataPath)
+      const keptNames = snapshots.map((snapshot) => snapshot.name)
+
+      expect(snapshots).toHaveLength(RECOVERY_SNAPSHOT_MAX_ACTIVE_DAYS)
+      expect(keptNames).not.toContain(`notes-data-${timestamps[0]}`)
+      expect(keptNames).toContain(`notes-data-${timestamps[1]}`)
+      expect(keptNames).toContain(`notes-data-${timestamps[timestamps.length - 1]}`)
+    }))
+
   it('restores the latest valid recovery snapshot', () =>
     withTempUserDataPath((userDataPath) => {
       const profileRootPath = mkdtempSync(path.join(os.tmpdir(), 'tabs-profile-'))
@@ -778,6 +838,41 @@ describe('Electron app state storage load result', () => {
           loadResult: { ok: true },
         })
         expect(parsed.theme).toBe('dawn')
+      } finally {
+        rmSync(profileRootPath, { recursive: true, force: true })
+      }
+    }))
+
+  it('restores the latest valid recovery snapshot after retention pruning', () =>
+    withTempUserDataPath((userDataPath) => {
+      const profileRootPath = mkdtempSync(path.join(os.tmpdir(), 'tabs-profile-'))
+      try {
+        vi.useFakeTimers()
+        const timestamps = Array.from(
+          { length: RECOVERY_SNAPSHOT_MAX_ACTIVE_DAYS + 2 },
+          (_, index) => buildTimestamp(index),
+        )
+
+        timestamps.forEach((timestamp, index) => {
+          vi.setSystemTime(timestamp)
+          saveAppState(profileRootPath, serializedAppStateWithMarkdown(`note-${index}`), { userDataPath })
+        })
+
+        const snapshotsBeforeRestore = listStorageRecoverySnapshots(userDataPath)
+        vi.setSystemTime(timestamps[timestamps.length - 1] + 1)
+        const restoreResult = restoreStorageRecoverySnapshot(profileRootPath, userDataPath)
+        const loadResult = loadAppStateResult(profileRootPath)
+        const parsed = JSON.parse(loadResult.serializedState)
+
+        expect(snapshotsBeforeRestore).toHaveLength(RECOVERY_SNAPSHOT_MAX_ACTIVE_DAYS)
+        expect(restoreResult).toMatchObject({
+          ok: true,
+          loadResult: { ok: true },
+        })
+        expect(parsed.noteBodies[0].aisles[0].markdown).toBe(`note-${timestamps.length - 2}`)
+        expect(listStorageRecoverySnapshots(userDataPath).length).toBeLessThanOrEqual(
+          RECOVERY_SNAPSHOT_MAX_ACTIVE_DAYS * RECOVERY_SNAPSHOT_MAX_PER_DAY,
+        )
       } finally {
         rmSync(profileRootPath, { recursive: true, force: true })
       }

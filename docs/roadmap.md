@@ -4,89 +4,83 @@ This roadmap prioritizes stabilizing the local-first product core before broad U
 
 The guiding rule is: data integrity and recovery come before visual polish and platform expansion.
 
-## Phase 1: Stabilization Pass
+## Status Snapshot
+
+Cleaned up on 2026-05-17.
+
+- **Phase 1 is complete.** The stabilization pass covered real-workspace persistence, frontmatter, Stage Manager/Director flows, rename persistence, trash/restore, export/images, and storage-profile reload/move behavior.
+- **Phase 2 is complete for the current v2 storage model.** The active `domains/` manifest/Markdown/assets format is documented, Electron/browser storage behavior is hardened, storage health is visible in settings, and recovery snapshots are available outside the synced profile.
+- **Phase 3 is complete for this roadmap gate.** The first targeted refactor pass extracted storage-profile orchestration and cleared the hook-dependency cleanup target. Larger refactor slices are now normal engineering hygiene, not blockers for Phase 4.
+- **Phase 4 is the current active phase.** The first input-polish slice is largely implemented; remaining Phase 4 work is continued bug polish plus the later design-system/UI overhaul.
+
+## Phase 1: Stabilization Pass — Complete
 
 Goal: prove the app can preserve user data through normal and stressful workflows.
 
-Focus areas:
+Completed outcomes:
 
-- Frontmatter templates, computed values, default values, derived rows, manual rows, null date/datetime values, and template switching.
-- Director/Stage Manager operations, including frontmatter application, note movement, migration, deletion, and review flows.
-- Rename persistence for domains, spaces, parent tabs, and sub-tabs.
-- Trash restore/delete behavior for parent tabs, sub-tabs, nested sub-tabs, and permanently deleted items.
-- Export behavior, including readable Markdown output and image asset handling.
-- Cloud-folder sync behavior through Electron storage profile selection, move, reveal, retry, watcher reload, and app restart.
+- Frontmatter templates, computed values, default values, manual rows, derived rows, null date/datetime values, picker behavior, and template switching were tested and fixed where needed.
+- Director/Stage Manager operations were exercised for frontmatter application, note movement, migration, deletion, restore, and review flows.
+- Rename persistence for domains, spaces, parent tabs, and sub-tabs was validated across app restart/storage reload.
+- Trash restore/delete behavior, export output, image asset handling, image resize/crop/rotation metadata, and storage-profile move/retry/reload behavior were validated.
+- The manual real-workspace pass used QA-only data and a backup-first workflow.
 
-Exit criteria:
+Ongoing rule:
 
-- Every bug found during manual testing gets a regression test before the fix lands.
-- A real workspace survives rename, move, delete, restore, frontmatter edits, image edits, app restart, and storage reload.
-- Existing `npm test`, `npm run build`, and `npm run lint` remain usable as the core verification baseline.
+- Any newly found data-integrity bug should still get a regression test before the fix lands.
 
-Manual test matrix:
-
-- Create domain, space, parent tab, sub-tab, and multiple aisles; rename each item and restart.
-- Apply frontmatter manually, by template, and through Director; verify computed values update from note/domain/space state.
-- Move and delete selected notes through Stage Manager; restore from trash and verify note body identity is preserved.
-- Resize, crop, rotate, and export images.
-- Choose a sync folder, move existing data, restart Electron, edit externally where practical, and retry reload.
-
-## Phase 2: Storage And Sync Hardening
+## Phase 2: Storage And Sync Hardening — Complete
 
 Goal: make the manifest/Markdown/assets storage model resilient enough for real user data.
 
-Focus areas:
+Completed outcomes:
 
-- Align implementation behavior with `docs/storage-schema.md`.
-- Add recovery behavior for missing Markdown files, missing/corrupt manifests, missing assets, interrupted saves, and stale revisions.
-- Add user-visible storage health and recovery actions.
-- Preserve legacy JSON parsing and migration behavior.
+- `docs/storage-schema.md` now describes the current v2 `notes-data/domains/...` layout as canonical; the future `topics/` idea remains explicitly deferred.
+- Missing Markdown files, missing/corrupt trash manifests, corrupt branch manifests, corrupt/unsupported root manifests, stale revisions, conflict folders, and paused-write recovery paths are covered by storage behavior and tests.
+- Settings > Data surfaces storage health, profile path, schema/writable state, issue details, recovery snapshot count, reveal folder, retry reload, export backup, and restore latest snapshot actions.
+- Browser hybrid storage and Electron filesystem storage have parity coverage for the current logical app state.
+- Electron recovery snapshots are created outside synced `notes-data/` and retention pruning keeps bounded restore points across the latest active days.
+- Legacy JSON parsing and migration behavior remain preserved.
 
-Exit criteria:
+Remaining storage follow-up:
 
-- Browser and Electron storage adapters round-trip the same logical state.
-- Corrupt or missing content degrades safely instead of losing the whole workspace.
-- Users can export a backup, reveal the data folder, and recover from the most common storage failures.
+- Add a richer recovery snapshot browser/timeline after the retention behavior has settled. It should let users choose older restore points instead of only restoring the latest safe snapshot.
 
-## Phase 3: Targeted Refactor
+## Phase 3: Targeted Refactor — Complete For This Roadmap Gate
 
 Goal: reduce risk in future feature work without doing a broad rewrite.
 
-Refactor only after Phase 1 regression coverage exists.
+Completed outcomes:
 
-Priority surfaces:
+- Storage-profile state/actions moved out of `App.tsx` into a focused controller hook.
+- Storage status loading, subscription, choose/move/reveal/retry/restore actions, and related toast handling are owned by the controller.
+- Hook-dependency warning cleanup was completed for the targeted editor/image-tools, navigation-history, note-body, and global-hotkey paths.
+- The pass stayed behavior-preserving and avoided Stage Manager/image-tools internals until there is a specific reason to split them.
 
-- `src/App.tsx`: split shell orchestration from feature controllers.
-- Settings and frontmatter controllers: separate draft state, persistence, and UI-specific behavior.
-- Editor/image tools: keep Toast UI and ProseMirror internals behind editor-local helpers.
-- Stage Manager: keep selection, validation, transformation, and view coordination isolated.
-- Hook dependency warnings: retire ref-heavy patterns where a narrower controller would make dependencies stable.
+Remaining refactor guidance:
 
-Exit criteria:
+- Treat future refactors as incremental slices attached to real feature or bug work.
+- Highest-value future surfaces remain settings/frontmatter controllers, editor/image helpers, and Stage Manager coordination.
+- Do not bundle broad UI redesign into refactor-only work.
 
-- Refactors are behavior-preserving and test-backed.
-- Module ownership is clearer than before the refactor.
-- No unrelated UI redesign is bundled into refactor commits.
-
-## Phase 4: UI/UX Stabilization And Input Polish
+## Phase 4: UI/UX Stabilization And Input Polish — Current
 
 Goal: clean up known workflow and editor-input rough edges before the broader visual redesign.
 
-First-pass focus areas:
+Completed or mostly completed first-pass areas:
 
 - Tab-after-naming flow for parent tabs and sub-tabs.
 - Assignable previous/next parent-tab hotkeys, unbound by default.
 - Markdown input polish for blockquotes, pasted lists, and multi-cursor list commands.
-- Small positioning, icon, and theme fixes that are clearly bugs rather than redesign work.
+- Multi-cursor formatting support for headings, bold, italic, strikethrough, blockquotes, code blocks, list conversion, delete behavior, and Page Up/Page Down movement.
+- Normal-cursor Page Up/Page Down movement in the WYSIWYG editor.
 
-Later Phase 4 slices should define the design-system foundation before the full UI overhaul:
+Remaining Phase 4 work:
 
-- Spacing scale, typography scale, icon style, control sizing, focus states, disabled states, and touch targets.
-- Theme token model for app shell, editor, settings, modals, toolbars, Stage Manager, trash, and storage UI.
-- Accessibility expectations for keyboard flow, contrast, modal focus, tooltip controls, and screen-reader labels.
-- Mobile/touch rules for editor controls and navigation.
-
-Custom user themes should wait until the internal token model is stable.
+- Continue fixing editor/workflow bugs found through real use.
+- Clean up small positioning, icon, and theme issues that are clearly bugs rather than redesign work.
+- Define the later design-system foundation before the full UI overhaul: spacing, typography, icon rules, control sizing, focus/disabled states, touch targets, theme tokens, and accessibility expectations.
+- Custom user themes should wait until the internal token model is stable.
 
 ## Phase 5: Tooltip And Mobile Editing Controls
 
@@ -127,7 +121,7 @@ Goal: expand frontmatter power after frontmatter semantics are stable.
 
 Focus areas:
 
-- Apply frontmatter templates to selected notes through Director.
+- Broaden current Director/frontmatter application into higher-level batch controls.
 - Support preview/review before applying batch metadata changes.
 - Handle conflicts between existing note frontmatter and template-derived fields.
 - Keep derived/manual/computed behavior clear in batch operations.
@@ -163,7 +157,8 @@ Focus areas:
 
 - Choose Electron Builder or Electron Forge and document the packaging workflow.
 - App identity, icons, metadata, installer strategy, Windows packaging, macOS packaging, signing/notarization, and update channels.
-- Crash-safe saves and storage migration guarantees.
+- Crash-safe saves, storage migration guarantees, and recovery behavior suitable for non-developer users.
+- Recovery snapshot browser/timeline if latest-snapshot restore is not enough for desktop release confidence.
 - Export/backup/recovery flows suitable for non-developer users.
 - Electron menu behavior and keyboard shortcuts on macOS and Windows.
 
