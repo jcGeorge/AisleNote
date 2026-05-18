@@ -23,6 +23,24 @@ type SaveAppStateResult =
       serializedState?: string | null
     }
 
+type ImportImageAssetPayload = {
+  bytes: ArrayBuffer
+  name?: string
+  type?: string
+  extension?: string
+}
+
+type ImportImageAssetResult =
+  | {
+      ok: true
+      assetPath: string
+      url: string
+    }
+  | {
+      ok: false
+      error: string
+    }
+
 declare global {
   interface Window {
     electronAPI?: {
@@ -46,6 +64,7 @@ declare global {
           }
       saveAppState: (payload: SaveAppStatePayload) => SaveAppStateResult
       saveAppStateAsync?: (payload: SaveAppStatePayload) => Promise<SaveAppStateResult>
+      importImageAsset?: (payload: ImportImageAssetPayload) => Promise<ImportImageAssetResult>
       onAppStateUpdated?: (handler: (payload: { serializedState: string; revision: number }) => void) => () => void
       getStorageProfileStatus?: () => Promise<StorageProfileStatus>
       chooseStorageFolder?: () => Promise<

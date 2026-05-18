@@ -58,6 +58,7 @@ import {
   normalizeMarkdownForPersistence,
   preserveBlankParagraphsFromWysiwyg,
 } from './markdown/markdown-utils'
+import { normalizeMarkdownImageSourcesForPersistence } from './markdown/image-asset-registry'
 import { useNavigationHistory } from './navigation/useNavigationHistory'
 import { useAppNavigationActions } from './navigation/useAppNavigationActions'
 import {
@@ -138,7 +139,7 @@ type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
 let renameInputMeasureContext: CanvasRenderingContext2D | null = null
 
 function App() {
-  const { state, setState, stateRef, storageHydrated, flushPendingPersistence } = usePersistentAppState()
+  const { state, setState, stateRef, flushPendingPersistence, commitAppStateNow } = usePersistentAppState()
   const [viewMode, setViewMode] = useState<ViewMode>('main')
   const [editing, setEditing] = useState<{ type: EditableEntityType; id: string } | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
@@ -289,10 +290,9 @@ function App() {
   const settingsController = useSettingsController({
     state,
     stateRef,
-    setState,
+    commitAppStateNow,
     activeSpace,
     viewMode,
-    storageHydrated,
   })
 
   const pushToast = (message: string, tone: ToastTone = 'warning', durationMs = DEFAULT_TOAST_DURATION_MS) => {
@@ -425,11 +425,13 @@ function App() {
 
   const getNormalizedEditorMarkdown = (editor: Editor) =>
     measureSlowOperation('editor markdown normalization', () =>
-      normalizeEmptyHeadingMarkersFromWysiwyg(
-        editor,
-        preserveBlankParagraphsFromWysiwyg(
+      normalizeMarkdownImageSourcesForPersistence(
+        normalizeEmptyHeadingMarkersFromWysiwyg(
           editor,
-          normalizeMarkdownForPersistence(mergeLeadingIndentsFromWysiwyg(editor, editor.getMarkdown())),
+          preserveBlankParagraphsFromWysiwyg(
+            editor,
+            normalizeMarkdownForPersistence(mergeLeadingIndentsFromWysiwyg(editor, editor.getMarkdown())),
+          ),
         ),
       ),
     )
@@ -848,6 +850,7 @@ function App() {
     resolvedActiveAisleId,
     activeAisleId,
     setActiveAisleId,
+    aisleScrollRef,
     editorRef,
     multiLineCursorPluginKeyRef,
     lastEditorMarkdownRef,
@@ -882,6 +885,9 @@ function App() {
   const activateAisleEditor = aisleEditors.activateAisleEditor
   const activateEditorFromEventTarget = aisleEditors.activateEditorFromEventTarget
   const registerAisleEditorRoot = aisleEditors.registerAisleEditorRoot
+  const registerAislePaneRoot = aisleEditors.registerAislePaneRoot
+  const mountedAisleIds = aisleEditors.mountedAisleIds
+  const getPreviewMarkdownForAisle = aisleEditors.getPreviewMarkdownForAisle
   activateAisleEditorRef.current = activateAisleEditor
 
   usePendingNoteCursorRestore({
@@ -1253,9 +1259,7 @@ function App() {
 
   const stageManager = useStageManagerController({
     state,
-    stateRef,
-    setState,
-    storageHydrated,
+    commitAppStateNow,
     activeSpace,
     workspace,
     viewMode,
@@ -1752,8 +1756,11 @@ function App() {
               }}
               onActivateAisle={(editorKey) => {
                 pendingCursorRestoreRef.current = null
-                activateAisleEditor(editorKey, { flushPrevious: true })
+                activateAisleEditor(editorKey, { flushPrevious: true, focus: true })
               }}
+              mountedAisleIds={mountedAisleIds}
+              getPreviewMarkdownForAisle={getPreviewMarkdownForAisle}
+              onRegisterAislePaneRoot={registerAislePaneRoot}
               onRegisterAisleEditorRoot={registerAisleEditorRoot}
             />
           ) : (

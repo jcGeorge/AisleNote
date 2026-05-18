@@ -10,6 +10,7 @@ import {
   RECOVERY_SNAPSHOT_MAX_PER_DAY,
   restoreStorageRecoverySnapshot,
   saveAppState,
+  writeImageAssetToProfile,
 } from './app-state-storage.mjs'
 import { STORAGE_PATH_SEGMENT_MAX_LENGTH } from '../src/storage/storage-path-segments.js'
 
@@ -588,6 +589,27 @@ describe('Electron app state storage load result', () => {
       ]))
       expect(parsed.noteBodies[0].aisles[0].markdown).toContain('![pixel](')
       expect(parsed.noteBodies[0].aisles[0].markdown).not.toContain('data:image/')
+    }))
+
+  it('loads and re-saves image assets as stable refs without inlining bytes', () =>
+    withTempUserDataPath((userDataPath) => {
+      const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3])
+      const asset = writeImageAssetToProfile(userDataPath, bytes, 'png')
+      const state = JSON.parse(serializedAppState())
+      state.noteBodies[0].aisles[0].markdown = `image ![pixel](${asset.url})`
+
+      saveAppState(userDataPath, JSON.stringify(state))
+
+      const assetPath = path.join(userDataPath, 'notes-data', asset.assetPath)
+      expect(readFileSync(assetPath)).toEqual(bytes)
+
+      const result = loadAppStateResult(userDataPath)
+      const parsed = JSON.parse(result.serializedState)
+      expect(parsed.noteBodies[0].aisles[0].markdown).toContain('tabs-asset:///assets/')
+      expect(parsed.noteBodies[0].aisles[0].markdown).not.toContain('data:image/')
+
+      saveAppState(userDataPath, result.serializedState)
+      expect(readFileSync(assetPath)).toEqual(bytes)
     }))
 
   it('loads missing trash manifests as empty trash with a warning', () =>

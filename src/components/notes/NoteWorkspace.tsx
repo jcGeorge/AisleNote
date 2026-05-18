@@ -1,6 +1,14 @@
 import type { ReactNode, Ref } from 'react'
+import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { buildAisleEditorKey } from '../../editor/aisle-editor'
+import { resolveImageAssetDisplayUrl } from '../../markdown/image-asset-registry'
 import type { NoteAisle } from '../../types/app'
+
+const transformAislePreviewUrl = (url: string, key: string) =>
+  key === 'src' && (/^data:image\//i.test(url) || /^blob:/i.test(url) || /^tabs-asset:/i.test(url))
+    ? resolveImageAssetDisplayUrl(url)
+    : defaultUrlTransform(url)
 
 type NoteWorkspaceProps = {
   noteBodyId: string
@@ -14,6 +22,9 @@ type NoteWorkspaceProps = {
   onRootChange: (node: HTMLElement | null) => void
   onAisleScroll: (scrollLeft: number) => void
   onActivateAisle: (editorKey: string) => void
+  mountedAisleIds: Set<string>
+  getPreviewMarkdownForAisle: (aisle: NoteAisle) => string
+  onRegisterAislePaneRoot: (aisleId: string, node: HTMLElement | null) => void
   onRegisterAisleEditorRoot: (editorKey: string, node: HTMLElement | null) => void
 }
 
@@ -29,6 +40,9 @@ export function NoteWorkspace({
   onRootChange,
   onAisleScroll,
   onActivateAisle,
+  mountedAisleIds,
+  getPreviewMarkdownForAisle,
+  onRegisterAislePaneRoot,
   onRegisterAisleEditorRoot,
 }: NoteWorkspaceProps) {
   return (
@@ -46,9 +60,12 @@ export function NoteWorkspace({
       >
         {aisles.map((aisle, index) => {
           const editorKey = buildAisleEditorKey(noteBodyId, aisle.id)
+          const editorMounted = mountedAisleIds.has(aisle.id)
+          const previewMarkdown = editorMounted ? '' : getPreviewMarkdownForAisle(aisle)
           return (
             <section
               key={aisle.id}
+              ref={(node) => onRegisterAislePaneRoot(aisle.id, node)}
               className={`note-aisle-pane ${aisle.id === activeAisleId ? 'is-active' : ''}`}
               aria-label={`Aisle ${index + 1}`}
               data-aisle-id={aisle.id}
@@ -56,11 +73,21 @@ export function NoteWorkspace({
               onPointerDown={() => onActivateAisle(editorKey)}
             >
               <section className={`editor-shell note-aisle-editor-shell ${editorReadOnly ? 'editor-readonly' : ''}`}>
-                <div
-                  ref={(node) => onRegisterAisleEditorRoot(editorKey, node)}
-                  className="toast-editor-host"
-                  data-aisle-editor-key={editorKey}
-                />
+                {editorMounted ? (
+                  <div
+                    ref={(node) => onRegisterAisleEditorRoot(editorKey, node)}
+                    className="toast-editor-host"
+                    data-aisle-editor-key={editorKey}
+                  />
+                ) : (
+                  <div className="toast-editor-host aisle-editor-preview-fallback" aria-hidden="true">
+                    {previewMarkdown.trim().length > 0 ? (
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={transformAislePreviewUrl}>
+                        {previewMarkdown}
+                      </ReactMarkdown>
+                    ) : null}
+                  </div>
+                )}
               </section>
             </section>
           )

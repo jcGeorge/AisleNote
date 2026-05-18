@@ -14,6 +14,27 @@
   height: auto;
 }
 
+.aisle-editor-preview-fallback {
+  overflow: auto;
+  padding: 1rem 1.125rem;
+  color: var(--editor-text);
+  background: var(--editor-bg);
+  overflow-wrap: anywhere;
+}
+
+.aisle-editor-preview-fallback img {
+  max-width: 100%;
+  height: auto;
+}
+
+.aisle-editor-preview-fallback > :first-child {
+  margin-top: 0;
+}
+
+.aisle-editor-preview-fallback > :last-child {
+  margin-bottom: 0;
+}
+
 .note-reference-btn {
   position: absolute;
   top: 0.58rem;

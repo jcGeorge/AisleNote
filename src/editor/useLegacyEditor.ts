@@ -13,12 +13,17 @@ import {
   thematicBreakShortcutPlugin,
   uncheckedTaskEnterPlugin,
 } from './editor-setup'
+import { sanitizeEditorHtml } from './editor-sanitizer'
 import { terminalBlockLandingPlugin } from './terminal-block-landing'
 import {
   installCompletedTaskCheckboxBehavior,
   installTaskTextReorderBehavior,
 } from './task-behavior'
 import { materializeHorizontalRuleShortcut } from '../markdown/markdown-utils'
+import {
+  importImageBlobAsAssetUrl,
+  prepareMarkdownImagesForDisplay,
+} from '../markdown/image-asset-registry'
 import type { ToastTone, ViewMode } from '../types/app'
 
 type UseLegacyEditorOptions = {
@@ -88,10 +93,11 @@ export function useLegacyEditor({
     lastEditorMarkdownRef.current = displayContent
     editorRef.current = new Editor({
       el: editorMountRef.current,
-      initialValue: displayContent,
+      initialValue: prepareMarkdownImagesForDisplay(displayContent),
       initialEditType: 'wysiwyg',
       previewStyle: 'tab',
       hideModeSwitch: true,
+      customHTMLSanitizer: sanitizeEditorHtml,
       toolbarItems: EDITOR_TOOLBAR_ITEMS,
       height: '100%',
       usageStatistics: false,
@@ -114,14 +120,14 @@ export function useLegacyEditor({
       ],
       hooks: {
         addImageBlobHook: (blob: Blob | File, callback: (url: string, text?: string) => void) => {
-          const reader = new FileReader()
-          reader.onload = () => {
-            const dataUrl = typeof reader.result === 'string' ? reader.result : ''
-            if (!dataUrl) return
-            callback(dataUrl, blob instanceof File ? blob.name : 'image')
+          void importImageBlobAsAssetUrl(blob, blob instanceof File ? blob.name : 'image').then((assetUrl) => {
+            if (!assetUrl) {
+              pushToast('could not import image.', 'warning')
+              return
+            }
+            callback(assetUrl, blob instanceof File ? blob.name : 'image')
             window.setTimeout(() => commitCurrentEditorContent(), 30)
-          }
-          reader.readAsDataURL(blob)
+          })
         },
       },
       events: {
@@ -149,7 +155,7 @@ export function useLegacyEditor({
           if (materializedHorizontalRule && materializedHorizontalRule !== markdown) {
             normalizingContentRef.current = true
             lastEditorMarkdownRef.current = materializedHorizontalRule
-            currentEditor.setMarkdown(materializedHorizontalRule, false)
+            currentEditor.setMarkdown(prepareMarkdownImagesForDisplay(materializedHorizontalRule), false)
             return
           }
 
@@ -201,10 +207,10 @@ export function useLegacyEditor({
     const instance = editorRef.current
     if (!instance) return
 
-    const existing = instance.getMarkdown()
+    const existing = getNormalizedEditorMarkdown(instance)
     if (existing !== displayContent) {
       lastEditorMarkdownRef.current = displayContent
-      instance.setMarkdown(displayContent, false)
+      instance.setMarkdown(prepareMarkdownImagesForDisplay(displayContent), false)
     }
   }, [displayContent, viewMode, syncKey])
 }

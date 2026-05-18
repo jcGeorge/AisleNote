@@ -2,9 +2,7 @@ import {
   useEffect,
   useRef,
   useState,
-  type Dispatch,
   type MutableRefObject,
-  type SetStateAction,
 } from 'react'
 import { DEFAULT_NEWLINE_SHORTCUT_SETTINGS, DEFAULT_SHORTCUTS } from '../hotkeys/shortcuts'
 import {
@@ -12,7 +10,6 @@ import {
 } from '../state/app-state'
 import { updateSpaceInActiveDomain } from '../state/domains'
 import { applyAutoPurgeToWorkspace, createId } from '../state/workspace'
-import { appPersistenceService } from '../storage/app-persistence-service'
 import { isFrontmatterComputedValueCompatibleWithFieldType } from '../frontmatter/frontmatter'
 import type {
   AppState,
@@ -38,10 +35,9 @@ import {
 type UseSettingsControllerParams = {
   state: AppState
   stateRef: MutableRefObject<AppState>
-  setState: Dispatch<SetStateAction<AppState>>
+  commitAppStateNow: (nextState: AppState) => Promise<AppState>
   activeSpace: Space
   viewMode: ViewMode
-  storageHydrated: boolean
 }
 
 function isFrontmatterBooleanDefaultTrue(value: string) {
@@ -52,10 +48,9 @@ function isFrontmatterBooleanDefaultTrue(value: string) {
 export function useSettingsController({
   state,
   stateRef,
-  setState,
+  commitAppStateNow,
   activeSpace,
   viewMode,
-  storageHydrated,
 }: UseSettingsControllerParams) {
   const [section, setSection] = useState<SettingsSection>('hotkeys')
   const [settingsDaysDraft, setSettingsDaysDraft] = useState<string>(String(DEFAULT_AUTO_REMOVE_DAYS))
@@ -112,11 +107,7 @@ export function useSettingsController({
 
   const commitImmediateSettingsState = (buildNextState: (previous: AppState) => AppState) => {
     const nextState = applyAutoPurgeToAppState(buildNextState(stateRef.current))
-    stateRef.current = nextState
-    setState(nextState)
-    if (storageHydrated) {
-      appPersistenceService.saveSerializedState(JSON.stringify(nextState))
-    }
+    void commitAppStateNow(nextState)
   }
 
   const changeSection = (nextSection: SettingsSection) => {

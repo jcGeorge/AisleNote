@@ -1,7 +1,8 @@
-import { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, nativeImage, shell } from 'electron'
+import { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, nativeImage, net, protocol, shell } from 'electron'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { registerClipboardIpc } from './ipc-clipboard.mjs'
+import { IMAGE_ASSET_PROTOCOL_SCHEME, registerImageAssetProtocol } from './image-asset-protocol.mjs'
 import { registerFileIpc } from './ipc-files.mjs'
 import { registerStorageIpc } from './ipc-storage.mjs'
 import { registerUpdateIpc } from './ipc-updates.mjs'
@@ -13,6 +14,17 @@ const __dirname = path.dirname(__filename)
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
 let quitRequested = false
 let storageSession = null
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: IMAGE_ASSET_PROTOCOL_SCHEME,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+    },
+  },
+])
 
 function focusExistingWindow() {
   const window = BrowserWindow.getAllWindows()[0]
@@ -224,8 +236,9 @@ if (!gotSingleInstanceLock) {
   app.whenReady().then(() => {
     const updateService = createNoopUpdateService(app)
     storageSession = registerStorageIpc({ ipcMain, app, BrowserWindow, dialog, shell })
+    registerImageAssetProtocol({ protocol, net, storageSession })
     installApplicationMenu({ onNewWindow: openAppWindow })
-    registerFileIpc({ ipcMain, dialog })
+    registerFileIpc({ ipcMain, dialog, storageSession })
     registerClipboardIpc({ ipcMain, clipboard, nativeImage })
     registerUpdateIpc({ ipcMain, updateService })
 

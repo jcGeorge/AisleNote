@@ -4,7 +4,7 @@ import { applyAutoPurgeToAppState, parseSavedState } from '../state/app-state'
 import type { AppState } from '../types/app'
 import { appPersistenceService } from './app-persistence-service'
 import { createPersistenceDebounceController } from './persistence-debounce'
-import type { AppStateSaveOptions } from './persistence-debounce'
+import type { AppStateCommitOptions, AppStateSaveOptions } from './persistence-debounce'
 
 type PersistentAppStateController = {
   state: AppState
@@ -12,6 +12,7 @@ type PersistentAppStateController = {
   stateRef: MutableRefObject<AppState>
   storageHydrated: boolean
   flushPendingPersistence: (options?: AppStateSaveOptions) => Promise<void>
+  commitAppStateNow: (nextState: AppState, options?: AppStateCommitOptions) => Promise<AppState>
 }
 
 export function usePersistentAppState(): PersistentAppStateController {
@@ -20,6 +21,7 @@ export function usePersistentAppState(): PersistentAppStateController {
   const [state, setState] = useState<AppState>(() => initialParsedState)
   const [storageHydrated, setStorageHydrated] = useState(() => typeof appPersistenceService.hydrateSerializedState !== 'function')
   const stateRef = useRef(state)
+  const storageHydratedRef = useRef(storageHydrated)
   const initialStateRef = useRef<AppState>(initialParsedState)
   const stateDirtySinceBootRef = useRef(false)
   const externallyAppliedStateRef = useRef<AppState | null>(null)
@@ -33,6 +35,10 @@ export function usePersistentAppState(): PersistentAppStateController {
   useEffect(() => {
     stateRef.current = state
   }, [state])
+
+  useEffect(() => {
+    storageHydratedRef.current = storageHydrated
+  }, [storageHydrated])
 
   useEffect(() => {
     if (typeof appPersistenceService.hydrateSerializedState !== 'function') return
@@ -104,6 +110,31 @@ export function usePersistentAppState(): PersistentAppStateController {
     await appPersistenceService.flushPendingSaves?.()
   }
 
+  const commitAppStateNow = async (
+    nextState: AppState,
+    options: AppStateCommitOptions = { snapshotMode: 'force', preferSync: true, flushQueue: true },
+  ) => {
+    const sanitizedState = applyAutoPurgeToAppState(nextState)
+    stateRef.current = sanitizedState
+    setState(sanitizedState)
+
+    if (!storageHydratedRef.current) {
+      stateDirtySinceBootRef.current = true
+      return sanitizedState
+    }
+
+    persistenceControllerRef.current.cancel()
+    const serializedState = measureSlowOperation('app-state serialization', () => JSON.stringify(sanitizedState))
+    appPersistenceService.saveSerializedState(serializedState, options)
+    if (options.flushQueue !== false) {
+      await appPersistenceService.flushPendingSaves?.()
+    }
+    initialStateRef.current = sanitizedState
+    externallyAppliedStateRef.current = sanitizedState
+    stateDirtySinceBootRef.current = false
+    return sanitizedState
+  }
+
   useEffect(() => {
     const persistenceController = persistenceControllerRef.current
     const flushOnExit = () => {
@@ -146,5 +177,6 @@ export function usePersistentAppState(): PersistentAppStateController {
     stateRef,
     storageHydrated,
     flushPendingPersistence,
+    commitAppStateNow,
   }
 }

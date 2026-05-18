@@ -12,8 +12,8 @@ import {
   stripImageResizeMetadataFromUrl,
   withImageResizeMetadata,
 } from '../markdown/image-metadata'
+import { importImageBlobAsAssetUrl } from '../markdown/image-asset-registry'
 import {
-  drawImageTransform,
   getImageTransformDimensions,
   getImageTransformDisplayWidth,
   type ImageTransformOperation,
@@ -786,28 +786,37 @@ export function useImageTools({
 
     context.imageSmoothingEnabled = false
     context.drawImage(sourceImage, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, sourceWidth, sourceHeight)
-    const nextDataUrl = withImageResizeMetadata(canvas.toDataURL('image/png'), { v: 1, w: renderedWidth })
+    const cropBlob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((nextBlob) => resolve(nextBlob), 'image/png')
+    })
+    if (!cropBlob) return
+    const cropAssetUrl = await importImageBlobAsAssetUrl(cropBlob, 'cropped-image.png')
+    if (!cropAssetUrl) {
+      pushToast('could not crop image.', 'warning')
+      return
+    }
+    const nextImageUrl = withImageResizeMetadata(cropAssetUrl, { v: 1, w: renderedWidth })
 
     const scrollSnapshot = captureScrollSnapshot(image)
     const rebindToken = imageRebindTokenRef.current + 1
     imageRebindTokenRef.current = rebindToken
     imageRebindInProgressRef.current = true
-    const updateResult = updateEditorImageNode(image, { imageUrl: nextDataUrl, altText: image.alt || null }, { scrollSnapshot })
+    const updateResult = updateEditorImageNode(image, { imageUrl: nextImageUrl, altText: image.alt || null }, { scrollSnapshot })
     const selectedImage =
       updateResult.image ??
-      rebindActiveImage(nextDataUrl, image, image.alt || null, updateResult.position) ??
+      rebindActiveImage(nextImageUrl, image, image.alt || null, updateResult.position) ??
       image
     if (!updateResult.updated) {
-      image.src = nextDataUrl
+      image.src = nextImageUrl
       commitCurrentEditorContent()
     }
     activeImageRef.current = selectedImage
     activeImageLookupRef.current = {
-      sourceUrl: nextDataUrl,
+      sourceUrl: nextImageUrl,
       altText: selectedImage.alt || null,
       position: updateResult.position,
     }
-    selectedImage.src = nextDataUrl
+    selectedImage.src = nextImageUrl
     selectedImage.style.width = `${renderedWidth}px`
     selectedImage.style.height = `${renderedHeight}px`
     selectedImage.setAttribute('width', String(renderedWidth))
@@ -817,7 +826,7 @@ export function useImageTools({
     restoreScrollSnapshot(scrollSnapshot)
     refreshPosition({ closeOnMissing: false })
     restoreScrollSnapshot(scrollSnapshot)
-    scheduleImageRebindAndRefresh(nextDataUrl, selectedImage, selectedImage.alt || null, rebindToken, {
+    scheduleImageRebindAndRefresh(nextImageUrl, selectedImage, selectedImage.alt || null, rebindToken, {
       position: updateResult.position,
       scrollSnapshot,
     })
@@ -845,42 +854,33 @@ export function useImageTools({
       if (sourceWidth <= 0 || sourceHeight <= 0) throw new Error('invalid image dimensions')
 
       const dimensions = getImageTransformDimensions(sourceWidth, sourceHeight, operation)
-      const canvas = document.createElement('canvas')
-      canvas.width = dimensions.width
-      canvas.height = dimensions.height
-      const context = canvas.getContext('2d')
-      if (!context) throw new Error('canvas context unavailable')
-
-      context.imageSmoothingEnabled = false
-      drawImageTransform(context, sourceImage, sourceWidth, sourceHeight, operation)
-
       const renderedWidth = image.getBoundingClientRect().width || image.width || sourceWidth
-      const nextDataUrl = withImageTransformDisplayWidth(
-        canvas.toDataURL('image/png'),
+      const nextImageUrl = withImageTransformDisplayWidth(
+        sourceUrl,
         sourceUrl,
         renderedWidth,
         sourceWidth,
         dimensions.width,
         operation,
       )
-      const displayWidth = getImageTransformDisplayWidth(nextDataUrl, renderedWidth)
+      const displayWidth = getImageTransformDisplayWidth(nextImageUrl, renderedWidth)
 
-      const updateResult = updateEditorImageNode(image, { imageUrl: nextDataUrl, altText: image.alt || null }, { scrollSnapshot })
+      const updateResult = updateEditorImageNode(image, { imageUrl: nextImageUrl, altText: image.alt || null }, { scrollSnapshot })
       const selectedImage =
         updateResult.image ??
-        rebindActiveImage(nextDataUrl, image, image.alt || null, updateResult.position) ??
+        rebindActiveImage(nextImageUrl, image, image.alt || null, updateResult.position) ??
         image
       if (!updateResult.updated) {
-        image.src = nextDataUrl
+        image.src = nextImageUrl
         commitCurrentEditorContent()
       }
       activeImageRef.current = selectedImage
       activeImageLookupRef.current = {
-        sourceUrl: nextDataUrl,
+        sourceUrl: nextImageUrl,
         altText: selectedImage.alt || null,
         position: updateResult.position,
       }
-      selectedImage.src = nextDataUrl
+      selectedImage.src = nextImageUrl
       selectedImage.style.width = `${displayWidth}px`
       selectedImage.style.height = 'auto'
       selectedImage.style.maxWidth = '100%'
@@ -890,7 +890,7 @@ export function useImageTools({
       restoreScrollSnapshot(scrollSnapshot)
       refreshPosition({ closeOnMissing: false })
       restoreScrollSnapshot(scrollSnapshot)
-      scheduleImageRebindAndRefresh(nextDataUrl, selectedImage, selectedImage.alt || null, rebindToken, {
+      scheduleImageRebindAndRefresh(nextImageUrl, selectedImage, selectedImage.alt || null, rebindToken, {
         menuMode: 'transform',
         position: updateResult.position,
         scrollSnapshot,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { withImageResizeMetadata } from '../markdown/image-metadata'
+import { getImageResizeMetadata, stripImageResizeMetadataFromUrl, withImageResizeMetadata } from '../markdown/image-metadata'
 import {
   getImageTransformDimensions,
   getImageTransformDisplayWidth,
@@ -92,5 +92,16 @@ describe('image transform helpers', () => {
 
     expect(nextUrl).toContain('data:image/png;base64,def#tabs-image=')
     expect(getImageTransformDisplayWidth(nextUrl, 240)).toBe(54)
+  })
+
+  it('stores rotate and flip operations as metadata without changing the image source', () => {
+    const sourceUrl = withImageResizeMetadata('tabs-asset:///assets/source.png', { v: 1, w: 96 })
+    const rotatedUrl = withImageTransformDisplayWidth(sourceUrl, sourceUrl, 96, 320, 180, 'rotate-cw')
+    const flippedUrl = withImageTransformDisplayWidth(rotatedUrl, rotatedUrl, 54, 180, 180, 'flip-horizontal')
+
+    expect(stripImageResizeMetadataFromUrl(rotatedUrl)).toBe('tabs-asset:///assets/source.png')
+    expect(getImageResizeMetadata(rotatedUrl)).toMatchObject({ v: 1, w: 54, r: 90 })
+    expect(stripImageResizeMetadataFromUrl(flippedUrl)).toBe('tabs-asset:///assets/source.png')
+    expect(getImageResizeMetadata(flippedUrl)).toMatchObject({ v: 1, fh: true, r: 90 })
   })
 })

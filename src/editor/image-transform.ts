@@ -1,4 +1,4 @@
-import { getImageResizeMetadata, withImageResizeMetadata } from '../markdown/image-metadata'
+import { getImageResizeMetadata, stripImageResizeMetadataFromUrl, withImageResizeMetadata } from '../markdown/image-metadata'
 
 export type ImageTransformOperation = 'rotate-ccw' | 'rotate-cw' | 'flip-horizontal' | 'flip-vertical'
 
@@ -51,16 +51,27 @@ export function getImageTransformDisplayWidthAfterOperation(
 }
 
 export function withImageTransformDisplayWidth(
-  dataUrl: string,
+  targetUrl: string,
   sourceUrl: string,
   renderedWidth: number,
   sourceWidth: number,
   transformedWidth: number,
   operation: ImageTransformOperation,
 ): string {
-  return withImageResizeMetadata(dataUrl, {
+  const sourceMetadata = getImageResizeMetadata(sourceUrl)
+  const currentRotation = sourceMetadata?.r ?? 0
+  const nextRotation =
+    operation === 'rotate-cw'
+      ? ((currentRotation + 90) % 360)
+      : operation === 'rotate-ccw'
+        ? ((currentRotation + 270) % 360)
+        : currentRotation
+  return withImageResizeMetadata(stripImageResizeMetadataFromUrl(targetUrl), {
     v: 1,
     w: getImageTransformDisplayWidthAfterOperation(sourceUrl, renderedWidth, sourceWidth, transformedWidth, operation),
+    ...(nextRotation === 90 || nextRotation === 180 || nextRotation === 270 ? { r: nextRotation } : {}),
+    ...(operation === 'flip-horizontal' ? { fh: !(sourceMetadata?.fh === true) } : sourceMetadata?.fh ? { fh: true } : {}),
+    ...(operation === 'flip-vertical' ? { fv: !(sourceMetadata?.fv === true) } : sourceMetadata?.fv ? { fv: true } : {}),
   })
 }
 

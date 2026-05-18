@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs'
-import { buildAppStateExportArchive } from './app-state-storage.mjs'
+import { buildAppStateExportArchive, getHybridStorageRoot } from './app-state-storage.mjs'
 
-export function registerFileIpc({ ipcMain, dialog }) {
+export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
   ipcMain.handle('save-file', async (_event, payload) => {
     const { defaultPath, data } = payload ?? {}
     if (!(data instanceof ArrayBuffer)) return { canceled: true, error: 'Invalid payload' }
@@ -30,7 +30,10 @@ export function registerFileIpc({ ipcMain, dialog }) {
     if (saveResult.canceled || !saveResult.filePath) return { canceled: true }
 
     try {
-      const bytes = await buildAppStateExportArchive(serializedState)
+      const profileRootPath = storageSession?.getProfileRootPath?.()
+      const bytes = await buildAppStateExportArchive(serializedState, {
+        assetSourceRoot: profileRootPath ? getHybridStorageRoot(profileRootPath) : null,
+      })
       writeFileSync(saveResult.filePath, bytes)
       return { canceled: false, filePath: saveResult.filePath }
     } catch (error) {

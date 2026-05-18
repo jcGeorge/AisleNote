@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { buildImageAssetUrl } from '../markdown/image-asset-refs.js'
+import { registerImageAssetBytes } from '../markdown/image-asset-registry'
 import { parseSavedState } from '../state/app-state'
 import { buildHybridFileMapFromSerializedState, readSerializedStateFromHybridFileMap } from './browser-hybrid-state'
 import { STORAGE_PATH_SEGMENT_MAX_LENGTH } from './storage-path-segments.js'
@@ -367,6 +369,24 @@ describe('browser hybrid storage', () => {
 
     expect(serialized).toEqual(expect.any(String))
     expect(roundTripped.noteBodies[0]?.aisles[0]?.markdown).toContain('![pixel](')
+    expect(roundTripped.noteBodies[0]?.aisles[0]?.markdown).not.toContain('data:image/')
+  })
+
+  it('round trips registered image asset refs without data URLs', () => {
+    const state = createBrowserStorageState()
+    const bytes = new Uint8Array([1, 2, 3, 4])
+    const assetPath = 'assets/asset-browser-test.png'
+    registerImageAssetBytes(assetPath, bytes, 'image/png')
+    state.noteBodies[0].aisles[0].markdown = `image ![pixel](${buildImageAssetUrl(assetPath)})`
+
+    const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
+    const assetEntry = fileMap.get(`notes-data/${assetPath}`)
+    const serialized = readSerializedStateFromHybridFileMap(fileMap)
+    const roundTripped = parseSavedState(serialized ?? '')
+
+    expect(assetEntry?.kind).toBe('binary')
+    expect(assetEntry?.kind === 'binary' ? Array.from(assetEntry.bytes) : []).toEqual(Array.from(bytes))
+    expect(roundTripped.noteBodies[0]?.aisles[0]?.markdown).toContain(buildImageAssetUrl(assetPath))
     expect(roundTripped.noteBodies[0]?.aisles[0]?.markdown).not.toContain('data:image/')
   })
 

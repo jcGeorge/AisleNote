@@ -9,6 +9,13 @@ export function syncImageDisplayMetadata(image: HTMLImageElement) {
   image.style.maxWidth = '100%'
   image.setAttribute('width', String(metadata.w))
   image.removeAttribute('height')
+  const transforms: string[] = []
+  if (metadata.r) transforms.push(`rotate(${metadata.r}deg)`)
+  if (metadata.fh) transforms.push('scaleX(-1)')
+  if (metadata.fv) transforms.push('scaleY(-1)')
+  image.style.transform = transforms.join(' ')
+  image.style.transformOrigin = transforms.length > 0 ? 'center center' : ''
+  image.style.display = transforms.length > 0 ? 'inline-block' : ''
   return true
 }
 

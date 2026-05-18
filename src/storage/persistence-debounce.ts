@@ -5,6 +5,10 @@ export type AppStateSaveOptions = {
   preferSync?: boolean
 }
 
+export type AppStateCommitOptions = AppStateSaveOptions & {
+  flushQueue?: boolean
+}
+
 type TimeoutId = ReturnType<typeof setTimeout>
 
 type PersistenceDebounceOptions<T> = {

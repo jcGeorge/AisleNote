@@ -1,11 +1,10 @@
 /* eslint-disable react-hooks/exhaustive-deps */
-import { useEffect, useMemo, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
+import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import { sanitizeName } from '../export/export-data'
 import { applyTemplateToStageManagerSelection } from '../frontmatter/frontmatter-state'
 import { DEFAULT_AUTO_REMOVE_DAYS } from '../settings/defaults'
 import { applyAutoPurgeToAppState } from '../state/app-state'
 import { createId, createWorkspaceDataFromTabs } from '../state/workspace'
-import { appPersistenceService } from '../storage/app-persistence-service'
 import type {
   AppState,
   ContextMenuState,
@@ -49,9 +48,7 @@ type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
 
 type UseStageManagerControllerParams = {
   state: AppState
-  stateRef: MutableRefObject<AppState>
-  setState: Dispatch<SetStateAction<AppState>>
-  storageHydrated: boolean
+  commitAppStateNow: (nextState: AppState) => Promise<AppState>
   activeSpace: Space
   workspace: WorkspaceData
   viewMode: ViewMode
@@ -74,9 +71,7 @@ type ValidationResult = {
 
 export function useStageManagerController({
   state,
-  stateRef,
-  setState,
-  storageHydrated,
+  commitAppStateNow,
   activeSpace,
   workspace,
   viewMode,
@@ -733,11 +728,7 @@ export function useStageManagerController({
 
   const finishApply = (nextState: AppState, toastMessage: string, tone: ToastTone = 'success') => {
     const sanitizedState = applyAutoPurgeToAppState(nextState)
-    stateRef.current = sanitizedState
-    setState(sanitizedState)
-    if (storageHydrated) {
-      appPersistenceService.saveSerializedState(JSON.stringify(sanitizedState))
-    }
+    void commitAppStateNow(sanitizedState)
     setViewMode('main')
     setMenuOpen(false)
     setContextMenu(null)

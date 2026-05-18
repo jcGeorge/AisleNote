@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
-import { useEffect, useRef, type MutableRefObject } from 'react'
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import { Editor } from '@toast-ui/editor'
-import { buildAisleEditorKey, type AisleEditorMeta } from './aisle-editor'
+import { buildAisleEditorKey, getAisleIdFromAisleEditorKey, type AisleEditorMeta } from './aisle-editor'
 import { createCodeBlockControlsPlugin } from './code-block-controls'
 import { installImageDisplayMetadataSync } from './image-dom-metadata'
 import {
@@ -16,6 +16,7 @@ import {
 } from './editor-setup'
 import { terminalBlockLandingPlugin } from './terminal-block-landing'
 import { createContextPreviewPlugin, type ContextPreviewData } from './note-preview-plugin'
+import { sanitizeEditorHtml } from './editor-sanitizer'
 import { getElementFromEventTarget } from './prosemirror-utils'
 import {
   installCompletedTaskCheckboxBehavior,
@@ -25,6 +26,17 @@ import {
   materializeHorizontalRuleShortcut,
   normalizeMarkdownForPersistence,
 } from '../markdown/markdown-utils'
+import {
+  importImageBlobAsAssetUrl,
+  prepareMarkdownImagesForDisplay,
+} from '../markdown/image-asset-registry'
+import {
+  AISLE_EDITOR_IDLE_UNMOUNT_MS,
+  AISLE_EDITOR_INTERSECTION_ROOT_MARGIN,
+  buildRetainedAisleEditorIds,
+  getAislePreviewMarkdown,
+  updateRecentAisleIds,
+} from './aisle-editor-retention'
 import type { NoteAisle, NoteLocation, PendingContent, ToastTone, ViewMode } from '../types/app'
 import type { NoteContextReferencePayload } from '../notes/note-references'
 import type { PendingCursorRestore } from './useNoteCursorPersistence'
@@ -42,6 +54,7 @@ type UseAisleEditorsOptions = {
   resolvedActiveAisleId: string
   activeAisleId: string
   setActiveAisleId: (aisleId: string) => void
+  aisleScrollRef: MutableRefObject<HTMLDivElement | null>
   editorRef: MutableRefObject<Editor | null>
   multiLineCursorPluginKeyRef: MutableRefObject<any>
   lastEditorMarkdownRef: MutableRefObject<string>
@@ -87,6 +100,7 @@ export function useAisleEditors({
   resolvedActiveAisleId,
   activeAisleId,
   setActiveAisleId,
+  aisleScrollRef,
   editorRef,
   multiLineCursorPluginKeyRef,
   lastEditorMarkdownRef,
@@ -119,7 +133,40 @@ export function useAisleEditors({
   deleteContextPreview,
 }: UseAisleEditorsOptions) {
   const aisleEditorRootsRef = useRef<Map<string, HTMLElement>>(new Map())
+  const aislePaneRootsRef = useRef<Map<string, HTMLElement>>(new Map())
   const aisleEditorMetaRef = useRef<Map<string, AisleEditorMeta>>(new Map())
+  const [nearVisibleAisleIds, setNearVisibleAisleIds] = useState<Set<string>>(() => new Set())
+  const [recentAisleIds, setRecentAisleIds] = useState<string[]>([])
+  const [retainedAisleIds, setRetainedAisleIds] = useState<Set<string>>(() => new Set())
+  const idleUnmountTimerRef = useRef<number | null>(null)
+  const pendingFocusAfterMountAisleIdRef = useRef<string | null>(null)
+  const activeAisleIds = useMemo(() => activeNoteAisles.map((aisle) => aisle.id), [activeNoteAisles])
+  const desiredMountedAisleIds = useMemo(
+    () =>
+      buildRetainedAisleEditorIds({
+        aisleIds: activeAisleIds,
+        activeAisleId: resolvedActiveAisleId,
+        nearVisibleAisleIds,
+        recentAisleIds,
+      }),
+    [activeAisleIds, nearVisibleAisleIds, recentAisleIds, resolvedActiveAisleId],
+  )
+  const mountedAisleIds = useMemo(
+    () => new Set([...retainedAisleIds, ...desiredMountedAisleIds]),
+    [desiredMountedAisleIds, retainedAisleIds],
+  )
+  const mountedAisleIdsKey = useMemo(() => activeAisleIds.filter((aisleId) => mountedAisleIds.has(aisleId)).join('\n'), [
+    activeAisleIds,
+    mountedAisleIds,
+  ])
+  const retainRecentAisleId = (aisleId: string) => {
+    setRecentAisleIds((currentIds) => {
+      const nextIds = updateRecentAisleIds(currentIds, aisleId)
+      return nextIds.length === currentIds.length && nextIds.every((candidate, index) => candidate === currentIds[index])
+        ? currentIds
+        : nextIds
+    })
+  }
 
   const activateAisleEditor = (
     editorKey: string,
@@ -127,7 +174,22 @@ export function useAisleEditors({
   ) => {
     if (isPendingCreatedRenameActive() && !options.allowDuringPendingRename) return false
     const meta = aisleEditorMetaRef.current.get(editorKey)
-    if (!meta) return false
+    if (!meta) {
+      const aisleId = getAisleIdFromAisleEditorKey(editorKey)
+      if (!activeAisleIds.includes(aisleId)) return false
+      if (activeAisleIdRef.current !== aisleId && options.flushPrevious) {
+        saveActiveCursorLocation()
+        flushPendingContent()
+        clearMultiLineEdit(false)
+        closeImageToolsRef.current()
+      }
+      activeAisleIdRef.current = aisleId
+      setActiveAisleId(aisleId)
+      retainRecentAisleId(aisleId)
+      setRetainedAisleIds((currentIds) => new Set([...currentIds, aisleId]))
+      if (options.focus) pendingFocusAfterMountAisleIdRef.current = aisleId
+      return false
+    }
 
     const switchingAisle = activeAisleIdRef.current !== meta.aisleId
     if (switchingAisle && options.flushPrevious) {
@@ -146,6 +208,7 @@ export function useAisleEditors({
     if (activeAisleId !== meta.aisleId) {
       setActiveAisleId(meta.aisleId)
     }
+    retainRecentAisleId(meta.aisleId)
     if (options.focus) {
       meta.editor.focus()
     }
@@ -167,6 +230,14 @@ export function useAisleEditors({
       aisleEditorRootsRef.current.set(editorKey, node)
     } else {
       aisleEditorRootsRef.current.delete(editorKey)
+    }
+  }
+
+  const registerAislePaneRoot = (aisleId: string, node: HTMLElement | null) => {
+    if (node) {
+      aislePaneRootsRef.current.set(aisleId, node)
+    } else {
+      aislePaneRootsRef.current.delete(aisleId)
     }
   }
 
@@ -210,7 +281,7 @@ export function useAisleEditors({
       normalizingAisleIdsRef.current.add(aisleId)
       lastEditorMarkdownRef.current = materializedHorizontalRule
       lastEditorMarkdownByAisleRef.current.set(aisleId, materializedHorizontalRule)
-      editor.setMarkdown(materializedHorizontalRule, false)
+      editor.setMarkdown(prepareMarkdownImagesForDisplay(materializedHorizontalRule), false)
       return
     }
 
@@ -226,9 +297,27 @@ export function useAisleEditors({
     )
   }
 
-  const destroyAisleEditor = (editorKey: string) => {
+  const captureAisleEditorContent = (meta: AisleEditorMeta) => {
+    const markdown = getNormalizedEditorMarkdown(meta.editor)
+    lastEditorMarkdownByAisleRef.current.set(meta.aisleId, markdown)
+    if (activeAisleIdRef.current === meta.aisleId) {
+      lastEditorMarkdownRef.current = markdown
+    }
+    scheduleContentCommit(
+      markdown,
+      activeSpaceIdRef.current,
+      activeTabIdRef.current,
+      activeSubTabIdRef.current,
+      meta.aisleId,
+    )
+  }
+
+  const destroyAisleEditor = (editorKey: string, options: { captureContent?: boolean } = {}) => {
     const meta = aisleEditorMetaRef.current.get(editorKey)
     if (!meta) return
+    if (options.captureContent) {
+      captureAisleEditorContent(meta)
+    }
     meta.cleanup()
     aisleEditorMetaRef.current.delete(editorKey)
     lastEditorMarkdownByAisleRef.current.delete(meta.aisleId)
@@ -244,6 +333,79 @@ export function useAisleEditors({
   }
 
   useEffect(() => {
+    if (idleUnmountTimerRef.current !== null) {
+      window.clearTimeout(idleUnmountTimerRef.current)
+      idleUnmountTimerRef.current = null
+    }
+
+    setRetainedAisleIds((currentIds) => {
+      const nextIds = new Set([...currentIds, ...desiredMountedAisleIds])
+      return nextIds.size === currentIds.size && Array.from(nextIds).every((aisleId) => currentIds.has(aisleId))
+        ? currentIds
+        : nextIds
+    })
+
+    idleUnmountTimerRef.current = window.setTimeout(() => {
+      idleUnmountTimerRef.current = null
+      setRetainedAisleIds(new Set(desiredMountedAisleIds))
+    }, AISLE_EDITOR_IDLE_UNMOUNT_MS)
+
+    return () => {
+      if (idleUnmountTimerRef.current !== null) {
+        window.clearTimeout(idleUnmountTimerRef.current)
+        idleUnmountTimerRef.current = null
+      }
+    }
+  }, [desiredMountedAisleIds])
+
+  useEffect(() => {
+    if (viewMode !== 'main' || !activeNoteBodyId) {
+      setNearVisibleAisleIds(new Set())
+      setRetainedAisleIds(new Set())
+      setRecentAisleIds([])
+      return
+    }
+
+    const scrollRoot = aisleScrollRef.current
+    if (!scrollRoot || typeof IntersectionObserver === 'undefined') {
+      setNearVisibleAisleIds(new Set(activeAisleIds))
+      return
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        setNearVisibleAisleIds((currentIds) => {
+          const nextIds = new Set(currentIds)
+          for (const entry of entries) {
+            const aisleId = (entry.target as HTMLElement).dataset.aisleId
+            if (!aisleId) continue
+            if (entry.isIntersecting) {
+              nextIds.add(aisleId)
+            } else {
+              nextIds.delete(aisleId)
+            }
+          }
+          return nextIds.size === currentIds.size && Array.from(nextIds).every((aisleId) => currentIds.has(aisleId))
+            ? currentIds
+            : nextIds
+        })
+      },
+      {
+        root: scrollRoot,
+        rootMargin: AISLE_EDITOR_INTERSECTION_ROOT_MARGIN,
+        threshold: 0,
+      },
+    )
+
+    for (const aisleId of activeAisleIds) {
+      const pane = aislePaneRootsRef.current.get(aisleId)
+      if (pane) observer.observe(pane)
+    }
+
+    return () => observer.disconnect()
+  }, [viewMode, activeNoteBodyId, activeAisleIds, aisleScrollRef])
+
+  useEffect(() => {
     if (viewMode !== 'main' || !activeNoteBodyId) {
       destroyAllAisleEditors()
       return
@@ -252,12 +414,16 @@ export function useAisleEditors({
     const expectedKeys = new Set(activeNoteAisles.map((aisle) => buildAisleEditorKey(activeNoteBodyId, aisle.id)))
 
     for (const editorKey of Array.from(aisleEditorMetaRef.current.keys())) {
+      const meta = aisleEditorMetaRef.current.get(editorKey)
       if (!expectedKeys.has(editorKey)) {
         destroyAisleEditor(editorKey)
+      } else if (meta && !mountedAisleIds.has(meta.aisleId)) {
+        destroyAisleEditor(editorKey, { captureContent: true })
       }
     }
 
     for (const aisle of activeNoteAisles) {
+      if (!mountedAisleIds.has(aisle.id)) continue
       const editorKey = buildAisleEditorKey(activeNoteBodyId, aisle.id)
       const root = aisleEditorRootsRef.current.get(editorKey)
       if (!root || aisleEditorMetaRef.current.has(editorKey)) continue
@@ -265,10 +431,11 @@ export function useAisleEditors({
       let pluginKey: unknown = null
       const editor = new Editor({
         el: root,
-        initialValue: aisle.markdown,
+        initialValue: prepareMarkdownImagesForDisplay(aisle.markdown),
         initialEditType: 'wysiwyg',
         previewStyle: 'tab',
         hideModeSwitch: true,
+        customHTMLSanitizer: sanitizeEditorHtml,
         toolbarItems: EDITOR_TOOLBAR_ITEMS,
         height: '100%',
         autofocus: false,
@@ -299,14 +466,14 @@ export function useAisleEditors({
         ],
         hooks: {
           addImageBlobHook: (blob: Blob | File, callback: (url: string, text?: string) => void) => {
-            const reader = new FileReader()
-            reader.onload = () => {
-              const dataUrl = typeof reader.result === 'string' ? reader.result : ''
-              if (!dataUrl) return
-              callback(dataUrl, blob instanceof File ? blob.name : 'image')
+            void importImageBlobAsAssetUrl(blob, blob instanceof File ? blob.name : 'image').then((assetUrl) => {
+              if (!assetUrl) {
+                pushToast('could not import image.', 'warning')
+                return
+              }
+              callback(assetUrl, blob instanceof File ? blob.name : 'image')
               window.setTimeout(() => commitCurrentEditorContent(), 30)
-            }
-            reader.readAsDataURL(blob)
+            })
           },
         },
         events: {
@@ -362,13 +529,18 @@ export function useAisleEditors({
         },
       })
       lastEditorMarkdownByAisleRef.current.set(aisle.id, normalizeMarkdownForPersistence(aisle.markdown))
+
+      if (pendingFocusAfterMountAisleIdRef.current === aisle.id) {
+        pendingFocusAfterMountAisleIdRef.current = null
+        activateAisleEditor(editorKey, { focus: true })
+      }
     }
 
     const activeEditorKey = buildAisleEditorKey(activeNoteBodyId, resolvedActiveAisleId)
     if (aisleEditorMetaRef.current.has(activeEditorKey)) {
       activateAisleEditor(activeEditorKey)
     }
-  }, [viewMode, activeNoteBodyId, activeNoteAisles, resolvedActiveAisleId])
+  }, [viewMode, activeNoteBodyId, activeNoteAisles, resolvedActiveAisleId, mountedAisleIdsKey])
 
   useEffect(() => () => destroyAllAisleEditors(), [])
 
@@ -392,7 +564,7 @@ export function useAisleEditors({
         if (activeAisleIdRef.current === aisle.id) {
           lastEditorMarkdownRef.current = normalizeMarkdownForPersistence(expectedMarkdown)
         }
-        meta.editor.setMarkdown(expectedMarkdown, false)
+        meta.editor.setMarkdown(prepareMarkdownImagesForDisplay(expectedMarkdown), false)
       }
     }
   }, [viewMode, activeNoteBodyId, activeNoteAisles])
@@ -401,5 +573,13 @@ export function useAisleEditors({
     activateAisleEditor,
     activateEditorFromEventTarget,
     registerAisleEditorRoot,
+    registerAislePaneRoot,
+    mountedAisleIds,
+    getPreviewMarkdownForAisle: (aisle: NoteAisle) =>
+      getAislePreviewMarkdown({
+        aisle,
+        pendingContent: pendingContentRef.current,
+        lastEditorMarkdownByAisle: lastEditorMarkdownByAisleRef.current,
+      }),
   }
 }

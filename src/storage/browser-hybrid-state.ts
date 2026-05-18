@@ -10,6 +10,15 @@ import {
 } from '../types/storage-schema'
 import { splitImageResizeMetadataFromUrl } from '../markdown/image-metadata'
 import {
+  buildImageAssetUrl,
+  normalizeImageAssetPath,
+  parseImageAssetUrl,
+} from '../markdown/image-asset-refs.js'
+import {
+  getRegisteredImageAssetBytes,
+  registerImageAssetBytes,
+} from '../markdown/image-asset-registry'
+import {
   storageError,
   storageReadOk,
   storageWriteOk,
@@ -147,14 +156,6 @@ function decodeDataUrl(dataUrl: string): { bytes: Uint8Array; extension: string 
   }
 }
 
-function encodeDataUrl(bytes: Uint8Array, extension: string): string {
-  let binary = ''
-  for (let index = 0; index < bytes.length; index += 1) {
-    binary += String.fromCharCode(bytes[index])
-  }
-  return `data:${getMimeTypeFromExtension(extension)};base64,${btoa(binary)}`
-}
-
 function createAssetHash(bytes: Uint8Array): string {
   let hashA = 2166136261
   let hashB = 16777619
@@ -210,22 +211,42 @@ function externalizeMarkdownImages(markdown: string, noteFileRelative: string, a
   return markdown.replace(IMAGE_MARKDOWN_PATTERN, (fullMatch, altText: string, srcRaw: string) => {
     const src = srcRaw.trim()
     const { imageUrl, metadataFragment } = splitImageResizeMetadataFromUrl(src)
-    if (!imageUrl.startsWith('data:image/')) return fullMatch
-    const decoded = decodeDataUrl(imageUrl)
-    if (!decoded) return fullMatch
+    let assetRelativePath = parseImageAssetUrl(imageUrl)
 
-    const assetRelativePath = addAssetToBank(assetBank, decoded.bytes, decoded.extension)
+    if (assetRelativePath) {
+      assetRelativePath = normalizeImageAssetPath(assetRelativePath)
+      const bytes = getRegisteredImageAssetBytes(assetRelativePath)
+      if (bytes) {
+        assetBank.files.set(assetRelativePath, bytes)
+      }
+    } else if (imageUrl.startsWith('data:image/')) {
+      const decoded = decodeDataUrl(imageUrl)
+      if (!decoded) return fullMatch
+      assetRelativePath = addAssetToBank(assetBank, decoded.bytes, decoded.extension)
+    } else {
+      return fullMatch
+    }
+
     const noteDirectory = dirnamePosix(noteFileRelative)
     const nextSrc = relativePosix(noteDirectory, assetRelativePath)
     return `![${altText}](${nextSrc}${metadataFragment})`
   })
 }
 
-function inlineMarkdownImages(markdown: string, notePath: string, fileMap: Map<string, BrowserStoredFile>): string {
+function referenceMarkdownImages(markdown: string, notePath: string, fileMap: Map<string, BrowserStoredFile>): string {
   return markdown.replace(IMAGE_MARKDOWN_PATTERN, (fullMatch, altText: string, srcRaw: string) => {
     const src = srcRaw.trim()
-    if (!src || src.startsWith('data:')) return fullMatch
+    if (!src) return fullMatch
     const { imageUrl, metadataFragment } = splitImageResizeMetadataFromUrl(src)
+    if (parseImageAssetUrl(imageUrl)) return fullMatch
+    if (imageUrl.startsWith('data:image/')) {
+      const decoded = decodeDataUrl(imageUrl)
+      if (!decoded) return fullMatch
+      const assetPath = joinPosix(STORAGE_ASSETS_DIR, `asset-${createAssetHash(decoded.bytes)}.${normalizeImageExtension(decoded.extension)}`)
+      setBinaryFile(fileMap, joinPosix(STORAGE_ROOT_DIR, assetPath), decoded.bytes)
+      registerImageAssetBytes(assetPath, decoded.bytes, getMimeTypeFromExtension(decoded.extension))
+      return `![${altText}](${buildImageAssetUrl(assetPath)}${metadataFragment})`
+    }
     if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(imageUrl) && !imageUrl.startsWith('file://')) return fullMatch
 
     const assetPath = normalizePosixPath(joinPosix(dirnamePosix(notePath), imageUrl))
@@ -233,7 +254,9 @@ function inlineMarkdownImages(markdown: string, notePath: string, fileMap: Map<s
     if (!assetBytes) return fullMatch
 
     const extension = normalizeImageExtension(assetPath.split('.').pop() ?? 'png')
-    return `![${altText}](${encodeDataUrl(assetBytes, extension)}${metadataFragment})`
+    const rootRelativeAssetPath = normalizeImageAssetPath(assetPath.replace(new RegExp(`^${STORAGE_ROOT_DIR}/`), ''))
+    registerImageAssetBytes(rootRelativeAssetPath, assetBytes, getMimeTypeFromExtension(extension))
+    return `![${altText}](${buildImageAssetUrl(rootRelativeAssetPath)}${metadataFragment})`
   })
 }
 
@@ -643,9 +666,9 @@ export function buildHybridFileMapFromSerializedState(serializedState: string): 
   return fileMap
 }
 
-function readTextFileWithInlinedImages(fileMap: Map<string, BrowserStoredFile>, path: string): string {
+function readTextFileWithReferencedImages(fileMap: Map<string, BrowserStoredFile>, path: string): string {
   const text = getTextFile(fileMap, path) ?? ''
-  return inlineMarkdownImages(text, path, fileMap)
+  return referenceMarkdownImages(text, path, fileMap)
 }
 
 function readNoteBodiesFromRootManifest(
@@ -663,7 +686,7 @@ function readNoteBodiesFromRootManifest(
       if (!aisleId || !file) continue
       aisles.push({
         id: aisleId,
-        markdown: readTextFileWithInlinedImages(fileMap, joinPosix(STORAGE_ROOT_DIR, file)),
+        markdown: readTextFileWithReferencedImages(fileMap, joinPosix(STORAGE_ROOT_DIR, file)),
       })
     }
     noteBodies.push({
@@ -717,13 +740,13 @@ function readSpaceFromHybridFileMap(
       id: tabId,
       title: typeof tabRecord.title === 'string' ? tabRecord.title : 'tab',
       noteBodyId: typeof tabRecord.noteBodyId === 'string' ? tabRecord.noteBodyId : '',
-      homeContent: readTextFileWithInlinedImages(fileMap, joinPosix(STORAGE_ROOT_DIR, spaceRoot, homeNoteFile)),
+      homeContent: readTextFileWithReferencedImages(fileMap, joinPosix(STORAGE_ROOT_DIR, spaceRoot, homeNoteFile)),
       activeSubTabId: typeof tabRecord.activeSubTabId === 'string' ? tabRecord.activeSubTabId : null,
       subTabs: ensureArray<Record<string, unknown>>(tabRecord.subTabs).map((subTabRecord) => ({
         id: typeof subTabRecord.id === 'string' ? subTabRecord.id : '',
         title: typeof subTabRecord.title === 'string' ? subTabRecord.title : 'tab',
         noteBodyId: typeof subTabRecord.noteBodyId === 'string' ? subTabRecord.noteBodyId : '',
-        content: readTextFileWithInlinedImages(
+        content: readTextFileWithReferencedImages(
           fileMap,
           joinPosix(STORAGE_ROOT_DIR, spaceRoot, typeof subTabRecord.file === 'string' ? subTabRecord.file : ''),
         ),
@@ -762,7 +785,7 @@ function readSpaceFromHybridFileMap(
         id: isRecord(item.original) && typeof item.original.primeTabId === 'string' ? item.original.primeTabId : '',
         title: typeof item.title === 'string' ? item.title : 'deleted tab',
         noteBodyId: typeof item.noteBodyId === 'string' ? item.noteBodyId : '',
-        homeContent: readTextFileWithInlinedImages(
+        homeContent: readTextFileWithReferencedImages(
           fileMap,
           joinPosix(STORAGE_ROOT_DIR, trashRoot, typeof item.file === 'string' ? item.file : ''),
         ),
@@ -771,7 +794,7 @@ function readSpaceFromHybridFileMap(
           id: typeof subTabRecord.id === 'string' ? subTabRecord.id : '',
           title: typeof subTabRecord.title === 'string' ? subTabRecord.title : 'tab',
           noteBodyId: typeof subTabRecord.noteBodyId === 'string' ? subTabRecord.noteBodyId : '',
-          content: readTextFileWithInlinedImages(
+          content: readTextFileWithReferencedImages(
             fileMap,
             joinPosix(STORAGE_ROOT_DIR, trashRoot, typeof subTabRecord.file === 'string' ? subTabRecord.file : ''),
           ),
@@ -791,7 +814,7 @@ function readSpaceFromHybridFileMap(
         id: isRecord(item.original) && typeof item.original.subTabId === 'string' ? item.original.subTabId : '',
         title: typeof item.title === 'string' ? item.title : 'deleted note',
         noteBodyId: typeof item.noteBodyId === 'string' ? item.noteBodyId : '',
-        content: readTextFileWithInlinedImages(
+        content: readTextFileWithReferencedImages(
           fileMap,
           joinPosix(STORAGE_ROOT_DIR, trashRoot, typeof item.file === 'string' ? item.file : ''),
         ),

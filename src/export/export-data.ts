@@ -2,6 +2,8 @@ import JSZip from 'jszip'
 import { prependMarkdownFrontmatter } from '../frontmatter/frontmatter'
 import { resolveFrontmatterReferencesForState } from '../frontmatter/frontmatter-state'
 import { splitImageResizeMetadataFromUrl } from '../markdown/image-metadata'
+import { parseImageAssetUrl } from '../markdown/image-asset-refs.js'
+import { getRegisteredImageAssetBytes } from '../markdown/image-asset-registry'
 import { convertInternalTabsForExport } from '../markdown/markdown-utils'
 import type { AppState, Space, SpaceSettings } from '../types/app'
 
@@ -44,23 +46,35 @@ function escapeHtmlAttribute(value: string): string {
     .replace(/>/g, '&gt;')
 }
 
+function getImageExportStyle(metadata: ReturnType<typeof splitImageResizeMetadataFromUrl>['metadata']): string {
+  if (!metadata) return ''
+  const transforms: string[] = []
+  if (metadata.r) transforms.push(`rotate(${metadata.r}deg)`)
+  if (metadata.fh) transforms.push('scaleX(-1)')
+  if (metadata.fv) transforms.push('scaleY(-1)')
+  return transforms.length > 0 ? ` style="${escapeHtmlAttribute(`transform:${transforms.join(' ')};transform-origin:center center`)}"` : ''
+}
+
 function rewriteMarkdownImages(markdown: string, spaceFolder: string, imageBank: Map<string, Uint8Array>) {
   let counter = imageBank.size + 1
   const exportReadyMarkdown = convertInternalTabsForExport(markdown)
-  const nextMarkdown = exportReadyMarkdown.replace(/!\[([^\]]*)\]\((data:image\/[^)]+)\)/g, (_all, alt: string, src: string) => {
+  const nextMarkdown = exportReadyMarkdown.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (fullMatch, alt: string, src: string) => {
     const { imageUrl, metadata } = splitImageResizeMetadataFromUrl(src)
+    const assetPath = parseImageAssetUrl(imageUrl)
     const extensionMatch = imageUrl.match(/^data:image\/([a-zA-Z0-9+.-]+);base64,/)
-    const extRaw = extensionMatch?.[1]?.toLowerCase() ?? 'png'
+    if (!assetPath && !extensionMatch) return fullMatch
+    const extRaw = (assetPath ? assetPath.split('.').pop() : extensionMatch?.[1])?.toLowerCase() ?? 'png'
     const ext = extRaw === 'jpeg' ? 'jpg' : extRaw.replace(/[^a-z0-9]/g, '') || 'png'
     const fileName = `image-${String(counter).padStart(4, '0')}.${ext}`
     counter += 1
-    const bytes = decodeDataUrl(imageUrl)
+    const bytes = assetPath ? getRegisteredImageAssetBytes(assetPath) : decodeDataUrl(imageUrl)
     if (bytes) {
       imageBank.set(`${spaceFolder}/assets/${fileName}`, bytes)
     }
     const nextSrc = `assets/${fileName}`
+    const style = getImageExportStyle(metadata)
     if (metadata) {
-      return `<img src="${escapeHtmlAttribute(nextSrc)}" alt="${escapeHtmlAttribute(alt)}" width="${metadata.w}">`
+      return `<img src="${escapeHtmlAttribute(nextSrc)}" alt="${escapeHtmlAttribute(alt)}" width="${metadata.w}"${style}>`
     }
     return `![${alt}](${nextSrc})`
   })

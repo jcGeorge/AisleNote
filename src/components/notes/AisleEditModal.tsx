@@ -10,13 +10,16 @@ import {
   getAislePreviewMarkdown,
   reorderAisleDraft,
 } from '../../editor/aisle-edit-draft'
+import { resolveImageAssetDisplayUrl } from '../../markdown/image-asset-registry'
 import { createNoteAisle } from '../../state/workspace'
 import type { NoteAisle } from '../../types/app'
 
 const AISLE_DRAG_MIME = 'application/x-tabs-aisle-id'
 
 const transformAislePreviewUrl = (url: string, key: string) =>
-  key === 'src' && /^data:image\//i.test(url) ? url : defaultUrlTransform(url)
+  key === 'src' && (/^data:image\//i.test(url) || /^blob:/i.test(url) || /^tabs-asset:/i.test(url))
+    ? resolveImageAssetDisplayUrl(url)
+    : defaultUrlTransform(url)
 
 const aislePreviewMarkdownComponents = {
   img: ({ node, ...props }: ImgHTMLAttributes<HTMLImageElement> & { node?: unknown }) => {

@@ -1,6 +1,9 @@
 export type ImageResizeMetadata = {
   v: 1
   w: number
+  r?: 0 | 90 | 180 | 270
+  fh?: boolean
+  fv?: boolean
 }
 
 export const IMAGE_RESIZE_METADATA_FRAGMENT_PREFIX = '#tabs-image='
@@ -45,14 +48,28 @@ export function parseImageResizeMetadataFragment(fragment: string): ImageResizeM
     const raw = JSON.parse(decoded) as Partial<ImageResizeMetadata>
     const width = normalizeImageResizeWidth(raw.w)
     if (raw.v !== 1 || !width) return null
-    return { v: 1, w: width }
+    const rotation = raw.r === 90 || raw.r === 180 || raw.r === 270 ? raw.r : undefined
+    return {
+      v: 1,
+      w: width,
+      ...(rotation ? { r: rotation } : {}),
+      ...(raw.fh === true ? { fh: true } : {}),
+      ...(raw.fv === true ? { fv: true } : {}),
+    }
   } catch {
     return null
   }
 }
 
 export function buildImageResizeMetadataFragment(metadata: ImageResizeMetadata): string {
-  return `${IMAGE_RESIZE_METADATA_FRAGMENT_PREFIX}${encodeBase64Url(JSON.stringify({ v: 1, w: metadata.w }))}`
+  const payload = {
+    v: 1,
+    w: metadata.w,
+    ...(metadata.r ? { r: metadata.r } : {}),
+    ...(metadata.fh === true ? { fh: true } : {}),
+    ...(metadata.fv === true ? { fv: true } : {}),
+  }
+  return `${IMAGE_RESIZE_METADATA_FRAGMENT_PREFIX}${encodeBase64Url(JSON.stringify(payload))}`
 }
 
 export function splitImageResizeMetadataFromUrl(url: string): {
@@ -86,5 +103,5 @@ export function withImageResizeMetadata(url: string, metadata: ImageResizeMetada
   const width = normalizeImageResizeWidth(metadata.w)
   const imageUrl = stripImageResizeMetadataFromUrl(url)
   if (!width) return imageUrl
-  return `${imageUrl}${buildImageResizeMetadataFragment({ v: 1, w: width })}`
+  return `${imageUrl}${buildImageResizeMetadataFragment({ ...metadata, v: 1, w: width })}`
 }

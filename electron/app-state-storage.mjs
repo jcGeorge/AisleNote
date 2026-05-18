@@ -33,6 +33,11 @@ import {
   normalizeImageExtension,
 } from '../src/storage/hybrid-storage-core.js'
 import { buildStoragePathFileName, createStoragePathAllocator } from '../src/storage/storage-path-segments.js'
+import {
+  buildImageAssetUrl,
+  normalizeImageAssetPath,
+  parseImageAssetUrl,
+} from '../src/markdown/image-asset-refs.js'
 import { migrateStorageRootManifest } from './storage-migrations.mjs'
 
 const LEGACY_APP_STATE_RELATIVE_PATH = path.join('data', 'notes', 'index.json')
@@ -180,9 +185,10 @@ function normalizeAppStateForExport(appState) {
   }
 }
 
-function createAssetBank(assetRootRelative = 'assets') {
+function createAssetBank(assetRootRelative = 'assets', existingRoot = null) {
   return {
     assetRootRelative,
+    existingRoot,
     files: new Map(),
     keys: new Map(),
   }
@@ -276,6 +282,24 @@ function addAssetToBank(assetBank, bytes, extension) {
   return relativeAssetPath
 }
 
+function addAssetToNotesRoot(notesRootPath, bytes, extension) {
+  const ext = normalizeImageExtension(extension)
+  const buffer = Buffer.from(bytes)
+  const hash = createHash('sha1').update(buffer).digest('hex').slice(0, 16)
+  const relativeAssetPath = path.posix.join('assets', `asset-${hash}.${ext}`)
+  writeBinaryFileAtomic(notesRootPath, relativeAssetPath, buffer)
+  return relativeAssetPath
+}
+
+export function writeImageAssetToProfile(profileRootPath, bytes, extension) {
+  const notesRootPath = getHybridStorageRoot(profileRootPath)
+  const assetPath = addAssetToNotesRoot(notesRootPath, bytes, extension)
+  return {
+    assetPath,
+    url: buildImageAssetUrl(assetPath),
+  }
+}
+
 function externalizeMarkdownImages(markdown, noteFileRelative, assetBank) {
   return String(markdown ?? '').replace(IMAGE_MARKDOWN_PATTERN, (fullMatch, altText, srcRaw) => {
     const src = String(srcRaw ?? '').trim()
@@ -283,8 +307,17 @@ function externalizeMarkdownImages(markdown, noteFileRelative, assetBank) {
     const { imageUrl, metadataFragment } = splitImageMetadataFromUrl(src)
 
     let decoded = null
+    let assetRelativePath = parseImageAssetUrl(imageUrl)
 
-    if (imageUrl.startsWith('data:image/')) {
+    if (assetRelativePath) {
+      assetRelativePath = normalizeImageAssetPath(assetRelativePath)
+      if (assetBank.existingRoot) {
+        const existingAssetPath = path.join(assetBank.existingRoot, assetRelativePath)
+        if (existsSync(existingAssetPath)) {
+          assetBank.files.set(assetRelativePath, readFileSync(existingAssetPath))
+        }
+      }
+    } else if (imageUrl.startsWith('data:image/')) {
       decoded = decodeImageDataUrl(imageUrl)
     } else if (imageUrl.startsWith('file://')) {
       try {
@@ -300,20 +333,29 @@ function externalizeMarkdownImages(markdown, noteFileRelative, assetBank) {
       }
     }
 
-    if (!decoded) return fullMatch
+    if (!assetRelativePath && decoded) {
+      assetRelativePath = addAssetToBank(assetBank, decoded.bytes, decoded.extension)
+    }
 
-    const assetRelativePath = addAssetToBank(assetBank, decoded.bytes, decoded.extension)
+    if (!assetRelativePath) return fullMatch
     const noteDirectory = path.posix.dirname(noteFileRelative)
     const nextSrc = path.posix.relative(noteDirectory, assetRelativePath) || path.posix.basename(assetRelativePath)
     return `![${altText}](${nextSrc}${metadataFragment})`
   })
 }
 
-function inlineMarkdownImages(markdown, noteFilePath, issues = null, issueRootPath = null) {
+function referenceMarkdownImages(markdown, noteFilePath, issues = null, issueRootPath = null) {
   return String(markdown ?? '').replace(IMAGE_MARKDOWN_PATTERN, (fullMatch, altText, srcRaw) => {
     const src = String(srcRaw ?? '').trim()
-    if (!src || src.startsWith('data:')) return fullMatch
+    if (!src) return fullMatch
     const { imageUrl, metadataFragment } = splitImageMetadataFromUrl(src)
+    if (parseImageAssetUrl(imageUrl)) return fullMatch
+    if (imageUrl.startsWith('data:image/')) {
+      const decoded = decodeImageDataUrl(imageUrl)
+      if (!decoded || !issueRootPath) return fullMatch
+      const assetPath = addAssetToNotesRoot(issueRootPath, decoded.bytes, decoded.extension)
+      return `![${altText}](${buildImageAssetUrl(assetPath)}${metadataFragment})`
+    }
     if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(imageUrl) && !imageUrl.startsWith('file://')) return fullMatch
 
     let absolutePath = null
@@ -339,8 +381,10 @@ function inlineMarkdownImages(markdown, noteFilePath, issues = null, issueRootPa
     }
 
     try {
-      const bytes = readFileSync(absolutePath)
-      return `![${altText}](${buildImageDataUrl(bytes, absolutePath)}${metadataFragment})`
+      const rootRelativePath = issueRootPath
+        ? normalizeImageAssetPath(path.relative(issueRootPath, absolutePath).split(path.sep).join(path.posix.sep))
+        : normalizeImageAssetPath(path.basename(absolutePath))
+      return `![${altText}](${buildImageAssetUrl(rootRelativePath)}${metadataFragment})`
     } catch {
       addStorageIssue(
         issues,
@@ -442,7 +486,7 @@ function readMarkdownFile(baseDirectory, relativeFile, issues = null, issueRootP
     missingMessage: 'Markdown file is missing; this note was loaded as empty.',
     readMessage: 'Markdown file could not be read; this note was loaded as empty.',
   }) ?? ''
-  return inlineMarkdownImages(markdown, absolutePath, issues, issueRootPath)
+  return referenceMarkdownImages(markdown, absolutePath, issues, issueRootPath)
 }
 
 function hasCloudConflictName(name) {
@@ -921,7 +965,7 @@ function buildSpaceFilesV2({ fileMap, spaceRoot, space, noteBodyMap, noteBodyRec
   }
 }
 
-function writeHybridStorage(tempRoot, serializedState) {
+function writeHybridStorage(tempRoot, serializedState, options = {}) {
   const posixPath = path.posix
   const parsedState = JSON.parse(serializedState)
   const domains = getDomainsFromAppState(parsedState)
@@ -929,7 +973,7 @@ function writeHybridStorage(tempRoot, serializedState) {
   const noteBodyMap = new Map(noteBodies.map((body) => [typeof body.id === 'string' ? body.id : '', body]))
   const noteBodyRecords = new Map()
   const fileMap = new Map()
-  const assetBank = createAssetBank('assets')
+  const assetBank = createAssetBank('assets', typeof options.assetSourceRoot === 'string' ? options.assetSourceRoot : tempRoot)
   const domainPathForTitle = createStoragePathAllocator()
   const domainEntries = []
 
@@ -1364,7 +1408,11 @@ export function saveAppState(profileRootPath, serializedState, options = {}) {
     pruneStorageRecoverySnapshots(recoveryRoot)
   }
 
-  measureSlowMainOperation('hybrid app-state write', () => writeHybridStorage(finalRoot, serializedState))
+  measureSlowMainOperation('hybrid app-state write', () =>
+    writeHybridStorage(finalRoot, serializedState, {
+      assetSourceRoot: typeof options.assetSourceRoot === 'string' ? options.assetSourceRoot : finalRoot,
+    }),
+  )
 
   if (options.replaceExisting !== true && snapshotMode === STORAGE_SNAPSHOT_MODES.DEBOUNCED) {
     createRecoverySnapshot(finalRoot, recoveryRoot)
@@ -1402,14 +1450,16 @@ export function createPreWriteStorageSnapshot(finalRoot, backupRoot) {
   return true
 }
 
-export async function buildAppStateExportArchive(serializedState) {
+export async function buildAppStateExportArchive(serializedState, options = {}) {
   const tempParent = mkdtempSync(path.join(os.tmpdir(), 'tabs-export-'))
   const exportRoot = path.join(tempParent, HYBRID_ROOT_DIR)
 
   try {
     const parsedState = JSON.parse(serializedState)
     const exportState = normalizeAppStateForExport(parsedState)
-    writeHybridStorage(exportRoot, JSON.stringify(exportState))
+    writeHybridStorage(exportRoot, JSON.stringify(exportState), {
+      assetSourceRoot: typeof options.assetSourceRoot === 'string' ? options.assetSourceRoot : null,
+    })
     const zip = new JSZip()
     addDirectoryToZip(zip, exportRoot, HYBRID_ROOT_DIR)
     return await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' })

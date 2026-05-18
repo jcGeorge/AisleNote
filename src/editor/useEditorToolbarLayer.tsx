@@ -5,6 +5,7 @@ import { SharedEditorToolbar } from '../components/editor/SharedEditorToolbar'
 import type { ToolbarFormatKey, ToolbarFormatState, ToolbarHeadingLevel } from '../components/editor/toolbar-state'
 import type { NoteAisle, ToastTone } from '../types/app'
 import { getCommandCapableEditor } from './prosemirror-utils'
+import { importImageBlobAsAssetUrl } from '../markdown/image-asset-registry'
 
 type ToolbarPopoverPosition = {
   top: number
@@ -93,15 +94,15 @@ export function useEditorToolbarLayer({
     input.onchange = () => {
       const file = input.files?.[0]
       if (!file) return
-      const reader = new FileReader()
-      reader.onload = () => {
-        const dataUrl = typeof reader.result === 'string' ? reader.result : ''
-        if (!dataUrl) return
+      void importImageBlobAsAssetUrl(file, file.name).then((assetUrl) => {
+        if (!assetUrl) {
+          pushToast('could not import image.', 'warning')
+          return
+        }
         currentEditor.focus()
-        getCommandCapableEditor(currentEditor).exec('addImage', { imageUrl: dataUrl, altText: file.name })
+        getCommandCapableEditor(currentEditor).exec('addImage', { imageUrl: assetUrl, altText: file.name })
         commitActiveEditorMarkdownNow(currentEditor)
-      }
-      reader.readAsDataURL(file)
+      })
     }
     input.click()
   }

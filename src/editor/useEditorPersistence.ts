@@ -1,6 +1,7 @@
 import { Editor } from '@toast-ui/editor'
 import { useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
+import { prepareMarkdownImagesForDisplay } from '../markdown/image-asset-registry'
 import { getNoteBodyMarkdown } from '../notes/note-markdown'
 import { measureSlowOperation } from '../performance/performance-logging'
 import { applyAutoPurgeToAppState, applyMarkdownToAppState } from '../state/app-state'
@@ -187,7 +188,7 @@ export const useEditorPersistence = ({
     const normalized = normalizeMarkdownForPersistence(markdown)
     lastEditorMarkdownRef.current = normalized
     const currentEditor = editorRef.current
-    currentEditor?.setMarkdown(normalized, false)
+    currentEditor?.setMarkdown(prepareMarkdownImagesForDisplay(normalized), false)
     if (currentEditor) {
       commitActiveEditorMarkdownNow(currentEditor)
       return

@@ -7,6 +7,7 @@ import {
   loadAppStateResult,
   restoreStorageRecoverySnapshot,
   saveAppState,
+  writeImageAssetToProfile,
 } from './app-state-storage.mjs'
 import {
   getStorageProfileNotesPath,
@@ -43,6 +44,23 @@ function getAllWindows(BrowserWindow) {
   return BrowserWindow && typeof BrowserWindow.getAllWindows === 'function'
     ? BrowserWindow.getAllWindows()
     : []
+}
+
+function normalizeImageExtension(value) {
+  const normalized = String(value ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
+  if (normalized === 'jpeg') return 'jpg'
+  if (normalized === 'svgxml') return 'svg'
+  return normalized || 'png'
+}
+
+function getImageExtensionFromImportPayload(payload) {
+  if (typeof payload?.extension === 'string' && payload.extension.trim()) {
+    return normalizeImageExtension(payload.extension)
+  }
+  const typeMatch = typeof payload?.type === 'string' ? payload.type.match(/^image\/([a-zA-Z0-9+.-]+)$/) : null
+  if (typeMatch) return normalizeImageExtension(typeMatch[1])
+  const nameMatch = typeof payload?.name === 'string' ? payload.name.match(/\.([a-zA-Z0-9]+)$/) : null
+  return normalizeImageExtension(nameMatch?.[1] ?? 'png')
 }
 
 export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null, shell = null }) {
@@ -167,7 +185,11 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
       return { ok: false, error: 'Current app state is not ready to move.', status }
     }
     try {
-      saveAppState(profileRootPath, serializedState, { userDataPath, replaceExisting: true })
+      saveAppState(profileRootPath, serializedState, {
+        userDataPath,
+        replaceExisting: true,
+        assetSourceRoot: getHybridStorageRoot(profile.profileRootPath),
+      })
       return switchToProfileRoot(profileRootPath, 'profile-moved')
     } catch (error) {
       return {
@@ -323,9 +345,29 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     return { ok: result.ok, status, error: result.ok ? undefined : result.error }
   })
 
+  ipcMain.handle?.('import-image-asset', async (_event, payload = {}) => {
+    try {
+      const rawBytes = payload?.bytes
+      if (!(rawBytes instanceof ArrayBuffer) && !ArrayBuffer.isView(rawBytes)) {
+        return { ok: false, error: 'Invalid image asset payload.' }
+      }
+      const bytes = rawBytes instanceof ArrayBuffer
+        ? Buffer.from(rawBytes)
+        : Buffer.from(rawBytes.buffer, rawBytes.byteOffset, rawBytes.byteLength)
+      if (bytes.byteLength <= 0) return { ok: false, error: 'Image asset is empty.' }
+      watcher?.markAppWrite()
+      const result = writeImageAssetToProfile(profile.profileRootPath, bytes, getImageExtensionFromImportPayload(payload))
+      watcher?.markAppWrite()
+      return { ok: true, ...result }
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : 'Image asset could not be imported.' }
+    }
+  })
+
   return {
     canWriteAppState: coordinator.canWriteAppState,
     getLoadResult: coordinator.getLoadResult,
+    getProfileRootPath: () => profile.profileRootPath,
     getStorageProfileStatus: () => status,
     saveAppStateSnapshot: saveRevisionedState,
     close: () => watcher?.close(),
