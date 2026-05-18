@@ -4,7 +4,6 @@ import type {
   ArrangeDragItem,
   ArrangeModeState,
   ArrangeTapCandidateSeed,
-  ContextMenuState,
   StageManagerParentSelection,
   Tab,
   TabArrangeDragItem,
@@ -33,7 +32,6 @@ type TopBarProps = {
   trashParentTabs: TrashParentBucket[]
   trashTabId: string
   menuOpen: boolean
-  aisleDeleteMode: boolean
   onAutoSizeRenameInput: (input: HTMLInputElement) => void
   onShouldSkipRenameBlur: (type: EditableEntityType, id: string) => boolean
   onCommitRename: (type: EditableEntityType, id: string, name: string) => void
@@ -71,12 +69,9 @@ type TopBarProps = {
   onOpenContextMenuForTrashTab: (event: MouseEvent<HTMLButtonElement>, trashParent: TrashParentBucket) => void
   onAddTab: () => void
   onExitArrangeMode: () => void
-  onExitAisleDeleteMode: () => void
   onEndStageManager: () => void
   onCloseSettingsView: () => void
   onSetMenuOpen: (updater: boolean | ((open: boolean) => boolean)) => void
-  onSetContextMenu: (contextMenu: ContextMenuState | null) => void
-  onCloseNotePopovers: () => void
   onOpenDomains: () => void
   onOpenSpaces: () => void
   onOpenStageManager: () => void
@@ -111,7 +106,6 @@ export function TopBar({
   trashParentTabs,
   trashTabId,
   menuOpen,
-  aisleDeleteMode,
   onAutoSizeRenameInput,
   onShouldSkipRenameBlur,
   onCommitRename,
@@ -136,12 +130,9 @@ export function TopBar({
   onOpenContextMenuForTrashTab,
   onAddTab,
   onExitArrangeMode,
-  onExitAisleDeleteMode,
   onEndStageManager,
   onCloseSettingsView,
   onSetMenuOpen,
-  onSetContextMenu,
-  onCloseNotePopovers,
   onOpenDomains,
   onOpenSpaces,
   onOpenStageManager,
@@ -212,28 +203,11 @@ export function TopBar({
           },
         ]
       : []),
-    ...(viewMode === 'main' && !arrangeMode.active && aisleDeleteMode
-      ? [
-          {
-            key: 'end-delete-aisle',
-            label: 'end delete',
-            selected: false,
-            className: 'btn btn-sm tab-btn topbar-action-btn topbar-context-btn',
-            onClick: () => {
-              onSetMenuOpen(false)
-              onSetContextMenu(null)
-              onCloseNotePopovers()
-              onExitAisleDeleteMode()
-            },
-          },
-        ]
-      : []),
   ]
   const topbarShowsCloseControl =
     viewMode === 'settings' ||
     viewMode === 'stage-manager' ||
-    (arrangeMode.active && arrangeMode.scope === 'tabs') ||
-    aisleDeleteMode
+    (arrangeMode.active && arrangeMode.scope === 'tabs')
 
   return (
     <header className={`tabbar ${arrangeMode.active && viewMode === 'main' ? 'is-arranging' : ''}`}>
@@ -422,10 +396,6 @@ export function TopBar({
               onClick={() => {
                 if (arrangeMode.active) {
                   onExitArrangeMode()
-                  return
-                }
-                if (aisleDeleteMode) {
-                  onExitAisleDeleteMode()
                   return
                 }
                 if (viewMode === 'stage-manager') {

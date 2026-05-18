@@ -1,5 +1,7 @@
 import type { EditorTextLineRange, MultiLineEditState } from '../types/app'
+import { Selection, TextSelection } from 'prosemirror-state'
 import { canSplit } from 'prosemirror-transform'
+import { findEditorTextLineRangeIndex, getEditorTextLineRanges } from './multiline-ranges'
 
 export type MultiLineEditInput =
   | { type: 'insert-text'; text: string }
@@ -11,7 +13,19 @@ export type MultiLineEditInput =
   | { type: 'delete-to-line-end' }
   | { type: 'split-line' }
 
-export type MultiLineCursorMovement = 'left' | 'right' | 'word-left' | 'word-right' | 'line-start' | 'line-end' | 'up' | 'down'
+export type MultiLineCursorMovement =
+  | 'left'
+  | 'right'
+  | 'word-left'
+  | 'word-right'
+  | 'line-start'
+  | 'line-end'
+  | 'up'
+  | 'down'
+  | 'page-up'
+  | 'page-down'
+
+export type EditorPageMovement = Extract<MultiLineCursorMovement, 'page-up' | 'page-down'>
 
 export type MultiLineSelectionRange = {
   blockIndex: number
@@ -828,61 +842,228 @@ export function buildDeletedLineMultiLineState(
   }
 }
 
+function clampRowDelta(selectedIndices: number[], blockRanges: EditorTextLineRange[], rowDelta: number): number {
+  if (selectedIndices.length === 0 || blockRanges.length === 0) return 0
+  const startIndex = Math.min(...selectedIndices)
+  const endIndex = Math.max(...selectedIndices)
+  const minDelta = -startIndex
+  const maxDelta = blockRanges.length - 1 - endIndex
+  return Math.max(minDelta, Math.min(maxDelta, rowDelta))
+}
+
+export function moveMultiLineCursorRowsByDelta(
+  multiLineEdit: MultiLineEditState,
+  selectedIndices: number[],
+  blockRanges: EditorTextLineRange[],
+  rowDelta: number,
+  options: { extendSelection?: boolean } = {},
+): MultiLineEditState {
+  const delta = clampRowDelta(selectedIndices, blockRanges, rowDelta)
+  if (delta === 0) {
+    return {
+      ...multiLineEdit,
+      selectionAnchorOffsets: options.extendSelection ? multiLineEdit.selectionAnchorOffsets : undefined,
+    }
+  }
+
+  const nextColumnOffsets: Record<number, number> = {}
+  const nextCursorBlockIndices = multiLineEdit.cursorBlockIndices
+    ? selectedIndices.map((blockIndex) => blockIndex + delta)
+    : undefined
+
+  for (const blockIndex of selectedIndices) {
+    const range = blockRanges[blockIndex]
+    const nextRange = blockRanges[blockIndex + delta]
+    if (!range || !nextRange) continue
+    nextColumnOffsets[blockIndex + delta] = Math.min(
+      nextRange.length,
+      getMultiLineColumnOffset(multiLineEdit, blockIndex, range),
+    )
+  }
+
+  const nextAnchorIndex = multiLineEdit.anchorBlockIndex + delta
+  const nextHeadIndex = multiLineEdit.headBlockIndex + delta
+
+  return {
+    ...multiLineEdit,
+    anchorBlockIndex: nextAnchorIndex,
+    headBlockIndex: nextHeadIndex,
+    columnOffset: nextColumnOffsets[nextHeadIndex] ?? multiLineEdit.columnOffset,
+    columnOffsets: nextColumnOffsets,
+    cursorBlockIndices: nextCursorBlockIndices,
+    selectionAnchorOffsets: options.extendSelection ? {} : undefined,
+  }
+}
+
+function getEditorPageMovementViewportHeight(view: any): number {
+  const dom = view?.dom
+  const candidates = [
+    dom?.closest?.('.toastui-editor-ww-container'),
+    dom?.closest?.('.toastui-editor-main'),
+    dom,
+  ].filter(Boolean)
+
+  for (const candidate of candidates) {
+    const clientHeight = Number(candidate?.clientHeight ?? 0)
+    if (clientHeight > 0) return clientHeight
+    const rectHeight = Number(candidate?.getBoundingClientRect?.()?.height ?? 0)
+    if (rectHeight > 0) return rectHeight
+  }
+
+  return 240
+}
+
+function getFallbackPageRowDelta(view: any, direction: -1 | 1): number {
+  const viewportHeight = getEditorPageMovementViewportHeight(view)
+  const estimatedLineHeight = 24
+  return direction * Math.max(1, Math.floor(viewportHeight / estimatedLineHeight))
+}
+
+function getPageMovementDirection(movement: EditorPageMovement): -1 | 1 {
+  return movement === 'page-up' ? -1 : 1
+}
+
+export function getSingleCursorPageMovementTargetPosition(
+  view: any,
+  movement: EditorPageMovement,
+): number | null {
+  const selection = view?.state?.selection
+  const doc = view?.state?.doc
+  if (!selection || !doc) return null
+
+  const blockRanges = getEditorTextLineRanges(view)
+  if (blockRanges.length === 0) return null
+
+  const direction = getPageMovementDirection(movement)
+  const fallbackDelta = getFallbackPageRowDelta(view, direction)
+  const headPosition = typeof selection.head === 'number' ? selection.head : selection.to
+  const currentIndex = findEditorTextLineRangeIndex(blockRanges, headPosition)
+  const currentRange = blockRanges[currentIndex]
+  if (!currentRange) return null
+
+  const currentOffset = Math.max(0, Math.min(currentRange.length, headPosition - currentRange.start))
+  let targetIndex = Math.max(0, Math.min(blockRanges.length - 1, currentIndex + fallbackDelta))
+
+  if (typeof view?.coordsAtPos === 'function' && typeof view?.posAtCoords === 'function') {
+    const coords = view.coordsAtPos(Math.max(currentRange.start, Math.min(currentRange.end, headPosition)))
+    if (coords) {
+      const viewportHeight = getEditorPageMovementViewportHeight(view)
+      const targetTop = Number(coords.top ?? 0) + direction * Math.max(1, viewportHeight * 0.85)
+      const targetLeft = Number(coords.left ?? 0)
+      const target = view.posAtCoords({ left: targetLeft, top: targetTop })
+      const targetIndexFromCoords =
+        typeof target?.pos === 'number' ? findEditorTextLineRangeIndex(blockRanges, target.pos) : -1
+      if (targetIndexFromCoords >= 0) {
+        targetIndex = targetIndexFromCoords
+      }
+    }
+  }
+
+  const targetRange = blockRanges[targetIndex]
+  if (!targetRange) return null
+  return targetRange.start + Math.min(targetRange.length, currentOffset)
+}
+
+export function applySingleCursorPageMovement(
+  view: any,
+  movement: EditorPageMovement,
+  extendSelection = false,
+): boolean {
+  const targetPosition = getSingleCursorPageMovementTargetPosition(view, movement)
+  const state = view?.state
+  if (!state || targetPosition === null) return false
+
+  const docSize = Math.max(0, state.doc?.content?.size ?? 0)
+  const target = Math.max(0, Math.min(docSize, targetPosition))
+  const anchor = extendSelection
+    ? (typeof state.selection?.anchor === 'number' ? state.selection.anchor : state.selection?.from ?? target)
+    : target
+
+  try {
+    const selection = TextSelection.create(state.doc, anchor, target)
+    view.dispatch?.(state.tr.setSelection(selection).scrollIntoView())
+    return true
+  } catch {
+    try {
+      const selection = Selection.near(state.doc.resolve(target), getPageMovementDirection(movement))
+      view.dispatch?.(state.tr.setSelection(selection).scrollIntoView())
+      return true
+    } catch {
+      return false
+    }
+  }
+}
+
+export function getMultiLinePageMovementRowDelta(
+  view: any,
+  multiLineEdit: MultiLineEditState,
+  selectedIndices: number[],
+  blockRanges: EditorTextLineRange[],
+  movement: EditorPageMovement,
+): number {
+  const direction = getPageMovementDirection(movement)
+  const fallbackDelta = getFallbackPageRowDelta(view, direction)
+  const headRange = blockRanges[multiLineEdit.headBlockIndex]
+  if (!headRange || typeof view?.coordsAtPos !== 'function' || typeof view?.posAtCoords !== 'function') {
+    return clampRowDelta(selectedIndices, blockRanges, fallbackDelta)
+  }
+
+  const headOffset = getMultiLineColumnOffset(multiLineEdit, multiLineEdit.headBlockIndex, headRange)
+  const headPos = Math.min(headRange.end, headRange.start + headOffset)
+  const coords = view.coordsAtPos(headPos)
+  if (!coords) return clampRowDelta(selectedIndices, blockRanges, fallbackDelta)
+
+  const viewportHeight = getEditorPageMovementViewportHeight(view)
+  const targetTop = Number(coords.top ?? 0) + direction * Math.max(1, viewportHeight * 0.85)
+  const targetLeft = Number(coords.left ?? 0)
+  const target = view.posAtCoords({ left: targetLeft, top: targetTop })
+  const targetIndex = typeof target?.pos === 'number' ? findEditorTextLineRangeIndex(blockRanges, target.pos) : -1
+  const rawDelta = targetIndex >= 0 ? targetIndex - multiLineEdit.headBlockIndex : fallbackDelta
+  return clampRowDelta(selectedIndices, blockRanges, rawDelta === 0 ? fallbackDelta : rawDelta)
+}
+
 export function moveMultiLineCursorState(
   multiLineEdit: MultiLineEditState,
   selectedIndices: number[],
   blockRanges: EditorTextLineRange[],
   movement: MultiLineCursorMovement,
-  options: { extendSelection?: boolean } = {},
+  options: { extendSelection?: boolean; pageRowDelta?: number } = {},
 ): MultiLineEditState | null {
-  const startIndex = Math.min(...selectedIndices)
-  const endIndex = Math.max(...selectedIndices)
-  let nextAnchorIndex = multiLineEdit.anchorBlockIndex
-  let nextHeadIndex = multiLineEdit.headBlockIndex
-  let nextCursorBlockIndices = multiLineEdit.cursorBlockIndices ? [...selectedIndices] : undefined
+  if (movement === 'up' || movement === 'down' || movement === 'page-up' || movement === 'page-down') {
+    const rowDelta =
+      movement === 'up'
+        ? -1
+        : movement === 'down'
+          ? 1
+          : options.pageRowDelta ?? (movement === 'page-up' ? -10 : 10)
+    return moveMultiLineCursorRowsByDelta(multiLineEdit, selectedIndices, blockRanges, rowDelta, options)
+  }
+
+  const nextAnchorIndex = multiLineEdit.anchorBlockIndex
+  const nextHeadIndex = multiLineEdit.headBlockIndex
+  const nextCursorBlockIndices = multiLineEdit.cursorBlockIndices ? [...selectedIndices] : undefined
   const nextColumnOffsets: Record<number, number> = {}
   const nextSelectionAnchorOffsets: Record<number, number> | undefined = options.extendSelection ? {} : undefined
 
-  if (movement === 'up' || movement === 'down') {
-    const delta = movement === 'up' ? -1 : 1
-    if ((movement === 'up' && startIndex <= 0) || (movement === 'down' && endIndex >= blockRanges.length - 1)) {
-      return {
-        ...multiLineEdit,
-        selectionAnchorOffsets: options.extendSelection ? multiLineEdit.selectionAnchorOffsets : undefined,
-      }
+  for (const blockIndex of selectedIndices) {
+    const range = blockRanges[blockIndex]
+    if (!range) continue
+    const currentOffset = getMultiLineColumnOffset(multiLineEdit, blockIndex, range)
+    if (nextSelectionAnchorOffsets) {
+      nextSelectionAnchorOffsets[blockIndex] = multiLineEdit.selectionAnchorOffsets?.[blockIndex] ?? currentOffset
     }
-
-    nextAnchorIndex = multiLineEdit.anchorBlockIndex + delta
-    nextHeadIndex = multiLineEdit.headBlockIndex + delta
-    nextCursorBlockIndices = multiLineEdit.cursorBlockIndices ? selectedIndices.map((blockIndex) => blockIndex + delta) : undefined
-
-    for (const blockIndex of selectedIndices) {
-      const range = blockRanges[blockIndex]
-      const nextRange = blockRanges[blockIndex + delta]
-      if (!range || !nextRange) continue
-      nextColumnOffsets[blockIndex + delta] = Math.min(nextRange.length, getMultiLineColumnOffset(multiLineEdit, blockIndex, range))
-    }
-  } else {
-    for (const blockIndex of selectedIndices) {
-      const range = blockRanges[blockIndex]
-      if (!range) continue
-      const currentOffset = getMultiLineColumnOffset(multiLineEdit, blockIndex, range)
-      if (nextSelectionAnchorOffsets) {
-        nextSelectionAnchorOffsets[blockIndex] = multiLineEdit.selectionAnchorOffsets?.[blockIndex] ?? currentOffset
-      }
-      nextColumnOffsets[blockIndex] =
-        movement === 'left'
-          ? Math.max(0, currentOffset - 1)
-          : movement === 'right'
-            ? Math.min(range.length, currentOffset + 1)
-            : movement === 'word-left'
-              ? findPreviousWordColumn(range.text, currentOffset)
-              : movement === 'word-right'
-                ? findNextWordColumn(range.text, currentOffset)
-                : movement === 'line-start'
-                  ? 0
-                  : range.length
-    }
+    nextColumnOffsets[blockIndex] =
+      movement === 'left'
+        ? Math.max(0, currentOffset - 1)
+        : movement === 'right'
+          ? Math.min(range.length, currentOffset + 1)
+          : movement === 'word-left'
+            ? findPreviousWordColumn(range.text, currentOffset)
+            : movement === 'word-right'
+              ? findNextWordColumn(range.text, currentOffset)
+              : movement === 'line-start'
+                ? 0
+                : range.length
   }
 
   return {

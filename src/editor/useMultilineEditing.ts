@@ -12,6 +12,7 @@ import {
   getEmptyMultiLineBlockDeleteTargets,
   getMultiLineColumnOffset,
   getMultiLineHeadColumnOffset,
+  getMultiLinePageMovementRowDelta,
   getMultiLineSelectionRange,
   getMultiLineSelectionRanges,
   getMultiLineSelectedBlockIndices,
@@ -947,7 +948,14 @@ export function useMultilineEditing({
       return false
     }
 
-    const nextState = moveMultiLineCursorState(multiLineEdit, selectedIndices, blockRanges, movement, { extendSelection })
+    const pageRowDelta =
+      movement === 'page-up' || movement === 'page-down'
+        ? getMultiLinePageMovementRowDelta(view, multiLineEdit, selectedIndices, blockRanges, movement)
+        : undefined
+    const nextState = moveMultiLineCursorState(multiLineEdit, selectedIndices, blockRanges, movement, {
+      extendSelection,
+      pageRowDelta,
+    })
     if (!nextState) return false
     editStateRef.current = nextState
     syncVisualSelection()

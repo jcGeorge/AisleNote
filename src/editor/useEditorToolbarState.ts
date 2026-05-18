@@ -117,7 +117,7 @@ export function useEditorToolbarState({
       const targetElement = event.target instanceof Element ? event.target : null
       if (
         targetElement?.closest(
-          '.note-toolbar-heading-popover, .note-toolbar-aisle-popover, .note-aisle-delete-confirmation',
+          '.note-toolbar-heading-popover, .note-toolbar-aisle-popover',
         )
       ) {
         return

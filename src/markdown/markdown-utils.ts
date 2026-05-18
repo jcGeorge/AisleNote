@@ -44,6 +44,10 @@ export function repairBrokenDataImageMarkdown(markdown: string): string {
   let next = String(markdown ?? '')
 
   next = next.replace(/!\[([^\]]*)\]\(dat\s*\n+\s*(a:image\/[a-zA-Z0-9+.-]+;base64,[^)]+)\)/g, '![$1](dat$2)')
+  next = next.replace(/!\[([^\]]*)\]\s*\n+\s*\((data:image\/[a-zA-Z0-9+.-]+;base64,[\s\S]*?)\)/g, (_all, alt: string, src: string) => {
+    const collapsed = src.replace(/\s+/g, '')
+    return `![${alt}](${collapsed})`
+  })
   next = next.replace(/!\[([^\]]*)\]\(\s*(data:image\/[a-zA-Z0-9+.-]+;base64,[\s\S]*?)\)/g, (_all, alt: string, src: string) => {
     const collapsed = src.replace(/\s+/g, '')
     return `![${alt}](${collapsed})`

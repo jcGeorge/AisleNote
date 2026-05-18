@@ -3,6 +3,7 @@ import { useEffect, useRef, type MutableRefObject } from 'react'
 import { Editor } from '@toast-ui/editor'
 import { buildAisleEditorKey, type AisleEditorMeta } from './aisle-editor'
 import { createCodeBlockControlsPlugin } from './code-block-controls'
+import { installImageDisplayMetadataSync } from './image-dom-metadata'
 import {
   annotationLinePlugin,
   EDITOR_TOOLBAR_ITEMS,
@@ -317,6 +318,7 @@ export function useAisleEditors({
       const activate = () => activateAisleEditor(editorKey, { flushPrevious: true })
       root.addEventListener('focusin', activate)
       root.addEventListener('pointerdown', activate, true)
+      const cleanupImageDisplayMetadataSync = installImageDisplayMetadataSync(root)
       const cleanupHeadingPopupActiveState = installHeadingPopupActiveState(root, () => editor)
       const cleanupCompletedTaskCheckboxBehavior = installCompletedTaskCheckboxBehavior(
         root,
@@ -345,6 +347,7 @@ export function useAisleEditors({
         aisleId: aisle.id,
         pluginKey,
         cleanup: () => {
+          cleanupImageDisplayMetadataSync()
           cleanupTaskTextReorderBehavior()
           cleanupCompletedTaskCheckboxBehavior()
           cleanupHeadingPopupActiveState()

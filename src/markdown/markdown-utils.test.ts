@@ -4,6 +4,7 @@ import {
   convertInternalTabsForExport,
   EDITOR_BLANK_LINE_PLACEHOLDER,
   preserveBlankParagraphsFromWysiwyg,
+  repairBrokenDataImageMarkdown,
 } from './markdown-utils'
 
 type FakeNode = {
@@ -107,5 +108,13 @@ describe('markdown WYSIWYG blank line preservation', () => {
 
   it('strips standalone blank-line placeholders from export markdown', () => {
     expect(convertInternalTabsForExport(`one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`)).toBe('one\n\n\n\ntwo')
+  })
+})
+
+describe('data image markdown repair', () => {
+  it('repairs data image syntax split between the alt text and URL', () => {
+    expect(repairBrokenDataImageMarkdown('![image.png]\n(data:image/png;base64,abc)')).toBe(
+      '![image.png](data:image/png;base64,abc)',
+    )
   })
 })

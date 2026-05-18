@@ -1,17 +1,8 @@
 import { createPortal } from 'react-dom'
-import type { RefObject } from 'react'
-import { MAX_NOTE_AISLES } from '../../state/workspace'
 import type { NoteAisle } from '../../types/app'
 import type { ToolbarHeadingLevel } from './toolbar-state'
 
 type ToolbarPopoverPosition = {
-  top: number
-  left: number
-}
-
-type AisleDeleteConfirmationState = {
-  aisleId: string
-  aisleIndex: number
   top: number
   left: number
 }
@@ -24,17 +15,51 @@ type EditorToolbarPopoversProps = {
     heading: ToolbarPopoverPosition | null
     aisles: ToolbarPopoverPosition | null
   }
-  aisleDeleteMode: boolean
-  aisleDeleteConfirmation: AisleDeleteConfirmationState | null
   activeNoteAisles: NoteAisle[]
-  aisleDeleteConfirmButtonRef: RefObject<HTMLButtonElement | null>
   onExecuteToolbarCommand: (command: string, payload?: Record<string, unknown>) => void
   onCloseAislePopover: () => void
   onAddAisle: () => void
-  onEnterAisleDeleteMode: () => void
-  onCancelAisleDeleteConfirmation: () => void
-  onDeleteAisle: (aisleId: string) => void
-  onWarn: (message: string) => void
+  onOpenAisleEditModal: () => void
+}
+
+export function AisleToolbarMenu({
+  onCloseAislePopover,
+  onAddAisle,
+  onOpenAisleEditModal,
+}: Pick<
+  EditorToolbarPopoversProps,
+  'onCloseAislePopover' | 'onAddAisle' | 'onOpenAisleEditModal'
+>) {
+  return (
+    <>
+      <button
+        type="button"
+        className="note-tools-item"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          onCloseAislePopover()
+          onAddAisle()
+        }}
+      >
+        add aisle
+      </button>
+      <button
+        type="button"
+        className="note-tools-item"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          onCloseAislePopover()
+          onOpenAisleEditModal()
+        }}
+      >
+        edit aisles
+      </button>
+    </>
+  )
 }
 
 export function EditorToolbarPopovers({
@@ -42,17 +67,10 @@ export function EditorToolbarPopovers({
   noteToolsOpen,
   activeHeadingLevel,
   toolbarPopoverPosition,
-  aisleDeleteMode,
-  aisleDeleteConfirmation,
-  activeNoteAisles,
-  aisleDeleteConfirmButtonRef,
   onExecuteToolbarCommand,
   onCloseAislePopover,
   onAddAisle,
-  onEnterAisleDeleteMode,
-  onCancelAisleDeleteConfirmation,
-  onDeleteAisle,
-  onWarn,
+  onOpenAisleEditModal,
 }: EditorToolbarPopoversProps) {
   if (typeof document === 'undefined') return null
   const portalRoot = document.querySelector('.app-shell') ?? document.body
@@ -122,84 +140,20 @@ export function EditorToolbarPopovers({
             onMouseDown={(event) => event.preventDefault()}
             onClick={(event) => event.stopPropagation()}
           >
-            <button
-              type="button"
-              className="note-tools-item"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={(event) => {
-                event.preventDefault()
-                event.stopPropagation()
-                onCloseAislePopover()
-                onAddAisle()
-              }}
-              disabled={activeNoteAisles.length >= MAX_NOTE_AISLES}
-            >
-              add aisle
-            </button>
-            <button
-              type="button"
-              className="note-tools-item"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={(event) => {
-                event.preventDefault()
-                event.stopPropagation()
-                onCloseAislePopover()
-                if (activeNoteAisles.length <= 1) {
-                  onWarn('a note must keep at least one aisle.')
-                  return
-                }
-                onEnterAisleDeleteMode()
-              }}
-              disabled={activeNoteAisles.length <= 1}
-            >
-              delete aisle
-            </button>
+            <AisleToolbarMenu
+              onCloseAislePopover={onCloseAislePopover}
+              onAddAisle={onAddAisle}
+              onOpenAisleEditModal={onOpenAisleEditModal}
+            />
           </div>,
           portalRoot,
         )
-      : null
-
-  const deleteConfirmation =
-    aisleDeleteMode && aisleDeleteConfirmation
-      ? (() => {
-          const aisle = activeNoteAisles.find((candidate) => candidate.id === aisleDeleteConfirmation.aisleId)
-          if (!aisle) return null
-          return createPortal(
-            <div
-              className="note-aisle-delete-confirmation"
-              role="dialog"
-              aria-modal="false"
-              aria-label={`Confirm delete aisle ${aisleDeleteConfirmation.aisleIndex + 1}`}
-              style={{ top: `${aisleDeleteConfirmation.top}px`, left: `${aisleDeleteConfirmation.left}px` }}
-              onPointerDown={(event) => event.stopPropagation()}
-              onMouseDown={(event) => event.stopPropagation()}
-              onClick={(event) => event.stopPropagation()}
-            >
-              <p>this delete is permanent</p>
-              <div className="note-aisle-delete-confirmation-actions">
-                <button type="button" className="btn btn-sm btn-outline-light" onClick={onCancelAisleDeleteConfirmation}>
-                  cancel
-                </button>
-                <button
-                  ref={aisleDeleteConfirmButtonRef}
-                  type="button"
-                  className="btn btn-sm app-danger-btn"
-                  onClick={() => onDeleteAisle(aisle.id)}
-                >
-                  delete
-                </button>
-              </div>
-            </div>,
-            portalRoot,
-          )
-        })()
       : null
 
   return (
     <>
       {headingPopover}
       {aislePopover}
-      {deleteConfirmation}
     </>
   )
 }

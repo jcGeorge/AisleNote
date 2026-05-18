@@ -77,4 +77,41 @@ describe('aisle structural history', () => {
       { id: 'aisle-1', markdown: 'first' },
     ])).toBe(false)
   })
+
+  it('allows undoing and redoing a batch aisle edit from exact source states', () => {
+    const before = createSnapshot([
+      { id: 'aisle-1', markdown: 'first' },
+      { id: 'aisle-2', markdown: 'second' },
+      { id: 'aisle-3', markdown: 'third' },
+    ])
+    const after = createSnapshot([
+      { id: 'aisle-3', markdown: 'third' },
+      { id: 'aisle-1', markdown: 'first' },
+      { id: 'aisle-4', markdown: '' },
+    ], 'aisle-1')
+    const entry = createAisleStructuralHistoryEntry('edit-aisles', before, after)
+
+    expect(canApplyAisleStructuralEntryToAisles(entry, 'undo', after.aisles)).toBe(true)
+    expect(canApplyAisleStructuralEntryToAisles(entry, 'redo', before.aisles)).toBe(true)
+  })
+
+  it('rejects stale batch edits after another reorder changed the source state', () => {
+    const before = createSnapshot([
+      { id: 'aisle-1', markdown: 'first' },
+      { id: 'aisle-2', markdown: 'second' },
+      { id: 'aisle-3', markdown: 'third' },
+    ])
+    const after = createSnapshot([
+      { id: 'aisle-3', markdown: 'third' },
+      { id: 'aisle-1', markdown: 'first' },
+      { id: 'aisle-2', markdown: 'second' },
+    ], 'aisle-1')
+    const entry = createAisleStructuralHistoryEntry('edit-aisles', before, after)
+
+    expect(canApplyAisleStructuralEntryToAisles(entry, 'redo', [
+      { id: 'aisle-2', markdown: 'second' },
+      { id: 'aisle-1', markdown: 'first' },
+      { id: 'aisle-3', markdown: 'third' },
+    ])).toBe(false)
+  })
 })

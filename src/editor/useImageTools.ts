@@ -1,10 +1,14 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, useRef, useState, type MouseEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react'
 import type { Editor } from '@toast-ui/editor'
+import { NodeSelection } from 'prosemirror-state'
 import type { InlineCropDragMode } from '../components/editor/ImageToolsOverlay'
+import {
+  syncImageDisplayMetadata,
+  syncImageDisplayMetadataInRoot,
+} from './image-dom-metadata'
 import { getImageToolPlacement, isUsableImageToolPlacementRect } from './image-tool-placement'
 import {
-  getImageResizeMetadata,
   stripImageResizeMetadataFromUrl,
   withImageResizeMetadata,
 } from '../markdown/image-metadata'
@@ -71,26 +75,8 @@ export function useImageTools({
     startRelHeight: number
   }>({ mode: null, startX: 0, startY: 0, startRelX: 0, startRelY: 0, startRelWidth: 1, startRelHeight: 1 })
 
-  const syncImageDisplayMetadata = (image: HTMLImageElement) => {
-    const metadata = getImageResizeMetadata(image.getAttribute('src') ?? image.src)
-    if (!metadata) return false
-
-    image.style.width = `${metadata.w}px`
-    image.style.height = 'auto'
-    image.style.maxWidth = '100%'
-    image.setAttribute('width', String(metadata.w))
-    image.removeAttribute('height')
-    return true
-  }
-
   const syncEditorImageDisplayMetadata = () => {
-    const root = editorEventRootRef.current
-    if (!root) return
-    root.querySelectorAll('img').forEach((image) => {
-      if (image instanceof HTMLImageElement) {
-        syncImageDisplayMetadata(image)
-      }
-    })
+    syncImageDisplayMetadataInRoot(editorEventRootRef.current)
   }
 
   const updateInlineCrop = (updater: InlineCropState | ((previous: InlineCropState) => InlineCropState)) => {
@@ -149,6 +135,16 @@ export function useImageTools({
       element.scrollLeft = left
     })
     window.scrollTo(snapshot.windowLeft, snapshot.windowTop)
+  }
+
+  const focusEditorWithoutScrolling = (scrollSnapshot: ReturnType<typeof captureScrollSnapshot>) => {
+    const view = getWysiwygView(editorRef.current)
+    if (view?.dom instanceof HTMLElement) {
+      view.dom.focus({ preventScroll: true })
+    } else {
+      editorRef.current?.focus()
+    }
+    restoreScrollSnapshot(scrollSnapshot)
   }
 
   const startInlineCropDrag = (mode: InlineCropDragMode, clientX: number, clientY: number) => {
@@ -311,17 +307,50 @@ export function useImageTools({
       close()
       return
     }
+    const scrollSnapshot = captureScrollSnapshot(image)
+    const sourceUrl = image.getAttribute('src') ?? image.src
+    const altText = image.alt || null
     activeImageRef.current = image
     activeImageLookupRef.current = {
-      sourceUrl: image.getAttribute('src') ?? image.src,
-      altText: image.alt || null,
+      sourceUrl,
+      altText,
       position: activeImageLookupRef.current?.position ?? null,
     }
     syncImageDisplayMetadata(image)
     activateEditorFromEventTarget(image)
-    editorRef.current?.focus()
+    restoreScrollSnapshot(scrollSnapshot)
+    const view = getWysiwygView(editorRef.current)
+    const hit = findImageNodeHitForElement(view, image)
+    if (view && hit) {
+      try {
+        view.dispatch(
+          view.state.tr
+            .setSelection(NodeSelection.create(view.state.doc, hit.pos))
+            .setMeta('addToHistory', false),
+        )
+        activeImageLookupRef.current = {
+          sourceUrl,
+          altText,
+          position: hit.pos,
+        }
+      } catch {
+        activeImageLookupRef.current = {
+          sourceUrl,
+          altText,
+          position: activeImageLookupRef.current?.position ?? null,
+        }
+      }
+      restoreScrollSnapshot(scrollSnapshot)
+    }
+    focusEditorWithoutScrolling(scrollSnapshot)
     setImageTools((previous) => ({ ...previous, menuMode: 'start' }))
     refreshPosition()
+    restoreScrollSnapshot(scrollSnapshot)
+    window.requestAnimationFrame(() => {
+      restoreScrollSnapshot(scrollSnapshot)
+      refreshPosition({ closeOnMissing: false })
+      restoreScrollSnapshot(scrollSnapshot)
+    })
   }
 
   const buildClipboardImagePayload = async (image: HTMLImageElement) => {

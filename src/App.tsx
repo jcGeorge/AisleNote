@@ -12,6 +12,7 @@ import {
   getNewlineMenuKeyboardAction,
   isNewlineMenuKeyboardKey,
 } from './components/editor/newline-menu-keyboard'
+import { AisleEditModal } from './components/notes/AisleEditModal'
 import { NoteWorkspace } from './components/notes/NoteWorkspace'
 import { SubTabRail } from './components/navigation/SubTabRail'
 import { TopBar } from './components/navigation/TopBar'
@@ -25,6 +26,7 @@ import { StageManagerView } from './components/stage-manager/StageManagerView'
 import { TrashHomeNote } from './components/trash/TrashHomeNote'
 import { applyListToolbarCommand, type ToolbarListCommand } from './editor/list-marker-commands'
 import { applyEditorNewlineOperation } from './editor/newline-operations'
+import { MAX_AISLE_WARNING_MESSAGE } from './editor/aisle-edit-draft'
 import { useAisleController } from './editor/useAisleController'
 import { useLegacyEditor } from './editor/useLegacyEditor'
 import {
@@ -507,18 +509,14 @@ function App() {
     getNormalizedEditorMarkdown,
     pushToast,
   })
-  const aisleDeleteConfirmation = aisleController.aisleDeleteConfirmation
-  const setAisleDeleteConfirmation = aisleController.setAisleDeleteConfirmation
-  const aisleDeleteMode = aisleController.aisleDeleteMode
-  const setAisleDeleteMode = aisleController.setAisleDeleteMode
-  const aisleDeleteConfirmButtonRef = aisleController.aisleDeleteConfirmButtonRef
-  const exitAisleDeleteMode = aisleController.exitAisleDeleteMode
+  const aisleEditModalOpen = aisleController.aisleEditModalOpen
+  const openAisleEditModal = aisleController.openAisleEditModal
+  const closeAisleEditModal = aisleController.closeAisleEditModal
   const captureActiveAisleStructuralSnapshot = aisleController.captureActiveAisleStructuralSnapshot
   const runAisleStructuralHistory = aisleController.runAisleStructuralHistory
   const scheduleAisleStructuralHistoryFallback = aisleController.scheduleAisleStructuralHistoryFallback
   const addAisleToActiveNote = aisleController.addAisleToActiveNote
-  const deleteAisleFromActiveNote = aisleController.deleteAisleFromActiveNote
-  const requestDeleteAisleFromActiveNote = aisleController.requestDeleteAisleFromActiveNote
+  const applyAisleEditDraftToActiveNote = aisleController.applyAisleEditDraftToActiveNote
 
   const navigateToNoteLocation = (location: NoteLocation) => {
     saveActiveCursorBeforeNavigation()
@@ -565,7 +563,7 @@ function App() {
     setMenuOpen,
     setContextMenu,
     setEditing,
-    exitAisleDeleteMode,
+    closeAisleEditModal,
   })
   const arrangeMode = arrange.mode
   const arrangeDraggingItem = arrange.draggingItem
@@ -796,7 +794,6 @@ function App() {
   const setHeadingMenuOpen = editorToolbar.setHeadingMenuOpen
   const setToolbarPopoverPosition = editorToolbar.setToolbarPopoverPosition
   const refreshToolbarPopoverPosition = editorToolbar.refreshToolbarPopoverPosition
-  const closeToolbarPopovers = editorToolbar.closeToolbarPopovers
   const getToolbarFormatShortcut = editorToolbar.getToolbarFormatShortcut
   const queueToolbarShortcutFeedback = editorToolbar.queueToolbarShortcutFeedback
   const syncToolbarFormatState = editorToolbar.syncToolbarFormatState
@@ -1009,7 +1006,7 @@ function App() {
       return runActiveEditorFormatCommand('strike')
     }
     if (operation === 'aisle' && activeNoteAisles.length >= MAX_NOTE_AISLES) {
-      pushToast(`notes can have at most ${MAX_NOTE_AISLES} aisles.`, 'warning')
+      pushToast(MAX_AISLE_WARNING_MESSAGE, 'warning')
       return false
     }
 
@@ -1086,9 +1083,21 @@ function App() {
     })
   }
 
-  const runNewlineOperationFromMenu = (operation: NewlineOperationId) => {
+  const closeNewlineOperationsMenu = (options: { restoreEditorFocus?: boolean } = {}) => {
+    const editorToRestore = options.restoreEditorFocus ? editorRef.current : null
     setNewlineOperationsMenuActiveIndex(0)
     setNewlineOperationsMenu(null)
+    if (!editorToRestore) return
+
+    window.requestAnimationFrame(() => {
+      if (editorRef.current !== editorToRestore) return
+      editorToRestore.focus()
+      syncToolbarFormatState()
+    })
+  }
+
+  const runNewlineOperationFromMenu = (operation: NewlineOperationId) => {
+    closeNewlineOperationsMenu()
     runActiveNewlineOperation(operation)
   }
   runNewlineOperationFromMenuRef.current = runNewlineOperationFromMenu
@@ -1107,8 +1116,7 @@ function App() {
         newlineOperationsMenu.operations.length,
       )
       if (action.type === 'close') {
-        setNewlineOperationsMenuActiveIndex(0)
-        setNewlineOperationsMenu(null)
+        closeNewlineOperationsMenu({ restoreEditorFocus: true })
         return
       }
       if (action.type === 'highlight') {
@@ -1124,8 +1132,7 @@ function App() {
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target instanceof Element ? event.target : null
       if (target?.closest('.newline-operations-menu')) return
-      setNewlineOperationsMenuActiveIndex(0)
-      setNewlineOperationsMenu(null)
+      closeNewlineOperationsMenu()
     }
 
     document.addEventListener('keydown', handleKeyDown, true)
@@ -1359,15 +1366,10 @@ function App() {
     noteToolsOpen,
     headingMenuOpen,
     toolbarPopoverPosition,
-    aisleDeleteMode,
-    aisleDeleteConfirmation,
     activeNoteAisles,
-    aisleDeleteConfirmButtonRef,
     setNoteToolsOpen,
     setHeadingMenuOpen,
     setToolbarPopoverPosition,
-    setAisleDeleteMode,
-    setAisleDeleteConfirmation,
     refreshToolbarPopoverPosition,
     runActiveEditorCommand,
     commitActiveEditorMarkdownNow,
@@ -1380,13 +1382,16 @@ function App() {
       closeImageTools()
       addAisleToActiveNote()
     },
-    deleteAisleFromActiveNote,
+    openAisleEditModal: () => {
+      closeImageTools()
+      openAisleEditModal()
+    },
     pushToast,
   })
 
   const renderImageToolsOverlay = () => (
     <ImageToolsOverlay
-      visible={viewMode === 'main'}
+      visible={viewMode === 'main' && !aisleEditModalOpen}
       imageTools={imageTools}
       inlineCrop={inlineCrop}
       onStartCrop={startInlineCrop}
@@ -1480,7 +1485,6 @@ function App() {
         trashParentTabs={trashParentTabs}
         trashTabId={trashTabId}
         menuOpen={menuOpen}
-        aisleDeleteMode={aisleDeleteMode}
         onAutoSizeRenameInput={autoSizeRenameInput}
         onShouldSkipRenameBlur={shouldSkipRenameBlur}
         onCommitRename={commitRename}
@@ -1505,12 +1509,9 @@ function App() {
         onOpenContextMenuForTrashTab={openContextMenuForTrashTab}
         onAddTab={addTab}
         onExitArrangeMode={exitArrangeMode}
-        onExitAisleDeleteMode={exitAisleDeleteMode}
         onEndStageManager={stageManager.end}
         onCloseSettingsView={closeSettingsView}
         onSetMenuOpen={setMenuOpen}
-        onSetContextMenu={setContextMenu}
-        onCloseNotePopovers={closeToolbarPopovers}
         onOpenDomains={openDomainsView}
         onOpenSpaces={openSpacesView}
         onOpenStageManager={stageManager.open}
@@ -1719,12 +1720,9 @@ function App() {
               aisles={activeNoteAisles}
               activeAisleId={resolvedActiveAisleId}
               editorReadOnly={editorReadOnly}
-              aisleDeleteMode={aisleDeleteMode}
               aisleScrollRef={aisleScrollRef}
               toolbar={editorToolbarLayer.toolbar}
               headingPopover={editorToolbarLayer.popovers}
-              aislePopover={null}
-              deleteConfirmation={null}
               imageToolsOverlay={renderImageToolsOverlay()}
               onRootChange={(node) => {
                 editorEventRootRef.current = node
@@ -1738,7 +1736,6 @@ function App() {
                 activateAisleEditor(editorKey, { flushPrevious: true })
               }}
               onRegisterAisleEditorRoot={registerAisleEditorRoot}
-              onRequestDeleteAisle={requestDeleteAisleFromActiveNote}
             />
           ) : (
             renderEditorShell()
@@ -1805,6 +1802,14 @@ function App() {
         onWarn={(message) => pushToast(message, 'warning')}
         onError={(message) => pushToast(message, 'error')}
         onConfirm={confirmModal}
+      />
+
+      <AisleEditModal
+        open={aisleEditModalOpen && viewMode === 'main'}
+        aisles={activeNoteAisles}
+        onCancel={closeAisleEditModal}
+        onApply={applyAisleEditDraftToActiveNote}
+        onWarn={(message) => pushToast(message, 'warning')}
       />
 
       <ToastHost

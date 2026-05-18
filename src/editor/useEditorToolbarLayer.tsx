@@ -11,13 +11,6 @@ type ToolbarPopoverPosition = {
   left: number
 }
 
-type AisleDeleteConfirmationState = {
-  aisleId: string
-  aisleIndex: number
-  top: number
-  left: number
-}
-
 type UseEditorToolbarLayerOptions = {
   editorRef: MutableRefObject<Editor | null>
   headingToolbarButtonRef: RefObject<HTMLButtonElement | null>
@@ -31,15 +24,10 @@ type UseEditorToolbarLayerOptions = {
     heading: ToolbarPopoverPosition | null
     aisles: ToolbarPopoverPosition | null
   }
-  aisleDeleteMode: boolean
-  aisleDeleteConfirmation: AisleDeleteConfirmationState | null
   activeNoteAisles: NoteAisle[]
-  aisleDeleteConfirmButtonRef: RefObject<HTMLButtonElement | null>
   setNoteToolsOpen: Dispatch<SetStateAction<boolean>>
   setHeadingMenuOpen: Dispatch<SetStateAction<boolean>>
   setToolbarPopoverPosition: Dispatch<SetStateAction<Record<'heading' | 'aisles', ToolbarPopoverPosition | null>>>
-  setAisleDeleteMode: Dispatch<SetStateAction<boolean>>
-  setAisleDeleteConfirmation: Dispatch<SetStateAction<AisleDeleteConfirmationState | null>>
   refreshToolbarPopoverPosition: (kind: 'heading' | 'aisles') => ToolbarPopoverPosition | null
   runActiveEditorCommand: (command: string, payload?: Record<string, unknown>) => boolean
   commitActiveEditorMarkdownNow: (editor: Editor) => void
@@ -49,7 +37,7 @@ type UseEditorToolbarLayerOptions = {
   openCopyModalForActiveNote: () => void
   openFrontmatterModalForActiveNote: () => void
   addAisleToActiveNote: () => void
-  deleteAisleFromActiveNote: (aisleId: string) => void
+  openAisleEditModal: () => void
   pushToast: (message: string, tone?: ToastTone) => void
 }
 
@@ -63,15 +51,10 @@ export function useEditorToolbarLayer({
   noteToolsOpen,
   headingMenuOpen,
   toolbarPopoverPosition,
-  aisleDeleteMode,
-  aisleDeleteConfirmation,
   activeNoteAisles,
-  aisleDeleteConfirmButtonRef,
   setNoteToolsOpen,
   setHeadingMenuOpen,
   setToolbarPopoverPosition,
-  setAisleDeleteMode,
-  setAisleDeleteConfirmation,
   refreshToolbarPopoverPosition,
   runActiveEditorCommand,
   commitActiveEditorMarkdownNow,
@@ -81,7 +64,7 @@ export function useEditorToolbarLayer({
   openCopyModalForActiveNote,
   openFrontmatterModalForActiveNote,
   addAisleToActiveNote,
-  deleteAisleFromActiveNote,
+  openAisleEditModal,
   pushToast,
 }: UseEditorToolbarLayerOptions) {
   const closeToolbarMenus = () => {
@@ -203,20 +186,11 @@ export function useEditorToolbarLayer({
         noteToolsOpen={noteToolsOpen}
         activeHeadingLevel={activeHeadingLevel}
         toolbarPopoverPosition={toolbarPopoverPosition}
-        aisleDeleteMode={aisleDeleteMode}
-        aisleDeleteConfirmation={aisleDeleteConfirmation}
         activeNoteAisles={activeNoteAisles}
-        aisleDeleteConfirmButtonRef={aisleDeleteConfirmButtonRef}
         onExecuteToolbarCommand={executeToolbarCommand}
         onCloseAislePopover={closeToolbarMenus}
         onAddAisle={addAisleToActiveNote}
-        onEnterAisleDeleteMode={() => {
-          setAisleDeleteConfirmation(null)
-          setAisleDeleteMode(true)
-        }}
-        onCancelAisleDeleteConfirmation={() => setAisleDeleteConfirmation(null)}
-        onDeleteAisle={deleteAisleFromActiveNote}
-        onWarn={(message) => pushToast(message, 'warning')}
+        onOpenAisleEditModal={openAisleEditModal}
       />
     ),
   }

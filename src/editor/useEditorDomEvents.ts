@@ -13,7 +13,12 @@ import type {
 } from '../types/app'
 import { getNewlineShortcutIdForEvent } from '../hotkeys/shortcuts'
 import { getMultilineSelectionShortcutDirection } from './editor-setup'
-import type { MultiLineCursorMovement, MultiLineEditInput } from './multiline-edit'
+import {
+  applySingleCursorPageMovement,
+  type EditorPageMovement,
+  type MultiLineCursorMovement,
+  type MultiLineEditInput,
+} from './multiline-edit'
 import { isInsideReadonlyNotePreview } from './note-preview-dom'
 import { isInsideTerminalBlockLandingZone } from './terminal-block-landing'
 import {
@@ -100,6 +105,22 @@ export function getMultiLineDeleteInputForBeforeInputType(inputType: string): Mu
   if (inputType === 'deleteContentForward') return { type: 'delete' }
   if (inputType === 'deleteContentBackward') return { type: 'backspace' }
   return null
+}
+
+export function getEditorPageMovementForEvent(event: KeyboardEvent): EditorPageMovement | null {
+  if (event.key === 'PageUp' || event.code === 'PageUp') return 'page-up'
+  if (event.key === 'PageDown' || event.code === 'PageDown') return 'page-down'
+
+  const hasFnModifier = typeof event.getModifierState === 'function' && event.getModifierState('Fn')
+  if (!hasFnModifier) return null
+  if (event.key === 'ArrowUp' || event.code === 'ArrowUp') return 'page-up'
+  if (event.key === 'ArrowDown' || event.code === 'ArrowDown') return 'page-down'
+  return null
+}
+
+export function isActiveWysiwygEditorContentTarget(target: Element | null, view: any): boolean {
+  if (!target || !view?.dom || isEditorToolbarInteractionTarget(target)) return false
+  return target === view.dom || Boolean(view.dom.contains?.(target))
 }
 
 export function useEditorDomEvents({
@@ -222,8 +243,6 @@ export function useEditorDomEvents({
         return
       }
       if (isEditorToolbarInteractionTarget(target)) return
-      activateEditorFromEventTarget(target)
-      clearMultiLineEdit(false)
       if (
         target.closest('.image-tools') ||
         target.closest('.image-resize-handle') ||
@@ -236,9 +255,19 @@ export function useEditorDomEvents({
       }
       const image = target.closest('img')
       if (image instanceof HTMLImageElement) {
+        const isPrimaryActivation = isPrimaryMouseActivation(event)
+        if (isPrimaryActivation && event.cancelable) {
+          event.preventDefault()
+        }
+        if (isPrimaryActivation) {
+          event.stopPropagation()
+        }
+        clearMultiLineEdit(false)
         selectImageForTools(image)
         return
       }
+      activateEditorFromEventTarget(target)
+      clearMultiLineEdit(false)
       if (handleAnchorInteraction(event, target, true)) return
       if (handleInternalLinkAtPointerPosition(event)) return
       if (!isImageCropActive()) {
@@ -270,6 +299,17 @@ export function useEditorDomEvents({
         closeLinkPrompt()
         return
       }
+      const image = target.closest('img')
+      if (image instanceof HTMLImageElement) {
+        mouseEvent.preventDefault()
+        selectImageForTools(image)
+        setContextMenu({
+          type: 'image',
+          x: mouseEvent.clientX,
+          y: mouseEvent.clientY,
+        })
+        return
+      }
       activateEditorFromEventTarget(target)
       const internalLinkHit = getInternalLinkHitAtPointerPosition(mouseEvent)
       if (internalLinkHit) {
@@ -291,15 +331,6 @@ export function useEditorDomEvents({
         })
         return
       }
-      const image = target.closest('img')
-      if (!(image instanceof HTMLImageElement)) return
-      mouseEvent.preventDefault()
-      selectImageForTools(image)
-      setContextMenu({
-        type: 'image',
-        x: mouseEvent.clientX,
-        y: mouseEvent.clientY,
-      })
     }
 
     const handleScrollOrResize = () => {
@@ -373,6 +404,10 @@ export function useEditorDomEvents({
       activateEditorFromEventTarget(keyboardEvent.target)
       const targetElement = getElementFromEventTarget(keyboardEvent.target)
       const isTextInputTarget = Boolean(targetElement?.closest('input, textarea, select, .link-prompt'))
+      const pageMovement =
+        !keyboardEvent.metaKey && !keyboardEvent.ctrlKey && !keyboardEvent.altKey
+          ? getEditorPageMovementForEvent(keyboardEvent)
+          : null
       const toolbarFormatShortcut = isTextInputTarget ? null : getToolbarFormatShortcut(keyboardEvent)
       if (toolbarFormatShortcut) {
         if (onRunFormatCommand(toolbarFormatShortcut)) {
@@ -470,6 +505,8 @@ export function useEditorDomEvents({
             keyboardEvent.altKey ? 'word-right' : keyboardEvent.metaKey || keyboardEvent.ctrlKey ? 'line-end' : 'right',
             keyboardEvent.shiftKey,
           )
+        } else if (pageMovement) {
+          handled = tryMoveMultiLineCursors(pageMovement, keyboardEvent.shiftKey)
         } else if (keyboardEvent.key === 'ArrowUp') {
           handled = tryMoveMultiLineCursors('up')
         } else if (keyboardEvent.key === 'ArrowDown') {
@@ -487,12 +524,23 @@ export function useEditorDomEvents({
           handled =
             tryApplyMultiLineInlineMarkerShortcut(keyboardEvent.key) ||
             tryApplyMultiLineEditInput({ type: 'insert-text', text: keyboardEvent.key })
-        } else if (keyboardEvent.key === 'PageUp' || keyboardEvent.key === 'PageDown') {
-          handled = true
         }
         if (handled) {
           keyboardEvent.preventDefault()
           keyboardEvent.stopPropagation()
+          return
+        }
+      }
+      if (
+        !isTextInputTarget &&
+        pageMovement &&
+        isActiveWysiwygEditorContentTarget(targetElement, getWysiwygView(editorRef.current))
+      ) {
+        const view = getWysiwygView(editorRef.current)
+        if (applySingleCursorPageMovement(view, pageMovement, keyboardEvent.shiftKey)) {
+          keyboardEvent.preventDefault()
+          keyboardEvent.stopPropagation()
+          window.setTimeout(syncToolbarFormatState, 0)
           return
         }
       }

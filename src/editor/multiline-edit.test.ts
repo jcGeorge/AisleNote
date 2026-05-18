@@ -1,14 +1,17 @@
 import { Schema } from 'prosemirror-model'
-import { EditorState } from 'prosemirror-state'
+import { EditorState, TextSelection } from 'prosemirror-state'
 import { describe, expect, it } from 'vitest'
 import type { MultiLineEditState } from '../types/app'
 import {
+  applySingleCursorPageMovement,
   buildDeletedLineMultiLineState,
   buildForwardBoundaryDeletePlan,
   buildSelectedRowDeletePlan,
   buildSplitLineMultiLineState,
   getEmptyMultiLineBlockDeleteTargets,
+  getMultiLinePageMovementRowDelta,
   getMultiLineSplitPlan,
+  moveMultiLineCursorRowsByDelta,
   shouldApplyMultiLineBoundaryDelete,
   shouldApplyMultiLineWholeSelectionBoundaryDelete,
 } from './multiline-edit'
@@ -130,9 +133,59 @@ function createView(doc: any) {
     get state() {
       return state
     },
+    get dom() {
+      return { clientHeight: 72 }
+    },
     apply(transaction: any) {
       state = state.apply(transaction)
       return state
+    },
+  }
+}
+
+function createDispatchingView(doc: any, selectionPosition: number) {
+  let state = EditorState.create({
+    doc,
+    selection: TextSelection.create(doc, selectionPosition),
+  })
+  return {
+    get state() {
+      return state
+    },
+    dom: { clientHeight: 72 },
+    dispatch(transaction: any) {
+      state = state.apply(transaction)
+    },
+  }
+}
+
+function withPageCoordinates<T extends { state: EditorState }>(view: T, lineHeight = 20): T & {
+  dom: { clientHeight: number }
+  coordsAtPos: (position: number) => { left: number; top: number; bottom: number }
+  posAtCoords: (coords: { left: number; top: number }) => { pos: number }
+} {
+  const ranges = getEditorTextLineRanges(view)
+  return {
+    ...(view as T),
+    get state() {
+      return view.state
+    },
+    dom: { clientHeight: 60 },
+    coordsAtPos: (position: number) => {
+      const index = Math.max(
+        0,
+        ranges.findIndex((range) => position >= range.start && position <= range.end),
+      )
+      const range = ranges[index]
+      return {
+        left: Math.max(0, position - (range?.start ?? position)) * 10,
+        top: index * lineHeight,
+        bottom: index * lineHeight + lineHeight,
+      }
+    },
+    posAtCoords: ({ top }: { left: number; top: number }) => {
+      const index = Math.max(0, Math.min(ranges.length - 1, Math.round(top / lineHeight)))
+      return { pos: ranges[index].start }
     },
   }
 }
@@ -236,6 +289,175 @@ describe('multi-cursor split line editing', () => {
 
     expect(nextState.cursorBlockIndices).toEqual([1, 3])
     expect(nextState.activeInlineFormats).toBeUndefined()
+  })
+})
+
+describe('multi-cursor page movement editing', () => {
+  it('moves all cursor rows by a page delta while preserving and clamping columns', () => {
+    const view = createView(
+      multilineEditSchema.nodes.doc.create(null, [
+        paragraph('zero'),
+        paragraph('one'),
+        paragraph('two'),
+        paragraph('three'),
+        paragraph('x'),
+        paragraph('longer'),
+      ]),
+    )
+    const ranges = getEditorTextLineRanges(view)
+    const state: MultiLineEditState = {
+      ...multiLineState([1, 2], 3),
+      columnOffsets: { 1: 3, 2: 3 },
+    }
+    const nextState = moveMultiLineCursorRowsByDelta(state, [1, 2], ranges, 3)
+
+    expect(nextState.cursorBlockIndices).toEqual([4, 5])
+    expect(nextState.anchorBlockIndex).toBe(4)
+    expect(nextState.headBlockIndex).toBe(5)
+    expect(nextState.columnOffsets).toEqual({ 4: 1, 5: 3 })
+    expect(nextState.columnOffset).toBe(3)
+  })
+
+  it('clamps page row movement at document boundaries without losing multi-cursor state', () => {
+    const view = createView(multilineEditSchema.nodes.doc.create(null, ['a', 'bb', 'ccc'].map((text) => paragraph(text))))
+    const ranges = getEditorTextLineRanges(view)
+
+    const topState = moveMultiLineCursorRowsByDelta(multiLineState([0, 1], 1), [0, 1], ranges, -10)
+    expect(topState.cursorBlockIndices).toEqual([0, 1])
+    expect(topState.anchorBlockIndex).toBe(0)
+    expect(topState.headBlockIndex).toBe(1)
+
+    const bottomState = moveMultiLineCursorRowsByDelta(multiLineState([1, 2], 2), [1, 2], ranges, 10)
+    expect(bottomState.cursorBlockIndices).toEqual([1, 2])
+    expect(bottomState.anchorBlockIndex).toBe(1)
+    expect(bottomState.headBlockIndex).toBe(2)
+  })
+
+  it('derives page row deltas from editor coordinates', () => {
+    const view = createView(
+      multilineEditSchema.nodes.doc.create(
+        null,
+        Array.from({ length: 12 }, (_, index) => paragraph(`line ${index}`)),
+      ),
+    )
+    const ranges = getEditorTextLineRanges(view)
+    const fakeView = {
+      ...view,
+      dom: { clientHeight: 60 },
+      coordsAtPos: (position: number) => {
+        const index = getEditorTextLineRanges(view).findIndex((range) => position >= range.start && position <= range.end)
+        return { left: 0, top: index * 20, bottom: index * 20 + 20 }
+      },
+      posAtCoords: ({ top }: { top: number }) => {
+        const index = Math.max(0, Math.min(ranges.length - 1, Math.round(top / 20)))
+        return { pos: ranges[index].start }
+      },
+    }
+    const state: MultiLineEditState = {
+      ...multiLineState([4, 5], 2),
+      columnOffsets: { 4: 2, 5: 2 },
+    }
+
+    expect(getMultiLinePageMovementRowDelta(fakeView, state, [4, 5], ranges, 'page-down')).toBe(3)
+    expect(getMultiLinePageMovementRowDelta(fakeView, state, [4, 5], ranges, 'page-up')).toBe(-3)
+  })
+
+  it('falls back to fixed row movement when editor coordinates are unavailable', () => {
+    const view = createView(
+      multilineEditSchema.nodes.doc.create(
+        null,
+        Array.from({ length: 20 }, (_, index) => paragraph(`line ${index}`)),
+      ),
+    )
+    const ranges = getEditorTextLineRanges(view)
+    const fakeView = { ...view, dom: { clientHeight: 72 } }
+    const state = multiLineState([5, 6], 2)
+
+    expect(getMultiLinePageMovementRowDelta(fakeView, state, [5, 6], ranges, 'page-down')).toBe(3)
+    expect(getMultiLinePageMovementRowDelta(fakeView, state, [5, 6], ranges, 'page-up')).toBe(-3)
+  })
+})
+
+describe('single-cursor page movement editing', () => {
+  it('moves the normal cursor down and up by viewport-derived rows', () => {
+    const doc = multilineEditSchema.nodes.doc.create(
+      null,
+      Array.from({ length: 10 }, (_, index) => paragraph(`line ${index}`)),
+    )
+    const setupView = createView(doc)
+    const setupRanges = getEditorTextLineRanges(setupView)
+    const downView = withPageCoordinates(createDispatchingView(doc, setupRanges[2].start + 2))
+
+    expect(applySingleCursorPageMovement(downView, 'page-down')).toBe(true)
+    let ranges = getEditorTextLineRanges(downView)
+    expect(downView.state.selection.head).toBe(ranges[5].start + 2)
+
+    expect(applySingleCursorPageMovement(downView, 'page-up')).toBe(true)
+    ranges = getEditorTextLineRanges(downView)
+    expect(downView.state.selection.head).toBe(ranges[2].start + 2)
+  })
+
+  it('preserves columns while clamping to shorter target lines', () => {
+    const doc = multilineEditSchema.nodes.doc.create(null, [
+      paragraph('zero'),
+      paragraph('longer'),
+      paragraph('two'),
+      paragraph('three'),
+      paragraph('x'),
+      paragraph('after'),
+    ])
+    const setupView = createView(doc)
+    const setupRanges = getEditorTextLineRanges(setupView)
+    const view = withPageCoordinates(createDispatchingView(doc, setupRanges[1].start + 5))
+
+    expect(applySingleCursorPageMovement(view, 'page-down')).toBe(true)
+    const ranges = getEditorTextLineRanges(view)
+    expect(view.state.selection.head).toBe(ranges[4].end)
+  })
+
+  it('clamps normal page movement at document boundaries', () => {
+    const doc = multilineEditSchema.nodes.doc.create(null, [paragraph('one'), paragraph('two'), paragraph('three')])
+    const setupView = createView(doc)
+    const setupRanges = getEditorTextLineRanges(setupView)
+    const topView = withPageCoordinates(createDispatchingView(doc, setupRanges[0].start + 1))
+    const bottomView = withPageCoordinates(createDispatchingView(doc, setupRanges[2].start + 1))
+
+    expect(applySingleCursorPageMovement(topView, 'page-up')).toBe(true)
+    expect(topView.state.selection.head).toBe(setupRanges[0].start + 1)
+
+    expect(applySingleCursorPageMovement(bottomView, 'page-down')).toBe(true)
+    expect(bottomView.state.selection.head).toBe(setupRanges[2].start + 1)
+  })
+
+  it('falls back to row deltas when editor coordinates are unavailable', () => {
+    const doc = multilineEditSchema.nodes.doc.create(
+      null,
+      Array.from({ length: 8 }, (_, index) => paragraph(`line ${index}`)),
+    )
+    const setupView = createView(doc)
+    const setupRanges = getEditorTextLineRanges(setupView)
+    const view = createDispatchingView(doc, setupRanges[1].start + 1)
+
+    expect(applySingleCursorPageMovement(view, 'page-down')).toBe(true)
+    const ranges = getEditorTextLineRanges(view)
+    expect(view.state.selection.head).toBe(ranges[4].start + 1)
+  })
+
+  it('extends the normal selection with shift page movement', () => {
+    const doc = multilineEditSchema.nodes.doc.create(
+      null,
+      Array.from({ length: 10 }, (_, index) => paragraph(`line ${index}`)),
+    )
+    const setupView = createView(doc)
+    const setupRanges = getEditorTextLineRanges(setupView)
+    const anchor = setupRanges[2].start + 1
+    const view = withPageCoordinates(createDispatchingView(doc, anchor))
+
+    expect(applySingleCursorPageMovement(view, 'page-down', true)).toBe(true)
+    const ranges = getEditorTextLineRanges(view)
+    expect(view.state.selection.anchor).toBe(anchor)
+    expect(view.state.selection.head).toBe(ranges[5].start + 1)
+    expect(view.state.selection.empty).toBe(false)
   })
 })
 

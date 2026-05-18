@@ -7,18 +7,14 @@ type NoteWorkspaceProps = {
   aisles: NoteAisle[]
   activeAisleId: string
   editorReadOnly: boolean
-  aisleDeleteMode: boolean
   aisleScrollRef: Ref<HTMLDivElement>
   toolbar: ReactNode
   headingPopover: ReactNode
-  aislePopover: ReactNode
-  deleteConfirmation: ReactNode
   imageToolsOverlay: ReactNode
   onRootChange: (node: HTMLElement | null) => void
   onAisleScroll: (scrollLeft: number) => void
   onActivateAisle: (editorKey: string) => void
   onRegisterAisleEditorRoot: (editorKey: string, node: HTMLElement | null) => void
-  onRequestDeleteAisle: (aisle: NoteAisle, aisleIndex: number, anchor: HTMLElement) => void
 }
 
 export function NoteWorkspace({
@@ -26,30 +22,22 @@ export function NoteWorkspace({
   aisles,
   activeAisleId,
   editorReadOnly,
-  aisleDeleteMode,
   aisleScrollRef,
   toolbar,
   headingPopover,
-  aislePopover,
-  deleteConfirmation,
   imageToolsOverlay,
   onRootChange,
   onAisleScroll,
   onActivateAisle,
   onRegisterAisleEditorRoot,
-  onRequestDeleteAisle,
 }: NoteWorkspaceProps) {
   return (
     <section
       ref={onRootChange}
-      className={`note-aisles-shell ${aisles.length <= 1 ? 'is-single' : 'is-split'} ${
-        aisleDeleteMode ? 'is-delete-mode' : ''
-      }`}
+      className={`note-aisles-shell ${aisles.length <= 1 ? 'is-single' : 'is-split'}`}
     >
       {toolbar}
       {headingPopover}
-      {aislePopover}
-      {deleteConfirmation}
       {imageToolsOverlay}
       <div
         ref={aisleScrollRef}
@@ -67,22 +55,6 @@ export function NoteWorkspace({
               data-aisle-editor-key={editorKey}
               onPointerDown={() => onActivateAisle(editorKey)}
             >
-              {aisleDeleteMode && aisles.length > 1 && (
-                <button
-                  type="button"
-                  className="note-aisle-delete-float"
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onClick={(event) => {
-                    event.preventDefault()
-                    event.stopPropagation()
-                    onRequestDeleteAisle(aisle, index, event.currentTarget)
-                  }}
-                  title={`Delete aisle ${index + 1}`}
-                  aria-label={`Delete aisle ${index + 1}`}
-                >
-                  <span className="note-aisle-delete-icon" aria-hidden="true" />
-                </button>
-              )}
               <section className={`editor-shell note-aisle-editor-shell ${editorReadOnly ? 'editor-readonly' : ''}`}>
                 <div
                   ref={(node) => onRegisterAisleEditorRoot(editorKey, node)}

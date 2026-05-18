@@ -46,7 +46,7 @@ type UseArrangeModeParams = {
   setMenuOpen: Dispatch<SetStateAction<boolean>>
   setContextMenu: Dispatch<SetStateAction<ContextMenuState | null>>
   setEditing: Dispatch<SetStateAction<{ type: EditableEntityType; id: string } | null>>
-  exitAisleDeleteMode: () => void
+  closeAisleEditModal: () => void
 }
 
 export function useArrangeMode({
@@ -62,7 +62,7 @@ export function useArrangeMode({
   setMenuOpen,
   setContextMenu,
   setEditing,
-  exitAisleDeleteMode,
+  closeAisleEditModal,
 }: UseArrangeModeParams) {
   const [mode, setMode] = useState<ArrangeModeState>(DEFAULT_ARRANGE_MODE)
   const [draggingItem, setDraggingItem] = useState<ArrangeDragItem | null>(null)
@@ -171,7 +171,7 @@ export function useArrangeMode({
     setMenuOpen(false)
     setContextMenu(null)
     setEditing(null)
-    exitAisleDeleteMode()
+    closeAisleEditModal()
     if (suppressClickKey) {
       markClickSuppressed(suppressClickKey)
     }

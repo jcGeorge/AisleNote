@@ -12,7 +12,7 @@ export type AisleStructuralSnapshot = {
 }
 
 export type AisleStructuralHistoryEntry = {
-  type: 'add-aisle' | 'delete-aisle'
+  type: 'add-aisle' | 'delete-aisle' | 'edit-aisles'
   noteBodyId: string
   before: AisleStructuralSnapshot
   after: AisleStructuralSnapshot
