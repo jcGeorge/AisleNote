@@ -1,4 +1,18 @@
-export type AppTheme = 'dark' | 'light' | 'dawn' | 'blues'
+export type AppTheme = 'dark' | 'light' | 'dawn' | 'blues' | 'custom'
+export type CustomThemePaletteSlot =
+  | 'canvas'
+  | 'page'
+  | 'surface'
+  | 'surfaceRaised'
+  | 'text'
+  | 'mutedText'
+  | 'border'
+  | 'primary'
+  | 'secondary'
+  | 'danger'
+  | 'warning'
+  | 'success'
+export type CustomThemePalette = Record<CustomThemePaletteSlot, string>
 export type ViewMode = 'domains' | 'spaces' | 'main' | 'trash' | 'settings' | 'stage-manager'
 export type ShortcutId =
   | 'toggleTabTrash'
@@ -212,6 +226,8 @@ export type AppState = {
     stageManagerOpenDestinationAfterApply: boolean
     tabButtonScale: number
     noteFontScale: number
+    settingsSection: SettingsSection
+    customThemePalette: CustomThemePalette | null
     noteCursorLocations: Record<string, NoteCursorLocation>
   }
 }

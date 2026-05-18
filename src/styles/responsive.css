@@ -1,1 +1,245 @@
 /* Viewport-specific overrides live here when component-local wrapping is not enough. */
+
+@media (max-width: 760px) {
+  .app-shell {
+    --tab-control-height: max(38px, calc(32px * var(--tab-button-scale)));
+  }
+
+  .tabbar,
+  .subtabbar {
+    padding: 0.26rem 0.4rem;
+  }
+
+  .tabbar-row {
+    gap: 0.35rem;
+  }
+
+  .tabbar-scroll {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    align-items: center;
+    align-content: center;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .tabbar-primary {
+    min-width: 0;
+  }
+
+  .tab-btn,
+  .add-tab-btn,
+  .topbar-action-btn,
+  .menu-btn {
+    min-height: var(--tab-control-height);
+  }
+
+  .tab-btn {
+    max-width: min(calc(220px * var(--tab-button-scale)), 68vw);
+  }
+
+  .tabbar-controls,
+  .topbar-actions {
+    gap: 0.25rem;
+  }
+
+  .toastui-editor-toolbar {
+    min-height: 38px !important;
+    padding: 0.2rem 0.28rem !important;
+  }
+
+  .toastui-editor-defaultUI-toolbar {
+    row-gap: 0.22rem !important;
+  }
+
+  .toastui-editor-toolbar-group {
+    margin-right: 0.25rem !important;
+  }
+
+  .toastui-editor-defaultUI-toolbar button,
+  .toastui-editor-toolbar button {
+    width: 32px !important;
+    height: 32px !important;
+  }
+
+  .toastui-editor-defaultUI-toolbar button.clear-note-toolbar-btn,
+  .toastui-editor-toolbar button.clear-note-toolbar-btn,
+  .toastui-editor-defaultUI-toolbar button.note-link-toolbar-btn,
+  .toastui-editor-toolbar button.note-link-toolbar-btn,
+  .toastui-editor-defaultUI-toolbar button.note-copy-toolbar-btn,
+  .toastui-editor-toolbar button.note-copy-toolbar-btn,
+  .toastui-editor-defaultUI-toolbar button.frontmatter-toolbar-btn,
+  .toastui-editor-toolbar button.frontmatter-toolbar-btn,
+  .toastui-editor-defaultUI-toolbar button.aisles-toolbar-btn,
+  .toastui-editor-toolbar button.aisles-toolbar-btn,
+  .image-tool-btn {
+    width: 32px !important;
+    min-width: 32px !important;
+    height: 32px !important;
+  }
+
+  .settings-page-wrap {
+    padding: 1rem 0.55rem 0.75rem;
+  }
+
+  .settings-page-card {
+    padding: 0.75rem;
+  }
+
+  .settings-section-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .settings-hotkey-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .settings-slider-wrap,
+  .theme-switch,
+  .custom-theme-editor,
+  .settings-shortcut-select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .settings-slider-wrap {
+    gap: 0.5rem;
+  }
+}
+
+@media (max-width: 520px) {
+  .tabbar-row {
+    align-items: flex-start;
+  }
+
+  .tabbar-controls {
+    align-self: flex-start;
+  }
+
+  .topbar-action-visible-label {
+    padding-inline: 0.35rem;
+  }
+
+  .menu-dropdown {
+    right: -0.1rem;
+  }
+
+  .note-shared-toolbar {
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .note-shared-toolbar .app-shared-editor-toolbar {
+    width: max-content !important;
+    min-width: 100% !important;
+    flex-wrap: nowrap !important;
+    align-content: center !important;
+  }
+
+  .toast-editor-host,
+  .note-aisle-scroll,
+  .note-aisle-pane,
+  .editor-shell,
+  .toastui-editor-defaultUI,
+  .toastui-editor,
+  .toastui-editor-main,
+  .toastui-editor-main-container,
+  .toastui-editor-md-container,
+  .toastui-editor-ww-container,
+  .toastui-editor-contents,
+  .toastui-editor .ProseMirror {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .note-aisle-scroll {
+    overflow-x: hidden !important;
+  }
+
+  .toastui-editor .ProseMirror p,
+  .toastui-editor .ProseMirror li,
+  .toastui-editor-contents p,
+  .toastui-editor-contents li {
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
+
+  .settings-page-wrap {
+    padding-inline: 0.4rem;
+  }
+
+  .settings-section-tabs {
+    gap: 0.28rem;
+  }
+
+  .theme-switch {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .custom-theme-editor-header {
+    grid-template-columns: 1fr;
+    gap: 0.45rem;
+  }
+
+  .custom-theme-actions {
+    justify-content: stretch;
+  }
+
+  .custom-theme-actions .settings-action-btn {
+    flex: 1 1 10rem;
+  }
+
+  .custom-theme-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .custom-theme-slot {
+    grid-template-columns: minmax(6.5rem, 1fr) 2.6rem minmax(5.25rem, 0.55fr);
+  }
+
+  .custom-theme-color-picker {
+    display: contents;
+  }
+
+  .custom-theme-swatch-button {
+    grid-column: 2;
+    min-height: 2.4rem;
+  }
+
+  .custom-theme-hex-input {
+    grid-column: 3;
+  }
+
+  .custom-color-picker-panel,
+  .custom-theme-slot:nth-child(even) .custom-color-picker-panel {
+    position: static;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+    margin-top: 0.25rem;
+  }
+
+  .custom-color-picker-square {
+    min-height: 9rem;
+  }
+
+  .frontmatter-template-field-row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .frontmatter-template-field-header {
+    display: none;
+  }
+
+  .storage-profile-row {
+    grid-template-columns: 1fr;
+    gap: 0.2rem;
+  }
+}

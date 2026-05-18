@@ -268,7 +268,7 @@ export function ensureNoteBodiesForAppState(appState: AppState): AppState {
 export const DEFAULT_STATE: AppState = ensureNoteBodiesForAppState(RAW_DEFAULT_STATE)
 
 function normalizeAppTheme(value: unknown): AppTheme {
-  if (value === 'dark' || value === 'light' || value === 'dawn' || value === 'blues') return value
+  if (value === 'dark' || value === 'light' || value === 'dawn' || value === 'blues' || value === 'custom') return value
   if (value === 'dusk') return 'blues'
   return 'dawn'
 }

@@ -1,7 +1,20 @@
 export type StorageSchemaVersion = 2
 
 export type StorageEntityId = string
-export type StorageTheme = 'dark' | 'light' | 'dawn' | 'blues'
+export type StorageTheme = 'dark' | 'light' | 'dawn' | 'blues' | 'custom'
+export type StorageCustomThemePaletteSlot =
+  | 'canvas'
+  | 'page'
+  | 'surface'
+  | 'surfaceRaised'
+  | 'text'
+  | 'mutedText'
+  | 'border'
+  | 'primary'
+  | 'secondary'
+  | 'danger'
+  | 'warning'
+  | 'success'
 export type StorageShortcutId =
   | 'toggleTabTrash'
   | 'openDomains'
@@ -39,6 +52,7 @@ export type StorageNewlineOperationId =
   | 'strikethrough'
   | 'operationsMenu'
 export type StorageNewlineShortcutId = 'controlEnter' | 'shiftEnter' | 'commandEnter'
+export type StorageSettingsSection = 'hotkeys' | 'shortcuts' | 'data' | 'visuals' | 'frontmatter'
 
 export type StorageGlobalSettings = {
   theme: StorageTheme
@@ -57,6 +71,8 @@ export type StorageGlobalSettings = {
     stageManagerOpenDestinationAfterApply: boolean
     tabButtonScale: number
     noteFontScale: number
+    settingsSection?: StorageSettingsSection
+    customThemePalette?: Partial<Record<StorageCustomThemePaletteSlot, string>> | null
     noteCursorLocations?: Record<
       string,
       {

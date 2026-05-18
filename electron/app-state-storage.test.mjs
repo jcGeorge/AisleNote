@@ -27,6 +27,21 @@ function withTempUserDataPath(run) {
   }
 }
 
+const customThemePaletteFixture = {
+  canvas: '#0b1528',
+  page: '#142642',
+  surface: '#0f1b32',
+  surfaceRaised: '#101d34',
+  text: '#e9ecef',
+  mutedText: '#9fb3d7',
+  border: '#2f4672',
+  primary: '#8844cc',
+  secondary: '#1f9b67',
+  danger: '#963442',
+  warning: '#d9a441',
+  success: '#2fb36d',
+}
+
 function serializedAppState() {
   const space = {
     id: 'space-1',
@@ -84,6 +99,15 @@ function serializedAppState() {
           fields: [{ id: 'field-1', key: 'status', type: 'text', defaultValue: 'draft', computed: 'none' }],
         },
       ],
+    },
+    ui: {
+      showParentHomeTab: true,
+      stageManagerOpenDestinationAfterApply: true,
+      tabButtonScale: 1,
+      noteFontScale: 1,
+      settingsSection: 'frontmatter',
+      customThemePalette: customThemePaletteFixture,
+      noteCursorLocations: {},
     },
     activeSpaceId: space.id,
     spaces: [space],
@@ -174,6 +198,22 @@ describe('Electron app state storage load result', () => {
       expect(parsed.noteBodies[0].frontmatterComputedFields).toEqual({ created: 'createdAt' })
       expect(parsed.frontmatter.settingsTemplateId).toBe('template-1')
       expect(parsed.frontmatter.lastAppliedTemplateId).toBe('template-1')
+      expect(parsed.ui.settingsSection).toBe('frontmatter')
+      expect(parsed.ui.customThemePalette.primary).toBe('#8844cc')
+    }))
+
+  it('round-trips the custom theme through hybrid storage', () =>
+    withTempUserDataPath((userDataPath) => {
+      const state = JSON.parse(serializedAppState())
+      state.theme = 'custom'
+
+      saveAppState(userDataPath, JSON.stringify(state))
+
+      const result = loadAppStateResult(userDataPath)
+      expect(result.ok).toBe(true)
+      const parsed = JSON.parse(result.serializedState)
+      expect(parsed.theme).toBe('custom')
+      expect(parsed.ui.customThemePalette).toEqual(customThemePaletteFixture)
     }))
 
   it('writes v2 human-readable domain paths without synced backups or note body folders', () =>

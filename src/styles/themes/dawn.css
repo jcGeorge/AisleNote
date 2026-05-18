@@ -369,40 +369,6 @@
   background: var(--editor-bg);
 }
 
-.theme-dawn .settings-range-input {
-  accent-color: #3f6f4f;
-}
-
-.theme-dawn .settings-range-input::-webkit-slider-runnable-track {
-  background-color: #c7b37a;
-}
-
-.theme-dawn .settings-range-input::-webkit-slider-thumb {
-  border: 1px solid #6f936d;
-  background-color: #3f6f4f;
-}
-
-.theme-dawn .settings-range-input:focus::-webkit-slider-thumb {
-  box-shadow: 0 0 0 0.2rem rgba(63, 111, 79, 0.24);
-}
-
-.theme-dawn .settings-range-input::-moz-range-track {
-  background-color: #c7b37a;
-}
-
-.theme-dawn .settings-range-input::-moz-range-progress {
-  background-color: #3f6f4f;
-}
-
-.theme-dawn .settings-range-input::-moz-range-thumb {
-  border: 1px solid #6f936d;
-  background-color: #3f6f4f;
-}
-
-.theme-dawn .settings-range-input:focus::-moz-range-thumb {
-  box-shadow: 0 0 0 0.2rem rgba(63, 111, 79, 0.24);
-}
-
 .theme-dawn .trash-home-note {
   background: var(--editor-bg);
   color: var(--editor-text);

@@ -751,7 +751,7 @@ function buildRootManifestV2(appState, domainEntries, noteBodyEntries) {
   return {
     schemaVersion: SCHEMA_VERSION,
     globalSettings: {
-      theme: ['dark', 'light', 'dawn', 'blues'].includes(appState.theme) ? appState.theme : 'dawn',
+      theme: ['dark', 'light', 'dawn', 'blues', 'custom'].includes(appState.theme) ? appState.theme : 'dawn',
       hotkeys: appState.hotkeys ?? {
         shortcuts: {},
         enableMouseBackForward: true,
@@ -762,6 +762,8 @@ function buildRootManifestV2(appState, domainEntries, noteBodyEntries) {
         stageManagerOpenDestinationAfterApply: true,
         tabButtonScale: 1,
         noteFontScale: 1,
+        settingsSection: 'hotkeys',
+        customThemePalette: null,
         noteCursorLocations: {},
       },
       frontmatter: isRecord(appState.frontmatter) ? appState.frontmatter : undefined,
@@ -1256,7 +1258,7 @@ function readV2HybridAppStateFromRoot(rootPath, rootManifest, issues = null) {
       rootManifest.activeDomainId) ||
     domains[0].id
   const activeDomain = domains.find((domain) => domain.id === activeDomainId) ?? domains[0]
-  const theme = ['dark', 'light', 'dawn', 'blues'].includes(rootManifest?.globalSettings?.theme)
+  const theme = ['dark', 'light', 'dawn', 'blues', 'custom'].includes(rootManifest?.globalSettings?.theme)
     ? rootManifest.globalSettings.theme
     : 'dawn'
 

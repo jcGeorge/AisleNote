@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildImageAssetUrl } from '../markdown/image-asset-refs.js'
 import { registerImageAssetBytes } from '../markdown/image-asset-registry'
+import { DEFAULT_CUSTOM_THEME_PALETTE } from '../settings/defaults'
 import { parseSavedState } from '../state/app-state'
 import { buildHybridFileMapFromSerializedState, readSerializedStateFromHybridFileMap } from './browser-hybrid-state'
 import { STORAGE_PATH_SEGMENT_MAX_LENGTH } from './storage-path-segments.js'
@@ -89,7 +90,7 @@ describe('browser hybrid storage', () => {
   it('round trips markdown note bodies through the manifest file map', () => {
     const state = parseSavedState(
       JSON.stringify({
-        theme: 'dawn',
+        theme: 'custom',
         spaces: [
           {
             id: 'space-1',
@@ -145,6 +146,11 @@ describe('browser hybrid storage', () => {
           ],
         },
         ui: {
+          settingsSection: 'visuals',
+          customThemePalette: {
+            ...DEFAULT_CUSTOM_THEME_PALETTE,
+            primary: '#8844cc',
+          },
           noteCursorLocations: {
             'domain::space-1::tab-1::__home__': {
               activeAisleId: 'aisle-tab',
@@ -193,6 +199,12 @@ describe('browser hybrid storage', () => {
     expect(homeBody?.frontmatterTemplateRemovedFieldIds).toEqual(['field-2'])
     expect(homeBody?.frontmatterComputedFields).toEqual({ created: 'createdAt' })
     expect(subBody?.aisles[0]?.markdown).toBe('sub body')
+    expect(roundTripped.theme).toBe('custom')
+    expect(roundTripped.ui.customThemePalette).toEqual({
+      ...DEFAULT_CUSTOM_THEME_PALETTE,
+      primary: '#8844cc',
+    })
+    expect(roundTripped.ui.settingsSection).toBe('visuals')
     expect(roundTripped.frontmatter.settingsTemplateId).toBe('template-1')
     expect(roundTripped.frontmatter.lastAppliedTemplateId).toBe('template-1')
     expect(roundTripped.ui.noteCursorLocations['domain::space-1::tab-1::__home__']).toEqual({

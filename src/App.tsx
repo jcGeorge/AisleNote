@@ -73,6 +73,7 @@ import {
 import { useNoteReferenceActions } from './notes/useNoteReferenceActions'
 import { useAppOverlayActions } from './overlays/useAppOverlayActions'
 import { measureSlowOperation } from './performance/performance-logging'
+import { DEFAULT_CUSTOM_THEME_PALETTE, getCustomThemePaletteSeedMatch } from './settings/defaults'
 import { useSettingsController } from './settings/useSettingsController'
 import { applyAutoPurgeToAppState, ensureNoteBodiesForAppState } from './state/app-state'
 import {
@@ -1479,16 +1480,43 @@ function App() {
   const arrangeableSpaceClassName = arrangeMode.active && arrangeMode.scope === 'spaces' && viewMode === 'spaces' ? 'is-arrangeable' : ''
   const draggingSpaceId =
     arrangeMode.active && arrangeDraggingItem?.type === 'space' ? arrangeDraggingItem.spaceId : null
+  const customThemePalette = state.theme === 'custom'
+    ? state.ui.customThemePalette ?? DEFAULT_CUSTOM_THEME_PALETTE
+    : null
+  const customThemeSeedSource = getCustomThemePaletteSeedMatch(customThemePalette)
+  const customThemeClassName = customThemePalette
+    ? customThemeSeedSource
+      ? `theme-custom-seed-${customThemeSeedSource} ${
+          customThemeSeedSource === 'dark' ? '' : `theme-${customThemeSeedSource}`
+        }`
+      : 'theme-custom-derived'
+    : ''
 
   return (
     <main
-      className={`app-shell theme-${state.theme} view-${viewMode} ${
+      className={`app-shell theme-${state.theme} ${customThemeClassName} view-${viewMode} ${
         viewMode === 'stage-manager' ? 'view-stage-manager' : ''
       }`}
       style={
         {
           '--tab-button-scale': String(state.ui.tabButtonScale),
           '--note-font-scale': String(state.ui.noteFontScale),
+          ...(customThemePalette
+            ? {
+                '--custom-theme-canvas': customThemePalette.canvas,
+                '--custom-theme-page': customThemePalette.page,
+                '--custom-theme-surface': customThemePalette.surface,
+                '--custom-theme-surface-raised': customThemePalette.surfaceRaised,
+                '--custom-theme-text': customThemePalette.text,
+                '--custom-theme-muted-text': customThemePalette.mutedText,
+                '--custom-theme-border': customThemePalette.border,
+                '--custom-theme-primary': customThemePalette.primary,
+                '--custom-theme-secondary': customThemePalette.secondary,
+                '--custom-theme-danger': customThemePalette.danger,
+                '--custom-theme-warning': customThemePalette.warning,
+                '--custom-theme-success': customThemePalette.success,
+              }
+            : {}),
         } as React.CSSProperties
       }
     >
@@ -1621,6 +1649,7 @@ function App() {
           exportStatus={settingsController.exportStatus}
           tabButtonScaleDraft={settingsController.tabButtonScaleDraft}
           noteFontScaleDraft={settingsController.noteFontScaleDraft}
+          customThemePaletteDraft={settingsController.customThemePaletteDraft}
           showParentHomeTabDraft={settingsController.showParentHomeTabDraft}
           frontmatterDraft={settingsController.frontmatterDraft}
           frontmatterDraftDirty={settingsController.frontmatterDraftDirty}
@@ -1635,6 +1664,9 @@ function App() {
           onExportSpace={(spaceId) => setModal({ type: 'export-space', spaceId })}
           onExportAll={() => exportData('all')}
           onThemeChange={settingsController.updateThemeSetting}
+          onCustomThemePaletteChange={settingsController.updateCustomThemePaletteSetting}
+          onCustomThemePaletteReset={settingsController.resetCustomThemePaletteSetting}
+          onCustomThemePaletteSeedFromCurrentTheme={settingsController.seedCustomThemePaletteFromCurrentTheme}
           onTabButtonScaleChange={settingsController.updateTabButtonScaleSetting}
           onNoteFontScaleChange={settingsController.updateNoteFontScaleSetting}
           onShowParentHomeTabChange={settingsController.updateShowParentHomeTabSetting}

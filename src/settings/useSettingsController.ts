@@ -14,6 +14,8 @@ import { isFrontmatterComputedValueCompatibleWithFieldType } from '../frontmatte
 import type {
   AppState,
   AppTheme,
+  CustomThemePalette,
+  CustomThemePaletteSlot,
   FrontmatterSettings,
   FrontmatterTemplate,
   FrontmatterTemplateField,
@@ -29,7 +31,10 @@ import {
   clampNoteFontScale,
   clampTabButtonScale,
   DEFAULT_AUTO_REMOVE_DAYS,
+  DEFAULT_CUSTOM_THEME_PALETTE,
   DEFAULT_UI_SETTINGS,
+  getCustomThemePaletteSeed,
+  normalizeHexColor,
 } from './defaults'
 
 type UseSettingsControllerParams = {
@@ -52,7 +57,7 @@ export function useSettingsController({
   activeSpace,
   viewMode,
 }: UseSettingsControllerParams) {
-  const [section, setSection] = useState<SettingsSection>('hotkeys')
+  const [section, setSection] = useState<SettingsSection>(state.ui.settingsSection)
   const [settingsDaysDraft, setSettingsDaysDraft] = useState<string>(String(DEFAULT_AUTO_REMOVE_DAYS))
   const [shortcutDrafts, setShortcutDrafts] = useState<Record<ShortcutId, string>>(DEFAULT_SHORTCUTS)
   const [newlineShortcutDrafts, setNewlineShortcutDrafts] = useState<Record<NewlineShortcutId, NewlineOperationId>>(
@@ -67,9 +72,20 @@ export function useSettingsController({
   const [showParentHomeTabDraft, setShowParentHomeTabDraft] = useState(DEFAULT_UI_SETTINGS.showParentHomeTab)
   const [tabButtonScaleDraft, setTabButtonScaleDraft] = useState(DEFAULT_UI_SETTINGS.tabButtonScale)
   const [noteFontScaleDraft, setNoteFontScaleDraft] = useState(DEFAULT_UI_SETTINGS.noteFontScale)
+  const [customThemePaletteDraft, setCustomThemePaletteDraft] = useState<CustomThemePalette>(
+    state.ui.customThemePalette ?? getCustomThemePaletteSeed(state.theme),
+  )
   const [frontmatterDraft, setFrontmatterDraft] = useState<FrontmatterSettings>(state.frontmatter)
   const [exportStatus, setExportStatus] = useState<string>('')
   const pendingSettingsFrontmatterTemplateIdRef = useRef<string | null>(null)
+  const pendingSettingsSectionRef = useRef<SettingsSection | null>(null)
+  const lastBuiltInThemeRef = useRef<Exclude<AppTheme, 'custom'>>(state.theme === 'custom' ? 'dawn' : state.theme)
+
+  useEffect(() => {
+    if (state.theme !== 'custom') {
+      lastBuiltInThemeRef.current = state.theme
+    }
+  }, [state.theme])
 
   useEffect(() => {
     if (viewMode !== 'settings') return
@@ -82,14 +98,25 @@ export function useSettingsController({
     setShowParentHomeTabDraft(state.ui.showParentHomeTab)
     setTabButtonScaleDraft(state.ui.tabButtonScale)
     setNoteFontScaleDraft(state.ui.noteFontScale)
+    setSection(pendingSettingsSectionRef.current ?? state.ui.settingsSection)
+    if (pendingSettingsSectionRef.current === state.ui.settingsSection) {
+      pendingSettingsSectionRef.current = null
+    }
+    setCustomThemePaletteDraft(
+      state.ui.customThemePalette ??
+        getCustomThemePaletteSeed(state.theme === 'custom' ? lastBuiltInThemeRef.current : state.theme),
+    )
     setEditingShortcut(null)
   }, [
     viewMode,
     activeSpace.settings.autoRemoveDeletedDays,
     state.hotkeys,
+    state.theme,
     state.ui.showParentHomeTab,
     state.ui.tabButtonScale,
     state.ui.noteFontScale,
+    state.ui.settingsSection,
+    state.ui.customThemePalette,
   ])
 
   useEffect(() => {
@@ -111,7 +138,18 @@ export function useSettingsController({
   }
 
   const changeSection = (nextSection: SettingsSection) => {
+    pendingSettingsSectionRef.current = stateRef.current.ui.settingsSection === nextSection ? null : nextSection
     setSection(nextSection)
+    commitImmediateSettingsState((previous) => {
+      if (previous.ui.settingsSection === nextSection) return previous
+      return {
+        ...previous,
+        ui: {
+          ...previous.ui,
+          settingsSection: nextSection,
+        },
+      }
+    })
     if (nextSection !== 'hotkeys') setEditingShortcut(null)
   }
 
@@ -200,7 +238,75 @@ export function useSettingsController({
   }
 
   const updateThemeSetting = (theme: AppTheme) => {
-    commitImmediateSettingsState((previous) => (previous.theme === theme ? previous : { ...previous, theme }))
+    if (theme === 'custom') {
+      const current = stateRef.current
+      setCustomThemePaletteDraft(
+        current.ui.customThemePalette ??
+          getCustomThemePaletteSeed(current.theme === 'custom' ? lastBuiltInThemeRef.current : current.theme),
+      )
+    }
+    commitImmediateSettingsState((previous) => {
+      if (previous.theme === theme && (theme !== 'custom' || previous.ui.customThemePalette)) return previous
+      if (theme !== 'custom') return { ...previous, theme }
+      const seedTheme = previous.theme === 'custom' ? lastBuiltInThemeRef.current : previous.theme
+      const customThemePalette = previous.ui.customThemePalette ?? getCustomThemePaletteSeed(seedTheme)
+      return {
+        ...previous,
+        theme,
+        ui: {
+          ...previous.ui,
+          customThemePalette,
+        },
+      }
+    })
+  }
+
+  const updateCustomThemePaletteSetting = (slot: CustomThemePaletteSlot, rawValue: string) => {
+    const normalized = normalizeHexColor(rawValue)
+    setCustomThemePaletteDraft((previous) => ({ ...previous, [slot]: normalized ?? rawValue }))
+    if (!normalized) return
+    commitImmediateSettingsState((previous) => {
+      const seedTheme = previous.theme === 'custom' ? lastBuiltInThemeRef.current : previous.theme
+      const nextPalette = {
+        ...(previous.ui.customThemePalette ?? getCustomThemePaletteSeed(seedTheme)),
+        [slot]: normalized,
+      }
+      return {
+        ...previous,
+        theme: 'custom',
+        ui: {
+          ...previous.ui,
+          customThemePalette: nextPalette,
+        },
+      }
+    })
+  }
+
+  const resetCustomThemePaletteSetting = () => {
+    setCustomThemePaletteDraft(DEFAULT_CUSTOM_THEME_PALETTE)
+    commitImmediateSettingsState((previous) => ({
+      ...previous,
+      theme: 'custom',
+      ui: {
+        ...previous.ui,
+        customThemePalette: DEFAULT_CUSTOM_THEME_PALETTE,
+      },
+    }))
+  }
+
+  const seedCustomThemePaletteFromCurrentTheme = () => {
+    const seed = getCustomThemePaletteSeed(
+      stateRef.current.theme === 'custom' ? lastBuiltInThemeRef.current : stateRef.current.theme,
+    )
+    setCustomThemePaletteDraft(seed)
+    commitImmediateSettingsState((previous) => ({
+      ...previous,
+      theme: 'custom',
+      ui: {
+        ...previous.ui,
+        customThemePalette: seed,
+      },
+    }))
   }
 
   const updateShortcutSetting = (shortcutId: ShortcutId, nextShortcut: string) => {
@@ -433,6 +539,7 @@ export function useSettingsController({
     exportStatus,
     tabButtonScaleDraft,
     noteFontScaleDraft,
+    customThemePaletteDraft,
     showParentHomeTabDraft,
     frontmatterDraft,
     frontmatterDraftDirty,
@@ -447,6 +554,9 @@ export function useSettingsController({
     updateTabButtonScaleSetting,
     updateNoteFontScaleSetting,
     updateThemeSetting,
+    updateCustomThemePaletteSetting,
+    resetCustomThemePaletteSetting,
+    seedCustomThemePaletteFromCurrentTheme,
     updateShortcutSetting,
     updateNewlineShortcutSetting,
     updateNewlineMenuOperationsSetting,

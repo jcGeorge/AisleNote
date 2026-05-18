@@ -121,7 +121,7 @@ export function getNoteBodyFirstMarkdown(noteBodyMap, noteBodyId, fallback) {
 
 /** @param {unknown} value */
 export function normalizeStorageTheme(value) {
-  if (value === 'dark' || value === 'light' || value === 'dawn' || value === 'blues') return value
+  if (value === 'dark' || value === 'light' || value === 'dawn' || value === 'blues' || value === 'custom') return value
   if (value === 'dusk') return 'blues'
   return 'dawn'
 }

@@ -296,6 +296,8 @@ function buildRootManifest(
               stageManagerOpenDestinationAfterApply: true,
               tabButtonScale: 1,
               noteFontScale: 1,
+              settingsSection: 'hotkeys',
+              customThemePalette: null,
               noteCursorLocations: {},
             },
       frontmatter: isRecord(appState.frontmatter) ? appState.frontmatter : undefined,

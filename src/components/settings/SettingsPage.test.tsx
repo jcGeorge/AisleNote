@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_FRONTMATTER_SETTINGS } from '../../frontmatter/frontmatter'
+import { DEFAULT_CUSTOM_THEME_PALETTE } from '../../settings/defaults'
 import type { AppState, FrontmatterSettings, SettingsSection, Space, StorageProfileStatus } from '../../types/app'
 import { SettingsPage } from './SettingsPage'
 
@@ -54,6 +55,8 @@ function createState(): AppState {
       stageManagerOpenDestinationAfterApply: true,
       tabButtonScale: 1,
       noteFontScale: 1,
+      settingsSection: 'hotkeys',
+      customThemePalette: null,
       noteCursorLocations: {},
     },
   }
@@ -64,12 +67,14 @@ function renderSettingsPage(
   frontmatterDraftDirty: boolean,
   options: {
     section?: SettingsSection
+    state?: AppState
     storageProfileStatus?: StorageProfileStatus | null
   } = {},
 ) {
+  const state = options.state ?? createState()
   return renderToStaticMarkup(
     <SettingsPage
-      state={createState()}
+      state={state}
       section={options.section ?? 'frontmatter'}
       isMacPlatform={false}
       shortcutDrafts={{
@@ -97,6 +102,7 @@ function renderSettingsPage(
       exportStatus=""
       tabButtonScaleDraft={1}
       noteFontScaleDraft={1}
+      customThemePaletteDraft={state.ui.customThemePalette ?? DEFAULT_CUSTOM_THEME_PALETTE}
       showParentHomeTabDraft
       frontmatterDraft={frontmatterDraft}
       frontmatterDraftDirty={frontmatterDraftDirty}
@@ -111,6 +117,9 @@ function renderSettingsPage(
       onExportSpace={() => undefined}
       onExportAll={() => undefined}
       onThemeChange={() => undefined}
+      onCustomThemePaletteChange={() => undefined}
+      onCustomThemePaletteReset={() => undefined}
+      onCustomThemePaletteSeedFromCurrentTheme={() => undefined}
       onTabButtonScaleChange={() => undefined}
       onNoteFontScaleChange={() => undefined}
       onShowParentHomeTabChange={() => undefined}
@@ -146,6 +155,32 @@ describe('frontmatter settings page', () => {
     const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'shortcuts' })
 
     expect(html).toContain('<option value="strikethrough">strikethrough</option>')
+  })
+
+  it('renders custom theme palette controls when the custom theme is selected', () => {
+    const state = createState()
+    state.theme = 'custom'
+    state.ui.customThemePalette = {
+      ...DEFAULT_CUSTOM_THEME_PALETTE,
+      primary: '#8844cc',
+    }
+    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'visuals', state })
+
+    expect(html).toContain('>custom</button>')
+    expect(html).toContain('aria-label="custom theme palette"')
+    expect(html).toContain('aria-label="primary color swatch"')
+    expect(html).toContain('aria-label="primary hex value"')
+    expect(html).not.toContain('type="color"')
+    expect(html).toContain('value="#8844cc"')
+    expect(html).not.toContain('copy to custom')
+    expect(html).toContain('reset palette')
+  })
+
+  it('shows the copy-to-custom action only for built-in themes', () => {
+    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'visuals' })
+
+    expect(html).toContain('copy to custom')
+    expect(html).not.toContain('seed from current theme')
   })
 
   it('renders draft template changes behind explicit save controls', () => {

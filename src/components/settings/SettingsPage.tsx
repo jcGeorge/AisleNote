@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { APP_COMMANDS } from '../../commands/app-commands'
 import {
   formatFixedNewlineShortcutLabel,
@@ -14,6 +15,9 @@ import {
   MIN_TAB_BUTTON_SCALE,
   NOTE_FONT_SCALE_STEP,
   TAB_BUTTON_SCALE_STEP,
+  CUSTOM_THEME_PALETTE_SLOTS,
+  DEFAULT_CUSTOM_THEME_PALETTE,
+  normalizeHexColor,
 } from '../../settings/defaults'
 import {
   FRONTMATTER_FIELD_TYPES,
@@ -26,6 +30,8 @@ import {
 import type {
   AppState,
   AppTheme,
+  CustomThemePalette,
+  CustomThemePaletteSlot,
   FrontmatterSettings,
   FrontmatterTemplate,
   FrontmatterTemplateField,
@@ -35,13 +41,30 @@ import type {
   ShortcutId,
   StorageProfileStatus,
 } from '../../types/app'
+import { CustomThemeColorPicker } from './CustomThemeColorPicker'
 
 const THEME_OPTIONS: Array<{ id: AppTheme; label: string }> = [
   { id: 'dark', label: 'dark' },
   { id: 'light', label: 'light' },
   { id: 'dawn', label: 'dawn' },
   { id: 'blues', label: 'blues' },
+  { id: 'custom', label: 'custom' },
 ]
+
+const CUSTOM_THEME_SLOT_LABELS: Record<CustomThemePaletteSlot, string> = {
+  canvas: 'canvas',
+  page: 'page',
+  surface: 'surface',
+  surfaceRaised: 'surface raised',
+  text: 'text',
+  mutedText: 'muted text',
+  border: 'border',
+  primary: 'primary',
+  secondary: 'secondary',
+  danger: 'danger',
+  warning: 'warning',
+  success: 'success',
+}
 
 const NEWLINE_SHORTCUT_ROWS: Array<{ id: NewlineShortcutId; label: string }> = [
   { id: 'controlEnter', label: 'aisle shortcut' },
@@ -68,6 +91,7 @@ type SettingsPageProps = {
   exportStatus: string
   tabButtonScaleDraft: number
   noteFontScaleDraft: number
+  customThemePaletteDraft: CustomThemePalette
   showParentHomeTabDraft: boolean
   frontmatterDraft: FrontmatterSettings
   frontmatterDraftDirty: boolean
@@ -82,6 +106,9 @@ type SettingsPageProps = {
   onExportSpace: (spaceId: string) => void
   onExportAll: () => void
   onThemeChange: (theme: AppTheme) => void
+  onCustomThemePaletteChange: (slot: CustomThemePaletteSlot, value: string) => void
+  onCustomThemePaletteReset: () => void
+  onCustomThemePaletteSeedFromCurrentTheme: () => void
   onTabButtonScaleChange: (value: string) => void
   onNoteFontScaleChange: (value: string) => void
   onShowParentHomeTabChange: (enabled: boolean) => void
@@ -119,6 +146,7 @@ export function SettingsPage({
   exportStatus,
   tabButtonScaleDraft,
   noteFontScaleDraft,
+  customThemePaletteDraft,
   showParentHomeTabDraft,
   frontmatterDraft,
   frontmatterDraftDirty,
@@ -133,6 +161,9 @@ export function SettingsPage({
   onExportSpace,
   onExportAll,
   onThemeChange,
+  onCustomThemePaletteChange,
+  onCustomThemePaletteReset,
+  onCustomThemePaletteSeedFromCurrentTheme,
   onTabButtonScaleChange,
   onNoteFontScaleChange,
   onShowParentHomeTabChange,
@@ -151,6 +182,7 @@ export function SettingsPage({
   onRetryStorageProfile,
   onRestoreStorageRecoverySnapshot,
 }: SettingsPageProps) {
+  const [activeColorPickerSlot, setActiveColorPickerSlot] = useState<CustomThemePaletteSlot | null>(null)
   const activeFrontmatterTemplate =
     frontmatterDraft.templates.find((template) => template.id === frontmatterDraft.settingsTemplateId) ??
     frontmatterDraft.templates[0]
@@ -162,6 +194,12 @@ export function SettingsPage({
     storageHealth === 'error' ? 'is-error' : '',
     storageHealth === 'warning' ? 'is-warning' : '',
   ].filter(Boolean).join(' ')
+  const getPaletteColorPickerValue = (slot: CustomThemePaletteSlot) =>
+    normalizeHexColor(customThemePaletteDraft[slot]) ?? DEFAULT_CUSTOM_THEME_PALETTE[slot]
+
+  useEffect(() => {
+    if (section !== 'visuals') setActiveColorPickerSlot(null)
+  }, [section])
 
   const renderFrontmatterDefaultControl = (templateId: string, field: FrontmatterTemplateField) => {
     if (field.type === 'boolean') {
@@ -452,6 +490,55 @@ export function SettingsPage({
                   >
                     {theme.label}
                   </button>
+                ))}
+              </div>
+            </div>
+            <div className="custom-theme-editor" aria-label="custom theme palette">
+              <div className="custom-theme-editor-header">
+                <span className="settings-hotkey-label">custom palette</span>
+                <div className="custom-theme-actions">
+                  {state.theme !== 'custom' && (
+                    <button
+                      type="button"
+                      className="btn btn-sm settings-action-btn"
+                      onClick={onCustomThemePaletteSeedFromCurrentTheme}
+                    >
+                      copy to custom
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-sm settings-action-btn"
+                    onClick={onCustomThemePaletteReset}
+                  >
+                    reset palette
+                  </button>
+                </div>
+              </div>
+              <div className="custom-theme-grid">
+                {CUSTOM_THEME_PALETTE_SLOTS.map((slot) => (
+                  <div className="custom-theme-slot" key={slot}>
+                    <span className="custom-theme-slot-label">{CUSTOM_THEME_SLOT_LABELS[slot]}</span>
+                    <CustomThemeColorPicker
+                      slotId={slot}
+                      label={CUSTOM_THEME_SLOT_LABELS[slot]}
+                      value={getPaletteColorPickerValue(slot)}
+                      fallbackValue={DEFAULT_CUSTOM_THEME_PALETTE[slot]}
+                      isOpen={activeColorPickerSlot === slot}
+                      onToggle={() => setActiveColorPickerSlot((current) => (current === slot ? null : slot))}
+                      onClose={() => setActiveColorPickerSlot((current) => (current === slot ? null : current))}
+                      onChange={(value) => onCustomThemePaletteChange(slot, value)}
+                    />
+                    <input
+                      className="settings-text-input custom-theme-hex-input"
+                      type="text"
+                      value={customThemePaletteDraft[slot]}
+                      spellCheck={false}
+                      inputMode="text"
+                      aria-label={`${CUSTOM_THEME_SLOT_LABELS[slot]} hex value`}
+                      onChange={(event) => onCustomThemePaletteChange(slot, event.target.value)}
+                    />
+                  </div>
                 ))}
               </div>
             </div>

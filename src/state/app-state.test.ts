@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { DEFAULT_CUSTOM_THEME_PALETTE } from '../settings/defaults'
 import { applyMarkdownToAppState, parseSavedState } from './app-state'
 
 describe('app state normalization', () => {
@@ -161,5 +162,45 @@ describe('app state normalization', () => {
       },
       updatedAt: 20,
     })
+  })
+
+  it('normalizes persisted custom theme palettes', () => {
+    const valid = parseSavedState(JSON.stringify({
+      theme: 'custom',
+      ui: {
+        customThemePalette: {
+          primary: '#AbC',
+          text: '#123456',
+        },
+      },
+    }))
+    const invalid = parseSavedState(JSON.stringify({
+      theme: 'custom',
+      ui: {
+        customThemePalette: {
+          primary: 'red',
+        },
+      },
+    }))
+    const missing = parseSavedState(JSON.stringify({ ui: {} }))
+
+    expect(valid.theme).toBe('custom')
+    expect(valid.ui.customThemePalette).toEqual({
+      ...DEFAULT_CUSTOM_THEME_PALETTE,
+      primary: '#aabbcc',
+      text: '#123456',
+    })
+    expect(invalid.ui.customThemePalette?.primary).toBe(DEFAULT_CUSTOM_THEME_PALETTE.primary)
+    expect(missing.ui.customThemePalette).toBeNull()
+  })
+
+  it('normalizes persisted settings section memory', () => {
+    const valid = parseSavedState(JSON.stringify({ ui: { settingsSection: 'visuals' } }))
+    const invalid = parseSavedState(JSON.stringify({ ui: { settingsSection: 'unknown' } }))
+    const missing = parseSavedState(JSON.stringify({ ui: {} }))
+
+    expect(valid.ui.settingsSection).toBe('visuals')
+    expect(invalid.ui.settingsSection).toBe('hotkeys')
+    expect(missing.ui.settingsSection).toBe('hotkeys')
   })
 })

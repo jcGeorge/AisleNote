@@ -3,7 +3,6 @@
 @import './styles/toasts.css';
 @import './styles/spaces.css';
 @import './styles/stage-manager.css';
-@import './styles/responsive.css';
 @import './styles/tabs.css';
 @import './styles/editor-shell.css';
 @import './styles/editor-base.css';
@@ -14,3 +13,4 @@
 @import './styles/themes/light.css';
 @import './styles/themes/dawn.css';
 @import './styles/themes/blues.css';
+@import './styles/responsive.css';
