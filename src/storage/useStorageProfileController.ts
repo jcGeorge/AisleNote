@@ -6,17 +6,24 @@ type StorageProfileActionResult =
   | { ok: true; status: StorageProfileStatus }
   | { ok: false; error?: string; status: StorageProfileStatus }
 
+type BeforeStorageActionOptions = {
+  snapshotMode?: 'force' | 'skip'
+}
+
 type UseStorageProfileControllerParams = {
   pushToast: (message: string, tone?: ToastTone, durationMs?: number) => void
+  beforeStorageAction?: (options?: BeforeStorageActionOptions) => Promise<void> | void
 }
 
 const STORAGE_ERROR_TOAST_DURATION_MS = 6000
 
-export function useStorageProfileController({ pushToast }: UseStorageProfileControllerParams) {
+export function useStorageProfileController({ pushToast, beforeStorageAction }: UseStorageProfileControllerParams) {
   const [storageProfileStatus, setStorageProfileStatus] = useState<StorageProfileStatus | null>(null)
   const pushToastRef = useRef(pushToast)
+  const beforeStorageActionRef = useRef(beforeStorageAction)
 
   pushToastRef.current = pushToast
+  beforeStorageActionRef.current = beforeStorageAction
 
   useEffect(() => {
     let disposed = false
@@ -63,6 +70,7 @@ export function useStorageProfileController({ pushToast }: UseStorageProfileCont
   }
 
   const chooseStorageFolder = async () => {
+    await beforeStorageActionRef.current?.()
     const result = await window.electronAPI?.chooseStorageFolder?.()
     if (!result) {
       pushToastRef.current('sync folder selection is only available in the desktop app.', 'warning')
@@ -72,6 +80,7 @@ export function useStorageProfileController({ pushToast }: UseStorageProfileCont
   }
 
   const moveStorageProfile = async () => {
+    await beforeStorageActionRef.current?.()
     const result = await window.electronAPI?.moveStorageProfile?.()
     if (!result) {
       pushToastRef.current('storage folder migration is only available in the desktop app.', 'warning')
@@ -90,6 +99,7 @@ export function useStorageProfileController({ pushToast }: UseStorageProfileCont
   }
 
   const retryStorageProfile = async () => {
+    await beforeStorageActionRef.current?.()
     const result = await window.electronAPI?.retryStorageProfile?.()
     if (!result) {
       pushToastRef.current('storage retry is only available in the desktop app.', 'warning')
@@ -99,6 +109,7 @@ export function useStorageProfileController({ pushToast }: UseStorageProfileCont
   }
 
   const restoreStorageRecoverySnapshot = async () => {
+    await beforeStorageActionRef.current?.({ snapshotMode: 'skip' })
     const result = await window.electronAPI?.restoreStorageRecoverySnapshot?.()
     if (!result) {
       pushToastRef.current('storage recovery is only available in the desktop app.', 'warning')

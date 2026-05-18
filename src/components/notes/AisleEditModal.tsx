@@ -19,9 +19,10 @@ const transformAislePreviewUrl = (url: string, key: string) =>
   key === 'src' && /^data:image\//i.test(url) ? url : defaultUrlTransform(url)
 
 const aislePreviewMarkdownComponents = {
-  img: ({ node: _node, ...props }: ImgHTMLAttributes<HTMLImageElement> & { node?: unknown }) => (
-    <img {...props} draggable={false} />
-  ),
+  img: ({ node, ...props }: ImgHTMLAttributes<HTMLImageElement> & { node?: unknown }) => {
+    void node
+    return <img {...props} draggable={false} />
+  },
 }
 
 type AisleEditModalProps = {

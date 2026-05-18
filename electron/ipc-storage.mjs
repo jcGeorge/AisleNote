@@ -120,6 +120,19 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     return result
   }
 
+  const handleSaveAppState = (payload, sourceWebContentsId) => {
+    if (!coordinator.canWriteAppState()) {
+      return {
+        ok: false,
+        reason: 'load-failed',
+        error: LOAD_FAILED_SAVE_ERROR,
+        currentRevision: coordinator.getLoadResult().revision,
+        serializedState: coordinator.getLoadResult().serializedState,
+      }
+    }
+    return saveRevisionedState(payload, sourceWebContentsId)
+  }
+
   const getCurrentSerializedStateForProfileMove = () => {
     const currentSerializedState = coordinator.getSerializedState()
     if (typeof currentSerializedState === 'string') return currentSerializedState
@@ -247,20 +260,19 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
 
   ipcMain.on('save-app-state', (event, payload) => {
     try {
-      if (!coordinator.canWriteAppState()) {
-        event.returnValue = {
-          ok: false,
-          reason: 'load-failed',
-          error: LOAD_FAILED_SAVE_ERROR,
-          currentRevision: coordinator.getLoadResult().revision,
-          serializedState: coordinator.getLoadResult().serializedState,
-        }
-        return
-      }
-      event.returnValue = saveRevisionedState(payload, event.sender?.id)
+      event.returnValue = handleSaveAppState(payload, event.sender?.id)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error'
       event.returnValue = { ok: false, reason: 'save-failed', error: message }
+    }
+  })
+
+  ipcMain.handle?.('save-app-state-async', async (event, payload) => {
+    try {
+      return handleSaveAppState(payload, event.sender?.id)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      return { ok: false, reason: 'save-failed', error: message }
     }
   })
 

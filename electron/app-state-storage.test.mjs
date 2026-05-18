@@ -786,6 +786,51 @@ describe('Electron app state storage load result', () => {
       }
     }))
 
+  it('skips recovery snapshots for routine autosaves', () =>
+    withTempUserDataPath((userDataPath) => {
+      const profileRootPath = mkdtempSync(path.join(os.tmpdir(), 'tabs-profile-'))
+      try {
+        saveAppState(profileRootPath, serializedAppStateWithMarkdown('first'), { userDataPath })
+        saveAppState(profileRootPath, serializedAppStateWithMarkdown('second'), {
+          userDataPath,
+          snapshotMode: 'skip',
+        })
+        saveAppState(profileRootPath, serializedAppStateWithMarkdown('third'), {
+          userDataPath,
+          snapshotMode: 'skip',
+        })
+
+        const snapshots = listStorageRecoverySnapshots(userDataPath)
+        const parsed = JSON.parse(loadAppStateResult(profileRootPath).serializedState)
+
+        expect(snapshots).toHaveLength(0)
+        expect(parsed.noteBodies[0].aisles[0].markdown).toBe('third')
+      } finally {
+        rmSync(profileRootPath, { recursive: true, force: true })
+      }
+    }))
+
+  it('creates a recovery snapshot for quiet-period debounced autosaves', () =>
+    withTempUserDataPath((userDataPath) => {
+      const profileRootPath = mkdtempSync(path.join(os.tmpdir(), 'tabs-profile-'))
+      try {
+        saveAppState(profileRootPath, serializedAppStateWithMarkdown('first'), { userDataPath })
+        saveAppState(profileRootPath, serializedAppStateWithMarkdown('quiet'), {
+          userDataPath,
+          snapshotMode: 'debounced',
+        })
+
+        const snapshots = listStorageRecoverySnapshots(userDataPath)
+        const parsed = JSON.parse(loadAppStateResult(profileRootPath).serializedState)
+
+        expect(snapshots.length).toBeGreaterThanOrEqual(1)
+        expect(snapshots[0].path).toContain(path.join(userDataPath, 'storage-recovery'))
+        expect(parsed.noteBodies[0].aisles[0].markdown).toBe('quiet')
+      } finally {
+        rmSync(profileRootPath, { recursive: true, force: true })
+      }
+    }))
+
   it('prunes recovery snapshots to the earliest and latest snapshot per active day', () =>
     withTempUserDataPath((userDataPath) => {
       const timestamps = [1, 2, 3, 4, 5].map((hour) => buildTimestamp(0, hour))

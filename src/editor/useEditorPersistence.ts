@@ -2,8 +2,10 @@ import { Editor } from '@toast-ui/editor'
 import { useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
 import { getNoteBodyMarkdown } from '../notes/note-markdown'
+import { measureSlowOperation } from '../performance/performance-logging'
 import { applyAutoPurgeToAppState, applyMarkdownToAppState } from '../state/app-state'
 import { appPersistenceService } from '../storage/app-persistence-service'
+import type { AppStateSaveOptions } from '../storage/persistence-debounce'
 import type { AppState, NoteBody, PendingContent } from '../types/app'
 
 type UseEditorPersistenceParams = {
@@ -84,9 +86,14 @@ export const useEditorPersistence = ({
     return applyActiveCursorToState(applyAutoPurgeToAppState(nextState))
   }
 
-  const persistLatestStateSnapshot = () => {
+  const persistLatestStateSnapshot = (options: AppStateSaveOptions = { snapshotMode: 'force', preferSync: true }) => {
     const latestState = buildStateWithLatestEditorContent()
-    appPersistenceService.saveSerializedState(JSON.stringify(latestState))
+    const serializedState = measureSlowOperation('app-state serialization', () => JSON.stringify(latestState))
+    appPersistenceService.saveSerializedState(serializedState, {
+      ...options,
+      preferSync: true,
+    })
+    void appPersistenceService.flushPendingSaves?.()
   }
 
   const flushPendingContent = () => {
@@ -198,7 +205,8 @@ export const useEditorPersistence = ({
     editorRef.current ? getNormalizedEditorMarkdown(editorRef.current) : getNoteBodyMarkdown(activeNoteBody, resolvedActiveAisleId)
 
   useEffect(() => {
-    window.__tabsGetLatestAppState = () => JSON.stringify(buildStateWithLatestEditorContent())
+    window.__tabsGetLatestAppState = () =>
+      measureSlowOperation('app-state serialization', () => JSON.stringify(buildStateWithLatestEditorContent()))
     return () => {
       delete window.__tabsGetLatestAppState
     }
@@ -259,5 +267,6 @@ export const useEditorPersistence = ({
     commitActiveEditorMarkdownNow,
     replaceActiveEditorMarkdown,
     getActiveEditorMarkdown,
+    persistLatestStateSnapshot,
   }
 }

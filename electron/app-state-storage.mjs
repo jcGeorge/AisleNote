@@ -42,6 +42,11 @@ const DOMAINS_DIR = 'domains'
 const STORAGE_RECOVERY_DIR = 'storage-recovery'
 export const RECOVERY_SNAPSHOT_MAX_ACTIVE_DAYS = 30
 export const RECOVERY_SNAPSHOT_MAX_PER_DAY = 2
+export const STORAGE_SNAPSHOT_MODES = Object.freeze({
+  FORCE: 'force',
+  DEBOUNCED: 'debounced',
+  SKIP: 'skip',
+})
 const IMAGE_METADATA_FRAGMENT_PREFIX = '#tabs-image='
 const INTERNAL_INDENT_TOKEN = '\u2060\u2003\u2003'
 const EDITOR_BLANK_LINE_PLACEHOLDER = '\u200b'
@@ -500,8 +505,26 @@ function createRecoverySnapshot(rootPath, userDataPath) {
   const recoveryParent = path.join(userDataPath, STORAGE_RECOVERY_DIR)
   mkdirSync(recoveryParent, { recursive: true })
   const snapshotPath = path.join(recoveryParent, `${HYBRID_ROOT_DIR}-${Date.now()}`)
-  cpSync(rootPath, snapshotPath, { recursive: true, force: true })
+  measureSlowMainOperation('storage recovery snapshot', () => {
+    cpSync(rootPath, snapshotPath, { recursive: true, force: true })
+  })
   return snapshotPath
+}
+
+function isMainPerformanceLoggingEnabled() {
+  return Boolean(process.env.VITE_DEV_SERVER_URL || process.env.TABS_PERF_LOG === '1')
+}
+
+function measureSlowMainOperation(label, operation, thresholdMs = 75) {
+  const startedAt = Date.now()
+  try {
+    return operation()
+  } finally {
+    const durationMs = Date.now() - startedAt
+    if (isMainPerformanceLoggingEnabled() && durationMs >= thresholdMs) {
+      console.warn(`[tabs perf] ${label} took ${durationMs.toFixed(1)}ms`)
+    }
+  }
 }
 
 function getRecoverySnapshotDayKey(snapshot) {
@@ -1329,16 +1352,24 @@ export function loadAppStateResult(profileRootPath) {
 export function saveAppState(profileRootPath, serializedState, options = {}) {
   const finalRoot = getHybridStorageRoot(profileRootPath)
   const recoveryRoot = typeof options.userDataPath === 'string' ? options.userDataPath : profileRootPath
+  const snapshotMode = Object.values(STORAGE_SNAPSHOT_MODES).includes(options.snapshotMode)
+    ? options.snapshotMode
+    : STORAGE_SNAPSHOT_MODES.FORCE
 
   if (options.replaceExisting === true) {
     removeStorageConflictPaths(profileRootPath, finalRoot)
     rmSync(finalRoot, { recursive: true, force: true })
-  } else {
+  } else if (snapshotMode === STORAGE_SNAPSHOT_MODES.FORCE) {
     createRecoverySnapshot(finalRoot, recoveryRoot)
     pruneStorageRecoverySnapshots(recoveryRoot)
   }
 
-  writeHybridStorage(finalRoot, serializedState)
+  measureSlowMainOperation('hybrid app-state write', () => writeHybridStorage(finalRoot, serializedState))
+
+  if (options.replaceExisting !== true && snapshotMode === STORAGE_SNAPSHOT_MODES.DEBOUNCED) {
+    createRecoverySnapshot(finalRoot, recoveryRoot)
+    pruneStorageRecoverySnapshots(recoveryRoot)
+  }
 }
 
 export function restoreStorageRecoverySnapshot(profileRootPath, userDataPath, snapshotPath = null) {

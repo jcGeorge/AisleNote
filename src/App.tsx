@@ -71,6 +71,7 @@ import {
 } from './notes/note-locations'
 import { useNoteReferenceActions } from './notes/useNoteReferenceActions'
 import { useAppOverlayActions } from './overlays/useAppOverlayActions'
+import { measureSlowOperation } from './performance/performance-logging'
 import { useSettingsController } from './settings/useSettingsController'
 import { applyAutoPurgeToAppState, ensureNoteBodiesForAppState } from './state/app-state'
 import {
@@ -100,6 +101,7 @@ import type {
   ViewMode,
   WorkspaceData,
 } from './types/app'
+import type { AppStateSnapshotMode } from './storage/persistence-debounce'
 
 type NewlineOperationsMenuState = {
   top: number
@@ -136,7 +138,7 @@ type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
 let renameInputMeasureContext: CanvasRenderingContext2D | null = null
 
 function App() {
-  const { state, setState, stateRef, storageHydrated } = usePersistentAppState()
+  const { state, setState, stateRef, storageHydrated, flushPendingPersistence } = usePersistentAppState()
   const [viewMode, setViewMode] = useState<ViewMode>('main')
   const [editing, setEditing] = useState<{ type: EditableEntityType; id: string } | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
@@ -165,6 +167,7 @@ function App() {
   const pendingScrollToAisleIdRef = useRef<string | null>(null)
   const pendingFocusToAisleIdRef = useRef<string | null>(null)
   const editorEventRootRef = useRef<HTMLElement | null>(null)
+  const closeNewlineOperationsMenuRef = useRef<(options?: { restoreEditorFocus?: boolean }) => void>(() => {})
   const runNewlineOperationFromMenuRef = useRef<(operation: NewlineOperationId) => void>(() => {})
   const deleteContextPreviewRef = useRef<(tokenId: string) => void>(() => {})
   const pendingCreatedEditRef = useRef<PendingCreatedEdit | null>(null)
@@ -192,6 +195,9 @@ function App() {
   const activeAisleIdRef = useRef<string>('')
   const activeNoteLocationKeyRef = useRef<string>('')
   const isMainViewRef = useRef(true)
+  const flushStorageActionStateRef = useRef<
+    (options?: { snapshotMode?: Extract<AppStateSnapshotMode, 'force' | 'skip'> }) => Promise<void> | void
+  >(() => {})
 
   function clearToastTimer(toastId: number) {
     const timer = toastTimersRef.current.get(toastId)
@@ -312,7 +318,10 @@ function App() {
     }
   }
 
-  const storageProfileController = useStorageProfileController({ pushToast })
+  const storageProfileController = useStorageProfileController({
+    pushToast,
+    beforeStorageAction: () => flushStorageActionStateRef.current(),
+  })
   const storageProfileStatus = storageProfileController.storageProfileStatus
 
   const trackCompletedTaskQuickDelete = (beforeMarkdown: string) => {
@@ -415,11 +424,13 @@ function App() {
   const getCurrentNoteLocation = (): NoteLocation => activeNoteLocation
 
   const getNormalizedEditorMarkdown = (editor: Editor) =>
-    normalizeEmptyHeadingMarkersFromWysiwyg(
-      editor,
-      preserveBlankParagraphsFromWysiwyg(
+    measureSlowOperation('editor markdown normalization', () =>
+      normalizeEmptyHeadingMarkersFromWysiwyg(
         editor,
-        normalizeMarkdownForPersistence(mergeLeadingIndentsFromWysiwyg(editor, editor.getMarkdown())),
+        preserveBlankParagraphsFromWysiwyg(
+          editor,
+          normalizeMarkdownForPersistence(mergeLeadingIndentsFromWysiwyg(editor, editor.getMarkdown())),
+        ),
       ),
     )
 
@@ -469,6 +480,13 @@ function App() {
   const commitActiveEditorMarkdownNow = editorPersistence.commitActiveEditorMarkdownNow
   const replaceActiveEditorMarkdown = editorPersistence.replaceActiveEditorMarkdown
   const getActiveEditorMarkdown = editorPersistence.getActiveEditorMarkdown
+  const persistLatestStateSnapshot = editorPersistence.persistLatestStateSnapshot
+
+  flushStorageActionStateRef.current = async (options = {}) => {
+    const snapshotMode = options.snapshotMode ?? 'force'
+    await flushPendingPersistence({ snapshotMode, preferSync: true })
+    persistLatestStateSnapshot({ snapshotMode })
+  }
 
   const saveActiveCursorBeforeNavigation = () => {
     saveActiveCursorLocation()
@@ -1095,6 +1113,7 @@ function App() {
       syncToolbarFormatState()
     })
   }
+  closeNewlineOperationsMenuRef.current = closeNewlineOperationsMenu
 
   const runNewlineOperationFromMenu = (operation: NewlineOperationId) => {
     closeNewlineOperationsMenu()
@@ -1116,7 +1135,7 @@ function App() {
         newlineOperationsMenu.operations.length,
       )
       if (action.type === 'close') {
-        closeNewlineOperationsMenu({ restoreEditorFocus: true })
+        closeNewlineOperationsMenuRef.current({ restoreEditorFocus: true })
         return
       }
       if (action.type === 'highlight') {
@@ -1132,7 +1151,7 @@ function App() {
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target instanceof Element ? event.target : null
       if (target?.closest('.newline-operations-menu')) return
-      closeNewlineOperationsMenu()
+      closeNewlineOperationsMenuRef.current()
     }
 
     document.addEventListener('keydown', handleKeyDown, true)

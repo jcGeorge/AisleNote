@@ -2,6 +2,10 @@ import { loadAppStateResult, saveAppState } from './app-state-storage.mjs'
 
 export const LOAD_FAILED_SAVE_ERROR = 'App state did not load; refusing to overwrite existing data.'
 
+function getSnapshotMode(payload) {
+  return ['force', 'debounced', 'skip'].includes(payload?.snapshotMode) ? payload.snapshotMode : undefined
+}
+
 export function createAppStateCoordinator({
   userDataPath,
   profileRootPath = userDataPath,
@@ -58,7 +62,10 @@ export function createAppStateCoordinator({
     }
 
     try {
-      save(activeProfileRootPath, payload.serializedState, { userDataPath })
+      save(activeProfileRootPath, payload.serializedState, {
+        userDataPath,
+        ...(getSnapshotMode(payload) ? { snapshotMode: getSnapshotMode(payload) } : {}),
+      })
       if (save === saveAppState) {
         const persistedLoadResult = load(activeProfileRootPath)
         lastSavedCanonicalState =

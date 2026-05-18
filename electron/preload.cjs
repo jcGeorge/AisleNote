@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   loadAppState: () => ipcRenderer.sendSync('load-app-state'),
   loadAppStateResult: () => ipcRenderer.sendSync('load-app-state-result'),
   saveAppState: (payload) => ipcRenderer.sendSync('save-app-state', payload),
+  saveAppStateAsync: (payload) => ipcRenderer.invoke('save-app-state-async', payload),
   onAppStateUpdated: (handler) => {
     const listener = (_event, payload) => handler(payload)
     ipcRenderer.on('app-state-updated', listener)

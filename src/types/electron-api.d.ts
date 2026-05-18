@@ -1,6 +1,27 @@
 export {}
 
 import type { StorageProfileStatus } from './app'
+import type { AppStateSnapshotMode } from '../storage/persistence-debounce'
+
+type SaveAppStatePayload = {
+  serializedState: string
+  baseRevision: number
+  snapshotMode?: AppStateSnapshotMode
+}
+
+type SaveAppStateResult =
+  | {
+      ok: true
+      serializedState: string
+      revision: number
+    }
+  | {
+      ok: false
+      reason: 'load-failed' | 'invalid-payload' | 'stale-revision' | 'save-failed'
+      error?: string
+      currentRevision?: number
+      serializedState?: string | null
+    }
 
 declare global {
   interface Window {
@@ -23,19 +44,8 @@ declare global {
             conflicts?: string[]
             revision: number
           }
-      saveAppState: (payload: { serializedState: string; baseRevision: number }) =>
-        | {
-            ok: true
-            serializedState: string
-            revision: number
-          }
-        | {
-            ok: false
-            reason: 'load-failed' | 'invalid-payload' | 'stale-revision' | 'save-failed'
-            error?: string
-            currentRevision?: number
-            serializedState?: string | null
-          }
+      saveAppState: (payload: SaveAppStatePayload) => SaveAppStateResult
+      saveAppStateAsync?: (payload: SaveAppStatePayload) => Promise<SaveAppStateResult>
       onAppStateUpdated?: (handler: (payload: { serializedState: string; revision: number }) => void) => () => void
       getStorageProfileStatus?: () => Promise<StorageProfileStatus>
       chooseStorageFolder?: () => Promise<

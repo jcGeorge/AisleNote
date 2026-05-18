@@ -53,6 +53,20 @@ describe('app persistence service', () => {
 
     expect(subscribe).toHaveBeenCalledOnce()
   })
+
+  it('exposes pending save flushing when the active store supports it', async () => {
+    const flush = vi.fn()
+    const store: AppStateStore = {
+      load: () => null,
+      save: vi.fn(),
+      flush,
+    }
+
+    const service = createAppPersistenceService(store)
+    await service.flushPendingSaves?.()
+
+    expect(flush).toHaveBeenCalledOnce()
+  })
 })
 
 describe('Electron app state store', () => {
@@ -132,6 +146,123 @@ describe('Electron app state store', () => {
       serializedState: '{"theme":"dawn"}',
       baseRevision: 0,
     })
+  })
+
+  it('uses async Electron saves when available and keeps revisions ordered', async () => {
+    let nextRevision = 2
+    const saveAppState = vi.fn()
+    const saveAppStateAsync = vi.fn(async (payload) => ({
+      ok: true,
+      serializedState: payload.serializedState,
+      revision: nextRevision++,
+    }))
+    vi.stubGlobal('window', {
+      electronAPI: {
+        loadAppStateResult: () => ({
+          ok: true,
+          serializedState: '{"theme":"dawn"}',
+          source: 'hybrid',
+          revision: 1,
+        }),
+        saveAppState,
+        saveAppStateAsync,
+      },
+    })
+
+    const store = createAppStateStore()
+
+    expect(store.load()).toBe('{"theme":"dawn"}')
+    store.save('{"theme":"light"}', { snapshotMode: 'skip' })
+    store.save('{"theme":"dark"}', { snapshotMode: 'debounced' })
+    await store.flush?.()
+
+    expect(saveAppState).not.toHaveBeenCalled()
+    expect(saveAppStateAsync).toHaveBeenCalledTimes(2)
+    expect(saveAppStateAsync).toHaveBeenNthCalledWith(1, {
+      serializedState: '{"theme":"light"}',
+      baseRevision: 1,
+      snapshotMode: 'skip',
+    })
+    expect(saveAppStateAsync).toHaveBeenNthCalledWith(2, {
+      serializedState: '{"theme":"dark"}',
+      baseRevision: 2,
+      snapshotMode: 'debounced',
+    })
+  })
+
+  it('falls back to sync Electron saves when async save is unavailable or sync is preferred', () => {
+    const saveAppState = vi.fn(() => ({
+      ok: true,
+      serializedState: '{"theme":"light"}',
+      revision: 2,
+    }))
+    vi.stubGlobal('window', {
+      electronAPI: {
+        loadAppStateResult: () => ({
+          ok: true,
+          serializedState: '{"theme":"dawn"}',
+          source: 'hybrid',
+          revision: 1,
+        }),
+        saveAppState,
+      },
+    })
+
+    const store = createAppStateStore()
+
+    expect(store.load()).toBe('{"theme":"dawn"}')
+    store.save('{"theme":"light"}', { snapshotMode: 'force', preferSync: true })
+
+    expect(saveAppState).toHaveBeenCalledWith({
+      serializedState: '{"theme":"light"}',
+      baseRevision: 1,
+      snapshotMode: 'force',
+    })
+  })
+
+  it('does not apply an older async save result after a forced sync save', async () => {
+    let resolveAsyncSave: ((value: { ok: true; serializedState: string; revision: number }) => void) | undefined
+    const saveAppStateAsync = vi.fn(
+      () =>
+        new Promise<{ ok: true; serializedState: string; revision: number }>((resolve) => {
+          resolveAsyncSave = resolve
+        }),
+    )
+    const saveAppState = vi.fn(() => ({
+      ok: true,
+      serializedState: '{"theme":"fresh"}',
+      revision: 7,
+    }))
+    vi.stubGlobal('window', {
+      electronAPI: {
+        loadAppStateResult: () => ({
+          ok: true,
+          serializedState: '{"theme":"dawn"}',
+          source: 'hybrid',
+          revision: 1,
+        }),
+        saveAppState,
+        saveAppStateAsync,
+      },
+    })
+
+    const store = createAppStateStore()
+
+    expect(store.load()).toBe('{"theme":"dawn"}')
+    store.save('{"theme":"stale"}', { snapshotMode: 'skip' })
+    await Promise.resolve()
+    await Promise.resolve()
+    store.save('{"theme":"fresh"}', { snapshotMode: 'force', preferSync: true })
+    resolveAsyncSave?.({ ok: true, serializedState: '{"theme":"stale"}', revision: 2 })
+    await store.flush?.()
+
+    expect(saveAppStateAsync).toHaveBeenCalledOnce()
+    expect(saveAppState).toHaveBeenCalledWith({
+      serializedState: '{"theme":"fresh"}',
+      baseRevision: 1,
+      snapshotMode: 'force',
+    })
+    expect(window.__tabsGetAppStateRevision?.()).toBe(7)
   })
 
   it('subscribes to accepted app-state updates from other windows', () => {

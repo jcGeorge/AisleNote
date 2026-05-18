@@ -181,6 +181,40 @@ describe('electron ipc boundaries', () => {
       })
     }))
 
+  it('handles async app-state saves and broadcasts them to other windows', async () =>
+    withTempUserDataPath(async (userDataPath) => {
+      const ipcMain = createIpcMain()
+      const sourceWindow = {
+        isDestroyed: vi.fn(() => false),
+        webContents: { id: 1, send: vi.fn() },
+      }
+      const otherWindow = {
+        isDestroyed: vi.fn(() => false),
+        webContents: { id: 2, send: vi.fn() },
+      }
+      registerStorageIpc({
+        ipcMain,
+        app: { getPath: () => userDataPath },
+        BrowserWindow: createBrowserWindow([sourceWindow, otherWindow]),
+      })
+
+      await expect(
+        ipcMain.handlers.get('save-app-state-async')(
+          { sender: { id: 1 } },
+          { serializedState: '{"theme":"dawn"}', baseRevision: 0, snapshotMode: 'skip' },
+        ),
+      ).resolves.toEqual({
+        ok: true,
+        serializedState: '{"theme":"dawn"}',
+        revision: 1,
+      })
+      expect(sourceWindow.webContents.send).not.toHaveBeenCalledWith('app-state-updated', expect.anything())
+      expect(otherWindow.webContents.send).toHaveBeenCalledWith('app-state-updated', {
+        serializedState: '{"theme":"dawn"}',
+        revision: 1,
+      })
+    }))
+
   it('reports the default storage profile status', async () =>
     withTempUserDataPath(async (userDataPath) => {
       const ipcMain = createIpcMain()
