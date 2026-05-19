@@ -101,9 +101,27 @@
 
 .toastui-editor-contents blockquote,
 .toastui-editor .ProseMirror blockquote {
+  position: relative !important;
   background: var(--editor-blockquote-bg) !important;
-  border-left-color: var(--editor-blockquote-border) !important;
+  border: 0 !important;
   color: var(--editor-blockquote-text) !important;
+  font-size: inherit !important;
+  margin: 0.18em 0 !important;
+  padding: 0.08em 0 0.08em 0.95rem !important;
+}
+
+.toastui-editor-contents blockquote::before,
+.toastui-editor .ProseMirror blockquote::before {
+  content: '';
+  position: absolute;
+  left: 0.18rem;
+  top: 0.12em;
+  bottom: 0.12em;
+  width: 0.3rem;
+  min-height: 1.15em;
+  border-radius: 0.08rem;
+  background: var(--editor-blockquote-border) !important;
+  pointer-events: none;
 }
 
 .toastui-editor-contents blockquote p,
@@ -116,7 +134,41 @@
 .toastui-editor .ProseMirror blockquote strong,
 .toastui-editor-contents blockquote em,
 .toastui-editor .ProseMirror blockquote em {
+  background: transparent !important;
   color: inherit !important;
+  font-size: inherit !important;
+}
+
+.toastui-editor-contents blockquote > :first-child,
+.toastui-editor .ProseMirror blockquote > :first-child {
+  margin-top: 0 !important;
+}
+
+.toastui-editor-contents blockquote > :last-child,
+.toastui-editor .ProseMirror blockquote > :last-child {
+  margin-bottom: 0 !important;
+}
+
+.toastui-editor-contents .tabs-block-indent,
+.toastui-editor .ProseMirror .tabs-block-indent,
+.aisle-editor-preview-fallback .tabs-block-indent,
+.aisle-edit-preview .tabs-block-indent {
+  padding-left: var(--editor-block-indent-offset, 1.75rem) !important;
+}
+
+.toastui-editor-contents .tabs-block-indent-token-hidden,
+.toastui-editor .ProseMirror .tabs-block-indent-token-hidden {
+  display: inline-block !important;
+  width: 0 !important;
+  max-width: 0 !important;
+  overflow: hidden !important;
+  color: transparent !important;
+  font-size: 0 !important;
+  line-height: 0 !important;
+  letter-spacing: 0 !important;
+  pointer-events: none !important;
+  user-select: none !important;
+  vertical-align: top !important;
 }
 
 .toastui-editor-contents .task-list-item::before,

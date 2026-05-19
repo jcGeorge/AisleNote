@@ -17,6 +17,7 @@ import {
   moveListItemBranchInEditor,
   scheduleTaskReorderNativeSelectionClear,
   setTaskReorderDocumentSelectionSuppressed,
+  shouldRunDelayedTaskCaretPlacement,
   shouldSuppressListReorderSelectStart,
   shouldUseManualListCaretPlacement,
 } from './task-behavior'
@@ -414,6 +415,54 @@ describe('list reorder pointer handling', () => {
     expect(shouldUseManualListCaretPlacement(true, true)).toBe(true)
     expect(shouldUseManualListCaretPlacement(false, true)).toBe(false)
     expect(shouldUseManualListCaretPlacement(true, false)).toBe(false)
+  })
+
+  it('cancels delayed manual caret placement after unrelated editor changes', () => {
+    expect(
+      shouldRunDelayedTaskCaretPlacement({
+        scheduledVersion: 2,
+        currentVersion: 2,
+        sourceConnected: true,
+        activeEditorMatches: true,
+        activeViewMatches: true,
+      }),
+    ).toBe(true)
+    expect(
+      shouldRunDelayedTaskCaretPlacement({
+        scheduledVersion: 2,
+        currentVersion: 3,
+        sourceConnected: true,
+        activeEditorMatches: true,
+        activeViewMatches: true,
+      }),
+    ).toBe(false)
+    expect(
+      shouldRunDelayedTaskCaretPlacement({
+        scheduledVersion: 2,
+        currentVersion: 2,
+        sourceConnected: false,
+        activeEditorMatches: true,
+        activeViewMatches: true,
+      }),
+    ).toBe(false)
+    expect(
+      shouldRunDelayedTaskCaretPlacement({
+        scheduledVersion: 2,
+        currentVersion: 2,
+        sourceConnected: true,
+        activeEditorMatches: false,
+        activeViewMatches: true,
+      }),
+    ).toBe(false)
+    expect(
+      shouldRunDelayedTaskCaretPlacement({
+        scheduledVersion: 2,
+        currentVersion: 2,
+        sourceConnected: true,
+        activeEditorMatches: true,
+        activeViewMatches: false,
+      }),
+    ).toBe(false)
   })
 
   it('moves list item branches structurally without replacing surrounding blocks', () => {

@@ -1,6 +1,7 @@
 import type { Editor } from '@toast-ui/editor'
 
 export const INDENT_TOKEN = '\u2060\u2003\u2003'
+export const BLOCK_INDENT_TOKEN = '\u2060\u2060\u2003\u2003'
 export const EDITOR_BLANK_LINE_PLACEHOLDER = '\u200b'
 
 const INDENT_PREFIX_PATTERN = /^(?:\u2060\u2003\u2003|\u2003\u2003|\u00A0{1,4}| {1,4}|\t)/
@@ -9,6 +10,19 @@ const EXPORT_TAB_SPACES = '    '
 export function getIndentPrefixLength(text: string): number {
   const match = text.match(INDENT_PREFIX_PATTERN)
   return match ? match[0].length : 0
+}
+
+export function getBlockIndentPrefixLength(text: string): number {
+  return text.startsWith(BLOCK_INDENT_TOKEN) ? BLOCK_INDENT_TOKEN.length : 0
+}
+
+export function hasBlockIndentPrefix(text: string): boolean {
+  return getBlockIndentPrefixLength(text) > 0
+}
+
+export function stripBlockIndentPrefix(text: string): string {
+  const length = getBlockIndentPrefixLength(text)
+  return length > 0 ? text.slice(length) : text
 }
 
 export function countLeadingIndentUnits(text: string): number {
@@ -56,9 +70,24 @@ export function repairBrokenDataImageMarkdown(markdown: string): string {
   return next
 }
 
+function stripBlockIndentTokensFromQuotedLines(markdown: string): string {
+  return String(markdown ?? '')
+    .split('\n')
+    .map((line) => {
+      const match = line.match(/^((?:\s*>[ \t]?)+)(.*)$/)
+      if (!match) return line
+      let content = match[2]
+      while (content.startsWith(BLOCK_INDENT_TOKEN)) {
+        content = content.slice(BLOCK_INDENT_TOKEN.length)
+      }
+      return `${match[1]}${content}`
+    })
+    .join('\n')
+}
+
 export function normalizeMarkdownForPersistence(markdown: string): string {
   const repaired = repairBrokenDataImageMarkdown(markdown)
-  return repaired.replace(/(?<!\u2060)\u2003\u2003/g, INDENT_TOKEN)
+  return stripBlockIndentTokensFromQuotedLines(repaired).replace(/(?<!\u2060)\u2003\u2003/g, INDENT_TOKEN)
 }
 
 function stripStandaloneBlankLinePlaceholders(markdown: string): string {
@@ -72,7 +101,8 @@ function stripStandaloneBlankLinePlaceholders(markdown: string): string {
 }
 
 export function convertInternalTabsForExport(markdown: string): string {
-  return stripStandaloneBlankLinePlaceholders(markdown)
+  return stripBlockIndentTokensFromQuotedLines(stripStandaloneBlankLinePlaceholders(markdown))
+    .replaceAll(BLOCK_INDENT_TOKEN, EXPORT_TAB_SPACES)
     .replace(/\u2060\u2003\u2003/g, EXPORT_TAB_SPACES)
     .replace(/\u2003\u2003/g, EXPORT_TAB_SPACES)
     .replace(/\u00A0/g, ' ')

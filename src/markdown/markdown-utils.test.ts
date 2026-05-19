@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { Editor } from '@toast-ui/editor'
 import {
+  BLOCK_INDENT_TOKEN,
   convertInternalTabsForExport,
   EDITOR_BLANK_LINE_PLACEHOLDER,
+  INDENT_TOKEN,
+  normalizeMarkdownForPersistence,
   preserveBlankParagraphsFromWysiwyg,
   repairBrokenDataImageMarkdown,
 } from './markdown-utils'
@@ -108,6 +111,19 @@ describe('markdown WYSIWYG blank line preservation', () => {
 
   it('strips standalone blank-line placeholders from export markdown', () => {
     expect(convertInternalTabsForExport(`one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`)).toBe('one\n\n\n\ntwo')
+  })
+
+  it('exports block indent and paragraph indent tokens as spaces', () => {
+    expect(convertInternalTabsForExport(`${BLOCK_INDENT_TOKEN}${INDENT_TOKEN}one`)).toBe('        one')
+  })
+
+  it('strips legacy block indent tokens from quoted lines during persistence and export', () => {
+    expect(normalizeMarkdownForPersistence(`> ${BLOCK_INDENT_TOKEN}quote\n${BLOCK_INDENT_TOKEN}normal`)).toBe(
+      `> quote\n${BLOCK_INDENT_TOKEN}normal`,
+    )
+    expect(convertInternalTabsForExport(`> ${BLOCK_INDENT_TOKEN}quote\n${BLOCK_INDENT_TOKEN}normal`)).toBe(
+      '> quote\n    normal',
+    )
   })
 })
 

@@ -79,9 +79,9 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
     }
   }
 
-  if (modal.type === 'newline-menu-settings') {
+  if (modal.type === 'shortcut-menu-settings') {
     return {
-      title: 'new line menu',
+      title: 'shortcut menu',
       body: 'drag operations into the numbered slots.',
       action: 'done',
     }

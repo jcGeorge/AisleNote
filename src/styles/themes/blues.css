@@ -288,7 +288,7 @@
   --editor-text: #17223a;
   --editor-muted-text: #42506a;
   --editor-heading-text: #111c32;
-  --editor-blockquote-text: #2f3c56;
+  --editor-blockquote-text: var(--editor-text);
   --editor-blockquote-border: #61728f;
   --editor-blockquote-bg: transparent;
   --editor-selection-bg: rgba(169, 154, 93, 0.2);
@@ -408,7 +408,7 @@
 .theme-blues .toastui-editor-contents blockquote,
 .theme-blues .toastui-editor .ProseMirror blockquote {
   background: var(--editor-blockquote-bg) !important;
-  border-left-color: var(--editor-blockquote-border) !important;
+  border: 0 !important;
   color: var(--editor-blockquote-text) !important;
 }
 
@@ -422,6 +422,7 @@
 .theme-blues .toastui-editor .ProseMirror blockquote strong,
 .theme-blues .toastui-editor-contents blockquote em,
 .theme-blues .toastui-editor .ProseMirror blockquote em {
+  background: transparent !important;
   color: inherit !important;
 }
 

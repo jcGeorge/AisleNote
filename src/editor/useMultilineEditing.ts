@@ -1,6 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, useRef, type MutableRefObject } from 'react'
 import type { Editor } from '@toast-ui/editor'
+import { Selection, TextSelection } from 'prosemirror-state'
 import {
   buildDeletedLineMultiLineState,
   buildForwardBoundaryDeletePlan,
@@ -41,15 +42,24 @@ import {
   applyActiveInlineFormatsToStoredMarks,
   applyActiveInlineFormatsToInsertedText,
   buildMultiLineBlockQuoteOperationPlan,
+  buildMultiLineBlockIndentOperationPlan,
   buildMultiLineCodeBlockOperationPlan,
   buildMultiLineHeadingOperationPlan,
   buildMultiLineInlineFormatPlan,
   buildMultiLineInlineMarkerOperationPlan,
+  buildMultiLineRemoveBlockIndentOperationPlan,
+  buildMultiLineRemoveBlockQuoteOperationPlan,
+  buildSelectionBlockIndentOperationPlan,
+  buildSelectionBlockQuoteOperationPlan,
+  buildSelectionRemoveBlockIndentOperationPlan,
+  buildSelectionRemoveBlockQuoteOperationPlan,
   getMultiLineBlockQuoteMarkerShortcut,
   getMultiLineHeadingMarkerShortcut,
+  selectionTouchesBlockQuoteRows,
   type MultiLineHeadingLevel,
 } from './multiline-format-operations'
 import {
+  getBlockIndentPrefixLength,
   getIndentPrefixLength,
   getTrailingIndentPrefixLength,
   INDENT_TOKEN,
@@ -93,6 +103,39 @@ type UseMultilineEditingOptions = {
   ) => void
 }
 
+type ClearMultiLineEditOptions = {
+  deferWidgetClear?: boolean
+}
+
+type MultiLineDecorationSnapshot = {
+  cursors?: unknown
+  selections?: unknown
+}
+
+type SetCursorWidgetOptions = {
+  preserveSelection?: boolean
+  skipEmptyClear?: boolean
+}
+
+export type MultiLineWidgetClearMode = 'none' | 'defer' | 'immediate'
+
+export function getMultiLineWidgetClearMode(
+  previous: MultiLineEditState | null,
+  collapseToHead = false,
+  options: ClearMultiLineEditOptions = {},
+): MultiLineWidgetClearMode {
+  if (!previous) return 'none'
+  return !collapseToHead && options.deferWidgetClear ? 'defer' : 'immediate'
+}
+
+export function hasMultiLineDecorationState(state: unknown): boolean {
+  const snapshot = state as MultiLineDecorationSnapshot | null | undefined
+  return Boolean(
+    (Array.isArray(snapshot?.cursors) && snapshot.cursors.length > 0) ||
+      (Array.isArray(snapshot?.selections) && snapshot.selections.length > 0),
+  )
+}
+
 export function useMultilineEditing({
   editorRef,
   lastEditorMarkdownRef,
@@ -109,6 +152,8 @@ export function useMultilineEditing({
   const editStateRef = useRef<MultiLineEditState | null>(null)
   const pluginKeyRef = useRef<any>(null)
   const historyRef = useRef<MultiLineEditHistoryEntry[]>([])
+  const deferredWidgetClearFrameRef = useRef<number | null>(null)
+  const deferredWidgetClearTimeoutRef = useRef<number | null>(null)
 
   const getCurrentEditorAndView = () => {
     const currentEditor = editorRef.current as EditorWithWysiwyg | null
@@ -146,20 +191,78 @@ export function useMultilineEditing({
     ]
   }
 
-  const setCursorWidgets = (view: any, positions: number[], selections: Array<{ from: number; to: number }> = []) => {
+  const getCursorWidgetState = (view: any) => {
     const pluginKey = pluginKeyRef.current
-    if (!pluginKey) return
-    view.dispatch(view.state.tr.setMeta(pluginKey, { cursors: positions, selections }).setMeta('addToHistory', false))
+    if (!pluginKey || typeof pluginKey.getState !== 'function') return null
+    return pluginKey.getState(view.state)
   }
 
-  const clear = (collapseToHead = false) => {
+  const setCursorWidgets = (
+    view: any,
+    positions: number[],
+    selections: Array<{ from: number; to: number }> = [],
+    options: SetCursorWidgetOptions = {},
+  ) => {
+    const pluginKey = pluginKeyRef.current
+    if (!pluginKey) return
+    if (
+      options.skipEmptyClear &&
+      positions.length === 0 &&
+      selections.length === 0 &&
+      !hasMultiLineDecorationState(getCursorWidgetState(view))
+    ) {
+      return
+    }
+
+    let transaction = view.state.tr.setMeta(pluginKey, { cursors: positions, selections }).setMeta('addToHistory', false)
+    if (options.preserveSelection && view.state.selection) {
+      transaction = transaction.setSelection(view.state.selection)
+    }
+    view.dispatch(transaction)
+  }
+
+  const cancelDeferredWidgetClear = () => {
+    if (deferredWidgetClearFrameRef.current !== null) {
+      window.cancelAnimationFrame(deferredWidgetClearFrameRef.current)
+      deferredWidgetClearFrameRef.current = null
+    }
+    if (deferredWidgetClearTimeoutRef.current !== null) {
+      window.clearTimeout(deferredWidgetClearTimeoutRef.current)
+      deferredWidgetClearTimeoutRef.current = null
+    }
+  }
+
+  const scheduleDeferredWidgetClear = (view: any) => {
+    cancelDeferredWidgetClear()
+    deferredWidgetClearFrameRef.current = window.requestAnimationFrame(() => {
+      deferredWidgetClearFrameRef.current = null
+      deferredWidgetClearTimeoutRef.current = window.setTimeout(() => {
+        deferredWidgetClearTimeoutRef.current = null
+        const { view: activeView } = getCurrentEditorAndView()
+        if (activeView !== view || editStateRef.current) return
+        setCursorWidgets(view, [], [], { preserveSelection: true, skipEmptyClear: true })
+      }, 0)
+    })
+  }
+
+  useEffect(() => () => cancelDeferredWidgetClear(), [])
+
+  const clear = (collapseToHead = false, options: ClearMultiLineEditOptions = {}) => {
     const { currentEditor, view } = getCurrentEditorAndView()
     const previous = editStateRef.current
+    const widgetClearMode = getMultiLineWidgetClearMode(previous, collapseToHead, options)
+    if (widgetClearMode === 'none' || !previous) return
+
     editStateRef.current = null
     if (view) {
-      setCursorWidgets(view, [])
+      if (widgetClearMode === 'defer') {
+        scheduleDeferredWidgetClear(view)
+      } else {
+        cancelDeferredWidgetClear()
+        setCursorWidgets(view, [], [], { preserveSelection: true, skipEmptyClear: true })
+      }
     }
-    if (!collapseToHead || !view || !previous) return
+    if (!collapseToHead || !view) return
 
     const blockRanges = getEditorTextLineRanges(view)
     const clampedHeadIndex = Math.max(0, Math.min(blockRanges.length - 1, previous.headBlockIndex))
@@ -356,27 +459,47 @@ export function useMultilineEditing({
       return true
     }
 
+    if (outdent) {
+      const removedBlockIndent = tryRemoveBlockIndentOperation()
+      if (removedBlockIndent) return true
+    }
+
+    if (!outdent && (!isCollapsedSelection || selectionTouchesBlockQuoteRows(view))) {
+      const appliedBlockIndent = tryApplyBlockIndentOperation()
+      if (appliedBlockIndent) return true
+    }
+
     if (!selectedText.includes('\n')) {
       let tr: any = state.tr
+      let caretSource: number
+      const parentText = $from.parent.textContent ?? ''
+      const parentStart = $from.start()
+      const offsetInParent = Math.max(0, from - parentStart)
 
       if (outdent) {
-        const parentText = $from.parent.textContent ?? ''
-        const parentStart = $from.start()
-        const offsetInParent = Math.max(0, from - parentStart)
         const beforeCursor = parentText.slice(0, offsetInParent)
         const inlinePrefixLength = getTrailingIndentPrefixLength(beforeCursor)
         if (inlinePrefixLength > 0) {
           tr = tr.delete(from - inlinePrefixLength, from)
+          caretSource = from
         } else {
-          const linePrefixLength = getIndentPrefixLength(parentText)
+          const blockIndentPrefixLength = getBlockIndentPrefixLength(parentText)
+          const linePrefixLength = getIndentPrefixLength(parentText.slice(blockIndentPrefixLength))
           if (linePrefixLength <= 0) return false
-          tr = tr.delete(parentStart, parentStart + linePrefixLength)
+          caretSource = parentStart + blockIndentPrefixLength
+          tr = tr.delete(caretSource, caretSource + linePrefixLength)
         }
       } else {
-        tr = tr.insertText(INDENT_TOKEN, from)
+        const blockIndentPrefixLength = getBlockIndentPrefixLength(parentText)
+        const insertPos =
+          blockIndentPrefixLength > 0 && offsetInParent <= blockIndentPrefixLength
+            ? parentStart + blockIndentPrefixLength
+            : from
+        caretSource = insertPos
+        tr = tr.insertText(INDENT_TOKEN, insertPos)
       }
 
-      const nextCaret = tr.mapping.map(from, 1)
+      const nextCaret = tr.mapping.map(caretSource, 1)
       const nextFrom = tr.mapping.map(from, 1)
       const nextTo = tr.mapping.map(to, 1)
       view.dispatch(tr)
@@ -401,9 +524,11 @@ export function useMultilineEditing({
       if (!node?.isTextblock || seenBlockPositions.has(contentStartPos)) return
       seenBlockPositions.add(contentStartPos)
       const text = node.textContent ?? ''
-      const removeLength = outdent ? getIndentPrefixLength(text) : 0
+      const blockIndentPrefixLength = getBlockIndentPrefixLength(text)
+      const pos = contentStartPos + blockIndentPrefixLength
+      const removeLength = outdent ? getIndentPrefixLength(text.slice(blockIndentPrefixLength)) : 0
       if (!outdent || removeLength > 0) {
-        blockTargets.push({ pos: contentStartPos, removeLength })
+        blockTargets.push({ pos, removeLength })
       }
     }
 
@@ -749,8 +874,27 @@ export function useMultilineEditing({
     return true
   }
 
-  const tryApplyTabInput = (shiftKey: boolean) =>
-    shiftKey ? tryApplyInput({ type: 'backspace' }) : tryApplyInput({ type: 'insert-text', text: INDENT_TOKEN })
+  const multiLineSelectionUsesOnlyCodeBlockLines = () => {
+    const { view } = getCurrentEditorAndView()
+    const multiLineEdit = editStateRef.current
+    if (!view || !multiLineEdit) return false
+
+    const blockRanges = getEditorTextLineRanges(view)
+    const selectedIndices = getMultiLineSelectedBlockIndices(multiLineEdit, blockRanges)
+    if (selectedIndices.length === 0) return false
+    return selectedIndices.every((index) => isCodeBlockTextLineRange(blockRanges[index]))
+  }
+
+  const tryApplyTabInput = (shiftKey: boolean) => {
+    if (shiftKey) {
+      return tryRemoveBlockIndentOperation() || tryApplyInput({ type: 'backspace' })
+    }
+
+    if (!multiLineSelectionUsesOnlyCodeBlockLines() && tryApplyBlockIndentOperation()) {
+      return true
+    }
+    return tryApplyInput({ type: 'insert-text', text: INDENT_TOKEN })
+  }
 
   const applyListOperationPlan = (
     operation: MultiLineListOperation,
@@ -808,6 +952,7 @@ export function useMultilineEditing({
 
   const applyBlockQuoteOperationPlan = (
     options: Parameters<typeof buildMultiLineBlockQuoteOperationPlan>[2] = {},
+    remove = false,
   ) => {
     const { currentEditor, view } = getCurrentEditorAndView()
     const multiLineEdit = editStateRef.current
@@ -815,7 +960,9 @@ export function useMultilineEditing({
 
     const beforeMarkdown = getNormalizedEditorMarkdown(currentEditor)
     const beforeState = cloneMultiLineEditState(multiLineEdit)
-    const plan = buildMultiLineBlockQuoteOperationPlan(view, multiLineEdit, options)
+    const plan = remove
+      ? buildMultiLineRemoveBlockQuoteOperationPlan(view, multiLineEdit)
+      : buildMultiLineBlockQuoteOperationPlan(view, multiLineEdit, options)
     if (!plan) return false
 
     view.dispatch(plan.transaction.scrollIntoView())
@@ -830,7 +977,108 @@ export function useMultilineEditing({
     return true
   }
 
-  const tryApplyBlockQuoteOperation = () => applyBlockQuoteOperationPlan()
+  const applySelectionBlockQuotePlan = (remove = false) => {
+    const { currentEditor, view } = getCurrentEditorAndView()
+    if (!currentEditor || !view) return false
+
+    const { from, to } = view.state.selection
+    const isCollapsedSelection = from === to
+    const plan = remove ? buildSelectionRemoveBlockQuoteOperationPlan(view) : buildSelectionBlockQuoteOperationPlan(view)
+    if (!plan) return false
+
+    const nextCaret = plan.transaction.mapping.map(from, remove ? -1 : 1)
+    const nextFrom = plan.transaction.mapping.map(from, -1)
+    const nextTo = plan.transaction.mapping.map(to, 1)
+
+    let transaction = plan.transaction
+    try {
+      const nextSelection = isCollapsedSelection
+        ? TextSelection.create(transaction.doc, nextCaret, nextCaret)
+        : TextSelection.create(transaction.doc, nextFrom, nextTo)
+      transaction = transaction.setSelection(nextSelection)
+    } catch {
+      const docSize = Math.max(0, transaction.doc?.content?.size ?? 0)
+      const fallbackPosition = Math.max(0, Math.min(docSize, isCollapsedSelection ? nextCaret : nextTo))
+      transaction = transaction.setSelection(Selection.near(transaction.doc.resolve(fallbackPosition), 1))
+    }
+
+    view.dispatch(transaction.scrollIntoView())
+    const markdownAfterBlockQuote = getNormalizedEditorMarkdown(currentEditor)
+    commitMarkdown(markdownAfterBlockQuote)
+    currentEditor.focus()
+    return true
+  }
+
+  const tryApplyBlockQuoteOperation = () => {
+    const { view } = getCurrentEditorAndView()
+    if (!view) return false
+    if (editStateRef.current) {
+      return applyBlockQuoteOperationPlan({}, true) || applyBlockQuoteOperationPlan()
+    }
+    return selectionTouchesBlockQuoteRows(view) ? applySelectionBlockQuotePlan(true) : applySelectionBlockQuotePlan()
+  }
+
+  const applyMultiLineBlockIndentPlan = (remove: boolean) => {
+    const { currentEditor, view } = getCurrentEditorAndView()
+    const multiLineEdit = editStateRef.current
+    if (!currentEditor || !view || !multiLineEdit) return false
+
+    const beforeMarkdown = getNormalizedEditorMarkdown(currentEditor)
+    const beforeState = cloneMultiLineEditState(multiLineEdit)
+    const plan = remove
+      ? buildMultiLineRemoveBlockIndentOperationPlan(view, multiLineEdit)
+      : buildMultiLineBlockIndentOperationPlan(view, multiLineEdit)
+    if (!plan) return false
+
+    view.dispatch(plan.transaction.scrollIntoView())
+    editStateRef.current = plan.nextState
+    syncVisualSelection()
+    const markdownAfterBlockIndentOperation = getNormalizedEditorMarkdown(currentEditor)
+    commitMarkdown(markdownAfterBlockIndentOperation)
+    if (editStateRef.current) {
+      recordHistory(beforeMarkdown, beforeState, markdownAfterBlockIndentOperation, editStateRef.current)
+    }
+    currentEditor.focus()
+    return true
+  }
+
+  const applySelectionBlockIndentPlan = (remove: boolean) => {
+    const { currentEditor, view } = getCurrentEditorAndView()
+    if (!currentEditor || !view) return false
+
+    const { from, to } = view.state.selection
+    const isCollapsedSelection = from === to
+    const plan = remove ? buildSelectionRemoveBlockIndentOperationPlan(view) : buildSelectionBlockIndentOperationPlan(view)
+    if (!plan) return false
+
+    const nextCaret = plan.transaction.mapping.map(from, remove ? -1 : 1)
+    const nextFrom = plan.transaction.mapping.map(from, -1)
+    const nextTo = plan.transaction.mapping.map(to, 1)
+
+    let transaction = plan.transaction
+    try {
+      const nextSelection = isCollapsedSelection
+        ? TextSelection.create(transaction.doc, nextCaret, nextCaret)
+        : TextSelection.create(transaction.doc, nextFrom, nextTo)
+      transaction = transaction.setSelection(nextSelection)
+    } catch {
+      const docSize = Math.max(0, transaction.doc?.content?.size ?? 0)
+      const fallbackPosition = Math.max(0, Math.min(docSize, isCollapsedSelection ? nextCaret : nextTo))
+      transaction = transaction.setSelection(Selection.near(transaction.doc.resolve(fallbackPosition), 1))
+    }
+
+    view.dispatch(transaction.scrollIntoView())
+    const markdownAfterBlockIndent = getNormalizedEditorMarkdown(currentEditor)
+    commitMarkdown(markdownAfterBlockIndent)
+    currentEditor.focus()
+    return true
+  }
+
+  const tryApplyBlockIndentOperation = () =>
+    editStateRef.current ? applyMultiLineBlockIndentPlan(false) : applySelectionBlockIndentPlan(false)
+
+  const tryRemoveBlockIndentOperation = () =>
+    editStateRef.current ? applyMultiLineBlockIndentPlan(true) : applySelectionBlockIndentPlan(true)
 
   const tryApplyCodeBlockOperation = () => {
     const { currentEditor, view } = getCurrentEditorAndView()
@@ -1054,6 +1302,8 @@ export function useMultilineEditing({
     tryApplyListMarkerShortcut,
     tryApplyHeadingOperation,
     tryApplyBlockQuoteOperation,
+    tryApplyBlockIndentOperation,
+    tryRemoveBlockIndentOperation,
     tryApplyCodeBlockOperation,
     tryApplyInlineFormat,
     tryApplyBlockMarkerShortcut,

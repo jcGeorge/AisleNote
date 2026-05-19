@@ -4,6 +4,7 @@ import { isCompatibleListNodeForOperation } from './list-operation-compatibility
 import { applyEditorNewlineOperation, getEmptyLineReplacementRangeForOperation } from './newline-operations'
 import { createOperationNodes } from './newline-operation-nodes'
 import type { NewlineOperationId } from '../types/app'
+import { BLOCK_INDENT_TOKEN, INDENT_TOKEN } from '../markdown/markdown-utils'
 
 type TestNode = {
   type: string
@@ -111,6 +112,20 @@ describe('editor newline operations', () => {
     expect(getBulletListMarkerFromAttrs(bulletNode.attrs)).toBe('bullet')
     expect(numberedNode.type).toBe('orderedList')
     expect(numberedNode.attrs).toEqual({ order: 1 })
+  })
+
+  it('strips block indent tokens from generated block quotes', () => {
+    const [node] = createOperationNodes(
+      createTestSchema(),
+      'blockQuote',
+      `${BLOCK_INDENT_TOKEN}${INDENT_TOKEN}one`,
+    ) as unknown as TestNode[]
+    const [paragraphNode] = node.content as TestNode[]
+    const textNode = paragraphNode.content as TestNode
+
+    expect(node.type).toBe('blockQuote')
+    expect(paragraphNode.type).toBe('paragraph')
+    expect(textNode.text).toBe(`${INDENT_TOKEN}one`)
   })
 
   it('only treats matching list kinds as compatible', () => {

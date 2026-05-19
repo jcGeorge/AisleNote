@@ -14,8 +14,9 @@ export const NEWLINE_OPERATIONS: Array<{ id: NewlineOperationId; label: string }
   { id: 'codeBlock', label: 'code block' },
   { id: 'inlineCode', label: 'inline code block' },
   { id: 'blockQuote', label: 'block quote' },
+  { id: 'blockIndent', label: 'block indent' },
   { id: 'strikethrough', label: 'strikethrough' },
-  { id: 'operationsMenu', label: 'new line menu' },
+  { id: 'operationsMenu', label: 'shortcut menu' },
 ]
 
 export const NEWLINE_OPERATION_LABELS = NEWLINE_OPERATIONS.reduce<Record<NewlineOperationId, string>>(
@@ -26,7 +27,21 @@ export const NEWLINE_OPERATION_LABELS = NEWLINE_OPERATIONS.reduce<Record<Newline
   {} as Record<NewlineOperationId, string>,
 )
 
-export const NEWLINE_MENU_ELIGIBLE_OPERATIONS: NewlineOperationId[] = [
+export const SHORTCUT_MENU_ELIGIBLE_OPERATIONS: NewlineOperationId[] = [
+  'task',
+  'dashList',
+  'bulletList',
+  'numberedList',
+  'aisle',
+  'horizontalLine',
+  'codeBlock',
+  'inlineCode',
+  'blockQuote',
+  'blockIndent',
+  'strikethrough',
+]
+
+const DEFAULT_SHORTCUT_MENU_OPERATIONS: NewlineOperationId[] = [
   'task',
   'dashList',
   'bulletList',
@@ -45,11 +60,11 @@ export const DEFAULT_NEWLINE_SHORTCUT_SETTINGS: AppState['hotkeys']['newlineShor
     shiftEnter: 'task',
     commandEnter: 'operationsMenu',
   },
-  menuOperations: NEWLINE_MENU_ELIGIBLE_OPERATIONS,
+  menuOperations: DEFAULT_SHORTCUT_MENU_OPERATIONS,
 }
 
 const NEWLINE_OPERATION_IDS = new Set<NewlineOperationId>(NEWLINE_OPERATIONS.map((operation) => operation.id))
-const NEWLINE_MENU_ELIGIBLE_OPERATION_IDS = new Set<NewlineOperationId>(NEWLINE_MENU_ELIGIBLE_OPERATIONS)
+const SHORTCUT_MENU_ELIGIBLE_OPERATION_IDS = new Set<NewlineOperationId>(SHORTCUT_MENU_ELIGIBLE_OPERATIONS)
 
 function normalizeShortcutValue(raw: unknown, fallback: string): string {
   if (typeof raw !== 'string') return fallback
@@ -98,7 +113,7 @@ function normalizeNewlineShortcutSettings(raw: unknown): AppState['hotkeys']['ne
   const menuOperations = rawMenuOperations.filter(
     (operation): operation is NewlineOperationId =>
       typeof operation === 'string' &&
-      NEWLINE_MENU_ELIGIBLE_OPERATION_IDS.has(operation as NewlineOperationId),
+      SHORTCUT_MENU_ELIGIBLE_OPERATION_IDS.has(operation as NewlineOperationId),
   )
   const dedupedMenuOperations = Array.from(new Set(menuOperations)).slice(0, 10)
   const normalizedMenuOperations =

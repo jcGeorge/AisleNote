@@ -13,6 +13,7 @@ import {
 import { resolveImageAssetDisplayUrl } from '../../markdown/image-asset-registry'
 import { createNoteAisle } from '../../state/workspace'
 import type { NoteAisle } from '../../types/app'
+import { MarkdownPreviewParagraph } from './markdown-preview-components'
 
 const AISLE_DRAG_MIME = 'application/x-tabs-aisle-id'
 
@@ -22,6 +23,7 @@ const transformAislePreviewUrl = (url: string, key: string) =>
     : defaultUrlTransform(url)
 
 const aislePreviewMarkdownComponents = {
+  p: MarkdownPreviewParagraph,
   img: ({ node, ...props }: ImgHTMLAttributes<HTMLImageElement> & { node?: unknown }) => {
     void node
     return <img {...props} draggable={false} />

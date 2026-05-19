@@ -14,14 +14,19 @@ import {
 import { shouldDeleteEmptyParagraphAtListBoundary } from './empty-paragraph-list-delete'
 import {
   annotationLinePlugin,
+  BLOCK_INDENT_CLASS_NAME,
+  BLOCK_INDENT_TOKEN_HIDDEN_CLASS_NAME,
+  blockIndentPlugin,
   deleteEmptyListItemBackward,
   getActiveHeadingLevel,
   getArrowMarkerDeletionRange,
   getArrowMarkerNavigationPosition,
   getArrowMarkerSelectionSnapPosition,
+  getBlockIndentDecorationRanges,
   getParagraphSpaceShortcut,
   headingSpaceShortcutPlugin,
 } from './editor-setup'
+import { BLOCK_INDENT_TOKEN, INDENT_TOKEN } from '../markdown/markdown-utils'
 
 function node(typeName: string, textContent = '', contentSize = 0) {
   return {
@@ -396,6 +401,105 @@ function editorDoc(textContent: string, position = 0) {
     },
   }
 }
+
+function blockIndentDoc(textContent: string, textChildren?: Array<{ text: string; position: number }>) {
+  const contentSize = textChildren
+    ? Math.max(textContent.length, ...textChildren.map((child) => child.position + child.text.length))
+    : textContent.length
+  return {
+    descendants: (visitor: (node: unknown, pos: number) => unknown) => {
+      visitor(
+        {
+          isTextblock: true,
+          type: { name: 'paragraph' },
+          textContent,
+          nodeSize: contentSize + 2,
+          descendants: textChildren
+            ? (childVisitor: (node: unknown, position: number) => unknown) => {
+                textChildren.forEach((child) => {
+                  childVisitor({ isText: true, text: child.text }, child.position)
+                })
+              }
+            : undefined,
+        },
+        0,
+      )
+    },
+  }
+}
+
+function getBlockIndentDecorationCalls(textContent: string, textChildren?: Array<{ text: string; position: number }>) {
+  const calls: DecorationCall[] = []
+  class FakePlugin {
+    spec: any
+
+    constructor(spec: any) {
+      this.spec = spec
+    }
+  }
+
+  const pluginBundle = blockIndentPlugin({
+    pmState: {
+      Plugin: FakePlugin,
+    },
+    pmView: {
+      Decoration: {
+        node: (from: number, to: number, attrs: Record<string, string>) => {
+          calls.push({ kind: 'node', from, to, attrs })
+          return calls.at(-1)
+        },
+        inline: (from: number, to: number, attrs: Record<string, string>) => {
+          calls.push({ kind: 'inline', from, to, attrs })
+          return calls.at(-1)
+        },
+      },
+      DecorationSet: {
+        create: (_doc: unknown, decorations: unknown[]) => decorations,
+      },
+    },
+  })
+  const plugin = pluginBundle.wysiwygPlugins[0]() as FakePlugin
+
+  plugin.spec.props.decorations({ doc: blockIndentDoc(textContent, textChildren) })
+  return calls
+}
+
+describe('block indent WYSIWYG decorations', () => {
+  it('finds only the block indent marker range and leaves paragraph indents stackable', () => {
+    const ranges = getBlockIndentDecorationRanges(blockIndentDoc(`${BLOCK_INDENT_TOKEN}${INDENT_TOKEN}one`))
+
+    expect(ranges).toEqual([
+      {
+        nodeFrom: 0,
+        nodeTo: BLOCK_INDENT_TOKEN.length + INDENT_TOKEN.length + 3 + 2,
+        tokenFrom: 1,
+        tokenTo: 1 + BLOCK_INDENT_TOKEN.length,
+      },
+    ])
+  })
+
+  it('adds a block-level class and hides the storage marker token', () => {
+    const calls = getBlockIndentDecorationCalls(`${BLOCK_INDENT_TOKEN}one`, [
+      { text: BLOCK_INDENT_TOKEN, position: 0 },
+      { text: 'one', position: BLOCK_INDENT_TOKEN.length },
+    ])
+
+    expect(calls).toEqual([
+      {
+        kind: 'node',
+        from: 0,
+        to: BLOCK_INDENT_TOKEN.length + 3 + 2,
+        attrs: { class: BLOCK_INDENT_CLASS_NAME },
+      },
+      {
+        kind: 'inline',
+        from: 1,
+        to: 1 + BLOCK_INDENT_TOKEN.length,
+        attrs: { class: BLOCK_INDENT_TOKEN_HIDDEN_CLASS_NAME },
+      },
+    ])
+  })
+})
 
 describe('annotation line WYSIWYG decorations', () => {
   it('adds inline arrow replacement classes anywhere in the paragraph', () => {

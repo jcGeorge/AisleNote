@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   getEditorPageMovementForEvent,
   getMultiLineDeleteInputForBeforeInputType,
+  getPlainTextPointerChromeClosePlan,
   isActiveWysiwygEditorContentTarget,
   isEditorToolbarInteractionTarget,
+  isEditorPointerChromeTarget,
 } from './useEditorDomEvents'
 
 function fakeTarget(matchedSelector: string | null): Element {
@@ -28,6 +30,40 @@ describe('editor DOM events', () => {
   it('does not treat normal editor content as a toolbar interaction target', () => {
     expect(isEditorToolbarInteractionTarget(fakeTarget(null))).toBe(false)
     expect(isEditorToolbarInteractionTarget(null)).toBe(false)
+  })
+
+  it('treats editor chrome as special pointer targets outside normal text selection', () => {
+    expect(isEditorPointerChromeTarget(fakeTarget('.image-tools'))).toBe(true)
+    expect(isEditorPointerChromeTarget(fakeTarget('.link-prompt'))).toBe(true)
+    expect(isEditorPointerChromeTarget(fakeTarget(null))).toBe(false)
+  })
+
+  it('does not close idle editor chrome on plain text pointerdown', () => {
+    expect(
+      getPlainTextPointerChromeClosePlan({
+        hasActiveImage: false,
+        imageCropActive: false,
+        linkPromptOpen: false,
+      }),
+    ).toEqual({ closeImageTools: false, closeLinkPrompt: false })
+  })
+
+  it('only closes active editor chrome on plain text pointerdown', () => {
+    expect(
+      getPlainTextPointerChromeClosePlan({
+        hasActiveImage: true,
+        imageCropActive: false,
+        linkPromptOpen: true,
+      }),
+    ).toEqual({ closeImageTools: true, closeLinkPrompt: true })
+
+    expect(
+      getPlainTextPointerChromeClosePlan({
+        hasActiveImage: true,
+        imageCropActive: true,
+        linkPromptOpen: true,
+      }),
+    ).toEqual({ closeImageTools: false, closeLinkPrompt: true })
   })
 
   it('maps beforeinput delete events to multi-cursor delete inputs', () => {

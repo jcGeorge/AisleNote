@@ -4,11 +4,16 @@ import remarkGfm from 'remark-gfm'
 import { buildAisleEditorKey } from '../../editor/aisle-editor'
 import { resolveImageAssetDisplayUrl } from '../../markdown/image-asset-registry'
 import type { NoteAisle } from '../../types/app'
+import { MarkdownPreviewParagraph } from './markdown-preview-components'
 
 const transformAislePreviewUrl = (url: string, key: string) =>
   key === 'src' && (/^data:image\//i.test(url) || /^blob:/i.test(url) || /^tabs-asset:/i.test(url))
     ? resolveImageAssetDisplayUrl(url)
     : defaultUrlTransform(url)
+
+const noteWorkspacePreviewMarkdownComponents = {
+  p: MarkdownPreviewParagraph,
+}
 
 type NoteWorkspaceProps = {
   noteBodyId: string
@@ -82,7 +87,11 @@ export function NoteWorkspace({
                 ) : (
                   <div className="toast-editor-host aisle-editor-preview-fallback" aria-hidden="true">
                     {previewMarkdown.trim().length > 0 ? (
-                      <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={transformAislePreviewUrl}>
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        urlTransform={transformAislePreviewUrl}
+                        components={noteWorkspacePreviewMarkdownComponents}
+                      >
                         {previewMarkdown}
                       </ReactMarkdown>
                     ) : null}

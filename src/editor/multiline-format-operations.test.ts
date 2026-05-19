@@ -1,21 +1,31 @@
 import { Schema } from 'prosemirror-model'
-import { EditorState } from 'prosemirror-state'
+import { EditorState, TextSelection } from 'prosemirror-state'
 import { describe, expect, it } from 'vitest'
+import { BLOCK_INDENT_TOKEN, INDENT_TOKEN } from '../markdown/markdown-utils'
 import type { MultiLineEditState, MultiLineInlineFormat } from '../types/app'
 import {
   applyActiveInlineFormatsToStoredMarks,
   applyActiveInlineFormatsToInsertedText,
+  buildMultiLineBlockIndentOperationPlan,
   buildMultiLineBlockQuoteOperationPlan,
   buildMultiLineCodeBlockOperationPlan,
   buildMultiLineHeadingOperationPlan,
   buildMultiLineInlineFormatPlan,
   buildMultiLineInlineMarkerOperationPlan,
+  buildMultiLineRemoveBlockIndentOperationPlan,
+  buildMultiLineRemoveBlockQuoteOperationPlan,
+  buildSelectionBlockIndentOperationPlan,
+  buildSelectionBlockQuoteOperationPlan,
+  buildSelectionRemoveBlockIndentOperationPlan,
+  buildSelectionRemoveBlockQuoteOperationPlan,
   getActiveInlineFormatMarks,
   getMultiLineBlockQuoteMarkerShortcut,
   getMultiLineHeadingMarkerShortcut,
   getMultiLineInlineMarkerShortcut,
+  selectionTouchesBlockQuoteRows,
   type MultiLineHeadingLevel,
 } from './multiline-format-operations'
+import { getEditorTextLineRanges } from './multiline-ranges'
 
 const multilineFormatSchema = new Schema({
   nodes: {
@@ -116,6 +126,23 @@ function createView(doc: any) {
       return state
     },
   }
+}
+
+function selectTextLines(view: ReturnType<typeof createView>, startLineIndex: number, endLineIndex = startLineIndex) {
+  const ranges = getEditorTextLineRanges(view)
+  const from = ranges[startLineIndex]?.start
+  const to = ranges[endLineIndex]?.end
+  expect(from).toBeTypeOf('number')
+  expect(to).toBeTypeOf('number')
+  view.apply(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)))
+}
+
+function setCaretInTextLine(view: ReturnType<typeof createView>, lineIndex: number, offset = 0) {
+  const ranges = getEditorTextLineRanges(view)
+  const range = ranges[lineIndex]
+  expect(range).toBeTruthy()
+  const position = Math.max(range!.start, Math.min(range!.end, range!.start + offset))
+  view.apply(view.state.tr.setSelection(TextSelection.create(view.state.doc, position, position)))
 }
 
 function multiLineState(
@@ -285,6 +312,245 @@ describe('multi-cursor blockquote operations', () => {
     expect(nextState.doc.child(1).childCount).toBe(2)
     expect(nextState.doc.child(1).textContent).toBe('onetwo')
     expect(nextState.doc.child(2).textContent).toBe('keep')
+  })
+
+  it('removes blockquote rows and preserves unselected quoted rows', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [blockQuote(['keep', 'one', 'two', 'keep'])]))
+    const plan = buildMultiLineRemoveBlockQuoteOperationPlan(view, multiLineState([1, 2], 3))
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(docChildTypes(nextState.doc)).toEqual(['blockQuote', 'paragraph', 'paragraph', 'blockQuote'])
+    expect(nextState.doc.child(0).textContent).toBe('keep')
+    expect(nextState.doc.child(1).textContent).toBe('one')
+    expect(nextState.doc.child(2).textContent).toBe('two')
+    expect(nextState.doc.child(3).textContent).toBe('keep')
+  })
+
+  it('removes a blockquote row from a normal collapsed caret selection', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [blockQuote(['quote'])]))
+    setCaretInTextLine(view, 0, 2)
+
+    expect(buildSelectionBlockQuoteOperationPlan(view)).toBeNull()
+    const plan = buildSelectionRemoveBlockQuoteOperationPlan(view)
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(nextState.doc.childCount).toBe(1)
+    expect(nextState.doc.child(0).type.name).toBe('paragraph')
+    expect(nextState.doc.child(0).textContent).toBe('quote')
+  })
+
+  it('removes selected blockquote rows and preserves unselected quoted rows from a normal selection', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [blockQuote(['keep', 'lift', 'keep'])]))
+    selectTextLines(view, 1)
+
+    const plan = buildSelectionRemoveBlockQuoteOperationPlan(view)
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(docChildTypes(nextState.doc)).toEqual(['blockQuote', 'paragraph', 'blockQuote'])
+    expect(nextState.doc.child(0).textContent).toBe('keep')
+    expect(nextState.doc.child(1).textContent).toBe('lift')
+    expect(nextState.doc.child(2).textContent).toBe('keep')
+  })
+
+  it('strips block indent tokens when converting rows to blockquotes', () => {
+    const view = createView(
+      multilineFormatSchema.nodes.doc.create(null, [
+        paragraph(`${BLOCK_INDENT_TOKEN}one`),
+        paragraph(`${BLOCK_INDENT_TOKEN}${INDENT_TOKEN}two`),
+      ]),
+    )
+    const plan = buildMultiLineBlockQuoteOperationPlan(view, multiLineState([0, 1], 3))
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(nextState.doc.childCount).toBe(1)
+    expect(nextState.doc.child(0).type.name).toBe('blockQuote')
+    expect(nextState.doc.child(0).child(0).textContent).toBe('one')
+    expect(nextState.doc.child(0).child(1).textContent).toBe(`${INDENT_TOKEN}two`)
+  })
+
+  it('strips block indent tokens when a normal selection is converted to a blockquote', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [paragraph(`${BLOCK_INDENT_TOKEN}${INDENT_TOKEN}one`)]))
+    selectTextLines(view, 0)
+
+    const plan = buildSelectionBlockQuoteOperationPlan(view)
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(nextState.doc.child(0).type.name).toBe('blockQuote')
+    expect(nextState.doc.child(0).child(0).textContent).toBe(`${INDENT_TOKEN}one`)
+  })
+})
+
+describe('selection block indent operations', () => {
+  it('detects collapsed carets inside blockquote rows without matching normal paragraphs', () => {
+    const quoteView = createView(multilineFormatSchema.nodes.doc.create(null, [blockQuote(['quote'])]))
+    setCaretInTextLine(quoteView, 0, 2)
+
+    const normalView = createView(multilineFormatSchema.nodes.doc.create(null, [paragraph('normal')]))
+    setCaretInTextLine(normalView, 0, 2)
+
+    expect(selectionTouchesBlockQuoteRows(quoteView)).toBe(true)
+    expect(selectionTouchesBlockQuoteRows(normalView)).toBe(false)
+  })
+
+  it('converts a collapsed caret blockquote row to a block indent paragraph', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [blockQuote(['quote'])]))
+    setCaretInTextLine(view, 0, 2)
+
+    const plan = buildSelectionBlockIndentOperationPlan(view)
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(nextState.doc.childCount).toBe(1)
+    expect(nextState.doc.child(0).type.name).toBe('paragraph')
+    expect(nextState.doc.child(0).textContent).toBe(`${BLOCK_INDENT_TOKEN}quote`)
+  })
+
+  it('prefixes a single selected paragraph with the block indent token', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [paragraph('one')]))
+    selectTextLines(view, 0)
+
+    const plan = buildSelectionBlockIndentOperationPlan(view)
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(nextState.doc.childCount).toBe(1)
+    expect(nextState.doc.child(0).type.name).toBe('paragraph')
+    expect(nextState.doc.child(0).textContent).toBe(`${BLOCK_INDENT_TOKEN}one`)
+  })
+
+  it('prefixes adjacent selected paragraphs without creating blockquotes', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [paragraph('one'), paragraph('two')]))
+    selectTextLines(view, 0, 1)
+
+    const plan = buildSelectionBlockIndentOperationPlan(view)
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(nextState.doc.childCount).toBe(2)
+    expect(nextState.doc.child(0).type.name).toBe('paragraph')
+    expect(nextState.doc.child(1).type.name).toBe('paragraph')
+    expect(nextState.doc.child(0).textContent).toBe(`${BLOCK_INDENT_TOKEN}one`)
+    expect(nextState.doc.child(1).textContent).toBe(`${BLOCK_INDENT_TOKEN}two`)
+  })
+
+  it('preserves paragraph indent text inside the block indent', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [paragraph(`${INDENT_TOKEN}one`)]))
+    selectTextLines(view, 0)
+
+    const plan = buildSelectionBlockIndentOperationPlan(view)
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(nextState.doc.child(0).type.name).toBe('paragraph')
+    expect(nextState.doc.child(0).textContent).toBe(`${BLOCK_INDENT_TOKEN}${INDENT_TOKEN}one`)
+  })
+
+  it('removes selected block indent tokens without touching neighboring rows', () => {
+    const view = createView(
+      multilineFormatSchema.nodes.doc.create(null, [
+        paragraph(`${BLOCK_INDENT_TOKEN}keep`),
+        paragraph(`${BLOCK_INDENT_TOKEN}lift`),
+        paragraph(`${BLOCK_INDENT_TOKEN}keep`),
+      ]),
+    )
+    selectTextLines(view, 1)
+
+    const plan = buildSelectionRemoveBlockIndentOperationPlan(view)
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(docChildTypes(nextState.doc)).toEqual(['paragraph', 'paragraph', 'paragraph'])
+    expect(nextState.doc.child(0).textContent).toBe(`${BLOCK_INDENT_TOKEN}keep`)
+    expect(nextState.doc.child(1).textContent).toBe('lift')
+    expect(nextState.doc.child(2).textContent).toBe(`${BLOCK_INDENT_TOKEN}keep`)
+  })
+
+  it('converts selected blockquote rows to block indent rows while preserving unselected quote rows', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [blockQuote(['keep', 'lift', 'keep'])]))
+    selectTextLines(view, 1)
+
+    const plan = buildSelectionBlockIndentOperationPlan(view)
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(docChildTypes(nextState.doc)).toEqual(['blockQuote', 'paragraph', 'blockQuote'])
+    expect(nextState.doc.child(0).textContent).toBe('keep')
+    expect(nextState.doc.child(1).textContent).toBe(`${BLOCK_INDENT_TOKEN}lift`)
+    expect(nextState.doc.child(2).textContent).toBe('keep')
+  })
+
+  it('converts multi-cursor blockquote rows to block indent rows', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [blockQuote(['keep', 'one', 'two', 'keep'])]))
+    const plan = buildMultiLineBlockIndentOperationPlan(view, multiLineState([1, 2], 3))
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(docChildTypes(nextState.doc)).toEqual(['blockQuote', 'paragraph', 'paragraph', 'blockQuote'])
+    expect(nextState.doc.child(0).textContent).toBe('keep')
+    expect(nextState.doc.child(1).textContent).toBe(`${BLOCK_INDENT_TOKEN}one`)
+    expect(nextState.doc.child(2).textContent).toBe(`${BLOCK_INDENT_TOKEN}two`)
+    expect(nextState.doc.child(3).textContent).toBe('keep')
+    expect(plan?.nextState.columnOffsets).toEqual({
+      1: BLOCK_INDENT_TOKEN.length + 3,
+      2: BLOCK_INDENT_TOKEN.length + 3,
+    })
+  })
+
+  it('does not remove blockquote structure on remove block indent when no marker is present', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [blockQuote(['quote'])]))
+    selectTextLines(view, 0)
+
+    expect(buildSelectionRemoveBlockIndentOperationPlan(view)).toBeNull()
+    expect(view.state.doc.child(0).type.name).toBe('blockQuote')
+    expect(view.state.doc.child(0).textContent).toBe('quote')
+  })
+
+  it('does not remove blockquote structure from a collapsed caret on remove block indent', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [blockQuote(['quote'])]))
+    setCaretInTextLine(view, 0, 2)
+
+    expect(buildSelectionRemoveBlockIndentOperationPlan(view)).toBeNull()
+    expect(view.state.doc.child(0).type.name).toBe('blockQuote')
+    expect(view.state.doc.child(0).textContent).toBe('quote')
+  })
+
+  it('removes legacy block indent tokens inside blockquotes without lifting the quote', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [blockQuote([`${BLOCK_INDENT_TOKEN}quote`])]))
+    selectTextLines(view, 0)
+
+    const plan = buildSelectionRemoveBlockIndentOperationPlan(view)
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(nextState.doc.child(0).type.name).toBe('blockQuote')
+    expect(nextState.doc.child(0).textContent).toBe('quote')
+  })
+
+  it('applies and removes block indent tokens across multi-cursor rows', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [paragraph('one'), paragraph('two')]))
+    const applyPlan = buildMultiLineBlockIndentOperationPlan(view, multiLineState([0, 1], 3))
+    expect(applyPlan).not.toBeNull()
+    const appliedState = view.apply(applyPlan!.transaction)
+
+    expect(appliedState.doc.child(0).textContent).toBe(`${BLOCK_INDENT_TOKEN}one`)
+    expect(appliedState.doc.child(1).textContent).toBe(`${BLOCK_INDENT_TOKEN}two`)
+    expect(applyPlan?.nextState.columnOffsets).toEqual({
+      0: BLOCK_INDENT_TOKEN.length + 3,
+      1: BLOCK_INDENT_TOKEN.length + 3,
+    })
+
+    const removePlan = buildMultiLineRemoveBlockIndentOperationPlan(view, applyPlan!.nextState)
+    expect(removePlan).not.toBeNull()
+    const removedState = view.apply(removePlan!.transaction)
+
+    expect(removedState.doc.child(0).textContent).toBe('one')
+    expect(removedState.doc.child(1).textContent).toBe('two')
+    expect(removePlan?.nextState.columnOffsets).toEqual({ 0: 3, 1: 3 })
   })
 })
 

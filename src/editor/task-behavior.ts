@@ -90,6 +90,22 @@ export function shouldUseManualListCaretPlacement(startedOnTrailingSpace: boolea
   return startedOnTrailingSpace && pointerUpInsideItem
 }
 
+export function shouldRunDelayedTaskCaretPlacement({
+  scheduledVersion,
+  currentVersion,
+  sourceConnected,
+  activeEditorMatches,
+  activeViewMatches,
+}: {
+  scheduledVersion: number
+  currentVersion: number
+  sourceConnected: boolean
+  activeEditorMatches: boolean
+  activeViewMatches: boolean
+}): boolean {
+  return scheduledVersion === currentVersion && sourceConnected && activeEditorMatches && activeViewMatches
+}
+
 export function shouldSuppressListReorderSelectStart(isDragging: boolean): boolean {
   return isDragging
 }
@@ -1088,6 +1104,7 @@ export function installTaskTextReorderBehavior(
 
   let dragState: DragState | null = null
   let suppressNextClick = false
+  let manualCaretPlacementVersion = 0
   const selectionSuppression = createTaskReorderSelectionSuppressionController()
 
   const updateDropTarget = (event: globalThis.MouseEvent) => {
@@ -1213,7 +1230,20 @@ export function installTaskTextReorderBehavior(
       }
       endDrag()
       if (shouldPlaceCaret) {
+        const scheduledVersion = manualCaretPlacementVersion
         window.setTimeout(() => {
+          const activeEditor = getEditor()
+          if (
+            !shouldRunDelayedTaskCaretPlacement({
+              scheduledVersion,
+              currentVersion: manualCaretPlacementVersion,
+              sourceConnected: sourceElement.isConnected,
+              activeEditorMatches: activeEditor === editor,
+              activeViewMatches: getWysiwygView(activeEditor) === view,
+            })
+          ) {
+            return
+          }
           placeTaskCaretAtParagraphEnd(view, editor, sourceElement)
         }, 0)
       }
@@ -1248,6 +1278,7 @@ export function installTaskTextReorderBehavior(
   }
 
   const handleMouseDown = (event: globalThis.MouseEvent) => {
+    manualCaretPlacementVersion += 1
     if (event.detail > 1) return
 
     const editor = getEditor()
@@ -1323,6 +1354,7 @@ export function installTaskTextReorderBehavior(
   root.addEventListener('click', handleClick, true)
 
   return () => {
+    manualCaretPlacementVersion += 1
     endDrag()
     root.removeEventListener('mousedown', handleMouseDown, true)
     root.removeEventListener('click', handleClick, true)

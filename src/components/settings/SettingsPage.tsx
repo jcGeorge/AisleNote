@@ -99,7 +99,7 @@ type SettingsPageProps = {
   onSectionChange: (section: SettingsSection) => void
   onToggleShortcutEdit: (shortcutId: ShortcutId) => void
   onNewlineShortcutChange: (shortcutId: NewlineShortcutId, operation: NewlineOperationId) => void
-  onOpenNewlineMenuSettings: () => void
+  onOpenShortcutMenuSettings: () => void
   onMouseBackForwardChange: (enabled: boolean) => void
   onGenericHistoryHotkeysChange: (enabled: boolean) => void
   onAutoRemoveDaysChange: (value: string, commit?: boolean) => void
@@ -154,7 +154,7 @@ export function SettingsPage({
   onSectionChange,
   onToggleShortcutEdit,
   onNewlineShortcutChange,
-  onOpenNewlineMenuSettings,
+  onOpenShortcutMenuSettings,
   onMouseBackForwardChange,
   onGenericHistoryHotkeysChange,
   onAutoRemoveDaysChange,
@@ -357,7 +357,7 @@ export function SettingsPage({
             <div className="settings-divider" />
             <div className="settings-hotkey-row">
               <span className="settings-hotkey-label">{NEWLINE_OPERATION_LABELS.operationsMenu}</span>
-              <button type="button" className="btn btn-sm settings-action-btn" onClick={onOpenNewlineMenuSettings}>
+              <button type="button" className="btn btn-sm settings-action-btn" onClick={onOpenShortcutMenuSettings}>
                 configure
               </button>
             </div>

@@ -3,15 +3,16 @@ import { Editor } from '@toast-ui/editor'
 import '@toast-ui/editor/dist/toastui-editor.css'
 import './App.css'
 import { useActiveNoteModel } from './app/useActiveNoteModel'
+import { CLOSED_LINK_PROMPT_STATE, closeLinkPromptState } from './app/linkPromptState'
 import { useArrangeMode } from './arrange/useArrangeMode'
 import { DomainsPage } from './components/domains/DomainsPage'
 import { ImageToolsOverlay } from './components/editor/ImageToolsOverlay'
 import { LegacyEditorShell } from './components/editor/LegacyEditorShell'
-import { NewlineOperationsMenu } from './components/editor/NewlineOperationsMenu'
+import { ShortcutMenu } from './components/editor/ShortcutMenu'
 import {
-  getNewlineMenuKeyboardAction,
-  isNewlineMenuKeyboardKey,
-} from './components/editor/newline-menu-keyboard'
+  getShortcutMenuKeyboardAction,
+  isShortcutMenuKeyboardKey,
+} from './components/editor/shortcut-menu-keyboard'
 import { AisleEditModal } from './components/notes/AisleEditModal'
 import { NoteWorkspace } from './components/notes/NoteWorkspace'
 import { SubTabRail } from './components/navigation/SubTabRail'
@@ -27,6 +28,8 @@ import { TrashHomeNote } from './components/trash/TrashHomeNote'
 import { applyListToolbarCommand, type ToolbarListCommand } from './editor/list-marker-commands'
 import { applyEditorNewlineOperation } from './editor/newline-operations'
 import { MAX_AISLE_WARNING_MESSAGE } from './editor/aisle-edit-draft'
+import { getAisleIdFromAisleEditorKey } from './editor/aisle-editor'
+import { shouldFocusAislePointerActivation } from './editor/aisle-activation'
 import { useAisleController } from './editor/useAisleController'
 import { useLegacyEditor } from './editor/useLegacyEditor'
 import {
@@ -105,7 +108,7 @@ import type {
 } from './types/app'
 import type { AppStateSnapshotMode } from './storage/persistence-debounce'
 
-type NewlineOperationsMenuState = {
+type ShortcutMenuState = {
   top: number
   left: number
   operations: NewlineOperationId[]
@@ -145,21 +148,16 @@ function App() {
   const [editing, setEditing] = useState<{ type: EditableEntityType; id: string } | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [modal, setModal] = useState<ModalState | null>(null)
-  const [newlineOperationsMenu, setNewlineOperationsMenu] = useState<NewlineOperationsMenuState | null>(null)
-  const [newlineOperationsMenuActiveIndex, setNewlineOperationsMenuActiveIndex] = useState(0)
+  const [shortcutMenu, setShortcutMenu] = useState<ShortcutMenuState | null>(null)
+  const [shortcutMenuActiveIndex, setShortcutMenuActiveIndex] = useState(0)
   const isMacPlatform = typeof navigator !== 'undefined' ? /mac/i.test(navigator.platform) : false
   const [menuOpen, setMenuOpen] = useState(false)
   const [trashTabId, setTrashTabId] = useState<string>(TRASH_HOME_ID)
   const [trashSubTabId, setTrashSubTabId] = useState<string | null>(null)
   const [activeAisleId, setActiveAisleId] = useState<string>('')
   const [toasts, setToasts] = useState<ToastState[]>([])
-  const [linkPrompt, setLinkPrompt] = useState<LinkPromptState>({
-    open: false,
-    top: 0,
-    left: 0,
-    url: '',
-    text: '',
-  })
+  const [linkPrompt, setLinkPrompt] = useState<LinkPromptState>(CLOSED_LINK_PROMPT_STATE)
+  const linkPromptRef = useRef<LinkPromptState>(linkPrompt)
   const linkPromptInputRef = useRef<HTMLInputElement | null>(null)
 
   const editorMountRef = useRef<HTMLDivElement | null>(null)
@@ -169,8 +167,8 @@ function App() {
   const pendingScrollToAisleIdRef = useRef<string | null>(null)
   const pendingFocusToAisleIdRef = useRef<string | null>(null)
   const editorEventRootRef = useRef<HTMLElement | null>(null)
-  const closeNewlineOperationsMenuRef = useRef<(options?: { restoreEditorFocus?: boolean }) => void>(() => {})
-  const runNewlineOperationFromMenuRef = useRef<(operation: NewlineOperationId) => void>(() => {})
+  const closeShortcutMenuRef = useRef<(options?: { restoreEditorFocus?: boolean }) => void>(() => {})
+  const runShortcutOperationFromMenuRef = useRef<(operation: NewlineOperationId) => void>(() => {})
   const deleteContextPreviewRef = useRef<(tokenId: string) => void>(() => {})
   const pendingCreatedEditRef = useRef<PendingCreatedEdit | null>(null)
   const editingRef = useRef<{ type: EditableEntityType; id: string } | null>(null)
@@ -763,7 +761,9 @@ function App() {
   const tryApplyMultiLineListOperation = multilineEditing.tryApplyListOperation
   const tryApplyMultiLineListMarkerShortcut = multilineEditing.tryApplyListMarkerShortcut
   const tryApplyMultiLineHeadingOperation = multilineEditing.tryApplyHeadingOperation
-  const tryApplyMultiLineBlockQuoteOperation = multilineEditing.tryApplyBlockQuoteOperation
+  const tryApplyBlockQuoteOperation = multilineEditing.tryApplyBlockQuoteOperation
+  const tryApplyBlockIndentOperation = multilineEditing.tryApplyBlockIndentOperation
+  const tryRemoveBlockIndentOperation = multilineEditing.tryRemoveBlockIndentOperation
   const tryApplyMultiLineCodeBlockOperation = multilineEditing.tryApplyCodeBlockOperation
   const tryApplyMultiLineInlineFormat = multilineEditing.tryApplyInlineFormat
   const tryApplyMultiLineBlockMarkerShortcut = multilineEditing.tryApplyBlockMarkerShortcut
@@ -906,13 +906,15 @@ function App() {
   })
 
   const openLinkPrompt = (url: string, top: number, left: number, text?: string) => {
-    setLinkPrompt({
+    const nextPrompt = {
       open: true,
       top,
       left,
       url,
       text: text && text.trim().length > 0 ? text : '',
-    })
+    }
+    linkPromptRef.current = nextPrompt
+    setLinkPrompt(nextPrompt)
     window.setTimeout(() => {
       const input = linkPromptInputRef.current
       if (!input) return
@@ -922,7 +924,11 @@ function App() {
   }
 
   const closeLinkPrompt = () => {
-    setLinkPrompt({ open: false, top: 0, left: 0, url: '', text: '' })
+    setLinkPrompt((previous) => {
+      const nextPrompt = closeLinkPromptState(previous)
+      linkPromptRef.current = nextPrompt
+      return nextPrompt
+    })
   }
 
   const imageToolsController = useImageTools({
@@ -994,11 +1000,24 @@ function App() {
         return true
       }
     }
-    if (command === 'blockQuote' && multiLineEditRef.current) {
-      if (tryApplyMultiLineBlockQuoteOperation()) {
+    if (command === 'blockIndent') {
+      if (tryApplyBlockIndentOperation()) {
         scheduleActiveEditorCommandCommit(currentEditor)
       }
       return true
+    }
+    if (command === 'removeBlockIndent') {
+      if (tryRemoveBlockIndentOperation()) {
+        scheduleActiveEditorCommandCommit(currentEditor)
+      }
+      return true
+    }
+    if (command === 'blockQuote') {
+      if (tryApplyBlockQuoteOperation()) {
+        scheduleActiveEditorCommandCommit(currentEditor)
+        return true
+      }
+      if (multiLineEditRef.current) return true
     }
     if (command === 'codeBlock' && multiLineEditRef.current) {
       if (tryApplyMultiLineCodeBlockOperation()) {
@@ -1024,7 +1043,7 @@ function App() {
     const currentEditor = editorRef.current
     if (!currentEditor) return false
     if (operation === 'operationsMenu') {
-      openNewlineOperationsMenu()
+      openShortcutMenu()
       return true
     }
     if (operation === 'strikethrough') {
@@ -1036,10 +1055,17 @@ function App() {
     }
 
     const multiLineOperation = getMultiLineListOperationForNewlineOperation(operation)
+    if (operation === 'blockIndent') {
+      if (tryApplyBlockIndentOperation()) {
+        commitActiveEditorMarkdownNow(currentEditor)
+        syncToolbarFormatState()
+      }
+      return true
+    }
     if (multiLineEditRef.current && (operation === 'blockQuote' || operation === 'codeBlock')) {
       const handled =
         operation === 'blockQuote'
-          ? tryApplyMultiLineBlockQuoteOperation()
+          ? tryApplyBlockQuoteOperation()
           : tryApplyMultiLineCodeBlockOperation()
       if (handled) {
         commitActiveEditorMarkdownNow(currentEditor)
@@ -1068,7 +1094,7 @@ function App() {
     return true
   }
 
-  const getNewlineOperationsMenuPosition = (operationCount: number): Pick<NewlineOperationsMenuState, 'top' | 'left'> => {
+  const getShortcutMenuPosition = (operationCount: number): Pick<ShortcutMenuState, 'top' | 'left'> => {
     const viewportWidth = window.innerWidth || document.documentElement.clientWidth
     const viewportHeight = window.innerHeight || document.documentElement.clientHeight
     const estimatedHeight = Math.min(380, Math.max(48, operationCount * 36 + 18))
@@ -1098,20 +1124,20 @@ function App() {
     }
   }
 
-  const openNewlineOperationsMenu = () => {
+  const openShortcutMenu = () => {
     if (viewMode !== 'main' || !editorRef.current) return
     const operations = stateRef.current.hotkeys.newlineShortcuts.menuOperations
-    setNewlineOperationsMenuActiveIndex(0)
-    setNewlineOperationsMenu({
-      ...getNewlineOperationsMenuPosition(operations.length),
+    setShortcutMenuActiveIndex(0)
+    setShortcutMenu({
+      ...getShortcutMenuPosition(operations.length),
       operations,
     })
   }
 
-  const closeNewlineOperationsMenu = (options: { restoreEditorFocus?: boolean } = {}) => {
+  const closeShortcutMenu = (options: { restoreEditorFocus?: boolean } = {}) => {
     const editorToRestore = options.restoreEditorFocus ? editorRef.current : null
-    setNewlineOperationsMenuActiveIndex(0)
-    setNewlineOperationsMenu(null)
+    setShortcutMenuActiveIndex(0)
+    setShortcutMenu(null)
     if (!editorToRestore) return
 
     window.requestAnimationFrame(() => {
@@ -1120,45 +1146,45 @@ function App() {
       syncToolbarFormatState()
     })
   }
-  closeNewlineOperationsMenuRef.current = closeNewlineOperationsMenu
+  closeShortcutMenuRef.current = closeShortcutMenu
 
-  const runNewlineOperationFromMenu = (operation: NewlineOperationId) => {
-    closeNewlineOperationsMenu()
+  const runShortcutOperationFromMenu = (operation: NewlineOperationId) => {
+    closeShortcutMenu()
     runActiveNewlineOperation(operation)
   }
-  runNewlineOperationFromMenuRef.current = runNewlineOperationFromMenu
+  runShortcutOperationFromMenuRef.current = runShortcutOperationFromMenu
 
   useEffect(() => {
-    if (!newlineOperationsMenu) return
+    if (!shortcutMenu) return
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (!isNewlineMenuKeyboardKey(event)) return
+      if (!isShortcutMenuKeyboardKey(event)) return
       event.preventDefault()
       event.stopPropagation()
 
-      const action = getNewlineMenuKeyboardAction(
+      const action = getShortcutMenuKeyboardAction(
         event,
-        newlineOperationsMenuActiveIndex,
-        newlineOperationsMenu.operations.length,
+        shortcutMenuActiveIndex,
+        shortcutMenu.operations.length,
       )
       if (action.type === 'close') {
-        closeNewlineOperationsMenuRef.current({ restoreEditorFocus: true })
+        closeShortcutMenuRef.current({ restoreEditorFocus: true })
         return
       }
       if (action.type === 'highlight') {
-        setNewlineOperationsMenuActiveIndex(action.index)
+        setShortcutMenuActiveIndex(action.index)
         return
       }
       if (action.type === 'run') {
-        const operation = newlineOperationsMenu.operations[action.index]
-        if (operation) runNewlineOperationFromMenuRef.current(operation)
+        const operation = shortcutMenu.operations[action.index]
+        if (operation) runShortcutOperationFromMenuRef.current(operation)
       }
     }
 
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target instanceof Element ? event.target : null
-      if (target?.closest('.newline-operations-menu')) return
-      closeNewlineOperationsMenuRef.current()
+      if (target?.closest('.shortcut-menu')) return
+      closeShortcutMenuRef.current()
     }
 
     document.addEventListener('keydown', handleKeyDown, true)
@@ -1167,7 +1193,7 @@ function App() {
       document.removeEventListener('keydown', handleKeyDown, true)
       document.removeEventListener('pointerdown', handlePointerDown, true)
     }
-  }, [newlineOperationsMenu, newlineOperationsMenuActiveIndex])
+  }, [shortcutMenu, shortcutMenuActiveIndex])
 
   const insertNamedLinkFromPrompt = () => {
     if (!linkPrompt.url) return
@@ -1226,6 +1252,7 @@ function App() {
     clearMultiLineEdit,
     closeImageTools,
     closeLinkPrompt,
+    isLinkPromptOpen: () => linkPromptRef.current.open,
     isImageCropActive,
     selectImageForTools,
     refreshImageToolsPosition,
@@ -1244,7 +1271,7 @@ function App() {
     onRunStructuralHistory: runAisleStructuralHistory,
     onEditorHistoryFallback: scheduleAisleStructuralHistoryFallback,
     onRunNewlineOperation: runActiveNewlineOperation,
-    onOpenNewlineOperationsMenu: openNewlineOperationsMenu,
+    onOpenShortcutMenu: openShortcutMenu,
     scheduleMultiLineHistoryRestore,
     tryExpandMultilineSelection,
     tryApplyMultiLineEditInput,
@@ -1438,7 +1465,13 @@ function App() {
       linkPrompt={linkPrompt}
       imageToolsOverlay={renderImageToolsOverlay()}
       onOpenNoteReference={openNoteReferenceModal}
-      onLinkPromptTextChange={(text) => setLinkPrompt((previous) => ({ ...previous, text }))}
+      onLinkPromptTextChange={(text) =>
+        setLinkPrompt((previous) => {
+          const nextPrompt = { ...previous, text }
+          linkPromptRef.current = nextPrompt
+          return nextPrompt
+        })
+      }
       onInsertNamedLink={insertNamedLinkFromPrompt}
       onCloseLinkPrompt={closeLinkPrompt}
     />
@@ -1657,7 +1690,7 @@ function App() {
           onSectionChange={settingsController.changeSection}
           onToggleShortcutEdit={settingsController.toggleShortcutEdit}
           onNewlineShortcutChange={settingsController.updateNewlineShortcutSetting}
-          onOpenNewlineMenuSettings={() => setModal({ type: 'newline-menu-settings' })}
+          onOpenShortcutMenuSettings={() => setModal({ type: 'shortcut-menu-settings' })}
           onMouseBackForwardChange={settingsController.updateMouseBackForwardSetting}
           onGenericHistoryHotkeysChange={settingsController.updateGenericHistoryHotkeysSetting}
           onAutoRemoveDaysChange={settingsController.updateAutoRemoveDaysSetting}
@@ -1787,8 +1820,12 @@ function App() {
                 aisleHorizontalScrollByBodyRef.current.set(activeNoteBodyId, scrollLeft)
               }}
               onActivateAisle={(editorKey) => {
+                const targetAisleId = getAisleIdFromAisleEditorKey(editorKey)
                 pendingCursorRestoreRef.current = null
-                activateAisleEditor(editorKey, { flushPrevious: true, focus: true })
+                activateAisleEditor(editorKey, {
+                  flushPrevious: true,
+                  focus: shouldFocusAislePointerActivation(activeAisleIdRef.current, targetAisleId),
+                })
               }}
               mountedAisleIds={mountedAisleIds}
               getPreviewMarkdownForAisle={getPreviewMarkdownForAisle}
@@ -1813,17 +1850,17 @@ function App() {
         </div>
       )}
 
-      {newlineOperationsMenu && (
-        <NewlineOperationsMenu
-          top={newlineOperationsMenu.top}
-          left={newlineOperationsMenu.left}
-          operations={newlineOperationsMenu.operations}
+      {shortcutMenu && (
+        <ShortcutMenu
+          top={shortcutMenu.top}
+          left={shortcutMenu.left}
+          operations={shortcutMenu.operations}
           activeIndex={Math.max(
             0,
-            Math.min(newlineOperationsMenu.operations.length - 1, newlineOperationsMenuActiveIndex),
+            Math.min(shortcutMenu.operations.length - 1, shortcutMenuActiveIndex),
           )}
-          onHighlight={setNewlineOperationsMenuActiveIndex}
-          onRun={runNewlineOperationFromMenu}
+          onHighlight={setShortcutMenuActiveIndex}
+          onRun={runShortcutOperationFromMenu}
         />
       )}
 
@@ -1853,9 +1890,9 @@ function App() {
         state={state}
         activeSpace={activeSpace}
         domainsForPickers={domainsForPickers}
-        newlineMenuOperations={settingsController.newlineMenuOperationsDraft}
+        shortcutMenuOperations={settingsController.shortcutMenuOperationsDraft}
         onModalChange={setModal}
-        onNewlineMenuOperationsChange={settingsController.updateNewlineMenuOperationsSetting}
+        onShortcutMenuOperationsChange={settingsController.updateShortcutMenuOperationsSetting}
         onEditFrontmatterTemplate={openFrontmatterTemplateSettings}
         onWarn={(message) => pushToast(message, 'warning')}
         onError={(message) => pushToast(message, 'error')}

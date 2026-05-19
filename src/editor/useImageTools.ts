@@ -23,6 +23,52 @@ import { isInsideReadonlyNotePreview } from './note-preview-dom'
 import { getWysiwygView } from './prosemirror-utils'
 import type { ImageToolsState, InlineCropState, ToastTone } from '../types/app'
 
+export const CLOSED_IMAGE_TOOLS_STATE: ImageToolsState = {
+  visible: false,
+  menuMode: 'start',
+  toolbarTop: 0,
+  toolbarLeft: 0,
+  resizeTop: 0,
+  resizeLeft: 0,
+}
+
+export const CLOSED_INLINE_CROP_STATE: InlineCropState = {
+  active: false,
+  relX: 0,
+  relY: 0,
+  relWidth: 1,
+  relHeight: 1,
+  top: 0,
+  left: 0,
+  width: 0,
+  height: 0,
+}
+
+export function shouldSkipImageToolsClose({
+  imageTools,
+  inlineCrop,
+  hasActiveImage,
+  hasActiveImageLookup,
+  hasImageResize,
+  imageRebindInProgress,
+}: {
+  imageTools: ImageToolsState
+  inlineCrop: InlineCropState
+  hasActiveImage: boolean
+  hasActiveImageLookup: boolean
+  hasImageResize: boolean
+  imageRebindInProgress: boolean
+}): boolean {
+  return (
+    !imageTools.visible &&
+    !inlineCrop.active &&
+    !hasActiveImage &&
+    !hasActiveImageLookup &&
+    !hasImageResize &&
+    !imageRebindInProgress
+  )
+}
+
 type UseImageToolsParams = {
   editorRef: MutableRefObject<Editor | null>
   editorEventRootRef: MutableRefObject<HTMLElement | null>
@@ -40,30 +86,14 @@ export function useImageTools({
   commitActiveEditorMarkdownNow,
   pushToast,
 }: UseImageToolsParams) {
-  const [imageTools, setImageTools] = useState<ImageToolsState>({
-    visible: false,
-    menuMode: 'start',
-    toolbarTop: 0,
-    toolbarLeft: 0,
-    resizeTop: 0,
-    resizeLeft: 0,
-  })
-  const [inlineCrop, setInlineCrop] = useState<InlineCropState>({
-    active: false,
-    relX: 0,
-    relY: 0,
-    relWidth: 1,
-    relHeight: 1,
-    top: 0,
-    left: 0,
-    width: 0,
-    height: 0,
-  })
+  const [imageTools, setImageTools] = useState<ImageToolsState>(CLOSED_IMAGE_TOOLS_STATE)
+  const [inlineCrop, setInlineCrop] = useState<InlineCropState>(CLOSED_INLINE_CROP_STATE)
   const activeImageRef = useRef<HTMLImageElement | null>(null)
   const activeImageLookupRef = useRef<{ sourceUrl: string; altText: string | null; position: number | null } | null>(null)
   const imageResizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const imageRebindInProgressRef = useRef(false)
   const imageRebindTokenRef = useRef(0)
+  const imageToolsRef = useRef<ImageToolsState>(imageTools)
   const inlineCropRef = useRef<InlineCropState>(inlineCrop)
   const inlineCropDragRef = useRef<{
     mode: InlineCropDragMode | null
@@ -77,6 +107,17 @@ export function useImageTools({
 
   const syncEditorImageDisplayMetadata = () => {
     syncImageDisplayMetadataInRoot(editorEventRootRef.current)
+  }
+
+  const updateImageTools = (updater: ImageToolsState | ((previous: ImageToolsState) => ImageToolsState)) => {
+    const previous = imageToolsRef.current
+    const nextImageTools =
+      typeof updater === 'function'
+        ? (updater as (previous: ImageToolsState) => ImageToolsState)(previous)
+        : updater
+    imageToolsRef.current = nextImageTools
+    setImageTools(nextImageTools)
+    return nextImageTools
   }
 
   const updateInlineCrop = (updater: InlineCropState | ((previous: InlineCropState) => InlineCropState)) => {
@@ -163,21 +204,26 @@ export function useImageTools({
   }
 
   const close = () => {
+    if (
+      shouldSkipImageToolsClose({
+        imageTools: imageToolsRef.current,
+        inlineCrop: inlineCropRef.current,
+        hasActiveImage: Boolean(activeImageRef.current),
+        hasActiveImageLookup: Boolean(activeImageLookupRef.current),
+        hasImageResize: Boolean(imageResizeRef.current),
+        imageRebindInProgress: imageRebindInProgressRef.current,
+      })
+    ) {
+      return
+    }
     imageRebindTokenRef.current += 1
     imageRebindInProgressRef.current = false
     activeImageRef.current = null
     activeImageLookupRef.current = null
     imageResizeRef.current = null
     resetInlineCropDrag()
-    updateInlineCrop({ active: false, relX: 0, relY: 0, relWidth: 1, relHeight: 1, top: 0, left: 0, width: 0, height: 0 })
-    setImageTools({
-      visible: false,
-      menuMode: 'start',
-      toolbarTop: 0,
-      toolbarLeft: 0,
-      resizeTop: 0,
-      resizeLeft: 0,
-    })
+    updateInlineCrop(CLOSED_INLINE_CROP_STATE)
+    updateImageTools(CLOSED_IMAGE_TOOLS_STATE)
   }
 
   useEffect(() => {
@@ -272,7 +318,7 @@ export function useImageTools({
       return false
     }
     const placement = getImageToolPlacement(rect)
-    setImageTools((previous) => ({
+    updateImageTools((previous) => ({
       visible: true,
       menuMode: previous.visible ? previous.menuMode : 'start',
       toolbarTop: placement.toolbarTop,
@@ -343,7 +389,7 @@ export function useImageTools({
       restoreScrollSnapshot(scrollSnapshot)
     }
     focusEditorWithoutScrolling(scrollSnapshot)
-    setImageTools((previous) => ({ ...previous, menuMode: 'start' }))
+    updateImageTools((previous) => ({ ...previous, menuMode: 'start' }))
     refreshPosition()
     restoreScrollSnapshot(scrollSnapshot)
     window.requestAnimationFrame(() => {
@@ -536,7 +582,7 @@ export function useImageTools({
       if (renderedImage) {
         syncImageDisplayMetadata(renderedImage)
       }
-      setImageTools((previous) =>
+      updateImageTools((previous) =>
         previous.visible && options.menuMode ? { ...previous, menuMode: options.menuMode } : previous,
       )
 
@@ -729,11 +775,11 @@ export function useImageTools({
 
   const openTransformMenu = () => {
     if (inlineCropRef.current.active) return
-    setImageTools((previous) => (previous.visible ? { ...previous, menuMode: 'transform' } : previous))
+    updateImageTools((previous) => (previous.visible ? { ...previous, menuMode: 'transform' } : previous))
   }
 
   const returnToStartMenu = () => {
-    setImageTools((previous) => (previous.visible ? { ...previous, menuMode: 'start' } : previous))
+    updateImageTools((previous) => (previous.visible ? { ...previous, menuMode: 'start' } : previous))
   }
 
   const cancelCrop = () => {
@@ -886,7 +932,7 @@ export function useImageTools({
       selectedImage.style.maxWidth = '100%'
       selectedImage.setAttribute('width', String(displayWidth))
       selectedImage.removeAttribute('height')
-      setImageTools((previous) => (previous.visible ? { ...previous, menuMode: 'transform' } : previous))
+      updateImageTools((previous) => (previous.visible ? { ...previous, menuMode: 'transform' } : previous))
       restoreScrollSnapshot(scrollSnapshot)
       refreshPosition({ closeOnMissing: false })
       restoreScrollSnapshot(scrollSnapshot)

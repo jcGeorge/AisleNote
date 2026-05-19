@@ -107,7 +107,7 @@
   width: min(350px, calc(100vw - 2rem));
 }
 
-.settings-modal.newline-settings-modal {
+.settings-modal.shortcut-settings-modal {
   width: min(460px, calc(100vw - 2rem));
   max-height: calc(100vh - 2rem);
   overflow: auto;
@@ -426,7 +426,7 @@
   color: var(--stage-action-selected-text);
 }
 
-.newline-menu-settings {
+.shortcut-menu-settings {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 0.7rem;
@@ -434,12 +434,12 @@
   user-select: none;
 }
 
-.newline-menu-slots {
+.shortcut-menu-slots {
   display: grid;
   gap: 0.35rem;
 }
 
-.newline-menu-slot {
+.shortcut-menu-slot {
   min-height: 2.35rem;
   display: grid;
   grid-template-columns: 2rem minmax(0, 1fr);
@@ -456,11 +456,11 @@
     opacity 120ms ease;
 }
 
-.newline-menu-slot.has-operation {
+.shortcut-menu-slot.has-operation {
   background: rgba(47, 103, 222, 0.12);
 }
 
-.newline-menu-slot.is-drop-target {
+.shortcut-menu-slot.is-drop-target {
   border-color: var(--stage-action-selected-border);
   background: rgba(47, 103, 222, 0.24);
   box-shadow:
@@ -468,11 +468,11 @@
     inset 0 0 0 1px rgba(255, 255, 255, 0.16);
 }
 
-.newline-menu-slot.is-drag-source {
+.shortcut-menu-slot.is-drag-source {
   opacity: 0.56;
 }
 
-.newline-menu-slot-number {
+.shortcut-menu-slot-number {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -485,14 +485,14 @@
   font-weight: 700;
 }
 
-.newline-menu-empty-slot,
-.newline-menu-pool-empty,
-.newline-menu-pool-label {
+.shortcut-menu-empty-slot,
+.shortcut-menu-pool-empty,
+.shortcut-menu-pool-label {
   color: var(--modal-muted-text);
   font-size: 0.82rem;
 }
 
-.newline-menu-operation-chip {
+.shortcut-menu-operation-chip {
   min-width: 0;
   border: 1px solid var(--stage-action-border);
   border-radius: 0.35rem;
@@ -513,23 +513,23 @@
     transform 120ms ease;
 }
 
-.newline-menu-operation-chip:hover,
-.newline-menu-operation-chip:focus-visible {
+.shortcut-menu-operation-chip:hover,
+.shortcut-menu-operation-chip:focus-visible {
   border-color: var(--stage-action-selected-border);
   background: var(--stage-action-selected-bg);
   color: var(--stage-action-selected-text);
 }
 
-.newline-menu-operation-chip:active {
+.shortcut-menu-operation-chip:active {
   cursor: grabbing;
 }
 
-.newline-menu-operation-chip.is-dragging {
+.shortcut-menu-operation-chip.is-dragging {
   opacity: 0.58;
   transform: scale(0.98);
 }
 
-.newline-menu-pool {
+.shortcut-menu-pool {
   display: grid;
   gap: 0.35rem;
   padding-top: 0.15rem;
@@ -540,12 +540,12 @@
     background-color 120ms ease;
 }
 
-.newline-menu-pool.is-drop-target {
+.shortcut-menu-pool.is-drop-target {
   border-color: var(--stage-action-selected-border);
   background: rgba(47, 103, 222, 0.12);
 }
 
-.newline-menu-pool-items {
+.shortcut-menu-pool-items {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;

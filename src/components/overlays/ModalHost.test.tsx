@@ -80,9 +80,9 @@ function renderFrontmatterModal(modal: ModalState) {
       state={createState()}
       activeSpace={space}
       domainsForPickers={[]}
-      newlineMenuOperations={[]}
+      shortcutMenuOperations={[]}
       onModalChange={() => undefined}
-      onNewlineMenuOperationsChange={() => undefined}
+      onShortcutMenuOperationsChange={() => undefined}
       onEditFrontmatterTemplate={() => undefined}
       onWarn={() => undefined}
       onError={() => undefined}

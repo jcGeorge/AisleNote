@@ -193,7 +193,9 @@ export function SharedEditorToolbar({
         </div>
         <div className="toastui-editor-toolbar-group">
           {renderToolbarIconButton('Horizontal line', 'hrline', () => onCommand('hr'))}
-          {renderToolbarIconButton('Blockquote', 'quote', () => onCommand('blockQuote'))}
+          {renderToolbarIconButton('Block quote', 'quote', () => onCommand('blockQuote'))}
+          {renderToolbarIconButton('Block indent', 'indent', () => onCommand('blockIndent'))}
+          {renderToolbarIconButton('Remove block indent', 'outdent', () => onCommand('removeBlockIndent'))}
         </div>
         <div className="toastui-editor-toolbar-group">
           {renderToolbarIconButton('Dash list', 'dash-list', () => onCommand('dashList'))}

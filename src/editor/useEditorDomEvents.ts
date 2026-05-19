@@ -40,10 +40,11 @@ type UseEditorDomEventsOptions = {
   activeImageRef: MutableRefObject<HTMLImageElement | null>
   multiLineEditRef: MutableRefObject<MultiLineEditState | null>
   activateEditorFromEventTarget: (target: EventTarget | null) => boolean | void
-  clearMultiLineEdit: (collapseToHead?: boolean) => void
+  clearMultiLineEdit: (collapseToHead?: boolean, options?: { deferWidgetClear?: boolean }) => void
   closeImageTools: () => void
   closeLinkPrompt: () => void
   isImageCropActive: () => boolean
+  isLinkPromptOpen: () => boolean
   selectImageForTools: (image: HTMLImageElement) => void
   refreshImageToolsPosition: () => void
   copySelectedImageToClipboard: () => void | Promise<unknown>
@@ -61,7 +62,7 @@ type UseEditorDomEventsOptions = {
   onRunStructuralHistory: (direction: 'undo' | 'redo') => boolean
   onEditorHistoryFallback: (direction: 'undo' | 'redo') => void
   onRunNewlineOperation: (operation: NewlineOperationId) => boolean
-  onOpenNewlineOperationsMenu: () => void
+  onOpenShortcutMenu: () => void
   scheduleMultiLineHistoryRestore: (direction: 'undo' | 'redo') => void
   tryExpandMultilineSelection: (direction: 'up' | 'down') => boolean
   tryApplyMultiLineEditInput: (input: MultiLineEditInput) => boolean
@@ -123,6 +124,36 @@ export function isActiveWysiwygEditorContentTarget(target: Element | null, view:
   return target === view.dom || Boolean(view.dom.contains?.(target))
 }
 
+export function isEditorPointerChromeTarget(target: Element | null): boolean {
+  return Boolean(
+    target?.closest(
+      [
+        '.image-tools',
+        '.image-resize-handle',
+        '.inline-crop-box',
+        '.inline-crop-edge-handle',
+        '.inline-crop-resize-handle',
+        '.link-prompt',
+      ].join(', '),
+    ),
+  )
+}
+
+export function getPlainTextPointerChromeClosePlan({
+  hasActiveImage,
+  imageCropActive,
+  linkPromptOpen,
+}: {
+  hasActiveImage: boolean
+  imageCropActive: boolean
+  linkPromptOpen: boolean
+}): { closeImageTools: boolean; closeLinkPrompt: boolean } {
+  return {
+    closeImageTools: hasActiveImage && !imageCropActive,
+    closeLinkPrompt: linkPromptOpen,
+  }
+}
+
 export function useEditorDomEvents({
   viewMode,
   displayContent,
@@ -138,6 +169,7 @@ export function useEditorDomEvents({
   closeImageTools,
   closeLinkPrompt,
   isImageCropActive,
+  isLinkPromptOpen,
   selectImageForTools,
   refreshImageToolsPosition,
   copySelectedImageToClipboard,
@@ -155,7 +187,7 @@ export function useEditorDomEvents({
   onRunStructuralHistory,
   onEditorHistoryFallback,
   onRunNewlineOperation,
-  onOpenNewlineOperationsMenu,
+  onOpenShortcutMenu,
   scheduleMultiLineHistoryRestore,
   tryExpandMultilineSelection,
   tryApplyMultiLineEditInput,
@@ -243,16 +275,7 @@ export function useEditorDomEvents({
         return
       }
       if (isEditorToolbarInteractionTarget(target)) return
-      if (
-        target.closest('.image-tools') ||
-        target.closest('.image-resize-handle') ||
-        target.closest('.inline-crop-box') ||
-        target.closest('.inline-crop-edge-handle') ||
-        target.closest('.inline-crop-resize-handle') ||
-        target.closest('.link-prompt')
-      ) {
-        return
-      }
+      if (isEditorPointerChromeTarget(target)) return
       const image = target.closest('img')
       if (image instanceof HTMLImageElement) {
         const isPrimaryActivation = isPrimaryMouseActivation(event)
@@ -266,14 +289,21 @@ export function useEditorDomEvents({
         selectImageForTools(image)
         return
       }
+      const chromeClosePlan = getPlainTextPointerChromeClosePlan({
+        hasActiveImage: Boolean(activeImageRef.current),
+        imageCropActive: isImageCropActive(),
+        linkPromptOpen: isLinkPromptOpen(),
+      })
       activateEditorFromEventTarget(target)
-      clearMultiLineEdit(false)
+      clearMultiLineEdit(false, { deferWidgetClear: true })
       if (handleAnchorInteraction(event, target, true)) return
       if (handleInternalLinkAtPointerPosition(event)) return
-      if (!isImageCropActive()) {
+      if (chromeClosePlan.closeImageTools) {
         closeImageTools()
       }
-      closeLinkPrompt()
+      if (chromeClosePlan.closeLinkPrompt) {
+        closeLinkPrompt()
+      }
     }
 
     const handleClick = (event: Event) => {
@@ -436,7 +466,7 @@ export function useEditorDomEvents({
           keyboardEvent.preventDefault()
           keyboardEvent.stopPropagation()
           if (newlineOperation === 'operationsMenu') {
-            onOpenNewlineOperationsMenu()
+            onOpenShortcutMenu()
             return
           }
           onRunNewlineOperation(newlineOperation)

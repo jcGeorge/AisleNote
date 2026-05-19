@@ -617,6 +617,26 @@
   margin: 0 0 0.45rem;
 }
 
+.aisle-edit-preview blockquote {
+  position: relative;
+  background: var(--editor-blockquote-bg);
+  color: var(--editor-blockquote-text);
+  padding: 0.08em 0 0.08em 0.95rem;
+}
+
+.aisle-edit-preview blockquote::before {
+  content: '';
+  position: absolute;
+  left: 0.18rem;
+  top: 0.12em;
+  bottom: 0.12em;
+  width: 0.3rem;
+  min-height: 1.15em;
+  border-radius: 0.08rem;
+  background: var(--editor-blockquote-border);
+  pointer-events: none;
+}
+
 .aisle-edit-preview ul,
 .aisle-edit-preview ol {
   padding-left: 1rem;
@@ -715,7 +735,7 @@
   }
 }
 
-.newline-operations-menu {
+.shortcut-menu {
   position: fixed;
   z-index: 3400;
   width: min(16rem, calc(100vw - 1rem));
@@ -729,7 +749,7 @@
   box-shadow: var(--context-menu-shadow);
 }
 
-.newline-operations-menu-item {
+.shortcut-menu-item {
   width: 100%;
   min-height: 2rem;
   display: grid;
@@ -746,13 +766,13 @@
   text-align: left;
 }
 
-.newline-operations-menu-item:hover,
-.newline-operations-menu-item:focus-visible,
-.newline-operations-menu-item.is-active {
+.shortcut-menu-item:hover,
+.shortcut-menu-item:focus-visible,
+.shortcut-menu-item.is-active {
   background: var(--context-menu-item-hover-bg);
 }
 
-.newline-operations-menu-key {
+.shortcut-menu-key {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -766,7 +786,7 @@
   font-weight: 700;
 }
 
-.newline-operations-menu-empty {
+.shortcut-menu-empty {
   padding: 0.45rem;
   color: var(--app-text-subtle);
   font-size: 0.86rem;

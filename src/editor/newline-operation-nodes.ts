@@ -1,5 +1,6 @@
 import type { Node as ProseMirrorNode } from 'prosemirror-model'
 import type { NewlineOperationId } from '../types/app'
+import { stripBlockIndentPrefix } from '../markdown/markdown-utils'
 import { createBulletListAttrs } from './list-markers'
 
 export function getOperationTextLines(text: string): string[] {
@@ -60,7 +61,10 @@ export function createOperationNodes(schema: any, operation: NewlineOperationId,
 
   if (operation === 'blockQuote') {
     const lines = getOperationTextLines(text)
-    const paragraphs = lines.length > 0 ? lines.map((line) => createParagraph(schema, line)) : [createParagraph(schema)]
+    const paragraphs =
+      lines.length > 0
+        ? lines.map((line) => createParagraph(schema, stripBlockIndentPrefix(line)))
+        : [createParagraph(schema)]
     return [schema.nodes.blockQuote.create(null, paragraphs)]
   }
 

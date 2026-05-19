@@ -2,10 +2,12 @@
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import { Editor } from '@toast-ui/editor'
 import { buildAisleEditorKey, getAisleIdFromAisleEditorKey, type AisleEditorMeta } from './aisle-editor'
+import { shouldUseFastSameAisleActivation } from './aisle-activation'
 import { createCodeBlockControlsPlugin } from './code-block-controls'
 import { installImageDisplayMetadataSync } from './image-dom-metadata'
 import {
   annotationLinePlugin,
+  blockIndentPlugin,
   EDITOR_TOOLBAR_ITEMS,
   headingSpaceShortcutPlugin,
   installHeadingPopupActiveState,
@@ -192,6 +194,20 @@ export function useAisleEditors({
     }
 
     const switchingAisle = activeAisleIdRef.current !== meta.aisleId
+    if (
+      shouldUseFastSameAisleActivation({
+        switchingAisle,
+        editorRefMatches: editorRef.current === meta.editor,
+        pluginKeyMatches: multiLineCursorPluginKeyRef.current === meta.pluginKey,
+        activeAisleStateMatches: activeAisleIdRef.current === meta.aisleId,
+      })
+    ) {
+      if (options.focus) {
+        meta.editor.focus()
+      }
+      return true
+    }
+
     if (switchingAisle && options.flushPrevious) {
       saveActiveCursorLocation()
       flushPendingContent()
@@ -442,6 +458,7 @@ export function useAisleEditors({
         usageStatistics: false,
         plugins: [
           listMarkerPlugin,
+          blockIndentPlugin,
           annotationLinePlugin,
           terminalBlockLandingPlugin,
           createCodeBlockControlsPlugin({ pushToast }),
@@ -481,7 +498,6 @@ export function useAisleEditors({
           focus: () => activateAisleEditor(editorKey, { flushPrevious: true }),
         },
       })
-
       const activate = () => activateAisleEditor(editorKey, { flushPrevious: true })
       root.addEventListener('focusin', activate)
       root.addEventListener('pointerdown', activate, true)

@@ -304,9 +304,10 @@
   --editor-text: #e9ecef;
   --editor-muted-text: #d8e6ff;
   --editor-heading-text: #f3f6fb;
-  --editor-blockquote-text: #d8e6ff;
+  --editor-blockquote-text: var(--editor-text);
   --editor-blockquote-border: #4e73ad;
   --editor-blockquote-bg: transparent;
+  --editor-block-indent-offset: 1.75rem;
   --editor-selection-bg: rgba(83, 137, 238, 0.34);
   --editor-code-bg: #121826;
   --editor-popup-bg: #0f1b32;
@@ -736,9 +737,10 @@
   --editor-text: var(--custom-palette-text);
   --editor-muted-text: var(--app-text-muted);
   --editor-heading-text: var(--app-text-heading);
-  --editor-blockquote-text: var(--app-text-muted);
+  --editor-blockquote-text: var(--editor-text);
   --editor-blockquote-border: var(--app-primary-border);
-  --editor-blockquote-bg: color-mix(in srgb, var(--custom-palette-primary) 8%, transparent);
+  --editor-blockquote-bg: transparent;
+  --editor-block-indent-offset: 1.75rem;
   --editor-selection-bg: color-mix(in srgb, var(--custom-palette-primary) 34%, transparent);
   --editor-code-bg: color-mix(in srgb, var(--custom-palette-canvas) 84%, black);
   --editor-popup-bg: var(--custom-palette-surface-raised);

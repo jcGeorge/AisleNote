@@ -38,6 +38,7 @@ export type NewlineOperationId =
   | 'codeBlock'
   | 'inlineCode'
   | 'blockQuote'
+  | 'blockIndent'
   | 'strikethrough'
   | 'operationsMenu'
 
@@ -530,7 +531,7 @@ export type ModalState =
       templateDerived: boolean
       isTemplateSuggestionDraft: boolean
     }
-  | { type: 'newline-menu-settings' }
+  | { type: 'shortcut-menu-settings' }
 
 export type TrashParentBucket = {
   id: string

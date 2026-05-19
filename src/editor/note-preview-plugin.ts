@@ -1,6 +1,7 @@
 import { Editor } from '@toast-ui/editor'
 import {
   annotationLinePlugin,
+  blockIndentPlugin,
   headingSpaceShortcutPlugin,
   listMarkerPlugin,
   thematicBreakShortcutPlugin,
@@ -107,7 +108,7 @@ function createContextPreviewWidgetElement(
       height: `${heightRem}rem`,
       autofocus: false,
       usageStatistics: false,
-      plugins: [listMarkerPlugin, annotationLinePlugin, headingSpaceShortcutPlugin, thematicBreakShortcutPlugin],
+      plugins: [listMarkerPlugin, blockIndentPlugin, annotationLinePlugin, headingSpaceShortcutPlugin, thematicBreakShortcutPlugin],
     })
 
     const view = getWysiwygView(editor)

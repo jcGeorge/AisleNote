@@ -1,10 +1,10 @@
-export type NewlineMenuKeyboardAction =
+export type ShortcutMenuKeyboardAction =
   | { type: 'none' }
   | { type: 'close' }
   | { type: 'highlight'; index: number }
   | { type: 'run'; index: number }
 
-export type NewlineMenuKeyboardInput = {
+export type ShortcutMenuKeyboardInput = {
   key: string
   metaKey?: boolean
   ctrlKey?: boolean
@@ -12,24 +12,24 @@ export type NewlineMenuKeyboardInput = {
   shiftKey?: boolean
 }
 
-export function getNewlineMenuNumberIndex(key: string): number | null {
+export function getShortcutMenuNumberIndex(key: string): number | null {
   if (key >= '1' && key <= '9') return Number(key) - 1
   if (key === '0') return 9
   return null
 }
 
-export function isNewlineMenuKeyboardKey(input: NewlineMenuKeyboardInput): boolean {
+export function isShortcutMenuKeyboardKey(input: ShortcutMenuKeyboardInput): boolean {
   if (input.key === 'Escape') return true
   if (input.metaKey || input.ctrlKey || input.altKey || input.shiftKey) return false
   if (['ArrowUp', 'ArrowDown', 'Home', 'End', 'Enter'].includes(input.key)) return true
-  return getNewlineMenuNumberIndex(input.key) !== null
+  return getShortcutMenuNumberIndex(input.key) !== null
 }
 
-export function getNewlineMenuKeyboardAction(
-  input: NewlineMenuKeyboardInput,
+export function getShortcutMenuKeyboardAction(
+  input: ShortcutMenuKeyboardInput,
   activeIndex: number,
   itemCount: number,
-): NewlineMenuKeyboardAction {
+): ShortcutMenuKeyboardAction {
   if (input.key === 'Escape') return { type: 'close' }
   if (input.metaKey || input.ctrlKey || input.altKey || input.shiftKey) return { type: 'none' }
 
@@ -45,7 +45,7 @@ export function getNewlineMenuKeyboardAction(
   if (input.key === 'End') return { type: 'highlight', index: boundedCount - 1 }
   if (input.key === 'Enter') return { type: 'run', index: normalizedActiveIndex }
 
-  const numberIndex = getNewlineMenuNumberIndex(input.key)
+  const numberIndex = getShortcutMenuNumberIndex(input.key)
   if (numberIndex === null || numberIndex >= boundedCount) return { type: 'none' }
   return { type: 'run', index: numberIndex }
 }

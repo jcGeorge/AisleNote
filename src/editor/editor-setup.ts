@@ -22,7 +22,7 @@ import {
   getBulletListMarkdownDelimiter,
   getBulletListMarkerFromMarkdownChar,
 } from './list-markers'
-import { isHorizontalRuleMarkerLine } from '../markdown/markdown-utils'
+import { BLOCK_INDENT_TOKEN, isHorizontalRuleMarkerLine } from '../markdown/markdown-utils'
 
 type ToastHtmlOpenTagToken = {
   type?: string
@@ -39,6 +39,8 @@ type ToastListMdNode = {
 }
 
 const ANNOTATION_ARROW_BOUNDARY_CARET_CLASS_NAME = 'tabs-annotation-arrow-boundary-caret'
+export const BLOCK_INDENT_CLASS_NAME = 'tabs-block-indent'
+export const BLOCK_INDENT_TOKEN_HIDDEN_CLASS_NAME = 'tabs-block-indent-token-hidden'
 
 function getTextOffsetDecorationRange(
   node: any,
@@ -88,6 +90,87 @@ function createArrowBoundaryCaretWidget() {
   element.className = ANNOTATION_ARROW_BOUNDARY_CARET_CLASS_NAME
   element.setAttribute('aria-hidden', 'true')
   return element
+}
+
+export type BlockIndentDecorationRange = {
+  nodeFrom: number
+  nodeTo: number
+  tokenFrom: number
+  tokenTo: number
+}
+
+export function getBlockIndentDecorationRanges(doc: any): BlockIndentDecorationRange[] {
+  const ranges: BlockIndentDecorationRange[] = []
+  if (!doc || typeof doc.descendants !== 'function') return ranges
+
+  doc.descendants((node: any, position: number) => {
+    if (!node?.isTextblock || !String(node.textContent ?? '').startsWith(BLOCK_INDENT_TOKEN)) return true
+    const tokenRange = getTextOffsetDecorationRange(node, position, 0, BLOCK_INDENT_TOKEN.length)
+    if (!tokenRange) return true
+    ranges.push({
+      nodeFrom: position,
+      nodeTo: position + node.nodeSize,
+      tokenFrom: tokenRange.from,
+      tokenTo: tokenRange.to,
+    })
+    return true
+  })
+
+  return ranges
+}
+
+export function blockIndentPlugin(context: {
+  pmState: {
+    Plugin: new (spec: {
+      props?: {
+        decorations?: (state: { doc: any }) => unknown
+      }
+    }) => unknown
+  }
+  pmView: {
+    Decoration: {
+      node: (from: number, to: number, attrs: Record<string, string>, spec?: Record<string, unknown>) => unknown
+      inline: (from: number, to: number, attrs: Record<string, string>, spec?: Record<string, unknown>) => unknown
+    }
+    DecorationSet: {
+      create: (doc: unknown, decorations: unknown[]) => unknown
+    }
+  }
+}) {
+  const { Plugin } = context.pmState
+  const { Decoration, DecorationSet } = context.pmView
+
+  return {
+    wysiwygPlugins: [
+      () =>
+        new Plugin({
+          props: {
+            decorations: (state: { doc: any }) => {
+              const decorations: unknown[] = []
+              getBlockIndentDecorationRanges(state.doc).forEach((range, index) => {
+                decorations.push(
+                  Decoration.node(
+                    range.nodeFrom,
+                    range.nodeTo,
+                    { class: BLOCK_INDENT_CLASS_NAME },
+                    { key: `block-indent-node-${range.nodeFrom}-${index}` },
+                  ),
+                )
+                decorations.push(
+                  Decoration.inline(
+                    range.tokenFrom,
+                    range.tokenTo,
+                    { class: BLOCK_INDENT_TOKEN_HIDDEN_CLASS_NAME },
+                    { key: `block-indent-token-${range.tokenFrom}-${index}` },
+                  ),
+                )
+              })
+              return DecorationSet.create(state.doc, decorations)
+            },
+          },
+        }),
+    ],
+  }
 }
 
 function getArrowMarkerDocRanges(doc: any): Array<{ from: number; to: number }> {

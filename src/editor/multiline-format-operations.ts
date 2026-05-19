@@ -1,4 +1,4 @@
-import type { Node as ProseMirrorNode } from 'prosemirror-model'
+import { Fragment, type Node as ProseMirrorNode } from 'prosemirror-model'
 import type { EditorTextLineRange, MultiLineEditState, MultiLineInlineFormat } from '../types/app'
 import {
   getMultiLineColumnOffset,
@@ -7,6 +7,11 @@ import {
 } from './multiline-edit'
 import { getParagraphSpaceShortcut } from './editor-setup'
 import { getEditorTextLineRanges, isCodeBlockTextLineRange } from './multiline-ranges'
+import {
+  BLOCK_INDENT_TOKEN,
+  getBlockIndentPrefixLength,
+  stripBlockIndentPrefix,
+} from '../markdown/markdown-utils'
 
 export type MultiLineHeadingLevel = 0 | 1 | 2 | 3 | 4 | 5 | 6
 
@@ -63,6 +68,25 @@ type BlockFormatRowContext =
 type MultiLineOperationPlan = {
   transaction: any
   nextState: MultiLineEditState
+}
+
+type SelectionOperationPlan = {
+  transaction: any
+}
+
+type BlockIndentTarget = {
+  blockIndex: number
+  pos: number
+}
+
+type BlockIndentReplaceTarget = ReplacementRange & {
+  nodes: ProseMirrorNode[]
+  blockIndices: number[]
+}
+
+type BlockIndentOperationPlanData = {
+  transaction: any
+  changedBlockIndices: number[]
 }
 
 type MultiLineHeadingOperationOptions = {
@@ -288,6 +312,30 @@ function getMultiLineFormatContext(view: any, multiLineEdit: MultiLineEditState)
   }
 }
 
+function getSelectionFormatContext(view: any) {
+  const selection = view?.state?.selection
+  const blockRanges = getEditorTextLineRanges(view)
+  if (!selection || blockRanges.length === 0) return null
+
+  const selectionFrom = Math.min(selection.from, selection.to)
+  const selectionTo = selection.empty ? selectionFrom : Math.max(selectionFrom, Math.max(selection.from, selection.to) - 1)
+  const selectedIndices = blockRanges
+    .map((range, index) => ({ range, index }))
+    .filter(({ range }) =>
+      selection.empty
+        ? selectionFrom >= range.start && selectionFrom <= range.end + 1
+        : range.start <= selectionTo && range.end >= selectionFrom,
+    )
+    .map(({ index }) => index)
+
+  if (selectedIndices.length === 0) return null
+
+  return {
+    blockRanges,
+    selectedIndices,
+  }
+}
+
 function getTopLevelTextBlockContexts(view: any, multiLineEdit: MultiLineEditState) {
   const context = getMultiLineFormatContext(view, multiLineEdit)
   if (!context) return null
@@ -320,6 +368,195 @@ function getBlockFormatContexts(view: any, multiLineEdit: MultiLineEditState) {
   }
 }
 
+function getBlockFormatContextsForSelection(view: any) {
+  const context = getSelectionFormatContext(view)
+  if (!context) return null
+
+  const contexts = context.selectedIndices.map((index) => {
+    const range = context.blockRanges[index]
+    return range ? getBlockFormatRowContext(view, index, range) : null
+  })
+  if (contexts.some((row) => row === null)) return null
+
+  return {
+    ...context,
+    contexts: contexts as BlockFormatRowContext[],
+  }
+}
+
+export function selectionTouchesBlockQuoteRows(view: any): boolean {
+  const context = getBlockFormatContextsForSelection(view)
+  return Boolean(context?.contexts.some((row) => row.kind === 'blockQuoteChild'))
+}
+
+function getBlockIndentTargets(
+  blockRanges: EditorTextLineRange[],
+  selectedIndices: number[],
+  remove: boolean,
+): BlockIndentTarget[] {
+  return selectedIndices
+    .map((blockIndex) => {
+      const range = blockRanges[blockIndex]
+      if (!range || isCodeBlockTextLineRange(range)) return null
+
+      const prefixLength = getBlockIndentPrefixLength(range.text)
+      if (remove ? prefixLength <= 0 : prefixLength > 0) return null
+      return {
+        blockIndex,
+        pos: range.start,
+      }
+    })
+    .filter((target): target is BlockIndentTarget => Boolean(target))
+}
+
+function createBlockIndentedParagraph(schema: any, childNode: ProseMirrorNode, text: string): ProseMirrorNode {
+  const blockIndentPrefixLength = getBlockIndentPrefixLength(text)
+  const contentWithoutBlockIndent =
+    blockIndentPrefixLength > 0 ? childNode.cut(blockIndentPrefixLength).content : childNode.content
+  return schema.nodes.paragraph.create(
+    null,
+    Fragment.from(schema.text(BLOCK_INDENT_TOKEN)).append(contentWithoutBlockIndent),
+  )
+}
+
+function buildQuoteBlockIndentReplacementNodes(
+  schema: any,
+  quoteNode: ProseMirrorNode,
+  selectedContexts: BlockQuoteRowContext[],
+): ProseMirrorNode[] {
+  const selectedByChildIndex = new Map(selectedContexts.map((context) => [context.childIndex, context]))
+  const nodes: ProseMirrorNode[] = []
+  let runSelected: boolean | null = null
+  let runChildren: ProseMirrorNode[] = []
+  let runContexts: BlockQuoteRowContext[] = []
+
+  const flushRun = () => {
+    if (runSelected === null || runChildren.length === 0) return
+    if (!runSelected) {
+      const quote = createBlockQuoteNodeLikeOriginal(quoteNode, runChildren)
+      if (quote) nodes.push(quote)
+    } else {
+      nodes.push(...runContexts.map((context) => createBlockIndentedParagraph(schema, context.childNode, context.text)))
+    }
+    runSelected = null
+    runChildren = []
+    runContexts = []
+  }
+
+  for (let index = 0; index < quoteNode.childCount; index += 1) {
+    const context = selectedByChildIndex.get(index)
+    const selected = Boolean(context)
+    if (runSelected !== null && runSelected !== selected) flushRun()
+    runSelected = selected
+    runChildren.push(quoteNode.child(index))
+    if (context) runContexts.push(context)
+  }
+  flushRun()
+
+  return nodes
+}
+
+function buildQuoteBlockIndentReplacements(
+  schema: any,
+  quoteContexts: BlockQuoteRowContext[],
+): BlockIndentReplaceTarget[] {
+  const contextsByQuoteStart = new Map<number, BlockQuoteRowContext[]>()
+  quoteContexts.forEach((context) => {
+    const existing = contextsByQuoteStart.get(context.quoteStart) ?? []
+    existing.push(context)
+    contextsByQuoteStart.set(context.quoteStart, existing)
+  })
+
+  return Array.from(contextsByQuoteStart.values())
+    .map((contexts) => {
+      const first = contexts[0]
+      const sortedContexts = [...contexts].sort((a, b) => a.childIndex - b.childIndex)
+      return {
+        from: first.quoteStart,
+        to: first.quoteEnd,
+        nodes: buildQuoteBlockIndentReplacementNodes(schema, first.quoteNode, sortedContexts),
+        blockIndices: sortedContexts.map((context) => context.blockIndex),
+      }
+    })
+    .filter((replacement) => replacement.nodes.length > 0)
+}
+
+function applyBlockIndentOperationTargets(
+  view: any,
+  insertTargets: BlockIndentTarget[],
+  replaceTargets: BlockIndentReplaceTarget[],
+): BlockIndentOperationPlanData {
+  let transaction = view.state.tr
+  const edits = [
+    ...insertTargets.map((target) => ({ kind: 'insert' as const, at: target.pos, target })),
+    ...replaceTargets.map((target) => ({ kind: 'replace' as const, at: target.from, target })),
+  ].sort((a, b) => b.at - a.at)
+
+  for (const edit of edits) {
+    transaction =
+      edit.kind === 'insert'
+        ? transaction.insertText(BLOCK_INDENT_TOKEN, edit.target.pos)
+        : transaction.replaceWith(edit.target.from, edit.target.to, edit.target.nodes)
+  }
+
+  return {
+    transaction,
+    changedBlockIndices: [
+      ...insertTargets.map((target) => target.blockIndex),
+      ...replaceTargets.flatMap((target) => target.blockIndices),
+    ],
+  }
+}
+
+function buildApplyBlockIndentOperationData(view: any, context: { blockRanges: EditorTextLineRange[]; contexts: BlockFormatRowContext[] }) {
+  const schema = view.state.schema
+  const insertTargets = context.contexts
+    .map((row) => {
+      if (row.kind === 'codeBlockLine' || row.kind === 'blockQuoteChild') return null
+      const range = context.blockRanges[row.blockIndex]
+      if (!range || getBlockIndentPrefixLength(range.text) > 0) return null
+      return {
+        blockIndex: row.blockIndex,
+        pos: range.start,
+      }
+    })
+    .filter((target): target is BlockIndentTarget => Boolean(target))
+  const quoteContexts = context.contexts.filter((row): row is BlockQuoteRowContext => row.kind === 'blockQuoteChild')
+  const replaceTargets = buildQuoteBlockIndentReplacements(schema, quoteContexts)
+  if (insertTargets.length === 0 && replaceTargets.length === 0) return null
+  return applyBlockIndentOperationTargets(view, insertTargets, replaceTargets)
+}
+
+function applyBlockIndentTargets(view: any, targets: BlockIndentTarget[], remove: boolean) {
+  let transaction = view.state.tr
+  for (const target of [...targets].sort((a, b) => b.pos - a.pos)) {
+    transaction = remove
+      ? transaction.delete(target.pos, target.pos + BLOCK_INDENT_TOKEN.length)
+      : transaction.insertText(BLOCK_INDENT_TOKEN, target.pos)
+  }
+  return transaction
+}
+
+function buildBlockIndentColumnOffsets(
+  blockRanges: EditorTextLineRange[],
+  selectedIndices: number[],
+  multiLineEdit: MultiLineEditState,
+  changedBlockIndices: number[],
+  remove: boolean,
+) {
+  const targetIndices = new Set(changedBlockIndices)
+  const delta = remove ? -BLOCK_INDENT_TOKEN.length : BLOCK_INDENT_TOKEN.length
+  return selectedIndices.reduce<Record<number, number>>((acc, index) => {
+    const range = blockRanges[index]
+    if (!range) return acc
+    const currentOffset = getMultiLineColumnOffset(multiLineEdit, index, range)
+    const nextLength = Math.max(0, range.length + (targetIndices.has(index) ? delta : 0))
+    const nextOffset = targetIndices.has(index) ? currentOffset + delta : currentOffset
+    acc[index] = Math.max(0, Math.min(nextLength, nextOffset))
+    return acc
+  }, { ...(multiLineEdit.columnOffsets ?? {}) })
+}
+
 function getAdjacentIndexGroups(indices: number[]): number[][] {
   const sorted = [...new Set(indices)].sort((a, b) => a - b)
   const groups: number[][] = []
@@ -342,7 +579,7 @@ function createBlockQuoteNodeFromLines(schema: any, lines: string[]): ProseMirro
   const blockQuoteType = schema.nodes.blockQuote
   const paragraphType = schema.nodes.paragraph
   if (!blockQuoteType || !paragraphType || lines.length === 0) return null
-  return blockQuoteType.create(null, lines.map((line) => createParagraphWithText(schema, line)))
+  return blockQuoteType.create(null, lines.map((line) => createParagraphWithText(schema, stripBlockIndentPrefix(line))))
 }
 
 function createCodeBlockNodeFromLines(schema: any, lines: string[], attrs?: Record<string, unknown> | null): ProseMirrorNode | null {
@@ -446,7 +683,14 @@ function buildTextBlockTargetReplacements(
           ? [
               schema.nodes.blockQuote.create(
                 null,
-                rows.map((row) => schema.nodes.paragraph.create(null, row.node.content)),
+                rows.map((row) =>
+                  schema.nodes.paragraph.create(
+                    null,
+                    getBlockIndentPrefixLength(row.text) > 0
+                      ? row.node.cut(BLOCK_INDENT_TOKEN.length).content
+                      : row.node.content,
+                  ),
+                ),
               ),
             ]
           : createTargetBlockNodes(
@@ -586,6 +830,63 @@ function buildQuoteTargetReplacements(
   })
 }
 
+function buildQuoteLiftReplacementNodes(
+  quoteNode: ProseMirrorNode,
+  selectedContexts: BlockQuoteRowContext[],
+): ProseMirrorNode[] {
+  const selectedByChildIndex = new Map(selectedContexts.map((context) => [context.childIndex, context]))
+  const nodes: ProseMirrorNode[] = []
+  let runSelected: boolean | null = null
+  let runChildren: ProseMirrorNode[] = []
+  let runContexts: BlockQuoteRowContext[] = []
+
+  const flushRun = () => {
+    if (runSelected === null || runChildren.length === 0) return
+    if (!runSelected) {
+      const quote = createBlockQuoteNodeLikeOriginal(quoteNode, runChildren)
+      if (quote) nodes.push(quote)
+    } else {
+      nodes.push(...runContexts.map((context) => context.childNode))
+    }
+    runSelected = null
+    runChildren = []
+    runContexts = []
+  }
+
+  for (let index = 0; index < quoteNode.childCount; index += 1) {
+    const context = selectedByChildIndex.get(index)
+    const selected = Boolean(context)
+    if (runSelected !== null && runSelected !== selected) flushRun()
+    runSelected = selected
+    runChildren.push(quoteNode.child(index))
+    if (context) runContexts.push(context)
+  }
+  flushRun()
+
+  return nodes
+}
+
+function buildQuoteLiftReplacements(
+  quoteContexts: BlockQuoteRowContext[],
+): Array<ReplacementRange & { nodes: ProseMirrorNode[] }> {
+  const contextsByQuoteStart = new Map<number, BlockQuoteRowContext[]>()
+  quoteContexts.forEach((context) => {
+    const existing = contextsByQuoteStart.get(context.quoteStart) ?? []
+    existing.push(context)
+    contextsByQuoteStart.set(context.quoteStart, existing)
+  })
+
+  return Array.from(contextsByQuoteStart.values()).map((contexts) => {
+    const first = contexts[0]
+    const sortedContexts = [...contexts].sort((a, b) => a.childIndex - b.childIndex)
+    return {
+      from: first.quoteStart,
+      to: first.quoteEnd,
+      nodes: buildQuoteLiftReplacementNodes(first.quoteNode, sortedContexts),
+    }
+  })
+}
+
 function buildCodeBlockTargetReplacementNodes(
   schema: any,
   codeNode: ProseMirrorNode,
@@ -649,6 +950,14 @@ function buildCodeBlockTargetReplacements(
   })
 }
 
+function applyBlockFormatReplacements(view: any, replacements: Array<ReplacementRange & { nodes: ProseMirrorNode[] }>) {
+  let transaction = view.state.tr
+  for (const replacement of [...replacements].sort((a, b) => b.from - a.from)) {
+    transaction = transaction.replaceWith(replacement.from, replacement.to, replacement.nodes)
+  }
+  return transaction
+}
+
 function buildMultiLineBlockFormatOperationPlan(
   view: any,
   multiLineEdit: MultiLineEditState,
@@ -673,10 +982,7 @@ function buildMultiLineBlockFormatOperationPlan(
   ].filter((replacement) => replacement.nodes.length > 0)
   if (replacements.length === 0) return null
 
-  let transaction = view.state.tr
-  for (const replacement of [...replacements].sort((a, b) => b.from - a.from)) {
-    transaction = transaction.replaceWith(replacement.from, replacement.to, replacement.nodes)
-  }
+  const transaction = applyBlockFormatReplacements(view, replacements)
 
   const nextColumnOffsets = context.selectedIndices.reduce<Record<number, number>>((acc, index) => {
     const range = context.blockRanges[index]
@@ -700,6 +1006,33 @@ function buildMultiLineBlockFormatOperationPlan(
   }
 }
 
+function buildSelectionBlockFormatOperationPlan(
+  view: any,
+  operation: 'blockQuote' | 'codeBlock',
+): SelectionOperationPlan | null {
+  const context = getBlockFormatContextsForSelection(view)
+  if (!context) return null
+
+  const schema = view.state.schema
+  const textBlockContexts = context.contexts.filter(
+    (row): row is TopLevelTextBlockContext & { kind: 'textBlock' } => row.kind === 'textBlock',
+  )
+  const listContexts = context.contexts.filter((row): row is ListItemRowContext => row.kind === 'listItem')
+  const quoteContexts = context.contexts.filter((row): row is BlockQuoteRowContext => row.kind === 'blockQuoteChild')
+  const codeContexts = context.contexts.filter((row): row is CodeBlockLineRowContext => row.kind === 'codeBlockLine')
+  const replacements = [
+    ...buildTextBlockTargetReplacements(schema, textBlockContexts, operation, undefined),
+    ...buildListTargetReplacements(schema, listContexts, operation),
+    ...buildQuoteTargetReplacements(schema, quoteContexts, operation),
+    ...buildCodeBlockTargetReplacements(schema, codeContexts, operation),
+  ].filter((replacement) => replacement.nodes.length > 0)
+  if (replacements.length === 0) return null
+
+  return {
+    transaction: applyBlockFormatReplacements(view, replacements),
+  }
+}
+
 export function buildMultiLineBlockQuoteOperationPlan(
   view: any,
   multiLineEdit: MultiLineEditState,
@@ -708,11 +1041,141 @@ export function buildMultiLineBlockQuoteOperationPlan(
   return buildMultiLineBlockFormatOperationPlan(view, multiLineEdit, 'blockQuote', options)
 }
 
+export function buildSelectionBlockQuoteOperationPlan(view: any): SelectionOperationPlan | null {
+  return buildSelectionBlockFormatOperationPlan(view, 'blockQuote')
+}
+
+export function buildSelectionRemoveBlockQuoteOperationPlan(view: any): SelectionOperationPlan | null {
+  const context = getBlockFormatContextsForSelection(view)
+  if (!context) return null
+
+  const quoteContexts = context.contexts.filter((row): row is BlockQuoteRowContext => row.kind === 'blockQuoteChild')
+  const replacements = buildQuoteLiftReplacements(quoteContexts).filter((replacement) => replacement.nodes.length > 0)
+  if (replacements.length === 0) return null
+
+  return {
+    transaction: applyBlockFormatReplacements(view, replacements),
+  }
+}
+
+export function buildMultiLineRemoveBlockQuoteOperationPlan(
+  view: any,
+  multiLineEdit: MultiLineEditState,
+): MultiLineOperationPlan | null {
+  const context = getBlockFormatContexts(view, multiLineEdit)
+  if (!context) return null
+
+  const quoteContexts = context.contexts.filter((row): row is BlockQuoteRowContext => row.kind === 'blockQuoteChild')
+  const replacements = buildQuoteLiftReplacements(quoteContexts).filter((replacement) => replacement.nodes.length > 0)
+  if (replacements.length === 0) return null
+
+  const transaction = applyBlockFormatReplacements(view, replacements)
+  const nextColumnOffsets = context.selectedIndices.reduce<Record<number, number>>((acc, index) => {
+    const range = context.blockRanges[index]
+    if (!range) return acc
+    acc[index] = Math.min(range.length, getMultiLineColumnOffset(multiLineEdit, index, range))
+    return acc
+  }, { ...(multiLineEdit.columnOffsets ?? {}) })
+
+  return {
+    transaction,
+    nextState: {
+      ...multiLineEdit,
+      columnOffset: nextColumnOffsets[multiLineEdit.headBlockIndex] ?? multiLineEdit.columnOffset,
+      columnOffsets: nextColumnOffsets,
+      selectionAnchorOffsets: undefined,
+    },
+  }
+}
+
+export function buildMultiLineBlockIndentOperationPlan(
+  view: any,
+  multiLineEdit: MultiLineEditState,
+): MultiLineOperationPlan | null {
+  const context = getBlockFormatContexts(view, multiLineEdit)
+  if (!context) return null
+
+  const operationData = buildApplyBlockIndentOperationData(view, context)
+  if (!operationData) return null
+
+  const nextColumnOffsets = buildBlockIndentColumnOffsets(
+    context.blockRanges,
+    context.selectedIndices,
+    multiLineEdit,
+    operationData.changedBlockIndices,
+    false,
+  )
+
+  return {
+    transaction: operationData.transaction,
+    nextState: {
+      ...multiLineEdit,
+      columnOffset: nextColumnOffsets[multiLineEdit.headBlockIndex] ?? multiLineEdit.columnOffset,
+      columnOffsets: nextColumnOffsets,
+      selectionAnchorOffsets: undefined,
+    },
+  }
+}
+
+export function buildMultiLineRemoveBlockIndentOperationPlan(
+  view: any,
+  multiLineEdit: MultiLineEditState,
+): MultiLineOperationPlan | null {
+  const context = getMultiLineFormatContext(view, multiLineEdit)
+  if (!context) return null
+
+  const targets = getBlockIndentTargets(context.blockRanges, context.selectedIndices, true)
+  if (targets.length === 0) return null
+
+  const transaction = applyBlockIndentTargets(view, targets, true)
+  const nextColumnOffsets = buildBlockIndentColumnOffsets(
+    context.blockRanges,
+    context.selectedIndices,
+    multiLineEdit,
+    targets.map((target) => target.blockIndex),
+    true,
+  )
+
+  return {
+    transaction,
+    nextState: {
+      ...multiLineEdit,
+      columnOffset: nextColumnOffsets[multiLineEdit.headBlockIndex] ?? multiLineEdit.columnOffset,
+      columnOffsets: nextColumnOffsets,
+      selectionAnchorOffsets: undefined,
+    },
+  }
+}
+
 export function buildMultiLineCodeBlockOperationPlan(
   view: any,
   multiLineEdit: MultiLineEditState,
 ): MultiLineOperationPlan | null {
   return buildMultiLineBlockFormatOperationPlan(view, multiLineEdit, 'codeBlock')
+}
+
+export function buildSelectionBlockIndentOperationPlan(view: any): SelectionOperationPlan | null {
+  const context = getBlockFormatContextsForSelection(view)
+  if (!context) return null
+
+  const operationData = buildApplyBlockIndentOperationData(view, context)
+  if (!operationData) return null
+
+  return {
+    transaction: operationData.transaction,
+  }
+}
+
+export function buildSelectionRemoveBlockIndentOperationPlan(view: any): SelectionOperationPlan | null {
+  const context = getSelectionFormatContext(view)
+  if (!context) return null
+
+  const targets = getBlockIndentTargets(context.blockRanges, context.selectedIndices, true)
+  if (targets.length === 0) return null
+
+  return {
+    transaction: applyBlockIndentTargets(view, targets, true),
+  }
 }
 
 export function getMultiLineHeadingMarkerShortcut(

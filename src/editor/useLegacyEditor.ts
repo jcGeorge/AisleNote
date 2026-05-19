@@ -4,6 +4,7 @@ import { Editor } from '@toast-ui/editor'
 import { createCodeBlockControlsPlugin } from './code-block-controls'
 import {
   annotationLinePlugin,
+  blockIndentPlugin,
   EDITOR_TOOLBAR_ITEMS,
   headingSpaceShortcutPlugin,
   installClearToolbarButton,
@@ -101,9 +102,10 @@ export function useLegacyEditor({
       toolbarItems: EDITOR_TOOLBAR_ITEMS,
       height: '100%',
       usageStatistics: false,
-      plugins: [
-        listMarkerPlugin,
-        annotationLinePlugin,
+        plugins: [
+          listMarkerPlugin,
+          blockIndentPlugin,
+          annotationLinePlugin,
         terminalBlockLandingPlugin,
         createCodeBlockControlsPlugin({ pushToast }),
         uncheckedTaskEnterPlugin,
@@ -171,7 +173,6 @@ export function useLegacyEditor({
         },
       },
     })
-
     installClearToolbarButton(editorMountRef.current, clearActiveNoteContent)
     const cleanupHeadingPopupActiveState = installHeadingPopupActiveState(editorMountRef.current, () => editorRef.current)
     const cleanupCompletedTaskCheckboxBehavior = installCompletedTaskCheckboxBehavior(

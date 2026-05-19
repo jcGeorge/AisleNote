@@ -63,7 +63,7 @@ export function useSettingsController({
   const [newlineShortcutDrafts, setNewlineShortcutDrafts] = useState<Record<NewlineShortcutId, NewlineOperationId>>(
     DEFAULT_NEWLINE_SHORTCUT_SETTINGS.shortcuts,
   )
-  const [newlineMenuOperationsDraft, setNewlineMenuOperationsDraft] = useState<NewlineOperationId[]>(
+  const [shortcutMenuOperationsDraft, setShortcutMenuOperationsDraft] = useState<NewlineOperationId[]>(
     DEFAULT_NEWLINE_SHORTCUT_SETTINGS.menuOperations,
   )
   const [editingShortcut, setEditingShortcut] = useState<ShortcutId | null>(null)
@@ -92,7 +92,7 @@ export function useSettingsController({
     setSettingsDaysDraft(String(activeSpace.settings.autoRemoveDeletedDays))
     setShortcutDrafts(state.hotkeys.shortcuts)
     setNewlineShortcutDrafts(state.hotkeys.newlineShortcuts.shortcuts)
-    setNewlineMenuOperationsDraft(state.hotkeys.newlineShortcuts.menuOperations)
+    setShortcutMenuOperationsDraft(state.hotkeys.newlineShortcuts.menuOperations)
     setMouseBackForwardEnabledDraft(state.hotkeys.enableMouseBackForward)
     setGenericHistoryHotkeysEnabledDraft(state.hotkeys.enableGenericHistoryHotkeys)
     setShowParentHomeTabDraft(state.ui.showParentHomeTab)
@@ -340,8 +340,8 @@ export function useSettingsController({
     }))
   }
 
-  const updateNewlineMenuOperationsSetting = (menuOperations: NewlineOperationId[]) => {
-    setNewlineMenuOperationsDraft(menuOperations)
+  const updateShortcutMenuOperationsSetting = (menuOperations: NewlineOperationId[]) => {
+    setShortcutMenuOperationsDraft(menuOperations)
     commitImmediateSettingsState((previous) => ({
       ...previous,
       hotkeys: {
@@ -531,7 +531,7 @@ export function useSettingsController({
     section,
     shortcutDrafts,
     newlineShortcutDrafts,
-    newlineMenuOperationsDraft,
+    shortcutMenuOperationsDraft,
     editingShortcut,
     mouseBackForwardEnabledDraft,
     genericHistoryHotkeysEnabledDraft,
@@ -559,7 +559,7 @@ export function useSettingsController({
     seedCustomThemePaletteFromCurrentTheme,
     updateShortcutSetting,
     updateNewlineShortcutSetting,
-    updateNewlineMenuOperationsSetting,
+    updateShortcutMenuOperationsSetting,
     updateStageManagerOpenDestinationSetting,
     setSettingsFrontmatterTemplate,
     createFrontmatterTemplate,

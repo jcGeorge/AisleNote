@@ -110,7 +110,7 @@ function renderSettingsPage(
       onSectionChange={() => undefined}
       onToggleShortcutEdit={() => undefined}
       onNewlineShortcutChange={() => undefined}
-      onOpenNewlineMenuSettings={() => undefined}
+      onOpenShortcutMenuSettings={() => undefined}
       onMouseBackForwardChange={() => undefined}
       onGenericHistoryHotkeysChange={() => undefined}
       onAutoRemoveDaysChange={() => undefined}

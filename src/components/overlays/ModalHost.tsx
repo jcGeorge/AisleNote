@@ -1,8 +1,8 @@
 import { useEffect, useState, type DragEvent, type MouseEvent as ReactMouseEvent } from 'react'
 import { NoteLocationPicker, type NoteLocationPickerValue } from '../notes/NoteLocationPicker'
 import {
-  NEWLINE_MENU_ELIGIBLE_OPERATIONS,
   NEWLINE_OPERATION_LABELS,
+  SHORTCUT_MENU_ELIGIBLE_OPERATIONS,
 } from '../../hotkeys/shortcuts'
 import {
   FRONTMATTER_FIELD_TYPES,
@@ -24,9 +24,9 @@ type ModalHostProps = {
   state: AppState
   activeSpace: Space
   domainsForPickers: Domain[]
-  newlineMenuOperations: NewlineOperationId[]
+  shortcutMenuOperations: NewlineOperationId[]
   onModalChange: (modal: ModalState | null) => void
-  onNewlineMenuOperationsChange: (operations: NewlineOperationId[]) => void
+  onShortcutMenuOperationsChange: (operations: NewlineOperationId[]) => void
   onEditFrontmatterTemplate: (templateId: string) => void
   onWarn: (message: string) => void
   onError: (message: string) => void
@@ -34,9 +34,9 @@ type ModalHostProps = {
 }
 
 const MENU_SLOT_LABELS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']
-const NEWLINE_DRAG_MIME = 'application/x-tabs-newline-operation'
+const SHORTCUT_MENU_DRAG_MIME = 'application/x-tabs-shortcut-menu-operation'
 
-function NewlineMenuSettings({
+function ShortcutMenuSettings({
   operations,
   onChange,
 }: {
@@ -45,8 +45,8 @@ function NewlineMenuSettings({
 }) {
   const [draggedOperation, setDraggedOperation] = useState<NewlineOperationId | null>(null)
   const [dropTarget, setDropTarget] = useState<{ type: 'slot'; index: number } | { type: 'pool' } | null>(null)
-  const selected = operations.filter((operation) => NEWLINE_MENU_ELIGIBLE_OPERATIONS.includes(operation))
-  const available = NEWLINE_MENU_ELIGIBLE_OPERATIONS.filter((operation) => !selected.includes(operation))
+  const selected = operations.filter((operation) => SHORTCUT_MENU_ELIGIBLE_OPERATIONS.includes(operation))
+  const available = SHORTCUT_MENU_ELIGIBLE_OPERATIONS.filter((operation) => !selected.includes(operation))
 
   const moveOperationToSlot = (operation: NewlineOperationId, slotIndex: number) => {
     const next = selected.filter((candidate) => candidate !== operation)
@@ -59,8 +59,8 @@ function NewlineMenuSettings({
   }
 
   const getDraggedOperation = (event: DragEvent) => {
-    const operation = event.dataTransfer.getData(NEWLINE_DRAG_MIME) || event.dataTransfer.getData('text/plain')
-    return NEWLINE_MENU_ELIGIBLE_OPERATIONS.includes(operation as NewlineOperationId)
+    const operation = event.dataTransfer.getData(SHORTCUT_MENU_DRAG_MIME) || event.dataTransfer.getData('text/plain')
+    return SHORTCUT_MENU_ELIGIBLE_OPERATIONS.includes(operation as NewlineOperationId)
       ? (operation as NewlineOperationId)
       : null
   }
@@ -69,7 +69,7 @@ function NewlineMenuSettings({
     setDraggedOperation(operation)
     setDropTarget(null)
     event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData(NEWLINE_DRAG_MIME, operation)
+    event.dataTransfer.setData(SHORTCUT_MENU_DRAG_MIME, operation)
     event.dataTransfer.setData('text/plain', operation)
   }
 
@@ -79,8 +79,8 @@ function NewlineMenuSettings({
   }
 
   return (
-    <div className="newline-menu-settings">
-      <div className="newline-menu-slots" aria-label="New line menu order">
+    <div className="shortcut-menu-settings">
+      <div className="shortcut-menu-slots" aria-label="Shortcut menu order">
         {MENU_SLOT_LABELS.map((slotLabel, index) => {
           const operation = selected[index]
           const isDropTarget = dropTarget?.type === 'slot' && dropTarget.index === index
@@ -88,7 +88,7 @@ function NewlineMenuSettings({
           return (
             <div
               key={slotLabel}
-              className={`newline-menu-slot ${operation ? 'has-operation' : ''} ${isDropTarget ? 'is-drop-target' : ''} ${
+              className={`shortcut-menu-slot ${operation ? 'has-operation' : ''} ${isDropTarget ? 'is-drop-target' : ''} ${
                 isDragSource ? 'is-drag-source' : ''
               }`}
               onDragEnter={() => setDropTarget({ type: 'slot', index })}
@@ -104,12 +104,12 @@ function NewlineMenuSettings({
                 finishDrag()
               }}
             >
-              <span className="newline-menu-slot-number">{slotLabel}</span>
+              <span className="shortcut-menu-slot-number">{slotLabel}</span>
               {operation ? (
                 <button
                   type="button"
                   draggable
-                  className={`newline-menu-operation-chip ${draggedOperation === operation ? 'is-dragging' : ''}`}
+                  className={`shortcut-menu-operation-chip ${draggedOperation === operation ? 'is-dragging' : ''}`}
                   onDragStart={(event) => startDrag(event, operation)}
                   onDragEnd={finishDrag}
                   onClick={() => removeOperation(operation)}
@@ -118,14 +118,14 @@ function NewlineMenuSettings({
                   {NEWLINE_OPERATION_LABELS[operation]}
                 </button>
               ) : (
-                <span className="newline-menu-empty-slot">unassigned</span>
+                <span className="shortcut-menu-empty-slot">unassigned</span>
               )}
             </div>
           )
         })}
       </div>
       <div
-        className={`newline-menu-pool ${dropTarget?.type === 'pool' ? 'is-drop-target' : ''}`}
+        className={`shortcut-menu-pool ${dropTarget?.type === 'pool' ? 'is-drop-target' : ''}`}
         onDragEnter={() => setDropTarget({ type: 'pool' })}
         onDragOver={(event) => {
           event.preventDefault()
@@ -139,15 +139,15 @@ function NewlineMenuSettings({
           finishDrag()
         }}
       >
-        <span className="newline-menu-pool-label">available</span>
-        <div className="newline-menu-pool-items">
+        <span className="shortcut-menu-pool-label">available</span>
+        <div className="shortcut-menu-pool-items">
           {available.length > 0 ? (
             available.map((operation) => (
               <button
                 key={operation}
                 type="button"
                 draggable
-                className={`newline-menu-operation-chip ${draggedOperation === operation ? 'is-dragging' : ''}`}
+                className={`shortcut-menu-operation-chip ${draggedOperation === operation ? 'is-dragging' : ''}`}
                 onDragStart={(event) => startDrag(event, operation)}
                 onDragEnd={finishDrag}
                 onClick={() => moveOperationToSlot(operation, selected.length)}
@@ -156,7 +156,7 @@ function NewlineMenuSettings({
               </button>
             ))
           ) : (
-            <span className="newline-menu-pool-empty">all operations are in the menu</span>
+            <span className="shortcut-menu-pool-empty">all operations are in the menu</span>
           )}
         </div>
       </div>
@@ -169,9 +169,9 @@ export function ModalHost({
   state,
   activeSpace,
   domainsForPickers,
-  newlineMenuOperations,
+  shortcutMenuOperations,
   onModalChange,
-  onNewlineMenuOperationsChange,
+  onShortcutMenuOperationsChange,
   onEditFrontmatterTemplate,
   onWarn,
   onError,
@@ -203,7 +203,7 @@ export function ModalHost({
     modal.type === 'deduplicate-note' ||
     modal.type === 'insert-note-reference' ||
     modal.type === 'frontmatter-note' ||
-    modal.type === 'newline-menu-settings'
+    modal.type === 'shortcut-menu-settings'
   const isNotePickerModal = modal.type === 'copy-note' || modal.type === 'insert-note-reference'
 
   const updateFrontmatterRows = (updater: (rows: FrontmatterRowDraft[]) => FrontmatterRowDraft[]) => {
@@ -394,7 +394,7 @@ export function ModalHost({
     >
       <div
         className={`delete-modal ${isPickerModal ? 'settings-modal' : ''} ${isNotePickerModal ? 'note-picker-modal' : ''} ${
-          modal.type === 'newline-menu-settings' ? 'newline-settings-modal' : ''
+          modal.type === 'shortcut-menu-settings' ? 'shortcut-settings-modal' : ''
         }`}
         role="dialog"
         aria-modal="true"
@@ -495,8 +495,8 @@ export function ModalHost({
             />
           </div>
         )}
-        {modal.type === 'newline-menu-settings' && (
-          <NewlineMenuSettings operations={newlineMenuOperations} onChange={onNewlineMenuOperationsChange} />
+        {modal.type === 'shortcut-menu-settings' && (
+          <ShortcutMenuSettings operations={shortcutMenuOperations} onChange={onShortcutMenuOperationsChange} />
         )}
         {modal.type === 'frontmatter-note' && (
           <div className="frontmatter-note-modal">

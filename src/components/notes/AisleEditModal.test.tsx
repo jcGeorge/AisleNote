@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import { BLOCK_INDENT_TOKEN } from '../../markdown/markdown-utils'
 import { MAX_NOTE_AISLES } from '../../state/workspace'
 import type { NoteAisle } from '../../types/app'
 import { AisleEditModal } from './AisleEditModal'
@@ -76,5 +77,13 @@ describe('AisleEditModal', () => {
     expect(html).toContain('alt="Diagram"')
     expect(html).not.toContain('![Diagram]')
     expect(html).not.toContain('&lt;br')
+  })
+
+  it('renders block indents in previews without exposing the storage marker', () => {
+    const html = renderModal([aisle('a', `${BLOCK_INDENT_TOKEN}indented`)])
+
+    expect(html).toContain('class="tabs-block-indent"')
+    expect(html).toContain('indented')
+    expect(html).not.toContain(BLOCK_INDENT_TOKEN)
   })
 })

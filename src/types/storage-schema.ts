@@ -49,6 +49,7 @@ export type StorageNewlineOperationId =
   | 'codeBlock'
   | 'inlineCode'
   | 'blockQuote'
+  | 'blockIndent'
   | 'strikethrough'
   | 'operationsMenu'
 export type StorageNewlineShortcutId = 'controlEnter' | 'shiftEnter' | 'commandEnter'

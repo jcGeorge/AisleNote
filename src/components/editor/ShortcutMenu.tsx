@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { NEWLINE_OPERATION_LABELS } from '../../hotkeys/shortcuts'
 import type { NewlineOperationId } from '../../types/app'
 
-type NewlineOperationsMenuProps = {
+type ShortcutMenuProps = {
   top: number
   left: number
   operations: NewlineOperationId[]
@@ -15,14 +15,14 @@ function getShortcutLabel(index: number): string {
   return index === 9 ? '0' : String(index + 1)
 }
 
-export function NewlineOperationsMenu({
+export function ShortcutMenu({
   top,
   left,
   operations,
   activeIndex,
   onHighlight,
   onRun,
-}: NewlineOperationsMenuProps) {
+}: ShortcutMenuProps) {
   const menuRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -32,10 +32,10 @@ export function NewlineOperationsMenu({
   return (
     <div
       ref={menuRef}
-      className="newline-operations-menu"
+      className="shortcut-menu"
       style={{ top: `${top}px`, left: `${left}px` }}
       role="menu"
-      aria-label="New line menu"
+      aria-label="Shortcut menu"
       tabIndex={-1}
       onPointerDown={(event) => event.stopPropagation()}
     >
@@ -44,7 +44,7 @@ export function NewlineOperationsMenu({
           <button
             key={operation}
             type="button"
-            className={`newline-operations-menu-item${index === activeIndex ? ' is-active' : ''}`}
+            className={`shortcut-menu-item${index === activeIndex ? ' is-active' : ''}`}
             role="menuitem"
             aria-current={index === activeIndex ? 'true' : undefined}
             onMouseEnter={() => onHighlight(index)}
@@ -54,12 +54,12 @@ export function NewlineOperationsMenu({
               onRun(operation)
             }}
           >
-            <span className="newline-operations-menu-key">{getShortcutLabel(index)}</span>
+            <span className="shortcut-menu-key">{getShortcutLabel(index)}</span>
             <span>{NEWLINE_OPERATION_LABELS[operation]}</span>
           </button>
         ))
       ) : (
-        <div className="newline-operations-menu-empty">no operations configured</div>
+        <div className="shortcut-menu-empty">no operations configured</div>
       )}
     </div>
   )

@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import { BLOCK_INDENT_TOKEN } from '../../markdown/markdown-utils'
 import { NoteWorkspace } from './NoteWorkspace'
 import type { NoteAisle } from '../../types/app'
 
@@ -68,5 +69,32 @@ describe('NoteWorkspace aisle mounting', () => {
     )
 
     expect(html).toContain('src="data:image/png;base64,abc"')
+  })
+
+  it('renders fallback block indents without exposing the storage marker', () => {
+    const blockIndentAisles: NoteAisle[] = [{ id: 'indent', markdown: `${BLOCK_INDENT_TOKEN}indented` }]
+    const html = renderToStaticMarkup(
+      <NoteWorkspace
+        noteBodyId="body-1"
+        aisles={blockIndentAisles}
+        activeAisleId="indent"
+        editorReadOnly={false}
+        aisleScrollRef={{ current: null }}
+        toolbar={null}
+        headingPopover={null}
+        imageToolsOverlay={null}
+        mountedAisleIds={new Set()}
+        getPreviewMarkdownForAisle={(aisle) => aisle.markdown}
+        onRootChange={() => undefined}
+        onAisleScroll={() => undefined}
+        onActivateAisle={() => undefined}
+        onRegisterAislePaneRoot={() => undefined}
+        onRegisterAisleEditorRoot={() => undefined}
+      />,
+    )
+
+    expect(html).toContain('class="tabs-block-indent"')
+    expect(html).toContain('indented')
+    expect(html).not.toContain(BLOCK_INDENT_TOKEN)
   })
 })
