@@ -45,6 +45,7 @@ export function createDefaultStageManagerDraft(): StageManagerDraft {
     straySelectedParentId: '',
     strayExistingParentId: '',
     strayNewParentName: '',
+    destinationSortMode: 'default',
     frontmatterTemplateId: '',
     massDeleteMode: 'trash',
   }

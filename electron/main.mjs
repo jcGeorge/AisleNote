@@ -43,6 +43,15 @@ function openAppWindow() {
   return true
 }
 
+function isExternalWebUrl(value) {
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 function sendMultilineShortcutToWindow(window, direction) {
   if (!window || window.isDestroyed()) return
   void window.webContents.executeJavaScript(`window.__tabsHandleMultilineShortcut?.(${JSON.stringify(direction)})`, true)
@@ -173,6 +182,13 @@ function createWindow(storageSession) {
     sendMultilineShortcutToWindow(window, direction)
   })
 
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    if (isExternalWebUrl(url)) {
+      void shell.openExternal(url)
+    }
+    return { action: 'deny' }
+  })
+
   window.on('close', (event) => {
     if (allowImmediateClose || window.isDestroyed()) return
 
@@ -241,6 +257,17 @@ if (!gotSingleInstanceLock) {
     registerFileIpc({ ipcMain, dialog, storageSession })
     registerClipboardIpc({ ipcMain, clipboard, nativeImage })
     registerUpdateIpc({ ipcMain, updateService })
+    ipcMain.handle('open-external-url', async (_event, url) => {
+      if (typeof url !== 'string' || !isExternalWebUrl(url)) {
+        return { ok: false, error: 'invalid-url' }
+      }
+      try {
+        await shell.openExternal(url)
+        return { ok: true }
+      } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : 'open-failed' }
+      }
+    })
 
     openAppWindow()
 

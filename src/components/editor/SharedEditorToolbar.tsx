@@ -13,7 +13,6 @@ type SharedEditorToolbarProps = {
   toolbarFormatState: ToolbarFormatState
   activeHeadingLevel: ToolbarHeadingLevel
   toolbarShortcutFeedback: ToolbarFormatKey | null
-  onOpenNoteReference: () => void
   onOpenCopy: () => void
   onOpenFrontmatter: () => void
   onToggleAisles: () => void
@@ -34,7 +33,7 @@ function ToolbarIconButton({
 }: {
   label: string
   iconClassName: string
-  onClick: () => void
+  onClick: (button: HTMLButtonElement) => void
   formatKey?: ToolbarFormatKey
   toolbarFormatState: ToolbarFormatState
   toolbarShortcutFeedback: ToolbarFormatKey | null
@@ -51,7 +50,7 @@ function ToolbarIconButton({
       onClick={(event) => {
         event.preventDefault()
         event.stopPropagation()
-        onClick()
+        onClick(event.currentTarget)
       }}
     />
   )
@@ -63,7 +62,6 @@ export function SharedEditorToolbar({
   toolbarFormatState,
   activeHeadingLevel,
   toolbarShortcutFeedback,
-  onOpenNoteReference,
   onOpenCopy,
   onOpenFrontmatter,
   onToggleAisles,
@@ -76,7 +74,7 @@ export function SharedEditorToolbar({
   const renderToolbarIconButton = (
     label: string,
     iconClassName: string,
-    onClick: () => void,
+    onClick: (button: HTMLButtonElement) => void,
     formatKey?: ToolbarFormatKey,
   ) => (
     <ToolbarIconButton
@@ -99,22 +97,6 @@ export function SharedEditorToolbar({
     >
       <div className="toastui-editor-defaultUI-toolbar app-shared-editor-toolbar">
         <div className="toastui-editor-toolbar-group note-tools-toolbar-group">
-          <button
-            type="button"
-            className="note-link-toolbar-btn"
-            aria-label="Link a note"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={(event) => {
-              event.preventDefault()
-              event.stopPropagation()
-              onOpenNoteReference()
-            }}
-          >
-            <span className="note-reference-toolbar-icon" aria-hidden="true">
-              <span className="note-reference-toolbar-paper" />
-              <span className="note-reference-toolbar-chain" />
-            </span>
-          </button>
           <button
             type="button"
             className="note-copy-toolbar-btn"
@@ -205,8 +187,8 @@ export function SharedEditorToolbar({
         </div>
         <div className="toastui-editor-toolbar-group">
           {renderToolbarIconButton('Insert table', 'table', () => onCommand('addTable', { rowCount: 2, columnCount: 2 }))}
-          {renderToolbarIconButton('Insert image', 'image', onInsertImage)}
-          {renderToolbarIconButton('Insert link', 'link', onInsertWebLink)}
+          {renderToolbarIconButton('Insert image', 'image', () => onInsertImage())}
+          {renderToolbarIconButton('Insert link', 'link', () => onInsertWebLink())}
         </div>
         <div className="toastui-editor-toolbar-group">
           {renderToolbarIconButton('Code', 'code', () => onCommand('code'))}

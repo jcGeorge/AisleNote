@@ -12,6 +12,7 @@ export const MAX_AUTO_REMOVE_DAYS = 365
 export const DEFAULT_UI_SETTINGS: AppState['ui'] = {
   showParentHomeTab: true,
   stageManagerOpenDestinationAfterApply: true,
+  lastLinkInsertMode: 'note',
   tabButtonScale: 1,
   noteFontScale: 1,
   settingsSection: DEFAULT_SETTINGS_SECTION,
@@ -161,6 +162,10 @@ export function normalizeSettingsSection(value: unknown): SettingsSection {
     : DEFAULT_SETTINGS_SECTION
 }
 
+export function normalizeLinkInsertMode(value: unknown): AppState['ui']['lastLinkInsertMode'] {
+  return value === 'url' || value === 'note' ? value : DEFAULT_UI_SETTINGS.lastLinkInsertMode
+}
+
 export function normalizeUiSettings(raw: unknown): AppState['ui'] {
   if (!raw || typeof raw !== 'object') return DEFAULT_UI_SETTINGS
   const obj = raw as Record<string, unknown>
@@ -171,6 +176,7 @@ export function normalizeUiSettings(raw: unknown): AppState['ui'] {
       typeof obj.stageManagerOpenDestinationAfterApply === 'boolean'
         ? obj.stageManagerOpenDestinationAfterApply
         : DEFAULT_UI_SETTINGS.stageManagerOpenDestinationAfterApply,
+    lastLinkInsertMode: normalizeLinkInsertMode(obj.lastLinkInsertMode),
     tabButtonScale:
       typeof obj.tabButtonScale === 'number'
         ? clampTabButtonScale(obj.tabButtonScale)

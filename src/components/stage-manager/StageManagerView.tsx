@@ -9,6 +9,7 @@ import type {
   StageManagerStrayHandlingMode,
   Tab,
 } from '../../types/app'
+import { STAGE_MANAGER_DESTINATION_SORT_OPTIONS } from '../../arrange/tab-sort'
 
 type StageManagerSelectionCounts = {
   fullParentCount: number
@@ -682,6 +683,29 @@ export function StageManagerView({
                   </label>
                 </div>
               </>
+            )}
+
+            {(action === 'migrate' || action === 'promote' || action === 'demote') && (
+              <div className="stage-manager-field-grid">
+                <label className="stage-manager-field">
+                  <span>destination order</span>
+                  <select
+                    className="form-select form-select-sm"
+                    value={draft.destinationSortMode}
+                    onChange={(event) =>
+                      onDraftChange({
+                        destinationSortMode: event.target.value as typeof draft.destinationSortMode,
+                      })
+                    }
+                  >
+                    {STAGE_MANAGER_DESTINATION_SORT_OPTIONS.map((option) => (
+                      <option key={option.mode} value={option.mode}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
             )}
 
             {action !== 'mass-delete' && action !== 'frontmatter' && (

@@ -12,7 +12,7 @@ import type {
   ViewMode,
 } from '../types/app'
 import { getNewlineShortcutIdForEvent } from '../hotkeys/shortcuts'
-import { getMultilineSelectionShortcutDirection } from './editor-setup'
+import { applyParagraphSpaceShortcut, getMultilineSelectionShortcutDirection } from './editor-setup'
 import {
   applySingleCursorPageMovement,
   type EditorPageMovement,
@@ -23,8 +23,10 @@ import { isInsideReadonlyNotePreview } from './note-preview-dom'
 import { isInsideTerminalBlockLandingZone } from './terminal-block-landing'
 import {
   getElementFromEventTarget,
+  getExternalLinkRangeAtDocPosition,
   getInternalNoteLinkHitAtDocPosition,
   getWysiwygView,
+  type ExternalLinkRange,
 } from './prosemirror-utils'
 import { parseInternalNoteUrl, type InternalNoteLinkHit } from '../notes/note-references'
 import { insertPastedListIntoView } from './list-paste'
@@ -52,13 +54,17 @@ type UseEditorDomEventsOptions = {
   setMenuOpen: Dispatch<SetStateAction<boolean>>
   setContextMenu: Dispatch<SetStateAction<ContextMenuState | null>>
   navigateToNoteLocation: (location: NoteLocation) => void
-  openLinkPrompt: (url: string, top: number, left: number, text?: string) => void
+  openExternalLink: (url: string) => boolean
+  openExternalLinkEdit: (url: string, text: string, editRange: ExternalLinkRange | null) => void
+  openInternalNoteLinkEdit: (edit: InternalNoteLinkHit & { range?: ExternalLinkRange | null }) => void
+  insertPastedUrlAsLink: (label: string, url: string) => boolean
   getToolbarFormatShortcut: (event: KeyboardEvent) => ToolbarFormatKey | null
   queueToolbarShortcutFeedback: (format: ToolbarFormatKey) => void
   syncToolbarFormatState: () => void
   onRunFormatCommand: (format: MultiLineInlineFormat) => boolean
   getEditorHistoryDirection: (event: KeyboardEvent) => 'undo' | 'redo' | null
   onEditorSelectionChange: () => void
+  onEditorMentionQueryChange: () => void
   onRunStructuralHistory: (direction: 'undo' | 'redo') => boolean
   onEditorHistoryFallback: (direction: 'undo' | 'redo') => void
   onRunNewlineOperation: (operation: NewlineOperationId) => boolean
@@ -76,14 +82,38 @@ type UseEditorDomEventsOptions = {
   cutMultiLineSelectionToClipboard: (clipboardData: DataTransfer | null) => boolean
 }
 
-function isLikelyUrl(value: string) {
+const WWW_ADDRESS_RE = /^www\.[^\s.]+\.[^\s]+$/i
+const BARE_COM_ORG_ADDRESS_RE = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|org)(?::\d{2,5})?(?:[/?#][^\s]*)?$/i
+
+export function getPastedHttpUrl(value: string): string | null {
   try {
     const normalized = value.trim()
-    const url = new URL(normalized)
-    return url.protocol === 'http:' || url.protocol === 'https:'
+    if (!normalized || /\s/.test(normalized)) return null
+    const absoluteUrl = /^https?:\/\//i.test(normalized)
+      ? normalized
+      : WWW_ADDRESS_RE.test(normalized) || BARE_COM_ORG_ADDRESS_RE.test(normalized)
+        ? `https://${normalized}`
+        : null
+    if (!absoluteUrl) return null
+    const url = new URL(absoluteUrl)
+    return url.protocol === 'http:' || url.protocol === 'https:' ? absoluteUrl : null
   } catch {
-    return false
+    return null
   }
+}
+
+export function getPastedUrlLink(value: string): { label: string; url: string } | null {
+  const label = value.trim()
+  const url = getPastedHttpUrl(value)
+  if (!url) return null
+  return {
+    label,
+    url,
+  }
+}
+
+function isLikelyUrl(value: string) {
+  return getPastedUrlLink(value) !== null
 }
 
 export function isEditorToolbarInteractionTarget(target: Element | null): boolean {
@@ -177,13 +207,17 @@ export function useEditorDomEvents({
   setMenuOpen,
   setContextMenu,
   navigateToNoteLocation,
-  openLinkPrompt,
+  openExternalLink,
+  openExternalLinkEdit,
+  openInternalNoteLinkEdit,
+  insertPastedUrlAsLink,
   getToolbarFormatShortcut,
   queueToolbarShortcutFeedback,
   syncToolbarFormatState,
   onRunFormatCommand,
   getEditorHistoryDirection,
   onEditorSelectionChange,
+  onEditorMentionQueryChange,
   onRunStructuralHistory,
   onEditorHistoryFallback,
   onRunNewlineOperation,
@@ -211,11 +245,22 @@ export function useEditorDomEvents({
     const root = editorEventRootRef.current
     if (!root) return
 
-    let internalLinkHandledOnPointerDown = false
+    let linkHandledOnPointerDown = false
 
     const isPrimaryMouseActivation = (event: Event) => !(event instanceof MouseEvent) || event.button === 0
 
-    const handleAnchorInteraction = (event: Event, target: Element, allowExternalPrompt: boolean) => {
+    const getExternalLinkEditRange = (event: Event, href: string): ExternalLinkRange | null => {
+      if (!(event instanceof MouseEvent)) return null
+      const view = getWysiwygView(editorRef.current)
+      const coords = view?.posAtCoords?.({ left: event.clientX, top: event.clientY })
+      if (!view || !coords) return null
+      return (
+        getExternalLinkRangeAtDocPosition(view.state.doc, coords.pos, href) ??
+        getExternalLinkRangeAtDocPosition(view.state.doc, coords.pos - 1, href)
+      )
+    }
+
+    const handleAnchorInteraction = (event: Event, target: Element) => {
       if (!isPrimaryMouseActivation(event)) return false
       const anchor = target.closest('a')
       if (!(anchor instanceof HTMLAnchorElement)) return false
@@ -225,17 +270,18 @@ export function useEditorDomEvents({
       if (internalLocation) {
         event.preventDefault()
         event.stopPropagation()
-        internalLinkHandledOnPointerDown = event.type === 'pointerdown'
+        linkHandledOnPointerDown = event.type === 'pointerdown'
         navigateToNoteLocation(internalLocation)
         return true
       }
 
-      if (!allowExternalPrompt) return false
       event.preventDefault()
       event.stopPropagation()
-      const rect = anchor.getBoundingClientRect()
-      const text = anchor.textContent ?? ''
-      openLinkPrompt(href, Math.max(8, rect.bottom + 6), Math.max(8, rect.left), text)
+      linkHandledOnPointerDown = event.type === 'pointerdown'
+      if (!openExternalLink(href)) {
+        // Keep the click from editing the URL even if the shell cannot open it.
+        return true
+      }
       return true
     }
 
@@ -253,7 +299,7 @@ export function useEditorDomEvents({
       if (!internalLinkHit) return false
       event.preventDefault()
       event.stopPropagation()
-      internalLinkHandledOnPointerDown = event.type === 'pointerdown'
+      linkHandledOnPointerDown = event.type === 'pointerdown'
       navigateToNoteLocation(internalLinkHit.target)
       return true
     }
@@ -296,7 +342,7 @@ export function useEditorDomEvents({
       })
       activateEditorFromEventTarget(target)
       clearMultiLineEdit(false, { deferWidgetClear: true })
-      if (handleAnchorInteraction(event, target, true)) return
+      if (handleAnchorInteraction(event, target)) return
       if (handleInternalLinkAtPointerPosition(event)) return
       if (chromeClosePlan.closeImageTools) {
         closeImageTools()
@@ -310,13 +356,13 @@ export function useEditorDomEvents({
       const target = getElementFromEventTarget(event.target)
       if (!target) return
       if (isInsideTerminalBlockLandingZone(target)) return
-      if (internalLinkHandledOnPointerDown) {
-        internalLinkHandledOnPointerDown = false
+      if (linkHandledOnPointerDown) {
+        linkHandledOnPointerDown = false
         event.preventDefault()
         event.stopPropagation()
         return
       }
-      if (handleAnchorInteraction(event, target, false)) return
+      if (handleAnchorInteraction(event, target)) return
       handleInternalLinkAtPointerPosition(event)
     }
 
@@ -341,6 +387,42 @@ export function useEditorDomEvents({
         return
       }
       activateEditorFromEventTarget(target)
+      const anchor = target.closest('a')
+      if (anchor instanceof HTMLAnchorElement) {
+        const href = anchor.getAttribute('href') || anchor.href
+        const internalLocation = parseInternalNoteUrl(href) ?? parseInternalNoteUrl(anchor.href)
+        const text = anchor.textContent ?? ''
+        const range = getExternalLinkEditRange(mouseEvent, href)
+        if (internalLocation) {
+          const markdownHit = getInternalLinkHitAtPointerPosition(mouseEvent)
+          mouseEvent.preventDefault()
+          mouseEvent.stopPropagation()
+          closeImageTools()
+          closeLinkPrompt()
+          setMenuOpen(false)
+          openInternalNoteLinkEdit(
+            markdownHit?.href === href
+              ? markdownHit
+              : {
+                  label: text,
+                  href,
+                  target: internalLocation,
+                  from: range?.from ?? 0,
+                  to: range?.to ?? 0,
+                  occurrence: 0,
+                  range,
+                },
+          )
+          return
+        }
+        mouseEvent.preventDefault()
+        mouseEvent.stopPropagation()
+        closeImageTools()
+        closeLinkPrompt()
+        setMenuOpen(false)
+        openExternalLinkEdit(href, text, range)
+        return
+      }
       const internalLinkHit = getInternalLinkHitAtPointerPosition(mouseEvent)
       if (internalLinkHit) {
         mouseEvent.preventDefault()
@@ -348,17 +430,7 @@ export function useEditorDomEvents({
         closeImageTools()
         closeLinkPrompt()
         setMenuOpen(false)
-        setContextMenu({
-          type: 'internal-note-link',
-          x: mouseEvent.clientX,
-          y: mouseEvent.clientY,
-          label: internalLinkHit.label,
-          href: internalLinkHit.href,
-          target: internalLinkHit.target,
-          from: internalLinkHit.from,
-          to: internalLinkHit.to,
-          occurrence: internalLinkHit.occurrence,
-        })
+        openInternalNoteLinkEdit(internalLinkHit)
         return
       }
     }
@@ -366,6 +438,14 @@ export function useEditorDomEvents({
     const handleScrollOrResize = () => {
       if (!activeImageRef.current) return
       refreshImageToolsPosition()
+    }
+
+    const tryApplySingleCursorParagraphSpaceShortcut = (target: Element | null) => {
+      const view = getWysiwygView(editorRef.current)
+      if (!isActiveWysiwygEditorContentTarget(target, view)) return false
+      return applyParagraphSpaceShortcut(view.state, (transaction) => {
+        view.dispatch(transaction)
+      })
     }
 
     const handlePaste = (event: Event) => {
@@ -380,19 +460,12 @@ export function useEditorDomEvents({
         }
       }
       const rawText = pasteEvent.clipboardData?.getData('text/plain') ?? ''
-      const text = rawText.trim()
-      if (!text || !isLikelyUrl(text)) return
+      const link = getPastedUrlLink(rawText)
+      if (!link) return
+      if (!insertPastedUrlAsLink(link.label, link.url)) return
 
-      const selection = window.getSelection()
-      if (!selection || !selection.rangeCount) return
-      const rangeRect = selection.getRangeAt(0).getBoundingClientRect()
       pasteEvent.preventDefault()
-      openLinkPrompt(
-        text,
-        Math.max(8, rangeRect.bottom + 8),
-        Math.max(8, rangeRect.left),
-        '',
-      )
+      closeLinkPrompt()
       pasteEvent.stopPropagation()
     }
 
@@ -563,6 +636,19 @@ export function useEditorDomEvents({
       }
       if (
         !isTextInputTarget &&
+        (keyboardEvent.key === ' ' || keyboardEvent.key === 'Spacebar') &&
+        !keyboardEvent.metaKey &&
+        !keyboardEvent.ctrlKey &&
+        !keyboardEvent.altKey &&
+        tryApplySingleCursorParagraphSpaceShortcut(targetElement)
+      ) {
+        keyboardEvent.preventDefault()
+        keyboardEvent.stopPropagation()
+        window.setTimeout(syncToolbarFormatState, 0)
+        return
+      }
+      if (
+        !isTextInputTarget &&
         pageMovement &&
         isActiveWysiwygEditorContentTarget(targetElement, getWysiwygView(editorRef.current))
       ) {
@@ -596,8 +682,20 @@ export function useEditorDomEvents({
         onEditorHistoryFallback(direction)
         return
       }
-      if (!multiLineEditRef.current) return
       if (inputEvent.isComposing) return
+      const inputTarget = getElementFromEventTarget(inputEvent.target)
+      if (!multiLineEditRef.current) {
+        if (
+          inputEvent.inputType === 'insertText' &&
+          inputEvent.data === ' ' &&
+          tryApplySingleCursorParagraphSpaceShortcut(inputTarget)
+        ) {
+          inputEvent.preventDefault()
+          inputEvent.stopPropagation()
+          window.setTimeout(syncToolbarFormatState, 0)
+        }
+        return
+      }
       const deleteInput = getMultiLineDeleteInputForBeforeInputType(inputEvent.inputType)
       if (deleteInput) {
         const handled = tryApplyMultiLineEditInput(deleteInput)
@@ -643,6 +741,7 @@ export function useEditorDomEvents({
       }
       syncToolbarFormatState()
       onEditorSelectionChange()
+      onEditorMentionQueryChange()
     }
 
     const handleToolbarSelectionSync = () => {
@@ -662,6 +761,7 @@ export function useEditorDomEvents({
         toolbarSelectionSyncTimer = null
         syncToolbarFormatState()
         onEditorSelectionChange()
+        onEditorMentionQueryChange()
       }, 50)
     }
 

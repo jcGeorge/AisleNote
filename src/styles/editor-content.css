@@ -176,6 +176,16 @@
   top: 0.24em !important;
 }
 
+.toastui-editor-contents ul > li:not(.task-list-item)::before,
+.toastui-editor .ProseMirror ul > li:not(.task-list-item)::before {
+  width: 0.36em !important;
+  height: 0.36em !important;
+  margin-top: 0.58em !important;
+  margin-left: -17px !important;
+  border-radius: 50% !important;
+  background-color: currentColor !important;
+}
+
 .toastui-editor-contents ul.tabs-dash-list > li:not(.task-list-item)::before,
 .toastui-editor-contents ul[data-tabs-list-marker='dash'] > li:not(.task-list-item)::before,
 .toastui-editor .ProseMirror ul.tabs-dash-list > li:not(.task-list-item)::before,

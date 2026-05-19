@@ -181,3 +181,103 @@ export function getInternalNoteLinkHitAtDocPosition(doc: any, docPosition: numbe
   }
   return null
 }
+
+export type ExternalLinkRange = {
+  from: number
+  to: number
+  href: string
+}
+
+export type NoteMentionQuery = {
+  from: number
+  to: number
+  query: string
+}
+
+export function getNoteMentionQueryAtSelection(view: any | null): NoteMentionQuery | null {
+  const selection = view?.state?.selection
+  if (!selection || !selection.empty) return null
+  const cursorPosition = selection.from
+  const parent = selection.$from?.parent
+  const parentOffset = selection.$from?.parentOffset
+  if (!parent?.isTextblock || typeof parentOffset !== 'number') return null
+
+  const textBeforeCursor = String(parent.textBetween?.(0, parentOffset, '\n', '\n') ?? '')
+  const match = /(^|\s)@([^\s@]*)$/.exec(textBeforeCursor)
+  if (!match) return null
+
+  const query = match[2] ?? ''
+  return {
+    from: cursorPosition - query.length - 1,
+    to: cursorPosition,
+    query,
+  }
+}
+
+function getLinkMarkHref(mark: any): string | null {
+  if (mark?.type?.name !== 'link') return null
+  const href = mark.attrs?.href ?? mark.attrs?.linkUrl
+  return typeof href === 'string' && href.length > 0 ? href : null
+}
+
+function linkHrefMatches(candidate: string, expectedHref?: string) {
+  if (!expectedHref) return true
+  if (candidate === expectedHref) return true
+  try {
+    return new URL(candidate).href === new URL(expectedHref).href
+  } catch {
+    return false
+  }
+}
+
+export function getExternalLinkRangeAtDocPosition(
+  doc: any,
+  docPosition: number,
+  expectedHref?: string,
+): ExternalLinkRange | null {
+  if (!doc || typeof docPosition !== 'number' || !Number.isFinite(docPosition)) return null
+
+  const linkTextNodes: ExternalLinkRange[] = []
+  doc.descendants?.((node: any, position: number) => {
+    if (!node?.isText || typeof node.text !== 'string') return true
+    const href = Array.isArray(node.marks)
+      ? node.marks.map(getLinkMarkHref).find((candidate: string | null): candidate is string => Boolean(candidate))
+      : null
+    if (!href || !linkHrefMatches(href, expectedHref)) return true
+    linkTextNodes.push({
+      from: position,
+      to: position + node.text.length,
+      href,
+    })
+    return true
+  })
+
+  const hitIndex = linkTextNodes.findIndex((node) => docPosition >= node.from && docPosition <= node.to)
+  if (hitIndex < 0) return null
+
+  const href = linkTextNodes[hitIndex].href
+  let firstIndex = hitIndex
+  let lastIndex = hitIndex
+
+  while (
+    firstIndex > 0 &&
+    linkTextNodes[firstIndex - 1].href === href &&
+    linkTextNodes[firstIndex - 1].to === linkTextNodes[firstIndex].from
+  ) {
+    firstIndex -= 1
+  }
+
+  while (
+    lastIndex < linkTextNodes.length - 1 &&
+    linkTextNodes[lastIndex + 1].href === href &&
+    linkTextNodes[lastIndex].to === linkTextNodes[lastIndex + 1].from
+  ) {
+    lastIndex += 1
+  }
+
+  return {
+    from: linkTextNodes[firstIndex].from,
+    to: linkTextNodes[lastIndex].to,
+    href,
+  }
+}

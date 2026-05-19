@@ -674,6 +674,70 @@ export function deleteEmptyListItemBackward(state: any, dispatch?: (tr: unknown)
   return true
 }
 
+export function applyParagraphSpaceShortcut(state: any, dispatch?: (tr: unknown) => void): boolean {
+  const { selection, schema } = state
+  if (!selection?.empty) return false
+
+  const { $from } = selection
+  if (!$from || $from.parent?.type?.name !== 'paragraph') return false
+  if ($from.parentOffset !== $from.parent.content.size) return false
+
+  const shortcut = getParagraphSpaceShortcut($from.parent.textContent ?? '')
+  if (!shortcut) return false
+
+  const blockDepth = $from.depth
+  const from = $from.before(blockDepth)
+  const to = $from.after(blockDepth)
+
+  if (shortcut.kind === 'heading') {
+    const headingType = schema.nodes.heading
+    if (!headingType) return false
+    if (!dispatch) return true
+    const headingNode = headingType.create({
+      level: shortcut.level,
+      headingType: 'atx',
+    })
+    const nextTr = state.tr.replaceWith(from, to, headingNode)
+    const caretPos = Math.min(from + 1, nextTr.doc.content.size)
+    const nextSelection = TextSelection.create(nextTr.doc, caretPos, caretPos)
+    dispatch(nextTr.setSelection(nextSelection).scrollIntoView())
+    return true
+  }
+
+  if (shortcut.kind === 'blockQuote') {
+    const blockQuoteType = schema.nodes.blockQuote
+    const paragraphType = schema.nodes.paragraph
+    if (!blockQuoteType || !paragraphType) return false
+    if (!dispatch) return true
+
+    const blockQuoteNode = blockQuoteType.create(null, paragraphType.create())
+    const nextTr = state.tr.replaceWith(from, to, blockQuoteNode)
+    const caretPos = Math.min(from + 2, nextTr.doc.content.size)
+    const nextSelection = TextSelection.create(nextTr.doc, caretPos, caretPos)
+    dispatch(nextTr.setSelection(nextSelection).scrollIntoView())
+    return true
+  }
+
+  const listType = shortcut.kind === 'numberedList' ? schema.nodes.orderedList : schema.nodes.bulletList
+  const listItemType = schema.nodes.listItem
+  const paragraphType = schema.nodes.paragraph
+  if (!listType || !listItemType || !paragraphType) return false
+  if (!dispatch) return true
+
+  const paragraphNode = paragraphType.create()
+  const listItemNode = listItemType.create(null, paragraphNode)
+  const listAttrs =
+    shortcut.kind === 'numberedList'
+      ? { order: shortcut.order }
+      : createBulletListAttrs(shortcut.kind === 'dashList' ? 'dash' : 'bullet')
+  const listNode = listType.create(listAttrs, listItemNode)
+  const nextTr = state.tr.replaceWith(from, to, listNode)
+  const caretPos = Math.min(from + 3, nextTr.doc.content.size)
+  const nextSelection = TextSelection.create(nextTr.doc, caretPos, caretPos)
+  dispatch(nextTr.setSelection(nextSelection).scrollIntoView())
+  return true
+}
+
 export function headingSpaceShortcutPlugin(context: {
   pmKeymap: { keymap: (bindings: Record<string, unknown>) => unknown }
   pmState: {
@@ -684,7 +748,7 @@ export function headingSpaceShortcutPlugin(context: {
   }
 }) {
   const { keymap } = context.pmKeymap
-  const { Selection, TextSelection } = context.pmState
+  const { Selection } = context.pmState
 
   const getBlockContext = (state: any) => {
     const { selection } = state
@@ -818,66 +882,7 @@ export function headingSpaceShortcutPlugin(context: {
           Delete: (state: any, dispatch?: (tr: unknown) => void) =>
             handleDeleteFromEmptyParagraphBeforeHeading(state, dispatch) ||
             handleDeleteFromEmptyParagraphBeforeList(state, dispatch),
-          Space: (state: any, dispatch?: (tr: unknown) => void) => {
-            const { selection, schema, tr } = state
-            if (!selection.empty) return false
-
-            const { $from } = selection
-            if ($from.parent.type.name !== 'paragraph') return false
-            if ($from.parentOffset !== $from.parent.content.size) return false
-
-            const shortcut = getParagraphSpaceShortcut($from.parent.textContent ?? '')
-            if (!shortcut) return false
-
-            const blockDepth = $from.depth
-            const from = $from.before(blockDepth)
-            const to = $from.after(blockDepth)
-
-            if (shortcut.kind === 'heading') {
-              const headingType = schema.nodes.heading
-              if (!headingType) return false
-              const headingNode = headingType.create({
-                level: shortcut.level,
-                headingType: 'atx',
-              })
-              const nextTr = tr.replaceWith(from, to, headingNode)
-              const caretPos = Math.min(from + 1, nextTr.doc.content.size)
-              const nextSelection = TextSelection.create(nextTr.doc, caretPos, caretPos)
-              dispatch?.(nextTr.setSelection(nextSelection).scrollIntoView())
-              return true
-            }
-
-            if (shortcut.kind === 'blockQuote') {
-              const blockQuoteType = schema.nodes.blockQuote
-              const paragraphType = schema.nodes.paragraph
-              if (!blockQuoteType || !paragraphType) return false
-
-              const blockQuoteNode = blockQuoteType.create(null, paragraphType.create())
-              const nextTr = tr.replaceWith(from, to, blockQuoteNode)
-              const caretPos = Math.min(from + 2, nextTr.doc.content.size)
-              const nextSelection = TextSelection.create(nextTr.doc, caretPos, caretPos)
-              dispatch?.(nextTr.setSelection(nextSelection).scrollIntoView())
-              return true
-            }
-
-            const listType = shortcut.kind === 'numberedList' ? schema.nodes.orderedList : schema.nodes.bulletList
-            const listItemType = schema.nodes.listItem
-            const paragraphType = schema.nodes.paragraph
-            if (!listType || !listItemType || !paragraphType) return false
-
-            const paragraphNode = paragraphType.create()
-            const listItemNode = listItemType.create(null, paragraphNode)
-            const listAttrs =
-              shortcut.kind === 'numberedList'
-                ? { order: shortcut.order }
-                : createBulletListAttrs(shortcut.kind === 'dashList' ? 'dash' : 'bullet')
-            const listNode = listType.create(listAttrs, listItemNode)
-            const nextTr = tr.replaceWith(from, to, listNode)
-            const caretPos = Math.min(from + 3, nextTr.doc.content.size)
-            const nextSelection = TextSelection.create(nextTr.doc, caretPos, caretPos)
-            dispatch?.(nextTr.setSelection(nextSelection).scrollIntoView())
-            return true
-          },
+          Space: applyParagraphSpaceShortcut,
         }),
     ],
   }
@@ -1113,23 +1118,19 @@ export function installClearToolbarButton(root: HTMLElement, onClear: () => void
 export function installNoteToolsToolbarButtons(
   root: HTMLElement,
   options: {
-    onNoteLink: () => void
     onAisles: () => void
   },
 ) {
   const toolbar = root.querySelector('.toastui-editor-defaultUI-toolbar')
   if (!(toolbar instanceof HTMLElement)) return
-  if (toolbar.querySelector('.note-link-toolbar-btn') || toolbar.querySelector('.aisles-toolbar-btn')) return
+  if (toolbar.querySelector('.aisles-toolbar-btn')) return
 
   const group = document.createElement('div')
   group.className = 'toastui-editor-toolbar-group note-tools-toolbar-group'
 
-  const noteLinkButton = createToolbarTextButton('note-link-toolbar-btn', 'note link', 'N', options.onNoteLink)
   const aisleButton = createToolbarTextButton('aisles-toolbar-btn', 'aisles', 'A', options.onAisles)
-  bindToolbarTooltip(root, toolbar, noteLinkButton, 'Note link')
   bindToolbarTooltip(root, toolbar, aisleButton, 'Aisles')
 
-  group.appendChild(noteLinkButton)
   group.appendChild(aisleButton)
   toolbar.appendChild(group)
 }

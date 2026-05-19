@@ -99,6 +99,10 @@ declare global {
         ok: boolean
         error?: string
       }>
+      openExternalUrl?: (url: string) => Promise<{
+        ok: boolean
+        error?: string
+      }>
       getRuntimeInfo: () => Promise<{
         version: string
         platform: string

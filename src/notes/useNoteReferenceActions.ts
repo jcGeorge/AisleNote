@@ -2,11 +2,14 @@ import { Editor } from '@toast-ui/editor'
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import {
   getCommandCapableEditor,
+  getExternalLinkRangeAtDocPosition,
+  type ExternalLinkRange,
   getInternalNoteLinkHitAtDocPosition,
   getWysiwygView,
 } from '../editor/prosemirror-utils'
 import { createId } from '../state/workspace'
 import type { AppState, ContextMenuState, ModalState, NoteLocation, ToastTone } from '../types/app'
+import { normalizeExternalWebUrl } from './external-links'
 import {
   buildContextToken,
   buildInternalNoteUrl,
@@ -19,7 +22,7 @@ import {
   replaceInternalNoteLinkByOccurrence,
   wouldCreateContextCycle,
 } from './note-references'
-import { getDefaultNoteReferenceTarget, getLocationInfo } from './note-locations'
+import { getDefaultNoteLinkLabel, getDefaultNoteReferenceTarget, getLocationInfo } from './note-locations'
 
 type UseNoteReferenceActionsParams = {
   stateRef: MutableRefObject<AppState>
@@ -90,6 +93,53 @@ export const useNoteReferenceActions = ({
     return true
   }
 
+  const replaceLinkRangeInActiveEditor = (range: ExternalLinkRange, label: string, url: string) => {
+    const currentEditor = editorRef.current
+    const view = getWysiwygView(currentEditor)
+    if (!currentEditor || !view) return false
+    const linkType = view.state.schema.marks.link
+    if (!linkType) return false
+
+    const currentRange =
+      getExternalLinkRangeAtDocPosition(view.state.doc, range.from, range.href) ??
+      getExternalLinkRangeAtDocPosition(view.state.doc, range.to, range.href) ??
+      range
+    const nextLabel = label.trim() || url
+    let tr = view.state.tr.removeMark(currentRange.from, currentRange.to, linkType)
+    tr = tr.insertText(nextLabel, currentRange.from, currentRange.to)
+    tr = tr.addMark(currentRange.from, currentRange.from + nextLabel.length, linkType.create({ href: url }))
+    view.dispatch(tr.scrollIntoView())
+    currentEditor.focus()
+    commitActiveEditorMarkdownNow(currentEditor)
+    return true
+  }
+
+  const replaceTextRangeInActiveEditor = (from: number, to: number, text: string) => {
+    const currentEditor = editorRef.current
+    const view = getWysiwygView(currentEditor)
+    if (!currentEditor || !view) return false
+    view.dispatch(view.state.tr.insertText(text, from, to).scrollIntoView())
+    currentEditor.focus()
+    commitActiveEditorMarkdownNow(currentEditor)
+    return true
+  }
+
+  const replaceTextRangeWithLinkInActiveEditor = (from: number, to: number, label: string, url: string) => {
+    const currentEditor = editorRef.current
+    const view = getWysiwygView(currentEditor)
+    if (!currentEditor || !view) return false
+    const linkType = view.state.schema.marks.link
+    if (!linkType) return false
+
+    const nextLabel = label.trim() || url
+    let tr = view.state.tr.insertText(nextLabel, from, to)
+    tr = tr.addMark(from, from + nextLabel.length, linkType.create({ href: url }))
+    view.dispatch(tr.scrollIntoView())
+    currentEditor.focus()
+    commitActiveEditorMarkdownNow(currentEditor)
+    return true
+  }
+
   const insertTextIntoActiveEditor = (text: string) => {
     const currentEditor = editorRef.current
     if (!currentEditor) return false
@@ -102,13 +152,86 @@ export const useNoteReferenceActions = ({
   const insertNoteReference = (modalState: Extract<ModalState, { type: 'insert-note-reference' }>) => {
     const latestState = stateRef.current
     const targetInfo = getLocationInfo(latestState, modalState.target)
+    if (modalState.mode === 'url') {
+      const url = normalizeExternalWebUrl(modalState.url)
+      if (!url) {
+        pushToast('enter a valid web link.', 'warning')
+        return false
+      }
+      const label = modalState.urlLabel.trim() || modalState.url.trim()
+      if (modalState.urlEditRange) {
+        if (!replaceLinkRangeInActiveEditor(modalState.urlEditRange, label, url)) {
+          pushToast('could not update link.', 'warning')
+          return false
+        }
+        pushToast('link updated.', 'success')
+        return true
+      }
+      if (!insertLinkIntoActiveEditor(label, url)) {
+        pushToast('open a note before inserting a link.', 'warning')
+        return false
+      }
+      pushToast('link inserted.', 'success')
+      return true
+    }
+
     if (!targetInfo.domain || !targetInfo.space || !targetInfo.tab || !targetInfo.noteBodyId) {
       pushToast('choose an existing note.', 'warning')
       return false
     }
 
     if (modalState.insertAs === 'link') {
-      if (!insertLinkIntoActiveEditor(targetInfo.title, buildInternalNoteUrl(targetInfo.noteBodyId, modalState.target))) {
+      const href = modalState.internalEdit?.href ?? buildInternalNoteUrl(targetInfo.noteBodyId, modalState.target)
+      const label = modalState.noteLabel.trim() || getDefaultNoteLinkLabel(latestState, modalState.source, modalState.target)
+      if (modalState.internalEdit) {
+        if (modalState.internalEdit.range) {
+          if (!replaceLinkRangeInActiveEditor(modalState.internalEdit.range, label, href)) {
+            pushToast('could not update note link.', 'warning')
+            return false
+          }
+          pushToast('note link updated.', 'success')
+          return true
+        }
+        const nextSyntax = `[${escapeMarkdownLinkLabel(label)}](${href})`
+        const currentEditor = editorRef.current
+        const view = getWysiwygView(currentEditor)
+        if (
+          currentEditor &&
+          view &&
+          typeof modalState.internalEdit.from === 'number' &&
+          typeof modalState.internalEdit.to === 'number'
+        ) {
+          try {
+            const currentHit = getInternalNoteLinkHitAtDocPosition(view.state.doc, modalState.internalEdit.from)
+            const from = currentHit?.href === href ? currentHit.from : modalState.internalEdit.from
+            const to = currentHit?.href === href ? currentHit.to : modalState.internalEdit.to
+            view.dispatch(view.state.tr.insertText(nextSyntax, from, to).scrollIntoView())
+            currentEditor.focus()
+            commitActiveEditorMarkdownNow(currentEditor)
+            pushToast('note link updated.', 'success')
+            return true
+          } catch {
+            // Fall back to markdown replacement below if the document position shifted.
+          }
+        }
+        replaceActiveEditorMarkdown(
+          replaceInternalNoteLinkByOccurrence(
+            getActiveEditorMarkdown(),
+            {
+              label: modalState.internalEdit.label,
+              href,
+              target: modalState.internalEdit.target,
+              from: modalState.internalEdit.from ?? 0,
+              to: modalState.internalEdit.to ?? 0,
+              occurrence: modalState.internalEdit.occurrence ?? 0,
+            },
+            nextSyntax,
+          ),
+        )
+        pushToast('note link updated.', 'success')
+        return true
+      }
+      if (!insertLinkIntoActiveEditor(label, href)) {
         pushToast('open a note before inserting a link.', 'warning')
         return false
       }
@@ -184,8 +307,13 @@ export const useNoteReferenceActions = ({
     const target = getDefaultNoteReferenceTarget(stateRef.current, source)
     setModal({
       type: 'insert-note-reference',
+      mode: stateRef.current.ui.lastLinkInsertMode ?? 'note',
       insertAs: 'link',
+      source,
       target,
+      noteLabel: getDefaultNoteLinkLabel(stateRef.current, source, target),
+      url: '',
+      urlLabel: '',
     })
   }
 
@@ -231,6 +359,9 @@ export const useNoteReferenceActions = ({
   return {
     getContextPreviewData,
     insertLinkIntoActiveEditor,
+    replaceLinkRangeInActiveEditor,
+    replaceTextRangeInActiveEditor,
+    replaceTextRangeWithLinkInActiveEditor,
     insertNoteReference,
     deleteContextPreview,
     openNoteReferenceModal,

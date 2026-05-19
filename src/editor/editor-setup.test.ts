@@ -13,6 +13,7 @@ import {
 } from './annotation-line'
 import { shouldDeleteEmptyParagraphAtListBoundary } from './empty-paragraph-list-delete'
 import {
+  applyParagraphSpaceShortcut,
   annotationLinePlugin,
   BLOCK_INDENT_CLASS_NAME,
   BLOCK_INDENT_TOKEN_HIDDEN_CLASS_NAME,
@@ -170,6 +171,25 @@ const paragraphShortcutSchema = new Schema({
 })
 
 describe('paragraph space shortcut WYSIWYG behavior', () => {
+  it('turns a bare asterisk marker into a bullet list on Space', () => {
+    const doc = paragraphShortcutSchema.nodes.doc.create(null, [
+      paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text('*')),
+    ])
+    const state = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, 2),
+    })
+    let nextState = state
+
+    expect(applyParagraphSpaceShortcut(state, (transaction: any) => {
+      nextState = state.apply(transaction)
+    })).toBe(true)
+
+    expect(nextState.doc.child(0).type.name).toBe('bulletList')
+    expect(nextState.doc.child(0).child(0).type.name).toBe('listItem')
+    expect(nextState.doc.child(0).textContent).toBe('')
+  })
+
   it('turns a bare greater-than marker into a blockquote on Space', () => {
     const doc = paragraphShortcutSchema.nodes.doc.create(null, [
       paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text('>')),

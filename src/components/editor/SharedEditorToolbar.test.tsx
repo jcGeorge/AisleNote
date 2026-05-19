@@ -14,7 +14,6 @@ describe('SharedEditorToolbar block quote and block indent controls', () => {
         toolbarFormatState={DEFAULT_TOOLBAR_FORMAT_STATE}
         activeHeadingLevel={0}
         toolbarShortcutFeedback={null}
-        onOpenNoteReference={noop}
         onOpenCopy={noop}
         onOpenFrontmatter={noop}
         onToggleAisles={noop}
@@ -32,5 +31,7 @@ describe('SharedEditorToolbar block quote and block indent controls', () => {
     expect(html).toContain('aria-label="Block indent"')
     expect(html).toContain('title="Remove block indent"')
     expect(html).toContain('aria-label="Remove block indent"')
+    expect(html).toContain('aria-label="Insert link"')
+    expect(html).not.toContain('note-link-toolbar-btn')
   })
 })

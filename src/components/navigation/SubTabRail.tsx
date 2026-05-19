@@ -11,6 +11,7 @@ import type {
   ViewMode,
 } from '../../types/app'
 import { getRenameInputKeyAction } from '../../navigation/rename-draft'
+import { SortIcon } from './SortIcon'
 
 type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
 
@@ -76,6 +77,7 @@ type SubTabRailProps = {
     currentSubTabId: string,
   ) => void
   onAddSubTab: () => void
+  onOpenSubTabSortModal: () => void
 }
 
 export function SubTabRail({
@@ -119,6 +121,7 @@ export function SubTabRail({
   onSetTrashSubTabId,
   onOpenContextMenuForTrashSubTab,
   onAddSubTab,
+  onOpenSubTabSortModal,
 }: SubTabRailProps) {
   if (!isNoteWorkspaceView && !(viewMode === 'trash' && selectedTrashTab)) return null
 
@@ -129,6 +132,11 @@ export function SubTabRail({
       aria-label="Nested note tabs"
     >
       <div ref={subTabRailRef} className="tabbar-scroll">
+        {arrangeMode.active && arrangeMode.scope === 'tabs' && viewMode === 'main' && (
+          <button type="button" className="tab-sort-btn" onClick={onOpenSubTabSortModal} title="sort sub-tabs" aria-label="sort sub-tabs">
+            <SortIcon />
+          </button>
+        )}
         {isNoteWorkspaceView && showParentHomeTab && (
           <button
             type="button"

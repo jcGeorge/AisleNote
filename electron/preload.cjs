@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   exportAppState: (payload) => ipcRenderer.invoke('export-app-state', payload),
   saveFile: (payload) => ipcRenderer.invoke('save-file', payload),
   copyImageDataUrl: (dataUrl) => ipcRenderer.invoke('copy-image-data-url', dataUrl),
+  openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
   getRuntimeInfo: () => ipcRenderer.invoke('get-runtime-info'),
   getUpdateStatus: () => ipcRenderer.invoke('get-update-status'),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),

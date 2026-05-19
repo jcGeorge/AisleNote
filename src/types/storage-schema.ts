@@ -70,6 +70,7 @@ export type StorageGlobalSettings = {
   ui: {
     showParentHomeTab: boolean
     stageManagerOpenDestinationAfterApply: boolean
+    lastLinkInsertMode?: 'note' | 'url'
     tabButtonScale: number
     noteFontScale: number
     settingsSection?: StorageSettingsSection

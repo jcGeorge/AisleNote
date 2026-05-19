@@ -6,6 +6,8 @@ export const CLOSED_LINK_PROMPT_STATE: LinkPromptState = {
   left: 0,
   url: '',
   text: '',
+  urlEditable: false,
+  editRange: null,
 }
 
 export function closeLinkPromptState(previous: LinkPromptState): LinkPromptState {

@@ -14,6 +14,16 @@ export type NoteLocationListEntry = NoteLocation & {
   label: string
 }
 
+export type NoteSearchEntry = NoteLocation & {
+  noteBodyId: string
+  domainName: string
+  spaceName: string
+  parentName: string
+  noteName: string
+  label: string
+  searchText: string
+}
+
 export function buildNoteLocationKey(location: NoteLocation): string {
   return [location.domainId, location.spaceId, location.tabId, location.subTabId ?? '__home__'].join('::')
 }
@@ -38,6 +48,106 @@ export function getLocationInfo(sourceState: AppState, location: NoteLocation): 
   const noteBodyId = subTab?.noteBodyId ?? tab?.noteBodyId ?? ''
   const title = subTab?.title ?? tab?.title ?? 'note'
   return { domain, space, tab, subTab, noteBodyId, title }
+}
+
+export function getNoteLocationBreadcrumbLabel(sourceState: AppState, location: NoteLocation): string {
+  const info = getLocationInfo(sourceState, location)
+  const domainName = info.domain?.name ?? 'domain'
+  const spaceName = info.space?.name ?? 'space'
+  const parentName = info.tab?.title ?? 'parent'
+  const noteName = info.subTab?.title ?? 'home'
+  return `${domainName} > ${spaceName} > ${parentName} > ${noteName}`
+}
+
+export function getDefaultNoteLinkLabel(sourceState: AppState, source: NoteLocation, target: NoteLocation): string {
+  const targetInfo = getLocationInfo(sourceState, target)
+  if (!targetInfo.tab) return targetInfo.title
+
+  const targetLocalName = targetInfo.subTab?.title ?? targetInfo.tab.title
+  if (source.domainId === target.domainId && source.spaceId === target.spaceId && source.tabId === target.tabId) {
+    return targetLocalName
+  }
+
+  const targetNoteName = targetInfo.subTab?.title ?? 'home'
+  if (source.domainId === target.domainId && source.spaceId === target.spaceId) {
+    return `${targetInfo.tab.title} > ${targetNoteName}`
+  }
+
+  const spaceName = targetInfo.space?.name ?? 'space'
+  return `${spaceName} > ${targetInfo.tab.title} > ${targetNoteName}`
+}
+
+export function listSearchableNoteLocations(sourceState: AppState): NoteSearchEntry[] {
+  const entries: NoteSearchEntry[] = []
+  for (const domain of getDomainsWithActiveProjection(sourceState)) {
+    for (const space of domain.spaces) {
+      for (const tab of space.data.tabs) {
+        const homeLabel = `${domain.name} > ${space.name} > ${tab.title} > home`
+        entries.push({
+          domainId: domain.id,
+          spaceId: space.id,
+          tabId: tab.id,
+          subTabId: null,
+          noteBodyId: tab.noteBodyId,
+          domainName: domain.name,
+          spaceName: space.name,
+          parentName: tab.title,
+          noteName: 'home',
+          label: homeLabel,
+          searchText: `${homeLabel} ${tab.title}`.toLowerCase(),
+        })
+
+        for (const subTab of tab.subTabs) {
+          const label = `${domain.name} > ${space.name} > ${tab.title} > ${subTab.title}`
+          entries.push({
+            domainId: domain.id,
+            spaceId: space.id,
+            tabId: tab.id,
+            subTabId: subTab.id,
+            noteBodyId: subTab.noteBodyId,
+            domainName: domain.name,
+            spaceName: space.name,
+            parentName: tab.title,
+            noteName: subTab.title,
+            label,
+            searchText: `${label} ${tab.title} ${subTab.title}`.toLowerCase(),
+          })
+        }
+      }
+    }
+  }
+  return entries
+}
+
+export function filterNoteSearchEntries(entries: NoteSearchEntry[], query: string, limit = 10): NoteSearchEntry[] {
+  const normalizedQuery = query.trim().toLowerCase()
+  if (!normalizedQuery) return entries.slice(0, limit)
+  const tokens = normalizedQuery.split(/\s+/).filter(Boolean)
+  const pairs = tokens.slice(0, -1).map((token, index) => `${token} ${tokens[index + 1]}`)
+  const phraseMatches = entries.filter((entry) => entry.searchText.includes(normalizedQuery))
+  const matches = phraseMatches.length > 0
+    ? phraseMatches
+    : entries.filter((entry) => {
+        const words = entry.searchText.split(/[^a-z0-9]+/).filter(Boolean)
+        let wordIndex = 0
+        return tokens.every((token) => {
+          const matchIndex = words.findIndex((word, index) => index >= wordIndex && word.startsWith(token))
+          if (matchIndex < 0) return false
+          wordIndex = matchIndex + 1
+          return true
+        })
+      })
+  return matches
+    .map((entry, index) => ({
+      entry,
+      index,
+      score:
+        (entry.searchText.includes(normalizedQuery) ? 100 : 0) +
+        pairs.reduce((score, pair) => score + (entry.searchText.includes(pair) ? 20 : 0), 0),
+    }))
+    .sort((left, right) => right.score - left.score || left.index - right.index)
+    .slice(0, limit)
+    .map((scored) => scored.entry)
 }
 
 export function getFirstNoteLocation(

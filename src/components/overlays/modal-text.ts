@@ -65,9 +65,9 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
 
   if (modal.type === 'insert-note-reference') {
     return {
-      title: 'insert note link or preview',
-      body: 'choose a target note and insert it as a link or note preview.',
-      action: 'insert',
+      title: modal.modeLocked ? 'edit link' : 'insert link',
+      body: '',
+      action: modal.urlEditRange || modal.internalEdit ? 'done' : 'insert',
     }
   }
 
@@ -86,6 +86,16 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
       action: 'done',
     }
   }
+
+  if (modal.type === 'sort-tabs') {
+    return {
+      title: modal.target === 'parents' ? 'sort parents' : 'sort sub-tabs',
+      body: '',
+      action: '',
+    }
+  }
+
+  if (modal.type !== 'delete-target') return { title: '', body: '', action: 'confirm' }
 
   if (modal.target.type === 'space') {
     if (state.spaces.length <= 1) {

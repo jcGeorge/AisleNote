@@ -1083,6 +1083,11 @@
   box-shadow: var(--link-prompt-shadow);
 }
 
+.link-prompt.is-url-editable {
+  flex-wrap: wrap;
+  max-width: min(30rem, calc(100vw - 1rem));
+}
+
 .link-prompt-input {
   border: 1px solid var(--link-prompt-input-border);
   background: var(--link-prompt-input-bg);
@@ -1091,6 +1096,10 @@
   padding: 0.2rem 0.35rem;
   font-size: 0.78rem;
   width: 11rem;
+}
+
+.link-prompt-url-input {
+  width: 14rem;
 }
 
 .link-prompt-input:focus {

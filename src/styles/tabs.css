@@ -15,6 +15,39 @@
   box-shadow: none !important;
 }
 
+.tab-sort-btn {
+  flex: 0 0 auto;
+  width: calc(30px * var(--tab-button-scale));
+  min-width: calc(30px * var(--tab-button-scale));
+  min-height: var(--tab-control-height);
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: calc(0.42rem * var(--tab-button-scale));
+  background: transparent;
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tabbar .tab-sort-btn {
+  color: var(--tab-btn-text);
+}
+
+.subtabbar .tab-sort-btn {
+  color: var(--subtab-btn-text);
+}
+
+.tab-sort-btn:hover {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.tab-sort-icon {
+  width: calc(16px * var(--tab-button-scale));
+  height: calc(16px * var(--tab-button-scale));
+  display: block;
+}
+
 .tab-btn.btn {
   color: var(--tab-btn-text);
   background-color: var(--tab-btn-bg);

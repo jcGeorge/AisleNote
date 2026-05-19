@@ -225,6 +225,7 @@ export type AppState = {
   ui: {
     showParentHomeTab: boolean
     stageManagerOpenDestinationAfterApply: boolean
+    lastLinkInsertMode?: LinkInsertMode
     tabButtonScale: number
     noteFontScale: number
     settingsSection: SettingsSection
@@ -248,6 +249,11 @@ export type PendingCreatedEdit =
 export type ArrangeSource = 'context' | 'press'
 export type ArrangeInsertPosition = 'before' | 'after'
 export type ArrangeScope = 'tabs' | 'spaces'
+export type TabSortMode = 'alpha-asc' | 'alpha-desc' | 'created-asc' | 'created-desc' | 'updated-asc' | 'updated-desc'
+export type StageManagerDestinationSortMode = 'default' | TabSortMode
+export type TabSortTarget = 'parents' | 'subtabs'
+export type LinkInsertMode = 'note' | 'url'
+export type NoteReferenceInsertKind = 'link' | 'context'
 
 export type ArrangeDragItem =
   | { type: 'tab'; tabId: string }
@@ -355,6 +361,7 @@ export type StageManagerDraft = {
   straySelectedParentId: string
   strayExistingParentId: string
   strayNewParentName: string
+  destinationSortMode: StageManagerDestinationSortMode
   frontmatterTemplateId: string
   massDeleteMode: StageManagerMassDeleteMode
 }
@@ -427,6 +434,28 @@ export type LinkPromptState = {
   left: number
   url: string
   text: string
+  urlEditable?: boolean
+  editRange?: {
+    from: number
+    to: number
+    href: string
+  } | null
+}
+
+export type LinkEditRange = {
+  from: number
+  to: number
+  href: string
+}
+
+export type InternalNoteLinkEdit = {
+  label: string
+  href: string
+  target: NoteLocation
+  from?: number
+  to?: number
+  occurrence?: number
+  range?: LinkEditRange | null
 }
 
 export type MultiLineEditState = {
@@ -518,8 +547,17 @@ export type ModalState =
     }
   | {
       type: 'insert-note-reference'
-      insertAs: 'link' | 'context'
+      mode: LinkInsertMode
+      modeLocked?: boolean
+      insertAs: NoteReferenceInsertKind
+      source: NoteLocation
       target: NoteLocation & { aisleIds?: string[] }
+      noteLabel: string
+      noteLabelTouched?: boolean
+      url: string
+      urlLabel: string
+      urlEditRange?: LinkEditRange | null
+      internalEdit?: InternalNoteLinkEdit | null
       editingTokenId?: string
     }
   | {
@@ -531,6 +569,7 @@ export type ModalState =
       templateDerived: boolean
       isTemplateSuggestionDraft: boolean
     }
+  | { type: 'sort-tabs'; target: TabSortTarget }
   | { type: 'shortcut-menu-settings' }
 
 export type TrashParentBucket = {

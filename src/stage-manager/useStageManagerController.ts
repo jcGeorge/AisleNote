@@ -1,5 +1,6 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
+import { getDestinationSortLabel } from '../arrange/tab-sort'
 import { sanitizeName } from '../export/export-data'
 import { applyTemplateToStageManagerSelection } from '../frontmatter/frontmatter-state'
 import { DEFAULT_AUTO_REMOVE_DAYS } from '../settings/defaults'
@@ -43,6 +44,11 @@ import {
   createPromotedParentTab,
   stripStageManagerSelectionsFromWorkspace,
 } from './transforms'
+import {
+  applyDestinationParentSubTabSort,
+  applyDestinationSubTabSort,
+  applyDestinationTabSort,
+} from './destination-sort'
 
 type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
 
@@ -628,6 +634,7 @@ export function useStageManagerController({
       } else {
         details.push(`new space: ${sanitizeName(draft.newSpaceName || 'untitled')}`)
       }
+      details.push(`destination order: ${getDestinationSortLabel(draft.destinationSortMode)}`)
     } else if (action === 'demote') {
       if (draft.demoteParentMode === 'existing') {
         details.push(
@@ -636,6 +643,7 @@ export function useStageManagerController({
       } else {
         details.push(`new parent: ${sanitizeName(draft.demoteNewParentName || 'untitled')}`)
       }
+      details.push(`destination order: ${getDestinationSortLabel(draft.destinationSortMode)}`)
     } else if (action === 'migrate') {
       if (draft.migrateTarget === 'space') {
         if (draft.migrateSpaceMode === 'existing') {
@@ -679,6 +687,7 @@ export function useStageManagerController({
           )
         }
       }
+      details.push(`destination order: ${getDestinationSortLabel(draft.destinationSortMode)}`)
     } else if (action === 'frontmatter') {
       const template = state.frontmatter.templates.find((candidate) => candidate.id === draft.frontmatterTemplateId)
       details.push(`template: ${template?.name ?? 'none selected'}`)
@@ -756,6 +765,12 @@ export function useStageManagerController({
     const replaceDomainSpaces = replaceStageManagerDomainSpaces
     const buildDomainAwareState = (domains: Domain[], activeDomainId = latestState.activeDomainId, activeSpaceId = latestState.activeSpaceId) =>
       buildStageManagerDomainAwareState(latestState, domains, activeDomainId, activeSpaceId)
+    const sortDestinationTabs = (tabs: Tab[]) =>
+      applyDestinationTabSort(tabs, latestState.noteBodies, draft.destinationSortMode)
+    const sortDestinationSubTabs = (subTabs: Tab['subTabs']) =>
+      applyDestinationSubTabSort(subTabs, latestState.noteBodies, draft.destinationSortMode)
+    const sortDestinationParentSubTabs = (tabs: Tab[], parentId: string) =>
+      applyDestinationParentSubTabSort(tabs, parentId, latestState.noteBodies, draft.destinationSortMode)
 
     const snapshot = buildStageManagerSelectionSnapshot(currentSpace.data.tabs, selections)
     if (!snapshot.hasSelection) {
@@ -859,7 +874,7 @@ export function useStageManagerController({
           id: newSpaceId,
           name: sanitizeName(draft.newSpaceName || promotedParent.title),
           settings: { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
-          data: createWorkspaceDataFromTabs(movedTabs, { activeTabId: mainTab.id }),
+          data: createWorkspaceDataFromTabs(sortDestinationTabs(movedTabs), { activeTabId: mainTab.id }),
         }
         const destinationDomainId = promoteDomainId
         let nextDomains = replaceDomainSpaces(projectedDomains, latestState.activeDomainId, nextSpaces, latestState.activeSpaceId)
@@ -885,7 +900,7 @@ export function useStageManagerController({
           id: createId(),
           name: sanitizeName(draft.newSpaceName || 'untitled'),
           settings: { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
-          data: createWorkspaceDataFromTabs(loosePromotedTabs, { activeTabId: firstTabId ?? undefined }),
+          data: createWorkspaceDataFromTabs(sortDestinationTabs(loosePromotedTabs), { activeTabId: firstTabId ?? undefined }),
         }
         const destinationDomainId = promoteDomainId
         let nextDomains = replaceDomainSpaces(projectedDomains, latestState.activeDomainId, nextSpaces, latestState.activeSpaceId)
@@ -911,7 +926,7 @@ export function useStageManagerController({
       const domainsWithSource = replaceDomainSpaces(projectedDomains, latestState.activeDomainId, nextSpaces, latestState.activeSpaceId)
       const destinationSpaces = getSpacesFromDomains(domainsWithSource, destinationDomainId).map((space) => {
         if (space.id !== destinationSpaceId) return space
-        const destinationTabs = [...space.data.tabs.map(cloneTabForTransfer), ...loosePromotedTabs]
+        const destinationTabs = sortDestinationTabs([...space.data.tabs.map(cloneTabForTransfer), ...loosePromotedTabs])
         return {
           ...space,
           data: createWorkspaceDataFromTabs(destinationTabs, {
@@ -968,6 +983,7 @@ export function useStageManagerController({
           state.ui.stageManagerOpenDestinationAfterApply,
         )
       }
+      destinationTabs = sortDestinationParentSubTabs(destinationTabs, destinationParentId)
       const sourceSpaces = latestState.spaces.map((space) =>
         space.id !== currentSpace.id ? space : { ...space, data: strippedCurrentData },
       )
@@ -1019,7 +1035,10 @@ export function useStageManagerController({
           if (targetIndex >= 0) {
             movedParentCopies[targetIndex] = {
               ...movedParentCopies[targetIndex],
-              subTabs: [...movedParentCopies[targetIndex].subTabs, ...looseMovedSubTabs.map(cloneSubTabForTransfer)],
+              subTabs: sortDestinationSubTabs([
+                ...movedParentCopies[targetIndex].subTabs,
+                ...looseMovedSubTabs.map(cloneSubTabForTransfer),
+              ]),
             }
           }
         } else if (draft.strayHandlingMode === 'new-parent') {
@@ -1029,7 +1048,7 @@ export function useStageManagerController({
             noteBodyId: createId(),
             homeContent: '',
             activeSubTabId: null,
-            subTabs: looseMovedSubTabs.map(cloneSubTabForTransfer),
+            subTabs: sortDestinationSubTabs(looseMovedSubTabs.map(cloneSubTabForTransfer)),
           })
         }
       }
@@ -1045,7 +1064,7 @@ export function useStageManagerController({
           id: newSpaceId,
           name: sanitizeName(draft.newSpaceName || 'untitled'),
           settings: { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
-          data: createWorkspaceDataFromTabs(destinationTabs, { activeTabId: fallbackTab }),
+          data: createWorkspaceDataFromTabs(sortDestinationTabs(destinationTabs), { activeTabId: fallbackTab }),
         }
         const destinationDomainId = migrateDomainId
         const sourceSpaces = latestState.spaces.map((space) =>
@@ -1089,12 +1108,14 @@ export function useStageManagerController({
             looseMovedSubTabs,
             state.ui.stageManagerOpenDestinationAfterApply,
           )
+          destinationTabs = sortDestinationParentSubTabs(destinationTabs, draft.strayExistingParentId)
           if (state.ui.stageManagerOpenDestinationAfterApply) {
             destinationActiveTabId = draft.strayExistingParentId
           }
         } else {
           destinationTabs = [...destinationTabs, ...additionalDestinationTabs]
         }
+        destinationTabs = sortDestinationTabs(destinationTabs)
 
         return {
           ...space,
@@ -1142,6 +1163,7 @@ export function useStageManagerController({
           state.ui.stageManagerOpenDestinationAfterApply,
         )
       }
+      destinationTabs = sortDestinationParentSubTabs(destinationTabs, destinationParentId)
 
       finishApply(
         {
@@ -1177,7 +1199,7 @@ export function useStageManagerController({
         noteBodyId: createId(),
         homeContent: '',
         activeSubTabId: null,
-        subTabs: movedSubTabs.map(cloneSubTabForTransfer),
+        subTabs: sortDestinationSubTabs(movedSubTabs.map(cloneSubTabForTransfer)),
       }
       const newSpace: Space = {
         id: newSpaceId,
@@ -1235,6 +1257,7 @@ export function useStageManagerController({
           state.ui.stageManagerOpenDestinationAfterApply,
         )
       }
+      destinationTabs = sortDestinationParentSubTabs(destinationTabs, destinationParentId)
 
       return {
         ...space,

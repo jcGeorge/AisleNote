@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_FRONTMATTER_SETTINGS } from '../../frontmatter/frontmatter'
 import type { AppState, ModalState, Space } from '../../types/app'
 import { makeFrontmatterRowsManual, normalizeFrontmatterModalRows } from './frontmatter-modal-state'
+import { shouldModalBackdropClose } from './modal-behavior'
 import { ModalHost } from './ModalHost'
 
 const space: Space = {
@@ -86,10 +87,134 @@ function renderFrontmatterModal(modal: ModalState) {
       onEditFrontmatterTemplate={() => undefined}
       onWarn={() => undefined}
       onError={() => undefined}
+      onApplyTabSort={() => undefined}
+      onLinkInsertModeChange={() => undefined}
       onConfirm={() => undefined}
     />,
   )
 }
+
+function renderModal(modal: ModalState) {
+  const state = createState()
+  return renderToStaticMarkup(
+    <ModalHost
+      modal={modal}
+      state={state}
+      activeSpace={space}
+      domainsForPickers={state.domains}
+      shortcutMenuOperations={[]}
+      onModalChange={() => undefined}
+      onShortcutMenuOperationsChange={() => undefined}
+      onEditFrontmatterTemplate={() => undefined}
+      onWarn={() => undefined}
+      onError={() => undefined}
+      onApplyTabSort={() => undefined}
+      onLinkInsertModeChange={() => undefined}
+      onConfirm={() => undefined}
+    />,
+  )
+}
+
+describe('sort modal rendering', () => {
+  it('renders the parent sort title, close control, and sort options', () => {
+    const html = renderModal({ type: 'sort-tabs', target: 'parents' })
+
+    expect(html).toContain('sort parents')
+    expect(html).toContain('aria-label="close sort modal"')
+    expect(html).toContain('>a-z</button>')
+    expect(html).toContain('>z-a</button>')
+    expect(html).toContain('>created ascending</button>')
+    expect(html).toContain('>created descending</button>')
+    expect(html).toContain('>updated ascending</button>')
+    expect(html).toContain('>updated descending</button>')
+    expect(html).not.toContain('class="delete-modal-actions"')
+  })
+
+  it('renders the sub-tab sort title', () => {
+    const html = renderModal({ type: 'sort-tabs', target: 'subtabs' })
+
+    expect(html).toContain('sort sub-tabs')
+  })
+
+  it('does not close sort or frontmatter modals from backdrop clicks', () => {
+    expect(shouldModalBackdropClose({ type: 'sort-tabs', target: 'parents' })).toBe(false)
+    expect(shouldModalBackdropClose({
+      type: 'frontmatter-note',
+      noteBodyId: 'body-1',
+      location: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
+      selectedTemplateId: '',
+      templateDerived: false,
+      isTemplateSuggestionDraft: false,
+      rows: [],
+    })).toBe(false)
+    expect(shouldModalBackdropClose({ type: 'shortcut-menu-settings' })).toBe(true)
+  })
+})
+
+describe('link modal rendering', () => {
+  const source = { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null }
+
+  it('renders the shared note link and preview controls', () => {
+    const html = renderModal({
+      type: 'insert-note-reference',
+      mode: 'note',
+      insertAs: 'link',
+      source,
+      target: source,
+      noteLabel: 'Tab',
+      url: '',
+      urlLabel: '',
+    })
+
+    expect(html).toContain('insert link')
+    expect(html).toContain('>note</button>')
+    expect(html).toContain('>url</button>')
+    expect(html).toContain('>link</button>')
+    expect(html).toContain('>preview</button>')
+    expect(html).toContain('value="Tab"')
+  })
+
+  it('renders URL fields for URL mode', () => {
+    const html = renderModal({
+      type: 'insert-note-reference',
+      mode: 'url',
+      insertAs: 'link',
+      source,
+      target: source,
+      noteLabel: 'Tab',
+      url: 'https://example.com',
+      urlLabel: 'Example',
+    })
+
+    expect(html).toContain('placeholder="https://example.com"')
+    expect(html).toContain('value="https://example.com"')
+    expect(html).toContain('value="Example"')
+  })
+
+  it('locks note targets when editing an existing note link', () => {
+    const html = renderModal({
+      type: 'insert-note-reference',
+      mode: 'note',
+      modeLocked: true,
+      insertAs: 'link',
+      source,
+      target: source,
+      noteLabel: 'Existing',
+      url: '',
+      urlLabel: '',
+      internalEdit: {
+        label: 'Existing',
+        href: '#tabs-note/body-1?domainId=domain-1&spaceId=space-1&tabId=tab-1',
+        target: source,
+      },
+    })
+
+    expect(html).toContain('edit link')
+    expect(html).toContain('note-reference-locked-target')
+    expect(html).toContain('Domain &gt; Space &gt; Tab &gt; home')
+    expect(html).toContain('value="Existing"')
+  })
+})
 
 describe('frontmatter modal rendering', () => {
   it('renders one note-level derived switch and no row sync switches', () => {

@@ -13,6 +13,7 @@ import type {
   WorkspaceData,
 } from '../../types/app'
 import { getRenameInputKeyAction } from '../../navigation/rename-draft'
+import { SortIcon } from './SortIcon'
 
 type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
 
@@ -68,6 +69,7 @@ type TopBarProps = {
   onSetTrashSubTabId: (subTabId: string | null) => void
   onOpenContextMenuForTrashTab: (event: MouseEvent<HTMLButtonElement>, trashParent: TrashParentBucket) => void
   onAddTab: () => void
+  onOpenParentSortModal: () => void
   onExitArrangeMode: () => void
   onEndStageManager: () => void
   onCloseSettingsView: () => void
@@ -129,6 +131,7 @@ export function TopBar({
   onSetTrashSubTabId,
   onOpenContextMenuForTrashTab,
   onAddTab,
+  onOpenParentSortModal,
   onExitArrangeMode,
   onEndStageManager,
   onCloseSettingsView,
@@ -213,6 +216,11 @@ export function TopBar({
     <header className={`tabbar ${arrangeMode.active && viewMode === 'main' ? 'is-arranging' : ''}`}>
       <div className="tabbar-row">
         <div ref={primaryTabRailRef} className="tabbar-scroll tabbar-primary" {...primaryTablistProps}>
+          {arrangeMode.active && arrangeMode.scope === 'tabs' && viewMode === 'main' && (
+            <button type="button" className="tab-sort-btn" onClick={onOpenParentSortModal} title="sort parents" aria-label="sort parents">
+              <SortIcon />
+            </button>
+          )}
           {isNoteWorkspaceView &&
             workspace.tabs.map((tab) =>
               editing?.type === 'tab' && editing.id === tab.id ? (

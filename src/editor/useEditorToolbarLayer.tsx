@@ -32,9 +32,8 @@ type UseEditorToolbarLayerOptions = {
   refreshToolbarPopoverPosition: (kind: 'heading' | 'aisles') => ToolbarPopoverPosition | null
   runActiveEditorCommand: (command: string, payload?: Record<string, unknown>) => boolean
   commitActiveEditorMarkdownNow: (editor: Editor) => void
-  insertLinkIntoActiveEditor: (label: string, url: string) => boolean
+  openSharedLinkModal: (selectedText?: string) => void
   clearActiveNoteContent: () => void
-  openNoteReferenceModal: () => void
   openCopyModalForActiveNote: () => void
   openFrontmatterModalForActiveNote: () => void
   addAisleToActiveNote: () => void
@@ -59,9 +58,8 @@ export function useEditorToolbarLayer({
   refreshToolbarPopoverPosition,
   runActiveEditorCommand,
   commitActiveEditorMarkdownNow,
-  insertLinkIntoActiveEditor,
+  openSharedLinkModal,
   clearActiveNoteContent,
-  openNoteReferenceModal,
   openCopyModalForActiveNote,
   openFrontmatterModalForActiveNote,
   addAisleToActiveNote,
@@ -114,17 +112,8 @@ export function useEditorToolbarLayer({
       pushToast('open a note before inserting a link.', 'warning')
       return
     }
-    const url = window.prompt('link url')
-    if (!url) return
     const selectedText = getCommandCapableEditor(currentEditor).getSelectedText().trim()
-    const label = window.prompt('link text', selectedText || url)
-    insertLinkIntoActiveEditor((label ?? '').trim() || url, url)
-  }
-
-  const openNoteReferenceFromToolbar = () => {
-    closeToolbarMenus()
-    setToolbarPopoverPosition({ heading: null, aisles: null })
-    openNoteReferenceModal()
+    openSharedLinkModal(selectedText)
   }
 
   const openCopyModalFromToolbar = () => {
@@ -170,7 +159,6 @@ export function useEditorToolbarLayer({
         toolbarFormatState={toolbarFormatState}
         activeHeadingLevel={activeHeadingLevel}
         toolbarShortcutFeedback={toolbarShortcutFeedback}
-        onOpenNoteReference={openNoteReferenceFromToolbar}
         onOpenCopy={openCopyModalFromToolbar}
         onOpenFrontmatter={openFrontmatterModalForActiveNote}
         onToggleAisles={toggleAisleToolbarPopover}

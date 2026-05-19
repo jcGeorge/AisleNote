@@ -97,4 +97,10 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html).toContain('indented')
     expect(html).not.toContain(BLOCK_INDENT_TOKEN)
   })
+
+  it('does not render the retired floating link prompt overlay', () => {
+    const html = renderWorkspace(new Set(['a']))
+
+    expect(html).not.toContain('class="link-prompt')
+  })
 })

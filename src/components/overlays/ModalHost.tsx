@@ -4,6 +4,7 @@ import {
   NEWLINE_OPERATION_LABELS,
   SHORTCUT_MENU_ELIGIBLE_OPERATIONS,
 } from '../../hotkeys/shortcuts'
+import { TAB_SORT_OPTIONS } from '../../arrange/tab-sort'
 import {
   FRONTMATTER_FIELD_TYPES,
   getFrontmatterDatePickerValue,
@@ -13,9 +14,25 @@ import {
   isFrontmatterComputedValueCompatibleWithFieldType,
 } from '../../frontmatter/frontmatter'
 import { buildFrontmatterRowsForNote } from '../../frontmatter/frontmatter-state'
-import { buildNoteLocationKey, listNoteLocationsForBody } from '../../notes/note-locations'
+import {
+  buildNoteLocationKey,
+  getDefaultNoteLinkLabel,
+  getNoteLocationBreadcrumbLabel,
+  listNoteLocationsForBody,
+} from '../../notes/note-locations'
 import { createId } from '../../state/workspace'
-import type { AppState, Domain, FrontmatterRowDraft, ModalState, NewlineOperationId, Space } from '../../types/app'
+import type {
+  AppState,
+  Domain,
+  FrontmatterRowDraft,
+  LinkInsertMode,
+  ModalState,
+  NewlineOperationId,
+  Space,
+  TabSortMode,
+  TabSortTarget,
+} from '../../types/app'
+import { shouldModalBackdropClose } from './modal-behavior'
 import { makeFrontmatterRowsManual, normalizeFrontmatterModalRows } from './frontmatter-modal-state'
 import { getModalText } from './modal-text'
 
@@ -30,6 +47,8 @@ type ModalHostProps = {
   onEditFrontmatterTemplate: (templateId: string) => void
   onWarn: (message: string) => void
   onError: (message: string) => void
+  onApplyTabSort: (target: TabSortTarget, mode: TabSortMode) => void
+  onLinkInsertModeChange: (mode: LinkInsertMode) => void
   onConfirm: () => void
 }
 
@@ -175,6 +194,8 @@ export function ModalHost({
   onEditFrontmatterTemplate,
   onWarn,
   onError,
+  onApplyTabSort,
+  onLinkInsertModeChange,
   onConfirm,
 }: ModalHostProps) {
   useEffect(() => {
@@ -203,8 +224,27 @@ export function ModalHost({
     modal.type === 'deduplicate-note' ||
     modal.type === 'insert-note-reference' ||
     modal.type === 'frontmatter-note' ||
+    modal.type === 'sort-tabs' ||
     modal.type === 'shortcut-menu-settings'
   const isNotePickerModal = modal.type === 'copy-note' || modal.type === 'insert-note-reference'
+
+  const setLinkModalMode = (mode: LinkInsertMode) => {
+    if (modal.type !== 'insert-note-reference' || modal.modeLocked) return
+    onLinkInsertModeChange(mode)
+    onModalChange({ ...modal, mode })
+  }
+
+  const updateLinkModalTarget = (target: NoteLocationPickerValue) => {
+    if (modal.type !== 'insert-note-reference' || modal.internalEdit) return
+    onModalChange({
+      ...modal,
+      target,
+      noteLabel:
+        modal.noteLabelTouched || modal.insertAs !== 'link'
+          ? modal.noteLabel
+          : getDefaultNoteLinkLabel(state, modal.source, target),
+    })
+  }
 
   const updateFrontmatterRows = (updater: (rows: FrontmatterRowDraft[]) => FrontmatterRowDraft[]) => {
     if (modal.type !== 'frontmatter-note') return
@@ -389,19 +429,24 @@ export function ModalHost({
     <div
       className="delete-modal-backdrop"
       onClick={() => {
-        if (modal.type !== 'frontmatter-note') onModalChange(null)
+        if (shouldModalBackdropClose(modal)) onModalChange(null)
       }}
     >
       <div
         className={`delete-modal ${isPickerModal ? 'settings-modal' : ''} ${isNotePickerModal ? 'note-picker-modal' : ''} ${
           modal.type === 'shortcut-menu-settings' ? 'shortcut-settings-modal' : ''
-        }`}
+        } ${modal.type === 'sort-tabs' ? 'sort-modal' : ''}`}
         role="dialog"
         aria-modal="true"
         onClick={(event) => event.stopPropagation()}
       >
         <h2>{modalText.title}</h2>
-        <p>{modalText.body}</p>
+        {modal.type === 'sort-tabs' && (
+          <button type="button" className="modal-close-x-btn" onClick={() => onModalChange(null)} aria-label="close sort modal">
+            X
+          </button>
+        )}
+        {modalText.body ? <p>{modalText.body}</p> : null}
         {modal.type === 'export-space' && (
           <label className="settings-modal-field">
             <span>space</span>
@@ -468,35 +513,122 @@ export function ModalHost({
         )}
         {modal.type === 'insert-note-reference' && (
           <div className="note-reference-modal">
-            <div className="note-reference-mode" role="group" aria-label="Reference type">
+            <div className="note-reference-mode" role="group" aria-label="Link type">
               <button
                 type="button"
-                className={`note-reference-mode-btn ${modal.insertAs === 'link' ? 'is-active' : ''}`}
-                onClick={() => onModalChange({ ...modal, insertAs: 'link', editingTokenId: undefined })}
-                disabled={Boolean(modal.editingTokenId)}
+                className={`note-reference-mode-btn ${modal.mode === 'note' ? 'is-active' : ''}`}
+                onClick={() => setLinkModalMode('note')}
+                disabled={modal.modeLocked}
               >
-                link a note
+                note
               </button>
               <button
                 type="button"
-                className={`note-reference-mode-btn ${modal.insertAs === 'context' ? 'is-active' : ''}`}
-                onClick={() => onModalChange({ ...modal, insertAs: 'context' })}
+                className={`note-reference-mode-btn ${modal.mode === 'url' ? 'is-active' : ''}`}
+                onClick={() => setLinkModalMode('url')}
+                disabled={modal.modeLocked}
               >
-                note preview
+                url
               </button>
             </div>
-            <NoteLocationPicker
-              domains={domainsForPickers}
-              noteBodies={state.noteBodies}
-              value={modal.target}
-              includeAisles={modal.insertAs === 'context'}
-              allowAllAisles
-              onChange={(target: NoteLocationPickerValue) => onModalChange({ ...modal, target })}
-            />
+            {modal.mode === 'note' && (
+              <>
+                <div className="note-reference-mode" role="group" aria-label="Note reference type">
+                  <button
+                    type="button"
+                    className={`note-reference-mode-btn ${modal.insertAs === 'link' ? 'is-active' : ''}`}
+                    onClick={() => onModalChange({ ...modal, insertAs: 'link', editingTokenId: undefined })}
+                    disabled={Boolean(modal.editingTokenId || modal.internalEdit)}
+                  >
+                    link
+                  </button>
+                  <button
+                    type="button"
+                    className={`note-reference-mode-btn ${modal.insertAs === 'context' ? 'is-active' : ''}`}
+                    onClick={() => onModalChange({ ...modal, insertAs: 'context' })}
+                    disabled={Boolean(modal.internalEdit)}
+                  >
+                    preview
+                  </button>
+                </div>
+                {modal.internalEdit ? (
+                  <div className="note-reference-locked-target">
+                    <span>note</span>
+                    <strong>{getNoteLocationBreadcrumbLabel(state, modal.target)}</strong>
+                  </div>
+                ) : (
+                  <NoteLocationPicker
+                    domains={domainsForPickers}
+                    noteBodies={state.noteBodies}
+                    value={modal.target}
+                    includeAisles={modal.insertAs === 'context'}
+                    allowAllAisles
+                    onChange={updateLinkModalTarget}
+                  />
+                )}
+                {modal.insertAs === 'link' && (
+                  <label className="settings-modal-field">
+                    <span>label</span>
+                    <input
+                      type="text"
+                      className="settings-text-input"
+                      value={modal.noteLabel}
+                      onChange={(event) =>
+                        onModalChange({
+                          ...modal,
+                          noteLabel: event.target.value,
+                          noteLabelTouched: true,
+                        })
+                      }
+                    />
+                  </label>
+                )}
+              </>
+            )}
+            {modal.mode === 'url' && (
+              <div className="url-reference-fields">
+                <label className="settings-modal-field">
+                  <span>url</span>
+                  <input
+                    type="text"
+                    className="settings-text-input"
+                    value={modal.url}
+                    placeholder="https://example.com"
+                    onChange={(event) => onModalChange({ ...modal, url: event.target.value })}
+                  />
+                </label>
+                <label className="settings-modal-field">
+                  <span>label</span>
+                  <input
+                    type="text"
+                    className="settings-text-input"
+                    value={modal.urlLabel}
+                    onChange={(event) => onModalChange({ ...modal, urlLabel: event.target.value })}
+                  />
+                </label>
+              </div>
+            )}
           </div>
         )}
         {modal.type === 'shortcut-menu-settings' && (
           <ShortcutMenuSettings operations={shortcutMenuOperations} onChange={onShortcutMenuOperationsChange} />
+        )}
+        {modal.type === 'sort-tabs' && (
+          <div className="sort-modal-options" role="group" aria-label={modalText.title}>
+            {TAB_SORT_OPTIONS.map((option) => (
+              <button
+                key={option.mode}
+                type="button"
+                className="sort-modal-option-btn"
+                onClick={() => {
+                  onApplyTabSort(modal.target, option.mode)
+                  onModalChange(null)
+                }}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         )}
         {modal.type === 'frontmatter-note' && (
           <div className="frontmatter-note-modal">
@@ -706,27 +838,29 @@ export function ModalHost({
             </div>
           </div>
         )}
-        <div className="delete-modal-actions">
-          <button type="button" className="btn btn-sm btn-outline-light modal-cancel-btn" onClick={() => onModalChange(null)}>
-            cancel
-          </button>
-          <button
-            type="button"
-            className={`btn btn-sm ${
-              modal.type === 'delete-target' || modal.type === 'trash-delete-all' ? 'app-danger-btn' : 'modal-primary-btn'
-            }`}
-            disabled={modal.type === 'deduplicate-note' && modal.keepLocationKeys.length === 0}
-            onClick={() => {
-              if (modal.type === 'delete-target' && modal.target.type === 'space' && state.spaces.length <= 1) {
-                onModalChange(null)
-                return
-              }
-              onConfirm()
-            }}
-          >
-            {modalText.action}
-          </button>
-        </div>
+        {modal.type !== 'sort-tabs' && (
+          <div className="delete-modal-actions">
+            <button type="button" className="btn btn-sm btn-outline-light modal-cancel-btn" onClick={() => onModalChange(null)}>
+              cancel
+            </button>
+            <button
+              type="button"
+              className={`btn btn-sm ${
+                modal.type === 'delete-target' || modal.type === 'trash-delete-all' ? 'app-danger-btn' : 'modal-primary-btn'
+              }`}
+              disabled={modal.type === 'deduplicate-note' && modal.keepLocationKeys.length === 0}
+              onClick={() => {
+                if (modal.type === 'delete-target' && modal.target.type === 'space' && state.spaces.length <= 1) {
+                  onModalChange(null)
+                  return
+                }
+                onConfirm()
+              }}
+            >
+              {modalText.action}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

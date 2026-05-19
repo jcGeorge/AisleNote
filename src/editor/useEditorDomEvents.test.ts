@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  getPastedHttpUrl,
+  getPastedUrlLink,
   getEditorPageMovementForEvent,
   getMultiLineDeleteInputForBeforeInputType,
   getPlainTextPointerChromeClosePlan,
@@ -70,6 +72,44 @@ describe('editor DOM events', () => {
     expect(getMultiLineDeleteInputForBeforeInputType('deleteContentForward')).toEqual({ type: 'delete' })
     expect(getMultiLineDeleteInputForBeforeInputType('deleteContentBackward')).toEqual({ type: 'backspace' })
     expect(getMultiLineDeleteInputForBeforeInputType('insertText')).toBeNull()
+  })
+
+  it('detects single http URLs from pasted text', () => {
+    expect(getPastedHttpUrl('https://www.apheresis.org/page/ASFA_Membership')).toBe(
+      'https://www.apheresis.org/page/ASFA_Membership',
+    )
+    expect(getPastedHttpUrl('  http://example.com/path  ')).toBe('http://example.com/path')
+    expect(getPastedHttpUrl('www.apheresis.org/page/ASFA_Membership')).toBe(
+      'https://www.apheresis.org/page/ASFA_Membership',
+    )
+    expect(getPastedHttpUrl('apheresis.org/page/ASFA_Membership')).toBe(
+      'https://apheresis.org/page/ASFA_Membership',
+    )
+    expect(getPastedHttpUrl('example.com')).toBe('https://example.com')
+    expect(getPastedHttpUrl('sub.example.org?member=true')).toBe('https://sub.example.org?member=true')
+  })
+
+  it('keeps pasted bare web addresses as the link label while adding an href protocol', () => {
+    expect(getPastedUrlLink('  www.example.com/path  ')).toEqual({
+      label: 'www.example.com/path',
+      url: 'https://www.example.com/path',
+    })
+    expect(getPastedUrlLink('example.org/path')).toEqual({
+      label: 'example.org/path',
+      url: 'https://example.org/path',
+    })
+  })
+
+  it('ignores non-url and non-http pasted text', () => {
+    expect(getPastedHttpUrl('normal text')).toBeNull()
+    expect(getPastedHttpUrl('ftp://example.com')).toBeNull()
+    expect(getPastedHttpUrl('https://example.com one-more-token')).toBeNull()
+    expect(getPastedHttpUrl('www')).toBeNull()
+    expect(getPastedHttpUrl('www.example')).toBeNull()
+    expect(getPastedHttpUrl('example .com')).toBeNull()
+    expect(getPastedHttpUrl('example. com')).toBeNull()
+    expect(getPastedHttpUrl('exam ple.com')).toBeNull()
+    expect(getPastedHttpUrl('example.net')).toBeNull()
   })
 
   it('normalizes page up and page down keyboard events', () => {
