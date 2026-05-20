@@ -8,7 +8,12 @@ import {
   listNoteLocationsForBody,
   updateNoteLocationBody,
 } from '../notes/note-locations'
+import { removeContextReferencesForNoteLocationsFromAppState } from '../notes/note-references'
 import { applyNoteCopyToState } from './note-copy'
+import {
+  getNotePreviewCleanupTargetsForDeleteTarget,
+  getNotePreviewCleanupTargetsForTrash,
+} from './delete-preview-cleanup'
 import { removeSpaceFromActiveDomain } from '../state/domains'
 import { createId, createTab, createTimestamp } from '../state/workspace'
 import { TRASH_HOME_ID } from '../trash/trash-model'
@@ -72,6 +77,20 @@ export const useAppOverlayActions = ({
   pushToast,
 }: UseAppOverlayActionsParams) => {
   const activeSpace = state.spaces.find((space) => space.id === activeSpaceId) ?? state.spaces[0]
+
+  const getActiveSpaceSnapshot = () =>
+    stateRef.current.spaces.find((space) => space.id === activeSpaceId) ?? stateRef.current.spaces[0] ?? activeSpace
+
+  const removeNotePreviewsForLocations = (locations: NoteLocation[]) => {
+    if (locations.length === 0) return
+    setState((previous) => {
+      const nextState = removeContextReferencesForNoteLocationsFromAppState(previous, locations)
+      if (nextState !== previous) {
+        stateRef.current = nextState
+      }
+      return nextState
+    })
+  }
 
   const openContextMenuForTab = (event: MouseEvent<HTMLButtonElement>, tabId: string) => {
     if (viewMode !== 'main') return
@@ -184,6 +203,13 @@ export const useAppOverlayActions = ({
   const deleteTarget = (target: DeleteTarget, permanent: boolean) => {
     saveActiveCursorBeforeNavigation()
     let nextToastMessage: string | null = null
+    const cleanupSpace = getActiveSpaceSnapshot()
+    const previewCleanupTargets = getNotePreviewCleanupTargetsForDeleteTarget(
+      cleanupSpace.data,
+      stateRef.current.activeDomainId,
+      cleanupSpace.id,
+      target,
+    )
 
     if (target.type === 'space') {
       deleteSpace(target.spaceId)
@@ -310,6 +336,7 @@ export const useAppOverlayActions = ({
     if (nextToastMessage) {
       pushToast(nextToastMessage, 'success')
     }
+    removeNotePreviewsForLocations(previewCleanupTargets)
   }
 
   const deleteFromContext = () => {
@@ -459,7 +486,15 @@ export const useAppOverlayActions = ({
   }
 
   const deleteAllTrash = () => {
+    saveActiveCursorBeforeNavigation()
+    const cleanupSpace = getActiveSpaceSnapshot()
+    const previewCleanupTargets = getNotePreviewCleanupTargetsForTrash(
+      cleanupSpace.data,
+      stateRef.current.activeDomainId,
+      cleanupSpace.id,
+    )
     updateActiveSpaceData((data) => ({ ...data, deletedTabs: [], deletedSubTabs: [] }))
+    removeNotePreviewsForLocations(previewCleanupTargets)
     setTrashTabId(TRASH_HOME_ID)
     setTrashSubTabId(null)
   }

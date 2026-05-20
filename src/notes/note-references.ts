@@ -96,6 +96,42 @@ export function removeContextTokenById(markdown: string, tokenId: string): strin
   })
 }
 
+export function removeContextReferencesForNoteLocationsFromMarkdown(
+  markdown: string,
+  deletedLocations: readonly NoteLocation[],
+): string {
+  if (deletedLocations.length === 0) return markdown
+  const deletedLocationKeys = new Set(deletedLocations.map((location) => buildNoteLocationKey(location)))
+  return markdown.replace(NOTE_CONTEXT_REFERENCE_RE, (token, encoded) => {
+    const payload = decodeContextPayload(encoded)
+    return payload && deletedLocationKeys.has(buildNoteLocationKey(payload.target)) ? '' : token
+  })
+}
+
+export function removeContextReferencesForNoteLocationsFromAppState(
+  sourceState: AppState,
+  deletedLocations: readonly NoteLocation[],
+): AppState {
+  if (deletedLocations.length === 0) return sourceState
+
+  let changed = false
+  const noteBodies = sourceState.noteBodies.map((body) => {
+    let bodyChanged = false
+    const aisles = body.aisles.map((aisle) => {
+      const markdown = removeContextReferencesForNoteLocationsFromMarkdown(aisle.markdown, deletedLocations)
+      if (markdown === aisle.markdown) return aisle
+      bodyChanged = true
+      return { ...aisle, markdown }
+    })
+
+    if (!bodyChanged) return body
+    changed = true
+    return { ...body, aisles }
+  })
+
+  return changed ? { ...sourceState, noteBodies } : sourceState
+}
+
 export function buildInternalNoteUrl(noteBodyId: string, target: NoteLocation): string {
   const params = new URLSearchParams({
     domainId: target.domainId,
