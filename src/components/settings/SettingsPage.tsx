@@ -28,6 +28,7 @@ import {
   getFrontmatterComputedValuesForFieldType,
   isFrontmatterComputedValueCompatibleWithFieldType,
 } from '../../frontmatter/frontmatter'
+import { getTipDefinition } from '../../tips/tips'
 import type {
   AppState,
   AppTheme,
@@ -42,6 +43,7 @@ import type {
   ShortcutId,
   StorageProfileStatus,
   TableControlTargetMode,
+  TipId,
 } from '../../types/app'
 import { CustomThemeColorPicker } from './CustomThemeColorPicker'
 
@@ -123,6 +125,7 @@ type SettingsPageProps = {
   onShowParentHomeTabChange: (enabled: boolean) => void
   onTableAddTargetModeChange: (mode: TableControlTargetMode) => void
   onTableDeleteTargetModeChange: (mode: TableControlTargetMode) => void
+  onTipEnabledChange: (tipId: TipId, enabled: boolean) => void
   onSettingsFrontmatterTemplateChange: (templateId: string) => void
   onCreateFrontmatterTemplate: () => void
   onUpdateFrontmatterTemplate: (templateId: string, patch: Partial<Pick<FrontmatterTemplate, 'name'>>) => void
@@ -182,6 +185,7 @@ export function SettingsPage({
   onShowParentHomeTabChange,
   onTableAddTargetModeChange,
   onTableDeleteTargetModeChange,
+  onTipEnabledChange,
   onSettingsFrontmatterTemplateChange,
   onCreateFrontmatterTemplate,
   onUpdateFrontmatterTemplate,
@@ -811,6 +815,39 @@ export function SettingsPage({
               'delete table row or column',
               tableDeleteTargetModeDraft,
               onTableDeleteTargetModeChange,
+            )}
+          </div>
+        )}
+
+        {section === 'tips' && (
+          <div className="settings-section-panel" role="tabpanel" aria-label="tips settings">
+            {state.ui.seenTipIds.length === 0 ? (
+              <p className="settings-help">tips you have seen will appear here.</p>
+            ) : (
+              <div className="settings-hotkeys-list">
+                {state.ui.seenTipIds.map((tipId) => {
+                  const tip = getTipDefinition(tipId)
+                  const enabled = !state.ui.disabledTipIds.includes(tipId)
+                  return (
+                    <div key={tipId} className="settings-hotkey-row settings-tip-row">
+                      <div className="settings-tip-copy">
+                        <span className="settings-hotkey-label">{tip.label}</span>
+                        <span className="settings-help">{tip.message}</span>
+                      </div>
+                      <div className="form-check form-switch settings-switch">
+                        <input
+                          className="form-check-input"
+                          type="checkbox"
+                          role="switch"
+                          checked={enabled}
+                          aria-label={`${tip.label} tip enabled`}
+                          onChange={(event) => onTipEnabledChange(tipId, event.target.checked)}
+                        />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             )}
           </div>
         )}

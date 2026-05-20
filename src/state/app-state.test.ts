@@ -287,15 +287,32 @@ describe('app state normalization', () => {
   it('normalizes persisted settings section memory', () => {
     const valid = parseSavedState(JSON.stringify({ ui: { settingsSection: 'visuals' } }))
     const misc = parseSavedState(JSON.stringify({ ui: { settingsSection: 'misc' } }))
+    const tips = parseSavedState(JSON.stringify({ ui: { settingsSection: 'tips' } }))
     const toolbar = parseSavedState(JSON.stringify({ ui: { settingsSection: 'toolbar' } }))
     const invalid = parseSavedState(JSON.stringify({ ui: { settingsSection: 'unknown' } }))
     const missing = parseSavedState(JSON.stringify({ ui: {} }))
 
     expect(valid.ui.settingsSection).toBe('visuals')
     expect(misc.ui.settingsSection).toBe('misc')
+    expect(tips.ui.settingsSection).toBe('tips')
     expect(toolbar.ui.settingsSection).toBe('toolbar')
     expect(invalid.ui.settingsSection).toBe('hotkeys')
     expect(missing.ui.settingsSection).toBe('hotkeys')
+  })
+
+  it('normalizes persisted tip settings', () => {
+    const valid = parseSavedState(JSON.stringify({
+      ui: {
+        seenTipIds: ['task-undo', 'bad-tip', 'task-undo', 'tab-create-after-rename', 'aisle-shortcut'],
+        disabledTipIds: ['tab-create-after-rename', 'unknown'],
+      },
+    }))
+    const missing = parseSavedState(JSON.stringify({ ui: {} }))
+
+    expect(valid.ui.seenTipIds).toEqual(['task-undo', 'tab-create-after-rename', 'aisle-shortcut'])
+    expect(valid.ui.disabledTipIds).toEqual(['tab-create-after-rename'])
+    expect(missing.ui.seenTipIds).toEqual([])
+    expect(missing.ui.disabledTipIds).toEqual([])
   })
 
   it('normalizes persisted table control target modes', () => {

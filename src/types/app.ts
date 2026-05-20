@@ -25,8 +25,9 @@ export type ShortcutId =
   | 'cycleParentTabPrev'
   | 'cycleSubTabNext'
   | 'cycleSubTabPrev'
-export type SettingsSection = 'data' | 'frontmatter' | 'hotkeys' | 'misc' | 'shortcuts' | 'toolbar' | 'visuals'
+export type SettingsSection = 'data' | 'frontmatter' | 'hotkeys' | 'misc' | 'shortcuts' | 'tips' | 'toolbar' | 'visuals'
 export type TableControlTargetMode = 'active-cell' | 'bottom-right'
+export type TipId = 'task-undo' | 'tab-create-after-rename' | 'aisle-shortcut'
 
 export type NewlineOperationId =
   | 'normalNewLine'
@@ -234,6 +235,8 @@ export type AppState = {
     settingsSection: SettingsSection
     customThemePalette: CustomThemePalette | null
     noteCursorLocations: Record<string, NoteCursorLocation>
+    seenTipIds: TipId[]
+    disabledTipIds: TipId[]
   }
 }
 

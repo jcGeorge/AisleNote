@@ -116,6 +116,8 @@ const createTestState = (): AppState => {
       settingsSection: 'hotkeys',
       customThemePalette: null,
       noteCursorLocations: {},
+      seenTipIds: [],
+      disabledTipIds: [],
     },
   }
 }

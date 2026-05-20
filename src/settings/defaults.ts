@@ -7,6 +7,7 @@ import type {
   TableControlTargetMode,
 } from '../types/app'
 import { normalizeNoteCursorLocations } from '../notes/note-cursors'
+import { normalizeTipIds } from '../tips/tips'
 
 export const DEFAULT_AUTO_REMOVE_DAYS = 7
 export type BuiltInAppTheme = Exclude<AppTheme, 'custom'>
@@ -18,6 +19,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   'hotkeys',
   'misc',
   'shortcuts',
+  'tips',
   'toolbar',
   'visuals',
 ]
@@ -35,6 +37,8 @@ export const DEFAULT_UI_SETTINGS: AppState['ui'] = {
   settingsSection: DEFAULT_SETTINGS_SECTION,
   customThemePalette: null,
   noteCursorLocations: {},
+  seenTipIds: [],
+  disabledTipIds: [],
 }
 
 export const CUSTOM_THEME_PALETTE_SLOTS: CustomThemePaletteSlot[] = [
@@ -211,5 +215,7 @@ export function normalizeUiSettings(raw: unknown): AppState['ui'] {
     settingsSection: normalizeSettingsSection(obj.settingsSection),
     customThemePalette: normalizeCustomThemePalette(obj.customThemePalette),
     noteCursorLocations: normalizeNoteCursorLocations(obj.noteCursorLocations),
+    seenTipIds: normalizeTipIds(obj.seenTipIds),
+    disabledTipIds: normalizeTipIds(obj.disabledTipIds),
   }
 }

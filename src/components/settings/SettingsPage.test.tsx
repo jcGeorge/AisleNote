@@ -60,6 +60,8 @@ function createState(): AppState {
       settingsSection: 'hotkeys',
       customThemePalette: null,
       noteCursorLocations: {},
+      seenTipIds: [],
+      disabledTipIds: [],
     },
   }
 }
@@ -129,6 +131,7 @@ function renderSettingsPage(
       onShowParentHomeTabChange={() => undefined}
       onTableAddTargetModeChange={() => undefined}
       onTableDeleteTargetModeChange={() => undefined}
+      onTipEnabledChange={() => undefined}
       onSettingsFrontmatterTemplateChange={() => undefined}
       onCreateFrontmatterTemplate={() => undefined}
       onUpdateFrontmatterTemplate={() => undefined}
@@ -156,7 +159,8 @@ describe('frontmatter settings page', () => {
     expect(html.indexOf('>frontmatter</button>')).toBeLessThan(html.indexOf('>hotkeys</button>'))
     expect(html.indexOf('>hotkeys</button>')).toBeLessThan(html.indexOf('>misc</button>'))
     expect(html.indexOf('>misc</button>')).toBeLessThan(html.indexOf('>shortcuts</button>'))
-    expect(html.indexOf('>shortcuts</button>')).toBeLessThan(html.indexOf('>toolbar</button>'))
+    expect(html.indexOf('>shortcuts</button>')).toBeLessThan(html.indexOf('>tips</button>'))
+    expect(html.indexOf('>tips</button>')).toBeLessThan(html.indexOf('>toolbar</button>'))
     expect(html.indexOf('>toolbar</button>')).toBeLessThan(html.indexOf('>visuals</button>'))
   })
 
@@ -217,6 +221,27 @@ describe('frontmatter settings page', () => {
 
     expect(html).toContain('aria-selected="true" class="settings-section-tab is-active">toolbar</button>')
     expect(html).toContain('role="tabpanel" aria-label="toolbar settings"')
+  })
+
+  it('renders an empty tips settings panel before any tips are seen', () => {
+    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'tips' })
+
+    expect(html).toContain('aria-selected="true" class="settings-section-tab is-active">tips</button>')
+    expect(html).toContain('tips you have seen will appear here.')
+    expect(html).not.toContain('task undo')
+  })
+
+  it('renders only seen tips with enabled state', () => {
+    const state = createState()
+    state.ui.seenTipIds = ['task-undo']
+    state.ui.disabledTipIds = ['task-undo']
+    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'tips', state })
+
+    expect(html).toContain('task undo')
+    expect(html).toContain('Cmd+Z')
+    expect(html).toContain('aria-label="task undo tip enabled"')
+    expect(html).not.toContain('tab creation')
+    expect(html).not.toContain('checked=""')
   })
 
   it('renders draft template changes behind explicit save controls', () => {

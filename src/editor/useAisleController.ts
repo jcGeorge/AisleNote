@@ -21,6 +21,7 @@ import type {
   ToastTone,
   ViewMode,
 } from '../types/app'
+import type { AisleAddTipSource } from '../tips/tips'
 import {
   canApplyAisleStructuralEntryToAisles,
   createAisleStructuralHistoryEntry,
@@ -58,6 +59,7 @@ type UseAisleControllerParams = {
   saveActiveCursorLocation: () => void
   getNormalizedEditorMarkdown: (editor: Editor) => string
   pushToast: (message: string, tone?: ToastTone, durationMs?: number) => void
+  onAisleAddedForTips: (source: AisleAddTipSource) => void
 }
 
 export const useAisleController = ({
@@ -85,6 +87,7 @@ export const useAisleController = ({
   saveActiveCursorLocation,
   getNormalizedEditorMarkdown,
   pushToast,
+  onAisleAddedForTips,
 }: UseAisleControllerParams) => {
   const [aisleEditModalOpen, setAisleEditModalOpen] = useState(false)
   const structuralUndoStackRef = useRef<AisleStructuralHistoryEntry[]>([])
@@ -220,7 +223,7 @@ export const useAisleController = ({
 
   const addAisleToActiveNote = (
     markdown = '',
-    options: { beforeSnapshot?: AisleStructuralSnapshot | null; recordHistory?: boolean } = {},
+    options: { beforeSnapshot?: AisleStructuralSnapshot | null; recordHistory?: boolean; source?: AisleAddTipSource } = {},
   ) => {
     if (!activeNoteBodyId) return
     const currentAisleCount = activeNoteBody?.aisles.length ?? 0
@@ -270,6 +273,7 @@ export const useAisleController = ({
     setActiveAisleId(newAisle.id)
     pendingScrollToAisleIdRef.current = newAisle.id
     pendingFocusToAisleIdRef.current = newAisle.id
+    onAisleAddedForTips(options.source ?? 'ui')
     closeAisleEditModal()
   }
 

@@ -28,6 +28,63 @@
   animation: toastFadeIn 160ms ease both;
 }
 
+.app-tip-layer {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 0.55rem;
+  align-items: flex-end;
+  justify-content: flex-end;
+  pointer-events: none;
+  z-index: 10001;
+}
+
+.app-tip-card {
+  position: relative;
+  width: min(24rem, calc(100vw - 2rem));
+  margin: 0;
+  padding: 0.78rem 2.35rem 0.78rem 0.95rem;
+  border: 1px solid var(--toast-border);
+  border-left: 4px solid var(--toast-warning);
+  border-radius: 0.65rem;
+  background: var(--toast-bg);
+  color: var(--toast-text);
+  box-shadow: var(--toast-shadow);
+  text-align: left;
+  font-size: var(--ui-font-label);
+  line-height: 1.3;
+  overflow-wrap: break-word;
+  pointer-events: auto;
+  animation: toastFadeIn 160ms ease both;
+}
+
+.app-tip-card p {
+  margin: 0;
+}
+
+.app-tip-dismiss {
+  position: absolute;
+  top: 0.38rem;
+  right: 0.42rem;
+  display: inline-grid;
+  width: 1.55rem;
+  height: 1.55rem;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: inherit;
+  font-size: 1.05em;
+  line-height: 1;
+}
+
+.app-tip-dismiss:hover {
+  border-color: var(--toast-border);
+  background: color-mix(in srgb, var(--toast-text) 10%, transparent);
+}
+
 .app-toast-success {
   border-left-color: var(--toast-success);
 }

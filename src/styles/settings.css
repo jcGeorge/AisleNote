@@ -223,6 +223,20 @@
   color: var(--settings-hotkey-label-text);
 }
 
+.settings-tip-row {
+  align-items: flex-start;
+}
+
+.settings-tip-copy {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.settings-tip-copy .settings-help {
+  margin: 0 !important;
+}
+
 .settings-slider-wrap {
   min-width: 220px;
   display: flex;

@@ -126,6 +126,8 @@ function createFrontmatterState(): AppState {
       settingsSection: 'hotkeys',
       customThemePalette: null,
       noteCursorLocations: {},
+      seenTipIds: [],
+      disabledTipIds: [],
     },
   }
 }

@@ -93,6 +93,8 @@ function makeState(): AppState {
       settingsSection: 'hotkeys',
       customThemePalette: null,
       noteCursorLocations: {},
+      seenTipIds: [],
+      disabledTipIds: [],
     },
   }
 }

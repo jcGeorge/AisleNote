@@ -25,6 +25,7 @@ import type {
   ShortcutId,
   Space,
   TableControlTargetMode,
+  TipId,
   ViewMode,
 } from '../types/app'
 import {
@@ -240,6 +241,23 @@ export function useSettingsController({
         tableDeleteTargetMode: mode,
       },
     }))
+  }
+
+  const updateTipEnabledSetting = (tipId: TipId, enabled: boolean) => {
+    commitImmediateSettingsState((previous) => {
+      const disabledTipIds = enabled
+        ? previous.ui.disabledTipIds.filter((id) => id !== tipId)
+        : previous.ui.disabledTipIds.includes(tipId)
+          ? previous.ui.disabledTipIds
+          : [...previous.ui.disabledTipIds, tipId]
+      return {
+        ...previous,
+        ui: {
+          ...previous.ui,
+          disabledTipIds,
+        },
+      }
+    })
   }
 
   const updateTabButtonScaleSetting = (rawValue: string) => {
@@ -584,6 +602,7 @@ export function useSettingsController({
     updateShowParentHomeTabSetting,
     updateTableAddTargetModeSetting,
     updateTableDeleteTargetModeSetting,
+    updateTipEnabledSetting,
     updateTabButtonScaleSetting,
     updateNoteFontScaleSetting,
     updateThemeSetting,

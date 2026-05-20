@@ -78,6 +78,8 @@ function createModalTextState(): AppState {
       settingsSection: 'hotkeys',
       customThemePalette: null,
       noteCursorLocations: {},
+      seenTipIds: [],
+      disabledTipIds: [],
     },
   }
 }

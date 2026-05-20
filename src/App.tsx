@@ -21,6 +21,7 @@ import { SubTabRail } from './components/navigation/SubTabRail'
 import { TopBar } from './components/navigation/TopBar'
 import { ContextMenuHost } from './components/overlays/ContextMenuHost'
 import { ModalHost } from './components/overlays/ModalHost'
+import { TipHost } from './components/overlays/TipHost'
 import { ToastHost } from './components/overlays/ToastHost'
 import { appendToastToStack } from './components/overlays/toast-stack'
 import { SettingsPage } from './components/settings/SettingsPage'
@@ -55,12 +56,11 @@ import { useNoteCursorPersistence, usePendingNoteCursorRestore } from './editor/
 import {
   COMPLETED_TASK_UNDO_HINT_COOLDOWN_MS,
   COMPLETED_TASK_UNDO_HINT_DETECTION_MS,
-  COMPLETED_TASK_UNDO_HINT_MESSAGE,
-  COMPLETED_TASK_UNDO_HINT_TOAST_DURATION_MS,
 } from './editor/task-behavior'
 import { exportAppData, type ExportScope } from './export/export-data'
 import { buildFrontmatterModalDraftForNote } from './frontmatter/frontmatter-state'
 import { useGlobalHotkeys } from './hotkeys/useGlobalHotkeys'
+import { formatFixedNewlineShortcutLabel } from './hotkeys/shortcuts'
 import {
   mergeLeadingIndentsFromWysiwyg,
   normalizeEmptyHeadingMarkersFromWysiwyg,
@@ -105,6 +105,16 @@ import {
 import { useStageManagerController } from './stage-manager/useStageManagerController'
 import { usePersistentAppState } from './storage/usePersistentAppState'
 import { useStorageProfileController } from './storage/useStorageProfileController'
+import {
+  getAisleShortcutTipHotkeyLabel,
+  getAisleShortcutTipMessage,
+  getNextAisleShortcutTipCount,
+  getNextTabCreateTipSequence,
+  getTipDefinition,
+  type AisleAddTipSource,
+  type TabCreateTipSequence,
+  type TabCreateTipRenameType,
+} from './tips/tips'
 import { TRASH_HOME_ID } from './trash/trash-model'
 import { useTrashSelection } from './trash/useTrashSelection'
 import type {
@@ -119,6 +129,7 @@ import type {
   PendingCreatedEdit,
   TabSortMode,
   TabSortTarget,
+  TipId,
   ToastState,
   ToastTone,
   ViewMode,
@@ -178,6 +189,10 @@ type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
 
 let renameInputMeasureContext: CanvasRenderingContext2D | null = null
 
+function getCurrentTimestamp() {
+  return Date.now()
+}
+
 function App() {
   const { state, setState, stateRef, flushPendingPersistence, commitAppStateNow } = usePersistentAppState()
   const [viewMode, setViewMode] = useState<ViewMode>('main')
@@ -194,6 +209,7 @@ function App() {
   const [trashSubTabId, setTrashSubTabId] = useState<string | null>(null)
   const [activeAisleId, setActiveAisleId] = useState<string>('')
   const [toasts, setToasts] = useState<ToastState[]>([])
+  const [visibleTips, setVisibleTips] = useState<TipId[]>([])
 
   const editorMountRef = useRef<HTMLDivElement | null>(null)
   const editorRef = useRef<Editor | null>(null)
@@ -226,6 +242,9 @@ function App() {
   >(() => false)
   const completedTaskDeleteUndoCandidateRef = useRef<{ beforeMarkdown: string; deletedAt: number } | null>(null)
   const completedTaskUndoToastAtRef = useRef(0)
+  const dismissedTipIdsThisSessionRef = useRef<Set<TipId>>(new Set())
+  const tabCreateTipSequenceRef = useRef<TabCreateTipSequence | null>(null)
+  const aisleShortcutTipCountRef = useRef(0)
   const activeSpaceIdRef = useRef<string>('')
   const activeDomainIdRef = useRef<string>('')
   const activeTabIdRef = useRef<string>('')
@@ -265,7 +284,7 @@ function App() {
   }
 
   function createToastId() {
-    const id = Math.max(Date.now(), toastIdRef.current + 1)
+    const id = Math.max(getCurrentTimestamp(), toastIdRef.current + 1)
     toastIdRef.current = id
     return id
   }
@@ -324,6 +343,10 @@ function App() {
     activeAisleId,
   })
 
+  useEffect(() => {
+    aisleShortcutTipCountRef.current = 0
+  }, [activeNoteLocationKey])
+
   const settingsController = useSettingsController({
     state,
     stateRef,
@@ -355,6 +378,51 @@ function App() {
     }
   }
 
+  const showTip = (tipId: TipId) => {
+    const currentState = stateRef.current
+    if (currentState.ui.disabledTipIds.includes(tipId)) return
+    if (dismissedTipIdsThisSessionRef.current.has(tipId)) return
+
+    setVisibleTips((currentTips) => (currentTips.includes(tipId) ? currentTips : [...currentTips, tipId]))
+
+    if (currentState.ui.seenTipIds.includes(tipId)) return
+    setState((previous) => {
+      if (previous.ui.seenTipIds.includes(tipId)) return previous
+      return {
+        ...previous,
+        ui: {
+          ...previous.ui,
+          seenTipIds: [...previous.ui.seenTipIds, tipId],
+        },
+      }
+    })
+  }
+
+  const dismissTip = (tipId: TipId) => {
+    dismissedTipIdsThisSessionRef.current.add(tipId)
+    setVisibleTips((currentTips) => currentTips.filter((id) => id !== tipId))
+  }
+
+  useEffect(() => {
+    setVisibleTips((currentTips) => currentTips.filter((tipId) => !state.ui.disabledTipIds.includes(tipId)))
+  }, [state.ui.disabledTipIds])
+
+  const trackTabCreateRenameForTips = (type: TabCreateTipRenameType, wasPendingCreated: boolean) => {
+    const result = getNextTabCreateTipSequence(tabCreateTipSequenceRef.current, { type, wasPendingCreated })
+    tabCreateTipSequenceRef.current = result.sequence
+    if (result.shouldShowTip) {
+      showTip('tab-create-after-rename')
+    }
+  }
+
+  const trackAisleAddForTips = (source: AisleAddTipSource) => {
+    const result = getNextAisleShortcutTipCount(aisleShortcutTipCountRef.current, { source })
+    aisleShortcutTipCountRef.current = result.count
+    if (result.shouldShowTip) {
+      showTip('aisle-shortcut')
+    }
+  }
+
   const storageProfileController = useStorageProfileController({
     pushToast,
     beforeStorageAction: () => flushStorageActionStateRef.current(),
@@ -364,7 +432,7 @@ function App() {
   const trackCompletedTaskQuickDelete = (beforeMarkdown: string) => {
     completedTaskDeleteUndoCandidateRef.current = {
       beforeMarkdown: normalizeMarkdownForPersistence(beforeMarkdown),
-      deletedAt: Date.now(),
+      deletedAt: getCurrentTimestamp(),
     }
   }
 
@@ -372,7 +440,7 @@ function App() {
     const candidate = completedTaskDeleteUndoCandidateRef.current
     if (!candidate) return
 
-    const now = Date.now()
+    const now = getCurrentTimestamp()
     if (now - candidate.deletedAt > COMPLETED_TASK_UNDO_HINT_DETECTION_MS) {
       completedTaskDeleteUndoCandidateRef.current = null
       return
@@ -384,7 +452,7 @@ function App() {
     if (now - completedTaskUndoToastAtRef.current < COMPLETED_TASK_UNDO_HINT_COOLDOWN_MS) return
 
     completedTaskUndoToastAtRef.current = now
-    pushToast(COMPLETED_TASK_UNDO_HINT_MESSAGE, 'warning', COMPLETED_TASK_UNDO_HINT_TOAST_DURATION_MS)
+    showTip('task-undo')
   }
 
   useEffect(() => {
@@ -565,6 +633,7 @@ function App() {
     saveActiveCursorLocation,
     getNormalizedEditorMarkdown,
     pushToast,
+    onAisleAddedForTips: trackAisleAddForTips,
   })
   const aisleEditModalOpen = aisleController.aisleEditModalOpen
   const openAisleEditModal = aisleController.openAisleEditModal
@@ -678,6 +747,7 @@ function App() {
     exitArrangeMode,
     saveActiveCursorBeforeNavigation,
     updateActiveSpaceData,
+    onCommittedTabRenameForTips: trackTabCreateRenameForTips,
     setTrashTabId,
     setTrashSubTabId,
   })
@@ -1185,7 +1255,7 @@ function App() {
     syncToolbarFormatState()
     if (operation === 'aisle') {
       closeImageTools()
-      addAisleToActiveNote(result.aisleMarkdown ?? '', { beforeSnapshot: beforeAisleSnapshot })
+      addAisleToActiveNote(result.aisleMarkdown ?? '', { beforeSnapshot: beforeAisleSnapshot, source: 'shortcut' })
     }
     return true
   }
@@ -1796,7 +1866,7 @@ function App() {
     openFrontmatterModalForActiveNote,
     addAisleToActiveNote: () => {
       closeImageTools()
-      addAisleToActiveNote()
+      addAisleToActiveNote('', { source: 'ui' })
     },
     openAisleEditModal: () => {
       closeImageTools()
@@ -1889,6 +1959,19 @@ function App() {
         }`
       : 'theme-custom-derived'
     : ''
+  const visibleTipDefinitions = visibleTips
+    .filter((tipId) => !state.ui.disabledTipIds.includes(tipId))
+    .map((tipId) => {
+      const tip = getTipDefinition(tipId)
+      if (tipId !== 'aisle-shortcut') return tip
+      const shortcutLabel = getAisleShortcutTipHotkeyLabel(state.hotkeys.newlineShortcuts, (shortcutId) =>
+        formatFixedNewlineShortcutLabel(shortcutId, isMacPlatform),
+      )
+      return {
+        ...tip,
+        message: getAisleShortcutTipMessage(shortcutLabel),
+      }
+    })
 
   return (
     <main
@@ -2074,6 +2157,7 @@ function App() {
           onShowParentHomeTabChange={settingsController.updateShowParentHomeTabSetting}
           onTableAddTargetModeChange={settingsController.updateTableAddTargetModeSetting}
           onTableDeleteTargetModeChange={settingsController.updateTableDeleteTargetModeSetting}
+          onTipEnabledChange={settingsController.updateTipEnabledSetting}
           onSettingsFrontmatterTemplateChange={settingsController.setSettingsFrontmatterTemplate}
           onCreateFrontmatterTemplate={settingsController.createFrontmatterTemplate}
           onUpdateFrontmatterTemplate={settingsController.updateFrontmatterTemplate}
@@ -2313,6 +2397,8 @@ function App() {
         onApply={applyAisleEditDraftToActiveNote}
         onWarn={(message) => pushToast(message, 'warning')}
       />
+
+      <TipHost tips={visibleTipDefinitions} onDismissTip={dismissTip} />
 
       <ToastHost
         toasts={toasts}

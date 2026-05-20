@@ -301,6 +301,8 @@ function buildRootManifest(
               settingsSection: 'hotkeys',
               customThemePalette: null,
               noteCursorLocations: {},
+              seenTipIds: [],
+              disabledTipIds: [],
             },
       frontmatter: isRecord(appState.frontmatter) ? appState.frontmatter : undefined,
     },
