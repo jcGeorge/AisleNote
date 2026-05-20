@@ -21,7 +21,7 @@
   color: var(--toast-text);
   box-shadow: var(--toast-shadow);
   text-align: left;
-  font-size: 0.94rem;
+  font-size: var(--ui-font-label);
   line-height: 1.25;
   overflow-wrap: break-word;
   pointer-events: auto;

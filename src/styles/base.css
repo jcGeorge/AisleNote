@@ -1,6 +1,18 @@
 .app-shell {
   --tab-button-scale: 1;
   --tab-control-height: calc(32px * var(--tab-button-scale));
+  --app-text-scale: var(--note-font-scale, 1);
+  --ui-font-2xs: calc(0.72rem * var(--app-text-scale, 1));
+  --ui-font-xs: calc(0.75rem * var(--app-text-scale, 1));
+  --ui-font-compact: calc(0.78rem * var(--app-text-scale, 1));
+  --ui-font-small: calc(0.82rem * var(--app-text-scale, 1));
+  --ui-font-hint: calc(0.84rem * var(--app-text-scale, 1));
+  --ui-font-muted: calc(0.86rem * var(--app-text-scale, 1));
+  --ui-font-menu: calc(0.88rem * var(--app-text-scale, 1));
+  --ui-font-control: calc(0.9rem * var(--app-text-scale, 1));
+  --ui-font-label: calc(0.94rem * var(--app-text-scale, 1));
+  --ui-font-body: calc(1rem * var(--app-text-scale, 1));
+  --ui-font-title: calc(1.15rem * var(--app-text-scale, 1));
 
   /* App foundation */
   --app-bg: #0b1528;
@@ -354,6 +366,7 @@
   --image-tool-btn-text: #e9f1ff;
   --image-tool-btn-hover-bg: #20385f;
   --image-tool-btn-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
+  --table-tool-btn-shadow: 3px 3px 10px rgba(0, 0, 0, 0.28);
   --image-tool-handle-border: #c9d5e7;
   --image-tool-handle-bg: #101621;
   --image-tool-handle-stripe: #f3f7ff;
@@ -788,6 +801,7 @@
   --image-tool-btn-text: var(--app-text-bright);
   --image-tool-btn-hover-bg: color-mix(in srgb, var(--custom-palette-surface) 68%, var(--custom-palette-primary));
   --image-tool-btn-shadow: 0 6px 16px color-mix(in srgb, var(--custom-palette-canvas) 32%, transparent);
+  --table-tool-btn-shadow: 3px 3px 10px color-mix(in srgb, var(--custom-palette-canvas) 32%, transparent);
   --image-tool-handle-border: var(--custom-palette-primary);
   --image-tool-handle-bg: var(--custom-palette-canvas);
   --image-tool-handle-stripe: var(--app-text-bright);

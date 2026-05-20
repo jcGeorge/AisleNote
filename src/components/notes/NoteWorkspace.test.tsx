@@ -21,6 +21,7 @@ function renderWorkspace(mountedAisleIds: Set<string>) {
       toolbar={null}
       headingPopover={null}
       imageToolsOverlay={null}
+      tableControlsOverlay={null}
       mountedAisleIds={mountedAisleIds}
       getPreviewMarkdownForAisle={(aisle) => aisle.markdown}
       onRootChange={() => undefined}
@@ -58,6 +59,7 @@ describe('NoteWorkspace aisle mounting', () => {
         toolbar={null}
         headingPopover={null}
         imageToolsOverlay={null}
+        tableControlsOverlay={null}
         mountedAisleIds={new Set()}
         getPreviewMarkdownForAisle={(aisle) => aisle.markdown}
         onRootChange={() => undefined}
@@ -83,6 +85,7 @@ describe('NoteWorkspace aisle mounting', () => {
         toolbar={null}
         headingPopover={null}
         imageToolsOverlay={null}
+        tableControlsOverlay={null}
         mountedAisleIds={new Set()}
         getPreviewMarkdownForAisle={(aisle) => aisle.markdown}
         onRootChange={() => undefined}

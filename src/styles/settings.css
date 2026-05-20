@@ -31,7 +31,7 @@
   background: var(--settings-control-bg);
   color: var(--settings-control-text);
   padding: 0.42rem 0.48rem;
-  font-size: 0.9rem;
+  font-size: 0.9em;
 }
 
 .settings-text-input:focus {
@@ -46,7 +46,7 @@
 
 .settings-help {
   margin-bottom: 0.8rem !important;
-  font-size: calc(0.95rem * var(--note-font-scale, 1)) !important;
+  font-size: 0.95em !important;
   color: var(--settings-help-text) !important;
 }
 
@@ -182,7 +182,7 @@
 
 .frontmatter-template-field-header {
   color: var(--settings-help-text);
-  font-size: calc(0.72rem * var(--note-font-scale, 1));
+  font-size: 0.72em;
   letter-spacing: 0;
   text-transform: uppercase;
 }
@@ -333,7 +333,7 @@
 
 .frontmatter-boolean-switch-label {
   min-width: 2.4rem;
-  font-size: calc(0.82rem * var(--note-font-scale, 1));
+  font-size: 0.82em;
   line-height: 1;
   color: inherit;
 }
@@ -407,7 +407,7 @@
 .custom-theme-slot-label {
   min-width: 0;
   color: var(--settings-card-body-text);
-  font-size: calc(0.95rem * var(--note-font-scale, 1));
+  font-size: 0.95em;
   line-height: 1.15;
   text-transform: lowercase;
 }
@@ -693,6 +693,7 @@
   background: var(--toast-bg);
   color: var(--toast-text);
   box-shadow: var(--toast-shadow);
+  font-size: var(--ui-font-body);
 }
 
 .storage-status-banner span {

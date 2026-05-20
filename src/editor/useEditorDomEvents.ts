@@ -163,6 +163,8 @@ export function isEditorPointerChromeTarget(target: Element | null): boolean {
         '.inline-crop-box',
         '.inline-crop-edge-handle',
         '.inline-crop-resize-handle',
+        '.table-tools',
+        '.table-reorder-marker',
         '.link-prompt',
       ].join(', '),
     ),

@@ -35,6 +35,42 @@
   -webkit-user-select: none !important;
 }
 
+.table-reorder-pending .toastui-editor-contents table,
+.table-reorder-pending .toastui-editor-contents table *,
+.table-reorder-active .toastui-editor-contents table,
+.table-reorder-active .toastui-editor-contents table * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+.table-reorder-active .toastui-editor-contents table {
+  cursor: grabbing !important;
+}
+
+.toastui-editor-contents th.table-active-cell,
+.toastui-editor-contents td.table-active-cell,
+.toastui-editor .ProseMirror th.table-active-cell,
+.toastui-editor .ProseMirror td.table-active-cell {
+  box-shadow: inset 0 0 0 2px var(--task-reorder-marker);
+}
+
+.toastui-editor-contents th.table-reorder-source-cell,
+.toastui-editor-contents td.table-reorder-source-cell,
+.toastui-editor .ProseMirror th.table-reorder-source-cell,
+.toastui-editor .ProseMirror td.table-reorder-source-cell {
+  opacity: 0.52;
+  background: var(--task-reorder-source-bg);
+  box-shadow: var(--task-reorder-source-shadow);
+}
+
+.toastui-editor-contents th.table-reorder-target-cell,
+.toastui-editor-contents td.table-reorder-target-cell,
+.toastui-editor .ProseMirror th.table-reorder-target-cell,
+.toastui-editor .ProseMirror td.table-reorder-target-cell {
+  background: var(--task-reorder-target-bg);
+  box-shadow: var(--task-reorder-target-shadow);
+}
+
 .toastui-editor-contents li.task-reorder-source {
   opacity: 0.34;
   border-radius: 0.35rem;
@@ -61,7 +97,7 @@
   background: var(--task-reorder-ghost-bg);
   color: var(--task-reorder-ghost-text);
   box-shadow: var(--task-reorder-ghost-shadow);
-  font-size: 0.84rem;
+  font-size: var(--ui-font-hint);
   line-height: 1.2;
   pointer-events: none;
   white-space: nowrap;
@@ -108,4 +144,68 @@
   height: 2px;
   background: var(--task-reorder-marker);
   box-shadow: none;
+}
+
+.table-reorder-marker {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 2590;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 80ms ease;
+}
+
+.table-reorder-marker.is-visible {
+  opacity: 1;
+}
+
+.table-reorder-marker-row {
+  height: 14px;
+}
+
+.table-reorder-marker-row::before,
+.table-reorder-marker-row::after,
+.table-reorder-marker-column::before,
+.table-reorder-marker-column::after {
+  content: '';
+  position: absolute;
+  border-radius: 999px;
+  background: var(--task-reorder-marker);
+}
+
+.table-reorder-marker-row::before {
+  top: 50%;
+  left: 0;
+  width: 9px;
+  height: 14px;
+  transform: translateY(-50%);
+}
+
+.table-reorder-marker-row::after {
+  top: 50%;
+  left: 7px;
+  right: 0;
+  height: 2px;
+  transform: translateY(-50%);
+}
+
+.table-reorder-marker-column {
+  width: 14px;
+}
+
+.table-reorder-marker-column::before {
+  left: 50%;
+  top: 0;
+  width: 14px;
+  height: 9px;
+  transform: translateX(-50%);
+}
+
+.table-reorder-marker-column::after {
+  left: 50%;
+  top: 7px;
+  bottom: 0;
+  width: 2px;
+  transform: translateX(-50%);
 }

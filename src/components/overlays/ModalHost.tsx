@@ -513,44 +513,44 @@ export function ModalHost({
         )}
         {modal.type === 'insert-note-reference' && (
           <div className="note-reference-modal">
-            <div className="note-reference-mode" role="group" aria-label="Link type">
-              <button
-                type="button"
-                className={`note-reference-mode-btn ${modal.mode === 'note' ? 'is-active' : ''}`}
-                onClick={() => setLinkModalMode('note')}
-                disabled={modal.modeLocked}
-              >
-                note
-              </button>
-              <button
-                type="button"
-                className={`note-reference-mode-btn ${modal.mode === 'url' ? 'is-active' : ''}`}
-                onClick={() => setLinkModalMode('url')}
-                disabled={modal.modeLocked}
-              >
-                url
-              </button>
-            </div>
+            {!modal.modeLocked && (
+              <div className="note-reference-mode" role="group" aria-label="Link type">
+                <button
+                  type="button"
+                  className={`note-reference-mode-btn ${modal.mode === 'note' ? 'is-active' : ''}`}
+                  onClick={() => setLinkModalMode('note')}
+                >
+                  note
+                </button>
+                <button
+                  type="button"
+                  className={`note-reference-mode-btn ${modal.mode === 'url' ? 'is-active' : ''}`}
+                  onClick={() => setLinkModalMode('url')}
+                >
+                  url
+                </button>
+              </div>
+            )}
             {modal.mode === 'note' && (
               <>
-                <div className="note-reference-mode" role="group" aria-label="Note reference type">
-                  <button
-                    type="button"
-                    className={`note-reference-mode-btn ${modal.insertAs === 'link' ? 'is-active' : ''}`}
-                    onClick={() => onModalChange({ ...modal, insertAs: 'link', editingTokenId: undefined })}
-                    disabled={Boolean(modal.editingTokenId || modal.internalEdit)}
-                  >
-                    link
-                  </button>
-                  <button
-                    type="button"
-                    className={`note-reference-mode-btn ${modal.insertAs === 'context' ? 'is-active' : ''}`}
-                    onClick={() => onModalChange({ ...modal, insertAs: 'context' })}
-                    disabled={Boolean(modal.internalEdit)}
-                  >
-                    preview
-                  </button>
-                </div>
+                {!modal.internalEdit && !modal.editingTokenId && (
+                  <div className="note-reference-mode" role="group" aria-label="Note reference type">
+                    <button
+                      type="button"
+                      className={`note-reference-mode-btn ${modal.insertAs === 'link' ? 'is-active' : ''}`}
+                      onClick={() => onModalChange({ ...modal, insertAs: 'link', editingTokenId: undefined })}
+                    >
+                      link
+                    </button>
+                    <button
+                      type="button"
+                      className={`note-reference-mode-btn ${modal.insertAs === 'context' ? 'is-active' : ''}`}
+                      onClick={() => onModalChange({ ...modal, insertAs: 'context' })}
+                    >
+                      preview
+                    </button>
+                  </div>
+                )}
                 {modal.internalEdit ? (
                   <div className="note-reference-locked-target">
                     <span>note</span>

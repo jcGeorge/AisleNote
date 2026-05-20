@@ -19,6 +19,7 @@ describe('SharedEditorToolbar block quote and block indent controls', () => {
         onToggleAisles={noop}
         onToggleHeading={noop}
         onCommand={noop}
+        onHistory={noop}
         onInsertImage={noop}
         onInsertWebLink={noop}
         onClear={noop}
@@ -32,6 +33,12 @@ describe('SharedEditorToolbar block quote and block indent controls', () => {
     expect(html).toContain('title="Remove block indent"')
     expect(html).toContain('aria-label="Remove block indent"')
     expect(html).toContain('aria-label="Insert link"')
+    expect(html).toContain('title="Undo"')
+    expect(html).toContain('aria-label="Undo"')
+    expect(html).toContain('title="Redo"')
+    expect(html).toContain('aria-label="Redo"')
+    expect(html).toContain('editor-history-toolbar-btn-undo')
+    expect(html).toContain('editor-history-toolbar-btn-redo')
     expect(html).not.toContain('note-link-toolbar-btn')
   })
 })

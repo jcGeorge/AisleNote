@@ -105,6 +105,7 @@
   padding: 0.45rem 0.2rem 0.3rem;
   border-top: 1px solid var(--app-border);
   background: var(--app-surface);
+  font-size: var(--ui-font-body);
   max-height: 42%;
   overflow: auto;
 }
@@ -171,7 +172,7 @@
   background: transparent;
   color: var(--app-text);
   font: inherit;
-  font-size: 1rem;
+  font-size: 1em;
   font-weight: 700;
   text-align: left;
   overflow: hidden;
@@ -180,7 +181,7 @@
 }
 
 .note-context-widget .context-bar-title {
-  font-size: 1.35rem;
+  font-size: 1.35em;
   font-weight: 800;
   line-height: 1.2;
 }
@@ -198,7 +199,7 @@
   border-radius: 0.25rem;
   background: var(--stage-action-bg);
   color: var(--stage-action-text);
-  font-size: 0.75rem;
+  font-size: 0.75em;
 }
 
 .context-bar-icon-btn.is-active {
@@ -274,7 +275,7 @@
   display: grid;
   gap: 0.25rem;
   color: var(--app-muted-text);
-  font-size: 0.78rem;
+  font-size: 0.78em;
 }
 
 .context-preview-editor-host {
@@ -324,7 +325,7 @@
   color: var(--context-menu-item-text);
   padding: 0.38rem 0.45rem;
   font: inherit;
-  font-size: 0.86rem;
+  font-size: 0.86em;
   text-align: left;
 }
 
@@ -345,37 +346,37 @@
 }
 
 .note-heading-choice-level-1 {
-  font-size: 1.35rem;
+  font-size: 1.35em;
   font-weight: 800;
 }
 
 .note-heading-choice-level-2 {
-  font-size: 1.2rem;
+  font-size: 1.2em;
   font-weight: 760;
 }
 
 .note-heading-choice-level-3 {
-  font-size: 1.08rem;
+  font-size: 1.08em;
   font-weight: 720;
 }
 
 .note-heading-choice-level-4 {
-  font-size: 1rem;
+  font-size: 1em;
   font-weight: 700;
 }
 
 .note-heading-choice-level-5 {
-  font-size: 0.92rem;
+  font-size: 0.92em;
   font-weight: 700;
 }
 
 .note-heading-choice-level-6 {
-  font-size: 0.86rem;
+  font-size: 0.86em;
   font-weight: 700;
 }
 
 .note-heading-choice-paragraph {
-  font-size: 0.86rem;
+  font-size: 0.86em;
   font-weight: 400;
 }
 
@@ -425,6 +426,7 @@
   background: var(--context-menu-bg);
   color: var(--context-menu-item-text);
   box-shadow: var(--context-menu-shadow);
+  font-size: var(--ui-font-body);
 }
 
 .note-aisle-scroll {
@@ -521,6 +523,7 @@
   background: var(--modal-bg);
   color: var(--modal-text);
   box-shadow: var(--context-menu-shadow);
+  font-size: var(--ui-font-body);
 }
 
 .aisle-edit-list {
@@ -570,6 +573,10 @@
   flex-wrap: wrap;
 }
 
+.aisle-edit-modal .btn {
+  font-size: 0.875em;
+}
+
 .aisle-edit-modal-primary-actions {
   display: inline-flex;
   align-items: center;
@@ -588,7 +595,7 @@
   background: var(--app-surface);
   color: var(--modal-body-text);
   padding: 0.48rem 0.55rem;
-  font-size: 0.84rem;
+  font-size: 0.84em;
   line-height: 1.35;
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -656,7 +663,7 @@
 .aisle-edit-preview table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.72rem;
+  font-size: var(--ui-font-2xs);
 }
 
 .aisle-edit-preview th,
@@ -747,6 +754,7 @@
   background: var(--context-menu-bg);
   color: var(--context-menu-item-text);
   box-shadow: var(--context-menu-shadow);
+  font-size: var(--ui-font-body);
 }
 
 .shortcut-menu-item {
@@ -762,7 +770,7 @@
   color: var(--context-menu-item-text);
   padding: 0.32rem 0.42rem;
   font: inherit;
-  font-size: 0.88rem;
+  font-size: 0.88em;
   text-align: left;
 }
 
@@ -782,14 +790,14 @@
   border-radius: 0.25rem;
   background: var(--stage-action-bg);
   color: var(--stage-action-text);
-  font-size: 0.75rem;
+  font-size: 0.75em;
   font-weight: 700;
 }
 
 .shortcut-menu-empty {
   padding: 0.45rem;
   color: var(--app-text-subtle);
-  font-size: 0.86rem;
+  font-size: 0.86em;
 }
 
 .editor-lock {
@@ -817,6 +825,7 @@
   background: transparent;
   box-shadow: none;
   pointer-events: auto;
+  font-size: var(--ui-font-body);
 }
 
 .image-tool-btn {
@@ -824,7 +833,7 @@
   background: var(--image-tool-btn-bg);
   color: var(--image-tool-btn-text);
   border-radius: 0.36rem;
-  font-size: 0.92rem;
+  font-size: 0.92em;
   line-height: 1.1;
   padding: 0.22rem 0.62rem;
   min-width: 2.45rem;
@@ -959,6 +968,46 @@
   transform: rotate(-45deg);
 }
 
+.table-tools {
+  position: fixed;
+  z-index: 2150;
+  display: inline-flex;
+  gap: 0.25rem;
+  pointer-events: auto;
+  font-size: var(--ui-font-body);
+}
+
+.table-tools-rows {
+  flex-direction: column;
+}
+
+.table-tools-columns {
+  flex-direction: row;
+}
+
+.table-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.625rem;
+  height: 1.625rem;
+  border: 1px solid var(--image-tool-btn-border);
+  border-radius: 0.32rem;
+  background: var(--image-tool-btn-bg);
+  color: var(--image-tool-btn-text);
+  box-shadow: var(--table-tool-btn-shadow);
+  font: inherit;
+  font-size: 0.95em;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0;
+}
+
+.table-tool-btn:hover,
+.table-tool-btn:focus-visible {
+  background: var(--image-tool-btn-hover-bg);
+}
+
 .image-resize-handle {
   position: fixed;
   z-index: 2150;
@@ -1081,6 +1130,7 @@
   border-radius: 0.42rem;
   background: var(--link-prompt-bg);
   box-shadow: var(--link-prompt-shadow);
+  font-size: var(--ui-font-body);
 }
 
 .link-prompt.is-url-editable {
@@ -1094,7 +1144,7 @@
   color: var(--link-prompt-input-text);
   border-radius: 0.32rem;
   padding: 0.2rem 0.35rem;
-  font-size: 0.78rem;
+  font-size: 0.78em;
   width: 11rem;
 }
 
@@ -1112,7 +1162,7 @@
   background: var(--link-prompt-btn-bg);
   color: var(--link-prompt-btn-text);
   border-radius: 0.32rem;
-  font-size: 0.75rem;
+  font-size: 0.75em;
   line-height: 1.1;
   padding: 0.2rem 0.38rem;
 }

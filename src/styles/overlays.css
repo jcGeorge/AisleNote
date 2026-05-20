@@ -2,6 +2,7 @@
   position: fixed;
   z-index: 2000;
   min-width: 145px;
+  font-size: var(--ui-font-body);
   background: var(--context-menu-bg);
   border: 1px solid var(--context-menu-border);
   border-radius: 0.45rem;
@@ -17,7 +18,7 @@
   text-align: left;
   padding: 0.35rem 0.45rem;
   border-radius: 0.3rem;
-  font-size: 0.85rem;
+  font-size: 0.85em;
 }
 
 .tab-context-delete:hover {
@@ -55,15 +56,16 @@
   padding: 0.85rem 0.9rem;
   color: var(--modal-text);
   position: relative;
+  font-size: var(--ui-font-body);
 }
 
 .delete-modal h2 {
-  font-size: 1rem;
+  font-size: 1em;
   margin: 0 0 0.35rem;
 }
 
 .delete-modal p {
-  font-size: 0.88rem;
+  font-size: 0.88em;
   margin: 0 0 0.75rem;
   color: var(--modal-body-text);
 }
@@ -73,7 +75,7 @@
   gap: 0.5rem;
   align-items: flex-start;
   margin: 0 0 0.8rem;
-  font-size: 0.86rem;
+  font-size: 0.86em;
   color: var(--modal-muted-text);
 }
 
@@ -86,6 +88,10 @@
   justify-content: space-between;
   align-items: center;
   gap: 0.45rem;
+}
+
+.delete-modal-actions .btn {
+  font-size: 0.875em;
 }
 
 .modal-cancel-btn {
@@ -131,7 +137,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.82rem;
+  font-size: 0.82em;
   line-height: 1;
 }
 
@@ -153,7 +159,7 @@
   color: var(--settings-control-text);
   padding: 0.48rem 0.58rem;
   text-align: left;
-  font-size: 0.9rem;
+  font-size: 0.9em;
 }
 
 .sort-modal-option-btn:hover {
@@ -170,7 +176,7 @@
   gap: 0.35rem;
   margin: 0 0 0.85rem;
   color: var(--modal-muted-text);
-  font-size: 0.86rem;
+  font-size: 0.86em;
 }
 
 .settings-select-input {
@@ -180,7 +186,7 @@
   background: var(--settings-control-bg);
   color: var(--settings-control-text);
   padding: 0.42rem 0.48rem;
-  font-size: 0.9rem;
+  font-size: 0.9em;
 }
 
 .settings-select-input:focus {
@@ -207,7 +213,7 @@
   gap: 0.35rem;
   margin: 0;
   color: var(--modal-text);
-  font-size: 0.82rem;
+  font-size: 0.82em;
   white-space: nowrap;
 }
 
@@ -224,7 +230,7 @@
   background: var(--settings-control-bg);
   color: var(--modal-body-text);
   padding: 0.5rem 0.6rem;
-  font-size: 0.84rem;
+  font-size: 0.84em;
   line-height: 1.35;
 }
 
@@ -244,7 +250,7 @@
 
 .frontmatter-row-header {
   color: var(--modal-muted-text);
-  font-size: 0.72rem;
+  font-size: 0.72em;
   letter-spacing: 0;
   text-transform: uppercase;
 }
@@ -385,7 +391,7 @@
   background: var(--stage-action-bg);
   color: var(--stage-action-text);
   padding: 0.25rem 0.5rem;
-  font-size: 0.8rem;
+  font-size: 0.8em;
 }
 
 .note-picker-aisle-choice.is-active {
@@ -414,7 +420,7 @@
   gap: 0.5rem;
   padding: 0.4rem 0.2rem;
   color: var(--app-text);
-  font-size: 0.88rem;
+  font-size: 0.88em;
 }
 
 .note-copy-modal {
@@ -431,10 +437,6 @@
   display: grid;
   grid-template-columns: 7.5rem minmax(0, 1fr);
   gap: 0.75rem;
-}
-
-.note-picker-modal .delete-modal-actions .btn {
-  font-size: calc(0.875rem * var(--note-font-scale, 1));
 }
 
 .note-picker-modal .delete-modal-actions .modal-cancel-btn {
@@ -528,7 +530,7 @@
   border-radius: 0.3rem;
   background: var(--stage-action-bg);
   color: var(--stage-action-text);
-  font-size: 0.82rem;
+  font-size: 0.82em;
   font-weight: 700;
 }
 
@@ -536,7 +538,7 @@
 .shortcut-menu-pool-empty,
 .shortcut-menu-pool-label {
   color: var(--modal-muted-text);
-  font-size: 0.82rem;
+  font-size: 0.82em;
 }
 
 .shortcut-menu-operation-chip {
@@ -547,7 +549,7 @@
   color: var(--stage-action-text);
   padding: 0.32rem 0.5rem;
   font: inherit;
-  font-size: 0.86rem;
+  font-size: 0.86em;
   text-align: left;
   cursor: grab;
   user-select: none;

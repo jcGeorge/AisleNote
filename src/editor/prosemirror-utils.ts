@@ -1,4 +1,5 @@
 import type { Editor } from '@toast-ui/editor'
+import { redo, undo } from 'prosemirror-history'
 import { Selection, TextSelection } from 'prosemirror-state'
 import {
   getMarkdownLinkLabel,
@@ -49,6 +50,15 @@ export function getCommandCapableEditor(editor: Editor): CommandCapableEditor {
 
 export function getWysiwygView(editor: Editor | null): any | null {
   return (editor as any)?.wwEditor?.view ?? null
+}
+
+export function runWysiwygHistory(editor: Editor | null, direction: 'undo' | 'redo'): boolean {
+  const view = getWysiwygView(editor)
+  if (!editor || !view) return false
+  const command = direction === 'undo' ? undo : redo
+  const handled = command(view.state, view.dispatch, view)
+  if (handled) editor.focus()
+  return handled
 }
 
 export function getElementFromEventTarget(target: EventTarget | null): Element | null {

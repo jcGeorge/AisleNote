@@ -1,6 +1,18 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Schema } from 'prosemirror-model'
-import { getExternalLinkRangeAtDocPosition, getNoteMentionQueryAtSelection } from './prosemirror-utils'
+import type { Editor } from '@toast-ui/editor'
+
+const historySpies = vi.hoisted(() => ({
+  redo: vi.fn(),
+  undo: vi.fn(),
+}))
+
+vi.mock('prosemirror-history', () => ({
+  redo: historySpies.redo,
+  undo: historySpies.undo,
+}))
+
+import { getExternalLinkRangeAtDocPosition, getNoteMentionQueryAtSelection, runWysiwygHistory } from './prosemirror-utils'
 
 const schema = new Schema({
   nodes: {
@@ -18,6 +30,33 @@ const schema = new Schema({
       toDOM: (mark) => ['a', { href: mark.attrs.href }, 0],
     },
   },
+})
+
+describe('wysiwyg history commands', () => {
+  beforeEach(() => {
+    historySpies.redo.mockReset()
+    historySpies.undo.mockReset()
+  })
+
+  it('runs undo against the active wysiwyg editor view', () => {
+    const view = { state: {}, dispatch: vi.fn() }
+    const editor = { wwEditor: { view }, focus: vi.fn() }
+    historySpies.undo.mockReturnValue(true)
+
+    expect(runWysiwygHistory(editor as unknown as Editor, 'undo')).toBe(true)
+    expect(historySpies.undo).toHaveBeenCalledWith(view.state, view.dispatch, view)
+    expect(editor.focus).toHaveBeenCalledOnce()
+  })
+
+  it('runs redo and leaves focus alone when history does not change', () => {
+    const view = { state: {}, dispatch: vi.fn() }
+    const editor = { wwEditor: { view }, focus: vi.fn() }
+    historySpies.redo.mockReturnValue(false)
+
+    expect(runWysiwygHistory(editor as unknown as Editor, 'redo')).toBe(false)
+    expect(historySpies.redo).toHaveBeenCalledWith(view.state, view.dispatch, view)
+    expect(editor.focus).not.toHaveBeenCalled()
+  })
 })
 
 describe('note mention query detection', () => {

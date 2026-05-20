@@ -31,6 +31,7 @@ type UseEditorToolbarLayerOptions = {
   setToolbarPopoverPosition: Dispatch<SetStateAction<Record<'heading' | 'aisles', ToolbarPopoverPosition | null>>>
   refreshToolbarPopoverPosition: (kind: 'heading' | 'aisles') => ToolbarPopoverPosition | null
   runActiveEditorCommand: (command: string, payload?: Record<string, unknown>) => boolean
+  runActiveEditorHistory: (direction: 'undo' | 'redo') => boolean
   commitActiveEditorMarkdownNow: (editor: Editor) => void
   openSharedLinkModal: (selectedText?: string) => void
   clearActiveNoteContent: () => void
@@ -57,6 +58,7 @@ export function useEditorToolbarLayer({
   setToolbarPopoverPosition,
   refreshToolbarPopoverPosition,
   runActiveEditorCommand,
+  runActiveEditorHistory,
   commitActiveEditorMarkdownNow,
   openSharedLinkModal,
   clearActiveNoteContent,
@@ -74,6 +76,13 @@ export function useEditorToolbarLayer({
   const executeToolbarCommand = (command: string, payload?: Record<string, unknown>) => {
     closeToolbarMenus()
     if (!runActiveEditorCommand(command, payload)) {
+      pushToast('open a note before using the toolbar.', 'warning')
+    }
+  }
+
+  const executeToolbarHistory = (direction: 'undo' | 'redo') => {
+    closeToolbarMenus()
+    if (!runActiveEditorHistory(direction)) {
       pushToast('open a note before using the toolbar.', 'warning')
     }
   }
@@ -164,6 +173,7 @@ export function useEditorToolbarLayer({
         onToggleAisles={toggleAisleToolbarPopover}
         onToggleHeading={toggleHeadingToolbarPopover}
         onCommand={executeToolbarCommand}
+        onHistory={executeToolbarHistory}
         onInsertImage={insertImageFromToolbar}
         onInsertWebLink={insertWebLinkFromToolbar}
         onClear={clearActiveNoteFromToolbar}

@@ -24,6 +24,7 @@ type NoteWorkspaceProps = {
   toolbar: ReactNode
   headingPopover: ReactNode
   imageToolsOverlay: ReactNode
+  tableControlsOverlay: ReactNode
   onRootChange: (node: HTMLElement | null) => void
   onAisleScroll: (scrollLeft: number) => void
   onActivateAisle: (editorKey: string) => void
@@ -42,6 +43,7 @@ export function NoteWorkspace({
   toolbar,
   headingPopover,
   imageToolsOverlay,
+  tableControlsOverlay,
   onRootChange,
   onAisleScroll,
   onActivateAisle,
@@ -58,6 +60,7 @@ export function NoteWorkspace({
       {toolbar}
       {headingPopover}
       {imageToolsOverlay}
+      {tableControlsOverlay}
       <div
         ref={aisleScrollRef}
         className="note-aisle-scroll"

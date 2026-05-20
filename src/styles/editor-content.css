@@ -2,6 +2,7 @@
   background-color: var(--editor-popup-input-bg) !important;
   color: var(--editor-text) !important;
   border: 1px solid var(--editor-popup-input-border) !important;
+  font-size: 1em !important;
 }
 
 .toastui-editor-popup-body input[type='text']:focus {

@@ -190,7 +190,7 @@
   box-shadow: var(--app-shadow-popover);
   padding: 0.25rem;
   z-index: 2100;
-  font-size: calc(1rem * var(--note-font-scale, 1));
+  font-size: var(--ui-font-body);
 }
 
 .menu-item {

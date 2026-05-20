@@ -73,6 +73,8 @@
   .toastui-editor-toolbar button.frontmatter-toolbar-btn,
   .toastui-editor-defaultUI-toolbar button.aisles-toolbar-btn,
   .toastui-editor-toolbar button.aisles-toolbar-btn,
+  .toastui-editor-defaultUI-toolbar button.editor-history-toolbar-btn,
+  .toastui-editor-toolbar button.editor-history-toolbar-btn,
   .image-tool-btn {
     width: 32px !important;
     min-width: 32px !important;

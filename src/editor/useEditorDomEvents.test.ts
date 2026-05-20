@@ -36,6 +36,8 @@ describe('editor DOM events', () => {
 
   it('treats editor chrome as special pointer targets outside normal text selection', () => {
     expect(isEditorPointerChromeTarget(fakeTarget('.image-tools'))).toBe(true)
+    expect(isEditorPointerChromeTarget(fakeTarget('.table-tools'))).toBe(true)
+    expect(isEditorPointerChromeTarget(fakeTarget('.table-reorder-marker'))).toBe(true)
     expect(isEditorPointerChromeTarget(fakeTarget('.link-prompt'))).toBe(true)
     expect(isEditorPointerChromeTarget(fakeTarget(null))).toBe(false)
   })

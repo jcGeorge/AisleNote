@@ -10,6 +10,7 @@ import { ImageToolsOverlay } from './components/editor/ImageToolsOverlay'
 import { LegacyEditorShell } from './components/editor/LegacyEditorShell'
 import { NoteMentionMenu, type NoteMentionAction } from './components/editor/NoteMentionMenu'
 import { ShortcutMenu } from './components/editor/ShortcutMenu'
+import { TableControlsOverlay } from './components/editor/TableControlsOverlay'
 import {
   getShortcutMenuKeyboardAction,
   isShortcutMenuKeyboardKey,
@@ -37,6 +38,7 @@ import {
   getCommandCapableEditor,
   getNoteMentionQueryAtSelection,
   getWysiwygView,
+  runWysiwygHistory,
   type NoteMentionQuery,
 } from './editor/prosemirror-utils'
 import { useAisleEditors } from './editor/useAisleEditors'
@@ -45,6 +47,7 @@ import { useEditorPersistence } from './editor/useEditorPersistence'
 import { useEditorToolbarLayer } from './editor/useEditorToolbarLayer'
 import { useEditorToolbarState } from './editor/useEditorToolbarState'
 import { useImageTools } from './editor/useImageTools'
+import { useTableControls } from './editor/useTableControls'
 import type { MultiLineHeadingLevel } from './editor/multiline-format-operations'
 import type { MultiLineListOperation } from './editor/multiline-list-operations'
 import { useMultilineEditing } from './editor/useMultilineEditing'
@@ -1030,6 +1033,16 @@ function App() {
   closeImageToolsRef.current = closeImageTools
   closeImageToolsIfSelectedImageMissingRef.current = closeImageToolsIfSelectedImageMissing
 
+  const tableControlsController = useTableControls({
+    visible: viewMode === 'main' && !aisleEditModalOpen,
+    editorRef,
+    editorEventRootRef,
+    commitActiveEditorMarkdownNow,
+    syncToolbarFormatState,
+  })
+  const tableControls = tableControlsController.tableControls
+  const runTableControlOperation = tableControlsController.runTableControlOperation
+
   const scheduleActiveEditorCommandCommit = (currentEditor: Editor) => {
     window.setTimeout(() => {
       if (editorRef.current === currentEditor) {
@@ -1106,6 +1119,19 @@ function App() {
       getCommandCapableEditor(currentEditor).exec(command, payload)
     }
     scheduleActiveEditorCommandCommit(currentEditor)
+    return true
+  }
+
+  const runActiveEditorHistory = (direction: 'undo' | 'redo') => {
+    const currentEditor = editorRef.current
+    if (!currentEditor) return false
+    currentEditor.focus()
+    if (runAisleStructuralHistory(direction)) return true
+    scheduleMultiLineHistoryRestore(direction)
+    scheduleAisleStructuralHistoryFallback(direction)
+    if (runWysiwygHistory(currentEditor, direction)) {
+      scheduleActiveEditorCommandCommit(currentEditor)
+    }
     return true
   }
 
@@ -1712,6 +1738,7 @@ function App() {
     setToolbarPopoverPosition,
     refreshToolbarPopoverPosition,
     runActiveEditorCommand,
+    runActiveEditorHistory,
     commitActiveEditorMarkdownNow,
     openSharedLinkModal,
     clearActiveNoteContent,
@@ -1744,11 +1771,23 @@ function App() {
     />
   )
 
+  const renderTableControlsOverlay = () => (
+    <TableControlsOverlay
+      visible={viewMode === 'main' && !aisleEditModalOpen}
+      tableControls={tableControls}
+      onAddRow={() => runTableControlOperation('add-row')}
+      onRemoveRow={() => runTableControlOperation('remove-row')}
+      onAddColumn={() => runTableControlOperation('add-column')}
+      onRemoveColumn={() => runTableControlOperation('remove-column')}
+    />
+  )
+
   const renderEditorShell = () => (
     <LegacyEditorShell
       editorReadOnly={editorReadOnly}
       editorMountRef={editorMountRef}
       imageToolsOverlay={renderImageToolsOverlay()}
+      tableControlsOverlay={renderTableControlsOverlay()}
     />
   )
 
@@ -2089,6 +2128,7 @@ function App() {
               toolbar={editorToolbarLayer.toolbar}
               headingPopover={editorToolbarLayer.popovers}
               imageToolsOverlay={renderImageToolsOverlay()}
+              tableControlsOverlay={renderTableControlsOverlay()}
               onRootChange={(node) => {
                 editorEventRootRef.current = node
               }}

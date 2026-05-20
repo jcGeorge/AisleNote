@@ -18,6 +18,7 @@ type SharedEditorToolbarProps = {
   onToggleAisles: () => void
   onToggleHeading: () => void
   onCommand: (command: string, payload?: Record<string, unknown>) => void
+  onHistory: (direction: 'undo' | 'redo') => void
   onInsertImage: () => void
   onInsertWebLink: () => void
   onClear: () => void
@@ -56,6 +57,36 @@ function ToolbarIconButton({
   )
 }
 
+function HistoryToolbarButton({
+  direction,
+  label,
+  onHistory,
+}: {
+  direction: 'undo' | 'redo'
+  label: string
+  onHistory: (direction: 'undo' | 'redo') => void
+}) {
+  return (
+    <button
+      type="button"
+      className={`editor-history-toolbar-btn editor-history-toolbar-btn-${direction}`}
+      title={label}
+      aria-label={label}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        onHistory(direction)
+      }}
+    >
+      <svg className="editor-history-toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M8 7H5v3" />
+        <path d="M5.5 9.5A7 7 0 1 1 7 17" />
+      </svg>
+    </button>
+  )
+}
+
 export function SharedEditorToolbar({
   headingButtonRef,
   aisleButtonRef,
@@ -67,6 +98,7 @@ export function SharedEditorToolbar({
   onToggleAisles,
   onToggleHeading,
   onCommand,
+  onHistory,
   onInsertImage,
   onInsertWebLink,
   onClear,
@@ -145,6 +177,10 @@ export function SharedEditorToolbar({
               <span className="aisles-toolbar-icon" aria-hidden="true" />
             </button>
           </span>
+        </div>
+        <div className="toastui-editor-toolbar-group editor-history-toolbar-group">
+          <HistoryToolbarButton direction="undo" label="Undo" onHistory={onHistory} />
+          <HistoryToolbarButton direction="redo" label="Redo" onHistory={onHistory} />
         </div>
         <div className="toastui-editor-toolbar-group note-format-toolbar-group">
           <span className="note-toolbar-menu-anchor">

@@ -213,6 +213,33 @@ describe('link modal rendering', () => {
     expect(html).toContain('note-reference-locked-target')
     expect(html).toContain('Domain &gt; Space &gt; Tab &gt; home')
     expect(html).toContain('value="Existing"')
+    expect(html).not.toContain('aria-label="Link type"')
+    expect(html).not.toContain('aria-label="Note reference type"')
+    expect(html).not.toContain('>url</button>')
+    expect(html).not.toContain('>preview</button>')
+  })
+
+  it('hides unavailable mode switches when editing an existing URL link', () => {
+    const html = renderModal({
+      type: 'insert-note-reference',
+      mode: 'url',
+      modeLocked: true,
+      insertAs: 'link',
+      source,
+      target: source,
+      noteLabel: 'Tab',
+      url: 'https://example.com',
+      urlLabel: 'Example',
+      urlEditRange: { from: 1, to: 8, href: 'https://example.com' },
+    })
+
+    expect(html).toContain('edit link')
+    expect(html).toContain('value="https://example.com"')
+    expect(html).toContain('value="Example"')
+    expect(html).not.toContain('aria-label="Link type"')
+    expect(html).not.toContain('aria-label="Note reference type"')
+    expect(html).not.toContain('>note</button>')
+    expect(html).not.toContain('>url</button>')
   })
 })
 
