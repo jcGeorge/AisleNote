@@ -5,9 +5,11 @@ import {
   getEditorPageMovementForEvent,
   getMultiLineDeleteInputForBeforeInputType,
   getPlainTextPointerChromeClosePlan,
+  getTableBoundaryCaretDirectionForEvent,
   isActiveWysiwygEditorContentTarget,
   isEditorToolbarInteractionTarget,
   isEditorPointerChromeTarget,
+  shouldSkipTableExitRepairTarget,
 } from './useEditorDomEvents'
 
 function fakeTarget(matchedSelector: string | null): Element {
@@ -40,6 +42,16 @@ describe('editor DOM events', () => {
     expect(isEditorPointerChromeTarget(fakeTarget('.table-reorder-marker'))).toBe(true)
     expect(isEditorPointerChromeTarget(fakeTarget('.link-prompt'))).toBe(true)
     expect(isEditorPointerChromeTarget(fakeTarget(null))).toBe(false)
+  })
+
+  it('skips table exit repair for interactive and table targets only', () => {
+    expect(shouldSkipTableExitRepairTarget(fakeTarget('a'))).toBe(true)
+    expect(shouldSkipTableExitRepairTarget(fakeTarget('img'))).toBe(true)
+    expect(shouldSkipTableExitRepairTarget(fakeTarget('table'))).toBe(true)
+    expect(shouldSkipTableExitRepairTarget(fakeTarget('.table-tools'))).toBe(true)
+    expect(shouldSkipTableExitRepairTarget(fakeTarget('.image-tools'))).toBe(true)
+    expect(shouldSkipTableExitRepairTarget(fakeTarget(null))).toBe(false)
+    expect(shouldSkipTableExitRepairTarget(null)).toBe(false)
   })
 
   it('does not close idle editor chrome on plain text pointerdown', () => {
@@ -139,6 +151,26 @@ describe('editor DOM events', () => {
     expect(getEditorPageMovementForEvent(fnUp)).toBe('page-up')
     expect(getEditorPageMovementForEvent(fnDown)).toBe('page-down')
     expect(getEditorPageMovementForEvent(plainUp)).toBeNull()
+  })
+
+  it('maps only plain horizontal arrows to table boundary caret movement', () => {
+    expect(getTableBoundaryCaretDirectionForEvent({ key: 'ArrowLeft', code: '' } as KeyboardEvent)).toBe('before')
+    expect(getTableBoundaryCaretDirectionForEvent({ key: '', code: 'ArrowRight' } as KeyboardEvent)).toBe('after')
+    expect(getTableBoundaryCaretDirectionForEvent({ key: 'ArrowUp', code: 'ArrowUp' } as KeyboardEvent)).toBeNull()
+    expect(
+      getTableBoundaryCaretDirectionForEvent({
+        key: 'ArrowRight',
+        code: 'ArrowRight',
+        shiftKey: true,
+      } as KeyboardEvent),
+    ).toBeNull()
+    expect(
+      getTableBoundaryCaretDirectionForEvent({
+        key: 'ArrowLeft',
+        code: 'ArrowLeft',
+        metaKey: true,
+      } as KeyboardEvent),
+    ).toBeNull()
   })
 
   it('routes normal page movement only from active wysiwyg editor content', () => {

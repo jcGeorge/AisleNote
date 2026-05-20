@@ -100,6 +100,26 @@
   tab-size: 4 !important;
 }
 
+.toastui-editor-contents table,
+.toastui-editor .ProseMirror table {
+  border-collapse: collapse !important;
+  border: 1px solid var(--editor-table-grid-border) !important;
+}
+
+.toastui-editor-contents th,
+.toastui-editor-contents td,
+.toastui-editor .ProseMirror th,
+.toastui-editor .ProseMirror td {
+  border: 1px solid var(--editor-table-grid-border) !important;
+}
+
+.toastui-editor-contents th,
+.toastui-editor .ProseMirror th {
+  font-style: inherit !important;
+  font-weight: inherit !important;
+  text-align: inherit !important;
+}
+
 .toastui-editor-contents blockquote,
 .toastui-editor .ProseMirror blockquote {
   position: relative !important;

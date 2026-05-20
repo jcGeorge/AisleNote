@@ -1,7 +1,9 @@
-import { Selection } from 'prosemirror-state'
+import { NodeSelection, Selection, TextSelection } from 'prosemirror-state'
 
 export type TableControlOperation = 'add-row' | 'remove-row' | 'add-column' | 'remove-column'
 export type TableReorderAxis = 'row' | 'column'
+export type TableBoundaryDirection = 'before' | 'after'
+export type TableRange = { tableStart: number; tableEnd: number }
 
 export type ActiveTableContext = {
   tableStart: number
@@ -47,6 +49,11 @@ type TableRectLike = {
   height: number
 }
 
+type PointLike = {
+  left: number
+  top: number
+}
+
 function clamp(value: number, min: number, max: number) {
   if (!Number.isFinite(value)) return min
   return Math.min(Math.max(value, min), Math.max(min, max))
@@ -58,6 +65,22 @@ function rectRight(rect: TableRectLike) {
 
 function rectBottom(rect: TableRectLike) {
   return rect.top + rect.height
+}
+
+export function isPointInTableRightSelectionZone(tableRect: TableRectLike, point: PointLike): boolean {
+  if (
+    !Number.isFinite(tableRect.top) ||
+    !Number.isFinite(tableRect.left) ||
+    !Number.isFinite(tableRect.width) ||
+    !Number.isFinite(tableRect.height) ||
+    tableRect.width <= 0 ||
+    tableRect.height <= 0 ||
+    !Number.isFinite(point.left) ||
+    !Number.isFinite(point.top)
+  ) {
+    return false
+  }
+  return point.left > rectRight(tableRect) && point.top >= tableRect.top && point.top <= rectBottom(tableRect)
 }
 
 function getAdjustedMoveIndex(sourceIndex: number, insertIndex: number) {
@@ -160,6 +183,16 @@ export function getActiveTableContext(view: any): ActiveTableContext | null {
   return null
 }
 
+export function getActiveTableRange(view: any): TableRange | null {
+  const context = getActiveTableContext(view)
+  return context ? { tableStart: context.tableStart, tableEnd: context.tableEnd } : null
+}
+
+export function isActiveSelectionInsideTableRange(view: any, range: TableRange): boolean {
+  const context = getActiveTableContext(view)
+  return Boolean(context && context.tableStart === range.tableStart && context.tableEnd === range.tableEnd)
+}
+
 function getDomElement(node: unknown): Element | null {
   if (node instanceof Element) return node
   if (node instanceof Text) return node.parentElement
@@ -217,6 +250,85 @@ export function getTableContextForCellElement(view: any, cell: HTMLTableCellElem
     }
   }
   return null
+}
+
+function getTableStartForElement(view: any, table: HTMLTableElement): number | null {
+  const firstCell = table.querySelector('th, td')
+  if (firstCell instanceof HTMLTableCellElement) {
+    return getTableContextForCellElement(view, firstCell)?.tableStart ?? null
+  }
+
+  if (!view?.state?.doc || typeof view.posAtDOM !== 'function') return null
+  try {
+    const position = view.posAtDOM(table, 0)
+    if (typeof position === 'number' && view.state.doc.nodeAt(position)?.type?.name === 'table') {
+      return position
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
+export function getTableSideSelectionTarget(
+  view: any,
+  point: PointLike,
+  eventTarget?: Element | null,
+): { table: HTMLTableElement; tableStart: number } | null {
+  if (!view?.dom || typeof view.dom.querySelectorAll !== 'function') return null
+  if (eventTarget?.closest('table')) return null
+
+  const tables = Array.from(view.dom.querySelectorAll('table')).filter((table): table is HTMLTableElement => {
+    return table instanceof HTMLTableElement
+  })
+  const candidates = tables
+    .map((table) => ({
+      table,
+      rect: table.getBoundingClientRect(),
+    }))
+    .filter(({ rect }) => isPointInTableRightSelectionZone(rect, point))
+    .sort((left, right) => Math.abs(point.left - rectRight(left.rect)) - Math.abs(point.left - rectRight(right.rect)))
+
+  for (const candidate of candidates) {
+    const tableStart = getTableStartForElement(view, candidate.table)
+    if (typeof tableStart === 'number') {
+      return {
+        table: candidate.table,
+        tableStart,
+      }
+    }
+  }
+
+  return null
+}
+
+export function isBlankTableSideSelectionTarget(view: any, eventTarget?: Element | null): boolean {
+  if (!view?.dom || !eventTarget) return false
+  return eventTarget === view.dom
+}
+
+export function selectTableNodeAtPosition(view: any, tableStart: number): boolean {
+  const doc = view?.state?.doc
+  const transaction = view?.state?.tr
+  if (!doc || !transaction || typeof view?.dispatch !== 'function') return false
+  const node = doc.nodeAt(tableStart)
+  if (node?.type?.name !== 'table') return false
+
+  view.dispatch(
+    transaction
+      .setSelection(NodeSelection.create(doc, tableStart))
+      .setMeta('addToHistory', false)
+      .scrollIntoView(),
+  )
+  if (typeof view.focus === 'function') {
+    view.focus()
+  }
+  return true
+}
+
+export function selectTableFromSideClick(view: any, point: PointLike, eventTarget?: Element | null): boolean {
+  const target = getTableSideSelectionTarget(view, point, eventTarget)
+  return target ? selectTableNodeAtPosition(view, target.tableStart) : false
 }
 
 export function getTableControlsOverlayPlacement(
@@ -385,19 +497,148 @@ function getCellInnerPosition(tableNode: any, tableStart: number, rowIndex: numb
   return cellStart + 2
 }
 
-function setSelectionNearPosition(transaction: any, position: number) {
+function setSelectionNearPosition(transaction: any, position: number, bias = 1) {
   const docSize = transaction.doc.content.size
   const target = clamp(position, 0, docSize)
   try {
-    transaction.setSelection(Selection.near(transaction.doc.resolve(target), 1))
+    transaction.setSelection(Selection.near(transaction.doc.resolve(target), bias))
   } catch {
     try {
-      transaction.setSelection(Selection.near(transaction.doc.resolve(Math.min(docSize, Math.max(0, target))), -1))
+      transaction.setSelection(Selection.near(transaction.doc.resolve(Math.min(docSize, Math.max(0, target))), -bias))
     } catch {
       // Leave the editor's fallback selection alone if the document is in an unusual transient state.
     }
   }
   return transaction
+}
+
+function setTextSelectionAtPosition(transaction: any, position: number, bias: number) {
+  const docSize = transaction.doc.content.size
+  const target = clamp(position, 0, docSize)
+  try {
+    transaction.setSelection(TextSelection.create(transaction.doc, target))
+  } catch {
+    try {
+      transaction.setSelection(Selection.near(transaction.doc.resolve(target), bias))
+    } catch {
+      // Leave the editor's fallback selection alone if the requested boundary cannot be resolved.
+    }
+  }
+  return transaction
+}
+
+function getSelectedTableBoundaryContext(state: any): {
+  tableStart: number
+  tableEnd: number
+  tableIndex: number
+  parentNode: any
+} | null {
+  const selection = state?.selection
+  const selectedNode = selection?.node
+  if (selectedNode?.type?.name !== 'table') return null
+  if (typeof selection.from !== 'number' || typeof selection.to !== 'number') return null
+
+  const $from = selection.$from
+  const parentNode = $from?.parent
+  if (!parentNode || typeof $from.index !== 'function') return null
+
+  return {
+    tableStart: selection.from,
+    tableEnd: selection.to,
+    tableIndex: $from.index(),
+    parentNode,
+  }
+}
+
+function getTextBlockBoundarySelectionPosition(node: any, nodeStart: number, direction: TableBoundaryDirection) {
+  return direction === 'before' ? nodeStart + Math.max(1, node.nodeSize - 1) : nodeStart + 1
+}
+
+export function moveSelectedTableBoundaryCaret(view: any, direction: TableBoundaryDirection): boolean {
+  const state = view?.state
+  if (!state || typeof view?.dispatch !== 'function') return false
+
+  const context = getSelectedTableBoundaryContext(state)
+  if (!context) return false
+
+  const siblingIndex = direction === 'before' ? context.tableIndex - 1 : context.tableIndex + 1
+  const sibling =
+    siblingIndex >= 0 && siblingIndex < context.parentNode.childCount ? context.parentNode.child(siblingIndex) : null
+  const siblingStart = direction === 'before' ? context.tableStart - (sibling?.nodeSize ?? 0) : context.tableEnd
+
+  if (sibling?.isTextblock) {
+    const selectionPosition = getTextBlockBoundarySelectionPosition(sibling, siblingStart, direction)
+    const tr = setTextSelectionAtPosition(state.tr, selectionPosition, direction === 'before' ? -1 : 1)
+    view.dispatch(tr.setMeta('addToHistory', false).scrollIntoView())
+    if (typeof view.focus === 'function') {
+      view.focus()
+    }
+    return true
+  }
+
+  const paragraphType = state.schema?.nodes?.paragraph
+  if (!paragraphType) return false
+
+  const insertPosition = direction === 'before' ? context.tableStart : context.tableEnd
+  const paragraph = paragraphType.create()
+  const tr = state.tr.insert(insertPosition, paragraph)
+  setTextSelectionAtPosition(tr, insertPosition + 1, 1)
+  view.dispatch(tr.scrollIntoView())
+  if (typeof view.focus === 'function') {
+    view.focus()
+  }
+  return true
+}
+
+function getOutsideTablePositionFromCoords(view: any, coords: { left: number; top: number }, range: TableRange): number | null {
+  if (typeof view?.posAtCoords !== 'function') return null
+  try {
+    const result = view.posAtCoords(coords)
+    const position = result?.pos
+    if (typeof position !== 'number') return null
+    return position <= range.tableStart || position >= range.tableEnd ? position : null
+  } catch {
+    return null
+  }
+}
+
+function getOutsideTablePositionFromDomTarget(view: any, target: Element | null | undefined, range: TableRange): number | null {
+  if (!target || !view?.dom?.contains?.(target) || typeof view.posAtDOM !== 'function') return null
+  if (target.closest('table')) return null
+  const blockTarget =
+    target.closest('p, h1, h2, h3, h4, h5, h6, blockquote, pre, li, ul, ol, hr') ?? target
+  try {
+    const position = view.posAtDOM(blockTarget, 0)
+    if (typeof position !== 'number') return null
+    return position <= range.tableStart || position >= range.tableEnd ? position : null
+  } catch {
+    return null
+  }
+}
+
+export function placeCaretOutsideTableAtCoords(
+  view: any,
+  coords: { left: number; top: number },
+  range: TableRange,
+  target?: Element | null,
+): boolean {
+  const transaction = view?.state?.tr
+  if (!transaction || typeof view?.dispatch !== 'function') return false
+  if (!isActiveSelectionInsideTableRange(view, range)) return false
+  if (target?.closest('table')) return false
+
+  const targetPosition =
+    getOutsideTablePositionFromCoords(view, coords, range) ??
+    getOutsideTablePositionFromDomTarget(view, target, range)
+  if (targetPosition === null) return false
+
+  const bias = targetPosition <= range.tableStart ? -1 : 1
+  setSelectionNearPosition(transaction, targetPosition, bias)
+  view.dispatch(transaction.setMeta('addToHistory', false).scrollIntoView())
+  if (typeof view.focus === 'function') {
+    view.focus()
+  }
+  return true
 }
 
 export function placeTableCaretAtCoords(

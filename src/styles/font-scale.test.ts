@@ -40,3 +40,27 @@ describe('menu font scaling styles', () => {
     expect(unscaledDeclarations).toEqual([])
   })
 })
+
+describe('table cell styles', () => {
+  it('normalizes table header cells to body cell text styling', () => {
+    const baseCss = readStyle('base.css')
+    const editorContentCss = readStyle('editor-content.css')
+    const editorShellCss = readStyle('editor-shell.css')
+
+    expect(baseCss).toContain('--editor-table-grid-border:')
+    expect(baseCss).toContain(
+      '--editor-table-grid-border: color-mix(in srgb, var(--custom-palette-border) 62%, var(--custom-palette-text));',
+    )
+    expect(editorContentCss).toContain('.toastui-editor-contents table,\n.toastui-editor .ProseMirror table')
+    expect(editorContentCss).toContain('border: 1px solid var(--editor-table-grid-border) !important;')
+    expect(editorContentCss).toContain('.toastui-editor-contents th,\n.toastui-editor .ProseMirror th')
+    expect(editorContentCss).toContain('font-style: inherit !important;')
+    expect(editorContentCss).toContain('font-weight: inherit !important;')
+    expect(editorContentCss).toContain('text-align: inherit !important;')
+    expect(editorShellCss).toContain('border: 1px solid var(--editor-table-grid-border);')
+    expect(editorShellCss).toContain('.aisle-edit-preview th')
+    expect(editorShellCss).toContain('font-style: inherit;')
+    expect(editorShellCss).toContain('font-weight: inherit;')
+    expect(editorShellCss).toContain('text-align: inherit;')
+  })
+})

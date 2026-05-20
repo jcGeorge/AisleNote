@@ -1,14 +1,20 @@
 import { Schema } from 'prosemirror-model'
-import { EditorState, TextSelection } from 'prosemirror-state'
+import { EditorState, NodeSelection, TextSelection } from 'prosemirror-state'
 import { history, undo } from 'prosemirror-history'
 import { describe, expect, it } from 'vitest'
 import {
   applyTableControlOperationToView,
   applyTableReorderOperationToView,
   getActiveTableContext,
+  getActiveTableRange,
   getTableControlsOverlayPlacement,
   getTableReorderDragDecision,
+  isBlankTableSideSelectionTarget,
+  isPointInTableRightSelectionZone,
+  moveSelectedTableBoundaryCaret,
+  placeCaretOutsideTableAtCoords,
   placeTableCaretAtCoords,
+  selectTableNodeAtPosition,
   type TableControlOperation,
   type TableReorderAxis,
 } from './table-editing'
@@ -18,6 +24,7 @@ const schema = new Schema({
     doc: { content: 'block+' },
     text: { group: 'inline' },
     paragraph: { group: 'block', content: 'inline*' },
+    thematicBreak: { group: 'block' },
     table: {
       group: 'block',
       content: 'tableHead tableBody',
@@ -95,8 +102,34 @@ function buildDoc({
   ])
 }
 
+function buildTableBlock() {
+  return buildDoc().child(0)
+}
+
+function buildDocWithBlocks(blocks: any[]) {
+  return schema.nodes.doc.create(null, blocks)
+}
+
 function getTable(doc: any) {
   return doc.childCount > 0 && doc.child(0).type.name === 'table' ? doc.child(0) : null
+}
+
+function getChildTypes(doc: any) {
+  const names: string[] = []
+  for (let index = 0; index < doc.childCount; index += 1) {
+    names.push(doc.child(index).type.name)
+  }
+  return names
+}
+
+function getFirstTableStart(doc: any) {
+  let position = 0
+  for (let index = 0; index < doc.childCount; index += 1) {
+    const child = doc.child(index)
+    if (child.type.name === 'table') return position
+    position += child.nodeSize
+  }
+  throw new Error('expected table')
 }
 
 function getBodyRows(table: any) {
@@ -147,6 +180,21 @@ function createView(doc: any, rowIndex: number, columnIndex: number, options: { 
     state: EditorState.create({
       doc,
       selection: TextSelection.create(doc, getCellTextPosition(doc, rowIndex, columnIndex)),
+      plugins: options.withHistory ? [history()] : [],
+    }),
+    dispatch(transaction: any) {
+      view.state = view.state.apply(transaction)
+    },
+  }
+  return view
+}
+
+function createTableSelectionView(doc: any, options: { withHistory?: boolean } = {}) {
+  const tableStart = getFirstTableStart(doc)
+  const view: any = {
+    state: EditorState.create({
+      doc,
+      selection: NodeSelection.create(doc, tableStart),
       plugins: options.withHistory ? [history()] : [],
     }),
     dispatch(transaction: any) {
@@ -346,6 +394,156 @@ describe('table editing controls', () => {
     view.posAtCoords = () => null
 
     expect(placeTableCaretAtCoords(view, { left: 120, top: 80 })).toBe(false)
+  })
+
+  it('detects right-side table clicks inside the table vertical band', () => {
+    const tableRect = { top: 80, left: 120, width: 220, height: 72 }
+
+    expect(isPointInTableRightSelectionZone(tableRect, { left: 344, top: 96 })).toBe(true)
+    expect(isPointInTableRightSelectionZone(tableRect, { left: 340, top: 96 })).toBe(false)
+    expect(isPointInTableRightSelectionZone(tableRect, { left: 344, top: 70 })).toBe(false)
+    expect(isPointInTableRightSelectionZone(tableRect, { left: 344, top: 153 })).toBe(false)
+  })
+
+  it('limits table side selection to blank editor surface targets', () => {
+    const editorSurface = {} as Element
+    const paragraphTarget = {} as Element
+
+    expect(isBlankTableSideSelectionTarget({ dom: editorSurface }, editorSurface)).toBe(true)
+    expect(isBlankTableSideSelectionTarget({ dom: editorSurface }, paragraphTarget)).toBe(false)
+    expect(isBlankTableSideSelectionTarget({ dom: editorSurface }, null)).toBe(false)
+  })
+
+  it('selects the whole table node for right-side table clicks', () => {
+    const view = createView(buildDoc(), 1, 0)
+
+    expect(selectTableNodeAtPosition(view, 0)).toBe(true)
+    expect(view.state.selection).toBeInstanceOf(NodeSelection)
+    expect(view.state.selection.from).toBe(0)
+    expect((view.state.selection as NodeSelection).node.type.name).toBe('table')
+  })
+
+  it('repairs a stuck table selection to an outside coordinate', () => {
+    const table = buildTableBlock()
+    const doc = buildDocWithBlocks([table, paragraph('after')])
+    const view = createView(doc, 1, 0) as any
+    const range = getActiveTableRange(view)
+    const targetPosition = table.nodeSize + 1
+    view.posAtCoords = () => ({ pos: targetPosition })
+
+    expect(range).not.toBeNull()
+    expect(placeCaretOutsideTableAtCoords(view, { left: 120, top: 240 }, range!)).toBe(true)
+    expect(view.state.selection).toBeInstanceOf(TextSelection)
+    expect(view.state.selection.from).toBe(targetPosition)
+  })
+
+  it('does not repair a table exit click after native selection already left the table', () => {
+    const table = buildTableBlock()
+    const doc = buildDocWithBlocks([table, paragraph('after')])
+    const view = createView(doc, 1, 0) as any
+    const range = getActiveTableRange(view)
+    const targetPosition = table.nodeSize + 1
+    view.state = view.state.apply(view.state.tr.setSelection(TextSelection.create(view.state.doc, targetPosition)))
+    view.posAtCoords = () => ({ pos: targetPosition })
+
+    expect(range).not.toBeNull()
+    expect(placeCaretOutsideTableAtCoords(view, { left: 120, top: 240 }, range!)).toBe(false)
+    expect(view.state.selection.from).toBe(targetPosition)
+  })
+
+  it('does not repair a table exit click when coordinates still resolve inside the table', () => {
+    const table = buildTableBlock()
+    const doc = buildDocWithBlocks([table, paragraph('after')])
+    const view = createView(doc, 1, 0) as any
+    const range = getActiveTableRange(view)
+    view.posAtCoords = () => ({ pos: getCellTextPosition(doc, 1, 0) })
+
+    expect(range).not.toBeNull()
+    expect(placeCaretOutsideTableAtCoords(view, { left: 120, top: 240 }, range!)).toBe(false)
+  })
+
+  it('can repair a table exit click from an outside DOM target when coordinate mapping is stale', () => {
+    const table = buildTableBlock()
+    const doc = buildDocWithBlocks([table, paragraph('after')])
+    const view = createView(doc, 1, 0) as any
+    const range = getActiveTableRange(view)
+    const paragraphTarget = {
+      closest: (selector: string) => {
+        if (selector === 'table') return null
+        return selector.includes('p') ? paragraphTarget : null
+      },
+    } as Element
+    view.posAtCoords = () => ({ pos: getCellTextPosition(doc, 1, 0) })
+    view.dom = { contains: (target: Element) => target === paragraphTarget }
+    view.posAtDOM = () => table.nodeSize
+
+    expect(range).not.toBeNull()
+    expect(placeCaretOutsideTableAtCoords(view, { left: 120, top: 240 }, range!, paragraphTarget)).toBe(true)
+    expect(view.state.selection.from).toBe(table.nodeSize + 1)
+  })
+
+  it('moves after a selected table by inserting a following paragraph when needed', () => {
+    const view = createTableSelectionView(buildDoc())
+    const tableSize = view.state.doc.child(0).nodeSize
+
+    expect(moveSelectedTableBoundaryCaret(view, 'after')).toBe(true)
+    expect(getChildTypes(view.state.doc)).toEqual(['table', 'paragraph'])
+    expect(view.state.selection).toBeInstanceOf(TextSelection)
+    expect(view.state.selection.from).toBe(tableSize + 1)
+  })
+
+  it('moves before a selected table by inserting a preceding paragraph when needed', () => {
+    const view = createTableSelectionView(buildDoc())
+
+    expect(moveSelectedTableBoundaryCaret(view, 'before')).toBe(true)
+    expect(getChildTypes(view.state.doc)).toEqual(['paragraph', 'table'])
+    expect(view.state.selection).toBeInstanceOf(TextSelection)
+    expect(view.state.selection.from).toBe(1)
+  })
+
+  it('uses existing adjacent paragraphs instead of duplicating them', () => {
+    const table = buildTableBlock()
+    const before = paragraph('before')
+    const after = paragraph('after')
+    const viewBefore = createTableSelectionView(buildDocWithBlocks([before, table]))
+    const viewAfter = createTableSelectionView(buildDocWithBlocks([table, after]))
+
+    expect(moveSelectedTableBoundaryCaret(viewBefore, 'before')).toBe(true)
+    expect(getChildTypes(viewBefore.state.doc)).toEqual(['paragraph', 'table'])
+    expect(viewBefore.state.selection.from).toBe(before.nodeSize - 1)
+
+    expect(moveSelectedTableBoundaryCaret(viewAfter, 'after')).toBe(true)
+    expect(getChildTypes(viewAfter.state.doc)).toEqual(['table', 'paragraph'])
+    expect(viewAfter.state.selection.from).toBe(table.nodeSize + 1)
+  })
+
+  it('inserts a paragraph between a selected table and adjacent non-text blocks', () => {
+    const table = buildTableBlock()
+    const rule = schema.nodes.thematicBreak.create()
+    const afterView = createTableSelectionView(buildDocWithBlocks([table, rule]))
+    const beforeView = createTableSelectionView(buildDocWithBlocks([rule, table]))
+
+    expect(moveSelectedTableBoundaryCaret(afterView, 'after')).toBe(true)
+    expect(getChildTypes(afterView.state.doc)).toEqual(['table', 'paragraph', 'thematicBreak'])
+
+    expect(moveSelectedTableBoundaryCaret(beforeView, 'before')).toBe(true)
+    expect(getChildTypes(beforeView.state.doc)).toEqual(['thematicBreak', 'paragraph', 'table'])
+  })
+
+  it('ignores non-table selections for table boundary movement', () => {
+    const view = createView(buildDoc(), 1, 0)
+
+    expect(moveSelectedTableBoundaryCaret(view, 'after')).toBe(false)
+  })
+
+  it('records inserted table boundary paragraphs in ProseMirror history', () => {
+    const view = createTableSelectionView(buildDoc(), { withHistory: true })
+    const before = view.state.doc.toJSON()
+
+    expect(moveSelectedTableBoundaryCaret(view, 'after')).toBe(true)
+    expect(view.state.doc.toJSON()).not.toEqual(before)
+    expect(undo(view.state, view.dispatch, view)).toBe(true)
+    expect(view.state.doc.toJSON()).toEqual(before)
   })
 
   it('reorders body rows', () => {

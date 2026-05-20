@@ -30,6 +30,15 @@ import {
 } from './prosemirror-utils'
 import { parseInternalNoteUrl, type InternalNoteLinkHit } from '../notes/note-references'
 import { insertPastedListIntoView } from './list-paste'
+import {
+  getActiveTableRange,
+  isBlankTableSideSelectionTarget,
+  moveSelectedTableBoundaryCaret,
+  placeCaretOutsideTableAtCoords,
+  selectTableFromSideClick,
+  type TableBoundaryDirection,
+  type TableRange,
+} from './table-editing'
 
 type UseEditorDomEventsOptions = {
   viewMode: ViewMode
@@ -149,6 +158,13 @@ export function getEditorPageMovementForEvent(event: KeyboardEvent): EditorPageM
   return null
 }
 
+export function getTableBoundaryCaretDirectionForEvent(event: KeyboardEvent): TableBoundaryDirection | null {
+  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return null
+  if (event.key === 'ArrowLeft' || event.code === 'ArrowLeft') return 'before'
+  if (event.key === 'ArrowRight' || event.code === 'ArrowRight') return 'after'
+  return null
+}
+
 export function isActiveWysiwygEditorContentTarget(target: Element | null, view: any): boolean {
   if (!target || !view?.dom || isEditorToolbarInteractionTarget(target)) return false
   return target === view.dom || Boolean(view.dom.contains?.(target))
@@ -158,6 +174,31 @@ export function isEditorPointerChromeTarget(target: Element | null): boolean {
   return Boolean(
     target?.closest(
       [
+        '.image-tools',
+        '.image-resize-handle',
+        '.inline-crop-box',
+        '.inline-crop-edge-handle',
+        '.inline-crop-resize-handle',
+        '.table-tools',
+        '.table-reorder-marker',
+        '.link-prompt',
+      ].join(', '),
+    ),
+  )
+}
+
+export function shouldSkipTableExitRepairTarget(target: Element | null): boolean {
+  return Boolean(
+    target?.closest(
+      [
+        'a',
+        'button',
+        'input',
+        'textarea',
+        'select',
+        'img',
+        'table',
+        '[contenteditable="false"]',
         '.image-tools',
         '.image-resize-handle',
         '.inline-crop-box',
@@ -248,6 +289,11 @@ export function useEditorDomEvents({
     if (!root) return
 
     let linkHandledOnPointerDown = false
+    let pendingTableExitRepair: {
+      coords: { left: number; top: number }
+      range: TableRange
+      target: Element
+    } | null = null
 
     const isPrimaryMouseActivation = (event: Event) => !(event instanceof MouseEvent) || event.button === 0
 
@@ -306,6 +352,52 @@ export function useEditorDomEvents({
       return true
     }
 
+    const handleTableSideSelection = (event: Event, target: Element) => {
+      if (!(event instanceof MouseEvent) || event.button !== 0) return false
+      const view = getWysiwygView(editorRef.current)
+      if (!isActiveWysiwygEditorContentTarget(target, view)) return false
+      if (!isBlankTableSideSelectionTarget(view, target)) return false
+      const handled = selectTableFromSideClick(view, { left: event.clientX, top: event.clientY }, target)
+      if (!handled) return false
+      event.preventDefault()
+      event.stopPropagation()
+      linkHandledOnPointerDown = event.type === 'pointerdown'
+      return true
+    }
+
+    const getPendingTableExitRepair = (event: Event, target: Element) => {
+      if (!(event instanceof MouseEvent) || event.button !== 0) return null
+      const view = getWysiwygView(editorRef.current)
+      if (!isActiveWysiwygEditorContentTarget(target, view)) return null
+      if (shouldSkipTableExitRepairTarget(target)) return null
+      if (isInsideReadonlyNotePreview(target) || isInsideTerminalBlockLandingZone(target)) return null
+      const range = getActiveTableRange(view)
+      if (!range) return null
+      return {
+        coords: { left: event.clientX, top: event.clientY },
+        range,
+        target,
+      }
+    }
+
+    const clearPendingTableExitRepair = () => {
+      pendingTableExitRepair = null
+    }
+
+    const scheduleTableExitRepair = () => {
+      const pending = pendingTableExitRepair
+      pendingTableExitRepair = null
+      if (!pending) return
+      window.setTimeout(() => {
+        const view = getWysiwygView(editorRef.current)
+        if (!view || !pending.target.isConnected || !view.dom?.contains?.(pending.target)) return
+        if (!placeCaretOutsideTableAtCoords(view, pending.coords, pending.range, pending.target)) return
+        window.setTimeout(syncToolbarFormatState, 0)
+        onEditorSelectionChange()
+        onEditorMentionQueryChange()
+      }, 0)
+    }
+
     const handlePointerDown = (event: Event) => {
       const target = getElementFromEventTarget(event.target)
       if (!target) {
@@ -342,10 +434,28 @@ export function useEditorDomEvents({
         imageCropActive: isImageCropActive(),
         linkPromptOpen: isLinkPromptOpen(),
       })
+      const tableExitRepair = getPendingTableExitRepair(event, target)
       activateEditorFromEventTarget(target)
       clearMultiLineEdit(false, { deferWidgetClear: true })
-      if (handleAnchorInteraction(event, target)) return
-      if (handleInternalLinkAtPointerPosition(event)) return
+      pendingTableExitRepair = tableExitRepair
+      if (handleTableSideSelection(event, target)) {
+        clearPendingTableExitRepair()
+        if (chromeClosePlan.closeImageTools) {
+          closeImageTools()
+        }
+        if (chromeClosePlan.closeLinkPrompt) {
+          closeLinkPrompt()
+        }
+        return
+      }
+      if (handleAnchorInteraction(event, target)) {
+        clearPendingTableExitRepair()
+        return
+      }
+      if (handleInternalLinkAtPointerPosition(event)) {
+        clearPendingTableExitRepair()
+        return
+      }
       if (chromeClosePlan.closeImageTools) {
         closeImageTools()
       }
@@ -360,12 +470,20 @@ export function useEditorDomEvents({
       if (isInsideTerminalBlockLandingZone(target)) return
       if (linkHandledOnPointerDown) {
         linkHandledOnPointerDown = false
+        clearPendingTableExitRepair()
         event.preventDefault()
         event.stopPropagation()
         return
       }
-      if (handleAnchorInteraction(event, target)) return
-      handleInternalLinkAtPointerPosition(event)
+      if (handleAnchorInteraction(event, target)) {
+        clearPendingTableExitRepair()
+        return
+      }
+      if (handleInternalLinkAtPointerPosition(event)) {
+        clearPendingTableExitRepair()
+        return
+      }
+      scheduleTableExitRepair()
     }
 
     const handleContextMenu = (event: Event) => {
@@ -552,6 +670,20 @@ export function useEditorDomEvents({
         if (deleteActiveEditorImageNode()) {
           keyboardEvent.preventDefault()
           keyboardEvent.stopPropagation()
+          return
+        }
+      }
+
+      const tableBoundaryDirection = isTextInputTarget ? null : getTableBoundaryCaretDirectionForEvent(keyboardEvent)
+      if (tableBoundaryDirection) {
+        const view = getWysiwygView(editorRef.current)
+        if (
+          isActiveWysiwygEditorContentTarget(targetElement, view) &&
+          moveSelectedTableBoundaryCaret(view, tableBoundaryDirection)
+        ) {
+          keyboardEvent.preventDefault()
+          keyboardEvent.stopPropagation()
+          window.setTimeout(syncToolbarFormatState, 0)
           return
         }
       }

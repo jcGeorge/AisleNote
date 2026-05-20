@@ -663,13 +663,20 @@
 .aisle-edit-preview table {
   width: 100%;
   border-collapse: collapse;
+  border: 1px solid var(--editor-table-grid-border);
   font-size: var(--ui-font-2xs);
 }
 
 .aisle-edit-preview th,
 .aisle-edit-preview td {
-  border: 1px solid var(--app-border-muted);
+  border: 1px solid var(--editor-table-grid-border);
   padding: 0.15rem;
+}
+
+.aisle-edit-preview th {
+  font-style: inherit;
+  font-weight: inherit;
+  text-align: inherit;
 }
 
 .aisle-edit-preview.is-empty {

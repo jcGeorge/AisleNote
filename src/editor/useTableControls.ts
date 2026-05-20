@@ -423,7 +423,9 @@ export function useTableControls({
         const coords = { left: event.clientX, top: event.clientY }
         const releaseCell = getTableCellAtViewportPoint(getWysiwygView(dragState.editor), coords)
         endDrag()
-        scheduleFailedDragCaretPlacement(dragState.editor, coords, releaseCell)
+        if (releaseCell) {
+          scheduleFailedDragCaretPlacement(dragState.editor, coords, releaseCell)
+        }
       } else {
         suppressNextClickRef.current = false
         endDrag()
@@ -450,7 +452,9 @@ export function useTableControls({
       scheduleRefresh()
     } else {
       endDrag()
-      scheduleFailedDragCaretPlacement(editor, coords, releaseCell)
+      if (releaseCell) {
+        scheduleFailedDragCaretPlacement(editor, coords, releaseCell)
+      }
     }
   }
 
@@ -475,9 +479,16 @@ export function useTableControls({
     failedDragCaretVersionRef.current += 1
     if (!visible || event.button !== 0 || event.detail > 1) return
     const target = event.target instanceof Element ? event.target : null
-    if (!target || isInteractiveTableDragTarget(target)) return
+    if (!target) return
     const sourceCell = target.closest('td, th')
-    if (!(sourceCell instanceof HTMLTableCellElement)) return
+    if (!(sourceCell instanceof HTMLTableCellElement)) {
+      suppressNextClickRef.current = false
+      if (dragStateRef.current) {
+        endDrag()
+      }
+      return
+    }
+    if (isInteractiveTableDragTarget(target)) return
     const table = sourceCell.closest('table')
     if (!(table instanceof HTMLTableElement)) return
 
