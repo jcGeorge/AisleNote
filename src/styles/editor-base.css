@@ -26,6 +26,11 @@
   color: var(--editor-text) !important;
 }
 
+.app-shell.tooltips-disabled .toastui-editor-tooltip,
+body.app-tooltips-disabled .toastui-editor-tooltip {
+  display: none !important;
+}
+
 .toastui-editor-toolbar-icons,
 .toastui-editor-toolbar-divider {
   filter: invert(88%) sepia(10%) saturate(327%) hue-rotate(183deg) brightness(94%) contrast(91%);

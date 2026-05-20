@@ -41,4 +41,35 @@ describe('SharedEditorToolbar block quote and block indent controls', () => {
     expect(html).toContain('editor-history-toolbar-btn-redo')
     expect(html).not.toContain('note-link-toolbar-btn')
   })
+
+  it('keeps labels but omits title tooltips when disabled', () => {
+    const noop = vi.fn()
+    const html = renderToStaticMarkup(
+      <SharedEditorToolbar
+        headingButtonRef={createRef<HTMLButtonElement>()}
+        aisleButtonRef={createRef<HTMLButtonElement>()}
+        tooltipsDisabled
+        interactionDisabled
+        toolbarFormatState={DEFAULT_TOOLBAR_FORMAT_STATE}
+        activeHeadingLevel={0}
+        toolbarShortcutFeedback={null}
+        onOpenCopy={noop}
+        onOpenFrontmatter={noop}
+        onToggleAisles={noop}
+        onToggleHeading={noop}
+        onCommand={noop}
+        onHistory={noop}
+        onInsertImage={noop}
+        onInsertWebLink={noop}
+        onClear={noop}
+      />,
+    )
+
+    expect(html).not.toContain('title=')
+    expect(html).toContain('aria-disabled="true"')
+    expect(html).toContain('is-interaction-disabled')
+    expect(html).toContain('aria-label="Block quote"')
+    expect(html).toContain('aria-label="Undo"')
+    expect(html).toContain('aria-label="Insert link"')
+  })
 })

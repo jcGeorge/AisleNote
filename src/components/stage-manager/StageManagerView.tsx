@@ -109,6 +109,48 @@ function ParentOptions({ tabs }: { tabs: Tab[] }) {
   )
 }
 
+type FrontmatterTemplateFieldPreview = FrontmatterTemplate['fields'][number]
+
+function getFrontmatterTemplateFieldSourceLabel(field: FrontmatterTemplateFieldPreview) {
+  if (field.computed !== 'none') return `computed: ${field.computed}`
+  const defaultValue = field.defaultValue.trim()
+  return defaultValue ? `default: ${defaultValue}` : 'empty'
+}
+
+function FrontmatterTemplateFieldPreviewList({ template }: { template: FrontmatterTemplate | null }) {
+  if (!template) {
+    return (
+      <div className="stage-manager-frontmatter-preview" aria-label="frontmatter fields to apply">
+        <p className="stage-manager-help">select a template to preview fields.</p>
+      </div>
+    )
+  }
+
+  if (template.fields.length === 0) {
+    return (
+      <div className="stage-manager-frontmatter-preview" aria-label="frontmatter fields to apply">
+        <h3>fields to apply</h3>
+        <p className="stage-manager-help">this template has no fields.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="stage-manager-frontmatter-preview" aria-label="frontmatter fields to apply">
+      <h3>fields to apply</h3>
+      <ul>
+        {template.fields.map((field) => (
+          <li key={field.id}>
+            <span className="stage-manager-frontmatter-field-key">{field.key || '(blank key)'}</span>
+            <span>{field.type}</span>
+            <span>{getFrontmatterTemplateFieldSourceLabel(field)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 export function StageManagerView({
   domains,
   step,
@@ -142,6 +184,11 @@ export function StageManagerView({
   onNext,
   onApply,
 }: StageManagerViewProps) {
+  const selectedFrontmatterTemplate =
+    action === 'frontmatter'
+      ? frontmatterTemplates.find((template) => template.id === draft.frontmatterTemplateId) ?? null
+      : null
+
   return (
     <section className="stage-manager-shell">
       <div className="stage-manager-card">
@@ -682,6 +729,7 @@ export function StageManagerView({
                     </select>
                   </label>
                 </div>
+                <FrontmatterTemplateFieldPreviewList template={selectedFrontmatterTemplate} />
               </>
             )}
 
@@ -736,6 +784,9 @@ export function StageManagerView({
                 <li key={detail}>{detail}</li>
               ))}
             </ul>
+            {action === 'frontmatter' && (
+              <FrontmatterTemplateFieldPreviewList template={selectedFrontmatterTemplate} />
+            )}
             {reviewWarning ? (
               <div className="stage-manager-warning" role="note">
                 {reviewWarning}

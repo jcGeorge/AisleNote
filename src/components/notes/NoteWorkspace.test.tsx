@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { BLOCK_INDENT_TOKEN } from '../../markdown/markdown-utils'
 import { NoteWorkspace } from './NoteWorkspace'
+import { shouldExitArrangeModeFromNoteWorkspacePointer } from './note-workspace-events'
 import type { NoteAisle } from '../../types/app'
 
 const aisles: NoteAisle[] = [
@@ -105,5 +106,12 @@ describe('NoteWorkspace aisle mounting', () => {
     const html = renderWorkspace(new Set(['a']))
 
     expect(html).not.toContain('class="link-prompt')
+  })
+
+  it('only exits arrangement mode for primary note workspace clicks while arranging', () => {
+    expect(shouldExitArrangeModeFromNoteWorkspacePointer(true, 0)).toBe(true)
+    expect(shouldExitArrangeModeFromNoteWorkspacePointer(true, 1)).toBe(false)
+    expect(shouldExitArrangeModeFromNoteWorkspacePointer(true, 2)).toBe(false)
+    expect(shouldExitArrangeModeFromNoteWorkspacePointer(false, 0)).toBe(false)
   })
 })

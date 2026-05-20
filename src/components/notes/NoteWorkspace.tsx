@@ -5,6 +5,7 @@ import { buildAisleEditorKey } from '../../editor/aisle-editor'
 import { resolveImageAssetDisplayUrl } from '../../markdown/image-asset-registry'
 import type { NoteAisle } from '../../types/app'
 import { MarkdownPreviewParagraph } from './markdown-preview-components'
+import { scheduleNoteWorkspaceArrangeExit, shouldExitArrangeModeFromNoteWorkspacePointer } from './note-workspace-events'
 
 const transformAislePreviewUrl = (url: string, key: string) =>
   key === 'src' && (/^data:image\//i.test(url) || /^blob:/i.test(url) || /^tabs-asset:/i.test(url))
@@ -20,11 +21,13 @@ type NoteWorkspaceProps = {
   aisles: NoteAisle[]
   activeAisleId: string
   editorReadOnly: boolean
+  arrangeModeActive?: boolean
   aisleScrollRef: Ref<HTMLDivElement>
   toolbar: ReactNode
   headingPopover: ReactNode
   imageToolsOverlay: ReactNode
   tableControlsOverlay: ReactNode
+  onExitArrangeMode?: () => void
   onRootChange: (node: HTMLElement | null) => void
   onAisleScroll: (scrollLeft: number) => void
   onActivateAisle: (editorKey: string) => void
@@ -39,11 +42,13 @@ export function NoteWorkspace({
   aisles,
   activeAisleId,
   editorReadOnly,
+  arrangeModeActive = false,
   aisleScrollRef,
   toolbar,
   headingPopover,
   imageToolsOverlay,
   tableControlsOverlay,
+  onExitArrangeMode,
   onRootChange,
   onAisleScroll,
   onActivateAisle,
@@ -64,6 +69,11 @@ export function NoteWorkspace({
       <div
         ref={aisleScrollRef}
         className="note-aisle-scroll"
+        onPointerDownCapture={(event) => {
+          if (shouldExitArrangeModeFromNoteWorkspacePointer(arrangeModeActive, event.button)) {
+            scheduleNoteWorkspaceArrangeExit(onExitArrangeMode)
+          }
+        }}
         onScroll={(event) => onAisleScroll(event.currentTarget.scrollLeft)}
       >
         {aisles.map((aisle, index) => {

@@ -23,6 +23,7 @@ type TopBarProps = {
   activeTab: Tab
   editing: { type: EditableEntityType; id: string } | null
   arrangeMode: ArrangeModeState
+  tooltipsDisabled?: boolean
   primaryTabRailRef: RefObject<HTMLDivElement | null>
   isNoteWorkspaceView: boolean
   arrangeableParentTabClassName: string
@@ -98,6 +99,7 @@ export function TopBar({
   activeTab,
   editing,
   arrangeMode,
+  tooltipsDisabled = false,
   primaryTabRailRef,
   isNoteWorkspaceView,
   arrangeableParentTabClassName,
@@ -217,7 +219,13 @@ export function TopBar({
       <div className="tabbar-row">
         <div ref={primaryTabRailRef} className="tabbar-scroll tabbar-primary" {...primaryTablistProps}>
           {arrangeMode.active && arrangeMode.scope === 'tabs' && viewMode === 'main' && (
-            <button type="button" className="tab-sort-btn" onClick={onOpenParentSortModal} title="sort parents" aria-label="sort parents">
+            <button
+              type="button"
+              className="tab-sort-btn"
+              onClick={onOpenParentSortModal}
+              title={tooltipsDisabled ? undefined : 'sort parents'}
+              aria-label="sort parents"
+            >
               <SortIcon />
             </button>
           )}
@@ -364,7 +372,12 @@ export function TopBar({
           )}
 
           {viewMode === 'main' && !arrangeMode.active && (
-            <button type="button" className="btn btn-sm btn-outline-light add-tab-btn" onClick={onAddTab} title="Add tab">
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-light add-tab-btn"
+              onClick={onAddTab}
+              title={tooltipsDisabled ? undefined : 'Add tab'}
+            >
               +
             </button>
           )}

@@ -21,6 +21,7 @@ type SubTabRailProps = {
   activeSubTabId: string | null
   editing: { type: EditableEntityType; id: string } | null
   arrangeMode: ArrangeModeState
+  tooltipsDisabled?: boolean
   showParentHomeTab: boolean
   isNoteWorkspaceView: boolean
   selectedTrashTab: TrashParentBucket | null
@@ -86,6 +87,7 @@ export function SubTabRail({
   activeSubTabId,
   editing,
   arrangeMode,
+  tooltipsDisabled = false,
   showParentHomeTab,
   isNoteWorkspaceView,
   selectedTrashTab,
@@ -133,7 +135,13 @@ export function SubTabRail({
     >
       <div ref={subTabRailRef} className="tabbar-scroll">
         {arrangeMode.active && arrangeMode.scope === 'tabs' && viewMode === 'main' && (
-          <button type="button" className="tab-sort-btn" onClick={onOpenSubTabSortModal} title="sort sub-tabs" aria-label="sort sub-tabs">
+          <button
+            type="button"
+            className="tab-sort-btn"
+            onClick={onOpenSubTabSortModal}
+            title={tooltipsDisabled ? undefined : 'sort sub-tabs'}
+            aria-label="sort sub-tabs"
+          >
             <SortIcon />
           </button>
         )}
@@ -164,7 +172,7 @@ export function SubTabRail({
               if (onConsumeArrangeClickSuppression(`home:${activeTab.id}`)) return
               onSelectParentHomeTab()
             }}
-            title="home note"
+            title={tooltipsDisabled ? undefined : 'home note'}
             onContextMenu={(event) => {
               if (viewMode !== 'main') return
               onOpenContextMenuForHomeTab(event, activeTab.id)
@@ -345,7 +353,12 @@ export function SubTabRail({
           ))}
 
         {viewMode === 'main' && !arrangeMode.active && (
-          <button type="button" className="btn btn-sm btn-outline-light add-tab-btn" onClick={onAddSubTab} title="Add note tab">
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-light add-tab-btn"
+            onClick={onAddSubTab}
+            title={tooltipsDisabled ? undefined : 'Add note tab'}
+          >
             +
           </button>
         )}

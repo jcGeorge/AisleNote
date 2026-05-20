@@ -406,6 +406,11 @@
   border-bottom: 0 !important;
 }
 
+.note-shared-toolbar.is-interaction-disabled,
+.note-shared-toolbar.is-interaction-disabled button {
+  cursor: default;
+}
+
 .note-toolbar-menu-anchor {
   position: relative;
   display: inline-flex;

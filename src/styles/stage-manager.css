@@ -175,6 +175,44 @@
   background: var(--stage-review-bg);
 }
 
+.stage-manager-frontmatter-preview {
+  width: min(520px, 100%);
+  margin: 0 auto;
+  text-align: left;
+}
+
+.stage-manager-frontmatter-preview h3 {
+  margin: 0 0 0.45rem;
+  color: var(--stage-heading-text);
+  font-size: 1em;
+  font-weight: 600;
+}
+
+.stage-manager-frontmatter-preview ul {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stage-manager-frontmatter-preview li {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(5rem, 0.7fr) minmax(0, 1fr);
+  gap: 0.55rem;
+  align-items: center;
+  padding: 0.5rem 0.65rem;
+  border-radius: 0.55rem;
+  border: 1px solid var(--stage-review-border);
+  background: var(--stage-review-bg);
+}
+
+.stage-manager-frontmatter-field-key {
+  font-weight: 600;
+  color: var(--stage-heading-text);
+}
+
 .stage-manager-warning {
   width: min(520px, 100%);
   margin: 0 auto;

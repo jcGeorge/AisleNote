@@ -19,6 +19,8 @@ type UseEditorToolbarLayerOptions = {
   toolbarFormatState: ToolbarFormatState
   activeHeadingLevel: ToolbarHeadingLevel
   toolbarShortcutFeedback: ToolbarFormatKey | null
+  tooltipsDisabled: boolean
+  interactionDisabled: boolean
   noteToolsOpen: boolean
   headingMenuOpen: boolean
   toolbarPopoverPosition: {
@@ -40,6 +42,7 @@ type UseEditorToolbarLayerOptions = {
   addAisleToActiveNote: () => void
   openAisleEditModal: () => void
   pushToast: (message: string, tone?: ToastTone) => void
+  onDisabledToolbarInteraction: () => void
 }
 
 export function useEditorToolbarLayer({
@@ -49,6 +52,8 @@ export function useEditorToolbarLayer({
   toolbarFormatState,
   activeHeadingLevel,
   toolbarShortcutFeedback,
+  tooltipsDisabled,
+  interactionDisabled,
   noteToolsOpen,
   headingMenuOpen,
   toolbarPopoverPosition,
@@ -67,6 +72,7 @@ export function useEditorToolbarLayer({
   addAisleToActiveNote,
   openAisleEditModal,
   pushToast,
+  onDisabledToolbarInteraction,
 }: UseEditorToolbarLayerOptions) {
   const closeToolbarMenus = () => {
     setHeadingMenuOpen(false)
@@ -165,6 +171,8 @@ export function useEditorToolbarLayer({
       <SharedEditorToolbar
         headingButtonRef={headingToolbarButtonRef}
         aisleButtonRef={aisleToolbarButtonRef}
+        tooltipsDisabled={tooltipsDisabled}
+        interactionDisabled={interactionDisabled}
         toolbarFormatState={toolbarFormatState}
         activeHeadingLevel={activeHeadingLevel}
         toolbarShortcutFeedback={toolbarShortcutFeedback}
@@ -177,10 +185,12 @@ export function useEditorToolbarLayer({
         onInsertImage={insertImageFromToolbar}
         onInsertWebLink={insertWebLinkFromToolbar}
         onClear={clearActiveNoteFromToolbar}
+        onDisabledInteraction={onDisabledToolbarInteraction}
       />
     ),
     popovers: (
       <EditorToolbarPopovers
+        disabled={interactionDisabled}
         headingMenuOpen={headingMenuOpen}
         noteToolsOpen={noteToolsOpen}
         activeHeadingLevel={activeHeadingLevel}

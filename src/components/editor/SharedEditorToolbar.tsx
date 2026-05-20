@@ -10,6 +10,8 @@ const TOOLBAR_FORMAT_LABELS: Record<ToolbarFormatKey, string> = {
 type SharedEditorToolbarProps = {
   headingButtonRef: RefObject<HTMLButtonElement | null>
   aisleButtonRef: RefObject<HTMLButtonElement | null>
+  tooltipsDisabled?: boolean
+  interactionDisabled?: boolean
   toolbarFormatState: ToolbarFormatState
   activeHeadingLevel: ToolbarHeadingLevel
   toolbarShortcutFeedback: ToolbarFormatKey | null
@@ -22,12 +24,14 @@ type SharedEditorToolbarProps = {
   onInsertImage: () => void
   onInsertWebLink: () => void
   onClear: () => void
+  onDisabledInteraction?: () => void
 }
 
 function ToolbarIconButton({
   label,
   iconClassName,
   onClick,
+  tooltipsDisabled = false,
   formatKey,
   toolbarFormatState,
   toolbarShortcutFeedback,
@@ -35,6 +39,7 @@ function ToolbarIconButton({
   label: string
   iconClassName: string
   onClick: (button: HTMLButtonElement) => void
+  tooltipsDisabled?: boolean
   formatKey?: ToolbarFormatKey
   toolbarFormatState: ToolbarFormatState
   toolbarShortcutFeedback: ToolbarFormatKey | null
@@ -45,7 +50,7 @@ function ToolbarIconButton({
       className={`toastui-editor-toolbar-icons ${iconClassName} ${
         formatKey && toolbarFormatState[formatKey] ? 'active' : ''
       } ${formatKey && toolbarShortcutFeedback === formatKey ? 'is-shortcut-feedback' : ''}`}
-      title={label}
+      title={tooltipsDisabled ? undefined : label}
       aria-label={label}
       onMouseDown={(event) => event.preventDefault()}
       onClick={(event) => {
@@ -60,17 +65,19 @@ function ToolbarIconButton({
 function HistoryToolbarButton({
   direction,
   label,
+  tooltipsDisabled = false,
   onHistory,
 }: {
   direction: 'undo' | 'redo'
   label: string
+  tooltipsDisabled?: boolean
   onHistory: (direction: 'undo' | 'redo') => void
 }) {
   return (
     <button
       type="button"
       className={`editor-history-toolbar-btn editor-history-toolbar-btn-${direction}`}
-      title={label}
+      title={tooltipsDisabled ? undefined : label}
       aria-label={label}
       onMouseDown={(event) => event.preventDefault()}
       onClick={(event) => {
@@ -90,6 +97,8 @@ function HistoryToolbarButton({
 export function SharedEditorToolbar({
   headingButtonRef,
   aisleButtonRef,
+  tooltipsDisabled = false,
+  interactionDisabled = false,
   toolbarFormatState,
   activeHeadingLevel,
   toolbarShortcutFeedback,
@@ -102,6 +111,7 @@ export function SharedEditorToolbar({
   onInsertImage,
   onInsertWebLink,
   onClear,
+  onDisabledInteraction,
 }: SharedEditorToolbarProps) {
   const renderToolbarIconButton = (
     label: string,
@@ -114,6 +124,7 @@ export function SharedEditorToolbar({
       iconClassName={iconClassName}
       onClick={onClick}
       formatKey={formatKey}
+      tooltipsDisabled={tooltipsDisabled}
       toolbarFormatState={toolbarFormatState}
       toolbarShortcutFeedback={toolbarShortcutFeedback}
     />
@@ -121,18 +132,48 @@ export function SharedEditorToolbar({
 
   return (
     <div
-      className="note-shared-toolbar toastui-editor-toolbar"
+      className={`note-shared-toolbar toastui-editor-toolbar ${interactionDisabled ? 'is-interaction-disabled' : ''}`}
       role="toolbar"
       aria-label="Note formatting toolbar"
-      onPointerDown={(event) => event.stopPropagation()}
-      onMouseDown={(event) => event.preventDefault()}
+      aria-disabled={interactionDisabled ? 'true' : undefined}
+      onPointerDownCapture={(event) => {
+        if (!interactionDisabled || event.button !== 0) return
+        event.preventDefault()
+        event.stopPropagation()
+        onDisabledInteraction?.()
+      }}
+      onClickCapture={(event) => {
+        if (!interactionDisabled) return
+        event.preventDefault()
+        event.stopPropagation()
+      }}
+      onKeyDownCapture={(event) => {
+        if (!interactionDisabled || (event.key !== 'Enter' && event.key !== ' ')) return
+        event.preventDefault()
+        event.stopPropagation()
+        onDisabledInteraction?.()
+      }}
+      onPointerDown={(event) => {
+        if (interactionDisabled) {
+          event.preventDefault()
+          event.stopPropagation()
+          return
+        }
+        event.stopPropagation()
+      }}
+      onMouseDown={(event) => {
+        event.preventDefault()
+        if (interactionDisabled) {
+          event.stopPropagation()
+        }
+      }}
     >
       <div className="toastui-editor-defaultUI-toolbar app-shared-editor-toolbar">
         <div className="toastui-editor-toolbar-group note-tools-toolbar-group">
           <button
             type="button"
             className="note-copy-toolbar-btn"
-            title="Make copy"
+            title={tooltipsDisabled ? undefined : 'Make copy'}
             aria-label="Make copy"
             onMouseDown={(event) => event.preventDefault()}
             onClick={(event) => {
@@ -150,7 +191,7 @@ export function SharedEditorToolbar({
           <button
             type="button"
             className="frontmatter-toolbar-btn"
-            title="Frontmatter"
+            title={tooltipsDisabled ? undefined : 'Frontmatter'}
             aria-label="Frontmatter"
             onMouseDown={(event) => event.preventDefault()}
             onClick={(event) => {
@@ -166,6 +207,7 @@ export function SharedEditorToolbar({
               ref={aisleButtonRef}
               type="button"
               className="aisles-toolbar-btn"
+              title={tooltipsDisabled ? undefined : 'Aisles'}
               aria-label="Aisles"
               onMouseDown={(event) => event.preventDefault()}
               onClick={(event) => {
@@ -179,8 +221,8 @@ export function SharedEditorToolbar({
           </span>
         </div>
         <div className="toastui-editor-toolbar-group editor-history-toolbar-group">
-          <HistoryToolbarButton direction="undo" label="Undo" onHistory={onHistory} />
-          <HistoryToolbarButton direction="redo" label="Redo" onHistory={onHistory} />
+          <HistoryToolbarButton direction="undo" label="Undo" tooltipsDisabled={tooltipsDisabled} onHistory={onHistory} />
+          <HistoryToolbarButton direction="redo" label="Redo" tooltipsDisabled={tooltipsDisabled} onHistory={onHistory} />
         </div>
         <div className="toastui-editor-toolbar-group note-format-toolbar-group">
           <span className="note-toolbar-menu-anchor">
@@ -190,7 +232,7 @@ export function SharedEditorToolbar({
               className={`toastui-editor-toolbar-icons heading ${
                 typeof activeHeadingLevel === 'number' && activeHeadingLevel > 0 ? 'active' : ''
               }`}
-              title="Headings"
+              title={tooltipsDisabled ? undefined : 'Headings'}
               aria-label="Headings"
               onMouseDown={(event) => event.preventDefault()}
               onClick={(event) => {
@@ -234,7 +276,7 @@ export function SharedEditorToolbar({
           <button
             type="button"
             className="clear-note-toolbar-btn"
-            title="Clear contents"
+            title={tooltipsDisabled ? undefined : 'Clear contents'}
             aria-label="Clear contents"
             onMouseDown={(event) => event.preventDefault()}
             onClick={(event) => {

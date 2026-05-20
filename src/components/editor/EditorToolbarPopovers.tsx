@@ -8,6 +8,7 @@ type ToolbarPopoverPosition = {
 }
 
 type EditorToolbarPopoversProps = {
+  disabled?: boolean
   headingMenuOpen: boolean
   noteToolsOpen: boolean
   activeHeadingLevel: ToolbarHeadingLevel
@@ -63,6 +64,7 @@ export function AisleToolbarMenu({
 }
 
 export function EditorToolbarPopovers({
+  disabled = false,
   headingMenuOpen,
   noteToolsOpen,
   activeHeadingLevel,
@@ -73,6 +75,7 @@ export function EditorToolbarPopovers({
   onOpenAisleEditModal,
 }: EditorToolbarPopoversProps) {
   if (typeof document === 'undefined') return null
+  if (disabled) return null
   const portalRoot = document.querySelector('.app-shell') ?? document.body
   const headingPopover =
     headingMenuOpen && toolbarPopoverPosition.heading

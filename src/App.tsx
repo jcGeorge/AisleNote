@@ -1721,6 +1721,54 @@ function App() {
   }
 
   const editorReadOnly = viewMode !== 'main'
+  const tabArrangementActive = arrangeMode.active && arrangeMode.scope === 'tabs' && viewMode === 'main'
+
+  useEffect(() => {
+    if (!tabArrangementActive) return
+    setHeadingMenuOpen(false)
+    setNoteToolsOpen(false)
+    setToolbarPopoverPosition({ heading: null, aisles: null })
+    closeImageTools()
+  }, [tabArrangementActive, closeImageTools, setHeadingMenuOpen, setNoteToolsOpen, setToolbarPopoverPosition])
+
+  useEffect(() => {
+    if (!tabArrangementActive || typeof document === 'undefined') return
+
+    document.body.classList.add('app-tooltips-disabled')
+    const strippedTitles = new Map<HTMLElement, string>()
+    const stripTitles = () => {
+      document.querySelectorAll<HTMLElement>('.app-shell [title]').forEach((element) => {
+        const title = element.getAttribute('title')
+        if (!title) return
+        if (!strippedTitles.has(element)) {
+          strippedTitles.set(element, title)
+        }
+        element.removeAttribute('title')
+      })
+    }
+
+    stripTitles()
+    const appShell = document.querySelector('.app-shell')
+    const observer = new MutationObserver(stripTitles)
+    if (appShell) {
+      observer.observe(appShell, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ['title'],
+      })
+    }
+
+    return () => {
+      observer.disconnect()
+      document.body.classList.remove('app-tooltips-disabled')
+      strippedTitles.forEach((title, element) => {
+        if (element.isConnected && !element.hasAttribute('title')) {
+          element.setAttribute('title', title)
+        }
+      })
+    }
+  }, [tabArrangementActive])
 
   const editorToolbarLayer = useEditorToolbarLayer({
     editorRef,
@@ -1729,6 +1777,8 @@ function App() {
     toolbarFormatState,
     activeHeadingLevel,
     toolbarShortcutFeedback,
+    tooltipsDisabled: tabArrangementActive,
+    interactionDisabled: tabArrangementActive,
     noteToolsOpen,
     headingMenuOpen,
     toolbarPopoverPosition,
@@ -1753,11 +1803,12 @@ function App() {
       openAisleEditModal()
     },
     pushToast,
+    onDisabledToolbarInteraction: exitArrangeMode,
   })
 
   const renderImageToolsOverlay = () => (
     <ImageToolsOverlay
-      visible={viewMode === 'main' && !aisleEditModalOpen}
+      visible={viewMode === 'main' && !aisleEditModalOpen && !tabArrangementActive}
       imageTools={imageTools}
       inlineCrop={inlineCrop}
       onStartCrop={startInlineCrop}
@@ -1773,7 +1824,7 @@ function App() {
 
   const renderTableControlsOverlay = () => (
     <TableControlsOverlay
-      visible={viewMode === 'main' && !aisleEditModalOpen}
+      visible={viewMode === 'main' && !aisleEditModalOpen && !tabArrangementActive}
       tableControls={tableControls}
       onAddRow={() => runTableControlOperation('add-row', state.ui.tableAddTargetMode)}
       onRemoveRow={() => runTableControlOperation('remove-row', state.ui.tableDeleteTargetMode)}
@@ -1818,8 +1869,8 @@ function App() {
   })
 
   const isNoteWorkspaceView = viewMode === 'main' || viewMode === 'stage-manager'
-  const arrangeableParentTabClassName = arrangeMode.active && arrangeMode.scope === 'tabs' && viewMode === 'main' ? 'is-arrangeable' : ''
-  const arrangeableSubTabClassName = arrangeMode.active && arrangeMode.scope === 'tabs' && viewMode === 'main' ? 'is-arrangeable' : ''
+  const arrangeableParentTabClassName = tabArrangementActive ? 'is-arrangeable' : ''
+  const arrangeableSubTabClassName = tabArrangementActive ? 'is-arrangeable' : ''
   const draggingParentTabId =
     arrangeMode.active && arrangeDraggingItem?.type === 'tab' ? arrangeDraggingItem.tabId : null
   const draggingSubTabId =
@@ -1843,7 +1894,7 @@ function App() {
     <main
       className={`app-shell theme-${state.theme} ${customThemeClassName} view-${viewMode} ${
         viewMode === 'stage-manager' ? 'view-stage-manager' : ''
-      }`}
+      } ${tabArrangementActive ? 'tooltips-disabled' : ''}`}
       style={
         {
           '--tab-button-scale': String(state.ui.tabButtonScale),
@@ -1873,6 +1924,7 @@ function App() {
         activeTab={activeTab}
         editing={editing}
         arrangeMode={arrangeMode}
+        tooltipsDisabled={tabArrangementActive}
         primaryTabRailRef={primaryTabRailRef}
         isNoteWorkspaceView={isNoteWorkspaceView}
         arrangeableParentTabClassName={arrangeableParentTabClassName}
@@ -2045,6 +2097,7 @@ function App() {
             activeSubTabId={activeSubTab?.id ?? null}
             editing={editing}
             arrangeMode={arrangeMode}
+            tooltipsDisabled={tabArrangementActive}
             showParentHomeTab={state.ui.showParentHomeTab}
             isNoteWorkspaceView={isNoteWorkspaceView}
             selectedTrashTab={selectedTrashTab}
@@ -2128,6 +2181,7 @@ function App() {
               aisles={activeNoteAisles}
               activeAisleId={resolvedActiveAisleId}
               editorReadOnly={editorReadOnly}
+              arrangeModeActive={tabArrangementActive}
               aisleScrollRef={aisleScrollRef}
               toolbar={editorToolbarLayer.toolbar}
               headingPopover={editorToolbarLayer.popovers}
@@ -2136,6 +2190,7 @@ function App() {
               onRootChange={(node) => {
                 editorEventRootRef.current = node
               }}
+              onExitArrangeMode={exitArrangeMode}
               onAisleScroll={(scrollLeft) => {
                 if (!activeNoteBodyId) return
                 aisleHorizontalScrollByBodyRef.current.set(activeNoteBodyId, scrollLeft)
