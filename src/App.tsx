@@ -1775,10 +1775,10 @@ function App() {
     <TableControlsOverlay
       visible={viewMode === 'main' && !aisleEditModalOpen}
       tableControls={tableControls}
-      onAddRow={() => runTableControlOperation('add-row')}
-      onRemoveRow={() => runTableControlOperation('remove-row')}
-      onAddColumn={() => runTableControlOperation('add-column')}
-      onRemoveColumn={() => runTableControlOperation('remove-column')}
+      onAddRow={() => runTableControlOperation('add-row', state.ui.tableAddTargetMode)}
+      onRemoveRow={() => runTableControlOperation('remove-row', state.ui.tableDeleteTargetMode)}
+      onAddColumn={() => runTableControlOperation('add-column', state.ui.tableAddTargetMode)}
+      onRemoveColumn={() => runTableControlOperation('remove-column', state.ui.tableDeleteTargetMode)}
     />
   )
 
@@ -1999,6 +1999,8 @@ function App() {
           noteFontScaleDraft={settingsController.noteFontScaleDraft}
           customThemePaletteDraft={settingsController.customThemePaletteDraft}
           showParentHomeTabDraft={settingsController.showParentHomeTabDraft}
+          tableAddTargetModeDraft={settingsController.tableAddTargetModeDraft}
+          tableDeleteTargetModeDraft={settingsController.tableDeleteTargetModeDraft}
           frontmatterDraft={settingsController.frontmatterDraft}
           frontmatterDraftDirty={settingsController.frontmatterDraftDirty}
           storageProfileStatus={storageProfileStatus}
@@ -2018,6 +2020,8 @@ function App() {
           onTabButtonScaleChange={settingsController.updateTabButtonScaleSetting}
           onNoteFontScaleChange={settingsController.updateNoteFontScaleSetting}
           onShowParentHomeTabChange={settingsController.updateShowParentHomeTabSetting}
+          onTableAddTargetModeChange={settingsController.updateTableAddTargetModeSetting}
+          onTableDeleteTargetModeChange={settingsController.updateTableDeleteTargetModeSetting}
           onSettingsFrontmatterTemplateChange={settingsController.setSettingsFrontmatterTemplate}
           onCreateFrontmatterTemplate={settingsController.createFrontmatterTemplate}
           onUpdateFrontmatterTemplate={settingsController.updateFrontmatterTemplate}

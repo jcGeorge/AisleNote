@@ -24,6 +24,7 @@ import type {
   SettingsSection,
   ShortcutId,
   Space,
+  TableControlTargetMode,
   ViewMode,
 } from '../types/app'
 import {
@@ -70,6 +71,8 @@ export function useSettingsController({
   const [mouseBackForwardEnabledDraft, setMouseBackForwardEnabledDraft] = useState(true)
   const [genericHistoryHotkeysEnabledDraft, setGenericHistoryHotkeysEnabledDraft] = useState(true)
   const [showParentHomeTabDraft, setShowParentHomeTabDraft] = useState(DEFAULT_UI_SETTINGS.showParentHomeTab)
+  const [tableAddTargetModeDraft, setTableAddTargetModeDraft] = useState(DEFAULT_UI_SETTINGS.tableAddTargetMode)
+  const [tableDeleteTargetModeDraft, setTableDeleteTargetModeDraft] = useState(DEFAULT_UI_SETTINGS.tableDeleteTargetMode)
   const [tabButtonScaleDraft, setTabButtonScaleDraft] = useState(DEFAULT_UI_SETTINGS.tabButtonScale)
   const [noteFontScaleDraft, setNoteFontScaleDraft] = useState(DEFAULT_UI_SETTINGS.noteFontScale)
   const [customThemePaletteDraft, setCustomThemePaletteDraft] = useState<CustomThemePalette>(
@@ -96,6 +99,8 @@ export function useSettingsController({
     setMouseBackForwardEnabledDraft(state.hotkeys.enableMouseBackForward)
     setGenericHistoryHotkeysEnabledDraft(state.hotkeys.enableGenericHistoryHotkeys)
     setShowParentHomeTabDraft(state.ui.showParentHomeTab)
+    setTableAddTargetModeDraft(state.ui.tableAddTargetMode)
+    setTableDeleteTargetModeDraft(state.ui.tableDeleteTargetMode)
     setTabButtonScaleDraft(state.ui.tabButtonScale)
     setNoteFontScaleDraft(state.ui.noteFontScale)
     setSection(pendingSettingsSectionRef.current ?? state.ui.settingsSection)
@@ -113,6 +118,8 @@ export function useSettingsController({
     state.hotkeys,
     state.theme,
     state.ui.showParentHomeTab,
+    state.ui.tableAddTargetMode,
+    state.ui.tableDeleteTargetMode,
     state.ui.tabButtonScale,
     state.ui.noteFontScale,
     state.ui.settingsSection,
@@ -209,6 +216,28 @@ export function useSettingsController({
       ui: {
         ...previous.ui,
         showParentHomeTab: checked,
+      },
+    }))
+  }
+
+  const updateTableAddTargetModeSetting = (mode: TableControlTargetMode) => {
+    setTableAddTargetModeDraft(mode)
+    commitImmediateSettingsState((previous) => ({
+      ...previous,
+      ui: {
+        ...previous.ui,
+        tableAddTargetMode: mode,
+      },
+    }))
+  }
+
+  const updateTableDeleteTargetModeSetting = (mode: TableControlTargetMode) => {
+    setTableDeleteTargetModeDraft(mode)
+    commitImmediateSettingsState((previous) => ({
+      ...previous,
+      ui: {
+        ...previous.ui,
+        tableDeleteTargetMode: mode,
       },
     }))
   }
@@ -541,6 +570,8 @@ export function useSettingsController({
     noteFontScaleDraft,
     customThemePaletteDraft,
     showParentHomeTabDraft,
+    tableAddTargetModeDraft,
+    tableDeleteTargetModeDraft,
     frontmatterDraft,
     frontmatterDraftDirty,
     setEditingShortcut,
@@ -551,6 +582,8 @@ export function useSettingsController({
     updateMouseBackForwardSetting,
     updateGenericHistoryHotkeysSetting,
     updateShowParentHomeTabSetting,
+    updateTableAddTargetModeSetting,
+    updateTableDeleteTargetModeSetting,
     updateTabButtonScaleSetting,
     updateNoteFontScaleSetting,
     updateThemeSetting,

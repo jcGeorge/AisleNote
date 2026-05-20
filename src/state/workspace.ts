@@ -3,6 +3,7 @@ import { clampAutoRemoveDays, DEFAULT_AUTO_REMOVE_DAYS } from '../settings/defau
 import type { DeletedSubTabEntry, DeletedTabEntry, NoteAisle, NoteBody, Space, SubTab, Tab, WorkspaceData } from '../types/app'
 
 export const MAX_NOTE_AISLES = 8
+export const AUTO_PURGE_DAY_MS = 24 * 60 * 60 * 1000
 
 export function createId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
@@ -219,10 +220,44 @@ export function createWorkspaceDataFromTabs(
   }
 }
 
-export function applyAutoPurgeToWorkspace(data: WorkspaceData, autoRemoveDeletedDays: number): WorkspaceData {
-  const cutoff = Date.now() - clampAutoRemoveDays(autoRemoveDeletedDays) * 24 * 60 * 60 * 1000
-  const nextDeletedTabs = data.deletedTabs.filter((entry) => entry.deletedAt >= cutoff)
-  const nextDeletedSubTabs = data.deletedSubTabs.filter((entry) => entry.deletedAt >= cutoff)
+export function getWorkspaceTrashAutoPurgeCutoff(autoRemoveDeletedDays: number, now = Date.now()): number {
+  return now - clampAutoRemoveDays(autoRemoveDeletedDays) * AUTO_PURGE_DAY_MS
+}
+
+export function getNextWorkspaceTrashAutoPurgeTime(
+  data: WorkspaceData,
+  autoRemoveDeletedDays: number,
+  now = Date.now(),
+): number | null {
+  const retentionMs = clampAutoRemoveDays(autoRemoveDeletedDays) * AUTO_PURGE_DAY_MS
+  let nextPurgeAt: number | null = null
+
+  const visitDeletedAt = (deletedAt: number) => {
+    if (!Number.isFinite(deletedAt)) return
+    const purgeAt = deletedAt + retentionMs
+    if (purgeAt <= now) {
+      nextPurgeAt = now
+      return
+    }
+    if (nextPurgeAt === null || purgeAt < nextPurgeAt) {
+      nextPurgeAt = purgeAt
+    }
+  }
+
+  data.deletedTabs.forEach((entry) => visitDeletedAt(entry.deletedAt))
+  data.deletedSubTabs.forEach((entry) => visitDeletedAt(entry.deletedAt))
+
+  return nextPurgeAt
+}
+
+export function applyAutoPurgeToWorkspace(
+  data: WorkspaceData,
+  autoRemoveDeletedDays: number,
+  now = Date.now(),
+): WorkspaceData {
+  const cutoff = getWorkspaceTrashAutoPurgeCutoff(autoRemoveDeletedDays, now)
+  const nextDeletedTabs = data.deletedTabs.filter((entry) => entry.deletedAt > cutoff)
+  const nextDeletedSubTabs = data.deletedSubTabs.filter((entry) => entry.deletedAt > cutoff)
   if (nextDeletedTabs.length === data.deletedTabs.length && nextDeletedSubTabs.length === data.deletedSubTabs.length) {
     return data
   }

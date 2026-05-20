@@ -67,11 +67,11 @@ export function TableControlsOverlay({
         onMouseDown={stopMouseEvent}
         onClick={stopMouseEvent}
       >
-        <TableControlButton label="Add column" onClick={onAddColumn}>
-          +
-        </TableControlButton>
         <TableControlButton label="Remove column" onClick={onRemoveColumn}>
           -
+        </TableControlButton>
+        <TableControlButton label="Add column" onClick={onAddColumn}>
+          +
         </TableControlButton>
       </div>
       <div
@@ -84,11 +84,11 @@ export function TableControlsOverlay({
         onMouseDown={stopMouseEvent}
         onClick={stopMouseEvent}
       >
-        <TableControlButton label="Add row" onClick={onAddRow}>
-          +
-        </TableControlButton>
         <TableControlButton label="Remove row" onClick={onRemoveRow}>
           -
+        </TableControlButton>
+        <TableControlButton label="Add row" onClick={onAddRow}>
+          +
         </TableControlButton>
       </div>
     </>

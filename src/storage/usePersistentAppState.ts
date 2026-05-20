@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import { measureSlowOperation } from '../performance/performance-logging'
-import { applyAutoPurgeToAppState, parseSavedState } from '../state/app-state'
+import {
+  applyAutoPurgeToAppState,
+  getAutoPurgeScheduleSignatureForAppState,
+  getNextAutoPurgeTimeForAppState,
+  parseSavedState,
+} from '../state/app-state'
 import type { AppState } from '../types/app'
 import { appPersistenceService } from './app-persistence-service'
 import { createPersistenceDebounceController } from './persistence-debounce'
@@ -15,11 +20,14 @@ type PersistentAppStateController = {
   commitAppStateNow: (nextState: AppState, options?: AppStateCommitOptions) => Promise<AppState>
 }
 
+const MAX_AUTO_PURGE_TIMEOUT_MS = 2_147_483_647
+
 export function usePersistentAppState(): PersistentAppStateController {
   const initialSerializedState = useMemo(() => appPersistenceService.loadSerializedState(), [])
   const initialParsedState = useMemo(() => applyAutoPurgeToAppState(parseSavedState(initialSerializedState)), [initialSerializedState])
   const [state, setState] = useState<AppState>(() => initialParsedState)
   const [storageHydrated, setStorageHydrated] = useState(() => typeof appPersistenceService.hydrateSerializedState !== 'function')
+  const autoPurgeScheduleSignature = useMemo(() => getAutoPurgeScheduleSignatureForAppState(state), [state])
   const stateRef = useRef(state)
   const storageHydratedRef = useRef(storageHydrated)
   const initialStateRef = useRef<AppState>(initialParsedState)
@@ -150,11 +158,50 @@ export function usePersistentAppState(): PersistentAppStateController {
   }, [])
 
   useEffect(() => {
-    const runAutoPurgeSweep = () => {
-      setState((previous) => applyAutoPurgeToAppState(previous))
+    if (!storageHydrated) return
+
+    let disposed = false
+    let timeoutId: number | null = null
+
+    const scheduleNextAutoPurge = () => {
+      if (disposed) return
+      const now = Date.now()
+      const nextPurgeAt = getNextAutoPurgeTimeForAppState(stateRef.current, now)
+      if (nextPurgeAt === null) return
+      const delayMs = Math.min(Math.max(nextPurgeAt - now, 0), MAX_AUTO_PURGE_TIMEOUT_MS)
+
+      timeoutId = window.setTimeout(() => {
+        timeoutId = null
+        const current = stateRef.current
+        const purged = applyAutoPurgeToAppState(current)
+        if (purged !== current) {
+          stateRef.current = purged
+          setState(purged)
+          return
+        }
+        scheduleNextAutoPurge()
+      }, delayMs)
     }
 
-    const intervalId = window.setInterval(runAutoPurgeSweep, 60_000)
+    scheduleNextAutoPurge()
+
+    return () => {
+      disposed = true
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId)
+      }
+    }
+  }, [autoPurgeScheduleSignature, storageHydrated])
+
+  useEffect(() => {
+    if (!storageHydrated) return
+
+    const runAutoPurgeSweep = () => {
+      setState((previous) => {
+        const purged = applyAutoPurgeToAppState(previous)
+        return purged === previous ? previous : purged
+      })
+    }
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         runAutoPurgeSweep()
@@ -165,11 +212,10 @@ export function usePersistentAppState(): PersistentAppStateController {
     document.addEventListener('visibilitychange', handleVisibilityChange)
 
     return () => {
-      window.clearInterval(intervalId)
       window.removeEventListener('focus', runAutoPurgeSweep)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [])
+  }, [storageHydrated])
 
   return {
     state,

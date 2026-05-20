@@ -53,7 +53,8 @@ export type StorageNewlineOperationId =
   | 'strikethrough'
   | 'operationsMenu'
 export type StorageNewlineShortcutId = 'controlEnter' | 'shiftEnter' | 'commandEnter'
-export type StorageSettingsSection = 'hotkeys' | 'shortcuts' | 'data' | 'visuals' | 'frontmatter'
+export type StorageSettingsSection = 'data' | 'frontmatter' | 'hotkeys' | 'misc' | 'shortcuts' | 'toolbar' | 'visuals'
+export type StorageTableControlTargetMode = 'active-cell' | 'bottom-right'
 
 export type StorageGlobalSettings = {
   theme: StorageTheme
@@ -71,6 +72,8 @@ export type StorageGlobalSettings = {
     showParentHomeTab: boolean
     stageManagerOpenDestinationAfterApply: boolean
     lastLinkInsertMode?: 'note' | 'url'
+    tableAddTargetMode?: StorageTableControlTargetMode
+    tableDeleteTargetMode?: StorageTableControlTargetMode
     tabButtonScale: number
     noteFontScale: number
     settingsSection?: StorageSettingsSection

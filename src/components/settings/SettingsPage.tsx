@@ -17,6 +17,7 @@ import {
   TAB_BUTTON_SCALE_STEP,
   CUSTOM_THEME_PALETTE_SLOTS,
   DEFAULT_CUSTOM_THEME_PALETTE,
+  SETTINGS_SECTIONS,
   normalizeHexColor,
 } from '../../settings/defaults'
 import {
@@ -40,6 +41,7 @@ import type {
   SettingsSection,
   ShortcutId,
   StorageProfileStatus,
+  TableControlTargetMode,
 } from '../../types/app'
 import { CustomThemeColorPicker } from './CustomThemeColorPicker'
 
@@ -72,6 +74,11 @@ const NEWLINE_SHORTCUT_ROWS: Array<{ id: NewlineShortcutId; label: string }> = [
   { id: 'commandEnter', label: 'menu shortcut' },
 ]
 
+const TABLE_CONTROL_TARGET_OPTIONS: Array<{ id: TableControlTargetMode; label: string }> = [
+  { id: 'active-cell', label: 'at active cell' },
+  { id: 'bottom-right', label: 'bottom right' },
+]
+
 function isFrontmatterBooleanTrue(value: string) {
   const normalized = value.trim().toLowerCase()
   return normalized === 'true' || normalized === 'yes' || normalized === 'on' || normalized === '1'
@@ -93,6 +100,8 @@ type SettingsPageProps = {
   noteFontScaleDraft: number
   customThemePaletteDraft: CustomThemePalette
   showParentHomeTabDraft: boolean
+  tableAddTargetModeDraft: TableControlTargetMode
+  tableDeleteTargetModeDraft: TableControlTargetMode
   frontmatterDraft: FrontmatterSettings
   frontmatterDraftDirty: boolean
   storageProfileStatus: StorageProfileStatus | null
@@ -112,6 +121,8 @@ type SettingsPageProps = {
   onTabButtonScaleChange: (value: string) => void
   onNoteFontScaleChange: (value: string) => void
   onShowParentHomeTabChange: (enabled: boolean) => void
+  onTableAddTargetModeChange: (mode: TableControlTargetMode) => void
+  onTableDeleteTargetModeChange: (mode: TableControlTargetMode) => void
   onSettingsFrontmatterTemplateChange: (templateId: string) => void
   onCreateFrontmatterTemplate: () => void
   onUpdateFrontmatterTemplate: (templateId: string, patch: Partial<Pick<FrontmatterTemplate, 'name'>>) => void
@@ -148,6 +159,8 @@ export function SettingsPage({
   noteFontScaleDraft,
   customThemePaletteDraft,
   showParentHomeTabDraft,
+  tableAddTargetModeDraft,
+  tableDeleteTargetModeDraft,
   frontmatterDraft,
   frontmatterDraftDirty,
   storageProfileStatus,
@@ -167,6 +180,8 @@ export function SettingsPage({
   onTabButtonScaleChange,
   onNoteFontScaleChange,
   onShowParentHomeTabChange,
+  onTableAddTargetModeChange,
+  onTableDeleteTargetModeChange,
   onSettingsFrontmatterTemplateChange,
   onCreateFrontmatterTemplate,
   onUpdateFrontmatterTemplate,
@@ -260,11 +275,40 @@ export function SettingsPage({
     )
   }
 
+  const renderTableControlTargetSetting = (
+    label: string,
+    value: TableControlTargetMode,
+    onChange: (mode: TableControlTargetMode) => void,
+  ) => {
+    const labelId = `settings-${label.replace(/\s+/g, '-')}-label`
+    return (
+      <div className="settings-hotkey-row">
+        <span className="settings-hotkey-label" id={labelId}>
+          {label}
+        </span>
+        <div className="settings-segmented-control" role="radiogroup" aria-labelledby={labelId}>
+          {TABLE_CONTROL_TARGET_OPTIONS.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              role="radio"
+              aria-checked={value === option.id}
+              className={`settings-segmented-option ${value === option.id ? 'is-selected' : ''}`}
+              onClick={() => onChange(option.id)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <section className="settings-page-wrap">
       <div className="settings-page-card">
         <div className="settings-section-tabs" role="tablist" aria-label="settings sections">
-          {(['hotkeys', 'shortcuts', 'data', 'visuals', 'frontmatter'] as SettingsSection[]).map((settingsSection) => (
+          {SETTINGS_SECTIONS.map((settingsSection) => (
             <button
               key={settingsSection}
               type="button"
@@ -754,6 +798,25 @@ export function SettingsPage({
               </>
             )}
           </div>
+        )}
+
+        {section === 'misc' && (
+          <div className="settings-section-panel" role="tabpanel">
+            {renderTableControlTargetSetting(
+              'add table row or column',
+              tableAddTargetModeDraft,
+              onTableAddTargetModeChange,
+            )}
+            {renderTableControlTargetSetting(
+              'delete table row or column',
+              tableDeleteTargetModeDraft,
+              onTableDeleteTargetModeChange,
+            )}
+          </div>
+        )}
+
+        {section === 'toolbar' && (
+          <div className="settings-section-panel" role="tabpanel" aria-label="toolbar settings" />
         )}
       </div>
     </section>

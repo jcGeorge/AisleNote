@@ -65,6 +65,8 @@ function createState(): AppState {
     ui: {
       showParentHomeTab: true,
       stageManagerOpenDestinationAfterApply: true,
+      tableAddTargetMode: 'bottom-right',
+      tableDeleteTargetMode: 'bottom-right',
       tabButtonScale: 1,
       noteFontScale: 1,
       settingsSection: 'hotkeys',

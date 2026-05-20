@@ -35,6 +35,7 @@ import {
   applyAutoPurgeToWorkspace,
   createId,
   createTimestamp,
+  getNextWorkspaceTrashAutoPurgeTime,
   normalizeWorkspaceData,
 } from './workspace'
 import { migrateRawAppData } from './app-migrations'
@@ -273,11 +274,55 @@ function normalizeAppTheme(value: unknown): AppTheme {
   return 'dawn'
 }
 
-export function applyAutoPurgeToAppState(appState: AppState): AppState {
+export function getNextAutoPurgeTimeForAppState(appState: AppState, now = Date.now()): number | null {
+  const projected = projectActiveDomainState(appState)
+  let nextPurgeAt: number | null = null
+
+  projected.domains.forEach((domain) => {
+    domain.spaces.forEach((space) => {
+      const spacePurgeAt = getNextWorkspaceTrashAutoPurgeTime(
+        space.data,
+        space.settings.autoRemoveDeletedDays,
+        now,
+      )
+      if (spacePurgeAt === null) return
+      if (spacePurgeAt <= now) {
+        nextPurgeAt = now
+        return
+      }
+      if (nextPurgeAt === null || spacePurgeAt < nextPurgeAt) {
+        nextPurgeAt = spacePurgeAt
+      }
+    })
+  })
+
+  return nextPurgeAt
+}
+
+export function getAutoPurgeScheduleSignatureForAppState(appState: AppState): string {
+  const projected = projectActiveDomainState(appState)
+  return projected.domains
+    .map((domain) =>
+      [
+        domain.id,
+        ...domain.spaces.map((space) =>
+          [
+            space.id,
+            space.settings.autoRemoveDeletedDays,
+            ...space.data.deletedTabs.map((entry) => `tab:${entry.id}:${entry.deletedAt}`),
+            ...space.data.deletedSubTabs.map((entry) => `sub:${entry.id}:${entry.deletedAt}`),
+          ].join(','),
+        ),
+      ].join('|'),
+    )
+    .join('||')
+}
+
+export function applyAutoPurgeToAppState(appState: AppState, now = Date.now()): AppState {
   const projected = projectActiveDomainState(appState)
   let spacesChanged = false
   const spaces = projected.spaces.map((space) => {
-    const nextData = applyAutoPurgeToWorkspace(space.data, space.settings.autoRemoveDeletedDays)
+    const nextData = applyAutoPurgeToWorkspace(space.data, space.settings.autoRemoveDeletedDays, now)
     if (nextData === space.data) return space
     spacesChanged = true
     return {
@@ -291,7 +336,7 @@ export function applyAutoPurgeToAppState(appState: AppState): AppState {
     let domainSpacesChanged = domain.id === projected.activeDomainId && spacesChanged
     const nextSpaces = sourceSpaces.map((space) => {
       if (domain.id === projected.activeDomainId && spacesChanged) return space
-      const nextData = applyAutoPurgeToWorkspace(space.data, space.settings.autoRemoveDeletedDays)
+      const nextData = applyAutoPurgeToWorkspace(space.data, space.settings.autoRemoveDeletedDays, now)
       if (nextData === space.data) return space
       domainSpacesChanged = true
       return {

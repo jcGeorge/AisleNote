@@ -30,6 +30,12 @@ describe('TableControlsOverlay', () => {
     expect(html).toContain('aria-label="Add row"')
     expect(html).toContain('aria-label="Remove row"')
     expect(html.match(/class="table-tool-btn"/g)).toHaveLength(4)
+    expect(html).toContain(
+      'aria-label="Remove column" title="Remove column">-</button><button type="button" class="table-tool-btn" aria-label="Add column"',
+    )
+    expect(html).toContain(
+      'aria-label="Remove row" title="Remove row">-</button><button type="button" class="table-tool-btn" aria-label="Add row"',
+    )
   })
 
   it('renders nothing when inactive', () => {

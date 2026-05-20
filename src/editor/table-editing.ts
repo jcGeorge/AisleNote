@@ -1,4 +1,5 @@
 import { NodeSelection, Selection, TextSelection } from 'prosemirror-state'
+import type { TableControlTargetMode } from '../types/app'
 
 export type TableControlOperation = 'add-row' | 'remove-row' | 'add-column' | 'remove-column'
 export type TableReorderAxis = 'row' | 'column'
@@ -324,6 +325,12 @@ export function selectTableNodeAtPosition(view: any, tableStart: number): boolea
     view.focus()
   }
   return true
+}
+
+export function isSelectedTableNode(view: any, tableStart?: number): boolean {
+  const selection = view?.state?.selection
+  if (selection?.node?.type?.name !== 'table') return false
+  return typeof tableStart === 'number' ? selection.from === tableStart : true
 }
 
 export function selectTableFromSideClick(view: any, point: PointLike, eventTarget?: Element | null): boolean {
@@ -749,63 +756,83 @@ function dispatchTableRemoval(view: any, context: ActiveTableContext) {
   return true
 }
 
-export function applyTableControlOperationToView(view: any, operation: TableControlOperation): boolean {
+function getTargetedTableControlContext(
+  context: ActiveTableContext,
+  targetMode: TableControlTargetMode,
+): ActiveTableContext {
+  if (targetMode === 'active-cell') return context
+  const bottomRowIndex = context.bodyRowCount > 0 ? context.bodyRowCount : 0
+  return {
+    ...context,
+    rowIndex: bottomRowIndex,
+    bodyRowIndex: context.bodyRowCount > 0 ? context.bodyRowCount - 1 : null,
+    columnIndex: Math.max(0, context.columnCount - 1),
+    inHeader: context.bodyRowCount === 0,
+  }
+}
+
+export function applyTableControlOperationToView(
+  view: any,
+  operation: TableControlOperation,
+  targetMode: TableControlTargetMode = 'active-cell',
+): boolean {
   const context = getActiveTableContext(view)
   const schema = view?.state?.schema
   if (!context || !schema) return false
+  const targetContext = getTargetedTableControlContext(context, targetMode)
 
-  const tableNode = context.tableNode
+  const tableNode = targetContext.tableNode
   const headRow = getHeadRow(tableNode)
   const bodyRows = getBodyRows(tableNode)
   if (!headRow) return false
 
   if (operation === 'add-column') {
-    const nextHeadRow = addColumnToRow(schema, headRow, 'tableHeadCell', context.columnIndex)
-    const nextBodyRows = bodyRows.map((row) => addColumnToRow(schema, row, 'tableBodyCell', context.columnIndex))
+    const nextHeadRow = addColumnToRow(schema, headRow, 'tableHeadCell', targetContext.columnIndex)
+    const nextBodyRows = bodyRows.map((row) => addColumnToRow(schema, row, 'tableBodyCell', targetContext.columnIndex))
     const nextTable = buildTable(schema, tableNode, nextHeadRow, nextBodyRows)
-    return dispatchTableReplacement(view, context, nextTable, context.rowIndex, context.columnIndex + 1)
+    return dispatchTableReplacement(view, targetContext, nextTable, targetContext.rowIndex, targetContext.columnIndex + 1)
   }
 
   if (operation === 'remove-column') {
-    if (context.columnCount <= 1) return dispatchTableRemoval(view, context)
-    const nextHeadRow = removeColumnFromRow(schema, headRow, 'tableHeadCell', context.columnIndex)
-    const nextBodyRows = bodyRows.map((row) => removeColumnFromRow(schema, row, 'tableBodyCell', context.columnIndex))
+    if (targetContext.columnCount <= 1) return dispatchTableRemoval(view, targetContext)
+    const nextHeadRow = removeColumnFromRow(schema, headRow, 'tableHeadCell', targetContext.columnIndex)
+    const nextBodyRows = bodyRows.map((row) => removeColumnFromRow(schema, row, 'tableBodyCell', targetContext.columnIndex))
     const nextTable = buildTable(schema, tableNode, nextHeadRow, nextBodyRows)
     return dispatchTableReplacement(
       view,
-      context,
+      targetContext,
       nextTable,
-      Math.min(context.rowIndex, bodyRows.length),
-      Math.max(0, Math.min(context.columnIndex, context.columnCount - 2)),
+      Math.min(targetContext.rowIndex, bodyRows.length),
+      Math.max(0, Math.min(targetContext.columnIndex, targetContext.columnCount - 2)),
     )
   }
 
   if (operation === 'add-row') {
     const nextBodyRows = [...bodyRows]
-    const insertIndex = context.inHeader ? 0 : Math.min(nextBodyRows.length, (context.bodyRowIndex ?? 0) + 1)
-    nextBodyRows.splice(insertIndex, 0, createEmptyBodyRow(schema, context.columnCount))
+    const insertIndex = targetContext.inHeader ? 0 : Math.min(nextBodyRows.length, (targetContext.bodyRowIndex ?? 0) + 1)
+    nextBodyRows.splice(insertIndex, 0, createEmptyBodyRow(schema, targetContext.columnCount))
     const nextTable = buildTable(schema, tableNode, cloneRowAsType(schema, headRow, 'tableHeadCell'), nextBodyRows)
-    return dispatchTableReplacement(view, context, nextTable, insertIndex + 1, context.columnIndex)
+    return dispatchTableReplacement(view, targetContext, nextTable, insertIndex + 1, targetContext.columnIndex)
   }
 
   if (operation === 'remove-row') {
     const visualRowCount = 1 + bodyRows.length
-    if (visualRowCount <= 1) return dispatchTableRemoval(view, context)
+    if (visualRowCount <= 1) return dispatchTableRemoval(view, targetContext)
 
-    if (context.inHeader) {
+    if (targetContext.inHeader) {
       const nextHeadRow = cloneRowAsType(schema, bodyRows[0], 'tableHeadCell')
       const nextBodyRows = bodyRows.slice(1).map((row) => cloneRowAsType(schema, row, 'tableBodyCell'))
       const nextTable = buildTable(schema, tableNode, nextHeadRow, nextBodyRows)
-      return dispatchTableReplacement(view, context, nextTable, 0, context.columnIndex)
+      return dispatchTableReplacement(view, targetContext, nextTable, 0, targetContext.columnIndex)
     }
 
-    const removeIndex = context.bodyRowIndex ?? 0
+    const removeIndex = targetContext.bodyRowIndex ?? 0
     const nextBodyRows = bodyRows
       .filter((_, index) => index !== removeIndex)
       .map((row) => cloneRowAsType(schema, row, 'tableBodyCell'))
     const nextTable = buildTable(schema, tableNode, cloneRowAsType(schema, headRow, 'tableHeadCell'), nextBodyRows)
     const nextGlobalRowIndex = nextBodyRows.length > 0 ? Math.min(removeIndex + 1, nextBodyRows.length) : 0
-    return dispatchTableReplacement(view, context, nextTable, nextGlobalRowIndex, context.columnIndex)
+    return dispatchTableReplacement(view, targetContext, nextTable, nextGlobalRowIndex, targetContext.columnIndex)
   }
 
   return false

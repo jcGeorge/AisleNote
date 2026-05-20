@@ -89,9 +89,11 @@
 }
 
 .settings-section-tabs {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 0.35rem;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.32rem;
   margin-bottom: 0.9rem;
 }
 
@@ -100,9 +102,15 @@
   border-radius: 0.42rem;
   background: var(--settings-section-tab-bg);
   color: var(--settings-section-tab-text);
-  padding: 0.46rem 0.55rem;
-  font-size: 1em;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.42rem 0.42rem;
+  font-size: 0.95em;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: clip;
   text-transform: lowercase;
+  white-space: nowrap;
 }
 
 .settings-section-tab:hover {
@@ -366,6 +374,38 @@
 }
 
 .theme-switch-option.is-selected {
+  background: var(--theme-switch-option-selected-bg);
+  color: var(--theme-switch-option-selected-text);
+}
+
+.settings-segmented-control {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.18rem;
+  min-width: 260px;
+  padding: 0.18rem;
+  border: 1px solid var(--theme-switch-border);
+  border-radius: 0.42rem;
+  background: var(--theme-switch-bg);
+}
+
+.settings-segmented-option {
+  border: 0;
+  border-radius: 0.32rem;
+  background: transparent;
+  color: var(--theme-switch-option-text);
+  font-size: 0.95em;
+  line-height: 1.2;
+  padding: 0.28rem 0.45rem;
+  text-transform: lowercase;
+}
+
+.settings-segmented-option:hover {
+  color: var(--theme-switch-option-hover-text);
+  background: var(--theme-switch-option-hover-bg);
+}
+
+.settings-segmented-option.is-selected {
   background: var(--theme-switch-option-selected-bg);
   color: var(--theme-switch-option-selected-text);
 }

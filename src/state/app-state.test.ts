@@ -1,6 +1,96 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_CUSTOM_THEME_PALETTE } from '../settings/defaults'
-import { applyMarkdownToAppState, parseSavedState } from './app-state'
+import { DEFAULT_FRONTMATTER_SETTINGS } from '../frontmatter/frontmatter'
+import { DEFAULT_NEWLINE_SHORTCUT_SETTINGS, DEFAULT_SHORTCUTS } from '../hotkeys/shortcuts'
+import { DEFAULT_CUSTOM_THEME_PALETTE, DEFAULT_UI_SETTINGS } from '../settings/defaults'
+import type { AppState, DeletedSubTabEntry, DeletedTabEntry, Space, SubTab, Tab, WorkspaceData } from '../types/app'
+import { applyAutoPurgeToAppState, applyMarkdownToAppState, getNextAutoPurgeTimeForAppState, parseSavedState } from './app-state'
+import { AUTO_PURGE_DAY_MS } from './workspace'
+
+const liveTab: Tab = {
+  id: 'live-tab',
+  title: 'Live',
+  noteBodyId: 'live-body',
+  homeContent: '',
+  activeSubTabId: null,
+  subTabs: [],
+}
+
+function deletedTab(id: string, deletedAt: number): DeletedTabEntry {
+  return {
+    id: `deleted-${id}`,
+    tab: {
+      id,
+      title: id,
+      noteBodyId: `${id}-body`,
+      homeContent: '',
+      activeSubTabId: null,
+      subTabs: [],
+    },
+    deletedAt,
+  }
+}
+
+function deletedSubTab(id: string, deletedAt: number): DeletedSubTabEntry {
+  const subTab: SubTab = {
+    id,
+    title: id,
+    noteBodyId: `${id}-body`,
+    content: '',
+  }
+  return {
+    id: `deleted-${id}`,
+    parentTabId: liveTab.id,
+    parentTabTitle: liveTab.title,
+    subTab,
+    deletedAt,
+  }
+}
+
+function workspace(
+  deletedTabs: DeletedTabEntry[] = [],
+  deletedSubTabs: DeletedSubTabEntry[] = [],
+): WorkspaceData {
+  return {
+    activeTabId: liveTab.id,
+    tabs: [liveTab],
+    deletedTabs,
+    deletedSubTabs,
+  }
+}
+
+function space(id: string, autoRemoveDeletedDays: number, data: WorkspaceData): Space {
+  return {
+    id,
+    name: id,
+    settings: { autoRemoveDeletedDays },
+    data,
+  }
+}
+
+function appStateWithSpaces(spaces: Space[]): AppState {
+  const domain = {
+    id: 'domain-1',
+    name: 'Domain',
+    activeSpaceId: spaces[0]?.id ?? '',
+    spaces,
+  }
+  return {
+    theme: 'dawn',
+    activeDomainId: domain.id,
+    domains: [domain],
+    noteBodies: [],
+    activeSpaceId: domain.activeSpaceId,
+    spaces,
+    hotkeys: {
+      shortcuts: DEFAULT_SHORTCUTS,
+      newlineShortcuts: DEFAULT_NEWLINE_SHORTCUT_SETTINGS,
+      enableMouseBackForward: true,
+      enableGenericHistoryHotkeys: true,
+    },
+    frontmatter: DEFAULT_FRONTMATTER_SETTINGS,
+    ui: DEFAULT_UI_SETTINGS,
+  }
+}
 
 describe('app state normalization', () => {
   it('migrates legacy tab content into note bodies', () => {
@@ -196,11 +286,84 @@ describe('app state normalization', () => {
 
   it('normalizes persisted settings section memory', () => {
     const valid = parseSavedState(JSON.stringify({ ui: { settingsSection: 'visuals' } }))
+    const misc = parseSavedState(JSON.stringify({ ui: { settingsSection: 'misc' } }))
+    const toolbar = parseSavedState(JSON.stringify({ ui: { settingsSection: 'toolbar' } }))
     const invalid = parseSavedState(JSON.stringify({ ui: { settingsSection: 'unknown' } }))
     const missing = parseSavedState(JSON.stringify({ ui: {} }))
 
     expect(valid.ui.settingsSection).toBe('visuals')
+    expect(misc.ui.settingsSection).toBe('misc')
+    expect(toolbar.ui.settingsSection).toBe('toolbar')
     expect(invalid.ui.settingsSection).toBe('hotkeys')
     expect(missing.ui.settingsSection).toBe('hotkeys')
+  })
+
+  it('normalizes persisted table control target modes', () => {
+    const valid = parseSavedState(JSON.stringify({
+      ui: {
+        tableAddTargetMode: 'active-cell',
+        tableDeleteTargetMode: 'active-cell',
+      },
+    }))
+    const invalid = parseSavedState(JSON.stringify({
+      ui: {
+        tableAddTargetMode: 'middle',
+        tableDeleteTargetMode: 'edge',
+      },
+    }))
+    const missing = parseSavedState(JSON.stringify({ ui: {} }))
+
+    expect(valid.ui.tableAddTargetMode).toBe('active-cell')
+    expect(valid.ui.tableDeleteTargetMode).toBe('active-cell')
+    expect(invalid.ui.tableAddTargetMode).toBe('bottom-right')
+    expect(invalid.ui.tableDeleteTargetMode).toBe('bottom-right')
+    expect(missing.ui.tableAddTargetMode).toBe('bottom-right')
+    expect(missing.ui.tableDeleteTargetMode).toBe('bottom-right')
+  })
+})
+
+describe('app state trash auto purge', () => {
+  it('does not schedule a purge when no space has trash', () => {
+    const state = appStateWithSpaces([space('space-1', 7, workspace())])
+
+    expect(getNextAutoPurgeTimeForAppState(state, Date.UTC(2026, 4, 20))).toBeNull()
+  })
+
+  it('uses the nearest expiration across all spaces', () => {
+    const now = Date.UTC(2026, 4, 20)
+    const state = appStateWithSpaces([
+      space('short', 3, workspace([deletedTab('short-parent', now - 2 * AUTO_PURGE_DAY_MS)])),
+      space('long', 10, workspace([deletedTab('long-parent', now - 8 * AUTO_PURGE_DAY_MS)])),
+    ])
+
+    expect(getNextAutoPurgeTimeForAppState(state, now)).toBe(now + AUTO_PURGE_DAY_MS)
+  })
+
+  it('returns now when any space has expired trash', () => {
+    const now = Date.UTC(2026, 4, 20)
+    const state = appStateWithSpaces([
+      space('space-1', 7, workspace([deletedTab('expired-parent', now - 7 * AUTO_PURGE_DAY_MS)])),
+      space('space-2', 30, workspace([deletedTab('fresh-parent', now - 7 * AUTO_PURGE_DAY_MS)])),
+    ])
+
+    expect(getNextAutoPurgeTimeForAppState(state, now)).toBe(now)
+  })
+
+  it('purges expired trash using each space retention window', () => {
+    const now = Date.UTC(2026, 4, 20)
+    const shortExpiredParent = deletedTab('short-expired-parent', now - 3 * AUTO_PURGE_DAY_MS)
+    const shortFreshSubTab = deletedSubTab('short-fresh-sub', now - AUTO_PURGE_DAY_MS)
+    const longFreshParent = deletedTab('long-fresh-parent', now - 3 * AUTO_PURGE_DAY_MS)
+    const state = appStateWithSpaces([
+      space('short', 2, workspace([shortExpiredParent], [shortFreshSubTab])),
+      space('long', 10, workspace([longFreshParent])),
+    ])
+
+    const next = applyAutoPurgeToAppState(state, now)
+
+    expect(next.spaces.find((candidate) => candidate.id === 'short')?.data.deletedTabs).toEqual([])
+    expect(next.spaces.find((candidate) => candidate.id === 'short')?.data.deletedSubTabs).toEqual([shortFreshSubTab])
+    expect(next.spaces.find((candidate) => candidate.id === 'long')?.data.deletedTabs).toEqual([longFreshParent])
+    expect(next.domains[0].spaces.find((candidate) => candidate.id === 'short')?.data.deletedTabs).toEqual([])
   })
 })

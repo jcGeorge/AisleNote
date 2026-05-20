@@ -1,11 +1,26 @@
-import type { AppState, AppTheme, CustomThemePalette, CustomThemePaletteSlot, SettingsSection } from '../types/app'
+import type {
+  AppState,
+  AppTheme,
+  CustomThemePalette,
+  CustomThemePaletteSlot,
+  SettingsSection,
+  TableControlTargetMode,
+} from '../types/app'
 import { normalizeNoteCursorLocations } from '../notes/note-cursors'
 
 export const DEFAULT_AUTO_REMOVE_DAYS = 7
 export type BuiltInAppTheme = Exclude<AppTheme, 'custom'>
 export const BUILT_IN_THEME_IDS: BuiltInAppTheme[] = ['dark', 'light', 'dawn', 'blues']
 export const DEFAULT_SETTINGS_SECTION: SettingsSection = 'hotkeys'
-export const SETTINGS_SECTIONS: SettingsSection[] = ['hotkeys', 'shortcuts', 'data', 'visuals', 'frontmatter']
+export const SETTINGS_SECTIONS: SettingsSection[] = [
+  'data',
+  'frontmatter',
+  'hotkeys',
+  'misc',
+  'shortcuts',
+  'toolbar',
+  'visuals',
+]
 export const MIN_AUTO_REMOVE_DAYS = 1
 export const MAX_AUTO_REMOVE_DAYS = 365
 
@@ -13,6 +28,8 @@ export const DEFAULT_UI_SETTINGS: AppState['ui'] = {
   showParentHomeTab: true,
   stageManagerOpenDestinationAfterApply: true,
   lastLinkInsertMode: 'note',
+  tableAddTargetMode: 'bottom-right',
+  tableDeleteTargetMode: 'bottom-right',
   tabButtonScale: 1,
   noteFontScale: 1,
   settingsSection: DEFAULT_SETTINGS_SECTION,
@@ -166,6 +183,10 @@ export function normalizeLinkInsertMode(value: unknown): AppState['ui']['lastLin
   return value === 'url' || value === 'note' ? value : DEFAULT_UI_SETTINGS.lastLinkInsertMode
 }
 
+export function normalizeTableControlTargetMode(value: unknown): TableControlTargetMode {
+  return value === 'active-cell' || value === 'bottom-right' ? value : 'bottom-right'
+}
+
 export function normalizeUiSettings(raw: unknown): AppState['ui'] {
   if (!raw || typeof raw !== 'object') return DEFAULT_UI_SETTINGS
   const obj = raw as Record<string, unknown>
@@ -177,6 +198,8 @@ export function normalizeUiSettings(raw: unknown): AppState['ui'] {
         ? obj.stageManagerOpenDestinationAfterApply
         : DEFAULT_UI_SETTINGS.stageManagerOpenDestinationAfterApply,
     lastLinkInsertMode: normalizeLinkInsertMode(obj.lastLinkInsertMode),
+    tableAddTargetMode: normalizeTableControlTargetMode(obj.tableAddTargetMode),
+    tableDeleteTargetMode: normalizeTableControlTargetMode(obj.tableDeleteTargetMode),
     tabButtonScale:
       typeof obj.tabButtonScale === 'number'
         ? clampTabButtonScale(obj.tabButtonScale)

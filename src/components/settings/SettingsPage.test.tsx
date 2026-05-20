@@ -53,6 +53,8 @@ function createState(): AppState {
     ui: {
       showParentHomeTab: true,
       stageManagerOpenDestinationAfterApply: true,
+      tableAddTargetMode: 'bottom-right',
+      tableDeleteTargetMode: 'bottom-right',
       tabButtonScale: 1,
       noteFontScale: 1,
       settingsSection: 'hotkeys',
@@ -104,6 +106,8 @@ function renderSettingsPage(
       noteFontScaleDraft={1}
       customThemePaletteDraft={state.ui.customThemePalette ?? DEFAULT_CUSTOM_THEME_PALETTE}
       showParentHomeTabDraft
+      tableAddTargetModeDraft={state.ui.tableAddTargetMode}
+      tableDeleteTargetModeDraft={state.ui.tableDeleteTargetMode}
       frontmatterDraft={frontmatterDraft}
       frontmatterDraftDirty={frontmatterDraftDirty}
       storageProfileStatus={options.storageProfileStatus ?? null}
@@ -123,6 +127,8 @@ function renderSettingsPage(
       onTabButtonScaleChange={() => undefined}
       onNoteFontScaleChange={() => undefined}
       onShowParentHomeTabChange={() => undefined}
+      onTableAddTargetModeChange={() => undefined}
+      onTableDeleteTargetModeChange={() => undefined}
       onSettingsFrontmatterTemplateChange={() => undefined}
       onCreateFrontmatterTemplate={() => undefined}
       onUpdateFrontmatterTemplate={() => undefined}
@@ -142,6 +148,18 @@ function renderSettingsPage(
 }
 
 describe('frontmatter settings page', () => {
+  it('renders settings tabs in alphabetical order with toolbar included', () => {
+    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'hotkeys' })
+
+    expect(html).toContain('>toolbar</button>')
+    expect(html.indexOf('>data</button>')).toBeLessThan(html.indexOf('>frontmatter</button>'))
+    expect(html.indexOf('>frontmatter</button>')).toBeLessThan(html.indexOf('>hotkeys</button>'))
+    expect(html.indexOf('>hotkeys</button>')).toBeLessThan(html.indexOf('>misc</button>'))
+    expect(html.indexOf('>misc</button>')).toBeLessThan(html.indexOf('>shortcuts</button>'))
+    expect(html.indexOf('>shortcuts</button>')).toBeLessThan(html.indexOf('>toolbar</button>'))
+    expect(html.indexOf('>toolbar</button>')).toBeLessThan(html.indexOf('>visuals</button>'))
+  })
+
   it('renders parent-tab cycle hotkey rows as unbound shortcuts', () => {
     const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'hotkeys' })
 
@@ -181,6 +199,24 @@ describe('frontmatter settings page', () => {
 
     expect(html).toContain('copy to custom')
     expect(html).not.toContain('seed from current theme')
+  })
+
+  it('renders misc table target controls with bottom-right defaults', () => {
+    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'misc' })
+
+    expect(html).toContain('>misc</button>')
+    expect(html).toContain('add table row or column')
+    expect(html).toContain('delete table row or column')
+    expect(html.match(/>at active cell<\/button>/g)).toHaveLength(2)
+    expect(html.match(/>bottom right<\/button>/g)).toHaveLength(2)
+    expect(html.match(/aria-checked="true" class="settings-segmented-option is-selected">bottom right/g)).toHaveLength(2)
+  })
+
+  it('renders a toolbar settings panel placeholder', () => {
+    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'toolbar' })
+
+    expect(html).toContain('aria-selected="true" class="settings-section-tab is-active">toolbar</button>')
+    expect(html).toContain('role="tabpanel" aria-label="toolbar settings"')
   })
 
   it('renders draft template changes behind explicit save controls', () => {

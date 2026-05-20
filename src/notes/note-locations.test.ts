@@ -91,6 +91,8 @@ function createState(): AppState {
       showParentHomeTab: true,
       stageManagerOpenDestinationAfterApply: true,
       lastLinkInsertMode: 'note',
+      tableAddTargetMode: 'bottom-right',
+      tableDeleteTargetMode: 'bottom-right',
       tabButtonScale: 1,
       noteFontScale: 1,
       settingsSection: 'hotkeys',

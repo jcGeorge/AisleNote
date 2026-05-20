@@ -90,7 +90,12 @@
   }
 
   .settings-section-tabs {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.18rem;
+  }
+
+  .settings-section-tab {
+    padding-inline: 0.18rem;
+    font-size: 0.82em;
   }
 
   .settings-hotkey-row {
@@ -101,6 +106,7 @@
 
   .settings-slider-wrap,
   .theme-switch,
+  .settings-segmented-control,
   .custom-theme-editor,
   .settings-shortcut-select {
     width: 100%;
@@ -177,7 +183,12 @@
   }
 
   .settings-section-tabs {
-    gap: 0.28rem;
+    gap: 0.14rem;
+  }
+
+  .settings-section-tab {
+    padding-inline: 0.12rem;
+    font-size: 0.76em;
   }
 
   .theme-switch {

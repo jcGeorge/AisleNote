@@ -11,11 +11,13 @@ import {
   getTableControlsOverlayState,
   getTableControlsOverlayStateForCell,
   getTableReorderDragDecision,
+  isSelectedTableNode,
   placeTableCaretAtCoords,
   type TableControlOperation,
   type TableControlsOverlayState,
   type TableReorderAxis,
 } from './table-editing'
+import type { TableControlTargetMode } from '../types/app'
 import { getWysiwygView } from './prosemirror-utils'
 import { createTaskReorderSelectionSuppressionController } from './task-behavior'
 
@@ -59,6 +61,7 @@ type TableDragState = {
   marker: HTMLElement | null
   dragging: boolean
   suppressingSelection: boolean
+  nativeDragSuppressed: boolean
 }
 
 function isInteractiveTableDragTarget(target: Element | null) {
@@ -255,12 +258,12 @@ export function useTableControls({
   }, [refresh])
 
   const runTableControlOperation = useCallback(
-    (operation: TableControlOperation) => {
+    (operation: TableControlOperation, targetMode: TableControlTargetMode = 'active-cell') => {
       const currentEditor = editorRef.current
       const view = getWysiwygView(currentEditor)
       if (!currentEditor || !view) return false
       const frozenControls = tableControlsRef.current.visible ? tableControlsRef.current : getTableControlsOverlayState(view)
-      const handled = applyTableControlOperationToView(view, operation)
+      const handled = applyTableControlOperationToView(view, operation, targetMode)
       if (!handled) return false
       const activeTable = getActiveTableContext(view)
       lockedTableControlsRef.current = activeTable && frozenControls.visible ? frozenControls : null
@@ -415,7 +418,7 @@ export function useTableControls({
     const dragState = dragStateRef.current
     if (!dragState) return
     if (!dragState.dragging || !dragState.axis || dragState.insertIndex === null) {
-      if (dragState.suppressingSelection || dragState.dragging) {
+      if (dragState.suppressingSelection || dragState.dragging || dragState.nativeDragSuppressed) {
         event.preventDefault()
         event.stopPropagation()
         event.stopImmediatePropagation()
@@ -469,10 +472,18 @@ export function useTableControls({
 
   function handleNativeDragStart(event: Event) {
     const dragState = dragStateRef.current
-    if (!dragState?.suppressingSelection && !dragState?.dragging) return
+    if (!dragState) return
+    const shouldBlockSelectedTableDrag =
+      !dragState.suppressingSelection &&
+      !dragState.dragging &&
+      isSelectedTableNode(getWysiwygView(dragState.editor), dragState.context.tableStart)
+    if (!dragState.suppressingSelection && !dragState.dragging && !shouldBlockSelectedTableDrag) return
+    dragState.nativeDragSuppressed = shouldBlockSelectedTableDrag || dragState.nativeDragSuppressed
     event.preventDefault()
     event.stopPropagation()
-    selectionSuppressionRef.current.clearAfterBrowserPass()
+    if (dragState.suppressingSelection || dragState.dragging) {
+      selectionSuppressionRef.current.clearAfterBrowserPass()
+    }
   }
 
   function handleMouseDown(event: MouseEvent) {
@@ -514,6 +525,7 @@ export function useTableControls({
       marker: null,
       dragging: false,
       suppressingSelection: false,
+      nativeDragSuppressed: false,
     }
 
     window.addEventListener('mousemove', handleMouseMove, true)

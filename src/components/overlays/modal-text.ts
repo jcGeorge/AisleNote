@@ -40,8 +40,8 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
       return {
         title: 'make copy',
         body: hasExistingContent
-          ? 'the selected note will be replaced with a linked copy of the target note. edits in either location will affect both.'
-          : 'the selected note will become a linked copy of the target note. edits in either location will affect both.',
+          ? 'this note will be replaced with a linked copy of the target note. edits in either location will affect both.'
+          : 'this note will become a linked copy of the target note. edits in either location will affect both.',
         action: 'make copy',
       }
     }
@@ -49,8 +49,8 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
     return {
       title: 'make copy',
       body: hasExistingContent
-        ? 'the selected note will be replaced with an independent copy of the target note, including all aisles.'
-        : 'the selected note will receive an independent copy of the target note, including all aisles.',
+        ? 'this note will be replaced with an independent copy of the target note, including all aisles.'
+        : 'this note will receive an independent copy of the target note, including all aisles.',
       action: 'make copy',
     }
   }

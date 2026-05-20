@@ -25,7 +25,8 @@ export type ShortcutId =
   | 'cycleParentTabPrev'
   | 'cycleSubTabNext'
   | 'cycleSubTabPrev'
-export type SettingsSection = 'hotkeys' | 'shortcuts' | 'data' | 'visuals' | 'frontmatter'
+export type SettingsSection = 'data' | 'frontmatter' | 'hotkeys' | 'misc' | 'shortcuts' | 'toolbar' | 'visuals'
+export type TableControlTargetMode = 'active-cell' | 'bottom-right'
 
 export type NewlineOperationId =
   | 'normalNewLine'
@@ -226,6 +227,8 @@ export type AppState = {
     showParentHomeTab: boolean
     stageManagerOpenDestinationAfterApply: boolean
     lastLinkInsertMode?: LinkInsertMode
+    tableAddTargetMode: TableControlTargetMode
+    tableDeleteTargetMode: TableControlTargetMode
     tabButtonScale: number
     noteFontScale: number
     settingsSection: SettingsSection

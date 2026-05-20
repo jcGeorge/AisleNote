@@ -11,6 +11,7 @@ import {
   getTableReorderDragDecision,
   isBlankTableSideSelectionTarget,
   isPointInTableRightSelectionZone,
+  isSelectedTableNode,
   moveSelectedTableBoundaryCaret,
   placeCaretOutsideTableAtCoords,
   placeTableCaretAtCoords,
@@ -18,6 +19,7 @@ import {
   type TableControlOperation,
   type TableReorderAxis,
 } from './table-editing'
+import type { TableControlTargetMode } from '../types/app'
 
 const schema = new Schema({
   nodes: {
@@ -204,9 +206,15 @@ function createTableSelectionView(doc: any, options: { withHistory?: boolean } =
   return view
 }
 
-function applyOperation(operation: TableControlOperation, rowIndex: number, columnIndex: number, doc = buildDoc()) {
+function applyOperation(
+  operation: TableControlOperation,
+  rowIndex: number,
+  columnIndex: number,
+  doc = buildDoc(),
+  targetMode: TableControlTargetMode = 'active-cell',
+) {
   const view = createView(doc, rowIndex, columnIndex)
-  expect(applyTableControlOperationToView(view, operation)).toBe(true)
+  expect(applyTableControlOperationToView(view, operation, targetMode)).toBe(true)
   return view.state.doc
 }
 
@@ -246,6 +254,48 @@ describe('table editing controls', () => {
     expect(getCellText(table, 0, 0)).toBe('H1')
     expect(getCellText(table, 0, 1)).toBe('')
     expect(getCellText(table, 0, 2)).toBe('H2')
+  })
+
+  it('keeps active-cell mode scoped to the active row or column', () => {
+    const addedRowTable = getTable(applyOperation('add-row', 0, 0, buildDoc(), 'active-cell'))
+    const removedColumnTable = getTable(applyOperation('remove-column', 1, 0, buildDoc(), 'active-cell'))
+
+    expect(getCellText(addedRowTable, 1, 0)).toBe('')
+    expect(getCellText(addedRowTable, 2, 0)).toBe('A1')
+    expect(getCellText(removedColumnTable, 0, 0)).toBe('H2')
+  })
+
+  it('adds a row at the table bottom in bottom-right mode', () => {
+    const table = getTable(applyOperation('add-row', 0, 0, buildDoc(), 'bottom-right'))
+
+    expect(getBodyRows(table)).toHaveLength(3)
+    expect(getCellText(table, 1, 0)).toBe('A1')
+    expect(getCellText(table, 2, 0)).toBe('B1')
+    expect(getCellText(table, 3, 0)).toBe('')
+  })
+
+  it('adds a column at the table right edge in bottom-right mode', () => {
+    const table = getTable(applyOperation('add-column', 1, 0, buildDoc(), 'bottom-right'))
+
+    expect(table.child(0).child(0).childCount).toBe(3)
+    expect(getCellText(table, 0, 0)).toBe('H1')
+    expect(getCellText(table, 0, 1)).toBe('H2')
+    expect(getCellText(table, 0, 2)).toBe('')
+  })
+
+  it('removes the bottom row in bottom-right mode', () => {
+    const table = getTable(applyOperation('remove-row', 0, 0, buildDoc(), 'bottom-right'))
+
+    expect(getBodyRows(table)).toHaveLength(1)
+    expect(getCellText(table, 1, 0)).toBe('A1')
+  })
+
+  it('removes the rightmost column in bottom-right mode', () => {
+    const table = getTable(applyOperation('remove-column', 1, 0, buildDoc(), 'bottom-right'))
+
+    expect(table.child(0).child(0).childCount).toBe(1)
+    expect(getCellText(table, 0, 0)).toBe('H1')
+    expect(getCellText(table, 1, 0)).toBe('A1')
   })
 
   it('removes a column normally', () => {
@@ -421,6 +471,16 @@ describe('table editing controls', () => {
     expect(view.state.selection).toBeInstanceOf(NodeSelection)
     expect(view.state.selection.from).toBe(0)
     expect((view.state.selection as NodeSelection).node.type.name).toBe('table')
+  })
+
+  it('detects when a specific table node is selected', () => {
+    const view = createView(buildDoc(), 1, 0)
+
+    expect(isSelectedTableNode(view)).toBe(false)
+    expect(selectTableNodeAtPosition(view, 0)).toBe(true)
+    expect(isSelectedTableNode(view)).toBe(true)
+    expect(isSelectedTableNode(view, 0)).toBe(true)
+    expect(isSelectedTableNode(view, 1)).toBe(false)
   })
 
   it('repairs a stuck table selection to an outside coordinate', () => {
