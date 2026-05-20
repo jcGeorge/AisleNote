@@ -477,7 +477,7 @@ export type MultiLineEditState = {
   activeInlineFormats?: MultiLineInlineFormat[]
 }
 
-export type MultiLineInlineFormat = 'bold' | 'italic' | 'strike'
+export type MultiLineInlineFormat = 'bold' | 'italic' | 'strike' | 'highlight'
 
 export type EditorTextLineRange = {
   start: number

@@ -14,6 +14,7 @@ import {
   blockIndentPlugin,
   EDITOR_TOOLBAR_ITEMS,
   headingSpaceShortcutPlugin,
+  highlightPlugin,
   installHeadingPopupActiveState,
   listMarkerPlugin,
   multiLineSelectionShortcutPlugin,
@@ -30,6 +31,7 @@ import {
 } from './task-behavior'
 import {
   materializeHorizontalRuleShortcut,
+  prepareMarkdownHighlightsForDisplay,
   normalizeMarkdownForPersistence,
 } from '../markdown/markdown-utils'
 import {
@@ -387,7 +389,7 @@ export function useAisleEditors({
       normalizingAisleIdsRef.current.add(aisleId)
       lastEditorMarkdownRef.current = materializedHorizontalRule
       lastEditorMarkdownByAisleRef.current.set(aisleId, materializedHorizontalRule)
-      editor.setMarkdown(prepareMarkdownImagesForDisplay(materializedHorizontalRule), false)
+      editor.setMarkdown(prepareMarkdownImagesForDisplay(prepareMarkdownHighlightsForDisplay(materializedHorizontalRule)), false)
       return
     }
 
@@ -537,7 +539,7 @@ export function useAisleEditors({
       let pluginKey: unknown = null
       const editor = new Editor({
         el: root,
-        initialValue: prepareMarkdownImagesForDisplay(aisle.markdown),
+        initialValue: prepareMarkdownImagesForDisplay(prepareMarkdownHighlightsForDisplay(aisle.markdown)),
         initialEditType: 'wysiwyg',
         previewStyle: 'tab',
         hideModeSwitch: true,
@@ -550,6 +552,7 @@ export function useAisleEditors({
           listMarkerPlugin,
           blockIndentPlugin,
           annotationLinePlugin,
+          highlightPlugin,
           terminalBlockLandingPlugin,
           createCodeBlockControlsPlugin({ pushToast }),
           (context: any) =>
@@ -691,7 +694,7 @@ export function useAisleEditors({
         if (activeAisleIdRef.current === aisle.id) {
           lastEditorMarkdownRef.current = normalizeMarkdownForPersistence(expectedMarkdown)
         }
-        meta.editor.setMarkdown(prepareMarkdownImagesForDisplay(expectedMarkdown), false)
+        meta.editor.setMarkdown(prepareMarkdownImagesForDisplay(prepareMarkdownHighlightsForDisplay(expectedMarkdown)), false)
       }
     }
   }, [viewMode, activeNoteBodyId, activeNoteAisles])

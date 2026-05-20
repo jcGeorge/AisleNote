@@ -394,6 +394,18 @@
   color: var(--editor-text) !important;
 }
 
+.theme-light .toastui-editor-contents mark,
+.theme-light .toastui-editor .ProseMirror mark {
+  background-color: var(--editor-highlight-bg) !important;
+  color: var(--editor-highlight-text) !important;
+}
+
+.theme-light .toastui-editor-contents mark *,
+.theme-light .toastui-editor .ProseMirror mark * {
+  background-color: transparent !important;
+  color: inherit !important;
+}
+
 .theme-light .toastui-editor-contents blockquote,
 .theme-light .toastui-editor .ProseMirror blockquote {
   background: var(--editor-blockquote-bg) !important;

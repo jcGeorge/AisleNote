@@ -5,7 +5,9 @@ import {
   convertInternalTabsForExport,
   EDITOR_BLANK_LINE_PLACEHOLDER,
   INDENT_TOKEN,
+  normalizeHighlightMarkdownForPersistence,
   normalizeMarkdownForPersistence,
+  prepareMarkdownHighlightsForDisplay,
   preserveBlankParagraphsFromWysiwyg,
   repairBrokenDataImageMarkdown,
 } from './markdown-utils'
@@ -132,5 +134,40 @@ describe('data image markdown repair', () => {
     expect(repairBrokenDataImageMarkdown('![image.png]\n(data:image/png;base64,abc)')).toBe(
       '![image.png](data:image/png;base64,abc)',
     )
+  })
+})
+
+describe('markdown highlight syntax', () => {
+  it('prepares compact and spaced highlight markers for editor display', () => {
+    expect(prepareMarkdownHighlightsForDisplay('alpha ==one== beta == two ==')).toBe(
+      'alpha <mark>one</mark> beta <mark>two</mark>',
+    )
+  })
+
+  it('escapes highlighted text while preparing editor display', () => {
+    expect(prepareMarkdownHighlightsForDisplay('==a < b & c==')).toBe('<mark>a &lt; b &amp; c</mark>')
+  })
+
+  it('normalizes editor mark tags back to persisted markdown markers', () => {
+    expect(normalizeHighlightMarkdownForPersistence('alpha <mark>one</mark> beta <mark class="x"> two </mark>')).toBe(
+      'alpha ==one== beta ==two==',
+    )
+    expect(normalizeMarkdownForPersistence('<mark>one</mark>')).toBe('==one==')
+  })
+
+  it('does not convert highlight markers inside fenced code or inline code', () => {
+    const fenced = 'before ==one==\n```\n==two==\n```\nafter `==three==`'
+
+    expect(prepareMarkdownHighlightsForDisplay(fenced)).toBe(
+      'before <mark>one</mark>\n```\n==two==\n```\nafter `==three==`',
+    )
+    expect(normalizeHighlightMarkdownForPersistence('`<mark>code</mark>`\n```\n<mark>code</mark>\n```')).toBe(
+      '`<mark>code</mark>`\n```\n<mark>code</mark>\n```',
+    )
+  })
+
+  it('leaves empty highlight markers alone', () => {
+    expect(prepareMarkdownHighlightsForDisplay('== ==')).toBe('== ==')
+    expect(normalizeHighlightMarkdownForPersistence('<mark> </mark>')).toBe('<mark> </mark>')
   })
 })

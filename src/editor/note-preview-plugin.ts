@@ -3,6 +3,7 @@ import {
   annotationLinePlugin,
   blockIndentPlugin,
   headingSpaceShortcutPlugin,
+  highlightPlugin,
   listMarkerPlugin,
   thematicBreakShortcutPlugin,
 } from './editor-setup'
@@ -20,6 +21,7 @@ import {
   parseInternalNoteUrl,
 } from '../notes/note-references'
 import type { NoteAisle, NoteLocation } from '../types/app'
+import { prepareMarkdownHighlightsForDisplay } from '../markdown/markdown-utils'
 
 const NOTE_PREVIEW_DEFAULT_HEIGHT_REM = 20
 const NOTE_PREVIEW_EXPANDED_HEIGHT_REM = 30
@@ -100,7 +102,7 @@ function createContextPreviewWidgetElement(
 
     const editor = new Editor({
       el: editorHost,
-      initialValue: aisle.markdown,
+      initialValue: prepareMarkdownHighlightsForDisplay(aisle.markdown),
       initialEditType: 'wysiwyg',
       previewStyle: 'tab',
       hideModeSwitch: true,
@@ -108,7 +110,14 @@ function createContextPreviewWidgetElement(
       height: `${heightRem}rem`,
       autofocus: false,
       usageStatistics: false,
-      plugins: [listMarkerPlugin, blockIndentPlugin, annotationLinePlugin, headingSpaceShortcutPlugin, thematicBreakShortcutPlugin],
+      plugins: [
+        listMarkerPlugin,
+        blockIndentPlugin,
+        annotationLinePlugin,
+        highlightPlugin,
+        headingSpaceShortcutPlugin,
+        thematicBreakShortcutPlugin,
+      ],
     })
 
     const view = getWysiwygView(editor)

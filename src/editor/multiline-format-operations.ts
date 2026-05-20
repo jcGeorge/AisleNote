@@ -99,7 +99,7 @@ type MultiLineBlockQuoteOperationOptions = {
 
 type InlineMarkerShortcut = {
   format: MultiLineInlineFormat
-  marker: '**' | '*' | '_' | '~~'
+  marker: '**' | '*' | '_' | '~~' | '=='
   textByBlockIndex: Map<number, string>
 }
 
@@ -107,6 +107,7 @@ const INLINE_FORMAT_MARK_NAMES: Record<MultiLineInlineFormat, string> = {
   bold: 'strong',
   italic: 'emph',
   strike: 'strike',
+  highlight: 'mark',
 }
 
 function stripEditorPlaceholders(text: string): string {
@@ -1302,6 +1303,14 @@ function parseClosedInlineMarker(text: string): Omit<InlineMarkerShortcut, 'text
 
   const strikeMatch = normalized.match(/^~~(.+)~~$/)
   if (strikeMatch?.[1]?.trim()) return { format: 'strike', marker: '~~', text: strikeMatch[1] }
+
+  const highlightMatch = normalized.match(/^==([^\n]*?\S[^\n]*?)==$/)
+  if (highlightMatch?.[1]?.trim()) {
+    const text = highlightMatch[1].startsWith(' ') && highlightMatch[1].endsWith(' ')
+      ? highlightMatch[1].slice(1, -1)
+      : highlightMatch[1]
+    if (text.trim()) return { format: 'highlight', marker: '==', text }
+  }
 
   const starItalicMatch = normalized.match(/^\*(.+)\*$/)
   if (starItalicMatch?.[1]?.trim() && !starItalicMatch[1].startsWith('*') && !starItalicMatch[1].endsWith('*')) {

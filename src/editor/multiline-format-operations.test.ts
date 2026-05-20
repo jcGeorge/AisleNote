@@ -70,6 +70,7 @@ const multilineFormatSchema = new Schema({
     strong: { toDOM: () => ['strong', 0] },
     emph: { toDOM: () => ['em', 0] },
     strike: { toDOM: () => ['s', 0] },
+    mark: { toDOM: () => ['mark', 0] },
   },
 })
 
@@ -640,9 +641,9 @@ describe('multi-cursor code block operations', () => {
 describe('multi-cursor inline formatting operations', () => {
   it('maps active inline formats to stored editor marks immediately', () => {
     const view = createView(multilineFormatSchema.nodes.doc.create(null, [paragraph('one'), paragraph('two')]))
-    const activeMarks = getActiveInlineFormatMarks(view.state.schema, ['bold', 'italic', 'strike'])
+    const activeMarks = getActiveInlineFormatMarks(view.state.schema, ['bold', 'italic', 'strike', 'highlight'])
 
-    expect(activeMarks.map((mark: any) => mark.type.name)).toEqual(['strong', 'emph', 'strike'])
+    expect(activeMarks.map((mark: any) => mark.type.name)).toEqual(['strong', 'emph', 'strike', 'mark'])
 
     const activeState = view.apply(applyActiveInlineFormatsToStoredMarks(view.state.tr, view.state.schema, ['bold']))
     expect(activeState.storedMarks?.map((mark: any) => mark.type.name)).toEqual(['strong'])
@@ -655,6 +656,7 @@ describe('multi-cursor inline formatting operations', () => {
     ['bold', 'strong'],
     ['italic', 'emph'],
     ['strike', 'strike'],
+    ['highlight', 'mark'],
   ] as Array<[MultiLineInlineFormat, string]>)('adds and removes %s marks across selected ranges', (format, markName) => {
     const view = createView(multilineFormatSchema.nodes.doc.create(null, [paragraph('one'), paragraph('two')]))
     const state = multiLineState([0, 1], 3, { 0: 0, 1: 0 })
@@ -714,6 +716,8 @@ describe('multi-cursor inline formatting operations', () => {
     ['*one', '*', 'italic', 'emph'],
     ['_one', '_', 'italic', 'emph'],
     ['~~one~', '~', 'strike', 'strike'],
+    ['==one=', '=', 'highlight', 'mark'],
+    ['== one =', '=', 'highlight', 'mark'],
   ] as Array<[string, string, MultiLineInlineFormat, string]>)(
     'converts closed typed inline marker %s%s',
     (textBeforeInput, inputText, format, markName) => {

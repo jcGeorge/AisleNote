@@ -30,7 +30,10 @@ type UseEditorToolbarStateOptions = {
 }
 
 const areToolbarFormatStatesEqual = (first: ToolbarFormatState, second: ToolbarFormatState) =>
-  first.bold === second.bold && first.italic === second.italic && first.strike === second.strike
+  first.bold === second.bold &&
+  first.italic === second.italic &&
+  first.strike === second.strike &&
+  first.highlight === second.highlight
 
 const normalizeToolbarHeadingLevel = (level: number | null): ToolbarHeadingLevel => {
   if (level === 0 || level === 1 || level === 2 || level === 3 || level === 4 || level === 5 || level === 6) {
@@ -150,6 +153,7 @@ export function useEditorToolbarState({
       bold: hasActiveEditorMark(view, 'strong'),
       italic: hasActiveEditorMark(view, 'emph'),
       strike: hasActiveEditorMark(view, 'strike'),
+      highlight: hasActiveEditorMark(view, 'mark'),
     }
   }
 

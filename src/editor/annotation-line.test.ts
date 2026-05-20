@@ -3,6 +3,8 @@ import {
   ANNOTATION_LINE_CLASS_NAME,
   ANNOTATION_LINE_ARROW_CLASS_NAME,
   ANNOTATION_LINE_ARROW_DOWN_CLASS_NAME,
+  ANNOTATION_LINE_ARROW_LEFT_CLASS_NAME,
+  ANNOTATION_LINE_ARROW_RIGHT_CLASS_NAME,
   ANNOTATION_LINE_ARROW_UP_CLASS_NAME,
   ANNOTATION_LINE_TAIL_LEFT_CLASS_NAME,
   ANNOTATION_LINE_TAIL_RIGHT_CLASS_NAME,
@@ -81,6 +83,14 @@ describe('annotation line detection', () => {
       marker: { kind: 'arrow', raw: '--v', arrowDirection: 'down', tailDirection: 'left' },
       content: 'text',
     })
+    expect(parseAnnotationLine('--> text')).toMatchObject({
+      marker: { kind: 'arrow', raw: '-->', arrowDirection: 'right', tailDirection: 'left' },
+      content: 'text',
+    })
+    expect(parseAnnotationLine('<-- text')).toMatchObject({
+      marker: { kind: 'arrow', raw: '<--', arrowDirection: 'left', tailDirection: 'right' },
+      content: 'text',
+    })
   })
 
   it('matches arrow annotation markers anywhere in a paragraph', () => {
@@ -93,6 +103,8 @@ describe('annotation line detection', () => {
       ['j --^', '--^', 'up', 'left'],
       ['j v--', 'v--', 'down', 'right'],
       ['j --v', '--v', 'down', 'left'],
+      ['j -->', '-->', 'right', 'left'],
+      ['j <--', '<--', 'left', 'right'],
     ] as const
 
     cases.forEach(([source, raw, arrowDirection, tailDirection]) => {
@@ -111,6 +123,8 @@ describe('annotation line detection', () => {
       ['--^', 'up', 'left'],
       ['v--', 'down', 'right'],
       ['--v', 'down', 'left'],
+      ['-->', 'right', 'left'],
+      ['<--', 'left', 'right'],
     ] as const
 
     middleCases.forEach(([raw, arrowDirection, tailDirection]) => {
@@ -129,6 +143,11 @@ describe('annotation line detection', () => {
       markerStart: 4,
       content: 'one two --v three',
     })
+    expect(parseAnnotationLine('one --> two <-- three')).toMatchObject({
+      marker: { kind: 'arrow', raw: '-->', arrowDirection: 'right', tailDirection: 'left' },
+      markerStart: 4,
+      content: 'one two <-- three',
+    })
   })
 
   it('allows standalone arrow annotation markers', () => {
@@ -137,6 +156,8 @@ describe('annotation line detection', () => {
       ['--^', 'up', 'left'],
       ['v--', 'down', 'right'],
       ['--v', 'down', 'left'],
+      ['-->', 'right', 'left'],
+      ['<--', 'left', 'right'],
     ] as const
 
     cases.forEach(([raw, arrowDirection, tailDirection]) => {
@@ -149,9 +170,11 @@ describe('annotation line detection', () => {
   })
 
   it('finds every arrow marker without treating regular dash annotations as inline markers', () => {
-    expect(parseAnnotationLineMarkers('one --^ two v-- three').map((match) => match.marker.raw)).toEqual([
+    expect(parseAnnotationLineMarkers('one --^ two v-- three --> four <-- five').map((match) => match.marker.raw)).toEqual([
       '--^',
       'v--',
+      '-->',
+      '<--',
     ])
 
     expect(parseAnnotationLineMarkers('-- text')).toHaveLength(1)
@@ -210,6 +233,8 @@ describe('annotation line html helpers', () => {
       ['--^ note', ANNOTATION_LINE_ARROW_UP_CLASS_NAME, ANNOTATION_LINE_TAIL_LEFT_CLASS_NAME],
       ['v-- note', ANNOTATION_LINE_ARROW_DOWN_CLASS_NAME, ANNOTATION_LINE_TAIL_RIGHT_CLASS_NAME],
       ['--v note', ANNOTATION_LINE_ARROW_DOWN_CLASS_NAME, ANNOTATION_LINE_TAIL_LEFT_CLASS_NAME],
+      ['--> note', ANNOTATION_LINE_ARROW_RIGHT_CLASS_NAME, ANNOTATION_LINE_TAIL_LEFT_CLASS_NAME],
+      ['<-- note', ANNOTATION_LINE_ARROW_LEFT_CLASS_NAME, ANNOTATION_LINE_TAIL_RIGHT_CLASS_NAME],
     ] as const
 
     cases.forEach(([source, directionClassName, tailClassName]) => {
@@ -224,12 +249,12 @@ describe('annotation line html helpers', () => {
   })
 
   it('builds directional class names for inline arrow markers', () => {
-    const match = parseAnnotationLine('--^ note')
+    const match = parseAnnotationLine('--> note')
     expect(match).not.toBeNull()
     expect(match ? getAnnotationInlineArrowClassNames(match) : []).toEqual([
       ANNOTATION_INLINE_ARROW_CLASS_NAME,
       ANNOTATION_LINE_ARROW_CLASS_NAME,
-      ANNOTATION_LINE_ARROW_UP_CLASS_NAME,
+      ANNOTATION_LINE_ARROW_RIGHT_CLASS_NAME,
       ANNOTATION_LINE_TAIL_LEFT_CLASS_NAME,
     ])
   })
@@ -249,33 +274,33 @@ describe('annotation line html helpers', () => {
 
   it('replaces arrow markers with rendered inline arrow tokens', () => {
     const parent: { type: string; firstChild?: unknown } = { type: 'paragraph' }
-    const node = { literal: '--^ note', parent }
+    const node = { literal: '--> note', parent }
     parent.firstChild = node
 
     const tokens = applyAnnotationMarkerToTextHtmlToken(node, {
       type: 'text',
-      content: '--^ note',
+      content: '--> note',
     }) as Array<{ type: string; content?: string }>
 
     expect(tokens).toEqual([
-      ...inlineArrowTokens(ANNOTATION_LINE_ARROW_UP_CLASS_NAME, ANNOTATION_LINE_TAIL_LEFT_CLASS_NAME),
+      ...inlineArrowTokens(ANNOTATION_LINE_ARROW_RIGHT_CLASS_NAME, ANNOTATION_LINE_TAIL_LEFT_CLASS_NAME),
       { type: 'text', content: ' note' },
     ])
   })
 
   it('replaces suffix arrow markers without moving them', () => {
     const parent: { type: string; firstChild?: unknown } = { type: 'paragraph' }
-    const node = { literal: 'asdf --^', parent }
+    const node = { literal: 'asdf <--', parent }
     parent.firstChild = node
 
     const tokens = applyAnnotationMarkerToTextHtmlToken(node, {
       type: 'text',
-      content: 'asdf --^',
+      content: 'asdf <--',
     }) as Array<{ type: string; content?: string }>
 
     expect(tokens).toEqual([
       { type: 'text', content: 'asdf ' },
-      ...inlineArrowTokens(ANNOTATION_LINE_ARROW_UP_CLASS_NAME, ANNOTATION_LINE_TAIL_LEFT_CLASS_NAME),
+      ...inlineArrowTokens(ANNOTATION_LINE_ARROW_LEFT_CLASS_NAME, ANNOTATION_LINE_TAIL_RIGHT_CLASS_NAME),
     ])
   })
 
@@ -298,20 +323,22 @@ describe('annotation line html helpers', () => {
 
   it('replaces multiple arrow markers from rendered text tokens without moving them', () => {
     const parent: { type: string; firstChild?: unknown } = { type: 'paragraph' }
-    const node = { literal: 'one --^ two v-- three', parent }
+    const node = { literal: 'one --^ two --> three <-- four', parent }
     parent.firstChild = node
 
     const tokens = applyAnnotationMarkerToTextHtmlToken(node, {
       type: 'text',
-      content: 'one --^ two v-- three',
+      content: 'one --^ two --> three <-- four',
     }) as Array<{ type: string; content?: string }>
 
     expect(tokens).toEqual([
       { type: 'text', content: 'one ' },
       ...inlineArrowTokens(ANNOTATION_LINE_ARROW_UP_CLASS_NAME, ANNOTATION_LINE_TAIL_LEFT_CLASS_NAME),
       { type: 'text', content: ' two ' },
-      ...inlineArrowTokens(ANNOTATION_LINE_ARROW_DOWN_CLASS_NAME, ANNOTATION_LINE_TAIL_RIGHT_CLASS_NAME),
-      { type: 'text', content: ' three' },
+      ...inlineArrowTokens(ANNOTATION_LINE_ARROW_RIGHT_CLASS_NAME, ANNOTATION_LINE_TAIL_LEFT_CLASS_NAME),
+      { type: 'text', content: ' three ' },
+      ...inlineArrowTokens(ANNOTATION_LINE_ARROW_LEFT_CLASS_NAME, ANNOTATION_LINE_TAIL_RIGHT_CLASS_NAME),
+      { type: 'text', content: ' four' },
     ])
   })
 
@@ -361,6 +388,36 @@ describe('annotation line html helpers', () => {
     expect(secondTokens).toEqual([{ type: 'text', content: ' note' }])
   })
 
+  it('replaces horizontal arrow markers split across text nodes', () => {
+    const rightParent: { type: string; firstChild?: unknown } = { type: 'paragraph' }
+    const rightFirst = { literal: '--', parent: rightParent, next: null as unknown }
+    const rightSecond = { literal: '> note', parent: rightParent }
+    rightFirst.next = rightSecond
+    rightParent.firstChild = rightFirst
+
+    expect(applyAnnotationMarkerToTextHtmlToken(rightFirst, { type: 'text', content: '--' })).toEqual(inlineArrowTokens(
+      ANNOTATION_LINE_ARROW_RIGHT_CLASS_NAME,
+      ANNOTATION_LINE_TAIL_LEFT_CLASS_NAME,
+    ))
+    expect(applyAnnotationMarkerToTextHtmlToken(rightSecond, { type: 'text', content: '> note' })).toEqual([
+      { type: 'text', content: ' note' },
+    ])
+
+    const leftParent: { type: string; firstChild?: unknown } = { type: 'paragraph' }
+    const leftFirst = { literal: '<', parent: leftParent, next: null as unknown }
+    const leftSecond = { literal: '-- note', parent: leftParent }
+    leftFirst.next = leftSecond
+    leftParent.firstChild = leftFirst
+
+    expect(applyAnnotationMarkerToTextHtmlToken(leftFirst, { type: 'text', content: '<' })).toEqual(inlineArrowTokens(
+      ANNOTATION_LINE_ARROW_LEFT_CLASS_NAME,
+      ANNOTATION_LINE_TAIL_RIGHT_CLASS_NAME,
+    ))
+    expect(applyAnnotationMarkerToTextHtmlToken(leftSecond, { type: 'text', content: '-- note' })).toEqual([
+      { type: 'text', content: ' note' },
+    ])
+  })
+
   it('replaces suffix tail-first arrow markers split across text nodes', () => {
     const parent: { type: string; firstChild?: unknown } = { type: 'paragraph' }
     const first = { literal: 'asdf ', parent, next: null as unknown }
@@ -386,16 +443,16 @@ describe('annotation line html helpers', () => {
 
   it('replaces standalone arrow markers from rendered text tokens', () => {
     const parent: { type: string; firstChild?: unknown } = { type: 'paragraph' }
-    const node = { literal: '^--', parent }
+    const node = { literal: '<--', parent }
     parent.firstChild = node
 
     const tokens = applyAnnotationMarkerToTextHtmlToken(node, {
       type: 'text',
-      content: '^--',
+      content: '<--',
     }) as Array<{ type: string; content?: string }>
 
     expect(tokens).toEqual(inlineArrowTokens(
-      ANNOTATION_LINE_ARROW_UP_CLASS_NAME,
+      ANNOTATION_LINE_ARROW_LEFT_CLASS_NAME,
       ANNOTATION_LINE_TAIL_RIGHT_CLASS_NAME,
     ))
   })

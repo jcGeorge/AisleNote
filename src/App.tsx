@@ -1236,7 +1236,7 @@ function App() {
     const currentEditor = editorRef.current
     if (!currentEditor) return false
     currentEditor.focus()
-    if (command === 'bold' || command === 'italic' || command === 'strike') {
+    if (command === 'bold' || command === 'italic' || command === 'strike' || command === 'highlight') {
       return runActiveEditorFormatCommand(command)
     }
     if (command === 'heading' && multiLineEditRef.current) {

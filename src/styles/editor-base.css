@@ -56,6 +56,35 @@ body.app-tooltips-disabled .toastui-editor-tooltip {
   background-position-x: -77px !important;
 }
 
+.toastui-editor-toolbar-icons.highlight {
+  position: relative !important;
+  background-image: none !important;
+  color: var(--toolbar-custom-icon-color, var(--app-text)) !important;
+}
+
+.toastui-editor-toolbar-icons.highlight::before {
+  content: 'H';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.toastui-editor-toolbar-icons.highlight::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 5px;
+  height: 3px;
+  border-radius: 2px;
+  background: #facc15;
+  opacity: 0.88;
+}
+
 .toastui-editor-toolbar-icons.hrline {
   background-position-x: -103px !important;
 }

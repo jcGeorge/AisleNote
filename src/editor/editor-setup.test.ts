@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { Editor } from '@toast-ui/editor'
 import { Schema } from 'prosemirror-model'
-import { EditorState, Selection, TextSelection } from 'prosemirror-state'
+import { EditorState, Plugin, Selection, TextSelection } from 'prosemirror-state'
 import {
   ANNOTATION_LINE_ARROW_CLASS_NAME,
   ANNOTATION_LINE_ARROW_DOWN_CLASS_NAME,
+  ANNOTATION_LINE_ARROW_LEFT_CLASS_NAME,
+  ANNOTATION_LINE_ARROW_RIGHT_CLASS_NAME,
   ANNOTATION_LINE_ARROW_UP_CLASS_NAME,
   ANNOTATION_INLINE_ARROW_CLASS_NAME,
   ANNOTATION_LINE_MARKER_CLASS_NAME,
@@ -24,8 +26,11 @@ import {
   getArrowMarkerNavigationPosition,
   getArrowMarkerSelectionSnapPosition,
   getBlockIndentDecorationRanges,
+  getClosedHighlightMarkerShortcut,
   getParagraphSpaceShortcut,
   headingSpaceShortcutPlugin,
+  highlightPlugin,
+  toggleHighlightMark,
 } from './editor-setup'
 import { BLOCK_INDENT_TOKEN, INDENT_TOKEN } from '../markdown/markdown-utils'
 
@@ -221,6 +226,111 @@ describe('paragraph space shortcut WYSIWYG behavior', () => {
     expect(nextState.doc.child(0).type.name).toBe('blockQuote')
     expect(nextState.doc.child(0).child(0).type.name).toBe('paragraph')
     expect(nextState.doc.child(0).textContent).toBe('')
+  })
+})
+
+const highlightSchema = new Schema({
+  nodes: {
+    doc: { content: 'block+' },
+    text: { group: 'inline' },
+    paragraph: {
+      group: 'block',
+      content: 'inline*',
+      toDOM: () => ['p', 0],
+    },
+  },
+  marks: {
+    mark: {
+      attrs: {
+        htmlAttrs: { default: {} },
+        htmlInline: { default: true },
+      },
+      toDOM: () => ['mark', 0],
+    },
+    code: {
+      toDOM: () => ['code', 0],
+    },
+  },
+})
+
+function highlightParagraph(text: string) {
+  return highlightSchema.nodes.paragraph.create(null, text ? highlightSchema.text(text) : undefined)
+}
+
+function getTextMarkNames(doc: any) {
+  const names: string[] = []
+  doc.descendants((node: any) => {
+    if (!node?.isText) return true
+    node.marks?.forEach((mark: any) => names.push(mark.type.name))
+    return true
+  })
+  return names
+}
+
+describe('highlight plugin', () => {
+  it('detects compact and spaced typed highlight markers', () => {
+    expect(getClosedHighlightMarkerShortcut('==one==')).toEqual({ markerStart: 0, markerEnd: 7, text: 'one' })
+    expect(getClosedHighlightMarkerShortcut('start == one ==')).toEqual({
+      markerStart: 6,
+      markerEnd: 15,
+      text: 'one',
+    })
+    expect(getClosedHighlightMarkerShortcut('== ==')).toBeNull()
+  })
+
+  it('toggles the highlight mark over a selection', () => {
+    const doc = highlightSchema.nodes.doc.create(null, [highlightParagraph('note')])
+    let state = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, 1, 5),
+    })
+
+    expect(toggleHighlightMark(state, (transaction) => {
+      state = state.apply(transaction as any)
+    })).toBe(true)
+    expect(getTextMarkNames(state.doc)).toEqual(['mark'])
+
+    expect(toggleHighlightMark(state, (transaction) => {
+      state = state.apply(transaction as any)
+    })).toBe(true)
+    expect(getTextMarkNames(state.doc)).toEqual([])
+  })
+
+  it('converts typed highlight markers into marked text', () => {
+    const pluginBundle = highlightPlugin({ pmState: { Plugin } })
+    const plugin = pluginBundle.wysiwygPlugins[0]() as Plugin
+    const doc = highlightSchema.nodes.doc.create(null, [highlightParagraph('== note =')])
+    let state = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, 10),
+    })
+    const view = {
+      get state() {
+        return state
+      },
+      dispatch: (transaction: any) => {
+        state = state.apply(transaction)
+      },
+    }
+
+    expect((plugin.props.handleTextInput as any)?.(view, 10, 10, '=', () => false)).toBe(true)
+    expect(state.doc.textContent).toBe('note')
+    expect(getTextMarkNames(state.doc)).toEqual(['mark'])
+  })
+
+  it('leaves typed markers inside code marks alone', () => {
+    const codeMark = highlightSchema.marks.code.create()
+    const doc = highlightSchema.nodes.doc.create(null, [
+      highlightSchema.nodes.paragraph.create(null, highlightSchema.text('== note =', [codeMark])),
+    ])
+    const pluginBundle = highlightPlugin({ pmState: { Plugin } })
+    const plugin = pluginBundle.wysiwygPlugins[0]() as Plugin
+    const state = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, 10),
+    })
+
+    expect((plugin.props.handleTextInput as any)?.({ state }, 10, 10, '=', () => false)).toBe(false)
   })
 })
 
@@ -528,6 +638,8 @@ describe('annotation line WYSIWYG decorations', () => {
       ['note --^', ANNOTATION_LINE_ARROW_UP_CLASS_NAME, ANNOTATION_LINE_TAIL_LEFT_CLASS_NAME],
       ['j v--', ANNOTATION_LINE_ARROW_DOWN_CLASS_NAME, ANNOTATION_LINE_TAIL_RIGHT_CLASS_NAME],
       ['j --v', ANNOTATION_LINE_ARROW_DOWN_CLASS_NAME, ANNOTATION_LINE_TAIL_LEFT_CLASS_NAME],
+      ['j -->', ANNOTATION_LINE_ARROW_RIGHT_CLASS_NAME, ANNOTATION_LINE_TAIL_LEFT_CLASS_NAME],
+      ['j <--', ANNOTATION_LINE_ARROW_LEFT_CLASS_NAME, ANNOTATION_LINE_TAIL_RIGHT_CLASS_NAME],
     ] as const
 
     cases.forEach(([source, directionClassName, tailClassName]) => {
@@ -543,13 +655,13 @@ describe('annotation line WYSIWYG decorations', () => {
   })
 
   it('hides suffix and middle arrow markers in the live editor decoration range', () => {
-    expect(getAnnotationDecorationCalls('asdf --^').find((call) => call.kind === 'inline')).toMatchObject({
+    expect(getAnnotationDecorationCalls('asdf -->').find((call) => call.kind === 'inline')).toMatchObject({
       from: 6,
       to: 9,
       attrs: { class: expect.stringContaining(ANNOTATION_LINE_MARKER_CLASS_NAME) },
     })
 
-    expect(getAnnotationDecorationCalls('one --v two').find((call) => call.kind === 'inline')).toMatchObject({
+    expect(getAnnotationDecorationCalls('one <-- two').find((call) => call.kind === 'inline')).toMatchObject({
       from: 5,
       to: 8,
       attrs: { class: expect.stringContaining(ANNOTATION_LINE_MARKER_CLASS_NAME) },
@@ -558,9 +670,9 @@ describe('annotation line WYSIWYG decorations', () => {
 
   it('maps live marker hiding through split ProseMirror text children', () => {
     expect(
-      getAnnotationDecorationCalls('asdf --^', [
+      getAnnotationDecorationCalls('asdf -->', [
         { text: 'asdf ', position: 0 },
-        { text: '--^', position: 6 },
+        { text: '-->', position: 6 },
       ]).find((call) => call.kind === 'inline'),
     ).toMatchObject({
       from: 7,
@@ -570,12 +682,14 @@ describe('annotation line WYSIWYG decorations', () => {
   })
 
   it('replaces every arrow marker in place without moving text', () => {
-    const calls = getAnnotationDecorationCalls('one --^ two v-- three')
+    const calls = getAnnotationDecorationCalls('one --^ two v-- three --> four <-- five')
     const inlineDecorations = calls.filter((call) => call.kind === 'inline')
 
     expect(inlineDecorations.map((call) => ({ from: call.from, to: call.to }))).toEqual([
       { from: 5, to: 8 },
       { from: 13, to: 16 },
+      { from: 23, to: 26 },
+      { from: 32, to: 35 },
     ])
     inlineDecorations.forEach((call) => {
       expect(call.attrs?.class?.split(' ')).toEqual(expect.arrayContaining([
@@ -587,7 +701,7 @@ describe('annotation line WYSIWYG decorations', () => {
   })
 
   it('places a start-of-line arrow replacement after the paragraph-start cursor position', () => {
-    const calls = getAnnotationDecorationCalls('--^ note')
+    const calls = getAnnotationDecorationCalls('--> note')
     const inlineDecoration = calls.find((call) => call.kind === 'inline')
 
     expect(inlineDecoration).toMatchObject({
@@ -623,14 +737,14 @@ describe('annotation line WYSIWYG decorations', () => {
 describe('annotation arrow deletion', () => {
   it('deletes the full arrow marker when backspacing from its right edge', () => {
     expect(getArrowMarkerDeletionRange({
-      doc: editorDoc('asdf --^'),
+      doc: editorDoc('asdf -->'),
       selection: { empty: true, from: 9, to: 9 },
     }, 'Backspace')).toEqual({ from: 6, to: 9 })
   })
 
   it('deletes the full arrow marker when deleting from its left edge', () => {
     expect(getArrowMarkerDeletionRange({
-      doc: editorDoc('asdf --^'),
+      doc: editorDoc('asdf <--'),
       selection: { empty: true, from: 6, to: 6 },
     }, 'Delete')).toEqual({ from: 6, to: 9 })
   })
@@ -658,14 +772,14 @@ describe('annotation arrow deletion', () => {
 describe('annotation arrow navigation', () => {
   it('skips the full arrow marker when moving right from its left edge', () => {
     expect(getArrowMarkerNavigationPosition({
-      doc: editorDoc('asdf --^'),
+      doc: editorDoc('asdf -->'),
       selection: { empty: true, from: 6 },
     }, 'ArrowRight')).toBe(9)
   })
 
   it('skips the full arrow marker when moving left from its right edge', () => {
     expect(getArrowMarkerNavigationPosition({
-      doc: editorDoc('asdf --^'),
+      doc: editorDoc('asdf <--'),
       selection: { empty: true, from: 9 },
     }, 'ArrowLeft')).toBe(6)
   })

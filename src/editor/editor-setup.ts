@@ -173,6 +173,129 @@ export function blockIndentPlugin(context: {
   }
 }
 
+export type HighlightMarkerShortcutMatch = {
+  markerStart: number
+  markerEnd: number
+  text: string
+}
+
+function trimSyntacticHighlightPadding(value: string): string {
+  if (!value.startsWith(' ') || !value.endsWith(' ') || value.trim().length === 0) return value
+  return value.slice(1, -1)
+}
+
+export function getClosedHighlightMarkerShortcut(value: string): HighlightMarkerShortcutMatch | null {
+  const normalized = String(value ?? '').replace(/\u200b/g, '')
+  const match = normalized.match(/(^|[^=])==([^\n]*?\S[^\n]*?)==$/)
+  if (!match || match.index === undefined) return null
+
+  const markerStart = match.index + match[1].length
+  const markerEnd = normalized.length
+  const highlightedText = trimSyntacticHighlightPadding(match[2])
+  if (highlightedText.trim().length === 0) return null
+
+  return { markerStart, markerEnd, text: highlightedText }
+}
+
+function selectionHasMark(state: any, markType: any): boolean {
+  const selection = state?.selection
+  if (!selection) return false
+  if (selection.empty) {
+    const marks = state.storedMarks ?? selection.$from?.marks?.() ?? []
+    return marks.some((mark: any) => mark?.type === markType)
+  }
+  return state.doc.rangeHasMark(selection.from, selection.to, markType)
+}
+
+export function toggleHighlightMark(state: any, dispatch?: (tr: unknown) => void): boolean {
+  const markType = state?.schema?.marks?.mark
+  const selection = state?.selection
+  if (!markType || !selection) return false
+
+  if (!dispatch) return true
+
+  if (selection.empty) {
+    const active = selectionHasMark(state, markType)
+    const transaction = active
+      ? state.tr.removeStoredMark(markType)
+      : state.tr.addStoredMark(markType.create())
+    dispatch(transaction.scrollIntoView())
+    return true
+  }
+
+  const active = selectionHasMark(state, markType)
+  const transaction = active
+    ? state.tr.removeMark(selection.from, selection.to, markType)
+    : state.tr.addMark(selection.from, selection.to, markType.create())
+  dispatch(transaction.scrollIntoView())
+  return true
+}
+
+function cursorHasCodeMark(state: any): boolean {
+  const codeMarkType = state?.schema?.marks?.code
+  if (!codeMarkType) return false
+  const marks = state.storedMarks ?? state.selection?.$from?.marks?.() ?? []
+  return marks.some((mark: any) => mark?.type === codeMarkType)
+}
+
+function applyTypedHighlightMarkerShortcut(view: any, from: number, to: number, inputText: string): boolean {
+  if (inputText !== '=' || from !== to) return false
+  const { state } = view ?? {}
+  const selection = state?.selection
+  const markType = state?.schema?.marks?.mark
+  if (!selection?.empty || !markType || !selection.$from?.parent?.isTextblock) return false
+  if (selection.$from.parent.type?.spec?.code || cursorHasCodeMark(state)) return false
+
+  const parent = selection.$from.parent
+  const parentOffset = selection.$from.parentOffset
+  const beforeText =
+    typeof parent.textBetween === 'function'
+      ? parent.textBetween(0, parentOffset, '\n', '\n')
+      : String(parent.textContent ?? '').slice(0, parentOffset)
+  const match = getClosedHighlightMarkerShortcut(beforeText + inputText)
+  if (!match) return false
+
+  const blockStart = selection.$from.start(selection.$from.depth)
+  const markerFrom = blockStart + match.markerStart
+  const replacement = state.schema.text(match.text, [markType.create()])
+  view.dispatch?.(state.tr.replaceWith(markerFrom, from, replacement).scrollIntoView())
+  return true
+}
+
+export function highlightPlugin(context: {
+  pmState: {
+    Plugin: new (spec: {
+      props?: {
+        handleTextInput?: (view: any, from: number, to: number, text: string) => boolean
+      }
+    }) => unknown
+  }
+}) {
+  const { Plugin } = context.pmState
+
+  return {
+    toHTMLRenderers: {
+      htmlInline: {
+        mark: (_node: unknown, rendererContext: { entering: boolean }) => ({
+          type: rendererContext.entering ? 'openTag' : 'closeTag',
+          tagName: 'mark',
+        }),
+      },
+    },
+    wysiwygCommands: {
+      highlight: (_payload: unknown, state: any, dispatch?: (tr: unknown) => void) => toggleHighlightMark(state, dispatch),
+    },
+    wysiwygPlugins: [
+      () =>
+        new Plugin({
+          props: {
+            handleTextInput: applyTypedHighlightMarkerShortcut,
+          },
+        }),
+    ],
+  }
+}
+
 function getArrowMarkerDocRanges(doc: any): Array<{ from: number; to: number }> {
   const ranges: Array<{ from: number; to: number }> = []
 

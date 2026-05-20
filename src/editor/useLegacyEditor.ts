@@ -7,6 +7,7 @@ import {
   blockIndentPlugin,
   EDITOR_TOOLBAR_ITEMS,
   headingSpaceShortcutPlugin,
+  highlightPlugin,
   installClearToolbarButton,
   installHeadingPopupActiveState,
   listMarkerPlugin,
@@ -20,7 +21,7 @@ import {
   installCompletedTaskCheckboxBehavior,
   installTaskTextReorderBehavior,
 } from './task-behavior'
-import { materializeHorizontalRuleShortcut } from '../markdown/markdown-utils'
+import { materializeHorizontalRuleShortcut, prepareMarkdownHighlightsForDisplay } from '../markdown/markdown-utils'
 import {
   importImageBlobAsAssetUrl,
   prepareMarkdownImagesForDisplay,
@@ -94,7 +95,7 @@ export function useLegacyEditor({
     lastEditorMarkdownRef.current = displayContent
     editorRef.current = new Editor({
       el: editorMountRef.current,
-      initialValue: prepareMarkdownImagesForDisplay(displayContent),
+      initialValue: prepareMarkdownImagesForDisplay(prepareMarkdownHighlightsForDisplay(displayContent)),
       initialEditType: 'wysiwyg',
       previewStyle: 'tab',
       hideModeSwitch: true,
@@ -102,10 +103,11 @@ export function useLegacyEditor({
       toolbarItems: EDITOR_TOOLBAR_ITEMS,
       height: '100%',
       usageStatistics: false,
-        plugins: [
-          listMarkerPlugin,
-          blockIndentPlugin,
-          annotationLinePlugin,
+      plugins: [
+        listMarkerPlugin,
+        blockIndentPlugin,
+        annotationLinePlugin,
+        highlightPlugin,
         terminalBlockLandingPlugin,
         createCodeBlockControlsPlugin({ pushToast }),
         uncheckedTaskEnterPlugin,
@@ -157,7 +159,10 @@ export function useLegacyEditor({
           if (materializedHorizontalRule && materializedHorizontalRule !== markdown) {
             normalizingContentRef.current = true
             lastEditorMarkdownRef.current = materializedHorizontalRule
-            currentEditor.setMarkdown(prepareMarkdownImagesForDisplay(materializedHorizontalRule), false)
+            currentEditor.setMarkdown(
+              prepareMarkdownImagesForDisplay(prepareMarkdownHighlightsForDisplay(materializedHorizontalRule)),
+              false,
+            )
             return
           }
 
@@ -211,7 +216,7 @@ export function useLegacyEditor({
     const existing = getNormalizedEditorMarkdown(instance)
     if (existing !== displayContent) {
       lastEditorMarkdownRef.current = displayContent
-      instance.setMarkdown(prepareMarkdownImagesForDisplay(displayContent), false)
+      instance.setMarkdown(prepareMarkdownImagesForDisplay(prepareMarkdownHighlightsForDisplay(displayContent)), false)
     }
   }, [displayContent, viewMode, syncKey])
 }

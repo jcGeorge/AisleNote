@@ -87,7 +87,132 @@ function stripBlockIndentTokensFromQuotedLines(markdown: string): string {
 
 export function normalizeMarkdownForPersistence(markdown: string): string {
   const repaired = repairBrokenDataImageMarkdown(markdown)
-  return stripBlockIndentTokensFromQuotedLines(repaired).replace(/(?<!\u2060)\u2003\u2003/g, INDENT_TOKEN)
+  const highlighted = normalizeHighlightMarkdownForPersistence(repaired)
+  return stripBlockIndentTokensFromQuotedLines(highlighted).replace(/(?<!\u2060)\u2003\u2003/g, INDENT_TOKEN)
+}
+
+function escapeHtmlText(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+function decodeHtmlText(value: string): string {
+  if (typeof document !== 'undefined') {
+    const textarea = document.createElement('textarea')
+    textarea.innerHTML = value
+    return textarea.value
+  }
+  return value
+    .replace(/&#(\d+);/g, (_match, code: string) => String.fromCharCode(Number(code)))
+    .replace(/&#x([a-f0-9]+);/gi, (_match, code: string) => String.fromCharCode(Number.parseInt(code, 16)))
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+}
+
+function trimSyntacticHighlightPadding(value: string): string {
+  if (!value.startsWith(' ') || !value.endsWith(' ') || value.trim().length === 0) return value
+  return value.slice(1, -1)
+}
+
+function transformOutsideInlineCode(line: string, transformText: (text: string) => string): string {
+  let result = ''
+  let plain = ''
+  let index = 0
+  let codeDelimiter = ''
+
+  const flushPlain = () => {
+    if (plain.length === 0) return
+    result += transformText(plain)
+    plain = ''
+  }
+
+  while (index < line.length) {
+    if (line[index] !== '`') {
+      if (codeDelimiter) {
+        result += line[index]
+      } else {
+        plain += line[index]
+      }
+      index += 1
+      continue
+    }
+
+    let end = index + 1
+    while (end < line.length && line[end] === '`') end += 1
+    const delimiter = line.slice(index, end)
+
+    if (!codeDelimiter) {
+      flushPlain()
+      codeDelimiter = delimiter
+      result += delimiter
+      index = end
+      continue
+    }
+
+    result += delimiter
+    if (delimiter.length === codeDelimiter.length) {
+      codeDelimiter = ''
+    }
+    index = end
+  }
+
+  if (!codeDelimiter) {
+    flushPlain()
+  } else {
+    result += plain
+  }
+
+  return result
+}
+
+function transformOutsideFencedCode(markdown: string, transformLine: (line: string) => string): string {
+  let activeFence: string | null = null
+  return String(markdown ?? '')
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map((line) => {
+      const fenceBeforeLine = activeFence
+      const nextFence = isFenceBoundary(line, activeFence)
+      const isFenceLine = nextFence !== activeFence
+      activeFence = nextFence
+      if (fenceBeforeLine || isFenceLine) return line
+      return transformLine(line)
+    })
+    .join('\n')
+}
+
+function convertHighlightMarkersToHtml(segment: string): string {
+  return segment.replace(/(^|[^=])==([^\n]*?\S[^\n]*?)==(?=$|[^=])/g, (match, prefix: string, rawText: string) => {
+    const text = trimSyntacticHighlightPadding(rawText)
+    if (text.trim().length === 0) return match
+    return `${prefix}<mark>${escapeHtmlText(text)}</mark>`
+  })
+}
+
+function convertHighlightHtmlToMarkers(segment: string): string {
+  return segment.replace(/<mark\b[^>]*>([\s\S]*?)<\/mark>/gi, (match, rawText: string) => {
+    if (rawText.includes('\n')) return match
+    const text = trimSyntacticHighlightPadding(decodeHtmlText(rawText))
+    if (text.trim().length === 0) return match
+    return `==${text}==`
+  })
+}
+
+export function prepareMarkdownHighlightsForDisplay(markdown: string): string {
+  return transformOutsideFencedCode(String(markdown ?? ''), (line) =>
+    transformOutsideInlineCode(line, convertHighlightMarkersToHtml),
+  )
+}
+
+export function normalizeHighlightMarkdownForPersistence(markdown: string): string {
+  return transformOutsideFencedCode(String(markdown ?? ''), (line) =>
+    transformOutsideInlineCode(line, convertHighlightHtmlToMarkers),
+  )
 }
 
 function stripStandaloneBlankLinePlaceholders(markdown: string): string {

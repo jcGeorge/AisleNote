@@ -362,6 +362,36 @@
   -webkit-mask-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D'0%200%2064%2064'%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%3E%3Cg%20transform%3D'rotate(-90%2032%2032)'%3E%3Cpath%20d%3D'M56%2056%20C56%2034%2044%2022%2024%2022'%20fill%3D'none'%20stroke%3D'black'%20stroke-width%3D'14'%20stroke-linecap%3D'butt'%20stroke-linejoin%3D'round'%2F%3E%3Cpath%20d%3D'M24%203%20L3%2024%20L24%2045%20Z'%20fill%3D'black'%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E");
 }
 
+.toastui-editor-contents p.tabs-annotation-line-arrow-right::before,
+.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-right::before,
+.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-right::before,
+.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-right::before {
+  mask-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D'0%200%2064%2064'%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%3E%3Cpath%20d%3D'M7%2032%20H46'%20fill%3D'none'%20stroke%3D'black'%20stroke-width%3D'12'%20stroke-linecap%3D'butt'%2F%3E%3Cpath%20d%3D'M40%2011%20L61%2032%20L40%2053%20Z'%20fill%3D'black'%2F%3E%3C%2Fsvg%3E");
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D'0%200%2064%2064'%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%3E%3Cpath%20d%3D'M7%2032%20H46'%20fill%3D'none'%20stroke%3D'black'%20stroke-width%3D'12'%20stroke-linecap%3D'butt'%2F%3E%3Cpath%20d%3D'M40%2011%20L61%2032%20L40%2053%20Z'%20fill%3D'black'%2F%3E%3C%2Fsvg%3E");
+}
+
+.toastui-editor-contents p.tabs-annotation-line-arrow-left::before,
+.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-left::before,
+.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-left::before,
+.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-left::before {
+  mask-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D'0%200%2064%2064'%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%3E%3Cg%20transform%3D'translate(64%200)%20scale(-1%201)'%3E%3Cpath%20d%3D'M7%2032%20H46'%20fill%3D'none'%20stroke%3D'black'%20stroke-width%3D'12'%20stroke-linecap%3D'butt'%2F%3E%3Cpath%20d%3D'M40%2011%20L61%2032%20L40%2053%20Z'%20fill%3D'black'%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E");
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D'0%200%2064%2064'%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%3E%3Cg%20transform%3D'translate(64%200)%20scale(-1%201)'%3E%3Cpath%20d%3D'M7%2032%20H46'%20fill%3D'none'%20stroke%3D'black'%20stroke-width%3D'12'%20stroke-linecap%3D'butt'%2F%3E%3Cpath%20d%3D'M40%2011%20L61%2032%20L40%2053%20Z'%20fill%3D'black'%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E");
+}
+
+.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-right::before,
+.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-right::before,
+.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-left::before,
+.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-left::before {
+  top: 82%;
+}
+
+.toastui-editor-contents p.tabs-annotation-line-arrow-right::before,
+.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-right::before,
+.toastui-editor-contents p.tabs-annotation-line-arrow-left::before,
+.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-left::before {
+  top: 0.48em;
+}
+
 .toastui-editor-contents .tabs-annotation-line-marker,
 .toastui-editor-contents .tabs-annotation-line-marker * {
   color: transparent !important;
@@ -501,6 +531,22 @@
 .toastui-editor .ProseMirror .multiline-selection-range,
 .toastui-editor-contents .multiline-selection-range {
   background: var(--editor-selection-bg) !important;
+  color: inherit !important;
+}
+
+.toastui-editor .ProseMirror mark,
+.toastui-editor-contents mark {
+  background-color: var(--editor-highlight-bg, #fde047) !important;
+  color: var(--editor-highlight-text, #1f2937) !important;
+  border-radius: 0.14em;
+  padding: 0 0.08em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.toastui-editor .ProseMirror mark *,
+.toastui-editor-contents mark * {
+  background-color: transparent !important;
   color: inherit !important;
 }
 

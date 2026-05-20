@@ -5,6 +5,7 @@ const TOOLBAR_FORMAT_LABELS: Record<ToolbarFormatKey, string> = {
   bold: 'Bold',
   italic: 'Italic',
   strike: 'Strikethrough',
+  highlight: 'Highlight',
 }
 
 type SharedEditorToolbarProps = {
@@ -261,6 +262,7 @@ export function SharedEditorToolbar({
           {renderToolbarIconButton('Bold', 'bold', () => onCommand('bold'), 'bold')}
           {renderToolbarIconButton('Italic', 'italic', () => onCommand('italic'), 'italic')}
           {renderToolbarIconButton('Strikethrough', 'strike', () => onCommand('strike'), 'strike')}
+          {renderToolbarIconButton('Highlight', 'highlight', () => onCommand('highlight'), 'highlight')}
           {toolbarShortcutFeedback && (
             <span className="note-toolbar-shortcut-feedback" role="status">
               {TOOLBAR_FORMAT_LABELS[toolbarShortcutFeedback]}

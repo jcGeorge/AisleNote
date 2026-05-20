@@ -321,6 +321,8 @@
   --editor-blockquote-bg: transparent;
   --editor-block-indent-offset: 1.75rem;
   --editor-selection-bg: rgba(83, 137, 238, 0.34);
+  --editor-highlight-bg: #fde047;
+  --editor-highlight-text: #1f2937;
   --editor-code-bg: #121826;
   --editor-popup-bg: #0f1b32;
   --editor-link-text: #9bbcff;
@@ -756,6 +758,8 @@
   --editor-blockquote-bg: transparent;
   --editor-block-indent-offset: 1.75rem;
   --editor-selection-bg: color-mix(in srgb, var(--custom-palette-primary) 34%, transparent);
+  --editor-highlight-bg: #fde047;
+  --editor-highlight-text: #1f2937;
   --editor-code-bg: color-mix(in srgb, var(--custom-palette-canvas) 84%, black);
   --editor-popup-bg: var(--custom-palette-surface-raised);
   --editor-link-text: color-mix(in srgb, var(--custom-palette-primary) 52%, var(--app-text-bright));

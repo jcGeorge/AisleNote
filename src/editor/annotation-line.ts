@@ -4,6 +4,8 @@ export const ANNOTATION_INLINE_ARROW_CLASS_NAME = 'tabs-annotation-inline-arrow'
 export const ANNOTATION_LINE_ARROW_CLASS_NAME = 'tabs-annotation-line-arrow'
 export const ANNOTATION_LINE_ARROW_UP_CLASS_NAME = 'tabs-annotation-line-arrow-up'
 export const ANNOTATION_LINE_ARROW_DOWN_CLASS_NAME = 'tabs-annotation-line-arrow-down'
+export const ANNOTATION_LINE_ARROW_LEFT_CLASS_NAME = 'tabs-annotation-line-arrow-left'
+export const ANNOTATION_LINE_ARROW_RIGHT_CLASS_NAME = 'tabs-annotation-line-arrow-right'
 export const ANNOTATION_LINE_TAIL_LEFT_CLASS_NAME = 'tabs-annotation-line-tail-left'
 export const ANNOTATION_LINE_TAIL_RIGHT_CLASS_NAME = 'tabs-annotation-line-tail-right'
 
@@ -11,8 +13,8 @@ type AnnotationLineMarker =
   | { kind: 'line'; raw: '--' }
   | {
       kind: 'arrow'
-      raw: '^--' | '--^' | 'v--' | '--v'
-      arrowDirection: 'up' | 'down'
+      raw: '^--' | '--^' | 'v--' | '--v' | '-->' | '<--'
+      arrowDirection: 'up' | 'down' | 'left' | 'right'
       tailDirection: 'left' | 'right'
     }
 
@@ -56,6 +58,8 @@ function parseAnnotationMarker(raw: string): AnnotationLineMarker | null {
   if (raw === '--^') return { kind: 'arrow', raw, arrowDirection: 'up', tailDirection: 'left' }
   if (raw === 'v--') return { kind: 'arrow', raw, arrowDirection: 'down', tailDirection: 'right' }
   if (raw === '--v') return { kind: 'arrow', raw, arrowDirection: 'down', tailDirection: 'left' }
+  if (raw === '-->') return { kind: 'arrow', raw, arrowDirection: 'right', tailDirection: 'left' }
+  if (raw === '<--') return { kind: 'arrow', raw, arrowDirection: 'left', tailDirection: 'right' }
   return null
 }
 
@@ -97,7 +101,7 @@ function buildAnnotationMatch(
 }
 
 function parseArrowAnnotationLines(normalizedText: string): AnnotationLineMatch[] {
-  const markerPattern = /\^--|--\^|v--|--v/g
+  const markerPattern = /\^--|--\^|v--|--v|-->|<--/g
   const matches: AnnotationLineMatch[] = []
   let match: RegExpExecArray | null
 
@@ -170,9 +174,17 @@ export function isAnnotationLine(text: string): boolean {
 export function getAnnotationLineClassNames(match: AnnotationLineMatch): string[] {
   const classNames = [ANNOTATION_LINE_CLASS_NAME]
   if (match.marker.kind !== 'arrow') return classNames
+  const arrowDirectionClassName =
+    match.marker.arrowDirection === 'up'
+      ? ANNOTATION_LINE_ARROW_UP_CLASS_NAME
+      : match.marker.arrowDirection === 'down'
+        ? ANNOTATION_LINE_ARROW_DOWN_CLASS_NAME
+        : match.marker.arrowDirection === 'left'
+          ? ANNOTATION_LINE_ARROW_LEFT_CLASS_NAME
+          : ANNOTATION_LINE_ARROW_RIGHT_CLASS_NAME
   classNames.push(
     ANNOTATION_LINE_ARROW_CLASS_NAME,
-    match.marker.arrowDirection === 'up' ? ANNOTATION_LINE_ARROW_UP_CLASS_NAME : ANNOTATION_LINE_ARROW_DOWN_CLASS_NAME,
+    arrowDirectionClassName,
     match.marker.tailDirection === 'left' ? ANNOTATION_LINE_TAIL_LEFT_CLASS_NAME : ANNOTATION_LINE_TAIL_RIGHT_CLASS_NAME,
   )
   return classNames
@@ -180,10 +192,18 @@ export function getAnnotationLineClassNames(match: AnnotationLineMatch): string[
 
 export function getAnnotationInlineArrowClassNames(match: AnnotationLineMatch): string[] {
   if (match.marker.kind !== 'arrow') return []
+  const arrowDirectionClassName =
+    match.marker.arrowDirection === 'up'
+      ? ANNOTATION_LINE_ARROW_UP_CLASS_NAME
+      : match.marker.arrowDirection === 'down'
+        ? ANNOTATION_LINE_ARROW_DOWN_CLASS_NAME
+        : match.marker.arrowDirection === 'left'
+          ? ANNOTATION_LINE_ARROW_LEFT_CLASS_NAME
+          : ANNOTATION_LINE_ARROW_RIGHT_CLASS_NAME
   return [
     ANNOTATION_INLINE_ARROW_CLASS_NAME,
     ANNOTATION_LINE_ARROW_CLASS_NAME,
-    match.marker.arrowDirection === 'up' ? ANNOTATION_LINE_ARROW_UP_CLASS_NAME : ANNOTATION_LINE_ARROW_DOWN_CLASS_NAME,
+    arrowDirectionClassName,
     match.marker.tailDirection === 'left' ? ANNOTATION_LINE_TAIL_LEFT_CLASS_NAME : ANNOTATION_LINE_TAIL_RIGHT_CLASS_NAME,
   ]
 }
