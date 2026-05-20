@@ -31,6 +31,7 @@ export const DEFAULT_UI_SETTINGS: AppState['ui'] = {
   showParentHomeTab: true,
   stageManagerOpenDestinationAfterApply: true,
   lastLinkInsertMode: 'note',
+  lastNoteCopyMode: 'independent',
   tableAddTargetMode: 'bottom-right',
   tableDeleteTargetMode: 'bottom-right',
   tabButtonScale: 1,
@@ -189,6 +190,10 @@ export function normalizeLinkInsertMode(value: unknown): AppState['ui']['lastLin
   return value === 'url' || value === 'note' ? value : DEFAULT_UI_SETTINGS.lastLinkInsertMode
 }
 
+export function normalizeNoteCopyMode(value: unknown): AppState['ui']['lastNoteCopyMode'] {
+  return value === 'linked' || value === 'independent' ? value : DEFAULT_UI_SETTINGS.lastNoteCopyMode
+}
+
 export function normalizeTableControlTargetMode(value: unknown): TableControlTargetMode {
   return value === 'active-cell' || value === 'bottom-right' ? value : 'bottom-right'
 }
@@ -204,6 +209,7 @@ export function normalizeUiSettings(raw: unknown): AppState['ui'] {
         ? obj.stageManagerOpenDestinationAfterApply
         : DEFAULT_UI_SETTINGS.stageManagerOpenDestinationAfterApply,
     lastLinkInsertMode: normalizeLinkInsertMode(obj.lastLinkInsertMode),
+    lastNoteCopyMode: normalizeNoteCopyMode(obj.lastNoteCopyMode),
     tableAddTargetMode: normalizeTableControlTargetMode(obj.tableAddTargetMode),
     tableDeleteTargetMode: normalizeTableControlTargetMode(obj.tableDeleteTargetMode),
     tabButtonScale:

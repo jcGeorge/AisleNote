@@ -18,6 +18,13 @@ const targetLocation: NoteLocation = {
   subTabId: null,
 }
 
+const peerLocation: NoteLocation = {
+  domainId: 'domain-1',
+  spaceId: 'space-1',
+  tabId: 'tab-peer',
+  subTabId: null,
+}
+
 function createCopyTestState(): AppState {
   const space: Space = {
     id: 'space-1',
@@ -38,6 +45,14 @@ function createCopyTestState(): AppState {
           id: 'tab-target',
           title: 'Target',
           noteBodyId: 'body-target',
+          homeContent: '',
+          activeSubTabId: null,
+          subTabs: [],
+        },
+        {
+          id: 'tab-peer',
+          title: 'Peer',
+          noteBodyId: 'body-source',
           homeContent: '',
           activeSubTabId: null,
           subTabs: [],
@@ -120,6 +135,29 @@ describe('note copy helpers', () => {
 
     expect(result.status).toBe('applied')
     expect(getLocationInfo(result.state, sourceLocation).noteBodyId).toBe('body-target')
+    expect(getLocationInfo(result.state, peerLocation).noteBodyId).toBe('body-source')
     expect(result.state.noteBodies).toHaveLength(2)
+  })
+
+  it('no-ops when linking a note to a target that already shares its body', () => {
+    const linked = applyNoteCopyToState(createCopyTestState(), sourceLocation, targetLocation, 'linked').state
+    const result = applyNoteCopyToState(linked, sourceLocation, targetLocation, 'linked')
+
+    expect(result.status).toBe('already-linked')
+    expect(result.state).toBe(linked)
+    expect(getLocationInfo(result.state, sourceLocation).noteBodyId).toBe('body-target')
+    expect(getLocationInfo(result.state, targetLocation).noteBodyId).toBe('body-target')
+  })
+
+  it('turns a same-body target into an independent clone when making an independent copy', () => {
+    const linked = applyNoteCopyToState(createCopyTestState(), sourceLocation, targetLocation, 'linked').state
+    const result = applyNoteCopyToState(linked, sourceLocation, targetLocation, 'independent')
+    const sourceBodyId = getLocationInfo(result.state, sourceLocation).noteBodyId
+
+    expect(result.status).toBe('applied')
+    expect(sourceBodyId).not.toBe('body-target')
+    expect(result.state.noteBodies).toHaveLength(3)
+    expect(result.state.noteBodies.find((body) => body.id === sourceBodyId)?.aisles[0]?.markdown).toBe('target text')
+    expect(getLocationInfo(result.state, targetLocation).noteBodyId).toBe('body-target')
   })
 })

@@ -365,6 +365,18 @@ describe('app state normalization', () => {
     expect(missing.ui.tableAddTargetMode).toBe('bottom-right')
     expect(missing.ui.tableDeleteTargetMode).toBe('bottom-right')
   })
+
+  it('normalizes persisted note copy mode memory', () => {
+    const linked = parseSavedState(JSON.stringify({ ui: { lastNoteCopyMode: 'linked' } }))
+    const independent = parseSavedState(JSON.stringify({ ui: { lastNoteCopyMode: 'independent' } }))
+    const invalid = parseSavedState(JSON.stringify({ ui: { lastNoteCopyMode: 'plain' } }))
+    const missing = parseSavedState(JSON.stringify({ ui: {} }))
+
+    expect(linked.ui.lastNoteCopyMode).toBe('linked')
+    expect(independent.ui.lastNoteCopyMode).toBe('independent')
+    expect(invalid.ui.lastNoteCopyMode).toBe('independent')
+    expect(missing.ui.lastNoteCopyMode).toBe('independent')
+  })
 })
 
 describe('app state trash auto purge', () => {

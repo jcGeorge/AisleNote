@@ -9,6 +9,7 @@ const TOOLBAR_FORMAT_LABELS: Record<ToolbarFormatKey, string> = {
 }
 
 type SharedEditorToolbarProps = {
+  copyButtonRef: RefObject<HTMLButtonElement | null>
   headingButtonRef: RefObject<HTMLButtonElement | null>
   aisleButtonRef: RefObject<HTMLButtonElement | null>
   tooltipsDisabled?: boolean
@@ -97,6 +98,7 @@ function HistoryToolbarButton({
 }
 
 export function SharedEditorToolbar({
+  copyButtonRef,
   headingButtonRef,
   aisleButtonRef,
   tooltipsDisabled = false,
@@ -174,6 +176,7 @@ export function SharedEditorToolbar({
       <div className="toastui-editor-defaultUI-toolbar app-shared-editor-toolbar">
         <div className="toastui-editor-toolbar-group note-tools-toolbar-group">
           <button
+            ref={copyButtonRef}
             type="button"
             className="note-copy-toolbar-btn"
             title={tooltipsDisabled ? undefined : 'Make copy'}

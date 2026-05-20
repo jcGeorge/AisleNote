@@ -294,6 +294,7 @@ function buildRootManifest(
           : {
               showParentHomeTab: true,
               stageManagerOpenDestinationAfterApply: true,
+              lastNoteCopyMode: 'independent',
               tableAddTargetMode: 'bottom-right',
               tableDeleteTargetMode: 'bottom-right',
               tabButtonScale: 1,

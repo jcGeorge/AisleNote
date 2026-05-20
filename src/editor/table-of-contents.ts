@@ -2,7 +2,7 @@ import type { NoteAisle } from '../types/app'
 import type { HeadingOutlineItem } from './heading-outline'
 
 export const TABLE_OF_CONTENTS_EMPTY_MESSAGE =
-  'add headers to your notes to navigate to them with table of contents'
+  'add headers to your notes to navigate via table of contents'
 
 export type TableOfContentsPanelsState = {
   noteBodyId: string

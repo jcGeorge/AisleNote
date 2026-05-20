@@ -94,6 +94,7 @@ function renderFrontmatterModal(modal: ModalState) {
       onError={() => undefined}
       onApplyTabSort={() => undefined}
       onLinkInsertModeChange={() => undefined}
+      onNoteCopyModeChange={() => undefined}
       onConfirm={() => undefined}
     />,
   )
@@ -115,6 +116,7 @@ function renderModal(modal: ModalState) {
       onError={() => undefined}
       onApplyTabSort={() => undefined}
       onLinkInsertModeChange={() => undefined}
+      onNoteCopyModeChange={() => undefined}
       onConfirm={() => undefined}
     />,
   )
@@ -245,6 +247,48 @@ describe('link modal rendering', () => {
     expect(html).not.toContain('aria-label="Note reference type"')
     expect(html).not.toContain('>note</button>')
     expect(html).not.toContain('>url</button>')
+  })
+})
+
+describe('de-duplicate modal rendering', () => {
+  it('keeps apply clickable with no retained notes so confirm can show a toast', () => {
+    const html = renderModal({
+      type: 'deduplicate-note',
+      noteBodyId: 'body-1',
+      keepLocationKeys: [],
+    })
+
+    expect(html).toMatch(/<button type="button" class="btn btn-sm modal-primary-btn">apply<\/button>/)
+  })
+})
+
+describe('copy modal rendering', () => {
+  const source = { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null }
+
+  it('marks the independent copy mode active', () => {
+    const html = renderModal({
+      type: 'copy-note',
+      mode: 'independent',
+      source,
+      target: source,
+    })
+
+    expect(html).toContain('note-copy-modal')
+    expect(html).toMatch(/note-reference-mode-btn is-active"[^>]*>independent</)
+    expect(html).toContain('>linked</button>')
+  })
+
+  it('marks the linked copy mode active', () => {
+    const html = renderModal({
+      type: 'copy-note',
+      mode: 'linked',
+      source,
+      target: source,
+    })
+
+    expect(html).toContain('note-copy-modal')
+    expect(html).toContain('>independent</button>')
+    expect(html).toMatch(/note-reference-mode-btn is-active"[^>]*>linked</)
   })
 })
 

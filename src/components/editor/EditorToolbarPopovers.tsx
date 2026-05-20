@@ -9,15 +9,19 @@ type ToolbarPopoverPosition = {
 
 type EditorToolbarPopoversProps = {
   disabled?: boolean
+  copyMenuOpen: boolean
   headingMenuOpen: boolean
   noteToolsOpen: boolean
   activeHeadingLevel: ToolbarHeadingLevel
   toolbarPopoverPosition: {
+    copy: ToolbarPopoverPosition | null
     heading: ToolbarPopoverPosition | null
     aisles: ToolbarPopoverPosition | null
   }
   activeNoteAisles: NoteAisle[]
   onExecuteToolbarCommand: (command: string, payload?: Record<string, unknown>) => void
+  onOpenCopyModal: () => void
+  onOpenDeduplicateModal: () => void
   onCloseAislePopover: () => void
   onAddAisle: () => void
   onOpenAisleEditModal: () => void
@@ -63,13 +67,50 @@ export function AisleToolbarMenu({
   )
 }
 
+export function CopyToolbarMenu({
+  onOpenCopyModal,
+  onOpenDeduplicateModal,
+}: Pick<EditorToolbarPopoversProps, 'onOpenCopyModal' | 'onOpenDeduplicateModal'>) {
+  return (
+    <>
+      <button
+        type="button"
+        className="note-tools-item"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          onOpenCopyModal()
+        }}
+      >
+        make copy
+      </button>
+      <button
+        type="button"
+        className="note-tools-item"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          onOpenDeduplicateModal()
+        }}
+      >
+        de-duplicate
+      </button>
+    </>
+  )
+}
+
 export function EditorToolbarPopovers({
   disabled = false,
+  copyMenuOpen,
   headingMenuOpen,
   noteToolsOpen,
   activeHeadingLevel,
   toolbarPopoverPosition,
   onExecuteToolbarCommand,
+  onOpenCopyModal,
+  onOpenDeduplicateModal,
   onCloseAislePopover,
   onAddAisle,
   onOpenAisleEditModal,
@@ -129,6 +170,29 @@ export function EditorToolbarPopovers({
         )
       : null
 
+  const copyPopover =
+    copyMenuOpen && toolbarPopoverPosition.copy
+      ? createPortal(
+          <div
+            className="note-toolbar-copy-popover"
+            role="menu"
+            style={{
+              top: `${toolbarPopoverPosition.copy.top}px`,
+              left: `${toolbarPopoverPosition.copy.left}px`,
+            }}
+            onPointerDown={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <CopyToolbarMenu
+              onOpenCopyModal={onOpenCopyModal}
+              onOpenDeduplicateModal={onOpenDeduplicateModal}
+            />
+          </div>,
+          portalRoot,
+        )
+      : null
+
   const aislePopover =
     noteToolsOpen && toolbarPopoverPosition.aisles
       ? createPortal(
@@ -155,6 +219,7 @@ export function EditorToolbarPopovers({
 
   return (
     <>
+      {copyPopover}
       {headingPopover}
       {aislePopover}
     </>

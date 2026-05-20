@@ -12,8 +12,15 @@ type ToolbarPopoverPosition = {
   left: number
 }
 
+export type CopyToolbarAction = 'open-copy-modal' | 'open-copy-menu'
+
+export function getCopyToolbarAction(activeNoteDuplicateCount: number): CopyToolbarAction {
+  return activeNoteDuplicateCount > 1 ? 'open-copy-menu' : 'open-copy-modal'
+}
+
 type UseEditorToolbarLayerOptions = {
   editorRef: MutableRefObject<Editor | null>
+  copyToolbarButtonRef: RefObject<HTMLButtonElement | null>
   headingToolbarButtonRef: RefObject<HTMLButtonElement | null>
   aisleToolbarButtonRef: RefObject<HTMLButtonElement | null>
   toolbarFormatState: ToolbarFormatState
@@ -21,23 +28,28 @@ type UseEditorToolbarLayerOptions = {
   toolbarShortcutFeedback: ToolbarFormatKey | null
   tooltipsDisabled: boolean
   interactionDisabled: boolean
+  copyMenuOpen: boolean
   noteToolsOpen: boolean
   headingMenuOpen: boolean
   toolbarPopoverPosition: {
+    copy: ToolbarPopoverPosition | null
     heading: ToolbarPopoverPosition | null
     aisles: ToolbarPopoverPosition | null
   }
   activeNoteAisles: NoteAisle[]
+  activeNoteDuplicateCount: number
+  setCopyMenuOpen: Dispatch<SetStateAction<boolean>>
   setNoteToolsOpen: Dispatch<SetStateAction<boolean>>
   setHeadingMenuOpen: Dispatch<SetStateAction<boolean>>
-  setToolbarPopoverPosition: Dispatch<SetStateAction<Record<'heading' | 'aisles', ToolbarPopoverPosition | null>>>
-  refreshToolbarPopoverPosition: (kind: 'heading' | 'aisles') => ToolbarPopoverPosition | null
+  setToolbarPopoverPosition: Dispatch<SetStateAction<Record<'copy' | 'heading' | 'aisles', ToolbarPopoverPosition | null>>>
+  refreshToolbarPopoverPosition: (kind: 'copy' | 'heading' | 'aisles') => ToolbarPopoverPosition | null
   runActiveEditorCommand: (command: string, payload?: Record<string, unknown>) => boolean
   runActiveEditorHistory: (direction: 'undo' | 'redo') => boolean
   commitActiveEditorMarkdownNow: (editor: Editor) => void
   openSharedLinkModal: (selectedText?: string) => void
   clearActiveNoteContent: () => void
   openCopyModalForActiveNote: () => void
+  openDeduplicateModalForActiveNote: () => void
   openFrontmatterModalForActiveNote: () => void
   openTableOfContents: () => void
   addAisleToActiveNote: () => void
@@ -48,6 +60,7 @@ type UseEditorToolbarLayerOptions = {
 
 export function useEditorToolbarLayer({
   editorRef,
+  copyToolbarButtonRef,
   headingToolbarButtonRef,
   aisleToolbarButtonRef,
   toolbarFormatState,
@@ -55,10 +68,13 @@ export function useEditorToolbarLayer({
   toolbarShortcutFeedback,
   tooltipsDisabled,
   interactionDisabled,
+  copyMenuOpen,
   noteToolsOpen,
   headingMenuOpen,
   toolbarPopoverPosition,
   activeNoteAisles,
+  activeNoteDuplicateCount,
+  setCopyMenuOpen,
   setNoteToolsOpen,
   setHeadingMenuOpen,
   setToolbarPopoverPosition,
@@ -69,6 +85,7 @@ export function useEditorToolbarLayer({
   openSharedLinkModal,
   clearActiveNoteContent,
   openCopyModalForActiveNote,
+  openDeduplicateModalForActiveNote,
   openFrontmatterModalForActiveNote,
   openTableOfContents,
   addAisleToActiveNote,
@@ -77,8 +94,10 @@ export function useEditorToolbarLayer({
   onDisabledToolbarInteraction,
 }: UseEditorToolbarLayerOptions) {
   const closeToolbarMenus = () => {
+    setCopyMenuOpen(false)
     setHeadingMenuOpen(false)
     setNoteToolsOpen(false)
+    setToolbarPopoverPosition({ copy: null, heading: null, aisles: null })
   }
 
   const executeToolbarCommand = (command: string, payload?: Record<string, unknown>) => {
@@ -134,20 +153,43 @@ export function useEditorToolbarLayer({
   }
 
   const openCopyModalFromToolbar = () => {
+    if (getCopyToolbarAction(activeNoteDuplicateCount) === 'open-copy-menu') {
+      setHeadingMenuOpen(false)
+      setNoteToolsOpen(false)
+      setToolbarPopoverPosition((previous) => ({ ...previous, heading: null, aisles: null }))
+      const nextOpen = !copyMenuOpen
+      setCopyMenuOpen(nextOpen)
+      if (nextOpen) {
+        refreshToolbarPopoverPosition('copy')
+      } else {
+        setToolbarPopoverPosition((previous) => ({ ...previous, copy: null }))
+      }
+      return
+    }
+
     closeToolbarMenus()
-    setToolbarPopoverPosition({ heading: null, aisles: null })
     openCopyModalForActiveNote()
+  }
+
+  const openCopyModalFromCopyMenu = () => {
+    closeToolbarMenus()
+    openCopyModalForActiveNote()
+  }
+
+  const openDeduplicateModalFromCopyMenu = () => {
+    closeToolbarMenus()
+    openDeduplicateModalForActiveNote()
   }
 
   const openTableOfContentsFromToolbar = () => {
     closeToolbarMenus()
-    setToolbarPopoverPosition({ heading: null, aisles: null })
     openTableOfContents()
   }
 
   const toggleAisleToolbarPopover = () => {
+    setCopyMenuOpen(false)
     setHeadingMenuOpen(false)
-    setToolbarPopoverPosition((previous) => ({ ...previous, heading: null }))
+    setToolbarPopoverPosition((previous) => ({ ...previous, copy: null, heading: null }))
     const nextOpen = !noteToolsOpen
     setNoteToolsOpen(nextOpen)
     if (nextOpen) {
@@ -158,8 +200,9 @@ export function useEditorToolbarLayer({
   }
 
   const toggleHeadingToolbarPopover = () => {
+    setCopyMenuOpen(false)
     setNoteToolsOpen(false)
-    setToolbarPopoverPosition((previous) => ({ ...previous, aisles: null }))
+    setToolbarPopoverPosition((previous) => ({ ...previous, copy: null, aisles: null }))
     const nextOpen = !headingMenuOpen
     setHeadingMenuOpen(nextOpen)
     if (nextOpen) {
@@ -177,6 +220,7 @@ export function useEditorToolbarLayer({
   return {
     toolbar: (
       <SharedEditorToolbar
+        copyButtonRef={copyToolbarButtonRef}
         headingButtonRef={headingToolbarButtonRef}
         aisleButtonRef={aisleToolbarButtonRef}
         tooltipsDisabled={tooltipsDisabled}
@@ -200,12 +244,15 @@ export function useEditorToolbarLayer({
     popovers: (
       <EditorToolbarPopovers
         disabled={interactionDisabled}
+        copyMenuOpen={copyMenuOpen}
         headingMenuOpen={headingMenuOpen}
         noteToolsOpen={noteToolsOpen}
         activeHeadingLevel={activeHeadingLevel}
         toolbarPopoverPosition={toolbarPopoverPosition}
         activeNoteAisles={activeNoteAisles}
         onExecuteToolbarCommand={executeToolbarCommand}
+        onOpenCopyModal={openCopyModalFromCopyMenu}
+        onOpenDeduplicateModal={openDeduplicateModalFromCopyMenu}
         onCloseAislePopover={closeToolbarMenus}
         onAddAisle={addAisleToActiveNote}
         onOpenAisleEditModal={openAisleEditModal}

@@ -28,6 +28,7 @@ import type {
   LinkInsertMode,
   ModalState,
   NewlineOperationId,
+  NoteCopyMode,
   Space,
   TabSortMode,
   TabSortTarget,
@@ -49,6 +50,7 @@ type ModalHostProps = {
   onError: (message: string) => void
   onApplyTabSort: (target: TabSortTarget, mode: TabSortMode) => void
   onLinkInsertModeChange: (mode: LinkInsertMode) => void
+  onNoteCopyModeChange: (mode: NoteCopyMode) => void
   onConfirm: () => void
 }
 
@@ -196,6 +198,7 @@ export function ModalHost({
   onError,
   onApplyTabSort,
   onLinkInsertModeChange,
+  onNoteCopyModeChange,
   onConfirm,
 }: ModalHostProps) {
   useEffect(() => {
@@ -231,6 +234,12 @@ export function ModalHost({
   const setLinkModalMode = (mode: LinkInsertMode) => {
     if (modal.type !== 'insert-note-reference' || modal.modeLocked) return
     onLinkInsertModeChange(mode)
+    onModalChange({ ...modal, mode })
+  }
+
+  const setCopyModalMode = (mode: NoteCopyMode) => {
+    if (modal.type !== 'copy-note') return
+    onNoteCopyModeChange(mode)
     onModalChange({ ...modal, mode })
   }
 
@@ -469,14 +478,14 @@ export function ModalHost({
               <button
                 type="button"
                 className={`note-reference-mode-btn ${modal.mode === 'independent' ? 'is-active' : ''}`}
-                onClick={() => onModalChange({ ...modal, mode: 'independent' })}
+                onClick={() => setCopyModalMode('independent')}
               >
                 independent
               </button>
               <button
                 type="button"
                 className={`note-reference-mode-btn ${modal.mode === 'linked' ? 'is-active' : ''}`}
-                onClick={() => onModalChange({ ...modal, mode: 'linked' })}
+                onClick={() => setCopyModalMode('linked')}
               >
                 linked
               </button>
@@ -848,7 +857,6 @@ export function ModalHost({
               className={`btn btn-sm ${
                 modal.type === 'delete-target' || modal.type === 'trash-delete-all' ? 'app-danger-btn' : 'modal-primary-btn'
               }`}
-              disabled={modal.type === 'deduplicate-note' && modal.keepLocationKeys.length === 0}
               onClick={() => {
                 if (modal.type === 'delete-target' && modal.target.type === 'space' && state.spaces.length <= 1) {
                   onModalChange(null)

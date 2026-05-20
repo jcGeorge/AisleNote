@@ -12,7 +12,7 @@ import type { AppState, ViewMode } from '../types/app'
 import { getActiveHeadingLevel } from './editor-setup'
 import { getWysiwygView } from './prosemirror-utils'
 
-type ToolbarPopoverKind = 'heading' | 'aisles'
+type ToolbarPopoverKind = 'heading' | 'aisles' | 'copy'
 
 type ToolbarPopoverPosition = {
   top: number
@@ -67,16 +67,23 @@ export function useEditorToolbarState({
   const [toolbarShortcutFeedback, setToolbarShortcutFeedback] = useState<ToolbarFormatKey | null>(null)
   const [noteToolsOpen, setNoteToolsOpen] = useState(false)
   const [headingMenuOpen, setHeadingMenuOpen] = useState(false)
+  const [copyMenuOpen, setCopyMenuOpen] = useState(false)
   const [toolbarPopoverPosition, setToolbarPopoverPosition] = useState<Record<ToolbarPopoverKind, ToolbarPopoverPosition | null>>({
     heading: null,
     aisles: null,
+    copy: null,
   })
+  const copyToolbarButtonRef = useRef<HTMLButtonElement | null>(null)
   const headingToolbarButtonRef = useRef<HTMLButtonElement | null>(null)
   const aisleToolbarButtonRef = useRef<HTMLButtonElement | null>(null)
   const shortcutFeedbackTimerRef = useRef<number | null>(null)
 
   const getToolbarPopoverButton = (kind: ToolbarPopoverKind) =>
-    kind === 'aisles' ? aisleToolbarButtonRef.current : headingToolbarButtonRef.current
+    kind === 'copy'
+      ? copyToolbarButtonRef.current
+      : kind === 'aisles'
+        ? aisleToolbarButtonRef.current
+        : headingToolbarButtonRef.current
 
   const getToolbarPopoverPosition = (kind: ToolbarPopoverKind): ToolbarPopoverPosition | null => {
     const button = getToolbarPopoverButton(kind)
@@ -103,13 +110,20 @@ export function useEditorToolbarState({
   }
 
   const closeToolbarPopovers = () => {
+    setCopyMenuOpen(false)
     setNoteToolsOpen(false)
     setHeadingMenuOpen(false)
-    setToolbarPopoverPosition({ heading: null, aisles: null })
+    setToolbarPopoverPosition({ heading: null, aisles: null, copy: null })
   }
 
   useEffect(() => {
-    const openPopoverKind: ToolbarPopoverKind | null = noteToolsOpen ? 'aisles' : headingMenuOpen ? 'heading' : null
+    const openPopoverKind: ToolbarPopoverKind | null = copyMenuOpen
+      ? 'copy'
+      : noteToolsOpen
+        ? 'aisles'
+        : headingMenuOpen
+          ? 'heading'
+          : null
     if (!openPopoverKind || viewMode !== 'main') return
 
     const refreshPosition = () => refreshToolbarPopoverPosition(openPopoverKind)
@@ -120,7 +134,7 @@ export function useEditorToolbarState({
       const targetElement = event.target instanceof Element ? event.target : null
       if (
         targetElement?.closest(
-          '.note-toolbar-heading-popover, .note-toolbar-aisle-popover',
+          '.note-toolbar-heading-popover, .note-toolbar-aisle-popover, .note-toolbar-copy-popover',
         )
       ) {
         return
@@ -136,7 +150,7 @@ export function useEditorToolbarState({
       window.removeEventListener('scroll', refreshPosition, true)
       document.removeEventListener('pointerdown', handleDocumentPointerDown, true)
     }
-  }, [headingMenuOpen, noteToolsOpen, viewMode])
+  }, [copyMenuOpen, headingMenuOpen, noteToolsOpen, viewMode])
 
   useEffect(() => {
     return () => {
@@ -191,6 +205,7 @@ export function useEditorToolbarState({
   }
 
   return {
+    copyToolbarButtonRef,
     headingToolbarButtonRef,
     aisleToolbarButtonRef,
     toolbarFormatState,
@@ -198,9 +213,11 @@ export function useEditorToolbarState({
     toolbarShortcutFeedback,
     noteToolsOpen,
     headingMenuOpen,
+    copyMenuOpen,
     toolbarPopoverPosition,
     setNoteToolsOpen,
     setHeadingMenuOpen,
+    setCopyMenuOpen,
     setToolbarPopoverPosition,
     refreshToolbarPopoverPosition,
     closeToolbarPopovers,

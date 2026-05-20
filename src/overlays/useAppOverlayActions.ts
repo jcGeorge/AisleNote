@@ -319,7 +319,21 @@ export const useAppOverlayActions = ({
     deleteTarget(target, false)
   }
 
-  const openCopyModalForLocation = (source: NoteLocation, mode: NoteCopyMode = 'independent') => {
+  const getLastNoteCopyMode = (): NoteCopyMode => stateRef.current.ui.lastNoteCopyMode ?? 'independent'
+
+  const setLastNoteCopyMode = (mode: NoteCopyMode) => {
+    const nextState = {
+      ...stateRef.current,
+      ui: {
+        ...stateRef.current.ui,
+        lastNoteCopyMode: mode,
+      },
+    }
+    stateRef.current = nextState
+    setState(nextState)
+  }
+
+  const openCopyModalForLocation = (source: NoteLocation, mode: NoteCopyMode = getLastNoteCopyMode()) => {
     saveActiveCursorBeforeNavigation()
     const target = getDefaultNoteReferenceTarget(state, source)
     setModal({
@@ -327,6 +341,17 @@ export const useAppOverlayActions = ({
       mode,
       source,
       target,
+    })
+  }
+
+  const openDeduplicateModalForLocation = (source: NoteLocation) => {
+    const noteBodyId = getLocationInfo(stateRef.current, source).noteBodyId
+    if (!noteBodyId) return
+    const locations = listNoteLocationsForBody(stateRef.current, noteBodyId)
+    setModal({
+      type: 'deduplicate-note',
+      noteBodyId,
+      keepLocationKeys: locations.map((location) => buildNoteLocationKey(location)),
     })
   }
 
@@ -354,15 +379,14 @@ export const useAppOverlayActions = ({
       tabId: contextMenu.tabId,
       subTabId: contextMenu.type === 'subtab' ? contextMenu.subTabId : null,
     }
-    const noteBodyId = getLocationInfo(state, source).noteBodyId
-    if (!noteBodyId) return
-    const locations = listNoteLocationsForBody(state, noteBodyId)
-    setModal({
-      type: 'deduplicate-note',
-      noteBodyId,
-      keepLocationKeys: locations.map((location) => buildNoteLocationKey(location)),
-    })
+    openDeduplicateModalForLocation(source)
     setContextMenu(null)
+  }
+
+  const openDeduplicateModalForActiveNote = () => {
+    if (viewMode !== 'main') return
+    saveActiveCursorBeforeNavigation()
+    openDeduplicateModalForLocation(activeNoteLocation)
   }
 
   const getCurrentDuplicateCount = () => {
@@ -461,19 +485,32 @@ export const useAppOverlayActions = ({
         return
       }
 
-      setState((previous) => {
-        const result = applyNoteCopyToState(previous, modal.source, modal.target, modal.mode)
-        return result.state
-      })
+      const result = applyNoteCopyToState(stateRef.current, modal.source, modal.target, modal.mode)
+      if (result.status === 'missing-target') {
+        setModal(null)
+        pushToast('choose an existing note.', 'warning')
+        return
+      }
+      if (result.state !== stateRef.current) {
+        stateRef.current = result.state
+        setState(result.state)
+      }
       setModal(null)
-      pushToast(modal.mode === 'linked' ? 'linked copy created.' : 'note copied.', 'success')
+      pushToast(
+        result.status === 'already-linked'
+          ? 'notes already linked.'
+          : modal.mode === 'linked'
+            ? 'linked copy created.'
+            : 'note copied.',
+        'success',
+      )
       return
     }
 
     if (modal.type === 'deduplicate-note') {
       const keepKeys = new Set(modal.keepLocationKeys)
       if (keepKeys.size === 0) {
-        pushToast('keep at least one duplicate linked.', 'warning')
+        pushToast('select at least one note to retain the information', 'error')
         return
       }
       const locations = listNoteLocationsForBody(stateRef.current, modal.noteBodyId)
@@ -557,6 +594,8 @@ export const useAppOverlayActions = ({
     openCopyModalFromContext,
     openCopyModalForActiveNote,
     openDeduplicateModalFromContext,
+    openDeduplicateModalForActiveNote,
+    setLastNoteCopyMode,
     getCurrentDuplicateCount,
     beginRenameSpaceFromContext,
     beginRenameDomainFromContext,

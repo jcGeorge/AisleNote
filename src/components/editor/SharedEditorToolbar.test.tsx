@@ -9,6 +9,7 @@ describe('SharedEditorToolbar block quote and block indent controls', () => {
     const noop = vi.fn()
     const html = renderToStaticMarkup(
       <SharedEditorToolbar
+        copyButtonRef={createRef<HTMLButtonElement>()}
         headingButtonRef={createRef<HTMLButtonElement>()}
         aisleButtonRef={createRef<HTMLButtonElement>()}
         toolbarFormatState={DEFAULT_TOOLBAR_FORMAT_STATE}
@@ -53,6 +54,7 @@ describe('SharedEditorToolbar block quote and block indent controls', () => {
     const noop = vi.fn()
     const html = renderToStaticMarkup(
       <SharedEditorToolbar
+        copyButtonRef={createRef<HTMLButtonElement>()}
         headingButtonRef={createRef<HTMLButtonElement>()}
         aisleButtonRef={createRef<HTMLButtonElement>()}
         tooltipsDisabled

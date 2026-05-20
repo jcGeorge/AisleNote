@@ -23,7 +23,7 @@ describe('table of contents helpers', () => {
   it('returns null and keeps exact empty ToC copy when no aisle has headings', () => {
     expect(buildTableOfContentsPanels('body-1', aisles, () => [])).toBeNull()
     expect(TABLE_OF_CONTENTS_EMPTY_MESSAGE).toBe(
-      'add headers to your notes to navigate to them with table of contents',
+      'add headers to your notes to navigate via table of contents',
     )
   })
 })

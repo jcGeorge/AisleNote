@@ -418,6 +418,7 @@
   line-height: 0;
 }
 
+.note-toolbar-copy-popover,
 .note-toolbar-heading-popover,
 .note-toolbar-aisle-popover {
   position: fixed;

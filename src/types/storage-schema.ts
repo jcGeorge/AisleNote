@@ -73,6 +73,7 @@ export type StorageGlobalSettings = {
     showParentHomeTab: boolean
     stageManagerOpenDestinationAfterApply: boolean
     lastLinkInsertMode?: 'note' | 'url'
+    lastNoteCopyMode?: 'independent' | 'linked'
     tableAddTargetMode?: StorageTableControlTargetMode
     tableDeleteTargetMode?: StorageTableControlTargetMode
     tabButtonScale: number

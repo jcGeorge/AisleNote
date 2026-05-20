@@ -87,6 +87,7 @@ import {
   getDefaultNoteLinkLabel,
   getDefaultNoteReferenceTarget,
   getLocationInfo,
+  listNoteLocationsForBody,
   listSearchableNoteLocations,
   type NoteSearchEntry,
 } from './notes/note-locations'
@@ -131,6 +132,7 @@ import type {
   ModalState,
   MultiLineInlineFormat,
   NewlineOperationId,
+  NoteCopyMode,
   NoteLocation,
   PendingCreatedEdit,
   TabSortMode,
@@ -349,6 +351,7 @@ function App() {
     state,
     activeAisleId,
   })
+  const activeNoteDuplicateCount = activeNoteBodyId ? listNoteLocationsForBody(state, activeNoteBodyId).length : 0
 
   useEffect(() => {
     aisleShortcutTipCountRef.current = 0
@@ -922,14 +925,17 @@ function App() {
     editorRef,
     stateRef,
   })
+  const copyToolbarButtonRef = editorToolbar.copyToolbarButtonRef
   const headingToolbarButtonRef = editorToolbar.headingToolbarButtonRef
   const aisleToolbarButtonRef = editorToolbar.aisleToolbarButtonRef
   const toolbarFormatState = editorToolbar.toolbarFormatState
   const activeHeadingLevel = editorToolbar.activeHeadingLevel
   const toolbarShortcutFeedback = editorToolbar.toolbarShortcutFeedback
+  const copyMenuOpen = editorToolbar.copyMenuOpen
   const noteToolsOpen = editorToolbar.noteToolsOpen
   const headingMenuOpen = editorToolbar.headingMenuOpen
   const toolbarPopoverPosition = editorToolbar.toolbarPopoverPosition
+  const setCopyMenuOpen = editorToolbar.setCopyMenuOpen
   const setNoteToolsOpen = editorToolbar.setNoteToolsOpen
   const setHeadingMenuOpen = editorToolbar.setHeadingMenuOpen
   const setToolbarPopoverPosition = editorToolbar.setToolbarPopoverPosition
@@ -1850,6 +1856,8 @@ function App() {
   const deleteFromContext = overlayActions.deleteFromContext
   const openCopyModalFromContext = overlayActions.openCopyModalFromContext
   const openCopyModalForActiveNote = overlayActions.openCopyModalForActiveNote
+  const openDeduplicateModalForActiveNote = overlayActions.openDeduplicateModalForActiveNote
+  const setLastNoteCopyMode = overlayActions.setLastNoteCopyMode
   const openDeduplicateModalFromContext = overlayActions.openDeduplicateModalFromContext
   const getCurrentDuplicateCount = overlayActions.getCurrentDuplicateCount
   const beginRenameSpaceFromContext = overlayActions.beginRenameSpaceFromContext
@@ -1890,11 +1898,12 @@ function App() {
 
   useEffect(() => {
     if (!tabArrangementActive) return
+    setCopyMenuOpen(false)
     setHeadingMenuOpen(false)
     setNoteToolsOpen(false)
-    setToolbarPopoverPosition({ heading: null, aisles: null })
+    setToolbarPopoverPosition({ copy: null, heading: null, aisles: null })
     closeImageTools()
-  }, [tabArrangementActive, closeImageTools, setHeadingMenuOpen, setNoteToolsOpen, setToolbarPopoverPosition])
+  }, [tabArrangementActive, closeImageTools, setCopyMenuOpen, setHeadingMenuOpen, setNoteToolsOpen, setToolbarPopoverPosition])
 
   useEffect(() => {
     if (!tabArrangementActive || typeof document === 'undefined') return
@@ -1937,6 +1946,7 @@ function App() {
 
   const editorToolbarLayer = useEditorToolbarLayer({
     editorRef,
+    copyToolbarButtonRef,
     headingToolbarButtonRef,
     aisleToolbarButtonRef,
     toolbarFormatState,
@@ -1944,10 +1954,13 @@ function App() {
     toolbarShortcutFeedback,
     tooltipsDisabled: tabArrangementActive,
     interactionDisabled: tabArrangementActive,
+    copyMenuOpen,
     noteToolsOpen,
     headingMenuOpen,
     toolbarPopoverPosition,
     activeNoteAisles,
+    activeNoteDuplicateCount,
+    setCopyMenuOpen,
     setNoteToolsOpen,
     setHeadingMenuOpen,
     setToolbarPopoverPosition,
@@ -1958,6 +1971,7 @@ function App() {
     openSharedLinkModal,
     clearActiveNoteContent,
     openCopyModalForActiveNote,
+    openDeduplicateModalForActiveNote,
     openFrontmatterModalForActiveNote,
     openTableOfContents,
     addAisleToActiveNote: () => {
@@ -2489,6 +2503,7 @@ function App() {
         onError={(message) => pushToast(message, 'error')}
         onApplyTabSort={applyArrangeTabSort}
         onLinkInsertModeChange={setLastLinkInsertMode}
+        onNoteCopyModeChange={(mode: NoteCopyMode) => setLastNoteCopyMode(mode)}
         onConfirm={confirmModal}
       />
 

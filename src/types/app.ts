@@ -230,6 +230,7 @@ export type AppState = {
     showParentHomeTab: boolean
     stageManagerOpenDestinationAfterApply: boolean
     lastLinkInsertMode?: LinkInsertMode
+    lastNoteCopyMode?: NoteCopyMode
     tableAddTargetMode: TableControlTargetMode
     tableDeleteTargetMode: TableControlTargetMode
     tabButtonScale: number

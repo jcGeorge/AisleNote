@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { AisleToolbarMenu, EditorToolbarPopovers } from './EditorToolbarPopovers'
+import { AisleToolbarMenu, CopyToolbarMenu, EditorToolbarPopovers } from './EditorToolbarPopovers'
 
 function renderMenu() {
   return renderToStaticMarkup(
@@ -32,12 +32,19 @@ describe('AisleToolbarMenu', () => {
     const html = renderToStaticMarkup(
       <EditorToolbarPopovers
         disabled
+        copyMenuOpen
         headingMenuOpen
         noteToolsOpen
         activeHeadingLevel={0}
-        toolbarPopoverPosition={{ heading: { top: 1, left: 1 }, aisles: { top: 1, left: 1 } }}
+        toolbarPopoverPosition={{
+          copy: { top: 1, left: 1 },
+          heading: { top: 1, left: 1 },
+          aisles: { top: 1, left: 1 },
+        }}
         activeNoteAisles={[]}
         onExecuteToolbarCommand={() => undefined}
+        onOpenCopyModal={() => undefined}
+        onOpenDeduplicateModal={() => undefined}
         onCloseAislePopover={() => undefined}
         onAddAisle={() => undefined}
         onOpenAisleEditModal={() => undefined}
@@ -45,5 +52,19 @@ describe('AisleToolbarMenu', () => {
     )
 
     expect(html).toBe('')
+  })
+})
+
+describe('CopyToolbarMenu', () => {
+  it('renders make copy and de-duplicate choices', () => {
+    const html = renderToStaticMarkup(
+      <CopyToolbarMenu
+        onOpenCopyModal={() => undefined}
+        onOpenDeduplicateModal={() => undefined}
+      />,
+    )
+
+    expect(html).toContain('make copy')
+    expect(html).toContain('de-duplicate')
   })
 })
