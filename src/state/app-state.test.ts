@@ -254,6 +254,34 @@ describe('app state normalization', () => {
     })
   })
 
+  it('normalizes persisted heading collapse state', () => {
+    const state = parseSavedState(
+      JSON.stringify({
+        ui: {
+          headingCollapseState: {
+            'body-1': {
+              'aisle-1': ['heading-a', 'heading-a', '', 4, 'heading-b'],
+              '': ['ignored'],
+              'aisle-2': [],
+            },
+            '': {
+              'aisle-3': ['ignored'],
+            },
+            broken: null,
+          },
+        },
+      }),
+    )
+    const missing = parseSavedState(JSON.stringify({ ui: {} }))
+
+    expect(state.ui.headingCollapseState).toEqual({
+      'body-1': {
+        'aisle-1': ['heading-a', 'heading-b'],
+      },
+    })
+    expect(missing.ui.headingCollapseState).toEqual({})
+  })
+
   it('normalizes persisted custom theme palettes', () => {
     const valid = parseSavedState(JSON.stringify({
       theme: 'custom',

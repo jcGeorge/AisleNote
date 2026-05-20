@@ -505,6 +505,69 @@
   display: none !important;
 }
 
+.aisle-toc-panel-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(0.75rem, 4vmin, 1.25rem);
+  background: transparent;
+}
+
+.aisle-toc-panel {
+  width: min(20rem, calc(100% - 1.5rem));
+  max-height: min(70%, 30rem);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0.45rem;
+  padding: 0.55rem;
+  border: 1px solid var(--context-menu-border);
+  border-radius: 0.45rem;
+  background: var(--context-menu-bg);
+  color: var(--context-menu-item-text);
+  box-shadow: var(--context-menu-shadow);
+  font-size: var(--ui-font-body);
+}
+
+.aisle-toc-panel-title {
+  padding: 0 0.1rem 0.25rem;
+  border-bottom: 1px solid var(--app-border-muted);
+  color: var(--context-menu-item-text);
+  font-size: 0.84em;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.aisle-toc-list {
+  min-height: 0;
+  display: grid;
+  gap: 0.12rem;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.aisle-toc-heading-btn {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  border-radius: 0.28rem;
+  background: transparent;
+  color: var(--context-menu-item-text);
+  padding: 0.34rem 0.42rem 0.34rem calc(0.42rem + var(--toc-heading-indent, 0rem));
+  font: inherit;
+  font-size: 0.88em;
+  line-height: 1.25;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.aisle-toc-heading-btn:hover,
+.aisle-toc-heading-btn:focus-visible {
+  background: var(--context-menu-item-hover-bg);
+}
+
 .aisle-edit-modal-backdrop {
   position: fixed;
   inset: 0;

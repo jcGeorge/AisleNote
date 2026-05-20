@@ -10,6 +10,7 @@ import {
   moveItemByInsertion,
 } from './arrange-utils'
 import { moveArrangeItemToTrash } from './arrange-trash'
+import { moveSubTabToParentTab } from './arrange-tabs'
 import { moveSpaceWithinActiveDomain } from '../state/domains'
 import type {
   AppState,
@@ -651,34 +652,7 @@ export function useArrangeMode({
   }
 
   const moveSubTabToParent = (sourceParentTabId: string, subTabId: string, targetParentTabId: string) => {
-    if (sourceParentTabId === targetParentTabId) return
-    updateActiveSpaceData((data) => {
-      const sourceParent = data.tabs.find((tab) => tab.id === sourceParentTabId)
-      const targetParent = data.tabs.find((tab) => tab.id === targetParentTabId)
-      if (!sourceParent || !targetParent) return data
-      const movedSubTab = sourceParent.subTabs.find((subTab) => subTab.id === subTabId)
-      if (!movedSubTab || targetParent.subTabs.some((subTab) => subTab.id === subTabId)) return data
-
-      return {
-        ...data,
-        tabs: data.tabs.map((tab) => {
-          if (tab.id === sourceParentTabId) {
-            return {
-              ...tab,
-              activeSubTabId: tab.activeSubTabId === subTabId ? null : tab.activeSubTabId,
-              subTabs: tab.subTabs.filter((subTab) => subTab.id !== subTabId),
-            }
-          }
-          if (tab.id === targetParentTabId) {
-            return {
-              ...tab,
-              subTabs: [...tab.subTabs, movedSubTab],
-            }
-          }
-          return tab
-        }),
-      }
-    })
+    updateActiveSpaceData((data) => moveSubTabToParentTab(data, sourceParentTabId, subTabId, targetParentTabId))
   }
 
   const moveSubTabToTarget = (

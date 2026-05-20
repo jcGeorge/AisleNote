@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import { measureSlowOperation } from '../performance/performance-logging'
 import {
   applyAutoPurgeToAppState,
@@ -25,7 +25,7 @@ const MAX_AUTO_PURGE_TIMEOUT_MS = 2_147_483_647
 export function usePersistentAppState(): PersistentAppStateController {
   const initialSerializedState = useMemo(() => appPersistenceService.loadSerializedState(), [])
   const initialParsedState = useMemo(() => applyAutoPurgeToAppState(parseSavedState(initialSerializedState)), [initialSerializedState])
-  const [state, setState] = useState<AppState>(() => initialParsedState)
+  const [state, setReactState] = useState<AppState>(() => initialParsedState)
   const [storageHydrated, setStorageHydrated] = useState(() => typeof appPersistenceService.hydrateSerializedState !== 'function')
   const autoPurgeScheduleSignature = useMemo(() => getAutoPurgeScheduleSignatureForAppState(state), [state])
   const stateRef = useRef(state)
@@ -39,6 +39,14 @@ export function usePersistentAppState(): PersistentAppStateController {
       save: (serializedState, options) => appPersistenceService.saveSerializedState(serializedState, options),
     }),
   )
+
+  const setState = useCallback<Dispatch<SetStateAction<AppState>>>((action) => {
+    const nextState = typeof action === 'function'
+      ? (action as (previous: AppState) => AppState)(stateRef.current)
+      : action
+    stateRef.current = nextState
+    setReactState(nextState)
+  }, [])
 
   useEffect(() => {
     stateRef.current = state
@@ -71,7 +79,7 @@ export function usePersistentAppState(): PersistentAppStateController {
     return () => {
       disposed = true
     }
-  }, [])
+  }, [setState])
 
   useEffect(() => {
     if (typeof appPersistenceService.subscribeSerializedState !== 'function') return
@@ -92,7 +100,7 @@ export function usePersistentAppState(): PersistentAppStateController {
       disposed = true
       unsubscribe()
     }
-  }, [])
+  }, [setState])
 
   useEffect(() => {
     const sanitizedState = applyAutoPurgeToAppState(state)
@@ -111,7 +119,7 @@ export function usePersistentAppState(): PersistentAppStateController {
     stateDirtySinceBootRef.current = sanitizedState !== initialStateRef.current
     if (!storageHydrated || !stateDirtySinceBootRef.current) return
     persistenceControllerRef.current.schedule(sanitizedState)
-  }, [state, storageHydrated])
+  }, [setState, state, storageHydrated])
 
   const flushPendingPersistence = async (options: AppStateSaveOptions = { snapshotMode: 'force', preferSync: true }) => {
     persistenceControllerRef.current.flush(options)
@@ -191,7 +199,7 @@ export function usePersistentAppState(): PersistentAppStateController {
         window.clearTimeout(timeoutId)
       }
     }
-  }, [autoPurgeScheduleSignature, storageHydrated])
+  }, [autoPurgeScheduleSignature, setState, storageHydrated])
 
   useEffect(() => {
     if (!storageHydrated) return
@@ -215,7 +223,7 @@ export function usePersistentAppState(): PersistentAppStateController {
       window.removeEventListener('focus', runAutoPurgeSweep)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [storageHydrated])
+  }, [setState, storageHydrated])
 
   return {
     state,

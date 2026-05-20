@@ -27,6 +27,8 @@ describe('editor DOM events', () => {
     '.toastui-editor-toolbar',
     '.toastui-editor-toolbar-icons',
     '.toastui-editor-tooltip',
+    '.aisle-toc-panel',
+    '.aisle-toc-panel-layer',
   ])('treats %s as toolbar interaction target', (selector) => {
     expect(isEditorToolbarInteractionTarget(fakeTarget(selector))).toBe(true)
   })
@@ -41,6 +43,7 @@ describe('editor DOM events', () => {
     expect(isEditorPointerChromeTarget(fakeTarget('.table-tools'))).toBe(true)
     expect(isEditorPointerChromeTarget(fakeTarget('.table-reorder-marker'))).toBe(true)
     expect(isEditorPointerChromeTarget(fakeTarget('.link-prompt'))).toBe(true)
+    expect(isEditorPointerChromeTarget(fakeTarget('.aisle-toc-panel'))).toBe(true)
     expect(isEditorPointerChromeTarget(fakeTarget(null))).toBe(false)
   })
 
@@ -50,6 +53,7 @@ describe('editor DOM events', () => {
     expect(shouldSkipTableExitRepairTarget(fakeTarget('table'))).toBe(true)
     expect(shouldSkipTableExitRepairTarget(fakeTarget('.table-tools'))).toBe(true)
     expect(shouldSkipTableExitRepairTarget(fakeTarget('.image-tools'))).toBe(true)
+    expect(shouldSkipTableExitRepairTarget(fakeTarget('.aisle-toc-panel'))).toBe(true)
     expect(shouldSkipTableExitRepairTarget(fakeTarget(null))).toBe(false)
     expect(shouldSkipTableExitRepairTarget(null)).toBe(false)
   })

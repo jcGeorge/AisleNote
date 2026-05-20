@@ -30,7 +30,7 @@ type StageManagerViewProps = {
   demoteSpace: Space | null
   demoteParentOptions: Tab[]
   migrateDomainId: string
-  otherSpaces: Space[]
+  migrateDestinationSpaces: Space[]
   strayHandlingSelectValue: string
   strayExistingParentOptions: Tab[]
   migrateParentDomainId: string
@@ -165,7 +165,7 @@ export function StageManagerView({
   demoteSpace,
   demoteParentOptions,
   migrateDomainId,
-  otherSpaces,
+  migrateDestinationSpaces,
   strayHandlingSelectValue,
   strayExistingParentOptions,
   migrateParentDomainId,
@@ -435,7 +435,7 @@ export function StageManagerView({
                     className={`btn btn-sm stage-manager-action-btn ${draft.migrateTarget === 'parent' ? 'is-selected' : ''}`}
                     onClick={() => onDraftChange({ migrateTarget: 'parent' })}
                   >
-                    migrate to parent
+                    migrate to parent tab
                   </button>
                 </div>
 
@@ -475,7 +475,7 @@ export function StageManagerView({
                             onChange={(event) => onDraftChange({ migrateSpaceId: event.target.value })}
                           >
                             <option value="">select a space</option>
-                            <SpaceOptions spaces={otherSpaces} />
+                            <SpaceOptions spaces={migrateDestinationSpaces} />
                           </select>
                         </label>
                       ) : (
@@ -680,9 +680,11 @@ export function StageManagerView({
                   </>
                 )}
 
-                <p className="stage-manager-help">
-                  migrating a parent tab into another parent will demote that parent into a sub-tab under the destination parent.
-                </p>
+                {draft.migrateTarget === 'parent' && (
+                  <p className="stage-manager-help">
+                    migrating a parent tab into another parent will demote that parent into a sub-tab under the destination parent.
+                  </p>
+                )}
               </>
             )}
 
@@ -733,7 +735,7 @@ export function StageManagerView({
               </>
             )}
 
-            {(action === 'migrate' || action === 'promote' || action === 'demote') && (
+            {((action === 'migrate' && draft.migrateTarget !== null) || action === 'promote' || action === 'demote') && (
               <div className="stage-manager-field-grid">
                 <label className="stage-manager-field">
                   <span>destination order</span>
@@ -756,7 +758,7 @@ export function StageManagerView({
               </div>
             )}
 
-            {action !== 'mass-delete' && action !== 'frontmatter' && (
+            {action !== 'mass-delete' && action !== 'frontmatter' && !(action === 'migrate' && draft.migrateTarget === null) && (
               <div className="stage-manager-switch-row">
                 <label className="settings-hotkey-label" htmlFor="stage-manager-open-destination">
                   open destination after apply

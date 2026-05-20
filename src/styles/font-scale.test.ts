@@ -64,3 +64,14 @@ describe('table cell styles', () => {
     expect(editorShellCss).toContain('text-align: inherit;')
   })
 })
+
+describe('table of contents panel styles', () => {
+  it('centers the per-aisle table of contents panel without adding a backdrop', () => {
+    const editorShellCss = readStyle('editor-shell.css')
+    const layerRule = editorShellCss.match(/\.aisle-toc-panel-layer\s*\{[^}]+\}/)?.[0] ?? ''
+
+    expect(layerRule).toContain('align-items: center;')
+    expect(layerRule).toContain('justify-content: center;')
+    expect(layerRule).toContain('background: transparent;')
+  })
+})

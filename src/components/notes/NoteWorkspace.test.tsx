@@ -108,6 +108,45 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html).not.toContain('class="link-prompt')
   })
 
+  it('renders table of contents panels only for open aisles with headings', () => {
+    const html = renderToStaticMarkup(
+      <NoteWorkspace
+        noteBodyId="body-1"
+        aisles={aisles}
+        activeAisleId="a"
+        editorReadOnly={false}
+        aisleScrollRef={{ current: null }}
+        toolbar={null}
+        headingPopover={null}
+        imageToolsOverlay={null}
+        tableControlsOverlay={null}
+        tableOfContentsHeadingsByAisle={{
+          a: [
+            { aisleId: 'a', key: 'heading-a', level: 1, text: 'Alpha', occurrence: 0 },
+            { aisleId: 'a', key: 'heading-b', level: 3, text: 'Nested', occurrence: 0 },
+          ],
+          b: [],
+        }}
+        openTableOfContentsAisleIds={new Set(['a', 'b'])}
+        mountedAisleIds={new Set(['a'])}
+        getPreviewMarkdownForAisle={(aisle) => aisle.markdown}
+        onRootChange={() => undefined}
+        onAisleScroll={() => undefined}
+        onActivateAisle={() => undefined}
+        onRegisterAislePaneRoot={() => undefined}
+        onRegisterAisleEditorRoot={() => undefined}
+      />,
+    )
+
+    expect(html.match(/class="aisle-toc-panel"/g) ?? []).toHaveLength(1)
+    expect(html).toContain('class="aisle-toc-panel-layer"')
+    expect(html).toContain('Alpha')
+    expect(html).toContain('Nested')
+    expect(html).toContain('--toc-heading-indent:1.56rem')
+    expect(html).not.toContain('delete-modal-backdrop')
+    expect(html).not.toContain('modal-backdrop')
+  })
+
   it('only exits arrangement mode for primary note workspace clicks while arranging', () => {
     expect(shouldExitArrangeModeFromNoteWorkspacePointer(true, 0)).toBe(true)
     expect(shouldExitArrangeModeFromNoteWorkspacePointer(true, 1)).toBe(false)

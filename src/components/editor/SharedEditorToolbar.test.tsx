@@ -16,6 +16,7 @@ describe('SharedEditorToolbar block quote and block indent controls', () => {
         toolbarShortcutFeedback={null}
         onOpenCopy={noop}
         onOpenFrontmatter={noop}
+        onOpenTableOfContents={noop}
         onToggleAisles={noop}
         onToggleHeading={noop}
         onCommand={noop}
@@ -33,6 +34,9 @@ describe('SharedEditorToolbar block quote and block indent controls', () => {
     expect(html).toContain('title="Remove block indent"')
     expect(html).toContain('aria-label="Remove block indent"')
     expect(html).toContain('aria-label="Insert link"')
+    expect(html).toContain('title="Table of contents"')
+    expect(html).toContain('aria-label="Table of contents"')
+    expect(html).toContain('ToC')
     expect(html).toContain('title="Undo"')
     expect(html).toContain('aria-label="Undo"')
     expect(html).toContain('title="Redo"')
@@ -55,6 +59,7 @@ describe('SharedEditorToolbar block quote and block indent controls', () => {
         toolbarShortcutFeedback={null}
         onOpenCopy={noop}
         onOpenFrontmatter={noop}
+        onOpenTableOfContents={noop}
         onToggleAisles={noop}
         onToggleHeading={noop}
         onCommand={noop}
@@ -71,5 +76,6 @@ describe('SharedEditorToolbar block quote and block indent controls', () => {
     expect(html).toContain('aria-label="Block quote"')
     expect(html).toContain('aria-label="Undo"')
     expect(html).toContain('aria-label="Insert link"')
+    expect(html).toContain('aria-label="Table of contents"')
   })
 })

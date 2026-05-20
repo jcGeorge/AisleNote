@@ -1,4 +1,4 @@
-import { Editor } from '@toast-ui/editor'
+import type { Editor } from '@toast-ui/editor'
 import { useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
 import { prepareMarkdownImagesForDisplay } from '../markdown/image-asset-registry'
@@ -22,6 +22,19 @@ type UseEditorPersistenceParams = {
   resolvedActiveAisleId: string
   getNormalizedEditorMarkdown: (editor: Editor) => string
   applyActiveCursorToState: (previous: AppState) => AppState
+}
+
+export function getSnapshotEditorMarkdown(
+  editor: Editor | null,
+  fallbackMarkdown: string,
+  getNormalizedEditorMarkdown: (editor: Editor) => string,
+) {
+  if (!editor) return fallbackMarkdown
+  try {
+    return getNormalizedEditorMarkdown(editor)
+  } catch {
+    return fallbackMarkdown
+  }
 }
 
 export const useEditorPersistence = ({
@@ -73,8 +86,11 @@ export const useEditorPersistence = ({
 
     if (!isMainViewRef.current) return applyAutoPurgeToAppState(nextState)
 
-    if (!editorRef.current) return applyActiveCursorToState(applyAutoPurgeToAppState(nextState))
-    const markdown = lastEditorMarkdownRef.current
+    const currentEditor = editorRef.current
+    if (!currentEditor) return applyActiveCursorToState(applyAutoPurgeToAppState(nextState))
+    const markdown = getSnapshotEditorMarkdown(currentEditor, lastEditorMarkdownRef.current, getNormalizedEditorMarkdown)
+    lastEditorMarkdownRef.current = markdown
+    lastEditorMarkdownByAisleRef.current.set(activeAisleIdRef.current, markdown)
 
     nextState = applyMarkdownToAppState(
       nextState,

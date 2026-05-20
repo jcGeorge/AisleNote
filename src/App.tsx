@@ -35,6 +35,12 @@ import { getAisleIdFromAisleEditorKey } from './editor/aisle-editor'
 import { shouldFocusAislePointerActivation } from './editor/aisle-activation'
 import { useAisleController } from './editor/useAisleController'
 import { useLegacyEditor } from './editor/useLegacyEditor'
+import { isHeadingCollapsed, setHeadingCollapsed } from './editor/heading-collapse-state'
+import {
+  TABLE_OF_CONTENTS_EMPTY_MESSAGE,
+  buildTableOfContentsPanels,
+  type TableOfContentsPanelsState,
+} from './editor/table-of-contents'
 import {
   getCommandCapableEditor,
   getNoteMentionQueryAtSelection,
@@ -203,6 +209,7 @@ function App() {
   const [shortcutMenuActiveIndex, setShortcutMenuActiveIndex] = useState(0)
   const [noteMentionMenu, setNoteMentionMenu] = useState<NoteMentionMenuState | null>(null)
   const [noteMentionActiveIndex, setNoteMentionActiveIndex] = useState(0)
+  const [tableOfContentsPanels, setTableOfContentsPanels] = useState<TableOfContentsPanelsState | null>(null)
   const isMacPlatform = typeof navigator !== 'undefined' ? /mac/i.test(navigator.platform) : false
   const [menuOpen, setMenuOpen] = useState(false)
   const [trashTabId, setTrashTabId] = useState<string>(TRASH_HOME_ID)
@@ -458,6 +465,10 @@ function App() {
   useEffect(() => {
     closeImageToolsRef.current()
   }, [activeSpace.id, activeTab.id, activeSubTab?.id, activeNoteBodyId, viewMode])
+
+  useEffect(() => {
+    setTableOfContentsPanels(null)
+  }, [activeNoteBodyId, viewMode])
 
   useEffect(() => {
     if (resolvedActiveAisleId && resolvedActiveAisleId !== activeAisleId) {
@@ -953,6 +964,49 @@ function App() {
   const openInternalNoteLinkFromContext = noteReferenceActions.openInternalNoteLinkFromContext
   const renameInternalNoteLinkFromContext = noteReferenceActions.renameInternalNoteLinkFromContext
 
+  const toggleHeadingCollapse = (aisleId: string, headingKey: string) => {
+    if (!activeNoteBodyId) return
+    setState((previous) => {
+      const nextCollapsed = !isHeadingCollapsed(previous.ui.headingCollapseState, activeNoteBodyId, aisleId, headingKey)
+      const nextHeadingCollapseState = setHeadingCollapsed(
+        previous.ui.headingCollapseState,
+        activeNoteBodyId,
+        aisleId,
+        headingKey,
+        nextCollapsed,
+      )
+      if (nextHeadingCollapseState === previous.ui.headingCollapseState) return previous
+      return {
+        ...previous,
+        ui: {
+          ...previous.ui,
+          headingCollapseState: nextHeadingCollapseState,
+        },
+      }
+    })
+  }
+
+  const expandHeadingCollapse = (aisleId: string, headingKey: string) => {
+    if (!activeNoteBodyId) return
+    setState((previous) => {
+      const nextHeadingCollapseState = setHeadingCollapsed(
+        previous.ui.headingCollapseState,
+        activeNoteBodyId,
+        aisleId,
+        headingKey,
+        false,
+      )
+      if (nextHeadingCollapseState === previous.ui.headingCollapseState) return previous
+      return {
+        ...previous,
+        ui: {
+          ...previous.ui,
+          headingCollapseState: nextHeadingCollapseState,
+        },
+      }
+    })
+  }
+
   const aisleEditors = useAisleEditors({
     viewMode,
     activeNoteBodyId,
@@ -988,6 +1042,9 @@ function App() {
     trackCompletedTaskQuickDelete,
     tryExpandMultilineSelection,
     scheduleToolbarFormatStateSync,
+    headingCollapseState: state.ui.headingCollapseState,
+    onToggleHeadingCollapse: toggleHeadingCollapse,
+    onExpandHeadingCollapse: expandHeadingCollapse,
     getContextPreviewData,
     navigateToNoteLocation,
     deleteContextPreview: (tokenId) => deleteContextPreviewRef.current(tokenId),
@@ -997,8 +1054,46 @@ function App() {
   const registerAisleEditorRoot = aisleEditors.registerAisleEditorRoot
   const registerAislePaneRoot = aisleEditors.registerAislePaneRoot
   const mountedAisleIds = aisleEditors.mountedAisleIds
+  const getHeadingOutlineForAisle = aisleEditors.getHeadingOutlineForAisle
+  const scrollToAisleHeading = aisleEditors.scrollToAisleHeading
   const getPreviewMarkdownForAisle = aisleEditors.getPreviewMarkdownForAisle
   activateAisleEditorRef.current = activateAisleEditor
+
+  const openTableOfContents = () => {
+    closeImageTools()
+    if (!activeNoteBodyId) {
+      pushToast('open a note before using table of contents.', 'warning')
+      return
+    }
+
+    const nextTableOfContentsPanels = buildTableOfContentsPanels(
+      activeNoteBodyId,
+      activeNoteAisles,
+      getHeadingOutlineForAisle,
+    )
+
+    if (!nextTableOfContentsPanels) {
+      pushToast(TABLE_OF_CONTENTS_EMPTY_MESSAGE, 'warning')
+      setTableOfContentsPanels(null)
+      return
+    }
+
+    setTableOfContentsPanels(nextTableOfContentsPanels)
+  }
+
+  const closeTableOfContentsAisle = (aisleId: string) => {
+    setTableOfContentsPanels((current) => {
+      if (!current || !current.openAisleIds.has(aisleId)) return current
+      const nextOpenAisleIds = new Set(current.openAisleIds)
+      nextOpenAisleIds.delete(aisleId)
+      return nextOpenAisleIds.size > 0 ? { ...current, openAisleIds: nextOpenAisleIds } : null
+    })
+  }
+
+  const selectTableOfContentsHeading = (aisleId: string, headingKey: string) => {
+    closeTableOfContentsAisle(aisleId)
+    scrollToAisleHeading(aisleId, headingKey)
+  }
 
   usePendingNoteCursorRestore({
     viewMode,
@@ -1864,6 +1959,7 @@ function App() {
     clearActiveNoteContent,
     openCopyModalForActiveNote,
     openFrontmatterModalForActiveNote,
+    openTableOfContents,
     addAisleToActiveNote: () => {
       closeImageTools()
       addAisleToActiveNote('', { source: 'ui' })
@@ -1972,6 +2068,8 @@ function App() {
         message: getAisleShortcutTipMessage(shortcutLabel),
       }
     })
+  const activeTableOfContentsPanels =
+    tableOfContentsPanels?.noteBodyId === activeNoteBodyId ? tableOfContentsPanels : null
 
   return (
     <main
@@ -2222,7 +2320,7 @@ function App() {
 
           {viewMode === 'stage-manager' ? (
             <StageManagerView
-              domains={state.domains}
+              domains={stageManager.domains}
               step={stageManager.step}
               action={stageManager.action}
               draft={stageManager.draft}
@@ -2235,7 +2333,7 @@ function App() {
               demoteSpace={stageManager.demoteSpace}
               demoteParentOptions={stageManager.demoteParentOptions}
               migrateDomainId={stageManager.migrateDomainId}
-              otherSpaces={stageManager.otherSpaces}
+              migrateDestinationSpaces={stageManager.migrateDestinationSpaces}
               strayHandlingSelectValue={stageManager.strayHandlingSelectValue}
               strayExistingParentOptions={stageManager.strayExistingParentOptions}
               migrateParentDomainId={stageManager.migrateParentDomainId}
@@ -2271,6 +2369,8 @@ function App() {
               headingPopover={editorToolbarLayer.popovers}
               imageToolsOverlay={renderImageToolsOverlay()}
               tableControlsOverlay={renderTableControlsOverlay()}
+              tableOfContentsHeadingsByAisle={activeTableOfContentsPanels?.headingsByAisle ?? {}}
+              openTableOfContentsAisleIds={activeTableOfContentsPanels?.openAisleIds ?? new Set<string>()}
               onRootChange={(node) => {
                 editorEventRootRef.current = node
               }}
@@ -2289,6 +2389,8 @@ function App() {
               }}
               mountedAisleIds={mountedAisleIds}
               getPreviewMarkdownForAisle={getPreviewMarkdownForAisle}
+              onCloseTableOfContentsAisle={closeTableOfContentsAisle}
+              onSelectTableOfContentsHeading={selectTableOfContentsHeading}
               onRegisterAislePaneRoot={registerAislePaneRoot}
               onRegisterAisleEditorRoot={registerAisleEditorRoot}
             />

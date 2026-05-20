@@ -17,6 +17,7 @@ type SharedEditorToolbarProps = {
   toolbarShortcutFeedback: ToolbarFormatKey | null
   onOpenCopy: () => void
   onOpenFrontmatter: () => void
+  onOpenTableOfContents: () => void
   onToggleAisles: () => void
   onToggleHeading: () => void
   onCommand: (command: string, payload?: Record<string, unknown>) => void
@@ -104,6 +105,7 @@ export function SharedEditorToolbar({
   toolbarShortcutFeedback,
   onOpenCopy,
   onOpenFrontmatter,
+  onOpenTableOfContents,
   onToggleAisles,
   onToggleHeading,
   onCommand,
@@ -201,6 +203,20 @@ export function SharedEditorToolbar({
             }}
           >
             <span className="frontmatter-toolbar-icon" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="table-of-contents-toolbar-btn"
+            title={tooltipsDisabled ? undefined : 'Table of contents'}
+            aria-label="Table of contents"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              onOpenTableOfContents()
+            }}
+          >
+            ToC
           </button>
           <span className="note-toolbar-menu-anchor">
             <button

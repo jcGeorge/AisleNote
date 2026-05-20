@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import { getDestinationSortLabel } from '../arrange/tab-sort'
 import { sanitizeName } from '../export/export-data'
@@ -33,6 +32,7 @@ import {
 import {
   buildStageManagerDomainAwareState,
   getStageManagerDomainSpaces,
+  getStageManagerMigrateDestinationSpaces,
   projectStageManagerDomains,
   replaceStageManagerDomainSpaces,
 } from './domain-operations'
@@ -178,6 +178,7 @@ export function useStageManagerController({
     () => buildStageManagerSelectionSnapshot(workspace.tabs, selections),
     [workspace.tabs, selections],
   )
+  const stageManagerDomains = useMemo(() => projectStageManagerDomains(state), [state])
 
   const selectionCounts = useMemo(
     () => ({
@@ -191,8 +192,8 @@ export function useStageManagerController({
   )
 
   const getDraftDomainId = (draftDomainId: string) =>
-    draftDomainId && state.domains.some((domain) => domain.id === draftDomainId) ? draftDomainId : state.activeDomainId
-  const getDomainSpaces = (domainId: string) => state.domains.find((domain) => domain.id === domainId)?.spaces ?? []
+    draftDomainId && stageManagerDomains.some((domain) => domain.id === draftDomainId) ? draftDomainId : state.activeDomainId
+  const getDomainSpaces = (domainId: string) => getStageManagerDomainSpaces(stageManagerDomains, domainId)
   const promoteDomainId = getDraftDomainId(draft.promoteDomainId)
   const demoteDomainId = getDraftDomainId(draft.demoteDomainId)
   const migrateDomainId = getDraftDomainId(draft.migrateDomainId)
@@ -204,12 +205,15 @@ export function useStageManagerController({
     demoteSpaces.find((space) => space.id === draft.demoteSpaceId) ??
     (demoteDomainId === state.activeDomainId ? activeSpace : demoteSpaces[0]) ??
     null
-  const otherSpaces = useMemo(
+  const migrateDestinationSpaces = useMemo(
     () =>
-      getDomainSpaces(migrateDomainId).filter(
-        (space) => !(migrateDomainId === state.activeDomainId && space.id === activeSpace.id),
-      ),
-    [activeSpace.id, migrateDomainId, state.activeDomainId, state.domains],
+      getStageManagerMigrateDestinationSpaces({
+        domains: stageManagerDomains,
+        migrateDomainId,
+        activeDomainId: state.activeDomainId,
+        activeSpaceId: activeSpace.id,
+      }),
+    [activeSpace.id, migrateDomainId, stageManagerDomains, state.activeDomainId],
   )
   const demoteParentOptions = useMemo(
     () =>
@@ -225,7 +229,9 @@ export function useStageManagerController({
       ? promoteDestinationSpaces.find((space) => space.id === draft.promoteSpaceId) ?? null
       : null
   const selectedMigrateSpace =
-    draft.migrateSpaceMode === 'existing' ? otherSpaces.find((space) => space.id === draft.migrateSpaceId) ?? null : null
+    draft.migrateSpaceMode === 'existing'
+      ? migrateDestinationSpaces.find((space) => space.id === draft.migrateSpaceId) ?? null
+      : null
   const selectedMigrateParentSpace =
     draft.migrateParentSpaceMode === 'current'
       ? activeSpace
@@ -292,7 +298,7 @@ export function useStageManagerController({
         changed = true
       }
 
-      if (previous.migrateSpaceId && !otherSpaces.some((space) => space.id === previous.migrateSpaceId)) {
+      if (previous.migrateSpaceId && !migrateDestinationSpaces.some((space) => space.id === previous.migrateSpaceId)) {
         next = { ...next, migrateSpaceId: '' }
         changed = true
       }
@@ -340,13 +346,15 @@ export function useStageManagerController({
     demoteParentOptions,
     demoteSpaces,
     migrateParentOptions,
-    otherSpaces,
+    migrateDestinationSpaces,
     promoteDestinationSpaces,
     migrateParentSpaces,
     selectionSnapshot.fullParents,
     strayExistingParentOptions,
     state.activeDomainId,
     activeSpace.id,
+    stageManagerDomains,
+    migrateDomainId,
   ])
 
   const getActionValidation = (
@@ -390,6 +398,10 @@ export function useStageManagerController({
     }
 
     setAction(nextAction)
+
+    if (nextAction === 'migrate' && action !== 'migrate') {
+      updateDraft({ migrateTarget: null })
+    }
 
     if (nextAction === 'promote' && snapshot.fullParents.length === 1 && draft.newSpaceName.trim().length === 0) {
       updateDraft({ newSpaceName: snapshot.fullParents[0].title })
@@ -501,6 +513,13 @@ export function useStageManagerController({
     }
 
     if (action === 'migrate') {
+      if (!draft.migrateTarget) {
+        return {
+          valid: false,
+          message: 'choose whether to migrate to a space or parent tab before continuing.',
+        }
+      }
+
       if (draft.migrateTarget === 'space') {
         if (draft.migrateSpaceMode === 'existing') {
           if (!selectedMigrateSpace) {
@@ -670,11 +689,11 @@ export function useStageManagerController({
             details.push(`stray sub-tabs: include under new parent ${sanitizeName(draft.strayNewParentName || 'untitled')}`)
           }
         }
-      } else {
+      } else if (draft.migrateTarget === 'parent') {
         if (draft.migrateParentSpaceMode === 'current') {
           details.push(`destination space: ${activeSpace.name}`)
         } else if (draft.migrateParentSpaceMode === 'existing') {
-          details.push(`destination space: ${state.spaces.find((space) => space.id === draft.migrateParentSpaceId)?.name ?? 'none selected'}`)
+          details.push(`destination space: ${migrateParentSpaces.find((space) => space.id === draft.migrateParentSpaceId)?.name ?? 'none selected'}`)
         } else {
           details.push(`new space: ${sanitizeName(draft.newSpaceName || 'untitled')}`)
         }
@@ -686,6 +705,8 @@ export function useStageManagerController({
             `destination parent: ${migrateParentOptions.find((tab) => tab.id === draft.migrateParentId)?.title ?? 'none selected'}`,
           )
         }
+      } else {
+        details.push('migration target: none selected')
       }
       details.push(`destination order: ${getDestinationSortLabel(draft.destinationSortMode)}`)
     } else if (action === 'frontmatter') {
@@ -702,12 +723,12 @@ export function useStageManagerController({
     demoteParentOptions,
     draft,
     migrateParentOptions,
+    migrateParentSpaces,
     selectedMigrateSpace,
     selectedPromoteSpace,
     selectionCounts,
     selectionSnapshot,
     state.frontmatter.templates,
-    state.spaces,
     strayExistingParentOptions,
   ])
 
@@ -1335,6 +1356,7 @@ export function useStageManagerController({
 
   return {
     step,
+    domains: stageManagerDomains,
     action,
     draft,
     selectionSnapshot,
@@ -1346,7 +1368,7 @@ export function useStageManagerController({
     demoteSpace,
     demoteParentOptions,
     migrateDomainId,
-    otherSpaces,
+    migrateDestinationSpaces,
     strayHandlingSelectValue,
     strayExistingParentOptions,
     migrateParentDomainId,

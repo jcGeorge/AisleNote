@@ -12,6 +12,22 @@ export function getStageManagerDomainSpaces(domains: Domain[], domainId: string)
   return domains.find((domain) => domain.id === domainId)?.spaces ?? []
 }
 
+export function getStageManagerMigrateDestinationSpaces({
+  domains,
+  migrateDomainId,
+  activeDomainId,
+  activeSpaceId,
+}: {
+  domains: Domain[]
+  migrateDomainId: string
+  activeDomainId: string
+  activeSpaceId: string
+}): Space[] {
+  return getStageManagerDomainSpaces(domains, migrateDomainId).filter(
+    (space) => !(migrateDomainId === activeDomainId && space.id === activeSpaceId),
+  )
+}
+
 export function replaceStageManagerDomainSpaces(
   domains: Domain[],
   domainId: string,

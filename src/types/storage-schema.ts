@@ -102,6 +102,7 @@ export type StorageGlobalSettings = {
         updatedAt: number
       }
     >
+    headingCollapseState?: Record<StorageEntityId, Record<StorageEntityId, string[]>>
     seenTipIds?: StorageTipId[]
     disabledTipIds?: StorageTipId[]
   }

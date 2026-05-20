@@ -567,6 +567,47 @@
   color: var(--editor-heading-text) !important;
 }
 
+.toastui-editor .ProseMirror .tabs-heading-collapse-heading {
+  position: relative !important;
+  cursor: default;
+}
+
+.toastui-editor .ProseMirror .tabs-heading-collapse-heading::before {
+  content: '';
+  position: absolute;
+  left: -0.62rem;
+  top: 0.45em;
+  width: 0;
+  height: 0;
+  border-top: 0.24em solid transparent;
+  border-bottom: 0.24em solid transparent;
+  border-left: 0.34em solid currentColor;
+  opacity: 0;
+  pointer-events: none;
+  transform: rotate(90deg);
+}
+
+.toastui-editor .ProseMirror .tabs-heading-collapse-heading:hover::before,
+.toastui-editor .ProseMirror .tabs-heading-collapse-heading-collapsed::before {
+  opacity: 0.72;
+}
+
+.toastui-editor .ProseMirror .tabs-heading-collapse-heading-collapsed::before {
+  transform: none;
+}
+
+.toastui-editor .ProseMirror .tabs-heading-collapse-heading-collapsed {
+  opacity: 0.9;
+}
+
+.toastui-editor .ProseMirror .tabs-heading-collapse-preserved-gap-before {
+  margin-top: calc(0.6rem + (var(--tabs-heading-preserved-gap-lines, 1) * 0.85rem)) !important;
+}
+
+.toastui-editor .ProseMirror .tabs-heading-collapse-hidden {
+  display: none !important;
+}
+
 .toastui-editor-contents hr {
   display: block !important;
   border: 0 !important;

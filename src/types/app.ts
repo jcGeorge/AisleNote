@@ -151,6 +151,8 @@ export type NoteCursorLocation = {
   updatedAt: number
 }
 
+export type HeadingCollapseState = Record<string, Record<string, string[]>>
+
 export type SubTab = {
   id: string
   title: string
@@ -235,6 +237,7 @@ export type AppState = {
     settingsSection: SettingsSection
     customThemePalette: CustomThemePalette | null
     noteCursorLocations: Record<string, NoteCursorLocation>
+    headingCollapseState: HeadingCollapseState
     seenTipIds: TipId[]
     disabledTipIds: TipId[]
   }
@@ -329,7 +332,7 @@ export type StageManagerParentSelectionMode = 'none' | 'partial' | 'full'
 export type StageManagerPromoteSpaceMode = 'existing' | 'new'
 export type StageManagerDestinationSpaceMode = 'existing' | 'new'
 export type StageManagerDestinationParentMode = 'existing' | 'new'
-export type StageManagerMigrateTarget = 'space' | 'parent'
+export type StageManagerMigrateTarget = 'space' | 'parent' | null
 export type StageManagerMigrateParentSpaceMode = 'current' | 'existing' | 'new'
 export type StageManagerStrayHandlingMode = 'promote' | 'selected-parent' | 'existing-parent' | 'new-parent'
 export type StageManagerMassDeleteMode = 'trash' | 'permanent'

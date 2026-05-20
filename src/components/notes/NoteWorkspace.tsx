@@ -1,7 +1,8 @@
-import type { ReactNode, Ref } from 'react'
+import type { CSSProperties, ReactNode, Ref } from 'react'
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { buildAisleEditorKey } from '../../editor/aisle-editor'
+import type { HeadingOutlineItem } from '../../editor/heading-outline'
 import { resolveImageAssetDisplayUrl } from '../../markdown/image-asset-registry'
 import type { NoteAisle } from '../../types/app'
 import { MarkdownPreviewParagraph } from './markdown-preview-components'
@@ -27,14 +28,73 @@ type NoteWorkspaceProps = {
   headingPopover: ReactNode
   imageToolsOverlay: ReactNode
   tableControlsOverlay: ReactNode
+  tableOfContentsHeadingsByAisle?: Record<string, HeadingOutlineItem[]>
+  openTableOfContentsAisleIds?: Set<string>
   onExitArrangeMode?: () => void
   onRootChange: (node: HTMLElement | null) => void
   onAisleScroll: (scrollLeft: number) => void
   onActivateAisle: (editorKey: string) => void
   mountedAisleIds: Set<string>
   getPreviewMarkdownForAisle: (aisle: NoteAisle) => string
+  onCloseTableOfContentsAisle?: (aisleId: string) => void
+  onSelectTableOfContentsHeading?: (aisleId: string, headingKey: string) => void
   onRegisterAislePaneRoot: (aisleId: string, node: HTMLElement | null) => void
   onRegisterAisleEditorRoot: (editorKey: string, node: HTMLElement | null) => void
+}
+
+type AisleTableOfContentsPanelProps = {
+  aisleId: string
+  headings: HeadingOutlineItem[]
+  onClose: (aisleId: string) => void
+  onSelectHeading: (aisleId: string, headingKey: string) => void
+}
+
+function AisleTableOfContentsPanel({
+  aisleId,
+  headings,
+  onClose,
+  onSelectHeading,
+}: AisleTableOfContentsPanelProps) {
+  return (
+    <div
+      className="aisle-toc-panel-layer"
+      onPointerDown={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        if (event.target === event.currentTarget) {
+          onClose(aisleId)
+        }
+      }}
+    >
+      <section
+        className="aisle-toc-panel"
+        role="dialog"
+        aria-label="Table of contents"
+        onPointerDown={(event) => {
+          event.stopPropagation()
+        }}
+      >
+        <div className="aisle-toc-panel-title">table of contents</div>
+        <div className="aisle-toc-list">
+          {headings.map((heading) => (
+            <button
+              key={heading.key}
+              type="button"
+              className="aisle-toc-heading-btn"
+              style={{ '--toc-heading-indent': `${Math.max(0, heading.level - 1) * 0.78}rem` } as CSSProperties}
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                onSelectHeading(aisleId, heading.key)
+              }}
+            >
+              {heading.text || `heading ${heading.level}`}
+            </button>
+          ))}
+        </div>
+      </section>
+    </div>
+  )
 }
 
 export function NoteWorkspace({
@@ -48,12 +108,16 @@ export function NoteWorkspace({
   headingPopover,
   imageToolsOverlay,
   tableControlsOverlay,
+  tableOfContentsHeadingsByAisle = {},
+  openTableOfContentsAisleIds = new Set(),
   onExitArrangeMode,
   onRootChange,
   onAisleScroll,
   onActivateAisle,
   mountedAisleIds,
   getPreviewMarkdownForAisle,
+  onCloseTableOfContentsAisle = () => undefined,
+  onSelectTableOfContentsHeading = () => undefined,
   onRegisterAislePaneRoot,
   onRegisterAisleEditorRoot,
 }: NoteWorkspaceProps) {
@@ -80,6 +144,8 @@ export function NoteWorkspace({
           const editorKey = buildAisleEditorKey(noteBodyId, aisle.id)
           const editorMounted = mountedAisleIds.has(aisle.id)
           const previewMarkdown = editorMounted ? '' : getPreviewMarkdownForAisle(aisle)
+          const tableOfContentsHeadings = tableOfContentsHeadingsByAisle[aisle.id] ?? []
+          const tableOfContentsOpen = openTableOfContentsAisleIds.has(aisle.id) && tableOfContentsHeadings.length > 0
           return (
             <section
               key={aisle.id}
@@ -111,6 +177,14 @@ export function NoteWorkspace({
                   </div>
                 )}
               </section>
+              {tableOfContentsOpen && (
+                <AisleTableOfContentsPanel
+                  aisleId={aisle.id}
+                  headings={tableOfContentsHeadings}
+                  onClose={onCloseTableOfContentsAisle}
+                  onSelectHeading={onSelectTableOfContentsHeading}
+                />
+              )}
             </section>
           )
         })}

@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { createDefaultStageManagerDraft } from '../../stage-manager/selection'
-import type { Domain, FrontmatterTemplate, Space, StageManagerStep } from '../../types/app'
+import type { Domain, FrontmatterTemplate, Space, StageManagerMigrateTarget, StageManagerStep } from '../../types/app'
 import { StageManagerView } from './StageManagerView'
 
 const template: FrontmatterTemplate = {
@@ -57,7 +57,7 @@ function renderFrontmatterStageManager(step: StageManagerStep) {
       demoteSpace={space}
       demoteParentOptions={space.data.tabs}
       migrateDomainId={domain.id}
-      otherSpaces={[space]}
+      migrateDestinationSpaces={[space]}
       strayHandlingSelectValue="promote"
       strayExistingParentOptions={space.data.tabs}
       migrateParentDomainId={domain.id}
@@ -79,7 +79,96 @@ function renderFrontmatterStageManager(step: StageManagerStep) {
   )
 }
 
+function renderMigrateStageManager(migrateTarget: StageManagerMigrateTarget = null) {
+  const destinationSpace = { ...space, id: 'space-2', name: 'Archive' }
+
+  return renderToStaticMarkup(
+    <StageManagerView
+      domains={[{ ...domain, spaces: [space, destinationSpace] }]}
+      step="configure"
+      action="migrate"
+      draft={{
+        ...createDefaultStageManagerDraft(),
+        migrateTarget,
+        migrateSpaceMode: 'existing',
+        migrateSpaceId: destinationSpace.id,
+      }}
+      selectionSnapshot={{
+        fullParents: [],
+        partialParents: [],
+        looseSubTabs: [],
+        fullParentIds: new Set(),
+        hasSelection: true,
+      }}
+      selectionCounts={{ fullParentCount: 0, selectedSubTabCount: 1 }}
+      promoteDomainId={domain.id}
+      promoteDestinationSpaces={[space, destinationSpace]}
+      demoteDomainId={domain.id}
+      demoteSpaces={[space, destinationSpace]}
+      demoteSpace={space}
+      demoteParentOptions={space.data.tabs}
+      migrateDomainId={domain.id}
+      migrateDestinationSpaces={[destinationSpace]}
+      strayHandlingSelectValue="promote"
+      strayExistingParentOptions={destinationSpace.data.tabs}
+      migrateParentDomainId={domain.id}
+      migrateParentSpaces={[space, destinationSpace]}
+      migrateParentOptions={space.data.tabs}
+      frontmatterTemplates={[template]}
+      openDestinationAfterApply
+      reviewDetails={[]}
+      reviewWarning=""
+      onSelectAll={noop}
+      onDeselectAll={noop}
+      onSelectAction={noop}
+      onDraftChange={noop}
+      onOpenDestinationChange={noop}
+      onPrevious={noop}
+      onNext={noop}
+      onApply={noop}
+    />,
+  )
+}
+
 describe('StageManagerView frontmatter preview', () => {
+  it('initially shows only the migration target choices', () => {
+    const html = renderMigrateStageManager()
+
+    expect(html).toContain('migrate to space')
+    expect(html).toContain('migrate to parent tab')
+    expect(html).not.toContain('destination domain')
+    expect(html).not.toContain('destination space')
+    expect(html).not.toContain('<span>destination parent</span>')
+    expect(html).not.toContain('destination order')
+    expect(html).not.toContain('open destination after apply')
+  })
+
+  it('reveals space controls after choosing migrate to space', () => {
+    const html = renderMigrateStageManager('space')
+
+    expect(html).toContain('existing space')
+    expect(html).toContain('new space')
+    expect(html).toContain('destination domain')
+    expect(html).toContain('destination space')
+    expect(html).toContain('Archive')
+    expect(html).toContain('destination order')
+    expect(html).toContain('open destination after apply')
+    expect(html).not.toContain('<span>destination parent</span>')
+  })
+
+  it('reveals parent controls after choosing migrate to parent tab', () => {
+    const html = renderMigrateStageManager('parent')
+
+    expect(html).toContain('current space')
+    expect(html).toContain('existing space')
+    expect(html).toContain('new space')
+    expect(html).toContain('existing parent')
+    expect(html).toContain('new parent')
+    expect(html).toContain('destination parent')
+    expect(html).toContain('destination order')
+    expect(html).toContain('open destination after apply')
+  })
+
   it('shows template fields in the configure step', () => {
     const html = renderFrontmatterStageManager('configure')
 

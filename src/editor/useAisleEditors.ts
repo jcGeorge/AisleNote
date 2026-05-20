@@ -1,9 +1,13 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import { Editor } from '@toast-ui/editor'
+import { TextSelection } from 'prosemirror-state'
 import { buildAisleEditorKey, getAisleIdFromAisleEditorKey, type AisleEditorMeta } from './aisle-editor'
 import { shouldUseFastSameAisleActivation } from './aisle-activation'
 import { createCodeBlockControlsPlugin } from './code-block-controls'
+import { headingCollapsePlugin } from './heading-collapse-plugin'
+import { getCollapsedHeadingKeysForAisle } from './heading-collapse-state'
+import { getHeadingOutlineFromDoc, getHeadingOutlineFromMarkdown, type HeadingOutlineItem } from './heading-outline'
 import { installImageDisplayMetadataSync } from './image-dom-metadata'
 import {
   annotationLinePlugin,
@@ -19,7 +23,7 @@ import {
 import { terminalBlockLandingPlugin } from './terminal-block-landing'
 import { createContextPreviewPlugin, type ContextPreviewData } from './note-preview-plugin'
 import { sanitizeEditorHtml } from './editor-sanitizer'
-import { getElementFromEventTarget } from './prosemirror-utils'
+import { getElementFromEventTarget, getWysiwygView } from './prosemirror-utils'
 import {
   installCompletedTaskCheckboxBehavior,
   installTaskTextReorderBehavior,
@@ -39,7 +43,7 @@ import {
   getAislePreviewMarkdown,
   updateRecentAisleIds,
 } from './aisle-editor-retention'
-import type { NoteAisle, NoteLocation, PendingContent, ToastTone, ViewMode } from '../types/app'
+import type { HeadingCollapseState, NoteAisle, NoteLocation, PendingContent, ToastTone, ViewMode } from '../types/app'
 import type { NoteContextReferencePayload } from '../notes/note-references'
 import type { PendingCursorRestore } from './useNoteCursorPersistence'
 
@@ -90,9 +94,17 @@ type UseAisleEditorsOptions = {
   trackCompletedTaskQuickDelete: (beforeMarkdown: string) => void
   tryExpandMultilineSelection: (direction: 'up' | 'down') => boolean
   scheduleToolbarFormatStateSync: () => void
+  headingCollapseState: HeadingCollapseState
+  onToggleHeadingCollapse: (aisleId: string, headingKey: string) => void
+  onExpandHeadingCollapse: (aisleId: string, headingKey: string) => void
   getContextPreviewData: (payload: NoteContextReferencePayload, sourceNoteBodyId: string) => ContextPreviewData
   navigateToNoteLocation: (location: NoteLocation) => void
   deleteContextPreview: (tokenId: string) => void
+}
+
+type PendingHeadingScroll = {
+  aisleId: string
+  headingKey: string
 }
 
 export function useAisleEditors({
@@ -130,6 +142,9 @@ export function useAisleEditors({
   trackCompletedTaskQuickDelete,
   tryExpandMultilineSelection,
   scheduleToolbarFormatStateSync,
+  headingCollapseState,
+  onToggleHeadingCollapse,
+  onExpandHeadingCollapse,
   getContextPreviewData,
   navigateToNoteLocation,
   deleteContextPreview,
@@ -142,6 +157,9 @@ export function useAisleEditors({
   const [retainedAisleIds, setRetainedAisleIds] = useState<Set<string>>(() => new Set())
   const idleUnmountTimerRef = useRef<number | null>(null)
   const pendingFocusAfterMountAisleIdRef = useRef<string | null>(null)
+  const pendingHeadingScrollRef = useRef<PendingHeadingScroll | null>(null)
+  const headingCollapseStateRef = useRef(headingCollapseState)
+  headingCollapseStateRef.current = headingCollapseState
   const activeAisleIds = useMemo(() => activeNoteAisles.map((aisle) => aisle.id), [activeNoteAisles])
   const desiredMountedAisleIds = useMemo(
     () =>
@@ -255,6 +273,78 @@ export function useAisleEditors({
     } else {
       aislePaneRootsRef.current.delete(aisleId)
     }
+  }
+
+  const getAisleMarkdownForOutline = (aisle: NoteAisle) => {
+    const pending = pendingContentRef.current
+    if (
+      pending &&
+      pending.spaceId === activeSpaceIdRef.current &&
+      pending.tabId === activeTabIdRef.current &&
+      pending.subTabId === activeSubTabIdRef.current &&
+      pending.aisleId === aisle.id
+    ) {
+      return pending.markdown
+    }
+    return lastEditorMarkdownByAisleRef.current.get(aisle.id) ?? aisle.markdown
+  }
+
+  const getHeadingOutlineForAisle = (aisle: NoteAisle): HeadingOutlineItem[] => {
+    const editorKey = buildAisleEditorKey(activeNoteBodyId, aisle.id)
+    const meta = aisleEditorMetaRef.current.get(editorKey)
+    const view = getWysiwygView(meta?.editor ?? null)
+    if (view?.state?.doc) {
+      return getHeadingOutlineFromDoc(aisle.id, view.state.doc)
+    }
+    return getHeadingOutlineFromMarkdown(aisle.id, getAisleMarkdownForOutline(aisle))
+  }
+
+  const scrollAislePaneIntoView = (aisleId: string) => {
+    const pane = aislePaneRootsRef.current.get(aisleId)
+    pane?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }
+
+  const scrollToMountedHeading = (aisleId: string, headingKey: string) => {
+    const editorKey = buildAisleEditorKey(activeNoteBodyId, aisleId)
+    const meta = aisleEditorMetaRef.current.get(editorKey)
+    if (!meta) return false
+    const view = getWysiwygView(meta.editor)
+    if (!view?.state?.doc) return false
+    const heading = getHeadingOutlineFromDoc(aisleId, view.state.doc).find((candidate) => candidate.key === headingKey)
+    if (typeof heading?.start !== 'number') return false
+
+    activateAisleEditor(editorKey, { flushPrevious: true, focus: true })
+    try {
+      const selectionPosition = Math.min(heading.start + 1, view.state.doc.content.size)
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, selectionPosition, selectionPosition)).scrollIntoView())
+    } catch {
+      // Fall back to DOM scrolling below if the document changed between collection and navigation.
+    }
+
+    const headingElement = Array.from(
+      meta.root.querySelectorAll<HTMLElement>('[data-heading-collapse-key]'),
+    ).find((element) => element.getAttribute('data-heading-collapse-key') === headingKey)
+    headingElement?.scrollIntoView({ block: 'start', inline: 'nearest' })
+    meta.editor.focus()
+    return true
+  }
+
+  const runPendingHeadingScroll = () => {
+    const pending = pendingHeadingScrollRef.current
+    if (!pending) return
+    scrollAislePaneIntoView(pending.aisleId)
+    if (scrollToMountedHeading(pending.aisleId, pending.headingKey)) {
+      pendingHeadingScrollRef.current = null
+    }
+  }
+
+  const scrollToAisleHeading = (aisleId: string, headingKey: string) => {
+    scrollAislePaneIntoView(aisleId)
+    if (scrollToMountedHeading(aisleId, headingKey)) return true
+    pendingHeadingScrollRef.current = { aisleId, headingKey }
+    activateAisleEditor(buildAisleEditorKey(activeNoteBodyId, aisleId), { flushPrevious: true, focus: true })
+    window.requestAnimationFrame(runPendingHeadingScroll)
+    return false
   }
 
   const handleAisleEditorChange = (editorKey: string, aisleId: string, editor: Editor) => {
@@ -462,6 +552,16 @@ export function useAisleEditors({
           annotationLinePlugin,
           terminalBlockLandingPlugin,
           createCodeBlockControlsPlugin({ pushToast }),
+          (context: any) =>
+            headingCollapsePlugin(context, {
+              aisleId: aisle.id,
+              getCollapsedHeadingKeys: (targetAisleId) =>
+                getCollapsedHeadingKeysForAisle(headingCollapseStateRef.current, activeNoteBodyId, targetAisleId),
+              getMarkdown: (targetAisleId) =>
+                lastEditorMarkdownByAisleRef.current.get(targetAisleId) ?? normalizeMarkdownForPersistence(aisle.markdown),
+              onToggleHeading: onToggleHeadingCollapse,
+              onExpandHeading: onExpandHeadingCollapse,
+            }),
           uncheckedTaskEnterPlugin,
           headingSpaceShortcutPlugin,
           thematicBreakShortcutPlugin,
@@ -550,6 +650,8 @@ export function useAisleEditors({
         pendingFocusAfterMountAisleIdRef.current = null
         activateAisleEditor(editorKey, { focus: true })
       }
+
+      window.requestAnimationFrame(runPendingHeadingScroll)
     }
 
     const activeEditorKey = buildAisleEditorKey(activeNoteBodyId, resolvedActiveAisleId)
@@ -557,6 +659,15 @@ export function useAisleEditors({
       activateAisleEditor(activeEditorKey)
     }
   }, [viewMode, activeNoteBodyId, activeNoteAisles, resolvedActiveAisleId, mountedAisleIdsKey])
+
+  useEffect(() => {
+    if (viewMode !== 'main' || !activeNoteBodyId) return
+    aisleEditorMetaRef.current.forEach((meta) => {
+      const view = getWysiwygView(meta.editor)
+      if (!view?.state?.tr) return
+      view.dispatch(view.state.tr.setMeta('headingCollapseRefresh', true).setMeta('addToHistory', false))
+    })
+  }, [viewMode, activeNoteBodyId, headingCollapseState])
 
   useEffect(() => () => destroyAllAisleEditors(), [])
 
@@ -591,6 +702,8 @@ export function useAisleEditors({
     registerAisleEditorRoot,
     registerAislePaneRoot,
     mountedAisleIds,
+    getHeadingOutlineForAisle,
+    scrollToAisleHeading,
     getPreviewMarkdownForAisle: (aisle: NoteAisle) =>
       getAislePreviewMarkdown({
         aisle,

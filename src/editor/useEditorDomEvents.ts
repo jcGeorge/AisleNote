@@ -136,6 +136,8 @@ export function isEditorToolbarInteractionTarget(target: Element | null): boolea
         '.toastui-editor-toolbar',
         '.toastui-editor-toolbar-icons',
         '.toastui-editor-tooltip',
+        '.aisle-toc-panel',
+        '.aisle-toc-panel-layer',
       ].join(', '),
     ),
   )
@@ -182,6 +184,8 @@ export function isEditorPointerChromeTarget(target: Element | null): boolean {
         '.table-tools',
         '.table-reorder-marker',
         '.link-prompt',
+        '.aisle-toc-panel',
+        '.aisle-toc-panel-layer',
       ].join(', '),
     ),
   )
@@ -207,6 +211,8 @@ export function shouldSkipTableExitRepairTarget(target: Element | null): boolean
         '.table-tools',
         '.table-reorder-marker',
         '.link-prompt',
+        '.aisle-toc-panel',
+        '.aisle-toc-panel-layer',
       ].join(', '),
     ),
   )

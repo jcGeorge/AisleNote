@@ -4,6 +4,7 @@ import type { AppState, Domain, Space } from '../types/app'
 import {
   buildStageManagerDomainAwareState,
   getStageManagerDomainSpaces,
+  getStageManagerMigrateDestinationSpaces,
   projectStageManagerDomains,
   replaceStageManagerDomainSpaces,
 } from './domain-operations'
@@ -71,6 +72,7 @@ const state: AppState = {
     settingsSection: 'hotkeys',
     customThemePalette: null,
     noteCursorLocations: {},
+    headingCollapseState: {},
     seenTipIds: [],
     disabledTipIds: [],
   },
@@ -82,6 +84,43 @@ describe('stage manager domain operations', () => {
 
     expect(getStageManagerDomainSpaces(domains, 'domain-a').map((space) => space.id)).toEqual(['space-runtime'])
     expect(getStageManagerDomainSpaces(domains, 'domain-b').map((space) => space.id)).toEqual(['space-b'])
+  })
+
+  it('excludes the active space from existing migrate-to-space destinations', () => {
+    const renamedSpace = { ...makeSpace('getting-started-space'), name: 'mySpace' }
+    const archiveSpace = { ...makeSpace('space-archive'), name: 'Archive' }
+    const domains = projectStageManagerDomains({
+      ...state,
+      activeDomainId: 'domain-a',
+      activeSpaceId: renamedSpace.id,
+      spaces: [renamedSpace, archiveSpace],
+      domains: [
+        {
+          ...domainA,
+          activeSpaceId: renamedSpace.id,
+          spaces: [{ ...renamedSpace, name: 'getting started' }, archiveSpace],
+        },
+        domainB,
+      ],
+    })
+
+    expect(getStageManagerDomainSpaces(domains, 'domain-a')).toEqual([renamedSpace, archiveSpace])
+    expect(
+      getStageManagerMigrateDestinationSpaces({
+        domains,
+        migrateDomainId: 'domain-a',
+        activeDomainId: 'domain-a',
+        activeSpaceId: renamedSpace.id,
+      }).map((space) => space.id),
+    ).toEqual([archiveSpace.id])
+    expect(
+      getStageManagerMigrateDestinationSpaces({
+        domains,
+        migrateDomainId: 'domain-b',
+        activeDomainId: 'domain-a',
+        activeSpaceId: renamedSpace.id,
+      }).map((space) => space.id),
+    ).toEqual(['space-b'])
   })
 
   it('keeps active space valid when replacing domain spaces', () => {

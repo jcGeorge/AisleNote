@@ -31,7 +31,7 @@ export function createDefaultStageManagerDraft(): StageManagerDraft {
     demoteParentMode: 'existing',
     demoteParentId: '',
     demoteNewParentName: '',
-    migrateTarget: 'space',
+    migrateTarget: null,
     migrateDomainId: '',
     migrateSpaceMode: 'existing',
     migrateSpaceId: '',

@@ -244,6 +244,8 @@ body.app-tooltips-disabled .toastui-editor-tooltip {
 .toastui-editor-toolbar button.note-copy-toolbar-btn,
 .toastui-editor-defaultUI-toolbar button.frontmatter-toolbar-btn,
 .toastui-editor-toolbar button.frontmatter-toolbar-btn,
+.toastui-editor-defaultUI-toolbar button.table-of-contents-toolbar-btn,
+.toastui-editor-toolbar button.table-of-contents-toolbar-btn,
 .toastui-editor-defaultUI-toolbar button.aisles-toolbar-btn,
 .toastui-editor-toolbar button.aisles-toolbar-btn,
 .toastui-editor-defaultUI-toolbar button.editor-history-toolbar-btn,
@@ -267,6 +269,8 @@ body.app-tooltips-disabled .toastui-editor-tooltip {
 .toastui-editor-toolbar button.note-copy-toolbar-btn,
 .toastui-editor-defaultUI-toolbar button.frontmatter-toolbar-btn,
 .toastui-editor-toolbar button.frontmatter-toolbar-btn,
+.toastui-editor-defaultUI-toolbar button.table-of-contents-toolbar-btn,
+.toastui-editor-toolbar button.table-of-contents-toolbar-btn,
 .toastui-editor-defaultUI-toolbar button.aisles-toolbar-btn,
 .toastui-editor-toolbar button.aisles-toolbar-btn,
 .toastui-editor-defaultUI-toolbar button.editor-history-toolbar-btn,
@@ -280,6 +284,8 @@ body.app-tooltips-disabled .toastui-editor-tooltip {
 .toastui-editor-toolbar button.note-copy-toolbar-btn,
 .toastui-editor-defaultUI-toolbar button.frontmatter-toolbar-btn,
 .toastui-editor-toolbar button.frontmatter-toolbar-btn,
+.toastui-editor-defaultUI-toolbar button.table-of-contents-toolbar-btn,
+.toastui-editor-toolbar button.table-of-contents-toolbar-btn,
 .toastui-editor-defaultUI-toolbar button.aisles-toolbar-btn,
 .toastui-editor-toolbar button.aisles-toolbar-btn,
 .toastui-editor-defaultUI-toolbar button.editor-history-toolbar-btn,
@@ -301,6 +307,12 @@ body.app-tooltips-disabled .toastui-editor-tooltip {
 
 .editor-history-toolbar-btn-redo .editor-history-toolbar-icon {
   transform: scaleX(-1);
+}
+
+.toastui-editor-defaultUI-toolbar button.table-of-contents-toolbar-btn,
+.toastui-editor-toolbar button.table-of-contents-toolbar-btn {
+  font-size: 10px !important;
+  letter-spacing: 0 !important;
 }
 
 .note-reference-toolbar-icon {
