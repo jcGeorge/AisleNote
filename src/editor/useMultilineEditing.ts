@@ -64,8 +64,6 @@ import {
   getIndentPrefixLength,
   getTrailingIndentPrefixLength,
   INDENT_TOKEN,
-  mergeLeadingIndentsFromWysiwyg,
-  normalizeMarkdownForPersistence,
 } from '../markdown/markdown-utils'
 import type { MultiLineEditState, MultiLineInlineFormat } from '../types/app'
 
@@ -138,6 +136,13 @@ export function hasMultiLineDecorationState(state: unknown): boolean {
 }
 
 export function getStructuralListIndentCommitMarkdown(
+  editor: Editor,
+  getNormalizedEditorMarkdown: (editor: Editor) => string,
+): string {
+  return getNormalizedEditorMarkdown(editor)
+}
+
+export function getTabIndentCommitMarkdown(
   editor: Editor,
   getNormalizedEditorMarkdown: (editor: Editor) => string,
 ): string {
@@ -464,9 +469,7 @@ export function useMultilineEditing({
       const nextFrom = tr.mapping.map(from, outdent ? -1 : 1)
       const nextTo = tr.mapping.map(to, outdent ? -1 : 1)
       view.dispatch(tr)
-      const markdownAfterCodeIndent = normalizeMarkdownForPersistence(
-        mergeLeadingIndentsFromWysiwyg(currentEditor, currentEditor.getMarkdown()),
-      )
+      const markdownAfterCodeIndent = getTabIndentCommitMarkdown(currentEditor, getNormalizedEditorMarkdown)
       commitMarkdown(markdownAfterCodeIndent)
       window.requestAnimationFrame(() => {
         currentEditor.setSelection?.(nextFrom, nextTo)
@@ -525,9 +528,7 @@ export function useMultilineEditing({
       const nextFrom = tr.mapping.map(from, 1)
       const nextTo = tr.mapping.map(to, 1)
       view.dispatch(tr)
-      const markdownAfterInlineIndent = normalizeMarkdownForPersistence(
-        mergeLeadingIndentsFromWysiwyg(currentEditor, currentEditor.getMarkdown()),
-      )
+      const markdownAfterInlineIndent = getTabIndentCommitMarkdown(currentEditor, getNormalizedEditorMarkdown)
       commitMarkdown(markdownAfterInlineIndent)
       window.requestAnimationFrame(() => {
         if (isCollapsedSelection) {
@@ -578,9 +579,7 @@ export function useMultilineEditing({
     const nextTo = tr.mapping.map(to, 1)
     const nextCaret = tr.mapping.map(from, outdent ? -1 : 1)
     view.dispatch(tr)
-    const markdownAfterIndent = normalizeMarkdownForPersistence(
-      mergeLeadingIndentsFromWysiwyg(currentEditor, currentEditor.getMarkdown()),
-    )
+    const markdownAfterIndent = getTabIndentCommitMarkdown(currentEditor, getNormalizedEditorMarkdown)
     commitMarkdown(markdownAfterIndent)
     window.requestAnimationFrame(() => {
       if (isCollapsedSelection) {

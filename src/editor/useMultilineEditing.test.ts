@@ -4,6 +4,7 @@ import type { MultiLineEditState } from '../types/app'
 import {
   getMultiLineWidgetClearMode,
   getStructuralListIndentCommitMarkdown,
+  getTabIndentCommitMarkdown,
   hasMultiLineDecorationState,
   shouldApplyBlockIndentOperationForTab,
 } from './useMultilineEditing'
@@ -43,6 +44,18 @@ describe('structural list indentation commits', () => {
 
     expect(getStructuralListIndentCommitMarkdown(editor, getNormalizedEditorMarkdown)).toBe(
       '### Head\n\ntext\n\n- [ ] task',
+    )
+    expect(getNormalizedEditorMarkdown).toHaveBeenCalledWith(editor)
+    expect(getMarkdown).not.toHaveBeenCalled()
+  })
+
+  it('uses normalized editor markdown for Tab indentation near blank paragraphs and tables', () => {
+    const getMarkdown = vi.fn(() => `> quote\n\n| A |\n| --- |`)
+    const editor = { getMarkdown } as unknown as Editor
+    const getNormalizedEditorMarkdown = vi.fn(() => `> \u2060\u2003\u2003quote\n\n\u200b\n\n| A |\n| --- |`)
+
+    expect(getTabIndentCommitMarkdown(editor, getNormalizedEditorMarkdown)).toBe(
+      `> \u2060\u2003\u2003quote\n\n\u200b\n\n| A |\n| --- |`,
     )
     expect(getNormalizedEditorMarkdown).toHaveBeenCalledWith(editor)
     expect(getMarkdown).not.toHaveBeenCalled()

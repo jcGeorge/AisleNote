@@ -9,12 +9,16 @@ import {
 import { clampNoteCursorSelection } from '../notes/note-cursors'
 import { updateCursorLocationInState } from '../notes/note-state'
 import type { AppState, NoteAisle, NoteCursorSelection, ViewMode } from '../types/app'
-import { shouldFocusPendingCursorRestore } from './cursor-restore-focus'
+import {
+  shouldFocusPendingCursorRestore,
+  shouldFocusSavedCursorRestoreOnActivation,
+} from './cursor-restore-focus'
 
 export type PendingCursorRestore = {
   noteLocationKey: string
   aisleId: string
   selection: NoteCursorSelection | null
+  focus?: boolean
 }
 
 type UseNoteCursorPersistenceParams = {
@@ -63,6 +67,7 @@ export const useNoteCursorPersistence = ({
   setActiveAisleId,
 }: UseNoteCursorPersistenceParams) => {
   const previousNoteLocationKeyRef = useRef('')
+  const previousViewModeRef = useRef<ViewMode | null>(null)
   const pendingCursorRestoreRef = useRef<PendingCursorRestore | null>(null)
 
   const applyActiveCursorToState = (previous: AppState): AppState => {
@@ -85,8 +90,11 @@ export const useNoteCursorPersistence = ({
   }
 
   useEffect(() => {
+    const previousViewMode = previousViewModeRef.current
+    previousViewModeRef.current = viewMode
     if (viewMode !== 'main' || !activeNoteBodyId) return
-    if (previousNoteLocationKeyRef.current === activeNoteLocationKey) return
+    if (previousNoteLocationKeyRef.current === activeNoteLocationKey && previousViewMode === 'main') return
+    const previousNoteLocationKey = previousNoteLocationKeyRef.current
     previousNoteLocationKeyRef.current = activeNoteLocationKey
 
     const savedLocation = noteCursorLocations[activeNoteLocationKey] ?? null
@@ -94,6 +102,7 @@ export const useNoteCursorPersistence = ({
       savedLocation && activeNoteAisles.some((aisle) => aisle.id === savedLocation.activeAisleId)
         ? savedLocation.activeAisleId
         : activeNoteAisles[0]?.id ?? ''
+    const savedSelection = savedLocation?.aisles[preferredAisleId] ?? null
     if (!preferredAisleId) {
       pendingCursorRestoreRef.current = null
       return
@@ -102,7 +111,14 @@ export const useNoteCursorPersistence = ({
     pendingCursorRestoreRef.current = {
       noteLocationKey: activeNoteLocationKey,
       aisleId: preferredAisleId,
-      selection: savedLocation?.aisles[preferredAisleId] ?? null,
+      selection: savedSelection,
+      focus: shouldFocusSavedCursorRestoreOnActivation({
+        previousNoteLocationKey,
+        activeNoteLocationKey,
+        previousViewMode,
+        viewMode,
+        hasSavedSelection: Boolean(savedSelection),
+      }),
     }
     pendingScrollToAisleIdRef.current = preferredAisleId
     if (preferredAisleId !== activeAisleId) {
@@ -147,7 +163,7 @@ export const usePendingNoteCursorRestore = ({
     const targetAisleId = pendingAisleId || restoreAisleId
     if (viewMode !== 'main' || !activeNoteBodyId || !targetAisleId) return
     if (pendingCreatedEditRef.current) return
-    const shouldFocus = shouldFocusPendingCursorRestore(pendingAisleId, targetAisleId)
+    const shouldFocus = shouldFocusPendingCursorRestore(pendingAisleId, targetAisleId, Boolean(pendingCursorRestore?.focus))
 
     const animationFrame = window.requestAnimationFrame(() => {
       const editorKey = buildAisleEditorKey(activeNoteBodyId, targetAisleId)
