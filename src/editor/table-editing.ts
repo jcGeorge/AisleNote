@@ -35,6 +35,13 @@ export const CLOSED_TABLE_CONTROLS_STATE: TableControlsOverlayState = {
   rowLeft: 0,
 }
 
+export function isEditorRootFocused(
+  root: { contains?: (node: unknown) => boolean; ownerDocument?: { activeElement?: unknown } } | null | undefined,
+  activeElement: unknown = root?.ownerDocument?.activeElement,
+) {
+  return Boolean(root && activeElement && typeof root.contains === 'function' && root.contains(activeElement))
+}
+
 const TABLE_CONTROL_BUTTON_SIZE = 26
 const TABLE_CONTROL_GAP = 4
 const TABLE_CONTROL_VIEWPORT_PADDING = 8

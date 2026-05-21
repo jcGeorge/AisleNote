@@ -104,3 +104,18 @@ describe('copy-note modal text', () => {
     expect(text.body).toContain('linked copy')
   })
 })
+
+describe('de-couple modal text', () => {
+  it('describes copied data when de-coupled items keep data', () => {
+    const modal: ModalState = {
+      type: 'deduplicate-note',
+      noteBodyId: 'body-1',
+      keepLocationKeys: [],
+      keepData: true,
+    }
+    const text = getModalText(modal, createModalTextState())
+
+    expect(text.title).toBe('de-couple')
+    expect(text.body).toContain('independent copies')
+  })
+})

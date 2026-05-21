@@ -10,6 +10,7 @@ import {
   getTableControlsOverlayPlacement,
   getTableReorderDragDecision,
   isBlankTableSideSelectionTarget,
+  isEditorRootFocused,
   isPointInTableRightSelectionZone,
   isSelectedTableNode,
   moveSelectedTableBoundaryCaret,
@@ -453,6 +454,18 @@ describe('table editing controls', () => {
     expect(isPointInTableRightSelectionZone(tableRect, { left: 340, top: 96 })).toBe(false)
     expect(isPointInTableRightSelectionZone(tableRect, { left: 344, top: 70 })).toBe(false)
     expect(isPointInTableRightSelectionZone(tableRect, { left: 344, top: 153 })).toBe(false)
+  })
+
+  it('requires browser focus inside the editor root before showing table controls', () => {
+    const activeElement = { id: 'cell' }
+    const root = {
+      ownerDocument: { activeElement },
+      contains: (node: unknown) => node === activeElement,
+    }
+
+    expect(isEditorRootFocused(root)).toBe(true)
+    expect(isEditorRootFocused(root, { id: 'outside' })).toBe(false)
+    expect(isEditorRootFocused(null, activeElement)).toBe(false)
   })
 
   it('limits table side selection to blank editor surface targets', () => {

@@ -56,7 +56,7 @@ describe('AisleToolbarMenu', () => {
 })
 
 describe('CopyToolbarMenu', () => {
-  it('renders make copy and de-duplicate choices', () => {
+  it('renders make copy and de-couple choices', () => {
     const html = renderToStaticMarkup(
       <CopyToolbarMenu
         onOpenCopyModal={() => undefined}
@@ -65,6 +65,6 @@ describe('CopyToolbarMenu', () => {
     )
 
     expect(html).toContain('make copy')
-    expect(html).toContain('de-duplicate')
+    expect(html).toContain('de-couple')
   })
 })

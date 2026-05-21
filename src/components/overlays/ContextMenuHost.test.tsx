@@ -34,11 +34,11 @@ describe('ContextMenuHost copy actions', () => {
     expect(html).not.toContain('make duplicate')
   })
 
-  it('keeps de-duplicate available for already linked notes', () => {
+  it('keeps de-couple available for already linked notes', () => {
     const html = renderContextMenu({ type: 'subtab', tabId: 'tab-1', subTabId: 'sub-1', x: 0, y: 0 }, 2)
 
     expect(html).toContain('make copy')
-    expect(html).toContain('de-duplicate')
+    expect(html).toContain('de-couple')
   })
 
   it('only shows make copy for the home subtab context menu', () => {
@@ -48,6 +48,6 @@ describe('ContextMenuHost copy actions', () => {
     expect(html).not.toContain('arrange')
     expect(html).not.toContain('move to trash')
     expect(html).not.toContain('delete now')
-    expect(html).not.toContain('de-duplicate')
+    expect(html).not.toContain('de-couple')
   })
 })

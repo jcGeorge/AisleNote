@@ -95,7 +95,7 @@ export function CopyToolbarMenu({
           onOpenDeduplicateModal()
         }}
       >
-        de-duplicate
+        de-couple
       </button>
     </>
   )

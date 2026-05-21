@@ -266,10 +266,36 @@ function isFenceBoundary(line: string, activeFence: string | null): string | nul
 }
 
 function getMarkdownLineBlockKind(line: string): MarkdownLineBlockKind {
-  if (/^\s{0,3}#{1,6}(?:\s+|$)/.test(line)) return 'atomic'
+  if (/^\s{0,3}#{1,6}(?:\s+|$|[^\s#])/.test(line)) return 'atomic'
   if (/^\s{0,3}(?:-{3,}|\*{3,})\s*$/.test(line)) return 'atomic'
   if (/^\s{0,3}(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s*)?/.test(line)) return 'list'
   return 'paragraph'
+}
+
+function canSplitPlainParagraphChunk(chunk: MarkdownBlockChunk): boolean {
+  return (
+    chunk.lines.length > 1 &&
+    chunk.lines.every((line) => getMarkdownLineBlockKind(line) === 'paragraph' && !/^\s*>/.test(line))
+  )
+}
+
+function splitPlainParagraphChunksToCount(
+  chunks: MarkdownBlockChunk[],
+  targetContentBlockCount: number,
+): MarkdownBlockChunk[] {
+  let next = chunks
+  while (next.length < targetContentBlockCount) {
+    const chunkIndex = next.findIndex(canSplitPlainParagraphChunk)
+    if (chunkIndex < 0) return next
+    const chunk = next[chunkIndex]
+    next = [
+      ...next.slice(0, chunkIndex),
+      { lines: [chunk.lines[0]] },
+      { lines: chunk.lines.slice(1) },
+      ...next.slice(chunkIndex + 1),
+    ]
+  }
+  return next
 }
 
 function splitMarkdownTopLevelChunks(markdown: string): MarkdownBlockChunk[] {
@@ -385,11 +411,14 @@ export function preserveBlankParagraphsFromWysiwyg(editor: Editor | null, markdo
   })
 
   const markdownChunks = splitMarkdownTopLevelChunks(markdown)
-  const contentChunks = markdownChunks.filter((chunk) => !isStandaloneBlankLinePlaceholderChunk(chunk))
+  let contentChunks = markdownChunks.filter((chunk) => !isStandaloneBlankLinePlaceholderChunk(chunk))
   const hasPlaceholderChunks = contentChunks.length !== markdownChunks.length
   const hasBlankBlocks = blockKinds.includes('blank')
 
   const contentBlockCount = blockKinds.filter((kind) => kind === 'content').length
+  if (contentBlockCount !== contentChunks.length && (hasBlankBlocks || hasPlaceholderChunks)) {
+    contentChunks = splitPlainParagraphChunksToCount(contentChunks, contentBlockCount)
+  }
   if (contentBlockCount !== contentChunks.length) {
     if (!hasBlankBlocks && !hasPlaceholderChunks) return markdown
     return contentBlockCount === 0

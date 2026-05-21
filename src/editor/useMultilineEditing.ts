@@ -55,6 +55,7 @@ import {
   buildSelectionRemoveBlockQuoteOperationPlan,
   getMultiLineBlockQuoteMarkerShortcut,
   getMultiLineHeadingMarkerShortcut,
+  multiLineSelectionTouchesBlockQuoteRows,
   selectionTouchesBlockQuoteRows,
   type MultiLineHeadingLevel,
 } from './multiline-format-operations'
@@ -141,6 +142,14 @@ export function getStructuralListIndentCommitMarkdown(
   getNormalizedEditorMarkdown: (editor: Editor) => string,
 ): string {
   return getNormalizedEditorMarkdown(editor)
+}
+
+export function shouldApplyBlockIndentOperationForTab(options: {
+  outdent: boolean
+  isCollapsedSelection: boolean
+  touchesBlockQuoteRows: boolean
+}): boolean {
+  return !options.outdent && !options.isCollapsedSelection && !options.touchesBlockQuoteRows
 }
 
 export function useMultilineEditing({
@@ -471,7 +480,13 @@ export function useMultilineEditing({
       if (removedBlockIndent) return true
     }
 
-    if (!outdent && (!isCollapsedSelection || selectionTouchesBlockQuoteRows(view))) {
+    if (
+      shouldApplyBlockIndentOperationForTab({
+        outdent,
+        isCollapsedSelection,
+        touchesBlockQuoteRows: selectionTouchesBlockQuoteRows(view),
+      })
+    ) {
       const appliedBlockIndent = tryApplyBlockIndentOperation()
       if (appliedBlockIndent) return true
     }
@@ -897,7 +912,18 @@ export function useMultilineEditing({
       return tryRemoveBlockIndentOperation() || tryApplyInput({ type: 'backspace' })
     }
 
-    if (!multiLineSelectionUsesOnlyCodeBlockLines() && tryApplyBlockIndentOperation()) {
+    const { view } = getCurrentEditorAndView()
+    const touchesBlockQuoteRows =
+      Boolean(view && editStateRef.current && multiLineSelectionTouchesBlockQuoteRows(view, editStateRef.current))
+    if (
+      !multiLineSelectionUsesOnlyCodeBlockLines() &&
+      shouldApplyBlockIndentOperationForTab({
+        outdent: false,
+        isCollapsedSelection: false,
+        touchesBlockQuoteRows,
+      }) &&
+      tryApplyBlockIndentOperation()
+    ) {
       return true
     }
     return tryApplyInput({ type: 'insert-text', text: INDENT_TOKEN })

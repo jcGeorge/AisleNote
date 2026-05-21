@@ -179,7 +179,11 @@ export function getEditorCursorSelection(editor: Editor | null): EditorCursorSel
   }
 }
 
-export function restoreEditorCursorSelection(editor: Editor | null, selection: EditorCursorSelection): boolean {
+export function restoreEditorCursorSelection(
+  editor: Editor | null,
+  selection: EditorCursorSelection,
+  options: { focus?: boolean } = {},
+): boolean {
   const view = getWysiwygView(editor)
   if (!editor || !view) return false
 
@@ -203,7 +207,9 @@ export function restoreEditorCursorSelection(editor: Editor | null, selection: E
     }
   }
 
-  editor.focus()
+  if (options.focus !== false) {
+    editor.focus()
+  }
   return true
 }
 

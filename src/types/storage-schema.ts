@@ -74,6 +74,7 @@ export type StorageGlobalSettings = {
     stageManagerOpenDestinationAfterApply: boolean
     lastLinkInsertMode?: 'note' | 'url'
     lastNoteCopyMode?: 'independent' | 'linked'
+    decoupledItemsKeepData?: boolean
     tableAddTargetMode?: StorageTableControlTargetMode
     tableDeleteTargetMode?: StorageTableControlTargetMode
     tabButtonScale: number
@@ -141,11 +142,17 @@ export type StorageNoteBodyRecord = {
   aisles: StorageNoteAisleRecord[]
 }
 
+export type StorageNoteAisleBodyRecord = {
+  id: StorageEntityId
+  file: string
+}
+
 export type StorageRootManifest = {
   schemaVersion: StorageSchemaVersion
   globalSettings: StorageGlobalSettings
   domains: StorageDomainIndexEntry[]
   noteBodies?: StorageNoteBodyRecord[]
+  noteAisleBodies?: StorageNoteAisleBodyRecord[]
   activeDomainId: StorageEntityId
   lastOpened?: {
     domainId: StorageEntityId

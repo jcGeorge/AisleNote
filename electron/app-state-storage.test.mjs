@@ -277,6 +277,43 @@ describe('Electron app state storage load result', () => {
       expect(readFileSync(path.join(spaceRoot, tab.subTabs[0].file), 'utf8')).toBe('sub body')
     }))
 
+  it('round-trips linked aisle bodies through hybrid storage', () =>
+    withTempUserDataPath((userDataPath) => {
+      const state = JSON.parse(serializedAppState())
+      const space = state.domains[0].spaces[0]
+      space.data.tabs.push({
+        id: 'tab-2',
+        title: 'Linked Tab',
+        noteBodyId: 'body-2',
+        homeContent: 'stale second fallback',
+        activeSubTabId: null,
+        subTabs: [],
+      })
+      state.noteAisleBodies = [{ id: 'shared-aisle-body', markdown: 'shared aisle text' }]
+      state.noteBodies = [
+        { id: 'body-1', aisles: [{ id: 'aisle-1', aisleBodyId: 'shared-aisle-body', markdown: 'stale first mirror' }] },
+        { id: 'body-2', aisles: [{ id: 'aisle-2', aisleBodyId: 'shared-aisle-body', markdown: 'stale second mirror' }] },
+      ]
+
+      saveAppState(userDataPath, JSON.stringify(state))
+
+      const { root, rootManifest } = getStoredWorkspacePaths(userDataPath)
+      const aisleBodyEntry = rootManifest.noteAisleBodies.find((body) => body.id === 'shared-aisle-body')
+      expect(aisleBodyEntry).toMatchObject({ id: 'shared-aisle-body', file: expect.any(String) })
+      expect(readFileSync(path.join(root, aisleBodyEntry.file), 'utf8')).toBe('shared aisle text')
+      expect(JSON.stringify(rootManifest.noteBodies)).toContain('"aisleBodyId":"shared-aisle-body"')
+
+      const result = loadAppStateResult(userDataPath)
+      expect(result.ok).toBe(true)
+      const parsed = JSON.parse(result.serializedState)
+      const bodyOne = parsed.noteBodies.find((body) => body.id === 'body-1')
+      const bodyTwo = parsed.noteBodies.find((body) => body.id === 'body-2')
+
+      expect(bodyOne.aisles[0].aisleBodyId).toBe('shared-aisle-body')
+      expect(bodyTwo.aisles[0].aisleBodyId).toBe('shared-aisle-body')
+      expect(parsed.noteAisleBodies.find((body) => body.id === 'shared-aisle-body').markdown).toBe('shared aisle text')
+    }))
+
   it('round-trips renamed workspace data, frontmatter, trash, and note body identity', () =>
     withTempUserDataPath((userDataPath) => {
       const state = JSON.parse(serializedAppState())

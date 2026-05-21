@@ -136,7 +136,7 @@ function normalizeNoteAisles(raw: unknown): NoteAisle[] {
       const id = typeof aisle.id === 'string' && aisle.id ? aisle.id : createId()
       return {
         id,
-        aisleBodyId: typeof aisle.aisleBodyId === 'string' && aisle.aisleBodyId ? aisle.aisleBodyId : createId(),
+        aisleBodyId: typeof aisle.aisleBodyId === 'string' && aisle.aisleBodyId ? aisle.aisleBodyId : id,
         markdown: normalizeMarkdownForPersistence(typeof aisle.markdown === 'string' ? aisle.markdown : ''),
       }
     })

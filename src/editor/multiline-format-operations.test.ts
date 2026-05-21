@@ -22,6 +22,7 @@ import {
   getMultiLineBlockQuoteMarkerShortcut,
   getMultiLineHeadingMarkerShortcut,
   getMultiLineInlineMarkerShortcut,
+  multiLineSelectionTouchesBlockQuoteRows,
   selectionTouchesBlockQuoteRows,
   type MultiLineHeadingLevel,
 } from './multiline-format-operations'
@@ -396,6 +397,14 @@ describe('selection block indent operations', () => {
 
     expect(selectionTouchesBlockQuoteRows(quoteView)).toBe(true)
     expect(selectionTouchesBlockQuoteRows(normalView)).toBe(false)
+  })
+
+  it('detects multi-cursor selections that touch blockquote rows', () => {
+    const quoteView = createView(multilineFormatSchema.nodes.doc.create(null, [blockQuote(['one', 'two'])]))
+    const normalView = createView(multilineFormatSchema.nodes.doc.create(null, [paragraph('one'), paragraph('two')]))
+
+    expect(multiLineSelectionTouchesBlockQuoteRows(quoteView, multiLineState([0, 1], 0))).toBe(true)
+    expect(multiLineSelectionTouchesBlockQuoteRows(normalView, multiLineState([0, 1], 0))).toBe(false)
   })
 
   it('converts a collapsed caret blockquote row to a block indent paragraph', () => {

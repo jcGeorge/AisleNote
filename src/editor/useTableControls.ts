@@ -11,6 +11,7 @@ import {
   getTableControlsOverlayState,
   getTableControlsOverlayStateForCell,
   getTableReorderDragDecision,
+  isEditorRootFocused,
   isSelectedTableNode,
   placeTableCaretAtCoords,
   type TableControlOperation,
@@ -228,6 +229,13 @@ export function useTableControls({
       return
     }
     const view = getWysiwygView(editorRef.current)
+    const root = editorEventRootRef.current ?? view?.dom ?? null
+    if (!isEditorRootFocused(root)) {
+      lockedTableControlsRef.current = null
+      setActiveCell(null)
+      updateTableControls(CLOSED_TABLE_CONTROLS_STATE)
+      return
+    }
     const activeTable = view ? getActiveTableDomContext(view) : null
     setActiveCell(activeTable?.cell ?? null)
     if (!activeTable) {
@@ -241,7 +249,7 @@ export function useTableControls({
       return
     }
     updateTableControls(getTableControlsOverlayState(view))
-  }, [close, editorRef, setActiveCell, updateTableControls, visible])
+  }, [close, editorEventRootRef, editorRef, setActiveCell, updateTableControls, visible])
 
   const scheduleRefresh = useCallback(() => {
     if (typeof window === 'undefined') {

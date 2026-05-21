@@ -1,6 +1,7 @@
 import { Editor } from '@toast-ui/editor'
 import { useEffect, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
+import { materializeDecoupledAisleCopies } from '../notes/aisle-links'
 import { buildNoteCursorLocationKey } from '../notes/note-cursors'
 import { getLocationInfo } from '../notes/note-locations'
 import {
@@ -278,19 +279,23 @@ export const useAisleController = ({
     closeAisleEditModal()
   }
 
-  const applyAisleEditDraftToActiveNote = (nextAisles: NoteAisle[]) => {
+  const applyAisleEditDraftToActiveNote = (
+    nextAisles: NoteAisle[],
+    options: { decoupleAisleIds?: Iterable<string> } = {},
+  ) => {
     if (!activeNoteBodyId) return
-    const afterAisles = cloneAisles(nextAisles)
-    const afterAisleIds = afterAisles.map((aisle) => aisle.id)
-    if (afterAisles.length <= 0) {
+    const draftAisles = cloneAisles(nextAisles)
+    const stagedDecoupleAisleIds = new Set(options.decoupleAisleIds ?? [])
+    const afterAisleIds = draftAisles.map((aisle) => aisle.id)
+    if (draftAisles.length <= 0) {
       pushToast('a note must keep at least one aisle.', 'warning')
       return
     }
-    if (afterAisles.length > MAX_NOTE_AISLES) {
+    if (draftAisles.length > MAX_NOTE_AISLES) {
       pushToast(MAX_AISLE_WARNING_MESSAGE, 'warning')
       return
     }
-    if (afterAisleIds.some((aisleId) => aisleId.trim().length <= 0) || new Set(afterAisleIds).size !== afterAisles.length) {
+    if (afterAisleIds.some((aisleId) => aisleId.trim().length <= 0) || new Set(afterAisleIds).size !== draftAisles.length) {
       pushToast('aisle changes could not be applied.', 'error')
       return
     }
@@ -298,6 +303,9 @@ export const useAisleController = ({
     const latestState = buildStateWithLatestEditorContent()
     const beforeSnapshot = captureActiveAisleStructuralSnapshot(latestState)
     if (!beforeSnapshot) return
+    const afterAisles = stagedDecoupleAisleIds.size > 0
+      ? materializeDecoupledAisleCopies(latestState, draftAisles, stagedDecoupleAisleIds)
+      : draftAisles
     if (getAisleSignature(beforeSnapshot.aisles) === getAisleSignature(afterAisles)) {
       closeAisleEditModal()
       return

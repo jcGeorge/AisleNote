@@ -93,6 +93,7 @@ type UseAisleEditorsOptions = {
     tabId: string,
     subTabId: string | null,
     aisleId: string,
+    options?: { aisleBodyId?: string | null },
   ) => void
   commitCurrentEditorContent: () => void
   pushToast: (message: string, tone?: ToastTone, durationMs?: number) => void
@@ -166,6 +167,8 @@ export function useAisleEditors({
   const pendingHeadingScrollRef = useRef<PendingHeadingScroll | null>(null)
   const headingCollapseStateRef = useRef(headingCollapseState)
   headingCollapseStateRef.current = headingCollapseState
+  const activeNoteAislesRef = useRef(activeNoteAisles)
+  activeNoteAislesRef.current = activeNoteAisles
   const activeAisleIds = useMemo(() => activeNoteAisles.map((aisle) => aisle.id), [activeNoteAisles])
   const desiredMountedAisleIds = useMemo(
     () =>
@@ -194,7 +197,7 @@ export function useAisleEditors({
     })
   }
 
-  const getAisleById = (aisleId: string) => activeNoteAisles.find((aisle) => aisle.id === aisleId) ?? null
+  const getAisleById = (aisleId: string) => activeNoteAislesRef.current.find((aisle) => aisle.id === aisleId) ?? null
 
   const getAisleBodyIdForAisleId = (aisleId: string) => {
     const aisle = getAisleById(aisleId)
@@ -409,6 +412,7 @@ export function useAisleEditors({
         activeTabIdRef.current,
         activeSubTabIdRef.current,
         aisleId,
+        { aisleBodyId: getAisleBodyIdForAisleId(aisleId) },
       )
       return
     }
@@ -427,6 +431,7 @@ export function useAisleEditors({
         activeTabIdRef.current,
         activeSubTabIdRef.current,
         aisleId,
+        { aisleBodyId: getAisleBodyIdForAisleId(aisleId) },
       )
       return
     }
@@ -451,6 +456,7 @@ export function useAisleEditors({
       activeTabIdRef.current,
       activeSubTabIdRef.current,
       aisleId,
+      { aisleBodyId: getAisleBodyIdForAisleId(aisleId) },
     )
   }
 
@@ -465,6 +471,7 @@ export function useAisleEditors({
       activeTabIdRef.current,
       activeSubTabIdRef.current,
       aisleId,
+      { aisleBodyId: getAisleBodyIdForAisleId(aisleId) },
     )
   }
 
@@ -483,6 +490,7 @@ export function useAisleEditors({
       activeTabIdRef.current,
       activeSubTabIdRef.current,
       meta.aisleId,
+      { aisleBodyId: getAisleBodyIdForAisleId(meta.aisleId) },
     )
   }
 

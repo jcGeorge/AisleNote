@@ -68,8 +68,10 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
 
   if (modal.type === 'deduplicate-note') {
     return {
-      title: 'de-duplicate',
-      body: 'checked notes remain linked. Unchecked notes become empty independent notes.',
+      title: 'de-couple',
+      body: modal.keepData
+        ? 'checked notes remain linked. Unchecked notes become independent copies with their current data.'
+        : 'checked notes remain linked. Unchecked notes become empty independent notes.',
       action: 'apply',
     }
   }

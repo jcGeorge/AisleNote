@@ -5,6 +5,7 @@ import {
   getMultiLineWidgetClearMode,
   getStructuralListIndentCommitMarkdown,
   hasMultiLineDecorationState,
+  shouldApplyBlockIndentOperationForTab,
 } from './useMultilineEditing'
 
 const activeMultiLineState: MultiLineEditState = {
@@ -45,5 +46,48 @@ describe('structural list indentation commits', () => {
     )
     expect(getNormalizedEditorMarkdown).toHaveBeenCalledWith(editor)
     expect(getMarkdown).not.toHaveBeenCalled()
+  })
+})
+
+describe('tab indentation routing', () => {
+  it('keeps Tab inside quoted content as inline indentation', () => {
+    expect(
+      shouldApplyBlockIndentOperationForTab({
+        outdent: false,
+        isCollapsedSelection: true,
+        touchesBlockQuoteRows: true,
+      }),
+    ).toBe(false)
+    expect(
+      shouldApplyBlockIndentOperationForTab({
+        outdent: false,
+        isCollapsedSelection: false,
+        touchesBlockQuoteRows: true,
+      }),
+    ).toBe(false)
+  })
+
+  it('keeps structural block indent for normal multi-line Tab selections only', () => {
+    expect(
+      shouldApplyBlockIndentOperationForTab({
+        outdent: false,
+        isCollapsedSelection: false,
+        touchesBlockQuoteRows: false,
+      }),
+    ).toBe(true)
+    expect(
+      shouldApplyBlockIndentOperationForTab({
+        outdent: false,
+        isCollapsedSelection: true,
+        touchesBlockQuoteRows: false,
+      }),
+    ).toBe(false)
+    expect(
+      shouldApplyBlockIndentOperationForTab({
+        outdent: true,
+        isCollapsedSelection: false,
+        touchesBlockQuoteRows: false,
+      }),
+    ).toBe(false)
   })
 })

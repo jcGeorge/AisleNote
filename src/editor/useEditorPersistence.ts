@@ -163,9 +163,13 @@ export const useEditorPersistence = ({
     tabId: string,
     subTabId: string | null,
     aisleId: string,
+    options: { aisleBodyId?: string | null } = {},
   ) => {
     const normalizedMarkdown = normalizeMarkdownForPersistence(markdown)
-    const aisleBodyId = getAisleBodyIdForAisleId(aisleId)
+    const explicitAisleBodyId = typeof options.aisleBodyId === 'string' && options.aisleBodyId.trim()
+      ? options.aisleBodyId.trim()
+      : null
+    const aisleBodyId = explicitAisleBodyId ?? getAisleBodyIdForAisleId(aisleId)
     if (aisleId === activeAisleIdRef.current) {
       lastEditorMarkdownRef.current = normalizedMarkdown
     }

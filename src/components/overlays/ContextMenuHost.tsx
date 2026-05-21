@@ -105,7 +105,7 @@ export function ContextMenuHost({
           </button>
           {duplicateCount > 1 && (
             <button type="button" className="tab-context-delete" onClick={onOpenDeduplicateModal}>
-              de-duplicate
+              de-couple
             </button>
           )}
           <button type="button" className="tab-context-delete" onClick={onMoveToTrash}>

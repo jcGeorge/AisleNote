@@ -57,6 +57,11 @@ function hasSameAisleOrder(left: NoteAisle[], right: NoteAisle[]) {
   return getAisleStructureSignature(left) === getAisleStructureSignature(right)
 }
 
+function hasAisleBodyIdChanges(left: NoteAisle[], right: NoteAisle[]) {
+  const leftBodyIdByAisleId = new Map(left.map((aisle) => [aisle.id, aisle.aisleBodyId ?? aisle.id]))
+  return right.some((aisle) => leftBodyIdByAisleId.get(aisle.id) !== (aisle.aisleBodyId ?? aisle.id))
+}
+
 export function canApplyAisleStructuralEntryToAisles(
   entry: AisleStructuralHistoryEntry,
   direction: 'undo' | 'redo',
@@ -66,6 +71,7 @@ export function canApplyAisleStructuralEntryToAisles(
   const target = getAisleStructuralTargetSnapshot(entry, direction)
   if (getAisleSignature(currentAisles) === getAisleSignature(source.aisles)) return true
   if (!hasSameAisleOrder(currentAisles, source.aisles)) return false
+  if (hasAisleBodyIdChanges(source.aisles, target.aisles)) return false
 
   if (entry.type !== 'add-aisle' || direction !== 'undo') return true
 

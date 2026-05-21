@@ -116,6 +116,33 @@ describe('aisle structural history', () => {
     ])).toBe(true)
   })
 
+  it('allows exact undo and redo of aisle body de-couple edits', () => {
+    const before = createSnapshot([
+      { id: 'aisle-1', aisleBodyId: 'shared-body', markdown: 'current text' },
+    ])
+    const after = createSnapshot([
+      { id: 'aisle-1', aisleBodyId: 'independent-body', markdown: 'current text' },
+    ])
+    const entry = createAisleStructuralHistoryEntry('edit-aisles', before, after)
+
+    expect(canApplyAisleStructuralEntryToAisles(entry, 'undo', after.aisles)).toBe(true)
+    expect(canApplyAisleStructuralEntryToAisles(entry, 'redo', before.aisles)).toBe(true)
+  })
+
+  it('blocks aisle body de-couple undo after the independent text changed', () => {
+    const before = createSnapshot([
+      { id: 'aisle-1', aisleBodyId: 'shared-body', markdown: 'current text' },
+    ])
+    const after = createSnapshot([
+      { id: 'aisle-1', aisleBodyId: 'independent-body', markdown: 'current text' },
+    ])
+    const entry = createAisleStructuralHistoryEntry('edit-aisles', before, after)
+
+    expect(canApplyAisleStructuralEntryToAisles(entry, 'undo', [
+      { id: 'aisle-1', aisleBodyId: 'independent-body', markdown: 'edited after de-couple' },
+    ])).toBe(false)
+  })
+
   it('rejects stale batch edits after another reorder changed the source state', () => {
     const before = createSnapshot([
       { id: 'aisle-1', markdown: 'first' },

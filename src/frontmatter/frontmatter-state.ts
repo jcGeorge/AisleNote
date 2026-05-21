@@ -1,4 +1,5 @@
-import { getLocationInfo } from '../notes/note-locations'
+import { getAisleBodyId } from '../notes/note-markdown'
+import { getLocationInfo, listNoteLocationsForBody, listSearchableNoteLocations } from '../notes/note-locations'
 import type {
   AppState,
   FrontmatterComputedFieldMap,
@@ -111,6 +112,7 @@ export function buildFrontmatterContext(
     noteCreatedAt: noteBody?.createdAt ?? fallbackTimestamp,
     noteUpdatedAt: noteBody?.updatedAt ?? noteBody?.createdAt ?? fallbackTimestamp,
     noteTitle: info.title,
+    isLinked: isNoteBodyLinked(state, noteBodyId),
     tabId: location.tabId,
     subTabId: location.subTabId,
     spaceId: location.spaceId,
@@ -118,6 +120,23 @@ export function buildFrontmatterContext(
     domainId: location.domainId,
     domainName: info.domain?.name ?? '',
   }
+}
+
+export function isNoteBodyLinked(state: AppState, noteBodyId: string): boolean {
+  if (!noteBodyId) return false
+  if (listNoteLocationsForBody(state, noteBodyId).length > 1) return true
+
+  const noteBody = state.noteBodies.find((body) => body.id === noteBodyId) ?? null
+  if (!noteBody) return false
+
+  const linkedAisleBodyIds = new Set(noteBody.aisles.map(getAisleBodyId).filter(Boolean))
+  if (linkedAisleBodyIds.size === 0) return false
+
+  const locatedNoteBodyIds = new Set(listSearchableNoteLocations(state).map((entry) => entry.noteBodyId))
+  return state.noteBodies.some((body) => {
+    if (body.id === noteBodyId || !locatedNoteBodyIds.has(body.id)) return false
+    return body.aisles.some((aisle) => linkedAisleBodyIds.has(getAisleBodyId(aisle)))
+  })
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

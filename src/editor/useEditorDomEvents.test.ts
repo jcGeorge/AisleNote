@@ -93,7 +93,7 @@ describe('editor DOM events', () => {
     expect(getMultiLineDeleteInputForBeforeInputType('insertText')).toBeNull()
   })
 
-  it('prioritizes aisle structural history before editor history', () => {
+  it('prioritizes editor history before aisle structural history inside the editor', () => {
     const onRunStructuralHistory = vi.fn(() => true)
     const onRunEditorHistory = vi.fn(() => 'applied' as const)
 
@@ -101,8 +101,8 @@ describe('editor DOM events', () => {
       direction: 'undo',
       onRunStructuralHistory,
       onRunEditorHistory,
-    })).toEqual({ handled: true, result: 'structural' })
-    expect(onRunEditorHistory).not.toHaveBeenCalled()
+    })).toEqual({ handled: true, result: 'applied' })
+    expect(onRunStructuralHistory).not.toHaveBeenCalled()
   })
 
   it('handles blocked editor history so native undo cannot continue', () => {
@@ -119,6 +119,14 @@ describe('editor DOM events', () => {
       onRunStructuralHistory: vi.fn(() => false),
       onRunEditorHistory: vi.fn(() => 'unavailable' as const),
     })).toEqual({ handled: false, result: 'unavailable' })
+  })
+
+  it('falls back to aisle structural history when editor history is unavailable', () => {
+    expect(runEditorHistoryEvent({
+      direction: 'redo',
+      onRunStructuralHistory: vi.fn(() => true),
+      onRunEditorHistory: vi.fn(() => 'unavailable' as const),
+    })).toEqual({ handled: true, result: 'structural' })
   })
 
   it('detects single http URLs from pasted text', () => {

@@ -211,6 +211,24 @@ describe('markdown WYSIWYG blank line preservation', () => {
     )
   })
 
+  it('keeps a blank paragraph after a no-space heading before a horizontal rule in linked aisle text', () => {
+    const markdown = preserveBlankParagraphsFromWysiwyg(
+      editorForBlocks([
+        block('heading', 'My second header.'),
+        emptyParagraph(),
+        block('thematicBreak'),
+        block('paragraph', 'Live from a workshop in Ohio!'),
+        block('paragraph', 'And now for a task'),
+        block('thematicBreak'),
+      ]),
+      '##My second header.\n---\nLive from a workshop in Ohio!\nAnd now for a task\n---',
+    )
+
+    expect(markdown).toBe(
+      `##My second header.\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\n---\n\nLive from a workshop in Ohio!\n\nAnd now for a task\n\n---`,
+    )
+  })
+
   it('restores top-level block separators after task indentation removes markdown blanks', () => {
     const markdown = preserveBlankParagraphsFromWysiwyg(
       editorForBlocks([

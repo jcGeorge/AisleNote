@@ -52,6 +52,7 @@ type ModalHostProps = {
   onApplyTabSort: (target: TabSortTarget, mode: TabSortMode) => void
   onLinkInsertModeChange: (mode: LinkInsertMode) => void
   onNoteCopyModeChange: (mode: NoteCopyMode) => void
+  onDeduplicateKeepDataChange: (keepData: boolean) => void
   onConfirm: () => void
 }
 
@@ -200,6 +201,7 @@ export function ModalHost({
   onApplyTabSort,
   onLinkInsertModeChange,
   onNoteCopyModeChange,
+  onDeduplicateKeepDataChange,
   onConfirm,
 }: ModalHostProps) {
   useEffect(() => {
@@ -247,6 +249,12 @@ export function ModalHost({
   const setCopyDestinationMode = (destinationMode: NoteCopyDestinationMode) => {
     if (modal.type !== 'copy-note') return
     onModalChange({ ...modal, destinationMode })
+  }
+
+  const setDeduplicateKeepData = (keepData: boolean) => {
+    if (modal.type !== 'deduplicate-note') return
+    onDeduplicateKeepDataChange(keepData)
+    onModalChange({ ...modal, keepData })
   }
 
   const updateLinkModalTarget = (target: NoteLocationPickerValue) => {
@@ -526,25 +534,38 @@ export function ModalHost({
           </div>
         )}
         {modal.type === 'deduplicate-note' && (
-          <div className="duplicate-note-list">
-            {listNoteLocationsForBody(state, modal.noteBodyId).map((location) => {
-              const locationKey = buildNoteLocationKey(location)
-              return (
-                <label key={locationKey} className="duplicate-note-choice">
-                  <input
-                    type="checkbox"
-                    checked={modal.keepLocationKeys.includes(locationKey)}
-                    onChange={(event) => {
-                      const keepLocationKeys = event.target.checked
-                        ? [...modal.keepLocationKeys, locationKey]
-                        : modal.keepLocationKeys.filter((key) => key !== locationKey)
-                      onModalChange({ ...modal, keepLocationKeys })
-                    }}
-                  />
-                  <span>{location.label}</span>
-                </label>
-              )
-            })}
+          <div className="deduplicate-note-modal">
+            <div className="duplicate-note-list">
+              {listNoteLocationsForBody(state, modal.noteBodyId).map((location) => {
+                const locationKey = buildNoteLocationKey(location)
+                return (
+                  <label key={locationKey} className="duplicate-note-choice">
+                    <input
+                      type="checkbox"
+                      checked={modal.keepLocationKeys.includes(locationKey)}
+                      onChange={(event) => {
+                        const keepLocationKeys = event.target.checked
+                          ? [...modal.keepLocationKeys, locationKey]
+                          : modal.keepLocationKeys.filter((key) => key !== locationKey)
+                        onModalChange({ ...modal, keepLocationKeys })
+                      }}
+                    />
+                    <span>{location.label}</span>
+                  </label>
+                )
+              })}
+            </div>
+            <label className="deduplicate-keep-data-switch form-check form-switch settings-switch">
+              <span>de-coupled items keep data?</span>
+              <input
+                type="checkbox"
+                className="form-check-input"
+                role="switch"
+                aria-label="de-coupled items keep data?"
+                checked={modal.keepData}
+                onChange={(event) => setDeduplicateKeepData(event.target.checked)}
+              />
+            </label>
           </div>
         )}
         {modal.type === 'insert-note-reference' && (

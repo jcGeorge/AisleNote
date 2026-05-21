@@ -32,6 +32,7 @@ export const DEFAULT_UI_SETTINGS: AppState['ui'] = {
   stageManagerOpenDestinationAfterApply: true,
   lastLinkInsertMode: 'note',
   lastNoteCopyMode: 'independent',
+  decoupledItemsKeepData: true,
   tableAddTargetMode: 'bottom-right',
   tableDeleteTargetMode: 'bottom-right',
   tabButtonScale: 1,
@@ -210,6 +211,10 @@ export function normalizeUiSettings(raw: unknown): AppState['ui'] {
         : DEFAULT_UI_SETTINGS.stageManagerOpenDestinationAfterApply,
     lastLinkInsertMode: normalizeLinkInsertMode(obj.lastLinkInsertMode),
     lastNoteCopyMode: normalizeNoteCopyMode(obj.lastNoteCopyMode),
+    decoupledItemsKeepData:
+      typeof obj.decoupledItemsKeepData === 'boolean'
+        ? obj.decoupledItemsKeepData
+        : DEFAULT_UI_SETTINGS.decoupledItemsKeepData,
     tableAddTargetMode: normalizeTableControlTargetMode(obj.tableAddTargetMode),
     tableDeleteTargetMode: normalizeTableControlTargetMode(obj.tableDeleteTargetMode),
     tabButtonScale:

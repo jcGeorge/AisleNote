@@ -14,6 +14,7 @@ export type FrontmatterTemplateContext = {
   noteCreatedAt: string
   noteUpdatedAt: string
   noteTitle: string
+  isLinked: boolean
   tabId: string
   subTabId: string | null
   spaceId: string
@@ -43,6 +44,7 @@ export const FRONTMATTER_COMPUTED_VALUES: FrontmatterComputedValue[] = [
   'noteTitle',
   'spaceName',
   'domainName',
+  'isLinked',
 ]
 
 export function isFrontmatterComputedValueCompatibleWithFieldType(
@@ -52,6 +54,7 @@ export function isFrontmatterComputedValueCompatibleWithFieldType(
   if (computed === 'none') return true
   if (computed === 'createdAt' || computed === 'updatedAt') return type === 'date' || type === 'datetime'
   if (computed === 'noteTitle' || computed === 'spaceName' || computed === 'domainName') return type === 'text'
+  if (computed === 'isLinked') return type === 'boolean'
   return false
 }
 
@@ -314,6 +317,7 @@ function getComputedValue(computed: FrontmatterComputedValue, context: Frontmatt
   if (computed === 'noteTitle') return { id: context.noteBodyId, title: context.noteTitle }
   if (computed === 'spaceName') return { id: context.spaceId, name: context.spaceName }
   if (computed === 'domainName') return { id: context.domainId, name: context.domainName }
+  if (computed === 'isLinked') return context.isLinked
   return undefined
 }
 

@@ -67,7 +67,14 @@ export type NoteAisleBody = {
 export type FrontmatterValue = unknown
 export type FrontmatterData = Record<string, FrontmatterValue>
 export type FrontmatterFieldType = 'text' | 'number' | 'boolean' | 'date' | 'datetime' | 'list'
-export type FrontmatterComputedValue = 'none' | 'createdAt' | 'updatedAt' | 'noteTitle' | 'spaceName' | 'domainName'
+export type FrontmatterComputedValue =
+  | 'none'
+  | 'createdAt'
+  | 'updatedAt'
+  | 'noteTitle'
+  | 'spaceName'
+  | 'domainName'
+  | 'isLinked'
 
 export type FrontmatterTemplateField = {
   id: string
@@ -240,6 +247,7 @@ export type AppState = {
     stageManagerOpenDestinationAfterApply: boolean
     lastLinkInsertMode?: LinkInsertMode
     lastNoteCopyMode?: NoteCopyMode
+    decoupledItemsKeepData?: boolean
     tableAddTargetMode: TableControlTargetMode
     tableDeleteTargetMode: TableControlTargetMode
     tabButtonScale: number
@@ -566,6 +574,7 @@ export type ModalState =
       type: 'deduplicate-note'
       noteBodyId: string
       keepLocationKeys: string[]
+      keepData: boolean
     }
   | {
       type: 'insert-note-reference'

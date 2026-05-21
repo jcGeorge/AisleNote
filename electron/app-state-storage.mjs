@@ -143,6 +143,10 @@ function convertInternalTabsForExport(markdown) {
 function normalizeAppStateForExport(appState) {
   return {
     ...appState,
+    noteAisleBodies: ensureArray(appState?.noteAisleBodies).map((body) => ({
+      ...body,
+      markdown: convertInternalTabsForExport(body?.markdown),
+    })),
     noteBodies: ensureArray(appState?.noteBodies).map((body) => ({
       ...body,
       aisles: ensureArray(body?.aisles).map((aisle) => ({
@@ -697,7 +701,9 @@ function buildNoteBodyManifestRecord(body, aisles) {
 function writeNoteBodyAtPath({
   fileMap,
   noteBodyMap,
+  noteAisleBodyMap,
   noteBodyRecords,
+  noteAisleBodyRecords,
   noteBodyId,
   fallbackMarkdown,
   noteRootRelative,
@@ -710,7 +716,19 @@ function writeNoteBodyAtPath({
 
   if (body && noteBodyRecords.has(noteBodyId)) {
     const firstAisle = ensureArray(body.aisles)[0]
-    const markdown = typeof firstAisle?.markdown === 'string' ? firstAisle.markdown : fallbackMarkdown
+    const firstAisleBodyId =
+      typeof firstAisle?.aisleBodyId === 'string' && firstAisle.aisleBodyId
+        ? firstAisle.aisleBodyId
+        : typeof firstAisle?.id === 'string'
+          ? firstAisle.id
+          : ''
+    const sharedMarkdown = firstAisleBodyId ? noteAisleBodyMap.get(firstAisleBodyId)?.markdown : undefined
+    const markdown =
+      typeof sharedMarkdown === 'string'
+        ? sharedMarkdown
+        : typeof firstAisle?.markdown === 'string'
+          ? firstAisle.markdown
+          : fallbackMarkdown
     setStorageTextFile(fileMap, homeFile, externalizeMarkdownImages(markdown, homeFile, assetBank))
     return homeFile
   }
@@ -719,7 +737,10 @@ function writeNoteBodyAtPath({
     setStorageTextFile(fileMap, homeFile, externalizeMarkdownImages(fallbackMarkdown, homeFile, assetBank))
     if (body && noteBodyId) {
       const aisleId = `${noteBodyId}-home`
-      noteBodyRecords.set(noteBodyId, buildNoteBodyManifestRecord(body, [{ id: aisleId, file: homeFile }]))
+      noteBodyRecords.set(noteBodyId, buildNoteBodyManifestRecord(body, [{ id: aisleId, aisleBodyId: aisleId, file: homeFile }]))
+      if (!noteAisleBodyRecords.has(aisleId)) {
+        noteAisleBodyRecords.set(aisleId, { id: aisleId, file: homeFile })
+      }
     }
     return homeFile
   }
@@ -727,19 +748,31 @@ function writeNoteBodyAtPath({
   const aisleRecords = []
   sourceAisles.forEach((aisle, index) => {
     const aisleId = typeof aisle?.id === 'string' && aisle.id ? aisle.id : `${noteBodyId}-aisle-${index + 1}`
+    const aisleBodyId = typeof aisle?.aisleBodyId === 'string' && aisle.aisleBodyId ? aisle.aisleBodyId : aisleId
     const file =
       index === 0
         ? homeFile
         : posixPath.join(noteRootRelative, 'aisles', buildStoragePathFileName(`Aisle ${index + 1}`, aisleId, 'Aisle', '.md'))
-    const markdown = typeof aisle?.markdown === 'string' ? aisle.markdown : index === 0 ? fallbackMarkdown : ''
+    const sharedMarkdown = noteAisleBodyMap.get(aisleBodyId)?.markdown
+    const markdown =
+      typeof sharedMarkdown === 'string'
+        ? sharedMarkdown
+        : typeof aisle?.markdown === 'string'
+          ? aisle.markdown
+          : index === 0
+            ? fallbackMarkdown
+            : ''
     setStorageTextFile(fileMap, file, externalizeMarkdownImages(markdown, file, assetBank))
-    aisleRecords.push({ id: aisleId, file })
+    aisleRecords.push({ id: aisleId, aisleBodyId, file })
+    if (!noteAisleBodyRecords.has(aisleBodyId)) {
+      noteAisleBodyRecords.set(aisleBodyId, { id: aisleBodyId, file })
+    }
   })
   noteBodyRecords.set(noteBodyId, buildNoteBodyManifestRecord(body, aisleRecords))
   return homeFile
 }
 
-function buildRootManifestV2(appState, domainEntries, noteBodyEntries) {
+function buildRootManifestV2(appState, domainEntries, noteBodyEntries, noteAisleBodyEntries) {
   const activeDomain = getActiveDomainFromAppState(appState, getDomainsFromAppState(appState))
   const activeSpace = getActiveSpaceFromDomain(activeDomain, appState.activeSpaceId)
   const activeTab =
@@ -760,6 +793,7 @@ function buildRootManifestV2(appState, domainEntries, noteBodyEntries) {
       ui: appState.ui ?? {
         showParentHomeTab: true,
         stageManagerOpenDestinationAfterApply: true,
+        decoupledItemsKeepData: true,
         tabButtonScale: 1,
         noteFontScale: 1,
         settingsSection: 'hotkeys',
@@ -770,6 +804,7 @@ function buildRootManifestV2(appState, domainEntries, noteBodyEntries) {
     },
     domains: domainEntries,
     noteBodies: noteBodyEntries,
+    noteAisleBodies: noteAisleBodyEntries,
     activeDomainId,
     lastOpened: activeSpace
       ? {
@@ -796,7 +831,16 @@ function buildDomainManifestV2(domain, spaceEntries) {
   }
 }
 
-function buildSpaceFilesV2({ fileMap, spaceRoot, space, noteBodyMap, noteBodyRecords, assetBank }) {
+function buildSpaceFilesV2({
+  fileMap,
+  spaceRoot,
+  space,
+  noteBodyMap,
+  noteAisleBodyMap,
+  noteBodyRecords,
+  noteAisleBodyRecords,
+  assetBank,
+}) {
   const posixPath = path.posix
   const tabs = ensureArray(space?.data?.tabs)
   const tabPathForTitle = createStoragePathAllocator()
@@ -811,7 +855,9 @@ function buildSpaceFilesV2({ fileMap, spaceRoot, space, noteBodyMap, noteBodyRec
     writeNoteBodyAtPath({
       fileMap,
       noteBodyMap,
+      noteAisleBodyMap,
       noteBodyRecords,
+      noteAisleBodyRecords,
       noteBodyId: tab.noteBodyId,
       fallbackMarkdown: typeof tab.homeContent === 'string' ? tab.homeContent : '',
       noteRootRelative: tabRoot,
@@ -827,7 +873,9 @@ function buildSpaceFilesV2({ fileMap, spaceRoot, space, noteBodyMap, noteBodyRec
       writeNoteBodyAtPath({
         fileMap,
         noteBodyMap,
+        noteAisleBodyMap,
         noteBodyRecords,
+        noteAisleBodyRecords,
         noteBodyId: subTab.noteBodyId,
         fallbackMarkdown: typeof subTab.content === 'string' ? subTab.content : '',
         noteRootRelative: subTabRoot,
@@ -869,7 +917,9 @@ function buildSpaceFilesV2({ fileMap, spaceRoot, space, noteBodyMap, noteBodyRec
     writeNoteBodyAtPath({
       fileMap,
       noteBodyMap,
+      noteAisleBodyMap,
       noteBodyRecords,
+      noteAisleBodyRecords,
       noteBodyId: deletedTab.noteBodyId,
       fallbackMarkdown: typeof deletedTab.homeContent === 'string' ? deletedTab.homeContent : '',
       noteRootRelative: deletedRoot,
@@ -885,7 +935,9 @@ function buildSpaceFilesV2({ fileMap, spaceRoot, space, noteBodyMap, noteBodyRec
       writeNoteBodyAtPath({
         fileMap,
         noteBodyMap,
+        noteAisleBodyMap,
         noteBodyRecords,
+        noteAisleBodyRecords,
         noteBodyId: subTab.noteBodyId,
         fallbackMarkdown: typeof subTab.content === 'string' ? subTab.content : '',
         noteRootRelative: subTabRoot,
@@ -926,7 +978,9 @@ function buildSpaceFilesV2({ fileMap, spaceRoot, space, noteBodyMap, noteBodyRec
     writeNoteBodyAtPath({
       fileMap,
       noteBodyMap,
+      noteAisleBodyMap,
       noteBodyRecords,
+      noteAisleBodyRecords,
       noteBodyId: subTab.noteBodyId,
       fallbackMarkdown: typeof subTab.content === 'string' ? subTab.content : '',
       noteRootRelative: deletedRoot,
@@ -972,8 +1026,11 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
   const parsedState = JSON.parse(serializedState)
   const domains = getDomainsFromAppState(parsedState)
   const noteBodies = getNoteBodiesFromAppState(parsedState)
+  const noteAisleBodies = ensureArray(parsedState.noteAisleBodies).filter(isRecord)
   const noteBodyMap = new Map(noteBodies.map((body) => [typeof body.id === 'string' ? body.id : '', body]))
+  const noteAisleBodyMap = new Map(noteAisleBodies.map((body) => [typeof body.id === 'string' ? body.id : '', body]))
   const noteBodyRecords = new Map()
+  const noteAisleBodyRecords = new Map()
   const fileMap = new Map()
   const assetBank = createAssetBank('assets', typeof options.assetSourceRoot === 'string' ? options.assetSourceRoot : tempRoot)
   const domainPathForTitle = createStoragePathAllocator()
@@ -995,7 +1052,9 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
         spaceRoot,
         space,
         noteBodyMap,
+        noteAisleBodyMap,
         noteBodyRecords,
+        noteAisleBodyRecords,
         assetBank,
       })
       spaceEntries.push({ ...spaceEntry, path: spaceSegment })
@@ -1017,7 +1076,9 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
     writeNoteBodyAtPath({
       fileMap,
       noteBodyMap,
+      noteAisleBodyMap,
       noteBodyRecords,
+      noteAisleBodyRecords,
       noteBodyId: bodyId,
       fallbackMarkdown: '',
       noteRootRelative: posixPath.join('_internal', 'orphan-bodies', orphanSegment),
@@ -1029,7 +1090,8 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
   const noteBodyEntries = noteBodies
     .map((body) => (typeof body?.id === 'string' ? noteBodyRecords.get(body.id) : null))
     .filter(Boolean)
-  setStorageJsonFile(fileMap, 'manifest.json', buildRootManifestV2(parsedState, domainEntries, noteBodyEntries))
+  const noteAisleBodyEntries = Array.from(noteAisleBodyRecords.values())
+  setStorageJsonFile(fileMap, 'manifest.json', buildRootManifestV2(parsedState, domainEntries, noteBodyEntries, noteAisleBodyEntries))
 
   mkdirSync(tempRoot, { recursive: true })
   for (const [relativeFile, entry] of fileMap.entries()) {
@@ -1050,10 +1112,12 @@ function readNoteBodiesFromRoot(rootPath, rootManifest, issues = null) {
       const aisles = ensureArray(body.aisles)
         .map((aisle) => {
           const aisleId = typeof aisle?.id === 'string' ? aisle.id : ''
+          const aisleBodyId = typeof aisle?.aisleBodyId === 'string' ? aisle.aisleBodyId : ''
           const file = typeof aisle?.file === 'string' ? aisle.file : ''
           if (!aisleId || !file) return null
           return {
             id: aisleId,
+            aisleBodyId: aisleBodyId || aisleId,
             markdown: readMarkdownFile(rootPath, file, issues, rootPath),
           }
         })
@@ -1082,6 +1146,22 @@ function readNoteBodiesFromRoot(rootPath, rootManifest, issues = null) {
       }
     })
     .filter(Boolean)
+}
+
+function readNoteAisleBodiesFromRoot(rootPath, rootManifest, issues = null) {
+  const aisleBodies = []
+  const seen = new Set()
+  for (const body of ensureArray(rootManifest?.noteAisleBodies)) {
+    const bodyId = typeof body?.id === 'string' ? body.id : ''
+    const file = typeof body?.file === 'string' ? body.file : ''
+    if (!bodyId || !file || seen.has(bodyId)) continue
+    seen.add(bodyId)
+    aisleBodies.push({
+      id: bodyId,
+      markdown: readMarkdownFile(rootPath, file, issues, rootPath),
+    })
+  }
+  return aisleBodies
 }
 
 function addDirectoryToZip(zip, directoryPath, zipPrefix) {
@@ -1159,6 +1239,7 @@ function readV2Space(rootPath, spaceRootRelative, spaceEntry, issues = null) {
 
 function readV2HybridAppStateFromRoot(rootPath, rootManifest, issues = null) {
   const noteBodies = readNoteBodiesFromRoot(rootPath, rootManifest, issues)
+  const noteAisleBodies = readNoteAisleBodiesFromRoot(rootPath, rootManifest, issues)
   const domainEntries = ensureArray(rootManifest.domains)
   if (domainEntries.length === 0) {
     addStorageIssue(issues, 'missing-domain-index', 'error', path.posix.join(HYBRID_ROOT_DIR, 'manifest.json'), 'Root manifest has no domains.')
@@ -1267,6 +1348,7 @@ function readV2HybridAppStateFromRoot(rootPath, rootManifest, issues = null) {
     activeDomainId,
     domains,
     noteBodies,
+    noteAisleBodies,
     activeSpaceId: activeDomain.activeSpaceId,
     spaces: activeDomain.spaces,
     hotkeys: rootManifest?.globalSettings?.hotkeys,

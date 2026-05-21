@@ -243,9 +243,10 @@ export function runEditorHistoryEvent({
   onRunStructuralHistory: (direction: WysiwygHistoryDirection) => boolean
   onRunEditorHistory: (direction: WysiwygHistoryDirection) => WysiwygHistoryResult
 }): { handled: boolean; result: WysiwygHistoryResult | 'structural' } {
-  if (onRunStructuralHistory(direction)) return { handled: true, result: 'structural' }
   const result = onRunEditorHistory(direction)
-  return { handled: result !== 'unavailable', result }
+  if (result !== 'unavailable') return { handled: true, result }
+  if (onRunStructuralHistory(direction)) return { handled: true, result: 'structural' }
+  return { handled: false, result }
 }
 
 export function useEditorDomEvents({

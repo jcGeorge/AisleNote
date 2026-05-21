@@ -93,6 +93,7 @@ import {
   listSearchableNoteLocations,
   type NoteSearchEntry,
 } from './notes/note-locations'
+import { getLinkedAisleIdsForNoteBody } from './notes/aisle-links'
 import { openExternalWebUrl } from './notes/external-links'
 import { buildContextToken, buildInternalNoteUrl, wouldCreateContextCycle } from './notes/note-references'
 import { getAisleBodyId } from './notes/note-markdown'
@@ -355,6 +356,7 @@ function App() {
     activeAisleId,
   })
   const activeNoteDuplicateCount = activeNoteBodyId ? listNoteLocationsForBody(state, activeNoteBodyId).length : 0
+  const activeLinkedAisleIds = activeNoteBodyId ? getLinkedAisleIdsForNoteBody(state, activeNoteBodyId) : new Set<string>()
 
   useEffect(() => {
     aisleShortcutTipCountRef.current = 0
@@ -657,7 +659,6 @@ function App() {
   const closeAisleEditModal = aisleController.closeAisleEditModal
   const captureActiveAisleStructuralSnapshot = aisleController.captureActiveAisleStructuralSnapshot
   const runAisleStructuralHistory = aisleController.runAisleStructuralHistory
-  const scheduleAisleStructuralHistoryFallback = aisleController.scheduleAisleStructuralHistoryFallback
   const addAisleToActiveNote = aisleController.addAisleToActiveNote
   const applyAisleEditDraftToActiveNote = aisleController.applyAisleEditDraftToActiveNote
 
@@ -1303,7 +1304,6 @@ function App() {
     const result = runWysiwygHistory(currentEditor, direction, {
       beforeDispatch: () => {
         scheduleMultiLineHistoryRestore(direction)
-        scheduleAisleStructuralHistoryFallback(direction)
       },
     })
     if (result === 'applied') {
@@ -1316,8 +1316,9 @@ function App() {
     const currentEditor = editorRef.current
     if (!currentEditor) return false
     currentEditor.focus()
+    const result = runEditorHistoryOnly(direction)
+    if (result !== 'unavailable') return true
     if (runAisleStructuralHistory(direction)) return true
-    runEditorHistoryOnly(direction)
     return true
   }
 
@@ -1872,6 +1873,7 @@ function App() {
   const openCopyModalForActiveNote = overlayActions.openCopyModalForActiveNote
   const openDeduplicateModalForActiveNote = overlayActions.openDeduplicateModalForActiveNote
   const setLastNoteCopyMode = overlayActions.setLastNoteCopyMode
+  const setDecoupledItemsKeepData = overlayActions.setDecoupledItemsKeepData
   const openDeduplicateModalFromContext = overlayActions.openDeduplicateModalFromContext
   const getCurrentDuplicateCount = overlayActions.getCurrentDuplicateCount
   const beginRenameSpaceFromContext = overlayActions.beginRenameSpaceFromContext
@@ -2518,12 +2520,14 @@ function App() {
         onApplyTabSort={applyArrangeTabSort}
         onLinkInsertModeChange={setLastLinkInsertMode}
         onNoteCopyModeChange={(mode: NoteCopyMode) => setLastNoteCopyMode(mode)}
+        onDeduplicateKeepDataChange={setDecoupledItemsKeepData}
         onConfirm={confirmModal}
       />
 
       <AisleEditModal
         open={aisleEditModalOpen && viewMode === 'main'}
         aisles={activeNoteAisles}
+        linkedAisleIds={activeLinkedAisleIds}
         onCancel={closeAisleEditModal}
         onApply={applyAisleEditDraftToActiveNote}
         onWarn={(message) => pushToast(message, 'warning')}

@@ -390,6 +390,11 @@ export function selectionTouchesBlockQuoteRows(view: any): boolean {
   return Boolean(context?.contexts.some((row) => row.kind === 'blockQuoteChild'))
 }
 
+export function multiLineSelectionTouchesBlockQuoteRows(view: any, multiLineEdit: MultiLineEditState): boolean {
+  const context = getBlockFormatContexts(view, multiLineEdit)
+  return Boolean(context?.contexts.some((row) => row.kind === 'blockQuoteChild'))
+}
+
 function getBlockIndentTargets(
   blockRanges: EditorTextLineRange[],
   selectedIndices: number[],

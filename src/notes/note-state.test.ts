@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_FRONTMATTER_SETTINGS } from '../frontmatter/frontmatter'
+import { materializeDecoupledAisleCopies } from './aisle-links'
 import type { AppState, Space } from '../types/app'
 import {
   applyCursorLocationSnapshot,
@@ -226,6 +227,42 @@ describe('note-state helpers', () => {
       { id: 'aisle-a', aisleBodyId: 'shared-aisle-body', markdown: 'current' },
       { id: 'aisle-b', aisleBodyId: 'shared-aisle-body', markdown: 'current' },
     ])
+  })
+
+  it('applies a staged aisle de-couple to only the selected aisle slot', () => {
+    const state = {
+      ...createTestState(),
+      noteAisleBodies: [{ id: 'shared-aisle-body', markdown: 'current shared text' }],
+      noteBodies: [
+        {
+          id: 'body-1',
+          frontmatter: null,
+          aisles: [
+            { id: 'aisle-a', aisleBodyId: 'shared-aisle-body', markdown: 'stale a' },
+            { id: 'aisle-local', aisleBodyId: 'local-body', markdown: 'local' },
+          ],
+        },
+        {
+          id: 'body-2',
+          frontmatter: null,
+          aisles: [{ id: 'aisle-b', aisleBodyId: 'shared-aisle-body', markdown: 'stale b' }],
+        },
+      ],
+    }
+    const sourceAisles = state.noteBodies.find((body) => body.id === 'body-1')?.aisles ?? []
+    const afterAisles = materializeDecoupledAisleCopies(state, sourceAisles, ['aisle-a'])
+    const next = syncNoteBodyAisleStructureInState(state, 'body-1', afterAisles)
+    const decoupledAisle = next.noteBodies.find((body) => body.id === 'body-1')?.aisles[0]
+    const linkedAisle = next.noteBodies.find((body) => body.id === 'body-2')?.aisles[0]
+
+    expect(decoupledAisle?.id).toBe('aisle-a')
+    expect(decoupledAisle?.aisleBodyId).not.toBe('shared-aisle-body')
+    expect(decoupledAisle?.markdown).toBe('current shared text')
+    expect(next.noteAisleBodies?.find((body) => body.id === decoupledAisle?.aisleBodyId)?.markdown).toBe(
+      'current shared text',
+    )
+    expect(linkedAisle).toEqual({ id: 'aisle-b', aisleBodyId: 'shared-aisle-body', markdown: 'current shared text' })
+    expect(next.noteAisleBodies?.find((body) => body.id === 'shared-aisle-body')?.markdown).toBe('current shared text')
   })
 
   it('applies note location across domain, space, tab, and sub-tab state', () => {

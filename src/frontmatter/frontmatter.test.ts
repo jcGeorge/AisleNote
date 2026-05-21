@@ -18,6 +18,7 @@ const context = {
   noteCreatedAt: '2024-01-01T08:00:00.000Z',
   noteUpdatedAt: '2026-05-14T09:30:00.000Z',
   noteTitle: 'Roadmap',
+  isLinked: true,
   tabId: 'tab-1',
   subTabId: null,
   spaceId: 'space-1',
@@ -36,6 +37,7 @@ const template: FrontmatterTemplate = {
     { id: 'created', key: 'created', type: 'date', defaultValue: '', computed: 'createdAt' },
     { id: 'updated', key: 'updated', type: 'datetime', defaultValue: '', computed: 'updatedAt' },
     { id: 'title', key: 'title', type: 'text', defaultValue: '', computed: 'noteTitle' },
+    { id: 'linked', key: 'linked', type: 'boolean', defaultValue: 'false', computed: 'isLinked' },
   ],
 }
 
@@ -108,8 +110,10 @@ describe('frontmatter templates', () => {
           name: 'Bad',
           fields: [
             { id: 'flag', key: 'flag', type: 'boolean', defaultValue: '', computed: 'createdAt' },
+            { id: 'linked', key: 'linked', type: 'boolean', defaultValue: 'false', computed: 'isLinked' },
             { id: 'created', key: 'created', type: 'date', defaultValue: '', computed: 'createdAt' },
             { id: 'title', key: 'title', type: 'text', defaultValue: '', computed: 'noteTitle' },
+            { id: 'bad-linked', key: 'badLinked', type: 'text', defaultValue: '', computed: 'isLinked' },
           ],
         },
       ],
@@ -117,8 +121,10 @@ describe('frontmatter templates', () => {
 
     expect(normalized.templates[0]?.fields.map((field) => field.computed)).toEqual([
       'none',
+      'isLinked',
       'createdAt',
       'noteTitle',
+      'none',
     ])
   })
 
@@ -132,6 +138,7 @@ describe('frontmatter templates', () => {
       created: '2024-01-01',
       updated: '2026-05-14T09:30:00.000Z',
       title: { id: 'body-1', title: 'Roadmap' },
+      linked: true,
     })
   })
 

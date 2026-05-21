@@ -5,6 +5,7 @@ import {
   buildFrontmatterDataFromRows,
   buildFrontmatterModalDraftForNote,
   buildFrontmatterRowsForNote,
+  isNoteBodyLinked,
   resolveFrontmatterReferencesForState,
   updateNoteBodyFrontmatter,
 } from './frontmatter-state'
@@ -133,6 +134,23 @@ function createFrontmatterState(): AppState {
   }
 }
 
+function withActiveTabs(state: AppState, tabs: Space['data']['tabs']): AppState {
+  const space: Space = {
+    ...state.spaces[0],
+    data: {
+      ...state.spaces[0].data,
+      tabs,
+    },
+  }
+  return {
+    ...state,
+    spaces: [space],
+    domains: state.domains.map((domain) =>
+      domain.id === state.activeDomainId ? { ...domain, activeSpaceId: space.id, spaces: [space] } : domain,
+    ),
+  }
+}
+
 describe('frontmatter row state', () => {
   it('opens with existing rows plus missing template rows', () => {
     const rows = buildFrontmatterRowsForNote(createFrontmatterState(), 'body-1', location, template, {
@@ -229,6 +247,88 @@ describe('frontmatter row state', () => {
       },
       warnings: [],
     })
+  })
+
+  it('computes isLinked when the note body has multiple note locations', () => {
+    const state = createFrontmatterState()
+    const homeTab = state.spaces[0].data.tabs[0]
+    const linkedTab = {
+      ...homeTab,
+      id: 'tab-linked',
+      title: 'Linked Roadmap',
+      activeSubTabId: null,
+      subTabs: [],
+    }
+    const linkedState = withActiveTabs(state, [homeTab, linkedTab])
+    const rows: FrontmatterRowDraft[] = [
+      {
+        id: 'linked',
+        key: 'linked',
+        type: 'boolean',
+        value: 'false',
+        computed: 'isLinked',
+        locked: true,
+      },
+    ]
+
+    expect(isNoteBodyLinked(linkedState, 'body-1')).toBe(true)
+    expect(buildFrontmatterDataFromRows(linkedState, 'body-1', location, rows)).toMatchObject({
+      ok: true,
+      frontmatter: { linked: true },
+      computedFields: { linked: 'isLinked' },
+    })
+  })
+
+  it('computes isLinked when an aisle is shared with another located note body', () => {
+    const state = createFrontmatterState()
+    const homeTab = state.spaces[0].data.tabs[0]
+    const otherTab = {
+      ...homeTab,
+      id: 'tab-other',
+      title: 'Other',
+      noteBodyId: 'body-2',
+      activeSubTabId: null,
+      subTabs: [],
+    }
+    const linkedState = withActiveTabs({
+      ...state,
+      noteBodies: [
+        {
+          ...state.noteBodies[0],
+          aisles: [{ id: 'aisle-1', aisleBodyId: 'shared-aisle-body', markdown: 'body' }],
+        },
+        {
+          id: 'body-2',
+          frontmatter: null,
+          aisles: [{ id: 'aisle-2', aisleBodyId: 'shared-aisle-body', markdown: 'other' }],
+        },
+      ],
+    }, [homeTab, otherTab])
+
+    expect(isNoteBodyLinked(linkedState, 'body-1')).toBe(true)
+  })
+
+  it('does not treat same-note aisle sharing or unlocated stale aisle bodies as linked', () => {
+    const state = createFrontmatterState()
+    const unlinkedState: AppState = {
+      ...state,
+      noteBodies: [
+        {
+          ...state.noteBodies[0],
+          aisles: [
+            { id: 'aisle-1', aisleBodyId: 'shared-aisle-body', markdown: 'one' },
+            { id: 'aisle-2', aisleBodyId: 'shared-aisle-body', markdown: 'two' },
+          ],
+        },
+        {
+          id: 'orphan-body',
+          frontmatter: null,
+          aisles: [{ id: 'orphan-aisle', aisleBodyId: 'shared-aisle-body', markdown: 'orphan' }],
+        },
+      ],
+    }
+
+    expect(isNoteBodyLinked(unlinkedState, 'body-1')).toBe(false)
   })
 
   it('removes frontmatter when rows are empty', () => {

@@ -6,23 +6,22 @@ import {
   getDefaultNoteReferenceTarget,
   getLocationInfo,
   listNoteLocationsForBody,
-  updateNoteLocationBody,
 } from '../notes/note-locations'
 import { removeContextReferencesForNoteLocationsFromAppState } from '../notes/note-references'
 import { applyNoteCopyToState } from './note-copy'
+import { decoupleNoteLocationsInState } from './note-decouple'
 import {
   getNotePreviewCleanupTargetsForDeleteTarget,
   getNotePreviewCleanupTargetsForTrash,
 } from './delete-preview-cleanup'
 import { removeSpaceFromActiveDomain } from '../state/domains'
-import { createId, createTab, createTimestamp } from '../state/workspace'
+import { createId, createTab } from '../state/workspace'
 import { TRASH_HOME_ID } from '../trash/trash-model'
 import type {
   AppState,
   ContextMenuState,
   DeleteTarget,
   ModalState,
-  NoteBody,
   NoteCopyMode,
   NoteLocation,
   ToastTone,
@@ -360,6 +359,20 @@ export const useAppOverlayActions = ({
     setState(nextState)
   }
 
+  const getDecoupledItemsKeepData = () => stateRef.current.ui.decoupledItemsKeepData ?? true
+
+  const setDecoupledItemsKeepData = (keepData: boolean) => {
+    const nextState = {
+      ...stateRef.current,
+      ui: {
+        ...stateRef.current.ui,
+        decoupledItemsKeepData: keepData,
+      },
+    }
+    stateRef.current = nextState
+    setState(nextState)
+  }
+
   const openCopyModalForLocation = (source: NoteLocation, mode: NoteCopyMode = getLastNoteCopyMode()) => {
     saveActiveCursorBeforeNavigation()
     const target = getDefaultNoteReferenceTarget(state, source)
@@ -380,6 +393,7 @@ export const useAppOverlayActions = ({
       type: 'deduplicate-note',
       noteBodyId,
       keepLocationKeys: locations.map((location) => buildNoteLocationKey(location)),
+      keepData: getDecoupledItemsKeepData(),
     })
   }
 
@@ -555,30 +569,17 @@ export const useAppOverlayActions = ({
     }
 
     if (modal.type === 'deduplicate-note') {
+      setDecoupledItemsKeepData(modal.keepData)
       const keepKeys = new Set(modal.keepLocationKeys)
       if (keepKeys.size === 0) {
         pushToast('select at least one note to retain the information', 'error')
         return
       }
-      const locations = listNoteLocationsForBody(stateRef.current, modal.noteBodyId)
-      let nextState = stateRef.current
-      const newBodies: NoteBody[] = []
-      for (const location of locations) {
-        if (keepKeys.has(buildNoteLocationKey(location))) continue
-        const timestamp = createTimestamp()
-        const emptyBody: NoteBody = {
-          id: createId(),
-          createdAt: timestamp,
-          updatedAt: timestamp,
-          frontmatter: null,
-          aisles: [{ id: createId(), markdown: '' }],
-        }
-        newBodies.push(emptyBody)
-        nextState = updateNoteLocationBody(nextState, location, emptyBody.id)
-      }
-      setState({ ...nextState, noteBodies: [...nextState.noteBodies, ...newBodies] })
+      const appliedState = decoupleNoteLocationsInState(stateRef.current, modal.noteBodyId, keepKeys, modal.keepData)
+      stateRef.current = appliedState
+      setState(appliedState)
       setModal(null)
-      pushToast('duplicates updated.', 'success')
+      pushToast('notes de-coupled.', 'success')
       return
     }
 
@@ -642,6 +643,7 @@ export const useAppOverlayActions = ({
     openCopyModalForActiveNote,
     openDeduplicateModalFromContext,
     openDeduplicateModalForActiveNote,
+    setDecoupledItemsKeepData,
     setLastNoteCopyMode,
     getCurrentDuplicateCount,
     beginRenameSpaceFromContext,

@@ -95,6 +95,7 @@ function renderFrontmatterModal(modal: ModalState) {
       onApplyTabSort={() => undefined}
       onLinkInsertModeChange={() => undefined}
       onNoteCopyModeChange={() => undefined}
+      onDeduplicateKeepDataChange={() => undefined}
       onConfirm={() => undefined}
     />,
   )
@@ -116,6 +117,7 @@ function renderModal(modal: ModalState, state = createState()) {
       onApplyTabSort={() => undefined}
       onLinkInsertModeChange={() => undefined}
       onNoteCopyModeChange={() => undefined}
+      onDeduplicateKeepDataChange={() => undefined}
       onConfirm={() => undefined}
     />,
   )
@@ -249,15 +251,29 @@ describe('link modal rendering', () => {
   })
 })
 
-describe('de-duplicate modal rendering', () => {
+describe('de-couple modal rendering', () => {
   it('keeps apply clickable with no retained notes so confirm can show a toast', () => {
     const html = renderModal({
       type: 'deduplicate-note',
       noteBodyId: 'body-1',
       keepLocationKeys: [],
+      keepData: true,
     })
 
     expect(html).toMatch(/<button type="button" class="btn btn-sm modal-primary-btn">apply<\/button>/)
+  })
+
+  it('renders the persistent keep-data switch', () => {
+    const html = renderModal({
+      type: 'deduplicate-note',
+      noteBodyId: 'body-1',
+      keepLocationKeys: ['domain-1::space-1::tab-1::__home__'],
+      keepData: true,
+    })
+
+    expect(html).toContain('de-coupled items keep data?')
+    expect(html).toContain('aria-label="de-coupled items keep data?"')
+    expect(html).toContain('checked=""')
   })
 })
 

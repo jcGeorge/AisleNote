@@ -7,11 +7,16 @@ import { AisleEditModal } from './AisleEditModal'
 
 const aisle = (id: string, markdown = id): NoteAisle => ({ id, markdown })
 
-function renderModal(aisles: NoteAisle[]) {
+function renderModal(
+  aisles: NoteAisle[],
+  options: { linkedAisleIds?: Set<string>; initialStagedDecoupleAisleIds?: string[] } = {},
+) {
   return renderToStaticMarkup(
     <AisleEditModal
       open
       aisles={aisles}
+      linkedAisleIds={options.linkedAisleIds}
+      initialStagedDecoupleAisleIds={options.initialStagedDecoupleAisleIds}
       onCancel={() => undefined}
       onApply={() => undefined}
       onWarn={() => undefined}
@@ -85,5 +90,26 @@ describe('AisleEditModal', () => {
     expect(html).toContain('class="tabs-block-indent"')
     expect(html).toContain('indented')
     expect(html).not.toContain(BLOCK_INDENT_TOKEN)
+  })
+
+  it('shows linked status and de-couple only for linked aisle cards', () => {
+    const html = renderModal([aisle('a', 'first'), aisle('b', 'plain')], {
+      linkedAisleIds: new Set(['a']),
+    })
+
+    expect(html).toContain('aisle-edit-status-badge">linked')
+    expect(html).toContain('de-couple')
+    expect(html).not.toContain('will de-couple')
+  })
+
+  it('shows staged de-couple status and undo for staged aisle cards', () => {
+    const html = renderModal([aisle('a', 'linked')], {
+      linkedAisleIds: new Set(['a']),
+      initialStagedDecoupleAisleIds: ['a'],
+    })
+
+    expect(html).toContain('will de-couple')
+    expect(html).toContain('undo')
+    expect(html).not.toContain('>de-couple</button>')
   })
 })

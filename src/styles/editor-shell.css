@@ -616,7 +616,7 @@
   height: min(58vh, 31rem);
   min-height: 18rem;
   display: block;
-  padding: 0.5rem 0.5rem 3.35rem;
+  padding: 0.5rem 0.5rem 4.25rem;
   border: 1px solid var(--settings-control-border);
   border-radius: 0.5rem;
   background: var(--settings-control-bg);
@@ -753,12 +753,76 @@
   font-style: italic;
 }
 
-.aisle-edit-delete-btn {
+.aisle-edit-card-controls {
   position: absolute;
-  left: 50%;
+  left: 0.5rem;
+  right: 0.5rem;
   bottom: 0.55rem;
-  width: 2.25rem;
-  height: 2.25rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.aisle-edit-card-status {
+  min-height: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.aisle-edit-status-badge {
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.25rem;
+  padding: 0.1rem 0.42rem;
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  background: var(--app-surface);
+  color: var(--modal-muted-text);
+  font-size: var(--ui-font-2xs);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.aisle-edit-status-badge.is-staged {
+  border-color: var(--modal-primary-bg);
+  background: var(--modal-primary-bg);
+  color: var(--modal-primary-text);
+}
+
+.aisle-edit-card-actions {
+  min-height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+}
+
+.aisle-edit-link-action {
+  min-height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--settings-control-border);
+  border-radius: 999px;
+  background: var(--settings-control-bg);
+  color: var(--modal-text);
+  padding: 0.25rem 0.52rem;
+  font-size: var(--ui-font-2xs);
+  line-height: 1;
+}
+
+.aisle-edit-link-action:hover,
+.aisle-edit-link-action:focus-visible {
+  border-color: var(--modal-primary-bg);
+  background: var(--settings-control-hover-bg);
+  color: var(--modal-text);
+}
+
+.aisle-edit-delete-btn {
+  width: 2rem;
+  height: 2rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -767,7 +831,6 @@
   background: var(--app-danger-bg);
   color: var(--app-danger-text);
   padding: 0;
-  transform: translateX(-50%);
 }
 
 .aisle-edit-delete-btn:hover,

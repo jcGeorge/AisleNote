@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_FRONTMATTER_SETTINGS } from '../frontmatter/frontmatter'
 import { DEFAULT_NEWLINE_SHORTCUT_SETTINGS, DEFAULT_SHORTCUTS } from '../hotkeys/shortcuts'
 import { DEFAULT_CUSTOM_THEME_PALETTE, DEFAULT_UI_SETTINGS } from '../settings/defaults'
+import { syncNoteBodyAisleStructureInState } from '../notes/note-state'
 import type { AppState, DeletedSubTabEntry, DeletedTabEntry, Space, SubTab, Tab, WorkspaceData } from '../types/app'
 import { applyAutoPurgeToAppState, applyMarkdownToAppState, getNextAutoPurgeTimeForAppState, parseSavedState } from './app-state'
 import { AUTO_PURGE_DAY_MS } from './workspace'
@@ -174,7 +175,7 @@ describe('app state normalization', () => {
     const body = state.noteBodies.find((candidate) => candidate.id === 'body-1')
     const aisleBodyId = body?.aisles[0]?.aisleBodyId
 
-    expect(aisleBodyId).toBeTruthy()
+    expect(aisleBodyId).toBe('aisle-1')
     expect(state.noteAisleBodies?.find((aisleBody) => aisleBody.id === aisleBodyId)?.markdown).toBe('legacy body')
     expect(body?.aisles[0]?.markdown).toBe('legacy body')
   })
@@ -378,6 +379,88 @@ describe('app state normalization', () => {
     )
     expect(next.noteBodies.find((body) => body.id === 'body-source')?.aisles[1]?.markdown).toBe('body-id edit')
     expect(next.noteBodies.find((body) => body.id === 'body-target')?.aisles[0]?.markdown).toBe('body-id edit')
+  })
+
+  it('keeps the remaining linked aisle writable after deleting a sibling linked aisle', () => {
+    const state = parseSavedState(
+      JSON.stringify({
+        spaces: [
+          {
+            id: 'space-1',
+            name: 'Space',
+            data: {
+              activeTabId: 'tab-source',
+              tabs: [
+                {
+                  id: 'tab-source',
+                  title: 'Source',
+                  noteBodyId: 'body-source',
+                  homeContent: '',
+                  activeSubTabId: null,
+                  subTabs: [],
+                },
+                {
+                  id: 'tab-target',
+                  title: 'Target',
+                  noteBodyId: 'body-target',
+                  homeContent: '',
+                  activeSubTabId: null,
+                  subTabs: [],
+                },
+              ],
+              deletedTabs: [],
+              deletedSubTabs: [],
+            },
+          },
+        ],
+        noteAisleBodies: [
+          { id: 'target-aisle-body-a', markdown: 'target a' },
+          { id: 'target-aisle-body-b', markdown: 'target b' },
+        ],
+        noteBodies: [
+          {
+            id: 'body-source',
+            aisles: [
+              { id: 'linked-aisle-a', aisleBodyId: 'target-aisle-body-a', markdown: 'target a' },
+              { id: 'linked-aisle-b', aisleBodyId: 'target-aisle-body-b', markdown: 'target b' },
+            ],
+          },
+          {
+            id: 'body-target',
+            aisles: [
+              { id: 'target-aisle-a', aisleBodyId: 'target-aisle-body-a', markdown: 'target a' },
+              { id: 'target-aisle-b', aisleBodyId: 'target-aisle-body-b', markdown: 'target b' },
+            ],
+          },
+        ],
+      }),
+    )
+
+    const afterDelete = syncNoteBodyAisleStructureInState(state, 'body-source', [
+      { id: 'linked-aisle-b', aisleBodyId: 'target-aisle-body-b', markdown: 'stale target b' },
+    ])
+    const afterEdit = applyMarkdownToAppState(
+      afterDelete,
+      'space-1',
+      'tab-source',
+      null,
+      'linked-aisle-b',
+      'remaining linked edit',
+      { aisleBodyId: 'target-aisle-body-b' },
+    )
+
+    expect(afterDelete.noteBodies.find((body) => body.id === 'body-source')?.aisles).toEqual([
+      { id: 'linked-aisle-b', aisleBodyId: 'target-aisle-body-b', markdown: 'target b' },
+    ])
+    expect(afterEdit.noteAisleBodies?.find((aisleBody) => aisleBody.id === 'target-aisle-body-b')?.markdown).toBe(
+      'remaining linked edit',
+    )
+    expect(afterEdit.noteBodies.find((body) => body.id === 'body-source')?.aisles[0]?.markdown).toBe(
+      'remaining linked edit',
+    )
+    expect(afterEdit.noteBodies.find((body) => body.id === 'body-target')?.aisles[1]?.markdown).toBe(
+      'remaining linked edit',
+    )
   })
 
   it('backfills note body timestamps from existing frontmatter', () => {
@@ -613,6 +696,18 @@ describe('app state normalization', () => {
     expect(independent.ui.lastNoteCopyMode).toBe('independent')
     expect(invalid.ui.lastNoteCopyMode).toBe('independent')
     expect(missing.ui.lastNoteCopyMode).toBe('independent')
+  })
+
+  it('normalizes persisted de-coupled item data retention memory', () => {
+    const keep = parseSavedState(JSON.stringify({ ui: { decoupledItemsKeepData: true } }))
+    const clear = parseSavedState(JSON.stringify({ ui: { decoupledItemsKeepData: false } }))
+    const invalid = parseSavedState(JSON.stringify({ ui: { decoupledItemsKeepData: 'yes' } }))
+    const missing = parseSavedState(JSON.stringify({ ui: {} }))
+
+    expect(keep.ui.decoupledItemsKeepData).toBe(true)
+    expect(clear.ui.decoupledItemsKeepData).toBe(false)
+    expect(invalid.ui.decoupledItemsKeepData).toBe(true)
+    expect(missing.ui.decoupledItemsKeepData).toBe(true)
   })
 })
 

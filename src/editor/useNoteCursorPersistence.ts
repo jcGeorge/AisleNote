@@ -9,6 +9,7 @@ import {
 import { clampNoteCursorSelection } from '../notes/note-cursors'
 import { updateCursorLocationInState } from '../notes/note-state'
 import type { AppState, NoteAisle, NoteCursorSelection, ViewMode } from '../types/app'
+import { shouldFocusPendingCursorRestore } from './cursor-restore-focus'
 
 export type PendingCursorRestore = {
   noteLocationKey: string
@@ -146,17 +147,18 @@ export const usePendingNoteCursorRestore = ({
     const targetAisleId = pendingAisleId || restoreAisleId
     if (viewMode !== 'main' || !activeNoteBodyId || !targetAisleId) return
     if (pendingCreatedEditRef.current) return
+    const shouldFocus = shouldFocusPendingCursorRestore(pendingAisleId, targetAisleId)
 
     const animationFrame = window.requestAnimationFrame(() => {
       const editorKey = buildAisleEditorKey(activeNoteBodyId, targetAisleId)
-      if (activateAisleEditor(editorKey, { focus: true })) {
+      if (activateAisleEditor(editorKey, { focus: shouldFocus })) {
         if (pendingFocusToAisleIdRef.current === targetAisleId) {
           pendingFocusToAisleIdRef.current = null
         }
         const pending = pendingCursorRestoreRef.current
         if (pending?.noteLocationKey === activeNoteLocationKey && pending.aisleId === targetAisleId) {
           if (pending.selection) {
-            restoreEditorCursorSelection(editorRef.current, pending.selection)
+            restoreEditorCursorSelection(editorRef.current, pending.selection, { focus: shouldFocus })
           }
           pendingCursorRestoreRef.current = null
         }
