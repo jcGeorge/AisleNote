@@ -103,6 +103,37 @@ export function shouldRunDelayedTaskCaretPlacement({
   return scheduledVersion === currentVersion && sourceConnected && activeEditorMatches && activeViewMatches
 }
 
+export function scheduleTaskCheckboxStateCommit(editor: Editor, onCommit?: (editor: Editor) => void): () => void {
+  if (!onCommit) return () => {}
+  let cancelled = false
+  let frameId: number | null = null
+  const timeoutId = window.setTimeout(() => {
+    if (cancelled) return
+    const run = () => {
+      if (!cancelled) onCommit(editor)
+    }
+    if (typeof window.requestAnimationFrame === 'function') {
+      frameId = window.requestAnimationFrame(run)
+    } else {
+      run()
+    }
+  }, 0)
+
+  return () => {
+    cancelled = true
+    window.clearTimeout(timeoutId)
+    if (frameId !== null && typeof window.cancelAnimationFrame === 'function') {
+      window.cancelAnimationFrame(frameId)
+    }
+  }
+}
+
+export function shouldScheduleUncheckedTaskCheckboxCommit(hit: {
+  node?: { attrs?: { task?: boolean; checked?: boolean } }
+} | null): boolean {
+  return Boolean(hit?.node?.attrs?.task && hit.node.attrs.checked !== true)
+}
+
 export function shouldSuppressListReorderSelectStart(isDragging: boolean): boolean {
   return isDragging
 }
@@ -346,18 +377,17 @@ function findTaskListItemHit(view: any, listItemElement: HTMLElement, event: glo
   return findListItemHitFromResolvedPos(view.state.doc.resolve(coords.pos))
 }
 
-function getCompletedTaskCheckboxHit(view: any, event: globalThis.MouseEvent): TaskListItemHit | null {
+function getTaskCheckboxHit(view: any, event: globalThis.MouseEvent): TaskListItemHit | null {
   if (event.button !== 0) return null
   const target = getElementFromEventTarget(event.target)
   if (!target) return null
   const listItemElement = target.closest('li.task-list-item[data-task]')
   if (!(listItemElement instanceof HTMLElement)) return null
   if (!view.dom.contains(listItemElement)) return null
-  if (!listItemElement.classList.contains('checked') && !listItemElement.hasAttribute('data-task-checked')) return null
   if (!isTaskCheckboxHit(listItemElement, event)) return null
 
   const hit = findTaskListItemHit(view, listItemElement, event)
-  if (!hit?.node?.attrs?.task || !hit.node.attrs.checked) return null
+  if (!hit?.node?.attrs?.task) return null
   return hit
 }
 
@@ -397,8 +427,10 @@ export function installCompletedTaskCheckboxBehavior(
   root: HTMLElement,
   getEditor: () => Editor | null,
   onQuickDelete: (beforeMarkdown: string) => void,
+  onTaskStateCommit?: (editor: Editor) => void,
 ) {
   type PendingTaskAction = {
+    editor: Editor
     view: any
     hit: TaskListItemHit
     beforeMarkdown: string
@@ -410,6 +442,15 @@ export function installCompletedTaskCheckboxBehavior(
 
   let pending: PendingTaskAction | null = null
   let suppressNextClick = false
+  let pendingTaskCommitCancel: (() => void) | null = null
+
+  const scheduleCommit = (editor: Editor) => {
+    pendingTaskCommitCancel?.()
+    pendingTaskCommitCancel = scheduleTaskCheckboxStateCommit(editor, (committedEditor) => {
+      pendingTaskCommitCancel = null
+      onTaskStateCommit?.(committedEditor)
+    })
+  }
 
   const clearPending = () => {
     if (pending) window.clearTimeout(pending.timer)
@@ -443,6 +484,7 @@ export function installCompletedTaskCheckboxBehavior(
 
     onQuickDelete(action.beforeMarkdown)
     deleteTaskListItem(action.view, action.hit)
+    scheduleCommit(action.editor)
   }
 
   const handleMouseDown = (event: globalThis.MouseEvent) => {
@@ -450,8 +492,12 @@ export function installCompletedTaskCheckboxBehavior(
     const view = getWysiwygView(editor)
     if (!editor || !view) return
 
-    const hit = getCompletedTaskCheckboxHit(view, event)
+    const hit = getTaskCheckboxHit(view, event)
     if (!hit) return
+    if (shouldScheduleUncheckedTaskCheckboxCommit(hit)) {
+      scheduleCommit(editor)
+      return
+    }
 
     event.preventDefault()
     event.stopPropagation()
@@ -459,6 +505,7 @@ export function installCompletedTaskCheckboxBehavior(
 
     clearPending()
     pending = {
+      editor,
       view,
       hit,
       beforeMarkdown: normalizeMarkdownForPersistence(editor.getMarkdown()),
@@ -469,6 +516,7 @@ export function installCompletedTaskCheckboxBehavior(
         if (!pending) return
         pending.held = true
         uncheckCompletedTaskListItem(pending.view, pending.hit)
+        scheduleCommit(pending.editor)
       }, COMPLETED_TASK_HOLD_MS),
     }
 
@@ -478,16 +526,26 @@ export function installCompletedTaskCheckboxBehavior(
   }
 
   const handleClick = (event: globalThis.MouseEvent) => {
-    if (!suppressNextClick) return
-    suppressNextClick = false
-    event.preventDefault()
-    event.stopPropagation()
+    if (suppressNextClick) {
+      suppressNextClick = false
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
+
+    const editor = getEditor()
+    const view = getWysiwygView(editor)
+    if (!editor || !view) return
+    if (!getTaskCheckboxHit(view, event)) return
+    scheduleCommit(editor)
   }
 
   root.addEventListener('mousedown', handleMouseDown, true)
   root.addEventListener('click', handleClick, true)
 
   return () => {
+    pendingTaskCommitCancel?.()
+    pendingTaskCommitCancel = null
     clearPending()
     root.removeEventListener('mousedown', handleMouseDown, true)
     root.removeEventListener('click', handleClick, true)

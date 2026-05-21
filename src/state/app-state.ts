@@ -19,11 +19,14 @@ import type {
   FrontmatterComputedFieldMap,
   FrontmatterFieldOriginMap,
   NoteAisle,
+  NoteAisleBody,
   NoteBody,
   Space,
   SubTab,
   Tab,
 } from '../types/app'
+import { getAisleBodyId } from '../notes/note-markdown'
+import { syncNoteAisleBodyMarkdownInState, syncNoteBodyAislesInState } from '../notes/note-state'
 import {
   createDefaultDomain,
   createLegacyWrappedDomain,
@@ -47,6 +50,7 @@ const RAW_DEFAULT_STATE: AppState = {
   activeDomainId: DEFAULT_DOMAIN.id,
   domains: [DEFAULT_DOMAIN],
   noteBodies: [],
+  noteAisleBodies: [],
   activeSpaceId: DEFAULT_DOMAIN.activeSpaceId,
   spaces: DEFAULT_DOMAIN.spaces,
   hotkeys: {
@@ -61,6 +65,7 @@ const RAW_DEFAULT_STATE: AppState = {
 
 function createNoteBodyWithId(id: string, markdown = ''): NoteBody {
   const timestamp = createTimestamp()
+  const aisleBodyId = createId()
   return {
     id,
     createdAt: timestamp,
@@ -69,6 +74,7 @@ function createNoteBodyWithId(id: string, markdown = ''): NoteBody {
     aisles: [
       {
         id: createId(),
+        aisleBodyId,
         markdown: normalizeMarkdownForPersistence(markdown),
       },
     ],
@@ -126,10 +132,65 @@ function normalizeNoteAisles(raw: unknown): NoteAisle[] {
   if (!Array.isArray(raw)) return []
   return raw
     .filter((aisle): aisle is Record<string, unknown> => Boolean(aisle) && typeof aisle === 'object')
-    .map((aisle) => ({
-      id: typeof aisle.id === 'string' && aisle.id ? aisle.id : createId(),
-      markdown: normalizeMarkdownForPersistence(typeof aisle.markdown === 'string' ? aisle.markdown : ''),
-    }))
+    .map((aisle) => {
+      const id = typeof aisle.id === 'string' && aisle.id ? aisle.id : createId()
+      return {
+        id,
+        aisleBodyId: typeof aisle.aisleBodyId === 'string' && aisle.aisleBodyId ? aisle.aisleBodyId : createId(),
+        markdown: normalizeMarkdownForPersistence(typeof aisle.markdown === 'string' ? aisle.markdown : ''),
+      }
+    })
+}
+
+function normalizeNoteAisleBodies(raw: unknown): NoteAisleBody[] {
+  if (!Array.isArray(raw)) return []
+  const seen = new Set<string>()
+  const bodies: NoteAisleBody[] = []
+  const fallbackTimestamp = createTimestamp()
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue
+    const candidate = entry as Record<string, unknown>
+    const id = typeof candidate.id === 'string' && candidate.id ? candidate.id : ''
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    bodies.push({
+      id,
+      createdAt: normalizeTimestamp(candidate.createdAt, fallbackTimestamp),
+      updatedAt: normalizeTimestamp(candidate.updatedAt, fallbackTimestamp),
+      markdown: normalizeMarkdownForPersistence(typeof candidate.markdown === 'string' ? candidate.markdown : ''),
+    })
+  }
+  return bodies
+}
+
+function normalizeNoteContent(
+  rawNoteBodies: unknown,
+  rawNoteAisleBodies: unknown,
+): { noteBodies: NoteBody[]; noteAisleBodies: NoteAisleBody[] } {
+  const noteBodies = normalizeNoteBodies(rawNoteBodies)
+  const aisleBodyMap = new Map(normalizeNoteAisleBodies(rawNoteAisleBodies).map((body) => [body.id, body]))
+  const fallbackTimestamp = createTimestamp()
+  const syncedNoteBodies = noteBodies.map((body) => ({
+    ...body,
+    aisles: body.aisles.map((aisle) => {
+      const aisleBodyId = getAisleBodyId(aisle)
+      const existing = aisleBodyMap.get(aisleBodyId)
+      if (!existing) {
+        aisleBodyMap.set(aisleBodyId, {
+          id: aisleBodyId,
+          createdAt: body.createdAt ?? fallbackTimestamp,
+          updatedAt: body.updatedAt ?? fallbackTimestamp,
+          markdown: aisle.markdown,
+        })
+      }
+      return {
+        ...aisle,
+        aisleBodyId,
+        markdown: existing?.markdown ?? aisle.markdown,
+      }
+    }),
+  }))
+  return { noteBodies: syncedNoteBodies, noteAisleBodies: Array.from(aisleBodyMap.values()) }
 }
 
 function normalizeNoteBodies(raw: unknown): NoteBody[] {
@@ -230,7 +291,8 @@ function ensureSubTabBody(subTab: SubTab, noteBodies: Map<string, NoteBody>): Su
 
 export function ensureNoteBodiesForAppState(appState: AppState): AppState {
   const projected = projectActiveDomainState(appState)
-  const noteBodies = new Map(normalizeNoteBodies(projected.noteBodies).map((body) => [body.id, body]))
+  const normalizedContent = normalizeNoteContent(projected.noteBodies, projected.noteAisleBodies)
+  const noteBodies = new Map(normalizedContent.noteBodies.map((body) => [body.id, body]))
 
   const domains = projected.domains.map((domain) => ({
     ...domain,
@@ -253,11 +315,13 @@ export function ensureNoteBodiesForAppState(appState: AppState): AppState {
 
   const activeDomain = domains.find((domain) => domain.id === projected.activeDomainId) ?? domains[0]
   const spaces = activeDomain?.spaces ?? projected.spaces
+  const syncedContent = normalizeNoteContent(Array.from(noteBodies.values()), normalizedContent.noteAisleBodies)
 
   return projectActiveDomainState({
     ...projected,
     domains,
-    noteBodies: Array.from(noteBodies.values()),
+    noteBodies: syncedContent.noteBodies,
+    noteAisleBodies: syncedContent.noteAisleBodies,
     activeSpaceId:
       activeDomain?.activeSpaceId && spaces.some((space) => space.id === activeDomain.activeSpaceId)
         ? activeDomain.activeSpaceId
@@ -390,11 +454,14 @@ export function parseSavedState(raw: string | null): AppState {
             ? activeDomain.activeSpaceId
             : spaces[0].id
 
+      const noteContent = normalizeNoteContent(parsed.noteBodies, parsed.noteAisleBodies)
+
       return ensureNoteBodiesForAppState(projectActiveDomainState({
         theme,
         activeDomainId: activeDomain.id,
         domains,
-        noteBodies: normalizeNoteBodies(parsed.noteBodies),
+        noteBodies: noteContent.noteBodies,
+        noteAisleBodies: noteContent.noteAisleBodies,
         activeSpaceId,
         spaces,
         hotkeys: normalizeHotkeySettings(parsed.hotkeys),
@@ -411,11 +478,13 @@ export function parseSavedState(raw: string | null): AppState {
       data: applyAutoPurgeToWorkspace(normalizeWorkspaceData(parsed), DEFAULT_AUTO_REMOVE_DAYS),
     }
     const migratedDomain = createLegacyWrappedDomain([migratedSpace], migratedSpace.id)
+    const noteContent = normalizeNoteContent(parsed.noteBodies, parsed.noteAisleBodies)
     return ensureNoteBodiesForAppState(projectActiveDomainState({
       theme,
       activeDomainId: migratedDomain.id,
       domains: [migratedDomain],
-      noteBodies: normalizeNoteBodies(parsed.noteBodies),
+      noteBodies: noteContent.noteBodies,
+      noteAisleBodies: noteContent.noteAisleBodies,
       activeSpaceId: migratedSpace.id,
       spaces: [migratedSpace],
       hotkeys: normalizeHotkeySettings(parsed.hotkeys),
@@ -434,72 +503,51 @@ export function applyMarkdownToAppState(
   subTabId: string | null,
   aisleId: string,
   markdown: string,
+  options: { aisleBodyId?: string | null } = {},
 ): AppState {
   const normalizedMarkdown = normalizeMarkdownForPersistence(markdown)
   const projected = ensureNoteBodiesForAppState(previous)
   let targetNoteBodyId: string | null = null
 
-  const spaces = projected.spaces.map((space) => {
+  projected.spaces.forEach((space) => {
     if (space.id !== spaceId) return space
 
-    let spaceChanged = false
     const data = space.data
-    const tabs = data.tabs.map((tab) => {
+    data.tabs.forEach((tab) => {
       if (tab.id !== tabId) return tab
 
       if (subTabId === null) {
         targetNoteBodyId = tab.noteBodyId
-        if (tab.homeContent === normalizedMarkdown) return tab
-        spaceChanged = true
-        return { ...tab, homeContent: normalizedMarkdown }
+        return tab
       }
 
-      let tabChanged = false
-      const subTabs = tab.subTabs.map((sub) => {
+      tab.subTabs.forEach((sub) => {
         if (sub.id !== subTabId) return sub
         targetNoteBodyId = sub.noteBodyId
-        if (sub.content === normalizedMarkdown) return sub
-        tabChanged = true
-        return { ...sub, content: normalizedMarkdown }
+        return sub
       })
-
-      if (!tabChanged) return tab
-      spaceChanged = true
-      return { ...tab, subTabs }
     })
-
-    if (!spaceChanged) return space
-    return { ...space, data: { ...data, tabs } }
   })
 
   if (!targetNoteBodyId) return projected
+  const targetBody = projected.noteBodies.find((body) => body.id === targetNoteBodyId)
+  if (!targetBody) return projected
 
-  let bodyChanged = false
-  const updatedAt = createTimestamp()
-  const noteBodies = projected.noteBodies.map((body) => {
-    if (body.id !== targetNoteBodyId) return body
-    const targetAisleId = aisleId || body.aisles[0]?.id || createId()
-    let aisleFound = false
-    const aisles = body.aisles.map((aisle, index) => {
-      const matches = aisle.id === targetAisleId || (!aisleId && index === 0)
-      if (!matches) return aisle
-      aisleFound = true
-      if (aisle.markdown === normalizedMarkdown) return aisle
-      bodyChanged = true
-      return { ...aisle, markdown: normalizedMarkdown }
-    })
+  const explicitAisleBodyId = typeof options.aisleBodyId === 'string' ? options.aisleBodyId.trim() : ''
+  if (explicitAisleBodyId && targetBody.aisles.some((aisle) => getAisleBodyId(aisle) === explicitAisleBodyId)) {
+    return syncNoteAisleBodyMarkdownInState(projected, explicitAisleBodyId, normalizedMarkdown)
+  }
 
-    if (!aisleFound) {
-      bodyChanged = true
-      return {
-        ...body,
-        updatedAt,
-        aisles: [...aisles, { id: targetAisleId, markdown: normalizedMarkdown }],
-      }
-    }
-    return bodyChanged ? { ...body, updatedAt, aisles } : body
-  })
+  const targetAisleId = aisleId || targetBody.aisles[0]?.id || createId()
+  const targetAisle = targetBody.aisles.find((aisle, index) => aisle.id === targetAisleId || (!aisleId && index === 0))
+  if (targetAisle) {
+    return syncNoteAisleBodyMarkdownInState(projected, getAisleBodyId(targetAisle), normalizedMarkdown)
+  }
 
-  if (!bodyChanged && spaces === projected.spaces) return projected
-  return ensureNoteBodiesForAppState({ ...projected, spaces, noteBodies })
+  if (aisleId) return projected
+
+  return syncNoteBodyAislesInState(projected, targetNoteBodyId, [
+    ...targetBody.aisles,
+    { id: targetAisleId, aisleBodyId: createId(), markdown: normalizedMarkdown },
+  ])
 }

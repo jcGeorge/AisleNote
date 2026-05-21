@@ -1,6 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import type { Editor } from '@toast-ui/editor'
 import type { MultiLineEditState } from '../types/app'
-import { getMultiLineWidgetClearMode, hasMultiLineDecorationState } from './useMultilineEditing'
+import {
+  getMultiLineWidgetClearMode,
+  getStructuralListIndentCommitMarkdown,
+  hasMultiLineDecorationState,
+} from './useMultilineEditing'
 
 const activeMultiLineState: MultiLineEditState = {
   anchorBlockIndex: 0,
@@ -26,5 +31,19 @@ describe('multiline editing clear behavior', () => {
     expect(hasMultiLineDecorationState({ cursors: [], selections: [] })).toBe(false)
     expect(hasMultiLineDecorationState({ cursors: [12], selections: [] })).toBe(true)
     expect(hasMultiLineDecorationState({ cursors: [], selections: [{ from: 3, to: 8 }] })).toBe(true)
+  })
+})
+
+describe('structural list indentation commits', () => {
+  it('uses normalized editor markdown instead of raw Toast UI markdown', () => {
+    const getMarkdown = vi.fn(() => '### Head\ntext\n- [ ] task')
+    const editor = { getMarkdown } as unknown as Editor
+    const getNormalizedEditorMarkdown = vi.fn(() => '### Head\n\ntext\n\n- [ ] task')
+
+    expect(getStructuralListIndentCommitMarkdown(editor, getNormalizedEditorMarkdown)).toBe(
+      '### Head\n\ntext\n\n- [ ] task',
+    )
+    expect(getNormalizedEditorMarkdown).toHaveBeenCalledWith(editor)
+    expect(getMarkdown).not.toHaveBeenCalled()
   })
 })

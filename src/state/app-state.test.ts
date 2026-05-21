@@ -143,6 +143,243 @@ describe('app state normalization', () => {
     expect(nextBody?.aisles[0]?.markdown).toBe('updated')
   })
 
+  it('normalizes legacy aisle markdown into shared aisle body records', () => {
+    const state = parseSavedState(
+      JSON.stringify({
+        spaces: [
+          {
+            id: 'space-1',
+            name: 'Space',
+            data: {
+              activeTabId: 'tab-1',
+              tabs: [
+                {
+                  id: 'tab-1',
+                  title: 'Tab',
+                  noteBodyId: 'body-1',
+                  homeContent: '',
+                  activeSubTabId: null,
+                  subTabs: [],
+                },
+              ],
+              deletedTabs: [],
+              deletedSubTabs: [],
+            },
+          },
+        ],
+        noteBodies: [{ id: 'body-1', aisles: [{ id: 'aisle-1', markdown: 'legacy body' }] }],
+      }),
+    )
+
+    const body = state.noteBodies.find((candidate) => candidate.id === 'body-1')
+    const aisleBodyId = body?.aisles[0]?.aisleBodyId
+
+    expect(aisleBodyId).toBeTruthy()
+    expect(state.noteAisleBodies?.find((aisleBody) => aisleBody.id === aisleBodyId)?.markdown).toBe('legacy body')
+    expect(body?.aisles[0]?.markdown).toBe('legacy body')
+  })
+
+  it('updates duplicate linked aisle slots together without stale sibling whitespace winning', () => {
+    const state = parseSavedState(
+      JSON.stringify({
+        spaces: [
+          {
+            id: 'space-1',
+            name: 'Space',
+            data: {
+              activeTabId: 'tab-1',
+              tabs: [
+                {
+                  id: 'tab-1',
+                  title: 'Tab',
+                  noteBodyId: 'body-1',
+                  homeContent: '',
+                  activeSubTabId: null,
+                  subTabs: [],
+                },
+              ],
+              deletedTabs: [],
+              deletedSubTabs: [],
+            },
+          },
+        ],
+        noteAisleBodies: [{ id: 'shared-aisle-body', markdown: 'Hat Trick!\\n\\nold whitespace' }],
+        noteBodies: [
+          {
+            id: 'body-1',
+            aisles: [
+              { id: 'aisle-1', aisleBodyId: 'shared-aisle-body', markdown: 'Hat Trick!\\n\\nold whitespace' },
+              { id: 'aisle-2', aisleBodyId: 'shared-aisle-body', markdown: 'Hat Trick!\\n\\nold whitespace' },
+            ],
+          },
+        ],
+      }),
+    )
+
+    const next = applyMarkdownToAppState(
+      state,
+      'space-1',
+      'tab-1',
+      null,
+      'aisle-1',
+      'Hat Trick!\n\nThe third aisle, seems like this refactor was successful.',
+    )
+    const body = next.noteBodies.find((candidate) => candidate.id === 'body-1')
+
+    expect(next.noteAisleBodies?.find((aisleBody) => aisleBody.id === 'shared-aisle-body')?.markdown).toBe(
+      'Hat Trick!\n\nThe third aisle, seems like this refactor was successful.',
+    )
+    expect(body?.aisles.map((aisle) => aisle.markdown)).toEqual([
+      'Hat Trick!\n\nThe third aisle, seems like this refactor was successful.',
+      'Hat Trick!\n\nThe third aisle, seems like this refactor was successful.',
+    ])
+  })
+
+  it('lets a linked aisle edit the same aisle body used by direct note duplicates', () => {
+    const state = parseSavedState(
+      JSON.stringify({
+        spaces: [
+          {
+            id: 'space-1',
+            name: 'Space',
+            data: {
+              activeTabId: 'tab-source',
+              tabs: [
+                {
+                  id: 'tab-source',
+                  title: 'Source',
+                  noteBodyId: 'body-source',
+                  homeContent: '',
+                  activeSubTabId: null,
+                  subTabs: [],
+                },
+                {
+                  id: 'tab-target',
+                  title: 'Target',
+                  noteBodyId: 'body-target',
+                  homeContent: '',
+                  activeSubTabId: null,
+                  subTabs: [],
+                },
+                {
+                  id: 'tab-peer',
+                  title: 'Peer',
+                  noteBodyId: 'body-target',
+                  homeContent: '',
+                  activeSubTabId: null,
+                  subTabs: [],
+                },
+              ],
+              deletedTabs: [],
+              deletedSubTabs: [],
+            },
+          },
+        ],
+        noteAisleBodies: [
+          { id: 'source-aisle-body', markdown: 'source text' },
+          { id: 'shared-aisle-body', markdown: 'base text' },
+        ],
+        noteBodies: [
+          {
+            id: 'body-source',
+            aisles: [
+              { id: 'source-aisle', aisleBodyId: 'source-aisle-body', markdown: 'source text' },
+              { id: 'linked-aisle', aisleBodyId: 'shared-aisle-body', markdown: 'base text' },
+            ],
+          },
+          {
+            id: 'body-target',
+            aisles: [{ id: 'target-aisle', aisleBodyId: 'shared-aisle-body', markdown: 'base text' }],
+          },
+        ],
+      }),
+    )
+
+    const next = applyMarkdownToAppState(state, 'space-1', 'tab-source', null, 'linked-aisle', 'linked aisle edit')
+    const sourceBody = next.noteBodies.find((body) => body.id === 'body-source')
+    const targetBody = next.noteBodies.find((body) => body.id === 'body-target')
+
+    expect(next.noteAisleBodies?.find((aisleBody) => aisleBody.id === 'shared-aisle-body')?.markdown).toBe(
+      'linked aisle edit',
+    )
+    expect(sourceBody?.aisles.find((aisle) => aisle.id === 'linked-aisle')?.markdown).toBe('linked aisle edit')
+    expect(targetBody?.aisles[0]?.markdown).toBe('linked aisle edit')
+    expect(next.spaces[0].data.tabs.find((tab) => tab.id === 'tab-target')?.homeContent).toBe('linked aisle edit')
+    expect(next.spaces[0].data.tabs.find((tab) => tab.id === 'tab-peer')?.homeContent).toBe('linked aisle edit')
+  })
+
+  it('can commit by aisle body id when a linked aisle slot id is stale or mismatched', () => {
+    const state = parseSavedState(
+      JSON.stringify({
+        spaces: [
+          {
+            id: 'space-1',
+            name: 'Space',
+            data: {
+              activeTabId: 'tab-source',
+              tabs: [
+                {
+                  id: 'tab-source',
+                  title: 'Source',
+                  noteBodyId: 'body-source',
+                  homeContent: '',
+                  activeSubTabId: null,
+                  subTabs: [],
+                },
+                {
+                  id: 'tab-target',
+                  title: 'Target',
+                  noteBodyId: 'body-target',
+                  homeContent: '',
+                  activeSubTabId: null,
+                  subTabs: [],
+                },
+              ],
+              deletedTabs: [],
+              deletedSubTabs: [],
+            },
+          },
+        ],
+        noteAisleBodies: [
+          { id: 'source-aisle-body', markdown: 'source text' },
+          { id: 'shared-aisle-body', markdown: 'base text' },
+        ],
+        noteBodies: [
+          {
+            id: 'body-source',
+            aisles: [
+              { id: 'source-aisle', aisleBodyId: 'source-aisle-body', markdown: 'source text' },
+              { id: 'linked-aisle', aisleBodyId: 'shared-aisle-body', markdown: 'base text' },
+            ],
+          },
+          {
+            id: 'body-target',
+            aisles: [{ id: 'target-aisle', aisleBodyId: 'shared-aisle-body', markdown: 'base text' }],
+          },
+        ],
+      }),
+    )
+
+    const next = applyMarkdownToAppState(
+      state,
+      'space-1',
+      'tab-source',
+      null,
+      'source-aisle',
+      'body-id edit',
+      { aisleBodyId: 'shared-aisle-body' },
+    )
+
+    expect(next.noteAisleBodies?.find((aisleBody) => aisleBody.id === 'shared-aisle-body')?.markdown).toBe(
+      'body-id edit',
+    )
+    expect(next.noteAisleBodies?.find((aisleBody) => aisleBody.id === 'source-aisle-body')?.markdown).toBe(
+      'source text',
+    )
+    expect(next.noteBodies.find((body) => body.id === 'body-source')?.aisles[1]?.markdown).toBe('body-id edit')
+    expect(next.noteBodies.find((body) => body.id === 'body-target')?.aisles[0]?.markdown).toBe('body-id edit')
+  })
+
   it('backfills note body timestamps from existing frontmatter', () => {
     const state = parseSavedState(
       JSON.stringify({

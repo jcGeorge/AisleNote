@@ -12,7 +12,13 @@ vi.mock('prosemirror-history', () => ({
   undo: historySpies.undo,
 }))
 
-import { getExternalLinkRangeAtDocPosition, getNoteMentionQueryAtSelection, runWysiwygHistory } from './prosemirror-utils'
+import {
+  getExternalLinkRangeAtDocPosition,
+  getNoteMentionQueryAtSelection,
+  isProseMirrorDocMeaningful,
+  runWysiwygHistory,
+  shouldBlockWysiwygUndo,
+} from './prosemirror-utils'
 
 const schema = new Schema({
   nodes: {
@@ -22,6 +28,23 @@ const schema = new Schema({
       group: 'block',
       content: 'inline*',
       toDOM: () => ['p', 0],
+    },
+    image: {
+      group: 'inline',
+      inline: true,
+      atom: true,
+      attrs: { src: {} },
+      toDOM: (node) => ['img', { src: node.attrs.src }],
+    },
+    table: {
+      group: 'block',
+      atom: true,
+      toDOM: () => ['table', ['tbody', 0]],
+    },
+    thematicBreak: {
+      group: 'block',
+      atom: true,
+      toDOM: () => ['hr'],
     },
   },
   marks: {
@@ -38,24 +61,104 @@ describe('wysiwyg history commands', () => {
     historySpies.undo.mockReset()
   })
 
-  it('runs undo against the active wysiwyg editor view', () => {
-    const view = { state: {}, dispatch: vi.fn() }
-    const editor = { wwEditor: { view }, focus: vi.fn() }
-    historySpies.undo.mockReturnValue(true)
+  const docForBlocks = (...blocks: any[]) => schema.nodes.doc.create(null, blocks)
+  const paragraph = (text = '') => schema.nodes.paragraph.create(null, text ? [schema.text(text)] : undefined)
 
-    expect(runWysiwygHistory(editor as unknown as Editor, 'undo')).toBe(true)
-    expect(historySpies.undo).toHaveBeenCalledWith(view.state, view.dispatch, view)
+  it('runs undo against the active wysiwyg editor view', () => {
+    const transaction = { doc: docForBlocks(paragraph('before')), docChanged: true }
+    const view = { state: { doc: docForBlocks(paragraph('after')) }, dispatch: vi.fn() }
+    const editor = { wwEditor: { view }, focus: vi.fn() }
+    historySpies.undo.mockImplementation((_state, dispatch) => {
+      dispatch?.(transaction)
+      return true
+    })
+
+    expect(runWysiwygHistory(editor as unknown as Editor, 'undo')).toBe('applied')
+    expect(historySpies.undo).toHaveBeenCalledWith(view.state, expect.any(Function), view)
+    expect(view.dispatch).toHaveBeenCalledWith(transaction)
     expect(editor.focus).toHaveBeenCalledOnce()
   })
 
   it('runs redo and leaves focus alone when history does not change', () => {
-    const view = { state: {}, dispatch: vi.fn() }
+    const view = { state: { doc: docForBlocks(paragraph('after')) }, dispatch: vi.fn() }
     const editor = { wwEditor: { view }, focus: vi.fn() }
     historySpies.redo.mockReturnValue(false)
 
-    expect(runWysiwygHistory(editor as unknown as Editor, 'redo')).toBe(false)
-    expect(historySpies.redo).toHaveBeenCalledWith(view.state, view.dispatch, view)
+    expect(runWysiwygHistory(editor as unknown as Editor, 'redo')).toBe('unavailable')
+    expect(historySpies.redo).toHaveBeenCalledWith(view.state, expect.any(Function), view)
     expect(editor.focus).not.toHaveBeenCalled()
+  })
+
+  it('blocks undo that would clear all meaningful content', () => {
+    const transaction = { doc: docForBlocks(paragraph()), docChanged: true }
+    const view = { state: { doc: docForBlocks(paragraph('keep me')) }, dispatch: vi.fn() }
+    const editor = { wwEditor: { view }, focus: vi.fn() }
+    historySpies.undo.mockImplementation((_state, dispatch) => {
+      dispatch?.(transaction)
+      return true
+    })
+
+    expect(runWysiwygHistory(editor as unknown as Editor, 'undo')).toBe('blocked')
+    expect(view.dispatch).not.toHaveBeenCalled()
+    expect(editor.focus).not.toHaveBeenCalled()
+  })
+
+  it('allows undo that leaves meaningful content', () => {
+    const transaction = { doc: docForBlocks(paragraph('still here')), docChanged: true }
+    const view = { state: { doc: docForBlocks(paragraph('after')) }, dispatch: vi.fn() }
+    const editor = { wwEditor: { view }, focus: vi.fn() }
+    historySpies.undo.mockImplementation((_state, dispatch) => {
+      dispatch?.(transaction)
+      return true
+    })
+
+    expect(runWysiwygHistory(editor as unknown as Editor, 'undo')).toBe('applied')
+    expect(view.dispatch).toHaveBeenCalledWith(transaction)
+  })
+
+  it('allows undo from blank-only content to empty', () => {
+    const transaction = { doc: docForBlocks(paragraph()), docChanged: true }
+    const view = { state: { doc: docForBlocks(paragraph('\u200b')) }, dispatch: vi.fn() }
+    const editor = { wwEditor: { view }, focus: vi.fn() }
+    historySpies.undo.mockImplementation((_state, dispatch) => {
+      dispatch?.(transaction)
+      return true
+    })
+
+    expect(runWysiwygHistory(editor as unknown as Editor, 'undo')).toBe('applied')
+    expect(view.dispatch).toHaveBeenCalledWith(transaction)
+  })
+
+  it('does not apply the clear-all undo guard to redo', () => {
+    const transaction = { doc: docForBlocks(paragraph()), docChanged: true }
+    const view = { state: { doc: docForBlocks(paragraph('after')) }, dispatch: vi.fn() }
+    const editor = { wwEditor: { view }, focus: vi.fn() }
+    historySpies.redo.mockImplementation((_state, dispatch) => {
+      dispatch?.(transaction)
+      return true
+    })
+
+    expect(runWysiwygHistory(editor as unknown as Editor, 'redo')).toBe('applied')
+    expect(view.dispatch).toHaveBeenCalledWith(transaction)
+  })
+})
+
+describe('ProseMirror meaningful content detection', () => {
+  const docForBlocks = (...blocks: any[]) => schema.nodes.doc.create(null, blocks)
+  const paragraph = (text = '') => schema.nodes.paragraph.create(null, text ? [schema.text(text)] : undefined)
+
+  it('treats text as meaningful and blank placeholder paragraphs as empty', () => {
+    expect(isProseMirrorDocMeaningful(docForBlocks(paragraph('text')))).toBe(true)
+    expect(isProseMirrorDocMeaningful(docForBlocks(paragraph('\u200b')))).toBe(false)
+    expect(shouldBlockWysiwygUndo(docForBlocks(paragraph('text')), docForBlocks(paragraph()))).toBe(true)
+  })
+
+  it('treats embedded and structural content nodes as meaningful', () => {
+    expect(isProseMirrorDocMeaningful(docForBlocks(
+      schema.nodes.paragraph.create(null, [schema.nodes.image.create({ src: 'image.png' })]),
+    ))).toBe(true)
+    expect(isProseMirrorDocMeaningful(docForBlocks(schema.nodes.table.create()))).toBe(true)
+    expect(isProseMirrorDocMeaningful(docForBlocks(schema.nodes.thematicBreak.create()))).toBe(true)
   })
 })
 

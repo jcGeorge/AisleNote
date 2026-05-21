@@ -136,6 +136,13 @@ export function hasMultiLineDecorationState(state: unknown): boolean {
   )
 }
 
+export function getStructuralListIndentCommitMarkdown(
+  editor: Editor,
+  getNormalizedEditorMarkdown: (editor: Editor) => string,
+): string {
+  return getNormalizedEditorMarkdown(editor)
+}
+
 export function useMultilineEditing({
   editorRef,
   lastEditorMarkdownRef,
@@ -413,7 +420,7 @@ export function useMultilineEditing({
     const selectionTo = Math.max(from, to)
 
     if (applyStructuralListIndent(currentEditor, outdent)) {
-      const markdownAfterListIndent = normalizeMarkdownForPersistence(currentEditor.getMarkdown())
+      const markdownAfterListIndent = getStructuralListIndentCommitMarkdown(currentEditor, getNormalizedEditorMarkdown)
       commitMarkdown(markdownAfterListIndent)
       window.requestAnimationFrame(() => {
         currentEditor.focus()

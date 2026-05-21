@@ -36,21 +36,32 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
 
   if (modal.type === 'copy-note') {
     const hasExistingContent = noteLocationHasContent(state, modal.source)
+    const selectedAisles = Boolean(modal.target.aisleIds && modal.target.aisleIds.length > 0)
+    const appendAisles = modal.destinationMode === 'append'
     if (modal.mode === 'linked') {
+      const linkedAisleCopy = selectedAisles || appendAisles
       return {
         title: 'make copy',
-        body: hasExistingContent
-          ? 'this note will be replaced with a linked copy of the target note. edits in either location will affect both.'
-          : 'this note will become a linked copy of the target note. edits in either location will affect both.',
+        body: linkedAisleCopy
+          ? appendAisles
+            ? 'this note will receive linked copies of the target aisles. edits in any linked aisle will affect each copy.'
+            : 'this note will be replaced with linked copies of the selected target aisles. edits in any linked aisle will affect each copy.'
+          : hasExistingContent
+            ? 'this note will be replaced with a linked copy of the target note. edits in either location will affect both.'
+            : 'this note will become a linked copy of the target note. edits in either location will affect both.',
         action: 'make copy',
       }
     }
 
     return {
       title: 'make copy',
-      body: hasExistingContent
-        ? 'this note will be replaced with an independent copy of the target note, including all aisles.'
-        : 'this note will receive an independent copy of the target note, including all aisles.',
+      body: appendAisles
+        ? 'this note will receive independent text copies of the target aisles.'
+        : selectedAisles
+          ? 'this note will be replaced with independent text copies of the selected target aisles.'
+        : hasExistingContent
+          ? 'this note will be replaced with an independent copy of the target note, including all aisles.'
+          : 'this note will receive an independent copy of the target note, including all aisles.',
       action: 'make copy',
     }
   }

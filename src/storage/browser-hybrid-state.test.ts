@@ -222,6 +222,150 @@ describe('browser hybrid storage', () => {
     })
   })
 
+  it('round trips shared aisle body ids through the manifest file map', () => {
+    const state = parseSavedState(
+      JSON.stringify({
+        theme: 'dawn',
+        spaces: [
+          {
+            id: 'space-1',
+            name: 'Space',
+            data: {
+              activeTabId: 'tab-1',
+              tabs: [
+                {
+                  id: 'tab-1',
+                  title: 'One',
+                  noteBodyId: 'body-1',
+                  homeContent: '',
+                  activeSubTabId: null,
+                  subTabs: [],
+                },
+                {
+                  id: 'tab-2',
+                  title: 'Two',
+                  noteBodyId: 'body-2',
+                  homeContent: '',
+                  activeSubTabId: null,
+                  subTabs: [],
+                },
+              ],
+              deletedTabs: [],
+              deletedSubTabs: [],
+            },
+          },
+        ],
+        noteAisleBodies: [{ id: 'shared-aisle-body', markdown: 'shared aisle text' }],
+        noteBodies: [
+          {
+            id: 'body-1',
+            aisles: [{ id: 'aisle-1', aisleBodyId: 'shared-aisle-body', markdown: 'shared aisle text' }],
+          },
+          {
+            id: 'body-2',
+            aisles: [{ id: 'aisle-2', aisleBodyId: 'shared-aisle-body', markdown: 'shared aisle text' }],
+          },
+        ],
+      }),
+    )
+
+    const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
+    const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
+    const serialized = readSerializedStateFromHybridFileMap(fileMap)
+    const roundTripped = parseSavedState(serialized)
+    const bodyOne = roundTripped.noteBodies.find((body) => body.id === 'body-1')
+    const bodyTwo = roundTripped.noteBodies.find((body) => body.id === 'body-2')
+    const manifestBodies = Array.isArray(rootManifest.noteBodies) ? rootManifest.noteBodies : []
+
+    expect(bodyOne?.aisles[0]?.aisleBodyId).toBe('shared-aisle-body')
+    expect(bodyTwo?.aisles[0]?.aisleBodyId).toBe('shared-aisle-body')
+    expect(roundTripped.noteAisleBodies?.find((body) => body.id === 'shared-aisle-body')?.markdown).toBe('shared aisle text')
+    expect(JSON.stringify(manifestBodies)).toContain('"aisleBodyId":"shared-aisle-body"')
+  })
+
+  it('uses shared aisle body markdown instead of stale linked aisle mirrors', () => {
+    const currentMarkdown = 'Hat Trick!\n\n---\n\n\u200b'
+    const staleMarkdown = 'Hat Trick!\n\n\u200b\n\n\n\n\u200b\n\n---\n\n\u200b'
+    const state = parseSavedState(
+      JSON.stringify({
+        theme: 'dawn',
+        spaces: [
+          {
+            id: 'space-1',
+            name: 'Space',
+            data: {
+              activeTabId: 'tab-1',
+              tabs: [
+                {
+                  id: 'tab-1',
+                  title: 'One',
+                  noteBodyId: 'body-1',
+                  homeContent: '',
+                  activeSubTabId: null,
+                  subTabs: [],
+                },
+                {
+                  id: 'tab-2',
+                  title: 'Two',
+                  noteBodyId: 'body-2',
+                  homeContent: '',
+                  activeSubTabId: null,
+                  subTabs: [],
+                },
+              ],
+              deletedTabs: [],
+              deletedSubTabs: [],
+            },
+          },
+        ],
+        noteAisleBodies: [{ id: 'shared-aisle-body', markdown: currentMarkdown }],
+        noteBodies: [
+          {
+            id: 'body-1',
+            aisles: [{ id: 'aisle-1', aisleBodyId: 'shared-aisle-body', markdown: currentMarkdown }],
+          },
+          {
+            id: 'body-2',
+            aisles: [{ id: 'aisle-2', aisleBodyId: 'shared-aisle-body', markdown: currentMarkdown }],
+          },
+        ],
+      }),
+    )
+    const bodyTwo = state.noteBodies.find((body) => body.id === 'body-2')
+    if (bodyTwo?.aisles[0]) {
+      bodyTwo.aisles[0].markdown = staleMarkdown
+    }
+
+    const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
+    const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
+    const noteAisleBodyEntries = Array.isArray(rootManifest.noteAisleBodies) ? rootManifest.noteAisleBodies : []
+    const sharedAisleBody = getRecord(noteAisleBodyEntries.find((entry) => getRecord(entry).id === 'shared-aisle-body'))
+    const sharedAisleBodyFile = String(sharedAisleBody.file)
+    const noteBodyEntries = Array.isArray(rootManifest.noteBodies) ? rootManifest.noteBodies.map(getRecord) : []
+    const linkedAisleFiles = noteBodyEntries
+      .flatMap((body) => (Array.isArray(body.aisles) ? body.aisles.map(getRecord) : []))
+      .filter((aisle) => aisle.aisleBodyId === 'shared-aisle-body')
+      .map((aisle) => String(aisle.file))
+    const staleLinkedFile = linkedAisleFiles.find((file) => file !== sharedAisleBodyFile)
+    if (staleLinkedFile) {
+      fileMap.set(`notes-data/${staleLinkedFile}`, {
+        path: `notes-data/${staleLinkedFile}`,
+        kind: 'text',
+        text: staleMarkdown,
+      })
+    }
+
+    const serialized = readSerializedStateFromHybridFileMap(fileMap)
+    const roundTripped = parseSavedState(serialized)
+    const roundTrippedBodyOne = roundTripped.noteBodies.find((body) => body.id === 'body-1')
+    const roundTrippedBodyTwo = roundTripped.noteBodies.find((body) => body.id === 'body-2')
+
+    expect(sharedAisleBodyFile).toBeTruthy()
+    expect(roundTripped.noteAisleBodies?.find((body) => body.id === 'shared-aisle-body')?.markdown).toBe(currentMarkdown)
+    expect(roundTrippedBodyOne?.aisles[0]?.markdown).toBe(currentMarkdown)
+    expect(roundTrippedBodyTwo?.aisles[0]?.markdown).toBe(currentMarkdown)
+  })
+
   it('caps generated v2 path segments without truncating app titles', () => {
     const longTitle = 'Very Long Cross Platform Folder Name With Emoji 👨‍👩‍👧‍👦 And Symbols <>:"/\\|?* '.repeat(4).trim()
     const state = parseSavedState(
@@ -371,6 +515,9 @@ describe('browser hybrid storage', () => {
   it('keeps markdown references for missing image assets', () => {
     const state = createBrowserStorageState()
     state.noteBodies[0].aisles[0].markdown = 'image ![pixel](data:image/png;base64,iVBORw0KGgo=)'
+    if (state.noteAisleBodies?.[0]) {
+      state.noteAisleBodies[0].markdown = state.noteBodies[0].aisles[0].markdown
+    }
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
     Array.from(fileMap.keys())
       .filter((path) => path.startsWith('notes-data/assets/'))
@@ -390,6 +537,9 @@ describe('browser hybrid storage', () => {
     const assetPath = 'assets/asset-browser-test.png'
     registerImageAssetBytes(assetPath, bytes, 'image/png')
     state.noteBodies[0].aisles[0].markdown = `image ![pixel](${buildImageAssetUrl(assetPath)})`
+    if (state.noteAisleBodies?.[0]) {
+      state.noteAisleBodies[0].markdown = state.noteBodies[0].aisles[0].markdown
+    }
 
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
     const assetEntry = fileMap.get(`notes-data/${assetPath}`)

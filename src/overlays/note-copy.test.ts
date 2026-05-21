@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_FRONTMATTER_SETTINGS } from '../frontmatter/frontmatter'
 import { getLocationInfo } from '../notes/note-locations'
+import { applyMarkdownToAppState } from '../state/app-state'
 import type { AppState, NoteLocation, Space } from '../types/app'
 import { applyNoteCopyToState } from './note-copy'
 
@@ -71,7 +72,14 @@ function createCopyTestState(): AppState {
     spaces: [space],
     noteBodies: [
       { id: 'body-source', frontmatter: null, aisles: [{ id: 'aisle-source', markdown: 'source text' }] },
-      { id: 'body-target', frontmatter: null, aisles: [{ id: 'aisle-target', markdown: 'target text' }] },
+      {
+        id: 'body-target',
+        frontmatter: null,
+        aisles: [
+          { id: 'aisle-target', markdown: 'target text' },
+          { id: 'aisle-target-2', markdown: 'second target aisle' },
+        ],
+      },
     ],
     hotkeys: {
       shortcuts: {
@@ -159,5 +167,114 @@ describe('note copy helpers', () => {
     expect(result.state.noteBodies).toHaveLength(3)
     expect(result.state.noteBodies.find((body) => body.id === sourceBodyId)?.aisles[0]?.markdown).toBe('target text')
     expect(getLocationInfo(result.state, targetLocation).noteBodyId).toBe('body-target')
+  })
+
+  it('blocks exact self-copy', () => {
+    const result = applyNoteCopyToState(createCopyTestState(), sourceLocation, sourceLocation, 'independent')
+
+    expect(result.status).toBe('self-copy')
+    expect(result.state).toEqual(createCopyTestState())
+  })
+
+  it('replaces with independent selected aisle copies while keeping destination metadata', () => {
+    const state = createCopyTestState()
+    state.noteBodies[0].frontmatter = { status: 'draft' }
+    const result = applyNoteCopyToState(
+      state,
+      sourceLocation,
+      { ...targetLocation, aisleIds: ['aisle-target-2'] },
+      'independent',
+      'replace',
+    )
+    const sourceBodyId = getLocationInfo(result.state, sourceLocation).noteBodyId
+    const sourceBody = result.state.noteBodies.find((body) => body.id === sourceBodyId)
+
+    expect(result.status).toBe('applied')
+    expect(sourceBody?.frontmatter).toEqual({ status: 'draft' })
+    expect(sourceBody?.aisles.map((aisle) => aisle.markdown)).toEqual(['second target aisle'])
+    expect(getLocationInfo(result.state, targetLocation).noteBodyId).toBe('body-target')
+  })
+
+  it('appends independent selected aisle copies to the destination body', () => {
+    const result = applyNoteCopyToState(
+      createCopyTestState(),
+      sourceLocation,
+      { ...targetLocation, aisleIds: ['aisle-target-2'] },
+      'independent',
+      'append',
+    )
+
+    expect(result.status).toBe('applied')
+    expect(getLocationInfo(result.state, sourceLocation).noteBodyId).toBe('body-source')
+    expect(getLocationInfo(result.state, peerLocation).noteBodyId).toBe('body-source')
+    expect(result.state.noteBodies.find((body) => body.id === 'body-source')?.aisles.map((aisle) => aisle.markdown)).toEqual([
+      'source text',
+      'second target aisle',
+    ])
+  })
+
+  it('replaces with linked selected aisles as shared aisle text', () => {
+    const state = createCopyTestState()
+    state.noteBodies[0].frontmatter = { owner: 'destination' }
+    const result = applyNoteCopyToState(
+      state,
+      sourceLocation,
+      { ...targetLocation, aisleIds: ['aisle-target-2'] },
+      'linked',
+      'replace',
+    )
+    const sourceBodyId = getLocationInfo(result.state, sourceLocation).noteBodyId
+    const sourceBody = result.state.noteBodies.find((body) => body.id === sourceBodyId)
+    const targetBody = result.state.noteBodies.find((body) => body.id === 'body-target')
+    const targetAisle = targetBody?.aisles.find((aisle) => aisle.id === 'aisle-target-2')
+
+    expect(result.status).toBe('applied')
+    expect(sourceBody?.frontmatter).toEqual({ owner: 'destination' })
+    expect(sourceBody?.aisles).toHaveLength(1)
+    expect(sourceBody?.aisles[0]?.markdown).toBe('second target aisle')
+    expect(sourceBody?.aisles[0]?.aisleBodyId).toBe(targetAisle?.aisleBodyId)
+    expect(sourceBody?.aisles[0]?.markdown).not.toContain('{{tabs-context:')
+  })
+
+  it('appends linked all-aisle copies to the destination body', () => {
+    const result = applyNoteCopyToState(createCopyTestState(), sourceLocation, targetLocation, 'linked', 'append')
+    const sourceBody = result.state.noteBodies.find((body) => body.id === 'body-source')
+    const targetBody = result.state.noteBodies.find((body) => body.id === 'body-target')
+
+    expect(result.status).toBe('applied')
+    expect(sourceBody?.aisles).toHaveLength(3)
+    expect(sourceBody?.aisles[1]?.markdown).toBe('target text')
+    expect(sourceBody?.aisles[2]?.markdown).toBe('second target aisle')
+    expect(sourceBody?.aisles[1]?.aisleBodyId).toBe(targetBody?.aisles[0]?.aisleBodyId)
+    expect(sourceBody?.aisles[2]?.aisleBodyId).toBe(targetBody?.aisles[1]?.aisleBodyId)
+  })
+
+  it('updates every linked aisle when one shared aisle copy is edited', () => {
+    const copied = applyNoteCopyToState(
+      createCopyTestState(),
+      sourceLocation,
+      { ...targetLocation, aisleIds: ['aisle-target-2'] },
+      'linked',
+      'replace',
+    )
+    const sourceBodyId = getLocationInfo(copied.state, sourceLocation).noteBodyId
+    const sourceBody = copied.state.noteBodies.find((body) => body.id === sourceBodyId)
+    const sourceAisleId = sourceBody?.aisles[0]?.id ?? ''
+    const edited = applyMarkdownToAppState(copied.state, 'space-1', 'tab-source', null, sourceAisleId, 'linked edit')
+    const editedSourceBody = edited.noteBodies.find((body) => body.id === sourceBodyId)
+    const editedTargetBody = edited.noteBodies.find((body) => body.id === 'body-target')
+
+    expect(editedSourceBody?.aisles[0]?.markdown).toBe('linked edit')
+    expect(editedTargetBody?.aisles.find((aisle) => aisle.id === 'aisle-target-2')?.markdown).toBe('linked edit')
+  })
+
+  it('allows appending linked copies of a note into its own aisles', () => {
+    const result = applyNoteCopyToState(createCopyTestState(), sourceLocation, sourceLocation, 'linked', 'append')
+    const sourceBody = result.state.noteBodies.find((body) => body.id === 'body-source')
+
+    expect(result.status).toBe('applied')
+    expect(sourceBody?.aisles).toHaveLength(2)
+    expect(sourceBody?.aisles[1]?.markdown).toBe('source text')
+    expect(sourceBody?.aisles[1]?.aisleBodyId).toBe(sourceBody?.aisles[0]?.aisleBodyId)
   })
 })

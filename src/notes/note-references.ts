@@ -1,5 +1,7 @@
 import type { AppState, NoteLocation } from '../types/app'
 import { buildNoteLocationKey, getLocationInfo } from './note-locations'
+import { getAisleMarkdown } from './note-markdown'
+import { syncNoteBodyAislesInState } from './note-state'
 
 export type NoteContextReferencePayload = {
   id: string
@@ -114,22 +116,23 @@ export function removeContextReferencesForNoteLocationsFromAppState(
 ): AppState {
   if (deletedLocations.length === 0) return sourceState
 
-  let changed = false
-  const noteBodies = sourceState.noteBodies.map((body) => {
+  let nextState = sourceState
+  for (const body of sourceState.noteBodies) {
     let bodyChanged = false
     const aisles = body.aisles.map((aisle) => {
-      const markdown = removeContextReferencesForNoteLocationsFromMarkdown(aisle.markdown, deletedLocations)
-      if (markdown === aisle.markdown) return aisle
+      const currentMarkdown = getAisleMarkdown(aisle, nextState.noteAisleBodies)
+      const markdown = removeContextReferencesForNoteLocationsFromMarkdown(currentMarkdown, deletedLocations)
+      if (markdown === currentMarkdown) return aisle
       bodyChanged = true
       return { ...aisle, markdown }
     })
 
-    if (!bodyChanged) return body
-    changed = true
-    return { ...body, aisles }
-  })
+    if (bodyChanged) {
+      nextState = syncNoteBodyAislesInState(nextState, body.id, aisles)
+    }
+  }
 
-  return changed ? { ...sourceState, noteBodies } : sourceState
+  return nextState
 }
 
 export function buildInternalNoteUrl(noteBodyId: string, target: NoteLocation): string {
@@ -223,7 +226,7 @@ export function wouldCreateContextCycle(
   if (!targetBody) return false
 
   for (const aisle of targetBody.aisles) {
-    for (const reference of parseContextReferences(aisle.markdown)) {
+    for (const reference of parseContextReferences(getAisleMarkdown(aisle, sourceState.noteAisleBodies))) {
       const childBodyId = getLocationInfo(sourceState, reference.payload.target).noteBodyId
       if (wouldCreateContextCycle(sourceState, childBodyId, blockedNoteBodyId, visited)) return true
     }

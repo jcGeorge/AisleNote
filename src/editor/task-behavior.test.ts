@@ -15,9 +15,11 @@ import {
   mergeInlineRectsIntoLineRects,
   moveCapturedListItemBranchInEditor,
   moveListItemBranchInEditor,
+  scheduleTaskCheckboxStateCommit,
   scheduleTaskReorderNativeSelectionClear,
   setTaskReorderDocumentSelectionSuppressed,
   shouldRunDelayedTaskCaretPlacement,
+  shouldScheduleUncheckedTaskCheckboxCommit,
   shouldSuppressListReorderSelectStart,
   shouldUseManualListCaretPlacement,
 } from './task-behavior'
@@ -160,6 +162,51 @@ function stubSelectionSuppressionEnvironment() {
   }
 }
 
+function stubTaskCommitScheduler() {
+  const timeoutCallbacks = new Map<number, () => void>()
+  const frameCallbacks = new Map<number, (time: number) => void>()
+  let timeoutId = 0
+  let frameId = 0
+  const clearTimeout = vi.fn((id: number) => {
+    timeoutCallbacks.delete(id)
+  })
+  const cancelAnimationFrame = vi.fn((id: number) => {
+    frameCallbacks.delete(id)
+  })
+
+  vi.stubGlobal('window', {
+    setTimeout: (callback: () => void) => {
+      timeoutId += 1
+      timeoutCallbacks.set(timeoutId, callback)
+      return timeoutId
+    },
+    clearTimeout,
+    requestAnimationFrame: (callback: (time: number) => void) => {
+      frameId += 1
+      frameCallbacks.set(frameId, callback)
+      return frameId
+    },
+    cancelAnimationFrame,
+  })
+
+  return {
+    clearTimeout,
+    cancelAnimationFrame,
+    flushTimeouts: () => {
+      for (const [id, callback] of Array.from(timeoutCallbacks.entries())) {
+        timeoutCallbacks.delete(id)
+        callback()
+      }
+    },
+    flushFrames: () => {
+      for (const [id, callback] of Array.from(frameCallbacks.entries())) {
+        frameCallbacks.delete(id)
+        callback(0)
+      }
+    },
+  }
+}
+
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.clearAllMocks()
@@ -257,6 +304,41 @@ describe('list markdown reordering', () => {
 })
 
 describe('list reorder pointer handling', () => {
+  it('schedules task checkbox commits after the editor checkbox handler can run', () => {
+    const environment = stubTaskCommitScheduler()
+    const editor = {} as any
+    const onCommit = vi.fn()
+
+    scheduleTaskCheckboxStateCommit(editor, onCommit)
+
+    expect(onCommit).not.toHaveBeenCalled()
+    environment.flushTimeouts()
+    expect(onCommit).not.toHaveBeenCalled()
+    environment.flushFrames()
+    expect(onCommit).toHaveBeenCalledWith(editor)
+  })
+
+  it('cancels pending task checkbox commits during cleanup', () => {
+    const environment = stubTaskCommitScheduler()
+    const onCommit = vi.fn()
+
+    const cancel = scheduleTaskCheckboxStateCommit({} as any, onCommit)
+    cancel()
+    environment.flushTimeouts()
+    environment.flushFrames()
+
+    expect(onCommit).not.toHaveBeenCalled()
+    expect(environment.clearTimeout).toHaveBeenCalled()
+  })
+
+  it('schedules mousedown commits only for unchecked task checkboxes', () => {
+    expect(shouldScheduleUncheckedTaskCheckboxCommit({ node: { attrs: { task: true, checked: false } } })).toBe(true)
+    expect(shouldScheduleUncheckedTaskCheckboxCommit({ node: { attrs: { task: true } } })).toBe(true)
+    expect(shouldScheduleUncheckedTaskCheckboxCommit({ node: { attrs: { task: true, checked: true } } })).toBe(false)
+    expect(shouldScheduleUncheckedTaskCheckboxCommit({ node: { attrs: { task: false, checked: false } } })).toBe(false)
+    expect(shouldScheduleUncheckedTaskCheckboxCommit(null)).toBe(false)
+  })
+
   it('merges inline mark fragments into one visual line before trailing-space checks', () => {
     expect(
       mergeInlineRectsIntoLineRects([

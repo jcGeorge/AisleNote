@@ -237,6 +237,25 @@ type MarkdownBlockChunk = {
   lines: string[]
 }
 
+export type BlankParagraphDisplayPlan = {
+  markdown: string
+  blockKinds: Array<'blank' | 'content'>
+}
+
+type MarkdownLineBlockKind = 'atomic' | 'list' | 'paragraph'
+
+function isStandaloneBlankLinePlaceholderChunk(chunk: MarkdownBlockChunk): boolean {
+  return chunk.lines.every((line) => {
+    const withoutPlaceholder = line.replaceAll(EDITOR_BLANK_LINE_PLACEHOLDER, '')
+    return line.includes(EDITOR_BLANK_LINE_PLACEHOLDER) && withoutPlaceholder.trim().length === 0
+  })
+}
+
+function isStandaloneBlankLinePlaceholderLine(line: string): boolean {
+  const withoutPlaceholder = line.replaceAll(EDITOR_BLANK_LINE_PLACEHOLDER, '')
+  return line.includes(EDITOR_BLANK_LINE_PLACEHOLDER) && withoutPlaceholder.trim().length === 0
+}
+
 function isFenceBoundary(line: string, activeFence: string | null): string | null {
   const trimmed = line.trim()
   const match = trimmed.match(/^(`{3,}|~{3,})/)
@@ -246,33 +265,86 @@ function isFenceBoundary(line: string, activeFence: string | null): string | nul
   return activeFence === fenceMarker ? null : activeFence
 }
 
+function getMarkdownLineBlockKind(line: string): MarkdownLineBlockKind {
+  if (/^\s{0,3}#{1,6}(?:\s+|$)/.test(line)) return 'atomic'
+  if (/^\s{0,3}(?:-{3,}|\*{3,})\s*$/.test(line)) return 'atomic'
+  if (/^\s{0,3}(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s*)?/.test(line)) return 'list'
+  return 'paragraph'
+}
+
 function splitMarkdownTopLevelChunks(markdown: string): MarkdownBlockChunk[] {
   const lines = String(markdown ?? '').replace(/\r\n/g, '\n').split('\n')
   const chunks: MarkdownBlockChunk[] = []
   let current: string[] = []
   let activeFence: string | null = null
+  let currentKind: MarkdownLineBlockKind | null = null
 
   const pushCurrent = () => {
     if (current.length === 0) return
     chunks.push({ lines: current })
     current = []
+    currentKind = null
   }
 
   lines.forEach((line) => {
-    if (!activeFence && line.trim().length === 0) {
+    if (activeFence) {
+      current.push(line)
+      activeFence = isFenceBoundary(line, activeFence)
+      if (!activeFence) pushCurrent()
+      return
+    }
+
+    if (line.trim().length === 0) {
       pushCurrent()
       return
     }
 
+    if (isStandaloneBlankLinePlaceholderLine(line)) {
+      pushCurrent()
+      chunks.push({ lines: [line] })
+      return
+    }
+
+    const nextFence = isFenceBoundary(line, null)
+    if (nextFence) {
+      pushCurrent()
+      current = [line]
+      currentKind = 'atomic'
+      activeFence = nextFence
+      return
+    }
+
+    const nextKind = getMarkdownLineBlockKind(line)
+    if (nextKind === 'atomic') {
+      pushCurrent()
+      chunks.push({ lines: [line] })
+      return
+    }
+
+    if (currentKind === 'list') {
+      if (nextKind === 'list' || /^\s+/.test(line)) {
+        current.push(line)
+        return
+      }
+      pushCurrent()
+    }
+
+    if (nextKind === 'list') {
+      if (currentKind !== 'list') pushCurrent()
+      currentKind = 'list'
+      current.push(line)
+      return
+    }
+
+    currentKind = 'paragraph'
     current.push(line)
-    activeFence = isFenceBoundary(line, activeFence)
   })
   pushCurrent()
 
   return chunks
 }
 
-function isBlankParagraphNode(node: any): boolean {
+export function isBlankParagraphNode(node: any): boolean {
   if (node?.type?.name !== 'paragraph') return false
   const text = String(node.textContent ?? '').replaceAll(EDITOR_BLANK_LINE_PLACEHOLDER, '').trim()
   if (text.length > 0) return false
@@ -288,6 +360,21 @@ function isBlankParagraphNode(node: any): boolean {
   return true
 }
 
+export function prepareBlankParagraphsForEditorDisplay(markdown: string): BlankParagraphDisplayPlan {
+  const chunks = splitMarkdownTopLevelChunks(markdown)
+  const contentChunks: MarkdownBlockChunk[] = []
+  const blockKinds = chunks.map((chunk) => {
+    if (isStandaloneBlankLinePlaceholderChunk(chunk)) return 'blank' as const
+    contentChunks.push(chunk)
+    return 'content' as const
+  })
+
+  return {
+    markdown: contentChunks.map((chunk) => chunk.lines.join('\n')).join('\n\n'),
+    blockKinds,
+  }
+}
+
 export function preserveBlankParagraphsFromWysiwyg(editor: Editor | null, markdown: string): string {
   const doc = (editor as any)?.wwEditor?.view?.state?.doc
   if (!doc || typeof doc.forEach !== 'function') return markdown
@@ -297,21 +384,26 @@ export function preserveBlankParagraphsFromWysiwyg(editor: Editor | null, markdo
     blockKinds.push(isBlankParagraphNode(node) ? 'blank' : 'content')
   })
 
-  if (!blockKinds.includes('blank')) return markdown
-
   const markdownChunks = splitMarkdownTopLevelChunks(markdown)
+  const contentChunks = markdownChunks.filter((chunk) => !isStandaloneBlankLinePlaceholderChunk(chunk))
+  const hasPlaceholderChunks = contentChunks.length !== markdownChunks.length
+  const hasBlankBlocks = blockKinds.includes('blank')
+
   const contentBlockCount = blockKinds.filter((kind) => kind === 'content').length
-  if (contentBlockCount !== markdownChunks.length) {
+  if (contentBlockCount !== contentChunks.length) {
+    if (!hasBlankBlocks && !hasPlaceholderChunks) return markdown
     return contentBlockCount === 0
       ? blockKinds.map(() => EDITOR_BLANK_LINE_PLACEHOLDER).join('\n\n')
       : markdown
   }
 
+  if (!hasBlankBlocks && !hasPlaceholderChunks && contentChunks.length <= 1) return markdown
+
   let nextChunkIndex = 0
   return blockKinds
     .map((kind) => {
       if (kind === 'blank') return EDITOR_BLANK_LINE_PLACEHOLDER
-      const chunk = markdownChunks[nextChunkIndex]
+      const chunk = contentChunks[nextChunkIndex]
       nextChunkIndex += 1
       return chunk?.lines.join('\n') ?? ''
     })

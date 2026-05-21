@@ -1,4 +1,5 @@
 import type { NoteAisle, PendingContent } from '../types/app'
+import { getAisleBodyId } from '../notes/note-markdown'
 
 export const AISLE_EDITOR_INTERSECTION_ROOT_MARGIN = '0px 100% 0px 100%'
 export const AISLE_EDITOR_IDLE_UNMOUNT_MS = 2000
@@ -74,6 +75,7 @@ export function getAislePreviewMarkdown({
   pendingContent: PendingContent | null
   lastEditorMarkdownByAisle: Map<string, string>
 }): string {
-  if (pendingContent?.aisleId === aisle.id) return pendingContent.markdown
-  return lastEditorMarkdownByAisle.get(aisle.id) ?? aisle.markdown
+  const aisleBodyId = getAisleBodyId(aisle)
+  if (pendingContent?.aisleBodyId === aisleBodyId || pendingContent?.aisleId === aisle.id) return pendingContent.markdown
+  return lastEditorMarkdownByAisle.get(aisleBodyId) ?? aisle.markdown
 }

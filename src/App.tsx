@@ -46,6 +46,8 @@ import {
   getNoteMentionQueryAtSelection,
   getWysiwygView,
   runWysiwygHistory,
+  type WysiwygHistoryDirection,
+  type WysiwygHistoryResult,
   type NoteMentionQuery,
 } from './editor/prosemirror-utils'
 import { useAisleEditors } from './editor/useAisleEditors'
@@ -93,6 +95,7 @@ import {
 } from './notes/note-locations'
 import { openExternalWebUrl } from './notes/external-links'
 import { buildContextToken, buildInternalNoteUrl, wouldCreateContextCycle } from './notes/note-references'
+import { getAisleBodyId } from './notes/note-markdown'
 import { useNoteReferenceActions } from './notes/useNoteReferenceActions'
 import { useAppOverlayActions } from './overlays/useAppOverlayActions'
 import { measureSlowOperation } from './performance/performance-logging'
@@ -845,7 +848,8 @@ function App() {
     normalizingContentRef.current = false
     normalizingAisleIdsRef.current.delete(activeAisleIdRef.current)
     lastEditorMarkdownRef.current = ''
-    lastEditorMarkdownByAisleRef.current.set(activeAisleIdRef.current, '')
+    const activeAisle = activeNoteAisles.find((aisle) => aisle.id === activeAisleIdRef.current)
+    lastEditorMarkdownByAisleRef.current.set(activeAisle ? getAisleBodyId(activeAisle) : activeAisleIdRef.current, '')
     currentEditor.setMarkdown('', false)
     scheduleContentCommit(
       '',
@@ -1293,16 +1297,27 @@ function App() {
     return true
   }
 
-  const runActiveEditorHistory = (direction: 'undo' | 'redo') => {
+  const runEditorHistoryOnly = (direction: WysiwygHistoryDirection): WysiwygHistoryResult => {
+    const currentEditor = editorRef.current
+    if (!currentEditor) return 'unavailable'
+    const result = runWysiwygHistory(currentEditor, direction, {
+      beforeDispatch: () => {
+        scheduleMultiLineHistoryRestore(direction)
+        scheduleAisleStructuralHistoryFallback(direction)
+      },
+    })
+    if (result === 'applied') {
+      scheduleActiveEditorCommandCommit(currentEditor)
+    }
+    return result
+  }
+
+  const runActiveEditorHistory = (direction: WysiwygHistoryDirection) => {
     const currentEditor = editorRef.current
     if (!currentEditor) return false
     currentEditor.focus()
     if (runAisleStructuralHistory(direction)) return true
-    scheduleMultiLineHistoryRestore(direction)
-    scheduleAisleStructuralHistoryFallback(direction)
-    if (runWysiwygHistory(currentEditor, direction)) {
-      scheduleActiveEditorCommandCommit(currentEditor)
-    }
+    runEditorHistoryOnly(direction)
     return true
   }
 
@@ -1730,10 +1745,9 @@ function App() {
     onEditorSelectionChange: saveActiveCursorLocation,
     onEditorMentionQueryChange: refreshNoteMentionQuery,
     onRunStructuralHistory: runAisleStructuralHistory,
-    onEditorHistoryFallback: scheduleAisleStructuralHistoryFallback,
+    onRunEditorHistory: runEditorHistoryOnly,
     onRunNewlineOperation: runActiveNewlineOperation,
     onOpenShortcutMenu: openShortcutMenu,
-    scheduleMultiLineHistoryRestore,
     tryExpandMultilineSelection,
     tryApplyMultiLineEditInput,
     tryApplyMultiLineListMarkerShortcut,

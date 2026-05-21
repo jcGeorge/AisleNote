@@ -1,5 +1,5 @@
 import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
-import { getAisleSignature } from '../notes/note-state'
+import { getAisleSignature, getAisleStructureSignature } from '../notes/note-state'
 import type { NoteAisle, NoteCursorLocation, NoteLocation } from '../types/app'
 
 export type AisleStructuralSnapshot = {
@@ -54,7 +54,7 @@ function normalizedMarkdown(value: string) {
 }
 
 function hasSameAisleOrder(left: NoteAisle[], right: NoteAisle[]) {
-  return left.length === right.length && left.every((aisle, index) => aisle.id === right[index]?.id)
+  return getAisleStructureSignature(left) === getAisleStructureSignature(right)
 }
 
 export function canApplyAisleStructuralEntryToAisles(
@@ -66,6 +66,8 @@ export function canApplyAisleStructuralEntryToAisles(
   const target = getAisleStructuralTargetSnapshot(entry, direction)
   if (getAisleSignature(currentAisles) === getAisleSignature(source.aisles)) return true
   if (!hasSameAisleOrder(currentAisles, source.aisles)) return false
+
+  if (entry.type !== 'add-aisle' || direction !== 'undo') return true
 
   const sourceById = new Map(source.aisles.map((aisle) => [aisle.id, normalizedMarkdown(aisle.markdown)]))
   const targetById = new Map(target.aisles.map((aisle) => [aisle.id, normalizedMarkdown(aisle.markdown)]))

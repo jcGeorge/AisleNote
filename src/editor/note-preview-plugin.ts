@@ -21,7 +21,7 @@ import {
   parseInternalNoteUrl,
 } from '../notes/note-references'
 import type { NoteAisle, NoteLocation } from '../types/app'
-import { prepareMarkdownHighlightsForDisplay } from '../markdown/markdown-utils'
+import { prepareMarkdownForEditorDisplay, restoreEditorBlankParagraphs } from './editor-markdown-display'
 
 const NOTE_PREVIEW_DEFAULT_HEIGHT_REM = 20
 const NOTE_PREVIEW_EXPANDED_HEIGHT_REM = 30
@@ -102,7 +102,7 @@ function createContextPreviewWidgetElement(
 
     const editor = new Editor({
       el: editorHost,
-      initialValue: prepareMarkdownHighlightsForDisplay(aisle.markdown),
+      initialValue: prepareMarkdownForEditorDisplay(aisle.markdown),
       initialEditType: 'wysiwyg',
       previewStyle: 'tab',
       hideModeSwitch: true,
@@ -119,6 +119,7 @@ function createContextPreviewWidgetElement(
         thematicBreakShortcutPlugin,
       ],
     })
+    restoreEditorBlankParagraphs(editor, aisle.markdown)
 
     const view = getWysiwygView(editor)
     if (view?.setProps) {

@@ -111,7 +111,7 @@
 }
 
 .settings-modal.note-picker-modal {
-  width: min(350px, calc(100vw - 2rem));
+  width: min(410px, calc(100vw - 2rem));
 }
 
 .settings-modal.shortcut-settings-modal {
@@ -433,6 +433,31 @@
   gap: 0.25rem;
 }
 
+.note-copy-behavior-row {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.note-copy-behavior-label {
+  color: var(--modal-muted-text);
+  font-size: 0.78em;
+  font-weight: 600;
+  text-transform: lowercase;
+}
+
+.note-copy-behavior-mode {
+  justify-self: start;
+}
+
+.note-copy-behavior-mode .note-reference-mode-btn {
+  padding: 0.2rem 0.42rem;
+  font-size: 0.78em;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
 .note-picker-modal .delete-modal-actions {
   display: grid;
   grid-template-columns: 7.5rem minmax(0, 1fr);
@@ -450,6 +475,7 @@
 
 @media (max-width: 520px) {
   .note-location-picker .settings-modal-field,
+  .note-copy-behavior-row,
   .note-picker-modal .delete-modal-actions {
     grid-template-columns: 1fr;
     gap: 0.35rem;
@@ -457,6 +483,11 @@
 
   .note-picker-aisles {
     padding-left: 0;
+  }
+
+  .note-copy-behavior-mode {
+    justify-self: stretch;
+    flex-wrap: wrap;
   }
 }
 

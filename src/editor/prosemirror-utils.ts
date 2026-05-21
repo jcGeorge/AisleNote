@@ -39,6 +39,58 @@ export type EditorCursorSelection = {
   }
 }
 
+export type WysiwygHistoryDirection = 'undo' | 'redo'
+export type WysiwygHistoryResult = 'applied' | 'blocked' | 'unavailable'
+
+type RunWysiwygHistoryOptions = {
+  beforeDispatch?: () => void
+}
+
+const MEANINGFUL_STRUCTURAL_NODE_NAMES = new Set([
+  'image',
+  'table',
+  'tableRow',
+  'tableCell',
+  'tableHeader',
+  'thematicBreak',
+  'horizontalRule',
+])
+
+function stripBlankSentinelText(value: string): string {
+  return value
+    .replaceAll('\u200b', '')
+    .replaceAll('\u200c', '')
+    .replaceAll('\u200d', '')
+    .replaceAll('\ufeff', '')
+    .trim()
+}
+
+export function isProseMirrorDocMeaningful(doc: any): boolean {
+  let meaningful = false
+  doc?.descendants?.((node: any) => {
+    if (meaningful) return false
+    const typeName = String(node?.type?.name ?? '')
+    if (node?.isText) {
+      meaningful = stripBlankSentinelText(String(node.text ?? node.textContent ?? '')).length > 0
+      return !meaningful
+    }
+    if (MEANINGFUL_STRUCTURAL_NODE_NAMES.has(typeName)) {
+      meaningful = true
+      return false
+    }
+    if ((node?.isAtom || node?.isLeaf) && typeName !== 'hardBreak') {
+      meaningful = true
+      return false
+    }
+    return true
+  })
+  return meaningful
+}
+
+export function shouldBlockWysiwygUndo(currentDoc: any, nextDoc: any): boolean {
+  return isProseMirrorDocMeaningful(currentDoc) && !isProseMirrorDocMeaningful(nextDoc)
+}
+
 export function getCodeBlockOutdentRemoveLength(text: string): number {
   if (text.startsWith('\t')) return 1
   return text.match(/^ {1,4}/)?.[0].length ?? 0
@@ -52,13 +104,30 @@ export function getWysiwygView(editor: Editor | null): any | null {
   return (editor as any)?.wwEditor?.view ?? null
 }
 
-export function runWysiwygHistory(editor: Editor | null, direction: 'undo' | 'redo'): boolean {
+export function runWysiwygHistory(
+  editor: Editor | null,
+  direction: WysiwygHistoryDirection,
+  options: RunWysiwygHistoryOptions = {},
+): WysiwygHistoryResult {
   const view = getWysiwygView(editor)
-  if (!editor || !view) return false
+  if (!editor || !view) return 'unavailable'
   const command = direction === 'undo' ? undo : redo
-  const handled = command(view.state, view.dispatch, view)
-  if (handled) editor.focus()
-  return handled
+  let transaction: any | null = null
+  const handled = command(view.state, (nextTransaction: any) => {
+    transaction = nextTransaction
+  }, view)
+  if (!handled || !transaction) return 'unavailable'
+  if (
+    direction === 'undo' &&
+    transaction.docChanged !== false &&
+    shouldBlockWysiwygUndo(view.state?.doc, transaction.doc ?? view.state?.doc)
+  ) {
+    return 'blocked'
+  }
+  options.beforeDispatch?.()
+  view.dispatch(transaction)
+  editor.focus()
+  return 'applied'
 }
 
 export function getElementFromEventTarget(target: EventTarget | null): Element | null {

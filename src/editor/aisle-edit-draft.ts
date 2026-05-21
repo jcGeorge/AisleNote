@@ -8,6 +8,7 @@ export const MAX_AISLE_WARNING_MESSAGE = 'only eight aisles are allowed for each
 export function createAisleEditDraft(aisles: NoteAisle[]): NoteAisle[] {
   return aisles.map((aisle) => ({
     id: aisle.id,
+    aisleBodyId: aisle.aisleBodyId,
     markdown: normalizeMarkdownForPersistence(aisle.markdown),
   }))
 }
@@ -26,6 +27,7 @@ export function addAisleToDraft(draft: NoteAisle[], aisle: NoteAisle, maxAisles 
     ...draft,
     {
       id: aisle.id,
+      aisleBodyId: aisle.aisleBodyId,
       markdown: normalizeMarkdownForPersistence(aisle.markdown),
     },
   ]

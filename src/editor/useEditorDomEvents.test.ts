@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   getPastedHttpUrl,
   getPastedUrlLink,
@@ -9,6 +9,7 @@ import {
   isActiveWysiwygEditorContentTarget,
   isEditorToolbarInteractionTarget,
   isEditorPointerChromeTarget,
+  runEditorHistoryEvent,
   shouldSkipTableExitRepairTarget,
 } from './useEditorDomEvents'
 
@@ -90,6 +91,34 @@ describe('editor DOM events', () => {
     expect(getMultiLineDeleteInputForBeforeInputType('deleteContentForward')).toEqual({ type: 'delete' })
     expect(getMultiLineDeleteInputForBeforeInputType('deleteContentBackward')).toEqual({ type: 'backspace' })
     expect(getMultiLineDeleteInputForBeforeInputType('insertText')).toBeNull()
+  })
+
+  it('prioritizes aisle structural history before editor history', () => {
+    const onRunStructuralHistory = vi.fn(() => true)
+    const onRunEditorHistory = vi.fn(() => 'applied' as const)
+
+    expect(runEditorHistoryEvent({
+      direction: 'undo',
+      onRunStructuralHistory,
+      onRunEditorHistory,
+    })).toEqual({ handled: true, result: 'structural' })
+    expect(onRunEditorHistory).not.toHaveBeenCalled()
+  })
+
+  it('handles blocked editor history so native undo cannot continue', () => {
+    expect(runEditorHistoryEvent({
+      direction: 'undo',
+      onRunStructuralHistory: vi.fn(() => false),
+      onRunEditorHistory: vi.fn(() => 'blocked' as const),
+    })).toEqual({ handled: true, result: 'blocked' })
+  })
+
+  it('leaves unavailable editor history unhandled', () => {
+    expect(runEditorHistoryEvent({
+      direction: 'redo',
+      onRunStructuralHistory: vi.fn(() => false),
+      onRunEditorHistory: vi.fn(() => 'unavailable' as const),
+    })).toEqual({ handled: false, result: 'unavailable' })
   })
 
   it('detects single http URLs from pasted text', () => {

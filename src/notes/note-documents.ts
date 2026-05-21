@@ -1,4 +1,5 @@
 import type { AppState, NoteAisle, NoteBody } from '../types/app'
+import { resolveNoteBody } from './note-markdown'
 import { cloneAisles, syncNoteBodyAislesInState } from './note-state'
 
 export type NoteDocument = {
@@ -14,9 +15,10 @@ export type NoteDocumentWrite = {
 export function getNoteDocument(state: AppState, noteBodyId: string): NoteDocument | null {
   const body = state.noteBodies.find((candidate) => candidate.id === noteBodyId)
   if (!body) return null
+  const resolvedBody = resolveNoteBody(body, state.noteAisleBodies)
   return {
     noteBodyId: body.id,
-    aisles: cloneAisles(body.aisles),
+    aisles: cloneAisles(resolvedBody.aisles),
   }
 }
 

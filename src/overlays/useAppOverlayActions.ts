@@ -366,6 +366,7 @@ export const useAppOverlayActions = ({
     setModal({
       type: 'copy-note',
       mode,
+      destinationMode: 'replace',
       source,
       target,
     })
@@ -520,7 +521,18 @@ export const useAppOverlayActions = ({
         return
       }
 
-      const result = applyNoteCopyToState(stateRef.current, modal.source, modal.target, modal.mode)
+      const result = applyNoteCopyToState(
+        stateRef.current,
+        modal.source,
+        modal.target,
+        modal.mode,
+        modal.destinationMode,
+      )
+      if (result.status === 'self-copy') {
+        setModal(null)
+        pushToast('choose a different note to copy.', 'warning')
+        return
+      }
       if (result.status === 'missing-target') {
         setModal(null)
         pushToast('choose an existing note.', 'warning')

@@ -1,4 +1,5 @@
 import type { AppState, Domain, NoteLocation, Space, SubTab, Tab } from '../types/app'
+import { getAisleMarkdown } from './note-markdown'
 
 export type NoteLocationInfo = {
   domain: Domain | null
@@ -236,7 +237,7 @@ export function listNoteLocationsForBody(sourceState: AppState, noteBodyId: stri
 export function noteLocationHasContent(sourceState: AppState, location: NoteLocation): boolean {
   const noteBodyId = getLocationInfo(sourceState, location).noteBodyId
   const body = noteBodyId ? sourceState.noteBodies.find((candidate) => candidate.id === noteBodyId) : null
-  return Boolean(body?.aisles.some((aisle) => aisle.markdown.trim().length > 0))
+  return Boolean(body?.aisles.some((aisle) => getAisleMarkdown(aisle, sourceState.noteAisleBodies).trim().length > 0))
 }
 
 export function updateNoteLocationBody(sourceState: AppState, location: NoteLocation, noteBodyId: string): AppState {

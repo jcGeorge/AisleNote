@@ -23,6 +23,7 @@ import {
   wouldCreateContextCycle,
 } from './note-references'
 import { getDefaultNoteLinkLabel, getDefaultNoteReferenceTarget, getLocationInfo } from './note-locations'
+import { getAisleMarkdown } from './note-markdown'
 
 type UseNoteReferenceActionsParams = {
   stateRef: MutableRefObject<AppState>
@@ -71,7 +72,7 @@ export const useNoteReferenceActions = ({
       targetInfo.noteBodyId === sourceNoteBodyId ||
       wouldCreateContextCycle(latestState, targetInfo.noteBodyId, sourceNoteBodyId)
     const previewText = selectedAisles
-      .map((aisle) => aisle.markdown.trim())
+      .map((aisle) => getAisleMarkdown(aisle, latestState.noteAisleBodies).trim())
       .filter(Boolean)
       .join('\n\n')
     const locationLabel = targetInfo.domain && targetInfo.space && targetInfo.tab
@@ -263,7 +264,9 @@ export const useNoteReferenceActions = ({
     const nextSignature = getContextReferenceSignature(latestState, nextPayload)
     const activeBody = latestState.noteBodies.find((body) => body.id === activeNoteBodyId) ?? null
     const noteMarkdowns = activeBody
-      ? activeBody.aisles.map((aisle) => (aisle.id === activeAisleIdRef.current ? markdown : aisle.markdown))
+      ? activeBody.aisles.map((aisle) =>
+          aisle.id === activeAisleIdRef.current ? markdown : getAisleMarkdown(aisle, latestState.noteAisleBodies),
+        )
       : [markdown]
     const duplicateReference = noteMarkdowns.flatMap(parseContextReferences).find(
       (reference) =>

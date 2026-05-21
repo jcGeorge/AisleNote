@@ -27,6 +27,8 @@ import {
   getInternalNoteLinkHitAtDocPosition,
   getWysiwygView,
   type ExternalLinkRange,
+  type WysiwygHistoryDirection,
+  type WysiwygHistoryResult,
 } from './prosemirror-utils'
 import { parseInternalNoteUrl, type InternalNoteLinkHit } from '../notes/note-references'
 import { insertPastedListIntoView } from './list-paste'
@@ -75,10 +77,9 @@ type UseEditorDomEventsOptions = {
   onEditorSelectionChange: () => void
   onEditorMentionQueryChange: () => void
   onRunStructuralHistory: (direction: 'undo' | 'redo') => boolean
-  onEditorHistoryFallback: (direction: 'undo' | 'redo') => void
+  onRunEditorHistory: (direction: WysiwygHistoryDirection) => WysiwygHistoryResult
   onRunNewlineOperation: (operation: NewlineOperationId) => boolean
   onOpenShortcutMenu: () => void
-  scheduleMultiLineHistoryRestore: (direction: 'undo' | 'redo') => void
   tryExpandMultilineSelection: (direction: 'up' | 'down') => boolean
   tryApplyMultiLineEditInput: (input: MultiLineEditInput) => boolean
   tryApplyMultiLineListMarkerShortcut: () => boolean
@@ -233,6 +234,20 @@ export function getPlainTextPointerChromeClosePlan({
   }
 }
 
+export function runEditorHistoryEvent({
+  direction,
+  onRunStructuralHistory,
+  onRunEditorHistory,
+}: {
+  direction: WysiwygHistoryDirection
+  onRunStructuralHistory: (direction: WysiwygHistoryDirection) => boolean
+  onRunEditorHistory: (direction: WysiwygHistoryDirection) => WysiwygHistoryResult
+}): { handled: boolean; result: WysiwygHistoryResult | 'structural' } {
+  if (onRunStructuralHistory(direction)) return { handled: true, result: 'structural' }
+  const result = onRunEditorHistory(direction)
+  return { handled: result !== 'unavailable', result }
+}
+
 export function useEditorDomEvents({
   viewMode,
   displayContent,
@@ -268,10 +283,9 @@ export function useEditorDomEvents({
   onEditorSelectionChange,
   onEditorMentionQueryChange,
   onRunStructuralHistory,
-  onEditorHistoryFallback,
+  onRunEditorHistory,
   onRunNewlineOperation,
   onOpenShortcutMenu,
-  scheduleMultiLineHistoryRestore,
   tryExpandMultilineSelection,
   tryApplyMultiLineEditInput,
   tryApplyMultiLineListMarkerShortcut,
@@ -649,13 +663,16 @@ export function useEditorDomEvents({
       }
       const editorHistoryDirection = getEditorHistoryDirection(keyboardEvent)
       if (editorHistoryDirection) {
-        if (onRunStructuralHistory(editorHistoryDirection)) {
+        const historyEvent = runEditorHistoryEvent({
+          direction: editorHistoryDirection,
+          onRunStructuralHistory,
+          onRunEditorHistory,
+        })
+        if (historyEvent.handled) {
           keyboardEvent.preventDefault()
           keyboardEvent.stopPropagation()
           return
         }
-        scheduleMultiLineHistoryRestore(editorHistoryDirection)
-        onEditorHistoryFallback(editorHistoryDirection)
       }
 
       if (!isTextInputTarget) {
@@ -813,13 +830,16 @@ export function useEditorDomEvents({
       activateEditorFromEventTarget(inputEvent.target)
       if (inputEvent.inputType === 'historyUndo' || inputEvent.inputType === 'historyRedo') {
         const direction = inputEvent.inputType === 'historyUndo' ? 'undo' : 'redo'
-        if (onRunStructuralHistory(direction)) {
+        const historyEvent = runEditorHistoryEvent({
+          direction,
+          onRunStructuralHistory,
+          onRunEditorHistory,
+        })
+        if (historyEvent.handled) {
           inputEvent.preventDefault()
           inputEvent.stopPropagation()
           return
         }
-        scheduleMultiLineHistoryRestore(direction)
-        onEditorHistoryFallback(direction)
         return
       }
       if (inputEvent.isComposing) return

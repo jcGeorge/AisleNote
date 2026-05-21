@@ -87,7 +87,7 @@ function createModalTextState(): AppState {
 
 describe('copy-note modal text', () => {
   it('describes independent copy mode', () => {
-    const modal: ModalState = { type: 'copy-note', mode: 'independent', source, target }
+    const modal: ModalState = { type: 'copy-note', mode: 'independent', destinationMode: 'replace', source, target }
     const text = getModalText(modal, createModalTextState())
 
     expect(text.title).toBe('make copy')
@@ -96,7 +96,7 @@ describe('copy-note modal text', () => {
   })
 
   it('describes linked copy mode', () => {
-    const modal: ModalState = { type: 'copy-note', mode: 'linked', source, target }
+    const modal: ModalState = { type: 'copy-note', mode: 'linked', destinationMode: 'replace', source, target }
     const text = getModalText(modal, createModalTextState())
 
     expect(text.title).toBe('make copy')

@@ -21,12 +21,10 @@ import {
   installCompletedTaskCheckboxBehavior,
   installTaskTextReorderBehavior,
 } from './task-behavior'
-import { materializeHorizontalRuleShortcut, prepareMarkdownHighlightsForDisplay } from '../markdown/markdown-utils'
-import {
-  importImageBlobAsAssetUrl,
-  prepareMarkdownImagesForDisplay,
-} from '../markdown/image-asset-registry'
+import { materializeHorizontalRuleShortcut } from '../markdown/markdown-utils'
+import { importImageBlobAsAssetUrl } from '../markdown/image-asset-registry'
 import type { ToastTone, ViewMode } from '../types/app'
+import { prepareMarkdownForEditorDisplay, restoreEditorBlankParagraphs, setEditorMarkdownForDisplay } from './editor-markdown-display'
 
 type UseLegacyEditorOptions = {
   viewMode: ViewMode
@@ -87,6 +85,18 @@ export function useLegacyEditor({
   trackCompletedTaskQuickDelete,
   tryExpandMultilineSelection,
 }: UseLegacyEditorOptions) {
+  const commitLegacyEditorMarkdown = (committedEditor: Editor) => {
+    const markdown = getNormalizedEditorMarkdown(committedEditor)
+    lastEditorMarkdownRef.current = markdown
+    scheduleContentCommit(
+      markdown,
+      activeSpaceIdRef.current,
+      activeTabIdRef.current,
+      activeSubTabIdRef.current,
+      activeAisleIdRef.current,
+    )
+  }
+
   useEffect(() => {
     if (viewMode === 'main') return
     if (!isEditorView) return
@@ -95,7 +105,7 @@ export function useLegacyEditor({
     lastEditorMarkdownRef.current = displayContent
     editorRef.current = new Editor({
       el: editorMountRef.current,
-      initialValue: prepareMarkdownImagesForDisplay(prepareMarkdownHighlightsForDisplay(displayContent)),
+      initialValue: prepareMarkdownForEditorDisplay(displayContent),
       initialEditType: 'wysiwyg',
       previewStyle: 'tab',
       hideModeSwitch: true,
@@ -159,10 +169,7 @@ export function useLegacyEditor({
           if (materializedHorizontalRule && materializedHorizontalRule !== markdown) {
             normalizingContentRef.current = true
             lastEditorMarkdownRef.current = materializedHorizontalRule
-            currentEditor.setMarkdown(
-              prepareMarkdownImagesForDisplay(prepareMarkdownHighlightsForDisplay(materializedHorizontalRule)),
-              false,
-            )
+            setEditorMarkdownForDisplay(currentEditor, materializedHorizontalRule)
             return
           }
 
@@ -178,12 +185,14 @@ export function useLegacyEditor({
         },
       },
     })
+    restoreEditorBlankParagraphs(editorRef.current, displayContent)
     installClearToolbarButton(editorMountRef.current, clearActiveNoteContent)
     const cleanupHeadingPopupActiveState = installHeadingPopupActiveState(editorMountRef.current, () => editorRef.current)
     const cleanupCompletedTaskCheckboxBehavior = installCompletedTaskCheckboxBehavior(
       editorMountRef.current,
       () => editorRef.current,
       trackCompletedTaskQuickDelete,
+      commitLegacyEditorMarkdown,
     )
     const cleanupTaskTextReorderBehavior = installTaskTextReorderBehavior(editorMountRef.current, () => editorRef.current, {
       onReorderCommitted: () => commitCurrentEditorContent(),
@@ -216,7 +225,7 @@ export function useLegacyEditor({
     const existing = getNormalizedEditorMarkdown(instance)
     if (existing !== displayContent) {
       lastEditorMarkdownRef.current = displayContent
-      instance.setMarkdown(prepareMarkdownImagesForDisplay(prepareMarkdownHighlightsForDisplay(displayContent)), false)
+      setEditorMarkdownForDisplay(instance, displayContent)
     }
   }, [displayContent, viewMode, syncKey])
 }

@@ -123,6 +123,7 @@ export type StorageSpaceIndexEntry = {
 
 export type StorageNoteAisleRecord = {
   id: StorageEntityId
+  aisleBodyId?: StorageEntityId
   file: string
 }
 

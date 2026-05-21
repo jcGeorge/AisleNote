@@ -14,8 +14,10 @@ export function createTimestamp(now = new Date()) {
 }
 
 export function createNoteAisle(markdown = ''): NoteAisle {
+  const aisleBodyId = createId()
   return {
     id: createId(),
+    aisleBodyId,
     markdown: normalizeMarkdownForPersistence(markdown),
   }
 }

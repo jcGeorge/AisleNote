@@ -1,13 +1,13 @@
 import type { Editor } from '@toast-ui/editor'
 import { useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
-import { normalizeMarkdownForPersistence, prepareMarkdownHighlightsForDisplay } from '../markdown/markdown-utils'
-import { prepareMarkdownImagesForDisplay } from '../markdown/image-asset-registry'
-import { getNoteBodyMarkdown } from '../notes/note-markdown'
+import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
+import { getAisleBodyId, getNoteBodyMarkdown } from '../notes/note-markdown'
 import { measureSlowOperation } from '../performance/performance-logging'
 import { applyAutoPurgeToAppState, applyMarkdownToAppState } from '../state/app-state'
 import { appPersistenceService } from '../storage/app-persistence-service'
 import type { AppStateSaveOptions } from '../storage/persistence-debounce'
 import type { AppState, NoteBody, PendingContent } from '../types/app'
+import { setEditorMarkdownForDisplay } from './editor-markdown-display'
 
 type UseEditorPersistenceParams = {
   stateRef: MutableRefObject<AppState>
@@ -58,14 +58,20 @@ export const useEditorPersistence = ({
   const normalizingContentRef = useRef(false)
   const normalizingAisleIdsRef = useRef<Set<string>>(new Set())
 
+  const getAisleBodyIdForAisleId = (aisleId: string) => {
+    const aisle = activeNoteBody?.aisles.find((candidate) => candidate.id === aisleId)
+    return aisle ? getAisleBodyId(aisle) : aisleId
+  }
+
   const applyContentToTarget = (
     spaceId: string,
     tabId: string,
     subTabId: string | null,
     aisleId: string,
     markdown: string,
+    aisleBodyId?: string | null,
   ) => {
-    setState((previous) => applyMarkdownToAppState(previous, spaceId, tabId, subTabId, aisleId, markdown))
+    setState((previous) => applyMarkdownToAppState(previous, spaceId, tabId, subTabId, aisleId, markdown, { aisleBodyId }))
   }
 
   const buildStateWithLatestEditorContent = () => {
@@ -80,6 +86,7 @@ export const useEditorPersistence = ({
           pending.subTabId,
           pending.aisleId,
           pending.markdown,
+          { aisleBodyId: pending.aisleBodyId },
         ),
       ))
     }
@@ -89,8 +96,9 @@ export const useEditorPersistence = ({
     const currentEditor = editorRef.current
     if (!currentEditor) return applyActiveCursorToState(applyAutoPurgeToAppState(nextState))
     const markdown = getSnapshotEditorMarkdown(currentEditor, lastEditorMarkdownRef.current, getNormalizedEditorMarkdown)
+    const activeAisleBodyId = getAisleBodyIdForAisleId(activeAisleIdRef.current)
     lastEditorMarkdownRef.current = markdown
-    lastEditorMarkdownByAisleRef.current.set(activeAisleIdRef.current, markdown)
+    lastEditorMarkdownByAisleRef.current.set(activeAisleBodyId, markdown)
 
     nextState = applyMarkdownToAppState(
       nextState,
@@ -99,6 +107,7 @@ export const useEditorPersistence = ({
       activeSubTabIdRef.current,
       activeAisleIdRef.current,
       markdown,
+      { aisleBodyId: activeAisleBodyId },
     )
     return applyActiveCursorToState(applyAutoPurgeToAppState(nextState))
   }
@@ -122,20 +131,29 @@ export const useEditorPersistence = ({
     if (pendingContentRef.current) {
       const pending = pendingContentRef.current
       pendingContentRef.current = null
-      applyContentToTarget(pending.spaceId, pending.tabId, pending.subTabId, pending.aisleId, pending.markdown)
+      applyContentToTarget(
+        pending.spaceId,
+        pending.tabId,
+        pending.subTabId,
+        pending.aisleId,
+        pending.markdown,
+        pending.aisleBodyId,
+      )
       return
     }
 
     if (!isMainViewRef.current) return
 
     if (!editorRef.current) return
-    const markdown = lastEditorMarkdownRef.current
+    const activeAisleBodyId = getAisleBodyIdForAisleId(activeAisleIdRef.current)
+    const markdown = lastEditorMarkdownByAisleRef.current.get(activeAisleBodyId) ?? lastEditorMarkdownRef.current
     applyContentToTarget(
       activeSpaceIdRef.current,
       activeTabIdRef.current,
       activeSubTabIdRef.current,
       activeAisleIdRef.current,
       markdown,
+      activeAisleBodyId,
     )
   }
 
@@ -147,10 +165,12 @@ export const useEditorPersistence = ({
     aisleId: string,
   ) => {
     const normalizedMarkdown = normalizeMarkdownForPersistence(markdown)
+    const aisleBodyId = getAisleBodyIdForAisleId(aisleId)
     if (aisleId === activeAisleIdRef.current) {
       lastEditorMarkdownRef.current = normalizedMarkdown
     }
-    pendingContentRef.current = { spaceId, tabId, subTabId, aisleId, markdown: normalizedMarkdown }
+    lastEditorMarkdownByAisleRef.current.set(aisleBodyId, normalizedMarkdown)
+    pendingContentRef.current = { spaceId, tabId, subTabId, aisleId, aisleBodyId, markdown: normalizedMarkdown }
 
     if (saveTimerRef.current !== null) {
       window.clearTimeout(saveTimerRef.current)
@@ -161,7 +181,7 @@ export const useEditorPersistence = ({
       if (!pendingContentRef.current) return
       const next = pendingContentRef.current
       pendingContentRef.current = null
-      applyContentToTarget(next.spaceId, next.tabId, next.subTabId, next.aisleId, next.markdown)
+      applyContentToTarget(next.spaceId, next.tabId, next.subTabId, next.aisleId, next.markdown, next.aisleBodyId)
     }, 180)
   }
 
@@ -170,8 +190,9 @@ export const useEditorPersistence = ({
     const currentEditor = editorRef.current
     if (!currentEditor) return
     const markdown = getNormalizedEditorMarkdown(currentEditor)
+    const activeAisleBodyId = getAisleBodyIdForAisleId(activeAisleIdRef.current)
     lastEditorMarkdownRef.current = markdown
-    lastEditorMarkdownByAisleRef.current.set(activeAisleIdRef.current, markdown)
+    lastEditorMarkdownByAisleRef.current.set(activeAisleBodyId, markdown)
     scheduleContentCommit(
       markdown,
       activeSpaceIdRef.current,
@@ -183,8 +204,9 @@ export const useEditorPersistence = ({
 
   const commitActiveEditorMarkdownNow = (editor: Editor) => {
     const normalized = getNormalizedEditorMarkdown(editor)
+    const activeAisleBodyId = getAisleBodyIdForAisleId(activeAisleIdRef.current)
     lastEditorMarkdownRef.current = normalized
-    lastEditorMarkdownByAisleRef.current.set(activeAisleIdRef.current, normalized)
+    lastEditorMarkdownByAisleRef.current.set(activeAisleBodyId, normalized)
     if (saveTimerRef.current !== null) {
       window.clearTimeout(saveTimerRef.current)
       saveTimerRef.current = null
@@ -196,15 +218,18 @@ export const useEditorPersistence = ({
       activeSubTabIdRef.current,
       activeAisleIdRef.current,
       normalized,
+      activeAisleBodyId,
     )
     return normalized
   }
 
   const replaceActiveEditorMarkdown = (markdown: string) => {
     const normalized = normalizeMarkdownForPersistence(markdown)
+    const activeAisleBodyId = getAisleBodyIdForAisleId(activeAisleIdRef.current)
     lastEditorMarkdownRef.current = normalized
+    lastEditorMarkdownByAisleRef.current.set(activeAisleBodyId, normalized)
     const currentEditor = editorRef.current
-    currentEditor?.setMarkdown(prepareMarkdownImagesForDisplay(prepareMarkdownHighlightsForDisplay(normalized)), false)
+    if (currentEditor) setEditorMarkdownForDisplay(currentEditor, normalized)
     if (currentEditor) {
       commitActiveEditorMarkdownNow(currentEditor)
       return

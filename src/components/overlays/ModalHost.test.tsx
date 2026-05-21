@@ -100,8 +100,7 @@ function renderFrontmatterModal(modal: ModalState) {
   )
 }
 
-function renderModal(modal: ModalState) {
-  const state = createState()
+function renderModal(modal: ModalState, state = createState()) {
   return renderToStaticMarkup(
     <ModalHost
       modal={modal}
@@ -269,6 +268,7 @@ describe('copy modal rendering', () => {
     const html = renderModal({
       type: 'copy-note',
       mode: 'independent',
+      destinationMode: 'replace',
       source,
       target: source,
     })
@@ -276,12 +276,20 @@ describe('copy modal rendering', () => {
     expect(html).toContain('note-copy-modal')
     expect(html).toMatch(/note-reference-mode-btn is-active"[^>]*>independent</)
     expect(html).toContain('>linked</button>')
+    expect(html).toContain('note-copy-behavior-row')
+    expect(html).toContain('note-copy-behavior-mode')
+    expect(html).toContain('copy behavior')
+    expect(html).toMatch(/note-reference-mode-btn is-active"[^>]*>replace this note</)
+    expect(html).toContain('>append as aisles</button>')
+    expect(html).not.toContain('>all aisles</button>')
+    expect(html).not.toContain('>aisle 1</button>')
   })
 
   it('marks the linked copy mode active', () => {
     const html = renderModal({
       type: 'copy-note',
       mode: 'linked',
+      destinationMode: 'append',
       source,
       target: source,
     })
@@ -289,6 +297,36 @@ describe('copy modal rendering', () => {
     expect(html).toContain('note-copy-modal')
     expect(html).toContain('>independent</button>')
     expect(html).toMatch(/note-reference-mode-btn is-active"[^>]*>linked</)
+    expect(html).toMatch(/note-reference-mode-btn is-active"[^>]*>append as aisles</)
+  })
+
+  it('shows aisle choices for a selected multi-aisle note', () => {
+    const state = createState()
+    state.noteBodies = [
+      {
+        id: 'body-1',
+        frontmatter: null,
+        aisles: [
+          { id: 'aisle-1', markdown: '' },
+          { id: 'aisle-2', markdown: '' },
+        ],
+      },
+    ]
+
+    const html = renderModal(
+      {
+        type: 'copy-note',
+        mode: 'independent',
+        destinationMode: 'replace',
+        source,
+        target: source,
+      },
+      state,
+    )
+
+    expect(html).toContain('>all aisles</button>')
+    expect(html).toContain('>aisle 1</button>')
+    expect(html).toContain('>aisle 2</button>')
   })
 })
 

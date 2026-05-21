@@ -53,6 +53,14 @@ export type NewlineShortcutSettings = {
 
 export type NoteAisle = {
   id: string
+  aisleBodyId?: string
+  markdown: string
+}
+
+export type NoteAisleBody = {
+  id: string
+  createdAt?: string
+  updatedAt?: string
   markdown: string
 }
 
@@ -215,6 +223,7 @@ export type AppState = {
   activeDomainId: string
   domains: Domain[]
   noteBodies: NoteBody[]
+  noteAisleBodies?: NoteAisleBody[]
   /** Transitional projection of the active domain. Remove after App.tsx is fully domain-scoped. */
   activeSpaceId: string
   /** Transitional projection of the active domain. Remove after App.tsx is fully domain-scoped. */
@@ -249,6 +258,7 @@ export type PendingContent = {
   tabId: string
   subTabId: string | null
   aisleId: string
+  aisleBodyId: string
   markdown: string
 }
 
@@ -538,6 +548,7 @@ export type DeleteTarget =
   | { type: 'space'; spaceId: string }
 
 export type NoteCopyMode = 'independent' | 'linked'
+export type NoteCopyDestinationMode = 'replace' | 'append'
 
 export type ModalState =
   | { type: 'delete-target'; target: DeleteTarget; permanent: boolean }
@@ -547,6 +558,7 @@ export type ModalState =
   | {
       type: 'copy-note'
       mode: NoteCopyMode
+      destinationMode: NoteCopyDestinationMode
       source: NoteLocation
       target: NoteLocation & { aisleIds?: string[] }
     }

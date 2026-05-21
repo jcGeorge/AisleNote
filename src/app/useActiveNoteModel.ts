@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { getNoteBodyMarkdown } from '../notes/note-markdown'
+import { getNoteBodyMarkdown, resolveNoteBody } from '../notes/note-markdown'
 import { buildNoteCursorLocationKey } from '../notes/note-cursors'
 import type { AppState, NoteLocation } from '../types/app'
 
@@ -33,9 +33,13 @@ export const useActiveNoteModel = ({
   )
 
   const activeNoteBodyId = activeSubTab?.noteBodyId ?? activeTab.noteBodyId
-  const activeNoteBody = useMemo(
+  const storedActiveNoteBody = useMemo(
     () => state.noteBodies.find((body) => body.id === activeNoteBodyId) ?? null,
     [activeNoteBodyId, state.noteBodies],
+  )
+  const activeNoteBody = useMemo(
+    () => (storedActiveNoteBody ? resolveNoteBody(storedActiveNoteBody, state.noteAisleBodies) : null),
+    [storedActiveNoteBody, state.noteAisleBodies],
   )
   const activeNoteAisles = useMemo(() => activeNoteBody?.aisles ?? [], [activeNoteBody?.aisles])
 
@@ -65,7 +69,7 @@ export const useActiveNoteModel = ({
     [state.activeDomainId, state.domains, state.spaces],
   )
 
-  const activeContent = getNoteBodyMarkdown(activeNoteBody, resolvedActiveAisleId)
+  const activeContent = getNoteBodyMarkdown(activeNoteBody, resolvedActiveAisleId, state.noteAisleBodies)
 
   return {
     activeSpace,

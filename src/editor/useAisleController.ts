@@ -8,6 +8,7 @@ import {
   applyNoteLocationToState,
   cloneAisles,
   getAisleSignature,
+  syncNoteBodyAisleStructureInState,
   syncNoteBodyAislesInState,
 } from '../notes/note-state'
 import { createId, MAX_NOTE_AISLES } from '../state/workspace'
@@ -170,7 +171,7 @@ export const useAisleController = ({
     setState((previous) => {
       const body = previous.noteBodies.find((candidate) => candidate.id === entry.noteBodyId) ?? null
       if (!body || !canApplyAisleStructuralEntryToAisles(entry, direction, body.aisles)) return previous
-      const withAisles = syncNoteBodyAislesInState(previous, entry.noteBodyId, target.aisles)
+      const withAisles = syncNoteBodyAisleStructureInState(previous, entry.noteBodyId, target.aisles)
       const withLocation = applyNoteLocationToState(withAisles, target.location)
       return applyCursorLocationSnapshot(withLocation, target.locationKey, target.cursorLocation)
     })
@@ -324,7 +325,7 @@ export const useAisleController = ({
     setState((previous) => {
       const body = previous.noteBodies.find((candidate) => candidate.id === beforeSnapshot.noteBodyId)
       if (!body) return previous
-      const withAisles = syncNoteBodyAislesInState(previous, beforeSnapshot.noteBodyId, afterAisles)
+      const withAisles = syncNoteBodyAisleStructureInState(previous, beforeSnapshot.noteBodyId, afterAisles)
       return applyCursorLocationSnapshot(withAisles, afterSnapshot.locationKey, afterSnapshot.cursorLocation)
     })
     pushAisleStructuralHistory('edit-aisles', beforeSnapshot, afterSnapshot)

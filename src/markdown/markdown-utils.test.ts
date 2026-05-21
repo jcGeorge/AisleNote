@@ -7,6 +7,7 @@ import {
   INDENT_TOKEN,
   normalizeHighlightMarkdownForPersistence,
   normalizeMarkdownForPersistence,
+  prepareBlankParagraphsForEditorDisplay,
   prepareMarkdownHighlightsForDisplay,
   preserveBlankParagraphsFromWysiwyg,
   repairBrokenDataImageMarkdown,
@@ -88,6 +89,97 @@ describe('markdown WYSIWYG blank line preservation', () => {
     expect(markdown).toBe(`one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`)
   })
 
+  it('round-trips existing blank paragraph placeholders without multiplying them', () => {
+    const source = `one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`
+    const markdown = preserveBlankParagraphsFromWysiwyg(
+      editorForBlocks([
+        block('paragraph', 'one'),
+        emptyParagraph(),
+        block('paragraph', 'two'),
+      ]),
+      source,
+    )
+
+    expect(markdown).toBe(source)
+  })
+
+  it('strips persisted blank placeholders before markdown is passed to the editor', () => {
+    expect(prepareBlankParagraphsForEditorDisplay(`one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`)).toEqual({
+      markdown: 'one\n\ntwo',
+      blockKinds: ['content', 'blank', 'content'],
+    })
+  })
+
+  it('keeps the blank paragraph display plan stable across repeated load-save cycles', () => {
+    let markdown = `one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`
+    for (let index = 0; index < 5; index += 1) {
+      const display = prepareBlankParagraphsForEditorDisplay(markdown)
+      expect(display).toEqual({
+        markdown: 'one\n\ntwo',
+        blockKinds: ['content', 'blank', 'blank', 'content'],
+      })
+      markdown = preserveBlankParagraphsFromWysiwyg(
+        editorForBlocks([
+          block('paragraph', 'one'),
+          emptyParagraph(),
+          emptyParagraph(),
+          block('paragraph', 'two'),
+        ]),
+        display.markdown,
+      )
+    }
+
+    expect(markdown).toBe(`one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`)
+  })
+
+  it('strips blank placeholders around headings and horizontal rules while preserving their positions', () => {
+    const markdown = `# Head\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\n---\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\n## Next`
+
+    expect(prepareBlankParagraphsForEditorDisplay(markdown)).toEqual({
+      markdown: '# Head\n\n---\n\n## Next',
+      blockKinds: ['content', 'blank', 'content', 'blank', 'content'],
+    })
+  })
+
+  it('normalizes malformed placeholder separators to the live blank paragraph count', () => {
+    const markdown = preserveBlankParagraphsFromWysiwyg(
+      editorForBlocks([
+        block('paragraph', 'one'),
+        emptyParagraph(),
+        block('paragraph', 'two'),
+      ]),
+      `one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\n\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`,
+    )
+
+    expect(markdown).toBe(`one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`)
+  })
+
+  it('removes stale placeholder chunks after blank paragraphs are deleted', () => {
+    const markdown = preserveBlankParagraphsFromWysiwyg(
+      editorForBlocks([
+        block('paragraph', 'one'),
+        block('paragraph', 'two'),
+      ]),
+      `one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`,
+    )
+
+    expect(markdown).toBe('one\n\ntwo')
+  })
+
+  it('persists one visible blank paragraph after a horizontal rule', () => {
+    const source = `one\n\n---\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}`
+    const markdown = preserveBlankParagraphsFromWysiwyg(
+      editorForBlocks([
+        block('paragraph', 'one'),
+        block('thematicBreak'),
+        emptyParagraph(),
+      ]),
+      source,
+    )
+
+    expect(markdown).toBe(source)
+  })
+
   it('preserves empty paragraphs around headings and lists', () => {
     const markdown = preserveBlankParagraphsFromWysiwyg(
       editorForBlocks([
@@ -101,6 +193,42 @@ describe('markdown WYSIWYG blank line preservation', () => {
     )
 
     expect(markdown).toBe(`${EDITOR_BLANK_LINE_PLACEHOLDER}\n\n## Head\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\n* one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}`)
+  })
+
+  it('keeps a blank paragraph after a heading when task indentation serializes adjacent blocks', () => {
+    const markdown = preserveBlankParagraphsFromWysiwyg(
+      editorForBlocks([
+        block('heading', 'Hat Trick!'),
+        emptyParagraph(),
+        block('paragraph', 'hmm interesting'),
+        block('bulletList', 'onetwothree'),
+      ]),
+      '### Hat Trick!\nhmm interesting\n- [ ] one\n- [ ] two\n    - [ ] three',
+    )
+
+    expect(markdown).toBe(
+      `### Hat Trick!\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\nhmm interesting\n\n- [ ] one\n- [ ] two\n    - [ ] three`,
+    )
+  })
+
+  it('restores top-level block separators after task indentation removes markdown blanks', () => {
+    const markdown = preserveBlankParagraphsFromWysiwyg(
+      editorForBlocks([
+        block('heading', 'Hat Trick!'),
+        block('paragraph', 'hmm interesting'),
+        block('bulletList', 'onetwothree'),
+      ]),
+      '### Hat Trick!\nhmm interesting\n- [ ] one\n- [ ] two\n    - [ ] three',
+    )
+
+    expect(markdown).toBe('### Hat Trick!\n\nhmm interesting\n\n- [ ] one\n- [ ] two\n    - [ ] three')
+  })
+
+  it('splits adjacent heading, paragraph, and task list blocks before editor display', () => {
+    expect(prepareBlankParagraphsForEditorDisplay('### Hat Trick!\nhmm interesting\n- [ ] one')).toEqual({
+      markdown: '### Hat Trick!\n\nhmm interesting\n\n- [ ] one',
+      blockKinds: ['content', 'content', 'content'],
+    })
   })
 
   it('does not rewrite blank lines inside fenced code blocks', () => {

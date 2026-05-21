@@ -44,7 +44,6 @@ export function NoteLocationPicker({
       spaceId: space?.id ?? '',
       tabId: tab?.id ?? '',
       subTabId: null,
-      aisleIds: value.aisleIds,
     })
   }
 
@@ -56,7 +55,6 @@ export function NoteLocationPicker({
       spaceId: space?.id ?? '',
       tabId: tab?.id ?? '',
       subTabId: null,
-      aisleIds: value.aisleIds,
     })
   }
 
@@ -67,6 +65,7 @@ export function NoteLocationPicker({
       spaceId: selectedSpace?.id ?? '',
       tabId,
       subTabId: null,
+      aisleIds: [],
     })
   }
 
@@ -77,6 +76,7 @@ export function NoteLocationPicker({
       spaceId: selectedSpace?.id ?? '',
       tabId: selectedTab?.id ?? '',
       subTabId: rawValue === '__home__' ? null : rawValue,
+      aisleIds: [],
     })
   }
 

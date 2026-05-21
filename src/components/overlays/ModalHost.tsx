@@ -28,6 +28,7 @@ import type {
   LinkInsertMode,
   ModalState,
   NewlineOperationId,
+  NoteCopyDestinationMode,
   NoteCopyMode,
   Space,
   TabSortMode,
@@ -241,6 +242,11 @@ export function ModalHost({
     if (modal.type !== 'copy-note') return
     onNoteCopyModeChange(mode)
     onModalChange({ ...modal, mode })
+  }
+
+  const setCopyDestinationMode = (destinationMode: NoteCopyDestinationMode) => {
+    if (modal.type !== 'copy-note') return
+    onModalChange({ ...modal, destinationMode })
   }
 
   const updateLinkModalTarget = (target: NoteLocationPickerValue) => {
@@ -494,8 +500,29 @@ export function ModalHost({
               domains={domainsForPickers}
               noteBodies={state.noteBodies}
               value={modal.target}
+              includeAisles
+              allowAllAisles
               onChange={(target: NoteLocationPickerValue) => onModalChange({ ...modal, target })}
             />
+            <div className="note-copy-behavior-row">
+              <span className="note-copy-behavior-label">copy behavior</span>
+              <div className="note-reference-mode note-copy-behavior-mode" role="group" aria-label="Copy behavior">
+                <button
+                  type="button"
+                  className={`note-reference-mode-btn ${modal.destinationMode === 'replace' ? 'is-active' : ''}`}
+                  onClick={() => setCopyDestinationMode('replace')}
+                >
+                  replace this note
+                </button>
+                <button
+                  type="button"
+                  className={`note-reference-mode-btn ${modal.destinationMode === 'append' ? 'is-active' : ''}`}
+                  onClick={() => setCopyDestinationMode('append')}
+                >
+                  append as aisles
+                </button>
+              </div>
+            </div>
           </div>
         )}
         {modal.type === 'deduplicate-note' && (
