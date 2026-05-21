@@ -5,6 +5,7 @@ import {
   type AisleStructuralSnapshot,
 } from './aisle-structural-history'
 import type { NoteAisle } from '../types/app'
+import { EDITOR_BLANK_LINE_PLACEHOLDER } from '../markdown/markdown-utils'
 
 const location = {
   domainId: 'domain-1',
@@ -62,6 +63,20 @@ describe('aisle structural history', () => {
       { id: 'aisle-1', markdown: 'first' },
       { id: 'aisle-2', markdown: 'typed later' },
     ])).toBe(false)
+  })
+
+  it('allows undoing an added aisle after blank placeholder-only editor content', () => {
+    const before = createSnapshot([{ id: 'aisle-1', markdown: 'first' }])
+    const after = createSnapshot([
+      { id: 'aisle-1', markdown: 'first' },
+      { id: 'aisle-2', markdown: '' },
+    ], 'aisle-2')
+    const entry = createAisleStructuralHistoryEntry('add-aisle', before, after)
+
+    expect(canApplyAisleStructuralEntryToAisles(entry, 'undo', [
+      { id: 'aisle-1', markdown: 'first' },
+      { id: 'aisle-2', markdown: `${EDITOR_BLANK_LINE_PLACEHOLDER}\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}` },
+    ])).toBe(true)
   })
 
   it('does not apply when another structural edit changed the aisle order', () => {

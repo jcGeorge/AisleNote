@@ -1,71 +1,72 @@
 import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
 import { clampAutoRemoveDays, DEFAULT_AUTO_REMOVE_DAYS } from '../settings/defaults'
 import type { DeletedSubTabEntry, DeletedTabEntry, NoteAisle, NoteBody, Space, SubTab, Tab, WorkspaceData } from '../types/app'
+import { createRandomId, type IdGenerator } from './navigation-ids'
 
 export const MAX_NOTE_AISLES = 8
 export const AUTO_PURGE_DAY_MS = 24 * 60 * 60 * 1000
 
 export function createId() {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+  return createRandomId()
 }
 
 export function createTimestamp(now = new Date()) {
   return now.toISOString()
 }
 
-export function createNoteAisle(markdown = ''): NoteAisle {
-  const aisleBodyId = createId()
+export function createNoteAisle(markdown = '', generateId: IdGenerator = createId): NoteAisle {
+  const aisleBodyId = generateId()
   return {
-    id: createId(),
+    id: generateId(),
     aisleBodyId,
     markdown: normalizeMarkdownForPersistence(markdown),
   }
 }
 
-export function createNoteBody(markdown = ''): NoteBody {
+export function createNoteBody(markdown = '', generateId: IdGenerator = createId): NoteBody {
   const timestamp = createTimestamp()
   return {
-    id: createId(),
+    id: generateId(),
     createdAt: timestamp,
     updatedAt: timestamp,
     frontmatter: null,
-    aisles: [createNoteAisle(markdown)],
+    aisles: [createNoteAisle(markdown, generateId)],
   }
 }
 
-export function createSubTab(title = 'tab', content?: string): SubTab {
+export function createSubTab(title = 'tab', content?: string, generateId: IdGenerator = createId): SubTab {
   return {
-    id: createId(),
+    id: generateId(),
     title,
-    noteBodyId: createId(),
+    noteBodyId: generateId(),
     content: content ?? '',
   }
 }
 
-export function createTab(title = 'tab'): Tab {
+export function createTab(title = 'tab', generateId: IdGenerator = createId): Tab {
   return {
-    id: createId(),
+    id: generateId(),
     title,
-    noteBodyId: createId(),
+    noteBodyId: generateId(),
     homeContent: '',
     activeSubTabId: null,
     subTabs: [],
   }
 }
 
-export function createDefaultWorkspaceData(): WorkspaceData {
-  const welcomeTabId = 'home-tab'
+export function createDefaultWorkspaceData(generateId: IdGenerator = createId): WorkspaceData {
+  const welcomeTabId = generateId()
   return {
     activeTabId: welcomeTabId,
     tabs: [
       {
         id: welcomeTabId,
         title: 'welcome',
-        noteBodyId: createId(),
+        noteBodyId: generateId(),
         homeContent:
           '- This is the home note for this top-level (parent) tab.\n- Click this parent tab to edit this note.\n- Sub-tabs are separate notes and start empty.\n- You can hide the home tab in the settings.\n',
         activeSubTabId: null,
-        subTabs: [createSubTab('list', '1. Add parent tab\n2. Add sub-tab\n3. Each note keeps separate content\n')],
+        subTabs: [createSubTab('list', '1. Add parent tab\n2. Add sub-tab\n3. Each note keeps separate content\n', generateId)],
       },
     ],
     deletedTabs: [],
@@ -73,12 +74,12 @@ export function createDefaultWorkspaceData(): WorkspaceData {
   }
 }
 
-export function createSpace(name: string): Space {
+export function createSpace(name: string, generateId: IdGenerator = createId): Space {
   return {
-    id: createId(),
+    id: generateId(),
     name,
     settings: { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
-    data: createDefaultWorkspaceData(),
+    data: createDefaultWorkspaceData(generateId),
   }
 }
 
@@ -93,53 +94,53 @@ export function createDuplicateSpaceName(name: string, existingNames: string[]):
   return `${baseName} ${suffix}`
 }
 
-export function duplicateWorkspaceData(data: WorkspaceData): WorkspaceData {
+export function duplicateWorkspaceData(data: WorkspaceData, generateId: IdGenerator = createId): WorkspaceData {
   const liveTabIdMap = new Map<string, string>()
 
   const duplicatedTabs = data.tabs.map((tab) => {
-    const nextTabId = createId()
+    const nextTabId = generateId()
     liveTabIdMap.set(tab.id, nextTabId)
 
     const subTabIdMap = new Map<string, string>()
-      const duplicatedSubTabs = tab.subTabs.map((subTab) => {
-        const nextSubTabId = createId()
-        subTabIdMap.set(subTab.id, nextSubTabId)
-        return {
-          ...subTab,
-          id: nextSubTabId,
-          noteBodyId: createId(),
-        }
-      })
+    const duplicatedSubTabs = tab.subTabs.map((subTab) => {
+      const nextSubTabId = generateId()
+      subTabIdMap.set(subTab.id, nextSubTabId)
+      return {
+        ...subTab,
+        id: nextSubTabId,
+        noteBodyId: generateId(),
+      }
+    })
 
     return {
       ...tab,
       id: nextTabId,
-      noteBodyId: createId(),
+      noteBodyId: generateId(),
       activeSubTabId: tab.activeSubTabId ? subTabIdMap.get(tab.activeSubTabId) ?? null : null,
       subTabs: duplicatedSubTabs,
     }
   })
 
   const duplicatedDeletedTabs = data.deletedTabs.map((entry) => {
-    const duplicatedTabId = createId()
+    const duplicatedTabId = generateId()
     const deletedSubTabIdMap = new Map<string, string>()
     const duplicatedDeletedSubTabs = entry.tab.subTabs.map((subTab) => {
-      const nextSubTabId = createId()
+      const nextSubTabId = generateId()
       deletedSubTabIdMap.set(subTab.id, nextSubTabId)
       return {
         ...subTab,
         id: nextSubTabId,
-        noteBodyId: createId(),
+        noteBodyId: generateId(),
       }
     })
 
     return {
       ...entry,
-      id: createId(),
+      id: generateId(),
       tab: {
         ...entry.tab,
         id: duplicatedTabId,
-        noteBodyId: createId(),
+        noteBodyId: generateId(),
         activeSubTabId: entry.tab.activeSubTabId ? deletedSubTabIdMap.get(entry.tab.activeSubTabId) ?? null : null,
         subTabs: duplicatedDeletedSubTabs,
       },
@@ -152,19 +153,19 @@ export function duplicateWorkspaceData(data: WorkspaceData): WorkspaceData {
     if (liveMatch) return liveMatch
     const existing = orphanDeletedParentIdMap.get(parentTabId)
     if (existing) return existing
-    const nextId = createId()
+    const nextId = generateId()
     orphanDeletedParentIdMap.set(parentTabId, nextId)
     return nextId
   }
 
   const duplicatedDeletedSubTabs = data.deletedSubTabs.map((entry) => ({
     ...entry,
-    id: createId(),
+    id: generateId(),
     parentTabId: resolveDeletedSubParentId(entry.parentTabId),
     subTab: {
       ...entry.subTab,
-      id: createId(),
-      noteBodyId: createId(),
+      id: generateId(),
+      noteBodyId: generateId(),
     },
   }))
 
@@ -172,15 +173,16 @@ export function duplicateWorkspaceData(data: WorkspaceData): WorkspaceData {
     activeTabId: liveTabIdMap.get(data.activeTabId) ?? duplicatedTabs[0]?.id,
     deletedTabs: duplicatedDeletedTabs,
     deletedSubTabs: duplicatedDeletedSubTabs,
+    createId: generateId,
   })
 }
 
-export function duplicateSpace(source: Space, existingNames: string[]): Space {
+export function duplicateSpace(source: Space, existingNames: string[], generateId: IdGenerator = createId): Space {
   return {
-    id: createId(),
+    id: generateId(),
     name: createDuplicateSpaceName(source.name, existingNames),
     settings: { ...source.settings },
-    data: duplicateWorkspaceData(source.data),
+    data: duplicateWorkspaceData(source.data, generateId),
   }
 }
 
@@ -190,33 +192,35 @@ export function createWorkspaceDataFromTabs(
     activeTabId?: string
     deletedTabs?: DeletedTabEntry[]
     deletedSubTabs?: DeletedSubTabEntry[]
+    createId?: IdGenerator
   },
 ): WorkspaceData {
-  const safeTabs = tabs.length > 0 ? tabs : [createTab('tab')]
+  const generateId = options?.createId ?? createId
+  const safeTabs = tabs.length > 0 ? tabs : [createTab('tab', generateId)]
   const requestedActiveTabId = options?.activeTabId ?? null
   const activeTabId = requestedActiveTabId && safeTabs.some((tab) => tab.id === requestedActiveTabId) ? requestedActiveTabId : safeTabs[0].id
   return {
     activeTabId,
     tabs: safeTabs.map((tab) => ({
       ...tab,
-      noteBodyId: tab.noteBodyId || createId(),
+      noteBodyId: tab.noteBodyId || generateId(),
       activeSubTabId: tab.activeSubTabId && tab.subTabs.some((subTab) => subTab.id === tab.activeSubTabId) ? tab.activeSubTabId : null,
-      subTabs: tab.subTabs.map((subTab) => ({ ...subTab, noteBodyId: subTab.noteBodyId || createId() })),
+      subTabs: tab.subTabs.map((subTab) => ({ ...subTab, noteBodyId: subTab.noteBodyId || generateId() })),
     })),
     deletedTabs: options?.deletedTabs
       ? options.deletedTabs.map((entry) => ({
           ...entry,
           tab: {
             ...entry.tab,
-            noteBodyId: entry.tab.noteBodyId || createId(),
-            subTabs: entry.tab.subTabs.map((subTab) => ({ ...subTab, noteBodyId: subTab.noteBodyId || createId() })),
+            noteBodyId: entry.tab.noteBodyId || generateId(),
+            subTabs: entry.tab.subTabs.map((subTab) => ({ ...subTab, noteBodyId: subTab.noteBodyId || generateId() })),
           },
         }))
       : [],
     deletedSubTabs: options?.deletedSubTabs
       ? options.deletedSubTabs.map((entry) => ({
           ...entry,
-          subTab: { ...entry.subTab, noteBodyId: entry.subTab.noteBodyId || createId() },
+          subTab: { ...entry.subTab, noteBodyId: entry.subTab.noteBodyId || generateId() },
         }))
       : [],
   }

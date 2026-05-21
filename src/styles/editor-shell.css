@@ -419,8 +419,7 @@
 }
 
 .note-toolbar-copy-popover,
-.note-toolbar-heading-popover,
-.note-toolbar-aisle-popover {
+.note-toolbar-heading-popover {
   position: fixed;
   z-index: 3201;
   width: 10.5rem;
@@ -1092,6 +1091,145 @@
   border-color: var(--stage-action-selected-border);
   background: var(--stage-action-selected-bg);
   color: var(--stage-action-selected-text);
+}
+
+.find-replace-panel {
+  position: fixed;
+  top: 4.5rem;
+  right: 1rem;
+  z-index: 2100;
+  display: grid;
+  gap: 0.45rem;
+  width: min(30rem, calc(100vw - 2rem));
+  max-height: min(34rem, calc(100vh - 6rem));
+  padding: 0.65rem;
+  border: 1px solid var(--context-menu-border);
+  border-radius: 0.45rem;
+  background: var(--context-menu-bg);
+  color: var(--context-menu-item-text);
+  box-shadow: var(--context-menu-shadow);
+  font-size: var(--ui-font-body);
+}
+
+.find-replace-header,
+.find-replace-row,
+.find-replace-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.find-replace-header {
+  justify-content: space-between;
+}
+
+.find-replace-icon-btn {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 1.1em;
+}
+
+.find-replace-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.45rem;
+}
+
+.find-replace-field {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.find-replace-field span,
+.find-replace-check,
+.find-replace-count {
+  color: var(--app-text-subtle);
+  font-size: 0.78em;
+  font-weight: 700;
+}
+
+.find-replace-field input,
+.find-replace-row select {
+  min-width: 0;
+  border: 1px solid var(--link-prompt-input-border);
+  border-radius: 0.32rem;
+  background: var(--link-prompt-input-bg);
+  color: var(--link-prompt-input-text);
+  padding: 0.32rem 0.42rem;
+  font: inherit;
+}
+
+.find-replace-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.24rem;
+}
+
+.find-replace-actions {
+  flex-wrap: wrap;
+}
+
+.find-replace-actions button {
+  border: 1px solid var(--stage-action-border);
+  border-radius: 0.32rem;
+  background: var(--stage-action-bg);
+  color: var(--stage-action-text);
+  padding: 0.26rem 0.48rem;
+  font: inherit;
+  font-size: 0.82em;
+}
+
+.find-replace-actions button:disabled {
+  opacity: 0.45;
+}
+
+.find-replace-results {
+  display: grid;
+  gap: 0.2rem;
+  min-height: 0;
+  max-height: 16rem;
+  overflow: auto;
+}
+
+.find-replace-result {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.8fr) minmax(0, 1.2fr);
+  gap: 0.5rem;
+  border: 0;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: inherit;
+  padding: 0.34rem 0.45rem;
+  font: inherit;
+  text-align: left;
+}
+
+.find-replace-result:hover,
+.find-replace-result.is-active {
+  background: var(--context-menu-item-hover-bg);
+}
+
+.find-replace-result-label,
+.find-replace-result-snippet,
+.find-replace-more {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.find-replace-result-label {
+  font-weight: 700;
+  font-size: 0.78em;
+}
+
+.find-replace-result-snippet,
+.find-replace-more {
+  color: var(--app-text-subtle);
+  font-size: 0.78em;
 }
 
 .editor-lock {

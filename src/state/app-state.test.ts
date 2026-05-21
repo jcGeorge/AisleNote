@@ -657,10 +657,62 @@ describe('app state normalization', () => {
     }))
     const missing = parseSavedState(JSON.stringify({ ui: {} }))
 
-    expect(valid.ui.seenTipIds).toEqual(['task-undo', 'tab-create-after-rename', 'aisle-shortcut'])
+    expect(valid.ui.seenTipIds).toEqual(['task-undo', 'tab-create-after-rename'])
     expect(valid.ui.disabledTipIds).toEqual(['tab-create-after-rename'])
     expect(missing.ui.seenTipIds).toEqual([])
     expect(missing.ui.disabledTipIds).toEqual([])
+  })
+
+  it('normalizes synced toolbar layouts while leaving active toolbar selection local', () => {
+    const state = parseSavedState(JSON.stringify({
+      ui: {
+        activeToolbarLayoutId: 'should-not-sync',
+        toolbarLayouts: [
+          {
+            id: 'default',
+            name: 'bad default',
+            items: [{ id: 'copy', type: 'tool', toolId: 'copy' }],
+          },
+          {
+            id: 'desktop',
+            name: '  desktop  ',
+            items: [
+              { id: 'one', type: 'tool', toolId: 'bold' },
+              { id: 'two', type: 'tool', toolId: 'bold' },
+              { id: 'gap', type: 'spacer' },
+              { id: 'three', type: 'tool', toolId: 'italic' },
+            ],
+          },
+        ],
+      },
+    }))
+    const missing = parseSavedState(JSON.stringify({ ui: {} }))
+
+    expect(state.ui.toolbarLayouts).toEqual([
+      {
+        id: 'desktop',
+        name: 'desktop',
+        items: [
+          { id: 'one', type: 'tool', toolId: 'bold' },
+          { id: 'gap', type: 'spacer' },
+          { id: 'three', type: 'tool', toolId: 'italic' },
+        ],
+      },
+    ])
+    expect('activeToolbarLayoutId' in state.ui).toBe(false)
+    expect(missing.ui.toolbarLayouts).toEqual([])
+  })
+
+  it('normalizes toolbar customizer name visibility', () => {
+    const enabled = parseSavedState(JSON.stringify({ ui: { toolbarEditorShowNames: true } }))
+    const disabled = parseSavedState(JSON.stringify({ ui: { toolbarEditorShowNames: false } }))
+    const invalid = parseSavedState(JSON.stringify({ ui: { toolbarEditorShowNames: 'yes' } }))
+    const missing = parseSavedState(JSON.stringify({ ui: {} }))
+
+    expect(enabled.ui.toolbarEditorShowNames).toBe(true)
+    expect(disabled.ui.toolbarEditorShowNames).toBe(false)
+    expect(invalid.ui.toolbarEditorShowNames).toBe(false)
+    expect(missing.ui.toolbarEditorShowNames).toBe(false)
   })
 
   it('normalizes persisted table control target modes', () => {

@@ -73,6 +73,11 @@ function sendMultilineShortcut(direction) {
 
 function installApplicationMenu({ onNewWindow }) {
   const isMac = process.platform === 'darwin'
+  if (!isMac) {
+    Menu.setApplicationMenu(null)
+    return
+  }
+
   const template = [
     ...(isMac
       ? [

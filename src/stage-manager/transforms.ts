@@ -1,5 +1,6 @@
 import { createId, createWorkspaceDataFromTabs } from '../state/workspace'
 import type { StageManagerSelectionSnapshot, SubTab, Tab, WorkspaceData } from '../types/app'
+import type { IdGenerator } from '../state/navigation-ids'
 
 export function cloneSubTabForTransfer(subTab: SubTab): SubTab {
   return {
@@ -14,9 +15,9 @@ export function cloneTabForTransfer(tab: Tab): Tab {
   }
 }
 
-export function createPromotedParentTab(subTab: SubTab): Tab {
+export function createPromotedParentTab(subTab: SubTab, generateId: IdGenerator = createId): Tab {
   return {
-    id: createId(),
+    id: generateId(),
     title: subTab.title,
     noteBodyId: subTab.noteBodyId,
     homeContent: subTab.content,
@@ -25,9 +26,9 @@ export function createPromotedParentTab(subTab: SubTab): Tab {
   }
 }
 
-export function createDemotedParentSubTab(tab: Tab): SubTab {
+export function createDemotedParentSubTab(tab: Tab, generateId: IdGenerator = createId): SubTab {
   return {
-    id: createId(),
+    id: generateId(),
     title: tab.title,
     noteBodyId: tab.noteBodyId,
     content: tab.homeContent,
@@ -47,6 +48,7 @@ export function buildStageManagerLooseSelectionMap(snapshot: StageManagerSelecti
 export function stripStageManagerSelectionsFromWorkspace(
   data: WorkspaceData,
   snapshot: StageManagerSelectionSnapshot,
+  generateId: IdGenerator = createId,
 ): WorkspaceData {
   const looseMap = buildStageManagerLooseSelectionMap(snapshot)
   const nextTabs = data.tabs
@@ -68,6 +70,7 @@ export function stripStageManagerSelectionsFromWorkspace(
     activeTabId: data.activeTabId,
     deletedTabs: data.deletedTabs,
     deletedSubTabs: data.deletedSubTabs,
+    createId: generateId,
   })
 }
 
@@ -88,11 +91,14 @@ export function appendSubTabsToParent(
   )
 }
 
-export function buildStageManagerMovedSubTabs(snapshot: StageManagerSelectionSnapshot): SubTab[] {
+export function buildStageManagerMovedSubTabs(
+  snapshot: StageManagerSelectionSnapshot,
+  generateId: IdGenerator = createId,
+): SubTab[] {
   const moved: SubTab[] = []
 
   for (const parentTab of snapshot.fullParents) {
-    moved.push(createDemotedParentSubTab(parentTab))
+    moved.push(createDemotedParentSubTab(parentTab, generateId))
     moved.push(...parentTab.subTabs.map(cloneSubTabForTransfer))
   }
 

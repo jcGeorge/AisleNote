@@ -424,6 +424,276 @@
   color: var(--theme-switch-option-selected-text);
 }
 
+.settings-toolbar-panel {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.settings-toolbar-management {
+  display: grid;
+  grid-template-columns: minmax(9rem, 0.75fr) minmax(10rem, 1fr) auto;
+  align-items: end;
+  gap: 0.55rem;
+}
+
+.settings-toolbar-field {
+  min-width: 0;
+  display: grid;
+  gap: 0.22rem;
+}
+
+.settings-toolbar-select {
+  min-width: 0;
+  width: 100%;
+}
+
+.settings-toolbar-actions {
+  align-self: end;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.35rem;
+}
+
+.settings-toolbar-actions .settings-action-btn {
+  min-width: auto;
+}
+
+.settings-toolbar-editor {
+  display: grid;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.settings-toolbar-preview {
+  box-sizing: border-box;
+  display: flow-root;
+  width: 100%;
+  height: auto !important;
+  min-height: 4.85rem;
+  border: 1px solid var(--settings-control-border) !important;
+  border-bottom: 1px solid var(--settings-control-border) !important;
+  border-radius: 0.5rem;
+  padding: 0.75rem !important;
+  background: var(--editor-toolbar-bg) !important;
+  overflow: visible !important;
+}
+
+.settings-toolbar-preview.is-readonly {
+  opacity: 0.82;
+}
+
+.settings-toolbar-preview.is-readonly .settings-toolbar-surface,
+.settings-toolbar-icon-box.is-readonly .settings-toolbar-surface {
+  pointer-events: none;
+}
+
+.settings-toolbar-preview-inner {
+  gap: 0.38rem 0;
+  align-items: center !important;
+  align-content: flex-start !important;
+  width: 100% !important;
+}
+
+.settings-toolbar-surface.toastui-editor-defaultUI-toolbar {
+  box-sizing: border-box;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  height: auto !important;
+  min-height: 2rem !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-bottom: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  overflow: visible !important;
+}
+
+.settings-toolbar-editable-item-wrap {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  position: relative;
+}
+
+.settings-toolbar-editable-icon.is-arrangeable,
+.settings-toolbar-editable-spacer.is-arrangeable,
+.settings-toolbar-named-tool.is-arrangeable {
+  animation: settingsToolbarJiggle 0.32s ease-in-out infinite alternate;
+  cursor: grab;
+  transform-origin: center;
+  user-select: none;
+}
+
+.settings-toolbar-editable-icon.is-arrangeable:hover,
+.settings-toolbar-editable-spacer.is-arrangeable:hover,
+.settings-toolbar-named-tool.is-arrangeable:hover {
+  animation-play-state: paused;
+}
+
+.settings-toolbar-editable-icon.is-dragging,
+.settings-toolbar-editable-spacer.is-dragging,
+.settings-toolbar-named-tool.is-dragging {
+  opacity: 0.35 !important;
+  cursor: grabbing;
+}
+
+.settings-toolbar-editable-spacer,
+.settings-toolbar-palette-spacer {
+  min-width: 5.25rem;
+  height: 26px;
+  border: 1px dashed var(--settings-action-border);
+  border-radius: 0.32rem;
+  background: color-mix(in srgb, var(--settings-action-bg) 70%, transparent);
+  color: var(--settings-action-text);
+  font-size: 0.82em;
+  line-height: 1;
+  padding: 0 0.7rem;
+  text-transform: lowercase;
+}
+
+.settings-toolbar-editable-item-wrap.is-drop-before::before,
+.settings-toolbar-editable-item-wrap.is-drop-after::after {
+  content: '';
+  position: absolute;
+  top: -0.25rem;
+  bottom: -0.25rem;
+  width: 3px;
+  border-radius: 999px;
+  pointer-events: none;
+  z-index: 2;
+  background: var(--settings-section-tab-active-bg);
+  box-shadow: 0 0 0 1px var(--settings-section-tab-active-border);
+}
+
+.settings-toolbar-editable-item-wrap.is-drop-before::before {
+  left: -0.22rem;
+}
+
+.settings-toolbar-editable-item-wrap.is-drop-after::after {
+  right: -0.22rem;
+}
+
+.settings-toolbar-icon-box {
+  box-sizing: border-box;
+  display: flow-root;
+  width: 100%;
+  height: auto !important;
+  min-height: 4.85rem;
+  border: 1px dashed var(--settings-control-border) !important;
+  border-bottom: 1px dashed var(--settings-control-border) !important;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--settings-control-bg) 82%, transparent) !important;
+  padding: 0.75rem !important;
+  margin-top: 0.2rem;
+  overflow: visible !important;
+}
+
+.settings-toolbar-icon-box.is-drop-target {
+  border-color: var(--settings-section-tab-active-border) !important;
+  background: color-mix(in srgb, var(--settings-section-tab-active-bg) 18%, var(--settings-control-bg)) !important;
+}
+
+.settings-toolbar-palette-inner {
+  gap: 0.38rem;
+  align-items: center !important;
+  align-content: flex-start !important;
+  width: 100% !important;
+}
+
+.settings-toolbar-editor.show-names {
+  gap: 1.35rem;
+}
+
+.settings-toolbar-editor.show-names .settings-toolbar-preview,
+.settings-toolbar-editor.show-names .settings-toolbar-icon-box {
+  min-height: 6.4rem;
+  padding: 0.95rem 0.9rem !important;
+}
+
+.settings-toolbar-editor.show-names .settings-toolbar-preview-inner,
+.settings-toolbar-editor.show-names .settings-toolbar-palette-inner {
+  gap: 0.5rem;
+  row-gap: 0.55rem !important;
+}
+
+.settings-toolbar-named-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.36rem;
+  min-height: 30px;
+  max-width: 14rem;
+  padding: 0 0.46rem 0 0.12rem;
+  border-radius: 0.3rem;
+  color: var(--editor-text);
+  line-height: 1;
+}
+
+.settings-toolbar-named-tool:hover {
+  background: var(--editor-toolbar-hover-bg);
+  box-shadow: inset 0 0 0 1px var(--editor-toolbar-hover-border);
+}
+
+.settings-toolbar-named-tool-icon {
+  flex: 0 0 auto;
+  pointer-events: none;
+}
+
+.settings-toolbar-visible-tool-name {
+  min-width: 0;
+  max-width: 10rem;
+  overflow: hidden;
+  color: var(--editor-text);
+  font-size: var(--ui-font-xs);
+  font-weight: 650;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-toolbar-name-toggle {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-top: 0.1rem;
+  color: var(--settings-card-title-text);
+}
+
+.settings-toolbar-palette-icon,
+.settings-toolbar-palette-spacer {
+  cursor: grab;
+}
+
+.settings-toolbar-palette-icon:disabled,
+.settings-toolbar-palette-spacer:disabled,
+.settings-toolbar-editable-icon:disabled,
+.settings-toolbar-editable-spacer:disabled {
+  cursor: default;
+}
+
+.settings-toolbar-palette-icon {
+  flex: 0 0 auto;
+}
+
+.settings-toolbar-preview .toastui-editor-defaultUI-toolbar button.settings-toolbar-editable-icon,
+.settings-toolbar-icon-box button.settings-toolbar-palette-icon {
+  margin: 0 !important;
+}
+
+.settings-toolbar-preview .table-of-contents-toolbar-icon,
+.settings-toolbar-icon-box .table-of-contents-toolbar-icon {
+  width: 1.1rem;
+  height: 1rem;
+  display: block;
+  background:
+    linear-gradient(currentColor, currentColor) 0.1rem 0.18rem / 0.9rem 0.11rem no-repeat,
+    linear-gradient(currentColor, currentColor) 0.1rem 0.45rem / 0.66rem 0.11rem no-repeat,
+    linear-gradient(currentColor, currentColor) 0.1rem 0.72rem / 0.42rem 0.11rem no-repeat;
+}
+
 .custom-theme-editor {
   display: grid;
   gap: 0.65rem;
@@ -762,5 +1032,15 @@
 
   100% {
     transform: rotate(1.75deg) translateY(0.5px);
+  }
+}
+
+@keyframes settingsToolbarJiggle {
+  0% {
+    transform: rotate(-1deg) translateY(-0.25px);
+  }
+
+  100% {
+    transform: rotate(1deg) translateY(0.25px);
   }
 }

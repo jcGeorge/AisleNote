@@ -38,6 +38,26 @@ import {
   getCustomThemePaletteSeed,
   normalizeHexColor,
 } from './defaults'
+import {
+  DEFAULT_TOOLBAR_LAYOUT_ID,
+  createCustomToolbarLayout,
+  createToolbarSpacerItem,
+  createToolbarToolItem,
+  getDefaultToolbarLayout,
+  getDuplicateToolbarLayoutName,
+  getNextCoolbarToolbarLayoutName,
+  getToolbarLayouts,
+  insertToolbarLayoutItemAtIndex,
+  isProtectedToolbarLayoutId,
+  isToolbarToolId,
+  moveToolbarLayoutItem,
+  moveToolbarLayoutItemToIndex,
+  normalizeToolbarLayouts,
+  removeToolbarLayoutItem,
+  removeToolbarLayout,
+  resolveToolbarLayoutId,
+  updateToolbarLayout,
+} from '../editor/toolbar-layouts'
 
 type UseSettingsControllerParams = {
   state: AppState
@@ -45,6 +65,8 @@ type UseSettingsControllerParams = {
   commitAppStateNow: (nextState: AppState) => Promise<AppState>
   activeSpace: Space
   viewMode: ViewMode
+  activeToolbarLayoutId: string
+  onActiveToolbarLayoutIdChange: (layoutId: string) => void
 }
 
 function isFrontmatterBooleanDefaultTrue(value: string) {
@@ -58,6 +80,8 @@ export function useSettingsController({
   commitAppStateNow,
   activeSpace,
   viewMode,
+  activeToolbarLayoutId,
+  onActiveToolbarLayoutIdChange,
 }: UseSettingsControllerParams) {
   const [section, setSection] = useState<SettingsSection>(state.ui.settingsSection)
   const [settingsDaysDraft, setSettingsDaysDraft] = useState<string>(String(DEFAULT_AUTO_REMOVE_DAYS))
@@ -80,6 +104,9 @@ export function useSettingsController({
     state.ui.customThemePalette ?? getCustomThemePaletteSeed(state.theme),
   )
   const [frontmatterDraft, setFrontmatterDraft] = useState<FrontmatterSettings>(state.frontmatter)
+  const [toolbarEditorLayoutId, setToolbarEditorLayoutId] = useState<string>(() =>
+    resolveToolbarLayoutId(state.ui.toolbarLayouts, activeToolbarLayoutId),
+  )
   const [exportStatus, setExportStatus] = useState<string>('')
   const pendingSettingsFrontmatterTemplateIdRef = useRef<string | null>(null)
   const pendingSettingsSectionRef = useRef<SettingsSection | null>(null)
@@ -126,6 +153,13 @@ export function useSettingsController({
     state.ui.settingsSection,
     state.ui.customThemePalette,
   ])
+
+  useEffect(() => {
+    if (viewMode !== 'settings') return
+    const nextLayoutId = resolveToolbarLayoutId(state.ui.toolbarLayouts, activeToolbarLayoutId)
+    if (toolbarEditorLayoutId === nextLayoutId) return
+    setToolbarEditorLayoutId(nextLayoutId)
+  }, [activeToolbarLayoutId, state.ui.toolbarLayouts, toolbarEditorLayoutId, viewMode])
 
   useEffect(() => {
     if (viewMode !== 'settings') return
@@ -411,6 +445,127 @@ export function useSettingsController({
     }))
   }
 
+  const commitToolbarLayouts = (buildNextLayouts: (layouts: AppState['ui']['toolbarLayouts']) => AppState['ui']['toolbarLayouts']) => {
+    commitImmediateSettingsState((previous) => ({
+      ...previous,
+      ui: {
+        ...previous.ui,
+        toolbarLayouts: normalizeToolbarLayouts(buildNextLayouts(previous.ui.toolbarLayouts)),
+      },
+    }))
+  }
+
+  const selectToolbarLayoutForEditing = (layoutId: string) => {
+    const nextLayoutId = getToolbarLayouts(stateRef.current.ui.toolbarLayouts).some((layout) => layout.id === layoutId)
+      ? layoutId
+      : DEFAULT_TOOLBAR_LAYOUT_ID
+    setToolbarEditorLayoutId(nextLayoutId)
+    onActiveToolbarLayoutIdChange(nextLayoutId)
+  }
+
+  const createToolbarLayoutSetting = () => {
+    const layouts = getToolbarLayouts(stateRef.current.ui.toolbarLayouts)
+    const layout = createCustomToolbarLayout(getNextCoolbarToolbarLayoutName(layouts), getDefaultToolbarLayout().items)
+    commitToolbarLayouts((layouts) => [...normalizeToolbarLayouts(layouts), layout])
+    setToolbarEditorLayoutId(layout.id)
+    onActiveToolbarLayoutIdChange(layout.id)
+  }
+
+  const duplicateToolbarLayoutSetting = (layoutId: string) => {
+    const layouts = getToolbarLayouts(stateRef.current.ui.toolbarLayouts)
+    const source = layouts.find((layout) => layout.id === layoutId) ?? getDefaultToolbarLayout()
+    const layout = createCustomToolbarLayout(getDuplicateToolbarLayoutName(source.name, layouts), source.items)
+    commitToolbarLayouts((layouts) => [...normalizeToolbarLayouts(layouts), layout])
+    setToolbarEditorLayoutId(layout.id)
+    onActiveToolbarLayoutIdChange(layout.id)
+  }
+
+  const renameToolbarLayoutSetting = (layoutId: string, name: string) => {
+    if (isProtectedToolbarLayoutId(layoutId)) return
+    const nextName = name.trim() || 'toolbar'
+    commitToolbarLayouts((layouts) =>
+      updateToolbarLayout(layouts, layoutId, (layout) => ({
+        ...layout,
+        name: nextName,
+      })),
+    )
+  }
+
+  const deleteToolbarLayoutSetting = (layoutId: string) => {
+    if (isProtectedToolbarLayoutId(layoutId)) return
+    commitToolbarLayouts((layouts) => removeToolbarLayout(layouts, layoutId))
+    if (toolbarEditorLayoutId === layoutId) setToolbarEditorLayoutId(DEFAULT_TOOLBAR_LAYOUT_ID)
+    if (activeToolbarLayoutId === layoutId) onActiveToolbarLayoutIdChange(DEFAULT_TOOLBAR_LAYOUT_ID)
+  }
+
+  const addToolbarToolSetting = (layoutId: string, toolId: string, targetIndex?: number) => {
+    if (isProtectedToolbarLayoutId(layoutId) || !isToolbarToolId(toolId)) return
+    commitToolbarLayouts((layouts) =>
+      updateToolbarLayout(layouts, layoutId, (layout) => ({
+        ...layout,
+        items: insertToolbarLayoutItemAtIndex(
+          layout.items,
+          createToolbarToolItem(toolId),
+          typeof targetIndex === 'number' ? targetIndex : layout.items.length,
+        ),
+      })),
+    )
+  }
+
+  const addToolbarSpacerSetting = (layoutId: string, targetIndex?: number) => {
+    if (isProtectedToolbarLayoutId(layoutId)) return
+    commitToolbarLayouts((layouts) =>
+      updateToolbarLayout(layouts, layoutId, (layout) => ({
+        ...layout,
+        items: insertToolbarLayoutItemAtIndex(
+          layout.items,
+          createToolbarSpacerItem(),
+          typeof targetIndex === 'number' ? targetIndex : layout.items.length,
+        ),
+      })),
+    )
+  }
+
+  const removeToolbarItemSetting = (layoutId: string, itemId: string) => {
+    if (isProtectedToolbarLayoutId(layoutId)) return
+    commitToolbarLayouts((layouts) =>
+      updateToolbarLayout(layouts, layoutId, (layout) => ({
+        ...layout,
+        items: removeToolbarLayoutItem(layout.items, itemId),
+      })),
+    )
+  }
+
+  const moveToolbarItemSetting = (layoutId: string, itemId: string, direction: 'up' | 'down') => {
+    if (isProtectedToolbarLayoutId(layoutId)) return
+    commitToolbarLayouts((layouts) =>
+      updateToolbarLayout(layouts, layoutId, (layout) => ({
+        ...layout,
+        items: moveToolbarLayoutItem(layout.items, itemId, direction),
+      })),
+    )
+  }
+
+  const moveToolbarItemToIndexSetting = (layoutId: string, itemId: string, targetIndex: number) => {
+    if (isProtectedToolbarLayoutId(layoutId)) return
+    commitToolbarLayouts((layouts) =>
+      updateToolbarLayout(layouts, layoutId, (layout) => ({
+        ...layout,
+        items: moveToolbarLayoutItemToIndex(layout.items, itemId, targetIndex),
+      })),
+    )
+  }
+
+  const updateToolbarEditorShowNamesSetting = (enabled: boolean) => {
+    commitImmediateSettingsState((previous) => ({
+      ...previous,
+      ui: {
+        ...previous.ui,
+        toolbarEditorShowNames: enabled,
+      },
+    }))
+  }
+
   const frontmatterDraftDirty = JSON.stringify(frontmatterDraft) !== JSON.stringify(state.frontmatter)
 
   const updateFrontmatterDraft = (updater: (
@@ -592,6 +747,10 @@ export function useSettingsController({
     tableDeleteTargetModeDraft,
     frontmatterDraft,
     frontmatterDraftDirty,
+    toolbarLayouts: getToolbarLayouts(state.ui.toolbarLayouts),
+    activeToolbarLayoutId,
+    toolbarEditorLayoutId,
+    toolbarEditorShowNames: state.ui.toolbarEditorShowNames ?? DEFAULT_UI_SETTINGS.toolbarEditorShowNames ?? false,
     setEditingShortcut,
     setExportStatus,
     changeSection,
@@ -613,6 +772,17 @@ export function useSettingsController({
     updateNewlineShortcutSetting,
     updateShortcutMenuOperationsSetting,
     updateStageManagerOpenDestinationSetting,
+    selectToolbarLayoutForEditing,
+    createToolbarLayoutSetting,
+    duplicateToolbarLayoutSetting,
+    renameToolbarLayoutSetting,
+    deleteToolbarLayoutSetting,
+    addToolbarToolSetting,
+    addToolbarSpacerSetting,
+    removeToolbarItemSetting,
+    moveToolbarItemSetting,
+    moveToolbarItemToIndexSetting,
+    updateToolbarEditorShowNamesSetting,
     setSettingsFrontmatterTemplate,
     createFrontmatterTemplate,
     updateFrontmatterTemplate,

@@ -7,6 +7,7 @@ import {
   loadAppStateResult,
   restoreStorageRecoverySnapshot,
   saveAppState,
+  writeAssetToProfile,
   writeImageAssetToProfile,
 } from './app-state-storage.mjs'
 import {
@@ -15,6 +16,7 @@ import {
   writeStorageProfileConfig,
 } from './storage-profile.mjs'
 import { createStorageProfileWatcher } from './storage-watcher.mjs'
+import { normalizeImageAssetPath, parseImageAssetUrl } from '../src/markdown/image-asset-refs.js'
 
 function createStorageStatus({ profile, coordinator, event = 'ready', error = null }) {
   const loadResult = coordinator.getLoadResult()
@@ -53,6 +55,15 @@ function normalizeImageExtension(value) {
   return normalized || 'png'
 }
 
+function normalizeAssetExtension(value) {
+  const normalized = String(value ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
+  if (normalized === 'jpeg') return 'jpg'
+  if (normalized === 'svgxml') return 'svg'
+  if (normalized === 'quicktime') return 'mov'
+  if (normalized === 'mpeg' || normalized === 'xmpeg') return 'mp3'
+  return normalized || 'bin'
+}
+
 function getImageExtensionFromImportPayload(payload) {
   if (typeof payload?.extension === 'string' && payload.extension.trim()) {
     return normalizeImageExtension(payload.extension)
@@ -61,6 +72,18 @@ function getImageExtensionFromImportPayload(payload) {
   if (typeMatch) return normalizeImageExtension(typeMatch[1])
   const nameMatch = typeof payload?.name === 'string' ? payload.name.match(/\.([a-zA-Z0-9]+)$/) : null
   return normalizeImageExtension(nameMatch?.[1] ?? 'png')
+}
+
+function getAssetExtensionFromImportPayload(payload) {
+  if (typeof payload?.extension === 'string' && payload.extension.trim()) {
+    return normalizeAssetExtension(payload.extension)
+  }
+  const typeMatch = typeof payload?.type === 'string'
+    ? payload.type.match(/^[a-zA-Z0-9+.-]+\/([a-zA-Z0-9+.-]+)$/)
+    : null
+  if (typeMatch) return normalizeAssetExtension(typeMatch[1])
+  const nameMatch = typeof payload?.name === 'string' ? payload.name.match(/\.([a-zA-Z0-9]+)$/) : null
+  return normalizeAssetExtension(nameMatch?.[1] ?? 'bin')
 }
 
 export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null, shell = null }) {
@@ -361,6 +384,44 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
       return { ok: true, ...result }
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : 'Image asset could not be imported.' }
+    }
+  })
+
+  ipcMain.handle?.('import-asset', async (_event, payload = {}) => {
+    try {
+      const rawBytes = payload?.bytes
+      if (!(rawBytes instanceof ArrayBuffer) && !ArrayBuffer.isView(rawBytes)) {
+        return { ok: false, error: 'Invalid asset payload.' }
+      }
+      const bytes = rawBytes instanceof ArrayBuffer
+        ? Buffer.from(rawBytes)
+        : Buffer.from(rawBytes.buffer, rawBytes.byteOffset, rawBytes.byteLength)
+      if (bytes.byteLength <= 0) return { ok: false, error: 'Asset is empty.' }
+      watcher?.markAppWrite()
+      const result = writeAssetToProfile(profile.profileRootPath, bytes, getAssetExtensionFromImportPayload(payload))
+      watcher?.markAppWrite()
+      return { ok: true, ...result }
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : 'Asset could not be imported.' }
+    }
+  })
+
+  ipcMain.handle?.('open-asset', async (_event, payload = {}) => {
+    if (!shell || typeof shell.openPath !== 'function') return { ok: false, error: 'Asset opening is unavailable.' }
+    try {
+      const assetPath = typeof payload?.url === 'string'
+        ? parseImageAssetUrl(payload.url)
+        : normalizeImageAssetPath(payload?.assetPath)
+      if (!assetPath) return { ok: false, error: 'Invalid asset.' }
+      const notesRoot = getStorageProfileNotesPath(profile.profileRootPath)
+      const absoluteAssetPath = path.resolve(notesRoot, assetPath)
+      if (!absoluteAssetPath.startsWith(notesRoot + path.sep)) {
+        return { ok: false, error: 'Invalid asset path.' }
+      }
+      const error = await shell.openPath(absoluteAssetPath)
+      return error ? { ok: false, error } : { ok: true }
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : 'Asset could not be opened.' }
     }
   })
 

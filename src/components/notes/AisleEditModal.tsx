@@ -10,7 +10,7 @@ import {
   getAislePreviewMarkdown,
   reorderAisleDraft,
 } from '../../editor/aisle-edit-draft'
-import { resolveImageAssetDisplayUrl } from '../../markdown/image-asset-registry'
+import { resolveAssetDisplayUrl } from '../../markdown/image-asset-registry'
 import { createNoteAisle } from '../../state/workspace'
 import type { NoteAisle } from '../../types/app'
 import { MarkdownPreviewParagraph } from './markdown-preview-components'
@@ -18,10 +18,13 @@ import { MarkdownPreviewParagraph } from './markdown-preview-components'
 const AISLE_DRAG_MIME = 'application/x-tabs-aisle-id'
 const EMPTY_STAGED_DECOUPLE_IDS: string[] = []
 
-const transformAislePreviewUrl = (url: string, key: string) =>
-  key === 'src' && (/^data:image\//i.test(url) || /^blob:/i.test(url) || /^tabs-asset:/i.test(url))
-    ? resolveImageAssetDisplayUrl(url)
-    : defaultUrlTransform(url)
+const transformAislePreviewUrl = (url: string, key: string) => {
+  if (key === 'href' && /^tabs-asset:/i.test(url)) return url
+  if (key === 'src' && (/^data:image\//i.test(url) || /^blob:/i.test(url) || /^tabs-asset:/i.test(url))) {
+    return resolveAssetDisplayUrl(url)
+  }
+  return defaultUrlTransform(url)
+}
 
 const aislePreviewMarkdownComponents = {
   p: MarkdownPreviewParagraph,

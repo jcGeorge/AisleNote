@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { parseImageAssetUrl } from './image-asset-refs.js'
+import { parseAssetUrl, parseImageAssetUrl } from './image-asset-refs.js'
 import {
+  getRegisteredAssetBytes,
   getRegisteredImageAssetBytes,
+  importBlobAsAssetUrl,
   importImageBlobAsAssetUrl,
+  normalizeMarkdownAssetSourcesForPersistence,
   normalizeMarkdownImageSourcesForPersistence,
 } from './image-asset-registry'
 
@@ -21,5 +24,20 @@ describe('image asset registry', () => {
 
     expect(markdown).toBe('![pixel](tabs-asset:///assets/asset-test.png)')
     expect(markdown).not.toContain('data:image/')
+  })
+
+  it('imports non-image blobs as stable asset links', async () => {
+    const assetUrl = await importBlobAsAssetUrl(new Blob([new Uint8Array([4, 5, 6])], { type: 'application/pdf' }), 'report.pdf')
+    const assetPath = parseAssetUrl(assetUrl)
+
+    expect(assetUrl).toMatch(/^tabs-asset:\/\/\/assets\/asset-/)
+    expect(assetUrl).toMatch(/\.pdf$/)
+    expect(assetPath ? Array.from(getRegisteredAssetBytes(assetPath) ?? []) : []).toEqual([4, 5, 6])
+  })
+
+  it('keeps markdown asset links stable when normalizing persistence sources', () => {
+    const markdown = normalizeMarkdownAssetSourcesForPersistence('[report](tabs-asset:///assets/asset-test.pdf)')
+
+    expect(markdown).toBe('[report](tabs-asset:///assets/asset-test.pdf)')
   })
 })

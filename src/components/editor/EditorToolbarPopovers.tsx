@@ -1,5 +1,4 @@
 import { createPortal } from 'react-dom'
-import type { NoteAisle } from '../../types/app'
 import type { ToolbarHeadingLevel } from './toolbar-state'
 
 type ToolbarPopoverPosition = {
@@ -11,60 +10,14 @@ type EditorToolbarPopoversProps = {
   disabled?: boolean
   copyMenuOpen: boolean
   headingMenuOpen: boolean
-  noteToolsOpen: boolean
   activeHeadingLevel: ToolbarHeadingLevel
   toolbarPopoverPosition: {
     copy: ToolbarPopoverPosition | null
     heading: ToolbarPopoverPosition | null
-    aisles: ToolbarPopoverPosition | null
   }
-  activeNoteAisles: NoteAisle[]
   onExecuteToolbarCommand: (command: string, payload?: Record<string, unknown>) => void
   onOpenCopyModal: () => void
   onOpenDeduplicateModal: () => void
-  onCloseAislePopover: () => void
-  onAddAisle: () => void
-  onOpenAisleEditModal: () => void
-}
-
-export function AisleToolbarMenu({
-  onCloseAislePopover,
-  onAddAisle,
-  onOpenAisleEditModal,
-}: Pick<
-  EditorToolbarPopoversProps,
-  'onCloseAislePopover' | 'onAddAisle' | 'onOpenAisleEditModal'
->) {
-  return (
-    <>
-      <button
-        type="button"
-        className="note-tools-item"
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={(event) => {
-          event.preventDefault()
-          event.stopPropagation()
-          onCloseAislePopover()
-          onAddAisle()
-        }}
-      >
-        add aisle
-      </button>
-      <button
-        type="button"
-        className="note-tools-item"
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={(event) => {
-          event.preventDefault()
-          event.stopPropagation()
-          onCloseAislePopover()
-          onOpenAisleEditModal()
-        }}
-      >
-        edit aisles
-      </button>
-    </>
-  )
 }
 
 export function CopyToolbarMenu({
@@ -105,15 +58,11 @@ export function EditorToolbarPopovers({
   disabled = false,
   copyMenuOpen,
   headingMenuOpen,
-  noteToolsOpen,
   activeHeadingLevel,
   toolbarPopoverPosition,
   onExecuteToolbarCommand,
   onOpenCopyModal,
   onOpenDeduplicateModal,
-  onCloseAislePopover,
-  onAddAisle,
-  onOpenAisleEditModal,
 }: EditorToolbarPopoversProps) {
   if (typeof document === 'undefined') return null
   if (disabled) return null
@@ -193,35 +142,10 @@ export function EditorToolbarPopovers({
         )
       : null
 
-  const aislePopover =
-    noteToolsOpen && toolbarPopoverPosition.aisles
-      ? createPortal(
-          <div
-            className="note-toolbar-aisle-popover"
-            role="menu"
-            style={{
-              top: `${toolbarPopoverPosition.aisles.top}px`,
-              left: `${toolbarPopoverPosition.aisles.left}px`,
-            }}
-            onPointerDown={(event) => event.stopPropagation()}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <AisleToolbarMenu
-              onCloseAislePopover={onCloseAislePopover}
-              onAddAisle={onAddAisle}
-              onOpenAisleEditModal={onOpenAisleEditModal}
-            />
-          </div>,
-          portalRoot,
-        )
-      : null
-
   return (
     <>
       {copyPopover}
       {headingPopover}
-      {aislePopover}
     </>
   )
 }

@@ -24,7 +24,6 @@ describe('editor DOM events', () => {
   it.each([
     '.note-shared-toolbar',
     '.note-toolbar-heading-popover',
-    '.note-toolbar-aisle-popover',
     '.toastui-editor-defaultUI-toolbar',
     '.toastui-editor-toolbar',
     '.toastui-editor-toolbar-icons',
@@ -94,7 +93,7 @@ describe('editor DOM events', () => {
     expect(getMultiLineDeleteInputForBeforeInputType('insertText')).toBeNull()
   })
 
-  it('prioritizes editor history before aisle structural history inside the editor', () => {
+  it('prioritizes aisle structural history before editor history inside the editor', () => {
     const onRunStructuralHistory = vi.fn(() => true)
     const onRunEditorHistory = vi.fn(() => 'applied' as const)
 
@@ -102,11 +101,21 @@ describe('editor DOM events', () => {
       direction: 'undo',
       onRunStructuralHistory,
       onRunEditorHistory,
-    })).toEqual({ handled: true, result: 'applied' })
-    expect(onRunStructuralHistory).not.toHaveBeenCalled()
+    })).toEqual({ handled: true, result: 'structural' })
+    expect(onRunEditorHistory).not.toHaveBeenCalled()
   })
 
   it('normalizes history command results for shared command dispatch', () => {
+    expect(runEditorHistoryCommand({
+      direction: 'undo',
+      onRunStructuralHistory: vi.fn(() => true),
+      onRunEditorHistory: vi.fn(() => 'applied' as const),
+    })).toMatchObject({
+      handled: true,
+      commit: false,
+      focusIntent: 'structural-history',
+      historyResult: 'structural',
+    })
     expect(runEditorHistoryCommand({
       direction: 'undo',
       onRunStructuralHistory: vi.fn(() => false),
@@ -117,16 +126,6 @@ describe('editor DOM events', () => {
       preserveSelection: false,
       focusIntent: 'toolbar-command',
       historyResult: 'applied',
-    })
-    expect(runEditorHistoryCommand({
-      direction: 'undo',
-      onRunStructuralHistory: vi.fn(() => true),
-      onRunEditorHistory: vi.fn(() => 'unavailable' as const),
-    })).toMatchObject({
-      handled: true,
-      commit: false,
-      focusIntent: 'structural-history',
-      historyResult: 'structural',
     })
   })
 

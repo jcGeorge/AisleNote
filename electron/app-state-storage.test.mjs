@@ -10,6 +10,7 @@ import {
   RECOVERY_SNAPSHOT_MAX_PER_DAY,
   restoreStorageRecoverySnapshot,
   saveAppState,
+  writeAssetToProfile,
   writeImageAssetToProfile,
 } from './app-state-storage.mjs'
 import { STORAGE_PATH_SEGMENT_MAX_LENGTH } from '../src/storage/storage-path-segments.js'
@@ -214,6 +215,110 @@ describe('Electron app state storage load result', () => {
       const parsed = JSON.parse(result.serializedState)
       expect(parsed.theme).toBe('custom')
       expect(parsed.ui.customThemePalette).toEqual(customThemePaletteFixture)
+    }))
+
+  it('writes app settings and per-space settings into notes-data manifests', () =>
+    withTempUserDataPath((userDataPath) => {
+      const state = JSON.parse(serializedAppState())
+      state.theme = 'custom'
+      state.hotkeys = {
+        ...state.hotkeys,
+        shortcuts: {
+          ...state.hotkeys?.shortcuts,
+          newTab: 'Ctrl+Alt+N',
+          newSubTab: 'Ctrl+Alt+M',
+        },
+        newlineShortcuts: {
+          shortcuts: {
+            controlEnter: 'horizontalLine',
+            shiftEnter: 'task',
+            commandEnter: 'operationsMenu',
+          },
+          menuOperations: ['task', 'aisle', 'strikethrough'],
+        },
+        enableMouseBackForward: false,
+        enableGenericHistoryHotkeys: false,
+      }
+      state.ui = {
+        ...state.ui,
+        showParentHomeTab: false,
+        stageManagerOpenDestinationAfterApply: false,
+        settingsSection: 'toolbar',
+        lastNoteCopyMode: 'linked',
+        decoupledItemsKeepData: false,
+        tableAddTargetMode: 'active-cell',
+        tableDeleteTargetMode: 'active-cell',
+      }
+      state.domains[0].spaces[0].settings = { autoRemoveDeletedDays: 21 }
+      state.spaces = state.domains[0].spaces
+
+      saveAppState(userDataPath, JSON.stringify(state))
+
+      const { rootManifest, spaceManifest } = getStoredWorkspacePaths(userDataPath)
+      const result = loadAppStateResult(userDataPath)
+      expect(result.ok).toBe(true)
+      const parsed = JSON.parse(result.serializedState)
+
+      expect(rootManifest.globalSettings.theme).toBe('custom')
+      expect(rootManifest.globalSettings.ui.settingsSection).toBe('toolbar')
+      expect(rootManifest.globalSettings.ui.lastNoteCopyMode).toBe('linked')
+      expect(rootManifest.globalSettings.hotkeys.enableMouseBackForward).toBe(false)
+      expect(rootManifest.globalSettings.hotkeys.shortcuts.newTab).toBe('Ctrl+Alt+N')
+      expect(rootManifest.globalSettings.frontmatter.settingsTemplateId).toBe('template-1')
+      expect(spaceManifest.settings).toEqual({ autoRemoveDeletedDays: 21 })
+      expect(parsed.ui.settingsSection).toBe('toolbar')
+      expect(parsed.hotkeys.shortcuts.newTab).toBe('Ctrl+Alt+N')
+      expect(parsed.hotkeys.enableMouseBackForward).toBe(false)
+      expect(parsed.frontmatter.settingsTemplateId).toBe('template-1')
+      expect(parsed.domains[0].spaces[0].settings).toEqual({ autoRemoveDeletedDays: 21 })
+    }))
+
+  it('round-trips rearranged parent and sub-tab order through notes-data storage', () =>
+    withTempUserDataPath((userDataPath) => {
+      const state = JSON.parse(serializedAppState())
+      const space = state.domains[0].spaces[0]
+      space.data.activeTabId = 'tab-b'
+      space.data.tabs = [
+        {
+          id: 'tab-b',
+          title: 'Beta',
+          noteBodyId: 'body-b',
+          homeContent: '',
+          activeSubTabId: 'sub-b2',
+          subTabs: [
+            { id: 'sub-b2', title: 'Second', noteBodyId: 'body-b2', content: '' },
+            { id: 'sub-b1', title: 'First', noteBodyId: 'body-b1', content: '' },
+          ],
+        },
+        {
+          id: 'tab-a',
+          title: 'Alpha',
+          noteBodyId: 'body-a',
+          homeContent: '',
+          activeSubTabId: null,
+          subTabs: [],
+        },
+      ]
+      state.spaces = state.domains[0].spaces
+      state.noteBodies = [
+        { id: 'body-b', aisles: [{ id: 'aisle-b', markdown: 'b' }] },
+        { id: 'body-b2', aisles: [{ id: 'aisle-b2', markdown: 'b2' }] },
+        { id: 'body-b1', aisles: [{ id: 'aisle-b1', markdown: 'b1' }] },
+        { id: 'body-a', aisles: [{ id: 'aisle-a', markdown: 'a' }] },
+      ]
+
+      saveAppState(userDataPath, JSON.stringify(state))
+
+      const { spaceManifest } = getStoredWorkspacePaths(userDataPath)
+      const result = loadAppStateResult(userDataPath)
+      expect(result.ok).toBe(true)
+      const parsed = JSON.parse(result.serializedState)
+      const parsedTabs = parsed.domains[0].spaces[0].data.tabs
+
+      expect(spaceManifest.tabs.map((tab) => tab.id)).toEqual(['tab-b', 'tab-a'])
+      expect(spaceManifest.tabs[0].subTabs.map((subTab) => subTab.id)).toEqual(['sub-b2', 'sub-b1'])
+      expect(parsedTabs.map((tab) => tab.id)).toEqual(['tab-b', 'tab-a'])
+      expect(parsedTabs[0].subTabs.map((subTab) => subTab.id)).toEqual(['sub-b2', 'sub-b1'])
     }))
 
   it('writes v2 human-readable domain paths without synced backups or note body folders', () =>
@@ -684,6 +789,26 @@ describe('Electron app state storage load result', () => {
       const parsed = JSON.parse(result.serializedState)
       expect(parsed.noteBodies[0].aisles[0].markdown).toContain('tabs-asset:///assets/')
       expect(parsed.noteBodies[0].aisles[0].markdown).not.toContain('data:image/')
+
+      saveAppState(userDataPath, result.serializedState)
+      expect(readFileSync(assetPath)).toEqual(bytes)
+    }))
+
+  it('loads and re-saves non-image asset links as stable refs', () =>
+    withTempUserDataPath((userDataPath) => {
+      const bytes = Buffer.from([0x25, 0x50, 0x44, 0x46, 1, 2, 3])
+      const asset = writeAssetToProfile(userDataPath, bytes, 'pdf')
+      const state = JSON.parse(serializedAppState())
+      state.noteBodies[0].aisles[0].markdown = `[report](${asset.url})`
+
+      saveAppState(userDataPath, JSON.stringify(state))
+
+      const assetPath = path.join(userDataPath, 'notes-data', asset.assetPath)
+      expect(readFileSync(assetPath)).toEqual(bytes)
+
+      const result = loadAppStateResult(userDataPath)
+      const parsed = JSON.parse(result.serializedState)
+      expect(parsed.noteBodies[0].aisles[0].markdown).toContain('tabs-asset:///assets/')
 
       saveAppState(userDataPath, result.serializedState)
       expect(readFileSync(assetPath)).toEqual(bytes)

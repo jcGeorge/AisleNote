@@ -13,6 +13,7 @@ import {
   setActiveSpaceInActiveDomain,
   updateActiveSpaceDataInActiveDomain,
 } from '../state/domains'
+import { collectAppNavigationEntityIds, createReservedIdAllocator } from '../state/navigation-ids'
 import { createNoteBody, createSpace, createSubTab, createTab, duplicateSpace } from '../state/workspace'
 import {
   selectActivePrimeTabHome,
@@ -279,9 +280,10 @@ export const useAppNavigationActions = ({
     saveActiveCursorBeforeNavigation()
     pendingFocusToAisleIdRef.current = null
     pendingCursorRestoreRef.current = null
-    const noteBody = createNoteBody('')
+    const createEntityId = createReservedIdAllocator(collectAppNavigationEntityIds(state))
+    const noteBody = createNoteBody('', createEntityId)
     const newTab = {
-      ...createTab('tab'),
+      ...createTab('tab', createEntityId),
       noteBodyId: noteBody.id,
       homeContent: '',
     }
@@ -308,8 +310,9 @@ export const useAppNavigationActions = ({
     saveActiveCursorBeforeNavigation()
     pendingFocusToAisleIdRef.current = null
     pendingCursorRestoreRef.current = null
-    const noteBody = createNoteBody('')
-    const newSubTab = { ...createSubTab('tab', ''), noteBodyId: noteBody.id }
+    const createEntityId = createReservedIdAllocator(collectAppNavigationEntityIds(state))
+    const noteBody = createNoteBody('', createEntityId)
+    const newSubTab = { ...createSubTab('tab', '', createEntityId), noteBodyId: noteBody.id }
 
     setState((previous) => {
       const sanitizedPrevious = applyAutoPurgeToAppState(previous)
@@ -379,7 +382,8 @@ export const useAppNavigationActions = ({
   const addSpace = () => {
     commitActiveRenameBeforeAction()
     saveActiveCursorBeforeNavigation()
-    const newSpace = createSpace('New Space')
+    const createEntityId = createReservedIdAllocator(collectAppNavigationEntityIds(state))
+    const newSpace = createSpace('New Space', createEntityId)
     setState((previous) => addSpaceToActiveDomain(previous, newSpace))
     setViewMode('spaces')
     setEditing({ type: 'space', id: newSpace.id })
@@ -395,7 +399,8 @@ export const useAppNavigationActions = ({
       return
     }
 
-    const duplicatedSpace = duplicateSpace(sourceSpace, state.spaces.map((space) => space.name))
+    const createEntityId = createReservedIdAllocator(collectAppNavigationEntityIds(state))
+    const duplicatedSpace = duplicateSpace(sourceSpace, state.spaces.map((space) => space.name), createEntityId)
 
     setState((previous) => insertSpaceAfterInActiveDomain(previous, sourceSpace.id, duplicatedSpace))
 
@@ -444,7 +449,8 @@ export const useAppNavigationActions = ({
   const addDomainFromPage = () => {
     commitActiveRenameBeforeAction()
     saveActiveCursorBeforeNavigation()
-    const newDomain = createDomain('New Domain')
+    const createEntityId = createReservedIdAllocator(collectAppNavigationEntityIds(state))
+    const newDomain = createDomain('New Domain', createEntityId)
     setState((previous) => addDomain(previous, newDomain))
     setViewMode('domains')
     setEditing({ type: 'domain', id: newDomain.id })

@@ -4,15 +4,18 @@ import { sanitizeName } from '../export/export-data'
 import { applyTemplateToStageManagerSelection } from '../frontmatter/frontmatter-state'
 import { DEFAULT_AUTO_REMOVE_DAYS } from '../settings/defaults'
 import { applyAutoPurgeToAppState } from '../state/app-state'
-import { createId, createWorkspaceDataFromTabs } from '../state/workspace'
+import { collectAppNavigationEntityIds, createReservedIdAllocator } from '../state/navigation-ids'
+import { createWorkspaceDataFromTabs } from '../state/workspace'
 import type {
   AppState,
   ContextMenuState,
   Domain,
+  SelectionClickModifiers,
   Space,
   StageManagerAction,
   StageManagerDraft,
   StageManagerParentSelection,
+  StageManagerSelectionAnchor,
   StageManagerSelectionSnapshot,
   StageManagerSelectionState,
   StageManagerStep,
@@ -22,6 +25,8 @@ import type {
   WorkspaceData,
 } from '../types/app'
 import {
+  applyStageManagerParentModifierClick,
+  applyStageManagerSubTabModifierClick,
   buildStageManagerSelectionSnapshot,
   cycleStageManagerParentSelection,
   createDefaultStageManagerDraft,
@@ -29,6 +34,7 @@ import {
   normalizeStageManagerParentSelection,
   toggleStageManagerSubTabSelection,
 } from './selection'
+import { isSelectionModifier } from '../arrange/arrange-selection'
 import {
   buildStageManagerDomainAwareState,
   getStageManagerDomainSpaces,
@@ -75,6 +81,12 @@ type ValidationResult = {
   message: string
 }
 
+const NO_SELECTION_MODIFIERS: SelectionClickModifiers = {
+  shiftKey: false,
+  ctrlKey: false,
+  metaKey: false,
+}
+
 export function useStageManagerController({
   state,
   commitAppStateNow,
@@ -95,6 +107,7 @@ export function useStageManagerController({
   const [step, setStep] = useState<StageManagerStep>('select')
   const [action, setAction] = useState<StageManagerAction | null>(null)
   const [selections, setSelections] = useState<StageManagerSelectionState>({})
+  const [selectionAnchor, setSelectionAnchor] = useState<StageManagerSelectionAnchor | null>(null)
   const [draft, setDraft] = useState<StageManagerDraft>(createDefaultStageManagerDraft)
 
   const getParentSelection = (tab: Tab) => normalizeStageManagerParentSelection(tab, selections[tab.id])
@@ -116,6 +129,7 @@ export function useStageManagerController({
     setStep('select')
     setAction(null)
     setSelections(createStageManagerSelectionState(tabs))
+    setSelectionAnchor(null)
     setDraft(createDefaultStageManagerDraft())
   }
 
@@ -143,6 +157,7 @@ export function useStageManagerController({
   }
 
   const selectAll = () => {
+    setSelectionAnchor(null)
     setSelections(
       Object.fromEntries(
         workspace.tabs.map((tab) => [
@@ -159,6 +174,7 @@ export function useStageManagerController({
   }
 
   const deselectAll = () => {
+    setSelectionAnchor(null)
     setSelections(createStageManagerSelectionState(workspace.tabs))
   }
 
@@ -258,6 +274,7 @@ export function useStageManagerController({
     setStep('select')
     setAction(null)
     setSelections({})
+    setSelectionAnchor(null)
     setDraft(createDefaultStageManagerDraft())
   }, [viewMode])
 
@@ -411,12 +428,27 @@ export function useStageManagerController({
     }
   }
 
-  const handleParentClick = (tab: Tab) => {
+  const handleParentClick = (tab: Tab, modifiers: SelectionClickModifiers = NO_SELECTION_MODIFIERS) => {
     if (step !== 'select') {
       pushToast('go back to the selection step to change selected items.', 'error')
       return
     }
 
+    if (isSelectionModifier(modifiers)) {
+      const result = applyStageManagerParentModifierClick({
+        tabs: workspace.tabs,
+        selections,
+        activeTabId: workspace.activeTabId,
+        clickedTabId: tab.id,
+        modifiers,
+        anchor: selectionAnchor,
+      })
+      setSelections(result.selections)
+      setSelectionAnchor(result.anchor)
+      return
+    }
+
+    setSelectionAnchor({ kind: 'parent', tabId: tab.id })
     if (workspace.activeTabId !== tab.id) {
       selectTab(tab.id)
       return
@@ -425,12 +457,31 @@ export function useStageManagerController({
     cycleParentSelection(tab)
   }
 
-  const handleSubTabClick = (tab: Tab, subTabId: string) => {
+  const handleSubTabClick = (
+    tab: Tab,
+    subTabId: string,
+    modifiers: SelectionClickModifiers = NO_SELECTION_MODIFIERS,
+  ) => {
     if (step !== 'select') {
       pushToast('go back to the selection step to change selected items.', 'error')
       return
     }
 
+    if (isSelectionModifier(modifiers)) {
+      const result = applyStageManagerSubTabModifierClick({
+        tabs: workspace.tabs,
+        selections,
+        parentTabId: tab.id,
+        clickedSubTabId: subTabId,
+        modifiers,
+        anchor: selectionAnchor,
+      })
+      setSelections(result.selections)
+      setSelectionAnchor(result.anchor)
+      return
+    }
+
+    setSelectionAnchor({ kind: 'subtab', parentTabId: tab.id, subTabId })
     toggleSubTabSelection(tab, subTabId)
   }
 
@@ -781,6 +832,7 @@ export function useStageManagerController({
     const latestState = buildStateWithLatestEditorContent()
     const currentSpace = latestState.spaces.find((space) => space.id === latestState.activeSpaceId)
     if (!currentSpace) return
+    const createEntityId = createReservedIdAllocator(collectAppNavigationEntityIds(latestState))
     const projectedDomains = projectStageManagerDomains(latestState)
     const getSpacesFromDomains = getStageManagerDomainSpaces
     const replaceDomainSpaces = replaceStageManagerDomainSpaces
@@ -826,7 +878,7 @@ export function useStageManagerController({
             ? [
                 ...space.data.deletedTabs.map((entry) => ({ ...entry, tab: cloneTabForTransfer(entry.tab) })),
                 ...snapshot.fullParents.map((tab) => ({
-                  id: createId(),
+                  id: createEntityId(),
                   tab: cloneTabForTransfer(tab),
                   deletedAt: Date.now(),
                 })),
@@ -838,7 +890,7 @@ export function useStageManagerController({
             ? [
                 ...space.data.deletedSubTabs.map((entry) => ({ ...entry, subTab: cloneSubTabForTransfer(entry.subTab) })),
                 ...snapshot.looseSubTabs.map(({ parentTab, subTab }) => ({
-                  id: createId(),
+                  id: createEntityId(),
                   parentTabId: parentTab.id,
                   parentTabTitle: parentTab.title,
                   subTab: cloneSubTabForTransfer(subTab),
@@ -847,13 +899,14 @@ export function useStageManagerController({
               ]
             : space.data.deletedSubTabs.map((entry) => ({ ...entry, subTab: cloneSubTabForTransfer(entry.subTab) }))
 
-        const stripped = stripStageManagerSelectionsFromWorkspace(space.data, snapshot)
+        const stripped = stripStageManagerSelectionsFromWorkspace(space.data, snapshot, createEntityId)
         return {
           ...space,
           data: createWorkspaceDataFromTabs(stripped.tabs, {
             activeTabId: stripped.activeTabId,
             deletedTabs,
             deletedSubTabs,
+            createId: createEntityId,
           }),
         }
       })
@@ -869,8 +922,8 @@ export function useStageManagerController({
     }
 
     if (action === 'promote') {
-      const loosePromotedTabs = snapshot.looseSubTabs.map(({ subTab }) => createPromotedParentTab(subTab))
-      const strippedCurrentData = stripStageManagerSelectionsFromWorkspace(currentSpace.data, snapshot)
+      const loosePromotedTabs = snapshot.looseSubTabs.map(({ subTab }) => createPromotedParentTab(subTab, createEntityId))
+      const strippedCurrentData = stripStageManagerSelectionsFromWorkspace(currentSpace.data, snapshot, createEntityId)
       const nextSpaces = latestState.spaces.map((space) =>
         space.id === currentSpace.id ? { ...space, data: strippedCurrentData } : space,
       )
@@ -878,7 +931,7 @@ export function useStageManagerController({
       if (snapshot.fullParents.length === 1) {
         const promotedParent = snapshot.fullParents[0]
         const mainTab: Tab = {
-          id: createId(),
+          id: createEntityId(),
           title: 'main',
           noteBodyId: promotedParent.noteBodyId,
           homeContent: promotedParent.homeContent,
@@ -887,15 +940,15 @@ export function useStageManagerController({
         }
         const movedTabs = [
           mainTab,
-          ...promotedParent.subTabs.map((subTab) => createPromotedParentTab(subTab)),
+          ...promotedParent.subTabs.map((subTab) => createPromotedParentTab(subTab, createEntityId)),
           ...loosePromotedTabs,
         ]
-        const newSpaceId = createId()
+        const newSpaceId = createEntityId()
         const newSpace: Space = {
           id: newSpaceId,
           name: sanitizeName(draft.newSpaceName || promotedParent.title),
           settings: { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
-          data: createWorkspaceDataFromTabs(sortDestinationTabs(movedTabs), { activeTabId: mainTab.id }),
+          data: createWorkspaceDataFromTabs(sortDestinationTabs(movedTabs), { activeTabId: mainTab.id, createId: createEntityId }),
         }
         const destinationDomainId = promoteDomainId
         let nextDomains = replaceDomainSpaces(projectedDomains, latestState.activeDomainId, nextSpaces, latestState.activeSpaceId)
@@ -918,10 +971,13 @@ export function useStageManagerController({
       if (draft.promoteSpaceMode === 'new') {
         const firstTabId = loosePromotedTabs[0]?.id ?? null
         const newSpace: Space = {
-          id: createId(),
+          id: createEntityId(),
           name: sanitizeName(draft.newSpaceName || 'untitled'),
           settings: { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
-          data: createWorkspaceDataFromTabs(sortDestinationTabs(loosePromotedTabs), { activeTabId: firstTabId ?? undefined }),
+          data: createWorkspaceDataFromTabs(sortDestinationTabs(loosePromotedTabs), {
+            activeTabId: firstTabId ?? undefined,
+            createId: createEntityId,
+          }),
         }
         const destinationDomainId = promoteDomainId
         let nextDomains = replaceDomainSpaces(projectedDomains, latestState.activeDomainId, nextSpaces, latestState.activeSpaceId)
@@ -957,6 +1013,7 @@ export function useStageManagerController({
                 : space.data.activeTabId,
             deletedTabs: space.data.deletedTabs,
             deletedSubTabs: space.data.deletedSubTabs,
+            createId: createEntityId,
           }),
         }
       })
@@ -973,8 +1030,8 @@ export function useStageManagerController({
     }
 
     if (action === 'demote') {
-      const movedSubTabs = buildStageManagerMovedSubTabs(snapshot)
-      const strippedCurrentData = stripStageManagerSelectionsFromWorkspace(currentSpace.data, snapshot)
+      const movedSubTabs = buildStageManagerMovedSubTabs(snapshot, createEntityId)
+      const strippedCurrentData = stripStageManagerSelectionsFromWorkspace(currentSpace.data, snapshot, createEntityId)
       const destinationDomainId = demoteDomainId
       const destinationSpaceId = demoteSpace?.id ?? latestState.activeSpaceId
       const sameDestinationSpace = destinationDomainId === latestState.activeDomainId && destinationSpaceId === currentSpace.id
@@ -985,11 +1042,11 @@ export function useStageManagerController({
         ? strippedCurrentData.tabs
         : getSpacesFromDomains(projectedDomains, destinationDomainId).find((space) => space.id === destinationSpaceId)?.data.tabs ?? []
       if (draft.demoteParentMode === 'new') {
-        destinationParentId = createId()
+        destinationParentId = createEntityId()
         const newParent: Tab = {
           id: destinationParentId,
           title: sanitizeName(draft.demoteNewParentName || 'untitled'),
-          noteBodyId: createId(),
+          noteBodyId: createEntityId(),
           homeContent: '',
           activeSubTabId: null,
           subTabs: movedSubTabs.map(cloneSubTabForTransfer),
@@ -1023,6 +1080,7 @@ export function useStageManagerController({
                       : space.data.activeTabId,
                 deletedTabs: space.data.deletedTabs,
                 deletedSubTabs: space.data.deletedSubTabs,
+                createId: createEntityId,
               }),
             },
       )
@@ -1039,7 +1097,7 @@ export function useStageManagerController({
       return
     }
 
-    const strippedCurrentData = stripStageManagerSelectionsFromWorkspace(currentSpace.data, snapshot)
+    const strippedCurrentData = stripStageManagerSelectionsFromWorkspace(currentSpace.data, snapshot, createEntityId)
     const movedParentTabs = snapshot.fullParents.map(cloneTabForTransfer)
     const looseMovedSubTabs = snapshot.looseSubTabs.map(({ subTab }) => cloneSubTabForTransfer(subTab))
 
@@ -1049,7 +1107,7 @@ export function useStageManagerController({
 
       if (snapshot.looseSubTabs.length > 0) {
         if (draft.strayHandlingMode === 'promote') {
-          additionalDestinationTabs.push(...looseMovedSubTabs.map((subTab) => createPromotedParentTab(subTab)))
+          additionalDestinationTabs.push(...looseMovedSubTabs.map((subTab) => createPromotedParentTab(subTab, createEntityId)))
         } else if (draft.strayHandlingMode === 'selected-parent') {
           const targetParentId = draft.straySelectedParentId
           const targetIndex = movedParentCopies.findIndex((tab) => tab.id === targetParentId)
@@ -1064,9 +1122,9 @@ export function useStageManagerController({
           }
         } else if (draft.strayHandlingMode === 'new-parent') {
           additionalDestinationTabs.push({
-            id: createId(),
+            id: createEntityId(),
             title: sanitizeName(draft.strayNewParentName || 'untitled'),
-            noteBodyId: createId(),
+            noteBodyId: createEntityId(),
             homeContent: '',
             activeSubTabId: null,
             subTabs: sortDestinationSubTabs(looseMovedSubTabs.map(cloneSubTabForTransfer)),
@@ -1075,7 +1133,7 @@ export function useStageManagerController({
       }
 
       if (draft.migrateSpaceMode === 'new') {
-        const newSpaceId = createId()
+        const newSpaceId = createEntityId()
         const destinationTabs =
           draft.strayHandlingMode === 'existing-parent'
             ? [...movedParentCopies]
@@ -1085,7 +1143,10 @@ export function useStageManagerController({
           id: newSpaceId,
           name: sanitizeName(draft.newSpaceName || 'untitled'),
           settings: { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
-          data: createWorkspaceDataFromTabs(sortDestinationTabs(destinationTabs), { activeTabId: fallbackTab }),
+          data: createWorkspaceDataFromTabs(sortDestinationTabs(destinationTabs), {
+            activeTabId: fallbackTab,
+            createId: createEntityId,
+          }),
         }
         const destinationDomainId = migrateDomainId
         const sourceSpaces = latestState.spaces.map((space) =>
@@ -1144,6 +1205,7 @@ export function useStageManagerController({
             activeTabId: destinationActiveTabId,
             deletedTabs: space.data.deletedTabs,
             deletedSubTabs: space.data.deletedSubTabs,
+            createId: createEntityId,
           }),
         }
       })
@@ -1159,17 +1221,17 @@ export function useStageManagerController({
       return
     }
 
-    const movedSubTabs = buildStageManagerMovedSubTabs(snapshot)
+    const movedSubTabs = buildStageManagerMovedSubTabs(snapshot, createEntityId)
 
     if (draft.migrateParentSpaceMode === 'current') {
       let destinationParentId: string
       let destinationTabs: Tab[]
       if (draft.migrateParentMode === 'new') {
-        destinationParentId = createId()
+        destinationParentId = createEntityId()
         const newParent: Tab = {
           id: destinationParentId,
           title: sanitizeName(draft.migrateNewParentName || 'untitled'),
-          noteBodyId: createId(),
+          noteBodyId: createEntityId(),
           homeContent: '',
           activeSubTabId: null,
           subTabs: movedSubTabs.map(cloneSubTabForTransfer),
@@ -1201,6 +1263,7 @@ export function useStageManagerController({
                         : strippedCurrentData.activeTabId,
                     deletedTabs: strippedCurrentData.deletedTabs,
                     deletedSubTabs: strippedCurrentData.deletedSubTabs,
+                    createId: createEntityId,
                   }),
                 },
           ),
@@ -1211,13 +1274,13 @@ export function useStageManagerController({
     }
 
     if (draft.migrateParentSpaceMode === 'new') {
-      const destinationParentId = createId()
-      const newSpaceId = createId()
+      const destinationParentId = createEntityId()
+      const newSpaceId = createEntityId()
       const destinationDomainId = migrateParentDomainId
       const newParent: Tab = {
         id: destinationParentId,
         title: sanitizeName(draft.migrateNewParentName || 'untitled'),
-        noteBodyId: createId(),
+        noteBodyId: createEntityId(),
         homeContent: '',
         activeSubTabId: null,
         subTabs: sortDestinationSubTabs(movedSubTabs.map(cloneSubTabForTransfer)),
@@ -1226,7 +1289,7 @@ export function useStageManagerController({
         id: newSpaceId,
         name: sanitizeName(draft.newSpaceName || 'untitled'),
         settings: { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
-        data: createWorkspaceDataFromTabs([newParent], { activeTabId: destinationParentId }),
+        data: createWorkspaceDataFromTabs([newParent], { activeTabId: destinationParentId, createId: createEntityId }),
       }
       const sourceSpaces = latestState.spaces.map((space) =>
         space.id === currentSpace.id ? { ...space, data: strippedCurrentData } : space,
@@ -1259,11 +1322,11 @@ export function useStageManagerController({
       let destinationParentId: string
       let destinationTabs: Tab[]
       if (draft.migrateParentMode === 'new') {
-        destinationParentId = createId()
+        destinationParentId = createEntityId()
         const newParent: Tab = {
           id: destinationParentId,
           title: sanitizeName(draft.migrateNewParentName || 'untitled'),
-          noteBodyId: createId(),
+          noteBodyId: createEntityId(),
           homeContent: '',
           activeSubTabId: null,
           subTabs: movedSubTabs.map(cloneSubTabForTransfer),
@@ -1289,6 +1352,7 @@ export function useStageManagerController({
               : space.data.activeTabId,
           deletedTabs: space.data.deletedTabs,
           deletedSubTabs: space.data.deletedSubTabs,
+          createId: createEntityId,
         }),
       }
     })

@@ -1,3 +1,6 @@
+import { parseAssetUrl } from '../markdown/image-asset-refs.js'
+import { openAssetUrl } from '../markdown/image-asset-registry'
+
 const BARE_WEB_ADDRESS_RE = /^(?:www\.|(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.))+(?:[a-z0-9-]+\.)*(?:com|org)(?::\d{2,5})?(?:[/?#][^\s]*)?$/i
 
 export function normalizeExternalWebUrl(value: string): string | null {
@@ -17,6 +20,8 @@ export function normalizeExternalWebUrl(value: string): string | null {
 }
 
 export function openExternalWebUrl(value: string): boolean {
+  if (parseAssetUrl(value)) return openAssetUrl(value)
+
   const url = normalizeExternalWebUrl(value)
   if (!url) return false
 

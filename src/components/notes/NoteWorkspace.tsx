@@ -3,15 +3,18 @@ import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { buildAisleEditorKey } from '../../editor/aisle-editor'
 import type { HeadingOutlineItem } from '../../editor/heading-outline'
-import { resolveImageAssetDisplayUrl } from '../../markdown/image-asset-registry'
+import { resolveAssetDisplayUrl } from '../../markdown/image-asset-registry'
 import type { NoteAisle } from '../../types/app'
 import { MarkdownPreviewParagraph } from './markdown-preview-components'
 import { scheduleNoteWorkspaceArrangeExit, shouldExitArrangeModeFromNoteWorkspacePointer } from './note-workspace-events'
 
-const transformAislePreviewUrl = (url: string, key: string) =>
-  key === 'src' && (/^data:image\//i.test(url) || /^blob:/i.test(url) || /^tabs-asset:/i.test(url))
-    ? resolveImageAssetDisplayUrl(url)
-    : defaultUrlTransform(url)
+const transformAislePreviewUrl = (url: string, key: string) => {
+  if (key === 'href' && /^tabs-asset:/i.test(url)) return url
+  if (key === 'src' && (/^data:image\//i.test(url) || /^blob:/i.test(url) || /^tabs-asset:/i.test(url))) {
+    return resolveAssetDisplayUrl(url)
+  }
+  return defaultUrlTransform(url)
+}
 
 const noteWorkspacePreviewMarkdownComponents = {
   p: MarkdownPreviewParagraph,

@@ -30,7 +30,9 @@ type ImportImageAssetPayload = {
   extension?: string
 }
 
-type ImportImageAssetResult =
+type ImportAssetPayload = ImportImageAssetPayload
+
+type ImportAssetResult =
   | {
       ok: true
       assetPath: string
@@ -40,6 +42,8 @@ type ImportImageAssetResult =
       ok: false
       error: string
     }
+
+type ImportImageAssetResult = ImportAssetResult
 
 declare global {
   interface Window {
@@ -64,7 +68,9 @@ declare global {
           }
       saveAppState: (payload: SaveAppStatePayload) => SaveAppStateResult
       saveAppStateAsync?: (payload: SaveAppStatePayload) => Promise<SaveAppStateResult>
+      importAsset?: (payload: ImportAssetPayload) => Promise<ImportAssetResult>
       importImageAsset?: (payload: ImportImageAssetPayload) => Promise<ImportImageAssetResult>
+      openAsset?: (payload: { url?: string; assetPath?: string }) => Promise<{ ok: boolean; error?: string }>
       onAppStateUpdated?: (handler: (payload: { serializedState: string; revision: number }) => void) => () => void
       getStorageProfileStatus?: () => Promise<StorageProfileStatus>
       chooseStorageFolder?: () => Promise<

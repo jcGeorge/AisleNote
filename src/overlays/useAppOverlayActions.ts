@@ -15,8 +15,10 @@ import {
   getNotePreviewCleanupTargetsForTrash,
 } from './delete-preview-cleanup'
 import { removeDomain, removeSpaceFromActiveDomain } from '../state/domains'
+import { collectAppNavigationEntityIds, createReservedIdAllocator } from '../state/navigation-ids'
 import { createId, createTab } from '../state/workspace'
 import { TRASH_HOME_ID } from '../trash/trash-model'
+import { restoreTrashTarget, type TrashRestoreTarget } from '../trash/trash-restore'
 import type {
   AppState,
   ContextMenuState,
@@ -166,6 +168,7 @@ export const useAppOverlayActions = ({
       : contextMenu.type === 'subtab'
         ? { type: 'subtab', tabId: contextMenu.tabId, subTabId: contextMenu.subTabId }
         : contextMenu.type === 'image' ||
+            contextMenu.type === 'editor' ||
             contextMenu.type === 'internal-note-link' ||
             contextMenu.type === 'home-tab'
           ? null
@@ -225,6 +228,7 @@ export const useAppOverlayActions = ({
       return
     }
 
+    const createEntityId = createReservedIdAllocator(collectAppNavigationEntityIds(stateRef.current))
     updateActiveSpaceData((data) => {
       if (target.type === 'trash-tab') {
         if (target.source === 'subtabs-only') {
@@ -277,14 +281,14 @@ export const useAppOverlayActions = ({
           : [
               ...data.deletedTabs,
               {
-                id: createId(),
+                id: createEntityId(),
                 tab: tabToDelete,
                 deletedAt: Date.now(),
               },
             ]
 
         if (remaining.length === 0) {
-          const fallback = createTab('tab')
+          const fallback = createTab('tab', createEntityId)
           return {
             ...data,
             activeTabId: fallback.id,
@@ -326,7 +330,7 @@ export const useAppOverlayActions = ({
           : [
               ...data.deletedSubTabs,
               {
-                id: createId(),
+                id: createEntityId(),
                 parentTabId: parent.id,
                 parentTabTitle: parent.title,
                 subTab: subToDelete,
@@ -353,6 +357,24 @@ export const useAppOverlayActions = ({
     if (!target) return
     setContextMenu(null)
     deleteTarget(target, false)
+  }
+
+  const restoreFromContext = () => {
+    const target = buildDeleteTargetFromContextMenu()
+    if (!target || (target.type !== 'trash-tab' && target.type !== 'trash-subtab')) return
+    setContextMenu(null)
+    updateActiveSpaceData((data) =>
+      restoreTrashTarget(data, target as TrashRestoreTarget, {
+        createParentNoteBodyId: createId,
+      }),
+    )
+    if (target.type === 'trash-tab') {
+      setTrashTabId(TRASH_HOME_ID)
+      setTrashSubTabId(null)
+    } else {
+      setTrashSubTabId(null)
+    }
+    pushToast('item restored from trash.', 'success')
   }
 
   const getLastNoteCopyMode = (): NoteCopyMode => stateRef.current.ui.lastNoteCopyMode ?? 'independent'
@@ -649,6 +671,7 @@ export const useAppOverlayActions = ({
     openContextMenuForDomain,
     openDeleteModalFromContext,
     deleteFromContext,
+    restoreFromContext,
     openCopyModalFromContext,
     openCopyModalForActiveNote,
     openDeduplicateModalFromContext,

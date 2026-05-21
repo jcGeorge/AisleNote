@@ -118,6 +118,14 @@
   .settings-slider-wrap {
     gap: 0.5rem;
   }
+
+  .settings-toolbar-management {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-toolbar-actions {
+    justify-content: flex-start;
+  }
 }
 
 @media (max-width: 520px) {
@@ -148,6 +156,19 @@
     min-width: 100% !important;
     flex-wrap: nowrap !important;
     align-content: center !important;
+  }
+
+  .settings-toolbar-preview,
+  .settings-toolbar-icon-box {
+    overflow: visible !important;
+  }
+
+  .settings-toolbar-preview .app-shared-editor-toolbar,
+  .settings-toolbar-icon-box .app-shared-editor-toolbar {
+    width: 100% !important;
+    min-width: 0 !important;
+    flex-wrap: wrap !important;
+    align-content: flex-start !important;
   }
 
   .toast-editor-host,

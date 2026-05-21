@@ -1,4 +1,4 @@
-import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
+import { EDITOR_BLANK_LINE_PLACEHOLDER, normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
 import { getAisleSignature, getAisleStructureSignature } from '../notes/aisle-body-state'
 import type { NoteAisle, NoteCursorLocation, NoteLocation } from '../types/app'
 
@@ -50,7 +50,12 @@ export function getAisleStructuralTargetSnapshot(
 }
 
 function normalizedMarkdown(value: string) {
-  return normalizeMarkdownForPersistence(value)
+  const normalized = normalizeMarkdownForPersistence(value)
+  const hasMeaningfulContent = normalized.split('\n').some((line) => {
+    const withoutBlankPlaceholders = line.replaceAll(EDITOR_BLANK_LINE_PLACEHOLDER, '')
+    return withoutBlankPlaceholders.trim().length > 0
+  })
+  return hasMeaningfulContent ? normalized : ''
 }
 
 function hasSameAisleOrder(left: NoteAisle[], right: NoteAisle[]) {

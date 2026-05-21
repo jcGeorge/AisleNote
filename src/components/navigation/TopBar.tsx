@@ -4,6 +4,7 @@ import type {
   ArrangeDragItem,
   ArrangeModeState,
   ArrangeTapCandidateSeed,
+  SelectionClickModifiers,
   StageManagerParentSelection,
   Tab,
   TabArrangeDragItem,
@@ -41,7 +42,10 @@ type TopBarProps = {
   onRenameDraftChange: (type: EditableEntityType, id: string, value: string) => void
   onClearRenameDraft: (type: EditableEntityType, id: string) => void
   onGetStageManagerParentSelection: (tab: Tab) => StageManagerParentSelection
-  onStageManagerParentClick: (tab: Tab) => void
+  onStageManagerParentClick: (tab: Tab, modifiers: SelectionClickModifiers) => void
+  arrangeSelectedParentIds: ReadonlySet<string>
+  onHandleArrangeParentSelectionClick: (tabId: string, modifiers: SelectionClickModifiers) => boolean
+  onClearArrangeSelection: () => void
   onConsumeArrangeClickSuppression: (key: string) => boolean
   onSelectTab: (tabId: string) => void
   onBeginEdit: (editing: { type: EditableEntityType; id: string }) => void
@@ -93,6 +97,18 @@ type TopbarAction = {
   onClick: () => void
 }
 
+function getSelectionClickModifiers(event: MouseEvent | ReactPointerEvent<HTMLButtonElement>): SelectionClickModifiers {
+  return {
+    shiftKey: event.shiftKey,
+    ctrlKey: event.ctrlKey,
+    metaKey: event.metaKey,
+  }
+}
+
+function hasSelectionClickModifier(event: MouseEvent | ReactPointerEvent<HTMLButtonElement>) {
+  return event.shiftKey || event.ctrlKey || event.metaKey
+}
+
 export function TopBar({
   viewMode,
   workspace,
@@ -118,6 +134,9 @@ export function TopBar({
   onClearRenameDraft,
   onGetStageManagerParentSelection,
   onStageManagerParentClick,
+  arrangeSelectedParentIds,
+  onHandleArrangeParentSelectionClick,
+  onClearArrangeSelection,
   onConsumeArrangeClickSuppression,
   onSelectTab,
   onBeginEdit,
@@ -218,17 +237,6 @@ export function TopBar({
     <header className={`tabbar ${arrangeMode.active && viewMode === 'main' ? 'is-arranging' : ''}`}>
       <div className="tabbar-row">
         <div ref={primaryTabRailRef} className="tabbar-scroll tabbar-primary" {...primaryTablistProps}>
-          {arrangeMode.active && arrangeMode.scope === 'tabs' && viewMode === 'main' && (
-            <button
-              type="button"
-              className="tab-sort-btn"
-              onClick={onOpenParentSortModal}
-              title={tooltipsDisabled ? undefined : 'sort parents'}
-              aria-label="sort parents"
-            >
-              <SortIcon />
-            </button>
-          )}
           {isNoteWorkspaceView &&
             workspace.tabs.map((tab) =>
               editing?.type === 'tab' && editing.id === tab.id ? (
@@ -286,6 +294,7 @@ export function TopBar({
                     arrangeMode.dragItem?.type === 'tab' &&
                     arrangeMode.overParentTabId === tab.id &&
                     arrangeMode.overParentInsert === 'after'
+                  const isArrangeSelected = arrangeSelectedParentIds.has(tab.id)
                   return (
                     <button
                       key={tab.id}
@@ -294,15 +303,21 @@ export function TopBar({
                       role="tab"
                       aria-selected={tab.id === activeTab.id}
                       draggable={false}
-                      className={`btn btn-sm ${tab.id === activeTab.id ? 'btn-primary' : 'btn-outline-secondary'} tab-btn parent-tab-btn ${arrangeableParentTabClassName} ${isArrangeMoveTarget ? 'is-arrange-target' : ''} ${isArrangeBeforeTarget ? 'is-arrange-target-before' : ''} ${isArrangeAfterTarget ? 'is-arrange-target-after' : ''} ${draggingParentTabId === tab.id ? 'is-dragging' : ''} ${
+                      className={`btn btn-sm ${tab.id === activeTab.id ? 'btn-primary' : 'btn-outline-secondary'} tab-btn parent-tab-btn ${arrangeableParentTabClassName} ${isArrangeSelected ? 'is-arrange-selected' : ''} ${isArrangeMoveTarget ? 'is-arrange-target' : ''} ${isArrangeBeforeTarget ? 'is-arrange-target-before' : ''} ${isArrangeAfterTarget ? 'is-arrange-target-after' : ''} ${draggingParentTabId === tab.id ? 'is-dragging' : ''} ${
                         stageManagerSelection?.mode === 'partial' ? 'stage-manager-parent-partial' : ''
                       } ${stageManagerSelection?.mode === 'full' ? 'stage-manager-parent-full' : ''}`}
-                      onClick={() => {
+                      onClick={(event) => {
+                        const modifiers = getSelectionClickModifiers(event)
                         if (viewMode === 'stage-manager') {
-                          onStageManagerParentClick(tab)
+                          onStageManagerParentClick(tab, modifiers)
                           return
                         }
                         if (onConsumeArrangeClickSuppression(`tab:${tab.id}`)) return
+                        if (onHandleArrangeParentSelectionClick(tab.id, modifiers)) {
+                          event.preventDefault()
+                          return
+                        }
+                        onClearArrangeSelection()
                         onSelectTab(tab.id)
                       }}
                       onDoubleClick={() => {
@@ -315,6 +330,10 @@ export function TopBar({
                       }}
                       onPointerDown={(event) => {
                         if (viewMode !== 'main') return
+                        if (hasSelectionClickModifier(event)) {
+                          onClearArrangePressTimer()
+                          return
+                        }
                         if (event.button === 0) {
                           event.currentTarget.setPointerCapture(event.pointerId)
                         }
@@ -330,7 +349,10 @@ export function TopBar({
                       }
                       onPointerUp={(event) => {
                         if (viewMode !== 'main') return
-                        onHandleArrangeTabPointerUp(event, `tab:${tab.id}`, () => onSelectTab(tab.id))
+                        onHandleArrangeTabPointerUp(event, `tab:${tab.id}`, () => {
+                          onClearArrangeSelection()
+                          onSelectTab(tab.id)
+                        })
                       }}
                       onPointerLeave={() => {
                         if (viewMode !== 'main') return
@@ -371,7 +393,17 @@ export function TopBar({
             </>
           )}
 
-          {viewMode === 'main' && !arrangeMode.active && (
+          {viewMode === 'main' && arrangeMode.active && arrangeMode.scope === 'tabs' ? (
+            <button
+              type="button"
+              className="tab-sort-btn"
+              onClick={onOpenParentSortModal}
+              title={tooltipsDisabled ? undefined : 'sort parents'}
+              aria-label="sort parents"
+            >
+              <SortIcon />
+            </button>
+          ) : viewMode === 'main' && !arrangeMode.active ? (
             <button
               type="button"
               className="btn btn-sm btn-outline-light add-tab-btn"
@@ -380,7 +412,7 @@ export function TopBar({
             >
               +
             </button>
-          )}
+          ) : null}
         </div>
 
         <div className="tabbar-controls">

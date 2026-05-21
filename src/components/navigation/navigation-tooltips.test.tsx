@@ -66,6 +66,9 @@ function renderTopBar(tooltipsDisabled: boolean) {
       onClearRenameDraft={noop}
       onGetStageManagerParentSelection={createEmptyStageManagerParentSelection}
       onStageManagerParentClick={noop}
+      arrangeSelectedParentIds={new Set()}
+      onHandleArrangeParentSelectionClick={() => false}
+      onClearArrangeSelection={noop}
       onConsumeArrangeClickSuppression={() => false}
       onSelectTab={noop}
       onBeginEdit={noop}
@@ -121,6 +124,9 @@ function renderSubTabRail(tooltipsDisabled: boolean) {
       onGetStageManagerParentSelection={createEmptyStageManagerParentSelection}
       onStageManagerHomeClick={noop}
       onStageManagerSubTabClick={noop}
+      arrangeSelectedSubTabIds={new Set()}
+      onHandleArrangeSubTabSelectionClick={() => false}
+      onClearArrangeSelection={noop}
       onConsumeArrangeClickSuppression={() => false}
       onSelectParentHomeTab={noop}
       onSelectSubTab={noop}
@@ -152,6 +158,7 @@ describe('navigation arrange tooltips', () => {
     expect(enabledHtml).toContain('title="sort parents"')
     expect(disabledHtml).not.toContain('title="sort parents"')
     expect(disabledHtml).toContain('aria-label="sort parents"')
+    expect(enabledHtml.indexOf('Alpha')).toBeLessThan(enabledHtml.indexOf('aria-label="sort parents"'))
   })
 
   it('keeps sub-tab sort labels while omitting title tooltips when disabled', () => {
@@ -163,5 +170,6 @@ describe('navigation arrange tooltips', () => {
     expect(disabledHtml).not.toContain('title="sort sub-tabs"')
     expect(disabledHtml).not.toContain('title="home note"')
     expect(disabledHtml).toContain('aria-label="sort sub-tabs"')
+    expect(enabledHtml.indexOf('Sub')).toBeLessThan(enabledHtml.indexOf('aria-label="sort sub-tabs"'))
   })
 })

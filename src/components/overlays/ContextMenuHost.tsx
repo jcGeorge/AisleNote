@@ -1,4 +1,93 @@
-import type { ContextMenuState } from '../../types/app'
+import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import type { ContextMenuState, LinkInsertMode } from '../../types/app'
+
+const CONTEXT_MENU_VIEWPORT_GAP = 8
+const SUBMENU_EDGE_OVERLAP = 1
+
+type MenuPoint = {
+  x: number
+  y: number
+}
+
+type MenuSize = {
+  width: number
+  height: number
+}
+
+type MenuViewport = MenuSize
+
+type MenuRect = MenuPoint &
+  MenuSize & {
+    right: number
+    bottom: number
+  }
+
+type MenuPosition = {
+  left: number
+  top: number
+}
+
+function clampValue(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), Math.max(min, max))
+}
+
+export function clampContextMenuPosition(
+  anchor: MenuPoint,
+  menuSize: MenuSize,
+  viewport: MenuViewport,
+  gap = CONTEXT_MENU_VIEWPORT_GAP,
+): MenuPosition {
+  return {
+    left: clampValue(anchor.x, gap, viewport.width - menuSize.width - gap),
+    top: clampValue(anchor.y, gap, viewport.height - menuSize.height - gap),
+  }
+}
+
+export function getSubmenuPosition(
+  triggerRect: MenuRect,
+  panelSize: MenuSize,
+  viewport: MenuViewport,
+  gap = CONTEXT_MENU_VIEWPORT_GAP,
+): MenuPosition {
+  const rightLeft = triggerRect.right - SUBMENU_EDGE_OVERLAP
+  const leftLeft = triggerRect.x - panelSize.width + SUBMENU_EDGE_OVERLAP
+  const unclampedLeft =
+    rightLeft + panelSize.width <= viewport.width - gap || leftLeft < gap
+      ? rightLeft
+      : leftLeft
+
+  return {
+    left: clampValue(unclampedLeft, gap, viewport.width - panelSize.width - gap),
+    top: clampValue(triggerRect.y, gap, viewport.height - panelSize.height - gap),
+  }
+}
+
+function getViewportSize(): MenuViewport {
+  if (typeof window === 'undefined') return { width: 0, height: 0 }
+  return {
+    width: window.innerWidth,
+    height: window.innerHeight,
+  }
+}
+
+function getElementSize(element: HTMLElement): MenuSize {
+  const rect = element.getBoundingClientRect()
+  return {
+    width: rect.width,
+    height: rect.height,
+  }
+}
+
+function toMenuRect(rect: DOMRect): MenuRect {
+  return {
+    x: rect.left,
+    y: rect.top,
+    width: rect.width,
+    height: rect.height,
+    right: rect.right,
+    bottom: rect.bottom,
+  }
+}
 
 type ContextMenuHostProps = {
   contextMenu: ContextMenuState | null
@@ -17,6 +106,88 @@ type ContextMenuHostProps = {
   onOpenDeduplicateModal: () => void
   onOpenCopyModal: () => void
   onMoveToTrash: () => void
+  onRestoreFromTrash: () => void
+  onEditorClipboard: (action: 'cut' | 'copy' | 'paste' | 'pastePlainText') => void
+  onEditorCommand: (command: string, payload?: Record<string, unknown>) => void
+  onEditorInsertLink: (mode: LinkInsertMode | null) => void
+  onEditorInsertAttachment: () => void
+  onEditorFindReplace: () => void
+  onEditorOpenContextLink: () => void
+  onEditorEditContextLink: () => void
+}
+
+function MenuButton({
+  children,
+  className = '',
+  disabled = false,
+  onClick,
+}: {
+  children: ReactNode
+  className?: string
+  disabled?: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      className={`tab-context-delete ${className}`.trim()}
+      onClick={onClick}
+      disabled={disabled}
+    >
+      {children}
+    </button>
+  )
+}
+
+function MenuSeparator() {
+  return <div className="tab-context-separator" role="separator" />
+}
+
+function SubMenu({
+  label,
+  children,
+}: {
+  label: string
+  children: ReactNode
+}) {
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const panelRef = useRef<HTMLDivElement | null>(null)
+  const [panelPosition, setPanelPosition] = useState<MenuPosition>({ left: -9999, top: -9999 })
+
+  const updatePanelPosition = useCallback(() => {
+    const trigger = triggerRef.current
+    const panel = panelRef.current
+    if (!trigger || !panel) return
+    setPanelPosition(
+      getSubmenuPosition(
+        toMenuRect(trigger.getBoundingClientRect()),
+        getElementSize(panel),
+        getViewportSize(),
+      ),
+    )
+  }, [])
+
+  return (
+    <div className="tab-context-submenu" onPointerEnter={updatePanelPosition} onFocus={updatePanelPosition}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="tab-context-delete tab-context-submenu-trigger"
+        aria-haspopup="menu"
+      >
+        {label}
+        <span aria-hidden="true">›</span>
+      </button>
+      <div
+        ref={panelRef}
+        className="tab-context-submenu-panel"
+        role="menu"
+        style={{ top: `${panelPosition.top}px`, left: `${panelPosition.left}px` }}
+      >
+        {children}
+      </div>
+    </div>
+  )
 }
 
 export function ContextMenuHost({
@@ -36,13 +207,44 @@ export function ContextMenuHost({
   onOpenDeduplicateModal,
   onOpenCopyModal,
   onMoveToTrash,
+  onRestoreFromTrash,
+  onEditorClipboard,
+  onEditorCommand,
+  onEditorInsertLink,
+  onEditorInsertAttachment,
+  onEditorFindReplace,
+  onEditorOpenContextLink,
+  onEditorEditContextLink,
 }: ContextMenuHostProps) {
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  const [rootPosition, setRootPosition] = useState<MenuPosition>({ left: 0, top: 0 })
+
+  useLayoutEffect(() => {
+    if (!contextMenu) return
+
+    const updateRootPosition = () => {
+      const menu = rootRef.current
+      setRootPosition(
+        clampContextMenuPosition(
+          { x: contextMenu.x, y: contextMenu.y },
+          menu ? getElementSize(menu) : { width: 0, height: 0 },
+          getViewportSize(),
+        ),
+      )
+    }
+
+    updateRootPosition()
+    window.addEventListener('resize', updateRootPosition)
+    return () => window.removeEventListener('resize', updateRootPosition)
+  }, [contextMenu])
+
   if (!contextMenu) return null
 
   return (
     <div
+      ref={rootRef}
       className="tab-context-menu"
-      style={{ top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }}
+      style={{ top: `${rootPosition.top}px`, left: `${rootPosition.left}px` }}
       role="menu"
       onClick={(event) => event.stopPropagation()}
     >
@@ -99,6 +301,61 @@ export function ContextMenuHost({
         <button type="button" className="tab-context-delete" onClick={onCopyImage}>
           copy image
         </button>
+      ) : contextMenu.type === 'editor' ? (
+        <>
+          {contextMenu.link && (
+            <>
+              <MenuButton onClick={onEditorOpenContextLink}>
+                {contextMenu.link.type === 'internal' ? 'open linked note' : 'open link'}
+              </MenuButton>
+              <MenuButton onClick={onEditorEditContextLink}>edit link</MenuButton>
+              <MenuSeparator />
+            </>
+          )}
+          <MenuButton onClick={() => onEditorClipboard('cut')}>cut</MenuButton>
+          <MenuButton onClick={() => onEditorClipboard('copy')}>copy</MenuButton>
+          <MenuButton onClick={() => onEditorClipboard('paste')}>paste</MenuButton>
+          <MenuButton onClick={() => onEditorClipboard('pastePlainText')}>paste as plain text</MenuButton>
+          <MenuButton onClick={() => onEditorInsertLink(null)}>add link</MenuButton>
+          <MenuSeparator />
+          <MenuButton onClick={onEditorFindReplace}>find & replace</MenuButton>
+          <MenuButton onClick={onOpenCopyModal}>make copy</MenuButton>
+          <MenuSeparator />
+          <SubMenu label="format">
+            <MenuButton onClick={() => onEditorCommand('bold')}>bold</MenuButton>
+            <MenuButton onClick={() => onEditorCommand('italic')}>italic</MenuButton>
+            <MenuButton onClick={() => onEditorCommand('strike')}>strikethrough</MenuButton>
+            <MenuButton onClick={() => onEditorCommand('highlight')}>highlight</MenuButton>
+            <MenuButton onClick={() => onEditorCommand('code')}>inline code</MenuButton>
+          </SubMenu>
+          <SubMenu label="paragraph">
+            <MenuButton onClick={() => onEditorCommand('bulletList')}>bullet list</MenuButton>
+            <MenuButton onClick={() => onEditorCommand('dashList')}>dash list</MenuButton>
+            <MenuButton onClick={() => onEditorCommand('orderedList')}>numbered list</MenuButton>
+            <MenuButton onClick={() => onEditorCommand('taskList')}>task list</MenuButton>
+            <MenuSeparator />
+            {[1, 2, 3, 4, 5, 6].map((level) => (
+              <MenuButton key={level} onClick={() => onEditorCommand('heading', { level })}>
+                heading {level}
+              </MenuButton>
+            ))}
+            <MenuButton onClick={() => onEditorCommand('heading', { level: 0 })}>paragraph</MenuButton>
+            <MenuSeparator />
+            <MenuButton onClick={() => onEditorCommand('blockQuote')}>quote block</MenuButton>
+            <MenuButton onClick={() => onEditorCommand('blockIndent')}>block indent</MenuButton>
+            <MenuButton onClick={() => onEditorCommand('removeBlockIndent')}>remove block indent</MenuButton>
+          </SubMenu>
+          <SubMenu label="insert">
+            <MenuButton onClick={() => onEditorInsertLink('note')}>note link</MenuButton>
+            <MenuButton onClick={() => onEditorInsertLink('url')}>url link</MenuButton>
+            <MenuSeparator />
+            <MenuButton onClick={onEditorInsertAttachment}>attachment</MenuButton>
+            <MenuButton onClick={() => onEditorCommand('addTable', { rowCount: 2, columnCount: 2 })}>table</MenuButton>
+            <MenuButton onClick={() => onEditorCommand('hr')}>horizontal rule</MenuButton>
+            <MenuSeparator />
+            <MenuButton onClick={() => onEditorCommand('codeBlock')}>code block</MenuButton>
+          </SubMenu>
+        </>
       ) : contextMenu.type === 'internal-note-link' ? (
         <>
           <button type="button" className="tab-context-delete" onClick={onOpenInternalNoteLink}>
@@ -109,9 +366,14 @@ export function ContextMenuHost({
           </button>
         </>
       ) : contextMenu.type === 'trash-tab' || contextMenu.type === 'trash-subtab' ? (
-        <button type="button" className="tab-context-delete tab-context-danger" onClick={() => onOpenDeleteModal(true)}>
-          delete for real
-        </button>
+        <>
+          <button type="button" className="tab-context-delete" onClick={onRestoreFromTrash}>
+            restore
+          </button>
+          <button type="button" className="tab-context-delete tab-context-danger" onClick={() => onOpenDeleteModal(true)}>
+            delete for real
+          </button>
+        </>
       ) : contextMenu.type === 'home-tab' ? (
         <button type="button" className="tab-context-delete" onClick={onOpenCopyModal}>
           make copy

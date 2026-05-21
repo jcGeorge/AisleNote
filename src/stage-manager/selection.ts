@@ -1,11 +1,14 @@
 import type {
+  SelectionClickModifiers,
   StageManagerDraft,
   StageManagerParentSelection,
+  StageManagerSelectionAnchor,
   StageManagerSelectionSnapshot,
   StageManagerSelectionState,
   SubTab,
   Tab,
 } from '../types/app'
+import { getContiguousRangeIds, isSelectionModifier, orderIds } from '../arrange/arrange-selection'
 
 export function createEmptyStageManagerParentSelection(): StageManagerParentSelection {
   return {
@@ -54,6 +57,188 @@ export function createDefaultStageManagerDraft(): StageManagerDraft {
 export function orderStageManagerSubTabIds(tab: Tab, subTabIds: string[]): string[] {
   const idSet = new Set(subTabIds)
   return tab.subTabs.filter((subTab) => idSet.has(subTab.id)).map((subTab) => subTab.id)
+}
+
+export function createStageManagerFullParentSelection(tab: Tab): StageManagerParentSelection {
+  return {
+    mode: 'full',
+    selectedSubTabIds: tab.subTabs.map((subTab) => subTab.id),
+    cachedPartialSubTabIds: null,
+    partialDirection: null,
+  }
+}
+
+export function createStageManagerSelectionFromSubTabIds(
+  tab: Tab,
+  subTabIds: string[],
+  previousSelection?: StageManagerParentSelection,
+): StageManagerParentSelection {
+  const normalizedPreviousSelection = normalizeStageManagerParentSelection(tab, previousSelection)
+  const orderedSelectedIds = orderStageManagerSubTabIds(tab, subTabIds)
+
+  if (orderedSelectedIds.length === 0) {
+    return {
+      mode: 'none',
+      selectedSubTabIds: [],
+      cachedPartialSubTabIds:
+        normalizedPreviousSelection.selectedSubTabIds.length > 0
+          ? normalizedPreviousSelection.selectedSubTabIds
+          : normalizedPreviousSelection.cachedPartialSubTabIds,
+      partialDirection: null,
+    }
+  }
+
+  if (orderedSelectedIds.length >= tab.subTabs.length) {
+    return {
+      mode: 'full',
+      selectedSubTabIds: tab.subTabs.map((subTab) => subTab.id),
+      cachedPartialSubTabIds:
+        normalizedPreviousSelection.mode === 'partial' && normalizedPreviousSelection.selectedSubTabIds.length > 0
+          ? normalizedPreviousSelection.selectedSubTabIds
+          : normalizedPreviousSelection.cachedPartialSubTabIds,
+      partialDirection: null,
+    }
+  }
+
+  return {
+    mode: 'partial',
+    selectedSubTabIds: orderedSelectedIds,
+    cachedPartialSubTabIds: orderedSelectedIds,
+    partialDirection: 'toward-all',
+  }
+}
+
+type ApplyStageManagerParentModifierClickOptions = {
+  tabs: Tab[]
+  selections: StageManagerSelectionState
+  activeTabId: string
+  clickedTabId: string
+  modifiers: SelectionClickModifiers
+  anchor: StageManagerSelectionAnchor | null
+}
+
+type ApplyStageManagerSubTabModifierClickOptions = {
+  tabs: Tab[]
+  selections: StageManagerSelectionState
+  parentTabId: string
+  clickedSubTabId: string
+  modifiers: SelectionClickModifiers
+  anchor: StageManagerSelectionAnchor | null
+}
+
+export function applyStageManagerParentModifierClick({
+  tabs,
+  selections,
+  activeTabId,
+  clickedTabId,
+  modifiers,
+  anchor,
+}: ApplyStageManagerParentModifierClickOptions): {
+  selections: StageManagerSelectionState
+  anchor: StageManagerSelectionAnchor | null
+} {
+  if (!isSelectionModifier(modifiers) || !tabs.some((tab) => tab.id === clickedTabId)) {
+    return { selections, anchor }
+  }
+
+  const orderedParentIds = tabs.map((tab) => tab.id)
+  const nextSelections: StageManagerSelectionState = { ...selections }
+
+  if (modifiers.shiftKey) {
+    const anchorTabId =
+      anchor?.kind === 'parent' && orderedParentIds.includes(anchor.tabId)
+        ? anchor.tabId
+        : orderedParentIds.includes(activeTabId)
+          ? activeTabId
+          : clickedTabId
+    for (const tabId of getContiguousRangeIds(orderedParentIds, anchorTabId, clickedTabId)) {
+      const tab = tabs.find((candidate) => candidate.id === tabId)
+      if (tab) nextSelections[tabId] = createStageManagerFullParentSelection(tab)
+    }
+    return {
+      selections: nextSelections,
+      anchor: { kind: 'parent', tabId: anchorTabId },
+    }
+  }
+
+  const selectionSnapshot = buildStageManagerSelectionSnapshot(tabs, selections)
+  if (!selectionSnapshot.hasSelection && activeTabId !== clickedTabId) {
+    const activeTab = tabs.find((tab) => tab.id === activeTabId)
+    if (activeTab) nextSelections[activeTab.id] = createStageManagerFullParentSelection(activeTab)
+  }
+
+  const clickedTab = tabs.find((tab) => tab.id === clickedTabId)
+  if (!clickedTab) return { selections, anchor }
+  const clickedSelection = normalizeStageManagerParentSelection(clickedTab, nextSelections[clickedTabId])
+  nextSelections[clickedTabId] =
+    clickedSelection.mode === 'full' ? createEmptyStageManagerParentSelection() : createStageManagerFullParentSelection(clickedTab)
+
+  return {
+    selections: nextSelections,
+    anchor: { kind: 'parent', tabId: clickedTabId },
+  }
+}
+
+export function applyStageManagerSubTabModifierClick({
+  tabs,
+  selections,
+  parentTabId,
+  clickedSubTabId,
+  modifiers,
+  anchor,
+}: ApplyStageManagerSubTabModifierClickOptions): {
+  selections: StageManagerSelectionState
+  anchor: StageManagerSelectionAnchor | null
+} {
+  const parentTab = tabs.find((tab) => tab.id === parentTabId)
+  if (!parentTab || !isSelectionModifier(modifiers) || !parentTab.subTabs.some((subTab) => subTab.id === clickedSubTabId)) {
+    return { selections, anchor }
+  }
+
+  const orderedSubTabIds = parentTab.subTabs.map((subTab) => subTab.id)
+  const currentSelection = normalizeStageManagerParentSelection(parentTab, selections[parentTabId])
+
+  if (modifiers.shiftKey) {
+    const anchorSubTabId =
+      anchor?.kind === 'subtab' &&
+      anchor.parentTabId === parentTabId &&
+      orderedSubTabIds.includes(anchor.subTabId)
+        ? anchor.subTabId
+        : parentTab.activeSubTabId && orderedSubTabIds.includes(parentTab.activeSubTabId)
+          ? parentTab.activeSubTabId
+          : clickedSubTabId
+    const selectedSubTabIds = getContiguousRangeIds(orderedSubTabIds, anchorSubTabId, clickedSubTabId)
+    return {
+      selections: {
+        ...selections,
+        [parentTabId]: createStageManagerSelectionFromSubTabIds(parentTab, selectedSubTabIds, currentSelection),
+      },
+      anchor: { kind: 'subtab', parentTabId, subTabId: anchorSubTabId },
+    }
+  }
+
+  const selectedSubTabIds = new Set(
+    currentSelection.mode === 'full' ? orderedSubTabIds : currentSelection.selectedSubTabIds,
+  )
+  const selectionSnapshot = buildStageManagerSelectionSnapshot(tabs, selections)
+  if (!selectionSnapshot.hasSelection && parentTab.activeSubTabId && parentTab.activeSubTabId !== clickedSubTabId) {
+    selectedSubTabIds.add(parentTab.activeSubTabId)
+  }
+
+  if (selectedSubTabIds.has(clickedSubTabId)) {
+    selectedSubTabIds.delete(clickedSubTabId)
+  } else {
+    selectedSubTabIds.add(clickedSubTabId)
+  }
+
+  const orderedSelectedSubTabIds = orderIds(orderedSubTabIds, selectedSubTabIds)
+  return {
+    selections: {
+      ...selections,
+      [parentTabId]: createStageManagerSelectionFromSubTabIds(parentTab, orderedSelectedSubTabIds, currentSelection),
+    },
+    anchor: { kind: 'subtab', parentTabId, subTabId: clickedSubTabId },
+  }
 }
 
 export function cycleStageManagerParentSelection(tab: Tab, selection?: StageManagerParentSelection): StageManagerParentSelection {

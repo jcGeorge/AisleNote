@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildImageAssetUrl } from '../markdown/image-asset-refs.js'
-import { registerImageAssetBytes } from '../markdown/image-asset-registry'
+import { registerAssetBytes, registerImageAssetBytes } from '../markdown/image-asset-registry'
 import { DEFAULT_CUSTOM_THEME_PALETTE } from '../settings/defaults'
 import { parseSavedState } from '../state/app-state'
 import { buildHybridFileMapFromSerializedState, readSerializedStateFromHybridFileMap } from './browser-hybrid-state'
@@ -220,6 +220,167 @@ describe('browser hybrid storage', () => {
       },
       updatedAt: 100,
     })
+  })
+
+  it('persists app settings and per-space settings in hybrid notes-data manifests', () => {
+    const state = parseSavedState(
+      JSON.stringify({
+        theme: 'custom',
+        activeDomainId: 'domain-1',
+        activeSpaceId: 'space-1',
+        domains: [
+          {
+            id: 'domain-1',
+            name: 'Domain',
+            activeSpaceId: 'space-1',
+            spaces: [
+              {
+                id: 'space-1',
+                name: 'Space',
+                settings: { autoRemoveDeletedDays: 21 },
+                data: {
+                  activeTabId: 'tab-1',
+                  tabs: [
+                    {
+                      id: 'tab-1',
+                      title: 'Tab',
+                      noteBodyId: 'body-1',
+                      homeContent: '',
+                      activeSubTabId: null,
+                      subTabs: [],
+                    },
+                  ],
+                  deletedTabs: [],
+                  deletedSubTabs: [],
+                },
+              },
+            ],
+          },
+        ],
+        noteBodies: [{ id: 'body-1', aisles: [{ id: 'aisle-1', markdown: 'body' }] }],
+        hotkeys: {
+          shortcuts: { newTab: 'Ctrl+Alt+N', newSubTab: 'Ctrl+Alt+M' },
+          newlineShortcuts: {
+            shortcuts: {
+              controlEnter: 'horizontalLine',
+              shiftEnter: 'task',
+              commandEnter: 'operationsMenu',
+            },
+            menuOperations: ['task', 'aisle', 'strikethrough'],
+          },
+          enableMouseBackForward: false,
+          enableGenericHistoryHotkeys: false,
+        },
+        frontmatter: {
+          settingsTemplateId: 'template-1',
+          lastAppliedTemplateId: 'template-1',
+          templates: [
+            {
+              id: 'template-1',
+              name: 'template',
+              fields: [{ id: 'field-1', key: 'status', type: 'text', defaultValue: 'draft', computed: 'none' }],
+            },
+          ],
+        },
+        ui: {
+          showParentHomeTab: false,
+          stageManagerOpenDestinationAfterApply: false,
+          settingsSection: 'toolbar',
+          lastNoteCopyMode: 'linked',
+          decoupledItemsKeepData: false,
+          tableAddTargetMode: 'active-cell',
+          tableDeleteTargetMode: 'active-cell',
+          tabButtonScale: 1.3,
+          noteFontScale: 1.2,
+        },
+      }),
+    )
+
+    const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
+    const { rootManifest, spaceManifest } = getBrowserWorkspacePaths(fileMap)
+    const globalSettings = getRecord(rootManifest.globalSettings)
+    const roundTripped = parseSavedState(readSerializedStateFromHybridFileMap(fileMap) ?? '')
+
+    expect(getRecord(globalSettings.ui).settingsSection).toBe('toolbar')
+    expect(getRecord(globalSettings.ui).lastNoteCopyMode).toBe('linked')
+    expect(getRecord(globalSettings.ui).showParentHomeTab).toBe(false)
+    expect(getRecord(globalSettings.hotkeys).enableMouseBackForward).toBe(false)
+    expect(getRecord(getRecord(globalSettings.hotkeys).shortcuts).newTab).toBe('Ctrl+Alt+N')
+    expect(getRecord(globalSettings.frontmatter).settingsTemplateId).toBe('template-1')
+    expect(spaceManifest.settings).toEqual({ autoRemoveDeletedDays: 21 })
+    expect(roundTripped.ui.settingsSection).toBe('toolbar')
+    expect(roundTripped.hotkeys.shortcuts.newTab).toBe('Ctrl+Alt+N')
+    expect(roundTripped.hotkeys.enableMouseBackForward).toBe(false)
+    expect(roundTripped.frontmatter.settingsTemplateId).toBe('template-1')
+    expect(roundTripped.domains[0]?.spaces[0]?.settings).toEqual({ autoRemoveDeletedDays: 21 })
+  })
+
+  it('persists rearranged parent and sub-tab order in hybrid notes-data storage', () => {
+    const state = parseSavedState(
+      JSON.stringify({
+        activeDomainId: 'domain-1',
+        activeSpaceId: 'space-1',
+        domains: [
+          {
+            id: 'domain-1',
+            name: 'Domain',
+            activeSpaceId: 'space-1',
+            spaces: [
+              {
+                id: 'space-1',
+                name: 'Space',
+                data: {
+                  activeTabId: 'tab-b',
+                  tabs: [
+                    {
+                      id: 'tab-b',
+                      title: 'Beta',
+                      noteBodyId: 'body-b',
+                      homeContent: '',
+                      activeSubTabId: 'sub-b2',
+                      subTabs: [
+                        { id: 'sub-b2', title: 'Second', noteBodyId: 'body-b2', content: '' },
+                        { id: 'sub-b1', title: 'First', noteBodyId: 'body-b1', content: '' },
+                      ],
+                    },
+                    {
+                      id: 'tab-a',
+                      title: 'Alpha',
+                      noteBodyId: 'body-a',
+                      homeContent: '',
+                      activeSubTabId: null,
+                      subTabs: [],
+                    },
+                  ],
+                  deletedTabs: [],
+                  deletedSubTabs: [],
+                },
+              },
+            ],
+          },
+        ],
+        noteBodies: [
+          { id: 'body-b', aisles: [{ id: 'aisle-b', markdown: 'b' }] },
+          { id: 'body-b2', aisles: [{ id: 'aisle-b2', markdown: 'b2' }] },
+          { id: 'body-b1', aisles: [{ id: 'aisle-b1', markdown: 'b1' }] },
+          { id: 'body-a', aisles: [{ id: 'aisle-a', markdown: 'a' }] },
+        ],
+      }),
+    )
+
+    const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
+    const { spaceManifest } = getBrowserWorkspacePaths(fileMap)
+    const manifestTabs = Array.isArray(spaceManifest.tabs) ? spaceManifest.tabs.map(getRecord) : []
+    const roundTripped = parseSavedState(readSerializedStateFromHybridFileMap(fileMap) ?? '')
+    const roundTrippedTabs = roundTripped.domains[0]?.spaces[0]?.data.tabs ?? []
+
+    expect(manifestTabs.map((tab) => tab.id)).toEqual(['tab-b', 'tab-a'])
+    expect((Array.isArray(manifestTabs[0]?.subTabs) ? manifestTabs[0].subTabs.map(getRecord) : []).map((subTab) => subTab.id)).toEqual([
+      'sub-b2',
+      'sub-b1',
+    ])
+    expect(roundTrippedTabs.map((tab) => tab.id)).toEqual(['tab-b', 'tab-a'])
+    expect(roundTrippedTabs[0]?.subTabs.map((subTab) => subTab.id)).toEqual(['sub-b2', 'sub-b1'])
   })
 
   it('round trips shared aisle body ids through the manifest file map', () => {
@@ -550,6 +711,26 @@ describe('browser hybrid storage', () => {
     expect(assetEntry?.kind === 'binary' ? Array.from(assetEntry.bytes) : []).toEqual(Array.from(bytes))
     expect(roundTripped.noteBodies[0]?.aisles[0]?.markdown).toContain(buildImageAssetUrl(assetPath))
     expect(roundTripped.noteBodies[0]?.aisles[0]?.markdown).not.toContain('data:image/')
+  })
+
+  it('round trips registered non-image asset links', () => {
+    const state = createBrowserStorageState()
+    const bytes = new Uint8Array([9, 8, 7, 6])
+    const assetPath = 'assets/asset-browser-report.pdf'
+    registerAssetBytes(assetPath, bytes, 'application/pdf')
+    state.noteBodies[0].aisles[0].markdown = `[report](${buildImageAssetUrl(assetPath)})`
+    if (state.noteAisleBodies?.[0]) {
+      state.noteAisleBodies[0].markdown = state.noteBodies[0].aisles[0].markdown
+    }
+
+    const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
+    const assetEntry = fileMap.get(`notes-data/${assetPath}`)
+    const serialized = readSerializedStateFromHybridFileMap(fileMap)
+    const roundTripped = parseSavedState(serialized ?? '')
+
+    expect(assetEntry?.kind).toBe('binary')
+    expect(assetEntry?.kind === 'binary' ? Array.from(assetEntry.bytes) : []).toEqual(Array.from(bytes))
+    expect(roundTripped.noteBodies[0]?.aisles[0]?.markdown).toContain(buildImageAssetUrl(assetPath))
   })
 
   it('loads corrupt trash manifests as empty trash', () => {

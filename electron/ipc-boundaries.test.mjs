@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -233,6 +233,38 @@ describe('electron ipc boundaries', () => {
         source: 'empty',
       })
     }))
+
+  it('imports and opens generic assets through storage ipc', async () => {
+    const userDataPath = mkdtempSync(path.join(os.tmpdir(), 'tabs-ipc-user-data-'))
+    try {
+      const ipcMain = createIpcMain()
+      const shell = { openPath: vi.fn(async () => '') }
+      registerStorageIpc({
+        ipcMain,
+        app: { getPath: () => userDataPath },
+        BrowserWindow: createBrowserWindow(),
+        shell,
+      })
+
+      const imported = await ipcMain.handlers.get('import-asset')(null, {
+        bytes: new Uint8Array([1, 2, 3]).buffer,
+        name: 'recording.mp4',
+        type: 'video/mp4',
+      })
+
+      expect(imported).toMatchObject({
+        ok: true,
+        assetPath: expect.stringMatching(/^assets\/asset-[a-f0-9]+\.mp4$/),
+        url: expect.stringMatching(/^tabs-asset:\/\/\/assets\/asset-[a-f0-9]+\.mp4$/),
+      })
+      expect(readFileSync(path.join(userDataPath, 'notes-data', imported.assetPath))).toEqual(Buffer.from([1, 2, 3]))
+
+      await expect(ipcMain.handlers.get('open-asset')(null, { url: imported.url })).resolves.toEqual({ ok: true })
+      expect(shell.openPath).toHaveBeenCalledWith(path.join(userDataPath, 'notes-data', imported.assetPath))
+    } finally {
+      rmSync(userDataPath, { recursive: true, force: true })
+    }
+  })
 
   it('moves current app data into a chosen sync folder without deleting the source profile', async () =>
     withTempUserDataPath(async (userDataPath) => {

@@ -9,6 +9,7 @@ import type {
 import { normalizeNoteCursorLocations } from '../notes/note-cursors'
 import { normalizeTipIds } from '../tips/tips'
 import { normalizeHeadingCollapseState } from '../editor/heading-collapse-state'
+import { normalizeToolbarLayouts } from '../editor/toolbar-layouts'
 
 export const DEFAULT_AUTO_REMOVE_DAYS = 7
 export type BuiltInAppTheme = Exclude<AppTheme, 'custom'>
@@ -41,6 +42,8 @@ export const DEFAULT_UI_SETTINGS: AppState['ui'] = {
   customThemePalette: null,
   noteCursorLocations: {},
   headingCollapseState: {},
+  toolbarLayouts: [],
+  toolbarEditorShowNames: false,
   seenTipIds: [],
   disabledTipIds: [],
 }
@@ -229,6 +232,11 @@ export function normalizeUiSettings(raw: unknown): AppState['ui'] {
     customThemePalette: normalizeCustomThemePalette(obj.customThemePalette),
     noteCursorLocations: normalizeNoteCursorLocations(obj.noteCursorLocations),
     headingCollapseState: normalizeHeadingCollapseState(obj.headingCollapseState),
+    toolbarLayouts: normalizeToolbarLayouts(obj.toolbarLayouts),
+    toolbarEditorShowNames:
+      typeof obj.toolbarEditorShowNames === 'boolean'
+        ? obj.toolbarEditorShowNames
+        : DEFAULT_UI_SETTINGS.toolbarEditorShowNames,
     seenTipIds: normalizeTipIds(obj.seenTipIds),
     disabledTipIds: normalizeTipIds(obj.disabledTipIds),
   }

@@ -19,7 +19,6 @@ import {
   DEFAULT_AUTO_REMOVE_DAYS,
   DEFAULT_DOMAIN_ID,
   DEFAULT_DOMAIN_NAME,
-  IMAGE_MARKDOWN_PATTERN,
   ensureArray,
   getActiveDomainFromAppState,
   getActiveSpaceFromDomain,
@@ -30,11 +29,12 @@ import {
   getMimeTypeFromExtension,
   getNoteBodiesFromAppState,
   isRecord,
-  normalizeImageExtension,
+  normalizeAssetExtension,
 } from '../src/storage/hybrid-storage-core.js'
 import { buildStoragePathFileName, createStoragePathAllocator } from '../src/storage/storage-path-segments.js'
 import {
   buildImageAssetUrl,
+  MARKDOWN_LINK_PATTERN,
   normalizeImageAssetPath,
   parseImageAssetUrl,
 } from '../src/markdown/image-asset-refs.js'
@@ -273,7 +273,7 @@ function readTrashData(spaceRoot, trashManifestFile, issues = null, issueRootPat
 }
 
 function addAssetToBank(assetBank, bytes, extension) {
-  const ext = normalizeImageExtension(extension)
+  const ext = normalizeAssetExtension(extension)
   const buffer = Buffer.from(bytes)
   const hash = createHash('sha1').update(buffer).digest('hex').slice(0, 16)
   const key = `${hash}.${ext}`
@@ -287,7 +287,7 @@ function addAssetToBank(assetBank, bytes, extension) {
 }
 
 function addAssetToNotesRoot(notesRootPath, bytes, extension) {
-  const ext = normalizeImageExtension(extension)
+  const ext = normalizeAssetExtension(extension)
   const buffer = Buffer.from(bytes)
   const hash = createHash('sha1').update(buffer).digest('hex').slice(0, 16)
   const relativeAssetPath = path.posix.join('assets', `asset-${hash}.${ext}`)
@@ -296,6 +296,10 @@ function addAssetToNotesRoot(notesRootPath, bytes, extension) {
 }
 
 export function writeImageAssetToProfile(profileRootPath, bytes, extension) {
+  return writeAssetToProfile(profileRootPath, bytes, extension)
+}
+
+export function writeAssetToProfile(profileRootPath, bytes, extension) {
   const notesRootPath = getHybridStorageRoot(profileRootPath)
   const assetPath = addAssetToNotesRoot(notesRootPath, bytes, extension)
   return {
@@ -305,7 +309,7 @@ export function writeImageAssetToProfile(profileRootPath, bytes, extension) {
 }
 
 function externalizeMarkdownImages(markdown, noteFileRelative, assetBank) {
-  return String(markdown ?? '').replace(IMAGE_MARKDOWN_PATTERN, (fullMatch, altText, srcRaw) => {
+  return String(markdown ?? '').replace(MARKDOWN_LINK_PATTERN, (fullMatch, imageBang, label, srcRaw) => {
     const src = String(srcRaw ?? '').trim()
     if (!src) return fullMatch
     const { imageUrl, metadataFragment } = splitImageMetadataFromUrl(src)
@@ -321,7 +325,7 @@ function externalizeMarkdownImages(markdown, noteFileRelative, assetBank) {
           assetBank.files.set(assetRelativePath, readFileSync(existingAssetPath))
         }
       }
-    } else if (imageUrl.startsWith('data:image/')) {
+    } else if (imageBang === '!' && imageUrl.startsWith('data:image/')) {
       decoded = decodeImageDataUrl(imageUrl)
     } else if (imageUrl.startsWith('file://')) {
       try {
@@ -329,7 +333,7 @@ function externalizeMarkdownImages(markdown, noteFileRelative, assetBank) {
         if (existsSync(absolutePath)) {
           decoded = {
             bytes: readFileSync(absolutePath),
-            extension: normalizeImageExtension(path.extname(absolutePath).slice(1)),
+            extension: normalizeAssetExtension(path.extname(absolutePath).slice(1)),
           }
         }
       } catch {
@@ -344,21 +348,21 @@ function externalizeMarkdownImages(markdown, noteFileRelative, assetBank) {
     if (!assetRelativePath) return fullMatch
     const noteDirectory = path.posix.dirname(noteFileRelative)
     const nextSrc = path.posix.relative(noteDirectory, assetRelativePath) || path.posix.basename(assetRelativePath)
-    return `![${altText}](${nextSrc}${metadataFragment})`
+    return `${imageBang}[${label}](${nextSrc}${metadataFragment})`
   })
 }
 
 function referenceMarkdownImages(markdown, noteFilePath, issues = null, issueRootPath = null) {
-  return String(markdown ?? '').replace(IMAGE_MARKDOWN_PATTERN, (fullMatch, altText, srcRaw) => {
+  return String(markdown ?? '').replace(MARKDOWN_LINK_PATTERN, (fullMatch, imageBang, label, srcRaw) => {
     const src = String(srcRaw ?? '').trim()
     if (!src) return fullMatch
     const { imageUrl, metadataFragment } = splitImageMetadataFromUrl(src)
     if (parseImageAssetUrl(imageUrl)) return fullMatch
-    if (imageUrl.startsWith('data:image/')) {
+    if (imageBang === '!' && imageUrl.startsWith('data:image/')) {
       const decoded = decodeImageDataUrl(imageUrl)
       if (!decoded || !issueRootPath) return fullMatch
       const assetPath = addAssetToNotesRoot(issueRootPath, decoded.bytes, decoded.extension)
-      return `![${altText}](${buildImageAssetUrl(assetPath)}${metadataFragment})`
+      return `${imageBang}[${label}](${buildImageAssetUrl(assetPath)}${metadataFragment})`
     }
     if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(imageUrl) && !imageUrl.startsWith('file://')) return fullMatch
 
@@ -373,13 +377,23 @@ function referenceMarkdownImages(markdown, noteFilePath, issues = null, issueRoo
       absolutePath = path.resolve(path.dirname(noteFilePath), imageUrl)
     }
 
+    if (!imageBang && !absolutePath) return fullMatch
+    if (!imageBang && issueRootPath) {
+      const candidateRootRelativePath = normalizeImageAssetPath(
+        path.relative(issueRootPath, absolutePath).split(path.sep).join(path.posix.sep),
+      )
+      if (!candidateRootRelativePath.startsWith('assets/')) return fullMatch
+    } else if (!imageBang) {
+      return fullMatch
+    }
+
     if (!absolutePath || !existsSync(absolutePath)) {
       addStorageIssue(
         issues,
         'missing-asset',
         'warning',
         absolutePath && issueRootPath ? formatStorageIssuePath(issueRootPath, absolutePath) : absolutePath,
-        'Referenced image asset is missing; the Markdown image reference was kept unchanged.',
+        'Referenced asset is missing; the Markdown reference was kept unchanged.',
       )
       return fullMatch
     }
@@ -388,14 +402,15 @@ function referenceMarkdownImages(markdown, noteFilePath, issues = null, issueRoo
       const rootRelativePath = issueRootPath
         ? normalizeImageAssetPath(path.relative(issueRootPath, absolutePath).split(path.sep).join(path.posix.sep))
         : normalizeImageAssetPath(path.basename(absolutePath))
-      return `![${altText}](${buildImageAssetUrl(rootRelativePath)}${metadataFragment})`
+      if (!imageBang && !rootRelativePath.startsWith('assets/')) return fullMatch
+      return `${imageBang}[${label}](${buildImageAssetUrl(rootRelativePath)}${metadataFragment})`
     } catch {
       addStorageIssue(
         issues,
         'unreadable-asset',
         'warning',
         issueRootPath ? formatStorageIssuePath(issueRootPath, absolutePath) : absolutePath,
-        'Referenced image asset could not be read; the Markdown image reference was kept unchanged.',
+        'Referenced asset could not be read; the Markdown reference was kept unchanged.',
       )
       return fullMatch
     }

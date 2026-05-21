@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Editor } from '@toast-ui/editor'
+import { TextSelection } from 'prosemirror-state'
 import '@toast-ui/editor/dist/toastui-editor.css'
 import './App.css'
 import { useActiveNoteModel } from './app/useActiveNoteModel'
@@ -7,6 +8,7 @@ import { sortSubTabs, sortTabs } from './arrange/tab-sort'
 import { useArrangeMode } from './arrange/useArrangeMode'
 import { DomainsPage } from './components/domains/DomainsPage'
 import { ImageToolsOverlay } from './components/editor/ImageToolsOverlay'
+import { FindReplacePanel } from './components/editor/FindReplacePanel'
 import { LegacyEditorShell } from './components/editor/LegacyEditorShell'
 import { NoteMentionMenu, type NoteMentionAction } from './components/editor/NoteMentionMenu'
 import { ShortcutMenu } from './components/editor/ShortcutMenu'
@@ -43,6 +45,7 @@ import {
 } from './editor/table-of-contents'
 import {
   getCommandCapableEditor,
+  collectProseMirrorTextPositions,
   getNoteMentionQueryAtSelection,
   getWysiwygView,
   runWysiwygHistory,
@@ -55,9 +58,10 @@ import { useEditorDomEvents } from './editor/useEditorDomEvents'
 import { useEditorPersistence } from './editor/useEditorPersistence'
 import { useEditorToolbarLayer } from './editor/useEditorToolbarLayer'
 import { useEditorToolbarState } from './editor/useEditorToolbarState'
+import { DEFAULT_TOOLBAR_LAYOUT_ID, resolveToolbarLayout } from './editor/toolbar-layouts'
 import { useImageTools } from './editor/useImageTools'
 import { useTableControls } from './editor/useTableControls'
-import { clearEditorMarkdownForDisplay, getEditorMarkdownForPersistence } from './editor/editor-markdown-display'
+import { clearEditorMarkdownForDisplay, getEditorMarkdownForPersistence, setEditorMarkdownForDisplay } from './editor/editor-markdown-display'
 import type { MultiLineHeadingLevel } from './editor/multiline-format-operations'
 import type { MultiLineListOperation } from './editor/multiline-list-operations'
 import { useMultilineEditing } from './editor/useMultilineEditing'
@@ -69,8 +73,8 @@ import {
 import { exportAppData, type ExportScope } from './export/export-data'
 import { buildFrontmatterModalDraftForNote } from './frontmatter/frontmatter-state'
 import { useGlobalHotkeys } from './hotkeys/useGlobalHotkeys'
-import { formatFixedNewlineShortcutLabel } from './hotkeys/shortcuts'
 import { normalizeMarkdownForPersistence } from './markdown/markdown-utils'
+import { importBlobAsAssetUrl } from './markdown/image-asset-registry'
 import { useNavigationHistory } from './navigation/useNavigationHistory'
 import { useAppNavigationActions } from './navigation/useAppNavigationActions'
 import {
@@ -101,9 +105,15 @@ import {
 } from './notes/note-mention-picker'
 import { getLinkedAisleIdsForNoteBody } from './notes/aisle-links'
 import { openExternalWebUrl } from './notes/external-links'
-import { buildContextToken, buildInternalNoteUrl, wouldCreateContextCycle } from './notes/note-references'
+import { buildContextToken, buildInternalNoteUrl, escapeMarkdownLinkLabel, wouldCreateContextCycle } from './notes/note-references'
 import { normalizeNoteReferenceTarget } from './notes/note-reference-targets'
 import { getAisleBodyId } from './notes/note-markdown'
+import { getAisleMarkdown } from './notes/aisle-body-state'
+import {
+  applyFindReplacementToState,
+  findVisibleMatches,
+  type FindReplaceScope,
+} from './notes/find-replace'
 import { useNoteReferenceActions } from './notes/useNoteReferenceActions'
 import { useAppOverlayActions } from './overlays/useAppOverlayActions'
 import { measureSlowOperation } from './performance/performance-logging'
@@ -122,20 +132,18 @@ import {
 } from './state/workspace'
 import { useStageManagerController } from './stage-manager/useStageManagerController'
 import { usePersistentAppState } from './storage/usePersistentAppState'
+import { loadActiveToolbarLayoutId, saveActiveToolbarLayoutId } from './storage/device-settings-store'
 import { useStorageProfileController } from './storage/useStorageProfileController'
 import {
-  getAisleShortcutTipHotkeyLabel,
-  getAisleShortcutTipMessage,
-  getNextAisleShortcutTipCount,
   getNextTabCreateTipSequence,
   getTipDefinition,
-  type AisleAddTipSource,
   type TabCreateTipSequence,
   type TabCreateTipRenameType,
 } from './tips/tips'
 import { TRASH_HOME_ID } from './trash/trash-model'
 import { useTrashSelection } from './trash/useTrashSelection'
 import type {
+  AppState,
   ContextMenuState,
   InternalNoteLinkEdit,
   LinkEditRange,
@@ -169,6 +177,16 @@ type NoteMentionMenuState = {
   query: NoteMentionQuery
   selection: NoteMentionSelection
   activeRow: NoteMentionNavigatorRowId
+}
+
+type FindReplacePanelState = {
+  open: boolean
+  query: string
+  replacement: string
+  scope: FindReplaceScope
+  caseSensitive: boolean
+  wholeWord: boolean
+  activeIndex: number
 }
 
 const TOOLBAR_LIST_COMMAND_TO_MULTILINE_OPERATION: Partial<Record<ToolbarListCommand, MultiLineListOperation>> = {
@@ -214,11 +232,21 @@ function App() {
   const [noteMentionMenu, setNoteMentionMenu] = useState<NoteMentionMenuState | null>(null)
   const [noteMentionActiveIndex, setNoteMentionActiveIndex] = useState(0)
   const [tableOfContentsPanels, setTableOfContentsPanels] = useState<TableOfContentsPanelsState | null>(null)
+  const [findReplacePanel, setFindReplacePanel] = useState<FindReplacePanelState>({
+    open: false,
+    query: '',
+    replacement: '',
+    scope: 'note',
+    caseSensitive: false,
+    wholeWord: false,
+    activeIndex: 0,
+  })
   const isMacPlatform = typeof navigator !== 'undefined' ? /mac/i.test(navigator.platform) : false
   const [menuOpen, setMenuOpen] = useState(false)
   const [trashTabId, setTrashTabId] = useState<string>(TRASH_HOME_ID)
   const [trashSubTabId, setTrashSubTabId] = useState<string | null>(null)
   const [activeAisleId, setActiveAisleId] = useState<string>('')
+  const [activeToolbarLayoutId, setActiveToolbarLayoutIdState] = useState<string>(() => loadActiveToolbarLayoutId())
   const [toasts, setToasts] = useState<ToastState[]>([])
   const [visibleTips, setVisibleTips] = useState<TipId[]>([])
 
@@ -256,7 +284,6 @@ function App() {
   const completedTaskUndoToastAtRef = useRef(0)
   const dismissedTipIdsThisSessionRef = useRef<Set<TipId>>(new Set())
   const tabCreateTipSequenceRef = useRef<TabCreateTipSequence | null>(null)
-  const aisleShortcutTipCountRef = useRef(0)
   const activeSpaceIdRef = useRef<string>('')
   const activeDomainIdRef = useRef<string>('')
   const activeTabIdRef = useRef<string>('')
@@ -355,11 +382,46 @@ function App() {
     activeAisleId,
   })
   const activeNoteDuplicateCount = activeNoteBodyId ? listNoteLocationsForBody(state, activeNoteBodyId).length : 0
-  const activeLinkedAisleIds = activeNoteBodyId ? getLinkedAisleIdsForNoteBody(state, activeNoteBodyId) : new Set<string>()
+  const findReplaceMatches = useMemo(
+    () =>
+      findReplacePanel.open
+        ? findVisibleMatches(
+            state,
+            activeNoteLocation,
+            findReplacePanel.scope,
+            findReplacePanel.query,
+            {
+              caseSensitive: findReplacePanel.caseSensitive,
+              wholeWord: findReplacePanel.wholeWord,
+            },
+          )
+        : [],
+    [
+      activeNoteLocation,
+      findReplacePanel.caseSensitive,
+      findReplacePanel.open,
+      findReplacePanel.query,
+      findReplacePanel.scope,
+      findReplacePanel.wholeWord,
+      state,
+    ],
+  )
 
   useEffect(() => {
-    aisleShortcutTipCountRef.current = 0
-  }, [activeNoteLocationKey])
+    setFindReplacePanel((current) => {
+      if (!current.open) return current
+      const maxIndex = Math.max(0, findReplaceMatches.length - 1)
+      return current.activeIndex <= maxIndex ? current : { ...current, activeIndex: maxIndex }
+    })
+  }, [findReplaceMatches.length])
+  const activeLinkedAisleIds = activeNoteBodyId ? getLinkedAisleIdsForNoteBody(state, activeNoteBodyId) : new Set<string>()
+  const activeToolbarLayout = resolveToolbarLayout(state.ui.toolbarLayouts, activeToolbarLayoutId)
+
+  const setActiveToolbarLayoutId = useCallback((layoutId: string) => {
+    const nextLayoutId = layoutId.trim() || DEFAULT_TOOLBAR_LAYOUT_ID
+    setActiveToolbarLayoutIdState(nextLayoutId)
+    saveActiveToolbarLayoutId(nextLayoutId)
+  }, [])
 
   const settingsController = useSettingsController({
     state,
@@ -367,6 +429,8 @@ function App() {
     commitAppStateNow,
     activeSpace,
     viewMode,
+    activeToolbarLayoutId,
+    onActiveToolbarLayoutIdChange: setActiveToolbarLayoutId,
   })
 
   const pushToast = (message: string, tone: ToastTone = 'warning', durationMs = DEFAULT_TOAST_DURATION_MS) => {
@@ -426,14 +490,6 @@ function App() {
     tabCreateTipSequenceRef.current = result.sequence
     if (result.shouldShowTip) {
       showTip('tab-create-after-rename')
-    }
-  }
-
-  const trackAisleAddForTips = (source: AisleAddTipSource) => {
-    const result = getNextAisleShortcutTipCount(aisleShortcutTipCountRef.current, { source })
-    aisleShortcutTipCountRef.current = result.count
-    if (result.shouldShowTip) {
-      showTip('aisle-shortcut')
     }
   }
 
@@ -641,7 +697,6 @@ function App() {
     saveActiveCursorLocation,
     getNormalizedEditorMarkdown,
     pushToast,
-    onAisleAddedForTips: trackAisleAddForTips,
   })
   const aisleEditModalOpen = aisleController.aisleEditModalOpen
   const openAisleEditModal = aisleController.openAisleEditModal
@@ -712,14 +767,18 @@ function App() {
   const isDraggingOverArrangeTrashDrop = arrange.isDraggingOverTrashDrop
   const suppressNextDomainArrangeExitRef = arrange.suppressNextDomainArrangeExitRef
   const suppressNextSpaceArrangeExitRef = arrange.suppressNextSpaceArrangeExitRef
+  const arrangeSelection = arrange.selection
   const clearArrangePressTimer = arrange.clearPressTimer
   const clearArrangeTapCandidate = arrange.clearTapCandidate
+  const clearArrangeSelection = arrange.clearSelection
   const consumeArrangeClickSuppression = arrange.consumeClickSuppression
   const enterArrangeModeFromContext = arrange.enterFromContext
   const exitArrangeMode = arrange.exit
   const startArrangeDragSeed = arrange.startDragSeed
   const startArrangeTapCandidate = arrange.startTapCandidate
   const startArrangePress = arrange.startPress
+  const handleArrangeParentSelectionClick = arrange.handleParentSelectionClick
+  const handleArrangeSubTabSelectionClick = arrange.handleSubTabSelectionClick
   const finalizeArrangeTapCandidate = arrange.finalizeTapCandidate
   const handleArrangeDomainPointerMove = arrange.handleDomainPointerMove
   const handleArrangeDomainPointerUp = arrange.handleDomainPointerUp
@@ -933,11 +992,9 @@ function App() {
   const activeHeadingLevel = editorToolbar.activeHeadingLevel
   const toolbarShortcutFeedback = editorToolbar.toolbarShortcutFeedback
   const copyMenuOpen = editorToolbar.copyMenuOpen
-  const noteToolsOpen = editorToolbar.noteToolsOpen
   const headingMenuOpen = editorToolbar.headingMenuOpen
   const toolbarPopoverPosition = editorToolbar.toolbarPopoverPosition
   const setCopyMenuOpen = editorToolbar.setCopyMenuOpen
-  const setNoteToolsOpen = editorToolbar.setNoteToolsOpen
   const setHeadingMenuOpen = editorToolbar.setHeadingMenuOpen
   const setToolbarPopoverPosition = editorToolbar.setToolbarPopoverPosition
   const refreshToolbarPopoverPosition = editorToolbar.refreshToolbarPopoverPosition
@@ -1165,9 +1222,9 @@ function App() {
     }
   }
 
-  const openSharedLinkModal = (selectedText = '') => {
+  const openSharedLinkModal = (selectedText = '', initialMode: LinkInsertMode = getLastLinkInsertMode()) => {
     saveActiveCursorBeforeNavigation()
-    setModal(buildDefaultLinkModal(getLastLinkInsertMode(), selectedText))
+    setModal(buildDefaultLinkModal(initialMode, selectedText))
   }
 
   const openExternalLinkEditModal = (href: string, label: string, range: LinkEditRange | null) => {
@@ -1313,6 +1370,263 @@ function App() {
     return true
   }
 
+  const getActiveEditorSelectedText = () => {
+    const currentEditor = editorRef.current
+    if (!currentEditor) return ''
+    try {
+      return getCommandCapableEditor(currentEditor).getSelectedText().trim()
+    } catch {
+      return ''
+    }
+  }
+
+  const runEditorContextCommand = (command: string, payload?: Record<string, unknown>) => {
+    setContextMenu(null)
+    if (!runActiveEditorCommand(command, payload)) {
+      pushToast('open a note before using the editor menu.', 'warning')
+    }
+  }
+
+  const runEditorContextClipboardAction = (action: 'cut' | 'copy' | 'paste' | 'pastePlainText') => {
+    setContextMenu(null)
+    const currentEditor = editorRef.current
+    if (!currentEditor) {
+      pushToast('open a note before using the editor menu.', 'warning')
+      return
+    }
+    currentEditor.focus()
+
+    if (action === 'cut' || action === 'copy') {
+      document.execCommand(action)
+      return
+    }
+
+    const pasteText = (text: string) => {
+      if (!text) return
+      currentEditor.focus()
+      getCommandCapableEditor(currentEditor).insertText(text)
+      commitActiveEditorMarkdownNow(currentEditor)
+    }
+
+    const nativeHandled = action === 'paste' ? document.execCommand('paste') : false
+    if (nativeHandled) {
+      window.setTimeout(() => commitActiveEditorMarkdownNow(currentEditor), 0)
+      return
+    }
+
+    void navigator.clipboard?.readText?.()
+      .then(pasteText)
+      .catch(() => pushToast('clipboard paste is unavailable here.', 'warning'))
+  }
+
+  const openEditorContextLinkModal = (mode: LinkInsertMode | null) => {
+    setContextMenu(null)
+    openSharedLinkModal(getActiveEditorSelectedText(), mode ?? getLastLinkInsertMode())
+  }
+
+  const insertAttachmentFromEditorContext = () => {
+    setContextMenu(null)
+    const currentEditor = editorRef.current
+    if (!currentEditor) {
+      pushToast('open a note before inserting an attachment.', 'warning')
+      return
+    }
+
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = [
+      'image/*',
+      'application/pdf',
+      'audio/*',
+      'video/*',
+      '.pdf',
+      '.mp3',
+      '.wav',
+      '.m4a',
+      '.ogg',
+      '.webm',
+      '.mp4',
+      '.mov',
+    ].join(',')
+    input.onchange = () => {
+      const file = input.files?.[0]
+      if (!file) return
+      void importBlobAsAssetUrl(file, file.name).then((assetUrl) => {
+        if (!assetUrl) {
+          pushToast('could not import attachment.', 'warning')
+          return
+        }
+        currentEditor.focus()
+        if (file.type.startsWith('image/')) {
+          getCommandCapableEditor(currentEditor).exec('addImage', { imageUrl: assetUrl, altText: file.name })
+        } else {
+          const label = escapeMarkdownLinkLabel(file.name.trim() || 'attachment')
+          getCommandCapableEditor(currentEditor).insertText(`[${label}](${assetUrl})`)
+        }
+        commitActiveEditorMarkdownNow(currentEditor)
+      })
+    }
+    input.click()
+  }
+
+  const openEditorContextLink = () => {
+    if (!contextMenu || contextMenu.type !== 'editor' || !contextMenu.link) return
+    const link = contextMenu.link
+    setContextMenu(null)
+    if (link.type === 'internal') {
+      navigateToNoteLocation({ ...link.target, heading: link.heading })
+      return
+    }
+    openExternalWebUrl(link.href)
+  }
+
+  const editEditorContextLink = () => {
+    if (!contextMenu || contextMenu.type !== 'editor' || !contextMenu.link) return
+    const link = contextMenu.link
+    setContextMenu(null)
+    if (link.type === 'internal') {
+      openInternalNoteLinkEditModal({
+        label: link.label,
+        href: link.href,
+        target: link.target,
+        heading: link.heading,
+        from: link.from,
+        to: link.to,
+        occurrence: link.occurrence,
+        range: link.range,
+      })
+      return
+    }
+    openExternalLinkEditModal(link.href, link.label, link.range)
+  }
+
+  const selectActiveEditorFindMatch = (match = findReplaceMatches[findReplacePanel.activeIndex]) => {
+    if (!match || match.aisleId !== activeAisleIdRef.current) return
+    const currentEditor = editorRef.current
+    const view = getWysiwygView(currentEditor)
+    if (!currentEditor || !view) return
+    const docText = collectProseMirrorTextPositions(view.state.doc)
+    const sourcePositions = docText.positions.slice(match.visibleFrom, match.visibleTo).filter((position) => position >= 0)
+    if (sourcePositions.length === 0) return
+    try {
+      view.dispatch(
+        view.state.tr
+          .setSelection(TextSelection.create(view.state.doc, sourcePositions[0], sourcePositions[sourcePositions.length - 1] + 1))
+          .scrollIntoView(),
+      )
+      currentEditor.focus()
+    } catch {
+      currentEditor.focus()
+    }
+  }
+
+  const openFindReplacePanel = () => {
+    setContextMenu(null)
+    flushPendingContent()
+    const selectedText = getActiveEditorSelectedText()
+    setFindReplacePanel((current) => ({
+      ...current,
+      open: true,
+      query: current.query || selectedText,
+      activeIndex: 0,
+    }))
+  }
+
+  const setFindReplaceActiveIndex = (index: number) => {
+    const safeIndex = Math.max(0, Math.min(Math.max(0, findReplaceMatches.length - 1), index))
+    setFindReplacePanel((current) => ({ ...current, activeIndex: safeIndex }))
+    const match = findReplaceMatches[safeIndex]
+    if (!match) return
+    if (
+      match.location.domainId !== activeNoteLocation.domainId ||
+      match.location.spaceId !== activeNoteLocation.spaceId ||
+      match.location.tabId !== activeNoteLocation.tabId ||
+      match.location.subTabId !== activeNoteLocation.subTabId
+    ) {
+      navigateToNoteLocation(match.location)
+      return
+    }
+    if (match.aisleId !== activeAisleIdRef.current) {
+      setActiveAisleId(match.aisleId)
+      activeAisleIdRef.current = match.aisleId
+      pendingScrollToAisleIdRef.current = match.aisleId
+      pendingFocusToAisleIdRef.current = match.aisleId
+      window.setTimeout(() => selectActiveEditorFindMatch(match), 0)
+      return
+    }
+    selectActiveEditorFindMatch(match)
+  }
+
+  const moveFindReplaceMatch = (delta: number) => {
+    if (findReplaceMatches.length === 0) return
+    const nextIndex = (findReplacePanel.activeIndex + delta + findReplaceMatches.length) % findReplaceMatches.length
+    setFindReplaceActiveIndex(nextIndex)
+  }
+
+  const syncActiveEditorAfterFindReplace = (nextState: AppState, changedAisleBodyIds: Set<string>) => {
+    const currentEditor = editorRef.current
+    const activeInfo = getLocationInfo(nextState, activeNoteLocation)
+    const activeBody = nextState.noteBodies.find((body) => body.id === activeInfo.noteBodyId)
+    const activeAisle = activeBody?.aisles.find((aisle) => aisle.id === activeAisleIdRef.current)
+    if (!currentEditor || !activeAisle) return
+    const activeAisleBodyId = getAisleBodyId(activeAisle)
+    if (!changedAisleBodyIds.has(activeAisleBodyId)) return
+    const nextMarkdown = getAisleMarkdown(activeAisle, nextState.noteAisleBodies)
+    lastEditorMarkdownRef.current = nextMarkdown
+    lastEditorMarkdownByAisleRef.current.set(activeAisleBodyId, nextMarkdown)
+    pendingContentRef.current = null
+    setEditorMarkdownForDisplay(currentEditor, nextMarkdown, false)
+  }
+
+  const applyFindReplacement = (mode: 'current' | 'all') => {
+    const selectedMatches =
+      mode === 'current'
+        ? findReplaceMatches[findReplacePanel.activeIndex]
+          ? [findReplaceMatches[findReplacePanel.activeIndex]]
+          : []
+        : findReplaceMatches
+    if (selectedMatches.length === 0) return
+    if (
+      mode === 'all' &&
+      findReplacePanel.scope !== 'note' &&
+      !window.confirm(`replace ${selectedMatches.length} matches in ${findReplacePanel.scope}?`)
+    ) {
+      return
+    }
+    const latestState = buildStateWithLatestEditorContent()
+    const latestMatches = findVisibleMatches(latestState, activeNoteLocation, findReplacePanel.scope, findReplacePanel.query, {
+      caseSensitive: findReplacePanel.caseSensitive,
+      wholeWord: findReplacePanel.wholeWord,
+    })
+    const targetIds = new Set(selectedMatches.map((match) => match.id))
+    const matchesToApply = mode === 'all' ? latestMatches : latestMatches.filter((match) => targetIds.has(match.id))
+    const result = applyFindReplacementToState(latestState, matchesToApply, findReplacePanel.replacement)
+    stateRef.current = result.state
+    setState(result.state)
+    syncActiveEditorAfterFindReplace(result.state, result.changedAisleBodyIds)
+    setFindReplacePanel((current) => ({
+      ...current,
+      activeIndex: Math.max(0, Math.min(current.activeIndex, Math.max(0, findReplaceMatches.length - result.replacementCount - 1))),
+    }))
+    pushToast(`replaced ${result.replacementCount} ${result.replacementCount === 1 ? 'match' : 'matches'}.`, 'success')
+  }
+
+  useEffect(() => {
+    const handleFindShortcut = (event: KeyboardEvent) => {
+      const isFindShortcut =
+        (isMacPlatform ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey) &&
+        !event.altKey &&
+        !event.shiftKey &&
+        event.key.toLowerCase() === 'f'
+      if (!isFindShortcut || viewMode !== 'main') return
+      event.preventDefault()
+      event.stopPropagation()
+      openFindReplacePanel()
+    }
+    document.addEventListener('keydown', handleFindShortcut, true)
+    return () => document.removeEventListener('keydown', handleFindShortcut, true)
+  }, [isMacPlatform, viewMode, openFindReplacePanel])
+
   const runEditorHistoryOnly = (direction: WysiwygHistoryDirection): WysiwygHistoryResult => {
     const currentEditor = editorRef.current
     if (!currentEditor) return 'unavailable'
@@ -1331,9 +1645,9 @@ function App() {
     const currentEditor = editorRef.current
     if (!currentEditor) return false
     currentEditor.focus()
+    if (runAisleStructuralHistory(direction)) return true
     const result = runEditorHistoryOnly(direction)
     if (result !== 'unavailable') return true
-    if (runAisleStructuralHistory(direction)) return true
     return true
   }
 
@@ -1387,7 +1701,7 @@ function App() {
     syncToolbarFormatState()
     if (operation === 'aisle') {
       closeImageTools()
-      addAisleToActiveNote(result.aisleMarkdown ?? '', { beforeSnapshot: beforeAisleSnapshot, source: 'shortcut' })
+      addAisleToActiveNote(result.aisleMarkdown ?? '', { beforeSnapshot: beforeAisleSnapshot })
     }
     return true
   }
@@ -1791,8 +2105,6 @@ function App() {
     setContextMenu,
     navigateToNoteLocation,
     openExternalLink: openExternalWebUrl,
-    openExternalLinkEdit: openExternalLinkEditModal,
-    openInternalNoteLinkEdit: openInternalNoteLinkEditModal,
     insertPastedUrlAsLink: (label, url) => insertLinkIntoActiveEditor(label, url),
     getToolbarFormatShortcut,
     queueToolbarShortcutFeedback,
@@ -1925,6 +2237,7 @@ function App() {
   const openContextMenuForDomain = overlayActions.openContextMenuForDomain
   const openDeleteModalFromContext = overlayActions.openDeleteModalFromContext
   const deleteFromContext = overlayActions.deleteFromContext
+  const restoreFromContext = overlayActions.restoreFromContext
   const openCopyModalFromContext = overlayActions.openCopyModalFromContext
   const openCopyModalForActiveNote = overlayActions.openCopyModalForActiveNote
   const openDeduplicateModalForActiveNote = overlayActions.openDeduplicateModalForActiveNote
@@ -1972,10 +2285,9 @@ function App() {
     if (!tabArrangementActive) return
     setCopyMenuOpen(false)
     setHeadingMenuOpen(false)
-    setNoteToolsOpen(false)
-    setToolbarPopoverPosition({ copy: null, heading: null, aisles: null })
+    setToolbarPopoverPosition({ copy: null, heading: null })
     closeImageTools()
-  }, [tabArrangementActive, closeImageTools, setCopyMenuOpen, setHeadingMenuOpen, setNoteToolsOpen, setToolbarPopoverPosition])
+  }, [tabArrangementActive, closeImageTools, setCopyMenuOpen, setHeadingMenuOpen, setToolbarPopoverPosition])
 
   useEffect(() => {
     if (!tabArrangementActive || typeof document === 'undefined') return
@@ -2027,13 +2339,11 @@ function App() {
     tooltipsDisabled: tabArrangementActive,
     interactionDisabled: tabArrangementActive,
     copyMenuOpen,
-    noteToolsOpen,
     headingMenuOpen,
     toolbarPopoverPosition,
-    activeNoteAisles,
     activeNoteDuplicateCount,
+    activeToolbarLayout,
     setCopyMenuOpen,
-    setNoteToolsOpen,
     setHeadingMenuOpen,
     setToolbarPopoverPosition,
     refreshToolbarPopoverPosition,
@@ -2046,10 +2356,6 @@ function App() {
     openDeduplicateModalForActiveNote,
     openFrontmatterModalForActiveNote,
     openTableOfContents,
-    addAisleToActiveNote: () => {
-      closeImageTools()
-      addAisleToActiveNote('', { source: 'ui' })
-    },
     openAisleEditModal: () => {
       closeImageTools()
       openAisleEditModal()
@@ -2124,6 +2430,17 @@ function App() {
   const isNoteWorkspaceView = viewMode === 'main' || viewMode === 'stage-manager'
   const arrangeableParentTabClassName = tabArrangementActive ? 'is-arrangeable' : ''
   const arrangeableSubTabClassName = tabArrangementActive ? 'is-arrangeable' : ''
+  const arrangeSelectedParentIds = useMemo(
+    () => (arrangeSelection.kind === 'parent' ? new Set(arrangeSelection.selectedIds) : new Set<string>()),
+    [arrangeSelection],
+  )
+  const arrangeSelectedSubTabIds = useMemo(
+    () =>
+      arrangeSelection.kind === 'subtab' && arrangeSelection.parentTabId === activeTab.id
+        ? new Set(arrangeSelection.selectedIds)
+        : new Set<string>(),
+    [activeTab.id, arrangeSelection],
+  )
   const draggingParentTabId =
     arrangeMode.active && arrangeDraggingItem?.type === 'tab' ? arrangeDraggingItem.tabId : null
   const draggingSubTabId =
@@ -2148,17 +2465,7 @@ function App() {
     : ''
   const visibleTipDefinitions = visibleTips
     .filter((tipId) => !state.ui.disabledTipIds.includes(tipId))
-    .map((tipId) => {
-      const tip = getTipDefinition(tipId)
-      if (tipId !== 'aisle-shortcut') return tip
-      const shortcutLabel = getAisleShortcutTipHotkeyLabel(state.hotkeys.newlineShortcuts, (shortcutId) =>
-        formatFixedNewlineShortcutLabel(shortcutId, isMacPlatform),
-      )
-      return {
-        ...tip,
-        message: getAisleShortcutTipMessage(shortcutLabel),
-      }
-    })
+    .map((tipId) => getTipDefinition(tipId))
   const activeTableOfContentsPanels =
     tableOfContentsPanels?.noteBodyId === activeNoteBodyId ? tableOfContentsPanels : null
   const noteMentionNavigatorRows = noteMentionMenu
@@ -2225,6 +2532,9 @@ function App() {
         onClearRenameDraft={clearRenameDraft}
         onGetStageManagerParentSelection={stageManager.getParentSelection}
         onStageManagerParentClick={stageManager.handleParentClick}
+        arrangeSelectedParentIds={arrangeSelectedParentIds}
+        onHandleArrangeParentSelectionClick={handleArrangeParentSelectionClick}
+        onClearArrangeSelection={clearArrangeSelection}
         onConsumeArrangeClickSuppression={consumeArrangeClickSuppression}
         onSelectTab={selectTab}
         onBeginEdit={setEditing}
@@ -2360,6 +2670,9 @@ function App() {
           tableDeleteTargetModeDraft={settingsController.tableDeleteTargetModeDraft}
           frontmatterDraft={settingsController.frontmatterDraft}
           frontmatterDraftDirty={settingsController.frontmatterDraftDirty}
+          toolbarLayouts={settingsController.toolbarLayouts}
+          toolbarEditorLayoutId={settingsController.toolbarEditorLayoutId}
+          toolbarEditorShowNames={settingsController.toolbarEditorShowNames}
           storageProfileStatus={storageProfileStatus}
           onSectionChange={settingsController.changeSection}
           onToggleShortcutEdit={settingsController.toggleShortcutEdit}
@@ -2380,6 +2693,18 @@ function App() {
           onTableAddTargetModeChange={settingsController.updateTableAddTargetModeSetting}
           onTableDeleteTargetModeChange={settingsController.updateTableDeleteTargetModeSetting}
           onTipEnabledChange={settingsController.updateTipEnabledSetting}
+          onSelectToolbarLayout={settingsController.selectToolbarLayoutForEditing}
+          onCreateToolbarLayout={settingsController.createToolbarLayoutSetting}
+          onDuplicateToolbarLayout={settingsController.duplicateToolbarLayoutSetting}
+          onRenameToolbarLayout={settingsController.renameToolbarLayoutSetting}
+          onDeleteToolbarLayout={settingsController.deleteToolbarLayoutSetting}
+          onAddToolbarTool={settingsController.addToolbarToolSetting}
+          onAddToolbarSpacer={settingsController.addToolbarSpacerSetting}
+          onRemoveToolbarItem={settingsController.removeToolbarItemSetting}
+          onMoveToolbarItem={settingsController.moveToolbarItemSetting}
+          onMoveToolbarItemToIndex={settingsController.moveToolbarItemToIndexSetting}
+          onToolbarEditorShowNamesChange={settingsController.updateToolbarEditorShowNamesSetting}
+          onReadOnlyToolbarEditAttempt={() => pushToast('duplicate the default or create a new layout to edit')}
           onSettingsFrontmatterTemplateChange={settingsController.setSettingsFrontmatterTemplate}
           onCreateFrontmatterTemplate={settingsController.createFrontmatterTemplate}
           onUpdateFrontmatterTemplate={settingsController.updateFrontmatterTemplate}
@@ -2421,6 +2746,9 @@ function App() {
             onGetStageManagerParentSelection={stageManager.getParentSelection}
             onStageManagerHomeClick={stageManager.handleHomeClick}
             onStageManagerSubTabClick={stageManager.handleSubTabClick}
+            arrangeSelectedSubTabIds={arrangeSelectedSubTabIds}
+            onHandleArrangeSubTabSelectionClick={handleArrangeSubTabSelectionClick}
+            onClearArrangeSelection={clearArrangeSelection}
             onConsumeArrangeClickSuppression={consumeArrangeClickSuppression}
             onSelectParentHomeTab={selectParentHomeTab}
             onSelectSubTab={selectSubTab}
@@ -2568,6 +2896,31 @@ function App() {
         />
       )}
 
+      {findReplacePanel.open && (
+        <FindReplacePanel
+          query={findReplacePanel.query}
+          replacement={findReplacePanel.replacement}
+          scope={findReplacePanel.scope}
+          caseSensitive={findReplacePanel.caseSensitive}
+          wholeWord={findReplacePanel.wholeWord}
+          matches={findReplaceMatches}
+          activeIndex={Math.max(0, Math.min(findReplacePanel.activeIndex, Math.max(0, findReplaceMatches.length - 1)))}
+          onQueryChange={(query) => setFindReplacePanel((current) => ({ ...current, query, activeIndex: 0 }))}
+          onReplacementChange={(replacement) => setFindReplacePanel((current) => ({ ...current, replacement }))}
+          onScopeChange={(scope) => setFindReplacePanel((current) => ({ ...current, scope, activeIndex: 0 }))}
+          onCaseSensitiveChange={(caseSensitive) =>
+            setFindReplacePanel((current) => ({ ...current, caseSensitive, activeIndex: 0 }))
+          }
+          onWholeWordChange={(wholeWord) => setFindReplacePanel((current) => ({ ...current, wholeWord, activeIndex: 0 }))}
+          onPrevious={() => moveFindReplaceMatch(-1)}
+          onNext={() => moveFindReplaceMatch(1)}
+          onSelectMatch={setFindReplaceActiveIndex}
+          onReplaceCurrent={() => applyFindReplacement('current')}
+          onReplaceAll={() => applyFindReplacement('all')}
+          onClose={() => setFindReplacePanel((current) => ({ ...current, open: false }))}
+        />
+      )}
+
       <ContextMenuHost
         contextMenu={contextMenu}
         canDeleteSpace={canDeleteSpace}
@@ -2586,8 +2939,23 @@ function App() {
         onRenameInternalNoteLink={renameInternalNoteLinkFromContext}
         onOpenDeleteModal={openDeleteModalFromContext}
         onOpenDeduplicateModal={openDeduplicateModalFromContext}
-        onOpenCopyModal={openCopyModalFromContext}
+        onOpenCopyModal={() => {
+          if (contextMenu?.type === 'editor') {
+            setContextMenu(null)
+            openCopyModalForActiveNote()
+            return
+          }
+          openCopyModalFromContext()
+        }}
         onMoveToTrash={deleteFromContext}
+        onRestoreFromTrash={restoreFromContext}
+        onEditorClipboard={runEditorContextClipboardAction}
+        onEditorCommand={runEditorContextCommand}
+        onEditorInsertLink={openEditorContextLinkModal}
+        onEditorInsertAttachment={insertAttachmentFromEditorContext}
+        onEditorFindReplace={openFindReplacePanel}
+        onEditorOpenContextLink={openEditorContextLink}
+        onEditorEditContextLink={editEditorContextLink}
       />
 
       <ModalHost

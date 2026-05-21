@@ -44,8 +44,10 @@ import type {
   StorageProfileStatus,
   TableControlTargetMode,
   TipId,
+  ToolbarLayout,
 } from '../../types/app'
 import { CustomThemeColorPicker } from './CustomThemeColorPicker'
+import { ToolbarSettingsPanel } from './ToolbarSettingsPanel'
 
 const THEME_OPTIONS: Array<{ id: AppTheme; label: string }> = [
   { id: 'dark', label: 'dark' },
@@ -106,6 +108,9 @@ type SettingsPageProps = {
   tableDeleteTargetModeDraft: TableControlTargetMode
   frontmatterDraft: FrontmatterSettings
   frontmatterDraftDirty: boolean
+  toolbarLayouts: ToolbarLayout[]
+  toolbarEditorLayoutId: string
+  toolbarEditorShowNames: boolean
   storageProfileStatus: StorageProfileStatus | null
   onSectionChange: (section: SettingsSection) => void
   onToggleShortcutEdit: (shortcutId: ShortcutId) => void
@@ -126,6 +131,18 @@ type SettingsPageProps = {
   onTableAddTargetModeChange: (mode: TableControlTargetMode) => void
   onTableDeleteTargetModeChange: (mode: TableControlTargetMode) => void
   onTipEnabledChange: (tipId: TipId, enabled: boolean) => void
+  onSelectToolbarLayout: (layoutId: string) => void
+  onCreateToolbarLayout: () => void
+  onDuplicateToolbarLayout: (layoutId: string) => void
+  onRenameToolbarLayout: (layoutId: string, name: string) => void
+  onDeleteToolbarLayout: (layoutId: string) => void
+  onAddToolbarTool: (layoutId: string, toolId: string, targetIndex?: number) => void
+  onAddToolbarSpacer: (layoutId: string, targetIndex?: number) => void
+  onRemoveToolbarItem: (layoutId: string, itemId: string) => void
+  onMoveToolbarItem: (layoutId: string, itemId: string, direction: 'up' | 'down') => void
+  onMoveToolbarItemToIndex: (layoutId: string, itemId: string, targetIndex: number) => void
+  onToolbarEditorShowNamesChange: (enabled: boolean) => void
+  onReadOnlyToolbarEditAttempt: () => void
   onSettingsFrontmatterTemplateChange: (templateId: string) => void
   onCreateFrontmatterTemplate: () => void
   onUpdateFrontmatterTemplate: (templateId: string, patch: Partial<Pick<FrontmatterTemplate, 'name'>>) => void
@@ -166,6 +183,9 @@ export function SettingsPage({
   tableDeleteTargetModeDraft,
   frontmatterDraft,
   frontmatterDraftDirty,
+  toolbarLayouts,
+  toolbarEditorLayoutId,
+  toolbarEditorShowNames,
   storageProfileStatus,
   onSectionChange,
   onToggleShortcutEdit,
@@ -186,6 +206,18 @@ export function SettingsPage({
   onTableAddTargetModeChange,
   onTableDeleteTargetModeChange,
   onTipEnabledChange,
+  onSelectToolbarLayout,
+  onCreateToolbarLayout,
+  onDuplicateToolbarLayout,
+  onRenameToolbarLayout,
+  onDeleteToolbarLayout,
+  onAddToolbarTool,
+  onAddToolbarSpacer,
+  onRemoveToolbarItem,
+  onMoveToolbarItem,
+  onMoveToolbarItemToIndex,
+  onToolbarEditorShowNamesChange,
+  onReadOnlyToolbarEditAttempt,
   onSettingsFrontmatterTemplateChange,
   onCreateFrontmatterTemplate,
   onUpdateFrontmatterTemplate,
@@ -853,7 +885,25 @@ export function SettingsPage({
         )}
 
         {section === 'toolbar' && (
-          <div className="settings-section-panel" role="tabpanel" aria-label="toolbar settings" />
+          <div className="settings-section-panel" role="tabpanel" aria-label="toolbar settings">
+            <ToolbarSettingsPanel
+              toolbarLayouts={toolbarLayouts}
+              toolbarEditorLayoutId={toolbarEditorLayoutId}
+              toolbarEditorShowNames={toolbarEditorShowNames}
+              onSelectToolbarLayout={onSelectToolbarLayout}
+              onCreateToolbarLayout={onCreateToolbarLayout}
+              onDuplicateToolbarLayout={onDuplicateToolbarLayout}
+              onRenameToolbarLayout={onRenameToolbarLayout}
+              onDeleteToolbarLayout={onDeleteToolbarLayout}
+              onAddToolbarTool={onAddToolbarTool}
+              onAddToolbarSpacer={onAddToolbarSpacer}
+              onRemoveToolbarItem={onRemoveToolbarItem}
+              onMoveToolbarItem={onMoveToolbarItem}
+              onMoveToolbarItemToIndex={onMoveToolbarItemToIndex}
+              onToolbarEditorShowNamesChange={onToolbarEditorShowNamesChange}
+              onReadOnlyToolbarEditAttempt={onReadOnlyToolbarEditAttempt}
+            />
+          </div>
         )}
       </div>
     </section>

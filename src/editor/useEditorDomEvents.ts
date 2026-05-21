@@ -67,8 +67,6 @@ type UseEditorDomEventsOptions = {
   setContextMenu: Dispatch<SetStateAction<ContextMenuState | null>>
   navigateToNoteLocation: (location: NoteNavigationTarget) => void
   openExternalLink: (url: string) => boolean
-  openExternalLinkEdit: (url: string, text: string, editRange: ExternalLinkRange | null) => void
-  openInternalNoteLinkEdit: (edit: InternalNoteLinkHit & { range?: ExternalLinkRange | null }) => void
   insertPastedUrlAsLink: (label: string, url: string) => boolean
   getToolbarFormatShortcut: (event: KeyboardEvent) => ToolbarFormatKey | null
   queueToolbarShortcutFeedback: (format: ToolbarFormatKey) => void
@@ -133,7 +131,6 @@ export function isEditorToolbarInteractionTarget(target: Element | null): boolea
       [
         '.note-shared-toolbar',
         '.note-toolbar-heading-popover',
-        '.note-toolbar-aisle-popover',
         '.toastui-editor-defaultUI-toolbar',
         '.toastui-editor-toolbar',
         '.toastui-editor-toolbar-icons',
@@ -276,8 +273,6 @@ export function useEditorDomEvents({
   setContextMenu,
   navigateToNoteLocation,
   openExternalLink,
-  openExternalLinkEdit,
-  openInternalNoteLinkEdit,
   insertPastedUrlAsLink,
   getToolbarFormatShortcut,
   queueToolbarShortcutFeedback,
@@ -537,14 +532,14 @@ export function useEditorDomEvents({
         const internalLocation = parseInternalNoteReferenceUrl(href) ?? parseInternalNoteReferenceUrl(anchor.href)
         const text = anchor.textContent ?? ''
         const range = getExternalLinkEditRange(mouseEvent, href)
+        mouseEvent.preventDefault()
+        mouseEvent.stopPropagation()
+        closeImageTools()
+        closeLinkPrompt()
+        setMenuOpen(false)
         if (internalLocation) {
           const markdownHit = getInternalLinkHitAtPointerPosition(mouseEvent)
-          mouseEvent.preventDefault()
-          mouseEvent.stopPropagation()
-          closeImageTools()
-          closeLinkPrompt()
-          setMenuOpen(false)
-          openInternalNoteLinkEdit(
+          const link =
             markdownHit?.href === href
               ? markdownHit
               : {
@@ -556,16 +551,30 @@ export function useEditorDomEvents({
                   to: range?.to ?? 0,
                   occurrence: 0,
                   range,
-                },
-          )
+                }
+          setContextMenu({
+            type: 'editor',
+            x: mouseEvent.clientX,
+            y: mouseEvent.clientY,
+            link: {
+              ...link,
+              type: 'internal',
+              range,
+            },
+          })
           return
         }
-        mouseEvent.preventDefault()
-        mouseEvent.stopPropagation()
-        closeImageTools()
-        closeLinkPrompt()
-        setMenuOpen(false)
-        openExternalLinkEdit(href, text, range)
+        setContextMenu({
+          type: 'editor',
+          x: mouseEvent.clientX,
+          y: mouseEvent.clientY,
+          link: {
+            type: 'external',
+            href,
+            label: text,
+            range,
+          },
+        })
         return
       }
       const internalLinkHit = getInternalLinkHitAtPointerPosition(mouseEvent)
@@ -575,7 +584,30 @@ export function useEditorDomEvents({
         closeImageTools()
         closeLinkPrompt()
         setMenuOpen(false)
-        openInternalNoteLinkEdit(internalLinkHit)
+        setContextMenu({
+          type: 'editor',
+          x: mouseEvent.clientX,
+          y: mouseEvent.clientY,
+          link: {
+            ...internalLinkHit,
+            type: 'internal',
+          },
+        })
+        return
+      }
+
+      const view = getWysiwygView(editorRef.current)
+      if (isActiveWysiwygEditorContentTarget(target, view)) {
+        mouseEvent.preventDefault()
+        mouseEvent.stopPropagation()
+        closeImageTools()
+        closeLinkPrompt()
+        setMenuOpen(false)
+        setContextMenu({
+          type: 'editor',
+          x: mouseEvent.clientX,
+          y: mouseEvent.clientY,
+        })
         return
       }
     }

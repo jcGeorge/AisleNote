@@ -7,18 +7,29 @@
   border: 1px solid var(--context-menu-border);
   border-radius: 0.45rem;
   box-shadow: var(--context-menu-shadow);
-  padding: 0.2rem;
+  padding: 0.16rem;
+}
+
+.tab-context-separator {
+  height: 1px;
+  margin: 0.08rem 0.24rem;
+  background: var(--context-menu-border);
 }
 
 .tab-context-delete {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
   width: 100%;
+  min-height: 1.55rem;
   border: 0;
   background: transparent;
   color: var(--context-menu-item-text);
   text-align: left;
-  padding: 0.35rem 0.45rem;
-  border-radius: 0.3rem;
+  padding: 0.15rem 0.42rem;
+  border-radius: 0.28rem;
   font-size: 0.85em;
+  line-height: 1.1;
 }
 
 .tab-context-delete:hover {
@@ -36,6 +47,41 @@
 
 .tab-context-danger:hover {
   background: var(--context-menu-danger-hover-bg);
+}
+
+.tab-context-submenu {
+  position: relative;
+}
+
+.tab-context-submenu-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.tab-context-submenu-panel {
+  position: fixed;
+  z-index: 2001;
+  display: block;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  min-width: 170px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  padding: 0.16rem;
+  background: var(--context-menu-bg);
+  border: 1px solid var(--context-menu-border);
+  border-radius: 0.45rem;
+  box-shadow: var(--context-menu-shadow);
+}
+
+.tab-context-submenu:hover > .tab-context-submenu-panel,
+.tab-context-submenu:focus-within > .tab-context-submenu-panel {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .delete-modal-backdrop {

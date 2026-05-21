@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_FRONTMATTER_SETTINGS } from '../frontmatter/frontmatter'
 import type { AppState, Domain, Space, WorkspaceData } from '../types/app'
-import { moveDomainWithinState, removeDomain, setActiveDomain, setActiveSpaceInActiveDomain } from './domains'
+import { createDomain, moveDomainWithinState, removeDomain, setActiveDomain, setActiveSpaceInActiveDomain } from './domains'
+import { createReservedIdAllocator } from './navigation-ids'
 
 const makeWorkspace = (activeTabId: string, activeSubTabId: string | null = null): WorkspaceData => ({
   activeTabId,
@@ -138,5 +139,19 @@ describe('domain and space navigation memory', () => {
     expect(next.domains.map((domain) => domain.id)).toEqual(['domain-b', 'domain-a'])
     expect(next.activeDomainId).toBe('domain-a')
     expect(next.activeSpaceId).toBe('space-a')
+  })
+})
+
+describe('domain id allocation', () => {
+  it('creates domain and initial space ids from a collision-safe allocator', () => {
+    const values = ['space-existing', 'space-new', 'tab-existing', 'tab-new', 'tab-body', 'sub-new', 'sub-body', 'domain-existing', 'domain-new']
+    const allocate = createReservedIdAllocator(['domain-existing', 'space-existing', 'tab-existing'], () => values.shift() ?? 'fallback')
+
+    const domain = createDomain('New Domain', allocate)
+
+    expect(domain.id).toBe('domain-new')
+    expect(domain.activeSpaceId).toBe('space-new')
+    expect(domain.spaces[0].id).toBe('space-new')
+    expect(domain.spaces[0].data.activeTabId).toBe('tab-new')
   })
 })

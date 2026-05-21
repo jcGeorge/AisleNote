@@ -55,7 +55,7 @@ export type StorageNewlineOperationId =
 export type StorageNewlineShortcutId = 'controlEnter' | 'shiftEnter' | 'commandEnter'
 export type StorageSettingsSection = 'data' | 'frontmatter' | 'hotkeys' | 'misc' | 'shortcuts' | 'tips' | 'toolbar' | 'visuals'
 export type StorageTableControlTargetMode = 'active-cell' | 'bottom-right'
-export type StorageTipId = 'task-undo' | 'tab-create-after-rename' | 'aisle-shortcut'
+export type StorageTipId = 'task-undo' | 'tab-create-after-rename'
 
 export type StorageGlobalSettings = {
   theme: StorageTheme

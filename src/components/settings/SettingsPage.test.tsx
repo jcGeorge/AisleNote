@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_FRONTMATTER_SETTINGS } from '../../frontmatter/frontmatter'
 import { DEFAULT_CUSTOM_THEME_PALETTE } from '../../settings/defaults'
+import { DEFAULT_TOOLBAR_LAYOUT_ID, getToolbarLayouts } from '../../editor/toolbar-layouts'
 import type { AppState, FrontmatterSettings, SettingsSection, Space, StorageProfileStatus } from '../../types/app'
 import { SettingsPage } from './SettingsPage'
 
@@ -74,6 +75,8 @@ function renderSettingsPage(
     section?: SettingsSection
     state?: AppState
     storageProfileStatus?: StorageProfileStatus | null
+    toolbarEditorLayoutId?: string
+    toolbarEditorShowNames?: boolean
   } = {},
 ) {
   const state = options.state ?? createState()
@@ -113,6 +116,9 @@ function renderSettingsPage(
       tableDeleteTargetModeDraft={state.ui.tableDeleteTargetMode}
       frontmatterDraft={frontmatterDraft}
       frontmatterDraftDirty={frontmatterDraftDirty}
+      toolbarLayouts={getToolbarLayouts(state.ui.toolbarLayouts)}
+      toolbarEditorLayoutId={options.toolbarEditorLayoutId ?? DEFAULT_TOOLBAR_LAYOUT_ID}
+      toolbarEditorShowNames={options.toolbarEditorShowNames ?? state.ui.toolbarEditorShowNames ?? false}
       storageProfileStatus={options.storageProfileStatus ?? null}
       onSectionChange={() => undefined}
       onToggleShortcutEdit={() => undefined}
@@ -133,6 +139,18 @@ function renderSettingsPage(
       onTableAddTargetModeChange={() => undefined}
       onTableDeleteTargetModeChange={() => undefined}
       onTipEnabledChange={() => undefined}
+      onSelectToolbarLayout={() => undefined}
+      onCreateToolbarLayout={() => undefined}
+      onDuplicateToolbarLayout={() => undefined}
+      onRenameToolbarLayout={() => undefined}
+      onDeleteToolbarLayout={() => undefined}
+      onAddToolbarTool={() => undefined}
+      onAddToolbarSpacer={() => undefined}
+      onRemoveToolbarItem={() => undefined}
+      onMoveToolbarItem={() => undefined}
+      onMoveToolbarItemToIndex={() => undefined}
+      onToolbarEditorShowNamesChange={() => undefined}
+      onReadOnlyToolbarEditAttempt={() => undefined}
       onSettingsFrontmatterTemplateChange={() => undefined}
       onCreateFrontmatterTemplate={() => undefined}
       onUpdateFrontmatterTemplate={() => undefined}
@@ -217,11 +235,141 @@ describe('frontmatter settings page', () => {
     expect(html.match(/aria-checked="true" class="settings-segmented-option is-selected">bottom right/g)).toHaveLength(2)
   })
 
-  it('renders a toolbar settings panel placeholder', () => {
+  it('renders toolbar settings with a protected default layout', () => {
     const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'toolbar' })
 
     expect(html).toContain('aria-selected="true" class="settings-section-tab is-active">toolbar</button>')
     expect(html).toContain('role="tabpanel" aria-label="toolbar settings"')
+    expect(html).not.toContain('toolbar used')
+    expect(html).not.toContain('id="settings-device-toolbar"')
+    expect(html).toContain('id="settings-edit-toolbar-layout"')
+    expect(html).toContain('<option value="default" selected="">default</option>')
+    expect(html).not.toContain('duplicate the default layout to customize it for this device.')
+    expect(html).toContain('disabled=""')
+    expect(html).toContain('settings-toolbar-preview is-readonly')
+    expect(html).toContain('settings-toolbar-icon-box is-readonly')
+    expect(html).toContain('settings-toolbar-surface toastui-editor-defaultUI-toolbar app-shared-editor-toolbar settings-toolbar-preview-inner')
+    expect(html).toContain('settings-toolbar-surface toastui-editor-defaultUI-toolbar app-shared-editor-toolbar settings-toolbar-palette-inner')
+    expect(html.indexOf('settings-toolbar-preview is-readonly')).toBeLessThan(html.indexOf('settings-toolbar-icon-box'))
+    expect(html).not.toContain('settings-toolbar-preview note-shared-toolbar')
+    expect(html).not.toContain('settings-toolbar-icon-box note-shared-toolbar')
+    expect(html).not.toContain('settings-toolbar-drop-zone')
+    expect(html).toContain('aria-label="Make copy"')
+    expect(html).toContain('table-of-contents-toolbar-icon')
+    expect(html).toContain('title="spacer"')
+    expect(html).toContain('>spacer</button>')
+    expect(html).toContain('show icons with names')
+    expect(html).toContain('aria-label="show icons with names"')
+    expect(html).not.toContain('settings-toolbar-visible-tool-name')
+    expect(html).not.toContain('>ToC</button>')
+    expect(html).not.toContain('settings-toolbar-layout-btn')
+    expect(html).not.toContain('settings-toolbar-mini-btn')
+    expect(html).not.toContain('settings-toolbar-item-label')
+  })
+
+  it('renders a custom toolbar layout editor with available tools', () => {
+    const state = createState()
+    state.ui.toolbarLayouts = [
+      {
+        id: 'desktop',
+        name: 'desktop',
+        items: [
+          { id: 'bold', type: 'tool', toolId: 'bold' },
+          { id: 'gap', type: 'spacer' },
+          { id: 'italic', type: 'tool', toolId: 'italic' },
+        ],
+      },
+    ]
+    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, {
+      section: 'toolbar',
+      state,
+      toolbarEditorLayoutId: 'desktop',
+    })
+
+    expect(html).toContain('<option value="desktop" selected="">desktop</option>')
+    expect(html).toContain('value="desktop"')
+    expect(html).toContain('settings-toolbar-preview is-editable')
+    expect(html).toContain('settings-toolbar-editable-icon')
+    expect(html).toContain('settings-toolbar-editable-spacer')
+    expect(html).toContain('data-toolbar-layout-item="true"')
+    expect(html).toContain('settings-toolbar-icon-box is-editable')
+    expect(html).toContain('settings-toolbar-surface toastui-editor-defaultUI-toolbar app-shared-editor-toolbar settings-toolbar-palette-inner')
+    expect(html).not.toContain('settings-toolbar-preview note-shared-toolbar')
+    expect(html).not.toContain('settings-toolbar-icon-box note-shared-toolbar')
+    expect(html).toContain('settings-toolbar-palette-icon')
+    expect(html).toContain('note-copy-toolbar-btn is-icon-only-text-tool settings-toolbar-palette-icon')
+    expect(html).not.toContain('settings-toolbar-drop-zone')
+    expect(html).toContain('aria-label="Bold"')
+    expect(html).toContain('aria-label="Italic"')
+    expect(html).toContain('aria-label="Make copy"')
+    expect(html).toContain('table-of-contents-toolbar-icon')
+    expect(html).toContain('title="spacer"')
+    expect(html).toContain('>spacer</button>')
+    expect(html).toContain('show icons with names')
+    expect(html).not.toContain('settings-toolbar-visible-tool-name')
+    expect(html).not.toContain('>ToC</button>')
+    expect(html).toContain('delete</button>')
+    expect(html).not.toContain('settings-toolbar-mini-btn')
+    expect(html).not.toContain('move Bold left')
+    expect(html).not.toContain('remove Bold')
+    expect(html).not.toContain('settings-toolbar-item-label')
+    expect(html).not.toContain('duplicate the default layout to customize it for this device.')
+  })
+
+  it('keeps an empty custom toolbar layout editable with all tools in the palette', () => {
+    const state = createState()
+    state.ui.toolbarLayouts = [
+      {
+        id: 'empty',
+        name: 'empty',
+        items: [],
+      },
+    ]
+    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, {
+      section: 'toolbar',
+      state,
+      toolbarEditorLayoutId: 'empty',
+    })
+
+    expect(html).toContain('<option value="empty" selected="">empty</option>')
+    expect(html).toContain('settings-toolbar-preview is-editable')
+    expect(html).toContain('settings-toolbar-preview-inner')
+    expect(html).not.toContain('settings-toolbar-editable-icon')
+    expect(html).not.toContain('settings-toolbar-editable-spacer')
+    expect(html).toContain('settings-toolbar-icon-box is-editable')
+    expect(html).toContain('aria-label="Make copy"')
+    expect(html).toContain('aria-label="Clear contents"')
+    expect(html).toContain('title="spacer"')
+  })
+
+  it('renders toolbar customizer labels when icon names are enabled', () => {
+    const state = createState()
+    state.ui.toolbarLayouts = [
+      {
+        id: 'desktop',
+        name: 'desktop',
+        items: [
+          { id: 'bold', type: 'tool', toolId: 'bold' },
+          { id: 'gap', type: 'spacer' },
+          { id: 'italic', type: 'tool', toolId: 'italic' },
+        ],
+      },
+    ]
+    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, {
+      section: 'toolbar',
+      state,
+      toolbarEditorLayoutId: 'desktop',
+      toolbarEditorShowNames: true,
+    })
+
+    expect(html).toContain('settings-toolbar-editor show-names')
+    expect(html).toContain('checked=""')
+    expect(html).toContain('settings-toolbar-named-tool settings-toolbar-editable-icon')
+    expect(html).toContain('settings-toolbar-named-tool settings-toolbar-palette-icon')
+    expect(html).toContain('settings-toolbar-visible-tool-name">Bold</span>')
+    expect(html).toContain('settings-toolbar-visible-tool-name">Italic</span>')
+    expect(html).toContain('settings-toolbar-visible-tool-name">Make copy</span>')
+    expect(html).toContain('>spacer</button>')
   })
 
   it('renders an empty tips settings panel before any tips are seen', () => {

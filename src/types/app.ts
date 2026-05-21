@@ -27,7 +27,7 @@ export type ShortcutId =
   | 'cycleSubTabPrev'
 export type SettingsSection = 'data' | 'frontmatter' | 'hotkeys' | 'misc' | 'shortcuts' | 'tips' | 'toolbar' | 'visuals'
 export type TableControlTargetMode = 'active-cell' | 'bottom-right'
-export type TipId = 'task-undo' | 'tab-create-after-rename' | 'aisle-shortcut'
+export type TipId = 'task-undo' | 'tab-create-after-rename'
 
 export type NewlineOperationId =
   | 'normalNewLine'
@@ -177,6 +177,50 @@ export type NoteCursorLocation = {
 
 export type HeadingCollapseState = Record<string, Record<string, string[]>>
 
+export type ToolbarToolId =
+  | 'copy'
+  | 'frontmatter'
+  | 'tableOfContents'
+  | 'aisles'
+  | 'undo'
+  | 'redo'
+  | 'heading'
+  | 'bold'
+  | 'italic'
+  | 'highlight'
+  | 'strike'
+  | 'taskList'
+  | 'bulletList'
+  | 'orderedList'
+  | 'dashList'
+  | 'blockQuote'
+  | 'blockIndent'
+  | 'removeBlockIndent'
+  | 'hr'
+  | 'link'
+  | 'image'
+  | 'table'
+  | 'code'
+  | 'codeBlock'
+  | 'clear'
+
+export type ToolbarLayoutItem =
+  | {
+      id: string
+      type: 'tool'
+      toolId: ToolbarToolId
+    }
+  | {
+      id: string
+      type: 'spacer'
+    }
+
+export type ToolbarLayout = {
+  id: string
+  name: string
+  items: ToolbarLayoutItem[]
+}
+
 export type SubTab = {
   id: string
   title: string
@@ -265,6 +309,8 @@ export type AppState = {
     customThemePalette: CustomThemePalette | null
     noteCursorLocations: Record<string, NoteCursorLocation>
     headingCollapseState: HeadingCollapseState
+    toolbarLayouts?: ToolbarLayout[]
+    toolbarEditorShowNames?: boolean
     seenTipIds: TipId[]
     disabledTipIds: TipId[]
   }
@@ -299,6 +345,18 @@ export type ArrangeDragItem =
   | { type: 'domain'; domainId: string }
 
 export type TabArrangeDragItem = Extract<ArrangeDragItem, { type: 'tab' | 'subtab' }>
+export type ArrangeSelectionKind = 'parent' | 'subtab'
+export type ArrangeSelectionState = {
+  kind: ArrangeSelectionKind | null
+  parentTabId: string | null
+  selectedIds: string[]
+  anchorId: string | null
+}
+export type SelectionClickModifiers = {
+  shiftKey: boolean
+  ctrlKey: boolean
+  metaKey: boolean
+}
 
 export type ArrangeModeState = {
   active: boolean
@@ -389,6 +447,9 @@ export type StageManagerParentSelection = {
 }
 
 export type StageManagerSelectionState = Record<string, StageManagerParentSelection>
+export type StageManagerSelectionAnchor =
+  | { kind: 'parent'; tabId: string }
+  | { kind: 'subtab'; parentTabId: string; subTabId: string }
 
 export type StageManagerDraft = {
   promoteDomainId: string
@@ -537,6 +598,14 @@ export type ContextMenuState =
   | { x: number; y: number; type: 'subtab'; tabId: string; subTabId: string }
   | { x: number; y: number; type: 'home-tab'; tabId: string }
   | { x: number; y: number; type: 'image' }
+  | {
+      x: number
+      y: number
+      type: 'editor'
+      link?:
+        | { type: 'external'; label: string; href: string; range: LinkEditRange | null }
+        | (InternalNoteLinkEdit & { type: 'internal'; range?: LinkEditRange | null })
+    }
   | {
       x: number
       y: number

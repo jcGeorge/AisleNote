@@ -3,6 +3,7 @@ import type {
   ArrangeDragItem,
   ArrangeModeState,
   ArrangeTapCandidateSeed,
+  SelectionClickModifiers,
   StageManagerParentSelection,
   Tab,
   TabArrangeDragItem,
@@ -38,7 +39,14 @@ type SubTabRailProps = {
   onClearRenameDraft: (type: EditableEntityType, id: string) => void
   onGetStageManagerParentSelection: (tab: Tab) => StageManagerParentSelection
   onStageManagerHomeClick: () => void
-  onStageManagerSubTabClick: (tab: Tab, subTabId: string) => void
+  onStageManagerSubTabClick: (tab: Tab, subTabId: string, modifiers: SelectionClickModifiers) => void
+  arrangeSelectedSubTabIds: ReadonlySet<string>
+  onHandleArrangeSubTabSelectionClick: (
+    parentTabId: string,
+    subTabId: string,
+    modifiers: SelectionClickModifiers,
+  ) => boolean
+  onClearArrangeSelection: () => void
   onConsumeArrangeClickSuppression: (key: string) => boolean
   onSelectParentHomeTab: () => void
   onSelectSubTab: (subTabId: string) => void
@@ -81,6 +89,18 @@ type SubTabRailProps = {
   onOpenSubTabSortModal: () => void
 }
 
+function getSelectionClickModifiers(event: MouseEvent | ReactPointerEvent<HTMLButtonElement>): SelectionClickModifiers {
+  return {
+    shiftKey: event.shiftKey,
+    ctrlKey: event.ctrlKey,
+    metaKey: event.metaKey,
+  }
+}
+
+function hasSelectionClickModifier(event: MouseEvent | ReactPointerEvent<HTMLButtonElement>) {
+  return event.shiftKey || event.ctrlKey || event.metaKey
+}
+
 export function SubTabRail({
   viewMode,
   activeTab,
@@ -105,6 +125,9 @@ export function SubTabRail({
   onGetStageManagerParentSelection,
   onStageManagerHomeClick,
   onStageManagerSubTabClick,
+  arrangeSelectedSubTabIds,
+  onHandleArrangeSubTabSelectionClick,
+  onClearArrangeSelection,
   onConsumeArrangeClickSuppression,
   onSelectParentHomeTab,
   onSelectSubTab,
@@ -134,17 +157,6 @@ export function SubTabRail({
       aria-label="Nested note tabs"
     >
       <div ref={subTabRailRef} className="tabbar-scroll">
-        {arrangeMode.active && arrangeMode.scope === 'tabs' && viewMode === 'main' && (
-          <button
-            type="button"
-            className="tab-sort-btn"
-            onClick={onOpenSubTabSortModal}
-            title={tooltipsDisabled ? undefined : 'sort sub-tabs'}
-            aria-label="sort sub-tabs"
-          >
-            <SortIcon />
-          </button>
-        )}
         {isNoteWorkspaceView && showParentHomeTab && (
           <button
             type="button"
@@ -170,6 +182,7 @@ export function SubTabRail({
                 return
               }
               if (onConsumeArrangeClickSuppression(`home:${activeTab.id}`)) return
+              onClearArrangeSelection()
               onSelectParentHomeTab()
             }}
             title={tooltipsDisabled ? undefined : 'home note'}
@@ -179,6 +192,10 @@ export function SubTabRail({
             }}
             onPointerDown={(event) => {
               if (viewMode !== 'main') return
+              if (hasSelectionClickModifier(event)) {
+                onClearArrangePressTimer()
+                return
+              }
               if (arrangeMode.active) {
                 onStartArrangeTapCandidate({ key: `home:${activeTab.id}`, type: 'home' }, event)
                 return
@@ -188,7 +205,10 @@ export function SubTabRail({
             onPointerUp={(event) => {
               if (viewMode !== 'main') return
               if (arrangeMode.active) {
-                onFinalizeArrangeTapCandidate(`home:${activeTab.id}`, event, onSelectParentHomeTab)
+                onFinalizeArrangeTapCandidate(`home:${activeTab.id}`, event, () => {
+                  onClearArrangeSelection()
+                  onSelectParentHomeTab()
+                })
                 return
               }
               onClearArrangePressTimer()
@@ -257,7 +277,7 @@ export function SubTabRail({
                 role="tab"
                 aria-selected={viewMode === 'main' && subTab.id === activeSubTabId}
                 draggable={false}
-                className={`btn btn-sm ${viewMode === 'main' && subTab.id === activeSubTabId ? 'btn-info' : 'btn-outline-info'} tab-btn subtab-btn ${arrangeableSubTabClassName} ${
+                className={`btn btn-sm ${viewMode === 'main' && subTab.id === activeSubTabId ? 'btn-info' : 'btn-outline-info'} tab-btn subtab-btn ${arrangeableSubTabClassName} ${arrangeSelectedSubTabIds.has(subTab.id) ? 'is-arrange-selected' : ''} ${
                   arrangeMode.active &&
                   arrangeMode.dragItem?.type === 'subtab' &&
                   arrangeMode.dragItem.parentTabId === activeTab.id &&
@@ -278,12 +298,18 @@ export function SubTabRail({
                     ? 'stage-manager-subtab-selected'
                     : ''
                 }`}
-                onClick={() => {
+                onClick={(event) => {
+                  const modifiers = getSelectionClickModifiers(event)
                   if (viewMode === 'stage-manager') {
-                    onStageManagerSubTabClick(activeTab, subTab.id)
+                    onStageManagerSubTabClick(activeTab, subTab.id, modifiers)
                     return
                   }
                   if (onConsumeArrangeClickSuppression(`subtab:${subTab.id}`)) return
+                  if (onHandleArrangeSubTabSelectionClick(activeTab.id, subTab.id, modifiers)) {
+                    event.preventDefault()
+                    return
+                  }
+                  onClearArrangeSelection()
                   onSelectSubTab(subTab.id)
                 }}
                 onDoubleClick={() => {
@@ -296,6 +322,10 @@ export function SubTabRail({
                 }}
                 onPointerDown={(event) => {
                   if (viewMode !== 'main') return
+                  if (hasSelectionClickModifier(event)) {
+                    onClearArrangePressTimer()
+                    return
+                  }
                   if (event.button === 0) {
                     event.currentTarget.setPointerCapture(event.pointerId)
                   }
@@ -316,7 +346,10 @@ export function SubTabRail({
                 }
                 onPointerUp={(event) => {
                   if (viewMode !== 'main') return
-                  onHandleArrangeTabPointerUp(event, `subtab:${subTab.id}`, () => onSelectSubTab(subTab.id))
+                  onHandleArrangeTabPointerUp(event, `subtab:${subTab.id}`, () => {
+                    onClearArrangeSelection()
+                    onSelectSubTab(subTab.id)
+                  })
                 }}
                 onPointerLeave={() => {
                   if (viewMode !== 'main') return
@@ -352,7 +385,17 @@ export function SubTabRail({
             </button>
           ))}
 
-        {viewMode === 'main' && !arrangeMode.active && (
+        {viewMode === 'main' && arrangeMode.active && arrangeMode.scope === 'tabs' ? (
+          <button
+            type="button"
+            className="tab-sort-btn"
+            onClick={onOpenSubTabSortModal}
+            title={tooltipsDisabled ? undefined : 'sort sub-tabs'}
+            aria-label="sort sub-tabs"
+          >
+            <SortIcon />
+          </button>
+        ) : viewMode === 'main' && !arrangeMode.active ? (
           <button
             type="button"
             className="btn btn-sm btn-outline-light add-tab-btn"
@@ -361,7 +404,7 @@ export function SubTabRail({
           >
             +
           </button>
-        )}
+        ) : null}
       </div>
     </header>
   )

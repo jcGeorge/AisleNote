@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { StageManagerSelectionSnapshot, Tab, WorkspaceData } from '../types/app'
-import { stripStageManagerSelectionsFromWorkspace } from './transforms'
+import { createPromotedParentTab, buildStageManagerMovedSubTabs, stripStageManagerSelectionsFromWorkspace } from './transforms'
+import { createReservedIdAllocator } from '../state/navigation-ids'
 
 const tabA: Tab = {
   id: 'tab-a',
@@ -41,5 +42,16 @@ describe('stage manager navigation memory', () => {
 
     expect(next.activeTabId).toBe('tab-b')
     expect(next.tabs[0].activeSubTabId).toBe('sub-b')
+  })
+
+  it('uses a collision-safe allocator for stage-manager-created parent and sub-tab ids', () => {
+    const values = ['tab-a', 'promoted-tab', 'sub-a', 'demoted-sub']
+    const allocate = createReservedIdAllocator(['tab-a', 'sub-a'], () => values.shift() ?? 'fallback')
+
+    const promoted = createPromotedParentTab(tabA.subTabs[0], allocate)
+    const demoted = buildStageManagerMovedSubTabs(selectionSnapshot, allocate)[0]
+
+    expect(promoted.id).toBe('promoted-tab')
+    expect(demoted.id).toBe('demoted-sub')
   })
 })

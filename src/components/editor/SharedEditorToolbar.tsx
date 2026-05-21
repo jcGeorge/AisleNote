@@ -1,5 +1,12 @@
-import type { RefObject } from 'react'
+import { Fragment, type RefObject } from 'react'
+import {
+  getDefaultToolbarLayout,
+  getToolbarGroupClassName,
+  getToolbarLayoutGroups,
+} from '../../editor/toolbar-layouts'
 import type { ToolbarFormatKey, ToolbarFormatState, ToolbarHeadingLevel } from './toolbar-state'
+import type { ToolbarLayout, ToolbarLayoutItem, ToolbarToolId } from '../../types/app'
+import { ToolbarToolVisual } from './ToolbarToolVisual'
 
 const TOOLBAR_FORMAT_LABELS: Record<ToolbarFormatKey, string> = {
   bold: 'Bold',
@@ -9,6 +16,7 @@ const TOOLBAR_FORMAT_LABELS: Record<ToolbarFormatKey, string> = {
 }
 
 type SharedEditorToolbarProps = {
+  layout?: ToolbarLayout
   copyButtonRef: RefObject<HTMLButtonElement | null>
   headingButtonRef: RefObject<HTMLButtonElement | null>
   aisleButtonRef: RefObject<HTMLButtonElement | null>
@@ -20,7 +28,7 @@ type SharedEditorToolbarProps = {
   onOpenCopy: () => void
   onOpenFrontmatter: () => void
   onOpenTableOfContents: () => void
-  onToggleAisles: () => void
+  onOpenAisleEditModal: () => void
   onToggleHeading: () => void
   onCommand: (command: string, payload?: Record<string, unknown>) => void
   onHistory: (direction: 'undo' | 'redo') => void
@@ -30,74 +38,126 @@ type SharedEditorToolbarProps = {
   onDisabledInteraction?: () => void
 }
 
-function ToolbarIconButton({
-  label,
-  iconClassName,
-  onClick,
-  tooltipsDisabled = false,
-  formatKey,
-  toolbarFormatState,
-  toolbarShortcutFeedback,
-}: {
-  label: string
-  iconClassName: string
-  onClick: (button: HTMLButtonElement) => void
-  tooltipsDisabled?: boolean
-  formatKey?: ToolbarFormatKey
+type ToolbarRenderContext = {
+  copyButtonRef: RefObject<HTMLButtonElement | null>
+  headingButtonRef: RefObject<HTMLButtonElement | null>
+  aisleButtonRef: RefObject<HTMLButtonElement | null>
+  tooltipsDisabled: boolean
   toolbarFormatState: ToolbarFormatState
+  activeHeadingLevel: ToolbarHeadingLevel
   toolbarShortcutFeedback: ToolbarFormatKey | null
-}) {
-  return (
-    <button
-      type="button"
-      className={`toastui-editor-toolbar-icons ${iconClassName} ${
-        formatKey && toolbarFormatState[formatKey] ? 'active' : ''
-      } ${formatKey && toolbarShortcutFeedback === formatKey ? 'is-shortcut-feedback' : ''}`}
-      title={tooltipsDisabled ? undefined : label}
-      aria-label={label}
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={(event) => {
-        event.preventDefault()
-        event.stopPropagation()
-        onClick(event.currentTarget)
-      }}
-    />
-  )
+  onOpenCopy: () => void
+  onOpenFrontmatter: () => void
+  onOpenTableOfContents: () => void
+  onOpenAisleEditModal: () => void
+  onToggleHeading: () => void
+  onCommand: (command: string, payload?: Record<string, unknown>) => void
+  onHistory: (direction: 'undo' | 'redo') => void
+  onInsertImage: () => void
+  onInsertWebLink: () => void
+  onClear: () => void
 }
 
-function HistoryToolbarButton({
-  direction,
-  label,
-  tooltipsDisabled = false,
-  onHistory,
-}: {
-  direction: 'undo' | 'redo'
-  label: string
-  tooltipsDisabled?: boolean
-  onHistory: (direction: 'undo' | 'redo') => void
-}) {
-  return (
-    <button
-      type="button"
-      className={`editor-history-toolbar-btn editor-history-toolbar-btn-${direction}`}
-      title={tooltipsDisabled ? undefined : label}
-      aria-label={label}
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={(event) => {
-        event.preventDefault()
-        event.stopPropagation()
-        onHistory(direction)
-      }}
-    >
-      <svg className="editor-history-toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-        <path d="M8 7H5v3" />
-        <path d="M5.5 9.5A7 7 0 1 1 7 17" />
-      </svg>
-    </button>
+function getToolbarToolRef(toolId: ToolbarToolId, context: ToolbarRenderContext): RefObject<HTMLButtonElement | null> | undefined {
+  if (toolId === 'copy') return context.copyButtonRef
+  if (toolId === 'heading') return context.headingButtonRef
+  if (toolId === 'aisles') return context.aisleButtonRef
+  return undefined
+}
+
+function getToolbarToolActive(toolId: ToolbarToolId, context: ToolbarRenderContext): boolean {
+  if (toolId === 'heading') return typeof context.activeHeadingLevel === 'number' && context.activeHeadingLevel > 0
+  if (toolId === 'bold' || toolId === 'italic' || toolId === 'strike' || toolId === 'highlight') {
+    return context.toolbarFormatState[toolId]
+  }
+  return false
+}
+
+function isToolbarToolShortcutFeedback(toolId: ToolbarToolId, context: ToolbarRenderContext): boolean {
+  return toolId === context.toolbarShortcutFeedback
+}
+
+function runToolbarTool(toolId: ToolbarToolId, context: ToolbarRenderContext) {
+  switch (toolId) {
+    case 'copy':
+      context.onOpenCopy()
+      return
+    case 'frontmatter':
+      context.onOpenFrontmatter()
+      return
+    case 'tableOfContents':
+      context.onOpenTableOfContents()
+      return
+    case 'aisles':
+      context.onOpenAisleEditModal()
+      return
+    case 'undo':
+      context.onHistory('undo')
+      return
+    case 'redo':
+      context.onHistory('redo')
+      return
+    case 'heading':
+      context.onToggleHeading()
+      return
+    case 'bold':
+    case 'italic':
+    case 'strike':
+    case 'highlight':
+      context.onCommand(toolId)
+      return
+    case 'taskList':
+    case 'bulletList':
+    case 'orderedList':
+    case 'dashList':
+    case 'blockQuote':
+    case 'blockIndent':
+    case 'removeBlockIndent':
+    case 'hr':
+    case 'code':
+    case 'codeBlock':
+      context.onCommand(toolId)
+      return
+    case 'link':
+      context.onInsertWebLink()
+      return
+    case 'image':
+      context.onInsertImage()
+      return
+    case 'table':
+      context.onCommand('addTable', { rowCount: 2, columnCount: 2 })
+      return
+    case 'clear':
+      context.onClear()
+      return
+  }
+}
+
+function renderToolbarTool(toolId: ToolbarToolId, context: ToolbarRenderContext) {
+  const button = (
+    <ToolbarToolVisual
+      toolId={toolId}
+      buttonRef={getToolbarToolRef(toolId, context)}
+      tooltipsDisabled={context.tooltipsDisabled}
+      active={getToolbarToolActive(toolId, context)}
+      shortcutFeedback={isToolbarToolShortcutFeedback(toolId, context)}
+      onPress={() => runToolbarTool(toolId, context)}
+    />
   )
+  return toolId === 'heading' || toolId === 'aisles' ? (
+    <span key={toolId} className="note-toolbar-menu-anchor">
+      {button}
+    </span>
+  ) : button
+}
+
+function groupHasShortcutFeedback(group: ToolbarLayoutItem[], toolbarShortcutFeedback: ToolbarFormatKey | null): boolean {
+  if (!toolbarShortcutFeedback) return false
+  return group.some((item) => item.type === 'tool' && item.toolId === toolbarShortcutFeedback)
 }
 
 export function SharedEditorToolbar({
+  layout = getDefaultToolbarLayout(),
   copyButtonRef,
   headingButtonRef,
   aisleButtonRef,
@@ -109,7 +169,7 @@ export function SharedEditorToolbar({
   onOpenCopy,
   onOpenFrontmatter,
   onOpenTableOfContents,
-  onToggleAisles,
+  onOpenAisleEditModal,
   onToggleHeading,
   onCommand,
   onHistory,
@@ -118,22 +178,28 @@ export function SharedEditorToolbar({
   onClear,
   onDisabledInteraction,
 }: SharedEditorToolbarProps) {
-  const renderToolbarIconButton = (
-    label: string,
-    iconClassName: string,
-    onClick: (button: HTMLButtonElement) => void,
-    formatKey?: ToolbarFormatKey,
-  ) => (
-    <ToolbarIconButton
-      label={label}
-      iconClassName={iconClassName}
-      onClick={onClick}
-      formatKey={formatKey}
-      tooltipsDisabled={tooltipsDisabled}
-      toolbarFormatState={toolbarFormatState}
-      toolbarShortcutFeedback={toolbarShortcutFeedback}
-    />
-  )
+  if (layout.items.length === 0) return null
+
+  const renderContext: ToolbarRenderContext = {
+    copyButtonRef,
+    headingButtonRef,
+    aisleButtonRef,
+    tooltipsDisabled,
+    toolbarFormatState,
+    activeHeadingLevel,
+    toolbarShortcutFeedback,
+    onOpenCopy,
+    onOpenFrontmatter,
+    onOpenTableOfContents,
+    onOpenAisleEditModal,
+    onToggleHeading,
+    onCommand,
+    onHistory,
+    onInsertImage,
+    onInsertWebLink,
+    onClear,
+  }
+  const groups = getToolbarLayoutGroups(layout.items)
 
   return (
     <div
@@ -174,141 +240,20 @@ export function SharedEditorToolbar({
       }}
     >
       <div className="toastui-editor-defaultUI-toolbar app-shared-editor-toolbar">
-        <div className="toastui-editor-toolbar-group note-tools-toolbar-group">
-          <button
-            ref={copyButtonRef}
-            type="button"
-            className="note-copy-toolbar-btn"
-            title={tooltipsDisabled ? undefined : 'Make copy'}
-            aria-label="Make copy"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={(event) => {
-              event.preventDefault()
-              event.stopPropagation()
-              onOpenCopy()
-            }}
-          >
-            <span className="note-copy-toolbar-icon" aria-hidden="true">
-              <span className="note-copy-toolbar-page note-copy-toolbar-page-back" />
-              <span className="note-copy-toolbar-page note-copy-toolbar-page-front" />
-              <span className="note-copy-toolbar-chain" />
-            </span>
-          </button>
-          <button
-            type="button"
-            className="frontmatter-toolbar-btn"
-            title={tooltipsDisabled ? undefined : 'Frontmatter'}
-            aria-label="Frontmatter"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={(event) => {
-              event.preventDefault()
-              event.stopPropagation()
-              onOpenFrontmatter()
-            }}
-          >
-            <span className="frontmatter-toolbar-icon" aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            className="table-of-contents-toolbar-btn"
-            title={tooltipsDisabled ? undefined : 'Table of contents'}
-            aria-label="Table of contents"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={(event) => {
-              event.preventDefault()
-              event.stopPropagation()
-              onOpenTableOfContents()
-            }}
-          >
-            ToC
-          </button>
-          <span className="note-toolbar-menu-anchor">
-            <button
-              ref={aisleButtonRef}
-              type="button"
-              className="aisles-toolbar-btn"
-              title={tooltipsDisabled ? undefined : 'Aisles'}
-              aria-label="Aisles"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={(event) => {
-                event.preventDefault()
-                event.stopPropagation()
-                onToggleAisles()
-              }}
-            >
-              <span className="aisles-toolbar-icon" aria-hidden="true" />
-            </button>
-          </span>
-        </div>
-        <div className="toastui-editor-toolbar-group editor-history-toolbar-group">
-          <HistoryToolbarButton direction="undo" label="Undo" tooltipsDisabled={tooltipsDisabled} onHistory={onHistory} />
-          <HistoryToolbarButton direction="redo" label="Redo" tooltipsDisabled={tooltipsDisabled} onHistory={onHistory} />
-        </div>
-        <div className="toastui-editor-toolbar-group note-format-toolbar-group">
-          <span className="note-toolbar-menu-anchor">
-            <button
-              ref={headingButtonRef}
-              type="button"
-              className={`toastui-editor-toolbar-icons heading ${
-                typeof activeHeadingLevel === 'number' && activeHeadingLevel > 0 ? 'active' : ''
-              }`}
-              title={tooltipsDisabled ? undefined : 'Headings'}
-              aria-label="Headings"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={(event) => {
-                event.preventDefault()
-                event.stopPropagation()
-                onToggleHeading()
-              }}
-            />
-          </span>
-          {renderToolbarIconButton('Bold', 'bold', () => onCommand('bold'), 'bold')}
-          {renderToolbarIconButton('Italic', 'italic', () => onCommand('italic'), 'italic')}
-          {renderToolbarIconButton('Strikethrough', 'strike', () => onCommand('strike'), 'strike')}
-          {renderToolbarIconButton('Highlight', 'highlight', () => onCommand('highlight'), 'highlight')}
-          {toolbarShortcutFeedback && (
-            <span className="note-toolbar-shortcut-feedback" role="status">
-              {TOOLBAR_FORMAT_LABELS[toolbarShortcutFeedback]}
-            </span>
-          )}
-        </div>
-        <div className="toastui-editor-toolbar-group">
-          {renderToolbarIconButton('Horizontal line', 'hrline', () => onCommand('hr'))}
-          {renderToolbarIconButton('Block quote', 'quote', () => onCommand('blockQuote'))}
-          {renderToolbarIconButton('Block indent', 'indent', () => onCommand('blockIndent'))}
-          {renderToolbarIconButton('Remove block indent', 'outdent', () => onCommand('removeBlockIndent'))}
-        </div>
-        <div className="toastui-editor-toolbar-group">
-          {renderToolbarIconButton('Dash list', 'dash-list', () => onCommand('dashList'))}
-          {renderToolbarIconButton('Unordered list', 'bullet-list', () => onCommand('bulletList'))}
-          {renderToolbarIconButton('Ordered list', 'ordered-list', () => onCommand('orderedList'))}
-          {renderToolbarIconButton('Task', 'task-list', () => onCommand('taskList'))}
-        </div>
-        <div className="toastui-editor-toolbar-group">
-          {renderToolbarIconButton('Insert table', 'table', () => onCommand('addTable', { rowCount: 2, columnCount: 2 }))}
-          {renderToolbarIconButton('Insert image', 'image', () => onInsertImage())}
-          {renderToolbarIconButton('Insert link', 'link', () => onInsertWebLink())}
-        </div>
-        <div className="toastui-editor-toolbar-group">
-          {renderToolbarIconButton('Code', 'code', () => onCommand('code'))}
-          {renderToolbarIconButton('Insert CodeBlock', 'codeblock', () => onCommand('codeBlock'))}
-        </div>
-        <div className="toastui-editor-toolbar-group clear-note-toolbar-group">
-          <button
-            type="button"
-            className="clear-note-toolbar-btn"
-            title={tooltipsDisabled ? undefined : 'Clear contents'}
-            aria-label="Clear contents"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={(event) => {
-              event.preventDefault()
-              event.stopPropagation()
-              onClear()
-            }}
-          >
-            ⌫
-          </button>
-        </div>
+        {groups.map((group, groupIndex) => (
+          <div key={`${layout.id}-group-${groupIndex}`} className={getToolbarGroupClassName(group)}>
+            {group.map((item) => (
+              <Fragment key={item.id}>
+                {item.type === 'tool' ? renderToolbarTool(item.toolId, renderContext) : null}
+              </Fragment>
+            ))}
+            {groupHasShortcutFeedback(group, toolbarShortcutFeedback) && (
+              <span className="note-toolbar-shortcut-feedback" role="status">
+                {TOOLBAR_FORMAT_LABELS[toolbarShortcutFeedback!]}
+              </span>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   )

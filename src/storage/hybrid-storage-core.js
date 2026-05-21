@@ -138,16 +138,44 @@ export function normalizeImageExtension(raw) {
   return normalized || 'png'
 }
 
+/** @param {unknown} raw */
+export function normalizeAssetExtension(raw) {
+  const normalized = String(raw ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
+  if (normalized === 'jpeg') return 'jpg'
+  if (normalized === 'svgxml') return 'svg'
+  if (normalized === 'quicktime') return 'mov'
+  if (normalized === 'mpeg' || normalized === 'xmpeg') return 'mp3'
+  return normalized || 'bin'
+}
+
 /** @param {string} mimeType */
 export function getExtensionFromMimeType(mimeType) {
-  if (!mimeType.startsWith('image/')) return 'png'
-  return normalizeImageExtension(mimeType.slice('image/'.length))
+  if (mimeType.startsWith('image/')) return normalizeImageExtension(mimeType.slice('image/'.length))
+  if (mimeType === 'application/pdf') return 'pdf'
+  if (mimeType === 'audio/mpeg') return 'mp3'
+  if (mimeType === 'audio/mp4') return 'm4a'
+  if (mimeType === 'audio/wav' || mimeType === 'audio/wave') return 'wav'
+  if (mimeType === 'audio/ogg') return 'ogg'
+  if (mimeType === 'video/webm') return 'webm'
+  if (mimeType === 'video/mp4') return 'mp4'
+  if (mimeType === 'video/quicktime') return 'mov'
+  const subtype = String(mimeType ?? '').match(/^[a-zA-Z0-9+.-]+\/([a-zA-Z0-9+.-]+)$/)?.[1]
+  return normalizeAssetExtension(subtype)
 }
 
 /** @param {string} extension */
 export function getMimeTypeFromExtension(extension) {
-  const normalized = normalizeImageExtension(extension)
+  const normalized = normalizeAssetExtension(extension)
   if (normalized === 'jpg') return 'image/jpeg'
   if (normalized === 'svg') return 'image/svg+xml'
-  return `image/${normalized}`
+  if (normalized === 'png' || normalized === 'gif' || normalized === 'webp' || normalized === 'avif') return `image/${normalized}`
+  if (normalized === 'pdf') return 'application/pdf'
+  if (normalized === 'mp3') return 'audio/mpeg'
+  if (normalized === 'wav') return 'audio/wav'
+  if (normalized === 'm4a') return 'audio/mp4'
+  if (normalized === 'ogg') return 'audio/ogg'
+  if (normalized === 'webm') return 'video/webm'
+  if (normalized === 'mp4') return 'video/mp4'
+  if (normalized === 'mov') return 'video/quicktime'
+  return 'application/octet-stream'
 }

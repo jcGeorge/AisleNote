@@ -29,6 +29,14 @@ export function runEditorHistoryCommand({
   onRunStructuralHistory: (direction: WysiwygHistoryDirection) => boolean
   onRunEditorHistory: (direction: WysiwygHistoryDirection) => WysiwygHistoryResult
 }): EditorCommandResult {
+  if (onRunStructuralHistory(direction)) {
+    return createEditorCommandResult({
+      handled: true,
+      commit: false,
+      focusIntent: 'structural-history',
+      historyResult: 'structural',
+    })
+  }
   const result = onRunEditorHistory(direction)
   if (result !== 'unavailable') {
     return createEditorCommandResult({
@@ -36,14 +44,6 @@ export function runEditorHistoryCommand({
       commit: result === 'applied',
       focusIntent: result === 'applied' ? 'toolbar-command' : 'none',
       historyResult: result,
-    })
-  }
-  if (onRunStructuralHistory(direction)) {
-    return createEditorCommandResult({
-      handled: true,
-      commit: false,
-      focusIntent: 'structural-history',
-      historyResult: 'structural',
     })
   }
   return createEditorCommandResult({ handled: false, historyResult: result })

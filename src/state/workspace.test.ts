@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { DeletedSubTabEntry, DeletedTabEntry, SubTab, Tab, WorkspaceData } from '../types/app'
+import { collectWorkspaceNavigationEntityIds, createReservedIdAllocator } from './navigation-ids'
 import {
   applyAutoPurgeToWorkspace,
   AUTO_PURGE_DAY_MS,
+  createSpace,
+  createSubTab,
+  createTab,
+  duplicateSpace,
+  duplicateWorkspaceData,
   getNextWorkspaceTrashAutoPurgeTime,
 } from './workspace'
 
@@ -99,5 +105,70 @@ describe('workspace trash auto purge', () => {
 
     expect(next.deletedTabs).toEqual([freshParent])
     expect(next.deletedSubTabs).toEqual([freshSubTab])
+  })
+})
+
+describe('workspace id allocation', () => {
+  it('creates parent and sub-tab ids from a collision-safe allocator', () => {
+    const values = ['taken-tab', 'parent-id', 'parent-body', 'taken-sub', 'sub-id', 'sub-body']
+    const allocate = createReservedIdAllocator(['taken-tab', 'taken-sub'], () => values.shift() ?? 'fallback')
+
+    const parent = createTab('Parent', allocate)
+    const child = createSubTab('Child', '', allocate)
+
+    expect(parent.id).toBe('parent-id')
+    expect(child.id).toBe('sub-id')
+  })
+
+  it('creates a new space with unique nested workspace ids', () => {
+    const existingIds = new Set(['space-collision', 'welcome-collision'])
+    const values = ['space-collision', 'space-new', 'welcome-collision', 'welcome-new', 'welcome-body', 'list-sub', 'list-body']
+    const allocate = createReservedIdAllocator(existingIds, () => values.shift() ?? 'fallback')
+
+    const space = createSpace('New Space', allocate)
+
+    expect(space.id).toBe('space-new')
+    expect(space.data.activeTabId).toBe('welcome-new')
+    expect(space.data.tabs[0].id).toBe('welcome-new')
+  })
+
+  it('duplicates workspace data without reusing existing navigation ids', () => {
+    const data: WorkspaceData = {
+      activeTabId: 'tab-source',
+      tabs: [
+        {
+          id: 'tab-source',
+          title: 'Source',
+          noteBodyId: 'body-source',
+          homeContent: '',
+          activeSubTabId: 'sub-source',
+          subTabs: [{ id: 'sub-source', title: 'Sub', noteBodyId: 'body-sub-source', content: '' }],
+        },
+      ],
+      deletedTabs: [],
+      deletedSubTabs: [],
+    }
+    const existingIds = collectWorkspaceNavigationEntityIds(data)
+    const values = ['tab-source', 'tab-copy', 'sub-source', 'sub-copy', 'body-sub-copy', 'body-copy']
+    const allocate = createReservedIdAllocator(existingIds, () => values.shift() ?? 'fallback')
+
+    const duplicated = duplicateWorkspaceData(data, allocate)
+
+    expect(duplicated.activeTabId).toBe('tab-copy')
+    expect(duplicated.tabs[0].id).toBe('tab-copy')
+    expect(duplicated.tabs[0].subTabs[0].id).toBe('sub-copy')
+  })
+
+  it('duplicates a space with a unique space id and unique nested workspace ids', () => {
+    const sourceValues = ['space-source', 'tab-source', 'tab-body-source', 'sub-source', 'sub-body-source']
+    const source = createSpace('Source', createReservedIdAllocator([], () => sourceValues.shift() ?? 'fallback'))
+    const values = ['space-source', 'space-copy', 'tab-source', 'tab-copy', 'sub-source', 'sub-copy', 'sub-body-copy', 'tab-body-copy']
+    const allocate = createReservedIdAllocator(collectWorkspaceNavigationEntityIds(source.data).add(source.id), () => values.shift() ?? 'fallback')
+
+    const duplicated = duplicateSpace(source, [source.name], allocate)
+
+    expect(duplicated.id).toBe('space-copy')
+    expect(duplicated.data.tabs[0].id).toBe('tab-copy')
+    expect(duplicated.data.tabs[0].subTabs[0].id).toBe('sub-copy')
   })
 })

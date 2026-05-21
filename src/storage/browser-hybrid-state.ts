@@ -11,12 +11,13 @@ import {
 import { splitImageResizeMetadataFromUrl } from '../markdown/image-metadata'
 import {
   buildImageAssetUrl,
+  MARKDOWN_LINK_PATTERN,
   normalizeImageAssetPath,
   parseImageAssetUrl,
 } from '../markdown/image-asset-refs.js'
 import {
-  getRegisteredImageAssetBytes,
-  registerImageAssetBytes,
+  getRegisteredAssetBytes,
+  registerAssetBytes,
 } from '../markdown/image-asset-registry'
 import {
   storageError,
@@ -30,7 +31,6 @@ import {
   DEFAULT_AUTO_REMOVE_DAYS,
   DEFAULT_DOMAIN_ID,
   DEFAULT_DOMAIN_NAME,
-  IMAGE_MARKDOWN_PATTERN,
   ensureArray,
   getActiveDomainFromAppState,
   getActiveSpaceFromDomain,
@@ -42,7 +42,7 @@ import {
   getNoteBodiesFromAppState,
   getThemeForStorage,
   isRecord,
-  normalizeImageExtension,
+  normalizeAssetExtension,
   normalizeStorageTheme,
 } from './hybrid-storage-core.js'
 import { buildStoragePathFileName, createStoragePathAllocator } from './storage-path-segments.js'
@@ -177,7 +177,7 @@ function createAssetBank(assetRootRelative = STORAGE_ASSETS_DIR): AssetBank {
 }
 
 function addAssetToBank(assetBank: AssetBank, bytes: Uint8Array, extension: string): string {
-  const normalizedExtension = normalizeImageExtension(extension)
+  const normalizedExtension = normalizeAssetExtension(extension)
   const hash = createAssetHash(bytes)
   const key = `${hash}.${normalizedExtension}`
   const existing = assetBank.keys.get(key)
@@ -208,18 +208,18 @@ function getBinaryFile(fileMap: Map<string, BrowserStoredFile>, path: string): U
 }
 
 function externalizeMarkdownImages(markdown: string, noteFileRelative: string, assetBank: AssetBank): string {
-  return markdown.replace(IMAGE_MARKDOWN_PATTERN, (fullMatch, altText: string, srcRaw: string) => {
+  return markdown.replace(MARKDOWN_LINK_PATTERN, (fullMatch, imageBang: string, label: string, srcRaw: string) => {
     const src = srcRaw.trim()
     const { imageUrl, metadataFragment } = splitImageResizeMetadataFromUrl(src)
     let assetRelativePath = parseImageAssetUrl(imageUrl)
 
     if (assetRelativePath) {
       assetRelativePath = normalizeImageAssetPath(assetRelativePath)
-      const bytes = getRegisteredImageAssetBytes(assetRelativePath)
+      const bytes = getRegisteredAssetBytes(assetRelativePath)
       if (bytes) {
         assetBank.files.set(assetRelativePath, bytes)
       }
-    } else if (imageUrl.startsWith('data:image/')) {
+    } else if (imageBang === '!' && imageUrl.startsWith('data:image/')) {
       const decoded = decodeDataUrl(imageUrl)
       if (!decoded) return fullMatch
       assetRelativePath = addAssetToBank(assetBank, decoded.bytes, decoded.extension)
@@ -229,34 +229,35 @@ function externalizeMarkdownImages(markdown: string, noteFileRelative: string, a
 
     const noteDirectory = dirnamePosix(noteFileRelative)
     const nextSrc = relativePosix(noteDirectory, assetRelativePath)
-    return `![${altText}](${nextSrc}${metadataFragment})`
+    return `${imageBang}[${label}](${nextSrc}${metadataFragment})`
   })
 }
 
 function referenceMarkdownImages(markdown: string, notePath: string, fileMap: Map<string, BrowserStoredFile>): string {
-  return markdown.replace(IMAGE_MARKDOWN_PATTERN, (fullMatch, altText: string, srcRaw: string) => {
+  return markdown.replace(MARKDOWN_LINK_PATTERN, (fullMatch, imageBang: string, label: string, srcRaw: string) => {
     const src = srcRaw.trim()
     if (!src) return fullMatch
     const { imageUrl, metadataFragment } = splitImageResizeMetadataFromUrl(src)
     if (parseImageAssetUrl(imageUrl)) return fullMatch
-    if (imageUrl.startsWith('data:image/')) {
+    if (imageBang === '!' && imageUrl.startsWith('data:image/')) {
       const decoded = decodeDataUrl(imageUrl)
       if (!decoded) return fullMatch
-      const assetPath = joinPosix(STORAGE_ASSETS_DIR, `asset-${createAssetHash(decoded.bytes)}.${normalizeImageExtension(decoded.extension)}`)
+      const assetPath = joinPosix(STORAGE_ASSETS_DIR, `asset-${createAssetHash(decoded.bytes)}.${normalizeAssetExtension(decoded.extension)}`)
       setBinaryFile(fileMap, joinPosix(STORAGE_ROOT_DIR, assetPath), decoded.bytes)
-      registerImageAssetBytes(assetPath, decoded.bytes, getMimeTypeFromExtension(decoded.extension))
-      return `![${altText}](${buildImageAssetUrl(assetPath)}${metadataFragment})`
+      registerAssetBytes(assetPath, decoded.bytes, getMimeTypeFromExtension(decoded.extension))
+      return `${imageBang}[${label}](${buildImageAssetUrl(assetPath)}${metadataFragment})`
     }
     if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(imageUrl) && !imageUrl.startsWith('file://')) return fullMatch
 
     const assetPath = normalizePosixPath(joinPosix(dirnamePosix(notePath), imageUrl))
+    const rootRelativeAssetPath = normalizeImageAssetPath(assetPath.replace(new RegExp(`^${STORAGE_ROOT_DIR}/`), ''))
+    if (!imageBang && !rootRelativeAssetPath.startsWith(`${STORAGE_ASSETS_DIR}/`)) return fullMatch
     const assetBytes = getBinaryFile(fileMap, assetPath)
     if (!assetBytes) return fullMatch
 
-    const extension = normalizeImageExtension(assetPath.split('.').pop() ?? 'png')
-    const rootRelativeAssetPath = normalizeImageAssetPath(assetPath.replace(new RegExp(`^${STORAGE_ROOT_DIR}/`), ''))
-    registerImageAssetBytes(rootRelativeAssetPath, assetBytes, getMimeTypeFromExtension(extension))
-    return `![${altText}](${buildImageAssetUrl(rootRelativeAssetPath)}${metadataFragment})`
+    const extension = normalizeAssetExtension(assetPath.split('.').pop() ?? 'bin')
+    registerAssetBytes(rootRelativeAssetPath, assetBytes, getMimeTypeFromExtension(extension))
+    return `${imageBang}[${label}](${buildImageAssetUrl(rootRelativeAssetPath)}${metadataFragment})`
   })
 }
 
