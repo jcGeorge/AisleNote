@@ -12,6 +12,7 @@ import type {
   ViewMode,
 } from '../types/app'
 import { getNewlineShortcutIdForEvent } from '../hotkeys/shortcuts'
+import { runEditorHistoryCommand } from './editor-command'
 import { applyParagraphSpaceShortcut, getMultilineSelectionShortcutDirection } from './editor-setup'
 import {
   applySingleCursorPageMovement,
@@ -243,10 +244,12 @@ export function runEditorHistoryEvent({
   onRunStructuralHistory: (direction: WysiwygHistoryDirection) => boolean
   onRunEditorHistory: (direction: WysiwygHistoryDirection) => WysiwygHistoryResult
 }): { handled: boolean; result: WysiwygHistoryResult | 'structural' } {
-  const result = onRunEditorHistory(direction)
-  if (result !== 'unavailable') return { handled: true, result }
-  if (onRunStructuralHistory(direction)) return { handled: true, result: 'structural' }
-  return { handled: false, result }
+  const command = runEditorHistoryCommand({
+    direction,
+    onRunStructuralHistory,
+    onRunEditorHistory,
+  })
+  return { handled: command.handled, result: command.historyResult ?? 'unavailable' }
 }
 
 export function useEditorDomEvents({

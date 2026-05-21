@@ -1,5 +1,5 @@
 import type { NoteAisle, PendingContent } from '../types/app'
-import { getAisleBodyId } from '../notes/note-markdown'
+import { getAisleBodyId } from '../notes/aisle-body-state'
 
 export const AISLE_EDITOR_INTERSECTION_ROOT_MARGIN = '0px 100% 0px 100%'
 export const AISLE_EDITOR_IDLE_UNMOUNT_MS = 2000

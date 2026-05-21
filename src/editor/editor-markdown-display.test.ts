@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Editor } from '@toast-ui/editor'
 import { EDITOR_BLANK_LINE_PLACEHOLDER } from '../markdown/markdown-utils'
-import { restoreEditorBlankParagraphs, setEditorMarkdownForDisplay } from './editor-markdown-display'
+import {
+  getEditorMarkdownForPersistence,
+  restoreEditorBlankParagraphs,
+  setEditorMarkdownForDisplay,
+} from './editor-markdown-display'
 
 function textBlock(typeName: string, textContent = '') {
   return {
@@ -55,6 +59,14 @@ function fakeEditorWithBlocks(blocks: any[]) {
 }
 
 describe('editor markdown display helpers', () => {
+  it('normalizes persisted markdown through the canonical editor gateway', () => {
+    const editor = {
+      getMarkdown: vi.fn(() => '<mark>text</mark>\n\nplain\u2003\u2003indent'),
+    } as unknown as Editor
+
+    expect(getEditorMarkdownForPersistence(editor)).toBe('==text==\n\nplain\u2060\u2003\u2003indent')
+  })
+
   it('passes markdown without blank sentinels to Toast UI and restores blank paragraphs in ProseMirror', () => {
     const { editor, tr, dispatch } = fakeEditorWithBlocks([
       textBlock('paragraph', 'one'),

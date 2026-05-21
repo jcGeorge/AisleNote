@@ -105,6 +105,24 @@ describe('copy-note modal text', () => {
   })
 })
 
+describe('delete target modal text', () => {
+  it('describes domain deletion and protects the final domain', () => {
+    const modal: ModalState = { type: 'delete-target', target: { type: 'domain', domainId: 'domain-1' }, permanent: false }
+    const singleDomainText = getModalText(modal, createModalTextState())
+    const stateWithSecondDomain = {
+      ...createModalTextState(),
+      domains: [
+        ...createModalTextState().domains,
+        { id: 'domain-2', name: 'Other', activeSpaceId: 'space-1', spaces: createModalTextState().spaces },
+      ],
+    }
+    const multiDomainText = getModalText(modal, stateWithSecondDomain)
+
+    expect(singleDomainText).toMatchObject({ title: 'cannot delete domain', action: 'ok' })
+    expect(multiDomainText).toMatchObject({ title: 'delete domain?', action: 'delete domain' })
+  })
+})
+
 describe('de-couple modal text', () => {
   it('describes copied data when de-coupled items keep data', () => {
     const modal: ModalState = {

@@ -9,6 +9,7 @@ function renderContextMenu(contextMenu: ContextMenuState, duplicateCount = 1) {
     <ContextMenuHost
       contextMenu={contextMenu}
       canDeleteSpace
+      canDeleteDomain
       duplicateCount={duplicateCount}
       onClose={noop}
       onEnterArrangeMode={noop}
@@ -49,5 +50,13 @@ describe('ContextMenuHost copy actions', () => {
     expect(html).not.toContain('move to trash')
     expect(html).not.toContain('delete now')
     expect(html).not.toContain('de-couple')
+  })
+
+  it('shows arrange, rename, and delete for domain context menus', () => {
+    const html = renderContextMenu({ type: 'domain', domainId: 'domain-1', x: 0, y: 0 })
+
+    expect(html).toContain('arrange')
+    expect(html).toContain('rename')
+    expect(html).toContain('delete')
   })
 })

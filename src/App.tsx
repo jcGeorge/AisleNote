@@ -57,6 +57,7 @@ import { useEditorToolbarLayer } from './editor/useEditorToolbarLayer'
 import { useEditorToolbarState } from './editor/useEditorToolbarState'
 import { useImageTools } from './editor/useImageTools'
 import { useTableControls } from './editor/useTableControls'
+import { clearEditorMarkdownForDisplay, getEditorMarkdownForPersistence } from './editor/editor-markdown-display'
 import type { MultiLineHeadingLevel } from './editor/multiline-format-operations'
 import type { MultiLineListOperation } from './editor/multiline-list-operations'
 import { useMultilineEditing } from './editor/useMultilineEditing'
@@ -69,13 +70,7 @@ import { exportAppData, type ExportScope } from './export/export-data'
 import { buildFrontmatterModalDraftForNote } from './frontmatter/frontmatter-state'
 import { useGlobalHotkeys } from './hotkeys/useGlobalHotkeys'
 import { formatFixedNewlineShortcutLabel } from './hotkeys/shortcuts'
-import {
-  mergeLeadingIndentsFromWysiwyg,
-  normalizeEmptyHeadingMarkersFromWysiwyg,
-  normalizeMarkdownForPersistence,
-  preserveBlankParagraphsFromWysiwyg,
-} from './markdown/markdown-utils'
-import { normalizeMarkdownImageSourcesForPersistence } from './markdown/image-asset-registry'
+import { normalizeMarkdownForPersistence } from './markdown/markdown-utils'
 import { useNavigationHistory } from './navigation/useNavigationHistory'
 import { useAppNavigationActions } from './navigation/useAppNavigationActions'
 import {
@@ -548,17 +543,7 @@ function App() {
   const getCurrentNoteLocation = (): NoteLocation => activeNoteLocation
 
   const getNormalizedEditorMarkdown = (editor: Editor) =>
-    measureSlowOperation('editor markdown normalization', () =>
-      normalizeMarkdownImageSourcesForPersistence(
-        normalizeEmptyHeadingMarkersFromWysiwyg(
-          editor,
-          preserveBlankParagraphsFromWysiwyg(
-            editor,
-            normalizeMarkdownForPersistence(mergeLeadingIndentsFromWysiwyg(editor, editor.getMarkdown())),
-          ),
-        ),
-      ),
-    )
+    measureSlowOperation('editor markdown normalization', () => getEditorMarkdownForPersistence(editor))
 
   const cursorPersistence = useNoteCursorPersistence({
     setState,
@@ -711,13 +696,16 @@ function App() {
   })
   const arrangeMode = arrange.mode
   const arrangeDraggingItem = arrange.draggingItem
+  const domainArrangeDragPreview = arrange.domainDragPreview
   const spaceArrangeDragPreview = arrange.spaceDragPreview
   const tabArrangeDragPreview = arrange.tabDragPreview
   const primaryTabRailRef = arrange.primaryTabRailRef
   const subTabRailRef = arrange.subTabRailRef
+  const domainsGridRef = arrange.domainsGridRef
   const spacesGridRef = arrange.spacesGridRef
   const arrangeTrashDropRef = arrange.trashDropRef
   const isDraggingOverArrangeTrashDrop = arrange.isDraggingOverTrashDrop
+  const suppressNextDomainArrangeExitRef = arrange.suppressNextDomainArrangeExitRef
   const suppressNextSpaceArrangeExitRef = arrange.suppressNextSpaceArrangeExitRef
   const clearArrangePressTimer = arrange.clearPressTimer
   const clearArrangeTapCandidate = arrange.clearTapCandidate
@@ -728,6 +716,9 @@ function App() {
   const startArrangeTapCandidate = arrange.startTapCandidate
   const startArrangePress = arrange.startPress
   const finalizeArrangeTapCandidate = arrange.finalizeTapCandidate
+  const handleArrangeDomainPointerMove = arrange.handleDomainPointerMove
+  const handleArrangeDomainPointerUp = arrange.handleDomainPointerUp
+  const cancelArrangeDomainPointerDrag = arrange.cancelDomainPointerDrag
   const handleArrangeSpacePointerMove = arrange.handleSpacePointerMove
   const handleArrangeSpacePointerUp = arrange.handleSpacePointerUp
   const cancelArrangeSpacePointerDrag = arrange.cancelSpacePointerDrag
@@ -851,7 +842,7 @@ function App() {
     lastEditorMarkdownRef.current = ''
     const activeAisle = activeNoteAisles.find((aisle) => aisle.id === activeAisleIdRef.current)
     lastEditorMarkdownByAisleRef.current.set(activeAisle ? getAisleBodyId(activeAisle) : activeAisleIdRef.current, '')
-    currentEditor.setMarkdown('', false)
+    clearEditorMarkdownForDisplay(currentEditor)
     scheduleContentCommit(
       '',
       activeSpaceIdRef.current,
@@ -2039,6 +2030,7 @@ function App() {
   )
 
   const canDeleteSpace = state.spaces.length > 1
+  const canDeleteDomain = state.domains.length > 1
 
   useGlobalHotkeys({
     viewMode,
@@ -2072,6 +2064,10 @@ function App() {
   const draggingSubTabId =
     arrangeMode.active && arrangeDraggingItem?.type === 'subtab' ? arrangeDraggingItem.subTabId : null
   const arrangeableSpaceClassName = arrangeMode.active && arrangeMode.scope === 'spaces' && viewMode === 'spaces' ? 'is-arrangeable' : ''
+  const arrangeableDomainClassName =
+    arrangeMode.active && arrangeMode.scope === 'domains' && viewMode === 'domains' ? 'is-arrangeable' : ''
+  const draggingDomainId =
+    arrangeMode.active && arrangeDraggingItem?.type === 'domain' ? arrangeDraggingItem.domainId : null
   const draggingSpaceId =
     arrangeMode.active && arrangeDraggingItem?.type === 'space' ? arrangeDraggingItem.spaceId : null
   const customThemePalette = state.theme === 'custom'
@@ -2200,13 +2196,36 @@ function App() {
           domains={state.domains}
           activeDomainId={state.activeDomainId}
           editingDomainId={editing?.type === 'domain' ? editing.id : null}
+          arrangeMode={arrangeMode}
+          arrangeableDomainClassName={arrangeableDomainClassName}
+          draggingDomainId={draggingDomainId}
+          domainArrangeDragPreview={domainArrangeDragPreview}
+          domainsGridRef={domainsGridRef}
+          onBackgroundClick={() => {
+            if (arrangeMode.active && arrangeMode.scope === 'domains') {
+              if (suppressNextDomainArrangeExitRef.current) {
+                suppressNextDomainArrangeExitRef.current = false
+                return
+              }
+              exitArrangeMode()
+            }
+          }}
           onAddDomain={addDomainFromPage}
+          onExitArrangeMode={exitArrangeMode}
           onOpenDomain={openDomain}
           onCommitRename={(domainId, name) => commitRename('domain', domainId, name)}
           onCancelRename={(domainId) => cancelRename('domain', domainId)}
           onShouldSkipRenameBlur={(domainId) => shouldSkipRenameBlur('domain', domainId)}
           onRenameDraftChange={(domainId, value) => trackRenameDraft('domain', domainId, value)}
           onOpenContextMenu={openContextMenuForDomain}
+          onConsumeArrangeClickSuppression={consumeArrangeClickSuppression}
+          onStartArrangeDragSeed={startArrangeDragSeed}
+          onStartArrangeTapCandidate={startArrangeTapCandidate}
+          onStartArrangePress={startArrangePress}
+          onHandleArrangeDomainPointerMove={handleArrangeDomainPointerMove}
+          onHandleArrangeDomainPointerUp={handleArrangeDomainPointerUp}
+          onClearArrangePressTimer={clearArrangePressTimer}
+          onCancelArrangeDomainPointerDrag={cancelArrangeDomainPointerDrag}
         />
       ) : viewMode === 'spaces' ? (
         <SpacesPage
@@ -2488,6 +2507,7 @@ function App() {
       <ContextMenuHost
         contextMenu={contextMenu}
         canDeleteSpace={canDeleteSpace}
+        canDeleteDomain={canDeleteDomain}
         duplicateCount={getCurrentDuplicateCount()}
         onClose={() => setContextMenu(null)}
         onEnterArrangeMode={enterArrangeModeFromContext}

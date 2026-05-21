@@ -1,8 +1,8 @@
 import type { Editor } from '@toast-ui/editor'
 import { Selection, TextSelection } from 'prosemirror-state'
-import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
 import { DASH_LIST_CLASS_NAME, DASH_LIST_MARKER_ATTR, DASH_LIST_MARKER_VALUE } from './list-markers'
 import type { ReorderListKind } from './list-reorder-markdown'
+import { getEditorMarkdownForPersistence } from './editor-markdown-display'
 import { getWysiwygView } from './prosemirror-utils'
 
 const COMPLETED_TASK_HOLD_MS = 500
@@ -508,7 +508,7 @@ export function installCompletedTaskCheckboxBehavior(
       editor,
       view,
       hit,
-      beforeMarkdown: normalizeMarkdownForPersistence(editor.getMarkdown()),
+      beforeMarkdown: getEditorMarkdownForPersistence(editor),
       startX: event.clientX,
       startY: event.clientY,
       held: false,

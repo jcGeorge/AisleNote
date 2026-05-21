@@ -1,7 +1,7 @@
 import type { Editor } from '@toast-ui/editor'
 import { useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
-import { getAisleBodyId, getNoteBodyMarkdown } from '../notes/note-markdown'
+import { getAisleBodyId, getNoteBodyMarkdown } from '../notes/aisle-body-state'
 import { measureSlowOperation } from '../performance/performance-logging'
 import { applyAutoPurgeToAppState, applyMarkdownToAppState } from '../state/app-state'
 import { appPersistenceService } from '../storage/app-persistence-service'

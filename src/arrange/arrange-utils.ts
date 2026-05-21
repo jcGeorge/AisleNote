@@ -15,6 +15,8 @@ export const DEFAULT_ARRANGE_MODE: ArrangeModeState = {
   overSubTabInsert: null,
   overSpaceId: null,
   overSpaceInsert: null,
+  overDomainId: null,
+  overDomainInsert: null,
 }
 
 export function moveItemByInsertion<T>(

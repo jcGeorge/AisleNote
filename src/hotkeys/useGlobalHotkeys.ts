@@ -163,7 +163,10 @@ export function useGlobalHotkeys({
       const isTabTrashShortcut = eventMatchesShortcut(event, hotkeys.shortcuts.toggleTabTrash, isMacPlatform)
       if (isTabTrashShortcut) {
         event.preventDefault()
-        if (viewMode === 'spaces' && arrangeMode.active && arrangeMode.scope === 'spaces') {
+        if (
+          (viewMode === 'spaces' && arrangeMode.active && arrangeMode.scope === 'spaces') ||
+          (viewMode === 'domains' && arrangeMode.active && arrangeMode.scope === 'domains')
+        ) {
           return
         }
         if (viewMode === 'main' || viewMode === 'trash') {

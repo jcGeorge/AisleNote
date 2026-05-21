@@ -3,6 +3,7 @@ import type { ContextMenuState } from '../../types/app'
 type ContextMenuHostProps = {
   contextMenu: ContextMenuState | null
   canDeleteSpace: boolean
+  canDeleteDomain: boolean
   duplicateCount: number
   onClose: () => void
   onEnterArrangeMode: () => void
@@ -21,6 +22,7 @@ type ContextMenuHostProps = {
 export function ContextMenuHost({
   contextMenu,
   canDeleteSpace,
+  canDeleteDomain,
   duplicateCount,
   onClose,
   onEnterArrangeMode,
@@ -71,9 +73,28 @@ export function ContextMenuHost({
           </button>
         </>
       ) : contextMenu.type === 'domain' ? (
-        <button type="button" className="tab-context-delete" onClick={onRenameDomain}>
-          rename
-        </button>
+        <>
+          <button type="button" className="tab-context-delete" onClick={onEnterArrangeMode}>
+            arrange
+          </button>
+          <button type="button" className="tab-context-delete" onClick={onRenameDomain}>
+            rename
+          </button>
+          <button
+            type="button"
+            className="tab-context-delete"
+            onClick={() => {
+              if (!canDeleteDomain) {
+                onClose()
+                return
+              }
+              onOpenDeleteModal(false)
+            }}
+            disabled={!canDeleteDomain}
+          >
+            delete
+          </button>
+        </>
       ) : contextMenu.type === 'image' ? (
         <button type="button" className="tab-context-delete" onClick={onCopyImage}>
           copy image

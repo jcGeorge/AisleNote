@@ -258,6 +258,23 @@ export function renameDomain(appState: AppState, domainId: string, name: string)
   return changed ? projectActiveDomainState({ ...projected, domains }) : projected
 }
 
+export function removeDomain(appState: AppState, domainId: string): AppState {
+  const projected = projectActiveDomainState(appState)
+  if (projected.domains.length <= 1) return projected
+  const domains = projected.domains.filter((domain) => domain.id !== domainId)
+  if (domains.length === projected.domains.length || domains.length === 0) return projected
+  const activeDomain = projected.activeDomainId === domainId
+    ? domains[0]
+    : domains.find((domain) => domain.id === projected.activeDomainId) ?? domains[0]
+  return projectActiveDomainState({
+    ...projected,
+    activeDomainId: activeDomain.id,
+    activeSpaceId: activeDomain.activeSpaceId,
+    spaces: activeDomain.spaces,
+    domains,
+  })
+}
+
 export function setActiveSpaceInActiveDomain(appState: AppState, spaceId: string): AppState {
   const projected = projectActiveDomainState(appState)
   if (!projected.spaces.some((space) => space.id === spaceId)) return projected
@@ -368,4 +385,20 @@ export function moveSpaceWithinActiveDomain(
     moveItemByInsertion(projected.spaces, fromIndex, toIndex, position),
     projected.activeSpaceId,
   )
+}
+
+export function moveDomainWithinState(
+  appState: AppState,
+  draggedDomainId: string,
+  targetDomainId: string,
+  position: ArrangeInsertPosition,
+): AppState {
+  const projected = projectActiveDomainState(appState)
+  const fromIndex = projected.domains.findIndex((domain) => domain.id === draggedDomainId)
+  const toIndex = projected.domains.findIndex((domain) => domain.id === targetDomainId)
+  if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return projected
+  return projectActiveDomainState({
+    ...projected,
+    domains: moveItemByInsertion(projected.domains, fromIndex, toIndex, position),
+  })
 }

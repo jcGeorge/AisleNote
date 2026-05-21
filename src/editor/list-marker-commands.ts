@@ -1,7 +1,7 @@
 import type { Editor } from '@toast-ui/editor'
 import { Fragment } from 'prosemirror-model'
 import { Selection, TextSelection } from 'prosemirror-state'
-import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
+import { getEditorMarkdownForPersistence, setEditorMarkdownForDisplay } from './editor-markdown-display'
 import {
   getBulletListMarkerFromAttrs,
   setSelectedBulletListsMarker,
@@ -593,13 +593,13 @@ export function applyListToolbarCommand(editor: Editor, command: ToolbarListComm
   if (selectionUsesOnlyListKind(view, command)) {
     const selectedText = commandEditor.getSelectedText?.() ?? ''
     const nextMarkdown = unwrapMatchingListItemsMarkdown(
-      normalizeMarkdownForPersistence(editor.getMarkdown()),
+      getEditorMarkdownForPersistence(editor),
       selectedText,
       getReorderListKindForToolbarCommand(command),
     )
     if (nextMarkdown !== null) {
       const previousSelection = getEditorCursorSelection(editor)
-      editor.setMarkdown(nextMarkdown, false)
+      setEditorMarkdownForDisplay(editor, nextMarkdown, false)
       if (!previousSelection || !restoreEditorCursorSelection(editor, previousSelection)) {
         editor.focus()
       }

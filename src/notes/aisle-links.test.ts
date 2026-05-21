@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_FRONTMATTER_SETTINGS } from '../frontmatter/frontmatter'
 import type { AppState, NoteBody, Space } from '../types/app'
 import { getLinkedAisleIdsForNoteBody, materializeDecoupledAisleCopies } from './aisle-links'
+import { isNoteBodyLinked } from './link-status'
 
 function createAisleLinkTestState(noteBodies: NoteBody[], tabs: Array<{ id: string; noteBodyId: string }>): AppState {
   const space: Space = {
@@ -117,6 +118,27 @@ describe('linked aisle helpers', () => {
     )
 
     expect(getLinkedAisleIdsForNoteBody(state, 'body-1')).toEqual(new Set())
+    expect(isNoteBodyLinked(state, 'body-1')).toBe(true)
+  })
+
+  it('can distinguish same-note aisle slots from cross-note linked status', () => {
+    const state = createAisleLinkTestState(
+      [
+        {
+          id: 'body-1',
+          frontmatter: null,
+          aisles: [
+            { id: 'aisle-1', aisleBodyId: 'shared-body', markdown: 'one' },
+            { id: 'aisle-2', aisleBodyId: 'shared-body', markdown: 'two' },
+          ],
+        },
+      ],
+      [{ id: 'tab-1', noteBodyId: 'body-1' }],
+    )
+
+    expect(getLinkedAisleIdsForNoteBody(state, 'body-1')).toEqual(new Set(['aisle-1', 'aisle-2']))
+    expect(getLinkedAisleIdsForNoteBody(state, 'body-1', { scope: 'cross-note' })).toEqual(new Set())
+    expect(isNoteBodyLinked(state, 'body-1')).toBe(false)
   })
 
   it('ignores orphan note bodies when detecting aisle links', () => {

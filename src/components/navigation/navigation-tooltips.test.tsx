@@ -33,6 +33,8 @@ const arrangeMode: ArrangeModeState = {
   overSubTabInsert: null,
   overSpaceId: null,
   overSpaceInsert: null,
+  overDomainId: null,
+  overDomainInsert: null,
 }
 
 const noop = () => undefined

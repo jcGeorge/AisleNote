@@ -276,7 +276,7 @@ export type PendingCreatedEdit =
 
 export type ArrangeSource = 'context' | 'press'
 export type ArrangeInsertPosition = 'before' | 'after'
-export type ArrangeScope = 'tabs' | 'spaces'
+export type ArrangeScope = 'tabs' | 'spaces' | 'domains'
 export type TabSortMode = 'alpha-asc' | 'alpha-desc' | 'created-asc' | 'created-desc' | 'updated-asc' | 'updated-desc'
 export type StageManagerDestinationSortMode = 'default' | TabSortMode
 export type TabSortTarget = 'parents' | 'subtabs'
@@ -287,8 +287,9 @@ export type ArrangeDragItem =
   | { type: 'tab'; tabId: string }
   | { type: 'subtab'; parentTabId: string; subTabId: string }
   | { type: 'space'; spaceId: string }
+  | { type: 'domain'; domainId: string }
 
-export type TabArrangeDragItem = Exclude<ArrangeDragItem, { type: 'space' }>
+export type TabArrangeDragItem = Extract<ArrangeDragItem, { type: 'tab' | 'subtab' }>
 
 export type ArrangeModeState = {
   active: boolean
@@ -301,18 +302,22 @@ export type ArrangeModeState = {
   overSubTabInsert: ArrangeInsertPosition | null
   overSpaceId: string | null
   overSpaceInsert: ArrangeInsertPosition | null
+  overDomainId: string | null
+  overDomainInsert: ArrangeInsertPosition | null
 }
 
 export type ArrangeTapCandidate =
   | { key: string; type: 'tab'; tabId: string; startX: number; startY: number; dragged: boolean }
   | { key: string; type: 'subtab'; subTabId: string; startX: number; startY: number; dragged: boolean }
   | { key: string; type: 'space'; spaceId: string; startX: number; startY: number; dragged: boolean }
+  | { key: string; type: 'domain'; domainId: string; startX: number; startY: number; dragged: boolean }
   | { key: string; type: 'home'; startX: number; startY: number; dragged: boolean }
 
 export type ArrangeTapCandidateSeed =
   | { key: string; type: 'tab'; tabId: string }
   | { key: string; type: 'subtab'; subTabId: string }
   | { key: string; type: 'space'; spaceId: string }
+  | { key: string; type: 'domain'; domainId: string }
   | { key: string; type: 'home' }
 
 export type ArrangeDragSeed = {
@@ -323,6 +328,17 @@ export type ArrangeDragSeed = {
 
 export type SpaceArrangeDragPreview = {
   spaceId: string
+  label: string
+  currentX: number
+  currentY: number
+  offsetX: number
+  offsetY: number
+  width: number
+  height: number
+}
+
+export type DomainArrangeDragPreview = {
+  domainId: string
   label: string
   currentX: number
   currentY: number
@@ -554,6 +570,7 @@ export type DeleteTarget =
       subTabId: string
     }
   | { type: 'space'; spaceId: string }
+  | { type: 'domain'; domainId: string }
 
 export type NoteCopyMode = 'independent' | 'linked'
 export type NoteCopyDestinationMode = 'replace' | 'append'

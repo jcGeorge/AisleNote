@@ -910,6 +910,10 @@ export function ModalHost({
                   onModalChange(null)
                   return
                 }
+                if (modal.type === 'delete-target' && modal.target.type === 'domain' && state.domains.length <= 1) {
+                  onModalChange(null)
+                  return
+                }
                 onConfirm()
               }}
             >

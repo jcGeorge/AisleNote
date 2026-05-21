@@ -25,8 +25,11 @@ import type {
   SubTab,
   Tab,
 } from '../types/app'
-import { getAisleBodyId } from '../notes/note-markdown'
-import { syncNoteAisleBodyMarkdownInState, syncNoteBodyAislesInState } from '../notes/note-state'
+import {
+  getAisleBodyId,
+  syncNoteAisleBodyMarkdownInState,
+  syncNoteBodyAislesInState,
+} from '../notes/aisle-body-state'
 import {
   createDefaultDomain,
   createLegacyWrappedDomain,

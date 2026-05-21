@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { getNoteBodyMarkdown, resolveNoteBody } from '../notes/note-markdown'
+import { getNoteBodyMarkdown, resolveNoteBody } from '../notes/aisle-body-state'
 import { buildNoteCursorLocationKey } from '../notes/note-cursors'
 import type { AppState, NoteLocation } from '../types/app'
 

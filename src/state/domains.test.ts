@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_FRONTMATTER_SETTINGS } from '../frontmatter/frontmatter'
 import type { AppState, Domain, Space, WorkspaceData } from '../types/app'
-import { setActiveDomain, setActiveSpaceInActiveDomain } from './domains'
+import { moveDomainWithinState, removeDomain, setActiveDomain, setActiveSpaceInActiveDomain } from './domains'
 
 const makeWorkspace = (activeTabId: string, activeSubTabId: string | null = null): WorkspaceData => ({
   activeTabId,
@@ -116,5 +116,27 @@ describe('domain and space navigation memory', () => {
     expect(next.activeSpaceId).toBe('space-c')
     expect(activeSpace?.data.activeTabId).toBe('tab-a')
     expect(activeSpace?.data.tabs[0].activeSubTabId).toBeNull()
+  })
+
+  it('removes a domain and falls back when deleting the active domain', () => {
+    const next = removeDomain(makeState(), 'domain-a')
+
+    expect(next.domains.map((domain) => domain.id)).toEqual(['domain-b'])
+    expect(next.activeDomainId).toBe('domain-b')
+    expect(next.activeSpaceId).toBe('space-c')
+  })
+
+  it('keeps at least one domain when removing domains', () => {
+    const state = removeDomain(makeState(), 'domain-a')
+
+    expect(removeDomain(state, 'domain-b')).toBe(state)
+  })
+
+  it('moves domains by insertion without changing the active domain', () => {
+    const next = moveDomainWithinState(makeState(), 'domain-a', 'domain-b', 'after')
+
+    expect(next.domains.map((domain) => domain.id)).toEqual(['domain-b', 'domain-a'])
+    expect(next.activeDomainId).toBe('domain-a')
+    expect(next.activeSpaceId).toBe('space-a')
   })
 })

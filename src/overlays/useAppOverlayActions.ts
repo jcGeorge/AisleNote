@@ -14,7 +14,7 @@ import {
   getNotePreviewCleanupTargetsForDeleteTarget,
   getNotePreviewCleanupTargetsForTrash,
 } from './delete-preview-cleanup'
-import { removeSpaceFromActiveDomain } from '../state/domains'
+import { removeDomain, removeSpaceFromActiveDomain } from '../state/domains'
 import { createId, createTab } from '../state/workspace'
 import { TRASH_HOME_ID } from '../trash/trash-model'
 import type {
@@ -166,7 +166,6 @@ export const useAppOverlayActions = ({
       : contextMenu.type === 'subtab'
         ? { type: 'subtab', tabId: contextMenu.tabId, subTabId: contextMenu.subTabId }
         : contextMenu.type === 'image' ||
-            contextMenu.type === 'domain' ||
             contextMenu.type === 'internal-note-link' ||
             contextMenu.type === 'home-tab'
           ? null
@@ -185,7 +184,9 @@ export const useAppOverlayActions = ({
                 parentTabId: contextMenu.parentTabId,
                 subTabId: contextMenu.subTabId,
               }
-            : { type: 'space', spaceId: contextMenu.spaceId }
+            : contextMenu.type === 'space'
+              ? { type: 'space', spaceId: contextMenu.spaceId }
+              : { type: 'domain', domainId: contextMenu.domainId }
   }
 
   const openDeleteModalFromContext = (permanent: boolean) => {
@@ -199,8 +200,17 @@ export const useAppOverlayActions = ({
     setState((previous) => removeSpaceFromActiveDomain(previous, spaceId))
   }
 
+  const deleteDomain = (domainId: string) => {
+    setState((previous) => removeDomain(previous, domainId))
+  }
+
   const deleteTarget = (target: DeleteTarget, permanent: boolean) => {
     saveActiveCursorBeforeNavigation()
+    if (target.type === 'domain') {
+      deleteDomain(target.domainId)
+      return
+    }
+
     let nextToastMessage: string | null = null
     const cleanupSpace = getActiveSpaceSnapshot()
     const previewCleanupTargets = getNotePreviewCleanupTargetsForDeleteTarget(

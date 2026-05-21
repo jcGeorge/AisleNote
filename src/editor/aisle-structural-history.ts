@@ -1,5 +1,5 @@
 import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
-import { getAisleSignature, getAisleStructureSignature } from '../notes/note-state'
+import { getAisleSignature, getAisleStructureSignature } from '../notes/aisle-body-state'
 import type { NoteAisle, NoteCursorLocation, NoteLocation } from '../types/app'
 
 export type AisleStructuralSnapshot = {

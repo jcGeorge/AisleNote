@@ -1,11 +1,30 @@
 import type { Editor } from '@toast-ui/editor'
 import {
   isBlankParagraphNode,
+  mergeLeadingIndentsFromWysiwyg,
+  normalizeEmptyHeadingMarkersFromWysiwyg,
+  normalizeMarkdownForPersistence,
   prepareBlankParagraphsForEditorDisplay,
   prepareMarkdownHighlightsForDisplay,
+  preserveBlankParagraphsFromWysiwyg,
 } from '../markdown/markdown-utils'
-import { prepareMarkdownImagesForDisplay } from '../markdown/image-asset-registry'
+import {
+  normalizeMarkdownImageSourcesForPersistence,
+  prepareMarkdownImagesForDisplay,
+} from '../markdown/image-asset-registry'
 import { getWysiwygView } from './prosemirror-utils'
+
+export function getEditorMarkdownForPersistence(editor: Editor): string {
+  return normalizeMarkdownImageSourcesForPersistence(
+    normalizeEmptyHeadingMarkersFromWysiwyg(
+      editor,
+      preserveBlankParagraphsFromWysiwyg(
+        editor,
+        normalizeMarkdownForPersistence(mergeLeadingIndentsFromWysiwyg(editor, editor.getMarkdown())),
+      ),
+    ),
+  )
+}
 
 export function prepareMarkdownForEditorDisplay(markdown: string): string {
   const blankPrepared = prepareBlankParagraphsForEditorDisplay(markdown)
@@ -57,4 +76,8 @@ export function restoreEditorBlankParagraphs(editor: Editor | null, markdown: st
 export function setEditorMarkdownForDisplay(editor: Editor, markdown: string, cursorToEnd = false): void {
   editor.setMarkdown(prepareMarkdownForEditorDisplay(markdown), cursorToEnd)
   restoreEditorBlankParagraphs(editor, markdown)
+}
+
+export function clearEditorMarkdownForDisplay(editor: Editor): void {
+  setEditorMarkdownForDisplay(editor, '', false)
 }

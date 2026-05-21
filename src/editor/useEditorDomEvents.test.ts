@@ -12,6 +12,7 @@ import {
   runEditorHistoryEvent,
   shouldSkipTableExitRepairTarget,
 } from './useEditorDomEvents'
+import { runEditorHistoryCommand } from './editor-command'
 
 function fakeTarget(matchedSelector: string | null): Element {
   return {
@@ -104,6 +105,31 @@ describe('editor DOM events', () => {
     })).toEqual({ handled: true, result: 'applied' })
     expect(onRunStructuralHistory).not.toHaveBeenCalled()
   })
+
+  it('normalizes history command results for shared command dispatch', () => {
+    expect(runEditorHistoryCommand({
+      direction: 'undo',
+      onRunStructuralHistory: vi.fn(() => false),
+      onRunEditorHistory: vi.fn(() => 'applied' as const),
+    })).toMatchObject({
+      handled: true,
+      commit: true,
+      preserveSelection: false,
+      focusIntent: 'toolbar-command',
+      historyResult: 'applied',
+    })
+    expect(runEditorHistoryCommand({
+      direction: 'undo',
+      onRunStructuralHistory: vi.fn(() => true),
+      onRunEditorHistory: vi.fn(() => 'unavailable' as const),
+    })).toMatchObject({
+      handled: true,
+      commit: false,
+      focusIntent: 'structural-history',
+      historyResult: 'structural',
+    })
+  })
+
 
   it('handles blocked editor history so native undo cannot continue', () => {
     expect(runEditorHistoryEvent({

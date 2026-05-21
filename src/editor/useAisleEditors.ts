@@ -50,7 +50,7 @@ import {
 } from './aisle-editor-retention'
 import type { HeadingCollapseState, NoteAisle, NoteLocation, PendingContent, ToastTone, ViewMode } from '../types/app'
 import type { NoteContextReferencePayload } from '../notes/note-references'
-import { getAisleBodyId } from '../notes/note-markdown'
+import { getAisleBodyId } from '../notes/aisle-body-state'
 import type { PendingCursorRestore } from './useNoteCursorPersistence'
 
 type ActivateAisleEditorOptions = {

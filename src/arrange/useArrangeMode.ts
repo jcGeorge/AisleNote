@@ -11,7 +11,7 @@ import {
 } from './arrange-utils'
 import { moveArrangeItemToTrash } from './arrange-trash'
 import { moveSubTabToParentTab } from './arrange-tabs'
-import { moveSpaceWithinActiveDomain } from '../state/domains'
+import { moveDomainWithinState, moveSpaceWithinActiveDomain } from '../state/domains'
 import type {
   AppState,
   ArrangeDragItem,
@@ -23,6 +23,8 @@ import type {
   ArrangeTapCandidate,
   ArrangeTapCandidateSeed,
   ContextMenuState,
+  Domain,
+  DomainArrangeDragPreview,
   Space,
   SpaceArrangeDragPreview,
   Tab,
@@ -67,20 +69,24 @@ export function useArrangeMode({
 }: UseArrangeModeParams) {
   const [mode, setMode] = useState<ArrangeModeState>(DEFAULT_ARRANGE_MODE)
   const [draggingItem, setDraggingItem] = useState<ArrangeDragItem | null>(null)
+  const [domainDragPreview, setDomainDragPreview] = useState<DomainArrangeDragPreview | null>(null)
   const [spaceDragPreview, setSpaceDragPreview] = useState<SpaceArrangeDragPreview | null>(null)
   const [tabDragPreview, setTabDragPreview] = useState<TabArrangeDragPreview | null>(null)
 
   const primaryTabRailRef = useRef<HTMLDivElement | null>(null)
   const subTabRailRef = useRef<HTMLDivElement | null>(null)
+  const domainsGridRef = useRef<HTMLDivElement | null>(null)
   const spacesGridRef = useRef<HTMLDivElement | null>(null)
   const trashDropRef = useRef<HTMLButtonElement | null>(null)
   const pressTimerRef = useRef<number | null>(null)
   const tapCandidateRef = useRef<ArrangeTapCandidate | null>(null)
   const dragSeedRef = useRef<ArrangeDragSeed | null>(null)
+  const domainDragRef = useRef<DomainArrangeDragPreview | null>(null)
   const spaceDragRef = useRef<SpaceArrangeDragPreview | null>(null)
   const tabDragRef = useRef<TabArrangeDragPreview | null>(null)
   const tabDragWindowCleanupRef = useRef<(() => void) | null>(null)
   const suppressClickRef = useRef<Set<string>>(new Set())
+  const suppressNextDomainArrangeExitRef = useRef(false)
   const suppressNextSpaceArrangeExitRef = useRef(false)
   const isDraggingOverTrashDropRef = useRef(false)
   const [isDraggingOverTrashDrop, setIsDraggingOverTrashDrop] = useState(false)
@@ -176,7 +182,8 @@ export function useArrangeMode({
     if (suppressClickKey) {
       markClickSuppressed(suppressClickKey)
     }
-    const scope: ArrangeScope | null = viewMode === 'spaces' ? 'spaces' : viewMode === 'main' ? 'tabs' : null
+    const scope: ArrangeScope | null =
+      viewMode === 'domains' ? 'domains' : viewMode === 'spaces' ? 'spaces' : viewMode === 'main' ? 'tabs' : null
     setMode({
       active: true,
       scope,
@@ -188,6 +195,8 @@ export function useArrangeMode({
       overSubTabInsert: null,
       overSpaceId: null,
       overSpaceInsert: null,
+      overDomainId: null,
+      overDomainInsert: null,
     })
   }
 
@@ -196,12 +205,15 @@ export function useArrangeMode({
     clearTapCandidate()
     clearDragSeed()
     suppressClickRef.current.clear()
+    domainDragRef.current = null
     spaceDragRef.current = null
     tabDragRef.current = null
     detachTabDragWindowListeners()
+    suppressNextDomainArrangeExitRef.current = false
     suppressNextSpaceArrangeExitRef.current = false
     setTrashDropTarget(false)
     setDraggingItem(null)
+    setDomainDragPreview(null)
     setSpaceDragPreview(null)
     setTabDragPreview(null)
     setMode(DEFAULT_ARRANGE_MODE)
@@ -212,7 +224,7 @@ export function useArrangeMode({
     dragItem: ArrangeDragItem | null,
     suppressClickKey: string,
   ) => {
-    if ((viewMode !== 'main' && viewMode !== 'spaces') || editing || mode.active) return
+    if ((viewMode !== 'main' && viewMode !== 'spaces' && viewMode !== 'domains') || editing || mode.active) return
     if (event.button !== 0) return
     clearPressTimer()
     pressTimerRef.current = window.setTimeout(() => {
@@ -236,6 +248,9 @@ export function useArrangeMode({
     if (contextMenu.type === 'space') {
       return { type: 'space', spaceId: contextMenu.spaceId }
     }
+    if (contextMenu.type === 'domain') {
+      return { type: 'domain', domainId: contextMenu.domainId }
+    }
     return null
   }
 
@@ -255,7 +270,7 @@ export function useArrangeMode({
     setEditing(null)
     setDraggingItem(dragItem)
     setTrashDropTarget(false)
-    const scope: ArrangeScope = dragItem.type === 'space' ? 'spaces' : 'tabs'
+    const scope: ArrangeScope = dragItem.type === 'domain' ? 'domains' : dragItem.type === 'space' ? 'spaces' : 'tabs'
     setMode({
       active: true,
       scope,
@@ -267,7 +282,208 @@ export function useArrangeMode({
       overSubTabInsert: dragItem.type === 'subtab' ? 'after' : null,
       overSpaceId: dragItem.type === 'space' ? dragItem.spaceId : null,
       overSpaceInsert: dragItem.type === 'space' ? 'after' : null,
+      overDomainId: dragItem.type === 'domain' ? dragItem.domainId : null,
+      overDomainInsert: dragItem.type === 'domain' ? 'after' : null,
     })
+  }
+
+  const getDomainInsertionTargetFromPoint = (clientX: number, clientY: number) => {
+    const grid = domainsGridRef.current
+    if (!grid) return null
+    return getArrangeRailInsertionTarget(
+      grid,
+      '[data-arrange-domain-id]',
+      'data-arrange-domain-id',
+      clientX,
+      clientY,
+    )
+  }
+
+  const clearDomainDropTarget = () => {
+    setMode((previous) =>
+      previous.active
+        ? {
+            ...previous,
+            overDomainId: null,
+            overDomainInsert: null,
+          }
+        : previous,
+    )
+  }
+
+  const updateDomainDropTarget = (clientX: number, clientY: number) => {
+    const insertionTarget = getDomainInsertionTargetFromPoint(clientX, clientY)
+    if (!insertionTarget) {
+      clearDomainDropTarget()
+      return null
+    }
+
+    setMode((previous) =>
+      previous.overDomainId === insertionTarget.targetId && previous.overDomainInsert === insertionTarget.position
+        ? previous
+        : {
+            ...previous,
+            overParentTabId: null,
+            overParentInsert: null,
+            overSubTabId: null,
+            overSubTabInsert: null,
+            overSpaceId: null,
+            overSpaceInsert: null,
+            overDomainId: insertionTarget.targetId,
+            overDomainInsert: insertionTarget.position,
+          },
+    )
+    return insertionTarget
+  }
+
+  const clearDomainPointerDrag = () => {
+    domainDragRef.current = null
+    setDomainDragPreview(null)
+  }
+
+  const suppressNextDomainArrangeExitClick = () => {
+    suppressNextDomainArrangeExitRef.current = true
+    window.setTimeout(() => {
+      suppressNextDomainArrangeExitRef.current = false
+    }, 0)
+  }
+
+  const startDomainPointerDrag = (event: ReactPointerEvent<HTMLButtonElement>, domain: Domain) => {
+    if (viewMode !== 'domains') return
+    const rect = event.currentTarget.getBoundingClientRect()
+    const nextDrag: DomainArrangeDragPreview = {
+      domainId: domain.id,
+      label: domain.name,
+      currentX: event.clientX,
+      currentY: event.clientY,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+      width: rect.width,
+      height: rect.height,
+    }
+
+    clearPressTimer()
+    markTapDragged(`domain:${domain.id}`)
+    prepareForDrag({ type: 'domain', domainId: domain.id })
+    domainDragRef.current = nextDrag
+    setDomainDragPreview(nextDrag)
+    updateDomainDropTarget(event.clientX, event.clientY)
+  }
+
+  const updateDomainPointerDrag = (clientX: number, clientY: number) => {
+    const drag = domainDragRef.current
+    if (!drag) return
+    const nextDrag: DomainArrangeDragPreview = {
+      ...drag,
+      currentX: clientX,
+      currentY: clientY,
+    }
+    domainDragRef.current = nextDrag
+    setDomainDragPreview(nextDrag)
+    updateDomainDropTarget(clientX, clientY)
+  }
+
+  const moveDomainToTarget = (
+    draggedDomainId: string,
+    insertionTarget: { targetId: string; position: ArrangeInsertPosition },
+  ) => {
+    if (draggedDomainId === insertionTarget.targetId) return
+    setState((previous) =>
+      moveDomainWithinState(previous, draggedDomainId, insertionTarget.targetId, insertionTarget.position),
+    )
+  }
+
+  const finishDomainPointerDrag = (clientX: number, clientY: number) => {
+    const drag = domainDragRef.current
+    if (!drag) return false
+
+    const insertionTarget = getDomainInsertionTargetFromPoint(clientX, clientY)
+    markClickSuppressed(`domain:${drag.domainId}`)
+    if (insertionTarget) {
+      markClickSuppressed(`domain:${insertionTarget.targetId}`)
+      moveDomainToTarget(drag.domainId, insertionTarget)
+    }
+
+    suppressNextDomainArrangeExitClick()
+    clearDomainPointerDrag()
+    clearTapCandidate()
+    clearDragSeed()
+    setDraggingItem(null)
+    setMode((previous) =>
+      previous.active
+        ? {
+            ...previous,
+            dragItem: null,
+            overParentTabId: null,
+            overParentInsert: null,
+            overSubTabId: null,
+            overSubTabInsert: null,
+            overSpaceId: null,
+            overSpaceInsert: null,
+            overDomainId: null,
+            overDomainInsert: null,
+          }
+        : previous,
+    )
+    return true
+  }
+
+  const cancelDomainPointerDrag = () => {
+    clearDomainPointerDrag()
+    clearTapCandidate()
+    clearDragSeed()
+    clearPressTimer()
+    setDraggingItem(null)
+    setMode((previous) =>
+      previous.active
+        ? {
+            ...previous,
+            dragItem: null,
+            overDomainId: null,
+            overDomainInsert: null,
+          }
+        : previous,
+    )
+  }
+
+  const handleDomainPointerMove = (event: ReactPointerEvent<HTMLButtonElement>, domain: Domain) => {
+    if (event.buttons !== 1) return
+
+    const activeDrag = domainDragRef.current
+    if (activeDrag?.domainId === domain.id) {
+      event.preventDefault()
+      markTapDragged(`domain:${domain.id}`)
+      updateDomainPointerDrag(event.clientX, event.clientY)
+      return
+    }
+
+    const seed = dragSeedRef.current
+    if (!seed || seed.key !== `domain:${domain.id}`) return
+    const deltaX = event.clientX - seed.startX
+    const deltaY = event.clientY - seed.startY
+    if (Math.hypot(deltaX, deltaY) < ARRANGE_DRAG_START_SLOP_PX) return
+
+    event.preventDefault()
+    startDomainPointerDrag(event, domain)
+  }
+
+  const handleDomainPointerUp = (event: ReactPointerEvent<HTMLButtonElement>, domainId: string) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+
+    if (finishDomainPointerDrag(event.clientX, event.clientY)) {
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
+
+    clearDragSeed()
+    if (mode.active && mode.scope === 'domains') {
+      finalizeTapCandidate(`domain:${domainId}`, event, exit)
+      return
+    }
+    clearPressTimer()
   }
 
   const getSpaceInsertionTargetFromPoint = (clientX: number, clientY: number) => {
@@ -312,6 +528,8 @@ export function useArrangeMode({
             overSubTabInsert: null,
             overSpaceId: insertionTarget.targetId,
             overSpaceInsert: insertionTarget.position,
+            overDomainId: null,
+            overDomainInsert: null,
           },
     )
     return insertionTarget
@@ -401,6 +619,8 @@ export function useArrangeMode({
             overSubTabInsert: null,
             overSpaceId: null,
             overSpaceInsert: null,
+            overDomainId: null,
+            overDomainInsert: null,
           }
         : previous,
     )
@@ -420,6 +640,8 @@ export function useArrangeMode({
             dragItem: null,
             overSpaceId: null,
             overSpaceInsert: null,
+            overDomainId: null,
+            overDomainInsert: null,
           }
         : previous,
     )
@@ -588,6 +810,8 @@ export function useArrangeMode({
             overSubTabInsert: null,
             overSpaceId: null,
             overSpaceInsert: null,
+            overDomainId: null,
+            overDomainInsert: null,
           }
         : previous,
     )
@@ -952,16 +1176,60 @@ export function useArrangeMode({
     })
   }, [mode.active, mode.scope, viewMode, state.spaces])
 
+  useEffect(() => {
+    if (!mode.active || mode.scope !== 'domains' || viewMode !== 'domains') return
+
+    setMode((previous) => {
+      if (!previous.active || previous.scope !== 'domains') return previous
+
+      const validDomainIds = new Set(state.domains.map((domain) => domain.id))
+      let nextDragItem = previous.dragItem
+      let nextOverDomainId = previous.overDomainId
+      let nextOverDomainInsert = previous.overDomainInsert
+
+      if (nextDragItem?.type === 'domain' && !validDomainIds.has(nextDragItem.domainId)) {
+        nextDragItem = null
+      }
+
+      if (nextOverDomainId && !validDomainIds.has(nextOverDomainId)) {
+        nextOverDomainId = null
+        nextOverDomainInsert = null
+      }
+
+      if (nextDragItem?.type !== 'domain' && nextOverDomainInsert) {
+        nextOverDomainInsert = null
+      }
+
+      if (
+        nextDragItem === previous.dragItem &&
+        nextOverDomainId === previous.overDomainId &&
+        nextOverDomainInsert === previous.overDomainInsert
+      ) {
+        return previous
+      }
+
+      return {
+        ...previous,
+        dragItem: nextDragItem,
+        overDomainId: nextOverDomainId,
+        overDomainInsert: nextOverDomainInsert,
+      }
+    })
+  }, [mode.active, mode.scope, viewMode, state.domains])
+
   return {
     mode,
     draggingItem,
+    domainDragPreview,
     spaceDragPreview,
     tabDragPreview,
     primaryTabRailRef,
     subTabRailRef,
+    domainsGridRef,
     spacesGridRef,
     trashDropRef,
     isDraggingOverTrashDrop,
+    suppressNextDomainArrangeExitRef,
     suppressNextSpaceArrangeExitRef,
     clearPressTimer,
     clearTapCandidate,
@@ -973,6 +1241,9 @@ export function useArrangeMode({
     exit,
     enterFromContext,
     startPress,
+    handleDomainPointerMove,
+    handleDomainPointerUp,
+    cancelDomainPointerDrag,
     handleSpacePointerMove,
     handleSpacePointerUp,
     cancelSpacePointerDrag,

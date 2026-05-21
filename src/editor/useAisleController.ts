@@ -5,12 +5,14 @@ import { materializeDecoupledAisleCopies } from '../notes/aisle-links'
 import { buildNoteCursorLocationKey } from '../notes/note-cursors'
 import { getLocationInfo } from '../notes/note-locations'
 import {
-  applyCursorLocationSnapshot,
-  applyNoteLocationToState,
   cloneAisles,
   getAisleSignature,
   syncNoteBodyAisleStructureInState,
   syncNoteBodyAislesInState,
+} from '../notes/aisle-body-state'
+import {
+  applyCursorLocationSnapshot,
+  applyNoteLocationToState,
 } from '../notes/note-state'
 import { createId, MAX_NOTE_AISLES } from '../state/workspace'
 import type {

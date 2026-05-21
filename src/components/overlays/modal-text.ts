@@ -125,6 +125,21 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
     }
   }
 
+  if (modal.target.type === 'domain') {
+    if (state.domains.length <= 1) {
+      return {
+        title: 'cannot delete domain',
+        body: 'at least one domain must remain.',
+        action: 'ok',
+      }
+    }
+    return {
+      title: 'delete domain?',
+      body: 'deleted domains cannot be recovered, are you sure you want to do this?',
+      action: 'delete domain',
+    }
+  }
+
   if (modal.target.type === 'trash-tab' && modal.target.source === 'subtabs-only') {
     return {
       title: 'delete sub-tabs for real?',

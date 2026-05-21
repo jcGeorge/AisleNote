@@ -10,15 +10,19 @@ import { clampNoteCursorSelection } from '../notes/note-cursors'
 import { updateCursorLocationInState } from '../notes/note-state'
 import type { AppState, NoteAisle, NoteCursorSelection, ViewMode } from '../types/app'
 import {
-  shouldFocusPendingCursorRestore,
+  getCursorRestoreFocusIntent,
+  getSavedCursorRestoreIntentOnActivation,
   shouldFocusSavedCursorRestoreOnActivation,
+  type EditorFocusIntent,
 } from './cursor-restore-focus'
+import { shouldFocusForEditorIntent } from './focus-intent'
 
 export type PendingCursorRestore = {
   noteLocationKey: string
   aisleId: string
   selection: NoteCursorSelection | null
   focus?: boolean
+  focusIntent?: EditorFocusIntent
 }
 
 type UseNoteCursorPersistenceParams = {
@@ -112,6 +116,13 @@ export const useNoteCursorPersistence = ({
       noteLocationKey: activeNoteLocationKey,
       aisleId: preferredAisleId,
       selection: savedSelection,
+      focusIntent: getSavedCursorRestoreIntentOnActivation({
+        previousNoteLocationKey,
+        activeNoteLocationKey,
+        previousViewMode,
+        viewMode,
+        hasSavedSelection: Boolean(savedSelection),
+      }),
       focus: shouldFocusSavedCursorRestoreOnActivation({
         previousNoteLocationKey,
         activeNoteLocationKey,
@@ -163,7 +174,12 @@ export const usePendingNoteCursorRestore = ({
     const targetAisleId = pendingAisleId || restoreAisleId
     if (viewMode !== 'main' || !activeNoteBodyId || !targetAisleId) return
     if (pendingCreatedEditRef.current) return
-    const shouldFocus = shouldFocusPendingCursorRestore(pendingAisleId, targetAisleId, Boolean(pendingCursorRestore?.focus))
+    const focusIntent = getCursorRestoreFocusIntent({
+      pendingFocusAisleId: pendingAisleId,
+      targetAisleId,
+      savedFocusIntent: pendingCursorRestore?.focusIntent ?? (pendingCursorRestore?.focus ? 'note-navigation' : 'none'),
+    })
+    const shouldFocus = shouldFocusForEditorIntent(focusIntent)
 
     const animationFrame = window.requestAnimationFrame(() => {
       const editorKey = buildAisleEditorKey(activeNoteBodyId, targetAisleId)
