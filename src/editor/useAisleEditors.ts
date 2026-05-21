@@ -48,7 +48,7 @@ import {
   getAislePreviewMarkdown,
   updateRecentAisleIds,
 } from './aisle-editor-retention'
-import type { HeadingCollapseState, NoteAisle, NoteLocation, PendingContent, ToastTone, ViewMode } from '../types/app'
+import type { HeadingCollapseState, NoteAisle, NoteNavigationTarget, PendingContent, ToastTone, ViewMode } from '../types/app'
 import type { NoteContextReferencePayload } from '../notes/note-references'
 import { getAisleBodyId } from '../notes/aisle-body-state'
 import type { PendingCursorRestore } from './useNoteCursorPersistence'
@@ -105,7 +105,7 @@ type UseAisleEditorsOptions = {
   onToggleHeadingCollapse: (aisleId: string, headingKey: string) => void
   onExpandHeadingCollapse: (aisleId: string, headingKey: string) => void
   getContextPreviewData: (payload: NoteContextReferencePayload, sourceNoteBodyId: string) => ContextPreviewData
-  navigateToNoteLocation: (location: NoteLocation) => void
+  navigateToNoteLocation: (location: NoteNavigationTarget) => void
   deleteContextPreview: (tokenId: string) => void
 }
 

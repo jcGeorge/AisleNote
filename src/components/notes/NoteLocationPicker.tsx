@@ -1,4 +1,4 @@
-import type { Domain, NoteBody } from '../../types/app'
+import type { Domain, NoteBody, NoteHeadingAnchor } from '../../types/app'
 
 export type NoteLocationPickerValue = {
   domainId: string
@@ -6,6 +6,7 @@ export type NoteLocationPickerValue = {
   tabId: string
   subTabId: string | null
   aisleIds?: string[]
+  heading?: NoteHeadingAnchor
 }
 
 type NoteLocationPickerProps = {
@@ -15,6 +16,7 @@ type NoteLocationPickerProps = {
   onChange: (value: NoteLocationPickerValue) => void
   includeAisles?: boolean
   allowAllAisles?: boolean
+  aisleSelectionMode?: 'multiple' | 'single'
 }
 
 export function NoteLocationPicker({
@@ -24,6 +26,7 @@ export function NoteLocationPicker({
   onChange,
   includeAisles = false,
   allowAllAisles = false,
+  aisleSelectionMode = 'multiple',
 }: NoteLocationPickerProps) {
   const selectedDomain = domains.find((domain) => domain.id === value.domainId) ?? domains[0] ?? null
   const selectedSpace = selectedDomain?.spaces.find((space) => space.id === value.spaceId) ?? selectedDomain?.spaces[0] ?? null
@@ -33,6 +36,7 @@ export function NoteLocationPicker({
   const selectedNoteBodyId = selectedSubTab?.noteBodyId ?? selectedTab?.noteBodyId ?? ''
   const selectedBody = noteBodies.find((body) => body.id === selectedNoteBodyId) ?? null
   const selectedAisleIds = value.aisleIds ?? []
+  const selectedSingleAisleId = selectedAisleIds[0] ?? selectedBody?.aisles[0]?.id ?? ''
   const allAislesSelected = selectedAisleIds.length === 0
 
   const commitDomain = (domainId: string) => {
@@ -66,6 +70,7 @@ export function NoteLocationPicker({
       tabId,
       subTabId: null,
       aisleIds: [],
+      heading: undefined,
     })
   }
 
@@ -77,10 +82,19 @@ export function NoteLocationPicker({
       tabId: selectedTab?.id ?? '',
       subTabId: rawValue === '__home__' ? null : rawValue,
       aisleIds: [],
+      heading: undefined,
     })
   }
 
   const toggleAisle = (aisleId: string) => {
+    if (aisleSelectionMode === 'single') {
+      onChange({
+        ...value,
+        aisleIds: [aisleId],
+        heading: value.heading?.aisleId === aisleId ? value.heading : undefined,
+      })
+      return
+    }
     const current = new Set(selectedAisleIds)
     if (current.has(aisleId)) {
       current.delete(aisleId)
@@ -146,7 +160,7 @@ export function NoteLocationPicker({
             <button
               type="button"
               className={`note-picker-aisle-choice ${allAislesSelected ? 'is-active' : ''}`}
-              onClick={() => onChange({ ...value, aisleIds: [] })}
+              onClick={() => onChange({ ...value, aisleIds: [], heading: undefined })}
             >
               all aisles
             </button>
@@ -155,7 +169,15 @@ export function NoteLocationPicker({
             <button
               key={aisle.id}
               type="button"
-              className={`note-picker-aisle-choice ${selectedAisleIds.includes(aisle.id) ? 'is-active' : ''}`}
+              className={`note-picker-aisle-choice ${
+                aisleSelectionMode === 'single'
+                  ? selectedSingleAisleId === aisle.id
+                    ? 'is-active'
+                    : ''
+                  : selectedAisleIds.includes(aisle.id)
+                    ? 'is-active'
+                    : ''
+              }`}
               onClick={() => toggleAisle(aisle.id)}
             >
               aisle {index + 1}

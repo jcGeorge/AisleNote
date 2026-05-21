@@ -155,12 +155,37 @@ describe('sort modal rendering', () => {
       isTemplateSuggestionDraft: false,
       rows: [],
     })).toBe(false)
+    expect(shouldModalBackdropClose({
+      type: 'insert-note-reference',
+      mode: 'note',
+      insertAs: 'link',
+      source: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
+      target: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
+      noteLabel: 'Tab',
+      url: '',
+      urlLabel: '',
+    })).toBe(false)
     expect(shouldModalBackdropClose({ type: 'shortcut-menu-settings' })).toBe(true)
   })
 })
 
 describe('link modal rendering', () => {
   const source = { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null }
+
+  function createHeadingState() {
+    const state = createState()
+    state.noteBodies = [
+      {
+        id: 'body-1',
+        frontmatter: null,
+        aisles: [
+          { id: 'aisle-1', markdown: '# Alpha\n\n## Beta' },
+          { id: 'aisle-2', markdown: 'plain text\n\n## Second' },
+        ],
+      },
+    ]
+    return state
+  }
 
   it('renders the shared note link and preview controls', () => {
     const html = renderModal({
@@ -180,6 +205,7 @@ describe('link modal rendering', () => {
     expect(html).toContain('>link</button>')
     expect(html).toContain('>preview</button>')
     expect(html).toContain('value="Tab"')
+    expect(html).not.toContain('>aisle 1</button>')
   })
 
   it('renders URL fields for URL mode', () => {
@@ -225,6 +251,90 @@ describe('link modal rendering', () => {
     expect(html).not.toContain('aria-label="Note reference type"')
     expect(html).not.toContain('>url</button>')
     expect(html).not.toContain('>preview</button>')
+  })
+
+  it('renders single-aisle choices and indented headings for multi-aisle note links', () => {
+    const html = renderModal(
+      {
+        type: 'insert-note-reference',
+        mode: 'note',
+        insertAs: 'link',
+        source,
+        target: source,
+        noteLabel: 'Tab',
+        url: '',
+        urlLabel: '',
+      },
+      createHeadingState(),
+    )
+
+    expect(html).toContain('>aisle 1</button>')
+    expect(html).toContain('>aisle 2</button>')
+    expect(html).toContain('aria-label="Header target"')
+    expect(html).toContain('>note top</button>')
+    expect(html).toContain('>Alpha</button>')
+    expect(html).toContain('>Beta</button>')
+    expect(html).toContain('--note-reference-heading-indent:0.78rem')
+  })
+
+  it('hides the heading chooser when the selected aisle has no headings', () => {
+    const state = createState()
+    state.noteBodies = [
+      {
+        id: 'body-1',
+        frontmatter: null,
+        aisles: [
+          { id: 'aisle-1', markdown: 'plain text' },
+          { id: 'aisle-2', markdown: '# Hidden on other aisle' },
+        ],
+      },
+    ]
+
+    const html = renderModal(
+      {
+        type: 'insert-note-reference',
+        mode: 'note',
+        insertAs: 'link',
+        source,
+        target: { ...source, aisleIds: ['aisle-1'] },
+        noteLabel: 'Tab',
+        url: '',
+        urlLabel: '',
+      },
+      state,
+    )
+
+    expect(html).toContain('>aisle 1</button>')
+    expect(html).not.toContain('aria-label="Header target"')
+  })
+
+  it('preselects anchored headings when editing an existing note link', () => {
+    const heading = { aisleId: 'aisle-2', headingKey: 'aisle-2|h2|0|Second' }
+    const html = renderModal(
+      {
+        type: 'insert-note-reference',
+        mode: 'note',
+        modeLocked: true,
+        insertAs: 'link',
+        source,
+        target: { ...source, aisleIds: ['aisle-2'], heading },
+        noteLabel: 'Existing',
+        url: '',
+        urlLabel: '',
+        internalEdit: {
+          label: 'Existing',
+          href: '#tabs-note/body-1?domainId=domain-1&spaceId=space-1&tabId=tab-1&aisleId=aisle-2&headingKey=aisle-2%7Ch2%7C0%7CSecond',
+          target: source,
+          heading,
+        },
+      },
+      createHeadingState(),
+    )
+
+    expect(html).toContain('note-reference-locked-target')
+    expect(html).toContain('>aisle 2</button>')
+    expect(html).toMatch(/note-reference-heading-btn is-active"[^>]*>Second<\/button>/)
+    expect(html).toContain('>note top</button>')
   })
 
   it('hides unavailable mode switches when editing an existing URL link', () => {

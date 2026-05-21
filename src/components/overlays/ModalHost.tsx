@@ -1,4 +1,4 @@
-import { useEffect, useState, type DragEvent, type MouseEvent as ReactMouseEvent } from 'react'
+import { useEffect, useState, type CSSProperties, type DragEvent, type MouseEvent as ReactMouseEvent } from 'react'
 import { NoteLocationPicker, type NoteLocationPickerValue } from '../notes/NoteLocationPicker'
 import {
   NEWLINE_OPERATION_LABELS,
@@ -20,6 +20,7 @@ import {
   getNoteLocationBreadcrumbLabel,
   listNoteLocationsForBody,
 } from '../../notes/note-locations'
+import { normalizeNoteReferenceTarget, resolveNoteReferenceTarget } from '../../notes/note-reference-targets'
 import { createId } from '../../state/workspace'
 import type {
   AppState,
@@ -240,6 +241,16 @@ export function ModalHost({
     onModalChange({ ...modal, mode })
   }
 
+  const setNoteReferenceInsertKind = (insertAs: Extract<ModalState, { type: 'insert-note-reference' }>['insertAs']) => {
+    if (modal.type !== 'insert-note-reference') return
+    onModalChange({
+      ...modal,
+      insertAs,
+      editingTokenId: insertAs === 'link' ? undefined : modal.editingTokenId,
+      target: normalizeNoteReferenceTarget(state, modal.target),
+    })
+  }
+
   const setCopyModalMode = (mode: NoteCopyMode) => {
     if (modal.type !== 'copy-note') return
     onNoteCopyModeChange(mode)
@@ -259,13 +270,39 @@ export function ModalHost({
 
   const updateLinkModalTarget = (target: NoteLocationPickerValue) => {
     if (modal.type !== 'insert-note-reference' || modal.internalEdit) return
+    const normalizedTarget = normalizeNoteReferenceTarget(state, target)
     onModalChange({
       ...modal,
-      target,
+      target: normalizedTarget,
       noteLabel:
         modal.noteLabelTouched || modal.insertAs !== 'link'
           ? modal.noteLabel
-          : getDefaultNoteLinkLabel(state, modal.source, target),
+          : getDefaultNoteLinkLabel(state, modal.source, normalizedTarget),
+    })
+  }
+
+  const setNoteReferenceAisle = (aisleId: string) => {
+    if (modal.type !== 'insert-note-reference') return
+    onModalChange({
+      ...modal,
+      target: normalizeNoteReferenceTarget(state, {
+        ...modal.target,
+        aisleIds: [aisleId],
+        heading: modal.target.heading?.aisleId === aisleId ? modal.target.heading : undefined,
+      }),
+    })
+  }
+
+  const setNoteReferenceHeading = (headingKey: string | null) => {
+    if (modal.type !== 'insert-note-reference') return
+    const resolved = resolveNoteReferenceTarget(state, modal.target)
+    if (!resolved.selectedAisle) return
+    onModalChange({
+      ...modal,
+      target: {
+        ...resolved.target,
+        heading: headingKey ? { aisleId: resolved.selectedAisle.id, headingKey } : undefined,
+      },
     })
   }
 
@@ -448,6 +485,59 @@ export function ModalHost({
     )
   }
 
+  const renderLockedNoteReferenceAisles = () => {
+    if (modal.type !== 'insert-note-reference' || modal.mode !== 'note' || !modal.internalEdit) return null
+    const resolved = resolveNoteReferenceTarget(state, modal.target)
+    if (!resolved.noteBody || resolved.noteBody.aisles.length <= 1) return null
+    return (
+      <div className="note-picker-aisles">
+        {resolved.noteBody.aisles.map((aisle, index) => (
+          <button
+            key={aisle.id}
+            type="button"
+            className={`note-picker-aisle-choice ${resolved.selectedAisle?.id === aisle.id ? 'is-active' : ''}`}
+            onClick={() => setNoteReferenceAisle(aisle.id)}
+          >
+            aisle {index + 1}
+          </button>
+        ))}
+      </div>
+    )
+  }
+
+  const renderNoteReferenceHeadings = () => {
+    if (modal.type !== 'insert-note-reference' || modal.mode !== 'note') return null
+    const resolved = resolveNoteReferenceTarget(state, modal.target)
+    if (!resolved.selectedAisle || resolved.headings.length === 0) return null
+    return (
+      <div className="note-reference-heading-picker" role="group" aria-label="Header target">
+        <span className="note-reference-heading-label">header</span>
+        <div className="note-reference-heading-list">
+          <button
+            type="button"
+            className={`note-reference-heading-btn ${resolved.target.heading ? '' : 'is-active'}`}
+            onClick={() => setNoteReferenceHeading(null)}
+          >
+            note top
+          </button>
+          {resolved.headings.map((heading) => (
+            <button
+              key={heading.key}
+              type="button"
+              className={`note-reference-heading-btn ${
+                resolved.target.heading?.headingKey === heading.key ? 'is-active' : ''
+              }`}
+              style={{ '--note-reference-heading-indent': `${Math.max(0, heading.level - 1) * 0.78}rem` } as CSSProperties}
+              onClick={() => setNoteReferenceHeading(heading.key)}
+            >
+              {heading.text || `heading ${heading.level}`}
+            </button>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div
       className="delete-modal-backdrop"
@@ -595,14 +685,14 @@ export function ModalHost({
                     <button
                       type="button"
                       className={`note-reference-mode-btn ${modal.insertAs === 'link' ? 'is-active' : ''}`}
-                      onClick={() => onModalChange({ ...modal, insertAs: 'link', editingTokenId: undefined })}
+                      onClick={() => setNoteReferenceInsertKind('link')}
                     >
                       link
                     </button>
                     <button
                       type="button"
                       className={`note-reference-mode-btn ${modal.insertAs === 'context' ? 'is-active' : ''}`}
-                      onClick={() => onModalChange({ ...modal, insertAs: 'context' })}
+                      onClick={() => setNoteReferenceInsertKind('context')}
                     >
                       preview
                     </button>
@@ -618,11 +708,13 @@ export function ModalHost({
                     domains={domainsForPickers}
                     noteBodies={state.noteBodies}
                     value={modal.target}
-                    includeAisles={modal.insertAs === 'context'}
-                    allowAllAisles
+                    includeAisles
+                    aisleSelectionMode="single"
                     onChange={updateLinkModalTarget}
                   />
                 )}
+                {renderLockedNoteReferenceAisles()}
+                {renderNoteReferenceHeadings()}
                 {modal.insertAs === 'link' && (
                   <label className="settings-modal-field">
                     <span>label</span>

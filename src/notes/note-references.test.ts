@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildContextToken,
+  buildInternalNoteUrl,
+  decodeContextPayload,
+  parseContextReferences,
+  parseInternalNoteReferenceUrl,
+  parseInternalNoteUrl,
   removeContextReferencesForNoteLocationsFromAppState,
   removeContextReferencesForNoteLocationsFromMarkdown,
   removeContextTokenById,
@@ -25,6 +30,34 @@ function payload(id: string, target: NoteLocation = targetLocation()): NoteConte
 }
 
 describe('note context references', () => {
+  it('builds and parses internal note links with optional heading anchors', () => {
+    const target = {
+      ...targetLocation('tab', 'sub'),
+      heading: { aisleId: 'aisle-1', headingKey: 'aisle-1|h2|0|Subject' },
+    }
+    const href = buildInternalNoteUrl('body-1', target)
+
+    expect(parseInternalNoteReferenceUrl(href)).toEqual(target)
+    expect(parseInternalNoteUrl(href)).toEqual(targetLocation('tab', 'sub'))
+  })
+
+  it('parses old internal note links without heading anchors', () => {
+    const href = '#tabs-note/body-1?domainId=domain&spaceId=space&tabId=tab'
+
+    expect(parseInternalNoteReferenceUrl(href)).toEqual(targetLocation('tab', null))
+  })
+
+  it('round-trips context preview payload heading anchors', () => {
+    const token = buildContextToken({
+      ...payload('anchored'),
+      heading: { aisleId: 'aisle-a', headingKey: 'aisle-a|h1|0|Intro' },
+    })
+    const encoded = token.match(/\{\{tabs-context:([A-Za-z0-9_-]+)\}\}/)?.[1] ?? ''
+
+    expect(decodeContextPayload(encoded)?.heading).toEqual({ aisleId: 'aisle-a', headingKey: 'aisle-a|h1|0|Intro' })
+    expect(parseContextReferences(token)[0]?.payload.heading).toEqual({ aisleId: 'aisle-a', headingKey: 'aisle-a|h1|0|Intro' })
+  })
+
   it('removes only the matching context token id', () => {
     const first = buildContextToken(payload('first'))
     const second = buildContextToken(payload('second'))

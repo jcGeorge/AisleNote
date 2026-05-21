@@ -8,7 +8,7 @@ import type {
   MultiLineEditState,
   MultiLineInlineFormat,
   NewlineOperationId,
-  NoteLocation,
+  NoteNavigationTarget,
   ViewMode,
 } from '../types/app'
 import { getNewlineShortcutIdForEvent } from '../hotkeys/shortcuts'
@@ -31,7 +31,7 @@ import {
   type WysiwygHistoryDirection,
   type WysiwygHistoryResult,
 } from './prosemirror-utils'
-import { parseInternalNoteUrl, type InternalNoteLinkHit } from '../notes/note-references'
+import { parseInternalNoteReferenceUrl, type InternalNoteLinkHit } from '../notes/note-references'
 import { insertPastedListIntoView } from './list-paste'
 import {
   getActiveTableRange,
@@ -65,7 +65,7 @@ type UseEditorDomEventsOptions = {
   deleteActiveEditorImageNode: () => boolean
   setMenuOpen: Dispatch<SetStateAction<boolean>>
   setContextMenu: Dispatch<SetStateAction<ContextMenuState | null>>
-  navigateToNoteLocation: (location: NoteLocation) => void
+  navigateToNoteLocation: (location: NoteNavigationTarget) => void
   openExternalLink: (url: string) => boolean
   openExternalLinkEdit: (url: string, text: string, editRange: ExternalLinkRange | null) => void
   openInternalNoteLinkEdit: (edit: InternalNoteLinkHit & { range?: ExternalLinkRange | null }) => void
@@ -338,7 +338,7 @@ export function useEditorDomEvents({
       if (!(anchor instanceof HTMLAnchorElement)) return false
 
       const href = anchor.getAttribute('href') || anchor.href
-      const internalLocation = parseInternalNoteUrl(href) ?? parseInternalNoteUrl(anchor.href)
+      const internalLocation = parseInternalNoteReferenceUrl(href) ?? parseInternalNoteReferenceUrl(anchor.href)
       if (internalLocation) {
         event.preventDefault()
         event.stopPropagation()
@@ -372,7 +372,7 @@ export function useEditorDomEvents({
       event.preventDefault()
       event.stopPropagation()
       linkHandledOnPointerDown = event.type === 'pointerdown'
-      navigateToNoteLocation(internalLinkHit.target)
+      navigateToNoteLocation({ ...internalLinkHit.target, heading: internalLinkHit.heading })
       return true
     }
 
@@ -534,7 +534,7 @@ export function useEditorDomEvents({
       const anchor = target.closest('a')
       if (anchor instanceof HTMLAnchorElement) {
         const href = anchor.getAttribute('href') || anchor.href
-        const internalLocation = parseInternalNoteUrl(href) ?? parseInternalNoteUrl(anchor.href)
+        const internalLocation = parseInternalNoteReferenceUrl(href) ?? parseInternalNoteReferenceUrl(anchor.href)
         const text = anchor.textContent ?? ''
         const range = getExternalLinkEditRange(mouseEvent, href)
         if (internalLocation) {
@@ -551,6 +551,7 @@ export function useEditorDomEvents({
                   label: text,
                   href,
                   target: internalLocation,
+                  heading: internalLocation.heading,
                   from: range?.from ?? 0,
                   to: range?.to ?? 0,
                   occurrence: 0,

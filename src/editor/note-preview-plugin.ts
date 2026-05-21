@@ -1,4 +1,5 @@
 import { Editor } from '@toast-ui/editor'
+import { TextSelection } from 'prosemirror-state'
 import {
   annotationLinePlugin,
   blockIndentPlugin,
@@ -18,10 +19,11 @@ import {
   INTERNAL_NOTE_LINK_MARKDOWN_RE,
   NOTE_CONTEXT_REFERENCE_RE,
   type NoteContextReferencePayload,
-  parseInternalNoteUrl,
+  parseInternalNoteReferenceUrl,
 } from '../notes/note-references'
-import type { NoteAisle, NoteLocation } from '../types/app'
+import type { NoteAisle, NoteNavigationTarget } from '../types/app'
 import { prepareMarkdownForEditorDisplay, restoreEditorBlankParagraphs } from './editor-markdown-display'
+import { getHeadingOutlineFromDoc } from './heading-outline'
 
 const NOTE_PREVIEW_DEFAULT_HEIGHT_REM = 20
 const NOTE_PREVIEW_EXPANDED_HEIGHT_REM = 30
@@ -36,8 +38,26 @@ export type ContextPreviewData = {
 type NotePreviewPluginOptions = {
   sourceNoteBodyId: string
   getContextPreviewData: (payload: NoteContextReferencePayload, sourceNoteBodyId: string) => ContextPreviewData
-  navigateToNoteLocation: (target: NoteLocation) => void
+  navigateToNoteLocation: (target: NoteNavigationTarget) => void
   deleteContextPreview: (tokenId: string) => void
+}
+
+function scrollPreviewEditorToHeading(editor: Editor, aisleId: string, headingKey: string) {
+  const view = getWysiwygView(editor)
+  if (!view?.state?.doc) return
+  const heading = getHeadingOutlineFromDoc(aisleId, view.state.doc).find((candidate) => candidate.key === headingKey)
+  if (typeof heading?.start !== 'number') return
+  try {
+    const selectionPosition = Math.min(heading.start + 1, view.state.doc.content.size)
+    view.dispatch(
+      view.state.tr
+        .setSelection(TextSelection.create(view.state.doc, selectionPosition, selectionPosition))
+        .setMeta('addToHistory', false)
+        .scrollIntoView(),
+    )
+  } catch {
+    // Stale heading keys intentionally fall back to the top of the preview.
+  }
 }
 
 function createContextPreviewWidgetElement(
@@ -120,6 +140,9 @@ function createContextPreviewWidgetElement(
       ],
     })
     restoreEditorBlankParagraphs(editor, aisle.markdown)
+    if (payload.heading?.aisleId === aisle.id) {
+      window.requestAnimationFrame(() => scrollPreviewEditorToHeading(editor, aisle.id, payload.heading?.headingKey ?? ''))
+    }
 
     const view = getWysiwygView(editor)
     if (view?.setProps) {
@@ -178,7 +201,7 @@ function createContextPreviewWidgetElement(
   titleButton.addEventListener('click', (event) => {
     stopWidgetEvent(event)
     const data = options.getContextPreviewData(payload, options.sourceNoteBodyId)
-    if (!data.recursiveBlocked) options.navigateToNoteLocation(payload.target)
+    if (!data.recursiveBlocked) options.navigateToNoteLocation({ ...payload.target, heading: payload.heading })
   })
   minimizeButton.addEventListener('mousedown', stopWidgetEvent)
   minimizeButton.addEventListener('click', (event) => {
@@ -210,9 +233,9 @@ function createContextPreviewWidgetElement(
 
 function createInternalNoteLinkWidgetElement(
   label: string,
-  target: NoteLocation,
+  target: NoteNavigationTarget,
   href: string,
-  navigateToNoteLocation: (target: NoteLocation) => void,
+  navigateToNoteLocation: (target: NoteNavigationTarget) => void,
 ) {
   const link = document.createElement('a')
   link.className = 'internal-note-link-widget'
@@ -273,7 +296,7 @@ export function createContextPreviewPlugin(context: any, options: NotePreviewPlu
               })
               for (const match of docText.text.matchAll(INTERNAL_NOTE_LINK_MARKDOWN_RE)) {
                 if (match[0].startsWith('!')) continue
-                const target = parseInternalNoteUrl(match[2])
+                const target = parseInternalNoteReferenceUrl(match[2])
                 if (!target) continue
 
                 const startIndex = match.index ?? 0

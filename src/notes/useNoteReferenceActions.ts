@@ -8,7 +8,7 @@ import {
   getWysiwygView,
 } from '../editor/prosemirror-utils'
 import { createId } from '../state/workspace'
-import type { AppState, ContextMenuState, ModalState, NoteLocation, ToastTone } from '../types/app'
+import type { AppState, ContextMenuState, ModalState, NoteLocation, NoteNavigationTarget, ToastTone } from '../types/app'
 import { normalizeExternalWebUrl } from './external-links'
 import {
   buildContextToken,
@@ -24,6 +24,7 @@ import {
 } from './note-references'
 import { getDefaultNoteLinkLabel, getDefaultNoteReferenceTarget, getLocationInfo } from './note-locations'
 import { getAisleMarkdown } from './note-markdown'
+import { normalizeNoteReferenceTarget } from './note-reference-targets'
 
 type UseNoteReferenceActionsParams = {
   stateRef: MutableRefObject<AppState>
@@ -38,7 +39,7 @@ type UseNoteReferenceActionsParams = {
   replaceActiveEditorMarkdown: (markdown: string) => void
   commitActiveEditorMarkdownNow: (editor: Editor) => string
   saveActiveCursorBeforeNavigation: () => void
-  navigateToNoteLocation: (location: NoteLocation) => void
+  navigateToNoteLocation: (location: NoteNavigationTarget) => void
   pushToast: (message: string, tone?: ToastTone, durationMs?: number) => void
 }
 
@@ -62,17 +63,23 @@ export const useNoteReferenceActions = ({
     const latestState = stateRef.current
     const targetInfo = getLocationInfo(latestState, payload.target)
     const targetBody = latestState.noteBodies.find((body) => body.id === targetInfo.noteBodyId) ?? null
-    const selectedAisles =
-      targetBody && payload.aisleIds && payload.aisleIds.length > 0
-        ? targetBody.aisles.filter((aisle) => payload.aisleIds?.includes(aisle.id))
+    const payloadAisleIds = payload.heading?.aisleId ? [payload.heading.aisleId] : payload.aisleIds
+    const selectedAisleCandidates =
+      targetBody && payloadAisleIds && payloadAisleIds.length > 0
+        ? targetBody.aisles.filter((aisle) => payloadAisleIds.includes(aisle.id))
         : targetBody?.aisles ?? []
+    const selectedAisles = selectedAisleCandidates.length > 0 || !payload.heading ? selectedAisleCandidates : targetBody?.aisles ?? []
+    const selectedAislesWithMarkdown = selectedAisles.map((aisle) => ({
+      ...aisle,
+      markdown: getAisleMarkdown(aisle, latestState.noteAisleBodies),
+    }))
     const recursiveBlocked =
       !targetBody ||
       !targetInfo.noteBodyId ||
       targetInfo.noteBodyId === sourceNoteBodyId ||
       wouldCreateContextCycle(latestState, targetInfo.noteBodyId, sourceNoteBodyId)
-    const previewText = selectedAisles
-      .map((aisle) => getAisleMarkdown(aisle, latestState.noteAisleBodies).trim())
+    const previewText = selectedAislesWithMarkdown
+      .map((aisle) => aisle.markdown.trim())
       .filter(Boolean)
       .join('\n\n')
     const locationLabel = targetInfo.domain && targetInfo.space && targetInfo.tab
@@ -82,7 +89,7 @@ export const useNoteReferenceActions = ({
       ? `${targetInfo.tab.title} > ${targetInfo.subTab ? targetInfo.subTab.title : 'index'}`
       : targetInfo.title
 
-    return { targetInfo, targetBody, selectedAisles, recursiveBlocked, previewText, locationLabel, displayTitle }
+    return { targetInfo, targetBody, selectedAisles: selectedAislesWithMarkdown, recursiveBlocked, previewText, locationLabel, displayTitle }
   }
 
   const insertLinkIntoActiveEditor = (label: string, url: string) => {
@@ -152,7 +159,8 @@ export const useNoteReferenceActions = ({
 
   const insertNoteReference = (modalState: Extract<ModalState, { type: 'insert-note-reference' }>) => {
     const latestState = stateRef.current
-    const targetInfo = getLocationInfo(latestState, modalState.target)
+    const target = modalState.mode === 'note' ? normalizeNoteReferenceTarget(latestState, modalState.target) : modalState.target
+    const targetInfo = getLocationInfo(latestState, target)
     if (modalState.mode === 'url') {
       const url = normalizeExternalWebUrl(modalState.url)
       if (!url) {
@@ -182,8 +190,9 @@ export const useNoteReferenceActions = ({
     }
 
     if (modalState.insertAs === 'link') {
-      const href = modalState.internalEdit?.href ?? buildInternalNoteUrl(targetInfo.noteBodyId, modalState.target)
-      const label = modalState.noteLabel.trim() || getDefaultNoteLinkLabel(latestState, modalState.source, modalState.target)
+      const href = buildInternalNoteUrl(targetInfo.noteBodyId, target)
+      const previousHref = modalState.internalEdit?.href ?? href
+      const label = modalState.noteLabel.trim() || getDefaultNoteLinkLabel(latestState, modalState.source, target)
       if (modalState.internalEdit) {
         if (modalState.internalEdit.range) {
           if (!replaceLinkRangeInActiveEditor(modalState.internalEdit.range, label, href)) {
@@ -204,8 +213,8 @@ export const useNoteReferenceActions = ({
         ) {
           try {
             const currentHit = getInternalNoteLinkHitAtDocPosition(view.state.doc, modalState.internalEdit.from)
-            const from = currentHit?.href === href ? currentHit.from : modalState.internalEdit.from
-            const to = currentHit?.href === href ? currentHit.to : modalState.internalEdit.to
+            const from = currentHit?.href === previousHref ? currentHit.from : modalState.internalEdit.from
+            const to = currentHit?.href === previousHref ? currentHit.to : modalState.internalEdit.to
             view.dispatch(view.state.tr.insertText(nextSyntax, from, to).scrollIntoView())
             currentEditor.focus()
             commitActiveEditorMarkdownNow(currentEditor)
@@ -220,8 +229,9 @@ export const useNoteReferenceActions = ({
             getActiveEditorMarkdown(),
             {
               label: modalState.internalEdit.label,
-              href,
+              href: previousHref,
               target: modalState.internalEdit.target,
+              heading: modalState.internalEdit.heading,
               from: modalState.internalEdit.from ?? 0,
               to: modalState.internalEdit.to ?? 0,
               occurrence: modalState.internalEdit.occurrence ?? 0,
@@ -254,12 +264,13 @@ export const useNoteReferenceActions = ({
     const nextPayload: NoteContextReferencePayload = {
       id: modalState.editingTokenId ?? createId(),
       target: {
-        domainId: modalState.target.domainId,
-        spaceId: modalState.target.spaceId,
-        tabId: modalState.target.tabId,
-        subTabId: modalState.target.subTabId,
+        domainId: target.domainId,
+        spaceId: target.spaceId,
+        tabId: target.tabId,
+        subTabId: target.subTabId,
       },
-      aisleIds: modalState.target.aisleIds && modalState.target.aisleIds.length > 0 ? modalState.target.aisleIds : undefined,
+      aisleIds: target.aisleIds && target.aisleIds.length > 0 ? target.aisleIds : undefined,
+      heading: target.heading,
     }
     const nextSignature = getContextReferenceSignature(latestState, nextPayload)
     const activeBody = latestState.noteBodies.find((body) => body.id === activeNoteBodyId) ?? null
@@ -308,13 +319,14 @@ export const useNoteReferenceActions = ({
     saveActiveCursorBeforeNavigation()
     const source = getCurrentNoteLocation()
     const target = getDefaultNoteReferenceTarget(stateRef.current, source)
+    const normalizedTarget = normalizeNoteReferenceTarget(stateRef.current, target)
     setModal({
       type: 'insert-note-reference',
       mode: stateRef.current.ui.lastLinkInsertMode ?? 'note',
       insertAs: 'link',
       source,
-      target,
-      noteLabel: getDefaultNoteLinkLabel(stateRef.current, source, target),
+      target: normalizedTarget,
+      noteLabel: getDefaultNoteLinkLabel(stateRef.current, source, normalizedTarget),
       url: '',
       urlLabel: '',
     })
@@ -322,7 +334,7 @@ export const useNoteReferenceActions = ({
 
   const openInternalNoteLinkFromContext = () => {
     if (!contextMenu || contextMenu.type !== 'internal-note-link') return
-    const target = contextMenu.target
+    const target = { ...contextMenu.target, heading: contextMenu.heading }
     setContextMenu(null)
     navigateToNoteLocation(target)
   }

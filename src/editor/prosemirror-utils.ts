@@ -5,7 +5,7 @@ import {
   getMarkdownLinkLabel,
   INTERNAL_NOTE_LINK_MARKDOWN_RE,
   type InternalNoteLinkHit,
-  parseInternalNoteUrl,
+  parseInternalNoteReferenceUrl,
 } from '../notes/note-references'
 import {
   getLogicalEndpointForPosition,
@@ -241,8 +241,8 @@ export function getInternalNoteLinkHitAtDocPosition(doc: any, docPosition: numbe
   let occurrence = 0
   for (const match of docText.text.matchAll(INTERNAL_NOTE_LINK_MARKDOWN_RE)) {
     if (match[0].startsWith('!')) continue
-    const target = parseInternalNoteUrl(match[2])
-    if (!target) continue
+    const reference = parseInternalNoteReferenceUrl(match[2])
+    if (!reference) continue
 
     const startIndex = match.index ?? 0
     const endIndex = startIndex + match[0].length - 1
@@ -256,7 +256,13 @@ export function getInternalNoteLinkHitAtDocPosition(doc: any, docPosition: numbe
       return {
         label: getMarkdownLinkLabel(match[1]),
         href: match[2],
-        target,
+        target: {
+          domainId: reference.domainId,
+          spaceId: reference.spaceId,
+          tabId: reference.tabId,
+          subTabId: reference.subTabId,
+        },
+        heading: reference.heading,
         from,
         to: last + 1,
         occurrence,
@@ -288,7 +294,7 @@ export function getNoteMentionQueryAtSelection(view: any | null): NoteMentionQue
   if (!parent?.isTextblock || typeof parentOffset !== 'number') return null
 
   const textBeforeCursor = String(parent.textBetween?.(0, parentOffset, '\n', '\n') ?? '')
-  const match = /(^|\s)@([^\s@]*)$/.exec(textBeforeCursor)
+  const match = /(^|\s)@([^@]*)$/.exec(textBeforeCursor)
   if (!match) return null
 
   const query = match[2] ?? ''

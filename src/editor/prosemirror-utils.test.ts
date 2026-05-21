@@ -189,8 +189,12 @@ describe('note mention query detection', () => {
     })
   })
 
-  it('ignores completed mentions with whitespace after the query', () => {
-    expect(getNoteMentionQueryAtSelection(viewForText('see @parent '))).toBeNull()
+  it('allows multi-word queries before the cursor', () => {
+    expect(getNoteMentionQueryAtSelection(viewForText('see @parent note'))).toEqual({
+      from: 5,
+      to: 17,
+      query: 'parent note',
+    })
   })
 })
 

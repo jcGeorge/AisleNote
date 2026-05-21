@@ -147,6 +147,15 @@ export type NoteLocation = {
   subTabId: string | null
 }
 
+export type NoteHeadingAnchor = {
+  aisleId: string
+  headingKey: string
+}
+
+export type NoteNavigationTarget = NoteLocation & {
+  heading?: NoteHeadingAnchor
+}
+
 export type NoteCursorEndpoint = {
   blockIndex: number
   offset: number
@@ -496,6 +505,7 @@ export type InternalNoteLinkEdit = {
   label: string
   href: string
   target: NoteLocation
+  heading?: NoteHeadingAnchor
   from?: number
   to?: number
   occurrence?: number
@@ -534,6 +544,7 @@ export type ContextMenuState =
       label: string
       href: string
       target: NoteLocation
+      heading?: NoteHeadingAnchor
       from: number
       to: number
       occurrence: number
@@ -599,7 +610,7 @@ export type ModalState =
       modeLocked?: boolean
       insertAs: NoteReferenceInsertKind
       source: NoteLocation
-      target: NoteLocation & { aisleIds?: string[] }
+      target: NoteLocation & { aisleIds?: string[]; heading?: NoteHeadingAnchor }
       noteLabel: string
       noteLabelTouched?: boolean
       url: string

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Editor } from '@toast-ui/editor'
 import '@toast-ui/editor/dist/toastui-editor.css'
 import './App.css'
@@ -80,7 +80,6 @@ import {
   type RenameEntityType,
 } from './navigation/rename-draft'
 import {
-  filterNoteSearchEntries,
   getDefaultNoteLinkLabel,
   getDefaultNoteReferenceTarget,
   getLocationInfo,
@@ -88,9 +87,22 @@ import {
   listSearchableNoteLocations,
   type NoteSearchEntry,
 } from './notes/note-locations'
+import {
+  buildNoteMentionNavigatorRows,
+  createDefaultNoteMentionSelection,
+  filterNoteMentionSearchEntries,
+  getNoteMentionTarget,
+  moveNoteMentionActiveRow,
+  moveNoteMentionSelectionInRow,
+  resolveNoteMentionSelection,
+  updateNoteMentionSelectionForRow,
+  type NoteMentionNavigatorRowId,
+  type NoteMentionSelection,
+} from './notes/note-mention-picker'
 import { getLinkedAisleIdsForNoteBody } from './notes/aisle-links'
 import { openExternalWebUrl } from './notes/external-links'
 import { buildContextToken, buildInternalNoteUrl, wouldCreateContextCycle } from './notes/note-references'
+import { normalizeNoteReferenceTarget } from './notes/note-reference-targets'
 import { getAisleBodyId } from './notes/note-markdown'
 import { useNoteReferenceActions } from './notes/useNoteReferenceActions'
 import { useAppOverlayActions } from './overlays/useAppOverlayActions'
@@ -133,6 +145,7 @@ import type {
   NewlineOperationId,
   NoteCopyMode,
   NoteLocation,
+  NoteNavigationTarget,
   PendingCreatedEdit,
   TabSortMode,
   TabSortTarget,
@@ -150,23 +163,13 @@ type ShortcutMenuState = {
   operations: NewlineOperationId[]
 }
 
-type NoteMentionMenuState =
-  | {
-      type: 'search'
-      top: number
-      left: number
-      query: NoteMentionQuery
-    }
-  | {
-      type: 'action'
-      top: number
-      left: number
-      target: NoteSearchEntry
-      range: {
-        from: number
-        to: number
-      }
-    }
+type NoteMentionMenuState = {
+  top: number
+  left: number
+  query: NoteMentionQuery
+  selection: NoteMentionSelection
+  activeRow: NoteMentionNavigatorRowId
+}
 
 const TOOLBAR_LIST_COMMAND_TO_MULTILINE_OPERATION: Partial<Record<ToolbarListCommand, MultiLineListOperation>> = {
   taskList: 'task',
@@ -225,12 +228,13 @@ function App() {
   const aisleHorizontalScrollByBodyRef = useRef<Map<string, number>>(new Map())
   const pendingScrollToAisleIdRef = useRef<string | null>(null)
   const pendingFocusToAisleIdRef = useRef<string | null>(null)
+  const pendingNavigationHeadingRef = useRef<NonNullable<NoteNavigationTarget['heading']> | null>(null)
   const editorEventRootRef = useRef<HTMLElement | null>(null)
   const closeShortcutMenuRef = useRef<(options?: { restoreEditorFocus?: boolean }) => void>(() => {})
   const runShortcutOperationFromMenuRef = useRef<(operation: NewlineOperationId) => void>(() => {})
   const closeNoteMentionMenuRef = useRef<(options?: { restoreEditorFocus?: boolean }) => void>(() => {})
-  const chooseNoteMentionSearchEntryRef = useRef<(entry: NoteSearchEntry) => void>(() => {})
-  const chooseNoteMentionActionRef = useRef<(action: NoteMentionAction) => void>(() => {})
+  const chooseNoteMentionSearchEntryRef = useRef<(entry: NoteSearchEntry, action: NoteMentionAction) => void>(() => {})
+  const chooseNoteMentionTargetRef = useRef<(target: NoteLocation, action: NoteMentionAction) => void>(() => {})
   const deleteContextPreviewRef = useRef<(tokenId: string) => void>(() => {})
   const pendingCreatedEditRef = useRef<PendingCreatedEdit | null>(null)
   const editingRef = useRef<{ type: EditableEntityType; id: string } | null>(null)
@@ -647,13 +651,14 @@ function App() {
   const addAisleToActiveNote = aisleController.addAisleToActiveNote
   const applyAisleEditDraftToActiveNote = aisleController.applyAisleEditDraftToActiveNote
 
-  const navigateToNoteLocation = (location: NoteLocation) => {
+  const navigateToNoteLocation = (location: NoteNavigationTarget) => {
     saveActiveCursorBeforeNavigation()
     const targetInfo = getLocationInfo(stateRef.current, location)
     if (!targetInfo.domain || !targetInfo.space || !targetInfo.tab || (location.subTabId && !targetInfo.subTab)) {
       pushToast('that note no longer exists.', 'warning')
       return
     }
+    pendingNavigationHeadingRef.current = location.heading ?? null
 
     if (arrangeMode.active) {
       exitArrangeMode()
@@ -1097,6 +1102,23 @@ function App() {
     scrollToAisleHeading(aisleId, headingKey)
   }
 
+  useEffect(() => {
+    const pending = pendingNavigationHeadingRef.current
+    if (!pending || viewMode !== 'main' || !activeNoteBodyId) return
+    const targetAisle = activeNoteAisles.find((aisle) => aisle.id === pending.aisleId) ?? null
+    if (!targetAisle) {
+      pendingNavigationHeadingRef.current = null
+      return
+    }
+    const headingExists = getHeadingOutlineForAisle(targetAisle).some((heading) => heading.key === pending.headingKey)
+    if (!headingExists) {
+      pendingNavigationHeadingRef.current = null
+      return
+    }
+    scrollToAisleHeading(pending.aisleId, pending.headingKey)
+    pendingNavigationHeadingRef.current = null
+  }, [activeNoteAisles, activeNoteBodyId, getHeadingOutlineForAisle, scrollToAisleHeading, viewMode])
+
   usePendingNoteCursorRestore({
     viewMode,
     activeNoteBodyId,
@@ -1130,13 +1152,14 @@ function App() {
   const buildDefaultLinkModal = (mode: LinkInsertMode, selectedText = ''): Extract<ModalState, { type: 'insert-note-reference' }> => {
     const source = getCurrentNoteLocation()
     const target = getDefaultNoteReferenceTarget(stateRef.current, source)
+    const normalizedTarget = normalizeNoteReferenceTarget(stateRef.current, target)
     return {
       type: 'insert-note-reference',
       mode,
       insertAs: 'link',
       source,
-      target,
-      noteLabel: getDefaultNoteLinkLabel(stateRef.current, source, target),
+      target: normalizedTarget,
+      noteLabel: getDefaultNoteLinkLabel(stateRef.current, source, normalizedTarget),
       url: '',
       urlLabel: selectedText,
     }
@@ -1160,11 +1183,12 @@ function App() {
 
   const openInternalNoteLinkEditModal = (edit: InternalNoteLinkEdit) => {
     saveActiveCursorBeforeNavigation()
+    const target = normalizeNoteReferenceTarget(stateRef.current, { ...edit.target, heading: edit.heading })
     setModal({
       ...buildDefaultLinkModal('note', ''),
       modeLocked: true,
       insertAs: 'link',
-      target: edit.target,
+      target,
       noteLabel: edit.label,
       noteLabelTouched: true,
       internalEdit: edit,
@@ -1435,7 +1459,7 @@ function App() {
     const viewportWidth = window.innerWidth || document.documentElement.clientWidth
     const viewportHeight = window.innerHeight || document.documentElement.clientHeight
     const estimatedHeight = Math.min(380, Math.max(48, itemCount * 36 + 18))
-    const menuWidth = Math.min(420, Math.max(0, viewportWidth - 16))
+    const menuWidth = Math.min(620, Math.max(0, viewportWidth - 16))
     const view = getWysiwygView(editorRef.current)
 
     try {
@@ -1474,46 +1498,34 @@ function App() {
   }
   closeNoteMentionMenuRef.current = closeNoteMentionMenu
 
+  const getNoteMentionSearchEntries = useCallback(
+    (query: string) => filterNoteMentionSearchEntries(listSearchableNoteLocations(stateRef.current), query, activeNoteLocation),
+    [activeNoteLocation, stateRef],
+  )
+
   const refreshNoteMentionQuery = () => {
     if (viewMode !== 'main' || !editorRef.current) return
-    if (noteMentionMenu?.type === 'action') return
     const query = getNoteMentionQueryAtSelection(getWysiwygView(editorRef.current))
     if (!query) {
-      if (noteMentionMenu?.type === 'search') closeNoteMentionMenu()
+      if (noteMentionMenu) closeNoteMentionMenu()
       return
     }
-    const entries = filterNoteSearchEntries(listSearchableNoteLocations(stateRef.current), query.query)
-    setNoteMentionActiveIndex((previous) => Math.max(0, Math.min(entries.length - 1, previous)))
+    const entries = query.query.trim().length > 0 ? getNoteMentionSearchEntries(query.query) : []
+    const currentLocation = getCurrentNoteLocation()
+    const selection = noteMentionMenu
+      ? resolveNoteMentionSelection(stateRef.current, noteMentionMenu.selection)
+      : createDefaultNoteMentionSelection(stateRef.current, currentLocation)
+    setNoteMentionActiveIndex((previous) => Math.max(0, Math.min(Math.max(0, entries.length - 1), previous)))
     setNoteMentionMenu({
-      type: 'search',
-      ...getNoteMentionMenuPosition(Math.max(1, entries.length), query.to),
+      ...getNoteMentionMenuPosition(query.query.trim().length > 0 ? Math.max(1, entries.length) : 6, query.to),
       query,
+      selection,
+      activeRow: noteMentionMenu?.activeRow ?? 'space',
     })
   }
 
-  const chooseNoteMentionSearchEntry = (entry: NoteSearchEntry) => {
-    if (!noteMentionMenu || noteMentionMenu.type !== 'search') return
-    setNoteMentionActiveIndex(0)
-    setNoteMentionMenu({
-      type: 'action',
-      ...getNoteMentionMenuPosition(2, noteMentionMenu.query.to),
-      target: entry,
-      range: {
-        from: noteMentionMenu.query.from,
-        to: noteMentionMenu.query.to,
-      },
-    })
-  }
-  chooseNoteMentionSearchEntryRef.current = chooseNoteMentionSearchEntry
-
-  const chooseNoteMentionAction = (action: NoteMentionAction) => {
-    if (!noteMentionMenu || noteMentionMenu.type !== 'action') return
-    const target: NoteLocation = {
-      domainId: noteMentionMenu.target.domainId,
-      spaceId: noteMentionMenu.target.spaceId,
-      tabId: noteMentionMenu.target.tabId,
-      subTabId: noteMentionMenu.target.subTabId,
-    }
+  const chooseNoteMentionTarget = (target: NoteLocation, action: NoteMentionAction) => {
+    if (!noteMentionMenu) return
     const targetInfo = getLocationInfo(stateRef.current, target)
     if (!targetInfo.noteBodyId) {
       pushToast('choose an existing note.', 'warning')
@@ -1524,7 +1536,7 @@ function App() {
     if (action === 'link') {
       const label = getDefaultNoteLinkLabel(stateRef.current, getCurrentNoteLocation(), target)
       const href = buildInternalNoteUrl(targetInfo.noteBodyId, target)
-      if (!replaceTextRangeWithLinkInActiveEditor(noteMentionMenu.range.from, noteMentionMenu.range.to, label, href)) {
+      if (!replaceTextRangeWithLinkInActiveEditor(noteMentionMenu.query.from, noteMentionMenu.query.to, label, href)) {
         pushToast('open a note before inserting a note link.', 'warning')
       }
       closeNoteMentionMenu()
@@ -1546,12 +1558,39 @@ function App() {
       id: createId(),
       target,
     })
-    if (!replaceTextRangeInActiveEditor(noteMentionMenu.range.from, noteMentionMenu.range.to, token)) {
+    if (!replaceTextRangeInActiveEditor(noteMentionMenu.query.from, noteMentionMenu.query.to, token)) {
       pushToast('open a note before inserting a note preview.', 'warning')
     }
     closeNoteMentionMenu()
   }
-  chooseNoteMentionActionRef.current = chooseNoteMentionAction
+  chooseNoteMentionTargetRef.current = chooseNoteMentionTarget
+
+  const chooseNoteMentionSearchEntry = (entry: NoteSearchEntry, action: NoteMentionAction) => {
+    const target: NoteLocation = {
+      domainId: entry.domainId,
+      spaceId: entry.spaceId,
+      tabId: entry.tabId,
+      subTabId: entry.subTabId,
+    }
+    chooseNoteMentionTarget(target, action)
+  }
+  chooseNoteMentionSearchEntryRef.current = chooseNoteMentionSearchEntry
+
+  const setNoteMentionActiveRow = (rowId: NoteMentionNavigatorRowId) => {
+    setNoteMentionMenu((current) => (current ? { ...current, activeRow: rowId } : current))
+  }
+
+  const selectNoteMentionNavigatorItem = (rowId: NoteMentionNavigatorRowId, itemId: string) => {
+    setNoteMentionMenu((current) =>
+      current
+        ? {
+            ...current,
+            activeRow: rowId,
+            selection: updateNoteMentionSelectionForRow(stateRef.current, current.selection, rowId, itemId),
+          }
+        : current,
+    )
+  }
 
   useEffect(() => {
     if (!shortcutMenu) return
@@ -1597,14 +1636,11 @@ function App() {
   useEffect(() => {
     if (!noteMentionMenu) return
 
-    const getMenuItemCount = () => {
-      if (noteMentionMenu.type === 'action') return 2
-      return filterNoteSearchEntries(listSearchableNoteLocations(stateRef.current), noteMentionMenu.query.query).length
-    }
-
     const handleKeyDown = (event: KeyboardEvent) => {
-      const itemCount = getMenuItemCount()
-      const isActionNumber = noteMentionMenu.type === 'action' && (event.key === '1' || event.key === '2')
+      const searchMode = noteMentionMenu.query.query.trim().length > 0
+      const itemCount = searchMode ? getNoteMentionSearchEntries(noteMentionMenu.query.query).length : 0
+      const isPreviewShortcut = event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey
+      const isNavigatorHorizontalKey = !searchMode && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')
       const isHandledKey =
         event.key === 'Escape' ||
         event.key === 'ArrowUp' ||
@@ -1613,13 +1649,47 @@ function App() {
         event.key === 'End' ||
         event.key === 'Enter' ||
         event.key === 'Tab' ||
-        isActionNumber
-      if (!isHandledKey || event.metaKey || event.ctrlKey || event.altKey || (event.shiftKey && event.key !== 'Tab')) return
+        isNavigatorHorizontalKey
+      if (!isHandledKey || event.altKey || ((event.metaKey || event.ctrlKey) && !isPreviewShortcut) || (event.shiftKey && event.key !== 'Tab')) return
       event.preventDefault()
       event.stopPropagation()
 
       if (event.key === 'Escape') {
         closeNoteMentionMenuRef.current({ restoreEditorFocus: true })
+        return
+      }
+
+      if (!searchMode) {
+        if (event.key === 'ArrowDown') {
+          setNoteMentionMenu((current) =>
+            current ? { ...current, activeRow: moveNoteMentionActiveRow(current.activeRow, 1) } : current,
+          )
+          return
+        }
+        if (event.key === 'ArrowUp') {
+          setNoteMentionMenu((current) =>
+            current ? { ...current, activeRow: moveNoteMentionActiveRow(current.activeRow, -1) } : current,
+          )
+          return
+        }
+        if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+          const delta = event.key === 'ArrowRight' ? 1 : -1
+          setNoteMentionMenu((current) =>
+            current
+              ? {
+                  ...current,
+                  selection: moveNoteMentionSelectionInRow(stateRef.current, current.selection, current.activeRow, delta),
+                }
+              : current,
+          )
+          return
+        }
+        if (event.key === 'Home' || event.key === 'End') {
+          setNoteMentionMenu((current) => (current ? { ...current, activeRow: event.key === 'Home' ? 'domain' : 'note' } : current))
+          return
+        }
+        const action: NoteMentionAction = isPreviewShortcut ? 'context' : 'link'
+        chooseNoteMentionTargetRef.current(getNoteMentionTarget(noteMentionMenu.selection), action)
         return
       }
 
@@ -1642,14 +1712,9 @@ function App() {
         return
       }
 
-      const runIndex = isActionNumber ? Number(event.key) - 1 : normalizedActiveIndex
-      if (noteMentionMenu.type === 'search') {
-        const entries = filterNoteSearchEntries(listSearchableNoteLocations(stateRef.current), noteMentionMenu.query.query)
-        const entry = entries[runIndex]
-        if (entry) chooseNoteMentionSearchEntryRef.current(entry)
-        return
-      }
-      chooseNoteMentionActionRef.current(runIndex === 1 ? 'context' : 'link')
+      const entries = getNoteMentionSearchEntries(noteMentionMenu.query.query)
+      const entry = entries[normalizedActiveIndex]
+      if (entry) chooseNoteMentionSearchEntryRef.current(entry, isPreviewShortcut ? 'context' : 'link')
     }
 
     const handlePointerDown = (event: PointerEvent) => {
@@ -1664,7 +1729,7 @@ function App() {
       document.removeEventListener('keydown', handleKeyDown, true)
       document.removeEventListener('pointerdown', handlePointerDown, true)
     }
-  }, [noteMentionMenu, noteMentionActiveIndex, stateRef])
+  }, [getNoteMentionSearchEntries, noteMentionMenu, noteMentionActiveIndex, stateRef])
 
   deleteContextPreviewRef.current = deleteContextPreview
 
@@ -2096,6 +2161,16 @@ function App() {
     })
   const activeTableOfContentsPanels =
     tableOfContentsPanels?.noteBodyId === activeNoteBodyId ? tableOfContentsPanels : null
+  const noteMentionNavigatorRows = noteMentionMenu
+    ? buildNoteMentionNavigatorRows(state, noteMentionMenu.selection)
+    : []
+  const noteMentionSearchEntries = noteMentionMenu?.query.query.trim()
+    ? filterNoteMentionSearchEntries(listSearchableNoteLocations(state), noteMentionMenu.query.query, getCurrentNoteLocation())
+    : []
+  const noteMentionSearchActiveIndex = Math.max(
+    0,
+    Math.min(Math.max(0, noteMentionSearchEntries.length - 1), noteMentionActiveIndex),
+  )
 
   return (
     <main
@@ -2475,32 +2550,21 @@ function App() {
         />
       )}
 
-      {noteMentionMenu?.type === 'search' && (
+      {noteMentionMenu && (
         <NoteMentionMenu
-          type="search"
           top={noteMentionMenu.top}
           left={noteMentionMenu.left}
-          entries={filterNoteSearchEntries(listSearchableNoteLocations(state), noteMentionMenu.query.query)}
-          activeIndex={Math.max(
-            0,
-            Math.min(
-              filterNoteSearchEntries(listSearchableNoteLocations(state), noteMentionMenu.query.query).length - 1,
-              noteMentionActiveIndex,
-            ),
-          )}
-          onHighlight={setNoteMentionActiveIndex}
-          onChoose={chooseNoteMentionSearchEntry}
-        />
-      )}
-
-      {noteMentionMenu?.type === 'action' && (
-        <NoteMentionMenu
-          type="action"
-          top={noteMentionMenu.top}
-          left={noteMentionMenu.left}
-          activeIndex={Math.max(0, Math.min(1, noteMentionActiveIndex))}
-          onHighlight={setNoteMentionActiveIndex}
-          onChoose={chooseNoteMentionAction}
+          query={noteMentionMenu.query.query}
+          navigatorRows={noteMentionNavigatorRows}
+          activeRow={noteMentionMenu.activeRow}
+          searchEntries={noteMentionSearchEntries}
+          activeSearchIndex={noteMentionSearchActiveIndex}
+          modifierLabel={isMacPlatform ? 'Cmd' : 'Ctrl'}
+          onActiveRowChange={setNoteMentionActiveRow}
+          onSelectNavigatorItem={selectNoteMentionNavigatorItem}
+          onHighlightSearch={setNoteMentionActiveIndex}
+          onChooseSearchEntry={chooseNoteMentionSearchEntry}
+          onChooseTarget={chooseNoteMentionTarget}
         />
       )}
 

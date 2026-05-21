@@ -939,6 +939,161 @@
   font-size: 0.86em;
 }
 
+.note-mention-menu {
+  position: fixed;
+  z-index: 3400;
+  width: min(38rem, calc(100vw - 1rem));
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.55rem;
+  border: 1px solid var(--context-menu-border);
+  border-radius: 0.48rem;
+  background: var(--context-menu-bg);
+  color: var(--context-menu-item-text);
+  box-shadow: var(--context-menu-shadow);
+  font-size: var(--ui-font-body);
+}
+
+.note-mention-navigator {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.note-mention-nav-row {
+  display: grid;
+  grid-template-columns: 6.25rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.1rem;
+}
+
+.note-mention-row-label {
+  border: 0;
+  background: transparent;
+  color: var(--app-text-subtle);
+  font: inherit;
+  font-size: 0.76em;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-align: right;
+  text-transform: lowercase;
+}
+
+.note-mention-nav-row.is-active-row .note-mention-row-label {
+  color: var(--context-menu-item-text);
+}
+
+.note-mention-row-items {
+  min-width: 0;
+  display: flex;
+  gap: 0.35rem;
+  overflow: auto hidden;
+  padding-bottom: 0.05rem;
+}
+
+.note-mention-nav-chip {
+  flex: 0 0 auto;
+  max-width: 11rem;
+  min-height: 1.85rem;
+  border: 1px solid var(--stage-action-border);
+  border-radius: 0.35rem;
+  background: var(--stage-action-bg);
+  color: var(--stage-action-text);
+  padding: 0.24rem 0.55rem;
+  font: inherit;
+  font-size: 0.84em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-mention-nav-row.is-active-row .note-mention-nav-chip.is-selected,
+.note-mention-nav-chip:hover,
+.note-mention-nav-chip.is-selected {
+  border-color: var(--stage-action-selected-border);
+  background: var(--stage-action-selected-bg);
+  color: var(--stage-action-selected-text);
+}
+
+.note-mention-search-results {
+  display: grid;
+  gap: 0.28rem;
+  max-height: min(20rem, 52vh);
+  overflow: auto;
+}
+
+.note-mention-result-card {
+  width: 100%;
+  min-width: 0;
+  min-height: 2.32rem;
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.8fr) minmax(0, 1.2fr);
+  align-items: center;
+  gap: 0.7rem;
+  border: 0;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: var(--context-menu-item-text);
+  padding: 0.38rem 0.5rem;
+  font: inherit;
+  text-align: left;
+}
+
+.note-mention-result-card:hover,
+.note-mention-result-card.is-active {
+  background: var(--context-menu-item-hover-bg);
+}
+
+.note-mention-result-title,
+.note-mention-result-breadcrumb {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-mention-result-title {
+  font-size: 0.9em;
+  font-weight: 700;
+}
+
+.note-mention-result-breadcrumb {
+  color: var(--app-text-subtle);
+  font-size: 0.78em;
+}
+
+.note-mention-empty {
+  padding: 0.6rem;
+  color: var(--app-text-subtle);
+  font-size: 0.86em;
+}
+
+.note-mention-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  border-top: 1px solid var(--context-menu-border);
+  padding-top: 0.45rem;
+}
+
+.note-mention-action-btn {
+  border: 1px solid var(--stage-action-border);
+  border-radius: 0.35rem;
+  background: var(--stage-action-bg);
+  color: var(--stage-action-text);
+  padding: 0.25rem 0.52rem;
+  font: inherit;
+  font-size: 0.78em;
+  font-weight: 700;
+}
+
+.note-mention-action-btn:hover,
+.note-mention-action-btn.is-primary {
+  border-color: var(--stage-action-selected-border);
+  background: var(--stage-action-selected-bg);
+  color: var(--stage-action-selected-text);
+}
+
 .editor-lock {
   position: absolute;
   inset: 0.25rem var(--editor-shell-padding-inline, 0.3125rem) 0 var(--editor-shell-padding-inline, 0.3125rem);

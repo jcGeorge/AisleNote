@@ -1,4 +1,4 @@
-import type { AppState, NoteLocation } from '../types/app'
+import type { AppState, NoteHeadingAnchor, NoteLocation, NoteNavigationTarget } from '../types/app'
 import { buildNoteLocationKey, getLocationInfo } from './note-locations'
 import { getAisleMarkdown } from './note-markdown'
 import { syncNoteBodyAislesInState } from './note-state'
@@ -7,6 +7,7 @@ export type NoteContextReferencePayload = {
   id: string
   target: NoteLocation
   aisleIds?: string[]
+  heading?: NoteHeadingAnchor
 }
 
 export type ParsedNoteContextReference = {
@@ -18,6 +19,7 @@ export type InternalNoteLinkHit = {
   label: string
   href: string
   target: NoteLocation
+  heading?: NoteHeadingAnchor
   from: number
   to: number
   occurrence: number
@@ -55,6 +57,11 @@ export function decodeContextPayload(encoded: string): NoteContextReferencePaylo
     ) {
       return null
     }
+    const heading = parsed.heading as Partial<NoteHeadingAnchor> | undefined
+    const normalizedHeading =
+      heading && typeof heading.aisleId === 'string' && typeof heading.headingKey === 'string'
+        ? { aisleId: heading.aisleId, headingKey: heading.headingKey }
+        : undefined
     return {
       id: parsed.id,
       target: {
@@ -64,6 +71,7 @@ export function decodeContextPayload(encoded: string): NoteContextReferencePaylo
         subTabId: target.subTabId,
       },
       aisleIds: Array.isArray(parsed.aisleIds) ? parsed.aisleIds.filter((aisleId): aisleId is string => typeof aisleId === 'string') : undefined,
+      ...(normalizedHeading ? { heading: normalizedHeading } : {}),
     }
   } catch {
     return null
@@ -135,30 +143,38 @@ export function removeContextReferencesForNoteLocationsFromAppState(
   return nextState
 }
 
-export function buildInternalNoteUrl(noteBodyId: string, target: NoteLocation): string {
+export function buildInternalNoteUrl(noteBodyId: string, target: NoteNavigationTarget): string {
   const params = new URLSearchParams({
     domainId: target.domainId,
     spaceId: target.spaceId,
     tabId: target.tabId,
   })
   if (target.subTabId) params.set('subTabId', target.subTabId)
+  if (target.heading?.aisleId && target.heading.headingKey) {
+    params.set('aisleId', target.heading.aisleId)
+    params.set('headingKey', target.heading.headingKey)
+  }
   return `${INTERNAL_NOTE_LINK_HASH_PREFIX}/${encodeURIComponent(noteBodyId)}?${params.toString()}`
 }
 
-function parseNoteLocationParams(params: URLSearchParams): NoteLocation | null {
+function parseNoteReferenceParams(params: URLSearchParams): NoteNavigationTarget | null {
   const domainId = params.get('domainId')
   const spaceId = params.get('spaceId')
   const tabId = params.get('tabId')
   if (!domainId || !spaceId || !tabId) return null
-  return {
+  const aisleId = params.get('aisleId')
+  const headingKey = params.get('headingKey')
+  const target: NoteNavigationTarget = {
     domainId,
     spaceId,
     tabId,
     subTabId: params.get('subTabId'),
   }
+  if (aisleId && headingKey) target.heading = { aisleId, headingKey }
+  return target
 }
 
-export function parseInternalNoteUrl(rawUrl: string): NoteLocation | null {
+export function parseInternalNoteReferenceUrl(rawUrl: string): NoteNavigationTarget | null {
   const cleanedUrl = rawUrl.trim().replace(/&amp;/g, '&')
   if (!cleanedUrl) return null
   const hashIndex = cleanedUrl.indexOf(INTERNAL_NOTE_LINK_HASH_PREFIX)
@@ -166,7 +182,7 @@ export function parseInternalNoteUrl(rawUrl: string): NoteLocation | null {
     const hash = cleanedUrl.slice(hashIndex)
     const queryIndex = hash.indexOf('?')
     if (queryIndex < 0) return null
-    return parseNoteLocationParams(new URLSearchParams(hash.slice(queryIndex + 1)))
+    return parseNoteReferenceParams(new URLSearchParams(hash.slice(queryIndex + 1)))
   }
 
   try {
@@ -174,13 +190,25 @@ export function parseInternalNoteUrl(rawUrl: string): NoteLocation | null {
     if (url.hash.startsWith(INTERNAL_NOTE_LINK_HASH_PREFIX)) {
       const queryIndex = url.hash.indexOf('?')
       if (queryIndex < 0) return null
-      return parseNoteLocationParams(new URLSearchParams(url.hash.slice(queryIndex + 1)))
+      return parseNoteReferenceParams(new URLSearchParams(url.hash.slice(queryIndex + 1)))
     }
     if (`${url.protocol}//${url.hostname}` !== INTERNAL_NOTE_LINK_SCHEME) return null
-    return parseNoteLocationParams(url.searchParams)
+    return parseNoteReferenceParams(url.searchParams)
   } catch {
     return null
   }
+}
+
+export function parseInternalNoteUrl(rawUrl: string): NoteLocation | null {
+  const reference = parseInternalNoteReferenceUrl(rawUrl)
+  return reference
+    ? {
+        domainId: reference.domainId,
+        spaceId: reference.spaceId,
+        tabId: reference.tabId,
+        subTabId: reference.subTabId,
+      }
+    : null
 }
 
 export function getMarkdownLinkLabel(label: string): string {
@@ -205,9 +233,13 @@ export function normalizeAisleSelection(aisleIds: string[] | undefined): string 
   return aisleIds && aisleIds.length > 0 ? [...aisleIds].sort().join(',') : '__all__'
 }
 
+export function normalizeHeadingAnchor(heading: NoteHeadingAnchor | undefined): string {
+  return heading?.aisleId && heading.headingKey ? `${heading.aisleId}::${heading.headingKey}` : '__top__'
+}
+
 export function getContextReferenceSignature(sourceState: AppState, payload: NoteContextReferencePayload): string {
   const targetBodyId = getLocationInfo(sourceState, payload.target).noteBodyId
-  return `${targetBodyId || buildNoteLocationKey(payload.target)}::${normalizeAisleSelection(payload.aisleIds)}`
+  return `${targetBodyId || buildNoteLocationKey(payload.target)}::${normalizeAisleSelection(payload.aisleIds)}::${normalizeHeadingAnchor(payload.heading)}`
 }
 
 export function wouldCreateContextCycle(

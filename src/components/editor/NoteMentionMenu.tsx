@@ -1,95 +1,149 @@
-import { useEffect, useRef } from 'react'
+import type { NoteMentionNavigatorRow, NoteMentionNavigatorRowId } from '../../notes/note-mention-picker'
 import type { NoteSearchEntry } from '../../notes/note-locations'
+import type { NoteLocation } from '../../types/app'
 
 type NoteMentionAction = 'link' | 'context'
 
-type NoteMentionMenuProps =
-  | {
-      type: 'search'
-      top: number
-      left: number
-      entries: NoteSearchEntry[]
-      activeIndex: number
-      onHighlight: (index: number) => void
-      onChoose: (entry: NoteSearchEntry) => void
-    }
-  | {
-      type: 'action'
-      top: number
-      left: number
-      activeIndex: number
-      onHighlight: (index: number) => void
-      onChoose: (action: NoteMentionAction) => void
-    }
+type NoteMentionMenuProps = {
+  top: number
+  left: number
+  query: string
+  navigatorRows: NoteMentionNavigatorRow[]
+  activeRow: NoteMentionNavigatorRowId
+  searchEntries: NoteSearchEntry[]
+  activeSearchIndex: number
+  modifierLabel: string
+  onActiveRowChange: (rowId: NoteMentionNavigatorRowId) => void
+  onSelectNavigatorItem: (rowId: NoteMentionNavigatorRowId, itemId: string) => void
+  onHighlightSearch: (index: number) => void
+  onChooseSearchEntry: (entry: NoteSearchEntry, action: NoteMentionAction) => void
+  onChooseTarget: (target: NoteLocation, action: NoteMentionAction) => void
+}
 
-const ACTIONS: Array<{ action: NoteMentionAction; label: string }> = [
-  { action: 'link', label: 'link' },
-  { action: 'context', label: 'preview' },
-]
+const HOME_NOTE_ID = '__home__'
 
-function getShortcutLabel(index: number): string {
-  return index === 9 ? '0' : String(index + 1)
+function getActiveNavigatorTarget(rows: NoteMentionNavigatorRow[]): NoteLocation | null {
+  const noteRow = rows.find((row) => row.id === 'note')
+  return noteRow?.items.find((item) => item.id === noteRow.selectedId)?.target ?? null
+}
+
+function NoteMentionActions({
+  modifierLabel,
+  onLink,
+  onPreview,
+}: {
+  modifierLabel: string
+  onLink: () => void
+  onPreview: () => void
+}) {
+  return (
+    <div className="note-mention-actions">
+      <button type="button" className="note-mention-action-btn is-primary" onClick={onLink}>
+        Enter link
+      </button>
+      <button type="button" className="note-mention-action-btn" onClick={onPreview}>
+        {modifierLabel}+Enter preview
+      </button>
+    </div>
+  )
 }
 
 export function NoteMentionMenu(props: NoteMentionMenuProps) {
-  const menuRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    menuRef.current?.focus({ preventScroll: true })
-  }, [])
+  const trimmedQuery = props.query.trim()
+  const searchMode = trimmedQuery.length > 0
+  const activeEntry = props.searchEntries[Math.max(0, Math.min(props.searchEntries.length - 1, props.activeSearchIndex))]
+  const activeNavigatorTarget = getActiveNavigatorTarget(props.navigatorRows)
 
   return (
     <div
-      ref={menuRef}
-      className="shortcut-menu note-mention-menu"
+      className={`note-mention-menu ${searchMode ? 'is-search' : 'is-navigator'}`}
       style={{ top: `${props.top}px`, left: `${props.left}px` }}
       role="menu"
-      aria-label={props.type === 'search' ? 'Note search' : 'Note reference type'}
-      tabIndex={-1}
-      onPointerDown={(event) => event.stopPropagation()}
+      aria-label={searchMode ? 'Note search' : 'Note navigator'}
+      onPointerDown={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+      }}
     >
-      {props.type === 'search' ? (
-        props.entries.length > 0 ? (
-          props.entries.map((entry, index) => (
-            <button
-              key={`${entry.domainId}:${entry.spaceId}:${entry.tabId}:${entry.subTabId ?? 'home'}`}
-              type="button"
-              className={`shortcut-menu-item note-mention-result${index === props.activeIndex ? ' is-active' : ''}`}
-              role="menuitem"
-              aria-current={index === props.activeIndex ? 'true' : undefined}
-              onMouseEnter={() => props.onHighlight(index)}
-              onClick={(event) => {
-                event.preventDefault()
-                event.stopPropagation()
-                props.onChoose(entry)
-              }}
-            >
-              <span>{entry.label}</span>
-            </button>
-          ))
-        ) : (
-          <div className="shortcut-menu-empty">no matching notes</div>
-        )
+      {searchMode ? (
+        <div className="note-mention-search-results">
+          {props.searchEntries.length > 0 ? (
+            props.searchEntries.map((entry, index) => (
+              <button
+                key={`${entry.domainId}:${entry.spaceId}:${entry.tabId}:${entry.subTabId ?? 'home'}`}
+                type="button"
+                className={`note-mention-result-card${index === props.activeSearchIndex ? ' is-active' : ''}`}
+                role="menuitem"
+                aria-current={index === props.activeSearchIndex ? 'true' : undefined}
+                onMouseEnter={() => props.onHighlightSearch(index)}
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  props.onChooseSearchEntry(entry, 'link')
+                }}
+              >
+                <span className="note-mention-result-title">{entry.noteName}</span>
+                <span className="note-mention-result-breadcrumb">
+                  {entry.domainName} / {entry.spaceName} / {entry.parentName}
+                  {entry.subTabId ? '' : ' / home'}
+                </span>
+              </button>
+            ))
+          ) : (
+            <div className="note-mention-empty">no matching notes</div>
+          )}
+        </div>
       ) : (
-        ACTIONS.map((item, index) => (
-          <button
-            key={item.action}
-            type="button"
-            className={`shortcut-menu-item${index === props.activeIndex ? ' is-active' : ''}`}
-            role="menuitem"
-            aria-current={index === props.activeIndex ? 'true' : undefined}
-            onMouseEnter={() => props.onHighlight(index)}
-            onClick={(event) => {
-              event.preventDefault()
-              event.stopPropagation()
-              props.onChoose(item.action)
-            }}
-          >
-            <span className="shortcut-menu-key">{getShortcutLabel(index)}</span>
-            <span>{item.label}</span>
-          </button>
-        ))
+        <div className="note-mention-navigator">
+          {props.navigatorRows.map((row) => (
+            <section
+              key={row.id}
+              className={`note-mention-nav-row${row.id === props.activeRow ? ' is-active-row' : ''}`}
+              aria-label={row.label}
+            >
+              <button
+                type="button"
+                className="note-mention-row-label"
+                onClick={() => props.onActiveRowChange(row.id)}
+              >
+                {row.label}
+              </button>
+              <div className="note-mention-row-items">
+                {row.items.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`note-mention-nav-chip${item.id === row.selectedId ? ' is-selected' : ''}`}
+                    role="menuitem"
+                    aria-current={item.id === row.selectedId ? 'true' : undefined}
+                    onMouseEnter={() => props.onActiveRowChange(row.id)}
+                    onClick={() => props.onSelectNavigatorItem(row.id, item.id)}
+                  >
+                    {row.id === 'note' && item.id === HOME_NOTE_ID ? 'home' : item.label}
+                  </button>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
       )}
+      <NoteMentionActions
+        modifierLabel={props.modifierLabel}
+        onLink={() => {
+          if (searchMode && activeEntry) {
+            props.onChooseSearchEntry(activeEntry, 'link')
+            return
+          }
+          if (activeNavigatorTarget) props.onChooseTarget(activeNavigatorTarget, 'link')
+        }}
+        onPreview={() => {
+          if (searchMode && activeEntry) {
+            props.onChooseSearchEntry(activeEntry, 'context')
+            return
+          }
+          if (activeNavigatorTarget) props.onChooseTarget(activeNavigatorTarget, 'context')
+        }}
+      />
     </div>
   )
 }
