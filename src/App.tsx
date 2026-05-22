@@ -70,6 +70,12 @@ import { StageManagerView } from './components/stage-manager/StageManagerView'
 import { TrashHomeNote } from './components/trash/TrashHomeNote'
 import { applyListToolbarCommand, type ToolbarListCommand } from './editor/list-marker-commands'
 import { applyEditorNewlineOperation } from './editor/newline-operations'
+import {
+  finishEditorOperation,
+  insertEditorTextOperation,
+  runEditorCommandOperation,
+  type EditorOperationRuntime,
+} from './editor/editor-operation-runner'
 import { MAX_AISLE_WARNING_MESSAGE } from './editor/aisle-edit-draft'
 import { getAisleIdFromAisleEditorKey } from './editor/aisle-editor'
 import { shouldFocusAislePointerActivation } from './editor/aisle-activation'
@@ -1714,13 +1720,15 @@ function App() {
   const tableControls = tableControlsController.tableControls
   const runTableControlOperation = tableControlsController.runTableControlOperation
 
+  const editorOperationRuntime: EditorOperationRuntime = {
+    editorRef,
+    commitActiveEditorMarkdownNow,
+    syncToolbarFormatState,
+    pushToast,
+  }
+
   const scheduleActiveEditorCommandCommit = (currentEditor: Editor) => {
-    window.setTimeout(() => {
-      if (editorRef.current === currentEditor) {
-        commitActiveEditorMarkdownNow(currentEditor)
-        syncToolbarFormatState()
-      }
-    }, 0)
+    finishEditorOperation(editorOperationRuntime, currentEditor, { commitMode: 'deferred', syncToolbar: true })
   }
 
   const runActiveEditorFormatCommand = (format: MultiLineInlineFormat) => {
@@ -1733,9 +1741,10 @@ function App() {
       }
       return true
     }
-    getCommandCapableEditor(currentEditor).exec(format)
-    scheduleActiveEditorCommandCommit(currentEditor)
-    return true
+    return runEditorCommandOperation(editorOperationRuntime, format, undefined, {
+      commitMode: 'deferred',
+      syncToolbar: true,
+    }).handled
   }
 
   const runActiveEditorCommand = (command: string, payload?: Record<string, unknown>) => {
@@ -1787,7 +1796,10 @@ function App() {
         applyListToolbarCommand(currentEditor, listCommand)
       }
     } else {
-      getCommandCapableEditor(currentEditor).exec(command, payload)
+      runEditorCommandOperation(editorOperationRuntime, command, payload, {
+        commitMode: 'none',
+        syncToolbar: false,
+      })
     }
     scheduleActiveEditorCommandCommit(currentEditor)
     return true
@@ -1826,9 +1838,7 @@ function App() {
 
     const pasteText = (text: string) => {
       if (!text) return
-      currentEditor.focus()
-      getCommandCapableEditor(currentEditor).insertText(text)
-      commitActiveEditorMarkdownNow(currentEditor)
+      insertEditorTextOperation(editorOperationRuntime, text)
     }
 
     const nativeHandled = action === 'paste' ? document.execCommand('paste') : false
@@ -1881,12 +1891,11 @@ function App() {
         }
         currentEditor.focus()
         if (file.type.startsWith('image/')) {
-          getCommandCapableEditor(currentEditor).exec('addImage', { imageUrl: assetUrl, altText: file.name })
+          runEditorCommandOperation(editorOperationRuntime, 'addImage', { imageUrl: assetUrl, altText: file.name })
         } else {
           const label = escapeMarkdownLinkLabel(file.name.trim() || 'attachment')
-          getCommandCapableEditor(currentEditor).insertText(`[${label}](${assetUrl})`)
+          insertEditorTextOperation(editorOperationRuntime, `[${label}](${assetUrl})`)
         }
-        commitActiveEditorMarkdownNow(currentEditor)
       })
     }
     input.click()
@@ -2059,7 +2068,7 @@ function App() {
       },
     })
     if (result === 'applied') {
-      scheduleActiveEditorCommandCommit(currentEditor)
+      finishEditorOperation(editorOperationRuntime, currentEditor, { commitMode: 'deferred', syncToolbar: true })
     }
     return result
   }
@@ -2092,8 +2101,7 @@ function App() {
     const multiLineOperation = getMultiLineListOperationForNewlineOperation(operation)
     if (operation === 'blockIndent') {
       if (tryApplyBlockIndentOperation()) {
-        commitActiveEditorMarkdownNow(currentEditor)
-        syncToolbarFormatState()
+        finishEditorOperation(editorOperationRuntime, currentEditor, { syncToolbar: true })
       }
       return true
     }
@@ -2103,15 +2111,13 @@ function App() {
           ? tryApplyBlockQuoteOperation()
           : tryApplyMultiLineCodeBlockOperation()
       if (handled) {
-        commitActiveEditorMarkdownNow(currentEditor)
-        syncToolbarFormatState()
+        finishEditorOperation(editorOperationRuntime, currentEditor, { syncToolbar: true })
       }
       return true
     }
     if (multiLineEditRef.current && multiLineOperation) {
       if (tryApplyMultiLineListOperation(multiLineOperation)) {
-        commitActiveEditorMarkdownNow(currentEditor)
-        syncToolbarFormatState()
+        finishEditorOperation(editorOperationRuntime, currentEditor, { syncToolbar: true })
       }
       return true
     }
@@ -2120,8 +2126,7 @@ function App() {
     const result = applyEditorNewlineOperation(currentEditor, operation)
     if (!result.handled) return false
 
-    commitActiveEditorMarkdownNow(currentEditor)
-    syncToolbarFormatState()
+    finishEditorOperation(editorOperationRuntime, currentEditor, { syncToolbar: true })
     if (operation === 'aisle') {
       closeImageTools()
       addAisleToActiveNote(result.aisleMarkdown ?? '', { beforeSnapshot: beforeAisleSnapshot })

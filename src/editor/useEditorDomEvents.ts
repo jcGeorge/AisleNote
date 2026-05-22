@@ -13,6 +13,11 @@ import type {
 } from '../types/app'
 import { getNewlineShortcutIdForEvent } from '../hotkeys/shortcuts'
 import { runEditorHistoryCommand } from './editor-command'
+import {
+  getMultiLineBeforeInputEdit,
+  resolveEditorBeforeInputIntent,
+  resolveEditorKeyDownIntent,
+} from './editor-input-intents'
 import { applyParagraphSpaceShortcut, getMultilineSelectionShortcutDirection } from './editor-setup'
 import {
   applySingleCursorPageMovement,
@@ -143,9 +148,7 @@ export function isEditorToolbarInteractionTarget(target: Element | null): boolea
 }
 
 export function getMultiLineDeleteInputForBeforeInputType(inputType: string): MultiLineEditInput | null {
-  if (inputType === 'deleteContentForward') return { type: 'delete' }
-  if (inputType === 'deleteContentBackward') return { type: 'backspace' }
-  return null
+  return getMultiLineBeforeInputEdit(inputType)
 }
 
 export function getEditorPageMovementForEvent(event: KeyboardEvent): EditorPageMovement | null {
@@ -689,186 +692,177 @@ export function useEditorDomEvents({
           ? getEditorPageMovementForEvent(keyboardEvent)
           : null
       const toolbarFormatShortcut = isTextInputTarget ? null : getToolbarFormatShortcut(keyboardEvent)
-      if (toolbarFormatShortcut) {
-        if (onRunFormatCommand(toolbarFormatShortcut)) {
+      const editorHistoryDirection = getEditorHistoryDirection(keyboardEvent)
+      const newlineShortcutId = !isTextInputTarget ? getNewlineShortcutIdForEvent(keyboardEvent, isMacPlatform) : null
+      const newlineOperation = newlineShortcutId ? hotkeys.newlineShortcuts.shortcuts[newlineShortcutId] : null
+      const tableBoundaryDirection = isTextInputTarget ? null : getTableBoundaryCaretDirectionForEvent(keyboardEvent)
+      const inputIntent = resolveEditorKeyDownIntent({
+        key: keyboardEvent.key,
+        altKey: keyboardEvent.altKey,
+        ctrlKey: keyboardEvent.ctrlKey,
+        metaKey: keyboardEvent.metaKey,
+        shiftKey: keyboardEvent.shiftKey,
+        isTextInputTarget,
+        hasActiveImage: Boolean(activeImageRef.current),
+        hasMultiLineEdit: Boolean(multiLineEditRef.current),
+        toolbarFormatShortcut,
+        editorHistoryDirection,
+        newlineOperation,
+        tableBoundaryDirection,
+        multiLineSelectionDirection: getMultilineSelectionShortcutDirection(keyboardEvent),
+        pageMovement,
+      })
+
+      if (inputIntent.type === 'toolbar-format') {
+        if (onRunFormatCommand(inputIntent.format)) {
           keyboardEvent.preventDefault()
           keyboardEvent.stopPropagation()
-          queueToolbarShortcutFeedback(toolbarFormatShortcut)
+          queueToolbarShortcutFeedback(inputIntent.format)
           window.setTimeout(syncToolbarFormatState, 0)
-          return
         }
+        return
       }
-      const editorHistoryDirection = getEditorHistoryDirection(keyboardEvent)
-      if (editorHistoryDirection) {
+      if (inputIntent.type === 'history') {
         const historyEvent = runEditorHistoryEvent({
-          direction: editorHistoryDirection,
+          direction: inputIntent.direction,
           onRunStructuralHistory,
           onRunEditorHistory,
         })
         if (historyEvent.handled) {
           keyboardEvent.preventDefault()
           keyboardEvent.stopPropagation()
-          return
         }
+        return
       }
-
-      if (!isTextInputTarget) {
-        const newlineShortcutId = getNewlineShortcutIdForEvent(keyboardEvent, isMacPlatform)
-        const newlineOperation = newlineShortcutId ? hotkeys.newlineShortcuts.shortcuts[newlineShortcutId] : null
-        if (newlineOperation) {
-          keyboardEvent.preventDefault()
-          keyboardEvent.stopPropagation()
-          if (newlineOperation === 'operationsMenu') {
-            onOpenShortcutMenu()
-            return
-          }
-          onRunNewlineOperation(newlineOperation)
-          return
-        }
+      if (inputIntent.type === 'open-operations-menu') {
+        keyboardEvent.preventDefault()
+        keyboardEvent.stopPropagation()
+        onOpenShortcutMenu()
+        return
       }
-      if (!isTextInputTarget && (keyboardEvent.key === 'Backspace' || keyboardEvent.key === 'Delete') && activeImageRef.current) {
+      if (inputIntent.type === 'newline-operation') {
+        keyboardEvent.preventDefault()
+        keyboardEvent.stopPropagation()
+        onRunNewlineOperation(inputIntent.operation)
+        return
+      }
+      if (inputIntent.type === 'delete-active-image') {
         if (deleteActiveEditorImageNode()) {
           keyboardEvent.preventDefault()
           keyboardEvent.stopPropagation()
-          return
         }
+        return
       }
-
-      const tableBoundaryDirection = isTextInputTarget ? null : getTableBoundaryCaretDirectionForEvent(keyboardEvent)
-      if (tableBoundaryDirection) {
+      if (inputIntent.type === 'table-boundary-caret') {
         const view = getWysiwygView(editorRef.current)
         if (
           isActiveWysiwygEditorContentTarget(targetElement, view) &&
-          moveSelectedTableBoundaryCaret(view, tableBoundaryDirection)
+          moveSelectedTableBoundaryCaret(view, inputIntent.direction)
         ) {
           keyboardEvent.preventDefault()
           keyboardEvent.stopPropagation()
           window.setTimeout(syncToolbarFormatState, 0)
-          return
         }
+        return
       }
-
-      const multiLineDirection = getMultilineSelectionShortcutDirection(keyboardEvent)
-      if (multiLineDirection) {
-        const handled = tryExpandMultilineSelection(multiLineDirection)
+      if (inputIntent.type === 'multiline-selection') {
+        const handled = tryExpandMultilineSelection(inputIntent.direction)
         if (handled) {
           keyboardEvent.preventDefault()
           keyboardEvent.stopPropagation()
         }
         return
       }
-      if (multiLineEditRef.current) {
-        let handled = false
-        if (keyboardEvent.key === 'Backspace') {
-          if (keyboardEvent.metaKey) {
-            handled = tryApplyMultiLineEditInput({ type: 'delete-to-line-start' }) || true
-          } else if (keyboardEvent.altKey) {
-            handled = tryApplyMultiLineEditInput({ type: 'delete-word-backward' }) || true
-          } else {
-            handled = tryApplyMultiLineEditInput({ type: 'backspace' }) || true
-          }
-        } else if (keyboardEvent.key === 'Delete') {
-          if (keyboardEvent.metaKey) {
-            handled = tryApplyMultiLineEditInput({ type: 'delete-to-line-end' }) || true
-          } else if (keyboardEvent.altKey) {
-            handled = tryApplyMultiLineEditInput({ type: 'delete-word-forward' }) || true
-          } else {
-            handled = tryApplyMultiLineEditInput({ type: 'delete' }) || true
-          }
-        } else if (keyboardEvent.key === 'Enter') {
-          handled = tryApplyMultiLineEditInput({ type: 'split-line' })
-        } else if (keyboardEvent.key === 'Escape') {
-          clearMultiLineEdit(true)
-          handled = true
-        } else if (keyboardEvent.key === 'Tab' && !keyboardEvent.metaKey && !keyboardEvent.ctrlKey && !keyboardEvent.altKey) {
-          handled = tryApplyMultiLineTabInput(keyboardEvent.shiftKey)
-        } else if (
-          (keyboardEvent.key === ' ' || keyboardEvent.key === 'Spacebar') &&
-          !keyboardEvent.metaKey &&
-          !keyboardEvent.ctrlKey &&
-          !keyboardEvent.altKey
-        ) {
-          handled =
-            tryApplyMultiLineBlockMarkerShortcut() ||
-            tryApplyMultiLineListMarkerShortcut() ||
-            tryApplyMultiLineEditInput({ type: 'insert-text', text: ' ' })
-        } else if (keyboardEvent.key === 'ArrowLeft') {
-          handled = tryMoveMultiLineCursors(
-            keyboardEvent.altKey ? 'word-left' : keyboardEvent.metaKey || keyboardEvent.ctrlKey ? 'line-start' : 'left',
-            keyboardEvent.shiftKey,
-          )
-        } else if (keyboardEvent.key === 'ArrowRight') {
-          handled = tryMoveMultiLineCursors(
-            keyboardEvent.altKey ? 'word-right' : keyboardEvent.metaKey || keyboardEvent.ctrlKey ? 'line-end' : 'right',
-            keyboardEvent.shiftKey,
-          )
-        } else if (pageMovement) {
-          handled = tryMoveMultiLineCursors(pageMovement, keyboardEvent.shiftKey)
-        } else if (keyboardEvent.key === 'ArrowUp') {
-          handled = tryMoveMultiLineCursors('up')
-        } else if (keyboardEvent.key === 'ArrowDown') {
-          handled = tryMoveMultiLineCursors('down')
-        } else if (keyboardEvent.key === 'Home') {
-          handled = tryMoveMultiLineCursors('line-start', keyboardEvent.shiftKey)
-        } else if (keyboardEvent.key === 'End') {
-          handled = tryMoveMultiLineCursors('line-end', keyboardEvent.shiftKey)
-        } else if (
-          keyboardEvent.key.length === 1 &&
-          !keyboardEvent.metaKey &&
-          !keyboardEvent.ctrlKey &&
-          !keyboardEvent.altKey
-        ) {
-          handled =
-            tryApplyMultiLineInlineMarkerShortcut(keyboardEvent.key) ||
-            tryApplyMultiLineEditInput({ type: 'insert-text', text: keyboardEvent.key })
-        }
-        if (handled) {
-          keyboardEvent.preventDefault()
-          keyboardEvent.stopPropagation()
-          return
-        }
-      }
-      if (
-        !isTextInputTarget &&
-        (keyboardEvent.key === ' ' || keyboardEvent.key === 'Spacebar') &&
-        !keyboardEvent.metaKey &&
-        !keyboardEvent.ctrlKey &&
-        !keyboardEvent.altKey &&
-        tryApplySingleCursorParagraphSpaceShortcut(targetElement)
-      ) {
+      if (inputIntent.type === 'multiline-cancel') {
+        clearMultiLineEdit(true)
         keyboardEvent.preventDefault()
         keyboardEvent.stopPropagation()
-        window.setTimeout(syncToolbarFormatState, 0)
         return
       }
-      if (
-        !isTextInputTarget &&
-        pageMovement &&
-        isActiveWysiwygEditorContentTarget(targetElement, getWysiwygView(editorRef.current))
-      ) {
-        const view = getWysiwygView(editorRef.current)
-        if (applySingleCursorPageMovement(view, pageMovement, keyboardEvent.shiftKey)) {
+      if (inputIntent.type === 'multiline-edit') {
+        const handled = tryApplyMultiLineEditInput(inputIntent.input)
+        if (handled) {
+          keyboardEvent.preventDefault()
+          keyboardEvent.stopPropagation()
+        }
+        return
+      }
+      if (inputIntent.type === 'multiline-tab') {
+        if (tryApplyMultiLineTabInput(inputIntent.shiftKey)) {
+          keyboardEvent.preventDefault()
+          keyboardEvent.stopPropagation()
+        }
+        return
+      }
+      if (inputIntent.type === 'multiline-space') {
+        const handled =
+          tryApplyMultiLineBlockMarkerShortcut() ||
+          tryApplyMultiLineListMarkerShortcut() ||
+          tryApplyMultiLineEditInput({ type: 'insert-text', text: ' ' })
+        if (handled) {
+          keyboardEvent.preventDefault()
+          keyboardEvent.stopPropagation()
+        }
+        return
+      }
+      if (inputIntent.type === 'multiline-inline-text') {
+        const handled =
+          tryApplyMultiLineInlineMarkerShortcut(inputIntent.text) ||
+          tryApplyMultiLineEditInput({ type: 'insert-text', text: inputIntent.text })
+        if (handled) {
+          keyboardEvent.preventDefault()
+          keyboardEvent.stopPropagation()
+        }
+        return
+      }
+      if (inputIntent.type === 'multiline-move') {
+        if (tryMoveMultiLineCursors(inputIntent.movement, inputIntent.extendSelection)) {
+          keyboardEvent.preventDefault()
+          keyboardEvent.stopPropagation()
+        }
+        return
+      }
+      if (inputIntent.type === 'paragraph-space-shortcut') {
+        if (tryApplySingleCursorParagraphSpaceShortcut(targetElement)) {
           keyboardEvent.preventDefault()
           keyboardEvent.stopPropagation()
           window.setTimeout(syncToolbarFormatState, 0)
-          return
         }
+        return
       }
-      if (keyboardEvent.key !== 'Tab' || keyboardEvent.altKey || keyboardEvent.ctrlKey || keyboardEvent.metaKey) return
-      const handled = tryApplyMultilineIndent(keyboardEvent.shiftKey)
-      if (!handled) return
-      keyboardEvent.preventDefault()
-      keyboardEvent.stopPropagation()
+      if (inputIntent.type === 'page-movement') {
+        const view = getWysiwygView(editorRef.current)
+        if (
+          isActiveWysiwygEditorContentTarget(targetElement, view) &&
+          applySingleCursorPageMovement(view, inputIntent.movement, inputIntent.extendSelection)
+        ) {
+          keyboardEvent.preventDefault()
+          keyboardEvent.stopPropagation()
+          window.setTimeout(syncToolbarFormatState, 0)
+        }
+        return
+      }
+      if (inputIntent.type !== 'tab-indent') return
+      if (tryApplyMultilineIndent(inputIntent.outdent)) {
+        keyboardEvent.preventDefault()
+        keyboardEvent.stopPropagation()
+      }
     }
 
     const handleBeforeInput = (event: Event) => {
       const inputEvent = event as InputEvent
       if (isInsideTerminalBlockLandingZone(getElementFromEventTarget(inputEvent.target))) return
       activateEditorFromEventTarget(inputEvent.target)
-      if (inputEvent.inputType === 'historyUndo' || inputEvent.inputType === 'historyRedo') {
-        const direction = inputEvent.inputType === 'historyUndo' ? 'undo' : 'redo'
+      const inputIntent = resolveEditorBeforeInputIntent({
+        inputType: inputEvent.inputType,
+        data: inputEvent.data,
+        isComposing: inputEvent.isComposing,
+        hasMultiLineEdit: Boolean(multiLineEditRef.current),
+      })
+
+      if (inputIntent.type === 'history') {
         const historyEvent = runEditorHistoryEvent({
-          direction,
+          direction: inputIntent.direction,
           onRunStructuralHistory,
           onRunEditorHistory,
         })
@@ -879,37 +873,36 @@ export function useEditorDomEvents({
         }
         return
       }
-      if (inputEvent.isComposing) return
       const inputTarget = getElementFromEventTarget(inputEvent.target)
-      if (!multiLineEditRef.current) {
-        if (
-          inputEvent.inputType === 'insertText' &&
-          inputEvent.data === ' ' &&
-          tryApplySingleCursorParagraphSpaceShortcut(inputTarget)
-        ) {
+      if (inputIntent.type === 'paragraph-space-shortcut') {
+        if (!multiLineEditRef.current && tryApplySingleCursorParagraphSpaceShortcut(inputTarget)) {
           inputEvent.preventDefault()
           inputEvent.stopPropagation()
           window.setTimeout(syncToolbarFormatState, 0)
         }
         return
       }
-      const deleteInput = getMultiLineDeleteInputForBeforeInputType(inputEvent.inputType)
-      if (deleteInput) {
-        const handled = tryApplyMultiLineEditInput(deleteInput)
+      if (inputIntent.type === 'multiline-edit') {
+        const handled = tryApplyMultiLineEditInput(inputIntent.input)
         if (!handled) return
         inputEvent.preventDefault()
         inputEvent.stopPropagation()
         return
       }
-      if (inputEvent.inputType === 'insertText' || inputEvent.inputType === 'insertCompositionText') {
-        const text = inputEvent.data ?? ''
-        if (!text) return
+      if (inputIntent.type === 'multiline-space') {
         const handled =
-          text === ' '
-            ? tryApplyMultiLineBlockMarkerShortcut() ||
-              tryApplyMultiLineListMarkerShortcut() ||
-              tryApplyMultiLineEditInput({ type: 'insert-text', text })
-            : tryApplyMultiLineInlineMarkerShortcut(text) || tryApplyMultiLineEditInput({ type: 'insert-text', text })
+          tryApplyMultiLineBlockMarkerShortcut() ||
+          tryApplyMultiLineListMarkerShortcut() ||
+          tryApplyMultiLineEditInput({ type: 'insert-text', text: ' ' })
+        if (!handled) return
+        inputEvent.preventDefault()
+        inputEvent.stopPropagation()
+        return
+      }
+      if (inputIntent.type === 'multiline-inline-text') {
+        const handled =
+          tryApplyMultiLineInlineMarkerShortcut(inputIntent.text) ||
+          tryApplyMultiLineEditInput({ type: 'insert-text', text: inputIntent.text })
         if (!handled) return
         inputEvent.preventDefault()
         inputEvent.stopPropagation()
