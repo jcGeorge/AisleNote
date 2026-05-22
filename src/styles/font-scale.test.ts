@@ -182,6 +182,14 @@ describe('compact scope tab scaling styles', () => {
     expect(baseCss).toContain('--space-rail-bg: color-mix(in srgb, var(--nav-rail-bg) 58%, var(--space-rail-accent));')
     expect(baseCss).toContain('--parent-rail-bg: color-mix(in srgb, var(--nav-rail-bg) 58%, var(--parent-rail-accent));')
     expect(baseCss).toContain('--subtab-rail-bg: color-mix(in srgb, var(--nav-rail-bg) 58%, var(--subtab-rail-accent));')
+    expect(baseCss).toContain('--domain-rail-hover-bg: color-mix(in srgb, var(--nav-rail-bg) 46%, var(--domain-rail-accent));')
+    expect(baseCss).toContain('color-mix(in srgb, var(--domain-rail-accent) 82%, white) 0%')
+    expect(baseCss).toContain('color-mix(in srgb, var(--space-rail-accent) 82%, white) 0%')
+    expect(baseCss).toContain('color-mix(in srgb, var(--parent-rail-accent) 82%, white) 0%')
+    expect(baseCss).toContain('color-mix(in srgb, var(--subtab-rail-accent) 82%, white) 0%')
+    expect(baseCss).not.toContain('--rail-chip-light-text:')
+    expect(baseCss).not.toContain('--domain-rail-selected-shadow:')
+    expect(baseCss).not.toContain('inset 0 -2px 0 var(--domain-rail-selected-border)')
 
     expect(baseCss).toContain('--tab-btn-text: var(--parent-rail-text);')
     expect(baseCss).toContain('--tab-btn-bg: var(--parent-rail-bg);')
@@ -189,6 +197,10 @@ describe('compact scope tab scaling styles', () => {
     expect(baseCss).toContain('--subtab-btn-text: var(--subtab-rail-text);')
     expect(baseCss).toContain('--subtab-btn-bg: var(--subtab-rail-bg);')
     expect(baseCss).toContain('--subtab-btn-border: var(--subtab-rail-border);')
+    expect(baseCss).toContain('--tab-arrange-preview-bg: var(--parent-rail-selected-bg);')
+    expect(baseCss).toContain('--tab-arrange-preview-border: var(--parent-rail-selected-border);')
+    expect(baseCss).toContain('--tab-arrange-preview-text: var(--parent-rail-selected-text);')
+    expect(baseCss).toContain('--space-arrange-preview-bg: var(--space-rail-selected-bg);')
 
     expect(domainRule).toContain('color: var(--domain-rail-text);')
     expect(domainRule).toContain('background: var(--domain-rail-bg);')
@@ -220,6 +232,14 @@ describe('compact scope tab scaling styles', () => {
 
     expect(trashActiveRule).toContain('box-shadow: none;')
     expect(trashActiveRule).not.toContain('inset 0 0 0 2px')
+
+    for (const themeFile of ['themes/light.css', 'themes/dawn.css', 'themes/blues.css']) {
+      const themeCss = readStyle(themeFile)
+      expect(themeCss).not.toContain('--domain-rail-accent:')
+      expect(themeCss).not.toContain('--space-rail-accent:')
+      expect(themeCss).not.toContain('--parent-rail-accent:')
+      expect(themeCss).not.toContain('--subtab-rail-accent:')
+    }
   })
 })
 
