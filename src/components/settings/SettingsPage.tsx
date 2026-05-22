@@ -104,6 +104,8 @@ type SettingsPageProps = {
   noteFontScaleDraft: number
   customThemePaletteDraft: CustomThemePalette
   showParentHomeTabDraft: boolean
+  alwaysShowSpacesDraft: boolean
+  alwaysShowDomainsDraft: boolean
   tableAddTargetModeDraft: TableControlTargetMode
   tableDeleteTargetModeDraft: TableControlTargetMode
   frontmatterDraft: FrontmatterSettings
@@ -128,6 +130,8 @@ type SettingsPageProps = {
   onTabButtonScaleChange: (value: string) => void
   onNoteFontScaleChange: (value: string) => void
   onShowParentHomeTabChange: (enabled: boolean) => void
+  onAlwaysShowSpacesChange: (enabled: boolean) => void
+  onAlwaysShowDomainsChange: (enabled: boolean) => void
   onTableAddTargetModeChange: (mode: TableControlTargetMode) => void
   onTableDeleteTargetModeChange: (mode: TableControlTargetMode) => void
   onTipEnabledChange: (tipId: TipId, enabled: boolean) => void
@@ -179,6 +183,8 @@ export function SettingsPage({
   noteFontScaleDraft,
   customThemePaletteDraft,
   showParentHomeTabDraft,
+  alwaysShowSpacesDraft,
+  alwaysShowDomainsDraft,
   tableAddTargetModeDraft,
   tableDeleteTargetModeDraft,
   frontmatterDraft,
@@ -203,6 +209,8 @@ export function SettingsPage({
   onTabButtonScaleChange,
   onNoteFontScaleChange,
   onShowParentHomeTabChange,
+  onAlwaysShowSpacesChange,
+  onAlwaysShowDomainsChange,
   onTableAddTargetModeChange,
   onTableDeleteTargetModeChange,
   onTipEnabledChange,
@@ -680,6 +688,36 @@ export function SettingsPage({
             <p className="settings-help">
               when enabled, a locked <code>home</code> sub-tab appears first. it cannot be renamed or deleted.
             </p>
+            <div className="settings-hotkey-row">
+              <label className="settings-hotkey-label" htmlFor="settings-always-show-spaces">
+                always show spaces
+              </label>
+              <div className="form-check form-switch settings-switch">
+                <input
+                  id="settings-always-show-spaces"
+                  className="form-check-input"
+                  type="checkbox"
+                  role="switch"
+                  checked={alwaysShowSpacesDraft}
+                  onChange={(event) => onAlwaysShowSpacesChange(event.target.checked)}
+                />
+              </div>
+            </div>
+            <div className="settings-hotkey-row">
+              <label className="settings-hotkey-label" htmlFor="settings-always-show-domains">
+                always show domains
+              </label>
+              <div className="form-check form-switch settings-switch">
+                <input
+                  id="settings-always-show-domains"
+                  className="form-check-input"
+                  type="checkbox"
+                  role="switch"
+                  checked={alwaysShowDomainsDraft}
+                  onChange={(event) => onAlwaysShowDomainsChange(event.target.checked)}
+                />
+              </div>
+            </div>
           </div>
         )}
 

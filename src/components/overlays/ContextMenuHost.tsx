@@ -1,66 +1,13 @@
 import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { ContextMenuState, LinkInsertMode } from '../../types/app'
-
-const CONTEXT_MENU_VIEWPORT_GAP = 8
-const SUBMENU_EDGE_OVERLAP = 1
-
-type MenuPoint = {
-  x: number
-  y: number
-}
-
-type MenuSize = {
-  width: number
-  height: number
-}
-
-type MenuViewport = MenuSize
-
-type MenuRect = MenuPoint &
-  MenuSize & {
-    right: number
-    bottom: number
-  }
-
-type MenuPosition = {
-  left: number
-  top: number
-}
-
-function clampValue(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), Math.max(min, max))
-}
-
-export function clampContextMenuPosition(
-  anchor: MenuPoint,
-  menuSize: MenuSize,
-  viewport: MenuViewport,
-  gap = CONTEXT_MENU_VIEWPORT_GAP,
-): MenuPosition {
-  return {
-    left: clampValue(anchor.x, gap, viewport.width - menuSize.width - gap),
-    top: clampValue(anchor.y, gap, viewport.height - menuSize.height - gap),
-  }
-}
-
-export function getSubmenuPosition(
-  triggerRect: MenuRect,
-  panelSize: MenuSize,
-  viewport: MenuViewport,
-  gap = CONTEXT_MENU_VIEWPORT_GAP,
-): MenuPosition {
-  const rightLeft = triggerRect.right - SUBMENU_EDGE_OVERLAP
-  const leftLeft = triggerRect.x - panelSize.width + SUBMENU_EDGE_OVERLAP
-  const unclampedLeft =
-    rightLeft + panelSize.width <= viewport.width - gap || leftLeft < gap
-      ? rightLeft
-      : leftLeft
-
-  return {
-    left: clampValue(unclampedLeft, gap, viewport.width - panelSize.width - gap),
-    top: clampValue(triggerRect.y, gap, viewport.height - panelSize.height - gap),
-  }
-}
+import {
+  clampContextMenuPosition,
+  getSubmenuPosition,
+  type MenuPosition,
+  type MenuRect,
+  type MenuSize,
+  type MenuViewport,
+} from './context-menu-position'
 
 function getViewportSize(): MenuViewport {
   if (typeof window === 'undefined') return { width: 0, height: 0 }
@@ -267,11 +214,11 @@ export function ContextMenuHost({
                 onClose()
                 return
               }
-              onOpenDeleteModal(false)
+              onMoveToTrash()
             }}
             disabled={!canDeleteSpace}
           >
-            delete
+            move to trash
           </button>
         </>
       ) : contextMenu.type === 'domain' ? (
@@ -290,11 +237,11 @@ export function ContextMenuHost({
                 onClose()
                 return
               }
-              onOpenDeleteModal(false)
+              onMoveToTrash()
             }}
             disabled={!canDeleteDomain}
           >
-            delete
+            move to trash
           </button>
         </>
       ) : contextMenu.type === 'image' ? (
@@ -365,7 +312,10 @@ export function ContextMenuHost({
             edit link name
           </button>
         </>
-      ) : contextMenu.type === 'trash-tab' || contextMenu.type === 'trash-subtab' ? (
+      ) : contextMenu.type === 'trash-tab' ||
+        contextMenu.type === 'trash-subtab' ||
+        contextMenu.type === 'trash-domain' ||
+        contextMenu.type === 'trash-space' ? (
         <>
           <button type="button" className="tab-context-delete" onClick={onRestoreFromTrash}>
             restore

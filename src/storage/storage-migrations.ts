@@ -10,7 +10,18 @@ export type StorageMigrationResult =
   | { ok: true; manifest: Record<string, unknown>; fromVersion: number; toVersion: number }
   | { ok: false; reason: 'invalid-manifest' | 'unsupported-version' | 'missing-migration'; version: number | null }
 
-export const STORAGE_MIGRATIONS: StorageManifestMigration[] = []
+export const STORAGE_MIGRATIONS: StorageManifestMigration[] = [
+  {
+    fromVersion: 2,
+    toVersion: 3,
+    migrate: (manifest) => ({
+      ...manifest,
+      schemaVersion: 3,
+      deletedDomains: Array.isArray(manifest.deletedDomains) ? manifest.deletedDomains : [],
+      deletedSpaces: Array.isArray(manifest.deletedSpaces) ? manifest.deletedSpaces : [],
+    }),
+  },
+]
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)

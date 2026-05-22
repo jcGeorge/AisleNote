@@ -1,7 +1,8 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import type { ContextMenuState } from '../../types/app'
-import { clampContextMenuPosition, ContextMenuHost, getSubmenuPosition } from './ContextMenuHost'
+import { ContextMenuHost } from './ContextMenuHost'
+import { clampContextMenuPosition, getSubmenuPosition } from './context-menu-position'
 
 type ContextMenuHostProps = Parameters<typeof ContextMenuHost>[0]
 
@@ -69,12 +70,20 @@ describe('ContextMenuHost copy actions', () => {
     expect(html).not.toContain('de-couple')
   })
 
-  it('shows arrange, rename, and delete for domain context menus', () => {
+  it('shows arrange, rename, and move to trash for domain context menus', () => {
     const html = renderContextMenu({ type: 'domain', domainId: 'domain-1', x: 0, y: 0 })
 
     expect(html).toContain('arrange')
     expect(html).toContain('rename')
-    expect(html).toContain('delete')
+    expect(html).toContain('move to trash')
+  })
+
+  it('shows duplicate, rename, and move to trash for space context menus', () => {
+    const html = renderContextMenu({ type: 'space', spaceId: 'space-1', x: 0, y: 0 })
+
+    expect(html).toContain('duplicate')
+    expect(html).toContain('rename')
+    expect(html).toContain('move to trash')
   })
 
   it('shows editor clipboard actions, root make copy, and expandable command groups', () => {

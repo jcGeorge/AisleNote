@@ -648,6 +648,19 @@ describe('app state normalization', () => {
     expect(missing.ui.settingsSection).toBe('hotkeys')
   })
 
+  it('normalizes always-visible navigation hierarchy settings', () => {
+    const valid = parseSavedState(JSON.stringify({ ui: { alwaysShowSpaces: true, alwaysShowDomains: true } }))
+    const invalid = parseSavedState(JSON.stringify({ ui: { alwaysShowSpaces: false, alwaysShowDomains: true } }))
+    const missing = parseSavedState(JSON.stringify({ ui: {} }))
+
+    expect(valid.ui.alwaysShowSpaces).toBe(true)
+    expect(valid.ui.alwaysShowDomains).toBe(true)
+    expect(invalid.ui.alwaysShowSpaces).toBe(false)
+    expect(invalid.ui.alwaysShowDomains).toBe(false)
+    expect(missing.ui.alwaysShowSpaces).toBe(false)
+    expect(missing.ui.alwaysShowDomains).toBe(false)
+  })
+
   it('normalizes persisted tip settings', () => {
     const valid = parseSavedState(JSON.stringify({
       ui: {

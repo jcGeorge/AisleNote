@@ -31,6 +31,7 @@ type NoteWorkspaceProps = {
   headingPopover: ReactNode
   imageToolsOverlay: ReactNode
   tableControlsOverlay: ReactNode
+  arrangeDestinationPrompt?: ReactNode
   tableOfContentsHeadingsByAisle?: Record<string, HeadingOutlineItem[]>
   openTableOfContentsAisleIds?: Set<string>
   onExitArrangeMode?: () => void
@@ -111,6 +112,7 @@ export function NoteWorkspace({
   headingPopover,
   imageToolsOverlay,
   tableControlsOverlay,
+  arrangeDestinationPrompt = null,
   tableOfContentsHeadingsByAisle = {},
   openTableOfContentsAisleIds = new Set(),
   onExitArrangeMode,
@@ -133,6 +135,7 @@ export function NoteWorkspace({
       {headingPopover}
       {imageToolsOverlay}
       {tableControlsOverlay}
+      {arrangeDestinationPrompt}
       <div
         ref={aisleScrollRef}
         className="note-aisle-scroll"

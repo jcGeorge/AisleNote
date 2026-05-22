@@ -746,3 +746,34 @@
   background: var(--app-danger-disabled-bg) !important;
   opacity: 1;
 }
+.arrange-destination-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: color-mix(in srgb, var(--editor-bg) 18%, transparent);
+}
+
+.arrange-destination-prompt {
+  width: min(18rem, 100%);
+  display: grid;
+  justify-items: center;
+  gap: 0.75rem;
+  border: 1px solid var(--context-menu-border);
+  border-radius: 0.5rem;
+  background: var(--context-menu-bg);
+  color: var(--context-menu-item-text);
+  box-shadow: var(--context-menu-shadow);
+  padding: 1rem;
+  overflow: hidden;
+}
+
+.arrange-destination-title {
+  font-size: var(--ui-font-body);
+  font-weight: 650;
+  line-height: 1.2;
+  text-align: center;
+  text-transform: lowercase;
+}

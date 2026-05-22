@@ -15,6 +15,11 @@ export const TAB_SORT_OPTIONS: Array<{ mode: TabSortMode; label: string }> = [
   { mode: 'updated-desc', label: 'updated descending' },
 ]
 
+export const NAME_SORT_OPTIONS: Array<{ mode: Extract<TabSortMode, 'alpha-asc' | 'alpha-desc'>; label: string }> = [
+  { mode: 'alpha-asc', label: 'a-z' },
+  { mode: 'alpha-desc', label: 'z-a' },
+]
+
 export const STAGE_MANAGER_DESTINATION_SORT_OPTIONS: Array<{ mode: StageManagerDestinationSortMode; label: string }> = [
   { mode: 'default', label: 'default (moves to end)' },
   ...TAB_SORT_OPTIONS,
@@ -103,4 +108,15 @@ export function sortTabs(tabs: Tab[], noteBodies: NoteBody[] | Map<string, NoteB
 
 export function sortSubTabs(subTabs: SubTab[], noteBodies: NoteBody[] | Map<string, NoteBody>, mode: TabSortMode): SubTab[] {
   return sortNoteLocations(subTabs, noteBodies, mode)
+}
+
+export function sortNamedItems<T extends { name: string }>(items: T[], mode: Extract<TabSortMode, 'alpha-asc' | 'alpha-desc'>): T[] {
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((left, right) => {
+      const comparison = titleCollator.compare(left.item.name, right.item.name)
+      if (comparison !== 0) return mode === 'alpha-desc' ? -comparison : comparison
+      return left.index - right.index
+    })
+    .map(({ item }) => item)
 }

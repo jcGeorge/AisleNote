@@ -15,6 +15,8 @@ import {
 import type {
   AppState,
   AppTheme,
+  DeletedDomainEntry,
+  DeletedSpaceEntry,
   Domain,
   FrontmatterComputedFieldMap,
   FrontmatterFieldOriginMap,
@@ -33,7 +35,9 @@ import {
 import {
   createDefaultDomain,
   createLegacyWrappedDomain,
+  normalizeDomain,
   normalizeDomains,
+  normalizeSpace,
   normalizeSpaces,
   projectActiveDomainState,
 } from './domains'
@@ -52,6 +56,8 @@ const RAW_DEFAULT_STATE: AppState = {
   theme: 'dawn',
   activeDomainId: DEFAULT_DOMAIN.id,
   domains: [DEFAULT_DOMAIN],
+  deletedDomains: [],
+  deletedSpaces: [],
   noteBodies: [],
   noteAisleBodies: [],
   activeSpaceId: DEFAULT_DOMAIN.activeSpaceId,
@@ -260,6 +266,47 @@ function normalizeNoteBodies(raw: unknown): NoteBody[] {
   return bodies
 }
 
+function normalizeDeletedSpaceEntries(raw: unknown): DeletedSpaceEntry[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object')
+    .map((entry, index) => {
+      const space = normalizeSpace(entry.space, index)
+      if (!space) return null
+      const deletedAt =
+        typeof entry.deletedAt === 'number' && Number.isFinite(entry.deletedAt) ? entry.deletedAt : Date.now()
+      const domainId = typeof entry.domainId === 'string' && entry.domainId ? entry.domainId : ''
+      return {
+        id: typeof entry.id === 'string' && entry.id ? entry.id : `deleted-space-${index}-${createId()}`,
+        domainId,
+        domainName:
+          typeof entry.domainName === 'string' && entry.domainName.trim() ? entry.domainName : 'Unknown Domain',
+        space,
+        deletedAt,
+      }
+    })
+    .filter((entry): entry is DeletedSpaceEntry => entry !== null)
+}
+
+function normalizeDeletedDomainEntries(raw: unknown): DeletedDomainEntry[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object')
+    .map((entry, index) => {
+      const domain = normalizeDomain(entry.domain, index)
+      if (!domain) return null
+      const deletedAt =
+        typeof entry.deletedAt === 'number' && Number.isFinite(entry.deletedAt) ? entry.deletedAt : Date.now()
+      return {
+        id: typeof entry.id === 'string' && entry.id ? entry.id : `deleted-domain-${index}-${createId()}`,
+        domain,
+        deletedSpaces: normalizeDeletedSpaceEntries(entry.deletedSpaces),
+        deletedAt,
+      }
+    })
+    .filter((entry): entry is DeletedDomainEntry => entry !== null)
+}
+
 function getFirstAisleMarkdown(noteBodies: Map<string, NoteBody>, noteBodyId: string, fallback: string): string {
   const body = noteBodies.get(noteBodyId)
   return body?.aisles[0]?.markdown ?? normalizeMarkdownForPersistence(fallback)
@@ -297,22 +344,41 @@ export function ensureNoteBodiesForAppState(appState: AppState): AppState {
   const normalizedContent = normalizeNoteContent(projected.noteBodies, projected.noteAisleBodies)
   const noteBodies = new Map(normalizedContent.noteBodies.map((body) => [body.id, body]))
 
+  const ensureSpaceBodies = (space: Space): Space => ({
+    ...space,
+    data: {
+      ...space.data,
+      tabs: space.data.tabs.map((tab) => ensureTabBodies(tab, noteBodies)),
+      deletedTabs: space.data.deletedTabs.map((entry) => ({
+        ...entry,
+        tab: ensureTabBodies(entry.tab, noteBodies),
+      })),
+      deletedSubTabs: space.data.deletedSubTabs.map((entry) => ({
+        ...entry,
+        subTab: ensureSubTabBody(entry.subTab, noteBodies),
+      })),
+    },
+  })
+
   const domains = projected.domains.map((domain) => ({
     ...domain,
-    spaces: domain.spaces.map((space) => ({
-      ...space,
-      data: {
-        ...space.data,
-        tabs: space.data.tabs.map((tab) => ensureTabBodies(tab, noteBodies)),
-        deletedTabs: space.data.deletedTabs.map((entry) => ({
-          ...entry,
-          tab: ensureTabBodies(entry.tab, noteBodies),
-        })),
-        deletedSubTabs: space.data.deletedSubTabs.map((entry) => ({
-          ...entry,
-          subTab: ensureSubTabBody(entry.subTab, noteBodies),
-        })),
-      },
+    spaces: domain.spaces.map((space) => ensureSpaceBodies(space)),
+  }))
+
+  const deletedSpaces = (projected.deletedSpaces ?? []).map((entry) => ({
+    ...entry,
+    space: ensureSpaceBodies(entry.space),
+  }))
+
+  const deletedDomains = (projected.deletedDomains ?? []).map((entry) => ({
+    ...entry,
+    domain: {
+      ...entry.domain,
+      spaces: entry.domain.spaces.map((space) => ensureSpaceBodies(space)),
+    },
+    deletedSpaces: entry.deletedSpaces.map((deletedSpace) => ({
+      ...deletedSpace,
+      space: ensureSpaceBodies(deletedSpace.space),
     })),
   }))
 
@@ -323,6 +389,8 @@ export function ensureNoteBodiesForAppState(appState: AppState): AppState {
   return projectActiveDomainState({
     ...projected,
     domains,
+    deletedDomains,
+    deletedSpaces,
     noteBodies: syncedContent.noteBodies,
     noteAisleBodies: syncedContent.noteAisleBodies,
     activeSpaceId:
@@ -463,6 +531,8 @@ export function parseSavedState(raw: string | null): AppState {
         theme,
         activeDomainId: activeDomain.id,
         domains,
+        deletedDomains: normalizeDeletedDomainEntries(parsed.deletedDomains),
+        deletedSpaces: normalizeDeletedSpaceEntries(parsed.deletedSpaces),
         noteBodies: noteContent.noteBodies,
         noteAisleBodies: noteContent.noteAisleBodies,
         activeSpaceId,
@@ -486,6 +556,8 @@ export function parseSavedState(raw: string | null): AppState {
       theme,
       activeDomainId: migratedDomain.id,
       domains: [migratedDomain],
+      deletedDomains: normalizeDeletedDomainEntries(parsed.deletedDomains),
+      deletedSpaces: normalizeDeletedSpaceEntries(parsed.deletedSpaces),
       noteBodies: noteContent.noteBodies,
       noteAisleBodies: noteContent.noteAisleBodies,
       activeSpaceId: migratedSpace.id,

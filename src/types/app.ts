@@ -253,6 +253,21 @@ export type DeletedTabEntry = {
   deletedAt: number
 }
 
+export type DeletedSpaceEntry = {
+  id: string
+  domainId: string
+  domainName: string
+  space: Space
+  deletedAt: number
+}
+
+export type DeletedDomainEntry = {
+  id: string
+  domain: Domain
+  deletedSpaces: DeletedSpaceEntry[]
+  deletedAt: number
+}
+
 export type WorkspaceData = {
   activeTabId: string
   tabs: Tab[]
@@ -282,6 +297,8 @@ export type AppState = {
   theme: AppTheme
   activeDomainId: string
   domains: Domain[]
+  deletedDomains?: DeletedDomainEntry[]
+  deletedSpaces?: DeletedSpaceEntry[]
   noteBodies: NoteBody[]
   noteAisleBodies?: NoteAisleBody[]
   /** Transitional projection of the active domain. Remove after App.tsx is fully domain-scoped. */
@@ -297,6 +314,8 @@ export type AppState = {
   frontmatter: FrontmatterSettings
   ui: {
     showParentHomeTab: boolean
+    alwaysShowSpaces?: boolean
+    alwaysShowDomains?: boolean
     stageManagerOpenDestinationAfterApply: boolean
     lastLinkInsertMode?: LinkInsertMode
     lastNoteCopyMode?: NoteCopyMode
@@ -328,13 +347,15 @@ export type PendingContent = {
 export type PendingCreatedEdit =
   | { type: 'tab'; id: string; previousTabId: string }
   | { type: 'subtab'; id: string; parentTabId: string; previousSubTabId: string | null }
+  | { type: 'space'; id: string; sourceDomainId: string; previousActiveSpaceId: string }
+  | { type: 'domain'; id: string; previousActiveDomainId: string; previousActiveSpaceId: string }
 
 export type ArrangeSource = 'context' | 'press'
 export type ArrangeInsertPosition = 'before' | 'after'
 export type ArrangeScope = 'tabs' | 'spaces' | 'domains'
 export type TabSortMode = 'alpha-asc' | 'alpha-desc' | 'created-asc' | 'created-desc' | 'updated-asc' | 'updated-desc'
 export type StageManagerDestinationSortMode = 'default' | TabSortMode
-export type TabSortTarget = 'parents' | 'subtabs'
+export type TabSortTarget = 'parents' | 'subtabs' | 'spaces' | 'domains'
 export type LinkInsertMode = 'note' | 'url'
 export type NoteReferenceInsertKind = 'link' | 'context'
 
@@ -345,6 +366,16 @@ export type ArrangeDragItem =
   | { type: 'domain'; domainId: string }
 
 export type TabArrangeDragItem = Extract<ArrangeDragItem, { type: 'tab' | 'subtab' }>
+export type ArrangeHierarchyDropRequest = {
+  sourceDomainId: string
+  sourceSpaceId: string
+  item:
+    | { type: 'parent'; parentTabIds: string[] }
+    | { type: 'subtab'; parentTabId: string; subTabIds: string[] }
+  target:
+    | { type: 'space'; domainId: string; spaceId: string }
+    | { type: 'domain'; domainId: string }
+}
 export type ArrangeSelectionKind = 'parent' | 'subtab'
 export type ArrangeSelectionState = {
   kind: ArrangeSelectionKind | null
@@ -395,6 +426,7 @@ export type ArrangeDragSeed = {
 
 export type SpaceArrangeDragPreview = {
   spaceId: string
+  sourceDomainId: string
   label: string
   currentX: number
   currentY: number
@@ -622,18 +654,37 @@ export type ContextMenuState =
       x: number
       y: number
       type: 'trash-tab'
-      source: 'deleted-tab' | 'subtabs-only'
+      source: 'deleted-tab' | 'subtabs-only' | 'deleted-domain-tab'
       deletedTabEntryId: string | null
+      deletedDomainEntryId?: string | null
+      deletedSpaceEntryId?: string | null
+      domainId?: string
+      spaceId?: string
       parentTabId: string
     }
   | {
       x: number
       y: number
       type: 'trash-subtab'
-      source: 'deleted-tab' | 'subtabs-only'
+      source: 'deleted-tab' | 'subtabs-only' | 'deleted-domain-tab'
       deletedTabEntryId: string | null
+      deletedDomainEntryId?: string | null
+      deletedSpaceEntryId?: string | null
+      domainId?: string
+      spaceId?: string
       parentTabId: string
       subTabId: string
+    }
+  | { x: number; y: number; type: 'trash-domain'; deletedDomainEntryId: string; domainId: string }
+  | {
+      x: number
+      y: number
+      type: 'trash-space'
+      source: 'deleted-space' | 'deleted-domain-space'
+      deletedSpaceEntryId?: string | null
+      deletedDomainEntryId?: string
+      domainId: string
+      spaceId: string
     }
   | { x: number; y: number; type: 'space'; spaceId: string }
   | { x: number; y: number; type: 'domain'; domainId: string }
@@ -641,13 +692,35 @@ export type ContextMenuState =
 export type DeleteTarget =
   | { type: 'tab'; tabId: string }
   | { type: 'subtab'; tabId: string; subTabId: string }
-  | { type: 'trash-tab'; source: 'deleted-tab' | 'subtabs-only'; deletedTabEntryId: string | null; parentTabId: string }
+  | {
+      type: 'trash-tab'
+      source: 'deleted-tab' | 'subtabs-only' | 'deleted-domain-tab'
+      deletedTabEntryId: string | null
+      deletedDomainEntryId?: string | null
+      deletedSpaceEntryId?: string | null
+      domainId?: string
+      spaceId?: string
+      parentTabId: string
+    }
   | {
       type: 'trash-subtab'
-      source: 'deleted-tab' | 'subtabs-only'
+      source: 'deleted-tab' | 'subtabs-only' | 'deleted-domain-tab'
       deletedTabEntryId: string | null
+      deletedDomainEntryId?: string | null
+      deletedSpaceEntryId?: string | null
+      domainId?: string
+      spaceId?: string
       parentTabId: string
       subTabId: string
+    }
+  | { type: 'trash-domain'; deletedDomainEntryId: string; domainId: string }
+  | {
+      type: 'trash-space'
+      source: 'deleted-space' | 'deleted-domain-space'
+      deletedSpaceEntryId?: string | null
+      deletedDomainEntryId?: string
+      domainId: string
+      spaceId: string
     }
   | { type: 'space'; spaceId: string }
   | { type: 'domain'; domainId: string }
@@ -703,11 +776,36 @@ export type ModalState =
 export type TrashParentBucket = {
   id: string
   title: string
-  source: 'deleted-tab' | 'subtabs-only'
+  source: 'deleted-tab' | 'subtabs-only' | 'deleted-domain-tab'
   deletedTabEntryId: string | null
+  deletedDomainEntryId?: string | null
+  deletedSpaceEntryId?: string | null
+  domainId?: string
+  spaceId?: string
   parentTabId: string
   homeContent: string
   subTabs: SubTab[]
+}
+
+export type TrashSpaceBucket = {
+  id: string
+  title: string
+  source: 'live' | 'deleted-space' | 'deleted-domain-space'
+  domainId: string
+  spaceId: string
+  deletedSpaceEntryId: string | null
+  deletedDomainEntryId: string | null
+  space: Space
+  parentTabs: TrashParentBucket[]
+}
+
+export type TrashDomainBucket = {
+  id: string
+  title: string
+  source: 'live' | 'deleted-domain'
+  domainId: string
+  deletedDomainEntryId: string | null
+  spaces: TrashSpaceBucket[]
 }
 
 export type NavLocation = {

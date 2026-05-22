@@ -14,9 +14,21 @@ import {
   getNotePreviewCleanupTargetsForDeleteTarget,
   getNotePreviewCleanupTargetsForTrash,
 } from './delete-preview-cleanup'
-import { removeDomain, removeSpaceFromActiveDomain } from '../state/domains'
+import { projectActiveDomainState } from '../state/domains'
 import { collectAppNavigationEntityIds, createReservedIdAllocator } from '../state/navigation-ids'
 import { createId, createTab } from '../state/workspace'
+import {
+  permanentlyDeleteDeletedDomainTrashItem,
+  deleteAllDomainAndSpaceTrash,
+  moveDomainToTrash,
+  moveSpaceToTrash,
+  permanentlyDeleteTrashDomain,
+  permanentlyDeleteTrashSpace,
+  restoreDeletedDomainTrashItem,
+  restoreAllTrashInAppState,
+  restoreTrashDomain,
+  restoreTrashSpace,
+} from '../trash/domain-space-trash'
 import { TRASH_HOME_ID } from '../trash/trash-model'
 import { restoreTrashTarget, type TrashRestoreTarget } from '../trash/trash-restore'
 import type {
@@ -34,11 +46,16 @@ import type {
 
 type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
 
+export function formatMovedToTrashToast(kind: 'domain' | 'space' | 'parent tab' | 'tab', name: string) {
+  return `${kind} "${name}" has been moved to trash`
+}
+
 type UseAppOverlayActionsParams = {
   state: AppState
   stateRef: MutableRefObject<AppState>
   setState: Dispatch<SetStateAction<AppState>>
   viewMode: ViewMode
+  navigationContextMenusDisabled?: boolean
   contextMenu: ContextMenuState | null
   setContextMenu: Dispatch<SetStateAction<ContextMenuState | null>>
   modal: ModalState | null
@@ -51,6 +68,8 @@ type UseAppOverlayActionsParams = {
   saveActiveCursorBeforeNavigation: () => void
   setTrashTabId: Dispatch<SetStateAction<string>>
   setTrashSubTabId: Dispatch<SetStateAction<string | null>>
+  setTrashDomainId?: Dispatch<SetStateAction<string>>
+  setTrashSpaceId?: Dispatch<SetStateAction<string>>
   insertNoteReference: (modalState: Extract<ModalState, { type: 'insert-note-reference' }>) => boolean
   exportData: (scope: ExportScope, spaceId?: string) => void | Promise<unknown>
   pushToast: (message: string, tone?: ToastTone, durationMs?: number) => void
@@ -61,6 +80,7 @@ export const useAppOverlayActions = ({
   stateRef,
   setState,
   viewMode,
+  navigationContextMenusDisabled = false,
   contextMenu,
   setContextMenu,
   modal,
@@ -73,6 +93,8 @@ export const useAppOverlayActions = ({
   saveActiveCursorBeforeNavigation,
   setTrashTabId,
   setTrashSubTabId,
+  setTrashDomainId,
+  setTrashSpaceId,
   insertNoteReference,
   exportData,
   pushToast,
@@ -81,6 +103,14 @@ export const useAppOverlayActions = ({
 
   const getActiveSpaceSnapshot = () =>
     stateRef.current.spaces.find((space) => space.id === activeSpaceId) ?? stateRef.current.spaces[0] ?? activeSpace
+
+  const suppressNavigationContextMenuIfDisabled = (event: MouseEvent<HTMLButtonElement>) => {
+    if (!navigationContextMenusDisabled) return false
+    event.preventDefault()
+    setMenuOpen(false)
+    setContextMenu(null)
+    return true
+  }
 
   const removeNotePreviewsForLocations = (locations: NoteLocation[]) => {
     if (locations.length === 0) return
@@ -95,6 +125,7 @@ export const useAppOverlayActions = ({
 
   const openContextMenuForTab = (event: MouseEvent<HTMLButtonElement>, tabId: string) => {
     if (viewMode !== 'main') return
+    if (suppressNavigationContextMenuIfDisabled(event)) return
     event.preventDefault()
     setMenuOpen(false)
     setContextMenu({ type: 'tab', tabId, x: event.clientX, y: event.clientY })
@@ -102,6 +133,7 @@ export const useAppOverlayActions = ({
 
   const openContextMenuForSubTab = (event: MouseEvent<HTMLButtonElement>, tabId: string, subTabId: string) => {
     if (viewMode !== 'main') return
+    if (suppressNavigationContextMenuIfDisabled(event)) return
     event.preventDefault()
     setMenuOpen(false)
     setContextMenu({ type: 'subtab', tabId, subTabId, x: event.clientX, y: event.clientY })
@@ -109,6 +141,7 @@ export const useAppOverlayActions = ({
 
   const openContextMenuForHomeTab = (event: MouseEvent<HTMLButtonElement>, tabId: string) => {
     if (viewMode !== 'main') return
+    if (suppressNavigationContextMenuIfDisabled(event)) return
     event.preventDefault()
     setMenuOpen(false)
     setContextMenu({ type: 'home-tab', tabId, x: event.clientX, y: event.clientY })
@@ -122,6 +155,10 @@ export const useAppOverlayActions = ({
       type: 'trash-tab',
       source: trashParent.source,
       deletedTabEntryId: trashParent.deletedTabEntryId,
+      deletedDomainEntryId: trashParent.deletedDomainEntryId,
+      deletedSpaceEntryId: trashParent.deletedSpaceEntryId,
+      domainId: trashParent.domainId,
+      spaceId: trashParent.spaceId,
       parentTabId: trashParent.parentTabId,
       x: event.clientX,
       y: event.clientY,
@@ -140,6 +177,10 @@ export const useAppOverlayActions = ({
       type: 'trash-subtab',
       source: trashParent.source,
       deletedTabEntryId: trashParent.deletedTabEntryId,
+      deletedDomainEntryId: trashParent.deletedDomainEntryId,
+      deletedSpaceEntryId: trashParent.deletedSpaceEntryId,
+      domainId: trashParent.domainId,
+      spaceId: trashParent.spaceId,
       parentTabId: trashParent.parentTabId,
       subTabId: currentSubTabId,
       x: event.clientX,
@@ -147,15 +188,55 @@ export const useAppOverlayActions = ({
     })
   }
 
+  const openContextMenuForTrashDomain = (
+    event: MouseEvent<HTMLButtonElement>,
+    deletedDomainEntryId: string,
+    domainId: string,
+  ) => {
+    if (viewMode !== 'trash') return
+    event.preventDefault()
+    setMenuOpen(false)
+    setContextMenu({
+      type: 'trash-domain',
+      deletedDomainEntryId,
+      domainId,
+      x: event.clientX,
+      y: event.clientY,
+    })
+  }
+
+  const openContextMenuForTrashSpace = (
+    event: MouseEvent<HTMLButtonElement>,
+    payload: {
+      source: 'deleted-space' | 'deleted-domain-space'
+      deletedSpaceEntryId?: string | null
+      deletedDomainEntryId?: string
+      domainId: string
+      spaceId: string
+    },
+  ) => {
+    if (viewMode !== 'trash') return
+    event.preventDefault()
+    setMenuOpen(false)
+    setContextMenu({
+      type: 'trash-space',
+      ...payload,
+      x: event.clientX,
+      y: event.clientY,
+    })
+  }
+
   const openContextMenuForSpace = (event: MouseEvent<HTMLButtonElement>, spaceId: string) => {
-    if (viewMode !== 'spaces') return
+    if (viewMode !== 'spaces' && viewMode !== 'main') return
+    if (suppressNavigationContextMenuIfDisabled(event)) return
     event.preventDefault()
     setMenuOpen(false)
     setContextMenu({ type: 'space', spaceId, x: event.clientX, y: event.clientY })
   }
 
   const openContextMenuForDomain = (event: MouseEvent<HTMLButtonElement>, domainId: string) => {
-    if (viewMode !== 'domains') return
+    if (viewMode !== 'domains' && viewMode !== 'main') return
+    if (suppressNavigationContextMenuIfDisabled(event)) return
     event.preventDefault()
     setMenuOpen(false)
     setContextMenu({ type: 'domain', domainId, x: event.clientX, y: event.clientY })
@@ -163,33 +244,56 @@ export const useAppOverlayActions = ({
 
   const buildDeleteTargetFromContextMenu = (): DeleteTarget | null => {
     if (!contextMenu) return null
-    return contextMenu.type === 'tab'
-      ? { type: 'tab', tabId: contextMenu.tabId }
-      : contextMenu.type === 'subtab'
-        ? { type: 'subtab', tabId: contextMenu.tabId, subTabId: contextMenu.subTabId }
-        : contextMenu.type === 'image' ||
-            contextMenu.type === 'editor' ||
-            contextMenu.type === 'internal-note-link' ||
-            contextMenu.type === 'home-tab'
-          ? null
-        : contextMenu.type === 'trash-tab'
-          ? {
-              type: 'trash-tab',
-              source: contextMenu.source,
-              deletedTabEntryId: contextMenu.deletedTabEntryId,
-              parentTabId: contextMenu.parentTabId,
-            }
-          : contextMenu.type === 'trash-subtab'
-            ? {
-                type: 'trash-subtab',
-                source: contextMenu.source,
-                deletedTabEntryId: contextMenu.deletedTabEntryId,
-                parentTabId: contextMenu.parentTabId,
-                subTabId: contextMenu.subTabId,
-              }
-            : contextMenu.type === 'space'
-              ? { type: 'space', spaceId: contextMenu.spaceId }
-              : { type: 'domain', domainId: contextMenu.domainId }
+    switch (contextMenu.type) {
+      case 'tab':
+        return { type: 'tab', tabId: contextMenu.tabId }
+      case 'subtab':
+        return { type: 'subtab', tabId: contextMenu.tabId, subTabId: contextMenu.subTabId }
+      case 'trash-tab':
+        return {
+          type: 'trash-tab',
+          source: contextMenu.source,
+          deletedTabEntryId: contextMenu.deletedTabEntryId,
+          deletedDomainEntryId: contextMenu.deletedDomainEntryId,
+          deletedSpaceEntryId: contextMenu.deletedSpaceEntryId,
+          domainId: contextMenu.domainId,
+          spaceId: contextMenu.spaceId,
+          parentTabId: contextMenu.parentTabId,
+        }
+      case 'trash-subtab':
+        return {
+          type: 'trash-subtab',
+          source: contextMenu.source,
+          deletedTabEntryId: contextMenu.deletedTabEntryId,
+          deletedDomainEntryId: contextMenu.deletedDomainEntryId,
+          deletedSpaceEntryId: contextMenu.deletedSpaceEntryId,
+          domainId: contextMenu.domainId,
+          spaceId: contextMenu.spaceId,
+          parentTabId: contextMenu.parentTabId,
+          subTabId: contextMenu.subTabId,
+        }
+      case 'trash-domain':
+        return {
+          type: 'trash-domain',
+          deletedDomainEntryId: contextMenu.deletedDomainEntryId,
+          domainId: contextMenu.domainId,
+        }
+      case 'trash-space':
+        return {
+          type: 'trash-space',
+          source: contextMenu.source,
+          deletedSpaceEntryId: contextMenu.deletedSpaceEntryId,
+          deletedDomainEntryId: contextMenu.deletedDomainEntryId,
+          domainId: contextMenu.domainId,
+          spaceId: contextMenu.spaceId,
+        }
+      case 'space':
+        return { type: 'space', spaceId: contextMenu.spaceId }
+      case 'domain':
+        return { type: 'domain', domainId: contextMenu.domainId }
+      default:
+        return null
+    }
   }
 
   const openDeleteModalFromContext = (permanent: boolean) => {
@@ -200,17 +304,50 @@ export const useAppOverlayActions = ({
   }
 
   const deleteSpace = (spaceId: string) => {
-    setState((previous) => removeSpaceFromActiveDomain(previous, spaceId))
+    setState((previous) => {
+      const projected = projectActiveDomainState(previous)
+      const spaceName = projected.spaces.find((space) => space.id === spaceId)?.name ?? 'space'
+      const createEntityId = createReservedIdAllocator(collectAppNavigationEntityIds(previous))
+      const result = moveSpaceToTrash(previous, previous.activeDomainId, spaceId, createEntityId)
+      if (result.reason === 'last-space') pushToast('at least one space must remain.', 'warning')
+      if (result.changed) pushToast(formatMovedToTrashToast('space', spaceName), 'success')
+      return result.state
+    })
   }
 
   const deleteDomain = (domainId: string) => {
-    setState((previous) => removeDomain(previous, domainId))
+    setState((previous) => {
+      const projected = projectActiveDomainState(previous)
+      const domainName = projected.domains.find((domain) => domain.id === domainId)?.name ?? 'domain'
+      const createEntityId = createReservedIdAllocator(collectAppNavigationEntityIds(previous))
+      const result = moveDomainToTrash(previous, domainId, createEntityId)
+      if (result.reason === 'last-domain') pushToast('at least one domain must remain.', 'warning')
+      if (result.changed) pushToast(formatMovedToTrashToast('domain', domainName), 'success')
+      return result.state
+    })
   }
 
   const deleteTarget = (target: DeleteTarget, permanent: boolean) => {
     saveActiveCursorBeforeNavigation()
     if (target.type === 'domain') {
       deleteDomain(target.domainId)
+      return
+    }
+
+    if (target.type === 'trash-domain') {
+      setState((previous) => permanentlyDeleteTrashDomain(previous, target.deletedDomainEntryId))
+      setTrashDomainId?.('')
+      setTrashSpaceId?.('')
+      setTrashTabId(TRASH_HOME_ID)
+      setTrashSubTabId(null)
+      return
+    }
+
+    if (target.type === 'trash-space') {
+      setState((previous) => permanentlyDeleteTrashSpace(previous, target))
+      setTrashSpaceId?.('')
+      setTrashTabId(TRASH_HOME_ID)
+      setTrashSubTabId(null)
       return
     }
 
@@ -225,6 +362,16 @@ export const useAppOverlayActions = ({
 
     if (target.type === 'space') {
       deleteSpace(target.spaceId)
+      return
+    }
+
+    if (
+      (target.type === 'trash-tab' || target.type === 'trash-subtab') &&
+      target.source === 'deleted-domain-tab'
+    ) {
+      setState((previous) => permanentlyDeleteDeletedDomainTrashItem(previous, target))
+      setTrashTabId(TRASH_HOME_ID)
+      setTrashSubTabId(null)
       return
     }
 
@@ -272,7 +419,7 @@ export const useAppOverlayActions = ({
         const tabToDelete = data.tabs.find((tab) => tab.id === target.tabId)
         if (!tabToDelete) return data
         if (!permanent) {
-          nextToastMessage = 'tab has been moved to trash.'
+          nextToastMessage = formatMovedToTrashToast('parent tab', tabToDelete.title)
         }
 
         const remaining = data.tabs.filter((tab) => tab.id !== target.tabId)
@@ -311,7 +458,7 @@ export const useAppOverlayActions = ({
       const subToDelete = parent.subTabs.find((sub) => sub.id === target.subTabId)
       if (!subToDelete) return data
       if (!permanent) {
-        nextToastMessage = 'tab has been moved to trash.'
+        nextToastMessage = formatMovedToTrashToast('tab', subToDelete.title)
       }
 
       return {
@@ -361,8 +508,72 @@ export const useAppOverlayActions = ({
 
   const restoreFromContext = () => {
     const target = buildDeleteTargetFromContextMenu()
-    if (!target || (target.type !== 'trash-tab' && target.type !== 'trash-subtab')) return
+    if (
+      !target ||
+      (target.type !== 'trash-tab' &&
+        target.type !== 'trash-subtab' &&
+        target.type !== 'trash-domain' &&
+        target.type !== 'trash-space')
+    ) {
+      return
+    }
     setContextMenu(null)
+
+    if (target.type === 'trash-domain') {
+      const result = restoreTrashDomain(stateRef.current, target.deletedDomainEntryId)
+      stateRef.current = result.state
+      setState(result.state)
+      if (!result.changed) {
+        pushToast('that domain is no longer in trash.', 'warning')
+        return
+      }
+      setTrashDomainId?.('')
+      setTrashSpaceId?.('')
+      setTrashTabId(TRASH_HOME_ID)
+      setTrashSubTabId(null)
+      pushToast('domain restored from trash.', 'success')
+      return
+    }
+
+    if (target.type === 'trash-space') {
+      const result = restoreTrashSpace(stateRef.current, target)
+      stateRef.current = result.state
+      setState(result.state)
+      if (result.reason === 'missing-domain') {
+        pushToast('restore the domain first.', 'warning')
+        return
+      }
+      if (result.changed) {
+        setTrashDomainId?.('')
+        setTrashSpaceId?.('')
+        setTrashTabId(TRASH_HOME_ID)
+        setTrashSubTabId(null)
+        pushToast('space restored from trash.', 'success')
+        return
+      }
+      pushToast('that space is no longer in trash.', 'warning')
+      return
+    }
+
+    if (
+      (target.type === 'trash-tab' || target.type === 'trash-subtab') &&
+      target.source === 'deleted-domain-tab'
+    ) {
+      const result = restoreDeletedDomainTrashItem(stateRef.current, target)
+      stateRef.current = result.state
+      setState(result.state)
+      if (result.changed) {
+        setTrashDomainId?.('')
+        setTrashSpaceId?.('')
+        setTrashTabId(TRASH_HOME_ID)
+        setTrashSubTabId(null)
+        pushToast('item restored from trash.', 'success')
+        return
+      }
+      pushToast('that item is no longer in trash.', 'warning')
+      return
+    }
+
     updateActiveSpaceData((data) =>
       restoreTrashTarget(data, target as TrashRestoreTarget, {
         createParentNoteBodyId: createId,
@@ -490,44 +701,62 @@ export const useAppOverlayActions = ({
   }
 
   const restoreAllTrash = () => {
-    updateActiveSpaceData((data) => {
-      let tabs = [...data.tabs]
-      for (const entry of data.deletedTabs) {
-        if (tabs.some((tab) => tab.id === entry.tab.id)) continue
-        tabs = [...tabs, entry.tab]
-      }
-
-      for (const entry of data.deletedSubTabs) {
-        const parentIndex = tabs.findIndex((tab) => tab.id === entry.parentTabId)
-        if (parentIndex >= 0) {
-          const parent = tabs[parentIndex]
-          if (!parent.subTabs.some((sub) => sub.id === entry.subTab.id)) {
-            tabs[parentIndex] = { ...parent, subTabs: [...parent.subTabs, entry.subTab] }
+    setState((previous) => restoreAllTrashInAppState(previous))
+    setState((previous) => {
+      const restoredSpaces = previous.domains.map((domain) => ({
+        ...domain,
+        spaces: domain.spaces.map((space) => {
+          let tabs = [...space.data.tabs]
+          for (const entry of space.data.deletedTabs) {
+            if (tabs.some((tab) => tab.id === entry.tab.id)) continue
+            tabs = [...tabs, entry.tab]
           }
-        } else {
-          tabs = [
-            ...tabs,
-            {
-              id: entry.parentTabId,
-              title: entry.parentTabTitle,
-              noteBodyId: createId(),
-              homeContent: '',
-              activeSubTabId: null,
-              subTabs: [entry.subTab],
+
+          for (const entry of space.data.deletedSubTabs) {
+            const parentIndex = tabs.findIndex((tab) => tab.id === entry.parentTabId)
+            if (parentIndex >= 0) {
+              const parent = tabs[parentIndex]
+              if (!parent.subTabs.some((sub) => sub.id === entry.subTab.id)) {
+                tabs[parentIndex] = { ...parent, subTabs: [...parent.subTabs, entry.subTab] }
+              }
+            } else {
+              tabs = [
+                ...tabs,
+                {
+                  id: entry.parentTabId,
+                  title: entry.parentTabTitle,
+                  noteBodyId: createId(),
+                  homeContent: '',
+                  activeSubTabId: null,
+                  subTabs: [entry.subTab],
+                },
+              ]
+            }
+          }
+
+          return {
+            ...space,
+            data: {
+              ...space.data,
+              activeTabId: tabs.some((tab) => tab.id === space.data.activeTabId)
+                ? space.data.activeTabId
+                : tabs[0].id,
+              tabs,
+              deletedTabs: [],
+              deletedSubTabs: [],
             },
-          ]
-        }
-      }
-
-      return {
-        ...data,
-        activeTabId: tabs.some((tab) => tab.id === data.activeTabId) ? data.activeTabId : tabs[0].id,
-        tabs,
-        deletedTabs: [],
-        deletedSubTabs: [],
-      }
+          }
+        }),
+      }))
+      return projectActiveDomainState({
+        ...previous,
+        domains: restoredSpaces,
+        spaces:
+          restoredSpaces.find((domain) => domain.id === previous.activeDomainId)?.spaces ?? previous.spaces,
+      })
     })
-
+    setTrashDomainId?.('')
+    setTrashSpaceId?.('')
     setTrashTabId(TRASH_HOME_ID)
     setTrashSubTabId(null)
   }
@@ -540,8 +769,26 @@ export const useAppOverlayActions = ({
       stateRef.current.activeDomainId,
       cleanupSpace.id,
     )
-    updateActiveSpaceData((data) => ({ ...data, deletedTabs: [], deletedSubTabs: [] }))
+    setState((previous) => {
+      const noDomainTrash = deleteAllDomainAndSpaceTrash(previous)
+      return projectActiveDomainState({
+        ...noDomainTrash,
+        domains: noDomainTrash.domains.map((domain) => ({
+          ...domain,
+          spaces: domain.spaces.map((space) => ({
+            ...space,
+            data: { ...space.data, deletedTabs: [], deletedSubTabs: [] },
+          })),
+        })),
+        spaces: noDomainTrash.spaces.map((space) => ({
+          ...space,
+          data: { ...space.data, deletedTabs: [], deletedSubTabs: [] },
+        })),
+      })
+    })
     removeNotePreviewsForLocations(previewCleanupTargets)
+    setTrashDomainId?.('')
+    setTrashSpaceId?.('')
     setTrashTabId(TRASH_HOME_ID)
     setTrashSubTabId(null)
   }
@@ -667,6 +914,8 @@ export const useAppOverlayActions = ({
     openContextMenuForHomeTab,
     openContextMenuForTrashTab,
     openContextMenuForTrashSubTab,
+    openContextMenuForTrashDomain,
+    openContextMenuForTrashSpace,
     openContextMenuForSpace,
     openContextMenuForDomain,
     openDeleteModalFromContext,

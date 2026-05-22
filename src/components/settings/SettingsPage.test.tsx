@@ -112,6 +112,8 @@ function renderSettingsPage(
       noteFontScaleDraft={1}
       customThemePaletteDraft={state.ui.customThemePalette ?? DEFAULT_CUSTOM_THEME_PALETTE}
       showParentHomeTabDraft
+      alwaysShowSpacesDraft={state.ui.alwaysShowSpaces ?? false}
+      alwaysShowDomainsDraft={state.ui.alwaysShowDomains ?? false}
       tableAddTargetModeDraft={state.ui.tableAddTargetMode}
       tableDeleteTargetModeDraft={state.ui.tableDeleteTargetMode}
       frontmatterDraft={frontmatterDraft}
@@ -136,6 +138,8 @@ function renderSettingsPage(
       onTabButtonScaleChange={() => undefined}
       onNoteFontScaleChange={() => undefined}
       onShowParentHomeTabChange={() => undefined}
+      onAlwaysShowSpacesChange={() => undefined}
+      onAlwaysShowDomainsChange={() => undefined}
       onTableAddTargetModeChange={() => undefined}
       onTableDeleteTargetModeChange={() => undefined}
       onTipEnabledChange={() => undefined}
@@ -222,6 +226,17 @@ describe('frontmatter settings page', () => {
 
     expect(html).toContain('copy to custom')
     expect(html).not.toContain('seed from current theme')
+  })
+
+  it('renders always-visible navigation switches in visuals', () => {
+    const state = createState()
+    state.ui.alwaysShowSpaces = true
+    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'visuals', state })
+
+    expect(html).toContain('always show spaces')
+    expect(html).toContain('always show domains')
+    expect(html).toContain('id="settings-always-show-spaces"')
+    expect(html).toContain('id="settings-always-show-domains"')
   })
 
   it('renders misc table target controls with bottom-right defaults', () => {

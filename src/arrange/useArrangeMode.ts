@@ -4,10 +4,14 @@ import {
   ARRANGE_PRESS_DELAY_MS,
   ARRANGE_TAP_SLOP_PX,
   DEFAULT_ARRANGE_MODE,
-  getArrangeRailInsertionTarget,
-  isPointInsideElement,
   isPointInsideElementExact,
 } from './arrange-utils'
+import {
+  EXACT_RAIL_HIT_PADDING_PX,
+  TAB_RAIL_HIT_PADDING_PX,
+  getArrangeRailItemTargetFromElement,
+  getArrangeRailInsertionTargetFromElement,
+} from './arrange-hit-testing'
 import {
   EMPTY_ARRANGE_SELECTION,
   isSelectionModifier,
@@ -18,13 +22,16 @@ import {
   normalizeArrangeSelection,
   updateArrangeSelectionForClick,
 } from './arrange-selection'
-import { moveDomainWithinState, moveSpaceWithinActiveDomain } from '../state/domains'
+import { copyTabArrangeCarryPreview, isSubTabDropOnSourceSpace } from './arrange-guided-prompt'
+import { moveDomainWithinState, moveSpaceToDomain, moveSpaceWithinActiveDomain } from '../state/domains'
 import { collectAppNavigationEntityIds, createReservedIdAllocator } from '../state/navigation-ids'
 import { createTab } from '../state/workspace'
+import { moveDomainToTrash, moveSpaceToTrash } from '../trash/domain-space-trash'
 import type {
   AppState,
   ArrangeDragItem,
   ArrangeDragSeed,
+  ArrangeHierarchyDropRequest,
   ArrangeInsertPosition,
   ArrangeModeState,
   ArrangeSelectionState,
@@ -46,6 +53,7 @@ import type {
 } from '../types/app'
 
 type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
+export type ArrangeHierarchyRevealLevel = 0 | 1 | 2
 
 type UseArrangeModeParams = {
   state: AppState
@@ -61,6 +69,8 @@ type UseArrangeModeParams = {
   setContextMenu: Dispatch<SetStateAction<ContextMenuState | null>>
   setEditing: Dispatch<SetStateAction<{ type: EditableEntityType; id: string } | null>>
   closeAisleEditModal: () => void
+  onArrangeHierarchyDrop?: (request: ArrangeHierarchyDropRequest, carriedPreview: TabArrangeDragPreview) => void
+  onArrangeSpaceMoveBlocked?: (reason: 'last-space') => void
 }
 
 function areArrangeSelectionsEqual(left: ArrangeSelectionState, right: ArrangeSelectionState) {
@@ -71,6 +81,14 @@ function areArrangeSelectionsEqual(left: ArrangeSelectionState, right: ArrangeSe
     left.selectedIds.length === right.selectedIds.length &&
     left.selectedIds.every((id, index) => id === right.selectedIds[index])
   )
+}
+
+export function getNextArrangeHierarchyRevealLevel(
+  currentLevel: ArrangeHierarchyRevealLevel,
+  persistedLevel: ArrangeHierarchyRevealLevel,
+): ArrangeHierarchyRevealLevel {
+  const visibleLevel = Math.max(currentLevel, persistedLevel)
+  return visibleLevel >= 2 ? 2 : ((visibleLevel + 1) as ArrangeHierarchyRevealLevel)
 }
 
 export function useArrangeMode({
@@ -87,8 +105,11 @@ export function useArrangeMode({
   setContextMenu,
   setEditing,
   closeAisleEditModal,
+  onArrangeHierarchyDrop,
+  onArrangeSpaceMoveBlocked,
 }: UseArrangeModeParams) {
   const [mode, setMode] = useState<ArrangeModeState>(DEFAULT_ARRANGE_MODE)
+  const [hierarchyRevealLevel, setHierarchyRevealLevel] = useState<ArrangeHierarchyRevealLevel>(0)
   const [draggingItem, setDraggingItem] = useState<ArrangeDragItem | null>(null)
   const [domainDragPreview, setDomainDragPreview] = useState<DomainArrangeDragPreview | null>(null)
   const [spaceDragPreview, setSpaceDragPreview] = useState<SpaceArrangeDragPreview | null>(null)
@@ -210,7 +231,19 @@ export function useArrangeMode({
       markClickSuppressed(suppressClickKey)
     }
     const scope: ArrangeScope | null =
-      viewMode === 'domains' ? 'domains' : viewMode === 'spaces' ? 'spaces' : viewMode === 'main' ? 'tabs' : null
+      dragItem?.type === 'domain'
+        ? 'domains'
+        : dragItem?.type === 'space'
+          ? 'spaces'
+          : dragItem?.type === 'tab' || dragItem?.type === 'subtab'
+            ? 'tabs'
+            : viewMode === 'domains'
+              ? 'domains'
+              : viewMode === 'spaces'
+                ? 'spaces'
+                : viewMode === 'main'
+                  ? 'tabs'
+                  : null
     setMode({
       active: true,
       scope,
@@ -292,8 +325,19 @@ export function useArrangeMode({
     setDomainDragPreview(null)
     setSpaceDragPreview(null)
     setTabDragPreview(null)
+    setHierarchyRevealLevel(0)
     clearSelection()
     setMode(DEFAULT_ARRANGE_MODE)
+  }
+
+  const advanceHierarchyReveal = () => {
+    if (!mode.active || viewMode !== 'main') return
+    const persistedHierarchyLevel: ArrangeHierarchyRevealLevel = state.ui.alwaysShowDomains
+      ? 2
+      : state.ui.alwaysShowSpaces
+        ? 1
+        : 0
+    setHierarchyRevealLevel((level) => getNextArrangeHierarchyRevealLevel(level, persistedHierarchyLevel))
   }
 
   const startPress = (
@@ -365,10 +409,19 @@ export function useArrangeMode({
   }
 
   const getDomainInsertionTargetFromPoint = (clientX: number, clientY: number) => {
-    const grid = domainsGridRef.current
-    if (!grid) return null
-    return getArrangeRailInsertionTarget(
-      grid,
+    return getArrangeRailInsertionTargetFromElement(
+      domainsGridRef.current,
+      '[data-arrange-domain-id]',
+      'data-arrange-domain-id',
+      clientX,
+      clientY,
+      EXACT_RAIL_HIT_PADDING_PX,
+    )
+  }
+
+  const getDomainItemTargetFromPoint = (clientX: number, clientY: number) => {
+    return getArrangeRailItemTargetFromElement(
+      domainsGridRef.current,
       '[data-arrange-domain-id]',
       'data-arrange-domain-id',
       clientX,
@@ -426,7 +479,7 @@ export function useArrangeMode({
   }
 
   const startDomainPointerDrag = (event: ReactPointerEvent<HTMLButtonElement>, domain: Domain) => {
-    if (viewMode !== 'domains') return
+    if (viewMode !== 'domains' && viewMode !== 'main') return
     const rect = event.currentTarget.getBoundingClientRect()
     const nextDrag: DomainArrangeDragPreview = {
       domainId: domain.id,
@@ -457,6 +510,12 @@ export function useArrangeMode({
     }
     domainDragRef.current = nextDrag
     setDomainDragPreview(nextDrag)
+    if (isPointOverTrashDrop(clientX, clientY)) {
+      setTrashDropTarget(true)
+      clearDomainDropTarget()
+      return
+    }
+    setTrashDropTarget(false)
     updateDomainDropTarget(clientX, clientY)
   }
 
@@ -476,6 +535,32 @@ export function useArrangeMode({
 
     const insertionTarget = getDomainInsertionTargetFromPoint(clientX, clientY)
     markClickSuppressed(`domain:${drag.domainId}`)
+    if (isPointOverTrashDrop(clientX, clientY)) {
+      const createEntityId = createReservedIdAllocator(collectAppNavigationEntityIds(state))
+      setState((previous) => moveDomainToTrash(previous, drag.domainId, createEntityId).state)
+      setTrashDropTarget(false)
+      clearDomainPointerDrag()
+      clearTapCandidate()
+      clearDragSeed()
+      setDraggingItem(null)
+      setMode((previous) =>
+        previous.active
+          ? {
+              ...previous,
+              dragItem: null,
+              overParentTabId: null,
+              overParentInsert: null,
+              overSubTabId: null,
+              overSubTabInsert: null,
+              overSpaceId: null,
+              overSpaceInsert: null,
+              overDomainId: null,
+              overDomainInsert: null,
+            }
+          : previous,
+      )
+      return true
+    }
     if (insertionTarget) {
       markClickSuppressed(`domain:${insertionTarget.targetId}`)
       moveDomainToTarget(drag.domainId, insertionTarget)
@@ -510,6 +595,7 @@ export function useArrangeMode({
     clearTapCandidate()
     clearDragSeed()
     clearPressTimer()
+    setTrashDropTarget(false)
     setDraggingItem(null)
     setMode((previous) =>
       previous.active
@@ -544,7 +630,11 @@ export function useArrangeMode({
     startDomainPointerDrag(event, domain)
   }
 
-  const handleDomainPointerUp = (event: ReactPointerEvent<HTMLButtonElement>, domainId: string) => {
+  const handleDomainPointerUp = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    domainId: string,
+    onTapWhileArranging: () => void = exit,
+  ) => {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId)
     }
@@ -557,17 +647,26 @@ export function useArrangeMode({
 
     clearDragSeed()
     if (mode.active && mode.scope === 'domains') {
-      finalizeTapCandidate(`domain:${domainId}`, event, exit)
+      finalizeTapCandidate(`domain:${domainId}`, event, onTapWhileArranging)
       return
     }
     clearPressTimer()
   }
 
   const getSpaceInsertionTargetFromPoint = (clientX: number, clientY: number) => {
-    const grid = spacesGridRef.current
-    if (!grid) return null
-    return getArrangeRailInsertionTarget(
-      grid,
+    return getArrangeRailInsertionTargetFromElement(
+      spacesGridRef.current,
+      '[data-arrange-space-id]',
+      'data-arrange-space-id',
+      clientX,
+      clientY,
+      EXACT_RAIL_HIT_PADDING_PX,
+    )
+  }
+
+  const getSpaceItemTargetFromPoint = (clientX: number, clientY: number) => {
+    return getArrangeRailItemTargetFromElement(
+      spacesGridRef.current,
       '[data-arrange-space-id]',
       'data-arrange-space-id',
       clientX,
@@ -582,6 +681,8 @@ export function useArrangeMode({
             ...previous,
             overSpaceId: null,
             overSpaceInsert: null,
+            overDomainId: null,
+            overDomainInsert: null,
           }
         : previous,
     )
@@ -625,10 +726,11 @@ export function useArrangeMode({
   }
 
   const startSpacePointerDrag = (event: ReactPointerEvent<HTMLButtonElement>, space: Space) => {
-    if (viewMode !== 'spaces') return
+    if (viewMode !== 'spaces' && viewMode !== 'main') return
     const rect = event.currentTarget.getBoundingClientRect()
     const nextDrag: SpaceArrangeDragPreview = {
       spaceId: space.id,
+      sourceDomainId: state.activeDomainId,
       label: space.name,
       currentX: event.clientX,
       currentY: event.clientY,
@@ -656,6 +758,34 @@ export function useArrangeMode({
     }
     spaceDragRef.current = nextDrag
     setSpaceDragPreview(nextDrag)
+    if (isPointOverTrashDrop(clientX, clientY)) {
+      setTrashDropTarget(true)
+      clearSpaceDropTarget()
+      return
+    }
+    setTrashDropTarget(false)
+    const domainTarget = getDomainItemTargetFromPoint(clientX, clientY)
+    if (domainTarget) {
+      setMode((previous) =>
+        previous.overDomainId === domainTarget.targetId &&
+        previous.overDomainInsert === null &&
+        previous.overSpaceId === null &&
+        previous.overSpaceInsert === null
+          ? previous
+          : {
+              ...previous,
+              overParentTabId: null,
+              overParentInsert: null,
+              overSubTabId: null,
+              overSubTabInsert: null,
+              overSpaceId: null,
+              overSpaceInsert: null,
+              overDomainId: domainTarget.targetId,
+              overDomainInsert: null,
+            },
+      )
+      return
+    }
     updateSpaceDropTarget(clientX, clientY)
   }
 
@@ -675,6 +805,63 @@ export function useArrangeMode({
 
     const insertionTarget = getSpaceInsertionTargetFromPoint(clientX, clientY)
     markClickSuppressed(`space:${drag.spaceId}`)
+    if (isPointOverTrashDrop(clientX, clientY)) {
+      const createEntityId = createReservedIdAllocator(collectAppNavigationEntityIds(state))
+      setState((previous) => moveSpaceToTrash(previous, previous.activeDomainId, drag.spaceId, createEntityId).state)
+      setTrashDropTarget(false)
+      clearSpacePointerDrag()
+      clearTapCandidate()
+      clearDragSeed()
+      setDraggingItem(null)
+      setMode((previous) =>
+        previous.active
+          ? {
+              ...previous,
+              dragItem: null,
+              overParentTabId: null,
+              overParentInsert: null,
+              overSubTabId: null,
+              overSubTabInsert: null,
+              overSpaceId: null,
+              overSpaceInsert: null,
+              overDomainId: null,
+              overDomainInsert: null,
+            }
+          : previous,
+      )
+      return true
+    }
+    const domainTarget = getDomainItemTargetFromPoint(clientX, clientY)
+    if (domainTarget) {
+      markClickSuppressed(`domain:${domainTarget.targetId}`)
+      setState((previous) => {
+        const result = moveSpaceToDomain(previous, drag.sourceDomainId, drag.spaceId, domainTarget.targetId)
+        if (result.reason === 'last-space') onArrangeSpaceMoveBlocked?.('last-space')
+        return result.state
+      })
+      suppressNextSpaceArrangeExitClick()
+      clearSpacePointerDrag()
+      clearTapCandidate()
+      clearDragSeed()
+      setDraggingItem(null)
+      setMode((previous) =>
+        previous.active
+          ? {
+              ...previous,
+              dragItem: null,
+              overParentTabId: null,
+              overParentInsert: null,
+              overSubTabId: null,
+              overSubTabInsert: null,
+              overSpaceId: null,
+              overSpaceInsert: null,
+              overDomainId: null,
+              overDomainInsert: null,
+            }
+          : previous,
+      )
+      return true
+    }
     if (insertionTarget) {
       markClickSuppressed(`space:${insertionTarget.targetId}`)
       moveSpaceToTarget(drag.spaceId, insertionTarget)
@@ -709,6 +896,7 @@ export function useArrangeMode({
     clearTapCandidate()
     clearDragSeed()
     clearPressTimer()
+    setTrashDropTarget(false)
     setDraggingItem(null)
     setMode((previous) =>
       previous.active
@@ -745,7 +933,11 @@ export function useArrangeMode({
     startSpacePointerDrag(event, space)
   }
 
-  const handleSpacePointerUp = (event: ReactPointerEvent<HTMLButtonElement>, spaceId: string) => {
+  const handleSpacePointerUp = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    spaceId: string,
+    onTapWhileArranging: () => void = exit,
+  ) => {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId)
     }
@@ -758,22 +950,32 @@ export function useArrangeMode({
 
     clearDragSeed()
     if (mode.active && mode.scope === 'spaces') {
-      finalizeTapCandidate(`space:${spaceId}`, event, exit)
+      finalizeTapCandidate(`space:${spaceId}`, event, onTapWhileArranging)
       return
     }
     clearPressTimer()
   }
 
   const getParentInsertionTargetFromPoint = (clientX: number, clientY: number) => {
-    const rail = primaryTabRailRef.current
-    if (!rail || !isPointInsideElement(rail, clientX, clientY, 14)) return null
-    return getArrangeRailInsertionTarget(rail, '[data-arrange-tab-id]', 'data-arrange-tab-id', clientX, clientY)
+    return getArrangeRailInsertionTargetFromElement(
+      primaryTabRailRef.current,
+      '[data-arrange-tab-id]',
+      'data-arrange-tab-id',
+      clientX,
+      clientY,
+      TAB_RAIL_HIT_PADDING_PX,
+    )
   }
 
   const getSubTabInsertionTargetFromPoint = (clientX: number, clientY: number) => {
-    const rail = subTabRailRef.current
-    if (!rail || !isPointInsideElement(rail, clientX, clientY, 14)) return null
-    return getArrangeRailInsertionTarget(rail, '[data-arrange-subtab-id]', 'data-arrange-subtab-id', clientX, clientY)
+    return getArrangeRailInsertionTargetFromElement(
+      subTabRailRef.current,
+      '[data-arrange-subtab-id]',
+      'data-arrange-subtab-id',
+      clientX,
+      clientY,
+      TAB_RAIL_HIT_PADDING_PX,
+    )
   }
 
   const clearTabDropTarget = () => {
@@ -785,6 +987,10 @@ export function useArrangeMode({
             overParentInsert: null,
             overSubTabId: null,
             overSubTabInsert: null,
+            overSpaceId: null,
+            overSpaceInsert: null,
+            overDomainId: null,
+            overDomainInsert: null,
           }
         : previous,
     )
@@ -858,6 +1064,52 @@ export function useArrangeMode({
 
     if (item.type === 'tab') {
       const dragIds = getActiveTabDragIds(item)
+      const domainTarget = getDomainItemTargetFromPoint(clientX, clientY)
+      if (domainTarget) {
+        setMode((previous) =>
+          previous.overDomainId === domainTarget.targetId &&
+          previous.overDomainInsert === null &&
+          previous.overSpaceId === null &&
+          previous.overSpaceInsert === null
+            ? previous
+            : {
+                ...previous,
+                overParentTabId: null,
+                overParentInsert: null,
+                overSubTabId: null,
+                overSubTabInsert: null,
+                overSpaceId: null,
+                overSpaceInsert: null,
+                overDomainId: domainTarget.targetId,
+                overDomainInsert: null,
+              },
+        )
+        return { type: 'domain' as const, target: domainTarget }
+      }
+
+      const spaceTarget = getSpaceItemTargetFromPoint(clientX, clientY)
+      if (spaceTarget) {
+        setMode((previous) =>
+          previous.overSpaceId === spaceTarget.targetId &&
+          previous.overSpaceInsert === null &&
+          previous.overDomainId === null &&
+          previous.overDomainInsert === null
+            ? previous
+            : {
+                ...previous,
+                overParentTabId: null,
+                overParentInsert: null,
+                overSubTabId: null,
+                overSubTabInsert: null,
+                overSpaceId: spaceTarget.targetId,
+                overSpaceInsert: null,
+                overDomainId: null,
+                overDomainInsert: null,
+              },
+        )
+        return { type: 'space' as const, target: spaceTarget }
+      }
+
       const parentTarget = getParentInsertionTargetFromPoint(clientX, clientY)
       if (!parentTarget || dragIds.includes(parentTarget.targetId)) {
         clearTabDropTarget()
@@ -873,6 +1125,10 @@ export function useArrangeMode({
               overParentInsert: parentTarget.position,
               overSubTabId: null,
               overSubTabInsert: null,
+              overSpaceId: null,
+              overSpaceInsert: null,
+              overDomainId: null,
+              overDomainInsert: null,
             },
       )
       return { type: 'parent' as const, target: parentTarget }
@@ -880,6 +1136,52 @@ export function useArrangeMode({
 
     if (item.type === 'subtab') {
       const dragIds = getActiveTabDragIds(item)
+      const domainTarget = getDomainItemTargetFromPoint(clientX, clientY)
+      if (domainTarget) {
+        setMode((previous) =>
+          previous.overDomainId === domainTarget.targetId &&
+          previous.overDomainInsert === null &&
+          previous.overSpaceId === null &&
+          previous.overSpaceInsert === null
+            ? previous
+            : {
+                ...previous,
+                overParentTabId: null,
+                overParentInsert: null,
+                overSubTabId: null,
+                overSubTabInsert: null,
+                overSpaceId: null,
+                overSpaceInsert: null,
+                overDomainId: domainTarget.targetId,
+                overDomainInsert: null,
+              },
+        )
+        return { type: 'domain' as const, target: domainTarget }
+      }
+
+      const spaceTarget = getSpaceItemTargetFromPoint(clientX, clientY)
+      if (spaceTarget) {
+        setMode((previous) =>
+          previous.overSpaceId === spaceTarget.targetId &&
+          previous.overSpaceInsert === null &&
+          previous.overDomainId === null &&
+          previous.overDomainInsert === null
+            ? previous
+            : {
+                ...previous,
+                overParentTabId: null,
+                overParentInsert: null,
+                overSubTabId: null,
+                overSubTabInsert: null,
+                overSpaceId: spaceTarget.targetId,
+                overSpaceInsert: null,
+                overDomainId: null,
+                overDomainInsert: null,
+              },
+        )
+        return { type: 'space' as const, target: spaceTarget }
+      }
+
       const parentTarget = getParentInsertionTargetFromPoint(clientX, clientY)
       if (parentTarget) {
         setMode((previous) =>
@@ -894,6 +1196,10 @@ export function useArrangeMode({
                 overParentInsert: null,
                 overSubTabId: null,
                 overSubTabInsert: null,
+                overSpaceId: null,
+                overSpaceInsert: null,
+                overDomainId: null,
+                overDomainInsert: null,
               },
         )
         return { type: 'parent' as const, target: parentTarget }
@@ -910,6 +1216,10 @@ export function useArrangeMode({
                 overParentInsert: null,
                 overSubTabId: subTabTarget.targetId,
                 overSubTabInsert: subTabTarget.position,
+                overSpaceId: null,
+                overSpaceInsert: null,
+                overDomainId: null,
+                overDomainInsert: null,
               },
         )
         return { type: 'subtab' as const, target: subTabTarget }
@@ -1051,11 +1361,52 @@ export function useArrangeMode({
     const { item } = drag
     const sourceKey = item.type === 'tab' ? `tab:${item.tabId}` : `subtab:${item.subTabId}`
     const dragIds = tabDragGroupRef.current?.ids ?? getTabDragIds(item)
+    const carriedPreview = copyTabArrangeCarryPreview(drag, clientX, clientY)
     markClickSuppressed(sourceKey)
 
     if (isPointOverTrashDrop(clientX, clientY)) {
       moveTabItemsToTrash(item, dragIds)
       clearSelection()
+      cleanupFinishedTabPointerDrag()
+      return true
+    }
+
+    const domainTarget = getDomainItemTargetFromPoint(clientX, clientY)
+    if (domainTarget) {
+      markClickSuppressed(`domain:${domainTarget.targetId}`)
+      onArrangeHierarchyDrop?.(
+        {
+          sourceDomainId: state.activeDomainId,
+          sourceSpaceId: state.activeSpaceId,
+          item:
+            item.type === 'tab'
+              ? { type: 'parent', parentTabIds: dragIds }
+              : { type: 'subtab', parentTabId: item.parentTabId, subTabIds: dragIds },
+          target: { type: 'domain', domainId: domainTarget.targetId },
+        },
+        carriedPreview,
+      )
+      clearSelection()
+      cleanupFinishedTabPointerDrag()
+      return true
+    }
+
+    const spaceTarget = getSpaceItemTargetFromPoint(clientX, clientY)
+    if (spaceTarget) {
+      markClickSuppressed(`space:${spaceTarget.targetId}`)
+      const request: ArrangeHierarchyDropRequest = {
+        sourceDomainId: state.activeDomainId,
+        sourceSpaceId: state.activeSpaceId,
+        item:
+          item.type === 'tab'
+            ? { type: 'parent', parentTabIds: dragIds }
+            : { type: 'subtab', parentTabId: item.parentTabId, subTabIds: dragIds },
+        target: { type: 'space', domainId: state.activeDomainId, spaceId: spaceTarget.targetId },
+      }
+      if (!isSubTabDropOnSourceSpace(request)) {
+        onArrangeHierarchyDrop?.(request, carriedPreview)
+        clearSelection()
+      }
       cleanupFinishedTabPointerDrag()
       return true
     }
@@ -1100,6 +1451,10 @@ export function useArrangeMode({
             overParentInsert: null,
             overSubTabId: null,
             overSubTabInsert: null,
+            overSpaceId: null,
+            overSpaceInsert: null,
+            overDomainId: null,
+            overDomainInsert: null,
           }
         : previous,
     )
@@ -1211,6 +1566,7 @@ export function useArrangeMode({
     isDraggingOverTrashDropRef.current = false
     setIsDraggingOverTrashDrop(false)
     clearSelection()
+    setHierarchyRevealLevel(0)
     setMode((previous) => (previous.active ? DEFAULT_ARRANGE_MODE : previous))
   }, [viewMode])
 
@@ -1291,7 +1647,7 @@ export function useArrangeMode({
   }, [mode.active, mode.scope, viewMode, workspace.tabs, activeTab.subTabs])
 
   useEffect(() => {
-    if (!mode.active || mode.scope !== 'spaces' || viewMode !== 'spaces') return
+    if (!mode.active || mode.scope !== 'spaces' || (viewMode !== 'spaces' && viewMode !== 'main')) return
 
     setMode((previous) => {
       if (!previous.active || previous.scope !== 'spaces') return previous
@@ -1332,7 +1688,7 @@ export function useArrangeMode({
   }, [mode.active, mode.scope, viewMode, state.spaces])
 
   useEffect(() => {
-    if (!mode.active || mode.scope !== 'domains' || viewMode !== 'domains') return
+    if (!mode.active || mode.scope !== 'domains' || (viewMode !== 'domains' && viewMode !== 'main')) return
 
     setMode((previous) => {
       if (!previous.active || previous.scope !== 'domains') return previous
@@ -1374,6 +1730,7 @@ export function useArrangeMode({
 
   return {
     mode,
+    hierarchyRevealLevel,
     draggingItem,
     domainDragPreview,
     spaceDragPreview,
@@ -1396,6 +1753,7 @@ export function useArrangeMode({
     consumeClickSuppression,
     enter,
     exit,
+    advanceHierarchyReveal,
     enterFromContext,
     startPress,
     handleParentSelectionClick,

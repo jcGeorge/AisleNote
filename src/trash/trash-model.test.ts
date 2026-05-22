@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { WorkspaceData } from '../types/app'
-import { buildTrashParentBuckets, resolveTrashContentDisplay, TRASH_HOME_ID } from './trash-model'
+import type { AppState, WorkspaceData } from '../types/app'
+import { buildTrashDomainBuckets, buildTrashParentBuckets, resolveTrashContentDisplay, TRASH_HOME_ID } from './trash-model'
 
 const workspace: WorkspaceData = {
   activeTabId: 'live',
@@ -36,6 +36,119 @@ describe('trash model', () => {
 
     expect(buckets.map((bucket) => bucket.source)).toEqual(['deleted-tab', 'subtabs-only'])
     expect(buckets[1].subTabs[0].content).toBe('orphan content')
+  })
+
+  it('exposes parent tabs inside deleted-domain spaces', () => {
+    const state = {
+      activeDomainId: 'domain-live',
+      activeSpaceId: '',
+      spaces: [],
+      domains: [],
+      deletedSpaces: [],
+      deletedDomains: [
+        {
+          id: 'deleted-domain-entry',
+          deletedAt: 1,
+          deletedSpaces: [],
+          domain: {
+            id: 'domain-a',
+            name: 'Domain A',
+            activeSpaceId: 'space-a',
+            spaces: [
+              {
+                id: 'space-a',
+                name: 'Space A',
+                settings: { autoRemoveDeletedDays: 7 },
+                data: {
+                  activeTabId: 'parent-a',
+                  tabs: [
+                    {
+                      id: 'parent-a',
+                      title: 'Parent A',
+                      noteBodyId: 'parent-body',
+                      homeContent: 'parent home',
+                      activeSubTabId: null,
+                      subTabs: [],
+                    },
+                  ],
+                  deletedTabs: [],
+                  deletedSubTabs: [],
+                },
+              },
+            ],
+          },
+        },
+      ],
+    } as unknown as AppState
+
+    const buckets = buildTrashDomainBuckets(state)
+
+    expect(buckets[0].spaces[0].parentTabs[0]).toMatchObject({
+      source: 'deleted-domain-tab',
+      deletedDomainEntryId: 'deleted-domain-entry',
+      deletedSpaceEntryId: null,
+      domainId: 'domain-a',
+      spaceId: 'space-a',
+      parentTabId: 'parent-a',
+    })
+  })
+
+  it('keeps deleted-domain space restore targets separate from deleted-space entries', () => {
+    const state = {
+      activeDomainId: 'domain-live',
+      activeSpaceId: '',
+      spaces: [],
+      domains: [],
+      deletedSpaces: [],
+      deletedDomains: [
+        {
+          id: 'deleted-domain-entry',
+          deletedAt: 1,
+          deletedSpaces: [
+            {
+              id: 'deleted-space-entry',
+              domainId: 'domain-a',
+              domainName: 'Domain A',
+              deletedAt: 2,
+              space: {
+                id: 'space-b',
+                name: 'Deleted Space',
+                settings: { autoRemoveDeletedDays: 7 },
+                data: { activeTabId: '', tabs: [], deletedTabs: [], deletedSubTabs: [] },
+              },
+            },
+          ],
+          domain: {
+            id: 'domain-a',
+            name: 'Domain A',
+            activeSpaceId: 'space-a',
+            spaces: [
+              {
+                id: 'space-a',
+                name: 'Domain Space',
+                settings: { autoRemoveDeletedDays: 7 },
+                data: { activeTabId: '', tabs: [], deletedTabs: [], deletedSubTabs: [] },
+              },
+            ],
+          },
+        },
+      ],
+    } as unknown as AppState
+
+    const deletedDomain = buildTrashDomainBuckets(state)[0]
+
+    expect(deletedDomain.spaces[0]).toMatchObject({
+      source: 'deleted-domain-space',
+      spaceId: 'space-a',
+      deletedSpaceEntryId: null,
+      deletedDomainEntryId: 'deleted-domain-entry',
+    })
+    expect(deletedDomain.spaces[1]).toMatchObject({
+      source: 'deleted-domain-space',
+      spaceId: 'space-b',
+      deletedSpaceEntryId: 'deleted-space-entry',
+      deletedDomainEntryId: 'deleted-domain-entry',
+    })
   })
 
   it('resolves trash display markdown for home, parent, and subtab selections', () => {

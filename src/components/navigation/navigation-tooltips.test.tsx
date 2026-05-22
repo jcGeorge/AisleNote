@@ -39,18 +39,23 @@ const arrangeMode: ArrangeModeState = {
 
 const noop = () => undefined
 
-function renderTopBar(tooltipsDisabled: boolean) {
+function renderTopBar(
+  tooltipsDisabled: boolean,
+  arrangeModeOverride: Partial<ArrangeModeState> = {},
+  arrangeControlsDisabled = false,
+) {
   return renderToStaticMarkup(
     <TopBar
       viewMode="main"
       workspace={workspace}
       activeTab={activeTab}
       editing={null}
-      arrangeMode={arrangeMode}
+      arrangeMode={{ ...arrangeMode, ...arrangeModeOverride }}
       tooltipsDisabled={tooltipsDisabled}
       primaryTabRailRef={createRef<HTMLDivElement>()}
       isNoteWorkspaceView
       arrangeableParentTabClassName="is-arrangeable"
+      arrangeControlsDisabled={arrangeControlsDisabled}
       draggingParentTabId={null}
       draggingSubTabId={null}
       arrangeTrashDropRef={createRef<HTMLButtonElement>()}
@@ -86,6 +91,7 @@ function renderTopBar(tooltipsDisabled: boolean) {
       onAddTab={noop}
       onOpenParentSortModal={vi.fn()}
       onExitArrangeMode={noop}
+      onAdvanceArrangeHierarchyReveal={noop}
       onEndStageManager={noop}
       onCloseSettingsView={noop}
       onSetMenuOpen={noop}
@@ -98,14 +104,18 @@ function renderTopBar(tooltipsDisabled: boolean) {
   )
 }
 
-function renderSubTabRail(tooltipsDisabled: boolean) {
+function renderSubTabRail(
+  tooltipsDisabled: boolean,
+  arrangeModeOverride: Partial<ArrangeModeState> = {},
+  arrangeControlsDisabled = false,
+) {
   return renderToStaticMarkup(
     <SubTabRail
       viewMode="main"
       activeTab={activeTab}
       activeSubTabId="sub-1"
       editing={null}
-      arrangeMode={arrangeMode}
+      arrangeMode={{ ...arrangeMode, ...arrangeModeOverride }}
       tooltipsDisabled={tooltipsDisabled}
       showParentHomeTab
       isNoteWorkspaceView
@@ -114,6 +124,7 @@ function renderSubTabRail(tooltipsDisabled: boolean) {
       selectedTrashSubTabId={null}
       subTabRailRef={createRef<HTMLDivElement>()}
       arrangeableSubTabClassName="is-arrangeable"
+      arrangeControlsDisabled={arrangeControlsDisabled}
       draggingSubTabId={null}
       onAutoSizeRenameInput={noop}
       onShouldSkipRenameBlur={() => false}
@@ -159,6 +170,31 @@ describe('navigation arrange tooltips', () => {
     expect(disabledHtml).not.toContain('title="sort parents"')
     expect(disabledHtml).toContain('aria-label="sort parents"')
     expect(enabledHtml.indexOf('Alpha')).toBeLessThan(enabledHtml.indexOf('aria-label="sort parents"'))
+  })
+
+  it('keeps parent and sub-tab sort controls visible while arranging spaces or domains', () => {
+    expect(renderTopBar(true, { scope: 'spaces', dragItem: { type: 'space', spaceId: 'space-a' } })).toContain(
+      'aria-label="sort parents"',
+    )
+    expect(renderTopBar(true, { scope: 'domains', dragItem: { type: 'domain', domainId: 'domain-a' } })).toContain(
+      'aria-label="sort parents"',
+    )
+    expect(renderSubTabRail(true, { scope: 'spaces', dragItem: { type: 'space', spaceId: 'space-a' } })).toContain(
+      'aria-label="sort sub-tabs"',
+    )
+    expect(renderSubTabRail(true, { scope: 'domains', dragItem: { type: 'domain', domainId: 'domain-a' } })).toContain(
+      'aria-label="sort sub-tabs"',
+    )
+  })
+
+  it('keeps parent and sub-tab sort controls visible but disabled during guided carry', () => {
+    const parentHtml = renderTopBar(true, {}, true)
+    const subTabHtml = renderSubTabRail(true, {}, true)
+
+    expect(parentHtml).toContain('aria-label="sort parents"')
+    expect(parentHtml).toContain('disabled=""')
+    expect(subTabHtml).toContain('aria-label="sort sub-tabs"')
+    expect(subTabHtml).toContain('disabled=""')
   })
 
   it('keeps sub-tab sort labels while omitting title tooltips when disabled', () => {

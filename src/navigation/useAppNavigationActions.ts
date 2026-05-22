@@ -28,6 +28,10 @@ import {
   type RenameEntityType,
   type RenameTarget,
 } from './rename-draft'
+import {
+  discardPendingCreatedDomainEdit,
+  discardPendingCreatedSpaceEdit,
+} from './pending-created-rename'
 import type {
   AppState,
   ContextMenuState,
@@ -80,7 +84,10 @@ type UseAppNavigationActionsParams = {
   exitArrangeMode: () => void
   saveActiveCursorBeforeNavigation: () => void
   updateActiveSpaceData: (updater: (data: WorkspaceData) => WorkspaceData) => void
-  onCommittedTabRenameForTips: (type: 'tab' | 'subtab', wasPendingCreated: boolean) => void
+  onCommittedTabRenameForTips: (
+    type: 'tab' | 'subtab',
+    event: { wasPendingCreated: boolean; wasRenamedFromDefault: boolean },
+  ) => void
   setTrashTabId: Dispatch<SetStateAction<string>>
   setTrashSubTabId: Dispatch<SetStateAction<string | null>>
 }
@@ -130,9 +137,13 @@ export const useAppNavigationActions = ({
     options: CommitRenameOptions = {},
   ) => {
     const isPendingCreatedRename =
-      (type === 'tab' || type === 'subtab') &&
-      pendingCreatedEditRef.current?.type === type &&
-      pendingCreatedEditRef.current.id === id
+      pendingCreatedEditRef.current?.type === type && pendingCreatedEditRef.current.id === id
+    const originalTitle =
+      type === 'tab'
+        ? workspace.tabs.find((tab) => tab.id === id)?.title
+        : type === 'subtab'
+          ? activeTab.subTabs.find((subTab) => subTab.id === id)?.title
+          : null
 
     if ((type === 'tab' || type === 'subtab') && !isPendingCreatedRename) {
       saveActiveCursorBeforeNavigation()
@@ -146,7 +157,10 @@ export const useAppNavigationActions = ({
     if (!title) return
 
     if (type === 'tab' || type === 'subtab') {
-      onCommittedTabRenameForTips(type, isPendingCreatedRename)
+      onCommittedTabRenameForTips(type, {
+        wasPendingCreated: isPendingCreatedRename,
+        wasRenamedFromDefault: isPendingCreatedRename && title !== (originalTitle ?? '').trim(),
+      })
     }
 
     if (type === 'domain') {
@@ -223,7 +237,7 @@ export const useAppNavigationActions = ({
     return true
   }
 
-  const discardPendingCreatedEdit = (type: 'tab' | 'subtab', id: string) => {
+  const discardPendingCreatedEdit = (type: EditableEntityType, id: string) => {
     const pending = pendingCreatedEditRef.current
     if (!pending || pending.type !== type || pending.id !== id) {
       setEditing(null)
@@ -249,6 +263,16 @@ export const useAppNavigationActions = ({
       return
     }
 
+    if (pending.type === 'space') {
+      setState((previous) => discardPendingCreatedSpaceEdit(previous, pending))
+      return
+    }
+
+    if (pending.type === 'domain') {
+      setState((previous) => discardPendingCreatedDomainEdit(previous, pending))
+      return
+    }
+
     updateActiveSpaceData((data) => ({
       ...data,
       tabs: data.tabs.map((tab) => {
@@ -268,10 +292,6 @@ export const useAppNavigationActions = ({
   const cancelRename = (type: EditableEntityType, id: string) => {
     skipRenameBlurRef.current = { type, id }
     clearRenameDraft(type, id)
-    if (type === 'space' || type === 'domain') {
-      setEditing(null)
-      return
-    }
     discardPendingCreatedEdit(type, id)
   }
 
@@ -383,8 +403,14 @@ export const useAppNavigationActions = ({
     commitActiveRenameBeforeAction()
     saveActiveCursorBeforeNavigation()
     const createEntityId = createReservedIdAllocator(collectAppNavigationEntityIds(state))
-    const newSpace = createSpace('New Space', createEntityId)
+    const newSpace = createSpace('space', createEntityId)
     setState((previous) => addSpaceToActiveDomain(previous, newSpace))
+    pendingCreatedEditRef.current = {
+      type: 'space',
+      id: newSpace.id,
+      sourceDomainId: state.activeDomainId,
+      previousActiveSpaceId: state.activeSpaceId,
+    }
     setViewMode('spaces')
     setEditing({ type: 'space', id: newSpace.id })
     setMenuOpen(false)
@@ -450,8 +476,14 @@ export const useAppNavigationActions = ({
     commitActiveRenameBeforeAction()
     saveActiveCursorBeforeNavigation()
     const createEntityId = createReservedIdAllocator(collectAppNavigationEntityIds(state))
-    const newDomain = createDomain('New Domain', createEntityId)
+    const newDomain = createDomain('domain', createEntityId)
     setState((previous) => addDomain(previous, newDomain))
+    pendingCreatedEditRef.current = {
+      type: 'domain',
+      id: newDomain.id,
+      previousActiveDomainId: state.activeDomainId,
+      previousActiveSpaceId: state.activeSpaceId,
+    }
     setViewMode('domains')
     setEditing({ type: 'domain', id: newDomain.id })
     setMenuOpen(false)

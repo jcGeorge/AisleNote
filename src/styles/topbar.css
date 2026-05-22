@@ -13,6 +13,162 @@
   background: var(--subtabbar-bg);
 }
 
+.compact-scope-rail {
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: 0.24rem 0.5rem;
+  border-bottom: 1px solid var(--tabbar-border);
+  background: var(--tabbar-bg);
+}
+
+.compact-scope-row {
+  align-items: flex-start;
+}
+
+.compact-scope-scroll {
+  display: flex;
+  align-items: center;
+  align-content: flex-start;
+  flex-wrap: wrap;
+  row-gap: 0.35rem;
+  gap: 0.25rem;
+  overflow: visible;
+  padding-block: 0.05rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.compact-domain-rail {
+  padding-top: 0.28rem;
+}
+
+.compact-space-rail {
+  background: var(--subtabbar-bg);
+}
+
+.compact-scope-btn {
+  flex: 0 0 auto;
+  max-width: calc(300px * var(--tab-button-scale));
+  min-width: calc(56px * var(--tab-button-scale));
+  min-height: var(--tab-control-height);
+  border: 1px solid transparent;
+  border-radius: calc(0.42rem * var(--tab-button-scale));
+  padding: calc(0.2rem * var(--tab-button-scale)) calc(0.5rem * var(--tab-button-scale));
+  font-size: calc(0.95rem * var(--tab-button-scale));
+  line-height: calc(1.1 * var(--tab-button-scale));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-width: 1px !important;
+  box-shadow: none;
+}
+
+.compact-domain-btn {
+  color: var(--trash-parent-text);
+  background: var(--trash-parent-bg);
+  border-color: var(--trash-parent-border);
+}
+
+.compact-domain-btn:hover {
+  color: var(--trash-parent-hover-text);
+  background: var(--trash-parent-hover-bg);
+  border-color: var(--trash-parent-hover-border);
+}
+
+.compact-domain-btn.is-active {
+  color: var(--trash-parent-selected-text) !important;
+  background: var(--trash-parent-selected-bg) !important;
+  border-color: var(--trash-parent-selected-border) !important;
+  box-shadow: none;
+}
+
+.compact-space-btn {
+  color: #d6bd71;
+  background: #1b170d;
+  border-color: #72591e;
+}
+
+.compact-space-btn:hover {
+  color: #f1d98e;
+  background: #2a2210;
+  border-color: #987a2f;
+}
+
+.compact-space-btn.is-active {
+  color: #1b1506 !important;
+  background: linear-gradient(180deg, #d7b34e 0%, #b98e31 100%) !important;
+  border-color: #ebcf77 !important;
+  box-shadow: none;
+}
+
+.trash-domain-btn.is-active,
+.trash-space-btn.is-active {
+  box-shadow: none;
+}
+
+.compact-scope-btn.is-arrangeable {
+  animation: arrangeJiggle 0.18s ease-in-out infinite alternate;
+  transform-origin: center;
+  box-shadow: var(--space-arrangeable-shadow) !important;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.compact-scope-btn.is-arrangeable:hover {
+  animation-play-state: paused;
+}
+
+.compact-scope-btn.is-arrangeable.is-dragging {
+  cursor: grabbing;
+  opacity: 0.38;
+  box-shadow: var(--space-dragging-shadow) !important;
+}
+
+.compact-scope-btn.is-arrange-target {
+  box-shadow: var(--space-target-shadow) !important;
+}
+
+.compact-scope-btn.is-arrange-target-before {
+  box-shadow: inset 3px 0 0 var(--space-target-marker), 0 0 0 1px var(--space-target-edge-outline) !important;
+}
+
+.compact-scope-btn.is-arrange-target-after {
+  box-shadow: inset -3px 0 0 var(--space-target-marker), 0 0 0 1px var(--space-target-edge-outline) !important;
+}
+
+.compact-scope-add-btn {
+  color: currentColor;
+}
+
+.compact-scope-rail .compact-scope-sort-btn {
+  color: var(--tab-btn-text);
+}
+
+.compact-scope-arrange-preview {
+  position: fixed;
+  z-index: 80;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.compact-scope-arrange-preview span {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trash-domain-btn.is-deleted,
+.trash-space-btn.is-deleted {
+  border-style: dashed;
+}
+
 .tabbar.is-arranging,
 .subtabbar.is-arranging {
   box-shadow: inset 0 0 0 1px rgba(122, 151, 203, 0.08);

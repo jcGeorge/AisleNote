@@ -24,18 +24,30 @@
     scrollbar-width: thin;
   }
 
+  .compact-scope-scroll {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    align-items: center;
+    align-content: center;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
   .tabbar-primary {
     min-width: 0;
   }
 
   .tab-btn,
+  .compact-scope-btn,
   .add-tab-btn,
   .topbar-action-btn,
   .menu-btn {
     min-height: var(--tab-control-height);
   }
 
-  .tab-btn {
+  .tab-btn,
+  .compact-scope-btn {
     max-width: min(calc(220px * var(--tab-button-scale)), 68vw);
   }
 

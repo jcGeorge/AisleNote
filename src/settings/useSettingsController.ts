@@ -96,6 +96,8 @@ export function useSettingsController({
   const [mouseBackForwardEnabledDraft, setMouseBackForwardEnabledDraft] = useState(true)
   const [genericHistoryHotkeysEnabledDraft, setGenericHistoryHotkeysEnabledDraft] = useState(true)
   const [showParentHomeTabDraft, setShowParentHomeTabDraft] = useState(DEFAULT_UI_SETTINGS.showParentHomeTab)
+  const [alwaysShowSpacesDraft, setAlwaysShowSpacesDraft] = useState(DEFAULT_UI_SETTINGS.alwaysShowSpaces ?? false)
+  const [alwaysShowDomainsDraft, setAlwaysShowDomainsDraft] = useState(DEFAULT_UI_SETTINGS.alwaysShowDomains ?? false)
   const [tableAddTargetModeDraft, setTableAddTargetModeDraft] = useState(DEFAULT_UI_SETTINGS.tableAddTargetMode)
   const [tableDeleteTargetModeDraft, setTableDeleteTargetModeDraft] = useState(DEFAULT_UI_SETTINGS.tableDeleteTargetMode)
   const [tabButtonScaleDraft, setTabButtonScaleDraft] = useState(DEFAULT_UI_SETTINGS.tabButtonScale)
@@ -127,6 +129,8 @@ export function useSettingsController({
     setMouseBackForwardEnabledDraft(state.hotkeys.enableMouseBackForward)
     setGenericHistoryHotkeysEnabledDraft(state.hotkeys.enableGenericHistoryHotkeys)
     setShowParentHomeTabDraft(state.ui.showParentHomeTab)
+    setAlwaysShowSpacesDraft(state.ui.alwaysShowSpaces ?? DEFAULT_UI_SETTINGS.alwaysShowSpaces ?? false)
+    setAlwaysShowDomainsDraft(state.ui.alwaysShowDomains ?? DEFAULT_UI_SETTINGS.alwaysShowDomains ?? false)
     setTableAddTargetModeDraft(state.ui.tableAddTargetMode)
     setTableDeleteTargetModeDraft(state.ui.tableDeleteTargetMode)
     setTabButtonScaleDraft(state.ui.tabButtonScale)
@@ -146,6 +150,8 @@ export function useSettingsController({
     state.hotkeys,
     state.theme,
     state.ui.showParentHomeTab,
+    state.ui.alwaysShowSpaces,
+    state.ui.alwaysShowDomains,
     state.ui.tableAddTargetMode,
     state.ui.tableDeleteTargetMode,
     state.ui.tabButtonScale,
@@ -253,6 +259,32 @@ export function useSettingsController({
         showParentHomeTab: checked,
       },
     }))
+  }
+
+  const updateAlwaysShowSpacesSetting = (checked: boolean) => {
+    setAlwaysShowSpacesDraft(checked)
+    if (!checked) setAlwaysShowDomainsDraft(false)
+    commitImmediateSettingsState((previous) => ({
+      ...previous,
+      ui: {
+        ...previous.ui,
+        alwaysShowSpaces: checked,
+        alwaysShowDomains: checked ? previous.ui.alwaysShowDomains ?? false : false,
+      },
+    }))
+  }
+
+  const updateAlwaysShowDomainsSetting = (checked: boolean) => {
+    if (checked && !(stateRef.current.ui.alwaysShowSpaces ?? false)) return false
+    setAlwaysShowDomainsDraft(checked)
+    commitImmediateSettingsState((previous) => ({
+      ...previous,
+      ui: {
+        ...previous.ui,
+        alwaysShowDomains: checked,
+      },
+    }))
+    return true
   }
 
   const updateTableAddTargetModeSetting = (mode: TableControlTargetMode) => {
@@ -743,6 +775,8 @@ export function useSettingsController({
     noteFontScaleDraft,
     customThemePaletteDraft,
     showParentHomeTabDraft,
+    alwaysShowSpacesDraft,
+    alwaysShowDomainsDraft,
     tableAddTargetModeDraft,
     tableDeleteTargetModeDraft,
     frontmatterDraft,
@@ -759,6 +793,8 @@ export function useSettingsController({
     updateMouseBackForwardSetting,
     updateGenericHistoryHotkeysSetting,
     updateShowParentHomeTabSetting,
+    updateAlwaysShowSpacesSetting,
+    updateAlwaysShowDomainsSetting,
     updateTableAddTargetModeSetting,
     updateTableDeleteTargetModeSetting,
     updateTipEnabledSetting,

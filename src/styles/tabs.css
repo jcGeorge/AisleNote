@@ -35,7 +35,7 @@
 }
 
 .subtabbar .tab-sort-btn {
-  color: var(--subtab-btn-text);
+  color: var(--tab-btn-text);
 }
 
 .tab-sort-btn:hover {
@@ -128,6 +128,12 @@
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.arrange-drag-preview-portal-scope.app-shell {
+  display: contents;
+  width: auto;
+  height: auto;
 }
 
 .home-subtab-btn.is-arrange-fixed {

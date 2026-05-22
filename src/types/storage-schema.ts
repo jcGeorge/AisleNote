@@ -1,4 +1,4 @@
-export type StorageSchemaVersion = 2
+export type StorageSchemaVersion = 3
 
 export type StorageEntityId = string
 export type StorageTheme = 'dark' | 'light' | 'dawn' | 'blues' | 'custom'
@@ -27,7 +27,7 @@ export type StorageShortcutId =
   | 'cycleSubTabNext'
   | 'cycleSubTabPrev'
 
-export const STORAGE_SCHEMA_VERSION: StorageSchemaVersion = 2
+export const STORAGE_SCHEMA_VERSION: StorageSchemaVersion = 3
 
 export const STORAGE_ROOT_DIR = 'notes-data' as const
 export const STORAGE_DOMAINS_DIR = 'domains' as const
@@ -71,6 +71,8 @@ export type StorageGlobalSettings = {
   }
   ui: {
     showParentHomeTab: boolean
+    alwaysShowSpaces?: boolean
+    alwaysShowDomains?: boolean
     stageManagerOpenDestinationAfterApply: boolean
     lastLinkInsertMode?: 'note' | 'url'
     lastNoteCopyMode?: 'independent' | 'linked'
@@ -151,6 +153,8 @@ export type StorageRootManifest = {
   schemaVersion: StorageSchemaVersion
   globalSettings: StorageGlobalSettings
   domains: StorageDomainIndexEntry[]
+  deletedDomains?: unknown[]
+  deletedSpaces?: unknown[]
   noteBodies?: StorageNoteBodyRecord[]
   noteAisleBodies?: StorageNoteAisleBodyRecord[]
   activeDomainId: StorageEntityId

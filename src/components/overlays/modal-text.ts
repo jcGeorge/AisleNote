@@ -13,7 +13,7 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
   if (modal.type === 'trash-delete-all') {
     return {
       title: 'delete all trash?',
-      body: 'this permanently removes every deleted tab and sub-tab in this space.',
+      body: 'this permanently removes every deleted domain, space, tab, and sub-tab.',
       action: 'delete all',
     }
   }
@@ -21,7 +21,7 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
   if (modal.type === 'trash-restore-all') {
     return {
       title: 'restore all trash?',
-      body: 'this restores every deleted tab and sub-tab in this space.',
+      body: 'this restores every deleted domain, space, tab, and sub-tab that can return to its original hierarchy.',
       action: 'restore all',
     }
   }
@@ -101,8 +101,16 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
   }
 
   if (modal.type === 'sort-tabs') {
+    const title =
+      modal.target === 'parents'
+        ? 'sort parents'
+        : modal.target === 'subtabs'
+          ? 'sort sub-tabs'
+          : modal.target === 'spaces'
+            ? 'sort spaces'
+            : 'sort domains'
     return {
-      title: modal.target === 'parents' ? 'sort parents' : 'sort sub-tabs',
+      title,
       body: '',
       action: '',
     }
@@ -120,7 +128,7 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
     }
     return {
       title: 'delete space?',
-      body: 'deleted spaces cannot be recovered, are you sure you want to do this?',
+      body: 'this moves the space and everything inside it into trash.',
       action: 'delete space',
     }
   }
@@ -135,8 +143,24 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
     }
     return {
       title: 'delete domain?',
-      body: 'deleted domains cannot be recovered, are you sure you want to do this?',
+      body: 'this moves the domain and everything inside it into trash.',
       action: 'delete domain',
+    }
+  }
+
+  if (modal.target.type === 'trash-domain') {
+    return {
+      title: 'delete domain for real?',
+      body: 'this permanently deletes the trashed domain and everything inside it.',
+      action: 'delete for real',
+    }
+  }
+
+  if (modal.target.type === 'trash-space') {
+    return {
+      title: 'delete space for real?',
+      body: 'this permanently deletes the trashed space and everything inside it.',
+      action: 'delete for real',
     }
   }
 

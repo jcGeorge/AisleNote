@@ -181,7 +181,7 @@ describe('browser hybrid storage', () => {
     const homeBody = roundTripped.noteBodies.find((body) => body.id === 'body-tab')
     const subBody = roundTripped.noteBodies.find((body) => body.id === 'body-sub')
 
-    expect(rootManifest?.schemaVersion).toBe(2)
+    expect(rootManifest?.schemaVersion).toBe(3)
     expect(firstDomain.path).toEqual(expect.stringMatching(/^humble beginnings--[a-f0-9]{6}$/))
     expect(paths.some((path) => path.startsWith('notes-data/domains/'))).toBe(true)
     expect(paths.some((path) => path.startsWith('notes-data/topics/'))).toBe(false)

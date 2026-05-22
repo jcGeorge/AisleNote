@@ -1,10 +1,34 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
 import { Editor } from '@toast-ui/editor'
 import { TextSelection } from 'prosemirror-state'
 import '@toast-ui/editor/dist/toastui-editor.css'
 import './App.css'
 import { useActiveNoteModel } from './app/useActiveNoteModel'
-import { sortSubTabs, sortTabs } from './arrange/tab-sort'
+import {
+  getArrangeDestinationPromptMessage,
+  promptAllowsSpaceSelection,
+  type ArrangeDestinationPromptState,
+} from './arrange/arrange-guided-prompt'
+import {
+  resolveArrangeDomainDestination,
+  resolveArrangeHierarchyDrop,
+  resolveArrangePromptSpaceSelection,
+  type ArrangeGuidedTransferResolution,
+} from './arrange/arrange-guided-transfer'
+import {
+  moveHierarchyDropRequestItemToTrash,
+  moveParentTabsToSpace,
+  moveSubTabsToParentInSpace,
+} from './arrange/arrange-hierarchy'
+import { sortNamedItems, sortSubTabs, sortTabs } from './arrange/tab-sort'
 import { useArrangeMode } from './arrange/useArrangeMode'
 import { DomainsPage } from './components/domains/DomainsPage'
 import { ImageToolsOverlay } from './components/editor/ImageToolsOverlay'
@@ -20,7 +44,20 @@ import {
 import { AisleEditModal } from './components/notes/AisleEditModal'
 import { NoteWorkspace } from './components/notes/NoteWorkspace'
 import { SubTabRail } from './components/navigation/SubTabRail'
+import {
+  CompactDomainRail,
+  CompactScopeDragPreview,
+  CompactSpaceRail,
+  TrashDomainRail,
+  TrashSpaceRail,
+} from './components/navigation/CompactScopeRails'
+import { NavigationRailControls, type NavigationRailAction } from './components/navigation/NavigationRailControls'
+import {
+  GuidedTabArrangeCarryPreview,
+  TabArrangeDragPreviewOverlay,
+} from './components/navigation/TabArrangeDragPreviewOverlay'
 import { TopBar } from './components/navigation/TopBar'
+import { ArrangeDestinationPrompt } from './components/overlays/ArrangeDestinationPrompt'
 import { ContextMenuHost } from './components/overlays/ContextMenuHost'
 import { ModalHost } from './components/overlays/ModalHost'
 import { TipHost } from './components/overlays/TipHost'
@@ -115,21 +152,33 @@ import {
   type FindReplaceScope,
 } from './notes/find-replace'
 import { useNoteReferenceActions } from './notes/useNoteReferenceActions'
-import { useAppOverlayActions } from './overlays/useAppOverlayActions'
+import { formatMovedToTrashToast, useAppOverlayActions } from './overlays/useAppOverlayActions'
 import { measureSlowOperation } from './performance/performance-logging'
-import { DEFAULT_CUSTOM_THEME_PALETTE, getCustomThemePaletteSeedMatch } from './settings/defaults'
+import {
+  ALWAYS_SHOW_DOMAINS_WITHOUT_SPACES_MESSAGE,
+  DEFAULT_CUSTOM_THEME_PALETTE,
+  getCustomThemePaletteSeedMatch,
+} from './settings/defaults'
 import { useSettingsController } from './settings/useSettingsController'
 import { applyAutoPurgeToAppState, ensureNoteBodiesForAppState } from './state/app-state'
 import {
+  projectActiveDomainState,
+  addDomain,
+  addSpaceToActiveDomain,
+  createDomain,
   setActiveDomain,
   setActiveSpaceInActiveDomain,
+  updateActiveDomainSpaces,
   updateActiveSpaceDataInActiveDomain,
   updateSpaceInActiveDomain,
 } from './state/domains'
 import {
+  createTab,
   createId,
+  createSpace,
   MAX_NOTE_AISLES,
 } from './state/workspace'
+import { collectAppNavigationEntityIds, createReservedIdAllocator } from './state/navigation-ids'
 import { useStageManagerController } from './stage-manager/useStageManagerController'
 import { usePersistentAppState } from './storage/usePersistentAppState'
 import { loadActiveToolbarLayoutId, saveActiveToolbarLayoutId } from './storage/device-settings-store'
@@ -144,6 +193,8 @@ import { TRASH_HOME_ID } from './trash/trash-model'
 import { useTrashSelection } from './trash/useTrashSelection'
 import type {
   AppState,
+  ArrangeHierarchyDropRequest,
+  ArrangeInsertPosition,
   ContextMenuState,
   InternalNoteLinkEdit,
   LinkEditRange,
@@ -157,6 +208,7 @@ import type {
   PendingCreatedEdit,
   TabSortMode,
   TabSortTarget,
+  TabArrangeDragPreview,
   TipId,
   ToastState,
   ToastTone,
@@ -241,8 +293,14 @@ function App() {
     wholeWord: false,
     activeIndex: 0,
   })
+  const [arrangeDestinationPrompt, setArrangeDestinationPrompt] =
+    useState<ArrangeDestinationPromptState | null>(null)
+  const [guidedParentRailTarget, setGuidedParentRailTarget] =
+    useState<{ targetId: string; position: ArrangeInsertPosition | null } | null>(null)
   const isMacPlatform = typeof navigator !== 'undefined' ? /mac/i.test(navigator.platform) : false
   const [menuOpen, setMenuOpen] = useState(false)
+  const [trashDomainId, setTrashDomainId] = useState<string>('')
+  const [trashSpaceId, setTrashSpaceId] = useState<string>('')
   const [trashTabId, setTrashTabId] = useState<string>(TRASH_HOME_ID)
   const [trashSubTabId, setTrashSubTabId] = useState<string | null>(null)
   const [activeAisleId, setActiveAisleId] = useState<string>('')
@@ -485,8 +543,11 @@ function App() {
     setVisibleTips((currentTips) => currentTips.filter((tipId) => !state.ui.disabledTipIds.includes(tipId)))
   }, [state.ui.disabledTipIds])
 
-  const trackTabCreateRenameForTips = (type: TabCreateTipRenameType, wasPendingCreated: boolean) => {
-    const result = getNextTabCreateTipSequence(tabCreateTipSequenceRef.current, { type, wasPendingCreated })
+  const trackTabCreateRenameForTips = (
+    type: TabCreateTipRenameType,
+    event: { wasPendingCreated: boolean; wasRenamedFromDefault: boolean },
+  ) => {
+    const result = getNextTabCreateTipSequence(tabCreateTipSequenceRef.current, { type, ...event })
     tabCreateTipSequenceRef.current = result.sequence
     if (result.shouldShowTip) {
       showTip('tab-create-after-rename')
@@ -569,14 +630,22 @@ function App() {
   }, [activeNoteBody, activeNoteBodyId, setState])
 
   const {
+    trashDomains,
+    selectedTrashDomain,
+    trashSpaces,
+    selectedTrashSpace,
     trashParentTabs,
     selectedTrashTab,
     trashSubTabs,
     selectedTrashSubTab,
     trashDisplay,
   } = useTrashSelection({
-    workspace,
+    state,
     viewMode,
+    trashDomainId,
+    setTrashDomainId,
+    trashSpaceId,
+    setTrashSpaceId,
     trashTabId,
     setTrashTabId,
     trashSubTabId,
@@ -739,6 +808,135 @@ function App() {
     setEditing(null)
   }
 
+  const applyArrangeParentMoveToSpace = (
+    request: ArrangeHierarchyDropRequest,
+    targetDomainId: string,
+    targetSpaceId: string,
+    placement?: { targetParentTabId: string; position: ArrangeInsertPosition },
+  ) => {
+    if (request.item.type !== 'parent') return
+    const item = request.item
+    saveActiveCursorBeforeNavigation()
+    setState((previous) => {
+      const createEntityId = createReservedIdAllocator(collectAppNavigationEntityIds(previous))
+      return moveParentTabsToSpace(
+        previous,
+        request.sourceDomainId,
+        request.sourceSpaceId,
+        item.parentTabIds,
+        targetDomainId,
+        targetSpaceId,
+        {
+          createFallbackTab: () => createTab('tab', createEntityId),
+          placement,
+        },
+      )
+    })
+    setViewMode('main')
+    setMenuOpen(false)
+    setContextMenu(null)
+    setEditing(null)
+    setArrangeDestinationPrompt(null)
+    setGuidedParentRailTarget(null)
+  }
+
+  const applyArrangeSubTabsMoveToParent = (
+    request: ArrangeHierarchyDropRequest,
+    targetDomainId: string,
+    targetSpaceId: string,
+    targetParentTabId: string,
+  ) => {
+    if (request.item.type !== 'subtab') return
+    const item = request.item
+    saveActiveCursorBeforeNavigation()
+    setState((previous) =>
+      moveSubTabsToParentInSpace(
+        previous,
+        request.sourceDomainId,
+        request.sourceSpaceId,
+        item.parentTabId,
+        item.subTabIds,
+        targetDomainId,
+        targetSpaceId,
+        targetParentTabId,
+      ),
+    )
+    setViewMode('main')
+    setMenuOpen(false)
+    setContextMenu(null)
+    setEditing(null)
+    setArrangeDestinationPrompt(null)
+    setGuidedParentRailTarget(null)
+  }
+
+  const focusArrangeDestinationSpace = (targetDomainId: string, targetSpaceId: string) => {
+    setState((previous) => setActiveSpaceInActiveDomain(setActiveDomain(previous, targetDomainId), targetSpaceId))
+    setViewMode('main')
+    setMenuOpen(false)
+    setContextMenu(null)
+    setEditing(null)
+  }
+
+  const applyArrangeGuidedTransferResolution = (resolution: ArrangeGuidedTransferResolution) => {
+    if (resolution.type === 'none') return
+    if (resolution.type === 'move-parent-to-space') {
+      applyArrangeParentMoveToSpace(
+        resolution.request,
+        resolution.targetDomainId,
+        resolution.targetSpaceId,
+        resolution.placement,
+      )
+      return
+    }
+    if (resolution.type === 'move-subtabs-to-parent') {
+      applyArrangeSubTabsMoveToParent(
+        resolution.request,
+        resolution.targetDomainId,
+        resolution.targetSpaceId,
+        resolution.targetParentTabId,
+      )
+      return
+    }
+
+    focusArrangeDestinationSpace(resolution.focus.domainId, resolution.focus.spaceId)
+    setGuidedParentRailTarget(null)
+    setArrangeDestinationPrompt(resolution.prompt)
+  }
+
+  const handleArrangeHierarchyDrop = (
+    request: ArrangeHierarchyDropRequest,
+    carriedPreview: TabArrangeDragPreview,
+  ) => {
+    setMenuOpen(false)
+    setContextMenu(null)
+    setEditing(null)
+    applyArrangeGuidedTransferResolution(resolveArrangeHierarchyDrop(stateRef.current, request, carriedPreview))
+  }
+
+  const selectArrangeDestinationSpace = (spaceId: string) => {
+    const prompt = arrangeDestinationPrompt
+    if (!prompt) return
+    applyArrangeGuidedTransferResolution(resolveArrangePromptSpaceSelection(stateRef.current, prompt, spaceId))
+  }
+
+  const selectArrangeDestinationParent = (parentTabId: string) => {
+    const prompt = arrangeDestinationPrompt
+    if (!prompt || prompt.request.item.type !== 'subtab') return
+    applyArrangeSubTabsMoveToParent(prompt.request, prompt.targetDomainId, prompt.targetSpaceId, parentTabId)
+  }
+
+  const selectArrangeDestinationParentPlacement = (
+    parentTabId: string,
+    position: ArrangeInsertPosition,
+  ) => {
+    const prompt = arrangeDestinationPrompt
+    if (!prompt || prompt.request.item.type !== 'parent') return
+    applyArrangeParentMoveToSpace(prompt.request, prompt.targetDomainId, prompt.targetSpaceId, {
+      targetParentTabId: parentTabId,
+      position,
+    })
+  }
+
   const arrange = useArrangeMode({
     state,
     setState,
@@ -753,9 +951,18 @@ function App() {
     setContextMenu,
     setEditing,
     closeAisleEditModal,
+    onArrangeHierarchyDrop: handleArrangeHierarchyDrop,
+    onArrangeSpaceMoveBlocked: (reason) => {
+      if (reason === 'last-space') pushToast('at least one space must remain.', 'warning')
+    },
   })
   const arrangeMode = arrange.mode
+  const arrangeHierarchyRevealLevel = arrange.hierarchyRevealLevel
   const arrangeDraggingItem = arrange.draggingItem
+  const isDraggingArrangeItem = Boolean(arrangeDraggingItem)
+  const isGuidedArrangeCarryActive = Boolean(arrangeDestinationPrompt)
+  const isArrangeTrashActionActive = isDraggingArrangeItem || isGuidedArrangeCarryActive
+  const arrangeControlsDisabled = isArrangeTrashActionActive
   const domainArrangeDragPreview = arrange.domainDragPreview
   const spaceArrangeDragPreview = arrange.spaceDragPreview
   const tabArrangeDragPreview = arrange.tabDragPreview
@@ -774,6 +981,34 @@ function App() {
   const consumeArrangeClickSuppression = arrange.consumeClickSuppression
   const enterArrangeModeFromContext = arrange.enterFromContext
   const exitArrangeMode = arrange.exit
+  const moveGuidedArrangeCarryToTrash = () => {
+    const prompt = arrangeDestinationPrompt
+    if (!prompt) return
+    saveActiveCursorBeforeNavigation()
+    const currentState = stateRef.current
+    const createEntityId = createReservedIdAllocator(collectAppNavigationEntityIds(currentState))
+    const result = moveHierarchyDropRequestItemToTrash(currentState, prompt.request, {
+      createDeletedEntryId: createEntityId,
+      createFallbackTab: () => createTab('tab', createEntityId),
+    })
+    setState(result.state)
+    setArrangeDestinationPrompt(null)
+    setGuidedParentRailTarget(null)
+    clearArrangeSelection()
+    setMenuOpen(false)
+    setContextMenu(null)
+    setEditing(null)
+    if (result.moved) {
+      pushToast(formatMovedToTrashToast(result.moved.kind, result.moved.name), 'success')
+    }
+  }
+  const cancelArrangeDestinationPrompt = () => {
+    setArrangeDestinationPrompt(null)
+    setGuidedParentRailTarget(null)
+    pushToast('arrangement cancelled', 'warning')
+    exitArrangeMode()
+  }
+  const advanceArrangeHierarchyReveal = arrange.advanceHierarchyReveal
   const startArrangeDragSeed = arrange.startDragSeed
   const startArrangeTapCandidate = arrange.startTapCandidate
   const startArrangePress = arrange.startPress
@@ -789,6 +1024,17 @@ function App() {
   const handleArrangeTabPointerMove = arrange.handleTabPointerMove
   const handleArrangeTabPointerUp = arrange.handleTabPointerUp
   const cancelArrangeTabPointerDrag = arrange.cancelTabPointerDrag
+
+  useEffect(() => {
+    if (arrangeMode.active && viewMode === 'main') return
+    setArrangeDestinationPrompt(null)
+    setGuidedParentRailTarget(null)
+  }, [arrangeMode.active, viewMode])
+
+  useEffect(() => {
+    if (arrangeDestinationPrompt) return
+    setGuidedParentRailTarget(null)
+  }, [arrangeDestinationPrompt])
 
   const navigationActions = useAppNavigationActions({
     state,
@@ -839,8 +1085,153 @@ function App() {
   const openDomainsView = navigationActions.openDomainsView
   const openDomain = navigationActions.openDomain
   const addDomainFromPage = navigationActions.addDomainFromPage
-  const toggleTrashView = navigationActions.toggleTrashView
+  const toggleTrashView = () => {
+    setTrashDomainId('')
+    setTrashSpaceId('')
+    navigationActions.toggleTrashView()
+  }
   const openSettings = navigationActions.openSettings
+
+  const addSpaceFromCompactRail = () => {
+    saveActiveCursorBeforeNavigation()
+    const previousState = stateRef.current
+    const createEntityId = createReservedIdAllocator(collectAppNavigationEntityIds(previousState))
+    const newSpace = createSpace('space', createEntityId)
+    setState((previous) => addSpaceToActiveDomain(previous, newSpace))
+    pendingCreatedEditRef.current = {
+      type: 'space',
+      id: newSpace.id,
+      sourceDomainId: previousState.activeDomainId,
+      previousActiveSpaceId: previousState.activeSpaceId,
+    }
+    setViewMode('main')
+    setMenuOpen(false)
+    setContextMenu(null)
+    setEditing({ type: 'space', id: newSpace.id })
+  }
+
+  const addDomainFromCompactRail = () => {
+    saveActiveCursorBeforeNavigation()
+    const previousState = stateRef.current
+    const createEntityId = createReservedIdAllocator(collectAppNavigationEntityIds(previousState))
+    const newDomain = createDomain('domain', createEntityId)
+    setState((previous) => addDomain(previous, newDomain))
+    pendingCreatedEditRef.current = {
+      type: 'domain',
+      id: newDomain.id,
+      previousActiveDomainId: previousState.activeDomainId,
+      previousActiveSpaceId: previousState.activeSpaceId,
+    }
+    setViewMode('main')
+    setMenuOpen(false)
+    setContextMenu(null)
+    setEditing({ type: 'domain', id: newDomain.id })
+  }
+
+  const openSpaceFromCompactRail = (spaceId: string) => {
+    if (arrangeDestinationPrompt) {
+      if (!promptAllowsSpaceSelection(arrangeDestinationPrompt)) return
+      selectArrangeDestinationSpace(spaceId)
+      return
+    }
+    saveActiveCursorBeforeNavigation()
+    closeImageToolsRef.current()
+    setState((previous) => setActiveSpaceInActiveDomain(previous, spaceId))
+    setViewMode('main')
+    setMenuOpen(false)
+    setContextMenu(null)
+    setEditing(null)
+  }
+
+  const openDomainFromCompactRail = (domainId: string) => {
+    if (arrangeDestinationPrompt) {
+      saveActiveCursorBeforeNavigation()
+      closeImageToolsRef.current()
+      applyArrangeGuidedTransferResolution(
+        resolveArrangeDomainDestination(
+          stateRef.current,
+          arrangeDestinationPrompt.request,
+          arrangeDestinationPrompt.carriedPreview,
+          domainId,
+        ),
+      )
+      return
+    }
+    saveActiveCursorBeforeNavigation()
+    closeImageToolsRef.current()
+    setState((previous) => setActiveDomain(previous, domainId))
+    setViewMode('main')
+    setMenuOpen(false)
+    setContextMenu(null)
+    setEditing(null)
+  }
+
+  const getParentPlacementPositionFromEvent = (
+    event?: ReactMouseEvent<HTMLButtonElement> | ReactPointerEvent<HTMLButtonElement>,
+  ): ArrangeInsertPosition => {
+    if (!event) return guidedParentRailTarget?.targetId ? guidedParentRailTarget.position ?? 'after' : 'after'
+    const rect = event.currentTarget.getBoundingClientRect()
+    return event.clientX < rect.left + rect.width / 2 ? 'before' : 'after'
+  }
+
+  const selectParentTabFromTopBar = (
+    tabId: string,
+    event?: ReactMouseEvent<HTMLButtonElement> | ReactPointerEvent<HTMLButtonElement>,
+  ) => {
+    if (arrangeDestinationPrompt) {
+      if (
+        arrangeDestinationPrompt.targetDomainId === state.activeDomainId &&
+        arrangeDestinationPrompt.targetSpaceId === activeSpace.id
+      ) {
+        if (arrangeDestinationPrompt.request.item.type === 'parent') {
+          selectArrangeDestinationParentPlacement(tabId, getParentPlacementPositionFromEvent(event))
+        } else {
+          selectArrangeDestinationParent(tabId)
+        }
+      }
+      return
+    }
+    selectTab(tabId)
+  }
+
+  const updateGuidedParentRailTarget = (tabId: string, event: ReactPointerEvent<HTMLButtonElement>) => {
+    const prompt = arrangeDestinationPrompt
+    if (
+      !prompt ||
+      prompt.targetDomainId !== state.activeDomainId ||
+      prompt.targetSpaceId !== activeSpace.id
+    ) {
+      setGuidedParentRailTarget(null)
+      return
+    }
+
+    if (prompt.request.item.type === 'parent') {
+      const rect = event.currentTarget.getBoundingClientRect()
+      const position: ArrangeInsertPosition = event.clientX < rect.left + rect.width / 2 ? 'before' : 'after'
+      setGuidedParentRailTarget((previous) =>
+        previous?.targetId === tabId && previous.position === position ? previous : { targetId: tabId, position },
+      )
+      return
+    }
+
+    setGuidedParentRailTarget((previous) =>
+      previous?.targetId === tabId && previous.position === null ? previous : { targetId: tabId, position: null },
+    )
+  }
+
+  const clearGuidedParentRailTarget = (tabId: string) => {
+    setGuidedParentRailTarget((previous) => (previous?.targetId === tabId ? null : previous))
+  }
+
+  const selectSubTabFromRail = (subTabId: string) => {
+    if (arrangeDestinationPrompt) return
+    selectSubTab(subTabId)
+  }
+
+  const selectParentHomeTabFromRail = () => {
+    if (arrangeDestinationPrompt) return
+    selectParentHomeTab()
+  }
 
   const { navigateHistoryBy, returnToLastTabLikeView } = useNavigationHistory({
     viewMode,
@@ -1370,7 +1761,7 @@ function App() {
     return true
   }
 
-  const getActiveEditorSelectedText = () => {
+  const getActiveEditorSelectedText = useCallback(() => {
     const currentEditor = editorRef.current
     if (!currentEditor) return ''
     try {
@@ -1378,7 +1769,7 @@ function App() {
     } catch {
       return ''
     }
-  }
+  }, [])
 
   const runEditorContextCommand = (command: string, payload?: Record<string, unknown>) => {
     setContextMenu(null)
@@ -1520,7 +1911,7 @@ function App() {
     }
   }
 
-  const openFindReplacePanel = () => {
+  const openFindReplacePanel = useCallback(() => {
     setContextMenu(null)
     flushPendingContent()
     const selectedText = getActiveEditorSelectedText()
@@ -1530,7 +1921,7 @@ function App() {
       query: current.query || selectedText,
       activeIndex: 0,
     }))
-  }
+  }, [flushPendingContent, getActiveEditorSelectedText])
 
   const setFindReplaceActiveIndex = (index: number) => {
     const safeIndex = Math.max(0, Math.min(Math.max(0, findReplaceMatches.length - 1), index))
@@ -2056,6 +2447,8 @@ function App() {
       activeTab.id,
       activeSubTab?.id ?? '',
       resolvedActiveAisleId,
+      trashDomainId,
+      trashSpaceId,
       trashTabId,
       trashSubTabId ?? '',
     ].join('::'),
@@ -2184,6 +2577,27 @@ function App() {
 
   const applyArrangeTabSort = (target: TabSortTarget, mode: TabSortMode) => {
     saveActiveCursorBeforeNavigation()
+    if (target === 'spaces') {
+      if (mode !== 'alpha-asc' && mode !== 'alpha-desc') return
+      setState((previous) => {
+        const projected = projectActiveDomainState(previous)
+        return updateActiveDomainSpaces(projected, sortNamedItems(projected.spaces, mode), projected.activeSpaceId)
+      })
+      return
+    }
+
+    if (target === 'domains') {
+      if (mode !== 'alpha-asc' && mode !== 'alpha-desc') return
+      setState((previous) => {
+        const projected = projectActiveDomainState(previous)
+        return projectActiveDomainState({
+          ...projected,
+          domains: sortNamedItems(projected.domains, mode),
+        })
+      })
+      return
+    }
+
     const noteBodies = stateRef.current.noteBodies
     if (target === 'parents') {
       updateActiveSpaceData((data) => ({
@@ -2212,6 +2626,7 @@ function App() {
     stateRef,
     setState,
     viewMode,
+    navigationContextMenusDisabled: isDraggingArrangeItem,
     contextMenu,
     setContextMenu,
     modal,
@@ -2224,6 +2639,8 @@ function App() {
     saveActiveCursorBeforeNavigation,
     setTrashTabId,
     setTrashSubTabId,
+    setTrashDomainId,
+    setTrashSpaceId,
     insertNoteReference,
     exportData,
     pushToast,
@@ -2233,6 +2650,8 @@ function App() {
   const openContextMenuForHomeTab = overlayActions.openContextMenuForHomeTab
   const openContextMenuForTrashTab = overlayActions.openContextMenuForTrashTab
   const openContextMenuForTrashSubTab = overlayActions.openContextMenuForTrashSubTab
+  const openContextMenuForTrashDomain = overlayActions.openContextMenuForTrashDomain
+  const openContextMenuForTrashSpace = overlayActions.openContextMenuForTrashSpace
   const openContextMenuForSpace = overlayActions.openContextMenuForSpace
   const openContextMenuForDomain = overlayActions.openContextMenuForDomain
   const openDeleteModalFromContext = overlayActions.openDeleteModalFromContext
@@ -2279,18 +2698,18 @@ function App() {
   }
 
   const editorReadOnly = viewMode !== 'main'
-  const tabArrangementActive = arrangeMode.active && arrangeMode.scope === 'tabs' && viewMode === 'main'
+  const mainArrangementActive = arrangeMode.active && viewMode === 'main'
 
   useEffect(() => {
-    if (!tabArrangementActive) return
+    if (!mainArrangementActive) return
     setCopyMenuOpen(false)
     setHeadingMenuOpen(false)
     setToolbarPopoverPosition({ copy: null, heading: null })
     closeImageTools()
-  }, [tabArrangementActive, closeImageTools, setCopyMenuOpen, setHeadingMenuOpen, setToolbarPopoverPosition])
+  }, [mainArrangementActive, closeImageTools, setCopyMenuOpen, setHeadingMenuOpen, setToolbarPopoverPosition])
 
   useEffect(() => {
-    if (!tabArrangementActive || typeof document === 'undefined') return
+    if (!mainArrangementActive || typeof document === 'undefined') return
 
     document.body.classList.add('app-tooltips-disabled')
     const strippedTitles = new Map<HTMLElement, string>()
@@ -2326,7 +2745,7 @@ function App() {
         }
       })
     }
-  }, [tabArrangementActive])
+  }, [mainArrangementActive])
 
   const editorToolbarLayer = useEditorToolbarLayer({
     editorRef,
@@ -2336,8 +2755,8 @@ function App() {
     toolbarFormatState,
     activeHeadingLevel,
     toolbarShortcutFeedback,
-    tooltipsDisabled: tabArrangementActive,
-    interactionDisabled: tabArrangementActive,
+    tooltipsDisabled: mainArrangementActive,
+    interactionDisabled: mainArrangementActive,
     copyMenuOpen,
     headingMenuOpen,
     toolbarPopoverPosition,
@@ -2366,7 +2785,7 @@ function App() {
 
   const renderImageToolsOverlay = () => (
     <ImageToolsOverlay
-      visible={viewMode === 'main' && !aisleEditModalOpen && !tabArrangementActive}
+      visible={viewMode === 'main' && !aisleEditModalOpen && !mainArrangementActive}
       imageTools={imageTools}
       inlineCrop={inlineCrop}
       onStartCrop={startInlineCrop}
@@ -2382,7 +2801,7 @@ function App() {
 
   const renderTableControlsOverlay = () => (
     <TableControlsOverlay
-      visible={viewMode === 'main' && !aisleEditModalOpen && !tabArrangementActive}
+      visible={viewMode === 'main' && !aisleEditModalOpen && !mainArrangementActive}
       tableControls={tableControls}
       onAddRow={() => runTableControlOperation('add-row', state.ui.tableAddTargetMode)}
       onRemoveRow={() => runTableControlOperation('remove-row', state.ui.tableDeleteTargetMode)}
@@ -2427,9 +2846,28 @@ function App() {
     selectSubTab,
   })
 
+  const persistedHierarchyLevel = state.ui.alwaysShowDomains ? 2 : state.ui.alwaysShowSpaces ? 1 : 0
+  const promptHierarchyLevel = arrangeDestinationPrompt?.revealHierarchyLevel ?? 0
+  const effectiveHierarchyLevel =
+    viewMode === 'main'
+      ? Math.max(
+          persistedHierarchyLevel,
+          mainArrangementActive ? arrangeHierarchyRevealLevel : 0,
+          promptHierarchyLevel,
+        )
+      : 0
+  const showCompactSpaces = effectiveHierarchyLevel >= 1
+  const showCompactDomains = effectiveHierarchyLevel >= 2
   const isNoteWorkspaceView = viewMode === 'main' || viewMode === 'stage-manager'
-  const arrangeableParentTabClassName = tabArrangementActive ? 'is-arrangeable' : ''
-  const arrangeableSubTabClassName = tabArrangementActive ? 'is-arrangeable' : ''
+  const promptTargetsActiveSpace =
+    Boolean(arrangeDestinationPrompt) &&
+    arrangeDestinationPrompt?.targetDomainId === state.activeDomainId &&
+    arrangeDestinationPrompt?.targetSpaceId === activeSpace.id
+  const canArrangeParentTabs =
+    mainArrangementActive &&
+    (!arrangeDestinationPrompt || promptTargetsActiveSpace)
+  const arrangeableParentTabClassName = canArrangeParentTabs ? 'is-arrangeable' : ''
+  const arrangeableSubTabClassName = mainArrangementActive && !arrangeDestinationPrompt ? 'is-arrangeable' : ''
   const arrangeSelectedParentIds = useMemo(
     () => (arrangeSelection.kind === 'parent' ? new Set(arrangeSelection.selectedIds) : new Set<string>()),
     [arrangeSelection],
@@ -2445,13 +2883,60 @@ function App() {
     arrangeMode.active && arrangeDraggingItem?.type === 'tab' ? arrangeDraggingItem.tabId : null
   const draggingSubTabId =
     arrangeMode.active && arrangeDraggingItem?.type === 'subtab' ? arrangeDraggingItem.subTabId : null
-  const arrangeableSpaceClassName = arrangeMode.active && arrangeMode.scope === 'spaces' && viewMode === 'spaces' ? 'is-arrangeable' : ''
+  const arrangeableSpaceClassName =
+    arrangeMode.active &&
+    (!arrangeDestinationPrompt || promptAllowsSpaceSelection(arrangeDestinationPrompt)) &&
+    ((arrangeMode.scope === 'spaces' && viewMode === 'spaces') || (viewMode === 'main' && showCompactSpaces))
+      ? 'is-arrangeable'
+      : ''
   const arrangeableDomainClassName =
-    arrangeMode.active && arrangeMode.scope === 'domains' && viewMode === 'domains' ? 'is-arrangeable' : ''
+    arrangeMode.active &&
+    ((arrangeMode.scope === 'domains' && viewMode === 'domains') || (viewMode === 'main' && showCompactDomains))
+      ? 'is-arrangeable'
+      : ''
   const draggingDomainId =
     arrangeMode.active && arrangeDraggingItem?.type === 'domain' ? arrangeDraggingItem.domainId : null
   const draggingSpaceId =
     arrangeMode.active && arrangeDraggingItem?.type === 'space' ? arrangeDraggingItem.spaceId : null
+  const topVisibleMainRail = showCompactDomains ? 'domains' : showCompactSpaces ? 'spaces' : 'parents'
+  const mainTopRailActions: NavigationRailAction[] = mainArrangementActive
+    ? [
+        {
+          key: 'end-arrangement',
+          label: 'arrangements',
+          visibleLabel: isArrangeTrashActionActive ? 'trash' : 'arrangements',
+          sizeLabel: 'arrangements',
+          selected: false,
+          className: `btn btn-sm tab-btn topbar-action-btn topbar-context-btn topbar-arrange-trash-btn ${
+            isArrangeTrashActionActive ? 'is-trash-mode' : ''
+          } ${isDraggingOverArrangeTrashDrop ? 'is-trash-drop-target' : ''}`,
+          buttonRef: arrangeTrashDropRef,
+          onClick: () => {
+            if (isDraggingArrangeItem) return
+            if (isGuidedArrangeCarryActive) {
+              moveGuidedArrangeCarryToTrash()
+              return
+            }
+            advanceArrangeHierarchyReveal()
+          },
+        },
+      ]
+    : []
+  const renderTopRailControls = (viewForMenu: ViewMode = viewMode) => (
+    <NavigationRailControls
+      actions={mainTopRailActions}
+      menuOpen={menuOpen}
+      showCloseControl={mainArrangementActive}
+      viewMode={viewForMenu}
+      onCloseAction={exitArrangeMode}
+      onSetMenuOpen={setMenuOpen}
+      onOpenDomains={openDomainsView}
+      onOpenSpaces={openSpacesView}
+      onOpenStageManager={stageManager.open}
+      onToggleTrash={toggleTrashView}
+      onOpenSettings={openSettings}
+    />
+  )
   const customThemePalette = state.theme === 'custom'
     ? state.ui.customThemePalette ?? DEFAULT_CUSTOM_THEME_PALETTE
     : null
@@ -2478,12 +2963,11 @@ function App() {
     0,
     Math.min(Math.max(0, noteMentionSearchEntries.length - 1), noteMentionActiveIndex),
   )
-
   return (
     <main
       className={`app-shell theme-${state.theme} ${customThemeClassName} view-${viewMode} ${
         viewMode === 'stage-manager' ? 'view-stage-manager' : ''
-      } ${tabArrangementActive ? 'tooltips-disabled' : ''}`}
+      } ${mainArrangementActive ? 'tooltips-disabled' : ''}`}
       style={
         {
           '--tab-button-scale': String(state.ui.tabButtonScale),
@@ -2507,16 +2991,144 @@ function App() {
         } as React.CSSProperties
       }
     >
+      {viewMode === 'main' && showCompactDomains && (
+        <CompactDomainRail
+          domains={state.domains}
+          activeDomainId={state.activeDomainId}
+          editing={editing}
+          arrangeMode={arrangeMode}
+          arrangeableDomainClassName={arrangeableDomainClassName}
+          draggingDomainId={draggingDomainId}
+          domainsGridRef={domainsGridRef}
+          controlsSlot={topVisibleMainRail === 'domains' ? renderTopRailControls('main') : null}
+          tooltipsDisabled={mainArrangementActive}
+          arrangeControlsDisabled={arrangeControlsDisabled}
+          onOpenDomain={openDomainFromCompactRail}
+          onOpenContextMenu={openContextMenuForDomain}
+          onShouldSkipRenameBlur={shouldSkipRenameBlur}
+          onCommitRename={commitRename}
+          onCancelRename={cancelRename}
+          onRenameDraftChange={trackRenameDraft}
+          onBeginEdit={setEditing}
+          onAutoSizeRenameInput={autoSizeRenameInput}
+          onClearRenameDraft={clearRenameDraft}
+          onAddDomain={addDomainFromCompactRail}
+          onOpenDomainSortModal={() => setModal({ type: 'sort-tabs', target: 'domains' })}
+          onConsumeArrangeClickSuppression={consumeArrangeClickSuppression}
+          onStartArrangeDragSeed={startArrangeDragSeed}
+          onStartArrangeTapCandidate={startArrangeTapCandidate}
+          onStartArrangePress={startArrangePress}
+          onHandleArrangeDomainPointerMove={handleArrangeDomainPointerMove}
+          onHandleArrangeDomainPointerUp={handleArrangeDomainPointerUp}
+          onClearArrangePressTimer={clearArrangePressTimer}
+          onCancelArrangeDomainPointerDrag={cancelArrangeDomainPointerDrag}
+        />
+      )}
+
+      {viewMode === 'main' && showCompactSpaces && (
+        <CompactSpaceRail
+          spaces={state.spaces}
+          activeSpaceId={state.activeSpaceId}
+          editing={editing}
+          arrangeMode={arrangeMode}
+          arrangeableSpaceClassName={arrangeableSpaceClassName}
+          draggingSpaceId={draggingSpaceId}
+          spacesGridRef={spacesGridRef}
+          controlsSlot={topVisibleMainRail === 'spaces' ? renderTopRailControls('main') : null}
+          tooltipsDisabled={mainArrangementActive}
+          arrangeControlsDisabled={arrangeControlsDisabled}
+          onOpenSpace={openSpaceFromCompactRail}
+          onOpenContextMenu={openContextMenuForSpace}
+          onShouldSkipRenameBlur={shouldSkipRenameBlur}
+          onCommitRename={commitRename}
+          onCancelRename={cancelRename}
+          onRenameDraftChange={trackRenameDraft}
+          onBeginEdit={setEditing}
+          onAutoSizeRenameInput={autoSizeRenameInput}
+          onClearRenameDraft={clearRenameDraft}
+          onAddSpace={addSpaceFromCompactRail}
+          onOpenSpaceSortModal={() => setModal({ type: 'sort-tabs', target: 'spaces' })}
+          onConsumeArrangeClickSuppression={consumeArrangeClickSuppression}
+          onStartArrangeDragSeed={startArrangeDragSeed}
+          onStartArrangeTapCandidate={startArrangeTapCandidate}
+          onStartArrangePress={startArrangePress}
+          onHandleArrangeSpacePointerMove={handleArrangeSpacePointerMove}
+          onHandleArrangeSpacePointerUp={handleArrangeSpacePointerUp}
+          onClearArrangePressTimer={clearArrangePressTimer}
+          onCancelArrangeSpacePointerDrag={cancelArrangeSpacePointerDrag}
+        />
+      )}
+
+      {viewMode === 'trash' && (
+        <>
+          <TrashDomainRail
+            domains={trashDomains}
+            selectedDomainId={selectedTrashDomain?.id ?? null}
+            controlsSlot={renderTopRailControls('trash')}
+            onSelectDomain={(domainBucketId) => {
+              const domain = trashDomains.find((candidate) => candidate.id === domainBucketId)
+              if (domain?.source === 'live') {
+                setState((previous) => setActiveDomain(previous, domain.domainId))
+              }
+              setTrashDomainId(domainBucketId)
+              setTrashSpaceId('')
+              setTrashTabId(TRASH_HOME_ID)
+              setTrashSubTabId(null)
+            }}
+            onOpenDeletedDomainContextMenu={(event, domain) => {
+              if (!domain.deletedDomainEntryId) return
+              openContextMenuForTrashDomain(event, domain.deletedDomainEntryId, domain.domainId)
+            }}
+          />
+          {selectedTrashDomain && (
+            <TrashSpaceRail
+              spaces={trashSpaces}
+              selectedSpaceId={selectedTrashSpace?.id ?? null}
+              onSelectSpace={(spaceBucketId) => {
+                const space = trashSpaces.find((candidate) => candidate.id === spaceBucketId)
+                if (space?.source === 'live') {
+                  setState((previous) => setActiveSpaceInActiveDomain(setActiveDomain(previous, space.domainId), space.spaceId))
+                }
+                setTrashSpaceId(spaceBucketId)
+                setTrashTabId(TRASH_HOME_ID)
+                setTrashSubTabId(null)
+              }}
+              onOpenDeletedSpaceContextMenu={(event, space) => {
+                if (space.source === 'live') return
+                if (space.source === 'deleted-space' && !space.deletedSpaceEntryId) return
+                openContextMenuForTrashSpace(event, {
+                  source: space.source,
+                  deletedSpaceEntryId: space.deletedSpaceEntryId ?? undefined,
+                  deletedDomainEntryId: space.deletedDomainEntryId ?? undefined,
+                  domainId: space.domainId,
+                  spaceId: space.spaceId,
+                })
+              }}
+            />
+          )}
+        </>
+      )}
+
       <TopBar
         viewMode={viewMode}
         workspace={workspace}
         activeTab={activeTab}
         editing={editing}
         arrangeMode={arrangeMode}
-        tooltipsDisabled={tabArrangementActive}
+        tooltipsDisabled={mainArrangementActive}
+        showGlobalControls={
+          viewMode === 'main'
+            ? topVisibleMainRail === 'parents'
+            : viewMode === 'trash'
+              ? false
+              : true
+        }
+        isDraggingArrangeItem={isDraggingArrangeItem}
         primaryTabRailRef={primaryTabRailRef}
         isNoteWorkspaceView={isNoteWorkspaceView}
         arrangeableParentTabClassName={arrangeableParentTabClassName}
+        guidedParentRailTarget={guidedParentRailTarget}
+        arrangeControlsDisabled={arrangeControlsDisabled}
         draggingParentTabId={draggingParentTabId}
         draggingSubTabId={draggingSubTabId}
         arrangeTrashDropRef={arrangeTrashDropRef}
@@ -2536,13 +3148,15 @@ function App() {
         onHandleArrangeParentSelectionClick={handleArrangeParentSelectionClick}
         onClearArrangeSelection={clearArrangeSelection}
         onConsumeArrangeClickSuppression={consumeArrangeClickSuppression}
-        onSelectTab={selectTab}
+        onSelectTab={selectParentTabFromTopBar}
         onBeginEdit={setEditing}
         onOpenContextMenuForTab={openContextMenuForTab}
         onStartArrangeDragSeed={startArrangeDragSeed}
         onStartArrangeTapCandidate={startArrangeTapCandidate}
         onStartArrangePress={startArrangePress}
         onHandleArrangeTabPointerMove={handleArrangeTabPointerMove}
+        onGuidedParentPointerMove={updateGuidedParentRailTarget}
+        onGuidedParentPointerLeave={clearGuidedParentRailTarget}
         onHandleArrangeTabPointerUp={handleArrangeTabPointerUp}
         onClearArrangePressTimer={clearArrangePressTimer}
         onCancelArrangeTabPointerDrag={cancelArrangeTabPointerDrag}
@@ -2552,6 +3166,7 @@ function App() {
         onAddTab={addTab}
         onOpenParentSortModal={() => setModal({ type: 'sort-tabs', target: 'parents' })}
         onExitArrangeMode={exitArrangeMode}
+        onAdvanceArrangeHierarchyReveal={advanceArrangeHierarchyReveal}
         onEndStageManager={stageManager.end}
         onCloseSettingsView={closeSettingsView}
         onSetMenuOpen={setMenuOpen}
@@ -2562,18 +3177,26 @@ function App() {
         onOpenSettings={openSettings}
       />
 
-      {tabArrangeDragPreview && (
-        <div
-          className={`tab-arrange-preview ${tabArrangeDragPreview.variant === 'subtab' ? 'is-subtab' : 'is-parent'}`}
-          style={{
-            left: `${tabArrangeDragPreview.currentX - tabArrangeDragPreview.offsetX}px`,
-            top: `${tabArrangeDragPreview.currentY - tabArrangeDragPreview.offsetY}px`,
-            width: `${tabArrangeDragPreview.width}px`,
-            height: `${tabArrangeDragPreview.height}px`,
-          }}
-        >
-          <span>{tabArrangeDragPreview.label}</span>
-        </div>
+      {tabArrangeDragPreview && <TabArrangeDragPreviewOverlay preview={tabArrangeDragPreview} />}
+
+      {arrangeDestinationPrompt && (
+        <GuidedTabArrangeCarryPreview preview={arrangeDestinationPrompt.carriedPreview} />
+      )}
+
+      {viewMode === 'main' && domainArrangeDragPreview && (
+        <CompactScopeDragPreview
+          type="domain"
+          preview={domainArrangeDragPreview}
+          active={domainArrangeDragPreview.domainId === state.activeDomainId}
+        />
+      )}
+
+      {viewMode === 'main' && spaceArrangeDragPreview && (
+        <CompactScopeDragPreview
+          type="space"
+          preview={spaceArrangeDragPreview}
+          active={spaceArrangeDragPreview.spaceId === state.activeSpaceId}
+        />
       )}
 
       {viewMode === 'domains' ? (
@@ -2666,6 +3289,8 @@ function App() {
           noteFontScaleDraft={settingsController.noteFontScaleDraft}
           customThemePaletteDraft={settingsController.customThemePaletteDraft}
           showParentHomeTabDraft={settingsController.showParentHomeTabDraft}
+          alwaysShowSpacesDraft={settingsController.alwaysShowSpacesDraft}
+          alwaysShowDomainsDraft={settingsController.alwaysShowDomainsDraft}
           tableAddTargetModeDraft={settingsController.tableAddTargetModeDraft}
           tableDeleteTargetModeDraft={settingsController.tableDeleteTargetModeDraft}
           frontmatterDraft={settingsController.frontmatterDraft}
@@ -2690,6 +3315,12 @@ function App() {
           onTabButtonScaleChange={settingsController.updateTabButtonScaleSetting}
           onNoteFontScaleChange={settingsController.updateNoteFontScaleSetting}
           onShowParentHomeTabChange={settingsController.updateShowParentHomeTabSetting}
+          onAlwaysShowSpacesChange={settingsController.updateAlwaysShowSpacesSetting}
+          onAlwaysShowDomainsChange={(enabled) => {
+            if (!settingsController.updateAlwaysShowDomainsSetting(enabled)) {
+              pushToast(ALWAYS_SHOW_DOMAINS_WITHOUT_SPACES_MESSAGE, 'error')
+            }
+          }}
           onTableAddTargetModeChange={settingsController.updateTableAddTargetModeSetting}
           onTableDeleteTargetModeChange={settingsController.updateTableDeleteTargetModeSetting}
           onTipEnabledChange={settingsController.updateTipEnabledSetting}
@@ -2728,7 +3359,7 @@ function App() {
             activeSubTabId={activeSubTab?.id ?? null}
             editing={editing}
             arrangeMode={arrangeMode}
-            tooltipsDisabled={tabArrangementActive}
+            tooltipsDisabled={mainArrangementActive}
             showParentHomeTab={state.ui.showParentHomeTab}
             isNoteWorkspaceView={isNoteWorkspaceView}
             selectedTrashTab={selectedTrashTab}
@@ -2736,6 +3367,7 @@ function App() {
             selectedTrashSubTabId={selectedTrashSubTab?.id ?? null}
             subTabRailRef={subTabRailRef}
             arrangeableSubTabClassName={arrangeableSubTabClassName}
+            arrangeControlsDisabled={arrangeControlsDisabled}
             draggingSubTabId={draggingSubTabId}
             onAutoSizeRenameInput={autoSizeRenameInput}
             onShouldSkipRenameBlur={shouldSkipRenameBlur}
@@ -2750,8 +3382,8 @@ function App() {
             onHandleArrangeSubTabSelectionClick={handleArrangeSubTabSelectionClick}
             onClearArrangeSelection={clearArrangeSelection}
             onConsumeArrangeClickSuppression={consumeArrangeClickSuppression}
-            onSelectParentHomeTab={selectParentHomeTab}
-            onSelectSubTab={selectSubTab}
+            onSelectParentHomeTab={selectParentHomeTabFromRail}
+            onSelectSubTab={selectSubTabFromRail}
             onBeginEdit={setEditing}
             onOpenContextMenuForHomeTab={openContextMenuForHomeTab}
             onOpenContextMenuForSubTab={openContextMenuForSubTab}
@@ -2815,12 +3447,20 @@ function App() {
               aisles={activeNoteAisles}
               activeAisleId={resolvedActiveAisleId}
               editorReadOnly={editorReadOnly}
-              arrangeModeActive={tabArrangementActive}
+              arrangeModeActive={mainArrangementActive}
               aisleScrollRef={aisleScrollRef}
               toolbar={editorToolbarLayer.toolbar}
               headingPopover={editorToolbarLayer.popovers}
               imageToolsOverlay={renderImageToolsOverlay()}
               tableControlsOverlay={renderTableControlsOverlay()}
+              arrangeDestinationPrompt={
+                arrangeDestinationPrompt ? (
+                  <ArrangeDestinationPrompt
+                    message={getArrangeDestinationPromptMessage(arrangeDestinationPrompt.mode)}
+                    onCancel={cancelArrangeDestinationPrompt}
+                  />
+                ) : null
+              }
               tableOfContentsHeadingsByAisle={activeTableOfContentsPanels?.headingsByAisle ?? {}}
               openTableOfContentsAisleIds={activeTableOfContentsPanels?.openAisleIds ?? new Set<string>()}
               onRootChange={(node) => {

@@ -321,14 +321,14 @@ describe('Electron app state storage load result', () => {
       expect(parsedTabs[0].subTabs.map((subTab) => subTab.id)).toEqual(['sub-b2', 'sub-b1'])
     }))
 
-  it('writes v2 human-readable domain paths without synced backups or note body folders', () =>
+  it('writes v3 human-readable domain paths without synced backups or note body folders', () =>
     withTempUserDataPath((userDataPath) => {
       saveAppState(userDataPath, serializedAppState())
 
       const root = path.join(userDataPath, 'notes-data')
       const manifest = readJson(path.join(root, 'manifest.json'))
 
-      expect(manifest.schemaVersion).toBe(2)
+      expect(manifest.schemaVersion).toBe(3)
       expect(manifest.domains[0]).toMatchObject({
         id: 'domain-1',
         title: 'Domain',

@@ -53,9 +53,9 @@ export function getTipDefinition(tipId: TipId): TipDefinition {
 
 export function getNextTabCreateTipSequence(
   previous: TabCreateTipSequence | null,
-  event: { type: TabCreateTipRenameType; wasPendingCreated: boolean },
+  event: { type: TabCreateTipRenameType; wasPendingCreated: boolean; wasRenamedFromDefault: boolean },
 ): { sequence: TabCreateTipSequence | null; shouldShowTip: boolean } {
-  if (!event.wasPendingCreated) {
+  if (!event.wasPendingCreated || !event.wasRenamedFromDefault) {
     return { sequence: null, shouldShowTip: false }
   }
 

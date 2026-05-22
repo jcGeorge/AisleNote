@@ -46,7 +46,7 @@ export function createDomainFromSpaces(
   }
 }
 
-export function createDomain(name = 'New Domain', generateId: IdGenerator = createId): Domain {
+export function createDomain(name = 'domain', generateId: IdGenerator = createId): Domain {
   const initialSpace = createSpace('getting started', generateId)
   return createDomainFromSpaces(name, [initialSpace], {
     activeSpaceId: initialSpace.id,
@@ -145,6 +145,8 @@ export function getActiveSpaceFromAppState(appState: AppState): Space {
 }
 
 export function projectActiveDomainState(appState: AppState): AppState {
+  const deletedDomains = Array.isArray(appState.deletedDomains) ? appState.deletedDomains : []
+  const deletedSpaces = Array.isArray(appState.deletedSpaces) ? appState.deletedSpaces : []
   const fallbackDomain = createLegacyWrappedDomain(appState.spaces, appState.activeSpaceId)
   const domains = appState.domains.length > 0 ? appState.domains : [fallbackDomain]
   const activeDomain = domains.find((domain) => domain.id === appState.activeDomainId) ?? domains[0]
@@ -170,7 +172,9 @@ export function projectActiveDomainState(appState: AppState): AppState {
     appState.activeDomainId === projectedDomain.id &&
     appState.activeSpaceId === activeSpaceId &&
     appState.spaces === projectedSpaces &&
-    appState.domains === projectedDomains
+    appState.domains === projectedDomains &&
+    appState.deletedDomains === deletedDomains &&
+    appState.deletedSpaces === deletedSpaces
   ) {
     return appState
   }
@@ -181,6 +185,8 @@ export function projectActiveDomainState(appState: AppState): AppState {
     activeSpaceId,
     spaces: projectedSpaces,
     domains: projectedDomains,
+    deletedDomains,
+    deletedSpaces,
   }
 }
 
@@ -389,6 +395,62 @@ export function moveSpaceWithinActiveDomain(
     moveItemByInsertion(projected.spaces, fromIndex, toIndex, position),
     projected.activeSpaceId,
   )
+}
+
+export type MoveSpaceToDomainResult = {
+  state: AppState
+  changed: boolean
+  reason?: 'missing-source-domain' | 'missing-target-domain' | 'missing-space' | 'last-space' | 'same-domain'
+}
+
+export function moveSpaceToDomain(
+  appState: AppState,
+  sourceDomainId: string,
+  spaceId: string,
+  targetDomainId: string,
+): MoveSpaceToDomainResult {
+  const projected = projectActiveDomainState(appState)
+  if (sourceDomainId === targetDomainId) {
+    return { state: projected, changed: false, reason: 'same-domain' }
+  }
+
+  const sourceDomain = projected.domains.find((domain) => domain.id === sourceDomainId)
+  const targetDomain = projected.domains.find((domain) => domain.id === targetDomainId)
+  if (!sourceDomain) return { state: projected, changed: false, reason: 'missing-source-domain' }
+  if (!targetDomain) return { state: projected, changed: false, reason: 'missing-target-domain' }
+  if (sourceDomain.spaces.length <= 1) return { state: projected, changed: false, reason: 'last-space' }
+
+  const movedSpace = sourceDomain.spaces.find((space) => space.id === spaceId)
+  if (!movedSpace) return { state: projected, changed: false, reason: 'missing-space' }
+
+  const sourceSpaces = sourceDomain.spaces.filter((space) => space.id !== spaceId)
+  const nextSourceDomain = createDomainFromSpaces(sourceDomain.name, sourceSpaces, {
+    id: sourceDomain.id,
+    activeSpaceId: sourceDomain.activeSpaceId === spaceId ? sourceSpaces[0]?.id : sourceDomain.activeSpaceId,
+  })
+  const targetSpaces = targetDomain.spaces.some((space) => space.id === spaceId)
+    ? targetDomain.spaces
+    : [...targetDomain.spaces, movedSpace]
+  const nextTargetDomain = createDomainFromSpaces(targetDomain.name, targetSpaces, {
+    id: targetDomain.id,
+    activeSpaceId: spaceId,
+  })
+  const domains = projected.domains.map((domain) => {
+    if (domain.id === sourceDomain.id) return nextSourceDomain
+    if (domain.id === targetDomain.id) return nextTargetDomain
+    return domain
+  })
+
+  return {
+    changed: true,
+    state: projectActiveDomainState({
+      ...projected,
+      activeDomainId: nextTargetDomain.id,
+      activeSpaceId: movedSpace.id,
+      spaces: nextTargetDomain.spaces,
+      domains,
+    }),
+  }
 }
 
 export function moveDomainWithinState(

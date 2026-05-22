@@ -30,6 +30,7 @@ type SubTabRailProps = {
   selectedTrashSubTabId: string | null
   subTabRailRef: RefObject<HTMLDivElement | null>
   arrangeableSubTabClassName: string
+  arrangeControlsDisabled?: boolean
   draggingSubTabId: string | null
   onAutoSizeRenameInput: (input: HTMLInputElement) => void
   onShouldSkipRenameBlur: (type: EditableEntityType, id: string) => boolean
@@ -115,6 +116,7 @@ export function SubTabRail({
   selectedTrashSubTabId,
   subTabRailRef,
   arrangeableSubTabClassName,
+  arrangeControlsDisabled = false,
   draggingSubTabId,
   onAutoSizeRenameInput,
   onShouldSkipRenameBlur,
@@ -385,13 +387,18 @@ export function SubTabRail({
             </button>
           ))}
 
-        {viewMode === 'main' && arrangeMode.active && arrangeMode.scope === 'tabs' ? (
+        {viewMode === 'main' && arrangeMode.active ? (
           <button
             type="button"
             className="tab-sort-btn"
-            onClick={onOpenSubTabSortModal}
+            onClick={() => {
+              if (arrangeControlsDisabled) return
+              onOpenSubTabSortModal()
+            }}
             title={tooltipsDisabled ? undefined : 'sort sub-tabs'}
             aria-label="sort sub-tabs"
+            aria-disabled={arrangeControlsDisabled}
+            disabled={arrangeControlsDisabled}
           >
             <SortIcon />
           </button>

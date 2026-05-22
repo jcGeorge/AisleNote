@@ -12,6 +12,7 @@ import { normalizeHeadingCollapseState } from '../editor/heading-collapse-state'
 import { normalizeToolbarLayouts } from '../editor/toolbar-layouts'
 
 export const DEFAULT_AUTO_REMOVE_DAYS = 7
+export const ALWAYS_SHOW_DOMAINS_WITHOUT_SPACES_MESSAGE = 'you cannot show domains without showing spaces'
 export type BuiltInAppTheme = Exclude<AppTheme, 'custom'>
 export const BUILT_IN_THEME_IDS: BuiltInAppTheme[] = ['dark', 'light', 'dawn', 'blues']
 export const DEFAULT_SETTINGS_SECTION: SettingsSection = 'hotkeys'
@@ -30,6 +31,8 @@ export const MAX_AUTO_REMOVE_DAYS = 365
 
 export const DEFAULT_UI_SETTINGS: AppState['ui'] = {
   showParentHomeTab: true,
+  alwaysShowSpaces: false,
+  alwaysShowDomains: false,
   stageManagerOpenDestinationAfterApply: true,
   lastLinkInsertMode: 'note',
   lastNoteCopyMode: 'independent',
@@ -205,9 +208,17 @@ export function normalizeTableControlTargetMode(value: unknown): TableControlTar
 export function normalizeUiSettings(raw: unknown): AppState['ui'] {
   if (!raw || typeof raw !== 'object') return DEFAULT_UI_SETTINGS
   const obj = raw as Record<string, unknown>
+  const alwaysShowSpaces =
+    typeof obj.alwaysShowSpaces === 'boolean' ? obj.alwaysShowSpaces : DEFAULT_UI_SETTINGS.alwaysShowSpaces
+  const alwaysShowDomains =
+    alwaysShowSpaces && typeof obj.alwaysShowDomains === 'boolean'
+      ? obj.alwaysShowDomains
+      : DEFAULT_UI_SETTINGS.alwaysShowDomains
   return {
     showParentHomeTab:
       typeof obj.showParentHomeTab === 'boolean' ? obj.showParentHomeTab : DEFAULT_UI_SETTINGS.showParentHomeTab,
+    alwaysShowSpaces,
+    alwaysShowDomains,
     stageManagerOpenDestinationAfterApply:
       typeof obj.stageManagerOpenDestinationAfterApply === 'boolean'
         ? obj.stageManagerOpenDestinationAfterApply

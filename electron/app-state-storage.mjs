@@ -42,7 +42,7 @@ import { migrateStorageRootManifest } from './storage-migrations.mjs'
 
 const LEGACY_APP_STATE_RELATIVE_PATH = path.join('data', 'notes', 'index.json')
 export const HYBRID_ROOT_DIR = 'notes-data'
-const SCHEMA_VERSION = 2
+const SCHEMA_VERSION = 3
 const DOMAINS_DIR = 'domains'
 const STORAGE_RECOVERY_DIR = 'storage-recovery'
 export const RECOVERY_SNAPSHOT_MAX_ACTIVE_DAYS = 30
@@ -818,6 +818,8 @@ function buildRootManifestV2(appState, domainEntries, noteBodyEntries, noteAisle
       frontmatter: isRecord(appState.frontmatter) ? appState.frontmatter : undefined,
     },
     domains: domainEntries,
+    deletedDomains: ensureArray(appState.deletedDomains).filter(isRecord),
+    deletedSpaces: ensureArray(appState.deletedSpaces).filter(isRecord),
     noteBodies: noteBodyEntries,
     noteAisleBodies: noteAisleBodyEntries,
     activeDomainId,
@@ -1362,6 +1364,8 @@ function readV2HybridAppStateFromRoot(rootPath, rootManifest, issues = null) {
     theme,
     activeDomainId,
     domains,
+    deletedDomains: ensureArray(rootManifest?.deletedDomains).filter(isRecord),
+    deletedSpaces: ensureArray(rootManifest?.deletedSpaces).filter(isRecord),
     noteBodies,
     noteAisleBodies,
     activeSpaceId: activeDomain.activeSpaceId,

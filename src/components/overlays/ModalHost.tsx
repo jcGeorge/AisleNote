@@ -4,7 +4,7 @@ import {
   NEWLINE_OPERATION_LABELS,
   SHORTCUT_MENU_ELIGIBLE_OPERATIONS,
 } from '../../hotkeys/shortcuts'
-import { TAB_SORT_OPTIONS } from '../../arrange/tab-sort'
+import { NAME_SORT_OPTIONS, TAB_SORT_OPTIONS } from '../../arrange/tab-sort'
 import {
   FRONTMATTER_FIELD_TYPES,
   getFrontmatterDatePickerValue,
@@ -764,7 +764,7 @@ export function ModalHost({
         )}
         {modal.type === 'sort-tabs' && (
           <div className="sort-modal-options" role="group" aria-label={modalText.title}>
-            {TAB_SORT_OPTIONS.map((option) => (
+            {(modal.target === 'spaces' || modal.target === 'domains' ? NAME_SORT_OPTIONS : TAB_SORT_OPTIONS).map((option) => (
               <button
                 key={option.mode}
                 type="button"

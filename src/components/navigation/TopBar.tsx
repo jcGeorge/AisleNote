@@ -2,6 +2,7 @@ import type { MouseEvent, PointerEvent as ReactPointerEvent, RefObject } from 'r
 import { TRASH_HOME_ID } from '../../trash/trash-model'
 import type {
   ArrangeDragItem,
+  ArrangeInsertPosition,
   ArrangeModeState,
   ArrangeTapCandidateSeed,
   SelectionClickModifiers,
@@ -14,6 +15,7 @@ import type {
   WorkspaceData,
 } from '../../types/app'
 import { getRenameInputKeyAction } from '../../navigation/rename-draft'
+import { NavigationRailControls, type NavigationRailAction } from './NavigationRailControls'
 import { SortIcon } from './SortIcon'
 
 type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
@@ -25,9 +27,13 @@ type TopBarProps = {
   editing: { type: EditableEntityType; id: string } | null
   arrangeMode: ArrangeModeState
   tooltipsDisabled?: boolean
+  showGlobalControls?: boolean
+  isDraggingArrangeItem?: boolean
   primaryTabRailRef: RefObject<HTMLDivElement | null>
   isNoteWorkspaceView: boolean
   arrangeableParentTabClassName: string
+  guidedParentRailTarget?: { targetId: string; position: ArrangeInsertPosition | null } | null
+  arrangeControlsDisabled?: boolean
   draggingParentTabId: string | null
   draggingSubTabId: string | null
   arrangeTrashDropRef: RefObject<HTMLButtonElement | null>
@@ -47,7 +53,7 @@ type TopBarProps = {
   onHandleArrangeParentSelectionClick: (tabId: string, modifiers: SelectionClickModifiers) => boolean
   onClearArrangeSelection: () => void
   onConsumeArrangeClickSuppression: (key: string) => boolean
-  onSelectTab: (tabId: string) => void
+  onSelectTab: (tabId: string, event?: MouseEvent<HTMLButtonElement> | ReactPointerEvent<HTMLButtonElement>) => void
   onBeginEdit: (editing: { type: EditableEntityType; id: string }) => void
   onOpenContextMenuForTab: (event: MouseEvent<HTMLButtonElement>, tabId: string) => void
   onStartArrangeDragSeed: (key: string, event: ReactPointerEvent<HTMLButtonElement>) => void
@@ -63,6 +69,8 @@ type TopBarProps = {
     label: string,
     variant: TabArrangeDragPreview['variant'],
   ) => void
+  onGuidedParentPointerMove?: (tabId: string, event: ReactPointerEvent<HTMLButtonElement>) => void
+  onGuidedParentPointerLeave?: (tabId: string) => void
   onHandleArrangeTabPointerUp: (
     event: ReactPointerEvent<HTMLButtonElement>,
     key: string,
@@ -76,6 +84,7 @@ type TopBarProps = {
   onAddTab: () => void
   onOpenParentSortModal: () => void
   onExitArrangeMode: () => void
+  onAdvanceArrangeHierarchyReveal: () => void
   onEndStageManager: () => void
   onCloseSettingsView: () => void
   onSetMenuOpen: (updater: boolean | ((open: boolean) => boolean)) => void
@@ -84,17 +93,6 @@ type TopBarProps = {
   onOpenStageManager: () => void
   onToggleTrash: () => void
   onOpenSettings: () => void
-}
-
-type TopbarAction = {
-  key: string
-  label: string
-  visibleLabel?: string
-  sizeLabel?: string
-  selected: boolean
-  className: string
-  buttonRef?: RefObject<HTMLButtonElement | null>
-  onClick: () => void
 }
 
 function getSelectionClickModifiers(event: MouseEvent | ReactPointerEvent<HTMLButtonElement>): SelectionClickModifiers {
@@ -116,11 +114,14 @@ export function TopBar({
   editing,
   arrangeMode,
   tooltipsDisabled = false,
+  showGlobalControls = true,
+  isDraggingArrangeItem = false,
   primaryTabRailRef,
   isNoteWorkspaceView,
   arrangeableParentTabClassName,
+  guidedParentRailTarget = null,
+  arrangeControlsDisabled = false,
   draggingParentTabId,
-  draggingSubTabId,
   arrangeTrashDropRef,
   isArrangeTrashDropTarget,
   trashParentTabs,
@@ -145,6 +146,8 @@ export function TopBar({
   onStartArrangeTapCandidate,
   onStartArrangePress,
   onHandleArrangeTabPointerMove,
+  onGuidedParentPointerMove = () => undefined,
+  onGuidedParentPointerLeave = () => undefined,
   onHandleArrangeTabPointerUp,
   onClearArrangePressTimer,
   onCancelArrangeTabPointerDrag,
@@ -154,6 +157,7 @@ export function TopBar({
   onAddTab,
   onOpenParentSortModal,
   onExitArrangeMode,
+  onAdvanceArrangeHierarchyReveal,
   onEndStageManager,
   onCloseSettingsView,
   onSetMenuOpen,
@@ -173,8 +177,7 @@ export function TopBar({
           'aria-label': 'Primary tabs',
         } as const)
 
-  const isDraggingTabArrangeItem = Boolean(draggingParentTabId || draggingSubTabId)
-  const topbarActions: TopbarAction[] = [
+  const topbarActions: NavigationRailAction[] = [
     ...(viewMode === 'trash'
       ? [
           {
@@ -211,19 +214,22 @@ export function TopBar({
           },
         ]
       : []),
-    ...(arrangeMode.active && arrangeMode.scope === 'tabs'
+    ...(arrangeMode.active && viewMode === 'main'
       ? [
           {
             key: 'end-arrangement',
             label: 'arrangements',
-            visibleLabel: isDraggingTabArrangeItem ? 'trash' : 'arrangements',
+            visibleLabel: isDraggingArrangeItem ? 'trash' : 'arrangements',
             sizeLabel: 'arrangements',
             selected: false,
             className: `btn btn-sm tab-btn topbar-action-btn topbar-context-btn topbar-arrange-trash-btn ${
-              isDraggingTabArrangeItem ? 'is-trash-mode' : ''
+              isDraggingArrangeItem ? 'is-trash-mode' : ''
             } ${isArrangeTrashDropTarget ? 'is-trash-drop-target' : ''}`,
             buttonRef: arrangeTrashDropRef,
-            onClick: onExitArrangeMode,
+            onClick: () => {
+              if (isDraggingArrangeItem) return
+              onAdvanceArrangeHierarchyReveal()
+            },
           },
         ]
       : []),
@@ -231,7 +237,7 @@ export function TopBar({
   const topbarShowsCloseControl =
     viewMode === 'settings' ||
     viewMode === 'stage-manager' ||
-    (arrangeMode.active && arrangeMode.scope === 'tabs')
+    (arrangeMode.active && viewMode === 'main')
 
   return (
     <header className={`tabbar ${arrangeMode.active && viewMode === 'main' ? 'is-arranging' : ''}`}>
@@ -281,19 +287,22 @@ export function TopBar({
                 (() => {
                   const stageManagerSelection = viewMode === 'stage-manager' ? onGetStageManagerParentSelection(tab) : null
                   const isArrangeMoveTarget =
-                    arrangeMode.active &&
-                    arrangeMode.dragItem?.type === 'subtab' &&
-                    arrangeMode.overParentTabId === tab.id
+                    (arrangeMode.active &&
+                      arrangeMode.dragItem?.type === 'subtab' &&
+                      arrangeMode.overParentTabId === tab.id) ||
+                    (guidedParentRailTarget?.targetId === tab.id && guidedParentRailTarget.position === null)
                   const isArrangeBeforeTarget =
-                    arrangeMode.active &&
-                    arrangeMode.dragItem?.type === 'tab' &&
-                    arrangeMode.overParentTabId === tab.id &&
-                    arrangeMode.overParentInsert === 'before'
+                    (arrangeMode.active &&
+                      arrangeMode.dragItem?.type === 'tab' &&
+                      arrangeMode.overParentTabId === tab.id &&
+                      arrangeMode.overParentInsert === 'before') ||
+                    (guidedParentRailTarget?.targetId === tab.id && guidedParentRailTarget.position === 'before')
                   const isArrangeAfterTarget =
-                    arrangeMode.active &&
-                    arrangeMode.dragItem?.type === 'tab' &&
-                    arrangeMode.overParentTabId === tab.id &&
-                    arrangeMode.overParentInsert === 'after'
+                    (arrangeMode.active &&
+                      arrangeMode.dragItem?.type === 'tab' &&
+                      arrangeMode.overParentTabId === tab.id &&
+                      arrangeMode.overParentInsert === 'after') ||
+                    (guidedParentRailTarget?.targetId === tab.id && guidedParentRailTarget.position === 'after')
                   const isArrangeSelected = arrangeSelectedParentIds.has(tab.id)
                   return (
                     <button
@@ -318,7 +327,7 @@ export function TopBar({
                           return
                         }
                         onClearArrangeSelection()
-                        onSelectTab(tab.id)
+                        onSelectTab(tab.id, event)
                       }}
                       onDoubleClick={() => {
                         if (viewMode !== 'main' || arrangeMode.active) return
@@ -344,18 +353,20 @@ export function TopBar({
                         }
                         onStartArrangePress(event, { type: 'tab', tabId: tab.id }, `tab:${tab.id}`)
                       }}
-                      onPointerMove={(event) =>
+                      onPointerMove={(event) => {
+                        onGuidedParentPointerMove(tab.id, event)
                         onHandleArrangeTabPointerMove(event, { type: 'tab', tabId: tab.id }, tab.title, 'parent')
-                      }
+                      }}
                       onPointerUp={(event) => {
                         if (viewMode !== 'main') return
                         onHandleArrangeTabPointerUp(event, `tab:${tab.id}`, () => {
                           onClearArrangeSelection()
-                          onSelectTab(tab.id)
+                          onSelectTab(tab.id, event)
                         })
                       }}
                       onPointerLeave={() => {
                         if (viewMode !== 'main') return
+                        onGuidedParentPointerLeave(tab.id)
                         if (!arrangeMode.active) {
                           onClearArrangePressTimer()
                         }
@@ -393,13 +404,18 @@ export function TopBar({
             </>
           )}
 
-          {viewMode === 'main' && arrangeMode.active && arrangeMode.scope === 'tabs' ? (
+          {viewMode === 'main' && arrangeMode.active ? (
             <button
               type="button"
               className="tab-sort-btn"
-              onClick={onOpenParentSortModal}
+              onClick={() => {
+                if (arrangeControlsDisabled) return
+                onOpenParentSortModal()
+              }}
               title={tooltipsDisabled ? undefined : 'sort parents'}
               aria-label="sort parents"
+              aria-disabled={arrangeControlsDisabled}
+              disabled={arrangeControlsDisabled}
             >
               <SortIcon />
             </button>
@@ -415,80 +431,33 @@ export function TopBar({
           ) : null}
         </div>
 
-        <div className="tabbar-controls">
-          {topbarActions.length > 0 && (
-            <div className="topbar-actions" role="group" aria-label="Top bar actions">
-              {topbarActions.map((action) => (
-                <button
-                  key={action.key}
-                  ref={action.buttonRef}
-                  type="button"
-                  aria-pressed={action.selected}
-                  className={`${action.className} ${action.selected ? 'is-selected' : ''}`}
-                  onClick={action.onClick}
-                >
-                  {action.sizeLabel ? (
-                    <>
-                      <span className="topbar-action-size-label" aria-hidden="true">
-                        {action.sizeLabel}
-                      </span>
-                      <span className="topbar-action-visible-label">{action.visibleLabel ?? action.label}</span>
-                    </>
-                  ) : (
-                    action.label
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div className="menu-wrap" onClick={(event) => event.stopPropagation()}>
-            <button
-              type="button"
-              className={`menu-btn ${topbarShowsCloseControl ? 'is-close' : ''}`}
-              onClick={() => {
-                if (arrangeMode.active) {
-                  onExitArrangeMode()
-                  return
-                }
-                if (viewMode === 'stage-manager') {
-                  onEndStageManager()
-                  return
-                }
-                if (viewMode === 'settings') {
-                  onCloseSettingsView()
-                  return
-                }
-                onSetMenuOpen((open) => !open)
-              }}
-              aria-label={topbarShowsCloseControl ? 'Close' : 'Menu'}
-            >
-              <span className="menu-btn-line" />
-              <span className="menu-btn-line" />
-            </button>
-            {!topbarShowsCloseControl && menuOpen && (
-              <div className="menu-dropdown">
-                <button type="button" className="menu-item" onClick={onOpenDomains}>
-                  domains
-                </button>
-                <button type="button" className="menu-item" onClick={onOpenSpaces}>
-                  spaces
-                </button>
-                {viewMode === 'main' && (
-                  <button type="button" className="menu-item" onClick={onOpenStageManager}>
-                    director
-                  </button>
-                )}
-                <button type="button" className="menu-item" onClick={onToggleTrash}>
-                  {viewMode === 'trash' ? 'tabs' : 'trash'}
-                </button>
-                <button type="button" className="menu-item" onClick={onOpenSettings}>
-                  settings
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
+        {showGlobalControls && (
+          <NavigationRailControls
+            actions={topbarActions}
+            menuOpen={menuOpen}
+            showCloseControl={topbarShowsCloseControl}
+            viewMode={viewMode}
+            onCloseAction={() => {
+              if (arrangeMode.active) {
+                onExitArrangeMode()
+                return
+              }
+              if (viewMode === 'stage-manager') {
+                onEndStageManager()
+                return
+              }
+              if (viewMode === 'settings') {
+                onCloseSettingsView()
+              }
+            }}
+            onSetMenuOpen={onSetMenuOpen}
+            onOpenDomains={onOpenDomains}
+            onOpenSpaces={onOpenSpaces}
+            onOpenStageManager={onOpenStageManager}
+            onToggleTrash={onToggleTrash}
+            onOpenSettings={onOpenSettings}
+          />
+        )}
       </div>
     </header>
   )
