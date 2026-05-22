@@ -803,29 +803,36 @@ export function applyParagraphSpaceShortcut(state: any, dispatch?: (tr: unknown)
 
   const { $from } = selection
   if (!$from || $from.parent?.type?.name !== 'paragraph') return false
-  if ($from.parentOffset !== $from.parent.content.size) return false
 
-  const shortcut = getParagraphSpaceShortcut($from.parent.textContent ?? '')
+  const markerText =
+    typeof $from.parent.textBetween === 'function'
+      ? $from.parent.textBetween(0, $from.parentOffset, '\n', '\n')
+      : String($from.parent.textContent ?? '').slice(0, $from.parentOffset)
+  const shortcut = getParagraphSpaceShortcut(markerText)
   if (!shortcut) return false
 
   const blockDepth = $from.depth
   const from = $from.before(blockDepth)
   const to = $from.after(blockDepth)
+  const contentStart = $from.start(blockDepth)
 
   if (shortcut.kind === 'heading') {
     const headingType = schema.nodes.heading
     if (!headingType) return false
     if (!dispatch) return true
-    const headingNode = headingType.create({
-      level: shortcut.level,
-      headingType: 'atx',
-    })
-    const nextTr = state.tr.replaceWith(from, to, headingNode)
-    const caretPos = Math.min(from + 1, nextTr.doc.content.size)
+    const nextTr = state.tr
+      .setBlockType(from, to, headingType, {
+        level: shortcut.level,
+        headingType: 'atx',
+      })
+      .delete(contentStart, selection.from)
+    const caretPos = Math.min(contentStart, nextTr.doc.content.size)
     const nextSelection = TextSelection.create(nextTr.doc, caretPos, caretPos)
     dispatch(nextTr.setSelection(nextSelection).scrollIntoView())
     return true
   }
+
+  if ($from.parentOffset !== $from.parent.content.size) return false
 
   if (shortcut.kind === 'blockQuote') {
     const blockQuoteType = schema.nodes.blockQuote

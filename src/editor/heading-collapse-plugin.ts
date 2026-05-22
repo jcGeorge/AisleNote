@@ -96,6 +96,15 @@ function getSelectionHeadingBlock(
   )
 }
 
+function getSelectionAfterHeadingBlock(
+  blocks: HeadingCollapseBlock[],
+  selection: NonNullable<HeadingCollapseEnterState['selection']>,
+): HeadingCollapseBlock | null {
+  const pos = typeof selection.$from?.pos === 'number' ? selection.$from.pos : null
+  if (pos === null) return null
+  return blocks.find((block) => Boolean(block.heading) && block.end === pos) ?? null
+}
+
 export function getCollapsedHeadingKeyForEnter(
   state: HeadingCollapseEnterState,
   aisleId: string,
@@ -105,7 +114,7 @@ export function getCollapsedHeadingKeyForEnter(
   if (!selection?.empty) return null
 
   const blocks = getHeadingCollapseBlocksFromDoc(aisleId, state.doc)
-  const block = getSelectionHeadingBlock(blocks, selection)
+  const block = getSelectionHeadingBlock(blocks, selection) ?? getSelectionAfterHeadingBlock(blocks, selection)
   const headingKey = block?.heading?.key ?? null
   return headingKey && collapsedHeadingKeys.has(headingKey) ? headingKey : null
 }

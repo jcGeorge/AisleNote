@@ -98,7 +98,7 @@ describe('stage manager domain operations', () => {
         {
           ...domainA,
           activeSpaceId: renamedSpace.id,
-          spaces: [{ ...renamedSpace, name: 'getting started' }, archiveSpace],
+          spaces: [{ ...renamedSpace, name: 'first steps' }, archiveSpace],
         },
         domainB,
       ],

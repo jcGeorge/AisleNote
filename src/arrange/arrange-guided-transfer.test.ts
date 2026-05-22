@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_FRONTMATTER_SETTINGS } from '../frontmatter/frontmatter'
 import type { AppState, ArrangeHierarchyDropRequest, Domain, Space, SubTab, Tab, TabArrangeDragPreview } from '../types/app'
 import {
+  getFirstParentTabInSpace,
+  getFirstSpaceInDomain,
   resolveArrangeDomainDestination,
   resolveArrangeHierarchyDrop,
+  resolveArrangePromptDomainConfirmation,
   resolveArrangePromptSpaceSelection,
 } from './arrange-guided-transfer'
 
@@ -126,6 +129,19 @@ const subTabToDomain: ArrangeHierarchyDropRequest = {
 }
 
 describe('arrange guided transfer resolution', () => {
+  it('reads the first space and first parent independently from the active space', () => {
+    const state = appState([
+      domain(
+        'domain-a',
+        [space('first-space', [tab('first-parent')]), space('active-space', [tab('active-parent')])],
+        'active-space',
+      ),
+    ])
+
+    expect(getFirstSpaceInDomain(state, 'domain-a')?.space.id).toBe('first-space')
+    expect(getFirstParentTabInSpace(state, 'domain-a', 'first-space')?.id).toBe('first-parent')
+  })
+
   it('keeps direct parent-to-space drops as immediate append moves', () => {
     const state = appState([domain('domain-a', [space('source', [tab('parent-a')]), space('target', [tab('parent-b')])])])
 
@@ -222,6 +238,88 @@ describe('arrange guided transfer resolution', () => {
       targetDomainId: 'domain-b',
       targetSpaceId: 'target-b',
       targetParentTabId: 'parent-d',
+    })
+  })
+
+  it('confirms a carried parent drop on the same domain by appending to that domain first space', () => {
+    const state = appState([
+      domain('domain-a', [space('source', [tab('parent-a')])], 'source'),
+      domain(
+        'domain-b',
+        [space('first-space', [tab('first-parent')]), space('active-space', [tab('active-parent')])],
+        'active-space',
+      ),
+    ])
+    const promptResolution = resolveArrangeDomainDestination(state, parentToDomain, preview, 'domain-b')
+    if (promptResolution.type !== 'prompt') throw new Error('expected prompt')
+
+    const resolution = resolveArrangePromptDomainConfirmation(state, promptResolution.prompt, 'domain-b')
+
+    expect(resolution).toMatchObject({
+      type: 'move-parent-to-space',
+      targetDomainId: 'domain-b',
+      targetSpaceId: 'first-space',
+    })
+    if (resolution.type !== 'move-parent-to-space') throw new Error('expected parent move')
+    expect(resolution.placement).toBeUndefined()
+  })
+
+  it('confirms a carried sub-tab drop on the same domain by appending to the first parent in the first space', () => {
+    const state = appState([
+      domain('domain-a', [space('source', [tab('parent-a', [subTab('sub-a')])])], 'source'),
+      domain(
+        'domain-b',
+        [space('first-space', [tab('first-parent')]), space('active-space', [tab('active-parent'), tab('other-parent')])],
+        'active-space',
+      ),
+    ])
+    const promptResolution = resolveArrangeDomainDestination(state, subTabToDomain, preview, 'domain-b')
+    if (promptResolution.type !== 'prompt') throw new Error('expected prompt')
+
+    const resolution = resolveArrangePromptDomainConfirmation(state, promptResolution.prompt, 'domain-b')
+
+    expect(resolution).toMatchObject({
+      type: 'move-subtabs-to-parent',
+      targetDomainId: 'domain-b',
+      targetSpaceId: 'first-space',
+      targetParentTabId: 'first-parent',
+    })
+  })
+
+  it('keeps a different-domain guided click as a focus-changing prompt', () => {
+    const state = appState([
+      domain('domain-a', [space('source', [tab('parent-a')])], 'source'),
+      domain('domain-b', [space('domain-b-space', [tab('domain-b-parent')])], 'domain-b-space'),
+      domain('domain-c', [space('domain-c-space', [tab('domain-c-parent')])], 'domain-c-space'),
+    ])
+    const promptResolution = resolveArrangeDomainDestination(state, parentToDomain, preview, 'domain-b')
+    if (promptResolution.type !== 'prompt') throw new Error('expected prompt')
+
+    const resolution = resolveArrangePromptDomainConfirmation(state, promptResolution.prompt, 'domain-c')
+
+    expect(resolution).toMatchObject({
+      type: 'prompt',
+      focus: { domainId: 'domain-c', spaceId: 'domain-c-space' },
+      prompt: {
+        targetDomainId: 'domain-c',
+        targetSpaceId: 'domain-c-space',
+      },
+    })
+  })
+
+  it('leaves malformed same-domain confirmations unchanged when the target has no readable destination', () => {
+    const state = appState([
+      domain('domain-a', [space('source', [tab('parent-a', [subTab('sub-a')])])], 'source'),
+      domain('domain-b', [space('empty-space', []), space('active-space', [tab('active-parent')])], 'active-space'),
+    ])
+    const promptResolution = resolveArrangeDomainDestination(state, subTabToDomain, preview, 'domain-b')
+    if (promptResolution.type !== 'prompt') throw new Error('expected prompt')
+
+    expect(resolveArrangePromptDomainConfirmation(state, promptResolution.prompt, 'missing-domain')).toMatchObject({
+      type: 'none',
+    })
+    expect(resolveArrangePromptDomainConfirmation(state, promptResolution.prompt, 'domain-b')).toMatchObject({
+      type: 'none',
     })
   })
 })

@@ -1,11 +1,16 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  applyDeviceSettingsToAppState,
   DEFAULT_DEVICE_SETTINGS,
   DEVICE_SETTINGS_STORAGE_KEY,
+  extractDeviceSettingsFromAppState,
   loadDeviceSettings,
+  loadDeviceSettingsRecord,
+  mergeLoadedSettings,
   parseDeviceSettings,
   saveDeviceSettings,
 } from './device-settings-store'
+import { parseSavedState } from '../state/app-state'
 
 describe('device settings store', () => {
   it('normalizes missing and malformed device-local settings', () => {
@@ -13,6 +18,7 @@ describe('device settings store', () => {
     expect(parseDeviceSettings('{bad')).toEqual(DEFAULT_DEVICE_SETTINGS)
     expect(parseDeviceSettings(JSON.stringify({ activeToolbarLayoutId: '' }))).toEqual(DEFAULT_DEVICE_SETTINGS)
     expect(parseDeviceSettings(JSON.stringify({ activeToolbarLayoutId: 'desktop-toolbar' }))).toEqual({
+      ...DEFAULT_DEVICE_SETTINGS,
       activeToolbarLayoutId: 'desktop-toolbar',
     })
   })
@@ -26,14 +32,105 @@ describe('device settings store', () => {
       }),
     }
 
-    saveDeviceSettings({ activeToolbarLayoutId: 'tablet' }, storage)
+    saveDeviceSettings({ ...DEFAULT_DEVICE_SETTINGS, activeToolbarLayoutId: 'tablet' }, storage)
 
     expect(storage.setItem).toHaveBeenCalledWith(
       DEVICE_SETTINGS_STORAGE_KEY,
-      JSON.stringify({ activeToolbarLayoutId: 'tablet' }),
+      JSON.stringify({ ...DEFAULT_DEVICE_SETTINGS, activeToolbarLayoutId: 'tablet' }),
     )
-    expect(loadDeviceSettings(storage)).toEqual({ activeToolbarLayoutId: 'tablet' })
+    expect(loadDeviceSettings(storage)).toEqual({ ...DEFAULT_DEVICE_SETTINGS, activeToolbarLayoutId: 'tablet' })
     expect(values.has('tabs:app-state-cache:v1')).toBe(false)
+  })
+
+  it('applies device-local settings after synced state is parsed', () => {
+    const state = parseSavedState(
+      JSON.stringify({
+        activeDomainId: 'domain-a',
+        domains: [
+          {
+            id: 'domain-a',
+            name: 'A',
+            activeSpaceId: 'space-a',
+            spaces: [
+              {
+                id: 'space-a',
+                name: 'A',
+                data: {
+                  activeTabId: 'tab-a',
+                  tabs: [
+                    { id: 'tab-a', title: 'A', activeSubTabId: null, subTabs: [] },
+                    { id: 'tab-b', title: 'B', activeSubTabId: null, subTabs: [{ id: 'sub-b', title: 'B' }] },
+                  ],
+                  deletedTabs: [],
+                  deletedSubTabs: [],
+                },
+              },
+            ],
+          },
+        ],
+        ui: {
+          settingsSection: 'hotkeys',
+          tabButtonScale: 1,
+          noteFontScale: 1,
+          seenTipIds: [],
+        },
+      }),
+    )
+
+    const merged = applyDeviceSettingsToAppState(state, {
+      ...DEFAULT_DEVICE_SETTINGS,
+      lastOpened: {
+        domainId: 'domain-a',
+        spaceId: 'space-a',
+        primeTabId: 'tab-b',
+        subTabId: 'sub-b',
+        viewMode: 'main',
+      },
+      settingsSection: 'visuals',
+      seenTipIds: ['task-undo'],
+      tabButtonScale: 1.3,
+      noteFontScale: 1.2,
+    })
+
+    expect(merged.spaces[0]?.data.activeTabId).toBe('tab-b')
+    expect(merged.spaces[0]?.data.tabs[1]?.activeSubTabId).toBe('sub-b')
+    expect(merged.ui.settingsSection).toBe('visuals')
+    expect(merged.ui.seenTipIds).toEqual(['task-undo'])
+    expect(merged.ui.tabButtonScale).toBe(1.3)
+    expect(merged.ui.noteFontScale).toBe(1.2)
+  })
+
+  it('leaves legacy cloud local-ish values in place until device settings exist', () => {
+    const state = parseSavedState(JSON.stringify({ ui: { settingsSection: 'visuals', tabButtonScale: 1.2 } }))
+
+    expect(mergeLoadedSettings(state, { settings: DEFAULT_DEVICE_SETTINGS, hasStoredSettings: false }).ui.settingsSection).toBe('visuals')
+    expect(mergeLoadedSettings(state, { settings: DEFAULT_DEVICE_SETTINGS, hasStoredSettings: true }).ui.settingsSection).toBe('hotkeys')
+  })
+
+  it('extracts device-local settings from app state without synced settings', () => {
+    const state = parseSavedState(
+      JSON.stringify({
+        ui: {
+          settingsSection: 'tips',
+          seenTipIds: ['task-undo'],
+          disabledTipIds: ['tab-create-after-rename'],
+          tabButtonScale: 1.1,
+          noteFontScale: 1.15,
+        },
+      }),
+    )
+
+    expect(extractDeviceSettingsFromAppState(state).settingsSection).toBe('tips')
+    expect(extractDeviceSettingsFromAppState(state).seenTipIds).toEqual(['task-undo'])
+    expect(extractDeviceSettingsFromAppState(state)).not.toHaveProperty('disabledTipIds')
+  })
+
+  it('reports whether device-local settings already existed', () => {
+    const storage = {
+      getItem: vi.fn(() => null),
+    }
+
+    expect(loadDeviceSettingsRecord(storage).hasStoredSettings).toBe(false)
   })
 
   it('keeps storage failures non-fatal', () => {
@@ -47,6 +144,6 @@ describe('device settings store', () => {
     }
 
     expect(loadDeviceSettings(storage)).toEqual(DEFAULT_DEVICE_SETTINGS)
-    expect(() => saveDeviceSettings({ activeToolbarLayoutId: 'desktop' }, storage)).not.toThrow()
+    expect(() => saveDeviceSettings({ ...DEFAULT_DEVICE_SETTINGS, activeToolbarLayoutId: 'desktop' }, storage)).not.toThrow()
   })
 })

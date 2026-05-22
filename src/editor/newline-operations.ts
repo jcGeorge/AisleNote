@@ -9,6 +9,7 @@ import {
   createOperationNodes,
 } from './newline-operation-nodes'
 import { getEditorTextLineRanges } from './multiline-ranges'
+import { buildMultiLineListOperationPlan, type MultiLineListOperation } from './multiline-list-operations'
 import { getCommandCapableEditor, getWysiwygView } from './prosemirror-utils'
 
 type EditorNewlineOperationResult =
@@ -102,18 +103,28 @@ function findTopLevelAfter(state: any, position: number) {
   return $position.depth >= 1 ? $position.after(1) : docSize
 }
 
-function isWholeLineSelection(view: any): boolean {
+function getWholeLineSelectionIndices(view: any): number[] {
   const { from, to } = view.state.selection
-  if (from === to) return false
+  if (from === to) return []
 
   const selectionFrom = Math.min(from, to)
   const selectionTo = Math.max(from, to)
-  const touchedRanges = getEditorTextLineRanges(view).filter(
-    (range) => range.length > 0 && selectionFrom <= range.end && selectionTo >= range.start,
-  )
-  if (touchedRanges.length === 0) return false
+  const touchedRanges = getEditorTextLineRanges(view)
+    .map((range, index) => ({ range, index }))
+    .filter(({ range }) =>
+      range.length > 0
+        ? selectionFrom <= range.end && selectionTo >= range.start
+        : selectionFrom <= range.start && selectionTo >= range.end,
+    )
+  if (touchedRanges.length === 0) return []
 
-  return touchedRanges.every((range) => selectionFrom <= range.start && selectionTo >= range.end)
+  return touchedRanges.every(({ range }) => selectionFrom <= range.start && selectionTo >= range.end)
+    ? touchedRanges.map(({ index }) => index)
+    : []
+}
+
+function isWholeLineSelection(view: any): boolean {
+  return getWholeLineSelectionIndices(view).length > 0
 }
 
 function setSelectionNearInsertedContent(tr: any, from: number, to: number) {
@@ -335,6 +346,24 @@ function replaceSelectedLine(view: any, operation: NewlineOperationId, text: str
   const range = findTopLevelRange(state, Math.min(from, to), Math.max(from, to))
 
   if (isListNewlineOperation(operation)) {
+    const selectedLineIndices = getWholeLineSelectionIndices(view)
+    if (selectedLineIndices.length >= 2) {
+      const plan = buildMultiLineListOperationPlan(
+        view,
+        {
+          anchorBlockIndex: selectedLineIndices[0],
+          headBlockIndex: selectedLineIndices[selectedLineIndices.length - 1],
+          columnOffset: 0,
+          cursorBlockIndices: selectedLineIndices,
+        },
+        operation as MultiLineListOperation,
+      )
+      if (plan) {
+        view.dispatch(plan.transaction.scrollIntoView())
+        return
+      }
+    }
+
     const listNode = createOperationListNode(state.schema, operation, text)
     if (!listNode) return
     let tr = state.tr.replaceWith(range.from, range.to, listNode)
@@ -343,14 +372,14 @@ function replaceSelectedLine(view: any, operation: NewlineOperationId, text: str
       typeof merged.listStart === 'number'
         ? setSelectionNearListItems(merged.tr, merged.listStart, merged.insertedItemIndex, merged.insertedItemCount)
         : setSelectionNearInsertedContent(merged.tr, merged.selectionFrom, merged.selectionTo)
-    view.dispatch(tr.setMeta('addToHistory', false).scrollIntoView())
+    view.dispatch(tr.scrollIntoView())
     return
   }
 
   const fragment = Fragment.fromArray(createOperationNodes(state.schema, operation, text))
   let tr = state.tr.replaceWith(range.from, range.to, fragment)
   tr = setSelectionNearInsertedContent(tr, range.from, range.from + fragment.size)
-  view.dispatch(tr.setMeta('addToHistory', false).scrollIntoView())
+  view.dispatch(tr.scrollIntoView())
 }
 
 function replaceEmptyLineWithOperation(view: any, operation: NewlineOperationId, text = ''): boolean {

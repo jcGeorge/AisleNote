@@ -35,6 +35,7 @@ export const STORAGE_AISLES_DIR = 'aisles' as const
 export const STORAGE_ASSETS_DIR = 'assets' as const
 export const STORAGE_TRASH_DIR = 'trash' as const
 export const STORAGE_MANIFEST_FILE = 'manifest.json' as const
+export const STORAGE_PROFILE_SETTINGS_FILE = 'profile-settings.json' as const
 export const STORAGE_HOME_NOTE_FILE = 'home.md' as const
 
 export type StorageShortcutMap = Record<StorageShortcutId, string>
@@ -79,8 +80,8 @@ export type StorageGlobalSettings = {
     decoupledItemsKeepData?: boolean
     tableAddTargetMode?: StorageTableControlTargetMode
     tableDeleteTargetMode?: StorageTableControlTargetMode
-    tabButtonScale: number
-    noteFontScale: number
+    tabButtonScale?: number
+    noteFontScale?: number
     settingsSection?: StorageSettingsSection
     customThemePalette?: Partial<Record<StorageCustomThemePaletteSlot, string>> | null
     noteCursorLocations?: Record<
@@ -165,6 +166,11 @@ export type StorageRootManifest = {
     subTabId: StorageEntityId | null
     viewMode: 'domains' | 'spaces' | 'main' | 'trash' | 'settings' | 'stage-manager'
   }
+}
+
+export type StorageProfileSettings = {
+  schemaVersion: 1
+  settings: StorageGlobalSettings
 }
 
 export type StorageSpaceSettings = {

@@ -139,6 +139,32 @@ describe('heading collapse plugin', () => {
     ).toBe(headingKey)
   })
 
+  it('finds the collapsed heading key when the caret is visually after the collapsed heading', () => {
+    const doc = docForBlocks([
+      { type: 'heading', text: 'Subject', level: 2, size: 9 },
+      { type: 'paragraph', text: 'body', size: 6 },
+    ])
+    const headingKey = firstHeadingKey(doc)
+
+    expect(
+      getCollapsedHeadingKeyForEnter(
+        {
+          doc,
+          selection: {
+            empty: true,
+            $from: {
+              pos: 9,
+              depth: 0,
+              parent: { type: { name: 'doc' } },
+            },
+          },
+        },
+        'aisle-a',
+        new Set([headingKey]),
+      ),
+    ).toBe(headingKey)
+  })
+
   it('ignores Enter outside a currently collapsed heading', () => {
     const doc = docForBlocks([
       { type: 'heading', text: 'Subject', level: 2, size: 9 },

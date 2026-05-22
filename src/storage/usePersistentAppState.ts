@@ -8,6 +8,13 @@ import {
 } from '../state/app-state'
 import type { AppState } from '../types/app'
 import { appPersistenceService } from './app-persistence-service'
+import {
+  extractDeviceSettingsFromAppState,
+  loadDeviceSettings,
+  loadDeviceSettingsRecord,
+  mergeLoadedSettings,
+  saveDeviceSettings,
+} from './device-settings-store'
 import { createPersistenceDebounceController } from './persistence-debounce'
 import type { AppStateCommitOptions, AppStateSaveOptions } from './persistence-debounce'
 
@@ -22,9 +29,20 @@ type PersistentAppStateController = {
 
 const MAX_AUTO_PURGE_TIMEOUT_MS = 2_147_483_647
 
+function parsePersistedStateWithDeviceSettings(serializedState: string | null): AppState {
+  return mergeLoadedSettings(parseSavedState(serializedState), loadDeviceSettingsRecord())
+}
+
+function saveDeviceSettingsForState(state: AppState): void {
+  saveDeviceSettings(extractDeviceSettingsFromAppState(state, loadDeviceSettings()))
+}
+
 export function usePersistentAppState(): PersistentAppStateController {
   const initialSerializedState = useMemo(() => appPersistenceService.loadSerializedState(), [])
-  const initialParsedState = useMemo(() => applyAutoPurgeToAppState(parseSavedState(initialSerializedState)), [initialSerializedState])
+  const initialParsedState = useMemo(
+    () => applyAutoPurgeToAppState(parsePersistedStateWithDeviceSettings(initialSerializedState)),
+    [initialSerializedState],
+  )
   const [state, setReactState] = useState<AppState>(() => initialParsedState)
   const [storageHydrated, setStorageHydrated] = useState(() => typeof appPersistenceService.hydrateSerializedState !== 'function')
   const autoPurgeScheduleSignature = useMemo(() => getAutoPurgeScheduleSignatureForAppState(state), [state])
@@ -63,7 +81,7 @@ export function usePersistentAppState(): PersistentAppStateController {
     Promise.resolve(
       appPersistenceService.hydrateSerializedState((serializedState) => {
         if (disposed || stateDirtySinceBootRef.current) return
-        const nextState = applyAutoPurgeToAppState(parseSavedState(serializedState))
+        const nextState = applyAutoPurgeToAppState(parsePersistedStateWithDeviceSettings(serializedState))
         initialStateRef.current = nextState
         if (nextState === stateRef.current) return
         externallyAppliedStateRef.current = nextState
@@ -87,7 +105,7 @@ export function usePersistentAppState(): PersistentAppStateController {
     let disposed = false
     const unsubscribe = appPersistenceService.subscribeSerializedState((serializedState) => {
       if (disposed) return
-      const nextState = applyAutoPurgeToAppState(parseSavedState(serializedState))
+      const nextState = applyAutoPurgeToAppState(parsePersistedStateWithDeviceSettings(serializedState))
       initialStateRef.current = nextState
       stateDirtySinceBootRef.current = false
       if (nextState === stateRef.current) return
@@ -111,6 +129,7 @@ export function usePersistentAppState(): PersistentAppStateController {
     }
 
     stateRef.current = sanitizedState
+    saveDeviceSettingsForState(sanitizedState)
     if (externallyAppliedStateRef.current === sanitizedState) {
       externallyAppliedStateRef.current = null
       stateDirtySinceBootRef.current = false
@@ -133,6 +152,7 @@ export function usePersistentAppState(): PersistentAppStateController {
     const sanitizedState = applyAutoPurgeToAppState(nextState)
     stateRef.current = sanitizedState
     setState(sanitizedState)
+    saveDeviceSettingsForState(sanitizedState)
 
     if (!storageHydratedRef.current) {
       stateDirtySinceBootRef.current = true

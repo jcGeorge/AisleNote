@@ -926,6 +926,9 @@
 }
 
 .settings-shortcut-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid var(--settings-shortcut-border);
   background: var(--settings-shortcut-bg);
   color: var(--settings-shortcut-text);
@@ -934,7 +937,9 @@
   line-height: 1.2;
   padding: 0.24rem 0.46rem;
   min-width: 115px;
+  min-height: calc(1.2em + 0.48rem + 2px);
   text-align: center;
+  white-space: nowrap;
 }
 
 .settings-shortcut-select {

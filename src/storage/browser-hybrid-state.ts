@@ -4,6 +4,7 @@ import {
   STORAGE_DOMAINS_DIR,
   STORAGE_HOME_NOTE_FILE,
   STORAGE_MANIFEST_FILE,
+  STORAGE_PROFILE_SETTINGS_FILE,
   STORAGE_ROOT_DIR,
   STORAGE_SCHEMA_VERSION,
   STORAGE_TRASH_DIR,
@@ -33,19 +34,22 @@ import {
   DEFAULT_DOMAIN_NAME,
   ensureArray,
   getActiveDomainFromAppState,
-  getActiveSpaceFromDomain,
   getDomainId,
   getDomainTitle,
   getDomainsFromAppState,
   getExtensionFromMimeType,
   getMimeTypeFromExtension,
   getNoteBodiesFromAppState,
-  getThemeForStorage,
   isRecord,
   normalizeAssetExtension,
   normalizeStorageTheme,
 } from './hybrid-storage-core.js'
 import { buildStoragePathFileName, createStoragePathAllocator } from './storage-path-segments.js'
+import {
+  extractSyncedGlobalSettings,
+  extractSyncedProfileSettings,
+  getSyncedProfileSettingsForLoad,
+} from './settings-partition.js'
 
 type BrowserStoredFile =
   | {
@@ -272,60 +276,17 @@ function buildRootManifest(
   noteAisleBodyEntries: Array<Record<string, unknown>>,
 ) {
   const activeDomain = getActiveDomainFromAppState(appState, getDomainsFromAppState(appState))
-  const activeSpace = getActiveSpaceFromDomain(activeDomain, appState.activeSpaceId)
-  const activeSpaceData = isRecord(activeSpace?.data) ? activeSpace.data : null
-  const activeTabs = ensureArray<Record<string, unknown>>(activeSpaceData?.tabs)
-  const activeTab = activeTabs.find((tab) => tab.id === activeSpaceData?.activeTabId) ?? activeTabs[0] ?? null
   const activeDomainId = activeDomain ? getDomainId(activeDomain) : DEFAULT_DOMAIN_ID
 
   return {
     schemaVersion: STORAGE_SCHEMA_VERSION,
-    globalSettings: {
-      theme: getThemeForStorage(appState),
-      hotkeys:
-        isRecord(appState.hotkeys)
-          ? appState.hotkeys
-          : {
-              shortcuts: {},
-              enableMouseBackForward: true,
-              enableGenericHistoryHotkeys: true,
-            },
-      ui:
-        isRecord(appState.ui)
-          ? appState.ui
-          : {
-              showParentHomeTab: true,
-              stageManagerOpenDestinationAfterApply: true,
-              lastNoteCopyMode: 'independent',
-              decoupledItemsKeepData: true,
-              tableAddTargetMode: 'bottom-right',
-              tableDeleteTargetMode: 'bottom-right',
-              tabButtonScale: 1,
-              noteFontScale: 1,
-              settingsSection: 'hotkeys',
-              customThemePalette: null,
-              noteCursorLocations: {},
-              headingCollapseState: {},
-              seenTipIds: [],
-              disabledTipIds: [],
-            },
-      frontmatter: isRecord(appState.frontmatter) ? appState.frontmatter : undefined,
-    },
+    globalSettings: extractSyncedGlobalSettings(appState),
     domains: domainEntries,
     deletedDomains: ensureArray<Record<string, unknown>>(appState.deletedDomains).filter(isRecord),
     deletedSpaces: ensureArray<Record<string, unknown>>(appState.deletedSpaces).filter(isRecord),
     noteBodies: noteBodyEntries,
     noteAisleBodies: noteAisleBodyEntries,
     activeDomainId,
-    lastOpened: activeSpace
-      ? {
-          domainId: activeDomainId,
-          spaceId: typeof activeSpace.id === 'string' ? activeSpace.id : '',
-          primeTabId: typeof activeTab?.id === 'string' ? activeTab.id : null,
-          subTabId: typeof activeTab?.activeSubTabId === 'string' ? activeTab.activeSubTabId : null,
-          viewMode: 'main',
-        }
-      : undefined,
   }
 }
 
@@ -727,6 +688,11 @@ export function buildHybridFileMapFromSerializedState(serializedState: string): 
   const noteAisleBodyEntries = Array.from(noteAisleBodyRecords.values())
   setJsonFile(
     fileMap,
+    joinPosix(STORAGE_ROOT_DIR, STORAGE_PROFILE_SETTINGS_FILE),
+    extractSyncedProfileSettings(parsed),
+  )
+  setJsonFile(
+    fileMap,
     joinPosix(STORAGE_ROOT_DIR, STORAGE_MANIFEST_FILE),
     buildRootManifest(parsed, domainEntries, noteBodyEntries, noteAisleBodyEntries),
   )
@@ -950,6 +916,17 @@ export function readSerializedStateFromHybridFileMap(fileMap: Map<string, Browse
   if (!manifestMigration.ok) return null
   rootManifest = manifestMigration.manifest
 
+  let profileSettings: Record<string, unknown> = {}
+  const profileSettingsRaw = getTextFile(fileMap, joinPosix(STORAGE_ROOT_DIR, STORAGE_PROFILE_SETTINGS_FILE))
+  if (profileSettingsRaw) {
+    try {
+      profileSettings = JSON.parse(profileSettingsRaw) as Record<string, unknown>
+    } catch {
+      profileSettings = {}
+    }
+  }
+  const syncedSettings = getSyncedProfileSettingsForLoad(rootManifest, profileSettings)
+
   const noteBodies = readNoteBodiesFromRootManifest(fileMap, rootManifest)
   const noteAisleBodies = readNoteAisleBodiesFromRootManifest(fileMap, rootManifest)
   const domainEntries = ensureArray<Record<string, unknown>>(rootManifest.domains)
@@ -1042,8 +1019,7 @@ export function readSerializedStateFromHybridFileMap(fileMap: Map<string, Browse
         : typeof activeSpaces[0]?.id === 'string'
           ? activeSpaces[0].id
           : ''
-  const globalSettings = isRecord(rootManifest.globalSettings) ? rootManifest.globalSettings : {}
-  const theme = normalizeStorageTheme(globalSettings.theme)
+  const theme = normalizeStorageTheme(syncedSettings.theme)
 
   return JSON.stringify({
     theme,
@@ -1055,9 +1031,9 @@ export function readSerializedStateFromHybridFileMap(fileMap: Map<string, Browse
     noteAisleBodies,
     activeSpaceId,
     spaces: activeSpaces,
-    hotkeys: isRecord(rootManifest.globalSettings) ? rootManifest.globalSettings.hotkeys : undefined,
-    frontmatter: isRecord(rootManifest.globalSettings) ? rootManifest.globalSettings.frontmatter : undefined,
-    ui: isRecord(rootManifest.globalSettings) ? rootManifest.globalSettings.ui : undefined,
+    hotkeys: syncedSettings.hotkeys,
+    frontmatter: syncedSettings.frontmatter,
+    ui: syncedSettings.ui,
   })
 }
 

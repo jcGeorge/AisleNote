@@ -546,7 +546,7 @@ export function parseSavedState(raw: string | null): AppState {
     // Legacy single-workspace migration
     const migratedSpace: Space = {
       id: 'getting-started-space',
-      name: 'getting started',
+      name: 'first steps',
       settings: { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
       data: applyAutoPurgeToWorkspace(normalizeWorkspaceData(parsed), DEFAULT_AUTO_REMOVE_DAYS),
     }

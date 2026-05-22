@@ -20,6 +20,7 @@ import {
 import {
   resolveArrangeDomainDestination,
   resolveArrangeHierarchyDrop,
+  resolveArrangePromptDomainConfirmation,
   resolveArrangePromptSpaceSelection,
   type ArrangeGuidedTransferResolution,
 } from './arrange/arrange-guided-transfer'
@@ -140,6 +141,7 @@ import {
   type NoteMentionNavigatorRowId,
   type NoteMentionSelection,
 } from './notes/note-mention-picker'
+import { shouldDismissEmptyNoteMentionOnSpace } from './notes/note-mention-keyboard'
 import { getLinkedAisleIdsForNoteBody } from './notes/aisle-links'
 import { openExternalWebUrl } from './notes/external-links'
 import { buildContextToken, buildInternalNoteUrl, escapeMarkdownLinkLabel, wouldCreateContextCycle } from './notes/note-references'
@@ -181,7 +183,12 @@ import {
 import { collectAppNavigationEntityIds, createReservedIdAllocator } from './state/navigation-ids'
 import { useStageManagerController } from './stage-manager/useStageManagerController'
 import { usePersistentAppState } from './storage/usePersistentAppState'
-import { loadActiveToolbarLayoutId, saveActiveToolbarLayoutId } from './storage/device-settings-store'
+import {
+  loadDeviceSettings,
+  saveActiveToolbarLayoutId,
+  saveDeviceLastOpened,
+  type DeviceSettings,
+} from './storage/device-settings-store'
 import { useStorageProfileController } from './storage/useStorageProfileController'
 import {
   getNextTabCreateTipSequence,
@@ -231,6 +238,10 @@ type NoteMentionMenuState = {
   activeRow: NoteMentionNavigatorRowId
 }
 
+function noteMentionQueryMatches(left: NoteMentionQuery | null, right: NoteMentionQuery | null): boolean {
+  return Boolean(left && right && left.from === right.from && left.to === right.to && left.query === right.query)
+}
+
 type FindReplacePanelState = {
   open: boolean
   query: string
@@ -274,8 +285,12 @@ function getCurrentTimestamp() {
 }
 
 function App() {
+  const initialDeviceSettingsRef = useRef<DeviceSettings | null>(null)
+  if (initialDeviceSettingsRef.current === null) {
+    initialDeviceSettingsRef.current = loadDeviceSettings()
+  }
   const { state, setState, stateRef, flushPendingPersistence, commitAppStateNow } = usePersistentAppState()
-  const [viewMode, setViewMode] = useState<ViewMode>('main')
+  const [viewMode, setViewMode] = useState<ViewMode>(() => initialDeviceSettingsRef.current?.lastOpened?.viewMode ?? 'main')
   const [editing, setEditing] = useState<{ type: EditableEntityType; id: string } | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [modal, setModal] = useState<ModalState | null>(null)
@@ -304,7 +319,9 @@ function App() {
   const [trashTabId, setTrashTabId] = useState<string>(TRASH_HOME_ID)
   const [trashSubTabId, setTrashSubTabId] = useState<string | null>(null)
   const [activeAisleId, setActiveAisleId] = useState<string>('')
-  const [activeToolbarLayoutId, setActiveToolbarLayoutIdState] = useState<string>(() => loadActiveToolbarLayoutId())
+  const [activeToolbarLayoutId, setActiveToolbarLayoutIdState] = useState<string>(
+    () => initialDeviceSettingsRef.current?.activeToolbarLayoutId ?? DEFAULT_TOOLBAR_LAYOUT_ID,
+  )
   const [toasts, setToasts] = useState<ToastState[]>([])
   const [visibleTips, setVisibleTips] = useState<TipId[]>([])
 
@@ -321,6 +338,8 @@ function App() {
   const closeNoteMentionMenuRef = useRef<(options?: { restoreEditorFocus?: boolean }) => void>(() => {})
   const chooseNoteMentionSearchEntryRef = useRef<(entry: NoteSearchEntry, action: NoteMentionAction) => void>(() => {})
   const chooseNoteMentionTargetRef = useRef<(target: NoteLocation, action: NoteMentionAction) => void>(() => {})
+  const noteMentionMenuRef = useRef<NoteMentionMenuState | null>(null)
+  const dismissedNoteMentionQueryRef = useRef<NoteMentionQuery | null>(null)
   const deleteContextPreviewRef = useRef<(tokenId: string) => void>(() => {})
   const pendingCreatedEditRef = useRef<PendingCreatedEdit | null>(null)
   const editingRef = useRef<{ type: EditableEntityType; id: string } | null>(null)
@@ -661,6 +680,17 @@ function App() {
   activeAisleIdRef.current = resolvedActiveAisleId
   activeNoteLocationKeyRef.current = activeNoteLocationKey
   isMainViewRef.current = viewMode === 'main'
+  noteMentionMenuRef.current = noteMentionMenu
+
+  useEffect(() => {
+    saveDeviceLastOpened({
+      domainId: state.activeDomainId,
+      spaceId: activeSpace.id,
+      primeTabId: activeTab.id,
+      subTabId: activeSubTab?.id ?? null,
+      viewMode,
+    })
+  }, [activeSpace.id, activeSubTab?.id, activeTab.id, state.activeDomainId, viewMode])
 
   const updateActiveSpaceData = (updater: (data: WorkspaceData) => WorkspaceData) => {
     setState((previous) => {
@@ -1147,14 +1177,16 @@ function App() {
     if (arrangeDestinationPrompt) {
       saveActiveCursorBeforeNavigation()
       closeImageToolsRef.current()
-      applyArrangeGuidedTransferResolution(
-        resolveArrangeDomainDestination(
-          stateRef.current,
-          arrangeDestinationPrompt.request,
-          arrangeDestinationPrompt.carriedPreview,
-          domainId,
-        ),
-      )
+      const resolution =
+        domainId === arrangeDestinationPrompt.targetDomainId
+          ? resolveArrangePromptDomainConfirmation(stateRef.current, arrangeDestinationPrompt, domainId)
+          : resolveArrangeDomainDestination(
+              stateRef.current,
+              arrangeDestinationPrompt.request,
+              arrangeDestinationPrompt.carriedPreview,
+              domainId,
+            )
+      applyArrangeGuidedTransferResolution(resolution)
       return
     }
     saveActiveCursorBeforeNavigation()
@@ -2212,20 +2244,27 @@ function App() {
     if (viewMode !== 'main' || !editorRef.current) return
     const query = getNoteMentionQueryAtSelection(getWysiwygView(editorRef.current))
     if (!query) {
-      if (noteMentionMenu) closeNoteMentionMenu()
+      dismissedNoteMentionQueryRef.current = null
+      if (noteMentionMenuRef.current) closeNoteMentionMenuRef.current()
       return
     }
+    if (noteMentionQueryMatches(dismissedNoteMentionQueryRef.current, query)) {
+      if (noteMentionMenuRef.current) closeNoteMentionMenuRef.current()
+      return
+    }
+    dismissedNoteMentionQueryRef.current = null
     const entries = query.query.trim().length > 0 ? getNoteMentionSearchEntries(query.query) : []
     const currentLocation = getCurrentNoteLocation()
-    const selection = noteMentionMenu
-      ? resolveNoteMentionSelection(stateRef.current, noteMentionMenu.selection)
+    const currentMentionMenu = noteMentionMenuRef.current
+    const selection = currentMentionMenu
+      ? resolveNoteMentionSelection(stateRef.current, currentMentionMenu.selection)
       : createDefaultNoteMentionSelection(stateRef.current, currentLocation)
     setNoteMentionActiveIndex((previous) => Math.max(0, Math.min(Math.max(0, entries.length - 1), previous)))
     setNoteMentionMenu({
       ...getNoteMentionMenuPosition(query.query.trim().length > 0 ? Math.max(1, entries.length) : 6, query.to),
       query,
       selection,
-      activeRow: noteMentionMenu?.activeRow ?? 'space',
+      activeRow: currentMentionMenu?.activeRow ?? 'space',
     })
   }
 
@@ -2342,6 +2381,12 @@ function App() {
     if (!noteMentionMenu) return
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (shouldDismissEmptyNoteMentionOnSpace(event, noteMentionMenu.query.query)) {
+        dismissedNoteMentionQueryRef.current = noteMentionMenu.query
+        closeNoteMentionMenuRef.current()
+        return
+      }
+
       const searchMode = noteMentionMenu.query.query.trim().length > 0
       const itemCount = searchMode ? getNoteMentionSearchEntries(noteMentionMenu.query.query).length : 0
       const isPreviewShortcut = event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey
@@ -2360,6 +2405,7 @@ function App() {
       event.stopPropagation()
 
       if (event.key === 'Escape') {
+        dismissedNoteMentionQueryRef.current = noteMentionMenu.query
         closeNoteMentionMenuRef.current({ restoreEditorFocus: true })
         return
       }

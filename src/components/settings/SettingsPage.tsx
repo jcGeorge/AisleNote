@@ -369,6 +369,7 @@ export function SettingsPage({
         {section === 'hotkeys' && (
           <div className="settings-section-panel" role="tabpanel">
             <p>hotkeys ({isMacPlatform ? 'mac' : 'windows'}):</p>
+            <p className="settings-help">synced profile settings</p>
             <div className="settings-hotkeys-list">
               {APP_COMMANDS.map(({ id: shortcutId, label }) => (
                 <div key={shortcutId} className="settings-hotkey-row">
@@ -456,6 +457,7 @@ export function SettingsPage({
         {section === 'data' && (
           <div className="settings-section-panel" role="tabpanel">
             <p>cloud and storage:</p>
+            <p className="settings-help">notes, arrangement, and synced profile settings live in this folder.</p>
             <div className={storageProfileCardClassName}>
               <div className="storage-profile-row">
                 <span className="settings-hotkey-label">current folder</span>
@@ -562,6 +564,7 @@ export function SettingsPage({
 
         {section === 'visuals' && (
           <div className="settings-section-panel" role="tabpanel">
+            <p className="settings-help">theme settings sync with your notes profile; size sliders are this-device settings.</p>
             <div className="settings-hotkey-row">
               <span className="settings-hotkey-label" id="settings-theme-label">
                 theme
@@ -672,7 +675,7 @@ export function SettingsPage({
                 htmlFor="settings-show-parent-home-tab"
                 title='adds a fixed first sub-tab named "home" for each parent tab.'
               >
-                show parent home tab with the other sub-tabs
+                show the parent's home tab with the other sub-tabs
               </label>
               <div className="form-check form-switch settings-switch">
                 <input
@@ -685,9 +688,6 @@ export function SettingsPage({
                 />
               </div>
             </div>
-            <p className="settings-help">
-              when enabled, a locked <code>home</code> sub-tab appears first. it cannot be renamed or deleted.
-            </p>
             <div className="settings-hotkey-row">
               <label className="settings-hotkey-label" htmlFor="settings-always-show-spaces">
                 always show spaces
@@ -723,6 +723,7 @@ export function SettingsPage({
 
         {section === 'frontmatter' && (
           <div className="settings-section-panel" role="tabpanel">
+            <p className="settings-help">synced profile settings</p>
             <div className="settings-hotkey-row">
               <label className="settings-hotkey-label" htmlFor="settings-frontmatter-template">
                 template
@@ -876,6 +877,7 @@ export function SettingsPage({
 
         {section === 'misc' && (
           <div className="settings-section-panel" role="tabpanel">
+            <p className="settings-help">synced profile settings</p>
             {renderTableControlTargetSetting(
               'add table row or column',
               tableAddTargetModeDraft,
@@ -891,6 +893,7 @@ export function SettingsPage({
 
         {section === 'tips' && (
           <div className="settings-section-panel" role="tabpanel" aria-label="tips settings">
+            <p className="settings-help">seen tips are this-device settings; disabled tips sync with your notes profile.</p>
             {state.ui.seenTipIds.length === 0 ? (
               <p className="settings-help">tips you have seen will appear here.</p>
             ) : (
@@ -924,6 +927,7 @@ export function SettingsPage({
 
         {section === 'toolbar' && (
           <div className="settings-section-panel" role="tabpanel" aria-label="toolbar settings">
+            <p className="settings-help">toolbar layouts sync with your notes profile; the active toolbar is this-device.</p>
             <ToolbarSettingsPanel
               toolbarLayouts={toolbarLayouts}
               toolbarEditorLayoutId={toolbarEditorLayoutId}

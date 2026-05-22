@@ -51,6 +51,31 @@ describe('menu font scaling styles', () => {
   })
 })
 
+describe('editor heading styles', () => {
+  it('keeps editor heading font sizes explicit and descending', () => {
+    const css = readStyle('editor-content.css')
+
+    expect(css).toContain(
+      '.toastui-editor-contents h1,\n.toastui-editor .ProseMirror h1 {\n  font-size: calc(1.35rem * var(--note-font-scale, 1)) !important;',
+    )
+    expect(css).toContain(
+      '.toastui-editor-contents h2,\n.toastui-editor .ProseMirror h2 {\n  font-size: calc(1.2rem * var(--note-font-scale, 1)) !important;',
+    )
+    expect(css).toContain(
+      '.toastui-editor-contents h3,\n.toastui-editor .ProseMirror h3 {\n  font-size: calc(1.08rem * var(--note-font-scale, 1)) !important;',
+    )
+    expect(css).toContain(
+      '.toastui-editor-contents h4,\n.toastui-editor .ProseMirror h4 {\n  font-size: calc(1rem * var(--note-font-scale, 1)) !important;',
+    )
+    expect(css).toContain(
+      '.toastui-editor-contents h5,\n.toastui-editor .ProseMirror h5 {\n  font-size: calc(0.92rem * var(--note-font-scale, 1)) !important;',
+    )
+    expect(css).toContain(
+      '.toastui-editor-contents h6,\n.toastui-editor .ProseMirror h6 {\n  font-size: calc(0.86rem * var(--note-font-scale, 1)) !important;',
+    )
+  })
+})
+
 describe('compact scope tab scaling styles', () => {
   it('uses the parent and sub-tab sizing contract for compact space/domain buttons', () => {
     const topbarCss = readStyle('topbar.css')

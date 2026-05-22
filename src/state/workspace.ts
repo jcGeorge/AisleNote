@@ -64,7 +64,7 @@ export function createDefaultWorkspaceData(generateId: IdGenerator = createId): 
         title: 'welcome',
         noteBodyId: generateId(),
         homeContent:
-          '- This is the home note for this top-level (parent) tab.\n- Click this parent tab to edit this note.\n- Sub-tabs are separate notes and start empty.\n- You can hide the home tab in the settings.\n',
+          '- This is the home note for this top-level (parent) tab.\n- Click & drag to re-arrange items in a list.\n- Sub-tabs are separate notes and start empty.\n- You can hide the home tab in the settings.\n',
         activeSubTabId: null,
         subTabs: [createSubTab('list', '1. Add parent tab\n2. Add sub-tab\n3. Each note keeps separate content\n', generateId)],
       },

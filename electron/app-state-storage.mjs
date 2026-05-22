@@ -21,7 +21,6 @@ import {
   DEFAULT_DOMAIN_NAME,
   ensureArray,
   getActiveDomainFromAppState,
-  getActiveSpaceFromDomain,
   getDomainId,
   getDomainTitle,
   getDomainsFromAppState,
@@ -32,6 +31,12 @@ import {
   normalizeAssetExtension,
 } from '../src/storage/hybrid-storage-core.js'
 import { buildStoragePathFileName, createStoragePathAllocator } from '../src/storage/storage-path-segments.js'
+import {
+  STORAGE_PROFILE_SETTINGS_FILE,
+  extractSyncedGlobalSettings,
+  extractSyncedProfileSettings,
+  getSyncedProfileSettingsForLoad,
+} from '../src/storage/settings-partition.js'
 import {
   buildImageAssetUrl,
   MARKDOWN_LINK_PATTERN,
@@ -789,49 +794,17 @@ function writeNoteBodyAtPath({
 
 function buildRootManifestV2(appState, domainEntries, noteBodyEntries, noteAisleBodyEntries) {
   const activeDomain = getActiveDomainFromAppState(appState, getDomainsFromAppState(appState))
-  const activeSpace = getActiveSpaceFromDomain(activeDomain, appState.activeSpaceId)
-  const activeTab =
-    activeSpace?.data?.tabs?.find((tab) => tab?.id === activeSpace?.data?.activeTabId) ??
-    activeSpace?.data?.tabs?.[0] ??
-    null
   const activeDomainId = activeDomain ? getDomainId(activeDomain) : DEFAULT_DOMAIN_ID
 
   return {
     schemaVersion: SCHEMA_VERSION,
-    globalSettings: {
-      theme: ['dark', 'light', 'dawn', 'blues', 'custom'].includes(appState.theme) ? appState.theme : 'dawn',
-      hotkeys: appState.hotkeys ?? {
-        shortcuts: {},
-        enableMouseBackForward: true,
-        enableGenericHistoryHotkeys: true,
-      },
-      ui: appState.ui ?? {
-        showParentHomeTab: true,
-        stageManagerOpenDestinationAfterApply: true,
-        decoupledItemsKeepData: true,
-        tabButtonScale: 1,
-        noteFontScale: 1,
-        settingsSection: 'hotkeys',
-        customThemePalette: null,
-        noteCursorLocations: {},
-      },
-      frontmatter: isRecord(appState.frontmatter) ? appState.frontmatter : undefined,
-    },
+    globalSettings: extractSyncedGlobalSettings(appState),
     domains: domainEntries,
     deletedDomains: ensureArray(appState.deletedDomains).filter(isRecord),
     deletedSpaces: ensureArray(appState.deletedSpaces).filter(isRecord),
     noteBodies: noteBodyEntries,
     noteAisleBodies: noteAisleBodyEntries,
     activeDomainId,
-    lastOpened: activeSpace
-      ? {
-          domainId: activeDomainId,
-          spaceId: activeSpace.id,
-          primeTabId: activeTab?.id ?? null,
-          subTabId: activeTab?.activeSubTabId ?? null,
-          viewMode: 'main',
-        }
-      : undefined,
   }
 }
 
@@ -1108,6 +1081,7 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
     .map((body) => (typeof body?.id === 'string' ? noteBodyRecords.get(body.id) : null))
     .filter(Boolean)
   const noteAisleBodyEntries = Array.from(noteAisleBodyRecords.values())
+  setStorageJsonFile(fileMap, STORAGE_PROFILE_SETTINGS_FILE, extractSyncedProfileSettings(parsedState))
   setStorageJsonFile(fileMap, 'manifest.json', buildRootManifestV2(parsedState, domainEntries, noteBodyEntries, noteAisleBodyEntries))
 
   mkdirSync(tempRoot, { recursive: true })
@@ -1255,6 +1229,13 @@ function readV2Space(rootPath, spaceRootRelative, spaceEntry, issues = null) {
 }
 
 function readV2HybridAppStateFromRoot(rootPath, rootManifest, issues = null) {
+  const profileSettings = readJsonFileIfExists(path.join(rootPath, STORAGE_PROFILE_SETTINGS_FILE), issues, {
+    rootPath,
+    parseCode: 'corrupt-profile-settings',
+    severity: 'warning',
+    parseMessage: 'Profile settings are corrupt; using root manifest settings.',
+  })
+  const syncedSettings = getSyncedProfileSettingsForLoad(rootManifest, profileSettings)
   const noteBodies = readNoteBodiesFromRoot(rootPath, rootManifest, issues)
   const noteAisleBodies = readNoteAisleBodiesFromRoot(rootPath, rootManifest, issues)
   const domainEntries = ensureArray(rootManifest.domains)
@@ -1356,8 +1337,8 @@ function readV2HybridAppStateFromRoot(rootPath, rootManifest, issues = null) {
       rootManifest.activeDomainId) ||
     domains[0].id
   const activeDomain = domains.find((domain) => domain.id === activeDomainId) ?? domains[0]
-  const theme = ['dark', 'light', 'dawn', 'blues', 'custom'].includes(rootManifest?.globalSettings?.theme)
-    ? rootManifest.globalSettings.theme
+  const theme = ['dark', 'light', 'dawn', 'blues', 'custom'].includes(syncedSettings?.theme)
+    ? syncedSettings.theme
     : 'dawn'
 
   return JSON.stringify({
@@ -1370,9 +1351,9 @@ function readV2HybridAppStateFromRoot(rootPath, rootManifest, issues = null) {
     noteAisleBodies,
     activeSpaceId: activeDomain.activeSpaceId,
     spaces: activeDomain.spaces,
-    hotkeys: rootManifest?.globalSettings?.hotkeys,
-    frontmatter: rootManifest?.globalSettings?.frontmatter,
-    ui: rootManifest?.globalSettings?.ui,
+    hotkeys: syncedSettings?.hotkeys,
+    frontmatter: syncedSettings?.frontmatter,
+    ui: syncedSettings?.ui,
   })
 }
 

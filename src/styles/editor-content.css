@@ -594,10 +594,30 @@
 
 .toastui-editor-contents h2,
 .toastui-editor .ProseMirror h2 {
-  font-size: calc(1.15rem * var(--note-font-scale, 1)) !important;
+  font-size: calc(1.2rem * var(--note-font-scale, 1)) !important;
   border-bottom: 0 !important;
   padding-bottom: 0 !important;
   color: var(--editor-heading-text) !important;
+}
+
+.toastui-editor-contents h3,
+.toastui-editor .ProseMirror h3 {
+  font-size: calc(1.08rem * var(--note-font-scale, 1)) !important;
+}
+
+.toastui-editor-contents h4,
+.toastui-editor .ProseMirror h4 {
+  font-size: calc(1rem * var(--note-font-scale, 1)) !important;
+}
+
+.toastui-editor-contents h5,
+.toastui-editor .ProseMirror h5 {
+  font-size: calc(0.92rem * var(--note-font-scale, 1)) !important;
+}
+
+.toastui-editor-contents h6,
+.toastui-editor .ProseMirror h6 {
+  font-size: calc(0.86rem * var(--note-font-scale, 1)) !important;
 }
 
 .toastui-editor-contents h3,

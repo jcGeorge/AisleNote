@@ -196,6 +196,11 @@ describe('note mention query detection', () => {
       query: 'parent note',
     })
   })
+
+  it('does not detect a mention query when the first character after @ is a space', () => {
+    expect(getNoteMentionQueryAtSelection(viewForText('see @ '))).toBeNull()
+    expect(getNoteMentionQueryAtSelection(viewForText('see @ parent'))).toBeNull()
+  })
 })
 
 describe('external link range detection', () => {

@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
+import { Schema } from 'prosemirror-model'
+import { EditorState, TextSelection } from 'prosemirror-state'
 import { getBulletListMarkerFromAttrs } from './list-markers'
 import { isCompatibleListNodeForOperation } from './list-operation-compatibility'
 import { applyEditorNewlineOperation, getEmptyLineReplacementRangeForOperation } from './newline-operations'
 import { createOperationNodes } from './newline-operation-nodes'
+import { getEditorTextLineRanges } from './multiline-ranges'
 import type { NewlineOperationId } from '../types/app'
 import { BLOCK_INDENT_TOKEN, INDENT_TOKEN } from '../markdown/markdown-utils'
 
@@ -95,6 +98,88 @@ function createSelectionState({
   }
 }
 
+const newlineOperationSchema = new Schema({
+  nodes: {
+    doc: { content: 'block+' },
+    text: { group: 'inline' },
+    paragraph: {
+      group: 'block',
+      content: 'inline*',
+      toDOM: () => ['p', 0],
+    },
+    bulletList: {
+      group: 'block',
+      content: 'listItem+',
+      attrs: {
+        htmlAttrs: { default: null },
+        classNames: { default: null },
+      },
+      toDOM: () => ['ul', 0],
+    },
+    orderedList: {
+      group: 'block',
+      content: 'listItem+',
+      attrs: {
+        order: { default: 1 },
+      },
+      toDOM: () => ['ol', 0],
+    },
+    listItem: {
+      content: 'paragraph block*',
+      attrs: {
+        task: { default: null },
+        checked: { default: null },
+      },
+      toDOM: () => ['li', 0],
+    },
+  },
+})
+
+function paragraphNode(text: string) {
+  return newlineOperationSchema.nodes.paragraph.create(null, text ? newlineOperationSchema.text(text) : undefined)
+}
+
+function listItemNode(text: string, attrs: Record<string, unknown> | null = null) {
+  return newlineOperationSchema.nodes.listItem.create(attrs, paragraphNode(text))
+}
+
+function bulletListNode(items: Array<{ text: string; attrs?: Record<string, unknown> | null }>) {
+  return newlineOperationSchema.nodes.bulletList.create(
+    { htmlAttrs: null, classNames: null },
+    items.map((item) => listItemNode(item.text, item.attrs ?? null)),
+  )
+}
+
+function createEditorForDoc(doc: any, selectionFrom: number, selectionTo: number) {
+  let state = EditorState.create({
+    doc,
+    selection: TextSelection.create(doc, selectionFrom, selectionTo),
+  })
+  const view = {
+    get state() {
+      return state
+    },
+    dispatch: vi.fn((transaction) => {
+      state = state.apply(transaction)
+    }),
+  }
+  return {
+    editor: {
+      wwEditor: { view },
+      focus: vi.fn(),
+    },
+    view,
+  }
+}
+
+function listTexts(listNode: any): string[] {
+  const texts: string[] = []
+  for (let index = 0; index < listNode.childCount; index += 1) {
+    texts.push(listNode.child(index).textContent)
+  }
+  return texts
+}
+
 describe('editor newline operations', () => {
   it('creates dash-list nodes with dash marker attrs', () => {
     const [node] = createOperationNodes(createTestSchema(), 'dashList', 'one\ntwo') as unknown as TestNode[]
@@ -176,6 +261,30 @@ describe('editor newline operations', () => {
     expect(applyEditorNewlineOperation({ exec, focus } as any, 'strikethrough')).toEqual({ handled: true })
     expect(exec).toHaveBeenCalledWith('strike')
     expect(focus).toHaveBeenCalled()
+  })
+
+  it('converts selected mixed-list bullet rows to tasks without deleting earlier task rows', () => {
+    const doc = newlineOperationSchema.nodes.doc.create(null, [
+      bulletListNode([
+        { text: 'existing task one', attrs: { task: true, checked: false } },
+        { text: 'existing task two', attrs: { task: true, checked: false } },
+        { text: 'new task from bullet' },
+        { text: '' },
+      ]),
+    ])
+    const ranges = getEditorTextLineRanges({ state: { doc } })
+    const { editor, view } = createEditorForDoc(doc, ranges[2].start, ranges[3].end)
+
+    expect(applyEditorNewlineOperation(editor as any, 'task')).toEqual({ handled: true })
+
+    expect(view.state.doc.childCount).toBe(2)
+    expect(listTexts(view.state.doc.child(0))).toEqual(['existing task one', 'existing task two'])
+    expect(view.state.doc.child(0).child(0).attrs).toMatchObject({ task: true, checked: false })
+    expect(view.state.doc.child(0).child(1).attrs).toMatchObject({ task: true, checked: false })
+    expect(listTexts(view.state.doc.child(1))).toEqual(['new task from bullet', ''])
+    expect(view.state.doc.child(1).child(0).attrs).toMatchObject({ task: true, checked: false })
+    expect(view.state.doc.child(1).child(1).attrs).toMatchObject({ task: true, checked: false })
+    expect(view.dispatch.mock.calls[0]?.[0]?.getMeta('addToHistory')).not.toBe(false)
   })
 
   it('does not replace a non-empty paragraph', () => {

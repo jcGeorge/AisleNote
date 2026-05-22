@@ -176,6 +176,26 @@ const paragraphShortcutSchema = new Schema({
 })
 
 describe('paragraph space shortcut WYSIWYG behavior', () => {
+  it('turns a heading marker at the start of an existing text line into a heading on Space', () => {
+    const doc = paragraphShortcutSchema.nodes.doc.create(null, [
+      paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text('#Existing text')),
+    ])
+    const state = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, 2),
+    })
+    let nextState = state
+
+    expect(applyParagraphSpaceShortcut(state, (transaction: any) => {
+      nextState = state.apply(transaction)
+    })).toBe(true)
+
+    expect(nextState.doc.child(0).type.name).toBe('heading')
+    expect(nextState.doc.child(0).attrs.level).toBe(1)
+    expect(nextState.doc.child(0).textContent).toBe('Existing text')
+    expect(nextState.selection.from).toBe(1)
+  })
+
   it('turns a bare asterisk marker into a bullet list on Space', () => {
     const doc = paragraphShortcutSchema.nodes.doc.create(null, [
       paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text('*')),

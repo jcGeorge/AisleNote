@@ -298,6 +298,7 @@ export function getNoteMentionQueryAtSelection(view: any | null): NoteMentionQue
   if (!match) return null
 
   const query = match[2] ?? ''
+  if (/^\s/.test(query)) return null
   return {
     from: cursorPosition - query.length - 1,
     to: cursorPosition,

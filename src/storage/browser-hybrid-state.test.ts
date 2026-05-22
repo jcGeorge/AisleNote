@@ -174,6 +174,7 @@ describe('browser hybrid storage', () => {
     const rootManifestEntry = fileMap.get('notes-data/manifest.json')
     const rootManifest =
       rootManifestEntry?.kind === 'text' ? (JSON.parse(rootManifestEntry.text) as Record<string, unknown>) : null
+    const profileSettings = getTextFileJson(fileMap, 'notes-data/profile-settings.json')
     const firstDomain = getRecord(Array.isArray(rootManifest?.domains) ? rootManifest.domains[0] : null)
     const paths = Array.from(fileMap.keys())
     const serialized = readSerializedStateFromHybridFileMap(fileMap)
@@ -204,22 +205,12 @@ describe('browser hybrid storage', () => {
       ...DEFAULT_CUSTOM_THEME_PALETTE,
       primary: '#8844cc',
     })
-    expect(roundTripped.ui.settingsSection).toBe('visuals')
+    expect(getRecord(getRecord(profileSettings.settings).ui).settingsSection).toBeUndefined()
+    expect(getRecord(getRecord(profileSettings.settings).ui).noteCursorLocations).toBeUndefined()
+    expect(roundTripped.ui.settingsSection).toBe('hotkeys')
     expect(roundTripped.frontmatter.settingsTemplateId).toBe('template-1')
     expect(roundTripped.frontmatter.lastAppliedTemplateId).toBe('template-1')
-    expect(roundTripped.ui.noteCursorLocations['domain::space-1::tab-1::__home__']).toEqual({
-      activeAisleId: 'aisle-tab',
-      aisles: {
-        'aisle-tab': {
-          anchor: 1,
-          head: 3,
-          anchorBlock: { blockIndex: 0, offset: 1 },
-          headBlock: { blockIndex: 0, offset: 3 },
-          updatedAt: 100,
-        },
-      },
-      updatedAt: 100,
-    })
+    expect(roundTripped.ui.noteCursorLocations).toEqual({})
   })
 
   it('persists app settings and per-space settings in hybrid notes-data manifests', () => {
@@ -298,21 +289,54 @@ describe('browser hybrid storage', () => {
 
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
     const { rootManifest, spaceManifest } = getBrowserWorkspacePaths(fileMap)
+    const profileSettings = getTextFileJson(fileMap, 'notes-data/profile-settings.json')
     const globalSettings = getRecord(rootManifest.globalSettings)
     const roundTripped = parseSavedState(readSerializedStateFromHybridFileMap(fileMap) ?? '')
+    const profileUi = getRecord(getRecord(profileSettings.settings).ui)
 
-    expect(getRecord(globalSettings.ui).settingsSection).toBe('toolbar')
+    expect(profileSettings.schemaVersion).toBe(1)
+    expect(getRecord(globalSettings.ui).settingsSection).toBeUndefined()
     expect(getRecord(globalSettings.ui).lastNoteCopyMode).toBe('linked')
     expect(getRecord(globalSettings.ui).showParentHomeTab).toBe(false)
+    expect(profileUi.lastNoteCopyMode).toBe('linked')
+    expect(profileUi.showParentHomeTab).toBe(false)
+    expect(profileUi.settingsSection).toBeUndefined()
+    expect(profileUi.tabButtonScale).toBeUndefined()
     expect(getRecord(globalSettings.hotkeys).enableMouseBackForward).toBe(false)
     expect(getRecord(getRecord(globalSettings.hotkeys).shortcuts).newTab).toBe('Ctrl+Alt+N')
     expect(getRecord(globalSettings.frontmatter).settingsTemplateId).toBe('template-1')
     expect(spaceManifest.settings).toEqual({ autoRemoveDeletedDays: 21 })
-    expect(roundTripped.ui.settingsSection).toBe('toolbar')
+    expect(roundTripped.ui.settingsSection).toBe('hotkeys')
+    expect(roundTripped.ui.tabButtonScale).toBe(1)
+    expect(roundTripped.ui.noteFontScale).toBe(1)
     expect(roundTripped.hotkeys.shortcuts.newTab).toBe('Ctrl+Alt+N')
     expect(roundTripped.hotkeys.enableMouseBackForward).toBe(false)
     expect(roundTripped.frontmatter.settingsTemplateId).toBe('template-1')
     expect(roundTripped.domains[0]?.spaces[0]?.settings).toEqual({ autoRemoveDeletedDays: 21 })
+  })
+
+  it('prefers synced profile settings while keeping legacy root global settings as fallback', () => {
+    const state = createBrowserStorageState()
+    const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify({ ...state, theme: 'dawn' }))
+    const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
+    const profileSettings = getTextFileJson(fileMap, 'notes-data/profile-settings.json')
+
+    fileMap.set('notes-data/manifest.json', {
+      path: 'notes-data/manifest.json',
+      kind: 'text',
+      text: `${JSON.stringify({ ...rootManifest, globalSettings: { ...getRecord(rootManifest.globalSettings), theme: 'light' } }, null, 2)}\n`,
+    })
+    fileMap.set('notes-data/profile-settings.json', {
+      path: 'notes-data/profile-settings.json',
+      kind: 'text',
+      text: `${JSON.stringify({ ...profileSettings, settings: { ...getRecord(profileSettings.settings), theme: 'blues' } }, null, 2)}\n`,
+    })
+
+    expect(parseSavedState(readSerializedStateFromHybridFileMap(fileMap)).theme).toBe('blues')
+
+    fileMap.delete('notes-data/profile-settings.json')
+
+    expect(parseSavedState(readSerializedStateFromHybridFileMap(fileMap)).theme).toBe('light')
   })
 
   it('persists rearranged parent and sub-tab order in hybrid notes-data storage', () => {

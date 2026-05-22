@@ -1,5 +1,13 @@
 import { projectActiveDomainState } from '../state/domains'
-import type { AppState, ArrangeHierarchyDropRequest, ArrangeInsertPosition, Domain, Space, TabArrangeDragPreview } from '../types/app'
+import type {
+  AppState,
+  ArrangeHierarchyDropRequest,
+  ArrangeInsertPosition,
+  Domain,
+  Space,
+  Tab,
+  TabArrangeDragPreview,
+} from '../types/app'
 import {
   createArrangeDestinationPromptState,
   createArrangeDomainDestinationPromptState,
@@ -48,9 +56,23 @@ export function getDestinationSpaceInDomain(
   return space ? { domain, space } : null
 }
 
+export function getFirstSpaceInDomain(appState: AppState, domainId: string): { domain: Domain; space: Space } | null {
+  const projected = projectActiveDomainState(appState)
+  const domain = projected.domains.find((candidate) => candidate.id === domainId)
+  const space = domain?.spaces[0] ?? null
+  return domain && space ? { domain, space } : null
+}
+
 export function getOnlySpaceInDomain(appState: AppState, domainId: string): Space | null {
   const destination = getDestinationSpaceInDomain(appState, domainId)
   return destination && destination.domain.spaces.length === 1 ? destination.domain.spaces[0] : null
+}
+
+export function getFirstParentTabInSpace(appState: AppState, domainId: string, spaceId: string): Tab | null {
+  const projected = projectActiveDomainState(appState)
+  const domain = projected.domains.find((candidate) => candidate.id === domainId)
+  const space = domain?.spaces.find((candidate) => candidate.id === spaceId)
+  return space?.data.tabs[0] ?? null
 }
 
 export function getOnlyParentTabInSpace(appState: AppState, domainId: string, spaceId: string) {
@@ -152,6 +174,39 @@ export function resolveArrangeDomainDestination(
       'space-or-parent',
     ),
   )
+}
+
+export function resolveArrangePromptDomainConfirmation(
+  appState: AppState,
+  prompt: ArrangeDestinationPromptState,
+  domainId: string,
+): ArrangeGuidedTransferResolution {
+  if (domainId !== prompt.targetDomainId || prompt.revealHierarchyLevel !== 2) {
+    return resolveArrangeDomainDestination(appState, prompt.request, prompt.carriedPreview, domainId)
+  }
+
+  const destination = getFirstSpaceInDomain(appState, domainId)
+  if (!destination) return { type: 'none' }
+
+  if (prompt.request.item.type === 'parent') {
+    return {
+      type: 'move-parent-to-space',
+      request: prompt.request,
+      targetDomainId: domainId,
+      targetSpaceId: destination.space.id,
+    }
+  }
+
+  const firstParentTab = getFirstParentTabInSpace(appState, domainId, destination.space.id)
+  if (!firstParentTab) return { type: 'none' }
+
+  return {
+    type: 'move-subtabs-to-parent',
+    request: prompt.request,
+    targetDomainId: domainId,
+    targetSpaceId: destination.space.id,
+    targetParentTabId: firstParentTab.id,
+  }
 }
 
 export function resolveArrangeHierarchyDrop(

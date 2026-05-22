@@ -199,7 +199,7 @@ describe('Electron app state storage load result', () => {
       expect(parsed.noteBodies[0].frontmatterComputedFields).toEqual({ created: 'createdAt' })
       expect(parsed.frontmatter.settingsTemplateId).toBe('template-1')
       expect(parsed.frontmatter.lastAppliedTemplateId).toBe('template-1')
-      expect(parsed.ui.settingsSection).toBe('frontmatter')
+      expect(parsed.ui.settingsSection).toBeUndefined()
       expect(parsed.ui.customThemePalette.primary).toBe('#8844cc')
     }))
 
@@ -255,22 +255,54 @@ describe('Electron app state storage load result', () => {
       saveAppState(userDataPath, JSON.stringify(state))
 
       const { rootManifest, spaceManifest } = getStoredWorkspacePaths(userDataPath)
+      const profileSettings = readJson(path.join(userDataPath, 'notes-data', 'profile-settings.json'))
       const result = loadAppStateResult(userDataPath)
       expect(result.ok).toBe(true)
       const parsed = JSON.parse(result.serializedState)
 
       expect(rootManifest.globalSettings.theme).toBe('custom')
-      expect(rootManifest.globalSettings.ui.settingsSection).toBe('toolbar')
+      expect(rootManifest.globalSettings.ui.settingsSection).toBeUndefined()
       expect(rootManifest.globalSettings.ui.lastNoteCopyMode).toBe('linked')
+      expect(profileSettings.schemaVersion).toBe(1)
+      expect(profileSettings.settings.ui.lastNoteCopyMode).toBe('linked')
+      expect(profileSettings.settings.ui.settingsSection).toBeUndefined()
+      expect(profileSettings.settings.ui.tabButtonScale).toBeUndefined()
       expect(rootManifest.globalSettings.hotkeys.enableMouseBackForward).toBe(false)
       expect(rootManifest.globalSettings.hotkeys.shortcuts.newTab).toBe('Ctrl+Alt+N')
       expect(rootManifest.globalSettings.frontmatter.settingsTemplateId).toBe('template-1')
       expect(spaceManifest.settings).toEqual({ autoRemoveDeletedDays: 21 })
-      expect(parsed.ui.settingsSection).toBe('toolbar')
+      expect(parsed.ui.settingsSection).toBeUndefined()
       expect(parsed.hotkeys.shortcuts.newTab).toBe('Ctrl+Alt+N')
       expect(parsed.hotkeys.enableMouseBackForward).toBe(false)
       expect(parsed.frontmatter.settingsTemplateId).toBe('template-1')
       expect(parsed.domains[0].spaces[0].settings).toEqual({ autoRemoveDeletedDays: 21 })
+    }))
+
+  it('prefers profile settings and falls back to legacy root global settings', () =>
+    withTempUserDataPath((userDataPath) => {
+      saveAppState(userDataPath, serializedAppState())
+      const rootPath = path.join(userDataPath, 'notes-data')
+      const manifestPath = path.join(rootPath, 'manifest.json')
+      const profileSettingsPath = path.join(rootPath, 'profile-settings.json')
+      const rootManifest = readJson(manifestPath)
+      const profileSettings = readJson(profileSettingsPath)
+
+      writeFileSync(
+        manifestPath,
+        `${JSON.stringify({ ...rootManifest, globalSettings: { ...rootManifest.globalSettings, theme: 'light' } }, null, 2)}\n`,
+        'utf8',
+      )
+      writeFileSync(
+        profileSettingsPath,
+        `${JSON.stringify({ ...profileSettings, settings: { ...profileSettings.settings, theme: 'blues' } }, null, 2)}\n`,
+        'utf8',
+      )
+
+      expect(JSON.parse(loadAppStateResult(userDataPath).serializedState).theme).toBe('blues')
+
+      rmSync(profileSettingsPath, { force: true })
+
+      expect(JSON.parse(loadAppStateResult(userDataPath).serializedState).theme).toBe('light')
     }))
 
   it('round-trips rearranged parent and sub-tab order through notes-data storage', () =>

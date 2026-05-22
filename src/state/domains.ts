@@ -16,7 +16,7 @@ export const DEFAULT_DOMAIN_NAME = 'humble beginnings'
 export function createDefaultSpace(): Space {
   return {
     id: 'getting-started-space',
-    name: 'getting started',
+    name: 'first steps',
     settings: { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
     data: createDefaultWorkspaceData(),
   }
@@ -32,7 +32,7 @@ export function createDomainFromSpaces(
   },
 ): Domain {
   const generateId = options?.createId ?? createId
-  const safeSpaces = spaces.length > 0 ? spaces : [createSpace('getting started', generateId)]
+  const safeSpaces = spaces.length > 0 ? spaces : [createSpace('first steps', generateId)]
   const activeSpaceId =
     options?.activeSpaceId && safeSpaces.some((space) => space.id === options.activeSpaceId)
       ? options.activeSpaceId
@@ -47,7 +47,7 @@ export function createDomainFromSpaces(
 }
 
 export function createDomain(name = 'domain', generateId: IdGenerator = createId): Domain {
-  const initialSpace = createSpace('getting started', generateId)
+  const initialSpace = createSpace('first steps', generateId)
   return createDomainFromSpaces(name, [initialSpace], {
     activeSpaceId: initialSpace.id,
     createId: generateId,
