@@ -64,6 +64,10 @@ export const CUSTOM_THEME_PALETTE_SLOTS: CustomThemePaletteSlot[] = [
   'danger',
   'warning',
   'success',
+  'domainRail',
+  'spaceRail',
+  'parentRail',
+  'subtabRail',
 ]
 
 export const DEFAULT_CUSTOM_THEME_PALETTE: CustomThemePalette = {
@@ -79,6 +83,10 @@ export const DEFAULT_CUSTOM_THEME_PALETTE: CustomThemePalette = {
   danger: '#963442',
   warning: '#d9a441',
   success: '#2fb36d',
+  domainRail: '#382d2c',
+  spaceRail: '#8c7c2b',
+  parentRail: '#3b388c',
+  subtabRail: '#3b8c5c',
 }
 
 export const BUILT_IN_THEME_PALETTE_SEEDS: Record<BuiltInAppTheme, CustomThemePalette> = {
@@ -96,6 +104,10 @@ export const BUILT_IN_THEME_PALETTE_SEEDS: Record<BuiltInAppTheme, CustomThemePa
     danger: '#c64053',
     warning: '#c7792f',
     success: '#2fb36d',
+    domainRail: '#382d2c',
+    spaceRail: '#8c7c2b',
+    parentRail: '#3b388c',
+    subtabRail: '#3b8c5c',
   },
   dawn: {
     canvas: '#776238',
@@ -110,6 +122,10 @@ export const BUILT_IN_THEME_PALETTE_SEEDS: Record<BuiltInAppTheme, CustomThemePa
     danger: '#8a4d44',
     warning: '#9b6726',
     success: '#3f6f4f',
+    domainRail: '#382d2c',
+    spaceRail: '#8c7c2b',
+    parentRail: '#3b388c',
+    subtabRail: '#3b8c5c',
   },
   blues: {
     canvas: '#25324d',
@@ -124,6 +140,10 @@ export const BUILT_IN_THEME_PALETTE_SEEDS: Record<BuiltInAppTheme, CustomThemePa
     danger: '#653f50',
     warning: '#a99a5d',
     success: '#38568f',
+    domainRail: '#382d2c',
+    spaceRail: '#8c7c2b',
+    parentRail: '#3b388c',
+    subtabRail: '#3b8c5c',
   },
 }
 

@@ -4,6 +4,7 @@ import { collectWorkspaceNavigationEntityIds, createReservedIdAllocator } from '
 import {
   applyAutoPurgeToWorkspace,
   AUTO_PURGE_DAY_MS,
+  createDefaultWorkspaceData,
   createSpace,
   createSubTab,
   createTab,
@@ -120,16 +121,30 @@ describe('workspace id allocation', () => {
     expect(child.id).toBe('sub-id')
   })
 
-  it('creates a new space with unique nested workspace ids', () => {
+  it('keeps onboarding sample content in the explicit default workspace only', () => {
+    const data = createDefaultWorkspaceData()
+
+    expect(data.tabs[0].title).toBe('welcome')
+    expect(data.tabs[0].homeContent).toContain('This is the home note')
+    expect(data.tabs[0].subTabs.map((subTab) => subTab.title)).toEqual(['list'])
+  })
+
+  it('creates a new space with an empty parent tab and no sample sub-tabs', () => {
     const existingIds = new Set(['space-collision', 'welcome-collision'])
-    const values = ['space-collision', 'space-new', 'welcome-collision', 'welcome-new', 'welcome-body', 'list-sub', 'list-body']
+    const values = ['space-collision', 'space-new', 'welcome-collision', 'tab-new', 'tab-body']
     const allocate = createReservedIdAllocator(existingIds, () => values.shift() ?? 'fallback')
 
     const space = createSpace('New Space', allocate)
 
     expect(space.id).toBe('space-new')
-    expect(space.data.activeTabId).toBe('welcome-new')
-    expect(space.data.tabs[0].id).toBe('welcome-new')
+    expect(space.data.activeTabId).toBe('tab-new')
+    expect(space.data.tabs[0]).toMatchObject({
+      id: 'tab-new',
+      title: 'tab',
+      homeContent: '',
+      activeSubTabId: null,
+      subTabs: [],
+    })
   })
 
   it('duplicates workspace data without reusing existing navigation ids', () => {
@@ -160,8 +175,13 @@ describe('workspace id allocation', () => {
   })
 
   it('duplicates a space with a unique space id and unique nested workspace ids', () => {
-    const sourceValues = ['space-source', 'tab-source', 'tab-body-source', 'sub-source', 'sub-body-source']
+    const sourceValues = ['space-source', 'tab-source', 'tab-body-source']
     const source = createSpace('Source', createReservedIdAllocator([], () => sourceValues.shift() ?? 'fallback'))
+    source.data.tabs[0] = {
+      ...source.data.tabs[0],
+      activeSubTabId: 'sub-source',
+      subTabs: [{ id: 'sub-source', title: 'Sub', noteBodyId: 'sub-body-source', content: '' }],
+    }
     const values = ['space-source', 'space-copy', 'tab-source', 'tab-copy', 'sub-source', 'sub-copy', 'sub-body-copy', 'tab-body-copy']
     const allocate = createReservedIdAllocator(collectWorkspaceNavigationEntityIds(source.data).add(source.id), () => values.shift() ?? 'fallback')
 

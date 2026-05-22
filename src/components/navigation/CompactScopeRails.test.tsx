@@ -121,6 +121,75 @@ describe('compact scope rails', () => {
     expect(html).toContain('is-arrange-target')
   })
 
+  it('renders stage-manager selected classes on compact space and domain rails', () => {
+    const inactiveArrangeMode = { ...arrangeMode, active: false }
+    const spaceHtml = renderToStaticMarkup(
+      <CompactSpaceRail
+        spaces={[space('space-a')]}
+        activeSpaceId="space-a"
+        editing={null}
+        arrangeMode={inactiveArrangeMode}
+        arrangeableSpaceClassName=""
+        draggingSpaceId={null}
+        spacesGridRef={createRef<HTMLDivElement>()}
+        stageManagerMode
+        stageManagerSelectedSpaceIds={new Set(['space-a'])}
+        onOpenSpace={noop}
+        onOpenContextMenu={noop}
+        onShouldSkipRenameBlur={() => false}
+        onCommitRename={noop}
+        onCancelRename={noop}
+        onRenameDraftChange={noop}
+        onBeginEdit={noop}
+        onAutoSizeRenameInput={autoSizeNoop}
+        onClearRenameDraft={noop}
+        onConsumeArrangeClickSuppression={() => false}
+        onStartArrangeDragSeed={noop}
+        onStartArrangeTapCandidate={noop}
+        onStartArrangePress={noop}
+        onHandleArrangeSpacePointerMove={noop}
+        onHandleArrangeSpacePointerUp={noop}
+        onClearArrangePressTimer={noop}
+        onCancelArrangeSpacePointerDrag={noop}
+      />,
+    )
+    const domainHtml = renderToStaticMarkup(
+      <CompactDomainRail
+        domains={[domain('domain-a')]}
+        activeDomainId="domain-a"
+        editing={null}
+        arrangeMode={inactiveArrangeMode}
+        arrangeableDomainClassName=""
+        draggingDomainId={null}
+        domainsGridRef={createRef<HTMLDivElement>()}
+        stageManagerMode
+        stageManagerSelectedDomainIds={new Set(['domain-a'])}
+        onOpenDomain={noop}
+        onOpenContextMenu={noop}
+        onShouldSkipRenameBlur={() => false}
+        onCommitRename={noop}
+        onCancelRename={noop}
+        onRenameDraftChange={noop}
+        onBeginEdit={noop}
+        onAutoSizeRenameInput={autoSizeNoop}
+        onClearRenameDraft={noop}
+        onConsumeArrangeClickSuppression={() => false}
+        onStartArrangeDragSeed={noop}
+        onStartArrangeTapCandidate={noop}
+        onStartArrangePress={noop}
+        onHandleArrangeDomainPointerMove={noop}
+        onHandleArrangeDomainPointerUp={noop}
+        onClearArrangePressTimer={noop}
+        onCancelArrangeDomainPointerDrag={noop}
+      />,
+    )
+
+    expect(spaceHtml).toContain('stage-manager-space-selected')
+    expect(spaceHtml).not.toContain('compact-scope-add-btn')
+    expect(domainHtml).toContain('stage-manager-domain-selected')
+    expect(domainHtml).not.toContain('compact-scope-add-btn')
+  })
+
   it('renders inline rename inputs for compact spaces and domains', () => {
     const spaceHtml = renderToStaticMarkup(
       <CompactSpaceRail

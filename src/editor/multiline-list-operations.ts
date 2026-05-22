@@ -532,7 +532,7 @@ function getMultiLineListOperationContexts(view: any, multiLineEdit: MultiLineEd
   if (blockRanges.length === 0) return null
 
   const selectedIndices = getMultiLineSelectedBlockIndices(multiLineEdit, blockRanges)
-  if (selectedIndices.length < 2) return null
+  if (selectedIndices.length < 1) return null
 
   const contexts = selectedIndices.map((index) => {
     const range = blockRanges[index]

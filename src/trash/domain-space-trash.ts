@@ -409,7 +409,7 @@ export function restoreDeletedDomainTrashItem(
   })
   if (!sourceSpace) return { state: projected, changed: false, reason: 'missing-space' }
 
-  let restoredSpace: Space | null = null
+  let restoredSpace: Space
   let nextDeletedDomains: DeletedDomainEntry[] = projected.deletedDomains ?? []
 
   if (target.type === 'trash-space') {

@@ -1,270 +1,21 @@
-import { Editor } from '@toast-ui/editor'
-import { TextSelection } from 'prosemirror-state'
-import {
-  annotationLinePlugin,
-  blockIndentPlugin,
-  headingSpaceShortcutPlugin,
-  highlightPlugin,
-  listMarkerPlugin,
-  thematicBreakShortcutPlugin,
-} from './editor-setup'
 import {
   collectProseMirrorTextPositions,
-  getWysiwygView,
 } from './prosemirror-utils'
-import { NOTE_PREVIEW_EDITOR_HOST_CLASS } from './note-preview-dom'
+import {
+  createContextPreviewWidgetElement,
+  createInternalNoteLinkWidgetElement,
+  type NotePreviewWidgetOptions,
+} from './note-preview-widget'
 import {
   decodeContextPayload,
-  getMarkdownLinkLabel,
   INTERNAL_NOTE_LINK_MARKDOWN_RE,
   NOTE_CONTEXT_REFERENCE_RE,
-  type NoteContextReferencePayload,
   parseInternalNoteReferenceUrl,
 } from '../notes/note-references'
-import type { NoteAisle, NoteNavigationTarget } from '../types/app'
-import { prepareMarkdownForEditorDisplay, restoreEditorBlankParagraphs } from './editor-markdown-display'
-import { getHeadingOutlineFromDoc } from './heading-outline'
 
-const NOTE_PREVIEW_DEFAULT_HEIGHT_REM = 20
-const NOTE_PREVIEW_EXPANDED_HEIGHT_REM = 30
+type NotePreviewPluginOptions = NotePreviewWidgetOptions
 
-export type ContextPreviewData = {
-  selectedAisles: NoteAisle[]
-  recursiveBlocked: boolean
-  locationLabel: string
-  displayTitle: string
-}
-
-type NotePreviewPluginOptions = {
-  sourceNoteBodyId: string
-  getContextPreviewData: (payload: NoteContextReferencePayload, sourceNoteBodyId: string) => ContextPreviewData
-  navigateToNoteLocation: (target: NoteNavigationTarget) => void
-  deleteContextPreview: (tokenId: string) => void
-}
-
-function scrollPreviewEditorToHeading(editor: Editor, aisleId: string, headingKey: string) {
-  const view = getWysiwygView(editor)
-  if (!view?.state?.doc) return
-  const heading = getHeadingOutlineFromDoc(aisleId, view.state.doc).find((candidate) => candidate.key === headingKey)
-  if (typeof heading?.start !== 'number') return
-  try {
-    const selectionPosition = Math.min(heading.start + 1, view.state.doc.content.size)
-    view.dispatch(
-      view.state.tr
-        .setSelection(TextSelection.create(view.state.doc, selectionPosition, selectionPosition))
-        .setMeta('addToHistory', false)
-        .scrollIntoView(),
-    )
-  } catch {
-    // Stale heading keys intentionally fall back to the top of the preview.
-  }
-}
-
-function createContextPreviewWidgetElement(
-  payload: NoteContextReferencePayload,
-  options: NotePreviewPluginOptions,
-) {
-  const wrapper = document.createElement('span')
-  wrapper.className = 'context-bar note-context-widget'
-  wrapper.setAttribute('contenteditable', 'false')
-
-  const topBar = document.createElement('span')
-  topBar.className = 'context-bar-top'
-  const titleButton = document.createElement('button')
-  titleButton.type = 'button'
-  titleButton.className = 'context-bar-title'
-  const actions = document.createElement('span')
-  actions.className = 'context-bar-actions'
-  const minimizeButton = document.createElement('button')
-  minimizeButton.type = 'button'
-  minimizeButton.className = 'context-bar-icon-btn context-bar-minimize-btn'
-  const expandButton = document.createElement('button')
-  expandButton.type = 'button'
-  expandButton.className = 'context-bar-icon-btn'
-  const deleteButton = document.createElement('button')
-  deleteButton.type = 'button'
-  deleteButton.className = 'context-bar-icon-btn context-bar-delete-btn'
-  const lowerBar = document.createElement('span')
-  lowerBar.className = 'context-bar-lower'
-
-  let expanded = false
-  let minimized = false
-  let contextEditorCleanups: Array<() => void> = []
-
-  const stopWidgetEvent = (event: Event) => {
-    event.preventDefault()
-    event.stopPropagation()
-  }
-
-  const clearLowerBar = () => {
-    contextEditorCleanups.forEach((cleanup) => cleanup())
-    contextEditorCleanups = []
-    lowerBar.replaceChildren()
-  }
-
-  const renderContextEditor = (aisle: NoteAisle) => {
-    const shell = document.createElement('span')
-    shell.className = 'context-bar-editor'
-    const editorHost = document.createElement('span')
-    editorHost.className = `${NOTE_PREVIEW_EDITOR_HOST_CLASS} is-readonly`
-    const heightRem = expanded ? NOTE_PREVIEW_EXPANDED_HEIGHT_REM : NOTE_PREVIEW_DEFAULT_HEIGHT_REM
-    editorHost.style.setProperty('--note-preview-editor-height', `${heightRem}rem`)
-
-    const stopOuterEditorEvent = (event: Event) => {
-      event.stopPropagation()
-      if (event.type === 'keydown' || event.type === 'beforeinput' || event.type === 'paste' || event.type === 'drop') {
-        event.preventDefault()
-      }
-    }
-    ;['pointerdown', 'mousedown', 'click', 'keydown', 'beforeinput', 'paste', 'drop'].forEach((eventName) => {
-      editorHost.addEventListener(eventName, stopOuterEditorEvent, true)
-    })
-
-    const editor = new Editor({
-      el: editorHost,
-      initialValue: prepareMarkdownForEditorDisplay(aisle.markdown),
-      initialEditType: 'wysiwyg',
-      previewStyle: 'tab',
-      hideModeSwitch: true,
-      toolbarItems: [],
-      height: `${heightRem}rem`,
-      autofocus: false,
-      usageStatistics: false,
-      plugins: [
-        listMarkerPlugin,
-        blockIndentPlugin,
-        annotationLinePlugin,
-        highlightPlugin,
-        headingSpaceShortcutPlugin,
-        thematicBreakShortcutPlugin,
-      ],
-    })
-    restoreEditorBlankParagraphs(editor, aisle.markdown)
-    if (payload.heading?.aisleId === aisle.id) {
-      window.requestAnimationFrame(() => scrollPreviewEditorToHeading(editor, aisle.id, payload.heading?.headingKey ?? ''))
-    }
-
-    const view = getWysiwygView(editor)
-    if (view?.setProps) {
-      view.setProps({ editable: () => false })
-      view.dom?.setAttribute?.('contenteditable', 'false')
-    }
-
-    contextEditorCleanups.push(() => {
-      ;['pointerdown', 'mousedown', 'click', 'keydown', 'beforeinput', 'paste', 'drop'].forEach((eventName) => {
-        editorHost.removeEventListener(eventName, stopOuterEditorEvent, true)
-      })
-      try {
-        editor.destroy()
-      } catch {
-        // Toast UI can throw if an embedded editor is destroyed during ProseMirror widget cleanup.
-      }
-    })
-
-    shell.append(editorHost)
-    return shell
-  }
-
-  const renderLowerBar = () => {
-    const data = options.getContextPreviewData(payload, options.sourceNoteBodyId)
-    wrapper.classList.toggle('is-blocked', data.recursiveBlocked)
-    wrapper.classList.toggle('is-minimized', minimized)
-    titleButton.textContent = data.displayTitle
-    titleButton.title = data.locationLabel
-    minimizeButton.classList.toggle('is-restore', minimized)
-    minimizeButton.title = minimized ? 'Restore note preview' : 'Minimize note preview'
-    minimizeButton.setAttribute('aria-label', minimizeButton.title)
-    expandButton.textContent = expanded ? '-' : '+'
-    expandButton.title = expanded ? 'Shrink note preview' : 'Expand note preview'
-    expandButton.setAttribute('aria-label', expandButton.title)
-    deleteButton.title = 'Delete note preview'
-    deleteButton.setAttribute('aria-label', deleteButton.title)
-    clearLowerBar()
-
-    lowerBar.hidden = minimized
-    if (minimized) return
-
-    if (data.recursiveBlocked) {
-      lowerBar.textContent = 'note preview blocked to prevent recursive rendering.'
-      return
-    }
-
-    const editorGroup = document.createElement('span')
-    editorGroup.className = 'context-bar-editors'
-    data.selectedAisles.forEach((aisle) => {
-      editorGroup.append(renderContextEditor(aisle))
-    })
-    lowerBar.append(editorGroup)
-  }
-
-  titleButton.addEventListener('mousedown', stopWidgetEvent)
-  titleButton.addEventListener('click', (event) => {
-    stopWidgetEvent(event)
-    const data = options.getContextPreviewData(payload, options.sourceNoteBodyId)
-    if (!data.recursiveBlocked) options.navigateToNoteLocation({ ...payload.target, heading: payload.heading })
-  })
-  minimizeButton.addEventListener('mousedown', stopWidgetEvent)
-  minimizeButton.addEventListener('click', (event) => {
-    stopWidgetEvent(event)
-    minimized = !minimized
-    renderLowerBar()
-  })
-  expandButton.addEventListener('mousedown', stopWidgetEvent)
-  expandButton.addEventListener('click', (event) => {
-    stopWidgetEvent(event)
-    expanded = !expanded
-    renderLowerBar()
-  })
-  deleteButton.addEventListener('mousedown', stopWidgetEvent)
-  deleteButton.addEventListener('click', (event) => {
-    stopWidgetEvent(event)
-    options.deleteContextPreview(payload.id)
-  })
-
-  actions.append(minimizeButton, expandButton, deleteButton)
-  topBar.append(titleButton, actions)
-  wrapper.append(topBar, lowerBar)
-  renderLowerBar()
-  ;(wrapper as HTMLElement & { destroyNotePreview?: () => void }).destroyNotePreview = () => {
-    clearLowerBar()
-  }
-  return wrapper
-}
-
-function createInternalNoteLinkWidgetElement(
-  label: string,
-  target: NoteNavigationTarget,
-  href: string,
-  navigateToNoteLocation: (target: NoteNavigationTarget) => void,
-) {
-  const link = document.createElement('a')
-  link.className = 'internal-note-link-widget'
-  link.href = href
-  link.textContent = getMarkdownLinkLabel(label)
-  link.title = 'Open linked note'
-  link.setAttribute('contenteditable', 'false')
-  link.setAttribute('data-internal-note-link', 'true')
-
-  const stopEditingEvent = (event: Event) => {
-    event.preventDefault()
-    event.stopPropagation()
-  }
-  const activate = (event: Event) => {
-    stopEditingEvent(event)
-    navigateToNoteLocation(target)
-  }
-
-  link.addEventListener('pointerdown', stopEditingEvent)
-  link.addEventListener('mousedown', stopEditingEvent)
-  link.addEventListener('click', activate)
-  link.addEventListener('keydown', (event) => {
-    const keyboardEvent = event as KeyboardEvent
-    if (keyboardEvent.key !== 'Enter' && keyboardEvent.key !== ' ') return
-    activate(keyboardEvent)
-  })
-
-  return link
-}
+export type { ContextPreviewData } from '../notes/note-preview-data'
 
 export function createContextPreviewPlugin(context: any, options: NotePreviewPluginOptions) {
   const { Plugin } = context.pmState
@@ -309,10 +60,14 @@ export function createContextPreviewPlugin(context: any, options: NotePreviewPlu
                 }
 
                 decorations.push(
-                  Decoration.widget(from, () => createInternalNoteLinkWidgetElement(match[1], target, match[2], options.navigateToNoteLocation), {
-                    key: `internal-note-link-${from}-${last}-${match[2]}`,
-                    side: -1,
-                  }),
+                  Decoration.widget(
+                    from,
+                    () => createInternalNoteLinkWidgetElement(match[1], target, match[2], options.navigateToNoteLocation),
+                    {
+                      key: `internal-note-link-${from}-${last}-${match[2]}`,
+                      side: -1,
+                    },
+                  ),
                 )
                 decorations.push(Decoration.inline(from, last + 1, { class: 'internal-note-link-source-hidden' }))
               }

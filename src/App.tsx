@@ -18,6 +18,14 @@ import {
   type ArrangeDestinationPromptState,
 } from './arrange/arrange-guided-prompt'
 import {
+  areArrangeRailControlsDisabled,
+  areNavigationContextMenusDisabled,
+  getArrangeInteractionState,
+  isArrangeGuidedCarryActive,
+  isArrangeLiveDragActive,
+  isArrangeTrashActionActive,
+} from './arrange/arrange-interaction-state'
+import {
   resolveArrangeDomainDestination,
   resolveArrangeHierarchyDrop,
   resolveArrangePromptDomainConfirmation,
@@ -35,7 +43,7 @@ import { DomainsPage } from './components/domains/DomainsPage'
 import { ImageToolsOverlay } from './components/editor/ImageToolsOverlay'
 import { FindReplacePanel } from './components/editor/FindReplacePanel'
 import { LegacyEditorShell } from './components/editor/LegacyEditorShell'
-import { NoteMentionMenu, type NoteMentionAction } from './components/editor/NoteMentionMenu'
+import { NoteMentionMenu } from './components/editor/NoteMentionMenu'
 import { ShortcutMenu } from './components/editor/ShortcutMenu'
 import { TableControlsOverlay } from './components/editor/TableControlsOverlay'
 import {
@@ -90,12 +98,10 @@ import {
 import {
   getCommandCapableEditor,
   collectProseMirrorTextPositions,
-  getNoteMentionQueryAtSelection,
   getWysiwygView,
   runWysiwygHistory,
   type WysiwygHistoryDirection,
   type WysiwygHistoryResult,
-  type NoteMentionQuery,
 } from './editor/prosemirror-utils'
 import { useAisleEditors } from './editor/useAisleEditors'
 import { useEditorDomEvents } from './editor/useEditorDomEvents'
@@ -127,31 +133,16 @@ import {
   type RenameDraft,
   type RenameEntityType,
 } from './navigation/rename-draft'
-import {
-  getDefaultNoteLinkLabel,
-  getDefaultNoteReferenceTarget,
-  getLocationInfo,
-  listNoteLocationsForBody,
-  listSearchableNoteLocations,
-  type NoteSearchEntry,
-} from './notes/note-locations'
-import {
-  buildNoteMentionNavigatorRows,
-  createDefaultNoteMentionSelection,
-  filterNoteMentionSearchEntries,
-  getNoteMentionTarget,
-  moveNoteMentionActiveRow,
-  moveNoteMentionSelectionInRow,
-  resolveNoteMentionSelection,
-  updateNoteMentionSelectionForRow,
-  type NoteMentionNavigatorRowId,
-  type NoteMentionSelection,
-} from './notes/note-mention-picker'
-import { shouldDismissEmptyNoteMentionOnSpace } from './notes/note-mention-keyboard'
+import { getLocationInfo, listNoteLocationsForBody } from './notes/note-locations'
 import { getLinkedAisleIdsForNoteBody } from './notes/aisle-links'
 import { openExternalWebUrl } from './notes/external-links'
-import { buildContextToken, buildInternalNoteUrl, escapeMarkdownLinkLabel, wouldCreateContextCycle } from './notes/note-references'
-import { normalizeNoteReferenceTarget } from './notes/note-reference-targets'
+import { escapeMarkdownLinkLabel } from './notes/note-references'
+import {
+  buildDefaultNoteReferenceDraft,
+  buildExternalLinkEditDraft,
+  buildInternalNoteLinkEditDraft,
+} from './notes/note-reference-model'
+import { useNoteMentionController } from './notes/useNoteMentionController'
 import { getAisleBodyId } from './notes/note-markdown'
 import { getAisleMarkdown } from './notes/aisle-body-state'
 import {
@@ -182,7 +173,6 @@ import {
 } from './state/domains'
 import {
   createTab,
-  createId,
   createSpace,
   MAX_NOTE_AISLES,
 } from './state/workspace'
@@ -234,18 +224,6 @@ type ShortcutMenuState = {
   top: number
   left: number
   operations: NewlineOperationId[]
-}
-
-type NoteMentionMenuState = {
-  top: number
-  left: number
-  query: NoteMentionQuery
-  selection: NoteMentionSelection
-  activeRow: NoteMentionNavigatorRowId
-}
-
-function noteMentionQueryMatches(left: NoteMentionQuery | null, right: NoteMentionQuery | null): boolean {
-  return Boolean(left && right && left.from === right.from && left.to === right.to && left.query === right.query)
 }
 
 type FindReplacePanelState = {
@@ -302,8 +280,6 @@ function App() {
   const [modal, setModal] = useState<ModalState | null>(null)
   const [shortcutMenu, setShortcutMenu] = useState<ShortcutMenuState | null>(null)
   const [shortcutMenuActiveIndex, setShortcutMenuActiveIndex] = useState(0)
-  const [noteMentionMenu, setNoteMentionMenu] = useState<NoteMentionMenuState | null>(null)
-  const [noteMentionActiveIndex, setNoteMentionActiveIndex] = useState(0)
   const [tableOfContentsPanels, setTableOfContentsPanels] = useState<TableOfContentsPanelsState | null>(null)
   const [findReplacePanel, setFindReplacePanel] = useState<FindReplacePanelState>({
     open: false,
@@ -341,11 +317,6 @@ function App() {
   const editorEventRootRef = useRef<HTMLElement | null>(null)
   const closeShortcutMenuRef = useRef<(options?: { restoreEditorFocus?: boolean }) => void>(() => {})
   const runShortcutOperationFromMenuRef = useRef<(operation: NewlineOperationId) => void>(() => {})
-  const closeNoteMentionMenuRef = useRef<(options?: { restoreEditorFocus?: boolean }) => void>(() => {})
-  const chooseNoteMentionSearchEntryRef = useRef<(entry: NoteSearchEntry, action: NoteMentionAction) => void>(() => {})
-  const chooseNoteMentionTargetRef = useRef<(target: NoteLocation, action: NoteMentionAction) => void>(() => {})
-  const noteMentionMenuRef = useRef<NoteMentionMenuState | null>(null)
-  const dismissedNoteMentionQueryRef = useRef<NoteMentionQuery | null>(null)
   const deleteContextPreviewRef = useRef<(tokenId: string) => void>(() => {})
   const pendingCreatedEditRef = useRef<PendingCreatedEdit | null>(null)
   const editingRef = useRef<{ type: EditableEntityType; id: string } | null>(null)
@@ -686,7 +657,6 @@ function App() {
   activeAisleIdRef.current = resolvedActiveAisleId
   activeNoteLocationKeyRef.current = activeNoteLocationKey
   isMainViewRef.current = viewMode === 'main'
-  noteMentionMenuRef.current = noteMentionMenu
 
   useEffect(() => {
     saveDeviceLastOpened({
@@ -995,10 +965,12 @@ function App() {
   const arrangeMode = arrange.mode
   const arrangeHierarchyRevealLevel = arrange.hierarchyRevealLevel
   const arrangeDraggingItem = arrange.draggingItem
-  const isDraggingArrangeItem = Boolean(arrangeDraggingItem)
-  const isGuidedArrangeCarryActive = Boolean(arrangeDestinationPrompt)
-  const isArrangeTrashActionActive = isDraggingArrangeItem || isGuidedArrangeCarryActive
-  const arrangeControlsDisabled = isArrangeTrashActionActive
+  const arrangeInteraction = getArrangeInteractionState(arrangeDraggingItem, arrangeDestinationPrompt)
+  const isDraggingArrangeItem = isArrangeLiveDragActive(arrangeInteraction)
+  const isGuidedArrangeCarryActive = isArrangeGuidedCarryActive(arrangeInteraction)
+  const arrangeTrashActionActive = isArrangeTrashActionActive(arrangeInteraction)
+  const arrangeControlsDisabled = areArrangeRailControlsDisabled(arrangeInteraction)
+  const navigationContextMenusDisabled = areNavigationContextMenusDisabled(arrangeInteraction)
   const domainArrangeDragPreview = arrange.domainDragPreview
   const spaceArrangeDragPreview = arrange.spaceDragPreview
   const tabArrangeDragPreview = arrange.tabDragPreview
@@ -1450,12 +1422,22 @@ function App() {
   })
   const getContextPreviewData = noteReferenceActions.getContextPreviewData
   const insertLinkIntoActiveEditor = noteReferenceActions.insertLinkIntoActiveEditor
-  const replaceTextRangeInActiveEditor = noteReferenceActions.replaceTextRangeInActiveEditor
-  const replaceTextRangeWithLinkInActiveEditor = noteReferenceActions.replaceTextRangeWithLinkInActiveEditor
   const insertNoteReference = noteReferenceActions.insertNoteReference
   const deleteContextPreview = noteReferenceActions.deleteContextPreview
   const openInternalNoteLinkFromContext = noteReferenceActions.openInternalNoteLinkFromContext
   const renameInternalNoteLinkFromContext = noteReferenceActions.renameInternalNoteLinkFromContext
+  const noteMention = useNoteMentionController({
+    viewMode,
+    state,
+    stateRef,
+    activeNoteLocation,
+    editorRef,
+    editorEventRootRef,
+    activeAisleIdRef,
+    getCurrentNoteLocation,
+    insertNoteReferenceFromMention: noteReferenceActions.insertNoteReferenceFromMention,
+    syncToolbarFormatState,
+  })
 
   const toggleHeadingCollapse = (aisleId: string, headingKey: string) => {
     if (!activeNoteBodyId) return
@@ -1601,9 +1583,26 @@ function App() {
       pendingNavigationHeadingRef.current = null
       return
     }
+    pendingCursorRestoreRef.current = null
+    pendingScrollToAisleIdRef.current = pending.aisleId
+    pendingFocusToAisleIdRef.current = pending.aisleId
+    if (activeAisleId !== pending.aisleId) {
+      setActiveAisleId(pending.aisleId)
+    }
     scrollToAisleHeading(pending.aisleId, pending.headingKey)
     pendingNavigationHeadingRef.current = null
-  }, [activeNoteAisles, activeNoteBodyId, getHeadingOutlineForAisle, scrollToAisleHeading, viewMode])
+  }, [
+    activeAisleId,
+    activeNoteAisles,
+    activeNoteBodyId,
+    getHeadingOutlineForAisle,
+    pendingCursorRestoreRef,
+    pendingFocusToAisleIdRef,
+    pendingScrollToAisleIdRef,
+    scrollToAisleHeading,
+    setActiveAisleId,
+    viewMode,
+  ])
 
   usePendingNoteCursorRestore({
     viewMode,
@@ -1637,18 +1636,7 @@ function App() {
 
   const buildDefaultLinkModal = (mode: LinkInsertMode, selectedText = ''): Extract<ModalState, { type: 'insert-note-reference' }> => {
     const source = getCurrentNoteLocation()
-    const target = getDefaultNoteReferenceTarget(stateRef.current, source)
-    const normalizedTarget = normalizeNoteReferenceTarget(stateRef.current, target)
-    return {
-      type: 'insert-note-reference',
-      mode,
-      insertAs: 'link',
-      source,
-      target: normalizedTarget,
-      noteLabel: getDefaultNoteLinkLabel(stateRef.current, source, normalizedTarget),
-      url: '',
-      urlLabel: selectedText,
-    }
+    return buildDefaultNoteReferenceDraft(stateRef.current, source, mode, selectedText, 'modal')
   }
 
   const openSharedLinkModal = (selectedText = '', initialMode: LinkInsertMode = getLastLinkInsertMode()) => {
@@ -1658,27 +1646,12 @@ function App() {
 
   const openExternalLinkEditModal = (href: string, label: string, range: LinkEditRange | null) => {
     saveActiveCursorBeforeNavigation()
-    setModal({
-      ...buildDefaultLinkModal('url', ''),
-      modeLocked: true,
-      url: href,
-      urlLabel: label,
-      urlEditRange: range,
-    })
+    setModal(buildExternalLinkEditDraft(stateRef.current, getCurrentNoteLocation(), href, label, range))
   }
 
   const openInternalNoteLinkEditModal = (edit: InternalNoteLinkEdit) => {
     saveActiveCursorBeforeNavigation()
-    const target = normalizeNoteReferenceTarget(stateRef.current, { ...edit.target, heading: edit.heading })
-    setModal({
-      ...buildDefaultLinkModal('note', ''),
-      modeLocked: true,
-      insertAs: 'link',
-      target,
-      noteLabel: edit.label,
-      noteLabelTouched: true,
-      internalEdit: edit,
-    })
+    setModal(buildInternalNoteLinkEditDraft(stateRef.current, getCurrentNoteLocation(), edit))
   }
 
   const imageToolsController = useImageTools({
@@ -2194,153 +2167,6 @@ function App() {
   }
   runShortcutOperationFromMenuRef.current = runShortcutOperationFromMenu
 
-  const getNoteMentionMenuPosition = (
-    itemCount: number,
-    docPosition?: number,
-  ): Pick<NoteMentionMenuState, 'top' | 'left'> => {
-    const viewportWidth = window.innerWidth || document.documentElement.clientWidth
-    const viewportHeight = window.innerHeight || document.documentElement.clientHeight
-    const estimatedHeight = Math.min(380, Math.max(48, itemCount * 36 + 18))
-    const menuWidth = Math.min(620, Math.max(0, viewportWidth - 16))
-    const view = getWysiwygView(editorRef.current)
-
-    try {
-      const position = typeof docPosition === 'number' ? docPosition : view?.state?.selection?.from
-      const coords = typeof position === 'number' ? view?.coordsAtPos?.(position) : null
-      if (coords) {
-        return {
-          top: Math.max(8, Math.min(viewportHeight - estimatedHeight - 8, coords.bottom + 8)),
-          left: Math.max(8, Math.min(viewportWidth - menuWidth - 8, coords.left)),
-        }
-      }
-    } catch {
-      // Fall back to the active aisle pane below.
-    }
-
-    const escapedAisleId =
-      typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(activeAisleIdRef.current) : activeAisleIdRef.current
-    const activePane = editorEventRootRef.current?.querySelector<HTMLElement>(`[data-aisle-id="${escapedAisleId}"]`)
-    const rect = activePane?.getBoundingClientRect()
-    return {
-      top: Math.max(8, Math.min(viewportHeight - estimatedHeight - 8, (rect?.top ?? 84) + 12)),
-      left: Math.max(8, Math.min(viewportWidth - menuWidth - 8, (rect?.left ?? 16) + 12)),
-    }
-  }
-
-  const closeNoteMentionMenu = (options: { restoreEditorFocus?: boolean } = {}) => {
-    const editorToRestore = options.restoreEditorFocus ? editorRef.current : null
-    setNoteMentionActiveIndex(0)
-    setNoteMentionMenu(null)
-    if (!editorToRestore) return
-    window.requestAnimationFrame(() => {
-      if (editorRef.current !== editorToRestore) return
-      editorToRestore.focus()
-      syncToolbarFormatState()
-    })
-  }
-  closeNoteMentionMenuRef.current = closeNoteMentionMenu
-
-  const getNoteMentionSearchEntries = useCallback(
-    (query: string) => filterNoteMentionSearchEntries(listSearchableNoteLocations(stateRef.current), query, activeNoteLocation),
-    [activeNoteLocation, stateRef],
-  )
-
-  const refreshNoteMentionQuery = () => {
-    if (viewMode !== 'main' || !editorRef.current) return
-    const query = getNoteMentionQueryAtSelection(getWysiwygView(editorRef.current))
-    if (!query) {
-      dismissedNoteMentionQueryRef.current = null
-      if (noteMentionMenuRef.current) closeNoteMentionMenuRef.current()
-      return
-    }
-    if (noteMentionQueryMatches(dismissedNoteMentionQueryRef.current, query)) {
-      if (noteMentionMenuRef.current) closeNoteMentionMenuRef.current()
-      return
-    }
-    dismissedNoteMentionQueryRef.current = null
-    const entries = query.query.trim().length > 0 ? getNoteMentionSearchEntries(query.query) : []
-    const currentLocation = getCurrentNoteLocation()
-    const currentMentionMenu = noteMentionMenuRef.current
-    const selection = currentMentionMenu
-      ? resolveNoteMentionSelection(stateRef.current, currentMentionMenu.selection)
-      : createDefaultNoteMentionSelection(stateRef.current, currentLocation)
-    setNoteMentionActiveIndex((previous) => Math.max(0, Math.min(Math.max(0, entries.length - 1), previous)))
-    setNoteMentionMenu({
-      ...getNoteMentionMenuPosition(query.query.trim().length > 0 ? Math.max(1, entries.length) : 6, query.to),
-      query,
-      selection,
-      activeRow: currentMentionMenu?.activeRow ?? 'space',
-    })
-  }
-
-  const chooseNoteMentionTarget = (target: NoteLocation, action: NoteMentionAction) => {
-    if (!noteMentionMenu) return
-    const targetInfo = getLocationInfo(stateRef.current, target)
-    if (!targetInfo.noteBodyId) {
-      pushToast('choose an existing note.', 'warning')
-      closeNoteMentionMenu()
-      return
-    }
-
-    if (action === 'link') {
-      const label = getDefaultNoteLinkLabel(stateRef.current, getCurrentNoteLocation(), target)
-      const href = buildInternalNoteUrl(targetInfo.noteBodyId, target)
-      if (!replaceTextRangeWithLinkInActiveEditor(noteMentionMenu.query.from, noteMentionMenu.query.to, label, href)) {
-        pushToast('open a note before inserting a note link.', 'warning')
-      }
-      closeNoteMentionMenu()
-      return
-    }
-
-    if (!activeNoteBodyId || targetInfo.noteBodyId === activeNoteBodyId) {
-      pushToast('a note cannot preview itself.', 'warning')
-      closeNoteMentionMenu()
-      return
-    }
-    if (wouldCreateContextCycle(stateRef.current, targetInfo.noteBodyId, activeNoteBodyId)) {
-      pushToast('note preview blocked to prevent recursion.', 'warning')
-      closeNoteMentionMenu()
-      return
-    }
-
-    const token = buildContextToken({
-      id: createId(),
-      target,
-    })
-    if (!replaceTextRangeInActiveEditor(noteMentionMenu.query.from, noteMentionMenu.query.to, token)) {
-      pushToast('open a note before inserting a note preview.', 'warning')
-    }
-    closeNoteMentionMenu()
-  }
-  chooseNoteMentionTargetRef.current = chooseNoteMentionTarget
-
-  const chooseNoteMentionSearchEntry = (entry: NoteSearchEntry, action: NoteMentionAction) => {
-    const target: NoteLocation = {
-      domainId: entry.domainId,
-      spaceId: entry.spaceId,
-      tabId: entry.tabId,
-      subTabId: entry.subTabId,
-    }
-    chooseNoteMentionTarget(target, action)
-  }
-  chooseNoteMentionSearchEntryRef.current = chooseNoteMentionSearchEntry
-
-  const setNoteMentionActiveRow = (rowId: NoteMentionNavigatorRowId) => {
-    setNoteMentionMenu((current) => (current ? { ...current, activeRow: rowId } : current))
-  }
-
-  const selectNoteMentionNavigatorItem = (rowId: NoteMentionNavigatorRowId, itemId: string) => {
-    setNoteMentionMenu((current) =>
-      current
-        ? {
-            ...current,
-            activeRow: rowId,
-            selection: updateNoteMentionSelectionForRow(stateRef.current, current.selection, rowId, itemId),
-          }
-        : current,
-    )
-  }
-
   useEffect(() => {
     if (!shortcutMenu) return
 
@@ -2381,111 +2207,6 @@ function App() {
       document.removeEventListener('pointerdown', handlePointerDown, true)
     }
   }, [shortcutMenu, shortcutMenuActiveIndex])
-
-  useEffect(() => {
-    if (!noteMentionMenu) return
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (shouldDismissEmptyNoteMentionOnSpace(event, noteMentionMenu.query.query)) {
-        dismissedNoteMentionQueryRef.current = noteMentionMenu.query
-        closeNoteMentionMenuRef.current()
-        return
-      }
-
-      const searchMode = noteMentionMenu.query.query.trim().length > 0
-      const itemCount = searchMode ? getNoteMentionSearchEntries(noteMentionMenu.query.query).length : 0
-      const isPreviewShortcut = event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey
-      const isNavigatorHorizontalKey = !searchMode && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')
-      const isHandledKey =
-        event.key === 'Escape' ||
-        event.key === 'ArrowUp' ||
-        event.key === 'ArrowDown' ||
-        event.key === 'Home' ||
-        event.key === 'End' ||
-        event.key === 'Enter' ||
-        event.key === 'Tab' ||
-        isNavigatorHorizontalKey
-      if (!isHandledKey || event.altKey || ((event.metaKey || event.ctrlKey) && !isPreviewShortcut) || (event.shiftKey && event.key !== 'Tab')) return
-      event.preventDefault()
-      event.stopPropagation()
-
-      if (event.key === 'Escape') {
-        dismissedNoteMentionQueryRef.current = noteMentionMenu.query
-        closeNoteMentionMenuRef.current({ restoreEditorFocus: true })
-        return
-      }
-
-      if (!searchMode) {
-        if (event.key === 'ArrowDown') {
-          setNoteMentionMenu((current) =>
-            current ? { ...current, activeRow: moveNoteMentionActiveRow(current.activeRow, 1) } : current,
-          )
-          return
-        }
-        if (event.key === 'ArrowUp') {
-          setNoteMentionMenu((current) =>
-            current ? { ...current, activeRow: moveNoteMentionActiveRow(current.activeRow, -1) } : current,
-          )
-          return
-        }
-        if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
-          const delta = event.key === 'ArrowRight' ? 1 : -1
-          setNoteMentionMenu((current) =>
-            current
-              ? {
-                  ...current,
-                  selection: moveNoteMentionSelectionInRow(stateRef.current, current.selection, current.activeRow, delta),
-                }
-              : current,
-          )
-          return
-        }
-        if (event.key === 'Home' || event.key === 'End') {
-          setNoteMentionMenu((current) => (current ? { ...current, activeRow: event.key === 'Home' ? 'domain' : 'note' } : current))
-          return
-        }
-        const action: NoteMentionAction = isPreviewShortcut ? 'context' : 'link'
-        chooseNoteMentionTargetRef.current(getNoteMentionTarget(noteMentionMenu.selection), action)
-        return
-      }
-
-      if (itemCount <= 0) return
-      const normalizedActiveIndex = Math.max(0, Math.min(itemCount - 1, noteMentionActiveIndex))
-      if (event.key === 'ArrowDown') {
-        setNoteMentionActiveIndex((normalizedActiveIndex + 1) % itemCount)
-        return
-      }
-      if (event.key === 'ArrowUp') {
-        setNoteMentionActiveIndex((normalizedActiveIndex - 1 + itemCount) % itemCount)
-        return
-      }
-      if (event.key === 'Home') {
-        setNoteMentionActiveIndex(0)
-        return
-      }
-      if (event.key === 'End') {
-        setNoteMentionActiveIndex(itemCount - 1)
-        return
-      }
-
-      const entries = getNoteMentionSearchEntries(noteMentionMenu.query.query)
-      const entry = entries[normalizedActiveIndex]
-      if (entry) chooseNoteMentionSearchEntryRef.current(entry, isPreviewShortcut ? 'context' : 'link')
-    }
-
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target instanceof Element ? event.target : null
-      if (target?.closest('.note-mention-menu')) return
-      closeNoteMentionMenuRef.current()
-    }
-
-    document.addEventListener('keydown', handleKeyDown, true)
-    document.addEventListener('pointerdown', handlePointerDown, true)
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown, true)
-      document.removeEventListener('pointerdown', handlePointerDown, true)
-    }
-  }, [getNoteMentionSearchEntries, noteMentionMenu, noteMentionActiveIndex, stateRef])
 
   deleteContextPreviewRef.current = deleteContextPreview
 
@@ -2556,7 +2277,7 @@ function App() {
     onRunFormatCommand: runActiveEditorFormatCommand,
     getEditorHistoryDirection,
     onEditorSelectionChange: saveActiveCursorLocation,
-    onEditorMentionQueryChange: refreshNoteMentionQuery,
+    onEditorMentionQueryChange: noteMention.refreshQuery,
     onRunStructuralHistory: runAisleStructuralHistory,
     onRunEditorHistory: runEditorHistoryOnly,
     onRunNewlineOperation: runActiveNewlineOperation,
@@ -2575,6 +2296,7 @@ function App() {
 
   const stageManager = useStageManagerController({
     state,
+    setState,
     commitAppStateNow,
     activeSpace,
     workspace,
@@ -2677,7 +2399,7 @@ function App() {
     stateRef,
     setState,
     viewMode,
-    navigationContextMenusDisabled: isDraggingArrangeItem,
+    navigationContextMenusDisabled,
     contextMenu,
     setContextMenu,
     modal,
@@ -2955,11 +2677,11 @@ function App() {
         {
           key: 'end-arrangement',
           label: 'arrangements',
-          visibleLabel: isArrangeTrashActionActive ? 'trash' : 'arrangements',
+          visibleLabel: arrangeTrashActionActive ? 'trash' : 'arrangements',
           sizeLabel: 'arrangements',
           selected: false,
           className: `btn btn-sm tab-btn topbar-action-btn topbar-context-btn topbar-arrange-trash-btn ${
-            isArrangeTrashActionActive ? 'is-trash-mode' : ''
+            arrangeTrashActionActive ? 'is-trash-mode' : ''
           } ${isDraggingOverArrangeTrashDrop ? 'is-trash-drop-target' : ''}`,
           buttonRef: arrangeTrashDropRef,
           onClick: () => {
@@ -2973,13 +2695,22 @@ function App() {
         },
       ]
     : []
+  const stageManagerTopRailActions: NavigationRailAction[] = [
+    {
+      key: 'end-stage-manager',
+      label: 'director',
+      selected: false,
+      className: 'btn btn-sm tab-btn topbar-action-btn topbar-context-btn',
+      onClick: () => undefined,
+    },
+  ]
   const renderTopRailControls = (viewForMenu: ViewMode = viewMode) => (
     <NavigationRailControls
-      actions={mainTopRailActions}
+      actions={viewForMenu === 'stage-manager' ? stageManagerTopRailActions : mainTopRailActions}
       menuOpen={menuOpen}
-      showCloseControl={mainArrangementActive}
+      showCloseControl={viewForMenu === 'stage-manager' || mainArrangementActive}
       viewMode={viewForMenu}
-      onCloseAction={exitArrangeMode}
+      onCloseAction={viewForMenu === 'stage-manager' ? stageManager.end : exitArrangeMode}
       onSetMenuOpen={setMenuOpen}
       onOpenDomains={openDomainsView}
       onOpenSpaces={openSpacesView}
@@ -3004,16 +2735,12 @@ function App() {
     .map((tipId) => getTipDefinition(tipId))
   const activeTableOfContentsPanels =
     tableOfContentsPanels?.noteBodyId === activeNoteBodyId ? tableOfContentsPanels : null
-  const noteMentionNavigatorRows = noteMentionMenu
-    ? buildNoteMentionNavigatorRows(state, noteMentionMenu.selection)
-    : []
-  const noteMentionSearchEntries = noteMentionMenu?.query.query.trim()
-    ? filterNoteMentionSearchEntries(listSearchableNoteLocations(state), noteMentionMenu.query.query, getCurrentNoteLocation())
-    : []
-  const noteMentionSearchActiveIndex = Math.max(
-    0,
-    Math.min(Math.max(0, noteMentionSearchEntries.length - 1), noteMentionActiveIndex),
-  )
+  const noteMentionMenu = noteMention.menu
+  const noteMentionNavigatorRows = noteMention.navigatorRows
+  const noteMentionSearchEntries = noteMention.searchEntries
+  const noteMentionSearchActiveIndex = noteMention.activeSearchIndex
+  const stageManagerActiveDomain = stageManager.domains.find((domain) => domain.id === state.activeDomainId) ?? stageManager.domains[0]
+  const stageManagerSpaces = stageManagerActiveDomain?.spaces ?? state.spaces
   return (
     <main
       className={`app-shell theme-${state.theme} ${customThemeClassName} view-${viewMode} ${
@@ -3037,11 +2764,80 @@ function App() {
                 '--custom-theme-danger': customThemePalette.danger,
                 '--custom-theme-warning': customThemePalette.warning,
                 '--custom-theme-success': customThemePalette.success,
+                '--custom-theme-domain-rail': customThemePalette.domainRail,
+                '--custom-theme-space-rail': customThemePalette.spaceRail,
+                '--custom-theme-parent-rail': customThemePalette.parentRail,
+                '--custom-theme-subtab-rail': customThemePalette.subtabRail,
               }
             : {}),
         } as React.CSSProperties
       }
     >
+      {viewMode === 'stage-manager' && (
+        <CompactDomainRail
+          domains={stageManager.domains}
+          activeDomainId={state.activeDomainId}
+          editing={null}
+          arrangeMode={arrangeMode}
+          arrangeableDomainClassName=""
+          draggingDomainId={null}
+          domainsGridRef={domainsGridRef}
+          controlsSlot={renderTopRailControls('stage-manager')}
+          stageManagerMode
+          stageManagerSelectedDomainIds={stageManager.selectedDomainIds}
+          onStageManagerDomainClick={stageManager.handleDomainClick}
+          onOpenDomain={openDomainFromCompactRail}
+          onOpenContextMenu={openContextMenuForDomain}
+          onShouldSkipRenameBlur={shouldSkipRenameBlur}
+          onCommitRename={commitRename}
+          onCancelRename={cancelRename}
+          onRenameDraftChange={trackRenameDraft}
+          onBeginEdit={setEditing}
+          onAutoSizeRenameInput={autoSizeRenameInput}
+          onClearRenameDraft={clearRenameDraft}
+          onConsumeArrangeClickSuppression={consumeArrangeClickSuppression}
+          onStartArrangeDragSeed={startArrangeDragSeed}
+          onStartArrangeTapCandidate={startArrangeTapCandidate}
+          onStartArrangePress={startArrangePress}
+          onHandleArrangeDomainPointerMove={handleArrangeDomainPointerMove}
+          onHandleArrangeDomainPointerUp={handleArrangeDomainPointerUp}
+          onClearArrangePressTimer={clearArrangePressTimer}
+          onCancelArrangeDomainPointerDrag={cancelArrangeDomainPointerDrag}
+        />
+      )}
+
+      {viewMode === 'stage-manager' && (
+        <CompactSpaceRail
+          spaces={stageManagerSpaces}
+          activeSpaceId={state.activeSpaceId}
+          editing={null}
+          arrangeMode={arrangeMode}
+          arrangeableSpaceClassName=""
+          draggingSpaceId={null}
+          spacesGridRef={spacesGridRef}
+          stageManagerMode
+          stageManagerSelectedSpaceIds={stageManager.selectedSpaceIds}
+          onStageManagerSpaceClick={stageManager.handleSpaceClick}
+          onOpenSpace={openSpaceFromCompactRail}
+          onOpenContextMenu={openContextMenuForSpace}
+          onShouldSkipRenameBlur={shouldSkipRenameBlur}
+          onCommitRename={commitRename}
+          onCancelRename={cancelRename}
+          onRenameDraftChange={trackRenameDraft}
+          onBeginEdit={setEditing}
+          onAutoSizeRenameInput={autoSizeRenameInput}
+          onClearRenameDraft={clearRenameDraft}
+          onConsumeArrangeClickSuppression={consumeArrangeClickSuppression}
+          onStartArrangeDragSeed={startArrangeDragSeed}
+          onStartArrangeTapCandidate={startArrangeTapCandidate}
+          onStartArrangePress={startArrangePress}
+          onHandleArrangeSpacePointerMove={handleArrangeSpacePointerMove}
+          onHandleArrangeSpacePointerUp={handleArrangeSpacePointerUp}
+          onClearArrangePressTimer={clearArrangePressTimer}
+          onCancelArrangeSpacePointerDrag={cancelArrangeSpacePointerDrag}
+        />
+      )}
+
       {viewMode === 'main' && showCompactDomains && (
         <CompactDomainRail
           domains={state.domains}
@@ -3172,7 +2968,7 @@ function App() {
             ? topVisibleMainRail === 'parents'
             : viewMode === 'trash'
               ? false
-              : true
+              : viewMode !== 'stage-manager'
         }
         isDraggingArrangeItem={isDraggingArrangeItem}
         primaryTabRailRef={primaryTabRailRef}
@@ -3458,6 +3254,8 @@ function App() {
               domains={stageManager.domains}
               step={stageManager.step}
               action={stageManager.action}
+              selectionKind={stageManager.selectionKind}
+              availableActions={stageManager.availableActions}
               draft={stageManager.draft}
               selectionSnapshot={stageManager.selectionSnapshot}
               selectionCounts={stageManager.selectionCounts}
@@ -3579,11 +3377,11 @@ function App() {
           searchEntries={noteMentionSearchEntries}
           activeSearchIndex={noteMentionSearchActiveIndex}
           modifierLabel={isMacPlatform ? 'Cmd' : 'Ctrl'}
-          onActiveRowChange={setNoteMentionActiveRow}
-          onSelectNavigatorItem={selectNoteMentionNavigatorItem}
-          onHighlightSearch={setNoteMentionActiveIndex}
-          onChooseSearchEntry={chooseNoteMentionSearchEntry}
-          onChooseTarget={chooseNoteMentionTarget}
+          onActiveRowChange={noteMention.setActiveRow}
+          onSelectNavigatorItem={noteMention.selectNavigatorItem}
+          onHighlightSearch={noteMention.setActiveSearchIndex}
+          onChooseSearchEntry={noteMention.chooseSearchEntry}
+          onChooseTarget={noteMention.chooseTarget}
         />
       )}
 

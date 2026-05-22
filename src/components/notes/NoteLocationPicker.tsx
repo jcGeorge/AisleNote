@@ -19,6 +19,8 @@ type NoteLocationPickerProps = {
   aisleSelectionMode?: 'multiple' | 'single'
 }
 
+const HOME_NOTE_ID = '__home__'
+
 export function NoteLocationPicker({
   domains,
   noteBodies,
@@ -86,6 +88,33 @@ export function NoteLocationPicker({
     })
   }
 
+  const renderPickerRow = (
+    label: string,
+    selectedId: string,
+    items: Array<{ id: string; label: string; onSelect: () => void }>,
+  ) => (
+    <section className="note-location-picker-row" aria-label={label}>
+      <span className="note-location-picker-row-label">{label}</span>
+      <div className="note-location-picker-row-items">
+        {items.length > 0 ? (
+          items.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`note-location-picker-chip ${item.id === selectedId ? 'is-selected' : ''}`}
+              aria-current={item.id === selectedId ? 'true' : undefined}
+              onClick={item.onSelect}
+            >
+              {item.label}
+            </button>
+          ))
+        ) : (
+          <span className="note-location-picker-empty">none</span>
+        )}
+      </div>
+    </section>
+  )
+
   const toggleAisle = (aisleId: string) => {
     if (aisleSelectionMode === 'single') {
       onChange({
@@ -109,51 +138,49 @@ export function NoteLocationPicker({
 
   return (
     <div className="note-location-picker">
-      <label className="settings-modal-field">
-        <span>domain</span>
-        <select className="settings-select-input" value={selectedDomain?.id ?? ''} onChange={(event) => commitDomain(event.target.value)}>
-          {domains.map((domain) => (
-            <option key={domain.id} value={domain.id}>
-              {domain.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="settings-modal-field">
-        <span>space</span>
-        <select className="settings-select-input" value={selectedSpace?.id ?? ''} onChange={(event) => commitSpace(event.target.value)}>
-          {selectedDomain?.spaces.map((space) => (
-            <option key={space.id} value={space.id}>
-              {space.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="settings-modal-field">
-        <span>parent tab</span>
-        <select className="settings-select-input" value={selectedTab?.id ?? ''} onChange={(event) => commitTab(event.target.value)}>
-          {selectedSpace?.data.tabs.map((tab) => (
-            <option key={tab.id} value={tab.id}>
-              {tab.title}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="settings-modal-field">
-        <span>note</span>
-        <select
-          className="settings-select-input"
-          value={selectedSubTab?.id ?? '__home__'}
-          onChange={(event) => commitSubTab(event.target.value)}
-        >
-          <option value="__home__">home</option>
-          {selectedTab?.subTabs.map((subTab) => (
-            <option key={subTab.id} value={subTab.id}>
-              {subTab.title}
-            </option>
-          ))}
-        </select>
-      </label>
+      {renderPickerRow(
+        'domain',
+        selectedDomain?.id ?? '',
+        domains.map((domain) => ({
+          id: domain.id,
+          label: domain.name,
+          onSelect: () => commitDomain(domain.id),
+        })),
+      )}
+      {renderPickerRow(
+        'space',
+        selectedSpace?.id ?? '',
+        selectedDomain?.spaces.map((space) => ({
+          id: space.id,
+          label: space.name,
+          onSelect: () => commitSpace(space.id),
+        })) ?? [],
+      )}
+      {renderPickerRow(
+        'parent tab',
+        selectedTab?.id ?? '',
+        selectedSpace?.data.tabs.map((tab) => ({
+          id: tab.id,
+          label: tab.title,
+          onSelect: () => commitTab(tab.id),
+        })) ?? [],
+      )}
+      {renderPickerRow(
+        'note',
+        selectedSubTab?.id ?? HOME_NOTE_ID,
+        [
+          {
+            id: HOME_NOTE_ID,
+            label: 'home',
+            onSelect: () => commitSubTab(HOME_NOTE_ID),
+          },
+          ...(selectedTab?.subTabs.map((subTab) => ({
+            id: subTab.id,
+            label: subTab.title,
+            onSelect: () => commitSubTab(subTab.id),
+          })) ?? []),
+        ],
+      )}
       {includeAisles && selectedBody && selectedBody.aisles.length > 1 && (
         <div className="note-picker-aisles">
           {allowAllAisles && (

@@ -143,8 +143,8 @@ describe('domain and space navigation memory', () => {
 })
 
 describe('domain id allocation', () => {
-  it('creates domain and initial space ids from a collision-safe allocator', () => {
-    const values = ['space-existing', 'space-new', 'tab-existing', 'tab-new', 'tab-body', 'sub-new', 'sub-body', 'domain-existing', 'domain-new']
+  it('creates a domain with an empty initial space from a collision-safe allocator', () => {
+    const values = ['space-existing', 'space-new', 'tab-existing', 'tab-new', 'tab-body', 'domain-existing', 'domain-new']
     const allocate = createReservedIdAllocator(['domain-existing', 'space-existing', 'tab-existing'], () => values.shift() ?? 'fallback')
 
     const domain = createDomain('New Domain', allocate)
@@ -152,6 +152,14 @@ describe('domain id allocation', () => {
     expect(domain.id).toBe('domain-new')
     expect(domain.activeSpaceId).toBe('space-new')
     expect(domain.spaces[0].id).toBe('space-new')
+    expect(domain.spaces[0].name).toBe('space')
     expect(domain.spaces[0].data.activeTabId).toBe('tab-new')
+    expect(domain.spaces[0].data.tabs[0]).toMatchObject({
+      id: 'tab-new',
+      title: 'tab',
+      homeContent: '',
+      activeSubTabId: null,
+      subTabs: [],
+    })
   })
 })

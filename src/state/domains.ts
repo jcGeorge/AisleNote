@@ -12,6 +12,7 @@ import type { IdGenerator } from './navigation-ids'
 
 export const DEFAULT_DOMAIN_ID = 'humble-beginnings-domain'
 export const DEFAULT_DOMAIN_NAME = 'humble beginnings'
+export const DEFAULT_NEW_SPACE_NAME = 'space'
 
 export function createDefaultSpace(): Space {
   return {
@@ -32,7 +33,7 @@ export function createDomainFromSpaces(
   },
 ): Domain {
   const generateId = options?.createId ?? createId
-  const safeSpaces = spaces.length > 0 ? spaces : [createSpace('first steps', generateId)]
+  const safeSpaces = spaces.length > 0 ? spaces : [createSpace(DEFAULT_NEW_SPACE_NAME, generateId)]
   const activeSpaceId =
     options?.activeSpaceId && safeSpaces.some((space) => space.id === options.activeSpaceId)
       ? options.activeSpaceId
@@ -47,7 +48,7 @@ export function createDomainFromSpaces(
 }
 
 export function createDomain(name = 'domain', generateId: IdGenerator = createId): Domain {
-  const initialSpace = createSpace('first steps', generateId)
+  const initialSpace = createSpace(DEFAULT_NEW_SPACE_NAME, generateId)
   return createDomainFromSpaces(name, [initialSpace], {
     activeSpaceId: initialSpace.id,
     createId: generateId,

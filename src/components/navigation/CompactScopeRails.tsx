@@ -12,7 +12,8 @@ import type {
 } from '../../types/app'
 import { getRenameInputKeyAction } from '../../navigation/rename-draft'
 import { SortIcon } from './SortIcon'
-import { ArrangeDragPreviewPortal, getArrangeDragPreviewStyle } from './ArrangeDragPreviewPortal'
+import { ArrangeDragPreviewPortal } from './ArrangeDragPreviewPortal'
+import { getArrangeDragPreviewStyle } from './arrange-drag-preview-style'
 
 type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
 
@@ -45,7 +46,13 @@ type CompactSpaceRailProps = {
   controlsSlot?: ReactNode
   tooltipsDisabled?: boolean
   arrangeControlsDisabled?: boolean
+  stageManagerMode?: boolean
+  stageManagerSelectedSpaceIds?: ReadonlySet<string>
   onOpenSpace: (spaceId: string) => void
+  onStageManagerSpaceClick?: (
+    spaceId: string,
+    modifiers: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean },
+  ) => void
   onOpenContextMenu: (event: MouseEvent<HTMLButtonElement>, spaceId: string) => void
   onShouldSkipRenameBlur: (type: EditableEntityType, id: string) => boolean
   onCommitRename: (type: EditableEntityType, id: string, value: string) => void
@@ -85,7 +92,13 @@ type CompactDomainRailProps = {
   controlsSlot?: ReactNode
   tooltipsDisabled?: boolean
   arrangeControlsDisabled?: boolean
+  stageManagerMode?: boolean
+  stageManagerSelectedDomainIds?: ReadonlySet<string>
   onOpenDomain: (domainId: string) => void
+  onStageManagerDomainClick?: (
+    domainId: string,
+    modifiers: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean },
+  ) => void
   onOpenContextMenu: (event: MouseEvent<HTMLButtonElement>, domainId: string) => void
   onShouldSkipRenameBlur: (type: EditableEntityType, id: string) => boolean
   onCommitRename: (type: EditableEntityType, id: string, value: string) => void
@@ -125,7 +138,10 @@ export function CompactSpaceRail({
   controlsSlot,
   tooltipsDisabled = false,
   arrangeControlsDisabled = false,
+  stageManagerMode = false,
+  stageManagerSelectedSpaceIds,
   onOpenSpace,
+  onStageManagerSpaceClick,
   onOpenContextMenu,
   onShouldSkipRenameBlur,
   onCommitRename,
@@ -190,6 +206,20 @@ export function CompactSpaceRail({
             const isArrangeSpaceTarget = arrangeMode.active && arrangeMode.overSpaceId === space.id
             const isArrangeSpaceBeforeTarget = isArrangeSpaceTarget && arrangeMode.overSpaceInsert === 'before'
             const isArrangeSpaceAfterTarget = isArrangeSpaceTarget && arrangeMode.overSpaceInsert === 'after'
+            const isStageManagerSelected = stageManagerSelectedSpaceIds?.has(space.id) ?? false
+            const buttonClassName = [
+              'compact-scope-btn',
+              'compact-space-btn',
+              space.id === activeSpaceId ? 'is-active' : '',
+              isStageManagerSelected ? 'stage-manager-space-selected' : '',
+              arrangeableSpaceClassName,
+              isArrangeSpaceTarget ? 'is-arrange-target' : '',
+              isArrangeSpaceBeforeTarget ? 'is-arrange-target-before' : '',
+              isArrangeSpaceAfterTarget ? 'is-arrange-target-after' : '',
+              draggingSpaceId === space.id ? 'is-dragging' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')
             return (
               <button
                 key={space.id}
@@ -197,27 +227,40 @@ export function CompactSpaceRail({
                 data-arrange-space-id={space.id}
                 draggable={false}
                 aria-selected={space.id === activeSpaceId}
-                className={`compact-scope-btn compact-space-btn ${space.id === activeSpaceId ? 'is-active' : ''} ${arrangeableSpaceClassName} ${
-                  isArrangeSpaceTarget ? 'is-arrange-target' : ''
-                } ${isArrangeSpaceBeforeTarget ? 'is-arrange-target-before' : ''} ${
-                  isArrangeSpaceAfterTarget ? 'is-arrange-target-after' : ''
-                } ${draggingSpaceId === space.id ? 'is-dragging' : ''}`}
+                className={buttonClassName}
                 disabled={editing?.type === 'space' && editing.id === space.id}
                 onClick={(event) => {
                   if (onConsumeArrangeClickSuppression(`space:${space.id}`)) {
                     event.stopPropagation()
                     return
                   }
+                  if (stageManagerMode && onStageManagerSpaceClick) {
+                    event.stopPropagation()
+                    onStageManagerSpaceClick(space.id, {
+                      shiftKey: event.shiftKey,
+                      ctrlKey: event.ctrlKey,
+                      metaKey: event.metaKey,
+                    })
+                    return
+                  }
                   onOpenSpace(space.id)
                 }}
-                onContextMenu={(event) => onOpenContextMenu(event, space.id)}
+                onContextMenu={(event) => {
+                  if (stageManagerMode) {
+                    event.preventDefault()
+                    return
+                  }
+                  onOpenContextMenu(event, space.id)
+                }}
                 onDoubleClick={(event) => {
                   if (arrangeMode.active) return
+                  if (stageManagerMode) return
                   event.preventDefault()
                   event.stopPropagation()
                   onBeginEdit({ type: 'space', id: space.id })
                 }}
                 onPointerDown={(event) => {
+                  if (stageManagerMode) return
                   if (event.button === 0) {
                     event.currentTarget.setPointerCapture(event.pointerId)
                   }
@@ -228,8 +271,12 @@ export function CompactSpaceRail({
                   }
                   onStartArrangePress(event, { type: 'space', spaceId: space.id }, `space:${space.id}`)
                 }}
-                onPointerMove={(event) => onHandleArrangeSpacePointerMove(event, space)}
-                onPointerUp={(event) => onHandleArrangeSpacePointerUp(event, space.id, () => onOpenSpace(space.id))}
+                onPointerMove={(event) => {
+                  if (!stageManagerMode) onHandleArrangeSpacePointerMove(event, space)
+                }}
+                onPointerUp={(event) => {
+                  if (!stageManagerMode) onHandleArrangeSpacePointerUp(event, space.id, () => onOpenSpace(space.id))
+                }}
                 onPointerLeave={() => {
                   if (!arrangeMode.active) onClearArrangePressTimer()
                 }}
@@ -254,17 +301,16 @@ export function CompactSpaceRail({
             >
               <SortIcon />
             </button>
-          ) : (
+          ) : onAddSpace ? (
             <button
               type="button"
               className="btn btn-sm btn-outline-light add-tab-btn compact-scope-add-btn"
               onClick={onAddSpace}
               title={tooltipsDisabled ? undefined : 'Add space'}
-              disabled={!onAddSpace}
             >
               +
             </button>
-          )}
+          ) : null}
         </div>
         {controlsSlot}
       </div>
@@ -283,7 +329,10 @@ export function CompactDomainRail({
   controlsSlot,
   tooltipsDisabled = false,
   arrangeControlsDisabled = false,
+  stageManagerMode = false,
+  stageManagerSelectedDomainIds,
   onOpenDomain,
+  onStageManagerDomainClick,
   onOpenContextMenu,
   onShouldSkipRenameBlur,
   onCommitRename,
@@ -348,6 +397,20 @@ export function CompactDomainRail({
             const isArrangeDomainTarget = arrangeMode.active && arrangeMode.overDomainId === domain.id
             const isArrangeDomainBeforeTarget = isArrangeDomainTarget && arrangeMode.overDomainInsert === 'before'
             const isArrangeDomainAfterTarget = isArrangeDomainTarget && arrangeMode.overDomainInsert === 'after'
+            const isStageManagerSelected = stageManagerSelectedDomainIds?.has(domain.id) ?? false
+            const buttonClassName = [
+              'compact-scope-btn',
+              'compact-domain-btn',
+              domain.id === activeDomainId ? 'is-active' : '',
+              isStageManagerSelected ? 'stage-manager-domain-selected' : '',
+              arrangeableDomainClassName,
+              isArrangeDomainTarget ? 'is-arrange-target' : '',
+              isArrangeDomainBeforeTarget ? 'is-arrange-target-before' : '',
+              isArrangeDomainAfterTarget ? 'is-arrange-target-after' : '',
+              draggingDomainId === domain.id ? 'is-dragging' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')
             return (
               <button
                 key={domain.id}
@@ -355,27 +418,40 @@ export function CompactDomainRail({
                 data-arrange-domain-id={domain.id}
                 draggable={false}
                 aria-selected={domain.id === activeDomainId}
-                className={`compact-scope-btn compact-domain-btn ${domain.id === activeDomainId ? 'is-active' : ''} ${arrangeableDomainClassName} ${
-                  isArrangeDomainTarget ? 'is-arrange-target' : ''
-                } ${isArrangeDomainBeforeTarget ? 'is-arrange-target-before' : ''} ${
-                  isArrangeDomainAfterTarget ? 'is-arrange-target-after' : ''
-                } ${draggingDomainId === domain.id ? 'is-dragging' : ''}`}
+                className={buttonClassName}
                 disabled={editing?.type === 'domain' && editing.id === domain.id}
                 onClick={(event) => {
                   if (onConsumeArrangeClickSuppression(`domain:${domain.id}`)) {
                     event.stopPropagation()
                     return
                   }
+                  if (stageManagerMode && onStageManagerDomainClick) {
+                    event.stopPropagation()
+                    onStageManagerDomainClick(domain.id, {
+                      shiftKey: event.shiftKey,
+                      ctrlKey: event.ctrlKey,
+                      metaKey: event.metaKey,
+                    })
+                    return
+                  }
                   onOpenDomain(domain.id)
                 }}
-                onContextMenu={(event) => onOpenContextMenu(event, domain.id)}
+                onContextMenu={(event) => {
+                  if (stageManagerMode) {
+                    event.preventDefault()
+                    return
+                  }
+                  onOpenContextMenu(event, domain.id)
+                }}
                 onDoubleClick={(event) => {
                   if (arrangeMode.active) return
+                  if (stageManagerMode) return
                   event.preventDefault()
                   event.stopPropagation()
                   onBeginEdit({ type: 'domain', id: domain.id })
                 }}
                 onPointerDown={(event) => {
+                  if (stageManagerMode) return
                   if (event.button === 0) {
                     event.currentTarget.setPointerCapture(event.pointerId)
                   }
@@ -386,8 +462,12 @@ export function CompactDomainRail({
                   }
                   onStartArrangePress(event, { type: 'domain', domainId: domain.id }, `domain:${domain.id}`)
                 }}
-                onPointerMove={(event) => onHandleArrangeDomainPointerMove(event, domain)}
-                onPointerUp={(event) => onHandleArrangeDomainPointerUp(event, domain.id, () => onOpenDomain(domain.id))}
+                onPointerMove={(event) => {
+                  if (!stageManagerMode) onHandleArrangeDomainPointerMove(event, domain)
+                }}
+                onPointerUp={(event) => {
+                  if (!stageManagerMode) onHandleArrangeDomainPointerUp(event, domain.id, () => onOpenDomain(domain.id))
+                }}
                 onPointerLeave={() => {
                   if (!arrangeMode.active) onClearArrangePressTimer()
                 }}
@@ -412,17 +492,16 @@ export function CompactDomainRail({
             >
               <SortIcon />
             </button>
-          ) : (
+          ) : onAddDomain ? (
             <button
               type="button"
               className="btn btn-sm btn-outline-light add-tab-btn compact-scope-add-btn"
               onClick={onAddDomain}
               title={tooltipsDisabled ? undefined : 'Add domain'}
-              disabled={!onAddDomain}
             >
               +
             </button>
-          )}
+          ) : null}
         </div>
         {controlsSlot}
       </div>

@@ -4,6 +4,7 @@ import type {
   Space,
   StageManagerAction,
   StageManagerDraft,
+  StageManagerSelectionKind,
   StageManagerSelectionSnapshot,
   StageManagerStep,
   StageManagerStrayHandlingMode,
@@ -12,14 +13,20 @@ import type {
 import { STAGE_MANAGER_DESTINATION_SORT_OPTIONS } from '../../arrange/tab-sort'
 
 type StageManagerSelectionCounts = {
+  kind: StageManagerSelectionKind
   fullParentCount: number
   selectedSubTabCount: number
+  selectedSpaceCount: number
+  selectedDomainCount: number
+  hasSelection: boolean
 }
 
 type StageManagerViewProps = {
   domains: Domain[]
   step: StageManagerStep
   action: StageManagerAction | null
+  selectionKind: StageManagerSelectionKind
+  availableActions: StageManagerAction[]
   draft: StageManagerDraft
   selectionSnapshot: StageManagerSelectionSnapshot
   selectionCounts: StageManagerSelectionCounts
@@ -155,6 +162,8 @@ export function StageManagerView({
   domains,
   step,
   action,
+  selectionKind,
+  availableActions,
   draft,
   selectionSnapshot,
   selectionCounts,
@@ -209,7 +218,13 @@ export function StageManagerView({
         {step === 'select' && (
           <div className="stage-manager-panel">
             <h2>director</h2>
-            <p>select the parent tabs and sub-tabs you want to work with in this space.</p>
+            <p>
+              {selectionKind === 'domains'
+                ? 'select the domains you want to work with.'
+                : selectionKind === 'spaces'
+                  ? 'select the spaces you want to work with in the focused domain.'
+                  : 'select the parent tabs and sub-tabs you want to work with in this space.'}
+            </p>
             <div className="stage-manager-actions-row">
               <button type="button" className="btn btn-sm stage-manager-secondary-btn" onClick={onSelectAll}>
                 select all
@@ -219,7 +234,11 @@ export function StageManagerView({
               </button>
             </div>
             <p className="stage-manager-help">
-              selected parent tabs: {selectionCounts.fullParentCount}. selected sub-tabs: {selectionCounts.selectedSubTabCount}.
+              {selectionKind === 'domains'
+                ? `selected domains: ${selectionCounts.selectedDomainCount}.`
+                : selectionKind === 'spaces'
+                  ? `selected spaces: ${selectionCounts.selectedSpaceCount}.`
+                  : `selected parent tabs: ${selectionCounts.fullParentCount}. selected sub-tabs: ${selectionCounts.selectedSubTabCount}.`}
             </p>
           </div>
         )}
@@ -229,7 +248,7 @@ export function StageManagerView({
             <h2>choose action</h2>
             <p>pick what you want to do with the current selection.</p>
             <div className="stage-manager-action-grid">
-              {ACTIONS.map(([candidateAction, label]) => (
+              {ACTIONS.filter(([candidateAction]) => availableActions.includes(candidateAction)).map(([candidateAction, label]) => (
                 <button
                   key={candidateAction}
                   type="button"
@@ -242,17 +261,23 @@ export function StageManagerView({
             </div>
             {action === 'migrate' && (
               <p className="stage-manager-help">
-                migration changes location. moving a parent tab into another parent will demote that parent into a sub-tab.
+                {selectionKind === 'spaces'
+                  ? 'migration moves selected spaces into another existing domain.'
+                  : 'migration changes location. moving a parent tab into another parent will demote that parent into a sub-tab.'}
               </p>
             )}
             {action === 'promote' && (
               <p className="stage-manager-help">
-                promotion changes level. one fully selected parent can become a new space. selected sub-tabs can become prime tabs.
+                {selectionKind === 'spaces'
+                  ? 'promotion turns each selected space into a new domain with an inner space named main.'
+                  : 'promotion changes level. one fully selected parent can become a new space. selected sub-tabs can become prime tabs.'}
               </p>
             )}
             {action === 'demote' && (
               <p className="stage-manager-help">
-                demotion changes level. selected parent tabs become sub-tabs under the destination parent, and selected loose sub-tabs move with them.
+                {selectionKind === 'domains'
+                  ? 'demotion moves each selected single-space domain under another domain as a space.'
+                  : 'demotion changes level. selected parent tabs become sub-tabs under the destination parent, and selected loose sub-tabs move with them.'}
               </p>
             )}
             {action === 'frontmatter' && (
@@ -262,7 +287,9 @@ export function StageManagerView({
             )}
             {action === 'mass-delete' && (
               <p className="stage-manager-help">
-                mass delete can either move the selection into trash or permanently remove it.
+                {selectionKind === 'notes'
+                  ? 'mass delete can either move the selection into trash or permanently remove it.'
+                  : 'mass delete moves the selected items into Trash.'}
               </p>
             )}
           </div>
@@ -271,7 +298,55 @@ export function StageManagerView({
         {step === 'configure' && (
           <div className="stage-manager-panel">
             <h2>configure</h2>
-            {action === 'promote' && selectionSnapshot.fullParents.length === 1 && (
+            {selectionKind === 'spaces' && action === 'migrate' && (
+              <>
+                <p>selected spaces will move as an ordered block and append to the destination domain.</p>
+                <div className="stage-manager-field-grid">
+                  <label className="stage-manager-field">
+                    <span>destination domain</span>
+                    <DomainSelect
+                      domains={domains}
+                      value={migrateDomainId}
+                      onChange={(domainId) => onDraftChange({ migrateDomainId: domainId })}
+                    />
+                  </label>
+                </div>
+              </>
+            )}
+
+            {selectionKind === 'spaces' && action === 'promote' && (
+              <p>
+                each selected space becomes a new domain named after that space. the moved space is renamed <code>main</code>.
+              </p>
+            )}
+
+            {selectionKind === 'domains' && action === 'demote' && (
+              <>
+                <p>
+                  each selected domain must have exactly one space. that space moves under the destination domain and is renamed after
+                  its source domain.
+                </p>
+                <div className="stage-manager-field-grid">
+                  <label className="stage-manager-field">
+                    <span>destination domain</span>
+                    <DomainSelect
+                      domains={domains}
+                      value={demoteDomainId}
+                      onChange={(domainId) => onDraftChange({ demoteDomainId: domainId })}
+                    />
+                  </label>
+                </div>
+              </>
+            )}
+
+            {(selectionKind === 'spaces' || selectionKind === 'domains') && action === 'mass-delete' && (
+              <>
+                <p>selected {selectionKind} will be moved to Trash.</p>
+                <p className="stage-manager-help">permanent deletion stays in Trash for this selection type.</p>
+              </>
+            )}
+
+            {selectionKind === 'notes' && action === 'promote' && selectionSnapshot.fullParents.length === 1 && (
               <>
                 <p>
                   this fully selected parent will become a new space. its home note becomes a prime tab named <code>main</code>.
@@ -295,7 +370,7 @@ export function StageManagerView({
               </>
             )}
 
-            {action === 'promote' && selectionSnapshot.fullParents.length === 0 && (
+            {selectionKind === 'notes' && action === 'promote' && selectionSnapshot.fullParents.length === 0 && (
               <>
                 <p>selected sub-tabs will be promoted into prime tabs in the destination space.</p>
                 <div className="stage-manager-actions-row">
@@ -351,7 +426,7 @@ export function StageManagerView({
               </>
             )}
 
-            {action === 'demote' && (
+            {selectionKind === 'notes' && action === 'demote' && (
               <>
                 <p>selected parent tabs will become sub-tabs under the destination parent. their old home notes become their new note content.</p>
                 <div className="stage-manager-field-grid">
@@ -419,7 +494,7 @@ export function StageManagerView({
               </>
             )}
 
-            {action === 'migrate' && (
+            {selectionKind === 'notes' && action === 'migrate' && (
               <>
                 <p>choose whether the selection moves to another space or underneath a destination parent tab.</p>
                 <div className="stage-manager-actions-row">
@@ -688,7 +763,7 @@ export function StageManagerView({
               </>
             )}
 
-            {action === 'mass-delete' && (
+            {selectionKind === 'notes' && action === 'mass-delete' && (
               <>
                 <p>choose whether the current selection should move into trash or be deleted permanently.</p>
                 <div className="stage-manager-actions-row">
@@ -711,7 +786,7 @@ export function StageManagerView({
               </>
             )}
 
-            {action === 'frontmatter' && (
+            {selectionKind === 'notes' && action === 'frontmatter' && (
               <>
                 <p>choose a template to replace frontmatter with its fields.</p>
                 <div className="stage-manager-field-grid">
@@ -735,7 +810,7 @@ export function StageManagerView({
               </>
             )}
 
-            {((action === 'migrate' && draft.migrateTarget !== null) || action === 'promote' || action === 'demote') && (
+            {selectionKind === 'notes' && ((action === 'migrate' && draft.migrateTarget !== null) || action === 'promote' || action === 'demote') && (
               <div className="stage-manager-field-grid">
                 <label className="stage-manager-field">
                   <span>destination order</span>
@@ -758,7 +833,7 @@ export function StageManagerView({
               </div>
             )}
 
-            {action !== 'mass-delete' && action !== 'frontmatter' && !(action === 'migrate' && draft.migrateTarget === null) && (
+            {action !== 'mass-delete' && action !== 'frontmatter' && !(selectionKind === 'notes' && action === 'migrate' && draft.migrateTarget === null) && (
               <div className="stage-manager-switch-row">
                 <label className="settings-hotkey-label" htmlFor="stage-manager-open-destination">
                   open destination after apply

@@ -37,9 +37,11 @@
   --app-shadow-toast: 0 12px 32px rgba(0, 0, 0, 0.34);
 
   /* Navigation */
-  --tabbar-border: var(--app-border-muted);
-  --tabbar-bg: linear-gradient(180deg, #111c31 0%, #0d172b 100%);
-  --subtabbar-bg: linear-gradient(180deg, #0f182d 0%, #0b1427 100%);
+  --nav-rail-bg: #0f1b32;
+  --nav-rail-border: color-mix(in srgb, var(--app-border-muted) 70%, transparent);
+  --tabbar-border: var(--nav-rail-border);
+  --tabbar-bg: var(--nav-rail-bg);
+  --subtabbar-bg: var(--nav-rail-bg);
   --topbar-action-bg: rgba(19, 33, 58, 0.92);
   --topbar-action-border: #4c689c;
   --topbar-action-text: #e7efff;
@@ -52,66 +54,166 @@
   --menu-item-text: var(--app-text-soft);
   --menu-item-hover-bg: #1a2f52;
 
+  --domain-rail-accent: #382d2c;
+  --space-rail-accent: #8c7c2b;
+  --parent-rail-accent: #3b388c;
+  --subtab-rail-accent: #3b8c5c;
+  --domain-rail-text: color-mix(in srgb, var(--domain-rail-accent) 24%, var(--app-text-bright));
+  --domain-rail-bg: color-mix(in srgb, var(--nav-rail-bg) 58%, var(--domain-rail-accent));
+  --domain-rail-border: color-mix(in srgb, var(--domain-rail-accent) 76%, var(--app-border));
+  --domain-rail-hover-text: color-mix(in srgb, var(--domain-rail-accent) 12%, var(--app-text-bright));
+  --domain-rail-hover-bg: color-mix(in srgb, var(--nav-rail-bg) 46%, var(--domain-rail-accent));
+  --domain-rail-hover-border: color-mix(in srgb, var(--domain-rail-accent) 84%, var(--app-text-muted));
+  --domain-rail-selected-text: #fbf6f1;
+  --domain-rail-selected-bg: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--domain-rail-accent) 82%, white) 0%,
+    var(--domain-rail-accent) 100%
+  );
+  --domain-rail-selected-border: color-mix(in srgb, var(--domain-rail-accent) 58%, white);
+  --domain-rail-arrangeable-shadow: 0 0 0 1px color-mix(in srgb, var(--domain-rail-accent) 20%, transparent) inset;
+  --domain-rail-dragging-shadow: 0 0 0 1px color-mix(in srgb, var(--domain-rail-accent) 30%, transparent) inset,
+    0 8px 18px rgba(0, 0, 0, 0.2);
+  --domain-rail-target-border: color-mix(in srgb, var(--domain-rail-accent) 54%, white);
+  --domain-rail-target-shadow: 0 0 0 2px color-mix(in srgb, var(--domain-rail-accent) 42%, transparent) inset,
+    0 3px 10px color-mix(in srgb, var(--domain-rail-accent) 18%, transparent);
+  --domain-rail-target-before-shadow: inset 3px 0 0 var(--domain-rail-target-border),
+    0 0 0 1px color-mix(in srgb, var(--domain-rail-target-border) 24%, transparent);
+  --domain-rail-target-after-shadow: inset -3px 0 0 var(--domain-rail-target-border),
+    0 0 0 1px color-mix(in srgb, var(--domain-rail-target-border) 24%, transparent);
+  --space-rail-text: color-mix(in srgb, var(--space-rail-accent) 28%, var(--app-text-bright));
+  --space-rail-bg: color-mix(in srgb, var(--nav-rail-bg) 58%, var(--space-rail-accent));
+  --space-rail-border: color-mix(in srgb, var(--space-rail-accent) 76%, var(--app-border));
+  --space-rail-hover-text: color-mix(in srgb, var(--space-rail-accent) 16%, var(--app-text-bright));
+  --space-rail-hover-bg: color-mix(in srgb, var(--nav-rail-bg) 46%, var(--space-rail-accent));
+  --space-rail-hover-border: color-mix(in srgb, var(--space-rail-accent) 84%, var(--app-text-muted));
+  --space-rail-selected-text: #fbf6dc;
+  --space-rail-selected-bg: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--space-rail-accent) 82%, white) 0%,
+    var(--space-rail-accent) 100%
+  );
+  --space-rail-selected-border: color-mix(in srgb, var(--space-rail-accent) 62%, white);
+  --space-rail-arrangeable-shadow: 0 0 0 1px color-mix(in srgb, var(--space-rail-accent) 20%, transparent) inset;
+  --space-rail-dragging-shadow: 0 10px 24px rgba(0, 0, 0, 0.24),
+    0 0 0 1px color-mix(in srgb, var(--space-rail-accent) 30%, transparent) inset;
+  --space-rail-target-border: color-mix(in srgb, var(--space-rail-accent) 58%, white);
+  --space-rail-target-shadow: 0 0 0 2px color-mix(in srgb, var(--space-rail-accent) 42%, transparent) inset,
+    0 3px 10px color-mix(in srgb, var(--space-rail-accent) 18%, transparent);
+  --space-rail-target-before-shadow: inset 3px 0 0 var(--space-rail-target-border),
+    0 0 0 1px color-mix(in srgb, var(--space-rail-target-border) 24%, transparent);
+  --space-rail-target-after-shadow: inset -3px 0 0 var(--space-rail-target-border),
+    0 0 0 1px color-mix(in srgb, var(--space-rail-target-border) 24%, transparent);
+  --parent-rail-text: color-mix(in srgb, var(--parent-rail-accent) 26%, var(--app-text-bright));
+  --parent-rail-bg: color-mix(in srgb, var(--nav-rail-bg) 58%, var(--parent-rail-accent));
+  --parent-rail-border: color-mix(in srgb, var(--parent-rail-accent) 76%, var(--app-border));
+  --parent-rail-hover-text: color-mix(in srgb, var(--parent-rail-accent) 14%, var(--app-text-bright));
+  --parent-rail-hover-bg: color-mix(in srgb, var(--nav-rail-bg) 46%, var(--parent-rail-accent));
+  --parent-rail-hover-border: color-mix(in srgb, var(--parent-rail-accent) 84%, var(--app-text-muted));
+  --parent-rail-selected-text: #f5f4ff;
+  --parent-rail-selected-bg: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--parent-rail-accent) 82%, white) 0%,
+    var(--parent-rail-accent) 100%
+  );
+  --parent-rail-selected-border: color-mix(in srgb, var(--parent-rail-accent) 60%, white);
+  --parent-rail-arrangeable-shadow: 0 0 0 1px color-mix(in srgb, var(--parent-rail-accent) 20%, transparent) inset;
+  --parent-rail-dragging-shadow: 0 0 0 1px color-mix(in srgb, var(--parent-rail-accent) 30%, transparent) inset,
+    0 8px 18px rgba(0, 0, 0, 0.18);
+  --parent-rail-target-border: color-mix(in srgb, var(--parent-rail-accent) 58%, white);
+  --parent-rail-target-shadow: 0 0 0 2px color-mix(in srgb, var(--parent-rail-accent) 42%, transparent) inset,
+    0 3px 10px color-mix(in srgb, var(--parent-rail-accent) 18%, transparent);
+  --parent-rail-target-before-shadow: inset 3px 0 0 var(--parent-rail-target-border),
+    0 0 0 1px color-mix(in srgb, var(--parent-rail-target-border) 24%, transparent);
+  --parent-rail-target-after-shadow: inset -3px 0 0 var(--parent-rail-target-border),
+    0 0 0 1px color-mix(in srgb, var(--parent-rail-target-border) 24%, transparent);
+  --subtab-rail-text: color-mix(in srgb, var(--subtab-rail-accent) 30%, var(--app-text-bright));
+  --subtab-rail-bg: color-mix(in srgb, var(--nav-rail-bg) 58%, var(--subtab-rail-accent));
+  --subtab-rail-border: color-mix(in srgb, var(--subtab-rail-accent) 76%, var(--app-border));
+  --subtab-rail-hover-text: color-mix(in srgb, var(--subtab-rail-accent) 16%, var(--app-text-bright));
+  --subtab-rail-hover-bg: color-mix(in srgb, var(--nav-rail-bg) 46%, var(--subtab-rail-accent));
+  --subtab-rail-hover-border: color-mix(in srgb, var(--subtab-rail-accent) 84%, var(--app-text-muted));
+  --subtab-rail-selected-text: #effff4;
+  --subtab-rail-selected-bg: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--subtab-rail-accent) 82%, white) 0%,
+    var(--subtab-rail-accent) 100%
+  );
+  --subtab-rail-selected-border: color-mix(in srgb, var(--subtab-rail-accent) 60%, white);
+  --subtab-rail-arrangeable-shadow: 0 0 0 1px color-mix(in srgb, var(--subtab-rail-accent) 20%, transparent) inset;
+  --subtab-rail-dragging-shadow: 0 0 0 1px color-mix(in srgb, var(--subtab-rail-accent) 30%, transparent) inset,
+    0 8px 18px rgba(0, 0, 0, 0.18);
+  --subtab-rail-target-border: color-mix(in srgb, var(--subtab-rail-accent) 58%, white);
+  --subtab-rail-target-shadow: 0 0 0 2px color-mix(in srgb, var(--subtab-rail-accent) 42%, transparent) inset,
+    0 3px 10px color-mix(in srgb, var(--subtab-rail-accent) 18%, transparent);
+  --subtab-rail-target-before-shadow: inset 3px 0 0 var(--subtab-rail-target-border),
+    0 0 0 1px color-mix(in srgb, var(--subtab-rail-target-border) 24%, transparent);
+  --subtab-rail-target-after-shadow: inset -3px 0 0 var(--subtab-rail-target-border),
+    0 0 0 1px color-mix(in srgb, var(--subtab-rail-target-border) 24%, transparent);
+
   --spaces-heading-text: #dbe8ff;
   --spaces-page-bg: var(--app-page-bg);
   --space-card-bg: var(--app-surface);
   --space-card-text: #dbe8ff;
   --space-card-border: var(--app-border);
   --space-card-hover-bg: #162845;
-  --space-card-hover-border: #4a6ea9;
-  --space-card-active-border: #6b95e7;
-  --space-arrangeable-shadow: 0 0 0 1px rgba(121, 151, 202, 0.16) inset;
-  --space-dragging-shadow: 0 10px 24px rgba(0, 0, 0, 0.24), 0 0 0 1px rgba(121, 151, 202, 0.3) inset;
-  --space-target-shadow: 0 0 0 1px rgba(121, 151, 202, 0.32), inset 0 0 0 2px rgba(121, 151, 202, 0.68);
-  --space-target-marker: #7ba2ef;
-  --space-target-edge-outline: rgba(121, 151, 202, 0.26);
-  --space-fixed-shadow: 0 0 0 1px rgba(121, 151, 202, 0.12) inset;
-  --space-arrange-preview-bg: rgba(15, 27, 50, 0.96);
-  --space-arrange-preview-border: #6b95e7;
-  --space-arrange-preview-text: #dbe8ff;
-  --space-arrange-preview-shadow: 0 16px 34px rgba(0, 0, 0, 0.34), inset 0 0 0 1px rgba(107, 149, 231, 0.45);
+  --space-card-hover-border: var(--space-rail-hover-border);
+  --space-card-active-border: var(--space-rail-selected-border);
+  --space-arrangeable-shadow: var(--space-rail-arrangeable-shadow);
+  --space-dragging-shadow: var(--space-rail-dragging-shadow);
+  --space-target-shadow: var(--space-rail-target-shadow);
+  --space-target-marker: var(--space-rail-target-border);
+  --space-target-edge-outline: color-mix(in srgb, var(--space-rail-target-border) 26%, transparent);
+  --space-fixed-shadow: 0 0 0 1px color-mix(in srgb, var(--space-rail-accent) 12%, transparent) inset;
+  --space-arrange-preview-bg: var(--space-rail-selected-bg);
+  --space-arrange-preview-border: var(--space-rail-selected-border);
+  --space-arrange-preview-text: var(--space-rail-selected-text);
+  --space-arrange-preview-shadow: 0 16px 34px rgba(0, 0, 0, 0.34),
+    inset 0 0 0 1px color-mix(in srgb, var(--space-rail-accent) 45%, transparent);
   --space-rename-bg: var(--app-bg);
   --space-rename-text: var(--app-text);
   --space-rename-border: #4f7cff;
   --space-rename-focus-border: #74a0ff;
 
-  --tab-btn-text: #c5d5ef;
-  --tab-btn-bg: var(--app-surface);
-  --tab-btn-border: #2f4368;
-  --tab-btn-hover-text: #e7efff;
-  --tab-btn-hover-bg: #172744;
-  --tab-btn-hover-border: #43649a;
-  --tab-arrangeable-shadow: 0 0 0 1px rgba(121, 151, 202, 0.16) inset;
-  --tab-dragging-shadow: 0 0 0 1px rgba(138, 168, 221, 0.22) inset, 0 8px 18px rgba(0, 0, 0, 0.18);
-  --tab-arrange-preview-bg: rgba(15, 27, 50, 0.96);
-  --tab-arrange-preview-border: #6f9cf0;
-  --tab-arrange-preview-text: #f4f8ff;
-  --tab-arrange-preview-shadow: 0 14px 28px rgba(0, 0, 0, 0.32), inset 0 0 0 1px rgba(111, 156, 240, 0.4);
-  --subtab-arrange-preview-border: #7ed2a6;
-  --subtab-arrange-preview-shadow: 0 14px 28px rgba(0, 0, 0, 0.32), inset 0 0 0 1px rgba(126, 210, 166, 0.36);
-  --home-subtab-fixed-shadow: 0 0 0 1px rgba(121, 151, 202, 0.12) inset;
-  --home-subtab-target-border: #7ed2a6;
-  --home-subtab-target-shadow: inset -3px 0 0 #7ed2a6, 0 0 0 1px rgba(126, 210, 166, 0.2);
-  --parent-tab-target-border: #8fb2ff;
-  --parent-tab-target-shadow: 0 0 0 2px rgba(143, 178, 255, 0.32) inset, 0 3px 10px rgba(52, 89, 156, 0.18);
-  --parent-tab-target-before-shadow: inset 3px 0 0 #8fb2ff, 0 0 0 1px rgba(143, 178, 255, 0.24);
-  --parent-tab-target-after-shadow: inset -3px 0 0 #8fb2ff, 0 0 0 1px rgba(143, 178, 255, 0.24);
-  --subtab-target-border: #7ed2a6;
-  --subtab-target-shadow: 0 0 0 2px rgba(126, 210, 166, 0.28) inset, 0 3px 10px rgba(44, 112, 78, 0.15);
-  --subtab-target-before-shadow: inset 3px 0 0 #7ed2a6, 0 0 0 1px rgba(126, 210, 166, 0.2);
-  --subtab-target-after-shadow: inset -3px 0 0 #7ed2a6, 0 0 0 1px rgba(126, 210, 166, 0.2);
-  --parent-tab-selected-text: #f4f8ff;
-  --parent-tab-selected-bg: linear-gradient(180deg, #2f67de 0%, #2a56c4 100%);
-  --parent-tab-selected-border: #5b86e8;
-  --subtab-btn-text: #c6efd7;
-  --subtab-btn-bg: #0f2a20;
-  --subtab-btn-border: #2f6f59;
-  --subtab-btn-hover-text: #e7fff0;
-  --subtab-btn-hover-bg: #16382c;
-  --subtab-btn-hover-border: #3f8f73;
-  --subtab-selected-text: #f3fff8;
-  --subtab-selected-bg: linear-gradient(180deg, #1f9b67 0%, #1b8156 100%);
-  --subtab-selected-border: #44c087;
+  --tab-btn-text: var(--parent-rail-text);
+  --tab-btn-bg: var(--parent-rail-bg);
+  --tab-btn-border: var(--parent-rail-border);
+  --tab-btn-hover-text: var(--parent-rail-hover-text);
+  --tab-btn-hover-bg: var(--parent-rail-hover-bg);
+  --tab-btn-hover-border: var(--parent-rail-hover-border);
+  --tab-arrangeable-shadow: var(--parent-rail-arrangeable-shadow);
+  --tab-dragging-shadow: var(--parent-rail-dragging-shadow);
+  --tab-arrange-preview-bg: var(--parent-rail-selected-bg);
+  --tab-arrange-preview-border: var(--parent-rail-selected-border);
+  --tab-arrange-preview-text: var(--parent-rail-selected-text);
+  --tab-arrange-preview-shadow: 0 14px 28px rgba(0, 0, 0, 0.32),
+    inset 0 0 0 1px color-mix(in srgb, var(--parent-rail-accent) 40%, transparent);
+  --subtab-arrange-preview-border: var(--subtab-rail-selected-border);
+  --subtab-arrange-preview-shadow: 0 14px 28px rgba(0, 0, 0, 0.32),
+    inset 0 0 0 1px color-mix(in srgb, var(--subtab-rail-accent) 36%, transparent);
+  --home-subtab-fixed-shadow: 0 0 0 1px color-mix(in srgb, var(--subtab-rail-accent) 12%, transparent) inset;
+  --home-subtab-target-border: var(--subtab-rail-target-border);
+  --home-subtab-target-shadow: var(--subtab-rail-target-after-shadow);
+  --parent-tab-target-border: var(--parent-rail-target-border);
+  --parent-tab-target-shadow: var(--parent-rail-target-shadow);
+  --parent-tab-target-before-shadow: var(--parent-rail-target-before-shadow);
+  --parent-tab-target-after-shadow: var(--parent-rail-target-after-shadow);
+  --subtab-target-border: var(--subtab-rail-target-border);
+  --subtab-target-shadow: var(--subtab-rail-target-shadow);
+  --subtab-target-before-shadow: var(--subtab-rail-target-before-shadow);
+  --subtab-target-after-shadow: var(--subtab-rail-target-after-shadow);
+  --parent-tab-selected-text: var(--parent-rail-selected-text);
+  --parent-tab-selected-bg: var(--parent-rail-selected-bg);
+  --parent-tab-selected-border: var(--parent-rail-selected-border);
+  --subtab-btn-text: var(--subtab-rail-text);
+  --subtab-btn-bg: var(--subtab-rail-bg);
+  --subtab-btn-border: var(--subtab-rail-border);
+  --subtab-btn-hover-text: var(--subtab-rail-hover-text);
+  --subtab-btn-hover-bg: var(--subtab-rail-hover-bg);
+  --subtab-btn-hover-border: var(--subtab-rail-hover-border);
+  --subtab-selected-text: var(--subtab-rail-selected-text);
+  --subtab-selected-bg: var(--subtab-rail-selected-bg);
+  --subtab-selected-border: var(--subtab-rail-selected-border);
   --trash-home-text: #182033;
   --trash-home-bg: #f2f5fb;
   --trash-home-border: #d5deef;
@@ -185,22 +287,24 @@
   --stage-secondary-disabled-border: #2b3f61;
   --stage-secondary-disabled-bg: rgba(19, 33, 58, 0.38);
   --stage-help-text: #9fb4d7;
-  --stage-rail-active-text: #f4f8ff;
-  --stage-rail-active-bg: linear-gradient(180deg, #2f67de 0%, #2a56c4 100%);
-  --stage-rail-active-border: #5b86e8;
+  --stage-rail-active-text: var(--parent-rail-selected-text);
+  --stage-rail-active-bg: var(--parent-rail-selected-bg);
+  --stage-rail-active-border: var(--parent-rail-selected-border);
   --stage-rail-active-shadow: none;
-  --stage-parent-partial-border: #7da9ff;
-  --stage-parent-partial-text: #eaf2ff;
-  --stage-parent-partial-bg: #16294a;
-  --stage-parent-partial-shadow: inset 0 0 0 2px rgba(149, 190, 255, 0.68), 0 0 0 1px rgba(125, 169, 255, 0.28);
-  --stage-parent-full-border: #f1f6ff;
-  --stage-parent-full-text: #f4f8ff;
-  --stage-parent-full-bg: #1d3158;
-  --stage-parent-full-shadow: inset 0 0 0 2px rgba(241, 246, 255, 0.9), 0 0 0 1px rgba(241, 246, 255, 0.34);
-  --stage-subtab-selected-border: #7ed2a6;
-  --stage-subtab-selected-text: #e7fff0;
-  --stage-subtab-selected-bg: #123125;
-  --stage-subtab-selected-shadow: inset 0 0 0 2px rgba(126, 210, 166, 0.72), 0 0 0 1px rgba(126, 210, 166, 0.24);
+  --stage-parent-partial-border: var(--parent-rail-target-border);
+  --stage-parent-partial-text: var(--parent-rail-hover-text);
+  --stage-parent-partial-bg: var(--parent-rail-hover-bg);
+  --stage-parent-partial-shadow: var(--parent-rail-target-shadow);
+  --stage-parent-full-border: var(--parent-rail-selected-border);
+  --stage-parent-full-text: var(--parent-rail-selected-text);
+  --stage-parent-full-bg: var(--parent-rail-selected-bg);
+  --stage-parent-full-shadow: inset 0 0 0 2px color-mix(in srgb, var(--parent-rail-selected-border) 72%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--parent-rail-selected-border) 28%, transparent);
+  --stage-subtab-selected-border: var(--subtab-rail-selected-border);
+  --stage-subtab-selected-text: var(--subtab-rail-selected-text);
+  --stage-subtab-selected-bg: var(--subtab-rail-selected-bg);
+  --stage-subtab-selected-shadow: inset 0 0 0 2px color-mix(in srgb, var(--subtab-rail-selected-border) 72%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--subtab-rail-selected-border) 28%, transparent);
 
   /* Settings */
   --settings-control-bg: var(--app-bg);
@@ -424,6 +528,10 @@
   --custom-palette-danger: var(--custom-theme-danger, #963442);
   --custom-palette-warning: var(--custom-theme-warning, #d9a441);
   --custom-palette-success: var(--custom-theme-success, #2fb36d);
+  --custom-palette-domain-rail: var(--custom-theme-domain-rail, #382d2c);
+  --custom-palette-space-rail: var(--custom-theme-space-rail, #8c7c2b);
+  --custom-palette-parent-rail: var(--custom-theme-parent-rail, #3b388c);
+  --custom-palette-subtab-rail: var(--custom-theme-subtab-rail, #3b8c5c);
 
   --app-bg: var(--custom-palette-canvas);
   --app-page-bg: radial-gradient(
@@ -450,17 +558,15 @@
   --app-shadow-popover: 0 8px 20px color-mix(in srgb, var(--custom-palette-canvas) 54%, transparent);
   --app-shadow-toast: 0 12px 32px color-mix(in srgb, var(--custom-palette-canvas) 56%, transparent);
 
-  --tabbar-border: var(--app-border-muted);
-  --tabbar-bg: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--custom-palette-surface) 76%, var(--custom-palette-page)) 0%,
-    color-mix(in srgb, var(--custom-palette-canvas) 78%, var(--custom-palette-surface)) 100%
-  );
-  --subtabbar-bg: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--custom-palette-surface) 70%, var(--custom-palette-secondary)) 0%,
-    color-mix(in srgb, var(--custom-palette-canvas) 86%, var(--custom-palette-secondary)) 100%
-  );
+  --nav-rail-bg: color-mix(in srgb, var(--custom-palette-surface) 78%, var(--custom-palette-canvas));
+  --nav-rail-border: color-mix(in srgb, var(--app-border-muted) 62%, transparent);
+  --tabbar-border: var(--nav-rail-border);
+  --tabbar-bg: var(--nav-rail-bg);
+  --subtabbar-bg: var(--nav-rail-bg);
+  --domain-rail-accent: var(--custom-palette-domain-rail);
+  --space-rail-accent: var(--custom-palette-space-rail);
+  --parent-rail-accent: var(--custom-palette-parent-rail);
+  --subtab-rail-accent: var(--custom-palette-subtab-rail);
   --topbar-action-bg: color-mix(in srgb, var(--custom-palette-surface-raised) 92%, transparent);
   --topbar-action-border: color-mix(in srgb, var(--custom-palette-border) 72%, var(--custom-palette-text));
   --topbar-action-text: var(--app-text-soft);
@@ -479,81 +585,63 @@
   --space-card-text: var(--app-text-heading);
   --space-card-border: var(--app-border);
   --space-card-hover-bg: color-mix(in srgb, var(--custom-palette-surface) 82%, var(--custom-palette-primary));
-  --space-card-hover-border: color-mix(in srgb, var(--custom-palette-primary) 50%, var(--custom-palette-border));
-  --space-card-active-border: var(--custom-palette-primary);
-  --space-arrangeable-shadow: 0 0 0 1px color-mix(in srgb, var(--custom-palette-primary) 18%, transparent) inset;
-  --space-dragging-shadow: 0 10px 24px color-mix(in srgb, var(--custom-palette-canvas) 34%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--custom-palette-primary) 28%, transparent) inset;
-  --space-target-shadow: 0 0 0 1px color-mix(in srgb, var(--custom-palette-primary) 32%, transparent),
-    inset 0 0 0 2px color-mix(in srgb, var(--custom-palette-primary) 68%, transparent);
-  --space-target-marker: var(--custom-palette-primary);
-  --space-target-edge-outline: color-mix(in srgb, var(--custom-palette-primary) 26%, transparent);
-  --space-fixed-shadow: 0 0 0 1px color-mix(in srgb, var(--custom-palette-primary) 12%, transparent) inset;
-  --space-arrange-preview-bg: color-mix(in srgb, var(--custom-palette-surface-raised) 96%, transparent);
-  --space-arrange-preview-border: var(--custom-palette-primary);
-  --space-arrange-preview-text: var(--app-text-heading);
+  --space-card-hover-border: var(--space-rail-hover-border);
+  --space-card-active-border: var(--space-rail-selected-border);
+  --space-arrangeable-shadow: var(--space-rail-arrangeable-shadow);
+  --space-dragging-shadow: var(--space-rail-dragging-shadow);
+  --space-target-shadow: var(--space-rail-target-shadow);
+  --space-target-marker: var(--space-rail-target-border);
+  --space-target-edge-outline: color-mix(in srgb, var(--space-rail-target-border) 26%, transparent);
+  --space-fixed-shadow: 0 0 0 1px color-mix(in srgb, var(--space-rail-accent) 12%, transparent) inset;
+  --space-arrange-preview-bg: var(--space-rail-selected-bg);
+  --space-arrange-preview-border: var(--space-rail-selected-border);
+  --space-arrange-preview-text: var(--space-rail-selected-text);
   --space-arrange-preview-shadow: 0 16px 34px color-mix(in srgb, var(--custom-palette-canvas) 42%, transparent),
-    inset 0 0 0 1px color-mix(in srgb, var(--custom-palette-primary) 45%, transparent);
+    inset 0 0 0 1px color-mix(in srgb, var(--space-rail-accent) 45%, transparent);
   --space-rename-bg: var(--app-bg);
   --space-rename-text: var(--app-text);
   --space-rename-border: var(--custom-palette-primary);
   --space-rename-focus-border: var(--app-primary-border-strong);
 
-  --tab-btn-text: var(--app-text-muted);
-  --tab-btn-bg: var(--custom-palette-surface);
-  --tab-btn-border: color-mix(in srgb, var(--custom-palette-border) 74%, var(--custom-palette-canvas));
-  --tab-btn-hover-text: var(--app-text-bright);
-  --tab-btn-hover-bg: color-mix(in srgb, var(--custom-palette-surface) 82%, var(--custom-palette-primary));
-  --tab-btn-hover-border: color-mix(in srgb, var(--custom-palette-primary) 44%, var(--custom-palette-border));
-  --tab-arrangeable-shadow: 0 0 0 1px color-mix(in srgb, var(--custom-palette-primary) 16%, transparent) inset;
-  --tab-dragging-shadow: 0 0 0 1px color-mix(in srgb, var(--custom-palette-primary) 22%, transparent) inset,
-    0 8px 18px color-mix(in srgb, var(--custom-palette-canvas) 24%, transparent);
-  --tab-arrange-preview-bg: color-mix(in srgb, var(--custom-palette-surface-raised) 96%, transparent);
-  --tab-arrange-preview-border: var(--custom-palette-primary);
-  --tab-arrange-preview-text: var(--app-text-bright);
+  --tab-btn-text: var(--parent-rail-text);
+  --tab-btn-bg: var(--parent-rail-bg);
+  --tab-btn-border: var(--parent-rail-border);
+  --tab-btn-hover-text: var(--parent-rail-hover-text);
+  --tab-btn-hover-bg: var(--parent-rail-hover-bg);
+  --tab-btn-hover-border: var(--parent-rail-hover-border);
+  --tab-arrangeable-shadow: var(--parent-rail-arrangeable-shadow);
+  --tab-dragging-shadow: var(--parent-rail-dragging-shadow);
+  --tab-arrange-preview-bg: var(--parent-rail-selected-bg);
+  --tab-arrange-preview-border: var(--parent-rail-selected-border);
+  --tab-arrange-preview-text: var(--parent-rail-selected-text);
   --tab-arrange-preview-shadow: 0 14px 28px color-mix(in srgb, var(--custom-palette-canvas) 38%, transparent),
-    inset 0 0 0 1px color-mix(in srgb, var(--custom-palette-primary) 40%, transparent);
-  --subtab-arrange-preview-border: var(--custom-palette-secondary);
+    inset 0 0 0 1px color-mix(in srgb, var(--parent-rail-accent) 40%, transparent);
+  --subtab-arrange-preview-border: var(--subtab-rail-selected-border);
   --subtab-arrange-preview-shadow: 0 14px 28px color-mix(in srgb, var(--custom-palette-canvas) 38%, transparent),
-    inset 0 0 0 1px color-mix(in srgb, var(--custom-palette-secondary) 36%, transparent);
-  --home-subtab-fixed-shadow: 0 0 0 1px color-mix(in srgb, var(--custom-palette-secondary) 12%, transparent) inset;
-  --home-subtab-target-border: var(--custom-palette-secondary);
-  --home-subtab-target-shadow: inset -3px 0 0 var(--custom-palette-secondary),
-    0 0 0 1px color-mix(in srgb, var(--custom-palette-secondary) 22%, transparent);
-  --parent-tab-target-border: var(--app-primary-border-strong);
-  --parent-tab-target-shadow: 0 0 0 2px color-mix(in srgb, var(--custom-palette-primary) 30%, transparent) inset,
-    0 3px 10px color-mix(in srgb, var(--custom-palette-primary) 18%, transparent);
-  --parent-tab-target-before-shadow: inset 3px 0 0 var(--custom-palette-primary),
-    0 0 0 1px color-mix(in srgb, var(--custom-palette-primary) 24%, transparent);
-  --parent-tab-target-after-shadow: inset -3px 0 0 var(--custom-palette-primary),
-    0 0 0 1px color-mix(in srgb, var(--custom-palette-primary) 24%, transparent);
-  --subtab-target-border: var(--custom-palette-secondary);
-  --subtab-target-shadow: 0 0 0 2px color-mix(in srgb, var(--custom-palette-secondary) 28%, transparent) inset,
-    0 3px 10px color-mix(in srgb, var(--custom-palette-secondary) 15%, transparent);
-  --subtab-target-before-shadow: inset 3px 0 0 var(--custom-palette-secondary),
-    0 0 0 1px color-mix(in srgb, var(--custom-palette-secondary) 20%, transparent);
-  --subtab-target-after-shadow: inset -3px 0 0 var(--custom-palette-secondary),
-    0 0 0 1px color-mix(in srgb, var(--custom-palette-secondary) 20%, transparent);
-  --parent-tab-selected-text: var(--app-text-bright);
-  --parent-tab-selected-bg: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--custom-palette-primary) 86%, white) 0%,
-    var(--custom-palette-primary) 100%
-  );
-  --parent-tab-selected-border: var(--app-primary-border-strong);
-  --subtab-btn-text: color-mix(in srgb, var(--custom-palette-secondary) 36%, var(--app-text));
-  --subtab-btn-bg: color-mix(in srgb, var(--custom-palette-surface) 82%, var(--custom-palette-secondary));
-  --subtab-btn-border: color-mix(in srgb, var(--custom-palette-secondary) 46%, var(--custom-palette-border));
-  --subtab-btn-hover-text: var(--app-text-bright);
-  --subtab-btn-hover-bg: color-mix(in srgb, var(--custom-palette-surface) 66%, var(--custom-palette-secondary));
-  --subtab-btn-hover-border: color-mix(in srgb, var(--custom-palette-secondary) 64%, var(--custom-palette-text));
-  --subtab-selected-text: var(--app-text-bright);
-  --subtab-selected-bg: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--custom-palette-secondary) 86%, white) 0%,
-    var(--custom-palette-secondary) 100%
-  );
-  --subtab-selected-border: color-mix(in srgb, var(--custom-palette-secondary) 70%, var(--custom-palette-text));
+    inset 0 0 0 1px color-mix(in srgb, var(--subtab-rail-accent) 36%, transparent);
+  --home-subtab-fixed-shadow: 0 0 0 1px color-mix(in srgb, var(--subtab-rail-accent) 12%, transparent) inset;
+  --home-subtab-target-border: var(--subtab-rail-target-border);
+  --home-subtab-target-shadow: var(--subtab-rail-target-after-shadow);
+  --parent-tab-target-border: var(--parent-rail-target-border);
+  --parent-tab-target-shadow: var(--parent-rail-target-shadow);
+  --parent-tab-target-before-shadow: var(--parent-rail-target-before-shadow);
+  --parent-tab-target-after-shadow: var(--parent-rail-target-after-shadow);
+  --subtab-target-border: var(--subtab-rail-target-border);
+  --subtab-target-shadow: var(--subtab-rail-target-shadow);
+  --subtab-target-before-shadow: var(--subtab-rail-target-before-shadow);
+  --subtab-target-after-shadow: var(--subtab-rail-target-after-shadow);
+  --parent-tab-selected-text: var(--parent-rail-selected-text);
+  --parent-tab-selected-bg: var(--parent-rail-selected-bg);
+  --parent-tab-selected-border: var(--parent-rail-selected-border);
+  --subtab-btn-text: var(--subtab-rail-text);
+  --subtab-btn-bg: var(--subtab-rail-bg);
+  --subtab-btn-border: var(--subtab-rail-border);
+  --subtab-btn-hover-text: var(--subtab-rail-hover-text);
+  --subtab-btn-hover-bg: var(--subtab-rail-hover-bg);
+  --subtab-btn-hover-border: var(--subtab-rail-hover-border);
+  --subtab-selected-text: var(--subtab-rail-selected-text);
+  --subtab-selected-bg: var(--subtab-rail-selected-bg);
+  --subtab-selected-border: var(--subtab-rail-selected-border);
   --trash-home-text: var(--custom-palette-text);
   --trash-home-bg: color-mix(in srgb, var(--custom-palette-surface-raised) 84%, var(--custom-palette-page));
   --trash-home-border: var(--app-border);
@@ -626,25 +714,24 @@
   --stage-secondary-disabled-border: color-mix(in srgb, var(--custom-palette-border) 45%, transparent);
   --stage-secondary-disabled-bg: color-mix(in srgb, var(--custom-palette-surface) 42%, transparent);
   --stage-help-text: var(--app-text-subtle);
-  --stage-rail-active-text: var(--app-text-bright);
+  --stage-rail-active-text: var(--parent-rail-selected-text);
   --stage-rail-active-bg: var(--parent-tab-selected-bg);
   --stage-rail-active-border: var(--parent-tab-selected-border);
   --stage-rail-active-shadow: none;
-  --stage-parent-partial-border: var(--app-primary-border);
-  --stage-parent-partial-text: var(--app-text-bright);
-  --stage-parent-partial-bg: color-mix(in srgb, var(--custom-palette-surface) 78%, var(--custom-palette-primary));
-  --stage-parent-partial-shadow: inset 0 0 0 2px color-mix(in srgb, var(--custom-palette-primary) 62%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--custom-palette-primary) 28%, transparent);
-  --stage-parent-full-border: var(--app-text-bright);
-  --stage-parent-full-text: var(--app-text-bright);
-  --stage-parent-full-bg: color-mix(in srgb, var(--custom-palette-surface) 66%, var(--custom-palette-primary));
-  --stage-parent-full-shadow: inset 0 0 0 2px color-mix(in srgb, var(--custom-palette-text) 86%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--custom-palette-text) 34%, transparent);
-  --stage-subtab-selected-border: var(--custom-palette-secondary);
-  --stage-subtab-selected-text: var(--app-text-bright);
-  --stage-subtab-selected-bg: color-mix(in srgb, var(--custom-palette-surface) 76%, var(--custom-palette-secondary));
-  --stage-subtab-selected-shadow: inset 0 0 0 2px color-mix(in srgb, var(--custom-palette-secondary) 68%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--custom-palette-secondary) 24%, transparent);
+  --stage-parent-partial-border: var(--parent-rail-target-border);
+  --stage-parent-partial-text: var(--parent-rail-hover-text);
+  --stage-parent-partial-bg: var(--parent-rail-hover-bg);
+  --stage-parent-partial-shadow: var(--parent-rail-target-shadow);
+  --stage-parent-full-border: var(--parent-rail-selected-border);
+  --stage-parent-full-text: var(--parent-rail-selected-text);
+  --stage-parent-full-bg: var(--parent-rail-selected-bg);
+  --stage-parent-full-shadow: inset 0 0 0 2px color-mix(in srgb, var(--parent-rail-selected-border) 72%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--parent-rail-selected-border) 28%, transparent);
+  --stage-subtab-selected-border: var(--subtab-rail-selected-border);
+  --stage-subtab-selected-text: var(--subtab-rail-selected-text);
+  --stage-subtab-selected-bg: var(--subtab-rail-selected-bg);
+  --stage-subtab-selected-shadow: inset 0 0 0 2px color-mix(in srgb, var(--subtab-rail-selected-border) 72%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--subtab-rail-selected-border) 28%, transparent);
 
   --settings-control-bg: var(--app-surface-raised);
   --settings-control-text: var(--app-text);

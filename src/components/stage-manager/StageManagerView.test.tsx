@@ -41,6 +41,8 @@ function renderFrontmatterStageManager(step: StageManagerStep) {
       domains={[domain]}
       step={step}
       action="frontmatter"
+      selectionKind="notes"
+      availableActions={['migrate', 'promote', 'demote', 'frontmatter', 'mass-delete']}
       draft={{ ...createDefaultStageManagerDraft(), frontmatterTemplateId: template.id }}
       selectionSnapshot={{
         fullParents: [],
@@ -49,7 +51,14 @@ function renderFrontmatterStageManager(step: StageManagerStep) {
         fullParentIds: new Set(),
         hasSelection: true,
       }}
-      selectionCounts={{ fullParentCount: 0, selectedSubTabCount: 1 }}
+      selectionCounts={{
+        kind: 'notes',
+        fullParentCount: 0,
+        selectedSubTabCount: 1,
+        selectedSpaceCount: 0,
+        selectedDomainCount: 0,
+        hasSelection: true,
+      }}
       promoteDomainId={domain.id}
       promoteDestinationSpaces={[space]}
       demoteDomainId={domain.id}
@@ -87,6 +96,8 @@ function renderMigrateStageManager(migrateTarget: StageManagerMigrateTarget = nu
       domains={[{ ...domain, spaces: [space, destinationSpace] }]}
       step="configure"
       action="migrate"
+      selectionKind="notes"
+      availableActions={['migrate', 'promote', 'demote', 'frontmatter', 'mass-delete']}
       draft={{
         ...createDefaultStageManagerDraft(),
         migrateTarget,
@@ -100,7 +111,14 @@ function renderMigrateStageManager(migrateTarget: StageManagerMigrateTarget = nu
         fullParentIds: new Set(),
         hasSelection: true,
       }}
-      selectionCounts={{ fullParentCount: 0, selectedSubTabCount: 1 }}
+      selectionCounts={{
+        kind: 'notes',
+        fullParentCount: 0,
+        selectedSubTabCount: 1,
+        selectedSpaceCount: 0,
+        selectedDomainCount: 0,
+        hasSelection: true,
+      }}
       promoteDomainId={domain.id}
       promoteDestinationSpaces={[space, destinationSpace]}
       demoteDomainId={domain.id}
@@ -130,7 +148,75 @@ function renderMigrateStageManager(migrateTarget: StageManagerMigrateTarget = nu
   )
 }
 
+function renderHierarchyStageManager(kind: 'spaces' | 'domains') {
+  return renderToStaticMarkup(
+    <StageManagerView
+      domains={[domain, { ...domain, id: 'domain-2', name: 'Archive' }]}
+      step="action"
+      action={null}
+      selectionKind={kind}
+      availableActions={kind === 'spaces' ? ['migrate', 'promote', 'mass-delete'] : ['demote', 'mass-delete']}
+      draft={createDefaultStageManagerDraft()}
+      selectionSnapshot={{
+        fullParents: [],
+        partialParents: [],
+        looseSubTabs: [],
+        fullParentIds: new Set(),
+        hasSelection: false,
+      }}
+      selectionCounts={{
+        kind,
+        fullParentCount: 0,
+        selectedSubTabCount: 0,
+        selectedSpaceCount: kind === 'spaces' ? 2 : 0,
+        selectedDomainCount: kind === 'domains' ? 2 : 0,
+        hasSelection: true,
+      }}
+      promoteDomainId={domain.id}
+      promoteDestinationSpaces={[space]}
+      demoteDomainId="domain-2"
+      demoteSpaces={[space]}
+      demoteSpace={space}
+      demoteParentOptions={space.data.tabs}
+      migrateDomainId="domain-2"
+      migrateDestinationSpaces={[space]}
+      strayHandlingSelectValue="promote"
+      strayExistingParentOptions={space.data.tabs}
+      migrateParentDomainId={domain.id}
+      migrateParentSpaces={[space]}
+      migrateParentOptions={space.data.tabs}
+      frontmatterTemplates={[template]}
+      openDestinationAfterApply
+      reviewDetails={[]}
+      reviewWarning=""
+      onSelectAll={noop}
+      onDeselectAll={noop}
+      onSelectAction={noop}
+      onDraftChange={noop}
+      onOpenDestinationChange={noop}
+      onPrevious={noop}
+      onNext={noop}
+      onApply={noop}
+    />,
+  )
+}
+
 describe('StageManagerView frontmatter preview', () => {
+  it('filters actions for space and domain selections', () => {
+    const spaceHtml = renderHierarchyStageManager('spaces')
+    const domainHtml = renderHierarchyStageManager('domains')
+
+    expect(spaceHtml).toContain('migrate')
+    expect(spaceHtml).toContain('promote')
+    expect(spaceHtml).toContain('mass delete')
+    expect(spaceHtml).not.toContain('frontmatter')
+    expect(spaceHtml).not.toContain('demote')
+    expect(domainHtml).toContain('demote')
+    expect(domainHtml).toContain('mass delete')
+    expect(domainHtml).not.toContain('frontmatter')
+    expect(domainHtml).not.toContain('promote')
+  })
+
   it('initially shows only the migration target choices', () => {
     const html = renderMigrateStageManager()
 

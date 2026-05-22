@@ -943,6 +943,7 @@
   z-index: 3400;
   width: min(38rem, calc(100vw - 1rem));
   display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 0.5rem;
   padding: 0.55rem;
   border: 1px solid var(--context-menu-border);
@@ -951,19 +952,23 @@
   color: var(--context-menu-item-text);
   box-shadow: var(--context-menu-shadow);
   font-size: var(--ui-font-body);
+  max-height: calc(100vh - 1rem);
+  overflow: hidden;
 }
 
 .note-mention-navigator {
   display: grid;
   gap: 0.45rem;
+  min-height: 0;
+  overflow: auto;
 }
 
 .note-mention-nav-row {
   display: grid;
-  grid-template-columns: 6.25rem minmax(0, 1fr);
-  align-items: center;
-  gap: 0.5rem;
-  min-height: 2.1rem;
+  grid-template-columns: 1fr;
+  align-items: start;
+  gap: 0.28rem;
+  min-height: 0;
 }
 
 .note-mention-row-label {
@@ -974,7 +979,7 @@
   font-size: 0.76em;
   font-weight: 700;
   letter-spacing: 0;
-  text-align: right;
+  text-align: left;
   text-transform: lowercase;
 }
 
@@ -985,8 +990,9 @@
 .note-mention-row-items {
   min-width: 0;
   display: flex;
+  flex-wrap: wrap;
   gap: 0.35rem;
-  overflow: auto hidden;
+  overflow: visible;
   padding-bottom: 0.05rem;
 }
 
@@ -1017,7 +1023,7 @@
 .note-mention-search-results {
   display: grid;
   gap: 0.28rem;
-  max-height: min(20rem, 52vh);
+  min-height: 0;
   overflow: auto;
 }
 

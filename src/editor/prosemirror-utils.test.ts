@@ -13,7 +13,9 @@ vi.mock('prosemirror-history', () => ({
 }))
 
 import {
+  createLinkMark,
   getExternalLinkRangeAtDocPosition,
+  getLinkMarkAttrs,
   getNoteMentionQueryAtSelection,
   isProseMirrorDocMeaningful,
   runWysiwygHistory,
@@ -51,6 +53,16 @@ const schema = new Schema({
     link: {
       attrs: { href: {} },
       toDOM: (mark) => ['a', { href: mark.attrs.href }, 0],
+    },
+  },
+})
+
+const linkUrlSchema = new Schema({
+  nodes: schema.spec.nodes,
+  marks: {
+    link: {
+      attrs: { linkUrl: {} },
+      toDOM: (mark) => ['a', { href: mark.attrs.linkUrl }, 0],
     },
   },
 })
@@ -204,6 +216,18 @@ describe('note mention query detection', () => {
 })
 
 describe('external link range detection', () => {
+  it('creates link marks with the schema-supported href attribute', () => {
+    expect(getLinkMarkAttrs(linkUrlSchema.marks.link, '#tabs-note/body?domainId=d&spaceId=s&tabId=t')).toEqual({
+      linkUrl: '#tabs-note/body?domainId=d&spaceId=s&tabId=t',
+    })
+    expect(getLinkMarkAttrs(schema.marks.link, '#tabs-note/body?domainId=d&spaceId=s&tabId=t')).toEqual({
+      href: '#tabs-note/body?domainId=d&spaceId=s&tabId=t',
+    })
+
+    const mark = createLinkMark(linkUrlSchema.marks.link, '#tabs-note/body?domainId=d&spaceId=s&tabId=t')
+    expect(mark.attrs).toEqual({ linkUrl: '#tabs-note/body?domainId=d&spaceId=s&tabId=t' })
+  })
+
   it('finds the full link text range at a document position', () => {
     const link = schema.marks.link.create({ href: 'https://example.com' })
     const doc = schema.nodes.doc.create(null, [
@@ -232,5 +256,23 @@ describe('external link range detection', () => {
 
     expect(getExternalLinkRangeAtDocPosition(doc, 2, 'https://example.com')).toBeNull()
     expect(getExternalLinkRangeAtDocPosition(doc, 9, 'https://other.example')).toBeNull()
+  })
+
+  it('finds internal note links stored with Toast UI linkUrl marks', () => {
+    const href = '#tabs-note/body?domainId=domain&spaceId=space&tabId=tab'
+    const link = createLinkMark(linkUrlSchema.marks.link, href)
+    const doc = linkUrlSchema.nodes.doc.create(null, [
+      linkUrlSchema.nodes.paragraph.create(null, [
+        linkUrlSchema.text('see '),
+        linkUrlSchema.text('headers', [link]),
+      ]),
+    ])
+
+    expect(getExternalLinkRangeAtDocPosition(doc, 7, href)).toEqual({
+      from: 5,
+      to: 12,
+      href,
+    })
+    expect(getExternalLinkRangeAtDocPosition(doc, 7)?.href).not.toMatch(/^file:/)
   })
 })

@@ -157,7 +157,7 @@
 }
 
 .settings-modal.note-picker-modal {
-  width: min(410px, calc(100vw - 2rem));
+  width: min(660px, calc(100vw - 2rem));
 }
 
 .settings-modal.shortcut-settings-modal {
@@ -407,17 +407,57 @@
 .note-location-picker {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 0.5rem;
+  gap: 0.65rem;
   text-align: left;
 }
 
-.note-location-picker .settings-modal-field {
+.note-location-picker-row {
   display: grid;
-  grid-template-columns: 7.5rem minmax(0, 1fr);
-  align-items: center;
-  gap: 0.75rem;
+  gap: 0.28rem;
   min-width: 0;
-  margin: 0;
+}
+
+.note-location-picker-row-label {
+  color: var(--modal-muted-text);
+  font-size: 0.78em;
+  font-weight: 700;
+  line-height: 1.2;
+  text-transform: lowercase;
+}
+
+.note-location-picker-row-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.note-location-picker-chip {
+  max-width: 12.5rem;
+  min-height: 1.85rem;
+  border: 1px solid var(--stage-action-border);
+  border-radius: 0.35rem;
+  background: var(--stage-action-bg);
+  color: var(--stage-action-text);
+  padding: 0.24rem 0.55rem;
+  font: inherit;
+  font-size: 0.84em;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-location-picker-chip:hover,
+.note-location-picker-chip.is-selected {
+  border-color: var(--stage-action-selected-border);
+  background: var(--stage-action-selected-bg);
+  color: var(--stage-action-selected-text);
+}
+
+.note-location-picker-empty {
+  color: var(--modal-muted-text);
+  font-size: 0.82em;
 }
 
 .note-picker-modal .note-location-picker {
@@ -428,7 +468,6 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
-  padding-left: 8.25rem;
 }
 
 .note-picker-aisle-choice {
@@ -558,15 +597,10 @@
 }
 
 @media (max-width: 520px) {
-  .note-location-picker .settings-modal-field,
   .note-copy-behavior-row,
   .note-picker-modal .delete-modal-actions {
     grid-template-columns: 1fr;
     gap: 0.35rem;
-  }
-
-  .note-picker-aisles {
-    padding-left: 0;
   }
 
   .note-copy-behavior-mode {

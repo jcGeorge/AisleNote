@@ -303,6 +303,20 @@ describe('multi-cursor list operations', () => {
     expect(listTexts(doc.child(2))).toEqual(['four'])
   })
 
+  it('converts a single selected list row and preserves sibling rows', () => {
+    const doc = applyListOperation(
+      multilineListSchema.nodes.doc.create(null, [orderedList(['one', 'two', 'three'])]),
+      [1],
+      'task',
+    )
+
+    expect(docChildTypes(doc)).toEqual(['orderedList', 'bulletList', 'orderedList'])
+    expect(listTexts(doc.child(0))).toEqual(['one'])
+    expect(listTexts(doc.child(1))).toEqual(['two'])
+    expect(doc.child(1).child(0).attrs).toMatchObject({ task: true, checked: false })
+    expect(listTexts(doc.child(2))).toEqual(['three'])
+  })
+
   it('converts selected list rows to ordered and task lists', () => {
     const orderedDoc = applyListOperation(
       multilineListSchema.nodes.doc.create(null, [bulletList(['one', 'two'], 'dash')]),

@@ -312,6 +312,20 @@ function getLinkMarkHref(mark: any): string | null {
   return typeof href === 'string' && href.length > 0 ? href : null
 }
 
+function linkTypeHasAttr(linkType: any, attrName: string): boolean {
+  const attrs = linkType?.attrs ?? linkType?.spec?.attrs
+  return Boolean(attrs && Object.prototype.hasOwnProperty.call(attrs, attrName))
+}
+
+export function getLinkMarkAttrs(linkType: any, href: string): Record<string, string> {
+  if (linkTypeHasAttr(linkType, 'linkUrl')) return { linkUrl: href }
+  return { href }
+}
+
+export function createLinkMark(linkType: any, href: string): any {
+  return linkType.create(getLinkMarkAttrs(linkType, href))
+}
+
 function linkHrefMatches(candidate: string, expectedHref?: string) {
   if (!expectedHref) return true
   if (candidate === expectedHref) return true

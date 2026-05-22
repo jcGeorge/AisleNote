@@ -41,6 +41,10 @@ const customThemePaletteFixture = {
   danger: '#963442',
   warning: '#d9a441',
   success: '#2fb36d',
+  domainRail: '#382d2c',
+  spaceRail: '#8c7c2b',
+  parentRail: '#3b388c',
+  subtabRail: '#3b8c5c',
 }
 
 function serializedAppState() {

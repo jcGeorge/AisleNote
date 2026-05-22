@@ -2,23 +2,20 @@
 .subtabbar {
   flex: 0 0 auto;
   padding: 0.32rem 0.5rem;
-  border-bottom: 1px solid var(--tabbar-border);
+  border-bottom: 1px solid var(--nav-rail-border);
 }
 
-.tabbar {
-  background: var(--tabbar-bg);
-}
-
+.tabbar,
 .subtabbar {
-  background: var(--subtabbar-bg);
+  background: var(--nav-rail-bg);
 }
 
 .compact-scope-rail {
   flex: 0 0 auto;
   min-width: 0;
   padding: 0.24rem 0.5rem;
-  border-bottom: 1px solid var(--tabbar-border);
-  background: var(--tabbar-bg);
+  border-bottom: 1px solid var(--nav-rail-border);
+  background: var(--nav-rail-bg);
 }
 
 .compact-scope-row {
@@ -42,10 +39,6 @@
   padding-top: 0.28rem;
 }
 
-.compact-space-rail {
-  background: var(--subtabbar-bg);
-}
-
 .compact-scope-btn {
   flex: 0 0 auto;
   max-width: calc(300px * var(--tab-button-scale));
@@ -64,40 +57,40 @@
 }
 
 .compact-domain-btn {
-  color: var(--trash-parent-text);
-  background: var(--trash-parent-bg);
-  border-color: var(--trash-parent-border);
+  color: var(--domain-rail-text);
+  background: var(--domain-rail-bg);
+  border-color: var(--domain-rail-border);
 }
 
 .compact-domain-btn:hover {
-  color: var(--trash-parent-hover-text);
-  background: var(--trash-parent-hover-bg);
-  border-color: var(--trash-parent-hover-border);
+  color: var(--domain-rail-hover-text);
+  background: var(--domain-rail-hover-bg);
+  border-color: var(--domain-rail-hover-border);
 }
 
 .compact-domain-btn.is-active {
-  color: var(--trash-parent-selected-text) !important;
-  background: var(--trash-parent-selected-bg) !important;
-  border-color: var(--trash-parent-selected-border) !important;
+  color: var(--domain-rail-selected-text) !important;
+  background: var(--domain-rail-selected-bg) !important;
+  border-color: var(--domain-rail-selected-border) !important;
   box-shadow: none;
 }
 
 .compact-space-btn {
-  color: #d6bd71;
-  background: #1b170d;
-  border-color: #72591e;
+  color: var(--space-rail-text);
+  background: var(--space-rail-bg);
+  border-color: var(--space-rail-border);
 }
 
 .compact-space-btn:hover {
-  color: #f1d98e;
-  background: #2a2210;
-  border-color: #987a2f;
+  color: var(--space-rail-hover-text);
+  background: var(--space-rail-hover-bg);
+  border-color: var(--space-rail-hover-border);
 }
 
 .compact-space-btn.is-active {
-  color: #1b1506 !important;
-  background: linear-gradient(180deg, #d7b34e 0%, #b98e31 100%) !important;
-  border-color: #ebcf77 !important;
+  color: var(--space-rail-selected-text) !important;
+  background: var(--space-rail-selected-bg) !important;
+  border-color: var(--space-rail-selected-border) !important;
   box-shadow: none;
 }
 
@@ -109,10 +102,17 @@
 .compact-scope-btn.is-arrangeable {
   animation: arrangeJiggle 0.18s ease-in-out infinite alternate;
   transform-origin: center;
-  box-shadow: var(--space-arrangeable-shadow) !important;
   cursor: grab;
   user-select: none;
   touch-action: none;
+}
+
+.compact-domain-btn.is-arrangeable {
+  box-shadow: var(--domain-rail-arrangeable-shadow) !important;
+}
+
+.compact-space-btn.is-arrangeable {
+  box-shadow: var(--space-rail-arrangeable-shadow) !important;
 }
 
 .compact-scope-btn.is-arrangeable:hover {
@@ -122,19 +122,38 @@
 .compact-scope-btn.is-arrangeable.is-dragging {
   cursor: grabbing;
   opacity: 0.38;
-  box-shadow: var(--space-dragging-shadow) !important;
 }
 
-.compact-scope-btn.is-arrange-target {
-  box-shadow: var(--space-target-shadow) !important;
+.compact-domain-btn.is-arrangeable.is-dragging {
+  box-shadow: var(--domain-rail-dragging-shadow) !important;
 }
 
-.compact-scope-btn.is-arrange-target-before {
-  box-shadow: inset 3px 0 0 var(--space-target-marker), 0 0 0 1px var(--space-target-edge-outline) !important;
+.compact-space-btn.is-arrangeable.is-dragging {
+  box-shadow: var(--space-rail-dragging-shadow) !important;
 }
 
-.compact-scope-btn.is-arrange-target-after {
-  box-shadow: inset -3px 0 0 var(--space-target-marker), 0 0 0 1px var(--space-target-edge-outline) !important;
+.compact-domain-btn.is-arrange-target {
+  box-shadow: var(--domain-rail-target-shadow) !important;
+}
+
+.compact-space-btn.is-arrange-target {
+  box-shadow: var(--space-rail-target-shadow) !important;
+}
+
+.compact-domain-btn.is-arrange-target-before {
+  box-shadow: var(--domain-rail-target-before-shadow) !important;
+}
+
+.compact-domain-btn.is-arrange-target-after {
+  box-shadow: var(--domain-rail-target-after-shadow) !important;
+}
+
+.compact-space-btn.is-arrange-target-before {
+  box-shadow: var(--space-rail-target-before-shadow) !important;
+}
+
+.compact-space-btn.is-arrange-target-after {
+  box-shadow: var(--space-rail-target-after-shadow) !important;
 }
 
 .compact-scope-add-btn {

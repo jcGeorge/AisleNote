@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { TabArrangeDragPreview } from '../../types/app'
-import { getArrangeDragPreviewStyle } from './ArrangeDragPreviewPortal'
+import { getArrangeDragPreviewStyle } from './arrange-drag-preview-style'
 import { TabArrangeDragPreviewOverlay } from './TabArrangeDragPreviewOverlay'
 
 const parentPreview: TabArrangeDragPreview = {

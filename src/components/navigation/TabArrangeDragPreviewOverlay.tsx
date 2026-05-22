@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { TabArrangeDragPreview } from '../../types/app'
-import { ArrangeDragPreviewPortal, getArrangeDragPreviewStyle } from './ArrangeDragPreviewPortal'
+import { ArrangeDragPreviewPortal } from './ArrangeDragPreviewPortal'
+import { getArrangeDragPreviewStyle } from './arrange-drag-preview-style'
 
 type TabArrangeDragPreviewOverlayProps = {
   preview: TabArrangeDragPreview

@@ -1,6 +1,7 @@
 import type {
   SelectionClickModifiers,
   StageManagerDraft,
+  StageManagerIdSelection,
   StageManagerParentSelection,
   StageManagerSelectionAnchor,
   StageManagerSelectionSnapshot,
@@ -21,6 +22,10 @@ export function createEmptyStageManagerParentSelection(): StageManagerParentSele
 
 export function createStageManagerSelectionState(tabs: Tab[]): StageManagerSelectionState {
   return Object.fromEntries(tabs.map((tab) => [tab.id, createEmptyStageManagerParentSelection()]))
+}
+
+export function createEmptyStageManagerIdSelection(): StageManagerIdSelection {
+  return { selectedIds: [], anchorId: null }
 }
 
 export function createDefaultStageManagerDraft(): StageManagerDraft {
@@ -51,6 +56,55 @@ export function createDefaultStageManagerDraft(): StageManagerDraft {
     destinationSortMode: 'default',
     frontmatterTemplateId: '',
     massDeleteMode: 'trash',
+  }
+}
+
+export function applyStageManagerIdModifierClick({
+  orderedIds,
+  selection,
+  activeId,
+  clickedId,
+  modifiers,
+}: {
+  orderedIds: string[]
+  selection: StageManagerIdSelection
+  activeId: string
+  clickedId: string
+  modifiers: SelectionClickModifiers
+}): StageManagerIdSelection {
+  if (!orderedIds.includes(clickedId)) return selection
+
+  if (!isSelectionModifier(modifiers)) {
+    return { selectedIds: [clickedId], anchorId: clickedId }
+  }
+
+  if (modifiers.shiftKey) {
+    const anchorId =
+      selection.anchorId && orderedIds.includes(selection.anchorId)
+        ? selection.anchorId
+        : orderedIds.includes(activeId)
+          ? activeId
+          : clickedId
+    return {
+      selectedIds: getContiguousRangeIds(orderedIds, anchorId, clickedId),
+      anchorId,
+    }
+  }
+
+  const selectedIds = new Set(selection.selectedIds.filter((id) => orderedIds.includes(id)))
+  if (selectedIds.size === 0 && activeId !== clickedId && orderedIds.includes(activeId)) {
+    selectedIds.add(activeId)
+  }
+
+  if (selectedIds.has(clickedId)) {
+    selectedIds.delete(clickedId)
+  } else {
+    selectedIds.add(clickedId)
+  }
+
+  return {
+    selectedIds: orderIds(orderedIds, selectedIds),
+    anchorId: clickedId,
   }
 }
 

@@ -37,6 +37,55 @@ export function getSnapshotEditorMarkdown(
   }
 }
 
+export type EditorContentTarget = {
+  spaceId: string
+  tabId: string
+  subTabId: string | null
+  aisleId: string
+  aisleBodyId?: string | null
+}
+
+export function pendingContentMatchesTarget(pending: PendingContent, target: EditorContentTarget): boolean {
+  return (
+    Boolean(pending.aisleBodyId && target.aisleBodyId && pending.aisleBodyId === target.aisleBodyId) ||
+    (
+      pending.spaceId === target.spaceId &&
+      pending.tabId === target.tabId &&
+      pending.subTabId === target.subTabId &&
+      pending.aisleId === target.aisleId
+    )
+  )
+}
+
+export function applyFreshEditorSnapshotToState(
+  sourceState: AppState,
+  target: EditorContentTarget,
+  markdown: string,
+  pending: PendingContent | null | undefined,
+): AppState {
+  let nextState = applyMarkdownToAppState(
+    sourceState,
+    target.spaceId,
+    target.tabId,
+    target.subTabId,
+    target.aisleId,
+    markdown,
+    { aisleBodyId: target.aisleBodyId },
+  )
+  if (pending && !pendingContentMatchesTarget(pending, target)) {
+    nextState = applyMarkdownToAppState(
+      nextState,
+      pending.spaceId,
+      pending.tabId,
+      pending.subTabId,
+      pending.aisleId,
+      pending.markdown,
+      { aisleBodyId: pending.aisleBodyId },
+    )
+  }
+  return nextState
+}
+
 export const useEditorPersistence = ({
   stateRef,
   setState,
@@ -63,6 +112,14 @@ export const useEditorPersistence = ({
     return aisle ? getAisleBodyId(aisle) : aisleId
   }
 
+  const getActiveContentTarget = () => ({
+    spaceId: activeSpaceIdRef.current,
+    tabId: activeTabIdRef.current,
+    subTabId: activeSubTabIdRef.current,
+    aisleId: activeAisleIdRef.current,
+    aisleBodyId: getAisleBodyIdForAisleId(activeAisleIdRef.current),
+  })
+
   const applyContentToTarget = (
     spaceId: string,
     tabId: string,
@@ -77,38 +134,31 @@ export const useEditorPersistence = ({
   const buildStateWithLatestEditorContent = () => {
     let nextState = stateRef.current
     const pending = pendingContentRef.current
-    if (pending) {
-      return applyActiveCursorToState(applyAutoPurgeToAppState(
-        applyMarkdownToAppState(
-          nextState,
-          pending.spaceId,
-          pending.tabId,
-          pending.subTabId,
-          pending.aisleId,
-          pending.markdown,
-          { aisleBodyId: pending.aisleBodyId },
-        ),
-      ))
+
+    if (isMainViewRef.current && editorRef.current) {
+      const currentEditor = editorRef.current
+      const target = getActiveContentTarget()
+      const markdown = getSnapshotEditorMarkdown(currentEditor, lastEditorMarkdownRef.current, getNormalizedEditorMarkdown)
+      lastEditorMarkdownRef.current = markdown
+      lastEditorMarkdownByAisleRef.current.set(target.aisleBodyId, markdown)
+
+      nextState = applyFreshEditorSnapshotToState(nextState, target, markdown, pending)
+      return applyActiveCursorToState(applyAutoPurgeToAppState(nextState))
     }
 
+    if (pending) {
+      nextState = applyMarkdownToAppState(
+        nextState,
+        pending.spaceId,
+        pending.tabId,
+        pending.subTabId,
+        pending.aisleId,
+        pending.markdown,
+        { aisleBodyId: pending.aisleBodyId },
+      )
+    }
     if (!isMainViewRef.current) return applyAutoPurgeToAppState(nextState)
-
-    const currentEditor = editorRef.current
-    if (!currentEditor) return applyActiveCursorToState(applyAutoPurgeToAppState(nextState))
-    const markdown = getSnapshotEditorMarkdown(currentEditor, lastEditorMarkdownRef.current, getNormalizedEditorMarkdown)
-    const activeAisleBodyId = getAisleBodyIdForAisleId(activeAisleIdRef.current)
-    lastEditorMarkdownRef.current = markdown
-    lastEditorMarkdownByAisleRef.current.set(activeAisleBodyId, markdown)
-
-    nextState = applyMarkdownToAppState(
-      nextState,
-      activeSpaceIdRef.current,
-      activeTabIdRef.current,
-      activeSubTabIdRef.current,
-      activeAisleIdRef.current,
-      markdown,
-      { aisleBodyId: activeAisleBodyId },
-    )
+    if (!editorRef.current) return applyActiveCursorToState(applyAutoPurgeToAppState(nextState))
     return applyActiveCursorToState(applyAutoPurgeToAppState(nextState))
   }
 
@@ -128,9 +178,37 @@ export const useEditorPersistence = ({
       saveTimerRef.current = null
     }
 
-    if (pendingContentRef.current) {
-      const pending = pendingContentRef.current
-      pendingContentRef.current = null
+    const pending = pendingContentRef.current
+    pendingContentRef.current = null
+
+    if (!isMainViewRef.current || !editorRef.current) {
+      if (pending) {
+        applyContentToTarget(
+          pending.spaceId,
+          pending.tabId,
+          pending.subTabId,
+          pending.aisleId,
+          pending.markdown,
+          pending.aisleBodyId,
+        )
+      }
+      return
+    }
+
+    const currentEditor = editorRef.current
+    const target = getActiveContentTarget()
+    const markdown = getSnapshotEditorMarkdown(currentEditor, lastEditorMarkdownRef.current, getNormalizedEditorMarkdown)
+    lastEditorMarkdownRef.current = markdown
+    lastEditorMarkdownByAisleRef.current.set(target.aisleBodyId, markdown)
+    applyContentToTarget(
+      target.spaceId,
+      target.tabId,
+      target.subTabId,
+      target.aisleId,
+      markdown,
+      target.aisleBodyId,
+    )
+    if (pending && !pendingContentMatchesTarget(pending, target)) {
       applyContentToTarget(
         pending.spaceId,
         pending.tabId,
@@ -139,22 +217,7 @@ export const useEditorPersistence = ({
         pending.markdown,
         pending.aisleBodyId,
       )
-      return
     }
-
-    if (!isMainViewRef.current) return
-
-    if (!editorRef.current) return
-    const activeAisleBodyId = getAisleBodyIdForAisleId(activeAisleIdRef.current)
-    const markdown = lastEditorMarkdownByAisleRef.current.get(activeAisleBodyId) ?? lastEditorMarkdownRef.current
-    applyContentToTarget(
-      activeSpaceIdRef.current,
-      activeTabIdRef.current,
-      activeSubTabIdRef.current,
-      activeAisleIdRef.current,
-      markdown,
-      activeAisleBodyId,
-    )
   }
 
   const scheduleContentCommit = (

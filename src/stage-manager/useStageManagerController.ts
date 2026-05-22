@@ -4,6 +4,7 @@ import { sanitizeName } from '../export/export-data'
 import { applyTemplateToStageManagerSelection } from '../frontmatter/frontmatter-state'
 import { DEFAULT_AUTO_REMOVE_DAYS } from '../settings/defaults'
 import { applyAutoPurgeToAppState } from '../state/app-state'
+import { setActiveDomain, setActiveSpaceInActiveDomain } from '../state/domains'
 import { collectAppNavigationEntityIds, createReservedIdAllocator } from '../state/navigation-ids'
 import { createWorkspaceDataFromTabs } from '../state/workspace'
 import type {
@@ -14,8 +15,10 @@ import type {
   Space,
   StageManagerAction,
   StageManagerDraft,
+  StageManagerIdSelection,
   StageManagerParentSelection,
   StageManagerSelectionAnchor,
+  StageManagerSelectionKind,
   StageManagerSelectionSnapshot,
   StageManagerSelectionState,
   StageManagerStep,
@@ -25,11 +28,13 @@ import type {
   WorkspaceData,
 } from '../types/app'
 import {
+  applyStageManagerIdModifierClick,
   applyStageManagerParentModifierClick,
   applyStageManagerSubTabModifierClick,
   buildStageManagerSelectionSnapshot,
   cycleStageManagerParentSelection,
   createDefaultStageManagerDraft,
+  createEmptyStageManagerIdSelection,
   createStageManagerSelectionState,
   normalizeStageManagerParentSelection,
   toggleStageManagerSubTabSelection,
@@ -37,8 +42,15 @@ import {
 import { isSelectionModifier } from '../arrange/arrange-selection'
 import {
   buildStageManagerDomainAwareState,
+  buildStageManagerDomainSelectionSnapshot,
+  buildStageManagerSpaceSelectionSnapshot,
   getStageManagerDomainSpaces,
   getStageManagerMigrateDestinationSpaces,
+  demoteStageManagerDomainsToSpaces,
+  migrateStageManagerSpacesToDomain,
+  moveStageManagerDomainsToTrash,
+  moveStageManagerSpacesToTrash,
+  promoteStageManagerSpacesToDomains,
   projectStageManagerDomains,
   replaceStageManagerDomainSpaces,
 } from './domain-operations'
@@ -60,6 +72,7 @@ type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
 
 type UseStageManagerControllerParams = {
   state: AppState
+  setState: Dispatch<SetStateAction<AppState>>
   commitAppStateNow: (nextState: AppState) => Promise<AppState>
   activeSpace: Space
   workspace: WorkspaceData
@@ -89,6 +102,7 @@ const NO_SELECTION_MODIFIERS: SelectionClickModifiers = {
 
 export function useStageManagerController({
   state,
+  setState,
   commitAppStateNow,
   activeSpace,
   workspace,
@@ -106,8 +120,12 @@ export function useStageManagerController({
 }: UseStageManagerControllerParams) {
   const [step, setStep] = useState<StageManagerStep>('select')
   const [action, setAction] = useState<StageManagerAction | null>(null)
+  const [selectionKind, setSelectionKind] = useState<StageManagerSelectionKind>('notes')
   const [selections, setSelections] = useState<StageManagerSelectionState>({})
   const [selectionAnchor, setSelectionAnchor] = useState<StageManagerSelectionAnchor | null>(null)
+  const [domainSelection, setDomainSelection] = useState<StageManagerIdSelection>(() => createEmptyStageManagerIdSelection())
+  const [spaceSelection, setSpaceSelection] = useState<StageManagerIdSelection>(() => createEmptyStageManagerIdSelection())
+  const [spaceSelectionDomainId, setSpaceSelectionDomainId] = useState<string>(state.activeDomainId)
   const [draft, setDraft] = useState<StageManagerDraft>(createDefaultStageManagerDraft)
 
   const getParentSelection = (tab: Tab) => normalizeStageManagerParentSelection(tab, selections[tab.id])
@@ -128,8 +146,12 @@ export function useStageManagerController({
   const reset = (tabs: Tab[] = workspace.tabs) => {
     setStep('select')
     setAction(null)
+    setSelectionKind('notes')
     setSelections(createStageManagerSelectionState(tabs))
     setSelectionAnchor(null)
+    setDomainSelection(createEmptyStageManagerIdSelection())
+    setSpaceSelection(createEmptyStageManagerIdSelection())
+    setSpaceSelectionDomainId(state.activeDomainId)
     setDraft(createDefaultStageManagerDraft())
   }
 
@@ -156,8 +178,44 @@ export function useStageManagerController({
     }))
   }
 
-  const selectAll = () => {
+  const clearNoteSelection = () => {
+    setSelections(createStageManagerSelectionState(workspace.tabs))
     setSelectionAnchor(null)
+  }
+
+  const clearDomainSelection = () => {
+    setDomainSelection(createEmptyStageManagerIdSelection())
+  }
+
+  const clearSpaceSelection = () => {
+    setSpaceSelection(createEmptyStageManagerIdSelection())
+  }
+
+  const selectAll = () => {
+    if (selectionKind === 'domains') {
+      const domains = projectStageManagerDomains(state)
+      setDomainSelection({ selectedIds: domains.map((domain) => domain.id), anchorId: domains[0]?.id ?? null })
+      setSpaceSelection(createEmptyStageManagerIdSelection())
+      clearNoteSelection()
+      return
+    }
+
+    if (selectionKind === 'spaces') {
+      const domains = projectStageManagerDomains(state)
+      const sourceDomain = domains.find((domain) => domain.id === spaceSelectionDomainId) ?? domains.find((domain) => domain.id === state.activeDomainId)
+      setSpaceSelection({
+        selectedIds: sourceDomain?.spaces.map((space) => space.id) ?? [],
+        anchorId: sourceDomain?.spaces[0]?.id ?? null,
+      })
+      setSpaceSelectionDomainId(sourceDomain?.id ?? state.activeDomainId)
+      setDomainSelection(createEmptyStageManagerIdSelection())
+      clearNoteSelection()
+      return
+    }
+
+    setSelectionAnchor(null)
+    setDomainSelection(createEmptyStageManagerIdSelection())
+    setSpaceSelection(createEmptyStageManagerIdSelection())
     setSelections(
       Object.fromEntries(
         workspace.tabs.map((tab) => [
@@ -175,6 +233,8 @@ export function useStageManagerController({
 
   const deselectAll = () => {
     setSelectionAnchor(null)
+    setDomainSelection(createEmptyStageManagerIdSelection())
+    setSpaceSelection(createEmptyStageManagerIdSelection())
     setSelections(createStageManagerSelectionState(workspace.tabs))
   }
 
@@ -195,16 +255,40 @@ export function useStageManagerController({
     [workspace.tabs, selections],
   )
   const stageManagerDomains = useMemo(() => projectStageManagerDomains(state), [state])
+  const selectedDomainIds = useMemo(() => new Set(domainSelection.selectedIds), [domainSelection.selectedIds])
+  const selectedSpaceIds = useMemo(() => new Set(spaceSelection.selectedIds), [spaceSelection.selectedIds])
+  const spaceSelectionSnapshot = useMemo(
+    () => buildStageManagerSpaceSelectionSnapshot(stageManagerDomains, spaceSelectionDomainId, spaceSelection.selectedIds),
+    [spaceSelection.selectedIds, spaceSelectionDomainId, stageManagerDomains],
+  )
+  const domainSelectionSnapshot = useMemo(
+    () => buildStageManagerDomainSelectionSnapshot(stageManagerDomains, domainSelection.selectedIds),
+    [domainSelection.selectedIds, stageManagerDomains],
+  )
+  const currentSelectionHasSelection =
+    selectionKind === 'domains'
+      ? domainSelectionSnapshot.hasSelection
+      : selectionKind === 'spaces'
+        ? spaceSelectionSnapshot.hasSelection
+        : selectionSnapshot.hasSelection
+  const availableActions = useMemo<StageManagerAction[]>(() => {
+    if (selectionKind === 'domains') return ['demote', 'mass-delete']
+    if (selectionKind === 'spaces') return ['migrate', 'promote', 'mass-delete']
+    return ['migrate', 'promote', 'demote', 'frontmatter', 'mass-delete']
+  }, [selectionKind])
 
   const selectionCounts = useMemo(
     () => ({
+      kind: selectionKind,
       fullParentCount: selectionSnapshot.fullParents.length,
       partialParentCount: selectionSnapshot.partialParents.length,
       selectedSubTabCount:
         selectionSnapshot.fullParents.reduce((count, tab) => count + tab.subTabs.length, 0) + selectionSnapshot.looseSubTabs.length,
-      hasSelection: selectionSnapshot.hasSelection,
+      selectedSpaceCount: spaceSelectionSnapshot.spaces.length,
+      selectedDomainCount: domainSelectionSnapshot.domains.length,
+      hasSelection: currentSelectionHasSelection,
     }),
-    [selectionSnapshot],
+    [currentSelectionHasSelection, domainSelectionSnapshot.domains.length, selectionKind, selectionSnapshot, spaceSelectionSnapshot.spaces.length],
   )
 
   const getDraftDomainId = (draftDomainId: string) =>
@@ -273,10 +357,39 @@ export function useStageManagerController({
     if (viewMode === 'stage-manager') return
     setStep('select')
     setAction(null)
+    setSelectionKind('notes')
     setSelections({})
     setSelectionAnchor(null)
+    setDomainSelection(createEmptyStageManagerIdSelection())
+    setSpaceSelection(createEmptyStageManagerIdSelection())
+    setSpaceSelectionDomainId(state.activeDomainId)
     setDraft(createDefaultStageManagerDraft())
-  }, [viewMode])
+  }, [state.activeDomainId, viewMode])
+
+  useEffect(() => {
+    if (viewMode !== 'stage-manager') return
+    const domainIds = stageManagerDomains.map((domain) => domain.id)
+    setDomainSelection((previous) => {
+      const selectedIds = previous.selectedIds.filter((id) => domainIds.includes(id))
+      const anchorId = previous.anchorId && domainIds.includes(previous.anchorId) ? previous.anchorId : selectedIds[0] ?? null
+      return selectedIds.length === previous.selectedIds.length && anchorId === previous.anchorId ? previous : { selectedIds, anchorId }
+    })
+
+    const sourceDomain = stageManagerDomains.find((domain) => domain.id === spaceSelectionDomainId)
+    if (!sourceDomain || (selectionKind === 'spaces' && state.activeDomainId !== spaceSelectionDomainId)) {
+      setSpaceSelection(createEmptyStageManagerIdSelection())
+      setSpaceSelectionDomainId(state.activeDomainId)
+      if (selectionKind === 'spaces') setSelectionKind('notes')
+      return
+    }
+
+    const spaceIds = sourceDomain.spaces.map((space) => space.id)
+    setSpaceSelection((previous) => {
+      const selectedIds = previous.selectedIds.filter((id) => spaceIds.includes(id))
+      const anchorId = previous.anchorId && spaceIds.includes(previous.anchorId) ? previous.anchorId : selectedIds[0] ?? null
+      return selectedIds.length === previous.selectedIds.length && anchorId === previous.anchorId ? previous : { selectedIds, anchorId }
+    })
+  }, [selectionKind, spaceSelectionDomainId, stageManagerDomains, state.activeDomainId, viewMode])
 
   useEffect(() => {
     if (viewMode !== 'stage-manager') return
@@ -378,6 +491,41 @@ export function useStageManagerController({
     nextAction: StageManagerAction,
     snapshot: StageManagerSelectionSnapshot = buildStageManagerSelectionSnapshot(workspace.tabs, selections),
   ): ValidationResult => {
+    if (!availableActions.includes(nextAction)) {
+      return {
+        valid: false,
+        message: selectionKind === 'notes' ? 'choose a valid director action.' : 'that action is not available for this selection type.',
+      }
+    }
+
+    if (selectionKind === 'domains') {
+      if (!domainSelectionSnapshot.hasSelection) {
+        return {
+          valid: false,
+          message: 'select at least one domain before choosing an action.',
+        }
+      }
+      if (nextAction === 'demote') {
+        if (domainSelectionSnapshot.domainIds.has(draft.demoteDomainId)) {
+          return {
+            valid: false,
+            message: 'a selected domain cannot receive demoted domains. choose a different destination domain.',
+          }
+        }
+      }
+      return { valid: true, message: '' }
+    }
+
+    if (selectionKind === 'spaces') {
+      if (!spaceSelectionSnapshot.hasSelection) {
+        return {
+          valid: false,
+          message: 'select at least one space before choosing an action.',
+        }
+      }
+      return { valid: true, message: '' }
+    }
+
     if (!snapshot.hasSelection) {
       return {
         valid: false,
@@ -417,13 +565,17 @@ export function useStageManagerController({
     setAction(nextAction)
 
     if (nextAction === 'migrate' && action !== 'migrate') {
-      updateDraft({ migrateTarget: null })
+      updateDraft({ migrateTarget: selectionKind === 'spaces' ? 'space' : null })
     }
 
-    if (nextAction === 'promote' && snapshot.fullParents.length === 1 && draft.newSpaceName.trim().length === 0) {
+    if ((selectionKind === 'spaces' || selectionKind === 'domains') && nextAction === 'mass-delete') {
+      updateDraft({ massDeleteMode: 'trash' })
+    }
+
+    if (selectionKind === 'notes' && nextAction === 'promote' && snapshot.fullParents.length === 1 && draft.newSpaceName.trim().length === 0) {
       updateDraft({ newSpaceName: snapshot.fullParents[0].title })
     }
-    if (nextAction === 'frontmatter' && !draft.frontmatterTemplateId) {
+    if (selectionKind === 'notes' && nextAction === 'frontmatter' && !draft.frontmatterTemplateId) {
       updateDraft({ frontmatterTemplateId: state.frontmatter.lastAppliedTemplateId })
     }
   }
@@ -435,6 +587,9 @@ export function useStageManagerController({
     }
 
     if (isSelectionModifier(modifiers)) {
+      setSelectionKind('notes')
+      clearDomainSelection()
+      clearSpaceSelection()
       const result = applyStageManagerParentModifierClick({
         tabs: workspace.tabs,
         selections,
@@ -448,6 +603,9 @@ export function useStageManagerController({
       return
     }
 
+    setSelectionKind('notes')
+    clearDomainSelection()
+    clearSpaceSelection()
     setSelectionAnchor({ kind: 'parent', tabId: tab.id })
     if (workspace.activeTabId !== tab.id) {
       selectTab(tab.id)
@@ -468,6 +626,9 @@ export function useStageManagerController({
     }
 
     if (isSelectionModifier(modifiers)) {
+      setSelectionKind('notes')
+      clearDomainSelection()
+      clearSpaceSelection()
       const result = applyStageManagerSubTabModifierClick({
         tabs: workspace.tabs,
         selections,
@@ -481,6 +642,9 @@ export function useStageManagerController({
       return
     }
 
+    setSelectionKind('notes')
+    clearDomainSelection()
+    clearSpaceSelection()
     setSelectionAnchor({ kind: 'subtab', parentTabId: tab.id, subTabId })
     toggleSubTabSelection(tab, subTabId)
   }
@@ -494,12 +658,152 @@ export function useStageManagerController({
     pushToast('home is selected automatically when the parent tab is fully selected.', 'error')
   }
 
+  const handleDomainClick = (domainId: string, modifiers: SelectionClickModifiers = NO_SELECTION_MODIFIERS) => {
+    if (step !== 'select') {
+      pushToast('go back to the selection step to change selected items.', 'error')
+      return
+    }
+
+    const orderedDomainIds = stageManagerDomains.map((domain) => domain.id)
+    if (!orderedDomainIds.includes(domainId)) return
+
+    setState((previous) => setActiveDomain(previous, domainId))
+    setSelectionKind('domains')
+    clearNoteSelection()
+    clearSpaceSelection()
+    setSpaceSelectionDomainId(domainId)
+
+    if (isSelectionModifier(modifiers)) {
+      setDomainSelection((previous) =>
+        applyStageManagerIdModifierClick({
+          orderedIds: orderedDomainIds,
+          selection: previous,
+          activeId: state.activeDomainId,
+          clickedId: domainId,
+          modifiers,
+        }),
+      )
+      return
+    }
+
+    setDomainSelection({ selectedIds: [domainId], anchorId: domainId })
+  }
+
+  const handleSpaceClick = (spaceId: string, modifiers: SelectionClickModifiers = NO_SELECTION_MODIFIERS) => {
+    if (step !== 'select') {
+      pushToast('go back to the selection step to change selected items.', 'error')
+      return
+    }
+
+    const sourceDomain = stageManagerDomains.find((domain) => domain.id === state.activeDomainId)
+    const orderedSpaceIds = sourceDomain?.spaces.map((space) => space.id) ?? []
+    if (!orderedSpaceIds.includes(spaceId)) return
+
+    setState((previous) => setActiveSpaceInActiveDomain(previous, spaceId))
+    setSelectionKind('spaces')
+    setSpaceSelectionDomainId(sourceDomain?.id ?? state.activeDomainId)
+    clearNoteSelection()
+    clearDomainSelection()
+
+    if (isSelectionModifier(modifiers)) {
+      setSpaceSelection((previous) =>
+        applyStageManagerIdModifierClick({
+          orderedIds: orderedSpaceIds,
+          selection: previous,
+          activeId: state.activeSpaceId,
+          clickedId: spaceId,
+          modifiers,
+        }),
+      )
+      return
+    }
+
+    setSpaceSelection({ selectedIds: [spaceId], anchorId: spaceId })
+  }
+
   const getConfigureValidation = (): ValidationResult => {
     if (!action) {
       return {
         valid: false,
         message: 'choose a director action before continuing.',
       }
+    }
+
+    if (!availableActions.includes(action)) {
+      return {
+        valid: false,
+        message: 'that action is not available for this selection type.',
+      }
+    }
+
+    if (selectionKind === 'spaces') {
+      const sourceDomain = stageManagerDomains.find((domain) => domain.id === spaceSelectionSnapshot.sourceDomainId)
+      if (!sourceDomain || !spaceSelectionSnapshot.hasSelection) {
+        return {
+          valid: false,
+          message: 'select at least one space before continuing.',
+        }
+      }
+      if (sourceDomain.spaces.length - spaceSelectionSnapshot.spaces.length < 1) {
+        return {
+          valid: false,
+          message: 'at least one space must remain.',
+        }
+      }
+      if (action === 'migrate') {
+        if (!stageManagerDomains.some((domain) => domain.id === migrateDomainId) || migrateDomainId === sourceDomain.id) {
+          return {
+            valid: false,
+            message: 'choose another domain to receive the selected spaces.',
+          }
+        }
+      }
+      return { valid: true, message: '' }
+    }
+
+    if (selectionKind === 'domains') {
+      if (!domainSelectionSnapshot.hasSelection) {
+        return {
+          valid: false,
+          message: 'select at least one domain before continuing.',
+        }
+      }
+      if (action === 'mass-delete') {
+        if (stageManagerDomains.length - domainSelectionSnapshot.domains.length < 1) {
+          return {
+            valid: false,
+            message: 'at least one domain must remain.',
+          }
+        }
+        return { valid: true, message: '' }
+      }
+      if (action === 'demote') {
+        if (domainSelectionSnapshot.domainIds.has(demoteDomainId)) {
+          return {
+            valid: false,
+            message: 'a selected domain cannot receive demoted domains. choose a different destination domain.',
+          }
+        }
+        if (!stageManagerDomains.some((domain) => domain.id === demoteDomainId)) {
+          return {
+            valid: false,
+            message: 'choose the destination domain for demoted spaces.',
+          }
+        }
+        if (stageManagerDomains.length - domainSelectionSnapshot.domains.length < 1) {
+          return {
+            valid: false,
+            message: 'at least one domain must remain.',
+          }
+        }
+        if (domainSelectionSnapshot.domains.some((domain) => domain.spaces.length !== 1)) {
+          return {
+            valid: false,
+            message: 'only domains with exactly one space can be demoted.',
+          }
+        }
+      }
+      return { valid: true, message: '' }
     }
 
     if (action === 'promote') {
@@ -690,6 +994,37 @@ export function useStageManagerController({
   const reviewDetails = useMemo(() => {
     if (!action) return ['action: none selected']
 
+    if (selectionKind === 'spaces') {
+      const details = [
+        `selected spaces: ${selectionCounts.selectedSpaceCount}`,
+        `source domain: ${spaceSelectionSnapshot.sourceDomainName || 'none selected'}`,
+        `action: ${action.replace('-', ' ')}`,
+      ]
+      if (action === 'migrate') {
+        details.push(`destination domain: ${stageManagerDomains.find((domain) => domain.id === migrateDomainId)?.name ?? 'none selected'}`)
+      } else if (action === 'promote') {
+        details.push('destination: one new domain per selected space')
+        details.push('inner space name: main')
+      } else if (action === 'mass-delete') {
+        details.push('mode: move to trash')
+      }
+      return details
+    }
+
+    if (selectionKind === 'domains') {
+      const details = [
+        `selected domains: ${selectionCounts.selectedDomainCount}`,
+        `action: ${action.replace('-', ' ')}`,
+      ]
+      if (action === 'demote') {
+        details.push(`destination domain: ${stageManagerDomains.find((domain) => domain.id === demoteDomainId)?.name ?? 'none selected'}`)
+        details.push('moved spaces are renamed after their source domains')
+      } else if (action === 'mass-delete') {
+        details.push('mode: move to trash')
+      }
+      return details
+    }
+
     const details = [
       `selected parent tabs: ${selectionCounts.fullParentCount}`,
       `selected sub-tabs: ${selectionCounts.selectedSubTabCount}`,
@@ -772,18 +1107,32 @@ export function useStageManagerController({
     action,
     activeSpace.name,
     demoteParentOptions,
+    demoteDomainId,
     draft,
     migrateParentOptions,
     migrateParentSpaces,
+    migrateDomainId,
     selectedMigrateSpace,
     selectedPromoteSpace,
     selectionCounts,
+    selectionKind,
     selectionSnapshot,
+    spaceSelectionSnapshot,
+    stageManagerDomains,
     state.frontmatter.templates,
     strayExistingParentOptions,
   ])
 
   const reviewWarning = useMemo(() => {
+    if (selectionKind === 'spaces' && action === 'promote') {
+      return 'Each selected space becomes a new domain, and the moved space is renamed main inside that domain.'
+    }
+    if (selectionKind === 'domains' && action === 'demote') {
+      return 'Only single-space domains can be demoted. Each moved space is renamed after its source domain.'
+    }
+    if ((selectionKind === 'spaces' || selectionKind === 'domains') && action === 'mass-delete') {
+      return 'The selected items will move to Trash.'
+    }
     if (action === 'mass-delete' && draft.massDeleteMode === 'permanent') {
       return 'This will permanently delete the current selection.'
     }
@@ -794,7 +1143,7 @@ export function useStageManagerController({
       return 'Each demoted parent becomes one sub-tab whose content comes from that parent home note.'
     }
     return ''
-  }, [action, draft.massDeleteMode, draft.migrateTarget])
+  }, [action, draft.massDeleteMode, draft.migrateTarget, selectionKind])
 
   const getApplyToastMessage = () => {
     if (action === 'mass-delete') {
@@ -844,6 +1193,85 @@ export function useStageManagerController({
       applyDestinationSubTabSort(subTabs, latestState.noteBodies, draft.destinationSortMode)
     const sortDestinationParentSubTabs = (tabs: Tab[], parentId: string) =>
       applyDestinationParentSubTabSort(tabs, parentId, latestState.noteBodies, draft.destinationSortMode)
+
+    const finishHierarchyApply = (
+      result: ReturnType<typeof migrateStageManagerSpacesToDomain>,
+      toastMessage: string,
+    ) => {
+      if (!result.changed) {
+        const fallbackMessage =
+          result.reason === 'last-space'
+            ? 'at least one space must remain.'
+            : result.reason === 'last-domain'
+              ? 'at least one domain must remain.'
+              : result.reason === 'same-domain'
+                ? 'choose another domain to receive the selected spaces.'
+                : result.reason === 'multi-space-domain'
+                  ? 'only domains with exactly one space can be demoted.'
+                  : 'director could not apply that hierarchy change.'
+        pushToast(fallbackMessage, 'warning')
+        return
+      }
+
+      const focusedState = state.ui.stageManagerOpenDestinationAfterApply || !result.focus
+        ? result.state
+        : buildStageManagerDomainAwareState(result.state, result.state.domains, latestState.activeDomainId, latestState.activeSpaceId)
+      finishApply(focusedState, toastMessage)
+    }
+
+    if (selectionKind === 'spaces') {
+      if (!spaceSelectionSnapshot.hasSelection) {
+        pushToast('select at least one space before applying director.', 'warning')
+        return
+      }
+
+      if (action === 'migrate') {
+        finishHierarchyApply(
+          migrateStageManagerSpacesToDomain(latestState, spaceSelectionSnapshot.sourceDomainId, spaceSelection.selectedIds, migrateDomainId),
+          'selected spaces have been migrated.',
+        )
+        return
+      }
+
+      if (action === 'promote') {
+        finishHierarchyApply(
+          promoteStageManagerSpacesToDomains(latestState, spaceSelectionSnapshot.sourceDomainId, spaceSelection.selectedIds, createEntityId),
+          'selected spaces have been promoted.',
+        )
+        return
+      }
+
+      if (action === 'mass-delete') {
+        finishHierarchyApply(
+          moveStageManagerSpacesToTrash(latestState, spaceSelectionSnapshot.sourceDomainId, spaceSelection.selectedIds, createEntityId),
+          'selected spaces have been moved to trash.',
+        )
+        return
+      }
+    }
+
+    if (selectionKind === 'domains') {
+      if (!domainSelectionSnapshot.hasSelection) {
+        pushToast('select at least one domain before applying director.', 'warning')
+        return
+      }
+
+      if (action === 'demote') {
+        finishHierarchyApply(
+          demoteStageManagerDomainsToSpaces(latestState, domainSelection.selectedIds, demoteDomainId),
+          'selected domains have been demoted.',
+        )
+        return
+      }
+
+      if (action === 'mass-delete') {
+        finishHierarchyApply(
+          moveStageManagerDomainsToTrash(latestState, domainSelection.selectedIds, createEntityId),
+          'selected domains have been moved to trash.',
+        )
+        return
+      }
+    }
 
     const snapshot = buildStageManagerSelectionSnapshot(currentSpace.data.tabs, selections)
     if (!snapshot.hasSelection) {
@@ -1382,8 +1810,15 @@ export function useStageManagerController({
 
   const next = () => {
     if (step === 'select') {
-      if (!selectionSnapshot.hasSelection) {
-        pushToast('select at least one parent or sub-tab before continuing.', 'warning')
+      if (!currentSelectionHasSelection) {
+        pushToast(
+          selectionKind === 'domains'
+            ? 'select at least one domain before continuing.'
+            : selectionKind === 'spaces'
+              ? 'select at least one space before continuing.'
+              : 'select at least one parent or sub-tab before continuing.',
+          'warning',
+        )
         return
       }
       setStep('action')
@@ -1422,9 +1857,15 @@ export function useStageManagerController({
     step,
     domains: stageManagerDomains,
     action,
+    selectionKind,
+    availableActions,
     draft,
     selectionSnapshot,
+    spaceSelectionSnapshot,
+    domainSelectionSnapshot,
     selectionCounts,
+    selectedDomainIds,
+    selectedSpaceIds,
     promoteDomainId,
     promoteDestinationSpaces,
     demoteDomainId,
@@ -1443,6 +1884,8 @@ export function useStageManagerController({
     open,
     end,
     getParentSelection,
+    handleDomainClick,
+    handleSpaceClick,
     handleParentClick,
     handleSubTabClick,
     handleHomeClick,

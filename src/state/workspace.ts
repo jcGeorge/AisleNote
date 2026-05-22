@@ -74,12 +74,16 @@ export function createDefaultWorkspaceData(generateId: IdGenerator = createId): 
   }
 }
 
+export function createEmptyWorkspaceData(generateId: IdGenerator = createId): WorkspaceData {
+  return createWorkspaceDataFromTabs([], { createId: generateId })
+}
+
 export function createSpace(name: string, generateId: IdGenerator = createId): Space {
   return {
     id: generateId(),
     name,
     settings: { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
-    data: createDefaultWorkspaceData(generateId),
+    data: createEmptyWorkspaceData(generateId),
   }
 }
 

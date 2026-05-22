@@ -70,6 +70,10 @@ const CUSTOM_THEME_SLOT_LABELS: Record<CustomThemePaletteSlot, string> = {
   danger: 'danger',
   warning: 'warning',
   success: 'success',
+  domainRail: 'domain button',
+  spaceRail: 'space button',
+  parentRail: 'prime tab button',
+  subtabRail: 'sub tab button',
 }
 
 const NEWLINE_SHORTCUT_ROWS: Array<{ id: NewlineShortcutId; label: string }> = [

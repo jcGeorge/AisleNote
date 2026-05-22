@@ -1,15 +1,6 @@
 import { useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
-type ArrangeDragPreviewPosition = {
-  currentX: number
-  currentY: number
-  offsetX: number
-  offsetY: number
-  width: number
-  height: number
-}
-
 type PreviewPortalScope = {
   className: string
   style: CSSProperties
@@ -19,6 +10,46 @@ type PreviewPortalScope = {
 const PREVIEW_CSS_VARIABLES = [
   '--tab-button-scale',
   '--tab-control-height',
+  '--domain-rail-accent',
+  '--domain-rail-text',
+  '--domain-rail-bg',
+  '--domain-rail-border',
+  '--domain-rail-hover-text',
+  '--domain-rail-hover-bg',
+  '--domain-rail-hover-border',
+  '--domain-rail-selected-text',
+  '--domain-rail-selected-bg',
+  '--domain-rail-selected-border',
+  '--space-rail-accent',
+  '--space-rail-text',
+  '--space-rail-bg',
+  '--space-rail-border',
+  '--space-rail-hover-text',
+  '--space-rail-hover-bg',
+  '--space-rail-hover-border',
+  '--space-rail-selected-text',
+  '--space-rail-selected-bg',
+  '--space-rail-selected-border',
+  '--parent-rail-accent',
+  '--parent-rail-text',
+  '--parent-rail-bg',
+  '--parent-rail-border',
+  '--parent-rail-hover-text',
+  '--parent-rail-hover-bg',
+  '--parent-rail-hover-border',
+  '--parent-rail-selected-text',
+  '--parent-rail-selected-bg',
+  '--parent-rail-selected-border',
+  '--subtab-rail-accent',
+  '--subtab-rail-text',
+  '--subtab-rail-bg',
+  '--subtab-rail-border',
+  '--subtab-rail-hover-text',
+  '--subtab-rail-hover-bg',
+  '--subtab-rail-hover-border',
+  '--subtab-rail-selected-text',
+  '--subtab-rail-selected-bg',
+  '--subtab-rail-selected-border',
   '--tab-arrange-preview-bg',
   '--tab-arrange-preview-border',
   '--tab-arrange-preview-text',
@@ -36,15 +67,6 @@ const PREVIEW_CSS_VARIABLES = [
   '--trash-parent-selected-bg',
   '--trash-parent-selected-border',
 ]
-
-export function getArrangeDragPreviewStyle(preview: ArrangeDragPreviewPosition): CSSProperties {
-  return {
-    left: `${preview.currentX - preview.offsetX}px`,
-    top: `${preview.currentY - preview.offsetY}px`,
-    width: `${preview.width}px`,
-    height: `${preview.height}px`,
-  }
-}
 
 function getPreviewPortalScope(): PreviewPortalScope | null {
   if (typeof document === 'undefined' || !document.body) return null

@@ -4,6 +4,7 @@ import { DEFAULT_FRONTMATTER_SETTINGS } from '../../frontmatter/frontmatter'
 import type { AppState, ModalState, Space } from '../../types/app'
 import { makeFrontmatterRowsManual, normalizeFrontmatterModalRows } from './frontmatter-modal-state'
 import { shouldModalBackdropClose } from './modal-behavior'
+import { shouldSubmitInsertNoteReferenceOnEnter } from './modal-keyboard'
 import { ModalHost } from './ModalHost'
 
 const space: Space = {
@@ -187,6 +188,46 @@ describe('link modal rendering', () => {
     return state
   }
 
+  it('submits insert/edit link text inputs on bare Enter only', () => {
+    expect(shouldSubmitInsertNoteReferenceOnEnter({
+      modalType: 'insert-note-reference',
+      key: 'Enter',
+      targetTagName: 'input',
+      targetInputType: 'text',
+    })).toBe(true)
+    expect(shouldSubmitInsertNoteReferenceOnEnter({
+      modalType: 'insert-note-reference',
+      key: 'Enter',
+      targetTagName: 'input',
+      targetInputType: 'url',
+    })).toBe(true)
+    expect(shouldSubmitInsertNoteReferenceOnEnter({
+      modalType: 'insert-note-reference',
+      key: 'Enter',
+      targetTagName: 'input',
+      targetInputType: 'search',
+    })).toBe(true)
+    expect(shouldSubmitInsertNoteReferenceOnEnter({
+      modalType: 'insert-note-reference',
+      key: 'Enter',
+      shiftKey: true,
+      targetTagName: 'input',
+      targetInputType: 'text',
+    })).toBe(false)
+    expect(shouldSubmitInsertNoteReferenceOnEnter({
+      modalType: 'insert-note-reference',
+      key: 'Escape',
+      targetTagName: 'input',
+      targetInputType: 'text',
+    })).toBe(false)
+    expect(shouldSubmitInsertNoteReferenceOnEnter({
+      modalType: 'copy-note',
+      key: 'Enter',
+      targetTagName: 'input',
+      targetInputType: 'text',
+    })).toBe(false)
+  })
+
   it('renders the shared note link and preview controls', () => {
     const html = renderModal({
       type: 'insert-note-reference',
@@ -204,7 +245,14 @@ describe('link modal rendering', () => {
     expect(html).toContain('>url</button>')
     expect(html).toContain('>link</button>')
     expect(html).toContain('>preview</button>')
+    expect(html).toContain('note-location-picker-row')
+    expect(html).toContain('note-location-picker-row-label">domain</span>')
+    expect(html).toContain('note-location-picker-row-label">space</span>')
+    expect(html).toContain('note-location-picker-row-label">parent tab</span>')
+    expect(html).toContain('note-location-picker-row-label">note</span>')
+    expect(html).toContain('note-location-picker-chip is-selected')
     expect(html).toContain('value="Tab"')
+    expect(html).not.toContain('<select')
     expect(html).not.toContain('>aisle 1</button>')
   })
 
@@ -271,7 +319,7 @@ describe('link modal rendering', () => {
     expect(html).toContain('>aisle 1</button>')
     expect(html).toContain('>aisle 2</button>')
     expect(html).toContain('aria-label="Header target"')
-    expect(html).toContain('>note top</button>')
+    expect(html).toContain('>last position</button>')
     expect(html).toContain('>Alpha</button>')
     expect(html).toContain('>Beta</button>')
     expect(html).toContain('--note-reference-heading-indent:0.78rem')
@@ -334,7 +382,7 @@ describe('link modal rendering', () => {
     expect(html).toContain('note-reference-locked-target')
     expect(html).toContain('>aisle 2</button>')
     expect(html).toMatch(/note-reference-heading-btn is-active"[^>]*>Second<\/button>/)
-    expect(html).toContain('>note top</button>')
+    expect(html).toContain('>last position</button>')
   })
 
   it('hides unavailable mode switches when editing an existing URL link', () => {
@@ -400,6 +448,11 @@ describe('copy modal rendering', () => {
     })
 
     expect(html).toContain('note-copy-modal')
+    expect(html).toContain('note-location-picker-row-label">domain</span>')
+    expect(html).toContain('note-location-picker-row-label">space</span>')
+    expect(html).toContain('note-location-picker-row-label">parent tab</span>')
+    expect(html).toContain('note-location-picker-row-label">note</span>')
+    expect(html).toContain('note-location-picker-chip is-selected')
     expect(html).toMatch(/note-reference-mode-btn is-active"[^>]*>independent</)
     expect(html).toContain('>linked</button>')
     expect(html).toContain('note-copy-behavior-row')

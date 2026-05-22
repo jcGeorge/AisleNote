@@ -12,6 +12,10 @@ export type CustomThemePaletteSlot =
   | 'danger'
   | 'warning'
   | 'success'
+  | 'domainRail'
+  | 'spaceRail'
+  | 'parentRail'
+  | 'subtabRail'
 export type CustomThemePalette = Record<CustomThemePaletteSlot, string>
 export type ViewMode = 'domains' | 'spaces' | 'main' | 'trash' | 'settings' | 'stage-manager'
 export type ShortcutId =
@@ -461,6 +465,7 @@ export type TabArrangeDragPreview = {
 
 export type StageManagerStep = 'select' | 'action' | 'configure' | 'review'
 export type StageManagerAction = 'migrate' | 'promote' | 'demote' | 'frontmatter' | 'mass-delete'
+export type StageManagerSelectionKind = 'notes' | 'spaces' | 'domains'
 export type StageManagerPartialDirection = 'toward-none' | 'toward-all'
 export type StageManagerParentSelectionMode = 'none' | 'partial' | 'full'
 export type StageManagerPromoteSpaceMode = 'existing' | 'new'
@@ -482,6 +487,24 @@ export type StageManagerSelectionState = Record<string, StageManagerParentSelect
 export type StageManagerSelectionAnchor =
   | { kind: 'parent'; tabId: string }
   | { kind: 'subtab'; parentTabId: string; subTabId: string }
+
+export type StageManagerIdSelection = {
+  selectedIds: string[]
+  anchorId: string | null
+}
+
+export type StageManagerSpaceSelectionSnapshot = {
+  sourceDomainId: string
+  sourceDomainName: string
+  spaces: Space[]
+  hasSelection: boolean
+}
+
+export type StageManagerDomainSelectionSnapshot = {
+  domains: Domain[]
+  domainIds: Set<string>
+  hasSelection: boolean
+}
 
 export type StageManagerDraft = {
   promoteDomainId: string

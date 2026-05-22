@@ -16,6 +16,11 @@ type EditorNewlineOperationResult =
   | { handled: false }
   | { handled: true; aisleMarkdown?: string }
 
+type SelectedTextLineRange = {
+  range: ReturnType<typeof getEditorTextLineRanges>[number]
+  index: number
+}
+
 const TEXT_CARRYING_BLOCK_OPERATIONS = new Set<NewlineOperationId>([
   'normalNewLine',
   'task',
@@ -109,13 +114,7 @@ function getWholeLineSelectionIndices(view: any): number[] {
 
   const selectionFrom = Math.min(from, to)
   const selectionTo = Math.max(from, to)
-  const touchedRanges = getEditorTextLineRanges(view)
-    .map((range, index) => ({ range, index }))
-    .filter(({ range }) =>
-      range.length > 0
-        ? selectionFrom <= range.end && selectionTo >= range.start
-        : selectionFrom <= range.start && selectionTo >= range.end,
-    )
+  const touchedRanges = getSelectedTextLineRanges(view)
   if (touchedRanges.length === 0) return []
 
   return touchedRanges.every(({ range }) => selectionFrom <= range.start && selectionTo >= range.end)
@@ -125,6 +124,36 @@ function getWholeLineSelectionIndices(view: any): number[] {
 
 function isWholeLineSelection(view: any): boolean {
   return getWholeLineSelectionIndices(view).length > 0
+}
+
+function getSelectedTextLineRanges(view: any): SelectedTextLineRange[] {
+  const { from, to } = view.state.selection
+  if (from === to) return []
+
+  const selectionFrom = Math.min(from, to)
+  const selectionTo = Math.max(from, to)
+  return getEditorTextLineRanges(view)
+    .map((range, index) => ({ range, index }))
+    .filter(({ range }) =>
+      range.length > 0
+        ? selectionFrom < range.end && selectionTo > range.start
+        : selectionFrom <= range.start && selectionTo >= range.end,
+    )
+}
+
+function textLineRangeIsTopLevelListItem(view: any, range: SelectedTextLineRange['range']): boolean {
+  try {
+    const resolved = view.state.doc.resolve(range.start)
+    for (let depth = resolved.depth; depth > 0; depth -= 1) {
+      if (resolved.node(depth)?.type?.name !== 'listItem') continue
+      const listDepth = depth - 1
+      const listNode = resolved.node(listDepth)
+      return listDepth === 1 && (listNode?.type?.name === 'bulletList' || listNode?.type?.name === 'orderedList')
+    }
+  } catch {
+    return false
+  }
+  return false
 }
 
 function setSelectionNearInsertedContent(tr: any, from: number, to: number) {
@@ -316,8 +345,33 @@ function insertListOperationBelow(view: any, operation: NewlineOperationId, text
   view.dispatch(tr.scrollIntoView())
 }
 
+function tryApplyListOperationToSelectedListRows(view: any, operation: NewlineOperationId): boolean {
+  if (!isListNewlineOperation(operation) || view.state.selection.empty) return false
+
+  const selectedRows = getSelectedTextLineRanges(view)
+  if (selectedRows.length === 0) return false
+  if (!selectedRows.every(({ range }) => textLineRangeIsTopLevelListItem(view, range))) return false
+
+  const selectedIndices = selectedRows.map(({ index }) => index)
+  const plan = buildMultiLineListOperationPlan(
+    view,
+    {
+      anchorBlockIndex: selectedIndices[0],
+      headBlockIndex: selectedIndices[selectedIndices.length - 1],
+      columnOffset: 0,
+      cursorBlockIndices: selectedIndices,
+    },
+    operation as MultiLineListOperation,
+  )
+  if (!plan) return false
+
+  view.dispatch(plan.transaction.scrollIntoView())
+  return true
+}
+
 function insertOperationBelow(view: any, operation: NewlineOperationId, text: string) {
   if (isListNewlineOperation(operation)) {
+    if (tryApplyListOperationToSelectedListRows(view, operation)) return
     insertListOperationBelow(view, operation, text)
     return
   }
@@ -347,7 +401,7 @@ function replaceSelectedLine(view: any, operation: NewlineOperationId, text: str
 
   if (isListNewlineOperation(operation)) {
     const selectedLineIndices = getWholeLineSelectionIndices(view)
-    if (selectedLineIndices.length >= 2) {
+    if (selectedLineIndices.length >= 1) {
       const plan = buildMultiLineListOperationPlan(
         view,
         {

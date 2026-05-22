@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type DragEvent, type MouseEvent as ReactMouseEvent } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react'
 import { NoteLocationPicker, type NoteLocationPickerValue } from '../notes/NoteLocationPicker'
 import {
   NEWLINE_OPERATION_LABELS,
@@ -36,6 +36,7 @@ import type {
   TabSortTarget,
 } from '../../types/app'
 import { shouldModalBackdropClose } from './modal-behavior'
+import { shouldSubmitInsertNoteReferenceOnEnter } from './modal-keyboard'
 import { makeFrontmatterRowsManual, normalizeFrontmatterModalRows } from './frontmatter-modal-state'
 import { getModalText } from './modal-text'
 
@@ -205,6 +206,8 @@ export function ModalHost({
   onDeduplicateKeepDataChange,
   onConfirm,
 }: ModalHostProps) {
+  const enterSubmitPendingRef = useRef(false)
+
   useEffect(() => {
     if (!modal) return
 
@@ -221,6 +224,48 @@ export function ModalHost({
     document.addEventListener('keydown', handleKeyDown, true)
     return () => document.removeEventListener('keydown', handleKeyDown, true)
   }, [modal, onModalChange])
+
+  useEffect(() => {
+    enterSubmitPendingRef.current = false
+  }, [modal])
+
+  const runPrimaryModalAction = () => {
+    if (!modal) return
+    if (modal.type === 'delete-target' && modal.target.type === 'space' && state.spaces.length <= 1) {
+      onModalChange(null)
+      return
+    }
+    if (modal.type === 'delete-target' && modal.target.type === 'domain' && state.domains.length <= 1) {
+      onModalChange(null)
+      return
+    }
+    onConfirm()
+  }
+
+  const handleDialogKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const target = event.target instanceof HTMLElement ? event.target : null
+    if (!shouldSubmitInsertNoteReferenceOnEnter({
+      modalType: modal?.type ?? null,
+      key: event.key,
+      altKey: event.altKey,
+      ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey,
+      shiftKey: event.shiftKey,
+      isComposing: event.nativeEvent.isComposing,
+      targetTagName: target?.tagName,
+      targetInputType: target instanceof HTMLInputElement ? target.type : undefined,
+    })) {
+      return
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    if (enterSubmitPendingRef.current) return
+    enterSubmitPendingRef.current = true
+    runPrimaryModalAction()
+    window.setTimeout(() => {
+      enterSubmitPendingRef.current = false
+    }, 0)
+  }
 
   if (!modal) return null
 
@@ -518,7 +563,7 @@ export function ModalHost({
             className={`note-reference-heading-btn ${resolved.target.heading ? '' : 'is-active'}`}
             onClick={() => setNoteReferenceHeading(null)}
           >
-            note top
+            last position
           </button>
           {resolved.headings.map((heading) => (
             <button
@@ -552,6 +597,7 @@ export function ModalHost({
         role="dialog"
         aria-modal="true"
         onClick={(event) => event.stopPropagation()}
+        onKeyDown={handleDialogKeyDown}
       >
         <h2>{modalText.title}</h2>
         {modal.type === 'sort-tabs' && (
@@ -997,17 +1043,7 @@ export function ModalHost({
               className={`btn btn-sm ${
                 modal.type === 'delete-target' || modal.type === 'trash-delete-all' ? 'app-danger-btn' : 'modal-primary-btn'
               }`}
-              onClick={() => {
-                if (modal.type === 'delete-target' && modal.target.type === 'space' && state.spaces.length <= 1) {
-                  onModalChange(null)
-                  return
-                }
-                if (modal.type === 'delete-target' && modal.target.type === 'domain' && state.domains.length <= 1) {
-                  onModalChange(null)
-                  return
-                }
-                onConfirm()
-              }}
+              onClick={runPrimaryModalAction}
             >
               {modalText.action}
             </button>

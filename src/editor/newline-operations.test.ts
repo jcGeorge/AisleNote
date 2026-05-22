@@ -150,6 +150,13 @@ function bulletListNode(items: Array<{ text: string; attrs?: Record<string, unkn
   )
 }
 
+function orderedListNode(texts: string[]) {
+  return newlineOperationSchema.nodes.orderedList.create(
+    { order: 1 },
+    texts.map((text) => listItemNode(text)),
+  )
+}
+
 function createEditorForDoc(doc: any, selectionFrom: number, selectionTo: number) {
   let state = EditorState.create({
     doc,
@@ -178,6 +185,14 @@ function listTexts(listNode: any): string[] {
     texts.push(listNode.child(index).textContent)
   }
   return texts
+}
+
+function docChildTypes(doc: any): string[] {
+  const types: string[] = []
+  for (let index = 0; index < doc.childCount; index += 1) {
+    types.push(doc.child(index).type.name)
+  }
+  return types
 }
 
 describe('editor newline operations', () => {
@@ -285,6 +300,89 @@ describe('editor newline operations', () => {
     expect(view.state.doc.child(1).child(0).attrs).toMatchObject({ task: true, checked: false })
     expect(view.state.doc.child(1).child(1).attrs).toMatchObject({ task: true, checked: false })
     expect(view.dispatch.mock.calls[0]?.[0]?.getMeta('addToHistory')).not.toBe(false)
+  })
+
+  it('converts selected numbered row text to a task without deleting sibling rows', () => {
+    const doc = newlineOperationSchema.nodes.doc.create(null, [
+      orderedListNode(['Add parent tab', 'Add sub-tab', 'Each note keeps separate content']),
+    ])
+    const ranges = getEditorTextLineRanges({ state: { doc } })
+    const { editor, view } = createEditorForDoc(doc, ranges[1].start, ranges[1].end)
+
+    expect(applyEditorNewlineOperation(editor as any, 'task')).toEqual({ handled: true })
+
+    expect(docChildTypes(view.state.doc)).toEqual(['orderedList', 'bulletList', 'orderedList'])
+    expect(listTexts(view.state.doc.child(0))).toEqual(['Add parent tab'])
+    expect(listTexts(view.state.doc.child(1))).toEqual(['Add sub-tab'])
+    expect(view.state.doc.child(1).child(0).attrs).toMatchObject({ task: true, checked: false })
+    expect(listTexts(view.state.doc.child(2))).toEqual(['Each note keeps separate content'])
+    expect(view.dispatch.mock.calls[0]?.[0]?.getMeta('addToHistory')).not.toBe(false)
+  })
+
+  it('converts selected first and last numbered rows without deleting the other rows', () => {
+    const firstRowDoc = newlineOperationSchema.nodes.doc.create(null, [orderedListNode(['one', 'two', 'three'])])
+    const firstRowRanges = getEditorTextLineRanges({ state: { doc: firstRowDoc } })
+    const firstRow = createEditorForDoc(firstRowDoc, firstRowRanges[0].start, firstRowRanges[0].end)
+
+    expect(applyEditorNewlineOperation(firstRow.editor as any, 'task')).toEqual({ handled: true })
+    expect(docChildTypes(firstRow.view.state.doc)).toEqual(['bulletList', 'orderedList'])
+    expect(listTexts(firstRow.view.state.doc.child(0))).toEqual(['one'])
+    expect(listTexts(firstRow.view.state.doc.child(1))).toEqual(['two', 'three'])
+
+    const lastRowDoc = newlineOperationSchema.nodes.doc.create(null, [orderedListNode(['one', 'two', 'three'])])
+    const lastRowRanges = getEditorTextLineRanges({ state: { doc: lastRowDoc } })
+    const lastRow = createEditorForDoc(lastRowDoc, lastRowRanges[2].start, lastRowRanges[2].end)
+
+    expect(applyEditorNewlineOperation(lastRow.editor as any, 'task')).toEqual({ handled: true })
+    expect(docChildTypes(lastRow.view.state.doc)).toEqual(['orderedList', 'bulletList'])
+    expect(listTexts(lastRow.view.state.doc.child(0))).toEqual(['one', 'two'])
+    expect(listTexts(lastRow.view.state.doc.child(1))).toEqual(['three'])
+  })
+
+  it('expands partial selected numbered row text to the whole row before converting to a task', () => {
+    const doc = newlineOperationSchema.nodes.doc.create(null, [
+      orderedListNode(['Add parent tab', 'Add sub-tab', 'Each note keeps separate content']),
+    ])
+    const ranges = getEditorTextLineRanges({ state: { doc } })
+    const { editor, view } = createEditorForDoc(doc, ranges[1].start + 4, ranges[1].start + 7)
+
+    expect(applyEditorNewlineOperation(editor as any, 'task')).toEqual({ handled: true })
+
+    expect(docChildTypes(view.state.doc)).toEqual(['orderedList', 'bulletList', 'orderedList'])
+    expect(listTexts(view.state.doc.child(0))).toEqual(['Add parent tab'])
+    expect(listTexts(view.state.doc.child(1))).toEqual(['Add sub-tab'])
+    expect(listTexts(view.state.doc.child(2))).toEqual(['Each note keeps separate content'])
+  })
+
+  it('converts selected numbered row ranges to tasks and preserves unselected rows', () => {
+    const doc = newlineOperationSchema.nodes.doc.create(null, [
+      orderedListNode(['one', 'two', 'three', 'four']),
+    ])
+    const ranges = getEditorTextLineRanges({ state: { doc } })
+    const { editor, view } = createEditorForDoc(doc, ranges[1].start, ranges[2].end)
+
+    expect(applyEditorNewlineOperation(editor as any, 'task')).toEqual({ handled: true })
+
+    expect(docChildTypes(view.state.doc)).toEqual(['orderedList', 'bulletList', 'orderedList'])
+    expect(listTexts(view.state.doc.child(0))).toEqual(['one'])
+    expect(listTexts(view.state.doc.child(1))).toEqual(['two', 'three'])
+    expect(view.state.doc.child(1).child(0).attrs).toMatchObject({ task: true, checked: false })
+    expect(view.state.doc.child(1).child(1).attrs).toMatchObject({ task: true, checked: false })
+    expect(listTexts(view.state.doc.child(2))).toEqual(['four'])
+  })
+
+  it('converts an empty selected numbered row to an empty task without deleting sibling rows', () => {
+    const doc = newlineOperationSchema.nodes.doc.create(null, [orderedListNode(['one', '', 'three'])])
+    const ranges = getEditorTextLineRanges({ state: { doc } })
+    const { editor, view } = createEditorForDoc(doc, ranges[1].start, ranges[2].start)
+
+    expect(applyEditorNewlineOperation(editor as any, 'task')).toEqual({ handled: true })
+
+    expect(docChildTypes(view.state.doc)).toEqual(['orderedList', 'bulletList', 'orderedList'])
+    expect(listTexts(view.state.doc.child(0))).toEqual(['one'])
+    expect(listTexts(view.state.doc.child(1))).toEqual([''])
+    expect(view.state.doc.child(1).child(0).attrs).toMatchObject({ task: true, checked: false })
+    expect(listTexts(view.state.doc.child(2))).toEqual(['three'])
   })
 
   it('does not replace a non-empty paragraph', () => {

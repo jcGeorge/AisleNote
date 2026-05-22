@@ -15,6 +15,10 @@ export type StorageCustomThemePaletteSlot =
   | 'danger'
   | 'warning'
   | 'success'
+  | 'domainRail'
+  | 'spaceRail'
+  | 'parentRail'
+  | 'subtabRail'
 export type StorageShortcutId =
   | 'toggleTabTrash'
   | 'openDomains'

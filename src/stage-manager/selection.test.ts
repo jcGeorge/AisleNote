@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Tab } from '../types/app'
 import {
+  applyStageManagerIdModifierClick,
   applyStageManagerParentModifierClick,
   applyStageManagerSubTabModifierClick,
   buildStageManagerSelectionSnapshot,
@@ -174,5 +175,26 @@ describe('stage manager selection', () => {
       mode: 'partial',
       selectedSubTabIds: ['sub-3'],
     })
+  })
+
+  it('shift and ctrl/cmd entity selection works over ordered domain or space ids', () => {
+    const orderedIds = ['one', 'two', 'three', 'four']
+    const range = applyStageManagerIdModifierClick({
+      orderedIds,
+      selection: { selectedIds: [], anchorId: null },
+      activeId: 'one',
+      clickedId: 'three',
+      modifiers: { shiftKey: true, ctrlKey: false, metaKey: false },
+    })
+    const toggled = applyStageManagerIdModifierClick({
+      orderedIds,
+      selection: range,
+      activeId: 'one',
+      clickedId: 'two',
+      modifiers: { shiftKey: false, ctrlKey: false, metaKey: true },
+    })
+
+    expect(range).toEqual({ selectedIds: ['one', 'two', 'three'], anchorId: 'one' })
+    expect(toggled).toEqual({ selectedIds: ['one', 'three'], anchorId: 'two' })
   })
 })

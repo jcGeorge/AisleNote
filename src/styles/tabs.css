@@ -119,6 +119,8 @@
 
 .tab-arrange-preview.is-subtab {
   border-color: var(--subtab-arrange-preview-border);
+  background: var(--subtab-selected-bg);
+  color: var(--subtab-selected-text);
   box-shadow: var(--subtab-arrange-preview-shadow);
 }
 
@@ -216,39 +218,39 @@
 }
 
 .trash-parent-tab {
-  color: var(--trash-parent-text) !important;
-  background: var(--trash-parent-bg) !important;
-  border-color: var(--trash-parent-border) !important;
+  color: var(--parent-rail-text) !important;
+  background: var(--parent-rail-bg) !important;
+  border-color: var(--parent-rail-border) !important;
 }
 
 .trash-parent-tab:hover {
-  color: var(--trash-parent-hover-text) !important;
-  background: var(--trash-parent-hover-bg) !important;
-  border-color: var(--trash-parent-hover-border) !important;
+  color: var(--parent-rail-hover-text) !important;
+  background: var(--parent-rail-hover-bg) !important;
+  border-color: var(--parent-rail-hover-border) !important;
 }
 
 .trash-parent-tab.is-selected {
-  color: var(--trash-parent-selected-text) !important;
-  background: var(--trash-parent-selected-bg) !important;
-  border-color: var(--trash-parent-selected-border) !important;
+  color: var(--parent-rail-selected-text) !important;
+  background: var(--parent-rail-selected-bg) !important;
+  border-color: var(--parent-rail-selected-border) !important;
 }
 
 .trash-subtab-btn {
-  color: var(--trash-subtab-text) !important;
-  background: var(--trash-subtab-bg) !important;
-  border-color: var(--trash-subtab-border) !important;
+  color: var(--subtab-rail-text) !important;
+  background: var(--subtab-rail-bg) !important;
+  border-color: var(--subtab-rail-border) !important;
 }
 
 .trash-subtab-btn:hover {
-  color: var(--trash-subtab-hover-text) !important;
-  background: var(--trash-subtab-hover-bg) !important;
-  border-color: var(--trash-subtab-hover-border) !important;
+  color: var(--subtab-rail-hover-text) !important;
+  background: var(--subtab-rail-hover-bg) !important;
+  border-color: var(--subtab-rail-hover-border) !important;
 }
 
 .trash-subtab-btn.is-selected {
-  color: var(--trash-subtab-selected-text) !important;
-  background: var(--trash-subtab-selected-bg) !important;
-  border-color: var(--trash-subtab-selected-border) !important;
+  color: var(--subtab-rail-selected-text) !important;
+  background: var(--subtab-rail-selected-bg) !important;
+  border-color: var(--subtab-rail-selected-border) !important;
 }
 
 .view-trash .trash-home-tab,
