@@ -468,6 +468,39 @@ describe('browser hybrid storage', () => {
     expect(JSON.stringify(manifestBodies)).toContain('"aisleBodyId":"shared-aisle-body"')
   })
 
+  it('round trips distinct aisle body markdown without collapsing sibling aisles', () => {
+    const state = createBrowserStorageState()
+    state.noteBodies[0].aisles = [
+      { id: 'aisle-home', aisleBodyId: 'body-home-aisle', markdown: 'stale home mirror' },
+      { id: 'aisle-two', aisleBodyId: 'body-second-aisle', markdown: 'stale second mirror' },
+    ]
+    state.noteAisleBodies = [
+      { id: 'body-home-aisle', markdown: 'left aisle draft 🚙' },
+      { id: 'body-second-aisle', markdown: 'right aisle draft 🥺' },
+    ]
+
+    const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
+    const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
+    const bodyRecord = getRecord(
+      (Array.isArray(rootManifest.noteBodies) ? rootManifest.noteBodies : [])
+        .find((entry) => getRecord(entry).id === 'body-1'),
+    )
+    const aisleFiles = (Array.isArray(bodyRecord.aisles) ? bodyRecord.aisles : [])
+      .map(getRecord)
+      .map((aisle) => String(aisle.file))
+
+    expect(fileMap.get(`notes-data/${aisleFiles[0]}`)).toMatchObject({ kind: 'text', text: 'left aisle draft 🚙' })
+    expect(fileMap.get(`notes-data/${aisleFiles[1]}`)).toMatchObject({ kind: 'text', text: 'right aisle draft 🥺' })
+
+    const roundTripped = parseSavedState(readSerializedStateFromHybridFileMap(fileMap) ?? '')
+    expect(roundTripped.noteAisleBodies?.find((body) => body.id === 'body-home-aisle')?.markdown).toBe('left aisle draft 🚙')
+    expect(roundTripped.noteAisleBodies?.find((body) => body.id === 'body-second-aisle')?.markdown).toBe('right aisle draft 🥺')
+    expect(roundTripped.noteBodies[0].aisles.map((aisle) => aisle.markdown)).toEqual([
+      'left aisle draft 🚙',
+      'right aisle draft 🥺',
+    ])
+  })
+
   it('uses shared aisle body markdown instead of stale linked aisle mirrors', () => {
     const currentMarkdown = 'Hat Trick!\n\n---\n\n\u200b'
     const staleMarkdown = 'Hat Trick!\n\n\u200b\n\n\n\n\u200b\n\n---\n\n\u200b'

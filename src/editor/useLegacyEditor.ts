@@ -21,8 +21,8 @@ import {
   installCompletedTaskCheckboxBehavior,
   installTaskTextReorderBehavior,
 } from './task-behavior'
-import { materializeHorizontalRuleShortcut } from '../markdown/markdown-utils'
 import { importImageBlobAsAssetUrl } from '../markdown/image-asset-registry'
+import { measureSlowOperation } from '../performance/performance-logging'
 import type { ToastTone, ViewMode } from '../types/app'
 import { prepareMarkdownForEditorDisplay, restoreEditorBlankParagraphs, setEditorMarkdownForDisplay } from './editor-markdown-display'
 
@@ -145,32 +145,25 @@ export function useLegacyEditor({
         },
       },
       events: {
-        change: () => {
+        change: () => measureSlowOperation('legacy editor change', () => {
           if (!isMainViewRef.current) return
           const currentEditor = editorRef.current
           if (!currentEditor) return
           const markdown = getNormalizedEditorMarkdown(currentEditor)
-          const previousMarkdown = lastEditorMarkdownRef.current
 
           if (normalizingContentRef.current) {
             normalizingContentRef.current = false
             const normalizedMarkdown = lastEditorMarkdownRef.current
-            scheduleContentCommit(
-              normalizedMarkdown,
-              activeSpaceIdRef.current,
-              activeTabIdRef.current,
-              activeSubTabIdRef.current,
-              activeAisleIdRef.current,
-            )
-            return
-          }
-
-          const materializedHorizontalRule = materializeHorizontalRuleShortcut(previousMarkdown, markdown)
-          if (materializedHorizontalRule && materializedHorizontalRule !== markdown) {
-            normalizingContentRef.current = true
-            lastEditorMarkdownRef.current = materializedHorizontalRule
-            setEditorMarkdownForDisplay(currentEditor, materializedHorizontalRule)
-            return
+            if (markdown === normalizedMarkdown) {
+              scheduleContentCommit(
+                normalizedMarkdown,
+                activeSpaceIdRef.current,
+                activeTabIdRef.current,
+                activeSubTabIdRef.current,
+                activeAisleIdRef.current,
+              )
+              return
+            }
           }
 
           maybeShowCompletedTaskUndoHint(markdown)
@@ -182,7 +175,7 @@ export function useLegacyEditor({
             activeSubTabIdRef.current,
             activeAisleIdRef.current,
           )
-        },
+        }),
       },
     })
     restoreEditorBlankParagraphs(editorRef.current, displayContent)

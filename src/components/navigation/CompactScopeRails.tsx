@@ -48,11 +48,17 @@ type CompactSpaceRailProps = {
   arrangeControlsDisabled?: boolean
   stageManagerMode?: boolean
   stageManagerSelectedSpaceIds?: ReadonlySet<string>
+  arrangeSelectedSpaceIds?: ReadonlySet<string>
   onOpenSpace: (spaceId: string) => void
+  onHandleArrangeSpaceSelectionClick?: (
+    spaceId: string,
+    modifiers: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean },
+  ) => boolean
   onStageManagerSpaceClick?: (
     spaceId: string,
     modifiers: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean },
   ) => void
+  onClearArrangeSelection?: () => void
   onOpenContextMenu: (event: MouseEvent<HTMLButtonElement>, spaceId: string) => void
   onShouldSkipRenameBlur: (type: EditableEntityType, id: string) => boolean
   onCommitRename: (type: EditableEntityType, id: string, value: string) => void
@@ -94,11 +100,17 @@ type CompactDomainRailProps = {
   arrangeControlsDisabled?: boolean
   stageManagerMode?: boolean
   stageManagerSelectedDomainIds?: ReadonlySet<string>
+  arrangeSelectedDomainIds?: ReadonlySet<string>
   onOpenDomain: (domainId: string) => void
+  onHandleArrangeDomainSelectionClick?: (
+    domainId: string,
+    modifiers: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean },
+  ) => boolean
   onStageManagerDomainClick?: (
     domainId: string,
     modifiers: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean },
   ) => void
+  onClearArrangeSelection?: () => void
   onOpenContextMenu: (event: MouseEvent<HTMLButtonElement>, domainId: string) => void
   onShouldSkipRenameBlur: (type: EditableEntityType, id: string) => boolean
   onCommitRename: (type: EditableEntityType, id: string, value: string) => void
@@ -140,8 +152,11 @@ export function CompactSpaceRail({
   arrangeControlsDisabled = false,
   stageManagerMode = false,
   stageManagerSelectedSpaceIds,
+  arrangeSelectedSpaceIds,
   onOpenSpace,
+  onHandleArrangeSpaceSelectionClick,
   onStageManagerSpaceClick,
+  onClearArrangeSelection,
   onOpenContextMenu,
   onShouldSkipRenameBlur,
   onCommitRename,
@@ -207,11 +222,13 @@ export function CompactSpaceRail({
             const isArrangeSpaceBeforeTarget = isArrangeSpaceTarget && arrangeMode.overSpaceInsert === 'before'
             const isArrangeSpaceAfterTarget = isArrangeSpaceTarget && arrangeMode.overSpaceInsert === 'after'
             const isStageManagerSelected = stageManagerSelectedSpaceIds?.has(space.id) ?? false
+            const isArrangeSelected = arrangeSelectedSpaceIds?.has(space.id) ?? false
             const buttonClassName = [
               'compact-scope-btn',
               'compact-space-btn',
               space.id === activeSpaceId ? 'is-active' : '',
               isStageManagerSelected ? 'stage-manager-space-selected' : '',
+              isArrangeSelected ? 'is-arrange-selected' : '',
               arrangeableSpaceClassName,
               isArrangeSpaceTarget ? 'is-arrange-target' : '',
               isArrangeSpaceBeforeTarget ? 'is-arrange-target-before' : '',
@@ -243,6 +260,17 @@ export function CompactSpaceRail({
                     })
                     return
                   }
+                  const modifiers = {
+                    shiftKey: event.shiftKey,
+                    ctrlKey: event.ctrlKey,
+                    metaKey: event.metaKey,
+                  }
+                  if (onHandleArrangeSpaceSelectionClick?.(space.id, modifiers)) {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    return
+                  }
+                  onClearArrangeSelection?.()
                   onOpenSpace(space.id)
                 }}
                 onContextMenu={(event) => {
@@ -331,8 +359,11 @@ export function CompactDomainRail({
   arrangeControlsDisabled = false,
   stageManagerMode = false,
   stageManagerSelectedDomainIds,
+  arrangeSelectedDomainIds,
   onOpenDomain,
+  onHandleArrangeDomainSelectionClick,
   onStageManagerDomainClick,
+  onClearArrangeSelection,
   onOpenContextMenu,
   onShouldSkipRenameBlur,
   onCommitRename,
@@ -398,11 +429,13 @@ export function CompactDomainRail({
             const isArrangeDomainBeforeTarget = isArrangeDomainTarget && arrangeMode.overDomainInsert === 'before'
             const isArrangeDomainAfterTarget = isArrangeDomainTarget && arrangeMode.overDomainInsert === 'after'
             const isStageManagerSelected = stageManagerSelectedDomainIds?.has(domain.id) ?? false
+            const isArrangeSelected = arrangeSelectedDomainIds?.has(domain.id) ?? false
             const buttonClassName = [
               'compact-scope-btn',
               'compact-domain-btn',
               domain.id === activeDomainId ? 'is-active' : '',
               isStageManagerSelected ? 'stage-manager-domain-selected' : '',
+              isArrangeSelected ? 'is-arrange-selected' : '',
               arrangeableDomainClassName,
               isArrangeDomainTarget ? 'is-arrange-target' : '',
               isArrangeDomainBeforeTarget ? 'is-arrange-target-before' : '',
@@ -434,6 +467,17 @@ export function CompactDomainRail({
                     })
                     return
                   }
+                  const modifiers = {
+                    shiftKey: event.shiftKey,
+                    ctrlKey: event.ctrlKey,
+                    metaKey: event.metaKey,
+                  }
+                  if (onHandleArrangeDomainSelectionClick?.(domain.id, modifiers)) {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    return
+                  }
+                  onClearArrangeSelection?.()
                   onOpenDomain(domain.id)
                 }}
                 onContextMenu={(event) => {

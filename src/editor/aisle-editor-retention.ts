@@ -72,10 +72,11 @@ export function getAislePreviewMarkdown({
   lastEditorMarkdownByAisle,
 }: {
   aisle: NoteAisle
-  pendingContent: PendingContent | null
+  pendingContent: Map<string, PendingContent>
   lastEditorMarkdownByAisle: Map<string, string>
 }): string {
   const aisleBodyId = getAisleBodyId(aisle)
-  if (pendingContent?.aisleBodyId === aisleBodyId || pendingContent?.aisleId === aisle.id) return pendingContent.markdown
+  const pending = pendingContent.get(aisleBodyId)
+  if (pending?.aisleBodyId === aisleBodyId || pending?.aisleId === aisle.id) return pending.markdown
   return lastEditorMarkdownByAisle.get(aisleBodyId) ?? aisle.markdown
 }

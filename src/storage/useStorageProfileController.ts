@@ -17,6 +17,24 @@ type UseStorageProfileControllerParams = {
 
 const STORAGE_ERROR_TOAST_DURATION_MS = 6000
 
+export function getStorageProfileStatusToast(nextStatus: StorageProfileStatus): {
+  message: string
+  tone: ToastTone
+  durationMs?: number
+} | null {
+  if (nextStatus.event === 'external-loaded') {
+    return { message: 'external storage changes loaded.', tone: 'success' }
+  }
+  if (nextStatus.status === 'error') {
+    return {
+      message: nextStatus.error ?? 'storage profile could not be loaded. saves are paused.',
+      tone: 'error',
+      durationMs: STORAGE_ERROR_TOAST_DURATION_MS,
+    }
+  }
+  return null
+}
+
 export function useStorageProfileController({ pushToast, beforeStorageAction }: UseStorageProfileControllerParams) {
   const [storageProfileStatus, setStorageProfileStatus] = useState<StorageProfileStatus | null>(null)
   const pushToastRef = useRef(pushToast)
@@ -29,15 +47,8 @@ export function useStorageProfileController({ pushToast, beforeStorageAction }: 
     let disposed = false
     const applyStorageProfileStatus = (nextStatus: StorageProfileStatus) => {
       setStorageProfileStatus(nextStatus)
-      if (nextStatus.event === 'external-loaded') {
-        pushToastRef.current('external storage changes loaded.', 'success')
-      } else if (nextStatus.status === 'error') {
-        pushToastRef.current(
-          nextStatus.error ?? 'storage profile could not be loaded. saves are paused.',
-          'error',
-          STORAGE_ERROR_TOAST_DURATION_MS,
-        )
-      }
+      const toast = getStorageProfileStatusToast(nextStatus)
+      if (toast) pushToastRef.current(toast.message, toast.tone, toast.durationMs)
     }
 
     void window.electronAPI?.getStorageProfileStatus?.().then((status) => {

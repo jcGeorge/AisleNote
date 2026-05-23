@@ -491,10 +491,6 @@
   border-right: 0;
 }
 
-.note-aisle-pane.is-active {
-  border-color: var(--stage-action-selected-border);
-}
-
 .note-aisle-editor-shell {
   flex: 1 1 auto;
   min-height: 0;

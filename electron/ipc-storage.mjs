@@ -117,6 +117,10 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     return status
   }
 
+  const logExternalStorageEvent = (event) => {
+    console.info?.(`[tabs:storage] ${event}`)
+  }
+
   const startWatcher = () => {
     watcher?.close()
     watcher = createStorageProfileWatcher({
@@ -128,9 +132,14 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
         })
         if (result.ok && typeof result.serializedState === 'string') {
           if (result.unchanged) {
+            if (result.externalEchoIgnored) {
+              logExternalStorageEvent('external-echo-ignored')
+              updateStatus('external-echo-ignored')
+            }
             watcher?.reset()
             return
           }
+          logExternalStorageEvent('external-loaded')
           updateStatus('external-loaded')
           broadcastAppStateUpdate({
             serializedState: result.serializedState,
@@ -139,6 +148,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
           watcher?.reset()
           return
         }
+        logExternalStorageEvent('external-error')
         updateStatus('external-error', result.error ?? 'Existing app state could not be loaded.')
       },
     })
@@ -334,6 +344,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
   ipcMain.handle?.('retry-storage-profile', async () => {
     const result = coordinator.reloadProfileRoot(profile.profileRootPath, {
       requireSerializedState: coordinator.getSerializedState() !== null,
+      detectAppSaveEcho: false,
     })
     updateStatus(result.ok ? 'retry-loaded' : 'retry-error', result.ok ? null : result.error)
     if (result.ok && typeof result.serializedState === 'string' && !result.unchanged) {
@@ -356,7 +367,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
       return { ok: false, status, error: restoreResult.error }
     }
 
-    const result = coordinator.reloadProfileRoot(profile.profileRootPath)
+    const result = coordinator.reloadProfileRoot(profile.profileRootPath, { detectAppSaveEcho: false })
     updateStatus(result.ok ? 'recovery-restored' : 'recovery-error', result.ok ? null : result.error)
     if (result.ok && typeof result.serializedState === 'string') {
       broadcastAppStateUpdate({
@@ -431,6 +442,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     getProfileRootPath: () => profile.profileRootPath,
     getStorageProfileStatus: () => status,
     saveAppStateSnapshot: saveRevisionedState,
+    scanStorageProfile: () => watcher?.scan(),
     close: () => watcher?.close(),
   }
 }

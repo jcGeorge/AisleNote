@@ -31,13 +31,14 @@ export function getSnapshotEditorMarkdown(
 ) {
   if (!editor) return fallbackMarkdown
   try {
-    return getNormalizedEditorMarkdown(editor)
+    return measureSlowOperation('editor snapshot markdown normalization', () => getNormalizedEditorMarkdown(editor))
   } catch {
     return fallbackMarkdown
   }
 }
 
 export type EditorContentTarget = {
+  noteBodyId?: string | null
   spaceId: string
   tabId: string
   subTabId: string | null
@@ -45,7 +46,31 @@ export type EditorContentTarget = {
   aisleBodyId?: string | null
 }
 
+export type EditorContentSnapshot = EditorContentTarget & {
+  noteBodyId: string
+  aisleBodyId: string
+  markdown: string
+}
+
+export type MountedEditorSnapshotProvider = () => EditorContentSnapshot[]
+export type PendingContentMap = Map<string, PendingContent>
+export type EditorFocusBoundaryEvent = 'blur' | 'visibilitychange' | 'beforeunload' | 'pagehide'
+export type EditorFocusBoundaryFlushAction = 'schedule' | 'force' | 'ignore'
+
+export const EDITOR_FOCUS_BOUNDARY_FLUSH_DELAY_MS = 60
+
+export function resolveEditorFocusBoundaryFlushAction(
+  eventName: EditorFocusBoundaryEvent,
+  scheduledTimerId: number | null,
+  visibilityState = 'visible',
+): EditorFocusBoundaryFlushAction {
+  if (eventName === 'beforeunload' || eventName === 'pagehide') return 'force'
+  if (eventName === 'visibilitychange' && visibilityState !== 'hidden') return 'ignore'
+  return scheduledTimerId === null ? 'schedule' : 'ignore'
+}
+
 export function pendingContentMatchesTarget(pending: PendingContent, target: EditorContentTarget): boolean {
+  if (pending.noteBodyId && target.noteBodyId && pending.noteBodyId !== target.noteBodyId) return false
   return (
     Boolean(pending.aisleBodyId && target.aisleBodyId && pending.aisleBodyId === target.aisleBodyId) ||
     (
@@ -57,33 +82,74 @@ export function pendingContentMatchesTarget(pending: PendingContent, target: Edi
   )
 }
 
+function getLocationNoteBodyId(sourceState: AppState, target: EditorContentTarget): string | null {
+  const space = sourceState.spaces.find((candidate) => candidate.id === target.spaceId)
+  const tab = space?.data.tabs.find((candidate) => candidate.id === target.tabId)
+  if (!tab) return null
+  if (target.subTabId === null) return tab.noteBodyId
+  return tab.subTabs.find((candidate) => candidate.id === target.subTabId)?.noteBodyId ?? null
+}
+
+export function isEditorContentTargetCurrent(sourceState: AppState, target: EditorContentTarget): boolean {
+  const locationNoteBodyId = getLocationNoteBodyId(sourceState, target)
+  if (!locationNoteBodyId) return false
+  if (target.noteBodyId && target.noteBodyId !== locationNoteBodyId) return false
+  const noteBody = sourceState.noteBodies.find((candidate) => candidate.id === locationNoteBodyId)
+  if (!noteBody) return false
+  if (target.aisleBodyId) {
+    return noteBody.aisles.some((aisle) => getAisleBodyId(aisle) === target.aisleBodyId)
+  }
+  if (target.aisleId) {
+    return noteBody.aisles.some((aisle) => aisle.id === target.aisleId)
+  }
+  return true
+}
+
+export function applyEditorContentSnapshotsToState(
+  sourceState: AppState,
+  snapshots: EditorContentSnapshot[],
+): AppState {
+  const snapshotsByAisleBodyId = new Map<string, EditorContentSnapshot>()
+  for (const snapshot of snapshots) {
+    if (!snapshot.aisleBodyId || !isEditorContentTargetCurrent(sourceState, snapshot)) continue
+    snapshotsByAisleBodyId.set(snapshot.aisleBodyId, snapshot)
+  }
+
+  let nextState = sourceState
+  snapshotsByAisleBodyId.forEach((snapshot) => {
+    nextState = applyMarkdownToAppState(
+      nextState,
+      snapshot.spaceId,
+      snapshot.tabId,
+      snapshot.subTabId,
+      snapshot.aisleId,
+      snapshot.markdown,
+      { aisleBodyId: snapshot.aisleBodyId },
+    )
+  })
+  return nextState
+}
+
 export function applyFreshEditorSnapshotToState(
   sourceState: AppState,
   target: EditorContentTarget,
   markdown: string,
   pending: PendingContent | null | undefined,
 ): AppState {
-  let nextState = applyMarkdownToAppState(
-    sourceState,
-    target.spaceId,
-    target.tabId,
-    target.subTabId,
-    target.aisleId,
+  if (!target.noteBodyId || !target.aisleBodyId) return sourceState
+  const snapshots: EditorContentSnapshot[] = [{
+    noteBodyId: target.noteBodyId,
+    spaceId: target.spaceId,
+    tabId: target.tabId,
+    subTabId: target.subTabId,
+    aisleId: target.aisleId,
+    aisleBodyId: target.aisleBodyId,
     markdown,
-    { aisleBodyId: target.aisleBodyId },
-  )
+  }]
   if (pending && !pendingContentMatchesTarget(pending, target)) {
-    nextState = applyMarkdownToAppState(
-      nextState,
-      pending.spaceId,
-      pending.tabId,
-      pending.subTabId,
-      pending.aisleId,
-      pending.markdown,
-      { aisleBodyId: pending.aisleBodyId },
-    )
+    snapshots.unshift(pending)
   }
-  return nextState
+  return applyEditorContentSnapshotsToState(sourceState, snapshots)
 }
 
 export const useEditorPersistence = ({
@@ -100,8 +166,10 @@ export const useEditorPersistence = ({
   getNormalizedEditorMarkdown,
   applyActiveCursorToState,
 }: UseEditorPersistenceParams) => {
-  const pendingContentRef = useRef<PendingContent | null>(null)
+  const pendingContentRef = useRef<PendingContentMap>(new Map())
+  const mountedEditorSnapshotProviderRef = useRef<MountedEditorSnapshotProvider | null>(null)
   const saveTimerRef = useRef<number | null>(null)
+  const focusBoundaryFlushTimerRef = useRef<number | null>(null)
   const lastEditorMarkdownRef = useRef('')
   const lastEditorMarkdownByAisleRef = useRef<Map<string, string>>(new Map())
   const normalizingContentRef = useRef(false)
@@ -113,6 +181,7 @@ export const useEditorPersistence = ({
   }
 
   const getActiveContentTarget = () => ({
+    noteBodyId: activeNoteBody?.id ?? '',
     spaceId: activeSpaceIdRef.current,
     tabId: activeTabIdRef.current,
     subTabId: activeSubTabIdRef.current,
@@ -120,50 +189,45 @@ export const useEditorPersistence = ({
     aisleBodyId: getAisleBodyIdForAisleId(activeAisleIdRef.current),
   })
 
-  const applyContentToTarget = (
-    spaceId: string,
-    tabId: string,
-    subTabId: string | null,
-    aisleId: string,
-    markdown: string,
-    aisleBodyId?: string | null,
-  ) => {
-    setState((previous) => applyMarkdownToAppState(previous, spaceId, tabId, subTabId, aisleId, markdown, { aisleBodyId }))
+  const getPendingContentSnapshots = () => Array.from(pendingContentRef.current.values())
+
+  const getFallbackActiveEditorSnapshot = (): EditorContentSnapshot[] => {
+    if (!isMainViewRef.current || !editorRef.current || !activeNoteBody?.id) return []
+    const currentEditor = editorRef.current
+    const target = getActiveContentTarget()
+    if (!target.aisleBodyId) return []
+    const markdown = getSnapshotEditorMarkdown(currentEditor, lastEditorMarkdownRef.current, getNormalizedEditorMarkdown)
+    lastEditorMarkdownRef.current = markdown
+    lastEditorMarkdownByAisleRef.current.set(target.aisleBodyId, markdown)
+    return [{ ...target, noteBodyId: activeNoteBody.id, aisleBodyId: target.aisleBodyId, markdown }]
+  }
+
+  const getMountedEditorSnapshots = () => measureSlowOperation('mounted editor snapshot provider', () => {
+    const snapshots = mountedEditorSnapshotProviderRef.current?.() ?? []
+    return snapshots.length > 0 ? snapshots : getFallbackActiveEditorSnapshot()
+  })
+
+  const buildLatestContentSnapshots = () => [
+    ...getPendingContentSnapshots(),
+    ...getMountedEditorSnapshots(),
+  ]
+
+  const applyContentSnapshots = (snapshots: EditorContentSnapshot[]) => {
+    if (snapshots.length === 0) return
+    setState((previous) => applyEditorContentSnapshotsToState(previous, snapshots))
   }
 
   const buildStateWithLatestEditorContent = () => {
-    let nextState = stateRef.current
-    const pending = pendingContentRef.current
-
-    if (isMainViewRef.current && editorRef.current) {
-      const currentEditor = editorRef.current
-      const target = getActiveContentTarget()
-      const markdown = getSnapshotEditorMarkdown(currentEditor, lastEditorMarkdownRef.current, getNormalizedEditorMarkdown)
-      lastEditorMarkdownRef.current = markdown
-      lastEditorMarkdownByAisleRef.current.set(target.aisleBodyId, markdown)
-
-      nextState = applyFreshEditorSnapshotToState(nextState, target, markdown, pending)
-      return applyActiveCursorToState(applyAutoPurgeToAppState(nextState))
-    }
-
-    if (pending) {
-      nextState = applyMarkdownToAppState(
-        nextState,
-        pending.spaceId,
-        pending.tabId,
-        pending.subTabId,
-        pending.aisleId,
-        pending.markdown,
-        { aisleBodyId: pending.aisleBodyId },
-      )
-    }
+    const nextState = applyEditorContentSnapshotsToState(stateRef.current, buildLatestContentSnapshots())
     if (!isMainViewRef.current) return applyAutoPurgeToAppState(nextState)
     if (!editorRef.current) return applyActiveCursorToState(applyAutoPurgeToAppState(nextState))
     return applyActiveCursorToState(applyAutoPurgeToAppState(nextState))
   }
 
-  const persistLatestStateSnapshot = (options: AppStateSaveOptions = { snapshotMode: 'force', preferSync: true }) => {
-    const latestState = buildStateWithLatestEditorContent()
+  const persistStateSnapshot = (
+    latestState: AppState,
+    options: AppStateSaveOptions = { snapshotMode: 'force', preferSync: true },
+  ) => {
     const serializedState = measureSlowOperation('app-state serialization', () => JSON.stringify(latestState))
     appPersistenceService.saveSerializedState(serializedState, {
       ...options,
@@ -172,53 +236,50 @@ export const useEditorPersistence = ({
     void appPersistenceService.flushPendingSaves?.()
   }
 
-  const flushPendingContent = () => {
-    if (saveTimerRef.current !== null) {
-      window.clearTimeout(saveTimerRef.current)
-      saveTimerRef.current = null
-    }
-
-    const pending = pendingContentRef.current
-    pendingContentRef.current = null
-
-    if (!isMainViewRef.current || !editorRef.current) {
-      if (pending) {
-        applyContentToTarget(
-          pending.spaceId,
-          pending.tabId,
-          pending.subTabId,
-          pending.aisleId,
-          pending.markdown,
-          pending.aisleBodyId,
-        )
-      }
-      return
-    }
-
-    const currentEditor = editorRef.current
-    const target = getActiveContentTarget()
-    const markdown = getSnapshotEditorMarkdown(currentEditor, lastEditorMarkdownRef.current, getNormalizedEditorMarkdown)
-    lastEditorMarkdownRef.current = markdown
-    lastEditorMarkdownByAisleRef.current.set(target.aisleBodyId, markdown)
-    applyContentToTarget(
-      target.spaceId,
-      target.tabId,
-      target.subTabId,
-      target.aisleId,
-      markdown,
-      target.aisleBodyId,
-    )
-    if (pending && !pendingContentMatchesTarget(pending, target)) {
-      applyContentToTarget(
-        pending.spaceId,
-        pending.tabId,
-        pending.subTabId,
-        pending.aisleId,
-        pending.markdown,
-        pending.aisleBodyId,
-      )
-    }
+  const persistLatestStateSnapshot = (options: AppStateSaveOptions = { snapshotMode: 'force', preferSync: true }) => {
+    persistStateSnapshot(buildStateWithLatestEditorContent(), options)
   }
+
+  const clearPendingSaveTimer = () => {
+    if (saveTimerRef.current === null) return
+    window.clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = null
+  }
+
+  const cancelFocusBoundaryFlush = () => {
+    if (focusBoundaryFlushTimerRef.current === null) return
+    window.clearTimeout(focusBoundaryFlushTimerRef.current)
+    focusBoundaryFlushTimerRef.current = null
+  }
+
+  const flushAndPersistFocusBoundarySnapshot = () => measureSlowOperation('editor focus-boundary persistence flush', () => {
+    clearPendingSaveTimer()
+    const latestState = buildStateWithLatestEditorContent()
+    pendingContentRef.current.clear()
+    setState(latestState)
+    persistStateSnapshot(latestState, { snapshotMode: 'force', preferSync: true })
+  })
+
+  const scheduleFocusBoundaryFlush = (eventName: Extract<EditorFocusBoundaryEvent, 'blur' | 'visibilitychange'>) => {
+    const action = resolveEditorFocusBoundaryFlushAction(
+      eventName,
+      focusBoundaryFlushTimerRef.current,
+      typeof document === 'undefined' ? 'visible' : document.visibilityState,
+    )
+    if (action !== 'schedule') return
+    focusBoundaryFlushTimerRef.current = window.setTimeout(() => {
+      focusBoundaryFlushTimerRef.current = null
+      flushAndPersistFocusBoundarySnapshot()
+    }, EDITOR_FOCUS_BOUNDARY_FLUSH_DELAY_MS)
+  }
+
+  const flushPendingContent = () => measureSlowOperation('editor pending content flush', () => {
+    clearPendingSaveTimer()
+
+    const snapshots = buildLatestContentSnapshots()
+    pendingContentRef.current.clear()
+    applyContentSnapshots(snapshots)
+  })
 
   const scheduleContentCommit = (
     markdown: string,
@@ -226,18 +287,30 @@ export const useEditorPersistence = ({
     tabId: string,
     subTabId: string | null,
     aisleId: string,
-    options: { aisleBodyId?: string | null } = {},
+    options: { aisleBodyId?: string | null; noteBodyId?: string | null } = {},
   ) => {
     const normalizedMarkdown = normalizeMarkdownForPersistence(markdown)
     const explicitAisleBodyId = typeof options.aisleBodyId === 'string' && options.aisleBodyId.trim()
       ? options.aisleBodyId.trim()
       : null
     const aisleBodyId = explicitAisleBodyId ?? getAisleBodyIdForAisleId(aisleId)
+    const noteBodyId = typeof options.noteBodyId === 'string' && options.noteBodyId.trim()
+      ? options.noteBodyId.trim()
+      : activeNoteBody?.id ?? ''
+    if (!noteBodyId || !aisleBodyId) return
     if (aisleId === activeAisleIdRef.current) {
       lastEditorMarkdownRef.current = normalizedMarkdown
     }
     lastEditorMarkdownByAisleRef.current.set(aisleBodyId, normalizedMarkdown)
-    pendingContentRef.current = { spaceId, tabId, subTabId, aisleId, aisleBodyId, markdown: normalizedMarkdown }
+    pendingContentRef.current.set(aisleBodyId, {
+      noteBodyId,
+      spaceId,
+      tabId,
+      subTabId,
+      aisleId,
+      aisleBodyId,
+      markdown: normalizedMarkdown,
+    })
 
     if (saveTimerRef.current !== null) {
       window.clearTimeout(saveTimerRef.current)
@@ -245,10 +318,9 @@ export const useEditorPersistence = ({
 
     saveTimerRef.current = window.setTimeout(() => {
       saveTimerRef.current = null
-      if (!pendingContentRef.current) return
-      const next = pendingContentRef.current
-      pendingContentRef.current = null
-      applyContentToTarget(next.spaceId, next.tabId, next.subTabId, next.aisleId, next.markdown, next.aisleBodyId)
+      const snapshots = getPendingContentSnapshots()
+      pendingContentRef.current.clear()
+      applyContentSnapshots(snapshots)
     }, 180)
   }
 
@@ -278,15 +350,18 @@ export const useEditorPersistence = ({
       window.clearTimeout(saveTimerRef.current)
       saveTimerRef.current = null
     }
-    pendingContentRef.current = null
-    applyContentToTarget(
-      activeSpaceIdRef.current,
-      activeTabIdRef.current,
-      activeSubTabIdRef.current,
-      activeAisleIdRef.current,
-      normalized,
-      activeAisleBodyId,
-    )
+    const siblingPendingSnapshots = getPendingContentSnapshots()
+      .filter((snapshot) => snapshot.aisleBodyId !== activeAisleBodyId)
+    pendingContentRef.current.clear()
+    applyContentSnapshots([...siblingPendingSnapshots, {
+      noteBodyId: activeNoteBody?.id ?? '',
+      spaceId: activeSpaceIdRef.current,
+      tabId: activeTabIdRef.current,
+      subTabId: activeSubTabIdRef.current,
+      aisleId: activeAisleIdRef.current,
+      aisleBodyId: activeAisleBodyId,
+      markdown: normalized,
+    }])
     return normalized
   }
 
@@ -313,6 +388,15 @@ export const useEditorPersistence = ({
   const getActiveEditorMarkdown = () =>
     editorRef.current ? getNormalizedEditorMarkdown(editorRef.current) : getNoteBodyMarkdown(activeNoteBody, resolvedActiveAisleId)
 
+  const registerMountedEditorSnapshotProvider = (provider: MountedEditorSnapshotProvider) => {
+    mountedEditorSnapshotProviderRef.current = provider
+    return () => {
+      if (mountedEditorSnapshotProviderRef.current === provider) {
+        mountedEditorSnapshotProviderRef.current = null
+      }
+    }
+  }
+
   useEffect(() => {
     window.__tabsGetLatestAppState = () =>
       measureSlowOperation('app-state serialization', () => JSON.stringify(buildStateWithLatestEditorContent()))
@@ -324,10 +408,8 @@ export const useEditorPersistence = ({
 
   useEffect(() => {
     const flushOnExit = () => {
-      if (saveTimerRef.current !== null) {
-        window.clearTimeout(saveTimerRef.current)
-        saveTimerRef.current = null
-      }
+      cancelFocusBoundaryFlush()
+      clearPendingSaveTimer()
       persistLatestStateSnapshot()
     }
 
@@ -341,12 +423,26 @@ export const useEditorPersistence = ({
   }, [])
 
   useEffect(() => {
+    const flushOnWindowBlur = () => scheduleFocusBoundaryFlush('blur')
+    const flushOnHidden = () => scheduleFocusBoundaryFlush('visibilitychange')
+
+    window.addEventListener('blur', flushOnWindowBlur)
+    document.addEventListener('visibilitychange', flushOnHidden)
+    return () => {
+      window.removeEventListener('blur', flushOnWindowBlur)
+      document.removeEventListener('visibilitychange', flushOnHidden)
+      cancelFocusBoundaryFlush()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
     const clearPendingLocalWrite = () => {
       if (saveTimerRef.current !== null) {
         window.clearTimeout(saveTimerRef.current)
         saveTimerRef.current = null
       }
-      pendingContentRef.current = null
+      pendingContentRef.current.clear()
       lastEditorMarkdownByAisleRef.current.clear()
     }
 
@@ -356,9 +452,8 @@ export const useEditorPersistence = ({
 
   useEffect(() => {
     return () => {
-      if (saveTimerRef.current !== null) {
-        window.clearTimeout(saveTimerRef.current)
-      }
+      clearPendingSaveTimer()
+      cancelFocusBoundaryFlush()
     }
   }, [])
 
@@ -376,6 +471,7 @@ export const useEditorPersistence = ({
     commitActiveEditorMarkdownNow,
     replaceActiveEditorMarkdown,
     getActiveEditorMarkdown,
+    registerMountedEditorSnapshotProvider,
     persistLatestStateSnapshot,
   }
 }

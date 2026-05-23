@@ -54,10 +54,10 @@
   --menu-item-text: var(--app-text-soft);
   --menu-item-hover-bg: #1a2f52;
 
-  --domain-rail-accent: #382d2c;
-  --space-rail-accent: #8c7c2b;
-  --parent-rail-accent: #3b388c;
-  --subtab-rail-accent: #3b8c5c;
+  --domain-rail-accent: #6842a6;
+  --space-rail-accent: #9a7a22;
+  --parent-rail-accent: #2f5da8;
+  --subtab-rail-accent: #2f8a5f;
   --domain-rail-text: color-mix(in srgb, var(--domain-rail-accent) 16%, var(--app-text-bright));
   --domain-rail-bg: color-mix(in srgb, var(--nav-rail-bg) 58%, var(--domain-rail-accent));
   --domain-rail-border: color-mix(in srgb, var(--domain-rail-accent) 72%, var(--app-text-muted));
@@ -239,11 +239,12 @@
   --trash-subtab-selected-text: #fff8f1;
   --trash-subtab-selected-bg: #9d6231;
   --trash-subtab-selected-border: #cb8745;
-  --add-tab-text: var(--app-text-soft);
-  --add-tab-bg: color-mix(in srgb, var(--nav-rail-bg) 76%, var(--app-text-bright));
-  --add-tab-border: color-mix(in srgb, var(--nav-rail-border) 72%, transparent);
-  --add-tab-hover-bg: color-mix(in srgb, var(--nav-rail-bg) 66%, var(--app-text-bright));
-  --add-tab-hover-border: color-mix(in srgb, var(--app-text-muted) 42%, transparent);
+  --rail-control-text: var(--app-text-soft);
+  --add-tab-text: var(--rail-control-text);
+  --add-tab-bg: transparent;
+  --add-tab-border: transparent;
+  --add-tab-hover-bg: transparent;
+  --add-tab-hover-border: transparent;
   --tab-rename-bg: var(--app-bg);
   --tab-rename-text: var(--app-text);
   --tab-rename-border: #4f7cff;
@@ -528,10 +529,10 @@
   --custom-palette-danger: var(--custom-theme-danger, #963442);
   --custom-palette-warning: var(--custom-theme-warning, #d9a441);
   --custom-palette-success: var(--custom-theme-success, #2fb36d);
-  --custom-palette-domain-rail: var(--custom-theme-domain-rail, #382d2c);
-  --custom-palette-space-rail: var(--custom-theme-space-rail, #8c7c2b);
-  --custom-palette-parent-rail: var(--custom-theme-parent-rail, #3b388c);
-  --custom-palette-subtab-rail: var(--custom-theme-subtab-rail, #3b8c5c);
+  --custom-palette-domain-rail: var(--custom-theme-domain-rail, #6842a6);
+  --custom-palette-space-rail: var(--custom-theme-space-rail, #9a7a22);
+  --custom-palette-parent-rail: var(--custom-theme-parent-rail, #2f5da8);
+  --custom-palette-subtab-rail: var(--custom-theme-subtab-rail, #2f8a5f);
 
   --app-bg: var(--custom-palette-canvas);
   --app-page-bg: radial-gradient(

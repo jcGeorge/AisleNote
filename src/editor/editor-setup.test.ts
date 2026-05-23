@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Editor } from '@toast-ui/editor'
-import { Schema } from 'prosemirror-model'
+import { Fragment, Schema } from 'prosemirror-model'
 import { EditorState, Plugin, Selection, TextSelection } from 'prosemirror-state'
 import {
   ANNOTATION_LINE_ARROW_CLASS_NAME,
@@ -30,8 +30,10 @@ import {
   getParagraphSpaceShortcut,
   headingSpaceShortcutPlugin,
   highlightPlugin,
+  thematicBreakShortcutPlugin,
   toggleHighlightMark,
 } from './editor-setup'
+import { getBulletListMarkerFromAttrs } from './list-markers'
 import { BLOCK_INDENT_TOKEN, INDENT_TOKEN } from '../markdown/markdown-utils'
 
 function node(typeName: string, textContent = '', contentSize = 0) {
@@ -158,6 +160,10 @@ const paragraphShortcutSchema = new Schema({
     bulletList: {
       group: 'block',
       content: 'listItem+',
+      attrs: {
+        htmlAttrs: { default: null },
+        classNames: { default: null },
+      },
       toDOM: () => ['ul', 0],
     },
     orderedList: {
@@ -172,8 +178,75 @@ const paragraphShortcutSchema = new Schema({
       content: 'paragraph block*',
       toDOM: () => ['li', 0],
     },
+    thematicBreak: {
+      group: 'block',
+      toDOM: () => ['hr'],
+    },
   },
 })
+
+function getTextBlockEnd(doc: any, text: string): number {
+  let position: number | null = null
+  doc.descendants((node: any, nodePosition: number) => {
+    if (!node?.isTextblock || node.textContent !== text) return true
+    position = nodePosition + 1 + node.content.size
+    return false
+  })
+  if (position === null) throw new Error(`could not find text block "${text}"`)
+  return position
+}
+
+function getParagraphSpaceBindings() {
+  const pluginBundle = headingSpaceShortcutPlugin({
+    pmKeymap: {
+      keymap: (bindings: Record<string, unknown>) => bindings,
+    },
+    pmState: {
+      Selection: Selection as unknown as {
+        near: (resolvedPos: unknown, bias?: number) => unknown
+      },
+      TextSelection: TextSelection as unknown as {
+        create: (doc: unknown, anchor: number, head?: number) => unknown
+      },
+    },
+  })
+  return pluginBundle.wysiwygPlugins[0]() as Record<string, any>
+}
+
+function getThematicBreakBindings() {
+  const pluginBundle = thematicBreakShortcutPlugin({
+    pmKeymap: {
+      keymap: (bindings: Record<string, unknown>) => bindings,
+    },
+    pmModel: {
+      Fragment: Fragment as unknown as {
+        fromArray: (nodes: unknown[]) => unknown
+      },
+    },
+    pmState: {
+      Selection: Selection as unknown as {
+        near: (resolvedPos: unknown, bias?: number) => unknown
+      },
+    },
+    instance: {} as any,
+  })
+  return pluginBundle.wysiwygPlugins[0]() as Record<string, any>
+}
+
+function applyParagraphSpaceShortcutToText(text: string, cursorOffset: number) {
+  const doc = paragraphShortcutSchema.nodes.doc.create(null, [
+    paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text(text)),
+  ])
+  const state = EditorState.create({
+    doc,
+    selection: TextSelection.create(doc, 1 + cursorOffset),
+  })
+  let nextState = state
+  const handled = applyParagraphSpaceShortcut(state, (transaction: any) => {
+    nextState = state.apply(transaction)
+  })
+  return { handled, state: nextState }
+}
 
 describe('paragraph space shortcut WYSIWYG behavior', () => {
   it('turns a heading marker at the start of an existing text line into a heading on Space', () => {
@@ -223,20 +296,7 @@ describe('paragraph space shortcut WYSIWYG behavior', () => {
       doc,
       selection: TextSelection.create(doc, 2),
     })
-    const pluginBundle = headingSpaceShortcutPlugin({
-      pmKeymap: {
-        keymap: (bindings: Record<string, unknown>) => bindings,
-      },
-      pmState: {
-        Selection: Selection as unknown as {
-          near: (resolvedPos: unknown, bias?: number) => unknown
-        },
-        TextSelection: TextSelection as unknown as {
-          create: (doc: unknown, anchor: number, head?: number) => unknown
-        },
-      },
-    })
-    const bindings = pluginBundle.wysiwygPlugins[0]() as Record<string, any>
+    const bindings = getParagraphSpaceBindings()
     let nextState = state
 
     expect(bindings.Space(state, (transaction: any) => {
@@ -246,6 +306,95 @@ describe('paragraph space shortcut WYSIWYG behavior', () => {
     expect(nextState.doc.child(0).type.name).toBe('blockQuote')
     expect(nextState.doc.child(0).child(0).type.name).toBe('paragraph')
     expect(nextState.doc.child(0).textContent).toBe('')
+  })
+
+  it('turns an ordered-list marker at the start of existing text into a numbered list', () => {
+    const result = applyParagraphSpaceShortcutToText('1.Existing text', 2)
+
+    expect(result.handled).toBe(true)
+    expect(result.state.doc.child(0).type.name).toBe('orderedList')
+    expect(result.state.doc.child(0).attrs.order).toBe(1)
+    expect(result.state.doc.child(0).textContent).toBe('Existing text')
+  })
+
+  it('turns bullet and dash markers at the start of existing text into matching list items', () => {
+    const bullet = applyParagraphSpaceShortcutToText('*Existing text', 1)
+    const dash = applyParagraphSpaceShortcutToText('-Existing text', 1)
+
+    expect(bullet.handled).toBe(true)
+    expect(bullet.state.doc.child(0).type.name).toBe('bulletList')
+    expect(getBulletListMarkerFromAttrs(bullet.state.doc.child(0).attrs)).toBe('bullet')
+    expect(bullet.state.doc.child(0).textContent).toBe('Existing text')
+
+    expect(dash.handled).toBe(true)
+    expect(dash.state.doc.child(0).type.name).toBe('bulletList')
+    expect(getBulletListMarkerFromAttrs(dash.state.doc.child(0).attrs)).toBe('dash')
+    expect(dash.state.doc.child(0).textContent).toBe('Existing text')
+  })
+
+  it('turns a blockquote marker at the start of existing text into a quote containing that text', () => {
+    const result = applyParagraphSpaceShortcutToText('>Existing text', 1)
+
+    expect(result.handled).toBe(true)
+    expect(result.state.doc.child(0).type.name).toBe('blockQuote')
+    expect(result.state.doc.child(0).child(0).type.name).toBe('paragraph')
+    expect(result.state.doc.child(0).textContent).toBe('Existing text')
+  })
+
+  it('does not convert non-bare inline markers in existing text', () => {
+    const result = applyParagraphSpaceShortcutToText('hello >Existing text', 7)
+
+    expect(result.handled).toBe(false)
+    expect(result.state.doc.child(0).type.name).toBe('paragraph')
+    expect(result.state.doc.child(0).textContent).toBe('hello >Existing text')
+  })
+
+  it('creates a horizontal rule on Enter without opting out of ProseMirror history', () => {
+    const doc = paragraphShortcutSchema.nodes.doc.create(null, [
+      paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text('---')),
+    ])
+    const state = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, getTextBlockEnd(doc, '---')),
+    })
+    const bindings = getThematicBreakBindings()
+    let dispatchedTransaction: any = null
+    let nextState = state
+
+    expect(bindings.Enter(state, (transaction: any) => {
+      dispatchedTransaction = transaction
+      nextState = state.apply(transaction)
+    })).toBe(true)
+
+    expect(dispatchedTransaction?.getMeta?.('addToHistory')).not.toBe(false)
+    expect(nextState.doc.child(0).type.name).toBe('thematicBreak')
+    expect(nextState.doc.child(1).type.name).toBe('paragraph')
+  })
+
+  it.each([
+    ['1.', 'orderedList'],
+    ['*', 'bulletList'],
+    ['-', 'bulletList'],
+    ['>', 'blockQuote'],
+    ['#', 'heading'],
+  ])('keeps %s marker shortcuts working immediately after a horizontal rule', (marker, expectedNodeType) => {
+    const doc = paragraphShortcutSchema.nodes.doc.create(null, [
+      paragraphShortcutSchema.nodes.thematicBreak.create(),
+      paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text(marker)),
+    ])
+    const state = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, getTextBlockEnd(doc, marker)),
+    })
+    const bindings = getParagraphSpaceBindings()
+    let nextState = state
+
+    expect(bindings.Space(state, (transaction: any) => {
+      nextState = state.apply(transaction)
+    })).toBe(true)
+
+    expect(nextState.doc.child(0).type.name).toBe('thematicBreak')
+    expect(nextState.doc.child(1).type.name).toBe(expectedNodeType)
   })
 })
 
@@ -652,6 +801,14 @@ describe('block indent WYSIWYG decorations', () => {
 })
 
 describe('annotation line WYSIWYG decorations', () => {
+  it('hides only the double-dash marker for live annotation lines so the separator space remains editable', () => {
+    expect(getAnnotationDecorationCalls('-- text').find((call) => call.kind === 'inline')).toMatchObject({
+      from: 1,
+      to: 3,
+      attrs: { class: expect.stringContaining(ANNOTATION_LINE_MARKER_CLASS_NAME) },
+    })
+  })
+
   it('adds inline arrow replacement classes anywhere in the paragraph', () => {
     const cases = [
       ['^-- note', ANNOTATION_LINE_ARROW_UP_CLASS_NAME, ANNOTATION_LINE_TAIL_RIGHT_CLASS_NAME],

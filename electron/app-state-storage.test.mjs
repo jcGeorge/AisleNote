@@ -41,10 +41,10 @@ const customThemePaletteFixture = {
   danger: '#963442',
   warning: '#d9a441',
   success: '#2fb36d',
-  domainRail: '#382d2c',
-  spaceRail: '#8c7c2b',
-  parentRail: '#3b388c',
-  subtabRail: '#3b8c5c',
+  domainRail: '#6842a6',
+  spaceRail: '#9a7a22',
+  parentRail: '#2f5da8',
+  subtabRail: '#2f8a5f',
 }
 
 function serializedAppState() {
@@ -453,6 +453,36 @@ describe('Electron app state storage load result', () => {
       expect(bodyOne.aisles[0].aisleBodyId).toBe('shared-aisle-body')
       expect(bodyTwo.aisles[0].aisleBodyId).toBe('shared-aisle-body')
       expect(parsed.noteAisleBodies.find((body) => body.id === 'shared-aisle-body').markdown).toBe('shared aisle text')
+    }))
+
+  it('round-trips distinct aisle body markdown without collapsing sibling aisle files', () =>
+    withTempUserDataPath((userDataPath) => {
+      const state = JSON.parse(serializedAppState())
+      state.noteBodies[0].aisles = [
+        { id: 'aisle-home', aisleBodyId: 'body-home-aisle', markdown: 'stale home mirror' },
+        { id: 'aisle-two', aisleBodyId: 'body-second-aisle', markdown: 'stale second mirror' },
+      ]
+      state.noteAisleBodies = [
+        { id: 'body-home-aisle', markdown: 'left aisle draft 🚙' },
+        { id: 'body-second-aisle', markdown: 'right aisle draft 🥺' },
+      ]
+
+      saveAppState(userDataPath, JSON.stringify(state))
+
+      const { root, rootManifest } = getStoredWorkspacePaths(userDataPath)
+      const bodyRecord = rootManifest.noteBodies.find((body) => body.id === 'body-1')
+      expect(readFileSync(path.join(root, bodyRecord.aisles[0].file), 'utf8')).toBe('left aisle draft 🚙')
+      expect(readFileSync(path.join(root, bodyRecord.aisles[1].file), 'utf8')).toBe('right aisle draft 🥺')
+
+      const result = loadAppStateResult(userDataPath)
+      expect(result.ok).toBe(true)
+      const parsed = JSON.parse(result.serializedState)
+      expect(parsed.noteAisleBodies.find((body) => body.id === 'body-home-aisle').markdown).toBe('left aisle draft 🚙')
+      expect(parsed.noteAisleBodies.find((body) => body.id === 'body-second-aisle').markdown).toBe('right aisle draft 🥺')
+      expect(parsed.noteBodies[0].aisles.map((aisle) => aisle.markdown)).toEqual([
+        'left aisle draft 🚙',
+        'right aisle draft 🥺',
+      ])
     }))
 
   it('round-trips renamed workspace data, frontmatter, trash, and note body identity', () =>

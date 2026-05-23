@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createAppStateCoordinator, LOAD_FAILED_SAVE_ERROR } from './app-state-coordinator.mjs'
+import {
+  createAppStateCoordinator,
+  createSerializedStateFingerprint,
+  LOAD_FAILED_SAVE_ERROR,
+} from './app-state-coordinator.mjs'
 
 describe('Electron app state coordinator', () => {
   it('sets revision 1 for an initial serialized load', () => {
@@ -122,6 +126,78 @@ describe('Electron app state coordinator', () => {
       unchanged: true,
     })
     expect(coordinator.getLoadResult().revision).toBe(1)
+  })
+
+  it('treats reordered JSON as the same state fingerprint', () => {
+    expect(createSerializedStateFingerprint('{"b":2,"a":1}')).toBe(createSerializedStateFingerprint('{"a":1,"b":2}'))
+  })
+
+  it('ignores recent app-save echoes without reverting the current coordinator state', () => {
+    let now = 1_000
+    let loadedSerializedState = '{"theme":"initial"}'
+    const coordinator = createAppStateCoordinator({
+      userDataPath: '/tmp/tabs',
+      load: () => ({ ok: true, serializedState: loadedSerializedState, source: 'hybrid' }),
+      save: vi.fn((_profileRootPath, serializedState) => {
+        loadedSerializedState = serializedState
+      }),
+      now: () => now,
+      recentAppSaveEchoTtlMs: 10_000,
+    })
+
+    expect(coordinator.saveRevisionedState({ serializedState: '{"theme":"dawn"}', baseRevision: 1 })).toMatchObject({
+      ok: true,
+      revision: 2,
+    })
+    expect(coordinator.saveRevisionedState({ serializedState: '{"theme":"light"}', baseRevision: 2 })).toMatchObject({
+      ok: true,
+      revision: 3,
+    })
+
+    loadedSerializedState = '{"theme":"dawn"}'
+    now += 1_000
+
+    expect(coordinator.reloadProfileRoot('/tmp/tabs')).toEqual({
+      ok: true,
+      serializedState: '{"theme":"light"}',
+      source: 'hybrid',
+      revision: 3,
+      unchanged: true,
+      externalEchoIgnored: true,
+    })
+  })
+
+  it('loads expired app-save echoes as external changes', () => {
+    let now = 1_000
+    let loadedSerializedState = '{"theme":"initial"}'
+    const coordinator = createAppStateCoordinator({
+      userDataPath: '/tmp/tabs',
+      load: () => ({ ok: true, serializedState: loadedSerializedState, source: 'hybrid' }),
+      save: vi.fn((_profileRootPath, serializedState) => {
+        loadedSerializedState = serializedState
+      }),
+      now: () => now,
+      recentAppSaveEchoTtlMs: 10,
+    })
+
+    expect(coordinator.saveRevisionedState({ serializedState: '{"theme":"dawn"}', baseRevision: 1 })).toMatchObject({
+      ok: true,
+      revision: 2,
+    })
+    expect(coordinator.saveRevisionedState({ serializedState: '{"theme":"light"}', baseRevision: 2 })).toMatchObject({
+      ok: true,
+      revision: 3,
+    })
+
+    loadedSerializedState = '{"theme":"dawn"}'
+    now += 20
+
+    expect(coordinator.reloadProfileRoot('/tmp/tabs')).toEqual({
+      ok: true,
+      serializedState: '{"theme":"dawn"}',
+      source: 'hybrid',
+      revision: 4,
+    })
   })
 
   it('blocks saves after a corrupt external profile reload', () => {

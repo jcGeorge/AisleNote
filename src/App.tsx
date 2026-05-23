@@ -726,6 +726,7 @@ function App() {
   const commitActiveEditorMarkdownNow = editorPersistence.commitActiveEditorMarkdownNow
   const replaceActiveEditorMarkdown = editorPersistence.replaceActiveEditorMarkdown
   const getActiveEditorMarkdown = editorPersistence.getActiveEditorMarkdown
+  const registerMountedEditorSnapshotProvider = editorPersistence.registerMountedEditorSnapshotProvider
   const persistLatestStateSnapshot = editorPersistence.persistLatestStateSnapshot
 
   flushStorageActionStateRef.current = async (options = {}) => {
@@ -958,6 +959,9 @@ function App() {
     setEditing,
     closeAisleEditModal,
     onArrangeHierarchyDrop: handleArrangeHierarchyDrop,
+    onArrangeDomainMoveBlocked: (reason) => {
+      if (reason === 'last-domain') pushToast('at least one domain must remain.', 'warning')
+    },
     onArrangeSpaceMoveBlocked: (reason) => {
       if (reason === 'last-space') pushToast('at least one space must remain.', 'warning')
     },
@@ -1022,6 +1026,8 @@ function App() {
   const startArrangePress = arrange.startPress
   const handleArrangeParentSelectionClick = arrange.handleParentSelectionClick
   const handleArrangeSubTabSelectionClick = arrange.handleSubTabSelectionClick
+  const handleArrangeDomainSelectionClick = arrange.handleDomainSelectionClick
+  const handleArrangeSpaceSelectionClick = arrange.handleSpaceSelectionClick
   const finalizeArrangeTapCandidate = arrange.finalizeTapCandidate
   const handleArrangeDomainPointerMove = arrange.handleDomainPointerMove
   const handleArrangeDomainPointerUp = arrange.handleDomainPointerUp
@@ -1059,13 +1065,9 @@ function App() {
     activeTab,
     activeNoteBodyId,
     resolvedActiveAisleId,
-    activeSpaceIdRef,
     editorRef,
-    pendingContentRef,
     pendingCreatedEditRef,
     skipRenameBlurRef,
-    saveTimerRef,
-    lastEditorMarkdownRef,
     pendingFocusToAisleIdRef,
     pendingCursorRestoreRef,
     closeImageToolsRef,
@@ -1301,12 +1303,13 @@ function App() {
       saveTimerRef.current = null
     }
 
-    pendingContentRef.current = null
     normalizingContentRef.current = false
     normalizingAisleIdsRef.current.delete(activeAisleIdRef.current)
     lastEditorMarkdownRef.current = ''
     const activeAisle = activeNoteAisles.find((aisle) => aisle.id === activeAisleIdRef.current)
-    lastEditorMarkdownByAisleRef.current.set(activeAisle ? getAisleBodyId(activeAisle) : activeAisleIdRef.current, '')
+    const activeAisleBodyId = activeAisle ? getAisleBodyId(activeAisle) : activeAisleIdRef.current
+    pendingContentRef.current.delete(activeAisleBodyId)
+    lastEditorMarkdownByAisleRef.current.set(activeAisleBodyId, '')
     clearEditorMarkdownForDisplay(currentEditor)
     scheduleContentCommit(
       '',
@@ -1511,6 +1514,7 @@ function App() {
     clearMultiLineEdit,
     getNormalizedEditorMarkdown,
     scheduleContentCommit,
+    registerMountedEditorSnapshotProvider,
     commitCurrentEditorContent,
     pushToast,
     maybeShowCompletedTaskUndoHint,
@@ -1969,6 +1973,7 @@ function App() {
   }
 
   const syncActiveEditorAfterFindReplace = (nextState: AppState, changedAisleBodyIds: Set<string>) => {
+    changedAisleBodyIds.forEach((aisleBodyId) => pendingContentRef.current.delete(aisleBodyId))
     const currentEditor = editorRef.current
     const activeInfo = getLocationInfo(nextState, activeNoteLocation)
     const activeBody = nextState.noteBodies.find((body) => body.id === activeInfo.noteBodyId)
@@ -1979,7 +1984,6 @@ function App() {
     const nextMarkdown = getAisleMarkdown(activeAisle, nextState.noteAisleBodies)
     lastEditorMarkdownRef.current = nextMarkdown
     lastEditorMarkdownByAisleRef.current.set(activeAisleBodyId, nextMarkdown)
-    pendingContentRef.current = null
     setEditorMarkdownForDisplay(currentEditor, nextMarkdown, false)
   }
 
@@ -2652,6 +2656,17 @@ function App() {
         : new Set<string>(),
     [activeTab.id, arrangeSelection],
   )
+  const arrangeSelectedDomainIds = useMemo(
+    () => (arrangeSelection.kind === 'domain' ? new Set(arrangeSelection.selectedIds) : new Set<string>()),
+    [arrangeSelection],
+  )
+  const arrangeSelectedSpaceIds = useMemo(
+    () =>
+      arrangeSelection.kind === 'space' && arrangeSelection.domainId === state.activeDomainId
+        ? new Set(arrangeSelection.selectedIds)
+        : new Set<string>(),
+    [arrangeSelection, state.activeDomainId],
+  )
   const draggingParentTabId =
     arrangeMode.active && arrangeDraggingItem?.type === 'tab' ? arrangeDraggingItem.tabId : null
   const draggingSubTabId =
@@ -2846,11 +2861,14 @@ function App() {
           arrangeMode={arrangeMode}
           arrangeableDomainClassName={arrangeableDomainClassName}
           draggingDomainId={draggingDomainId}
+          arrangeSelectedDomainIds={arrangeSelectedDomainIds}
           domainsGridRef={domainsGridRef}
           controlsSlot={topVisibleMainRail === 'domains' ? renderTopRailControls('main') : null}
           tooltipsDisabled={mainArrangementActive}
           arrangeControlsDisabled={arrangeControlsDisabled}
           onOpenDomain={openDomainFromCompactRail}
+          onHandleArrangeDomainSelectionClick={handleArrangeDomainSelectionClick}
+          onClearArrangeSelection={clearArrangeSelection}
           onOpenContextMenu={openContextMenuForDomain}
           onShouldSkipRenameBlur={shouldSkipRenameBlur}
           onCommitRename={commitRename}
@@ -2880,11 +2898,14 @@ function App() {
           arrangeMode={arrangeMode}
           arrangeableSpaceClassName={arrangeableSpaceClassName}
           draggingSpaceId={draggingSpaceId}
+          arrangeSelectedSpaceIds={arrangeSelectedSpaceIds}
           spacesGridRef={spacesGridRef}
           controlsSlot={topVisibleMainRail === 'spaces' ? renderTopRailControls('main') : null}
           tooltipsDisabled={mainArrangementActive}
           arrangeControlsDisabled={arrangeControlsDisabled}
           onOpenSpace={openSpaceFromCompactRail}
+          onHandleArrangeSpaceSelectionClick={handleArrangeSpaceSelectionClick}
+          onClearArrangeSelection={clearArrangeSelection}
           onOpenContextMenu={openContextMenuForSpace}
           onShouldSkipRenameBlur={shouldSkipRenameBlur}
           onCommitRename={commitRename}

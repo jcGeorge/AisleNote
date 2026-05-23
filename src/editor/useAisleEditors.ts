@@ -29,10 +29,8 @@ import {
   installCompletedTaskCheckboxBehavior,
   installTaskTextReorderBehavior,
 } from './task-behavior'
-import {
-  materializeHorizontalRuleShortcut,
-  normalizeMarkdownForPersistence,
-} from '../markdown/markdown-utils'
+import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
+import { measureSlowOperation } from '../performance/performance-logging'
 import {
   importImageBlobAsAssetUrl,
 } from '../markdown/image-asset-registry'
@@ -48,10 +46,16 @@ import {
   getAislePreviewMarkdown,
   updateRecentAisleIds,
 } from './aisle-editor-retention'
-import type { HeadingCollapseState, NoteAisle, NoteNavigationTarget, PendingContent, ToastTone, ViewMode } from '../types/app'
+import type { HeadingCollapseState, NoteAisle, NoteNavigationTarget, ToastTone, ViewMode } from '../types/app'
 import type { NoteContextReferencePayload } from '../notes/note-references'
 import { getAisleBodyId } from '../notes/aisle-body-state'
 import type { PendingCursorRestore } from './useNoteCursorPersistence'
+import {
+  getSnapshotEditorMarkdown,
+  type EditorContentSnapshot,
+  type MountedEditorSnapshotProvider,
+  type PendingContentMap,
+} from './useEditorPersistence'
 
 type ActivateAisleEditorOptions = {
   flushPrevious?: boolean
@@ -73,7 +77,7 @@ type UseAisleEditorsOptions = {
   lastEditorMarkdownByAisleRef: MutableRefObject<Map<string, string>>
   normalizingContentRef: MutableRefObject<boolean>
   normalizingAisleIdsRef: MutableRefObject<Set<string>>
-  pendingContentRef: MutableRefObject<PendingContent | null>
+  pendingContentRef: MutableRefObject<PendingContentMap>
   pendingCursorRestoreRef: MutableRefObject<PendingCursorRestore | null>
   activeSpaceIdRef: MutableRefObject<string>
   activeTabIdRef: MutableRefObject<string>
@@ -93,8 +97,9 @@ type UseAisleEditorsOptions = {
     tabId: string,
     subTabId: string | null,
     aisleId: string,
-    options?: { aisleBodyId?: string | null },
+    options?: { aisleBodyId?: string | null; noteBodyId?: string | null },
   ) => void
+  registerMountedEditorSnapshotProvider: (provider: MountedEditorSnapshotProvider) => () => void
   commitCurrentEditorContent: () => void
   pushToast: (message: string, tone?: ToastTone, durationMs?: number) => void
   maybeShowCompletedTaskUndoHint: (markdown: string) => void
@@ -143,6 +148,7 @@ export function useAisleEditors({
   clearMultiLineEdit,
   getNormalizedEditorMarkdown,
   scheduleContentCommit,
+  registerMountedEditorSnapshotProvider,
   commitCurrentEditorContent,
   pushToast,
   maybeShowCompletedTaskUndoHint,
@@ -167,6 +173,8 @@ export function useAisleEditors({
   const pendingHeadingScrollRef = useRef<PendingHeadingScroll | null>(null)
   const headingCollapseStateRef = useRef(headingCollapseState)
   headingCollapseStateRef.current = headingCollapseState
+  const activeNoteBodyIdRef = useRef(activeNoteBodyId)
+  activeNoteBodyIdRef.current = activeNoteBodyId
   const activeNoteAislesRef = useRef(activeNoteAisles)
   activeNoteAislesRef.current = activeNoteAisles
   const activeAisleIds = useMemo(() => activeNoteAisles.map((aisle) => aisle.id), [activeNoteAisles])
@@ -213,18 +221,24 @@ export function useAisleEditors({
     lastEditorMarkdownByAisleRef.current.set(getAisleBodyIdForAisleId(aisleId), markdown)
   }
 
-  const pendingMatchesAisle = (pending: PendingContent | null, aisle: NoteAisle) =>
-    Boolean(
-      pending &&
-        pending.spaceId === activeSpaceIdRef.current &&
-        pending.tabId === activeTabIdRef.current &&
-        pending.subTabId === activeSubTabIdRef.current &&
-        (pending.aisleBodyId === getAisleBodyId(aisle) || pending.aisleId === aisle.id),
-    )
+  const getPendingContentForAisle = (aisle: NoteAisle) => {
+    const aisleBodyId = getAisleBodyId(aisle)
+    const pending = pendingContentRef.current.get(aisleBodyId)
+    if (!pending) return null
+    if (
+      pending.noteBodyId !== activeNoteBodyIdRef.current ||
+      pending.spaceId !== activeSpaceIdRef.current ||
+      pending.tabId !== activeTabIdRef.current ||
+      pending.subTabId !== activeSubTabIdRef.current
+    ) {
+      return null
+    }
+    return pending.aisleBodyId === aisleBodyId || pending.aisleId === aisle.id ? pending : null
+  }
 
   const getLatestMarkdownForAisle = (aisle: NoteAisle) => {
-    const pending = pendingContentRef.current
-    if (pendingMatchesAisle(pending, aisle)) return pending?.markdown ?? aisle.markdown
+    const pending = getPendingContentForAisle(aisle)
+    if (pending) return pending.markdown
     return getCachedMarkdownForAisle(aisle.id) ?? normalizeMarkdownForPersistence(aisle.markdown)
   }
 
@@ -288,15 +302,9 @@ export function useAisleEditors({
     editorRef.current = meta.editor
     activeAisleIdRef.current = meta.aisleId
     multiLineCursorPluginKeyRef.current = meta.pluginKey
-    const cachedMarkdown = getCachedMarkdownForAisle(meta.aisleId)
     const currentMarkdown = getNormalizedEditorMarkdown(meta.editor)
-    if (cachedMarkdown !== undefined && currentMarkdown !== cachedMarkdown) {
-      normalizingAisleIdsRef.current.add(meta.aisleId)
-      setEditorMarkdownForDisplay(meta.editor, cachedMarkdown)
-    }
-    const markdown = cachedMarkdown ?? currentMarkdown
-    lastEditorMarkdownRef.current = markdown
-    cacheMarkdownForAisleBody(meta.aisleId, markdown)
+    lastEditorMarkdownRef.current = currentMarkdown
+    cacheMarkdownForAisleBody(meta.aisleId, currentMarkdown)
     if (activeAisleId !== meta.aisleId) {
       setActiveAisleId(meta.aisleId)
     }
@@ -395,26 +403,26 @@ export function useAisleEditors({
     return false
   }
 
-  const handleAisleEditorChange = (editorKey: string, aisleId: string, editor: Editor) => {
+  const handleAisleEditorChange = (editorKey: string, aisleId: string, editor: Editor) => measureSlowOperation(`aisle editor change:${aisleId}`, () => {
     if (!isMainViewRef.current) return
     const markdown = getNormalizedEditorMarkdown(editor)
-    const previousMarkdown = getCachedMarkdownForAisle(aisleId) ?? ''
 
     if (normalizingAisleIdsRef.current.has(aisleId)) {
       const normalizedMarkdown = getCachedMarkdownForAisle(aisleId) ?? markdown
-      if (markdown !== normalizedMarkdown) return
       normalizingAisleIdsRef.current.delete(aisleId)
-      lastEditorMarkdownRef.current = normalizedMarkdown
-      cacheMarkdownForAisleBody(aisleId, normalizedMarkdown)
-      scheduleContentCommit(
-        normalizedMarkdown,
-        activeSpaceIdRef.current,
-        activeTabIdRef.current,
-        activeSubTabIdRef.current,
-        aisleId,
-        { aisleBodyId: getAisleBodyIdForAisleId(aisleId) },
-      )
-      return
+      if (markdown === normalizedMarkdown) {
+        lastEditorMarkdownRef.current = normalizedMarkdown
+        cacheMarkdownForAisleBody(aisleId, normalizedMarkdown)
+        scheduleContentCommit(
+          normalizedMarkdown,
+          activeSpaceIdRef.current,
+          activeTabIdRef.current,
+          activeSubTabIdRef.current,
+          aisleId,
+          { aisleBodyId: getAisleBodyIdForAisleId(aisleId), noteBodyId: activeNoteBodyIdRef.current },
+        )
+        return
+      }
     }
 
     activateAisleEditor(editorKey)
@@ -423,27 +431,19 @@ export function useAisleEditors({
     if (normalizingContentRef.current && activeAisleIdRef.current === aisleId) {
       normalizingContentRef.current = false
       const normalizedMarkdown = lastEditorMarkdownRef.current
-      cacheMarkdownForAisleBody(aisleId, normalizedMarkdown)
-      syncMountedLinkedAisleEditors(aisleId, normalizedMarkdown)
-      scheduleContentCommit(
-        normalizedMarkdown,
-        activeSpaceIdRef.current,
-        activeTabIdRef.current,
-        activeSubTabIdRef.current,
-        aisleId,
-        { aisleBodyId: getAisleBodyIdForAisleId(aisleId) },
-      )
-      return
-    }
-
-    const materializedHorizontalRule = materializeHorizontalRuleShortcut(previousMarkdown, markdown)
-    if (materializedHorizontalRule && materializedHorizontalRule !== markdown) {
-      normalizingAisleIdsRef.current.add(aisleId)
-      lastEditorMarkdownRef.current = materializedHorizontalRule
-      cacheMarkdownForAisleBody(aisleId, materializedHorizontalRule)
-      syncMountedLinkedAisleEditors(aisleId, materializedHorizontalRule)
-      setEditorMarkdownForDisplay(editor, materializedHorizontalRule)
-      return
+      if (markdown === normalizedMarkdown) {
+        cacheMarkdownForAisleBody(aisleId, normalizedMarkdown)
+        syncMountedLinkedAisleEditors(aisleId, normalizedMarkdown)
+        scheduleContentCommit(
+          normalizedMarkdown,
+          activeSpaceIdRef.current,
+          activeTabIdRef.current,
+          activeSubTabIdRef.current,
+          aisleId,
+          { aisleBodyId: getAisleBodyIdForAisleId(aisleId), noteBodyId: activeNoteBodyIdRef.current },
+        )
+        return
+      }
     }
 
     maybeShowCompletedTaskUndoHint(markdown)
@@ -456,9 +456,9 @@ export function useAisleEditors({
       activeTabIdRef.current,
       activeSubTabIdRef.current,
       aisleId,
-      { aisleBodyId: getAisleBodyIdForAisleId(aisleId) },
+      { aisleBodyId: getAisleBodyIdForAisleId(aisleId), noteBodyId: activeNoteBodyIdRef.current },
     )
-  }
+  })
 
   const commitAisleEditorMarkdown = (aisleId: string, committedEditor: Editor) => {
     const markdown = getNormalizedEditorMarkdown(committedEditor)
@@ -471,15 +471,14 @@ export function useAisleEditors({
       activeTabIdRef.current,
       activeSubTabIdRef.current,
       aisleId,
-      { aisleBodyId: getAisleBodyIdForAisleId(aisleId) },
+      { aisleBodyId: getAisleBodyIdForAisleId(aisleId), noteBodyId: activeNoteBodyIdRef.current },
     )
   }
 
-  const captureAisleEditorContent = (meta: AisleEditorMeta) => {
+  const captureAisleEditorContent = (meta: AisleEditorMeta) => measureSlowOperation(`aisle editor content capture:${meta.aisleId}`, () => {
     const cachedMarkdown = getCachedMarkdownForAisle(meta.aisleId)
-    const markdown = activeAisleIdRef.current === meta.aisleId || cachedMarkdown === undefined
-      ? getNormalizedEditorMarkdown(meta.editor)
-      : cachedMarkdown
+    const fallbackMarkdown = cachedMarkdown ?? normalizeMarkdownForPersistence(getAisleById(meta.aisleId)?.markdown ?? '')
+    const markdown = getSnapshotEditorMarkdown(meta.editor, fallbackMarkdown, getNormalizedEditorMarkdown)
     cacheMarkdownForAisleBody(meta.aisleId, markdown)
     if (activeAisleIdRef.current === meta.aisleId) {
       lastEditorMarkdownRef.current = markdown
@@ -490,9 +489,34 @@ export function useAisleEditors({
       activeTabIdRef.current,
       activeSubTabIdRef.current,
       meta.aisleId,
-      { aisleBodyId: getAisleBodyIdForAisleId(meta.aisleId) },
+      { aisleBodyId: getAisleBodyIdForAisleId(meta.aisleId), noteBodyId: activeNoteBodyIdRef.current },
     )
-  }
+  })
+
+  const collectMountedEditorSnapshots = (): EditorContentSnapshot[] => measureSlowOperation('mounted aisle editor snapshot collection', () => {
+    if (viewMode !== 'main' || !activeNoteBodyIdRef.current) return []
+    const snapshots: EditorContentSnapshot[] = []
+    aisleEditorMetaRef.current.forEach((meta) => {
+      const aisleBodyId = getAisleBodyIdForAisleId(meta.aisleId)
+      const cachedMarkdown = getCachedMarkdownForAisle(meta.aisleId)
+      const fallbackMarkdown = cachedMarkdown ?? normalizeMarkdownForPersistence(getAisleById(meta.aisleId)?.markdown ?? '')
+      const markdown = getSnapshotEditorMarkdown(meta.editor, fallbackMarkdown, getNormalizedEditorMarkdown)
+      cacheMarkdownForAisleBody(meta.aisleId, markdown)
+      if (activeAisleIdRef.current === meta.aisleId) {
+        lastEditorMarkdownRef.current = markdown
+      }
+      snapshots.push({
+        noteBodyId: activeNoteBodyIdRef.current,
+        spaceId: activeSpaceIdRef.current,
+        tabId: activeTabIdRef.current,
+        subTabId: activeSubTabIdRef.current,
+        aisleId: meta.aisleId,
+        aisleBodyId,
+        markdown,
+      })
+    })
+    return snapshots
+  })
 
   const destroyAisleEditor = (editorKey: string, options: { captureContent?: boolean } = {}) => {
     const meta = aisleEditorMetaRef.current.get(editorKey)
@@ -512,6 +536,11 @@ export function useAisleEditors({
   const destroyAllAisleEditors = () => {
     Array.from(aisleEditorMetaRef.current.keys()).forEach((editorKey) => destroyAisleEditor(editorKey))
   }
+
+  useEffect(
+    () => registerMountedEditorSnapshotProvider(collectMountedEditorSnapshots),
+    [registerMountedEditorSnapshotProvider],
+  )
 
   useEffect(() => {
     if (idleUnmountTimerRef.current !== null) {
@@ -748,11 +777,9 @@ export function useAisleEditors({
       const editorKey = buildAisleEditorKey(activeNoteBodyId, aisle.id)
       const meta = aisleEditorMetaRef.current.get(editorKey)
       if (!meta) continue
-      const pending = pendingContentRef.current
+      const pending = getPendingContentForAisle(aisle)
       const cachedMarkdown = getCachedMarkdownForAisle(aisle.id)
-      const expectedMarkdown = pendingMatchesAisle(pending, aisle)
-        ? pending?.markdown ?? aisle.markdown
-        : cachedMarkdown ?? aisle.markdown
+      const expectedMarkdown = pending?.markdown ?? cachedMarkdown ?? aisle.markdown
       const currentMarkdown = getNormalizedEditorMarkdown(meta.editor)
       if (currentMarkdown !== expectedMarkdown) {
         const normalizedExpectedMarkdown = normalizeMarkdownForPersistence(expectedMarkdown)

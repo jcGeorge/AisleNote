@@ -12,6 +12,7 @@ import {
   normalizeMarkdownImageSourcesForPersistence,
   prepareMarkdownImagesForDisplay,
 } from '../markdown/image-asset-registry'
+import { measureSlowOperation } from '../performance/performance-logging'
 import { getWysiwygView } from './prosemirror-utils'
 
 export function getEditorMarkdownForPersistence(editor: Editor): string {
@@ -32,6 +33,10 @@ export function prepareMarkdownForEditorDisplay(markdown: string): string {
 }
 
 export function restoreEditorBlankParagraphs(editor: Editor | null, markdown: string): boolean {
+  return measureSlowOperation('editor blank paragraph restoration', () => restoreEditorBlankParagraphsUnmeasured(editor, markdown))
+}
+
+function restoreEditorBlankParagraphsUnmeasured(editor: Editor | null, markdown: string): boolean {
   const blankPrepared = prepareBlankParagraphsForEditorDisplay(markdown)
   if (!blankPrepared.blockKinds.includes('blank')) return false
 
@@ -74,8 +79,10 @@ export function restoreEditorBlankParagraphs(editor: Editor | null, markdown: st
 }
 
 export function setEditorMarkdownForDisplay(editor: Editor, markdown: string, cursorToEnd = false): void {
-  editor.setMarkdown(prepareMarkdownForEditorDisplay(markdown), cursorToEnd)
-  restoreEditorBlankParagraphs(editor, markdown)
+  measureSlowOperation('editor display markdown rewrite', () => {
+    editor.setMarkdown(prepareMarkdownForEditorDisplay(markdown), cursorToEnd)
+    restoreEditorBlankParagraphs(editor, markdown)
+  })
 }
 
 export function clearEditorMarkdownForDisplay(editor: Editor): void {

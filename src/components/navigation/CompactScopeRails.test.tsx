@@ -190,6 +190,71 @@ describe('compact scope rails', () => {
     expect(domainHtml).not.toContain('compact-scope-add-btn')
   })
 
+  it('renders arrange selected classes on compact space and domain rails', () => {
+    const spaceHtml = renderToStaticMarkup(
+      <CompactSpaceRail
+        spaces={[space('space-a'), space('space-b')]}
+        activeSpaceId="space-a"
+        editing={null}
+        arrangeMode={arrangeMode}
+        arrangeableSpaceClassName="is-arrangeable"
+        draggingSpaceId={null}
+        spacesGridRef={createRef<HTMLDivElement>()}
+        arrangeSelectedSpaceIds={new Set(['space-b'])}
+        onOpenSpace={noop}
+        onOpenContextMenu={noop}
+        onShouldSkipRenameBlur={() => false}
+        onCommitRename={noop}
+        onCancelRename={noop}
+        onRenameDraftChange={noop}
+        onBeginEdit={noop}
+        onAutoSizeRenameInput={autoSizeNoop}
+        onClearRenameDraft={noop}
+        onConsumeArrangeClickSuppression={() => false}
+        onStartArrangeDragSeed={noop}
+        onStartArrangeTapCandidate={noop}
+        onStartArrangePress={noop}
+        onHandleArrangeSpacePointerMove={noop}
+        onHandleArrangeSpacePointerUp={noop}
+        onClearArrangePressTimer={noop}
+        onCancelArrangeSpacePointerDrag={noop}
+      />,
+    )
+    const domainHtml = renderToStaticMarkup(
+      <CompactDomainRail
+        domains={[domain('domain-a'), domain('domain-b')]}
+        activeDomainId="domain-a"
+        editing={null}
+        arrangeMode={arrangeMode}
+        arrangeableDomainClassName="is-arrangeable"
+        draggingDomainId={null}
+        domainsGridRef={createRef<HTMLDivElement>()}
+        arrangeSelectedDomainIds={new Set(['domain-b'])}
+        onOpenDomain={noop}
+        onOpenContextMenu={noop}
+        onShouldSkipRenameBlur={() => false}
+        onCommitRename={noop}
+        onCancelRename={noop}
+        onRenameDraftChange={noop}
+        onBeginEdit={noop}
+        onAutoSizeRenameInput={autoSizeNoop}
+        onClearRenameDraft={noop}
+        onConsumeArrangeClickSuppression={() => false}
+        onStartArrangeDragSeed={noop}
+        onStartArrangeTapCandidate={noop}
+        onStartArrangePress={noop}
+        onHandleArrangeDomainPointerMove={noop}
+        onHandleArrangeDomainPointerUp={noop}
+        onClearArrangePressTimer={noop}
+        onCancelArrangeDomainPointerDrag={noop}
+      />,
+    )
+
+    expect(spaceHtml).toContain('compact-space-btn is-arrange-selected is-arrangeable')
+    expect(domainHtml).toContain('compact-domain-btn is-arrange-selected is-arrangeable')
+  })
+
+
   it('renders inline rename inputs for compact spaces and domains', () => {
     const spaceHtml = renderToStaticMarkup(
       <CompactSpaceRail
@@ -372,6 +437,9 @@ describe('compact scope rails', () => {
     expect(source).toContain("if (action === 'cancel')")
     expect(source).toContain("onBeginEdit({ type: 'space', id: space.id })")
     expect(source).toContain("onBeginEdit({ type: 'domain', id: domain.id })")
+    expect(source).toContain('onHandleArrangeSpaceSelectionClick?.(space.id, modifiers)')
+    expect(source).toContain('onHandleArrangeDomainSelectionClick?.(domain.id, modifiers)')
+    expect(source).toContain('onClearArrangeSelection?.()')
     expect(source).toContain('if (arrangeMode.active) return')
   })
 })

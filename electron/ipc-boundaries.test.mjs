@@ -357,6 +357,56 @@ describe('electron ipc boundaries', () => {
       expect(window.webContents.send).not.toHaveBeenCalledWith('app-state-updated', expect.anything())
     }))
 
+  it('ignores cloud-style echoes of recent app-owned saves without broadcasting app state', () =>
+    withTempUserDataPath((userDataPath) => {
+      vi.useFakeTimers()
+      vi.setSystemTime(1_000)
+      const consoleInfoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+      const window = {
+        isDestroyed: vi.fn(() => false),
+        webContents: { id: 2, send: vi.fn() },
+      }
+      const ipcMain = createIpcMain()
+      const storageSession = registerStorageIpc({
+        ipcMain,
+        app: { getPath: () => userDataPath },
+        BrowserWindow: createBrowserWindow([window]),
+      })
+
+      try {
+        const firstSave = { sender: { id: 1 }, returnValue: null }
+        ipcMain.listeners.get('save-app-state')(firstSave, {
+          serializedState: serializedAppState('dawn'),
+          baseRevision: 0,
+        })
+        const secondSave = { sender: { id: 1 }, returnValue: null }
+        ipcMain.listeners.get('save-app-state')(secondSave, {
+          serializedState: serializedAppState('light'),
+          baseRevision: 1,
+        })
+        window.webContents.send.mockClear()
+
+        vi.setSystemTime(10_000)
+        saveAppState(userDataPath, serializedAppState('dawn'))
+        storageSession.scanStorageProfile()
+        vi.advanceTimersByTime(400)
+
+        expect(window.webContents.send).toHaveBeenCalledWith(
+          'storage-profile-status-updated',
+          expect.objectContaining({
+            event: 'external-echo-ignored',
+            revision: 2,
+          }),
+        )
+        expect(window.webContents.send).not.toHaveBeenCalledWith('app-state-updated', expect.anything())
+        expect(consoleInfoSpy).toHaveBeenCalledWith('[tabs:storage] external-echo-ignored')
+      } finally {
+        storageSession.close()
+        consoleInfoSpy.mockRestore()
+        vi.useRealTimers()
+      }
+    }))
+
   it('restores the latest recovery snapshot through storage IPC', async () =>
     withTempUserDataPath(async (userDataPath) => {
       const window = {

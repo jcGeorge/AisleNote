@@ -499,11 +499,11 @@ export function annotationLinePlugin(context: {
                   const markerStart =
                     markerMatch.marker.kind === 'arrow'
                       ? markerMatch.markerStart
-                      : markerMatch.markerRemovalStart
+                      : markerMatch.markerStart
                   const markerEnd =
                     markerMatch.marker.kind === 'arrow'
                       ? markerMatch.markerEnd
-                      : markerMatch.markerRemovalEnd
+                      : markerMatch.markerEnd
                   const markerRange = getTextOffsetDecorationRange(
                     node,
                     position,
@@ -815,6 +815,10 @@ export function applyParagraphSpaceShortcut(state: any, dispatch?: (tr: unknown)
   const from = $from.before(blockDepth)
   const to = $from.after(blockDepth)
   const contentStart = $from.start(blockDepth)
+  const paragraphType = schema.nodes.paragraph
+  const contentAfterMarker = $from.parent.content.cut(Math.max(0, $from.parentOffset))
+  const createParagraphWithContentAfterMarker = (targetParagraphType: any) =>
+    targetParagraphType.create(null, contentAfterMarker)
 
   if (shortcut.kind === 'heading') {
     const headingType = schema.nodes.heading
@@ -832,15 +836,12 @@ export function applyParagraphSpaceShortcut(state: any, dispatch?: (tr: unknown)
     return true
   }
 
-  if ($from.parentOffset !== $from.parent.content.size) return false
-
   if (shortcut.kind === 'blockQuote') {
     const blockQuoteType = schema.nodes.blockQuote
-    const paragraphType = schema.nodes.paragraph
     if (!blockQuoteType || !paragraphType) return false
     if (!dispatch) return true
 
-    const blockQuoteNode = blockQuoteType.create(null, paragraphType.create())
+    const blockQuoteNode = blockQuoteType.create(null, createParagraphWithContentAfterMarker(paragraphType))
     const nextTr = state.tr.replaceWith(from, to, blockQuoteNode)
     const caretPos = Math.min(from + 2, nextTr.doc.content.size)
     const nextSelection = TextSelection.create(nextTr.doc, caretPos, caretPos)
@@ -850,11 +851,10 @@ export function applyParagraphSpaceShortcut(state: any, dispatch?: (tr: unknown)
 
   const listType = shortcut.kind === 'numberedList' ? schema.nodes.orderedList : schema.nodes.bulletList
   const listItemType = schema.nodes.listItem
-  const paragraphType = schema.nodes.paragraph
   if (!listType || !listItemType || !paragraphType) return false
   if (!dispatch) return true
 
-  const paragraphNode = paragraphType.create()
+  const paragraphNode = createParagraphWithContentAfterMarker(paragraphType)
   const listItemNode = listItemType.create(null, paragraphNode)
   const listAttrs =
     shortcut.kind === 'numberedList'

@@ -1,7 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Editor } from '@toast-ui/editor'
 import type { AppState, Space } from '../types/app'
-import { applyFreshEditorSnapshotToState, getSnapshotEditorMarkdown, pendingContentMatchesTarget } from './useEditorPersistence'
+import {
+  applyEditorContentSnapshotsToState,
+  applyFreshEditorSnapshotToState,
+  getSnapshotEditorMarkdown,
+  isEditorContentTargetCurrent,
+  pendingContentMatchesTarget,
+  resolveEditorFocusBoundaryFlushAction,
+} from './useEditorPersistence'
 
 function persistenceState(): AppState {
   const space: Space = {
@@ -52,6 +59,7 @@ describe('editor persistence snapshot helpers', () => {
 
   it('identifies stale pending content that should not overwrite a fresh active snapshot', () => {
     const pending = {
+      noteBodyId: 'body-a',
       spaceId: 'space-a',
       tabId: 'tab-a',
       subTabId: null,
@@ -61,6 +69,7 @@ describe('editor persistence snapshot helpers', () => {
     }
 
     expect(pendingContentMatchesTarget(pending, {
+      noteBodyId: 'body-a',
       spaceId: 'space-a',
       tabId: 'tab-a',
       subTabId: null,
@@ -68,6 +77,7 @@ describe('editor persistence snapshot helpers', () => {
       aisleBodyId: 'body-a',
     })).toBe(true)
     expect(pendingContentMatchesTarget(pending, {
+      noteBodyId: 'body-a',
       spaceId: 'space-a',
       tabId: 'tab-a',
       subTabId: null,
@@ -80,6 +90,7 @@ describe('editor persistence snapshot helpers', () => {
     const next = applyFreshEditorSnapshotToState(
       persistenceState(),
       {
+        noteBodyId: 'body-a',
         spaceId: 'space-a',
         tabId: 'tab-a',
         subTabId: null,
@@ -88,6 +99,7 @@ describe('editor persistence snapshot helpers', () => {
       },
       '# Fresh heading',
       {
+        noteBodyId: 'body-a',
         spaceId: 'space-a',
         tabId: 'tab-a',
         subTabId: null,
@@ -99,5 +111,131 @@ describe('editor persistence snapshot helpers', () => {
 
     expect(next.noteBodies[0].aisles[0].markdown).toBe('# Fresh heading')
     expect(next.noteAisleBodies?.find((body) => body.id === 'body-a-aisle')?.markdown).toBe('# Fresh heading')
+  })
+
+  it('applies multiple pending aisle snapshots without overwriting sibling aisles', () => {
+    const base = persistenceState()
+    const secondAisle = { id: 'aisle-b', aisleBodyId: 'body-b-aisle', markdown: 'old b' }
+    base.noteBodies[0].aisles.push(secondAisle)
+    base.noteAisleBodies?.push({ id: 'body-b-aisle', createdAt: '1', updatedAt: '1', markdown: 'old b' })
+
+    const next = applyEditorContentSnapshotsToState(base, [
+      {
+        noteBodyId: 'body-a',
+        spaceId: 'space-a',
+        tabId: 'tab-a',
+        subTabId: null,
+        aisleId: 'aisle-a',
+        aisleBodyId: 'body-a-aisle',
+        markdown: 'aisle one draft 🚙',
+      },
+      {
+        noteBodyId: 'body-a',
+        spaceId: 'space-a',
+        tabId: 'tab-a',
+        subTabId: null,
+        aisleId: 'aisle-b',
+        aisleBodyId: 'body-b-aisle',
+        markdown: 'aisle two draft 🥺',
+      },
+    ])
+
+    expect(next.noteAisleBodies?.find((body) => body.id === 'body-a-aisle')?.markdown).toBe('aisle one draft 🚙')
+    expect(next.noteAisleBodies?.find((body) => body.id === 'body-b-aisle')?.markdown).toBe('aisle two draft 🥺')
+    expect(next.noteBodies[0].aisles.map((aisle) => aisle.markdown)).toEqual(['aisle one draft 🚙', 'aisle two draft 🥺'])
+  })
+
+  it('keeps linked aisle bodies intentionally shared when the aisle body id is shared', () => {
+    const base = persistenceState()
+    base.noteBodies[0].aisles.push({ id: 'aisle-b', aisleBodyId: 'body-a-aisle', markdown: 'old' })
+
+    const next = applyEditorContentSnapshotsToState(base, [{
+      noteBodyId: 'body-a',
+      spaceId: 'space-a',
+      tabId: 'tab-a',
+      subTabId: null,
+      aisleId: 'aisle-b',
+      aisleBodyId: 'body-a-aisle',
+      markdown: 'shared linked draft',
+    }])
+
+    expect(next.noteBodies[0].aisles.map((aisle) => aisle.markdown)).toEqual(['shared linked draft', 'shared linked draft'])
+    expect(next.noteAisleBodies?.find((body) => body.id === 'body-a-aisle')?.markdown).toBe('shared linked draft')
+  })
+
+  it('skips stale explicit aisle body targets instead of falling back to another aisle', () => {
+    const base = persistenceState()
+
+    expect(isEditorContentTargetCurrent(base, {
+      noteBodyId: 'body-a',
+      spaceId: 'space-a',
+      tabId: 'tab-a',
+      subTabId: null,
+      aisleId: 'aisle-a',
+      aisleBodyId: 'missing-aisle-body',
+    })).toBe(false)
+
+    const next = applyEditorContentSnapshotsToState(base, [{
+      noteBodyId: 'body-a',
+      spaceId: 'space-a',
+      tabId: 'tab-a',
+      subTabId: null,
+      aisleId: 'aisle-a',
+      aisleBodyId: 'missing-aisle-body',
+      markdown: 'should not land on aisle-a',
+    }])
+
+    expect(next).toBe(base)
+    expect(next.noteAisleBodies?.find((body) => body.id === 'body-a-aisle')?.markdown).toBe('old')
+  })
+
+  it('lets mounted aisle snapshots win over stale pending content on save boundaries', () => {
+    const base = persistenceState()
+    base.noteBodies[0].aisles.push({ id: 'aisle-b', aisleBodyId: 'body-b-aisle', markdown: 'old b' })
+    base.noteAisleBodies?.push({ id: 'body-b-aisle', createdAt: '1', updatedAt: '1', markdown: 'old b' })
+
+    const next = applyEditorContentSnapshotsToState(base, [
+      {
+        noteBodyId: 'body-a',
+        spaceId: 'space-a',
+        tabId: 'tab-a',
+        subTabId: null,
+        aisleId: 'aisle-a',
+        aisleBodyId: 'body-a-aisle',
+        markdown: 'stale active cache',
+      },
+      {
+        noteBodyId: 'body-a',
+        spaceId: 'space-a',
+        tabId: 'tab-a',
+        subTabId: null,
+        aisleId: 'aisle-a',
+        aisleBodyId: 'body-a-aisle',
+        markdown: 'live aisle one 🚙',
+      },
+      {
+        noteBodyId: 'body-a',
+        spaceId: 'space-a',
+        tabId: 'tab-a',
+        subTabId: null,
+        aisleId: 'aisle-b',
+        aisleBodyId: 'body-b-aisle',
+        markdown: 'live aisle two 🥺',
+      },
+    ])
+
+    expect(next.noteBodies[0].aisles.map((aisle) => aisle.markdown)).toEqual(['live aisle one 🚙', 'live aisle two 🥺'])
+    expect(next.noteAisleBodies?.find((body) => body.id === 'body-a-aisle')?.markdown).toBe('live aisle one 🚙')
+    expect(next.noteAisleBodies?.find((body) => body.id === 'body-b-aisle')?.markdown).toBe('live aisle two 🥺')
+  })
+
+  it('resolves focus-boundary flush events with coalescing and forced exits', () => {
+    expect(resolveEditorFocusBoundaryFlushAction('blur', null)).toBe('schedule')
+    expect(resolveEditorFocusBoundaryFlushAction('blur', 12)).toBe('ignore')
+    expect(resolveEditorFocusBoundaryFlushAction('visibilitychange', null, 'visible')).toBe('ignore')
+    expect(resolveEditorFocusBoundaryFlushAction('visibilitychange', null, 'hidden')).toBe('schedule')
+    expect(resolveEditorFocusBoundaryFlushAction('visibilitychange', 12, 'hidden')).toBe('ignore')
+    expect(resolveEditorFocusBoundaryFlushAction('pagehide', 12, 'hidden')).toBe('force')
+    expect(resolveEditorFocusBoundaryFlushAction('beforeunload', 12)).toBe('force')
   })
 })

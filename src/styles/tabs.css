@@ -31,11 +31,11 @@
 }
 
 .tabbar .tab-sort-btn {
-  color: var(--tab-btn-text);
+  color: var(--rail-control-text);
 }
 
 .subtabbar .tab-sort-btn {
-  color: var(--tab-btn-text);
+  color: var(--rail-control-text);
 }
 
 .tab-sort-btn:hover {
@@ -84,16 +84,20 @@
 }
 
 .parent-tab-btn.is-arrange-selected {
-  border-color: var(--parent-tab-target-border) !important;
+  color: var(--parent-tab-selected-text) !important;
+  background: var(--parent-tab-selected-bg) !important;
+  border-color: var(--parent-tab-selected-border) !important;
   box-shadow:
-    inset 0 0 0 2px color-mix(in srgb, var(--parent-tab-target-border) 72%, transparent),
+    inset 0 0 0 2px color-mix(in srgb, var(--parent-tab-selected-border) 72%, transparent),
     var(--tab-arrangeable-shadow) !important;
 }
 
 .subtab-btn.is-arrange-selected {
-  border-color: var(--subtab-target-border) !important;
+  color: var(--subtab-selected-text) !important;
+  background: var(--subtab-selected-bg) !important;
+  border-color: var(--subtab-selected-border) !important;
   box-shadow:
-    inset 0 0 0 2px color-mix(in srgb, var(--subtab-target-border) 72%, transparent),
+    inset 0 0 0 2px color-mix(in srgb, var(--subtab-selected-border) 72%, transparent),
     var(--tab-arrangeable-shadow) !important;
 }
 

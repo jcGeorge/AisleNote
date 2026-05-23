@@ -1,11 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import type { ArrangeSelectionState, SubTab, Tab, WorkspaceData } from '../types/app'
+import { DEFAULT_FRONTMATTER_SETTINGS } from '../frontmatter/frontmatter'
+import type { AppState, ArrangeSelectionState, Domain, Space, SubTab, Tab, WorkspaceData } from '../types/app'
 import {
   EMPTY_ARRANGE_SELECTION,
+  moveSelectedDomainsByInsertion,
+  moveSelectedDomainsToTrash,
   moveSelectedItemsByInsertion,
   moveSelectedParentTabsToTrash,
+  moveSelectedSpacesToDomain,
+  moveSelectedSpacesToTrash,
+  moveSelectedSpacesWithinDomain,
   moveSelectedSubTabsToParentTab,
   moveSelectedSubTabsToTrash,
+  normalizeArrangeSelection,
   updateArrangeSelectionForClick,
 } from './arrange-selection'
 
@@ -38,6 +45,75 @@ function workspace(tabs: Tab[], activeTabId = tabs[0]?.id ?? 'missing'): Workspa
   }
 }
 
+function space(id: string): Space {
+  return {
+    id,
+    name: id,
+    settings: { autoRemoveDeletedDays: 7 },
+    data: workspace([tab(`${id}-tab`)], `${id}-tab`),
+  }
+}
+
+function domain(id: string, spaces: Space[] = [space(`${id}-space`)]): Domain {
+  return {
+    id,
+    name: id,
+    activeSpaceId: spaces[0]?.id ?? `${id}-missing-space`,
+    spaces,
+  }
+}
+
+function appState(domains: Domain[], activeDomainId = domains[0].id, activeSpaceId = domains[0].activeSpaceId): AppState {
+  const activeDomain = domains.find((entry) => entry.id === activeDomainId) ?? domains[0]
+  return {
+    theme: 'dark',
+    activeDomainId,
+    domains,
+    noteBodies: [],
+    activeSpaceId,
+    spaces: activeDomain.spaces,
+    hotkeys: {
+      shortcuts: {
+        toggleTabTrash: '',
+        openDomains: '',
+        openSpaces: '',
+        newTab: '',
+        newSubTab: '',
+        formatStrikethrough: '',
+        cycleParentTabNext: '',
+        cycleParentTabPrev: '',
+        cycleSubTabNext: '',
+        cycleSubTabPrev: '',
+      },
+      newlineShortcuts: {
+        shortcuts: {
+          controlEnter: 'normalNewLine',
+          shiftEnter: 'normalNewLine',
+          commandEnter: 'normalNewLine',
+        },
+        menuOperations: [],
+      },
+      enableMouseBackForward: true,
+      enableGenericHistoryHotkeys: true,
+    },
+    frontmatter: DEFAULT_FRONTMATTER_SETTINGS,
+    ui: {
+      showParentHomeTab: true,
+      stageManagerOpenDestinationAfterApply: true,
+      tableAddTargetMode: 'bottom-right',
+      tableDeleteTargetMode: 'bottom-right',
+      tabButtonScale: 1,
+      noteFontScale: 1,
+      settingsSection: 'hotkeys',
+      customThemePalette: null,
+      noteCursorLocations: {},
+      headingCollapseState: {},
+      seenTipIds: [],
+      disabledTipIds: [],
+    },
+  }
+}
+
 const noSelection: ArrangeSelectionState = EMPTY_ARRANGE_SELECTION
 
 describe('arrange modifier selection', () => {
@@ -56,6 +132,65 @@ describe('arrange modifier selection', () => {
       selectedIds: ['parent-2', 'parent-3', 'parent-4'],
       anchorId: 'parent-2',
     })
+  })
+
+  it('selects a domain range from the active domain on first shift-click', () => {
+    const next = updateArrangeSelectionForClick({
+      selection: noSelection,
+      kind: 'domain',
+      itemId: 'domain-4',
+      orderedIds: ['domain-1', 'domain-2', 'domain-3', 'domain-4'],
+      currentId: 'domain-2',
+      modifiers: { shiftKey: true, ctrlKey: false, metaKey: false },
+    })
+
+    expect(next).toMatchObject({
+      kind: 'domain',
+      selectedIds: ['domain-2', 'domain-3', 'domain-4'],
+      anchorId: 'domain-2',
+    })
+  })
+
+  it('selects a visible active-domain space range from the active space on first shift-click', () => {
+    const next = updateArrangeSelectionForClick({
+      selection: noSelection,
+      kind: 'space',
+      domainId: 'domain-1',
+      itemId: 'space-4',
+      orderedIds: ['space-1', 'space-2', 'space-3', 'space-4'],
+      currentId: 'space-2',
+      modifiers: { shiftKey: true, ctrlKey: false, metaKey: false },
+    })
+
+    expect(next).toMatchObject({
+      kind: 'space',
+      domainId: 'domain-1',
+      selectedIds: ['space-2', 'space-3', 'space-4'],
+      anchorId: 'space-2',
+    })
+  })
+
+  it('ctrl/cmd toggles domains and spaces while seeding the active same-kind item', () => {
+    const domainSelection = updateArrangeSelectionForClick({
+      selection: noSelection,
+      kind: 'domain',
+      itemId: 'domain-3',
+      orderedIds: ['domain-1', 'domain-2', 'domain-3'],
+      currentId: 'domain-1',
+      modifiers: { shiftKey: false, ctrlKey: true, metaKey: false },
+    })
+    const spaceSelection = updateArrangeSelectionForClick({
+      selection: noSelection,
+      kind: 'space',
+      domainId: 'domain-1',
+      itemId: 'space-3',
+      orderedIds: ['space-1', 'space-2', 'space-3'],
+      currentId: 'space-1',
+      modifiers: { shiftKey: false, ctrlKey: false, metaKey: true },
+    })
+
+    expect(domainSelection.selectedIds).toEqual(['domain-1', 'domain-3'])
+    expect(spaceSelection.selectedIds).toEqual(['space-1', 'space-3'])
   })
 
   it('selects a sub-tab range from the active sub-tab on first shift-click', () => {
@@ -125,6 +260,54 @@ describe('arrange modifier selection', () => {
       selectedIds: ['sub-1', 'sub-2'],
     })
   })
+
+  it('switching to domain selection clears a previous note selection', () => {
+    const parentSelection = updateArrangeSelectionForClick({
+      selection: noSelection,
+      kind: 'parent',
+      itemId: 'parent-2',
+      orderedIds: ['parent-1', 'parent-2'],
+      currentId: 'parent-1',
+      modifiers: { shiftKey: false, ctrlKey: true, metaKey: false },
+    })
+    const domainSelection = updateArrangeSelectionForClick({
+      selection: parentSelection,
+      kind: 'domain',
+      itemId: 'domain-2',
+      orderedIds: ['domain-1', 'domain-2'],
+      currentId: 'domain-1',
+      modifiers: { shiftKey: false, ctrlKey: true, metaKey: false },
+    })
+
+    expect(domainSelection).toMatchObject({
+      kind: 'domain',
+      selectedIds: ['domain-1', 'domain-2'],
+    })
+  })
+
+  it('normalizes active-domain space selections away when the active domain changes', () => {
+    const selection = updateArrangeSelectionForClick({
+      selection: noSelection,
+      kind: 'space',
+      domainId: 'domain-1',
+      itemId: 'space-2',
+      orderedIds: ['space-1', 'space-2'],
+      currentId: 'space-1',
+      modifiers: { shiftKey: false, ctrlKey: true, metaKey: false },
+    })
+
+    const normalized = normalizeArrangeSelection({
+      selection,
+      orderedParentIds: ['parent-1'],
+      activeParentTabId: 'parent-1',
+      orderedActiveSubTabIds: [],
+      orderedDomainIds: ['domain-1', 'domain-2'],
+      activeDomainId: 'domain-2',
+      orderedActiveDomainSpaceIds: ['space-3'],
+    })
+
+    expect(normalized).toBe(EMPTY_ARRANGE_SELECTION)
+  })
 })
 
 describe('arrange group operations', () => {
@@ -185,5 +368,67 @@ describe('arrange group operations', () => {
     expect(next.tabs[0].subTabs.map((entry) => entry.id)).toEqual(['sub-3'])
     expect(next.deletedSubTabs.map((entry) => entry.id)).toEqual(['deleted-sub-1', 'deleted-sub-2'])
     expect(next.deletedSubTabs.map((entry) => entry.subTab.id)).toEqual(['sub-1', 'sub-2'])
+  })
+
+  it('reorders selected domains as one ordered block', () => {
+    const initial = appState([domain('domain-1'), domain('domain-2'), domain('domain-3'), domain('domain-4')])
+    const next = moveSelectedDomainsByInsertion(initial, ['domain-2', 'domain-3'], 'domain-4', 'after')
+    const noOp = moveSelectedDomainsByInsertion(initial, ['domain-2', 'domain-3'], 'domain-3', 'after')
+
+    expect(next.domains.map((entry) => entry.id)).toEqual(['domain-1', 'domain-4', 'domain-2', 'domain-3'])
+    expect(noOp.domains.map((entry) => entry.id)).toEqual(initial.domains.map((entry) => entry.id))
+  })
+
+  it('reorders selected spaces as one ordered block inside the active domain', () => {
+    const spaces = [space('space-1'), space('space-2'), space('space-3'), space('space-4')]
+    const initial = appState([domain('domain-1', spaces)], 'domain-1', 'space-1')
+    const next = moveSelectedSpacesWithinDomain(initial, 'domain-1', ['space-2', 'space-3'], 'space-1', 'before')
+
+    expect(next.spaces.map((entry) => entry.id)).toEqual(['space-2', 'space-3', 'space-1', 'space-4'])
+    expect(next.domains[0].spaces.map((entry) => entry.id)).toEqual(['space-2', 'space-3', 'space-1', 'space-4'])
+  })
+
+  it('moves selected spaces to another domain in source order', () => {
+    const initial = appState([
+      domain('domain-1', [space('space-1'), space('space-2'), space('space-3')]),
+      domain('domain-2', [space('space-4')]),
+    ])
+    const result = moveSelectedSpacesToDomain(initial, 'domain-1', ['space-1', 'space-3'], 'domain-2')
+
+    expect(result.changed).toBe(true)
+    expect(result.state.domains.find((entry) => entry.id === 'domain-1')?.spaces.map((entry) => entry.id)).toEqual(['space-2'])
+    expect(result.state.domains.find((entry) => entry.id === 'domain-2')?.spaces.map((entry) => entry.id)).toEqual([
+      'space-4',
+      'space-1',
+      'space-3',
+    ])
+    expect(result.state.activeDomainId).toBe('domain-2')
+    expect(result.state.activeSpaceId).toBe('space-1')
+  })
+
+  it('moves selected domains to trash while blocking the last live domain', () => {
+    const ids = ['deleted-domain-1', 'deleted-domain-2']
+    const initial = appState([domain('domain-1'), domain('domain-2'), domain('domain-3')])
+    const result = moveSelectedDomainsToTrash(initial, ['domain-1', 'domain-3'], () => ids.shift() ?? 'missing')
+    const blocked = moveSelectedDomainsToTrash(appState([domain('domain-1')]), ['domain-1'])
+
+    expect(result.changed).toBe(true)
+    expect(result.state.domains.map((entry) => entry.id)).toEqual(['domain-2'])
+    expect(result.state.deletedDomains?.map((entry) => entry.domain.id)).toEqual(['domain-1', 'domain-3'])
+    expect(blocked.changed).toBe(false)
+    expect(blocked.reason).toBe('last-domain')
+  })
+
+  it('moves selected spaces to trash while blocking the last live space', () => {
+    const ids = ['deleted-space-1', 'deleted-space-2']
+    const initial = appState([domain('domain-1', [space('space-1'), space('space-2'), space('space-3')])])
+    const result = moveSelectedSpacesToTrash(initial, 'domain-1', ['space-1', 'space-3'], () => ids.shift() ?? 'missing')
+    const blocked = moveSelectedSpacesToTrash(appState([domain('domain-1', [space('space-1')])]), 'domain-1', ['space-1'])
+
+    expect(result.changed).toBe(true)
+    expect(result.state.domains[0].spaces.map((entry) => entry.id)).toEqual(['space-2'])
+    expect(result.state.deletedSpaces?.map((entry) => entry.space.id)).toEqual(['space-1', 'space-3'])
+    expect(blocked.changed).toBe(false)
+    expect(blocked.reason).toBe('last-space')
   })
 })

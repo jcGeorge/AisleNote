@@ -340,6 +340,7 @@ export type AppState = {
 }
 
 export type PendingContent = {
+  noteBodyId: string
   spaceId: string
   tabId: string
   subTabId: string | null
@@ -380,10 +381,11 @@ export type ArrangeHierarchyDropRequest = {
     | { type: 'space'; domainId: string; spaceId: string }
     | { type: 'domain'; domainId: string }
 }
-export type ArrangeSelectionKind = 'parent' | 'subtab'
+export type ArrangeSelectionKind = 'parent' | 'subtab' | 'domain' | 'space'
 export type ArrangeSelectionState = {
   kind: ArrangeSelectionKind | null
   parentTabId: string | null
+  domainId: string | null
   selectedIds: string[]
   anchorId: string | null
 }
@@ -431,6 +433,7 @@ export type ArrangeDragSeed = {
 export type SpaceArrangeDragPreview = {
   spaceId: string
   sourceDomainId: string
+  selectedSpaceIds?: string[]
   label: string
   currentX: number
   currentY: number
@@ -442,6 +445,7 @@ export type SpaceArrangeDragPreview = {
 
 export type DomainArrangeDragPreview = {
   domainId: string
+  selectedDomainIds?: string[]
   label: string
   currentX: number
   currentY: number

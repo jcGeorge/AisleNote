@@ -1,4 +1,4 @@
-import { Editor } from '@toast-ui/editor'
+import type { Editor } from '@toast-ui/editor'
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import { buildAisleEditorKey } from '../editor/aisle-editor'
 import { applyAutoPurgeToAppState } from '../state/app-state'
@@ -35,7 +35,6 @@ import {
 import type {
   AppState,
   ContextMenuState,
-  PendingContent,
   PendingCreatedEdit,
   Tab,
   ViewMode,
@@ -69,13 +68,9 @@ type UseAppNavigationActionsParams = {
   activeTab: Tab
   activeNoteBodyId: string
   resolvedActiveAisleId: string
-  activeSpaceIdRef: MutableRefObject<string>
   editorRef: MutableRefObject<Editor | null>
-  pendingContentRef: MutableRefObject<PendingContent | null>
   pendingCreatedEditRef: MutableRefObject<PendingCreatedEdit | null>
   skipRenameBlurRef: MutableRefObject<{ type: EditableEntityType; id: string } | null>
-  saveTimerRef: MutableRefObject<number | null>
-  lastEditorMarkdownRef: MutableRefObject<string>
   pendingFocusToAisleIdRef: MutableRefObject<string | null>
   pendingCursorRestoreRef: MutableRefObject<PendingCursorRestore | null>
   closeImageToolsRef: MutableRefObject<() => void>
@@ -107,13 +102,9 @@ export const useAppNavigationActions = ({
   activeTab,
   activeNoteBodyId,
   resolvedActiveAisleId,
-  activeSpaceIdRef,
   editorRef,
-  pendingContentRef,
   pendingCreatedEditRef,
   skipRenameBlurRef,
-  saveTimerRef,
-  lastEditorMarkdownRef,
   pendingFocusToAisleIdRef,
   pendingCursorRestoreRef,
   closeImageToolsRef,
@@ -198,26 +189,10 @@ export const useAppNavigationActions = ({
         if (tab.id !== data.activeTabId) return tab
         return {
           ...tab,
-          subTabs: tab.subTabs.map((sub) => {
-            if (sub.id !== id) return sub
-            const pending = pendingContentRef.current
-            const pendingMatches =
-              pending &&
-              pending.spaceId === activeSpaceIdRef.current &&
-              pending.tabId === data.activeTabId &&
-              pending.subTabId === id
-            const latest = pendingMatches ? pending.markdown : editorRef.current ? lastEditorMarkdownRef.current : sub.content
-            return { ...sub, title, content: latest }
-          }),
+          subTabs: tab.subTabs.map((sub) => (sub.id === id ? { ...sub, title } : sub)),
         }
       }),
     }))
-
-    pendingContentRef.current = null
-    if (saveTimerRef.current !== null) {
-      window.clearTimeout(saveTimerRef.current)
-      saveTimerRef.current = null
-    }
 
     if (options.focusEditor !== false) focusEditorSoon()
   }

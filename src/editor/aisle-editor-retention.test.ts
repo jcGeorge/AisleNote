@@ -37,6 +37,7 @@ describe('aisle editor retention helpers', () => {
   it('prefers pending and last editor markdown for fallback previews', () => {
     const aisle: NoteAisle = { id: 'aisle-1', aisleBodyId: 'body-1', markdown: 'stored' }
     const pendingContent: PendingContent = {
+      noteBodyId: 'note-1',
       spaceId: 'space-1',
       tabId: 'tab-1',
       subTabId: null,
@@ -48,14 +49,14 @@ describe('aisle editor retention helpers', () => {
     expect(
       getAislePreviewMarkdown({
         aisle,
-        pendingContent,
+        pendingContent: new Map([['body-1', pendingContent]]),
         lastEditorMarkdownByAisle: new Map([['body-1', 'last']]),
       }),
     ).toBe('pending')
     expect(
       getAislePreviewMarkdown({
         aisle,
-        pendingContent: null,
+        pendingContent: new Map(),
         lastEditorMarkdownByAisle: new Map([['body-1', 'last']]),
       }),
     ).toBe('last')
