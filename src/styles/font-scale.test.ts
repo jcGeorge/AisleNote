@@ -77,13 +77,13 @@ describe('editor heading styles', () => {
 })
 
 describe('editor annotation styles', () => {
-  it('positions the double-dash annotation marker on the text midline', () => {
+  it('positions the double-dash annotation marker below the text midline', () => {
     const css = readStyle('editor-content.css')
 
     expect(css).toContain(
       '.toastui-editor-contents p.tabs-annotation-line::before,\n.toastui-editor .ProseMirror p.tabs-annotation-line::before {',
     )
-    expect(css).toContain('top: 0.96em;')
+    expect(css).toContain('top: 1.18em;')
   })
 })
 

@@ -75,6 +75,31 @@ export function withImageTransformDisplayWidth(
   })
 }
 
+export function withImageTransformAssetDisplayWidth(
+  targetUrl: string,
+  sourceUrl: string,
+  renderedWidth: number,
+  sourceWidth: number,
+  transformedWidth: number,
+  operation: ImageTransformOperation,
+): string {
+  return withImageResizeMetadata(stripImageResizeMetadataFromUrl(targetUrl), {
+    v: 1,
+    w: getImageTransformDisplayWidthAfterOperation(sourceUrl, renderedWidth, sourceWidth, transformedWidth, operation),
+  })
+}
+
+export function withImageDisplayWidthPreservingTransformMetadata(sourceUrl: string, displayWidth: number): string {
+  const sourceMetadata = getImageResizeMetadata(sourceUrl)
+  return withImageResizeMetadata(stripImageResizeMetadataFromUrl(sourceUrl), {
+    v: 1,
+    w: displayWidth,
+    ...(sourceMetadata?.r ? { r: sourceMetadata.r } : {}),
+    ...(sourceMetadata?.fh ? { fh: true } : {}),
+    ...(sourceMetadata?.fv ? { fv: true } : {}),
+  })
+}
+
 export function drawImageTransform(
   context: CanvasRenderingContext2D,
   image: CanvasImageSource,

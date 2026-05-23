@@ -2570,6 +2570,7 @@ function App() {
       inlineCrop={inlineCrop}
       onStartCrop={startInlineCrop}
       onOpenTransform={openImageTransformMenu}
+      onCopyImage={copySelectedImageToClipboard}
       onReturnToStart={returnToImageToolsMenu}
       onTransformImage={transformSelectedImage}
       onApplyCrop={applyInlineCrop}

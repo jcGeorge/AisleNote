@@ -882,6 +882,55 @@ describe('Electron app state storage load result', () => {
       expect(readFileSync(assetPath)).toEqual(bytes)
     }))
 
+  it('prunes active image assets that are not referenced by saved markdown', () =>
+    withTempUserDataPath((userDataPath) => {
+      const keptBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 10, 20, 30])
+      const staleBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 40, 50, 60])
+      const keptAsset = writeImageAssetToProfile(userDataPath, keptBytes, 'png')
+      const staleAsset = writeImageAssetToProfile(userDataPath, staleBytes, 'png')
+      const state = JSON.parse(serializedAppState())
+      state.noteBodies[0].aisles[0].markdown = `image ![kept](${keptAsset.url})`
+
+      saveAppState(userDataPath, JSON.stringify(state))
+
+      expect(readFileSync(path.join(userDataPath, 'notes-data', keptAsset.assetPath))).toEqual(keptBytes)
+      expect(existsSync(path.join(userDataPath, 'notes-data', staleAsset.assetPath))).toBe(false)
+    }))
+
+  it('keeps image assets referenced only from deleted trash content', () =>
+    withTempUserDataPath((userDataPath) => {
+      const trashBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 70, 80, 90])
+      const staleBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 100, 110, 120])
+      const trashAsset = writeImageAssetToProfile(userDataPath, trashBytes, 'png')
+      const staleAsset = writeImageAssetToProfile(userDataPath, staleBytes, 'png')
+      const state = JSON.parse(serializedAppState())
+      const space = state.domains[0].spaces[0]
+      state.noteBodies.push({
+        id: 'body-deleted-parent',
+        aisles: [{ id: 'aisle-deleted-parent', markdown: `deleted ![trash](${trashAsset.url})` }],
+      })
+      space.data.deletedTabs = [
+        {
+          id: 'deleted-parent-entry',
+          deletedAt: 1,
+          tab: {
+            id: 'deleted-parent',
+            title: 'Deleted Parent',
+            noteBodyId: 'body-deleted-parent',
+            homeContent: `deleted ![trash](${trashAsset.url})`,
+            activeSubTabId: null,
+            subTabs: [],
+          },
+        },
+      ]
+      state.spaces = state.domains[0].spaces
+
+      saveAppState(userDataPath, JSON.stringify(state))
+
+      expect(readFileSync(path.join(userDataPath, 'notes-data', trashAsset.assetPath))).toEqual(trashBytes)
+      expect(existsSync(path.join(userDataPath, 'notes-data', staleAsset.assetPath))).toBe(false)
+    }))
+
   it('loads and re-saves non-image asset links as stable refs', () =>
     withTempUserDataPath((userDataPath) => {
       const bytes = Buffer.from([0x25, 0x50, 0x44, 0x46, 1, 2, 3])

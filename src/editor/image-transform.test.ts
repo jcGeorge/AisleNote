@@ -4,6 +4,8 @@ import {
   getImageTransformDimensions,
   getImageTransformDisplayWidth,
   getImageTransformDisplayWidthAfterOperation,
+  withImageDisplayWidthPreservingTransformMetadata,
+  withImageTransformAssetDisplayWidth,
   withImageTransformDisplayWidth,
 } from './image-transform'
 
@@ -92,6 +94,35 @@ describe('image transform helpers', () => {
 
     expect(nextUrl).toContain('data:image/png;base64,def#tabs-image=')
     expect(getImageTransformDisplayWidth(nextUrl, 240)).toBe(54)
+  })
+
+  it('writes transformed asset display width without transform metadata', () => {
+    const sourceUrl = withImageResizeMetadata('tabs-asset:///assets/source.png', { v: 1, w: 96 })
+    const nextUrl = withImageTransformAssetDisplayWidth(
+      'tabs-asset:///assets/transformed.png',
+      sourceUrl,
+      240,
+      320,
+      180,
+      'rotate-cw',
+    )
+
+    expect(stripImageResizeMetadataFromUrl(nextUrl)).toBe('tabs-asset:///assets/transformed.png')
+    expect(getImageResizeMetadata(nextUrl)).toEqual({ v: 1, w: 54 })
+  })
+
+  it('preserves legacy transform metadata while resizing', () => {
+    const sourceUrl = withImageResizeMetadata('tabs-asset:///assets/source.png', {
+      v: 1,
+      w: 96,
+      r: 90,
+      fh: true,
+      fv: true,
+    })
+    const nextUrl = withImageDisplayWidthPreservingTransformMetadata(sourceUrl, 144)
+
+    expect(stripImageResizeMetadataFromUrl(nextUrl)).toBe('tabs-asset:///assets/source.png')
+    expect(getImageResizeMetadata(nextUrl)).toEqual({ v: 1, w: 144, r: 90, fh: true, fv: true })
   })
 
   it('stores rotate and flip operations as metadata without changing the image source', () => {

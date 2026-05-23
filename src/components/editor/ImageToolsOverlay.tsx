@@ -10,6 +10,7 @@ type ImageToolsOverlayProps = {
   inlineCrop: InlineCropState
   onStartCrop: () => void
   onOpenTransform: () => void
+  onCopyImage: () => void | Promise<unknown>
   onReturnToStart: () => void
   onTransformImage: (operation: ImageTransformOperation) => void | Promise<unknown>
   onApplyCrop: () => void
@@ -91,12 +92,31 @@ function ImageTransformButton({
   )
 }
 
+function ImageCopyButton({ onCopyImage }: { onCopyImage: () => void | Promise<unknown> }) {
+  return (
+    <button
+      type="button"
+      className="image-tool-btn image-copy-btn"
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={(event) => {
+        event.preventDefault()
+        void onCopyImage()
+      }}
+      title="Copy image"
+      aria-label="Copy image"
+    >
+      <span className="image-copy-icon" aria-hidden="true" />
+    </button>
+  )
+}
+
 export function ImageToolsOverlay({
   visible,
   imageTools,
   inlineCrop,
   onStartCrop,
   onOpenTransform,
+  onCopyImage,
   onReturnToStart,
   onTransformImage,
   onApplyCrop,
@@ -156,16 +176,16 @@ export function ImageToolsOverlay({
               />
               <button
                 type="button"
-                className="image-tool-btn image-transform-cancel-btn"
+                className="image-tool-btn image-transform-return-btn"
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={(event) => {
                   event.preventDefault()
                   onReturnToStart()
                 }}
-                title="Cancel transform"
-                aria-label="Cancel transform"
+                title="Return"
+                aria-label="Return"
               >
-                cancel
+                return
               </button>
             </>
           ) : (
@@ -176,6 +196,7 @@ export function ImageToolsOverlay({
               <CropButton onClick={onOpenTransform} title="Transform">
                 transform
               </CropButton>
+              <ImageCopyButton onCopyImage={onCopyImage} />
             </>
           )
         ) : (

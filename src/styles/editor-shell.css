@@ -27,6 +27,11 @@
   height: auto;
 }
 
+.toastui-editor-contents img {
+  max-width: 100%;
+  height: auto;
+}
+
 .aisle-editor-preview-fallback > :first-child {
   margin-top: 0;
 }
@@ -1288,10 +1293,50 @@
   justify-content: center;
 }
 
-.image-transform-cancel-btn {
+.image-copy-btn {
+  width: 2rem;
+  min-width: 2rem;
+  height: 1.75rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.image-transform-return-btn {
   height: 1.75rem;
   min-width: 3.45rem;
   padding: 0 0.62rem;
+}
+
+.image-copy-icon {
+  position: relative;
+  display: block;
+  width: 1.05rem;
+  height: 1.05rem;
+  color: currentColor;
+}
+
+.image-copy-icon::before,
+.image-copy-icon::after {
+  content: '';
+  position: absolute;
+  width: 0.58rem;
+  height: 0.7rem;
+  border: 2px solid currentColor;
+  border-radius: 0.08rem;
+  background: var(--image-tool-btn-bg);
+}
+
+.image-copy-icon::before {
+  top: 0.12rem;
+  left: 0.14rem;
+  opacity: 0.75;
+}
+
+.image-copy-icon::after {
+  top: 0.28rem;
+  left: 0.34rem;
 }
 
 .image-transform-icon {

@@ -51,7 +51,10 @@ export function installImageDisplayMetadataSync(root: ParentNode) {
   timeoutIds.push(window.setTimeout(runSync, 40))
   timeoutIds.push(window.setTimeout(runSync, 160))
 
-  const observer = new MutationObserver(scheduleSync)
+  const observer = new MutationObserver(() => {
+    runSync()
+    scheduleSync()
+  })
   observer.observe(root, {
     attributes: true,
     attributeFilter: ['src'],

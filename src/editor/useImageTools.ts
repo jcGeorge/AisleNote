@@ -9,15 +9,18 @@ import {
 } from './image-dom-metadata'
 import { getImageToolPlacement, isUsableImageToolPlacementRect } from './image-tool-placement'
 import {
+  getImageResizeMetadata,
   stripImageResizeMetadataFromUrl,
   withImageResizeMetadata,
 } from '../markdown/image-metadata'
 import { importImageBlobAsAssetUrl } from '../markdown/image-asset-registry'
 import {
+  drawImageTransform,
   getImageTransformDimensions,
   getImageTransformDisplayWidth,
   type ImageTransformOperation,
-  withImageTransformDisplayWidth,
+  withImageDisplayWidthPreservingTransformMetadata,
+  withImageTransformAssetDisplayWidth,
 } from './image-transform'
 import { isInsideReadonlyNotePreview } from './note-preview-dom'
 import { getWysiwygView } from './prosemirror-utils'
@@ -256,6 +259,11 @@ export function useImageTools({
       })
     }
 
+    const runSyncAndScheduleFollowUp = () => {
+      syncEditorImageDisplayMetadata()
+      scheduleSync()
+    }
+
     const attachObserver = () => {
       if (cancelled) return
       const root = editorEventRootRef.current
@@ -265,7 +273,7 @@ export function useImageTools({
       }
 
       syncEditorImageDisplayMetadata()
-      observer = new MutationObserver(scheduleSync)
+      observer = new MutationObserver(runSyncAndScheduleFollowUp)
       observer.observe(root, {
         attributes: true,
         attributeFilter: ['src'],
@@ -458,7 +466,7 @@ export function useImageTools({
         throw new Error('clipboard image write unsupported')
       }
 
-      pushToast('image copied.', 'success')
+      pushToast('image copied', 'success')
       return true
     } catch {
       pushToast('could not copy image.', 'warning')
@@ -695,7 +703,7 @@ export function useImageTools({
       imageRebindInProgressRef.current = true
       const displayWidth = Math.max(8, Math.round(rect.width))
       const sourceUrl = image.getAttribute('src') ?? image.src
-      const nextImageUrl = withImageResizeMetadata(sourceUrl, { v: 1, w: displayWidth })
+      const nextImageUrl = withImageDisplayWidthPreservingTransformMetadata(sourceUrl, displayWidth)
       const updateResult = updateEditorImageNode(image, { imageUrl: nextImageUrl, altText: image.alt || null }, { scrollSnapshot })
       const selectedImage =
         updateResult.image ??
@@ -878,6 +886,65 @@ export function useImageTools({
     })
   }
 
+  const renderImageTransformCanvas = (
+    source: CanvasImageSource,
+    sourceWidth: number,
+    sourceHeight: number,
+    operation: ImageTransformOperation,
+  ) => {
+    const dimensions = getImageTransformDimensions(sourceWidth, sourceHeight, operation)
+    const canvas = document.createElement('canvas')
+    canvas.width = dimensions.width
+    canvas.height = dimensions.height
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('canvas context unavailable')
+
+    context.imageSmoothingEnabled = false
+    drawImageTransform(context, source, sourceWidth, sourceHeight, operation)
+    return { canvas, width: dimensions.width, height: dimensions.height }
+  }
+
+  const renderImageWithExistingTransformMetadata = (
+    sourceImage: HTMLImageElement,
+    sourceUrl: string,
+    sourceWidth: number,
+    sourceHeight: number,
+  ) => {
+    const sourceMetadata = getImageResizeMetadata(sourceUrl)
+    let current: { image: CanvasImageSource; width: number; height: number } = {
+      image: sourceImage,
+      width: sourceWidth,
+      height: sourceHeight,
+    }
+
+    const applyTransform = (operation: ImageTransformOperation) => {
+      const next = renderImageTransformCanvas(current.image, current.width, current.height, operation)
+      current = {
+        image: next.canvas,
+        width: next.width,
+        height: next.height,
+      }
+    }
+
+    if (sourceMetadata?.r === 90) {
+      applyTransform('rotate-cw')
+    } else if (sourceMetadata?.r === 180) {
+      applyTransform('rotate-cw')
+      applyTransform('rotate-cw')
+    } else if (sourceMetadata?.r === 270) {
+      applyTransform('rotate-ccw')
+    }
+    if (sourceMetadata?.fh) applyTransform('flip-horizontal')
+    if (sourceMetadata?.fv) applyTransform('flip-vertical')
+
+    return current
+  }
+
+  const canvasToPngBlob = (canvas: HTMLCanvasElement) =>
+    new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((nextBlob) => resolve(nextBlob), 'image/png')
+    })
+
   const transformSelectedImage = async (operation: ImageTransformOperation) => {
     const image = activeImageRef.current?.isConnected ? activeImageRef.current : recoverActiveImage()
     if (!image || !image.isConnected || !image.src || inlineCropRef.current.active) return false
@@ -899,14 +966,25 @@ export function useImageTools({
       const sourceHeight = sourceImage.naturalHeight || sourceImage.height
       if (sourceWidth <= 0 || sourceHeight <= 0) throw new Error('invalid image dimensions')
 
-      const dimensions = getImageTransformDimensions(sourceWidth, sourceHeight, operation)
+      const existingTransform = renderImageWithExistingTransformMetadata(sourceImage, sourceUrl, sourceWidth, sourceHeight)
+      const transformed = renderImageTransformCanvas(
+        existingTransform.image,
+        existingTransform.width,
+        existingTransform.height,
+        operation,
+      )
+      const transformBlob = await canvasToPngBlob(transformed.canvas)
+      if (!transformBlob) throw new Error('image transform encode failed')
+      const transformedAssetUrl = await importImageBlobAsAssetUrl(transformBlob, 'transformed-image.png')
+      if (!transformedAssetUrl) throw new Error('image transform import failed')
+
       const renderedWidth = image.getBoundingClientRect().width || image.width || sourceWidth
-      const nextImageUrl = withImageTransformDisplayWidth(
-        sourceUrl,
+      const nextImageUrl = withImageTransformAssetDisplayWidth(
+        transformedAssetUrl,
         sourceUrl,
         renderedWidth,
-        sourceWidth,
-        dimensions.width,
+        existingTransform.width,
+        transformed.width,
         operation,
       )
       const displayWidth = getImageTransformDisplayWidth(nextImageUrl, renderedWidth)

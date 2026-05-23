@@ -100,6 +100,10 @@ Images and similar binary files are stored under `notes-data/assets/`.
 
 Markdown references assets with relative paths. Runtime/editor layers may inline those files temporarily for rendering or editing, but saves write assets back out as normal files.
 
+Active asset cleanup uses the same save pass that writes Markdown. Each save rebuilds the expected file list from live notes, aisle bodies, orphan note bodies, and trash/deleted content, then prunes files in `notes-data/` that are not in that expected set. Image resize changes only the persisted image metadata fragment and does not create a new image file. Image crop and transform operations can create immediate preview assets, but any unreferenced intermediate assets in the active `notes-data/assets/` folder are removed by the next save/prune pass.
+
+Recovery snapshots are exact historical copies of `notes-data/`, including the asset files from that moment. They are stored outside the synced profile and pruned by retention policy rather than sharing the latest active asset versions.
+
 Example:
 
 ```md

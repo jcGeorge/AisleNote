@@ -45,6 +45,7 @@ function renderOverlay(imageTools: ImageToolsState, inlineCrop: InlineCropState 
       inlineCrop={inlineCrop}
       onStartCrop={noop}
       onOpenTransform={noop}
+      onCopyImage={noop}
       onReturnToStart={noop}
       onTransformImage={noop}
       onApplyCrop={noop}
@@ -61,10 +62,11 @@ describe('ImageToolsOverlay transform menu', () => {
 
     expect(html).toContain('crop')
     expect(html).toContain('transform')
+    expect(html).toContain('Copy image')
     expect(html).not.toContain('Rotate clockwise')
   })
 
-  it('shows four transform icon buttons plus cancel in transform mode', () => {
+  it('shows four transform icon buttons plus return in transform mode', () => {
     const html = renderOverlay({ ...baseImageTools, menuMode: 'transform' })
 
     expect(html.match(/image-transform-btn/g)).toHaveLength(4)
@@ -72,8 +74,8 @@ describe('ImageToolsOverlay transform menu', () => {
     expect(html).toContain('Rotate clockwise')
     expect(html).toContain('Flip horizontal')
     expect(html).toContain('Flip vertical')
-    expect(html).toContain('cancel')
-    expect(html).not.toContain('Return to image tools')
+    expect(html).toContain('return')
+    expect(html).not.toContain('cancel')
   })
 
   it('does not render a transparent selected-image-width hit zone', () => {
