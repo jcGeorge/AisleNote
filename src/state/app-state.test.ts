@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_FRONTMATTER_SETTINGS } from '../frontmatter/frontmatter'
 import { DEFAULT_NEWLINE_SHORTCUT_SETTINGS, DEFAULT_SHORTCUTS } from '../hotkeys/shortcuts'
-import { DEFAULT_CUSTOM_THEME_PALETTE, DEFAULT_UI_SETTINGS } from '../settings/defaults'
+import { BUILT_IN_THEME_PALETTE_SEEDS, DEFAULT_CUSTOM_THEME_PALETTE, DEFAULT_UI_SETTINGS } from '../settings/defaults'
 import { syncNoteBodyAisleStructureInState } from '../notes/note-state'
 import type { AppState, DeletedSubTabEntry, DeletedTabEntry, Space, SubTab, Tab, WorkspaceData } from '../types/app'
 import { applyAutoPurgeToAppState, applyMarkdownToAppState, getNextAutoPurgeTimeForAppState, parseSavedState } from './app-state'
@@ -622,19 +622,90 @@ describe('app state normalization', () => {
     }))
     const missing = parseSavedState(JSON.stringify({ ui: {} }))
 
-    expect(valid.theme).toBe('custom')
+    expect(valid.theme).toBe('custom1')
+    expect(valid.ui.selectedCustomTheme).toBe('custom1')
     expect(valid.ui.customThemePalette).toEqual({
       ...DEFAULT_CUSTOM_THEME_PALETTE,
       primary: '#aabbcc',
       text: '#123456',
     })
+    expect(valid.ui.themePalettes?.custom1).toEqual(valid.ui.customThemePalette)
     expect(invalid.ui.customThemePalette?.primary).toBe(DEFAULT_CUSTOM_THEME_PALETTE.primary)
     expect(missing.ui.customThemePalette).toBeNull()
+    expect(missing.ui.themePalettes).toEqual({})
+  })
+
+  it('normalizes custom theme ids and selected custom theme memory', () => {
+    const custom2 = parseSavedState(JSON.stringify({
+      theme: 'custom2',
+      ui: { selectedCustomTheme: 'custom3' },
+    }))
+    const invalidSelected = parseSavedState(JSON.stringify({
+      theme: 'custom3',
+      ui: { selectedCustomTheme: 'custom4' },
+    }))
+
+    expect(custom2.theme).toBe('custom2')
+    expect(custom2.ui.selectedCustomTheme).toBe('custom3')
+    expect(invalidSelected.theme).toBe('custom3')
+    expect(invalidSelected.ui.selectedCustomTheme).toBe('custom1')
+  })
+
+  it('normalizes persisted per-theme palettes', () => {
+    const state = parseSavedState(JSON.stringify({
+      theme: 'dawn',
+      ui: {
+        customThemePalette: {
+          primary: '#AbC',
+        },
+        themePalettes: {
+          dawn: {
+            primary: '#123456',
+            domainRail: '#a95429',
+          },
+          light: {
+            primary: 'not-a-color',
+          },
+          unknown: {
+            primary: '#ffffff',
+          },
+        },
+      },
+    }))
+
+    expect(state.ui.themePalettes?.dawn?.primary).toBe('#123456')
+    expect(state.ui.themePalettes?.dawn?.domainRail).toBe('#a95429')
+    expect(state.ui.themePalettes?.light?.primary).toBe(DEFAULT_CUSTOM_THEME_PALETTE.primary)
+    expect(state.ui.themePalettes?.custom1?.primary).toBe('#aabbcc')
+    expect(Object.keys(state.ui.themePalettes ?? {}).sort()).toEqual(['custom1', 'dawn', 'light'])
+  })
+
+  it('drops exact legacy dawn and blues seed palette overrides', () => {
+    const state = parseSavedState(JSON.stringify({
+      ui: {
+        themePalettes: {
+          dawn: {
+            ...BUILT_IN_THEME_PALETTE_SEEDS.dawn,
+            canvas: '#776238',
+          },
+          blues: {
+            ...BUILT_IN_THEME_PALETTE_SEEDS.blues,
+            canvas: '#25324d',
+          },
+        },
+      },
+    }))
+
+    expect(state.ui.themePalettes?.dawn).toBeUndefined()
+    expect(state.ui.themePalettes?.blues).toBeUndefined()
   })
 
   it('normalizes persisted settings section memory', () => {
     const valid = parseSavedState(JSON.stringify({ ui: { settingsSection: 'visuals' } }))
     const misc = parseSavedState(JSON.stringify({ ui: { settingsSection: 'misc' } }))
+    const theming = parseSavedState(JSON.stringify({ ui: { settingsSection: 'theming' } }))
+    const nestedVisuals = parseSavedState(JSON.stringify({ ui: { settingsSection: 'visuals', visualsSettingsSection: 'otherVisuals' } }))
+    const invalidNestedVisuals = parseSavedState(JSON.stringify({ ui: { settingsSection: 'visuals', visualsSettingsSection: 'colors' } }))
     const tips = parseSavedState(JSON.stringify({ ui: { settingsSection: 'tips' } }))
     const toolbar = parseSavedState(JSON.stringify({ ui: { settingsSection: 'toolbar' } }))
     const invalid = parseSavedState(JSON.stringify({ ui: { settingsSection: 'unknown' } }))
@@ -642,6 +713,11 @@ describe('app state normalization', () => {
 
     expect(valid.ui.settingsSection).toBe('visuals')
     expect(misc.ui.settingsSection).toBe('misc')
+    expect(theming.ui.settingsSection).toBe('visuals')
+    expect(theming.ui.visualsSettingsSection).toBe('theming')
+    expect(nestedVisuals.ui.settingsSection).toBe('visuals')
+    expect(nestedVisuals.ui.visualsSettingsSection).toBe('otherVisuals')
+    expect(invalidNestedVisuals.ui.visualsSettingsSection).toBe('theming')
     expect(tips.ui.settingsSection).toBe('tips')
     expect(toolbar.ui.settingsSection).toBe('toolbar')
     expect(invalid.ui.settingsSection).toBe('hotkeys')

@@ -2,7 +2,9 @@ import {
   useEffect,
   useRef,
   useState,
+  type Dispatch,
   type MutableRefObject,
+  type SetStateAction,
 } from 'react'
 import { DEFAULT_NEWLINE_SHORTCUT_SETTINGS, DEFAULT_SHORTCUTS } from '../hotkeys/shortcuts'
 import {
@@ -14,6 +16,7 @@ import { isFrontmatterComputedValueCompatibleWithFieldType } from '../frontmatte
 import type {
   AppState,
   AppTheme,
+  CustomThemeId,
   CustomThemePalette,
   CustomThemePaletteSlot,
   FrontmatterSettings,
@@ -26,6 +29,7 @@ import type {
   Space,
   TableControlTargetMode,
   TipId,
+  VisualsSettingsSection,
   ViewMode,
 } from '../types/app'
 import {
@@ -33,10 +37,16 @@ import {
   clampNoteFontScale,
   clampTabButtonScale,
   DEFAULT_AUTO_REMOVE_DAYS,
-  DEFAULT_CUSTOM_THEME_PALETTE,
+  DEFAULT_CUSTOM_THEME_ID,
   DEFAULT_UI_SETTINGS,
+  DEFAULT_VISUALS_SETTINGS_SECTION,
   getCustomThemePaletteSeed,
+  getThemePaletteForTheme,
+  isCustomTheme,
   normalizeHexColor,
+  normalizeCustomThemeId,
+  removeThemePaletteOverride,
+  setThemePaletteOverride,
 } from './defaults'
 import {
   DEFAULT_TOOLBAR_LAYOUT_ID,
@@ -61,6 +71,7 @@ import {
 
 type UseSettingsControllerParams = {
   state: AppState
+  setState: Dispatch<SetStateAction<AppState>>
   stateRef: MutableRefObject<AppState>
   commitAppStateNow: (nextState: AppState) => Promise<AppState>
   activeSpace: Space
@@ -76,6 +87,7 @@ function isFrontmatterBooleanDefaultTrue(value: string) {
 
 export function useSettingsController({
   state,
+  setState,
   stateRef,
   commitAppStateNow,
   activeSpace,
@@ -84,6 +96,9 @@ export function useSettingsController({
   onActiveToolbarLayoutIdChange,
 }: UseSettingsControllerParams) {
   const [section, setSection] = useState<SettingsSection>(state.ui.settingsSection)
+  const [visualsSection, setVisualsSection] = useState<VisualsSettingsSection>(
+    state.ui.visualsSettingsSection ?? DEFAULT_VISUALS_SETTINGS_SECTION,
+  )
   const [settingsDaysDraft, setSettingsDaysDraft] = useState<string>(String(DEFAULT_AUTO_REMOVE_DAYS))
   const [shortcutDrafts, setShortcutDrafts] = useState<Record<ShortcutId, string>>(DEFAULT_SHORTCUTS)
   const [newlineShortcutDrafts, setNewlineShortcutDrafts] = useState<Record<NewlineShortcutId, NewlineOperationId>>(
@@ -102,8 +117,11 @@ export function useSettingsController({
   const [tableDeleteTargetModeDraft, setTableDeleteTargetModeDraft] = useState(DEFAULT_UI_SETTINGS.tableDeleteTargetMode)
   const [tabButtonScaleDraft, setTabButtonScaleDraft] = useState(DEFAULT_UI_SETTINGS.tabButtonScale)
   const [noteFontScaleDraft, setNoteFontScaleDraft] = useState(DEFAULT_UI_SETTINGS.noteFontScale)
+  const [selectedCustomTheme, setSelectedCustomTheme] = useState<CustomThemeId>(
+    isCustomTheme(state.theme) ? state.theme : normalizeCustomThemeId(state.ui.selectedCustomTheme),
+  )
   const [customThemePaletteDraft, setCustomThemePaletteDraft] = useState<CustomThemePalette>(
-    state.ui.customThemePalette ?? getCustomThemePaletteSeed(state.theme),
+    getThemePaletteForTheme(state.theme, state.ui.themePalettes, state.ui.customThemePalette),
   )
   const [frontmatterDraft, setFrontmatterDraft] = useState<FrontmatterSettings>(state.frontmatter)
   const [toolbarEditorLayoutId, setToolbarEditorLayoutId] = useState<string>(() =>
@@ -112,14 +130,7 @@ export function useSettingsController({
   const [exportStatus, setExportStatus] = useState<string>('')
   const pendingSettingsFrontmatterTemplateIdRef = useRef<string | null>(null)
   const pendingSettingsSectionRef = useRef<SettingsSection | null>(null)
-  const lastBuiltInThemeRef = useRef<Exclude<AppTheme, 'custom'>>(state.theme === 'custom' ? 'dawn' : state.theme)
-
-  useEffect(() => {
-    if (state.theme !== 'custom') {
-      lastBuiltInThemeRef.current = state.theme
-    }
-  }, [state.theme])
-
+  const pendingVisualsSettingsSectionRef = useRef<VisualsSettingsSection | null>(null)
   useEffect(() => {
     if (viewMode !== 'settings') return
     setSettingsDaysDraft(String(activeSpace.settings.autoRemoveDeletedDays))
@@ -135,13 +146,18 @@ export function useSettingsController({
     setTableDeleteTargetModeDraft(state.ui.tableDeleteTargetMode)
     setTabButtonScaleDraft(state.ui.tabButtonScale)
     setNoteFontScaleDraft(state.ui.noteFontScale)
+    setSelectedCustomTheme(isCustomTheme(state.theme) ? state.theme : normalizeCustomThemeId(state.ui.selectedCustomTheme))
     setSection(pendingSettingsSectionRef.current ?? state.ui.settingsSection)
     if (pendingSettingsSectionRef.current === state.ui.settingsSection) {
       pendingSettingsSectionRef.current = null
     }
+    const currentVisualsSection = state.ui.visualsSettingsSection ?? DEFAULT_VISUALS_SETTINGS_SECTION
+    setVisualsSection(pendingVisualsSettingsSectionRef.current ?? currentVisualsSection)
+    if (pendingVisualsSettingsSectionRef.current === currentVisualsSection) {
+      pendingVisualsSettingsSectionRef.current = null
+    }
     setCustomThemePaletteDraft(
-      state.ui.customThemePalette ??
-        getCustomThemePaletteSeed(state.theme === 'custom' ? lastBuiltInThemeRef.current : state.theme),
+      getThemePaletteForTheme(state.theme, state.ui.themePalettes, state.ui.customThemePalette),
     )
     setEditingShortcut(null)
   }, [
@@ -156,8 +172,11 @@ export function useSettingsController({
     state.ui.tableDeleteTargetMode,
     state.ui.tabButtonScale,
     state.ui.noteFontScale,
+    state.ui.selectedCustomTheme,
     state.ui.settingsSection,
+    state.ui.visualsSettingsSection,
     state.ui.customThemePalette,
+    state.ui.themePalettes,
   ])
 
   useEffect(() => {
@@ -185,6 +204,10 @@ export function useSettingsController({
     void commitAppStateNow(nextState)
   }
 
+  const commitDebouncedSettingsState = (buildNextState: (previous: AppState) => AppState) => {
+    setState(buildNextState)
+  }
+
   const changeSection = (nextSection: SettingsSection) => {
     pendingSettingsSectionRef.current = stateRef.current.ui.settingsSection === nextSection ? null : nextSection
     setSection(nextSection)
@@ -199,6 +222,22 @@ export function useSettingsController({
       }
     })
     if (nextSection !== 'hotkeys') setEditingShortcut(null)
+  }
+
+  const changeVisualsSection = (nextSection: VisualsSettingsSection) => {
+    pendingVisualsSettingsSectionRef.current =
+      (stateRef.current.ui.visualsSettingsSection ?? DEFAULT_VISUALS_SETTINGS_SECTION) === nextSection ? null : nextSection
+    setVisualsSection(nextSection)
+    commitImmediateSettingsState((previous) => {
+      if (previous.ui.visualsSettingsSection === nextSection) return previous
+      return {
+        ...previous,
+        ui: {
+          ...previous.ui,
+          visualsSettingsSection: nextSection,
+        },
+      }
+    })
   }
 
   const toggleShortcutEdit = (shortcutId: ShortcutId) => {
@@ -351,73 +390,86 @@ export function useSettingsController({
   }
 
   const updateThemeSetting = (theme: AppTheme) => {
-    if (theme === 'custom') {
-      const current = stateRef.current
-      setCustomThemePaletteDraft(
-        current.ui.customThemePalette ??
-          getCustomThemePaletteSeed(current.theme === 'custom' ? lastBuiltInThemeRef.current : current.theme),
-      )
+    const current = stateRef.current
+    if (isCustomTheme(theme)) {
+      setSelectedCustomTheme(theme)
     }
+    setCustomThemePaletteDraft(getThemePaletteForTheme(theme, current.ui.themePalettes, current.ui.customThemePalette))
     commitImmediateSettingsState((previous) => {
-      if (previous.theme === theme && (theme !== 'custom' || previous.ui.customThemePalette)) return previous
-      if (theme !== 'custom') return { ...previous, theme }
-      const seedTheme = previous.theme === 'custom' ? lastBuiltInThemeRef.current : previous.theme
-      const customThemePalette = previous.ui.customThemePalette ?? getCustomThemePaletteSeed(seedTheme)
       return {
         ...previous,
         theme,
         ui: {
           ...previous.ui,
-          customThemePalette,
+          selectedCustomTheme: isCustomTheme(theme) ? theme : previous.ui.selectedCustomTheme,
         },
       }
     })
+  }
+
+  const updateSelectedCustomThemeSetting = (theme: CustomThemeId) => {
+    const current = stateRef.current
+    setSelectedCustomTheme(theme)
+    if (isCustomTheme(current.theme)) {
+      setCustomThemePaletteDraft(getThemePaletteForTheme(theme, current.ui.themePalettes, current.ui.customThemePalette))
+    }
+    commitImmediateSettingsState((previous) => ({
+      ...previous,
+      theme: isCustomTheme(previous.theme) ? theme : previous.theme,
+      ui: {
+        ...previous.ui,
+        selectedCustomTheme: theme,
+      },
+    }))
   }
 
   const updateCustomThemePaletteSetting = (slot: CustomThemePaletteSlot, rawValue: string) => {
     const normalized = normalizeHexColor(rawValue)
     setCustomThemePaletteDraft((previous) => ({ ...previous, [slot]: normalized ?? rawValue }))
     if (!normalized) return
-    commitImmediateSettingsState((previous) => {
-      const seedTheme = previous.theme === 'custom' ? lastBuiltInThemeRef.current : previous.theme
+    commitDebouncedSettingsState((previous) => {
       const nextPalette = {
-        ...(previous.ui.customThemePalette ?? getCustomThemePaletteSeed(seedTheme)),
+        ...getThemePaletteForTheme(previous.theme, previous.ui.themePalettes, previous.ui.customThemePalette),
         [slot]: normalized,
       }
       return {
         ...previous,
-        theme: 'custom',
         ui: {
           ...previous.ui,
-          customThemePalette: nextPalette,
+          customThemePalette: previous.theme === DEFAULT_CUSTOM_THEME_ID ? nextPalette : previous.ui.customThemePalette,
+          themePalettes: setThemePaletteOverride(previous.ui.themePalettes, previous.theme, nextPalette),
         },
       }
     })
   }
 
   const resetCustomThemePaletteSetting = () => {
-    setCustomThemePaletteDraft(DEFAULT_CUSTOM_THEME_PALETTE)
+    const theme = stateRef.current.theme
+    setCustomThemePaletteDraft(getCustomThemePaletteSeed(theme))
     commitImmediateSettingsState((previous) => ({
       ...previous,
-      theme: 'custom',
       ui: {
         ...previous.ui,
-        customThemePalette: DEFAULT_CUSTOM_THEME_PALETTE,
+        customThemePalette: previous.theme === DEFAULT_CUSTOM_THEME_ID ? null : previous.ui.customThemePalette,
+        themePalettes: removeThemePaletteOverride(previous.ui.themePalettes, previous.theme),
       },
     }))
   }
 
   const seedCustomThemePaletteFromCurrentTheme = () => {
-    const seed = getCustomThemePaletteSeed(
-      stateRef.current.theme === 'custom' ? lastBuiltInThemeRef.current : stateRef.current.theme,
-    )
-    setCustomThemePaletteDraft(seed)
+    const current = stateRef.current
+    const targetTheme = normalizeCustomThemeId(selectedCustomTheme, DEFAULT_CUSTOM_THEME_ID)
+    const palette = getThemePaletteForTheme(current.theme, current.ui.themePalettes, current.ui.customThemePalette)
+    setCustomThemePaletteDraft(palette)
+    setSelectedCustomTheme(targetTheme)
     commitImmediateSettingsState((previous) => ({
       ...previous,
-      theme: 'custom',
+      theme: targetTheme,
       ui: {
         ...previous.ui,
-        customThemePalette: seed,
+        selectedCustomTheme: targetTheme,
+        customThemePalette: targetTheme === DEFAULT_CUSTOM_THEME_ID ? palette : previous.ui.customThemePalette,
+        themePalettes: setThemePaletteOverride(previous.ui.themePalettes, targetTheme, palette),
       },
     }))
   }
@@ -763,6 +815,7 @@ export function useSettingsController({
 
   return {
     section,
+    visualsSection,
     shortcutDrafts,
     newlineShortcutDrafts,
     shortcutMenuOperationsDraft,
@@ -773,6 +826,7 @@ export function useSettingsController({
     exportStatus,
     tabButtonScaleDraft,
     noteFontScaleDraft,
+    selectedCustomTheme,
     customThemePaletteDraft,
     showParentHomeTabDraft,
     alwaysShowSpacesDraft,
@@ -788,6 +842,8 @@ export function useSettingsController({
     setEditingShortcut,
     setExportStatus,
     changeSection,
+    changeVisualsSection,
+    updateSelectedCustomThemeSetting,
     toggleShortcutEdit,
     updateAutoRemoveDaysSetting,
     updateMouseBackForwardSetting,

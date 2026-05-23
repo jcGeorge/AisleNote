@@ -1337,9 +1337,11 @@ function readV2HybridAppStateFromRoot(rootPath, rootManifest, issues = null) {
       rootManifest.activeDomainId) ||
     domains[0].id
   const activeDomain = domains.find((domain) => domain.id === activeDomainId) ?? domains[0]
-  const theme = ['dark', 'light', 'dawn', 'blues', 'custom'].includes(syncedSettings?.theme)
-    ? syncedSettings.theme
-    : 'dawn'
+  const theme = syncedSettings?.theme === 'custom'
+    ? 'custom1'
+    : ['dark', 'light', 'dawn', 'blues', 'custom1', 'custom2', 'custom3'].includes(syncedSettings?.theme)
+      ? syncedSettings.theme
+      : 'dawn'
 
   return JSON.stringify({
     theme,

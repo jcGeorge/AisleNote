@@ -151,6 +151,16 @@ describe('browser hybrid storage', () => {
             ...DEFAULT_CUSTOM_THEME_PALETTE,
             primary: '#8844cc',
           },
+          themePalettes: {
+            custom: {
+              ...DEFAULT_CUSTOM_THEME_PALETTE,
+              primary: '#8844cc',
+            },
+            dawn: {
+              ...DEFAULT_CUSTOM_THEME_PALETTE,
+              primary: '#123456',
+            },
+          },
           noteCursorLocations: {
             'domain::space-1::tab-1::__home__': {
               activeAisleId: 'aisle-tab',
@@ -200,10 +210,18 @@ describe('browser hybrid storage', () => {
     expect(homeBody?.frontmatterTemplateRemovedFieldIds).toEqual(['field-2'])
     expect(homeBody?.frontmatterComputedFields).toEqual({ created: 'createdAt' })
     expect(subBody?.aisles[0]?.markdown).toBe('sub body')
-    expect(roundTripped.theme).toBe('custom')
+    expect(roundTripped.theme).toBe('custom1')
     expect(roundTripped.ui.customThemePalette).toEqual({
       ...DEFAULT_CUSTOM_THEME_PALETTE,
       primary: '#8844cc',
+    })
+    expect(roundTripped.ui.themePalettes?.custom1?.primary).toBe('#8844cc')
+    expect(roundTripped.ui.themePalettes?.dawn?.primary).toBe('#123456')
+    expect(getRecord(getRecord(getRecord(profileSettings.settings).ui).themePalettes).custom1).toMatchObject({
+      primary: '#8844cc',
+    })
+    expect(getRecord(getRecord(getRecord(profileSettings.settings).ui).themePalettes).dawn).toMatchObject({
+      primary: '#123456',
     })
     expect(getRecord(getRecord(profileSettings.settings).ui).settingsSection).toBeUndefined()
     expect(getRecord(getRecord(profileSettings.settings).ui).noteCursorLocations).toBeUndefined()
@@ -216,7 +234,7 @@ describe('browser hybrid storage', () => {
   it('persists app settings and per-space settings in hybrid notes-data manifests', () => {
     const state = parseSavedState(
       JSON.stringify({
-        theme: 'custom',
+        theme: 'custom2',
         activeDomainId: 'domain-1',
         activeSpaceId: 'space-1',
         domains: [
@@ -277,12 +295,19 @@ describe('browser hybrid storage', () => {
           showParentHomeTab: false,
           stageManagerOpenDestinationAfterApply: false,
           settingsSection: 'toolbar',
+          selectedCustomTheme: 'custom2',
           lastNoteCopyMode: 'linked',
           decoupledItemsKeepData: false,
           tableAddTargetMode: 'active-cell',
           tableDeleteTargetMode: 'active-cell',
           tabButtonScale: 1.3,
           noteFontScale: 1.2,
+          themePalettes: {
+            dawn: {
+              ...DEFAULT_CUSTOM_THEME_PALETTE,
+              primary: '#123456',
+            },
+          },
         },
       }),
     )
@@ -300,6 +325,8 @@ describe('browser hybrid storage', () => {
     expect(getRecord(globalSettings.ui).showParentHomeTab).toBe(false)
     expect(profileUi.lastNoteCopyMode).toBe('linked')
     expect(profileUi.showParentHomeTab).toBe(false)
+    expect(profileUi.selectedCustomTheme).toBe('custom2')
+    expect(getRecord(profileUi.themePalettes).dawn).toMatchObject({ primary: '#123456' })
     expect(profileUi.settingsSection).toBeUndefined()
     expect(profileUi.tabButtonScale).toBeUndefined()
     expect(getRecord(globalSettings.hotkeys).enableMouseBackForward).toBe(false)
@@ -307,8 +334,11 @@ describe('browser hybrid storage', () => {
     expect(getRecord(globalSettings.frontmatter).settingsTemplateId).toBe('template-1')
     expect(spaceManifest.settings).toEqual({ autoRemoveDeletedDays: 21 })
     expect(roundTripped.ui.settingsSection).toBe('hotkeys')
+    expect(roundTripped.theme).toBe('custom2')
+    expect(roundTripped.ui.selectedCustomTheme).toBe('custom2')
     expect(roundTripped.ui.tabButtonScale).toBe(1)
     expect(roundTripped.ui.noteFontScale).toBe(1)
+    expect(roundTripped.ui.themePalettes?.dawn?.primary).toBe('#123456')
     expect(roundTripped.hotkeys.shortcuts.newTab).toBe('Ctrl+Alt+N')
     expect(roundTripped.hotkeys.enableMouseBackForward).toBe(false)
     expect(roundTripped.frontmatter.settingsTemplateId).toBe('template-1')

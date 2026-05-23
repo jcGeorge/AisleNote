@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import { getPickerPanelPlacement } from '../../settings/color-utils'
 import { CustomThemeColorPicker } from './CustomThemeColorPicker'
 
 function renderPicker(isOpen: boolean) {
@@ -30,11 +31,47 @@ describe('CustomThemeColorPicker', () => {
   it('renders the saturation/darkness picker and hue slider when open', () => {
     const html = renderPicker(true)
 
-    expect(html).toContain('class="custom-color-picker-panel"')
+    expect(html).toContain('custom-color-picker-panel')
     expect(html).toContain('aria-label="primary saturation and darkness"')
     expect(html).toContain('aria-label="primary hue"')
     expect(html).toContain('aria-label="primary picker hex value"')
     expect(html).toContain('aria-label="copy primary hex"')
     expect(html).toContain('#2f67de')
+  })
+
+  it('places the picker above the anchor by default', () => {
+    expect(getPickerPanelPlacement({
+      anchorX: 250,
+      anchorY: 300,
+      panelWidth: 320,
+      panelHeight: 220,
+      viewportWidth: 800,
+      viewportHeight: 600,
+    })).toMatchObject({
+      placement: 'above',
+      top: 72,
+    })
+  })
+
+  it('places the picker below when the above placement would be cut off', () => {
+    expect(getPickerPanelPlacement({
+      anchorX: 250,
+      anchorY: 120,
+      panelWidth: 320,
+      panelHeight: 220,
+      viewportWidth: 800,
+      viewportHeight: 600,
+    }).placement).toBe('below')
+  })
+
+  it('clamps the picker horizontally inside the viewport', () => {
+    expect(getPickerPanelPlacement({
+      anchorX: 20,
+      anchorY: 300,
+      panelWidth: 320,
+      panelHeight: 220,
+      viewportWidth: 800,
+      viewportHeight: 600,
+    }).left).toBe(12)
   })
 })

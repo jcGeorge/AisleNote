@@ -87,6 +87,7 @@ describe('device settings store', () => {
         viewMode: 'main',
       },
       settingsSection: 'visuals',
+      visualsSettingsSection: 'otherVisuals',
       seenTipIds: ['task-undo'],
       tabButtonScale: 1.3,
       noteFontScale: 1.2,
@@ -95,16 +96,21 @@ describe('device settings store', () => {
     expect(merged.spaces[0]?.data.activeTabId).toBe('tab-b')
     expect(merged.spaces[0]?.data.tabs[1]?.activeSubTabId).toBe('sub-b')
     expect(merged.ui.settingsSection).toBe('visuals')
+    expect(merged.ui.visualsSettingsSection).toBe('otherVisuals')
     expect(merged.ui.seenTipIds).toEqual(['task-undo'])
     expect(merged.ui.tabButtonScale).toBe(1.3)
     expect(merged.ui.noteFontScale).toBe(1.2)
   })
 
   it('leaves legacy cloud local-ish values in place until device settings exist', () => {
-    const state = parseSavedState(JSON.stringify({ ui: { settingsSection: 'visuals', tabButtonScale: 1.2 } }))
+    const state = parseSavedState(JSON.stringify({
+      ui: { settingsSection: 'visuals', visualsSettingsSection: 'otherVisuals', tabButtonScale: 1.2 },
+    }))
 
     expect(mergeLoadedSettings(state, { settings: DEFAULT_DEVICE_SETTINGS, hasStoredSettings: false }).ui.settingsSection).toBe('visuals')
+    expect(mergeLoadedSettings(state, { settings: DEFAULT_DEVICE_SETTINGS, hasStoredSettings: false }).ui.visualsSettingsSection).toBe('otherVisuals')
     expect(mergeLoadedSettings(state, { settings: DEFAULT_DEVICE_SETTINGS, hasStoredSettings: true }).ui.settingsSection).toBe('hotkeys')
+    expect(mergeLoadedSettings(state, { settings: DEFAULT_DEVICE_SETTINGS, hasStoredSettings: true }).ui.visualsSettingsSection).toBe('theming')
   })
 
   it('extracts device-local settings from app state without synced settings', () => {
@@ -112,6 +118,7 @@ describe('device settings store', () => {
       JSON.stringify({
         ui: {
           settingsSection: 'tips',
+          visualsSettingsSection: 'otherVisuals',
           seenTipIds: ['task-undo'],
           disabledTipIds: ['tab-create-after-rename'],
           tabButtonScale: 1.1,
@@ -121,8 +128,18 @@ describe('device settings store', () => {
     )
 
     expect(extractDeviceSettingsFromAppState(state).settingsSection).toBe('tips')
+    expect(extractDeviceSettingsFromAppState(state).visualsSettingsSection).toBe('otherVisuals')
     expect(extractDeviceSettingsFromAppState(state).seenTipIds).toEqual(['task-undo'])
     expect(extractDeviceSettingsFromAppState(state)).not.toHaveProperty('disabledTipIds')
+  })
+
+  it('normalizes nested visuals settings and legacy top-level theming', () => {
+    expect(parseDeviceSettings(JSON.stringify({ visualsSettingsSection: 'otherVisuals' })).visualsSettingsSection).toBe('otherVisuals')
+    expect(parseDeviceSettings(JSON.stringify({ visualsSettingsSection: 'colors' })).visualsSettingsSection).toBe('theming')
+    expect(parseDeviceSettings(JSON.stringify({ settingsSection: 'theming' }))).toMatchObject({
+      settingsSection: 'visuals',
+      visualsSettingsSection: 'theming',
+    })
   })
 
   it('reports whether device-local settings already existed', () => {

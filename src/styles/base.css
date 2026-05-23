@@ -54,8 +54,8 @@
   --menu-item-text: var(--app-text-soft);
   --menu-item-hover-bg: #1a2f52;
 
-  --domain-rail-accent: #6842a6;
-  --space-rail-accent: #9a7a22;
+  --domain-rail-accent: #a95429;
+  --space-rail-accent: #997b28;
   --parent-rail-accent: #2f5da8;
   --subtab-rail-accent: #2f8a5f;
   --domain-rail-text: color-mix(in srgb, var(--domain-rail-accent) 16%, var(--app-text-bright));
@@ -516,7 +516,7 @@
   flex-direction: column;
 }
 
-.app-shell.theme-custom.theme-custom-derived {
+.app-shell.theme-custom-derived {
   --custom-palette-canvas: var(--custom-theme-canvas, #0b1528);
   --custom-palette-page: var(--custom-theme-page, #142642);
   --custom-palette-surface: var(--custom-theme-surface, #0f1b32);
@@ -529,8 +529,8 @@
   --custom-palette-danger: var(--custom-theme-danger, #963442);
   --custom-palette-warning: var(--custom-theme-warning, #d9a441);
   --custom-palette-success: var(--custom-theme-success, #2fb36d);
-  --custom-palette-domain-rail: var(--custom-theme-domain-rail, #6842a6);
-  --custom-palette-space-rail: var(--custom-theme-space-rail, #9a7a22);
+  --custom-palette-domain-rail: var(--custom-theme-domain-rail, #a95429);
+  --custom-palette-space-rail: var(--custom-theme-space-rail, #997b28);
   --custom-palette-parent-rail: var(--custom-theme-parent-rail, #2f5da8);
   --custom-palette-subtab-rail: var(--custom-theme-subtab-rail, #2f8a5f);
 

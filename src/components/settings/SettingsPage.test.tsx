@@ -1,10 +1,26 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_FRONTMATTER_SETTINGS } from '../../frontmatter/frontmatter'
-import { DEFAULT_CUSTOM_THEME_PALETTE } from '../../settings/defaults'
+import {
+  DEFAULT_CUSTOM_THEME_PALETTE,
+  DEFAULT_VISUALS_SETTINGS_SECTION,
+  getThemePaletteForTheme,
+} from '../../settings/defaults'
 import { DEFAULT_TOOLBAR_LAYOUT_ID, getToolbarLayouts } from '../../editor/toolbar-layouts'
-import type { AppState, FrontmatterSettings, SettingsSection, Space, StorageProfileStatus } from '../../types/app'
+import type {
+  AppState,
+  FrontmatterSettings,
+  SettingsSection,
+  Space,
+  StorageProfileStatus,
+  VisualsSettingsSection,
+} from '../../types/app'
 import { SettingsPage } from './SettingsPage'
+import {
+  DEFAULT_THEME_PREVIEW_RAIL_SELECTION,
+  selectThemePreviewRailSample,
+  toggleThemePreviewTaskState,
+} from './theme-preview-state'
 
 const space: Space = {
   id: 'space-1',
@@ -59,7 +75,10 @@ function createState(): AppState {
       tabButtonScale: 1,
       noteFontScale: 1,
       settingsSection: 'hotkeys',
+      visualsSettingsSection: 'theming',
+      selectedCustomTheme: 'custom1',
       customThemePalette: null,
+      themePalettes: {},
       noteCursorLocations: {},
       headingCollapseState: {},
       seenTipIds: [],
@@ -73,6 +92,7 @@ function renderSettingsPage(
   frontmatterDraftDirty: boolean,
   options: {
     section?: SettingsSection
+    visualsSection?: VisualsSettingsSection
     state?: AppState
     storageProfileStatus?: StorageProfileStatus | null
     toolbarEditorLayoutId?: string
@@ -84,6 +104,7 @@ function renderSettingsPage(
     <SettingsPage
       state={state}
       section={options.section ?? 'frontmatter'}
+      visualsSection={options.visualsSection ?? state.ui.visualsSettingsSection ?? DEFAULT_VISUALS_SETTINGS_SECTION}
       isMacPlatform={false}
       shortcutDrafts={{
         toggleTabTrash: '',
@@ -110,7 +131,8 @@ function renderSettingsPage(
       exportStatus=""
       tabButtonScaleDraft={1}
       noteFontScaleDraft={1}
-      customThemePaletteDraft={state.ui.customThemePalette ?? DEFAULT_CUSTOM_THEME_PALETTE}
+      selectedCustomTheme={state.ui.selectedCustomTheme ?? 'custom1'}
+      customThemePaletteDraft={getThemePaletteForTheme(state.theme, state.ui.themePalettes, state.ui.customThemePalette)}
       showParentHomeTabDraft
       alwaysShowSpacesDraft={state.ui.alwaysShowSpaces ?? false}
       alwaysShowDomainsDraft={state.ui.alwaysShowDomains ?? false}
@@ -123,6 +145,7 @@ function renderSettingsPage(
       toolbarEditorShowNames={options.toolbarEditorShowNames ?? state.ui.toolbarEditorShowNames ?? false}
       storageProfileStatus={options.storageProfileStatus ?? null}
       onSectionChange={() => undefined}
+      onVisualsSectionChange={() => undefined}
       onToggleShortcutEdit={() => undefined}
       onNewlineShortcutChange={() => undefined}
       onOpenShortcutMenuSettings={() => undefined}
@@ -132,6 +155,7 @@ function renderSettingsPage(
       onExportSpace={() => undefined}
       onExportAll={() => undefined}
       onThemeChange={() => undefined}
+      onSelectedCustomThemeChange={() => undefined}
       onCustomThemePaletteChange={() => undefined}
       onCustomThemePaletteReset={() => undefined}
       onCustomThemePaletteSeedFromCurrentTheme={() => undefined}
@@ -174,10 +198,11 @@ function renderSettingsPage(
 }
 
 describe('frontmatter settings page', () => {
-  it('renders settings tabs in alphabetical order with toolbar included', () => {
+  it('renders settings tabs in alphabetical order with toolbar and visuals included', () => {
     const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'hotkeys' })
 
     expect(html).toContain('>toolbar</button>')
+    expect(html).not.toContain('>theming</button>')
     expect(html.indexOf('>data</button>')).toBeLessThan(html.indexOf('>frontmatter</button>'))
     expect(html.indexOf('>frontmatter</button>')).toBeLessThan(html.indexOf('>hotkeys</button>'))
     expect(html.indexOf('>hotkeys</button>')).toBeLessThan(html.indexOf('>misc</button>'))
@@ -202,49 +227,194 @@ describe('frontmatter settings page', () => {
     expect(html).toContain('<option value="strikethrough">strikethrough</option>')
   })
 
-  it('renders custom theme palette controls when the custom theme is selected', () => {
+  it('renders custom theme palette controls when a custom theme is selected', () => {
     const state = createState()
-    state.theme = 'custom'
+    state.theme = 'custom1'
     state.ui.customThemePalette = {
       ...DEFAULT_CUSTOM_THEME_PALETTE,
       primary: '#8844cc',
     }
     const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'visuals', state })
 
-    expect(html).toContain('>custom</button>')
-    expect(html).toContain('aria-label="custom theme palette"')
+    expect(html).toContain('aria-checked="true" class="settings-segmented-option is-selected">theming</button>')
+    expect(html).toContain('>other visuals</button>')
+    expect(html).toContain('aria-label="custom theme"')
+    expect(html).toContain('<option value="custom1" selected="">custom 1</option>')
+    expect(html).toContain('<option value="custom2">custom 2</option>')
+    expect(html).toContain('<option value="custom3">custom 3</option>')
+    expect(html).toContain('aria-label="theme palette"')
+    expect(html).toContain('aria-label="theme color preview"')
     expect(html).toContain('aria-label="primary color swatch"')
     expect(html).toContain('aria-label="primary hex value"')
-    expect(html).toContain('aria-label="domain button color swatch"')
-    expect(html).toContain('aria-label="space button color swatch"')
-    expect(html).toContain('aria-label="prime tab button color swatch"')
-    expect(html).toContain('aria-label="sub tab button color swatch"')
+    expect(html).toContain('aria-label="domain color swatch"')
+    expect(html).toContain('aria-label="space color swatch"')
+    expect(html).toContain('aria-label="parent tab color swatch"')
+    expect(html).toContain('aria-label="sub tab color swatch"')
     expect(html).not.toContain('type="color"')
     expect(html).toContain('value="#8844cc"')
-    expect(html).toContain('value="#6842a6"')
-    expect(html).toContain('value="#9a7a22"')
+    expect(html).toContain('value="#a95429"')
+    expect(html).toContain('value="#997b28"')
     expect(html).toContain('value="#2f5da8"')
     expect(html).toContain('value="#2f8a5f"')
-    expect(html).not.toContain('copy to custom')
+    expect(html).not.toContain('copy to custom 1')
     expect(html).toContain('reset palette')
+  })
+
+  it('renders theme preview samples in theming', () => {
+    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'visuals' })
+    const railIndex = html.indexOf('aria-label="theme example buttons"')
+    const toolbarIndex = html.indexOf('aria-label="theme preview toolbar"')
+    const editorIndex = html.indexOf('visuals-preview-editor-sample toastui-editor-contents')
+
+    expect(railIndex).toBeGreaterThan(-1)
+    expect(toolbarIndex).toBeGreaterThan(railIndex)
+    expect(editorIndex).toBeGreaterThan(toolbarIndex)
+    expect(html).toContain('class="visuals-theme-preview theme-dawn" aria-label="theme color preview"')
+    expect(html).toContain(
+      'class="visuals-preview-toolbar note-shared-toolbar is-interaction-disabled toastui-editor-toolbar" role="toolbar" aria-label="theme preview toolbar" aria-disabled="true"',
+    )
+    expect(html.match(/visuals-preview-toolbar-tool/g)?.length).toBe(5)
+    ;['Headings', 'Dash list', 'Task', 'Insert image', 'Insert table'].forEach((label) => {
+      expect(html).toContain(`title="${label}" aria-label="${label}" disabled=""`)
+    })
+    expect(html).toContain('<h3 class="visuals-preview-heading">header</h3>')
+    expect(html).toContain('<ul class="visuals-preview-list tabs-dash-list" data-tabs-list-marker="dash"><li>dash</li></ul>')
+    expect(html).toContain('<li>bullet</li>')
+    expect(html).toContain('<li>number</li>')
+    expect(html).not.toContain('visuals-preview-muted-text')
+    expect(html).not.toContain('<p class="visuals-preview-muted-text">muted text</p>')
+    expect(html).toContain(
+      '<li class="task-list-item checked" data-task="" data-task-checked="" role="checkbox" aria-checked="true" tabindex="0">done task</li>',
+    )
+    expect(html).toContain(
+      '<li class="task-list-item" data-task="" role="checkbox" aria-checked="false" tabindex="0">open task</li>',
+    )
+    expect(html).not.toContain('is-done')
+    expect(html).toContain('danger toast')
+    expect(html).toContain('warning toast')
+    expect(html).toContain('success toast')
+    expect(html).toContain('toastui-editor-contents')
+    expect(html).toContain('class="app-toast app-toast-error visuals-preview-toast"')
+    expect(html).toContain('class="app-toast app-toast-warning visuals-preview-toast"')
+    expect(html).toContain('class="app-toast app-toast-success visuals-preview-toast"')
+    expect(html).toContain('aria-label="theme example buttons"')
+    expect(html).toContain('--visuals-preview-page:#8a744a')
+    expect(html).toContain('--visuals-preview-panel-bg:#d8c9a3')
+    expect(html).toContain('--nav-rail-bg:#b99a45')
+    expect(html).toContain('--nav-rail-border:rgba(93, 75, 34, 0.24)')
+    expect(html).toContain('--editor-toolbar-bg:#c7b37a')
+    expect(html).toContain('--editor-border:#8a744a')
+    expect(html).toContain('class="visuals-preview-rail-row is-count-2" aria-label="domain rail samples"')
+    expect(html).toContain('class="visuals-preview-rail-row is-count-2" aria-label="space rail samples"')
+    expect(html).toContain('class="visuals-preview-rail-row is-count-2" aria-label="parent rail samples"')
+    expect(html).toContain('class="visuals-preview-rail-row is-count-2" aria-label="subtab rail samples"')
+    expect(html).toContain(
+      'aria-label="domain rail sample 1" aria-pressed="true" class="visuals-preview-pill compact-scope-btn compact-domain-btn is-active">domain',
+    )
+    expect(html).toContain(
+      'aria-label="domain rail sample 2" aria-pressed="false" class="visuals-preview-pill compact-scope-btn compact-domain-btn">domain',
+    )
+    expect(html).not.toContain('aria-label="domain rail sample 3"')
+    expect(html).toContain(
+      'aria-label="space rail sample 1" aria-pressed="false" class="visuals-preview-pill compact-scope-btn compact-space-btn">space',
+    )
+    expect(html).toContain(
+      'aria-label="space rail sample 2" aria-pressed="true" class="visuals-preview-pill compact-scope-btn compact-space-btn is-active">space',
+    )
+    expect(html).not.toContain('aria-label="space rail sample 3"')
+    expect(html).toContain(
+      'aria-label="parent rail sample 1" aria-pressed="false" aria-selected="false" class="visuals-preview-pill btn btn-sm tab-btn parent-tab-btn">parent',
+    )
+    expect(html).toContain(
+      'aria-label="parent rail sample 2" aria-pressed="true" aria-selected="true" class="visuals-preview-pill btn btn-sm tab-btn parent-tab-btn">parent',
+    )
+    expect(html).not.toContain('aria-label="parent rail sample 3"')
+    expect(html).toContain(
+      'aria-label="subtab rail sample 1" aria-pressed="true" aria-selected="true" class="visuals-preview-pill btn btn-sm tab-btn subtab-btn">sub',
+    )
+    expect(html).toContain(
+      'aria-label="subtab rail sample 2" aria-pressed="false" aria-selected="false" class="visuals-preview-pill btn btn-sm tab-btn subtab-btn">sub',
+    )
+    expect(html).not.toContain('aria-label="subtab rail sample 3"')
+  })
+
+  it('renders blues theme preview with the light editor background', () => {
+    const state = createState()
+    state.theme = 'blues'
+    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'visuals', state })
+
+    expect(html).toContain('--visuals-preview-page:#314563')
+    expect(html).toContain('--visuals-preview-panel-bg:#aeb8c6')
+    expect(html).toContain('--nav-rail-bg:#8797b0')
+    expect(html).toContain('--nav-rail-border:rgba(47, 65, 98, 0.24)')
+    expect(html).toContain('--editor-toolbar-bg:#8fa0b8')
+    expect(html).toContain('--editor-border:#61728f')
+  })
+
+  it('selects one theme preview rail sample per rail', () => {
+    const nextSelection = selectThemePreviewRailSample(DEFAULT_THEME_PREVIEW_RAIL_SELECTION, 'domain', 1)
+
+    expect(nextSelection.domain).toBe(1)
+    expect(nextSelection.space).toBe(1)
+    expect(nextSelection.parent).toBe(1)
+    expect(nextSelection.subtab).toBe(0)
+    expect(selectThemePreviewRailSample(nextSelection, 'domain', 1)).toBe(nextSelection)
+  })
+
+  it('toggles only the requested theme preview task', () => {
+    const nextTasks = toggleThemePreviewTaskState({ done: true, open: false }, 'open')
+
+    expect(nextTasks).toEqual({ done: true, open: true })
+    expect(toggleThemePreviewTaskState(nextTasks, 'done')).toEqual({ done: false, open: true })
   })
 
   it('shows the copy-to-custom action only for built-in themes', () => {
     const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'visuals' })
 
-    expect(html).toContain('copy to custom')
+    expect(html).toContain('copy to custom 1')
     expect(html).not.toContain('seed from current theme')
   })
 
-  it('renders always-visible navigation switches in visuals', () => {
+  it('renders the selected built-in theme palette values', () => {
+    const state = createState()
+    state.theme = 'dawn'
+    state.ui.themePalettes = {
+      dawn: {
+        ...DEFAULT_CUSTOM_THEME_PALETTE,
+        primary: '#123456',
+      },
+      light: {
+        ...DEFAULT_CUSTOM_THEME_PALETTE,
+        primary: '#abcdef',
+      },
+    }
+
+    const dawnHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'visuals', state })
+    const lightState = { ...state, theme: 'light' as const }
+    const lightHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'visuals', state: lightState })
+
+    expect(dawnHtml).toContain('value="#123456"')
+    expect(dawnHtml).not.toContain('value="#abcdef"')
+    expect(lightHtml).toContain('value="#abcdef"')
+    expect(lightHtml).not.toContain('value="#123456"')
+  })
+
+  it('renders always-visible navigation switches in other visuals', () => {
     const state = createState()
     state.ui.alwaysShowSpaces = true
-    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'visuals', state })
+    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, {
+      section: 'visuals',
+      visualsSection: 'otherVisuals',
+      state,
+    })
 
+    expect(html).toContain('aria-checked="true" class="settings-segmented-option is-selected">other visuals</button>')
     expect(html).toContain('always show spaces')
     expect(html).toContain('always show domains')
     expect(html).toContain('id="settings-always-show-spaces"')
     expect(html).toContain('id="settings-always-show-domains"')
+    expect(html).not.toContain('aria-label="theme palette"')
+    expect(html).not.toContain('aria-label="theme color preview"')
   })
 
   it('renders misc table target controls with bottom-right defaults', () => {

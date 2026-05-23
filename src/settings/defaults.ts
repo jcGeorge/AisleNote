@@ -1,10 +1,13 @@
 import type {
   AppState,
   AppTheme,
+  CustomThemeId,
   CustomThemePalette,
   CustomThemePaletteSlot,
   SettingsSection,
   TableControlTargetMode,
+  ThemePaletteOverrides,
+  VisualsSettingsSection,
 } from '../types/app'
 import { normalizeNoteCursorLocations } from '../notes/note-cursors'
 import { normalizeTipIds } from '../tips/tips'
@@ -13,8 +16,11 @@ import { normalizeToolbarLayouts } from '../editor/toolbar-layouts'
 
 export const DEFAULT_AUTO_REMOVE_DAYS = 7
 export const ALWAYS_SHOW_DOMAINS_WITHOUT_SPACES_MESSAGE = 'you cannot show domains without showing spaces'
-export type BuiltInAppTheme = Exclude<AppTheme, 'custom'>
+export type BuiltInAppTheme = Exclude<AppTheme, CustomThemeId>
 export const BUILT_IN_THEME_IDS: BuiltInAppTheme[] = ['dark', 'light', 'dawn', 'blues']
+export const CUSTOM_THEME_IDS: CustomThemeId[] = ['custom1', 'custom2', 'custom3']
+export const DEFAULT_CUSTOM_THEME_ID: CustomThemeId = 'custom1'
+export const APP_THEME_IDS: AppTheme[] = [...BUILT_IN_THEME_IDS, ...CUSTOM_THEME_IDS]
 export const DEFAULT_SETTINGS_SECTION: SettingsSection = 'hotkeys'
 export const SETTINGS_SECTIONS: SettingsSection[] = [
   'data',
@@ -26,6 +32,8 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   'toolbar',
   'visuals',
 ]
+export const DEFAULT_VISUALS_SETTINGS_SECTION: VisualsSettingsSection = 'theming'
+export const VISUALS_SETTINGS_SECTIONS: VisualsSettingsSection[] = ['theming', 'otherVisuals']
 export const MIN_AUTO_REMOVE_DAYS = 1
 export const MAX_AUTO_REMOVE_DAYS = 365
 
@@ -42,7 +50,10 @@ export const DEFAULT_UI_SETTINGS: AppState['ui'] = {
   tabButtonScale: 1,
   noteFontScale: 1,
   settingsSection: DEFAULT_SETTINGS_SECTION,
+  visualsSettingsSection: DEFAULT_VISUALS_SETTINGS_SECTION,
+  selectedCustomTheme: DEFAULT_CUSTOM_THEME_ID,
   customThemePalette: null,
+  themePalettes: {},
   noteCursorLocations: {},
   headingCollapseState: {},
   toolbarLayouts: [],
@@ -83,8 +94,8 @@ export const DEFAULT_CUSTOM_THEME_PALETTE: CustomThemePalette = {
   danger: '#963442',
   warning: '#d9a441',
   success: '#2fb36d',
-  domainRail: '#6842a6',
-  spaceRail: '#9a7a22',
+  domainRail: '#a95429',
+  spaceRail: '#997b28',
   parentRail: '#2f5da8',
   subtabRail: '#2f8a5f',
 }
@@ -104,13 +115,13 @@ export const BUILT_IN_THEME_PALETTE_SEEDS: Record<BuiltInAppTheme, CustomThemePa
     danger: '#c64053',
     warning: '#c7792f',
     success: '#2fb36d',
-    domainRail: '#6842a6',
-    spaceRail: '#9a7a22',
+    domainRail: '#a95429',
+    spaceRail: '#997b28',
     parentRail: '#2f5da8',
     subtabRail: '#2f8a5f',
   },
   dawn: {
-    canvas: '#776238',
+    canvas: '#d8c9a3',
     page: '#8a744a',
     surface: '#d4c39a',
     surfaceRaised: '#decea8',
@@ -122,13 +133,13 @@ export const BUILT_IN_THEME_PALETTE_SEEDS: Record<BuiltInAppTheme, CustomThemePa
     danger: '#8a4d44',
     warning: '#9b6726',
     success: '#3f6f4f',
-    domainRail: '#6842a6',
-    spaceRail: '#9a7a22',
+    domainRail: '#a95429',
+    spaceRail: '#997b28',
     parentRail: '#2f5da8',
     subtabRail: '#2f8a5f',
   },
   blues: {
-    canvas: '#25324d',
+    canvas: '#aeb8c6',
     page: '#314563',
     surface: '#aeb8c6',
     surfaceRaised: '#bcc4cd',
@@ -140,10 +151,21 @@ export const BUILT_IN_THEME_PALETTE_SEEDS: Record<BuiltInAppTheme, CustomThemePa
     danger: '#653f50',
     warning: '#a99a5d',
     success: '#38568f',
-    domainRail: '#6842a6',
-    spaceRail: '#9a7a22',
+    domainRail: '#a95429',
+    spaceRail: '#997b28',
     parentRail: '#2f5da8',
     subtabRail: '#2f8a5f',
+  },
+}
+
+const LEGACY_BUILT_IN_THEME_PALETTE_SEEDS: Partial<Record<BuiltInAppTheme, CustomThemePalette>> = {
+  dawn: {
+    ...BUILT_IN_THEME_PALETTE_SEEDS.dawn,
+    canvas: '#776238',
+  },
+  blues: {
+    ...BUILT_IN_THEME_PALETTE_SEEDS.blues,
+    canvas: '#25324d',
   },
 }
 
@@ -191,9 +213,87 @@ export function normalizeCustomThemePalette(raw: unknown): CustomThemePalette | 
   }, { ...DEFAULT_CUSTOM_THEME_PALETTE })
 }
 
+export function isCustomTheme(theme: AppTheme): theme is CustomThemeId {
+  return CUSTOM_THEME_IDS.includes(theme as CustomThemeId)
+}
+
+export function normalizeCustomThemeId(
+  value: unknown,
+  fallback: CustomThemeId = DEFAULT_CUSTOM_THEME_ID,
+): CustomThemeId {
+  return typeof value === 'string' && CUSTOM_THEME_IDS.includes(value as CustomThemeId)
+    ? (value as CustomThemeId)
+    : fallback
+}
+
+function isExactThemePaletteSeed(seed: CustomThemePalette, palette: CustomThemePalette | null | undefined): boolean {
+  if (!palette) return false
+  return CUSTOM_THEME_PALETTE_SLOTS.every((slot) => normalizeHexColor(palette[slot]) === seed[slot])
+}
+
+function isLegacyBuiltInThemePaletteSeed(theme: AppTheme, palette: CustomThemePalette): boolean {
+  if (isCustomTheme(theme)) return false
+  const legacySeed = LEGACY_BUILT_IN_THEME_PALETTE_SEEDS[theme]
+  return legacySeed ? isExactThemePaletteSeed(legacySeed, palette) : false
+}
+
+export function normalizeThemePalettes(raw: unknown, legacyCustomPalette?: CustomThemePalette | null): ThemePaletteOverrides {
+  const palettes: ThemePaletteOverrides = {}
+  if (raw && typeof raw === 'object') {
+    const obj = raw as Record<string, unknown>
+    APP_THEME_IDS.forEach((theme) => {
+      const palette = normalizeCustomThemePalette(obj[theme])
+      if (palette && !isLegacyBuiltInThemePaletteSeed(theme, palette)) palettes[theme] = palette
+    })
+    const legacyCustom = normalizeCustomThemePalette(obj.custom)
+    if (!palettes.custom1 && legacyCustom) {
+      palettes.custom1 = legacyCustom
+    }
+  }
+  if (!palettes.custom1 && legacyCustomPalette) {
+    palettes.custom1 = legacyCustomPalette
+  }
+  return palettes
+}
+
 export function getCustomThemePaletteSeed(theme: AppTheme): CustomThemePalette {
-  if (theme === 'custom') return { ...DEFAULT_CUSTOM_THEME_PALETTE }
+  if (isCustomTheme(theme)) return { ...DEFAULT_CUSTOM_THEME_PALETTE }
   return { ...BUILT_IN_THEME_PALETTE_SEEDS[theme] }
+}
+
+export function getThemePaletteForTheme(
+  theme: AppTheme,
+  themePalettes: ThemePaletteOverrides | null | undefined,
+  legacyCustomPalette?: CustomThemePalette | null,
+): CustomThemePalette {
+  const override = themePalettes?.[theme] ?? (isCustomTheme(theme) && theme === DEFAULT_CUSTOM_THEME_ID ? legacyCustomPalette : null)
+  if (override && isLegacyBuiltInThemePaletteSeed(theme, override)) return getCustomThemePaletteSeed(theme)
+  return { ...(override ?? getCustomThemePaletteSeed(theme)) }
+}
+
+export function isThemePaletteSeed(theme: AppTheme, palette: CustomThemePalette | null | undefined): boolean {
+  const seed = getCustomThemePaletteSeed(theme)
+  return isExactThemePaletteSeed(seed, palette)
+}
+
+export function setThemePaletteOverride(
+  themePalettes: ThemePaletteOverrides | null | undefined,
+  theme: AppTheme,
+  palette: CustomThemePalette,
+): ThemePaletteOverrides {
+  return {
+    ...(themePalettes ?? {}),
+    [theme]: { ...palette },
+  }
+}
+
+export function removeThemePaletteOverride(
+  themePalettes: ThemePaletteOverrides | null | undefined,
+  theme: AppTheme,
+): ThemePaletteOverrides {
+  const next = { ...(themePalettes ?? {}) }
+  delete next[theme]
+  return next
 }
 
 export function getCustomThemePaletteSeedMatch(palette: CustomThemePalette | null | undefined): BuiltInAppTheme | null {
@@ -208,9 +308,19 @@ export function getCustomThemePaletteSeedMatch(palette: CustomThemePalette | nul
 }
 
 export function normalizeSettingsSection(value: unknown): SettingsSection {
+  if (value === 'theming') return 'visuals'
   return typeof value === 'string' && SETTINGS_SECTIONS.includes(value as SettingsSection)
     ? (value as SettingsSection)
     : DEFAULT_SETTINGS_SECTION
+}
+
+export function normalizeVisualsSettingsSection(
+  value: unknown,
+  fallback: VisualsSettingsSection = DEFAULT_VISUALS_SETTINGS_SECTION,
+): VisualsSettingsSection {
+  return typeof value === 'string' && VISUALS_SETTINGS_SECTIONS.includes(value as VisualsSettingsSection)
+    ? (value as VisualsSettingsSection)
+    : fallback
 }
 
 export function normalizeLinkInsertMode(value: unknown): AppState['ui']['lastLinkInsertMode'] {
@@ -228,6 +338,8 @@ export function normalizeTableControlTargetMode(value: unknown): TableControlTar
 export function normalizeUiSettings(raw: unknown): AppState['ui'] {
   if (!raw || typeof raw !== 'object') return DEFAULT_UI_SETTINGS
   const obj = raw as Record<string, unknown>
+  const customThemePalette = normalizeCustomThemePalette(obj.customThemePalette)
+  const themePalettes = normalizeThemePalettes(obj.themePalettes, customThemePalette)
   const alwaysShowSpaces =
     typeof obj.alwaysShowSpaces === 'boolean' ? obj.alwaysShowSpaces : DEFAULT_UI_SETTINGS.alwaysShowSpaces
   const alwaysShowDomains =
@@ -260,7 +372,13 @@ export function normalizeUiSettings(raw: unknown): AppState['ui'] {
         ? clampNoteFontScale(obj.noteFontScale)
         : DEFAULT_UI_SETTINGS.noteFontScale,
     settingsSection: normalizeSettingsSection(obj.settingsSection),
-    customThemePalette: normalizeCustomThemePalette(obj.customThemePalette),
+    visualsSettingsSection: normalizeVisualsSettingsSection(
+      obj.visualsSettingsSection,
+      obj.settingsSection === 'theming' ? 'theming' : DEFAULT_UI_SETTINGS.visualsSettingsSection,
+    ),
+    selectedCustomTheme: normalizeCustomThemeId(obj.selectedCustomTheme),
+    customThemePalette: themePalettes.custom1 ?? customThemePalette ?? null,
+    themePalettes,
     noteCursorLocations: normalizeNoteCursorLocations(obj.noteCursorLocations),
     headingCollapseState: normalizeHeadingCollapseState(obj.headingCollapseState),
     toolbarLayouts: normalizeToolbarLayouts(obj.toolbarLayouts),

@@ -3,13 +3,15 @@ import { normalizeHeadingCollapseState } from '../editor/heading-collapse-state'
 import { normalizeNoteCursorLocations } from '../notes/note-cursors'
 import {
   DEFAULT_UI_SETTINGS,
+  DEFAULT_VISUALS_SETTINGS_SECTION,
   clampNoteFontScale,
   clampTabButtonScale,
   normalizeSettingsSection,
+  normalizeVisualsSettingsSection,
 } from '../settings/defaults'
 import { projectActiveDomainState } from '../state/domains'
 import { normalizeTipIds } from '../tips/tips'
-import type { AppState, ViewMode } from '../types/app'
+import type { AppState, ViewMode, VisualsSettingsSection } from '../types/app'
 
 export const DEVICE_SETTINGS_STORAGE_KEY = 'tabs:device-settings:v1'
 
@@ -29,6 +31,7 @@ export type DeviceSettings = {
   noteCursorLocations: AppState['ui']['noteCursorLocations']
   headingCollapseState: AppState['ui']['headingCollapseState']
   settingsSection: AppState['ui']['settingsSection']
+  visualsSettingsSection: VisualsSettingsSection
   seenTipIds: AppState['ui']['seenTipIds']
   tabButtonScale: number
   noteFontScale: number
@@ -40,6 +43,7 @@ export const DEFAULT_DEVICE_SETTINGS: DeviceSettings = {
   noteCursorLocations: DEFAULT_UI_SETTINGS.noteCursorLocations,
   headingCollapseState: DEFAULT_UI_SETTINGS.headingCollapseState,
   settingsSection: DEFAULT_UI_SETTINGS.settingsSection,
+  visualsSettingsSection: DEFAULT_VISUALS_SETTINGS_SECTION,
   seenTipIds: DEFAULT_UI_SETTINGS.seenTipIds,
   tabButtonScale: DEFAULT_UI_SETTINGS.tabButtonScale,
   noteFontScale: DEFAULT_UI_SETTINGS.noteFontScale,
@@ -82,6 +86,10 @@ function normalizeDeviceSettingsValue(raw: unknown): DeviceSettings {
     noteCursorLocations: normalizeNoteCursorLocations(obj.noteCursorLocations),
     headingCollapseState: normalizeHeadingCollapseState(obj.headingCollapseState),
     settingsSection: normalizeSettingsSection(obj.settingsSection),
+    visualsSettingsSection: normalizeVisualsSettingsSection(
+      obj.visualsSettingsSection,
+      obj.settingsSection === 'theming' ? 'theming' : DEFAULT_DEVICE_SETTINGS.visualsSettingsSection,
+    ),
     seenTipIds: normalizeTipIds(obj.seenTipIds),
     tabButtonScale:
       typeof obj.tabButtonScale === 'number'
@@ -179,6 +187,7 @@ export function extractDeviceSettingsFromAppState(
     noteCursorLocations: appState.ui.noteCursorLocations,
     headingCollapseState: appState.ui.headingCollapseState,
     settingsSection: appState.ui.settingsSection,
+    visualsSettingsSection: appState.ui.visualsSettingsSection ?? DEFAULT_VISUALS_SETTINGS_SECTION,
     seenTipIds: appState.ui.seenTipIds,
     tabButtonScale: appState.ui.tabButtonScale,
     noteFontScale: appState.ui.noteFontScale,
@@ -242,6 +251,7 @@ export function applyDeviceSettingsToAppState(appState: AppState, settings: Devi
         noteCursorLocations: settings.noteCursorLocations,
         headingCollapseState: settings.headingCollapseState,
         settingsSection: settings.settingsSection,
+        visualsSettingsSection: settings.visualsSettingsSection,
         seenTipIds: settings.seenTipIds,
         tabButtonScale: settings.tabButtonScale,
         noteFontScale: settings.noteFontScale,

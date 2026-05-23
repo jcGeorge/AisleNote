@@ -14,9 +14,32 @@ export type HsvColor = {
 
 type RectLike = Pick<DOMRect, 'left' | 'top' | 'width' | 'height'>
 
+type PickerPanelPlacementParams = {
+  anchorX: number
+  anchorY: number
+  panelWidth: number
+  panelHeight: number
+  viewportWidth: number
+  viewportHeight: number
+  viewportPadding?: number
+  gap?: number
+}
+
+export type PickerPanelPlacement = {
+  placement: 'above' | 'below'
+  left: number
+  top: number
+  width: number
+}
+
 export function clamp(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min
   return Math.min(max, Math.max(min, value))
+}
+
+function clampPanelCoordinate(value: number, min: number, max: number): number {
+  if (max < min) return min
+  return clamp(value, min, max)
 }
 
 export function clampHue(value: number): number {
@@ -129,6 +152,26 @@ export function getSaturationDarknessFromPoint(clientX: number, clientY: number,
     s: clampPercent(xPercent),
     v: clampPercent(100 - yPercent),
   }
+}
+
+export function getPickerPanelPlacement({
+  anchorX,
+  anchorY,
+  panelWidth,
+  panelHeight,
+  viewportWidth,
+  viewportHeight,
+  viewportPadding = 12,
+  gap = 8,
+}: PickerPanelPlacementParams): PickerPanelPlacement {
+  const maxPanelWidth = Math.max(1, viewportWidth - viewportPadding * 2)
+  const width = Math.min(Math.max(1, panelWidth), maxPanelWidth)
+  const left = clampPanelCoordinate(anchorX - width / 2, viewportPadding, viewportWidth - viewportPadding - width)
+  const topAbove = anchorY - gap - panelHeight
+  const placement = topAbove >= viewportPadding ? 'above' : 'below'
+  const requestedTop = placement === 'above' ? topAbove : anchorY + gap
+  const top = clampPanelCoordinate(requestedTop, viewportPadding, viewportHeight - viewportPadding - panelHeight)
+  return { placement, left, top, width }
 }
 
 export function nudgeSaturationDarkness(

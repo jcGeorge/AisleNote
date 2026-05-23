@@ -1,4 +1,5 @@
-export type AppTheme = 'dark' | 'light' | 'dawn' | 'blues' | 'custom'
+export type CustomThemeId = 'custom1' | 'custom2' | 'custom3'
+export type AppTheme = 'dark' | 'light' | 'dawn' | 'blues' | CustomThemeId
 export type CustomThemePaletteSlot =
   | 'canvas'
   | 'page'
@@ -17,6 +18,7 @@ export type CustomThemePaletteSlot =
   | 'parentRail'
   | 'subtabRail'
 export type CustomThemePalette = Record<CustomThemePaletteSlot, string>
+export type ThemePaletteOverrides = Partial<Record<AppTheme, CustomThemePalette>>
 export type ViewMode = 'domains' | 'spaces' | 'main' | 'trash' | 'settings' | 'stage-manager'
 export type ShortcutId =
   | 'toggleTabTrash'
@@ -29,7 +31,16 @@ export type ShortcutId =
   | 'cycleParentTabPrev'
   | 'cycleSubTabNext'
   | 'cycleSubTabPrev'
-export type SettingsSection = 'data' | 'frontmatter' | 'hotkeys' | 'misc' | 'shortcuts' | 'tips' | 'toolbar' | 'visuals'
+export type SettingsSection =
+  | 'data'
+  | 'frontmatter'
+  | 'hotkeys'
+  | 'misc'
+  | 'shortcuts'
+  | 'tips'
+  | 'toolbar'
+  | 'visuals'
+export type VisualsSettingsSection = 'theming' | 'otherVisuals'
 export type TableControlTargetMode = 'active-cell' | 'bottom-right'
 export type TipId = 'task-undo' | 'tab-create-after-rename'
 
@@ -329,7 +340,10 @@ export type AppState = {
     tabButtonScale: number
     noteFontScale: number
     settingsSection: SettingsSection
+    visualsSettingsSection?: VisualsSettingsSection
+    selectedCustomTheme?: CustomThemeId
     customThemePalette: CustomThemePalette | null
+    themePalettes?: ThemePaletteOverrides
     noteCursorLocations: Record<string, NoteCursorLocation>
     headingCollapseState: HeadingCollapseState
     toolbarLayouts?: ToolbarLayout[]

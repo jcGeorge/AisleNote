@@ -120,11 +120,21 @@
 
   .settings-slider-wrap,
   .theme-switch,
+  .theme-selection-controls,
   .settings-segmented-control,
+  .visuals-theme-layout,
   .custom-theme-editor,
   .settings-shortcut-select {
     width: 100%;
     min-width: 0;
+  }
+
+  .visuals-theme-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .visuals-preview-canvas {
+    grid-template-columns: 1fr;
   }
 
   .settings-slider-wrap {
@@ -230,6 +240,14 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .theme-selection-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .custom-theme-select {
+    width: 100%;
+  }
+
   .custom-theme-editor-header {
     grid-template-columns: 1fr;
     gap: 0.45rem;
@@ -248,7 +266,7 @@
   }
 
   .custom-theme-slot {
-    grid-template-columns: minmax(6.5rem, 1fr) 2.6rem minmax(5.25rem, 0.55fr);
+    grid-template-columns: minmax(6.5rem, 1fr) 2.35rem minmax(5.25rem, 0.55fr);
   }
 
   .custom-theme-color-picker {
@@ -266,10 +284,10 @@
 
   .custom-color-picker-panel,
   .custom-theme-slot:nth-child(even) .custom-color-picker-panel {
-    position: static;
+    position: static !important;
     grid-column: 1 / -1;
     grid-row: 2;
-    width: 100%;
+    width: 100% !important;
     margin-top: 0.25rem;
   }
 

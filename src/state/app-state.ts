@@ -10,6 +10,7 @@ import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
 import {
   DEFAULT_AUTO_REMOVE_DAYS,
   DEFAULT_UI_SETTINGS,
+  APP_THEME_IDS,
   normalizeUiSettings,
 } from '../settings/defaults'
 import type {
@@ -404,7 +405,8 @@ export function ensureNoteBodiesForAppState(appState: AppState): AppState {
 export const DEFAULT_STATE: AppState = ensureNoteBodiesForAppState(RAW_DEFAULT_STATE)
 
 function normalizeAppTheme(value: unknown): AppTheme {
-  if (value === 'dark' || value === 'light' || value === 'dawn' || value === 'blues' || value === 'custom') return value
+  if (value === 'custom') return 'custom1'
+  if (typeof value === 'string' && APP_THEME_IDS.includes(value as AppTheme)) return value as AppTheme
   if (value === 'dusk') return 'blues'
   return 'dawn'
 }

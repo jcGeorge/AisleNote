@@ -1,16 +1,20 @@
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import {
   getSaturationDarknessFromPoint,
+  getPickerPanelPlacement,
   hexToHsv,
   hsvToHex,
   nudgeSaturationDarkness,
+  type PickerPanelPlacement,
   type HsvColor,
 } from '../../settings/color-utils'
 import { normalizeHexColor } from '../../settings/defaults'
@@ -50,10 +54,13 @@ export function CustomThemeColorPicker({
 }: CustomThemeColorPickerProps) {
   const rootRef = useRef<HTMLDivElement | null>(null)
   const buttonRef = useRef<HTMLButtonElement | null>(null)
+  const panelRef = useRef<HTMLDivElement | null>(null)
   const copyStatusResetRef = useRef<number | null>(null)
+  const panelAnchorRef = useRef<{ x: number; y: number } | null>(null)
   const [hsv, setHsv] = useState<HsvColor>(() => hexToHsv(value, fallbackValue))
   const [hexDraft, setHexDraft] = useState(value)
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle')
+  const [panelPlacement, setPanelPlacement] = useState<PickerPanelPlacement | null>(null)
   const panelId = `custom-theme-picker-${slotId}`
   const normalizedHexFromHsv = hsvToHex(hsv)
 
@@ -72,7 +79,38 @@ export function CustomThemeColorPicker({
   useEffect(() => {
     if (isOpen) return
     setHexDraft((current) => normalizeHexColor(current) ?? value)
+    setPanelPlacement(null)
   }, [isOpen, value])
+
+  useLayoutEffect(() => {
+    if (!isOpen || !buttonRef.current || !panelRef.current) return undefined
+
+    const updatePanelPlacement = () => {
+      const buttonRect = buttonRef.current?.getBoundingClientRect()
+      const panelRect = panelRef.current?.getBoundingClientRect()
+      if (!buttonRect || !panelRect) return
+      const anchor = panelAnchorRef.current ?? {
+        x: buttonRect.left + buttonRect.width / 2,
+        y: buttonRect.top + buttonRect.height / 2,
+      }
+      setPanelPlacement(getPickerPanelPlacement({
+        anchorX: anchor.x,
+        anchorY: anchor.y,
+        panelWidth: panelRect.width,
+        panelHeight: panelRect.height,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+      }))
+    }
+
+    updatePanelPlacement()
+    window.addEventListener('resize', updatePanelPlacement)
+    window.addEventListener('scroll', updatePanelPlacement, true)
+    return () => {
+      window.removeEventListener('resize', updatePanelPlacement)
+      window.removeEventListener('scroll', updatePanelPlacement, true)
+    }
+  }, [isOpen])
 
   useEffect(() => {
     if (!isOpen) return undefined
@@ -175,6 +213,16 @@ export function CustomThemeColorPicker({
     }
   }
 
+  const handleSwatchClick = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    if (event.clientX !== 0 || event.clientY !== 0) {
+      panelAnchorRef.current = { x: event.clientX, y: event.clientY }
+    } else {
+      const rect = event.currentTarget.getBoundingClientRect()
+      panelAnchorRef.current = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+    }
+    onToggle()
+  }
+
   const pickerStyle = {
     '--custom-color-picker-hue': getHueColor(hsv.h),
     '--custom-color-picker-selected': normalizedHexFromHsv,
@@ -189,12 +237,26 @@ export function CustomThemeColorPicker({
         aria-label={`${label} color swatch`}
         aria-controls={panelId}
         aria-expanded={isOpen}
-        onClick={onToggle}
+        onClick={handleSwatchClick}
       >
         <span className="custom-theme-swatch-preview" aria-hidden="true" />
       </button>
       {isOpen && (
-        <div className="custom-color-picker-panel" id={panelId} aria-label={`${label} color picker`}>
+        <div
+          ref={panelRef}
+          className={`custom-color-picker-panel ${panelPlacement ? `is-${panelPlacement.placement}` : 'is-measuring'}`}
+          id={panelId}
+          aria-label={`${label} color picker`}
+          style={
+            panelPlacement
+              ? {
+                  left: `${panelPlacement.left}px`,
+                  top: `${panelPlacement.top}px`,
+                  width: `${panelPlacement.width}px`,
+                }
+              : undefined
+          }
+        >
           <div
             className="custom-color-picker-square"
             role="slider"

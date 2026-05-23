@@ -76,6 +76,17 @@ describe('editor heading styles', () => {
   })
 })
 
+describe('editor annotation styles', () => {
+  it('positions the double-dash annotation marker on the text midline', () => {
+    const css = readStyle('editor-content.css')
+
+    expect(css).toContain(
+      '.toastui-editor-contents p.tabs-annotation-line::before,\n.toastui-editor .ProseMirror p.tabs-annotation-line::before {',
+    )
+    expect(css).toContain('top: 0.96em;')
+  })
+})
+
 describe('compact scope tab scaling styles', () => {
   it('uses the parent and sub-tab sizing contract for compact space/domain buttons', () => {
     const topbarCss = readStyle('topbar.css')
@@ -88,6 +99,33 @@ describe('compact scope tab scaling styles', () => {
     expect(compactButtonRule).toContain('font-size: calc(0.95rem * var(--tab-button-scale));')
     expect(compactButtonRule).toContain('line-height: calc(1.1 * var(--tab-button-scale));')
     expect(compactButtonRule).toContain('border-radius: calc(0.42rem * var(--tab-button-scale));')
+  })
+
+  it('lets theme preview rail samples inherit settings font scaling', () => {
+    const settingsCss = readStyle('settings.css')
+    const previewCanvasRule = extractRule(settingsCss, '.visuals-preview-canvas')
+    const previewRailRowRule = extractRule(settingsCss, '.visuals-preview-rail-row')
+    const previewPanelRule = extractRule(settingsCss, '.visuals-preview-panel')
+    const previewButtonRule = extractRule(settingsCss, '.visuals-preview-pill')
+
+    expect(previewCanvasRule).not.toContain('box-shadow:')
+    expect(previewCanvasRule).toContain('gap: 0;')
+    expect(previewCanvasRule).toContain('overflow: hidden;')
+    expect(previewCanvasRule).toContain('border: 1px solid var(--visuals-preview-border);')
+    expect(previewCanvasRule).toContain('border-radius: 0.42rem;')
+    expect(previewCanvasRule).toContain('padding: 0;')
+    expect(previewCanvasRule).toContain('background: transparent;')
+    expect(previewRailRowRule).toContain('display: flex;')
+    expect(previewRailRowRule).not.toContain('grid-template-columns')
+    expect(previewRailRowRule).toContain('gap: 0.25rem;')
+    expect(previewRailRowRule).toContain('row-gap: 0.35rem;')
+    expect(previewRailRowRule).toContain('padding: 0.24rem 0.5rem;')
+    expect(previewRailRowRule).toContain('border-bottom: 1px solid var(--nav-rail-border);')
+    expect(previewRailRowRule).toContain('background: var(--nav-rail-bg);')
+    expect(previewPanelRule).not.toContain('border: 1px solid var(--visuals-preview-border);')
+    expect(previewButtonRule).toContain('font-size: calc(0.95em * var(--tab-button-scale));')
+    expect(previewButtonRule).not.toContain('width: 100%;')
+    expect(previewButtonRule).not.toContain('max-width: none;')
   })
 
   it('uses parent/sub-tab rename input styling for compact space/domain rename inputs', () => {
@@ -177,8 +215,8 @@ describe('compact scope tab scaling styles', () => {
     const addTabHoverRule = extractRule(tabsCss, '.add-tab-btn:hover')
     const trashActiveRule = extractRule(topbarCss, '.trash-domain-btn.is-active,\n.trash-space-btn.is-active')
 
-    expect(baseCss).toContain('--domain-rail-accent: #6842a6;')
-    expect(baseCss).toContain('--space-rail-accent: #9a7a22;')
+    expect(baseCss).toContain('--domain-rail-accent: #a95429;')
+    expect(baseCss).toContain('--space-rail-accent: #997b28;')
     expect(baseCss).toContain('--parent-rail-accent: #2f5da8;')
     expect(baseCss).toContain('--subtab-rail-accent: #2f8a5f;')
     expect(baseCss).toContain('--domain-rail-accent: var(--custom-palette-domain-rail);')

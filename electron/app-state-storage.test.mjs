@@ -41,8 +41,8 @@ const customThemePaletteFixture = {
   danger: '#963442',
   warning: '#d9a441',
   success: '#2fb36d',
-  domainRail: '#6842a6',
-  spaceRail: '#9a7a22',
+  domainRail: '#a95429',
+  spaceRail: '#997b28',
   parentRail: '#2f5da8',
   subtabRail: '#2f8a5f',
 }
@@ -111,7 +111,15 @@ function serializedAppState() {
       tabButtonScale: 1,
       noteFontScale: 1,
       settingsSection: 'frontmatter',
+      selectedCustomTheme: 'custom1',
       customThemePalette: customThemePaletteFixture,
+      themePalettes: {
+        custom1: customThemePaletteFixture,
+        dawn: {
+          ...customThemePaletteFixture,
+          primary: '#123456',
+        },
+      },
       noteCursorLocations: {},
     },
     activeSpaceId: space.id,
@@ -205,26 +213,36 @@ describe('Electron app state storage load result', () => {
       expect(parsed.frontmatter.lastAppliedTemplateId).toBe('template-1')
       expect(parsed.ui.settingsSection).toBeUndefined()
       expect(parsed.ui.customThemePalette.primary).toBe('#8844cc')
+      expect(parsed.ui.themePalettes.custom1.primary).toBe('#8844cc')
+      expect(parsed.ui.themePalettes.dawn.primary).toBe('#123456')
     }))
 
   it('round-trips the custom theme through hybrid storage', () =>
     withTempUserDataPath((userDataPath) => {
       const state = JSON.parse(serializedAppState())
-      state.theme = 'custom'
+      state.theme = 'custom2'
+      state.ui.selectedCustomTheme = 'custom2'
+      state.ui.themePalettes.custom2 = {
+        ...customThemePaletteFixture,
+        primary: '#225599',
+      }
 
       saveAppState(userDataPath, JSON.stringify(state))
 
       const result = loadAppStateResult(userDataPath)
       expect(result.ok).toBe(true)
       const parsed = JSON.parse(result.serializedState)
-      expect(parsed.theme).toBe('custom')
+      expect(parsed.theme).toBe('custom2')
+      expect(parsed.ui.selectedCustomTheme).toBe('custom2')
       expect(parsed.ui.customThemePalette).toEqual(customThemePaletteFixture)
+      expect(parsed.ui.themePalettes.custom1).toEqual(customThemePaletteFixture)
+      expect(parsed.ui.themePalettes.custom2.primary).toBe('#225599')
     }))
 
   it('writes app settings and per-space settings into notes-data manifests', () =>
     withTempUserDataPath((userDataPath) => {
       const state = JSON.parse(serializedAppState())
-      state.theme = 'custom'
+      state.theme = 'custom3'
       state.hotkeys = {
         ...state.hotkeys,
         shortcuts: {
@@ -248,6 +266,7 @@ describe('Electron app state storage load result', () => {
         showParentHomeTab: false,
         stageManagerOpenDestinationAfterApply: false,
         settingsSection: 'toolbar',
+        selectedCustomTheme: 'custom3',
         lastNoteCopyMode: 'linked',
         decoupledItemsKeepData: false,
         tableAddTargetMode: 'active-cell',
@@ -264,11 +283,14 @@ describe('Electron app state storage load result', () => {
       expect(result.ok).toBe(true)
       const parsed = JSON.parse(result.serializedState)
 
-      expect(rootManifest.globalSettings.theme).toBe('custom')
+      expect(rootManifest.globalSettings.theme).toBe('custom3')
       expect(rootManifest.globalSettings.ui.settingsSection).toBeUndefined()
       expect(rootManifest.globalSettings.ui.lastNoteCopyMode).toBe('linked')
+      expect(rootManifest.globalSettings.ui.selectedCustomTheme).toBe('custom3')
       expect(profileSettings.schemaVersion).toBe(1)
       expect(profileSettings.settings.ui.lastNoteCopyMode).toBe('linked')
+      expect(profileSettings.settings.ui.selectedCustomTheme).toBe('custom3')
+      expect(profileSettings.settings.ui.themePalettes.dawn.primary).toBe('#123456')
       expect(profileSettings.settings.ui.settingsSection).toBeUndefined()
       expect(profileSettings.settings.ui.tabButtonScale).toBeUndefined()
       expect(rootManifest.globalSettings.hotkeys.enableMouseBackForward).toBe(false)

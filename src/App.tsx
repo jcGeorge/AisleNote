@@ -155,8 +155,10 @@ import { formatMovedToTrashToast, useAppOverlayActions } from './overlays/useApp
 import { measureSlowOperation } from './performance/performance-logging'
 import {
   ALWAYS_SHOW_DOMAINS_WITHOUT_SPACES_MESSAGE,
-  DEFAULT_CUSTOM_THEME_PALETTE,
   getCustomThemePaletteSeedMatch,
+  getThemePaletteForTheme,
+  isCustomTheme,
+  isThemePaletteSeed,
 } from './settings/defaults'
 import { useSettingsController } from './settings/useSettingsController'
 import { applyAutoPurgeToAppState, ensureNoteBodiesForAppState } from './state/app-state'
@@ -479,6 +481,7 @@ function App() {
 
   const settingsController = useSettingsController({
     state,
+    setState,
     stateRef,
     commitAppStateNow,
     activeSpace,
@@ -2734,17 +2737,26 @@ function App() {
       onOpenSettings={openSettings}
     />
   )
-  const customThemePalette = state.theme === 'custom'
-    ? state.ui.customThemePalette ?? DEFAULT_CUSTOM_THEME_PALETTE
-    : null
-  const customThemeSeedSource = getCustomThemePaletteSeedMatch(customThemePalette)
-  const customThemeClassName = customThemePalette
-    ? customThemeSeedSource
-      ? `theme-custom-seed-${customThemeSeedSource} ${
-          customThemeSeedSource === 'dark' ? '' : `theme-${customThemeSeedSource}`
-        }`
-      : 'theme-custom-derived'
-    : ''
+  const activeThemePalette = getThemePaletteForTheme(state.theme, state.ui.themePalettes, state.ui.customThemePalette)
+  const activeThemeIsCustom = isCustomTheme(state.theme)
+  const customThemeSeedSource = activeThemeIsCustom ? getCustomThemePaletteSeedMatch(activeThemePalette) : null
+  const builtInThemeOverride = activeThemeIsCustom ? null : state.ui.themePalettes?.[state.theme] ?? null
+  const customThemePalette =
+    activeThemeIsCustom
+      ? activeThemePalette
+      : builtInThemeOverride && !isThemePaletteSeed(state.theme, builtInThemeOverride)
+        ? builtInThemeOverride
+        : null
+  const customThemeClassName =
+    activeThemeIsCustom
+      ? customThemeSeedSource
+        ? `theme-custom-seed-${customThemeSeedSource} ${
+            customThemeSeedSource === 'dark' ? '' : `theme-${customThemeSeedSource}`
+          }`
+        : 'theme-custom-derived'
+      : customThemePalette
+        ? 'theme-custom-derived'
+        : ''
   const visibleTipDefinitions = visibleTips
     .filter((tipId) => !state.ui.disabledTipIds.includes(tipId))
     .map((tipId) => getTipDefinition(tipId))
@@ -3144,6 +3156,7 @@ function App() {
         <SettingsPage
           state={state}
           section={settingsController.section}
+          visualsSection={settingsController.visualsSection}
           isMacPlatform={isMacPlatform}
           shortcutDrafts={settingsController.shortcutDrafts}
           newlineShortcutDrafts={settingsController.newlineShortcutDrafts}
@@ -3155,6 +3168,7 @@ function App() {
           exportStatus={settingsController.exportStatus}
           tabButtonScaleDraft={settingsController.tabButtonScaleDraft}
           noteFontScaleDraft={settingsController.noteFontScaleDraft}
+          selectedCustomTheme={settingsController.selectedCustomTheme}
           customThemePaletteDraft={settingsController.customThemePaletteDraft}
           showParentHomeTabDraft={settingsController.showParentHomeTabDraft}
           alwaysShowSpacesDraft={settingsController.alwaysShowSpacesDraft}
@@ -3168,6 +3182,7 @@ function App() {
           toolbarEditorShowNames={settingsController.toolbarEditorShowNames}
           storageProfileStatus={storageProfileStatus}
           onSectionChange={settingsController.changeSection}
+          onVisualsSectionChange={settingsController.changeVisualsSection}
           onToggleShortcutEdit={settingsController.toggleShortcutEdit}
           onNewlineShortcutChange={settingsController.updateNewlineShortcutSetting}
           onOpenShortcutMenuSettings={() => setModal({ type: 'shortcut-menu-settings' })}
@@ -3177,6 +3192,7 @@ function App() {
           onExportSpace={(spaceId) => setModal({ type: 'export-space', spaceId })}
           onExportAll={() => exportData('all')}
           onThemeChange={settingsController.updateThemeSetting}
+          onSelectedCustomThemeChange={settingsController.updateSelectedCustomThemeSetting}
           onCustomThemePaletteChange={settingsController.updateCustomThemePaletteSetting}
           onCustomThemePaletteReset={settingsController.resetCustomThemePaletteSetting}
           onCustomThemePaletteSeedFromCurrentTheme={settingsController.seedCustomThemePaletteFromCurrentTheme}

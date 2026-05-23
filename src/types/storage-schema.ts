@@ -1,7 +1,8 @@
 export type StorageSchemaVersion = 3
 
 export type StorageEntityId = string
-export type StorageTheme = 'dark' | 'light' | 'dawn' | 'blues' | 'custom'
+export type StorageCustomThemeId = 'custom1' | 'custom2' | 'custom3'
+export type StorageTheme = 'dark' | 'light' | 'dawn' | 'blues' | StorageCustomThemeId
 export type StorageCustomThemePaletteSlot =
   | 'canvas'
   | 'page'
@@ -58,7 +59,16 @@ export type StorageNewlineOperationId =
   | 'strikethrough'
   | 'operationsMenu'
 export type StorageNewlineShortcutId = 'controlEnter' | 'shiftEnter' | 'commandEnter'
-export type StorageSettingsSection = 'data' | 'frontmatter' | 'hotkeys' | 'misc' | 'shortcuts' | 'tips' | 'toolbar' | 'visuals'
+export type StorageSettingsSection =
+  | 'data'
+  | 'frontmatter'
+  | 'hotkeys'
+  | 'misc'
+  | 'shortcuts'
+  | 'tips'
+  | 'toolbar'
+  | 'visuals'
+export type StorageVisualsSettingsSection = 'theming' | 'otherVisuals'
 export type StorageTableControlTargetMode = 'active-cell' | 'bottom-right'
 export type StorageTipId = 'task-undo' | 'tab-create-after-rename'
 
@@ -87,7 +97,9 @@ export type StorageGlobalSettings = {
     tabButtonScale?: number
     noteFontScale?: number
     settingsSection?: StorageSettingsSection
+    selectedCustomTheme?: StorageCustomThemeId
     customThemePalette?: Partial<Record<StorageCustomThemePaletteSlot, string>> | null
+    themePalettes?: Partial<Record<StorageTheme, Partial<Record<StorageCustomThemePaletteSlot, string>>>>
     noteCursorLocations?: Record<
       string,
       {
