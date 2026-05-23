@@ -331,6 +331,42 @@ describe('compact scope tab scaling styles', () => {
       expect(themeCss).not.toContain('--add-tab-hover-border:')
     }
   })
+
+  it('uses semantic rail colors for note mention navigator chips', () => {
+    const editorShellCss = readStyle('editor-shell.css')
+    const chipRule = extractRule(editorShellCss, '.note-mention-nav-chip')
+    const chipHoverRule = extractRule(editorShellCss, '.note-mention-nav-chip:hover')
+    const chipSelectedRule = extractRule(editorShellCss, '.note-mention-nav-chip.is-selected')
+
+    const expectRailVariables = (selector: string, rail: string) => {
+      const rule = extractRule(editorShellCss, selector)
+
+      expect(rule).toContain(`--note-mention-chip-text: var(--${rail}-rail-text);`)
+      expect(rule).toContain(`--note-mention-chip-bg: var(--${rail}-rail-bg);`)
+      expect(rule).toContain(`--note-mention-chip-border: var(--${rail}-rail-border);`)
+      expect(rule).toContain(`--note-mention-chip-hover-text: var(--${rail}-rail-hover-text);`)
+      expect(rule).toContain(`--note-mention-chip-hover-bg: var(--${rail}-rail-hover-bg);`)
+      expect(rule).toContain(`--note-mention-chip-hover-border: var(--${rail}-rail-hover-border);`)
+      expect(rule).toContain(`--note-mention-chip-selected-text: var(--${rail}-rail-selected-text);`)
+      expect(rule).toContain(`--note-mention-chip-selected-bg: var(--${rail}-rail-selected-bg);`)
+      expect(rule).toContain(`--note-mention-chip-selected-border: var(--${rail}-rail-selected-border);`)
+    }
+
+    expect(editorShellCss).not.toContain('note-mention-row-label')
+    expectRailVariables('.note-mention-nav-row.is-domain-row', 'domain')
+    expectRailVariables('.note-mention-nav-row.is-space-row', 'space')
+    expectRailVariables('.note-mention-nav-row.is-tab-row', 'parent')
+    expectRailVariables('.note-mention-nav-row.is-note-row', 'subtab')
+    expect(chipRule).toContain('border: 1px solid var(--note-mention-chip-border);')
+    expect(chipRule).toContain('background: var(--note-mention-chip-bg);')
+    expect(chipRule).toContain('color: var(--note-mention-chip-text);')
+    expect(chipHoverRule).toContain('border-color: var(--note-mention-chip-hover-border);')
+    expect(chipHoverRule).toContain('background: var(--note-mention-chip-hover-bg);')
+    expect(chipHoverRule).toContain('color: var(--note-mention-chip-hover-text);')
+    expect(chipSelectedRule).toContain('border-color: var(--note-mention-chip-selected-border);')
+    expect(chipSelectedRule).toContain('background: var(--note-mention-chip-selected-bg);')
+    expect(chipSelectedRule).toContain('color: var(--note-mention-chip-selected-text);')
+  })
 })
 
 describe('table cell styles', () => {

@@ -98,16 +98,9 @@ export function NoteMentionMenu(props: NoteMentionMenuProps) {
           {props.navigatorRows.map((row) => (
             <section
               key={row.id}
-              className={`note-mention-nav-row${row.id === props.activeRow ? ' is-active-row' : ''}`}
+              className={`note-mention-nav-row is-${row.id}-row${row.id === props.activeRow ? ' is-active-row' : ''}`}
               aria-label={row.label}
             >
-              <button
-                type="button"
-                className="note-mention-row-label"
-                onClick={() => props.onActiveRowChange(row.id)}
-              >
-                {row.label}
-              </button>
               <div className="note-mention-row-items">
                 {row.items.map((item) => (
                   <button

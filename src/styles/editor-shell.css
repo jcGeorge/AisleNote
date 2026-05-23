@@ -965,27 +965,67 @@
 }
 
 .note-mention-nav-row {
+  --note-mention-chip-text: var(--subtab-rail-text);
+  --note-mention-chip-bg: var(--subtab-rail-bg);
+  --note-mention-chip-border: var(--subtab-rail-border);
+  --note-mention-chip-hover-text: var(--subtab-rail-hover-text);
+  --note-mention-chip-hover-bg: var(--subtab-rail-hover-bg);
+  --note-mention-chip-hover-border: var(--subtab-rail-hover-border);
+  --note-mention-chip-selected-text: var(--subtab-rail-selected-text);
+  --note-mention-chip-selected-bg: var(--subtab-rail-selected-bg);
+  --note-mention-chip-selected-border: var(--subtab-rail-selected-border);
   display: grid;
   grid-template-columns: 1fr;
   align-items: start;
-  gap: 0.28rem;
   min-height: 0;
 }
 
-.note-mention-row-label {
-  border: 0;
-  background: transparent;
-  color: var(--app-text-subtle);
-  font: inherit;
-  font-size: 0.76em;
-  font-weight: 700;
-  letter-spacing: 0;
-  text-align: left;
-  text-transform: lowercase;
+.note-mention-nav-row.is-domain-row {
+  --note-mention-chip-text: var(--domain-rail-text);
+  --note-mention-chip-bg: var(--domain-rail-bg);
+  --note-mention-chip-border: var(--domain-rail-border);
+  --note-mention-chip-hover-text: var(--domain-rail-hover-text);
+  --note-mention-chip-hover-bg: var(--domain-rail-hover-bg);
+  --note-mention-chip-hover-border: var(--domain-rail-hover-border);
+  --note-mention-chip-selected-text: var(--domain-rail-selected-text);
+  --note-mention-chip-selected-bg: var(--domain-rail-selected-bg);
+  --note-mention-chip-selected-border: var(--domain-rail-selected-border);
 }
 
-.note-mention-nav-row.is-active-row .note-mention-row-label {
-  color: var(--context-menu-item-text);
+.note-mention-nav-row.is-space-row {
+  --note-mention-chip-text: var(--space-rail-text);
+  --note-mention-chip-bg: var(--space-rail-bg);
+  --note-mention-chip-border: var(--space-rail-border);
+  --note-mention-chip-hover-text: var(--space-rail-hover-text);
+  --note-mention-chip-hover-bg: var(--space-rail-hover-bg);
+  --note-mention-chip-hover-border: var(--space-rail-hover-border);
+  --note-mention-chip-selected-text: var(--space-rail-selected-text);
+  --note-mention-chip-selected-bg: var(--space-rail-selected-bg);
+  --note-mention-chip-selected-border: var(--space-rail-selected-border);
+}
+
+.note-mention-nav-row.is-tab-row {
+  --note-mention-chip-text: var(--parent-rail-text);
+  --note-mention-chip-bg: var(--parent-rail-bg);
+  --note-mention-chip-border: var(--parent-rail-border);
+  --note-mention-chip-hover-text: var(--parent-rail-hover-text);
+  --note-mention-chip-hover-bg: var(--parent-rail-hover-bg);
+  --note-mention-chip-hover-border: var(--parent-rail-hover-border);
+  --note-mention-chip-selected-text: var(--parent-rail-selected-text);
+  --note-mention-chip-selected-bg: var(--parent-rail-selected-bg);
+  --note-mention-chip-selected-border: var(--parent-rail-selected-border);
+}
+
+.note-mention-nav-row.is-note-row {
+  --note-mention-chip-text: var(--subtab-rail-text);
+  --note-mention-chip-bg: var(--subtab-rail-bg);
+  --note-mention-chip-border: var(--subtab-rail-border);
+  --note-mention-chip-hover-text: var(--subtab-rail-hover-text);
+  --note-mention-chip-hover-bg: var(--subtab-rail-hover-bg);
+  --note-mention-chip-hover-border: var(--subtab-rail-hover-border);
+  --note-mention-chip-selected-text: var(--subtab-rail-selected-text);
+  --note-mention-chip-selected-bg: var(--subtab-rail-selected-bg);
+  --note-mention-chip-selected-border: var(--subtab-rail-selected-border);
 }
 
 .note-mention-row-items {
@@ -1001,10 +1041,10 @@
   flex: 0 0 auto;
   max-width: 11rem;
   min-height: 1.85rem;
-  border: 1px solid var(--stage-action-border);
+  border: 1px solid var(--note-mention-chip-border);
   border-radius: 0.35rem;
-  background: var(--stage-action-bg);
-  color: var(--stage-action-text);
+  background: var(--note-mention-chip-bg);
+  color: var(--note-mention-chip-text);
   padding: 0.24rem 0.55rem;
   font: inherit;
   font-size: 0.84em;
@@ -1013,12 +1053,16 @@
   white-space: nowrap;
 }
 
-.note-mention-nav-row.is-active-row .note-mention-nav-chip.is-selected,
-.note-mention-nav-chip:hover,
+.note-mention-nav-chip:hover {
+  border-color: var(--note-mention-chip-hover-border);
+  background: var(--note-mention-chip-hover-bg);
+  color: var(--note-mention-chip-hover-text);
+}
+
 .note-mention-nav-chip.is-selected {
-  border-color: var(--stage-action-selected-border);
-  background: var(--stage-action-selected-bg);
-  color: var(--stage-action-selected-text);
+  border-color: var(--note-mention-chip-selected-border);
+  background: var(--note-mention-chip-selected-bg);
+  color: var(--note-mention-chip-selected-text);
 }
 
 .note-mention-search-results {
