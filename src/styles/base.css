@@ -412,6 +412,8 @@
   /* Editor */
   --editor-bg: #0b1528;
   --editor-panel-bg: #0f1b32;
+  --editor-shell-bg: var(--editor-bg);
+  --editor-trash-home-bg: var(--editor-bg);
   --editor-toolbar-bg: #0f1b32;
   --editor-toolbar-hover-bg: #1a2a45;
   --editor-toolbar-hover-border: #2f4672;
@@ -437,10 +439,13 @@
   --editor-caret: #e9ecef;
   --editor-annotation-text: #c7d5ed;
   --editor-terminal-caret: rgba(134, 168, 232, 0.86);
+  --editor-toolbar-icon-filter: invert(88%) sepia(10%) saturate(327%) hue-rotate(183deg) brightness(94%) contrast(91%);
   --editor-toolbar-dash-icon-text: #111827;
+  --editor-clear-note-toolbar-text: var(--toolbar-custom-icon-color, var(--app-text));
   --editor-heading-choice-active-bg: #22406d;
   --editor-heading-choice-active-marker: #6fa0ff;
   --editor-heading-choice-active-text: #f4f8ff;
+  --editor-list-marker-opacity: 1;
   --editor-popup-input-bg: #101d34;
   --editor-popup-input-border: #334e79;
   --editor-popup-input-focus-border: #5f89dc;
@@ -454,6 +459,7 @@
   --editor-table-description-text: #e8f1ff;
   --editor-link-hover-text: #c4d7ff;
   --editor-hr-line: rgba(62, 81, 111, 0.92);
+  --editor-hr-opacity: 0.74;
   --editor-pre-bg: #07090f;
   --editor-pre-border: #1f2a3d;
   --editor-tooltip-shadow: 0 4px 12px rgba(0, 0, 0, 0.28);

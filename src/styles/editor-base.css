@@ -1,3 +1,20 @@
+.toast-editor-host,
+.toastui-editor-defaultUI,
+.toastui-editor-main,
+.toastui-editor-main-container,
+.toastui-editor,
+.toastui-editor-md-container,
+.toastui-editor-md-container .toastui-editor,
+.toastui-editor-md-container .toastui-editor-md-preview,
+.toastui-editor-ww-container,
+.toastui-editor-ww-container > .toastui-editor,
+.toastui-editor-contents,
+.toastui-editor .ProseMirror,
+.toastui-editor .ProseMirror * {
+  background-color: var(--editor-bg) !important;
+  color: var(--editor-text) !important;
+}
+
 .toastui-editor-defaultUI {
   border: 0 !important;
   border-radius: 0 !important;
@@ -9,6 +26,31 @@
   border-bottom: 1px solid var(--editor-border) !important;
   min-height: 32px !important;
   padding: 0.125rem 0.25rem !important;
+}
+
+.toastui-editor-main .toastui-editor-md-splitter {
+  background-color: var(--editor-border) !important;
+}
+
+.toastui-editor-defaultUI .toastui-editor-md-tab-container,
+.toastui-editor-mode-switch {
+  background-color: var(--editor-toolbar-bg) !important;
+  border-color: var(--editor-border) !important;
+  color: var(--editor-text) !important;
+}
+
+.toastui-editor-md-tab-container .tab-item,
+.toastui-editor-mode-switch .tab-item {
+  background: var(--editor-panel-bg) !important;
+  border-color: var(--editor-border) !important;
+  color: var(--editor-muted-text) !important;
+}
+
+.toastui-editor-md-tab-container .tab-item.active,
+.toastui-editor-mode-switch .tab-item.active {
+  background: var(--editor-bg) !important;
+  border-color: var(--editor-border) !important;
+  color: var(--editor-text) !important;
 }
 
 .toastui-editor-defaultUI-toolbar {
@@ -31,9 +73,30 @@ body.app-tooltips-disabled .toastui-editor-tooltip {
   display: none !important;
 }
 
+.toastui-editor-tooltip {
+  padding: 4px 8px !important;
+  background-color: var(--editor-tooltip-bg) !important;
+  color: var(--editor-tooltip-text) !important;
+  border: 1px solid var(--editor-tooltip-border);
+  box-shadow: var(--editor-tooltip-shadow);
+  line-height: 1.25 !important;
+  transform: translateX(calc(-50% + 7px)) !important;
+}
+
+.toastui-editor-tooltip .arrow {
+  left: 50% !important;
+  top: -5px !important;
+  background-color: var(--editor-tooltip-bg) !important;
+  border: 0 !important;
+  transform: translateX(-50%) rotate(45deg) !important;
+}
+
 .toastui-editor-toolbar-icons,
 .toastui-editor-toolbar-divider {
-  filter: invert(88%) sepia(10%) saturate(327%) hue-rotate(183deg) brightness(94%) contrast(91%);
+  filter: var(
+    --editor-toolbar-icon-filter,
+    invert(88%) sepia(10%) saturate(327%) hue-rotate(183deg) brightness(94%) contrast(91%)
+  );
 }
 
 .toastui-editor-toolbar-icons {
@@ -290,6 +353,11 @@ body.app-tooltips-disabled .toastui-editor-tooltip {
   align-items: center !important;
   justify-content: center !important;
   opacity: 0.92 !important;
+}
+
+.toastui-editor-defaultUI-toolbar button.clear-note-toolbar-btn,
+.toastui-editor-toolbar button.clear-note-toolbar-btn {
+  color: var(--editor-clear-note-toolbar-text, var(--toolbar-custom-icon-color, var(--app-text))) !important;
 }
 
 .toastui-editor-defaultUI-toolbar button.note-link-toolbar-btn,

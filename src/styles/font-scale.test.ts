@@ -480,6 +480,93 @@ describe('table cell styles', () => {
   })
 })
 
+describe('theme editor selector deduplication', () => {
+  it('moves repeated Toast UI editor selectors into shared editor styles', () => {
+    const baseCss = readStyle('base.css')
+    const editorBaseCss = readStyle('editor-base.css')
+    const editorContentCss = readStyle('editor-content.css')
+    const editorShellCss = readStyle('editor-shell.css')
+
+    expect(baseCss).toContain('--editor-toolbar-icon-filter:')
+    expect(baseCss).toContain('--editor-clear-note-toolbar-text:')
+    expect(baseCss).toContain('--editor-list-marker-opacity:')
+    expect(baseCss).toContain('--editor-hr-opacity:')
+    expect(baseCss).toContain('--editor-shell-bg:')
+    expect(baseCss).toContain('--editor-trash-home-bg:')
+
+    expect(editorBaseCss).toContain('.toast-editor-host,\n.toastui-editor-defaultUI,\n.toastui-editor-main,')
+    expect(editorBaseCss).toContain('.toastui-editor-main .toastui-editor-md-splitter')
+    expect(editorBaseCss).toContain('.toastui-editor-defaultUI .toastui-editor-md-tab-container,\n.toastui-editor-mode-switch')
+    expect(editorBaseCss).toContain('.toastui-editor-md-tab-container .tab-item,\n.toastui-editor-mode-switch .tab-item')
+    expect(editorBaseCss).toContain('.toastui-editor-tooltip {')
+    expect(editorBaseCss).toContain('background-color: var(--editor-tooltip-bg) !important;')
+    expect(editorBaseCss).toContain('filter: var(\n    --editor-toolbar-icon-filter,')
+    expect(editorBaseCss).toContain(
+      'color: var(--editor-clear-note-toolbar-text, var(--toolbar-custom-icon-color, var(--app-text))) !important;',
+    )
+
+    expect(editorContentCss).toContain('opacity: var(--editor-list-marker-opacity, 1) !important;')
+    expect(editorContentCss).toContain('.toastui-editor-contents ol > li::before,\n.toastui-editor .ProseMirror ol > li::before')
+    expect(editorContentCss).toContain('opacity: var(--editor-hr-opacity, 0.74) !important;')
+    expect(editorContentCss).toContain('background: var(--editor-pre-bg) !important;')
+    expect(editorContentCss).toContain('border: 1px solid var(--editor-pre-border) !important;')
+
+    expect(editorShellCss).toContain('background-color: var(--editor-shell-bg, var(--editor-bg));')
+    expect(editorShellCss).toContain('background-color: var(--editor-trash-home-bg, var(--editor-bg));')
+  })
+
+  it('keeps theme files focused on tokens and true exceptions', () => {
+    const themeNames = ['light', 'dawn', 'blues'] as const
+    const removedTokenSelectorFragments = [
+      '.editor-shell',
+      '.trash-home-note',
+      '.toast-editor-host',
+      '.toastui-editor-defaultUI,',
+      '.toastui-editor-main .toastui-editor-md-splitter',
+      '.toastui-editor-defaultUI .toastui-editor-md-tab-container',
+      '.toastui-editor-contents mark',
+      '.toastui-editor-contents blockquote',
+      ".toastui-editor-popup-body input[type='text']",
+      '.toastui-editor-popup-add-table',
+      '.toastui-editor-contents h1',
+      '.toastui-editor-contents a',
+      '.toastui-editor-contents hr',
+      '.toastui-editor .ProseMirror pre',
+      '.toastui-editor-tooltip',
+    ]
+
+    for (const themeName of themeNames) {
+      const css = readStyle(`themes/${themeName}.css`)
+
+      expect(css).toContain('--editor-toolbar-icon-filter:')
+      expect(css).toContain('--editor-clear-note-toolbar-text:')
+      expect(css).toContain('--editor-list-marker-opacity:')
+      expect(css).toContain('--editor-hr-opacity:')
+      expect(css).toContain('--editor-shell-bg:')
+      expect(css).toContain('--editor-trash-home-bg:')
+
+      for (const selectorFragment of removedTokenSelectorFragments) {
+        expect(css).not.toContain(`.theme-${themeName} ${selectorFragment}`)
+      }
+
+      expect(css).toContain(`.theme-${themeName} .toastui-editor-contents li.task-reorder-source`)
+      expect(css).toContain(`.theme-${themeName} .task-reorder-ghost`)
+      expect(css).toContain(`.theme-${themeName} .image-tools`)
+      expect(css).toContain(`.theme-${themeName} .link-prompt`)
+    }
+
+    const dawnCss = readStyle('themes/dawn.css')
+    const lightCss = readStyle('themes/light.css')
+    const bluesCss = readStyle('themes/blues.css')
+
+    expect(dawnCss).toContain('.theme-dawn .toastui-editor-toolbar-icons.quote,')
+    expect(dawnCss).toContain('.theme-dawn .toastui-editor-toolbar-icons.task-list::before')
+    expect(dawnCss).toContain('.theme-dawn .toastui-editor-contents .task-list-item.checked::before')
+    expect(lightCss).not.toContain('.theme-light .toastui-editor-toolbar-icons.quote')
+    expect(bluesCss).not.toContain('.theme-blues .toastui-editor-toolbar-icons.quote')
+  })
+})
+
 describe('table of contents panel styles', () => {
   it('centers the per-aisle table of contents panel without adding a backdrop', () => {
     const editorShellCss = readStyle('editor-shell.css')
