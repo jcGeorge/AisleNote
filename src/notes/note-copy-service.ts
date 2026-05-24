@@ -8,7 +8,7 @@ import {
 import { buildNoteLocationKey, getLocationInfo, updateNoteLocationBody } from './note-locations'
 import { ensureNoteBodiesForAppState } from '../state/app-state'
 import { createId, createTimestamp } from '../state/workspace'
-import type { AppState, NoteAisle, NoteAisleBody, NoteBody, NoteCopyDestinationMode, NoteCopyMode, NoteLocation } from '../types/app'
+import type { AppState, FrontmatterMeta, NoteAisle, NoteAisleBody, NoteBody, NoteCopyDestinationMode, NoteCopyMode, NoteLocation } from '../types/app'
 
 export type ApplyNoteCopyResult =
   | { status: 'applied'; state: AppState; mode: NoteCopyMode }
@@ -24,15 +24,42 @@ function getSelectedTargetAisles(targetBody: NoteBody, aisleIds: string[] | unde
     : targetBody.aisles
 }
 
-function createIndependentAisleCopies(aisles: NoteAisle[]): { aisles: NoteAisle[]; aisleBodies: NoteAisleBody[] } {
+function cloneFrontmatterMeta(meta: FrontmatterMeta | undefined): FrontmatterMeta | undefined {
+  if (!meta) return undefined
+  return {
+    ...meta,
+    templateFieldOrigins: meta.templateFieldOrigins
+      ? Object.fromEntries(Object.entries(meta.templateFieldOrigins).map(([key, origin]) => [key, { ...origin }]))
+      : undefined,
+    templateRemovedFieldIds: meta.templateRemovedFieldIds ? [...meta.templateRemovedFieldIds] : undefined,
+    computedFields: meta.computedFields ? { ...meta.computedFields } : undefined,
+    templateDetachedKeys: meta.templateDetachedKeys ? [...meta.templateDetachedKeys] : undefined,
+  }
+}
+
+function createIndependentAisleCopies(
+  sourceState: AppState,
+  aisles: NoteAisle[],
+): { aisles: NoteAisle[]; aisleBodies: NoteAisleBody[] } {
   const timestamp = createTimestamp()
   const sourceAisles = aisles.length > 0 ? aisles : [{ id: createId(), markdown: '' }]
-  const aisleBodies = sourceAisles.map((aisle) => ({
-    id: createId(),
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    markdown: aisle.markdown,
-  }))
+  const aisleBodyMap = new Map((sourceState.noteAisleBodies ?? []).map((body) => [body.id, body]))
+  const aisleBodies = sourceAisles.map((aisle) => {
+    const sourceBody = aisleBodyMap.get(getAisleBodyId(aisle))
+    return {
+      id: createId(),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      markdown: aisle.markdown,
+      frontmatter: sourceBody?.frontmatter && typeof sourceBody.frontmatter === 'object'
+        ? { ...sourceBody.frontmatter }
+        : sourceBody?.frontmatter ?? null,
+      frontmatterStatus: sourceBody?.frontmatterStatus ?? (sourceBody?.frontmatter ? 'valid' : 'none'),
+      frontmatterParseError: sourceBody?.frontmatterParseError,
+      frontmatterRaw: sourceBody?.frontmatterRaw,
+      frontmatterMeta: cloneFrontmatterMeta(sourceBody?.frontmatterMeta),
+    }
+  })
   return {
     aisles: aisleBodies.map((aisleBody) => ({
       id: createId(),
@@ -123,7 +150,7 @@ export function applyNoteCopyToState(
     if (!sourceBody || !sourceInfo.noteBodyId) return { status: 'missing-target', state: workingState, mode }
     const copied = mode === 'linked'
       ? { aisles: createLinkedAisleCopies(selectedAisles), aisleBodies: [] }
-      : createIndependentAisleCopies(selectedAisles)
+      : createIndependentAisleCopies(workingState, selectedAisles)
     return {
       status: 'applied',
       state: updateNoteBodyAisles(
@@ -140,7 +167,7 @@ export function applyNoteCopyToState(
     if (!sourceBody) return { status: 'missing-target', state: workingState, mode }
     const copied = mode === 'linked'
       ? { aisles: createLinkedAisleCopies(selectedAisles), aisleBodies: [] }
-      : createIndependentAisleCopies(selectedAisles)
+      : createIndependentAisleCopies(workingState, selectedAisles)
     const copiedBody = cloneNoteBodyMetadataWithAisles(sourceBody, copied.aisles)
     return {
       status: 'applied',

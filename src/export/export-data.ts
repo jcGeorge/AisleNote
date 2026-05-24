@@ -1,11 +1,11 @@
 import JSZip from 'jszip'
-import { prependMarkdownFrontmatter } from '../frontmatter/frontmatter'
+import { composeMarkdownFrontmatter } from '../frontmatter/frontmatter'
 import { resolveFrontmatterReferencesForState } from '../frontmatter/frontmatter-state'
 import { splitImageResizeMetadataFromUrl } from '../markdown/image-metadata'
 import { parseImageAssetUrl } from '../markdown/image-asset-refs.js'
 import { getRegisteredImageAssetBytes } from '../markdown/image-asset-registry'
 import { convertInternalTabsForExport } from '../markdown/markdown-utils'
-import { getAisleMarkdown } from '../notes/note-markdown'
+import { getAisleBodyId, getAisleMarkdown } from '../notes/note-markdown'
 import type { AppState, Space, SpaceSettings } from '../types/app'
 
 export type ExportScope = 'space' | 'all'
@@ -90,10 +90,16 @@ function getExportMarkdownForBody(
   imageBank: Map<string, Uint8Array>,
 ): string {
   const body = state.noteBodies.find((candidate) => candidate.id === noteBodyId) ?? null
-  const markdown = body?.aisles[0] ? getAisleMarkdown(body.aisles[0], state.noteAisleBodies) : fallbackMarkdown
-  return prependMarkdownFrontmatter(
-    rewriteMarkdownImages(markdown, spaceFolder, imageBank),
-    resolveFrontmatterReferencesForState(state, body?.frontmatter ?? null),
+  const firstAisle = body?.aisles[0] ?? null
+  const aisleBody = firstAisle
+    ? (state.noteAisleBodies ?? []).find((candidate) => candidate.id === getAisleBodyId(firstAisle)) ?? null
+    : null
+  const markdown = firstAisle ? getAisleMarkdown(firstAisle, state.noteAisleBodies) : fallbackMarkdown
+  const rewrittenMarkdown = rewriteMarkdownImages(markdown, spaceFolder, imageBank)
+  if (aisleBody?.frontmatterStatus === 'invalid') return rewrittenMarkdown
+  return composeMarkdownFrontmatter(
+    rewrittenMarkdown,
+    resolveFrontmatterReferencesForState(state, aisleBody?.frontmatter ?? null),
   )
 }
 

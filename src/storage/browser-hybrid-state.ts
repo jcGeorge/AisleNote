@@ -15,6 +15,7 @@ import {
   normalizeImageAssetPath,
   parseImageAssetUrl,
 } from '../markdown/image-asset-refs.js'
+import { composeMarkdownFrontmatter } from '../frontmatter/frontmatter'
 import {
   getRegisteredAssetBytes,
   registerAssetBytes,
@@ -48,9 +49,13 @@ import {
   createStoragePathFileNameAllocator,
 } from './storage-path-segments.js'
 import {
-  extractSyncedGlobalSettings,
-  extractSyncedProfileSettings,
+  buildSyncedSettingsFromSplitFiles,
+  extractAppSettings,
+  extractEditorState,
+  extractFrontmatterSettings,
   getSyncedProfileSettingsForLoad,
+  LEGACY_ROOT_SPLIT_FILES,
+  ROOT_SPLIT_FILES,
 } from './settings-partition.js'
 
 type BrowserStoredFile =
@@ -80,6 +85,7 @@ type AssetBank = {
 const BROWSER_DB_NAME = 'tabs-hybrid-storage'
 const BROWSER_DB_VERSION = 1
 const BROWSER_FILE_STORE = 'files'
+const SUPPORTED_STORAGE_SCHEMA_VERSIONS = new Set([1, 2, STORAGE_SCHEMA_VERSION])
 
 function normalizePosixPath(value: string): string {
   const isAbsolute = value.startsWith('/')
@@ -271,24 +277,19 @@ function setJsonFile(fileMap: Map<string, BrowserStoredFile>, path: string, valu
   setTextFile(fileMap, path, `${JSON.stringify(value, null, 2)}\n`)
 }
 
-function buildRootManifest(
-  appState: Record<string, unknown>,
-  domainEntries: Array<Record<string, unknown>>,
-  noteBodyEntries: Array<Record<string, unknown>>,
-  noteAisleBodyEntries: Array<Record<string, unknown>>,
-) {
+function buildNavigationState(appState: Record<string, unknown>) {
   const activeDomain = getActiveDomainFromAppState(appState, getDomainsFromAppState(appState))
   const activeDomainId = activeDomain ? getDomainId(activeDomain) : DEFAULT_DOMAIN_ID
+  return {
+    activeDomainId,
+    ...(isRecord(appState.lastOpened) ? { lastOpened: appState.lastOpened } : {}),
+  }
+}
 
+function buildRootManifest() {
   return {
     schemaVersion: STORAGE_SCHEMA_VERSION,
-    globalSettings: extractSyncedGlobalSettings(appState),
-    domains: domainEntries,
-    deletedDomains: ensureArray<Record<string, unknown>>(appState.deletedDomains).filter(isRecord),
-    deletedSpaces: ensureArray<Record<string, unknown>>(appState.deletedSpaces).filter(isRecord),
-    noteBodies: noteBodyEntries,
-    noteAisleBodies: noteAisleBodyEntries,
-    activeDomainId,
+    files: ROOT_SPLIT_FILES,
   }
 }
 
@@ -317,21 +318,58 @@ function buildNoteBodyManifestRecord(body: Record<string, unknown>, aisles: Arra
     id: typeof body.id === 'string' ? body.id : '',
     createdAt: typeof body.createdAt === 'string' ? body.createdAt : undefined,
     updatedAt: typeof body.updatedAt === 'string' ? body.updatedAt : undefined,
-    frontmatter: isRecord(body.frontmatter) ? body.frontmatter : null,
-    frontmatterTemplateId: typeof body.frontmatterTemplateId === 'string' ? body.frontmatterTemplateId : undefined,
-    frontmatterTemplateDerived:
-      typeof body.frontmatterTemplateDerived === 'boolean' ? body.frontmatterTemplateDerived : undefined,
-    frontmatterTemplateFieldOrigins: isRecord(body.frontmatterTemplateFieldOrigins)
-      ? body.frontmatterTemplateFieldOrigins
-      : undefined,
-    frontmatterTemplateRemovedFieldIds: ensureArray<string>(body.frontmatterTemplateRemovedFieldIds).filter(
-      (fieldId): fieldId is string => typeof fieldId === 'string' && fieldId.trim().length > 0,
-    ),
-    frontmatterComputedFields: isRecord(body.frontmatterComputedFields) ? body.frontmatterComputedFields : undefined,
-    frontmatterTemplateDetachedKeys: ensureArray<string>(body.frontmatterTemplateDetachedKeys).filter(
-      (key): key is string => typeof key === 'string' && key.trim().length > 0,
-    ),
     aisles,
+  }
+}
+
+function composeAisleMarkdownForStorage(markdown: string, aisleBody: Record<string, unknown> | undefined): string {
+  if (aisleBody?.frontmatterStatus === 'invalid') return markdown
+  return composeMarkdownFrontmatter(markdown, isRecord(aisleBody?.frontmatter) ? aisleBody.frontmatter : null)
+}
+
+function getLegacyFrontmatterMetaForStorage(body: Record<string, unknown>): Record<string, unknown> | undefined {
+  const meta: Record<string, unknown> = {}
+  if (typeof body.frontmatterTemplateId === 'string') meta.templateId = body.frontmatterTemplateId
+  if (typeof body.frontmatterTemplateDerived === 'boolean') meta.templateDerived = body.frontmatterTemplateDerived
+  if (isRecord(body.frontmatterTemplateFieldOrigins)) meta.templateFieldOrigins = body.frontmatterTemplateFieldOrigins
+  const removedFieldIds = ensureArray<string>(body.frontmatterTemplateRemovedFieldIds).filter(
+    (fieldId): fieldId is string => typeof fieldId === 'string' && fieldId.trim().length > 0,
+  )
+  if (removedFieldIds.length > 0) meta.templateRemovedFieldIds = removedFieldIds
+  if (isRecord(body.frontmatterComputedFields)) meta.computedFields = body.frontmatterComputedFields
+  const detachedKeys = ensureArray<string>(body.frontmatterTemplateDetachedKeys).filter(
+    (key): key is string => typeof key === 'string' && key.trim().length > 0,
+  )
+  if (detachedKeys.length > 0) meta.templateDetachedKeys = detachedKeys
+  return Object.keys(meta).length > 0 ? meta : undefined
+}
+
+function getAisleBodyForStorage(
+  noteBody: Record<string, unknown>,
+  aisleIndex: number,
+  aisleBody: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (aisleIndex !== 0 || aisleBody?.frontmatterStatus === 'invalid' || isRecord(aisleBody?.frontmatter)) return aisleBody
+  const legacyFrontmatter = isRecord(noteBody.frontmatter) ? noteBody.frontmatter : null
+  const legacyMeta = getLegacyFrontmatterMetaForStorage(noteBody)
+  if (!legacyFrontmatter && !legacyMeta) return aisleBody
+  return {
+    ...(aisleBody ?? {}),
+    frontmatter: legacyFrontmatter ?? aisleBody?.frontmatter,
+    frontmatterStatus: legacyFrontmatter ? 'valid' : aisleBody?.frontmatterStatus,
+    frontmatterMeta: isRecord(aisleBody?.frontmatterMeta) ? aisleBody.frontmatterMeta : legacyMeta,
+  }
+}
+
+function buildNoteAisleBodyManifestRecord(
+  aisleBodyId: string,
+  file: string,
+  aisleBody: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  return {
+    id: aisleBodyId,
+    file,
+    frontmatterMeta: isRecord(aisleBody?.frontmatterMeta) ? aisleBody.frontmatterMeta : undefined,
   }
 }
 
@@ -377,9 +415,12 @@ function writeNoteBodyAtPath({
       typeof firstAisle?.aisleBodyId === 'string' && firstAisle.aisleBodyId
         ? firstAisle.aisleBodyId
         : firstAisleId
-    const sharedMarkdown = firstAisleBodyId
-      ? noteAisleBodyMap.get(firstAisleBodyId)?.markdown
-      : undefined
+    const sourceAisleBody = getAisleBodyForStorage(
+      body,
+      0,
+      firstAisleBodyId ? noteAisleBodyMap.get(firstAisleBodyId) : undefined,
+    )
+    const sharedMarkdown = sourceAisleBody?.markdown
     const markdown =
       typeof sharedMarkdown === 'string'
         ? sharedMarkdown
@@ -387,7 +428,11 @@ function writeNoteBodyAtPath({
           ? firstAisle.markdown
           : fallbackMarkdown
     const primaryFile = usesAisleFolder ? getAisleFile(0, firstAisleId) : primaryFileRelative
-    setTextFile(fileMap, joinPosix(STORAGE_ROOT_DIR, primaryFile), externalizeMarkdownImages(markdown, primaryFile, assetBank))
+    setTextFile(
+      fileMap,
+      joinPosix(STORAGE_ROOT_DIR, primaryFile),
+      externalizeMarkdownImages(composeAisleMarkdownForStorage(markdown, sourceAisleBody), primaryFile, assetBank),
+    )
     return { primaryFile, notePath }
   }
 
@@ -401,7 +446,7 @@ function writeNoteBodyAtPath({
       const aisleId = `${bodyId}-home`
       noteBodyRecords.set(bodyId, buildNoteBodyManifestRecord(body, [{ id: aisleId, aisleBodyId: aisleId, file: primaryFileRelative }]))
       if (!noteAisleBodyRecords.has(aisleId)) {
-        noteAisleBodyRecords.set(aisleId, { id: aisleId, file: primaryFileRelative })
+        noteAisleBodyRecords.set(aisleId, buildNoteAisleBodyManifestRecord(aisleId, primaryFileRelative, undefined))
       }
     }
     return { primaryFile: primaryFileRelative, notePath: primaryFileRelative }
@@ -412,7 +457,8 @@ function writeNoteBodyAtPath({
     const aisleId = typeof aisle.id === 'string' && aisle.id ? aisle.id : `${bodyId}-aisle-${index + 1}`
     const aisleBodyId = typeof aisle.aisleBodyId === 'string' && aisle.aisleBodyId ? aisle.aisleBodyId : aisleId
     const file = usesAisleFolder ? getAisleFile(index, aisleId) : primaryFileRelative
-    const sharedMarkdown = noteAisleBodyMap.get(aisleBodyId)?.markdown
+    const sourceAisleBody = getAisleBodyForStorage(body, index, noteAisleBodyMap.get(aisleBodyId))
+    const sharedMarkdown = sourceAisleBody?.markdown
     const markdown =
       typeof sharedMarkdown === 'string'
         ? sharedMarkdown
@@ -421,10 +467,14 @@ function writeNoteBodyAtPath({
           : index === 0
             ? fallbackMarkdown
             : ''
-    setTextFile(fileMap, joinPosix(STORAGE_ROOT_DIR, file), externalizeMarkdownImages(markdown, file, assetBank))
+    setTextFile(
+      fileMap,
+      joinPosix(STORAGE_ROOT_DIR, file),
+      externalizeMarkdownImages(composeAisleMarkdownForStorage(markdown, sourceAisleBody), file, assetBank),
+    )
     aisleRecords.push({ id: aisleId, aisleBodyId, file })
     if (!noteAisleBodyRecords.has(aisleBodyId)) {
-      noteAisleBodyRecords.set(aisleBodyId, { id: aisleBodyId, file })
+      noteAisleBodyRecords.set(aisleBodyId, buildNoteAisleBodyManifestRecord(aisleBodyId, file, sourceAisleBody))
     }
   })
   noteBodyRecords.set(bodyId, buildNoteBodyManifestRecord(body, aisleRecords))
@@ -647,6 +697,7 @@ export function buildHybridFileMapFromSerializedState(serializedState: string): 
   const noteAisleBodyMap = new Map(noteAisleBodies.map((body) => [typeof body.id === 'string' ? body.id : '', body]))
   const noteBodyRecords = new Map<string, Record<string, unknown>>()
   const noteAisleBodyRecords = new Map<string, Record<string, unknown>>()
+  const orphanNoteBodyIds = new Set<string>()
   const assetBank = createAssetBank(STORAGE_ASSETS_DIR)
   const domainPathForTitle = createStoragePathAllocator()
   const domainEntries: Array<Record<string, unknown>> = []
@@ -693,6 +744,7 @@ export function buildHybridFileMapFromSerializedState(serializedState: string): 
   noteBodies.forEach((body) => {
     const bodyId = typeof body.id === 'string' ? body.id : ''
     if (!bodyId || noteBodyRecords.has(bodyId)) return
+    orphanNoteBodyIds.add(bodyId)
     const orphanFileName = orphanFileForId('Orphan Note Body', bodyId, 'orphan note body')
     const orphanSegment = orphanPathForId('Orphan Note Body', bodyId, 'orphan note body')
     writeNoteBodyAtPath({
@@ -710,19 +762,75 @@ export function buildHybridFileMapFromSerializedState(serializedState: string): 
   })
 
   writeAssetBank(fileMap, STORAGE_ROOT_DIR, assetBank)
-  const noteBodyEntries = noteBodies
+  const allNoteBodyEntries = noteBodies
     .map((body) => (typeof body.id === 'string' ? noteBodyRecords.get(body.id) : null))
     .filter((body): body is Record<string, unknown> => body !== null)
-  const noteAisleBodyEntries = Array.from(noteAisleBodyRecords.values())
+  const attachedNoteBodyEntries = allNoteBodyEntries.filter((body) => {
+    const bodyId = typeof body.id === 'string' ? body.id : ''
+    return !orphanNoteBodyIds.has(bodyId)
+  })
+  const noteBodyEntries = allNoteBodyEntries.map((body) => {
+    const bodyId = typeof body.id === 'string' ? body.id : ''
+    return orphanNoteBodyIds.has(bodyId) ? { ...body, storageStatus: 'unlinked' } : body
+  })
+  const liveAisleBodyIds = new Set<string>()
+  attachedNoteBodyEntries.forEach((body) => {
+    ensureArray<Record<string, unknown>>(body.aisles).forEach((aisle) => {
+      const aisleBodyId =
+        typeof aisle.aisleBodyId === 'string' && aisle.aisleBodyId
+          ? aisle.aisleBodyId
+          : typeof aisle.id === 'string'
+            ? aisle.id
+            : ''
+      if (aisleBodyId) liveAisleBodyIds.add(aisleBodyId)
+    })
+  })
+  const aisleBodyEntries = Array.from(noteAisleBodyRecords.values()).map((body) => {
+    const bodyId = typeof body.id === 'string' ? body.id : ''
+    return bodyId && liveAisleBodyIds.has(bodyId) ? body : { ...body, storageStatus: 'unlinked' }
+  })
   setJsonFile(
     fileMap,
-    joinPosix(STORAGE_ROOT_DIR, STORAGE_PROFILE_SETTINGS_FILE),
-    extractSyncedProfileSettings(parsed),
+    joinPosix(STORAGE_ROOT_DIR, ROOT_SPLIT_FILES.workspaceIndex),
+    { domains: domainEntries },
+  )
+  setJsonFile(
+    fileMap,
+    joinPosix(STORAGE_ROOT_DIR, ROOT_SPLIT_FILES.navigationState),
+    buildNavigationState(parsed),
+  )
+  setJsonFile(
+    fileMap,
+    joinPosix(STORAGE_ROOT_DIR, ROOT_SPLIT_FILES.appSettings),
+    extractAppSettings(parsed),
+  )
+  setJsonFile(
+    fileMap,
+    joinPosix(STORAGE_ROOT_DIR, ROOT_SPLIT_FILES.frontmatterSettings),
+    extractFrontmatterSettings(parsed),
+  )
+  setJsonFile(
+    fileMap,
+    joinPosix(STORAGE_ROOT_DIR, ROOT_SPLIT_FILES.editorState),
+    extractEditorState(parsed),
+  )
+  setJsonFile(
+    fileMap,
+    joinPosix(STORAGE_ROOT_DIR, ROOT_SPLIT_FILES.deletedWorkspace),
+    {
+      deletedDomains: ensureArray<Record<string, unknown>>(parsed.deletedDomains).filter(isRecord),
+      deletedSpaces: ensureArray<Record<string, unknown>>(parsed.deletedSpaces).filter(isRecord),
+    },
+  )
+  setJsonFile(
+    fileMap,
+    joinPosix(STORAGE_ROOT_DIR, ROOT_SPLIT_FILES.noteRegistry),
+    { noteBodies: noteBodyEntries, aisleBodies: aisleBodyEntries },
   )
   setJsonFile(
     fileMap,
     joinPosix(STORAGE_ROOT_DIR, STORAGE_MANIFEST_FILE),
-    buildRootManifest(parsed, domainEntries, noteBodyEntries, noteAisleBodyEntries),
+    buildRootManifest(),
   )
 
   return fileMap
@@ -793,9 +901,133 @@ function readNoteAisleBodiesFromRootManifest(
     aisleBodies.push({
       id: bodyId,
       markdown: readTextFileWithReferencedImages(fileMap, joinPosix(STORAGE_ROOT_DIR, file)),
+      frontmatterMeta: isRecord(body.frontmatterMeta) ? body.frontmatterMeta : undefined,
     })
   }
   return aisleBodies
+}
+
+function isRootSplitFileName(value: string): boolean {
+  return value.trim().length > 0 && !value.includes('/') && !value.includes('\\') && value !== '.' && value !== '..'
+}
+
+function getRootSplitFileName(rootManifest: Record<string, unknown>, key: string, required: boolean): string | null {
+  const files = isRecord(rootManifest.files) ? rootManifest.files : null
+  if (!files) return null
+  const value = files[key]
+  if (typeof value !== 'string' || !isRootSplitFileName(value)) {
+    const fallback =
+      ROOT_SPLIT_FILES[key as keyof typeof ROOT_SPLIT_FILES] ??
+      LEGACY_ROOT_SPLIT_FILES[key as keyof typeof LEGACY_ROOT_SPLIT_FILES]
+    return required ? null : fallback
+  }
+  return value
+}
+
+function readRootSplitJsonFile(
+  fileMap: Map<string, BrowserStoredFile>,
+  rootManifest: Record<string, unknown>,
+  key: string,
+  required: boolean,
+): Record<string, unknown> | null {
+  const fileName = getRootSplitFileName(rootManifest, key, required)
+  if (!fileName) return required ? null : {}
+  const raw = getTextFile(fileMap, joinPosix(STORAGE_ROOT_DIR, fileName))
+  if (!raw) return required ? null : {}
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    return isRecord(parsed) ? parsed : required ? null : {}
+  } catch {
+    return required ? null : {}
+  }
+}
+
+function readSchema3RootParts(
+  fileMap: Map<string, BrowserStoredFile>,
+  rootManifest: Record<string, unknown>,
+) {
+  if (!isRecord(rootManifest.files)) return null
+  const splitFiles: Record<string, Record<string, unknown>> = {}
+  const files = rootManifest.files
+  const usesNarrowSplit = typeof files.noteRegistry === 'string' || typeof files.appSettings === 'string'
+  const requiredKeys = usesNarrowSplit
+    ? ['workspaceIndex', 'navigationState', 'appSettings', 'frontmatterSettings', 'deletedWorkspace', 'noteRegistry']
+    : [
+        'workspaceIndex',
+        'navigationState',
+        'appearanceSettings',
+        'shortcutSettings',
+        'frontmatterSettings',
+        'deletedWorkspace',
+        'noteBodies',
+        'aisleBodies',
+        'orphanNoteBodies',
+        'orphanAisleBodies',
+      ]
+  for (const key of requiredKeys) {
+    const file = readRootSplitJsonFile(fileMap, rootManifest, key, true)
+    if (!file) return null
+    splitFiles[key] = file
+  }
+  splitFiles.appSettings = readRootSplitJsonFile(fileMap, rootManifest, 'appSettings', false) ?? {}
+  splitFiles.appearanceSettings = readRootSplitJsonFile(fileMap, rootManifest, 'appearanceSettings', false) ?? {}
+  splitFiles.shortcutSettings = readRootSplitJsonFile(fileMap, rootManifest, 'shortcutSettings', false) ?? {}
+  splitFiles.uiPreferences = readRootSplitJsonFile(fileMap, rootManifest, 'uiPreferences', false) ?? {}
+  splitFiles.editorState = readRootSplitJsonFile(fileMap, rootManifest, 'editorState', false) ?? {}
+  const noteRegistry = splitFiles.noteRegistry
+
+  return {
+    syncedSettings: buildSyncedSettingsFromSplitFiles(splitFiles),
+    noteBodiesRoot: {
+      noteBodies: noteRegistry
+        ? ensureArray<Record<string, unknown>>(noteRegistry.noteBodies)
+        : [
+            ...ensureArray<Record<string, unknown>>(splitFiles.noteBodies.noteBodies),
+            ...ensureArray<Record<string, unknown>>(splitFiles.orphanNoteBodies.noteBodies),
+          ],
+    },
+    noteAisleBodiesRoot: {
+      noteAisleBodies: noteRegistry
+        ? ensureArray<Record<string, unknown>>(noteRegistry.aisleBodies)
+        : [
+            ...ensureArray<Record<string, unknown>>(splitFiles.aisleBodies.noteAisleBodies),
+            ...ensureArray<Record<string, unknown>>(splitFiles.orphanAisleBodies.noteAisleBodies),
+          ],
+    },
+    domainEntries: ensureArray<Record<string, unknown>>(splitFiles.workspaceIndex.domains),
+    deletedDomains: ensureArray<Record<string, unknown>>(splitFiles.deletedWorkspace.deletedDomains).filter(isRecord),
+    deletedSpaces: ensureArray<Record<string, unknown>>(splitFiles.deletedWorkspace.deletedSpaces).filter(isRecord),
+    activeDomainId:
+      typeof splitFiles.navigationState.activeDomainId === 'string'
+        ? splitFiles.navigationState.activeDomainId
+        : DEFAULT_DOMAIN_ID,
+    lastOpened: isRecord(splitFiles.navigationState.lastOpened) ? splitFiles.navigationState.lastOpened : null,
+  }
+}
+
+function readLegacyRootParts(
+  fileMap: Map<string, BrowserStoredFile>,
+  rootManifest: Record<string, unknown>,
+) {
+  let profileSettings: Record<string, unknown> = {}
+  const profileSettingsRaw = getTextFile(fileMap, joinPosix(STORAGE_ROOT_DIR, STORAGE_PROFILE_SETTINGS_FILE))
+  if (profileSettingsRaw) {
+    try {
+      profileSettings = JSON.parse(profileSettingsRaw) as Record<string, unknown>
+    } catch {
+      profileSettings = {}
+    }
+  }
+  return {
+    syncedSettings: getSyncedProfileSettingsForLoad(rootManifest, profileSettings),
+    noteBodiesRoot: rootManifest,
+    noteAisleBodiesRoot: rootManifest,
+    domainEntries: ensureArray<Record<string, unknown>>(rootManifest.domains),
+    deletedDomains: ensureArray<Record<string, unknown>>(rootManifest.deletedDomains).filter(isRecord),
+    deletedSpaces: ensureArray<Record<string, unknown>>(rootManifest.deletedSpaces).filter(isRecord),
+    activeDomainId: typeof rootManifest.activeDomainId === 'string' ? rootManifest.activeDomainId : DEFAULT_DOMAIN_ID,
+    lastOpened: isRecord(rootManifest.lastOpened) ? rootManifest.lastOpened : null,
+  }
 }
 
 function readSpaceFromHybridFileMap(
@@ -940,23 +1172,24 @@ export function readSerializedStateFromHybridFileMap(fileMap: Map<string, Browse
     return null
   }
 
-  if (!isRecord(rootManifest) || rootManifest.schemaVersion !== STORAGE_SCHEMA_VERSION) return null
-
-  let profileSettings: Record<string, unknown> = {}
-  const profileSettingsRaw = getTextFile(fileMap, joinPosix(STORAGE_ROOT_DIR, STORAGE_PROFILE_SETTINGS_FILE))
-  if (profileSettingsRaw) {
-    try {
-      profileSettings = JSON.parse(profileSettingsRaw) as Record<string, unknown>
-    } catch {
-      profileSettings = {}
-    }
+  if (
+    !isRecord(rootManifest) ||
+    typeof rootManifest.schemaVersion !== 'number' ||
+    !SUPPORTED_STORAGE_SCHEMA_VERSIONS.has(rootManifest.schemaVersion)
+  ) {
+    return null
   }
-  const syncedSettings = getSyncedProfileSettingsForLoad(rootManifest, profileSettings)
 
-  const noteBodies = readNoteBodiesFromRootManifest(fileMap, rootManifest)
-  const noteAisleBodies = readNoteAisleBodiesFromRootManifest(fileMap, rootManifest)
-  const domainEntries = ensureArray<Record<string, unknown>>(rootManifest.domains)
-  const lastOpened = isRecord(rootManifest.lastOpened) ? rootManifest.lastOpened : null
+  const rootParts =
+    rootManifest.schemaVersion === STORAGE_SCHEMA_VERSION
+      ? readSchema3RootParts(fileMap, rootManifest)
+      : readLegacyRootParts(fileMap, rootManifest)
+  if (!rootParts) return null
+
+  const noteBodies = readNoteBodiesFromRootManifest(fileMap, rootParts.noteBodiesRoot)
+  const noteAisleBodies = readNoteAisleBodiesFromRootManifest(fileMap, rootParts.noteAisleBodiesRoot)
+  const domainEntries = rootParts.domainEntries
+  const lastOpened = rootParts.lastOpened
 
   const domains = domainEntries
     .map((domainEntry): Record<string, unknown> | null => {
@@ -1027,8 +1260,8 @@ export function readSerializedStateFromHybridFileMap(fileMap: Map<string, Browse
   const activeDomainId =
     lastOpenedDomainId && domains.some((domain) => domain.id === lastOpenedDomainId)
       ? lastOpenedDomainId
-      : typeof rootManifest.activeDomainId === 'string' && domains.some((domain) => domain.id === rootManifest.activeDomainId)
-        ? rootManifest.activeDomainId
+      : domains.some((domain) => domain.id === rootParts.activeDomainId)
+        ? rootParts.activeDomainId
         : typeof domains[0]?.id === 'string'
           ? domains[0].id
           : ''
@@ -1045,21 +1278,21 @@ export function readSerializedStateFromHybridFileMap(fileMap: Map<string, Browse
         : typeof activeSpaces[0]?.id === 'string'
           ? activeSpaces[0].id
           : ''
-  const theme = normalizeStorageTheme(syncedSettings.theme)
+  const theme = normalizeStorageTheme(rootParts.syncedSettings.theme)
 
   return JSON.stringify({
     theme,
     activeDomainId,
     domains,
-    deletedDomains: ensureArray<Record<string, unknown>>(rootManifest.deletedDomains).filter(isRecord),
-    deletedSpaces: ensureArray<Record<string, unknown>>(rootManifest.deletedSpaces).filter(isRecord),
+    deletedDomains: rootParts.deletedDomains,
+    deletedSpaces: rootParts.deletedSpaces,
     noteBodies,
     noteAisleBodies,
     activeSpaceId,
     spaces: activeSpaces,
-    hotkeys: syncedSettings.hotkeys,
-    frontmatter: syncedSettings.frontmatter,
-    ui: syncedSettings.ui,
+    hotkeys: rootParts.syncedSettings.hotkeys,
+    frontmatter: rootParts.syncedSettings.frontmatter,
+    ui: rootParts.syncedSettings.ui,
   })
 }
 

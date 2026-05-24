@@ -71,15 +71,20 @@ function createCopyTestState(): AppState {
     domains: [{ id: 'domain-1', name: 'Domain', activeSpaceId: 'space-1', spaces: [space] }],
     spaces: [space],
     noteBodies: [
-      { id: 'body-source', frontmatter: null, aisles: [{ id: 'aisle-source', markdown: 'source text' }] },
+      { id: 'body-source', frontmatter: null, aisles: [{ id: 'aisle-source', aisleBodyId: 'aisle-source', markdown: 'source text' }] },
       {
         id: 'body-target',
         frontmatter: null,
         aisles: [
-          { id: 'aisle-target', markdown: 'target text' },
-          { id: 'aisle-target-2', markdown: 'second target aisle' },
+          { id: 'aisle-target', aisleBodyId: 'aisle-target', markdown: 'target text' },
+          { id: 'aisle-target-2', aisleBodyId: 'aisle-target-2', markdown: 'second target aisle' },
         ],
       },
+    ],
+    noteAisleBodies: [
+      { id: 'aisle-source', markdown: 'source text', frontmatter: null, frontmatterStatus: 'none' },
+      { id: 'aisle-target', markdown: 'target text', frontmatter: null, frontmatterStatus: 'none' },
+      { id: 'aisle-target-2', markdown: 'second target aisle', frontmatter: null, frontmatterStatus: 'none' },
     ],
     hotkeys: {
       shortcuts: {
@@ -178,7 +183,11 @@ describe('note copy helpers', () => {
 
   it('replaces with independent selected aisle copies while keeping destination metadata', () => {
     const state = createCopyTestState()
-    state.noteBodies[0].frontmatter = { status: 'draft' }
+    const targetAisleBody = state.noteAisleBodies?.find((body) => body.id === 'aisle-target-2')
+    if (targetAisleBody) {
+      targetAisleBody.frontmatter = { status: 'draft' }
+      targetAisleBody.frontmatterStatus = 'valid'
+    }
     const result = applyNoteCopyToState(
       state,
       sourceLocation,
@@ -188,9 +197,11 @@ describe('note copy helpers', () => {
     )
     const sourceBodyId = getLocationInfo(result.state, sourceLocation).noteBodyId
     const sourceBody = result.state.noteBodies.find((body) => body.id === sourceBodyId)
+    const sourceAisleBody = result.state.noteAisleBodies?.find((body) => body.id === sourceBody?.aisles[0]?.aisleBodyId)
 
     expect(result.status).toBe('applied')
-    expect(sourceBody?.frontmatter).toEqual({ status: 'draft' })
+    expect(sourceBody?.frontmatter).toBeNull()
+    expect(sourceAisleBody?.frontmatter).toEqual({ status: 'draft' })
     expect(sourceBody?.aisles.map((aisle) => aisle.markdown)).toEqual(['second target aisle'])
     expect(getLocationInfo(result.state, targetLocation).noteBodyId).toBe('body-target')
   })
@@ -215,7 +226,11 @@ describe('note copy helpers', () => {
 
   it('replaces with linked selected aisles as shared aisle text', () => {
     const state = createCopyTestState()
-    state.noteBodies[0].frontmatter = { owner: 'destination' }
+    const targetAisleBody = state.noteAisleBodies?.find((body) => body.id === 'aisle-target-2')
+    if (targetAisleBody) {
+      targetAisleBody.frontmatter = { owner: 'destination' }
+      targetAisleBody.frontmatterStatus = 'valid'
+    }
     const result = applyNoteCopyToState(
       state,
       sourceLocation,
@@ -227,9 +242,11 @@ describe('note copy helpers', () => {
     const sourceBody = result.state.noteBodies.find((body) => body.id === sourceBodyId)
     const targetBody = result.state.noteBodies.find((body) => body.id === 'body-target')
     const targetAisle = targetBody?.aisles.find((aisle) => aisle.id === 'aisle-target-2')
+    const sourceAisleBody = result.state.noteAisleBodies?.find((body) => body.id === sourceBody?.aisles[0]?.aisleBodyId)
 
     expect(result.status).toBe('applied')
-    expect(sourceBody?.frontmatter).toEqual({ owner: 'destination' })
+    expect(sourceBody?.frontmatter).toBeNull()
+    expect(sourceAisleBody?.frontmatter).toEqual({ owner: 'destination' })
     expect(sourceBody?.aisles).toHaveLength(1)
     expect(sourceBody?.aisles[0]?.markdown).toBe('second target aisle')
     expect(sourceBody?.aisles[0]?.aisleBodyId).toBe(targetAisle?.aisleBodyId)

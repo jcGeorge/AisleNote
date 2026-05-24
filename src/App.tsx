@@ -121,7 +121,7 @@ import {
   COMPLETED_TASK_UNDO_HINT_DETECTION_MS,
 } from './editor/task-behavior'
 import { exportAppData, type ExportScope } from './export/export-data'
-import { buildFrontmatterModalDraftForNote } from './frontmatter/frontmatter-state'
+import { buildFrontmatterModalDraftForAisle } from './frontmatter/frontmatter-state'
 import { useGlobalHotkeys } from './hotkeys/useGlobalHotkeys'
 import { normalizeMarkdownForPersistence } from './markdown/markdown-utils'
 import { importBlobAsAssetUrl } from './markdown/image-asset-registry'
@@ -2336,10 +2336,24 @@ function App() {
     if (viewMode !== 'main' || !activeNoteBodyId) return
     saveActiveCursorBeforeNavigation()
     const latestState = stateRef.current
-    const draft = buildFrontmatterModalDraftForNote(latestState, activeNoteBodyId, activeNoteLocation)
+    const latestBody = latestState.noteBodies.find((body) => body.id === activeNoteBodyId) ?? activeNoteBody
+    const targetAisle =
+      latestBody?.aisles.find((aisle) => aisle.id === resolvedActiveAisleId) ??
+      latestBody?.aisles[0] ??
+      null
+    if (!targetAisle) return
+    const aisleBodyId = getAisleBodyId(targetAisle)
+    const aisleBody = (latestState.noteAisleBodies ?? []).find((body) => body.id === aisleBodyId) ?? null
+    if (aisleBody?.frontmatterStatus === 'invalid') {
+      pushToast('frontmatter YAML is invalid. fix the markdown block before using the frontmatter menu.', 'warning')
+      return
+    }
+    const draft = buildFrontmatterModalDraftForAisle(latestState, activeNoteBodyId, aisleBodyId, activeNoteLocation)
     setModal({
       type: 'frontmatter-note',
       noteBodyId: activeNoteBodyId,
+      aisleId: targetAisle.id,
+      aisleBodyId,
       location: activeNoteLocation,
       rows: draft.rows,
       selectedTemplateId: draft.selectedTemplateId,

@@ -7,10 +7,13 @@ import type {
   FrontmatterData,
   FrontmatterFieldOriginMap,
   FrontmatterFieldType,
+  FrontmatterMeta,
   FrontmatterRowDraft,
   FrontmatterSaveOptions,
   FrontmatterTemplate,
   FrontmatterTemplateField,
+  NoteAisleBody,
+  NoteBody,
   NoteLocation,
   StageManagerSelectionSnapshot,
 } from '../types/app'
@@ -24,62 +27,149 @@ import {
   resolveFrontmatterTemplateFieldValue,
 } from './frontmatter'
 
-export function updateNoteBodyFrontmatter(
+function getFirstAisleBodyId(state: AppState, noteBodyId: string): string {
+  const noteBody = state.noteBodies.find((body) => body.id === noteBodyId)
+  const firstAisle = noteBody?.aisles[0]
+  if (!firstAisle) return ''
+  return firstAisle.aisleBodyId || firstAisle.id
+}
+
+function getAisleBody(state: AppState, aisleBodyId: string): NoteAisleBody | null {
+  return (state.noteAisleBodies ?? []).find((body) => body.id === aisleBodyId) ?? null
+}
+
+function getNoteBody(state: AppState, noteBodyId: string): NoteBody | null {
+  return state.noteBodies.find((body) => body.id === noteBodyId) ?? null
+}
+
+function buildFrontmatterMeta(frontmatter: FrontmatterData | null, saveOptions: FrontmatterSaveOptions | undefined): FrontmatterMeta | undefined {
+  if (!saveOptions) return undefined
+  const templateId = saveOptions.templateId?.trim() || null
+  const templateFieldOrigins = normalizeTemplateFieldOrigins(saveOptions.templateFieldOrigins)
+  const templateRemovedFieldIds = normalizeTemplateRemovedFieldIds(saveOptions.templateRemovedFieldIds)
+  const computedFields = normalizeComputedFields(saveOptions.computedFields)
+  if (frontmatter && templateId) {
+    return {
+      templateId,
+      templateDerived: saveOptions.templateDerived,
+      templateFieldOrigins: saveOptions.templateDerived ? templateFieldOrigins ?? {} : undefined,
+      templateRemovedFieldIds: saveOptions.templateDerived ? templateRemovedFieldIds : undefined,
+      computedFields,
+      templateDetachedKeys: undefined,
+    }
+  }
+  if (!frontmatter) {
+    return {
+      templateId: '',
+      templateDerived: undefined,
+      templateFieldOrigins: undefined,
+      templateRemovedFieldIds: undefined,
+      computedFields: undefined,
+      templateDetachedKeys: undefined,
+    }
+  }
+  return {
+    templateId: undefined,
+    templateDerived: undefined,
+    templateFieldOrigins: undefined,
+    templateRemovedFieldIds: undefined,
+    computedFields,
+    templateDetachedKeys: undefined,
+  }
+}
+
+function getLegacyFrontmatterMeta(noteBody: NoteBody | null): FrontmatterMeta | undefined {
+  if (!noteBody) return undefined
+  return {
+    templateId: noteBody.frontmatterTemplateId,
+    templateDerived: noteBody.frontmatterTemplateDerived,
+    templateFieldOrigins: noteBody.frontmatterTemplateFieldOrigins,
+    templateRemovedFieldIds: noteBody.frontmatterTemplateRemovedFieldIds,
+    computedFields: noteBody.frontmatterComputedFields,
+    templateDetachedKeys: noteBody.frontmatterTemplateDetachedKeys,
+  }
+}
+
+function getTargetFrontmatter(state: AppState, noteBodyId: string, aisleBodyId: string): FrontmatterData | null {
+  const aisleBody = getAisleBody(state, aisleBodyId)
+  if (aisleBody) return aisleBody.frontmatter ?? null
+  return getNoteBody(state, noteBodyId)?.frontmatter ?? null
+}
+
+function getTargetFrontmatterMeta(state: AppState, noteBodyId: string, aisleBodyId: string): FrontmatterMeta | undefined {
+  return getAisleBody(state, aisleBodyId)?.frontmatterMeta ?? getLegacyFrontmatterMeta(getNoteBody(state, noteBodyId))
+}
+
+function ensureAisleBodyForNote(state: AppState, noteBodyId: string, aisleBodyId: string): AppState {
+  if (!aisleBodyId || (state.noteAisleBodies ?? []).some((body) => body.id === aisleBodyId)) return state
+  const noteBody = getNoteBody(state, noteBodyId)
+  const aisle = noteBody?.aisles.find((candidate) => (candidate.aisleBodyId || candidate.id) === aisleBodyId) ?? noteBody?.aisles[0]
+  if (!noteBody || !aisle) return state
+  return {
+    ...state,
+    noteAisleBodies: [
+      ...(state.noteAisleBodies ?? []),
+      {
+        id: aisleBodyId,
+        createdAt: noteBody.createdAt,
+        updatedAt: noteBody.updatedAt,
+        markdown: aisle.markdown,
+        frontmatter: noteBody.frontmatter ?? null,
+        frontmatterStatus: noteBody.frontmatter ? 'valid' : 'none',
+        frontmatterMeta: getLegacyFrontmatterMeta(noteBody),
+      },
+    ],
+  }
+}
+
+function applyLegacyNoteBodyFrontmatter(
+  body: NoteBody,
+  frontmatter: FrontmatterData | null,
+  saveOptions?: FrontmatterSaveOptions,
+): NoteBody {
+  if (!saveOptions) return { ...body, frontmatter }
+  const meta = buildFrontmatterMeta(frontmatter, saveOptions)
+  return {
+    ...body,
+    frontmatter,
+    frontmatterTemplateId: meta?.templateId,
+    frontmatterTemplateDerived: meta?.templateDerived,
+    frontmatterTemplateFieldOrigins: meta?.templateFieldOrigins,
+    frontmatterTemplateRemovedFieldIds: meta?.templateRemovedFieldIds,
+    frontmatterComputedFields: meta?.computedFields,
+    frontmatterTemplateDetachedKeys: meta?.templateDetachedKeys,
+  }
+}
+
+export function updateAisleFrontmatter(
   state: AppState,
-  noteBodyId: string,
+  aisleBodyId: string,
   frontmatter: FrontmatterData | null,
   saveOptions?: FrontmatterSaveOptions,
 ): AppState {
   let changed = false
   const templateId = saveOptions?.templateId?.trim() || null
-  const templateFieldOrigins = normalizeTemplateFieldOrigins(saveOptions?.templateFieldOrigins)
-  const templateRemovedFieldIds = normalizeTemplateRemovedFieldIds(saveOptions?.templateRemovedFieldIds)
-  const computedFields = normalizeComputedFields(saveOptions?.computedFields)
-  const noteBodies = state.noteBodies.map((body) => {
-    if (body.id !== noteBodyId) return body
+  const noteAisleBodies = (state.noteAisleBodies ?? []).map((body) => {
+    if (body.id !== aisleBodyId) return body
     changed = true
     const nextBody = {
       ...body,
       frontmatter,
+      frontmatterStatus: frontmatter ? 'valid' as const : 'none' as const,
+      frontmatterParseError: undefined,
+      frontmatterRaw: undefined,
     }
     if (!saveOptions) return nextBody
-    if (frontmatter && templateId) {
-      return {
-        ...nextBody,
-        frontmatterTemplateId: templateId,
-        frontmatterTemplateDerived: saveOptions.templateDerived,
-        frontmatterTemplateFieldOrigins: saveOptions.templateDerived ? templateFieldOrigins ?? {} : undefined,
-        frontmatterTemplateRemovedFieldIds: saveOptions.templateDerived ? templateRemovedFieldIds : undefined,
-        frontmatterComputedFields: computedFields,
-        frontmatterTemplateDetachedKeys: undefined,
-      }
-    }
-    if (!frontmatter) {
-      return {
-        ...nextBody,
-        frontmatterTemplateId: '',
-        frontmatterTemplateDerived: undefined,
-        frontmatterTemplateFieldOrigins: undefined,
-        frontmatterTemplateRemovedFieldIds: undefined,
-        frontmatterComputedFields: undefined,
-        frontmatterTemplateDetachedKeys: undefined,
-      }
-    }
     return {
       ...nextBody,
-      frontmatterTemplateId: undefined,
-      frontmatterTemplateDerived: undefined,
-      frontmatterTemplateFieldOrigins: undefined,
-      frontmatterTemplateRemovedFieldIds: undefined,
-      frontmatterComputedFields: computedFields,
-      frontmatterTemplateDetachedKeys: undefined,
+      frontmatterMeta: buildFrontmatterMeta(frontmatter, saveOptions),
     }
   })
   if (!changed) return state
   if (!templateId || !frontmatter) {
     return {
       ...state,
-      noteBodies,
+      noteAisleBodies,
       frontmatter: {
         ...state.frontmatter,
         lastAppliedTemplateId: '',
@@ -88,11 +178,29 @@ export function updateNoteBodyFrontmatter(
   }
   return {
     ...state,
-    noteBodies,
+    noteAisleBodies,
     frontmatter: {
       ...state.frontmatter,
       lastAppliedTemplateId: templateId,
     },
+  }
+}
+
+export function updateNoteBodyFrontmatter(
+  state: AppState,
+  noteBodyId: string,
+  frontmatter: FrontmatterData | null,
+  saveOptions?: FrontmatterSaveOptions,
+): AppState {
+  const aisleBodyId = getFirstAisleBodyId(state, noteBodyId)
+  if (!aisleBodyId) return state
+  const ensuredState = ensureAisleBodyForNote(state, noteBodyId, aisleBodyId)
+  const nextState = updateAisleFrontmatter(ensuredState, aisleBodyId, frontmatter, saveOptions)
+  return {
+    ...nextState,
+    noteBodies: nextState.noteBodies.map((body) =>
+      body.id === noteBodyId ? applyLegacyNoteBodyFrontmatter(body, frontmatter, saveOptions) : body,
+    ),
   }
 }
 
@@ -178,8 +286,8 @@ function normalizeComputedFields(computedFields: FrontmatterComputedFieldMap | u
   return Object.keys(next).length > 0 ? next : undefined
 }
 
-function getTemplateFieldOriginKeys(noteBody: { frontmatterTemplateFieldOrigins?: FrontmatterFieldOriginMap } | null, templateId: string) {
-  const origins = noteBody?.frontmatterTemplateFieldOrigins ?? {}
+function getTemplateFieldOriginKeys(meta: FrontmatterMeta | null | undefined, templateId: string) {
+  const origins = meta?.templateFieldOrigins ?? {}
   const keysByFieldId = new Map<string, string>()
   for (const [key, origin] of Object.entries(origins)) {
     if (origin.templateId === templateId && origin.fieldId) keysByFieldId.set(origin.fieldId, key)
@@ -190,11 +298,11 @@ function getTemplateFieldOriginKeys(noteBody: { frontmatterTemplateFieldOrigins?
 function buildTemplateSourceFrontmatter(
   existing: FrontmatterData | null,
   template: FrontmatterTemplate,
-  noteBody: { frontmatterTemplateFieldOrigins?: FrontmatterFieldOriginMap } | null,
+  meta: FrontmatterMeta | null | undefined,
 ): FrontmatterData | null {
   if (!existing) return null
   const source = { ...existing }
-  const originKeys = getTemplateFieldOriginKeys(noteBody, template.id)
+  const originKeys = getTemplateFieldOriginKeys(meta, template.id)
   for (const field of template.fields) {
     const key = field.key.trim()
     const originKey = originKeys.get(field.id)
@@ -263,20 +371,21 @@ function isComputedEnabled(row: FrontmatterRowDraft) {
   return row.computedEnabled ?? row.computed !== 'none'
 }
 
-export function buildFrontmatterRowsForNote(
+export function buildFrontmatterRowsForAisle(
   state: AppState,
   noteBodyId: string,
+  aisleBodyId: string,
   location: NoteLocation,
   template: FrontmatterTemplate | null | undefined,
   options: { includeExisting?: boolean; derived?: boolean } = {},
 ): FrontmatterRowDraft[] {
   const includeExisting = options.includeExisting ?? true
-  const noteBody = state.noteBodies.find((body) => body.id === noteBodyId) ?? null
-  const existing = includeExisting ? resolveFrontmatterReferencesForState(state, noteBody?.frontmatter ?? null) : null
+  const meta = getTargetFrontmatterMeta(state, noteBodyId, aisleBodyId)
+  const existing = includeExisting ? resolveFrontmatterReferencesForState(state, getTargetFrontmatter(state, noteBodyId, aisleBodyId)) : null
   const context = buildFrontmatterContext(state, location, new Date(), noteBodyId)
   const rows: FrontmatterRowDraft[] = []
   const templateKeys = new Set<string>()
-  const derived = Boolean(template && (options.derived ?? noteBody?.frontmatterTemplateDerived))
+  const derived = Boolean(template && (options.derived ?? meta?.templateDerived))
   const templateFieldByKey = new Map<string, FrontmatterTemplateField>()
   const consumedExistingKeys = new Set<string>()
 
@@ -286,9 +395,9 @@ export function buildFrontmatterRowsForNote(
   }
 
   if (template && derived) {
-    const templateSource = buildTemplateSourceFrontmatter(existing, template, noteBody)
-    const originKeys = getTemplateFieldOriginKeys(noteBody, template.id)
-    const removedFieldIds = new Set(noteBody?.frontmatterTemplateRemovedFieldIds ?? [])
+    const templateSource = buildTemplateSourceFrontmatter(existing, template, meta)
+    const originKeys = getTemplateFieldOriginKeys(meta, template.id)
+    const removedFieldIds = new Set(meta?.templateRemovedFieldIds ?? [])
     for (const field of template.fields) {
       if (removedFieldIds.has(field.id)) continue
       const row = buildTemplateRow(field, templateSource, context)
@@ -304,18 +413,31 @@ export function buildFrontmatterRowsForNote(
   if (!includeExisting || !existing) return rows
   Object.entries(existing).forEach(([key, value], index) => {
     if (!key.trim() || consumedExistingKeys.has(key)) return
-    const origin = noteBody?.frontmatterTemplateFieldOrigins?.[key]
+    const origin = meta?.templateFieldOrigins?.[key]
     if (template && derived && origin?.templateId === template.id) return
     rows.push(buildManualRow(
       key,
       value,
       index,
       derived ? templateFieldByKey.get(key) : undefined,
-      noteBody?.frontmatterComputedFields?.[key],
+      meta?.computedFields?.[key],
     ))
   })
 
   return rows
+}
+
+export function buildFrontmatterRowsForNote(
+  state: AppState,
+  noteBodyId: string,
+  location: NoteLocation,
+  template: FrontmatterTemplate | null | undefined,
+  options: { includeExisting?: boolean; derived?: boolean } = {},
+): FrontmatterRowDraft[] {
+  const aisleBodyId = getFirstAisleBodyId(state, noteBodyId)
+  return aisleBodyId
+    ? buildFrontmatterRowsForAisle(state, noteBodyId, aisleBodyId, location, template, options)
+    : []
 }
 
 function getTemplateById(state: AppState, templateId: string | null | undefined) {
@@ -327,24 +449,25 @@ function hasFrontmatterData(frontmatter: FrontmatterData | null | undefined) {
   return Boolean(frontmatter && Object.keys(frontmatter).length > 0)
 }
 
-export function buildFrontmatterModalDraftForNote(
+export function buildFrontmatterModalDraftForAisle(
   state: AppState,
   noteBodyId: string,
+  aisleBodyId: string,
   location: NoteLocation,
 ): { rows: FrontmatterRowDraft[]; selectedTemplateId: string; templateDerived: boolean; isTemplateSuggestionDraft: boolean } {
-  const noteBody = state.noteBodies.find((body) => body.id === noteBodyId) ?? null
-  const existingFrontmatter = hasFrontmatterData(noteBody?.frontmatter)
-  const explicitlyNoTemplate = noteBody?.frontmatterTemplateId === ''
-  const noteTemplate = existingFrontmatter ? getTemplateById(state, noteBody?.frontmatterTemplateId) : null
+  const meta = getTargetFrontmatterMeta(state, noteBodyId, aisleBodyId)
+  const existingFrontmatter = hasFrontmatterData(getTargetFrontmatter(state, noteBodyId, aisleBodyId))
+  const explicitlyNoTemplate = meta?.templateId === ''
+  const noteTemplate = existingFrontmatter ? getTemplateById(state, meta?.templateId) : null
   const blankTemplate = existingFrontmatter || explicitlyNoTemplate ? null : getTemplateById(state, state.frontmatter.lastAppliedTemplateId)
   const selectedTemplate = noteTemplate ?? blankTemplate
   const isTemplateSuggestionDraft = Boolean(!existingFrontmatter && !explicitlyNoTemplate && blankTemplate)
   const templateDerived = existingFrontmatter
-    ? Boolean(noteTemplate && noteBody?.frontmatterTemplateDerived)
+    ? Boolean(noteTemplate && meta?.templateDerived)
     : Boolean(blankTemplate)
 
   return {
-    rows: buildFrontmatterRowsForNote(state, noteBodyId, location, selectedTemplate, {
+    rows: buildFrontmatterRowsForAisle(state, noteBodyId, aisleBodyId, location, selectedTemplate, {
       includeExisting: existingFrontmatter,
       derived: templateDerived,
     }),
@@ -352,6 +475,17 @@ export function buildFrontmatterModalDraftForNote(
     templateDerived,
     isTemplateSuggestionDraft,
   }
+}
+
+export function buildFrontmatterModalDraftForNote(
+  state: AppState,
+  noteBodyId: string,
+  location: NoteLocation,
+): { rows: FrontmatterRowDraft[]; selectedTemplateId: string; templateDerived: boolean; isTemplateSuggestionDraft: boolean } {
+  const aisleBodyId = getFirstAisleBodyId(state, noteBodyId)
+  return aisleBodyId
+    ? buildFrontmatterModalDraftForAisle(state, noteBodyId, aisleBodyId, location)
+    : { rows: [], selectedTemplateId: '', templateDerived: false, isTemplateSuggestionDraft: false }
 }
 
 export function buildFrontmatterDataFromRows(
@@ -483,17 +617,20 @@ export function resolveFrontmatterReferencesForState(
   return changed ? next : frontmatter
 }
 
-export function applyTemplateToNoteBody(
+export function applyTemplateToAisleBody(
   state: AppState,
   noteBodyId: string,
+  aisleBodyId: string,
   location: NoteLocation,
   template: FrontmatterTemplate,
   now = new Date(),
 ): AppState {
   const noteBody = state.noteBodies.find((body) => body.id === noteBodyId)
   if (!noteBody) return state
+  const aisleBody = getAisleBody(state, aisleBodyId)
+  if (!aisleBody) return state
   const nextFrontmatter = applyFrontmatterTemplate(
-    noteBody.frontmatter,
+    aisleBody.frontmatter ?? null,
     template,
     buildFrontmatterContext(state, location, now),
   )
@@ -505,13 +642,48 @@ export function applyTemplateToNoteBody(
     templateFieldOrigins[key] = { templateId: template.id, fieldId: field.id }
     if (field.computed !== 'none') computedFields[key] = field.computed
   }
-  return updateNoteBodyFrontmatter(state, noteBodyId, nextFrontmatter, {
+  return updateAisleFrontmatter(state, aisleBodyId, nextFrontmatter, {
     templateId: template.id,
     templateDerived: true,
     templateFieldOrigins,
     templateRemovedFieldIds: [],
     computedFields,
   })
+}
+
+export function applyTemplateToNoteBody(
+  state: AppState,
+  noteBodyId: string,
+  location: NoteLocation,
+  template: FrontmatterTemplate,
+  now = new Date(),
+): AppState {
+  const aisleBodyId = getFirstAisleBodyId(state, noteBodyId)
+  if (!aisleBodyId) return state
+  const ensuredState = ensureAisleBodyForNote(state, noteBodyId, aisleBodyId)
+  const noteBody = getNoteBody(ensuredState, noteBodyId)
+  const nextFrontmatter = applyFrontmatterTemplate(
+    getTargetFrontmatter(ensuredState, noteBodyId, aisleBodyId),
+    template,
+    buildFrontmatterContext(ensuredState, location, now),
+  )
+  const templateFieldOrigins: FrontmatterFieldOriginMap = {}
+  const computedFields: FrontmatterComputedFieldMap = {}
+  for (const field of template.fields) {
+    const key = field.key.trim()
+    if (!key) continue
+    templateFieldOrigins[key] = { templateId: template.id, fieldId: field.id }
+    if (field.computed !== 'none') computedFields[key] = field.computed
+  }
+  return noteBody
+    ? updateNoteBodyFrontmatter(ensuredState, noteBodyId, nextFrontmatter, {
+        templateId: template.id,
+        templateDerived: true,
+        templateFieldOrigins,
+        templateRemovedFieldIds: [],
+        computedFields,
+      })
+    : state
 }
 
 export function buildSelectedStageManagerNoteTargets(

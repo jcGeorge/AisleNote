@@ -2,6 +2,39 @@ import { isRecord, normalizeStorageTheme } from './hybrid-storage-core.js'
 
 export const STORAGE_PROFILE_SETTINGS_FILE = 'profile-settings.json'
 export const PROFILE_SETTINGS_SCHEMA_VERSION = 1
+export const ROOT_SPLIT_FILES = Object.freeze({
+  workspaceIndex: 'workspace-index.json',
+  navigationState: 'navigation-state.json',
+  appSettings: 'app-settings.json',
+  frontmatterSettings: 'frontmatter-settings.json',
+  editorState: 'editor-state.json',
+  deletedWorkspace: 'deleted-workspace.json',
+  noteRegistry: 'note-registry.json',
+})
+
+export const LEGACY_ROOT_SPLIT_FILES = Object.freeze({
+  appearanceSettings: 'appearance-settings.json',
+  shortcutSettings: 'shortcut-settings.json',
+  uiPreferences: 'ui-preferences.json',
+  noteBodies: 'note-bodies.json',
+  aisleBodies: 'aisle-bodies.json',
+  orphanNoteBodies: 'orphan-note-bodies.json',
+  orphanAisleBodies: 'orphan-aisle-bodies.json',
+})
+
+export const REQUIRED_ROOT_SPLIT_FILE_KEYS = Object.freeze([
+  'workspaceIndex',
+  'navigationState',
+  'appSettings',
+  'frontmatterSettings',
+  'deletedWorkspace',
+  'noteRegistry',
+])
+
+export const OPTIONAL_ROOT_SPLIT_FILE_KEYS = Object.freeze([
+  'uiPreferences',
+  'editorState',
+])
 
 const DEFAULT_HOTKEY_SETTINGS = {
   shortcuts: {},
@@ -24,6 +57,13 @@ const DEFAULT_SYNCED_UI_SETTINGS = {
   themePalettes: {},
   toolbarLayouts: [],
   toolbarEditorShowNames: false,
+  settingsSection: 'hotkeys',
+  visualsSettingsSection: 'theming',
+  tabButtonScale: 1,
+  noteFontScale: 1,
+  noteCursorLocations: {},
+  headingCollapseState: {},
+  seenTipIds: [],
   disabledTipIds: [],
 }
 
@@ -97,6 +137,133 @@ export function extractSyncedGlobalSettings(appState) {
     hotkeys: isRecord(appState?.hotkeys) ? appState.hotkeys : DEFAULT_HOTKEY_SETTINGS,
     ui: extractSyncedUiSettings(appState?.ui),
     frontmatter: isRecord(appState?.frontmatter) ? appState.frontmatter : undefined,
+  }
+}
+
+export function extractAppearanceSettings(appState) {
+  const ui = isRecord(appState?.ui) ? appState.ui : {}
+  const syncedUi = extractSyncedUiSettings(ui)
+  return {
+    theme: normalizeStorageTheme(appState?.theme),
+    selectedCustomTheme: syncedUi.selectedCustomTheme,
+    customThemePalette: syncedUi.customThemePalette,
+    themePalettes: syncedUi.themePalettes,
+    tabButtonScale:
+      typeof ui.tabButtonScale === 'number'
+        ? ui.tabButtonScale
+        : DEFAULT_SYNCED_UI_SETTINGS.tabButtonScale,
+    noteFontScale:
+      typeof ui.noteFontScale === 'number'
+        ? ui.noteFontScale
+        : DEFAULT_SYNCED_UI_SETTINGS.noteFontScale,
+  }
+}
+
+export function extractShortcutSettings(appState) {
+  return isRecord(appState?.hotkeys) ? appState.hotkeys : DEFAULT_HOTKEY_SETTINGS
+}
+
+export function extractFrontmatterSettings(appState) {
+  return isRecord(appState?.frontmatter) ? appState.frontmatter : {}
+}
+
+export function extractUiPreferences(appState) {
+  const ui = isRecord(appState?.ui) ? appState.ui : {}
+  const syncedUi = extractSyncedUiSettings(ui)
+  return {
+    showParentHomeTab: syncedUi.showParentHomeTab,
+    alwaysShowSpaces: syncedUi.alwaysShowSpaces,
+    alwaysShowDomains: syncedUi.alwaysShowDomains,
+    stageManagerOpenDestinationAfterApply: syncedUi.stageManagerOpenDestinationAfterApply,
+    lastLinkInsertMode: syncedUi.lastLinkInsertMode,
+    lastNoteCopyMode: syncedUi.lastNoteCopyMode,
+    decoupledItemsKeepData: syncedUi.decoupledItemsKeepData,
+    tableAddTargetMode: syncedUi.tableAddTargetMode,
+    tableDeleteTargetMode: syncedUi.tableDeleteTargetMode,
+    settingsSection: optionalString(ui.settingsSection, DEFAULT_SYNCED_UI_SETTINGS.settingsSection),
+    visualsSettingsSection: optionalString(
+      ui.visualsSettingsSection,
+      DEFAULT_SYNCED_UI_SETTINGS.visualsSettingsSection,
+    ),
+    toolbarLayouts: syncedUi.toolbarLayouts,
+    toolbarEditorShowNames: syncedUi.toolbarEditorShowNames,
+    seenTipIds: optionalArray(ui.seenTipIds, DEFAULT_SYNCED_UI_SETTINGS.seenTipIds),
+    disabledTipIds: syncedUi.disabledTipIds,
+  }
+}
+
+export function extractAppSettings(appState) {
+  return {
+    ...extractAppearanceSettings(appState),
+    hotkeys: extractShortcutSettings(appState),
+    ui: extractUiPreferences(appState),
+  }
+}
+
+export function extractEditorState(appState) {
+  const ui = isRecord(appState?.ui) ? appState.ui : {}
+  return {
+    noteCursorLocations: isRecord(ui.noteCursorLocations)
+      ? ui.noteCursorLocations
+      : DEFAULT_SYNCED_UI_SETTINGS.noteCursorLocations,
+    headingCollapseState: isRecord(ui.headingCollapseState)
+      ? ui.headingCollapseState
+      : DEFAULT_SYNCED_UI_SETTINGS.headingCollapseState,
+  }
+}
+
+export function buildSyncedSettingsFromSplitFiles(parts) {
+  const appSettings = isRecord(parts?.appSettings) ? parts.appSettings : {}
+  const hasAppSettings = Object.keys(appSettings).length > 0
+  const appearanceSettings = hasAppSettings
+    ? appSettings
+    : isRecord(parts?.appearanceSettings)
+      ? parts.appearanceSettings
+      : {}
+  const shortcutSettings = hasAppSettings && isRecord(appSettings.hotkeys)
+    ? appSettings.hotkeys
+    : isRecord(parts?.shortcutSettings)
+      ? parts.shortcutSettings
+      : DEFAULT_HOTKEY_SETTINGS
+  const frontmatterSettings = isRecord(parts?.frontmatterSettings) ? parts.frontmatterSettings : {}
+  const uiPreferences = hasAppSettings && isRecord(appSettings.ui)
+    ? appSettings.ui
+    : isRecord(parts?.uiPreferences)
+      ? parts.uiPreferences
+      : {}
+  const editorState = isRecord(parts?.editorState) ? parts.editorState : {}
+  const ui = {
+    ...extractSyncedUiSettings({
+      ...appearanceSettings,
+      ...uiPreferences,
+    }),
+    tabButtonScale:
+      typeof appearanceSettings.tabButtonScale === 'number'
+        ? appearanceSettings.tabButtonScale
+        : DEFAULT_SYNCED_UI_SETTINGS.tabButtonScale,
+    noteFontScale:
+      typeof appearanceSettings.noteFontScale === 'number'
+        ? appearanceSettings.noteFontScale
+        : DEFAULT_SYNCED_UI_SETTINGS.noteFontScale,
+    settingsSection: optionalString(uiPreferences.settingsSection, DEFAULT_SYNCED_UI_SETTINGS.settingsSection),
+    visualsSettingsSection: optionalString(
+      uiPreferences.visualsSettingsSection,
+      DEFAULT_SYNCED_UI_SETTINGS.visualsSettingsSection,
+    ),
+    noteCursorLocations: isRecord(editorState.noteCursorLocations)
+      ? editorState.noteCursorLocations
+      : DEFAULT_SYNCED_UI_SETTINGS.noteCursorLocations,
+    headingCollapseState: isRecord(editorState.headingCollapseState)
+      ? editorState.headingCollapseState
+      : DEFAULT_SYNCED_UI_SETTINGS.headingCollapseState,
+    seenTipIds: optionalArray(uiPreferences.seenTipIds, DEFAULT_SYNCED_UI_SETTINGS.seenTipIds),
+  }
+
+  return {
+    theme: normalizeStorageTheme(appearanceSettings.theme),
+    hotkeys: shortcutSettings,
+    frontmatter: frontmatterSettings,
+    ui,
   }
 }
 

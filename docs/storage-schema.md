@@ -1,8 +1,8 @@
 # Storage Schema
 
-This document describes the current schema 1 on-disk storage format for the app.
+This document describes the current schema 3 on-disk storage format for the app.
 
-The current source of truth is a `notes-data/` folder with domain manifests, space manifests, Markdown note files, and asset files. A future `topics/` layer may be introduced later, but it is not part of the active schema 1 layout.
+The current source of truth is a `notes-data/` folder with a tiny root manifest, root-level index/settings registries, domain manifests, space manifests, Markdown note files, and asset files. A future `topics/` layer may be introduced later, but it is not part of the active schema 3 layout.
 
 The design goals are:
 
@@ -18,6 +18,13 @@ The design goals are:
 ```text
 notes-data/
   manifest.json
+  workspace-index.json
+  navigation-state.json
+  app-settings.json
+  frontmatter-settings.json
+  editor-state.json
+  deleted-workspace.json
+  note-registry.json
   domains/
     <domain-title>--<id-hash>/
       manifest.json
@@ -98,9 +105,19 @@ Note contents are stored in `.md` files.
 - parent tab home note with multiple aisles: `<space>/<parent-tab>/home/aisle N--<id-hash>.md`
 - sub-tab note with one aisle: `<space>/<parent-tab>/<sub-tab>--<id-hash>.md`
 - sub-tab note with multiple aisles: `<space>/<parent-tab>/<sub-tab>--<id-hash>/aisle N--<id-hash>.md`
-- orphan note bodies use the same single-file or multi-aisle-folder rule under `_internal/orphan-bodies/`
+- unlinked note bodies use the same single-file or multi-aisle-folder rule under `_internal/orphan-bodies/`
 
-The root manifest keeps `noteBodies` records with note-body IDs, frontmatter metadata, template metadata, computed field metadata, and aisle file references.
+User frontmatter values live inside the aisle Markdown file as a top YAML block. `note-registry.json` keeps note-body IDs, aisle slots, shared aisle-body IDs, file references, and internal `frontmatterMeta`, keyed by shared `aisleBodyId`. Unlinked preservation records are marked with `storageStatus: "unlinked"` and keep their Markdown under `_internal/orphan-bodies/`.
+
+Example aisle file:
+
+```md
+---
+status: ready
+created: 2024-01-01
+---
+Markdown body text.
+```
 
 ### Assets
 
@@ -108,7 +125,7 @@ Images and similar binary files are stored under `notes-data/assets/`.
 
 Markdown references assets with relative paths. Runtime/editor layers may inline those files temporarily for rendering or editing, but saves write assets back out as normal files.
 
-Active asset cleanup uses the same save pass that writes Markdown. Each save rebuilds the expected file list from live notes, aisle bodies, orphan note bodies, and trash/deleted content, then prunes files in `notes-data/` that are not in that expected set. Image resize changes only the persisted image metadata fragment and does not create a new image file. Image crop and transform operations can create immediate preview assets, but any unreferenced intermediate assets in the active `notes-data/assets/` folder are removed by the next save/prune pass.
+Active asset cleanup uses the same save pass that writes Markdown. Each save rebuilds the expected file list from live notes, aisle bodies, unlinked note bodies, and trash/deleted content, then prunes files in `notes-data/` that are not in that expected set. Image resize changes only the persisted image metadata fragment and does not create a new image file. Image crop and transform operations can create immediate preview assets, but any unreferenced intermediate assets in the active `notes-data/assets/` folder are removed by the next save/prune pass.
 
 Recovery snapshots are exact historical copies of `notes-data/`, including the asset files from that moment. They are stored outside the synced profile and pruned by retention policy rather than sharing the latest active asset versions.
 
@@ -145,20 +162,49 @@ The trash manifest tracks:
 
 Stores:
 
-- `schemaVersion`
-- app-level settings in `globalSettings`
-- frontmatter settings
-- hotkeys
-- UI settings, including persisted cursor locations
-- domain ordering and domain paths
-- root note-body records, including frontmatter and aisle file references
-- active domain and optional last-opened navigation context
+- `schemaVersion: 3`
+- `files`: a map of root split-file roles to sibling JSON file names
 
 Does not store:
 
+- app settings
+- deleted workspace data
+- note-body or aisle-body registries
 - Markdown body text
+- user frontmatter values
 - binary asset contents
 - full domain/space tab trees
+
+Example:
+
+```json
+{
+  "schemaVersion": 3,
+  "files": {
+    "workspaceIndex": "workspace-index.json",
+    "navigationState": "navigation-state.json",
+    "appSettings": "app-settings.json",
+    "frontmatterSettings": "frontmatter-settings.json",
+    "editorState": "editor-state.json",
+    "deletedWorkspace": "deleted-workspace.json",
+    "noteRegistry": "note-registry.json"
+  }
+}
+```
+
+### Root Split Files
+
+All root split files live directly under `notes-data/`, beside `manifest.json`.
+
+- `workspace-index.json`: domain order, domain titles, and domain paths.
+- `navigation-state.json`: `activeDomainId` and optional `lastOpened`.
+- `app-settings.json`: active theme, custom palettes, visual scale, keyboard shortcuts, newline shortcuts, mouse/history hotkey flags, rail visibility, Stage Manager behavior, link/copy modes, table modes, toolbar layouts, and tip preferences.
+- `frontmatter-settings.json`: frontmatter templates, selected settings template, and last applied template.
+- `editor-state.json`: note cursor locations and heading collapse state.
+- `deleted-workspace.json`: deleted domains and deleted spaces.
+- `note-registry.json`: note body records and shared aisle body records, including unlinked preservation records marked with `storageStatus: "unlinked"`.
+
+Missing required split files block load. Missing optional `editor-state.json` falls back to defaults.
 
 ### Domain Manifest
 
@@ -216,14 +262,15 @@ Use these principles consistently:
 - `deletedAt`: Unix epoch milliseconds
 - `createdAt` / `updatedAt`: ISO strings on note bodies where available
 - `schemaVersion`: integer storage format gate
-- `globalSettings.ui.noteCursorLocations`: optional map keyed by domain/space/parent/sub-tab location
+- `editor-state.json.noteCursorLocations`: optional map keyed by domain/space/parent/sub-tab location
 
 ## Validation And Recovery
 
 Current recovery behavior:
 
-- The root manifest `schemaVersion` is the format gate.
+- The root manifest `schemaVersion` is the format gate. Schema 3 is the current write format; schema 1 and schema 2 remain readable for migration.
 - Missing, corrupt, or unsupported root manifests are load-blocking to avoid silently overwriting real data.
+- Missing required schema 3 root split files are load-blocking. Missing optional preference/editor split files fall back to defaults.
 - Missing Markdown files load as empty note content and create a warning.
 - Missing or corrupt trash manifests load as empty trash for that space and create a warning.
 - Missing or corrupt space manifests skip only that space where another readable space remains.
@@ -254,14 +301,14 @@ Browser storage should remain logically compatible with the Electron filesystem 
 - multiple aisles
 - assets
 - frontmatter, including null date/datetime values
-- orphan note bodies
+- unlinked note bodies
 
 ## Legacy JSON
 
-Legacy JSON state remains readable through the legacy app-state path. Existing `notes-data/` folders with unsupported schema versions are not silently migrated or overwritten; the current app only accepts schema 1.
+Legacy JSON state remains readable through the legacy app-state path. Existing schema 1 and schema 2 `notes-data/` folders remain readable and are rewritten as schema 3 on save. Schema 2 may still have a monolithic `manifest.json` and optional `profile-settings.json`; early schema 3 builds with wider split files also remain readable and are rewritten to the narrowed schema 3 shape. New schema 3 saves do not write `profile-settings.json`. Unsupported future schema versions are not silently migrated or overwritten.
 
 ## Future Topic Layer
 
 The top-level `topics/` directory is reserved for a future migration only.
 
-If the product later introduces concepts like topics, worlds, or sectors, the migration should be explicit and test-backed. Until then, the current schema 1 `domains/` layout is canonical.
+If the product later introduces concepts like topics, worlds, or sectors, the migration should be explicit and test-backed. Until then, the current schema 3 `domains/` layout is canonical.

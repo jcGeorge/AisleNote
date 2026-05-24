@@ -13,13 +13,14 @@ import {
   getFrontmatterComputedValuesForFieldType,
   isFrontmatterComputedValueCompatibleWithFieldType,
 } from '../../frontmatter/frontmatter'
-import { buildFrontmatterRowsForNote } from '../../frontmatter/frontmatter-state'
+import { buildFrontmatterModalDraftForAisle, buildFrontmatterRowsForAisle } from '../../frontmatter/frontmatter-state'
 import {
   buildNoteLocationKey,
   getDefaultNoteLinkLabel,
   getNoteLocationBreadcrumbLabel,
   listNoteLocationsForBody,
 } from '../../notes/note-locations'
+import { getAisleBodyId } from '../../notes/note-markdown'
 import { normalizeNoteReferenceTarget, resolveNoteReferenceTarget } from '../../notes/note-reference-targets'
 import { createId } from '../../state/workspace'
 import type {
@@ -358,6 +359,33 @@ export function ModalHost({
 
   const updateFrontmatterRow = (rowId: string, patch: Partial<FrontmatterRowDraft>) => {
     updateFrontmatterRows((rows) => rows.map((row) => (row.id === rowId ? { ...row, ...patch } : row)))
+  }
+
+  const frontmatterModalBody = modal?.type === 'frontmatter-note'
+    ? state.noteBodies.find((body) => body.id === modal.noteBodyId) ?? null
+    : null
+  const frontmatterModalAisles = frontmatterModalBody?.aisles ?? []
+
+  const setFrontmatterAisle = (aisleId: string) => {
+    if (modal.type !== 'frontmatter-note') return
+    const aisle = frontmatterModalAisles.find((candidate) => candidate.id === aisleId) ?? null
+    if (!aisle) return
+    const aisleBodyId = getAisleBodyId(aisle)
+    const aisleBody = (state.noteAisleBodies ?? []).find((body) => body.id === aisleBodyId) ?? null
+    if (aisleBody?.frontmatterStatus === 'invalid') {
+      onWarn('frontmatter YAML is invalid. fix the markdown block before using the frontmatter menu.')
+      return
+    }
+    const draft = buildFrontmatterModalDraftForAisle(state, modal.noteBodyId, aisleBodyId, modal.location)
+    onModalChange({
+      ...modal,
+      aisleId,
+      aisleBodyId,
+      rows: draft.rows,
+      selectedTemplateId: draft.selectedTemplateId,
+      templateDerived: draft.templateDerived,
+      isTemplateSuggestionDraft: draft.isTemplateSuggestionDraft,
+    })
   }
 
   const createFrontmatterRowKey = (rows: FrontmatterRowDraft[]) => {
@@ -828,6 +856,20 @@ export function ModalHost({
         {modal.type === 'frontmatter-note' && (
           <div className="frontmatter-note-modal">
             <div className="frontmatter-note-toolbar">
+              {frontmatterModalAisles.length > 1 && (
+                <select
+                  className="settings-select-input"
+                  value={modal.aisleId}
+                  aria-label="frontmatter aisle"
+                  onChange={(event) => setFrontmatterAisle(event.target.value)}
+                >
+                  {frontmatterModalAisles.map((aisle, index) => (
+                    <option key={aisle.id} value={aisle.id}>
+                      {`aisle ${index + 1}`}
+                    </option>
+                  ))}
+                </select>
+              )}
               <select
                 className="settings-select-input"
                 value={modal.selectedTemplateId}
@@ -850,7 +892,7 @@ export function ModalHost({
                     selectedTemplateId: templateId,
                     templateDerived: true,
                     isTemplateSuggestionDraft: modal.isTemplateSuggestionDraft,
-                    rows: buildFrontmatterRowsForNote(state, modal.noteBodyId, modal.location, template, {
+                    rows: buildFrontmatterRowsForAisle(state, modal.noteBodyId, modal.aisleBodyId, modal.location, template, {
                       includeExisting: false,
                       derived: true,
                     }),
@@ -894,7 +936,7 @@ export function ModalHost({
                     onModalChange({
                       ...modal,
                       templateDerived: true,
-                      rows: buildFrontmatterRowsForNote(state, modal.noteBodyId, modal.location, template, {
+                      rows: buildFrontmatterRowsForAisle(state, modal.noteBodyId, modal.aisleBodyId, modal.location, template, {
                         includeExisting: true,
                         derived: true,
                       }),

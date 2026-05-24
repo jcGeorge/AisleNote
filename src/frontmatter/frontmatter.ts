@@ -32,6 +32,14 @@ export type MarkdownFrontmatterExtraction = {
   markdown: string
 }
 
+export type MarkdownFrontmatterSplit = {
+  status: 'none' | 'valid' | 'invalid'
+  frontmatter: FrontmatterData | null
+  markdown: string
+  rawFrontmatter: string | null
+  error?: string
+}
+
 const FRONTMATTER_OPEN_RE = /^---[ \t]*(?:\r?\n|$)/
 const FRONTMATTER_CLOSE_RE = /(?:^|\r?\n)---[ \t]*(?:\r?\n|$)/
 const DEFAULT_TEMPLATE_ID = 'basic-frontmatter'
@@ -143,9 +151,14 @@ export function stringifyFrontmatterYaml(frontmatter: FrontmatterData | null): s
   }).trimEnd()
 }
 
-export function extractMarkdownFrontmatter(markdown: string): MarkdownFrontmatterExtraction {
+export function splitMarkdownFrontmatter(markdown: string): MarkdownFrontmatterSplit {
   if (!FRONTMATTER_OPEN_RE.test(markdown)) {
-    return { frontmatter: null, markdown }
+    return {
+      status: 'none',
+      frontmatter: null,
+      markdown,
+      rawFrontmatter: null,
+    }
   }
 
   const openMatch = markdown.match(FRONTMATTER_OPEN_RE)
@@ -153,7 +166,13 @@ export function extractMarkdownFrontmatter(markdown: string): MarkdownFrontmatte
   const remainder = markdown.slice(bodyStart)
   const closeMatch = remainder.match(FRONTMATTER_CLOSE_RE)
   if (!closeMatch || closeMatch.index == null) {
-    return { frontmatter: null, markdown }
+    return {
+      status: 'invalid',
+      frontmatter: null,
+      markdown,
+      rawFrontmatter: remainder,
+      error: 'frontmatter YAML block is missing a closing delimiter.',
+    }
   }
 
   const rawYaml = remainder.slice(0, closeMatch.index)
@@ -161,20 +180,38 @@ export function extractMarkdownFrontmatter(markdown: string): MarkdownFrontmatte
   const closeEnd = closeStart + closeMatch[0].length
   const parsed = parseFrontmatterYaml(rawYaml)
   if (!parsed.ok) {
-    return { frontmatter: null, markdown }
+    return {
+      status: 'invalid',
+      frontmatter: null,
+      markdown,
+      rawFrontmatter: rawYaml,
+      error: parsed.message,
+    }
   }
 
   return {
+    status: 'valid',
     frontmatter: parsed.data,
     markdown: remainder.slice(closeEnd).replace(/^\r?\n/, ''),
+    rawFrontmatter: rawYaml,
   }
 }
 
-export function prependMarkdownFrontmatter(markdown: string, frontmatter: FrontmatterData | null): string {
+export function extractMarkdownFrontmatter(markdown: string): MarkdownFrontmatterExtraction {
+  const split = splitMarkdownFrontmatter(markdown)
+  return {
+    frontmatter: split.status === 'valid' ? split.frontmatter : null,
+    markdown: split.markdown,
+  }
+}
+
+export function composeMarkdownFrontmatter(markdown: string, frontmatter: FrontmatterData | null): string {
   const yaml = stringifyFrontmatterYaml(frontmatter)
   if (!yaml) return markdown
   return `---\n${yaml}\n---\n${markdown}`
 }
+
+export const prependMarkdownFrontmatter = composeMarkdownFrontmatter
 
 export function coerceFrontmatterString(value: unknown): string {
   if (value == null) return ''

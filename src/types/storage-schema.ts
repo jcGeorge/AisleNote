@@ -1,4 +1,4 @@
-export type StorageSchemaVersion = 1
+export type StorageSchemaVersion = 1 | 2 | 3
 
 export type StorageEntityId = string
 export type StorageCustomThemeId = 'custom1' | 'custom2' | 'custom3'
@@ -32,7 +32,7 @@ export type StorageShortcutId =
   | 'cycleSubTabNext'
   | 'cycleSubTabPrev'
 
-export const STORAGE_SCHEMA_VERSION: StorageSchemaVersion = 1
+export const STORAGE_SCHEMA_VERSION: StorageSchemaVersion = 3
 
 export const STORAGE_ROOT_DIR = 'notes-data' as const
 export const STORAGE_DOMAINS_DIR = 'domains' as const
@@ -40,6 +40,20 @@ export const STORAGE_ASSETS_DIR = 'assets' as const
 export const STORAGE_TRASH_DIR = 'trash' as const
 export const STORAGE_MANIFEST_FILE = 'manifest.json' as const
 export const STORAGE_PROFILE_SETTINGS_FILE = 'profile-settings.json' as const
+export const STORAGE_WORKSPACE_INDEX_FILE = 'workspace-index.json' as const
+export const STORAGE_NAVIGATION_STATE_FILE = 'navigation-state.json' as const
+export const STORAGE_APP_SETTINGS_FILE = 'app-settings.json' as const
+export const STORAGE_APPEARANCE_SETTINGS_FILE = 'appearance-settings.json' as const
+export const STORAGE_SHORTCUT_SETTINGS_FILE = 'shortcut-settings.json' as const
+export const STORAGE_FRONTMATTER_SETTINGS_FILE = 'frontmatter-settings.json' as const
+export const STORAGE_UI_PREFERENCES_FILE = 'ui-preferences.json' as const
+export const STORAGE_EDITOR_STATE_FILE = 'editor-state.json' as const
+export const STORAGE_DELETED_WORKSPACE_FILE = 'deleted-workspace.json' as const
+export const STORAGE_NOTE_BODIES_FILE = 'note-bodies.json' as const
+export const STORAGE_AISLE_BODIES_FILE = 'aisle-bodies.json' as const
+export const STORAGE_ORPHAN_NOTE_BODIES_FILE = 'orphan-note-bodies.json' as const
+export const STORAGE_ORPHAN_AISLE_BODIES_FILE = 'orphan-aisle-bodies.json' as const
+export const STORAGE_NOTE_REGISTRY_FILE = 'note-registry.json' as const
 export const STORAGE_HOME_NOTE_FILE = 'home.md' as const
 
 export type StorageShortcutMap = Record<StorageShortcutId, string>
@@ -148,25 +162,43 @@ export type StorageNoteAisleRecord = {
 
 export type StorageNoteBodyRecord = {
   id: StorageEntityId
+  storageStatus?: 'unlinked'
   createdAt?: string
   updatedAt?: string
-  frontmatter?: Record<string, unknown> | null
-  frontmatterTemplateId?: string
-  frontmatterTemplateDerived?: boolean
-  frontmatterTemplateFieldOrigins?: Record<string, { templateId: string; fieldId: string }>
-  frontmatterTemplateRemovedFieldIds?: string[]
-  frontmatterComputedFields?: Record<string, unknown>
-  frontmatterTemplateDetachedKeys?: string[]
   aisles: StorageNoteAisleRecord[]
 }
 
 export type StorageNoteAisleBodyRecord = {
   id: StorageEntityId
+  storageStatus?: 'unlinked'
   file: string
+  frontmatterMeta?: {
+    templateId?: string
+    templateDerived?: boolean
+    templateFieldOrigins?: Record<string, { templateId: string; fieldId: string }>
+    templateRemovedFieldIds?: string[]
+    computedFields?: Record<string, unknown>
+    templateDetachedKeys?: string[]
+  }
 }
 
-export type StorageRootManifest = {
-  schemaVersion: StorageSchemaVersion
+export type StorageRootFileMap = {
+  workspaceIndex: string
+  navigationState: string
+  appSettings: string
+  frontmatterSettings: string
+  editorState: string
+  deletedWorkspace: string
+  noteRegistry: string
+}
+
+export type StorageSchema3RootManifest = {
+  schemaVersion: 3
+  files: StorageRootFileMap
+}
+
+export type StorageLegacyRootManifest = {
+  schemaVersion: 1 | 2
   globalSettings: StorageGlobalSettings
   domains: StorageDomainIndexEntry[]
   deletedDomains?: unknown[]
@@ -181,6 +213,35 @@ export type StorageRootManifest = {
     subTabId: StorageEntityId | null
     viewMode: 'domains' | 'spaces' | 'main' | 'trash' | 'settings' | 'stage-manager'
   }
+}
+
+export type StorageRootManifest = StorageSchema3RootManifest | StorageLegacyRootManifest
+
+export type StorageWorkspaceIndex = {
+  domains: StorageDomainIndexEntry[]
+}
+
+export type StorageNavigationState = {
+  activeDomainId: StorageEntityId
+  lastOpened?: StorageLegacyRootManifest['lastOpened']
+}
+
+export type StorageDeletedWorkspace = {
+  deletedDomains?: unknown[]
+  deletedSpaces?: unknown[]
+}
+
+export type StorageNoteBodiesRegistry = {
+  noteBodies: StorageNoteBodyRecord[]
+}
+
+export type StorageAisleBodiesRegistry = {
+  noteAisleBodies: StorageNoteAisleBodyRecord[]
+}
+
+export type StorageNoteRegistry = {
+  noteBodies: StorageNoteBodyRecord[]
+  aisleBodies: StorageNoteAisleBodyRecord[]
 }
 
 export type StorageProfileSettings = {

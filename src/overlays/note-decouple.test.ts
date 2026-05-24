@@ -57,7 +57,7 @@ function createDecoupleTestState(): AppState {
     noteBodies: [
       {
         id: 'body-shared',
-        frontmatter: { status: 'linked' },
+        frontmatter: null,
         aisles: [{ id: 'aisle-shared', aisleBodyId: 'aisle-body-shared', markdown: 'stale slot text' }],
       },
     ],
@@ -67,6 +67,8 @@ function createDecoupleTestState(): AppState {
         createdAt: '2026-01-01T00:00:00.000Z',
         updatedAt: '2026-01-01T00:00:00.000Z',
         markdown: 'shared authoritative text',
+        frontmatter: { status: 'linked' },
+        frontmatterStatus: 'valid',
       },
     ],
     hotkeys: {
@@ -127,9 +129,10 @@ describe('note de-couple helpers', () => {
 
     expect(sourceInfo.noteBodyId).toBe('body-shared')
     expect(peerInfo.noteBodyId).not.toBe('body-shared')
-    expect(peerBody?.frontmatter).toEqual({ status: 'linked' })
+    expect(peerBody?.frontmatter).toBeNull()
     expect(peerBody?.aisles[0]?.markdown).toBe('shared authoritative text')
     expect(peerAisleBody?.markdown).toBe('shared authoritative text')
+    expect(peerAisleBody?.frontmatter).toEqual({ status: 'linked' })
   })
 
   it('turns de-coupled locations into empty independent notes when keep-data is disabled', () => {

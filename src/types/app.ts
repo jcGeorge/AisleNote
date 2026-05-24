@@ -77,10 +77,16 @@ export type NoteAisleBody = {
   createdAt?: string
   updatedAt?: string
   markdown: string
+  frontmatter?: FrontmatterData | null
+  frontmatterStatus?: FrontmatterParseStatus
+  frontmatterParseError?: string
+  frontmatterRaw?: string
+  frontmatterMeta?: FrontmatterMeta
 }
 
 export type FrontmatterValue = unknown
 export type FrontmatterData = Record<string, FrontmatterValue>
+export type FrontmatterParseStatus = 'none' | 'valid' | 'invalid'
 export type FrontmatterFieldType = 'text' | 'number' | 'boolean' | 'date' | 'datetime' | 'list'
 export type FrontmatterComputedValue =
   | 'none'
@@ -119,6 +125,16 @@ export type FrontmatterFieldOrigin = {
 export type FrontmatterFieldOriginMap = Record<string, FrontmatterFieldOrigin>
 export type FrontmatterComputedFieldMap = Record<string, FrontmatterComputedValue>
 
+export type FrontmatterMeta = {
+  templateId?: string
+  templateDerived?: boolean
+  templateFieldOrigins?: FrontmatterFieldOriginMap
+  templateRemovedFieldIds?: string[]
+  computedFields?: FrontmatterComputedFieldMap
+  /** Legacy row-level template behavior. Ignored by the current frontmatter modal. */
+  templateDetachedKeys?: string[]
+}
+
 export type FrontmatterSaveOptions = {
   templateId: string | null
   templateDerived: boolean
@@ -132,7 +148,9 @@ export type NoteBody = {
   createdAt?: string
   updatedAt?: string
   aisles: NoteAisle[]
+  /** Legacy note-level frontmatter. Migrated into the first aisle body on load and no longer written. */
   frontmatter: FrontmatterData | null
+  /** Legacy note-level template metadata. Migrated into the first aisle body on load and no longer written. */
   frontmatterTemplateId?: string
   frontmatterTemplateDerived?: boolean
   frontmatterTemplateFieldOrigins?: FrontmatterFieldOriginMap
@@ -805,6 +823,8 @@ export type ModalState =
   | {
       type: 'frontmatter-note'
       noteBodyId: string
+      aisleId: string
+      aisleBodyId: string
       location: NoteLocation
       rows: FrontmatterRowDraft[]
       selectedTemplateId: string

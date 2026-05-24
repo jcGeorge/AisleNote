@@ -26,7 +26,8 @@ function createState(): AppState {
     activeSpaceId: space.id,
     domains: [{ id: 'domain-1', name: 'Domain', activeSpaceId: space.id, spaces: [space] }],
     spaces: [space],
-    noteBodies: [{ id: 'body-1', frontmatter: null, aisles: [{ id: 'aisle-1', markdown: '' }] }],
+    noteBodies: [{ id: 'body-1', frontmatter: null, aisles: [{ id: 'aisle-1', aisleBodyId: 'aisle-body-1', markdown: '' }] }],
+    noteAisleBodies: [{ id: 'aisle-body-1', markdown: '', frontmatter: null, frontmatterStatus: 'none' }],
     hotkeys: {
       shortcuts: {
         toggleTabTrash: '',
@@ -150,6 +151,8 @@ describe('sort modal rendering', () => {
     expect(shouldModalBackdropClose({
       type: 'frontmatter-note',
       noteBodyId: 'body-1',
+      aisleId: 'aisle-1',
+      aisleBodyId: 'aisle-body-1',
       location: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
       selectedTemplateId: '',
       templateDerived: false,
@@ -514,6 +517,8 @@ describe('frontmatter modal rendering', () => {
     const html = renderFrontmatterModal({
       type: 'frontmatter-note',
       noteBodyId: 'body-1',
+      aisleId: 'aisle-1',
+      aisleBodyId: 'aisle-body-1',
       location: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
       selectedTemplateId: 'template-1',
       templateDerived: true,
@@ -545,6 +550,8 @@ describe('frontmatter modal rendering', () => {
     const modal: Extract<ModalState, { type: 'frontmatter-note' }> = {
       type: 'frontmatter-note',
       noteBodyId: 'body-1',
+      aisleId: 'aisle-1',
+      aisleBodyId: 'aisle-body-1',
       location: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
       selectedTemplateId: 'template-1',
       templateDerived: true,
@@ -626,6 +633,8 @@ describe('frontmatter modal rendering', () => {
     const html = renderFrontmatterModal({
       type: 'frontmatter-note',
       noteBodyId: 'body-1',
+      aisleId: 'aisle-1',
+      aisleBodyId: 'aisle-body-1',
       location: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
       selectedTemplateId: '',
       templateDerived: false,
@@ -653,6 +662,8 @@ describe('frontmatter modal rendering', () => {
     const html = renderFrontmatterModal({
       type: 'frontmatter-note',
       noteBodyId: 'body-1',
+      aisleId: 'aisle-1',
+      aisleBodyId: 'aisle-body-1',
       location: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
       selectedTemplateId: '',
       templateDerived: false,
@@ -687,6 +698,8 @@ describe('frontmatter modal rendering', () => {
     const html = renderFrontmatterModal({
       type: 'frontmatter-note',
       noteBodyId: 'body-1',
+      aisleId: 'aisle-1',
+      aisleBodyId: 'aisle-body-1',
       location: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
       selectedTemplateId: '',
       templateDerived: false,
@@ -718,6 +731,8 @@ describe('frontmatter modal rendering', () => {
     const html = renderFrontmatterModal({
       type: 'frontmatter-note',
       noteBodyId: 'body-1',
+      aisleId: 'aisle-1',
+      aisleBodyId: 'aisle-body-1',
       location: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
       selectedTemplateId: '',
       templateDerived: false,
@@ -745,6 +760,8 @@ describe('frontmatter modal rendering', () => {
     const html = renderFrontmatterModal({
       type: 'frontmatter-note',
       noteBodyId: 'body-1',
+      aisleId: 'aisle-1',
+      aisleBodyId: 'aisle-body-1',
       location: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
       selectedTemplateId: 'template-1',
       templateDerived: true,
@@ -773,6 +790,8 @@ describe('frontmatter modal rendering', () => {
     const html = renderFrontmatterModal({
       type: 'frontmatter-note',
       noteBodyId: 'body-1',
+      aisleId: 'aisle-1',
+      aisleBodyId: 'aisle-body-1',
       location: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
       selectedTemplateId: 'template-1',
       templateDerived: true,
@@ -800,6 +819,8 @@ describe('frontmatter modal rendering', () => {
     const html = renderFrontmatterModal({
       type: 'frontmatter-note',
       noteBodyId: 'body-1',
+      aisleId: 'aisle-1',
+      aisleBodyId: 'aisle-body-1',
       location: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
       selectedTemplateId: '',
       templateDerived: false,

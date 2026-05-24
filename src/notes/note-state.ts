@@ -1,4 +1,5 @@
 import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
+import { splitMarkdownFrontmatter } from '../frontmatter/frontmatter'
 import { setActiveDomain, setActiveSpaceInActiveDomain, updateSpaceInActiveDomain } from '../state/domains'
 import { createId, createTimestamp } from '../state/workspace'
 import type { AppState, NoteAisle, NoteAisleBody, NoteCursorLocation, NoteCursorSelection, NoteLocation } from '../types/app'
@@ -17,6 +18,60 @@ export const getAisleSignature = (aisles: NoteAisle[]) =>
 
 export const getAisleStructureSignature = (aisles: NoteAisle[]) =>
   JSON.stringify(aisles.map((aisle) => [aisle.id, getAisleBodyId(aisle)]))
+
+const cloneFrontmatter = (frontmatter: NoteAisleBody['frontmatter']): NoteAisleBody['frontmatter'] =>
+  frontmatter && typeof frontmatter === 'object' ? { ...frontmatter } : frontmatter ?? null
+
+const buildSyncedAisleBody = (
+  existing: NoteAisleBody | undefined,
+  aisleBodyId: string,
+  markdown: string,
+  now: string,
+): NoteAisleBody => {
+  const normalizedMarkdown = normalizeMarkdownForPersistence(markdown)
+  const split = splitMarkdownFrontmatter(normalizedMarkdown)
+  const base = {
+    ...(existing ?? { id: aisleBodyId, createdAt: now }),
+    id: aisleBodyId,
+    updatedAt: now,
+  }
+  if (split.status === 'valid') {
+    return {
+      ...base,
+      markdown: normalizeMarkdownForPersistence(split.markdown),
+      frontmatter: split.frontmatter,
+      frontmatterStatus: 'valid',
+      frontmatterParseError: undefined,
+      frontmatterRaw: split.rawFrontmatter ?? undefined,
+    }
+  }
+  if (split.status === 'invalid') {
+    return {
+      ...base,
+      markdown: normalizedMarkdown,
+      frontmatter: null,
+      frontmatterStatus: 'invalid',
+      frontmatterParseError: split.error,
+      frontmatterRaw: split.rawFrontmatter ?? undefined,
+    }
+  }
+  return {
+    ...base,
+    markdown: normalizedMarkdown,
+    frontmatter: cloneFrontmatter(existing?.frontmatter),
+    frontmatterStatus: existing?.frontmatterStatus ?? (existing?.frontmatter ? 'valid' : 'none'),
+    frontmatterParseError: existing?.frontmatterParseError,
+    frontmatterRaw: existing?.frontmatterRaw,
+  }
+}
+
+const aisleBodyContentEqual = (left: NoteAisleBody | undefined, right: NoteAisleBody): boolean =>
+  Boolean(left) &&
+  left?.markdown === right.markdown &&
+  left?.frontmatterStatus === right.frontmatterStatus &&
+  left?.frontmatterParseError === right.frontmatterParseError &&
+  left?.frontmatterRaw === right.frontmatterRaw &&
+  JSON.stringify(left?.frontmatter ?? null) === JSON.stringify(right.frontmatter ?? null)
 
 const syncNoteContentMirrors = (
   previous: AppState,
@@ -92,24 +147,10 @@ export const syncNoteBodyAislesInState = (previous: AppState, noteBodyId: string
     const aisleBodyId = getAisleBodyId(aisle)
     if (processedAisleBodyIds.has(aisleBodyId)) return
     processedAisleBodyIds.add(aisleBodyId)
-    const markdown = normalizeMarkdownForPersistence(aisle.markdown)
     const existing = nextAisleBodiesById.get(aisleBodyId)
-    if (!existing) {
-      nextAisleBodiesById.set(aisleBodyId, {
-        id: aisleBodyId,
-        createdAt: now,
-        updatedAt: now,
-        markdown,
-      })
-      updatedAisleBodyIds.add(aisleBodyId)
-      return
-    }
-    if (existing.markdown === markdown) return
-    nextAisleBodiesById.set(aisleBodyId, {
-      ...existing,
-      updatedAt: now,
-      markdown,
-    })
+    const nextAisleBody = buildSyncedAisleBody(existing, aisleBodyId, aisle.markdown, now)
+    if (aisleBodyContentEqual(existing, nextAisleBody)) return
+    nextAisleBodiesById.set(aisleBodyId, nextAisleBody)
     updatedAisleBodyIds.add(aisleBodyId)
   })
 
@@ -138,15 +179,38 @@ export const syncNoteBodyAislesInState = (previous: AppState, noteBodyId: string
 
 export const syncNoteBodyAisleStructureInState = (previous: AppState, noteBodyId: string, aisles: NoteAisle[]): AppState => {
   const currentAisleBodiesById = new Map((previous.noteAisleBodies ?? []).map((body) => [body.id, body]))
+  const previousBody = previous.noteBodies.find((body) => body.id === noteBodyId)
+  const previousAislesById = new Map((previousBody?.aisles ?? []).map((aisle) => [aisle.id, aisle]))
+  const syntheticAisleBodies: NoteAisleBody[] = []
   const structuralAisles = aisles.map((aisle) => {
     const aisleBodyId = getAisleBodyId(aisle)
+    if (!currentAisleBodiesById.has(aisleBodyId)) {
+      const previousAisle = previousAislesById.get(aisle.id)
+      const previousAisleBody = previousAisle ? currentAisleBodiesById.get(getAisleBodyId(previousAisle)) : undefined
+      if (previousAisleBody) {
+        const syntheticAisleBody = {
+          ...previousAisleBody,
+          id: aisleBodyId,
+          markdown: normalizeMarkdownForPersistence(aisle.markdown),
+          frontmatter: cloneFrontmatter(previousAisleBody.frontmatter),
+        }
+        currentAisleBodiesById.set(aisleBodyId, syntheticAisleBody)
+        syntheticAisleBodies.push(syntheticAisleBody)
+      }
+    }
     return {
       ...aisle,
       aisleBodyId,
       markdown: currentAisleBodiesById.get(aisleBodyId)?.markdown ?? normalizeMarkdownForPersistence(aisle.markdown),
     }
   })
-  return syncNoteBodyAislesInState(previous, noteBodyId, structuralAisles)
+  return syncNoteBodyAislesInState(
+    syntheticAisleBodies.length > 0
+      ? { ...previous, noteAisleBodies: [...(previous.noteAisleBodies ?? []), ...syntheticAisleBodies] }
+      : previous,
+    noteBodyId,
+    structuralAisles,
+  )
 }
 
 export const syncNoteAisleBodyMarkdownInState = (
@@ -159,24 +223,17 @@ export const syncNoteAisleBodyMarkdownInState = (
   const now = createTimestamp()
   const nextAisleBodiesById = new Map((previous.noteAisleBodies ?? []).map((body) => [body.id, body]))
   const existing = nextAisleBodiesById.get(aisleBodyId)
-  const nextAisleBody =
-    existing && existing.markdown === normalizedMarkdown
-      ? existing
-      : {
-          ...(existing ?? { id: aisleBodyId, createdAt: now }),
-          updatedAt: now,
-          markdown: normalizedMarkdown,
-        }
+  const nextAisleBody = buildSyncedAisleBody(existing, aisleBodyId, normalizedMarkdown, now)
   nextAisleBodiesById.set(aisleBodyId, nextAisleBody)
 
-  let changed = !existing || existing.markdown !== normalizedMarkdown
+  let changed = !aisleBodyContentEqual(existing, nextAisleBody)
   const noteBodies = previous.noteBodies.map((body) => {
     let bodyChanged = false
     const aisles = body.aisles.map((aisle) => {
       if (getAisleBodyId(aisle) !== aisleBodyId) return aisle
-      if (aisle.aisleBodyId === aisleBodyId && aisle.markdown === normalizedMarkdown) return aisle
+      if (aisle.aisleBodyId === aisleBodyId && aisle.markdown === nextAisleBody.markdown) return aisle
       bodyChanged = true
-      return { ...aisle, aisleBodyId, markdown: normalizedMarkdown }
+      return { ...aisle, aisleBodyId, markdown: nextAisleBody.markdown }
     })
     if (!bodyChanged) return body
     changed = true

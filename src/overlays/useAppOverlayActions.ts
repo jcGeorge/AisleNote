@@ -1,6 +1,6 @@
 import type { MouseEvent, Dispatch, SetStateAction, MutableRefObject } from 'react'
 import type { ExportScope } from '../export/export-data'
-import { buildFrontmatterDataFromRows, updateNoteBodyFrontmatter } from '../frontmatter/frontmatter-state'
+import { buildFrontmatterDataFromRows, updateAisleFrontmatter } from '../frontmatter/frontmatter-state'
 import {
   buildNoteLocationKey,
   getDefaultNoteReferenceTarget,
@@ -878,9 +878,9 @@ export const useAppOverlayActions = ({
         pushToast(result.message, 'error')
         return
       }
-      const nextState = updateNoteBodyFrontmatter(
+      const nextState = updateAisleFrontmatter(
         stateRef.current,
-        modal.noteBodyId,
+        modal.aisleBodyId,
         result.frontmatter,
         {
           templateId: modal.selectedTemplateId || null,
@@ -894,7 +894,7 @@ export const useAppOverlayActions = ({
       setState(nextState)
       setModal(null)
       result.warnings.forEach((warning) => pushToast(warning, 'warning'))
-      pushToast(nextState.noteBodies.find((body) => body.id === modal.noteBodyId)?.frontmatter ? 'frontmatter saved.' : 'frontmatter removed.', 'success')
+      pushToast((nextState.noteAisleBodies ?? []).find((body) => body.id === modal.aisleBodyId)?.frontmatter ? 'frontmatter saved.' : 'frontmatter removed.', 'success')
       return
     }
 

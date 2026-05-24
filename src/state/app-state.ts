@@ -2,9 +2,9 @@ import { DEFAULT_NEWLINE_SHORTCUT_SETTINGS, DEFAULT_SHORTCUTS, normalizeHotkeySe
 import {
   FRONTMATTER_COMPUTED_VALUES,
   DEFAULT_FRONTMATTER_SETTINGS,
-  extractMarkdownFrontmatter,
   normalizeFrontmatterData,
   normalizeFrontmatterSettings,
+  splitMarkdownFrontmatter,
 } from '../frontmatter/frontmatter'
 import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
 import {
@@ -21,6 +21,7 @@ import type {
   Domain,
   FrontmatterComputedFieldMap,
   FrontmatterFieldOriginMap,
+  FrontmatterMeta,
   NoteAisle,
   NoteAisleBody,
   NoteBody,
@@ -138,6 +139,89 @@ function normalizeFrontmatterComputedFields(value: unknown): FrontmatterComputed
   return Object.keys(computedFields).length > 0 ? computedFields : undefined
 }
 
+function normalizeFrontmatterMeta(value: unknown): FrontmatterMeta | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const candidate = value as Record<string, unknown>
+  const meta: FrontmatterMeta = {}
+  if (typeof candidate.templateId === 'string') meta.templateId = candidate.templateId.trim()
+  if (typeof candidate.templateDerived === 'boolean') meta.templateDerived = candidate.templateDerived
+  const templateFieldOrigins = normalizeFrontmatterFieldOrigins(candidate.templateFieldOrigins)
+  if (templateFieldOrigins) meta.templateFieldOrigins = templateFieldOrigins
+  const templateRemovedFieldIds = normalizeStringList(candidate.templateRemovedFieldIds)
+  if (templateRemovedFieldIds) meta.templateRemovedFieldIds = templateRemovedFieldIds
+  const computedFields = normalizeFrontmatterComputedFields(candidate.computedFields)
+  if (computedFields) meta.computedFields = computedFields
+  const templateDetachedKeys = normalizeStringList(candidate.templateDetachedKeys)
+  if (templateDetachedKeys) meta.templateDetachedKeys = templateDetachedKeys
+  return Object.keys(meta).length > 0 ? meta : undefined
+}
+
+function normalizeLegacyNoteBodyFrontmatterMeta(candidate: Record<string, unknown> | NoteBody): FrontmatterMeta | undefined {
+  return normalizeFrontmatterMeta({
+    templateId: candidate.frontmatterTemplateId,
+    templateDerived: candidate.frontmatterTemplateDerived,
+    templateFieldOrigins: candidate.frontmatterTemplateFieldOrigins,
+    templateRemovedFieldIds: candidate.frontmatterTemplateRemovedFieldIds,
+    computedFields: candidate.frontmatterComputedFields,
+    templateDetachedKeys: candidate.frontmatterTemplateDetachedKeys,
+  })
+}
+
+function mergeFrontmatterMeta(primary: FrontmatterMeta | undefined, fallback: FrontmatterMeta | undefined): FrontmatterMeta | undefined {
+  if (!primary) return fallback
+  if (!fallback) return primary
+  return {
+    ...fallback,
+    ...primary,
+    templateFieldOrigins: primary.templateFieldOrigins ?? fallback.templateFieldOrigins,
+    templateRemovedFieldIds: primary.templateRemovedFieldIds ?? fallback.templateRemovedFieldIds,
+    computedFields: primary.computedFields ?? fallback.computedFields,
+    templateDetachedKeys: primary.templateDetachedKeys ?? fallback.templateDetachedKeys,
+  }
+}
+
+function normalizeNoteAisleBodyRecord(
+  candidate: Record<string, unknown>,
+  fallbackTimestamp: string,
+): NoteAisleBody | null {
+  const id = typeof candidate.id === 'string' && candidate.id ? candidate.id : ''
+  if (!id) return null
+  const markdown = normalizeMarkdownForPersistence(typeof candidate.markdown === 'string' ? candidate.markdown : '')
+  const savedFrontmatter = normalizeFrontmatterData(candidate.frontmatter)
+  const split = splitMarkdownFrontmatter(markdown)
+  const base = {
+    id,
+    createdAt: normalizeTimestamp(candidate.createdAt, fallbackTimestamp),
+    updatedAt: normalizeTimestamp(candidate.updatedAt, fallbackTimestamp),
+    frontmatterMeta: normalizeFrontmatterMeta(candidate.frontmatterMeta),
+  }
+  if (split.status === 'valid') {
+    return {
+      ...base,
+      markdown: normalizeMarkdownForPersistence(split.markdown),
+      frontmatter: split.frontmatter,
+      frontmatterStatus: 'valid',
+      frontmatterRaw: split.rawFrontmatter ?? undefined,
+    }
+  }
+  if (split.status === 'invalid') {
+    return {
+      ...base,
+      markdown,
+      frontmatter: null,
+      frontmatterStatus: 'invalid',
+      frontmatterParseError: split.error,
+      frontmatterRaw: split.rawFrontmatter ?? undefined,
+    }
+  }
+  return {
+    ...base,
+    markdown,
+    frontmatter: savedFrontmatter,
+    frontmatterStatus: savedFrontmatter ? 'valid' : 'none',
+  }
+}
+
 function normalizeNoteAisles(raw: unknown): NoteAisle[] {
   if (!Array.isArray(raw)) return []
   return raw
@@ -160,17 +244,48 @@ function normalizeNoteAisleBodies(raw: unknown): NoteAisleBody[] {
   for (const entry of raw) {
     if (!entry || typeof entry !== 'object') continue
     const candidate = entry as Record<string, unknown>
-    const id = typeof candidate.id === 'string' && candidate.id ? candidate.id : ''
-    if (!id || seen.has(id)) continue
-    seen.add(id)
-    bodies.push({
-      id,
-      createdAt: normalizeTimestamp(candidate.createdAt, fallbackTimestamp),
-      updatedAt: normalizeTimestamp(candidate.updatedAt, fallbackTimestamp),
-      markdown: normalizeMarkdownForPersistence(typeof candidate.markdown === 'string' ? candidate.markdown : ''),
-    })
+    const body = normalizeNoteAisleBodyRecord(candidate, fallbackTimestamp)
+    if (!body || seen.has(body.id)) continue
+    seen.add(body.id)
+    bodies.push(body)
   }
   return bodies
+}
+
+function applyLegacyFrontmatterToFirstAisle(
+  aisleBody: NoteAisleBody,
+  legacyFrontmatter: NoteBody['frontmatter'],
+  legacyMeta: FrontmatterMeta | undefined,
+): NoteAisleBody {
+  const hasCanonicalFrontmatterBlock = aisleBody.frontmatterStatus === 'valid' && aisleBody.frontmatterRaw !== undefined
+  const hasInvalidFrontmatter = aisleBody.frontmatterStatus === 'invalid'
+  const frontmatter = hasCanonicalFrontmatterBlock || hasInvalidFrontmatter || !legacyFrontmatter
+    ? aisleBody.frontmatter ?? null
+    : legacyFrontmatter
+  const frontmatterStatus = hasInvalidFrontmatter
+    ? 'invalid'
+    : frontmatter
+      ? 'valid'
+      : aisleBody.frontmatterStatus ?? 'none'
+  return {
+    ...aisleBody,
+    frontmatter,
+    frontmatterStatus,
+    frontmatterMeta: mergeFrontmatterMeta(aisleBody.frontmatterMeta, legacyMeta),
+  }
+}
+
+function clearLegacyNoteBodyFrontmatter(body: NoteBody): NoteBody {
+  return {
+    ...body,
+    frontmatter: null,
+    frontmatterTemplateId: undefined,
+    frontmatterTemplateDerived: undefined,
+    frontmatterTemplateFieldOrigins: undefined,
+    frontmatterTemplateRemovedFieldIds: undefined,
+    frontmatterComputedFields: undefined,
+    frontmatterTemplateDetachedKeys: undefined,
+  }
 }
 
 function normalizeNoteContent(
@@ -181,22 +296,41 @@ function normalizeNoteContent(
   const aisleBodyMap = new Map(normalizeNoteAisleBodies(rawNoteAisleBodies).map((body) => [body.id, body]))
   const fallbackTimestamp = createTimestamp()
   const syncedNoteBodies = noteBodies.map((body) => ({
-    ...body,
-    aisles: body.aisles.map((aisle) => {
+    ...clearLegacyNoteBodyFrontmatter(body),
+    aisles: body.aisles.map((aisle, index) => {
       const aisleBodyId = getAisleBodyId(aisle)
       const existing = aisleBodyMap.get(aisleBodyId)
-      if (!existing) {
-        aisleBodyMap.set(aisleBodyId, {
+      let aisleBody = existing ?? normalizeNoteAisleBodyRecord(
+        {
           id: aisleBodyId,
           createdAt: body.createdAt ?? fallbackTimestamp,
           updatedAt: body.updatedAt ?? fallbackTimestamp,
           markdown: aisle.markdown,
-        })
+        },
+        fallbackTimestamp,
+      )
+      if (!aisleBody) {
+        aisleBody = {
+          id: aisleBodyId,
+          createdAt: body.createdAt ?? fallbackTimestamp,
+          updatedAt: body.updatedAt ?? fallbackTimestamp,
+          markdown: aisle.markdown,
+          frontmatter: null,
+          frontmatterStatus: 'none',
+        }
       }
+      if (index === 0) {
+        aisleBody = applyLegacyFrontmatterToFirstAisle(
+          aisleBody,
+          body.frontmatter,
+          normalizeLegacyNoteBodyFrontmatterMeta(body),
+        )
+      }
+      aisleBodyMap.set(aisleBodyId, aisleBody)
       return {
         ...aisle,
         aisleBodyId,
-        markdown: existing?.markdown ?? aisle.markdown,
+        markdown: aisleBody.markdown,
       }
     }),
   }))
@@ -224,20 +358,7 @@ function normalizeNoteBodies(raw: unknown): NoteBody[] {
               markdown: normalizeMarkdownForPersistence(typeof candidate.markdown === 'string' ? candidate.markdown : ''),
             },
           ]
-    const savedFrontmatter = normalizeFrontmatterData(candidate.frontmatter)
-    const extracted = !savedFrontmatter && fallbackAisles[0]?.markdown
-      ? extractMarkdownFrontmatter(fallbackAisles[0].markdown)
-      : null
-    const normalizedAisles = extracted?.frontmatter
-      ? [
-          {
-            ...fallbackAisles[0],
-            markdown: normalizeMarkdownForPersistence(extracted.markdown),
-          },
-          ...fallbackAisles.slice(1),
-        ]
-      : fallbackAisles
-    const frontmatter = savedFrontmatter ?? extracted?.frontmatter ?? null
+    const frontmatter = normalizeFrontmatterData(candidate.frontmatter)
     const createdAt = normalizeTimestamp(
       candidate.createdAt ?? frontmatterTimestamp(frontmatter, ['createdAt', 'created']),
       fallbackTimestamp,
@@ -261,7 +382,7 @@ function normalizeNoteBodies(raw: unknown): NoteBody[] {
       frontmatterTemplateRemovedFieldIds: normalizeStringList(candidate.frontmatterTemplateRemovedFieldIds),
       frontmatterComputedFields: normalizeFrontmatterComputedFields(candidate.frontmatterComputedFields),
       frontmatterTemplateDetachedKeys: normalizeStringList(candidate.frontmatterTemplateDetachedKeys),
-      aisles: normalizedAisles,
+      aisles: fallbackAisles,
     })
   }
   return bodies

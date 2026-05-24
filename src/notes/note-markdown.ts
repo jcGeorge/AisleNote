@@ -1,5 +1,5 @@
 import { createId, createTimestamp } from '../state/workspace'
-import type { NoteAisle, NoteAisleBody, NoteBody } from '../types/app'
+import type { FrontmatterMeta, NoteAisle, NoteAisleBody, NoteBody } from '../types/app'
 
 export type IndependentNoteBodyCopy = {
   body: NoteBody
@@ -24,6 +24,32 @@ export function getAisleMarkdown(
 ): string {
   const bodyMap = noteAisleBodies instanceof Map ? noteAisleBodies : buildNoteAisleBodyMap(noteAisleBodies)
   return bodyMap.get(getAisleBodyId(aisle))?.markdown ?? aisle.markdown
+}
+
+function cloneFrontmatterMeta(meta: FrontmatterMeta | undefined): FrontmatterMeta | undefined {
+  if (!meta) return undefined
+  return {
+    ...meta,
+    templateFieldOrigins: meta.templateFieldOrigins
+      ? Object.fromEntries(Object.entries(meta.templateFieldOrigins).map(([key, origin]) => [key, { ...origin }]))
+      : undefined,
+    templateRemovedFieldIds: meta.templateRemovedFieldIds ? [...meta.templateRemovedFieldIds] : undefined,
+    computedFields: meta.computedFields ? { ...meta.computedFields } : undefined,
+    templateDetachedKeys: meta.templateDetachedKeys ? [...meta.templateDetachedKeys] : undefined,
+  }
+}
+
+function cloneAisleBodyFrontmatter(source: NoteAisleBody | undefined): Pick<
+  NoteAisleBody,
+  'frontmatter' | 'frontmatterStatus' | 'frontmatterParseError' | 'frontmatterRaw' | 'frontmatterMeta'
+> {
+  return {
+    frontmatter: source?.frontmatter && typeof source.frontmatter === 'object' ? { ...source.frontmatter } : source?.frontmatter ?? null,
+    frontmatterStatus: source?.frontmatterStatus ?? (source?.frontmatter ? 'valid' : 'none'),
+    frontmatterParseError: source?.frontmatterParseError,
+    frontmatterRaw: source?.frontmatterRaw,
+    frontmatterMeta: cloneFrontmatterMeta(source?.frontmatterMeta),
+  }
 }
 
 export function resolveNoteAisles(
@@ -64,32 +90,20 @@ export function cloneNoteBodyAsIndependentCopy(
 ): IndependentNoteBodyCopy {
   const timestamp = createTimestamp()
   const aisles = body.aisles.length > 0 ? body.aisles : [{ id: createId(), markdown: '' }]
+  const bodyMap = noteAisleBodies instanceof Map ? noteAisleBodies : buildNoteAisleBodyMap(noteAisleBodies)
   const aisleBodies = aisles.map((aisle) => ({
     id: createId(),
     createdAt: timestamp,
     updatedAt: timestamp,
     markdown: getAisleMarkdown(aisle, noteAisleBodies),
+    ...cloneAisleBodyFrontmatter(bodyMap.get(getAisleBodyId(aisle))),
   }))
   return {
     body: {
       id: createId(),
       createdAt: timestamp,
       updatedAt: timestamp,
-      frontmatter: body.frontmatter ? { ...body.frontmatter } : null,
-      frontmatterTemplateId: body.frontmatterTemplateId,
-      frontmatterTemplateDerived: body.frontmatterTemplateDerived,
-      frontmatterTemplateFieldOrigins: body.frontmatterTemplateFieldOrigins
-        ? Object.fromEntries(Object.entries(body.frontmatterTemplateFieldOrigins).map(([key, origin]) => [key, { ...origin }]))
-        : undefined,
-      frontmatterTemplateRemovedFieldIds: body.frontmatterTemplateRemovedFieldIds
-        ? [...body.frontmatterTemplateRemovedFieldIds]
-        : undefined,
-      frontmatterComputedFields: body.frontmatterComputedFields
-        ? { ...body.frontmatterComputedFields }
-        : undefined,
-      frontmatterTemplateDetachedKeys: body.frontmatterTemplateDetachedKeys
-        ? [...body.frontmatterTemplateDetachedKeys]
-        : undefined,
+      frontmatter: null,
       aisles: aisleBodies.map((aisleBody) => ({
         id: createId(),
         aisleBodyId: aisleBody.id,
@@ -100,27 +114,13 @@ export function cloneNoteBodyAsIndependentCopy(
   }
 }
 
-export function cloneNoteBodyMetadataWithAisles(baseBody: NoteBody, aisles: NoteAisle[]): NoteBody {
+export function cloneNoteBodyMetadataWithAisles(_baseBody: NoteBody, aisles: NoteAisle[]): NoteBody {
   const timestamp = createTimestamp()
   return {
     id: createId(),
     createdAt: timestamp,
     updatedAt: timestamp,
-    frontmatter: baseBody.frontmatter ? { ...baseBody.frontmatter } : null,
-    frontmatterTemplateId: baseBody.frontmatterTemplateId,
-    frontmatterTemplateDerived: baseBody.frontmatterTemplateDerived,
-    frontmatterTemplateFieldOrigins: baseBody.frontmatterTemplateFieldOrigins
-      ? Object.fromEntries(Object.entries(baseBody.frontmatterTemplateFieldOrigins).map(([key, origin]) => [key, { ...origin }]))
-      : undefined,
-    frontmatterTemplateRemovedFieldIds: baseBody.frontmatterTemplateRemovedFieldIds
-      ? [...baseBody.frontmatterTemplateRemovedFieldIds]
-      : undefined,
-    frontmatterComputedFields: baseBody.frontmatterComputedFields
-      ? { ...baseBody.frontmatterComputedFields }
-      : undefined,
-    frontmatterTemplateDetachedKeys: baseBody.frontmatterTemplateDetachedKeys
-      ? [...baseBody.frontmatterTemplateDetachedKeys]
-      : undefined,
+    frontmatter: null,
     aisles,
   }
 }

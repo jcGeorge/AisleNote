@@ -15,6 +15,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import JSZip from 'jszip'
+import { parseDocument, stringify as stringifyYaml } from 'yaml'
 import {
   DEFAULT_AUTO_REMOVE_DAYS,
   DEFAULT_DOMAIN_ID,
@@ -37,8 +38,12 @@ import {
 } from '../src/storage/storage-path-segments.js'
 import {
   STORAGE_PROFILE_SETTINGS_FILE,
-  extractSyncedGlobalSettings,
-  extractSyncedProfileSettings,
+  ROOT_SPLIT_FILES,
+  LEGACY_ROOT_SPLIT_FILES,
+  buildSyncedSettingsFromSplitFiles,
+  extractAppSettings,
+  extractEditorState,
+  extractFrontmatterSettings,
   getSyncedProfileSettingsForLoad,
 } from '../src/storage/settings-partition.js'
 import {
@@ -50,7 +55,8 @@ import {
 
 const LEGACY_APP_STATE_RELATIVE_PATH = path.join('data', 'notes', 'index.json')
 export const HYBRID_ROOT_DIR = 'notes-data'
-const SCHEMA_VERSION = 1
+const SCHEMA_VERSION = 3
+const SUPPORTED_SCHEMA_VERSIONS = new Set([1, 2, SCHEMA_VERSION])
 const DOMAINS_DIR = 'domains'
 const STORAGE_RECOVERY_DIR = 'storage-recovery'
 export const RECOVERY_SNAPSHOT_MAX_ACTIVE_DAYS = 30
@@ -61,6 +67,8 @@ export const STORAGE_SNAPSHOT_MODES = Object.freeze({
   SKIP: 'skip',
 })
 const IMAGE_METADATA_FRAGMENT_PREFIX = '#tabs-image='
+const FRONTMATTER_OPEN_RE = /^---[ \t]*(?:\r?\n|$)/
+const FRONTMATTER_CLOSE_RE = /(?:^|\r?\n)---[ \t]*(?:\r?\n|$)/
 const INTERNAL_INDENT_TOKEN = '\u2060\u2003\u2003'
 const EDITOR_BLANK_LINE_PLACEHOLDER = '\u200b'
 const EXPORT_TAB_SPACES = '    '
@@ -230,13 +238,13 @@ function buildTrashDataFromManifestItems(trashItems, trashRoot, issues = null, i
               : '',
         title: typeof item.title === 'string' ? item.title : 'deleted tab',
         noteBodyId: typeof item.noteBodyId === 'string' ? item.noteBodyId : '',
-        homeContent: typeof item.file === 'string' ? readMarkdownFile(trashRoot, item.file, issues, issueRootPath) : '',
+        homeContent: typeof item.file === 'string' ? readMarkdownBodyFile(trashRoot, item.file, issues, issueRootPath) : '',
         activeSubTabId: typeof item.activeSubTabId === 'string' ? item.activeSubTabId : null,
         subTabs: ensureArray(item.subTabs).map((subTabRecord) => ({
           id: typeof subTabRecord?.id === 'string' ? subTabRecord.id : '',
           title: typeof subTabRecord?.title === 'string' ? subTabRecord.title : 'tab',
           noteBodyId: typeof subTabRecord?.noteBodyId === 'string' ? subTabRecord.noteBodyId : '',
-          content: typeof subTabRecord?.file === 'string' ? readMarkdownFile(trashRoot, subTabRecord.file, issues, issueRootPath) : '',
+          content: typeof subTabRecord?.file === 'string' ? readMarkdownBodyFile(trashRoot, subTabRecord.file, issues, issueRootPath) : '',
         })),
       },
     }))
@@ -253,7 +261,7 @@ function buildTrashDataFromManifestItems(trashItems, trashRoot, issues = null, i
         id: typeof item?.original?.subTabId === 'string' ? item.original.subTabId : typeof item.id === 'string' ? item.id : '',
         title: typeof item.title === 'string' ? item.title : 'deleted note',
         noteBodyId: typeof item.noteBodyId === 'string' ? item.noteBodyId : '',
-        content: typeof item.file === 'string' ? readMarkdownFile(trashRoot, item.file, issues, issueRootPath) : '',
+        content: typeof item.file === 'string' ? readMarkdownBodyFile(trashRoot, item.file, issues, issueRootPath) : '',
       },
     }))
     .filter((entry) => entry.id && entry.parentTabId && entry.subTab.id)
@@ -703,21 +711,115 @@ function buildNoteBodyManifestRecord(body, aisles) {
     id: typeof body?.id === 'string' ? body.id : '',
     createdAt: typeof body?.createdAt === 'string' ? body.createdAt : undefined,
     updatedAt: typeof body?.updatedAt === 'string' ? body.updatedAt : undefined,
-    frontmatter: isRecord(body?.frontmatter) ? body.frontmatter : null,
-    frontmatterTemplateId: typeof body?.frontmatterTemplateId === 'string' ? body.frontmatterTemplateId : undefined,
-    frontmatterTemplateDerived:
-      typeof body?.frontmatterTemplateDerived === 'boolean' ? body.frontmatterTemplateDerived : undefined,
-    frontmatterTemplateFieldOrigins: isRecord(body?.frontmatterTemplateFieldOrigins)
-      ? body.frontmatterTemplateFieldOrigins
-      : undefined,
-    frontmatterTemplateRemovedFieldIds: ensureArray(body?.frontmatterTemplateRemovedFieldIds).filter(
-      (fieldId) => typeof fieldId === 'string' && fieldId.trim().length > 0,
-    ),
-    frontmatterComputedFields: isRecord(body?.frontmatterComputedFields) ? body.frontmatterComputedFields : undefined,
-    frontmatterTemplateDetachedKeys: ensureArray(body?.frontmatterTemplateDetachedKeys).filter(
-      (key) => typeof key === 'string' && key.trim().length > 0,
-    ),
     aisles,
+  }
+}
+
+function stringifyFrontmatterYaml(frontmatter) {
+  if (!isRecord(frontmatter) || Object.keys(frontmatter).length === 0) return ''
+  return stringifyYaml(frontmatter, {
+    collectionStyle: 'block',
+    lineWidth: 0,
+  }).trimEnd()
+}
+
+function parseFrontmatterYaml(rawYaml) {
+  const trimmed = String(rawYaml ?? '').trim()
+  if (!trimmed) return { ok: true, data: null }
+  const document = parseDocument(trimmed, { prettyErrors: false })
+  if (document.errors.length > 0) {
+    return { ok: false, message: document.errors[0]?.message || 'frontmatter YAML is invalid.' }
+  }
+  const parsed = document.toJS()
+  if (parsed == null) return { ok: true, data: null }
+  if (!isRecord(parsed) || Array.isArray(parsed)) {
+    return { ok: false, message: 'frontmatter must be a YAML mapping.' }
+  }
+  return { ok: true, data: parsed }
+}
+
+function splitMarkdownFrontmatterForStorage(markdown) {
+  if (!FRONTMATTER_OPEN_RE.test(markdown)) {
+    return { markdown, frontmatter: null, frontmatterStatus: 'none' }
+  }
+  const openMatch = markdown.match(FRONTMATTER_OPEN_RE)
+  const bodyStart = openMatch?.[0].length ?? 0
+  const remainder = markdown.slice(bodyStart)
+  const closeMatch = remainder.match(FRONTMATTER_CLOSE_RE)
+  if (!closeMatch || closeMatch.index == null) {
+    return {
+      markdown,
+      frontmatter: null,
+      frontmatterStatus: 'invalid',
+      frontmatterParseError: 'frontmatter YAML block is missing a closing delimiter.',
+      frontmatterRaw: remainder,
+    }
+  }
+  const rawYaml = remainder.slice(0, closeMatch.index)
+  const closeEnd = closeMatch.index + closeMatch[0].length
+  const parsed = parseFrontmatterYaml(rawYaml)
+  if (!parsed.ok) {
+    return {
+      markdown,
+      frontmatter: null,
+      frontmatterStatus: 'invalid',
+      frontmatterParseError: parsed.message,
+      frontmatterRaw: rawYaml,
+    }
+  }
+  return {
+    markdown: remainder.slice(closeEnd).replace(/^\r?\n/, ''),
+    frontmatter: parsed.data,
+    frontmatterStatus: 'valid',
+    frontmatterRaw: rawYaml,
+  }
+}
+
+function readMarkdownBodyFile(baseDirectory, relativeFile, issues = null, issueRootPath = null) {
+  return splitMarkdownFrontmatterForStorage(readMarkdownFile(baseDirectory, relativeFile, issues, issueRootPath)).markdown
+}
+
+function composeAisleMarkdownForStorage(markdown, aisleBody) {
+  if (aisleBody?.frontmatterStatus === 'invalid') return markdown
+  const yaml = stringifyFrontmatterYaml(aisleBody?.frontmatter)
+  return yaml ? `---\n${yaml}\n---\n${markdown}` : markdown
+}
+
+function getLegacyFrontmatterMetaForStorage(body) {
+  const meta = {}
+  if (typeof body?.frontmatterTemplateId === 'string') meta.templateId = body.frontmatterTemplateId
+  if (typeof body?.frontmatterTemplateDerived === 'boolean') meta.templateDerived = body.frontmatterTemplateDerived
+  if (isRecord(body?.frontmatterTemplateFieldOrigins)) meta.templateFieldOrigins = body.frontmatterTemplateFieldOrigins
+  const removedFieldIds = ensureArray(body?.frontmatterTemplateRemovedFieldIds).filter(
+    (fieldId) => typeof fieldId === 'string' && fieldId.trim().length > 0,
+  )
+  if (removedFieldIds.length > 0) meta.templateRemovedFieldIds = removedFieldIds
+  if (isRecord(body?.frontmatterComputedFields)) meta.computedFields = body.frontmatterComputedFields
+  const detachedKeys = ensureArray(body?.frontmatterTemplateDetachedKeys).filter(
+    (key) => typeof key === 'string' && key.trim().length > 0,
+  )
+  if (detachedKeys.length > 0) meta.templateDetachedKeys = detachedKeys
+  return Object.keys(meta).length > 0 ? meta : undefined
+}
+
+function getAisleBodyForStorage(noteBody, aisleIndex, aisleBody) {
+  if (aisleIndex !== 0 || aisleBody?.frontmatterStatus === 'invalid' || isRecord(aisleBody?.frontmatter)) return aisleBody
+  const legacyFrontmatter = isRecord(noteBody?.frontmatter) ? noteBody.frontmatter : null
+  const legacyMeta = getLegacyFrontmatterMetaForStorage(noteBody)
+  if (!legacyFrontmatter && !legacyMeta) return aisleBody
+  return {
+    ...(aisleBody ?? {}),
+    frontmatter: legacyFrontmatter ?? aisleBody?.frontmatter,
+    frontmatterStatus: legacyFrontmatter ? 'valid' : aisleBody?.frontmatterStatus,
+    frontmatterMeta: isRecord(aisleBody?.frontmatterMeta) ? aisleBody.frontmatterMeta : legacyMeta,
+  }
+}
+
+function buildNoteAisleBodyManifestRecord(aisleBodyId, file, aisleBody) {
+  return {
+    id: aisleBodyId,
+    file,
+    frontmatterMeta: isRecord(aisleBody?.frontmatterMeta) ? aisleBody.frontmatterMeta : undefined,
   }
 }
 
@@ -752,7 +854,12 @@ function writeNoteBodyAtPath({
       typeof firstAisle?.aisleBodyId === 'string' && firstAisle.aisleBodyId
         ? firstAisle.aisleBodyId
         : firstAisleId
-    const sharedMarkdown = firstAisleBodyId ? noteAisleBodyMap.get(firstAisleBodyId)?.markdown : undefined
+    const sourceAisleBody = getAisleBodyForStorage(
+      body,
+      0,
+      firstAisleBodyId ? noteAisleBodyMap.get(firstAisleBodyId) : undefined,
+    )
+    const sharedMarkdown = sourceAisleBody?.markdown
     const markdown =
       typeof sharedMarkdown === 'string'
         ? sharedMarkdown
@@ -762,7 +869,11 @@ function writeNoteBodyAtPath({
     const primaryFile = usesAisleFolder
       ? getAisleFile(0, firstAisleId)
       : primaryFileRelative
-    setStorageTextFile(fileMap, primaryFile, externalizeMarkdownImages(markdown, primaryFile, assetBank))
+    setStorageTextFile(
+      fileMap,
+      primaryFile,
+      externalizeMarkdownImages(composeAisleMarkdownForStorage(markdown, sourceAisleBody), primaryFile, assetBank),
+    )
     return { primaryFile, notePath }
   }
 
@@ -772,7 +883,7 @@ function writeNoteBodyAtPath({
       const aisleId = `${bodyId}-home`
       noteBodyRecords.set(bodyId, buildNoteBodyManifestRecord(body, [{ id: aisleId, aisleBodyId: aisleId, file: primaryFileRelative }]))
       if (!noteAisleBodyRecords.has(aisleId)) {
-        noteAisleBodyRecords.set(aisleId, { id: aisleId, file: primaryFileRelative })
+        noteAisleBodyRecords.set(aisleId, buildNoteAisleBodyManifestRecord(aisleId, primaryFileRelative, undefined))
       }
     }
     return { primaryFile: primaryFileRelative, notePath: primaryFileRelative }
@@ -783,7 +894,8 @@ function writeNoteBodyAtPath({
     const aisleId = typeof aisle?.id === 'string' && aisle.id ? aisle.id : `${bodyId}-aisle-${index + 1}`
     const aisleBodyId = typeof aisle?.aisleBodyId === 'string' && aisle.aisleBodyId ? aisle.aisleBodyId : aisleId
     const file = usesAisleFolder ? getAisleFile(index, aisleId) : primaryFileRelative
-    const sharedMarkdown = noteAisleBodyMap.get(aisleBodyId)?.markdown
+    const sourceAisleBody = getAisleBodyForStorage(body, index, noteAisleBodyMap.get(aisleBodyId))
+    const sharedMarkdown = sourceAisleBody?.markdown
     const markdown =
       typeof sharedMarkdown === 'string'
         ? sharedMarkdown
@@ -792,29 +904,33 @@ function writeNoteBodyAtPath({
           : index === 0
             ? fallbackMarkdown
             : ''
-    setStorageTextFile(fileMap, file, externalizeMarkdownImages(markdown, file, assetBank))
+    setStorageTextFile(
+      fileMap,
+      file,
+      externalizeMarkdownImages(composeAisleMarkdownForStorage(markdown, sourceAisleBody), file, assetBank),
+    )
     aisleRecords.push({ id: aisleId, aisleBodyId, file })
     if (!noteAisleBodyRecords.has(aisleBodyId)) {
-      noteAisleBodyRecords.set(aisleBodyId, { id: aisleBodyId, file })
+      noteAisleBodyRecords.set(aisleBodyId, buildNoteAisleBodyManifestRecord(aisleBodyId, file, sourceAisleBody))
     }
   })
   noteBodyRecords.set(bodyId, buildNoteBodyManifestRecord(body, aisleRecords))
   return { primaryFile: aisleRecords[0]?.file ?? primaryFileRelative, notePath }
 }
 
-function buildRootManifest(appState, domainEntries, noteBodyEntries, noteAisleBodyEntries) {
+function buildNavigationState(appState) {
   const activeDomain = getActiveDomainFromAppState(appState, getDomainsFromAppState(appState))
   const activeDomainId = activeDomain ? getDomainId(activeDomain) : DEFAULT_DOMAIN_ID
+  return {
+    activeDomainId,
+    ...(isRecord(appState?.lastOpened) ? { lastOpened: appState.lastOpened } : {}),
+  }
+}
 
+function buildRootManifest() {
   return {
     schemaVersion: SCHEMA_VERSION,
-    globalSettings: extractSyncedGlobalSettings(appState),
-    domains: domainEntries,
-    deletedDomains: ensureArray(appState.deletedDomains).filter(isRecord),
-    deletedSpaces: ensureArray(appState.deletedSpaces).filter(isRecord),
-    noteBodies: noteBodyEntries,
-    noteAisleBodies: noteAisleBodyEntries,
-    activeDomainId,
+    files: ROOT_SPLIT_FILES,
   }
 }
 
@@ -1039,6 +1155,7 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
   const noteAisleBodyMap = new Map(noteAisleBodies.map((body) => [typeof body.id === 'string' ? body.id : '', body]))
   const noteBodyRecords = new Map()
   const noteAisleBodyRecords = new Map()
+  const orphanNoteBodyIds = new Set()
   const fileMap = new Map()
   const assetBank = createAssetBank('assets', typeof options.assetSourceRoot === 'string' ? options.assetSourceRoot : tempRoot)
   const domainPathForTitle = createStoragePathAllocator()
@@ -1081,6 +1198,7 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
   for (const body of noteBodies) {
     const bodyId = typeof body?.id === 'string' ? body.id : ''
     if (!bodyId || noteBodyRecords.has(bodyId)) continue
+    orphanNoteBodyIds.add(bodyId)
     const orphanSegment = orphanPathForId('Orphan Note Body', bodyId, 'orphan note body')
     const orphanFileName = orphanFileForId('Orphan Note Body', bodyId, 'orphan note body')
     writeNoteBodyAtPath({
@@ -1098,12 +1216,46 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
   }
 
   addAssetBankToStorageFileMap(fileMap, assetBank)
-  const noteBodyEntries = noteBodies
+  const allNoteBodyEntries = noteBodies
     .map((body) => (typeof body?.id === 'string' ? noteBodyRecords.get(body.id) : null))
     .filter(Boolean)
-  const noteAisleBodyEntries = Array.from(noteAisleBodyRecords.values())
-  setStorageJsonFile(fileMap, STORAGE_PROFILE_SETTINGS_FILE, extractSyncedProfileSettings(parsedState))
-  setStorageJsonFile(fileMap, 'manifest.json', buildRootManifest(parsedState, domainEntries, noteBodyEntries, noteAisleBodyEntries))
+  const attachedNoteBodyEntries = allNoteBodyEntries.filter((body) => {
+    const bodyId = typeof body?.id === 'string' ? body.id : ''
+    return !orphanNoteBodyIds.has(bodyId)
+  })
+  const noteBodyEntries = allNoteBodyEntries.map((body) => {
+    const bodyId = typeof body?.id === 'string' ? body.id : ''
+    return orphanNoteBodyIds.has(bodyId) ? { ...body, storageStatus: 'unlinked' } : body
+  })
+  const liveAisleBodyIds = new Set()
+  for (const body of attachedNoteBodyEntries) {
+    for (const aisle of ensureArray(body?.aisles)) {
+      const aisleBodyId =
+        typeof aisle?.aisleBodyId === 'string' && aisle.aisleBodyId
+          ? aisle.aisleBodyId
+          : typeof aisle?.id === 'string'
+            ? aisle.id
+            : ''
+      if (aisleBodyId) liveAisleBodyIds.add(aisleBodyId)
+    }
+  }
+  const aisleBodyEntries = []
+  for (const body of noteAisleBodyRecords.values()) {
+    const bodyId = typeof body?.id === 'string' ? body.id : ''
+    aisleBodyEntries.push(bodyId && liveAisleBodyIds.has(bodyId) ? body : { ...body, storageStatus: 'unlinked' })
+  }
+
+  setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.workspaceIndex, { domains: domainEntries })
+  setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.navigationState, buildNavigationState(parsedState))
+  setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.appSettings, extractAppSettings(parsedState))
+  setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.frontmatterSettings, extractFrontmatterSettings(parsedState))
+  setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.editorState, extractEditorState(parsedState))
+  setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.deletedWorkspace, {
+    deletedDomains: ensureArray(parsedState.deletedDomains).filter(isRecord),
+    deletedSpaces: ensureArray(parsedState.deletedSpaces).filter(isRecord),
+  })
+  setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.noteRegistry, { noteBodies: noteBodyEntries, aisleBodies: aisleBodyEntries })
+  setStorageJsonFile(fileMap, 'manifest.json', buildRootManifest())
 
   mkdirSync(tempRoot, { recursive: true })
   for (const [relativeFile, entry] of fileMap.entries()) {
@@ -1127,10 +1279,11 @@ function readNoteBodiesFromRoot(rootPath, rootManifest, issues = null) {
           const aisleBodyId = typeof aisle?.aisleBodyId === 'string' ? aisle.aisleBodyId : ''
           const file = typeof aisle?.file === 'string' ? aisle.file : ''
           if (!aisleId || !file) return null
+          const parsedMarkdown = splitMarkdownFrontmatterForStorage(readMarkdownFile(rootPath, file, issues, rootPath))
           return {
             id: aisleId,
             aisleBodyId: aisleBodyId || aisleId,
-            markdown: readMarkdownFile(rootPath, file, issues, rootPath),
+            markdown: parsedMarkdown.markdown,
           }
         })
         .filter(Boolean)
@@ -1168,12 +1321,178 @@ function readNoteAisleBodiesFromRoot(rootPath, rootManifest, issues = null) {
     const file = typeof body?.file === 'string' ? body.file : ''
     if (!bodyId || !file || seen.has(bodyId)) continue
     seen.add(bodyId)
+    const parsedMarkdown = splitMarkdownFrontmatterForStorage(readMarkdownFile(rootPath, file, issues, rootPath))
     aisleBodies.push({
       id: bodyId,
-      markdown: readMarkdownFile(rootPath, file, issues, rootPath),
+      markdown: parsedMarkdown.markdown,
+      frontmatter: parsedMarkdown.frontmatter,
+      frontmatterStatus: parsedMarkdown.frontmatterStatus,
+      frontmatterParseError: parsedMarkdown.frontmatterParseError,
+      frontmatterRaw: parsedMarkdown.frontmatterRaw,
+      frontmatterMeta: isRecord(body.frontmatterMeta) ? body.frontmatterMeta : undefined,
     })
   }
   return aisleBodies
+}
+
+function isRootSplitFileName(value) {
+  return (
+    typeof value === 'string' &&
+    value.trim().length > 0 &&
+    !value.includes('/') &&
+    !value.includes('\\') &&
+    value !== '.' &&
+    value !== '..'
+  )
+}
+
+function getRootSplitFileName(rootManifest, key, required, issues = null) {
+  const manifestIssuePath = path.posix.join(HYBRID_ROOT_DIR, 'manifest.json')
+  const files = isRecord(rootManifest?.files) ? rootManifest.files : null
+  if (!files) {
+    if (required) {
+      addStorageIssue(
+        issues,
+        'missing-root-split-files-map',
+        'error',
+        manifestIssuePath,
+        'Root manifest is missing its schema 3 file map.',
+      )
+    }
+    return null
+  }
+  const configuredFile = files[key]
+  if (configuredFile === undefined && !required) return ROOT_SPLIT_FILES[key] ?? LEGACY_ROOT_SPLIT_FILES[key]
+  if (!isRootSplitFileName(configuredFile)) {
+    addStorageIssue(
+      issues,
+      'invalid-root-split-file-entry',
+      required ? 'error' : 'warning',
+      manifestIssuePath,
+      `Root manifest has an invalid file pointer for ${key}.`,
+    )
+    return required ? null : ROOT_SPLIT_FILES[key] ?? LEGACY_ROOT_SPLIT_FILES[key]
+  }
+  return configuredFile
+}
+
+function readRootSplitJsonFile(rootPath, rootManifest, key, required, issues = null) {
+  const fileName = getRootSplitFileName(rootManifest, key, required, issues)
+  if (!fileName) return required ? null : {}
+  const filePath = path.join(rootPath, fileName)
+  const parsed = readJsonFileIfExists(filePath, issues, {
+    rootPath,
+    ...(required
+      ? {
+          missingCode: 'missing-root-split-file',
+          missingMessage: `Required root split file ${fileName} is missing.`,
+          severity: 'error',
+        }
+      : {}),
+    parseCode: 'corrupt-root-split-file',
+    parseMessage: `Root split file ${fileName} is corrupt.`,
+    severity: required ? 'error' : 'warning',
+  })
+  if (parsed === null) return required ? null : {}
+  if (!isRecord(parsed)) {
+    addStorageIssue(
+      issues,
+      'invalid-root-split-file',
+      required ? 'error' : 'warning',
+      formatStorageIssuePath(rootPath, filePath),
+      `Root split file ${fileName} does not contain a JSON object.`,
+    )
+    return required ? null : {}
+  }
+  return parsed
+}
+
+function readSchema3RootParts(rootPath, rootManifest, issues = null) {
+  if (!isRecord(rootManifest?.files)) {
+    addStorageIssue(
+      issues,
+      'missing-root-split-files-map',
+      'error',
+      path.posix.join(HYBRID_ROOT_DIR, 'manifest.json'),
+      'Root manifest is missing its schema 3 file map.',
+    )
+    return null
+  }
+  const splitFiles = {}
+  const files = rootManifest.files
+  const usesNarrowSplit = typeof files.noteRegistry === 'string' || typeof files.appSettings === 'string'
+  const requiredKeys = usesNarrowSplit
+    ? ['workspaceIndex', 'navigationState', 'appSettings', 'frontmatterSettings', 'deletedWorkspace', 'noteRegistry']
+    : [
+        'workspaceIndex',
+        'navigationState',
+        'appearanceSettings',
+        'shortcutSettings',
+        'frontmatterSettings',
+        'deletedWorkspace',
+        'noteBodies',
+        'aisleBodies',
+        'orphanNoteBodies',
+        'orphanAisleBodies',
+      ]
+  for (const key of requiredKeys) {
+    const file = readRootSplitJsonFile(rootPath, rootManifest, key, true, issues)
+    if (!file) return null
+    splitFiles[key] = file
+  }
+  splitFiles.appSettings = readRootSplitJsonFile(rootPath, rootManifest, 'appSettings', false, issues) ?? {}
+  splitFiles.appearanceSettings = readRootSplitJsonFile(rootPath, rootManifest, 'appearanceSettings', false, issues) ?? {}
+  splitFiles.shortcutSettings = readRootSplitJsonFile(rootPath, rootManifest, 'shortcutSettings', false, issues) ?? {}
+  splitFiles.uiPreferences = readRootSplitJsonFile(rootPath, rootManifest, 'uiPreferences', false, issues) ?? {}
+  splitFiles.editorState = readRootSplitJsonFile(rootPath, rootManifest, 'editorState', false, issues) ?? {}
+  const noteRegistry = splitFiles.noteRegistry
+
+  return {
+    syncedSettings: buildSyncedSettingsFromSplitFiles(splitFiles),
+    noteBodiesRoot: {
+      noteBodies: noteRegistry
+        ? ensureArray(noteRegistry.noteBodies)
+        : [
+            ...ensureArray(splitFiles.noteBodies?.noteBodies),
+            ...ensureArray(splitFiles.orphanNoteBodies?.noteBodies),
+          ],
+    },
+    noteAisleBodiesRoot: {
+      noteAisleBodies: noteRegistry
+        ? ensureArray(noteRegistry.aisleBodies)
+        : [
+            ...ensureArray(splitFiles.aisleBodies?.noteAisleBodies),
+            ...ensureArray(splitFiles.orphanAisleBodies?.noteAisleBodies),
+          ],
+    },
+    domainEntries: ensureArray(splitFiles.workspaceIndex?.domains),
+    deletedDomains: ensureArray(splitFiles.deletedWorkspace?.deletedDomains).filter(isRecord),
+    deletedSpaces: ensureArray(splitFiles.deletedWorkspace?.deletedSpaces).filter(isRecord),
+    activeDomainId:
+      typeof splitFiles.navigationState?.activeDomainId === 'string'
+        ? splitFiles.navigationState.activeDomainId
+        : DEFAULT_DOMAIN_ID,
+    lastOpened: isRecord(splitFiles.navigationState?.lastOpened) ? splitFiles.navigationState.lastOpened : null,
+  }
+}
+
+function readLegacyRootParts(rootPath, rootManifest, issues = null) {
+  const profileSettings = readJsonFileIfExists(path.join(rootPath, STORAGE_PROFILE_SETTINGS_FILE), issues, {
+    rootPath,
+    parseCode: 'corrupt-profile-settings',
+    severity: 'warning',
+    parseMessage: 'Profile settings are corrupt; using root manifest settings.',
+  })
+  return {
+    syncedSettings: getSyncedProfileSettingsForLoad(rootManifest, profileSettings),
+    noteBodiesRoot: rootManifest,
+    noteAisleBodiesRoot: rootManifest,
+    domainEntries: ensureArray(rootManifest?.domains),
+    deletedDomains: ensureArray(rootManifest?.deletedDomains).filter(isRecord),
+    deletedSpaces: ensureArray(rootManifest?.deletedSpaces).filter(isRecord),
+    activeDomainId: typeof rootManifest?.activeDomainId === 'string' ? rootManifest.activeDomainId : DEFAULT_DOMAIN_ID,
+    lastOpened: isRecord(rootManifest?.lastOpened) ? rootManifest.lastOpened : null,
+  }
 }
 
 function addDirectoryToZip(zip, directoryPath, zipPrefix) {
@@ -1207,13 +1526,13 @@ function readSpace(rootPath, spaceRootRelative, spaceEntry, issues = null) {
       title: typeof tabRecord?.title === 'string' ? tabRecord.title : 'tab',
       noteBodyId: typeof tabRecord?.noteBodyId === 'string' ? tabRecord.noteBodyId : '',
       homeContent:
-        typeof tabRecord?.homeNoteFile === 'string' ? readMarkdownFile(spaceRoot, tabRecord.homeNoteFile, issues, rootPath) : '',
+        typeof tabRecord?.homeNoteFile === 'string' ? readMarkdownBodyFile(spaceRoot, tabRecord.homeNoteFile, issues, rootPath) : '',
       activeSubTabId: typeof tabRecord?.activeSubTabId === 'string' ? tabRecord.activeSubTabId : null,
       subTabs: ensureArray(tabRecord?.subTabs).map((subTabRecord) => ({
         id: typeof subTabRecord?.id === 'string' ? subTabRecord.id : '',
         title: typeof subTabRecord?.title === 'string' ? subTabRecord.title : 'tab',
         noteBodyId: typeof subTabRecord?.noteBodyId === 'string' ? subTabRecord.noteBodyId : '',
-        content: typeof subTabRecord?.file === 'string' ? readMarkdownFile(spaceRoot, subTabRecord.file, issues, rootPath) : '',
+        content: typeof subTabRecord?.file === 'string' ? readMarkdownBodyFile(spaceRoot, subTabRecord.file, issues, rootPath) : '',
       })),
     }))
     .filter((tab) => tab.id)
@@ -1250,16 +1569,15 @@ function readSpace(rootPath, spaceRootRelative, spaceEntry, issues = null) {
 }
 
 function readHybridAppStateFromRootManifest(rootPath, rootManifest, issues = null) {
-  const profileSettings = readJsonFileIfExists(path.join(rootPath, STORAGE_PROFILE_SETTINGS_FILE), issues, {
-    rootPath,
-    parseCode: 'corrupt-profile-settings',
-    severity: 'warning',
-    parseMessage: 'Profile settings are corrupt; using root manifest settings.',
-  })
-  const syncedSettings = getSyncedProfileSettingsForLoad(rootManifest, profileSettings)
-  const noteBodies = readNoteBodiesFromRoot(rootPath, rootManifest, issues)
-  const noteAisleBodies = readNoteAisleBodiesFromRoot(rootPath, rootManifest, issues)
-  const domainEntries = ensureArray(rootManifest.domains)
+  const rootParts =
+    rootManifest.schemaVersion === SCHEMA_VERSION
+      ? readSchema3RootParts(rootPath, rootManifest, issues)
+      : readLegacyRootParts(rootPath, rootManifest, issues)
+  if (!rootParts) return null
+
+  const noteBodies = readNoteBodiesFromRoot(rootPath, rootParts.noteBodiesRoot, issues)
+  const noteAisleBodies = readNoteAisleBodiesFromRoot(rootPath, rootParts.noteAisleBodiesRoot, issues)
+  const domainEntries = rootParts.domainEntries
   if (domainEntries.length === 0) {
     addStorageIssue(issues, 'missing-domain-index', 'error', path.posix.join(HYBRID_ROOT_DIR, 'manifest.json'), 'Root manifest has no domains.')
     return null
@@ -1314,7 +1632,7 @@ function readHybridAppStateFromRootManifest(rootPath, rootManifest, issues = nul
       continue
     }
 
-    const lastOpened = isRecord(rootManifest.lastOpened) ? rootManifest.lastOpened : null
+    const lastOpened = rootParts.lastOpened
     const lastOpenedSpaceId =
       lastOpened &&
       lastOpened.domainId === domainId &&
@@ -1346,37 +1664,35 @@ function readHybridAppStateFromRootManifest(rootPath, rootManifest, issues = nul
     return null
   }
 
-  const lastOpened = isRecord(rootManifest.lastOpened) ? rootManifest.lastOpened : null
+  const lastOpened = rootParts.lastOpened
   const lastOpenedDomainId =
     lastOpened && typeof lastOpened.domainId === 'string'
       ? lastOpened.domainId
       : null
   const activeDomainId =
     (lastOpenedDomainId && domains.some((domain) => domain.id === lastOpenedDomainId) && lastOpenedDomainId) ||
-    (typeof rootManifest.activeDomainId === 'string' &&
-      domains.some((domain) => domain.id === rootManifest.activeDomainId) &&
-      rootManifest.activeDomainId) ||
+    (domains.some((domain) => domain.id === rootParts.activeDomainId) && rootParts.activeDomainId) ||
     domains[0].id
   const activeDomain = domains.find((domain) => domain.id === activeDomainId) ?? domains[0]
-  const theme = syncedSettings?.theme === 'custom'
+  const theme = rootParts.syncedSettings?.theme === 'custom'
     ? 'custom1'
-    : ['dark', 'light', 'dawn', 'blues', 'custom1', 'custom2', 'custom3'].includes(syncedSettings?.theme)
-      ? syncedSettings.theme
+    : ['dark', 'light', 'dawn', 'blues', 'custom1', 'custom2', 'custom3'].includes(rootParts.syncedSettings?.theme)
+      ? rootParts.syncedSettings.theme
       : 'dawn'
 
   return JSON.stringify({
     theme,
     activeDomainId,
     domains,
-    deletedDomains: ensureArray(rootManifest?.deletedDomains).filter(isRecord),
-    deletedSpaces: ensureArray(rootManifest?.deletedSpaces).filter(isRecord),
+    deletedDomains: rootParts.deletedDomains,
+    deletedSpaces: rootParts.deletedSpaces,
     noteBodies,
     noteAisleBodies,
     activeSpaceId: activeDomain.activeSpaceId,
     spaces: activeDomain.spaces,
-    hotkeys: syncedSettings?.hotkeys,
-    frontmatter: syncedSettings?.frontmatter,
-    ui: syncedSettings?.ui,
+    hotkeys: rootParts.syncedSettings?.hotkeys,
+    frontmatter: rootParts.syncedSettings?.frontmatter,
+    ui: rootParts.syncedSettings?.ui,
   })
 }
 
@@ -1392,7 +1708,11 @@ function readHybridAppStateResultFromRoot(rootPath) {
     missingMessage: 'Root manifest is missing.',
     parseMessage: 'Root manifest is corrupt.',
   })
-  if (!isRecord(rawRootManifest) || rawRootManifest.schemaVersion !== SCHEMA_VERSION) {
+  if (
+    !isRecord(rawRootManifest) ||
+    typeof rawRootManifest.schemaVersion !== 'number' ||
+    !SUPPORTED_SCHEMA_VERSIONS.has(rawRootManifest.schemaVersion)
+  ) {
     if (issues.length === 0) {
       addStorageIssue(
         issues,

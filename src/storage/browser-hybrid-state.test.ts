@@ -26,6 +26,17 @@ function getTextFileJson(fileMap: ReturnType<typeof buildHybridFileMapFromSerial
   return entry?.kind === 'text' ? (JSON.parse(entry.text) as Record<string, unknown>) : {}
 }
 
+function getRootSplitFileJson(
+  fileMap: ReturnType<typeof buildHybridFileMapFromSerializedState>,
+  rootManifest: Record<string, unknown>,
+  key: string,
+  fallbackFile: string,
+) {
+  const files = getRecord(rootManifest.files)
+  const fileName = typeof files[key] === 'string' ? files[key] : fallbackFile
+  return getTextFileJson(fileMap, `notes-data/${fileName}`)
+}
+
 function createBrowserStorageState() {
   const space = {
     id: 'space-1',
@@ -69,7 +80,8 @@ function createBrowserStorageState() {
 
 function getBrowserWorkspacePaths(fileMap: ReturnType<typeof buildHybridFileMapFromSerializedState>) {
   const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
-  const domainEntry = getRecord(Array.isArray(rootManifest.domains) ? rootManifest.domains[0] : null)
+  const workspaceIndex = getRootSplitFileJson(fileMap, rootManifest, 'workspaceIndex', 'workspace-index.json')
+  const domainEntry = getRecord(Array.isArray(workspaceIndex.domains) ? workspaceIndex.domains[0] : null)
   const domainRoot = `notes-data/domains/${String(domainEntry.path)}`
   const domainManifest = getTextFileJson(fileMap, `${domainRoot}/manifest.json`)
   const spaceEntry = getRecord(Array.isArray(domainManifest.spaces) ? domainManifest.spaces[0] : null)
@@ -77,6 +89,7 @@ function getBrowserWorkspacePaths(fileMap: ReturnType<typeof buildHybridFileMapF
   const spaceManifest = getTextFileJson(fileMap, `${spaceRoot}/manifest.json`)
   return {
     rootManifest,
+    workspaceIndex,
     domainEntry,
     domainRoot,
     domainManifest,
@@ -184,15 +197,37 @@ describe('browser hybrid storage', () => {
     const rootManifestEntry = fileMap.get('notes-data/manifest.json')
     const rootManifest =
       rootManifestEntry?.kind === 'text' ? (JSON.parse(rootManifestEntry.text) as Record<string, unknown>) : null
-    const profileSettings = getTextFileJson(fileMap, 'notes-data/profile-settings.json')
-    const firstDomain = getRecord(Array.isArray(rootManifest?.domains) ? rootManifest.domains[0] : null)
+    const workspaceIndex = getRootSplitFileJson(fileMap, getRecord(rootManifest), 'workspaceIndex', 'workspace-index.json')
+    const appSettings = getRootSplitFileJson(fileMap, getRecord(rootManifest), 'appSettings', 'app-settings.json')
+    const editorState = getRootSplitFileJson(fileMap, getRecord(rootManifest), 'editorState', 'editor-state.json')
+    const noteRegistry = getRootSplitFileJson(fileMap, getRecord(rootManifest), 'noteRegistry', 'note-registry.json')
+    const firstDomain = getRecord(Array.isArray(workspaceIndex.domains) ? workspaceIndex.domains[0] : null)
     const paths = Array.from(fileMap.keys())
     const serialized = readSerializedStateFromHybridFileMap(fileMap)
     const roundTripped = parseSavedState(serialized)
     const homeBody = roundTripped.noteBodies.find((body) => body.id === 'body-tab')
+    const homeAisleBody = roundTripped.noteAisleBodies?.find((body) => body.id === homeBody?.aisles[0]?.aisleBodyId)
     const subBody = roundTripped.noteBodies.find((body) => body.id === 'body-sub')
 
-    expect(rootManifest?.schemaVersion).toBe(1)
+    expect(rootManifest?.schemaVersion).toBe(3)
+    expect(Object.keys(getRecord(rootManifest)).sort()).toEqual(['files', 'schemaVersion'])
+    expect(Object.keys(getRecord(rootManifest?.files)).sort()).toEqual([
+      'appSettings',
+      'deletedWorkspace',
+      'editorState',
+      'frontmatterSettings',
+      'navigationState',
+      'noteRegistry',
+      'workspaceIndex',
+    ])
+    expect(fileMap.has('notes-data/profile-settings.json')).toBe(false)
+    expect(fileMap.has('notes-data/appearance-settings.json')).toBe(false)
+    expect(fileMap.has('notes-data/shortcut-settings.json')).toBe(false)
+    expect(fileMap.has('notes-data/ui-preferences.json')).toBe(false)
+    expect(fileMap.has('notes-data/note-bodies.json')).toBe(false)
+    expect(fileMap.has('notes-data/aisle-bodies.json')).toBe(false)
+    expect(fileMap.has('notes-data/orphan-note-bodies.json')).toBe(false)
+    expect(fileMap.has('notes-data/orphan-aisle-bodies.json')).toBe(false)
     expect(firstDomain.path).toEqual(expect.stringMatching(/^humble beginnings--[a-f0-9]{6}$/))
     expect(paths.some((path) => path.startsWith('notes-data/domains/'))).toBe(true)
     expect(paths.some((path) => path.startsWith('notes-data/topics/'))).toBe(false)
@@ -201,14 +236,18 @@ describe('browser hybrid storage', () => {
     expect(paths.some((path) => /\/Tab--[a-f0-9]{6}\/Sub--[a-f0-9]{6}\.md$/.test(path))).toBe(true)
     expect(serialized).not.toBeNull()
     expect(homeBody?.aisles[0]?.markdown).toBe('home body')
-    expect(homeBody?.frontmatter).toEqual({ created: '2024-01-01' })
-    expect(homeBody?.frontmatterTemplateId).toBe('template-1')
-    expect(homeBody?.frontmatterTemplateDerived).toBe(true)
-    expect(homeBody?.frontmatterTemplateFieldOrigins).toEqual({
-      created: { templateId: 'template-1', fieldId: 'field-1' },
+    expect(homeBody?.frontmatter).toBeNull()
+    expect(homeAisleBody?.frontmatter).toEqual({ created: '2024-01-01' })
+    expect(homeAisleBody?.frontmatterMeta).toMatchObject({
+      templateId: 'template-1',
+      templateDerived: true,
+      templateFieldOrigins: {
+        created: { templateId: 'template-1', fieldId: 'field-1' },
+      },
+      templateRemovedFieldIds: ['field-2'],
+      computedFields: { created: 'createdAt' },
     })
-    expect(homeBody?.frontmatterTemplateRemovedFieldIds).toEqual(['field-2'])
-    expect(homeBody?.frontmatterComputedFields).toEqual({ created: 'createdAt' })
+    expect(JSON.stringify(noteRegistry.noteBodies)).not.toContain('"frontmatter"')
     expect(subBody?.aisles[0]?.markdown).toBe('sub body')
     expect(roundTripped.theme).toBe('custom1')
     expect(roundTripped.ui.customThemePalette).toEqual({
@@ -217,18 +256,42 @@ describe('browser hybrid storage', () => {
     })
     expect(roundTripped.ui.themePalettes?.custom1?.primary).toBe('#8844cc')
     expect(roundTripped.ui.themePalettes?.dawn?.primary).toBe('#123456')
-    expect(getRecord(getRecord(getRecord(profileSettings.settings).ui).themePalettes).custom1).toMatchObject({
+    expect(getRecord(appSettings.themePalettes).custom1).toMatchObject({
       primary: '#8844cc',
     })
-    expect(getRecord(getRecord(getRecord(profileSettings.settings).ui).themePalettes).dawn).toMatchObject({
+    expect(getRecord(appSettings.themePalettes).dawn).toMatchObject({
       primary: '#123456',
     })
-    expect(getRecord(getRecord(profileSettings.settings).ui).settingsSection).toBeUndefined()
-    expect(getRecord(getRecord(profileSettings.settings).ui).noteCursorLocations).toBeUndefined()
-    expect(roundTripped.ui.settingsSection).toBe('hotkeys')
+    expect(getRecord(appSettings.ui).settingsSection).toBe('visuals')
+    expect(getRecord(editorState.noteCursorLocations)['domain::space-1::tab-1::__home__']).toEqual({
+      activeAisleId: 'aisle-tab',
+      aisles: {
+        'aisle-tab': {
+          anchor: 1,
+          head: 3,
+          anchorBlock: { blockIndex: 0, offset: 1 },
+          headBlock: { blockIndex: 0, offset: 3 },
+          updatedAt: 100,
+        },
+      },
+      updatedAt: 100,
+    })
+    expect(roundTripped.ui.settingsSection).toBe('visuals')
     expect(roundTripped.frontmatter.settingsTemplateId).toBe('template-1')
     expect(roundTripped.frontmatter.lastAppliedTemplateId).toBe('template-1')
-    expect(roundTripped.ui.noteCursorLocations).toEqual({})
+    expect(roundTripped.ui.noteCursorLocations['domain::space-1::tab-1::__home__']).toEqual({
+      activeAisleId: 'aisle-tab',
+      aisles: {
+        'aisle-tab': {
+          anchor: 1,
+          head: 3,
+          anchorBlock: { blockIndex: 0, offset: 1 },
+          headBlock: { blockIndex: 0, offset: 3 },
+          updatedAt: 100,
+        },
+      },
+      updatedAt: 100,
+    })
   })
 
   it('persists app settings and per-space settings in hybrid notes-data manifests', () => {
@@ -314,30 +377,29 @@ describe('browser hybrid storage', () => {
 
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
     const { rootManifest, spaceManifest } = getBrowserWorkspacePaths(fileMap)
-    const profileSettings = getTextFileJson(fileMap, 'notes-data/profile-settings.json')
-    const globalSettings = getRecord(rootManifest.globalSettings)
+    const appSettings = getRootSplitFileJson(fileMap, rootManifest, 'appSettings', 'app-settings.json')
+    const frontmatterSettings = getRootSplitFileJson(fileMap, rootManifest, 'frontmatterSettings', 'frontmatter-settings.json')
     const roundTripped = parseSavedState(readSerializedStateFromHybridFileMap(fileMap) ?? '')
-    const profileUi = getRecord(getRecord(profileSettings.settings).ui)
 
-    expect(profileSettings.schemaVersion).toBe(1)
-    expect(getRecord(globalSettings.ui).settingsSection).toBeUndefined()
-    expect(getRecord(globalSettings.ui).lastNoteCopyMode).toBe('linked')
-    expect(getRecord(globalSettings.ui).showParentHomeTab).toBe(false)
-    expect(profileUi.lastNoteCopyMode).toBe('linked')
-    expect(profileUi.showParentHomeTab).toBe(false)
-    expect(profileUi.selectedCustomTheme).toBe('custom2')
-    expect(getRecord(profileUi.themePalettes).dawn).toMatchObject({ primary: '#123456' })
-    expect(profileUi.settingsSection).toBeUndefined()
-    expect(profileUi.tabButtonScale).toBeUndefined()
-    expect(getRecord(globalSettings.hotkeys).enableMouseBackForward).toBe(false)
-    expect(getRecord(getRecord(globalSettings.hotkeys).shortcuts).newTab).toBe('Ctrl+Alt+N')
-    expect(getRecord(globalSettings.frontmatter).settingsTemplateId).toBe('template-1')
+    expect(Object.keys(rootManifest).sort()).toEqual(['files', 'schemaVersion'])
+    expect(fileMap.has('notes-data/profile-settings.json')).toBe(false)
+    expect(appSettings.theme).toBe('custom2')
+    expect(appSettings.selectedCustomTheme).toBe('custom2')
+    expect(getRecord(appSettings.themePalettes).dawn).toMatchObject({ primary: '#123456' })
+    expect(appSettings.tabButtonScale).toBe(1.3)
+    expect(appSettings.noteFontScale).toBe(1.2)
+    expect(getRecord(appSettings.ui).settingsSection).toBe('toolbar')
+    expect(getRecord(appSettings.ui).lastNoteCopyMode).toBe('linked')
+    expect(getRecord(appSettings.ui).showParentHomeTab).toBe(false)
+    expect(getRecord(appSettings.hotkeys).enableMouseBackForward).toBe(false)
+    expect(getRecord(getRecord(appSettings.hotkeys).shortcuts).newTab).toBe('Ctrl+Alt+N')
+    expect(frontmatterSettings.settingsTemplateId).toBe('template-1')
     expect(spaceManifest.settings).toEqual({ autoRemoveDeletedDays: 21 })
-    expect(roundTripped.ui.settingsSection).toBe('hotkeys')
+    expect(roundTripped.ui.settingsSection).toBe('toolbar')
     expect(roundTripped.theme).toBe('custom2')
     expect(roundTripped.ui.selectedCustomTheme).toBe('custom2')
-    expect(roundTripped.ui.tabButtonScale).toBe(1)
-    expect(roundTripped.ui.noteFontScale).toBe(1)
+    expect(roundTripped.ui.tabButtonScale).toBe(1.3)
+    expect(roundTripped.ui.noteFontScale).toBe(1.2)
     expect(roundTripped.ui.themePalettes?.dawn?.primary).toBe('#123456')
     expect(roundTripped.hotkeys.shortcuts.newTab).toBe('Ctrl+Alt+N')
     expect(roundTripped.hotkeys.enableMouseBackForward).toBe(false)
@@ -349,17 +411,49 @@ describe('browser hybrid storage', () => {
     const state = createBrowserStorageState()
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify({ ...state, theme: 'dawn' }))
     const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
-    const profileSettings = getTextFileJson(fileMap, 'notes-data/profile-settings.json')
+    const workspaceIndex = getRootSplitFileJson(fileMap, rootManifest, 'workspaceIndex', 'workspace-index.json')
+    const navigationState = getRootSplitFileJson(fileMap, rootManifest, 'navigationState', 'navigation-state.json')
+    const appSettings = getRootSplitFileJson(fileMap, rootManifest, 'appSettings', 'app-settings.json')
+    const frontmatterSettings = getRootSplitFileJson(fileMap, rootManifest, 'frontmatterSettings', 'frontmatter-settings.json')
+    const editorState = getRootSplitFileJson(fileMap, rootManifest, 'editorState', 'editor-state.json')
+    const deletedWorkspace = getRootSplitFileJson(fileMap, rootManifest, 'deletedWorkspace', 'deleted-workspace.json')
+    const noteRegistry = getRootSplitFileJson(fileMap, rootManifest, 'noteRegistry', 'note-registry.json')
+    const profileSettings = {
+      schemaVersion: 1,
+      settings: {
+        theme: 'dawn',
+        hotkeys: appSettings.hotkeys,
+        frontmatter: frontmatterSettings,
+        ui: {
+          ...appSettings,
+          ...getRecord(appSettings.ui),
+          ...editorState,
+        },
+      },
+    }
+    const legacyRootManifest = {
+      schemaVersion: 2,
+      globalSettings: {
+        ...profileSettings.settings,
+        theme: 'light',
+      },
+      domains: workspaceIndex.domains,
+      deletedDomains: deletedWorkspace.deletedDomains,
+      deletedSpaces: deletedWorkspace.deletedSpaces,
+      noteBodies: noteRegistry.noteBodies,
+      noteAisleBodies: noteRegistry.aisleBodies,
+      activeDomainId: navigationState.activeDomainId,
+    }
 
     fileMap.set('notes-data/manifest.json', {
       path: 'notes-data/manifest.json',
       kind: 'text',
-      text: `${JSON.stringify({ ...rootManifest, globalSettings: { ...getRecord(rootManifest.globalSettings), theme: 'light' } }, null, 2)}\n`,
+      text: `${JSON.stringify(legacyRootManifest, null, 2)}\n`,
     })
     fileMap.set('notes-data/profile-settings.json', {
       path: 'notes-data/profile-settings.json',
       kind: 'text',
-      text: `${JSON.stringify({ ...profileSettings, settings: { ...getRecord(profileSettings.settings), theme: 'blues' } }, null, 2)}\n`,
+      text: `${JSON.stringify({ ...profileSettings, settings: { ...profileSettings.settings, theme: 'blues' } }, null, 2)}\n`,
     })
 
     expect(parseSavedState(readSerializedStateFromHybridFileMap(fileMap)).theme).toBe('blues')
@@ -486,11 +580,12 @@ describe('browser hybrid storage', () => {
 
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
     const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
+    const noteRegistry = getRootSplitFileJson(fileMap, rootManifest, 'noteRegistry', 'note-registry.json')
     const serialized = readSerializedStateFromHybridFileMap(fileMap)
     const roundTripped = parseSavedState(serialized)
     const bodyOne = roundTripped.noteBodies.find((body) => body.id === 'body-1')
     const bodyTwo = roundTripped.noteBodies.find((body) => body.id === 'body-2')
-    const manifestBodies = Array.isArray(rootManifest.noteBodies) ? rootManifest.noteBodies : []
+    const manifestBodies = Array.isArray(noteRegistry.noteBodies) ? noteRegistry.noteBodies : []
 
     expect(bodyOne?.aisles[0]?.aisleBodyId).toBe('shared-aisle-body')
     expect(bodyTwo?.aisles[0]?.aisleBodyId).toBe('shared-aisle-body')
@@ -511,8 +606,9 @@ describe('browser hybrid storage', () => {
 
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
     const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
+    const noteRegistry = getRootSplitFileJson(fileMap, rootManifest, 'noteRegistry', 'note-registry.json')
     const bodyRecord = getRecord(
-      (Array.isArray(rootManifest.noteBodies) ? rootManifest.noteBodies : [])
+      (Array.isArray(noteRegistry.noteBodies) ? noteRegistry.noteBodies : [])
         .find((entry) => getRecord(entry).id === 'body-1'),
     )
     const aisleFiles = (Array.isArray(bodyRecord.aisles) ? bodyRecord.aisles : [])
@@ -588,10 +684,11 @@ describe('browser hybrid storage', () => {
 
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
     const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
-    const noteAisleBodyEntries = Array.isArray(rootManifest.noteAisleBodies) ? rootManifest.noteAisleBodies : []
+    const noteRegistry = getRootSplitFileJson(fileMap, rootManifest, 'noteRegistry', 'note-registry.json')
+    const noteAisleBodyEntries = Array.isArray(noteRegistry.aisleBodies) ? noteRegistry.aisleBodies : []
     const sharedAisleBody = getRecord(noteAisleBodyEntries.find((entry) => getRecord(entry).id === 'shared-aisle-body'))
     const sharedAisleBodyFile = String(sharedAisleBody.file)
-    const noteBodyEntries = Array.isArray(rootManifest.noteBodies) ? rootManifest.noteBodies.map(getRecord) : []
+    const noteBodyEntries = Array.isArray(noteRegistry.noteBodies) ? noteRegistry.noteBodies.map(getRecord) : []
     const linkedAisleFiles = noteBodyEntries
       .flatMap((body) => (Array.isArray(body.aisles) ? body.aisles.map(getRecord) : []))
       .filter((aisle) => aisle.aisleBodyId === 'shared-aisle-body')
@@ -698,7 +795,8 @@ describe('browser hybrid storage', () => {
 
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
     const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
-    const domainEntry = getRecord(Array.isArray(rootManifest.domains) ? rootManifest.domains[0] : null)
+    const workspaceIndex = getRootSplitFileJson(fileMap, rootManifest, 'workspaceIndex', 'workspace-index.json')
+    const domainEntry = getRecord(Array.isArray(workspaceIndex.domains) ? workspaceIndex.domains[0] : null)
     const domainManifest = getTextFileJson(fileMap, `notes-data/domains/${String(domainEntry.path)}/manifest.json`)
     const spaceEntry = getRecord(Array.isArray(domainManifest.spaces) ? domainManifest.spaces[0] : null)
     const spaceManifest = getTextFileJson(
@@ -760,7 +858,7 @@ describe('browser hybrid storage', () => {
     expect(readSerializedStateFromHybridFileMap(fileMap)).toBeNull()
   })
 
-  for (const schemaVersion of [2, 3, 999]) {
+  for (const schemaVersion of [4, 999]) {
     it(`does not read unsupported schema ${schemaVersion} file maps`, () => {
       const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(createBrowserStorageState()))
       const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
@@ -773,6 +871,112 @@ describe('browser hybrid storage', () => {
       expect(readSerializedStateFromHybridFileMap(fileMap)).toBeNull()
     })
   }
+
+  it('does not read schema 3 file maps missing required split files', () => {
+    const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(createBrowserStorageState()))
+    const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
+    const files = getRecord(rootManifest.files)
+
+    fileMap.delete(`notes-data/${String(files.noteRegistry)}`)
+
+    expect(readSerializedStateFromHybridFileMap(fileMap)).toBeNull()
+  })
+
+  it('loads schema 3 file maps with optional editor split file missing', () => {
+    const state = createBrowserStorageState()
+    state.ui.settingsSection = 'toolbar'
+    state.ui.noteCursorLocations = {
+      'domain::space-1::tab-1::__home__': {
+        activeAisleId: 'aisle-1',
+        aisles: {
+          'aisle-1': {
+            anchor: 1,
+            head: 1,
+            updatedAt: 1,
+          },
+        },
+        updatedAt: 1,
+      },
+    }
+    const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
+    const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
+    const files = getRecord(rootManifest.files)
+
+    fileMap.delete(`notes-data/${String(files.editorState)}`)
+
+    const roundTripped = parseSavedState(readSerializedStateFromHybridFileMap(fileMap) ?? '')
+    expect(roundTripped.domains).toHaveLength(1)
+    expect(roundTripped.ui.settingsSection).toBe('toolbar')
+    expect(roundTripped.ui.noteCursorLocations).toEqual({})
+  })
+
+  it('loads temporary wider schema 3 file maps', () => {
+    const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(createBrowserStorageState()))
+    const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
+    const appSettings = getRootSplitFileJson(fileMap, rootManifest, 'appSettings', 'app-settings.json')
+    const noteRegistry = getRootSplitFileJson(fileMap, rootManifest, 'noteRegistry', 'note-registry.json')
+    const wideFiles = {
+      workspaceIndex: 'workspace-index.json',
+      navigationState: 'navigation-state.json',
+      appearanceSettings: 'appearance-settings.json',
+      shortcutSettings: 'shortcut-settings.json',
+      frontmatterSettings: 'frontmatter-settings.json',
+      uiPreferences: 'ui-preferences.json',
+      editorState: 'editor-state.json',
+      deletedWorkspace: 'deleted-workspace.json',
+      noteBodies: 'note-bodies.json',
+      aisleBodies: 'aisle-bodies.json',
+      orphanNoteBodies: 'orphan-note-bodies.json',
+      orphanAisleBodies: 'orphan-aisle-bodies.json',
+    }
+
+    fileMap.set('notes-data/appearance-settings.json', {
+      path: 'notes-data/appearance-settings.json',
+      kind: 'text',
+      text: `${JSON.stringify(appSettings, null, 2)}\n`,
+    })
+    fileMap.set('notes-data/shortcut-settings.json', {
+      path: 'notes-data/shortcut-settings.json',
+      kind: 'text',
+      text: `${JSON.stringify(getRecord(appSettings.hotkeys), null, 2)}\n`,
+    })
+    fileMap.set('notes-data/ui-preferences.json', {
+      path: 'notes-data/ui-preferences.json',
+      kind: 'text',
+      text: `${JSON.stringify(getRecord(appSettings.ui), null, 2)}\n`,
+    })
+    fileMap.set('notes-data/note-bodies.json', {
+      path: 'notes-data/note-bodies.json',
+      kind: 'text',
+      text: `${JSON.stringify({ noteBodies: noteRegistry.noteBodies }, null, 2)}\n`,
+    })
+    fileMap.set('notes-data/aisle-bodies.json', {
+      path: 'notes-data/aisle-bodies.json',
+      kind: 'text',
+      text: `${JSON.stringify({ noteAisleBodies: noteRegistry.aisleBodies }, null, 2)}\n`,
+    })
+    fileMap.set('notes-data/orphan-note-bodies.json', {
+      path: 'notes-data/orphan-note-bodies.json',
+      kind: 'text',
+      text: `${JSON.stringify({ noteBodies: [] }, null, 2)}\n`,
+    })
+    fileMap.set('notes-data/orphan-aisle-bodies.json', {
+      path: 'notes-data/orphan-aisle-bodies.json',
+      kind: 'text',
+      text: `${JSON.stringify({ noteAisleBodies: [] }, null, 2)}\n`,
+    })
+    fileMap.set('notes-data/manifest.json', {
+      path: 'notes-data/manifest.json',
+      kind: 'text',
+      text: `${JSON.stringify({ schemaVersion: 3, files: wideFiles }, null, 2)}\n`,
+    })
+    fileMap.delete('notes-data/app-settings.json')
+    fileMap.delete('notes-data/note-registry.json')
+
+    const roundTripped = parseSavedState(readSerializedStateFromHybridFileMap(fileMap) ?? '')
+    expect(roundTripped.domains).toHaveLength(1)
+    expect(roundTripped.noteBodies[0]?.aisles[0]?.markdown).toBe('home body')
+  })
 
   it('loads missing markdown files as empty content', () => {
     const state = createBrowserStorageState()
@@ -950,7 +1154,8 @@ describe('browser hybrid storage', () => {
     state.noteBodies.push({ id: 'body-2', frontmatter: null, aisles: [{ id: 'aisle-2', markdown: 'second body' }] })
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
     const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
-    const firstDomain = getRecord(Array.isArray(rootManifest.domains) ? rootManifest.domains[0] : null)
+    const workspaceIndex = getRootSplitFileJson(fileMap, rootManifest, 'workspaceIndex', 'workspace-index.json')
+    const firstDomain = getRecord(Array.isArray(workspaceIndex.domains) ? workspaceIndex.domains[0] : null)
     const firstDomainManifestPath = `notes-data/domains/${String(firstDomain.path)}/manifest.json`
     fileMap.set(firstDomainManifestPath, { path: firstDomainManifestPath, kind: 'text', text: '{bad' })
 

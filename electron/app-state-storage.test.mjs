@@ -159,7 +159,11 @@ function getStoredWorkspacePaths(profileRootPath, indexes = {}) {
   const spaceIndex = indexes.spaceIndex ?? 0
   const root = path.join(profileRootPath, 'notes-data')
   const rootManifest = readJson(path.join(root, 'manifest.json'))
-  const domainEntry = rootManifest.domains[domainIndex]
+  const workspaceIndex = readJson(path.join(root, rootManifest.files?.workspaceIndex ?? 'workspace-index.json'))
+  const noteRegistry = readJson(path.join(root, rootManifest.files?.noteRegistry ?? 'note-registry.json'))
+  const noteBodiesRegistry = { noteBodies: Array.isArray(noteRegistry.noteBodies) ? noteRegistry.noteBodies : [] }
+  const aisleBodiesRegistry = { aisleBodies: Array.isArray(noteRegistry.aisleBodies) ? noteRegistry.aisleBodies : [] }
+  const domainEntry = workspaceIndex.domains[domainIndex]
   const domainRoot = path.join(root, 'domains', domainEntry.path)
   const domainManifest = readJson(path.join(domainRoot, 'manifest.json'))
   const spaceEntry = domainManifest.spaces[spaceIndex]
@@ -168,6 +172,10 @@ function getStoredWorkspacePaths(profileRootPath, indexes = {}) {
   return {
     root,
     rootManifest,
+    workspaceIndex,
+    noteRegistry,
+    noteBodiesRegistry,
+    aisleBodiesRegistry,
     domainEntry,
     domainRoot,
     domainManifest,
@@ -201,17 +209,25 @@ describe('Electron app state storage load result', () => {
       const parsed = JSON.parse(result.serializedState)
       expect(parsed.domains).toHaveLength(1)
       expect(parsed.noteBodies).toHaveLength(1)
-      expect(parsed.noteBodies[0].frontmatter).toEqual({ created: '2024-01-01' })
-      expect(parsed.noteBodies[0].frontmatterTemplateId).toBe('template-1')
-      expect(parsed.noteBodies[0].frontmatterTemplateDerived).toBe(true)
-      expect(parsed.noteBodies[0].frontmatterTemplateFieldOrigins).toEqual({
+      expect(parsed.noteBodies[0].frontmatter).toBeNull()
+      expect(parsed.noteAisleBodies[0].markdown).toBe('hello')
+      expect(parsed.noteAisleBodies[0].frontmatter).toEqual({ created: '2024-01-01' })
+      expect(parsed.noteAisleBodies[0].frontmatterMeta).toMatchObject({
+        templateId: 'template-1',
+        templateDerived: true,
+        templateFieldOrigins: {
+          created: { templateId: 'template-1', fieldId: 'field-1' },
+        },
+        templateRemovedFieldIds: ['field-2'],
+        computedFields: { created: 'createdAt' },
+      })
+      expect(parsed.noteBodies[0].frontmatterTemplateFieldOrigins).toBeUndefined()
+      expect(parsed.noteAisleBodies[0].frontmatterMeta.templateFieldOrigins).toEqual({
         created: { templateId: 'template-1', fieldId: 'field-1' },
       })
-      expect(parsed.noteBodies[0].frontmatterTemplateRemovedFieldIds).toEqual(['field-2'])
-      expect(parsed.noteBodies[0].frontmatterComputedFields).toEqual({ created: 'createdAt' })
       expect(parsed.frontmatter.settingsTemplateId).toBe('template-1')
       expect(parsed.frontmatter.lastAppliedTemplateId).toBe('template-1')
-      expect(parsed.ui.settingsSection).toBeUndefined()
+      expect(parsed.ui.settingsSection).toBe('frontmatter')
       expect(parsed.ui.customThemePalette.primary).toBe('#8844cc')
       expect(parsed.ui.themePalettes.custom1.primary).toBe('#8844cc')
       expect(parsed.ui.themePalettes.dawn.primary).toBe('#123456')
@@ -277,27 +293,42 @@ describe('Electron app state storage load result', () => {
 
       saveAppState(userDataPath, JSON.stringify(state))
 
-      const { rootManifest, spaceManifest } = getStoredWorkspacePaths(userDataPath)
-      const profileSettings = readJson(path.join(userDataPath, 'notes-data', 'profile-settings.json'))
+      const { root, rootManifest, spaceManifest } = getStoredWorkspacePaths(userDataPath)
+      const appSettings = readJson(path.join(root, rootManifest.files.appSettings))
+      const frontmatterSettings = readJson(path.join(root, rootManifest.files.frontmatterSettings))
       const result = loadAppStateResult(userDataPath)
       expect(result.ok).toBe(true)
       const parsed = JSON.parse(result.serializedState)
 
-      expect(rootManifest.globalSettings.theme).toBe('custom3')
-      expect(rootManifest.globalSettings.ui.settingsSection).toBeUndefined()
-      expect(rootManifest.globalSettings.ui.lastNoteCopyMode).toBe('linked')
-      expect(rootManifest.globalSettings.ui.selectedCustomTheme).toBe('custom3')
-      expect(profileSettings.schemaVersion).toBe(1)
-      expect(profileSettings.settings.ui.lastNoteCopyMode).toBe('linked')
-      expect(profileSettings.settings.ui.selectedCustomTheme).toBe('custom3')
-      expect(profileSettings.settings.ui.themePalettes.dawn.primary).toBe('#123456')
-      expect(profileSettings.settings.ui.settingsSection).toBeUndefined()
-      expect(profileSettings.settings.ui.tabButtonScale).toBeUndefined()
-      expect(rootManifest.globalSettings.hotkeys.enableMouseBackForward).toBe(false)
-      expect(rootManifest.globalSettings.hotkeys.shortcuts.newTab).toBe('Ctrl+Alt+N')
-      expect(rootManifest.globalSettings.frontmatter.settingsTemplateId).toBe('template-1')
+      expect(rootManifest.schemaVersion).toBe(3)
+      expect(Object.keys(rootManifest).sort()).toEqual(['files', 'schemaVersion'])
+      expect(Object.keys(rootManifest.files).sort()).toEqual([
+        'appSettings',
+        'deletedWorkspace',
+        'editorState',
+        'frontmatterSettings',
+        'navigationState',
+        'noteRegistry',
+        'workspaceIndex',
+      ])
+      expect(existsSync(path.join(root, 'profile-settings.json'))).toBe(false)
+      expect(existsSync(path.join(root, 'appearance-settings.json'))).toBe(false)
+      expect(existsSync(path.join(root, 'shortcut-settings.json'))).toBe(false)
+      expect(existsSync(path.join(root, 'ui-preferences.json'))).toBe(false)
+      expect(existsSync(path.join(root, 'note-bodies.json'))).toBe(false)
+      expect(existsSync(path.join(root, 'aisle-bodies.json'))).toBe(false)
+      expect(existsSync(path.join(root, 'orphan-note-bodies.json'))).toBe(false)
+      expect(existsSync(path.join(root, 'orphan-aisle-bodies.json'))).toBe(false)
+      expect(appSettings.theme).toBe('custom3')
+      expect(appSettings.selectedCustomTheme).toBe('custom3')
+      expect(appSettings.themePalettes.dawn.primary).toBe('#123456')
+      expect(appSettings.ui.settingsSection).toBe('toolbar')
+      expect(appSettings.ui.lastNoteCopyMode).toBe('linked')
+      expect(appSettings.hotkeys.enableMouseBackForward).toBe(false)
+      expect(appSettings.hotkeys.shortcuts.newTab).toBe('Ctrl+Alt+N')
+      expect(frontmatterSettings.settingsTemplateId).toBe('template-1')
       expect(spaceManifest.settings).toEqual({ autoRemoveDeletedDays: 21 })
-      expect(parsed.ui.settingsSection).toBeUndefined()
+      expect(parsed.ui.settingsSection).toBe('toolbar')
       expect(parsed.hotkeys.shortcuts.newTab).toBe('Ctrl+Alt+N')
       expect(parsed.hotkeys.enableMouseBackForward).toBe(false)
       expect(parsed.frontmatter.settingsTemplateId).toBe('template-1')
@@ -311,11 +342,43 @@ describe('Electron app state storage load result', () => {
       const manifestPath = path.join(rootPath, 'manifest.json')
       const profileSettingsPath = path.join(rootPath, 'profile-settings.json')
       const rootManifest = readJson(manifestPath)
-      const profileSettings = readJson(profileSettingsPath)
+      const workspaceIndex = readJson(path.join(rootPath, rootManifest.files.workspaceIndex))
+      const navigationState = readJson(path.join(rootPath, rootManifest.files.navigationState))
+      const appSettings = readJson(path.join(rootPath, rootManifest.files.appSettings))
+      const frontmatterSettings = readJson(path.join(rootPath, rootManifest.files.frontmatterSettings))
+      const editorState = readJson(path.join(rootPath, rootManifest.files.editorState))
+      const deletedWorkspace = readJson(path.join(rootPath, rootManifest.files.deletedWorkspace))
+      const noteRegistry = readJson(path.join(rootPath, rootManifest.files.noteRegistry))
+      const profileSettings = {
+        schemaVersion: 1,
+        settings: {
+          theme: 'dawn',
+          hotkeys: appSettings.hotkeys,
+          frontmatter: frontmatterSettings,
+          ui: {
+            ...appSettings,
+            ...appSettings.ui,
+            ...editorState,
+          },
+        },
+      }
+      const legacyRootManifest = {
+        schemaVersion: 2,
+        globalSettings: {
+          ...profileSettings.settings,
+          theme: 'light',
+        },
+        domains: workspaceIndex.domains,
+        deletedDomains: deletedWorkspace.deletedDomains,
+        deletedSpaces: deletedWorkspace.deletedSpaces,
+        noteBodies: noteRegistry.noteBodies,
+        noteAisleBodies: noteRegistry.aisleBodies,
+        activeDomainId: navigationState.activeDomainId,
+      }
 
       writeFileSync(
         manifestPath,
-        `${JSON.stringify({ ...rootManifest, globalSettings: { ...rootManifest.globalSettings, theme: 'light' } }, null, 2)}\n`,
+        `${JSON.stringify(legacyRootManifest, null, 2)}\n`,
         'utf8',
       )
       writeFileSync(
@@ -385,17 +448,20 @@ describe('Electron app state storage load result', () => {
 
       const root = path.join(userDataPath, 'notes-data')
       const manifest = readJson(path.join(root, 'manifest.json'))
+      const workspaceIndex = readJson(path.join(root, manifest.files.workspaceIndex))
 
-      expect(manifest.schemaVersion).toBe(1)
-      expect(manifest.domains[0]).toMatchObject({
+      expect(manifest.schemaVersion).toBe(3)
+      expect(Object.keys(manifest).sort()).toEqual(['files', 'schemaVersion'])
+      expect(workspaceIndex.domains[0]).toMatchObject({
         id: 'domain-1',
         title: 'Domain',
       })
-      expect(manifest.domains[0].path).toMatch(/^Domain--[a-f0-9]{6}$/)
-      expect(existsSync(path.join(root, 'domains', manifest.domains[0].path, 'Space--'))).toBe(false)
+      expect(workspaceIndex.domains[0].path).toMatch(/^Domain--[a-f0-9]{6}$/)
+      expect(existsSync(path.join(root, 'domains', workspaceIndex.domains[0].path, 'Space--'))).toBe(false)
       expect(existsSync(path.join(root, 'domains'))).toBe(true)
       expect(existsSync(path.join(root, 'topics'))).toBe(false)
       expect(existsSync(path.join(root, 'note-bodies'))).toBe(false)
+      expect(existsSync(path.join(root, 'profile-settings.json'))).toBe(false)
       expect(existsSync(path.join(userDataPath, 'notes-data.bak'))).toBe(false)
     }))
 
@@ -408,12 +474,14 @@ describe('Electron app state storage load result', () => {
       ]
 
       saveAppState(userDataPath, JSON.stringify(state))
-      const manifest = readJson(path.join(userDataPath, 'notes-data', 'manifest.json'))
+      const root = path.join(userDataPath, 'notes-data')
+      const manifest = readJson(path.join(root, 'manifest.json'))
+      const workspaceIndex = readJson(path.join(root, manifest.files.workspaceIndex))
 
-      expect(manifest.domains).toHaveLength(2)
-      expect(manifest.domains[0].path).toMatch(/^Same Name--[a-f0-9]{6}$/)
-      expect(manifest.domains[1].path).toMatch(/^Same Name--[a-f0-9]{6}$/)
-      expect(manifest.domains[0].path).not.toBe(manifest.domains[1].path)
+      expect(workspaceIndex.domains).toHaveLength(2)
+      expect(workspaceIndex.domains[0].path).toMatch(/^Same Name--[a-f0-9]{6}$/)
+      expect(workspaceIndex.domains[1].path).toMatch(/^Same Name--[a-f0-9]{6}$/)
+      expect(workspaceIndex.domains[0].path).not.toBe(workspaceIndex.domains[1].path)
     }))
 
   it('stores prime tabs and sub-tabs inline under the domain and space hierarchy', () =>
@@ -427,9 +495,10 @@ describe('Electron app state storage load result', () => {
       saveAppState(userDataPath, JSON.stringify(state))
       const root = path.join(userDataPath, 'notes-data')
       const rootManifest = readJson(path.join(root, 'manifest.json'))
-      const domainManifest = readJson(path.join(root, 'domains', rootManifest.domains[0].path, 'manifest.json'))
+      const workspaceIndex = readJson(path.join(root, rootManifest.files.workspaceIndex))
+      const domainManifest = readJson(path.join(root, 'domains', workspaceIndex.domains[0].path, 'manifest.json'))
       const spacePath = domainManifest.spaces[0].path
-      const spaceRoot = path.join(root, 'domains', rootManifest.domains[0].path, spacePath)
+      const spaceRoot = path.join(root, 'domains', workspaceIndex.domains[0].path, spacePath)
       const spaceManifest = readJson(path.join(spaceRoot, 'manifest.json'))
       const tab = spaceManifest.tabs[0]
 
@@ -464,8 +533,8 @@ describe('Electron app state storage load result', () => {
       const initialSubTab = initialTab.subTabs[0]
       const initialHomeFolder = path.join(initial.spaceRoot, initialTab.path, 'home')
       const initialSubTabFolder = path.join(initial.spaceRoot, initialSubTab.path)
-      const initialHomeBodyRecord = initial.rootManifest.noteBodies.find((body) => body.id === 'body-1')
-      const initialSubBodyRecord = initial.rootManifest.noteBodies.find((body) => body.id === 'body-sub')
+      const initialHomeBodyRecord = initial.noteBodiesRegistry.noteBodies.find((body) => body.id === 'body-1')
+      const initialSubBodyRecord = initial.noteBodiesRegistry.noteBodies.find((body) => body.id === 'body-sub')
 
       expect(initialTab.homeNoteFile).toMatch(new RegExp(`^${initialTab.path}/home/aisle 1--[a-f0-9]{6}\\.md$`))
       expect(initialHomeBodyRecord.aisles[0].file).toMatch(/\/home\/aisle 1--[a-f0-9]{6}\.md$/)
@@ -501,7 +570,17 @@ describe('Electron app state storage load result', () => {
       state.noteBodies.push({ id: 'body-sub', aisles: [{ id: 'aisle-sub', markdown: 'sub body' }] })
       saveAppState(userDataPath, JSON.stringify(state))
 
-      const { root, rootManifest, domainEntry, spaceEntry, spaceRoot, spaceManifest } = getStoredWorkspacePaths(userDataPath)
+      const {
+        root,
+        rootManifest,
+        noteRegistry,
+        noteBodiesRegistry,
+        aisleBodiesRegistry,
+        domainEntry,
+        spaceEntry,
+        spaceRoot,
+        spaceManifest,
+      } = getStoredWorkspacePaths(userDataPath)
       const tab = spaceManifest.tabs[0]
       const subTab = tab.subTabs[0]
       const legacySubTabPath = subTab.path.replace(/\.md$/, '')
@@ -511,19 +590,19 @@ describe('Electron app state storage load result', () => {
       subTab.path = legacySubTabPath
       subTab.file = legacySubTabFile
       writeFileSync(path.join(spaceRoot, 'manifest.json'), `${JSON.stringify(spaceManifest, null, 2)}\n`, 'utf8')
-      rootManifest.noteBodies.find((body) => body.id === 'body-sub').aisles[0].file = path.posix.join(
+      noteBodiesRegistry.noteBodies.find((body) => body.id === 'body-sub').aisles[0].file = path.posix.join(
         'domains',
         domainEntry.path,
         spaceEntry.path,
         legacySubTabFile,
       )
-      rootManifest.noteAisleBodies.find((body) => body.id === 'aisle-sub').file = path.posix.join(
+      aisleBodiesRegistry.aisleBodies.find((body) => body.id === 'aisle-sub').file = path.posix.join(
         'domains',
         domainEntry.path,
         spaceEntry.path,
         legacySubTabFile,
       )
-      writeFileSync(path.join(root, 'manifest.json'), `${JSON.stringify(rootManifest, null, 2)}\n`, 'utf8')
+      writeFileSync(path.join(root, rootManifest.files.noteRegistry), `${JSON.stringify(noteRegistry, null, 2)}\n`, 'utf8')
 
       const result = loadAppStateResult(userDataPath)
       const parsed = JSON.parse(result.serializedState)
@@ -560,11 +639,11 @@ describe('Electron app state storage load result', () => {
 
       saveAppState(userDataPath, JSON.stringify(state))
 
-      const { root, rootManifest } = getStoredWorkspacePaths(userDataPath)
-      const aisleBodyEntry = rootManifest.noteAisleBodies.find((body) => body.id === 'shared-aisle-body')
+      const { root, noteBodiesRegistry, aisleBodiesRegistry } = getStoredWorkspacePaths(userDataPath)
+      const aisleBodyEntry = aisleBodiesRegistry.aisleBodies.find((body) => body.id === 'shared-aisle-body')
       expect(aisleBodyEntry).toMatchObject({ id: 'shared-aisle-body', file: expect.any(String) })
       expect(readFileSync(path.join(root, aisleBodyEntry.file), 'utf8')).toBe('shared aisle text')
-      expect(JSON.stringify(rootManifest.noteBodies)).toContain('"aisleBodyId":"shared-aisle-body"')
+      expect(JSON.stringify(noteBodiesRegistry.noteBodies)).toContain('"aisleBodyId":"shared-aisle-body"')
 
       const result = loadAppStateResult(userDataPath)
       expect(result.ok).toBe(true)
@@ -591,11 +670,12 @@ describe('Electron app state storage load result', () => {
 
       saveAppState(userDataPath, JSON.stringify(state))
 
-      const { root, rootManifest } = getStoredWorkspacePaths(userDataPath)
-      const bodyRecord = rootManifest.noteBodies.find((body) => body.id === 'body-1')
+      const { root, noteBodiesRegistry } = getStoredWorkspacePaths(userDataPath)
+      const bodyRecord = noteBodiesRegistry.noteBodies.find((body) => body.id === 'body-1')
       expect(bodyRecord.aisles[0].file).toMatch(/\/home\/aisle 1--[a-f0-9]{6}\.md$/)
       expect(bodyRecord.aisles[1].file).toMatch(/\/home\/aisle 2--[a-f0-9]{6}\.md$/)
-      expect(readFileSync(path.join(root, bodyRecord.aisles[0].file), 'utf8')).toBe('left aisle draft 🚙')
+      expect(readFileSync(path.join(root, bodyRecord.aisles[0].file), 'utf8')).toContain('left aisle draft 🚙')
+      expect(readFileSync(path.join(root, bodyRecord.aisles[0].file), 'utf8')).toContain('created: 2024-01-01')
       expect(readFileSync(path.join(root, bodyRecord.aisles[1].file), 'utf8')).toBe('right aisle draft 🥺')
 
       const result = loadAppStateResult(userDataPath)
@@ -687,6 +767,7 @@ describe('Electron app state storage load result', () => {
       const parsedTab = parsedSpace.data.tabs.find((candidate) => candidate.id === 'tab-1')
       const parsedSubTab = parsedTab.subTabs.find((candidate) => candidate.id === 'sub-renamed')
       const bodyById = new Map(parsed.noteBodies.map((body) => [body.id, body]))
+      const aisleBodyById = new Map(parsed.noteAisleBodies.map((body) => [body.id, body]))
 
       expect(parsedDomain.name).toBe('Renamed Domain')
       expect(parsedSpace.name).toBe('Renamed Space')
@@ -704,20 +785,25 @@ describe('Electron app state storage load result', () => {
         content: 'renamed child body',
       })
       expect(bodyById.get('body-1')).toMatchObject({
+        frontmatter: null,
+        aisles: [
+          { id: 'aisle-1', markdown: 'renamed parent body' },
+          { id: 'aisle-2', markdown: 'second aisle survives' },
+        ],
+      })
+      expect(aisleBodyById.get('aisle-1')).toMatchObject({
         frontmatter: {
           status: 'ready',
           due: null,
           starts: null,
           created: '2024-01-01',
         },
-        frontmatterTemplateId: 'template-1',
-        frontmatterTemplateDerived: true,
-        frontmatterComputedFields: { created: 'createdAt' },
-        frontmatterTemplateRemovedFieldIds: ['field-2'],
-        aisles: [
-          { id: 'aisle-1', markdown: 'renamed parent body' },
-          { id: 'aisle-2', markdown: 'second aisle survives' },
-        ],
+        frontmatterMeta: {
+          templateId: 'template-1',
+          templateDerived: true,
+          computedFields: { created: 'createdAt' },
+          templateRemovedFieldIds: ['field-2'],
+        },
       })
       expect(parsedSpace.data.deletedTabs[0]).toMatchObject({
         id: 'deleted-parent-entry',
@@ -798,15 +884,17 @@ describe('Electron app state storage load result', () => {
 
       const root = path.join(userDataPath, 'notes-data')
       const rootManifest = readJson(path.join(root, 'manifest.json'))
-      const domainEntry = rootManifest.domains[0]
+      const workspaceIndex = readJson(path.join(root, rootManifest.files.workspaceIndex))
+      const noteRegistry = readJson(path.join(root, rootManifest.files.noteRegistry))
+      const domainEntry = workspaceIndex.domains[0]
       const domainManifest = readJson(path.join(root, 'domains', domainEntry.path, 'manifest.json'))
       const spaceEntry = domainManifest.spaces[0]
       const spaceRoot = path.join(root, 'domains', domainEntry.path, spaceEntry.path)
       const spaceManifest = readJson(path.join(spaceRoot, 'manifest.json'))
       const trashManifest = readJson(path.join(spaceRoot, 'trash', 'manifest.json'))
       const tab = spaceManifest.tabs[0]
-      const bodyRecord = rootManifest.noteBodies.find((body) => body.id === 'body-1')
-      const orphanRecord = rootManifest.noteBodies.find((body) => body.id === 'body-orphan-long')
+      const bodyRecord = noteRegistry.noteBodies.find((body) => body.id === 'body-1')
+      const orphanRecord = noteRegistry.noteBodies.find((body) => body.id === 'body-orphan-long')
       const generatedPaths = [
         `domains/${domainEntry.path}`,
         `domains/${domainEntry.path}/${spaceEntry.path}`,
@@ -835,6 +923,7 @@ describe('Electron app state storage load result', () => {
       expect(tab.path).toMatch(/--[a-f0-9]{6}$/)
       expect(path.posix.basename(tab.subTabs[0].path)).toMatch(/--[a-f0-9]{6}\.md$/)
       expect(path.posix.basename(bodyRecord.aisles[1].file)).toMatch(/--[a-f0-9]{6}\.md$/)
+      expect(orphanRecord.storageStatus).toBe('unlinked')
       generatedPaths.forEach(expectRelativePathWithinSegmentLimit)
     }))
 
@@ -862,7 +951,7 @@ describe('Electron app state storage load result', () => {
       })
     }))
 
-  for (const schemaVersion of [2, 3, 999]) {
+  for (const schemaVersion of [4, 999]) {
     it(`rejects unsupported schema ${schemaVersion} profiles`, () =>
       withTempUserDataPath((userDataPath) => {
         const root = path.join(userDataPath, 'notes-data')
@@ -880,6 +969,116 @@ describe('Electron app state storage load result', () => {
         })
       }))
   }
+
+  it('rejects schema 3 profiles missing required split files', () =>
+    withTempUserDataPath((userDataPath) => {
+      saveAppState(userDataPath, serializedAppState())
+      const root = path.join(userDataPath, 'notes-data')
+      const rootManifest = readJson(path.join(root, 'manifest.json'))
+      rmSync(path.join(root, rootManifest.files.noteRegistry), { force: true })
+
+      expect(loadAppStateResult(userDataPath)).toMatchObject({
+        ok: false,
+        serializedState: null,
+        source: 'hybrid',
+        health: 'error',
+        issues: [expect.objectContaining({ code: 'missing-root-split-file', severity: 'error' })],
+      })
+    }))
+
+  it('loads schema 3 profiles with optional editor split file missing', () =>
+    withTempUserDataPath((userDataPath) => {
+      const state = JSON.parse(serializedAppState())
+      state.ui.settingsSection = 'toolbar'
+      state.ui.noteCursorLocations = {
+        'domain::space-1::tab-1::__home__': {
+          activeAisleId: 'aisle-1',
+          aisles: {
+            'aisle-1': {
+              anchor: 1,
+              head: 1,
+              updatedAt: 1,
+            },
+          },
+          updatedAt: 1,
+        },
+      }
+      saveAppState(userDataPath, JSON.stringify(state))
+      const root = path.join(userDataPath, 'notes-data')
+      const rootManifest = readJson(path.join(root, 'manifest.json'))
+      rmSync(path.join(root, rootManifest.files.editorState), { force: true })
+
+      const result = loadAppStateResult(userDataPath)
+      expect(result.ok).toBe(true)
+      const parsed = JSON.parse(result.serializedState)
+      expect(parsed.ui.settingsSection).toBe('toolbar')
+      expect(parsed.ui.noteCursorLocations).toEqual({})
+    }))
+
+  it('loads temporary wider schema 3 profiles and re-saves the narrowed shape', () =>
+    withTempUserDataPath((userDataPath) => {
+      saveAppState(userDataPath, serializedAppState())
+      const root = path.join(userDataPath, 'notes-data')
+      const rootManifest = readJson(path.join(root, 'manifest.json'))
+      const appSettings = readJson(path.join(root, rootManifest.files.appSettings))
+      const noteRegistry = readJson(path.join(root, rootManifest.files.noteRegistry))
+      const wideFiles = {
+        workspaceIndex: 'workspace-index.json',
+        navigationState: 'navigation-state.json',
+        appearanceSettings: 'appearance-settings.json',
+        shortcutSettings: 'shortcut-settings.json',
+        frontmatterSettings: 'frontmatter-settings.json',
+        uiPreferences: 'ui-preferences.json',
+        editorState: 'editor-state.json',
+        deletedWorkspace: 'deleted-workspace.json',
+        noteBodies: 'note-bodies.json',
+        aisleBodies: 'aisle-bodies.json',
+        orphanNoteBodies: 'orphan-note-bodies.json',
+        orphanAisleBodies: 'orphan-aisle-bodies.json',
+      }
+
+      writeFileSync(path.join(root, 'appearance-settings.json'), `${JSON.stringify(appSettings, null, 2)}\n`, 'utf8')
+      writeFileSync(path.join(root, 'shortcut-settings.json'), `${JSON.stringify(appSettings.hotkeys, null, 2)}\n`, 'utf8')
+      writeFileSync(path.join(root, 'ui-preferences.json'), `${JSON.stringify(appSettings.ui, null, 2)}\n`, 'utf8')
+      writeFileSync(path.join(root, 'note-bodies.json'), `${JSON.stringify({ noteBodies: noteRegistry.noteBodies }, null, 2)}\n`, 'utf8')
+      writeFileSync(
+        path.join(root, 'aisle-bodies.json'),
+        `${JSON.stringify({ noteAisleBodies: noteRegistry.aisleBodies }, null, 2)}\n`,
+        'utf8',
+      )
+      writeFileSync(path.join(root, 'orphan-note-bodies.json'), `${JSON.stringify({ noteBodies: [] }, null, 2)}\n`, 'utf8')
+      writeFileSync(
+        path.join(root, 'orphan-aisle-bodies.json'),
+        `${JSON.stringify({ noteAisleBodies: [] }, null, 2)}\n`,
+        'utf8',
+      )
+      writeFileSync(
+        path.join(root, 'manifest.json'),
+        `${JSON.stringify({ schemaVersion: 3, files: wideFiles }, null, 2)}\n`,
+        'utf8',
+      )
+      rmSync(path.join(root, 'app-settings.json'), { force: true })
+      rmSync(path.join(root, 'note-registry.json'), { force: true })
+
+      const result = loadAppStateResult(userDataPath)
+      expect(result.ok).toBe(true)
+      const parsed = JSON.parse(result.serializedState)
+      expect(parsed.noteBodies[0].aisles[0].markdown).toBe('hello')
+
+      saveAppState(userDataPath, result.serializedState)
+      const nextRootManifest = readJson(path.join(root, 'manifest.json'))
+      expect(Object.keys(nextRootManifest.files).sort()).toEqual([
+        'appSettings',
+        'deletedWorkspace',
+        'editorState',
+        'frontmatterSettings',
+        'navigationState',
+        'noteRegistry',
+        'workspaceIndex',
+      ])
+      expect(existsSync(path.join(root, 'appearance-settings.json'))).toBe(false)
+      expect(existsSync(path.join(root, 'note-bodies.json'))).toBe(false)
+    }))
 
   it('fails existing profiles with provider conflict folders', () =>
     withTempUserDataPath((userDataPath) => {
@@ -1205,7 +1404,8 @@ describe('Electron app state storage load result', () => {
       state.noteBodies.push({ id: 'body-2', aisles: [{ id: 'aisle-2', markdown: 'second' }] })
       saveAppState(userDataPath, JSON.stringify(state))
       const rootManifest = readJson(path.join(userDataPath, 'notes-data', 'manifest.json'))
-      writeFileSync(path.join(userDataPath, 'notes-data', 'domains', rootManifest.domains[0].path, 'manifest.json'), '{bad', 'utf8')
+      const workspaceIndex = readJson(path.join(userDataPath, 'notes-data', rootManifest.files.workspaceIndex))
+      writeFileSync(path.join(userDataPath, 'notes-data', 'domains', workspaceIndex.domains[0].path, 'manifest.json'), '{bad', 'utf8')
 
       const result = loadAppStateResult(userDataPath)
       const parsed = JSON.parse(result.serializedState)
@@ -1224,7 +1424,8 @@ describe('Electron app state storage load result', () => {
     withTempUserDataPath((userDataPath) => {
       saveAppState(userDataPath, serializedAppState())
       const rootManifest = readJson(path.join(userDataPath, 'notes-data', 'manifest.json'))
-      writeFileSync(path.join(userDataPath, 'notes-data', 'domains', rootManifest.domains[0].path, 'manifest.json'), '{bad', 'utf8')
+      const workspaceIndex = readJson(path.join(userDataPath, 'notes-data', rootManifest.files.workspaceIndex))
+      writeFileSync(path.join(userDataPath, 'notes-data', 'domains', workspaceIndex.domains[0].path, 'manifest.json'), '{bad', 'utf8')
 
       expect(loadAppStateResult(userDataPath)).toMatchObject({
         ok: false,
