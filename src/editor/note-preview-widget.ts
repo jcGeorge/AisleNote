@@ -65,10 +65,10 @@ function getPreviewStatusText(data: ContextPreviewData) {
 }
 
 function getPreviewTitleButtonClassName(kind: ContextPreviewData['titleButtons'][number]['kind']): string {
-  if (kind === 'domain') return 'context-preview-title-btn compact-scope-btn compact-domain-btn is-domain'
-  if (kind === 'space') return 'context-preview-title-btn compact-scope-btn compact-space-btn is-space'
-  if (kind === 'parent') return 'context-preview-title-btn btn btn-sm tab-btn parent-tab-btn'
-  return 'context-preview-title-btn btn btn-sm tab-btn subtab-btn'
+  if (kind === 'domain') return 'rail-control context-preview-title-btn compact-scope-btn compact-domain-btn is-domain'
+  if (kind === 'space') return 'rail-control context-preview-title-btn compact-scope-btn compact-space-btn is-space'
+  if (kind === 'parent') return 'rail-control context-preview-title-btn btn btn-sm tab-btn parent-tab-btn is-parent'
+  return 'rail-control context-preview-title-btn btn btn-sm tab-btn subtab-btn is-subtab'
 }
 
 export function createContextPreviewWidgetElement(

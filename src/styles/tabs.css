@@ -1,20 +1,3 @@
-.tab-btn,
-.add-tab-btn {
-  flex: 0 0 auto;
-  max-width: calc(300px * var(--tab-button-scale));
-  min-width: calc(56px * var(--tab-button-scale));
-  min-height: var(--tab-control-height);
-  padding: calc(0.2rem * var(--tab-button-scale)) calc(0.5rem * var(--tab-button-scale));
-  font-size: calc(0.95rem * var(--tab-button-scale));
-  line-height: calc(1.1 * var(--tab-button-scale));
-  border-radius: calc(0.42rem * var(--tab-button-scale));
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  border-width: 1px !important;
-  box-shadow: none !important;
-}
-
 .tab-sort-btn {
   flex: 0 0 auto;
   width: calc(30px * var(--tab-button-scale));
@@ -46,18 +29,6 @@
   width: calc(16px * var(--tab-button-scale));
   height: calc(16px * var(--tab-button-scale));
   display: block;
-}
-
-.tab-btn.btn {
-  color: var(--tab-btn-text);
-  background-color: var(--tab-btn-bg);
-  border-color: var(--tab-btn-border);
-}
-
-.tab-btn.btn:hover {
-  color: var(--tab-btn-hover-text);
-  background-color: var(--tab-btn-hover-bg);
-  border-color: var(--tab-btn-hover-border);
 }
 
 .tab-btn.is-arrangeable {
@@ -179,30 +150,6 @@
 .subtab-btn.is-arrange-target-after {
   border-color: var(--subtab-target-border) !important;
   box-shadow: var(--subtab-target-after-shadow) !important;
-}
-
-.parent-tab-btn[aria-selected='true'] {
-  color: var(--parent-tab-selected-text) !important;
-  background: var(--parent-tab-selected-bg) !important;
-  border-color: var(--parent-tab-selected-border) !important;
-}
-
-.subtab-btn.btn {
-  color: var(--subtab-btn-text);
-  background-color: var(--subtab-btn-bg);
-  border-color: var(--subtab-btn-border);
-}
-
-.subtab-btn.btn:hover {
-  color: var(--subtab-btn-hover-text);
-  background-color: var(--subtab-btn-hover-bg);
-  border-color: var(--subtab-btn-hover-border);
-}
-
-.subtab-btn[aria-selected='true'] {
-  color: var(--subtab-selected-text) !important;
-  background: var(--subtab-selected-bg) !important;
-  border-color: var(--subtab-selected-border) !important;
 }
 
 .trash-home-tab {

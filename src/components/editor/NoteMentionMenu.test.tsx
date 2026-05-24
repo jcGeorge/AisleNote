@@ -50,7 +50,7 @@ describe('NoteMentionMenu', () => {
     expect(html).not.toContain('>spaces</button>')
     expect(html).not.toContain('>prime tabs</button>')
     expect(html).not.toContain('>notes</button>')
-    expect(html).toContain('note-mention-nav-chip is-selected')
+    expect(html).toContain('rail-control note-mention-nav-chip is-selected')
     expect(html).toContain('Enter link')
     expect(html).toContain('Cmd+Enter preview')
     expect(html).not.toContain('tabIndex')

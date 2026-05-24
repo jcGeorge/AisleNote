@@ -3507,6 +3507,11 @@ function App() {
         open={aisleEditModalOpen && viewMode === 'main'}
         aisles={activeNoteAisles}
         linkedAisleIds={activeLinkedAisleIds}
+        getContextPreviewLabel={
+          activeNoteBodyId
+            ? (payload) => getContextPreviewData(payload, activeNoteBodyId).locationLabel
+            : undefined
+        }
         onCancel={closeAisleEditModal}
         onApply={applyAisleEditDraftToActiveNote}
         onWarn={(message) => pushToast(message, 'warning')}

@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { BLOCK_INDENT_TOKEN } from '../../markdown/markdown-utils'
+import { buildContextToken } from '../../notes/note-references'
 import { MAX_NOTE_AISLES } from '../../state/workspace'
 import type { NoteAisle } from '../../types/app'
 import { AisleEditModal } from './AisleEditModal'
@@ -17,6 +18,7 @@ function renderModal(
       aisles={aisles}
       linkedAisleIds={options.linkedAisleIds}
       initialStagedDecoupleAisleIds={options.initialStagedDecoupleAisleIds}
+      getContextPreviewLabel={() => 'Domain / Space / Parent / Child'}
       onCancel={() => undefined}
       onApply={() => undefined}
       onWarn={() => undefined}
@@ -90,6 +92,20 @@ describe('AisleEditModal', () => {
     expect(html).toContain('class="tabs-block-indent"')
     expect(html).toContain('indented')
     expect(html).not.toContain(BLOCK_INDENT_TOKEN)
+  })
+
+  it('renders note preview tokens as compact placeholders instead of raw storage tokens', () => {
+    const token = buildContextToken({
+      id: 'preview-1',
+      target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: 'subtab' },
+    })
+    const html = renderModal([aisle('a', `${token}\n\nregular text`)])
+
+    expect(html).toContain('aisle-edit-context-preview')
+    expect(html).toContain('note preview')
+    expect(html).toContain('Domain / Space / Parent / Child')
+    expect(html).toContain('regular text')
+    expect(html).not.toContain('{{tabs-context:')
   })
 
   it('shows linked status and de-couple only for linked aisle cards', () => {

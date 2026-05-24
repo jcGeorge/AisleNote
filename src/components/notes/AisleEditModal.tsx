@@ -1,4 +1,4 @@
-import { useEffect, useState, type DragEvent, type ImgHTMLAttributes } from 'react'
+import { Fragment, useEffect, useState, type DragEvent, type ImgHTMLAttributes } from 'react'
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
@@ -11,6 +11,11 @@ import {
   reorderAisleDraft,
 } from '../../editor/aisle-edit-draft'
 import { resolveAssetDisplayUrl } from '../../markdown/image-asset-registry'
+import {
+  NOTE_CONTEXT_REFERENCE_RE,
+  decodeContextPayload,
+  type NoteContextReferencePayload,
+} from '../../notes/note-references'
 import { createNoteAisle } from '../../state/workspace'
 import type { NoteAisle } from '../../types/app'
 import { MarkdownPreviewParagraph } from './markdown-preview-components'
@@ -34,11 +39,42 @@ const aislePreviewMarkdownComponents = {
   },
 }
 
+type AislePreviewSegment =
+  | { type: 'markdown'; markdown: string }
+  | { type: 'context-preview'; label: string }
+
+function getAislePreviewSegments(
+  markdown: string,
+  getContextPreviewLabel?: (payload: NoteContextReferencePayload) => string | null | undefined,
+): AislePreviewSegment[] {
+  const previewMarkdown = getAislePreviewMarkdown(markdown)
+  const segments: AislePreviewSegment[] = []
+  let lastIndex = 0
+  NOTE_CONTEXT_REFERENCE_RE.lastIndex = 0
+
+  for (const match of previewMarkdown.matchAll(NOTE_CONTEXT_REFERENCE_RE)) {
+    const start = match.index ?? 0
+    const before = previewMarkdown.slice(lastIndex, start)
+    if (before.trim()) segments.push({ type: 'markdown', markdown: before })
+
+    const payload = decodeContextPayload(match[1])
+    const label = payload ? getContextPreviewLabel?.(payload)?.trim() : ''
+    segments.push({ type: 'context-preview', label: label || 'note preview' })
+    lastIndex = start + match[0].length
+  }
+
+  NOTE_CONTEXT_REFERENCE_RE.lastIndex = 0
+  const after = previewMarkdown.slice(lastIndex)
+  if (after.trim()) segments.push({ type: 'markdown', markdown: after })
+  return segments
+}
+
 type AisleEditModalProps = {
   open: boolean
   aisles: NoteAisle[]
   linkedAisleIds?: Set<string>
   initialStagedDecoupleAisleIds?: Iterable<string>
+  getContextPreviewLabel?: (payload: NoteContextReferencePayload) => string | null | undefined
   onCancel: () => void
   onApply: (aisles: NoteAisle[], options?: { decoupleAisleIds?: string[] }) => void
   onWarn: (message: string) => void
@@ -49,6 +85,7 @@ export function AisleEditModal({
   aisles,
   linkedAisleIds = new Set(),
   initialStagedDecoupleAisleIds = EMPTY_STAGED_DECOUPLE_IDS,
+  getContextPreviewLabel,
   onCancel,
   onApply,
   onWarn,
@@ -127,7 +164,7 @@ export function AisleEditModal({
       >
         <div className="aisle-edit-list" aria-label="Aisles">
           {draft.map((aisle, index) => {
-            const previewMarkdown = getAislePreviewMarkdown(aisle.markdown)
+            const previewSegments = getAislePreviewSegments(aisle.markdown, getContextPreviewLabel)
             const linked = linkedAisleIds.has(aisle.id)
             const stagedDecouple = stagedDecoupleAisleIds.has(aisle.id)
             return (
@@ -156,15 +193,26 @@ export function AisleEditModal({
                 onDrop={(event) => handleDrop(event, aisle.id)}
                 aria-label={`Aisle preview ${index + 1}`}
               >
-                <div className={`aisle-edit-preview ${previewMarkdown.trim().length <= 0 ? 'is-empty' : ''}`}>
-                  {previewMarkdown.trim().length > 0 ? (
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      urlTransform={transformAislePreviewUrl}
-                      components={aislePreviewMarkdownComponents}
-                    >
-                      {previewMarkdown}
-                    </ReactMarkdown>
+                <div className={`aisle-edit-preview ${previewSegments.length <= 0 ? 'is-empty' : ''}`}>
+                  {previewSegments.length > 0 ? (
+                    previewSegments.map((segment, segmentIndex) => (
+                      <Fragment key={`${segment.type}-${segmentIndex}`}>
+                        {segment.type === 'markdown' ? (
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            urlTransform={transformAislePreviewUrl}
+                            components={aislePreviewMarkdownComponents}
+                          >
+                            {segment.markdown}
+                          </ReactMarkdown>
+                        ) : (
+                          <div className="aisle-edit-context-preview">
+                            <span className="aisle-edit-context-preview-label">note preview</span>
+                            <span className="aisle-edit-context-preview-title">{segment.label}</span>
+                          </div>
+                        )}
+                      </Fragment>
+                    ))
                   ) : (
                     <p>{EMPTY_AISLE_PREVIEW_TEXT}</p>
                   )}

@@ -145,8 +145,8 @@ describe('note preview widget', () => {
 
     expect(titleButtons.map((button) => button.textContent)).toEqual(['Parent', 'Child'])
     expect(titleButtons.map((button) => button.className)).toEqual([
-      'context-preview-title-btn btn btn-sm tab-btn parent-tab-btn',
-      'context-preview-title-btn btn btn-sm tab-btn subtab-btn',
+      'rail-control context-preview-title-btn btn btn-sm tab-btn parent-tab-btn is-parent',
+      'rail-control context-preview-title-btn btn btn-sm tab-btn subtab-btn is-subtab',
     ])
     expect(getTextContent(widget)).not.toContain('Parent > Child')
 

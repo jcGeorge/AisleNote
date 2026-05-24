@@ -1,0 +1,116 @@
+.rail-control,
+.compact-scope-btn,
+.tab-btn,
+.add-tab-btn {
+  --rail-control-flex: 0 0 auto;
+  --rail-control-max-width: calc(300px * var(--tab-button-scale));
+  --rail-control-min-width: calc(56px * var(--tab-button-scale));
+  --rail-control-height: var(--tab-control-height);
+  --rail-control-padding: calc(0.2rem * var(--tab-button-scale)) calc(0.5rem * var(--tab-button-scale));
+  --rail-control-radius: calc(0.42rem * var(--tab-button-scale));
+  --rail-control-font-size: calc(0.95rem * var(--tab-button-scale) * var(--app-text-scale, 1));
+  --rail-control-font-weight: inherit;
+  --rail-control-line-height: calc(1.1 * var(--tab-button-scale));
+  flex: var(--rail-control-flex);
+  max-width: var(--rail-control-max-width);
+  min-width: var(--rail-control-min-width);
+  min-height: var(--rail-control-height);
+  padding: var(--rail-control-padding);
+  border: 1px solid var(--rail-control-border, transparent);
+  border-width: 1px !important;
+  border-radius: var(--rail-control-radius);
+  background: var(--rail-control-bg, transparent);
+  color: var(--rail-control-text, currentColor);
+  box-shadow: none !important;
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: var(--rail-control-font-size);
+  font-weight: var(--rail-control-font-weight);
+  line-height: var(--rail-control-line-height);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rail-control:hover,
+.compact-scope-btn:hover,
+.tab-btn:hover {
+  border-color: var(--rail-control-hover-border, var(--rail-control-border, transparent));
+  background: var(--rail-control-hover-bg, var(--rail-control-bg, transparent));
+  color: var(--rail-control-hover-text, var(--rail-control-text, currentColor));
+}
+
+.rail-control.is-selected,
+.rail-control.is-active,
+.rail-control[aria-selected='true'],
+.rail-control[aria-pressed='true'],
+.compact-scope-btn.is-active,
+.compact-scope-btn.is-selected,
+.compact-scope-btn[aria-selected='true'],
+.compact-scope-btn[aria-pressed='true'],
+.tab-btn.is-selected,
+.tab-btn[aria-selected='true'],
+.tab-btn[aria-pressed='true'] {
+  border-color: var(--rail-control-selected-border, var(--rail-control-border, transparent)) !important;
+  background: var(--rail-control-selected-bg, var(--rail-control-bg, transparent)) !important;
+  color: var(--rail-control-selected-text, var(--rail-control-text, currentColor)) !important;
+}
+
+.rail-control:disabled,
+.compact-scope-btn:disabled,
+.tab-btn:disabled,
+.add-tab-btn:disabled {
+  cursor: default;
+}
+
+.rail-control.is-domain,
+.compact-domain-btn {
+  --rail-control-text: var(--domain-rail-text);
+  --rail-control-bg: var(--domain-rail-bg);
+  --rail-control-border: var(--domain-rail-border);
+  --rail-control-hover-text: var(--domain-rail-hover-text);
+  --rail-control-hover-bg: var(--domain-rail-hover-bg);
+  --rail-control-hover-border: var(--domain-rail-hover-border);
+  --rail-control-selected-text: var(--domain-rail-selected-text);
+  --rail-control-selected-bg: var(--domain-rail-selected-bg);
+  --rail-control-selected-border: var(--domain-rail-selected-border);
+}
+
+.rail-control.is-space,
+.compact-space-btn {
+  --rail-control-text: var(--space-rail-text);
+  --rail-control-bg: var(--space-rail-bg);
+  --rail-control-border: var(--space-rail-border);
+  --rail-control-hover-text: var(--space-rail-hover-text);
+  --rail-control-hover-bg: var(--space-rail-hover-bg);
+  --rail-control-hover-border: var(--space-rail-hover-border);
+  --rail-control-selected-text: var(--space-rail-selected-text);
+  --rail-control-selected-bg: var(--space-rail-selected-bg);
+  --rail-control-selected-border: var(--space-rail-selected-border);
+}
+
+.rail-control.is-parent,
+.parent-tab-btn {
+  --rail-control-text: var(--parent-rail-text);
+  --rail-control-bg: var(--parent-rail-bg);
+  --rail-control-border: var(--parent-rail-border);
+  --rail-control-hover-text: var(--parent-rail-hover-text);
+  --rail-control-hover-bg: var(--parent-rail-hover-bg);
+  --rail-control-hover-border: var(--parent-rail-hover-border);
+  --rail-control-selected-text: var(--parent-rail-selected-text);
+  --rail-control-selected-bg: var(--parent-rail-selected-bg);
+  --rail-control-selected-border: var(--parent-rail-selected-border);
+}
+
+.rail-control.is-subtab,
+.subtab-btn {
+  --rail-control-text: var(--subtab-rail-text);
+  --rail-control-bg: var(--subtab-rail-bg);
+  --rail-control-border: var(--subtab-rail-border);
+  --rail-control-hover-text: var(--subtab-rail-hover-text);
+  --rail-control-hover-bg: var(--subtab-rail-hover-bg);
+  --rail-control-hover-border: var(--subtab-rail-hover-border);
+  --rail-control-selected-text: var(--subtab-rail-selected-text);
+  --rail-control-selected-bg: var(--subtab-rail-selected-bg);
+  --rail-control-selected-border: var(--subtab-rail-selected-border);
+}

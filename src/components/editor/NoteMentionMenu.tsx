@@ -106,7 +106,7 @@ export function NoteMentionMenu(props: NoteMentionMenuProps) {
                   <button
                     key={item.id}
                     type="button"
-                    className={`note-mention-nav-chip${item.id === row.selectedId ? ' is-selected' : ''}`}
+                    className={`rail-control note-mention-nav-chip${item.id === row.selectedId ? ' is-selected' : ''}`}
                     role="menuitem"
                     aria-current={item.id === row.selectedId ? 'true' : undefined}
                     onMouseEnter={() => props.onActiveRowChange(row.id)}
