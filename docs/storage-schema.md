@@ -1,8 +1,8 @@
 # Storage Schema
 
-This document describes the current schema v3 on-disk storage format for the app.
+This document describes the current schema 1 on-disk storage format for the app.
 
-The current source of truth is a `notes-data/` folder with domain manifests, space manifests, Markdown note files, and asset files. A future `topics/` layer may be introduced later, but it is not part of the active v3 layout.
+The current source of truth is a `notes-data/` folder with domain manifests, space manifests, Markdown note files, and asset files. A future `topics/` layer may be introduced later, but it is not part of the active schema 1 layout.
 
 The design goals are:
 
@@ -258,10 +258,10 @@ Browser storage should remain logically compatible with the Electron filesystem 
 
 ## Legacy JSON
 
-Legacy JSON state remains readable through the legacy app-state path. Existing `notes-data/` folders with unsupported schema versions are not silently migrated or overwritten unless an explicit migration exists.
+Legacy JSON state remains readable through the legacy app-state path. Existing `notes-data/` folders with unsupported schema versions are not silently migrated or overwritten; the current app only accepts schema 1.
 
 ## Future Topic Layer
 
 The top-level `topics/` directory is reserved for a future migration only.
 
-If the product later introduces concepts like topics, worlds, or sectors, the migration should be explicit and test-backed. Until then, the current v3 `domains/` layout is canonical.
+If the product later introduces concepts like topics, worlds, or sectors, the migration should be explicit and test-backed. Until then, the current schema 1 `domains/` layout is canonical.

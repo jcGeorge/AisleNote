@@ -47,11 +47,10 @@ import {
   normalizeImageAssetPath,
   parseImageAssetUrl,
 } from '../src/markdown/image-asset-refs.js'
-import { migrateStorageRootManifest } from './storage-migrations.mjs'
 
 const LEGACY_APP_STATE_RELATIVE_PATH = path.join('data', 'notes', 'index.json')
 export const HYBRID_ROOT_DIR = 'notes-data'
-const SCHEMA_VERSION = 3
+const SCHEMA_VERSION = 1
 const DOMAINS_DIR = 'domains'
 const STORAGE_RECOVERY_DIR = 'storage-recovery'
 export const RECOVERY_SNAPSHOT_MAX_ACTIVE_DAYS = 30
@@ -803,7 +802,7 @@ function writeNoteBodyAtPath({
   return { primaryFile: aisleRecords[0]?.file ?? primaryFileRelative, notePath }
 }
 
-function buildRootManifestV2(appState, domainEntries, noteBodyEntries, noteAisleBodyEntries) {
+function buildRootManifest(appState, domainEntries, noteBodyEntries, noteAisleBodyEntries) {
   const activeDomain = getActiveDomainFromAppState(appState, getDomainsFromAppState(appState))
   const activeDomainId = activeDomain ? getDomainId(activeDomain) : DEFAULT_DOMAIN_ID
 
@@ -819,7 +818,7 @@ function buildRootManifestV2(appState, domainEntries, noteBodyEntries, noteAisle
   }
 }
 
-function buildDomainManifestV2(domain, spaceEntries) {
+function buildDomainManifest(domain, spaceEntries) {
   const spaces = ensureArray(domain?.spaces)
   return {
     id: getDomainId(domain),
@@ -832,7 +831,7 @@ function buildDomainManifestV2(domain, spaceEntries) {
   }
 }
 
-function buildSpaceFilesV2({
+function buildSpaceFiles({
   fileMap,
   spaceRoot,
   space,
@@ -1056,7 +1055,7 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
       if (!space || typeof space.id !== 'string' || space.id.length === 0) continue
       const spaceSegment = spacePathForTitle(typeof space.name === 'string' ? space.name : 'Untitled Space', space.id, 'space')
       const spaceRoot = posixPath.join(domainRoot, spaceSegment)
-      const spaceEntry = buildSpaceFilesV2({
+      const spaceEntry = buildSpaceFiles({
         fileMap,
         spaceRoot,
         space,
@@ -1069,7 +1068,7 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
       spaceEntries.push({ ...spaceEntry, path: spaceSegment })
     }
 
-    setStorageJsonFile(fileMap, posixPath.join(domainRoot, 'manifest.json'), buildDomainManifestV2(domain, spaceEntries))
+    setStorageJsonFile(fileMap, posixPath.join(domainRoot, 'manifest.json'), buildDomainManifest(domain, spaceEntries))
     domainEntries.push({
       id: domainId,
       title: getDomainTitle(domain),
@@ -1104,7 +1103,7 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
     .filter(Boolean)
   const noteAisleBodyEntries = Array.from(noteAisleBodyRecords.values())
   setStorageJsonFile(fileMap, STORAGE_PROFILE_SETTINGS_FILE, extractSyncedProfileSettings(parsedState))
-  setStorageJsonFile(fileMap, 'manifest.json', buildRootManifestV2(parsedState, domainEntries, noteBodyEntries, noteAisleBodyEntries))
+  setStorageJsonFile(fileMap, 'manifest.json', buildRootManifest(parsedState, domainEntries, noteBodyEntries, noteAisleBodyEntries))
 
   mkdirSync(tempRoot, { recursive: true })
   for (const [relativeFile, entry] of fileMap.entries()) {
@@ -1190,7 +1189,7 @@ function addDirectoryToZip(zip, directoryPath, zipPrefix) {
   }
 }
 
-function readV2Space(rootPath, spaceRootRelative, spaceEntry, issues = null) {
+function readSpace(rootPath, spaceRootRelative, spaceEntry, issues = null) {
   const spaceRoot = path.join(rootPath, spaceRootRelative)
   const spaceManifest = readJsonFileIfExists(path.join(spaceRoot, 'manifest.json'), issues, {
     rootPath,
@@ -1250,7 +1249,7 @@ function readV2Space(rootPath, spaceRootRelative, spaceEntry, issues = null) {
   }
 }
 
-function readV2HybridAppStateFromRoot(rootPath, rootManifest, issues = null) {
+function readHybridAppStateFromRootManifest(rootPath, rootManifest, issues = null) {
   const profileSettings = readJsonFileIfExists(path.join(rootPath, STORAGE_PROFILE_SETTINGS_FILE), issues, {
     rootPath,
     parseCode: 'corrupt-profile-settings',
@@ -1300,7 +1299,7 @@ function readV2HybridAppStateFromRoot(rootPath, rootManifest, issues = null) {
         )
         continue
       }
-      const space = readV2Space(rootPath, path.posix.join(domainRootRelative, spacePath), spaceEntry, issues)
+      const space = readSpace(rootPath, path.posix.join(domainRootRelative, spacePath), spaceEntry, issues)
       if (!space) continue
       spaces.push(space)
     }
@@ -1393,8 +1392,7 @@ function readHybridAppStateResultFromRoot(rootPath) {
     missingMessage: 'Root manifest is missing.',
     parseMessage: 'Root manifest is corrupt.',
   })
-  const rootManifestMigration = migrateStorageRootManifest(rawRootManifest, SCHEMA_VERSION)
-  if (!rootManifestMigration.ok) {
+  if (!isRecord(rawRootManifest) || rawRootManifest.schemaVersion !== SCHEMA_VERSION) {
     if (issues.length === 0) {
       addStorageIssue(
         issues,
@@ -1410,22 +1408,12 @@ function readHybridAppStateResultFromRoot(rootPath) {
       issues,
     }
   }
-  const rootManifest = rootManifestMigration.manifest
-  if (rootManifest.schemaVersion === SCHEMA_VERSION) {
-    return {
-      serializedState: readV2HybridAppStateFromRoot(rootPath, rootManifest, issues),
-      schemaVersion: rootManifest.schemaVersion,
-      issues,
-    }
-  }
-  addStorageIssue(
+
+  return {
+    serializedState: readHybridAppStateFromRootManifest(rootPath, rawRootManifest, issues),
+    schemaVersion: rawRootManifest.schemaVersion,
     issues,
-    'unsupported-root-manifest',
-    'error',
-    path.posix.join(HYBRID_ROOT_DIR, 'manifest.json'),
-    'Root manifest schema is unsupported.',
-  )
-  return { serializedState: null, schemaVersion: rootManifest.schemaVersion, issues }
+  }
 }
 
 function readHybridAppStateFromRoot(rootPath) {

@@ -379,14 +379,14 @@ describe('Electron app state storage load result', () => {
       expect(parsedTabs[0].subTabs.map((subTab) => subTab.id)).toEqual(['sub-b2', 'sub-b1'])
     }))
 
-  it('writes v3 human-readable domain paths without synced backups or note body folders', () =>
+  it('writes current human-readable domain paths without synced backups or note body folders', () =>
     withTempUserDataPath((userDataPath) => {
       saveAppState(userDataPath, serializedAppState())
 
       const root = path.join(userDataPath, 'notes-data')
       const manifest = readJson(path.join(root, 'manifest.json'))
 
-      expect(manifest.schemaVersion).toBe(3)
+      expect(manifest.schemaVersion).toBe(1)
       expect(manifest.domains[0]).toMatchObject({
         id: 'domain-1',
         title: 'Domain',
@@ -752,7 +752,7 @@ describe('Electron app state storage load result', () => {
       })
     }))
 
-  it('caps generated v2 path segments while preserving app titles and ids', () =>
+  it('caps generated storage path segments while preserving app titles and ids', () =>
     withTempUserDataPath((userDataPath) => {
       const longTitle = 'Very Long Cross Platform Folder Name With Emoji 👨‍👩‍👧‍👦 And Symbols <>:"/\\|?* '.repeat(4).trim()
       const state = JSON.parse(serializedAppState())
@@ -838,7 +838,7 @@ describe('Electron app state storage load result', () => {
       generatedPaths.forEach(expectRelativePathWithinSegmentLimit)
     }))
 
-  it('rejects an existing v1 profile instead of migrating it', () =>
+  it('rejects a malformed current-schema topic-style profile', () =>
     withTempUserDataPath((userDataPath) => {
       const root = path.join(userDataPath, 'notes-data')
       mkdirSync(root, { recursive: true })
@@ -846,6 +846,8 @@ describe('Electron app state storage load result', () => {
         path.join(root, 'manifest.json'),
         JSON.stringify({
           schemaVersion: 1,
+          topics: [{ id: 'topic-1', title: 'Topic' }],
+          activeTopicId: 'topic-1',
         }),
         'utf8',
       )
@@ -856,15 +858,34 @@ describe('Electron app state storage load result', () => {
         source: 'hybrid',
         error: 'Existing app state could not be loaded.',
         health: 'error',
-        issues: [expect.objectContaining({ code: 'unsupported-root-manifest', severity: 'error' })],
+        issues: [expect.objectContaining({ code: 'missing-domain-index', severity: 'error' })],
       })
     }))
+
+  for (const schemaVersion of [2, 3, 999]) {
+    it(`rejects unsupported schema ${schemaVersion} profiles`, () =>
+      withTempUserDataPath((userDataPath) => {
+        const root = path.join(userDataPath, 'notes-data')
+        mkdirSync(root, { recursive: true })
+        writeFileSync(path.join(root, 'manifest.json'), JSON.stringify({ schemaVersion }), 'utf8')
+
+        expect(loadAppStateResult(userDataPath)).toMatchObject({
+          ok: false,
+          serializedState: null,
+          source: 'hybrid',
+          error: 'Existing app state could not be loaded.',
+          schemaVersion,
+          health: 'error',
+          issues: [expect.objectContaining({ code: 'unsupported-root-manifest', severity: 'error' })],
+        })
+      }))
+  }
 
   it('fails existing profiles with provider conflict folders', () =>
     withTempUserDataPath((userDataPath) => {
       const root = path.join(userDataPath, 'notes-data')
       mkdirSync(path.join(root, 'topics 2'), { recursive: true })
-      writeFileSync(path.join(root, 'manifest.json'), JSON.stringify({ schemaVersion: 2 }), 'utf8')
+      writeFileSync(path.join(root, 'manifest.json'), JSON.stringify({ schemaVersion: 1 }), 'utf8')
 
       expect(loadAppStateResult(userDataPath)).toMatchObject({
         ok: false,
@@ -897,23 +918,6 @@ describe('Electron app state storage load result', () => {
         error: 'Existing app state could not be loaded.',
         health: 'error',
         issues: [expect.objectContaining({ code: 'corrupt-root-manifest', severity: 'error' })],
-      })
-    }))
-
-  it('returns a failed result for an unsupported existing profile', () =>
-    withTempUserDataPath((userDataPath) => {
-      const root = path.join(userDataPath, 'notes-data')
-      mkdirSync(root, { recursive: true })
-      writeFileSync(path.join(root, 'manifest.json'), '{"schemaVersion":999}', 'utf8')
-
-      expect(loadAppStateResult(userDataPath)).toMatchObject({
-        ok: false,
-        serializedState: null,
-        source: 'hybrid',
-        error: 'Existing app state could not be loaded.',
-        schemaVersion: 999,
-        health: 'error',
-        issues: [expect.objectContaining({ code: 'unsupported-root-manifest', severity: 'error' })],
       })
     }))
 

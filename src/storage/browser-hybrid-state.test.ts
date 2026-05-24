@@ -192,7 +192,7 @@ describe('browser hybrid storage', () => {
     const homeBody = roundTripped.noteBodies.find((body) => body.id === 'body-tab')
     const subBody = roundTripped.noteBodies.find((body) => body.id === 'body-sub')
 
-    expect(rootManifest?.schemaVersion).toBe(3)
+    expect(rootManifest?.schemaVersion).toBe(1)
     expect(firstDomain.path).toEqual(expect.stringMatching(/^humble beginnings--[a-f0-9]{6}$/))
     expect(paths.some((path) => path.startsWith('notes-data/domains/'))).toBe(true)
     expect(paths.some((path) => path.startsWith('notes-data/topics/'))).toBe(false)
@@ -616,7 +616,7 @@ describe('browser hybrid storage', () => {
     expect(roundTrippedBodyTwo?.aisles[0]?.markdown).toBe(currentMarkdown)
   })
 
-  it('caps generated v2 path segments without truncating app titles', () => {
+  it('caps generated storage path segments without truncating app titles', () => {
     const longTitle = 'Very Long Cross Platform Folder Name With Emoji 👨‍👩‍👧‍👦 And Symbols <>:"/\\|?* '.repeat(4).trim()
     const state = parseSavedState(
       JSON.stringify({
@@ -733,7 +733,7 @@ describe('browser hybrid storage', () => {
     expect(firstSubTab.path).toEqual(expect.stringMatching(/--[a-f0-9]{6}\.md$/))
   })
 
-  it('does not read v1 topic/note-body file maps', () => {
+  it('does not read malformed topic/note-body file maps', () => {
     const fileMap = new Map([
       [
         'notes-data/manifest.json',
@@ -759,6 +759,20 @@ describe('browser hybrid storage', () => {
 
     expect(readSerializedStateFromHybridFileMap(fileMap)).toBeNull()
   })
+
+  for (const schemaVersion of [2, 3, 999]) {
+    it(`does not read unsupported schema ${schemaVersion} file maps`, () => {
+      const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(createBrowserStorageState()))
+      const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
+      fileMap.set('notes-data/manifest.json', {
+        path: 'notes-data/manifest.json',
+        kind: 'text',
+        text: `${JSON.stringify({ ...rootManifest, schemaVersion }, null, 2)}\n`,
+      })
+
+      expect(readSerializedStateFromHybridFileMap(fileMap)).toBeNull()
+    })
+  }
 
   it('loads missing markdown files as empty content', () => {
     const state = createBrowserStorageState()

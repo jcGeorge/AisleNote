@@ -1,4 +1,4 @@
-export type StorageSchemaVersion = 3
+export type StorageSchemaVersion = 1
 
 export type StorageEntityId = string
 export type StorageCustomThemeId = 'custom1' | 'custom2' | 'custom3'
@@ -32,7 +32,7 @@ export type StorageShortcutId =
   | 'cycleSubTabNext'
   | 'cycleSubTabPrev'
 
-export const STORAGE_SCHEMA_VERSION: StorageSchemaVersion = 3
+export const STORAGE_SCHEMA_VERSION: StorageSchemaVersion = 1
 
 export const STORAGE_ROOT_DIR = 'notes-data' as const
 export const STORAGE_DOMAINS_DIR = 'domains' as const

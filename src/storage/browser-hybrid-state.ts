@@ -26,7 +26,6 @@ import {
   type StorageBackend,
   type StorageFileEntry,
 } from './storage-backend'
-import { migrateStorageRootManifest } from './storage-migrations'
 import {
   DEFAULT_AUTO_REMOVE_DAYS,
   DEFAULT_DOMAIN_ID,
@@ -941,9 +940,7 @@ export function readSerializedStateFromHybridFileMap(fileMap: Map<string, Browse
     return null
   }
 
-  const manifestMigration = migrateStorageRootManifest(rootManifest, STORAGE_SCHEMA_VERSION)
-  if (!manifestMigration.ok) return null
-  rootManifest = manifestMigration.manifest
+  if (!isRecord(rootManifest) || rootManifest.schemaVersion !== STORAGE_SCHEMA_VERSION) return null
 
   let profileSettings: Record<string, unknown> = {}
   const profileSettingsRaw = getTextFile(fileMap, joinPosix(STORAGE_ROOT_DIR, STORAGE_PROFILE_SETTINGS_FILE))

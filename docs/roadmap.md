@@ -9,7 +9,7 @@ The guiding rule is: data integrity and recovery come before visual polish and p
 Cleaned up on 2026-05-17.
 
 - **Phase 1 is complete.** The stabilization pass covered real-workspace persistence, frontmatter, Stage Manager/Director flows, rename persistence, trash/restore, export/images, and storage-profile reload/move behavior.
-- **Phase 2 is complete for the current schema v3 storage model.** The active `domains/` manifest/Markdown/assets format is documented, Electron/browser storage behavior is hardened, storage health is visible in settings, and recovery snapshots are available outside the synced profile.
+- **Phase 2 is complete for the current schema 1 storage model.** The active `domains/` manifest/Markdown/assets format is documented, Electron/browser storage behavior is hardened, storage health is visible in settings, and recovery snapshots are available outside the synced profile.
 - **Phase 3 is complete for this roadmap gate.** The first targeted refactor pass extracted storage-profile orchestration and cleared the hook-dependency cleanup target. Larger refactor slices are now normal engineering hygiene, not blockers for Phase 4.
 - **Phase 4 is the current active phase.** The first input-polish slice is largely implemented; remaining Phase 4 work is continued bug polish plus the later design-system/UI overhaul.
 
@@ -35,7 +35,7 @@ Goal: make the manifest/Markdown/assets storage model resilient enough for real 
 
 Completed outcomes:
 
-- `docs/storage-schema.md` now describes the current schema v3 `notes-data/domains/...` layout as canonical; the future `topics/` idea remains explicitly deferred.
+- `docs/storage-schema.md` now describes the current schema 1 `notes-data/domains/...` layout as canonical; the future `topics/` idea remains explicitly deferred.
 - Missing Markdown files, missing/corrupt trash manifests, corrupt branch manifests, corrupt/unsupported root manifests, stale revisions, conflict folders, and paused-write recovery paths are covered by storage behavior and tests.
 - Settings > Data surfaces storage health, profile path, schema/writable state, issue details, recovery snapshot count, reveal folder, retry reload, export backup, and restore latest snapshot actions.
 - Browser hybrid storage and Electron filesystem storage have parity coverage for the current logical app state.
