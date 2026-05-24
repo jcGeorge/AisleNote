@@ -36,7 +36,6 @@ export const STORAGE_SCHEMA_VERSION: StorageSchemaVersion = 3
 
 export const STORAGE_ROOT_DIR = 'notes-data' as const
 export const STORAGE_DOMAINS_DIR = 'domains' as const
-export const STORAGE_AISLES_DIR = 'aisles' as const
 export const STORAGE_ASSETS_DIR = 'assets' as const
 export const STORAGE_TRASH_DIR = 'trash' as const
 export const STORAGE_MANIFEST_FILE = 'manifest.json' as const
@@ -197,7 +196,9 @@ export type StorageSubTabRecord = {
   id: StorageEntityId
   title: string
   noteBodyId?: StorageEntityId
+  /** Single-aisle notes point to a .md file; multi-aisle notes point to the containing folder. */
   path: string
+  /** Primary Markdown file for the sub-tab, usually the single .md file or aisle 1 in a folder. */
   file: string
   createdAt?: number
   updatedAt?: number
@@ -208,6 +209,7 @@ export type StorageTabRecord = {
   title: string
   noteBodyId?: StorageEntityId
   path: string
+  /** Primary Markdown file for the parent home note: home.md or home/aisle 1--<id>.md. */
   homeNoteFile: string
   subTabs: StorageSubTabRecord[]
   activeSubTabId: StorageEntityId | null

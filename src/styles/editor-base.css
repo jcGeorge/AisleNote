@@ -163,7 +163,7 @@ body.app-tooltips-disabled .toastui-editor-tooltip {
 .toastui-editor-toolbar-icons.dash-list {
   position: relative !important;
   background-image: none !important;
-  color: var(--editor-toolbar-dash-icon-text) !important;
+  color: var(--editor-toolbar-dash-icon-text, #555555) !important;
 }
 
 .toastui-editor-toolbar-icons.dash-list::before,
@@ -186,7 +186,6 @@ body.app-tooltips-disabled .toastui-editor-tooltip {
   top: 7px;
   left: 13px;
   width: 8px;
-  opacity: 0.85;
 }
 
 .toastui-editor-toolbar-icons.ordered-list {

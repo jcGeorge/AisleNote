@@ -90,3 +90,21 @@ export function createStoragePathAllocator() {
     return candidate
   }
 }
+
+export function createStoragePathFileNameAllocator(extension) {
+  const normalizedExtension = extension ? (extension.startsWith('.') ? extension : `.${extension}`) : ''
+  const used = new Set()
+  return (title, id, fallback) => {
+    let candidate = buildStoragePathSegment(title, id, fallback, { extension: normalizedExtension })
+    let index = 2
+    while (used.has(candidate)) {
+      candidate = buildStoragePathSegment(title, id, fallback, {
+        collisionSuffix: `-${index}`,
+        extension: normalizedExtension,
+      })
+      index += 1
+    }
+    used.add(candidate)
+    return candidate
+  }
+}

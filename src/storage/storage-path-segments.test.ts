@@ -5,6 +5,7 @@ import {
   buildStoragePathFileName,
   buildStoragePathSegment,
   createStoragePathAllocator,
+  createStoragePathFileNameAllocator,
   sanitizeStoragePathName,
 } from './storage-path-segments.js'
 
@@ -62,5 +63,15 @@ describe('storage path segments', () => {
     expect(fileName).toHaveLength(STORAGE_PATH_SEGMENT_MAX_LENGTH)
     expect(fileName).toMatch(/--[a-f0-9]{6}\.md$/)
     expect(encodedByteLength(fileName)).toBeLessThanOrEqual(STORAGE_PATH_SEGMENT_MAX_BYTES)
+  })
+
+  it('allocates colliding readable file names before the extension', () => {
+    const allocateFileName = createStoragePathFileNameAllocator('.md')
+    const first = allocateFileName('same file', 'same-id', 'note')
+    const second = allocateFileName('same file', 'same-id', 'note')
+
+    expect(first).toMatch(/--[a-f0-9]{6}\.md$/)
+    expect(second).toMatch(/--[a-f0-9]{6}-2\.md$/)
+    expect(first).not.toBe(second)
   })
 })

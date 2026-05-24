@@ -440,7 +440,7 @@
   --editor-annotation-text: #c7d5ed;
   --editor-terminal-caret: rgba(134, 168, 232, 0.86);
   --editor-toolbar-icon-filter: invert(88%) sepia(10%) saturate(327%) hue-rotate(183deg) brightness(94%) contrast(91%);
-  --editor-toolbar-dash-icon-text: #111827;
+  --editor-toolbar-dash-icon-text: #555555;
   --editor-clear-note-toolbar-text: var(--toolbar-custom-icon-color, var(--app-text));
   --editor-heading-choice-active-bg: #22406d;
   --editor-heading-choice-active-marker: #6fa0ff;
@@ -858,7 +858,6 @@
   --editor-caret: var(--custom-palette-text);
   --editor-annotation-text: var(--app-text-muted);
   --editor-terminal-caret: color-mix(in srgb, var(--custom-palette-primary) 74%, transparent);
-  --editor-toolbar-dash-icon-text: var(--custom-palette-canvas);
   --editor-heading-choice-active-bg: color-mix(in srgb, var(--custom-palette-primary) 28%, var(--custom-palette-surface));
   --editor-heading-choice-active-marker: var(--custom-palette-primary);
   --editor-heading-choice-active-text: var(--app-text-bright);

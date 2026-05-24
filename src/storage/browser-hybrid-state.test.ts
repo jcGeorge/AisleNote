@@ -198,7 +198,7 @@ describe('browser hybrid storage', () => {
     expect(paths.some((path) => path.startsWith('notes-data/topics/'))).toBe(false)
     expect(paths.some((path) => path.startsWith('notes-data/note-bodies/'))).toBe(false)
     expect(paths.some((path) => /\/Tab--[a-f0-9]{6}\/home\.md$/.test(path))).toBe(true)
-    expect(paths.some((path) => /\/Tab--[a-f0-9]{6}\/Sub--[a-f0-9]{6}\/home\.md$/.test(path))).toBe(true)
+    expect(paths.some((path) => /\/Tab--[a-f0-9]{6}\/Sub--[a-f0-9]{6}\.md$/.test(path))).toBe(true)
     expect(serialized).not.toBeNull()
     expect(homeBody?.aisles[0]?.markdown).toBe('home body')
     expect(homeBody?.frontmatter).toEqual({ created: '2024-01-01' })
@@ -519,6 +519,8 @@ describe('browser hybrid storage', () => {
       .map(getRecord)
       .map((aisle) => String(aisle.file))
 
+    expect(aisleFiles[0]).toMatch(/\/home\/aisle 1--[a-f0-9]{6}\.md$/)
+    expect(aisleFiles[1]).toMatch(/\/home\/aisle 2--[a-f0-9]{6}\.md$/)
     expect(fileMap.get(`notes-data/${aisleFiles[0]}`)).toMatchObject({ kind: 'text', text: 'left aisle draft 🚙' })
     expect(fileMap.get(`notes-data/${aisleFiles[1]}`)).toMatchObject({ kind: 'text', text: 'right aisle draft 🥺' })
 
@@ -642,36 +644,8 @@ describe('browser hybrid storage', () => {
                       subTabs: [{ id: 'sub-long', title: longTitle, noteBodyId: 'body-sub-long', content: 'sub' }],
                     },
                   ],
-                  deletedTabs: [
-                    {
-                      id: 'deleted-tab-entry-long',
-                      deletedAt: 1,
-                      tab: {
-                        id: 'deleted-tab-long',
-                        title: longTitle,
-                        noteBodyId: 'body-deleted-tab',
-                        homeContent: 'deleted tab',
-                        activeSubTabId: null,
-                        subTabs: [
-                          { id: 'deleted-sub-long', title: longTitle, noteBodyId: 'body-deleted-sub', content: 'deleted sub' },
-                        ],
-                      },
-                    },
-                  ],
-                  deletedSubTabs: [
-                    {
-                      id: 'deleted-sub-entry-long',
-                      parentTabId: 'tab-long',
-                      parentTabTitle: longTitle,
-                      deletedAt: 2,
-                      subTab: {
-                        id: 'deleted-loose-sub-long',
-                        title: longTitle,
-                        noteBodyId: 'body-deleted-loose-sub',
-                        content: 'deleted loose sub',
-                      },
-                    },
-                  ],
+                  deletedTabs: [],
+                  deletedSubTabs: [],
                 },
               },
             ],
@@ -693,6 +667,34 @@ describe('browser hybrid storage', () => {
         ],
       }),
     )
+    state.domains[0].spaces[0].data.deletedTabs = [
+      {
+        id: 'deleted-tab-entry-long',
+        deletedAt: 1,
+        tab: {
+          id: 'deleted-tab-long',
+          title: longTitle,
+          noteBodyId: 'body-deleted-tab',
+          homeContent: 'deleted tab',
+          activeSubTabId: null,
+          subTabs: [{ id: 'deleted-sub-long', title: longTitle, noteBodyId: 'body-deleted-sub', content: 'deleted sub' }],
+        },
+      },
+    ]
+    state.domains[0].spaces[0].data.deletedSubTabs = [
+      {
+        id: 'deleted-sub-entry-long',
+        parentTabId: 'tab-long',
+        parentTabTitle: longTitle,
+        deletedAt: 2,
+        subTab: {
+          id: 'deleted-loose-sub-long',
+          title: longTitle,
+          noteBodyId: 'body-deleted-loose-sub',
+          content: 'deleted loose sub',
+        },
+      },
+    ]
 
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
     const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
@@ -703,8 +705,15 @@ describe('browser hybrid storage', () => {
       fileMap,
       `notes-data/domains/${String(domainEntry.path)}/${String(spaceEntry.path)}/manifest.json`,
     )
+    const trashManifest = getTextFileJson(
+      fileMap,
+      `notes-data/domains/${String(domainEntry.path)}/${String(spaceEntry.path)}/trash/manifest.json`,
+    )
     const firstTab = getRecord(Array.isArray(spaceManifest.tabs) ? spaceManifest.tabs[0] : null)
     const firstSubTab = getRecord(Array.isArray(firstTab.subTabs) ? firstTab.subTabs[0] : null)
+    const deletedParent = getRecord(Array.isArray(trashManifest.items) ? trashManifest.items[0] : null)
+    const deletedNestedSubTab = getRecord(Array.isArray(deletedParent.subTabs) ? deletedParent.subTabs[0] : null)
+    const deletedLooseSubTab = getRecord(Array.isArray(trashManifest.items) ? trashManifest.items[1] : null)
 
     Array.from(fileMap.keys()).forEach(expectPathSegmentsWithinLimit)
     expect(domainEntry.title).toBe(longTitle)
@@ -712,10 +721,16 @@ describe('browser hybrid storage', () => {
     expect(spaceManifest.title).toBe(longTitle)
     expect(firstTab.title).toBe(longTitle)
     expect(firstSubTab.title).toBe(longTitle)
+    expect(deletedParent.file).toBe(`${String(deletedParent.path)}/home.md`)
+    expect(String(deletedNestedSubTab.path).startsWith(`${String(deletedParent.path)}/`)).toBe(true)
+    expect(deletedNestedSubTab.path).toEqual(expect.stringMatching(/--[a-f0-9]{6}\.md$/))
+    expect(deletedNestedSubTab.file).toBe(deletedNestedSubTab.path)
+    expect(deletedLooseSubTab.path).toEqual(expect.stringMatching(/--[a-f0-9]{6}\.md$/))
+    expect(deletedLooseSubTab.file).toBe(deletedLooseSubTab.path)
     expect(domainEntry.path).toEqual(expect.stringMatching(/--[a-f0-9]{6}$/))
     expect(spaceEntry.path).toEqual(expect.stringMatching(/--[a-f0-9]{6}$/))
     expect(firstTab.path).toEqual(expect.stringMatching(/--[a-f0-9]{6}$/))
-    expect(firstSubTab.path).toEqual(expect.stringMatching(/--[a-f0-9]{6}$/))
+    expect(firstSubTab.path).toEqual(expect.stringMatching(/--[a-f0-9]{6}\.md$/))
   })
 
   it('does not read v1 topic/note-body file maps', () => {

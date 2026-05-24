@@ -435,9 +435,109 @@ describe('Electron app state storage load result', () => {
 
       expect(tab.path).toMatch(/^Tab--[a-f0-9]{6}$/)
       expect(tab.homeNoteFile).toBe(`${tab.path}/home.md`)
-      expect(tab.subTabs[0].path).toMatch(new RegExp(`^${tab.path}/Sub Tab--[a-f0-9]{6}$`))
-      expect(tab.subTabs[0].file).toBe(`${tab.subTabs[0].path}/home.md`)
+      expect(tab.subTabs[0].path).toMatch(new RegExp(`^${tab.path}/Sub Tab--[a-f0-9]{6}\\.md$`))
+      expect(tab.subTabs[0].file).toBe(tab.subTabs[0].path)
       expect(readFileSync(path.join(spaceRoot, tab.subTabs[0].file), 'utf8')).toBe('sub body')
+    }))
+
+  it('stores multi-aisle notes as aisle folders and collapses back to single files', () =>
+    withTempUserDataPath((userDataPath) => {
+      const state = JSON.parse(serializedAppState())
+      state.noteBodies[0].aisles = [
+        { id: 'aisle-home-1', markdown: 'home one' },
+        { id: 'aisle-home-2', markdown: 'home two' },
+      ]
+      state.domains[0].spaces[0].data.tabs[0].subTabs = [
+        { id: 'sub-1', title: 'Sub Tab', noteBodyId: 'body-sub', content: 'sub fallback' },
+      ]
+      state.noteBodies.push({
+        id: 'body-sub',
+        aisles: [
+          { id: 'aisle-sub-1', markdown: 'sub one' },
+          { id: 'aisle-sub-2', markdown: 'sub two' },
+        ],
+      })
+
+      saveAppState(userDataPath, JSON.stringify(state))
+      const initial = getStoredWorkspacePaths(userDataPath)
+      const initialTab = initial.spaceManifest.tabs[0]
+      const initialSubTab = initialTab.subTabs[0]
+      const initialHomeFolder = path.join(initial.spaceRoot, initialTab.path, 'home')
+      const initialSubTabFolder = path.join(initial.spaceRoot, initialSubTab.path)
+      const initialHomeBodyRecord = initial.rootManifest.noteBodies.find((body) => body.id === 'body-1')
+      const initialSubBodyRecord = initial.rootManifest.noteBodies.find((body) => body.id === 'body-sub')
+
+      expect(initialTab.homeNoteFile).toMatch(new RegExp(`^${initialTab.path}/home/aisle 1--[a-f0-9]{6}\\.md$`))
+      expect(initialHomeBodyRecord.aisles[0].file).toMatch(/\/home\/aisle 1--[a-f0-9]{6}\.md$/)
+      expect(initialHomeBodyRecord.aisles[1].file).toMatch(/\/home\/aisle 2--[a-f0-9]{6}\.md$/)
+      expect(initialSubTab.path).toMatch(new RegExp(`^${initialTab.path}/Sub Tab--[a-f0-9]{6}$`))
+      expect(initialSubTab.file).toMatch(new RegExp(`^${initialSubTab.path}/aisle 1--[a-f0-9]{6}\\.md$`))
+      expect(initialSubBodyRecord.aisles[1].file).toMatch(/\/Sub Tab--[a-f0-9]{6}\/aisle 2--[a-f0-9]{6}\.md$/)
+      expect(readFileSync(path.join(initial.spaceRoot, initialSubTab.file), 'utf8')).toBe('sub one')
+
+      state.noteBodies[0].aisles = [{ id: 'aisle-home-1', markdown: 'home collapsed' }]
+      state.noteBodies.find((body) => body.id === 'body-sub').aisles = [
+        { id: 'aisle-sub-1', markdown: 'sub collapsed' },
+      ]
+      saveAppState(userDataPath, JSON.stringify(state))
+
+      const collapsed = getStoredWorkspacePaths(userDataPath)
+      const collapsedTab = collapsed.spaceManifest.tabs[0]
+      const collapsedSubTab = collapsedTab.subTabs[0]
+      expect(collapsedTab.homeNoteFile).toBe(`${collapsedTab.path}/home.md`)
+      expect(collapsedSubTab.path).toMatch(new RegExp(`^${collapsedTab.path}/Sub Tab--[a-f0-9]{6}\\.md$`))
+      expect(collapsedSubTab.file).toBe(collapsedSubTab.path)
+      expect(readFileSync(path.join(collapsed.spaceRoot, collapsedSubTab.file), 'utf8')).toBe('sub collapsed')
+      expect(existsSync(initialHomeFolder)).toBe(false)
+      expect(existsSync(initialSubTabFolder)).toBe(false)
+    }))
+
+  it('loads legacy sub-tab home.md paths and rewrites them on save', () =>
+    withTempUserDataPath((userDataPath) => {
+      const state = JSON.parse(serializedAppState())
+      state.domains[0].spaces[0].data.tabs[0].subTabs = [
+        { id: 'sub-1', title: 'Sub Tab', noteBodyId: 'body-sub', content: 'sub fallback' },
+      ]
+      state.noteBodies.push({ id: 'body-sub', aisles: [{ id: 'aisle-sub', markdown: 'sub body' }] })
+      saveAppState(userDataPath, JSON.stringify(state))
+
+      const { root, rootManifest, domainEntry, spaceEntry, spaceRoot, spaceManifest } = getStoredWorkspacePaths(userDataPath)
+      const tab = spaceManifest.tabs[0]
+      const subTab = tab.subTabs[0]
+      const legacySubTabPath = subTab.path.replace(/\.md$/, '')
+      const legacySubTabFile = `${legacySubTabPath}/home.md`
+      mkdirSync(path.join(spaceRoot, legacySubTabPath), { recursive: true })
+      writeFileSync(path.join(spaceRoot, legacySubTabFile), 'legacy sub body', 'utf8')
+      subTab.path = legacySubTabPath
+      subTab.file = legacySubTabFile
+      writeFileSync(path.join(spaceRoot, 'manifest.json'), `${JSON.stringify(spaceManifest, null, 2)}\n`, 'utf8')
+      rootManifest.noteBodies.find((body) => body.id === 'body-sub').aisles[0].file = path.posix.join(
+        'domains',
+        domainEntry.path,
+        spaceEntry.path,
+        legacySubTabFile,
+      )
+      rootManifest.noteAisleBodies.find((body) => body.id === 'aisle-sub').file = path.posix.join(
+        'domains',
+        domainEntry.path,
+        spaceEntry.path,
+        legacySubTabFile,
+      )
+      writeFileSync(path.join(root, 'manifest.json'), `${JSON.stringify(rootManifest, null, 2)}\n`, 'utf8')
+
+      const result = loadAppStateResult(userDataPath)
+      const parsed = JSON.parse(result.serializedState)
+      expect(result.ok).toBe(true)
+      expect(parsed.noteBodies.find((body) => body.id === 'body-sub').aisles[0].markdown).toBe('legacy sub body')
+      expect(parsed.domains[0].spaces[0].data.tabs[0].subTabs[0].content).toBe('legacy sub body')
+
+      saveAppState(userDataPath, result.serializedState)
+      const rewritten = getStoredWorkspacePaths(userDataPath)
+      const rewrittenSubTab = rewritten.spaceManifest.tabs[0].subTabs[0]
+      expect(rewrittenSubTab.path).toMatch(new RegExp(`^${rewritten.spaceManifest.tabs[0].path}/Sub Tab--[a-f0-9]{6}\\.md$`))
+      expect(rewrittenSubTab.file).toBe(rewrittenSubTab.path)
+      expect(readFileSync(path.join(rewritten.spaceRoot, rewrittenSubTab.file), 'utf8')).toBe('legacy sub body')
+      expect(existsSync(path.join(spaceRoot, legacySubTabPath))).toBe(false)
     }))
 
   it('round-trips linked aisle bodies through hybrid storage', () =>
@@ -493,6 +593,8 @@ describe('Electron app state storage load result', () => {
 
       const { root, rootManifest } = getStoredWorkspacePaths(userDataPath)
       const bodyRecord = rootManifest.noteBodies.find((body) => body.id === 'body-1')
+      expect(bodyRecord.aisles[0].file).toMatch(/\/home\/aisle 1--[a-f0-9]{6}\.md$/)
+      expect(bodyRecord.aisles[1].file).toMatch(/\/home\/aisle 2--[a-f0-9]{6}\.md$/)
       expect(readFileSync(path.join(root, bodyRecord.aisles[0].file), 'utf8')).toBe('left aisle draft 🚙')
       expect(readFileSync(path.join(root, bodyRecord.aisles[1].file), 'utf8')).toBe('right aisle draft 🥺')
 
@@ -723,10 +825,15 @@ describe('Electron app state storage load result', () => {
       expect(spaceManifest.title).toBe(longTitle)
       expect(tab.title).toBe(longTitle)
       expect(tab.subTabs[0].title).toBe(longTitle)
+      expect(trashManifest.items[0].file).toBe(`${trashManifest.items[0].path}/home.md`)
+      expect(trashManifest.items[0].subTabs[0].path).toMatch(new RegExp(`^${trashManifest.items[0].path}/.+--[a-f0-9]{6}\\.md$`))
+      expect(trashManifest.items[0].subTabs[0].file).toBe(trashManifest.items[0].subTabs[0].path)
+      expect(trashManifest.items[1].path).toMatch(/--[a-f0-9]{6}\.md$/)
+      expect(trashManifest.items[1].file).toBe(trashManifest.items[1].path)
       expect(domainEntry.path).toMatch(/--[a-f0-9]{6}$/)
       expect(spaceEntry.path).toMatch(/--[a-f0-9]{6}$/)
       expect(tab.path).toMatch(/--[a-f0-9]{6}$/)
-      expect(path.posix.basename(tab.subTabs[0].path)).toMatch(/--[a-f0-9]{6}$/)
+      expect(path.posix.basename(tab.subTabs[0].path)).toMatch(/--[a-f0-9]{6}\.md$/)
       expect(path.posix.basename(bodyRecord.aisles[1].file)).toMatch(/--[a-f0-9]{6}\.md$/)
       generatedPaths.forEach(expectRelativePathWithinSegmentLimit)
     }))

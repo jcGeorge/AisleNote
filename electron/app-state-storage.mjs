@@ -30,7 +30,11 @@ import {
   isRecord,
   normalizeAssetExtension,
 } from '../src/storage/hybrid-storage-core.js'
-import { buildStoragePathFileName, createStoragePathAllocator } from '../src/storage/storage-path-segments.js'
+import {
+  buildStoragePathFileName,
+  createStoragePathAllocator,
+  createStoragePathFileNameAllocator,
+} from '../src/storage/storage-path-segments.js'
 import {
   STORAGE_PROFILE_SETTINGS_FILE,
   extractSyncedGlobalSettings,
@@ -726,22 +730,29 @@ function writeNoteBodyAtPath({
   noteAisleBodyRecords,
   noteBodyId,
   fallbackMarkdown,
-  noteRootRelative,
+  primaryFileRelative,
+  multiAisleRootRelative,
   assetBank,
 }) {
   const posixPath = path.posix
-  const body = typeof noteBodyId === 'string' && noteBodyId ? noteBodyMap.get(noteBodyId) : null
+  const bodyId = typeof noteBodyId === 'string' ? noteBodyId : ''
+  const body = bodyId ? noteBodyMap.get(bodyId) : null
   const sourceAisles = ensureArray(body?.aisles)
-  const homeFile = posixPath.join(noteRootRelative, 'home.md')
+  const usesAisleFolder = sourceAisles.length > 1
+  const notePath = usesAisleFolder ? multiAisleRootRelative : primaryFileRelative
 
-  if (body && noteBodyRecords.has(noteBodyId)) {
-    const firstAisle = ensureArray(body.aisles)[0]
+  const getAisleFile = (index, aisleId) => {
+    const aisleFileName = buildStoragePathFileName(`aisle ${index + 1}`, aisleId, 'aisle', '.md')
+    return posixPath.join(multiAisleRootRelative, aisleFileName)
+  }
+
+  if (body && noteBodyRecords.has(bodyId)) {
+    const firstAisle = sourceAisles[0]
+    const firstAisleId = typeof firstAisle?.id === 'string' && firstAisle.id ? firstAisle.id : `${bodyId}-aisle-1`
     const firstAisleBodyId =
       typeof firstAisle?.aisleBodyId === 'string' && firstAisle.aisleBodyId
         ? firstAisle.aisleBodyId
-        : typeof firstAisle?.id === 'string'
-          ? firstAisle.id
-          : ''
+        : firstAisleId
     const sharedMarkdown = firstAisleBodyId ? noteAisleBodyMap.get(firstAisleBodyId)?.markdown : undefined
     const markdown =
       typeof sharedMarkdown === 'string'
@@ -749,30 +760,30 @@ function writeNoteBodyAtPath({
         : typeof firstAisle?.markdown === 'string'
           ? firstAisle.markdown
           : fallbackMarkdown
-    setStorageTextFile(fileMap, homeFile, externalizeMarkdownImages(markdown, homeFile, assetBank))
-    return homeFile
+    const primaryFile = usesAisleFolder
+      ? getAisleFile(0, firstAisleId)
+      : primaryFileRelative
+    setStorageTextFile(fileMap, primaryFile, externalizeMarkdownImages(markdown, primaryFile, assetBank))
+    return { primaryFile, notePath }
   }
 
   if (!body || sourceAisles.length === 0) {
-    setStorageTextFile(fileMap, homeFile, externalizeMarkdownImages(fallbackMarkdown, homeFile, assetBank))
-    if (body && noteBodyId) {
-      const aisleId = `${noteBodyId}-home`
-      noteBodyRecords.set(noteBodyId, buildNoteBodyManifestRecord(body, [{ id: aisleId, aisleBodyId: aisleId, file: homeFile }]))
+    setStorageTextFile(fileMap, primaryFileRelative, externalizeMarkdownImages(fallbackMarkdown, primaryFileRelative, assetBank))
+    if (body && bodyId) {
+      const aisleId = `${bodyId}-home`
+      noteBodyRecords.set(bodyId, buildNoteBodyManifestRecord(body, [{ id: aisleId, aisleBodyId: aisleId, file: primaryFileRelative }]))
       if (!noteAisleBodyRecords.has(aisleId)) {
-        noteAisleBodyRecords.set(aisleId, { id: aisleId, file: homeFile })
+        noteAisleBodyRecords.set(aisleId, { id: aisleId, file: primaryFileRelative })
       }
     }
-    return homeFile
+    return { primaryFile: primaryFileRelative, notePath: primaryFileRelative }
   }
 
   const aisleRecords = []
   sourceAisles.forEach((aisle, index) => {
-    const aisleId = typeof aisle?.id === 'string' && aisle.id ? aisle.id : `${noteBodyId}-aisle-${index + 1}`
+    const aisleId = typeof aisle?.id === 'string' && aisle.id ? aisle.id : `${bodyId}-aisle-${index + 1}`
     const aisleBodyId = typeof aisle?.aisleBodyId === 'string' && aisle.aisleBodyId ? aisle.aisleBodyId : aisleId
-    const file =
-      index === 0
-        ? homeFile
-        : posixPath.join(noteRootRelative, 'aisles', buildStoragePathFileName(`Aisle ${index + 1}`, aisleId, 'Aisle', '.md'))
+    const file = usesAisleFolder ? getAisleFile(index, aisleId) : primaryFileRelative
     const sharedMarkdown = noteAisleBodyMap.get(aisleBodyId)?.markdown
     const markdown =
       typeof sharedMarkdown === 'string'
@@ -788,8 +799,8 @@ function writeNoteBodyAtPath({
       noteAisleBodyRecords.set(aisleBodyId, { id: aisleBodyId, file })
     }
   })
-  noteBodyRecords.set(noteBodyId, buildNoteBodyManifestRecord(body, aisleRecords))
-  return homeFile
+  noteBodyRecords.set(bodyId, buildNoteBodyManifestRecord(body, aisleRecords))
+  return { primaryFile: aisleRecords[0]?.file ?? primaryFileRelative, notePath }
 }
 
 function buildRootManifestV2(appState, domainEntries, noteBodyEntries, noteAisleBodyEntries) {
@@ -841,8 +852,7 @@ function buildSpaceFilesV2({
     if (!tabId) continue
     const tabSegment = tabPathForTitle(typeof tab.title === 'string' ? tab.title : 'tab', tabId, 'tab')
     const tabRoot = posixPath.join(spaceRoot, tabSegment)
-    const homeNoteFile = posixPath.relative(spaceRoot, posixPath.join(tabRoot, 'home.md'))
-    writeNoteBodyAtPath({
+    const homeWrite = writeNoteBodyAtPath({
       fileMap,
       noteBodyMap,
       noteAisleBodyMap,
@@ -850,17 +860,20 @@ function buildSpaceFilesV2({
       noteAisleBodyRecords,
       noteBodyId: tab.noteBodyId,
       fallbackMarkdown: typeof tab.homeContent === 'string' ? tab.homeContent : '',
-      noteRootRelative: tabRoot,
+      primaryFileRelative: posixPath.join(tabRoot, 'home.md'),
+      multiAisleRootRelative: posixPath.join(tabRoot, 'home'),
       assetBank,
     })
+    const homeNoteFile = posixPath.relative(spaceRoot, homeWrite.primaryFile)
 
     const subTabPathForTitle = createStoragePathAllocator()
+    const subTabFileForTitle = createStoragePathFileNameAllocator('.md')
     const subTabs = ensureArray(tab.subTabs).map((subTab) => {
       const subTabId = typeof subTab?.id === 'string' ? subTab.id : ''
       const subTabSegment = subTabPathForTitle(typeof subTab?.title === 'string' ? subTab.title : 'tab', subTabId, 'tab')
+      const subTabFileName = subTabFileForTitle(typeof subTab?.title === 'string' ? subTab.title : 'tab', subTabId, 'tab')
       const subTabRoot = posixPath.join(tabRoot, subTabSegment)
-      const file = posixPath.relative(spaceRoot, posixPath.join(subTabRoot, 'home.md'))
-      writeNoteBodyAtPath({
+      const subTabWrite = writeNoteBodyAtPath({
         fileMap,
         noteBodyMap,
         noteAisleBodyMap,
@@ -868,15 +881,16 @@ function buildSpaceFilesV2({
         noteAisleBodyRecords,
         noteBodyId: subTab.noteBodyId,
         fallbackMarkdown: typeof subTab.content === 'string' ? subTab.content : '',
-        noteRootRelative: subTabRoot,
+        primaryFileRelative: posixPath.join(tabRoot, subTabFileName),
+        multiAisleRootRelative: subTabRoot,
         assetBank,
       })
       return {
         id: subTabId,
         title: typeof subTab.title === 'string' ? subTab.title : 'tab',
-        path: posixPath.relative(spaceRoot, subTabRoot),
+        path: posixPath.relative(spaceRoot, subTabWrite.notePath),
         noteBodyId: typeof subTab.noteBodyId === 'string' ? subTab.noteBodyId : '',
-        file,
+        file: posixPath.relative(spaceRoot, subTabWrite.primaryFile),
       }
     })
 
@@ -903,8 +917,7 @@ function buildSpaceFilesV2({
     const deletedTabId = typeof deletedTab?.id === 'string' ? deletedTab.id : entryId
     const deletedSegment = trashPathForTitle(typeof deletedTab.title === 'string' ? deletedTab.title : 'deleted tab', entryId, 'deleted tab')
     const deletedRoot = posixPath.join(trashRoot, deletedSegment)
-    const homeNoteFile = posixPath.relative(trashRoot, posixPath.join(deletedRoot, 'home.md'))
-    writeNoteBodyAtPath({
+    const deletedHomeWrite = writeNoteBodyAtPath({
       fileMap,
       noteBodyMap,
       noteAisleBodyMap,
@@ -912,17 +925,20 @@ function buildSpaceFilesV2({
       noteAisleBodyRecords,
       noteBodyId: deletedTab.noteBodyId,
       fallbackMarkdown: typeof deletedTab.homeContent === 'string' ? deletedTab.homeContent : '',
-      noteRootRelative: deletedRoot,
+      primaryFileRelative: posixPath.join(deletedRoot, 'home.md'),
+      multiAisleRootRelative: posixPath.join(deletedRoot, 'home'),
       assetBank,
     })
+    const homeNoteFile = posixPath.relative(trashRoot, deletedHomeWrite.primaryFile)
 
     const deletedSubTabPathForTitle = createStoragePathAllocator()
+    const deletedSubTabFileForTitle = createStoragePathFileNameAllocator('.md')
     const subTabs = ensureArray(deletedTab.subTabs).map((subTab) => {
       const subTabId = typeof subTab?.id === 'string' ? subTab.id : ''
       const subTabSegment = deletedSubTabPathForTitle(typeof subTab?.title === 'string' ? subTab.title : 'tab', subTabId, 'tab')
+      const subTabFileName = deletedSubTabFileForTitle(typeof subTab?.title === 'string' ? subTab.title : 'tab', subTabId, 'tab')
       const subTabRoot = posixPath.join(deletedRoot, subTabSegment)
-      const file = posixPath.relative(trashRoot, posixPath.join(subTabRoot, 'home.md'))
-      writeNoteBodyAtPath({
+      const subTabWrite = writeNoteBodyAtPath({
         fileMap,
         noteBodyMap,
         noteAisleBodyMap,
@@ -930,15 +946,16 @@ function buildSpaceFilesV2({
         noteAisleBodyRecords,
         noteBodyId: subTab.noteBodyId,
         fallbackMarkdown: typeof subTab.content === 'string' ? subTab.content : '',
-        noteRootRelative: subTabRoot,
+        primaryFileRelative: posixPath.join(deletedRoot, subTabFileName),
+        multiAisleRootRelative: subTabRoot,
         assetBank,
       })
       return {
         id: subTabId,
         title: typeof subTab.title === 'string' ? subTab.title : 'tab',
-        path: posixPath.relative(trashRoot, subTabRoot),
+        path: posixPath.relative(trashRoot, subTabWrite.notePath),
         noteBodyId: typeof subTab.noteBodyId === 'string' ? subTab.noteBodyId : '',
-        file,
+        file: posixPath.relative(trashRoot, subTabWrite.primaryFile),
       }
     })
 
@@ -959,13 +976,14 @@ function buildSpaceFilesV2({
     })
   }
 
+  const trashFileForTitle = createStoragePathFileNameAllocator('.md')
   for (const entry of deletedSubTabs) {
     const subTab = entry?.subTab ?? {}
     const entryId = typeof entry?.id === 'string' ? entry.id : ''
     const deletedSegment = trashPathForTitle(typeof subTab.title === 'string' ? subTab.title : 'deleted note', entryId, 'deleted note')
+    const deletedFileName = trashFileForTitle(typeof subTab.title === 'string' ? subTab.title : 'deleted note', entryId, 'deleted note')
     const deletedRoot = posixPath.join(trashRoot, deletedSegment)
-    const file = posixPath.relative(trashRoot, posixPath.join(deletedRoot, 'home.md'))
-    writeNoteBodyAtPath({
+    const deletedWrite = writeNoteBodyAtPath({
       fileMap,
       noteBodyMap,
       noteAisleBodyMap,
@@ -973,16 +991,17 @@ function buildSpaceFilesV2({
       noteAisleBodyRecords,
       noteBodyId: subTab.noteBodyId,
       fallbackMarkdown: typeof subTab.content === 'string' ? subTab.content : '',
-      noteRootRelative: deletedRoot,
+      primaryFileRelative: posixPath.join(trashRoot, deletedFileName),
+      multiAisleRootRelative: deletedRoot,
       assetBank,
     })
     trashItems.push({
       id: entryId,
       type: 'subtab',
       title: typeof subTab.title === 'string' ? subTab.title : 'deleted note',
-      path: deletedSegment,
+      path: posixPath.relative(trashRoot, deletedWrite.notePath),
       noteBodyId: typeof subTab.noteBodyId === 'string' ? subTab.noteBodyId : '',
-      file,
+      file: posixPath.relative(trashRoot, deletedWrite.primaryFile),
       deletedAt: typeof entry.deletedAt === 'number' ? entry.deletedAt : Date.now(),
       parentTabTitle: typeof entry.parentTabTitle === 'string' ? entry.parentTabTitle : 'Unknown Tab',
       original: {
@@ -1059,10 +1078,12 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
   }
 
   const orphanPathForId = createStoragePathAllocator()
+  const orphanFileForId = createStoragePathFileNameAllocator('.md')
   for (const body of noteBodies) {
     const bodyId = typeof body?.id === 'string' ? body.id : ''
     if (!bodyId || noteBodyRecords.has(bodyId)) continue
     const orphanSegment = orphanPathForId('Orphan Note Body', bodyId, 'orphan note body')
+    const orphanFileName = orphanFileForId('Orphan Note Body', bodyId, 'orphan note body')
     writeNoteBodyAtPath({
       fileMap,
       noteBodyMap,
@@ -1071,7 +1092,8 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
       noteAisleBodyRecords,
       noteBodyId: bodyId,
       fallbackMarkdown: '',
-      noteRootRelative: posixPath.join('_internal', 'orphan-bodies', orphanSegment),
+      primaryFileRelative: posixPath.join('_internal', 'orphan-bodies', orphanFileName),
+      multiAisleRootRelative: posixPath.join('_internal', 'orphan-bodies', orphanSegment),
       assetBank,
     })
   }

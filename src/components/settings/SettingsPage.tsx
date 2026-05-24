@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type KeyboardEvent } from 'react'
+import { useState } from 'react'
 import { APP_COMMANDS } from '../../commands/app-commands'
 import {
   formatFixedNewlineShortcutLabel,
@@ -15,12 +15,7 @@ import {
   MIN_TAB_BUTTON_SCALE,
   NOTE_FONT_SCALE_STEP,
   TAB_BUTTON_SCALE_STEP,
-  CUSTOM_THEME_PALETTE_SLOTS,
-  DEFAULT_CUSTOM_THEME_PALETTE,
   SETTINGS_SECTIONS,
-  isCustomTheme,
-  isThemePaletteSeed,
-  normalizeHexColor,
 } from '../../settings/defaults'
 import {
   FRONTMATTER_FIELD_TYPES,
@@ -48,12 +43,12 @@ import type {
   TableControlTargetMode,
   TipId,
   ToolbarLayout,
-  ToolbarToolId,
   VisualsSettingsSection,
 } from '../../types/app'
-import { ToolbarToolVisual } from '../editor/ToolbarToolVisual'
-import { CustomThemeColorPicker } from './CustomThemeColorPicker'
+import { CustomThemeEditor } from './CustomThemeEditor'
+import { ThemePreview } from './ThemePreview'
 import { ToolbarSettingsPanel } from './ToolbarSettingsPanel'
+import { VisualsSectionSwitch } from './VisualsSectionSwitch'
 import {
   DEFAULT_THEME_PREVIEW_RAIL_SELECTION,
   DEFAULT_THEME_PREVIEW_TASK_STATE,
@@ -66,43 +61,6 @@ import {
   type ThemePreviewTaskState,
 } from './theme-preview-state'
 
-const THEME_OPTIONS: Array<{ id: AppTheme; label: string }> = [
-  { id: 'dark', label: 'dark' },
-  { id: 'light', label: 'light' },
-  { id: 'dawn', label: 'dawn' },
-  { id: 'blues', label: 'blues' },
-]
-
-const CUSTOM_THEME_OPTIONS: Array<{ id: CustomThemeId; label: string }> = [
-  { id: 'custom1', label: 'custom 1' },
-  { id: 'custom2', label: 'custom 2' },
-  { id: 'custom3', label: 'custom 3' },
-]
-
-const VISUALS_SECTION_OPTIONS: Array<{ id: VisualsSettingsSection; label: string }> = [
-  { id: 'theming', label: 'theming' },
-  { id: 'otherVisuals', label: 'other visuals' },
-]
-
-const CUSTOM_THEME_SLOT_LABELS: Record<CustomThemePaletteSlot, string> = {
-  canvas: 'canvas',
-  page: 'page',
-  surface: 'surface',
-  surfaceRaised: 'surface raised',
-  text: 'text',
-  mutedText: 'muted text',
-  border: 'border',
-  primary: 'primary',
-  secondary: 'secondary',
-  danger: 'danger',
-  warning: 'warning',
-  success: 'success',
-  domainRail: 'domain',
-  spaceRail: 'space',
-  parentRail: 'parent tab',
-  subtabRail: 'sub tab',
-}
-
 const NEWLINE_SHORTCUT_ROWS: Array<{ id: NewlineShortcutId; label: string }> = [
   { id: 'controlEnter', label: 'aisle shortcut' },
   { id: 'shiftEnter', label: 'task shortcut' },
@@ -113,86 +71,6 @@ const TABLE_CONTROL_TARGET_OPTIONS: Array<{ id: TableControlTargetMode; label: s
   { id: 'active-cell', label: 'at active cell' },
   { id: 'bottom-right', label: 'bottom right' },
 ]
-
-const THEME_PREVIEW_RAILS: Array<{
-  id: ThemePreviewRail
-  label: string
-  ariaLabel: string
-  sampleCount: 2 | 3
-  className: string
-  selectedClassName: string
-  useAriaSelected?: boolean
-}> = [
-  {
-    id: 'domain',
-    label: 'domain',
-    ariaLabel: 'domain rail',
-    sampleCount: 2,
-    className: 'compact-scope-btn compact-domain-btn',
-    selectedClassName: 'is-active',
-  },
-  {
-    id: 'space',
-    label: 'space',
-    ariaLabel: 'space rail',
-    sampleCount: 2,
-    className: 'compact-scope-btn compact-space-btn',
-    selectedClassName: 'is-active',
-  },
-  {
-    id: 'parent',
-    label: 'parent',
-    ariaLabel: 'parent rail',
-    sampleCount: 2,
-    className: 'btn btn-sm tab-btn parent-tab-btn',
-    selectedClassName: '',
-    useAriaSelected: true,
-  },
-  {
-    id: 'subtab',
-    label: 'sub',
-    ariaLabel: 'subtab rail',
-    sampleCount: 2,
-    className: 'btn btn-sm tab-btn subtab-btn',
-    selectedClassName: '',
-    useAriaSelected: true,
-  },
-]
-
-const THEME_PREVIEW_SAMPLE_INDICES: ThemePreviewRailSample[] = [0, 1, 2]
-const THEME_PREVIEW_TOOLBAR_TOOLS: ToolbarToolId[] = ['heading', 'dashList', 'taskList', 'image', 'table']
-
-const BUILT_IN_THEME_PREVIEW_NAV_RAIL_BG: Partial<Record<AppTheme, string>> = {
-  dark: '#0f1b32',
-  light: '#eef4fb',
-  dawn: '#b99a45',
-  blues: '#8797b0',
-}
-
-const BUILT_IN_THEME_PREVIEW_NAV_RAIL_BORDER: Partial<Record<AppTheme, string>> = {
-  dark: 'color-mix(in srgb, #24334d 70%, transparent)',
-  light: 'rgba(134, 157, 195, 0.24)',
-  dawn: 'rgba(93, 75, 34, 0.24)',
-  blues: 'rgba(47, 65, 98, 0.24)',
-}
-
-const BUILT_IN_THEME_PREVIEW_EDITOR_TOOLBAR_BG: Partial<Record<AppTheme, string>> = {
-  dark: '#0f1b32',
-  light: '#f4f7fc',
-  dawn: '#c7b37a',
-  blues: '#8fa0b8',
-}
-
-const BUILT_IN_THEME_PREVIEW_EDITOR_BORDER: Partial<Record<AppTheme, string>> = {
-  dark: '#24334d',
-  light: '#d2dbe9',
-  dawn: '#8a744a',
-  blues: '#61728f',
-}
-
-function getCustomThemeLabel(theme: CustomThemeId) {
-  return CUSTOM_THEME_OPTIONS.find((option) => option.id === theme)?.label ?? 'custom 1'
-}
 
 function isFrontmatterBooleanTrue(value: string) {
   const normalized = value.trim().toLowerCase()
@@ -360,7 +238,6 @@ export function SettingsPage({
   onRetryStorageProfile,
   onRestoreStorageRecoverySnapshot,
 }: SettingsPageProps) {
-  const [activeColorPickerSlot, setActiveColorPickerSlot] = useState<CustomThemePaletteSlot | null>(null)
   const [themePreviewRailSelection, setThemePreviewRailSelection] = useState<ThemePreviewRailSelection>(
     DEFAULT_THEME_PREVIEW_RAIL_SELECTION,
   )
@@ -376,73 +253,6 @@ export function SettingsPage({
     storageHealth === 'error' ? 'is-error' : '',
     storageHealth === 'warning' ? 'is-warning' : '',
   ].filter(Boolean).join(' ')
-  const getPaletteColorPickerValue = (slot: CustomThemePaletteSlot) =>
-    normalizeHexColor(customThemePaletteDraft[slot]) ?? DEFAULT_CUSTOM_THEME_PALETTE[slot]
-  const derivedPreviewNavRailBg =
-    `color-mix(in srgb, ${getPaletteColorPickerValue('surface')} 78%, ${getPaletteColorPickerValue('page')})`
-  const derivedPreviewNavRailBorder = `color-mix(in srgb, ${getPaletteColorPickerValue('border')} 62%, transparent)`
-  const derivedPreviewEditorBorder =
-    `color-mix(in srgb, ${getPaletteColorPickerValue('border')} 74%, ${getPaletteColorPickerValue('canvas')})`
-  const previewUsesBuiltInSeed = !isCustomTheme(state.theme) && isThemePaletteSeed(state.theme, customThemePaletteDraft)
-  const previewNavRailBg = previewUsesBuiltInSeed
-    ? BUILT_IN_THEME_PREVIEW_NAV_RAIL_BG[state.theme] ?? derivedPreviewNavRailBg
-    : derivedPreviewNavRailBg
-  const previewNavRailBorder = previewUsesBuiltInSeed
-    ? BUILT_IN_THEME_PREVIEW_NAV_RAIL_BORDER[state.theme] ?? derivedPreviewNavRailBorder
-    : derivedPreviewNavRailBorder
-  const previewEditorToolbarBg = previewUsesBuiltInSeed
-    ? BUILT_IN_THEME_PREVIEW_EDITOR_TOOLBAR_BG[state.theme] ?? getPaletteColorPickerValue('surface')
-    : getPaletteColorPickerValue('surface')
-  const previewEditorBorder = previewUsesBuiltInSeed
-    ? BUILT_IN_THEME_PREVIEW_EDITOR_BORDER[state.theme] ?? derivedPreviewEditorBorder
-    : derivedPreviewEditorBorder
-  const previewThemeClassName = [
-    'visuals-theme-preview',
-    !isCustomTheme(state.theme) ? `theme-${state.theme}` : '',
-    !previewUsesBuiltInSeed ? 'theme-custom-derived' : '',
-  ].filter(Boolean).join(' ')
-  const palettePreviewStyle = {
-    '--visuals-preview-canvas': getPaletteColorPickerValue('canvas'),
-    '--visuals-preview-page': getPaletteColorPickerValue('page'),
-    '--visuals-preview-surface': getPaletteColorPickerValue('surface'),
-    '--visuals-preview-surface-raised': getPaletteColorPickerValue('surfaceRaised'),
-    '--visuals-preview-text': getPaletteColorPickerValue('text'),
-    '--visuals-preview-border': getPaletteColorPickerValue('border'),
-    '--visuals-preview-primary': getPaletteColorPickerValue('primary'),
-    '--visuals-preview-danger': getPaletteColorPickerValue('danger'),
-    '--visuals-preview-warning': getPaletteColorPickerValue('warning'),
-    '--visuals-preview-success': getPaletteColorPickerValue('success'),
-    '--nav-rail-bg': previewNavRailBg,
-    '--nav-rail-border': previewNavRailBorder,
-    '--app-text-bright': `color-mix(in srgb, ${getPaletteColorPickerValue('text')} 92%, white)`,
-    '--app-text-muted': getPaletteColorPickerValue('mutedText'),
-    '--domain-rail-accent': getPaletteColorPickerValue('domainRail'),
-    '--space-rail-accent': getPaletteColorPickerValue('spaceRail'),
-    '--parent-rail-accent': getPaletteColorPickerValue('parentRail'),
-    '--subtab-rail-accent': getPaletteColorPickerValue('subtabRail'),
-    '--tab-button-scale': String(tabButtonScaleDraft),
-    '--note-font-scale': String(noteFontScaleDraft),
-    '--editor-bg': getPaletteColorPickerValue('canvas'),
-    '--editor-border': previewEditorBorder,
-    '--editor-toolbar-bg': previewEditorToolbarBg,
-    '--editor-toolbar-dash-icon-text': getPaletteColorPickerValue('text'),
-    '--visuals-preview-panel-bg': getPaletteColorPickerValue('canvas'),
-    '--editor-text': getPaletteColorPickerValue('text'),
-    '--editor-muted-text': getPaletteColorPickerValue('mutedText'),
-    '--editor-heading-text': `color-mix(in srgb, ${getPaletteColorPickerValue('text')} 90%, white)`,
-    '--toolbar-custom-icon-color': getPaletteColorPickerValue('text'),
-    '--toast-bg': `color-mix(in srgb, ${getPaletteColorPickerValue('canvas')} 82%, ${getPaletteColorPickerValue('surface')})`,
-    '--toast-border': getPaletteColorPickerValue('border'),
-    '--toast-text': `color-mix(in srgb, ${getPaletteColorPickerValue('text')} 92%, white)`,
-    '--toast-shadow': `0 12px 32px color-mix(in srgb, ${getPaletteColorPickerValue('canvas')} 56%, transparent)`,
-    '--toast-success': getPaletteColorPickerValue('success'),
-    '--toast-warning': getPaletteColorPickerValue('warning'),
-    '--toast-error': getPaletteColorPickerValue('danger'),
-  } as CSSProperties
-
-  useEffect(() => {
-    if (section !== 'visuals' || visualsSection !== 'theming') setActiveColorPickerSlot(null)
-  }, [section, visualsSection])
 
   const selectThemePreviewRail = (rail: ThemePreviewRail, sample: ThemePreviewRailSample) => {
     setThemePreviewRailSelection((previous) => selectThemePreviewRailSample(previous, rail, sample))
@@ -451,88 +261,6 @@ export function SettingsPage({
   const toggleThemePreviewTask = (task: ThemePreviewTask) => {
     setThemePreviewTasks((previous) => toggleThemePreviewTaskState(previous, task))
   }
-
-  const handleThemePreviewTaskKeyDown = (task: ThemePreviewTask, event: KeyboardEvent<HTMLLIElement>) => {
-    if (event.key !== 'Enter' && event.key !== ' ') return
-    event.preventDefault()
-    toggleThemePreviewTask(task)
-  }
-
-  const renderThemePreviewTask = (task: ThemePreviewTask, label: string) => {
-    const checked = themePreviewTasks[task]
-    return (
-      <li
-        className={`task-list-item${checked ? ' checked' : ''}`}
-        data-task=""
-        data-task-checked={checked ? '' : undefined}
-        role="checkbox"
-        aria-checked={checked}
-        tabIndex={0}
-        onClick={() => toggleThemePreviewTask(task)}
-        onKeyDown={(event) => handleThemePreviewTaskKeyDown(task, event)}
-      >
-        {label}
-      </li>
-    )
-  }
-
-  const renderVisualsSectionSwitch = () => (
-    <div className="settings-hotkey-row">
-      <span className="settings-hotkey-label" id="settings-visuals-section-label">
-        visuals
-      </span>
-      <div className="settings-segmented-control" role="radiogroup" aria-labelledby="settings-visuals-section-label">
-        {VISUALS_SECTION_OPTIONS.map((option) => (
-          <button
-            key={option.id}
-            type="button"
-            role="radio"
-            aria-checked={visualsSection === option.id}
-            className={`settings-segmented-option ${visualsSection === option.id ? 'is-selected' : ''}`}
-            onClick={() => onVisualsSectionChange(option.id)}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-
-  const renderThemeSelector = () => (
-    <div className="settings-hotkey-row settings-theme-selection-row">
-      <span className="settings-hotkey-label" id="settings-theme-label">
-        theme
-      </span>
-      <div className="theme-selection-controls">
-        <div className="theme-switch" role="radiogroup" aria-labelledby="settings-theme-label">
-          {THEME_OPTIONS.map((theme) => (
-            <button
-              key={theme.id}
-              type="button"
-              role="radio"
-              aria-checked={state.theme === theme.id}
-              className={`theme-switch-option ${state.theme === theme.id ? 'is-selected' : ''}`}
-              onClick={() => onThemeChange(theme.id)}
-            >
-              {theme.label}
-            </button>
-          ))}
-        </div>
-        <select
-          className="settings-select-input custom-theme-select"
-          value={selectedCustomTheme}
-          aria-label="custom theme"
-          onChange={(event) => onSelectedCustomThemeChange(event.target.value as CustomThemeId)}
-        >
-          {CUSTOM_THEME_OPTIONS.map((theme) => (
-            <option key={theme.id} value={theme.id}>
-              {theme.label}
-            </option>
-          ))}
-        </select>
-      </div>
-    </div>
-  )
 
   const renderFrontmatterDefaultControl = (templateId: string, field: FrontmatterTemplateField) => {
     if (field.type === 'boolean') {
@@ -839,146 +567,38 @@ export function SettingsPage({
         {section === 'visuals' && visualsSection === 'theming' && (
           <div className="settings-section-panel" role="tabpanel">
             <div className="visuals-theme-layout">
-              <div className={previewThemeClassName} aria-label="theme color preview" style={palettePreviewStyle}>
-                <div className="visuals-preview-canvas">
-                  <div className="visuals-preview-rail-stack" aria-label="theme example buttons">
-                    {THEME_PREVIEW_RAILS.map((rail) => (
-                      <div
-                        key={rail.id}
-                        className={`visuals-preview-rail-row is-count-${rail.sampleCount}`}
-                        aria-label={`${rail.ariaLabel} samples`}
-                      >
-                        {THEME_PREVIEW_SAMPLE_INDICES.slice(0, rail.sampleCount).map((sample) => {
-                          const selected = themePreviewRailSelection[rail.id] === sample
-                          const className = [
-                            'visuals-preview-pill',
-                            rail.className,
-                            selected && rail.selectedClassName ? rail.selectedClassName : '',
-                          ]
-                            .filter(Boolean)
-                            .join(' ')
-                          return (
-                            <button
-                              key={`${rail.id}-${sample}`}
-                              type="button"
-                              aria-label={`${rail.ariaLabel} sample ${sample + 1}`}
-                              aria-pressed={selected}
-                              aria-selected={rail.useAriaSelected ? selected : undefined}
-                              className={className}
-                              onClick={() => selectThemePreviewRail(rail.id, sample)}
-                            >
-                              {rail.label}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    ))}
-                  </div>
-                  <div
-                    className="visuals-preview-toolbar note-shared-toolbar is-interaction-disabled toastui-editor-toolbar"
-                    role="toolbar"
-                    aria-label="theme preview toolbar"
-                    aria-disabled="true"
-                  >
-                    <div className="toastui-editor-defaultUI-toolbar app-shared-editor-toolbar">
-                      <div className="toastui-editor-toolbar-group visuals-preview-toolbar-group">
-                        {THEME_PREVIEW_TOOLBAR_TOOLS.map((toolId) => (
-                          <ToolbarToolVisual
-                            key={toolId}
-                            toolId={toolId}
-                            buttonProps={{
-                              className: 'visuals-preview-toolbar-tool',
-                              disabled: true,
-                              tabIndex: -1,
-                            }}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="visuals-preview-panel">
-                    <div className="visuals-preview-editor-sample toastui-editor-contents">
-                      <h3 className="visuals-preview-heading">header</h3>
-                      <ul className="visuals-preview-list tabs-dash-list" data-tabs-list-marker="dash">
-                        <li>dash</li>
-                      </ul>
-                      <ul className="visuals-preview-list">
-                        <li>bullet</li>
-                      </ul>
-                      <ol className="visuals-preview-list">
-                        <li>number</li>
-                      </ol>
-                      <ul className="visuals-preview-list visuals-preview-task-list">
-                        {renderThemePreviewTask('done', 'done task')}
-                        {renderThemePreviewTask('open', 'open task')}
-                      </ul>
-                    </div>
-                    <div className="visuals-preview-toast-stack app-toast-layer" aria-label="toast samples">
-                      <div className="app-toast app-toast-error visuals-preview-toast">danger toast</div>
-                      <div className="app-toast app-toast-warning visuals-preview-toast">warning toast</div>
-                      <div className="app-toast app-toast-success visuals-preview-toast">success toast</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="custom-theme-editor" aria-label="theme palette">
-                {renderVisualsSectionSwitch()}
-                {renderThemeSelector()}
-                <div className="custom-theme-editor-header">
-                  <span className="settings-hotkey-label">theme palette</span>
-                  <div className="custom-theme-actions">
-                    {!isCustomTheme(state.theme) && (
-                      <button
-                        type="button"
-                        className="btn btn-sm settings-action-btn"
-                        onClick={onCustomThemePaletteSeedFromCurrentTheme}
-                      >
-                        copy to {getCustomThemeLabel(selectedCustomTheme)}
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      className="btn btn-sm settings-action-btn"
-                      onClick={onCustomThemePaletteReset}
-                    >
-                      reset palette
-                    </button>
-                  </div>
-                </div>
-                <div className="custom-theme-grid">
-                  {CUSTOM_THEME_PALETTE_SLOTS.map((slot) => (
-                    <div className="custom-theme-slot" key={slot}>
-                      <span className="custom-theme-slot-label">{CUSTOM_THEME_SLOT_LABELS[slot]}</span>
-                      <CustomThemeColorPicker
-                        slotId={slot}
-                        label={CUSTOM_THEME_SLOT_LABELS[slot]}
-                        value={getPaletteColorPickerValue(slot)}
-                        fallbackValue={DEFAULT_CUSTOM_THEME_PALETTE[slot]}
-                        isOpen={activeColorPickerSlot === slot}
-                        onToggle={() => setActiveColorPickerSlot((current) => (current === slot ? null : slot))}
-                        onClose={() => setActiveColorPickerSlot((current) => (current === slot ? null : current))}
-                        onChange={(value) => onCustomThemePaletteChange(slot, value)}
-                      />
-                      <input
-                        className="settings-text-input custom-theme-hex-input"
-                        type="text"
-                        value={customThemePaletteDraft[slot]}
-                        spellCheck={false}
-                        inputMode="text"
-                        aria-label={`${CUSTOM_THEME_SLOT_LABELS[slot]} hex value`}
-                        onChange={(event) => onCustomThemePaletteChange(slot, event.target.value)}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <ThemePreview
+                theme={state.theme}
+                customThemePaletteDraft={customThemePaletteDraft}
+                tabButtonScaleDraft={tabButtonScaleDraft}
+                noteFontScaleDraft={noteFontScaleDraft}
+                railSelection={themePreviewRailSelection}
+                tasks={themePreviewTasks}
+                onRailSampleSelect={selectThemePreviewRail}
+                onTaskToggle={toggleThemePreviewTask}
+              />
+              <CustomThemeEditor
+                theme={state.theme}
+                visualsSection={visualsSection}
+                selectedCustomTheme={selectedCustomTheme}
+                customThemePaletteDraft={customThemePaletteDraft}
+                onVisualsSectionChange={onVisualsSectionChange}
+                onThemeChange={onThemeChange}
+                onSelectedCustomThemeChange={onSelectedCustomThemeChange}
+                onCustomThemePaletteChange={onCustomThemePaletteChange}
+                onCustomThemePaletteReset={onCustomThemePaletteReset}
+                onCustomThemePaletteSeedFromCurrentTheme={onCustomThemePaletteSeedFromCurrentTheme}
+              />
             </div>
           </div>
         )}
 
         {section === 'visuals' && visualsSection === 'otherVisuals' && (
           <div className="settings-section-panel" role="tabpanel">
-            {renderVisualsSectionSwitch()}
+            <VisualsSectionSwitch
+              visualsSection={visualsSection}
+              onVisualsSectionChange={onVisualsSectionChange}
+            />
             <div className="settings-hotkey-row settings-slider-row">
               <label className="settings-hotkey-label" htmlFor="settings-tab-button-scale">
                 tab button size

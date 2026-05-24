@@ -488,6 +488,8 @@ describe('theme editor selector deduplication', () => {
     const editorShellCss = readStyle('editor-shell.css')
 
     expect(baseCss).toContain('--editor-toolbar-icon-filter:')
+    expect(baseCss).toContain('--editor-toolbar-dash-icon-text: #555555;')
+    expect(baseCss).not.toContain('--editor-toolbar-dash-icon-text: var(--custom-palette-canvas);')
     expect(baseCss).toContain('--editor-clear-note-toolbar-text:')
     expect(baseCss).toContain('--editor-list-marker-opacity:')
     expect(baseCss).toContain('--editor-hr-opacity:')
@@ -501,6 +503,8 @@ describe('theme editor selector deduplication', () => {
     expect(editorBaseCss).toContain('.toastui-editor-tooltip {')
     expect(editorBaseCss).toContain('background-color: var(--editor-tooltip-bg) !important;')
     expect(editorBaseCss).toContain('filter: var(\n    --editor-toolbar-icon-filter,')
+    expect(editorBaseCss).toContain('color: var(--editor-toolbar-dash-icon-text, #555555) !important;')
+    expect(editorBaseCss).not.toContain('opacity: 0.85;')
     expect(editorBaseCss).toContain(
       'color: var(--editor-clear-note-toolbar-text, var(--toolbar-custom-icon-color, var(--app-text))) !important;',
     )

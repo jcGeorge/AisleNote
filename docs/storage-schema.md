@@ -1,8 +1,8 @@
 # Storage Schema
 
-This document describes the current v2 on-disk storage format for the app.
+This document describes the current schema v3 on-disk storage format for the app.
 
-The current source of truth is a `notes-data/` folder with domain manifests, space manifests, Markdown note files, and asset files. A future `topics/` layer may be introduced later, but it is not part of the active v2 layout.
+The current source of truth is a `notes-data/` folder with domain manifests, space manifests, Markdown note files, and asset files. A future `topics/` layer may be introduced later, but it is not part of the active v3 layout.
 
 The design goals are:
 
@@ -25,26 +25,33 @@ notes-data/
         manifest.json
         <parent-tab-title>--<id-hash>/
           home.md
+          home/
+            aisle 1--<id-hash>.md
+            aisle 2--<id-hash>.md
+          <sub-tab-title>--<id-hash>.md
           <sub-tab-title>--<id-hash>/
-            home.md
-          aisles/
-            <aisle-title>--<id-hash>.md
+            aisle 1--<id-hash>.md
+            aisle 2--<id-hash>.md
         trash/
           manifest.json
           <deleted-title>--<id-hash>/
             home.md
-            <nested-sub-tab-title>--<id-hash>/
-              home.md
+            <nested-sub-tab-title>--<id-hash>.md
+          <deleted-sub-tab-title>--<id-hash>.md
     ...
   _internal/
     orphan-bodies/
+      <orphan-title>--<id-hash>.md
       <orphan-title>--<id-hash>/
-        home.md
+        aisle 1--<id-hash>.md
+        aisle 2--<id-hash>.md
   assets/
     asset-<content-hash>.<ext>
 ```
 
 Readable path segments include a title plus an ID-derived hash. Stable IDs remain the durable identity; path names are for human readability and collision avoidance.
+
+For notes, a single aisle is stored as one Markdown file. A note folder is used only when that note currently has multiple aisles.
 
 Electron recovery snapshots are stored outside the synced `notes-data/` tree:
 
@@ -87,10 +94,11 @@ Examples that are allowed:
 
 Note contents are stored in `.md` files.
 
-- parent tab home note: `<space>/<parent-tab>/home.md`
-- sub-tab note: `<space>/<parent-tab>/<sub-tab>/home.md`
-- additional aisles: `aisles/<aisle-title>--<id-hash>.md`
-- orphan note bodies: `_internal/orphan-bodies/...`
+- parent tab home note with one aisle: `<space>/<parent-tab>/home.md`
+- parent tab home note with multiple aisles: `<space>/<parent-tab>/home/aisle N--<id-hash>.md`
+- sub-tab note with one aisle: `<space>/<parent-tab>/<sub-tab>--<id-hash>.md`
+- sub-tab note with multiple aisles: `<space>/<parent-tab>/<sub-tab>--<id-hash>/aisle N--<id-hash>.md`
+- orphan note bodies use the same single-file or multi-aisle-folder rule under `_internal/orphan-bodies/`
 
 The root manifest keeps `noteBodies` records with note-body IDs, frontmatter metadata, template metadata, computed field metadata, and aisle file references.
 
@@ -256,4 +264,4 @@ Legacy JSON state remains readable through the legacy app-state path. Existing `
 
 The top-level `topics/` directory is reserved for a future migration only.
 
-If the product later introduces concepts like topics, worlds, or sectors, the migration should be explicit and test-backed. Until then, the current v2 `domains/` layout is canonical.
+If the product later introduces concepts like topics, worlds, or sectors, the migration should be explicit and test-backed. Until then, the current v3 `domains/` layout is canonical.
