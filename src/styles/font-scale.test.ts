@@ -367,6 +367,98 @@ describe('compact scope tab scaling styles', () => {
     expect(chipSelectedRule).toContain('background: var(--note-mention-chip-selected-bg);')
     expect(chipSelectedRule).toContain('color: var(--note-mention-chip-selected-text);')
   })
+
+  it('reuses rail button classes for context preview title buttons', () => {
+    const editorShellCss = readStyle('editor-shell.css')
+    const widgetSource = readFileSync(join(styleDir, '../editor/note-preview-widget.ts'), 'utf8')
+    const previewWidgetRule = extractRule(editorShellCss, '.note-context-widget')
+    const previewTopRule = extractRule(editorShellCss, '.note-context-widget .context-bar-top')
+    const titleRule = extractRule(editorShellCss, '.context-preview-title-btn')
+    const titleEditorRule = extractRule(
+      editorShellCss,
+      '.toastui-editor .ProseMirror .note-context-widget .context-preview-title-btn,\n.toastui-editor-contents .note-context-widget .context-preview-title-btn',
+    )
+    const domainRule = extractRule(
+      editorShellCss,
+      '.toastui-editor .ProseMirror .note-context-widget .context-preview-title-btn.is-domain,\n.toastui-editor-contents .note-context-widget .context-preview-title-btn.is-domain',
+    )
+    const spaceRule = extractRule(
+      editorShellCss,
+      '.toastui-editor .ProseMirror .note-context-widget .context-preview-title-btn.is-space,\n.toastui-editor-contents .note-context-widget .context-preview-title-btn.is-space',
+    )
+    const parentRule = extractRule(
+      editorShellCss,
+      '.toastui-editor .ProseMirror .note-context-widget .context-preview-title-btn.parent-tab-btn,\n.toastui-editor-contents .note-context-widget .context-preview-title-btn.parent-tab-btn',
+    )
+    const subtabRule = extractRule(
+      editorShellCss,
+      '.toastui-editor .ProseMirror .note-context-widget .context-preview-title-btn.subtab-btn,\n.toastui-editor-contents .note-context-widget .context-preview-title-btn.subtab-btn',
+    )
+
+    expect(widgetSource).toContain("'context-preview-title-btn compact-scope-btn compact-domain-btn is-domain'")
+    expect(widgetSource).toContain("'context-preview-title-btn compact-scope-btn compact-space-btn is-space'")
+    expect(widgetSource).toContain("'context-preview-title-btn btn btn-sm tab-btn parent-tab-btn'")
+    expect(widgetSource).toContain("'context-preview-title-btn btn btn-sm tab-btn subtab-btn'")
+    expect(previewWidgetRule).toContain('--context-preview-title-control-height: calc(30px * var(--tab-button-scale));')
+    expect(previewTopRule).toContain('min-height: 0;')
+    expect(previewTopRule).toContain('padding: 0.16rem 0.5rem;')
+    expect(titleRule).toContain('flex: 0 1 auto;')
+    expect(titleRule).toContain('display: inline-flex;')
+    expect(titleRule).toContain('align-items: center;')
+    expect(titleRule).toContain('justify-content: center;')
+    expect(titleRule).toContain('max-width: min(calc(300px * var(--tab-button-scale)), 100%);')
+    expect(titleRule).toContain('min-width: calc(56px * var(--tab-button-scale));')
+    expect(titleRule).toContain('height: var(--context-preview-title-control-height);')
+    expect(titleRule).toContain('min-height: var(--context-preview-title-control-height);')
+    expect(titleRule).toContain('padding: calc(0.14rem * var(--tab-button-scale)) calc(0.5rem * var(--tab-button-scale));')
+    expect(titleRule).toContain('border-radius: calc(0.42rem * var(--tab-button-scale));')
+    expect(titleRule).toContain('border: 1px solid transparent !important;')
+    expect(titleRule).toContain('border-width: 1px !important;')
+    expect(titleRule).toContain('border-style: solid !important;')
+    expect(titleRule).toContain('box-sizing: border-box;')
+    expect(titleRule).toContain('font-size: calc(0.95rem * var(--tab-button-scale));')
+    expect(titleRule).toContain('font-weight: 400;')
+    expect(titleEditorRule).toContain('height: var(--context-preview-title-control-height) !important;')
+    expect(titleEditorRule).toContain('min-height: var(--context-preview-title-control-height) !important;')
+    expect(titleEditorRule).toContain(
+      'padding: calc(0.14rem * var(--tab-button-scale)) calc(0.5rem * var(--tab-button-scale)) !important;',
+    )
+    expect(titleEditorRule).toContain('font-size: calc(0.95rem * var(--tab-button-scale)) !important;')
+    expect(titleEditorRule).toContain('font-weight: 400 !important;')
+    expect(titleEditorRule).toContain('border-radius: calc(0.42rem * var(--tab-button-scale)) !important;')
+    expect(domainRule).toContain('color: var(--domain-rail-text) !important;')
+    expect(domainRule).toContain('background: var(--domain-rail-bg) !important;')
+    expect(domainRule).toContain('background-color: var(--domain-rail-bg) !important;')
+    expect(domainRule).toContain('border: 1px solid var(--domain-rail-border) !important;')
+    expect(domainRule).toContain('border-color: var(--domain-rail-border) !important;')
+    expect(domainRule).toContain('outline: 1px solid var(--domain-rail-border) !important;')
+    expect(domainRule).toContain('outline-offset: -1px !important;')
+    expect(domainRule).toContain('box-shadow: inset 0 0 0 1px var(--domain-rail-border) !important;')
+    expect(spaceRule).toContain('color: var(--space-rail-text) !important;')
+    expect(spaceRule).toContain('background: var(--space-rail-bg) !important;')
+    expect(spaceRule).toContain('background-color: var(--space-rail-bg) !important;')
+    expect(spaceRule).toContain('border: 1px solid var(--space-rail-border) !important;')
+    expect(spaceRule).toContain('border-color: var(--space-rail-border) !important;')
+    expect(spaceRule).toContain('outline: 1px solid var(--space-rail-border) !important;')
+    expect(spaceRule).toContain('outline-offset: -1px !important;')
+    expect(spaceRule).toContain('box-shadow: inset 0 0 0 1px var(--space-rail-border) !important;')
+    expect(parentRule).toContain('color: var(--tab-btn-text) !important;')
+    expect(parentRule).toContain('background: var(--tab-btn-bg) !important;')
+    expect(parentRule).toContain('background-color: var(--tab-btn-bg) !important;')
+    expect(parentRule).toContain('border: 1px solid var(--tab-btn-border) !important;')
+    expect(parentRule).toContain('border-color: var(--tab-btn-border) !important;')
+    expect(parentRule).toContain('outline: 1px solid var(--tab-btn-border) !important;')
+    expect(parentRule).toContain('outline-offset: -1px !important;')
+    expect(parentRule).toContain('box-shadow: inset 0 0 0 1px var(--tab-btn-border) !important;')
+    expect(subtabRule).toContain('color: var(--subtab-btn-text) !important;')
+    expect(subtabRule).toContain('background: var(--subtab-btn-bg) !important;')
+    expect(subtabRule).toContain('background-color: var(--subtab-btn-bg) !important;')
+    expect(subtabRule).toContain('border: 1px solid var(--subtab-btn-border) !important;')
+    expect(subtabRule).toContain('border-color: var(--subtab-btn-border) !important;')
+    expect(subtabRule).toContain('outline: 1px solid var(--subtab-btn-border) !important;')
+    expect(subtabRule).toContain('outline-offset: -1px !important;')
+    expect(subtabRule).toContain('box-shadow: inset 0 0 0 1px var(--subtab-btn-border) !important;')
+  })
 })
 
 describe('table cell styles', () => {

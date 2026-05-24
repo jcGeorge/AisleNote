@@ -64,6 +64,13 @@ function getPreviewStatusText(data: ContextPreviewData) {
   return ''
 }
 
+function getPreviewTitleButtonClassName(kind: ContextPreviewData['titleButtons'][number]['kind']): string {
+  if (kind === 'domain') return 'context-preview-title-btn compact-scope-btn compact-domain-btn is-domain'
+  if (kind === 'space') return 'context-preview-title-btn compact-scope-btn compact-space-btn is-space'
+  if (kind === 'parent') return 'context-preview-title-btn btn btn-sm tab-btn parent-tab-btn'
+  return 'context-preview-title-btn btn btn-sm tab-btn subtab-btn'
+}
+
 export function createContextPreviewWidgetElement(
   payload: NoteContextReferencePayload,
   options: NotePreviewWidgetOptions,
@@ -74,10 +81,9 @@ export function createContextPreviewWidgetElement(
 
   const topBar = document.createElement('span')
   topBar.className = 'context-bar-top'
-  const titleButton = document.createElement('button')
-  titleButton.type = 'button'
-  titleButton.className = 'context-bar-title'
-  titleButton.setAttribute('aria-label', 'Open note preview target')
+  const titleGroup = document.createElement('span')
+  titleGroup.className = 'context-bar-title'
+  titleGroup.setAttribute('aria-label', 'Open note preview target')
   const actions = document.createElement('span')
   actions.className = 'context-bar-actions'
   const minimizeButton = document.createElement('button')
@@ -105,6 +111,36 @@ export function createContextPreviewWidgetElement(
     contextEditorCleanups.forEach((cleanup) => cleanup())
     contextEditorCleanups = []
     lowerBar.replaceChildren()
+  }
+
+  const activatePreviewTarget = (event: Event) => {
+    stopWidgetEvent(event)
+    const data = options.getContextPreviewData(payload, options.sourceNoteBodyId)
+    if (data.status === 'ready' || data.status === 'empty') options.navigateToNoteLocation({ ...payload.target, heading: payload.heading })
+  }
+
+  const renderTitleButtons = (data: ContextPreviewData) => {
+    titleGroup.replaceChildren()
+    titleGroup.title = data.locationLabel
+    if (data.titleButtons.length === 0) {
+      const fallback = document.createElement('span')
+      fallback.className = 'context-preview-title-missing'
+      fallback.textContent = data.locationLabel
+      titleGroup.append(fallback)
+      return
+    }
+
+    data.titleButtons.forEach((button) => {
+      const titleButton = document.createElement('button')
+      titleButton.type = 'button'
+      titleButton.className = getPreviewTitleButtonClassName(button.kind)
+      titleButton.textContent = button.label
+      titleButton.title = data.locationLabel
+      titleButton.setAttribute('aria-label', `Open note preview target: ${data.locationLabel}`)
+      titleButton.addEventListener('mousedown', stopWidgetEvent)
+      titleButton.addEventListener('click', activatePreviewTarget)
+      titleGroup.append(titleButton)
+    })
   }
 
   const renderContextEditor = (aisle: NoteAisle) => {
@@ -176,8 +212,7 @@ export function createContextPreviewWidgetElement(
     wrapper.classList.toggle('is-missing', data.status === 'missing')
     wrapper.classList.toggle('is-empty', data.status === 'empty')
     wrapper.classList.toggle('is-minimized', minimized)
-    titleButton.textContent = data.displayTitle
-    titleButton.title = data.locationLabel
+    renderTitleButtons(data)
     minimizeButton.classList.toggle('is-restore', minimized)
     minimizeButton.title = minimized ? 'Restore note preview' : 'Minimize note preview'
     minimizeButton.setAttribute('aria-label', minimizeButton.title)
@@ -205,12 +240,6 @@ export function createContextPreviewWidgetElement(
     lowerBar.append(editorGroup)
   }
 
-  titleButton.addEventListener('mousedown', stopWidgetEvent)
-  titleButton.addEventListener('click', (event) => {
-    stopWidgetEvent(event)
-    const data = options.getContextPreviewData(payload, options.sourceNoteBodyId)
-    if (data.status === 'ready' || data.status === 'empty') options.navigateToNoteLocation({ ...payload.target, heading: payload.heading })
-  })
   minimizeButton.addEventListener('mousedown', stopWidgetEvent)
   minimizeButton.addEventListener('click', (event) => {
     stopWidgetEvent(event)
@@ -230,7 +259,7 @@ export function createContextPreviewWidgetElement(
   })
 
   actions.append(minimizeButton, expandButton, deleteButton)
-  topBar.append(titleButton, actions)
+  topBar.append(titleGroup, actions)
   wrapper.append(topBar, lowerBar)
   renderLowerBar()
   ;(wrapper as HTMLElement & { destroyNotePreview?: () => void }).destroyNotePreview = () => {
