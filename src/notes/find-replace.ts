@@ -241,12 +241,7 @@ export function applyFindReplacementToState(
 
   byAisleBody.forEach((aisleMatches, aisleBodyId) => {
     const body = nextState.noteAisleBodies?.find((candidate) => candidate.id === aisleBodyId)
-    const sourceMarkdown =
-      body?.markdown ??
-      nextState.noteBodies
-        .flatMap((noteBody) => noteBody.aisles)
-        .find((aisle) => getAisleBodyId(aisle) === aisleBodyId)?.markdown ??
-      ''
+    const sourceMarkdown = body?.markdown ?? ''
     const ranges = [...aisleMatches]
       .sort((left, right) => right.markdownFrom - left.markdownFrom)
       .filter((match, index, sorted) =>

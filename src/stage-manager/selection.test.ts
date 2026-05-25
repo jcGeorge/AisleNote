@@ -15,11 +15,10 @@ const tab: Tab = {
   id: 'parent-1',
   title: 'Parent',
   noteBodyId: 'body-parent',
-  homeContent: 'home',
   activeSubTabId: null,
   subTabs: [
-    { id: 'sub-1', title: 'One', noteBodyId: 'body-1', content: 'one' },
-    { id: 'sub-2', title: 'Two', noteBodyId: 'body-2', content: 'two' },
+    { id: 'sub-1', title: 'One', noteBodyId: 'body-1'},
+    { id: 'sub-2', title: 'Two', noteBodyId: 'body-2'},
   ],
 }
 
@@ -54,7 +53,7 @@ describe('stage manager selection', () => {
     const otherTab: Tab = {
       ...tab,
       id: 'parent-2',
-      subTabs: [{ id: 'sub-3', title: 'Three', noteBodyId: 'body-3', content: 'three' }],
+      subTabs: [{ id: 'sub-3', title: 'Three', noteBodyId: 'body-3'}],
     }
     const snapshot = buildStageManagerSelectionSnapshot([tab, otherTab], {
       [tab.id]: cycleStageManagerParentSelection(tab, createEmptyStageManagerParentSelection()),
@@ -119,9 +118,9 @@ describe('stage manager selection', () => {
       ...tab,
       activeSubTabId: 'sub-1',
       subTabs: [
-        { id: 'sub-1', title: 'One', noteBodyId: 'body-1', content: 'one' },
-        { id: 'sub-2', title: 'Two', noteBodyId: 'body-2', content: 'two' },
-        { id: 'sub-3', title: 'Three', noteBodyId: 'body-3', content: 'three' },
+        { id: 'sub-1', title: 'One', noteBodyId: 'body-1'},
+        { id: 'sub-2', title: 'Two', noteBodyId: 'body-2'},
+        { id: 'sub-3', title: 'Three', noteBodyId: 'body-3'},
       ],
     }
     const result = applyStageManagerSubTabModifierClick({
@@ -145,9 +144,9 @@ describe('stage manager selection', () => {
       ...tab,
       activeSubTabId: 'sub-1',
       subTabs: [
-        { id: 'sub-1', title: 'One', noteBodyId: 'body-1', content: 'one' },
-        { id: 'sub-2', title: 'Two', noteBodyId: 'body-2', content: 'two' },
-        { id: 'sub-3', title: 'Three', noteBodyId: 'body-3', content: 'three' },
+        { id: 'sub-1', title: 'One', noteBodyId: 'body-1'},
+        { id: 'sub-2', title: 'Two', noteBodyId: 'body-2'},
+        { id: 'sub-3', title: 'Three', noteBodyId: 'body-3'},
       ],
     }
     const first = applyStageManagerSubTabModifierClick({

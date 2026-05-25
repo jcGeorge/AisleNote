@@ -11,6 +11,7 @@ import {
   DEFAULT_AUTO_REMOVE_DAYS,
   DEFAULT_UI_SETTINGS,
   APP_THEME_IDS,
+  clampAutoRemoveDays,
   normalizeUiSettings,
 } from '../settings/defaults'
 import type {
@@ -18,7 +19,6 @@ import type {
   AppTheme,
   DeletedDomainEntry,
   DeletedSpaceEntry,
-  Domain,
   FrontmatterComputedFieldMap,
   FrontmatterFieldOriginMap,
   FrontmatterMeta,
@@ -36,21 +36,19 @@ import {
 } from '../notes/aisle-body-state'
 import {
   createDefaultDomain,
-  createLegacyWrappedDomain,
   normalizeDomain,
   normalizeDomains,
   normalizeSpace,
-  normalizeSpaces,
   projectActiveDomainState,
 } from './domains'
 import {
   applyAutoPurgeToWorkspace,
+  AUTO_PURGE_DAY_MS,
   createId,
   createTimestamp,
   getNextWorkspaceTrashAutoPurgeTime,
-  normalizeWorkspaceData,
 } from './workspace'
-import { migrateRawAppData } from './app-migrations'
+import { getWorkspaceTrashAutoPurgeCutoff } from './workspace'
 
 const DEFAULT_DOMAIN = createDefaultDomain()
 
@@ -74,21 +72,29 @@ const RAW_DEFAULT_STATE: AppState = {
   ui: DEFAULT_UI_SETTINGS,
 }
 
-function createNoteBodyWithId(id: string, markdown = ''): NoteBody {
+function createNoteBodyContentWithId(id: string, markdown = ''): { noteBody: NoteBody; aisleBody: NoteAisleBody } {
   const timestamp = createTimestamp()
   const aisleBodyId = createId()
   return {
-    id,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    frontmatter: null,
-    aisles: [
-      {
-        id: createId(),
-        aisleBodyId,
-        markdown: normalizeMarkdownForPersistence(markdown),
-      },
-    ],
+    noteBody: {
+      id,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      aisles: [
+        {
+          id: createId(),
+          aisleBodyId,
+        },
+      ],
+    },
+    aisleBody: {
+      id: aisleBodyId,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      markdown,
+      frontmatter: null,
+      frontmatterStatus: 'none',
+    },
   }
 }
 
@@ -96,15 +102,6 @@ function normalizeTimestamp(value: unknown, fallback: string): string {
   if (typeof value !== 'string' && typeof value !== 'number' && !(value instanceof Date)) return fallback
   const date = value instanceof Date ? value : new Date(value)
   return Number.isNaN(date.getTime()) ? fallback : date.toISOString()
-}
-
-function frontmatterTimestamp(frontmatter: NoteBody['frontmatter'], keys: string[]): unknown {
-  if (!frontmatter) return undefined
-  for (const key of keys) {
-    const value = frontmatter[key]
-    if (value != null) return value
-  }
-  return undefined
 }
 
 function normalizeStringList(value: unknown): string[] | undefined {
@@ -151,33 +148,7 @@ function normalizeFrontmatterMeta(value: unknown): FrontmatterMeta | undefined {
   if (templateRemovedFieldIds) meta.templateRemovedFieldIds = templateRemovedFieldIds
   const computedFields = normalizeFrontmatterComputedFields(candidate.computedFields)
   if (computedFields) meta.computedFields = computedFields
-  const templateDetachedKeys = normalizeStringList(candidate.templateDetachedKeys)
-  if (templateDetachedKeys) meta.templateDetachedKeys = templateDetachedKeys
   return Object.keys(meta).length > 0 ? meta : undefined
-}
-
-function normalizeLegacyNoteBodyFrontmatterMeta(candidate: Record<string, unknown> | NoteBody): FrontmatterMeta | undefined {
-  return normalizeFrontmatterMeta({
-    templateId: candidate.frontmatterTemplateId,
-    templateDerived: candidate.frontmatterTemplateDerived,
-    templateFieldOrigins: candidate.frontmatterTemplateFieldOrigins,
-    templateRemovedFieldIds: candidate.frontmatterTemplateRemovedFieldIds,
-    computedFields: candidate.frontmatterComputedFields,
-    templateDetachedKeys: candidate.frontmatterTemplateDetachedKeys,
-  })
-}
-
-function mergeFrontmatterMeta(primary: FrontmatterMeta | undefined, fallback: FrontmatterMeta | undefined): FrontmatterMeta | undefined {
-  if (!primary) return fallback
-  if (!fallback) return primary
-  return {
-    ...fallback,
-    ...primary,
-    templateFieldOrigins: primary.templateFieldOrigins ?? fallback.templateFieldOrigins,
-    templateRemovedFieldIds: primary.templateRemovedFieldIds ?? fallback.templateRemovedFieldIds,
-    computedFields: primary.computedFields ?? fallback.computedFields,
-    templateDetachedKeys: primary.templateDetachedKeys ?? fallback.templateDetachedKeys,
-  }
 }
 
 function normalizeNoteAisleBodyRecord(
@@ -231,7 +202,6 @@ function normalizeNoteAisles(raw: unknown): NoteAisle[] {
       return {
         id,
         aisleBodyId: typeof aisle.aisleBodyId === 'string' && aisle.aisleBodyId ? aisle.aisleBodyId : id,
-        markdown: normalizeMarkdownForPersistence(typeof aisle.markdown === 'string' ? aisle.markdown : ''),
       }
     })
 }
@@ -252,42 +222,6 @@ function normalizeNoteAisleBodies(raw: unknown): NoteAisleBody[] {
   return bodies
 }
 
-function applyLegacyFrontmatterToFirstAisle(
-  aisleBody: NoteAisleBody,
-  legacyFrontmatter: NoteBody['frontmatter'],
-  legacyMeta: FrontmatterMeta | undefined,
-): NoteAisleBody {
-  const hasCanonicalFrontmatterBlock = aisleBody.frontmatterStatus === 'valid' && aisleBody.frontmatterRaw !== undefined
-  const hasInvalidFrontmatter = aisleBody.frontmatterStatus === 'invalid'
-  const frontmatter = hasCanonicalFrontmatterBlock || hasInvalidFrontmatter || !legacyFrontmatter
-    ? aisleBody.frontmatter ?? null
-    : legacyFrontmatter
-  const frontmatterStatus = hasInvalidFrontmatter
-    ? 'invalid'
-    : frontmatter
-      ? 'valid'
-      : aisleBody.frontmatterStatus ?? 'none'
-  return {
-    ...aisleBody,
-    frontmatter,
-    frontmatterStatus,
-    frontmatterMeta: mergeFrontmatterMeta(aisleBody.frontmatterMeta, legacyMeta),
-  }
-}
-
-function clearLegacyNoteBodyFrontmatter(body: NoteBody): NoteBody {
-  return {
-    ...body,
-    frontmatter: null,
-    frontmatterTemplateId: undefined,
-    frontmatterTemplateDerived: undefined,
-    frontmatterTemplateFieldOrigins: undefined,
-    frontmatterTemplateRemovedFieldIds: undefined,
-    frontmatterComputedFields: undefined,
-    frontmatterTemplateDetachedKeys: undefined,
-  }
-}
-
 function normalizeNoteContent(
   rawNoteBodies: unknown,
   rawNoteAisleBodies: unknown,
@@ -296,8 +230,8 @@ function normalizeNoteContent(
   const aisleBodyMap = new Map(normalizeNoteAisleBodies(rawNoteAisleBodies).map((body) => [body.id, body]))
   const fallbackTimestamp = createTimestamp()
   const syncedNoteBodies = noteBodies.map((body) => ({
-    ...clearLegacyNoteBodyFrontmatter(body),
-    aisles: body.aisles.map((aisle, index) => {
+    ...body,
+    aisles: body.aisles.map((aisle) => {
       const aisleBodyId = getAisleBodyId(aisle)
       const existing = aisleBodyMap.get(aisleBodyId)
       let aisleBody = existing ?? normalizeNoteAisleBodyRecord(
@@ -305,7 +239,7 @@ function normalizeNoteContent(
           id: aisleBodyId,
           createdAt: body.createdAt ?? fallbackTimestamp,
           updatedAt: body.updatedAt ?? fallbackTimestamp,
-          markdown: aisle.markdown,
+          markdown: '',
         },
         fallbackTimestamp,
       )
@@ -314,23 +248,15 @@ function normalizeNoteContent(
           id: aisleBodyId,
           createdAt: body.createdAt ?? fallbackTimestamp,
           updatedAt: body.updatedAt ?? fallbackTimestamp,
-          markdown: aisle.markdown,
+          markdown: '',
           frontmatter: null,
           frontmatterStatus: 'none',
         }
       }
-      if (index === 0) {
-        aisleBody = applyLegacyFrontmatterToFirstAisle(
-          aisleBody,
-          body.frontmatter,
-          normalizeLegacyNoteBodyFrontmatterMeta(body),
-        )
-      }
       aisleBodyMap.set(aisleBodyId, aisleBody)
       return {
-        ...aisle,
+        id: aisle.id,
         aisleBodyId,
-        markdown: aisleBody.markdown,
       }
     }),
   }))
@@ -349,39 +275,22 @@ function normalizeNoteBodies(raw: unknown): NoteBody[] {
     if (seen.has(id)) continue
     seen.add(id)
     const aisles = normalizeNoteAisles(candidate.aisles)
+    const fallbackAisleBodyId = createId()
     const fallbackAisles =
       aisles.length > 0
         ? aisles
         : [
             {
               id: createId(),
-              markdown: normalizeMarkdownForPersistence(typeof candidate.markdown === 'string' ? candidate.markdown : ''),
+              aisleBodyId: fallbackAisleBodyId,
             },
           ]
-    const frontmatter = normalizeFrontmatterData(candidate.frontmatter)
-    const createdAt = normalizeTimestamp(
-      candidate.createdAt ?? frontmatterTimestamp(frontmatter, ['createdAt', 'created']),
-      fallbackTimestamp,
-    )
-    const updatedAt = normalizeTimestamp(
-      candidate.updatedAt ?? frontmatterTimestamp(frontmatter, ['updatedAt', 'updated']),
-      fallbackTimestamp,
-    )
+    const createdAt = normalizeTimestamp(candidate.createdAt, fallbackTimestamp)
+    const updatedAt = normalizeTimestamp(candidate.updatedAt, fallbackTimestamp)
     bodies.push({
       id,
       createdAt,
       updatedAt,
-      frontmatter,
-      frontmatterTemplateId: typeof candidate.frontmatterTemplateId === 'string'
-        ? candidate.frontmatterTemplateId.trim()
-        : undefined,
-      frontmatterTemplateDerived: typeof candidate.frontmatterTemplateDerived === 'boolean'
-        ? candidate.frontmatterTemplateDerived
-        : undefined,
-      frontmatterTemplateFieldOrigins: normalizeFrontmatterFieldOrigins(candidate.frontmatterTemplateFieldOrigins),
-      frontmatterTemplateRemovedFieldIds: normalizeStringList(candidate.frontmatterTemplateRemovedFieldIds),
-      frontmatterComputedFields: normalizeFrontmatterComputedFields(candidate.frontmatterComputedFields),
-      frontmatterTemplateDetachedKeys: normalizeStringList(candidate.frontmatterTemplateDetachedKeys),
       aisles: fallbackAisles,
     })
   }
@@ -429,35 +338,35 @@ function normalizeDeletedDomainEntries(raw: unknown): DeletedDomainEntry[] {
     .filter((entry): entry is DeletedDomainEntry => entry !== null)
 }
 
-function getFirstAisleMarkdown(noteBodies: Map<string, NoteBody>, noteBodyId: string, fallback: string): string {
-  const body = noteBodies.get(noteBodyId)
-  return body?.aisles[0]?.markdown ?? normalizeMarkdownForPersistence(fallback)
+function ensureNoteBodyExists(
+  noteBodies: Map<string, NoteBody>,
+  noteAisleBodies: Map<string, NoteAisleBody>,
+  noteBodyId: string,
+) {
+  if (noteBodies.has(noteBodyId)) return
+  const content = createNoteBodyContentWithId(noteBodyId)
+  noteBodies.set(noteBodyId, content.noteBody)
+  noteAisleBodies.set(content.aisleBody.id, content.aisleBody)
 }
 
-function ensureTabBodies(tab: Tab, noteBodies: Map<string, NoteBody>): Tab {
+function ensureTabBodies(tab: Tab, noteBodies: Map<string, NoteBody>, noteAisleBodies: Map<string, NoteAisleBody>): Tab {
   const noteBodyId = tab.noteBodyId || createId()
-  if (!noteBodies.has(noteBodyId)) {
-    noteBodies.set(noteBodyId, createNoteBodyWithId(noteBodyId, tab.homeContent))
-  }
+  ensureNoteBodyExists(noteBodies, noteAisleBodies, noteBodyId)
 
   return {
     ...tab,
     noteBodyId,
-    homeContent: getFirstAisleMarkdown(noteBodies, noteBodyId, tab.homeContent),
-    subTabs: tab.subTabs.map((subTab) => ensureSubTabBody(subTab, noteBodies)),
+    subTabs: tab.subTabs.map((subTab) => ensureSubTabBody(subTab, noteBodies, noteAisleBodies)),
   }
 }
 
-function ensureSubTabBody(subTab: SubTab, noteBodies: Map<string, NoteBody>): SubTab {
+function ensureSubTabBody(subTab: SubTab, noteBodies: Map<string, NoteBody>, noteAisleBodies: Map<string, NoteAisleBody>): SubTab {
   const noteBodyId = subTab.noteBodyId || createId()
-  if (!noteBodies.has(noteBodyId)) {
-    noteBodies.set(noteBodyId, createNoteBodyWithId(noteBodyId, subTab.content))
-  }
+  ensureNoteBodyExists(noteBodies, noteAisleBodies, noteBodyId)
 
   return {
     ...subTab,
     noteBodyId,
-    content: getFirstAisleMarkdown(noteBodies, noteBodyId, subTab.content),
   }
 }
 
@@ -465,19 +374,20 @@ export function ensureNoteBodiesForAppState(appState: AppState): AppState {
   const projected = projectActiveDomainState(appState)
   const normalizedContent = normalizeNoteContent(projected.noteBodies, projected.noteAisleBodies)
   const noteBodies = new Map(normalizedContent.noteBodies.map((body) => [body.id, body]))
+  const noteAisleBodies = new Map(normalizedContent.noteAisleBodies.map((body) => [body.id, body]))
 
   const ensureSpaceBodies = (space: Space): Space => ({
     ...space,
     data: {
       ...space.data,
-      tabs: space.data.tabs.map((tab) => ensureTabBodies(tab, noteBodies)),
+      tabs: space.data.tabs.map((tab) => ensureTabBodies(tab, noteBodies, noteAisleBodies)),
       deletedTabs: space.data.deletedTabs.map((entry) => ({
         ...entry,
-        tab: ensureTabBodies(entry.tab, noteBodies),
+        tab: ensureTabBodies(entry.tab, noteBodies, noteAisleBodies),
       })),
       deletedSubTabs: space.data.deletedSubTabs.map((entry) => ({
         ...entry,
-        subTab: ensureSubTabBody(entry.subTab, noteBodies),
+        subTab: ensureSubTabBody(entry.subTab, noteBodies, noteAisleBodies),
       })),
     },
   })
@@ -506,7 +416,7 @@ export function ensureNoteBodiesForAppState(appState: AppState): AppState {
 
   const activeDomain = domains.find((domain) => domain.id === projected.activeDomainId) ?? domains[0]
   const spaces = activeDomain?.spaces ?? projected.spaces
-  const syncedContent = normalizeNoteContent(Array.from(noteBodies.values()), normalizedContent.noteAisleBodies)
+  const syncedContent = normalizeNoteContent(Array.from(noteBodies.values()), Array.from(noteAisleBodies.values()))
 
   return projectActiveDomainState({
     ...projected,
@@ -532,6 +442,173 @@ function normalizeAppTheme(value: unknown): AppTheme {
   return 'dawn'
 }
 
+function getSpaceAutoRemoveDeletedDays(space: Space): number {
+  return space.settings.autoRemoveDeletedDays
+}
+
+function getSpaceAutoPurgeScheduleParts(space: Space): string[] {
+  return [
+    space.id,
+    String(space.settings.autoRemoveDeletedDays),
+    ...space.data.deletedTabs.map((entry) => `tab:${entry.id}:${entry.deletedAt}`),
+    ...space.data.deletedSubTabs.map((entry) => `sub:${entry.id}:${entry.deletedAt}`),
+  ]
+}
+
+function getDeletedEntryPurgeAt(deletedAt: number, autoRemoveDeletedDays: number): number | null {
+  if (!Number.isFinite(deletedAt)) return null
+  return deletedAt + clampAutoRemoveDays(autoRemoveDeletedDays) * AUTO_PURGE_DAY_MS
+}
+
+function getDeletedEntryAutoPurgeTime(deletedAt: number, autoRemoveDeletedDays: number, now: number): number | null {
+  const purgeAt = getDeletedEntryPurgeAt(deletedAt, autoRemoveDeletedDays)
+  if (purgeAt === null) return null
+  return purgeAt <= now ? now : purgeAt
+}
+
+function isDeletedEntryExpired(deletedAt: number, autoRemoveDeletedDays: number, now: number): boolean {
+  if (!Number.isFinite(deletedAt)) return false
+  return deletedAt <= getWorkspaceTrashAutoPurgeCutoff(autoRemoveDeletedDays, now)
+}
+
+function getDeletedDomainPurgeAt(entry: DeletedDomainEntry): number | null {
+  const purgeTimes = [
+    ...(entry.domain.spaces.length > 0
+      ? entry.domain.spaces.map((space) => getDeletedEntryPurgeAt(entry.deletedAt, getSpaceAutoRemoveDeletedDays(space)))
+      : [getDeletedEntryPurgeAt(entry.deletedAt, DEFAULT_AUTO_REMOVE_DAYS)]),
+    ...entry.deletedSpaces.map((spaceEntry) =>
+      getDeletedEntryPurgeAt(spaceEntry.deletedAt, getSpaceAutoRemoveDeletedDays(spaceEntry.space)),
+    ),
+  ].filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+  return purgeTimes.length > 0 ? Math.max(...purgeTimes) : null
+}
+
+function getDeletedDomainAutoPurgeTime(entry: DeletedDomainEntry, now: number): number | null {
+  const purgeAt = getDeletedDomainPurgeAt(entry)
+  if (purgeAt === null) return null
+  return purgeAt <= now ? now : purgeAt
+}
+
+function isDeletedDomainExpired(entry: DeletedDomainEntry, now: number): boolean {
+  const purgeAt = getDeletedDomainPurgeAt(entry)
+  return purgeAt !== null && purgeAt <= now
+}
+
+function visitNextAutoPurgeTime(current: number | null, candidate: number | null, now: number): number | null {
+  if (candidate === null) return current
+  if (candidate <= now) return now
+  if (current === null || candidate < current) return candidate
+  return current
+}
+
+function getNextDeletedWorkspacePurgeTime(appState: AppState, now: number): number | null {
+  let nextPurgeAt: number | null = null
+  ;(appState.deletedSpaces ?? []).forEach((entry) => {
+    nextPurgeAt = visitNextAutoPurgeTime(
+      nextPurgeAt,
+      getDeletedEntryAutoPurgeTime(entry.deletedAt, getSpaceAutoRemoveDeletedDays(entry.space), now),
+      now,
+    )
+    nextPurgeAt = visitNextAutoPurgeTime(
+      nextPurgeAt,
+      getNextWorkspaceTrashAutoPurgeTime(entry.space.data, getSpaceAutoRemoveDeletedDays(entry.space), now),
+      now,
+    )
+  })
+  ;(appState.deletedDomains ?? []).forEach((entry) => {
+    nextPurgeAt = visitNextAutoPurgeTime(
+      nextPurgeAt,
+      getDeletedDomainAutoPurgeTime(entry, now),
+      now,
+    )
+    entry.domain.spaces.forEach((space) => {
+      nextPurgeAt = visitNextAutoPurgeTime(
+        nextPurgeAt,
+        getNextWorkspaceTrashAutoPurgeTime(space.data, getSpaceAutoRemoveDeletedDays(space), now),
+        now,
+      )
+    })
+    entry.deletedSpaces.forEach((spaceEntry) => {
+      nextPurgeAt = visitNextAutoPurgeTime(
+        nextPurgeAt,
+        getDeletedEntryAutoPurgeTime(spaceEntry.deletedAt, getSpaceAutoRemoveDeletedDays(spaceEntry.space), now),
+        now,
+      )
+      nextPurgeAt = visitNextAutoPurgeTime(
+        nextPurgeAt,
+        getNextWorkspaceTrashAutoPurgeTime(spaceEntry.space.data, getSpaceAutoRemoveDeletedDays(spaceEntry.space), now),
+        now,
+      )
+    })
+  })
+  return nextPurgeAt
+}
+
+function applyAutoPurgeToDeletedSpaceEntry(entry: DeletedSpaceEntry, now: number): DeletedSpaceEntry | null {
+  const autoRemoveDeletedDays = getSpaceAutoRemoveDeletedDays(entry.space)
+  if (isDeletedEntryExpired(entry.deletedAt, autoRemoveDeletedDays, now)) return null
+  const data = applyAutoPurgeToWorkspace(entry.space.data, autoRemoveDeletedDays, now)
+  return data === entry.space.data
+    ? entry
+    : {
+        ...entry,
+        space: {
+          ...entry.space,
+          data,
+        },
+      }
+}
+
+function applyAutoPurgeToDeletedSpaceEntries(entries: DeletedSpaceEntry[], now: number): DeletedSpaceEntry[] {
+  let changed = false
+  const nextEntries = entries.flatMap((entry) => {
+    const nextEntry = applyAutoPurgeToDeletedSpaceEntry(entry, now)
+    if (nextEntry !== entry) changed = true
+    return nextEntry ? [nextEntry] : []
+  })
+  return changed ? nextEntries : entries
+}
+
+function applyAutoPurgeToDeletedDomainEntry(entry: DeletedDomainEntry, now: number): DeletedDomainEntry | null {
+  if (isDeletedDomainExpired(entry, now)) return null
+
+  let spacesChanged = false
+  const spaces = entry.domain.spaces.map((space) => {
+    const data = applyAutoPurgeToWorkspace(space.data, getSpaceAutoRemoveDeletedDays(space), now)
+    if (data === space.data) return space
+    spacesChanged = true
+    return {
+      ...space,
+      data,
+    }
+  })
+  const deletedSpaces = applyAutoPurgeToDeletedSpaceEntries(entry.deletedSpaces, now)
+  if (spaces.length === 0 && deletedSpaces.length === 0) return null
+  if (!spacesChanged && deletedSpaces === entry.deletedSpaces) return entry
+
+  return {
+    ...entry,
+    domain: {
+      ...entry.domain,
+      activeSpaceId: spaces.some((space) => space.id === entry.domain.activeSpaceId)
+        ? entry.domain.activeSpaceId
+        : spaces[0]?.id ?? '',
+      spaces,
+    },
+    deletedSpaces,
+  }
+}
+
+function applyAutoPurgeToDeletedDomainEntries(entries: DeletedDomainEntry[], now: number): DeletedDomainEntry[] {
+  let changed = false
+  const nextEntries = entries.flatMap((entry) => {
+    const nextEntry = applyAutoPurgeToDeletedDomainEntry(entry, now)
+    if (nextEntry !== entry) changed = true
+    return nextEntry ? [nextEntry] : []
+  })
+  return changed ? nextEntries : entries
+}
+
 export function getNextAutoPurgeTimeForAppState(appState: AppState, now = Date.now()): number | null {
   const projected = projectActiveDomainState(appState)
   let nextPurgeAt: number | null = null
@@ -554,26 +631,38 @@ export function getNextAutoPurgeTimeForAppState(appState: AppState, now = Date.n
     })
   })
 
+  nextPurgeAt = visitNextAutoPurgeTime(nextPurgeAt, getNextDeletedWorkspacePurgeTime(projected, now), now)
+
   return nextPurgeAt
 }
 
 export function getAutoPurgeScheduleSignatureForAppState(appState: AppState): string {
   const projected = projectActiveDomainState(appState)
-  return projected.domains
+  const liveDomainSignature = projected.domains
     .map((domain) =>
       [
         domain.id,
-        ...domain.spaces.map((space) =>
-          [
-            space.id,
-            space.settings.autoRemoveDeletedDays,
-            ...space.data.deletedTabs.map((entry) => `tab:${entry.id}:${entry.deletedAt}`),
-            ...space.data.deletedSubTabs.map((entry) => `sub:${entry.id}:${entry.deletedAt}`),
-          ].join(','),
-        ),
+        ...domain.spaces.map((space) => getSpaceAutoPurgeScheduleParts(space).join(',')),
       ].join('|'),
     )
     .join('||')
+  const deletedDomainSignature = (projected.deletedDomains ?? [])
+    .map((entry) =>
+      [
+        entry.id,
+        entry.deletedAt,
+        getDeletedDomainPurgeAt(entry) ?? '',
+        ...entry.domain.spaces.map((space) => getSpaceAutoPurgeScheduleParts(space).join(':')),
+        ...entry.deletedSpaces.map((spaceEntry) =>
+          [spaceEntry.id, spaceEntry.deletedAt, ...getSpaceAutoPurgeScheduleParts(spaceEntry.space)].join(':'),
+        ),
+      ].join(','),
+    )
+    .join('|')
+  const deletedSpaceSignature = (projected.deletedSpaces ?? [])
+    .map((entry) => [entry.id, entry.deletedAt, ...getSpaceAutoPurgeScheduleParts(entry.space)].join(':'))
+    .join('|')
+  return [liveDomainSignature, deletedDomainSignature, deletedSpaceSignature].join('::deleted-workspace::')
 }
 
 export function applyAutoPurgeToAppState(appState: AppState, now = Date.now()): AppState {
@@ -610,12 +699,26 @@ export function applyAutoPurgeToAppState(appState: AppState, now = Date.now()): 
       spaces: nextSpaces,
     }
   })
+  const projectedDeletedDomains = projected.deletedDomains ?? []
+  const projectedDeletedSpaces = projected.deletedSpaces ?? []
+  const deletedDomains = applyAutoPurgeToDeletedDomainEntries(projectedDeletedDomains, now)
+  const deletedSpaces = applyAutoPurgeToDeletedSpaceEntries(projectedDeletedSpaces, now)
 
-  if (!spacesChanged && !domainsChanged && projected === appState) return appState
+  if (
+    !spacesChanged &&
+    !domainsChanged &&
+    deletedDomains === projectedDeletedDomains &&
+    deletedSpaces === projectedDeletedSpaces &&
+    projected === appState
+  ) {
+    return appState
+  }
   return projectActiveDomainState({
     ...projected,
     spaces,
     domains,
+    deletedDomains,
+    deletedSpaces,
   })
 }
 
@@ -623,68 +726,36 @@ export function parseSavedState(raw: string | null): AppState {
   if (!raw) return DEFAULT_STATE
 
   try {
-    const rawParsed = JSON.parse(raw) as Record<string, unknown>
-    const migration = migrateRawAppData(rawParsed)
-    if (!migration.ok) return DEFAULT_STATE
-    const parsed = migration.data
+    const parsed = JSON.parse(raw) as Record<string, unknown>
     const theme = normalizeAppTheme(parsed.theme)
     const parsedDomains = normalizeDomains(parsed.domains)
+    if (parsedDomains.length === 0) return DEFAULT_STATE
 
-    if (parsedDomains.length > 0 || (Array.isArray(parsed.spaces) && parsed.spaces.length > 0)) {
-      const legacySpaces = normalizeSpaces(parsed.spaces)
-      const rawActiveSpaceId = typeof parsed.activeSpaceId === 'string' ? parsed.activeSpaceId : null
-      const domains: Domain[] =
-        parsedDomains.length > 0
-          ? parsedDomains
-          : [createLegacyWrappedDomain(legacySpaces, rawActiveSpaceId)]
-      const rawActiveDomainId = typeof parsed.activeDomainId === 'string' ? parsed.activeDomainId : null
-      const activeDomain =
-        (rawActiveDomainId ? domains.find((domain) => domain.id === rawActiveDomainId) : null) ?? domains[0]
-      const spaces: Space[] = legacySpaces.length > 0 ? legacySpaces : activeDomain.spaces
-      const activeSpaceId =
-        rawActiveSpaceId && spaces.some((space) => space.id === rawActiveSpaceId)
-          ? rawActiveSpaceId
-          : activeDomain.activeSpaceId && spaces.some((space) => space.id === activeDomain.activeSpaceId)
-            ? activeDomain.activeSpaceId
-            : spaces[0].id
+    const rawActiveDomainId = typeof parsed.activeDomainId === 'string' ? parsed.activeDomainId : null
+    const activeDomain =
+      (rawActiveDomainId ? parsedDomains.find((domain) => domain.id === rawActiveDomainId) : null) ?? parsedDomains[0]
+    const spaces: Space[] = Array.isArray(parsed.spaces) && parsed.spaces.length > 0
+      ? activeDomain.spaces
+      : activeDomain.spaces
+    const rawActiveSpaceId = typeof parsed.activeSpaceId === 'string' ? parsed.activeSpaceId : null
+    const activeSpaceId =
+      rawActiveSpaceId && spaces.some((space) => space.id === rawActiveSpaceId)
+        ? rawActiveSpaceId
+        : activeDomain.activeSpaceId && spaces.some((space) => space.id === activeDomain.activeSpaceId)
+          ? activeDomain.activeSpaceId
+          : spaces[0]?.id ?? ''
 
-      const noteContent = normalizeNoteContent(parsed.noteBodies, parsed.noteAisleBodies)
-
-      return ensureNoteBodiesForAppState(projectActiveDomainState({
-        theme,
-        activeDomainId: activeDomain.id,
-        domains,
-        deletedDomains: normalizeDeletedDomainEntries(parsed.deletedDomains),
-        deletedSpaces: normalizeDeletedSpaceEntries(parsed.deletedSpaces),
-        noteBodies: noteContent.noteBodies,
-        noteAisleBodies: noteContent.noteAisleBodies,
-        activeSpaceId,
-        spaces,
-        hotkeys: normalizeHotkeySettings(parsed.hotkeys),
-        frontmatter: normalizeFrontmatterSettings(parsed.frontmatter),
-        ui: normalizeUiSettings(parsed.ui),
-      }))
-    }
-
-    // Legacy single-workspace migration
-    const migratedSpace: Space = {
-      id: 'getting-started-space',
-      name: 'first steps',
-      settings: { autoRemoveDeletedDays: DEFAULT_AUTO_REMOVE_DAYS },
-      data: applyAutoPurgeToWorkspace(normalizeWorkspaceData(parsed), DEFAULT_AUTO_REMOVE_DAYS),
-    }
-    const migratedDomain = createLegacyWrappedDomain([migratedSpace], migratedSpace.id)
     const noteContent = normalizeNoteContent(parsed.noteBodies, parsed.noteAisleBodies)
     return ensureNoteBodiesForAppState(projectActiveDomainState({
       theme,
-      activeDomainId: migratedDomain.id,
-      domains: [migratedDomain],
+      activeDomainId: activeDomain.id,
+      domains: parsedDomains,
       deletedDomains: normalizeDeletedDomainEntries(parsed.deletedDomains),
       deletedSpaces: normalizeDeletedSpaceEntries(parsed.deletedSpaces),
       noteBodies: noteContent.noteBodies,
       noteAisleBodies: noteContent.noteAisleBodies,
-      activeSpaceId: migratedSpace.id,
-      spaces: [migratedSpace],
+      activeSpaceId,
+      spaces,
       hotkeys: normalizeHotkeySettings(parsed.hotkeys),
       frontmatter: normalizeFrontmatterSettings(parsed.frontmatter),
       ui: normalizeUiSettings(parsed.ui),

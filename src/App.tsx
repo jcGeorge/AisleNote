@@ -133,7 +133,7 @@ import {
   type RenameDraft,
   type RenameEntityType,
 } from './navigation/rename-draft'
-import { getLocationInfo, listNoteLocationsForBody } from './notes/note-locations'
+import { buildNoteLocationKey, getLocationInfo, listNoteLocationsForBody } from './notes/note-locations'
 import { getLinkedAisleIdsForNoteBody } from './notes/aisle-links'
 import { openExternalWebUrl } from './notes/external-links'
 import { escapeMarkdownLinkLabel } from './notes/note-references'
@@ -152,6 +152,7 @@ import {
 } from './notes/find-replace'
 import { useNoteReferenceActions } from './notes/useNoteReferenceActions'
 import { formatMovedToTrashToast, useAppOverlayActions } from './overlays/useAppOverlayActions'
+import { decoupleNoteLocationsInState } from './overlays/note-decouple'
 import { measureSlowOperation } from './performance/performance-logging'
 import {
   ALWAYS_SHOW_DOMAINS_WITHOUT_SPACES_MESSAGE,
@@ -437,7 +438,11 @@ function App() {
     state,
     activeAisleId,
   })
-  const activeNoteDuplicateCount = activeNoteBodyId ? listNoteLocationsForBody(state, activeNoteBodyId).length : 0
+  const activeNoteLocations = useMemo(
+    () => (activeNoteBodyId ? listNoteLocationsForBody(state, activeNoteBodyId) : []),
+    [activeNoteBodyId, state],
+  )
+  const activeNoteDuplicateCount = activeNoteLocations.length
   const findReplaceMatches = useMemo(
     () =>
       findReplacePanel.open
@@ -470,7 +475,21 @@ function App() {
       return current.activeIndex <= maxIndex ? current : { ...current, activeIndex: maxIndex }
     })
   }, [findReplaceMatches.length])
-  const activeLinkedAisleIds = activeNoteBodyId ? getLinkedAisleIdsForNoteBody(state, activeNoteBodyId) : new Set<string>()
+  const activeLinkedAisleIds = useMemo(
+    () => (activeNoteBodyId ? getLinkedAisleIdsForNoteBody(state, activeNoteBodyId) : new Set<string>()),
+    [activeNoteBodyId, state],
+  )
+  const activeFrontmatterAisleIds = useMemo(() => {
+    const aisleBodyById = new Map((state.noteAisleBodies ?? []).map((body) => [body.id, body]))
+    return new Set(
+      activeNoteAisles
+        .filter((aisle) => {
+          const aisleBody = aisleBodyById.get(getAisleBodyId(aisle))
+          return aisleBody?.frontmatterStatus === 'valid' && aisleBody.frontmatter !== null && aisleBody.frontmatter !== undefined
+        })
+        .map((aisle) => aisle.id),
+    )
+  }, [activeNoteAisles, state.noteAisleBodies])
   const activeToolbarLayout = resolveToolbarLayout(state.ui.toolbarLayouts, activeToolbarLayoutId)
 
   const setActiveToolbarLayoutId = useCallback((layoutId: string) => {
@@ -2332,12 +2351,13 @@ function App() {
       setStatus: settingsController.setExportStatus,
     })
 
-  const openFrontmatterModalForActiveNote = () => {
+  const openFrontmatterModalForAisle = (aisleId: string | null = null) => {
     if (viewMode !== 'main' || !activeNoteBodyId) return
     saveActiveCursorBeforeNavigation()
     const latestState = stateRef.current
     const latestBody = latestState.noteBodies.find((body) => body.id === activeNoteBodyId) ?? activeNoteBody
     const targetAisle =
+      (aisleId ? latestBody?.aisles.find((aisle) => aisle.id === aisleId) : null) ??
       latestBody?.aisles.find((aisle) => aisle.id === resolvedActiveAisleId) ??
       latestBody?.aisles[0] ??
       null
@@ -2359,6 +2379,46 @@ function App() {
       selectedTemplateId: draft.selectedTemplateId,
       templateDerived: draft.templateDerived,
       isTemplateSuggestionDraft: draft.isTemplateSuggestionDraft,
+    })
+  }
+
+  const openFrontmatterModalForActiveNote = () => {
+    openFrontmatterModalForAisle()
+  }
+
+  const openLinkedAisleModal = (aisleId: string) => {
+    if (viewMode !== 'main' || !activeNoteBodyId) return
+    saveActiveCursorBeforeNavigation()
+    const latestState = stateRef.current
+    const latestBody = latestState.noteBodies.find((body) => body.id === activeNoteBodyId) ?? activeNoteBody
+    const targetAisle = latestBody?.aisles.find((aisle) => aisle.id === aisleId) ?? null
+    if (!targetAisle) return
+
+    const aisleBodyId = getAisleBodyId(targetAisle)
+    const latestLocations = listNoteLocationsForBody(latestState, activeNoteBodyId)
+    if (latestLocations.length > 1) {
+      setModal({
+        type: 'linked-aisle',
+        reason: 'note-body',
+        noteBodyId: activeNoteBodyId,
+        aisleId,
+        aisleBodyId,
+        location: activeNoteLocation,
+        keepLocationKeys: latestLocations.map((location) => buildNoteLocationKey(location)),
+        keepData: latestState.ui.decoupledItemsKeepData ?? true,
+      })
+      return
+    }
+
+    const latestLinkedAisleIds = getLinkedAisleIdsForNoteBody(latestState, activeNoteBodyId)
+    if (!latestLinkedAisleIds.has(aisleId)) return
+    setModal({
+      type: 'linked-aisle',
+      reason: 'aisle-body',
+      noteBodyId: activeNoteBodyId,
+      aisleId,
+      aisleBodyId,
+      location: activeNoteLocation,
     })
   }
 
@@ -2460,7 +2520,31 @@ function App() {
   const getCurrentDuplicateCount = overlayActions.getCurrentDuplicateCount
   const beginRenameSpaceFromContext = overlayActions.beginRenameSpaceFromContext
   const beginRenameDomainFromContext = overlayActions.beginRenameDomainFromContext
-  const confirmModal = overlayActions.confirmModal
+  const confirmModal = () => {
+    if (!modal || modal.type !== 'linked-aisle') {
+      overlayActions.confirmModal()
+      return
+    }
+
+    if (modal.reason === 'aisle-body') {
+      applyAisleEditDraftToActiveNote(activeNoteAisles, { decoupleAisleIds: [modal.aisleId] })
+      setModal(null)
+      pushToast('aisle de-coupled.', 'success')
+      return
+    }
+
+    setDecoupledItemsKeepData(modal.keepData)
+    const keepKeys = new Set(modal.keepLocationKeys)
+    if (keepKeys.size === 0) {
+      pushToast('select at least one note to retain the information', 'error')
+      return
+    }
+    const appliedState = decoupleNoteLocationsInState(stateRef.current, modal.noteBodyId, keepKeys, modal.keepData)
+    stateRef.current = appliedState
+    setState(appliedState)
+    setModal(null)
+    pushToast('notes de-coupled.', 'success')
+  }
 
   const autoSizeRenameInput = (input: HTMLInputElement) => {
     if (!renameInputMeasureContext) {
@@ -3349,6 +3433,9 @@ function App() {
               activeAisleId={resolvedActiveAisleId}
               editorReadOnly={editorReadOnly}
               arrangeModeActive={mainArrangementActive}
+              frontmatterAisleIds={activeFrontmatterAisleIds}
+              linkedAisleIds={activeLinkedAisleIds}
+              wholeNoteLinked={activeNoteDuplicateCount > 1}
               aisleScrollRef={aisleScrollRef}
               toolbar={editorToolbarLayer.toolbar}
               headingPopover={editorToolbarLayer.popovers}
@@ -3384,6 +3471,8 @@ function App() {
               getPreviewMarkdownForAisle={getPreviewMarkdownForAisle}
               onCloseTableOfContentsAisle={closeTableOfContentsAisle}
               onSelectTableOfContentsHeading={selectTableOfContentsHeading}
+              onOpenAisleFrontmatter={openFrontmatterModalForAisle}
+              onOpenAisleLink={openLinkedAisleModal}
               onRegisterAislePaneRoot={registerAislePaneRoot}
               onRegisterAisleEditorRoot={registerAisleEditorRoot}
             />

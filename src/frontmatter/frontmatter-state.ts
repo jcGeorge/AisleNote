@@ -31,7 +31,7 @@ function getFirstAisleBodyId(state: AppState, noteBodyId: string): string {
   const noteBody = state.noteBodies.find((body) => body.id === noteBodyId)
   const firstAisle = noteBody?.aisles[0]
   if (!firstAisle) return ''
-  return firstAisle.aisleBodyId || firstAisle.id
+  return firstAisle.aisleBodyId
 }
 
 function getAisleBody(state: AppState, aisleBodyId: string): NoteAisleBody | null {
@@ -55,7 +55,6 @@ function buildFrontmatterMeta(frontmatter: FrontmatterData | null, saveOptions: 
       templateFieldOrigins: saveOptions.templateDerived ? templateFieldOrigins ?? {} : undefined,
       templateRemovedFieldIds: saveOptions.templateDerived ? templateRemovedFieldIds : undefined,
       computedFields,
-      templateDetachedKeys: undefined,
     }
   }
   if (!frontmatter) {
@@ -65,7 +64,6 @@ function buildFrontmatterMeta(frontmatter: FrontmatterData | null, saveOptions: 
       templateFieldOrigins: undefined,
       templateRemovedFieldIds: undefined,
       computedFields: undefined,
-      templateDetachedKeys: undefined,
     }
   }
   return {
@@ -74,30 +72,16 @@ function buildFrontmatterMeta(frontmatter: FrontmatterData | null, saveOptions: 
     templateFieldOrigins: undefined,
     templateRemovedFieldIds: undefined,
     computedFields,
-    templateDetachedKeys: undefined,
   }
 }
 
-function getLegacyFrontmatterMeta(noteBody: NoteBody | null): FrontmatterMeta | undefined {
-  if (!noteBody) return undefined
-  return {
-    templateId: noteBody.frontmatterTemplateId,
-    templateDerived: noteBody.frontmatterTemplateDerived,
-    templateFieldOrigins: noteBody.frontmatterTemplateFieldOrigins,
-    templateRemovedFieldIds: noteBody.frontmatterTemplateRemovedFieldIds,
-    computedFields: noteBody.frontmatterComputedFields,
-    templateDetachedKeys: noteBody.frontmatterTemplateDetachedKeys,
-  }
-}
-
-function getTargetFrontmatter(state: AppState, noteBodyId: string, aisleBodyId: string): FrontmatterData | null {
+function getTargetFrontmatter(state: AppState, _noteBodyId: string, aisleBodyId: string): FrontmatterData | null {
   const aisleBody = getAisleBody(state, aisleBodyId)
-  if (aisleBody) return aisleBody.frontmatter ?? null
-  return getNoteBody(state, noteBodyId)?.frontmatter ?? null
+  return aisleBody?.frontmatter ?? null
 }
 
-function getTargetFrontmatterMeta(state: AppState, noteBodyId: string, aisleBodyId: string): FrontmatterMeta | undefined {
-  return getAisleBody(state, aisleBodyId)?.frontmatterMeta ?? getLegacyFrontmatterMeta(getNoteBody(state, noteBodyId))
+function getTargetFrontmatterMeta(state: AppState, _noteBodyId: string, aisleBodyId: string): FrontmatterMeta | undefined {
+  return getAisleBody(state, aisleBodyId)?.frontmatterMeta
 }
 
 function ensureAisleBodyForNote(state: AppState, noteBodyId: string, aisleBodyId: string): AppState {
@@ -113,31 +97,11 @@ function ensureAisleBodyForNote(state: AppState, noteBodyId: string, aisleBodyId
         id: aisleBodyId,
         createdAt: noteBody.createdAt,
         updatedAt: noteBody.updatedAt,
-        markdown: aisle.markdown,
-        frontmatter: noteBody.frontmatter ?? null,
-        frontmatterStatus: noteBody.frontmatter ? 'valid' : 'none',
-        frontmatterMeta: getLegacyFrontmatterMeta(noteBody),
+        markdown: '',
+        frontmatter: null,
+        frontmatterStatus: 'none',
       },
     ],
-  }
-}
-
-function applyLegacyNoteBodyFrontmatter(
-  body: NoteBody,
-  frontmatter: FrontmatterData | null,
-  saveOptions?: FrontmatterSaveOptions,
-): NoteBody {
-  if (!saveOptions) return { ...body, frontmatter }
-  const meta = buildFrontmatterMeta(frontmatter, saveOptions)
-  return {
-    ...body,
-    frontmatter,
-    frontmatterTemplateId: meta?.templateId,
-    frontmatterTemplateDerived: meta?.templateDerived,
-    frontmatterTemplateFieldOrigins: meta?.templateFieldOrigins,
-    frontmatterTemplateRemovedFieldIds: meta?.templateRemovedFieldIds,
-    frontmatterComputedFields: meta?.computedFields,
-    frontmatterTemplateDetachedKeys: meta?.templateDetachedKeys,
   }
 }
 
@@ -195,13 +159,7 @@ export function updateNoteBodyFrontmatter(
   const aisleBodyId = getFirstAisleBodyId(state, noteBodyId)
   if (!aisleBodyId) return state
   const ensuredState = ensureAisleBodyForNote(state, noteBodyId, aisleBodyId)
-  const nextState = updateAisleFrontmatter(ensuredState, aisleBodyId, frontmatter, saveOptions)
-  return {
-    ...nextState,
-    noteBodies: nextState.noteBodies.map((body) =>
-      body.id === noteBodyId ? applyLegacyNoteBodyFrontmatter(body, frontmatter, saveOptions) : body,
-    ),
-  }
+  return updateAisleFrontmatter(ensuredState, aisleBodyId, frontmatter, saveOptions)
 }
 
 export function buildFrontmatterContext(

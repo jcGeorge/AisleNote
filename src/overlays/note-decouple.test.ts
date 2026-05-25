@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_FRONTMATTER_SETTINGS } from '../frontmatter/frontmatter'
 import { buildNoteLocationKey, getLocationInfo } from '../notes/note-locations'
-import type { AppState, NoteLocation, Space } from '../types/app'
+import { getAisleMarkdown } from '../notes/note-markdown'
+import type { AppState, NoteAisle, NoteLocation, Space } from '../types/app'
 import { decoupleNoteLocationsInState } from './note-decouple'
 
 const sourceLocation: NoteLocation = {
@@ -18,6 +19,9 @@ const peerLocation: NoteLocation = {
   subTabId: null,
 }
 
+const aisleMarkdown = (state: AppState, aisle: NoteAisle | null | undefined) =>
+  aisle ? getAisleMarkdown(aisle, state.noteAisleBodies) : ''
+
 function createDecoupleTestState(): AppState {
   const space: Space = {
     id: 'space-1',
@@ -30,7 +34,6 @@ function createDecoupleTestState(): AppState {
           id: 'tab-source',
           title: 'Source',
           noteBodyId: 'body-shared',
-          homeContent: '',
           activeSubTabId: null,
           subTabs: [],
         },
@@ -38,7 +41,6 @@ function createDecoupleTestState(): AppState {
           id: 'tab-peer',
           title: 'Peer',
           noteBodyId: 'body-shared',
-          homeContent: '',
           activeSubTabId: null,
           subTabs: [],
         },
@@ -57,8 +59,7 @@ function createDecoupleTestState(): AppState {
     noteBodies: [
       {
         id: 'body-shared',
-        frontmatter: null,
-        aisles: [{ id: 'aisle-shared', aisleBodyId: 'aisle-body-shared', markdown: 'stale slot text' }],
+        aisles: [{ id: 'aisle-shared', aisleBodyId: 'aisle-body-shared' }],
       },
     ],
     noteAisleBodies: [
@@ -129,8 +130,7 @@ describe('note de-couple helpers', () => {
 
     expect(sourceInfo.noteBodyId).toBe('body-shared')
     expect(peerInfo.noteBodyId).not.toBe('body-shared')
-    expect(peerBody?.frontmatter).toBeNull()
-    expect(peerBody?.aisles[0]?.markdown).toBe('shared authoritative text')
+    expect(aisleMarkdown(result, peerBody?.aisles[0])).toBe('shared authoritative text')
     expect(peerAisleBody?.markdown).toBe('shared authoritative text')
     expect(peerAisleBody?.frontmatter).toEqual({ status: 'linked' })
   })
@@ -147,8 +147,7 @@ describe('note de-couple helpers', () => {
     const peerAisleBody = result.noteAisleBodies?.find((body) => body.id === peerBody?.aisles[0]?.aisleBodyId)
 
     expect(peerBodyId).not.toBe('body-shared')
-    expect(peerBody?.frontmatter).toBeNull()
-    expect(peerBody?.aisles[0]?.markdown).toBe('')
+    expect(aisleMarkdown(result, peerBody?.aisles[0])).toBe('')
     expect(peerAisleBody?.markdown).toBe('')
   })
 })

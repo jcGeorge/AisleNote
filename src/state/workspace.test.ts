@@ -17,7 +17,6 @@ const liveTab: Tab = {
   id: 'live-tab',
   title: 'Live',
   noteBodyId: 'live-body',
-  homeContent: '',
   activeSubTabId: null,
   subTabs: [],
 }
@@ -27,7 +26,6 @@ function tab(id: string): Tab {
     id,
     title: id,
     noteBodyId: `${id}-body`,
-    homeContent: '',
     activeSubTabId: null,
     subTabs: [],
   }
@@ -38,7 +36,6 @@ function subTab(id: string): SubTab {
     id,
     title: id,
     noteBodyId: `${id}-body`,
-    content: '',
   }
 }
 
@@ -115,17 +112,17 @@ describe('workspace id allocation', () => {
     const allocate = createReservedIdAllocator(['taken-tab', 'taken-sub'], () => values.shift() ?? 'fallback')
 
     const parent = createTab('Parent', allocate)
-    const child = createSubTab('Child', '', allocate)
+    const child = createSubTab('Child', allocate)
 
     expect(parent.id).toBe('parent-id')
     expect(child.id).toBe('sub-id')
   })
 
-  it('keeps onboarding sample content in the explicit default workspace only', () => {
+  it('keeps onboarding sample navigation in the explicit default workspace only', () => {
     const data = createDefaultWorkspaceData()
 
     expect(data.tabs[0].title).toBe('welcome')
-    expect(data.tabs[0].homeContent).toContain('This is the home note')
+    expect(data.tabs[0]).not.toHaveProperty('homeContent')
     expect(data.tabs[0].subTabs.map((subTab) => subTab.title)).toEqual(['list'])
   })
 
@@ -141,7 +138,6 @@ describe('workspace id allocation', () => {
     expect(space.data.tabs[0]).toMatchObject({
       id: 'tab-new',
       title: 'tab',
-      homeContent: '',
       activeSubTabId: null,
       subTabs: [],
     })
@@ -155,9 +151,8 @@ describe('workspace id allocation', () => {
           id: 'tab-source',
           title: 'Source',
           noteBodyId: 'body-source',
-          homeContent: '',
           activeSubTabId: 'sub-source',
-          subTabs: [{ id: 'sub-source', title: 'Sub', noteBodyId: 'body-sub-source', content: '' }],
+          subTabs: [{ id: 'sub-source', title: 'Sub', noteBodyId: 'body-sub-source'}],
         },
       ],
       deletedTabs: [],
@@ -180,7 +175,7 @@ describe('workspace id allocation', () => {
     source.data.tabs[0] = {
       ...source.data.tabs[0],
       activeSubTabId: 'sub-source',
-      subTabs: [{ id: 'sub-source', title: 'Sub', noteBodyId: 'sub-body-source', content: '' }],
+      subTabs: [{ id: 'sub-source', title: 'Sub', noteBodyId: 'sub-body-source'}],
     }
     const values = ['space-source', 'space-copy', 'tab-source', 'tab-copy', 'sub-source', 'sub-copy', 'sub-body-copy', 'tab-body-copy']
     const allocate = createReservedIdAllocator(collectWorkspaceNavigationEntityIds(source.data).add(source.id), () => values.shift() ?? 'fallback')

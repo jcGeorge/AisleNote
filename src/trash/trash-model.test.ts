@@ -13,9 +13,8 @@ const workspace: WorkspaceData = {
         id: 'deleted-parent',
         title: 'Deleted Parent',
         noteBodyId: 'body-parent',
-        homeContent: 'deleted home',
         activeSubTabId: null,
-        subTabs: [{ id: 'deleted-sub', title: 'Deleted Sub', noteBodyId: 'body-sub', content: 'deleted sub' }],
+        subTabs: [{ id: 'deleted-sub', title: 'Deleted Sub', noteBodyId: 'body-sub'}],
       },
     },
   ],
@@ -25,14 +24,27 @@ const workspace: WorkspaceData = {
       parentTabId: 'live-parent',
       parentTabTitle: 'Live Parent',
       deletedAt: 2,
-      subTab: { id: 'orphan-sub', title: 'Orphan Sub', noteBodyId: 'body-orphan', content: 'orphan content' },
+      subTab: { id: 'orphan-sub', title: 'Orphan Sub', noteBodyId: 'body-orphan'},
     },
   ],
 }
 
+const state = {
+  noteBodies: [
+    { id: 'body-parent', aisles: [{ id: 'aisle-parent', aisleBodyId: 'aisle-body-parent' }] },
+    { id: 'body-sub', aisles: [{ id: 'aisle-sub', aisleBodyId: 'aisle-body-sub' }] },
+    { id: 'body-orphan', aisles: [{ id: 'aisle-orphan', aisleBodyId: 'aisle-body-orphan' }] },
+  ],
+  noteAisleBodies: [
+    { id: 'aisle-body-parent', markdown: 'deleted home' },
+    { id: 'aisle-body-sub', markdown: 'deleted sub' },
+    { id: 'aisle-body-orphan', markdown: 'orphan content' },
+  ],
+} as unknown as AppState
+
 describe('trash model', () => {
   it('groups deleted parents and subtabs-only parents separately', () => {
-    const buckets = buildTrashParentBuckets(workspace)
+    const buckets = buildTrashParentBuckets(state, workspace)
 
     expect(buckets.map((bucket) => bucket.source)).toEqual(['deleted-tab', 'subtabs-only'])
     expect(buckets[1].subTabs[0].content).toBe('orphan content')
@@ -45,6 +57,8 @@ describe('trash model', () => {
       spaces: [],
       domains: [],
       deletedSpaces: [],
+      noteBodies: [{ id: 'parent-body', aisles: [{ id: 'parent-aisle', aisleBodyId: 'parent-aisle-body' }] }],
+      noteAisleBodies: [{ id: 'parent-aisle-body', markdown: 'parent body' }],
       deletedDomains: [
         {
           id: 'deleted-domain-entry',
@@ -66,7 +80,6 @@ describe('trash model', () => {
                       id: 'parent-a',
                       title: 'Parent A',
                       noteBodyId: 'parent-body',
-                      homeContent: 'parent home',
                       activeSubTabId: null,
                       subTabs: [],
                     },
@@ -152,7 +165,7 @@ describe('trash model', () => {
   })
 
   it('resolves trash display markdown for home, parent, and subtab selections', () => {
-    const buckets = buildTrashParentBuckets(workspace)
+    const buckets = buildTrashParentBuckets(state, workspace)
     const parent = buckets[0]
 
     expect(

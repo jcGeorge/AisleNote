@@ -12,6 +12,7 @@ import {
 } from './note-references'
 import type { AppState, NoteLocation } from '../types/app'
 import type { NoteContextReferencePayload } from './note-references'
+import { getAisleMarkdown } from './note-markdown'
 
 function targetLocation(tabId = 'tab', subTabId: string | null = null): NoteLocation {
   return {
@@ -101,24 +102,27 @@ describe('note context references', () => {
       noteBodies: [
         {
           id: 'body-1',
-          frontmatter: null,
           aisles: [
-            { id: 'aisle-1', markdown: `a\n${parentToken}` },
-            { id: 'aisle-2', markdown: `${retainedToken}\nb` },
+            { id: 'aisle-1', aisleBodyId: 'aisle-body-1' },
+            { id: 'aisle-2', aisleBodyId: 'aisle-body-2' },
           ],
         },
         {
           id: 'body-2',
-          frontmatter: null,
-          aisles: [{ id: 'aisle-3', markdown: `${subTabToken}\nc` }],
+          aisles: [{ id: 'aisle-3', aisleBodyId: 'aisle-body-3' }],
         },
       ],
-    } as AppState
+      noteAisleBodies: [
+        { id: 'aisle-body-1', markdown: `a\n${parentToken}` },
+        { id: 'aisle-body-2', markdown: `${retainedToken}\nb` },
+        { id: 'aisle-body-3', markdown: `${subTabToken}\nc` },
+      ],
+    } as unknown as AppState
 
     const next = removeContextReferencesForNoteLocationsFromAppState(state, [deletedParent, deletedSubTab])
 
-    expect(next.noteBodies[0].aisles[0].markdown).toBe('a\n')
-    expect(next.noteBodies[0].aisles[1].markdown).toBe(`${retainedToken}\nb`)
-    expect(next.noteBodies[1].aisles[0].markdown).toBe('\nc')
+    expect(getAisleMarkdown(next.noteBodies[0].aisles[0], next.noteAisleBodies)).toBe('a\n')
+    expect(getAisleMarkdown(next.noteBodies[0].aisles[1], next.noteAisleBodies)).toBe(`${retainedToken}\nb`)
+    expect(getAisleMarkdown(next.noteBodies[1].aisles[0], next.noteAisleBodies)).toBe('\nc')
   })
 })

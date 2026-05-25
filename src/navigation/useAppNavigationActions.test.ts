@@ -12,14 +12,12 @@ function createWorkspace(): { workspace: WorkspaceData; activeTab: Tab } {
     id: 'parent-1',
     title: 'Parent',
     noteBodyId: 'body-parent',
-    homeContent: 'parent home',
     activeSubTabId: 'sub-1',
     subTabs: [
       {
         id: 'sub-1',
         title: 'help!',
         noteBodyId: 'body-sub',
-        content: 'first aisle mirror',
       },
     ],
   }
@@ -56,10 +54,9 @@ function createState(workspace: WorkspaceData): AppState {
     noteBodies: [
       {
         id: 'body-sub',
-        frontmatter: null,
         aisles: [
-          { id: 'aisle-1', aisleBodyId: 'aisle-body-1', markdown: 'first aisle mirror' },
-          { id: 'aisle-2', aisleBodyId: 'aisle-body-2', markdown: 'second aisle text' },
+          { id: 'aisle-1', aisleBodyId: 'aisle-body-1' },
+          { id: 'aisle-2', aisleBodyId: 'aisle-body-2' },
         ],
       },
     ],
@@ -81,7 +78,7 @@ function createState(workspace: WorkspaceData): AppState {
 }
 
 describe('app navigation rename actions', () => {
-  it('renames a sub-tab with emoji without copying the active aisle into the content mirror', () => {
+  it('renames a sub-tab with emoji without mutating note content', () => {
     const { workspace, activeTab } = createWorkspace()
     let latestWorkspace = workspace
     const calls: string[] = []
@@ -127,6 +124,6 @@ describe('app navigation rename actions', () => {
     expect(calls).toEqual(['save-active-cursor-and-flush', 'update-workspace'])
     const renamedSubTab = latestWorkspace.tabs[0]?.subTabs[0]
     expect(renamedSubTab?.title).toBe('help! 🥺')
-    expect(renamedSubTab?.content).toBe('first aisle mirror')
+    expect(renamedSubTab).not.toHaveProperty('content')
   })
 })

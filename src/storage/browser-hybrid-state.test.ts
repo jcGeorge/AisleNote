@@ -3,6 +3,7 @@ import { buildImageAssetUrl } from '../markdown/image-asset-refs.js'
 import { registerAssetBytes, registerImageAssetBytes } from '../markdown/image-asset-registry'
 import { DEFAULT_CUSTOM_THEME_PALETTE } from '../settings/defaults'
 import { parseSavedState } from '../state/app-state'
+import { getAisleMarkdown } from '../notes/note-markdown'
 import { buildHybridFileMapFromSerializedState, readSerializedStateFromHybridFileMap } from './browser-hybrid-state'
 import { STORAGE_PATH_SEGMENT_MAX_LENGTH } from './storage-path-segments.js'
 
@@ -49,7 +50,6 @@ function createBrowserStorageState() {
           id: 'tab-1',
           title: 'Tab',
           noteBodyId: 'body-1',
-          homeContent: 'home fallback',
           activeSubTabId: null,
           subTabs: [],
         },
@@ -71,11 +71,25 @@ function createBrowserStorageState() {
           spaces: [space],
         },
       ],
-      noteBodies: [{ id: 'body-1', aisles: [{ id: 'aisle-1', markdown: 'home body' }] }],
+      noteBodies: [{ id: 'body-1', aisles: [{ id: 'aisle-1', aisleBodyId: 'aisle-body-1' }] }],
+      noteAisleBodies: [{ id: 'aisle-body-1', markdown: 'home body' }],
       activeSpaceId: space.id,
       spaces: [space],
     }),
   )
+}
+
+function setFirstAisleBodyMarkdown(state: ReturnType<typeof createBrowserStorageState>, markdown: string) {
+  const firstAisle = state.noteBodies[0]?.aisles[0]
+  const aisleBody = firstAisle
+    ? state.noteAisleBodies?.find((body) => body.id === firstAisle.aisleBodyId)
+    : null
+  if (aisleBody) aisleBody.markdown = markdown
+}
+
+function getFirstAisleBodyMarkdown(state: ReturnType<typeof createBrowserStorageState>) {
+  const firstAisle = state.noteBodies[0]?.aisles[0]
+  return firstAisle ? getAisleMarkdown(firstAisle, state.noteAisleBodies) : ''
 }
 
 function getBrowserWorkspacePaths(fileMap: ReturnType<typeof buildHybridFileMapFromSerializedState>) {
@@ -99,10 +113,35 @@ function getBrowserWorkspacePaths(fileMap: ReturnType<typeof buildHybridFileMapF
   }
 }
 
+function parseModernBrowserState(raw: Record<string, unknown>) {
+  if (Array.isArray(raw.domains)) return parseSavedState(JSON.stringify(raw))
+  const spaces = Array.isArray(raw.spaces) && raw.spaces.length > 0
+    ? raw.spaces
+    : [{
+        id: 'space-1',
+        name: 'Space',
+        data: { activeTabId: 'tab-1', tabs: [], deletedTabs: [], deletedSubTabs: [] },
+      }]
+  const activeSpaceId = typeof raw.activeSpaceId === 'string' ? raw.activeSpaceId : String((spaces[0] as { id?: string }).id ?? '')
+  const domainId = typeof raw.activeDomainId === 'string' ? raw.activeDomainId : 'domain-1'
+  const domain = {
+    id: domainId,
+    name: 'Domain',
+    activeSpaceId,
+    spaces,
+  }
+  return parseSavedState(JSON.stringify({
+    ...raw,
+    activeDomainId: domain.id,
+    domains: [domain],
+    activeSpaceId,
+    spaces,
+  }))
+}
+
 describe('browser hybrid storage', () => {
   it('round trips markdown note bodies through the manifest file map', () => {
-    const state = parseSavedState(
-      JSON.stringify({
+    const state = parseModernBrowserState({
         theme: 'custom',
         spaces: [
           {
@@ -115,14 +154,12 @@ describe('browser hybrid storage', () => {
                   id: 'tab-1',
                   title: 'Tab',
                   noteBodyId: 'body-tab',
-                  homeContent: 'home mirror',
                   activeSubTabId: 'sub-1',
                   subTabs: [
                     {
                       id: 'sub-1',
                       title: 'Sub',
                       noteBodyId: 'body-sub',
-                      content: 'sub mirror',
                     },
                   ],
                 },
@@ -135,17 +172,26 @@ describe('browser hybrid storage', () => {
         noteBodies: [
           {
             id: 'body-tab',
-            frontmatter: { created: '2024-01-01' },
-            frontmatterTemplateId: 'template-1',
-            frontmatterTemplateDerived: true,
-            frontmatterTemplateFieldOrigins: {
-              created: { templateId: 'template-1', fieldId: 'field-1' },
-            },
-            frontmatterTemplateRemovedFieldIds: ['field-2'],
-            frontmatterComputedFields: { created: 'createdAt' },
-            aisles: [{ id: 'aisle-tab', markdown: 'home body' }],
+            aisles: [{ id: 'aisle-tab', aisleBodyId: 'aisle-body-tab' }],
           },
-          { id: 'body-sub', aisles: [{ id: 'aisle-sub', markdown: 'sub body' }] },
+          { id: 'body-sub', aisles: [{ id: 'aisle-sub', aisleBodyId: 'aisle-body-sub' }] },
+        ],
+        noteAisleBodies: [
+          {
+            id: 'aisle-body-tab',
+            markdown: 'home body',
+            frontmatter: { created: '2024-01-01' },
+            frontmatterMeta: {
+              templateId: 'template-1',
+              templateDerived: true,
+              templateFieldOrigins: {
+                created: { templateId: 'template-1', fieldId: 'field-1' },
+              },
+              templateRemovedFieldIds: ['field-2'],
+              computedFields: { created: 'createdAt' },
+            },
+          },
+          { id: 'aisle-body-sub', markdown: 'sub body' },
         ],
         frontmatter: {
           settingsTemplateId: 'template-1',
@@ -175,7 +221,7 @@ describe('browser hybrid storage', () => {
             },
           },
           noteCursorLocations: {
-            'domain::space-1::tab-1::__home__': {
+            'domain-1::space-1::tab-1::__home__': {
               activeAisleId: 'aisle-tab',
               aisles: {
                 'aisle-tab': {
@@ -188,10 +234,29 @@ describe('browser hybrid storage', () => {
               },
               updatedAt: 100,
             },
+            'domain-1::space-1::missing-tab::__home__': {
+              activeAisleId: 'aisle-stale',
+              aisles: {
+                'aisle-stale': {
+                  anchor: 2,
+                  head: 2,
+                  updatedAt: 200,
+                },
+              },
+              updatedAt: 200,
+            },
+          },
+          headingCollapseState: {
+            'body-tab': {
+              'aisle-tab': ['heading-a'],
+              'missing-aisle': ['heading-stale'],
+            },
+            'missing-body': {
+              'aisle-tab': ['heading-stale'],
+            },
           },
         },
-      }),
-    )
+      })
 
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
     const rootManifestEntry = fileMap.get('notes-data/manifest.json')
@@ -209,7 +274,7 @@ describe('browser hybrid storage', () => {
     const homeAisleBody = roundTripped.noteAisleBodies?.find((body) => body.id === homeBody?.aisles[0]?.aisleBodyId)
     const subBody = roundTripped.noteBodies.find((body) => body.id === 'body-sub')
 
-    expect(rootManifest?.schemaVersion).toBe(3)
+    expect(rootManifest?.schemaVersion).toBe(1)
     expect(Object.keys(getRecord(rootManifest)).sort()).toEqual(['files', 'schemaVersion'])
     expect(Object.keys(getRecord(rootManifest?.files)).sort()).toEqual([
       'appSettings',
@@ -228,15 +293,14 @@ describe('browser hybrid storage', () => {
     expect(fileMap.has('notes-data/aisle-bodies.json')).toBe(false)
     expect(fileMap.has('notes-data/orphan-note-bodies.json')).toBe(false)
     expect(fileMap.has('notes-data/orphan-aisle-bodies.json')).toBe(false)
-    expect(firstDomain.path).toEqual(expect.stringMatching(/^humble beginnings--[a-f0-9]{6}$/))
+    expect(firstDomain.path).toEqual(expect.stringMatching(/^Domain--[a-f0-9]{6}$/))
     expect(paths.some((path) => path.startsWith('notes-data/domains/'))).toBe(true)
     expect(paths.some((path) => path.startsWith('notes-data/topics/'))).toBe(false)
     expect(paths.some((path) => path.startsWith('notes-data/note-bodies/'))).toBe(false)
     expect(paths.some((path) => /\/Tab--[a-f0-9]{6}\/home\.md$/.test(path))).toBe(true)
     expect(paths.some((path) => /\/Tab--[a-f0-9]{6}\/Sub--[a-f0-9]{6}\.md$/.test(path))).toBe(true)
     expect(serialized).not.toBeNull()
-    expect(homeBody?.aisles[0]?.markdown).toBe('home body')
-    expect(homeBody?.frontmatter).toBeNull()
+    expect(homeBody?.aisles[0] ? getAisleMarkdown(homeBody.aisles[0], roundTripped.noteAisleBodies) : '').toBe('home body')
     expect(homeAisleBody?.frontmatter).toEqual({ created: '2024-01-01' })
     expect(homeAisleBody?.frontmatterMeta).toMatchObject({
       templateId: 'template-1',
@@ -248,7 +312,7 @@ describe('browser hybrid storage', () => {
       computedFields: { created: 'createdAt' },
     })
     expect(JSON.stringify(noteRegistry.noteBodies)).not.toContain('"frontmatter"')
-    expect(subBody?.aisles[0]?.markdown).toBe('sub body')
+    expect(subBody?.aisles[0] ? getAisleMarkdown(subBody.aisles[0], roundTripped.noteAisleBodies) : '').toBe('sub body')
     expect(roundTripped.theme).toBe('custom1')
     expect(roundTripped.ui.customThemePalette).toEqual({
       ...DEFAULT_CUSTOM_THEME_PALETTE,
@@ -263,7 +327,7 @@ describe('browser hybrid storage', () => {
       primary: '#123456',
     })
     expect(getRecord(appSettings.ui).settingsSection).toBe('visuals')
-    expect(getRecord(editorState.noteCursorLocations)['domain::space-1::tab-1::__home__']).toEqual({
+    expect(getRecord(editorState.noteCursorLocations)['domain-1::space-1::tab-1::__home__']).toEqual({
       activeAisleId: 'aisle-tab',
       aisles: {
         'aisle-tab': {
@@ -276,10 +340,16 @@ describe('browser hybrid storage', () => {
       },
       updatedAt: 100,
     })
+    expect(getRecord(editorState.noteCursorLocations)['domain-1::space-1::missing-tab::__home__']).toBeUndefined()
+    expect(editorState.headingCollapseState).toEqual({
+      'body-tab': {
+        'aisle-tab': ['heading-a'],
+      },
+    })
     expect(roundTripped.ui.settingsSection).toBe('visuals')
     expect(roundTripped.frontmatter.settingsTemplateId).toBe('template-1')
     expect(roundTripped.frontmatter.lastAppliedTemplateId).toBe('template-1')
-    expect(roundTripped.ui.noteCursorLocations['domain::space-1::tab-1::__home__']).toEqual({
+    expect(roundTripped.ui.noteCursorLocations['domain-1::space-1::tab-1::__home__']).toEqual({
       activeAisleId: 'aisle-tab',
       aisles: {
         'aisle-tab': {
@@ -291,6 +361,12 @@ describe('browser hybrid storage', () => {
         },
       },
       updatedAt: 100,
+    })
+    expect(roundTripped.ui.noteCursorLocations['domain-1::space-1::missing-tab::__home__']).toBeUndefined()
+    expect(roundTripped.ui.headingCollapseState).toEqual({
+      'body-tab': {
+        'aisle-tab': ['heading-a'],
+      },
     })
   })
 
@@ -317,7 +393,6 @@ describe('browser hybrid storage', () => {
                       id: 'tab-1',
                       title: 'Tab',
                       noteBodyId: 'body-1',
-                      homeContent: '',
                       activeSubTabId: null,
                       subTabs: [],
                     },
@@ -329,7 +404,8 @@ describe('browser hybrid storage', () => {
             ],
           },
         ],
-        noteBodies: [{ id: 'body-1', aisles: [{ id: 'aisle-1', markdown: 'body' }] }],
+        noteBodies: [{ id: 'body-1', aisles: [{ id: 'aisle-1', aisleBodyId: 'aisle-body-1' }] }],
+        noteAisleBodies: [{ id: 'aisle-body-1', markdown: 'body' }],
         hotkeys: {
           shortcuts: { newTab: 'Ctrl+Alt+N', newSubTab: 'Ctrl+Alt+M' },
           newlineShortcuts: {
@@ -407,17 +483,13 @@ describe('browser hybrid storage', () => {
     expect(roundTripped.domains[0]?.spaces[0]?.settings).toEqual({ autoRemoveDeletedDays: 21 })
   })
 
-  it('prefers synced profile settings while keeping legacy root global settings as fallback', () => {
+  it('ignores legacy profile-settings and rejects old root manifests', () => {
     const state = createBrowserStorageState()
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify({ ...state, theme: 'dawn' }))
     const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
-    const workspaceIndex = getRootSplitFileJson(fileMap, rootManifest, 'workspaceIndex', 'workspace-index.json')
-    const navigationState = getRootSplitFileJson(fileMap, rootManifest, 'navigationState', 'navigation-state.json')
     const appSettings = getRootSplitFileJson(fileMap, rootManifest, 'appSettings', 'app-settings.json')
     const frontmatterSettings = getRootSplitFileJson(fileMap, rootManifest, 'frontmatterSettings', 'frontmatter-settings.json')
     const editorState = getRootSplitFileJson(fileMap, rootManifest, 'editorState', 'editor-state.json')
-    const deletedWorkspace = getRootSplitFileJson(fileMap, rootManifest, 'deletedWorkspace', 'deleted-workspace.json')
-    const noteRegistry = getRootSplitFileJson(fileMap, rootManifest, 'noteRegistry', 'note-registry.json')
     const profileSettings = {
       schemaVersion: 1,
       settings: {
@@ -431,90 +503,72 @@ describe('browser hybrid storage', () => {
         },
       },
     }
-    const legacyRootManifest = {
-      schemaVersion: 2,
-      globalSettings: {
-        ...profileSettings.settings,
-        theme: 'light',
-      },
-      domains: workspaceIndex.domains,
-      deletedDomains: deletedWorkspace.deletedDomains,
-      deletedSpaces: deletedWorkspace.deletedSpaces,
-      noteBodies: noteRegistry.noteBodies,
-      noteAisleBodies: noteRegistry.aisleBodies,
-      activeDomainId: navigationState.activeDomainId,
-    }
 
-    fileMap.set('notes-data/manifest.json', {
-      path: 'notes-data/manifest.json',
-      kind: 'text',
-      text: `${JSON.stringify(legacyRootManifest, null, 2)}\n`,
-    })
     fileMap.set('notes-data/profile-settings.json', {
       path: 'notes-data/profile-settings.json',
       kind: 'text',
       text: `${JSON.stringify({ ...profileSettings, settings: { ...profileSettings.settings, theme: 'blues' } }, null, 2)}\n`,
     })
 
-    expect(parseSavedState(readSerializedStateFromHybridFileMap(fileMap)).theme).toBe('blues')
+    const serialized = readSerializedStateFromHybridFileMap(fileMap)
+    expect(serialized).toEqual(expect.any(String))
+    expect(parseSavedState(serialized).theme).toBe('dawn')
 
-    fileMap.delete('notes-data/profile-settings.json')
-
-    expect(parseSavedState(readSerializedStateFromHybridFileMap(fileMap)).theme).toBe('light')
+    fileMap.set('notes-data/manifest.json', {
+      path: 'notes-data/manifest.json',
+      kind: 'text',
+      text: `${JSON.stringify({ schemaVersion: 2, files: rootManifest.files }, null, 2)}\n`,
+    })
+    expect(readSerializedStateFromHybridFileMap(fileMap)).toBeNull()
   })
 
   it('persists rearranged parent and sub-tab order in hybrid notes-data storage', () => {
-    const state = parseSavedState(
-      JSON.stringify({
+    const state = parseModernBrowserState({
         activeDomainId: 'domain-1',
         activeSpaceId: 'space-1',
-        domains: [
+        spaces: [
           {
-            id: 'domain-1',
-            name: 'Domain',
-            activeSpaceId: 'space-1',
-            spaces: [
-              {
-                id: 'space-1',
-                name: 'Space',
-                data: {
-                  activeTabId: 'tab-b',
-                  tabs: [
-                    {
-                      id: 'tab-b',
-                      title: 'Beta',
-                      noteBodyId: 'body-b',
-                      homeContent: '',
-                      activeSubTabId: 'sub-b2',
-                      subTabs: [
-                        { id: 'sub-b2', title: 'Second', noteBodyId: 'body-b2', content: '' },
-                        { id: 'sub-b1', title: 'First', noteBodyId: 'body-b1', content: '' },
-                      ],
-                    },
-                    {
-                      id: 'tab-a',
-                      title: 'Alpha',
-                      noteBodyId: 'body-a',
-                      homeContent: '',
-                      activeSubTabId: null,
-                      subTabs: [],
-                    },
+            id: 'space-1',
+            name: 'Space',
+            data: {
+              activeTabId: 'tab-b',
+              tabs: [
+                {
+                  id: 'tab-b',
+                  title: 'Beta',
+                  noteBodyId: 'body-b',
+                  activeSubTabId: 'sub-b2',
+                  subTabs: [
+                    { id: 'sub-b2', title: 'Second', noteBodyId: 'body-b2'},
+                    { id: 'sub-b1', title: 'First', noteBodyId: 'body-b1'},
                   ],
-                  deletedTabs: [],
-                  deletedSubTabs: [],
                 },
-              },
-            ],
+                {
+                  id: 'tab-a',
+                  title: 'Alpha',
+                  noteBodyId: 'body-a',
+                  activeSubTabId: null,
+                  subTabs: [],
+                },
+              ],
+              deletedTabs: [],
+              deletedSubTabs: [],
+            },
           },
         ],
         noteBodies: [
-          { id: 'body-b', aisles: [{ id: 'aisle-b', markdown: 'b' }] },
-          { id: 'body-b2', aisles: [{ id: 'aisle-b2', markdown: 'b2' }] },
-          { id: 'body-b1', aisles: [{ id: 'aisle-b1', markdown: 'b1' }] },
-          { id: 'body-a', aisles: [{ id: 'aisle-a', markdown: 'a' }] },
+          { id: 'body-b', aisles: [{ id: 'aisle-b', aisleBodyId: 'aisle-body-b' }] },
+          { id: 'body-b2', aisles: [{ id: 'aisle-b2', aisleBodyId: 'aisle-body-b2' }] },
+          { id: 'body-b1', aisles: [{ id: 'aisle-b1', aisleBodyId: 'aisle-body-b1' }] },
+          { id: 'body-a', aisles: [{ id: 'aisle-a', aisleBodyId: 'aisle-body-a' }] },
         ],
-      }),
-    )
+        noteAisleBodies: [
+          { id: 'aisle-body-b', markdown: 'b' },
+          { id: 'aisle-body-b2', markdown: 'b2' },
+          { id: 'aisle-body-b1', markdown: 'b1' },
+          { id: 'aisle-body-a', markdown: 'a' },
+        ],
+      })
 
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
     const { spaceManifest } = getBrowserWorkspacePaths(fileMap)
@@ -532,8 +586,7 @@ describe('browser hybrid storage', () => {
   })
 
   it('round trips shared aisle body ids through the manifest file map', () => {
-    const state = parseSavedState(
-      JSON.stringify({
+    const state = parseModernBrowserState({
         theme: 'dawn',
         spaces: [
           {
@@ -546,7 +599,6 @@ describe('browser hybrid storage', () => {
                   id: 'tab-1',
                   title: 'One',
                   noteBodyId: 'body-1',
-                  homeContent: '',
                   activeSubTabId: null,
                   subTabs: [],
                 },
@@ -554,7 +606,6 @@ describe('browser hybrid storage', () => {
                   id: 'tab-2',
                   title: 'Two',
                   noteBodyId: 'body-2',
-                  homeContent: '',
                   activeSubTabId: null,
                   subTabs: [],
                 },
@@ -568,15 +619,14 @@ describe('browser hybrid storage', () => {
         noteBodies: [
           {
             id: 'body-1',
-            aisles: [{ id: 'aisle-1', aisleBodyId: 'shared-aisle-body', markdown: 'shared aisle text' }],
+            aisles: [{ id: 'aisle-1', aisleBodyId: 'shared-aisle-body' }],
           },
           {
             id: 'body-2',
-            aisles: [{ id: 'aisle-2', aisleBodyId: 'shared-aisle-body', markdown: 'shared aisle text' }],
+            aisles: [{ id: 'aisle-2', aisleBodyId: 'shared-aisle-body' }],
           },
         ],
-      }),
-    )
+      })
 
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
     const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
@@ -596,8 +646,8 @@ describe('browser hybrid storage', () => {
   it('round trips distinct aisle body markdown without collapsing sibling aisles', () => {
     const state = createBrowserStorageState()
     state.noteBodies[0].aisles = [
-      { id: 'aisle-home', aisleBodyId: 'body-home-aisle', markdown: 'stale home mirror' },
-      { id: 'aisle-two', aisleBodyId: 'body-second-aisle', markdown: 'stale second mirror' },
+      { id: 'aisle-home', aisleBodyId: 'body-home-aisle' },
+      { id: 'aisle-two', aisleBodyId: 'body-second-aisle' },
     ]
     state.noteAisleBodies = [
       { id: 'body-home-aisle', markdown: 'left aisle draft 🚙' },
@@ -623,7 +673,7 @@ describe('browser hybrid storage', () => {
     const roundTripped = parseSavedState(readSerializedStateFromHybridFileMap(fileMap) ?? '')
     expect(roundTripped.noteAisleBodies?.find((body) => body.id === 'body-home-aisle')?.markdown).toBe('left aisle draft 🚙')
     expect(roundTripped.noteAisleBodies?.find((body) => body.id === 'body-second-aisle')?.markdown).toBe('right aisle draft 🥺')
-    expect(roundTripped.noteBodies[0].aisles.map((aisle) => aisle.markdown)).toEqual([
+    expect(roundTripped.noteBodies[0].aisles.map((aisle) => getAisleMarkdown(aisle, roundTripped.noteAisleBodies))).toEqual([
       'left aisle draft 🚙',
       'right aisle draft 🥺',
     ])
@@ -632,8 +682,7 @@ describe('browser hybrid storage', () => {
   it('uses shared aisle body markdown instead of stale linked aisle mirrors', () => {
     const currentMarkdown = 'Hat Trick!\n\n---\n\n\u200b'
     const staleMarkdown = 'Hat Trick!\n\n\u200b\n\n\n\n\u200b\n\n---\n\n\u200b'
-    const state = parseSavedState(
-      JSON.stringify({
+    const state = parseModernBrowserState({
         theme: 'dawn',
         spaces: [
           {
@@ -646,7 +695,6 @@ describe('browser hybrid storage', () => {
                   id: 'tab-1',
                   title: 'One',
                   noteBodyId: 'body-1',
-                  homeContent: '',
                   activeSubTabId: null,
                   subTabs: [],
                 },
@@ -654,7 +702,6 @@ describe('browser hybrid storage', () => {
                   id: 'tab-2',
                   title: 'Two',
                   noteBodyId: 'body-2',
-                  homeContent: '',
                   activeSubTabId: null,
                   subTabs: [],
                 },
@@ -668,20 +715,14 @@ describe('browser hybrid storage', () => {
         noteBodies: [
           {
             id: 'body-1',
-            aisles: [{ id: 'aisle-1', aisleBodyId: 'shared-aisle-body', markdown: currentMarkdown }],
+            aisles: [{ id: 'aisle-1', aisleBodyId: 'shared-aisle-body' }],
           },
           {
             id: 'body-2',
-            aisles: [{ id: 'aisle-2', aisleBodyId: 'shared-aisle-body', markdown: currentMarkdown }],
+            aisles: [{ id: 'aisle-2', aisleBodyId: 'shared-aisle-body' }],
           },
         ],
-      }),
-    )
-    const bodyTwo = state.noteBodies.find((body) => body.id === 'body-2')
-    if (bodyTwo?.aisles[0]) {
-      bodyTwo.aisles[0].markdown = staleMarkdown
-    }
-
+      })
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
     const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
     const noteRegistry = getRootSplitFileJson(fileMap, rootManifest, 'noteRegistry', 'note-registry.json')
@@ -709,8 +750,8 @@ describe('browser hybrid storage', () => {
 
     expect(sharedAisleBodyFile).toBeTruthy()
     expect(roundTripped.noteAisleBodies?.find((body) => body.id === 'shared-aisle-body')?.markdown).toBe(currentMarkdown)
-    expect(roundTrippedBodyOne?.aisles[0]?.markdown).toBe(currentMarkdown)
-    expect(roundTrippedBodyTwo?.aisles[0]?.markdown).toBe(currentMarkdown)
+    expect(roundTrippedBodyOne?.aisles[0] ? getAisleMarkdown(roundTrippedBodyOne.aisles[0], roundTripped.noteAisleBodies) : '').toBe(currentMarkdown)
+    expect(roundTrippedBodyTwo?.aisles[0] ? getAisleMarkdown(roundTrippedBodyTwo.aisles[0], roundTripped.noteAisleBodies) : '').toBe(currentMarkdown)
   })
 
   it('caps generated storage path segments without truncating app titles', () => {
@@ -736,9 +777,8 @@ describe('browser hybrid storage', () => {
                       id: 'tab-long',
                       title: longTitle,
                       noteBodyId: 'body-tab-long',
-                      homeContent: 'home',
                       activeSubTabId: 'sub-long',
-                      subTabs: [{ id: 'sub-long', title: longTitle, noteBodyId: 'body-sub-long', content: 'sub' }],
+                      subTabs: [{ id: 'sub-long', title: longTitle, noteBodyId: 'body-sub-long'}],
                     },
                   ],
                   deletedTabs: [],
@@ -772,9 +812,8 @@ describe('browser hybrid storage', () => {
           id: 'deleted-tab-long',
           title: longTitle,
           noteBodyId: 'body-deleted-tab',
-          homeContent: 'deleted tab',
           activeSubTabId: null,
-          subTabs: [{ id: 'deleted-sub-long', title: longTitle, noteBodyId: 'body-deleted-sub', content: 'deleted sub' }],
+          subTabs: [{ id: 'deleted-sub-long', title: longTitle, noteBodyId: 'body-deleted-sub'}],
         },
       },
     ]
@@ -788,7 +827,6 @@ describe('browser hybrid storage', () => {
           id: 'deleted-loose-sub-long',
           title: longTitle,
           noteBodyId: 'body-deleted-loose-sub',
-          content: 'deleted loose sub',
         },
       },
     ]
@@ -831,6 +869,82 @@ describe('browser hybrid storage', () => {
     expect(firstSubTab.path).toEqual(expect.stringMatching(/--[a-f0-9]{6}\.md$/))
   })
 
+  it('prunes unreferenced orphan note bodies while keeping deleted workspace bodies', () => {
+    const state = createBrowserStorageState()
+    state.deletedSpaces = [
+      {
+        id: 'deleted-space-entry',
+        domainId: 'domain-1',
+        domainName: 'Domain',
+        deletedAt: Date.UTC(2026, 4, 20),
+        space: {
+          id: 'deleted-space',
+          name: 'Deleted Space',
+          settings: { autoRemoveDeletedDays: 7 },
+          data: {
+            activeTabId: 'deleted-tab',
+            tabs: [
+              {
+                id: 'deleted-tab',
+                title: 'Deleted Tab',
+                noteBodyId: 'body-deleted-workspace',
+                activeSubTabId: null,
+                subTabs: [],
+              },
+            ],
+            deletedTabs: [],
+            deletedSubTabs: [],
+          },
+        },
+      },
+    ]
+    state.noteBodies.push(
+      {
+        id: 'body-deleted-workspace',
+        aisles: [{ id: 'aisle-deleted-workspace', aisleBodyId: 'aisle-body-deleted-workspace' }],
+      },
+      { id: 'body-orphan', aisles: [{ id: 'aisle-orphan', aisleBodyId: 'aisle-body-orphan' }] },
+    )
+    state.noteAisleBodies?.push(
+      { id: 'aisle-body-deleted-workspace', markdown: 'deleted workspace body' },
+      { id: 'aisle-body-orphan', markdown: 'orphan body' },
+    )
+    state.ui.headingCollapseState = {
+      'body-deleted-workspace': {
+        'aisle-deleted-workspace': ['deleted-heading'],
+      },
+      'body-orphan': {
+        'aisle-orphan': ['orphan-heading'],
+      },
+    }
+
+    const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
+    const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
+    const noteRegistry = getRootSplitFileJson(fileMap, rootManifest, 'noteRegistry', 'note-registry.json')
+    const editorState = getRootSplitFileJson(fileMap, rootManifest, 'editorState', 'editor-state.json')
+    const noteBodyEntries = Array.isArray(noteRegistry.noteBodies) ? noteRegistry.noteBodies.map(getRecord) : []
+    const noteBodyIds = noteBodyEntries.map((body) => body.id)
+    const deletedWorkspaceRecord = getRecord(noteBodyEntries.find((body) => body.id === 'body-deleted-workspace'))
+    const aisle = getRecord(Array.isArray(deletedWorkspaceRecord.aisles) ? deletedWorkspaceRecord.aisles[0] : null)
+    const serialized = readSerializedStateFromHybridFileMap(fileMap)
+    const roundTripped = parseSavedState(serialized)
+
+    expect(noteBodyIds).toContain('body-deleted-workspace')
+    expect(noteBodyIds).not.toContain('body-orphan')
+    expect(deletedWorkspaceRecord.storageStatus).toBe('unlinked')
+    expect(editorState.headingCollapseState).toEqual({
+      'body-deleted-workspace': {
+        'aisle-deleted-workspace': ['deleted-heading'],
+      },
+    })
+    expect(fileMap.get(`notes-data/${String(aisle.file)}`)).toMatchObject({
+      kind: 'text',
+      text: 'deleted workspace body',
+    })
+    expect(roundTripped.noteBodies.some((body) => body.id === 'body-deleted-workspace')).toBe(true)
+    expect(roundTripped.noteBodies.some((body) => body.id === 'body-orphan')).toBe(false)
+  })
+
   it('does not read malformed topic/note-body file maps', () => {
     const fileMap = new Map([
       [
@@ -858,7 +972,7 @@ describe('browser hybrid storage', () => {
     expect(readSerializedStateFromHybridFileMap(fileMap)).toBeNull()
   })
 
-  for (const schemaVersion of [4, 999]) {
+  for (const schemaVersion of [2, 3, 4, 999]) {
     it(`does not read unsupported schema ${schemaVersion} file maps`, () => {
       const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(createBrowserStorageState()))
       const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
@@ -872,7 +986,7 @@ describe('browser hybrid storage', () => {
     })
   }
 
-  it('does not read schema 3 file maps missing required split files', () => {
+  it('does not read current schema file maps missing required split files', () => {
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(createBrowserStorageState()))
     const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
     const files = getRecord(rootManifest.files)
@@ -882,7 +996,7 @@ describe('browser hybrid storage', () => {
     expect(readSerializedStateFromHybridFileMap(fileMap)).toBeNull()
   })
 
-  it('loads schema 3 file maps with optional editor split file missing', () => {
+  it('loads current schema file maps with optional editor split file missing', () => {
     const state = createBrowserStorageState()
     state.ui.settingsSection = 'toolbar'
     state.ui.noteCursorLocations = {
@@ -910,7 +1024,56 @@ describe('browser hybrid storage', () => {
     expect(roundTripped.ui.noteCursorLocations).toEqual({})
   })
 
-  it('loads temporary wider schema 3 file maps', () => {
+  it('prunes stale note cursor locations when loading editor state', () => {
+    const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(createBrowserStorageState()))
+    const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
+    const files = getRecord(rootManifest.files)
+    const editorStateFile = typeof files.editorState === 'string' ? files.editorState : 'editor-state.json'
+    const liveKey = 'domain-1::space-1::tab-1::__home__'
+    const staleKey = 'domain-1::space-1::missing-tab::__home__'
+    fileMap.set(`notes-data/${editorStateFile}`, {
+      path: `notes-data/${editorStateFile}`,
+      kind: 'text',
+      text: `${JSON.stringify(
+        {
+          noteCursorLocations: {
+            [liveKey]: {
+              activeAisleId: 'aisle-1',
+              aisles: {
+                'aisle-1': { anchor: 1, head: 1, updatedAt: 1 },
+              },
+              updatedAt: 1,
+            },
+            [staleKey]: {
+              activeAisleId: 'aisle-stale',
+              aisles: {
+                'aisle-stale': { anchor: 2, head: 2, updatedAt: 2 },
+              },
+              updatedAt: 2,
+            },
+          },
+          headingCollapseState: {
+            'body-1': {
+              'aisle-1': ['heading'],
+              'missing-aisle': ['stale'],
+            },
+            'missing-body': {
+              'aisle-1': ['stale'],
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    })
+
+    const roundTripped = parseSavedState(readSerializedStateFromHybridFileMap(fileMap) ?? '')
+    expect(roundTripped.ui.noteCursorLocations[liveKey]).toBeDefined()
+    expect(roundTripped.ui.noteCursorLocations[staleKey]).toBeUndefined()
+    expect(roundTripped.ui.headingCollapseState).toEqual({ 'body-1': { 'aisle-1': ['heading'] } })
+  })
+
+  it('rejects temporary wider schema 3 file maps', () => {
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(createBrowserStorageState()))
     const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
     const appSettings = getRootSplitFileJson(fileMap, rootManifest, 'appSettings', 'app-settings.json')
@@ -973,9 +1136,7 @@ describe('browser hybrid storage', () => {
     fileMap.delete('notes-data/app-settings.json')
     fileMap.delete('notes-data/note-registry.json')
 
-    const roundTripped = parseSavedState(readSerializedStateFromHybridFileMap(fileMap) ?? '')
-    expect(roundTripped.domains).toHaveLength(1)
-    expect(roundTripped.noteBodies[0]?.aisles[0]?.markdown).toBe('home body')
+    expect(readSerializedStateFromHybridFileMap(fileMap)).toBeNull()
   })
 
   it('loads missing markdown files as empty content', () => {
@@ -989,16 +1150,12 @@ describe('browser hybrid storage', () => {
     const roundTripped = parseSavedState(serialized ?? '')
 
     expect(serialized).toEqual(expect.any(String))
-    expect(roundTripped.noteBodies[0]?.aisles[0]?.markdown).toBe('')
-    expect(roundTripped.domains[0]?.spaces[0]?.data.tabs[0]?.homeContent).toBe('')
+    expect(getFirstAisleBodyMarkdown(roundTripped)).toBe('')
   })
 
   it('keeps markdown references for missing image assets', () => {
     const state = createBrowserStorageState()
-    state.noteBodies[0].aisles[0].markdown = 'image ![pixel](data:image/png;base64,iVBORw0KGgo=)'
-    if (state.noteAisleBodies?.[0]) {
-      state.noteAisleBodies[0].markdown = state.noteBodies[0].aisles[0].markdown
-    }
+    setFirstAisleBodyMarkdown(state, 'image ![pixel](data:image/png;base64,iVBORw0KGgo=)')
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
     Array.from(fileMap.keys())
       .filter((path) => path.startsWith('notes-data/assets/'))
@@ -1008,8 +1165,8 @@ describe('browser hybrid storage', () => {
     const roundTripped = parseSavedState(serialized ?? '')
 
     expect(serialized).toEqual(expect.any(String))
-    expect(roundTripped.noteBodies[0]?.aisles[0]?.markdown).toContain('![pixel](')
-    expect(roundTripped.noteBodies[0]?.aisles[0]?.markdown).not.toContain('data:image/')
+    expect(getFirstAisleBodyMarkdown(roundTripped)).toContain('![pixel](')
+    expect(getFirstAisleBodyMarkdown(roundTripped)).not.toContain('data:image/')
   })
 
   it('round trips registered image asset refs without data URLs', () => {
@@ -1017,10 +1174,7 @@ describe('browser hybrid storage', () => {
     const bytes = new Uint8Array([1, 2, 3, 4])
     const assetPath = 'assets/asset-browser-test.png'
     registerImageAssetBytes(assetPath, bytes, 'image/png')
-    state.noteBodies[0].aisles[0].markdown = `image ![pixel](${buildImageAssetUrl(assetPath)})`
-    if (state.noteAisleBodies?.[0]) {
-      state.noteAisleBodies[0].markdown = state.noteBodies[0].aisles[0].markdown
-    }
+    setFirstAisleBodyMarkdown(state, `image ![pixel](${buildImageAssetUrl(assetPath)})`)
 
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
     const assetEntry = fileMap.get(`notes-data/${assetPath}`)
@@ -1029,8 +1183,8 @@ describe('browser hybrid storage', () => {
 
     expect(assetEntry?.kind).toBe('binary')
     expect(assetEntry?.kind === 'binary' ? Array.from(assetEntry.bytes) : []).toEqual(Array.from(bytes))
-    expect(roundTripped.noteBodies[0]?.aisles[0]?.markdown).toContain(buildImageAssetUrl(assetPath))
-    expect(roundTripped.noteBodies[0]?.aisles[0]?.markdown).not.toContain('data:image/')
+    expect(getFirstAisleBodyMarkdown(roundTripped)).toContain(buildImageAssetUrl(assetPath))
+    expect(getFirstAisleBodyMarkdown(roundTripped)).not.toContain('data:image/')
   })
 
   it('round trips registered non-image asset links', () => {
@@ -1038,10 +1192,7 @@ describe('browser hybrid storage', () => {
     const bytes = new Uint8Array([9, 8, 7, 6])
     const assetPath = 'assets/asset-browser-report.pdf'
     registerAssetBytes(assetPath, bytes, 'application/pdf')
-    state.noteBodies[0].aisles[0].markdown = `[report](${buildImageAssetUrl(assetPath)})`
-    if (state.noteAisleBodies?.[0]) {
-      state.noteAisleBodies[0].markdown = state.noteBodies[0].aisles[0].markdown
-    }
+    setFirstAisleBodyMarkdown(state, `[report](${buildImageAssetUrl(assetPath)})`)
 
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
     const assetEntry = fileMap.get(`notes-data/${assetPath}`)
@@ -1050,7 +1201,7 @@ describe('browser hybrid storage', () => {
 
     expect(assetEntry?.kind).toBe('binary')
     expect(assetEntry?.kind === 'binary' ? Array.from(assetEntry.bytes) : []).toEqual(Array.from(bytes))
-    expect(roundTripped.noteBodies[0]?.aisles[0]?.markdown).toContain(buildImageAssetUrl(assetPath))
+    expect(getFirstAisleBodyMarkdown(roundTripped)).toContain(buildImageAssetUrl(assetPath))
   })
 
   it('loads corrupt trash manifests as empty trash', () => {
@@ -1063,13 +1214,13 @@ describe('browser hybrid storage', () => {
           id: 'deleted-parent',
           title: 'Deleted Parent',
           noteBodyId: 'body-deleted-parent',
-          homeContent: 'deleted body',
           activeSubTabId: null,
           subTabs: [],
         },
       },
     ]
-    state.noteBodies.push({ id: 'body-deleted-parent', frontmatter: null, aisles: [{ id: 'aisle-deleted', markdown: 'deleted body' }] })
+    state.noteBodies.push({ id: 'body-deleted-parent', aisles: [{ id: 'aisle-deleted', aisleBodyId: 'aisle-body-deleted' }] })
+    state.noteAisleBodies?.push({ id: 'aisle-body-deleted', markdown: 'deleted body' })
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
     const { spaceRoot, spaceManifest } = getBrowserWorkspacePaths(fileMap)
     const trashManifestPath = `${spaceRoot}/${String(spaceManifest.trashManifestFile)}`
@@ -1096,7 +1247,6 @@ describe('browser hybrid storage', () => {
             id: 'tab-2',
             title: 'Second Tab',
             noteBodyId: 'body-2',
-            homeContent: 'second fallback',
             activeSubTabId: null,
             subTabs: [],
           },
@@ -1107,7 +1257,8 @@ describe('browser hybrid storage', () => {
     }
     state.domains[0].spaces.push(secondSpace)
     state.spaces = state.domains[0].spaces
-    state.noteBodies.push({ id: 'body-2', frontmatter: null, aisles: [{ id: 'aisle-2', markdown: 'second body' }] })
+    state.noteBodies.push({ id: 'body-2', aisles: [{ id: 'aisle-2', aisleBodyId: 'aisle-body-2' }] })
+    state.noteAisleBodies?.push({ id: 'aisle-body-2', markdown: 'second body' })
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
     const { domainRoot, domainManifest } = getBrowserWorkspacePaths(fileMap)
     const firstSpace = getRecord(Array.isArray(domainManifest.spaces) ? domainManifest.spaces[0] : null)
@@ -1136,7 +1287,6 @@ describe('browser hybrid storage', () => {
             id: 'tab-2',
             title: 'Second Tab',
             noteBodyId: 'body-2',
-            homeContent: 'second fallback',
             activeSubTabId: null,
             subTabs: [],
           },
@@ -1151,7 +1301,8 @@ describe('browser hybrid storage', () => {
       activeSpaceId: 'space-2',
       spaces: [secondSpace],
     })
-    state.noteBodies.push({ id: 'body-2', frontmatter: null, aisles: [{ id: 'aisle-2', markdown: 'second body' }] })
+    state.noteBodies.push({ id: 'body-2', aisles: [{ id: 'aisle-2', aisleBodyId: 'aisle-body-2' }] })
+    state.noteAisleBodies?.push({ id: 'aisle-body-2', markdown: 'second body' })
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
     const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
     const workspaceIndex = getRootSplitFileJson(fileMap, rootManifest, 'workspaceIndex', 'workspace-index.json')

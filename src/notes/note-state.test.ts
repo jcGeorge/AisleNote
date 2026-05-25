@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_FRONTMATTER_SETTINGS } from '../frontmatter/frontmatter'
 import { materializeDecoupledAisleCopies } from './aisle-links'
-import type { AppState, Space } from '../types/app'
+import { getAisleMarkdown, resolveNoteAisles } from './note-markdown'
+import type { AppState, NoteAisle, NoteAisleBody, Space } from '../types/app'
 import {
   applyCursorLocationSnapshot,
   applyNoteLocationToState,
@@ -24,14 +25,12 @@ const createTestState = (): AppState => {
           id: 'tab-1',
           title: 'Tab 1',
           noteBodyId: 'body-1',
-          homeContent: '',
           activeSubTabId: null,
           subTabs: [
             {
               id: 'sub-1',
               title: 'Sub 1',
               noteBodyId: 'body-1',
-              content: '',
             },
           ],
         },
@@ -52,14 +51,12 @@ const createTestState = (): AppState => {
           id: 'tab-2',
           title: 'Tab 2',
           noteBodyId: 'body-2',
-          homeContent: '',
           activeSubTabId: 'sub-2',
           subTabs: [
             {
               id: 'sub-2',
               title: 'Sub 2',
               noteBodyId: 'body-2',
-              content: '',
             },
           ],
         },
@@ -81,8 +78,12 @@ const createTestState = (): AppState => {
     ],
     spaces: [spaceOne, spaceTwo],
     noteBodies: [
-      { id: 'body-1', frontmatter: null, aisles: [{ id: 'aisle-1', markdown: '' }] },
-      { id: 'body-2', frontmatter: null, aisles: [{ id: 'aisle-2', markdown: '' }] },
+      { id: 'body-1', aisles: [{ id: 'aisle-1', aisleBodyId: 'aisle-1' }] },
+      { id: 'body-2', aisles: [{ id: 'aisle-2', aisleBodyId: 'aisle-2' }] },
+    ],
+    noteAisleBodies: [
+      { id: 'aisle-1', markdown: '' },
+      { id: 'aisle-2', markdown: '' },
     ],
     hotkeys: {
       shortcuts: {
@@ -127,19 +128,25 @@ const createTestState = (): AppState => {
 }
 
 describe('note-state helpers', () => {
-  it('syncs note body aisles into note bodies and legacy tab mirrors', () => {
-    const next = syncNoteBodyAislesInState(createTestState(), 'body-1', [
-      { id: 'aisle-1', markdown: 'updated' },
-      { id: 'aisle-2', markdown: 'second' },
-    ])
+  const expectAisles = (aisles: NoteAisle[] | undefined, expected: NoteAisle[]) => {
+    expect(aisles).toEqual(expected)
+  }
 
-    expect(next.noteBodies.find((body) => body.id === 'body-1')?.aisles).toEqual([
+  const getAisleBodyMarkdown = (aisleBodies: NoteAisleBody[] | undefined, aisleBodyId: string) =>
+    aisleBodies?.find((body) => body.id === aisleBodyId)?.markdown
+
+  it('syncs note body aisles into note bodies and aisle bodies', () => {
+    const next = syncNoteBodyAislesInState(createTestState(), 'body-1', [
       { id: 'aisle-1', aisleBodyId: 'aisle-1', markdown: 'updated' },
       { id: 'aisle-2', aisleBodyId: 'aisle-2', markdown: 'second' },
     ])
-    expect(next.spaces[0].data.tabs[0].homeContent).toBe('updated')
-    expect(next.spaces[0].data.tabs[0].subTabs[0].content).toBe('updated')
-    expect(next.domains[0].spaces[0].data.tabs[0].homeContent).toBe('updated')
+
+    expectAisles(next.noteBodies.find((body) => body.id === 'body-1')?.aisles, [
+      { id: 'aisle-1', aisleBodyId: 'aisle-1' },
+      { id: 'aisle-2', aisleBodyId: 'aisle-2' },
+    ])
+    expect(getAisleBodyMarkdown(next.noteAisleBodies, 'aisle-1')).toBe('updated')
+    expect(getAisleBodyMarkdown(next.noteAisleBodies, 'aisle-2')).toBe('second')
   })
 
   it('syncs aisle structure without replacing current aisle body markdown', () => {
@@ -152,13 +159,12 @@ describe('note-state helpers', () => {
       noteBodies: [
         {
           id: 'body-1',
-          frontmatter: null,
           aisles: [
-            { id: 'aisle-a', aisleBodyId: 'body-a', markdown: 'current a' },
-            { id: 'aisle-b', aisleBodyId: 'body-b', markdown: 'current b' },
+            { id: 'aisle-a', aisleBodyId: 'body-a' },
+            { id: 'aisle-b', aisleBodyId: 'body-b' },
           ],
         },
-        { id: 'body-2', frontmatter: null, aisles: [{ id: 'aisle-2', markdown: '' }] },
+        { id: 'body-2', aisles: [{ id: 'aisle-2', aisleBodyId: 'aisle-2' }] },
       ],
     }
 
@@ -167,9 +173,9 @@ describe('note-state helpers', () => {
       { id: 'aisle-a', aisleBodyId: 'body-a', markdown: 'stale a' },
     ])
 
-    expect(next.noteBodies.find((body) => body.id === 'body-1')?.aisles).toEqual([
-      { id: 'aisle-b', aisleBodyId: 'body-b', markdown: 'current b' },
-      { id: 'aisle-a', aisleBodyId: 'body-a', markdown: 'current a' },
+    expectAisles(next.noteBodies.find((body) => body.id === 'body-1')?.aisles, [
+      { id: 'aisle-b', aisleBodyId: 'body-b' },
+      { id: 'aisle-a', aisleBodyId: 'body-a' },
     ])
     expect(next.noteAisleBodies?.find((body) => body.id === 'body-a')?.markdown).toBe('current a')
     expect(next.noteAisleBodies?.find((body) => body.id === 'body-b')?.markdown).toBe('current b')
@@ -183,13 +189,12 @@ describe('note-state helpers', () => {
       noteBodies: [
         {
           id: 'body-1',
-          frontmatter: null,
           aisles: [
-            { id: 'aisle-a', aisleBodyId: 'shared-aisle-body', markdown: currentMarkdown },
-            { id: 'aisle-b', aisleBodyId: 'shared-aisle-body', markdown: currentMarkdown },
+            { id: 'aisle-a', aisleBodyId: 'shared-aisle-body' },
+            { id: 'aisle-b', aisleBodyId: 'shared-aisle-body' },
           ],
         },
-        { id: 'body-2', frontmatter: null, aisles: [{ id: 'aisle-2', markdown: '' }] },
+        { id: 'body-2', aisles: [{ id: 'aisle-2', aisleBodyId: 'aisle-2' }] },
       ],
     }
 
@@ -197,8 +202,8 @@ describe('note-state helpers', () => {
       { id: 'aisle-b', aisleBodyId: 'shared-aisle-body', markdown: 'Hat Trick!\n\nold whitespace' },
     ])
 
-    expect(next.noteBodies.find((body) => body.id === 'body-1')?.aisles).toEqual([
-      { id: 'aisle-b', aisleBodyId: 'shared-aisle-body', markdown: currentMarkdown },
+    expectAisles(next.noteBodies.find((body) => body.id === 'body-1')?.aisles, [
+      { id: 'aisle-b', aisleBodyId: 'shared-aisle-body' },
     ])
     expect(next.noteAisleBodies?.find((body) => body.id === 'shared-aisle-body')?.markdown).toBe(currentMarkdown)
   })
@@ -210,22 +215,21 @@ describe('note-state helpers', () => {
       noteBodies: [
         {
           id: 'body-1',
-          frontmatter: null,
           aisles: [
-            { id: 'aisle-a', aisleBodyId: 'shared-aisle-body', markdown: 'stale a' },
-            { id: 'aisle-b', aisleBodyId: 'shared-aisle-body', markdown: 'stale b' },
+            { id: 'aisle-a', aisleBodyId: 'shared-aisle-body' },
+            { id: 'aisle-b', aisleBodyId: 'shared-aisle-body' },
           ],
         },
-        { id: 'body-2', frontmatter: null, aisles: [{ id: 'aisle-2', markdown: '' }] },
+        { id: 'body-2', aisles: [{ id: 'aisle-2', aisleBodyId: 'aisle-2' }] },
       ],
     }
 
     const next = syncNoteAisleBodyMarkdownInState(state, 'shared-aisle-body', 'current')
 
     expect(next.noteAisleBodies?.find((body) => body.id === 'shared-aisle-body')?.markdown).toBe('current')
-    expect(next.noteBodies.find((body) => body.id === 'body-1')?.aisles).toEqual([
-      { id: 'aisle-a', aisleBodyId: 'shared-aisle-body', markdown: 'current' },
-      { id: 'aisle-b', aisleBodyId: 'shared-aisle-body', markdown: 'current' },
+    expectAisles(next.noteBodies.find((body) => body.id === 'body-1')?.aisles, [
+      { id: 'aisle-a', aisleBodyId: 'shared-aisle-body' },
+      { id: 'aisle-b', aisleBodyId: 'shared-aisle-body' },
     ])
   })
 
@@ -236,32 +240,30 @@ describe('note-state helpers', () => {
       noteBodies: [
         {
           id: 'body-1',
-          frontmatter: null,
           aisles: [
-            { id: 'aisle-a', aisleBodyId: 'shared-aisle-body', markdown: 'stale a' },
-            { id: 'aisle-local', aisleBodyId: 'local-body', markdown: 'local' },
+            { id: 'aisle-a', aisleBodyId: 'shared-aisle-body' },
+            { id: 'aisle-local', aisleBodyId: 'local-body' },
           ],
         },
         {
           id: 'body-2',
-          frontmatter: null,
-          aisles: [{ id: 'aisle-b', aisleBodyId: 'shared-aisle-body', markdown: 'stale b' }],
+          aisles: [{ id: 'aisle-b', aisleBodyId: 'shared-aisle-body' }],
         },
       ],
     }
     const sourceAisles = state.noteBodies.find((body) => body.id === 'body-1')?.aisles ?? []
-    const afterAisles = materializeDecoupledAisleCopies(state, sourceAisles, ['aisle-a'])
+    const afterAisles = materializeDecoupledAisleCopies(state, resolveNoteAisles(sourceAisles, state.noteAisleBodies), ['aisle-a'])
     const next = syncNoteBodyAisleStructureInState(state, 'body-1', afterAisles)
     const decoupledAisle = next.noteBodies.find((body) => body.id === 'body-1')?.aisles[0]
     const linkedAisle = next.noteBodies.find((body) => body.id === 'body-2')?.aisles[0]
 
     expect(decoupledAisle?.id).toBe('aisle-a')
     expect(decoupledAisle?.aisleBodyId).not.toBe('shared-aisle-body')
-    expect(decoupledAisle?.markdown).toBe('current shared text')
+    expect(decoupledAisle ? getAisleMarkdown(decoupledAisle, next.noteAisleBodies) : '').toBe('current shared text')
     expect(next.noteAisleBodies?.find((body) => body.id === decoupledAisle?.aisleBodyId)?.markdown).toBe(
       'current shared text',
     )
-    expect(linkedAisle).toEqual({ id: 'aisle-b', aisleBodyId: 'shared-aisle-body', markdown: 'current shared text' })
+    expect(linkedAisle).toEqual({ id: 'aisle-b', aisleBodyId: 'shared-aisle-body' })
     expect(next.noteAisleBodies?.find((body) => body.id === 'shared-aisle-body')?.markdown).toBe('current shared text')
   })
 
@@ -307,9 +309,9 @@ describe('note-state helpers', () => {
   })
 
   it('builds aisle signatures from id, aisle body id, and markdown triples', () => {
-    expect(getAisleSignature([{ id: 'a', markdown: 'one' }])).toBe('[["a","a","one"]]')
-    expect(getAisleSignature([{ id: 'b', markdown: 'one' }])).not.toBe(
-      getAisleSignature([{ id: 'a', markdown: 'one' }]),
+    expect(getAisleSignature([{ id: 'a', aisleBodyId: 'a', markdown: 'one' }])).toBe('[["a","a","one"]]')
+    expect(getAisleSignature([{ id: 'b', aisleBodyId: 'b', markdown: 'one' }])).not.toBe(
+      getAisleSignature([{ id: 'a', aisleBodyId: 'a', markdown: 'one' }]),
     )
     expect(getAisleSignature([{ id: 'a', aisleBodyId: 'body-a', markdown: 'one' }])).not.toBe(
       getAisleSignature([{ id: 'a', aisleBodyId: 'body-b', markdown: 'one' }]),

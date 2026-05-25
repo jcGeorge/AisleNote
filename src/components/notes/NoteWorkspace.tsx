@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm'
 import { buildAisleEditorKey } from '../../editor/aisle-editor'
 import type { HeadingOutlineItem } from '../../editor/heading-outline'
 import { resolveAssetDisplayUrl } from '../../markdown/image-asset-registry'
-import type { NoteAisle } from '../../types/app'
+import type { ResolvedNoteAisle } from '../../types/app'
 import { MarkdownPreviewParagraph } from './markdown-preview-components'
 import { scheduleNoteWorkspaceArrangeExit, shouldExitArrangeModeFromNoteWorkspacePointer } from './note-workspace-events'
 
@@ -22,10 +22,13 @@ const noteWorkspacePreviewMarkdownComponents = {
 
 type NoteWorkspaceProps = {
   noteBodyId: string
-  aisles: NoteAisle[]
+  aisles: ResolvedNoteAisle[]
   activeAisleId: string
   editorReadOnly: boolean
   arrangeModeActive?: boolean
+  frontmatterAisleIds?: Set<string>
+  linkedAisleIds?: Set<string>
+  wholeNoteLinked?: boolean
   aisleScrollRef: Ref<HTMLDivElement>
   toolbar: ReactNode
   headingPopover: ReactNode
@@ -39,9 +42,11 @@ type NoteWorkspaceProps = {
   onAisleScroll: (scrollLeft: number) => void
   onActivateAisle: (editorKey: string) => void
   mountedAisleIds: Set<string>
-  getPreviewMarkdownForAisle: (aisle: NoteAisle) => string
+  getPreviewMarkdownForAisle: (aisle: ResolvedNoteAisle) => string
   onCloseTableOfContentsAisle?: (aisleId: string) => void
   onSelectTableOfContentsHeading?: (aisleId: string, headingKey: string) => void
+  onOpenAisleFrontmatter?: (aisleId: string) => void
+  onOpenAisleLink?: (aisleId: string) => void
   onRegisterAislePaneRoot: (aisleId: string, node: HTMLElement | null) => void
   onRegisterAisleEditorRoot: (editorKey: string, node: HTMLElement | null) => void
 }
@@ -107,6 +112,9 @@ export function NoteWorkspace({
   activeAisleId,
   editorReadOnly,
   arrangeModeActive = false,
+  frontmatterAisleIds = new Set(),
+  linkedAisleIds = new Set(),
+  wholeNoteLinked = false,
   aisleScrollRef,
   toolbar,
   headingPopover,
@@ -123,6 +131,8 @@ export function NoteWorkspace({
   getPreviewMarkdownForAisle,
   onCloseTableOfContentsAisle = () => undefined,
   onSelectTableOfContentsHeading = () => undefined,
+  onOpenAisleFrontmatter = () => undefined,
+  onOpenAisleLink = () => undefined,
   onRegisterAislePaneRoot,
   onRegisterAisleEditorRoot,
 }: NoteWorkspaceProps) {
@@ -152,6 +162,8 @@ export function NoteWorkspace({
           const previewMarkdown = editorMounted ? '' : getPreviewMarkdownForAisle(aisle)
           const tableOfContentsHeadings = tableOfContentsHeadingsByAisle[aisle.id] ?? []
           const tableOfContentsOpen = openTableOfContentsAisleIds.has(aisle.id) && tableOfContentsHeadings.length > 0
+          const showLinkButton = wholeNoteLinked || linkedAisleIds.has(aisle.id)
+          const showFrontmatterButton = frontmatterAisleIds.has(aisle.id)
           return (
             <section
               key={aisle.id}
@@ -162,6 +174,46 @@ export function NoteWorkspace({
               data-aisle-editor-key={editorKey}
               onPointerDown={() => onActivateAisle(editorKey)}
             >
+              {(showLinkButton || showFrontmatterButton) && (
+                <div className="note-aisle-action-layer" aria-label={`Aisle ${index + 1} actions`}>
+                  {showLinkButton && (
+                    <button
+                      type="button"
+                      className="note-aisle-action-btn note-aisle-link-btn"
+                      aria-label={`Open link controls for aisle ${index + 1}`}
+                      title="Link"
+                      onPointerDown={(event) => {
+                        event.stopPropagation()
+                      }}
+                      onClick={(event) => {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        onOpenAisleLink(aisle.id)
+                      }}
+                    >
+                      <span className="toastui-editor-toolbar-icons link note-aisle-link-icon" aria-hidden="true" />
+                    </button>
+                  )}
+                  {showFrontmatterButton && (
+                    <button
+                      type="button"
+                      className="note-aisle-action-btn note-aisle-frontmatter-btn"
+                      aria-label={`Open frontmatter for aisle ${index + 1}`}
+                      title="Frontmatter"
+                      onPointerDown={(event) => {
+                        event.stopPropagation()
+                      }}
+                      onClick={(event) => {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        onOpenAisleFrontmatter(aisle.id)
+                      }}
+                    >
+                      <span className="frontmatter-toolbar-icon note-aisle-frontmatter-icon" aria-hidden="true">fm</span>
+                    </button>
+                  )}
+                </div>
+              )}
               <section className={`editor-shell note-aisle-editor-shell ${editorReadOnly ? 'editor-readonly' : ''}`}>
                 {editorMounted ? (
                   <div

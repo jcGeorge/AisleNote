@@ -68,7 +68,10 @@ export type NewlineShortcutSettings = {
 
 export type NoteAisle = {
   id: string
-  aisleBodyId?: string
+  aisleBodyId: string
+}
+
+export type ResolvedNoteAisle = NoteAisle & {
   markdown: string
 }
 
@@ -131,8 +134,6 @@ export type FrontmatterMeta = {
   templateFieldOrigins?: FrontmatterFieldOriginMap
   templateRemovedFieldIds?: string[]
   computedFields?: FrontmatterComputedFieldMap
-  /** Legacy row-level template behavior. Ignored by the current frontmatter modal. */
-  templateDetachedKeys?: string[]
 }
 
 export type FrontmatterSaveOptions = {
@@ -148,16 +149,10 @@ export type NoteBody = {
   createdAt?: string
   updatedAt?: string
   aisles: NoteAisle[]
-  /** Legacy note-level frontmatter. Migrated into the first aisle body on load and no longer written. */
-  frontmatter: FrontmatterData | null
-  /** Legacy note-level template metadata. Migrated into the first aisle body on load and no longer written. */
-  frontmatterTemplateId?: string
-  frontmatterTemplateDerived?: boolean
-  frontmatterTemplateFieldOrigins?: FrontmatterFieldOriginMap
-  frontmatterTemplateRemovedFieldIds?: string[]
-  frontmatterComputedFields?: FrontmatterComputedFieldMap
-  /** Legacy row-level template behavior. Ignored by the current frontmatter modal. */
-  frontmatterTemplateDetachedKeys?: string[]
+}
+
+export type ResolvedNoteBody = Omit<NoteBody, 'aisles'> & {
+  aisles: ResolvedNoteAisle[]
 }
 
 export type FrontmatterRowDraft = {
@@ -258,16 +253,12 @@ export type SubTab = {
   id: string
   title: string
   noteBodyId: string
-  /** Legacy mirror for older persisted states and export fallbacks. */
-  content: string
 }
 
 export type Tab = {
   id: string
   title: string
   noteBodyId: string
-  /** Legacy mirror for older persisted states and export fallbacks. */
-  homeContent: string
   activeSubTabId: string | null
   subTabs: SubTab[]
 }
@@ -603,7 +594,7 @@ export type StorageProfileStatus = {
   isDefault: boolean
   hasProfile: boolean
   canWrite: boolean
-  source?: 'hybrid' | 'legacy' | 'empty'
+  source?: 'hybrid' | 'empty'
   schemaVersion?: number | null
   conflicts?: string[]
   revision?: number
@@ -786,6 +777,7 @@ export type DeleteTarget =
 
 export type NoteCopyMode = 'independent' | 'linked'
 export type NoteCopyDestinationMode = 'replace' | 'append'
+export type LinkedAisleReason = 'aisle-body' | 'note-body'
 
 export type ModalState =
   | { type: 'delete-target'; target: DeleteTarget; permanent: boolean }
@@ -802,6 +794,24 @@ export type ModalState =
   | {
       type: 'deduplicate-note'
       noteBodyId: string
+      keepLocationKeys: string[]
+      keepData: boolean
+    }
+  | {
+      type: 'linked-aisle'
+      reason: 'aisle-body'
+      noteBodyId: string
+      aisleId: string
+      aisleBodyId: string
+      location: NoteLocation
+    }
+  | {
+      type: 'linked-aisle'
+      reason: 'note-body'
+      noteBodyId: string
+      aisleId: string
+      aisleBodyId: string
+      location: NoteLocation
       keepLocationKeys: string[]
       keepData: boolean
     }
@@ -845,7 +855,7 @@ export type TrashParentBucket = {
   spaceId?: string
   parentTabId: string
   homeContent: string
-  subTabs: SubTab[]
+  subTabs: Array<SubTab & { content: string }>
 }
 
 export type TrashSpaceBucket = {

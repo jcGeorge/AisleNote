@@ -76,6 +76,24 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
     }
   }
 
+  if (modal.type === 'linked-aisle') {
+    if (modal.reason === 'note-body') {
+      return {
+        title: 'linked note',
+        body: modal.keepData
+          ? 'this whole note is linked elsewhere. checked notes remain linked. unchecked notes become independent copies with their current data.'
+          : 'this whole note is linked elsewhere. checked notes remain linked. unchecked notes become empty independent notes.',
+        action: 'apply',
+      }
+    }
+
+    return {
+      title: 'linked aisle',
+      body: '',
+      action: 'de-couple aisle',
+    }
+  }
+
   if (modal.type === 'insert-note-reference') {
     return {
       title: modal.modeLocked ? 'edit link' : 'insert link',

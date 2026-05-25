@@ -12,13 +12,11 @@ function tab(id: string, title: string, noteBodyId: string, subTabs: Array<{ id:
     id,
     title,
     noteBodyId,
-    homeContent: '',
     activeSubTabId: subTabs[0]?.id ?? null,
     subTabs: subTabs.map((subTab) => ({
       id: subTab.id,
       title: subTab.title,
       noteBodyId: subTab.body,
-      content: '',
     })),
   }
 }

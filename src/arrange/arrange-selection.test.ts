@@ -21,7 +21,6 @@ function subTab(id: string, title = id): SubTab {
     id,
     title,
     noteBodyId: `${id}-body`,
-    content: `${title} content`,
   }
 }
 
@@ -30,7 +29,6 @@ function tab(id: string, title = id, subTabs: SubTab[] = [], activeSubTabId = su
     id,
     title,
     noteBodyId: `${id}-body`,
-    homeContent: `${title} home`,
     activeSubTabId,
     subTabs,
   }

@@ -7,18 +7,16 @@ const tabA: Tab = {
   id: 'tab-a',
   title: 'A',
   noteBodyId: 'body-a',
-  homeContent: '',
   activeSubTabId: 'sub-a',
-  subTabs: [{ id: 'sub-a', title: 'A1', noteBodyId: 'body-a1', content: '' }],
+  subTabs: [{ id: 'sub-a', title: 'A1', noteBodyId: 'body-a1'}],
 }
 
 const tabB: Tab = {
   id: 'tab-b',
   title: 'B',
   noteBodyId: 'body-b',
-  homeContent: '',
   activeSubTabId: 'sub-b',
-  subTabs: [{ id: 'sub-b', title: 'B1', noteBodyId: 'body-b1', content: '' }],
+  subTabs: [{ id: 'sub-b', title: 'B1', noteBodyId: 'body-b1'}],
 }
 
 const selectionSnapshot: StageManagerSelectionSnapshot = {

@@ -13,13 +13,11 @@ function tab(id: string, title: string, noteBodyId: string, subTabs: Array<{ id:
     id,
     title,
     noteBodyId,
-    homeContent: '',
     activeSubTabId: subTabs[0]?.id ?? null,
     subTabs: subTabs.map((subTab) => ({
       id: subTab.id,
       title: subTab.title,
       noteBodyId: subTab.body,
-      content: '',
     })),
   }
 }
@@ -38,11 +36,10 @@ function space(id: string, name: string, tabs: Tab[]): Space {
   }
 }
 
-function body(id: string, aisleId: string, aisleBodyId: string, markdown = ''): NoteBody {
+function body(id: string, aisleId: string, aisleBodyId: string): NoteBody {
   return {
     id,
-    frontmatter: null,
-    aisles: [{ id: aisleId, aisleBodyId, markdown }],
+    aisles: [{ id: aisleId, aisleBodyId }],
   }
 }
 

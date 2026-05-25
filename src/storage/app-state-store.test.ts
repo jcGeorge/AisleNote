@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { APP_STATE_STORAGE_KEY, LEGACY_APP_STATE_STORAGE_KEY, createAppStateStore, type AppStateStore } from './app-state-store'
+import { APP_STATE_STORAGE_KEY, createAppStateStore, type AppStateStore } from './app-state-store'
 import { createAppPersistenceService } from './app-persistence-service'
 
 afterEach(() => {
@@ -7,10 +7,8 @@ afterEach(() => {
 })
 
 describe('app state storage keys', () => {
-  it('keeps the current renderer cache separate from the legacy app-state key', () => {
-    expect(LEGACY_APP_STATE_STORAGE_KEY).toBe('data/notes/index.json')
+  it('uses the current renderer cache key', () => {
     expect(APP_STATE_STORAGE_KEY).toBe('tabs:app-state-cache:v1')
-    expect(APP_STATE_STORAGE_KEY).not.toBe(LEGACY_APP_STATE_STORAGE_KEY)
   })
 })
 
@@ -90,6 +88,63 @@ describe('Electron app state store', () => {
     expect(store.load()).toBeNull()
     store.save('{}')
     expect(saveAppState).not.toHaveBeenCalled()
+  })
+
+  it('unblocks saves after a storage profile switch reports ready', () => {
+    let statusHandler:
+      | ((status: {
+          status: 'ready' | 'error'
+          profileRootPath: string
+          notesDataPath: string
+          isDefault: boolean
+          hasProfile: boolean
+          canWrite: boolean
+          revision?: number
+        }) => void)
+      | undefined
+    const saveAppState = vi.fn(() => ({
+      ok: true,
+      serializedState: '{"theme":"light"}',
+      revision: 1,
+    }))
+    vi.stubGlobal('window', {
+      electronAPI: {
+        loadAppStateResult: () => ({
+          ok: false,
+          serializedState: null,
+          source: 'hybrid',
+          error: 'Existing app state could not be loaded.',
+          revision: 0,
+        }),
+        saveAppState,
+        onStorageProfileStatusUpdated: vi.fn((handler) => {
+          statusHandler = handler
+          return vi.fn()
+        }),
+      },
+    })
+
+    const store = createAppStateStore()
+
+    expect(store.load()).toBeNull()
+    store.save('{"theme":"blocked"}')
+    expect(saveAppState).not.toHaveBeenCalled()
+
+    statusHandler?.({
+      status: 'ready',
+      profileRootPath: '/tmp/tabs',
+      notesDataPath: '/tmp/tabs/notes-data',
+      isDefault: false,
+      hasProfile: false,
+      canWrite: true,
+      revision: 0,
+    })
+    store.save('{"theme":"light"}')
+
+    expect(saveAppState).toHaveBeenCalledWith({
+      serializedState: '{"theme":"light"}',
+      baseRevision: 0,
+    })
   })
 
   it('allows saves after a successful structured load result', () => {

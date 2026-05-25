@@ -54,7 +54,7 @@ function getToolbarToolChildren(toolId: ToolbarToolId, iconOnlyTextTools: boolea
         </span>
       )
     case 'frontmatter':
-      return <span className="frontmatter-toolbar-icon" aria-hidden="true" />
+      return <span className="frontmatter-toolbar-icon" aria-hidden="true">fm</span>
     case 'tableOfContents':
       if (iconOnlyTextTools) return <span className="table-of-contents-toolbar-icon" aria-hidden="true" />
       return 'ToC'

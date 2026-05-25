@@ -726,7 +726,6 @@ export const useAppOverlayActions = ({
                   id: entry.parentTabId,
                   title: entry.parentTabTitle,
                   noteBodyId: createId(),
-                  homeContent: '',
                   activeSubTabId: null,
                   subTabs: [entry.subTab],
                 },

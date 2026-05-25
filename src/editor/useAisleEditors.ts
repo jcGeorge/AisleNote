@@ -46,7 +46,7 @@ import {
   getAislePreviewMarkdown,
   updateRecentAisleIds,
 } from './aisle-editor-retention'
-import type { HeadingCollapseState, NoteAisle, NoteNavigationTarget, ToastTone, ViewMode } from '../types/app'
+import type { HeadingCollapseState, NoteNavigationTarget, ResolvedNoteAisle, ToastTone, ViewMode } from '../types/app'
 import type { NoteContextReferencePayload } from '../notes/note-references'
 import { getAisleBodyId } from '../notes/aisle-body-state'
 import type { PendingCursorRestore } from './useNoteCursorPersistence'
@@ -66,7 +66,7 @@ type ActivateAisleEditorOptions = {
 type UseAisleEditorsOptions = {
   viewMode: ViewMode
   activeNoteBodyId: string
-  activeNoteAisles: NoteAisle[]
+  activeNoteAisles: ResolvedNoteAisle[]
   resolvedActiveAisleId: string
   activeAisleId: string
   setActiveAisleId: (aisleId: string) => void
@@ -221,7 +221,7 @@ export function useAisleEditors({
     lastEditorMarkdownByAisleRef.current.set(getAisleBodyIdForAisleId(aisleId), markdown)
   }
 
-  const getPendingContentForAisle = (aisle: NoteAisle) => {
+  const getPendingContentForAisle = (aisle: ResolvedNoteAisle) => {
     const aisleBodyId = getAisleBodyId(aisle)
     const pending = pendingContentRef.current.get(aisleBodyId)
     if (!pending) return null
@@ -236,7 +236,7 @@ export function useAisleEditors({
     return pending.aisleBodyId === aisleBodyId || pending.aisleId === aisle.id ? pending : null
   }
 
-  const getLatestMarkdownForAisle = (aisle: NoteAisle) => {
+  const getLatestMarkdownForAisle = (aisle: ResolvedNoteAisle) => {
     const pending = getPendingContentForAisle(aisle)
     if (pending) return pending.markdown
     return getCachedMarkdownForAisle(aisle.id) ?? normalizeMarkdownForPersistence(aisle.markdown)
@@ -341,11 +341,11 @@ export function useAisleEditors({
     }
   }
 
-  const getAisleMarkdownForOutline = (aisle: NoteAisle) => {
+  const getAisleMarkdownForOutline = (aisle: ResolvedNoteAisle) => {
     return getLatestMarkdownForAisle(aisle)
   }
 
-  const getHeadingOutlineForAisle = (aisle: NoteAisle): HeadingOutlineItem[] => {
+  const getHeadingOutlineForAisle = (aisle: ResolvedNoteAisle): HeadingOutlineItem[] => {
     const editorKey = buildAisleEditorKey(activeNoteBodyId, aisle.id)
     const meta = aisleEditorMetaRef.current.get(editorKey)
     const view = getWysiwygView(meta?.editor ?? null)
@@ -801,7 +801,7 @@ export function useAisleEditors({
     mountedAisleIds,
     getHeadingOutlineForAisle,
     scrollToAisleHeading,
-    getPreviewMarkdownForAisle: (aisle: NoteAisle) =>
+    getPreviewMarkdownForAisle: (aisle: ResolvedNoteAisle) =>
       getAislePreviewMarkdown({
         aisle,
         pendingContent: pendingContentRef.current,

@@ -3,15 +3,31 @@ import { DEFAULT_FRONTMATTER_SETTINGS } from '../frontmatter/frontmatter'
 import { DEFAULT_NEWLINE_SHORTCUT_SETTINGS, DEFAULT_SHORTCUTS } from '../hotkeys/shortcuts'
 import { BUILT_IN_THEME_PALETTE_SEEDS, DEFAULT_CUSTOM_THEME_PALETTE, DEFAULT_UI_SETTINGS } from '../settings/defaults'
 import { syncNoteBodyAisleStructureInState } from '../notes/note-state'
-import type { AppState, DeletedSubTabEntry, DeletedTabEntry, Space, SubTab, Tab, WorkspaceData } from '../types/app'
-import { applyAutoPurgeToAppState, applyMarkdownToAppState, getNextAutoPurgeTimeForAppState, parseSavedState } from './app-state'
+import { getAisleMarkdown } from '../notes/note-markdown'
+import type {
+  AppState,
+  DeletedDomainEntry,
+  DeletedSpaceEntry,
+  DeletedSubTabEntry,
+  DeletedTabEntry,
+  Space,
+  SubTab,
+  Tab,
+  WorkspaceData,
+} from '../types/app'
+import {
+  DEFAULT_STATE,
+  applyAutoPurgeToAppState,
+  applyMarkdownToAppState,
+  getNextAutoPurgeTimeForAppState,
+  parseSavedState,
+} from './app-state'
 import { AUTO_PURGE_DAY_MS } from './workspace'
 
 const liveTab: Tab = {
   id: 'live-tab',
   title: 'Live',
   noteBodyId: 'live-body',
-  homeContent: '',
   activeSubTabId: null,
   subTabs: [],
 }
@@ -23,7 +39,6 @@ function deletedTab(id: string, deletedAt: number): DeletedTabEntry {
       id,
       title: id,
       noteBodyId: `${id}-body`,
-      homeContent: '',
       activeSubTabId: null,
       subTabs: [],
     },
@@ -36,7 +51,6 @@ function deletedSubTab(id: string, deletedAt: number): DeletedSubTabEntry {
     id,
     title: id,
     noteBodyId: `${id}-body`,
-    content: '',
   }
   return {
     id: `deleted-${id}`,
@@ -68,6 +82,35 @@ function space(id: string, autoRemoveDeletedDays: number, data: WorkspaceData): 
   }
 }
 
+function deletedSpaceEntry(id: string, deletedAt: number, targetSpace: Space): DeletedSpaceEntry {
+  return {
+    id,
+    domainId: 'domain-1',
+    domainName: 'Domain',
+    space: targetSpace,
+    deletedAt,
+  }
+}
+
+function deletedDomainEntry(
+  id: string,
+  deletedAt: number,
+  spaces: Space[],
+  deletedSpaces: DeletedSpaceEntry[] = [],
+): DeletedDomainEntry {
+  return {
+    id,
+    domain: {
+      id: `${id}-domain`,
+      name: id,
+      activeSpaceId: spaces[0]?.id ?? '',
+      spaces,
+    },
+    deletedSpaces,
+    deletedAt,
+  }
+}
+
 function appStateWithSpaces(spaces: Space[]): AppState {
   const domain = {
     id: 'domain-1',
@@ -79,6 +122,8 @@ function appStateWithSpaces(spaces: Space[]): AppState {
     theme: 'dawn',
     activeDomainId: domain.id,
     domains: [domain],
+    deletedDomains: [],
+    deletedSpaces: [],
     noteBodies: [],
     activeSpaceId: domain.activeSpaceId,
     spaces,
@@ -93,8 +138,53 @@ function appStateWithSpaces(spaces: Space[]): AppState {
   }
 }
 
+function defaultModernSpace(): Space {
+  return {
+    id: 'space',
+    name: 'Space',
+    settings: { autoRemoveDeletedDays: 7 },
+    data: {
+      activeTabId: 'tab',
+      tabs: [
+        {
+          id: 'tab',
+          title: 'Tab',
+          noteBodyId: 'body-1',
+          activeSubTabId: null,
+          subTabs: [],
+        },
+      ],
+      deletedTabs: [],
+      deletedSubTabs: [],
+    },
+  }
+}
+
+function modernState(raw: Record<string, unknown>): Record<string, unknown> {
+  if (Array.isArray(raw.domains)) return raw
+  const spaces = Array.isArray(raw.spaces) && raw.spaces.length > 0 ? raw.spaces : [defaultModernSpace()]
+  const activeSpaceId = typeof raw.activeSpaceId === 'string' ? raw.activeSpaceId : String((spaces[0] as { id?: string }).id ?? '')
+  const domain = {
+    id: 'domain',
+    name: 'Domain',
+    activeSpaceId,
+    spaces,
+  }
+  return {
+    ...raw,
+    activeDomainId: typeof raw.activeDomainId === 'string' ? raw.activeDomainId : domain.id,
+    domains: [domain],
+    activeSpaceId,
+    spaces,
+  }
+}
+
+function parseModernState(raw: Record<string, unknown>): AppState {
+  return parseSavedState(JSON.stringify(modernState(raw)))
+}
+
 describe('app state normalization', () => {
-  it('migrates legacy tab content into note bodies', () => {
+  it('rejects legacy spaces-only app data', () => {
     const state = parseSavedState(
       JSON.stringify({
         theme: 'dusk',
@@ -108,7 +198,6 @@ describe('app state normalization', () => {
                 {
                   id: 'tab-1',
                   title: 'Tab',
-                  homeContent: 'legacy home',
                   activeSubTabId: 'sub-1',
                   subTabs: [{ id: 'sub-1', title: 'Sub', content: 'legacy sub' }],
                 },
@@ -121,17 +210,10 @@ describe('app state normalization', () => {
       }),
     )
 
-    const tab = state.spaces[0].data.tabs[0]
-    const subTab = tab.subTabs[0]
-    const tabBody = state.noteBodies.find((body) => body.id === tab.noteBodyId)
-    const subTabBody = state.noteBodies.find((body) => body.id === subTab.noteBodyId)
-
-    expect(state.theme).toBe('blues')
-    expect(tabBody?.aisles[0]?.markdown).toBe('legacy home')
-    expect(subTabBody?.aisles[0]?.markdown).toBe('legacy sub')
+    expect(state).toBe(DEFAULT_STATE)
   })
 
-  it('updates the note body and legacy content mirror together', () => {
+  it('updates note body markdown through the aisle body source of truth', () => {
     const state = parseSavedState(null)
     const space = state.spaces[0]
     const tab = space.data.tabs[0]
@@ -140,13 +222,11 @@ describe('app state normalization', () => {
     const nextTab = next.spaces[0].data.tabs[0]
     const nextBody = next.noteBodies.find((body) => body.id === nextTab.noteBodyId)
 
-    expect(nextTab.homeContent).toBe('updated')
-    expect(nextBody?.aisles[0]?.markdown).toBe('updated')
+    expect(nextBody?.aisles[0] ? getAisleMarkdown(nextBody.aisles[0], next.noteAisleBodies) : '').toBe('updated')
   })
 
-  it('normalizes legacy aisle markdown into shared aisle body records', () => {
-    const state = parseSavedState(
-      JSON.stringify({
+  it('normalizes structural aisles with shared aisle body records', () => {
+    const state = parseModernState({
         spaces: [
           {
             id: 'space-1',
@@ -158,7 +238,6 @@ describe('app state normalization', () => {
                   id: 'tab-1',
                   title: 'Tab',
                   noteBodyId: 'body-1',
-                  homeContent: '',
                   activeSubTabId: null,
                   subTabs: [],
                 },
@@ -168,21 +247,20 @@ describe('app state normalization', () => {
             },
           },
         ],
-        noteBodies: [{ id: 'body-1', aisles: [{ id: 'aisle-1', markdown: 'legacy body' }] }],
-      }),
-    )
+        noteBodies: [{ id: 'body-1', aisles: [{ id: 'aisle-1', aisleBodyId: 'aisle-body-1' }] }],
+        noteAisleBodies: [{ id: 'aisle-body-1', markdown: 'body text' }],
+      })
 
     const body = state.noteBodies.find((candidate) => candidate.id === 'body-1')
     const aisleBodyId = body?.aisles[0]?.aisleBodyId
 
-    expect(aisleBodyId).toBe('aisle-1')
-    expect(state.noteAisleBodies?.find((aisleBody) => aisleBody.id === aisleBodyId)?.markdown).toBe('legacy body')
-    expect(body?.aisles[0]?.markdown).toBe('legacy body')
+    expect(aisleBodyId).toBe('aisle-body-1')
+    expect(state.noteAisleBodies?.find((aisleBody) => aisleBody.id === aisleBodyId)?.markdown).toBe('body text')
+    expect(body?.aisles[0] ? getAisleMarkdown(body.aisles[0], state.noteAisleBodies) : '').toBe('body text')
   })
 
   it('updates duplicate linked aisle slots together without stale sibling whitespace winning', () => {
-    const state = parseSavedState(
-      JSON.stringify({
+    const state = parseModernState({
         spaces: [
           {
             id: 'space-1',
@@ -194,7 +272,6 @@ describe('app state normalization', () => {
                   id: 'tab-1',
                   title: 'Tab',
                   noteBodyId: 'body-1',
-                  homeContent: '',
                   activeSubTabId: null,
                   subTabs: [],
                 },
@@ -209,13 +286,12 @@ describe('app state normalization', () => {
           {
             id: 'body-1',
             aisles: [
-              { id: 'aisle-1', aisleBodyId: 'shared-aisle-body', markdown: 'Hat Trick!\\n\\nold whitespace' },
-              { id: 'aisle-2', aisleBodyId: 'shared-aisle-body', markdown: 'Hat Trick!\\n\\nold whitespace' },
+              { id: 'aisle-1', aisleBodyId: 'shared-aisle-body' },
+              { id: 'aisle-2', aisleBodyId: 'shared-aisle-body' },
             ],
           },
         ],
-      }),
-    )
+      })
 
     const next = applyMarkdownToAppState(
       state,
@@ -230,15 +306,14 @@ describe('app state normalization', () => {
     expect(next.noteAisleBodies?.find((aisleBody) => aisleBody.id === 'shared-aisle-body')?.markdown).toBe(
       'Hat Trick!\n\nThe third aisle, seems like this refactor was successful.',
     )
-    expect(body?.aisles.map((aisle) => aisle.markdown)).toEqual([
+    expect(body?.aisles.map((aisle) => getAisleMarkdown(aisle, next.noteAisleBodies))).toEqual([
       'Hat Trick!\n\nThe third aisle, seems like this refactor was successful.',
       'Hat Trick!\n\nThe third aisle, seems like this refactor was successful.',
     ])
   })
 
   it('lets a linked aisle edit the same aisle body used by direct note duplicates', () => {
-    const state = parseSavedState(
-      JSON.stringify({
+    const state = parseModernState({
         spaces: [
           {
             id: 'space-1',
@@ -250,7 +325,6 @@ describe('app state normalization', () => {
                   id: 'tab-source',
                   title: 'Source',
                   noteBodyId: 'body-source',
-                  homeContent: '',
                   activeSubTabId: null,
                   subTabs: [],
                 },
@@ -258,7 +332,6 @@ describe('app state normalization', () => {
                   id: 'tab-target',
                   title: 'Target',
                   noteBodyId: 'body-target',
-                  homeContent: '',
                   activeSubTabId: null,
                   subTabs: [],
                 },
@@ -266,7 +339,6 @@ describe('app state normalization', () => {
                   id: 'tab-peer',
                   title: 'Peer',
                   noteBodyId: 'body-target',
-                  homeContent: '',
                   activeSubTabId: null,
                   subTabs: [],
                 },
@@ -284,17 +356,16 @@ describe('app state normalization', () => {
           {
             id: 'body-source',
             aisles: [
-              { id: 'source-aisle', aisleBodyId: 'source-aisle-body', markdown: 'source text' },
-              { id: 'linked-aisle', aisleBodyId: 'shared-aisle-body', markdown: 'base text' },
+              { id: 'source-aisle', aisleBodyId: 'source-aisle-body' },
+              { id: 'linked-aisle', aisleBodyId: 'shared-aisle-body' },
             ],
           },
           {
             id: 'body-target',
-            aisles: [{ id: 'target-aisle', aisleBodyId: 'shared-aisle-body', markdown: 'base text' }],
+            aisles: [{ id: 'target-aisle', aisleBodyId: 'shared-aisle-body' }],
           },
         ],
-      }),
-    )
+      })
 
     const next = applyMarkdownToAppState(state, 'space-1', 'tab-source', null, 'linked-aisle', 'linked aisle edit')
     const sourceBody = next.noteBodies.find((body) => body.id === 'body-source')
@@ -303,15 +374,12 @@ describe('app state normalization', () => {
     expect(next.noteAisleBodies?.find((aisleBody) => aisleBody.id === 'shared-aisle-body')?.markdown).toBe(
       'linked aisle edit',
     )
-    expect(sourceBody?.aisles.find((aisle) => aisle.id === 'linked-aisle')?.markdown).toBe('linked aisle edit')
-    expect(targetBody?.aisles[0]?.markdown).toBe('linked aisle edit')
-    expect(next.spaces[0].data.tabs.find((tab) => tab.id === 'tab-target')?.homeContent).toBe('linked aisle edit')
-    expect(next.spaces[0].data.tabs.find((tab) => tab.id === 'tab-peer')?.homeContent).toBe('linked aisle edit')
+    expect(sourceBody?.aisles.find((aisle) => aisle.id === 'linked-aisle') ? getAisleMarkdown(sourceBody.aisles.find((aisle) => aisle.id === 'linked-aisle')!, next.noteAisleBodies) : '').toBe('linked aisle edit')
+    expect(targetBody?.aisles[0] ? getAisleMarkdown(targetBody.aisles[0], next.noteAisleBodies) : '').toBe('linked aisle edit')
   })
 
   it('can commit by aisle body id when a linked aisle slot id is stale or mismatched', () => {
-    const state = parseSavedState(
-      JSON.stringify({
+    const state = parseModernState({
         spaces: [
           {
             id: 'space-1',
@@ -323,7 +391,6 @@ describe('app state normalization', () => {
                   id: 'tab-source',
                   title: 'Source',
                   noteBodyId: 'body-source',
-                  homeContent: '',
                   activeSubTabId: null,
                   subTabs: [],
                 },
@@ -331,7 +398,6 @@ describe('app state normalization', () => {
                   id: 'tab-target',
                   title: 'Target',
                   noteBodyId: 'body-target',
-                  homeContent: '',
                   activeSubTabId: null,
                   subTabs: [],
                 },
@@ -349,17 +415,16 @@ describe('app state normalization', () => {
           {
             id: 'body-source',
             aisles: [
-              { id: 'source-aisle', aisleBodyId: 'source-aisle-body', markdown: 'source text' },
-              { id: 'linked-aisle', aisleBodyId: 'shared-aisle-body', markdown: 'base text' },
+              { id: 'source-aisle', aisleBodyId: 'source-aisle-body' },
+              { id: 'linked-aisle', aisleBodyId: 'shared-aisle-body' },
             ],
           },
           {
             id: 'body-target',
-            aisles: [{ id: 'target-aisle', aisleBodyId: 'shared-aisle-body', markdown: 'base text' }],
+            aisles: [{ id: 'target-aisle', aisleBodyId: 'shared-aisle-body' }],
           },
         ],
-      }),
-    )
+      })
 
     const next = applyMarkdownToAppState(
       state,
@@ -377,13 +442,14 @@ describe('app state normalization', () => {
     expect(next.noteAisleBodies?.find((aisleBody) => aisleBody.id === 'source-aisle-body')?.markdown).toBe(
       'source text',
     )
-    expect(next.noteBodies.find((body) => body.id === 'body-source')?.aisles[1]?.markdown).toBe('body-id edit')
-    expect(next.noteBodies.find((body) => body.id === 'body-target')?.aisles[0]?.markdown).toBe('body-id edit')
+    const sourceAisle = next.noteBodies.find((body) => body.id === 'body-source')?.aisles[1]
+    const targetAisle = next.noteBodies.find((body) => body.id === 'body-target')?.aisles[0]
+    expect(sourceAisle ? getAisleMarkdown(sourceAisle, next.noteAisleBodies) : '').toBe('body-id edit')
+    expect(targetAisle ? getAisleMarkdown(targetAisle, next.noteAisleBodies) : '').toBe('body-id edit')
   })
 
   it('keeps the remaining linked aisle writable after deleting a sibling linked aisle', () => {
-    const state = parseSavedState(
-      JSON.stringify({
+    const state = parseModernState({
         spaces: [
           {
             id: 'space-1',
@@ -395,7 +461,6 @@ describe('app state normalization', () => {
                   id: 'tab-source',
                   title: 'Source',
                   noteBodyId: 'body-source',
-                  homeContent: '',
                   activeSubTabId: null,
                   subTabs: [],
                 },
@@ -403,7 +468,6 @@ describe('app state normalization', () => {
                   id: 'tab-target',
                   title: 'Target',
                   noteBodyId: 'body-target',
-                  homeContent: '',
                   activeSubTabId: null,
                   subTabs: [],
                 },
@@ -421,20 +485,19 @@ describe('app state normalization', () => {
           {
             id: 'body-source',
             aisles: [
-              { id: 'linked-aisle-a', aisleBodyId: 'target-aisle-body-a', markdown: 'target a' },
-              { id: 'linked-aisle-b', aisleBodyId: 'target-aisle-body-b', markdown: 'target b' },
+              { id: 'linked-aisle-a', aisleBodyId: 'target-aisle-body-a' },
+              { id: 'linked-aisle-b', aisleBodyId: 'target-aisle-body-b' },
             ],
           },
           {
             id: 'body-target',
             aisles: [
-              { id: 'target-aisle-a', aisleBodyId: 'target-aisle-body-a', markdown: 'target a' },
-              { id: 'target-aisle-b', aisleBodyId: 'target-aisle-body-b', markdown: 'target b' },
+              { id: 'target-aisle-a', aisleBodyId: 'target-aisle-body-a' },
+              { id: 'target-aisle-b', aisleBodyId: 'target-aisle-body-b' },
             ],
           },
         ],
-      }),
-    )
+      })
 
     const afterDelete = syncNoteBodyAisleStructureInState(state, 'body-source', [
       { id: 'linked-aisle-b', aisleBodyId: 'target-aisle-body-b', markdown: 'stale target b' },
@@ -450,22 +513,23 @@ describe('app state normalization', () => {
     )
 
     expect(afterDelete.noteBodies.find((body) => body.id === 'body-source')?.aisles).toEqual([
-      { id: 'linked-aisle-b', aisleBodyId: 'target-aisle-body-b', markdown: 'target b' },
+      { id: 'linked-aisle-b', aisleBodyId: 'target-aisle-body-b' },
     ])
     expect(afterEdit.noteAisleBodies?.find((aisleBody) => aisleBody.id === 'target-aisle-body-b')?.markdown).toBe(
       'remaining linked edit',
     )
-    expect(afterEdit.noteBodies.find((body) => body.id === 'body-source')?.aisles[0]?.markdown).toBe(
+    const editedSourceAisle = afterEdit.noteBodies.find((body) => body.id === 'body-source')?.aisles[0]
+    const editedTargetAisle = afterEdit.noteBodies.find((body) => body.id === 'body-target')?.aisles[1]
+    expect(editedSourceAisle ? getAisleMarkdown(editedSourceAisle, afterEdit.noteAisleBodies) : '').toBe(
       'remaining linked edit',
     )
-    expect(afterEdit.noteBodies.find((body) => body.id === 'body-target')?.aisles[1]?.markdown).toBe(
+    expect(editedTargetAisle ? getAisleMarkdown(editedTargetAisle, afterEdit.noteAisleBodies) : '').toBe(
       'remaining linked edit',
     )
   })
 
-  it('backfills note body timestamps from existing frontmatter', () => {
-    const state = parseSavedState(
-      JSON.stringify({
+  it('preserves modern note body timestamps with frontmatter on aisle bodies', () => {
+    const state = parseModernState({
         spaces: [
           {
             id: 'space-1',
@@ -477,7 +541,6 @@ describe('app state normalization', () => {
                   id: 'tab-1',
                   title: 'Tab',
                   noteBodyId: 'body-1',
-                  homeContent: '',
                   activeSubTabId: null,
                   subTabs: [],
                 },
@@ -490,15 +553,22 @@ describe('app state normalization', () => {
         noteBodies: [
           {
             id: 'body-1',
+            createdAt: '2024-01-02T00:00:00.000Z',
+            updatedAt: '2026-05-15T12:30:00.000Z',
+            aisles: [{ id: 'aisle-1', aisleBodyId: 'aisle-body-1' }],
+          },
+        ],
+        noteAisleBodies: [
+          {
+            id: 'aisle-body-1',
+            markdown: 'body',
             frontmatter: {
               created: '2024-01-02',
               updatedAt: '2026-05-15T12:30:00.000Z',
             },
-            aisles: [{ id: 'aisle-1', markdown: 'body' }],
           },
         ],
-      }),
-    )
+      })
 
     const body = state.noteBodies.find((candidate) => candidate.id === 'body-1')
 
@@ -507,8 +577,7 @@ describe('app state normalization', () => {
   })
 
   it('updates note body updatedAt on content edits while preserving createdAt', () => {
-    const state = parseSavedState(
-      JSON.stringify({
+    const state = parseModernState({
         spaces: [
           {
             id: 'space-1',
@@ -520,7 +589,6 @@ describe('app state normalization', () => {
                   id: 'tab-1',
                   title: 'Tab',
                   noteBodyId: 'body-1',
-                  homeContent: 'before',
                   activeSubTabId: null,
                   subTabs: [],
                 },
@@ -535,11 +603,11 @@ describe('app state normalization', () => {
             id: 'body-1',
             createdAt: '2024-01-02T00:00:00.000Z',
             updatedAt: '2024-01-03T00:00:00.000Z',
-            aisles: [{ id: 'aisle-1', markdown: 'before' }],
+            aisles: [{ id: 'aisle-1', aisleBodyId: 'aisle-body-1' }],
           },
         ],
-      }),
-    )
+        noteAisleBodies: [{ id: 'aisle-body-1', markdown: 'before' }],
+      })
 
     const next = applyMarkdownToAppState(state, 'space-1', 'tab-1', null, 'aisle-1', 'after')
     const body = next.noteBodies.find((candidate) => candidate.id === 'body-1')
@@ -549,8 +617,7 @@ describe('app state normalization', () => {
   })
 
   it('normalizes persisted note cursor locations', () => {
-    const state = parseSavedState(
-      JSON.stringify({
+    const state = parseModernState({
         ui: {
           noteCursorLocations: {
             'domain::space::tab::__home__': {
@@ -562,8 +629,7 @@ describe('app state normalization', () => {
             },
           },
         },
-      }),
-    )
+      })
 
     expect(state.ui.noteCursorLocations['domain::space::tab::__home__']).toEqual({
       activeAisleId: 'aisle-1',
@@ -575,8 +641,7 @@ describe('app state normalization', () => {
   })
 
   it('normalizes persisted heading collapse state', () => {
-    const state = parseSavedState(
-      JSON.stringify({
+    const state = parseModernState({
         ui: {
           headingCollapseState: {
             'body-1': {
@@ -590,9 +655,8 @@ describe('app state normalization', () => {
             broken: null,
           },
         },
-      }),
-    )
-    const missing = parseSavedState(JSON.stringify({ ui: {} }))
+      })
+    const missing = parseModernState({ ui: {} })
 
     expect(state.ui.headingCollapseState).toEqual({
       'body-1': {
@@ -603,7 +667,7 @@ describe('app state normalization', () => {
   })
 
   it('normalizes persisted custom theme palettes', () => {
-    const valid = parseSavedState(JSON.stringify({
+    const valid = parseModernState({
       theme: 'custom',
       ui: {
         customThemePalette: {
@@ -611,16 +675,16 @@ describe('app state normalization', () => {
           text: '#123456',
         },
       },
-    }))
-    const invalid = parseSavedState(JSON.stringify({
+    })
+    const invalid = parseModernState({
       theme: 'custom',
       ui: {
         customThemePalette: {
           primary: 'red',
         },
       },
-    }))
-    const missing = parseSavedState(JSON.stringify({ ui: {} }))
+    })
+    const missing = parseModernState({ ui: {} })
 
     expect(valid.theme).toBe('custom1')
     expect(valid.ui.selectedCustomTheme).toBe('custom1')
@@ -636,14 +700,14 @@ describe('app state normalization', () => {
   })
 
   it('normalizes custom theme ids and selected custom theme memory', () => {
-    const custom2 = parseSavedState(JSON.stringify({
+    const custom2 = parseModernState({
       theme: 'custom2',
       ui: { selectedCustomTheme: 'custom3' },
-    }))
-    const invalidSelected = parseSavedState(JSON.stringify({
+    })
+    const invalidSelected = parseModernState({
       theme: 'custom3',
       ui: { selectedCustomTheme: 'custom4' },
-    }))
+    })
 
     expect(custom2.theme).toBe('custom2')
     expect(custom2.ui.selectedCustomTheme).toBe('custom3')
@@ -652,7 +716,7 @@ describe('app state normalization', () => {
   })
 
   it('normalizes persisted per-theme palettes', () => {
-    const state = parseSavedState(JSON.stringify({
+    const state = parseModernState({
       theme: 'dawn',
       ui: {
         customThemePalette: {
@@ -671,7 +735,7 @@ describe('app state normalization', () => {
           },
         },
       },
-    }))
+    })
 
     expect(state.ui.themePalettes?.dawn?.primary).toBe('#123456')
     expect(state.ui.themePalettes?.dawn?.domainRail).toBe('#a95429')
@@ -681,7 +745,7 @@ describe('app state normalization', () => {
   })
 
   it('drops exact legacy dawn and blues seed palette overrides', () => {
-    const state = parseSavedState(JSON.stringify({
+    const state = parseModernState({
       ui: {
         themePalettes: {
           dawn: {
@@ -694,22 +758,22 @@ describe('app state normalization', () => {
           },
         },
       },
-    }))
+    })
 
     expect(state.ui.themePalettes?.dawn).toBeUndefined()
     expect(state.ui.themePalettes?.blues).toBeUndefined()
   })
 
   it('normalizes persisted settings section memory', () => {
-    const valid = parseSavedState(JSON.stringify({ ui: { settingsSection: 'visuals' } }))
-    const misc = parseSavedState(JSON.stringify({ ui: { settingsSection: 'misc' } }))
-    const theming = parseSavedState(JSON.stringify({ ui: { settingsSection: 'theming' } }))
-    const nestedVisuals = parseSavedState(JSON.stringify({ ui: { settingsSection: 'visuals', visualsSettingsSection: 'otherVisuals' } }))
-    const invalidNestedVisuals = parseSavedState(JSON.stringify({ ui: { settingsSection: 'visuals', visualsSettingsSection: 'colors' } }))
-    const tips = parseSavedState(JSON.stringify({ ui: { settingsSection: 'tips' } }))
-    const toolbar = parseSavedState(JSON.stringify({ ui: { settingsSection: 'toolbar' } }))
-    const invalid = parseSavedState(JSON.stringify({ ui: { settingsSection: 'unknown' } }))
-    const missing = parseSavedState(JSON.stringify({ ui: {} }))
+    const valid = parseModernState({ ui: { settingsSection: 'visuals' } })
+    const misc = parseModernState({ ui: { settingsSection: 'misc' } })
+    const theming = parseModernState({ ui: { settingsSection: 'theming' } })
+    const nestedVisuals = parseModernState({ ui: { settingsSection: 'visuals', visualsSettingsSection: 'otherVisuals' } })
+    const invalidNestedVisuals = parseModernState({ ui: { settingsSection: 'visuals', visualsSettingsSection: 'colors' } })
+    const tips = parseModernState({ ui: { settingsSection: 'tips' } })
+    const toolbar = parseModernState({ ui: { settingsSection: 'toolbar' } })
+    const invalid = parseModernState({ ui: { settingsSection: 'unknown' } })
+    const missing = parseModernState({ ui: {} })
 
     expect(valid.ui.settingsSection).toBe('visuals')
     expect(misc.ui.settingsSection).toBe('misc')
@@ -725,9 +789,9 @@ describe('app state normalization', () => {
   })
 
   it('normalizes always-visible navigation hierarchy settings', () => {
-    const valid = parseSavedState(JSON.stringify({ ui: { alwaysShowSpaces: true, alwaysShowDomains: true } }))
-    const invalid = parseSavedState(JSON.stringify({ ui: { alwaysShowSpaces: false, alwaysShowDomains: true } }))
-    const missing = parseSavedState(JSON.stringify({ ui: {} }))
+    const valid = parseModernState({ ui: { alwaysShowSpaces: true, alwaysShowDomains: true } })
+    const invalid = parseModernState({ ui: { alwaysShowSpaces: false, alwaysShowDomains: true } })
+    const missing = parseModernState({ ui: {} })
 
     expect(valid.ui.alwaysShowSpaces).toBe(true)
     expect(valid.ui.alwaysShowDomains).toBe(true)
@@ -738,13 +802,13 @@ describe('app state normalization', () => {
   })
 
   it('normalizes persisted tip settings', () => {
-    const valid = parseSavedState(JSON.stringify({
+    const valid = parseModernState({
       ui: {
         seenTipIds: ['task-undo', 'bad-tip', 'task-undo', 'tab-create-after-rename', 'aisle-shortcut'],
         disabledTipIds: ['tab-create-after-rename', 'unknown'],
       },
-    }))
-    const missing = parseSavedState(JSON.stringify({ ui: {} }))
+    })
+    const missing = parseModernState({ ui: {} })
 
     expect(valid.ui.seenTipIds).toEqual(['task-undo', 'tab-create-after-rename'])
     expect(valid.ui.disabledTipIds).toEqual(['tab-create-after-rename'])
@@ -753,7 +817,7 @@ describe('app state normalization', () => {
   })
 
   it('normalizes synced toolbar layouts while leaving active toolbar selection local', () => {
-    const state = parseSavedState(JSON.stringify({
+    const state = parseModernState({
       ui: {
         activeToolbarLayoutId: 'should-not-sync',
         toolbarLayouts: [
@@ -774,8 +838,8 @@ describe('app state normalization', () => {
           },
         ],
       },
-    }))
-    const missing = parseSavedState(JSON.stringify({ ui: {} }))
+    })
+    const missing = parseModernState({ ui: {} })
 
     expect(state.ui.toolbarLayouts).toEqual([
       {
@@ -793,10 +857,10 @@ describe('app state normalization', () => {
   })
 
   it('normalizes toolbar customizer name visibility', () => {
-    const enabled = parseSavedState(JSON.stringify({ ui: { toolbarEditorShowNames: true } }))
-    const disabled = parseSavedState(JSON.stringify({ ui: { toolbarEditorShowNames: false } }))
-    const invalid = parseSavedState(JSON.stringify({ ui: { toolbarEditorShowNames: 'yes' } }))
-    const missing = parseSavedState(JSON.stringify({ ui: {} }))
+    const enabled = parseModernState({ ui: { toolbarEditorShowNames: true } })
+    const disabled = parseModernState({ ui: { toolbarEditorShowNames: false } })
+    const invalid = parseModernState({ ui: { toolbarEditorShowNames: 'yes' } })
+    const missing = parseModernState({ ui: {} })
 
     expect(enabled.ui.toolbarEditorShowNames).toBe(true)
     expect(disabled.ui.toolbarEditorShowNames).toBe(false)
@@ -805,19 +869,19 @@ describe('app state normalization', () => {
   })
 
   it('normalizes persisted table control target modes', () => {
-    const valid = parseSavedState(JSON.stringify({
+    const valid = parseModernState({
       ui: {
         tableAddTargetMode: 'active-cell',
         tableDeleteTargetMode: 'active-cell',
       },
-    }))
-    const invalid = parseSavedState(JSON.stringify({
+    })
+    const invalid = parseModernState({
       ui: {
         tableAddTargetMode: 'middle',
         tableDeleteTargetMode: 'edge',
       },
-    }))
-    const missing = parseSavedState(JSON.stringify({ ui: {} }))
+    })
+    const missing = parseModernState({ ui: {} })
 
     expect(valid.ui.tableAddTargetMode).toBe('active-cell')
     expect(valid.ui.tableDeleteTargetMode).toBe('active-cell')
@@ -828,10 +892,10 @@ describe('app state normalization', () => {
   })
 
   it('normalizes persisted note copy mode memory', () => {
-    const linked = parseSavedState(JSON.stringify({ ui: { lastNoteCopyMode: 'linked' } }))
-    const independent = parseSavedState(JSON.stringify({ ui: { lastNoteCopyMode: 'independent' } }))
-    const invalid = parseSavedState(JSON.stringify({ ui: { lastNoteCopyMode: 'plain' } }))
-    const missing = parseSavedState(JSON.stringify({ ui: {} }))
+    const linked = parseModernState({ ui: { lastNoteCopyMode: 'linked' } })
+    const independent = parseModernState({ ui: { lastNoteCopyMode: 'independent' } })
+    const invalid = parseModernState({ ui: { lastNoteCopyMode: 'plain' } })
+    const missing = parseModernState({ ui: {} })
 
     expect(linked.ui.lastNoteCopyMode).toBe('linked')
     expect(independent.ui.lastNoteCopyMode).toBe('independent')
@@ -840,10 +904,10 @@ describe('app state normalization', () => {
   })
 
   it('normalizes persisted de-coupled item data retention memory', () => {
-    const keep = parseSavedState(JSON.stringify({ ui: { decoupledItemsKeepData: true } }))
-    const clear = parseSavedState(JSON.stringify({ ui: { decoupledItemsKeepData: false } }))
-    const invalid = parseSavedState(JSON.stringify({ ui: { decoupledItemsKeepData: 'yes' } }))
-    const missing = parseSavedState(JSON.stringify({ ui: {} }))
+    const keep = parseModernState({ ui: { decoupledItemsKeepData: true } })
+    const clear = parseModernState({ ui: { decoupledItemsKeepData: false } })
+    const invalid = parseModernState({ ui: { decoupledItemsKeepData: 'yes' } })
+    const missing = parseModernState({ ui: {} })
 
     expect(keep.ui.decoupledItemsKeepData).toBe(true)
     expect(clear.ui.decoupledItemsKeepData).toBe(false)
@@ -895,5 +959,115 @@ describe('app state trash auto purge', () => {
     expect(next.spaces.find((candidate) => candidate.id === 'short')?.data.deletedSubTabs).toEqual([shortFreshSubTab])
     expect(next.spaces.find((candidate) => candidate.id === 'long')?.data.deletedTabs).toEqual([longFreshParent])
     expect(next.domains[0].spaces.find((candidate) => candidate.id === 'short')?.data.deletedTabs).toEqual([])
+  })
+
+  it('uses deleted workspace entries when scheduling purge', () => {
+    const now = Date.UTC(2026, 4, 20)
+    const state: AppState = {
+      ...appStateWithSpaces([space('live', 7, workspace())]),
+      deletedSpaces: [
+        deletedSpaceEntry('deleted-space', now - 2 * AUTO_PURGE_DAY_MS, space('deleted-space', 3, workspace())),
+      ],
+      deletedDomains: [
+        deletedDomainEntry('deleted-domain', now - 4 * AUTO_PURGE_DAY_MS, [
+          space('deleted-domain-space', 10, workspace()),
+        ]),
+      ],
+    }
+
+    expect(getNextAutoPurgeTimeForAppState(state, now)).toBe(now + AUTO_PURGE_DAY_MS)
+  })
+
+  it('purges expired deleted workspace entries using their retention windows', () => {
+    const now = Date.UTC(2026, 4, 20)
+    const state: AppState = {
+      ...appStateWithSpaces([space('live', 7, workspace())]),
+      deletedSpaces: [
+        deletedSpaceEntry('expired-space', now - 8 * AUTO_PURGE_DAY_MS, space('expired-space', 7, workspace())),
+        deletedSpaceEntry('fresh-space', now - 6 * AUTO_PURGE_DAY_MS, space('fresh-space', 7, workspace())),
+      ],
+      deletedDomains: [
+        deletedDomainEntry('expired-domain', now - 4 * AUTO_PURGE_DAY_MS, [
+          space('expired-domain-space', 3, workspace()),
+        ]),
+        deletedDomainEntry('retained-domain', now - 8 * AUTO_PURGE_DAY_MS, [
+          space('retained-domain-space', 10, workspace()),
+        ]),
+      ],
+    }
+
+    const next = applyAutoPurgeToAppState(state, now)
+
+    expect(getNextAutoPurgeTimeForAppState(state, now)).toBe(now)
+    expect(next.deletedSpaces?.map((entry) => entry.id)).toEqual(['fresh-space'])
+    expect(next.deletedDomains?.map((entry) => entry.id)).toEqual(['retained-domain'])
+  })
+
+  it('keeps deleted domains until nested deleted spaces reach their own retention', () => {
+    const now = Date.UTC(2026, 4, 20)
+    const state: AppState = {
+      ...appStateWithSpaces([space('live', 7, workspace())]),
+      deletedDomains: [
+        deletedDomainEntry(
+          'deleted-domain',
+          now - 10 * AUTO_PURGE_DAY_MS,
+          [space('deleted-domain-space', 3, workspace())],
+          [
+            deletedSpaceEntry(
+              'nested-fresh-space',
+              now - AUTO_PURGE_DAY_MS,
+              space('nested-fresh-space', 30, workspace()),
+            ),
+          ],
+        ),
+      ],
+    }
+
+    const next = applyAutoPurgeToAppState(state, now)
+
+    expect(getNextAutoPurgeTimeForAppState(state, now)).toBe(now + 29 * AUTO_PURGE_DAY_MS)
+    expect(next.deletedDomains?.map((entry) => entry.id)).toEqual(['deleted-domain'])
+  })
+
+  it('purges nested trash inside retained deleted workspace entries', () => {
+    const now = Date.UTC(2026, 4, 20)
+    const expiredParent = deletedTab('expired-parent', now - 3 * AUTO_PURGE_DAY_MS)
+    const freshParent = deletedTab('fresh-parent', now - AUTO_PURGE_DAY_MS)
+    const state: AppState = {
+      ...appStateWithSpaces([space('live', 7, workspace())]),
+      deletedSpaces: [
+        deletedSpaceEntry(
+          'deleted-space',
+          now - AUTO_PURGE_DAY_MS,
+          space('deleted-space', 2, workspace([expiredParent, freshParent])),
+        ),
+      ],
+      deletedDomains: [
+        deletedDomainEntry(
+          'deleted-domain',
+          now - AUTO_PURGE_DAY_MS,
+          [space('deleted-domain-space', 2, workspace([expiredParent, freshParent]))],
+          [
+            deletedSpaceEntry(
+              'nested-expired-space',
+              now - 3 * AUTO_PURGE_DAY_MS,
+              space('nested-expired-space', 2, workspace()),
+            ),
+            deletedSpaceEntry(
+              'nested-fresh-space',
+              now - AUTO_PURGE_DAY_MS,
+              space('nested-fresh-space', 2, workspace([expiredParent])),
+            ),
+          ],
+        ),
+      ],
+    }
+
+    const next = applyAutoPurgeToAppState(state, now)
+
+    expect(next.deletedSpaces?.[0]?.space.data.deletedTabs).toEqual([freshParent])
+    expect(next.deletedDomains?.[0]?.domain.spaces[0]?.data.deletedTabs).toEqual([freshParent])
+    expect(next.deletedDomains?.[0]?.deletedSpaces.map((entry) => entry.id)).toEqual(['nested-fresh-space'])
+    expect(next.deletedDomains?.[0]?.deletedSpaces[0]?.space.data.deletedTabs).toEqual([])
   })
 })

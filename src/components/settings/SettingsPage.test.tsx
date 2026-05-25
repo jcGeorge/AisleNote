@@ -28,7 +28,7 @@ const space: Space = {
   settings: { autoRemoveDeletedDays: 30 },
   data: {
     activeTabId: 'tab-1',
-    tabs: [{ id: 'tab-1', title: 'Tab', noteBodyId: 'body-1', homeContent: '', activeSubTabId: null, subTabs: [] }],
+    tabs: [{ id: 'tab-1', title: 'Tab', noteBodyId: 'body-1', activeSubTabId: null, subTabs: [] }],
     deletedTabs: [],
     deletedSubTabs: [],
   },
@@ -41,7 +41,8 @@ function createState(): AppState {
     activeSpaceId: space.id,
     domains: [{ id: 'domain-1', name: 'Domain', activeSpaceId: space.id, spaces: [space] }],
     spaces: [space],
-    noteBodies: [{ id: 'body-1', frontmatter: null, aisles: [{ id: 'aisle-1', markdown: '' }] }],
+    noteBodies: [{ id: 'body-1', aisles: [{ id: 'aisle-1', aisleBodyId: 'aisle-body-1' }] }],
+    noteAisleBodies: [{ id: 'aisle-body-1', markdown: '' }],
     hotkeys: {
       shortcuts: {
         toggleTabTrash: '',

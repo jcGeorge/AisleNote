@@ -12,6 +12,26 @@ import {
 } from './device-settings-store'
 import { parseSavedState } from '../state/app-state'
 
+function parseModernState(raw: Record<string, unknown>) {
+  const space = {
+    id: 'space-a',
+    name: 'A',
+    data: {
+      activeTabId: 'tab-a',
+      tabs: [{ id: 'tab-a', title: 'A', noteBodyId: 'body-a', activeSubTabId: null, subTabs: [] }],
+      deletedTabs: [],
+      deletedSubTabs: [],
+    },
+  }
+  return parseSavedState(JSON.stringify({
+    activeDomainId: 'domain-a',
+    activeSpaceId: 'space-a',
+    domains: [{ id: 'domain-a', name: 'A', activeSpaceId: 'space-a', spaces: [space] }],
+    spaces: [space],
+    ...raw,
+  }))
+}
+
 describe('device settings store', () => {
   it('normalizes missing and malformed device-local settings', () => {
     expect(parseDeviceSettings(null)).toEqual(DEFAULT_DEVICE_SETTINGS)
@@ -103,9 +123,9 @@ describe('device settings store', () => {
   })
 
   it('leaves legacy cloud local-ish values in place until device settings exist', () => {
-    const state = parseSavedState(JSON.stringify({
+    const state = parseModernState({
       ui: { settingsSection: 'visuals', visualsSettingsSection: 'otherVisuals', tabButtonScale: 1.2 },
-    }))
+    })
 
     expect(mergeLoadedSettings(state, { settings: DEFAULT_DEVICE_SETTINGS, hasStoredSettings: false }).ui.settingsSection).toBe('visuals')
     expect(mergeLoadedSettings(state, { settings: DEFAULT_DEVICE_SETTINGS, hasStoredSettings: false }).ui.visualsSettingsSection).toBe('otherVisuals')
@@ -114,8 +134,7 @@ describe('device settings store', () => {
   })
 
   it('extracts device-local settings from app state without synced settings', () => {
-    const state = parseSavedState(
-      JSON.stringify({
+    const state = parseModernState({
         ui: {
           settingsSection: 'tips',
           visualsSettingsSection: 'otherVisuals',
@@ -124,8 +143,7 @@ describe('device settings store', () => {
           tabButtonScale: 1.1,
           noteFontScale: 1.15,
         },
-      }),
-    )
+      })
 
     expect(extractDeviceSettingsFromAppState(state).settingsSection).toBe('tips')
     expect(extractDeviceSettingsFromAppState(state).visualsSettingsSection).toBe('otherVisuals')

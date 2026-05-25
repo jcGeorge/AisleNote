@@ -20,7 +20,7 @@ const space: Space = {
   settings: { autoRemoveDeletedDays: 7 },
   data: {
     activeTabId: 'tab-1',
-    tabs: [{ id: 'tab-1', title: 'Tab', noteBodyId: 'body-1', homeContent: '', activeSubTabId: null, subTabs: [] }],
+    tabs: [{ id: 'tab-1', title: 'Tab', noteBodyId: 'body-1', activeSubTabId: null, subTabs: [] }],
     deletedTabs: [],
     deletedSubTabs: [],
   },

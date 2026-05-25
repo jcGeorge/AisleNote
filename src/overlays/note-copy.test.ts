@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_FRONTMATTER_SETTINGS } from '../frontmatter/frontmatter'
 import { getLocationInfo } from '../notes/note-locations'
+import { getAisleMarkdown } from '../notes/note-markdown'
 import { applyMarkdownToAppState } from '../state/app-state'
-import type { AppState, NoteLocation, Space } from '../types/app'
+import type { AppState, NoteAisle, NoteLocation, Space } from '../types/app'
 import { applyNoteCopyToState } from './note-copy'
 
 const sourceLocation: NoteLocation = {
@@ -26,6 +27,9 @@ const peerLocation: NoteLocation = {
   subTabId: null,
 }
 
+const aisleMarkdown = (state: AppState, aisle: NoteAisle | null | undefined) =>
+  aisle ? getAisleMarkdown(aisle, state.noteAisleBodies) : ''
+
 function createCopyTestState(): AppState {
   const space: Space = {
     id: 'space-1',
@@ -38,7 +42,6 @@ function createCopyTestState(): AppState {
           id: 'tab-source',
           title: 'Source',
           noteBodyId: 'body-source',
-          homeContent: '',
           activeSubTabId: null,
           subTabs: [],
         },
@@ -46,7 +49,6 @@ function createCopyTestState(): AppState {
           id: 'tab-target',
           title: 'Target',
           noteBodyId: 'body-target',
-          homeContent: '',
           activeSubTabId: null,
           subTabs: [],
         },
@@ -54,7 +56,6 @@ function createCopyTestState(): AppState {
           id: 'tab-peer',
           title: 'Peer',
           noteBodyId: 'body-source',
-          homeContent: '',
           activeSubTabId: null,
           subTabs: [],
         },
@@ -71,20 +72,19 @@ function createCopyTestState(): AppState {
     domains: [{ id: 'domain-1', name: 'Domain', activeSpaceId: 'space-1', spaces: [space] }],
     spaces: [space],
     noteBodies: [
-      { id: 'body-source', frontmatter: null, aisles: [{ id: 'aisle-source', aisleBodyId: 'aisle-source', markdown: 'source text' }] },
+      { id: 'body-source', aisles: [{ id: 'aisle-source', aisleBodyId: 'aisle-source' }] },
       {
         id: 'body-target',
-        frontmatter: null,
         aisles: [
-          { id: 'aisle-target', aisleBodyId: 'aisle-target', markdown: 'target text' },
-          { id: 'aisle-target-2', aisleBodyId: 'aisle-target-2', markdown: 'second target aisle' },
+          { id: 'aisle-target', aisleBodyId: 'aisle-target' },
+          { id: 'aisle-target-2', aisleBodyId: 'aisle-target-2' },
         ],
       },
     ],
     noteAisleBodies: [
-      { id: 'aisle-source', markdown: 'source text', frontmatter: null, frontmatterStatus: 'none' },
-      { id: 'aisle-target', markdown: 'target text', frontmatter: null, frontmatterStatus: 'none' },
-      { id: 'aisle-target-2', markdown: 'second target aisle', frontmatter: null, frontmatterStatus: 'none' },
+      { id: 'aisle-source', markdown: 'source text', frontmatterStatus: 'none' },
+      { id: 'aisle-target', markdown: 'target text', frontmatterStatus: 'none' },
+      { id: 'aisle-target-2', markdown: 'second target aisle', frontmatterStatus: 'none' },
     ],
     hotkeys: {
       shortcuts: {
@@ -137,9 +137,8 @@ describe('note copy helpers', () => {
     expect(sourceInfo.noteBodyId).not.toBe('body-source')
     expect(sourceInfo.noteBodyId).not.toBe('body-target')
     expect(result.state.noteBodies).toHaveLength(3)
-    expect(result.state.noteBodies.find((body) => body.id === sourceInfo.noteBodyId)?.aisles[0]?.markdown).toBe(
-      'target text',
-    )
+    const sourceAisle = result.state.noteBodies.find((body) => body.id === sourceInfo.noteBodyId)?.aisles[0]
+    expect(aisleMarkdown(result.state, sourceAisle)).toBe('target text')
     expect(getLocationInfo(result.state, targetLocation).noteBodyId).toBe('body-target')
   })
 
@@ -170,7 +169,8 @@ describe('note copy helpers', () => {
     expect(result.status).toBe('applied')
     expect(sourceBodyId).not.toBe('body-target')
     expect(result.state.noteBodies).toHaveLength(3)
-    expect(result.state.noteBodies.find((body) => body.id === sourceBodyId)?.aisles[0]?.markdown).toBe('target text')
+    const sourceAisle = result.state.noteBodies.find((body) => body.id === sourceBodyId)?.aisles[0]
+    expect(aisleMarkdown(result.state, sourceAisle)).toBe('target text')
     expect(getLocationInfo(result.state, targetLocation).noteBodyId).toBe('body-target')
   })
 
@@ -200,9 +200,8 @@ describe('note copy helpers', () => {
     const sourceAisleBody = result.state.noteAisleBodies?.find((body) => body.id === sourceBody?.aisles[0]?.aisleBodyId)
 
     expect(result.status).toBe('applied')
-    expect(sourceBody?.frontmatter).toBeNull()
     expect(sourceAisleBody?.frontmatter).toEqual({ status: 'draft' })
-    expect(sourceBody?.aisles.map((aisle) => aisle.markdown)).toEqual(['second target aisle'])
+    expect(sourceBody?.aisles.map((aisle) => aisleMarkdown(result.state, aisle))).toEqual(['second target aisle'])
     expect(getLocationInfo(result.state, targetLocation).noteBodyId).toBe('body-target')
   })
 
@@ -218,7 +217,7 @@ describe('note copy helpers', () => {
     expect(result.status).toBe('applied')
     expect(getLocationInfo(result.state, sourceLocation).noteBodyId).toBe('body-source')
     expect(getLocationInfo(result.state, peerLocation).noteBodyId).toBe('body-source')
-    expect(result.state.noteBodies.find((body) => body.id === 'body-source')?.aisles.map((aisle) => aisle.markdown)).toEqual([
+    expect(result.state.noteBodies.find((body) => body.id === 'body-source')?.aisles.map((aisle) => aisleMarkdown(result.state, aisle))).toEqual([
       'source text',
       'second target aisle',
     ])
@@ -245,12 +244,11 @@ describe('note copy helpers', () => {
     const sourceAisleBody = result.state.noteAisleBodies?.find((body) => body.id === sourceBody?.aisles[0]?.aisleBodyId)
 
     expect(result.status).toBe('applied')
-    expect(sourceBody?.frontmatter).toBeNull()
     expect(sourceAisleBody?.frontmatter).toEqual({ owner: 'destination' })
     expect(sourceBody?.aisles).toHaveLength(1)
-    expect(sourceBody?.aisles[0]?.markdown).toBe('second target aisle')
+    expect(aisleMarkdown(result.state, sourceBody?.aisles[0])).toBe('second target aisle')
     expect(sourceBody?.aisles[0]?.aisleBodyId).toBe(targetAisle?.aisleBodyId)
-    expect(sourceBody?.aisles[0]?.markdown).not.toContain('{{tabs-context:')
+    expect(aisleMarkdown(result.state, sourceBody?.aisles[0])).not.toContain('{{tabs-context:')
   })
 
   it('appends linked all-aisle copies to the destination body', () => {
@@ -260,8 +258,8 @@ describe('note copy helpers', () => {
 
     expect(result.status).toBe('applied')
     expect(sourceBody?.aisles).toHaveLength(3)
-    expect(sourceBody?.aisles[1]?.markdown).toBe('target text')
-    expect(sourceBody?.aisles[2]?.markdown).toBe('second target aisle')
+    expect(aisleMarkdown(result.state, sourceBody?.aisles[1])).toBe('target text')
+    expect(aisleMarkdown(result.state, sourceBody?.aisles[2])).toBe('second target aisle')
     expect(sourceBody?.aisles[1]?.aisleBodyId).toBe(targetBody?.aisles[0]?.aisleBodyId)
     expect(sourceBody?.aisles[2]?.aisleBodyId).toBe(targetBody?.aisles[1]?.aisleBodyId)
   })
@@ -281,8 +279,8 @@ describe('note copy helpers', () => {
     const editedSourceBody = edited.noteBodies.find((body) => body.id === sourceBodyId)
     const editedTargetBody = edited.noteBodies.find((body) => body.id === 'body-target')
 
-    expect(editedSourceBody?.aisles[0]?.markdown).toBe('linked edit')
-    expect(editedTargetBody?.aisles.find((aisle) => aisle.id === 'aisle-target-2')?.markdown).toBe('linked edit')
+    expect(aisleMarkdown(edited, editedSourceBody?.aisles[0])).toBe('linked edit')
+    expect(aisleMarkdown(edited, editedTargetBody?.aisles.find((aisle) => aisle.id === 'aisle-target-2'))).toBe('linked edit')
   })
 
   it('allows appending linked copies of a note into its own aisles', () => {
@@ -291,7 +289,7 @@ describe('note copy helpers', () => {
 
     expect(result.status).toBe('applied')
     expect(sourceBody?.aisles).toHaveLength(2)
-    expect(sourceBody?.aisles[1]?.markdown).toBe('source text')
+    expect(aisleMarkdown(result.state, sourceBody?.aisles[1])).toBe('source text')
     expect(sourceBody?.aisles[1]?.aisleBodyId).toBe(sourceBody?.aisles[0]?.aisleBodyId)
   })
 })

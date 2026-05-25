@@ -53,7 +53,6 @@ function restoreParentTab(tabs: Tab[], restoredTab: Tab): Tab[] {
     tab.id === restoredTab.id
       ? {
           ...tab,
-          homeContent: tab.homeContent || restoredTab.homeContent,
           noteBodyId: tab.noteBodyId || restoredTab.noteBodyId,
           activeSubTabId: tab.activeSubTabId ?? restoredTab.activeSubTabId,
           subTabs: appendMissingSubTabs(tab.subTabs, restoredTab.subTabs),

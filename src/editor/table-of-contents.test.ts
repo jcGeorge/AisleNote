@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import type { NoteAisle } from '../types/app'
+import type { ResolvedNoteAisle } from '../types/app'
 import { TABLE_OF_CONTENTS_EMPTY_MESSAGE, buildTableOfContentsPanels } from './table-of-contents'
 
-const aisles: NoteAisle[] = [
-  { id: 'a', markdown: '# Alpha' },
-  { id: 'b', markdown: 'body' },
+const aisles: ResolvedNoteAisle[] = [
+  { id: 'a', aisleBodyId: 'a', markdown: '# Alpha' },
+  { id: 'b', aisleBodyId: 'b', markdown: 'body' },
 ]
 
 describe('table of contents helpers', () => {

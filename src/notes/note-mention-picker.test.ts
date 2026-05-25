@@ -29,7 +29,6 @@ function tab(id: string, title: string, subTabs: Space['data']['tabs'][number]['
     id,
     title,
     noteBodyId: `${id}-body`,
-    homeContent: '',
     activeSubTabId: subTabs[0]?.id ?? null,
     subTabs,
   }
@@ -38,8 +37,8 @@ function tab(id: string, title: string, subTabs: Space['data']['tabs'][number]['
 function createMentionState(): AppState {
   const activeSpace = space('space-a', 'Alpha space', 'tab-a', [
     tab('tab-a', 'Alpha prime', [
-      { id: 'sub-a', title: 'Alpha sub', noteBodyId: 'sub-a-body', content: '' },
-      { id: 'sub-b', title: 'Beta sub', noteBodyId: 'sub-b-body', content: '' },
+      { id: 'sub-a', title: 'Alpha sub', noteBodyId: 'sub-a-body'},
+      { id: 'sub-b', title: 'Beta sub', noteBodyId: 'sub-b-body'},
     ]),
     tab('tab-b', 'Beta prime'),
   ])

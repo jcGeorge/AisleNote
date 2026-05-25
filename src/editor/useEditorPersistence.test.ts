@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Editor } from '@toast-ui/editor'
-import type { AppState, Space } from '../types/app'
+import { getAisleMarkdown } from '../notes/note-markdown'
+import type { AppState, NoteAisle, Space } from '../types/app'
 import {
   applyEditorContentSnapshotsToState,
   applyFreshEditorSnapshotToState,
@@ -21,7 +22,6 @@ function persistenceState(): AppState {
         id: 'tab-a',
         title: 'Tab',
         noteBodyId: 'body-a',
-        homeContent: '',
         activeSubTabId: null,
         subTabs: [],
       }],
@@ -34,10 +34,13 @@ function persistenceState(): AppState {
     activeSpaceId: 'space-a',
     domains: [{ id: 'domain-a', name: 'Domain', activeSpaceId: 'space-a', spaces: [space] }],
     spaces: [space],
-    noteBodies: [{ id: 'body-a', aisles: [{ id: 'aisle-a', aisleBodyId: 'body-a-aisle', markdown: 'old' }] }],
+    noteBodies: [{ id: 'body-a', aisles: [{ id: 'aisle-a', aisleBodyId: 'body-a-aisle' }] }],
     noteAisleBodies: [{ id: 'body-a-aisle', createdAt: 1, updatedAt: 1, markdown: 'old' }],
   } as unknown as AppState
 }
+
+const aisleMarkdown = (state: AppState, aisle: NoteAisle | null | undefined) =>
+  aisle ? getAisleMarkdown(aisle, state.noteAisleBodies) : ''
 
 describe('editor persistence snapshot helpers', () => {
   it('reads fresh editor markdown for close-time snapshots', () => {
@@ -109,13 +112,13 @@ describe('editor persistence snapshot helpers', () => {
       },
     )
 
-    expect(next.noteBodies[0].aisles[0].markdown).toBe('# Fresh heading')
+    expect(aisleMarkdown(next, next.noteBodies[0].aisles[0])).toBe('# Fresh heading')
     expect(next.noteAisleBodies?.find((body) => body.id === 'body-a-aisle')?.markdown).toBe('# Fresh heading')
   })
 
   it('applies multiple pending aisle snapshots without overwriting sibling aisles', () => {
     const base = persistenceState()
-    const secondAisle = { id: 'aisle-b', aisleBodyId: 'body-b-aisle', markdown: 'old b' }
+    const secondAisle = { id: 'aisle-b', aisleBodyId: 'body-b-aisle' }
     base.noteBodies[0].aisles.push(secondAisle)
     base.noteAisleBodies?.push({ id: 'body-b-aisle', createdAt: '1', updatedAt: '1', markdown: 'old b' })
 
@@ -142,12 +145,12 @@ describe('editor persistence snapshot helpers', () => {
 
     expect(next.noteAisleBodies?.find((body) => body.id === 'body-a-aisle')?.markdown).toBe('aisle one draft 🚙')
     expect(next.noteAisleBodies?.find((body) => body.id === 'body-b-aisle')?.markdown).toBe('aisle two draft 🥺')
-    expect(next.noteBodies[0].aisles.map((aisle) => aisle.markdown)).toEqual(['aisle one draft 🚙', 'aisle two draft 🥺'])
+    expect(next.noteBodies[0].aisles.map((aisle) => aisleMarkdown(next, aisle))).toEqual(['aisle one draft 🚙', 'aisle two draft 🥺'])
   })
 
   it('keeps linked aisle bodies intentionally shared when the aisle body id is shared', () => {
     const base = persistenceState()
-    base.noteBodies[0].aisles.push({ id: 'aisle-b', aisleBodyId: 'body-a-aisle', markdown: 'old' })
+    base.noteBodies[0].aisles.push({ id: 'aisle-b', aisleBodyId: 'body-a-aisle' })
 
     const next = applyEditorContentSnapshotsToState(base, [{
       noteBodyId: 'body-a',
@@ -159,7 +162,7 @@ describe('editor persistence snapshot helpers', () => {
       markdown: 'shared linked draft',
     }])
 
-    expect(next.noteBodies[0].aisles.map((aisle) => aisle.markdown)).toEqual(['shared linked draft', 'shared linked draft'])
+    expect(next.noteBodies[0].aisles.map((aisle) => aisleMarkdown(next, aisle))).toEqual(['shared linked draft', 'shared linked draft'])
     expect(next.noteAisleBodies?.find((body) => body.id === 'body-a-aisle')?.markdown).toBe('shared linked draft')
   })
 
@@ -191,7 +194,7 @@ describe('editor persistence snapshot helpers', () => {
 
   it('lets mounted aisle snapshots win over stale pending content on save boundaries', () => {
     const base = persistenceState()
-    base.noteBodies[0].aisles.push({ id: 'aisle-b', aisleBodyId: 'body-b-aisle', markdown: 'old b' })
+    base.noteBodies[0].aisles.push({ id: 'aisle-b', aisleBodyId: 'body-b-aisle' })
     base.noteAisleBodies?.push({ id: 'body-b-aisle', createdAt: '1', updatedAt: '1', markdown: 'old b' })
 
     const next = applyEditorContentSnapshotsToState(base, [
@@ -224,7 +227,7 @@ describe('editor persistence snapshot helpers', () => {
       },
     ])
 
-    expect(next.noteBodies[0].aisles.map((aisle) => aisle.markdown)).toEqual(['live aisle one 🚙', 'live aisle two 🥺'])
+    expect(next.noteBodies[0].aisles.map((aisle) => aisleMarkdown(next, aisle))).toEqual(['live aisle one 🚙', 'live aisle two 🥺'])
     expect(next.noteAisleBodies?.find((body) => body.id === 'body-a-aisle')?.markdown).toBe('live aisle one 🚙')
     expect(next.noteAisleBodies?.find((body) => body.id === 'body-b-aisle')?.markdown).toBe('live aisle two 🥺')
   })

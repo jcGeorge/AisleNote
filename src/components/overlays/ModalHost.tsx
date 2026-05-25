@@ -275,6 +275,7 @@ export function ModalHost({
     modal.type === 'export-space' ||
     modal.type === 'copy-note' ||
     modal.type === 'deduplicate-note' ||
+    modal.type === 'linked-aisle' ||
     modal.type === 'insert-note-reference' ||
     modal.type === 'frontmatter-note' ||
     modal.type === 'sort-tabs' ||
@@ -310,6 +311,12 @@ export function ModalHost({
 
   const setDeduplicateKeepData = (keepData: boolean) => {
     if (modal.type !== 'deduplicate-note') return
+    onDeduplicateKeepDataChange(keepData)
+    onModalChange({ ...modal, keepData })
+  }
+
+  const setLinkedAisleKeepData = (keepData: boolean) => {
+    if (modal.type !== 'linked-aisle' || modal.reason !== 'note-body') return
     onDeduplicateKeepDataChange(keepData)
     onModalChange({ ...modal, keepData })
   }
@@ -720,16 +727,59 @@ export function ModalHost({
               })}
             </div>
             <label className="deduplicate-keep-data-switch form-check form-switch settings-switch">
-              <span>de-coupled items keep data?</span>
+              <span>keep data in de-coupled notes?</span>
               <input
                 type="checkbox"
                 className="form-check-input"
                 role="switch"
-                aria-label="de-coupled items keep data?"
+                aria-label="keep data in de-coupled notes?"
                 checked={modal.keepData}
                 onChange={(event) => setDeduplicateKeepData(event.target.checked)}
               />
             </label>
+          </div>
+        )}
+        {modal.type === 'linked-aisle' && (
+          <div className="linked-aisle-modal">
+            {modal.reason === 'note-body' ? (
+              <>
+                <div className="duplicate-note-list">
+                  {listNoteLocationsForBody(state, modal.noteBodyId).map((location) => {
+                    const locationKey = buildNoteLocationKey(location)
+                    return (
+                      <label key={locationKey} className="duplicate-note-choice">
+                        <input
+                          type="checkbox"
+                          checked={modal.keepLocationKeys.includes(locationKey)}
+                          onChange={(event) => {
+                            const keepLocationKeys = event.target.checked
+                              ? [...modal.keepLocationKeys, locationKey]
+                              : modal.keepLocationKeys.filter((key) => key !== locationKey)
+                            onModalChange({ ...modal, keepLocationKeys })
+                          }}
+                        />
+                        <span>{location.label}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+                <label className="deduplicate-keep-data-switch form-check form-switch settings-switch">
+                  <span>keep data in de-coupled notes?</span>
+                  <input
+                    type="checkbox"
+                    className="form-check-input"
+                    role="switch"
+                    aria-label="keep data in de-coupled notes?"
+                    checked={modal.keepData}
+                    onChange={(event) => setLinkedAisleKeepData(event.target.checked)}
+                  />
+                </label>
+              </>
+            ) : (
+              <div className="linked-aisle-summary">
+                <p>this aisle shares content with another aisle. de-couple this aisle to make it independent.</p>
+              </div>
+            )}
           </div>
         )}
         {modal.type === 'insert-note-reference' && (

@@ -1,4 +1,4 @@
-import type { AppState, NoteAisle, NoteLocation } from '../types/app'
+import type { AppState, NoteLocation, ResolvedNoteAisle } from '../types/app'
 import { getAisleMarkdown } from './note-markdown'
 import { getLocationInfo, listNoteLocationsForBody, type NoteLocationInfo } from './note-locations'
 import { type NoteContextReferencePayload, wouldCreateContextCycle } from './note-references'
@@ -13,7 +13,7 @@ export type ContextPreviewTitleButton = {
 export type ContextPreviewData = {
   targetInfo: NoteLocationInfo
   targetBody: AppState['noteBodies'][number] | null
-  selectedAisles: NoteAisle[]
+  selectedAisles: ResolvedNoteAisle[]
   recursiveBlocked: boolean
   previewText: string
   locationLabel: string

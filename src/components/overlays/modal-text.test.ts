@@ -25,8 +25,8 @@ function createModalTextState(): AppState {
     data: {
       activeTabId: 'tab-1',
       tabs: [
-        { id: 'tab-1', title: 'One', noteBodyId: 'body-1', homeContent: '', activeSubTabId: null, subTabs: [] },
-        { id: 'tab-2', title: 'Two', noteBodyId: 'body-2', homeContent: '', activeSubTabId: null, subTabs: [] },
+        { id: 'tab-1', title: 'One', noteBodyId: 'body-1', activeSubTabId: null, subTabs: [] },
+        { id: 'tab-2', title: 'Two', noteBodyId: 'body-2', activeSubTabId: null, subTabs: [] },
       ],
       deletedTabs: [],
       deletedSubTabs: [],
@@ -40,8 +40,12 @@ function createModalTextState(): AppState {
     domains: [{ id: 'domain-1', name: 'Domain', activeSpaceId: 'space-1', spaces: [space] }],
     spaces: [space],
     noteBodies: [
-      { id: 'body-1', frontmatter: null, aisles: [{ id: 'aisle-1', markdown: 'existing' }] },
-      { id: 'body-2', frontmatter: null, aisles: [{ id: 'aisle-2', markdown: 'target' }] },
+      { id: 'body-1', aisles: [{ id: 'aisle-1', aisleBodyId: 'aisle-body-1' }] },
+      { id: 'body-2', aisles: [{ id: 'aisle-2', aisleBodyId: 'aisle-body-2' }] },
+    ],
+    noteAisleBodies: [
+      { id: 'aisle-body-1', markdown: 'existing' },
+      { id: 'aisle-body-2', markdown: 'target' },
     ],
     hotkeys: {
       shortcuts: {
@@ -135,5 +139,29 @@ describe('de-couple modal text', () => {
 
     expect(text.title).toBe('de-couple')
     expect(text.body).toContain('independent copies')
+  })
+
+  it('describes linked aisle and whole-note link pages', () => {
+    const base = {
+      noteBodyId: 'body-1',
+      aisleId: 'aisle-1',
+      aisleBodyId: 'aisle-body-1',
+      location: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
+    }
+    const aisleText = getModalText({ type: 'linked-aisle', reason: 'aisle-body', ...base }, createModalTextState())
+    const noteText = getModalText(
+      {
+        type: 'linked-aisle',
+        reason: 'note-body',
+        ...base,
+        keepLocationKeys: ['domain-1::space-1::tab-1::__home__'],
+        keepData: true,
+      },
+      createModalTextState(),
+    )
+
+    expect(aisleText).toMatchObject({ title: 'linked aisle', action: 'de-couple aisle' })
+    expect(noteText).toMatchObject({ title: 'linked note', action: 'apply' })
+    expect(noteText.body).toContain('whole note is linked')
   })
 })

@@ -2,7 +2,6 @@ import { BrowserHybridStateAdapter } from './browser-hybrid-state'
 import { measureSlowAsyncOperation, measureSlowOperation } from '../performance/performance-logging'
 import type { AppStateSaveOptions } from './persistence-debounce'
 
-export const LEGACY_APP_STATE_STORAGE_KEY = 'data/notes/index.json'
 export const APP_STATE_STORAGE_KEY = 'tabs:app-state-cache:v1'
 
 export interface AppStateStore {
@@ -47,7 +46,6 @@ class BrowserLocalStorageAppStateStore implements AppStateStore {
 
 class BrowserIndexedDbHybridAppStateStore implements AppStateStore {
   private readonly cacheStore: BrowserLocalStorageAppStateStore
-  private readonly legacyCacheStore = new BrowserLocalStorageAppStateStore(LEGACY_APP_STATE_STORAGE_KEY)
   private readonly hybridAdapter = new BrowserHybridStateAdapter()
 
   constructor(storageKey: string) {
@@ -66,7 +64,6 @@ class BrowserIndexedDbHybridAppStateStore implements AppStateStore {
   async hydrate(onHydratedState: (serializedState: string) => void): Promise<void> {
     const durableState = await this.hybridAdapter.loadSerializedState()
     const cachedState = this.cacheStore.load()
-    this.legacyCacheStore.clear()
 
     if (durableState !== null) {
       if (durableState !== cachedState) {
@@ -83,7 +80,6 @@ class BrowserIndexedDbHybridAppStateStore implements AppStateStore {
 }
 
 class ElectronAppStateStore implements AppStateStore {
-  private readonly legacyRendererStore = new BrowserLocalStorageAppStateStore(LEGACY_APP_STATE_STORAGE_KEY)
   private readonly subscribers = new Set<(serializedState: string) => void>()
   private savesBlockedByLoadFailure = false
   private revision = 0
@@ -92,11 +88,17 @@ class ElectronAppStateStore implements AppStateStore {
 
   constructor() {
     window.__tabsGetAppStateRevision = () => this.revision
+    window.electronAPI?.onStorageProfileStatusUpdated?.((status) => {
+      this.savesBlockedByLoadFailure = status.status !== 'ready'
+      const nextRevision = status.revision
+      if (typeof nextRevision === 'number' && Number.isInteger(nextRevision)) {
+        this.revision = nextRevision
+      }
+    })
   }
 
   load(): string | null {
     try {
-      this.legacyRendererStore.clear()
       const loadResult = window.electronAPI?.loadAppStateResult?.()
       if (loadResult) {
         this.savesBlockedByLoadFailure = !loadResult.ok
@@ -170,6 +172,7 @@ class ElectronAppStateStore implements AppStateStore {
     const unsubscribeFromIpc =
       window.electronAPI?.onAppStateUpdated?.((payload) => {
         if (!payload || typeof payload.serializedState !== 'string' || !Number.isInteger(payload.revision)) return
+        this.savesBlockedByLoadFailure = false
         this.revision = payload.revision
         if (typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
           window.dispatchEvent(new CustomEvent('tabs:external-app-state-updated'))

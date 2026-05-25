@@ -1,13 +1,13 @@
 import { getAisleMarkdown } from './aisle-body-state'
 import { createId } from '../state/workspace'
-import type { AppState, NoteAisle } from '../types/app'
+import type { AppState, ResolvedNoteAisle } from '../types/app'
 export { getLinkedAisleIdsForNoteBody } from './link-status'
 
 export function materializeDecoupledAisleCopies(
   state: AppState,
-  aisles: NoteAisle[],
+  aisles: ResolvedNoteAisle[],
   decoupleAisleIds: Iterable<string>,
-): NoteAisle[] {
+): ResolvedNoteAisle[] {
   const decoupleIds = new Set(decoupleAisleIds)
   if (decoupleIds.size === 0) return aisles
   return aisles.map((aisle) => {

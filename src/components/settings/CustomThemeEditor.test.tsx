@@ -5,7 +5,6 @@ import type {
   AppTheme,
   CustomThemeId,
   CustomThemePalette,
-  CustomThemePaletteSlot,
   VisualsSettingsSection,
 } from '../../types/app'
 import { CustomThemeEditor } from './CustomThemeEditor'
@@ -30,7 +29,7 @@ function renderEditor({
       onVisualsSectionChange={() => undefined}
       onThemeChange={() => undefined}
       onSelectedCustomThemeChange={() => undefined}
-      onCustomThemePaletteChange={(_slot: CustomThemePaletteSlot, _value: string) => undefined}
+      onCustomThemePaletteChange={() => undefined}
       onCustomThemePaletteReset={() => undefined}
       onCustomThemePaletteSeedFromCurrentTheme={() => undefined}
     />,

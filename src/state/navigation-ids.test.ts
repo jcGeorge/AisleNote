@@ -23,9 +23,8 @@ const workspace: WorkspaceData = {
       id: 'tab-live',
       title: 'Live',
       noteBodyId: 'body-live',
-      homeContent: '',
       activeSubTabId: 'sub-live',
-      subTabs: [{ id: 'sub-live', title: 'Sub', noteBodyId: 'body-sub-live', content: '' }],
+      subTabs: [{ id: 'sub-live', title: 'Sub', noteBodyId: 'body-sub-live'}],
     },
   ],
   deletedTabs: [
@@ -36,9 +35,8 @@ const workspace: WorkspaceData = {
         id: 'tab-deleted',
         title: 'Deleted',
         noteBodyId: 'body-deleted',
-        homeContent: '',
         activeSubTabId: 'sub-deleted-nested',
-        subTabs: [{ id: 'sub-deleted-nested', title: 'Nested', noteBodyId: 'body-deleted-nested', content: '' }],
+        subTabs: [{ id: 'sub-deleted-nested', title: 'Nested', noteBodyId: 'body-deleted-nested'}],
       },
     },
   ],
@@ -48,7 +46,7 @@ const workspace: WorkspaceData = {
       parentTabId: 'tab-live',
       parentTabTitle: 'Live',
       deletedAt: 2,
-      subTab: { id: 'sub-deleted', title: 'Deleted sub', noteBodyId: 'body-sub-deleted', content: '' },
+      subTab: { id: 'sub-deleted', title: 'Deleted sub', noteBodyId: 'body-sub-deleted'},
     },
   ],
 }
@@ -77,8 +75,7 @@ function makeState(): AppState {
     noteBodies: [
       {
         id: 'note-body',
-        frontmatter: null,
-        aisles: [{ id: 'aisle-slot', aisleBodyId: 'aisle-body', markdown: '' }],
+        aisles: [{ id: 'aisle-slot', aisleBodyId: 'aisle-body' }],
       },
     ],
     noteAisleBodies: [{ id: 'aisle-body', markdown: '' }],

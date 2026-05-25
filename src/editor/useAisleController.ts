@@ -7,6 +7,7 @@ import { getLocationInfo } from '../notes/note-locations'
 import {
   cloneAisles,
   getAisleSignature,
+  resolveNoteAisles,
   syncNoteBodyAisleStructureInState,
   syncNoteBodyAislesInState,
 } from '../notes/aisle-body-state'
@@ -18,10 +19,10 @@ import { createId, MAX_NOTE_AISLES } from '../state/workspace'
 import type {
   AppState,
   ContextMenuState,
-  NoteAisle,
   NoteBody,
   NoteCursorLocation,
   NoteLocation,
+  ResolvedNoteAisle,
   ToastTone,
   ViewMode,
 } from '../types/app'
@@ -42,7 +43,7 @@ type UseAisleControllerParams = {
   viewMode: ViewMode
   activeNoteBodyId: string
   activeNoteBody: NoteBody | null
-  activeNoteAisles: NoteAisle[]
+  activeNoteAisles: ResolvedNoteAisle[]
   activeDomainIdRef: MutableRefObject<string>
   activeSpaceIdRef: MutableRefObject<string>
   activeTabIdRef: MutableRefObject<string>
@@ -154,7 +155,7 @@ export const useAisleController = ({
 
   const getCurrentAislesForEntry = (entry: AisleStructuralHistoryEntry, sourceState = buildStateWithLatestEditorContent()) => {
     const body = sourceState.noteBodies.find((candidate) => candidate.id === entry.noteBodyId) ?? null
-    return body?.aisles ?? null
+    return body ? resolveNoteAisles(body.aisles, sourceState.noteAisleBodies) : null
   }
 
   const canApplyAisleStructuralEntry = (entry: AisleStructuralHistoryEntry, direction: 'undo' | 'redo') => {
@@ -170,7 +171,9 @@ export const useAisleController = ({
     const target = getAisleStructuralTargetSnapshot(entry, direction)
     setState((previous) => {
       const body = previous.noteBodies.find((candidate) => candidate.id === entry.noteBodyId) ?? null
-      if (!body || !canApplyAisleStructuralEntryToAisles(entry, direction, body.aisles)) return previous
+      if (!body) return previous
+      const currentAisles = resolveNoteAisles(body.aisles, previous.noteAisleBodies)
+      if (!canApplyAisleStructuralEntryToAisles(entry, direction, currentAisles)) return previous
       const withAisles = syncNoteBodyAisleStructureInState(previous, entry.noteBodyId, target.aisles)
       const withLocation = applyNoteLocationToState(withAisles, target.location)
       return applyCursorLocationSnapshot(withLocation, target.locationKey, target.cursorLocation)
@@ -236,7 +239,11 @@ export const useAisleController = ({
 
     const beforeSnapshot = options.beforeSnapshot ?? captureActiveAisleStructuralSnapshot()
     if (!beforeSnapshot) return
-    const newAisle: NoteAisle = { id: createId(), markdown: normalizeMarkdownForPersistence(markdown) }
+    const newAisle: ResolvedNoteAisle = {
+      id: createId(),
+      aisleBodyId: createId(),
+      markdown: normalizeMarkdownForPersistence(markdown),
+    }
     const latestBeforeAddState = buildStateWithLatestEditorContent()
     const latestBeforeAddBody =
       latestBeforeAddState.noteBodies.find((candidate) => candidate.id === beforeSnapshot.noteBodyId) ?? null
@@ -265,7 +272,11 @@ export const useAisleController = ({
       const body = previous.noteBodies.find((candidate) => candidate.id === activeNoteBodyId)
       if (!body) return previous
       if (body.aisles.length >= MAX_NOTE_AISLES) return previous
-      const withAisles = syncNoteBodyAislesInState(previous, activeNoteBodyId, [...body.aisles, newAisle])
+      const withAisles = syncNoteBodyAislesInState(
+        previous,
+        activeNoteBodyId,
+        [...resolveNoteAisles(body.aisles, previous.noteAisleBodies), newAisle],
+      )
       return applyCursorLocationSnapshot(withAisles, afterSnapshot.locationKey, afterSnapshot.cursorLocation)
     })
     if (options.recordHistory !== false) {
@@ -278,7 +289,7 @@ export const useAisleController = ({
   }
 
   const applyAisleEditDraftToActiveNote = (
-    nextAisles: NoteAisle[],
+    nextAisles: ResolvedNoteAisle[],
     options: { decoupleAisleIds?: Iterable<string> } = {},
   ) => {
     if (!activeNoteBodyId) return

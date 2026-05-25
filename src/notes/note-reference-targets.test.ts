@@ -14,7 +14,6 @@ function createReferenceState(): AppState {
           id: 'tab',
           title: 'Tab',
           noteBodyId: 'body',
-          homeContent: '',
           activeSubTabId: null,
           subTabs: [],
         },
@@ -38,12 +37,15 @@ function createReferenceState(): AppState {
     noteBodies: [
       {
         id: 'body',
-        frontmatter: null,
         aisles: [
-          { id: 'aisle-a', markdown: '# Alpha\n\n## Beta' },
-          { id: 'aisle-b', markdown: '# Other' },
+          { id: 'aisle-a', aisleBodyId: 'aisle-a' },
+          { id: 'aisle-b', aisleBodyId: 'aisle-b' },
         ],
       },
+    ],
+    noteAisleBodies: [
+      { id: 'aisle-a', markdown: '# Alpha\n\n## Beta' },
+      { id: 'aisle-b', markdown: '# Other' },
     ],
   } as unknown as AppState
 }

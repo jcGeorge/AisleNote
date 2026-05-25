@@ -1,5 +1,5 @@
 import { createId, createTimestamp } from '../state/workspace'
-import type { FrontmatterMeta, NoteAisle, NoteAisleBody, NoteBody } from '../types/app'
+import type { FrontmatterMeta, NoteAisle, NoteAisleBody, NoteBody, ResolvedNoteAisle, ResolvedNoteBody } from '../types/app'
 
 export type IndependentNoteBodyCopy = {
   body: NoteBody
@@ -11,7 +11,7 @@ export function getPrimaryAisle(body: NoteBody | null | undefined): NoteAisle | 
 }
 
 export function getAisleBodyId(aisle: NoteAisle): string {
-  return aisle.aisleBodyId || aisle.id
+  return aisle.aisleBodyId
 }
 
 export function buildNoteAisleBodyMap(noteAisleBodies: NoteAisleBody[] | null | undefined): Map<string, NoteAisleBody> {
@@ -23,7 +23,7 @@ export function getAisleMarkdown(
   noteAisleBodies: NoteAisleBody[] | Map<string, NoteAisleBody> | null | undefined,
 ): string {
   const bodyMap = noteAisleBodies instanceof Map ? noteAisleBodies : buildNoteAisleBodyMap(noteAisleBodies)
-  return bodyMap.get(getAisleBodyId(aisle))?.markdown ?? aisle.markdown
+  return bodyMap.get(getAisleBodyId(aisle))?.markdown ?? ''
 }
 
 function cloneFrontmatterMeta(meta: FrontmatterMeta | undefined): FrontmatterMeta | undefined {
@@ -35,7 +35,6 @@ function cloneFrontmatterMeta(meta: FrontmatterMeta | undefined): FrontmatterMet
       : undefined,
     templateRemovedFieldIds: meta.templateRemovedFieldIds ? [...meta.templateRemovedFieldIds] : undefined,
     computedFields: meta.computedFields ? { ...meta.computedFields } : undefined,
-    templateDetachedKeys: meta.templateDetachedKeys ? [...meta.templateDetachedKeys] : undefined,
   }
 }
 
@@ -55,7 +54,7 @@ function cloneAisleBodyFrontmatter(source: NoteAisleBody | undefined): Pick<
 export function resolveNoteAisles(
   aisles: NoteAisle[],
   noteAisleBodies: NoteAisleBody[] | Map<string, NoteAisleBody> | null | undefined,
-): NoteAisle[] {
+): ResolvedNoteAisle[] {
   const bodyMap = noteAisleBodies instanceof Map ? noteAisleBodies : buildNoteAisleBodyMap(noteAisleBodies)
   return aisles.map((aisle) => ({
     ...aisle,
@@ -67,7 +66,7 @@ export function resolveNoteAisles(
 export function resolveNoteBody(
   body: NoteBody,
   noteAisleBodies: NoteAisleBody[] | Map<string, NoteAisleBody> | null | undefined,
-): NoteBody {
+): ResolvedNoteBody {
   return {
     ...body,
     aisles: resolveNoteAisles(body.aisles, noteAisleBodies),
@@ -89,7 +88,8 @@ export function cloneNoteBodyAsIndependentCopy(
   noteAisleBodies?: NoteAisleBody[] | Map<string, NoteAisleBody> | null,
 ): IndependentNoteBodyCopy {
   const timestamp = createTimestamp()
-  const aisles = body.aisles.length > 0 ? body.aisles : [{ id: createId(), markdown: '' }]
+  const fallbackAisleBodyId = createId()
+  const aisles = body.aisles.length > 0 ? body.aisles : [{ id: createId(), aisleBodyId: fallbackAisleBodyId }]
   const bodyMap = noteAisleBodies instanceof Map ? noteAisleBodies : buildNoteAisleBodyMap(noteAisleBodies)
   const aisleBodies = aisles.map((aisle) => ({
     id: createId(),
@@ -103,11 +103,9 @@ export function cloneNoteBodyAsIndependentCopy(
       id: createId(),
       createdAt: timestamp,
       updatedAt: timestamp,
-      frontmatter: null,
       aisles: aisleBodies.map((aisleBody) => ({
         id: createId(),
         aisleBodyId: aisleBody.id,
-        markdown: aisleBody.markdown,
       })),
     },
     aisleBodies,
@@ -120,10 +118,6 @@ export function cloneNoteBodyMetadataWithAisles(_baseBody: NoteBody, aisles: Not
     id: createId(),
     createdAt: timestamp,
     updatedAt: timestamp,
-    frontmatter: null,
     aisles,
   }
 }
-
-// Note markdown source of truth lives in noteAisleBodies[*].markdown.
-// Legacy tab.homeContent/subTab.content mirrors are maintained for older state and export paths.

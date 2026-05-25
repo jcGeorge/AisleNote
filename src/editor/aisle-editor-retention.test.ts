@@ -4,7 +4,7 @@ import {
   getAislePreviewMarkdown,
   updateRecentAisleIds,
 } from './aisle-editor-retention'
-import type { NoteAisle, PendingContent } from '../types/app'
+import type { PendingContent, ResolvedNoteAisle } from '../types/app'
 
 describe('aisle editor retention helpers', () => {
   it('retains active, near-visible, adjacent, and recent aisles', () => {
@@ -35,7 +35,7 @@ describe('aisle editor retention helpers', () => {
   })
 
   it('prefers pending and last editor markdown for fallback previews', () => {
-    const aisle: NoteAisle = { id: 'aisle-1', aisleBodyId: 'body-1', markdown: 'stored' }
+    const aisle: ResolvedNoteAisle = { id: 'aisle-1', aisleBodyId: 'body-1', markdown: 'stored' }
     const pendingContent: PendingContent = {
       noteBodyId: 'note-1',
       spaceId: 'space-1',

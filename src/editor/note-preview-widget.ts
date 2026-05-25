@@ -17,7 +17,7 @@ import {
   type NoteContextReferencePayload,
 } from '../notes/note-references'
 import type { ContextPreviewData } from '../notes/note-preview-data'
-import type { NoteAisle, NoteNavigationTarget } from '../types/app'
+import type { NoteNavigationTarget, ResolvedNoteAisle } from '../types/app'
 
 const NOTE_PREVIEW_DEFAULT_HEIGHT_REM = 20
 const NOTE_PREVIEW_EXPANDED_HEIGHT_REM = 30
@@ -143,7 +143,7 @@ export function createContextPreviewWidgetElement(
     })
   }
 
-  const renderContextEditor = (aisle: NoteAisle) => {
+  const renderContextEditor = (aisle: ResolvedNoteAisle) => {
     const shell = document.createElement('span')
     shell.className = 'context-bar-editor'
     const editorHost = document.createElement('span')

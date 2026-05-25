@@ -11,8 +11,7 @@ function createEmptyDecoupledNoteBody(): { body: NoteBody; aisleBodies: NoteAisl
     id: createId(),
     createdAt: timestamp,
     updatedAt: timestamp,
-    frontmatter: null,
-    aisles: [{ id: createId(), aisleBodyId, markdown: '' }],
+    aisles: [{ id: createId(), aisleBodyId }],
   }
   return {
     body,

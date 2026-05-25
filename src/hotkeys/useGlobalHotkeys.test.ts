@@ -6,7 +6,6 @@ const makeTab = (id: string): Tab => ({
   id,
   title: id,
   noteBodyId: `${id}-body`,
-  homeContent: '',
   activeSubTabId: null,
   subTabs: [],
 })

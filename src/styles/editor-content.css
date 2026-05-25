@@ -640,6 +640,27 @@
   color: var(--editor-heading-text) !important;
 }
 
+.note-aisle-editor-shell .toastui-editor .ProseMirror > h1:first-child,
+.note-aisle-editor-shell .toastui-editor .ProseMirror > h2:first-child,
+.note-aisle-editor-shell .toastui-editor .ProseMirror > h3:first-child,
+.note-aisle-editor-shell .toastui-editor .ProseMirror > h4:first-child,
+.note-aisle-editor-shell .toastui-editor .ProseMirror > h5:first-child,
+.note-aisle-editor-shell .toastui-editor .ProseMirror > h6:first-child,
+.note-aisle-editor-shell .toastui-editor-contents > h1:first-child,
+.note-aisle-editor-shell .toastui-editor-contents > h2:first-child,
+.note-aisle-editor-shell .toastui-editor-contents > h3:first-child,
+.note-aisle-editor-shell .toastui-editor-contents > h4:first-child,
+.note-aisle-editor-shell .toastui-editor-contents > h5:first-child,
+.note-aisle-editor-shell .toastui-editor-contents > h6:first-child,
+.aisle-editor-preview-fallback > h1:first-child,
+.aisle-editor-preview-fallback > h2:first-child,
+.aisle-editor-preview-fallback > h3:first-child,
+.aisle-editor-preview-fallback > h4:first-child,
+.aisle-editor-preview-fallback > h5:first-child,
+.aisle-editor-preview-fallback > h6:first-child {
+  margin-top: 0 !important;
+}
+
 .toastui-editor .ProseMirror .tabs-heading-collapse-heading {
   position: relative !important;
   cursor: default;

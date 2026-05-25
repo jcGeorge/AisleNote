@@ -75,6 +75,16 @@ describe('editor heading styles', () => {
       '.toastui-editor-contents h6,\n.toastui-editor .ProseMirror h6 {\n  font-size: calc(0.86rem * var(--note-font-scale, 1)) !important;',
     )
   })
+
+  it('removes top margin only for first headings in note editor surfaces', () => {
+    const css = readStyle('editor-content.css')
+    const firstHeadingRule = extractRule(
+      css,
+      '.note-aisle-editor-shell .toastui-editor .ProseMirror > h1:first-child,\n.note-aisle-editor-shell .toastui-editor .ProseMirror > h2:first-child,\n.note-aisle-editor-shell .toastui-editor .ProseMirror > h3:first-child,\n.note-aisle-editor-shell .toastui-editor .ProseMirror > h4:first-child,\n.note-aisle-editor-shell .toastui-editor .ProseMirror > h5:first-child,\n.note-aisle-editor-shell .toastui-editor .ProseMirror > h6:first-child,\n.note-aisle-editor-shell .toastui-editor-contents > h1:first-child,\n.note-aisle-editor-shell .toastui-editor-contents > h2:first-child,\n.note-aisle-editor-shell .toastui-editor-contents > h3:first-child,\n.note-aisle-editor-shell .toastui-editor-contents > h4:first-child,\n.note-aisle-editor-shell .toastui-editor-contents > h5:first-child,\n.note-aisle-editor-shell .toastui-editor-contents > h6:first-child,\n.aisle-editor-preview-fallback > h1:first-child,\n.aisle-editor-preview-fallback > h2:first-child,\n.aisle-editor-preview-fallback > h3:first-child,\n.aisle-editor-preview-fallback > h4:first-child,\n.aisle-editor-preview-fallback > h5:first-child,\n.aisle-editor-preview-fallback > h6:first-child',
+    )
+
+    expect(firstHeadingRule).toContain('margin-top: 0 !important;')
+  })
 })
 
 describe('editor annotation styles', () => {

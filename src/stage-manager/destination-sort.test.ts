@@ -7,8 +7,8 @@ import {
 } from './destination-sort'
 
 const noteBodies: NoteBody[] = [
-  { id: 'body-a', createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-03T00:00:00.000Z', frontmatter: null, aisles: [] },
-  { id: 'body-b', createdAt: '2024-01-02T00:00:00.000Z', updatedAt: '2024-01-02T00:00:00.000Z', frontmatter: null, aisles: [] },
+  { id: 'body-a', createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-03T00:00:00.000Z', aisles: [] },
+  { id: 'body-b', createdAt: '2024-01-02T00:00:00.000Z', updatedAt: '2024-01-02T00:00:00.000Z', aisles: [] },
 ]
 
 const tabs: Tab[] = [
@@ -16,7 +16,6 @@ const tabs: Tab[] = [
     id: 'z',
     title: 'Zed',
     noteBodyId: 'body-a',
-    homeContent: '',
     activeSubTabId: null,
     subTabs: [],
   },
@@ -24,11 +23,10 @@ const tabs: Tab[] = [
     id: 'a',
     title: 'Alpha',
     noteBodyId: 'body-b',
-    homeContent: '',
     activeSubTabId: null,
     subTabs: [
-      { id: 'sub-z', title: 'Zed', noteBodyId: 'body-a', content: '' },
-      { id: 'sub-a', title: 'Alpha', noteBodyId: 'body-b', content: '' },
+      { id: 'sub-z', title: 'Zed', noteBodyId: 'body-a'},
+      { id: 'sub-a', title: 'Alpha', noteBodyId: 'body-b'},
     ],
   },
 ]

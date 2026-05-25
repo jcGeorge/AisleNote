@@ -1,4 +1,4 @@
-import type { NoteAisle } from '../types/app'
+import type { ResolvedNoteAisle } from '../types/app'
 import type { HeadingOutlineItem } from './heading-outline'
 
 export const TABLE_OF_CONTENTS_EMPTY_MESSAGE =
@@ -12,8 +12,8 @@ export type TableOfContentsPanelsState = {
 
 export function buildTableOfContentsPanels(
   noteBodyId: string,
-  aisles: NoteAisle[],
-  getHeadingOutlineForAisle: (aisle: NoteAisle) => HeadingOutlineItem[],
+  aisles: ResolvedNoteAisle[],
+  getHeadingOutlineForAisle: (aisle: ResolvedNoteAisle) => HeadingOutlineItem[],
 ): TableOfContentsPanelsState | null {
   if (!noteBodyId) return null
 

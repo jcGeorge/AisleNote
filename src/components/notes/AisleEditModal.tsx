@@ -17,7 +17,7 @@ import {
   type NoteContextReferencePayload,
 } from '../../notes/note-references'
 import { createNoteAisle } from '../../state/workspace'
-import type { NoteAisle } from '../../types/app'
+import type { ResolvedNoteAisle } from '../../types/app'
 import { MarkdownPreviewParagraph } from './markdown-preview-components'
 
 const AISLE_DRAG_MIME = 'application/x-tabs-aisle-id'
@@ -71,12 +71,12 @@ function getAislePreviewSegments(
 
 type AisleEditModalProps = {
   open: boolean
-  aisles: NoteAisle[]
+  aisles: ResolvedNoteAisle[]
   linkedAisleIds?: Set<string>
   initialStagedDecoupleAisleIds?: Iterable<string>
   getContextPreviewLabel?: (payload: NoteContextReferencePayload) => string | null | undefined
   onCancel: () => void
-  onApply: (aisles: NoteAisle[], options?: { decoupleAisleIds?: string[] }) => void
+  onApply: (aisles: ResolvedNoteAisle[], options?: { decoupleAisleIds?: string[] }) => void
   onWarn: (message: string) => void
 }
 
@@ -90,7 +90,7 @@ export function AisleEditModal({
   onApply,
   onWarn,
 }: AisleEditModalProps) {
-  const [draft, setDraft] = useState<NoteAisle[]>(() => createAisleEditDraft(aisles))
+  const [draft, setDraft] = useState<ResolvedNoteAisle[]>(() => createAisleEditDraft(aisles))
   const [draggingAisleId, setDraggingAisleId] = useState<string | null>(null)
   const [dropTargetAisleId, setDropTargetAisleId] = useState<string | null>(null)
   const [stagedDecoupleAisleIds, setStagedDecoupleAisleIds] = useState<Set<string>>(

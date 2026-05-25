@@ -3,13 +3,13 @@ import { describe, expect, it } from 'vitest'
 import { BLOCK_INDENT_TOKEN } from '../../markdown/markdown-utils'
 import { buildContextToken } from '../../notes/note-references'
 import { MAX_NOTE_AISLES } from '../../state/workspace'
-import type { NoteAisle } from '../../types/app'
+import type { ResolvedNoteAisle } from '../../types/app'
 import { AisleEditModal } from './AisleEditModal'
 
-const aisle = (id: string, markdown = id): NoteAisle => ({ id, markdown })
+const aisle = (id: string, markdown = id): ResolvedNoteAisle => ({ id, aisleBodyId: id, markdown })
 
 function renderModal(
-  aisles: NoteAisle[],
+  aisles: ResolvedNoteAisle[],
   options: { linkedAisleIds?: Set<string>; initialStagedDecoupleAisleIds?: string[] } = {},
 ) {
   return renderToStaticMarkup(

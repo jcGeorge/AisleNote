@@ -20,6 +20,7 @@ import {
   DEFAULT_AUTO_REMOVE_DAYS,
   DEFAULT_DOMAIN_ID,
   DEFAULT_DOMAIN_NAME,
+  collectReferencedNoteBodyIdsFromAppState,
   ensureArray,
   getActiveDomainFromAppState,
   getDomainId,
@@ -37,14 +38,12 @@ import {
   createStoragePathFileNameAllocator,
 } from '../src/storage/storage-path-segments.js'
 import {
-  STORAGE_PROFILE_SETTINGS_FILE,
   ROOT_SPLIT_FILES,
-  LEGACY_ROOT_SPLIT_FILES,
   buildSyncedSettingsFromSplitFiles,
   extractAppSettings,
   extractEditorState,
   extractFrontmatterSettings,
-  getSyncedProfileSettingsForLoad,
+  pruneAppStateEditorLocations,
 } from '../src/storage/settings-partition.js'
 import {
   buildImageAssetUrl,
@@ -53,10 +52,9 @@ import {
   parseImageAssetUrl,
 } from '../src/markdown/image-asset-refs.js'
 
-const LEGACY_APP_STATE_RELATIVE_PATH = path.join('data', 'notes', 'index.json')
 export const HYBRID_ROOT_DIR = 'notes-data'
-const SCHEMA_VERSION = 3
-const SUPPORTED_SCHEMA_VERSIONS = new Set([1, 2, SCHEMA_VERSION])
+const SCHEMA_VERSION = 1
+const SUPPORTED_SCHEMA_VERSIONS = new Set([SCHEMA_VERSION])
 const DOMAINS_DIR = 'domains'
 const STORAGE_RECOVERY_DIR = 'storage-recovery'
 export const RECOVERY_SNAPSHOT_MAX_ACTIVE_DAYS = 30
@@ -163,45 +161,6 @@ function normalizeAppStateForExport(appState) {
       ...body,
       markdown: convertInternalTabsForExport(body?.markdown),
     })),
-    noteBodies: ensureArray(appState?.noteBodies).map((body) => ({
-      ...body,
-      aisles: ensureArray(body?.aisles).map((aisle) => ({
-        ...aisle,
-        markdown: convertInternalTabsForExport(aisle?.markdown),
-      })),
-    })),
-    spaces: ensureArray(appState?.spaces).map((space) => ({
-      ...space,
-      data: {
-        ...space?.data,
-        tabs: ensureArray(space?.data?.tabs).map((tab) => ({
-          ...tab,
-          homeContent: convertInternalTabsForExport(tab?.homeContent),
-          subTabs: ensureArray(tab?.subTabs).map((subTab) => ({
-            ...subTab,
-            content: convertInternalTabsForExport(subTab?.content),
-          })),
-        })),
-        deletedTabs: ensureArray(space?.data?.deletedTabs).map((entry) => ({
-          ...entry,
-          tab: {
-            ...entry?.tab,
-            homeContent: convertInternalTabsForExport(entry?.tab?.homeContent),
-            subTabs: ensureArray(entry?.tab?.subTabs).map((subTab) => ({
-              ...subTab,
-              content: convertInternalTabsForExport(subTab?.content),
-            })),
-          },
-        })),
-        deletedSubTabs: ensureArray(space?.data?.deletedSubTabs).map((entry) => ({
-          ...entry,
-          subTab: {
-            ...entry?.subTab,
-            content: convertInternalTabsForExport(entry?.subTab?.content),
-          },
-        })),
-      },
-    })),
   }
 }
 
@@ -223,7 +182,7 @@ function listDirectoryEntries(directoryPath) {
   }
 }
 
-function buildTrashDataFromManifestItems(trashItems, trashRoot, issues = null, issueRootPath = null) {
+function buildTrashDataFromManifestItems(trashItems) {
   const deletedTabs = ensureArray(trashItems)
     .filter((item) => item?.type === 'parent-tab')
     .map((item) => ({
@@ -238,13 +197,11 @@ function buildTrashDataFromManifestItems(trashItems, trashRoot, issues = null, i
               : '',
         title: typeof item.title === 'string' ? item.title : 'deleted tab',
         noteBodyId: typeof item.noteBodyId === 'string' ? item.noteBodyId : '',
-        homeContent: typeof item.file === 'string' ? readMarkdownBodyFile(trashRoot, item.file, issues, issueRootPath) : '',
         activeSubTabId: typeof item.activeSubTabId === 'string' ? item.activeSubTabId : null,
         subTabs: ensureArray(item.subTabs).map((subTabRecord) => ({
           id: typeof subTabRecord?.id === 'string' ? subTabRecord.id : '',
           title: typeof subTabRecord?.title === 'string' ? subTabRecord.title : 'tab',
           noteBodyId: typeof subTabRecord?.noteBodyId === 'string' ? subTabRecord.noteBodyId : '',
-          content: typeof subTabRecord?.file === 'string' ? readMarkdownBodyFile(trashRoot, subTabRecord.file, issues, issueRootPath) : '',
         })),
       },
     }))
@@ -261,7 +218,6 @@ function buildTrashDataFromManifestItems(trashItems, trashRoot, issues = null, i
         id: typeof item?.original?.subTabId === 'string' ? item.original.subTabId : typeof item.id === 'string' ? item.id : '',
         title: typeof item.title === 'string' ? item.title : 'deleted note',
         noteBodyId: typeof item.noteBodyId === 'string' ? item.noteBodyId : '',
-        content: typeof item.file === 'string' ? readMarkdownBodyFile(trashRoot, item.file, issues, issueRootPath) : '',
       },
     }))
     .filter((entry) => entry.id && entry.parentTabId && entry.subTab.id)
@@ -285,7 +241,7 @@ function readTrashData(spaceRoot, trashManifestFile, issues = null, issueRootPat
   if (!trashManifest || typeof trashManifest !== 'object') {
     return { deletedTabs: [], deletedSubTabs: [] }
   }
-  return buildTrashDataFromManifestItems(trashManifest.items, trashRoot, issues, issueRootPath)
+  return buildTrashDataFromManifestItems(trashManifest.items)
 }
 
 function addAssetToBank(assetBank, bytes, extension) {
@@ -431,10 +387,6 @@ function referenceMarkdownImages(markdown, noteFilePath, issues = null, issueRoo
       return fullMatch
     }
   })
-}
-
-function getLegacyAppStatePath(profileRootPath) {
-  return path.join(profileRootPath, LEGACY_APP_STATE_RELATIVE_PATH)
 }
 
 export function getHybridStorageRoot(profileRootPath) {
@@ -785,36 +737,6 @@ function composeAisleMarkdownForStorage(markdown, aisleBody) {
   return yaml ? `---\n${yaml}\n---\n${markdown}` : markdown
 }
 
-function getLegacyFrontmatterMetaForStorage(body) {
-  const meta = {}
-  if (typeof body?.frontmatterTemplateId === 'string') meta.templateId = body.frontmatterTemplateId
-  if (typeof body?.frontmatterTemplateDerived === 'boolean') meta.templateDerived = body.frontmatterTemplateDerived
-  if (isRecord(body?.frontmatterTemplateFieldOrigins)) meta.templateFieldOrigins = body.frontmatterTemplateFieldOrigins
-  const removedFieldIds = ensureArray(body?.frontmatterTemplateRemovedFieldIds).filter(
-    (fieldId) => typeof fieldId === 'string' && fieldId.trim().length > 0,
-  )
-  if (removedFieldIds.length > 0) meta.templateRemovedFieldIds = removedFieldIds
-  if (isRecord(body?.frontmatterComputedFields)) meta.computedFields = body.frontmatterComputedFields
-  const detachedKeys = ensureArray(body?.frontmatterTemplateDetachedKeys).filter(
-    (key) => typeof key === 'string' && key.trim().length > 0,
-  )
-  if (detachedKeys.length > 0) meta.templateDetachedKeys = detachedKeys
-  return Object.keys(meta).length > 0 ? meta : undefined
-}
-
-function getAisleBodyForStorage(noteBody, aisleIndex, aisleBody) {
-  if (aisleIndex !== 0 || aisleBody?.frontmatterStatus === 'invalid' || isRecord(aisleBody?.frontmatter)) return aisleBody
-  const legacyFrontmatter = isRecord(noteBody?.frontmatter) ? noteBody.frontmatter : null
-  const legacyMeta = getLegacyFrontmatterMetaForStorage(noteBody)
-  if (!legacyFrontmatter && !legacyMeta) return aisleBody
-  return {
-    ...(aisleBody ?? {}),
-    frontmatter: legacyFrontmatter ?? aisleBody?.frontmatter,
-    frontmatterStatus: legacyFrontmatter ? 'valid' : aisleBody?.frontmatterStatus,
-    frontmatterMeta: isRecord(aisleBody?.frontmatterMeta) ? aisleBody.frontmatterMeta : legacyMeta,
-  }
-}
-
 function buildNoteAisleBodyManifestRecord(aisleBodyId, file, aisleBody) {
   return {
     id: aisleBodyId,
@@ -830,7 +752,6 @@ function writeNoteBodyAtPath({
   noteBodyRecords,
   noteAisleBodyRecords,
   noteBodyId,
-  fallbackMarkdown,
   primaryFileRelative,
   multiAisleRootRelative,
   assetBank,
@@ -854,18 +775,9 @@ function writeNoteBodyAtPath({
       typeof firstAisle?.aisleBodyId === 'string' && firstAisle.aisleBodyId
         ? firstAisle.aisleBodyId
         : firstAisleId
-    const sourceAisleBody = getAisleBodyForStorage(
-      body,
-      0,
-      firstAisleBodyId ? noteAisleBodyMap.get(firstAisleBodyId) : undefined,
-    )
+    const sourceAisleBody = firstAisleBodyId ? noteAisleBodyMap.get(firstAisleBodyId) : undefined
     const sharedMarkdown = sourceAisleBody?.markdown
-    const markdown =
-      typeof sharedMarkdown === 'string'
-        ? sharedMarkdown
-        : typeof firstAisle?.markdown === 'string'
-          ? firstAisle.markdown
-          : fallbackMarkdown
+    const markdown = typeof sharedMarkdown === 'string' ? sharedMarkdown : ''
     const primaryFile = usesAisleFolder
       ? getAisleFile(0, firstAisleId)
       : primaryFileRelative
@@ -878,7 +790,7 @@ function writeNoteBodyAtPath({
   }
 
   if (!body || sourceAisles.length === 0) {
-    setStorageTextFile(fileMap, primaryFileRelative, externalizeMarkdownImages(fallbackMarkdown, primaryFileRelative, assetBank))
+    setStorageTextFile(fileMap, primaryFileRelative, externalizeMarkdownImages('', primaryFileRelative, assetBank))
     if (body && bodyId) {
       const aisleId = `${bodyId}-home`
       noteBodyRecords.set(bodyId, buildNoteBodyManifestRecord(body, [{ id: aisleId, aisleBodyId: aisleId, file: primaryFileRelative }]))
@@ -894,16 +806,9 @@ function writeNoteBodyAtPath({
     const aisleId = typeof aisle?.id === 'string' && aisle.id ? aisle.id : `${bodyId}-aisle-${index + 1}`
     const aisleBodyId = typeof aisle?.aisleBodyId === 'string' && aisle.aisleBodyId ? aisle.aisleBodyId : aisleId
     const file = usesAisleFolder ? getAisleFile(index, aisleId) : primaryFileRelative
-    const sourceAisleBody = getAisleBodyForStorage(body, index, noteAisleBodyMap.get(aisleBodyId))
+    const sourceAisleBody = noteAisleBodyMap.get(aisleBodyId)
     const sharedMarkdown = sourceAisleBody?.markdown
-    const markdown =
-      typeof sharedMarkdown === 'string'
-        ? sharedMarkdown
-        : typeof aisle?.markdown === 'string'
-          ? aisle.markdown
-          : index === 0
-            ? fallbackMarkdown
-            : ''
+    const markdown = typeof sharedMarkdown === 'string' ? sharedMarkdown : ''
     setStorageTextFile(
       fileMap,
       file,
@@ -974,7 +879,6 @@ function buildSpaceFiles({
       noteBodyRecords,
       noteAisleBodyRecords,
       noteBodyId: tab.noteBodyId,
-      fallbackMarkdown: typeof tab.homeContent === 'string' ? tab.homeContent : '',
       primaryFileRelative: posixPath.join(tabRoot, 'home.md'),
       multiAisleRootRelative: posixPath.join(tabRoot, 'home'),
       assetBank,
@@ -995,7 +899,6 @@ function buildSpaceFiles({
         noteBodyRecords,
         noteAisleBodyRecords,
         noteBodyId: subTab.noteBodyId,
-        fallbackMarkdown: typeof subTab.content === 'string' ? subTab.content : '',
         primaryFileRelative: posixPath.join(tabRoot, subTabFileName),
         multiAisleRootRelative: subTabRoot,
         assetBank,
@@ -1039,7 +942,6 @@ function buildSpaceFiles({
       noteBodyRecords,
       noteAisleBodyRecords,
       noteBodyId: deletedTab.noteBodyId,
-      fallbackMarkdown: typeof deletedTab.homeContent === 'string' ? deletedTab.homeContent : '',
       primaryFileRelative: posixPath.join(deletedRoot, 'home.md'),
       multiAisleRootRelative: posixPath.join(deletedRoot, 'home'),
       assetBank,
@@ -1060,7 +962,6 @@ function buildSpaceFiles({
         noteBodyRecords,
         noteAisleBodyRecords,
         noteBodyId: subTab.noteBodyId,
-        fallbackMarkdown: typeof subTab.content === 'string' ? subTab.content : '',
         primaryFileRelative: posixPath.join(deletedRoot, subTabFileName),
         multiAisleRootRelative: subTabRoot,
         assetBank,
@@ -1105,7 +1006,6 @@ function buildSpaceFiles({
       noteBodyRecords,
       noteAisleBodyRecords,
       noteBodyId: subTab.noteBodyId,
-      fallbackMarkdown: typeof subTab.content === 'string' ? subTab.content : '',
       primaryFileRelative: posixPath.join(trashRoot, deletedFileName),
       multiAisleRootRelative: deletedRoot,
       assetBank,
@@ -1150,6 +1050,7 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
   const parsedState = JSON.parse(serializedState)
   const domains = getDomainsFromAppState(parsedState)
   const noteBodies = getNoteBodiesFromAppState(parsedState)
+  const referencedNoteBodyIds = collectReferencedNoteBodyIdsFromAppState(parsedState)
   const noteAisleBodies = ensureArray(parsedState.noteAisleBodies).filter(isRecord)
   const noteBodyMap = new Map(noteBodies.map((body) => [typeof body.id === 'string' ? body.id : '', body]))
   const noteAisleBodyMap = new Map(noteAisleBodies.map((body) => [typeof body.id === 'string' ? body.id : '', body]))
@@ -1197,7 +1098,7 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
   const orphanFileForId = createStoragePathFileNameAllocator('.md')
   for (const body of noteBodies) {
     const bodyId = typeof body?.id === 'string' ? body.id : ''
-    if (!bodyId || noteBodyRecords.has(bodyId)) continue
+    if (!bodyId || noteBodyRecords.has(bodyId) || !referencedNoteBodyIds.has(bodyId)) continue
     orphanNoteBodyIds.add(bodyId)
     const orphanSegment = orphanPathForId('Orphan Note Body', bodyId, 'orphan note body')
     const orphanFileName = orphanFileForId('Orphan Note Body', bodyId, 'orphan note body')
@@ -1208,7 +1109,6 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
       noteBodyRecords,
       noteAisleBodyRecords,
       noteBodyId: bodyId,
-      fallbackMarkdown: '',
       primaryFileRelative: posixPath.join('_internal', 'orphan-bodies', orphanFileName),
       multiAisleRootRelative: posixPath.join('_internal', 'orphan-bodies', orphanSegment),
       assetBank,
@@ -1268,7 +1168,7 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
   pruneStorageRoot(tempRoot, fileMap.keys())
 }
 
-function readNoteBodiesFromRoot(rootPath, rootManifest, issues = null) {
+function readNoteBodiesFromRoot(rootManifest) {
   return ensureArray(rootManifest?.noteBodies)
     .map((body) => {
       const bodyId = typeof body?.id === 'string' ? body.id : ''
@@ -1279,11 +1179,9 @@ function readNoteBodiesFromRoot(rootPath, rootManifest, issues = null) {
           const aisleBodyId = typeof aisle?.aisleBodyId === 'string' ? aisle.aisleBodyId : ''
           const file = typeof aisle?.file === 'string' ? aisle.file : ''
           if (!aisleId || !file) return null
-          const parsedMarkdown = splitMarkdownFrontmatterForStorage(readMarkdownFile(rootPath, file, issues, rootPath))
           return {
             id: aisleId,
             aisleBodyId: aisleBodyId || aisleId,
-            markdown: parsedMarkdown.markdown,
           }
         })
         .filter(Boolean)
@@ -1291,22 +1189,6 @@ function readNoteBodiesFromRoot(rootPath, rootManifest, issues = null) {
         id: bodyId,
         createdAt: typeof body.createdAt === 'string' ? body.createdAt : undefined,
         updatedAt: typeof body.updatedAt === 'string' ? body.updatedAt : undefined,
-        frontmatter: isRecord(body.frontmatter) ? body.frontmatter : null,
-        frontmatterTemplateId: typeof body.frontmatterTemplateId === 'string' ? body.frontmatterTemplateId : undefined,
-        frontmatterTemplateDerived:
-          typeof body.frontmatterTemplateDerived === 'boolean' ? body.frontmatterTemplateDerived : undefined,
-        frontmatterTemplateFieldOrigins: isRecord(body.frontmatterTemplateFieldOrigins)
-          ? body.frontmatterTemplateFieldOrigins
-          : undefined,
-        frontmatterTemplateRemovedFieldIds: ensureArray(body.frontmatterTemplateRemovedFieldIds).filter(
-          (fieldId) => typeof fieldId === 'string' && fieldId.trim().length > 0,
-        ),
-        frontmatterComputedFields: isRecord(body.frontmatterComputedFields)
-          ? body.frontmatterComputedFields
-          : undefined,
-        frontmatterTemplateDetachedKeys: ensureArray(body.frontmatterTemplateDetachedKeys).filter(
-          (key) => typeof key === 'string' && key.trim().length > 0,
-        ),
         aisles,
       }
     })
@@ -1356,13 +1238,13 @@ function getRootSplitFileName(rootManifest, key, required, issues = null) {
         'missing-root-split-files-map',
         'error',
         manifestIssuePath,
-        'Root manifest is missing its schema 3 file map.',
+        'Root manifest is missing its schema file map.',
       )
     }
     return null
   }
   const configuredFile = files[key]
-  if (configuredFile === undefined && !required) return ROOT_SPLIT_FILES[key] ?? LEGACY_ROOT_SPLIT_FILES[key]
+  if (configuredFile === undefined && !required) return ROOT_SPLIT_FILES[key]
   if (!isRootSplitFileName(configuredFile)) {
     addStorageIssue(
       issues,
@@ -1371,7 +1253,7 @@ function getRootSplitFileName(rootManifest, key, required, issues = null) {
       manifestIssuePath,
       `Root manifest has an invalid file pointer for ${key}.`,
     )
-    return required ? null : ROOT_SPLIT_FILES[key] ?? LEGACY_ROOT_SPLIT_FILES[key]
+    return required ? null : ROOT_SPLIT_FILES[key]
   }
   return configuredFile
 }
@@ -1407,63 +1289,34 @@ function readRootSplitJsonFile(rootPath, rootManifest, key, required, issues = n
   return parsed
 }
 
-function readSchema3RootParts(rootPath, rootManifest, issues = null) {
+function readCurrentRootParts(rootPath, rootManifest, issues = null) {
   if (!isRecord(rootManifest?.files)) {
     addStorageIssue(
       issues,
       'missing-root-split-files-map',
       'error',
       path.posix.join(HYBRID_ROOT_DIR, 'manifest.json'),
-      'Root manifest is missing its schema 3 file map.',
+      'Root manifest is missing its schema file map.',
     )
     return null
   }
   const splitFiles = {}
-  const files = rootManifest.files
-  const usesNarrowSplit = typeof files.noteRegistry === 'string' || typeof files.appSettings === 'string'
-  const requiredKeys = usesNarrowSplit
-    ? ['workspaceIndex', 'navigationState', 'appSettings', 'frontmatterSettings', 'deletedWorkspace', 'noteRegistry']
-    : [
-        'workspaceIndex',
-        'navigationState',
-        'appearanceSettings',
-        'shortcutSettings',
-        'frontmatterSettings',
-        'deletedWorkspace',
-        'noteBodies',
-        'aisleBodies',
-        'orphanNoteBodies',
-        'orphanAisleBodies',
-      ]
+  const requiredKeys = ['workspaceIndex', 'navigationState', 'appSettings', 'frontmatterSettings', 'deletedWorkspace', 'noteRegistry']
   for (const key of requiredKeys) {
     const file = readRootSplitJsonFile(rootPath, rootManifest, key, true, issues)
     if (!file) return null
     splitFiles[key] = file
   }
-  splitFiles.appSettings = readRootSplitJsonFile(rootPath, rootManifest, 'appSettings', false, issues) ?? {}
-  splitFiles.appearanceSettings = readRootSplitJsonFile(rootPath, rootManifest, 'appearanceSettings', false, issues) ?? {}
-  splitFiles.shortcutSettings = readRootSplitJsonFile(rootPath, rootManifest, 'shortcutSettings', false, issues) ?? {}
-  splitFiles.uiPreferences = readRootSplitJsonFile(rootPath, rootManifest, 'uiPreferences', false, issues) ?? {}
   splitFiles.editorState = readRootSplitJsonFile(rootPath, rootManifest, 'editorState', false, issues) ?? {}
   const noteRegistry = splitFiles.noteRegistry
 
   return {
     syncedSettings: buildSyncedSettingsFromSplitFiles(splitFiles),
     noteBodiesRoot: {
-      noteBodies: noteRegistry
-        ? ensureArray(noteRegistry.noteBodies)
-        : [
-            ...ensureArray(splitFiles.noteBodies?.noteBodies),
-            ...ensureArray(splitFiles.orphanNoteBodies?.noteBodies),
-          ],
+      noteBodies: ensureArray(noteRegistry.noteBodies),
     },
     noteAisleBodiesRoot: {
-      noteAisleBodies: noteRegistry
-        ? ensureArray(noteRegistry.aisleBodies)
-        : [
-            ...ensureArray(splitFiles.aisleBodies?.noteAisleBodies),
-            ...ensureArray(splitFiles.orphanAisleBodies?.noteAisleBodies),
-          ],
+      noteAisleBodies: ensureArray(noteRegistry.aisleBodies),
     },
     domainEntries: ensureArray(splitFiles.workspaceIndex?.domains),
     deletedDomains: ensureArray(splitFiles.deletedWorkspace?.deletedDomains).filter(isRecord),
@@ -1473,25 +1326,6 @@ function readSchema3RootParts(rootPath, rootManifest, issues = null) {
         ? splitFiles.navigationState.activeDomainId
         : DEFAULT_DOMAIN_ID,
     lastOpened: isRecord(splitFiles.navigationState?.lastOpened) ? splitFiles.navigationState.lastOpened : null,
-  }
-}
-
-function readLegacyRootParts(rootPath, rootManifest, issues = null) {
-  const profileSettings = readJsonFileIfExists(path.join(rootPath, STORAGE_PROFILE_SETTINGS_FILE), issues, {
-    rootPath,
-    parseCode: 'corrupt-profile-settings',
-    severity: 'warning',
-    parseMessage: 'Profile settings are corrupt; using root manifest settings.',
-  })
-  return {
-    syncedSettings: getSyncedProfileSettingsForLoad(rootManifest, profileSettings),
-    noteBodiesRoot: rootManifest,
-    noteAisleBodiesRoot: rootManifest,
-    domainEntries: ensureArray(rootManifest?.domains),
-    deletedDomains: ensureArray(rootManifest?.deletedDomains).filter(isRecord),
-    deletedSpaces: ensureArray(rootManifest?.deletedSpaces).filter(isRecord),
-    activeDomainId: typeof rootManifest?.activeDomainId === 'string' ? rootManifest.activeDomainId : DEFAULT_DOMAIN_ID,
-    lastOpened: isRecord(rootManifest?.lastOpened) ? rootManifest.lastOpened : null,
   }
 }
 
@@ -1525,14 +1359,11 @@ function readSpace(rootPath, spaceRootRelative, spaceEntry, issues = null) {
       id: typeof tabRecord?.id === 'string' ? tabRecord.id : '',
       title: typeof tabRecord?.title === 'string' ? tabRecord.title : 'tab',
       noteBodyId: typeof tabRecord?.noteBodyId === 'string' ? tabRecord.noteBodyId : '',
-      homeContent:
-        typeof tabRecord?.homeNoteFile === 'string' ? readMarkdownBodyFile(spaceRoot, tabRecord.homeNoteFile, issues, rootPath) : '',
       activeSubTabId: typeof tabRecord?.activeSubTabId === 'string' ? tabRecord.activeSubTabId : null,
       subTabs: ensureArray(tabRecord?.subTabs).map((subTabRecord) => ({
         id: typeof subTabRecord?.id === 'string' ? subTabRecord.id : '',
         title: typeof subTabRecord?.title === 'string' ? subTabRecord.title : 'tab',
         noteBodyId: typeof subTabRecord?.noteBodyId === 'string' ? subTabRecord.noteBodyId : '',
-        content: typeof subTabRecord?.file === 'string' ? readMarkdownBodyFile(spaceRoot, subTabRecord.file, issues, rootPath) : '',
       })),
     }))
     .filter((tab) => tab.id)
@@ -1569,13 +1400,10 @@ function readSpace(rootPath, spaceRootRelative, spaceEntry, issues = null) {
 }
 
 function readHybridAppStateFromRootManifest(rootPath, rootManifest, issues = null) {
-  const rootParts =
-    rootManifest.schemaVersion === SCHEMA_VERSION
-      ? readSchema3RootParts(rootPath, rootManifest, issues)
-      : readLegacyRootParts(rootPath, rootManifest, issues)
+  const rootParts = readCurrentRootParts(rootPath, rootManifest, issues)
   if (!rootParts) return null
 
-  const noteBodies = readNoteBodiesFromRoot(rootPath, rootParts.noteBodiesRoot, issues)
+  const noteBodies = readNoteBodiesFromRoot(rootParts.noteBodiesRoot)
   const noteAisleBodies = readNoteAisleBodiesFromRoot(rootPath, rootParts.noteAisleBodiesRoot, issues)
   const domainEntries = rootParts.domainEntries
   if (domainEntries.length === 0) {
@@ -1680,7 +1508,7 @@ function readHybridAppStateFromRootManifest(rootPath, rootManifest, issues = nul
       ? rootParts.syncedSettings.theme
       : 'dawn'
 
-  return JSON.stringify({
+  return JSON.stringify(pruneAppStateEditorLocations({
     theme,
     activeDomainId,
     domains,
@@ -1693,7 +1521,7 @@ function readHybridAppStateFromRootManifest(rootPath, rootManifest, issues = nul
     hotkeys: rootParts.syncedSettings?.hotkeys,
     frontmatter: rootParts.syncedSettings?.frontmatter,
     ui: rootParts.syncedSettings?.ui,
-  })
+  }))
 }
 
 function readHybridAppStateResultFromRoot(rootPath) {
@@ -1747,9 +1575,7 @@ export function loadAppState(profileRootPath) {
 
 export function loadAppStateResult(profileRootPath) {
   const finalRoot = getHybridStorageRoot(profileRootPath)
-  const legacyPath = getLegacyAppStatePath(profileRootPath)
   const finalExists = existsSync(finalRoot)
-  const legacyExists = existsSync(legacyPath)
   const conflicts = detectStorageConflicts(profileRootPath, finalRoot)
 
   if (conflicts.length > 0) {
@@ -1792,19 +1618,12 @@ export function loadAppStateResult(profileRootPath) {
     }, issues)
   }
 
-  const legacyState = readTextFileIfExists(legacyPath)
-  if (legacyState !== null) {
-    return { ok: true, serializedState: legacyState, source: 'legacy' }
-  }
-
-  if (!legacyExists) {
-    return { ok: true, serializedState: null, source: 'empty' }
-  }
+  if (!finalExists) return { ok: true, serializedState: null, source: 'empty' }
 
   return {
     ok: false,
     serializedState: null,
-    source: finalExists ? 'hybrid' : 'legacy',
+    source: 'hybrid',
     error: 'Existing app state could not be loaded.',
   }
 }

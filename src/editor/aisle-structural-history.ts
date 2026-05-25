@@ -1,12 +1,12 @@
 import { EDITOR_BLANK_LINE_PLACEHOLDER, normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
 import { getAisleSignature, getAisleStructureSignature } from '../notes/aisle-body-state'
-import type { NoteAisle, NoteCursorLocation, NoteLocation } from '../types/app'
+import type { NoteAisle, NoteCursorLocation, NoteLocation, ResolvedNoteAisle } from '../types/app'
 
 export type AisleStructuralSnapshot = {
   location: NoteLocation
   locationKey: string
   noteBodyId: string
-  aisles: NoteAisle[]
+  aisles: ResolvedNoteAisle[]
   activeAisleId: string
   cursorLocation: NoteCursorLocation | null
 }
@@ -70,7 +70,7 @@ function hasAisleBodyIdChanges(left: NoteAisle[], right: NoteAisle[]) {
 export function canApplyAisleStructuralEntryToAisles(
   entry: AisleStructuralHistoryEntry,
   direction: 'undo' | 'redo',
-  currentAisles: NoteAisle[],
+  currentAisles: ResolvedNoteAisle[],
 ) {
   const source = getAisleStructuralSourceSnapshot(entry, direction)
   const target = getAisleStructuralTargetSnapshot(entry, direction)

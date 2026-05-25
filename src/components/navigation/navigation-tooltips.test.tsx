@@ -10,9 +10,8 @@ const activeTab: Tab = {
   id: 'tab-1',
   title: 'Alpha',
   noteBodyId: 'body-1',
-  homeContent: '',
   activeSubTabId: 'sub-1',
-  subTabs: [{ id: 'sub-1', title: 'Sub', noteBodyId: 'body-sub-1', content: '' }],
+  subTabs: [{ id: 'sub-1', title: 'Sub', noteBodyId: 'body-sub-1'}],
 }
 
 const workspace: WorkspaceData = {

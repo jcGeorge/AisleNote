@@ -13,7 +13,7 @@ const space: Space = {
   settings: { autoRemoveDeletedDays: 30 },
   data: {
     activeTabId: 'tab-1',
-    tabs: [{ id: 'tab-1', title: 'Tab', noteBodyId: 'body-1', homeContent: '', activeSubTabId: null, subTabs: [] }],
+    tabs: [{ id: 'tab-1', title: 'Tab', noteBodyId: 'body-1', activeSubTabId: null, subTabs: [] }],
     deletedTabs: [],
     deletedSubTabs: [],
   },
@@ -26,8 +26,8 @@ function createState(): AppState {
     activeSpaceId: space.id,
     domains: [{ id: 'domain-1', name: 'Domain', activeSpaceId: space.id, spaces: [space] }],
     spaces: [space],
-    noteBodies: [{ id: 'body-1', frontmatter: null, aisles: [{ id: 'aisle-1', aisleBodyId: 'aisle-body-1', markdown: '' }] }],
-    noteAisleBodies: [{ id: 'aisle-body-1', markdown: '', frontmatter: null, frontmatterStatus: 'none' }],
+    noteBodies: [{ id: 'body-1', aisles: [{ id: 'aisle-1', aisleBodyId: 'aisle-body-1' }] }],
+    noteAisleBodies: [{ id: 'aisle-body-1', markdown: '', frontmatterStatus: 'none' }],
     hotkeys: {
       shortcuts: {
         toggleTabTrash: '',
@@ -181,12 +181,15 @@ describe('link modal rendering', () => {
     state.noteBodies = [
       {
         id: 'body-1',
-        frontmatter: null,
         aisles: [
-          { id: 'aisle-1', markdown: '# Alpha\n\n## Beta' },
-          { id: 'aisle-2', markdown: 'plain text\n\n## Second' },
+          { id: 'aisle-1', aisleBodyId: 'aisle-body-1' },
+          { id: 'aisle-2', aisleBodyId: 'aisle-body-2' },
         ],
       },
+    ]
+    state.noteAisleBodies = [
+      { id: 'aisle-body-1', markdown: '# Alpha\n\n## Beta' },
+      { id: 'aisle-body-2', markdown: 'plain text\n\n## Second' },
     ]
     return state
   }
@@ -333,12 +336,15 @@ describe('link modal rendering', () => {
     state.noteBodies = [
       {
         id: 'body-1',
-        frontmatter: null,
         aisles: [
-          { id: 'aisle-1', markdown: 'plain text' },
-          { id: 'aisle-2', markdown: '# Hidden on other aisle' },
+          { id: 'aisle-1', aisleBodyId: 'aisle-body-1' },
+          { id: 'aisle-2', aisleBodyId: 'aisle-body-2' },
         ],
       },
+    ]
+    state.noteAisleBodies = [
+      { id: 'aisle-body-1', markdown: 'plain text' },
+      { id: 'aisle-body-2', markdown: '# Hidden on other aisle' },
     ]
 
     const html = renderModal(
@@ -432,9 +438,68 @@ describe('de-couple modal rendering', () => {
       keepData: true,
     })
 
-    expect(html).toContain('de-coupled items keep data?')
-    expect(html).toContain('aria-label="de-coupled items keep data?"')
+    expect(html).toContain('keep data in de-coupled notes?')
+    expect(html).toContain('aria-label="keep data in de-coupled notes?"')
     expect(html).toContain('checked=""')
+  })
+})
+
+describe('linked aisle modal rendering', () => {
+  it('renders aisle-body de-couple copy', () => {
+    const html = renderModal({
+      type: 'linked-aisle',
+      reason: 'aisle-body',
+      noteBodyId: 'body-1',
+      aisleId: 'aisle-1',
+      aisleBodyId: 'aisle-body-1',
+      location: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
+    })
+
+    expect(html).toContain('linked-aisle-modal')
+    expect(html).toContain('linked aisle')
+    expect(html).toContain('this aisle shares content with another aisle')
+    expect(html).toMatch(/<button type="button" class="btn btn-sm modal-primary-btn">de-couple aisle<\/button>/)
+    expect(html).not.toContain('duplicate-note-list')
+  })
+
+  it('renders note-location de-couple controls for whole-note links', () => {
+    const state = createState()
+    const duplicatedSpace = {
+      ...state.spaces[0],
+      data: {
+        ...state.spaces[0].data,
+        tabs: [
+          ...state.spaces[0].data.tabs,
+          { id: 'tab-2', title: 'Second', noteBodyId: 'body-1', activeSubTabId: null, subTabs: [] },
+        ],
+      },
+    }
+    state.spaces = [duplicatedSpace]
+    state.domains = [{ ...state.domains[0], spaces: [duplicatedSpace] }]
+
+    const html = renderModal(
+      {
+        type: 'linked-aisle',
+        reason: 'note-body',
+        noteBodyId: 'body-1',
+        aisleId: 'aisle-1',
+        aisleBodyId: 'aisle-body-1',
+        location: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
+        keepLocationKeys: [
+          'domain-1::space-1::tab-1::__home__',
+          'domain-1::space-1::tab-2::__home__',
+        ],
+        keepData: true,
+      },
+      state,
+    )
+
+    expect(html).toContain('linked note')
+    expect(html).toContain('duplicate-note-list')
+    expect(html).toContain('Domain / Space / Tab / home')
+    expect(html).toContain('Domain / Space / Second / home')
+    expect(html).toContain('keep data in de-coupled notes?')
+    expect(html).toMatch(/<button type="button" class="btn btn-sm modal-primary-btn">apply<\/button>/)
   })
 })
 
@@ -487,12 +552,15 @@ describe('copy modal rendering', () => {
     state.noteBodies = [
       {
         id: 'body-1',
-        frontmatter: null,
         aisles: [
-          { id: 'aisle-1', markdown: '' },
-          { id: 'aisle-2', markdown: '' },
+          { id: 'aisle-1', aisleBodyId: 'aisle-body-1' },
+          { id: 'aisle-2', aisleBodyId: 'aisle-body-2' },
         ],
       },
+    ]
+    state.noteAisleBodies = [
+      { id: 'aisle-body-1', markdown: '' },
+      { id: 'aisle-body-2', markdown: '' },
     ]
 
     const html = renderModal(

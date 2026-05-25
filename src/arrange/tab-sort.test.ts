@@ -3,17 +3,16 @@ import type { NoteBody, SubTab, Tab } from '../types/app'
 import { sortSubTabs, sortTabs } from './tab-sort'
 
 const noteBodies: NoteBody[] = [
-  { id: 'body-a', createdAt: '2024-01-02T00:00:00.000Z', updatedAt: '2024-01-04T00:00:00.000Z', frontmatter: null, aisles: [] },
-  { id: 'body-b', createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-05T00:00:00.000Z', frontmatter: null, aisles: [] },
-  { id: 'body-c', createdAt: '2024-01-03T00:00:00.000Z', updatedAt: '2024-01-03T00:00:00.000Z', frontmatter: null, aisles: [] },
-  { id: 'body-missing-date', frontmatter: null, aisles: [] },
+  { id: 'body-a', createdAt: '2024-01-02T00:00:00.000Z', updatedAt: '2024-01-04T00:00:00.000Z', aisles: [] },
+  { id: 'body-b', createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-05T00:00:00.000Z', aisles: [] },
+  { id: 'body-c', createdAt: '2024-01-03T00:00:00.000Z', updatedAt: '2024-01-03T00:00:00.000Z', aisles: [] },
+  { id: 'body-missing-date', aisles: [] },
 ]
 
 const makeTab = (id: string, title: string, noteBodyId: string): Tab => ({
   id,
   title,
   noteBodyId,
-  homeContent: '',
   activeSubTabId: null,
   subTabs: [],
 })
@@ -22,7 +21,6 @@ const makeSubTab = (id: string, title: string, noteBodyId: string): SubTab => ({
   id,
   title,
   noteBodyId,
-  content: '',
 })
 
 describe('tab sorting', () => {

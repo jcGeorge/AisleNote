@@ -3,7 +3,7 @@ import { getDestinationSortLabel } from '../arrange/tab-sort'
 import { sanitizeName } from '../export/export-data'
 import { applyTemplateToStageManagerSelection } from '../frontmatter/frontmatter-state'
 import { DEFAULT_AUTO_REMOVE_DAYS } from '../settings/defaults'
-import { applyAutoPurgeToAppState } from '../state/app-state'
+import { applyAutoPurgeToAppState, ensureNoteBodiesForAppState } from '../state/app-state'
 import { setActiveDomain, setActiveSpaceInActiveDomain } from '../state/domains'
 import { collectAppNavigationEntityIds, createReservedIdAllocator } from '../state/navigation-ids'
 import { createWorkspaceDataFromTabs } from '../state/workspace'
@@ -1157,7 +1157,7 @@ export function useStageManagerController({
   }
 
   const finishApply = (nextState: AppState, toastMessage: string, tone: ToastTone = 'success') => {
-    const sanitizedState = applyAutoPurgeToAppState(nextState)
+    const sanitizedState = ensureNoteBodiesForAppState(applyAutoPurgeToAppState(nextState))
     void commitAppStateNow(sanitizedState)
     setViewMode('main')
     setMenuOpen(false)
@@ -1362,7 +1362,6 @@ export function useStageManagerController({
           id: createEntityId(),
           title: 'main',
           noteBodyId: promotedParent.noteBodyId,
-          homeContent: promotedParent.homeContent,
           activeSubTabId: null,
           subTabs: [],
         }
@@ -1475,7 +1474,6 @@ export function useStageManagerController({
           id: destinationParentId,
           title: sanitizeName(draft.demoteNewParentName || 'untitled'),
           noteBodyId: createEntityId(),
-          homeContent: '',
           activeSubTabId: null,
           subTabs: movedSubTabs.map(cloneSubTabForTransfer),
         }
@@ -1553,7 +1551,6 @@ export function useStageManagerController({
             id: createEntityId(),
             title: sanitizeName(draft.strayNewParentName || 'untitled'),
             noteBodyId: createEntityId(),
-            homeContent: '',
             activeSubTabId: null,
             subTabs: sortDestinationSubTabs(looseMovedSubTabs.map(cloneSubTabForTransfer)),
           })
@@ -1660,7 +1657,6 @@ export function useStageManagerController({
           id: destinationParentId,
           title: sanitizeName(draft.migrateNewParentName || 'untitled'),
           noteBodyId: createEntityId(),
-          homeContent: '',
           activeSubTabId: null,
           subTabs: movedSubTabs.map(cloneSubTabForTransfer),
         }
@@ -1709,7 +1705,6 @@ export function useStageManagerController({
         id: destinationParentId,
         title: sanitizeName(draft.migrateNewParentName || 'untitled'),
         noteBodyId: createEntityId(),
-        homeContent: '',
         activeSubTabId: null,
         subTabs: sortDestinationSubTabs(movedSubTabs.map(cloneSubTabForTransfer)),
       }
@@ -1755,7 +1750,6 @@ export function useStageManagerController({
           id: destinationParentId,
           title: sanitizeName(draft.migrateNewParentName || 'untitled'),
           noteBodyId: createEntityId(),
-          homeContent: '',
           activeSubTabId: null,
           subTabs: movedSubTabs.map(cloneSubTabForTransfer),
         }

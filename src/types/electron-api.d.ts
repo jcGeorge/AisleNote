@@ -54,14 +54,14 @@ declare global {
         | {
             ok: true
             serializedState: string | null
-            source: 'hybrid' | 'legacy' | 'empty'
+            source: 'hybrid' | 'empty'
             schemaVersion?: number | null
             revision: number
           }
         | {
             ok: false
             serializedState: null
-            source: 'hybrid' | 'legacy'
+            source: 'hybrid'
             error: string
             conflicts?: string[]
             revision: number

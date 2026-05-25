@@ -48,7 +48,6 @@ function restoreSubTabToParent(
         id: parentTabId,
         title: parentTabTitle,
         noteBodyId: createParentNoteBodyId(options),
-        homeContent: '',
         activeSubTabId: subTab.id,
         subTabs: [subTab],
       },

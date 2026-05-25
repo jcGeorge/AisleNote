@@ -59,7 +59,6 @@ function serializedAppState() {
           id: 'tab-1',
           title: 'Tab',
           noteBodyId: 'body-1',
-          homeContent: 'hello',
           activeSubTabId: null,
           subTabs: [],
         },
@@ -83,15 +82,23 @@ function serializedAppState() {
     noteBodies: [
       {
         id: 'body-1',
+        aisles: [{ id: 'aisle-1', aisleBodyId: 'aisle-body-1' }],
+      },
+    ],
+    noteAisleBodies: [
+      {
+        id: 'aisle-body-1',
+        markdown: 'hello',
         frontmatter: { created: '2024-01-01' },
-        frontmatterTemplateId: 'template-1',
-        frontmatterTemplateDerived: true,
-        frontmatterTemplateFieldOrigins: {
-          created: { templateId: 'template-1', fieldId: 'field-1' },
+        frontmatterMeta: {
+          templateId: 'template-1',
+          templateDerived: true,
+          templateFieldOrigins: {
+            created: { templateId: 'template-1', fieldId: 'field-1' },
+          },
+          templateRemovedFieldIds: ['field-2'],
+          computedFields: { created: 'createdAt' },
         },
-        frontmatterTemplateRemovedFieldIds: ['field-2'],
-        frontmatterComputedFields: { created: 'createdAt' },
-        aisles: [{ id: 'aisle-1', markdown: 'hello' }],
       },
     ],
     frontmatter: {
@@ -144,9 +151,21 @@ function buildTimestamp(dayOffset, hour = 12, minute = 0) {
   return new Date(2024, 0, 1 + dayOffset, hour, minute).getTime()
 }
 
+function getAisleMarkdown(state, aisle) {
+  if (!aisle) return ''
+  const aisleBody = state.noteAisleBodies?.find((body) => body.id === aisle.aisleBodyId)
+  return aisleBody?.markdown ?? ''
+}
+
+function setFirstAisleBodyMarkdown(state, markdown) {
+  const firstAisle = state.noteBodies?.[0]?.aisles?.[0]
+  const aisleBody = state.noteAisleBodies?.find((body) => body.id === firstAisle?.aisleBodyId)
+  if (aisleBody) aisleBody.markdown = markdown
+}
+
 function serializedAppStateWithMarkdown(markdown) {
   const state = JSON.parse(serializedAppState())
-  state.noteBodies[0].aisles[0].markdown = markdown
+  setFirstAisleBodyMarkdown(state, markdown)
   return JSON.stringify(state)
 }
 
@@ -209,7 +228,7 @@ describe('Electron app state storage load result', () => {
       const parsed = JSON.parse(result.serializedState)
       expect(parsed.domains).toHaveLength(1)
       expect(parsed.noteBodies).toHaveLength(1)
-      expect(parsed.noteBodies[0].frontmatter).toBeNull()
+      expect(parsed.noteBodies[0].frontmatter).toBeUndefined()
       expect(parsed.noteAisleBodies[0].markdown).toBe('hello')
       expect(parsed.noteAisleBodies[0].frontmatter).toEqual({ created: '2024-01-01' })
       expect(parsed.noteAisleBodies[0].frontmatterMeta).toMatchObject({
@@ -300,7 +319,7 @@ describe('Electron app state storage load result', () => {
       expect(result.ok).toBe(true)
       const parsed = JSON.parse(result.serializedState)
 
-      expect(rootManifest.schemaVersion).toBe(3)
+      expect(rootManifest.schemaVersion).toBe(1)
       expect(Object.keys(rootManifest).sort()).toEqual(['files', 'schemaVersion'])
       expect(Object.keys(rootManifest.files).sort()).toEqual([
         'appSettings',
@@ -335,20 +354,111 @@ describe('Electron app state storage load result', () => {
       expect(parsed.domains[0].spaces[0].settings).toEqual({ autoRemoveDeletedDays: 21 })
     }))
 
-  it('prefers profile settings and falls back to legacy root global settings', () =>
+  it('writes only live note cursor locations to editor state', () =>
+    withTempUserDataPath((userDataPath) => {
+      const state = JSON.parse(serializedAppState())
+      const liveKey = 'domain-1::space-1::tab-1::__home__'
+      const staleKey = 'domain-1::space-1::missing-tab::__home__'
+      state.ui.noteCursorLocations = {
+        [liveKey]: {
+          activeAisleId: 'aisle-1',
+          aisles: {
+            'aisle-1': { anchor: 1, head: 1, updatedAt: 1 },
+          },
+          updatedAt: 1,
+        },
+        [staleKey]: {
+          activeAisleId: 'aisle-stale',
+          aisles: {
+            'aisle-stale': { anchor: 2, head: 2, updatedAt: 2 },
+          },
+          updatedAt: 2,
+        },
+      }
+      state.ui.headingCollapseState = {
+        'body-1': {
+          'aisle-1': ['heading-a'],
+          'missing-aisle': ['heading-stale'],
+        },
+        'missing-body': {
+          'aisle-1': ['heading-stale'],
+        },
+      }
+
+      saveAppState(userDataPath, JSON.stringify(state))
+
+      const { root, rootManifest } = getStoredWorkspacePaths(userDataPath)
+      const editorState = readJson(path.join(root, rootManifest.files.editorState))
+      expect(editorState.noteCursorLocations[liveKey]).toEqual(state.ui.noteCursorLocations[liveKey])
+      expect(editorState.noteCursorLocations[staleKey]).toBeUndefined()
+      expect(editorState.headingCollapseState).toEqual({
+        'body-1': {
+          'aisle-1': ['heading-a'],
+        },
+      })
+    }))
+
+  it('prunes stale note cursor locations when loading editor state', () =>
+    withTempUserDataPath((userDataPath) => {
+      saveAppState(userDataPath, serializedAppState())
+      const { root, rootManifest } = getStoredWorkspacePaths(userDataPath)
+      const editorStatePath = path.join(root, rootManifest.files.editorState)
+      const liveKey = 'domain-1::space-1::tab-1::__home__'
+      const staleKey = 'domain-1::space-1::missing-tab::__home__'
+      writeFileSync(
+        editorStatePath,
+        `${JSON.stringify(
+          {
+            noteCursorLocations: {
+              [liveKey]: {
+                activeAisleId: 'aisle-1',
+                aisles: {
+                  'aisle-1': { anchor: 1, head: 1, updatedAt: 1 },
+                },
+                updatedAt: 1,
+              },
+              [staleKey]: {
+                activeAisleId: 'aisle-stale',
+                aisles: {
+                  'aisle-stale': { anchor: 2, head: 2, updatedAt: 2 },
+                },
+                updatedAt: 2,
+              },
+            },
+            headingCollapseState: {
+              'body-1': {
+                'aisle-1': ['heading'],
+                'missing-aisle': ['stale'],
+              },
+              'missing-body': {
+                'aisle-1': ['stale'],
+              },
+            },
+          },
+          null,
+          2,
+        )}\n`,
+        'utf8',
+      )
+
+      const result = loadAppStateResult(userDataPath)
+      expect(result.ok).toBe(true)
+      const parsed = JSON.parse(result.serializedState)
+      expect(parsed.ui.noteCursorLocations[liveKey]).toBeDefined()
+      expect(parsed.ui.noteCursorLocations[staleKey]).toBeUndefined()
+      expect(parsed.ui.headingCollapseState).toEqual({ 'body-1': { 'aisle-1': ['heading'] } })
+    }))
+
+  it('ignores legacy profile-settings and rejects old root manifests', () =>
     withTempUserDataPath((userDataPath) => {
       saveAppState(userDataPath, serializedAppState())
       const rootPath = path.join(userDataPath, 'notes-data')
       const manifestPath = path.join(rootPath, 'manifest.json')
       const profileSettingsPath = path.join(rootPath, 'profile-settings.json')
       const rootManifest = readJson(manifestPath)
-      const workspaceIndex = readJson(path.join(rootPath, rootManifest.files.workspaceIndex))
-      const navigationState = readJson(path.join(rootPath, rootManifest.files.navigationState))
       const appSettings = readJson(path.join(rootPath, rootManifest.files.appSettings))
       const frontmatterSettings = readJson(path.join(rootPath, rootManifest.files.frontmatterSettings))
       const editorState = readJson(path.join(rootPath, rootManifest.files.editorState))
-      const deletedWorkspace = readJson(path.join(rootPath, rootManifest.files.deletedWorkspace))
-      const noteRegistry = readJson(path.join(rootPath, rootManifest.files.noteRegistry))
       const profileSettings = {
         schemaVersion: 1,
         settings: {
@@ -362,36 +472,23 @@ describe('Electron app state storage load result', () => {
           },
         },
       }
-      const legacyRootManifest = {
-        schemaVersion: 2,
-        globalSettings: {
-          ...profileSettings.settings,
-          theme: 'light',
-        },
-        domains: workspaceIndex.domains,
-        deletedDomains: deletedWorkspace.deletedDomains,
-        deletedSpaces: deletedWorkspace.deletedSpaces,
-        noteBodies: noteRegistry.noteBodies,
-        noteAisleBodies: noteRegistry.aisleBodies,
-        activeDomainId: navigationState.activeDomainId,
-      }
 
-      writeFileSync(
-        manifestPath,
-        `${JSON.stringify(legacyRootManifest, null, 2)}\n`,
-        'utf8',
-      )
       writeFileSync(
         profileSettingsPath,
         `${JSON.stringify({ ...profileSettings, settings: { ...profileSettings.settings, theme: 'blues' } }, null, 2)}\n`,
         'utf8',
       )
 
-      expect(JSON.parse(loadAppStateResult(userDataPath).serializedState).theme).toBe('blues')
+      const currentResult = loadAppStateResult(userDataPath)
+      expect(currentResult.ok).toBe(true)
+      expect(JSON.parse(currentResult.serializedState).theme).toBe('dawn')
 
-      rmSync(profileSettingsPath, { force: true })
-
-      expect(JSON.parse(loadAppStateResult(userDataPath).serializedState).theme).toBe('light')
+      writeFileSync(
+        manifestPath,
+        `${JSON.stringify({ schemaVersion: 2, files: rootManifest.files }, null, 2)}\n`,
+        'utf8',
+      )
+      expect(loadAppStateResult(userDataPath).ok).toBe(false)
     }))
 
   it('round-trips rearranged parent and sub-tab order through notes-data storage', () =>
@@ -404,18 +501,16 @@ describe('Electron app state storage load result', () => {
           id: 'tab-b',
           title: 'Beta',
           noteBodyId: 'body-b',
-          homeContent: '',
           activeSubTabId: 'sub-b2',
           subTabs: [
-            { id: 'sub-b2', title: 'Second', noteBodyId: 'body-b2', content: '' },
-            { id: 'sub-b1', title: 'First', noteBodyId: 'body-b1', content: '' },
+            { id: 'sub-b2', title: 'Second', noteBodyId: 'body-b2' },
+            { id: 'sub-b1', title: 'First', noteBodyId: 'body-b1' },
           ],
         },
         {
           id: 'tab-a',
           title: 'Alpha',
           noteBodyId: 'body-a',
-          homeContent: '',
           activeSubTabId: null,
           subTabs: [],
         },
@@ -450,7 +545,7 @@ describe('Electron app state storage load result', () => {
       const manifest = readJson(path.join(root, 'manifest.json'))
       const workspaceIndex = readJson(path.join(root, manifest.files.workspaceIndex))
 
-      expect(manifest.schemaVersion).toBe(3)
+      expect(manifest.schemaVersion).toBe(1)
       expect(Object.keys(manifest).sort()).toEqual(['files', 'schemaVersion'])
       expect(workspaceIndex.domains[0]).toMatchObject({
         id: 'domain-1',
@@ -488,9 +583,10 @@ describe('Electron app state storage load result', () => {
     withTempUserDataPath((userDataPath) => {
       const state = JSON.parse(serializedAppState())
       state.domains[0].spaces[0].data.tabs[0].subTabs = [
-        { id: 'sub-1', title: 'Sub Tab', noteBodyId: 'body-sub', content: 'sub fallback' },
+        { id: 'sub-1', title: 'Sub Tab', noteBodyId: 'body-sub' },
       ]
-      state.noteBodies.push({ id: 'body-sub', aisles: [{ id: 'aisle-sub', markdown: 'sub body' }] })
+      state.noteBodies.push({ id: 'body-sub', aisles: [{ id: 'aisle-sub', aisleBodyId: 'aisle-body-sub' }] })
+      state.noteAisleBodies.push({ id: 'aisle-body-sub', markdown: 'sub body' })
 
       saveAppState(userDataPath, JSON.stringify(state))
       const root = path.join(userDataPath, 'notes-data')
@@ -513,19 +609,27 @@ describe('Electron app state storage load result', () => {
     withTempUserDataPath((userDataPath) => {
       const state = JSON.parse(serializedAppState())
       state.noteBodies[0].aisles = [
-        { id: 'aisle-home-1', markdown: 'home one' },
-        { id: 'aisle-home-2', markdown: 'home two' },
+        { id: 'aisle-home-1', aisleBodyId: 'aisle-body-home-1' },
+        { id: 'aisle-home-2', aisleBodyId: 'aisle-body-home-2' },
+      ]
+      state.noteAisleBodies = [
+        { id: 'aisle-body-home-1', markdown: 'home one' },
+        { id: 'aisle-body-home-2', markdown: 'home two' },
       ]
       state.domains[0].spaces[0].data.tabs[0].subTabs = [
-        { id: 'sub-1', title: 'Sub Tab', noteBodyId: 'body-sub', content: 'sub fallback' },
+        { id: 'sub-1', title: 'Sub Tab', noteBodyId: 'body-sub' },
       ]
       state.noteBodies.push({
         id: 'body-sub',
         aisles: [
-          { id: 'aisle-sub-1', markdown: 'sub one' },
-          { id: 'aisle-sub-2', markdown: 'sub two' },
+          { id: 'aisle-sub-1', aisleBodyId: 'aisle-body-sub-1' },
+          { id: 'aisle-sub-2', aisleBodyId: 'aisle-body-sub-2' },
         ],
       })
+      state.noteAisleBodies.push(
+        { id: 'aisle-body-sub-1', markdown: 'sub one' },
+        { id: 'aisle-body-sub-2', markdown: 'sub two' },
+      )
 
       saveAppState(userDataPath, JSON.stringify(state))
       const initial = getStoredWorkspacePaths(userDataPath)
@@ -544,9 +648,13 @@ describe('Electron app state storage load result', () => {
       expect(initialSubBodyRecord.aisles[1].file).toMatch(/\/Sub Tab--[a-f0-9]{6}\/aisle 2--[a-f0-9]{6}\.md$/)
       expect(readFileSync(path.join(initial.spaceRoot, initialSubTab.file), 'utf8')).toBe('sub one')
 
-      state.noteBodies[0].aisles = [{ id: 'aisle-home-1', markdown: 'home collapsed' }]
+      state.noteBodies[0].aisles = [{ id: 'aisle-home-1', aisleBodyId: 'aisle-body-home-1' }]
       state.noteBodies.find((body) => body.id === 'body-sub').aisles = [
-        { id: 'aisle-sub-1', markdown: 'sub collapsed' },
+        { id: 'aisle-sub-1', aisleBodyId: 'aisle-body-sub-1' },
+      ]
+      state.noteAisleBodies = [
+        { id: 'aisle-body-home-1', markdown: 'home collapsed' },
+        { id: 'aisle-body-sub-1', markdown: 'sub collapsed' },
       ]
       saveAppState(userDataPath, JSON.stringify(state))
 
@@ -561,64 +669,6 @@ describe('Electron app state storage load result', () => {
       expect(existsSync(initialSubTabFolder)).toBe(false)
     }))
 
-  it('loads legacy sub-tab home.md paths and rewrites them on save', () =>
-    withTempUserDataPath((userDataPath) => {
-      const state = JSON.parse(serializedAppState())
-      state.domains[0].spaces[0].data.tabs[0].subTabs = [
-        { id: 'sub-1', title: 'Sub Tab', noteBodyId: 'body-sub', content: 'sub fallback' },
-      ]
-      state.noteBodies.push({ id: 'body-sub', aisles: [{ id: 'aisle-sub', markdown: 'sub body' }] })
-      saveAppState(userDataPath, JSON.stringify(state))
-
-      const {
-        root,
-        rootManifest,
-        noteRegistry,
-        noteBodiesRegistry,
-        aisleBodiesRegistry,
-        domainEntry,
-        spaceEntry,
-        spaceRoot,
-        spaceManifest,
-      } = getStoredWorkspacePaths(userDataPath)
-      const tab = spaceManifest.tabs[0]
-      const subTab = tab.subTabs[0]
-      const legacySubTabPath = subTab.path.replace(/\.md$/, '')
-      const legacySubTabFile = `${legacySubTabPath}/home.md`
-      mkdirSync(path.join(spaceRoot, legacySubTabPath), { recursive: true })
-      writeFileSync(path.join(spaceRoot, legacySubTabFile), 'legacy sub body', 'utf8')
-      subTab.path = legacySubTabPath
-      subTab.file = legacySubTabFile
-      writeFileSync(path.join(spaceRoot, 'manifest.json'), `${JSON.stringify(spaceManifest, null, 2)}\n`, 'utf8')
-      noteBodiesRegistry.noteBodies.find((body) => body.id === 'body-sub').aisles[0].file = path.posix.join(
-        'domains',
-        domainEntry.path,
-        spaceEntry.path,
-        legacySubTabFile,
-      )
-      aisleBodiesRegistry.aisleBodies.find((body) => body.id === 'aisle-sub').file = path.posix.join(
-        'domains',
-        domainEntry.path,
-        spaceEntry.path,
-        legacySubTabFile,
-      )
-      writeFileSync(path.join(root, rootManifest.files.noteRegistry), `${JSON.stringify(noteRegistry, null, 2)}\n`, 'utf8')
-
-      const result = loadAppStateResult(userDataPath)
-      const parsed = JSON.parse(result.serializedState)
-      expect(result.ok).toBe(true)
-      expect(parsed.noteBodies.find((body) => body.id === 'body-sub').aisles[0].markdown).toBe('legacy sub body')
-      expect(parsed.domains[0].spaces[0].data.tabs[0].subTabs[0].content).toBe('legacy sub body')
-
-      saveAppState(userDataPath, result.serializedState)
-      const rewritten = getStoredWorkspacePaths(userDataPath)
-      const rewrittenSubTab = rewritten.spaceManifest.tabs[0].subTabs[0]
-      expect(rewrittenSubTab.path).toMatch(new RegExp(`^${rewritten.spaceManifest.tabs[0].path}/Sub Tab--[a-f0-9]{6}\\.md$`))
-      expect(rewrittenSubTab.file).toBe(rewrittenSubTab.path)
-      expect(readFileSync(path.join(rewritten.spaceRoot, rewrittenSubTab.file), 'utf8')).toBe('legacy sub body')
-      expect(existsSync(path.join(spaceRoot, legacySubTabPath))).toBe(false)
-    }))
-
   it('round-trips linked aisle bodies through hybrid storage', () =>
     withTempUserDataPath((userDataPath) => {
       const state = JSON.parse(serializedAppState())
@@ -627,14 +677,13 @@ describe('Electron app state storage load result', () => {
         id: 'tab-2',
         title: 'Linked Tab',
         noteBodyId: 'body-2',
-        homeContent: 'stale second fallback',
         activeSubTabId: null,
         subTabs: [],
       })
       state.noteAisleBodies = [{ id: 'shared-aisle-body', markdown: 'shared aisle text' }]
       state.noteBodies = [
-        { id: 'body-1', aisles: [{ id: 'aisle-1', aisleBodyId: 'shared-aisle-body', markdown: 'stale first mirror' }] },
-        { id: 'body-2', aisles: [{ id: 'aisle-2', aisleBodyId: 'shared-aisle-body', markdown: 'stale second mirror' }] },
+        { id: 'body-1', aisles: [{ id: 'aisle-1', aisleBodyId: 'shared-aisle-body' }] },
+        { id: 'body-2', aisles: [{ id: 'aisle-2', aisleBodyId: 'shared-aisle-body' }] },
       ]
 
       saveAppState(userDataPath, JSON.stringify(state))
@@ -660,11 +709,15 @@ describe('Electron app state storage load result', () => {
     withTempUserDataPath((userDataPath) => {
       const state = JSON.parse(serializedAppState())
       state.noteBodies[0].aisles = [
-        { id: 'aisle-home', aisleBodyId: 'body-home-aisle', markdown: 'stale home mirror' },
-        { id: 'aisle-two', aisleBodyId: 'body-second-aisle', markdown: 'stale second mirror' },
+        { id: 'aisle-home', aisleBodyId: 'body-home-aisle' },
+        { id: 'aisle-two', aisleBodyId: 'body-second-aisle' },
       ]
       state.noteAisleBodies = [
-        { id: 'body-home-aisle', markdown: 'left aisle draft 🚙' },
+        {
+          id: 'body-home-aisle',
+          markdown: 'left aisle draft 🚙',
+          frontmatter: { created: '2024-01-01' },
+        },
         { id: 'body-second-aisle', markdown: 'right aisle draft 🥺' },
       ]
 
@@ -683,7 +736,7 @@ describe('Electron app state storage load result', () => {
       const parsed = JSON.parse(result.serializedState)
       expect(parsed.noteAisleBodies.find((body) => body.id === 'body-home-aisle').markdown).toBe('left aisle draft 🚙')
       expect(parsed.noteAisleBodies.find((body) => body.id === 'body-second-aisle').markdown).toBe('right aisle draft 🥺')
-      expect(parsed.noteBodies[0].aisles.map((aisle) => aisle.markdown)).toEqual([
+      expect(parsed.noteBodies[0].aisles.map((aisle) => getAisleMarkdown(parsed, aisle))).toEqual([
         'left aisle draft 🚙',
         'right aisle draft 🥺',
       ])
@@ -699,7 +752,7 @@ describe('Electron app state storage load result', () => {
       tab.title = 'Renamed Parent'
       tab.activeSubTabId = 'sub-renamed'
       tab.subTabs = [
-        { id: 'sub-renamed', title: 'Renamed Child', noteBodyId: 'body-sub-renamed', content: 'stale child fallback' },
+        { id: 'sub-renamed', title: 'Renamed Child', noteBodyId: 'body-sub-renamed' },
       ]
       space.data.deletedTabs = [
         {
@@ -709,14 +762,12 @@ describe('Electron app state storage load result', () => {
             id: 'deleted-parent',
             title: 'Deleted Parent',
             noteBodyId: 'body-deleted-parent',
-            homeContent: 'stale deleted parent fallback',
             activeSubTabId: 'deleted-child',
             subTabs: [
               {
                 id: 'deleted-child',
                 title: 'Deleted Child',
                 noteBodyId: 'body-deleted-child',
-                content: 'stale deleted child fallback',
               },
             ],
           },
@@ -732,30 +783,45 @@ describe('Electron app state storage load result', () => {
             id: 'deleted-loose-child',
             title: 'Deleted Loose Child',
             noteBodyId: 'body-deleted-loose',
-            content: 'stale deleted loose fallback',
           },
         },
       ]
       state.noteBodies[0] = {
         ...state.noteBodies[0],
-        frontmatter: {
-          status: 'ready',
-          due: null,
-          starts: null,
-          created: '2024-01-01',
-        },
-        frontmatterTemplateRemovedFieldIds: ['field-2'],
         aisles: [
-          { id: 'aisle-1', markdown: 'renamed parent body' },
-          { id: 'aisle-2', markdown: 'second aisle survives' },
+          { id: 'aisle-1', aisleBodyId: 'aisle-1' },
+          { id: 'aisle-2', aisleBodyId: 'aisle-2' },
         ],
       }
       state.noteBodies.push(
-        { id: 'body-sub-renamed', aisles: [{ id: 'aisle-sub-renamed', markdown: 'renamed child body' }] },
-        { id: 'body-deleted-parent', aisles: [{ id: 'aisle-deleted-parent', markdown: 'deleted parent body' }] },
-        { id: 'body-deleted-child', aisles: [{ id: 'aisle-deleted-child', markdown: 'deleted child body' }] },
-        { id: 'body-deleted-loose', aisles: [{ id: 'aisle-deleted-loose', markdown: 'deleted loose body' }] },
+        { id: 'body-sub-renamed', aisles: [{ id: 'aisle-sub-renamed', aisleBodyId: 'aisle-sub-renamed' }] },
+        { id: 'body-deleted-parent', aisles: [{ id: 'aisle-deleted-parent', aisleBodyId: 'aisle-deleted-parent' }] },
+        { id: 'body-deleted-child', aisles: [{ id: 'aisle-deleted-child', aisleBodyId: 'aisle-deleted-child' }] },
+        { id: 'body-deleted-loose', aisles: [{ id: 'aisle-deleted-loose', aisleBodyId: 'aisle-deleted-loose' }] },
       )
+      state.noteAisleBodies = [
+        {
+          id: 'aisle-1',
+          markdown: 'renamed parent body',
+          frontmatter: {
+            status: 'ready',
+            due: null,
+            starts: null,
+            created: '2024-01-01',
+          },
+          frontmatterMeta: {
+            templateId: 'template-1',
+            templateDerived: true,
+            computedFields: { created: 'createdAt' },
+            templateRemovedFieldIds: ['field-2'],
+          },
+        },
+        { id: 'aisle-2', markdown: 'second aisle survives' },
+        { id: 'aisle-sub-renamed', markdown: 'renamed child body' },
+        { id: 'aisle-deleted-parent', markdown: 'deleted parent body' },
+        { id: 'aisle-deleted-child', markdown: 'deleted child body' },
+        { id: 'aisle-deleted-loose', markdown: 'deleted loose body' },
+      ]
 
       saveAppState(userDataPath, JSON.stringify(state))
       const result = loadAppStateResult(userDataPath)
@@ -776,22 +842,20 @@ describe('Electron app state storage load result', () => {
         title: 'Renamed Parent',
         noteBodyId: 'body-1',
         activeSubTabId: 'sub-renamed',
-        homeContent: 'renamed parent body',
       })
       expect(parsedSubTab).toMatchObject({
         id: 'sub-renamed',
         title: 'Renamed Child',
         noteBodyId: 'body-sub-renamed',
-        content: 'renamed child body',
       })
       expect(bodyById.get('body-1')).toMatchObject({
-        frontmatter: null,
         aisles: [
-          { id: 'aisle-1', markdown: 'renamed parent body' },
-          { id: 'aisle-2', markdown: 'second aisle survives' },
+          { id: 'aisle-1', aisleBodyId: 'aisle-1' },
+          { id: 'aisle-2', aisleBodyId: 'aisle-2' },
         ],
       })
       expect(aisleBodyById.get('aisle-1')).toMatchObject({
+        markdown: 'renamed parent body',
         frontmatter: {
           status: 'ready',
           due: null,
@@ -812,14 +876,12 @@ describe('Electron app state storage load result', () => {
           id: 'deleted-parent',
           title: 'Deleted Parent',
           noteBodyId: 'body-deleted-parent',
-          homeContent: 'deleted parent body',
           activeSubTabId: 'deleted-child',
           subTabs: [
             {
               id: 'deleted-child',
               title: 'Deleted Child',
               noteBodyId: 'body-deleted-child',
-              content: 'deleted child body',
             },
           ],
         },
@@ -833,7 +895,6 @@ describe('Electron app state storage load result', () => {
           id: 'deleted-loose-child',
           title: 'Deleted Loose Child',
           noteBodyId: 'body-deleted-loose',
-          content: 'deleted loose body',
         },
       })
     }))
@@ -846,7 +907,7 @@ describe('Electron app state storage load result', () => {
       state.domains[0].spaces[0].name = longTitle
       state.domains[0].spaces[0].data.tabs[0].title = longTitle
       state.domains[0].spaces[0].data.tabs[0].subTabs = [
-        { id: 'sub-long', title: longTitle, noteBodyId: 'body-sub-long', content: 'sub fallback' },
+        { id: 'sub-long', title: longTitle, noteBodyId: 'body-sub-long' },
       ]
       state.domains[0].spaces[0].data.deletedTabs = [
         {
@@ -856,9 +917,8 @@ describe('Electron app state storage load result', () => {
             id: 'deleted-tab-long',
             title: longTitle,
             noteBodyId: 'body-deleted-tab',
-            homeContent: 'deleted tab',
             activeSubTabId: null,
-            subTabs: [{ id: 'deleted-sub-long', title: longTitle, noteBodyId: 'body-deleted-sub', content: 'deleted sub' }],
+            subTabs: [{ id: 'deleted-sub-long', title: longTitle, noteBodyId: 'body-deleted-sub' }],
           },
         },
       ]
@@ -868,7 +928,34 @@ describe('Electron app state storage load result', () => {
           parentTabId: 'tab-1',
           parentTabTitle: longTitle,
           deletedAt: 2,
-          subTab: { id: 'deleted-loose-sub-long', title: longTitle, noteBodyId: 'body-deleted-loose-sub', content: 'deleted loose sub' },
+          subTab: { id: 'deleted-loose-sub-long', title: longTitle, noteBodyId: 'body-deleted-loose-sub' },
+        },
+      ]
+      state.deletedSpaces = [
+        {
+          id: 'deleted-space-entry-long',
+          domainId: 'domain-1',
+          domainName: longTitle,
+          deletedAt: 3,
+          space: {
+            id: 'deleted-space-long',
+            name: longTitle,
+            settings: { autoRemoveDeletedDays: 7 },
+            data: {
+              activeTabId: 'deleted-workspace-tab-long',
+              tabs: [
+                {
+                  id: 'deleted-workspace-tab-long',
+                  title: longTitle,
+                  noteBodyId: 'body-deleted-workspace-long',
+                  activeSubTabId: null,
+                  subTabs: [],
+                },
+              ],
+              deletedTabs: [],
+              deletedSubTabs: [],
+            },
+          },
         },
       ]
       state.noteBodies[0].aisles.push({ id: 'aisle-long', markdown: 'second aisle' })
@@ -877,7 +964,7 @@ describe('Electron app state storage load result', () => {
         { id: 'body-deleted-tab', aisles: [{ id: 'aisle-deleted-tab', markdown: 'deleted tab' }] },
         { id: 'body-deleted-sub', aisles: [{ id: 'aisle-deleted-sub', markdown: 'deleted sub' }] },
         { id: 'body-deleted-loose-sub', aisles: [{ id: 'aisle-deleted-loose-sub', markdown: 'deleted loose sub' }] },
-        { id: 'body-orphan-long', aisles: [{ id: 'aisle-orphan-long', markdown: 'orphan' }] },
+        { id: 'body-deleted-workspace-long', aisles: [{ id: 'aisle-deleted-workspace-long', markdown: 'deleted workspace body' }] },
       )
 
       saveAppState(userDataPath, JSON.stringify(state))
@@ -894,14 +981,14 @@ describe('Electron app state storage load result', () => {
       const trashManifest = readJson(path.join(spaceRoot, 'trash', 'manifest.json'))
       const tab = spaceManifest.tabs[0]
       const bodyRecord = noteRegistry.noteBodies.find((body) => body.id === 'body-1')
-      const orphanRecord = noteRegistry.noteBodies.find((body) => body.id === 'body-orphan-long')
+      const deletedWorkspaceRecord = noteRegistry.noteBodies.find((body) => body.id === 'body-deleted-workspace-long')
       const generatedPaths = [
         `domains/${domainEntry.path}`,
         `domains/${domainEntry.path}/${spaceEntry.path}`,
         `domains/${domainEntry.path}/${spaceEntry.path}/${tab.path}`,
         `domains/${domainEntry.path}/${spaceEntry.path}/${tab.subTabs[0].path}`,
         bodyRecord.aisles[1].file,
-        orphanRecord.aisles[0].file,
+        deletedWorkspaceRecord.aisles[0].file,
         `domains/${domainEntry.path}/${spaceEntry.path}/trash/${spaceManifest.trashManifestFile}`,
         `domains/${domainEntry.path}/${spaceEntry.path}/trash/${trashManifest.items[0].path}`,
         `domains/${domainEntry.path}/${spaceEntry.path}/trash/${trashManifest.items[0].subTabs[0].path}`,
@@ -923,8 +1010,81 @@ describe('Electron app state storage load result', () => {
       expect(tab.path).toMatch(/--[a-f0-9]{6}$/)
       expect(path.posix.basename(tab.subTabs[0].path)).toMatch(/--[a-f0-9]{6}\.md$/)
       expect(path.posix.basename(bodyRecord.aisles[1].file)).toMatch(/--[a-f0-9]{6}\.md$/)
-      expect(orphanRecord.storageStatus).toBe('unlinked')
+      expect(deletedWorkspaceRecord.storageStatus).toBe('unlinked')
       generatedPaths.forEach(expectRelativePathWithinSegmentLimit)
+    }))
+
+  it('prunes unreferenced orphan note bodies while keeping deleted workspace bodies', () =>
+    withTempUserDataPath((userDataPath) => {
+      const state = JSON.parse(serializedAppState())
+      state.deletedSpaces = [
+        {
+          id: 'deleted-space-entry',
+          domainId: 'domain-1',
+          domainName: 'Domain',
+          deletedAt: Date.UTC(2026, 4, 20),
+          space: {
+            id: 'deleted-space',
+            name: 'Deleted Space',
+            settings: { autoRemoveDeletedDays: 7 },
+            data: {
+              activeTabId: 'deleted-tab',
+              tabs: [
+                {
+                  id: 'deleted-tab',
+                  title: 'Deleted Tab',
+                  noteBodyId: 'body-deleted-workspace',
+                  activeSubTabId: null,
+                  subTabs: [],
+                },
+              ],
+              deletedTabs: [],
+              deletedSubTabs: [],
+            },
+          },
+        },
+      ]
+      state.noteBodies.push(
+        {
+          id: 'body-deleted-workspace',
+          aisles: [{ id: 'aisle-deleted-workspace', aisleBodyId: 'aisle-body-deleted-workspace' }],
+        },
+        { id: 'body-orphan', aisles: [{ id: 'aisle-orphan', aisleBodyId: 'aisle-body-orphan' }] },
+      )
+      state.noteAisleBodies.push(
+        { id: 'aisle-body-deleted-workspace', markdown: 'deleted workspace body' },
+        { id: 'aisle-body-orphan', markdown: 'orphan body' },
+      )
+      state.ui.headingCollapseState = {
+        'body-deleted-workspace': {
+          'aisle-deleted-workspace': ['deleted-heading'],
+        },
+        'body-orphan': {
+          'aisle-orphan': ['orphan-heading'],
+        },
+      }
+
+      saveAppState(userDataPath, JSON.stringify(state))
+
+      const root = path.join(userDataPath, 'notes-data')
+      const rootManifest = readJson(path.join(root, 'manifest.json'))
+      const noteRegistry = readJson(path.join(root, rootManifest.files.noteRegistry))
+      const editorState = readJson(path.join(root, rootManifest.files.editorState))
+      const noteBodyIds = noteRegistry.noteBodies.map((body) => body.id)
+      const deletedWorkspaceRecord = noteRegistry.noteBodies.find((body) => body.id === 'body-deleted-workspace')
+      const parsed = JSON.parse(loadAppStateResult(userDataPath).serializedState)
+
+      expect(noteBodyIds).toContain('body-deleted-workspace')
+      expect(noteBodyIds).not.toContain('body-orphan')
+      expect(deletedWorkspaceRecord.storageStatus).toBe('unlinked')
+      expect(editorState.headingCollapseState).toEqual({
+        'body-deleted-workspace': {
+          'aisle-deleted-workspace': ['deleted-heading'],
+        },
+      })
+      expect(readFileSync(path.join(root, deletedWorkspaceRecord.aisles[0].file), 'utf8')).toBe('deleted workspace body')
+      expect(parsed.noteBodies.some((body) => body.id === 'body-deleted-workspace')).toBe(true)
+      expect(parsed.noteBodies.some((body) => body.id === 'body-orphan')).toBe(false)
     }))
 
   it('rejects a malformed current-schema topic-style profile', () =>
@@ -947,11 +1107,11 @@ describe('Electron app state storage load result', () => {
         source: 'hybrid',
         error: 'Existing app state could not be loaded.',
         health: 'error',
-        issues: [expect.objectContaining({ code: 'missing-domain-index', severity: 'error' })],
+        issues: [expect.objectContaining({ code: 'missing-root-split-files-map', severity: 'error' })],
       })
     }))
 
-  for (const schemaVersion of [4, 999]) {
+  for (const schemaVersion of [2, 3, 4, 999]) {
     it(`rejects unsupported schema ${schemaVersion} profiles`, () =>
       withTempUserDataPath((userDataPath) => {
         const root = path.join(userDataPath, 'notes-data')
@@ -970,7 +1130,7 @@ describe('Electron app state storage load result', () => {
       }))
   }
 
-  it('rejects schema 3 profiles missing required split files', () =>
+  it('rejects current schema profiles missing required split files', () =>
     withTempUserDataPath((userDataPath) => {
       saveAppState(userDataPath, serializedAppState())
       const root = path.join(userDataPath, 'notes-data')
@@ -986,7 +1146,7 @@ describe('Electron app state storage load result', () => {
       })
     }))
 
-  it('loads schema 3 profiles with optional editor split file missing', () =>
+  it('loads current schema profiles with optional editor split file missing', () =>
     withTempUserDataPath((userDataPath) => {
       const state = JSON.parse(serializedAppState())
       state.ui.settingsSection = 'toolbar'
@@ -1015,7 +1175,7 @@ describe('Electron app state storage load result', () => {
       expect(parsed.ui.noteCursorLocations).toEqual({})
     }))
 
-  it('loads temporary wider schema 3 profiles and re-saves the narrowed shape', () =>
+  it('rejects temporary wider schema 3 profiles', () =>
     withTempUserDataPath((userDataPath) => {
       saveAppState(userDataPath, serializedAppState())
       const root = path.join(userDataPath, 'notes-data')
@@ -1061,23 +1221,9 @@ describe('Electron app state storage load result', () => {
       rmSync(path.join(root, 'note-registry.json'), { force: true })
 
       const result = loadAppStateResult(userDataPath)
-      expect(result.ok).toBe(true)
-      const parsed = JSON.parse(result.serializedState)
-      expect(parsed.noteBodies[0].aisles[0].markdown).toBe('hello')
-
-      saveAppState(userDataPath, result.serializedState)
-      const nextRootManifest = readJson(path.join(root, 'manifest.json'))
-      expect(Object.keys(nextRootManifest.files).sort()).toEqual([
-        'appSettings',
-        'deletedWorkspace',
-        'editorState',
-        'frontmatterSettings',
-        'navigationState',
-        'noteRegistry',
-        'workspaceIndex',
-      ])
-      expect(existsSync(path.join(root, 'appearance-settings.json'))).toBe(false)
-      expect(existsSync(path.join(root, 'note-bodies.json'))).toBe(false)
+      expect(result.ok).toBe(false)
+      expect(result.schemaVersion).toBe(3)
+      expect(result.issues).toContainEqual(expect.objectContaining({ code: 'unsupported-root-manifest' }))
     }))
 
   it('fails existing profiles with provider conflict folders', () =>
@@ -1141,14 +1287,14 @@ describe('Electron app state storage load result', () => {
         }),
       ]))
       const parsed = JSON.parse(result.serializedState)
-      expect(parsed.domains[0].spaces[0].data.tabs[0].homeContent).toBe('')
-      expect(parsed.noteBodies[0].aisles[0].markdown).toBe('')
+      expect(parsed.domains[0].spaces[0].data.tabs[0].homeContent).toBeUndefined()
+      expect(getAisleMarkdown(parsed, parsed.noteBodies[0].aisles[0])).toBe('')
     }))
 
   it('keeps markdown references for missing image assets with a warning', () =>
     withTempUserDataPath((userDataPath) => {
       const state = JSON.parse(serializedAppState())
-      state.noteBodies[0].aisles[0].markdown = 'image ![pixel](data:image/png;base64,iVBORw0KGgo=)'
+      setFirstAisleBodyMarkdown(state, 'image ![pixel](data:image/png;base64,iVBORw0KGgo=)')
       saveAppState(userDataPath, JSON.stringify(state))
       rmSync(path.join(userDataPath, 'notes-data', 'assets'), { recursive: true, force: true })
 
@@ -1167,8 +1313,8 @@ describe('Electron app state storage load result', () => {
           path: expect.stringContaining('notes-data/assets/'),
         }),
       ]))
-      expect(parsed.noteBodies[0].aisles[0].markdown).toContain('![pixel](')
-      expect(parsed.noteBodies[0].aisles[0].markdown).not.toContain('data:image/')
+      expect(getAisleMarkdown(parsed, parsed.noteBodies[0].aisles[0])).toContain('![pixel](')
+      expect(getAisleMarkdown(parsed, parsed.noteBodies[0].aisles[0])).not.toContain('data:image/')
     }))
 
   it('loads and re-saves image assets as stable refs without inlining bytes', () =>
@@ -1176,7 +1322,7 @@ describe('Electron app state storage load result', () => {
       const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3])
       const asset = writeImageAssetToProfile(userDataPath, bytes, 'png')
       const state = JSON.parse(serializedAppState())
-      state.noteBodies[0].aisles[0].markdown = `image ![pixel](${asset.url})`
+      setFirstAisleBodyMarkdown(state, `image ![pixel](${asset.url})`)
 
       saveAppState(userDataPath, JSON.stringify(state))
 
@@ -1185,8 +1331,8 @@ describe('Electron app state storage load result', () => {
 
       const result = loadAppStateResult(userDataPath)
       const parsed = JSON.parse(result.serializedState)
-      expect(parsed.noteBodies[0].aisles[0].markdown).toContain('tabs-asset:///assets/')
-      expect(parsed.noteBodies[0].aisles[0].markdown).not.toContain('data:image/')
+      expect(getAisleMarkdown(parsed, parsed.noteBodies[0].aisles[0])).toContain('tabs-asset:///assets/')
+      expect(getAisleMarkdown(parsed, parsed.noteBodies[0].aisles[0])).not.toContain('data:image/')
 
       saveAppState(userDataPath, result.serializedState)
       expect(readFileSync(assetPath)).toEqual(bytes)
@@ -1199,7 +1345,7 @@ describe('Electron app state storage load result', () => {
       const keptAsset = writeImageAssetToProfile(userDataPath, keptBytes, 'png')
       const staleAsset = writeImageAssetToProfile(userDataPath, staleBytes, 'png')
       const state = JSON.parse(serializedAppState())
-      state.noteBodies[0].aisles[0].markdown = `image ![kept](${keptAsset.url})`
+      setFirstAisleBodyMarkdown(state, `image ![kept](${keptAsset.url})`)
 
       saveAppState(userDataPath, JSON.stringify(state))
 
@@ -1217,7 +1363,11 @@ describe('Electron app state storage load result', () => {
       const space = state.domains[0].spaces[0]
       state.noteBodies.push({
         id: 'body-deleted-parent',
-        aisles: [{ id: 'aisle-deleted-parent', markdown: `deleted ![trash](${trashAsset.url})` }],
+        aisles: [{ id: 'aisle-deleted-parent', aisleBodyId: 'aisle-body-deleted-parent' }],
+      })
+      state.noteAisleBodies.push({
+        id: 'aisle-body-deleted-parent',
+        markdown: `deleted ![trash](${trashAsset.url})`,
       })
       space.data.deletedTabs = [
         {
@@ -1227,7 +1377,6 @@ describe('Electron app state storage load result', () => {
             id: 'deleted-parent',
             title: 'Deleted Parent',
             noteBodyId: 'body-deleted-parent',
-            homeContent: `deleted ![trash](${trashAsset.url})`,
             activeSubTabId: null,
             subTabs: [],
           },
@@ -1246,7 +1395,7 @@ describe('Electron app state storage load result', () => {
       const bytes = Buffer.from([0x25, 0x50, 0x44, 0x46, 1, 2, 3])
       const asset = writeAssetToProfile(userDataPath, bytes, 'pdf')
       const state = JSON.parse(serializedAppState())
-      state.noteBodies[0].aisles[0].markdown = `[report](${asset.url})`
+      setFirstAisleBodyMarkdown(state, `[report](${asset.url})`)
 
       saveAppState(userDataPath, JSON.stringify(state))
 
@@ -1255,7 +1404,7 @@ describe('Electron app state storage load result', () => {
 
       const result = loadAppStateResult(userDataPath)
       const parsed = JSON.parse(result.serializedState)
-      expect(parsed.noteBodies[0].aisles[0].markdown).toContain('tabs-asset:///assets/')
+      expect(getAisleMarkdown(parsed, parsed.noteBodies[0].aisles[0])).toContain('tabs-asset:///assets/')
 
       saveAppState(userDataPath, result.serializedState)
       expect(readFileSync(assetPath)).toEqual(bytes)
@@ -1272,13 +1421,13 @@ describe('Electron app state storage load result', () => {
             id: 'deleted-parent',
             title: 'Deleted Parent',
             noteBodyId: 'body-deleted-parent',
-            homeContent: 'deleted body',
             activeSubTabId: null,
             subTabs: [],
           },
         },
       ]
-      state.noteBodies.push({ id: 'body-deleted-parent', aisles: [{ id: 'aisle-deleted-parent', markdown: 'deleted body' }] })
+      state.noteBodies.push({ id: 'body-deleted-parent', aisles: [{ id: 'aisle-deleted-parent', aisleBodyId: 'aisle-body-deleted-parent' }] })
+      state.noteAisleBodies.push({ id: 'aisle-body-deleted-parent', markdown: 'deleted body' })
       saveAppState(userDataPath, JSON.stringify(state))
       const { spaceRoot, spaceManifest } = getStoredWorkspacePaths(userDataPath)
       rmSync(path.join(spaceRoot, spaceManifest.trashManifestFile), { force: true })
@@ -1308,11 +1457,11 @@ describe('Electron app state storage load result', () => {
             id: 'deleted-sub',
             title: 'Deleted Sub',
             noteBodyId: 'body-deleted-sub',
-            content: 'deleted sub body',
           },
         },
       ]
-      state.noteBodies.push({ id: 'body-deleted-sub', aisles: [{ id: 'aisle-deleted-sub', markdown: 'deleted sub body' }] })
+      state.noteBodies.push({ id: 'body-deleted-sub', aisles: [{ id: 'aisle-deleted-sub', aisleBodyId: 'aisle-body-deleted-sub' }] })
+      state.noteAisleBodies.push({ id: 'aisle-body-deleted-sub', markdown: 'deleted sub body' })
       saveAppState(userDataPath, JSON.stringify(state))
       const { spaceRoot, spaceManifest } = getStoredWorkspacePaths(userDataPath)
       writeFileSync(path.join(spaceRoot, spaceManifest.trashManifestFile), '{bad', 'utf8')
@@ -1343,7 +1492,6 @@ describe('Electron app state storage load result', () => {
               id: 'tab-2',
               title: 'Second Tab',
               noteBodyId: 'body-2',
-              homeContent: 'second',
               activeSubTabId: null,
               subTabs: [],
             },
@@ -1354,7 +1502,8 @@ describe('Electron app state storage load result', () => {
       }
       state.domains[0].spaces.push(secondSpace)
       state.spaces = state.domains[0].spaces
-      state.noteBodies.push({ id: 'body-2', aisles: [{ id: 'aisle-2', markdown: 'second' }] })
+      state.noteBodies.push({ id: 'body-2', aisles: [{ id: 'aisle-2', aisleBodyId: 'aisle-body-2' }] })
+      state.noteAisleBodies.push({ id: 'aisle-body-2', markdown: 'second' })
       saveAppState(userDataPath, JSON.stringify(state))
       const { domainRoot, domainManifest } = getStoredWorkspacePaths(userDataPath)
       writeFileSync(path.join(domainRoot, domainManifest.spaces[0].path, 'manifest.json'), '{bad', 'utf8')
@@ -1386,7 +1535,6 @@ describe('Electron app state storage load result', () => {
               id: 'tab-2',
               title: 'Second Tab',
               noteBodyId: 'body-2',
-              homeContent: 'second',
               activeSubTabId: null,
               subTabs: [],
             },
@@ -1401,7 +1549,8 @@ describe('Electron app state storage load result', () => {
         activeSpaceId: 'space-2',
         spaces: [secondSpace],
       })
-      state.noteBodies.push({ id: 'body-2', aisles: [{ id: 'aisle-2', markdown: 'second' }] })
+      state.noteBodies.push({ id: 'body-2', aisles: [{ id: 'aisle-2', aisleBodyId: 'aisle-body-2' }] })
+      state.noteAisleBodies.push({ id: 'aisle-body-2', markdown: 'second' })
       saveAppState(userDataPath, JSON.stringify(state))
       const rootManifest = readJson(path.join(userDataPath, 'notes-data', 'manifest.json'))
       const workspaceIndex = readJson(path.join(userDataPath, 'notes-data', rootManifest.files.workspaceIndex))
@@ -1477,7 +1626,7 @@ describe('Electron app state storage load result', () => {
         const parsed = JSON.parse(loadAppStateResult(profileRootPath).serializedState)
 
         expect(snapshots).toHaveLength(0)
-        expect(parsed.noteBodies[0].aisles[0].markdown).toBe('third')
+        expect(getAisleMarkdown(parsed, parsed.noteBodies[0].aisles[0])).toBe('third')
       } finally {
         rmSync(profileRootPath, { recursive: true, force: true })
       }
@@ -1498,7 +1647,7 @@ describe('Electron app state storage load result', () => {
 
         expect(snapshots.length).toBeGreaterThanOrEqual(1)
         expect(snapshots[0].path).toContain(path.join(userDataPath, 'storage-recovery'))
-        expect(parsed.noteBodies[0].aisles[0].markdown).toBe('quiet')
+        expect(getAisleMarkdown(parsed, parsed.noteBodies[0].aisles[0])).toBe('quiet')
       } finally {
         rmSync(profileRootPath, { recursive: true, force: true })
       }
@@ -1587,7 +1736,7 @@ describe('Electron app state storage load result', () => {
           ok: true,
           loadResult: { ok: true },
         })
-        expect(parsed.noteBodies[0].aisles[0].markdown).toBe(`note-${timestamps.length - 2}`)
+        expect(getAisleMarkdown(parsed, parsed.noteBodies[0].aisles[0])).toBe(`note-${timestamps.length - 2}`)
         expect(listStorageRecoverySnapshots(userDataPath).length).toBeLessThanOrEqual(
           RECOVERY_SNAPSHOT_MAX_ACTIVE_DAYS * RECOVERY_SNAPSHOT_MAX_PER_DAY,
         )

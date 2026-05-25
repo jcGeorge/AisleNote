@@ -1,6 +1,5 @@
-import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
 import { clampAutoRemoveDays, DEFAULT_AUTO_REMOVE_DAYS } from '../settings/defaults'
-import type { DeletedSubTabEntry, DeletedTabEntry, NoteAisle, NoteBody, Space, SubTab, Tab, WorkspaceData } from '../types/app'
+import type { DeletedSubTabEntry, DeletedTabEntry, NoteAisle, NoteAisleBody, NoteBody, Space, SubTab, Tab, WorkspaceData } from '../types/app'
 import { createRandomId, type IdGenerator } from './navigation-ids'
 
 export const MAX_NOTE_AISLES = 8
@@ -14,32 +13,44 @@ export function createTimestamp(now = new Date()) {
   return now.toISOString()
 }
 
-export function createNoteAisle(markdown = '', generateId: IdGenerator = createId): NoteAisle {
+export function createNoteAisle(generateId: IdGenerator = createId): NoteAisle {
   const aisleBodyId = generateId()
   return {
     id: generateId(),
     aisleBodyId,
-    markdown: normalizeMarkdownForPersistence(markdown),
   }
 }
 
-export function createNoteBody(markdown = '', generateId: IdGenerator = createId): NoteBody {
+export function createNoteBodyContent(markdown = '', generateId: IdGenerator = createId): { noteBody: NoteBody; aisleBody: NoteAisleBody } {
   const timestamp = createTimestamp()
+  const aisleBodyId = generateId()
   return {
-    id: generateId(),
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    frontmatter: null,
-    aisles: [createNoteAisle(markdown, generateId)],
+    noteBody: {
+      id: generateId(),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      aisles: [{ id: generateId(), aisleBodyId }],
+    },
+    aisleBody: {
+      id: aisleBodyId,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      markdown,
+      frontmatter: null,
+      frontmatterStatus: 'none',
+    },
   }
 }
 
-export function createSubTab(title = 'tab', content?: string, generateId: IdGenerator = createId): SubTab {
+export function createNoteBody(generateId: IdGenerator = createId): NoteBody {
+  return createNoteBodyContent('', generateId).noteBody
+}
+
+export function createSubTab(title = 'tab', generateId: IdGenerator = createId): SubTab {
   return {
     id: generateId(),
     title,
     noteBodyId: generateId(),
-    content: content ?? '',
   }
 }
 
@@ -48,7 +59,6 @@ export function createTab(title = 'tab', generateId: IdGenerator = createId): Ta
     id: generateId(),
     title,
     noteBodyId: generateId(),
-    homeContent: '',
     activeSubTabId: null,
     subTabs: [],
   }
@@ -63,10 +73,8 @@ export function createDefaultWorkspaceData(generateId: IdGenerator = createId): 
         id: welcomeTabId,
         title: 'welcome',
         noteBodyId: generateId(),
-        homeContent:
-          '- This is the home note for this top-level (parent) tab.\n- Click & drag to re-arrange items in a list.\n- Sub-tabs are separate notes and start empty.\n- You can hide the home tab in the settings.\n',
         activeSubTabId: null,
-        subTabs: [createSubTab('list', '1. Add parent tab\n2. Add sub-tab\n3. Each note keeps separate content\n', generateId)],
+        subTabs: [createSubTab('list', generateId)],
       },
     ],
     deletedTabs: [],
@@ -297,15 +305,11 @@ export function normalizeWorkspaceData(raw: unknown): WorkspaceData {
           id: typeof sub.id === 'string' ? sub.id : `${tabId}-sub-${subIndex}-${createId()}`,
           title: typeof sub.title === 'string' && sub.title.trim() ? sub.title : `Note ${subIndex + 1}`,
           noteBodyId: typeof sub.noteBodyId === 'string' && sub.noteBodyId ? sub.noteBodyId : createId(),
-          content: typeof sub.content === 'string' ? sub.content : '',
           isHome: Boolean(sub.isHome),
         }))
-      const legacyHome = normalizedSubTabs.find((sub) => sub.isHome)
       const visibleSubTabs = normalizedSubTabs
         .filter((sub) => !sub.isHome)
-        .map(({ id, title, content }) => ({ id, title, content: normalizeMarkdownForPersistence(content) }))
-      const explicitHome = typeof tabLike.homeContent === 'string' ? tabLike.homeContent : ''
-      const homeContent = normalizeMarkdownForPersistence(explicitHome || legacyHome?.content || '')
+        .map(({ id, title, noteBodyId }) => ({ id, title, noteBodyId }))
       const rawActiveSubTabId = typeof tabLike.activeSubTabId === 'string' ? tabLike.activeSubTabId : null
       const activeSubTabId =
         rawActiveSubTabId && visibleSubTabs.some((sub) => sub.id === rawActiveSubTabId) ? rawActiveSubTabId : null
@@ -313,12 +317,8 @@ export function normalizeWorkspaceData(raw: unknown): WorkspaceData {
         id: tabId,
         title: tabTitle,
         noteBodyId: typeof tabLike.noteBodyId === 'string' && tabLike.noteBodyId ? tabLike.noteBodyId : createId(),
-        homeContent,
         activeSubTabId,
-        subTabs: visibleSubTabs.map((subTab) => ({
-          ...subTab,
-          noteBodyId: normalizedSubTabs.find((candidate) => candidate.id === subTab.id)?.noteBodyId ?? createId(),
-        })),
+        subTabs: visibleSubTabs,
       }
     })
     .filter((tab): tab is Tab => tab !== null)
@@ -337,7 +337,6 @@ export function normalizeWorkspaceData(raw: unknown): WorkspaceData {
       const maybeTab = entry.tab && typeof entry.tab === 'object' ? (entry.tab as Record<string, unknown>) : entry
       const id = typeof entry.id === 'string' ? entry.id : `deleted-tab-${index}-${createId()}`
       const title = typeof maybeTab.title === 'string' && maybeTab.title.trim() ? maybeTab.title : `deleted tab ${index + 1}`
-      const homeContent = normalizeMarkdownForPersistence(typeof maybeTab.homeContent === 'string' ? maybeTab.homeContent : '')
       const rawSubTabs = Array.isArray(maybeTab.subTabs) ? maybeTab.subTabs : []
       const subTabs: SubTab[] = rawSubTabs
         .filter((sub): sub is Record<string, unknown> => Boolean(sub) && typeof sub === 'object')
@@ -345,7 +344,6 @@ export function normalizeWorkspaceData(raw: unknown): WorkspaceData {
           id: typeof sub.id === 'string' ? sub.id : `${id}-sub-${subIndex}-${createId()}`,
           title: typeof sub.title === 'string' && sub.title.trim() ? sub.title : `Note ${subIndex + 1}`,
           noteBodyId: typeof sub.noteBodyId === 'string' && sub.noteBodyId ? sub.noteBodyId : createId(),
-          content: normalizeMarkdownForPersistence(typeof sub.content === 'string' ? sub.content : ''),
         }))
       const rawDeletedActive = typeof maybeTab.activeSubTabId === 'string' ? maybeTab.activeSubTabId : null
       const activeSubTabId = rawDeletedActive && subTabs.some((sub) => sub.id === rawDeletedActive) ? rawDeletedActive : null
@@ -359,7 +357,6 @@ export function normalizeWorkspaceData(raw: unknown): WorkspaceData {
           id: tabId,
           title,
           noteBodyId: typeof maybeTab.noteBodyId === 'string' && maybeTab.noteBodyId ? maybeTab.noteBodyId : createId(),
-          homeContent,
           activeSubTabId,
           subTabs,
         },
@@ -382,7 +379,6 @@ export function normalizeWorkspaceData(raw: unknown): WorkspaceData {
           id: typeof sub.id === 'string' ? sub.id : `deleted-note-${index}-${createId()}`,
           title: typeof sub.title === 'string' && sub.title.trim() ? sub.title : `deleted note ${index + 1}`,
           noteBodyId: typeof sub.noteBodyId === 'string' && sub.noteBodyId ? sub.noteBodyId : createId(),
-          content: normalizeMarkdownForPersistence(typeof sub.content === 'string' ? sub.content : ''),
         },
       }
     })

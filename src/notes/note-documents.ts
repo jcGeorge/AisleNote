@@ -1,15 +1,15 @@
-import type { AppState, NoteAisle, NoteBody } from '../types/app'
+import type { AppState, NoteBody, ResolvedNoteAisle } from '../types/app'
 import { resolveNoteBody } from './note-markdown'
 import { cloneAisles, syncNoteBodyAislesInState } from './note-state'
 
 export type NoteDocument = {
   noteBodyId: string
-  aisles: NoteAisle[]
+  aisles: ResolvedNoteAisle[]
 }
 
 export type NoteDocumentWrite = {
   noteBodyId: string
-  aisles: NoteAisle[]
+  aisles: ResolvedNoteAisle[]
 }
 
 export function getNoteDocument(state: AppState, noteBodyId: string): NoteDocument | null {

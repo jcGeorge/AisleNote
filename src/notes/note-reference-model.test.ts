@@ -31,18 +31,16 @@ function createReferenceState(markdownByBody: Record<string, string> = {}): AppS
       id: 'tab-a',
       title: 'Alpha prime',
       noteBodyId: 'body-a',
-      homeContent: '',
       activeSubTabId: 'sub-a',
       subTabs: [
-        { id: 'sub-a', title: 'Alpha sub', noteBodyId: 'body-sub-a', content: '' },
-        { id: 'sub-b', title: 'Beta sub', noteBodyId: 'body-sub-b', content: '' },
+        { id: 'sub-a', title: 'Alpha sub', noteBodyId: 'body-sub-a'},
+        { id: 'sub-b', title: 'Beta sub', noteBodyId: 'body-sub-b'},
       ],
     },
     {
       id: 'tab-b',
       title: 'Beta prime',
       noteBodyId: 'body-b',
-      homeContent: '',
       activeSubTabId: null,
       subTabs: [],
     },
@@ -52,7 +50,6 @@ function createReferenceState(markdownByBody: Record<string, string> = {}): AppS
       id: 'tab-c',
       title: 'Codex',
       noteBodyId: 'body-c',
-      homeContent: '',
       activeSubTabId: null,
       subTabs: [],
     },
@@ -62,7 +59,6 @@ function createReferenceState(markdownByBody: Record<string, string> = {}): AppS
       id: 'tab-d',
       title: 'Elsewhere',
       noteBodyId: 'body-d',
-      homeContent: '',
       activeSubTabId: null,
       subTabs: [],
     },
@@ -79,9 +75,12 @@ function createReferenceState(markdownByBody: Record<string, string> = {}): AppS
     spaces: [activeSpace, otherSpace],
     noteBodies: bodyIds.map((bodyId) => ({
       id: bodyId,
-      aisles: [{ id: `${bodyId}-aisle`, markdown: markdownByBody[bodyId] ?? `${bodyId} text` }],
+      aisles: [{ id: `${bodyId}-aisle`, aisleBodyId: `${bodyId}-aisle` }],
     })),
-    noteAisleBodies: [],
+    noteAisleBodies: bodyIds.map((bodyId) => ({
+      id: `${bodyId}-aisle`,
+      markdown: markdownByBody[bodyId] ?? `${bodyId} text`,
+    })),
     ui: { lastLinkInsertMode: 'note' },
   } as unknown as AppState
 }

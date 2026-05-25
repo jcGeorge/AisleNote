@@ -107,6 +107,83 @@ export function getNoteBodiesFromAppState(appState) {
 }
 
 /**
+ * @param {Set<string>} ids
+ * @param {unknown} value
+ */
+function addNoteBodyId(ids, value) {
+  if (typeof value === 'string' && value) ids.add(value)
+}
+
+/**
+ * @param {Record<string, unknown>} tab
+ * @param {Set<string>} ids
+ */
+function collectNoteBodyIdsFromTab(tab, ids) {
+  addNoteBodyId(ids, tab.noteBodyId)
+  ensureArray(tab.subTabs).filter(isRecord).forEach((subTab) => {
+    addNoteBodyId(ids, subTab.noteBodyId)
+  })
+}
+
+/**
+ * @param {unknown} data
+ * @param {Set<string>} ids
+ */
+function collectNoteBodyIdsFromWorkspaceData(data, ids) {
+  if (!isRecord(data)) return
+  ensureArray(data.tabs).filter(isRecord).forEach((tab) => {
+    collectNoteBodyIdsFromTab(tab, ids)
+  })
+  ensureArray(data.deletedTabs).filter(isRecord).forEach((entry) => {
+    if (isRecord(entry.tab)) collectNoteBodyIdsFromTab(entry.tab, ids)
+  })
+  ensureArray(data.deletedSubTabs).filter(isRecord).forEach((entry) => {
+    if (isRecord(entry.subTab)) addNoteBodyId(ids, entry.subTab.noteBodyId)
+  })
+}
+
+/**
+ * @param {unknown} space
+ * @param {Set<string>} ids
+ */
+function collectNoteBodyIdsFromSpace(space, ids) {
+  if (!isRecord(space)) return
+  collectNoteBodyIdsFromWorkspaceData(space.data, ids)
+}
+
+/**
+ * @param {unknown} entries
+ * @param {Set<string>} ids
+ */
+function collectNoteBodyIdsFromDeletedSpaceEntries(entries, ids) {
+  ensureArray(entries).filter(isRecord).forEach((entry) => {
+    collectNoteBodyIdsFromSpace(entry.space, ids)
+  })
+}
+
+/**
+ * @param {Record<string, unknown>} appState
+ * @returns {Set<string>}
+ */
+export function collectReferencedNoteBodyIdsFromAppState(appState) {
+  const ids = new Set()
+  getDomainsFromAppState(appState).forEach((domain) => {
+    ensureArray(domain.spaces).filter(isRecord).forEach((space) => {
+      collectNoteBodyIdsFromSpace(space, ids)
+    })
+  })
+  collectNoteBodyIdsFromDeletedSpaceEntries(appState.deletedSpaces, ids)
+  ensureArray(appState.deletedDomains).filter(isRecord).forEach((entry) => {
+    const domain = isRecord(entry.domain) ? entry.domain : {}
+    ensureArray(domain.spaces).filter(isRecord).forEach((space) => {
+      collectNoteBodyIdsFromSpace(space, ids)
+    })
+    collectNoteBodyIdsFromDeletedSpaceEntries(entry.deletedSpaces, ids)
+  })
+  return ids
+}
+
+/**
  * @param {Map<string, Record<string, unknown>>} noteBodyMap
  * @param {unknown} noteBodyId
  * @param {string} fallback

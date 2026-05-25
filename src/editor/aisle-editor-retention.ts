@@ -1,4 +1,4 @@
-import type { NoteAisle, PendingContent } from '../types/app'
+import type { PendingContent, ResolvedNoteAisle } from '../types/app'
 import { getAisleBodyId } from '../notes/aisle-body-state'
 
 export const AISLE_EDITOR_INTERSECTION_ROOT_MARGIN = '0px 100% 0px 100%'
@@ -71,7 +71,7 @@ export function getAislePreviewMarkdown({
   pendingContent,
   lastEditorMarkdownByAisle,
 }: {
-  aisle: NoteAisle
+  aisle: ResolvedNoteAisle
   pendingContent: Map<string, PendingContent>
   lastEditorMarkdownByAisle: Map<string, string>
 }): string {

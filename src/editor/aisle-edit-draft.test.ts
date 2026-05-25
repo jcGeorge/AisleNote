@@ -13,9 +13,9 @@ import {
   reorderAisleDraft,
 } from './aisle-edit-draft'
 import { MAX_NOTE_AISLES } from '../state/workspace'
-import type { NoteAisle } from '../types/app'
+import type { ResolvedNoteAisle } from '../types/app'
 
-const aisle = (id: string, markdown = id): NoteAisle => ({ id, markdown })
+const aisle = (id: string, markdown = id): ResolvedNoteAisle => ({ id, aisleBodyId: id, markdown })
 
 describe('aisle edit draft helpers', () => {
   it('creates draft copies', () => {

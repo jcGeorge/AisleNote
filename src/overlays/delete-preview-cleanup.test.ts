@@ -6,7 +6,7 @@ import {
 } from './delete-preview-cleanup'
 
 function subTab(id: string): SubTab {
-  return { id, title: id, noteBodyId: `body-${id}`, content: id }
+  return { id, title: id, noteBodyId: `body-${id}`}
 }
 
 function tab(id: string, subTabs: SubTab[] = []): Tab {
@@ -14,7 +14,6 @@ function tab(id: string, subTabs: SubTab[] = []): Tab {
     id,
     title: id,
     noteBodyId: `body-${id}`,
-    homeContent: id,
     activeSubTabId: null,
     subTabs,
   }

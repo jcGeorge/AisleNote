@@ -23,7 +23,6 @@ function createPreviewState(markdownByBody: Record<string, string> = {}): AppSta
       id: 'tab-a',
       title: 'Source',
       noteBodyId: 'source-body',
-      homeContent: '',
       activeSubTabId: null,
       subTabs: [],
     },
@@ -31,9 +30,8 @@ function createPreviewState(markdownByBody: Record<string, string> = {}): AppSta
       id: 'tab-b',
       title: 'Target',
       noteBodyId: 'target-body',
-      homeContent: '',
       activeSubTabId: 'sub-b',
-      subTabs: [{ id: 'sub-b', title: 'Target child', noteBodyId: 'target-sub-body', content: '' }],
+      subTabs: [{ id: 'sub-b', title: 'Target child', noteBodyId: 'target-sub-body'}],
     },
   ])
   const crossSpace = space('space-b', 'Beta space', [
@@ -41,7 +39,6 @@ function createPreviewState(markdownByBody: Record<string, string> = {}): AppSta
       id: 'tab-c',
       title: 'Cross space',
       noteBodyId: 'cross-space-body',
-      homeContent: '',
       activeSubTabId: null,
       subTabs: [],
     },
@@ -51,7 +48,6 @@ function createPreviewState(markdownByBody: Record<string, string> = {}): AppSta
       id: 'tab-d',
       title: 'Cross domain',
       noteBodyId: 'cross-domain-body',
-      homeContent: '',
       activeSubTabId: null,
       subTabs: [],
     },
@@ -68,9 +64,12 @@ function createPreviewState(markdownByBody: Record<string, string> = {}): AppSta
     spaces: [previewSpace, crossSpace],
     noteBodies: bodyIds.map((bodyId) => ({
       id: bodyId,
-      aisles: [{ id: `${bodyId}-aisle`, markdown: markdownByBody[bodyId] ?? `${bodyId} text` }],
+      aisles: [{ id: `${bodyId}-aisle`, aisleBodyId: `${bodyId}-aisle-body` }],
     })),
-    noteAisleBodies: [],
+    noteAisleBodies: bodyIds.map((bodyId) => ({
+      id: `${bodyId}-aisle-body`,
+      markdown: markdownByBody[bodyId] ?? `${bodyId} text`,
+    })),
   } as unknown as AppState
 }
 

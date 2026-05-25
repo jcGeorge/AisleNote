@@ -299,6 +299,82 @@ describe('electron ipc boundaries', () => {
       }
     }))
 
+  it('uses the renderer app-state snapshot when choosing a folder after the current profile failed to load', async () =>
+    withTempUserDataPath(async (userDataPath) => {
+      const targetRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-sync-target-'))
+      try {
+        mkdirSync(path.join(userDataPath, 'notes-data'), { recursive: true })
+        writeFileSync(
+          path.join(userDataPath, 'notes-data', 'manifest.json'),
+          `${JSON.stringify({ schemaVersion: 3, files: {} }, null, 2)}\n`,
+          'utf8',
+        )
+
+        const ipcMain = createIpcMain()
+        registerStorageIpc({
+          ipcMain,
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow(),
+          dialog: {
+            showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [targetRoot] })),
+            showMessageBox: vi.fn(async () => ({ response: 0 })),
+          },
+        })
+
+        const sender = {
+          id: 1,
+          executeJavaScript: vi.fn(async () => serializedAppState('light')),
+        }
+
+        await expect(ipcMain.handlers.get('choose-storage-folder')({ sender })).resolves.toMatchObject({
+          ok: true,
+          status: {
+            status: 'ready',
+            profileRootPath: targetRoot,
+            isDefault: false,
+          },
+        })
+
+        const targetResult = loadAppStateResult(targetRoot)
+        expect(targetResult.ok).toBe(true)
+        expect(JSON.parse(targetResult.serializedState).theme).toBe('light')
+        expect(sender.executeJavaScript).toHaveBeenCalledWith(expect.stringContaining('__tabsGetLatestAppState'), true)
+      } finally {
+        rmSync(targetRoot, { recursive: true, force: true })
+      }
+    }))
+
+  it('keeps move blocked when neither storage nor renderer has current app state', async () =>
+    withTempUserDataPath(async (userDataPath) => {
+      const targetRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-sync-target-'))
+      try {
+        mkdirSync(path.join(userDataPath, 'notes-data'), { recursive: true })
+        writeFileSync(
+          path.join(userDataPath, 'notes-data', 'manifest.json'),
+          `${JSON.stringify({ schemaVersion: 3, files: {} }, null, 2)}\n`,
+          'utf8',
+        )
+
+        const ipcMain = createIpcMain()
+        registerStorageIpc({
+          ipcMain,
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow(),
+          dialog: {
+            showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [targetRoot] })),
+          },
+        })
+
+        await expect(ipcMain.handlers.get('move-storage-profile')()).resolves.toMatchObject({
+          ok: false,
+          error: 'Current app state is not ready to move.',
+        })
+        expect(loadAppStateResult(targetRoot).source).toBe('empty')
+      } finally {
+        rmSync(targetRoot, { recursive: true, force: true })
+      }
+    }))
+
   it('reloads valid external profile changes and broadcasts them to windows on retry', async () =>
     withTempUserDataPath(async (userDataPath) => {
       const window = {

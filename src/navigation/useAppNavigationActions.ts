@@ -14,7 +14,7 @@ import {
   updateActiveSpaceDataInActiveDomain,
 } from '../state/domains'
 import { collectAppNavigationEntityIds, createReservedIdAllocator } from '../state/navigation-ids'
-import { createNoteBody, createSpace, createSubTab, createTab, duplicateSpace } from '../state/workspace'
+import { createNoteBodyContent, createSpace, createSubTab, createTab, duplicateSpace } from '../state/workspace'
 import {
   selectActivePrimeTabHome,
   selectPrimeTabWithMemory,
@@ -276,11 +276,11 @@ export const useAppNavigationActions = ({
     pendingFocusToAisleIdRef.current = null
     pendingCursorRestoreRef.current = null
     const createEntityId = createReservedIdAllocator(collectAppNavigationEntityIds(state))
-    const noteBody = createNoteBody('', createEntityId)
+    const noteContent = createNoteBodyContent('', createEntityId)
+    const { noteBody, aisleBody } = noteContent
     const newTab = {
       ...createTab('tab', createEntityId),
       noteBodyId: noteBody.id,
-      homeContent: '',
     }
 
     setState((previous) => {
@@ -293,6 +293,9 @@ export const useAppNavigationActions = ({
       return {
         ...next,
         noteBodies: next.noteBodies.some((body) => body.id === noteBody.id) ? next.noteBodies : [...next.noteBodies, noteBody],
+        noteAisleBodies: (next.noteAisleBodies ?? []).some((body) => body.id === aisleBody.id)
+          ? next.noteAisleBodies
+          : [...(next.noteAisleBodies ?? []), aisleBody],
       }
     })
 
@@ -306,8 +309,9 @@ export const useAppNavigationActions = ({
     pendingFocusToAisleIdRef.current = null
     pendingCursorRestoreRef.current = null
     const createEntityId = createReservedIdAllocator(collectAppNavigationEntityIds(state))
-    const noteBody = createNoteBody('', createEntityId)
-    const newSubTab = { ...createSubTab('tab', '', createEntityId), noteBodyId: noteBody.id }
+    const noteContent = createNoteBodyContent('', createEntityId)
+    const { noteBody, aisleBody } = noteContent
+    const newSubTab = { ...createSubTab('tab', createEntityId), noteBodyId: noteBody.id }
 
     setState((previous) => {
       const sanitizedPrevious = applyAutoPurgeToAppState(previous)
@@ -322,6 +326,9 @@ export const useAppNavigationActions = ({
       return {
         ...next,
         noteBodies: next.noteBodies.some((body) => body.id === noteBody.id) ? next.noteBodies : [...next.noteBodies, noteBody],
+        noteAisleBodies: (next.noteAisleBodies ?? []).some((body) => body.id === aisleBody.id)
+          ? next.noteAisleBodies
+          : [...(next.noteAisleBodies ?? []), aisleBody],
       }
     })
 

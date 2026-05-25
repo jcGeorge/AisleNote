@@ -184,12 +184,33 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     return saveRevisionedState(payload, sourceWebContentsId)
   }
 
-  const getCurrentSerializedStateForProfileMove = () => {
+  const getRendererSerializedStateForProfileMove = async (event) => {
+    const sender = event?.sender
+    if (!sender || typeof sender.executeJavaScript !== 'function') return null
+    try {
+      const serializedState = await sender.executeJavaScript(
+        `(() => {
+          try {
+            const value = window.__tabsGetLatestAppState?.()
+            return typeof value === 'string' ? value : null
+          } catch {
+            return null
+          }
+        })()`,
+        true,
+      )
+      return typeof serializedState === 'string' ? serializedState : null
+    } catch {
+      return null
+    }
+  }
+
+  const getCurrentSerializedStateForProfileMove = async (event) => {
     const currentSerializedState = coordinator.getSerializedState()
     if (typeof currentSerializedState === 'string') return currentSerializedState
     const loadResult = coordinator.getLoadResult()
     if (loadResult.ok && typeof loadResult.serializedState === 'string') return loadResult.serializedState
-    return null
+    return getRendererSerializedStateForProfileMove(event)
   }
 
   const switchToProfileRoot = (profileRootPath, event = 'profile-changed') => {
@@ -212,8 +233,8 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     return { ok: true, status }
   }
 
-  const replaceProfileWithCurrentData = (profileRootPath) => {
-    const serializedState = getCurrentSerializedStateForProfileMove()
+  const replaceProfileWithCurrentData = async (profileRootPath, event = null) => {
+    const serializedState = await getCurrentSerializedStateForProfileMove(event)
     if (serializedState === null) {
       return { ok: false, error: 'Current app state is not ready to move.', status }
     }
@@ -233,7 +254,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     }
   }
 
-  const chooseProfileRoot = async (mode) => {
+  const chooseProfileRoot = async (mode, event = null) => {
     if (!dialog || typeof dialog.showOpenDialog !== 'function') {
       return { ok: false, error: 'Folder selection is unavailable.', status }
     }
@@ -262,7 +283,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
         })
         if (overwrite.response !== 0) return { canceled: true, status }
       }
-      return replaceProfileWithCurrentData(profileRootPath)
+      return replaceProfileWithCurrentData(profileRootPath, event)
     }
 
     if (targetResult.ok && typeof targetResult.serializedState === 'string') {
@@ -276,7 +297,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
         detail: 'Use the existing profile in this folder, or replace it with your current Tabs data.',
       })
       if (choice.response === 0) return switchToProfileRoot(profileRootPath)
-      if (choice.response === 1) return replaceProfileWithCurrentData(profileRootPath)
+      if (choice.response === 1) return replaceProfileWithCurrentData(profileRootPath, event)
       return { canceled: true, status }
     }
 
@@ -291,15 +312,15 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     if (dialog?.showMessageBox) {
       const initialize = await dialog.showMessageBox({
         type: 'question',
-        buttons: ['Move current data', 'Cancel'],
+        buttons: ['Save current data here', 'Cancel'],
         cancelId: 1,
         defaultId: 0,
         message: 'Use this folder for Tabs data?',
-        detail: 'Tabs will create a notes-data folder here and copy your current data into it.',
+        detail: 'Tabs will create a notes-data folder here and save your current app state into it.',
       })
       if (initialize.response !== 0) return { canceled: true, status }
     }
-    return replaceProfileWithCurrentData(profileRootPath)
+    return replaceProfileWithCurrentData(profileRootPath, event)
   }
 
   startWatcher()
@@ -332,8 +353,8 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
   })
 
   ipcMain.handle?.('get-storage-profile-status', async () => status)
-  ipcMain.handle?.('choose-storage-folder', async () => chooseProfileRoot('choose'))
-  ipcMain.handle?.('move-storage-profile', async () => chooseProfileRoot('move'))
+  ipcMain.handle?.('choose-storage-folder', async (event) => chooseProfileRoot('choose', event))
+  ipcMain.handle?.('move-storage-profile', async (event) => chooseProfileRoot('move', event))
   ipcMain.handle?.('reveal-storage-profile', async () => {
     if (!shell || typeof shell.openPath !== 'function') {
       return { ok: false, error: 'Reveal is unavailable.' }

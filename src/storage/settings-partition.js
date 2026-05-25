@@ -1,7 +1,13 @@
-import { isRecord, normalizeStorageTheme } from './hybrid-storage-core.js'
+import {
+  DEFAULT_DOMAIN_ID,
+  collectReferencedNoteBodyIdsFromAppState,
+  ensureArray,
+  getNoteBodiesFromAppState,
+  isRecord,
+  normalizeStorageTheme,
+} from './hybrid-storage-core.js'
 
-export const STORAGE_PROFILE_SETTINGS_FILE = 'profile-settings.json'
-export const PROFILE_SETTINGS_SCHEMA_VERSION = 1
+export const MAX_NOTE_CURSOR_LOCATIONS = 500
 export const ROOT_SPLIT_FILES = Object.freeze({
   workspaceIndex: 'workspace-index.json',
   navigationState: 'navigation-state.json',
@@ -10,16 +16,6 @@ export const ROOT_SPLIT_FILES = Object.freeze({
   editorState: 'editor-state.json',
   deletedWorkspace: 'deleted-workspace.json',
   noteRegistry: 'note-registry.json',
-})
-
-export const LEGACY_ROOT_SPLIT_FILES = Object.freeze({
-  appearanceSettings: 'appearance-settings.json',
-  shortcutSettings: 'shortcut-settings.json',
-  uiPreferences: 'ui-preferences.json',
-  noteBodies: 'note-bodies.json',
-  aisleBodies: 'aisle-bodies.json',
-  orphanNoteBodies: 'orphan-note-bodies.json',
-  orphanAisleBodies: 'orphan-aisle-bodies.json',
 })
 
 export const REQUIRED_ROOT_SPLIT_FILE_KEYS = Object.freeze([
@@ -80,6 +76,149 @@ function optionalString(value, fallback) {
 
 function optionalArray(value, fallback) {
   return Array.isArray(value) ? value : fallback
+}
+
+function normalizeTimestamp(value) {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0
+}
+
+function buildNoteCursorLocationKey(domainId, spaceId, tabId, subTabId = null) {
+  return [domainId, spaceId, tabId, subTabId ?? '__home__'].join('::')
+}
+
+function getProjectedDomainsForStorage(appState) {
+  const domains = ensureArray(appState?.domains).filter(isRecord)
+  const spaces = ensureArray(appState?.spaces).filter(isRecord)
+
+  if (domains.length === 0) {
+    return spaces.length > 0
+      ? [
+          {
+            id: DEFAULT_DOMAIN_ID,
+            spaces,
+          },
+        ]
+      : []
+  }
+
+  if (spaces.length === 0) return domains
+
+  const activeDomainId = typeof appState?.activeDomainId === 'string' ? appState.activeDomainId : ''
+  const activeDomain = domains.find((domain) => domain.id === activeDomainId) ?? domains[0]
+  const projectedDomain = {
+    ...activeDomain,
+    spaces,
+  }
+  return domains.map((domain) => (domain === activeDomain ? projectedDomain : domain))
+}
+
+export function buildLiveNoteCursorLocationKeys(appState) {
+  const keys = new Set()
+  getProjectedDomainsForStorage(appState).forEach((domain) => {
+    const domainId = typeof domain.id === 'string' && domain.id ? domain.id : DEFAULT_DOMAIN_ID
+    ensureArray(domain.spaces)
+      .filter(isRecord)
+      .forEach((space) => {
+        const spaceId = typeof space.id === 'string' ? space.id : ''
+        if (!spaceId) return
+        const data = isRecord(space.data) ? space.data : {}
+        ensureArray(data.tabs)
+          .filter(isRecord)
+          .forEach((tab) => {
+            const tabId = typeof tab.id === 'string' ? tab.id : ''
+            if (!tabId) return
+            keys.add(buildNoteCursorLocationKey(domainId, spaceId, tabId))
+            ensureArray(tab.subTabs)
+              .filter(isRecord)
+              .forEach((subTab) => {
+                const subTabId = typeof subTab.id === 'string' ? subTab.id : ''
+                if (subTabId) keys.add(buildNoteCursorLocationKey(domainId, spaceId, tabId, subTabId))
+              })
+          })
+      })
+  })
+  return keys
+}
+
+export function pruneNoteCursorLocationsForLiveNotes(noteCursorLocations, appState, maxEntries = MAX_NOTE_CURSOR_LOCATIONS) {
+  if (!isRecord(noteCursorLocations)) return {}
+  const liveKeys = buildLiveNoteCursorLocationKeys(appState)
+  if (liveKeys.size === 0) return {}
+  const entries = Object.entries(noteCursorLocations).filter(([locationKey]) => liveKeys.has(locationKey))
+  const entryLimit = Number.isFinite(maxEntries) ? Math.max(0, Math.floor(maxEntries)) : MAX_NOTE_CURSOR_LOCATIONS
+  const prunedEntries =
+    entries.length > entryLimit
+      ? entries
+          .sort(([, left], [, right]) => normalizeTimestamp(right?.updatedAt) - normalizeTimestamp(left?.updatedAt))
+          .slice(0, entryLimit)
+      : entries
+  return Object.fromEntries(prunedEntries)
+}
+
+function normalizeHeadingId(value) {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function normalizeHeadingKeys(value) {
+  if (!Array.isArray(value)) return []
+  return Array.from(
+    new Set(value.map((entry) => (typeof entry === 'string' ? entry.trim() : '')).filter(Boolean)),
+  )
+}
+
+function buildReferencedNoteBodyAisleIds(appState) {
+  const referencedBodyIds = collectReferencedNoteBodyIdsFromAppState(isRecord(appState) ? appState : {})
+  if (referencedBodyIds.size === 0) return new Map()
+
+  const aisleIdsByBodyId = new Map()
+  getNoteBodiesFromAppState(isRecord(appState) ? appState : {}).forEach((body) => {
+    const bodyId = typeof body.id === 'string' ? body.id : ''
+    if (!bodyId || !referencedBodyIds.has(bodyId)) return
+    const aisleIds = new Set()
+    ensureArray(body.aisles)
+      .filter(isRecord)
+      .forEach((aisle) => {
+        if (typeof aisle.id === 'string' && aisle.id) aisleIds.add(aisle.id)
+      })
+    if (aisleIds.size > 0) aisleIdsByBodyId.set(bodyId, aisleIds)
+  })
+  return aisleIdsByBodyId
+}
+
+export function pruneHeadingCollapseStateForReferencedNotes(headingCollapseState, appState) {
+  if (!isRecord(headingCollapseState)) return {}
+  const aisleIdsByBodyId = buildReferencedNoteBodyAisleIds(appState)
+  if (aisleIdsByBodyId.size === 0) return {}
+
+  const nextState = {}
+  Object.entries(headingCollapseState).forEach(([rawBodyId, rawAisles]) => {
+    const bodyId = normalizeHeadingId(rawBodyId)
+    const liveAisleIds = aisleIdsByBodyId.get(bodyId)
+    if (!bodyId || !liveAisleIds || !isRecord(rawAisles)) return
+
+    const nextAisles = {}
+    Object.entries(rawAisles).forEach(([rawAisleId, rawKeys]) => {
+      const aisleId = normalizeHeadingId(rawAisleId)
+      if (!aisleId || !liveAisleIds.has(aisleId)) return
+      const keys = normalizeHeadingKeys(rawKeys)
+      if (keys.length > 0) nextAisles[aisleId] = keys
+    })
+    if (Object.keys(nextAisles).length > 0) nextState[bodyId] = nextAisles
+  })
+
+  return nextState
+}
+
+export function pruneAppStateEditorLocations(appState) {
+  const ui = isRecord(appState?.ui) ? appState.ui : {}
+  return {
+    ...appState,
+    ui: {
+      ...ui,
+      noteCursorLocations: pruneNoteCursorLocationsForLiveNotes(ui.noteCursorLocations, appState),
+      headingCollapseState: pruneHeadingCollapseStateForReferencedNotes(ui.headingCollapseState, appState),
+    },
+  }
 }
 
 function normalizeSelectedCustomTheme(value) {
@@ -203,47 +342,33 @@ export function extractAppSettings(appState) {
 export function extractEditorState(appState) {
   const ui = isRecord(appState?.ui) ? appState.ui : {}
   return {
-    noteCursorLocations: isRecord(ui.noteCursorLocations)
-      ? ui.noteCursorLocations
-      : DEFAULT_SYNCED_UI_SETTINGS.noteCursorLocations,
-    headingCollapseState: isRecord(ui.headingCollapseState)
-      ? ui.headingCollapseState
-      : DEFAULT_SYNCED_UI_SETTINGS.headingCollapseState,
+    noteCursorLocations: pruneNoteCursorLocationsForLiveNotes(ui.noteCursorLocations, appState),
+    headingCollapseState: pruneHeadingCollapseStateForReferencedNotes(ui.headingCollapseState, appState),
   }
 }
 
 export function buildSyncedSettingsFromSplitFiles(parts) {
   const appSettings = isRecord(parts?.appSettings) ? parts.appSettings : {}
-  const hasAppSettings = Object.keys(appSettings).length > 0
-  const appearanceSettings = hasAppSettings
-    ? appSettings
-    : isRecord(parts?.appearanceSettings)
-      ? parts.appearanceSettings
-      : {}
-  const shortcutSettings = hasAppSettings && isRecord(appSettings.hotkeys)
+  const shortcutSettings = isRecord(appSettings.hotkeys)
     ? appSettings.hotkeys
-    : isRecord(parts?.shortcutSettings)
-      ? parts.shortcutSettings
-      : DEFAULT_HOTKEY_SETTINGS
+    : DEFAULT_HOTKEY_SETTINGS
   const frontmatterSettings = isRecord(parts?.frontmatterSettings) ? parts.frontmatterSettings : {}
-  const uiPreferences = hasAppSettings && isRecord(appSettings.ui)
+  const uiPreferences = isRecord(appSettings.ui)
     ? appSettings.ui
-    : isRecord(parts?.uiPreferences)
-      ? parts.uiPreferences
-      : {}
+    : {}
   const editorState = isRecord(parts?.editorState) ? parts.editorState : {}
   const ui = {
     ...extractSyncedUiSettings({
-      ...appearanceSettings,
+      ...appSettings,
       ...uiPreferences,
     }),
     tabButtonScale:
-      typeof appearanceSettings.tabButtonScale === 'number'
-        ? appearanceSettings.tabButtonScale
+      typeof appSettings.tabButtonScale === 'number'
+        ? appSettings.tabButtonScale
         : DEFAULT_SYNCED_UI_SETTINGS.tabButtonScale,
     noteFontScale:
-      typeof appearanceSettings.noteFontScale === 'number'
-        ? appearanceSettings.noteFontScale
+      typeof appSettings.noteFontScale === 'number'
+        ? appSettings.noteFontScale
         : DEFAULT_SYNCED_UI_SETTINGS.noteFontScale,
     settingsSection: optionalString(uiPreferences.settingsSection, DEFAULT_SYNCED_UI_SETTINGS.settingsSection),
     visualsSettingsSection: optionalString(
@@ -260,26 +385,9 @@ export function buildSyncedSettingsFromSplitFiles(parts) {
   }
 
   return {
-    theme: normalizeStorageTheme(appearanceSettings.theme),
+    theme: normalizeStorageTheme(appSettings.theme),
     hotkeys: shortcutSettings,
     frontmatter: frontmatterSettings,
     ui,
   }
-}
-
-export function extractSyncedProfileSettings(appState) {
-  return {
-    schemaVersion: PROFILE_SETTINGS_SCHEMA_VERSION,
-    settings: extractSyncedGlobalSettings(appState),
-  }
-}
-
-export function getSyncedProfileSettingsForLoad(rootManifest, profileSettings) {
-  if (isRecord(profileSettings) && profileSettings.schemaVersion === PROFILE_SETTINGS_SCHEMA_VERSION && isRecord(profileSettings.settings)) {
-    return profileSettings.settings
-  }
-  if (isRecord(profileSettings) && isRecord(profileSettings.settings)) {
-    return profileSettings.settings
-  }
-  return isRecord(rootManifest?.globalSettings) ? rootManifest.globalSettings : {}
 }

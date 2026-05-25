@@ -501,28 +501,18 @@ body.app-tooltips-disabled .toastui-editor-tooltip {
 }
 
 .frontmatter-toolbar-icon {
-  position: relative;
   width: 1.15rem;
   height: 1.15rem;
-  display: block;
-}
-
-.frontmatter-toolbar-icon::before,
-.frontmatter-toolbar-icon::after {
-  content: '';
-  position: absolute;
-  left: 0.12rem;
-  width: 0.9rem;
-  border-top: 1.6px solid currentColor;
-}
-
-.frontmatter-toolbar-icon::before {
-  top: 0.18rem;
-  box-shadow: 0 0.38rem 0 currentColor;
-}
-
-.frontmatter-toolbar-icon::after {
-  bottom: 0.16rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(0.68rem * var(--app-text-scale, 1));
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0;
+  text-transform: lowercase;
+  transform: scaleY(1.16);
+  transform-origin: center;
 }
 
 .aisles-toolbar-icon {

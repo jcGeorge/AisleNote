@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_FRONTMATTER_SETTINGS } from '../frontmatter/frontmatter'
 import type { AppState, NoteBody, Space } from '../types/app'
+import { resolveNoteAisles } from './note-markdown'
 import { getLinkedAisleIdsForNoteBody, materializeDecoupledAisleCopies } from './aisle-links'
 import { isNoteBodyLinked } from './link-status'
 
@@ -15,7 +16,6 @@ function createAisleLinkTestState(noteBodies: NoteBody[], tabs: Array<{ id: stri
         id: tab.id,
         title: tab.id,
         noteBodyId: tab.noteBodyId,
-        homeContent: '',
         activeSubTabId: null,
         subTabs: [],
       })),
@@ -78,8 +78,8 @@ describe('linked aisle helpers', () => {
   it('detects aisle links across located note bodies', () => {
     const state = createAisleLinkTestState(
       [
-        { id: 'body-1', frontmatter: null, aisles: [{ id: 'aisle-1', aisleBodyId: 'shared-body', markdown: 'one' }] },
-        { id: 'body-2', frontmatter: null, aisles: [{ id: 'aisle-2', aisleBodyId: 'shared-body', markdown: 'two' }] },
+        { id: 'body-1', aisles: [{ id: 'aisle-1', aisleBodyId: 'shared-body' }] },
+        { id: 'body-2', aisles: [{ id: 'aisle-2', aisleBodyId: 'shared-body' }] },
       ],
       [
         { id: 'tab-1', noteBodyId: 'body-1' },
@@ -95,10 +95,9 @@ describe('linked aisle helpers', () => {
       [
         {
           id: 'body-1',
-          frontmatter: null,
           aisles: [
-            { id: 'aisle-1', aisleBodyId: 'shared-body', markdown: 'one' },
-            { id: 'aisle-2', aisleBodyId: 'shared-body', markdown: 'two' },
+            { id: 'aisle-1', aisleBodyId: 'shared-body' },
+            { id: 'aisle-2', aisleBodyId: 'shared-body' },
           ],
         },
       ],
@@ -110,7 +109,7 @@ describe('linked aisle helpers', () => {
 
   it('does not treat whole-note duplicates as aisle links', () => {
     const state = createAisleLinkTestState(
-      [{ id: 'body-1', frontmatter: null, aisles: [{ id: 'aisle-1', aisleBodyId: 'shared-body', markdown: 'one' }] }],
+      [{ id: 'body-1', aisles: [{ id: 'aisle-1', aisleBodyId: 'shared-body' }] }],
       [
         { id: 'tab-1', noteBodyId: 'body-1' },
         { id: 'tab-2', noteBodyId: 'body-1' },
@@ -126,10 +125,9 @@ describe('linked aisle helpers', () => {
       [
         {
           id: 'body-1',
-          frontmatter: null,
           aisles: [
-            { id: 'aisle-1', aisleBodyId: 'shared-body', markdown: 'one' },
-            { id: 'aisle-2', aisleBodyId: 'shared-body', markdown: 'two' },
+            { id: 'aisle-1', aisleBodyId: 'shared-body' },
+            { id: 'aisle-2', aisleBodyId: 'shared-body' },
           ],
         },
       ],
@@ -144,8 +142,8 @@ describe('linked aisle helpers', () => {
   it('ignores orphan note bodies when detecting aisle links', () => {
     const state = createAisleLinkTestState(
       [
-        { id: 'body-1', frontmatter: null, aisles: [{ id: 'aisle-1', aisleBodyId: 'shared-body', markdown: 'one' }] },
-        { id: 'body-orphan', frontmatter: null, aisles: [{ id: 'aisle-orphan', aisleBodyId: 'shared-body', markdown: 'orphan' }] },
+        { id: 'body-1', aisles: [{ id: 'aisle-1', aisleBodyId: 'shared-body' }] },
+        { id: 'body-orphan', aisles: [{ id: 'aisle-orphan', aisleBodyId: 'shared-body' }] },
       ],
       [{ id: 'tab-1', noteBodyId: 'body-1' }],
     )
@@ -155,10 +153,14 @@ describe('linked aisle helpers', () => {
 
   it('materializes staged aisle de-couples with fresh aisle bodies and authoritative text', () => {
     const state = createAisleLinkTestState(
-      [{ id: 'body-1', frontmatter: null, aisles: [{ id: 'aisle-1', aisleBodyId: 'shared-body', markdown: 'stale' }] }],
+      [{ id: 'body-1', aisles: [{ id: 'aisle-1', aisleBodyId: 'shared-body' }] }],
       [{ id: 'tab-1', noteBodyId: 'body-1' }],
     )
-    const [decoupled] = materializeDecoupledAisleCopies(state, state.noteBodies[0].aisles, ['aisle-1'])
+    const [decoupled] = materializeDecoupledAisleCopies(
+      state,
+      resolveNoteAisles(state.noteBodies[0].aisles, state.noteAisleBodies),
+      ['aisle-1'],
+    )
 
     expect(decoupled.id).toBe('aisle-1')
     expect(decoupled.aisleBodyId).not.toBe('shared-body')

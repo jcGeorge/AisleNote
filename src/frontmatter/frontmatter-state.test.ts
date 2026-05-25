@@ -43,6 +43,9 @@ const otherTemplate: FrontmatterTemplate = {
   ],
 }
 
+const getAisleBody = (state: AppState, aisleBodyId = 'aisle-body-1') =>
+  state.noteAisleBodies?.find((body) => body.id === aisleBodyId)
+
 function createFrontmatterState(): AppState {
   const space: Space = {
     id: 'space-1',
@@ -55,7 +58,6 @@ function createFrontmatterState(): AppState {
           id: 'tab-1',
           title: 'Roadmap',
           noteBodyId: 'body-1',
-          homeContent: '',
           activeSubTabId: null,
           subTabs: [],
         },
@@ -76,17 +78,24 @@ function createFrontmatterState(): AppState {
         id: 'body-1',
         createdAt: '2024-01-01T08:00:00.000Z',
         updatedAt: '2026-05-15T12:30:00.000Z',
-        frontmatter: { status: 'ready', extra: 'keep' },
-        frontmatterTemplateId: template.id,
-        frontmatterTemplateDerived: true,
-        frontmatterTemplateFieldOrigins: {
+        aisles: [{ id: 'aisle-1', aisleBodyId: 'aisle-body-1' }],
+      },
+    ],
+    noteAisleBodies: [{
+      id: 'aisle-body-1',
+      markdown: 'body',
+      frontmatter: { status: 'ready', extra: 'keep' },
+      frontmatterStatus: 'valid',
+      frontmatterMeta: {
+        templateId: template.id,
+        templateDerived: true,
+        templateFieldOrigins: {
           status: { templateId: template.id, fieldId: 'status' },
           created: { templateId: template.id, fieldId: 'created' },
           space: { templateId: template.id, fieldId: 'space' },
         },
-        aisles: [{ id: 'aisle-1', markdown: 'body' }],
       },
-    ],
+    }],
     hotkeys: {
       shortcuts: {
         toggleTabTrash: '',
@@ -295,14 +304,14 @@ describe('frontmatter row state', () => {
       noteBodies: [
         {
           ...state.noteBodies[0],
-          aisles: [{ id: 'aisle-1', aisleBodyId: 'shared-aisle-body', markdown: 'body' }],
+          aisles: [{ id: 'aisle-1', aisleBodyId: 'shared-aisle-body' }],
         },
         {
           id: 'body-2',
-          frontmatter: null,
-          aisles: [{ id: 'aisle-2', aisleBodyId: 'shared-aisle-body', markdown: 'other' }],
+          aisles: [{ id: 'aisle-2', aisleBodyId: 'shared-aisle-body' }],
         },
       ],
+      noteAisleBodies: [{ id: 'shared-aisle-body', markdown: 'body' }],
     }, [homeTab, otherTab])
 
     expect(isNoteBodyLinked(linkedState, 'body-1')).toBe(true)
@@ -316,16 +325,16 @@ describe('frontmatter row state', () => {
         {
           ...state.noteBodies[0],
           aisles: [
-            { id: 'aisle-1', aisleBodyId: 'shared-aisle-body', markdown: 'one' },
-            { id: 'aisle-2', aisleBodyId: 'shared-aisle-body', markdown: 'two' },
+            { id: 'aisle-1', aisleBodyId: 'shared-aisle-body' },
+            { id: 'aisle-2', aisleBodyId: 'shared-aisle-body' },
           ],
         },
         {
           id: 'orphan-body',
-          frontmatter: null,
-          aisles: [{ id: 'orphan-aisle', aisleBodyId: 'shared-aisle-body', markdown: 'orphan' }],
+          aisles: [{ id: 'orphan-aisle', aisleBodyId: 'shared-aisle-body' }],
         },
       ],
+      noteAisleBodies: [{ id: 'shared-aisle-body', markdown: 'one' }],
     }
 
     expect(isNoteBodyLinked(unlinkedState, 'body-1')).toBe(false)
@@ -404,13 +413,11 @@ describe('frontmatter row state', () => {
     const state = createFrontmatterState()
     const noTemplateState = {
       ...state,
-      noteBodies: state.noteBodies.map((body) =>
-        body.id === 'body-1'
+      noteAisleBodies: state.noteAisleBodies?.map((body) =>
+        body.id === 'aisle-body-1'
           ? {
               ...body,
-              frontmatterTemplateId: undefined,
-              frontmatterTemplateDerived: undefined,
-              frontmatterTemplateFieldOrigins: undefined,
+              frontmatterMeta: undefined,
             }
           : body,
       ),
@@ -428,14 +435,13 @@ describe('frontmatter row state', () => {
     const state = createFrontmatterState()
     const blankState = {
       ...state,
-      noteBodies: state.noteBodies.map((body) =>
-        body.id === 'body-1'
+      noteAisleBodies: state.noteAisleBodies?.map((body) =>
+        body.id === 'aisle-body-1'
           ? {
               ...body,
               frontmatter: null,
-              frontmatterTemplateId: undefined,
-              frontmatterTemplateDerived: undefined,
-              frontmatterTemplateFieldOrigins: undefined,
+              frontmatterStatus: 'none' as const,
+              frontmatterMeta: undefined,
             }
           : body,
       ),
@@ -453,14 +459,17 @@ describe('frontmatter row state', () => {
     const state = createFrontmatterState()
     const blankBodyState = {
       ...state,
-      noteBodies: state.noteBodies.map((body) =>
-        body.id === 'body-1'
+      noteAisleBodies: state.noteAisleBodies?.map((body) =>
+        body.id === 'aisle-body-1'
           ? {
               ...body,
               frontmatter: null,
-              frontmatterTemplateId: '',
-              frontmatterTemplateDerived: undefined,
-              frontmatterTemplateFieldOrigins: undefined,
+              frontmatterStatus: 'none' as const,
+              frontmatterMeta: {
+                templateId: '',
+                templateDerived: undefined,
+                templateFieldOrigins: undefined,
+              },
             }
           : body,
       ),
@@ -471,11 +480,11 @@ describe('frontmatter row state', () => {
         ...blankBodyState.frontmatter,
         lastAppliedTemplateId: 'missing-template',
       },
-      noteBodies: blankBodyState.noteBodies.map((body) =>
-        body.id === 'body-1'
+      noteAisleBodies: blankBodyState.noteAisleBodies?.map((body) =>
+        body.id === 'aisle-body-1'
           ? {
               ...body,
-              frontmatterTemplateId: undefined,
+              frontmatterMeta: undefined,
             }
           : body,
       ),
@@ -527,13 +536,13 @@ describe('frontmatter row state', () => {
       templateRemovedFieldIds: result.templateRemovedFieldIds,
       computedFields: result.computedFields,
     })
-    const body = next.noteBodies.find((candidate) => candidate.id === 'body-1')
+    const aisleBody = getAisleBody(next)
 
     expect(next.frontmatter.lastAppliedTemplateId).toBe(otherTemplate.id)
-    expect(body).toMatchObject({
-      frontmatterTemplateId: otherTemplate.id,
-      frontmatterTemplateDerived: true,
-      frontmatterTemplateFieldOrigins: {
+    expect(aisleBody?.frontmatterMeta).toMatchObject({
+      templateId: otherTemplate.id,
+      templateDerived: true,
+      templateFieldOrigins: {
         owner: { templateId: otherTemplate.id, fieldId: 'owner' },
       },
     })
@@ -546,12 +555,12 @@ describe('frontmatter row state', () => {
       templateDerived: false,
       templateFieldOrigins: {},
     })
-    const body = next.noteBodies.find((candidate) => candidate.id === 'body-1')
+    const aisleBody = getAisleBody(next)
 
     expect(next.frontmatter.lastAppliedTemplateId).toBe('')
-    expect(body?.frontmatterTemplateId).toBeUndefined()
-    expect(body?.frontmatterTemplateDerived).toBeUndefined()
-    expect(body?.frontmatterTemplateFieldOrigins).toBeUndefined()
+    expect(aisleBody?.frontmatterMeta?.templateId).toBeUndefined()
+    expect(aisleBody?.frontmatterMeta?.templateDerived).toBeUndefined()
+    expect(aisleBody?.frontmatterMeta?.templateFieldOrigins).toBeUndefined()
   })
 
   it('saving an empty row set marks the note as no template instead of using last applied on reopen', () => {
@@ -570,11 +579,11 @@ describe('frontmatter row state', () => {
       templateRemovedFieldIds: result.templateRemovedFieldIds,
       computedFields: result.computedFields,
     })
-    const body = savedState.noteBodies.find((candidate) => candidate.id === 'body-1')
+    const aisleBody = getAisleBody(savedState)
     const reopened = buildFrontmatterModalDraftForNote(savedState, 'body-1', location)
 
-    expect(body?.frontmatter).toBeNull()
-    expect(body?.frontmatterTemplateId).toBe('')
+    expect(aisleBody?.frontmatter).toBeNull()
+    expect(aisleBody?.frontmatterMeta?.templateId).toBe('')
     expect(savedState.frontmatter.lastAppliedTemplateId).toBe('')
     expect(reopened.selectedTemplateId).toBe('')
     expect(reopened.rows).toEqual([])
@@ -622,7 +631,7 @@ describe('frontmatter row state', () => {
     })
     const reopened = buildFrontmatterModalDraftForNote(savedState, 'body-1', location)
 
-    expect(savedState.noteBodies.find((body) => body.id === 'body-1')?.frontmatterTemplateRemovedFieldIds).toEqual(['created'])
+    expect(getAisleBody(savedState)?.frontmatterMeta?.templateRemovedFieldIds).toEqual(['created'])
     expect(reopened.rows.map((row) => row.key)).toEqual(['status', 'space', 'extra'])
     expect(reopened.rows.some((row) => row.key === 'created')).toBe(false)
   })
@@ -631,11 +640,14 @@ describe('frontmatter row state', () => {
     const state = createFrontmatterState()
     const savedState = {
       ...state,
-      noteBodies: state.noteBodies.map((body) =>
-        body.id === 'body-1'
+      noteAisleBodies: state.noteAisleBodies?.map((body) =>
+        body.id === 'aisle-body-1'
           ? {
               ...body,
-              frontmatterTemplateRemovedFieldIds: ['created'],
+              frontmatterMeta: {
+                ...(body.frontmatterMeta ?? {}),
+                templateRemovedFieldIds: ['created'],
+              },
             }
           : body,
       ),
@@ -685,11 +697,11 @@ describe('frontmatter row state', () => {
       templateFieldOrigins: {},
       computedFields: result.computedFields,
     })
-    const body = savedState.noteBodies.find((candidate) => candidate.id === 'body-1')
+    const aisleBody = getAisleBody(savedState)
     const reopened = buildFrontmatterModalDraftForNote(savedState, 'body-1', location)
 
     expect(result.frontmatter).toEqual({ updated: '2026-05-15T12:30:00.000Z' })
-    expect(body?.frontmatterComputedFields).toEqual({ updated: 'updatedAt' })
+    expect(aisleBody?.frontmatterMeta?.computedFields).toEqual({ updated: 'updatedAt' })
     expect(reopened.selectedTemplateId).toBe('')
     expect(reopened.rows).toHaveLength(1)
     expect(reopened.rows[0]).toMatchObject({
@@ -727,7 +739,7 @@ describe('frontmatter row state', () => {
 
   it('applies a frontmatter template to every selected Stage Manager note body', () => {
     const state = createFrontmatterState()
-    const subTab = { id: 'sub-1', title: 'Child Roadmap', noteBodyId: 'body-sub', content: '' }
+    const subTab = { id: 'sub-1', title: 'Child Roadmap', noteBodyId: 'body-sub' }
     const parentTab = {
       ...state.spaces[0].data.tabs[0],
       subTabs: [subTab],
@@ -751,9 +763,12 @@ describe('frontmatter row state', () => {
           id: 'body-sub',
           createdAt: '2025-02-03T10:00:00.000Z',
           updatedAt: '2025-02-04T11:00:00.000Z',
-          frontmatter: null,
-          aisles: [{ id: 'aisle-sub', markdown: 'sub body' }],
+          aisles: [{ id: 'aisle-sub', aisleBodyId: 'aisle-body-sub' }],
         },
+      ],
+      noteAisleBodies: [
+        ...(state.noteAisleBodies ?? []),
+        { id: 'aisle-body-sub', markdown: 'sub body' },
       ],
     }
     const selection: StageManagerSelectionSnapshot = {
@@ -782,32 +797,38 @@ describe('frontmatter row state', () => {
     )
     const parentBody = next.noteBodies.find((body) => body.id === 'body-1')
     const subBody = next.noteBodies.find((body) => body.id === 'body-sub')
+    const parentAisleBody = parentBody?.aisles[0] ? getAisleBody(next, parentBody.aisles[0].aisleBodyId) : undefined
+    const subAisleBody = subBody?.aisles[0] ? getAisleBody(next, subBody.aisles[0].aisleBodyId) : undefined
 
-    expect(parentBody).toMatchObject({
-      frontmatterTemplateId: stageTemplate.id,
-      frontmatterTemplateDerived: true,
+    expect(parentAisleBody).toMatchObject({
       frontmatter: {
         status: 'ready',
         title: { id: 'body-1', title: 'Roadmap' },
         created: '2024-01-01',
       },
-      frontmatterComputedFields: {
-        title: 'noteTitle',
-        created: 'createdAt',
+      frontmatterMeta: {
+        templateId: stageTemplate.id,
+        templateDerived: true,
+        computedFields: {
+          title: 'noteTitle',
+          created: 'createdAt',
+        },
       },
     })
-    expect(subBody).toMatchObject({
-      frontmatterTemplateId: stageTemplate.id,
-      frontmatterTemplateDerived: true,
+    expect(subAisleBody).toMatchObject({
       frontmatter: {
         status: 'planned',
         title: { id: 'body-sub', title: 'Child Roadmap' },
         created: '2025-02-03',
       },
-      frontmatterTemplateFieldOrigins: {
-        status: { templateId: stageTemplate.id, fieldId: 'status' },
-        title: { templateId: stageTemplate.id, fieldId: 'title' },
-        created: { templateId: stageTemplate.id, fieldId: 'created' },
+      frontmatterMeta: {
+        templateId: stageTemplate.id,
+        templateDerived: true,
+        templateFieldOrigins: {
+          status: { templateId: stageTemplate.id, fieldId: 'status' },
+          title: { templateId: stageTemplate.id, fieldId: 'title' },
+          created: { templateId: stageTemplate.id, fieldId: 'created' },
+        },
       },
     })
     expect(next.frontmatter.lastAppliedTemplateId).toBe(stageTemplate.id)

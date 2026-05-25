@@ -11,15 +11,13 @@ const makeWorkspace = (activeTabId: string, activeSubTabId: string | null = null
       id: 'tab-a',
       title: 'A',
       noteBodyId: 'body-a',
-      homeContent: '',
       activeSubTabId,
-      subTabs: [{ id: 'sub-a', title: 'A1', noteBodyId: 'body-a1', content: '' }],
+      subTabs: [{ id: 'sub-a', title: 'A1', noteBodyId: 'body-a1'}],
     },
     {
       id: 'tab-b',
       title: 'B',
       noteBodyId: 'body-b',
-      homeContent: '',
       activeSubTabId: null,
       subTabs: [],
     },
@@ -157,7 +155,6 @@ describe('domain id allocation', () => {
     expect(domain.spaces[0].data.tabs[0]).toMatchObject({
       id: 'tab-new',
       title: 'tab',
-      homeContent: '',
       activeSubTabId: null,
       subTabs: [],
     })

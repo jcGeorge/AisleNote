@@ -13,7 +13,6 @@ function subTab(id: string, title = id): SubTab {
     id,
     title,
     noteBodyId: `${id}-body`,
-    content: '',
   }
 }
 
@@ -22,7 +21,6 @@ function tab(id: string, title = id, subTabs: SubTab[] = []): Tab {
     id,
     title,
     noteBodyId: `${id}-body`,
-    homeContent: '',
     activeSubTabId: subTabs[0]?.id ?? null,
     subTabs,
   }

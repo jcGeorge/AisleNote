@@ -1,4 +1,5 @@
 import type { AppState, DeletedSpaceEntry, Domain, Space, TrashDomainBucket, TrashParentBucket, TrashSpaceBucket, WorkspaceData } from '../types/app'
+import { getNoteBodyMarkdown } from '../notes/aisle-body-state'
 
 export const TRASH_HOME_ID = '__trash_home__'
 
@@ -7,15 +8,23 @@ export type TrashContentDisplay = {
   markdown: string
 }
 
-export function buildTrashParentBuckets(workspace: WorkspaceData): TrashParentBucket[] {
+function getTrashNoteMarkdown(appState: AppState, noteBodyId: string): string {
+  const body = appState.noteBodies.find((candidate) => candidate.id === noteBodyId) ?? null
+  return getNoteBodyMarkdown(body, null, appState.noteAisleBodies)
+}
+
+export function buildTrashParentBuckets(appState: AppState, workspace: WorkspaceData): TrashParentBucket[] {
   const buckets: TrashParentBucket[] = workspace.deletedTabs.map((entry) => ({
     id: entry.id,
     title: entry.tab.title,
     source: 'deleted-tab',
     deletedTabEntryId: entry.id,
     parentTabId: entry.tab.id,
-    homeContent: entry.tab.homeContent,
-    subTabs: entry.tab.subTabs,
+    homeContent: getTrashNoteMarkdown(appState, entry.tab.noteBodyId),
+    subTabs: entry.tab.subTabs.map((subTab) => ({
+      ...subTab,
+      content: getTrashNoteMarkdown(appState, subTab.noteBodyId),
+    })),
   }))
 
   const deletedParentIds = new Set(workspace.deletedTabs.map((entry) => entry.tab.id))
@@ -40,7 +49,7 @@ export function buildTrashParentBuckets(workspace: WorkspaceData): TrashParentBu
         id: entry.id,
         title: entry.subTab.title,
         noteBodyId: entry.subTab.noteBodyId,
-        content: entry.subTab.content,
+        content: getTrashNoteMarkdown(appState, entry.subTab.noteBodyId),
       })),
     })
   }
@@ -49,6 +58,7 @@ export function buildTrashParentBuckets(workspace: WorkspaceData): TrashParentBu
 }
 
 function buildDeletedDomainParentBuckets(
+  appState: AppState,
   space: Space,
   deletedDomainEntryId: string,
   deletedSpaceEntryId: string | null,
@@ -64,12 +74,15 @@ function buildDeletedDomainParentBuckets(
     domainId,
     spaceId: space.id,
     parentTabId: tab.id,
-    homeContent: tab.homeContent,
-    subTabs: tab.subTabs,
+    homeContent: getTrashNoteMarkdown(appState, tab.noteBodyId),
+    subTabs: tab.subTabs.map((subTab) => ({
+      ...subTab,
+      content: getTrashNoteMarkdown(appState, subTab.noteBodyId),
+    })),
   }))
 }
 
-function buildLiveSpaceBucket(domain: Domain, space: Space): TrashSpaceBucket {
+function buildLiveSpaceBucket(appState: AppState, domain: Domain, space: Space): TrashSpaceBucket {
   return {
     id: `live-space:${domain.id}:${space.id}`,
     title: space.name,
@@ -79,11 +92,12 @@ function buildLiveSpaceBucket(domain: Domain, space: Space): TrashSpaceBucket {
     deletedSpaceEntryId: null,
     deletedDomainEntryId: null,
     space,
-    parentTabs: buildTrashParentBuckets(space.data),
+    parentTabs: buildTrashParentBuckets(appState, space.data),
   }
 }
 
 function buildDeletedSpaceBucket(
+  appState: AppState,
   entry: DeletedSpaceEntry,
   source: 'deleted-space' | 'deleted-domain-space',
   deletedDomainEntryId: string | null,
@@ -102,7 +116,7 @@ function buildDeletedSpaceBucket(
     space: entry.space,
     parentTabs:
       source === 'deleted-domain-space' && deletedDomainEntryId
-        ? buildDeletedDomainParentBuckets(entry.space, deletedDomainEntryId, entry.id, entry.domainId)
+        ? buildDeletedDomainParentBuckets(appState, entry.space, deletedDomainEntryId, entry.id, entry.domainId)
         : [],
   }
 }
@@ -115,10 +129,10 @@ export function buildTrashDomainBuckets(appState: AppState): TrashDomainBucket[]
     domainId: domain.id,
     deletedDomainEntryId: null,
     spaces: [
-      ...domain.spaces.map((space) => buildLiveSpaceBucket(domain, space)),
+      ...domain.spaces.map((space) => buildLiveSpaceBucket(appState, domain, space)),
       ...(appState.deletedSpaces ?? [])
         .filter((entry) => entry.domainId === domain.id)
-        .map((entry) => buildDeletedSpaceBucket(entry, 'deleted-space', null)),
+        .map((entry) => buildDeletedSpaceBucket(appState, entry, 'deleted-space', null)),
     ],
   }))
 
@@ -138,9 +152,9 @@ export function buildTrashDomainBuckets(appState: AppState): TrashDomainBucket[]
         deletedSpaceEntryId: null,
         deletedDomainEntryId: entry.id,
         space,
-        parentTabs: buildDeletedDomainParentBuckets(space, entry.id, null, entry.domain.id),
+        parentTabs: buildDeletedDomainParentBuckets(appState, space, entry.id, null, entry.domain.id),
       })),
-      ...entry.deletedSpaces.map((deletedSpace) => buildDeletedSpaceBucket(deletedSpace, 'deleted-domain-space', entry.id)),
+      ...entry.deletedSpaces.map((deletedSpace) => buildDeletedSpaceBucket(appState, deletedSpace, 'deleted-domain-space', entry.id)),
     ],
   }))
 
