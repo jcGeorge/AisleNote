@@ -7,9 +7,11 @@ import {
   CLOSED_TABLE_CONTROLS_STATE,
   getActiveTableContext,
   getActiveTableDomContext,
+  getTableColumnReorderMarkerStyle,
   getTableContextForCellElement,
   getTableControlsOverlayState,
   getTableControlsOverlayStateForCell,
+  getTableRowReorderMarkerStyle,
   getTableReorderDragDecision,
   isEditorRootFocused,
   isSelectedTableNode,
@@ -151,9 +153,10 @@ function positionRowMarker(marker: HTMLElement, table: HTMLTableElement, insertI
     markerY = gap > 2 ? previousRect.bottom + gap / 2 : nextRect.top - TABLE_REORDER_MARKER_GAP_OFFSET_PX
   }
 
-  marker.style.width = `${tableRect.width}px`
-  marker.style.height = ''
-  marker.style.transform = `translate(${tableRect.left}px, ${markerY}px) translateY(-50%)`
+  const style = getTableRowReorderMarkerStyle(tableRect, markerY)
+  marker.style.width = style.width
+  marker.style.height = style.height
+  marker.style.transform = style.transform
   marker.classList.add('is-visible')
 }
 
@@ -174,9 +177,10 @@ function positionColumnMarker(marker: HTMLElement, table: HTMLTableElement, inse
     markerX = gap > 2 ? previousRect.right + gap / 2 : nextRect.left - TABLE_REORDER_MARKER_GAP_OFFSET_PX
   }
 
-  marker.style.height = `${tableRect.height}px`
-  marker.style.width = ''
-  marker.style.transform = `translate(${markerX}px, ${tableRect.top}px) translateX(-50%)`
+  const style = getTableColumnReorderMarkerStyle(tableRect, markerX)
+  marker.style.height = style.height
+  marker.style.width = style.width
+  marker.style.transform = style.transform
   marker.classList.add('is-visible')
 }
 

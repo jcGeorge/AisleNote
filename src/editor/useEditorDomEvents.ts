@@ -39,8 +39,10 @@ import {
 import { parseInternalNoteReferenceUrl, type InternalNoteLinkHit } from '../notes/note-references'
 import { insertPastedListIntoView } from './list-paste'
 import {
+  getActiveTableContext,
   getActiveTableRange,
   isBlankTableSideSelectionTarget,
+  moveTableCellSelectionByTab,
   moveSelectedTableBoundaryCaret,
   placeCaretOutsideTableAtCoords,
   selectTableFromSideClick,
@@ -68,6 +70,7 @@ type UseEditorDomEventsOptions = {
   refreshImageToolsPosition: () => void
   copySelectedImageToClipboard: () => void | Promise<unknown>
   deleteActiveEditorImageNode: () => boolean
+  commitActiveEditorMarkdownNow: (editor: Editor) => void
   setMenuOpen: Dispatch<SetStateAction<boolean>>
   setContextMenu: Dispatch<SetStateAction<ContextMenuState | null>>
   navigateToNoteLocation: (location: NoteNavigationTarget) => void
@@ -272,6 +275,7 @@ export function useEditorDomEvents({
   refreshImageToolsPosition,
   copySelectedImageToClipboard,
   deleteActiveEditorImageNode,
+  commitActiveEditorMarkdownNow,
   setMenuOpen,
   setContextMenu,
   navigateToNoteLocation,
@@ -687,6 +691,8 @@ export function useEditorDomEvents({
       activateEditorFromEventTarget(keyboardEvent.target)
       const targetElement = getElementFromEventTarget(keyboardEvent.target)
       const isTextInputTarget = Boolean(targetElement?.closest('input, textarea, select, .link-prompt'))
+      const currentEditor = editorRef.current
+      const view = getWysiwygView(currentEditor)
       const pageMovement =
         !keyboardEvent.metaKey && !keyboardEvent.ctrlKey && !keyboardEvent.altKey
           ? getEditorPageMovementForEvent(keyboardEvent)
@@ -704,6 +710,7 @@ export function useEditorDomEvents({
         shiftKey: keyboardEvent.shiftKey,
         isTextInputTarget,
         hasActiveImage: Boolean(activeImageRef.current),
+        hasActiveTableCell: Boolean(!isTextInputTarget && getActiveTableContext(view)),
         hasMultiLineEdit: Boolean(multiLineEditRef.current),
         toolbarFormatShortcut,
         editorHistoryDirection,
@@ -754,7 +761,6 @@ export function useEditorDomEvents({
         return
       }
       if (inputIntent.type === 'table-boundary-caret') {
-        const view = getWysiwygView(editorRef.current)
         if (
           isActiveWysiwygEditorContentTarget(targetElement, view) &&
           moveSelectedTableBoundaryCaret(view, inputIntent.direction)
@@ -762,6 +768,20 @@ export function useEditorDomEvents({
           keyboardEvent.preventDefault()
           keyboardEvent.stopPropagation()
           window.setTimeout(syncToolbarFormatState, 0)
+        }
+        return
+      }
+      if (inputIntent.type === 'table-cell-navigation') {
+        if (currentEditor && isActiveWysiwygEditorContentTarget(targetElement, view)) {
+          const result = moveTableCellSelectionByTab(view, inputIntent.direction)
+          if (result.handled) {
+            keyboardEvent.preventDefault()
+            keyboardEvent.stopPropagation()
+            if (result.changed) {
+              commitActiveEditorMarkdownNow(currentEditor)
+            }
+            window.setTimeout(syncToolbarFormatState, 0)
+          }
         }
         return
       }
@@ -831,7 +851,6 @@ export function useEditorDomEvents({
         return
       }
       if (inputIntent.type === 'page-movement') {
-        const view = getWysiwygView(editorRef.current)
         if (
           isActiveWysiwygEditorContentTarget(targetElement, view) &&
           applySingleCursorPageMovement(view, inputIntent.movement, inputIntent.extendSelection)

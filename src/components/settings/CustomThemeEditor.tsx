@@ -5,6 +5,7 @@ import {
   isCustomTheme,
   normalizeHexColor,
 } from '../../settings/defaults'
+import { parseThemeSettingsImport, serializeThemeSettings } from '../../settings/theme-transfer'
 import type {
   AppTheme,
   CustomThemeId,
@@ -56,6 +57,7 @@ type CustomThemeEditorProps = {
   onThemeChange: (theme: AppTheme) => void
   onSelectedCustomThemeChange: (theme: CustomThemeId) => void
   onCustomThemePaletteChange: (slot: CustomThemePaletteSlot, value: string) => void
+  onCustomThemePaletteImport: (palette: CustomThemePalette) => void
   onCustomThemePaletteReset: () => void
   onCustomThemePaletteSeedFromCurrentTheme: () => void
 }
@@ -77,11 +79,43 @@ export function CustomThemeEditor({
   onThemeChange,
   onSelectedCustomThemeChange,
   onCustomThemePaletteChange,
+  onCustomThemePaletteImport,
   onCustomThemePaletteReset,
   onCustomThemePaletteSeedFromCurrentTheme,
 }: CustomThemeEditorProps) {
   const [activeColorPickerSlot, setActiveColorPickerSlot] = useState<CustomThemePaletteSlot | null>(null)
+  const [themeJsonModal, setThemeJsonModal] = useState<'export' | 'import' | null>(null)
+  const [themeImportJson, setThemeImportJson] = useState('')
+  const [themeTransferStatus, setThemeTransferStatus] = useState('')
   const getPaletteValue = (slot: CustomThemePaletteSlot) => getPaletteColorPickerValue(customThemePaletteDraft, slot)
+  const exportedThemeJson = serializeThemeSettings(customThemePaletteDraft)
+
+  const closeThemeJsonModal = () => {
+    setThemeJsonModal(null)
+    setThemeTransferStatus('')
+  }
+
+  const copyExportedThemeJson = async () => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard text writes are unavailable.')
+      await navigator.clipboard.writeText(exportedThemeJson)
+      setThemeTransferStatus('theme json copied.')
+    } catch {
+      setThemeTransferStatus('could not copy theme json.')
+    }
+  }
+
+  const importThemeJson = () => {
+    const result = parseThemeSettingsImport(themeImportJson, customThemePaletteDraft)
+    if (!result.ok) {
+      setThemeTransferStatus(result.error)
+      return
+    }
+
+    onCustomThemePaletteImport(result.palette)
+    setThemeImportJson('')
+    setThemeTransferStatus('theme json imported.')
+  }
 
   return (
     <div className="custom-theme-editor" aria-label="theme palette">
@@ -169,6 +203,88 @@ export function CustomThemeEditor({
           </div>
         ))}
       </div>
+      <div className="custom-theme-transfer-actions">
+        <button
+          type="button"
+          className="btn btn-sm settings-action-btn"
+          onClick={() => {
+            setThemeJsonModal('export')
+            setThemeTransferStatus('')
+          }}
+        >
+          export json
+        </button>
+        <button
+          type="button"
+          className="btn btn-sm settings-action-btn"
+          onClick={() => {
+            setThemeJsonModal('import')
+            setThemeTransferStatus('')
+          }}
+        >
+          import json
+        </button>
+      </div>
+      {themeJsonModal && (
+        <div
+          className="delete-modal-backdrop custom-theme-json-modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeThemeJsonModal()
+          }}
+        >
+          <div
+            className="delete-modal settings-modal custom-theme-json-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="custom-theme-json-modal-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <h2 id="custom-theme-json-modal-title">
+              {themeJsonModal === 'export' ? 'export json' : 'import json'}
+            </h2>
+            <textarea
+              id={themeJsonModal === 'export' ? 'custom-theme-export-json' : 'custom-theme-import-json'}
+              className="settings-text-input custom-theme-json-textarea"
+              value={themeJsonModal === 'export' ? exportedThemeJson : themeImportJson}
+              readOnly={themeJsonModal === 'export'}
+              spellCheck={false}
+              onChange={(event) => {
+                if (themeJsonModal !== 'import') return
+                setThemeImportJson(event.target.value)
+                setThemeTransferStatus('')
+              }}
+            />
+            {themeTransferStatus && <p className="settings-help custom-theme-json-status">{themeTransferStatus}</p>}
+            <div className="delete-modal-actions custom-theme-json-modal-actions">
+              <button
+                type="button"
+                className="btn btn-sm settings-action-btn modal-cancel-btn"
+                onClick={closeThemeJsonModal}
+              >
+                close
+              </button>
+              {themeJsonModal === 'export' ? (
+                <button
+                  type="button"
+                  className="btn btn-sm settings-action-btn modal-primary-btn"
+                  onClick={() => void copyExportedThemeJson()}
+                >
+                  copy json
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-sm settings-action-btn modal-primary-btn"
+                  onClick={importThemeJson}
+                  disabled={themeImportJson.trim().length === 0}
+                >
+                  import json
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

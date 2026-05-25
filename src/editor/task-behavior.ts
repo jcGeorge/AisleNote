@@ -13,6 +13,7 @@ const TASK_REORDER_SELECTION_SUPPRESS_PX = 4
 const TASK_REORDER_DRAG_SLOP_PX = 8
 const TASK_REORDER_PREVIEW_MAX_CHARS = 30
 const TASK_REORDER_MARKER_GAP_OFFSET_PX = 4
+const TASK_REORDER_MARKER_VERTICAL_NUDGE_PX = 3
 const TASK_REORDER_SLOT_HYSTERESIS_PX = 6
 const TASK_REORDER_MARKER_MIN_WIDTH_PX = 72
 const TASK_REORDER_MARKER_EXTRA_WIDTH_PX = 34
@@ -50,6 +51,11 @@ type TextLineRect = {
   right: number
   width: number
   height: number
+}
+
+type MarkerRect = {
+  left: number
+  width: number
 }
 
 export function getListReorderPointerDecision(deltaX: number, deltaY: number): {
@@ -874,6 +880,25 @@ function positionTaskReorderGhost(ghost: HTMLElement, event: globalThis.MouseEve
   ghost.style.transform = `translate(${event.clientX}px, ${event.clientY}px) translate(-${TASK_REORDER_GHOST_CURSOR_X_PERCENT}%, -50%)`
 }
 
+export function getTaskReorderMarkerPlacement(
+  targetRect: MarkerRect,
+  textRect: Pick<MarkerRect, 'width'> | null | undefined,
+  markerY: number,
+  viewportWidth: number,
+) {
+  const markerLeft = Math.max(8, targetRect.left - 28)
+  const contentWidth = textRect?.width && textRect.width > 0 ? textRect.width : targetRect.width
+  const markerWidth = Math.min(
+    Math.max(contentWidth + TASK_REORDER_MARKER_EXTRA_WIDTH_PX, TASK_REORDER_MARKER_MIN_WIDTH_PX),
+    viewportWidth - markerLeft - 12,
+  )
+
+  return {
+    width: markerWidth,
+    transform: `translate(${markerLeft}px, ${markerY + TASK_REORDER_MARKER_VERTICAL_NUDGE_PX}px) translateY(-50%)`,
+  }
+}
+
 function positionTaskReorderMarker(
   marker: HTMLElement,
   targetElement: HTMLElement,
@@ -881,15 +906,10 @@ function positionTaskReorderMarker(
 ) {
   const rect = targetElement.getBoundingClientRect()
   const textRect = targetElement.querySelector<HTMLElement>('p')?.getBoundingClientRect()
-  const markerLeft = Math.max(8, rect.left - 28)
-  const contentWidth = textRect?.width && textRect.width > 0 ? textRect.width : rect.width
-  const markerWidth = Math.min(
-    Math.max(contentWidth + TASK_REORDER_MARKER_EXTRA_WIDTH_PX, TASK_REORDER_MARKER_MIN_WIDTH_PX),
-    window.innerWidth - markerLeft - 12,
-  )
+  const placement = getTaskReorderMarkerPlacement(rect, textRect, markerY, window.innerWidth)
 
-  marker.style.width = `${markerWidth}px`
-  marker.style.transform = `translate(${markerLeft}px, ${markerY}px) translateY(-50%)`
+  marker.style.width = `${placement.width}px`
+  marker.style.transform = placement.transform
   marker.classList.add('is-visible')
 }
 

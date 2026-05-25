@@ -118,6 +118,7 @@ type SettingsPageProps = {
   onThemeChange: (theme: AppTheme) => void
   onSelectedCustomThemeChange: (theme: CustomThemeId) => void
   onCustomThemePaletteChange: (slot: CustomThemePaletteSlot, value: string) => void
+  onCustomThemePaletteImport: (palette: CustomThemePalette) => void
   onCustomThemePaletteReset: () => void
   onCustomThemePaletteSeedFromCurrentTheme: () => void
   onTabButtonScaleChange: (value: string) => void
@@ -201,6 +202,7 @@ export function SettingsPage({
   onThemeChange,
   onSelectedCustomThemeChange,
   onCustomThemePaletteChange,
+  onCustomThemePaletteImport,
   onCustomThemePaletteReset,
   onCustomThemePaletteSeedFromCurrentTheme,
   onTabButtonScaleChange,
@@ -586,6 +588,7 @@ export function SettingsPage({
                 onThemeChange={onThemeChange}
                 onSelectedCustomThemeChange={onSelectedCustomThemeChange}
                 onCustomThemePaletteChange={onCustomThemePaletteChange}
+                onCustomThemePaletteImport={onCustomThemePaletteImport}
                 onCustomThemePaletteReset={onCustomThemePaletteReset}
                 onCustomThemePaletteSeedFromCurrentTheme={onCustomThemePaletteSeedFromCurrentTheme}
               />

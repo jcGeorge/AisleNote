@@ -30,6 +30,7 @@ function renderEditor({
       onThemeChange={() => undefined}
       onSelectedCustomThemeChange={() => undefined}
       onCustomThemePaletteChange={() => undefined}
+      onCustomThemePaletteImport={() => undefined}
       onCustomThemePaletteReset={() => undefined}
       onCustomThemePaletteSeedFromCurrentTheme={() => undefined}
     />,
@@ -67,6 +68,8 @@ describe('CustomThemeEditor', () => {
     expect(html).toContain('value="#2f8a5f"')
     expect(html).not.toContain('copy to custom 1')
     expect(html).toContain('reset palette')
+    expect(html).toContain('export json')
+    expect(html).toContain('import json')
   })
 
   it('renders the copy-to-custom action for built-in themes', () => {

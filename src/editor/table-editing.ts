@@ -4,7 +4,9 @@ import type { TableControlTargetMode } from '../types/app'
 export type TableControlOperation = 'add-row' | 'remove-row' | 'add-column' | 'remove-column'
 export type TableReorderAxis = 'row' | 'column'
 export type TableBoundaryDirection = 'before' | 'after'
+export type TableCellNavigationDirection = 'forward' | 'backward'
 export type TableRange = { tableStart: number; tableEnd: number }
+export type TableCellNavigationResult = { handled: boolean; changed: boolean }
 
 export type ActiveTableContext = {
   tableStart: number
@@ -25,6 +27,12 @@ export type TableControlsOverlayState = {
   columnLeft: number
   rowTop: number
   rowLeft: number
+}
+
+export type TableReorderMarkerStyle = {
+  width: string
+  height: string
+  transform: string
 }
 
 export const CLOSED_TABLE_CONTROLS_STATE: TableControlsOverlayState = {
@@ -49,6 +57,8 @@ const TABLE_COLUMN_CONTROL_WIDTH = TABLE_CONTROL_BUTTON_SIZE * 2 + TABLE_CONTROL
 const TABLE_ROW_CONTROL_HEIGHT = TABLE_CONTROL_BUTTON_SIZE * 2 + TABLE_CONTROL_GAP
 const TABLE_REORDER_DRAG_SLOP_PX = 18
 const TABLE_REORDER_AXIS_LOCK_RATIO = 2
+const TABLE_REORDER_MARKER_AXIS_NUDGE_PX = 2
+const TABLE_REORDER_MARKER_EXTENSION_PX = 10
 
 type TableRectLike = {
   top: number
@@ -60,6 +70,22 @@ type TableRectLike = {
 type PointLike = {
   left: number
   top: number
+}
+
+export function getTableRowReorderMarkerStyle(tableRect: TableRectLike, markerY: number): TableReorderMarkerStyle {
+  return {
+    width: `${tableRect.width + TABLE_REORDER_MARKER_EXTENSION_PX}px`,
+    height: '',
+    transform: `translate(${tableRect.left - TABLE_REORDER_MARKER_EXTENSION_PX}px, ${markerY + TABLE_REORDER_MARKER_AXIS_NUDGE_PX}px) translateY(-50%)`,
+  }
+}
+
+export function getTableColumnReorderMarkerStyle(tableRect: TableRectLike, markerX: number): TableReorderMarkerStyle {
+  return {
+    width: '',
+    height: `${tableRect.height + TABLE_REORDER_MARKER_EXTENSION_PX}px`,
+    transform: `translate(${markerX + TABLE_REORDER_MARKER_AXIS_NUDGE_PX}px, ${tableRect.top - TABLE_REORDER_MARKER_EXTENSION_PX}px) translateX(-50%)`,
+  }
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -450,12 +476,20 @@ function removeColumnFromRow(schema: any, row: any, cellTypeName: 'tableHeadCell
   return schema.nodes.tableRow.create(row.attrs ?? null, cells)
 }
 
-function createEmptyBodyRow(schema: any, columnCount: number) {
+function createEmptyRow(schema: any, cellTypeName: 'tableHeadCell' | 'tableBodyCell', columnCount: number) {
   const cells: any[] = []
   for (let index = 0; index < Math.max(1, columnCount); index += 1) {
-    cells.push(createEmptyCell(schema, 'tableBodyCell'))
+    cells.push(createEmptyCell(schema, cellTypeName))
   }
   return schema.nodes.tableRow.create(null, cells)
+}
+
+function createEmptyBodyRow(schema: any, columnCount: number) {
+  return createEmptyRow(schema, 'tableBodyCell', columnCount)
+}
+
+function createEmptyHeadRow(schema: any, columnCount: number) {
+  return createEmptyRow(schema, 'tableHeadCell', columnCount)
 }
 
 function cloneColumnMovedRow(
@@ -705,6 +739,109 @@ function dispatchTableReplacement(
   }
   view.dispatch(tr.scrollIntoView())
   return true
+}
+
+function getVisualTableRows(tableNode: any): any[] {
+  const headRow = getHeadRow(tableNode)
+  return headRow ? [headRow, ...getBodyRows(tableNode)] : []
+}
+
+function getVisualRow(tableNode: any, rowIndex: number): any | null {
+  return getVisualTableRows(tableNode)[rowIndex] ?? null
+}
+
+function getLastCellIndexInVisualRow(tableNode: any, rowIndex: number) {
+  const row = getVisualRow(tableNode, rowIndex)
+  return row ? Math.max(0, row.childCount - 1) : 0
+}
+
+function dispatchTableCellSelection(
+  view: any,
+  context: ActiveTableContext,
+  targetRowIndex: number,
+  targetColumnIndex: number,
+) {
+  const transaction = view?.state?.tr
+  if (!transaction || typeof view?.dispatch !== 'function') return false
+  const targetPosition = getCellInnerPosition(context.tableNode, context.tableStart, targetRowIndex, targetColumnIndex)
+  if (targetPosition === null) return false
+  setSelectionNearPosition(transaction, targetPosition)
+  view.dispatch(transaction.setMeta('addToHistory', false).scrollIntoView())
+  if (typeof view.focus === 'function') {
+    view.focus()
+  }
+  return true
+}
+
+export function moveTableCellSelectionByTab(
+  view: any,
+  direction: TableCellNavigationDirection,
+): TableCellNavigationResult {
+  const context = getActiveTableContext(view)
+  const schema = view?.state?.schema
+  if (!context || !schema) return { handled: false, changed: false }
+
+  const tableNode = view.state.doc.nodeAt(context.tableStart)
+  if (!tableNode || tableNode.type?.name !== 'table') return { handled: false, changed: false }
+  const headRow = getHeadRow(tableNode)
+  if (!headRow) return { handled: false, changed: false }
+
+  const bodyRows = getBodyRows(tableNode)
+  const visualRows = [headRow, ...bodyRows]
+  const currentRow = visualRows[context.rowIndex]
+  if (!currentRow) return { handled: false, changed: false }
+
+  if (direction === 'forward') {
+    if (context.columnIndex < currentRow.childCount - 1) {
+      return {
+        handled: dispatchTableCellSelection(view, context, context.rowIndex, context.columnIndex + 1),
+        changed: false,
+      }
+    }
+
+    if (context.rowIndex < visualRows.length - 1) {
+      return {
+        handled: dispatchTableCellSelection(view, context, context.rowIndex + 1, 0),
+        changed: false,
+      }
+    }
+
+    const nextBodyRows = [...bodyRows, createEmptyBodyRow(schema, context.columnCount)]
+    const nextTable = buildTable(schema, tableNode, cloneRowAsType(schema, headRow, 'tableHeadCell'), nextBodyRows)
+    const handled = dispatchTableReplacement(view, context, nextTable, bodyRows.length + 1, 0)
+    if (handled && typeof view.focus === 'function') {
+      view.focus()
+    }
+    return { handled, changed: handled }
+  }
+
+  if (context.columnIndex > 0) {
+    return {
+      handled: dispatchTableCellSelection(view, context, context.rowIndex, context.columnIndex - 1),
+      changed: false,
+    }
+  }
+
+  if (context.rowIndex > 0) {
+    return {
+      handled: dispatchTableCellSelection(
+        view,
+        context,
+        context.rowIndex - 1,
+        getLastCellIndexInVisualRow(tableNode, context.rowIndex - 1),
+      ),
+      changed: false,
+    }
+  }
+
+  const nextHeadRow = createEmptyHeadRow(schema, context.columnCount)
+  const nextBodyRows = [cloneRowAsType(schema, headRow, 'tableBodyCell'), ...bodyRows]
+  const nextTable = buildTable(schema, tableNode, nextHeadRow, nextBodyRows)
+  const handled = dispatchTableReplacement(view, context, nextTable, 0, Math.max(0, context.columnCount - 1))
+  if (handled && typeof view.focus === 'function') {
+    view.focus()
+  }
+  return { handled, changed: handled }
 }
 
 export function applyTableReorderOperationToView(

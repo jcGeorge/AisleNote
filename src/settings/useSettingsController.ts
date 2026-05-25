@@ -456,6 +456,18 @@ export function useSettingsController({
     }))
   }
 
+  const importCustomThemePaletteSetting = (palette: CustomThemePalette) => {
+    setCustomThemePaletteDraft(palette)
+    commitImmediateSettingsState((previous) => ({
+      ...previous,
+      ui: {
+        ...previous.ui,
+        customThemePalette: previous.theme === DEFAULT_CUSTOM_THEME_ID ? palette : previous.ui.customThemePalette,
+        themePalettes: setThemePaletteOverride(previous.ui.themePalettes, previous.theme, palette),
+      },
+    }))
+  }
+
   const seedCustomThemePaletteFromCurrentTheme = () => {
     const current = stateRef.current
     const targetTheme = normalizeCustomThemeId(selectedCustomTheme, DEFAULT_CUSTOM_THEME_ID)
@@ -859,6 +871,7 @@ export function useSettingsController({
     updateThemeSetting,
     updateCustomThemePaletteSetting,
     resetCustomThemePaletteSetting,
+    importCustomThemePaletteSetting,
     seedCustomThemePaletteFromCurrentTheme,
     updateShortcutSetting,
     updateNewlineShortcutSetting,

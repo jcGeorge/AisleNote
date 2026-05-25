@@ -7,12 +7,15 @@ import {
   applyTableReorderOperationToView,
   getActiveTableContext,
   getActiveTableRange,
+  getTableColumnReorderMarkerStyle,
   getTableControlsOverlayPlacement,
+  getTableRowReorderMarkerStyle,
   getTableReorderDragDecision,
   isBlankTableSideSelectionTarget,
   isEditorRootFocused,
   isPointInTableRightSelectionZone,
   isSelectedTableNode,
+  moveTableCellSelectionByTab,
   moveSelectedTableBoundaryCaret,
   placeCaretOutsideTableAtCoords,
   placeTableCaretAtCoords,
@@ -205,6 +208,10 @@ function createTableSelectionView(doc: any, options: { withHistory?: boolean } =
     },
   }
   return view
+}
+
+function expectSelectionInCell(view: any, rowIndex: number, columnIndex: number) {
+  expect(view.state.selection.from).toBe(getCellTextPosition(view.state.doc, rowIndex, columnIndex))
 }
 
 function applyOperation(
@@ -430,6 +437,22 @@ describe('table editing controls', () => {
     expect(getTableReorderDragDecision(22, 14)).toEqual({ shouldSuppressSelection: false, axis: null })
   })
 
+  it('extends and nudges table row reorder markers away from the table edge', () => {
+    expect(getTableRowReorderMarkerStyle({ top: 80, left: 120, width: 220, height: 72 }, 96)).toEqual({
+      width: '230px',
+      height: '',
+      transform: 'translate(110px, 98px) translateY(-50%)',
+    })
+  })
+
+  it('extends and nudges table column reorder markers away from the table edge', () => {
+    expect(getTableColumnReorderMarkerStyle({ top: 80, left: 120, width: 220, height: 72 }, 176)).toEqual({
+      width: '',
+      height: '82px',
+      transform: 'translate(178px, 70px) translateX(-50%)',
+    })
+  })
+
   it('places the caret at a coordinate-mapped table cell position', () => {
     const doc = buildDoc()
     const targetPosition = getCellTextPosition(doc, 2, 1)
@@ -617,6 +640,56 @@ describe('table editing controls', () => {
     expect(view.state.doc.toJSON()).not.toEqual(before)
     expect(undo(view.state, view.dispatch, view)).toBe(true)
     expect(view.state.doc.toJSON()).toEqual(before)
+  })
+
+  it('moves table tab navigation forward within a row', () => {
+    const view = createView(buildDoc(), 1, 0)
+
+    expect(moveTableCellSelectionByTab(view, 'forward')).toEqual({ handled: true, changed: false })
+    expectSelectionInCell(view, 1, 1)
+  })
+
+  it('wraps forward table tab navigation to the next row', () => {
+    const view = createView(buildDoc(), 1, 1)
+
+    expect(moveTableCellSelectionByTab(view, 'forward')).toEqual({ handled: true, changed: false })
+    expectSelectionInCell(view, 2, 0)
+  })
+
+  it('moves table shift-tab navigation backward within a row', () => {
+    const view = createView(buildDoc(), 2, 1)
+
+    expect(moveTableCellSelectionByTab(view, 'backward')).toEqual({ handled: true, changed: false })
+    expectSelectionInCell(view, 2, 0)
+  })
+
+  it('wraps backward table shift-tab navigation to the previous row', () => {
+    const view = createView(buildDoc(), 2, 0)
+
+    expect(moveTableCellSelectionByTab(view, 'backward')).toEqual({ handled: true, changed: false })
+    expectSelectionInCell(view, 1, 1)
+  })
+
+  it('appends a row from the final table cell and selects the new first cell', () => {
+    const view = createView(buildDoc(), 2, 1)
+
+    expect(moveTableCellSelectionByTab(view, 'forward')).toEqual({ handled: true, changed: true })
+    const table = getTable(view.state.doc)
+    expect(getBodyRows(table)).toHaveLength(3)
+    expectSelectionInCell(view, 3, 0)
+  })
+
+  it('inserts a row above the first table cell and selects the new last cell', () => {
+    const view = createView(buildDoc(), 0, 0)
+
+    expect(moveTableCellSelectionByTab(view, 'backward')).toEqual({ handled: true, changed: true })
+    const table = getTable(view.state.doc)
+    expect(table.child(0).child(0).child(0).type.name).toBe('tableHeadCell')
+    expect(table.child(1).child(0).child(0).type.name).toBe('tableBodyCell')
+    expect(getCellText(table, 0, 0)).toBe('')
+    expect(getCellText(table, 1, 0)).toBe('H1')
+    expect(getCellText(table, 1, 1)).toBe('H2')
+    expectSelectionInCell(view, 0, 1)
   })
 
   it('reorders body rows', () => {

@@ -12,6 +12,7 @@ import {
   captureListItemBranchInEditor,
   createTaskReorderSelectionSuppressionController,
   getListReorderPointerDecision,
+  getTaskReorderMarkerPlacement,
   mergeInlineRectsIntoLineRects,
   moveCapturedListItemBranchInEditor,
   moveListItemBranchInEditor,
@@ -358,6 +359,13 @@ describe('list reorder pointer handling', () => {
       { top: 10, bottom: 24, left: 20, right: 72, width: 52, height: 14 },
       { top: 30, bottom: 44, left: 20, right: 92, width: 72, height: 14 },
     ])
+  })
+
+  it('places the list reorder marker slightly below the computed slot', () => {
+    expect(getTaskReorderMarkerPlacement({ left: 120, width: 160 }, { width: 84 }, 48, 1000)).toEqual({
+      width: 118,
+      transform: 'translate(92px, 51px) translateY(-50%)',
+    })
   })
 
   it('does not suppress normal text clicks or horizontal text selection movement', () => {

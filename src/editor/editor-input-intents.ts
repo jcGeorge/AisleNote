@@ -5,7 +5,7 @@ import type {
   MultiLineCursorMovement,
   MultiLineEditInput,
 } from './multiline-edit'
-import type { TableBoundaryDirection } from './table-editing'
+import type { TableBoundaryDirection, TableCellNavigationDirection } from './table-editing'
 
 export type EditorInputIntent =
   | { type: 'none' }
@@ -15,6 +15,7 @@ export type EditorInputIntent =
   | { type: 'open-operations-menu' }
   | { type: 'delete-active-image' }
   | { type: 'table-boundary-caret'; direction: TableBoundaryDirection }
+  | { type: 'table-cell-navigation'; direction: TableCellNavigationDirection }
   | { type: 'multiline-selection'; direction: 'up' | 'down' }
   | { type: 'multiline-cancel' }
   | { type: 'multiline-edit'; input: MultiLineEditInput }
@@ -34,6 +35,7 @@ export type EditorKeyDownIntentInput = {
   shiftKey?: boolean
   isTextInputTarget: boolean
   hasActiveImage: boolean
+  hasActiveTableCell: boolean
   hasMultiLineEdit: boolean
   toolbarFormatShortcut: ToolbarFormatKey | null
   editorHistoryDirection: 'undo' | 'redo' | null
@@ -88,6 +90,14 @@ export function resolveEditorKeyDownIntent(input: EditorKeyDownIntentInput): Edi
   if (!input.isTextInputTarget && input.tableBoundaryDirection) {
     return { type: 'table-boundary-caret', direction: input.tableBoundaryDirection }
   }
+  if (
+    !input.isTextInputTarget &&
+    input.hasActiveTableCell &&
+    input.key === 'Tab' &&
+    !hasCommandModifier(input)
+  ) {
+    return { type: 'table-cell-navigation', direction: input.shiftKey ? 'backward' : 'forward' }
+  }
   if (input.multiLineSelectionDirection) {
     return { type: 'multiline-selection', direction: input.multiLineSelectionDirection }
   }
@@ -129,7 +139,7 @@ export function resolveEditorKeyDownIntent(input: EditorKeyDownIntentInput): Edi
   if (!input.isTextInputTarget && input.pageMovement) {
     return { type: 'page-movement', movement: input.pageMovement, extendSelection: input.shiftKey }
   }
-  if (input.key === 'Tab' && !input.altKey && !input.ctrlKey && !input.metaKey) {
+  if (!input.isTextInputTarget && input.key === 'Tab' && !input.altKey && !input.ctrlKey && !input.metaKey) {
     return { type: 'tab-indent', outdent: Boolean(input.shiftKey) }
   }
   return { type: 'none' }

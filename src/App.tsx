@@ -2292,6 +2292,7 @@ function App() {
     refreshImageToolsPosition,
     copySelectedImageToClipboard,
     deleteActiveEditorImageNode,
+    commitActiveEditorMarkdownNow,
     setMenuOpen,
     setContextMenu,
     navigateToNoteLocation,
@@ -3293,6 +3294,7 @@ function App() {
           onThemeChange={settingsController.updateThemeSetting}
           onSelectedCustomThemeChange={settingsController.updateSelectedCustomThemeSetting}
           onCustomThemePaletteChange={settingsController.updateCustomThemePaletteSetting}
+          onCustomThemePaletteImport={settingsController.importCustomThemePaletteSetting}
           onCustomThemePaletteReset={settingsController.resetCustomThemePaletteSetting}
           onCustomThemePaletteSeedFromCurrentTheme={settingsController.seedCustomThemePaletteFromCurrentTheme}
           onTabButtonScaleChange={settingsController.updateTabButtonScaleSetting}

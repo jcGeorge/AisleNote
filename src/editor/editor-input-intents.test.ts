@@ -10,6 +10,7 @@ function keyInput(overrides: Partial<EditorKeyDownIntentInput>): EditorKeyDownIn
     key: 'a',
     isTextInputTarget: false,
     hasActiveImage: false,
+    hasActiveTableCell: false,
     hasMultiLineEdit: false,
     toolbarFormatShortcut: null,
     editorHistoryDirection: null,
@@ -70,6 +71,40 @@ describe('editor input intent resolution', () => {
         pageMovement: 'page-down',
       })),
     ).toEqual({ type: 'table-boundary-caret', direction: 'after' })
+  })
+
+  it('routes table tab navigation before multiline and generic tab indentation', () => {
+    expect(
+      resolveEditorKeyDownIntent(keyInput({
+        key: 'Tab',
+        hasActiveTableCell: true,
+        hasMultiLineEdit: true,
+      })),
+    ).toEqual({ type: 'table-cell-navigation', direction: 'forward' })
+    expect(
+      resolveEditorKeyDownIntent(keyInput({
+        key: 'Tab',
+        shiftKey: true,
+        hasActiveTableCell: true,
+      })),
+    ).toEqual({ type: 'table-cell-navigation', direction: 'backward' })
+  })
+
+  it('does not route modified or text-input tabs to table navigation', () => {
+    expect(
+      resolveEditorKeyDownIntent(keyInput({
+        key: 'Tab',
+        altKey: true,
+        hasActiveTableCell: true,
+      })),
+    ).toEqual({ type: 'none' })
+    expect(
+      resolveEditorKeyDownIntent(keyInput({
+        key: 'Tab',
+        isTextInputTarget: true,
+        hasActiveTableCell: true,
+      })),
+    ).toEqual({ type: 'none' })
   })
 
   it('resolves beforeinput history and multiline text without mounting the editor hook', () => {
