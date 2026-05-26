@@ -148,13 +148,13 @@ export function useGlobalHotkeys({
       const isBrowserBackKey = event.key === 'BrowserBack'
       const isBrowserForwardKey = event.key === 'BrowserForward'
 
-      if (hotkeys.enableGenericHistoryHotkeys && (isCommandBracketBack || isAltArrowBack || isBrowserBackKey)) {
+      if (isCommandBracketBack || isAltArrowBack || isBrowserBackKey) {
         event.preventDefault()
         actions.navigateHistoryBy(-1)
         return
       }
 
-      if (hotkeys.enableGenericHistoryHotkeys && (isCommandBracketForward || isAltArrowForward || isBrowserForwardKey)) {
+      if (isCommandBracketForward || isAltArrowForward || isBrowserForwardKey) {
         event.preventDefault()
         actions.navigateHistoryBy(1)
         return
@@ -278,7 +278,6 @@ export function useGlobalHotkeys({
     }
 
     const handleMouseNavigation = (event: globalThis.MouseEvent) => {
-      if (!hotkeys.enableMouseBackForward) return
       if (event.button === 3) {
         event.preventDefault()
         actionsRef.current.navigateHistoryBy(-1)

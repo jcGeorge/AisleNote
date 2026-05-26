@@ -34,8 +34,6 @@ export const OPTIONAL_ROOT_SPLIT_FILE_KEYS = Object.freeze([
 
 const DEFAULT_HOTKEY_SETTINGS = {
   shortcuts: {},
-  enableMouseBackForward: true,
-  enableGenericHistoryHotkeys: true,
 }
 
 const DEFAULT_SYNCED_UI_SETTINGS = {
@@ -45,18 +43,24 @@ const DEFAULT_SYNCED_UI_SETTINGS = {
   stageManagerOpenDestinationAfterApply: true,
   lastLinkInsertMode: 'note',
   lastNoteCopyMode: 'independent',
+  findCaseSensitive: false,
+  findWholeWord: false,
+  findRegex: false,
   decoupledItemsKeepData: true,
   tableAddTargetMode: 'bottom-right',
   tableDeleteTargetMode: 'bottom-right',
+  tableOfContentsScope: 'all-aisles',
   selectedCustomTheme: 'custom1',
   customThemePalette: null,
   themePalettes: {},
   toolbarLayouts: [],
   toolbarEditorShowNames: false,
   settingsSection: 'hotkeys',
+  dataSettingsSection: 'cloud',
   visualsSettingsSection: 'theming',
   tabButtonScale: 1,
   noteFontScale: 1,
+  tooltipScale: 1,
   noteCursorLocations: {},
   headingCollapseState: {},
   seenTipIds: [],
@@ -258,9 +262,14 @@ export function extractSyncedUiSettings(rawUi) {
     ),
     lastLinkInsertMode: optionalString(ui.lastLinkInsertMode, DEFAULT_SYNCED_UI_SETTINGS.lastLinkInsertMode),
     lastNoteCopyMode: optionalString(ui.lastNoteCopyMode, DEFAULT_SYNCED_UI_SETTINGS.lastNoteCopyMode),
+    findCaseSensitive: optionalBoolean(ui.findCaseSensitive, DEFAULT_SYNCED_UI_SETTINGS.findCaseSensitive),
+    findWholeWord: optionalBoolean(ui.findWholeWord, DEFAULT_SYNCED_UI_SETTINGS.findWholeWord),
+    findRegex: optionalBoolean(ui.findRegex, DEFAULT_SYNCED_UI_SETTINGS.findRegex),
     decoupledItemsKeepData: optionalBoolean(ui.decoupledItemsKeepData, DEFAULT_SYNCED_UI_SETTINGS.decoupledItemsKeepData),
     tableAddTargetMode: optionalString(ui.tableAddTargetMode, DEFAULT_SYNCED_UI_SETTINGS.tableAddTargetMode),
     tableDeleteTargetMode: optionalString(ui.tableDeleteTargetMode, DEFAULT_SYNCED_UI_SETTINGS.tableDeleteTargetMode),
+    tableOfContentsScope: optionalString(ui.tableOfContentsScope, DEFAULT_SYNCED_UI_SETTINGS.tableOfContentsScope),
+    dataSettingsSection: optionalString(ui.dataSettingsSection, DEFAULT_SYNCED_UI_SETTINGS.dataSettingsSection),
     selectedCustomTheme: normalizeSelectedCustomTheme(ui.selectedCustomTheme),
     customThemePalette: isRecord(themePalettes.custom1) ? themePalettes.custom1 : legacyCustomPalette,
     themePalettes,
@@ -295,6 +304,10 @@ export function extractAppearanceSettings(appState) {
       typeof ui.noteFontScale === 'number'
         ? ui.noteFontScale
         : DEFAULT_SYNCED_UI_SETTINGS.noteFontScale,
+    tooltipScale:
+      typeof ui.tooltipScale === 'number'
+        ? ui.tooltipScale
+        : DEFAULT_SYNCED_UI_SETTINGS.tooltipScale,
   }
 }
 
@@ -316,9 +329,14 @@ export function extractUiPreferences(appState) {
     stageManagerOpenDestinationAfterApply: syncedUi.stageManagerOpenDestinationAfterApply,
     lastLinkInsertMode: syncedUi.lastLinkInsertMode,
     lastNoteCopyMode: syncedUi.lastNoteCopyMode,
+    findCaseSensitive: syncedUi.findCaseSensitive,
+    findWholeWord: syncedUi.findWholeWord,
+    findRegex: syncedUi.findRegex,
     decoupledItemsKeepData: syncedUi.decoupledItemsKeepData,
     tableAddTargetMode: syncedUi.tableAddTargetMode,
     tableDeleteTargetMode: syncedUi.tableDeleteTargetMode,
+    tableOfContentsScope: syncedUi.tableOfContentsScope,
+    dataSettingsSection: syncedUi.dataSettingsSection,
     settingsSection: optionalString(ui.settingsSection, DEFAULT_SYNCED_UI_SETTINGS.settingsSection),
     visualsSettingsSection: optionalString(
       ui.visualsSettingsSection,
@@ -370,6 +388,14 @@ export function buildSyncedSettingsFromSplitFiles(parts) {
       typeof appSettings.noteFontScale === 'number'
         ? appSettings.noteFontScale
         : DEFAULT_SYNCED_UI_SETTINGS.noteFontScale,
+    tooltipScale:
+      typeof appSettings.tooltipScale === 'number'
+        ? appSettings.tooltipScale
+        : DEFAULT_SYNCED_UI_SETTINGS.tooltipScale,
+    dataSettingsSection: optionalString(
+      uiPreferences.dataSettingsSection,
+      DEFAULT_SYNCED_UI_SETTINGS.dataSettingsSection,
+    ),
     settingsSection: optionalString(uiPreferences.settingsSection, DEFAULT_SYNCED_UI_SETTINGS.settingsSection),
     visualsSettingsSection: optionalString(
       uiPreferences.visualsSettingsSection,

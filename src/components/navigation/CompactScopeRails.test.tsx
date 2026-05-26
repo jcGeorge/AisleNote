@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createRef } from 'react'
+import { createRef, isValidElement, type ReactElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { ArrangeModeState, Domain, Space } from '../../types/app'
 import { CompactDomainRail, CompactScopeDragPreview, CompactSpaceRail } from './CompactScopeRails'
 
@@ -45,6 +45,22 @@ const domain = (id: string): Domain => ({
 
 const noop = () => undefined
 const autoSizeNoop = () => undefined
+
+type TestElement = ReactElement<Record<string, unknown> & { children?: ReactNode }>
+
+function findElementByProp(node: ReactNode, propName: string, propValue: string): TestElement | null {
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const match = findElementByProp(child, propName, propValue)
+      if (match) return match
+    }
+    return null
+  }
+  if (!isValidElement(node)) return null
+  const element = node as TestElement
+  if (element.props[propName] === propValue) return element
+  return findElementByProp(element.props.children, propName, propValue)
+}
 
 describe('compact scope rails', () => {
   it('renders compact space buttons with active and drop target classes', () => {
@@ -188,6 +204,96 @@ describe('compact scope rails', () => {
     expect(spaceHtml).not.toContain('compact-scope-add-btn')
     expect(domainHtml).toContain('stage-manager-domain-selected')
     expect(domainHtml).not.toContain('compact-scope-add-btn')
+  })
+
+  it('routes stage-manager space double-clicks to the director descendant selector', () => {
+    const onStageManagerSpaceDoubleClick = vi.fn()
+    const onBeginEdit = vi.fn()
+    const event = {
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    }
+    const tree = CompactSpaceRail({
+      spaces: [space('space-a')],
+      activeSpaceId: 'space-a',
+      editing: null,
+      arrangeMode: { ...arrangeMode, active: false },
+      arrangeableSpaceClassName: '',
+      draggingSpaceId: null,
+      spacesGridRef: createRef<HTMLDivElement>(),
+      stageManagerMode: true,
+      onStageManagerSpaceDoubleClick,
+      onOpenSpace: noop,
+      onOpenContextMenu: noop,
+      onShouldSkipRenameBlur: () => false,
+      onCommitRename: noop,
+      onCancelRename: noop,
+      onRenameDraftChange: noop,
+      onBeginEdit,
+      onAutoSizeRenameInput: autoSizeNoop,
+      onClearRenameDraft: noop,
+      onConsumeArrangeClickSuppression: () => false,
+      onStartArrangeDragSeed: noop,
+      onStartArrangeTapCandidate: noop,
+      onStartArrangePress: noop,
+      onHandleArrangeSpacePointerMove: noop,
+      onHandleArrangeSpacePointerUp: noop,
+      onClearArrangePressTimer: noop,
+      onCancelArrangeSpacePointerDrag: noop,
+    })
+    const button = findElementByProp(tree, 'data-arrange-space-id', 'space-a')
+
+    expect(button).not.toBeNull()
+    ;(button?.props.onDoubleClick as (event: unknown) => void)(event)
+    expect(event.preventDefault).toHaveBeenCalled()
+    expect(event.stopPropagation).toHaveBeenCalled()
+    expect(onStageManagerSpaceDoubleClick).toHaveBeenCalledWith('space-a')
+    expect(onBeginEdit).not.toHaveBeenCalled()
+  })
+
+  it('routes stage-manager domain double-clicks to the director descendant selector', () => {
+    const onStageManagerDomainDoubleClick = vi.fn()
+    const onBeginEdit = vi.fn()
+    const event = {
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    }
+    const tree = CompactDomainRail({
+      domains: [domain('domain-a')],
+      activeDomainId: 'domain-a',
+      editing: null,
+      arrangeMode: { ...arrangeMode, active: false },
+      arrangeableDomainClassName: '',
+      draggingDomainId: null,
+      domainsGridRef: createRef<HTMLDivElement>(),
+      stageManagerMode: true,
+      onStageManagerDomainDoubleClick,
+      onOpenDomain: noop,
+      onOpenContextMenu: noop,
+      onShouldSkipRenameBlur: () => false,
+      onCommitRename: noop,
+      onCancelRename: noop,
+      onRenameDraftChange: noop,
+      onBeginEdit,
+      onAutoSizeRenameInput: autoSizeNoop,
+      onClearRenameDraft: noop,
+      onConsumeArrangeClickSuppression: () => false,
+      onStartArrangeDragSeed: noop,
+      onStartArrangeTapCandidate: noop,
+      onStartArrangePress: noop,
+      onHandleArrangeDomainPointerMove: noop,
+      onHandleArrangeDomainPointerUp: noop,
+      onClearArrangePressTimer: noop,
+      onCancelArrangeDomainPointerDrag: noop,
+    })
+    const button = findElementByProp(tree, 'data-arrange-domain-id', 'domain-a')
+
+    expect(button).not.toBeNull()
+    ;(button?.props.onDoubleClick as (event: unknown) => void)(event)
+    expect(event.preventDefault).toHaveBeenCalled()
+    expect(event.stopPropagation).toHaveBeenCalled()
+    expect(onStageManagerDomainDoubleClick).toHaveBeenCalledWith('domain-a')
+    expect(onBeginEdit).not.toHaveBeenCalled()
   })
 
   it('renders arrange selected classes on compact space and domain rails', () => {

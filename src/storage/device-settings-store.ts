@@ -2,16 +2,19 @@ import { DEFAULT_TOOLBAR_LAYOUT_ID } from '../editor/toolbar-layouts'
 import { normalizeHeadingCollapseState } from '../editor/heading-collapse-state'
 import { normalizeNoteCursorLocations } from '../notes/note-cursors'
 import {
+  DEFAULT_DATA_SETTINGS_SECTION,
   DEFAULT_UI_SETTINGS,
   DEFAULT_VISUALS_SETTINGS_SECTION,
   clampNoteFontScale,
   clampTabButtonScale,
+  clampTooltipScale,
+  normalizeDataSettingsSection,
   normalizeSettingsSection,
   normalizeVisualsSettingsSection,
 } from '../settings/defaults'
 import { projectActiveDomainState } from '../state/domains'
 import { normalizeTipIds } from '../tips/tips'
-import type { AppState, ViewMode, VisualsSettingsSection } from '../types/app'
+import type { AppState, DataSettingsSection, ViewMode, VisualsSettingsSection } from '../types/app'
 
 export const DEVICE_SETTINGS_STORAGE_KEY = 'tabs:device-settings:v1'
 
@@ -31,10 +34,13 @@ export type DeviceSettings = {
   noteCursorLocations: AppState['ui']['noteCursorLocations']
   headingCollapseState: AppState['ui']['headingCollapseState']
   settingsSection: AppState['ui']['settingsSection']
+  dataSettingsSection: DataSettingsSection
   visualsSettingsSection: VisualsSettingsSection
   seenTipIds: AppState['ui']['seenTipIds']
   tabButtonScale: number
   noteFontScale: number
+  tooltipScale: number
+  lastFindQuery: string
 }
 
 export const DEFAULT_DEVICE_SETTINGS: DeviceSettings = {
@@ -43,10 +49,13 @@ export const DEFAULT_DEVICE_SETTINGS: DeviceSettings = {
   noteCursorLocations: DEFAULT_UI_SETTINGS.noteCursorLocations,
   headingCollapseState: DEFAULT_UI_SETTINGS.headingCollapseState,
   settingsSection: DEFAULT_UI_SETTINGS.settingsSection,
+  dataSettingsSection: DEFAULT_DATA_SETTINGS_SECTION,
   visualsSettingsSection: DEFAULT_VISUALS_SETTINGS_SECTION,
   seenTipIds: DEFAULT_UI_SETTINGS.seenTipIds,
   tabButtonScale: DEFAULT_UI_SETTINGS.tabButtonScale,
   noteFontScale: DEFAULT_UI_SETTINGS.noteFontScale,
+  tooltipScale: DEFAULT_UI_SETTINGS.tooltipScale ?? 1,
+  lastFindQuery: '',
 }
 
 export type DeviceSettingsLoadResult = {
@@ -86,6 +95,7 @@ function normalizeDeviceSettingsValue(raw: unknown): DeviceSettings {
     noteCursorLocations: normalizeNoteCursorLocations(obj.noteCursorLocations),
     headingCollapseState: normalizeHeadingCollapseState(obj.headingCollapseState),
     settingsSection: normalizeSettingsSection(obj.settingsSection),
+    dataSettingsSection: normalizeDataSettingsSection(obj.dataSettingsSection),
     visualsSettingsSection: normalizeVisualsSettingsSection(
       obj.visualsSettingsSection,
       obj.settingsSection === 'theming' ? 'theming' : DEFAULT_DEVICE_SETTINGS.visualsSettingsSection,
@@ -99,6 +109,11 @@ function normalizeDeviceSettingsValue(raw: unknown): DeviceSettings {
       typeof obj.noteFontScale === 'number'
         ? clampNoteFontScale(obj.noteFontScale)
         : DEFAULT_DEVICE_SETTINGS.noteFontScale,
+    tooltipScale:
+      typeof obj.tooltipScale === 'number'
+        ? clampTooltipScale(obj.tooltipScale)
+        : DEFAULT_DEVICE_SETTINGS.tooltipScale,
+    lastFindQuery: typeof obj.lastFindQuery === 'string' ? obj.lastFindQuery : DEFAULT_DEVICE_SETTINGS.lastFindQuery,
   }
 }
 
@@ -187,10 +202,12 @@ export function extractDeviceSettingsFromAppState(
     noteCursorLocations: appState.ui.noteCursorLocations,
     headingCollapseState: appState.ui.headingCollapseState,
     settingsSection: appState.ui.settingsSection,
+    dataSettingsSection: appState.ui.dataSettingsSection ?? DEFAULT_DATA_SETTINGS_SECTION,
     visualsSettingsSection: appState.ui.visualsSettingsSection ?? DEFAULT_VISUALS_SETTINGS_SECTION,
     seenTipIds: appState.ui.seenTipIds,
     tabButtonScale: appState.ui.tabButtonScale,
     noteFontScale: appState.ui.noteFontScale,
+    tooltipScale: appState.ui.tooltipScale ?? DEFAULT_UI_SETTINGS.tooltipScale ?? 1,
   }
 }
 
@@ -251,10 +268,12 @@ export function applyDeviceSettingsToAppState(appState: AppState, settings: Devi
         noteCursorLocations: settings.noteCursorLocations,
         headingCollapseState: settings.headingCollapseState,
         settingsSection: settings.settingsSection,
+        dataSettingsSection: settings.dataSettingsSection,
         visualsSettingsSection: settings.visualsSettingsSection,
         seenTipIds: settings.seenTipIds,
         tabButtonScale: settings.tabButtonScale,
         noteFontScale: settings.noteFontScale,
+        tooltipScale: settings.tooltipScale,
       },
     },
     settings.lastOpened,

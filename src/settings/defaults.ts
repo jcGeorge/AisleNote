@@ -4,8 +4,10 @@ import type {
   CustomThemeId,
   CustomThemePalette,
   CustomThemePaletteSlot,
+  DataSettingsSection,
   SettingsSection,
   TableControlTargetMode,
+  TableOfContentsScope,
   ThemePaletteOverrides,
   VisualsSettingsSection,
 } from '../types/app'
@@ -32,6 +34,8 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   'toolbar',
   'visuals',
 ]
+export const DEFAULT_DATA_SETTINGS_SECTION: DataSettingsSection = 'cloud'
+export const DATA_SETTINGS_SECTIONS: DataSettingsSection[] = ['cloud', 'trash', 'export', 'import']
 export const DEFAULT_VISUALS_SETTINGS_SECTION: VisualsSettingsSection = 'theming'
 export const VISUALS_SETTINGS_SECTIONS: VisualsSettingsSection[] = ['theming', 'otherVisuals']
 export const MIN_AUTO_REMOVE_DAYS = 1
@@ -44,12 +48,18 @@ export const DEFAULT_UI_SETTINGS: AppState['ui'] = {
   stageManagerOpenDestinationAfterApply: true,
   lastLinkInsertMode: 'note',
   lastNoteCopyMode: 'independent',
+  findCaseSensitive: false,
+  findWholeWord: false,
+  findRegex: false,
   decoupledItemsKeepData: true,
   tableAddTargetMode: 'bottom-right',
   tableDeleteTargetMode: 'bottom-right',
+  tableOfContentsScope: 'all-aisles',
   tabButtonScale: 1,
   noteFontScale: 1,
+  tooltipScale: 1,
   settingsSection: DEFAULT_SETTINGS_SECTION,
+  dataSettingsSection: DEFAULT_DATA_SETTINGS_SECTION,
   visualsSettingsSection: DEFAULT_VISUALS_SETTINGS_SECTION,
   selectedCustomTheme: DEFAULT_CUSTOM_THEME_ID,
   customThemePalette: null,
@@ -175,6 +185,9 @@ export const TAB_BUTTON_SCALE_STEP = 0.05
 export const MIN_NOTE_FONT_SCALE = 0.9
 export const MAX_NOTE_FONT_SCALE = 1.8
 export const NOTE_FONT_SCALE_STEP = 0.05
+export const MIN_TOOLTIP_SCALE = 0.8
+export const MAX_TOOLTIP_SCALE = 1.6
+export const TOOLTIP_SCALE_STEP = 0.05
 
 export function clampAutoRemoveDays(value: number): number {
   if (!Number.isFinite(value)) return DEFAULT_AUTO_REMOVE_DAYS
@@ -191,6 +204,12 @@ export function clampNoteFontScale(value: number): number {
   if (!Number.isFinite(value)) return DEFAULT_UI_SETTINGS.noteFontScale
   const rounded = Math.round(value / NOTE_FONT_SCALE_STEP) * NOTE_FONT_SCALE_STEP
   return Math.min(MAX_NOTE_FONT_SCALE, Math.max(MIN_NOTE_FONT_SCALE, Number(rounded.toFixed(2))))
+}
+
+export function clampTooltipScale(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_UI_SETTINGS.tooltipScale ?? 1
+  const rounded = Math.round(value / TOOLTIP_SCALE_STEP) * TOOLTIP_SCALE_STEP
+  return Math.min(MAX_TOOLTIP_SCALE, Math.max(MIN_TOOLTIP_SCALE, Number(rounded.toFixed(2))))
 }
 
 export function normalizeHexColor(value: unknown): string | null {
@@ -323,6 +342,15 @@ export function normalizeVisualsSettingsSection(
     : fallback
 }
 
+export function normalizeDataSettingsSection(
+  value: unknown,
+  fallback: DataSettingsSection = DEFAULT_DATA_SETTINGS_SECTION,
+): DataSettingsSection {
+  return typeof value === 'string' && DATA_SETTINGS_SECTIONS.includes(value as DataSettingsSection)
+    ? (value as DataSettingsSection)
+    : fallback
+}
+
 export function normalizeLinkInsertMode(value: unknown): AppState['ui']['lastLinkInsertMode'] {
   return value === 'url' || value === 'note' ? value : DEFAULT_UI_SETTINGS.lastLinkInsertMode
 }
@@ -333,6 +361,10 @@ export function normalizeNoteCopyMode(value: unknown): AppState['ui']['lastNoteC
 
 export function normalizeTableControlTargetMode(value: unknown): TableControlTargetMode {
   return value === 'active-cell' || value === 'bottom-right' ? value : 'bottom-right'
+}
+
+export function normalizeTableOfContentsScope(value: unknown): TableOfContentsScope {
+  return value === 'focused-aisle' || value === 'all-aisles' ? value : 'all-aisles'
 }
 
 export function normalizeUiSettings(raw: unknown): AppState['ui'] {
@@ -357,12 +389,19 @@ export function normalizeUiSettings(raw: unknown): AppState['ui'] {
         : DEFAULT_UI_SETTINGS.stageManagerOpenDestinationAfterApply,
     lastLinkInsertMode: normalizeLinkInsertMode(obj.lastLinkInsertMode),
     lastNoteCopyMode: normalizeNoteCopyMode(obj.lastNoteCopyMode),
+    findCaseSensitive:
+      typeof obj.findCaseSensitive === 'boolean' ? obj.findCaseSensitive : DEFAULT_UI_SETTINGS.findCaseSensitive,
+    findWholeWord:
+      typeof obj.findWholeWord === 'boolean' ? obj.findWholeWord : DEFAULT_UI_SETTINGS.findWholeWord,
+    findRegex:
+      typeof obj.findRegex === 'boolean' ? obj.findRegex : DEFAULT_UI_SETTINGS.findRegex,
     decoupledItemsKeepData:
       typeof obj.decoupledItemsKeepData === 'boolean'
         ? obj.decoupledItemsKeepData
         : DEFAULT_UI_SETTINGS.decoupledItemsKeepData,
     tableAddTargetMode: normalizeTableControlTargetMode(obj.tableAddTargetMode),
     tableDeleteTargetMode: normalizeTableControlTargetMode(obj.tableDeleteTargetMode),
+    tableOfContentsScope: normalizeTableOfContentsScope(obj.tableOfContentsScope),
     tabButtonScale:
       typeof obj.tabButtonScale === 'number'
         ? clampTabButtonScale(obj.tabButtonScale)
@@ -371,11 +410,16 @@ export function normalizeUiSettings(raw: unknown): AppState['ui'] {
       typeof obj.noteFontScale === 'number'
         ? clampNoteFontScale(obj.noteFontScale)
         : DEFAULT_UI_SETTINGS.noteFontScale,
+    tooltipScale:
+      typeof obj.tooltipScale === 'number'
+        ? clampTooltipScale(obj.tooltipScale)
+        : DEFAULT_UI_SETTINGS.tooltipScale,
     settingsSection: normalizeSettingsSection(obj.settingsSection),
     visualsSettingsSection: normalizeVisualsSettingsSection(
       obj.visualsSettingsSection,
       obj.settingsSection === 'theming' ? 'theming' : DEFAULT_UI_SETTINGS.visualsSettingsSection,
     ),
+    dataSettingsSection: normalizeDataSettingsSection(obj.dataSettingsSection),
     selectedCustomTheme: normalizeCustomThemeId(obj.selectedCustomTheme),
     customThemePalette: themePalettes.custom1 ?? customThemePalette ?? null,
     themePalettes,

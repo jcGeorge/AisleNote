@@ -6,6 +6,7 @@ import {
   applyStageManagerSubTabModifierClick,
   buildStageManagerSelectionSnapshot,
   createEmptyStageManagerParentSelection,
+  createStageManagerFullSelectionState,
   createStageManagerSelectionState,
   cycleStageManagerParentSelection,
   toggleStageManagerSubTabSelection,
@@ -63,6 +64,24 @@ describe('stage manager selection', () => {
     expect(snapshot.fullParents.map((candidate) => candidate.id)).toEqual(['parent-1', 'parent-2'])
     expect(snapshot.looseSubTabs).toEqual([])
     expect(snapshot.hasSelection).toBe(true)
+  })
+
+  it('creates a full parent selection state for every tab in a space', () => {
+    const otherTab: Tab = {
+      ...tab,
+      id: 'parent-2',
+      subTabs: [{ id: 'sub-3', title: 'Three', noteBodyId: 'body-3'}],
+    }
+    const selections = createStageManagerFullSelectionState([tab, otherTab])
+
+    expect(selections['parent-1']).toMatchObject({
+      mode: 'full',
+      selectedSubTabIds: ['sub-1', 'sub-2'],
+    })
+    expect(selections['parent-2']).toMatchObject({
+      mode: 'full',
+      selectedSubTabIds: ['sub-3'],
+    })
   })
 
   it('shift-clicking a parent selects a full parent range', () => {

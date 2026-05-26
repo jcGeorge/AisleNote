@@ -10,11 +10,14 @@ import {
   MAX_AUTO_REMOVE_DAYS,
   MAX_NOTE_FONT_SCALE,
   MAX_TAB_BUTTON_SCALE,
+  MAX_TOOLTIP_SCALE,
   MIN_AUTO_REMOVE_DAYS,
   MIN_NOTE_FONT_SCALE,
   MIN_TAB_BUTTON_SCALE,
+  MIN_TOOLTIP_SCALE,
   NOTE_FONT_SCALE_STEP,
   TAB_BUTTON_SCALE_STEP,
+  TOOLTIP_SCALE_STEP,
   SETTINGS_SECTIONS,
 } from '../../settings/defaults'
 import {
@@ -32,6 +35,7 @@ import type {
   CustomThemeId,
   CustomThemePalette,
   CustomThemePaletteSlot,
+  DataSettingsSection,
   FrontmatterSettings,
   FrontmatterTemplate,
   FrontmatterTemplateField,
@@ -41,11 +45,13 @@ import type {
   ShortcutId,
   StorageProfileStatus,
   TableControlTargetMode,
+  TableOfContentsScope,
   TipId,
   ToolbarLayout,
   VisualsSettingsSection,
 } from '../../types/app'
 import { CustomThemeEditor } from './CustomThemeEditor'
+import { DataSectionSwitch } from './DataSectionSwitch'
 import { ThemePreview } from './ThemePreview'
 import { ToolbarSettingsPanel } from './ToolbarSettingsPanel'
 import { VisualsSectionSwitch } from './VisualsSectionSwitch'
@@ -72,6 +78,11 @@ const TABLE_CONTROL_TARGET_OPTIONS: Array<{ id: TableControlTargetMode; label: s
   { id: 'bottom-right', label: 'bottom right' },
 ]
 
+const TABLE_OF_CONTENTS_SCOPE_OPTIONS: Array<{ id: TableOfContentsScope; label: string }> = [
+  { id: 'all-aisles', label: 'all aisles' },
+  { id: 'focused-aisle', label: 'focused aisle' },
+]
+
 function isFrontmatterBooleanTrue(value: string) {
   const normalized = value.trim().toLowerCase()
   return normalized === 'true' || normalized === 'yes' || normalized === 'on' || normalized === '1'
@@ -80,18 +91,17 @@ function isFrontmatterBooleanTrue(value: string) {
 type SettingsPageProps = {
   state: AppState
   section: SettingsSection
+  dataSection: DataSettingsSection
   visualsSection: VisualsSettingsSection
   isMacPlatform: boolean
   shortcutDrafts: Record<ShortcutId, string>
   newlineShortcutDrafts: Record<NewlineShortcutId, NewlineOperationId>
   editingShortcut: ShortcutId | null
-  mouseBackForwardEnabled: boolean
-  genericHistoryHotkeysEnabled: boolean
   settingsDaysDraft: string
-  activeSpaceId: string
   exportStatus: string
   tabButtonScaleDraft: number
   noteFontScaleDraft: number
+  tooltipScaleDraft: number
   selectedCustomTheme: CustomThemeId
   customThemePaletteDraft: CustomThemePalette
   showParentHomeTabDraft: boolean
@@ -99,6 +109,7 @@ type SettingsPageProps = {
   alwaysShowDomainsDraft: boolean
   tableAddTargetModeDraft: TableControlTargetMode
   tableDeleteTargetModeDraft: TableControlTargetMode
+  tableOfContentsScopeDraft: TableOfContentsScope
   frontmatterDraft: FrontmatterSettings
   frontmatterDraftDirty: boolean
   toolbarLayouts: ToolbarLayout[]
@@ -106,14 +117,12 @@ type SettingsPageProps = {
   toolbarEditorShowNames: boolean
   storageProfileStatus: StorageProfileStatus | null
   onSectionChange: (section: SettingsSection) => void
+  onDataSectionChange: (section: DataSettingsSection) => void
   onVisualsSectionChange: (section: VisualsSettingsSection) => void
   onToggleShortcutEdit: (shortcutId: ShortcutId) => void
   onNewlineShortcutChange: (shortcutId: NewlineShortcutId, operation: NewlineOperationId) => void
   onOpenShortcutMenuSettings: () => void
-  onMouseBackForwardChange: (enabled: boolean) => void
-  onGenericHistoryHotkeysChange: (enabled: boolean) => void
   onAutoRemoveDaysChange: (value: string, commit?: boolean) => void
-  onExportSpace: (spaceId: string) => void
   onExportAll: () => void
   onThemeChange: (theme: AppTheme) => void
   onSelectedCustomThemeChange: (theme: CustomThemeId) => void
@@ -123,11 +132,13 @@ type SettingsPageProps = {
   onCustomThemePaletteSeedFromCurrentTheme: () => void
   onTabButtonScaleChange: (value: string) => void
   onNoteFontScaleChange: (value: string) => void
+  onTooltipScaleChange: (value: string) => void
   onShowParentHomeTabChange: (enabled: boolean) => void
   onAlwaysShowSpacesChange: (enabled: boolean) => void
   onAlwaysShowDomainsChange: (enabled: boolean) => void
   onTableAddTargetModeChange: (mode: TableControlTargetMode) => void
   onTableDeleteTargetModeChange: (mode: TableControlTargetMode) => void
+  onTableOfContentsScopeChange: (scope: TableOfContentsScope) => void
   onTipEnabledChange: (tipId: TipId, enabled: boolean) => void
   onSelectToolbarLayout: (layoutId: string) => void
   onCreateToolbarLayout: () => void
@@ -164,18 +175,17 @@ type SettingsPageProps = {
 export function SettingsPage({
   state,
   section,
+  dataSection,
   visualsSection,
   isMacPlatform,
   shortcutDrafts,
   newlineShortcutDrafts,
   editingShortcut,
-  mouseBackForwardEnabled,
-  genericHistoryHotkeysEnabled,
   settingsDaysDraft,
-  activeSpaceId,
   exportStatus,
   tabButtonScaleDraft,
   noteFontScaleDraft,
+  tooltipScaleDraft,
   selectedCustomTheme,
   customThemePaletteDraft,
   showParentHomeTabDraft,
@@ -183,6 +193,7 @@ export function SettingsPage({
   alwaysShowDomainsDraft,
   tableAddTargetModeDraft,
   tableDeleteTargetModeDraft,
+  tableOfContentsScopeDraft,
   frontmatterDraft,
   frontmatterDraftDirty,
   toolbarLayouts,
@@ -190,14 +201,12 @@ export function SettingsPage({
   toolbarEditorShowNames,
   storageProfileStatus,
   onSectionChange,
+  onDataSectionChange,
   onVisualsSectionChange,
   onToggleShortcutEdit,
   onNewlineShortcutChange,
   onOpenShortcutMenuSettings,
-  onMouseBackForwardChange,
-  onGenericHistoryHotkeysChange,
   onAutoRemoveDaysChange,
-  onExportSpace,
   onExportAll,
   onThemeChange,
   onSelectedCustomThemeChange,
@@ -207,11 +216,13 @@ export function SettingsPage({
   onCustomThemePaletteSeedFromCurrentTheme,
   onTabButtonScaleChange,
   onNoteFontScaleChange,
+  onTooltipScaleChange,
   onShowParentHomeTabChange,
   onAlwaysShowSpacesChange,
   onAlwaysShowDomainsChange,
   onTableAddTargetModeChange,
   onTableDeleteTargetModeChange,
+  onTableOfContentsScopeChange,
   onTipEnabledChange,
   onSelectToolbarLayout,
   onCreateToolbarLayout,
@@ -352,6 +363,31 @@ export function SettingsPage({
     )
   }
 
+  const renderTableOfContentsScopeSetting = () => {
+    const labelId = 'settings-table-of-contents-shows-for-label'
+    return (
+      <div className="settings-hotkey-row">
+        <span className="settings-hotkey-label" id={labelId}>
+          table of contents shows for
+        </span>
+        <div className="settings-segmented-control" role="radiogroup" aria-labelledby={labelId}>
+          {TABLE_OF_CONTENTS_SCOPE_OPTIONS.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              role="radio"
+              aria-checked={tableOfContentsScopeDraft === option.id}
+              className={`settings-segmented-option ${tableOfContentsScopeDraft === option.id ? 'is-selected' : ''}`}
+              onClick={() => onTableOfContentsScopeChange(option.id)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <section className="settings-page-wrap">
       <div className="settings-page-card">
@@ -389,36 +425,6 @@ export function SettingsPage({
               ))}
             </div>
             <p className="settings-help">select a hotkey to enter new combination, escape to cancel.</p>
-            <div className="settings-hotkey-row">
-              <label className="settings-hotkey-label" htmlFor="settings-mouse-back-forward">
-                enable mouse back/forward buttons
-              </label>
-              <div className="form-check form-switch settings-switch">
-                <input
-                  id="settings-mouse-back-forward"
-                  className="form-check-input"
-                  type="checkbox"
-                  role="switch"
-                  checked={mouseBackForwardEnabled}
-                  onChange={(event) => onMouseBackForwardChange(event.target.checked)}
-                />
-              </div>
-            </div>
-            <div className="settings-hotkey-row">
-              <label className="settings-hotkey-label" htmlFor="settings-generic-history-hotkeys">
-                enable generic back/forward hotkeys
-              </label>
-              <div className="form-check form-switch settings-switch">
-                <input
-                  id="settings-generic-history-hotkeys"
-                  className="form-check-input"
-                  type="checkbox"
-                  role="switch"
-                  checked={genericHistoryHotkeysEnabled}
-                  onChange={(event) => onGenericHistoryHotkeysChange(event.target.checked)}
-                />
-              </div>
-            </div>
           </div>
         )}
 
@@ -460,109 +466,139 @@ export function SettingsPage({
 
         {section === 'data' && (
           <div className="settings-section-panel" role="tabpanel">
-            <p>cloud and storage:</p>
-            <p className="settings-help">notes, arrangement, and synced profile settings live in this folder.</p>
-            <div className={storageProfileCardClassName}>
-              <div className="storage-profile-row">
-                <span className="settings-hotkey-label">current folder</span>
-                <code className="storage-profile-path">
-                  {storageProfileStatus?.profileRootPath ?? 'desktop storage unavailable'}
-                </code>
-              </div>
-              <div className="storage-profile-row">
-                <span className="settings-hotkey-label">status</span>
-                <span>{storageProfileStatus ? (storageProfileStatus.status === 'ready' ? 'ready' : 'error') : 'browser local'}</span>
-              </div>
-              <div className="storage-profile-row">
-                <span className="settings-hotkey-label">health</span>
-                <span>{storageProfileStatus ? storageHealth : 'local'}</span>
-              </div>
-              <div className="storage-profile-row">
-                <span className="settings-hotkey-label">schema</span>
-                <span>{storageProfileStatus?.schemaVersion ?? 'n/a'}</span>
-              </div>
-              <div className="storage-profile-row">
-                <span className="settings-hotkey-label">writable</span>
-                <span>{storageProfileStatus ? (storageProfileStatus.canWrite ? 'yes' : 'paused') : 'browser local'}</span>
-              </div>
-              <div className="storage-profile-row">
-                <span className="settings-hotkey-label">recovery snapshots</span>
-                <span>{storageProfileStatus?.recoverySnapshotCount ?? 0}</span>
-              </div>
-              {storageProfileStatus?.error && <p className="settings-help storage-profile-error">{storageProfileStatus.error}</p>}
-              {storageIssues.length > 0 && (
-                <div className="storage-profile-issues" aria-label="storage health issues">
-                  {storageIssues.map((issue, index) => (
-                    <p
-                      key={`${issue.code}-${issue.path ?? index}`}
-                      className={`settings-help storage-profile-issue ${issue.severity === 'error' ? 'is-error' : 'is-warning'}`}
+            <DataSectionSwitch dataSection={dataSection} onDataSectionChange={onDataSectionChange} />
+            {dataSection === 'cloud' && (
+              <>
+                <p>cloud and storage:</p>
+                <p className="settings-help">notes, arrangement, and synced profile settings live in this folder.</p>
+                <div className={storageProfileCardClassName}>
+                  <div className="storage-profile-row">
+                    <span className="settings-hotkey-label">current folder</span>
+                    <code className="storage-profile-path">
+                      {storageProfileStatus?.profileRootPath ?? 'desktop storage unavailable'}
+                    </code>
+                  </div>
+                  <div className="storage-profile-row">
+                    <span className="settings-hotkey-label">status</span>
+                    <span>{storageProfileStatus ? (storageProfileStatus.status === 'ready' ? 'ready' : 'error') : 'browser local'}</span>
+                  </div>
+                  <div className="storage-profile-row">
+                    <span className="settings-hotkey-label">health</span>
+                    <span>{storageProfileStatus ? storageHealth : 'local'}</span>
+                  </div>
+                  <div className="storage-profile-row">
+                    <span className="settings-hotkey-label">schema</span>
+                    <span>{storageProfileStatus?.schemaVersion ?? 'n/a'}</span>
+                  </div>
+                  <div className="storage-profile-row">
+                    <span className="settings-hotkey-label">writable</span>
+                    <span>{storageProfileStatus ? (storageProfileStatus.canWrite ? 'yes' : 'paused') : 'browser local'}</span>
+                  </div>
+                  <div className="storage-profile-row">
+                    <span className="settings-hotkey-label">recovery snapshots</span>
+                    <span>{storageProfileStatus?.recoverySnapshotCount ?? 0}</span>
+                  </div>
+                  {storageProfileStatus?.error && <p className="settings-help storage-profile-error">{storageProfileStatus.error}</p>}
+                  {storageIssues.length > 0 && (
+                    <div className="storage-profile-issues" aria-label="storage health issues">
+                      {storageIssues.map((issue, index) => (
+                        <p
+                          key={`${issue.code}-${issue.path ?? index}`}
+                          className={`settings-help storage-profile-issue ${issue.severity === 'error' ? 'is-error' : 'is-warning'}`}
+                        >
+                          {issue.message}
+                          {issue.path ? ` (${issue.path})` : ''}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                  <div className="settings-page-actions">
+                    <button type="button" className="btn btn-sm settings-action-btn" onClick={onChooseStorageFolder}>
+                      choose sync folder
+                    </button>
+                    <button type="button" className="btn btn-sm settings-action-btn" onClick={onMoveStorageProfile}>
+                      move current data
+                    </button>
+                    <button type="button" className="btn btn-sm settings-action-btn" onClick={onRevealStorageProfile}>
+                      reveal folder
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-sm settings-action-btn"
+                      onClick={onRetryStorageProfile}
                     >
-                      {issue.message}
-                      {issue.path ? ` (${issue.path})` : ''}
-                    </p>
-                  ))}
+                      retry
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-sm settings-action-btn"
+                      onClick={onRestoreStorageRecoverySnapshot}
+                      disabled={!storageProfileStatus || (storageProfileStatus.recoverySnapshotCount ?? 0) <= 0}
+                    >
+                      restore latest snapshot
+                    </button>
+                  </div>
+                  <p className="settings-help">
+                    choose a local cloud folder; tabs stores a portable profile inside it.
+                  </p>
                 </div>
-              )}
-              <div className="settings-page-actions">
-                <button type="button" className="btn btn-sm settings-action-btn" onClick={onChooseStorageFolder}>
-                  choose sync folder
-                </button>
-                <button type="button" className="btn btn-sm settings-action-btn" onClick={onMoveStorageProfile}>
-                  move current data
-                </button>
-                <button type="button" className="btn btn-sm settings-action-btn" onClick={onRevealStorageProfile}>
-                  reveal folder
-                </button>
-                <button type="button" className="btn btn-sm settings-action-btn" onClick={onExportAll}>
-                  export backup
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-sm settings-action-btn"
-                  onClick={onRetryStorageProfile}
-                >
-                  retry
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-sm settings-action-btn"
-                  onClick={onRestoreStorageRecoverySnapshot}
-                  disabled={!storageProfileStatus || (storageProfileStatus.recoverySnapshotCount ?? 0) <= 0}
-                >
-                  restore latest snapshot
-                </button>
-              </div>
-              <p className="settings-help">
-                choose a local iCloud Drive, Dropbox, OneDrive, Google Drive, or plain folder; tabs stores a portable
-                <code>notes-data</code> profile inside it.
-              </p>
-            </div>
-            <div className="settings-divider" />
-            <p>automatically remove deleted items after:</p>
-            <div className="settings-field-row">
-              <input
-                type="number"
-                className="settings-number-input settings-number-input-half"
-                min={MIN_AUTO_REMOVE_DAYS}
-                max={MAX_AUTO_REMOVE_DAYS}
-                step={1}
-                value={settingsDaysDraft}
-                onChange={(event) => onAutoRemoveDaysChange(event.target.value)}
-                onBlur={() => onAutoRemoveDaysChange(settingsDaysDraft, true)}
-              />
-              <span className="settings-field-suffix">days</span>
-            </div>
-            <div className="settings-divider" />
-            <div className="settings-page-actions">
-              <button type="button" className="btn btn-sm settings-action-btn" onClick={() => onExportSpace(activeSpaceId)}>
-                export space
-              </button>
-              <button type="button" className="btn btn-sm settings-action-btn" onClick={onExportAll}>
-                export all
-              </button>
-            </div>
-            <p className="settings-help">exports convert internal tab markers to four spaces for clean markdown files.</p>
-            {exportStatus && <p className="settings-help">{exportStatus}</p>}
+              </>
+            )}
+            {dataSection === 'trash' && (
+              <>
+                <p>automatically remove deleted items after:</p>
+                <div className="settings-field-row">
+                  <input
+                    type="number"
+                    className="settings-number-input settings-number-input-half"
+                    min={MIN_AUTO_REMOVE_DAYS}
+                    max={MAX_AUTO_REMOVE_DAYS}
+                    step={1}
+                    value={settingsDaysDraft}
+                    onChange={(event) => onAutoRemoveDaysChange(event.target.value)}
+                    onBlur={() => onAutoRemoveDaysChange(settingsDaysDraft, true)}
+                  />
+                  <span className="settings-field-suffix">days</span>
+                </div>
+              </>
+            )}
+            {dataSection === 'export' && (
+              <>
+                <p>export:</p>
+                <div className="settings-page-actions">
+                  <button type="button" className="btn btn-sm settings-action-btn" onClick={onExportAll}>
+                    export backup
+                  </button>
+                  <button type="button" className="btn btn-sm settings-action-btn" onClick={onExportAll}>
+                    export all
+                  </button>
+                </div>
+                <div className="settings-hotkey-row">
+                  <label className="settings-hotkey-label" htmlFor="settings-export-tabs-project">
+                    export to other tabs project
+                  </label>
+                  <div className="form-check form-switch settings-switch">
+                    <input
+                      id="settings-export-tabs-project"
+                      className="form-check-input"
+                      type="checkbox"
+                      role="switch"
+                      checked={false}
+                      disabled
+                      readOnly
+                    />
+                  </div>
+                </div>
+                <p className="settings-help">exports convert internal tab markers to four spaces for clean markdown files.</p>
+                {exportStatus && <p className="settings-help">{exportStatus}</p>}
+              </>
+            )}
+            {dataSection === 'import' && (
+              <>
+                <p>import:</p>
+                <p className="settings-help">import tools are not available yet.</p>
+              </>
+            )}
           </div>
         )}
 
@@ -636,6 +672,24 @@ export function SettingsPage({
                   onChange={(event) => onNoteFontScaleChange(event.target.value)}
                 />
                 <span className="settings-range-value">{Math.round(noteFontScaleDraft * 100)}%</span>
+              </div>
+            </div>
+            <div className="settings-hotkey-row settings-slider-row">
+              <label className="settings-hotkey-label" htmlFor="settings-tooltip-scale">
+                tooltip size
+              </label>
+              <div className="settings-slider-wrap">
+                <input
+                  id="settings-tooltip-scale"
+                  className="form-range settings-range-input"
+                  type="range"
+                  min={MIN_TOOLTIP_SCALE}
+                  max={MAX_TOOLTIP_SCALE}
+                  step={TOOLTIP_SCALE_STEP}
+                  value={tooltipScaleDraft}
+                  onChange={(event) => onTooltipScaleChange(event.target.value)}
+                />
+                <span className="settings-range-value">{Math.round(tooltipScaleDraft * 100)}%</span>
               </div>
             </div>
             <div className="settings-hotkey-row">
@@ -847,6 +901,7 @@ export function SettingsPage({
         {section === 'misc' && (
           <div className="settings-section-panel" role="tabpanel">
             <p className="settings-help">synced profile settings</p>
+            {renderTableOfContentsScopeSetting()}
             {renderTableControlTargetSetting(
               'add table row or column',
               tableAddTargetModeDraft,
@@ -896,7 +951,7 @@ export function SettingsPage({
 
         {section === 'toolbar' && (
           <div className="settings-section-panel" role="tabpanel" aria-label="toolbar settings">
-            <p className="settings-help">toolbar layouts sync with your notes profile; the active toolbar is this-device.</p>
+            <p className="settings-help">toolbar layouts sync with your notes profile; the active toolbar is set per device.</p>
             <ToolbarSettingsPanel
               toolbarLayouts={toolbarLayouts}
               toolbarEditorLayoutId={toolbarEditorLayoutId}

@@ -36,30 +36,54 @@ function getToolbarToolClassName(toolId: ToolbarToolId): string {
 
 function ToolbarHistoryIcon() {
   return (
-    <svg className="editor-history-toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path d="M8 7H5v3" />
-      <path d="M5.5 9.5A7 7 0 1 1 7 17" />
+    <svg className="editor-history-toolbar-icon" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+      <path className="editor-history-toolbar-arc" d="M9.8 16.2A9.9 9.9 0 1 1 16.8 27.3" />
+      <path className="editor-history-toolbar-head" d="M9.8 9.5v6.7h6.7" />
     </svg>
   )
 }
 
-function getToolbarToolChildren(toolId: ToolbarToolId, iconOnlyTextTools: boolean): ReactNode {
+function TableOfContentsToolbarIcon() {
+  return (
+    <span className="table-of-contents-toolbar-icon" aria-hidden="true">
+      <span className="table-of-contents-toolbar-icon-row table-of-contents-toolbar-icon-row-1" />
+      <span className="table-of-contents-toolbar-icon-row table-of-contents-toolbar-icon-row-2" />
+      <span className="table-of-contents-toolbar-icon-row table-of-contents-toolbar-icon-row-3" />
+      <span className="table-of-contents-toolbar-icon-row table-of-contents-toolbar-icon-row-4" />
+    </span>
+  )
+}
+
+function AislesToolbarIcon() {
+  return (
+    <svg className="aisles-toolbar-icon" viewBox="0 0 36 32" aria-hidden="true" focusable="false">
+      <path className="aisles-toolbar-icon-frame" d="M8 5.6 28 2.4v27.2L8 24.4Z" />
+      <path className="aisles-toolbar-icon-shelf" d="M8 13.2h20" />
+      <path className="aisles-toolbar-icon-shelf" d="M8 22.1l20 4" />
+      <path className="aisles-toolbar-icon-item" d="M11.4 9.9h5v3.3h-5z" />
+      <path className="aisles-toolbar-icon-item" d="M16.4 8.7h6.1v4.5" />
+      <path className="aisles-toolbar-icon-item" d="M11.4 18.1h4.8v5.2" />
+      <path className="aisles-toolbar-icon-item" d="M16.2 17.5h5v6.7" />
+      <path className="aisles-toolbar-icon-item" d="M21.2 17h4.8v8.2" />
+    </svg>
+  )
+}
+
+function getToolbarToolChildren(toolId: ToolbarToolId): ReactNode {
   switch (toolId) {
     case 'copy':
       return (
         <span className="note-copy-toolbar-icon" aria-hidden="true">
-          <span className="note-copy-toolbar-page note-copy-toolbar-page-back" />
-          <span className="note-copy-toolbar-page note-copy-toolbar-page-front" />
+          <span className="note-copy-toolbar-document" />
           <span className="note-copy-toolbar-chain" />
         </span>
       )
     case 'frontmatter':
       return <span className="frontmatter-toolbar-icon" aria-hidden="true">fm</span>
     case 'tableOfContents':
-      if (iconOnlyTextTools) return <span className="table-of-contents-toolbar-icon" aria-hidden="true" />
-      return 'ToC'
+      return <TableOfContentsToolbarIcon />
     case 'aisles':
-      return <span className="aisles-toolbar-icon" aria-hidden="true" />
+      return <AislesToolbarIcon />
     case 'undo':
       return <ToolbarHistoryIcon />
     case 'redo':
@@ -134,7 +158,7 @@ export function ToolbarToolVisual({
         onPress?.()
       }}
     >
-      {getToolbarToolChildren(toolId, iconOnlyTextTools)}
+      {getToolbarToolChildren(toolId)}
     </button>
   )
 }

@@ -6,7 +6,9 @@ import {
   buildVisibleMarkdownIndex,
   collectFindReplaceLocations,
   findVisibleMatches,
+  getFindReplaceQueryError,
 } from './find-replace'
+import { buildContextToken } from './note-references'
 
 function tab(id: string, title: string, noteBodyId: string, subTabs: Array<{ id: string; title: string; body: string }> = []): Tab {
   return {
@@ -99,8 +101,6 @@ function createFindReplaceState(): AppState {
         },
         menuOperations: [],
       },
-      enableMouseBackForward: true,
-      enableGenericHistoryHotkeys: true,
     },
     frontmatter: DEFAULT_FRONTMATTER_SETTINGS,
     ui: {
@@ -177,10 +177,27 @@ describe('visible markdown matching', () => {
     const state = createFindReplaceState()
     state.noteAisleBodies = [{ id: 'aisle-body-home', markdown }]
 
-    expect(findVisibleMatches(state, ACTIVE_LOCATION, 'note', 'target', { caseSensitive: false, wholeWord: false })).toHaveLength(6)
-    expect(findVisibleMatches(state, ACTIVE_LOCATION, 'note', 'target-url', { caseSensitive: false, wholeWord: false })).toHaveLength(0)
-    expect(findVisibleMatches(state, ACTIVE_LOCATION, 'note', 'target', { caseSensitive: true, wholeWord: false })).toHaveLength(0)
-    expect(findVisibleMatches(state, ACTIVE_LOCATION, 'note', 'Target', { caseSensitive: true, wholeWord: true })).toHaveLength(6)
+    expect(findVisibleMatches(state, ACTIVE_LOCATION, 'note', 'target', { caseSensitive: false, wholeWord: false, regex: false })).toHaveLength(6)
+    expect(findVisibleMatches(state, ACTIVE_LOCATION, 'note', 'target-url', { caseSensitive: false, wholeWord: false, regex: false })).toHaveLength(0)
+    expect(findVisibleMatches(state, ACTIVE_LOCATION, 'note', 'target', { caseSensitive: true, wholeWord: false, regex: false })).toHaveLength(0)
+    expect(findVisibleMatches(state, ACTIVE_LOCATION, 'note', 'Target', { caseSensitive: true, wholeWord: true, regex: false })).toHaveLength(6)
+  })
+
+  it('supports regex matching without throwing on invalid patterns', () => {
+    const state = createFindReplaceState()
+    state.noteAisleBodies = [{ id: 'aisle-body-home', markdown: 'Bear Beetle bearcat' }]
+
+    expect(findVisibleMatches(state, ACTIVE_LOCATION, 'note', 'b[a-z]+r', {
+      caseSensitive: false,
+      wholeWord: true,
+      regex: true,
+    }).map((match) => match.matchedText)).toEqual(['Bear'])
+    expect(getFindReplaceQueryError('[', { caseSensitive: false, wholeWord: false, regex: true })).toBe('invalid regex')
+    expect(findVisibleMatches(state, ACTIVE_LOCATION, 'note', '[', {
+      caseSensitive: false,
+      wholeWord: false,
+      regex: true,
+    })).toEqual([])
   })
 
   it('keeps visible positions mapped to markdown source positions', () => {
@@ -196,6 +213,7 @@ describe('visible markdown matching', () => {
     const matches = findVisibleMatches(state, ACTIVE_LOCATION, 'note', 'Link Target', {
       caseSensitive: true,
       wholeWord: false,
+      regex: false,
     })
 
     const result = applyFindReplacementToState(state, matches, 'Asset')
@@ -204,11 +222,38 @@ describe('visible markdown matching', () => {
     expect(result.state.noteAisleBodies?.[0]?.markdown).toBe('[Asset](https://example.com/target-url)')
   })
 
+  it('does not search or replace encoded note preview context tokens', () => {
+    const previewToken = buildContextToken({
+      id: 'preview-token',
+      target: { ...ACTIVE_LOCATION, subTabId: 'sub-a' },
+    })
+    const encodedFragment = previewToken.match(/\{\{tabs-context:([A-Za-z0-9_-]+)\}\}/)?.[1]?.slice(0, 8) ?? ''
+    const state = createFindReplaceState()
+    state.noteAisleBodies = [{ id: 'aisle-body-home', markdown: `red ${previewToken} red` }]
+
+    expect(findVisibleMatches(state, ACTIVE_LOCATION, 'note', encodedFragment, {
+      caseSensitive: true,
+      wholeWord: false,
+      regex: false,
+    })).toEqual([])
+
+    const matches = findVisibleMatches(state, ACTIVE_LOCATION, 'note', 'e', {
+      caseSensitive: true,
+      wholeWord: false,
+      regex: false,
+    })
+    const result = applyFindReplacementToState(state, matches, 'x')
+
+    expect(result.replacementCount).toBe(2)
+    expect(result.state.noteAisleBodies?.[0]?.markdown).toBe(`rxd ${previewToken} rxd`)
+  })
+
   it('deduplicates replacements for linked aisle bodies while keeping duplicate locations searchable', () => {
     const state = createFindReplaceState()
     const matches = findVisibleMatches(state, ACTIVE_LOCATION, 'project', 'shared target', {
       caseSensitive: false,
       wholeWord: true,
+      regex: false,
     }).filter((match) => match.aisleBodyId === 'shared-aisle-body')
 
     const result = applyFindReplacementToState(state, matches, 'linked replacement')
@@ -219,5 +264,47 @@ describe('visible markdown matching', () => {
     expect(result.state.noteAisleBodies?.find((candidate) => candidate.id === 'shared-aisle-body')?.markdown).toBe(
       'linked replacement',
     )
+  })
+
+  it('uses regex capture groups in replacement text', () => {
+    const state = createFindReplaceState()
+    state.noteAisleBodies = [{ id: 'aisle-body-home', markdown: 'Bear 42' }]
+    const matches = findVisibleMatches(state, ACTIVE_LOCATION, 'note', '(Bear) (\\d+)', {
+      caseSensitive: true,
+      wholeWord: false,
+      regex: true,
+    })
+
+    const result = applyFindReplacementToState(state, matches, '$2-$1-$&')
+
+    expect(result.replacementCount).toBe(1)
+    expect(result.state.noteAisleBodies?.[0]?.markdown).toBe('42-Bear-Bear 42')
+  })
+
+  it('replaces matches across every aisle in the active tab scope', () => {
+    const state = createFindReplaceState()
+    state.noteBodies = [
+      body('body-home', 'aisle-home', 'aisle-body-home'),
+      body('body-sub', 'aisle-sub', 'aisle-body-sub'),
+    ]
+    state.noteBodies[0].aisles.push({ id: 'aisle-home-2', aisleBodyId: 'aisle-body-home-2' })
+    state.noteAisleBodies = [
+      { id: 'aisle-body-home', markdown: 'first target' },
+      { id: 'aisle-body-home-2', markdown: 'second target' },
+    ]
+    const matches = findVisibleMatches(state, ACTIVE_LOCATION, 'note', 'target', {
+      caseSensitive: false,
+      wholeWord: true,
+      regex: false,
+    })
+
+    const result = applyFindReplacementToState(state, matches, 'result')
+
+    expect(result.replacementCount).toBe(2)
+    expect(result.changedAisleBodyIds).toEqual(new Set(['aisle-body-home', 'aisle-body-home-2']))
+    expect(result.state.noteAisleBodies?.map((aisleBody) => [aisleBody.id, aisleBody.markdown])).toEqual([
+      ['aisle-body-home', 'first result'],
+      ['aisle-body-home-2', 'second result'],
+    ])
   })
 })

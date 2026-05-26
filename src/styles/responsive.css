@@ -96,7 +96,7 @@
   }
 
   .settings-page-wrap {
-    padding: 1rem 0.55rem 0.75rem;
+    padding: 0.5rem 0.55rem 0.75rem;
   }
 
   .settings-page-card {
@@ -168,6 +168,7 @@
   }
 
   .note-shared-toolbar {
+    --editor-toolbar-spacer-width: 0.8rem;
     overflow-x: auto;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;

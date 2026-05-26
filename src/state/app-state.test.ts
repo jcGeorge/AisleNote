@@ -130,8 +130,6 @@ function appStateWithSpaces(spaces: Space[]): AppState {
     hotkeys: {
       shortcuts: DEFAULT_SHORTCUTS,
       newlineShortcuts: DEFAULT_NEWLINE_SHORTCUT_SETTINGS,
-      enableMouseBackForward: true,
-      enableGenericHistoryHotkeys: true,
     },
     frontmatter: DEFAULT_FRONTMATTER_SETTINGS,
     ui: DEFAULT_UI_SETTINGS,
@@ -766,6 +764,8 @@ describe('app state normalization', () => {
 
   it('normalizes persisted settings section memory', () => {
     const valid = parseModernState({ ui: { settingsSection: 'visuals' } })
+    const data = parseModernState({ ui: { settingsSection: 'data', dataSettingsSection: 'export' } })
+    const invalidData = parseModernState({ ui: { settingsSection: 'data', dataSettingsSection: 'sync' } })
     const misc = parseModernState({ ui: { settingsSection: 'misc' } })
     const theming = parseModernState({ ui: { settingsSection: 'theming' } })
     const nestedVisuals = parseModernState({ ui: { settingsSection: 'visuals', visualsSettingsSection: 'otherVisuals' } })
@@ -776,6 +776,9 @@ describe('app state normalization', () => {
     const missing = parseModernState({ ui: {} })
 
     expect(valid.ui.settingsSection).toBe('visuals')
+    expect(data.ui.settingsSection).toBe('data')
+    expect(data.ui.dataSettingsSection).toBe('export')
+    expect(invalidData.ui.dataSettingsSection).toBe('cloud')
     expect(misc.ui.settingsSection).toBe('misc')
     expect(theming.ui.settingsSection).toBe('visuals')
     expect(theming.ui.visualsSettingsSection).toBe('theming')
@@ -786,6 +789,18 @@ describe('app state normalization', () => {
     expect(toolbar.ui.settingsSection).toBe('toolbar')
     expect(invalid.ui.settingsSection).toBe('hotkeys')
     expect(missing.ui.settingsSection).toBe('hotkeys')
+  })
+
+  it('normalizes tooltip scale settings', () => {
+    const valid = parseModernState({ ui: { tooltipScale: 1.25 } })
+    const tooLarge = parseModernState({ ui: { tooltipScale: 8 } })
+    const tooSmall = parseModernState({ ui: { tooltipScale: 0.1 } })
+    const missing = parseModernState({ ui: {} })
+
+    expect(valid.ui.tooltipScale).toBe(1.25)
+    expect(tooLarge.ui.tooltipScale).toBe(1.6)
+    expect(tooSmall.ui.tooltipScale).toBe(0.8)
+    expect(missing.ui.tooltipScale).toBe(1)
   })
 
   it('normalizes always-visible navigation hierarchy settings', () => {
@@ -814,6 +829,34 @@ describe('app state normalization', () => {
     expect(valid.ui.disabledTipIds).toEqual(['tab-create-after-rename'])
     expect(missing.ui.seenTipIds).toEqual([])
     expect(missing.ui.disabledTipIds).toEqual([])
+  })
+
+  it('normalizes persisted find option settings', () => {
+    const enabled = parseModernState({
+      ui: {
+        findCaseSensitive: true,
+        findWholeWord: true,
+        findRegex: true,
+      },
+    })
+    const invalid = parseModernState({
+      ui: {
+        findCaseSensitive: 'yes',
+        findWholeWord: 1,
+        findRegex: null,
+      },
+    })
+    const missing = parseModernState({ ui: {} })
+
+    expect(enabled.ui.findCaseSensitive).toBe(true)
+    expect(enabled.ui.findWholeWord).toBe(true)
+    expect(enabled.ui.findRegex).toBe(true)
+    expect(invalid.ui.findCaseSensitive).toBe(false)
+    expect(invalid.ui.findWholeWord).toBe(false)
+    expect(invalid.ui.findRegex).toBe(false)
+    expect(missing.ui.findCaseSensitive).toBe(false)
+    expect(missing.ui.findWholeWord).toBe(false)
+    expect(missing.ui.findRegex).toBe(false)
   })
 
   it('normalizes synced toolbar layouts while leaving active toolbar selection local', () => {
@@ -889,6 +932,18 @@ describe('app state normalization', () => {
     expect(invalid.ui.tableDeleteTargetMode).toBe('bottom-right')
     expect(missing.ui.tableAddTargetMode).toBe('bottom-right')
     expect(missing.ui.tableDeleteTargetMode).toBe('bottom-right')
+  })
+
+  it('normalizes persisted table of contents scope', () => {
+    const focused = parseModernState({ ui: { tableOfContentsScope: 'focused-aisle' } })
+    const all = parseModernState({ ui: { tableOfContentsScope: 'all-aisles' } })
+    const invalid = parseModernState({ ui: { tableOfContentsScope: 'visible' } })
+    const missing = parseModernState({ ui: {} })
+
+    expect(focused.ui.tableOfContentsScope).toBe('focused-aisle')
+    expect(all.ui.tableOfContentsScope).toBe('all-aisles')
+    expect(invalid.ui.tableOfContentsScope).toBe('all-aisles')
+    expect(missing.ui.tableOfContentsScope).toBe('all-aisles')
   })
 
   it('normalizes persisted note copy mode memory', () => {

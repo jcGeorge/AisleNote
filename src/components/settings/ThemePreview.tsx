@@ -173,7 +173,7 @@ export function ThemePreview({
     '--editor-text': getPaletteValue('text'),
     '--editor-muted-text': getPaletteValue('mutedText'),
     '--editor-heading-text': `color-mix(in srgb, ${getPaletteValue('text')} 90%, white)`,
-    '--toolbar-custom-icon-color': getPaletteValue('text'),
+    '--editor-toolbar-icon-color': getPaletteValue('text'),
     '--toast-bg': `color-mix(in srgb, ${getPaletteValue('canvas')} 82%, ${getPaletteValue('surface')})`,
     '--toast-border': getPaletteValue('border'),
     '--toast-text': `color-mix(in srgb, ${getPaletteValue('text')} 92%, white)`,

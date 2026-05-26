@@ -4,7 +4,7 @@ import { TABLE_OF_CONTENTS_EMPTY_MESSAGE, buildTableOfContentsPanels } from './t
 
 const aisles: ResolvedNoteAisle[] = [
   { id: 'a', aisleBodyId: 'a', markdown: '# Alpha' },
-  { id: 'b', aisleBodyId: 'b', markdown: 'body' },
+  { id: 'b', aisleBodyId: 'b', markdown: '# Beta' },
 ]
 
 describe('table of contents helpers', () => {
@@ -18,6 +18,32 @@ describe('table of contents helpers', () => {
     expect(panels?.noteBodyId).toBe('body-1')
     expect(panels?.openAisleIds).toEqual(new Set(['a']))
     expect(Object.keys(panels?.headingsByAisle ?? {})).toEqual(['a'])
+  })
+
+  it('limits panels to the focused aisle when the scope is focused aisle', () => {
+    const panels = buildTableOfContentsPanels(
+      'body-1',
+      aisles,
+      (aisle) => [
+        { aisleId: aisle.id, key: `heading-${aisle.id}`, level: 1, text: aisle.markdown, occurrence: 0 },
+      ],
+      { scope: 'focused-aisle', focusedAisleId: 'b' },
+    )
+
+    expect(panels?.openAisleIds).toEqual(new Set(['b']))
+    expect(Object.keys(panels?.headingsByAisle ?? {})).toEqual(['b'])
+  })
+
+  it('returns null in focused-aisle scope when the focused aisle has no headings', () => {
+    expect(buildTableOfContentsPanels(
+      'body-1',
+      aisles,
+      (aisle) =>
+        aisle.id === 'a'
+          ? [{ aisleId: aisle.id, key: 'heading-a', level: 1, text: 'Alpha', occurrence: 0 }]
+          : [],
+      { scope: 'focused-aisle', focusedAisleId: 'b' },
+    )).toBeNull()
   })
 
   it('returns null and keeps exact empty ToC copy when no aisle has headings', () => {

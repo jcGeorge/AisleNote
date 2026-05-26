@@ -35,6 +35,7 @@ import {
   cycleStageManagerParentSelection,
   createDefaultStageManagerDraft,
   createEmptyStageManagerIdSelection,
+  createStageManagerFullSelectionState,
   createStageManagerSelectionState,
   normalizeStageManagerParentSelection,
   toggleStageManagerSubTabSelection,
@@ -689,6 +690,26 @@ export function useStageManagerController({
     setDomainSelection({ selectedIds: [domainId], anchorId: domainId })
   }
 
+  const handleDomainDoubleClick = (domainId: string) => {
+    if (step !== 'select') {
+      pushToast('go back to the selection step to change selected items.', 'error')
+      return
+    }
+
+    const domain = stageManagerDomains.find((candidate) => candidate.id === domainId)
+    if (!domain) return
+
+    setState((previous) => setActiveDomain(previous, domainId))
+    setSelectionKind('spaces')
+    setSpaceSelectionDomainId(domainId)
+    clearNoteSelection()
+    clearDomainSelection()
+    setSpaceSelection({
+      selectedIds: domain.spaces.map((space) => space.id),
+      anchorId: domain.spaces[0]?.id ?? null,
+    })
+  }
+
   const handleSpaceClick = (spaceId: string, modifiers: SelectionClickModifiers = NO_SELECTION_MODIFIERS) => {
     if (step !== 'select') {
       pushToast('go back to the selection step to change selected items.', 'error')
@@ -719,6 +740,25 @@ export function useStageManagerController({
     }
 
     setSpaceSelection({ selectedIds: [spaceId], anchorId: spaceId })
+  }
+
+  const handleSpaceDoubleClick = (spaceId: string) => {
+    if (step !== 'select') {
+      pushToast('go back to the selection step to change selected items.', 'error')
+      return
+    }
+
+    const sourceDomain = stageManagerDomains.find((domain) => domain.spaces.some((space) => space.id === spaceId))
+    const selectedSpace = sourceDomain?.spaces.find((space) => space.id === spaceId)
+    if (!sourceDomain || !selectedSpace) return
+
+    setState((previous) => setActiveSpaceInActiveDomain(setActiveDomain(previous, sourceDomain.id), spaceId))
+    setSelectionKind('notes')
+    setSelectionAnchor(null)
+    setSpaceSelectionDomainId(sourceDomain.id)
+    clearDomainSelection()
+    clearSpaceSelection()
+    setSelections(createStageManagerFullSelectionState(selectedSpace.data.tabs))
   }
 
   const getConfigureValidation = (): ValidationResult => {
@@ -1879,7 +1919,9 @@ export function useStageManagerController({
     end,
     getParentSelection,
     handleDomainClick,
+    handleDomainDoubleClick,
     handleSpaceClick,
+    handleSpaceDoubleClick,
     handleParentClick,
     handleSubTabClick,
     handleHomeClick,

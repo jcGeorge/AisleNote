@@ -117,8 +117,6 @@ function createFrontmatterState(): AppState {
         },
         menuOperations: [],
       },
-      enableMouseBackForward: true,
-      enableGenericHistoryHotkeys: true,
     },
     frontmatter: {
       ...DEFAULT_FRONTMATTER_SETTINGS,

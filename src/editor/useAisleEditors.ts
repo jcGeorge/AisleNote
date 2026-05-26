@@ -24,7 +24,7 @@ import {
 import { terminalBlockLandingPlugin } from './terminal-block-landing'
 import { createContextPreviewPlugin, type ContextPreviewData } from './note-preview-plugin'
 import { sanitizeEditorHtml } from './editor-sanitizer'
-import { getElementFromEventTarget, getWysiwygView } from './prosemirror-utils'
+import { getElementFromEventTarget, getWysiwygView, markWysiwygLoadedUndoBoundary } from './prosemirror-utils'
 import {
   installCompletedTaskCheckboxBehavior,
   installTaskTextReorderBehavior,
@@ -744,6 +744,7 @@ export function useAisleEditors({
         },
       })
       restoreEditorBlankParagraphs(editor, initialMarkdown)
+      markWysiwygLoadedUndoBoundary(editor)
       cacheMarkdownForAisleBody(aisle.id, normalizeMarkdownForPersistence(initialMarkdown))
 
       if (pendingFocusAfterMountAisleIdRef.current === aisle.id) {

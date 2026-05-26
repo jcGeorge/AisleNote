@@ -5,6 +5,10 @@ export type { ToolbarLayout, ToolbarLayoutItem, ToolbarToolId } from '../types/a
 
 export const DEFAULT_TOOLBAR_LAYOUT_ID = 'default'
 
+export type ToolbarLayoutRenderSegment =
+  | { type: 'group'; id: string; items: ToolbarLayoutItem[] }
+  | { type: 'spacer'; id: string }
+
 export const TOOLBAR_TOOL_IDS = [
   'copy',
   'frontmatter',
@@ -314,17 +318,36 @@ export function getAvailableToolbarTools(layout: ToolbarLayout): ToolbarToolId[]
 }
 
 export function getToolbarLayoutGroups(items: ToolbarLayoutItem[]): ToolbarLayoutItem[][] {
-  const groups: ToolbarLayoutItem[][] = [[]]
+  return getToolbarLayoutRenderSegments(items).flatMap((segment) => (
+    segment.type === 'group' ? [segment.items] : []
+  ))
+}
+
+export function getToolbarLayoutRenderSegments(items: ToolbarLayoutItem[]): ToolbarLayoutRenderSegment[] {
+  const segments: ToolbarLayoutRenderSegment[] = []
+  let group: ToolbarLayoutItem[] = []
+
+  const flushGroup = () => {
+    if (group.length === 0) return
+    segments.push({
+      type: 'group',
+      id: `group-${segments.length}-${group.map((item) => item.id).join('-')}`,
+      items: group,
+    })
+    group = []
+  }
+
   items.forEach((item) => {
     if (item.type === 'spacer') {
-      if (groups[groups.length - 1].length > 0) {
-        groups.push([])
-      }
+      flushGroup()
+      segments.push({ type: 'spacer', id: item.id })
       return
     }
-    groups[groups.length - 1].push(item)
+    group.push(item)
   })
-  return groups.filter((group) => group.length > 0)
+  flushGroup()
+
+  return segments
 }
 
 export function getToolbarGroupClassName(group: ToolbarLayoutItem[]): string {

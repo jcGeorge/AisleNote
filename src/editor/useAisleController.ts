@@ -11,10 +11,7 @@ import {
   syncNoteBodyAisleStructureInState,
   syncNoteBodyAislesInState,
 } from '../notes/aisle-body-state'
-import {
-  applyCursorLocationSnapshot,
-  applyNoteLocationToState,
-} from '../notes/note-state'
+import { applyCursorLocationSnapshot } from '../notes/note-state'
 import { createId, MAX_NOTE_AISLES } from '../state/workspace'
 import type {
   AppState,
@@ -27,8 +24,10 @@ import type {
   ViewMode,
 } from '../types/app'
 import {
+  applyAisleStructuralEntryToState,
   canApplyAisleStructuralEntryToAisles,
   createAisleStructuralHistoryEntry,
+  getResolvedAislesForStructuralSnapshot,
   getAisleStructuralTargetSnapshot,
   type AisleStructuralHistoryEntry,
   type AisleStructuralSnapshot,
@@ -121,13 +120,16 @@ export const useAisleController = ({
     }
     const locationInfo = getLocationInfo(sourceState, location)
     const body = sourceState.noteBodies.find((candidate) => candidate.id === locationInfo.noteBodyId) ?? null
-    if (!locationInfo.noteBodyId || !body) return null
+    const aisles = locationInfo.noteBodyId
+      ? getResolvedAislesForStructuralSnapshot(sourceState, locationInfo.noteBodyId)
+      : null
+    if (!locationInfo.noteBodyId || !body || !aisles) return null
     const locationKey = buildNoteCursorLocationKey(location)
     return {
       location,
       locationKey,
       noteBodyId: locationInfo.noteBodyId,
-      aisles: cloneAisles(body.aisles),
+      aisles,
       activeAisleId: activeAisleIdRef.current,
       cursorLocation: sourceState.ui.noteCursorLocations[locationKey] ?? null,
     }
@@ -169,15 +171,9 @@ export const useAisleController = ({
     flushPendingContent()
 
     const target = getAisleStructuralTargetSnapshot(entry, direction)
-    setState((previous) => {
-      const body = previous.noteBodies.find((candidate) => candidate.id === entry.noteBodyId) ?? null
-      if (!body) return previous
-      const currentAisles = resolveNoteAisles(body.aisles, previous.noteAisleBodies)
-      if (!canApplyAisleStructuralEntryToAisles(entry, direction, currentAisles)) return previous
-      const withAisles = syncNoteBodyAisleStructureInState(previous, entry.noteBodyId, target.aisles)
-      const withLocation = applyNoteLocationToState(withAisles, target.location)
-      return applyCursorLocationSnapshot(withLocation, target.locationKey, target.cursorLocation)
-    })
+    const nextState = applyAisleStructuralEntryToState(buildStateWithLatestEditorContent(), entry, direction)
+    if (!nextState) return false
+    setState(nextState)
 
     setViewMode('main')
     setActiveAisleId(target.activeAisleId)
@@ -245,9 +241,8 @@ export const useAisleController = ({
       markdown: normalizeMarkdownForPersistence(markdown),
     }
     const latestBeforeAddState = buildStateWithLatestEditorContent()
-    const latestBeforeAddBody =
-      latestBeforeAddState.noteBodies.find((candidate) => candidate.id === beforeSnapshot.noteBodyId) ?? null
-    const baseAisles = latestBeforeAddBody ? cloneAisles(latestBeforeAddBody.aisles) : beforeSnapshot.aisles
+    const baseAisles =
+      getResolvedAislesForStructuralSnapshot(latestBeforeAddState, beforeSnapshot.noteBodyId) ?? beforeSnapshot.aisles
     flushPendingContent()
     const afterAisles = [...baseAisles, newAisle]
     const afterCursorLocation: NoteCursorLocation = {
@@ -269,14 +264,10 @@ export const useAisleController = ({
       cursorLocation: afterCursorLocation,
     }
     setState((previous) => {
-      const body = previous.noteBodies.find((candidate) => candidate.id === activeNoteBodyId)
+      const body = previous.noteBodies.find((candidate) => candidate.id === beforeSnapshot.noteBodyId)
       if (!body) return previous
-      if (body.aisles.length >= MAX_NOTE_AISLES) return previous
-      const withAisles = syncNoteBodyAislesInState(
-        previous,
-        activeNoteBodyId,
-        [...resolveNoteAisles(body.aisles, previous.noteAisleBodies), newAisle],
-      )
+      if (afterAisles.length > MAX_NOTE_AISLES) return previous
+      const withAisles = syncNoteBodyAislesInState(previous, beforeSnapshot.noteBodyId, afterAisles)
       return applyCursorLocationSnapshot(withAisles, afterSnapshot.locationKey, afterSnapshot.cursorLocation)
     })
     if (options.recordHistory !== false) {

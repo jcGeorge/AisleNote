@@ -46,6 +46,10 @@ type RunWysiwygHistoryOptions = {
   beforeDispatch?: () => void
 }
 
+type LoadedUndoBoundary = {
+  doc: any
+}
+
 const MEANINGFUL_STRUCTURAL_NODE_NAMES = new Set([
   'image',
   'table',
@@ -87,8 +91,51 @@ export function isProseMirrorDocMeaningful(doc: any): boolean {
   return meaningful
 }
 
-export function shouldBlockWysiwygUndo(currentDoc: any, nextDoc: any): boolean {
-  return isProseMirrorDocMeaningful(currentDoc) && !isProseMirrorDocMeaningful(nextDoc)
+const loadedUndoBoundaryByEditor = new WeakMap<object, LoadedUndoBoundary>()
+
+function areProseMirrorDocsEqual(left: any, right: any): boolean {
+  if (left === right) return true
+  if (!left || !right) return false
+  if (typeof left.eq === 'function') {
+    try {
+      return left.eq(right)
+    } catch {
+      return false
+    }
+  }
+  if (typeof left.toJSON === 'function' && typeof right.toJSON === 'function') {
+    try {
+      return JSON.stringify(left.toJSON()) === JSON.stringify(right.toJSON())
+    } catch {
+      return false
+    }
+  }
+  return false
+}
+
+export function markWysiwygLoadedUndoBoundary(editor: Editor | null): void {
+  const view = getWysiwygView(editor)
+  const doc = view?.state?.doc
+  if (!editor || !doc) return
+  if (isProseMirrorDocMeaningful(doc)) {
+    loadedUndoBoundaryByEditor.set(editor, { doc })
+  } else {
+    loadedUndoBoundaryByEditor.delete(editor)
+  }
+}
+
+export function shouldBlockWysiwygUndo(
+  currentDoc: any,
+  nextDoc: any,
+  options: { loadedUndoBoundaryDoc?: any } = {},
+): boolean {
+  const loadedUndoBoundaryDoc = options.loadedUndoBoundaryDoc
+  if (!loadedUndoBoundaryDoc) return false
+  return (
+    isProseMirrorDocMeaningful(loadedUndoBoundaryDoc) &&
+    areProseMirrorDocsEqual(currentDoc, loadedUndoBoundaryDoc) &&
+    !isProseMirrorDocMeaningful(nextDoc)
+  )
 }
 
 export function getCodeBlockOutdentRemoveLength(text: string): number {
@@ -120,7 +167,9 @@ export function runWysiwygHistory(
   if (
     direction === 'undo' &&
     transaction.docChanged !== false &&
-    shouldBlockWysiwygUndo(view.state?.doc, transaction.doc ?? view.state?.doc)
+    shouldBlockWysiwygUndo(view.state?.doc, transaction.doc ?? view.state?.doc, {
+      loadedUndoBoundaryDoc: loadedUndoBoundaryByEditor.get(editor)?.doc,
+    })
   ) {
     return 'blocked'
   }

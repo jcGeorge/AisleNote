@@ -79,8 +79,6 @@ function appState(domains: Domain[], activeDomainId = domains[0].id, activeSpace
         shortcuts: { controlEnter: 'normalNewLine', shiftEnter: 'normalNewLine', commandEnter: 'normalNewLine' },
         menuOperations: [],
       },
-      enableMouseBackForward: true,
-      enableGenericHistoryHotkeys: true,
     },
     frontmatter: DEFAULT_FRONTMATTER_SETTINGS,
     ui: {

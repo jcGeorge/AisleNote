@@ -1,6 +1,17 @@
 import { EDITOR_BLANK_LINE_PLACEHOLDER, normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
-import { getAisleSignature, getAisleStructureSignature } from '../notes/aisle-body-state'
-import type { NoteAisle, NoteCursorLocation, NoteLocation, ResolvedNoteAisle } from '../types/app'
+import {
+  cloneAisles,
+  getAisleSignature,
+  getAisleStructureSignature,
+  resolveNoteAisles,
+  syncNoteBodyAisleStructureInState,
+  syncNoteBodyAislesInState,
+} from '../notes/aisle-body-state'
+import {
+  applyCursorLocationSnapshot,
+  applyNoteLocationToState,
+} from '../notes/note-state'
+import type { AppState, NoteAisle, NoteCursorLocation, NoteLocation, ResolvedNoteAisle } from '../types/app'
 
 export type AisleStructuralSnapshot = {
   location: NoteLocation
@@ -35,6 +46,11 @@ export function createAisleStructuralHistoryEntry(
   }
 }
 
+export function getResolvedAislesForStructuralSnapshot(sourceState: AppState, noteBodyId: string): ResolvedNoteAisle[] | null {
+  const body = sourceState.noteBodies.find((candidate) => candidate.id === noteBodyId) ?? null
+  return body ? cloneAisles(body.aisles, sourceState.noteAisleBodies) : null
+}
+
 export function getAisleStructuralSourceSnapshot(
   entry: AisleStructuralHistoryEntry,
   direction: 'undo' | 'redo',
@@ -64,7 +80,10 @@ function hasSameAisleOrder(left: NoteAisle[], right: NoteAisle[]) {
 
 function hasAisleBodyIdChanges(left: NoteAisle[], right: NoteAisle[]) {
   const leftBodyIdByAisleId = new Map(left.map((aisle) => [aisle.id, aisle.aisleBodyId ?? aisle.id]))
-  return right.some((aisle) => leftBodyIdByAisleId.get(aisle.id) !== (aisle.aisleBodyId ?? aisle.id))
+  return right.some((aisle) => {
+    const leftBodyId = leftBodyIdByAisleId.get(aisle.id)
+    return leftBodyId !== undefined && leftBodyId !== (aisle.aisleBodyId ?? aisle.id)
+  })
 }
 
 export function canApplyAisleStructuralEntryToAisles(
@@ -78,7 +97,7 @@ export function canApplyAisleStructuralEntryToAisles(
   if (!hasSameAisleOrder(currentAisles, source.aisles)) return false
   if (hasAisleBodyIdChanges(source.aisles, target.aisles)) return false
 
-  if (entry.type !== 'add-aisle' || direction !== 'undo') return true
+  if (entry.type !== 'add-aisle') return true
 
   const sourceById = new Map(source.aisles.map((aisle) => [aisle.id, normalizedMarkdown(aisle.markdown)]))
   const targetById = new Map(target.aisles.map((aisle) => [aisle.id, normalizedMarkdown(aisle.markdown)]))
@@ -91,4 +110,23 @@ export function canApplyAisleStructuralEntryToAisles(
     if (targetMarkdown === undefined) return currentMarkdown === sourceMarkdown
     return currentMarkdown === sourceMarkdown || currentMarkdown === targetMarkdown
   })
+}
+
+export function applyAisleStructuralEntryToState(
+  previous: AppState,
+  entry: AisleStructuralHistoryEntry,
+  direction: 'undo' | 'redo',
+): AppState | null {
+  const body = previous.noteBodies.find((candidate) => candidate.id === entry.noteBodyId) ?? null
+  if (!body) return null
+
+  const currentAisles = resolveNoteAisles(body.aisles, previous.noteAisleBodies)
+  if (!canApplyAisleStructuralEntryToAisles(entry, direction, currentAisles)) return null
+
+  const target = getAisleStructuralTargetSnapshot(entry, direction)
+  const withAisles = entry.type === 'add-aisle'
+    ? syncNoteBodyAislesInState(previous, entry.noteBodyId, target.aisles)
+    : syncNoteBodyAisleStructureInState(previous, entry.noteBodyId, target.aisles)
+  const withLocation = applyNoteLocationToState(withAisles, target.location)
+  return applyCursorLocationSnapshot(withLocation, target.locationKey, target.cursorLocation)
 }

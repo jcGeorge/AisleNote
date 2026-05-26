@@ -86,8 +86,6 @@ function appState(domains: Domain[]): AppState {
         shortcuts: { controlEnter: 'normalNewLine', shiftEnter: 'normalNewLine', commandEnter: 'normalNewLine' },
         menuOperations: [],
       },
-      enableMouseBackForward: true,
-      enableGenericHistoryHotkeys: true,
     },
     frontmatter: { templates: [], settingsTemplateId: '', lastAppliedTemplateId: '' },
     ui: {

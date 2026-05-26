@@ -416,8 +416,6 @@ describe('browser hybrid storage', () => {
             },
             menuOperations: ['task', 'aisle', 'strikethrough'],
           },
-          enableMouseBackForward: false,
-          enableGenericHistoryHotkeys: false,
         },
         frontmatter: {
           settingsTemplateId: 'template-1',
@@ -434,13 +432,19 @@ describe('browser hybrid storage', () => {
           showParentHomeTab: false,
           stageManagerOpenDestinationAfterApply: false,
           settingsSection: 'toolbar',
+          dataSettingsSection: 'export',
           selectedCustomTheme: 'custom2',
           lastNoteCopyMode: 'linked',
+          findCaseSensitive: true,
+          findWholeWord: true,
+          findRegex: true,
           decoupledItemsKeepData: false,
           tableAddTargetMode: 'active-cell',
           tableDeleteTargetMode: 'active-cell',
+          tableOfContentsScope: 'focused-aisle',
           tabButtonScale: 1.3,
           noteFontScale: 1.2,
+          tooltipScale: 1.25,
           themePalettes: {
             dawn: {
               ...DEFAULT_CUSTOM_THEME_PALETTE,
@@ -464,10 +468,17 @@ describe('browser hybrid storage', () => {
     expect(getRecord(appSettings.themePalettes).dawn).toMatchObject({ primary: '#123456' })
     expect(appSettings.tabButtonScale).toBe(1.3)
     expect(appSettings.noteFontScale).toBe(1.2)
+    expect(appSettings.tooltipScale).toBe(1.25)
     expect(getRecord(appSettings.ui).settingsSection).toBe('toolbar')
+    expect(getRecord(appSettings.ui).dataSettingsSection).toBe('export')
     expect(getRecord(appSettings.ui).lastNoteCopyMode).toBe('linked')
+    expect(getRecord(appSettings.ui).findCaseSensitive).toBe(true)
+    expect(getRecord(appSettings.ui).findWholeWord).toBe(true)
+    expect(getRecord(appSettings.ui).findRegex).toBe(true)
+    expect(getRecord(appSettings.ui).tableOfContentsScope).toBe('focused-aisle')
     expect(getRecord(appSettings.ui).showParentHomeTab).toBe(false)
-    expect(getRecord(appSettings.hotkeys).enableMouseBackForward).toBe(false)
+    expect(getRecord(appSettings.hotkeys)).not.toHaveProperty('enableMouseBackForward')
+    expect(getRecord(appSettings.hotkeys)).not.toHaveProperty('enableGenericHistoryHotkeys')
     expect(getRecord(getRecord(appSettings.hotkeys).shortcuts).newTab).toBe('Ctrl+Alt+N')
     expect(frontmatterSettings.settingsTemplateId).toBe('template-1')
     expect(spaceManifest.settings).toEqual({ autoRemoveDeletedDays: 21 })
@@ -476,9 +487,16 @@ describe('browser hybrid storage', () => {
     expect(roundTripped.ui.selectedCustomTheme).toBe('custom2')
     expect(roundTripped.ui.tabButtonScale).toBe(1.3)
     expect(roundTripped.ui.noteFontScale).toBe(1.2)
+    expect(roundTripped.ui.tooltipScale).toBe(1.25)
+    expect(roundTripped.ui.dataSettingsSection).toBe('export')
+    expect(roundTripped.ui.findCaseSensitive).toBe(true)
+    expect(roundTripped.ui.findWholeWord).toBe(true)
+    expect(roundTripped.ui.findRegex).toBe(true)
+    expect(roundTripped.ui.tableOfContentsScope).toBe('focused-aisle')
     expect(roundTripped.ui.themePalettes?.dawn?.primary).toBe('#123456')
     expect(roundTripped.hotkeys.shortcuts.newTab).toBe('Ctrl+Alt+N')
-    expect(roundTripped.hotkeys.enableMouseBackForward).toBe(false)
+    expect(roundTripped.hotkeys).not.toHaveProperty('enableMouseBackForward')
+    expect(roundTripped.hotkeys).not.toHaveProperty('enableGenericHistoryHotkeys')
     expect(roundTripped.frontmatter.settingsTemplateId).toBe('template-1')
     expect(roundTripped.domains[0]?.spaces[0]?.settings).toEqual({ autoRemoveDeletedDays: 21 })
   })

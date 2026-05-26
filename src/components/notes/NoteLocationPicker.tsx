@@ -20,6 +20,21 @@ type NoteLocationPickerProps = {
 }
 
 const HOME_NOTE_ID = '__home__'
+type NoteLocationPickerRowKind = 'domain' | 'space' | 'parent' | 'subtab'
+
+function getLocationPickerChipClassName(kind: NoteLocationPickerRowKind, selected: boolean): string {
+  const selectedClass = selected ? ' is-selected' : ''
+  if (kind === 'domain') {
+    return `note-location-picker-chip rail-control context-preview-title-btn compact-scope-btn compact-domain-btn is-domain${selectedClass}`
+  }
+  if (kind === 'space') {
+    return `note-location-picker-chip rail-control context-preview-title-btn compact-scope-btn compact-space-btn is-space${selectedClass}`
+  }
+  if (kind === 'parent') {
+    return `note-location-picker-chip rail-control context-preview-title-btn btn btn-sm tab-btn parent-tab-btn is-parent${selectedClass}`
+  }
+  return `note-location-picker-chip rail-control context-preview-title-btn btn btn-sm tab-btn subtab-btn is-subtab${selectedClass}`
+}
 
 export function NoteLocationPicker({
   domains,
@@ -90,24 +105,28 @@ export function NoteLocationPicker({
 
   const renderPickerRow = (
     label: string,
+    kind: NoteLocationPickerRowKind,
     selectedId: string,
     items: Array<{ id: string; label: string; onSelect: () => void }>,
   ) => (
     <section className="note-location-picker-row" aria-label={label}>
-      <span className="note-location-picker-row-label">{label}</span>
       <div className="note-location-picker-row-items">
         {items.length > 0 ? (
-          items.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={`note-location-picker-chip ${item.id === selectedId ? 'is-selected' : ''}`}
-              aria-current={item.id === selectedId ? 'true' : undefined}
-              onClick={item.onSelect}
-            >
-              {item.label}
-            </button>
-          ))
+          items.map((item) => {
+            const selected = item.id === selectedId
+            return (
+              <button
+                key={item.id}
+                type="button"
+                className={getLocationPickerChipClassName(kind, selected)}
+                aria-current={selected ? 'true' : undefined}
+                aria-pressed={selected}
+                onClick={item.onSelect}
+              >
+                {item.label}
+              </button>
+            )
+          })
         ) : (
           <span className="note-location-picker-empty">none</span>
         )}
@@ -140,6 +159,7 @@ export function NoteLocationPicker({
     <div className="note-location-picker">
       {renderPickerRow(
         'domain',
+        'domain',
         selectedDomain?.id ?? '',
         domains.map((domain) => ({
           id: domain.id,
@@ -148,6 +168,7 @@ export function NoteLocationPicker({
         })),
       )}
       {renderPickerRow(
+        'space',
         'space',
         selectedSpace?.id ?? '',
         selectedDomain?.spaces.map((space) => ({
@@ -158,6 +179,7 @@ export function NoteLocationPicker({
       )}
       {renderPickerRow(
         'parent tab',
+        'parent',
         selectedTab?.id ?? '',
         selectedSpace?.data.tabs.map((tab) => ({
           id: tab.id,
@@ -167,6 +189,7 @@ export function NoteLocationPicker({
       )}
       {renderPickerRow(
         'note',
+        'subtab',
         selectedSubTab?.id ?? HOME_NOTE_ID,
         [
           {

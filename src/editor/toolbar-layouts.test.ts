@@ -9,6 +9,7 @@ import {
   getToolbarLayouts,
   getToolbarGroupClassName,
   getToolbarLayoutGroups,
+  getToolbarLayoutRenderSegments,
   moveToolbarLayoutItemToIndex,
   normalizeToolbarLayoutItems,
   normalizeToolbarLayouts,
@@ -169,5 +170,27 @@ describe('toolbar layout model', () => {
     expect(getToolbarGroupClassName(groups[0])).toContain('note-tools-toolbar-group')
     expect(getToolbarGroupClassName(groups[1])).toContain('note-format-toolbar-group')
     expect(getToolbarGroupClassName(groups[1])).toContain('clear-note-toolbar-group')
+  })
+
+  it('keeps each spacer as a render segment so multiple spacers add visible width', () => {
+    const segments = getToolbarLayoutRenderSegments([
+      { id: 'leading-gap', type: 'spacer' },
+      { id: 'copy', type: 'tool', toolId: 'copy' },
+      { id: 'gap-one', type: 'spacer' },
+      { id: 'gap-two', type: 'spacer' },
+      { id: 'bold', type: 'tool', toolId: 'bold' },
+      { id: 'trailing-gap', type: 'spacer' },
+    ])
+
+    expect(segments.map((segment) => (
+      segment.type === 'spacer' ? `spacer:${segment.id}` : `group:${segment.items.map((item) => item.id).join(',')}`
+    ))).toEqual([
+      'spacer:leading-gap',
+      'group:copy',
+      'spacer:gap-one',
+      'spacer:gap-two',
+      'group:bold',
+      'spacer:trailing-gap',
+    ])
   })
 })

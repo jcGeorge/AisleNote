@@ -49,8 +49,6 @@ function createState(): AppState {
         },
         menuOperations: [],
       },
-      enableMouseBackForward: true,
-      enableGenericHistoryHotkeys: true,
     },
     frontmatter: {
       ...DEFAULT_FRONTMATTER_SETTINGS,
@@ -251,12 +249,16 @@ describe('link modal rendering', () => {
     expect(html).toContain('>url</button>')
     expect(html).toContain('>link</button>')
     expect(html).toContain('>preview</button>')
+    expect(html).toMatch(
+      /class="note-reference-option-strip note-reference-link-option-strip"[\s\S]*aria-label="Link type"[\s\S]*aria-label="Note reference type"/,
+    )
+    expect(html).toContain('class="note-reference-picker-divider" aria-hidden="true"')
     expect(html).toContain('note-location-picker-row')
-    expect(html).toContain('note-location-picker-row-label">domain</span>')
-    expect(html).toContain('note-location-picker-row-label">space</span>')
-    expect(html).toContain('note-location-picker-row-label">parent tab</span>')
-    expect(html).toContain('note-location-picker-row-label">note</span>')
-    expect(html).toContain('note-location-picker-chip is-selected')
+    expect(html).not.toContain('note-location-picker-row-label')
+    expect(html).toContain('note-location-picker-chip rail-control context-preview-title-btn compact-scope-btn compact-domain-btn is-domain is-selected')
+    expect(html).toContain('note-location-picker-chip rail-control context-preview-title-btn compact-scope-btn compact-space-btn is-space is-selected')
+    expect(html).toContain('note-location-picker-chip rail-control context-preview-title-btn btn btn-sm tab-btn parent-tab-btn is-parent is-selected')
+    expect(html).toContain('note-location-picker-chip rail-control context-preview-title-btn btn btn-sm tab-btn subtab-btn is-subtab is-selected')
     expect(html).toContain('value="Tab"')
     expect(html).not.toContain('<select')
     expect(html).not.toContain('>aisle 1</button>')
@@ -516,11 +518,13 @@ describe('copy modal rendering', () => {
     })
 
     expect(html).toContain('note-copy-modal')
-    expect(html).toContain('note-location-picker-row-label">domain</span>')
-    expect(html).toContain('note-location-picker-row-label">space</span>')
-    expect(html).toContain('note-location-picker-row-label">parent tab</span>')
-    expect(html).toContain('note-location-picker-row-label">note</span>')
-    expect(html).toContain('note-location-picker-chip is-selected')
+    expect(html).toMatch(/class="note-reference-option-strip"[\s\S]*aria-label="Copy type"/)
+    expect(html).toContain('class="note-reference-picker-divider" aria-hidden="true"')
+    expect(html).not.toContain('note-location-picker-row-label')
+    expect(html).toContain('note-location-picker-chip rail-control context-preview-title-btn compact-scope-btn compact-domain-btn is-domain is-selected')
+    expect(html).toContain('note-location-picker-chip rail-control context-preview-title-btn compact-scope-btn compact-space-btn is-space is-selected')
+    expect(html).toContain('note-location-picker-chip rail-control context-preview-title-btn btn btn-sm tab-btn parent-tab-btn is-parent is-selected')
+    expect(html).toContain('note-location-picker-chip rail-control context-preview-title-btn btn btn-sm tab-btn subtab-btn is-subtab is-selected')
     expect(html).toMatch(/note-reference-mode-btn is-active"[^>]*>independent</)
     expect(html).toContain('>linked</button>')
     expect(html).toContain('note-copy-behavior-row')

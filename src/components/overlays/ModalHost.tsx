@@ -659,22 +659,25 @@ export function ModalHost({
         )}
         {modal.type === 'copy-note' && (
           <div className="note-copy-modal">
-            <div className="note-reference-mode" role="group" aria-label="Copy type">
-              <button
-                type="button"
-                className={`note-reference-mode-btn ${modal.mode === 'independent' ? 'is-active' : ''}`}
-                onClick={() => setCopyModalMode('independent')}
-              >
-                independent
-              </button>
-              <button
-                type="button"
-                className={`note-reference-mode-btn ${modal.mode === 'linked' ? 'is-active' : ''}`}
-                onClick={() => setCopyModalMode('linked')}
-              >
-                linked
-              </button>
+            <div className="note-reference-option-strip">
+              <div className="note-reference-mode" role="group" aria-label="Copy type">
+                <button
+                  type="button"
+                  className={`note-reference-mode-btn ${modal.mode === 'independent' ? 'is-active' : ''}`}
+                  onClick={() => setCopyModalMode('independent')}
+                >
+                  independent
+                </button>
+                <button
+                  type="button"
+                  className={`note-reference-mode-btn ${modal.mode === 'linked' ? 'is-active' : ''}`}
+                  onClick={() => setCopyModalMode('linked')}
+                >
+                  linked
+                </button>
+              </div>
             </div>
+            <div className="note-reference-picker-divider" aria-hidden="true" />
             <NoteLocationPicker
               domains={domainsForPickers}
               noteBodies={state.noteBodies}
@@ -784,27 +787,27 @@ export function ModalHost({
         )}
         {modal.type === 'insert-note-reference' && (
           <div className="note-reference-modal">
-            {!modal.modeLocked && (
-              <div className="note-reference-mode" role="group" aria-label="Link type">
-                <button
-                  type="button"
-                  className={`note-reference-mode-btn ${modal.mode === 'note' ? 'is-active' : ''}`}
-                  onClick={() => setLinkModalMode('note')}
-                >
-                  note
-                </button>
-                <button
-                  type="button"
-                  className={`note-reference-mode-btn ${modal.mode === 'url' ? 'is-active' : ''}`}
-                  onClick={() => setLinkModalMode('url')}
-                >
-                  url
-                </button>
-              </div>
-            )}
-            {modal.mode === 'note' && (
-              <>
-                {!modal.internalEdit && !modal.editingTokenId && (
+            {(!modal.modeLocked || (modal.mode === 'note' && !modal.internalEdit && !modal.editingTokenId)) && (
+              <div className="note-reference-option-strip note-reference-link-option-strip">
+                {!modal.modeLocked && (
+                  <div className="note-reference-mode" role="group" aria-label="Link type">
+                    <button
+                      type="button"
+                      className={`note-reference-mode-btn ${modal.mode === 'note' ? 'is-active' : ''}`}
+                      onClick={() => setLinkModalMode('note')}
+                    >
+                      note
+                    </button>
+                    <button
+                      type="button"
+                      className={`note-reference-mode-btn ${modal.mode === 'url' ? 'is-active' : ''}`}
+                      onClick={() => setLinkModalMode('url')}
+                    >
+                      url
+                    </button>
+                  </div>
+                )}
+                {modal.mode === 'note' && !modal.internalEdit && !modal.editingTokenId && (
                   <div className="note-reference-mode" role="group" aria-label="Note reference type">
                     <button
                       type="button"
@@ -822,20 +825,29 @@ export function ModalHost({
                     </button>
                   </div>
                 )}
+              </div>
+            )}
+            {modal.mode === 'note' && (
+              <>
                 {modal.internalEdit ? (
                   <div className="note-reference-locked-target">
                     <span>note</span>
                     <strong>{getNoteLocationBreadcrumbLabel(state, modal.target)}</strong>
                   </div>
                 ) : (
-                  <NoteLocationPicker
-                    domains={domainsForPickers}
-                    noteBodies={state.noteBodies}
-                    value={modal.target}
-                    includeAisles
-                    aisleSelectionMode="single"
-                    onChange={updateLinkModalTarget}
-                  />
+                  <>
+                    {(!modal.modeLocked || !modal.editingTokenId) && (
+                      <div className="note-reference-picker-divider" aria-hidden="true" />
+                    )}
+                    <NoteLocationPicker
+                      domains={domainsForPickers}
+                      noteBodies={state.noteBodies}
+                      value={modal.target}
+                      includeAisles
+                      aisleSelectionMode="single"
+                      onChange={updateLinkModalTarget}
+                    />
+                  </>
                 )}
                 {renderLockedNoteReferenceAisles()}
                 {renderNoteReferenceHeadings()}

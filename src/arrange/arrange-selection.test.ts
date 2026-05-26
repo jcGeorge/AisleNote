@@ -91,8 +91,6 @@ function appState(domains: Domain[], activeDomainId = domains[0].id, activeSpace
         },
         menuOperations: [],
       },
-      enableMouseBackForward: true,
-      enableGenericHistoryHotkeys: true,
     },
     frontmatter: DEFAULT_FRONTMATTER_SETTINGS,
     ui: {

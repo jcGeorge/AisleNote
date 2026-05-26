@@ -53,8 +53,6 @@ function createAisleLinkTestState(noteBodies: NoteBody[], tabs: Array<{ id: stri
         },
         menuOperations: [],
       },
-      enableMouseBackForward: true,
-      enableGenericHistoryHotkeys: true,
     },
     frontmatter: DEFAULT_FRONTMATTER_SETTINGS,
     ui: {

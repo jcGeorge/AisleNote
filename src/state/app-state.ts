@@ -65,8 +65,6 @@ const RAW_DEFAULT_STATE: AppState = {
   hotkeys: {
     shortcuts: DEFAULT_SHORTCUTS,
     newlineShortcuts: DEFAULT_NEWLINE_SHORTCUT_SETTINGS,
-    enableMouseBackForward: true,
-    enableGenericHistoryHotkeys: true,
   },
   frontmatter: DEFAULT_FRONTMATTER_SETTINGS,
   ui: DEFAULT_UI_SETTINGS,

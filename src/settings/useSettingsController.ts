@@ -19,6 +19,7 @@ import type {
   CustomThemeId,
   CustomThemePalette,
   CustomThemePaletteSlot,
+  DataSettingsSection,
   FrontmatterSettings,
   FrontmatterTemplate,
   FrontmatterTemplateField,
@@ -28,6 +29,7 @@ import type {
   ShortcutId,
   Space,
   TableControlTargetMode,
+  TableOfContentsScope,
   TipId,
   VisualsSettingsSection,
   ViewMode,
@@ -36,8 +38,10 @@ import {
   clampAutoRemoveDays,
   clampNoteFontScale,
   clampTabButtonScale,
+  clampTooltipScale,
   DEFAULT_AUTO_REMOVE_DAYS,
   DEFAULT_CUSTOM_THEME_ID,
+  DEFAULT_DATA_SETTINGS_SECTION,
   DEFAULT_UI_SETTINGS,
   DEFAULT_VISUALS_SETTINGS_SECTION,
   getCustomThemePaletteSeed,
@@ -96,6 +100,9 @@ export function useSettingsController({
   onActiveToolbarLayoutIdChange,
 }: UseSettingsControllerParams) {
   const [section, setSection] = useState<SettingsSection>(state.ui.settingsSection)
+  const [dataSection, setDataSection] = useState<DataSettingsSection>(
+    state.ui.dataSettingsSection ?? DEFAULT_DATA_SETTINGS_SECTION,
+  )
   const [visualsSection, setVisualsSection] = useState<VisualsSettingsSection>(
     state.ui.visualsSettingsSection ?? DEFAULT_VISUALS_SETTINGS_SECTION,
   )
@@ -108,15 +115,17 @@ export function useSettingsController({
     DEFAULT_NEWLINE_SHORTCUT_SETTINGS.menuOperations,
   )
   const [editingShortcut, setEditingShortcut] = useState<ShortcutId | null>(null)
-  const [mouseBackForwardEnabledDraft, setMouseBackForwardEnabledDraft] = useState(true)
-  const [genericHistoryHotkeysEnabledDraft, setGenericHistoryHotkeysEnabledDraft] = useState(true)
   const [showParentHomeTabDraft, setShowParentHomeTabDraft] = useState(DEFAULT_UI_SETTINGS.showParentHomeTab)
   const [alwaysShowSpacesDraft, setAlwaysShowSpacesDraft] = useState(DEFAULT_UI_SETTINGS.alwaysShowSpaces ?? false)
   const [alwaysShowDomainsDraft, setAlwaysShowDomainsDraft] = useState(DEFAULT_UI_SETTINGS.alwaysShowDomains ?? false)
   const [tableAddTargetModeDraft, setTableAddTargetModeDraft] = useState(DEFAULT_UI_SETTINGS.tableAddTargetMode)
   const [tableDeleteTargetModeDraft, setTableDeleteTargetModeDraft] = useState(DEFAULT_UI_SETTINGS.tableDeleteTargetMode)
+  const [tableOfContentsScopeDraft, setTableOfContentsScopeDraft] = useState(
+    DEFAULT_UI_SETTINGS.tableOfContentsScope ?? 'all-aisles',
+  )
   const [tabButtonScaleDraft, setTabButtonScaleDraft] = useState(DEFAULT_UI_SETTINGS.tabButtonScale)
   const [noteFontScaleDraft, setNoteFontScaleDraft] = useState(DEFAULT_UI_SETTINGS.noteFontScale)
+  const [tooltipScaleDraft, setTooltipScaleDraft] = useState(DEFAULT_UI_SETTINGS.tooltipScale ?? 1)
   const [selectedCustomTheme, setSelectedCustomTheme] = useState<CustomThemeId>(
     isCustomTheme(state.theme) ? state.theme : normalizeCustomThemeId(state.ui.selectedCustomTheme),
   )
@@ -130,6 +139,7 @@ export function useSettingsController({
   const [exportStatus, setExportStatus] = useState<string>('')
   const pendingSettingsFrontmatterTemplateIdRef = useRef<string | null>(null)
   const pendingSettingsSectionRef = useRef<SettingsSection | null>(null)
+  const pendingDataSettingsSectionRef = useRef<DataSettingsSection | null>(null)
   const pendingVisualsSettingsSectionRef = useRef<VisualsSettingsSection | null>(null)
   useEffect(() => {
     if (viewMode !== 'settings') return
@@ -137,15 +147,17 @@ export function useSettingsController({
     setShortcutDrafts(state.hotkeys.shortcuts)
     setNewlineShortcutDrafts(state.hotkeys.newlineShortcuts.shortcuts)
     setShortcutMenuOperationsDraft(state.hotkeys.newlineShortcuts.menuOperations)
-    setMouseBackForwardEnabledDraft(state.hotkeys.enableMouseBackForward)
-    setGenericHistoryHotkeysEnabledDraft(state.hotkeys.enableGenericHistoryHotkeys)
     setShowParentHomeTabDraft(state.ui.showParentHomeTab)
     setAlwaysShowSpacesDraft(state.ui.alwaysShowSpaces ?? DEFAULT_UI_SETTINGS.alwaysShowSpaces ?? false)
     setAlwaysShowDomainsDraft(state.ui.alwaysShowDomains ?? DEFAULT_UI_SETTINGS.alwaysShowDomains ?? false)
     setTableAddTargetModeDraft(state.ui.tableAddTargetMode)
     setTableDeleteTargetModeDraft(state.ui.tableDeleteTargetMode)
+    setTableOfContentsScopeDraft(
+      state.ui.tableOfContentsScope ?? DEFAULT_UI_SETTINGS.tableOfContentsScope ?? 'all-aisles',
+    )
     setTabButtonScaleDraft(state.ui.tabButtonScale)
     setNoteFontScaleDraft(state.ui.noteFontScale)
+    setTooltipScaleDraft(state.ui.tooltipScale ?? DEFAULT_UI_SETTINGS.tooltipScale ?? 1)
     setSelectedCustomTheme(isCustomTheme(state.theme) ? state.theme : normalizeCustomThemeId(state.ui.selectedCustomTheme))
     setSection(pendingSettingsSectionRef.current ?? state.ui.settingsSection)
     if (pendingSettingsSectionRef.current === state.ui.settingsSection) {
@@ -155,6 +167,11 @@ export function useSettingsController({
     setVisualsSection(pendingVisualsSettingsSectionRef.current ?? currentVisualsSection)
     if (pendingVisualsSettingsSectionRef.current === currentVisualsSection) {
       pendingVisualsSettingsSectionRef.current = null
+    }
+    const currentDataSection = state.ui.dataSettingsSection ?? DEFAULT_DATA_SETTINGS_SECTION
+    setDataSection(pendingDataSettingsSectionRef.current ?? currentDataSection)
+    if (pendingDataSettingsSectionRef.current === currentDataSection) {
+      pendingDataSettingsSectionRef.current = null
     }
     setCustomThemePaletteDraft(
       getThemePaletteForTheme(state.theme, state.ui.themePalettes, state.ui.customThemePalette),
@@ -170,10 +187,13 @@ export function useSettingsController({
     state.ui.alwaysShowDomains,
     state.ui.tableAddTargetMode,
     state.ui.tableDeleteTargetMode,
+    state.ui.tableOfContentsScope,
     state.ui.tabButtonScale,
     state.ui.noteFontScale,
+    state.ui.tooltipScale,
     state.ui.selectedCustomTheme,
     state.ui.settingsSection,
+    state.ui.dataSettingsSection,
     state.ui.visualsSettingsSection,
     state.ui.customThemePalette,
     state.ui.themePalettes,
@@ -240,6 +260,22 @@ export function useSettingsController({
     })
   }
 
+  const changeDataSection = (nextSection: DataSettingsSection) => {
+    pendingDataSettingsSectionRef.current =
+      (stateRef.current.ui.dataSettingsSection ?? DEFAULT_DATA_SETTINGS_SECTION) === nextSection ? null : nextSection
+    setDataSection(nextSection)
+    commitImmediateSettingsState((previous) => {
+      if (previous.ui.dataSettingsSection === nextSection) return previous
+      return {
+        ...previous,
+        ui: {
+          ...previous.ui,
+          dataSettingsSection: nextSection,
+        },
+      }
+    })
+  }
+
   const toggleShortcutEdit = (shortcutId: ShortcutId) => {
     setEditingShortcut((current) => (current === shortcutId ? null : shortcutId))
   }
@@ -265,28 +301,6 @@ export function useSettingsController({
     if (String(nextDays) !== rawValue.trim()) {
       setSettingsDaysDraft(String(nextDays))
     }
-  }
-
-  const updateMouseBackForwardSetting = (checked: boolean) => {
-    setMouseBackForwardEnabledDraft(checked)
-    commitImmediateSettingsState((previous) => ({
-      ...previous,
-      hotkeys: {
-        ...previous.hotkeys,
-        enableMouseBackForward: checked,
-      },
-    }))
-  }
-
-  const updateGenericHistoryHotkeysSetting = (checked: boolean) => {
-    setGenericHistoryHotkeysEnabledDraft(checked)
-    commitImmediateSettingsState((previous) => ({
-      ...previous,
-      hotkeys: {
-        ...previous.hotkeys,
-        enableGenericHistoryHotkeys: checked,
-      },
-    }))
   }
 
   const updateShowParentHomeTabSetting = (checked: boolean) => {
@@ -348,6 +362,17 @@ export function useSettingsController({
     }))
   }
 
+  const updateTableOfContentsScopeSetting = (scope: TableOfContentsScope) => {
+    setTableOfContentsScopeDraft(scope)
+    commitImmediateSettingsState((previous) => ({
+      ...previous,
+      ui: {
+        ...previous.ui,
+        tableOfContentsScope: scope,
+      },
+    }))
+  }
+
   const updateTipEnabledSetting = (tipId: TipId, enabled: boolean) => {
     commitImmediateSettingsState((previous) => {
       const disabledTipIds = enabled
@@ -385,6 +410,18 @@ export function useSettingsController({
       ui: {
         ...previous.ui,
         noteFontScale: nextScale,
+      },
+    }))
+  }
+
+  const updateTooltipScaleSetting = (rawValue: string) => {
+    const nextScale = clampTooltipScale(Number.parseFloat(rawValue))
+    setTooltipScaleDraft(nextScale)
+    commitImmediateSettingsState((previous) => ({
+      ...previous,
+      ui: {
+        ...previous.ui,
+        tooltipScale: nextScale,
       },
     }))
   }
@@ -827,17 +864,17 @@ export function useSettingsController({
 
   return {
     section,
+    dataSection,
     visualsSection,
     shortcutDrafts,
     newlineShortcutDrafts,
     shortcutMenuOperationsDraft,
     editingShortcut,
-    mouseBackForwardEnabledDraft,
-    genericHistoryHotkeysEnabledDraft,
     settingsDaysDraft,
     exportStatus,
     tabButtonScaleDraft,
     noteFontScaleDraft,
+    tooltipScaleDraft,
     selectedCustomTheme,
     customThemePaletteDraft,
     showParentHomeTabDraft,
@@ -845,6 +882,7 @@ export function useSettingsController({
     alwaysShowDomainsDraft,
     tableAddTargetModeDraft,
     tableDeleteTargetModeDraft,
+    tableOfContentsScopeDraft,
     frontmatterDraft,
     frontmatterDraftDirty,
     toolbarLayouts: getToolbarLayouts(state.ui.toolbarLayouts),
@@ -854,20 +892,21 @@ export function useSettingsController({
     setEditingShortcut,
     setExportStatus,
     changeSection,
+    changeDataSection,
     changeVisualsSection,
     updateSelectedCustomThemeSetting,
     toggleShortcutEdit,
     updateAutoRemoveDaysSetting,
-    updateMouseBackForwardSetting,
-    updateGenericHistoryHotkeysSetting,
     updateShowParentHomeTabSetting,
     updateAlwaysShowSpacesSetting,
     updateAlwaysShowDomainsSetting,
     updateTableAddTargetModeSetting,
     updateTableDeleteTargetModeSetting,
+    updateTableOfContentsScopeSetting,
     updateTipEnabledSetting,
     updateTabButtonScaleSetting,
     updateNoteFontScaleSetting,
+    updateTooltipScaleSetting,
     updateThemeSetting,
     updateCustomThemePaletteSetting,
     resetCustomThemePaletteSetting,

@@ -278,6 +278,18 @@ describe('editor newline operations', () => {
     expect(focus).toHaveBeenCalled()
   })
 
+  it('keeps create-aisle source deletion out of ProseMirror history', () => {
+    const doc = newlineOperationSchema.nodes.doc.create(null, [paragraphNode('move me')])
+    const { editor, view } = createEditorForDoc(doc, 1, 8)
+
+    expect(applyEditorNewlineOperation(editor as any, 'aisle')).toEqual({
+      handled: true,
+      aisleMarkdown: 'move me',
+    })
+
+    expect(view.dispatch.mock.calls[0]?.[0]?.getMeta('addToHistory')).toBe(false)
+  })
+
   it('converts selected mixed-list bullet rows to tasks without deleting earlier task rows', () => {
     const doc = newlineOperationSchema.nodes.doc.create(null, [
       bulletListNode([

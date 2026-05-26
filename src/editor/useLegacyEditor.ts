@@ -25,6 +25,7 @@ import { importImageBlobAsAssetUrl } from '../markdown/image-asset-registry'
 import { measureSlowOperation } from '../performance/performance-logging'
 import type { ToastTone, ViewMode } from '../types/app'
 import { prepareMarkdownForEditorDisplay, restoreEditorBlankParagraphs, setEditorMarkdownForDisplay } from './editor-markdown-display'
+import { markWysiwygLoadedUndoBoundary } from './prosemirror-utils'
 
 type UseLegacyEditorOptions = {
   viewMode: ViewMode
@@ -179,6 +180,7 @@ export function useLegacyEditor({
       },
     })
     restoreEditorBlankParagraphs(editorRef.current, displayContent)
+    markWysiwygLoadedUndoBoundary(editorRef.current)
     installClearToolbarButton(editorMountRef.current, clearActiveNoteContent)
     const cleanupHeadingPopupActiveState = installHeadingPopupActiveState(editorMountRef.current, () => editorRef.current)
     const cleanupCompletedTaskCheckboxBehavior = installCompletedTaskCheckboxBehavior(

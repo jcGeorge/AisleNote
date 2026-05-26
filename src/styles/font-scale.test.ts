@@ -24,6 +24,7 @@ describe('menu font scaling styles', () => {
     const css = readStyle('base.css')
 
     expect(css).toContain('--app-text-scale: var(--note-font-scale, 1);')
+    expect(css).toContain('--tooltip-scale: 1;')
     expect(css).toContain('--ui-font-body: calc(1rem * var(--app-text-scale, 1));')
     expect(css).toContain('--ui-font-muted: calc(0.86rem * var(--app-text-scale, 1));')
   })
@@ -49,6 +50,32 @@ describe('menu font scaling styles', () => {
     })
 
     expect(unscaledDeclarations).toEqual([])
+  })
+
+  it('keeps modal option selectors on the compact picker button rhythm', () => {
+    const css = readStyle('overlays.css')
+    const modeButtonRule = extractRule(css, '.note-reference-mode-btn')
+
+    expect(modeButtonRule).toContain('min-height: 1.85rem;')
+    expect(modeButtonRule).toContain('border-radius: 0.42rem;')
+    expect(modeButtonRule).toContain('padding: 0.24rem 0.55rem;')
+    expect(modeButtonRule).toContain('font-size: 0.84em;')
+    expect(modeButtonRule).toContain('line-height: 1.2;')
+    expect(css).not.toContain('.note-copy-behavior-mode .note-reference-mode-btn')
+  })
+
+  it('renders toolbar layout spacers as cumulative fixed-width gaps', () => {
+    const editorShellCss = readStyle('editor-shell.css')
+    const responsiveCss = readStyle('responsive.css')
+    const sharedToolbarRule = extractRule(editorShellCss, '.note-shared-toolbar')
+    const groupRule = extractRule(editorShellCss, '.note-shared-toolbar .toastui-editor-toolbar-group')
+    const spacerRule = extractRule(editorShellCss, '.note-toolbar-layout-spacer')
+
+    expect(sharedToolbarRule).toContain('--editor-toolbar-spacer-width: 0.9rem;')
+    expect(groupRule).toContain('margin-right: 0 !important;')
+    expect(spacerRule).toContain('flex: 0 0 var(--editor-toolbar-spacer-width);')
+    expect(spacerRule).toContain('min-width: var(--editor-toolbar-spacer-width);')
+    expect(responsiveCss).toContain('--editor-toolbar-spacer-width: 0.8rem;')
   })
 })
 
@@ -427,6 +454,8 @@ describe('compact scope tab scaling styles', () => {
     const previewWidgetRule = extractRule(editorShellCss, '.note-context-widget')
     const previewTopRule = extractRule(editorShellCss, '.note-context-widget .context-bar-top')
     const titleRule = extractRule(editorShellCss, '.context-preview-title-btn')
+    const deleteRule = extractRule(editorShellCss, '.context-bar-delete-btn')
+    const deleteIconRule = extractRule(editorShellCss, '.context-bar-delete-icon')
     const titleEditorRule = extractRule(
       editorShellCss,
       '.toastui-editor .ProseMirror .note-context-widget .context-preview-title-btn,\n.toastui-editor-contents .note-context-widget .context-preview-title-btn',
@@ -459,6 +488,40 @@ describe('compact scope tab scaling styles', () => {
     expect(titleEditorRule).toContain('font-weight: 400 !important;')
     expect(titleEditorRule).toContain('line-height: var(--rail-control-line-height) !important;')
     expect(titleEditorRule).toContain('border-radius: var(--rail-control-radius) !important;')
+    const previewContentsRule = extractRule(editorShellCss, '.context-preview-editor-host .toastui-editor-contents')
+    const previewProseMirrorRule = extractRule(editorShellCss, '.context-preview-editor-host .ProseMirror')
+    expect(editorShellCss).toContain(
+      '.context-preview-editor-host .toastui-editor-main,\n.context-preview-editor-host .toastui-editor-main-container,\n.context-preview-editor-host .toastui-editor-ww-container,\n.context-preview-editor-host .toastui-editor-ww-container > .toastui-editor {',
+    )
+    expect(editorShellCss).toContain('height: var(--note-preview-editor-height, 21.5rem) !important;')
+    expect(previewContentsRule).toContain('min-height: 0 !important;')
+    expect(previewContentsRule).toContain('height: 100% !important;')
+    expect(previewContentsRule).toContain('overflow-y: auto !important;')
+    expect(previewContentsRule).toContain('overflow-x: hidden !important;')
+    expect(previewContentsRule).toContain('padding-top: 0 !important;')
+    expect(previewProseMirrorRule).toContain('min-height: 0 !important;')
+    expect(previewProseMirrorRule).toContain('height: 100% !important;')
+    expect(previewProseMirrorRule).toContain('overflow-y: auto !important;')
+    expect(previewProseMirrorRule).toContain('overflow-x: hidden !important;')
+    expect(previewProseMirrorRule).not.toContain('height: auto !important;')
+    expect(previewProseMirrorRule).toContain('padding-top: 0 !important;')
+    expect(editorShellCss).not.toContain(
+      '.context-preview-editor-host .toastui-editor-main,\n.context-preview-editor-host .toastui-editor-ww-container,\n.context-preview-editor-host .toastui-editor-contents,\n.context-preview-editor-host .ProseMirror {',
+    )
+    expect(editorShellCss).toContain(
+      '.context-preview-editor-host .toastui-editor-contents > :first-child,\n.context-preview-editor-host .ProseMirror > :first-child {',
+    )
+    expect(editorShellCss).toContain('margin-top: 0 !important;')
+    expect(editorShellCss).toContain(
+      '.context-preview-editor-host .toastui-editor-contents > :last-child,\n.context-preview-editor-host .ProseMirror > :last-child {',
+    )
+    expect(editorShellCss).toContain('margin-bottom: 0 !important;')
+    expect(deleteRule).toContain('margin-left: 0.85rem;')
+    expect(deleteRule).toContain('border-color: var(--stage-action-border);')
+    expect(deleteRule).toContain('border-radius: 0.25rem;')
+    expect(deleteRule).toContain('background: var(--stage-action-bg);')
+    expect(deleteIconRule).toContain('width: 1.2rem;')
+    expect(deleteIconRule).toContain('height: 1.2rem;')
     expect(editorShellCss).not.toContain('.context-preview-title-btn.is-domain')
     expect(editorShellCss).not.toContain('.context-preview-title-btn.is-space')
     expect(editorShellCss).not.toContain('.context-preview-title-btn.parent-tab-btn,\n.toastui-editor-contents')
@@ -498,6 +561,7 @@ describe('theme editor selector deduplication', () => {
     const editorShellCss = readStyle('editor-shell.css')
 
     expect(baseCss).toContain('--editor-toolbar-icon-filter:')
+    expect(baseCss).toContain('--editor-toolbar-icon-color: #c8d0e1;')
     expect(baseCss).toContain('--editor-toolbar-dash-icon-text: #555555;')
     expect(baseCss).not.toContain('--editor-toolbar-dash-icon-text: var(--custom-palette-canvas);')
     expect(baseCss).toContain('--editor-clear-note-toolbar-text:')
@@ -512,11 +576,16 @@ describe('theme editor selector deduplication', () => {
     expect(editorBaseCss).toContain('.toastui-editor-md-tab-container .tab-item,\n.toastui-editor-mode-switch .tab-item')
     expect(editorBaseCss).toContain('.toastui-editor-tooltip {')
     expect(editorBaseCss).toContain('background-color: var(--editor-tooltip-bg) !important;')
+    expect(editorBaseCss).toContain('font-size: calc(0.82rem * var(--tooltip-scale, 1)) !important;')
+    expect(editorBaseCss).toContain('padding: calc(4px * var(--tooltip-scale, 1)) calc(8px * var(--tooltip-scale, 1)) !important;')
     expect(editorBaseCss).toContain('filter: var(\n    --editor-toolbar-icon-filter,')
     expect(editorBaseCss).toContain('color: var(--editor-toolbar-dash-icon-text, #555555) !important;')
+    expect(editorBaseCss).toContain('color: var(--editor-toolbar-icon-color, #c8d0e1) !important;')
+    expect(editorBaseCss).toContain('filter: none !important;')
     expect(editorBaseCss).not.toContain('opacity: 0.85;')
+    expect(editorBaseCss).not.toContain('toolbar-custom-icon-color')
     expect(editorBaseCss).toContain(
-      'color: var(--editor-clear-note-toolbar-text, var(--toolbar-custom-icon-color, var(--app-text))) !important;',
+      'color: var(--editor-clear-note-toolbar-text, var(--editor-toolbar-icon-color, #c8d0e1)) !important;',
     )
 
     expect(editorContentCss).toContain('opacity: var(--editor-list-marker-opacity, 1) !important;')
@@ -553,6 +622,7 @@ describe('theme editor selector deduplication', () => {
       const css = readStyle(`themes/${themeName}.css`)
 
       expect(css).toContain('--editor-toolbar-icon-filter:')
+      expect(css).toContain('--editor-toolbar-icon-color: #555555;')
       expect(css).toContain('--editor-clear-note-toolbar-text:')
       expect(css).toContain('--editor-list-marker-opacity:')
       expect(css).toContain('--editor-hr-opacity:')

@@ -58,6 +58,7 @@ type CompactSpaceRailProps = {
     spaceId: string,
     modifiers: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean },
   ) => void
+  onStageManagerSpaceDoubleClick?: (spaceId: string) => void
   onClearArrangeSelection?: () => void
   onOpenContextMenu: (event: MouseEvent<HTMLButtonElement>, spaceId: string) => void
   onShouldSkipRenameBlur: (type: EditableEntityType, id: string) => boolean
@@ -110,6 +111,7 @@ type CompactDomainRailProps = {
     domainId: string,
     modifiers: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean },
   ) => void
+  onStageManagerDomainDoubleClick?: (domainId: string) => void
   onClearArrangeSelection?: () => void
   onOpenContextMenu: (event: MouseEvent<HTMLButtonElement>, domainId: string) => void
   onShouldSkipRenameBlur: (type: EditableEntityType, id: string) => boolean
@@ -156,6 +158,7 @@ export function CompactSpaceRail({
   onOpenSpace,
   onHandleArrangeSpaceSelectionClick,
   onStageManagerSpaceClick,
+  onStageManagerSpaceDoubleClick,
   onClearArrangeSelection,
   onOpenContextMenu,
   onShouldSkipRenameBlur,
@@ -282,7 +285,12 @@ export function CompactSpaceRail({
                 }}
                 onDoubleClick={(event) => {
                   if (arrangeMode.active) return
-                  if (stageManagerMode) return
+                  if (stageManagerMode) {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    onStageManagerSpaceDoubleClick?.(space.id)
+                    return
+                  }
                   event.preventDefault()
                   event.stopPropagation()
                   onBeginEdit({ type: 'space', id: space.id })
@@ -363,6 +371,7 @@ export function CompactDomainRail({
   onOpenDomain,
   onHandleArrangeDomainSelectionClick,
   onStageManagerDomainClick,
+  onStageManagerDomainDoubleClick,
   onClearArrangeSelection,
   onOpenContextMenu,
   onShouldSkipRenameBlur,
@@ -489,7 +498,12 @@ export function CompactDomainRail({
                 }}
                 onDoubleClick={(event) => {
                   if (arrangeMode.active) return
-                  if (stageManagerMode) return
+                  if (stageManagerMode) {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    onStageManagerDomainDoubleClick?.(domain.id)
+                    return
+                  }
                   event.preventDefault()
                   event.stopPropagation()
                   onBeginEdit({ type: 'domain', id: domain.id })

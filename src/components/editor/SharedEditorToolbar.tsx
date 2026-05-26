@@ -2,7 +2,7 @@ import { Fragment, type RefObject } from 'react'
 import {
   getDefaultToolbarLayout,
   getToolbarGroupClassName,
-  getToolbarLayoutGroups,
+  getToolbarLayoutRenderSegments,
 } from '../../editor/toolbar-layouts'
 import type { ToolbarFormatKey, ToolbarFormatState, ToolbarHeadingLevel } from './toolbar-state'
 import type { ToolbarLayout, ToolbarLayoutItem, ToolbarToolId } from '../../types/app'
@@ -199,7 +199,7 @@ export function SharedEditorToolbar({
     onInsertWebLink,
     onClear,
   }
-  const groups = getToolbarLayoutGroups(layout.items)
+  const segments = getToolbarLayoutRenderSegments(layout.items)
 
   return (
     <div
@@ -240,19 +240,23 @@ export function SharedEditorToolbar({
       }}
     >
       <div className="toastui-editor-defaultUI-toolbar app-shared-editor-toolbar">
-        {groups.map((group, groupIndex) => (
-          <div key={`${layout.id}-group-${groupIndex}`} className={getToolbarGroupClassName(group)}>
-            {group.map((item) => (
-              <Fragment key={item.id}>
-                {item.type === 'tool' ? renderToolbarTool(item.toolId, renderContext) : null}
-              </Fragment>
-            ))}
-            {groupHasShortcutFeedback(group, toolbarShortcutFeedback) && (
-              <span className="note-toolbar-shortcut-feedback" role="status">
-                {TOOLBAR_FORMAT_LABELS[toolbarShortcutFeedback!]}
-              </span>
-            )}
-          </div>
+        {segments.map((segment) => (
+          segment.type === 'spacer' ? (
+            <span key={`${layout.id}-spacer-${segment.id}`} className="note-toolbar-layout-spacer" aria-hidden="true" />
+          ) : (
+            <div key={`${layout.id}-${segment.id}`} className={getToolbarGroupClassName(segment.items)}>
+              {segment.items.map((item) => (
+                <Fragment key={item.id}>
+                  {item.type === 'tool' ? renderToolbarTool(item.toolId, renderContext) : null}
+                </Fragment>
+              ))}
+              {groupHasShortcutFeedback(segment.items, toolbarShortcutFeedback) && (
+                <span className="note-toolbar-shortcut-feedback" role="status">
+                  {TOOLBAR_FORMAT_LABELS[toolbarShortcutFeedback!]}
+                </span>
+              )}
+            </div>
+          )
         ))}
       </div>
     </div>

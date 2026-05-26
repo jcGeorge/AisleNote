@@ -13,7 +13,7 @@ import {
   prepareMarkdownImagesForDisplay,
 } from '../markdown/image-asset-registry'
 import { measureSlowOperation } from '../performance/performance-logging'
-import { getWysiwygView } from './prosemirror-utils'
+import { getWysiwygView, markWysiwygLoadedUndoBoundary } from './prosemirror-utils'
 
 export function getEditorMarkdownForPersistence(editor: Editor): string {
   return normalizeMarkdownImageSourcesForPersistence(
@@ -82,6 +82,7 @@ export function setEditorMarkdownForDisplay(editor: Editor, markdown: string, cu
   measureSlowOperation('editor display markdown rewrite', () => {
     editor.setMarkdown(prepareMarkdownForEditorDisplay(markdown), cursorToEnd)
     restoreEditorBlankParagraphs(editor, markdown)
+    markWysiwygLoadedUndoBoundary(editor)
   })
 }
 

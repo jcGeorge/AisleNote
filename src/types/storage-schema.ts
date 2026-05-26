@@ -73,8 +73,10 @@ export type StorageSettingsSection =
   | 'tips'
   | 'toolbar'
   | 'visuals'
+export type StorageDataSettingsSection = 'cloud' | 'trash' | 'export' | 'import'
 export type StorageVisualsSettingsSection = 'theming' | 'otherVisuals'
 export type StorageTableControlTargetMode = 'active-cell' | 'bottom-right'
+export type StorageTableOfContentsScope = 'all-aisles' | 'focused-aisle'
 export type StorageTipId = 'task-undo' | 'tab-create-after-rename'
 
 export type StorageGlobalSettings = {
@@ -86,8 +88,6 @@ export type StorageGlobalSettings = {
       shortcuts: Record<StorageNewlineShortcutId, StorageNewlineOperationId>
       menuOperations: StorageNewlineOperationId[]
     }
-    enableMouseBackForward: boolean
-    enableGenericHistoryHotkeys: boolean
   }
   ui: {
     showParentHomeTab: boolean
@@ -96,12 +96,18 @@ export type StorageGlobalSettings = {
     stageManagerOpenDestinationAfterApply: boolean
     lastLinkInsertMode?: 'note' | 'url'
     lastNoteCopyMode?: 'independent' | 'linked'
+    findCaseSensitive?: boolean
+    findWholeWord?: boolean
+    findRegex?: boolean
     decoupledItemsKeepData?: boolean
     tableAddTargetMode?: StorageTableControlTargetMode
     tableDeleteTargetMode?: StorageTableControlTargetMode
+    tableOfContentsScope?: StorageTableOfContentsScope
     tabButtonScale?: number
     noteFontScale?: number
+    tooltipScale?: number
     settingsSection?: StorageSettingsSection
+    dataSettingsSection?: StorageDataSettingsSection
     selectedCustomTheme?: StorageCustomThemeId
     customThemePalette?: Partial<Record<StorageCustomThemePaletteSlot, string>> | null
     themePalettes?: Partial<Record<StorageTheme, Partial<Record<StorageCustomThemePaletteSlot, string>>>>

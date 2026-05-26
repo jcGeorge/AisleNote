@@ -3,12 +3,14 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_FRONTMATTER_SETTINGS } from '../../frontmatter/frontmatter'
 import {
   DEFAULT_CUSTOM_THEME_PALETTE,
+  DEFAULT_DATA_SETTINGS_SECTION,
   DEFAULT_VISUALS_SETTINGS_SECTION,
   getThemePaletteForTheme,
 } from '../../settings/defaults'
 import { DEFAULT_TOOLBAR_LAYOUT_ID, getToolbarLayouts } from '../../editor/toolbar-layouts'
 import type {
   AppState,
+  DataSettingsSection,
   FrontmatterSettings,
   SettingsSection,
   Space,
@@ -64,8 +66,6 @@ function createState(): AppState {
         },
         menuOperations: [],
       },
-      enableMouseBackForward: true,
-      enableGenericHistoryHotkeys: true,
     },
     frontmatter: DEFAULT_FRONTMATTER_SETTINGS,
     ui: {
@@ -76,6 +76,7 @@ function createState(): AppState {
       tabButtonScale: 1,
       noteFontScale: 1,
       settingsSection: 'hotkeys',
+      dataSettingsSection: 'cloud',
       visualsSettingsSection: 'theming',
       selectedCustomTheme: 'custom1',
       customThemePalette: null,
@@ -93,6 +94,7 @@ function renderSettingsPage(
   frontmatterDraftDirty: boolean,
   options: {
     section?: SettingsSection
+    dataSection?: DataSettingsSection
     visualsSection?: VisualsSettingsSection
     state?: AppState
     storageProfileStatus?: StorageProfileStatus | null
@@ -105,6 +107,7 @@ function renderSettingsPage(
     <SettingsPage
       state={state}
       section={options.section ?? 'frontmatter'}
+      dataSection={options.dataSection ?? state.ui.dataSettingsSection ?? DEFAULT_DATA_SETTINGS_SECTION}
       visualsSection={options.visualsSection ?? state.ui.visualsSettingsSection ?? DEFAULT_VISUALS_SETTINGS_SECTION}
       isMacPlatform={false}
       shortcutDrafts={{
@@ -125,13 +128,11 @@ function renderSettingsPage(
         commandEnter: 'normalNewLine',
       }}
       editingShortcut={null}
-      mouseBackForwardEnabled
-      genericHistoryHotkeysEnabled
       settingsDaysDraft="30"
-      activeSpaceId={space.id}
       exportStatus=""
       tabButtonScaleDraft={1}
       noteFontScaleDraft={1}
+      tooltipScaleDraft={1}
       selectedCustomTheme={state.ui.selectedCustomTheme ?? 'custom1'}
       customThemePaletteDraft={getThemePaletteForTheme(state.theme, state.ui.themePalettes, state.ui.customThemePalette)}
       showParentHomeTabDraft
@@ -139,6 +140,7 @@ function renderSettingsPage(
       alwaysShowDomainsDraft={state.ui.alwaysShowDomains ?? false}
       tableAddTargetModeDraft={state.ui.tableAddTargetMode}
       tableDeleteTargetModeDraft={state.ui.tableDeleteTargetMode}
+      tableOfContentsScopeDraft={state.ui.tableOfContentsScope ?? 'all-aisles'}
       frontmatterDraft={frontmatterDraft}
       frontmatterDraftDirty={frontmatterDraftDirty}
       toolbarLayouts={getToolbarLayouts(state.ui.toolbarLayouts)}
@@ -146,14 +148,12 @@ function renderSettingsPage(
       toolbarEditorShowNames={options.toolbarEditorShowNames ?? state.ui.toolbarEditorShowNames ?? false}
       storageProfileStatus={options.storageProfileStatus ?? null}
       onSectionChange={() => undefined}
+      onDataSectionChange={() => undefined}
       onVisualsSectionChange={() => undefined}
       onToggleShortcutEdit={() => undefined}
       onNewlineShortcutChange={() => undefined}
       onOpenShortcutMenuSettings={() => undefined}
-      onMouseBackForwardChange={() => undefined}
-      onGenericHistoryHotkeysChange={() => undefined}
       onAutoRemoveDaysChange={() => undefined}
-      onExportSpace={() => undefined}
       onExportAll={() => undefined}
       onThemeChange={() => undefined}
       onSelectedCustomThemeChange={() => undefined}
@@ -163,11 +163,13 @@ function renderSettingsPage(
       onCustomThemePaletteSeedFromCurrentTheme={() => undefined}
       onTabButtonScaleChange={() => undefined}
       onNoteFontScaleChange={() => undefined}
+      onTooltipScaleChange={() => undefined}
       onShowParentHomeTabChange={() => undefined}
       onAlwaysShowSpacesChange={() => undefined}
       onAlwaysShowDomainsChange={() => undefined}
       onTableAddTargetModeChange={() => undefined}
       onTableDeleteTargetModeChange={() => undefined}
+      onTableOfContentsScopeChange={() => undefined}
       onTipEnabledChange={() => undefined}
       onSelectToolbarLayout={() => undefined}
       onCreateToolbarLayout={() => undefined}
@@ -223,10 +225,57 @@ describe('frontmatter settings page', () => {
     expect(html).toContain('settings-shortcut-btn')
   })
 
+  it('renders the table of contents scope setting in misc settings', () => {
+    const state = createState()
+    state.ui.tableOfContentsScope = 'focused-aisle'
+    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'misc', state })
+
+    expect(html).toContain('table of contents shows for')
+    expect(html).toContain('role="radiogroup" aria-labelledby="settings-table-of-contents-shows-for-label"')
+    expect(html).toContain('aria-checked="false" class="settings-segmented-option ">all aisles</button>')
+    expect(html).toContain('aria-checked="true" class="settings-segmented-option is-selected">focused aisle</button>')
+    expect(html.indexOf('table of contents shows for')).toBeLessThan(html.indexOf('add table row or column'))
+  })
+
   it('renders strikethrough as a selectable new-line operation', () => {
     const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'shortcuts' })
 
     expect(html).toContain('<option value="strikethrough">strikethrough</option>')
+  })
+
+  it('splits data settings into cloud, trash, export, and import sub-sections', () => {
+    const cloudHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'data' })
+    const trashHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'data', dataSection: 'trash' })
+    const exportHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'data', dataSection: 'export' })
+    const importHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'data', dataSection: 'import' })
+
+    expect(cloudHtml).toContain('role="radiogroup" aria-labelledby="settings-data-section-label"')
+    expect(cloudHtml).toContain('aria-checked="true" class="settings-segmented-option is-selected">cloud</button>')
+    expect(cloudHtml).toContain('cloud and storage:')
+    expect(cloudHtml).toContain('choose sync folder')
+    expect(cloudHtml).not.toContain('automatically remove deleted items after:')
+    expect(cloudHtml).not.toContain('export space')
+
+    expect(trashHtml).toContain('aria-checked="true" class="settings-segmented-option is-selected">trash</button>')
+    expect(trashHtml).toContain('automatically remove deleted items after:')
+    expect(trashHtml).toContain('class="settings-number-input settings-number-input-half"')
+    expect(trashHtml).not.toContain('choose sync folder')
+    expect(trashHtml).not.toContain('export space')
+
+    expect(exportHtml).toContain('aria-checked="true" class="settings-segmented-option is-selected">export</button>')
+    expect(exportHtml).toContain('export backup')
+    expect(exportHtml).toContain('export all')
+    expect(exportHtml).toContain('export to other tabs project')
+    expect(exportHtml).toContain('id="settings-export-tabs-project"')
+    expect(exportHtml).toContain('disabled=""')
+    expect(exportHtml).not.toContain('export space')
+    expect(exportHtml).not.toContain('choose sync folder')
+    expect(exportHtml).not.toContain('automatically remove deleted items after:')
+
+    expect(importHtml).toContain('aria-checked="true" class="settings-segmented-option is-selected">import</button>')
+    expect(importHtml).toContain('import tools are not available yet.')
+    expect(importHtml).not.toContain('choose sync folder')
+    expect(importHtml).not.toContain('export space')
   })
 
   it('renders custom theme palette controls when a custom theme is selected', () => {
@@ -415,6 +464,8 @@ describe('frontmatter settings page', () => {
     expect(html).toContain('aria-checked="true" class="settings-segmented-option is-selected">other visuals</button>')
     expect(html).toContain('always show spaces')
     expect(html).toContain('always show domains')
+    expect(html).toContain('tooltip size')
+    expect(html).toContain('id="settings-tooltip-scale"')
     expect(html).toContain('id="settings-always-show-spaces"')
     expect(html).toContain('id="settings-always-show-domains"')
     expect(html).not.toContain('aria-label="theme palette"')
@@ -690,7 +741,7 @@ describe('frontmatter settings page', () => {
     expect(html).toContain('recovery snapshots</span><span>2</span>')
     expect(html).toContain('aria-label="storage health issues"')
     expect(html).toContain('Markdown file is missing; this note was loaded as empty.')
-    expect(html).toContain('export backup')
+    expect(html).not.toContain('export backup')
     expect(html).toContain('restore latest snapshot</button>')
   })
 

@@ -92,7 +92,94 @@ describe('note preview data model', () => {
       { kind: 'subtab', label: 'home' },
     ])
     expect(data.previewText).toBe('# Heading\n\nPreview text')
-    expect(data.selectedAisles).toHaveLength(1)
+    expect(data.selectedAisle?.id).toBe('target-body-aisle')
+    expect(data.selectedAisle?.markdown).toBe('# Heading\n\nPreview text')
+  })
+
+  it('uses the first valid selected aisle for preview data', () => {
+    const state = createPreviewState()
+    const targetBody = state.noteBodies.find((body) => body.id === 'target-body')
+    if (!targetBody) throw new Error('expected target body')
+    targetBody.aisles = [
+      { id: 'aisle-a', aisleBodyId: 'aisle-body-a' },
+      { id: 'aisle-b', aisleBodyId: 'aisle-body-b' },
+      { id: 'aisle-c', aisleBodyId: 'aisle-body-c' },
+    ]
+    state.noteAisleBodies = [
+      ...(state.noteAisleBodies ?? []).filter((body) => !body.id.startsWith('aisle-body-')),
+      { id: 'aisle-body-a', markdown: 'first aisle' },
+      { id: 'aisle-body-b', markdown: 'second aisle' },
+      { id: 'aisle-body-c', markdown: 'third aisle' },
+    ]
+
+    const data = getContextPreviewDataFromState(
+      state,
+      {
+        id: 'preview-id',
+        target: { domainId: 'domain-a', spaceId: 'space-a', tabId: 'tab-b', subTabId: null },
+        aisleIds: ['missing-aisle', 'aisle-b', 'aisle-c'],
+      },
+      'source-body',
+    )
+
+    expect(data.selectedAisle?.id).toBe('aisle-b')
+    expect(data.previewText).toBe('second aisle')
+  })
+
+  it('falls back to the first aisle when no preview aisle is serialized', () => {
+    const state = createPreviewState()
+    const targetBody = state.noteBodies.find((body) => body.id === 'target-body')
+    if (!targetBody) throw new Error('expected target body')
+    targetBody.aisles = [
+      { id: 'aisle-a', aisleBodyId: 'aisle-body-a' },
+      { id: 'aisle-b', aisleBodyId: 'aisle-body-b' },
+    ]
+    state.noteAisleBodies = [
+      ...(state.noteAisleBodies ?? []).filter((body) => !body.id.startsWith('aisle-body-')),
+      { id: 'aisle-body-a', markdown: 'first aisle' },
+      { id: 'aisle-body-b', markdown: 'second aisle' },
+    ]
+
+    const data = getContextPreviewDataFromState(
+      state,
+      {
+        id: 'preview-id',
+        target: { domainId: 'domain-a', spaceId: 'space-a', tabId: 'tab-b', subTabId: null },
+      },
+      'source-body',
+    )
+
+    expect(data.selectedAisle?.id).toBe('aisle-a')
+    expect(data.previewText).toBe('first aisle')
+  })
+
+  it('prefers the heading aisle over serialized aisle ids', () => {
+    const state = createPreviewState()
+    const targetBody = state.noteBodies.find((body) => body.id === 'target-body')
+    if (!targetBody) throw new Error('expected target body')
+    targetBody.aisles = [
+      { id: 'aisle-a', aisleBodyId: 'aisle-body-a' },
+      { id: 'aisle-b', aisleBodyId: 'aisle-body-b' },
+    ]
+    state.noteAisleBodies = [
+      ...(state.noteAisleBodies ?? []).filter((body) => !body.id.startsWith('aisle-body-')),
+      { id: 'aisle-body-a', markdown: '# First' },
+      { id: 'aisle-body-b', markdown: '# Second' },
+    ]
+
+    const data = getContextPreviewDataFromState(
+      state,
+      {
+        id: 'preview-id',
+        target: { domainId: 'domain-a', spaceId: 'space-a', tabId: 'tab-b', subTabId: null },
+        aisleIds: ['aisle-a'],
+        heading: { aisleId: 'aisle-b', headingKey: 'aisle-b|h1|0|Second' },
+      },
+      'source-body',
+    )
+
+    expect(data.selectedAisle?.id).toBe('aisle-b')
+    expect(data.previewText).toBe('# Second')
   })
 
   it('builds same-space sub-tab preview title buttons', () => {

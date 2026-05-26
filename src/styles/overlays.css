@@ -413,16 +413,7 @@
 
 .note-location-picker-row {
   display: grid;
-  gap: 0.28rem;
   min-width: 0;
-}
-
-.note-location-picker-row-label {
-  color: var(--modal-muted-text);
-  font-size: 0.78em;
-  font-weight: 700;
-  line-height: 1.2;
-  text-transform: lowercase;
 }
 
 .note-location-picker-row-items {
@@ -433,26 +424,13 @@
 }
 
 .note-location-picker-chip {
-  max-width: 12.5rem;
-  min-height: 1.85rem;
-  border: 1px solid var(--stage-action-border);
-  border-radius: 0.35rem;
-  background: var(--stage-action-bg);
-  color: var(--stage-action-text);
-  padding: 0.24rem 0.55rem;
-  font: inherit;
-  font-size: 0.84em;
-  line-height: 1.2;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.note-location-picker-chip:hover,
-.note-location-picker-chip.is-selected {
-  border-color: var(--stage-action-selected-border);
-  background: var(--stage-action-selected-bg);
-  color: var(--stage-action-selected-text);
+  --rail-control-flex: 0 1 auto;
+  --rail-control-min-width: 0;
+  --rail-control-max-width: 12.5rem;
+  --rail-control-height: 1.85rem;
+  --rail-control-padding: 0.24rem 0.55rem;
+  --rail-control-font-size: 0.84em;
+  --rail-control-line-height: 1.2;
 }
 
 .note-location-picker-empty {
@@ -526,7 +504,25 @@
 
 .note-reference-mode {
   display: inline-flex;
+  flex-wrap: wrap;
   gap: 0.25rem;
+}
+
+.note-reference-option-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.note-reference-link-option-strip {
+  column-gap: 1.15rem;
+}
+
+.note-reference-picker-divider {
+  border-top: 1px solid var(--modal-border);
+  opacity: 0.65;
 }
 
 .note-reference-heading-picker {
@@ -585,13 +581,6 @@
   justify-self: start;
 }
 
-.note-copy-behavior-mode .note-reference-mode-btn {
-  padding: 0.2rem 0.42rem;
-  font-size: 0.78em;
-  line-height: 1.15;
-  white-space: nowrap;
-}
-
 .note-picker-modal .delete-modal-actions {
   display: grid;
   grid-template-columns: 7.5rem minmax(0, 1fr);
@@ -621,12 +610,20 @@
 }
 
 .note-reference-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.85rem;
   border: 1px solid var(--stage-action-border);
-  border-radius: 0.35rem;
+  border-radius: 0.42rem;
   background: var(--stage-action-bg);
   color: var(--stage-action-text);
-  padding: 0.3rem 0.6rem;
+  padding: 0.24rem 0.55rem;
   font: inherit;
+  font-size: 0.84em;
+  line-height: 1.2;
+  white-space: nowrap;
+  box-sizing: border-box;
 }
 
 .note-reference-mode-btn.is-active {

@@ -122,6 +122,10 @@ export function createStageManagerFullParentSelection(tab: Tab): StageManagerPar
   }
 }
 
+export function createStageManagerFullSelectionState(tabs: Tab[]): StageManagerSelectionState {
+  return Object.fromEntries(tabs.map((tab) => [tab.id, createStageManagerFullParentSelection(tab)]))
+}
+
 export function createStageManagerSelectionFromSubTabIds(
   tab: Tab,
   subTabIds: string[],

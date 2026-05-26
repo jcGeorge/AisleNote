@@ -46,6 +46,7 @@ import { LegacyEditorShell } from './components/editor/LegacyEditorShell'
 import { NoteMentionMenu } from './components/editor/NoteMentionMenu'
 import { ShortcutMenu } from './components/editor/ShortcutMenu'
 import { TableControlsOverlay } from './components/editor/TableControlsOverlay'
+import { getFindReplaceShortcutMode } from './components/editor/find-replace-shortcuts'
 import {
   getShortcutMenuKeyboardAction,
   isShortcutMenuKeyboardKey,
@@ -148,6 +149,7 @@ import { getAisleMarkdown } from './notes/aisle-body-state'
 import {
   applyFindReplacementToState,
   findVisibleMatches,
+  getFindReplaceQueryError,
   type FindReplaceScope,
 } from './notes/find-replace'
 import { useNoteReferenceActions } from './notes/useNoteReferenceActions'
@@ -186,6 +188,7 @@ import {
   loadDeviceSettings,
   saveActiveToolbarLayoutId,
   saveDeviceLastOpened,
+  savePartialDeviceSettings,
   type DeviceSettings,
 } from './storage/device-settings-store'
 import { useStorageProfileController } from './storage/useStorageProfileController'
@@ -231,11 +234,14 @@ type ShortcutMenuState = {
 
 type FindReplacePanelState = {
   open: boolean
+  replaceMode: boolean
+  focusRequestId: number
   query: string
   replacement: string
   scope: FindReplaceScope
   caseSensitive: boolean
   wholeWord: boolean
+  regex: boolean
   activeIndex: number
 }
 
@@ -286,11 +292,14 @@ function App() {
   const [tableOfContentsPanels, setTableOfContentsPanels] = useState<TableOfContentsPanelsState | null>(null)
   const [findReplacePanel, setFindReplacePanel] = useState<FindReplacePanelState>({
     open: false,
-    query: '',
+    replaceMode: false,
+    focusRequestId: 0,
+    query: initialDeviceSettingsRef.current?.lastFindQuery ?? '',
     replacement: '',
     scope: 'note',
-    caseSensitive: false,
-    wholeWord: false,
+    caseSensitive: state.ui.findCaseSensitive ?? false,
+    wholeWord: state.ui.findWholeWord ?? false,
+    regex: state.ui.findRegex ?? false,
     activeIndex: 0,
   })
   const [arrangeDestinationPrompt, setArrangeDestinationPrompt] =
@@ -454,6 +463,7 @@ function App() {
             {
               caseSensitive: findReplacePanel.caseSensitive,
               wholeWord: findReplacePanel.wholeWord,
+              regex: findReplacePanel.regex,
             },
           )
         : [],
@@ -462,11 +472,33 @@ function App() {
       findReplacePanel.caseSensitive,
       findReplacePanel.open,
       findReplacePanel.query,
+      findReplacePanel.regex,
       findReplacePanel.scope,
       findReplacePanel.wholeWord,
       state,
     ],
   )
+  const findReplaceQueryError = useMemo(
+    () =>
+      getFindReplaceQueryError(findReplacePanel.query, {
+        caseSensitive: findReplacePanel.caseSensitive,
+        wholeWord: findReplacePanel.wholeWord,
+        regex: findReplacePanel.regex,
+      }),
+    [findReplacePanel.caseSensitive, findReplacePanel.query, findReplacePanel.regex, findReplacePanel.wholeWord],
+  )
+
+  useEffect(() => {
+    setFindReplacePanel((current) => {
+      if (current.open) return current
+      const caseSensitive = state.ui.findCaseSensitive ?? false
+      const wholeWord = state.ui.findWholeWord ?? false
+      const regex = state.ui.findRegex ?? false
+      return current.caseSensitive === caseSensitive && current.wholeWord === wholeWord && current.regex === regex
+        ? current
+        : { ...current, caseSensitive, wholeWord, regex }
+    })
+  }, [state.ui.findCaseSensitive, state.ui.findRegex, state.ui.findWholeWord])
 
   useEffect(() => {
     setFindReplacePanel((current) => {
@@ -1571,6 +1603,10 @@ function App() {
       activeNoteBodyId,
       activeNoteAisles,
       getHeadingOutlineForAisle,
+      {
+        scope: state.ui.tableOfContentsScope ?? 'all-aisles',
+        focusedAisleId: resolvedActiveAisleId,
+      },
     )
 
     if (!nextTableOfContentsPanels) {
@@ -1951,14 +1987,18 @@ function App() {
     }
   }
 
-  const openFindReplacePanel = useCallback(() => {
+  const openFindReplacePanel = useCallback((replaceMode = true) => {
     setContextMenu(null)
     flushPendingContent()
     const selectedText = getActiveEditorSelectedText()
+    const lastFindQuery = loadDeviceSettings().lastFindQuery
+    if (!lastFindQuery && selectedText.trim()) savePartialDeviceSettings({ lastFindQuery: selectedText })
     setFindReplacePanel((current) => ({
       ...current,
       open: true,
-      query: current.query || selectedText,
+      replaceMode,
+      focusRequestId: current.focusRequestId + 1,
+      query: lastFindQuery || current.query || selectedText,
       activeIndex: 0,
     }))
   }, [flushPendingContent, getActiveEditorSelectedText])
@@ -1995,7 +2035,11 @@ function App() {
   }
 
   const syncActiveEditorAfterFindReplace = (nextState: AppState, changedAisleBodyIds: Set<string>) => {
-    changedAisleBodyIds.forEach((aisleBodyId) => pendingContentRef.current.delete(aisleBodyId))
+    changedAisleBodyIds.forEach((aisleBodyId) => {
+      pendingContentRef.current.delete(aisleBodyId)
+      const updatedBody = nextState.noteAisleBodies?.find((candidate) => candidate.id === aisleBodyId)
+      lastEditorMarkdownByAisleRef.current.set(aisleBodyId, updatedBody?.markdown ?? '')
+    })
     const currentEditor = editorRef.current
     const activeInfo = getLocationInfo(nextState, activeNoteLocation)
     const activeBody = nextState.noteBodies.find((body) => body.id === activeInfo.noteBodyId)
@@ -2010,6 +2054,7 @@ function App() {
   }
 
   const applyFindReplacement = (mode: 'current' | 'all') => {
+    if (findReplaceQueryError) return
     const selectedMatches =
       mode === 'current'
         ? findReplaceMatches[findReplacePanel.activeIndex]
@@ -2028,6 +2073,7 @@ function App() {
     const latestMatches = findVisibleMatches(latestState, activeNoteLocation, findReplacePanel.scope, findReplacePanel.query, {
       caseSensitive: findReplacePanel.caseSensitive,
       wholeWord: findReplacePanel.wholeWord,
+      regex: findReplacePanel.regex,
     })
     const targetIds = new Set(selectedMatches.map((match) => match.id))
     const matchesToApply = mode === 'all' ? latestMatches : latestMatches.filter((match) => targetIds.has(match.id))
@@ -2044,15 +2090,11 @@ function App() {
 
   useEffect(() => {
     const handleFindShortcut = (event: KeyboardEvent) => {
-      const isFindShortcut =
-        (isMacPlatform ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey) &&
-        !event.altKey &&
-        !event.shiftKey &&
-        event.key.toLowerCase() === 'f'
-      if (!isFindShortcut || viewMode !== 'main') return
+      const shortcutMode = getFindReplaceShortcutMode(event, isMacPlatform)
+      if (!shortcutMode || viewMode !== 'main') return
       event.preventDefault()
       event.stopPropagation()
-      openFindReplacePanel()
+      openFindReplacePanel(shortcutMode === 'replace')
     }
     document.addEventListener('keydown', handleFindShortcut, true)
     return () => document.removeEventListener('keydown', handleFindShortcut, true)
@@ -2076,9 +2118,9 @@ function App() {
     const currentEditor = editorRef.current
     if (!currentEditor) return false
     currentEditor.focus()
-    if (runAisleStructuralHistory(direction)) return true
     const result = runEditorHistoryOnly(direction)
     if (result !== 'unavailable') return true
+    if (runAisleStructuralHistory(direction)) return true
     return true
   }
 
@@ -2877,6 +2919,7 @@ function App() {
         {
           '--tab-button-scale': String(state.ui.tabButtonScale),
           '--note-font-scale': String(state.ui.noteFontScale),
+          '--tooltip-scale': String(state.ui.tooltipScale ?? 1),
           ...(customThemePalette
             ? {
                 '--custom-theme-canvas': customThemePalette.canvas,
@@ -2913,6 +2956,7 @@ function App() {
           stageManagerMode
           stageManagerSelectedDomainIds={stageManager.selectedDomainIds}
           onStageManagerDomainClick={stageManager.handleDomainClick}
+          onStageManagerDomainDoubleClick={stageManager.handleDomainDoubleClick}
           onOpenDomain={openDomainFromCompactRail}
           onOpenContextMenu={openContextMenuForDomain}
           onShouldSkipRenameBlur={shouldSkipRenameBlur}
@@ -2945,6 +2989,7 @@ function App() {
           stageManagerMode
           stageManagerSelectedSpaceIds={stageManager.selectedSpaceIds}
           onStageManagerSpaceClick={stageManager.handleSpaceClick}
+          onStageManagerSpaceDoubleClick={stageManager.handleSpaceDoubleClick}
           onOpenSpace={openSpaceFromCompactRail}
           onOpenContextMenu={openContextMenuForSpace}
           onShouldSkipRenameBlur={shouldSkipRenameBlur}
@@ -3256,18 +3301,17 @@ function App() {
         <SettingsPage
           state={state}
           section={settingsController.section}
+          dataSection={settingsController.dataSection}
           visualsSection={settingsController.visualsSection}
           isMacPlatform={isMacPlatform}
           shortcutDrafts={settingsController.shortcutDrafts}
           newlineShortcutDrafts={settingsController.newlineShortcutDrafts}
           editingShortcut={settingsController.editingShortcut}
-          mouseBackForwardEnabled={settingsController.mouseBackForwardEnabledDraft}
-          genericHistoryHotkeysEnabled={settingsController.genericHistoryHotkeysEnabledDraft}
           settingsDaysDraft={settingsController.settingsDaysDraft}
-          activeSpaceId={activeSpace.id}
           exportStatus={settingsController.exportStatus}
           tabButtonScaleDraft={settingsController.tabButtonScaleDraft}
           noteFontScaleDraft={settingsController.noteFontScaleDraft}
+          tooltipScaleDraft={settingsController.tooltipScaleDraft}
           selectedCustomTheme={settingsController.selectedCustomTheme}
           customThemePaletteDraft={settingsController.customThemePaletteDraft}
           showParentHomeTabDraft={settingsController.showParentHomeTabDraft}
@@ -3275,6 +3319,7 @@ function App() {
           alwaysShowDomainsDraft={settingsController.alwaysShowDomainsDraft}
           tableAddTargetModeDraft={settingsController.tableAddTargetModeDraft}
           tableDeleteTargetModeDraft={settingsController.tableDeleteTargetModeDraft}
+          tableOfContentsScopeDraft={settingsController.tableOfContentsScopeDraft}
           frontmatterDraft={settingsController.frontmatterDraft}
           frontmatterDraftDirty={settingsController.frontmatterDraftDirty}
           toolbarLayouts={settingsController.toolbarLayouts}
@@ -3282,14 +3327,12 @@ function App() {
           toolbarEditorShowNames={settingsController.toolbarEditorShowNames}
           storageProfileStatus={storageProfileStatus}
           onSectionChange={settingsController.changeSection}
+          onDataSectionChange={settingsController.changeDataSection}
           onVisualsSectionChange={settingsController.changeVisualsSection}
           onToggleShortcutEdit={settingsController.toggleShortcutEdit}
           onNewlineShortcutChange={settingsController.updateNewlineShortcutSetting}
           onOpenShortcutMenuSettings={() => setModal({ type: 'shortcut-menu-settings' })}
-          onMouseBackForwardChange={settingsController.updateMouseBackForwardSetting}
-          onGenericHistoryHotkeysChange={settingsController.updateGenericHistoryHotkeysSetting}
           onAutoRemoveDaysChange={settingsController.updateAutoRemoveDaysSetting}
-          onExportSpace={(spaceId) => setModal({ type: 'export-space', spaceId })}
           onExportAll={() => exportData('all')}
           onThemeChange={settingsController.updateThemeSetting}
           onSelectedCustomThemeChange={settingsController.updateSelectedCustomThemeSetting}
@@ -3299,6 +3342,7 @@ function App() {
           onCustomThemePaletteSeedFromCurrentTheme={settingsController.seedCustomThemePaletteFromCurrentTheme}
           onTabButtonScaleChange={settingsController.updateTabButtonScaleSetting}
           onNoteFontScaleChange={settingsController.updateNoteFontScaleSetting}
+          onTooltipScaleChange={settingsController.updateTooltipScaleSetting}
           onShowParentHomeTabChange={settingsController.updateShowParentHomeTabSetting}
           onAlwaysShowSpacesChange={settingsController.updateAlwaysShowSpacesSetting}
           onAlwaysShowDomainsChange={(enabled) => {
@@ -3308,6 +3352,7 @@ function App() {
           }}
           onTableAddTargetModeChange={settingsController.updateTableAddTargetModeSetting}
           onTableDeleteTargetModeChange={settingsController.updateTableDeleteTargetModeSetting}
+          onTableOfContentsScopeChange={settingsController.updateTableOfContentsScopeSetting}
           onTipEnabledChange={settingsController.updateTipEnabledSetting}
           onSelectToolbarLayout={settingsController.selectToolbarLayoutForEditing}
           onCreateToolbarLayout={settingsController.createToolbarLayoutSetting}
@@ -3530,20 +3575,54 @@ function App() {
 
       {findReplacePanel.open && (
         <FindReplacePanel
+          replaceMode={findReplacePanel.replaceMode}
+          focusRequestId={findReplacePanel.focusRequestId}
           query={findReplacePanel.query}
           replacement={findReplacePanel.replacement}
           scope={findReplacePanel.scope}
           caseSensitive={findReplacePanel.caseSensitive}
           wholeWord={findReplacePanel.wholeWord}
+          regex={findReplacePanel.regex}
+          queryError={findReplaceQueryError}
           matches={findReplaceMatches}
           activeIndex={Math.max(0, Math.min(findReplacePanel.activeIndex, Math.max(0, findReplaceMatches.length - 1)))}
-          onQueryChange={(query) => setFindReplacePanel((current) => ({ ...current, query, activeIndex: 0 }))}
+          onReplaceModeChange={(replaceMode) => setFindReplacePanel((current) => ({ ...current, replaceMode }))}
+          onQueryChange={(query) => {
+            setFindReplacePanel((current) => ({ ...current, query, activeIndex: 0 }))
+            if (query.trim()) savePartialDeviceSettings({ lastFindQuery: query })
+          }}
           onReplacementChange={(replacement) => setFindReplacePanel((current) => ({ ...current, replacement }))}
           onScopeChange={(scope) => setFindReplacePanel((current) => ({ ...current, scope, activeIndex: 0 }))}
-          onCaseSensitiveChange={(caseSensitive) =>
+          onCaseSensitiveChange={(caseSensitive) => {
             setFindReplacePanel((current) => ({ ...current, caseSensitive, activeIndex: 0 }))
-          }
-          onWholeWordChange={(wholeWord) => setFindReplacePanel((current) => ({ ...current, wholeWord, activeIndex: 0 }))}
+            setState((previous) => ({
+              ...previous,
+              ui: {
+                ...previous.ui,
+                findCaseSensitive: caseSensitive,
+              },
+            }))
+          }}
+          onWholeWordChange={(wholeWord) => {
+            setFindReplacePanel((current) => ({ ...current, wholeWord, activeIndex: 0 }))
+            setState((previous) => ({
+              ...previous,
+              ui: {
+                ...previous.ui,
+                findWholeWord: wholeWord,
+              },
+            }))
+          }}
+          onRegexChange={(regex) => {
+            setFindReplacePanel((current) => ({ ...current, regex, activeIndex: 0 }))
+            setState((previous) => ({
+              ...previous,
+              ui: {
+                ...previous.ui,
+                findRegex: regex,
+              },
+            }))
+          }}
           onPrevious={() => moveFindReplaceMatch(-1)}
           onNext={() => moveFindReplaceMatch(1)}
           onSelectMatch={setFindReplaceActiveIndex}

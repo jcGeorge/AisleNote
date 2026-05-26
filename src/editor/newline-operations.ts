@@ -502,7 +502,7 @@ function extractSelectionForAisle(editor: Editor): EditorNewlineOperationResult 
     tr = tr.delete(selectionFrom, selectionTo)
   }
 
-  view.dispatch(tr.scrollIntoView())
+  view.dispatch(tr.setMeta('addToHistory', false).scrollIntoView())
   editor.focus()
   return { handled: true, aisleMarkdown }
 }

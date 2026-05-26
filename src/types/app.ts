@@ -40,8 +40,10 @@ export type SettingsSection =
   | 'tips'
   | 'toolbar'
   | 'visuals'
+export type DataSettingsSection = 'cloud' | 'trash' | 'export' | 'import'
 export type VisualsSettingsSection = 'theming' | 'otherVisuals'
 export type TableControlTargetMode = 'active-cell' | 'bottom-right'
+export type TableOfContentsScope = 'all-aisles' | 'focused-aisle'
 export type TipId = 'task-undo' | 'tab-create-after-rename'
 
 export type NewlineOperationId =
@@ -332,8 +334,6 @@ export type AppState = {
   hotkeys: {
     shortcuts: Record<ShortcutId, string>
     newlineShortcuts: NewlineShortcutSettings
-    enableMouseBackForward: boolean
-    enableGenericHistoryHotkeys: boolean
   }
   frontmatter: FrontmatterSettings
   ui: {
@@ -343,12 +343,18 @@ export type AppState = {
     stageManagerOpenDestinationAfterApply: boolean
     lastLinkInsertMode?: LinkInsertMode
     lastNoteCopyMode?: NoteCopyMode
+    findCaseSensitive?: boolean
+    findWholeWord?: boolean
+    findRegex?: boolean
     decoupledItemsKeepData?: boolean
     tableAddTargetMode: TableControlTargetMode
     tableDeleteTargetMode: TableControlTargetMode
+    tableOfContentsScope?: TableOfContentsScope
     tabButtonScale: number
     noteFontScale: number
+    tooltipScale?: number
     settingsSection: SettingsSection
+    dataSettingsSection?: DataSettingsSection
     visualsSettingsSection?: VisualsSettingsSection
     selectedCustomTheme?: CustomThemeId
     customThemePalette: CustomThemePalette | null

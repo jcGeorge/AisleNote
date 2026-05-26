@@ -76,8 +76,6 @@ export function normalizeHotkeySettings(raw: unknown): AppState['hotkeys'] {
   const fallback: AppState['hotkeys'] = {
     shortcuts: DEFAULT_SHORTCUTS,
     newlineShortcuts: DEFAULT_NEWLINE_SHORTCUT_SETTINGS,
-    enableMouseBackForward: true,
-    enableGenericHistoryHotkeys: true,
   }
   if (!raw || typeof raw !== 'object') return fallback
   const obj = raw as Record<string, unknown>
@@ -92,9 +90,6 @@ export function normalizeHotkeySettings(raw: unknown): AppState['hotkeys'] {
   return {
     shortcuts,
     newlineShortcuts: normalizeNewlineShortcutSettings(obj.newlineShortcuts),
-    enableMouseBackForward: typeof obj.enableMouseBackForward === 'boolean' ? obj.enableMouseBackForward : true,
-    enableGenericHistoryHotkeys:
-      typeof obj.enableGenericHistoryHotkeys === 'boolean' ? obj.enableGenericHistoryHotkeys : true,
   }
 }
 

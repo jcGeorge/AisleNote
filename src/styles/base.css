@@ -1,5 +1,6 @@
 .app-shell {
   --tab-button-scale: 1;
+  --tooltip-scale: 1;
   --tab-control-height: calc(32px * var(--tab-button-scale));
   --app-text-scale: var(--note-font-scale, 1);
   --ui-font-2xs: calc(0.72rem * var(--app-text-scale, 1));
@@ -440,8 +441,9 @@
   --editor-annotation-text: #c7d5ed;
   --editor-terminal-caret: rgba(134, 168, 232, 0.86);
   --editor-toolbar-icon-filter: invert(88%) sepia(10%) saturate(327%) hue-rotate(183deg) brightness(94%) contrast(91%);
+  --editor-toolbar-icon-color: #c8d0e1;
   --editor-toolbar-dash-icon-text: #555555;
-  --editor-clear-note-toolbar-text: var(--toolbar-custom-icon-color, var(--app-text));
+  --editor-clear-note-toolbar-text: var(--editor-toolbar-icon-color);
   --editor-heading-choice-active-bg: #22406d;
   --editor-heading-choice-active-marker: #6fa0ff;
   --editor-heading-choice-active-text: #f4f8ff;
@@ -858,6 +860,8 @@
   --editor-caret: var(--custom-palette-text);
   --editor-annotation-text: var(--app-text-muted);
   --editor-terminal-caret: color-mix(in srgb, var(--custom-palette-primary) 74%, transparent);
+  --editor-toolbar-icon-color: var(--custom-palette-text);
+  --editor-clear-note-toolbar-text: var(--editor-toolbar-icon-color);
   --editor-heading-choice-active-bg: color-mix(in srgb, var(--custom-palette-primary) 28%, var(--custom-palette-surface));
   --editor-heading-choice-active-marker: var(--custom-palette-primary);
   --editor-heading-choice-active-text: var(--app-text-bright);

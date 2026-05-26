@@ -305,7 +305,8 @@
   --editor-annotation-text: #4a5f82;
   --editor-terminal-caret: rgba(95, 127, 181, 0.86);
   --editor-toolbar-icon-filter: none;
-  --editor-clear-note-toolbar-text: var(--editor-muted-text);
+  --editor-toolbar-icon-color: #555555;
+  --editor-clear-note-toolbar-text: var(--editor-toolbar-icon-color);
   --editor-heading-choice-active-bg: #dbe8ff;
   --editor-heading-choice-active-marker: #3f7df0;
   --editor-heading-choice-active-text: #173760;

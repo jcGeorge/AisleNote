@@ -18,6 +18,7 @@ import {
   getLinkMarkAttrs,
   getNoteMentionQueryAtSelection,
   isProseMirrorDocMeaningful,
+  markWysiwygLoadedUndoBoundary,
   runWysiwygHistory,
   shouldBlockWysiwygUndo,
 } from './prosemirror-utils'
@@ -47,6 +48,11 @@ const schema = new Schema({
       group: 'block',
       atom: true,
       toDOM: () => ['hr'],
+    },
+    blockQuote: {
+      group: 'block',
+      content: 'block+',
+      toDOM: () => ['blockquote', 0],
     },
   },
   marks: {
@@ -101,10 +107,11 @@ describe('wysiwyg history commands', () => {
     expect(editor.focus).not.toHaveBeenCalled()
   })
 
-  it('blocks undo that would clear all meaningful content', () => {
+  it('blocks undo that would clear protected loaded content', () => {
     const transaction = { doc: docForBlocks(paragraph()), docChanged: true }
     const view = { state: { doc: docForBlocks(paragraph('keep me')) }, dispatch: vi.fn() }
     const editor = { wwEditor: { view }, focus: vi.fn() }
+    markWysiwygLoadedUndoBoundary(editor as unknown as Editor)
     historySpies.undo.mockImplementation((_state, dispatch) => {
       dispatch?.(transaction)
       return true
@@ -113,6 +120,49 @@ describe('wysiwyg history commands', () => {
     expect(runWysiwygHistory(editor as unknown as Editor, 'undo')).toBe('blocked')
     expect(view.dispatch).not.toHaveBeenCalled()
     expect(editor.focus).not.toHaveBeenCalled()
+  })
+
+  it('allows undo that clears current-session first-line content without a loaded boundary', () => {
+    const transaction = { doc: docForBlocks(paragraph()), docChanged: true }
+    const view = { state: { doc: docForBlocks(paragraph('typed now')) }, dispatch: vi.fn() }
+    const editor = { wwEditor: { view }, focus: vi.fn() }
+    historySpies.undo.mockImplementation((_state, dispatch) => {
+      dispatch?.(transaction)
+      return true
+    })
+
+    expect(runWysiwygHistory(editor as unknown as Editor, 'undo')).toBe('applied')
+    expect(view.dispatch).toHaveBeenCalledWith(transaction)
+  })
+
+  it('allows undo that clears first-line content after the editor loaded empty', () => {
+    const emptyDoc = docForBlocks(paragraph())
+    const transaction = { doc: emptyDoc, docChanged: true }
+    const view = { state: { doc: emptyDoc }, dispatch: vi.fn() }
+    const editor = { wwEditor: { view }, focus: vi.fn() }
+    markWysiwygLoadedUndoBoundary(editor as unknown as Editor)
+    view.state.doc = docForBlocks(paragraph('typed after load'))
+    historySpies.undo.mockImplementation((_state, dispatch) => {
+      dispatch?.(transaction)
+      return true
+    })
+
+    expect(runWysiwygHistory(editor as unknown as Editor, 'undo')).toBe('applied')
+    expect(view.dispatch).toHaveBeenCalledWith(transaction)
+  })
+
+  it('allows undo that clears current-session block formatting without a loaded boundary', () => {
+    const transaction = { doc: docForBlocks(paragraph()), docChanged: true }
+    const blockQuote = schema.nodes.blockQuote.create(null, [paragraph('quote')])
+    const view = { state: { doc: docForBlocks(blockQuote) }, dispatch: vi.fn() }
+    const editor = { wwEditor: { view }, focus: vi.fn() }
+    historySpies.undo.mockImplementation((_state, dispatch) => {
+      dispatch?.(transaction)
+      return true
+    })
+
+    expect(runWysiwygHistory(editor as unknown as Editor, 'undo')).toBe('applied')
+    expect(view.dispatch).toHaveBeenCalledWith(transaction)
   })
 
   it('allows undo that leaves meaningful content', () => {
@@ -160,9 +210,13 @@ describe('ProseMirror meaningful content detection', () => {
   const paragraph = (text = '') => schema.nodes.paragraph.create(null, text ? [schema.text(text)] : undefined)
 
   it('treats text as meaningful and blank placeholder paragraphs as empty', () => {
+    const textDoc = docForBlocks(paragraph('text'))
+    const emptyDoc = docForBlocks(paragraph())
+
     expect(isProseMirrorDocMeaningful(docForBlocks(paragraph('text')))).toBe(true)
     expect(isProseMirrorDocMeaningful(docForBlocks(paragraph('\u200b')))).toBe(false)
-    expect(shouldBlockWysiwygUndo(docForBlocks(paragraph('text')), docForBlocks(paragraph()))).toBe(true)
+    expect(shouldBlockWysiwygUndo(textDoc, emptyDoc)).toBe(false)
+    expect(shouldBlockWysiwygUndo(textDoc, emptyDoc, { loadedUndoBoundaryDoc: textDoc })).toBe(true)
   })
 
   it('treats embedded and structural content nodes as meaningful', () => {

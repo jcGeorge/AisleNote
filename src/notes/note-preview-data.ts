@@ -13,7 +13,7 @@ export type ContextPreviewTitleButton = {
 export type ContextPreviewData = {
   targetInfo: NoteLocationInfo
   targetBody: AppState['noteBodies'][number] | null
-  selectedAisles: ResolvedNoteAisle[]
+  selectedAisle: ResolvedNoteAisle | null
   recursiveBlocked: boolean
   previewText: string
   locationLabel: string
@@ -47,6 +47,22 @@ function getContextPreviewTitleButtons(
   return titleButtons
 }
 
+function getSelectedPreviewAisle(
+  targetBody: AppState['noteBodies'][number] | null,
+  payload: NoteContextReferencePayload,
+) {
+  if (!targetBody || targetBody.aisles.length === 0) return null
+  const preferredAisleIds = [
+    payload.heading?.aisleId,
+    ...(payload.aisleIds ?? []),
+  ].filter((aisleId): aisleId is string => typeof aisleId === 'string' && aisleId.length > 0)
+  for (const aisleId of preferredAisleIds) {
+    const aisle = targetBody.aisles.find((candidate) => candidate.id === aisleId)
+    if (aisle) return aisle
+  }
+  return targetBody.aisles[0] ?? null
+}
+
 export function getContextPreviewDataFromState(
   appState: AppState,
   payload: NoteContextReferencePayload,
@@ -55,25 +71,19 @@ export function getContextPreviewDataFromState(
   const targetInfo = getLocationInfo(appState, payload.target)
   const sourceLocation = getSourceLocation(appState, sourceNoteBodyId)
   const targetBody = appState.noteBodies.find((body) => body.id === targetInfo.noteBodyId) ?? null
-  const payloadAisleIds = payload.heading?.aisleId ? [payload.heading.aisleId] : payload.aisleIds
-  const selectedAisleCandidates =
-    targetBody && payloadAisleIds && payloadAisleIds.length > 0
-      ? targetBody.aisles.filter((aisle) => payloadAisleIds.includes(aisle.id))
-      : targetBody?.aisles ?? []
-  const selectedAisles = selectedAisleCandidates.length > 0 || !payload.heading ? selectedAisleCandidates : targetBody?.aisles ?? []
-  const selectedAislesWithMarkdown = selectedAisles.map((aisle) => ({
-    ...aisle,
-    markdown: getAisleMarkdown(aisle, appState.noteAisleBodies),
-  }))
+  const selectedPreviewAisle = getSelectedPreviewAisle(targetBody, payload)
+  const selectedAisle = selectedPreviewAisle
+    ? {
+        ...selectedPreviewAisle,
+        markdown: getAisleMarkdown(selectedPreviewAisle, appState.noteAisleBodies),
+      }
+    : null
   const recursiveBlocked =
     !targetBody ||
     !targetInfo.noteBodyId ||
     targetInfo.noteBodyId === sourceNoteBodyId ||
     wouldCreateContextCycle(appState, targetInfo.noteBodyId, sourceNoteBodyId)
-  const previewText = selectedAislesWithMarkdown
-    .map((aisle) => aisle.markdown.trim())
-    .filter(Boolean)
-    .join('\n\n')
+  const previewText = selectedAisle?.markdown.trim() ?? ''
   const locationLabel = targetInfo.domain && targetInfo.space && targetInfo.tab
     ? `${targetInfo.domain.name} / ${targetInfo.space.name} / ${targetInfo.tab.title}${targetInfo.subTab ? ` / ${targetInfo.subTab.title}` : ' / home'}`
     : 'missing note'
@@ -85,7 +95,7 @@ export function getContextPreviewDataFromState(
   return {
     targetInfo,
     targetBody,
-    selectedAisles: selectedAislesWithMarkdown,
+    selectedAisle,
     recursiveBlocked,
     previewText,
     locationLabel,

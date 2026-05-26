@@ -47,12 +47,18 @@ describe('SharedEditorToolbar block quote and block indent controls', () => {
     expect(html).toContain('title="Remove block indent"')
     expect(html).toContain('aria-label="Remove block indent"')
     expect(html).toContain('aria-label="Insert link"')
+    expect(html).toContain('note-copy-toolbar-document')
+    expect(html).toContain('note-copy-toolbar-chain')
+    expect(html).not.toContain('note-copy-toolbar-page-back')
     expect(html).toContain('aria-label="Frontmatter"')
     expect(html).toContain('frontmatter-toolbar-icon')
     expect(html).toContain('>fm</span>')
     expect(html).toContain('title="Table of contents"')
     expect(html).toContain('aria-label="Table of contents"')
-    expect(html).toContain('ToC')
+    expect(html).toContain('table-of-contents-toolbar-icon')
+    expect(html).not.toContain('>ToC</button>')
+    expect(html).toContain('aisles-toolbar-icon')
+    expect(html).toContain('viewBox="0 0 36 32"')
     expect(html).toContain('title="Highlight"')
     expect(html).toContain('aria-label="Highlight"')
     expect(html).toContain('highlight')
@@ -62,6 +68,8 @@ describe('SharedEditorToolbar block quote and block indent controls', () => {
     expect(html).toContain('aria-label="Redo"')
     expect(html).toContain('editor-history-toolbar-btn-undo')
     expect(html).toContain('editor-history-toolbar-btn-redo')
+    expect(html.match(/viewBox="0 0 32 32"/g)).toHaveLength(2)
+    expect(html).toContain('editor-history-toolbar-head')
     expect(html).not.toContain('note-link-toolbar-btn')
   })
 
@@ -134,6 +142,46 @@ describe('SharedEditorToolbar block quote and block indent controls', () => {
     expect(html).not.toContain('aria-label="Undo"')
     expect(html).not.toContain('aria-label="Table of contents"')
     expect(html.match(/toastui-editor-toolbar-group/g)?.length ?? 0).toBeGreaterThanOrEqual(2)
+  })
+
+  it('renders each layout spacer as its own live toolbar gap', () => {
+    const noop = vi.fn()
+    const html = renderToStaticMarkup(
+      <SharedEditorToolbar
+        layout={{
+          id: 'spaced',
+          name: 'spaced',
+          items: [
+            { id: 'leading-gap', type: 'spacer' },
+            { id: 'bold', type: 'tool', toolId: 'bold' },
+            { id: 'gap-one', type: 'spacer' },
+            { id: 'gap-two', type: 'spacer' },
+            { id: 'italic', type: 'tool', toolId: 'italic' },
+            { id: 'trailing-gap', type: 'spacer' },
+          ],
+        }}
+        copyButtonRef={createRef<HTMLButtonElement>()}
+        headingButtonRef={createRef<HTMLButtonElement>()}
+        aisleButtonRef={createRef<HTMLButtonElement>()}
+        toolbarFormatState={DEFAULT_TOOLBAR_FORMAT_STATE}
+        activeHeadingLevel={0}
+        toolbarShortcutFeedback={null}
+        onOpenCopy={noop}
+        onOpenFrontmatter={noop}
+        onOpenTableOfContents={noop}
+        onOpenAisleEditModal={noop}
+        onToggleHeading={noop}
+        onCommand={noop}
+        onHistory={noop}
+        onInsertImage={noop}
+        onInsertWebLink={noop}
+        onClear={noop}
+      />,
+    )
+
+    expect(html.match(/note-toolbar-layout-spacer/g)?.length).toBe(4)
+    expect(html.indexOf('note-toolbar-layout-spacer')).toBeLessThan(html.indexOf('aria-label="Bold"'))
+    expect(html.indexOf('aria-label="Bold"')).toBeLessThan(html.indexOf('aria-label="Italic"'))
   })
 
   it('does not render the live toolbar shell for an empty active layout', () => {
