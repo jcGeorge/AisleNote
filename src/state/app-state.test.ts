@@ -946,6 +946,18 @@ describe('app state normalization', () => {
     expect(missing.ui.tableOfContentsScope).toBe('all-aisles')
   })
 
+  it('normalizes persisted new aisle placement', () => {
+    const rightOfFocus = parseModernState({ ui: { newAislePlacement: 'right-of-focus' } })
+    const end = parseModernState({ ui: { newAislePlacement: 'end' } })
+    const invalid = parseModernState({ ui: { newAislePlacement: 'middle' } })
+    const missing = parseModernState({ ui: {} })
+
+    expect(rightOfFocus.ui.newAislePlacement).toBe('right-of-focus')
+    expect(end.ui.newAislePlacement).toBe('end')
+    expect(invalid.ui.newAislePlacement).toBe('end')
+    expect(missing.ui.newAislePlacement).toBe('end')
+  })
+
   it('normalizes persisted note copy mode memory', () => {
     const linked = parseModernState({ ui: { lastNoteCopyMode: 'linked' } })
     const independent = parseModernState({ ui: { lastNoteCopyMode: 'independent' } })

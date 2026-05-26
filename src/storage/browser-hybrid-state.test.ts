@@ -4,6 +4,7 @@ import { registerAssetBytes, registerImageAssetBytes } from '../markdown/image-a
 import { DEFAULT_CUSTOM_THEME_PALETTE } from '../settings/defaults'
 import { parseSavedState } from '../state/app-state'
 import { getAisleMarkdown } from '../notes/note-markdown'
+import { buildContextToken } from '../notes/note-references'
 import { buildHybridFileMapFromSerializedState, readSerializedStateFromHybridFileMap } from './browser-hybrid-state'
 import { STORAGE_PATH_SEGMENT_MAX_LENGTH } from './storage-path-segments.js'
 
@@ -442,6 +443,7 @@ describe('browser hybrid storage', () => {
           tableAddTargetMode: 'active-cell',
           tableDeleteTargetMode: 'active-cell',
           tableOfContentsScope: 'focused-aisle',
+          newAislePlacement: 'right-of-focus',
           tabButtonScale: 1.3,
           noteFontScale: 1.2,
           tooltipScale: 1.25,
@@ -476,6 +478,7 @@ describe('browser hybrid storage', () => {
     expect(getRecord(appSettings.ui).findWholeWord).toBe(true)
     expect(getRecord(appSettings.ui).findRegex).toBe(true)
     expect(getRecord(appSettings.ui).tableOfContentsScope).toBe('focused-aisle')
+    expect(getRecord(appSettings.ui).newAislePlacement).toBe('right-of-focus')
     expect(getRecord(appSettings.ui).showParentHomeTab).toBe(false)
     expect(getRecord(appSettings.hotkeys)).not.toHaveProperty('enableMouseBackForward')
     expect(getRecord(appSettings.hotkeys)).not.toHaveProperty('enableGenericHistoryHotkeys')
@@ -493,6 +496,7 @@ describe('browser hybrid storage', () => {
     expect(roundTripped.ui.findWholeWord).toBe(true)
     expect(roundTripped.ui.findRegex).toBe(true)
     expect(roundTripped.ui.tableOfContentsScope).toBe('focused-aisle')
+    expect(roundTripped.ui.newAislePlacement).toBe('right-of-focus')
     expect(roundTripped.ui.themePalettes?.dawn?.primary).toBe('#123456')
     expect(roundTripped.hotkeys.shortcuts.newTab).toBe('Ctrl+Alt+N')
     expect(roundTripped.hotkeys).not.toHaveProperty('enableMouseBackForward')
@@ -1203,6 +1207,35 @@ describe('browser hybrid storage', () => {
     expect(assetEntry?.kind === 'binary' ? Array.from(assetEntry.bytes) : []).toEqual(Array.from(bytes))
     expect(getFirstAisleBodyMarkdown(roundTripped)).toContain(buildImageAssetUrl(assetPath))
     expect(getFirstAisleBodyMarkdown(roundTripped)).not.toContain('data:image/')
+  })
+
+  it('writes readable preview directives and image metadata to markdown files', () => {
+    const state = createBrowserStorageState()
+    const bytes = new Uint8Array([1, 2, 3, 4])
+    const assetPath = 'assets/asset-browser-readable.png'
+    registerImageAssetBytes(assetPath, bytes, 'image/png')
+    const previewToken = buildContextToken(state, {
+      id: 'preview-1',
+      target: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
+    })
+    setFirstAisleBodyMarkdown(
+      state,
+      `${previewToken}\n![pixel](${buildImageAssetUrl(assetPath)}#tabs-image=rotate=90,width=88)`,
+    )
+
+    const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
+    const { spaceRoot, spaceManifest } = getBrowserWorkspacePaths(fileMap)
+    const firstTab = getRecord(Array.isArray(spaceManifest.tabs) ? spaceManifest.tabs[0] : null)
+    const markdownEntry = fileMap.get(`${spaceRoot}/${String(firstTab.homeNoteFile)}`)
+    const serialized = readSerializedStateFromHybridFileMap(fileMap)
+    const roundTripped = parseSavedState(serialized ?? '')
+
+    expect(markdownEntry?.kind).toBe('text')
+    const markdownText = markdownEntry?.kind === 'text' ? markdownEntry.text : ''
+    expect(markdownText).toMatch(/!\[\[Tab--[0-9a-f]{6}\]\]/)
+    expect(markdownText).not.toContain('{{tabs-preview')
+    expect(markdownText).toContain('#tabs-image=width=88,rotate=90')
+    expect(getFirstAisleBodyMarkdown(roundTripped)).toContain('#tabs-image=width=88,rotate=90')
   })
 
   it('round trips registered non-image asset links', () => {

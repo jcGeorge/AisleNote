@@ -2,7 +2,7 @@ import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
 import { syncNoteAisleBodyMarkdownInState } from './aisle-body-state'
 import { getAisleBodyId, getAisleMarkdown } from './note-markdown'
 import { getLocationInfo, getNoteLocationBreadcrumbLabel, listSearchableNoteLocations } from './note-locations'
-import { decodeContextPayload } from './note-references'
+import { getContextReferenceTokenLengthAt, getWikiReferenceDisplayText, parseWikiReferenceToken } from './note-references'
 import type { AppState, NoteLocation } from '../types/app'
 
 export type FindReplaceScope = 'note' | 'parent' | 'space' | 'domain' | 'project'
@@ -75,8 +75,6 @@ type VisibleFindRange = {
   visibleSuffix?: string
 }
 
-const NOTE_CONTEXT_REFERENCE_AT_START_RE = /^\{\{tabs-context:([A-Za-z0-9_-]+)\}\}/
-
 function isWordChar(value: string | undefined): boolean {
   return Boolean(value && /[a-z0-9_]/i.test(value))
 }
@@ -96,10 +94,20 @@ function appendVisibleText(index: VisibleMarkdownIndex, text: string, startPosit
   }
 }
 
-function getContextReferenceTokenLengthAt(text: string, offset: number): number {
-  const match = text.slice(offset).match(NOTE_CONTEXT_REFERENCE_AT_START_RE)
-  if (!match || !decodeContextPayload(match[1])) return 0
-  return match[0].length
+function appendWikiLinkVisibleText(index: VisibleMarkdownIndex, token: string, lineStart: number, tokenOffset: number) {
+  const parsed = parseWikiReferenceToken(token)
+  if (!parsed || parsed.embed) return
+  if (parsed.alias) {
+    const aliasStart = token.indexOf('|') + 1
+    appendVisibleText(index, parsed.alias, lineStart + tokenOffset + aliasStart)
+    return
+  }
+  const displayText = getWikiReferenceDisplayText(token)
+  const noteHandleStart = token.indexOf('[[') + 2
+  const sourceTitle = parsed.noteHandle.replace(/--[0-9a-f]{6}(?:-\d+)?$/i, '').trim()
+  const sourceTitleStart = sourceTitle ? parsed.noteHandle.indexOf(sourceTitle) : 0
+  const displayStart = Math.max(0, noteHandleStart + sourceTitleStart)
+  appendVisibleText(index, displayText, lineStart + tokenOffset + displayStart)
 }
 
 function appendHiddenContextTokenBoundary(index: VisibleMarkdownIndex) {
@@ -133,6 +141,15 @@ function appendInlineVisibleMarkdown(index: VisibleMarkdownIndex, line: string, 
     if (contextTokenLength > 0) {
       appendHiddenContextTokenBoundary(index)
       offset += contextTokenLength
+      continue
+    }
+
+    const wikiReference = rest.match(/^!?\[\[[^\]\n|]+(?:\|[^\]\n]+)?\]\]/)
+    if (wikiReference) {
+      const parsed = parseWikiReferenceToken(wikiReference[0])
+      if (parsed?.embed) appendHiddenContextTokenBoundary(index)
+      else appendWikiLinkVisibleText(index, wikiReference[0], lineStart, offset)
+      offset += wikiReference[0].length
       continue
     }
 

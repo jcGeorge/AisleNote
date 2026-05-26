@@ -5,6 +5,7 @@ import type {
   CustomThemePalette,
   CustomThemePaletteSlot,
   DataSettingsSection,
+  NewAislePlacement,
   SettingsSection,
   TableControlTargetMode,
   TableOfContentsScope,
@@ -55,6 +56,7 @@ export const DEFAULT_UI_SETTINGS: AppState['ui'] = {
   tableAddTargetMode: 'bottom-right',
   tableDeleteTargetMode: 'bottom-right',
   tableOfContentsScope: 'all-aisles',
+  newAislePlacement: 'end',
   tabButtonScale: 1,
   noteFontScale: 1,
   tooltipScale: 1,
@@ -367,6 +369,10 @@ export function normalizeTableOfContentsScope(value: unknown): TableOfContentsSc
   return value === 'focused-aisle' || value === 'all-aisles' ? value : 'all-aisles'
 }
 
+export function normalizeNewAislePlacement(value: unknown): NewAislePlacement {
+  return value === 'right-of-focus' || value === 'end' ? value : 'end'
+}
+
 export function normalizeUiSettings(raw: unknown): AppState['ui'] {
   if (!raw || typeof raw !== 'object') return DEFAULT_UI_SETTINGS
   const obj = raw as Record<string, unknown>
@@ -402,6 +408,7 @@ export function normalizeUiSettings(raw: unknown): AppState['ui'] {
     tableAddTargetMode: normalizeTableControlTargetMode(obj.tableAddTargetMode),
     tableDeleteTargetMode: normalizeTableControlTargetMode(obj.tableDeleteTargetMode),
     tableOfContentsScope: normalizeTableOfContentsScope(obj.tableOfContentsScope),
+    newAislePlacement: normalizeNewAislePlacement(obj.newAislePlacement),
     tabButtonScale:
       typeof obj.tabButtonScale === 'number'
         ? clampTabButtonScale(obj.tabButtonScale)

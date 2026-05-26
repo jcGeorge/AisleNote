@@ -10,9 +10,13 @@ import type {
 } from '../types/app'
 import { normalizeExternalWebUrl } from './external-links'
 import { getDefaultNoteLinkLabel, getDefaultNoteReferenceTarget, getLocationInfo } from './note-locations'
-import { buildContextToken, buildInternalNoteUrl, type NoteContextReferencePayload, wouldCreateContextCycle } from './note-references'
+import {
+  buildContextToken,
+  buildInternalNoteLinkToken,
+  type NoteContextReferencePayload,
+  wouldCreateContextCycle,
+} from './note-references'
 import { normalizeNoteReferenceTarget } from './note-reference-targets'
-import { createId } from '../state/workspace'
 
 export type NoteReferenceSource = 'mention' | 'toolbar' | 'context-menu' | 'modal'
 export type NoteReferenceAction = 'link' | 'preview'
@@ -33,6 +37,7 @@ export type NoteReferenceLinkSpec =
   | {
       ok: true
       href: string
+      syntax: string
       label: string
       target: NoteNavigationTarget
       noteBodyId: string
@@ -96,7 +101,7 @@ export function buildInternalNoteLinkEditDraft(
   source: NoteLocation,
   edit: InternalNoteLinkEdit,
 ): NoteReferenceDraft {
-  const target = normalizeNoteReferenceTarget(appState, { ...edit.target, heading: edit.heading })
+  const target = normalizeNoteReferenceTarget(appState, { ...edit.target, aisleIds: edit.aisleIds, heading: edit.heading })
   return {
     ...buildDefaultNoteReferenceDraft(appState, source, 'note', '', 'context-menu'),
     modeLocked: true,
@@ -111,17 +116,29 @@ export function buildInternalNoteLinkEditDraft(
 export function getNoteReferenceLinkSpec(
   appState: AppState,
   source: NoteLocation,
-  target: NoteLocation & { aisleIds?: string[]; heading?: NoteContextReferencePayload['heading'] },
+  target: NoteLocation & {
+    aisleIds?: string[]
+    heading?: NoteContextReferencePayload['heading']
+    previewStart?: NoteContextReferencePayload['previewStart']
+  },
   labelOverride = '',
 ): NoteReferenceLinkSpec {
   const normalizedTarget = normalizeNoteReferenceTarget(appState, target)
+  const syntaxTarget = {
+    ...normalizedTarget,
+    aisleIds: target.aisleIds && target.aisleIds.length > 0 ? normalizedTarget.aisleIds : undefined,
+    heading: normalizedTarget.heading,
+  }
   const targetInfo = getLocationInfo(appState, normalizedTarget)
   if (!targetInfo.domain || !targetInfo.space || !targetInfo.tab || !targetInfo.noteBodyId) {
     return { ok: false, message: 'choose an existing note.' }
   }
+  const syntax = buildInternalNoteLinkToken(appState, syntaxTarget, labelOverride)
+  if (!syntax) return { ok: false, message: 'choose an existing note.' }
   return {
     ok: true,
-    href: buildInternalNoteUrl(targetInfo.noteBodyId, normalizedTarget),
+    href: syntax,
+    syntax,
     label: labelOverride.trim() || getDefaultNoteLinkLabel(appState, source, normalizedTarget),
     target: normalizedTarget,
     noteBodyId: targetInfo.noteBodyId,
@@ -143,10 +160,23 @@ export function getUrlReferenceLinkSpec(urlValue: string, labelValue: string): N
 export function getNoteReferencePreviewSpec(
   appState: AppState,
   activeNoteBodyId: string,
-  target: NoteLocation & { aisleIds?: string[]; heading?: NoteContextReferencePayload['heading'] },
-  id = createId(),
+  target: NoteLocation & {
+    aisleIds?: string[]
+    heading?: NoteContextReferencePayload['heading']
+    previewStart?: NoteContextReferencePayload['previewStart']
+  },
+  editingTokenId = '',
 ): NoteReferencePreviewSpec {
   const normalizedTarget = normalizeNoteReferenceTarget(appState, target)
+  const syntaxTarget = {
+    ...normalizedTarget,
+    aisleIds:
+      normalizedTarget.previewStart === 'last-position'
+        ? undefined
+        : target.aisleIds && target.aisleIds.length > 0 ? normalizedTarget.aisleIds : undefined,
+    heading: normalizedTarget.heading,
+    previewStart: normalizedTarget.heading ? undefined : normalizedTarget.previewStart,
+  }
   const targetInfo = getLocationInfo(appState, normalizedTarget)
   if (!targetInfo.domain || !targetInfo.space || !targetInfo.tab || !targetInfo.noteBodyId) {
     return { ok: false, message: 'choose an existing note.' }
@@ -159,19 +189,25 @@ export function getNoteReferencePreviewSpec(
   }
 
   const payload: NoteContextReferencePayload = {
-    id,
+    id: editingTokenId,
     target: {
       domainId: normalizedTarget.domainId,
       spaceId: normalizedTarget.spaceId,
       tabId: normalizedTarget.tabId,
       subTabId: normalizedTarget.subTabId,
     },
-    aisleIds: normalizedTarget.aisleIds && normalizedTarget.aisleIds.length > 0 ? normalizedTarget.aisleIds : undefined,
+    aisleIds: syntaxTarget.aisleIds && syntaxTarget.aisleIds.length > 0 ? syntaxTarget.aisleIds : undefined,
     heading: normalizedTarget.heading,
+    previewStart: syntaxTarget.previewStart,
   }
+  const token = buildContextToken(appState, payload)
+  if (!token) return { ok: false, message: 'choose an existing note.' }
   return {
     ok: true,
-    payload,
-    token: buildContextToken(payload),
+    payload: {
+      ...payload,
+      id: editingTokenId || token,
+    },
+    token,
   }
 }

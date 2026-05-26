@@ -2,10 +2,9 @@ import type { Editor } from '@toast-ui/editor'
 import { redo, undo } from 'prosemirror-history'
 import { Selection, TextSelection } from 'prosemirror-state'
 import {
-  getMarkdownLinkLabel,
   INTERNAL_NOTE_LINK_MARKDOWN_RE,
   type InternalNoteLinkHit,
-  parseInternalNoteReferenceUrl,
+  type ResolvedWikiNoteReference,
 } from '../notes/note-references'
 import {
   getLogicalEndpointForPosition,
@@ -285,12 +284,18 @@ export function collectProseMirrorTextPositions(doc: any): ProseMirrorTextPositi
   return { text, positions }
 }
 
-export function getInternalNoteLinkHitAtDocPosition(doc: any, docPosition: number): InternalNoteLinkHit | null {
+export function getInternalNoteLinkHitAtDocPosition(
+  doc: any,
+  docPosition: number,
+  resolveInternalNoteReference?: (token: string) => ResolvedWikiNoteReference | null,
+): InternalNoteLinkHit | null {
   const docText = collectProseMirrorTextPositions(doc)
   let occurrence = 0
   for (const match of docText.text.matchAll(INTERNAL_NOTE_LINK_MARKDOWN_RE)) {
     if (match[0].startsWith('!')) continue
-    const reference = parseInternalNoteReferenceUrl(match[2])
+    const currentOccurrence = occurrence
+    occurrence += 1
+    const reference = resolveInternalNoteReference?.(match[0])
     if (!reference) continue
 
     const startIndex = match.index ?? 0
@@ -303,21 +308,21 @@ export function getInternalNoteLinkHitAtDocPosition(doc: any, docPosition: numbe
     }
     if (docPosition >= from && docPosition <= last + 1) {
       return {
-        label: getMarkdownLinkLabel(match[1]),
-        href: match[2],
+        label: reference.label,
+        href: match[0],
         target: {
-          domainId: reference.domainId,
-          spaceId: reference.spaceId,
-          tabId: reference.tabId,
-          subTabId: reference.subTabId,
+          domainId: reference.target.domainId,
+          spaceId: reference.target.spaceId,
+          tabId: reference.target.tabId,
+          subTabId: reference.target.subTabId,
         },
-        heading: reference.heading,
+        aisleIds: reference.payload?.aisleIds ? [...reference.payload.aisleIds] : undefined,
+        heading: reference.target.heading,
         from,
         to: last + 1,
-        occurrence,
+        occurrence: currentOccurrence,
       }
     }
-    occurrence += 1
   }
   return null
 }

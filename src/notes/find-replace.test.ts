@@ -8,7 +8,7 @@ import {
   findVisibleMatches,
   getFindReplaceQueryError,
 } from './find-replace'
-import { buildContextToken } from './note-references'
+import { buildContextToken, buildInternalNoteLinkToken } from './note-references'
 
 function tab(id: string, title: string, noteBodyId: string, subTabs: Array<{ id: string; title: string; body: string }> = []): Tab {
   return {
@@ -222,16 +222,20 @@ describe('visible markdown matching', () => {
     expect(result.state.noteAisleBodies?.[0]?.markdown).toBe('[Asset](https://example.com/target-url)')
   })
 
-  it('does not search or replace encoded note preview context tokens', () => {
-    const previewToken = buildContextToken({
+  it('does not search or replace note preview directive tokens', () => {
+    const state = createFindReplaceState()
+    const previewToken = buildContextToken(state, {
       id: 'preview-token',
       target: { ...ACTIVE_LOCATION, subTabId: 'sub-a' },
     })
-    const encodedFragment = previewToken.match(/\{\{tabs-context:([A-Za-z0-9_-]+)\}\}/)?.[1]?.slice(0, 8) ?? ''
-    const state = createFindReplaceState()
     state.noteAisleBodies = [{ id: 'aisle-body-home', markdown: `red ${previewToken} red` }]
 
-    expect(findVisibleMatches(state, ACTIVE_LOCATION, 'note', encodedFragment, {
+    expect(findVisibleMatches(state, ACTIVE_LOCATION, 'note', 'preview-token', {
+      caseSensitive: true,
+      wholeWord: false,
+      regex: false,
+    })).toEqual([])
+    expect(findVisibleMatches(state, ACTIVE_LOCATION, 'note', 'Sub A', {
       caseSensitive: true,
       wholeWord: false,
       regex: false,
@@ -246,6 +250,33 @@ describe('visible markdown matching', () => {
 
     expect(result.replacementCount).toBe(2)
     expect(result.state.noteAisleBodies?.[0]?.markdown).toBe(`rxd ${previewToken} rxd`)
+  })
+
+  it('searches wiki note link display text without matching handles or preview embeds', () => {
+    const state = createFindReplaceState()
+    const wikiLink = buildInternalNoteLinkToken(state, { ...ACTIVE_LOCATION, subTabId: 'sub-a' })
+    const aliasedLink = buildInternalNoteLinkToken(state, { ...ACTIVE_LOCATION, subTabId: 'sub-a' }, 'Custom Label')
+    const previewToken = buildContextToken(state, {
+      id: 'preview-token',
+      target: { ...ACTIVE_LOCATION, subTabId: 'sub-a' },
+    })
+    state.noteAisleBodies = [{ id: 'aisle-body-home', markdown: `${wikiLink} ${aliasedLink} ${previewToken}` }]
+
+    expect(findVisibleMatches(state, ACTIVE_LOCATION, 'note', 'Sub A', {
+      caseSensitive: true,
+      wholeWord: false,
+      regex: false,
+    })).toHaveLength(1)
+    expect(findVisibleMatches(state, ACTIVE_LOCATION, 'note', 'Custom Label', {
+      caseSensitive: true,
+      wholeWord: false,
+      regex: false,
+    })).toHaveLength(1)
+    expect(findVisibleMatches(state, ACTIVE_LOCATION, 'note', 'sub-a', {
+      caseSensitive: true,
+      wholeWord: false,
+      regex: false,
+    })).toEqual([])
   })
 
   it('deduplicates replacements for linked aisle bodies while keeping duplicate locations searchable', () => {

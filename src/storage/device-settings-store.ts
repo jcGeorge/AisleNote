@@ -18,7 +18,7 @@ import type { AppState, DataSettingsSection, ViewMode, VisualsSettingsSection } 
 
 export const DEVICE_SETTINGS_STORAGE_KEY = 'tabs:device-settings:v1'
 
-const VIEW_MODES: ViewMode[] = ['domains', 'spaces', 'main', 'trash', 'settings', 'stage-manager']
+const VIEW_MODES: ViewMode[] = ['main', 'trash', 'settings', 'stage-manager']
 
 export type DeviceLastOpened = {
   domainId: string
@@ -71,9 +71,7 @@ function normalizeDeviceLastOpened(raw: unknown): DeviceLastOpened | null {
   if (!domainId || !spaceId) return null
   const primeTabId = typeof obj.primeTabId === 'string' && obj.primeTabId.trim() ? obj.primeTabId.trim() : null
   const subTabId = typeof obj.subTabId === 'string' && obj.subTabId.trim() ? obj.subTabId.trim() : null
-  const viewMode = typeof obj.viewMode === 'string' && VIEW_MODES.includes(obj.viewMode as ViewMode)
-    ? (obj.viewMode as ViewMode)
-    : 'main'
+  const viewMode = normalizeDeviceViewMode(obj.viewMode)
   return {
     domainId,
     spaceId,
@@ -81,6 +79,11 @@ function normalizeDeviceLastOpened(raw: unknown): DeviceLastOpened | null {
     subTabId,
     viewMode,
   }
+}
+
+function normalizeDeviceViewMode(raw: unknown): ViewMode {
+  if (raw === 'domains' || raw === 'spaces') return 'main'
+  return typeof raw === 'string' && VIEW_MODES.includes(raw as ViewMode) ? (raw as ViewMode) : 'main'
 }
 
 function normalizeDeviceSettingsValue(raw: unknown): DeviceSettings {

@@ -41,6 +41,7 @@ import type {
   FrontmatterTemplateField,
   NewlineOperationId,
   NewlineShortcutId,
+  NewAislePlacement,
   SettingsSection,
   ShortcutId,
   StorageProfileStatus,
@@ -83,6 +84,11 @@ const TABLE_OF_CONTENTS_SCOPE_OPTIONS: Array<{ id: TableOfContentsScope; label: 
   { id: 'focused-aisle', label: 'focused aisle' },
 ]
 
+const NEW_AISLE_PLACEMENT_OPTIONS: Array<{ id: NewAislePlacement; label: string }> = [
+  { id: 'end', label: 'end of note' },
+  { id: 'right-of-focus', label: 'right of focus' },
+]
+
 function isFrontmatterBooleanTrue(value: string) {
   const normalized = value.trim().toLowerCase()
   return normalized === 'true' || normalized === 'yes' || normalized === 'on' || normalized === '1'
@@ -110,6 +116,7 @@ type SettingsPageProps = {
   tableAddTargetModeDraft: TableControlTargetMode
   tableDeleteTargetModeDraft: TableControlTargetMode
   tableOfContentsScopeDraft: TableOfContentsScope
+  newAislePlacementDraft: NewAislePlacement
   frontmatterDraft: FrontmatterSettings
   frontmatterDraftDirty: boolean
   toolbarLayouts: ToolbarLayout[]
@@ -139,6 +146,7 @@ type SettingsPageProps = {
   onTableAddTargetModeChange: (mode: TableControlTargetMode) => void
   onTableDeleteTargetModeChange: (mode: TableControlTargetMode) => void
   onTableOfContentsScopeChange: (scope: TableOfContentsScope) => void
+  onNewAislePlacementChange: (placement: NewAislePlacement) => void
   onTipEnabledChange: (tipId: TipId, enabled: boolean) => void
   onSelectToolbarLayout: (layoutId: string) => void
   onCreateToolbarLayout: () => void
@@ -194,6 +202,7 @@ export function SettingsPage({
   tableAddTargetModeDraft,
   tableDeleteTargetModeDraft,
   tableOfContentsScopeDraft,
+  newAislePlacementDraft,
   frontmatterDraft,
   frontmatterDraftDirty,
   toolbarLayouts,
@@ -223,6 +232,7 @@ export function SettingsPage({
   onTableAddTargetModeChange,
   onTableDeleteTargetModeChange,
   onTableOfContentsScopeChange,
+  onNewAislePlacementChange,
   onTipEnabledChange,
   onSelectToolbarLayout,
   onCreateToolbarLayout,
@@ -379,6 +389,31 @@ export function SettingsPage({
               aria-checked={tableOfContentsScopeDraft === option.id}
               className={`settings-segmented-option ${tableOfContentsScopeDraft === option.id ? 'is-selected' : ''}`}
               onClick={() => onTableOfContentsScopeChange(option.id)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  const renderNewAislePlacementSetting = () => {
+    const labelId = 'settings-new-aisle-placement-label'
+    return (
+      <div className="settings-hotkey-row">
+        <span className="settings-hotkey-label" id={labelId}>
+          new aisles are added to
+        </span>
+        <div className="settings-segmented-control" role="radiogroup" aria-labelledby={labelId}>
+          {NEW_AISLE_PLACEMENT_OPTIONS.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              role="radio"
+              aria-checked={newAislePlacementDraft === option.id}
+              className={`settings-segmented-option ${newAislePlacementDraft === option.id ? 'is-selected' : ''}`}
+              onClick={() => onNewAislePlacementChange(option.id)}
             >
               {option.label}
             </button>
@@ -902,6 +937,7 @@ export function SettingsPage({
           <div className="settings-section-panel" role="tabpanel">
             <p className="settings-help">synced profile settings</p>
             {renderTableOfContentsScopeSetting()}
+            {renderNewAislePlacementSetting()}
             {renderTableControlTargetSetting(
               'add table row or column',
               tableAddTargetModeDraft,

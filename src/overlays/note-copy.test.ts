@@ -246,7 +246,7 @@ describe('note copy helpers', () => {
     expect(sourceBody?.aisles).toHaveLength(1)
     expect(aisleMarkdown(result.state, sourceBody?.aisles[0])).toBe('second target aisle')
     expect(sourceBody?.aisles[0]?.aisleBodyId).toBe(targetAisle?.aisleBodyId)
-    expect(aisleMarkdown(result.state, sourceBody?.aisles[0])).not.toContain('{{tabs-context:')
+    expect(aisleMarkdown(result.state, sourceBody?.aisles[0])).not.toContain('{{tabs-preview')
   })
 
   it('appends linked all-aisle copies to the destination body', () => {

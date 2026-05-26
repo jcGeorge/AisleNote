@@ -30,13 +30,13 @@ import { isInsideTerminalBlockLandingZone } from './terminal-block-landing'
 import {
   getElementFromEventTarget,
   getExternalLinkRangeAtDocPosition,
-  getInternalNoteLinkHitAtDocPosition,
   getWysiwygView,
   type ExternalLinkRange,
   type WysiwygHistoryDirection,
   type WysiwygHistoryResult,
 } from './prosemirror-utils'
-import { parseInternalNoteReferenceUrl, type InternalNoteLinkHit } from '../notes/note-references'
+import { type InternalNoteLinkHit, type ResolvedWikiNoteReference } from '../notes/note-references'
+import { readCopyAsPayloadFromDataTransfer, type CopyAsClipboardPayload } from '../notes/copy-as-clipboard'
 import { insertPastedListIntoView } from './list-paste'
 import {
   getActiveTableContext,
@@ -73,9 +73,11 @@ type UseEditorDomEventsOptions = {
   commitActiveEditorMarkdownNow: (editor: Editor) => void
   setMenuOpen: Dispatch<SetStateAction<boolean>>
   setContextMenu: Dispatch<SetStateAction<ContextMenuState | null>>
+  resolveInternalNoteReferenceToken: (token: string) => ResolvedWikiNoteReference | null
   navigateToNoteLocation: (location: NoteNavigationTarget) => void
   openExternalLink: (url: string) => boolean
   insertPastedUrlAsLink: (label: string, url: string) => boolean
+  onPasteCopyAsPayload: (payload: CopyAsClipboardPayload) => boolean
   getToolbarFormatShortcut: (event: KeyboardEvent) => ToolbarFormatKey | null
   queueToolbarShortcutFeedback: (format: ToolbarFormatKey) => void
   syncToolbarFormatState: () => void
@@ -85,6 +87,7 @@ type UseEditorDomEventsOptions = {
   onEditorMentionQueryChange: () => void
   onRunStructuralHistory: (direction: 'undo' | 'redo') => boolean
   onRunEditorHistory: (direction: WysiwygHistoryDirection) => WysiwygHistoryResult
+  shouldRunStructuralHistoryBeforeEditorHistory: (direction: WysiwygHistoryDirection) => boolean
   onRunNewlineOperation: (operation: NewlineOperationId) => boolean
   onOpenShortcutMenu: () => void
   tryExpandMultilineSelection: (direction: 'up' | 'down') => boolean
@@ -223,6 +226,36 @@ export function shouldSkipTableExitRepairTarget(target: Element | null): boolean
   )
 }
 
+export function getInternalNoteLinkWidgetHitFromTarget(
+  target: Element | null,
+  resolveInternalNoteReferenceToken: (token: string) => ResolvedWikiNoteReference | null,
+): InternalNoteLinkHit | null {
+  const anchor = target?.closest?.('a[data-internal-note-link="true"]') ?? null
+  if (!anchor || typeof anchor.getAttribute !== 'function') return null
+  const syntax = anchor.getAttribute('data-internal-note-link-syntax') ?? ''
+  const reference = syntax ? resolveInternalNoteReferenceToken(syntax) : null
+  if (!reference) return null
+  const from = Number(anchor.getAttribute('data-internal-note-link-from'))
+  const to = Number(anchor.getAttribute('data-internal-note-link-to'))
+  const occurrence = Number(anchor.getAttribute('data-internal-note-link-occurrence'))
+  if (!Number.isFinite(from) || !Number.isFinite(to) || !Number.isFinite(occurrence)) return null
+  return {
+    label: reference.label,
+    href: syntax,
+    target: {
+      domainId: reference.target.domainId,
+      spaceId: reference.target.spaceId,
+      tabId: reference.target.tabId,
+      subTabId: reference.target.subTabId,
+    },
+    aisleIds: reference.payload?.aisleIds ? [...reference.payload.aisleIds] : undefined,
+    heading: reference.target.heading,
+    from,
+    to,
+    occurrence,
+  }
+}
+
 export function getPlainTextPointerChromeClosePlan({
   hasActiveImage,
   imageCropActive,
@@ -242,15 +275,18 @@ export function runEditorHistoryEvent({
   direction,
   onRunStructuralHistory,
   onRunEditorHistory,
+  shouldRunStructuralHistoryBeforeEditorHistory,
 }: {
   direction: WysiwygHistoryDirection
   onRunStructuralHistory: (direction: WysiwygHistoryDirection) => boolean
   onRunEditorHistory: (direction: WysiwygHistoryDirection) => WysiwygHistoryResult
+  shouldRunStructuralHistoryBeforeEditorHistory?: (direction: WysiwygHistoryDirection) => boolean
 }): { handled: boolean; result: WysiwygHistoryResult | 'structural' } {
   const command = runEditorHistoryCommand({
     direction,
     onRunStructuralHistory,
     onRunEditorHistory,
+    shouldRunStructuralHistoryBeforeEditorHistory,
   })
   return { handled: command.handled, result: command.historyResult ?? 'unavailable' }
 }
@@ -278,9 +314,11 @@ export function useEditorDomEvents({
   commitActiveEditorMarkdownNow,
   setMenuOpen,
   setContextMenu,
+  resolveInternalNoteReferenceToken,
   navigateToNoteLocation,
   openExternalLink,
   insertPastedUrlAsLink,
+  onPasteCopyAsPayload,
   getToolbarFormatShortcut,
   queueToolbarShortcutFeedback,
   syncToolbarFormatState,
@@ -290,6 +328,7 @@ export function useEditorDomEvents({
   onEditorMentionQueryChange,
   onRunStructuralHistory,
   onRunEditorHistory,
+  shouldRunStructuralHistoryBeforeEditorHistory,
   onRunNewlineOperation,
   onOpenShortcutMenu,
   tryExpandMultilineSelection,
@@ -339,15 +378,8 @@ export function useEditorDomEvents({
       const anchor = target.closest('a')
       if (!(anchor instanceof HTMLAnchorElement)) return false
 
+      if (anchor.dataset.internalNoteLink === 'true') return false
       const href = anchor.getAttribute('href') || anchor.href
-      const internalLocation = parseInternalNoteReferenceUrl(href) ?? parseInternalNoteReferenceUrl(anchor.href)
-      if (internalLocation) {
-        event.preventDefault()
-        event.stopPropagation()
-        linkHandledOnPointerDown = event.type === 'pointerdown'
-        navigateToNoteLocation(internalLocation)
-        return true
-      }
 
       event.preventDefault()
       event.stopPropagation()
@@ -359,22 +391,22 @@ export function useEditorDomEvents({
       return true
     }
 
-    const getInternalLinkHitAtPointerPosition = (event: Event): InternalNoteLinkHit | null => {
-      if (!(event instanceof MouseEvent)) return null
-      const view = getWysiwygView(editorRef.current)
-      const coords = view?.posAtCoords?.({ left: event.clientX, top: event.clientY })
-      if (!view || !coords) return null
-      return getInternalNoteLinkHitAtDocPosition(view.state.doc, coords.pos)
+    const getInternalLinkWidgetHit = (target: Element): InternalNoteLinkHit | null => {
+      return getInternalNoteLinkWidgetHitFromTarget(target, resolveInternalNoteReferenceToken)
     }
 
-    const handleInternalLinkAtPointerPosition = (event: Event) => {
+    const handleInternalLinkWidgetInteraction = (event: Event, target: Element) => {
       if (!isPrimaryMouseActivation(event)) return false
-      const internalLinkHit = getInternalLinkHitAtPointerPosition(event)
+      const internalLinkHit = getInternalLinkWidgetHit(target)
       if (!internalLinkHit) return false
       event.preventDefault()
       event.stopPropagation()
       linkHandledOnPointerDown = event.type === 'pointerdown'
-      navigateToNoteLocation({ ...internalLinkHit.target, heading: internalLinkHit.heading })
+      navigateToNoteLocation({
+        ...internalLinkHit.target,
+        heading: internalLinkHit.heading,
+        aisleId: internalLinkHit.heading ? undefined : internalLinkHit.aisleIds?.[0],
+      })
       return true
     }
 
@@ -478,7 +510,7 @@ export function useEditorDomEvents({
         clearPendingTableExitRepair()
         return
       }
-      if (handleInternalLinkAtPointerPosition(event)) {
+      if (handleInternalLinkWidgetInteraction(event, target)) {
         clearPendingTableExitRepair()
         return
       }
@@ -505,7 +537,7 @@ export function useEditorDomEvents({
         clearPendingTableExitRepair()
         return
       }
-      if (handleInternalLinkAtPointerPosition(event)) {
+      if (handleInternalLinkWidgetInteraction(event, target)) {
         clearPendingTableExitRepair()
         return
       }
@@ -536,7 +568,6 @@ export function useEditorDomEvents({
       const anchor = target.closest('a')
       if (anchor instanceof HTMLAnchorElement) {
         const href = anchor.getAttribute('href') || anchor.href
-        const internalLocation = parseInternalNoteReferenceUrl(href) ?? parseInternalNoteReferenceUrl(anchor.href)
         const text = anchor.textContent ?? ''
         const range = getExternalLinkEditRange(mouseEvent, href)
         mouseEvent.preventDefault()
@@ -544,29 +575,16 @@ export function useEditorDomEvents({
         closeImageTools()
         closeLinkPrompt()
         setMenuOpen(false)
-        if (internalLocation) {
-          const markdownHit = getInternalLinkHitAtPointerPosition(mouseEvent)
-          const link =
-            markdownHit?.href === href
-              ? markdownHit
-              : {
-                  label: text,
-                  href,
-                  target: internalLocation,
-                  heading: internalLocation.heading,
-                  from: range?.from ?? 0,
-                  to: range?.to ?? 0,
-                  occurrence: 0,
-                  range,
-                }
+        if (anchor.dataset.internalNoteLink === 'true') {
+          const markdownHit = getInternalLinkWidgetHit(anchor)
+          if (!markdownHit) return
           setContextMenu({
             type: 'editor',
             x: mouseEvent.clientX,
             y: mouseEvent.clientY,
             link: {
-              ...link,
+              ...markdownHit,
               type: 'internal',
-              range,
             },
           })
           return
@@ -580,24 +598,6 @@ export function useEditorDomEvents({
             href,
             label: text,
             range,
-          },
-        })
-        return
-      }
-      const internalLinkHit = getInternalLinkHitAtPointerPosition(mouseEvent)
-      if (internalLinkHit) {
-        mouseEvent.preventDefault()
-        mouseEvent.stopPropagation()
-        closeImageTools()
-        closeLinkPrompt()
-        setMenuOpen(false)
-        setContextMenu({
-          type: 'editor',
-          x: mouseEvent.clientX,
-          y: mouseEvent.clientY,
-          link: {
-            ...internalLinkHit,
-            type: 'internal',
           },
         })
         return
@@ -636,6 +636,13 @@ export function useEditorDomEvents({
       const pasteEvent = event as ClipboardEvent
       if (isInsideTerminalBlockLandingZone(getElementFromEventTarget(pasteEvent.target))) return
       activateEditorFromEventTarget(pasteEvent.target)
+      const copyAsPayload = readCopyAsPayloadFromDataTransfer(pasteEvent.clipboardData)
+      if (copyAsPayload && onPasteCopyAsPayload(copyAsPayload)) {
+        pasteEvent.preventDefault()
+        pasteEvent.stopPropagation()
+        pasteEvent.stopImmediatePropagation?.()
+        return
+      }
       if (multiLineEditRef.current) {
         const text = pasteEvent.clipboardData?.getData('text/plain') ?? ''
         if (text.length > 0 && tryApplyMultiLineEditInput({ type: 'insert-text', text })) {
@@ -734,6 +741,7 @@ export function useEditorDomEvents({
           direction: inputIntent.direction,
           onRunStructuralHistory,
           onRunEditorHistory,
+          shouldRunStructuralHistoryBeforeEditorHistory,
         })
         if (historyEvent.handled) {
           keyboardEvent.preventDefault()
@@ -884,6 +892,7 @@ export function useEditorDomEvents({
           direction: inputIntent.direction,
           onRunStructuralHistory,
           onRunEditorHistory,
+          shouldRunStructuralHistoryBeforeEditorHistory,
         })
         if (historyEvent.handled) {
           inputEvent.preventDefault()

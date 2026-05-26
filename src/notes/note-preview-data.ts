@@ -1,4 +1,5 @@
-import type { AppState, NoteLocation, ResolvedNoteAisle } from '../types/app'
+import type { AppState, NoteCursorSelection, NoteLocation, ResolvedNoteAisle } from '../types/app'
+import { buildNoteCursorLocationKey } from './note-cursors'
 import { getAisleMarkdown } from './note-markdown'
 import { getLocationInfo, listNoteLocationsForBody, type NoteLocationInfo } from './note-locations'
 import { type NoteContextReferencePayload, wouldCreateContextCycle } from './note-references'
@@ -16,6 +17,7 @@ export type ContextPreviewData = {
   selectedAisle: ResolvedNoteAisle | null
   recursiveBlocked: boolean
   previewText: string
+  previewCursorSelection: NoteCursorSelection | null
   locationLabel: string
   titleButtons: ContextPreviewTitleButton[]
   status: 'ready' | 'blocked' | 'missing' | 'empty'
@@ -50,8 +52,16 @@ function getContextPreviewTitleButtons(
 function getSelectedPreviewAisle(
   targetBody: AppState['noteBodies'][number] | null,
   payload: NoteContextReferencePayload,
+  appState: AppState,
 ) {
   if (!targetBody || targetBody.aisles.length === 0) return null
+  if (payload.previewStart === 'last-position') {
+    const savedLocation = appState.ui?.noteCursorLocations?.[buildNoteCursorLocationKey(payload.target)] ?? null
+    const savedAisle = savedLocation?.activeAisleId
+      ? targetBody.aisles.find((candidate) => candidate.id === savedLocation.activeAisleId)
+      : null
+    if (savedAisle) return savedAisle
+  }
   const preferredAisleIds = [
     payload.heading?.aisleId,
     ...(payload.aisleIds ?? []),
@@ -71,7 +81,11 @@ export function getContextPreviewDataFromState(
   const targetInfo = getLocationInfo(appState, payload.target)
   const sourceLocation = getSourceLocation(appState, sourceNoteBodyId)
   const targetBody = appState.noteBodies.find((body) => body.id === targetInfo.noteBodyId) ?? null
-  const selectedPreviewAisle = getSelectedPreviewAisle(targetBody, payload)
+  const selectedPreviewAisle = getSelectedPreviewAisle(targetBody, payload, appState)
+  const previewCursorLocation =
+    payload.previewStart === 'last-position'
+      ? appState.ui?.noteCursorLocations?.[buildNoteCursorLocationKey(payload.target)] ?? null
+      : null
   const selectedAisle = selectedPreviewAisle
     ? {
         ...selectedPreviewAisle,
@@ -98,6 +112,8 @@ export function getContextPreviewDataFromState(
     selectedAisle,
     recursiveBlocked,
     previewText,
+    previewCursorSelection:
+      previewCursorLocation && selectedPreviewAisle ? previewCursorLocation.aisles[selectedPreviewAisle.id] ?? null : null,
     locationLabel,
     titleButtons,
     status,

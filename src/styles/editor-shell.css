@@ -688,7 +688,6 @@
   width: min(20rem, calc(100% - 1.5rem));
   max-height: min(70%, 30rem);
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
   gap: 0.45rem;
   padding: 0.55rem;
   border: 1px solid var(--context-menu-border);
@@ -697,6 +696,7 @@
   color: var(--context-menu-item-text);
   box-shadow: var(--context-menu-shadow);
   font-size: var(--ui-font-body);
+  overflow: hidden;
 }
 
 .aisle-toc-panel-title {
@@ -708,15 +708,29 @@
   line-height: 1.2;
 }
 
-.aisle-toc-list {
+.aisle-toc-sections {
   min-height: 0;
   display: grid;
-  gap: 0.12rem;
+  align-content: start;
+  gap: 0.65rem;
   overflow: auto;
   scrollbar-gutter: stable;
 }
 
-.aisle-toc-heading-btn {
+.aisle-toc-section {
+  min-width: 0;
+  display: grid;
+  gap: 0.28rem;
+}
+
+.aisle-toc-list {
+  min-height: 0;
+  display: grid;
+  gap: 0.12rem;
+}
+
+.aisle-toc-heading-btn,
+.aisle-toc-link-open-btn {
   width: 100%;
   min-width: 0;
   border: 0;
@@ -731,8 +745,45 @@
   overflow-wrap: anywhere;
 }
 
+.aisle-toc-link-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 1.65rem minmax(0, 1fr);
+  align-items: stretch;
+  gap: 0.15rem;
+}
+
+.aisle-toc-link-open-btn {
+  min-height: 1.65rem;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--context-menu-item-text);
+}
+
+.aisle-toc-link-open-icon {
+  width: 0.85rem;
+  height: 0.85rem;
+  display: block;
+  background: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M14 4h6v6h-2V7.41l-8.29 8.3-1.42-1.42 8.3-8.29H14V4Z' fill='black'/%3E%3Cpath d='M5 5h7v2H7v10h10v-5h2v7H5V5Z' fill='black'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M14 4h6v6h-2V7.41l-8.29 8.3-1.42-1.42 8.3-8.29H14V4Z' fill='black'/%3E%3Cpath d='M5 5h7v2H7v10h10v-5h2v7H5V5Z' fill='black'/%3E%3C/svg%3E");
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+.aisle-toc-link-btn {
+  padding-left: 0.42rem;
+}
+
 .aisle-toc-heading-btn:hover,
-.aisle-toc-heading-btn:focus-visible {
+.aisle-toc-heading-btn:focus-visible,
+.aisle-toc-link-open-btn:hover,
+.aisle-toc-link-open-btn:focus-visible {
   background: var(--context-menu-item-hover-bg);
 }
 

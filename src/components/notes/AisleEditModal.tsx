@@ -13,8 +13,8 @@ import {
 import { resolveAssetDisplayUrl } from '../../markdown/image-asset-registry'
 import {
   NOTE_CONTEXT_REFERENCE_RE,
-  decodeContextPayload,
-  type NoteContextReferencePayload,
+  getWikiReferenceDisplayText,
+  parseWikiReferenceToken,
 } from '../../notes/note-references'
 import { createNoteAisle } from '../../state/workspace'
 import type { ResolvedNoteAisle } from '../../types/app'
@@ -43,10 +43,7 @@ type AislePreviewSegment =
   | { type: 'markdown'; markdown: string }
   | { type: 'context-preview'; label: string }
 
-function getAislePreviewSegments(
-  markdown: string,
-  getContextPreviewLabel?: (payload: NoteContextReferencePayload) => string | null | undefined,
-): AislePreviewSegment[] {
+function getAislePreviewSegments(markdown: string): AislePreviewSegment[] {
   const previewMarkdown = getAislePreviewMarkdown(markdown)
   const segments: AislePreviewSegment[] = []
   let lastIndex = 0
@@ -57,9 +54,8 @@ function getAislePreviewSegments(
     const before = previewMarkdown.slice(lastIndex, start)
     if (before.trim()) segments.push({ type: 'markdown', markdown: before })
 
-    const payload = decodeContextPayload(match[1])
-    const label = payload ? getContextPreviewLabel?.(payload)?.trim() : ''
-    segments.push({ type: 'context-preview', label: label || 'note preview' })
+    const fallbackLabel = parseWikiReferenceToken(match[0])?.embed ? getWikiReferenceDisplayText(match[0]) : ''
+    segments.push({ type: 'context-preview', label: fallbackLabel || 'note preview' })
     lastIndex = start + match[0].length
   }
 
@@ -74,7 +70,7 @@ type AisleEditModalProps = {
   aisles: ResolvedNoteAisle[]
   linkedAisleIds?: Set<string>
   initialStagedDecoupleAisleIds?: Iterable<string>
-  getContextPreviewLabel?: (payload: NoteContextReferencePayload) => string | null | undefined
+  getContextPreviewLabel?: unknown
   onCancel: () => void
   onApply: (aisles: ResolvedNoteAisle[], options?: { decoupleAisleIds?: string[] }) => void
   onWarn: (message: string) => void
@@ -85,7 +81,6 @@ export function AisleEditModal({
   aisles,
   linkedAisleIds = new Set(),
   initialStagedDecoupleAisleIds = EMPTY_STAGED_DECOUPLE_IDS,
-  getContextPreviewLabel,
   onCancel,
   onApply,
   onWarn,
@@ -164,7 +159,7 @@ export function AisleEditModal({
       >
         <div className="aisle-edit-list" aria-label="Aisles">
           {draft.map((aisle, index) => {
-            const previewSegments = getAislePreviewSegments(aisle.markdown, getContextPreviewLabel)
+            const previewSegments = getAislePreviewSegments(aisle.markdown)
             const linked = linkedAisleIds.has(aisle.id)
             const stagedDecouple = stagedDecoupleAisleIds.has(aisle.id)
             return (

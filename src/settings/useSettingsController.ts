@@ -25,6 +25,7 @@ import type {
   FrontmatterTemplateField,
   NewlineOperationId,
   NewlineShortcutId,
+  NewAislePlacement,
   SettingsSection,
   ShortcutId,
   Space,
@@ -123,6 +124,9 @@ export function useSettingsController({
   const [tableOfContentsScopeDraft, setTableOfContentsScopeDraft] = useState(
     DEFAULT_UI_SETTINGS.tableOfContentsScope ?? 'all-aisles',
   )
+  const [newAislePlacementDraft, setNewAislePlacementDraft] = useState(
+    DEFAULT_UI_SETTINGS.newAislePlacement ?? 'end',
+  )
   const [tabButtonScaleDraft, setTabButtonScaleDraft] = useState(DEFAULT_UI_SETTINGS.tabButtonScale)
   const [noteFontScaleDraft, setNoteFontScaleDraft] = useState(DEFAULT_UI_SETTINGS.noteFontScale)
   const [tooltipScaleDraft, setTooltipScaleDraft] = useState(DEFAULT_UI_SETTINGS.tooltipScale ?? 1)
@@ -155,6 +159,7 @@ export function useSettingsController({
     setTableOfContentsScopeDraft(
       state.ui.tableOfContentsScope ?? DEFAULT_UI_SETTINGS.tableOfContentsScope ?? 'all-aisles',
     )
+    setNewAislePlacementDraft(state.ui.newAislePlacement ?? DEFAULT_UI_SETTINGS.newAislePlacement ?? 'end')
     setTabButtonScaleDraft(state.ui.tabButtonScale)
     setNoteFontScaleDraft(state.ui.noteFontScale)
     setTooltipScaleDraft(state.ui.tooltipScale ?? DEFAULT_UI_SETTINGS.tooltipScale ?? 1)
@@ -188,6 +193,7 @@ export function useSettingsController({
     state.ui.tableAddTargetMode,
     state.ui.tableDeleteTargetMode,
     state.ui.tableOfContentsScope,
+    state.ui.newAislePlacement,
     state.ui.tabButtonScale,
     state.ui.noteFontScale,
     state.ui.tooltipScale,
@@ -369,6 +375,17 @@ export function useSettingsController({
       ui: {
         ...previous.ui,
         tableOfContentsScope: scope,
+      },
+    }))
+  }
+
+  const updateNewAislePlacementSetting = (placement: NewAislePlacement) => {
+    setNewAislePlacementDraft(placement)
+    commitImmediateSettingsState((previous) => ({
+      ...previous,
+      ui: {
+        ...previous.ui,
+        newAislePlacement: placement,
       },
     }))
   }
@@ -883,6 +900,7 @@ export function useSettingsController({
     tableAddTargetModeDraft,
     tableDeleteTargetModeDraft,
     tableOfContentsScopeDraft,
+    newAislePlacementDraft,
     frontmatterDraft,
     frontmatterDraftDirty,
     toolbarLayouts: getToolbarLayouts(state.ui.toolbarLayouts),
@@ -903,6 +921,7 @@ export function useSettingsController({
     updateTableAddTargetModeSetting,
     updateTableDeleteTargetModeSetting,
     updateTableOfContentsScopeSetting,
+    updateNewAislePlacementSetting,
     updateTipEnabledSetting,
     updateTabButtonScaleSetting,
     updateNoteFontScaleSetting,

@@ -15,13 +15,15 @@ import {
 } from '../editor/editor-operation-runner'
 import type { AppState, ContextMenuState, ModalState, NoteLocation, NoteNavigationTarget, ToastTone } from '../types/app'
 import {
-  escapeMarkdownLinkLabel,
+  buildInternalNoteLinkToken,
   getContextReferenceSignature,
   type NoteContextReferencePayload,
   parseContextReferences,
+  parseContextToken,
   removeContextTokenById,
   replaceContextTokenById,
   replaceInternalNoteLinkByOccurrence,
+  resolveWikiReferenceToken,
 } from './note-references'
 import { getAisleMarkdown } from './note-markdown'
 import { normalizeNoteReferenceTarget } from './note-reference-targets'
@@ -131,7 +133,7 @@ export const useNoteReferenceActions = ({
       : [markdown]
     const nextSignature = getContextReferenceSignature(latestState, payload)
     return Boolean(
-      noteMarkdowns.flatMap(parseContextReferences).find(
+      noteMarkdowns.flatMap((noteMarkdown) => parseContextReferences(noteMarkdown, latestState)).find(
         (reference) =>
           reference.payload.id !== editingTokenId &&
           getContextReferenceSignature(latestState, reference.payload) === nextSignature,
@@ -157,7 +159,7 @@ export const useNoteReferenceActions = ({
         pushToast(linkSpec.message, 'warning')
         return { handled: false, toast: { message: linkSpec.message, tone: 'warning' } }
       }
-      if (!replaceTextRangeWithLinkInActiveEditor(from, to, linkSpec.label, linkSpec.href)) {
+      if (!replaceTextRangeInActiveEditor(from, to, linkSpec.syntax)) {
         const message = 'open a note before inserting a note link.'
         pushToast(message, 'warning')
         return { handled: false, toast: { message, tone: 'warning' } }
@@ -209,30 +211,26 @@ export const useNoteReferenceActions = ({
     }
 
     if (modalState.insertAs === 'link') {
-      const linkSpec = getNoteReferenceLinkSpec(latestState, modalState.source, target, modalState.noteLabel)
+      const requestedLabel = modalState.noteLabelTouched || modalState.internalEdit ? modalState.noteLabel : ''
+      const linkSpec = getNoteReferenceLinkSpec(latestState, modalState.source, target, requestedLabel)
       if (!linkSpec.ok) {
         pushToast(linkSpec.message, 'warning')
         return false
       }
       const href = linkSpec.href
       const previousHref = modalState.internalEdit?.href ?? href
-      const label = linkSpec.label
       const internalEdit = modalState.internalEdit
       if (internalEdit) {
-        if (internalEdit.range) {
-          if (!replaceLinkRangeInActiveEditor(internalEdit.range, label, href)) {
-            pushToast('could not update note link.', 'warning')
-            return false
-          }
-          pushToast('note link updated.', 'success')
-          return true
-        }
-        const nextSyntax = `[${escapeMarkdownLinkLabel(label)}](${href})`
+        const nextSyntax = linkSpec.syntax
         const editFrom = internalEdit.from
         const editTo = internalEdit.to
         if (typeof editFrom === 'number' && typeof editTo === 'number') {
           const updated = dispatchEditorTransaction(editorOperationRuntime, ({ view }) => {
-            const currentHit = getInternalNoteLinkHitAtDocPosition(view.state.doc, editFrom)
+            const currentHit = getInternalNoteLinkHitAtDocPosition(
+              view.state.doc,
+              editFrom,
+              (token) => resolveWikiReferenceToken(stateRef.current, token),
+            )
             const from = currentHit?.href === previousHref ? currentHit.from : editFrom
             const to = currentHit?.href === previousHref ? currentHit.to : editTo
             return view.state.tr.insertText(nextSyntax, from, to)
@@ -250,6 +248,7 @@ export const useNoteReferenceActions = ({
               label: internalEdit.label,
               href: previousHref,
               target: internalEdit.target,
+              aisleIds: internalEdit.aisleIds,
               heading: internalEdit.heading,
               from: internalEdit.from ?? 0,
               to: internalEdit.to ?? 0,
@@ -261,7 +260,7 @@ export const useNoteReferenceActions = ({
         pushToast('note link updated.', 'success')
         return true
       }
-      if (!insertLinkIntoActiveEditor(label, href)) {
+      if (!insertTextIntoActiveEditor(linkSpec.syntax)) {
         pushToast('open a note before inserting a link.', 'warning')
         return false
       }
@@ -282,7 +281,10 @@ export const useNoteReferenceActions = ({
     }
 
     if (modalState.editingTokenId) {
-      replaceEditorMarkdownOperation(editorOperationRuntime, replaceContextTokenById(markdown, modalState.editingTokenId, previewSpec.token))
+      replaceEditorMarkdownOperation(
+        editorOperationRuntime,
+        replaceContextTokenById(markdown, latestState, modalState.editingTokenId, previewSpec.token),
+      )
       pushToast('note preview settings updated.', 'success')
       return true
     }
@@ -297,7 +299,7 @@ export const useNoteReferenceActions = ({
 
   const deleteContextPreview = (tokenId: string) => {
     const markdown = getActiveEditorMarkdown()
-    const nextMarkdown = removeContextTokenById(markdown, tokenId)
+    const nextMarkdown = removeContextTokenById(markdown, stateRef.current, tokenId)
     if (nextMarkdown === markdown) {
       pushToast('note preview not found.', 'warning')
       return
@@ -314,7 +316,11 @@ export const useNoteReferenceActions = ({
 
   const openInternalNoteLinkFromContext = () => {
     if (!contextMenu || contextMenu.type !== 'internal-note-link') return
-    const target = { ...contextMenu.target, heading: contextMenu.heading }
+    const target = {
+      ...contextMenu.target,
+      heading: contextMenu.heading,
+      aisleId: contextMenu.heading ? undefined : contextMenu.aisleIds?.[0],
+    }
     setContextMenu(null)
     navigateToNoteLocation(target)
   }
@@ -328,9 +334,17 @@ export const useNoteReferenceActions = ({
       return
     }
 
-    const nextSyntax = `[${escapeMarkdownLinkLabel(nextLabel)}](${linkContext.href})`
+    const nextSyntax = buildInternalNoteLinkToken(
+      stateRef.current,
+      { ...linkContext.target, aisleIds: linkContext.aisleIds, heading: linkContext.heading },
+      nextLabel,
+    )
     const updated = dispatchEditorTransaction(editorOperationRuntime, ({ view }) => {
-      const currentHit = getInternalNoteLinkHitAtDocPosition(view.state.doc, linkContext.from)
+      const currentHit = getInternalNoteLinkHitAtDocPosition(
+        view.state.doc,
+        linkContext.from,
+        (token) => resolveWikiReferenceToken(stateRef.current, token),
+      )
       const from = currentHit?.href === linkContext.href ? currentHit.from : linkContext.from
       const to = currentHit?.href === linkContext.href ? currentHit.to : linkContext.to
       return view.state.tr.insertText(nextSyntax, from, to)
@@ -356,6 +370,8 @@ export const useNoteReferenceActions = ({
     insertNoteReferenceFromMention,
     insertNoteReference,
     deleteContextPreview,
+    resolveContextPreviewToken: (token: string) => parseContextToken(token, stateRef.current),
+    resolveInternalNoteReferenceToken: (token: string) => resolveWikiReferenceToken(stateRef.current, token),
     openNoteReferenceModal,
     openInternalNoteLinkFromContext,
     renameInternalNoteLinkFromContext,

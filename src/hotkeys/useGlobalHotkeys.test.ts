@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { Tab } from '../types/app'
-import { getCycledParentTabTarget, getNumberedPrimeTabTarget } from './useGlobalHotkeys'
+import type { AppState, Tab } from '../types/app'
+import { DEFAULT_NEWLINE_SHORTCUT_SETTINGS, DEFAULT_SHORTCUTS } from './shortcuts'
+import { getCycledParentTabTarget, getNumberedPrimeTabTarget, getRailVisibilityShortcutTarget } from './useGlobalHotkeys'
 
 const makeTab = (id: string): Tab => ({
   id,
@@ -38,5 +39,27 @@ describe('parent tab cycle hotkeys', () => {
 
     expect(getCycledParentTabTarget(tabs, 'missing', 1)).toBe('prime-2')
     expect(getCycledParentTabTarget([], 'missing', 1)).toBeNull()
+  })
+})
+
+describe('rail visibility hotkeys', () => {
+  const hotkeys: AppState['hotkeys'] = {
+    shortcuts: DEFAULT_SHORTCUTS,
+    newlineShortcuts: DEFAULT_NEWLINE_SHORTCUT_SETTINGS,
+  }
+
+  const keyboardEvent = (key: string): KeyboardEvent =>
+    ({
+      key,
+      code: `Key${key.toUpperCase()}`,
+      ctrlKey: true,
+      metaKey: false,
+      altKey: false,
+      shiftKey: false,
+    }) as KeyboardEvent
+
+  it('maps saved openSpaces and openDomains shortcuts to rail visibility actions', () => {
+    expect(getRailVisibilityShortcutTarget(keyboardEvent('s'), hotkeys, false)).toBe('space')
+    expect(getRailVisibilityShortcutTarget(keyboardEvent('d'), hotkeys, false)).toBe('domain')
   })
 })

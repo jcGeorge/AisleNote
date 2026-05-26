@@ -9,7 +9,7 @@ import {
   thematicBreakShortcutPlugin,
 } from './editor-setup'
 import { NOTE_PREVIEW_EDITOR_HOST_CLASS } from './note-preview-dom'
-import { getWysiwygView } from './prosemirror-utils'
+import { getWysiwygView, restoreEditorCursorSelection } from './prosemirror-utils'
 import {
   prepareMarkdownForEditorDisplay,
   restoreEditorBlankParagraphs,
@@ -78,6 +78,18 @@ function schedulePreviewHeadingScroll(editor: Editor, aisleId: string, headingKe
   window.requestAnimationFrame(() => {
     if (scrollPreviewEditorToHeading(editor, aisleId, headingKey)) return
     schedulePreviewHeadingScroll(editor, aisleId, headingKey, attempts - 1)
+  })
+}
+
+function schedulePreviewCursorScroll(
+  editor: Editor,
+  selection: NonNullable<ContextPreviewData['previewCursorSelection']>,
+  attempts = 4,
+) {
+  if (attempts <= 0) return
+  window.requestAnimationFrame(() => {
+    if (restoreEditorCursorSelection(editor, selection, { focus: false })) return
+    schedulePreviewCursorScroll(editor, selection, attempts - 1)
   })
 }
 
@@ -460,7 +472,8 @@ export function createContextPreviewWidgetElement(
     })
   }
 
-  const renderContextEditor = (aisle: ResolvedNoteAisle) => {
+  const renderContextEditor = (data: ContextPreviewData) => {
+    const aisle = data.selectedAisle as ResolvedNoteAisle
     const shell = document.createElement('span')
     shell.className = 'context-bar-editor'
     const editorHost = document.createElement('span')
@@ -503,9 +516,29 @@ export function createContextPreviewWidgetElement(
     })
     restoreEditorBlankParagraphs(editor, currentMarkdown)
     const smartHeight = fitPreviewEditorHeight(editorHost, heightRem, () => currentMarkdown, editor)
-    if (payload.heading?.aisleId === currentAisleId) {
-      schedulePreviewHeadingScroll(editor, currentAisleId, payload.heading.headingKey)
+    let currentStartKey = ''
+    const schedulePreviewStartScroll = (nextData: ContextPreviewData) => {
+      const lastPositionSelection = nextData.previewCursorSelection
+      const nextStartKey =
+        payload.heading?.aisleId === currentAisleId
+          ? `heading:${payload.heading.headingKey}`
+          : payload.previewStart === 'last-position' && lastPositionSelection
+            ? [
+                'last-position',
+                lastPositionSelection.anchor,
+                lastPositionSelection.head,
+                lastPositionSelection.updatedAt,
+              ].join(':')
+            : ''
+      if (!nextStartKey || nextStartKey === currentStartKey) return
+      currentStartKey = nextStartKey
+      if (payload.heading?.aisleId === currentAisleId) {
+        schedulePreviewHeadingScroll(editor, currentAisleId, payload.heading.headingKey)
+      } else if (payload.previewStart === 'last-position' && lastPositionSelection) {
+        schedulePreviewCursorScroll(editor, lastPositionSelection)
+      }
     }
+    schedulePreviewStartScroll(data)
 
     const view = getWysiwygView(editor)
     if (view?.setProps) {
@@ -529,10 +562,8 @@ export function createContextPreviewWidgetElement(
         currentAisleId = nextData.selectedAisle.id
         currentMarkdown = nextData.selectedAisle.markdown
         setEditorMarkdownForDisplay(editor, currentMarkdown, false)
-        if (payload.heading?.aisleId === currentAisleId) {
-          schedulePreviewHeadingScroll(editor, currentAisleId, payload.heading.headingKey)
-        }
       }
+      schedulePreviewStartScroll(nextData)
       smartHeight.scheduleDelayedMeasure()
     }
     const ownerWindow = editorHost.ownerDocument?.defaultView ?? window
@@ -601,7 +632,7 @@ export function createContextPreviewWidgetElement(
 
     const editorGroup = document.createElement('span')
     editorGroup.className = 'context-bar-editors'
-    if (data.selectedAisle) editorGroup.append(renderContextEditor(data.selectedAisle))
+    if (data.selectedAisle) editorGroup.append(renderContextEditor(data))
     lowerBar.append(editorGroup)
   }
 
@@ -647,10 +678,17 @@ export function createInternalNoteLinkWidgetElement(
   target: NoteNavigationTarget,
   href: string,
   navigateToNoteLocation: (target: NoteNavigationTarget) => void,
+  sourceRange?: { from: number; to: number; occurrence: number },
 ) {
   const link = document.createElement('a')
   link.className = 'internal-note-link-widget'
-  link.href = href
+  link.href = '#'
+  link.setAttribute('data-internal-note-link-syntax', href)
+  if (sourceRange) {
+    link.setAttribute('data-internal-note-link-from', String(sourceRange.from))
+    link.setAttribute('data-internal-note-link-to', String(sourceRange.to))
+    link.setAttribute('data-internal-note-link-occurrence', String(sourceRange.occurrence))
+  }
   link.textContent = getMarkdownLinkLabel(label)
   link.title = 'Open linked note'
   link.setAttribute('contenteditable', 'false')

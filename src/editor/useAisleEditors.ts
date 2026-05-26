@@ -23,6 +23,11 @@ import {
 } from './editor-setup'
 import { terminalBlockLandingPlugin } from './terminal-block-landing'
 import { createContextPreviewPlugin, type ContextPreviewData } from './note-preview-plugin'
+import {
+  getTableOfContentsLinksFromDoc,
+  getTableOfContentsLinksFromMarkdown,
+  type TableOfContentsLinkItem,
+} from './table-of-contents-links'
 import { sanitizeEditorHtml } from './editor-sanitizer'
 import { getElementFromEventTarget, getWysiwygView, markWysiwygLoadedUndoBoundary } from './prosemirror-utils'
 import {
@@ -47,7 +52,7 @@ import {
   updateRecentAisleIds,
 } from './aisle-editor-retention'
 import type { HeadingCollapseState, NoteNavigationTarget, ResolvedNoteAisle, ToastTone, ViewMode } from '../types/app'
-import type { NoteContextReferencePayload } from '../notes/note-references'
+import type { NoteContextReferencePayload, ResolvedWikiNoteReference } from '../notes/note-references'
 import { getAisleBodyId } from '../notes/aisle-body-state'
 import type { PendingCursorRestore } from './useNoteCursorPersistence'
 import {
@@ -110,6 +115,8 @@ type UseAisleEditorsOptions = {
   onToggleHeadingCollapse: (aisleId: string, headingKey: string) => void
   onExpandHeadingCollapse: (aisleId: string, headingKey: string) => void
   getContextPreviewData: (payload: NoteContextReferencePayload, sourceNoteBodyId: string) => ContextPreviewData
+  resolveContextPreviewToken: (token: string) => NoteContextReferencePayload | null
+  resolveInternalNoteReferenceToken: (token: string) => ResolvedWikiNoteReference | null
   navigateToNoteLocation: (location: NoteNavigationTarget) => void
   deleteContextPreview: (tokenId: string) => void
 }
@@ -117,6 +124,11 @@ type UseAisleEditorsOptions = {
 type PendingHeadingScroll = {
   aisleId: string
   headingKey: string
+}
+
+type PendingLinkScroll = {
+  aisleId: string
+  linkKey: string
 }
 
 export function useAisleEditors({
@@ -159,6 +171,8 @@ export function useAisleEditors({
   onToggleHeadingCollapse,
   onExpandHeadingCollapse,
   getContextPreviewData,
+  resolveContextPreviewToken,
+  resolveInternalNoteReferenceToken,
   navigateToNoteLocation,
   deleteContextPreview,
 }: UseAisleEditorsOptions) {
@@ -171,6 +185,7 @@ export function useAisleEditors({
   const idleUnmountTimerRef = useRef<number | null>(null)
   const pendingFocusAfterMountAisleIdRef = useRef<string | null>(null)
   const pendingHeadingScrollRef = useRef<PendingHeadingScroll | null>(null)
+  const pendingLinkScrollRef = useRef<PendingLinkScroll | null>(null)
   const headingCollapseStateRef = useRef(headingCollapseState)
   headingCollapseStateRef.current = headingCollapseState
   const activeNoteBodyIdRef = useRef(activeNoteBodyId)
@@ -355,6 +370,20 @@ export function useAisleEditors({
     return getHeadingOutlineFromMarkdown(aisle.id, getAisleMarkdownForOutline(aisle))
   }
 
+  const getTableOfContentsLinksForAisle = (aisle: ResolvedNoteAisle): TableOfContentsLinkItem[] => {
+    const editorKey = buildAisleEditorKey(activeNoteBodyId, aisle.id)
+    const meta = aisleEditorMetaRef.current.get(editorKey)
+    const view = getWysiwygView(meta?.editor ?? null)
+    if (view?.state?.doc) {
+      return getTableOfContentsLinksFromDoc(aisle.id, view.state.doc, resolveInternalNoteReferenceToken)
+    }
+    return getTableOfContentsLinksFromMarkdown(
+      aisle.id,
+      getAisleMarkdownForOutline(aisle),
+      resolveInternalNoteReferenceToken,
+    )
+  }
+
   const scrollAislePaneIntoView = (aisleId: string) => {
     const pane = aislePaneRootsRef.current.get(aisleId)
     pane?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
@@ -400,6 +429,45 @@ export function useAisleEditors({
     pendingHeadingScrollRef.current = { aisleId, headingKey }
     activateAisleEditor(buildAisleEditorKey(activeNoteBodyId, aisleId), { flushPrevious: true, focus: true })
     window.requestAnimationFrame(runPendingHeadingScroll)
+    return false
+  }
+
+  const scrollToMountedLink = (aisleId: string, linkKey: string) => {
+    const editorKey = buildAisleEditorKey(activeNoteBodyId, aisleId)
+    const meta = aisleEditorMetaRef.current.get(editorKey)
+    const view = getWysiwygView(meta?.editor ?? null)
+    if (!view?.state?.doc) return false
+    const link = getTableOfContentsLinksFromDoc(aisleId, view.state.doc, resolveInternalNoteReferenceToken).find(
+      (candidate) => candidate.key === linkKey,
+    )
+    if (typeof link?.from !== 'number') return false
+
+    activateAisleEditor(editorKey, { flushPrevious: true, focus: true })
+    try {
+      const to = typeof link.to === 'number' && link.to >= link.from ? link.to : link.from
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, link.from, to)).scrollIntoView())
+      meta?.editor.focus()
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  const runPendingLinkScroll = () => {
+    const pending = pendingLinkScrollRef.current
+    if (!pending) return
+    scrollAislePaneIntoView(pending.aisleId)
+    if (scrollToMountedLink(pending.aisleId, pending.linkKey)) {
+      pendingLinkScrollRef.current = null
+    }
+  }
+
+  const scrollToAisleLink = (aisleId: string, linkKey: string) => {
+    scrollAislePaneIntoView(aisleId)
+    if (scrollToMountedLink(aisleId, linkKey)) return true
+    pendingLinkScrollRef.current = { aisleId, linkKey }
+    activateAisleEditor(buildAisleEditorKey(activeNoteBodyId, aisleId), { flushPrevious: true, focus: true })
+    window.requestAnimationFrame(runPendingLinkScroll)
     return false
   }
 
@@ -676,6 +744,8 @@ export function useAisleEditors({
             createContextPreviewPlugin(context, {
               sourceNoteBodyId: activeNoteBodyId,
               getContextPreviewData,
+              resolveContextPreviewToken,
+              resolveInternalNoteReferenceToken,
               navigateToNoteLocation,
               deleteContextPreview,
             }),
@@ -752,7 +822,10 @@ export function useAisleEditors({
         activateAisleEditor(editorKey, { focus: true })
       }
 
-      window.requestAnimationFrame(runPendingHeadingScroll)
+      window.requestAnimationFrame(() => {
+        runPendingHeadingScroll()
+        runPendingLinkScroll()
+      })
     }
 
     const activeEditorKey = buildAisleEditorKey(activeNoteBodyId, resolvedActiveAisleId)
@@ -801,7 +874,9 @@ export function useAisleEditors({
     registerAislePaneRoot,
     mountedAisleIds,
     getHeadingOutlineForAisle,
+    getTableOfContentsLinksForAisle,
     scrollToAisleHeading,
+    scrollToAisleLink,
     getPreviewMarkdownForAisle: (aisle: ResolvedNoteAisle) =>
       getAislePreviewMarkdown({
         aisle,

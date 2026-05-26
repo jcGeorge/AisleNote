@@ -3,18 +3,14 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import { buildAisleEditorKey } from '../editor/aisle-editor'
 import { applyAutoPurgeToAppState } from '../state/app-state'
 import {
-  addDomain,
-  addSpaceToActiveDomain,
-  createDomain,
   insertSpaceAfterInActiveDomain,
   renameDomain,
   renameSpaceInActiveDomain,
-  setActiveDomain,
   setActiveSpaceInActiveDomain,
   updateActiveSpaceDataInActiveDomain,
 } from '../state/domains'
 import { collectAppNavigationEntityIds, createReservedIdAllocator } from '../state/navigation-ids'
-import { createNoteBodyContent, createSpace, createSubTab, createTab, duplicateSpace } from '../state/workspace'
+import { createNoteBodyContent, createSubTab, createTab, duplicateSpace } from '../state/workspace'
 import {
   selectActivePrimeTabHome,
   selectPrimeTabWithMemory,
@@ -381,23 +377,6 @@ export const useAppNavigationActions = ({
     setEditing(null)
   }
 
-  const addSpace = () => {
-    commitActiveRenameBeforeAction()
-    saveActiveCursorBeforeNavigation()
-    const createEntityId = createReservedIdAllocator(collectAppNavigationEntityIds(state))
-    const newSpace = createSpace('space', createEntityId)
-    setState((previous) => addSpaceToActiveDomain(previous, newSpace))
-    pendingCreatedEditRef.current = {
-      type: 'space',
-      id: newSpace.id,
-      sourceDomainId: state.activeDomainId,
-      previousActiveSpaceId: state.activeSpaceId,
-    }
-    setViewMode('spaces')
-    setEditing({ type: 'space', id: newSpace.id })
-    setMenuOpen(false)
-  }
-
   const duplicateSpaceFromContext = () => {
     if (!contextMenu || contextMenu.type !== 'space') return
     commitActiveRenameBeforeAction()
@@ -412,62 +391,8 @@ export const useAppNavigationActions = ({
 
     setState((previous) => insertSpaceAfterInActiveDomain(previous, sourceSpace.id, duplicatedSpace))
 
-    setViewMode('spaces')
+    setViewMode('main')
     setEditing({ type: 'space', id: duplicatedSpace.id })
-    setMenuOpen(false)
-    setContextMenu(null)
-  }
-
-  const openSpacesView = () => {
-    commitActiveRenameBeforeAction()
-    saveActiveCursorBeforeNavigation()
-    if (arrangeModeActive) {
-      exitArrangeMode()
-    }
-    setViewMode('spaces')
-    setMenuOpen(false)
-    setContextMenu(null)
-  }
-
-  const openDomainsView = () => {
-    commitActiveRenameBeforeAction()
-    saveActiveCursorBeforeNavigation()
-    if (arrangeModeActive) {
-      exitArrangeMode()
-    }
-    setViewMode('domains')
-    setMenuOpen(false)
-    setContextMenu(null)
-    setEditing(null)
-  }
-
-  const openDomain = (domainId: string) => {
-    commitActiveRenameBeforeAction()
-    saveActiveCursorBeforeNavigation()
-    if (arrangeModeActive) {
-      exitArrangeMode()
-    }
-    setState((previous) => setActiveDomain(previous, domainId))
-    setViewMode('spaces')
-    setMenuOpen(false)
-    setContextMenu(null)
-    setEditing(null)
-  }
-
-  const addDomainFromPage = () => {
-    commitActiveRenameBeforeAction()
-    saveActiveCursorBeforeNavigation()
-    const createEntityId = createReservedIdAllocator(collectAppNavigationEntityIds(state))
-    const newDomain = createDomain('domain', createEntityId)
-    setState((previous) => addDomain(previous, newDomain))
-    pendingCreatedEditRef.current = {
-      type: 'domain',
-      id: newDomain.id,
-      previousActiveDomainId: state.activeDomainId,
-      previousActiveSpaceId: state.activeSpaceId,
-    }
-    setViewMode('domains')
-    setEditing({ type: 'domain', id: newDomain.id })
     setMenuOpen(false)
     setContextMenu(null)
   }
@@ -487,7 +412,6 @@ export const useAppNavigationActions = ({
   }
 
   const openSettings = () => {
-    if (viewMode === 'spaces' || viewMode === 'domains') return
     commitActiveRenameBeforeAction()
     saveActiveCursorBeforeNavigation()
     setMenuOpen(false)
@@ -506,12 +430,7 @@ export const useAppNavigationActions = ({
     selectSubTab,
     selectParentHomeTab,
     openSpace,
-    addSpace,
     duplicateSpaceFromContext,
-    openSpacesView,
-    openDomainsView,
-    openDomain,
-    addDomainFromPage,
     toggleTrashView,
     openSettings,
   }

@@ -7,13 +7,16 @@ import {
   type NotePreviewWidgetOptions,
 } from './note-preview-widget'
 import {
-  decodeContextPayload,
   INTERNAL_NOTE_LINK_MARKDOWN_RE,
   NOTE_CONTEXT_REFERENCE_RE,
-  parseInternalNoteReferenceUrl,
+  type NoteContextReferencePayload,
+  type ResolvedWikiNoteReference,
 } from '../notes/note-references'
 
-type NotePreviewPluginOptions = NotePreviewWidgetOptions
+type NotePreviewPluginOptions = NotePreviewWidgetOptions & {
+  resolveContextPreviewToken: (token: string) => NoteContextReferencePayload | null
+  resolveInternalNoteReferenceToken: (token: string) => ResolvedWikiNoteReference | null
+}
 
 export type { ContextPreviewData } from '../notes/note-preview-data'
 
@@ -31,7 +34,7 @@ export function createContextPreviewPlugin(context: any, options: NotePreviewPlu
               editorState.doc.descendants((node: any, pos: number) => {
                 if (!node.isText || typeof node.text !== 'string') return
                 for (const match of node.text.matchAll(NOTE_CONTEXT_REFERENCE_RE)) {
-                  const payload = decodeContextPayload(match[1])
+                  const payload = options.resolveContextPreviewToken(match[0])
                   if (!payload) continue
                   const from = pos + (match.index ?? 0)
                   const to = from + match[0].length
@@ -45,10 +48,13 @@ export function createContextPreviewPlugin(context: any, options: NotePreviewPlu
                   decorations.push(Decoration.inline(from, to, { class: 'note-context-token-hidden' }))
                 }
               })
+              let internalLinkOccurrence = 0
               for (const match of docText.text.matchAll(INTERNAL_NOTE_LINK_MARKDOWN_RE)) {
                 if (match[0].startsWith('!')) continue
-                const target = parseInternalNoteReferenceUrl(match[2])
-                if (!target) continue
+                const occurrence = internalLinkOccurrence
+                internalLinkOccurrence += 1
+                const reference = options.resolveInternalNoteReferenceToken(match[0])
+                if (!reference) continue
 
                 const startIndex = match.index ?? 0
                 const endIndex = startIndex + match[0].length - 1
@@ -62,9 +68,15 @@ export function createContextPreviewPlugin(context: any, options: NotePreviewPlu
                 decorations.push(
                   Decoration.widget(
                     from,
-                    () => createInternalNoteLinkWidgetElement(match[1], target, match[2], options.navigateToNoteLocation),
+                    () => createInternalNoteLinkWidgetElement(
+                      reference.label,
+                      reference.target,
+                      match[0],
+                      options.navigateToNoteLocation,
+                      { from, to: last + 1, occurrence },
+                    ),
                     {
-                      key: `internal-note-link-${from}-${last}-${match[2]}`,
+                      key: `internal-note-link-${from}-${last}-${match[0]}`,
                       side: -1,
                     },
                   ),

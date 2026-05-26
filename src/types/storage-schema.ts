@@ -77,6 +77,7 @@ export type StorageDataSettingsSection = 'cloud' | 'trash' | 'export' | 'import'
 export type StorageVisualsSettingsSection = 'theming' | 'otherVisuals'
 export type StorageTableControlTargetMode = 'active-cell' | 'bottom-right'
 export type StorageTableOfContentsScope = 'all-aisles' | 'focused-aisle'
+export type StorageNewAislePlacement = 'end' | 'right-of-focus'
 export type StorageTipId = 'task-undo' | 'tab-create-after-rename'
 
 export type StorageGlobalSettings = {
@@ -103,6 +104,7 @@ export type StorageGlobalSettings = {
     tableAddTargetMode?: StorageTableControlTargetMode
     tableDeleteTargetMode?: StorageTableControlTargetMode
     tableOfContentsScope?: StorageTableOfContentsScope
+    newAislePlacement?: StorageNewAislePlacement
     tabButtonScale?: number
     noteFontScale?: number
     tooltipScale?: number
@@ -199,7 +201,7 @@ export type StorageLastOpened = {
   spaceId: StorageEntityId
   primeTabId?: StorageEntityId | null
   subTabId: StorageEntityId | null
-  viewMode: 'domains' | 'spaces' | 'main' | 'trash' | 'settings' | 'stage-manager'
+  viewMode: 'main' | 'trash' | 'settings' | 'stage-manager'
 }
 
 export type StorageWorkspaceIndex = {

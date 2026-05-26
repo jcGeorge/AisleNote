@@ -1,4 +1,4 @@
-import type { Domain, NoteBody, NoteHeadingAnchor } from '../../types/app'
+import type { Domain, NoteBody, NoteHeadingAnchor, NotePreviewStart } from '../../types/app'
 
 export type NoteLocationPickerValue = {
   domainId: string
@@ -7,6 +7,7 @@ export type NoteLocationPickerValue = {
   subTabId: string | null
   aisleIds?: string[]
   heading?: NoteHeadingAnchor
+  previewStart?: NotePreviewStart
 }
 
 type NoteLocationPickerProps = {

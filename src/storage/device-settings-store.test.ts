@@ -54,6 +54,22 @@ describe('device settings store', () => {
     expect(parseDeviceSettings(JSON.stringify({ lastFindQuery: 123 })).lastFindQuery).toBe('')
   })
 
+  it('normalizes legacy domain and space screen last-opened modes to main', () => {
+    const baseLastOpened = {
+      domainId: 'domain-a',
+      spaceId: 'space-a',
+      primeTabId: 'tab-a',
+      subTabId: null,
+    }
+
+    expect(parseDeviceSettings(JSON.stringify({ lastOpened: { ...baseLastOpened, viewMode: 'domains' } })).lastOpened?.viewMode).toBe(
+      'main',
+    )
+    expect(parseDeviceSettings(JSON.stringify({ lastOpened: { ...baseLastOpened, viewMode: 'spaces' } })).lastOpened?.viewMode).toBe(
+      'main',
+    )
+  })
+
   it('loads and saves active toolbar layout id separately from app state', () => {
     const values = new Map<string, string>()
     const storage = {

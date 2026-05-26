@@ -14,8 +14,8 @@ type UseGlobalHotkeysParams = {
   updateShortcutSetting: (shortcutId: ShortcutId, nextShortcut: string) => void
   exitArrangeMode: () => void
   openSettings: () => void
-  openSpacesView: () => void
-  openDomainsView: () => void
+  toggleSpaceRail: () => void
+  toggleDomainRail: () => void
   toggleTrashView: () => void
   returnToLastTabLikeView: () => void
   navigateHistoryBy: (delta: number) => void
@@ -44,6 +44,16 @@ export function getCycledParentTabTarget(tabs: Tab[], activeTabId: string, direc
   return tabs[nextIndex]?.id ?? null
 }
 
+export function getRailVisibilityShortcutTarget(
+  event: KeyboardEvent,
+  hotkeys: AppState['hotkeys'],
+  isMacPlatform: boolean,
+): 'space' | 'domain' | null {
+  if (eventMatchesShortcut(event, hotkeys.shortcuts.openSpaces, isMacPlatform)) return 'space'
+  if (eventMatchesShortcut(event, hotkeys.shortcuts.openDomains, isMacPlatform)) return 'domain'
+  return null
+}
+
 export function useGlobalHotkeys({
   viewMode,
   activeTab,
@@ -56,8 +66,8 @@ export function useGlobalHotkeys({
   updateShortcutSetting,
   exitArrangeMode,
   openSettings,
-  openSpacesView,
-  openDomainsView,
+  toggleSpaceRail,
+  toggleDomainRail,
   toggleTrashView,
   returnToLastTabLikeView,
   navigateHistoryBy,
@@ -72,8 +82,8 @@ export function useGlobalHotkeys({
     updateShortcutSetting,
     exitArrangeMode,
     openSettings,
-    openSpacesView,
-    openDomainsView,
+    toggleSpaceRail,
+    toggleDomainRail,
     toggleTrashView,
     returnToLastTabLikeView,
     navigateHistoryBy,
@@ -89,8 +99,8 @@ export function useGlobalHotkeys({
     updateShortcutSetting,
     exitArrangeMode,
     openSettings,
-    openSpacesView,
-    openDomainsView,
+    toggleSpaceRail,
+    toggleDomainRail,
     toggleTrashView,
     returnToLastTabLikeView,
     navigateHistoryBy,
@@ -163,12 +173,6 @@ export function useGlobalHotkeys({
       const isTabTrashShortcut = eventMatchesShortcut(event, hotkeys.shortcuts.toggleTabTrash, isMacPlatform)
       if (isTabTrashShortcut) {
         event.preventDefault()
-        if (
-          (viewMode === 'spaces' && arrangeMode.active && arrangeMode.scope === 'spaces') ||
-          (viewMode === 'domains' && arrangeMode.active && arrangeMode.scope === 'domains')
-        ) {
-          return
-        }
         if (viewMode === 'main' || viewMode === 'trash') {
           actions.toggleTrashView()
           return
@@ -193,17 +197,16 @@ export function useGlobalHotkeys({
         return
       }
 
-      const isSpacesShortcut = eventMatchesShortcut(event, hotkeys.shortcuts.openSpaces, isMacPlatform)
-      if (isSpacesShortcut) {
+      const railVisibilityShortcutTarget = getRailVisibilityShortcutTarget(event, hotkeys, isMacPlatform)
+      if (railVisibilityShortcutTarget === 'space') {
         event.preventDefault()
-        actions.openSpacesView()
+        actions.toggleSpaceRail()
         return
       }
 
-      const isDomainsShortcut = eventMatchesShortcut(event, hotkeys.shortcuts.openDomains, isMacPlatform)
-      if (isDomainsShortcut) {
+      if (railVisibilityShortcutTarget === 'domain') {
         event.preventDefault()
-        actions.openDomainsView()
+        actions.toggleDomainRail()
         return
       }
 

@@ -153,6 +153,77 @@ describe('note preview data model', () => {
     expect(data.previewText).toBe('first aisle')
   })
 
+  it('uses the saved target-note aisle and cursor for last-position previews', () => {
+    const state = createPreviewState()
+    const targetBody = state.noteBodies.find((body) => body.id === 'target-body')
+    if (!targetBody) throw new Error('expected target body')
+    targetBody.aisles = [
+      { id: 'aisle-a', aisleBodyId: 'aisle-body-a' },
+      { id: 'aisle-b', aisleBodyId: 'aisle-body-b' },
+    ]
+    state.noteAisleBodies = [
+      ...(state.noteAisleBodies ?? []).filter((body) => !body.id.startsWith('aisle-body-')),
+      { id: 'aisle-body-a', markdown: 'first aisle' },
+      { id: 'aisle-body-b', markdown: 'saved aisle' },
+    ]
+    state.ui = {
+      noteCursorLocations: {
+        'domain-a::space-a::tab-b::__home__': {
+          activeAisleId: 'aisle-b',
+          aisles: {
+            'aisle-b': { anchor: 4, head: 11, updatedAt: 99 },
+          },
+          updatedAt: 99,
+        },
+      },
+    } as unknown as AppState['ui']
+
+    const data = getContextPreviewDataFromState(
+      state,
+      {
+        id: 'preview-id',
+        target: { domainId: 'domain-a', spaceId: 'space-a', tabId: 'tab-b', subTabId: null },
+        aisleIds: ['aisle-a'],
+        previewStart: 'last-position',
+      },
+      'source-body',
+    )
+
+    expect(data.selectedAisle?.id).toBe('aisle-b')
+    expect(data.previewText).toBe('saved aisle')
+    expect(data.previewCursorSelection).toEqual({ anchor: 4, head: 11, updatedAt: 99 })
+  })
+
+  it('falls back to selected or first aisle for last-position previews without a saved cursor', () => {
+    const state = createPreviewState()
+    const targetBody = state.noteBodies.find((body) => body.id === 'target-body')
+    if (!targetBody) throw new Error('expected target body')
+    targetBody.aisles = [
+      { id: 'aisle-a', aisleBodyId: 'aisle-body-a' },
+      { id: 'aisle-b', aisleBodyId: 'aisle-body-b' },
+    ]
+    state.noteAisleBodies = [
+      ...(state.noteAisleBodies ?? []).filter((body) => !body.id.startsWith('aisle-body-')),
+      { id: 'aisle-body-a', markdown: 'first aisle' },
+      { id: 'aisle-body-b', markdown: 'selected fallback' },
+    ]
+
+    const data = getContextPreviewDataFromState(
+      state,
+      {
+        id: 'preview-id',
+        target: { domainId: 'domain-a', spaceId: 'space-a', tabId: 'tab-b', subTabId: null },
+        aisleIds: ['aisle-b'],
+        previewStart: 'last-position',
+      },
+      'source-body',
+    )
+
+    expect(data.selectedAisle?.id).toBe('aisle-b')
+    expect(data.previewText).toBe('selected fallback')
+    expect(data.previewCursorSelection).toBeNull()
+  })
+
   it('prefers the heading aisle over serialized aisle ids', () => {
     const state = createPreviewState()
     const targetBody = state.noteBodies.find((body) => body.id === 'target-body')
@@ -266,12 +337,14 @@ describe('note preview data model', () => {
       ).status,
     ).toBe('blocked')
 
-    const cyclicState = createPreviewState({
-      'target-body': buildContextToken({
+    const cyclicState = createPreviewState()
+    const backRef = buildContextToken(cyclicState, {
         id: 'back-ref',
         target: { domainId: 'domain-a', spaceId: 'space-a', tabId: 'tab-a', subTabId: null },
-      }),
     })
+    cyclicState.noteAisleBodies = cyclicState.noteAisleBodies?.map((aisleBody) =>
+      aisleBody.id === 'target-body-aisle-body' ? { ...aisleBody, markdown: backRef } : aisleBody,
+    )
     expect(
       getContextPreviewDataFromState(
         cyclicState,

@@ -4,6 +4,7 @@ import {
   getPastedUrlLink,
   getEditorPageMovementForEvent,
   getMultiLineDeleteInputForBeforeInputType,
+  getInternalNoteLinkWidgetHitFromTarget,
   getPlainTextPointerChromeClosePlan,
   getTableBoundaryCaretDirectionForEvent,
   isActiveWysiwygEditorContentTarget,
@@ -18,6 +19,21 @@ function fakeTarget(matchedSelector: string | null): Element {
   return {
     closest: (selector: string) => (matchedSelector && selector.includes(matchedSelector) ? {} : null),
   } as Element
+}
+
+function fakeInternalLinkTarget(): Element {
+  const attrs = new Map([
+    ['data-internal-note-link-syntax', '[[Linked--123abc]]'],
+    ['data-internal-note-link-from', '8'],
+    ['data-internal-note-link-to', '26'],
+    ['data-internal-note-link-occurrence', '0'],
+  ])
+  const anchor = {
+    getAttribute: (name: string) => attrs.get(name) ?? null,
+  }
+  return {
+    closest: (selector: string) => selector === 'a[data-internal-note-link="true"]' ? anchor : null,
+  } as unknown as Element
 }
 
 describe('editor DOM events', () => {
@@ -37,6 +53,38 @@ describe('editor DOM events', () => {
   it('does not treat normal editor content as a toolbar interaction target', () => {
     expect(isEditorToolbarInteractionTarget(fakeTarget(null))).toBe(false)
     expect(isEditorToolbarInteractionTarget(null)).toBe(false)
+  })
+
+  it('resolves internal note link hits only from the rendered link widget', () => {
+    const resolve = vi.fn(() => ({
+      token: '[[Linked--123abc]]',
+      parsed: {
+        token: '[[Linked--123abc]]',
+        embed: false,
+        target: 'Linked--123abc',
+        noteHandle: 'Linked--123abc',
+        suffixHandle: '',
+        alias: '',
+      },
+      payload: {
+        id: 'wiki-link:Linked--123abc',
+        target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
+      },
+      target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
+      label: 'Linked',
+      canonicalTarget: 'Linked--123abc',
+      canonicalToken: '[[Linked--123abc]]',
+    }))
+
+    expect(getInternalNoteLinkWidgetHitFromTarget(fakeTarget(null), resolve)).toBeNull()
+    expect(getInternalNoteLinkWidgetHitFromTarget(fakeInternalLinkTarget(), resolve)).toMatchObject({
+      label: 'Linked',
+      href: '[[Linked--123abc]]',
+      from: 8,
+      to: 26,
+      occurrence: 0,
+      target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
+    })
   })
 
   it('treats editor chrome as special pointer targets outside normal text selection', () => {
@@ -103,6 +151,34 @@ describe('editor DOM events', () => {
       onRunEditorHistory,
     })).toEqual({ handled: true, result: 'applied' })
     expect(onRunStructuralHistory).not.toHaveBeenCalled()
+  })
+
+  it('can prioritize a pending structural add-aisle undo before editor history', () => {
+    const onRunStructuralHistory = vi.fn(() => true)
+    const onRunEditorHistory = vi.fn(() => 'applied' as const)
+
+    expect(runEditorHistoryEvent({
+      direction: 'undo',
+      onRunStructuralHistory,
+      onRunEditorHistory,
+      shouldRunStructuralHistoryBeforeEditorHistory: () => true,
+    })).toEqual({ handled: true, result: 'structural' })
+    expect(onRunStructuralHistory).toHaveBeenCalledWith('undo')
+    expect(onRunEditorHistory).not.toHaveBeenCalled()
+  })
+
+  it('falls back to editor history when preferred structural history cannot apply', () => {
+    const onRunStructuralHistory = vi.fn(() => false)
+    const onRunEditorHistory = vi.fn(() => 'applied' as const)
+
+    expect(runEditorHistoryEvent({
+      direction: 'undo',
+      onRunStructuralHistory,
+      onRunEditorHistory,
+      shouldRunStructuralHistoryBeforeEditorHistory: () => true,
+    })).toEqual({ handled: true, result: 'applied' })
+    expect(onRunStructuralHistory).toHaveBeenCalledWith('undo')
+    expect(onRunEditorHistory).toHaveBeenCalledWith('undo')
   })
 
   it('normalizes history command results for shared command dispatch', () => {

@@ -64,6 +64,21 @@ describe('menu font scaling styles', () => {
     expect(css).not.toContain('.note-copy-behavior-mode .note-reference-mode-btn')
   })
 
+  it('top-anchors insert note reference modals without changing other modal positioning', () => {
+    const css = readStyle('overlays.css')
+    const backdropRule = extractRule(css, '.delete-modal-backdrop.insert-note-reference-backdrop')
+    const shellRule = extractRule(css, '.settings-modal.note-picker-modal.insert-note-reference-modal-shell')
+    const baseBackdropRule = extractRule(css, '.delete-modal-backdrop')
+
+    expect(baseBackdropRule).toContain('align-items: center;')
+    expect(baseBackdropRule).toContain('justify-content: center;')
+    expect(backdropRule).toContain('align-items: flex-start;')
+    expect(backdropRule).toContain('overflow-y: auto;')
+    expect(backdropRule).toContain('box-sizing: border-box;')
+    expect(backdropRule).toContain('padding: clamp(1.25rem, 8vh, 4rem) 1rem 1rem;')
+    expect(shellRule).toContain('flex: 0 0 auto;')
+  })
+
   it('renders toolbar layout spacers as cumulative fixed-width gaps', () => {
     const editorShellCss = readStyle('editor-shell.css')
     const responsiveCss = readStyle('responsive.css')

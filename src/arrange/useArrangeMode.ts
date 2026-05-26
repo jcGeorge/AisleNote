@@ -243,13 +243,9 @@ export function useArrangeMode({
           ? 'spaces'
           : dragItem?.type === 'tab' || dragItem?.type === 'subtab'
             ? 'tabs'
-            : viewMode === 'domains'
-              ? 'domains'
-              : viewMode === 'spaces'
-                ? 'spaces'
-                : viewMode === 'main'
-                  ? 'tabs'
-                  : null
+            : viewMode === 'main'
+              ? 'tabs'
+              : null
     setMode({
       active: true,
       scope,
@@ -391,7 +387,7 @@ export function useArrangeMode({
     dragItem: ArrangeDragItem | null,
     suppressClickKey: string,
   ) => {
-    if ((viewMode !== 'main' && viewMode !== 'spaces' && viewMode !== 'domains') || editing || mode.active) return
+    if (viewMode !== 'main' || editing || mode.active) return
     if (event.button !== 0) return
     clearPressTimer()
     pressTimerRef.current = window.setTimeout(() => {
@@ -543,7 +539,7 @@ export function useArrangeMode({
   }
 
   const startDomainPointerDrag = (event: ReactPointerEvent<HTMLButtonElement>, domain: Domain) => {
-    if (viewMode !== 'domains' && viewMode !== 'main') return
+    if (viewMode !== 'main') return
     const rect = event.currentTarget.getBoundingClientRect()
     const itemIsSelected = selection.kind === 'domain' && selection.selectedIds.includes(domain.id)
     const dragIds = itemIsSelected ? getSelectedDomainDragIds(domain.id) : [domain.id]
@@ -827,7 +823,7 @@ export function useArrangeMode({
   }
 
   const startSpacePointerDrag = (event: ReactPointerEvent<HTMLButtonElement>, space: Space) => {
-    if (viewMode !== 'spaces' && viewMode !== 'main') return
+    if (viewMode !== 'main') return
     const rect = event.currentTarget.getBoundingClientRect()
     const itemIsSelected =
       selection.kind === 'space' && selection.domainId === state.activeDomainId && selection.selectedIds.includes(space.id)
@@ -1772,7 +1768,7 @@ export function useArrangeMode({
   }, [mode.active, mode.scope, viewMode, workspace.tabs, activeTab.subTabs])
 
   useEffect(() => {
-    if (!mode.active || mode.scope !== 'spaces' || (viewMode !== 'spaces' && viewMode !== 'main')) return
+    if (!mode.active || mode.scope !== 'spaces' || viewMode !== 'main') return
 
     setMode((previous) => {
       if (!previous.active || previous.scope !== 'spaces') return previous
@@ -1813,7 +1809,7 @@ export function useArrangeMode({
   }, [mode.active, mode.scope, viewMode, state.spaces])
 
   useEffect(() => {
-    if (!mode.active || mode.scope !== 'domains' || (viewMode !== 'domains' && viewMode !== 'main')) return
+    if (!mode.active || mode.scope !== 'domains' || viewMode !== 'main') return
 
     setMode((previous) => {
       if (!previous.active || previous.scope !== 'domains') return previous

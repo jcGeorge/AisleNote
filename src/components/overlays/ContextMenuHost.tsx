@@ -1,5 +1,6 @@
-import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useCallback, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { ContextMenuState, LinkInsertMode } from '../../types/app'
+import type { CopyAsAction, CopyAsScope } from '../../notes/copy-as-clipboard'
 import {
   clampContextMenuPosition,
   getSubmenuPosition,
@@ -57,28 +58,45 @@ type ContextMenuHostProps = {
   onEditorClipboard: (action: 'cut' | 'copy' | 'paste' | 'pastePlainText') => void
   onEditorCommand: (command: string, payload?: Record<string, unknown>) => void
   onEditorInsertLink: (mode: LinkInsertMode | null) => void
+  onEditorInsertAisle: () => void
   onEditorInsertAttachment: () => void
   onEditorFindReplace: () => void
   onEditorOpenContextLink: () => void
   onEditorEditContextLink: () => void
+  copyAsMenu: CopyAsMenuState | null
+  onCopyAs: (scope: CopyAsScope, action: CopyAsAction) => void
+  onCopyAsUnavailable: (message: string) => void
+}
+
+type CopyAsMenuItemState = {
+  available: boolean
+  reason?: string
+}
+
+type CopyAsMenuState = {
+  note: Record<CopyAsAction, CopyAsMenuItemState>
+  aisle?: Record<CopyAsAction, CopyAsMenuItemState>
 }
 
 function MenuButton({
   children,
   className = '',
+  ariaDisabled = false,
   disabled = false,
   onClick,
 }: {
   children: ReactNode
   className?: string
+  ariaDisabled?: boolean
   disabled?: boolean
   onClick: () => void
 }) {
   return (
     <button
       type="button"
-      className={`tab-context-delete ${className}`.trim()}
+      className={`tab-context-delete ${ariaDisabled ? 'is-disabled' : ''} ${className}`.trim()}
       onClick={onClick}
+      aria-disabled={ariaDisabled ? 'true' : undefined}
       disabled={disabled}
     >
       {children}
@@ -89,6 +107,14 @@ function MenuButton({
 function MenuSeparator() {
   return <div className="tab-context-separator" role="separator" />
 }
+
+const COPY_AS_MENU_LABELS: Record<CopyAsAction, string> = {
+  duplicate: 'duplicate',
+  link: 'link',
+  copy: 'copy',
+  preview: 'preview',
+}
+const COPY_AS_MENU_ACTION_ORDER: CopyAsAction[] = ['copy', 'duplicate', 'link', 'preview']
 
 function SubMenu({
   label,
@@ -158,10 +184,14 @@ export function ContextMenuHost({
   onEditorClipboard,
   onEditorCommand,
   onEditorInsertLink,
+  onEditorInsertAisle,
   onEditorInsertAttachment,
   onEditorFindReplace,
   onEditorOpenContextLink,
   onEditorEditContextLink,
+  copyAsMenu,
+  onCopyAs,
+  onCopyAsUnavailable,
 }: ContextMenuHostProps) {
   const rootRef = useRef<HTMLDivElement | null>(null)
   const [rootPosition, setRootPosition] = useState<MenuPosition>({ left: 0, top: 0 })
@@ -186,6 +216,35 @@ export function ContextMenuHost({
   }, [contextMenu])
 
   if (!contextMenu) return null
+
+  const renderCopyAsSubmenu = (scope: CopyAsScope, items: Record<CopyAsAction, CopyAsMenuItemState> | undefined) => {
+    if (!items) return null
+    return (
+      <SubMenu label={`copy ${scope} as`}>
+        {COPY_AS_MENU_ACTION_ORDER.map((action) => {
+          const item = items[action]
+          const unavailableReason = item.available ? '' : item.reason || `${scope} cannot be copied as ${action}.`
+          return (
+            <Fragment key={action}>
+              {action === 'link' && <MenuSeparator />}
+              <MenuButton
+                ariaDisabled={!item.available}
+                onClick={() => {
+                  if (item.available) {
+                    onCopyAs(scope, action)
+                  } else {
+                    onCopyAsUnavailable(unavailableReason)
+                  }
+                }}
+              >
+                {COPY_AS_MENU_LABELS[action]}
+              </MenuButton>
+            </Fragment>
+          )
+        })}
+      </SubMenu>
+    )
+  }
 
   return (
     <div
@@ -267,6 +326,8 @@ export function ContextMenuHost({
           <MenuSeparator />
           <MenuButton onClick={onEditorFindReplace}>find & replace</MenuButton>
           <MenuButton onClick={onOpenCopyModal}>make copy</MenuButton>
+          {renderCopyAsSubmenu('note', copyAsMenu?.note)}
+          {renderCopyAsSubmenu('aisle', copyAsMenu?.aisle)}
           <MenuSeparator />
           <SubMenu label="format">
             <MenuButton onClick={() => onEditorCommand('bold')}>bold</MenuButton>
@@ -295,6 +356,8 @@ export function ContextMenuHost({
           <SubMenu label="insert">
             <MenuButton onClick={() => onEditorInsertLink('note')}>note link</MenuButton>
             <MenuButton onClick={() => onEditorInsertLink('url')}>url link</MenuButton>
+            <MenuSeparator />
+            <MenuButton onClick={onEditorInsertAisle}>aisle</MenuButton>
             <MenuSeparator />
             <MenuButton onClick={onEditorInsertAttachment}>attachment</MenuButton>
             <MenuButton onClick={() => onEditorCommand('addTable', { rowCount: 2, columnCount: 2 })}>table</MenuButton>
@@ -325,9 +388,13 @@ export function ContextMenuHost({
           </button>
         </>
       ) : contextMenu.type === 'home-tab' ? (
-        <button type="button" className="tab-context-delete" onClick={onOpenCopyModal}>
-          make copy
-        </button>
+        <>
+          <button type="button" className="tab-context-delete" onClick={onOpenCopyModal}>
+            make copy
+          </button>
+          {renderCopyAsSubmenu('note', copyAsMenu?.note)}
+          {renderCopyAsSubmenu('aisle', copyAsMenu?.aisle)}
+        </>
       ) : (
         <>
           <button type="button" className="tab-context-delete" onClick={onEnterArrangeMode}>
@@ -336,6 +403,8 @@ export function ContextMenuHost({
           <button type="button" className="tab-context-delete" onClick={onOpenCopyModal}>
             make copy
           </button>
+          {renderCopyAsSubmenu('note', copyAsMenu?.note)}
+          {renderCopyAsSubmenu('aisle', copyAsMenu?.aisle)}
           {duplicateCount > 1 && (
             <button type="button" className="tab-context-delete" onClick={onOpenDeduplicateModal}>
               de-couple

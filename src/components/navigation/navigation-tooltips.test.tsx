@@ -62,6 +62,8 @@ function renderTopBar(
       trashParentTabs={[]}
       trashTabId=""
       menuOpen={false}
+      spaceRailVisible={false}
+      domainRailVisible={false}
       onAutoSizeRenameInput={noop}
       onShouldSkipRenameBlur={() => false}
       onCommitRename={noop}
@@ -94,8 +96,8 @@ function renderTopBar(
       onEndStageManager={noop}
       onCloseSettingsView={noop}
       onSetMenuOpen={noop}
-      onOpenDomains={noop}
-      onOpenSpaces={noop}
+      onToggleSpaceRail={noop}
+      onToggleDomainRail={noop}
       onOpenStageManager={noop}
       onToggleTrash={noop}
       onOpenSettings={noop}

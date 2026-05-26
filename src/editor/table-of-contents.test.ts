@@ -18,6 +18,7 @@ describe('table of contents helpers', () => {
     expect(panels?.noteBodyId).toBe('body-1')
     expect(panels?.openAisleIds).toEqual(new Set(['a']))
     expect(Object.keys(panels?.headingsByAisle ?? {})).toEqual(['a'])
+    expect(panels?.linksByAisle).toEqual({})
   })
 
   it('limits panels to the focused aisle when the scope is focused aisle', () => {
@@ -46,10 +47,34 @@ describe('table of contents helpers', () => {
     )).toBeNull()
   })
 
+  it('builds panels for aisles with links even when they have no headings', () => {
+    const panels = buildTableOfContentsPanels(
+      'body-1',
+      aisles,
+      () => [],
+      {
+        getLinksForAisle: (aisle) =>
+          aisle.id === 'b'
+            ? [{
+                aisleId: aisle.id,
+                key: 'b|link|0',
+                kind: 'url-link',
+                label: 'site',
+                href: 'https://example.com',
+              }]
+            : [],
+      },
+    )
+
+    expect(panels?.openAisleIds).toEqual(new Set(['b']))
+    expect(panels?.headingsByAisle).toEqual({})
+    expect(Object.keys(panels?.linksByAisle ?? {})).toEqual(['b'])
+  })
+
   it('returns null and keeps exact empty ToC copy when no aisle has headings', () => {
     expect(buildTableOfContentsPanels('body-1', aisles, () => [])).toBeNull()
     expect(TABLE_OF_CONTENTS_EMPTY_MESSAGE).toBe(
-      'add headers to your notes to navigate via table of contents',
+      'add headers or links to your notes to navigate via table of contents',
     )
   })
 })

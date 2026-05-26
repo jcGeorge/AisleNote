@@ -10,8 +10,8 @@ export type AppCommandDefinition = {
 
 export const APP_COMMANDS: AppCommandDefinition[] = [
   { id: 'toggleTabTrash', label: 'toggle tabs/trash', defaultShortcut: 'Mod+T' },
-  { id: 'openDomains', label: 'open domains', defaultShortcut: 'Mod+D' },
-  { id: 'openSpaces', label: 'open spaces', defaultShortcut: 'Mod+S' },
+  { id: 'openDomains', label: 'show/hide domain', defaultShortcut: 'Mod+D' },
+  { id: 'openSpaces', label: 'show/hide space', defaultShortcut: 'Mod+S' },
   { id: 'newTab', label: 'new parent tab', defaultShortcut: 'Mod+Shift+N' },
   { id: 'newSubTab', label: 'new sub tab', defaultShortcut: 'Mod+N' },
   { id: 'formatStrikethrough', label: 'strikethrough', defaultShortcut: '' },

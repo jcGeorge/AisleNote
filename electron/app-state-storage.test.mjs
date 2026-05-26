@@ -13,6 +13,7 @@ import {
   writeAssetToProfile,
   writeImageAssetToProfile,
 } from './app-state-storage.mjs'
+import { buildContextToken } from '../src/markdown/note-context-tokens.js'
 import { STORAGE_PATH_SEGMENT_MAX_LENGTH } from '../src/storage/storage-path-segments.js'
 
 function createTempUserDataPath() {
@@ -306,6 +307,7 @@ describe('Electron app state storage load result', () => {
         decoupledItemsKeepData: false,
         tableAddTargetMode: 'active-cell',
         tableDeleteTargetMode: 'active-cell',
+        newAislePlacement: 'right-of-focus',
       }
       state.domains[0].spaces[0].settings = { autoRemoveDeletedDays: 21 }
       state.spaces = state.domains[0].spaces
@@ -343,11 +345,13 @@ describe('Electron app state storage load result', () => {
       expect(appSettings.themePalettes.dawn.primary).toBe('#123456')
       expect(appSettings.ui.settingsSection).toBe('toolbar')
       expect(appSettings.ui.lastNoteCopyMode).toBe('linked')
+      expect(appSettings.ui.newAislePlacement).toBe('right-of-focus')
       expect(appSettings.hotkeys.enableMouseBackForward).toBe(false)
       expect(appSettings.hotkeys.shortcuts.newTab).toBe('Ctrl+Alt+N')
       expect(frontmatterSettings.settingsTemplateId).toBe('template-1')
       expect(spaceManifest.settings).toEqual({ autoRemoveDeletedDays: 21 })
       expect(parsed.ui.settingsSection).toBe('toolbar')
+      expect(parsed.ui.newAislePlacement).toBe('right-of-focus')
       expect(parsed.hotkeys.shortcuts.newTab).toBe('Ctrl+Alt+N')
       expect(parsed.hotkeys.enableMouseBackForward).toBe(false)
       expect(parsed.frontmatter.settingsTemplateId).toBe('template-1')
@@ -1336,6 +1340,32 @@ describe('Electron app state storage load result', () => {
 
       saveAppState(userDataPath, result.serializedState)
       expect(readFileSync(assetPath)).toEqual(bytes)
+    }))
+
+  it('writes readable preview directives and image metadata to markdown files', () =>
+    withTempUserDataPath((userDataPath) => {
+      const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3])
+      const asset = writeImageAssetToProfile(userDataPath, bytes, 'png')
+      const state = JSON.parse(serializedAppState())
+      const previewToken = buildContextToken(state, {
+        id: 'preview-1',
+        target: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
+      })
+      setFirstAisleBodyMarkdown(state, `${previewToken}\n![pixel](${asset.url}#tabs-image=rotate=90,width=88)`)
+
+      saveAppState(userDataPath, JSON.stringify(state))
+
+      const { spaceRoot, spaceManifest } = getStoredWorkspacePaths(userDataPath)
+      const markdownFile = path.join(spaceRoot, spaceManifest.tabs[0].homeNoteFile)
+      const markdown = readFileSync(markdownFile, 'utf8')
+      const result = loadAppStateResult(userDataPath)
+      const parsed = JSON.parse(result.serializedState)
+      const roundTrippedMarkdown = getAisleMarkdown(parsed, parsed.noteBodies[0].aisles[0])
+
+      expect(markdown).toMatch(/!\[\[Tab--[0-9a-f]{6}\]\]/)
+      expect(markdown).not.toContain('{{tabs-preview')
+      expect(markdown).toContain('#tabs-image=width=88,rotate=90')
+      expect(roundTrippedMarkdown).toContain('#tabs-image=width=88,rotate=90')
     }))
 
   it('prunes active image assets that are not referenced by saved markdown', () =>

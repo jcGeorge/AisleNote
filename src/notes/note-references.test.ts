@@ -1,20 +1,22 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildContextToken,
-  buildInternalNoteUrl,
-  decodeContextPayload,
+  buildInternalNoteLinkToken,
   parseContextReferences,
-  parseInternalNoteReferenceUrl,
-  parseInternalNoteUrl,
+  parseContextToken,
+  parseWikiReferenceToken,
+  normalizeContextReferenceTokensForMarkdown,
   removeContextReferencesForNoteLocationsFromAppState,
   removeContextReferencesForNoteLocationsFromMarkdown,
   removeContextTokenById,
+  resolveWikiReferenceToken,
 } from './note-references'
 import type { AppState, NoteLocation } from '../types/app'
 import type { NoteContextReferencePayload } from './note-references'
 import { getAisleMarkdown } from './note-markdown'
+import { getHeadingOutlineFromMarkdown } from '../editor/heading-outline'
 
-function targetLocation(tabId = 'tab', subTabId: string | null = null): NoteLocation {
+function targetLocation(tabId = 'parent', subTabId: string | null = null): NoteLocation {
   return {
     domainId: 'domain',
     spaceId: 'space',
@@ -30,99 +32,212 @@ function payload(id: string, target: NoteLocation = targetLocation()): NoteConte
   }
 }
 
+function createReferenceState(markdownByBody: Record<string, string> = {}): AppState {
+  const bodyIds = ['body-parent', 'body-sub', 'body-retained', 'body-other', 'body-deleted-parent']
+  return {
+    activeDomainId: 'domain',
+    activeSpaceId: 'space',
+    domains: [
+      {
+        id: 'domain',
+        name: 'Domain',
+        activeSpaceId: 'space',
+        spaces: [
+          {
+            id: 'space',
+            name: 'Space',
+            settings: { autoRemoveDeletedDays: 30 },
+            data: {
+              activeTabId: 'parent',
+              deletedTabs: [],
+              deletedSubTabs: [],
+              tabs: [
+                {
+                  id: 'parent',
+                  title: 'Parent tab',
+                  noteBodyId: 'body-parent',
+                  activeSubTabId: 'sub',
+                  subTabs: [
+                    { id: 'sub', title: 'Sub note', noteBodyId: 'body-sub' },
+                    { id: 'retained-sub', title: 'Retained note', noteBodyId: 'body-retained' },
+                  ],
+                },
+                {
+                  id: 'other-parent',
+                  title: 'Other parent',
+                  noteBodyId: 'body-other',
+                  activeSubTabId: null,
+                  subTabs: [],
+                },
+                {
+                  id: 'deleted-parent',
+                  title: 'Deleted parent',
+                  noteBodyId: 'body-deleted-parent',
+                  activeSubTabId: null,
+                  subTabs: [{ id: 'deleted-sub', title: 'Deleted sub', noteBodyId: 'body-sub' }],
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+    spaces: [],
+    noteBodies: bodyIds.map((bodyId) => ({
+      id: bodyId,
+      aisles: [{ id: `${bodyId}-aisle`, aisleBodyId: `${bodyId}-aisle-body` }],
+    })),
+    noteAisleBodies: bodyIds.map((bodyId) => ({
+      id: `${bodyId}-aisle-body`,
+      markdown: markdownByBody[bodyId] ?? `${bodyId} text`,
+    })),
+    ui: {},
+  } as unknown as AppState
+}
+
 describe('note context references', () => {
-  it('builds and parses internal note links with optional heading anchors', () => {
+  it('builds and resolves wiki note links with optional heading anchors', () => {
+    const state = createReferenceState({ 'body-sub': '# Intro\n\nBody' })
+    const heading = getHeadingOutlineFromMarkdown('body-sub-aisle', '# Intro\n\nBody')[0]
     const target = {
-      ...targetLocation('tab', 'sub'),
-      heading: { aisleId: 'aisle-1', headingKey: 'aisle-1|h2|0|Subject' },
+      ...targetLocation('parent', 'sub'),
+      heading: { aisleId: heading.aisleId, headingKey: heading.key },
     }
-    const href = buildInternalNoteUrl('body-1', target)
+    const href = buildInternalNoteLinkToken(state, target)
 
-    expect(parseInternalNoteReferenceUrl(href)).toEqual(target)
-    expect(parseInternalNoteUrl(href)).toEqual(targetLocation('tab', 'sub'))
+    expect(href).toMatch(/^\[\[Sub note--[0-9a-f]{6}#Intro--[0-9a-f]{6}\]\]$/)
+    expect(resolveWikiReferenceToken(state, href)?.target).toEqual(target)
+    expect(parseWikiReferenceToken('[old](#tabs-note/body-1?domainId=domain&spaceId=space&tabId=parent)')).toBeNull()
   })
 
-  it('parses old internal note links without heading anchors', () => {
-    const href = '#tabs-note/body-1?domainId=domain&spaceId=space&tabId=tab'
+  it('builds aliases only for custom note link labels', () => {
+    const state = createReferenceState()
 
-    expect(parseInternalNoteReferenceUrl(href)).toEqual(targetLocation('tab', null))
+    expect(buildInternalNoteLinkToken(state, targetLocation('parent', 'sub'))).toMatch(/^\[\[Sub note--[0-9a-f]{6}\]\]$/)
+    expect(buildInternalNoteLinkToken(state, targetLocation('parent', 'sub'), 'see me')).toMatch(
+      /^\[\[Sub note--[0-9a-f]{6}\|see me\]\]$/,
+    )
   })
 
-  it('round-trips context preview payload heading anchors', () => {
-    const token = buildContextToken({
-      ...payload('anchored'),
-      heading: { aisleId: 'aisle-a', headingKey: 'aisle-a|h1|0|Intro' },
+  it('builds aisle-specific links that navigate to the aisle', () => {
+    const state = createReferenceState()
+    const aisleId = 'body-sub-aisle'
+    const href = buildInternalNoteLinkToken(state, { ...targetLocation('parent', 'sub'), aisleIds: [aisleId] }, 'aisle 1')
+    const resolved = resolveWikiReferenceToken(state, href)
+
+    expect(href).toMatch(/^\[\[Sub note--[0-9a-f]{6}#aisle 1--[0-9a-f]{6}\|aisle 1\]\]$/)
+    expect(resolved?.payload.aisleIds).toEqual([aisleId])
+    expect(resolved?.target).toMatchObject({ ...targetLocation('parent', 'sub'), aisleId })
+  })
+
+  it('normalizes stale wiki handle names by stable short hash suffixes', () => {
+    const state = createReferenceState()
+    const currentLink = buildInternalNoteLinkToken(state, targetLocation('parent', 'sub'))
+    const staleLink = currentLink.replace('Sub note--', 'Old sub name--')
+    const currentPreview = buildContextToken(state, payload('preview', targetLocation('parent', null)))
+    const stalePreview = currentPreview.replace('Parent tab--', 'Old parent name--')
+
+    expect(normalizeContextReferenceTokensForMarkdown(`${staleLink}\n${stalePreview}`, state)).toBe(
+      `${currentLink}\n${currentPreview}`,
+    )
+    expect(currentPreview).toMatch(/^!\[\[Parent tab--[0-9a-f]{6}\]\]$/)
+  })
+
+  it('round-trips wiki preview payload heading anchors', () => {
+    const state = createReferenceState({ 'body-sub': '# Intro\n\nBody' })
+    const heading = getHeadingOutlineFromMarkdown('body-sub-aisle', '# Intro\n\nBody')[0]
+    const previewPayload = {
+      ...payload('anchored', targetLocation('parent', 'sub')),
+      heading: { aisleId: heading.aisleId, headingKey: heading.key },
+    }
+    const token = buildContextToken(state, previewPayload)
+
+    expect(token).toMatch(/^!\[\[Sub note--[0-9a-f]{6}#Intro--[0-9a-f]{6}\]\]$/)
+    expect(parseContextToken(token, state)?.heading).toEqual(heading ? { aisleId: heading.aisleId, headingKey: heading.key } : undefined)
+    expect(parseContextReferences(token, state)[0]?.payload.heading).toEqual({ aisleId: heading.aisleId, headingKey: heading.key })
+  })
+
+  it('round-trips wiki preview payload last-position starts without enabling note links', () => {
+    const state = createReferenceState()
+    const previewPayload = {
+      ...payload('last-position', targetLocation('parent', 'sub')),
+      previewStart: 'last-position' as const,
+    }
+    const token = buildContextToken(state, previewPayload)
+    const staleToken = token.replace('#last position', '#LAST   POSITION')
+
+    expect(token).toMatch(/^!\[\[Sub note--[0-9a-f]{6}#last position\]\]$/)
+    expect(parseContextToken(token, state)).toMatchObject({
+      target: previewPayload.target,
+      previewStart: 'last-position',
     })
-    const encoded = token.match(/\{\{tabs-context:([A-Za-z0-9_-]+)\}\}/)?.[1] ?? ''
+    expect(resolveWikiReferenceToken(state, token)?.canonicalToken).toBe(token)
+    expect(resolveWikiReferenceToken(state, staleToken)?.canonicalToken).toBe(token)
+    expect(resolveWikiReferenceToken(state, token.slice(1))).toBeNull()
+  })
 
-    expect(decodeContextPayload(encoded)?.heading).toEqual({ aisleId: 'aisle-a', headingKey: 'aisle-a|h1|0|Intro' })
-    expect(parseContextReferences(token)[0]?.payload.heading).toEqual({ aisleId: 'aisle-a', headingKey: 'aisle-a|h1|0|Intro' })
+  it('does not parse old encoded or directive context preview tokens', () => {
+    const state = createReferenceState()
+
+    expect(parseContextReferences('{{tabs-context:abc}}', state)).toEqual([])
+    expect(parseContextToken('{{tabs-preview label="x" id="y"}}', state)).toBeNull()
   })
 
   it('removes only the matching context token id', () => {
-    const first = buildContextToken(payload('first'))
-    const second = buildContextToken(payload('second'))
+    const state = createReferenceState()
+    const first = buildContextToken(state, payload('first', targetLocation('parent', 'sub')))
+    const second = buildContextToken(state, payload('second', targetLocation('other-parent', null)))
+    const firstId = parseContextToken(first, state)?.id ?? ''
     const markdown = `before\n${first}\nmiddle\n${second}\nafter`
 
-    expect(removeContextTokenById(markdown, 'first')).toBe(`before\n\nmiddle\n${second}\nafter`)
+    expect(removeContextTokenById(markdown, state, firstId)).toBe(`before\n\nmiddle\n${second}\nafter`)
   })
 
-  it('removes context references for deleted sub-tabs without touching other previews or links', () => {
-    const deleted = targetLocation('parent', 'deleted-sub')
+  it('removes context references for deleted sub-tabs without touching other previews or external links', () => {
+    const state = createReferenceState()
+    const deleted = targetLocation('deleted-parent', 'deleted-sub')
     const retained = targetLocation('parent', 'retained-sub')
-    const deletedToken = buildContextToken(payload('deleted', deleted))
-    const retainedToken = buildContextToken(payload('retained', retained))
+    const deletedToken = buildContextToken(state, payload('deleted', deleted))
+    const retainedToken = buildContextToken(state, payload('retained', retained))
     const markdown = [
       'before',
       deletedToken,
       retainedToken,
-      '[normal link](#tabs-note/body?domainId=domain&spaceId=space&tabId=parent&subTabId=deleted-sub)',
+      '[normal link](https://example.com)',
       'after',
     ].join('\n')
 
-    expect(removeContextReferencesForNoteLocationsFromMarkdown(markdown, [deleted])).toBe(
+    expect(removeContextReferencesForNoteLocationsFromMarkdown(markdown, state, [deleted])).toBe(
       [
         'before',
         '',
         retainedToken,
-        '[normal link](#tabs-note/body?domainId=domain&spaceId=space&tabId=parent&subTabId=deleted-sub)',
+        '[normal link](https://example.com)',
         'after',
       ].join('\n'),
     )
   })
 
   it('removes context references across multiple note bodies and aisles', () => {
+    const state = createReferenceState()
     const deletedParent = targetLocation('deleted-parent', null)
     const deletedSubTab = targetLocation('deleted-parent', 'deleted-sub')
-    const retained = targetLocation('other-parent', 'retained-sub')
-    const parentToken = buildContextToken(payload('parent', deletedParent))
-    const subTabToken = buildContextToken(payload('subtab', deletedSubTab))
-    const retainedToken = buildContextToken(payload('retained', retained))
-    const state = {
-      noteBodies: [
-        {
-          id: 'body-1',
-          aisles: [
-            { id: 'aisle-1', aisleBodyId: 'aisle-body-1' },
-            { id: 'aisle-2', aisleBodyId: 'aisle-body-2' },
-          ],
-        },
-        {
-          id: 'body-2',
-          aisles: [{ id: 'aisle-3', aisleBodyId: 'aisle-body-3' }],
-        },
-      ],
-      noteAisleBodies: [
-        { id: 'aisle-body-1', markdown: `a\n${parentToken}` },
-        { id: 'aisle-body-2', markdown: `${retainedToken}\nb` },
-        { id: 'aisle-body-3', markdown: `${subTabToken}\nc` },
-      ],
-    } as unknown as AppState
+    const retained = targetLocation('other-parent', null)
+    const parentToken = buildContextToken(state, payload('parent', deletedParent))
+    const subTabToken = buildContextToken(state, payload('subtab', deletedSubTab))
+    const retainedToken = buildContextToken(state, payload('retained', retained))
+    state.noteAisleBodies = [
+      { id: 'body-parent-aisle-body', markdown: `a\n${parentToken}` },
+      { id: 'body-retained-aisle-body', markdown: `${retainedToken}\nb` },
+      { id: 'body-sub-aisle-body', markdown: `${subTabToken}\nc` },
+      { id: 'body-other-aisle-body', markdown: '' },
+      { id: 'body-deleted-parent-aisle-body', markdown: '' },
+    ]
 
     const next = removeContextReferencesForNoteLocationsFromAppState(state, [deletedParent, deletedSubTab])
 
     expect(getAisleMarkdown(next.noteBodies[0].aisles[0], next.noteAisleBodies)).toBe('a\n')
-    expect(getAisleMarkdown(next.noteBodies[0].aisles[1], next.noteAisleBodies)).toBe(`${retainedToken}\nb`)
+    expect(getAisleMarkdown(next.noteBodies[2].aisles[0], next.noteAisleBodies)).toBe(`${retainedToken}\nb`)
     expect(getAisleMarkdown(next.noteBodies[1].aisles[0], next.noteAisleBodies)).toBe('\nc')
   })
 })

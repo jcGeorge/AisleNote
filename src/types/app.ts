@@ -19,7 +19,7 @@ export type CustomThemePaletteSlot =
   | 'subtabRail'
 export type CustomThemePalette = Record<CustomThemePaletteSlot, string>
 export type ThemePaletteOverrides = Partial<Record<AppTheme, CustomThemePalette>>
-export type ViewMode = 'domains' | 'spaces' | 'main' | 'trash' | 'settings' | 'stage-manager'
+export type ViewMode = 'main' | 'trash' | 'settings' | 'stage-manager'
 export type ShortcutId =
   | 'toggleTabTrash'
   | 'openDomains'
@@ -44,6 +44,7 @@ export type DataSettingsSection = 'cloud' | 'trash' | 'export' | 'import'
 export type VisualsSettingsSection = 'theming' | 'otherVisuals'
 export type TableControlTargetMode = 'active-cell' | 'bottom-right'
 export type TableOfContentsScope = 'all-aisles' | 'focused-aisle'
+export type NewAislePlacement = 'end' | 'right-of-focus'
 export type TipId = 'task-undo' | 'tab-create-after-rename'
 
 export type NewlineOperationId =
@@ -182,8 +183,12 @@ export type NoteHeadingAnchor = {
   headingKey: string
 }
 
+export type NotePreviewStart = 'last-position'
+
 export type NoteNavigationTarget = NoteLocation & {
+  aisleIds?: string[]
   heading?: NoteHeadingAnchor
+  aisleId?: string
 }
 
 export type NoteCursorEndpoint = {
@@ -350,6 +355,7 @@ export type AppState = {
     tableAddTargetMode: TableControlTargetMode
     tableDeleteTargetMode: TableControlTargetMode
     tableOfContentsScope?: TableOfContentsScope
+    newAislePlacement?: NewAislePlacement
     tabButtonScale: number
     noteFontScale: number
     tooltipScale?: number
@@ -654,6 +660,7 @@ export type InternalNoteLinkEdit = {
   label: string
   href: string
   target: NoteLocation
+  aisleIds?: string[]
   heading?: NoteHeadingAnchor
   from?: number
   to?: number
@@ -701,6 +708,7 @@ export type ContextMenuState =
       label: string
       href: string
       target: NoteLocation
+      aisleIds?: string[]
       heading?: NoteHeadingAnchor
       from: number
       to: number
@@ -827,7 +835,7 @@ export type ModalState =
       modeLocked?: boolean
       insertAs: NoteReferenceInsertKind
       source: NoteLocation
-      target: NoteLocation & { aisleIds?: string[]; heading?: NoteHeadingAnchor }
+      target: NoteLocation & { aisleIds?: string[]; heading?: NoteHeadingAnchor; previewStart?: NotePreviewStart }
       noteLabel: string
       noteLabelTouched?: boolean
       url: string

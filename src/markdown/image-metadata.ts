@@ -1,3 +1,10 @@
+import {
+  IMAGE_RESIZE_METADATA_FRAGMENT_PREFIX,
+  buildImageResizeMetadataFragment as buildImageResizeMetadataFragmentCore,
+  normalizeImageResizeMetadataFragment as normalizeImageResizeMetadataFragmentCore,
+  parseImageResizeMetadataFragment as parseImageResizeMetadataFragmentCore,
+} from './image-metadata-core.js'
+
 export type ImageResizeMetadata = {
   v: 1
   w: number
@@ -6,8 +13,6 @@ export type ImageResizeMetadata = {
   fv?: boolean
 }
 
-export const IMAGE_RESIZE_METADATA_FRAGMENT_PREFIX = '#tabs-image='
-
 function normalizeImageResizeWidth(value: unknown): number | null {
   const width = typeof value === 'number' ? value : Number(value)
   if (!Number.isFinite(width)) return null
@@ -15,61 +20,18 @@ function normalizeImageResizeWidth(value: unknown): number | null {
   return rounded > 0 ? rounded : null
 }
 
-function encodeBase64Url(value: string): string {
-  const bytes = new TextEncoder().encode(value)
-  let binary = ''
-  for (let index = 0; index < bytes.length; index += 1) {
-    binary += String.fromCharCode(bytes[index])
-  }
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
-}
-
-function decodeBase64Url(value: string): string | null {
-  try {
-    const normalized = value.replace(/-/g, '+').replace(/_/g, '/')
-    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
-    const binary = atob(padded)
-    const bytes = new Uint8Array(binary.length)
-    for (let index = 0; index < binary.length; index += 1) {
-      bytes[index] = binary.charCodeAt(index)
-    }
-    return new TextDecoder().decode(bytes)
-  } catch {
-    return null
-  }
-}
+export { IMAGE_RESIZE_METADATA_FRAGMENT_PREFIX }
 
 export function parseImageResizeMetadataFragment(fragment: string): ImageResizeMetadata | null {
-  if (!fragment.startsWith(IMAGE_RESIZE_METADATA_FRAGMENT_PREFIX)) return null
-  const decoded = decodeBase64Url(fragment.slice(IMAGE_RESIZE_METADATA_FRAGMENT_PREFIX.length))
-  if (!decoded) return null
-
-  try {
-    const raw = JSON.parse(decoded) as Partial<ImageResizeMetadata>
-    const width = normalizeImageResizeWidth(raw.w)
-    if (raw.v !== 1 || !width) return null
-    const rotation = raw.r === 90 || raw.r === 180 || raw.r === 270 ? raw.r : undefined
-    return {
-      v: 1,
-      w: width,
-      ...(rotation ? { r: rotation } : {}),
-      ...(raw.fh === true ? { fh: true } : {}),
-      ...(raw.fv === true ? { fv: true } : {}),
-    }
-  } catch {
-    return null
-  }
+  return parseImageResizeMetadataFragmentCore(fragment) as ImageResizeMetadata | null
 }
 
 export function buildImageResizeMetadataFragment(metadata: ImageResizeMetadata): string {
-  const payload = {
-    v: 1,
-    w: metadata.w,
-    ...(metadata.r ? { r: metadata.r } : {}),
-    ...(metadata.fh === true ? { fh: true } : {}),
-    ...(metadata.fv === true ? { fv: true } : {}),
-  }
-  return `${IMAGE_RESIZE_METADATA_FRAGMENT_PREFIX}${encodeBase64Url(JSON.stringify(payload))}`
+  return buildImageResizeMetadataFragmentCore(metadata)
+}
+
+export function normalizeImageResizeMetadataFragment(fragment: string): string {
+  return normalizeImageResizeMetadataFragmentCore(fragment)
 }
 
 export function splitImageResizeMetadataFromUrl(url: string): {

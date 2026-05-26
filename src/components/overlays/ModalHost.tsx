@@ -17,7 +17,6 @@ import { buildFrontmatterModalDraftForAisle, buildFrontmatterRowsForAisle } from
 import {
   buildNoteLocationKey,
   getDefaultNoteLinkLabel,
-  getNoteLocationBreadcrumbLabel,
   listNoteLocationsForBody,
 } from '../../notes/note-locations'
 import { getAisleBodyId } from '../../notes/note-markdown'
@@ -322,27 +321,15 @@ export function ModalHost({
   }
 
   const updateLinkModalTarget = (target: NoteLocationPickerValue) => {
-    if (modal.type !== 'insert-note-reference' || modal.internalEdit) return
+    if (modal.type !== 'insert-note-reference') return
     const normalizedTarget = normalizeNoteReferenceTarget(state, target)
     onModalChange({
       ...modal,
       target: normalizedTarget,
       noteLabel:
-        modal.noteLabelTouched || modal.insertAs !== 'link'
+        modal.internalEdit || modal.noteLabelTouched || modal.insertAs !== 'link'
           ? modal.noteLabel
           : getDefaultNoteLinkLabel(state, modal.source, normalizedTarget),
-    })
-  }
-
-  const setNoteReferenceAisle = (aisleId: string) => {
-    if (modal.type !== 'insert-note-reference') return
-    onModalChange({
-      ...modal,
-      target: normalizeNoteReferenceTarget(state, {
-        ...modal.target,
-        aisleIds: [aisleId],
-        heading: modal.target.heading?.aisleId === aisleId ? modal.target.heading : undefined,
-      }),
     })
   }
 
@@ -355,6 +342,21 @@ export function ModalHost({
       target: {
         ...resolved.target,
         heading: headingKey ? { aisleId: resolved.selectedAisle.id, headingKey } : undefined,
+        previewStart: undefined,
+      },
+    })
+  }
+
+  const setNoteReferencePreviewStart = (previewStart: 'top' | 'last-position') => {
+    if (modal.type !== 'insert-note-reference') return
+    const resolved = resolveNoteReferenceTarget(state, modal.target)
+    if (!resolved.selectedAisle) return
+    onModalChange({
+      ...modal,
+      target: {
+        ...resolved.target,
+        heading: undefined,
+        previewStart: previewStart === 'last-position' ? 'last-position' : undefined,
       },
     })
   }
@@ -565,41 +567,62 @@ export function ModalHost({
     )
   }
 
-  const renderLockedNoteReferenceAisles = () => {
-    if (modal.type !== 'insert-note-reference' || modal.mode !== 'note' || !modal.internalEdit) return null
-    const resolved = resolveNoteReferenceTarget(state, modal.target)
-    if (!resolved.noteBody || resolved.noteBody.aisles.length <= 1) return null
-    return (
-      <div className="note-picker-aisles">
-        {resolved.noteBody.aisles.map((aisle, index) => (
-          <button
-            key={aisle.id}
-            type="button"
-            className={`note-picker-aisle-choice ${resolved.selectedAisle?.id === aisle.id ? 'is-active' : ''}`}
-            onClick={() => setNoteReferenceAisle(aisle.id)}
-          >
-            aisle {index + 1}
-          </button>
-        ))}
-      </div>
-    )
-  }
-
   const renderNoteReferenceHeadings = () => {
     if (modal.type !== 'insert-note-reference' || modal.mode !== 'note') return null
     const resolved = resolveNoteReferenceTarget(state, modal.target)
-    if (!resolved.selectedAisle || resolved.headings.length === 0) return null
+    if (!resolved.selectedAisle) return null
+    const isPreviewReference = modal.insertAs === 'context'
+    if (!isPreviewReference && resolved.headings.length === 0) return null
+    if (!isPreviewReference) {
+      return (
+        <div className="note-reference-heading-picker" role="group" aria-label="Header target">
+          <span className="note-reference-heading-label">header</span>
+          <div className="note-reference-heading-list">
+            <button
+              type="button"
+              className={`note-reference-heading-btn ${resolved.target.heading ? '' : 'is-active'}`}
+              onClick={() => setNoteReferenceHeading(null)}
+            >
+              last position
+            </button>
+            {resolved.headings.map((heading) => (
+              <button
+                key={heading.key}
+                type="button"
+                className={`note-reference-heading-btn ${
+                  resolved.target.heading?.headingKey === heading.key ? 'is-active' : ''
+                }`}
+                style={{ '--note-reference-heading-indent': `${Math.max(0, heading.level - 1) * 0.78}rem` } as CSSProperties}
+                onClick={() => setNoteReferenceHeading(heading.key)}
+              >
+                {heading.text || `heading ${heading.level}`}
+              </button>
+            ))}
+          </div>
+        </div>
+      )
+    }
     return (
-      <div className="note-reference-heading-picker" role="group" aria-label="Header target">
-        <span className="note-reference-heading-label">header</span>
+      <div className="note-reference-heading-picker" role="group" aria-label="Preview start">
+        <span className="note-reference-heading-label">preview starts at</span>
         <div className="note-reference-heading-list">
           <button
             type="button"
-            className={`note-reference-heading-btn ${resolved.target.heading ? '' : 'is-active'}`}
-            onClick={() => setNoteReferenceHeading(null)}
+            className={`note-reference-heading-btn ${
+              !resolved.target.heading && resolved.target.previewStart !== 'last-position' ? 'is-active' : ''
+            }`}
+            onClick={() => setNoteReferencePreviewStart('top')}
+          >
+            at the top
+          </button>
+          <button
+            type="button"
+            className={`note-reference-heading-btn ${resolved.target.previewStart === 'last-position' ? 'is-active' : ''}`}
+            onClick={() => setNoteReferencePreviewStart('last-position')}
           >
             last position
           </button>
+          {resolved.headings.length > 0 && <span className="note-reference-heading-separator" aria-hidden="true" />}
           {resolved.headings.map((heading) => (
             <button
               key={heading.key}
@@ -620,7 +643,7 @@ export function ModalHost({
 
   return (
     <div
-      className="delete-modal-backdrop"
+      className={`delete-modal-backdrop ${modal.type === 'insert-note-reference' ? 'insert-note-reference-backdrop' : ''}`}
       onClick={() => {
         if (shouldModalBackdropClose(modal)) onModalChange(null)
       }}
@@ -628,7 +651,9 @@ export function ModalHost({
       <div
         className={`delete-modal ${isPickerModal ? 'settings-modal' : ''} ${isNotePickerModal ? 'note-picker-modal' : ''} ${
           modal.type === 'shortcut-menu-settings' ? 'shortcut-settings-modal' : ''
-        } ${modal.type === 'sort-tabs' ? 'sort-modal' : ''}`}
+        } ${modal.type === 'sort-tabs' ? 'sort-modal' : ''} ${
+          modal.type === 'insert-note-reference' ? 'insert-note-reference-modal-shell' : ''
+        }`}
         role="dialog"
         aria-modal="true"
         onClick={(event) => event.stopPropagation()}
@@ -829,27 +854,17 @@ export function ModalHost({
             )}
             {modal.mode === 'note' && (
               <>
-                {modal.internalEdit ? (
-                  <div className="note-reference-locked-target">
-                    <span>note</span>
-                    <strong>{getNoteLocationBreadcrumbLabel(state, modal.target)}</strong>
-                  </div>
-                ) : (
-                  <>
-                    {(!modal.modeLocked || !modal.editingTokenId) && (
-                      <div className="note-reference-picker-divider" aria-hidden="true" />
-                    )}
-                    <NoteLocationPicker
-                      domains={domainsForPickers}
-                      noteBodies={state.noteBodies}
-                      value={modal.target}
-                      includeAisles
-                      aisleSelectionMode="single"
-                      onChange={updateLinkModalTarget}
-                    />
-                  </>
+                {(!modal.modeLocked || !modal.editingTokenId) && (
+                  <div className="note-reference-picker-divider" aria-hidden="true" />
                 )}
-                {renderLockedNoteReferenceAisles()}
+                <NoteLocationPicker
+                  domains={domainsForPickers}
+                  noteBodies={state.noteBodies}
+                  value={modal.target}
+                  includeAisles
+                  aisleSelectionMode="single"
+                  onChange={updateLinkModalTarget}
+                />
                 {renderNoteReferenceHeadings()}
                 {modal.insertAs === 'link' && (
                   <label className="settings-modal-field">

@@ -24,11 +24,22 @@ export function runEditorHistoryCommand({
   direction,
   onRunStructuralHistory,
   onRunEditorHistory,
+  shouldRunStructuralHistoryBeforeEditorHistory = () => false,
 }: {
   direction: WysiwygHistoryDirection
   onRunStructuralHistory: (direction: WysiwygHistoryDirection) => boolean
   onRunEditorHistory: (direction: WysiwygHistoryDirection) => WysiwygHistoryResult
+  shouldRunStructuralHistoryBeforeEditorHistory?: (direction: WysiwygHistoryDirection) => boolean
 }): EditorCommandResult {
+  if (shouldRunStructuralHistoryBeforeEditorHistory(direction) && onRunStructuralHistory(direction)) {
+    return createEditorCommandResult({
+      handled: true,
+      commit: false,
+      focusIntent: 'structural-history',
+      historyResult: 'structural',
+    })
+  }
+
   const result = onRunEditorHistory(direction)
   if (result !== 'unavailable') {
     return createEditorCommandResult({

@@ -39,7 +39,7 @@ import {
 } from './arrange/arrange-hierarchy'
 import { sortNamedItems, sortSubTabs, sortTabs } from './arrange/tab-sort'
 import { useArrangeMode } from './arrange/useArrangeMode'
-import { DomainsPage } from './components/domains/DomainsPage'
+import { getToggledRailVisibilitySettings, type RailVisibilityTarget } from './navigation/rail-visibility'
 import { ImageToolsOverlay } from './components/editor/ImageToolsOverlay'
 import { FindReplacePanel } from './components/editor/FindReplacePanel'
 import { LegacyEditorShell } from './components/editor/LegacyEditorShell'
@@ -53,6 +53,7 @@ import {
 } from './components/editor/shortcut-menu-keyboard'
 import { AisleEditModal } from './components/notes/AisleEditModal'
 import { NoteWorkspace } from './components/notes/NoteWorkspace'
+import { scrollAislePaneIntoHorizontalView } from './components/notes/aisle-horizontal-scroll'
 import { SubTabRail } from './components/navigation/SubTabRail'
 import {
   CompactDomainRail,
@@ -74,7 +75,6 @@ import { TipHost } from './components/overlays/TipHost'
 import { ToastHost } from './components/overlays/ToastHost'
 import { appendToastToStack } from './components/overlays/toast-stack'
 import { SettingsPage } from './components/settings/SettingsPage'
-import { SpacesPage } from './components/spaces/SpacesPage'
 import { StageManagerView } from './components/stage-manager/StageManagerView'
 import { TrashHomeNote } from './components/trash/TrashHomeNote'
 import { applyListToolbarCommand, type ToolbarListCommand } from './editor/list-marker-commands'
@@ -96,6 +96,7 @@ import {
   buildTableOfContentsPanels,
   type TableOfContentsPanelsState,
 } from './editor/table-of-contents'
+import type { TableOfContentsLinkItem } from './editor/table-of-contents-links'
 import {
   getCommandCapableEditor,
   collectProseMirrorTextPositions,
@@ -137,12 +138,25 @@ import {
 import { buildNoteLocationKey, getLocationInfo, listNoteLocationsForBody } from './notes/note-locations'
 import { getLinkedAisleIdsForNoteBody } from './notes/aisle-links'
 import { openExternalWebUrl } from './notes/external-links'
-import { escapeMarkdownLinkLabel } from './notes/note-references'
+import { escapeMarkdownLinkLabel, getContextReferenceSignature, parseContextReferences } from './notes/note-references'
 import {
   buildDefaultNoteReferenceDraft,
   buildExternalLinkEditDraft,
   buildInternalNoteLinkEditDraft,
+  getNoteReferencePreviewSpec,
 } from './notes/note-reference-model'
+import {
+  applyCopyAsDuplicatePayloadToState,
+  buildCopyAsClipboardData,
+  getCopyAsAisleIdForNoteContext,
+  getCopyAsPasteSuccessMessage,
+  getCopyAsSuccessMessage,
+  readCopyAsPayloadFromClipboard,
+  type CopyAsAction,
+  type CopyAsClipboardPayload,
+  type CopyAsScope,
+  writeCopyAsClipboardData,
+} from './notes/copy-as-clipboard'
 import { useNoteMentionController } from './notes/useNoteMentionController'
 import { getAisleBodyId } from './notes/note-markdown'
 import { getAisleMarkdown } from './notes/aisle-body-state'
@@ -245,6 +259,18 @@ type FindReplacePanelState = {
   activeIndex: number
 }
 
+type CopyAsMenuItemState = {
+  available: boolean
+  reason?: string
+}
+
+type CopyAsMenuState = {
+  note: Record<CopyAsAction, CopyAsMenuItemState>
+  aisle?: Record<CopyAsAction, CopyAsMenuItemState>
+}
+
+const COPY_AS_MENU_ACTIONS: CopyAsAction[] = ['duplicate', 'link', 'copy', 'preview']
+
 const TOOLBAR_LIST_COMMAND_TO_MULTILINE_OPERATION: Partial<Record<ToolbarListCommand, MultiLineListOperation>> = {
   taskList: 'task',
   dashList: 'dashList',
@@ -326,6 +352,7 @@ function App() {
   const pendingScrollToAisleIdRef = useRef<string | null>(null)
   const pendingFocusToAisleIdRef = useRef<string | null>(null)
   const pendingNavigationHeadingRef = useRef<NonNullable<NoteNavigationTarget['heading']> | null>(null)
+  const pendingNavigationAisleIdRef = useRef<string | null>(null)
   const editorEventRootRef = useRef<HTMLElement | null>(null)
   const closeShortcutMenuRef = useRef<(options?: { restoreEditorFocus?: boolean }) => void>(() => {})
   const runShortcutOperationFromMenuRef = useRef<(operation: NewlineOperationId) => void>(() => {})
@@ -452,6 +479,50 @@ function App() {
     [activeNoteBodyId, state],
   )
   const activeNoteDuplicateCount = activeNoteLocations.length
+  const contextMenuNoteLocation = useMemo<NoteLocation | null>(() => {
+    if (!contextMenu) return null
+    if (contextMenu.type === 'editor') return activeNoteLocation
+    if (contextMenu.type !== 'tab' && contextMenu.type !== 'subtab' && contextMenu.type !== 'home-tab') return null
+    return {
+      domainId: state.activeDomainId,
+      spaceId: activeSpace.id,
+      tabId: contextMenu.tabId,
+      subTabId: contextMenu.type === 'subtab' ? contextMenu.subTabId : null,
+    }
+  }, [activeNoteLocation, activeSpace.id, contextMenu, state.activeDomainId])
+  const copyAsMenu = useMemo<CopyAsMenuState | null>(() => {
+    const source = contextMenuNoteLocation
+    if (!source) return null
+    const info = getLocationInfo(state, source)
+    const body = info.noteBodyId ? state.noteBodies.find((candidate) => candidate.id === info.noteBodyId) ?? null : null
+    if (!body) return null
+    const missingReason = 'note not found.'
+    const notePreviewReason = 'copy a specific aisle as preview for notes with multiple aisles.'
+    const note = Object.fromEntries(
+      COPY_AS_MENU_ACTIONS.map((action) => [
+        action,
+        {
+          available: action !== 'preview' || body.aisles.length <= 1,
+          reason: action === 'preview' && body.aisles.length > 1 ? notePreviewReason : missingReason,
+        },
+      ]),
+    ) as Record<CopyAsAction, CopyAsMenuItemState>
+
+    if (body.aisles.length <= 1) return { note }
+    const sourceKey = buildNoteLocationKey(source)
+    const activeSourceKey = buildNoteLocationKey(activeNoteLocation)
+    const focusedAisle = sourceKey === activeSourceKey
+      ? body.aisles.find((aisle) => aisle.id === resolvedActiveAisleId) ?? null
+      : null
+    const aisle = focusedAisle ?? body.aisles[0] ?? null
+    if (!aisle) return { note }
+    return {
+      note,
+      aisle: Object.fromEntries(
+        COPY_AS_MENU_ACTIONS.map((action) => [action, { available: true }]),
+      ) as Record<CopyAsAction, CopyAsMenuItemState>,
+    }
+  }, [activeNoteLocation, contextMenuNoteLocation, resolvedActiveAisleId, state])
   const findReplaceMatches = useMemo(
     () =>
       findReplacePanel.open
@@ -650,6 +721,17 @@ function App() {
     }
   }, [activeAisleId, resolvedActiveAisleId])
 
+  const scrollAisleIntoHorizontalView = useCallback((aisleId: string) => {
+    const scrollNode = aisleScrollRef.current
+    if (!scrollNode || !activeNoteBodyId) return false
+    if (!scrollAislePaneIntoHorizontalView(scrollNode, aisleId)) return false
+    aisleHorizontalScrollByBodyRef.current.set(activeNoteBodyId, scrollNode.scrollLeft)
+    if (pendingScrollToAisleIdRef.current === aisleId) {
+      pendingScrollToAisleIdRef.current = null
+    }
+    return true
+  }, [activeNoteBodyId])
+
   useEffect(() => {
     const scrollNode = aisleScrollRef.current
     if (viewMode !== 'main' || !activeNoteBodyId || !scrollNode) return
@@ -657,12 +739,7 @@ function App() {
     const animationFrame = window.requestAnimationFrame(() => {
       const pendingAisleId = pendingScrollToAisleIdRef.current
       if (pendingAisleId) {
-        const escapedAisleId = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(pendingAisleId) : pendingAisleId
-        const pendingPane = scrollNode.querySelector<HTMLElement>(`[data-aisle-id="${escapedAisleId}"]`)
-        if (pendingPane) {
-          pendingPane.scrollIntoView({ block: 'nearest', inline: 'end' })
-          aisleHorizontalScrollByBodyRef.current.set(activeNoteBodyId, scrollNode.scrollLeft)
-          pendingScrollToAisleIdRef.current = null
+        if (scrollAisleIntoHorizontalView(pendingAisleId)) {
           return
         }
         pendingScrollToAisleIdRef.current = null
@@ -672,7 +749,7 @@ function App() {
     })
 
     return () => window.cancelAnimationFrame(animationFrame)
-  }, [viewMode, activeNoteBodyId, activeNoteAisles.length])
+  }, [viewMode, activeNoteBodyId, activeNoteAisles.length, scrollAisleIntoHorizontalView])
 
   useEffect(() => {
     if (!activeNoteBodyId || activeNoteBody) return
@@ -833,6 +910,8 @@ function App() {
   const closeAisleEditModal = aisleController.closeAisleEditModal
   const captureActiveAisleStructuralSnapshot = aisleController.captureActiveAisleStructuralSnapshot
   const runAisleStructuralHistory = aisleController.runAisleStructuralHistory
+  const shouldRunAisleStructuralHistoryBeforeEditorHistory =
+    aisleController.shouldRunAisleStructuralHistoryBeforeEditorHistory
   const addAisleToActiveNote = aisleController.addAisleToActiveNote
   const applyAisleEditDraftToActiveNote = aisleController.applyAisleEditDraftToActiveNote
 
@@ -844,6 +923,7 @@ function App() {
       return
     }
     pendingNavigationHeadingRef.current = location.heading ?? null
+    pendingNavigationAisleIdRef.current = location.heading ? null : location.aisleId ?? null
 
     if (arrangeMode.active) {
       exitArrangeMode()
@@ -1038,8 +1118,6 @@ function App() {
   const spacesGridRef = arrange.spacesGridRef
   const arrangeTrashDropRef = arrange.trashDropRef
   const isDraggingOverArrangeTrashDrop = arrange.isDraggingOverTrashDrop
-  const suppressNextDomainArrangeExitRef = arrange.suppressNextDomainArrangeExitRef
-  const suppressNextSpaceArrangeExitRef = arrange.suppressNextSpaceArrangeExitRef
   const arrangeSelection = arrange.selection
   const clearArrangePressTimer = arrange.clearPressTimer
   const clearArrangeTapCandidate = arrange.clearTapCandidate
@@ -1142,19 +1220,25 @@ function App() {
   const selectTab = navigationActions.selectTab
   const selectSubTab = navigationActions.selectSubTab
   const selectParentHomeTab = navigationActions.selectParentHomeTab
-  const openSpace = navigationActions.openSpace
-  const addSpace = navigationActions.addSpace
   const duplicateSpaceFromContext = navigationActions.duplicateSpaceFromContext
-  const openSpacesView = navigationActions.openSpacesView
-  const openDomainsView = navigationActions.openDomainsView
-  const openDomain = navigationActions.openDomain
-  const addDomainFromPage = navigationActions.addDomainFromPage
   const toggleTrashView = () => {
     setTrashDomainId('')
     setTrashSpaceId('')
     navigationActions.toggleTrashView()
   }
   const openSettings = navigationActions.openSettings
+  const toggleRailVisibility = (target: RailVisibilityTarget) => {
+    setState((previous) => ({
+      ...previous,
+      ui: {
+        ...previous.ui,
+        ...getToggledRailVisibilitySettings(previous.ui, target),
+      },
+    }))
+    setMenuOpen(false)
+  }
+  const toggleSpaceRailVisibility = () => toggleRailVisibility('space')
+  const toggleDomainRailVisibility = () => toggleRailVisibility('domain')
 
   const addSpaceFromCompactRail = () => {
     saveActiveCursorBeforeNavigation()
@@ -1478,6 +1562,8 @@ function App() {
     pushToast,
   })
   const getContextPreviewData = noteReferenceActions.getContextPreviewData
+  const resolveContextPreviewToken = noteReferenceActions.resolveContextPreviewToken
+  const resolveInternalNoteReferenceToken = noteReferenceActions.resolveInternalNoteReferenceToken
   const insertLinkIntoActiveEditor = noteReferenceActions.insertLinkIntoActiveEditor
   const insertNoteReference = noteReferenceActions.insertNoteReference
   const deleteContextPreview = noteReferenceActions.deleteContextPreview
@@ -1579,6 +1665,8 @@ function App() {
     onToggleHeadingCollapse: toggleHeadingCollapse,
     onExpandHeadingCollapse: expandHeadingCollapse,
     getContextPreviewData,
+    resolveContextPreviewToken,
+    resolveInternalNoteReferenceToken,
     navigateToNoteLocation,
     deleteContextPreview: (tokenId) => deleteContextPreviewRef.current(tokenId),
   })
@@ -1588,7 +1676,9 @@ function App() {
   const registerAislePaneRoot = aisleEditors.registerAislePaneRoot
   const mountedAisleIds = aisleEditors.mountedAisleIds
   const getHeadingOutlineForAisle = aisleEditors.getHeadingOutlineForAisle
+  const getTableOfContentsLinksForAisle = aisleEditors.getTableOfContentsLinksForAisle
   const scrollToAisleHeading = aisleEditors.scrollToAisleHeading
+  const scrollToAisleLink = aisleEditors.scrollToAisleLink
   const getPreviewMarkdownForAisle = aisleEditors.getPreviewMarkdownForAisle
   activateAisleEditorRef.current = activateAisleEditor
 
@@ -1606,6 +1696,7 @@ function App() {
       {
         scope: state.ui.tableOfContentsScope ?? 'all-aisles',
         focusedAisleId: resolvedActiveAisleId,
+        getLinksForAisle: getTableOfContentsLinksForAisle,
       },
     )
 
@@ -1630,6 +1721,22 @@ function App() {
   const selectTableOfContentsHeading = (aisleId: string, headingKey: string) => {
     closeTableOfContentsAisle(aisleId)
     scrollToAisleHeading(aisleId, headingKey)
+  }
+
+  const selectTableOfContentsLink = (aisleId: string, linkKey: string) => {
+    closeTableOfContentsAisle(aisleId)
+    scrollToAisleLink(aisleId, linkKey)
+  }
+
+  const openTableOfContentsLinkTarget = (aisleId: string, link: TableOfContentsLinkItem) => {
+    closeTableOfContentsAisle(aisleId)
+    if (link.kind === 'url-link' && link.href) {
+      openExternalWebUrl(link.href)
+      return
+    }
+    if (link.target) {
+      navigateToNoteLocation(link.target)
+    }
   }
 
   useEffect(() => {
@@ -1662,6 +1769,31 @@ function App() {
     pendingFocusToAisleIdRef,
     pendingScrollToAisleIdRef,
     scrollToAisleHeading,
+    setActiveAisleId,
+    viewMode,
+  ])
+
+  useEffect(() => {
+    const pendingAisleId = pendingNavigationAisleIdRef.current
+    if (!pendingAisleId || viewMode !== 'main' || !activeNoteBodyId) return
+    if (!activeNoteAisles.some((aisle) => aisle.id === pendingAisleId)) {
+      pendingNavigationAisleIdRef.current = null
+      return
+    }
+    pendingCursorRestoreRef.current = null
+    pendingScrollToAisleIdRef.current = pendingAisleId
+    pendingFocusToAisleIdRef.current = pendingAisleId
+    if (activeAisleId !== pendingAisleId) {
+      setActiveAisleId(pendingAisleId)
+    }
+    pendingNavigationAisleIdRef.current = null
+  }, [
+    activeAisleId,
+    activeNoteAisles,
+    activeNoteBodyId,
+    pendingCursorRestoreRef,
+    pendingFocusToAisleIdRef,
+    pendingScrollToAisleIdRef,
     setActiveAisleId,
     viewMode,
   ])
@@ -1857,6 +1989,112 @@ function App() {
     }
   }
 
+  const getCopyAsSourceAisleId = (latestState: AppState, source: NoteLocation) => {
+    return getCopyAsAisleIdForNoteContext(latestState, source, getCurrentNoteLocation(), activeAisleIdRef.current)
+  }
+
+  const hasDuplicatePreviewInActiveNote = (latestState: AppState, payload: CopyAsClipboardPayload) => {
+    const activeInfo = getLocationInfo(latestState, getCurrentNoteLocation())
+    const activeBody = activeInfo.noteBodyId
+      ? latestState.noteBodies.find((candidate) => candidate.id === activeInfo.noteBodyId) ?? null
+      : null
+    if (!activeBody) return false
+    const targetPayload = {
+      id: '',
+      target: payload.source,
+      ...(payload.scope === 'aisle' && payload.aisleId ? { aisleIds: [payload.aisleId] } : {}),
+    }
+    const nextSignature = getContextReferenceSignature(latestState, targetPayload)
+    return activeBody.aisles.some((aisle) =>
+      parseContextReferences(getAisleMarkdown(aisle, latestState.noteAisleBodies), latestState).some(
+        (reference) => getContextReferenceSignature(latestState, reference.payload) === nextSignature,
+      ),
+    )
+  }
+
+  const pasteCopyAsPayload = (payload: CopyAsClipboardPayload): boolean => {
+    if (viewMode !== 'main') {
+      pushToast('open a note before pasting.', 'warning')
+      return true
+    }
+
+    const latestState = buildStateWithLatestEditorContent()
+    const destination = getCurrentNoteLocation()
+
+    if (payload.action === 'duplicate') {
+      const result = applyCopyAsDuplicatePayloadToState(latestState, destination, payload, MAX_NOTE_AISLES)
+      if (result.status !== 'applied') {
+        pushToast(result.status === 'max-aisles' ? MAX_AISLE_WARNING_MESSAGE : result.message, 'warning')
+        return true
+      }
+      stateRef.current = result.state
+      setState(result.state)
+      setContextMenu(null)
+      pushToast(getCopyAsPasteSuccessMessage(payload.scope, payload.action), 'success')
+      return true
+    }
+
+    const data = buildCopyAsClipboardData(latestState, payload.source, payload.scope, payload.action, payload.aisleId)
+    if (!data.ok) {
+      pushToast(data.message, 'warning')
+      return true
+    }
+
+    let text = data.text
+    if (payload.action === 'preview') {
+      const activeInfo = getLocationInfo(latestState, destination)
+      const previewTarget = {
+        ...payload.source,
+        ...(payload.scope === 'aisle' && payload.aisleId ? { aisleIds: [payload.aisleId] } : {}),
+      }
+      const previewSpec = getNoteReferencePreviewSpec(latestState, activeInfo.noteBodyId, previewTarget)
+      if (!previewSpec.ok) {
+        pushToast(previewSpec.message, 'warning')
+        return true
+      }
+      if (hasDuplicatePreviewInActiveNote(latestState, payload)) {
+        pushToast('that note preview already exists in this note.', 'warning')
+        return true
+      }
+      text = `\n\n${previewSpec.token}\n\n`
+    }
+
+    if (!insertEditorTextOperation(editorOperationRuntime, text).handled) {
+      pushToast('open a note before pasting.', 'warning')
+      return true
+    }
+    setContextMenu(null)
+    pushToast(getCopyAsPasteSuccessMessage(payload.scope, payload.action), 'success')
+    return true
+  }
+
+  const copyContextMenuItemAs = (scope: CopyAsScope, action: CopyAsAction) => {
+    const source = contextMenuNoteLocation
+    setContextMenu(null)
+    if (!source) {
+      pushToast('note not found.', 'warning')
+      return
+    }
+    const latestState = buildStateWithLatestEditorContent()
+    const aisleId = scope === 'aisle' ? getCopyAsSourceAisleId(latestState, source) : undefined
+    const data = buildCopyAsClipboardData(latestState, source, scope, action, aisleId)
+    if (!data.ok) {
+      pushToast(data.message, 'warning')
+      return
+    }
+    void writeCopyAsClipboardData(data).then((result) => {
+      if (!result.ok) {
+        pushToast('clipboard copy is unavailable here.', 'warning')
+        return
+      }
+      if (data.privatePayloadRequired && !result.privatePayloadWritten) {
+        pushToast(`${scope === 'aisle' ? 'aisle' : 'note'} content copied; duplicate paste is unavailable here.`, 'warning')
+        return
+      }
+      pushToast(getCopyAsSuccessMessage(scope, action), 'success')
+    })
+  }
+
   const runEditorContextClipboardAction = (action: 'cut' | 'copy' | 'paste' | 'pastePlainText') => {
     setContextMenu(null)
     const currentEditor = editorRef.current
@@ -1876,9 +2114,29 @@ function App() {
       insertEditorTextOperation(editorOperationRuntime, text)
     }
 
-    const nativeHandled = action === 'paste' ? document.execCommand('paste') : false
-    if (nativeHandled) {
-      window.setTimeout(() => commitActiveEditorMarkdownNow(currentEditor), 0)
+    if (action === 'paste') {
+      void readCopyAsPayloadFromClipboard()
+        .then((payload) => {
+          if (payload && pasteCopyAsPayload(payload)) return
+          const nativeHandled = document.execCommand('paste')
+          if (nativeHandled) {
+            window.setTimeout(() => commitActiveEditorMarkdownNow(currentEditor), 0)
+            return
+          }
+          void navigator.clipboard?.readText?.()
+            .then(pasteText)
+            .catch(() => pushToast('clipboard paste is unavailable here.', 'warning'))
+        })
+        .catch(() => {
+          const nativeHandled = document.execCommand('paste')
+          if (nativeHandled) {
+            window.setTimeout(() => commitActiveEditorMarkdownNow(currentEditor), 0)
+            return
+          }
+          void navigator.clipboard?.readText?.()
+            .then(pasteText)
+            .catch(() => pushToast('clipboard paste is unavailable here.', 'warning'))
+        })
       return
     }
 
@@ -1941,7 +2199,11 @@ function App() {
     const link = contextMenu.link
     setContextMenu(null)
     if (link.type === 'internal') {
-      navigateToNoteLocation({ ...link.target, heading: link.heading })
+      navigateToNoteLocation({
+        ...link.target,
+        heading: link.heading,
+        aisleId: link.heading ? undefined : link.aisleIds?.[0],
+      })
       return
     }
     openExternalWebUrl(link.href)
@@ -1956,6 +2218,7 @@ function App() {
         label: link.label,
         href: link.href,
         target: link.target,
+        aisleIds: link.aisleIds,
         heading: link.heading,
         from: link.from,
         to: link.to,
@@ -2118,6 +2381,7 @@ function App() {
     const currentEditor = editorRef.current
     if (!currentEditor) return false
     currentEditor.focus()
+    if (shouldRunAisleStructuralHistoryBeforeEditorHistory(direction) && runAisleStructuralHistory(direction)) return true
     const result = runEditorHistoryOnly(direction)
     if (result !== 'unavailable') return true
     if (runAisleStructuralHistory(direction)) return true
@@ -2170,9 +2434,21 @@ function App() {
     finishEditorOperation(editorOperationRuntime, currentEditor, { syncToolbar: true })
     if (operation === 'aisle') {
       closeImageTools()
-      addAisleToActiveNote(result.aisleMarkdown ?? '', { beforeSnapshot: beforeAisleSnapshot })
+      addAisleToActiveNote(result.aisleMarkdown ?? '', {
+        beforeSnapshot: beforeAisleSnapshot,
+        placement: stateRef.current.ui.newAislePlacement ?? 'end',
+      })
     }
     return true
+  }
+
+  const insertAisleFromEditorContext = () => {
+    setContextMenu(null)
+    if (!editorRef.current) {
+      pushToast('open a note before using the editor menu.', 'warning')
+      return
+    }
+    runActiveNewlineOperation('aisle')
   }
 
   const getShortcutMenuPosition = (operationCount: number): Pick<ShortcutMenuState, 'top' | 'left'> => {
@@ -2337,9 +2613,11 @@ function App() {
     commitActiveEditorMarkdownNow,
     setMenuOpen,
     setContextMenu,
+    resolveInternalNoteReferenceToken,
     navigateToNoteLocation,
     openExternalLink: openExternalWebUrl,
     insertPastedUrlAsLink: (label, url) => insertLinkIntoActiveEditor(label, url),
+    onPasteCopyAsPayload: pasteCopyAsPayload,
     getToolbarFormatShortcut,
     queueToolbarShortcutFeedback,
     syncToolbarFormatState,
@@ -2349,6 +2627,7 @@ function App() {
     onEditorMentionQueryChange: noteMention.refreshQuery,
     onRunStructuralHistory: runAisleStructuralHistory,
     onRunEditorHistory: runEditorHistoryOnly,
+    shouldRunStructuralHistoryBeforeEditorHistory: shouldRunAisleStructuralHistoryBeforeEditorHistory,
     onRunNewlineOperation: runActiveNewlineOperation,
     onOpenShortcutMenu: openShortcutMenu,
     tryExpandMultilineSelection,
@@ -2756,8 +3035,8 @@ function App() {
     updateShortcutSetting: settingsController.updateShortcutSetting,
     exitArrangeMode,
     openSettings,
-    openSpacesView,
-    openDomainsView,
+    toggleSpaceRail: toggleSpaceRailVisibility,
+    toggleDomainRail: toggleDomainRailVisibility,
     toggleTrashView,
     returnToLastTabLikeView,
     navigateHistoryBy,
@@ -2819,12 +3098,16 @@ function App() {
   const arrangeableSpaceClassName =
     arrangeMode.active &&
     (!arrangeDestinationPrompt || promptAllowsSpaceSelection(arrangeDestinationPrompt)) &&
-    ((arrangeMode.scope === 'spaces' && viewMode === 'spaces') || (viewMode === 'main' && showCompactSpaces))
+    arrangeMode.scope === 'spaces' &&
+    viewMode === 'main' &&
+    showCompactSpaces
       ? 'is-arrangeable'
       : ''
   const arrangeableDomainClassName =
     arrangeMode.active &&
-    ((arrangeMode.scope === 'domains' && viewMode === 'domains') || (viewMode === 'main' && showCompactDomains))
+    arrangeMode.scope === 'domains' &&
+    viewMode === 'main' &&
+    showCompactDomains
       ? 'is-arrangeable'
       : ''
   const draggingDomainId =
@@ -2870,10 +3153,12 @@ function App() {
       menuOpen={menuOpen}
       showCloseControl={viewForMenu === 'stage-manager' || mainArrangementActive}
       viewMode={viewForMenu}
+      spaceRailVisible={state.ui.alwaysShowSpaces ?? false}
+      domainRailVisible={state.ui.alwaysShowDomains ?? false}
       onCloseAction={viewForMenu === 'stage-manager' ? stageManager.end : exitArrangeMode}
       onSetMenuOpen={setMenuOpen}
-      onOpenDomains={openDomainsView}
-      onOpenSpaces={openSpacesView}
+      onToggleSpaceRail={toggleSpaceRailVisibility}
+      onToggleDomainRail={toggleDomainRailVisibility}
       onOpenStageManager={stageManager.open}
       onToggleTrash={toggleTrashView}
       onOpenSettings={openSettings}
@@ -3161,6 +3446,8 @@ function App() {
         trashParentTabs={trashParentTabs}
         trashTabId={trashTabId}
         menuOpen={menuOpen}
+        spaceRailVisible={state.ui.alwaysShowSpaces ?? false}
+        domainRailVisible={state.ui.alwaysShowDomains ?? false}
         onAutoSizeRenameInput={autoSizeRenameInput}
         onShouldSkipRenameBlur={shouldSkipRenameBlur}
         onCommitRename={commitRename}
@@ -3195,8 +3482,8 @@ function App() {
         onEndStageManager={stageManager.end}
         onCloseSettingsView={closeSettingsView}
         onSetMenuOpen={setMenuOpen}
-        onOpenDomains={openDomainsView}
-        onOpenSpaces={openSpacesView}
+        onToggleSpaceRail={toggleSpaceRailVisibility}
+        onToggleDomainRail={toggleDomainRailVisibility}
         onOpenStageManager={stageManager.open}
         onToggleTrash={toggleTrashView}
         onOpenSettings={openSettings}
@@ -3224,80 +3511,7 @@ function App() {
         />
       )}
 
-      {viewMode === 'domains' ? (
-        <DomainsPage
-          domains={state.domains}
-          activeDomainId={state.activeDomainId}
-          editingDomainId={editing?.type === 'domain' ? editing.id : null}
-          arrangeMode={arrangeMode}
-          arrangeableDomainClassName={arrangeableDomainClassName}
-          draggingDomainId={draggingDomainId}
-          domainArrangeDragPreview={domainArrangeDragPreview}
-          domainsGridRef={domainsGridRef}
-          onBackgroundClick={() => {
-            if (arrangeMode.active && arrangeMode.scope === 'domains') {
-              if (suppressNextDomainArrangeExitRef.current) {
-                suppressNextDomainArrangeExitRef.current = false
-                return
-              }
-              exitArrangeMode()
-            }
-          }}
-          onAddDomain={addDomainFromPage}
-          onExitArrangeMode={exitArrangeMode}
-          onOpenDomain={openDomain}
-          onCommitRename={(domainId, name) => commitRename('domain', domainId, name)}
-          onCancelRename={(domainId) => cancelRename('domain', domainId)}
-          onShouldSkipRenameBlur={(domainId) => shouldSkipRenameBlur('domain', domainId)}
-          onRenameDraftChange={(domainId, value) => trackRenameDraft('domain', domainId, value)}
-          onOpenContextMenu={openContextMenuForDomain}
-          onConsumeArrangeClickSuppression={consumeArrangeClickSuppression}
-          onStartArrangeDragSeed={startArrangeDragSeed}
-          onStartArrangeTapCandidate={startArrangeTapCandidate}
-          onStartArrangePress={startArrangePress}
-          onHandleArrangeDomainPointerMove={handleArrangeDomainPointerMove}
-          onHandleArrangeDomainPointerUp={handleArrangeDomainPointerUp}
-          onClearArrangePressTimer={clearArrangePressTimer}
-          onCancelArrangeDomainPointerDrag={cancelArrangeDomainPointerDrag}
-        />
-      ) : viewMode === 'spaces' ? (
-        <SpacesPage
-          spaces={state.spaces}
-          activeSpaceId={state.activeSpaceId}
-          editingSpaceId={editing?.type === 'space' ? editing.id : null}
-          arrangeMode={arrangeMode}
-          arrangeableSpaceClassName={arrangeableSpaceClassName}
-          draggingSpaceId={draggingSpaceId}
-          spaceArrangeDragPreview={spaceArrangeDragPreview}
-          spacesGridRef={spacesGridRef}
-          onBackgroundClick={() => {
-            if (arrangeMode.active && arrangeMode.scope === 'spaces') {
-              if (suppressNextSpaceArrangeExitRef.current) {
-                suppressNextSpaceArrangeExitRef.current = false
-                return
-              }
-              exitArrangeMode()
-            }
-          }}
-          onOpenDomains={openDomainsView}
-          onOpenSpace={openSpace}
-          onAddSpace={addSpace}
-          onExitArrangeMode={exitArrangeMode}
-          onCommitRename={(spaceId, name) => commitRename('space', spaceId, name)}
-          onCancelRename={(spaceId) => cancelRename('space', spaceId)}
-          onShouldSkipRenameBlur={(spaceId) => shouldSkipRenameBlur('space', spaceId)}
-          onRenameDraftChange={(spaceId, value) => trackRenameDraft('space', spaceId, value)}
-          onOpenContextMenu={openContextMenuForSpace}
-          onConsumeArrangeClickSuppression={consumeArrangeClickSuppression}
-          onStartArrangeDragSeed={startArrangeDragSeed}
-          onStartArrangeTapCandidate={startArrangeTapCandidate}
-          onStartArrangePress={startArrangePress}
-          onHandleArrangeSpacePointerMove={handleArrangeSpacePointerMove}
-          onHandleArrangeSpacePointerUp={handleArrangeSpacePointerUp}
-          onClearArrangePressTimer={clearArrangePressTimer}
-          onCancelArrangeSpacePointerDrag={cancelArrangeSpacePointerDrag}
-        />
-      ) : viewMode === 'settings' ? (
+      {viewMode === 'settings' ? (
         <SettingsPage
           state={state}
           section={settingsController.section}
@@ -3320,6 +3534,7 @@ function App() {
           tableAddTargetModeDraft={settingsController.tableAddTargetModeDraft}
           tableDeleteTargetModeDraft={settingsController.tableDeleteTargetModeDraft}
           tableOfContentsScopeDraft={settingsController.tableOfContentsScopeDraft}
+          newAislePlacementDraft={settingsController.newAislePlacementDraft}
           frontmatterDraft={settingsController.frontmatterDraft}
           frontmatterDraftDirty={settingsController.frontmatterDraftDirty}
           toolbarLayouts={settingsController.toolbarLayouts}
@@ -3353,6 +3568,7 @@ function App() {
           onTableAddTargetModeChange={settingsController.updateTableAddTargetModeSetting}
           onTableDeleteTargetModeChange={settingsController.updateTableDeleteTargetModeSetting}
           onTableOfContentsScopeChange={settingsController.updateTableOfContentsScopeSetting}
+          onNewAislePlacementChange={settingsController.updateNewAislePlacementSetting}
           onTipEnabledChange={settingsController.updateTipEnabledSetting}
           onSelectToolbarLayout={settingsController.selectToolbarLayoutForEditing}
           onCreateToolbarLayout={settingsController.createToolbarLayoutSetting}
@@ -3497,6 +3713,7 @@ function App() {
                 ) : null
               }
               tableOfContentsHeadingsByAisle={activeTableOfContentsPanels?.headingsByAisle ?? {}}
+              tableOfContentsLinksByAisle={activeTableOfContentsPanels?.linksByAisle ?? {}}
               openTableOfContentsAisleIds={activeTableOfContentsPanels?.openAisleIds ?? new Set<string>()}
               onRootChange={(node) => {
                 editorEventRootRef.current = node
@@ -3509,15 +3726,21 @@ function App() {
               onActivateAisle={(editorKey) => {
                 const targetAisleId = getAisleIdFromAisleEditorKey(editorKey)
                 pendingCursorRestoreRef.current = null
+                pendingScrollToAisleIdRef.current = targetAisleId
                 activateAisleEditor(editorKey, {
                   flushPrevious: true,
                   focus: shouldFocusAislePointerActivation(activeAisleIdRef.current, targetAisleId),
+                })
+                window.requestAnimationFrame(() => {
+                  scrollAisleIntoHorizontalView(targetAisleId)
                 })
               }}
               mountedAisleIds={mountedAisleIds}
               getPreviewMarkdownForAisle={getPreviewMarkdownForAisle}
               onCloseTableOfContentsAisle={closeTableOfContentsAisle}
               onSelectTableOfContentsHeading={selectTableOfContentsHeading}
+              onSelectTableOfContentsLink={selectTableOfContentsLink}
+              onOpenTableOfContentsLink={openTableOfContentsLinkTarget}
               onOpenAisleFrontmatter={openFrontmatterModalForAisle}
               onOpenAisleLink={openLinkedAisleModal}
               onRegisterAislePaneRoot={registerAislePaneRoot}
@@ -3663,10 +3886,17 @@ function App() {
         onEditorClipboard={runEditorContextClipboardAction}
         onEditorCommand={runEditorContextCommand}
         onEditorInsertLink={openEditorContextLinkModal}
+        onEditorInsertAisle={insertAisleFromEditorContext}
         onEditorInsertAttachment={insertAttachmentFromEditorContext}
         onEditorFindReplace={openFindReplacePanel}
         onEditorOpenContextLink={openEditorContextLink}
         onEditorEditContextLink={editEditorContextLink}
+        copyAsMenu={copyAsMenu}
+        onCopyAs={copyContextMenuItemAs}
+        onCopyAsUnavailable={(message) => {
+          setContextMenu(null)
+          pushToast(message, 'warning')
+        }}
       />
 
       <ModalHost
@@ -3691,11 +3921,6 @@ function App() {
         open={aisleEditModalOpen && viewMode === 'main'}
         aisles={activeNoteAisles}
         linkedAisleIds={activeLinkedAisleIds}
-        getContextPreviewLabel={
-          activeNoteBodyId
-            ? (payload) => getContextPreviewData(payload, activeNoteBodyId).locationLabel
-            : undefined
-        }
         onCancel={closeAisleEditModal}
         onApply={applyAisleEditDraftToActiveNote}
         onWarn={(message) => pushToast(message, 'warning')}

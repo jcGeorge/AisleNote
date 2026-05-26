@@ -41,6 +41,8 @@ type TopBarProps = {
   trashParentTabs: TrashParentBucket[]
   trashTabId: string
   menuOpen: boolean
+  spaceRailVisible: boolean
+  domainRailVisible: boolean
   onAutoSizeRenameInput: (input: HTMLInputElement) => void
   onShouldSkipRenameBlur: (type: EditableEntityType, id: string) => boolean
   onCommitRename: (type: EditableEntityType, id: string, name: string) => void
@@ -88,8 +90,8 @@ type TopBarProps = {
   onEndStageManager: () => void
   onCloseSettingsView: () => void
   onSetMenuOpen: (updater: boolean | ((open: boolean) => boolean)) => void
-  onOpenDomains: () => void
-  onOpenSpaces: () => void
+  onToggleSpaceRail: () => void
+  onToggleDomainRail: () => void
   onOpenStageManager: () => void
   onToggleTrash: () => void
   onOpenSettings: () => void
@@ -127,6 +129,8 @@ export function TopBar({
   trashParentTabs,
   trashTabId,
   menuOpen,
+  spaceRailVisible,
+  domainRailVisible,
   onAutoSizeRenameInput,
   onShouldSkipRenameBlur,
   onCommitRename,
@@ -161,14 +165,12 @@ export function TopBar({
   onEndStageManager,
   onCloseSettingsView,
   onSetMenuOpen,
-  onOpenDomains,
-  onOpenSpaces,
+  onToggleSpaceRail,
+  onToggleDomainRail,
   onOpenStageManager,
   onToggleTrash,
   onOpenSettings,
 }: TopBarProps) {
-  if (viewMode === 'spaces' || viewMode === 'domains') return null
-
   const primaryTablistProps =
     viewMode === 'settings'
       ? {}
@@ -437,6 +439,8 @@ export function TopBar({
             menuOpen={menuOpen}
             showCloseControl={topbarShowsCloseControl}
             viewMode={viewMode}
+            spaceRailVisible={spaceRailVisible}
+            domainRailVisible={domainRailVisible}
             onCloseAction={() => {
               if (arrangeMode.active) {
                 onExitArrangeMode()
@@ -451,8 +455,8 @@ export function TopBar({
               }
             }}
             onSetMenuOpen={onSetMenuOpen}
-            onOpenDomains={onOpenDomains}
-            onOpenSpaces={onOpenSpaces}
+            onToggleSpaceRail={onToggleSpaceRail}
+            onToggleDomainRail={onToggleDomainRail}
             onOpenStageManager={onOpenStageManager}
             onToggleTrash={onToggleTrash}
             onOpenSettings={onOpenSettings}

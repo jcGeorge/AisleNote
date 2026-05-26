@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AppState, Domain, NoteLocation, Space } from '../types/app'
 import { getHeadingOutlineFromMarkdown } from '../editor/heading-outline'
-import { buildContextToken, decodeContextPayload } from './note-references'
+import { buildContextToken, parseContextToken } from './note-references'
 import {
   buildDefaultNoteReferenceDraft,
   buildExternalLinkEditDraft,
@@ -93,7 +93,7 @@ describe('note reference model', () => {
     subTabId: 'sub-a',
   }
 
-  it('uses the same default labels and href builder for local, same-space, and cross-space note links', () => {
+  it('uses default labels and wiki syntax for local, same-space, and cross-space note links', () => {
     const state = createReferenceState()
     const sameTab = getNoteReferenceLinkSpec(state, source, { ...source, subTabId: 'sub-b' })
     const sameSpace = getNoteReferenceLinkSpec(state, source, { domainId: 'domain-a', spaceId: 'space-a', tabId: 'tab-b', subTabId: null })
@@ -103,11 +103,10 @@ describe('note reference model', () => {
     expect(sameSpace).toMatchObject({ ok: true, label: 'Beta prime > home' })
     expect(crossSpace).toMatchObject({ ok: true, label: 'Gamma space > Elsewhere > home' })
     if (!sameTab.ok || !sameSpace.ok || !crossSpace.ok) throw new Error('expected valid link specs')
-    expect(sameTab.href).toContain('#tabs-note/body-sub-b?')
-    expect(sameSpace.href).toContain('#tabs-note/body-b?')
-    expect(crossSpace.href).toContain('#tabs-note/body-d?')
-    expect(sameSpace.href).not.toContain('aisleId=')
-    expect(sameSpace.href).not.toContain('headingKey=')
+    expect(sameTab.href).toMatch(/^\[\[Beta sub--[0-9a-f]{6}\]\]$/)
+    expect(sameSpace.href).toMatch(/^\[\[Beta prime--[0-9a-f]{6}\]\]$/)
+    expect(crossSpace.href).toMatch(/^\[\[Elsewhere--[0-9a-f]{6}\]\]$/)
+    expect(sameSpace.href).not.toContain('#')
   })
 
   it('keeps @-style no-heading links unanchored and serializes edited heading anchors', () => {
@@ -119,8 +118,7 @@ describe('note reference model', () => {
     )
     expect(noHeader.ok).toBe(true)
     if (!noHeader.ok) throw new Error('expected valid no-header link')
-    expect(noHeader.href).not.toContain('aisleId=')
-    expect(noHeader.href).not.toContain('headingKey=')
+    expect(noHeader.href).not.toContain('#')
 
     const heading = getHeadingOutlineFromMarkdown('body-b-aisle', '# Overview\n\n## Details')[1]
     const anchored = getNoteReferenceLinkSpec(
@@ -137,8 +135,7 @@ describe('note reference model', () => {
     )
     expect(anchored.ok).toBe(true)
     if (!anchored.ok) throw new Error('expected valid anchored link')
-    expect(anchored.href).toContain('aisleId=body-b-aisle')
-    expect(anchored.href).toContain(`headingKey=${encodeURIComponent(heading.key)}`)
+    expect(anchored.href).toMatch(/^\[\[Beta prime--[0-9a-f]{6}#Details--[0-9a-f]{6}\]\]$/)
   })
 
   it('builds modal defaults and locked edit drafts without duplicating setup in App', () => {
@@ -157,7 +154,7 @@ describe('note reference model', () => {
     expect(
       buildInternalNoteLinkEditDraft(state, source, {
         label: 'Linked',
-        href: '#tabs-note/body-b?domainId=domain-a&spaceId=space-a&tabId=tab-b',
+        href: '[[Beta prime--123abc|Linked]]',
         target: { domainId: 'domain-a', spaceId: 'space-a', tabId: 'tab-b', subTabId: null },
         from: 0,
         to: 6,
@@ -183,7 +180,7 @@ describe('note reference model', () => {
     })
   })
 
-  it('validates preview insertion and serializes the existing context token format', () => {
+  it('validates preview insertion and serializes wiki embed tokens', () => {
     const state = createReferenceState()
     const preview = getNoteReferencePreviewSpec(
       state,
@@ -193,8 +190,24 @@ describe('note reference model', () => {
     )
     expect(preview.ok).toBe(true)
     if (!preview.ok) throw new Error('expected valid preview')
-    expect(preview.token).toMatch(/^\{\{tabs-context:/)
-    expect(decodeContextPayload(preview.token.replace(/^\{\{tabs-context:|\}\}$/g, ''))).toEqual(preview.payload)
+    expect(preview.token).toMatch(/^!\[\[Beta prime--[0-9a-f]{6}\]\]$/)
+    expect(parseContextToken(preview.token, state)).toMatchObject({
+      target: preview.payload.target,
+    })
+
+    const lastPositionPreview = getNoteReferencePreviewSpec(
+      state,
+      'body-sub-a',
+      { domainId: 'domain-a', spaceId: 'space-a', tabId: 'tab-b', subTabId: null, previewStart: 'last-position' },
+      'preview-id',
+    )
+    expect(lastPositionPreview.ok).toBe(true)
+    if (!lastPositionPreview.ok) throw new Error('expected valid last-position preview')
+    expect(lastPositionPreview.token).toMatch(/^!\[\[Beta prime--[0-9a-f]{6}#last position\]\]$/)
+    expect(parseContextToken(lastPositionPreview.token, state)).toMatchObject({
+      previewStart: 'last-position',
+    })
+    expect(parseContextToken(lastPositionPreview.token, state)?.heading).toBeUndefined()
 
     expect(getNoteReferencePreviewSpec(state, 'body-sub-a', source)).toEqual({
       ok: false,
@@ -203,12 +216,14 @@ describe('note reference model', () => {
   })
 
   it('blocks preview cycles through the shared validation path', () => {
-    const cyclicState = createReferenceState({
-      'body-sub-a': buildContextToken({
+    const cyclicState = createReferenceState()
+    const backRef = buildContextToken(cyclicState, {
         id: 'back-ref',
         target: { domainId: 'domain-a', spaceId: 'space-b', tabId: 'tab-c', subTabId: null },
-      }),
     })
+    cyclicState.noteAisleBodies = cyclicState.noteAisleBodies?.map((aisleBody) =>
+      aisleBody.id === 'body-sub-a-aisle' ? { ...aisleBody, markdown: backRef } : aisleBody,
+    )
     expect(
       getNoteReferencePreviewSpec(
         cyclicState,

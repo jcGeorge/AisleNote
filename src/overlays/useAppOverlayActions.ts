@@ -227,7 +227,7 @@ export const useAppOverlayActions = ({
   }
 
   const openContextMenuForSpace = (event: MouseEvent<HTMLButtonElement>, spaceId: string) => {
-    if (viewMode !== 'spaces' && viewMode !== 'main') return
+    if (viewMode !== 'main') return
     if (suppressNavigationContextMenuIfDisabled(event)) return
     event.preventDefault()
     setMenuOpen(false)
@@ -235,7 +235,7 @@ export const useAppOverlayActions = ({
   }
 
   const openContextMenuForDomain = (event: MouseEvent<HTMLButtonElement>, domainId: string) => {
-    if (viewMode !== 'domains' && viewMode !== 'main') return
+    if (viewMode !== 'main') return
     if (suppressNavigationContextMenuIfDisabled(event)) return
     event.preventDefault()
     setMenuOpen(false)

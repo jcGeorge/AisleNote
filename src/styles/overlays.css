@@ -41,6 +41,12 @@
   cursor: not-allowed;
 }
 
+.tab-context-delete[aria-disabled="true"],
+.tab-context-delete.is-disabled {
+  opacity: 0.45;
+  cursor: help;
+}
+
 .tab-context-danger {
   color: var(--context-menu-danger-text);
 }
@@ -92,6 +98,13 @@
   align-items: center;
   justify-content: center;
   z-index: 2100;
+}
+
+.delete-modal-backdrop.insert-note-reference-backdrop {
+  align-items: flex-start;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: clamp(1.25rem, 8vh, 4rem) 1rem 1rem;
 }
 
 .delete-modal {
@@ -158,6 +171,10 @@
 
 .settings-modal.note-picker-modal {
   width: min(660px, calc(100vw - 2rem));
+}
+
+.settings-modal.note-picker-modal.insert-note-reference-modal-shell {
+  flex: 0 0 auto;
 }
 
 .settings-modal.shortcut-settings-modal {
@@ -545,6 +562,12 @@
   gap: 0.25rem;
   max-height: min(13rem, 34vh);
   overflow: auto;
+}
+
+.note-reference-heading-separator {
+  border-top: 1px solid var(--modal-border);
+  opacity: 0.65;
+  margin: 0.2rem 0;
 }
 
 .note-reference-heading-btn {

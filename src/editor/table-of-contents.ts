@@ -1,18 +1,21 @@
 import type { ResolvedNoteAisle, TableOfContentsScope } from '../types/app'
 import type { HeadingOutlineItem } from './heading-outline'
+import type { TableOfContentsLinkItem } from './table-of-contents-links'
 
 export const TABLE_OF_CONTENTS_EMPTY_MESSAGE =
-  'add headers to your notes to navigate via table of contents'
+  'add headers or links to your notes to navigate via table of contents'
 
 export type TableOfContentsPanelsState = {
   noteBodyId: string
   headingsByAisle: Record<string, HeadingOutlineItem[]>
+  linksByAisle: Record<string, TableOfContentsLinkItem[]>
   openAisleIds: Set<string>
 }
 
 type TableOfContentsPanelOptions = {
   scope?: TableOfContentsScope
   focusedAisleId?: string
+  getLinksForAisle?: (aisle: ResolvedNoteAisle) => TableOfContentsLinkItem[]
 }
 
 export function getTableOfContentsAislesForScope(
@@ -40,12 +43,20 @@ export function buildTableOfContentsPanels(
     }
     return result
   }, {})
-  const openAisleIds = new Set(Object.keys(headingsByAisle))
+  const linksByAisle = scopedAisles.reduce<Record<string, TableOfContentsLinkItem[]>>((result, aisle) => {
+    const links = options.getLinksForAisle?.(aisle) ?? []
+    if (links.length > 0) {
+      result[aisle.id] = links
+    }
+    return result
+  }, {})
+  const openAisleIds = new Set([...Object.keys(headingsByAisle), ...Object.keys(linksByAisle)])
 
   return openAisleIds.size > 0
     ? {
         noteBodyId,
         headingsByAisle,
+        linksByAisle,
         openAisleIds,
       }
     : null

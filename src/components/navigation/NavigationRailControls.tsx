@@ -17,10 +17,12 @@ type NavigationRailControlsProps = {
   menuOpen: boolean
   showCloseControl: boolean
   viewMode: ViewMode
+  spaceRailVisible: boolean
+  domainRailVisible: boolean
   onCloseAction: () => void
   onSetMenuOpen: Dispatch<SetStateAction<boolean>>
-  onOpenDomains: () => void
-  onOpenSpaces: () => void
+  onToggleSpaceRail: () => void
+  onToggleDomainRail: () => void
   onOpenStageManager: () => void
   onToggleTrash: () => void
   onOpenSettings: () => void
@@ -31,10 +33,12 @@ export function NavigationRailControls({
   menuOpen,
   showCloseControl,
   viewMode,
+  spaceRailVisible,
+  domainRailVisible,
   onCloseAction,
   onSetMenuOpen,
-  onOpenDomains,
-  onOpenSpaces,
+  onToggleSpaceRail,
+  onToggleDomainRail,
   onOpenStageManager,
   onToggleTrash,
   onOpenSettings,
@@ -85,11 +89,11 @@ export function NavigationRailControls({
         </button>
         {!showCloseControl && menuOpen && (
           <div className="menu-dropdown">
-            <button type="button" className="menu-item" onClick={onOpenDomains}>
-              domains
+            <button type="button" className="menu-item" onClick={onToggleSpaceRail}>
+              {spaceRailVisible ? 'hide' : 'show'} space
             </button>
-            <button type="button" className="menu-item" onClick={onOpenSpaces}>
-              spaces
+            <button type="button" className="menu-item" onClick={onToggleDomainRail}>
+              {domainRailVisible ? 'hide' : 'show'} domain
             </button>
             {viewMode === 'main' && (
               <button type="button" className="menu-item" onClick={onOpenStageManager}>

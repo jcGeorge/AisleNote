@@ -3,6 +3,7 @@ import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { buildAisleEditorKey } from '../../editor/aisle-editor'
 import type { HeadingOutlineItem } from '../../editor/heading-outline'
+import type { TableOfContentsLinkItem } from '../../editor/table-of-contents-links'
 import { resolveAssetDisplayUrl } from '../../markdown/image-asset-registry'
 import type { ResolvedNoteAisle } from '../../types/app'
 import { MarkdownPreviewParagraph } from './markdown-preview-components'
@@ -36,6 +37,7 @@ type NoteWorkspaceProps = {
   tableControlsOverlay: ReactNode
   arrangeDestinationPrompt?: ReactNode
   tableOfContentsHeadingsByAisle?: Record<string, HeadingOutlineItem[]>
+  tableOfContentsLinksByAisle?: Record<string, TableOfContentsLinkItem[]>
   openTableOfContentsAisleIds?: Set<string>
   onExitArrangeMode?: () => void
   onRootChange: (node: HTMLElement | null) => void
@@ -45,6 +47,8 @@ type NoteWorkspaceProps = {
   getPreviewMarkdownForAisle: (aisle: ResolvedNoteAisle) => string
   onCloseTableOfContentsAisle?: (aisleId: string) => void
   onSelectTableOfContentsHeading?: (aisleId: string, headingKey: string) => void
+  onSelectTableOfContentsLink?: (aisleId: string, linkKey: string) => void
+  onOpenTableOfContentsLink?: (aisleId: string, link: TableOfContentsLinkItem) => void
   onOpenAisleFrontmatter?: (aisleId: string) => void
   onOpenAisleLink?: (aisleId: string) => void
   onRegisterAislePaneRoot: (aisleId: string, node: HTMLElement | null) => void
@@ -54,16 +58,24 @@ type NoteWorkspaceProps = {
 type AisleTableOfContentsPanelProps = {
   aisleId: string
   headings: HeadingOutlineItem[]
+  links: TableOfContentsLinkItem[]
   onClose: (aisleId: string) => void
   onSelectHeading: (aisleId: string, headingKey: string) => void
+  onSelectLink: (aisleId: string, linkKey: string) => void
+  onOpenLink: (aisleId: string, link: TableOfContentsLinkItem) => void
 }
 
 function AisleTableOfContentsPanel({
   aisleId,
   headings,
+  links,
   onClose,
   onSelectHeading,
+  onSelectLink,
+  onOpenLink,
 }: AisleTableOfContentsPanelProps) {
+  const hasHeadings = headings.length > 0
+  const hasLinks = links.length > 0
   return (
     <div
       className="aisle-toc-panel-layer"
@@ -83,23 +95,64 @@ function AisleTableOfContentsPanel({
           event.stopPropagation()
         }}
       >
-        <div className="aisle-toc-panel-title">table of contents</div>
-        <div className="aisle-toc-list">
-          {headings.map((heading) => (
-            <button
-              key={heading.key}
-              type="button"
-              className="aisle-toc-heading-btn"
-              style={{ '--toc-heading-indent': `${Math.max(0, heading.level - 1) * 0.78}rem` } as CSSProperties}
-              onClick={(event) => {
-                event.preventDefault()
-                event.stopPropagation()
-                onSelectHeading(aisleId, heading.key)
-              }}
-            >
-              {heading.text || `heading ${heading.level}`}
-            </button>
-          ))}
+        <div className="aisle-toc-sections">
+          {hasHeadings && (
+            <section className="aisle-toc-section" aria-label="Table of contents headings">
+              <div className="aisle-toc-panel-title">table of contents</div>
+              <div className="aisle-toc-list">
+                {headings.map((heading) => (
+                  <button
+                    key={heading.key}
+                    type="button"
+                    className="aisle-toc-heading-btn"
+                    style={{ '--toc-heading-indent': `${Math.max(0, heading.level - 1) * 0.78}rem` } as CSSProperties}
+                    onClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      onSelectHeading(aisleId, heading.key)
+                    }}
+                  >
+                    {heading.text || `heading ${heading.level}`}
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+          {hasLinks && (
+            <section className="aisle-toc-section" aria-label="Table of contents links">
+              <div className="aisle-toc-panel-title">links</div>
+              <div className="aisle-toc-list">
+                {links.map((link) => (
+                  <div key={link.key} className="aisle-toc-link-row">
+                    <button
+                      type="button"
+                      className="aisle-toc-link-open-btn"
+                      aria-label={`Open ${link.label}`}
+                      title="Open"
+                      onClick={(event) => {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        onOpenLink(aisleId, link)
+                      }}
+                    >
+                      <span className="aisle-toc-link-open-icon" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className="aisle-toc-heading-btn aisle-toc-link-btn"
+                      onClick={(event) => {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        onSelectLink(aisleId, link.key)
+                      }}
+                    >
+                      {link.label}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
         </div>
       </section>
     </div>
@@ -122,6 +175,7 @@ export function NoteWorkspace({
   tableControlsOverlay,
   arrangeDestinationPrompt = null,
   tableOfContentsHeadingsByAisle = {},
+  tableOfContentsLinksByAisle = {},
   openTableOfContentsAisleIds = new Set(),
   onExitArrangeMode,
   onRootChange,
@@ -131,6 +185,8 @@ export function NoteWorkspace({
   getPreviewMarkdownForAisle,
   onCloseTableOfContentsAisle = () => undefined,
   onSelectTableOfContentsHeading = () => undefined,
+  onSelectTableOfContentsLink = () => undefined,
+  onOpenTableOfContentsLink = () => undefined,
   onOpenAisleFrontmatter = () => undefined,
   onOpenAisleLink = () => undefined,
   onRegisterAislePaneRoot,
@@ -161,7 +217,10 @@ export function NoteWorkspace({
           const editorMounted = mountedAisleIds.has(aisle.id)
           const previewMarkdown = editorMounted ? '' : getPreviewMarkdownForAisle(aisle)
           const tableOfContentsHeadings = tableOfContentsHeadingsByAisle[aisle.id] ?? []
-          const tableOfContentsOpen = openTableOfContentsAisleIds.has(aisle.id) && tableOfContentsHeadings.length > 0
+          const tableOfContentsLinks = tableOfContentsLinksByAisle[aisle.id] ?? []
+          const tableOfContentsOpen =
+            openTableOfContentsAisleIds.has(aisle.id) &&
+            (tableOfContentsHeadings.length > 0 || tableOfContentsLinks.length > 0)
           const showLinkButton = wholeNoteLinked || linkedAisleIds.has(aisle.id)
           const showFrontmatterButton = frontmatterAisleIds.has(aisle.id)
           return (
@@ -239,8 +298,11 @@ export function NoteWorkspace({
                 <AisleTableOfContentsPanel
                   aisleId={aisle.id}
                   headings={tableOfContentsHeadings}
+                  links={tableOfContentsLinks}
                   onClose={onCloseTableOfContentsAisle}
                   onSelectHeading={onSelectTableOfContentsHeading}
+                  onSelectLink={onSelectTableOfContentsLink}
+                  onOpenLink={onOpenTableOfContentsLink}
                 />
               )}
             </section>

@@ -15,6 +15,7 @@ vi.mock('prosemirror-history', () => ({
 import {
   createLinkMark,
   getExternalLinkRangeAtDocPosition,
+  getInternalNoteLinkHitAtDocPosition,
   getLinkMarkAttrs,
   getNoteMentionQueryAtSelection,
   isProseMirrorDocMeaningful,
@@ -271,15 +272,15 @@ describe('note mention query detection', () => {
 
 describe('external link range detection', () => {
   it('creates link marks with the schema-supported href attribute', () => {
-    expect(getLinkMarkAttrs(linkUrlSchema.marks.link, '#tabs-note/body?domainId=d&spaceId=s&tabId=t')).toEqual({
-      linkUrl: '#tabs-note/body?domainId=d&spaceId=s&tabId=t',
+    expect(getLinkMarkAttrs(linkUrlSchema.marks.link, 'https://example.com')).toEqual({
+      linkUrl: 'https://example.com',
     })
-    expect(getLinkMarkAttrs(schema.marks.link, '#tabs-note/body?domainId=d&spaceId=s&tabId=t')).toEqual({
-      href: '#tabs-note/body?domainId=d&spaceId=s&tabId=t',
+    expect(getLinkMarkAttrs(schema.marks.link, 'https://example.com')).toEqual({
+      href: 'https://example.com',
     })
 
-    const mark = createLinkMark(linkUrlSchema.marks.link, '#tabs-note/body?domainId=d&spaceId=s&tabId=t')
-    expect(mark.attrs).toEqual({ linkUrl: '#tabs-note/body?domainId=d&spaceId=s&tabId=t' })
+    const mark = createLinkMark(linkUrlSchema.marks.link, 'https://example.com')
+    expect(mark.attrs).toEqual({ linkUrl: 'https://example.com' })
   })
 
   it('finds the full link text range at a document position', () => {
@@ -312,8 +313,8 @@ describe('external link range detection', () => {
     expect(getExternalLinkRangeAtDocPosition(doc, 9, 'https://other.example')).toBeNull()
   })
 
-  it('finds internal note links stored with Toast UI linkUrl marks', () => {
-    const href = '#tabs-note/body?domainId=domain&spaceId=space&tabId=tab'
+  it('finds links stored with Toast UI linkUrl marks', () => {
+    const href = 'https://example.com/docs'
     const link = createLinkMark(linkUrlSchema.marks.link, href)
     const doc = linkUrlSchema.nodes.doc.create(null, [
       linkUrlSchema.nodes.paragraph.create(null, [
@@ -328,5 +329,52 @@ describe('external link range detection', () => {
       href,
     })
     expect(getExternalLinkRangeAtDocPosition(doc, 7)?.href).not.toMatch(/^file:/)
+  })
+})
+
+describe('internal note link hit detection', () => {
+  function createTextDoc(text: string) {
+    return {
+      descendants(callback: (node: unknown, pos: number) => void) {
+        callback({ isText: true, text }, 1)
+      },
+    }
+  }
+
+  const resolvedReference = {
+    target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
+    heading: undefined,
+    label: 'Linked',
+  }
+
+  it('returns source range and occurrence metadata for resolved wiki links', () => {
+    const hit = getInternalNoteLinkHitAtDocPosition(
+      createTextDoc('Before [[Linked--123abc]] after'),
+      10,
+      () => resolvedReference as any,
+    )
+
+    expect(hit).toMatchObject({
+      href: '[[Linked--123abc]]',
+      from: 8,
+      to: 26,
+      occurrence: 0,
+      label: 'Linked',
+    })
+  })
+
+  it('counts unresolved wiki links when reporting occurrence metadata', () => {
+    const hit = getInternalNoteLinkHitAtDocPosition(
+      createTextDoc('[[Missing--999999]] then [[Linked--123abc]]'),
+      30,
+      (token) => (token === '[[Linked--123abc]]' ? resolvedReference as any : null),
+    )
+
+    expect(hit).toMatchObject({
+      href: '[[Linked--123abc]]',
+      from: 26,
+      to: 44,
+      occurrence: 1,
+    })
   })
 })

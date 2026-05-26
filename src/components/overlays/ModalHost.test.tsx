@@ -245,6 +245,8 @@ describe('link modal rendering', () => {
     })
 
     expect(html).toContain('insert link')
+    expect(html).toContain('class="delete-modal-backdrop insert-note-reference-backdrop"')
+    expect(html).toContain('insert-note-reference-modal-shell')
     expect(html).toContain('>note</button>')
     expect(html).toContain('>url</button>')
     expect(html).toContain('>link</button>')
@@ -277,6 +279,8 @@ describe('link modal rendering', () => {
     })
 
     expect(html).toContain('placeholder="https://example.com"')
+    expect(html).toContain('class="delete-modal-backdrop insert-note-reference-backdrop"')
+    expect(html).toContain('insert-note-reference-modal-shell')
     expect(html).toContain('value="https://example.com"')
     expect(html).toContain('value="Example"')
   })
@@ -294,14 +298,18 @@ describe('link modal rendering', () => {
       urlLabel: '',
       internalEdit: {
         label: 'Existing',
-        href: '#tabs-note/body-1?domainId=domain-1&spaceId=space-1&tabId=tab-1',
+        href: '[[Tab--123abc|Existing]]',
         target: source,
       },
     })
 
     expect(html).toContain('edit link')
-    expect(html).toContain('note-reference-locked-target')
-    expect(html).toContain('Domain &gt; Space &gt; Tab &gt; home')
+    expect(html).not.toContain('note-reference-locked-target')
+    expect(html).toContain('note-location-picker-row')
+    expect(html).toContain('note-location-picker-chip rail-control context-preview-title-btn compact-scope-btn compact-domain-btn is-domain is-selected')
+    expect(html).toContain('note-location-picker-chip rail-control context-preview-title-btn compact-scope-btn compact-space-btn is-space is-selected')
+    expect(html).toContain('note-location-picker-chip rail-control context-preview-title-btn btn btn-sm tab-btn parent-tab-btn is-parent is-selected')
+    expect(html).toContain('note-location-picker-chip rail-control context-preview-title-btn btn btn-sm tab-btn subtab-btn is-subtab is-selected')
     expect(html).toContain('value="Existing"')
     expect(html).not.toContain('aria-label="Link type"')
     expect(html).not.toContain('aria-label="Note reference type"')
@@ -329,6 +337,30 @@ describe('link modal rendering', () => {
     expect(html).toContain('aria-label="Header target"')
     expect(html).toContain('>last position</button>')
     expect(html).toContain('>Alpha</button>')
+    expect(html).toContain('>Beta</button>')
+    expect(html).toContain('--note-reference-heading-indent:0.78rem')
+    expect(html).not.toContain('preview starts at')
+  })
+
+  it('renders preview start choices with top as the default and headings below a divider', () => {
+    const html = renderModal(
+      {
+        type: 'insert-note-reference',
+        mode: 'note',
+        insertAs: 'context',
+        source,
+        target: source,
+        noteLabel: 'Tab',
+        url: '',
+        urlLabel: '',
+      },
+      createHeadingState(),
+    )
+
+    expect(html).toContain('aria-label="Preview start"')
+    expect(html).toContain('>preview starts at</span>')
+    expect(html).toMatch(/note-reference-heading-btn is-active"[^>]*>at the top<\/button>[\s\S]*>last position<\/button>/)
+    expect(html).toMatch(/>last position<\/button>[\s\S]*note-reference-heading-separator[\s\S]*>Alpha<\/button>/)
     expect(html).toContain('>Beta</button>')
     expect(html).toContain('--note-reference-heading-indent:0.78rem')
   })
@@ -367,6 +399,64 @@ describe('link modal rendering', () => {
     expect(html).not.toContain('aria-label="Header target"')
   })
 
+  it('keeps the preview start picker visible when the selected aisle has no headings', () => {
+    const state = createState()
+    state.noteBodies = [
+      {
+        id: 'body-1',
+        aisles: [
+          { id: 'aisle-1', aisleBodyId: 'aisle-body-1' },
+          { id: 'aisle-2', aisleBodyId: 'aisle-body-2' },
+        ],
+      },
+    ]
+    state.noteAisleBodies = [
+      { id: 'aisle-body-1', markdown: 'plain text' },
+      { id: 'aisle-body-2', markdown: '# Hidden on other aisle' },
+    ]
+
+    const html = renderModal(
+      {
+        type: 'insert-note-reference',
+        mode: 'note',
+        insertAs: 'context',
+        source,
+        target: { ...source, aisleIds: ['aisle-1'] },
+        noteLabel: 'Tab',
+        url: '',
+        urlLabel: '',
+      },
+      state,
+    )
+
+    expect(html).toContain('aria-label="Preview start"')
+    expect(html).toContain('>at the top</button>')
+    expect(html).toContain('>last position</button>')
+    expect(html).not.toContain('note-reference-heading-separator')
+    expect(html).not.toContain('>Hidden on other aisle</button>')
+  })
+
+  it('preselects last position for preview edits that use saved-position starts', () => {
+    const html = renderModal(
+      {
+        type: 'insert-note-reference',
+        mode: 'note',
+        modeLocked: true,
+        insertAs: 'context',
+        source,
+        target: { ...source, previewStart: 'last-position' },
+        noteLabel: 'Tab',
+        url: '',
+        urlLabel: '',
+        editingTokenId: 'wiki-preview:Tab--123abc#last position',
+      },
+      createHeadingState(),
+    )
+
+    expect(html).toContain('aria-label="Preview start"')
+    expect(html).toMatch(/note-reference-heading-btn "[^>]*>at the top<\/button>[\s\S]*note-reference-heading-btn is-active"[^>]*>last position<\/button>/)
+  })
+
   it('preselects anchored headings when editing an existing note link', () => {
     const heading = { aisleId: 'aisle-2', headingKey: 'aisle-2|h2|0|Second' }
     const html = renderModal(
@@ -382,7 +472,7 @@ describe('link modal rendering', () => {
         urlLabel: '',
         internalEdit: {
           label: 'Existing',
-          href: '#tabs-note/body-1?domainId=domain-1&spaceId=space-1&tabId=tab-1&aisleId=aisle-2&headingKey=aisle-2%7Ch2%7C0%7CSecond',
+          href: '[[Tab--123abc#Second--456def|Existing]]',
           target: source,
           heading,
         },
@@ -390,7 +480,8 @@ describe('link modal rendering', () => {
       createHeadingState(),
     )
 
-    expect(html).toContain('note-reference-locked-target')
+    expect(html).not.toContain('note-reference-locked-target')
+    expect(html).toContain('note-location-picker-row')
     expect(html).toContain('>aisle 2</button>')
     expect(html).toMatch(/note-reference-heading-btn is-active"[^>]*>Second<\/button>/)
     expect(html).toContain('>last position</button>')
@@ -518,6 +609,8 @@ describe('copy modal rendering', () => {
     })
 
     expect(html).toContain('note-copy-modal')
+    expect(html).not.toContain('insert-note-reference-backdrop')
+    expect(html).not.toContain('insert-note-reference-modal-shell')
     expect(html).toMatch(/class="note-reference-option-strip"[\s\S]*aria-label="Copy type"/)
     expect(html).toContain('class="note-reference-picker-divider" aria-hidden="true"')
     expect(html).not.toContain('note-location-picker-row-label')

@@ -51,6 +51,8 @@ import {
   normalizeImageAssetPath,
   parseImageAssetUrl,
 } from '../src/markdown/image-asset-refs.js'
+import { normalizeImageResizeMetadataFragment } from '../src/markdown/image-metadata-core.js'
+import { normalizeContextReferenceTokensForMarkdown } from '../src/markdown/note-context-tokens.js'
 
 export const HYBRID_ROOT_DIR = 'notes-data'
 const SCHEMA_VERSION = 1
@@ -285,6 +287,7 @@ function externalizeMarkdownImages(markdown, noteFileRelative, assetBank) {
     const src = String(srcRaw ?? '').trim()
     if (!src) return fullMatch
     const { imageUrl, metadataFragment } = splitImageMetadataFromUrl(src)
+    const normalizedMetadataFragment = normalizeImageResizeMetadataFragment(metadataFragment)
 
     let decoded = null
     let assetRelativePath = parseImageAssetUrl(imageUrl)
@@ -320,7 +323,7 @@ function externalizeMarkdownImages(markdown, noteFileRelative, assetBank) {
     if (!assetRelativePath) return fullMatch
     const noteDirectory = path.posix.dirname(noteFileRelative)
     const nextSrc = path.posix.relative(noteDirectory, assetRelativePath) || path.posix.basename(assetRelativePath)
-    return `${imageBang}[${label}](${nextSrc}${metadataFragment})`
+    return `${imageBang}[${label}](${nextSrc}${normalizedMetadataFragment})`
   })
 }
 
@@ -329,12 +332,13 @@ function referenceMarkdownImages(markdown, noteFilePath, issues = null, issueRoo
     const src = String(srcRaw ?? '').trim()
     if (!src) return fullMatch
     const { imageUrl, metadataFragment } = splitImageMetadataFromUrl(src)
+    const normalizedMetadataFragment = normalizeImageResizeMetadataFragment(metadataFragment)
     if (parseImageAssetUrl(imageUrl)) return fullMatch
     if (imageBang === '!' && imageUrl.startsWith('data:image/')) {
       const decoded = decodeImageDataUrl(imageUrl)
       if (!decoded || !issueRootPath) return fullMatch
       const assetPath = addAssetToNotesRoot(issueRootPath, decoded.bytes, decoded.extension)
-      return `${imageBang}[${label}](${buildImageAssetUrl(assetPath)}${metadataFragment})`
+      return `${imageBang}[${label}](${buildImageAssetUrl(assetPath)}${normalizedMetadataFragment})`
     }
     if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(imageUrl) && !imageUrl.startsWith('file://')) return fullMatch
 
@@ -375,7 +379,7 @@ function referenceMarkdownImages(markdown, noteFilePath, issues = null, issueRoo
         ? normalizeImageAssetPath(path.relative(issueRootPath, absolutePath).split(path.sep).join(path.posix.sep))
         : normalizeImageAssetPath(path.basename(absolutePath))
       if (!imageBang && !rootRelativePath.startsWith('assets/')) return fullMatch
-      return `${imageBang}[${label}](${buildImageAssetUrl(rootRelativePath)}${metadataFragment})`
+      return `${imageBang}[${label}](${buildImageAssetUrl(rootRelativePath)}${normalizedMetadataFragment})`
     } catch {
       addStorageIssue(
         issues,
@@ -755,6 +759,7 @@ function writeNoteBodyAtPath({
   primaryFileRelative,
   multiAisleRootRelative,
   assetBank,
+  appState,
 }) {
   const posixPath = path.posix
   const bodyId = typeof noteBodyId === 'string' ? noteBodyId : ''
@@ -784,7 +789,11 @@ function writeNoteBodyAtPath({
     setStorageTextFile(
       fileMap,
       primaryFile,
-      externalizeMarkdownImages(composeAisleMarkdownForStorage(markdown, sourceAisleBody), primaryFile, assetBank),
+      externalizeMarkdownImages(
+        normalizeContextReferenceTokensForMarkdown(composeAisleMarkdownForStorage(markdown, sourceAisleBody), appState),
+        primaryFile,
+        assetBank,
+      ),
     )
     return { primaryFile, notePath }
   }
@@ -812,7 +821,11 @@ function writeNoteBodyAtPath({
     setStorageTextFile(
       fileMap,
       file,
-      externalizeMarkdownImages(composeAisleMarkdownForStorage(markdown, sourceAisleBody), file, assetBank),
+      externalizeMarkdownImages(
+        normalizeContextReferenceTokensForMarkdown(composeAisleMarkdownForStorage(markdown, sourceAisleBody), appState),
+        file,
+        assetBank,
+      ),
     )
     aisleRecords.push({ id: aisleId, aisleBodyId, file })
     if (!noteAisleBodyRecords.has(aisleBodyId)) {
@@ -861,6 +874,7 @@ function buildSpaceFiles({
   noteBodyRecords,
   noteAisleBodyRecords,
   assetBank,
+  appState,
 }) {
   const posixPath = path.posix
   const tabs = ensureArray(space?.data?.tabs)
@@ -882,6 +896,7 @@ function buildSpaceFiles({
       primaryFileRelative: posixPath.join(tabRoot, 'home.md'),
       multiAisleRootRelative: posixPath.join(tabRoot, 'home'),
       assetBank,
+      appState,
     })
     const homeNoteFile = posixPath.relative(spaceRoot, homeWrite.primaryFile)
 
@@ -902,6 +917,7 @@ function buildSpaceFiles({
         primaryFileRelative: posixPath.join(tabRoot, subTabFileName),
         multiAisleRootRelative: subTabRoot,
         assetBank,
+        appState,
       })
       return {
         id: subTabId,
@@ -945,6 +961,7 @@ function buildSpaceFiles({
       primaryFileRelative: posixPath.join(deletedRoot, 'home.md'),
       multiAisleRootRelative: posixPath.join(deletedRoot, 'home'),
       assetBank,
+      appState,
     })
     const homeNoteFile = posixPath.relative(trashRoot, deletedHomeWrite.primaryFile)
 
@@ -965,6 +982,7 @@ function buildSpaceFiles({
         primaryFileRelative: posixPath.join(deletedRoot, subTabFileName),
         multiAisleRootRelative: subTabRoot,
         assetBank,
+        appState,
       })
       return {
         id: subTabId,
@@ -1009,6 +1027,7 @@ function buildSpaceFiles({
       primaryFileRelative: posixPath.join(trashRoot, deletedFileName),
       multiAisleRootRelative: deletedRoot,
       assetBank,
+      appState,
     })
     trashItems.push({
       id: entryId,
@@ -1082,6 +1101,7 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
         noteBodyRecords,
         noteAisleBodyRecords,
         assetBank,
+        appState: parsedState,
       })
       spaceEntries.push({ ...spaceEntry, path: spaceSegment })
     }
@@ -1112,6 +1132,7 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
       primaryFileRelative: posixPath.join('_internal', 'orphan-bodies', orphanFileName),
       multiAisleRootRelative: posixPath.join('_internal', 'orphan-bodies', orphanSegment),
       assetBank,
+      appState: parsedState,
     })
   }
 

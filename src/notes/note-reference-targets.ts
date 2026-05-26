@@ -1,11 +1,12 @@
 import { getHeadingOutlineFromMarkdown, type HeadingOutlineItem } from '../editor/heading-outline'
-import type { AppState, NoteAisle, NoteBody, NoteHeadingAnchor, NoteLocation } from '../types/app'
+import type { AppState, NoteAisle, NoteBody, NoteHeadingAnchor, NoteLocation, NotePreviewStart } from '../types/app'
 import { getLocationInfo } from './note-locations'
 import { getAisleMarkdown } from './note-markdown'
 
 export type NoteReferenceTarget = NoteLocation & {
   aisleIds?: string[]
   heading?: NoteHeadingAnchor
+  previewStart?: NotePreviewStart
 }
 
 export type ResolvedNoteReferenceTarget = {
@@ -48,12 +49,14 @@ export function resolveNoteReferenceTarget(
     headings.some((candidate) => candidate.key === target.heading?.headingKey)
       ? target.heading
       : undefined
+  const previewStart = heading ? undefined : target.previewStart === 'last-position' ? target.previewStart : undefined
 
   return {
     target: {
       ...target,
       aisleIds: selectedAisle ? [selectedAisle.id] : undefined,
       heading,
+      previewStart,
     },
     noteBody,
     selectedAisle,

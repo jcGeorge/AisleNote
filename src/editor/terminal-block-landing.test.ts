@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from 'vitest'
-import { buildContextToken } from '../notes/note-references'
 import {
   getTerminalBlockLandingTarget,
   insertTerminalLandingParagraphs,
@@ -24,15 +23,7 @@ function pmDoc(children: Array<ReturnType<typeof pmNode>>) {
 }
 
 function contextToken(id = 'preview-token') {
-  return buildContextToken({
-    id,
-    target: {
-      domainId: 'domain',
-      spaceId: 'space',
-      tabId: 'tab',
-      subTabId: null,
-    },
-  })
+  return `![[Preview ${id}--123abc]]`
 }
 
 describe('terminal block landing target detection', () => {

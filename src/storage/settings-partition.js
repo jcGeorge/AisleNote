@@ -50,6 +50,7 @@ const DEFAULT_SYNCED_UI_SETTINGS = {
   tableAddTargetMode: 'bottom-right',
   tableDeleteTargetMode: 'bottom-right',
   tableOfContentsScope: 'all-aisles',
+  newAislePlacement: 'end',
   selectedCustomTheme: 'custom1',
   customThemePalette: null,
   themePalettes: {},
@@ -76,6 +77,10 @@ function optionalBoolean(value, fallback) {
 
 function optionalString(value, fallback) {
   return typeof value === 'string' ? value : fallback
+}
+
+function normalizeNewAislePlacement(value) {
+  return value === 'right-of-focus' || value === 'end' ? value : DEFAULT_SYNCED_UI_SETTINGS.newAislePlacement
 }
 
 function optionalArray(value, fallback) {
@@ -269,6 +274,7 @@ export function extractSyncedUiSettings(rawUi) {
     tableAddTargetMode: optionalString(ui.tableAddTargetMode, DEFAULT_SYNCED_UI_SETTINGS.tableAddTargetMode),
     tableDeleteTargetMode: optionalString(ui.tableDeleteTargetMode, DEFAULT_SYNCED_UI_SETTINGS.tableDeleteTargetMode),
     tableOfContentsScope: optionalString(ui.tableOfContentsScope, DEFAULT_SYNCED_UI_SETTINGS.tableOfContentsScope),
+    newAislePlacement: normalizeNewAislePlacement(ui.newAislePlacement),
     dataSettingsSection: optionalString(ui.dataSettingsSection, DEFAULT_SYNCED_UI_SETTINGS.dataSettingsSection),
     selectedCustomTheme: normalizeSelectedCustomTheme(ui.selectedCustomTheme),
     customThemePalette: isRecord(themePalettes.custom1) ? themePalettes.custom1 : legacyCustomPalette,
@@ -336,6 +342,7 @@ export function extractUiPreferences(appState) {
     tableAddTargetMode: syncedUi.tableAddTargetMode,
     tableDeleteTargetMode: syncedUi.tableDeleteTargetMode,
     tableOfContentsScope: syncedUi.tableOfContentsScope,
+    newAislePlacement: syncedUi.newAislePlacement,
     dataSettingsSection: syncedUi.dataSettingsSection,
     settingsSection: optionalString(ui.settingsSection, DEFAULT_SYNCED_UI_SETTINGS.settingsSection),
     visualsSettingsSection: optionalString(

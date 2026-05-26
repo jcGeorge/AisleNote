@@ -19,6 +19,7 @@ import type {
   NoteBody,
   NoteCursorLocation,
   NoteLocation,
+  NewAislePlacement,
   ResolvedNoteAisle,
   ToastTone,
   ViewMode,
@@ -33,6 +34,7 @@ import {
   type AisleStructuralSnapshot,
 } from './aisle-structural-history'
 import { MAX_AISLE_WARNING_MESSAGE } from './aisle-edit-draft'
+import { insertNewAisle } from './aisle-insertion'
 import type { PendingCursorRestore } from './useNoteCursorPersistence'
 
 type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
@@ -206,6 +208,13 @@ export const useAisleController = ({
   }
   runAisleStructuralHistoryRef.current = runAisleStructuralHistory
 
+  const shouldRunAisleStructuralHistoryBeforeEditorHistory = (direction: 'undo' | 'redo') => {
+    const sourceStack = direction === 'undo' ? structuralUndoStackRef.current : structuralRedoStackRef.current
+    const entry = sourceStack[sourceStack.length - 1]
+    if (!entry || entry.type !== 'add-aisle') return false
+    return canApplyAisleStructuralEntry(entry, direction)
+  }
+
   const scheduleAisleStructuralHistoryFallback = (direction: 'undo' | 'redo') => {
     const noteScopeKey = getActiveNoteStructuralScopeKey()
     const editorAtStart = editorRef.current
@@ -223,7 +232,11 @@ export const useAisleController = ({
 
   const addAisleToActiveNote = (
     markdown = '',
-    options: { beforeSnapshot?: AisleStructuralSnapshot | null; recordHistory?: boolean } = {},
+    options: {
+      beforeSnapshot?: AisleStructuralSnapshot | null
+      placement?: NewAislePlacement
+      recordHistory?: boolean
+    } = {},
   ) => {
     if (!activeNoteBodyId) return
     const currentAisleCount = activeNoteBody?.aisles.length ?? 0
@@ -244,7 +257,7 @@ export const useAisleController = ({
     const baseAisles =
       getResolvedAislesForStructuralSnapshot(latestBeforeAddState, beforeSnapshot.noteBodyId) ?? beforeSnapshot.aisles
     flushPendingContent()
-    const afterAisles = [...baseAisles, newAisle]
+    const afterAisles = insertNewAisle(baseAisles, newAisle, beforeSnapshot.activeAisleId, options.placement ?? 'end')
     const afterCursorLocation: NoteCursorLocation = {
       activeAisleId: newAisle.id,
       aisles: {
@@ -360,6 +373,7 @@ export const useAisleController = ({
     closeAisleEditModal,
     captureActiveAisleStructuralSnapshot,
     runAisleStructuralHistory,
+    shouldRunAisleStructuralHistoryBeforeEditorHistory,
     scheduleAisleStructuralHistoryFallback,
     addAisleToActiveNote,
     applyAisleEditDraftToActiveNote,

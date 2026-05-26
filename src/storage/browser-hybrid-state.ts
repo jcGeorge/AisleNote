@@ -7,7 +7,8 @@ import {
   STORAGE_SCHEMA_VERSION,
   STORAGE_TRASH_DIR,
 } from '../types/storage-schema'
-import { splitImageResizeMetadataFromUrl } from '../markdown/image-metadata'
+import { normalizeImageResizeMetadataFragment, splitImageResizeMetadataFromUrl } from '../markdown/image-metadata'
+import { normalizeContextReferenceTokensForMarkdown } from '../markdown/note-context-tokens.js'
 import {
   buildImageAssetUrl,
   MARKDOWN_LINK_PATTERN,
@@ -222,6 +223,7 @@ function externalizeMarkdownImages(markdown: string, noteFileRelative: string, a
   return markdown.replace(MARKDOWN_LINK_PATTERN, (fullMatch, imageBang: string, label: string, srcRaw: string) => {
     const src = srcRaw.trim()
     const { imageUrl, metadataFragment } = splitImageResizeMetadataFromUrl(src)
+    const normalizedMetadataFragment = normalizeImageResizeMetadataFragment(metadataFragment)
     let assetRelativePath = parseImageAssetUrl(imageUrl)
 
     if (assetRelativePath) {
@@ -240,7 +242,7 @@ function externalizeMarkdownImages(markdown: string, noteFileRelative: string, a
 
     const noteDirectory = dirnamePosix(noteFileRelative)
     const nextSrc = relativePosix(noteDirectory, assetRelativePath)
-    return `${imageBang}[${label}](${nextSrc}${metadataFragment})`
+    return `${imageBang}[${label}](${nextSrc}${normalizedMetadataFragment})`
   })
 }
 
@@ -249,6 +251,7 @@ function referenceMarkdownImages(markdown: string, notePath: string, fileMap: Ma
     const src = srcRaw.trim()
     if (!src) return fullMatch
     const { imageUrl, metadataFragment } = splitImageResizeMetadataFromUrl(src)
+    const normalizedMetadataFragment = normalizeImageResizeMetadataFragment(metadataFragment)
     if (parseImageAssetUrl(imageUrl)) return fullMatch
     if (imageBang === '!' && imageUrl.startsWith('data:image/')) {
       const decoded = decodeDataUrl(imageUrl)
@@ -256,7 +259,7 @@ function referenceMarkdownImages(markdown: string, notePath: string, fileMap: Ma
       const assetPath = joinPosix(STORAGE_ASSETS_DIR, `asset-${createAssetHash(decoded.bytes)}.${normalizeAssetExtension(decoded.extension)}`)
       setBinaryFile(fileMap, joinPosix(STORAGE_ROOT_DIR, assetPath), decoded.bytes)
       registerAssetBytes(assetPath, decoded.bytes, getMimeTypeFromExtension(decoded.extension))
-      return `${imageBang}[${label}](${buildImageAssetUrl(assetPath)}${metadataFragment})`
+      return `${imageBang}[${label}](${buildImageAssetUrl(assetPath)}${normalizedMetadataFragment})`
     }
     if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(imageUrl) && !imageUrl.startsWith('file://')) return fullMatch
 
@@ -268,7 +271,7 @@ function referenceMarkdownImages(markdown: string, notePath: string, fileMap: Ma
 
     const extension = normalizeAssetExtension(assetPath.split('.').pop() ?? 'bin')
     registerAssetBytes(rootRelativeAssetPath, assetBytes, getMimeTypeFromExtension(extension))
-    return `${imageBang}[${label}](${buildImageAssetUrl(rootRelativeAssetPath)}${metadataFragment})`
+    return `${imageBang}[${label}](${buildImageAssetUrl(rootRelativeAssetPath)}${normalizedMetadataFragment})`
   })
 }
 
@@ -356,6 +359,7 @@ function writeNoteBodyAtPath({
   primaryFileRelative,
   multiAisleRootRelative,
   assetBank,
+  appState,
 }: {
   fileMap: Map<string, BrowserStoredFile>
   noteBodyMap: Map<string, Record<string, unknown>>
@@ -366,6 +370,7 @@ function writeNoteBodyAtPath({
   primaryFileRelative: string
   multiAisleRootRelative: string
   assetBank: AssetBank
+  appState: Record<string, unknown>
 }) {
   const bodyId = typeof noteBodyId === 'string' ? noteBodyId : ''
   const body = bodyId ? noteBodyMap.get(bodyId) : null
@@ -393,7 +398,11 @@ function writeNoteBodyAtPath({
     setTextFile(
       fileMap,
       joinPosix(STORAGE_ROOT_DIR, primaryFile),
-      externalizeMarkdownImages(composeAisleMarkdownForStorage(markdown, sourceAisleBody), primaryFile, assetBank),
+      externalizeMarkdownImages(
+        normalizeContextReferenceTokensForMarkdown(composeAisleMarkdownForStorage(markdown, sourceAisleBody), appState),
+        primaryFile,
+        assetBank,
+      ),
     )
     return { primaryFile, notePath }
   }
@@ -425,7 +434,11 @@ function writeNoteBodyAtPath({
     setTextFile(
       fileMap,
       joinPosix(STORAGE_ROOT_DIR, file),
-      externalizeMarkdownImages(composeAisleMarkdownForStorage(markdown, sourceAisleBody), file, assetBank),
+      externalizeMarkdownImages(
+        normalizeContextReferenceTokensForMarkdown(composeAisleMarkdownForStorage(markdown, sourceAisleBody), appState),
+        file,
+        assetBank,
+      ),
     )
     aisleRecords.push({ id: aisleId, aisleBodyId, file })
     if (!noteAisleBodyRecords.has(aisleBodyId)) {
@@ -445,6 +458,7 @@ function writeSpaceFiles(
   noteBodyRecords: Map<string, Record<string, unknown>>,
   noteAisleBodyRecords: Map<string, Record<string, unknown>>,
   assetBank: AssetBank,
+  appState: Record<string, unknown>,
 ) {
   const spaceId = typeof space.id === 'string' ? space.id : ''
   if (!spaceId) return null
@@ -466,6 +480,7 @@ function writeSpaceFiles(
       primaryFileRelative: joinPosix(spaceRoot, tabPath, STORAGE_HOME_NOTE_FILE),
       multiAisleRootRelative: joinPosix(spaceRoot, tabPath, 'home'),
       assetBank,
+      appState,
     })
     const homeNoteFile = relativePosix(spaceRoot, homeWrite.primaryFile)
 
@@ -486,6 +501,7 @@ function writeSpaceFiles(
         primaryFileRelative: joinPosix(spaceRoot, tabPath, subTabFileName),
         multiAisleRootRelative: subTabRoot,
         assetBank,
+        appState,
       })
       return {
         id: subTabId,
@@ -526,6 +542,7 @@ function writeSpaceFiles(
       primaryFileRelative: joinPosix(trashRoot, deletedPath, STORAGE_HOME_NOTE_FILE),
       multiAisleRootRelative: joinPosix(trashRoot, deletedPath, 'home'),
       assetBank,
+      appState,
     })
     const homeNoteFile = relativePosix(trashRoot, deletedHomeWrite.primaryFile)
 
@@ -546,6 +563,7 @@ function writeSpaceFiles(
         primaryFileRelative: joinPosix(trashRoot, deletedPath, subTabFileName),
         multiAisleRootRelative: subTabRoot,
         assetBank,
+        appState,
       })
       return {
         id: subTabId,
@@ -589,6 +607,7 @@ function writeSpaceFiles(
       primaryFileRelative: joinPosix(trashRoot, deletedFileName),
       multiAisleRootRelative: joinPosix(trashRoot, deletedPath),
       assetBank,
+      appState,
     })
 
     trashItems.push({
@@ -673,6 +692,7 @@ export function buildHybridFileMapFromSerializedState(serializedState: string): 
         noteBodyRecords,
         noteAisleBodyRecords,
         assetBank,
+        parsed,
       )
       if (spaceEntry) spaceEntries.push({ ...spaceEntry, path: spacePath })
     })
@@ -708,6 +728,7 @@ export function buildHybridFileMapFromSerializedState(serializedState: string): 
       primaryFileRelative: joinPosix('_internal', 'orphan-bodies', orphanFileName),
       multiAisleRootRelative: joinPosix('_internal', 'orphan-bodies', orphanSegment),
       assetBank,
+      appState: parsed,
     })
   })
 

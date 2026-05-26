@@ -364,6 +364,7 @@ function createPreviewData(overrides: Partial<ContextPreviewData> = {}): Context
     selectedAisle: null,
     recursiveBlocked: false,
     previewText: '',
+    previewCursorSelection: null,
     locationLabel: 'Domain / Space / Parent / Child',
     titleButtons: [
       { kind: 'parent', label: 'Parent' },
@@ -748,12 +749,17 @@ describe('note preview widget', () => {
     const link = createInternalNoteLinkWidgetElement(
       'Linked note',
       { domainId: 'domain', spaceId: 'space', tabId: 'parent', subTabId: null },
-      '#tabs-note/body?domainId=domain&spaceId=space&tabId=parent',
+      '[[Linked note--123abc]]',
       navigateToNoteLocation,
+      { from: 3, to: 26, occurrence: 1 },
     ) as unknown as FakeElement
 
     expect(link.tagName).toBe('A')
     expect(link.className).toBe('internal-note-link-widget')
+    expect(link.getAttribute('data-internal-note-link-syntax')).toBe('[[Linked note--123abc]]')
+    expect(link.getAttribute('data-internal-note-link-from')).toBe('3')
+    expect(link.getAttribute('data-internal-note-link-to')).toBe('26')
+    expect(link.getAttribute('data-internal-note-link-occurrence')).toBe('1')
     expect(link.textContent).toBe('Linked note')
     expect(findAllByClass(link, 'context-preview-title-btn')).toHaveLength(0)
   })

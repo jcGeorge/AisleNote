@@ -226,6 +226,48 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html).not.toContain('modal-backdrop')
   })
 
+  it('renders a links-only table of contents panel without the headings section', () => {
+    const html = renderToStaticMarkup(
+      <NoteWorkspace
+        noteBodyId="body-1"
+        aisles={aisles}
+        activeAisleId="a"
+        editorReadOnly={false}
+        aisleScrollRef={{ current: null }}
+        toolbar={null}
+        headingPopover={null}
+        imageToolsOverlay={null}
+        tableControlsOverlay={null}
+        tableOfContentsLinksByAisle={{
+          a: [
+            {
+              aisleId: 'a',
+              key: 'a|link|0',
+              kind: 'url-link',
+              label: 'Example',
+              href: 'https://example.com',
+            },
+          ],
+        }}
+        openTableOfContentsAisleIds={new Set(['a'])}
+        mountedAisleIds={new Set(['a'])}
+        getPreviewMarkdownForAisle={(aisle) => aisle.markdown}
+        onRootChange={() => undefined}
+        onAisleScroll={() => undefined}
+        onActivateAisle={() => undefined}
+        onRegisterAislePaneRoot={() => undefined}
+        onRegisterAisleEditorRoot={() => undefined}
+      />,
+    )
+
+    expect(html).toContain('class="aisle-toc-panel"')
+    expect(html).toContain('>links</div>')
+    expect(html).toContain('Example')
+    expect(html).toContain('aisle-toc-link-open-btn')
+    expect(html).not.toContain('>table of contents</div>')
+    expect(html).not.toContain('--toc-heading-indent')
+  })
+
   it('only exits arrangement mode for primary note workspace clicks while arranging', () => {
     expect(shouldExitArrangeModeFromNoteWorkspacePointer(true, 0)).toBe(true)
     expect(shouldExitArrangeModeFromNoteWorkspacePointer(true, 1)).toBe(false)

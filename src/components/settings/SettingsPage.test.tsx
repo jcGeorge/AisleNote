@@ -141,6 +141,7 @@ function renderSettingsPage(
       tableAddTargetModeDraft={state.ui.tableAddTargetMode}
       tableDeleteTargetModeDraft={state.ui.tableDeleteTargetMode}
       tableOfContentsScopeDraft={state.ui.tableOfContentsScope ?? 'all-aisles'}
+      newAislePlacementDraft={state.ui.newAislePlacement ?? 'end'}
       frontmatterDraft={frontmatterDraft}
       frontmatterDraftDirty={frontmatterDraftDirty}
       toolbarLayouts={getToolbarLayouts(state.ui.toolbarLayouts)}
@@ -170,6 +171,7 @@ function renderSettingsPage(
       onTableAddTargetModeChange={() => undefined}
       onTableDeleteTargetModeChange={() => undefined}
       onTableOfContentsScopeChange={() => undefined}
+      onNewAislePlacementChange={() => undefined}
       onTipEnabledChange={() => undefined}
       onSelectToolbarLayout={() => undefined}
       onCreateToolbarLayout={() => undefined}
@@ -235,6 +237,18 @@ describe('frontmatter settings page', () => {
     expect(html).toContain('aria-checked="false" class="settings-segmented-option ">all aisles</button>')
     expect(html).toContain('aria-checked="true" class="settings-segmented-option is-selected">focused aisle</button>')
     expect(html.indexOf('table of contents shows for')).toBeLessThan(html.indexOf('add table row or column'))
+  })
+
+  it('renders the new aisle placement setting in misc settings', () => {
+    const state = createState()
+    state.ui.newAislePlacement = 'right-of-focus'
+    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'misc', state })
+
+    expect(html).toContain('new aisles are added to')
+    expect(html).toContain('role="radiogroup" aria-labelledby="settings-new-aisle-placement-label"')
+    expect(html).toContain('aria-checked="false" class="settings-segmented-option ">end of note</button>')
+    expect(html).toContain('aria-checked="true" class="settings-segmented-option is-selected">right of focus</button>')
+    expect(html.indexOf('new aisles are added to')).toBeLessThan(html.indexOf('add table row or column'))
   })
 
   it('renders strikethrough as a selectable new-line operation', () => {

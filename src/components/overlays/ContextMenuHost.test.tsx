@@ -33,10 +33,14 @@ function createContextMenuProps(
     onEditorClipboard: noop,
     onEditorCommand: noop,
     onEditorInsertLink: noop,
+    onEditorInsertAisle: noop,
     onEditorInsertAttachment: noop,
     onEditorFindReplace: noop,
     onEditorOpenContextLink: noop,
     onEditorEditContextLink: noop,
+    copyAsMenu: null,
+    onCopyAs: noop,
+    onCopyAsUnavailable: noop,
     ...overrides,
   }
 }
@@ -46,11 +50,88 @@ function renderContextMenu(contextMenu: ContextMenuState, duplicateCount = 1) {
 }
 
 describe('ContextMenuHost copy actions', () => {
-  it('shows one make copy action for normal tabs and no make duplicate action', () => {
+  it('shows make copy for normal tabs', () => {
     const html = renderContextMenu({ type: 'tab', tabId: 'tab-1', x: 0, y: 0 })
 
     expect(html).toContain('make copy')
-    expect(html).not.toContain('make duplicate')
+  })
+
+  it('shows copy note as and copy aisle as submenus for multi-aisle notes', () => {
+    const html = renderToStaticMarkup(
+      <ContextMenuHost
+        {...createContextMenuProps({ type: 'tab', tabId: 'tab-1', x: 0, y: 0 }, 1, {
+          copyAsMenu: {
+            note: {
+              duplicate: { available: true },
+              link: { available: true },
+              copy: { available: true },
+              preview: { available: false, reason: 'copy a specific aisle as preview for notes with multiple aisles.' },
+            },
+            aisle: {
+              duplicate: { available: true },
+              link: { available: true },
+              copy: { available: true },
+              preview: { available: true },
+            },
+          },
+        })}
+      />,
+    )
+
+    expect(html).toContain('copy note as')
+    expect(html).toContain('copy aisle as')
+    expect(html).toContain('aria-disabled="true"')
+    expect(html).toContain('duplicate')
+    expect(html).toContain('preview')
+    expect(html).toMatch(
+      /copy note as[\s\S]*>copy<\/button>[\s\S]*>duplicate<\/button>[\s\S]*role="separator"[\s\S]*>link<\/button>[\s\S]*>preview<\/button>/,
+    )
+  })
+
+  it('shows copy note as and copy aisle as submenus for the active editor note', () => {
+    const html = renderToStaticMarkup(
+      <ContextMenuHost
+        {...createContextMenuProps({ type: 'editor', x: 0, y: 0 }, 1, {
+          copyAsMenu: {
+            note: {
+              duplicate: { available: true },
+              link: { available: true },
+              copy: { available: true },
+              preview: { available: false, reason: 'copy a specific aisle as preview for notes with multiple aisles.' },
+            },
+            aisle: {
+              duplicate: { available: true },
+              link: { available: true },
+              copy: { available: true },
+              preview: { available: true },
+            },
+          },
+        })}
+      />,
+    )
+
+    expect(html).toContain('make copy')
+    expect(html).toContain('copy note as')
+    expect(html).toContain('copy aisle as')
+  })
+
+  it('renders unavailable copy-as actions as clickable aria-disabled menu rows', () => {
+    const onCopyAsUnavailable = vi.fn()
+    const props = createContextMenuProps({ type: 'tab', tabId: 'tab-1', x: 0, y: 0 }, 1, {
+      copyAsMenu: {
+        note: {
+          duplicate: { available: true },
+          link: { available: true },
+          copy: { available: true },
+          preview: { available: false, reason: 'no preview' },
+        },
+      },
+      onCopyAsUnavailable,
+    })
+    const html = renderToStaticMarkup(<ContextMenuHost {...props} />)
+
+    expect(html).toContain('aria-disabled="true"')
+    expect(html).not.toContain('disabled=""')
   })
 
   it('keeps de-couple available for already linked notes', () => {
@@ -60,7 +141,7 @@ describe('ContextMenuHost copy actions', () => {
     expect(html).toContain('de-couple')
   })
 
-  it('only shows make copy for the home subtab context menu', () => {
+  it('keeps home subtab context menus limited to copy actions', () => {
     const html = renderContextMenu({ type: 'home-tab', tabId: 'tab-1', x: 0, y: 0 })
 
     expect(html).toContain('make copy')
@@ -102,8 +183,12 @@ describe('ContextMenuHost copy actions', () => {
     expect(html).toContain('task list')
     expect(html).toContain('heading 6')
     expect(html).toContain('note link')
+    expect(html).toContain('aisle')
     expect(html).toContain('attachment')
     expect(html).toContain('code block')
+    expect(html).toMatch(
+      /insert[\s\S]*>note link<\/button>[\s\S]*>url link<\/button>[\s\S]*role="separator"[\s\S]*>aisle<\/button>[\s\S]*role="separator"[\s\S]*>attachment<\/button>[\s\S]*>table<\/button>[\s\S]*>horizontal rule<\/button>[\s\S]*role="separator"[\s\S]*>code block<\/button>/,
+    )
   })
 
   it('shows contextual link actions inside the editor menu', () => {
