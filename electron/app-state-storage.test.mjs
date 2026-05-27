@@ -13,7 +13,7 @@ import {
   writeAssetToProfile,
   writeImageAssetToProfile,
 } from './app-state-storage.mjs'
-import { buildContextToken } from '../src/markdown/note-context-tokens.js'
+import { buildPreviewToken } from '../src/markdown/note-context-tokens.js'
 import { STORAGE_PATH_SEGMENT_MAX_LENGTH } from '../src/storage/storage-path-segments.js'
 
 function createTempUserDataPath() {
@@ -304,9 +304,14 @@ describe('Electron app state storage load result', () => {
         settingsSection: 'toolbar',
         selectedCustomTheme: 'custom3',
         lastNoteCopyMode: 'linked',
+        findCaseSensitive: true,
+        findReplaceMode: 'replace',
+        removeNoteReferencesOnTrash: false,
+        noteMentionCopyRequiresConfirmation: false,
         decoupledItemsKeepData: false,
         tableAddTargetMode: 'active-cell',
         tableDeleteTargetMode: 'active-cell',
+        tableOfContentsScope: 'focused-aisle',
         newAislePlacement: 'right-of-focus',
       }
       state.domains[0].spaces[0].settings = { autoRemoveDeletedDays: 21 }
@@ -345,12 +350,22 @@ describe('Electron app state storage load result', () => {
       expect(appSettings.themePalettes.dawn.primary).toBe('#123456')
       expect(appSettings.ui.settingsSection).toBe('toolbar')
       expect(appSettings.ui.lastNoteCopyMode).toBe('linked')
+      expect(appSettings.ui.findCaseSensitive).toBe(true)
+      expect(appSettings.ui.findReplaceMode).toBe('replace')
+      expect(appSettings.ui.removeNoteReferencesOnTrash).toBe(false)
+      expect(appSettings.ui.noteMentionCopyRequiresConfirmation).toBe(false)
+      expect(appSettings.ui.tableOfContentsScope).toBe('focused-aisle')
       expect(appSettings.ui.newAislePlacement).toBe('right-of-focus')
       expect(appSettings.hotkeys.enableMouseBackForward).toBe(false)
       expect(appSettings.hotkeys.shortcuts.newTab).toBe('Ctrl+Alt+N')
       expect(frontmatterSettings.settingsTemplateId).toBe('template-1')
       expect(spaceManifest.settings).toEqual({ autoRemoveDeletedDays: 21 })
       expect(parsed.ui.settingsSection).toBe('toolbar')
+      expect(parsed.ui.findCaseSensitive).toBe(true)
+      expect(parsed.ui.findReplaceMode).toBe('replace')
+      expect(parsed.ui.removeNoteReferencesOnTrash).toBe(false)
+      expect(parsed.ui.noteMentionCopyRequiresConfirmation).toBe(false)
+      expect(parsed.ui.tableOfContentsScope).toBe('focused-aisle')
       expect(parsed.ui.newAislePlacement).toBe('right-of-focus')
       expect(parsed.hotkeys.shortcuts.newTab).toBe('Ctrl+Alt+N')
       expect(parsed.hotkeys.enableMouseBackForward).toBe(false)
@@ -1347,7 +1362,7 @@ describe('Electron app state storage load result', () => {
       const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3])
       const asset = writeImageAssetToProfile(userDataPath, bytes, 'png')
       const state = JSON.parse(serializedAppState())
-      const previewToken = buildContextToken(state, {
+      const previewToken = buildPreviewToken(state, {
         id: 'preview-1',
         target: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
       })

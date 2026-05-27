@@ -8,7 +8,7 @@ import {
   findVisibleMatches,
   getFindReplaceQueryError,
 } from './find-replace'
-import { buildContextToken, buildInternalNoteLinkToken } from './note-references'
+import { buildPreviewToken, buildInternalNoteLinkToken } from './note-references'
 
 function tab(id: string, title: string, noteBodyId: string, subTabs: Array<{ id: string; title: string; body: string }> = []): Tab {
   return {
@@ -224,7 +224,7 @@ describe('visible markdown matching', () => {
 
   it('does not search or replace note preview directive tokens', () => {
     const state = createFindReplaceState()
-    const previewToken = buildContextToken(state, {
+    const previewToken = buildPreviewToken(state, {
       id: 'preview-token',
       target: { ...ACTIVE_LOCATION, subTabId: 'sub-a' },
     })
@@ -256,7 +256,7 @@ describe('visible markdown matching', () => {
     const state = createFindReplaceState()
     const wikiLink = buildInternalNoteLinkToken(state, { ...ACTIVE_LOCATION, subTabId: 'sub-a' })
     const aliasedLink = buildInternalNoteLinkToken(state, { ...ACTIVE_LOCATION, subTabId: 'sub-a' }, 'Custom Label')
-    const previewToken = buildContextToken(state, {
+    const previewToken = buildPreviewToken(state, {
       id: 'preview-token',
       target: { ...ACTIVE_LOCATION, subTabId: 'sub-a' },
     })

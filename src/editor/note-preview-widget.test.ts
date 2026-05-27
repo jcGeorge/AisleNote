@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ContextPreviewData } from '../notes/note-preview-data'
-import type { NoteContextReferencePayload } from '../notes/note-references'
+import type { NotePreviewData } from '../notes/note-preview-data'
+import type { NotePreviewReferencePayload } from '../notes/note-references'
 import {
-  createContextPreviewWidgetElement,
+  createNotePreviewWidgetElement,
   createInternalNoteLinkWidgetElement,
-  createReadonlyContextPreviewWidgetElement,
+  createReadonlyNotePreviewWidgetElement,
   getNotePreviewFittedHeightRem,
 } from './note-preview-widget'
 
@@ -358,7 +358,7 @@ function getTextContent(element: FakeElement): string {
   return `${element.textContent}${element.children.map(getTextContent).join('')}`
 }
 
-function createPreviewData(overrides: Partial<ContextPreviewData> = {}): ContextPreviewData {
+function createPreviewData(overrides: Partial<NotePreviewData> = {}): NotePreviewData {
   return {
     targetInfo: { domain: null, space: null, tab: null, subTab: null, noteBodyId: '', title: '' },
     targetBody: null,
@@ -463,17 +463,17 @@ describe('note preview widget', () => {
   })
 
   it('renders preview title buttons and sends every button to the same target', () => {
-    const payload: NoteContextReferencePayload = {
+    const payload: NotePreviewReferencePayload = {
       id: 'preview-id',
       target: { domainId: 'domain', spaceId: 'space', tabId: 'parent', subTabId: 'child' },
       heading: { aisleId: 'aisle', headingKey: 'aisle|h2|0|Child' },
     }
     const navigateToNoteLocation = vi.fn()
-    const widget = createContextPreviewWidgetElement(payload, {
+    const widget = createNotePreviewWidgetElement(payload, {
       sourceNoteBodyId: 'source-body',
-      getContextPreviewData: vi.fn(() => createPreviewData()),
+      getNotePreviewData: vi.fn(() => createPreviewData()),
       navigateToNoteLocation,
-      deleteContextPreview: vi.fn(),
+      deleteNotePreview: vi.fn(),
     }) as unknown as FakeElement
     const titleButtons = findAllByClass(widget, 'context-preview-title-btn')
 
@@ -491,14 +491,14 @@ describe('note preview widget', () => {
   })
 
   it('keeps missing previews non-navigating with fallback label text', () => {
-    const payload: NoteContextReferencePayload = {
+    const payload: NotePreviewReferencePayload = {
       id: 'preview-id',
       target: { domainId: 'domain', spaceId: 'space', tabId: 'missing', subTabId: null },
     }
     const navigateToNoteLocation = vi.fn()
-    const widget = createContextPreviewWidgetElement(payload, {
+    const widget = createNotePreviewWidgetElement(payload, {
       sourceNoteBodyId: 'source-body',
-      getContextPreviewData: vi.fn(() =>
+      getNotePreviewData: vi.fn(() =>
         createPreviewData({
           locationLabel: 'missing note',
           titleButtons: [],
@@ -506,7 +506,7 @@ describe('note preview widget', () => {
         }),
       ),
       navigateToNoteLocation,
-      deleteContextPreview: vi.fn(),
+      deleteNotePreview: vi.fn(),
     }) as unknown as FakeElement
 
     expect(findAllByClass(widget, 'context-preview-title-btn')).toHaveLength(0)
@@ -517,15 +517,15 @@ describe('note preview widget', () => {
   })
 
   it('renders one two-button caret size control and edit-aisle delete icon markup', () => {
-    const payload: NoteContextReferencePayload = {
+    const payload: NotePreviewReferencePayload = {
       id: 'preview-id',
       target: { domainId: 'domain', spaceId: 'space', tabId: 'parent', subTabId: 'child' },
     }
-    const widget = createContextPreviewWidgetElement(payload, {
+    const widget = createNotePreviewWidgetElement(payload, {
       sourceNoteBodyId: 'source-body',
-      getContextPreviewData: vi.fn(() => createPreviewData()),
+      getNotePreviewData: vi.fn(() => createPreviewData()),
       navigateToNoteLocation: vi.fn(),
-      deleteContextPreview: vi.fn(),
+      deleteNotePreview: vi.fn(),
     }) as unknown as FakeElement
 
     expect(findAllByClass(widget, 'context-bar-size-control')).toHaveLength(1)
@@ -535,15 +535,15 @@ describe('note preview widget', () => {
   })
 
   it('steps note preview size through small, large, and minimized states', () => {
-    const payload: NoteContextReferencePayload = {
+    const payload: NotePreviewReferencePayload = {
       id: 'preview-id',
       target: { domainId: 'domain', spaceId: 'space', tabId: 'parent', subTabId: 'child' },
     }
-    const widget = createContextPreviewWidgetElement(payload, {
+    const widget = createNotePreviewWidgetElement(payload, {
       sourceNoteBodyId: 'source-body',
-      getContextPreviewData: vi.fn(() => createPreviewData()),
+      getNotePreviewData: vi.fn(() => createPreviewData()),
       navigateToNoteLocation: vi.fn(),
-      deleteContextPreview: vi.fn(),
+      deleteNotePreview: vi.fn(),
     }) as unknown as FakeElement
     const shrinkButton = findAllByClass(widget, 'context-bar-size-up-btn')[0]
     const growButton = findAllByClass(widget, 'context-bar-size-down-btn')[0]
@@ -585,20 +585,20 @@ describe('note preview widget', () => {
   })
 
   it('fits preview height from natural content scroll height instead of the forced shell height', () => {
-    const payload: NoteContextReferencePayload = {
+    const payload: NotePreviewReferencePayload = {
       id: 'preview-id',
       target: { domainId: 'domain', spaceId: 'space', tabId: 'parent', subTabId: 'child' },
     }
-    const widget = createContextPreviewWidgetElement(payload, {
+    const widget = createNotePreviewWidgetElement(payload, {
       sourceNoteBodyId: 'source-body',
-      getContextPreviewData: vi.fn(() =>
+      getNotePreviewData: vi.fn(() =>
         createPreviewData({
           status: 'ready',
           selectedAisle: { id: 'aisle', markdown: 'medium preview content' } as any,
         }),
       ),
       navigateToNoteLocation: vi.fn(),
-      deleteContextPreview: vi.fn(),
+      deleteNotePreview: vi.fn(),
     }) as unknown as FakeElement
     const editorHost = findAllByClass(widget, 'context-preview-editor-host')[0]
 
@@ -611,20 +611,20 @@ describe('note preview widget', () => {
 
   it('keeps the size cap until Toast UI inserts the delayed content root, then fits content', () => {
     editorMockState.renderMode = 'delayed-root'
-    const payload: NoteContextReferencePayload = {
+    const payload: NotePreviewReferencePayload = {
       id: 'preview-id',
       target: { domainId: 'domain', spaceId: 'space', tabId: 'parent', subTabId: 'child' },
     }
-    const widget = createContextPreviewWidgetElement(payload, {
+    const widget = createNotePreviewWidgetElement(payload, {
       sourceNoteBodyId: 'source-body',
-      getContextPreviewData: vi.fn(() =>
+      getNotePreviewData: vi.fn(() =>
         createPreviewData({
           status: 'ready',
           selectedAisle: { id: 'aisle', markdown: 'medium preview content' } as any,
         }),
       ),
       navigateToNoteLocation: vi.fn(),
-      deleteContextPreview: vi.fn(),
+      deleteNotePreview: vi.fn(),
     }) as unknown as FakeElement
     const editorHost = findAllByClass(widget, 'context-preview-editor-host')[0]
 
@@ -638,20 +638,20 @@ describe('note preview widget', () => {
 
   it('keeps the size cap while meaningful markdown has an empty rendered root', () => {
     editorMockState.renderMode = 'empty-root'
-    const payload: NoteContextReferencePayload = {
+    const payload: NotePreviewReferencePayload = {
       id: 'preview-id',
       target: { domainId: 'domain', spaceId: 'space', tabId: 'parent', subTabId: 'child' },
     }
-    const widget = createContextPreviewWidgetElement(payload, {
+    const widget = createNotePreviewWidgetElement(payload, {
       sourceNoteBodyId: 'source-body',
-      getContextPreviewData: vi.fn(() =>
+      getNotePreviewData: vi.fn(() =>
         createPreviewData({
           status: 'ready',
           selectedAisle: { id: 'aisle', markdown: 'medium preview content' } as any,
         }),
       ),
       navigateToNoteLocation: vi.fn(),
-      deleteContextPreview: vi.fn(),
+      deleteNotePreview: vi.fn(),
     }) as unknown as FakeElement
     const editorHost = findAllByClass(widget, 'context-preview-editor-host')[0]
 
@@ -664,20 +664,20 @@ describe('note preview widget', () => {
   })
 
   it('rebinds measurement observers when Toast UI replaces the content root', () => {
-    const payload: NoteContextReferencePayload = {
+    const payload: NotePreviewReferencePayload = {
       id: 'preview-id',
       target: { domainId: 'domain', spaceId: 'space', tabId: 'parent', subTabId: 'child' },
     }
-    const widget = createContextPreviewWidgetElement(payload, {
+    const widget = createNotePreviewWidgetElement(payload, {
       sourceNoteBodyId: 'source-body',
-      getContextPreviewData: vi.fn(() =>
+      getNotePreviewData: vi.fn(() =>
         createPreviewData({
           status: 'ready',
           selectedAisle: { id: 'aisle', markdown: 'short preview content' } as any,
         }),
       ),
       navigateToNoteLocation: vi.fn(),
-      deleteContextPreview: vi.fn(),
+      deleteNotePreview: vi.fn(),
     }) as unknown as FakeElement
     const editorHost = findAllByClass(widget, 'context-preview-editor-host')[0]
     const observer = resizeObserverInstances[0]
@@ -695,20 +695,20 @@ describe('note preview widget', () => {
   })
 
   it('caps tall preview content at the current size maximum', () => {
-    const payload: NoteContextReferencePayload = {
+    const payload: NotePreviewReferencePayload = {
       id: 'preview-id',
       target: { domainId: 'domain', spaceId: 'space', tabId: 'parent', subTabId: 'child' },
     }
-    const widget = createContextPreviewWidgetElement(payload, {
+    const widget = createNotePreviewWidgetElement(payload, {
       sourceNoteBodyId: 'source-body',
-      getContextPreviewData: vi.fn(() =>
+      getNotePreviewData: vi.fn(() =>
         createPreviewData({
           status: 'ready',
           selectedAisle: { id: 'aisle', markdown: 'tall preview content' } as any,
         }),
       ),
       navigateToNoteLocation: vi.fn(),
-      deleteContextPreview: vi.fn(),
+      deleteNotePreview: vi.fn(),
     }) as unknown as FakeElement
     const editorHost = findAllByClass(widget, 'context-preview-editor-host')[0]
 
@@ -716,20 +716,20 @@ describe('note preview widget', () => {
   })
 
   it('reruns fitting when size toggles so large can grow beyond the small cap', () => {
-    const payload: NoteContextReferencePayload = {
+    const payload: NotePreviewReferencePayload = {
       id: 'preview-id',
       target: { domainId: 'domain', spaceId: 'space', tabId: 'parent', subTabId: 'child' },
     }
-    const widget = createContextPreviewWidgetElement(payload, {
+    const widget = createNotePreviewWidgetElement(payload, {
       sourceNoteBodyId: 'source-body',
-      getContextPreviewData: vi.fn(() =>
+      getNotePreviewData: vi.fn(() =>
         createPreviewData({
           status: 'ready',
           selectedAisle: { id: 'aisle', markdown: 'large-only preview content' } as any,
         }),
       ),
       navigateToNoteLocation: vi.fn(),
-      deleteContextPreview: vi.fn(),
+      deleteNotePreview: vi.fn(),
     }) as unknown as FakeElement
     const growButton = findAllByClass(widget, 'context-bar-size-down-btn')[0]
 
@@ -758,21 +758,21 @@ describe('note preview widget', () => {
   })
 
   it('refreshes the embedded readonly editor when the target aisle markdown changes', () => {
-    const payload: NoteContextReferencePayload = {
+    const payload: NotePreviewReferencePayload = {
       id: 'preview-id',
       target: { domainId: 'domain', spaceId: 'space', tabId: 'parent', subTabId: 'child' },
     }
     let markdown = 'short preview content'
-    const widget = createContextPreviewWidgetElement(payload, {
+    const widget = createNotePreviewWidgetElement(payload, {
       sourceNoteBodyId: 'source-body',
-      getContextPreviewData: vi.fn(() =>
+      getNotePreviewData: vi.fn(() =>
         createPreviewData({
           status: 'ready',
           selectedAisle: { id: 'aisle', markdown } as any,
         }),
       ),
       navigateToNoteLocation: vi.fn(),
-      deleteContextPreview: vi.fn(),
+      deleteNotePreview: vi.fn(),
     }) as unknown as FakeElement
     const editorHost = findAllByClass(widget, 'context-preview-editor-host')[0]
 
@@ -787,23 +787,23 @@ describe('note preview widget', () => {
   })
 
   it('installs readonly reference rendering inside embedded preview editors', () => {
-    const payload: NoteContextReferencePayload = {
+    const payload: NotePreviewReferencePayload = {
       id: 'preview-id',
       target: { domainId: 'domain', spaceId: 'space', tabId: 'parent', subTabId: 'child' },
     }
-    const nestedPayload: NoteContextReferencePayload = {
+    const nestedPayload: NotePreviewReferencePayload = {
       id: 'nested-preview-id',
       target: { domainId: 'domain', spaceId: 'space', tabId: 'other', subTabId: null },
     }
-    createContextPreviewWidgetElement(payload, {
+    createNotePreviewWidgetElement(payload, {
       sourceNoteBodyId: 'source-body',
-      getContextPreviewData: vi.fn(() =>
+      getNotePreviewData: vi.fn(() =>
         createPreviewData({
           status: 'ready',
           selectedAisle: { id: 'aisle', markdown: 'preview with [[Linked--123abc]] and ![[Other--456def]]' } as any,
         }),
       ),
-      resolveContextPreviewToken: vi.fn((token: string) => (token.startsWith('!') ? nestedPayload : null)),
+      resolvePreviewToken: vi.fn((token: string) => (token.startsWith('!') ? nestedPayload : null)),
       resolveInternalNoteReferenceToken: vi.fn((token: string) =>
         token === '[[Linked--123abc]]'
           ? {
@@ -828,7 +828,7 @@ describe('note preview widget', () => {
           : null,
       ),
       navigateToNoteLocation: vi.fn(),
-      deleteContextPreview: vi.fn(),
+      deleteNotePreview: vi.fn(),
     })
 
     const pluginFactory = editorInstances[0].options.plugins.find(
@@ -849,15 +849,15 @@ describe('note preview widget', () => {
   })
 
   it('renders nested note previews as readonly content with navigable title chips', () => {
-    const payload: NoteContextReferencePayload = {
+    const payload: NotePreviewReferencePayload = {
       id: 'nested-preview-id',
       target: { domainId: 'domain', spaceId: 'space', tabId: 'parent', subTabId: 'child' },
       aisleIds: ['aisle-2'],
     }
     const navigateToNoteLocation = vi.fn()
-    const widget = createReadonlyContextPreviewWidgetElement(payload, {
+    const widget = createReadonlyNotePreviewWidgetElement(payload, {
       sourceNoteBodyId: 'source-body',
-      getContextPreviewData: vi.fn(() =>
+      getNotePreviewData: vi.fn(() =>
         createPreviewData({
           status: 'ready',
           selectedAisle: { id: 'aisle-2', markdown: 'nested preview content' } as any,
@@ -868,7 +868,7 @@ describe('note preview widget', () => {
         }),
       ),
       navigateToNoteLocation,
-      deleteContextPreview: vi.fn(),
+      deleteNotePreview: vi.fn(),
     }) as unknown as FakeElement
 
     expect(widget.className).toContain('context-preview-navigation-widget')

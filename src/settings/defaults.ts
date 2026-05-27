@@ -16,6 +16,11 @@ import { normalizeNoteCursorLocations } from '../notes/note-cursors'
 import { normalizeTipIds } from '../tips/tips'
 import { normalizeHeadingCollapseState } from '../editor/heading-collapse-state'
 import { normalizeToolbarLayouts } from '../editor/toolbar-layouts'
+import {
+  DEFAULT_SIMPLE_SYNCED_UI_SETTINGS,
+  normalizeRegisteredSyncedUiSetting,
+  normalizeRegisteredSyncedUiSettings,
+} from './synced-ui-settings-registry.js'
 
 export const DEFAULT_AUTO_REMOVE_DAYS = 7
 export const ALWAYS_SHOW_DOMAINS_WITHOUT_SPACES_MESSAGE = 'you cannot show domains without showing spaces'
@@ -43,23 +48,9 @@ export const MIN_AUTO_REMOVE_DAYS = 1
 export const MAX_AUTO_REMOVE_DAYS = 365
 
 export const DEFAULT_UI_SETTINGS: AppState['ui'] = {
-  showParentHomeTab: true,
+  ...DEFAULT_SIMPLE_SYNCED_UI_SETTINGS,
   alwaysShowSpaces: false,
   alwaysShowDomains: false,
-  stageManagerOpenDestinationAfterApply: true,
-  lastLinkInsertMode: 'note',
-  lastNoteCopyMode: 'independent',
-  findCaseSensitive: false,
-  findWholeWord: false,
-  findRegex: false,
-  findReplaceMode: 'find',
-  removeNoteReferencesOnTrash: true,
-  noteMentionCopyRequiresConfirmation: true,
-  decoupledItemsKeepData: true,
-  tableAddTargetMode: 'bottom-right',
-  tableDeleteTargetMode: 'bottom-right',
-  tableOfContentsScope: 'all-aisles',
-  newAislePlacement: 'end',
   tabButtonScale: 1,
   noteFontScale: 1,
   tooltipScale: 1,
@@ -72,7 +63,6 @@ export const DEFAULT_UI_SETTINGS: AppState['ui'] = {
   noteCursorLocations: {},
   headingCollapseState: {},
   toolbarLayouts: [],
-  toolbarEditorShowNames: false,
   seenTipIds: [],
   disabledTipIds: [],
 }
@@ -357,32 +347,33 @@ export function normalizeDataSettingsSection(
 }
 
 export function normalizeLinkInsertMode(value: unknown): AppState['ui']['lastLinkInsertMode'] {
-  return value === 'url' || value === 'note' ? value : DEFAULT_UI_SETTINGS.lastLinkInsertMode
+  return normalizeRegisteredSyncedUiSetting('lastLinkInsertMode', value)
 }
 
 export function normalizeNoteCopyMode(value: unknown): AppState['ui']['lastNoteCopyMode'] {
-  return value === 'linked' || value === 'independent' ? value : DEFAULT_UI_SETTINGS.lastNoteCopyMode
+  return normalizeRegisteredSyncedUiSetting('lastNoteCopyMode', value)
 }
 
 export function normalizeTableControlTargetMode(value: unknown): TableControlTargetMode {
-  return value === 'active-cell' || value === 'bottom-right' ? value : 'bottom-right'
+  return normalizeRegisteredSyncedUiSetting('tableAddTargetMode', value)
 }
 
 export function normalizeTableOfContentsScope(value: unknown): TableOfContentsScope {
-  return value === 'focused-aisle' || value === 'all-aisles' ? value : 'all-aisles'
+  return normalizeRegisteredSyncedUiSetting('tableOfContentsScope', value)
 }
 
 export function normalizeNewAislePlacement(value: unknown): NewAislePlacement {
-  return value === 'right-of-focus' || value === 'end' ? value : 'end'
+  return normalizeRegisteredSyncedUiSetting('newAislePlacement', value)
 }
 
 export function normalizeFindReplaceMode(value: unknown): AppState['ui']['findReplaceMode'] {
-  return value === 'replace' || value === 'find' ? value : DEFAULT_UI_SETTINGS.findReplaceMode
+  return normalizeRegisteredSyncedUiSetting('findReplaceMode', value)
 }
 
 export function normalizeUiSettings(raw: unknown): AppState['ui'] {
   if (!raw || typeof raw !== 'object') return DEFAULT_UI_SETTINGS
   const obj = raw as Record<string, unknown>
+  const registeredSettings = normalizeRegisteredSyncedUiSettings(obj)
   const customThemePalette = normalizeCustomThemePalette(obj.customThemePalette)
   const themePalettes = normalizeThemePalettes(obj.themePalettes, customThemePalette)
   const alwaysShowSpaces =
@@ -392,39 +383,9 @@ export function normalizeUiSettings(raw: unknown): AppState['ui'] {
       ? obj.alwaysShowDomains
       : DEFAULT_UI_SETTINGS.alwaysShowDomains
   return {
-    showParentHomeTab:
-      typeof obj.showParentHomeTab === 'boolean' ? obj.showParentHomeTab : DEFAULT_UI_SETTINGS.showParentHomeTab,
+    ...registeredSettings,
     alwaysShowSpaces,
     alwaysShowDomains,
-    stageManagerOpenDestinationAfterApply:
-      typeof obj.stageManagerOpenDestinationAfterApply === 'boolean'
-        ? obj.stageManagerOpenDestinationAfterApply
-        : DEFAULT_UI_SETTINGS.stageManagerOpenDestinationAfterApply,
-    lastLinkInsertMode: normalizeLinkInsertMode(obj.lastLinkInsertMode),
-    lastNoteCopyMode: normalizeNoteCopyMode(obj.lastNoteCopyMode),
-    findCaseSensitive:
-      typeof obj.findCaseSensitive === 'boolean' ? obj.findCaseSensitive : DEFAULT_UI_SETTINGS.findCaseSensitive,
-    findWholeWord:
-      typeof obj.findWholeWord === 'boolean' ? obj.findWholeWord : DEFAULT_UI_SETTINGS.findWholeWord,
-    findRegex:
-      typeof obj.findRegex === 'boolean' ? obj.findRegex : DEFAULT_UI_SETTINGS.findRegex,
-    findReplaceMode: normalizeFindReplaceMode(obj.findReplaceMode),
-    removeNoteReferencesOnTrash:
-      typeof obj.removeNoteReferencesOnTrash === 'boolean'
-        ? obj.removeNoteReferencesOnTrash
-        : DEFAULT_UI_SETTINGS.removeNoteReferencesOnTrash,
-    noteMentionCopyRequiresConfirmation:
-      typeof obj.noteMentionCopyRequiresConfirmation === 'boolean'
-        ? obj.noteMentionCopyRequiresConfirmation
-        : DEFAULT_UI_SETTINGS.noteMentionCopyRequiresConfirmation,
-    decoupledItemsKeepData:
-      typeof obj.decoupledItemsKeepData === 'boolean'
-        ? obj.decoupledItemsKeepData
-        : DEFAULT_UI_SETTINGS.decoupledItemsKeepData,
-    tableAddTargetMode: normalizeTableControlTargetMode(obj.tableAddTargetMode),
-    tableDeleteTargetMode: normalizeTableControlTargetMode(obj.tableDeleteTargetMode),
-    tableOfContentsScope: normalizeTableOfContentsScope(obj.tableOfContentsScope),
-    newAislePlacement: normalizeNewAislePlacement(obj.newAislePlacement),
     tabButtonScale:
       typeof obj.tabButtonScale === 'number'
         ? clampTabButtonScale(obj.tabButtonScale)
@@ -449,10 +410,6 @@ export function normalizeUiSettings(raw: unknown): AppState['ui'] {
     noteCursorLocations: normalizeNoteCursorLocations(obj.noteCursorLocations),
     headingCollapseState: normalizeHeadingCollapseState(obj.headingCollapseState),
     toolbarLayouts: normalizeToolbarLayouts(obj.toolbarLayouts),
-    toolbarEditorShowNames:
-      typeof obj.toolbarEditorShowNames === 'boolean'
-        ? obj.toolbarEditorShowNames
-        : DEFAULT_UI_SETTINGS.toolbarEditorShowNames,
     seenTipIds: normalizeTipIds(obj.seenTipIds),
     disabledTipIds: normalizeTipIds(obj.disabledTipIds),
   }

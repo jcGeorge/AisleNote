@@ -16,26 +16,21 @@ import {
 import type { AppState, ContextMenuState, ModalState, NoteLocation, NoteNavigationTarget, ToastTone } from '../types/app'
 import {
   buildInternalNoteLinkToken,
-  getContextReferenceSignature,
-  type NoteContextReferencePayload,
-  parseContextReferences,
-  parseContextToken,
-  removeContextTokenById,
-  replaceContextTokenById,
+  parsePreviewToken,
+  removePreviewTokenById,
+  replacePreviewTokenById,
   replaceInternalNoteLinkByOccurrence,
   resolveWikiReferenceToken,
 } from './note-references'
-import { getAisleMarkdown } from './note-markdown'
 import { normalizeNoteReferenceTarget } from './note-reference-targets'
 import {
   buildDefaultNoteReferenceDraft,
-  getNoteReferenceLinkSpec,
-  getNoteReferencePreviewSpec,
   getUrlReferenceLinkSpec,
   type NoteReferenceAction,
-  type NoteReferenceCommandResult,
+  type NoteReferenceEditorCommandResult,
 } from './note-reference-model'
-import { getContextPreviewDataFromState } from './note-preview-data'
+import { buildNoteReferenceCommand, getNoteBodyPreviewMarkdowns } from './note-reference-commands'
+import { getNotePreviewDataFromState } from './note-preview-data'
 
 type UseNoteReferenceActionsParams = {
   stateRef: MutableRefObject<AppState>
@@ -77,8 +72,8 @@ export const useNoteReferenceActions = ({
     pushToast,
   }
 
-  const getContextPreviewData = (payload: Parameters<typeof getContextPreviewDataFromState>[1], sourceNoteBodyId: string) =>
-    getContextPreviewDataFromState(stateRef.current, payload, sourceNoteBodyId)
+  const getNotePreviewData = (payload: Parameters<typeof getNotePreviewDataFromState>[1], sourceNoteBodyId: string) =>
+    getNotePreviewDataFromState(stateRef.current, payload, sourceNoteBodyId)
 
   const insertLinkIntoActiveEditor = (label: string, url: string) => {
     return runEditorCommandOperation(editorOperationRuntime, 'addLink', { linkUrl: url, linkText: label }).handled
@@ -119,26 +114,11 @@ export const useNoteReferenceActions = ({
     return insertEditorTextOperation(editorOperationRuntime, text).handled
   }
 
-  const hasDuplicateContextPreview = (
-    payload: NoteContextReferencePayload,
-    editingTokenId?: string,
-  ) => {
-    const latestState = stateRef.current
-    const markdown = getActiveEditorMarkdown()
-    const activeBody = latestState.noteBodies.find((body) => body.id === activeNoteBodyId) ?? null
-    const noteMarkdowns = activeBody
-      ? activeBody.aisles.map((aisle) =>
-          aisle.id === activeAisleIdRef.current ? markdown : getAisleMarkdown(aisle, latestState.noteAisleBodies),
-        )
-      : [markdown]
-    const nextSignature = getContextReferenceSignature(latestState, payload)
-    return Boolean(
-      noteMarkdowns.flatMap((noteMarkdown) => parseContextReferences(noteMarkdown, latestState)).find(
-        (reference) =>
-          reference.payload.id !== editingTokenId &&
-          getContextReferenceSignature(latestState, reference.payload) === nextSignature,
-      ),
-    )
+  const getActivePreviewMarkdowns = (latestState: AppState) => {
+    return getNoteBodyPreviewMarkdowns(latestState, activeNoteBodyId, {
+      aisleId: activeAisleIdRef.current,
+      markdown: getActiveEditorMarkdown(),
+    })
   }
 
   const insertNoteReferenceFromMention = ({
@@ -151,34 +131,24 @@ export const useNoteReferenceActions = ({
     action: NoteReferenceAction
     from: number
     to: number
-  }): NoteReferenceCommandResult => {
+  }): NoteReferenceEditorCommandResult => {
     const latestState = stateRef.current
-    if (action === 'link') {
-      const linkSpec = getNoteReferenceLinkSpec(latestState, getCurrentNoteLocation(), target)
-      if (!linkSpec.ok) {
-        pushToast(linkSpec.message, 'warning')
-        return { handled: false, toast: { message: linkSpec.message, tone: 'warning' } }
-      }
-      if (!replaceTextRangeInActiveEditor(from, to, linkSpec.syntax)) {
-        const message = 'open a note before inserting a note link.'
-        pushToast(message, 'warning')
-        return { handled: false, toast: { message, tone: 'warning' } }
-      }
-      return { handled: true }
+    const command = buildNoteReferenceCommand({
+      appState: latestState,
+      source: getCurrentNoteLocation(),
+      target,
+      action,
+      activeNoteBodyId,
+      previewMarkdowns: action === 'preview' ? getActivePreviewMarkdowns(latestState) : undefined,
+    })
+    if (!command.ok) {
+      pushToast(command.message, 'warning')
+      return { handled: false, toast: { message: command.message, tone: 'warning' } }
     }
-
-    const previewSpec = getNoteReferencePreviewSpec(latestState, activeNoteBodyId, target)
-    if (!previewSpec.ok) {
-      pushToast(previewSpec.message, 'warning')
-      return { handled: false, toast: { message: previewSpec.message, tone: 'warning' } }
-    }
-    if (hasDuplicateContextPreview(previewSpec.payload)) {
-      const message = 'that note preview already exists in this note.'
-      pushToast(message, 'warning')
-      return { handled: false, toast: { message, tone: 'warning' } }
-    }
-    if (!replaceTextRangeInActiveEditor(from, to, previewSpec.token)) {
-      const message = 'open a note before inserting a note preview.'
+    if (!replaceTextRangeInActiveEditor(from, to, command.insertText)) {
+      const message = action === 'preview'
+        ? 'open a note before inserting a note preview.'
+        : 'open a note before inserting a note link.'
       pushToast(message, 'warning')
       return { handled: false, toast: { message, tone: 'warning' } }
     }
@@ -212,16 +182,22 @@ export const useNoteReferenceActions = ({
 
     if (modalState.insertAs === 'link') {
       const requestedLabel = modalState.noteLabelTouched || modalState.internalEdit ? modalState.noteLabel : ''
-      const linkSpec = getNoteReferenceLinkSpec(latestState, modalState.source, target, requestedLabel)
-      if (!linkSpec.ok) {
-        pushToast(linkSpec.message, 'warning')
+      const command = buildNoteReferenceCommand({
+        appState: latestState,
+        source: modalState.source,
+        target,
+        action: 'link',
+        labelOverride: requestedLabel,
+      })
+      if (!command.ok) {
+        pushToast(command.message, 'warning')
         return false
       }
-      const href = linkSpec.href
+      const href = command.syntax
       const previousHref = modalState.internalEdit?.href ?? href
       const internalEdit = modalState.internalEdit
       if (internalEdit) {
-        const nextSyntax = linkSpec.syntax
+        const nextSyntax = command.syntax
         const editFrom = internalEdit.from
         const editTo = internalEdit.to
         if (typeof editFrom === 'number' && typeof editTo === 'number') {
@@ -261,7 +237,7 @@ export const useNoteReferenceActions = ({
         pushToast('note link updated.', 'success')
         return true
       }
-      if (!insertTextIntoActiveEditor(linkSpec.syntax)) {
+      if (!insertTextIntoActiveEditor(command.insertText)) {
         pushToast('open a note before inserting a link.', 'warning')
         return false
       }
@@ -269,28 +245,32 @@ export const useNoteReferenceActions = ({
       return true
     }
 
-    const previewSpec = getNoteReferencePreviewSpec(latestState, activeNoteBodyId, target, modalState.editingTokenId)
-    if (!previewSpec.ok) {
-      pushToast(previewSpec.message, 'warning')
-      return false
-    }
-
     const markdown = getActiveEditorMarkdown()
-    if (hasDuplicateContextPreview(previewSpec.payload, modalState.editingTokenId)) {
-      pushToast('that note preview already exists in this note.', 'warning')
+    const command = buildNoteReferenceCommand({
+      appState: latestState,
+      source: modalState.source,
+      target,
+      action: 'preview',
+      activeNoteBodyId,
+      editingTokenId: modalState.editingTokenId,
+      previewMarkdowns: getActivePreviewMarkdowns(latestState),
+      insertPlacement: modalState.editingTokenId ? 'inline' : 'block',
+    })
+    if (!command.ok) {
+      pushToast(command.message, 'warning')
       return false
     }
 
     if (modalState.editingTokenId) {
       replaceEditorMarkdownOperation(
         editorOperationRuntime,
-        replaceContextTokenById(markdown, latestState, modalState.editingTokenId, previewSpec.token),
+        replacePreviewTokenById(markdown, latestState, modalState.editingTokenId, command.syntax),
       )
       pushToast('note preview settings updated.', 'success')
       return true
     }
 
-    if (!insertTextIntoActiveEditor(`\n\n${previewSpec.token}\n\n`)) {
+    if (!insertTextIntoActiveEditor(command.insertText)) {
       pushToast('open a note before inserting a note preview.', 'warning')
       return false
     }
@@ -298,9 +278,9 @@ export const useNoteReferenceActions = ({
     return true
   }
 
-  const deleteContextPreview = (tokenId: string) => {
+  const deleteNotePreview = (tokenId: string) => {
     const markdown = getActiveEditorMarkdown()
-    const nextMarkdown = removeContextTokenById(markdown, stateRef.current, tokenId)
+    const nextMarkdown = removePreviewTokenById(markdown, stateRef.current, tokenId)
     if (nextMarkdown === markdown) {
       pushToast('note preview not found.', 'warning')
       return
@@ -369,15 +349,15 @@ export const useNoteReferenceActions = ({
   }
 
   return {
-    getContextPreviewData,
+    getNotePreviewData,
     insertLinkIntoActiveEditor,
     replaceLinkRangeInActiveEditor,
     replaceTextRangeInActiveEditor,
     replaceTextRangeWithLinkInActiveEditor,
     insertNoteReferenceFromMention,
     insertNoteReference,
-    deleteContextPreview,
-    resolveContextPreviewToken: (token: string) => parseContextToken(token, stateRef.current),
+    deleteNotePreview,
+    resolvePreviewToken: (token: string) => parsePreviewToken(token, stateRef.current),
     resolveInternalNoteReferenceToken: (token: string) => resolveWikiReferenceToken(stateRef.current, token),
     openNoteReferenceModal,
     openInternalNoteLinkFromContext,

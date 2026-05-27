@@ -52,7 +52,7 @@ import {
   parseImageAssetUrl,
 } from '../src/markdown/image-asset-refs.js'
 import { normalizeImageResizeMetadataFragment } from '../src/markdown/image-metadata-core.js'
-import { normalizeContextReferenceTokensForMarkdown } from '../src/markdown/note-context-tokens.js'
+import { normalizePreviewReferenceTokensForMarkdown } from '../src/markdown/note-context-tokens.js'
 
 export const HYBRID_ROOT_DIR = 'notes-data'
 const SCHEMA_VERSION = 1
@@ -790,7 +790,7 @@ function writeNoteBodyAtPath({
       fileMap,
       primaryFile,
       externalizeMarkdownImages(
-        normalizeContextReferenceTokensForMarkdown(composeAisleMarkdownForStorage(markdown, sourceAisleBody), appState),
+        normalizePreviewReferenceTokensForMarkdown(composeAisleMarkdownForStorage(markdown, sourceAisleBody), appState),
         primaryFile,
         assetBank,
       ),
@@ -822,7 +822,7 @@ function writeNoteBodyAtPath({
       fileMap,
       file,
       externalizeMarkdownImages(
-        normalizeContextReferenceTokensForMarkdown(composeAisleMarkdownForStorage(markdown, sourceAisleBody), appState),
+        normalizePreviewReferenceTokensForMarkdown(composeAisleMarkdownForStorage(markdown, sourceAisleBody), appState),
         file,
         assetBank,
       ),

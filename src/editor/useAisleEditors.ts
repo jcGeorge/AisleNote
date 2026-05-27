@@ -22,7 +22,7 @@ import {
   uncheckedTaskEnterPlugin,
 } from './editor-setup'
 import { terminalBlockLandingPlugin } from './terminal-block-landing'
-import { createContextPreviewPlugin, type ContextPreviewData } from './note-preview-plugin'
+import { createNotePreviewPlugin, type NotePreviewData } from './note-preview-plugin'
 import {
   getTableOfContentsLinksFromDoc,
   getTableOfContentsLinksFromMarkdown,
@@ -52,7 +52,7 @@ import {
   updateRecentAisleIds,
 } from './aisle-editor-retention'
 import type { HeadingCollapseState, NoteNavigationTarget, ResolvedNoteAisle, ToastTone, ViewMode } from '../types/app'
-import type { NoteContextReferencePayload, ResolvedWikiNoteReference } from '../notes/note-references'
+import type { NotePreviewReferencePayload, ResolvedWikiNoteReference } from '../notes/note-references'
 import { getAisleBodyId } from '../notes/aisle-body-state'
 import type { PendingCursorRestore } from './useNoteCursorPersistence'
 import {
@@ -114,11 +114,11 @@ type UseAisleEditorsOptions = {
   headingCollapseState: HeadingCollapseState
   onToggleHeadingCollapse: (aisleId: string, headingKey: string) => void
   onExpandHeadingCollapse: (aisleId: string, headingKey: string) => void
-  getContextPreviewData: (payload: NoteContextReferencePayload, sourceNoteBodyId: string) => ContextPreviewData
-  resolveContextPreviewToken: (token: string) => NoteContextReferencePayload | null
+  getNotePreviewData: (payload: NotePreviewReferencePayload, sourceNoteBodyId: string) => NotePreviewData
+  resolvePreviewToken: (token: string) => NotePreviewReferencePayload | null
   resolveInternalNoteReferenceToken: (token: string) => ResolvedWikiNoteReference | null
   navigateToNoteLocation: (location: NoteNavigationTarget) => void
-  deleteContextPreview: (tokenId: string) => void
+  deleteNotePreview: (tokenId: string) => void
 }
 
 type PendingHeadingScroll = {
@@ -170,11 +170,11 @@ export function useAisleEditors({
   headingCollapseState,
   onToggleHeadingCollapse,
   onExpandHeadingCollapse,
-  getContextPreviewData,
-  resolveContextPreviewToken,
+  getNotePreviewData,
+  resolvePreviewToken,
   resolveInternalNoteReferenceToken,
   navigateToNoteLocation,
-  deleteContextPreview,
+  deleteNotePreview,
 }: UseAisleEditorsOptions) {
   const aisleEditorRootsRef = useRef<Map<string, HTMLElement>>(new Map())
   const aislePaneRootsRef = useRef<Map<string, HTMLElement>>(new Map())
@@ -741,13 +741,13 @@ export function useAisleEditors({
           headingSpaceShortcutPlugin,
           thematicBreakShortcutPlugin,
           (context: any) =>
-            createContextPreviewPlugin(context, {
+            createNotePreviewPlugin(context, {
               sourceNoteBodyId: activeNoteBodyId,
-              getContextPreviewData,
-              resolveContextPreviewToken,
+              getNotePreviewData,
+              resolvePreviewToken,
               resolveInternalNoteReferenceToken,
               navigateToNoteLocation,
-              deleteContextPreview,
+              deleteNotePreview,
             }),
           (context: any) =>
             multiLineSelectionShortcutPlugin({

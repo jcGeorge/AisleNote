@@ -350,7 +350,7 @@ describe('link modal rendering', () => {
       {
         type: 'insert-note-reference',
         mode: 'note',
-        insertAs: 'context',
+        insertAs: 'preview',
         source,
         target: source,
         noteLabel: 'Tab',
@@ -425,7 +425,7 @@ describe('link modal rendering', () => {
       {
         type: 'insert-note-reference',
         mode: 'note',
-        insertAs: 'context',
+        insertAs: 'preview',
         source,
         target: { ...source, aisleIds: ['aisle-1'] },
         noteLabel: 'Tab',
@@ -448,7 +448,7 @@ describe('link modal rendering', () => {
         type: 'insert-note-reference',
         mode: 'note',
         modeLocked: true,
-        insertAs: 'context',
+        insertAs: 'preview',
         source,
         target: { ...source, previewStart: 'last-position' },
         noteLabel: 'Tab',

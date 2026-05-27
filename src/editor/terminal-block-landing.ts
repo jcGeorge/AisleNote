@@ -1,4 +1,4 @@
-import { NOTE_CONTEXT_REFERENCE_RE, parseWikiReferenceToken } from '../notes/note-references'
+import { NOTE_PREVIEW_REFERENCE_RE, parseWikiReferenceToken } from '../notes/note-references'
 
 export const TERMINAL_BLOCK_LANDING_ZONE_ATTR = 'data-tabs-terminal-block-landing-zone'
 export const TERMINAL_BLOCK_LANDING_ZONE_CLASS = 'tabs-terminal-block-landing-zone'
@@ -24,12 +24,12 @@ export function isNotePreviewOnlyParagraphText(text: string): boolean {
   if (!normalized) return false
 
   let hasValidToken = false
-  const remaining = normalized.replace(NOTE_CONTEXT_REFERENCE_RE, (token) => {
+  const remaining = normalized.replace(NOTE_PREVIEW_REFERENCE_RE, (token) => {
     if (!parseWikiReferenceToken(token)?.embed) return token
     hasValidToken = true
     return ''
   })
-  NOTE_CONTEXT_REFERENCE_RE.lastIndex = 0
+  NOTE_PREVIEW_REFERENCE_RE.lastIndex = 0
   return hasValidToken && remaining.trim().length === 0
 }
 

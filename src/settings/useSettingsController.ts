@@ -54,6 +54,11 @@ import {
   setThemePaletteOverride,
 } from './defaults'
 import {
+  MISC_SYNCED_UI_BOOLEAN_SETTINGS,
+  getSyncedUiBooleanSettings,
+  type SyncedUiBooleanSettingKey,
+} from './synced-ui-settings-registry.js'
+import {
   DEFAULT_TOOLBAR_LAYOUT_ID,
   createCustomToolbarLayout,
   createToolbarSpacerItem,
@@ -116,7 +121,9 @@ export function useSettingsController({
     DEFAULT_NEWLINE_SHORTCUT_SETTINGS.menuOperations,
   )
   const [editingShortcut, setEditingShortcut] = useState<ShortcutId | null>(null)
-  const [showParentHomeTabDraft, setShowParentHomeTabDraft] = useState(DEFAULT_UI_SETTINGS.showParentHomeTab)
+  const [syncedUiBooleanDrafts, setSyncedUiBooleanDrafts] = useState(() =>
+    getSyncedUiBooleanSettings(DEFAULT_UI_SETTINGS),
+  )
   const [alwaysShowSpacesDraft, setAlwaysShowSpacesDraft] = useState(DEFAULT_UI_SETTINGS.alwaysShowSpaces ?? false)
   const [alwaysShowDomainsDraft, setAlwaysShowDomainsDraft] = useState(DEFAULT_UI_SETTINGS.alwaysShowDomains ?? false)
   const [tableAddTargetModeDraft, setTableAddTargetModeDraft] = useState(DEFAULT_UI_SETTINGS.tableAddTargetMode)
@@ -126,12 +133,6 @@ export function useSettingsController({
   )
   const [newAislePlacementDraft, setNewAislePlacementDraft] = useState(
     DEFAULT_UI_SETTINGS.newAislePlacement ?? 'end',
-  )
-  const [removeNoteReferencesOnTrashDraft, setRemoveNoteReferencesOnTrashDraft] = useState(
-    DEFAULT_UI_SETTINGS.removeNoteReferencesOnTrash ?? true,
-  )
-  const [noteMentionCopyRequiresConfirmationDraft, setNoteMentionCopyRequiresConfirmationDraft] = useState(
-    DEFAULT_UI_SETTINGS.noteMentionCopyRequiresConfirmation ?? true,
   )
   const [tabButtonScaleDraft, setTabButtonScaleDraft] = useState(DEFAULT_UI_SETTINGS.tabButtonScale)
   const [noteFontScaleDraft, setNoteFontScaleDraft] = useState(DEFAULT_UI_SETTINGS.noteFontScale)
@@ -157,7 +158,17 @@ export function useSettingsController({
     setShortcutDrafts(state.hotkeys.shortcuts)
     setNewlineShortcutDrafts(state.hotkeys.newlineShortcuts.shortcuts)
     setShortcutMenuOperationsDraft(state.hotkeys.newlineShortcuts.menuOperations)
-    setShowParentHomeTabDraft(state.ui.showParentHomeTab)
+    setSyncedUiBooleanDrafts(getSyncedUiBooleanSettings({
+      showParentHomeTab: state.ui.showParentHomeTab,
+      stageManagerOpenDestinationAfterApply: state.ui.stageManagerOpenDestinationAfterApply,
+      findCaseSensitive: state.ui.findCaseSensitive,
+      findWholeWord: state.ui.findWholeWord,
+      findRegex: state.ui.findRegex,
+      removeNoteReferencesOnTrash: state.ui.removeNoteReferencesOnTrash,
+      noteMentionCopyRequiresConfirmation: state.ui.noteMentionCopyRequiresConfirmation,
+      decoupledItemsKeepData: state.ui.decoupledItemsKeepData,
+      toolbarEditorShowNames: state.ui.toolbarEditorShowNames,
+    }))
     setAlwaysShowSpacesDraft(state.ui.alwaysShowSpaces ?? DEFAULT_UI_SETTINGS.alwaysShowSpaces ?? false)
     setAlwaysShowDomainsDraft(state.ui.alwaysShowDomains ?? DEFAULT_UI_SETTINGS.alwaysShowDomains ?? false)
     setTableAddTargetModeDraft(state.ui.tableAddTargetMode)
@@ -166,12 +177,6 @@ export function useSettingsController({
       state.ui.tableOfContentsScope ?? DEFAULT_UI_SETTINGS.tableOfContentsScope ?? 'all-aisles',
     )
     setNewAislePlacementDraft(state.ui.newAislePlacement ?? DEFAULT_UI_SETTINGS.newAislePlacement ?? 'end')
-    setRemoveNoteReferencesOnTrashDraft(
-      state.ui.removeNoteReferencesOnTrash ?? DEFAULT_UI_SETTINGS.removeNoteReferencesOnTrash ?? true,
-    )
-    setNoteMentionCopyRequiresConfirmationDraft(
-      state.ui.noteMentionCopyRequiresConfirmation ?? DEFAULT_UI_SETTINGS.noteMentionCopyRequiresConfirmation ?? true,
-    )
     setTabButtonScaleDraft(state.ui.tabButtonScale)
     setNoteFontScaleDraft(state.ui.noteFontScale)
     setTooltipScaleDraft(state.ui.tooltipScale ?? DEFAULT_UI_SETTINGS.tooltipScale ?? 1)
@@ -206,8 +211,14 @@ export function useSettingsController({
     state.ui.tableDeleteTargetMode,
     state.ui.tableOfContentsScope,
     state.ui.newAislePlacement,
+    state.ui.stageManagerOpenDestinationAfterApply,
+    state.ui.findCaseSensitive,
+    state.ui.findWholeWord,
+    state.ui.findRegex,
     state.ui.removeNoteReferencesOnTrash,
     state.ui.noteMentionCopyRequiresConfirmation,
+    state.ui.decoupledItemsKeepData,
+    state.ui.toolbarEditorShowNames,
     state.ui.tabButtonScale,
     state.ui.noteFontScale,
     state.ui.tooltipScale,
@@ -323,15 +334,19 @@ export function useSettingsController({
     }
   }
 
-  const updateShowParentHomeTabSetting = (checked: boolean) => {
-    setShowParentHomeTabDraft(checked)
+  const updateSyncedUiBooleanSetting = (key: SyncedUiBooleanSettingKey, enabled: boolean) => {
+    setSyncedUiBooleanDrafts((current) => ({ ...current, [key]: enabled }))
     commitImmediateSettingsState((previous) => ({
       ...previous,
       ui: {
         ...previous.ui,
-        showParentHomeTab: checked,
+        [key]: enabled,
       },
     }))
+  }
+
+  const updateShowParentHomeTabSetting = (checked: boolean) => {
+    updateSyncedUiBooleanSetting('showParentHomeTab', checked)
   }
 
   const updateAlwaysShowSpacesSetting = (checked: boolean) => {
@@ -400,28 +415,6 @@ export function useSettingsController({
       ui: {
         ...previous.ui,
         newAislePlacement: placement,
-      },
-    }))
-  }
-
-  const updateRemoveNoteReferencesOnTrashSetting = (enabled: boolean) => {
-    setRemoveNoteReferencesOnTrashDraft(enabled)
-    commitImmediateSettingsState((previous) => ({
-      ...previous,
-      ui: {
-        ...previous.ui,
-        removeNoteReferencesOnTrash: enabled,
-      },
-    }))
-  }
-
-  const updateNoteMentionCopyRequiresConfirmationSetting = (enabled: boolean) => {
-    setNoteMentionCopyRequiresConfirmationDraft(enabled)
-    commitImmediateSettingsState((previous) => ({
-      ...previous,
-      ui: {
-        ...previous.ui,
-        noteMentionCopyRequiresConfirmation: enabled,
       },
     }))
   }
@@ -622,13 +615,7 @@ export function useSettingsController({
   }
 
   const updateStageManagerOpenDestinationSetting = (checked: boolean) => {
-    commitImmediateSettingsState((previous) => ({
-      ...previous,
-      ui: {
-        ...previous.ui,
-        stageManagerOpenDestinationAfterApply: checked,
-      },
-    }))
+    updateSyncedUiBooleanSetting('stageManagerOpenDestinationAfterApply', checked)
   }
 
   const commitToolbarLayouts = (buildNextLayouts: (layouts: AppState['ui']['toolbarLayouts']) => AppState['ui']['toolbarLayouts']) => {
@@ -743,13 +730,7 @@ export function useSettingsController({
   }
 
   const updateToolbarEditorShowNamesSetting = (enabled: boolean) => {
-    commitImmediateSettingsState((previous) => ({
-      ...previous,
-      ui: {
-        ...previous.ui,
-        toolbarEditorShowNames: enabled,
-      },
-    }))
+    updateSyncedUiBooleanSetting('toolbarEditorShowNames', enabled)
   }
 
   const frontmatterDraftDirty = JSON.stringify(frontmatterDraft) !== JSON.stringify(state.frontmatter)
@@ -930,15 +911,17 @@ export function useSettingsController({
     tooltipScaleDraft,
     selectedCustomTheme,
     customThemePaletteDraft,
-    showParentHomeTabDraft,
+    showParentHomeTabDraft: syncedUiBooleanDrafts.showParentHomeTab,
     alwaysShowSpacesDraft,
     alwaysShowDomainsDraft,
     tableAddTargetModeDraft,
     tableDeleteTargetModeDraft,
     tableOfContentsScopeDraft,
     newAislePlacementDraft,
-    removeNoteReferencesOnTrashDraft,
-    noteMentionCopyRequiresConfirmationDraft,
+    miscSyncedUiBooleanSettings: MISC_SYNCED_UI_BOOLEAN_SETTINGS.map((setting) => ({
+      ...setting,
+      checked: syncedUiBooleanDrafts[setting.key],
+    })),
     frontmatterDraft,
     frontmatterDraftDirty,
     toolbarLayouts: getToolbarLayouts(state.ui.toolbarLayouts),
@@ -960,8 +943,7 @@ export function useSettingsController({
     updateTableDeleteTargetModeSetting,
     updateTableOfContentsScopeSetting,
     updateNewAislePlacementSetting,
-    updateRemoveNoteReferencesOnTrashSetting,
-    updateNoteMentionCopyRequiresConfirmationSetting,
+    updateSyncedUiBooleanSetting,
     updateTipEnabledSetting,
     updateTabButtonScaleSetting,
     updateNoteFontScaleSetting,

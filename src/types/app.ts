@@ -404,7 +404,7 @@ export type TabSortMode = 'alpha-asc' | 'alpha-desc' | 'created-asc' | 'created-
 export type StageManagerDestinationSortMode = 'default' | TabSortMode
 export type TabSortTarget = 'parents' | 'subtabs' | 'spaces' | 'domains'
 export type LinkInsertMode = 'note' | 'url'
-export type NoteReferenceInsertKind = 'link' | 'context'
+export type NoteReferenceInsertKind = 'link' | 'preview'
 
 export type ArrangeDragItem =
   | { type: 'tab'; tabId: string }

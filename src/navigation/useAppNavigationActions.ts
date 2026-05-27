@@ -48,6 +48,7 @@ type ActivateAisleEditor = (
   editorKey: string,
   options?: { focus?: boolean; flushPrevious?: boolean; allowDuringPendingRename?: boolean },
 ) => boolean
+type CloseEditorEphemera = (options?: { restoreEditorFocus?: boolean }) => void
 
 type UseAppNavigationActionsParams = {
   state: AppState
@@ -55,7 +56,6 @@ type UseAppNavigationActionsParams = {
   viewMode: ViewMode
   setViewMode: Dispatch<SetStateAction<ViewMode>>
   contextMenu: ContextMenuState | null
-  setContextMenu: Dispatch<SetStateAction<ContextMenuState | null>>
   setMenuOpen: Dispatch<SetStateAction<boolean>>
   setEditing: Dispatch<SetStateAction<{ type: EditableEntityType; id: string } | null>>
   editingRef: MutableRefObject<RenameTarget | null>
@@ -69,7 +69,7 @@ type UseAppNavigationActionsParams = {
   skipRenameBlurRef: MutableRefObject<{ type: EditableEntityType; id: string } | null>
   pendingFocusToAisleIdRef: MutableRefObject<string | null>
   pendingCursorRestoreRef: MutableRefObject<PendingCursorRestore | null>
-  closeImageToolsRef: MutableRefObject<() => void>
+  closeEditorEphemeraRef: MutableRefObject<CloseEditorEphemera>
   activateAisleEditorRef: MutableRefObject<ActivateAisleEditor>
   arrangeModeActive: boolean
   exitArrangeMode: () => void
@@ -89,7 +89,6 @@ export const useAppNavigationActions = ({
   viewMode,
   setViewMode,
   contextMenu,
-  setContextMenu,
   setMenuOpen,
   setEditing,
   editingRef,
@@ -103,7 +102,7 @@ export const useAppNavigationActions = ({
   skipRenameBlurRef,
   pendingFocusToAisleIdRef,
   pendingCursorRestoreRef,
-  closeImageToolsRef,
+  closeEditorEphemeraRef,
   activateAisleEditorRef,
   arrangeModeActive,
   exitArrangeMode,
@@ -343,7 +342,7 @@ export const useAppNavigationActions = ({
     if (activeTab.id === tabId && activeTab.activeSubTabId === null) return
     commitActiveRenameBeforeAction()
     saveActiveCursorBeforeNavigation()
-    closeImageToolsRef.current()
+    closeEditorEphemeraRef.current()
     updateActiveSpaceData((data) => selectPrimeTabWithMemory(data, tabId))
   }
 
@@ -351,7 +350,7 @@ export const useAppNavigationActions = ({
     if (activeTab.activeSubTabId === subTabId) return
     commitActiveRenameBeforeAction()
     saveActiveCursorBeforeNavigation()
-    closeImageToolsRef.current()
+    closeEditorEphemeraRef.current()
     updateActiveSpaceData((data) => selectSubTabWithMemory(data, subTabId))
   }
 
@@ -359,21 +358,21 @@ export const useAppNavigationActions = ({
     if (activeTab.activeSubTabId === null) return
     commitActiveRenameBeforeAction()
     saveActiveCursorBeforeNavigation()
-    closeImageToolsRef.current()
+    closeEditorEphemeraRef.current()
     updateActiveSpaceData((data) => selectActivePrimeTabHome(data))
   }
 
   const openSpace = (spaceId: string) => {
     commitActiveRenameBeforeAction()
     saveActiveCursorBeforeNavigation()
-    closeImageToolsRef.current()
+    closeEditorEphemeraRef.current()
     if (arrangeModeActive) {
       exitArrangeMode()
     }
     setState((previous) => setActiveSpaceInActiveDomain(previous, spaceId))
     setViewMode('main')
+    closeEditorEphemeraRef.current()
     setMenuOpen(false)
-    setContextMenu(null)
     setEditing(null)
   }
 
@@ -382,7 +381,7 @@ export const useAppNavigationActions = ({
     commitActiveRenameBeforeAction()
     const sourceSpace = state.spaces.find((space) => space.id === contextMenu.spaceId)
     if (!sourceSpace) {
-      setContextMenu(null)
+      closeEditorEphemeraRef.current()
       return
     }
 
@@ -393,15 +392,15 @@ export const useAppNavigationActions = ({
 
     setViewMode('main')
     setEditing({ type: 'space', id: duplicatedSpace.id })
+    closeEditorEphemeraRef.current()
     setMenuOpen(false)
-    setContextMenu(null)
   }
 
   const toggleTrashView = () => {
     commitActiveRenameBeforeAction()
     saveActiveCursorBeforeNavigation()
+    closeEditorEphemeraRef.current()
     setMenuOpen(false)
-    setContextMenu(null)
 
     setViewMode((previous) => {
       if (previous === 'trash') return 'main'
@@ -414,8 +413,8 @@ export const useAppNavigationActions = ({
   const openSettings = () => {
     commitActiveRenameBeforeAction()
     saveActiveCursorBeforeNavigation()
+    closeEditorEphemeraRef.current()
     setMenuOpen(false)
-    setContextMenu(null)
     setViewMode('settings')
   }
 

@@ -1,8 +1,13 @@
 import type { AppState, NoteLocation } from '../types/app'
 import { MAX_NOTE_AISLES } from '../state/workspace'
 import { applyNoteCopyToState } from './note-copy-service'
-import { buildInternalNoteLinkToken, buildContextToken } from './note-references'
 import { buildNoteLocationKey, getLocationInfo } from './note-locations'
+import {
+  getCopyAsCopiedToast,
+  getCopyAsPastedToast,
+  getCopyAsStructuralFailureMessage,
+  getCopyAsStructuralNoun,
+} from './copy-reference-labels'
 
 export const COPY_AS_CLIPBOARD_MIME = 'application/x-tabs-copy-as+json'
 export const COPY_AS_CLIPBOARD_TEXT_PREFIX = '{{tabs-copy-as:'
@@ -200,19 +205,11 @@ export async function writeCopyAsClipboardData(
 }
 
 export function getCopyAsSuccessMessage(scope: CopyAsScope, action: CopyAsAction): string {
-  const subject = scope === 'aisle' ? 'aisle' : 'note'
-  if (action === 'duplicate') return `synced ${subject} copy copied.`
-  if (action === 'link') return `${subject} link copied.`
-  if (action === 'copy') return `independent ${subject} copy copied.`
-  return `${subject} preview copied.`
+  return getCopyAsCopiedToast(scope, action)
 }
 
 export function getCopyAsPasteSuccessMessage(scope: CopyAsScope, action: CopyAsAction): string {
-  const subject = scope === 'aisle' ? 'aisle' : 'note'
-  if (action === 'duplicate') return `synced ${subject} copy created.`
-  if (action === 'link') return `${subject} link pasted.`
-  if (action === 'copy') return `independent ${subject} copy created.`
-  return `${subject} preview pasted.`
+  return getCopyAsPastedToast(scope, action)
 }
 
 export function getAisleCopyLabel(appState: AppState, source: NoteLocation, aisleId: string): string {
@@ -259,7 +256,6 @@ export function buildCopyAsClipboardData(
     return { ok: false, message: 'copy a specific aisle as preview for notes with multiple aisles.' }
   }
 
-  const target = scope === 'aisle' && aisleId ? { ...source, aisleIds: [aisleId] } : source
   const payload: CopyAsClipboardPayload = {
     version: 1,
     scope,
@@ -269,60 +265,12 @@ export function buildCopyAsClipboardData(
   }
   const marker = serializeCopyAsTextMarker(payload)
 
-  if (action === 'link') {
-    const text = buildInternalNoteLinkToken(appState, target, scope === 'aisle' && aisleId ? getAisleCopyLabel(appState, source, aisleId) : '')
-    return text ? { ok: true, payload, text: marker, privatePayloadRequired: false } : { ok: false, message: 'note link could not be copied.' }
-  }
-
-  if (action === 'preview') {
-    const text = buildContextToken(appState, {
-      id: '',
-      target: source,
-      ...(scope === 'aisle' && aisleId ? { aisleIds: [aisleId] } : {}),
-    })
-    return text ? { ok: true, payload, text: marker, privatePayloadRequired: false } : { ok: false, message: 'note preview could not be copied.' }
-  }
-
   return {
     ok: true,
     payload,
     text: marker,
     privatePayloadRequired: false,
   }
-}
-
-export type CopyAsReferenceTextResult =
-  | { ok: true; text: string }
-  | { ok: false; message: string }
-
-export function buildCopyAsReferenceText(appState: AppState, payload: CopyAsClipboardPayload): CopyAsReferenceTextResult {
-  if (payload.action !== 'link' && payload.action !== 'preview') {
-    return { ok: false, message: 'clipboard item is not a reference.' }
-  }
-
-  const { info, body, aisle } = getResolvedCopySource(appState, payload.source, payload.aisleId)
-  if (!info.domain || !info.space || !info.tab || !body) return { ok: false, message: 'copied note no longer exists.' }
-  if (payload.scope === 'aisle' && (!payload.aisleId || !aisle)) return { ok: false, message: 'copied aisle no longer exists.' }
-  if (payload.scope === 'note' && payload.action === 'preview' && body.aisles.length > 1) {
-    return { ok: false, message: 'copy a specific aisle as preview for notes with multiple aisles.' }
-  }
-
-  const target = payload.scope === 'aisle' && payload.aisleId ? { ...payload.source, aisleIds: [payload.aisleId] } : payload.source
-  if (payload.action === 'link') {
-    const text = buildInternalNoteLinkToken(
-      appState,
-      target,
-      payload.scope === 'aisle' && payload.aisleId ? getAisleCopyLabel(appState, payload.source, payload.aisleId) : '',
-    )
-    return text ? { ok: true, text } : { ok: false, message: 'note link could not be pasted.' }
-  }
-
-  const text = buildContextToken(appState, {
-    id: '',
-    target: payload.source,
-    ...(payload.scope === 'aisle' && payload.aisleId ? { aisleIds: [payload.aisleId] } : {}),
-  })
-  return text ? { ok: true, text } : { ok: false, message: 'note preview could not be pasted.' }
 }
 
 export type ApplyCopyAsStructuralResult =
@@ -344,8 +292,9 @@ export function applyCopyAsStructuralPayloadToState(
     return { status: 'not-structural', state: appState, message: 'clipboard item is not a note copy.' }
   }
 
-  const mode = payload.action === 'duplicate' ? 'linked' : 'independent'
-  const noun = payload.action === 'duplicate' ? 'synced copy' : 'independent copy'
+  const structuralAction = payload.action
+  const mode = structuralAction === 'duplicate' ? 'linked' : 'independent'
+  const noun = getCopyAsStructuralNoun(structuralAction)
   const sourceInfo = getLocationInfo(appState, payload.source)
   const sourceBody = sourceInfo.noteBodyId ? appState.noteBodies.find((body) => body.id === sourceInfo.noteBodyId) ?? null : null
   if (!sourceInfo.noteBodyId || !sourceBody) {
@@ -374,7 +323,7 @@ export function applyCopyAsStructuralPayloadToState(
     const result = applyNoteCopyToState(appState, destination, { ...payload.source, aisleIds: [payload.aisleId] }, mode, 'append')
     return result.status === 'applied'
       ? { status: 'applied', state: result.state }
-      : { status: 'missing-source', state: result.state, message: `copied aisle could not be ${payload.action === 'duplicate' ? 'duplicated' : 'copied'}.` }
+      : { status: 'missing-source', state: result.state, message: getCopyAsStructuralFailureMessage('aisle', structuralAction) }
   }
 
   const result = applyNoteCopyToState(appState, destination, payload.source, mode, 'replace')
@@ -385,7 +334,7 @@ export function applyCopyAsStructuralPayloadToState(
   if (result.status === 'already-linked') {
     return { status: 'already-linked', state: result.state, message: 'destination already links to copied note.' }
   }
-  return { status: 'missing-source', state: result.state, message: `copied note could not be ${payload.action === 'duplicate' ? 'duplicated' : 'copied'}.` }
+  return { status: 'missing-source', state: result.state, message: getCopyAsStructuralFailureMessage('note', structuralAction) }
 }
 
 export type ApplyCopyAsDuplicateResult = ApplyCopyAsStructuralResult

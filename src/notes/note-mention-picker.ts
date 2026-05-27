@@ -3,10 +3,10 @@ import { filterNoteSearchEntries, getLocationInfo, type NoteSearchEntry } from '
 
 export type NoteMentionNavigatorRowId = 'domain' | 'space' | 'tab' | 'note' | 'aisle'
 export type NoteMentionTarget = NoteNavigationTarget
-export type NoteMentionAction = 'link' | 'context' | 'independent-copy' | 'synced-copy'
+export type NoteMentionAction = 'link' | 'preview' | 'independent-copy' | 'synced-copy'
 export type NoteMentionSearchFocusStage = 'typing' | 'results' | 'aisles' | 'actions' | 'copy-confirm'
 
-export const NOTE_MENTION_ACTIONS: NoteMentionAction[] = ['link', 'context', 'independent-copy', 'synced-copy']
+export const NOTE_MENTION_ACTIONS: NoteMentionAction[] = ['link', 'preview', 'independent-copy', 'synced-copy']
 
 export function isNoteMentionCopyAction(action: NoteMentionAction): action is 'independent-copy' | 'synced-copy' {
   return action === 'independent-copy' || action === 'synced-copy'

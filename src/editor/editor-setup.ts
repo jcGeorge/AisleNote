@@ -23,7 +23,7 @@ import {
   getBulletListMarkerFromMarkdownChar,
 } from './list-markers'
 import { BLOCK_INDENT_TOKEN, isHorizontalRuleMarkerLine } from '../markdown/markdown-utils'
-import { NOTE_CONTEXT_REFERENCE_RE } from '../notes/note-references'
+import { NOTE_PREVIEW_REFERENCE_RE } from '../notes/note-references'
 
 type ToastHtmlOpenTagToken = {
   type?: string
@@ -928,8 +928,8 @@ export function headingSpaceShortcutPlugin(context: {
     if (node?.type?.name !== 'paragraph') return false
     const text = String(node.textContent ?? '').replace(/\u200b/g, '').trim()
     if (!text) return false
-    const withoutPreviews = text.replace(NOTE_CONTEXT_REFERENCE_RE, '').trim()
-    NOTE_CONTEXT_REFERENCE_RE.lastIndex = 0
+    const withoutPreviews = text.replace(NOTE_PREVIEW_REFERENCE_RE, '').trim()
+    NOTE_PREVIEW_REFERENCE_RE.lastIndex = 0
     return withoutPreviews.length === 0
   }
 

@@ -7,13 +7,14 @@ import {
   getLocationInfo,
   listNoteLocationsForBody,
 } from '../notes/note-locations'
-import { removeNoteReferencesForNoteLocationsFromAppState } from '../notes/note-references'
+import { removeNoteReferencesForDeletedLocations } from '../notes/note-reference-commands'
+import { getNoteCopyCreatedToast } from '../notes/copy-reference-labels'
 import { applyNoteCopyToState } from './note-copy'
 import { decoupleNoteLocationsInState } from './note-decouple'
 import {
-  getNotePreviewCleanupTargetsForDeleteTarget,
-  getNotePreviewCleanupTargetsForTrash,
-} from './delete-preview-cleanup'
+  getNoteReferenceCleanupTargetsForDeleteTarget,
+  getNoteReferenceCleanupTargetsForTrash,
+} from './note-reference-cleanup'
 import { projectActiveDomainState } from '../state/domains'
 import { collectAppNavigationEntityIds, createReservedIdAllocator } from '../state/navigation-ids'
 import { createId, createTab } from '../state/workspace'
@@ -115,7 +116,7 @@ export const useAppOverlayActions = ({
   const removeNoteReferencesForLocations = (locations: NoteLocation[], resolverState = stateRef.current) => {
     if (locations.length === 0) return
     setState((previous) => {
-      const nextState = removeNoteReferencesForNoteLocationsFromAppState(previous, locations, resolverState)
+      const nextState = removeNoteReferencesForDeletedLocations(previous, locations, resolverState)
       if (nextState !== previous) {
         stateRef.current = nextState
       }
@@ -357,7 +358,7 @@ export const useAppOverlayActions = ({
     const shouldRemoveReferences =
       permanent || cleanupResolverState.ui.removeNoteReferencesOnTrash !== false
     const referenceCleanupTargets = shouldRemoveReferences
-      ? getNotePreviewCleanupTargetsForDeleteTarget(
+      ? getNoteReferenceCleanupTargetsForDeleteTarget(
           cleanupSpace.data,
           cleanupResolverState.activeDomainId,
           cleanupSpace.id,
@@ -769,7 +770,7 @@ export const useAppOverlayActions = ({
     saveActiveCursorBeforeNavigation()
     const cleanupResolverState = stateRef.current
     const cleanupSpace = getActiveSpaceSnapshot()
-    const referenceCleanupTargets = getNotePreviewCleanupTargetsForTrash(
+    const referenceCleanupTargets = getNoteReferenceCleanupTargetsForTrash(
       cleanupSpace.data,
       cleanupResolverState.activeDomainId,
       cleanupSpace.id,
@@ -843,10 +844,8 @@ export const useAppOverlayActions = ({
       setModal(null)
       pushToast(
         result.status === 'already-linked'
-          ? 'notes already linked.'
-          : modal.mode === 'linked'
-            ? 'linked copy created.'
-            : 'note copied.',
+          ? 'notes already synced.'
+          : getNoteCopyCreatedToast(modal.mode),
         'success',
       )
       return

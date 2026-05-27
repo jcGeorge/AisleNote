@@ -12,7 +12,7 @@ import {
 } from '../../editor/aisle-edit-draft'
 import { resolveAssetDisplayUrl } from '../../markdown/image-asset-registry'
 import {
-  NOTE_CONTEXT_REFERENCE_RE,
+  NOTE_PREVIEW_REFERENCE_RE,
   getWikiReferenceDisplayText,
   parseWikiReferenceToken,
 } from '../../notes/note-references'
@@ -47,9 +47,9 @@ function getAislePreviewSegments(markdown: string): AislePreviewSegment[] {
   const previewMarkdown = getAislePreviewMarkdown(markdown)
   const segments: AislePreviewSegment[] = []
   let lastIndex = 0
-  NOTE_CONTEXT_REFERENCE_RE.lastIndex = 0
+  NOTE_PREVIEW_REFERENCE_RE.lastIndex = 0
 
-  for (const match of previewMarkdown.matchAll(NOTE_CONTEXT_REFERENCE_RE)) {
+  for (const match of previewMarkdown.matchAll(NOTE_PREVIEW_REFERENCE_RE)) {
     const start = match.index ?? 0
     const before = previewMarkdown.slice(lastIndex, start)
     if (before.trim()) segments.push({ type: 'markdown', markdown: before })
@@ -59,7 +59,7 @@ function getAislePreviewSegments(markdown: string): AislePreviewSegment[] {
     lastIndex = start + match[0].length
   }
 
-  NOTE_CONTEXT_REFERENCE_RE.lastIndex = 0
+  NOTE_PREVIEW_REFERENCE_RE.lastIndex = 0
   const after = previewMarkdown.slice(lastIndex)
   if (after.trim()) segments.push({ type: 'markdown', markdown: after })
   return segments
@@ -70,7 +70,7 @@ type AisleEditModalProps = {
   aisles: ResolvedNoteAisle[]
   linkedAisleIds?: Set<string>
   initialStagedDecoupleAisleIds?: Iterable<string>
-  getContextPreviewLabel?: unknown
+  getNotePreviewLabel?: unknown
   onCancel: () => void
   onApply: (aisles: ResolvedNoteAisle[], options?: { decoupleAisleIds?: string[] }) => void
   onWarn: (message: string) => void

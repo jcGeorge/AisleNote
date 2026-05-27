@@ -54,6 +54,7 @@ type UseEditorToolbarLayerOptions = {
   openFindReplace: () => void
   pushToast: (message: string, tone?: ToastTone) => void
   onDisabledToolbarInteraction: () => void
+  dismissEditorEphemera: () => void
 }
 
 export function useEditorToolbarLayer({
@@ -89,29 +90,24 @@ export function useEditorToolbarLayer({
   openFindReplace,
   pushToast,
   onDisabledToolbarInteraction,
+  dismissEditorEphemera,
 }: UseEditorToolbarLayerOptions) {
-  const closeToolbarMenus = () => {
-    setCopyMenuOpen(false)
-    setHeadingMenuOpen(false)
-    setToolbarPopoverPosition({ copy: null, heading: null })
-  }
-
   const executeToolbarCommand = (command: string, payload?: Record<string, unknown>) => {
-    closeToolbarMenus()
+    dismissEditorEphemera()
     if (!runActiveEditorCommand(command, payload)) {
       pushToast('open a note before using the toolbar.', 'warning')
     }
   }
 
   const executeToolbarHistory = (direction: 'undo' | 'redo') => {
-    closeToolbarMenus()
+    dismissEditorEphemera()
     if (!runActiveEditorHistory(direction)) {
       pushToast('open a note before using the toolbar.', 'warning')
     }
   }
 
   const insertImageFromToolbar = () => {
-    closeToolbarMenus()
+    dismissEditorEphemera()
     const currentEditor = editorRef.current
     if (!currentEditor) {
       pushToast('open a note before inserting an image.', 'warning')
@@ -138,7 +134,7 @@ export function useEditorToolbarLayer({
   }
 
   const insertWebLinkFromToolbar = () => {
-    closeToolbarMenus()
+    dismissEditorEphemera()
     const currentEditor = editorRef.current
     if (!currentEditor) {
       pushToast('open a note before inserting a link.', 'warning')
@@ -149,6 +145,7 @@ export function useEditorToolbarLayer({
   }
 
   const openCopyModalFromToolbar = () => {
+    dismissEditorEphemera()
     if (getCopyToolbarAction(activeNoteDuplicateCount) === 'open-copy-menu') {
       setHeadingMenuOpen(false)
       setToolbarPopoverPosition((previous) => ({ ...previous, heading: null }))
@@ -162,43 +159,41 @@ export function useEditorToolbarLayer({
       return
     }
 
-    closeToolbarMenus()
     openCopyModalForActiveNote()
   }
 
   const openCopyModalFromCopyMenu = () => {
-    closeToolbarMenus()
+    dismissEditorEphemera()
     openCopyModalForActiveNote()
   }
 
   const openDeduplicateModalFromCopyMenu = () => {
-    closeToolbarMenus()
+    dismissEditorEphemera()
     openDeduplicateModalForActiveNote()
   }
 
   const openTableOfContentsFromToolbar = () => {
-    closeToolbarMenus()
+    dismissEditorEphemera()
     openTableOfContents()
   }
 
   const openAisleEditModalFromToolbar = () => {
-    closeToolbarMenus()
+    dismissEditorEphemera()
     openAisleEditModal()
   }
 
   const openDirectorFromToolbar = () => {
-    closeToolbarMenus()
+    dismissEditorEphemera()
     openDirector()
   }
 
   const openFindReplaceFromToolbar = () => {
-    closeToolbarMenus()
+    dismissEditorEphemera()
     openFindReplace()
   }
 
   const toggleHeadingToolbarPopover = () => {
-    setCopyMenuOpen(false)
-    setToolbarPopoverPosition((previous) => ({ ...previous, copy: null }))
+    dismissEditorEphemera()
     const nextOpen = !headingMenuOpen
     setHeadingMenuOpen(nextOpen)
     if (nextOpen) {
@@ -209,7 +204,7 @@ export function useEditorToolbarLayer({
   }
 
   const clearActiveNoteFromToolbar = () => {
-    closeToolbarMenus()
+    dismissEditorEphemera()
     clearActiveNoteContent()
   }
   const toolbarVisible = activeToolbarLayout.items.length > 0

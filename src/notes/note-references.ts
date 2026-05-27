@@ -1,25 +1,25 @@
 import type { AppState, NoteHeadingAnchor, NoteLocation, NoteNavigationTarget, NotePreviewStart } from '../types/app'
 import {
-  NOTE_CONTEXT_REFERENCE_RE,
+  NOTE_PREVIEW_REFERENCE_RE,
   WIKI_NOTE_REFERENCE_RE,
   buildInternalNoteLinkToken as buildInternalNoteLinkTokenCore,
-  buildContextToken as buildContextTokenCore,
-  getContextReferenceTokenLengthAt as getContextReferenceTokenLengthAtCore,
+  buildPreviewToken as buildPreviewTokenCore,
+  getPreviewReferenceTokenLengthAt as getPreviewReferenceTokenLengthAtCore,
   getWikiReferenceDisplayText as getWikiReferenceDisplayTextCore,
-  normalizeContextReferenceTokensForMarkdown as normalizeContextReferenceTokensForMarkdownCore,
-  parseContextToken as parseContextTokenCore,
-  parseContextReferences as parseContextReferencesCore,
+  normalizePreviewReferenceTokensForMarkdown as normalizePreviewReferenceTokensForMarkdownCore,
+  parsePreviewToken as parsePreviewTokenCore,
+  parsePreviewReferences as parsePreviewReferencesCore,
   parseWikiReferenceToken as parseWikiReferenceTokenCore,
   resolveWikiReferenceToken as resolveWikiReferenceTokenCore,
-  replaceContextReferences,
+  replacePreviewReferences,
 } from '../markdown/note-context-tokens.js'
 import { buildNoteLocationKey, getLocationInfo } from './note-locations'
 import { getAisleMarkdown } from './note-markdown'
 import { syncNoteBodyAislesInState } from './note-state'
 
-export { NOTE_CONTEXT_REFERENCE_RE, WIKI_NOTE_REFERENCE_RE }
+export { NOTE_PREVIEW_REFERENCE_RE, WIKI_NOTE_REFERENCE_RE }
 
-export type NoteContextReferencePayload = {
+export type NotePreviewReferencePayload = {
   id: string
   target: NoteLocation
   aisleIds?: string[]
@@ -27,10 +27,14 @@ export type NoteContextReferencePayload = {
   previewStart?: NotePreviewStart
 }
 
-export type ParsedNoteContextReference = {
+export type NoteContextReferencePayload = NotePreviewReferencePayload
+
+export type ParsedNotePreviewReference = {
   token: string
-  payload: NoteContextReferencePayload
+  payload: NotePreviewReferencePayload
 }
+
+export type ParsedNoteContextReference = ParsedNotePreviewReference
 
 export type ParsedWikiNoteReferenceToken = {
   token: string
@@ -44,7 +48,7 @@ export type ParsedWikiNoteReferenceToken = {
 export type ResolvedWikiNoteReference = {
   token: string
   parsed: ParsedWikiNoteReferenceToken
-  payload: NoteContextReferencePayload
+  payload: NotePreviewReferencePayload
   target: NoteNavigationTarget
   label: string
   canonicalTarget: string
@@ -65,26 +69,26 @@ export type InternalNoteLinkHit = {
 
 export const INTERNAL_NOTE_LINK_MARKDOWN_RE = WIKI_NOTE_REFERENCE_RE
 
-const MAX_CONTEXT_RENDER_DEPTH = 3
+const MAX_PREVIEW_RENDER_DEPTH = 3
 
-export function parseContextReferences(markdown: string, appState: AppState): ParsedNoteContextReference[] {
-  return parseContextReferencesCore(markdown, appState) as ParsedNoteContextReference[]
+export function parsePreviewReferences(markdown: string, appState: AppState): ParsedNotePreviewReference[] {
+  return parsePreviewReferencesCore(markdown, appState) as ParsedNotePreviewReference[]
 }
 
-export function parseContextToken(token: string, appState: AppState): NoteContextReferencePayload | null {
-  return parseContextTokenCore(token, appState) as NoteContextReferencePayload | null
+export function parsePreviewToken(token: string, appState: AppState): NotePreviewReferencePayload | null {
+  return parsePreviewTokenCore(token, appState) as NotePreviewReferencePayload | null
 }
 
-export function buildContextToken(appState: AppState, payload: NoteContextReferencePayload): string {
-  return buildContextTokenCore(appState, payload)
+export function buildPreviewToken(appState: AppState, payload: NotePreviewReferencePayload): string {
+  return buildPreviewTokenCore(appState, payload)
 }
 
-export function getContextReferenceTokenLengthAt(text: string, offset: number): number {
-  return getContextReferenceTokenLengthAtCore(text, offset)
+export function getPreviewReferenceTokenLengthAt(text: string, offset: number): number {
+  return getPreviewReferenceTokenLengthAtCore(text, offset)
 }
 
-export function normalizeContextReferenceTokensForMarkdown(markdown: string, appState: AppState): string {
-  return normalizeContextReferenceTokensForMarkdownCore(markdown, appState)
+export function normalizePreviewReferenceTokensForMarkdown(markdown: string, appState: AppState): string {
+  return normalizePreviewReferenceTokensForMarkdownCore(markdown, appState)
 }
 
 export function parseWikiReferenceToken(token: string): ParsedWikiNoteReferenceToken | null {
@@ -103,26 +107,26 @@ export function buildInternalNoteLinkToken(appState: AppState, target: NoteNavig
   return buildInternalNoteLinkTokenCore(appState, target, alias)
 }
 
-export function replaceContextTokenById(markdown: string, appState: AppState, tokenId: string, nextToken: string): string {
-  return replaceContextReferences(markdown, appState, (token: string, payload: NoteContextReferencePayload) =>
+export function replacePreviewTokenById(markdown: string, appState: AppState, tokenId: string, nextToken: string): string {
+  return replacePreviewReferences(markdown, appState, (token: string, payload: NotePreviewReferencePayload) =>
     payload.id === tokenId ? nextToken : token,
   )
 }
 
-export function removeContextTokenById(markdown: string, appState: AppState, tokenId: string): string {
-  return replaceContextReferences(markdown, appState, (token: string, payload: NoteContextReferencePayload) =>
+export function removePreviewTokenById(markdown: string, appState: AppState, tokenId: string): string {
+  return replacePreviewReferences(markdown, appState, (token: string, payload: NotePreviewReferencePayload) =>
     payload.id === tokenId ? '' : token,
   )
 }
 
-export function removeContextReferencesForNoteLocationsFromMarkdown(
+export function removePreviewReferencesForNoteLocationsFromMarkdown(
   markdown: string,
   appState: AppState,
   deletedLocations: readonly NoteLocation[],
 ): string {
   if (deletedLocations.length === 0) return markdown
   const deletedLocationKeys = new Set(deletedLocations.map((location) => buildNoteLocationKey(location)))
-  return replaceContextReferences(markdown, appState, (token: string, payload: NoteContextReferencePayload) =>
+  return replacePreviewReferences(markdown, appState, (token: string, payload: NotePreviewReferencePayload) =>
     deletedLocationKeys.has(buildNoteLocationKey(payload.target)) ? '' : token,
   )
 }
@@ -141,7 +145,7 @@ export function removeNoteReferencesForNoteLocationsFromMarkdown(
   })
 }
 
-export function removeContextReferencesForNoteLocationsFromAppState(
+export function removePreviewReferencesForNoteLocationsFromAppState(
   sourceState: AppState,
   deletedLocations: readonly NoteLocation[],
 ): AppState {
@@ -152,7 +156,7 @@ export function removeContextReferencesForNoteLocationsFromAppState(
     let bodyChanged = false
     const aisles = body.aisles.map((aisle) => {
       const currentMarkdown = getAisleMarkdown(aisle, nextState.noteAisleBodies)
-      const markdown = removeContextReferencesForNoteLocationsFromMarkdown(currentMarkdown, nextState, deletedLocations)
+      const markdown = removePreviewReferencesForNoteLocationsFromMarkdown(currentMarkdown, nextState, deletedLocations)
       if (markdown === currentMarkdown) return aisle
       bodyChanged = true
       return { ...aisle, markdown }
@@ -219,19 +223,19 @@ export function normalizeAisleSelection(aisleIds: string[] | undefined): string 
   return aisleIds && aisleIds.length > 0 ? [...aisleIds].sort().join(',') : '__all__'
 }
 
-export function normalizePreviewStartAnchor(payload: Pick<NoteContextReferencePayload, 'heading' | 'previewStart'>): string {
+export function normalizePreviewStartAnchor(payload: Pick<NotePreviewReferencePayload, 'heading' | 'previewStart'>): string {
   if (payload.heading?.aisleId && payload.heading.headingKey) return `${payload.heading.aisleId}::${payload.heading.headingKey}`
   if (payload.previewStart === 'last-position') return '__last_position__'
   return '__top__'
 }
 
-export function getContextReferenceSignature(sourceState: AppState, payload: NoteContextReferencePayload): string {
+export function getPreviewReferenceSignature(sourceState: AppState, payload: NotePreviewReferencePayload): string {
   const targetBodyId = getLocationInfo(sourceState, payload.target).noteBodyId
   const aisleSelection = payload.previewStart === 'last-position' ? '__last_position__' : normalizeAisleSelection(payload.aisleIds)
   return `${targetBodyId || buildNoteLocationKey(payload.target)}::${aisleSelection}::${normalizePreviewStartAnchor(payload)}`
 }
 
-export function wouldCreateContextCycle(
+export function wouldCreatePreviewCycle(
   sourceState: AppState,
   targetNoteBodyId: string,
   blockedNoteBodyId: string,
@@ -240,17 +244,30 @@ export function wouldCreateContextCycle(
   if (!targetNoteBodyId || !blockedNoteBodyId) return false
   if (targetNoteBodyId === blockedNoteBodyId) return true
   if (visited.has(targetNoteBodyId)) return false
-  if (visited.size >= MAX_CONTEXT_RENDER_DEPTH * 8) return true
+  if (visited.size >= MAX_PREVIEW_RENDER_DEPTH * 8) return true
 
   visited.add(targetNoteBodyId)
   const targetBody = sourceState.noteBodies.find((body) => body.id === targetNoteBodyId)
   if (!targetBody) return false
 
   for (const aisle of targetBody.aisles) {
-    for (const reference of parseContextReferences(getAisleMarkdown(aisle, sourceState.noteAisleBodies), sourceState)) {
+    for (const reference of parsePreviewReferences(getAisleMarkdown(aisle, sourceState.noteAisleBodies), sourceState)) {
       const childBodyId = getLocationInfo(sourceState, reference.payload.target).noteBodyId
-      if (wouldCreateContextCycle(sourceState, childBodyId, blockedNoteBodyId, visited)) return true
+      if (wouldCreatePreviewCycle(sourceState, childBodyId, blockedNoteBodyId, visited)) return true
     }
   }
   return false
 }
+
+export const NOTE_CONTEXT_REFERENCE_RE = NOTE_PREVIEW_REFERENCE_RE
+export const parseContextReferences = parsePreviewReferences
+export const parseContextToken = parsePreviewToken
+export const buildContextToken = buildPreviewToken
+export const getContextReferenceTokenLengthAt = getPreviewReferenceTokenLengthAt
+export const normalizeContextReferenceTokensForMarkdown = normalizePreviewReferenceTokensForMarkdown
+export const replaceContextTokenById = replacePreviewTokenById
+export const removeContextTokenById = removePreviewTokenById
+export const removeContextReferencesForNoteLocationsFromMarkdown = removePreviewReferencesForNoteLocationsFromMarkdown
+export const removeContextReferencesForNoteLocationsFromAppState = removePreviewReferencesForNoteLocationsFromAppState
+export const getContextReferenceSignature = getPreviewReferenceSignature
+export const wouldCreateContextCycle = wouldCreatePreviewCycle

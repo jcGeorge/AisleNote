@@ -117,8 +117,9 @@ describe('NoteMentionMenu', () => {
     expect(html).toContain('rail-control note-mention-nav-chip is-selected')
     expect(html).toContain('note link')
     expect(html).toContain('note preview')
+    expect(html).toContain('independent copy')
+    expect(html).toContain('synced copy')
     expect(html).not.toContain('make independent copy')
-    expect(html).not.toContain('synced copy')
     expect(html).not.toContain('tabIndex')
   })
 
@@ -154,8 +155,9 @@ describe('NoteMentionMenu', () => {
     expect(html).not.toContain('note-mention-result-breadcrumb')
     expect(html).not.toContain('Humble beginnings / mySpace / codex / home')
     expect(html).toContain('note preview')
-    expect(html).toContain('make independent copy')
+    expect(html).toContain('independent copy')
     expect(html).toContain('synced copy')
+    expect(html).not.toContain('make independent copy')
 
     const emptyHtml = renderToStaticMarkup(
       <NoteMentionMenu

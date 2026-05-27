@@ -2,16 +2,16 @@ import type { AppState, NoteCursorSelection, NoteLocation, ResolvedNoteAisle } f
 import { buildNoteCursorLocationKey } from './note-cursors'
 import { getAisleMarkdown } from './note-markdown'
 import { getLocationInfo, listNoteLocationsForBody, type NoteLocationInfo } from './note-locations'
-import { type NoteContextReferencePayload, wouldCreateContextCycle } from './note-references'
+import { type NotePreviewReferencePayload, wouldCreatePreviewCycle } from './note-references'
 
-export type ContextPreviewTitleButtonKind = 'domain' | 'space' | 'parent' | 'subtab'
+export type NotePreviewTitleButtonKind = 'domain' | 'space' | 'parent' | 'subtab'
 
-export type ContextPreviewTitleButton = {
-  kind: ContextPreviewTitleButtonKind
+export type NotePreviewTitleButton = {
+  kind: NotePreviewTitleButtonKind
   label: string
 }
 
-export type ContextPreviewData = {
+export type NotePreviewData = {
   targetInfo: NoteLocationInfo
   targetBody: AppState['noteBodies'][number] | null
   selectedAisle: ResolvedNoteAisle | null
@@ -19,7 +19,7 @@ export type ContextPreviewData = {
   previewText: string
   previewCursorSelection: NoteCursorSelection | null
   locationLabel: string
-  titleButtons: ContextPreviewTitleButton[]
+  titleButtons: NotePreviewTitleButton[]
   status: 'ready' | 'blocked' | 'missing' | 'empty'
 }
 
@@ -28,14 +28,14 @@ function getSourceLocation(appState: AppState, sourceNoteBodyId: string): NoteLo
   return locations.find((location) => location.domainId === appState.activeDomainId && location.spaceId === appState.activeSpaceId) ?? locations[0] ?? null
 }
 
-function getContextPreviewTitleButtons(
+function getNotePreviewTitleButtons(
   targetInfo: NoteLocationInfo,
   target: NoteLocation,
   sourceLocation: NoteLocation | null,
-): ContextPreviewTitleButton[] {
+): NotePreviewTitleButton[] {
   if (!targetInfo.domain || !targetInfo.space || !targetInfo.tab) return []
 
-  const titleButtons: ContextPreviewTitleButton[] = []
+  const titleButtons: NotePreviewTitleButton[] = []
   const sourceDomainId = sourceLocation?.domainId ?? ''
   const sourceSpaceId = sourceLocation?.spaceId ?? ''
   if (!sourceDomainId || target.domainId !== sourceDomainId) {
@@ -51,7 +51,7 @@ function getContextPreviewTitleButtons(
 
 function getSelectedPreviewAisle(
   targetBody: AppState['noteBodies'][number] | null,
-  payload: NoteContextReferencePayload,
+  payload: NotePreviewReferencePayload,
   appState: AppState,
 ) {
   if (!targetBody || targetBody.aisles.length === 0) return null
@@ -73,11 +73,11 @@ function getSelectedPreviewAisle(
   return targetBody.aisles[0] ?? null
 }
 
-export function getContextPreviewDataFromState(
+export function getNotePreviewDataFromState(
   appState: AppState,
-  payload: NoteContextReferencePayload,
+  payload: NotePreviewReferencePayload,
   sourceNoteBodyId: string,
-): ContextPreviewData {
+): NotePreviewData {
   const targetInfo = getLocationInfo(appState, payload.target)
   const sourceLocation = getSourceLocation(appState, sourceNoteBodyId)
   const targetBody = appState.noteBodies.find((body) => body.id === targetInfo.noteBodyId) ?? null
@@ -96,12 +96,12 @@ export function getContextPreviewDataFromState(
     !targetBody ||
     !targetInfo.noteBodyId ||
     targetInfo.noteBodyId === sourceNoteBodyId ||
-    wouldCreateContextCycle(appState, targetInfo.noteBodyId, sourceNoteBodyId)
+    wouldCreatePreviewCycle(appState, targetInfo.noteBodyId, sourceNoteBodyId)
   const previewText = selectedAisle?.markdown.trim() ?? ''
   const locationLabel = targetInfo.domain && targetInfo.space && targetInfo.tab
     ? `${targetInfo.domain.name} / ${targetInfo.space.name} / ${targetInfo.tab.title}${targetInfo.subTab ? ` / ${targetInfo.subTab.title}` : ' / home'}`
     : 'missing note'
-  const titleButtons = getContextPreviewTitleButtons(targetInfo, payload.target, sourceLocation)
+  const titleButtons = getNotePreviewTitleButtons(targetInfo, payload.target, sourceLocation)
   const status = recursiveBlocked
     ? targetBody ? 'blocked' : 'missing'
     : previewText.trim().length > 0 ? 'ready' : 'empty'

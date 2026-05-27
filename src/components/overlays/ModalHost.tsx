@@ -39,6 +39,7 @@ import { shouldModalBackdropClose } from './modal-behavior'
 import { shouldSubmitInsertNoteReferenceOnEnter } from './modal-keyboard'
 import { makeFrontmatterRowsManual, normalizeFrontmatterModalRows } from './frontmatter-modal-state'
 import { getModalText } from './modal-text'
+import { getNoteCopyModeLabel } from '../../notes/copy-reference-labels'
 
 type ModalHostProps = {
   modal: ModalState | null
@@ -571,7 +572,7 @@ export function ModalHost({
     if (modal.type !== 'insert-note-reference' || modal.mode !== 'note') return null
     const resolved = resolveNoteReferenceTarget(state, modal.target)
     if (!resolved.selectedAisle) return null
-    const isPreviewReference = modal.insertAs === 'context'
+    const isPreviewReference = modal.insertAs === 'preview'
     if (!isPreviewReference) {
       return (
         <div className="note-reference-heading-picker" role="group" aria-label="Link start">
@@ -700,14 +701,14 @@ export function ModalHost({
                   className={`note-reference-mode-btn ${modal.mode === 'independent' ? 'is-active' : ''}`}
                   onClick={() => setCopyModalMode('independent')}
                 >
-                  independent
+                  {getNoteCopyModeLabel('independent')}
                 </button>
                 <button
                   type="button"
                   className={`note-reference-mode-btn ${modal.mode === 'linked' ? 'is-active' : ''}`}
                   onClick={() => setCopyModalMode('linked')}
                 >
-                  synced
+                  {getNoteCopyModeLabel('linked')}
                 </button>
               </div>
             </div>
@@ -852,8 +853,8 @@ export function ModalHost({
                     </button>
                     <button
                       type="button"
-                      className={`note-reference-mode-btn ${modal.insertAs === 'context' ? 'is-active' : ''}`}
-                      onClick={() => setNoteReferenceInsertKind('context')}
+                      className={`note-reference-mode-btn ${modal.insertAs === 'preview' ? 'is-active' : ''}`}
+                      onClick={() => setNoteReferenceInsertKind('preview')}
                     >
                       preview
                     </button>

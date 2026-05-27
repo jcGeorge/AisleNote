@@ -2,27 +2,27 @@ import {
   collectProseMirrorTextPositions,
 } from './prosemirror-utils'
 import {
-  createContextPreviewWidgetElement,
+  createNotePreviewWidgetElement,
   createInternalNoteLinkWidgetElement,
-  createReadonlyContextPreviewWidgetElement,
+  createReadonlyNotePreviewWidgetElement,
   type NotePreviewWidgetOptions,
 } from './note-preview-widget'
 import {
   INTERNAL_NOTE_LINK_MARKDOWN_RE,
-  NOTE_CONTEXT_REFERENCE_RE,
-  type NoteContextReferencePayload,
+  NOTE_PREVIEW_REFERENCE_RE,
+  type NotePreviewReferencePayload,
   type ResolvedWikiNoteReference,
 } from '../notes/note-references'
 
 type NotePreviewPluginOptions = NotePreviewWidgetOptions & {
-  resolveContextPreviewToken: (token: string) => NoteContextReferencePayload | null
+  resolvePreviewToken: (token: string) => NotePreviewReferencePayload | null
   resolveInternalNoteReferenceToken: (token: string) => ResolvedWikiNoteReference | null
   renderMode?: 'editor' | 'readonly-preview'
 }
 
-export type { ContextPreviewData } from '../notes/note-preview-data'
+export type { NotePreviewData } from '../notes/note-preview-data'
 
-export function createContextPreviewPlugin(context: any, options: NotePreviewPluginOptions) {
+export function createNotePreviewPlugin(context: any, options: NotePreviewPluginOptions) {
   const { Plugin } = context.pmState
   const { Decoration, DecorationSet } = context.pmView
   const renderMode = options.renderMode ?? 'editor'
@@ -36,18 +36,18 @@ export function createContextPreviewPlugin(context: any, options: NotePreviewPlu
               const docText = collectProseMirrorTextPositions(editorState.doc)
               editorState.doc.descendants((node: any, pos: number) => {
                 if (!node.isText || typeof node.text !== 'string') return
-                for (const match of node.text.matchAll(NOTE_CONTEXT_REFERENCE_RE)) {
-                  const payload = options.resolveContextPreviewToken(match[0])
+                for (const match of node.text.matchAll(NOTE_PREVIEW_REFERENCE_RE)) {
+                  const payload = options.resolvePreviewToken(match[0])
                   if (!payload) continue
                   const from = pos + (match.index ?? 0)
                   const to = from + match[0].length
                   decorations.push(
                     renderMode === 'readonly-preview'
-                      ? Decoration.widget(from, () => createReadonlyContextPreviewWidgetElement(payload, options), {
+                      ? Decoration.widget(from, () => createReadonlyNotePreviewWidgetElement(payload, options), {
                           key: `readonly-note-preview-${payload.id}`,
                           side: -1,
                         })
-                      : Decoration.widget(from, () => createContextPreviewWidgetElement(payload, options), {
+                      : Decoration.widget(from, () => createNotePreviewWidgetElement(payload, options), {
                           key: `note-preview-${payload.id}`,
                           side: -1,
                           destroy: (node: HTMLElement & { destroyNotePreview?: () => void }) => node.destroyNotePreview?.(),

@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { ContextMenuState, LinkInsertMode } from '../../types/app'
 import type { CopyAsAction, CopyAsScope } from '../../notes/copy-as-clipboard'
+import { getCopyAsActionLabel } from '../../notes/copy-reference-labels'
 import {
   clampContextMenuPosition,
   getSubmenuPosition,
@@ -108,12 +109,6 @@ function MenuSeparator() {
   return <div className="tab-context-separator" role="separator" />
 }
 
-const COPY_AS_MENU_LABELS: Record<CopyAsAction, string> = {
-  duplicate: 'synced copy',
-  link: 'note link',
-  copy: 'independent copy',
-  preview: 'note preview',
-}
 const COPY_AS_MENU_ACTION_ORDER: CopyAsAction[] = ['copy', 'duplicate', 'link', 'preview']
 
 function SubMenu({
@@ -237,7 +232,7 @@ export function ContextMenuHost({
                   }
                 }}
               >
-                {COPY_AS_MENU_LABELS[action]}
+                {getCopyAsActionLabel(action)}
               </MenuButton>
             </Fragment>
           )

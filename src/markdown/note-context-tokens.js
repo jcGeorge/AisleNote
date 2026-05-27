@@ -2,6 +2,7 @@ import { buildStoragePathSegment, createStoragePathAllocator, createStoragePathS
 
 export const WIKI_NOTE_REFERENCE_RE = /!?\[\[[^\]\n|]+(?:\|[^\]\n]+)?\]\]/g
 export const NOTE_CONTEXT_REFERENCE_RE = /!\[\[[^\]\n|]+(?:\|[^\]\n]+)?\]\]/g
+export const NOTE_PREVIEW_REFERENCE_RE = NOTE_CONTEXT_REFERENCE_RE
 
 const WIKI_NOTE_REFERENCE_TOKEN_RE = /^(!?)\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]$/
 const SHORT_HASH_RE = /--([0-9a-f]{6})(?:-\d+)?$/i
@@ -370,6 +371,8 @@ export function parseContextToken(token, appState) {
   return resolveWikiReferenceToken(appState, token)?.payload ?? null
 }
 
+export const parsePreviewToken = parseContextToken
+
 export function parseContextReferences(markdown, appState) {
   const references = []
   for (const match of String(markdown ?? '').matchAll(NOTE_CONTEXT_REFERENCE_RE)) {
@@ -380,6 +383,8 @@ export function parseContextReferences(markdown, appState) {
   return references
 }
 
+export const parsePreviewReferences = parseContextReferences
+
 export function replaceContextReferences(markdown, appState, replacer) {
   return String(markdown ?? '').replace(NOTE_CONTEXT_REFERENCE_RE, (token) => {
     const payload = parseContextToken(token, appState)
@@ -387,10 +392,14 @@ export function replaceContextReferences(markdown, appState, replacer) {
   })
 }
 
+export const replacePreviewReferences = replaceContextReferences
+
 export function getContextReferenceTokenLengthAt(text, offset) {
   const match = String(text ?? '').slice(offset).match(/^!\[\[[^\]\n|]+(?:\|[^\]\n]+)?\]\]/)
   return match && parseWikiReferenceToken(match[0])?.embed ? match[0].length : 0
 }
+
+export const getPreviewReferenceTokenLengthAt = getContextReferenceTokenLengthAt
 
 function sanitizeWikiAlias(value) {
   return String(value ?? '')
@@ -436,6 +445,8 @@ export function buildContextToken(appState, payload) {
   return canonical ? buildWikiReferenceToken({ embed: true, target: canonical.target }) : ''
 }
 
+export const buildPreviewToken = buildContextToken
+
 export function buildInternalNoteLinkToken(appState, target, alias = '') {
   const canonical = getCanonicalWikiTargetForPayload(appState, target)
   if (!canonical) return ''
@@ -464,3 +475,5 @@ export function normalizeContextReferenceTokensForMarkdown(markdown, appState) {
     })
   })
 }
+
+export const normalizePreviewReferenceTokensForMarkdown = normalizeContextReferenceTokensForMarkdown

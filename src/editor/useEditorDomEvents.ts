@@ -77,6 +77,7 @@ type UseEditorDomEventsOptions = {
   commitActiveEditorMarkdownNow: (editor: Editor) => void
   setMenuOpen: Dispatch<SetStateAction<boolean>>
   setContextMenu: Dispatch<SetStateAction<ContextMenuState | null>>
+  onDismissEditorEphemeraBeforeContextMenu?: () => void
   resolveInternalNoteReferenceToken: (token: string) => ResolvedWikiNoteReference | null
   navigateToNoteLocation: (location: NoteNavigationTarget) => void
   openExternalLink: (url: string) => boolean
@@ -320,6 +321,7 @@ export function useEditorDomEvents({
   commitActiveEditorMarkdownNow,
   setMenuOpen,
   setContextMenu,
+  onDismissEditorEphemeraBeforeContextMenu,
   resolveInternalNoteReferenceToken,
   navigateToNoteLocation,
   openExternalLink,
@@ -564,6 +566,7 @@ export function useEditorDomEvents({
       const image = target.closest('img')
       if (image instanceof HTMLImageElement) {
         mouseEvent.preventDefault()
+        onDismissEditorEphemeraBeforeContextMenu?.()
         selectImageForTools(image)
         setContextMenu({
           type: 'image',
@@ -580,7 +583,7 @@ export function useEditorDomEvents({
         const range = getExternalLinkEditRange(mouseEvent, href)
         mouseEvent.preventDefault()
         mouseEvent.stopPropagation()
-        closeImageTools()
+        onDismissEditorEphemeraBeforeContextMenu?.()
         closeLinkPrompt()
         setMenuOpen(false)
         if (anchor.dataset.internalNoteLink === 'true') {
@@ -615,7 +618,7 @@ export function useEditorDomEvents({
       if (isActiveWysiwygEditorContentTarget(target, view)) {
         mouseEvent.preventDefault()
         mouseEvent.stopPropagation()
-        closeImageTools()
+        onDismissEditorEphemeraBeforeContextMenu?.()
         closeLinkPrompt()
         setMenuOpen(false)
         setContextMenu({

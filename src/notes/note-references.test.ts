@@ -1,20 +1,20 @@
 import { describe, expect, it } from 'vitest'
 import {
-  buildContextToken,
+  buildPreviewToken,
   buildInternalNoteLinkToken,
-  parseContextReferences,
-  parseContextToken,
+  parsePreviewReferences,
+  parsePreviewToken,
   parseWikiReferenceToken,
-  normalizeContextReferenceTokensForMarkdown,
-  removeContextReferencesForNoteLocationsFromAppState,
-  removeContextReferencesForNoteLocationsFromMarkdown,
+  normalizePreviewReferenceTokensForMarkdown,
+  removePreviewReferencesForNoteLocationsFromAppState,
+  removePreviewReferencesForNoteLocationsFromMarkdown,
   removeNoteReferencesForNoteLocationsFromMarkdown,
   removeNoteReferencesForNoteLocationsFromAppState,
-  removeContextTokenById,
+  removePreviewTokenById,
   resolveWikiReferenceToken,
 } from './note-references'
 import type { AppState, NoteLocation } from '../types/app'
-import type { NoteContextReferencePayload } from './note-references'
+import type { NotePreviewReferencePayload } from './note-references'
 import { getAisleMarkdown } from './note-markdown'
 import { getHeadingOutlineFromMarkdown } from '../editor/heading-outline'
 
@@ -27,7 +27,7 @@ function targetLocation(tabId = 'parent', subTabId: string | null = null): NoteL
   }
 }
 
-function payload(id: string, target: NoteLocation = targetLocation()): NoteContextReferencePayload {
+function payload(id: string, target: NoteLocation = targetLocation()): NotePreviewReferencePayload {
   return {
     id,
     target,
@@ -97,7 +97,7 @@ function createReferenceState(markdownByBody: Record<string, string> = {}): AppS
   } as unknown as AppState
 }
 
-describe('note context references', () => {
+describe('note preview references', () => {
   it('builds and resolves wiki note links with optional heading anchors', () => {
     const state = createReferenceState({ 'body-sub': '# Intro\n\nBody' })
     const heading = getHeadingOutlineFromMarkdown('body-sub-aisle', '# Intro\n\nBody')[0]
@@ -136,10 +136,10 @@ describe('note context references', () => {
     const state = createReferenceState()
     const currentLink = buildInternalNoteLinkToken(state, targetLocation('parent', 'sub'))
     const staleLink = currentLink.replace('Sub note--', 'Old sub name--')
-    const currentPreview = buildContextToken(state, payload('preview', targetLocation('parent', null)))
+    const currentPreview = buildPreviewToken(state, payload('preview', targetLocation('parent', null)))
     const stalePreview = currentPreview.replace('Parent tab--', 'Old parent name--')
 
-    expect(normalizeContextReferenceTokensForMarkdown(`${staleLink}\n${stalePreview}`, state)).toBe(
+    expect(normalizePreviewReferenceTokensForMarkdown(`${staleLink}\n${stalePreview}`, state)).toBe(
       `${currentLink}\n${currentPreview}`,
     )
     expect(currentPreview).toMatch(/^!\[\[Parent tab--[0-9a-f]{6}\]\]$/)
@@ -152,11 +152,11 @@ describe('note context references', () => {
       ...payload('anchored', targetLocation('parent', 'sub')),
       heading: { aisleId: heading.aisleId, headingKey: heading.key },
     }
-    const token = buildContextToken(state, previewPayload)
+    const token = buildPreviewToken(state, previewPayload)
 
     expect(token).toMatch(/^!\[\[Sub note--[0-9a-f]{6}#Intro--[0-9a-f]{6}\]\]$/)
-    expect(parseContextToken(token, state)?.heading).toEqual(heading ? { aisleId: heading.aisleId, headingKey: heading.key } : undefined)
-    expect(parseContextReferences(token, state)[0]?.payload.heading).toEqual({ aisleId: heading.aisleId, headingKey: heading.key })
+    expect(parsePreviewToken(token, state)?.heading).toEqual(heading ? { aisleId: heading.aisleId, headingKey: heading.key } : undefined)
+    expect(parsePreviewReferences(token, state)[0]?.payload.heading).toEqual({ aisleId: heading.aisleId, headingKey: heading.key })
   })
 
   it('round-trips wiki preview and note-link last-position starts', () => {
@@ -165,13 +165,13 @@ describe('note context references', () => {
       ...payload('last-position', targetLocation('parent', 'sub')),
       previewStart: 'last-position' as const,
     }
-    const token = buildContextToken(state, previewPayload)
+    const token = buildPreviewToken(state, previewPayload)
     const link = buildInternalNoteLinkToken(state, { ...targetLocation('parent', 'sub'), startAt: 'last-position' })
     const staleToken = token.replace('#last position', '#LAST   POSITION')
 
     expect(token).toMatch(/^!\[\[Sub note--[0-9a-f]{6}#last position\]\]$/)
     expect(link).toMatch(/^\[\[Sub note--[0-9a-f]{6}#last position\]\]$/)
-    expect(parseContextToken(token, state)).toMatchObject({
+    expect(parsePreviewToken(token, state)).toMatchObject({
       target: previewPayload.target,
       previewStart: 'last-position',
     })
@@ -184,29 +184,29 @@ describe('note context references', () => {
     expect(resolveWikiReferenceToken(state, token.slice(1))?.target.startAt).toBe('last-position')
   })
 
-  it('does not parse old encoded or directive context preview tokens', () => {
+  it('does not parse old encoded or directive note preview tokens', () => {
     const state = createReferenceState()
 
-    expect(parseContextReferences('{{tabs-context:abc}}', state)).toEqual([])
-    expect(parseContextToken('{{tabs-preview label="x" id="y"}}', state)).toBeNull()
+    expect(parsePreviewReferences('{{tabs-context:abc}}', state)).toEqual([])
+    expect(parsePreviewToken('{{tabs-preview label="x" id="y"}}', state)).toBeNull()
   })
 
-  it('removes only the matching context token id', () => {
+  it('removes only the matching preview token id', () => {
     const state = createReferenceState()
-    const first = buildContextToken(state, payload('first', targetLocation('parent', 'sub')))
-    const second = buildContextToken(state, payload('second', targetLocation('other-parent', null)))
-    const firstId = parseContextToken(first, state)?.id ?? ''
+    const first = buildPreviewToken(state, payload('first', targetLocation('parent', 'sub')))
+    const second = buildPreviewToken(state, payload('second', targetLocation('other-parent', null)))
+    const firstId = parsePreviewToken(first, state)?.id ?? ''
     const markdown = `before\n${first}\nmiddle\n${second}\nafter`
 
-    expect(removeContextTokenById(markdown, state, firstId)).toBe(`before\n\nmiddle\n${second}\nafter`)
+    expect(removePreviewTokenById(markdown, state, firstId)).toBe(`before\n\nmiddle\n${second}\nafter`)
   })
 
-  it('removes context references for deleted sub-tabs without touching other previews or external links', () => {
+  it('removes preview references for deleted sub-tabs without touching other previews or external links', () => {
     const state = createReferenceState()
     const deleted = targetLocation('deleted-parent', 'deleted-sub')
     const retained = targetLocation('parent', 'retained-sub')
-    const deletedToken = buildContextToken(state, payload('deleted', deleted))
-    const retainedToken = buildContextToken(state, payload('retained', retained))
+    const deletedToken = buildPreviewToken(state, payload('deleted', deleted))
+    const retainedToken = buildPreviewToken(state, payload('retained', retained))
     const markdown = [
       'before',
       deletedToken,
@@ -215,7 +215,7 @@ describe('note context references', () => {
       'after',
     ].join('\n')
 
-    expect(removeContextReferencesForNoteLocationsFromMarkdown(markdown, state, [deleted])).toBe(
+    expect(removePreviewReferencesForNoteLocationsFromMarkdown(markdown, state, [deleted])).toBe(
       [
         'before',
         '',
@@ -226,14 +226,14 @@ describe('note context references', () => {
     )
   })
 
-  it('removes context references across multiple note bodies and aisles', () => {
+  it('removes preview references across multiple note bodies and aisles', () => {
     const state = createReferenceState()
     const deletedParent = targetLocation('deleted-parent', null)
     const deletedSubTab = targetLocation('deleted-parent', 'deleted-sub')
     const retained = targetLocation('other-parent', null)
-    const parentToken = buildContextToken(state, payload('parent', deletedParent))
-    const subTabToken = buildContextToken(state, payload('subtab', deletedSubTab))
-    const retainedToken = buildContextToken(state, payload('retained', retained))
+    const parentToken = buildPreviewToken(state, payload('parent', deletedParent))
+    const subTabToken = buildPreviewToken(state, payload('subtab', deletedSubTab))
+    const retainedToken = buildPreviewToken(state, payload('retained', retained))
     state.noteAisleBodies = [
       { id: 'body-parent-aisle-body', markdown: `a\n${parentToken}` },
       { id: 'body-retained-aisle-body', markdown: `${retainedToken}\nb` },
@@ -242,7 +242,7 @@ describe('note context references', () => {
       { id: 'body-deleted-parent-aisle-body', markdown: '' },
     ]
 
-    const next = removeContextReferencesForNoteLocationsFromAppState(state, [deletedParent, deletedSubTab])
+    const next = removePreviewReferencesForNoteLocationsFromAppState(state, [deletedParent, deletedSubTab])
 
     expect(getAisleMarkdown(next.noteBodies[0].aisles[0], next.noteAisleBodies)).toBe('a\n')
     expect(getAisleMarkdown(next.noteBodies[2].aisles[0], next.noteAisleBodies)).toBe(`${retainedToken}\nb`)
@@ -254,7 +254,7 @@ describe('note context references', () => {
     const deleted = targetLocation('parent', 'sub')
     const retained = targetLocation('parent', 'retained-sub')
     const deletedLink = buildInternalNoteLinkToken(resolverState, deleted)
-    const deletedPreview = buildContextToken(resolverState, payload('deleted', deleted))
+    const deletedPreview = buildPreviewToken(resolverState, payload('deleted', deleted))
     const retainedLink = buildInternalNoteLinkToken(resolverState, retained)
     const markdown = `${deletedLink}\n${deletedPreview}\n${retainedLink}\n[external](https://example.com)\n[[missing--abc123]]`
     const sourceState = createReferenceState()
@@ -271,7 +271,7 @@ describe('note context references', () => {
     const state = createReferenceState()
     const deleted = targetLocation('parent', 'sub')
     const deletedLink = buildInternalNoteLinkToken(state, deleted)
-    const deletedPreview = buildContextToken(state, payload('deleted', deleted))
+    const deletedPreview = buildPreviewToken(state, payload('deleted', deleted))
     state.noteAisleBodies = [
       { id: 'body-parent-aisle-body', markdown: `${deletedLink}\n${deletedPreview}` },
       { id: 'body-sub-aisle-body', markdown: 'target' },

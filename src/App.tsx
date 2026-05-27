@@ -85,6 +85,7 @@ import {
   runEditorCommandOperation,
   type EditorOperationRuntime,
 } from './editor/editor-operation-runner'
+import { closeEditorEphemera, type CloseEditorEphemeraOptions } from './editor/editor-ephemera'
 import { MAX_AISLE_WARNING_MESSAGE } from './editor/aisle-edit-draft'
 import { getAisleIdFromAisleEditorKey } from './editor/aisle-editor'
 import { shouldFocusAislePointerActivation } from './editor/aisle-activation'
@@ -139,19 +140,16 @@ import {
 import { buildNoteLocationKey, getLocationInfo, listNoteLocationsForBody } from './notes/note-locations'
 import { getLinkedAisleIdsForNoteBody } from './notes/aisle-links'
 import { openExternalWebUrl } from './notes/external-links'
-import { escapeMarkdownLinkLabel, getContextReferenceSignature, parseContextReferences } from './notes/note-references'
+import { escapeMarkdownLinkLabel } from './notes/note-references'
+import { getNoteCopyCreatedToast } from './notes/copy-reference-labels'
 import {
   buildDefaultNoteReferenceDraft,
   buildExternalLinkEditDraft,
   buildInternalNoteLinkEditDraft,
-  getNoteReferencePreviewSpec,
 } from './notes/note-reference-model'
 import {
-  applyCopyAsStructuralPayloadToState,
   buildCopyAsClipboardData,
-  buildCopyAsReferenceText,
   getCopyAsAisleIdForNoteContext,
-  getCopyAsPasteSuccessMessage,
   getCopyAsSuccessMessage,
   isCopyAsClipboardTextMarker,
   parseCopyAsTextMarker,
@@ -161,6 +159,7 @@ import {
   type CopyAsScope,
   writeCopyAsClipboardData,
 } from './notes/copy-as-clipboard'
+import { buildCopyAsPasteCommand, getNoteBodyPreviewMarkdowns } from './notes/note-reference-commands'
 import { useNoteMentionController } from './notes/useNoteMentionController'
 import { applyNoteCopyToState } from './notes/note-copy-service'
 import { getAisleBodyId } from './notes/note-markdown'
@@ -362,7 +361,7 @@ function App() {
   const editorEventRootRef = useRef<HTMLElement | null>(null)
   const closeShortcutMenuRef = useRef<(options?: { restoreEditorFocus?: boolean }) => void>(() => {})
   const runShortcutOperationFromMenuRef = useRef<(operation: NewlineOperationId) => void>(() => {})
-  const deleteContextPreviewRef = useRef<(tokenId: string) => void>(() => {})
+  const deleteNotePreviewRef = useRef<(tokenId: string) => void>(() => {})
   const pendingCreatedEditRef = useRef<PendingCreatedEdit | null>(null)
   const editingRef = useRef<{ type: EditableEntityType; id: string } | null>(null)
   const renameDraftRef = useRef<RenameDraft | null>(null)
@@ -373,6 +372,8 @@ function App() {
   const toastsRef = useRef<ToastState[]>([])
   const closeImageToolsRef = useRef<() => void>(() => {})
   const closeImageToolsIfSelectedImageMissingRef = useRef<() => void>(() => {})
+  const closeTableControlsRef = useRef<() => void>(() => {})
+  const closeEditorEphemeraRef = useRef<(options?: CloseEditorEphemeraOptions) => void>(() => {})
   const activateAisleEditorRef = useRef<
     (
       editorKey: string,
@@ -718,12 +719,8 @@ function App() {
   }
 
   useEffect(() => {
-    closeImageToolsRef.current()
+    closeEditorEphemeraRef.current()
   }, [activeSpace.id, activeTab.id, activeSubTab?.id, activeNoteBodyId, viewMode])
-
-  useEffect(() => {
-    setTableOfContentsPanels(null)
-  }, [activeNoteBodyId, viewMode])
 
   useEffect(() => {
     if (resolvedActiveAisleId && resolvedActiveAisleId !== activeAisleId) {
@@ -932,6 +929,7 @@ function App() {
       pushToast('that note no longer exists.', 'warning')
       return
     }
+    closeEditorEphemeraRef.current()
     pendingNavigationHeadingRef.current = location.heading ?? null
     pendingNavigationTopAisleIdRef.current = null
     if (location.heading) {
@@ -967,7 +965,6 @@ function App() {
     })
     setViewMode('main')
     setMenuOpen(false)
-    setContextMenu(null)
     setEditing(null)
   }
 
@@ -996,8 +993,8 @@ function App() {
       )
     })
     setViewMode('main')
+    closeEditorEphemeraRef.current()
     setMenuOpen(false)
-    setContextMenu(null)
     setEditing(null)
     setArrangeDestinationPrompt(null)
     setGuidedParentRailTarget(null)
@@ -1025,8 +1022,8 @@ function App() {
       ),
     )
     setViewMode('main')
+    closeEditorEphemeraRef.current()
     setMenuOpen(false)
-    setContextMenu(null)
     setEditing(null)
     setArrangeDestinationPrompt(null)
     setGuidedParentRailTarget(null)
@@ -1035,8 +1032,8 @@ function App() {
   const focusArrangeDestinationSpace = (targetDomainId: string, targetSpaceId: string) => {
     setState((previous) => setActiveSpaceInActiveDomain(setActiveDomain(previous, targetDomainId), targetSpaceId))
     setViewMode('main')
+    closeEditorEphemeraRef.current()
     setMenuOpen(false)
-    setContextMenu(null)
     setEditing(null)
   }
 
@@ -1070,8 +1067,8 @@ function App() {
     request: ArrangeHierarchyDropRequest,
     carriedPreview: TabArrangeDragPreview,
   ) => {
+    closeEditorEphemeraRef.current()
     setMenuOpen(false)
-    setContextMenu(null)
     setEditing(null)
     applyArrangeGuidedTransferResolution(resolveArrangeHierarchyDrop(stateRef.current, request, carriedPreview))
   }
@@ -1161,8 +1158,7 @@ function App() {
     setArrangeDestinationPrompt(null)
     setGuidedParentRailTarget(null)
     clearArrangeSelection()
-    setMenuOpen(false)
-    setContextMenu(null)
+    closeEditorEphemeraRef.current()
     setEditing(null)
     if (result.moved) {
       pushToast(formatMovedToTrashToast(result.moved.kind, result.moved.name), 'success')
@@ -1210,7 +1206,6 @@ function App() {
     viewMode,
     setViewMode,
     contextMenu,
-    setContextMenu,
     setMenuOpen,
     setEditing,
     editingRef,
@@ -1224,7 +1219,7 @@ function App() {
     skipRenameBlurRef,
     pendingFocusToAisleIdRef,
     pendingCursorRestoreRef,
-    closeImageToolsRef,
+    closeEditorEphemeraRef,
     activateAisleEditorRef,
     arrangeModeActive: arrangeMode.active,
     exitArrangeMode,
@@ -1257,6 +1252,7 @@ function App() {
         ...getToggledRailVisibilitySettings(previous.ui, target),
       },
     }))
+    closeEditorEphemeraRef.current()
     setMenuOpen(false)
   }
   const toggleSpaceRailVisibility = () => toggleRailVisibility('space')
@@ -1275,8 +1271,8 @@ function App() {
       previousActiveSpaceId: previousState.activeSpaceId,
     }
     setViewMode('main')
+    closeEditorEphemeraRef.current()
     setMenuOpen(false)
-    setContextMenu(null)
     setEditing({ type: 'space', id: newSpace.id })
   }
 
@@ -1293,8 +1289,8 @@ function App() {
       previousActiveSpaceId: previousState.activeSpaceId,
     }
     setViewMode('main')
+    closeEditorEphemeraRef.current()
     setMenuOpen(false)
-    setContextMenu(null)
     setEditing({ type: 'domain', id: newDomain.id })
   }
 
@@ -1305,18 +1301,17 @@ function App() {
       return
     }
     saveActiveCursorBeforeNavigation()
-    closeImageToolsRef.current()
+    closeEditorEphemeraRef.current()
     setState((previous) => setActiveSpaceInActiveDomain(previous, spaceId))
     setViewMode('main')
     setMenuOpen(false)
-    setContextMenu(null)
     setEditing(null)
   }
 
   const openDomainFromCompactRail = (domainId: string) => {
     if (arrangeDestinationPrompt) {
       saveActiveCursorBeforeNavigation()
-      closeImageToolsRef.current()
+      closeEditorEphemeraRef.current()
       const resolution =
         domainId === arrangeDestinationPrompt.targetDomainId
           ? resolveArrangePromptDomainConfirmation(stateRef.current, arrangeDestinationPrompt, domainId)
@@ -1330,11 +1325,10 @@ function App() {
       return
     }
     saveActiveCursorBeforeNavigation()
-    closeImageToolsRef.current()
+    closeEditorEphemeraRef.current()
     setState((previous) => setActiveDomain(previous, domainId))
     setViewMode('main')
     setMenuOpen(false)
-    setContextMenu(null)
     setEditing(null)
   }
 
@@ -1418,8 +1412,8 @@ function App() {
     setTrashSubTabId,
     flushPendingContent,
     clearTransientUi: () => {
+      closeEditorEphemeraRef.current()
       setMenuOpen(false)
-      setContextMenu(null)
       setEditing(null)
     },
   })
@@ -1453,10 +1447,9 @@ function App() {
     const currentEditor = editorRef.current
     if (!currentEditor) return
 
-    closeImageTools()
+    closeEditorEphemeraRef.current()
     closeLinkPrompt()
     clearMultiLineEdit(false)
-    setContextMenu(null)
 
     if (saveTimerRef.current !== null) {
       window.clearTimeout(saveTimerRef.current)
@@ -1583,12 +1576,12 @@ function App() {
     navigateToNoteLocation,
     pushToast,
   })
-  const getContextPreviewData = noteReferenceActions.getContextPreviewData
-  const resolveContextPreviewToken = noteReferenceActions.resolveContextPreviewToken
+  const getNotePreviewData = noteReferenceActions.getNotePreviewData
+  const resolvePreviewToken = noteReferenceActions.resolvePreviewToken
   const resolveInternalNoteReferenceToken = noteReferenceActions.resolveInternalNoteReferenceToken
   const insertLinkIntoActiveEditor = noteReferenceActions.insertLinkIntoActiveEditor
   const insertNoteReference = noteReferenceActions.insertNoteReference
-  const deleteContextPreview = noteReferenceActions.deleteContextPreview
+  const deleteNotePreview = noteReferenceActions.deleteNotePreview
   const openInternalNoteLinkFromContext = noteReferenceActions.openInternalNoteLinkFromContext
   const renameInternalNoteLinkFromContext = noteReferenceActions.renameInternalNoteLinkFromContext
   const replaceCurrentNoteFromMention = ({
@@ -1616,7 +1609,7 @@ function App() {
     }
     stateRef.current = result.state
     setState(result.state)
-    pushToast(mode === 'linked' ? 'synced copy created.' : 'independent copy created.', 'success')
+    pushToast(getNoteCopyCreatedToast(mode), 'success')
     return { handled: true }
   }
   const noteMention = useNoteMentionController({
@@ -1634,7 +1627,7 @@ function App() {
     syncToolbarFormatState,
   })
   const openSettingsWithoutMentionMenu = () => {
-    noteMention.dismissCurrentQuery()
+    closeEditorEphemeraRef.current()
     openSettings()
   }
 
@@ -1720,11 +1713,11 @@ function App() {
     headingCollapseState: state.ui.headingCollapseState,
     onToggleHeadingCollapse: toggleHeadingCollapse,
     onExpandHeadingCollapse: expandHeadingCollapse,
-    getContextPreviewData,
-    resolveContextPreviewToken,
+    getNotePreviewData,
+    resolvePreviewToken,
     resolveInternalNoteReferenceToken,
     navigateToNoteLocation,
-    deleteContextPreview: (tokenId) => deleteContextPreviewRef.current(tokenId),
+    deleteNotePreview: (tokenId) => deleteNotePreviewRef.current(tokenId),
   })
   const activateAisleEditor = aisleEditors.activateAisleEditor
   const activateEditorFromEventTarget = aisleEditors.activateEditorFromEventTarget
@@ -1739,7 +1732,7 @@ function App() {
   activateAisleEditorRef.current = activateAisleEditor
 
   const openTableOfContents = () => {
-    closeImageTools()
+    closeEditorEphemeraRef.current()
     if (!activeNoteBodyId) {
       pushToast('open a note before using table of contents.', 'warning')
       return
@@ -1891,17 +1884,19 @@ function App() {
   }
 
   const openSharedLinkModal = (selectedText = '', initialMode: LinkInsertMode = getLastLinkInsertMode()) => {
-    noteMention.dismissCurrentQuery()
+    closeEditorEphemeraRef.current()
     saveActiveCursorBeforeNavigation()
     setModal(buildDefaultLinkModal(initialMode, selectedText))
   }
 
   const openExternalLinkEditModal = (href: string, label: string, range: LinkEditRange | null) => {
+    closeEditorEphemeraRef.current()
     saveActiveCursorBeforeNavigation()
     setModal(buildExternalLinkEditDraft(stateRef.current, getCurrentNoteLocation(), href, label, range))
   }
 
   const openInternalNoteLinkEditModal = (edit: InternalNoteLinkEdit) => {
+    closeEditorEphemeraRef.current()
     saveActiveCursorBeforeNavigation()
     setModal(buildInternalNoteLinkEditDraft(stateRef.current, getCurrentNoteLocation(), edit))
   }
@@ -1943,7 +1938,27 @@ function App() {
     syncToolbarFormatState,
   })
   const tableControls = tableControlsController.tableControls
+  const closeTableControls = tableControlsController.close
   const runTableControlOperation = tableControlsController.runTableControlOperation
+  closeTableControlsRef.current = closeTableControls
+  closeEditorEphemeraRef.current = (options: CloseEditorEphemeraOptions = {}) => {
+    closeEditorEphemera(
+      {
+        dismissMentionMenu: noteMention.dismissCurrentQuery,
+        closeToolbarPopovers: () => {
+          setCopyMenuOpen(false)
+          setHeadingMenuOpen(false)
+          setToolbarPopoverPosition({ copy: null, heading: null })
+        },
+        closeContextMenu: () => setContextMenu(null),
+        closeImageTools: () => closeImageToolsRef.current(),
+        closeTableTools: () => closeTableControlsRef.current(),
+        closeTableOfContents: () => setTableOfContentsPanels(null),
+        closeShortcutMenu: (shortcutOptions) => closeShortcutMenuRef.current(shortcutOptions),
+      },
+      options,
+    )
+  }
 
   const editorOperationRuntime: EditorOperationRuntime = {
     editorRef,
@@ -2052,7 +2067,7 @@ function App() {
   }, [])
 
   const runEditorContextCommand = (command: string, payload?: Record<string, unknown>) => {
-    setContextMenu(null)
+    closeEditorEphemeraRef.current()
     if (!runActiveEditorCommand(command, payload)) {
       pushToast('open a note before using the editor menu.', 'warning')
     }
@@ -2060,25 +2075,6 @@ function App() {
 
   const getCopyAsSourceAisleId = (latestState: AppState, source: NoteLocation) => {
     return getCopyAsAisleIdForNoteContext(latestState, source, getCurrentNoteLocation(), activeAisleIdRef.current)
-  }
-
-  const hasDuplicatePreviewInActiveNote = (latestState: AppState, payload: CopyAsClipboardPayload) => {
-    const activeInfo = getLocationInfo(latestState, getCurrentNoteLocation())
-    const activeBody = activeInfo.noteBodyId
-      ? latestState.noteBodies.find((candidate) => candidate.id === activeInfo.noteBodyId) ?? null
-      : null
-    if (!activeBody) return false
-    const targetPayload = {
-      id: '',
-      target: payload.source,
-      ...(payload.scope === 'aisle' && payload.aisleId ? { aisleIds: [payload.aisleId] } : {}),
-    }
-    const nextSignature = getContextReferenceSignature(latestState, targetPayload)
-    return activeBody.aisles.some((aisle) =>
-      parseContextReferences(getAisleMarkdown(aisle, latestState.noteAisleBodies), latestState).some(
-        (reference) => getContextReferenceSignature(latestState, reference.payload) === nextSignature,
-      ),
-    )
   }
 
   const pasteCopyAsPayload = (payload: CopyAsClipboardPayload): boolean => {
@@ -2089,57 +2085,42 @@ function App() {
 
     const latestState = buildStateWithLatestEditorContent()
     const destination = getCurrentNoteLocation()
+    const activeInfo = getLocationInfo(latestState, destination)
+    const command = buildCopyAsPasteCommand({
+      appState: latestState,
+      destination,
+      payload,
+      activeNoteBodyId: activeInfo.noteBodyId,
+      previewMarkdowns: activeInfo.noteBodyId ? getNoteBodyPreviewMarkdowns(latestState, activeInfo.noteBodyId) : [],
+      maxAisles: MAX_NOTE_AISLES,
+    })
 
-    if (payload.action === 'copy' || payload.action === 'duplicate') {
-      const result = applyCopyAsStructuralPayloadToState(latestState, destination, payload, MAX_NOTE_AISLES)
-      if (result.status !== 'applied') {
-        pushToast(result.status === 'max-aisles' ? MAX_AISLE_WARNING_MESSAGE : result.message, 'warning')
-        return true
-      }
-      stateRef.current = result.state
-      setState(result.state)
-      setContextMenu(null)
-      pushToast(getCopyAsPasteSuccessMessage(payload.scope, payload.action), 'success')
+    if (command.status === 'blocked') {
+      const message = command.message === 'maximum aisle count reached.' ? MAX_AISLE_WARNING_MESSAGE : command.message
+      pushToast(message, command.tone ?? 'warning')
       return true
     }
 
-    const reference = buildCopyAsReferenceText(latestState, payload)
-    if (!reference.ok) {
-      pushToast(reference.message, 'warning')
+    if (command.status === 'structural') {
+      stateRef.current = command.state
+      setState(command.state)
+      closeEditorEphemeraRef.current()
+      pushToast(command.toast.message, command.toast.tone ?? 'success')
       return true
     }
 
-    let text = reference.text
-    if (payload.action === 'preview') {
-      const activeInfo = getLocationInfo(latestState, destination)
-      const previewTarget = {
-        ...payload.source,
-        ...(payload.scope === 'aisle' && payload.aisleId ? { aisleIds: [payload.aisleId] } : {}),
-      }
-      const previewSpec = getNoteReferencePreviewSpec(latestState, activeInfo.noteBodyId, previewTarget)
-      if (!previewSpec.ok) {
-        pushToast(previewSpec.message, 'warning')
-        return true
-      }
-      if (hasDuplicatePreviewInActiveNote(latestState, payload)) {
-        pushToast('that note preview already exists in this note.', 'warning')
-        return true
-      }
-      text = `\n\n${previewSpec.token}\n\n`
-    }
-
-    if (!insertEditorTextOperation(editorOperationRuntime, text).handled) {
+    if (!insertEditorTextOperation(editorOperationRuntime, command.text).handled) {
       pushToast('open a note before pasting.', 'warning')
       return true
     }
-    setContextMenu(null)
-    pushToast(getCopyAsPasteSuccessMessage(payload.scope, payload.action), 'success')
+    closeEditorEphemeraRef.current()
+    pushToast(command.toast.message, command.toast.tone ?? 'success')
     return true
   }
 
   const copyContextMenuItemAs = (scope: CopyAsScope, action: CopyAsAction) => {
     const source = contextMenuNoteLocation
-    setContextMenu(null)
+    closeEditorEphemeraRef.current()
     if (!source) {
       pushToast('note not found.', 'warning')
       return
@@ -2161,7 +2142,7 @@ function App() {
   }
 
   const runEditorContextClipboardAction = (action: 'cut' | 'copy' | 'paste' | 'pastePlainText') => {
-    setContextMenu(null)
+    closeEditorEphemeraRef.current()
     const currentEditor = editorRef.current
     if (!currentEditor) {
       pushToast('open a note before using the editor menu.', 'warning')
@@ -2220,12 +2201,12 @@ function App() {
   }
 
   const openEditorContextLinkModal = (mode: LinkInsertMode | null) => {
-    setContextMenu(null)
+    closeEditorEphemeraRef.current()
     openSharedLinkModal(getActiveEditorSelectedText(), mode ?? getLastLinkInsertMode())
   }
 
   const insertAttachmentFromEditorContext = () => {
-    setContextMenu(null)
+    closeEditorEphemeraRef.current()
     const currentEditor = editorRef.current
     if (!currentEditor) {
       pushToast('open a note before inserting an attachment.', 'warning')
@@ -2271,7 +2252,7 @@ function App() {
   const openEditorContextLink = () => {
     if (!contextMenu || contextMenu.type !== 'editor' || !contextMenu.link) return
     const link = contextMenu.link
-    setContextMenu(null)
+    closeEditorEphemeraRef.current()
     if (link.type === 'internal') {
       navigateToNoteLocation({
         ...link.target,
@@ -2287,7 +2268,7 @@ function App() {
   const editEditorContextLink = () => {
     if (!contextMenu || contextMenu.type !== 'editor' || !contextMenu.link) return
     const link = contextMenu.link
-    setContextMenu(null)
+    closeEditorEphemeraRef.current()
     if (link.type === 'internal') {
       openInternalNoteLinkEditModal({
         label: link.label,
@@ -2327,7 +2308,7 @@ function App() {
   }
 
   const openFindReplacePanel = useCallback(() => {
-    setContextMenu(null)
+    closeEditorEphemeraRef.current()
     flushPendingContent()
     const selectedText = getActiveEditorSelectedText()
     const lastFindQuery = loadDeviceSettings().lastFindQuery
@@ -2522,7 +2503,7 @@ function App() {
 
     finishEditorOperation(editorOperationRuntime, currentEditor, { syncToolbar: true })
     if (operation === 'aisle') {
-      closeImageTools()
+      closeEditorEphemeraRef.current()
       addAisleToActiveNote(result.aisleMarkdown ?? '', {
         beforeSnapshot: beforeAisleSnapshot,
         placement: stateRef.current.ui.newAislePlacement ?? 'end',
@@ -2532,7 +2513,7 @@ function App() {
   }
 
   const insertAisleFromEditorContext = () => {
-    setContextMenu(null)
+    closeEditorEphemeraRef.current()
     if (!editorRef.current) {
       pushToast('open a note before using the editor menu.', 'warning')
       return
@@ -2573,6 +2554,7 @@ function App() {
   const openShortcutMenu = () => {
     if (viewMode !== 'main' || !editorRef.current) return
     const operations = stateRef.current.hotkeys.newlineShortcuts.menuOperations
+    closeEditorEphemeraRef.current()
     setShortcutMenuActiveIndex(0)
     setShortcutMenu({
       ...getShortcutMenuPosition(operations.length),
@@ -2595,7 +2577,7 @@ function App() {
   closeShortcutMenuRef.current = closeShortcutMenu
 
   const runShortcutOperationFromMenu = (operation: NewlineOperationId) => {
-    closeShortcutMenu()
+    closeEditorEphemeraRef.current()
     runActiveNewlineOperation(operation)
   }
   runShortcutOperationFromMenuRef.current = runShortcutOperationFromMenu
@@ -2641,7 +2623,7 @@ function App() {
     }
   }, [shortcutMenu, shortcutMenuActiveIndex])
 
-  deleteContextPreviewRef.current = deleteContextPreview
+  deleteNotePreviewRef.current = deleteNotePreview
 
   useLegacyEditor({
     viewMode,
@@ -2702,6 +2684,7 @@ function App() {
     commitActiveEditorMarkdownNow,
     setMenuOpen,
     setContextMenu,
+    onDismissEditorEphemeraBeforeContextMenu: () => closeEditorEphemeraRef.current(),
     resolveInternalNoteReferenceToken,
     navigateToNoteLocation,
     openExternalLink: openExternalWebUrl,
@@ -2798,6 +2781,7 @@ function App() {
   }
 
   const openFrontmatterModalForActiveNote = () => {
+    closeEditorEphemeraRef.current()
     openFrontmatterModalForAisle()
   }
 
@@ -2995,11 +2979,8 @@ function App() {
 
   useEffect(() => {
     if (!mainArrangementActive) return
-    setCopyMenuOpen(false)
-    setHeadingMenuOpen(false)
-    setToolbarPopoverPosition({ copy: null, heading: null })
-    closeImageTools()
-  }, [mainArrangementActive, closeImageTools, setCopyMenuOpen, setHeadingMenuOpen, setToolbarPopoverPosition])
+    closeEditorEphemeraRef.current()
+  }, [mainArrangementActive])
 
   useEffect(() => {
     if (!mainArrangementActive || typeof document === 'undefined') return
@@ -3065,23 +3046,27 @@ function App() {
     openSharedLinkModal,
     clearActiveNoteContent,
     openCopyModalForActiveNote: () => {
-      noteMention.dismissCurrentQuery()
+      closeEditorEphemeraRef.current()
       openCopyModalForActiveNote()
     },
-    openDeduplicateModalForActiveNote,
+    openDeduplicateModalForActiveNote: () => {
+      closeEditorEphemeraRef.current()
+      openDeduplicateModalForActiveNote()
+    },
     openFrontmatterModalForActiveNote,
     openTableOfContents,
     openAisleEditModal: () => {
-      closeImageTools()
+      closeEditorEphemeraRef.current()
       openAisleEditModal()
     },
     openDirector: () => {
-      closeImageTools()
+      closeEditorEphemeraRef.current()
       stageManager.open()
     },
     openFindReplace: openFindReplacePanel,
     pushToast,
     onDisabledToolbarInteraction: exitArrangeMode,
+    dismissEditorEphemera: () => closeEditorEphemeraRef.current(),
   })
 
   const renderImageToolsOverlay = () => (
@@ -3636,8 +3621,7 @@ function App() {
           tableDeleteTargetModeDraft={settingsController.tableDeleteTargetModeDraft}
           tableOfContentsScopeDraft={settingsController.tableOfContentsScopeDraft}
           newAislePlacementDraft={settingsController.newAislePlacementDraft}
-          removeNoteReferencesOnTrashDraft={settingsController.removeNoteReferencesOnTrashDraft}
-          noteMentionCopyRequiresConfirmationDraft={settingsController.noteMentionCopyRequiresConfirmationDraft}
+          miscSyncedUiBooleanSettings={settingsController.miscSyncedUiBooleanSettings}
           frontmatterDraft={settingsController.frontmatterDraft}
           frontmatterDraftDirty={settingsController.frontmatterDraftDirty}
           toolbarLayouts={settingsController.toolbarLayouts}
@@ -3672,8 +3656,7 @@ function App() {
           onTableDeleteTargetModeChange={settingsController.updateTableDeleteTargetModeSetting}
           onTableOfContentsScopeChange={settingsController.updateTableOfContentsScopeSetting}
           onNewAislePlacementChange={settingsController.updateNewAislePlacementSetting}
-          onRemoveNoteReferencesOnTrashChange={settingsController.updateRemoveNoteReferencesOnTrashSetting}
-          onNoteMentionCopyRequiresConfirmationChange={settingsController.updateNoteMentionCopyRequiresConfirmationSetting}
+          onSyncedUiBooleanSettingChange={settingsController.updateSyncedUiBooleanSetting}
           onTipEnabledChange={settingsController.updateTipEnabledSetting}
           onSelectToolbarLayout={settingsController.selectToolbarLayoutForEditing}
           onCreateToolbarLayout={settingsController.createToolbarLayoutSetting}
@@ -3988,7 +3971,7 @@ function App() {
         canDeleteSpace={canDeleteSpace}
         canDeleteDomain={canDeleteDomain}
         duplicateCount={getCurrentDuplicateCount()}
-        onClose={() => setContextMenu(null)}
+        onClose={() => closeEditorEphemeraRef.current()}
         onEnterArrangeMode={enterArrangeModeFromContext}
         onDuplicateSpace={duplicateSpaceFromContext}
         onRenameSpace={beginRenameSpaceFromContext}
@@ -4003,7 +3986,7 @@ function App() {
         onOpenDeduplicateModal={openDeduplicateModalFromContext}
         onOpenCopyModal={() => {
           if (contextMenu?.type === 'editor') {
-            setContextMenu(null)
+            closeEditorEphemeraRef.current()
             openCopyModalForActiveNote()
             return
           }
@@ -4022,7 +4005,7 @@ function App() {
         copyAsMenu={copyAsMenu}
         onCopyAs={copyContextMenuItemAs}
         onCopyAsUnavailable={(message) => {
-          setContextMenu(null)
+          closeEditorEphemeraRef.current()
           pushToast(message, 'warning')
         }}
       />

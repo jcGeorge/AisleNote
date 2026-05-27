@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AppState, Domain, Space } from '../types/app'
-import { buildContextToken } from './note-references'
-import { getContextPreviewDataFromState } from './note-preview-data'
+import { buildPreviewToken } from './note-references'
+import { getNotePreviewDataFromState } from './note-preview-data'
 
 function space(id: string, name: string, tabs: Space['data']['tabs']): Space {
   return {
@@ -76,7 +76,7 @@ function createPreviewState(markdownByBody: Record<string, string> = {}): AppSta
 describe('note preview data model', () => {
   it('returns ready data with rendered note labels and selected aisle markdown', () => {
     const state = createPreviewState({ 'target-body': '# Heading\n\nPreview text' })
-    const data = getContextPreviewDataFromState(
+    const data = getNotePreviewDataFromState(
       state,
       {
         id: 'preview-id',
@@ -112,7 +112,7 @@ describe('note preview data model', () => {
       { id: 'aisle-body-c', markdown: 'third aisle' },
     ]
 
-    const data = getContextPreviewDataFromState(
+    const data = getNotePreviewDataFromState(
       state,
       {
         id: 'preview-id',
@@ -140,7 +140,7 @@ describe('note preview data model', () => {
       { id: 'aisle-body-b', markdown: 'second aisle' },
     ]
 
-    const data = getContextPreviewDataFromState(
+    const data = getNotePreviewDataFromState(
       state,
       {
         id: 'preview-id',
@@ -178,7 +178,7 @@ describe('note preview data model', () => {
       },
     } as unknown as AppState['ui']
 
-    const data = getContextPreviewDataFromState(
+    const data = getNotePreviewDataFromState(
       state,
       {
         id: 'preview-id',
@@ -208,7 +208,7 @@ describe('note preview data model', () => {
       { id: 'aisle-body-b', markdown: 'selected fallback' },
     ]
 
-    const data = getContextPreviewDataFromState(
+    const data = getNotePreviewDataFromState(
       state,
       {
         id: 'preview-id',
@@ -238,7 +238,7 @@ describe('note preview data model', () => {
       { id: 'aisle-body-b', markdown: '# Second' },
     ]
 
-    const data = getContextPreviewDataFromState(
+    const data = getNotePreviewDataFromState(
       state,
       {
         id: 'preview-id',
@@ -254,7 +254,7 @@ describe('note preview data model', () => {
   })
 
   it('builds same-space sub-tab preview title buttons', () => {
-    const data = getContextPreviewDataFromState(
+    const data = getNotePreviewDataFromState(
       createPreviewState(),
       {
         id: 'preview-id',
@@ -272,7 +272,7 @@ describe('note preview data model', () => {
 
   it('adds space and domain preview title buttons only when the target leaves the source scope', () => {
     const state = createPreviewState()
-    const crossSpace = getContextPreviewDataFromState(
+    const crossSpace = getNotePreviewDataFromState(
       state,
       {
         id: 'preview-id',
@@ -280,7 +280,7 @@ describe('note preview data model', () => {
       },
       'source-body',
     )
-    const crossDomain = getContextPreviewDataFromState(
+    const crossDomain = getNotePreviewDataFromState(
       state,
       {
         id: 'preview-id',
@@ -305,7 +305,7 @@ describe('note preview data model', () => {
   it('distinguishes missing, self, empty, and cyclic previews', () => {
     const emptyState = createPreviewState({ 'target-body': '   ' })
     expect(
-      getContextPreviewDataFromState(
+      getNotePreviewDataFromState(
         emptyState,
         {
           id: 'preview-id',
@@ -316,7 +316,7 @@ describe('note preview data model', () => {
     ).toBe('empty')
 
     expect(
-      getContextPreviewDataFromState(
+      getNotePreviewDataFromState(
         emptyState,
         {
           id: 'preview-id',
@@ -327,7 +327,7 @@ describe('note preview data model', () => {
     ).toBe('missing')
 
     expect(
-      getContextPreviewDataFromState(
+      getNotePreviewDataFromState(
         emptyState,
         {
           id: 'preview-id',
@@ -338,7 +338,7 @@ describe('note preview data model', () => {
     ).toBe('blocked')
 
     const cyclicState = createPreviewState()
-    const backRef = buildContextToken(cyclicState, {
+    const backRef = buildPreviewToken(cyclicState, {
         id: 'back-ref',
         target: { domainId: 'domain-a', spaceId: 'space-a', tabId: 'tab-a', subTabId: null },
     })
@@ -346,7 +346,7 @@ describe('note preview data model', () => {
       aisleBody.id === 'target-body-aisle-body' ? { ...aisleBody, markdown: backRef } : aisleBody,
     )
     expect(
-      getContextPreviewDataFromState(
+      getNotePreviewDataFromState(
         cyclicState,
         {
           id: 'preview-id',

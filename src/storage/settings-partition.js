@@ -6,6 +6,11 @@ import {
   isRecord,
   normalizeStorageTheme,
 } from './hybrid-storage-core.js'
+import {
+  DEFAULT_SIMPLE_SYNCED_UI_SETTINGS,
+  normalizeRegisteredSyncedUiSettings,
+  pickRegisteredSyncedUiSettings,
+} from '../settings/synced-ui-settings-registry.js'
 
 export const MAX_NOTE_CURSOR_LOCATIONS = 500
 export const ROOT_SPLIT_FILES = Object.freeze({
@@ -37,28 +42,13 @@ const DEFAULT_HOTKEY_SETTINGS = {
 }
 
 const DEFAULT_SYNCED_UI_SETTINGS = {
-  showParentHomeTab: true,
+  ...DEFAULT_SIMPLE_SYNCED_UI_SETTINGS,
   alwaysShowSpaces: false,
   alwaysShowDomains: false,
-  stageManagerOpenDestinationAfterApply: true,
-  lastLinkInsertMode: 'note',
-  lastNoteCopyMode: 'independent',
-  findCaseSensitive: false,
-  findWholeWord: false,
-  findRegex: false,
-  findReplaceMode: 'find',
-  removeNoteReferencesOnTrash: true,
-  noteMentionCopyRequiresConfirmation: true,
-  decoupledItemsKeepData: true,
-  tableAddTargetMode: 'bottom-right',
-  tableDeleteTargetMode: 'bottom-right',
-  tableOfContentsScope: 'all-aisles',
-  newAislePlacement: 'end',
   selectedCustomTheme: 'custom1',
   customThemePalette: null,
   themePalettes: {},
   toolbarLayouts: [],
-  toolbarEditorShowNames: false,
   settingsSection: 'hotkeys',
   dataSettingsSection: 'cloud',
   visualsSettingsSection: 'theming',
@@ -80,14 +70,6 @@ function optionalBoolean(value, fallback) {
 
 function optionalString(value, fallback) {
   return typeof value === 'string' ? value : fallback
-}
-
-function normalizeNewAislePlacement(value) {
-  return value === 'right-of-focus' || value === 'end' ? value : DEFAULT_SYNCED_UI_SETTINGS.newAislePlacement
-}
-
-function normalizeFindReplaceMode(value) {
-  return value === 'replace' || value === 'find' ? value : DEFAULT_SYNCED_UI_SETTINGS.findReplaceMode
 }
 
 function optionalArray(value, fallback) {
@@ -256,6 +238,7 @@ function normalizeThemePalettes(value, legacyCustomPalette) {
 
 export function extractSyncedUiSettings(rawUi) {
   const ui = isRecord(rawUi) ? rawUi : {}
+  const registeredUi = normalizeRegisteredSyncedUiSettings(ui)
   const alwaysShowSpaces = optionalBoolean(ui.alwaysShowSpaces, DEFAULT_SYNCED_UI_SETTINGS.alwaysShowSpaces)
   const alwaysShowDomains =
     alwaysShowSpaces && typeof ui.alwaysShowDomains === 'boolean'
@@ -265,38 +248,14 @@ export function extractSyncedUiSettings(rawUi) {
   const themePalettes = normalizeThemePalettes(ui.themePalettes, legacyCustomPalette)
 
   return {
-    showParentHomeTab: optionalBoolean(ui.showParentHomeTab, DEFAULT_SYNCED_UI_SETTINGS.showParentHomeTab),
+    ...registeredUi,
     alwaysShowSpaces,
     alwaysShowDomains,
-    stageManagerOpenDestinationAfterApply: optionalBoolean(
-      ui.stageManagerOpenDestinationAfterApply,
-      DEFAULT_SYNCED_UI_SETTINGS.stageManagerOpenDestinationAfterApply,
-    ),
-    lastLinkInsertMode: optionalString(ui.lastLinkInsertMode, DEFAULT_SYNCED_UI_SETTINGS.lastLinkInsertMode),
-    lastNoteCopyMode: optionalString(ui.lastNoteCopyMode, DEFAULT_SYNCED_UI_SETTINGS.lastNoteCopyMode),
-    findCaseSensitive: optionalBoolean(ui.findCaseSensitive, DEFAULT_SYNCED_UI_SETTINGS.findCaseSensitive),
-    findWholeWord: optionalBoolean(ui.findWholeWord, DEFAULT_SYNCED_UI_SETTINGS.findWholeWord),
-    findRegex: optionalBoolean(ui.findRegex, DEFAULT_SYNCED_UI_SETTINGS.findRegex),
-    findReplaceMode: normalizeFindReplaceMode(ui.findReplaceMode),
-    removeNoteReferencesOnTrash: optionalBoolean(
-      ui.removeNoteReferencesOnTrash,
-      DEFAULT_SYNCED_UI_SETTINGS.removeNoteReferencesOnTrash,
-    ),
-    noteMentionCopyRequiresConfirmation: optionalBoolean(
-      ui.noteMentionCopyRequiresConfirmation,
-      DEFAULT_SYNCED_UI_SETTINGS.noteMentionCopyRequiresConfirmation,
-    ),
-    decoupledItemsKeepData: optionalBoolean(ui.decoupledItemsKeepData, DEFAULT_SYNCED_UI_SETTINGS.decoupledItemsKeepData),
-    tableAddTargetMode: optionalString(ui.tableAddTargetMode, DEFAULT_SYNCED_UI_SETTINGS.tableAddTargetMode),
-    tableDeleteTargetMode: optionalString(ui.tableDeleteTargetMode, DEFAULT_SYNCED_UI_SETTINGS.tableDeleteTargetMode),
-    tableOfContentsScope: optionalString(ui.tableOfContentsScope, DEFAULT_SYNCED_UI_SETTINGS.tableOfContentsScope),
-    newAislePlacement: normalizeNewAislePlacement(ui.newAislePlacement),
     dataSettingsSection: optionalString(ui.dataSettingsSection, DEFAULT_SYNCED_UI_SETTINGS.dataSettingsSection),
     selectedCustomTheme: normalizeSelectedCustomTheme(ui.selectedCustomTheme),
     customThemePalette: isRecord(themePalettes.custom1) ? themePalettes.custom1 : legacyCustomPalette,
     themePalettes,
     toolbarLayouts: optionalArray(ui.toolbarLayouts, DEFAULT_SYNCED_UI_SETTINGS.toolbarLayouts),
-    toolbarEditorShowNames: optionalBoolean(ui.toolbarEditorShowNames, DEFAULT_SYNCED_UI_SETTINGS.toolbarEditorShowNames),
     disabledTipIds: optionalArray(ui.disabledTipIds, DEFAULT_SYNCED_UI_SETTINGS.disabledTipIds),
   }
 }
@@ -345,23 +304,9 @@ export function extractUiPreferences(appState) {
   const ui = isRecord(appState?.ui) ? appState.ui : {}
   const syncedUi = extractSyncedUiSettings(ui)
   return {
-    showParentHomeTab: syncedUi.showParentHomeTab,
+    ...pickRegisteredSyncedUiSettings(syncedUi),
     alwaysShowSpaces: syncedUi.alwaysShowSpaces,
     alwaysShowDomains: syncedUi.alwaysShowDomains,
-    stageManagerOpenDestinationAfterApply: syncedUi.stageManagerOpenDestinationAfterApply,
-    lastLinkInsertMode: syncedUi.lastLinkInsertMode,
-    lastNoteCopyMode: syncedUi.lastNoteCopyMode,
-    findCaseSensitive: syncedUi.findCaseSensitive,
-    findWholeWord: syncedUi.findWholeWord,
-    findRegex: syncedUi.findRegex,
-    findReplaceMode: syncedUi.findReplaceMode,
-    removeNoteReferencesOnTrash: syncedUi.removeNoteReferencesOnTrash,
-    noteMentionCopyRequiresConfirmation: syncedUi.noteMentionCopyRequiresConfirmation,
-    decoupledItemsKeepData: syncedUi.decoupledItemsKeepData,
-    tableAddTargetMode: syncedUi.tableAddTargetMode,
-    tableDeleteTargetMode: syncedUi.tableDeleteTargetMode,
-    tableOfContentsScope: syncedUi.tableOfContentsScope,
-    newAislePlacement: syncedUi.newAislePlacement,
     dataSettingsSection: syncedUi.dataSettingsSection,
     settingsSection: optionalString(ui.settingsSection, DEFAULT_SYNCED_UI_SETTINGS.settingsSection),
     visualsSettingsSection: optionalString(
@@ -369,7 +314,6 @@ export function extractUiPreferences(appState) {
       DEFAULT_SYNCED_UI_SETTINGS.visualsSettingsSection,
     ),
     toolbarLayouts: syncedUi.toolbarLayouts,
-    toolbarEditorShowNames: syncedUi.toolbarEditorShowNames,
     seenTipIds: optionalArray(ui.seenTipIds, DEFAULT_SYNCED_UI_SETTINGS.seenTipIds),
     disabledTipIds: syncedUi.disabledTipIds,
   }

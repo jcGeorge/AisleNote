@@ -7,6 +7,7 @@ import {
   DEFAULT_VISUALS_SETTINGS_SECTION,
   getThemePaletteForTheme,
 } from '../../settings/defaults'
+import { MISC_SYNCED_UI_BOOLEAN_SETTINGS } from '../../settings/synced-ui-settings-registry.js'
 import { DEFAULT_TOOLBAR_LAYOUT_ID, getToolbarLayouts } from '../../editor/toolbar-layouts'
 import type {
   AppState,
@@ -142,8 +143,13 @@ function renderSettingsPage(
       tableDeleteTargetModeDraft={state.ui.tableDeleteTargetMode}
       tableOfContentsScopeDraft={state.ui.tableOfContentsScope ?? 'all-aisles'}
       newAislePlacementDraft={state.ui.newAislePlacement ?? 'end'}
-      removeNoteReferencesOnTrashDraft={state.ui.removeNoteReferencesOnTrash ?? true}
-      noteMentionCopyRequiresConfirmationDraft={state.ui.noteMentionCopyRequiresConfirmation ?? true}
+      miscSyncedUiBooleanSettings={MISC_SYNCED_UI_BOOLEAN_SETTINGS.map((setting) => ({
+        ...setting,
+        checked:
+          setting.key === 'removeNoteReferencesOnTrash'
+            ? state.ui.removeNoteReferencesOnTrash ?? true
+            : state.ui.noteMentionCopyRequiresConfirmation ?? true,
+      }))}
       frontmatterDraft={frontmatterDraft}
       frontmatterDraftDirty={frontmatterDraftDirty}
       toolbarLayouts={getToolbarLayouts(state.ui.toolbarLayouts)}
@@ -174,8 +180,7 @@ function renderSettingsPage(
       onTableDeleteTargetModeChange={() => undefined}
       onTableOfContentsScopeChange={() => undefined}
       onNewAislePlacementChange={() => undefined}
-      onRemoveNoteReferencesOnTrashChange={() => undefined}
-      onNoteMentionCopyRequiresConfirmationChange={() => undefined}
+      onSyncedUiBooleanSettingChange={() => undefined}
       onTipEnabledChange={() => undefined}
       onSelectToolbarLayout={() => undefined}
       onCreateToolbarLayout={() => undefined}

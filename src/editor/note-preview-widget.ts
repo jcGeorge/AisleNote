@@ -19,11 +19,11 @@ import { getHeadingOutlineFromDoc } from './heading-outline'
 import {
   getMarkdownLinkLabel,
   INTERNAL_NOTE_LINK_MARKDOWN_RE,
-  NOTE_CONTEXT_REFERENCE_RE,
-  type NoteContextReferencePayload,
+  NOTE_PREVIEW_REFERENCE_RE,
+  type NotePreviewReferencePayload,
   type ResolvedWikiNoteReference,
 } from '../notes/note-references'
-import type { ContextPreviewData } from '../notes/note-preview-data'
+import type { NotePreviewData } from '../notes/note-preview-data'
 import type { NoteNavigationTarget, ResolvedNoteAisle } from '../types/app'
 
 type NotePreviewSize = 'minimized' | 'small' | 'large'
@@ -39,11 +39,11 @@ const DEFAULT_ROOT_FONT_SIZE_PX = 16
 
 export type NotePreviewWidgetOptions = {
   sourceNoteBodyId: string
-  getContextPreviewData: (payload: NoteContextReferencePayload, sourceNoteBodyId: string) => ContextPreviewData
-  resolveContextPreviewToken?: (token: string) => NoteContextReferencePayload | null
+  getNotePreviewData: (payload: NotePreviewReferencePayload, sourceNoteBodyId: string) => NotePreviewData
+  resolvePreviewToken?: (token: string) => NotePreviewReferencePayload | null
   resolveInternalNoteReferenceToken?: (token: string) => ResolvedWikiNoteReference | null
   navigateToNoteLocation: (target: NoteNavigationTarget) => void
-  deleteContextPreview: (tokenId: string) => void
+  deleteNotePreview: (tokenId: string) => void
 }
 
 type PreviewHeightFitController = {
@@ -88,7 +88,7 @@ function schedulePreviewHeadingScroll(editor: Editor, aisleId: string, headingKe
 
 function schedulePreviewCursorScroll(
   editor: Editor,
-  selection: NonNullable<ContextPreviewData['previewCursorSelection']>,
+  selection: NonNullable<NotePreviewData['previewCursorSelection']>,
   attempts = 4,
 ) {
   if (attempts <= 0) return
@@ -98,21 +98,21 @@ function schedulePreviewCursorScroll(
   })
 }
 
-function getPreviewStatusText(data: ContextPreviewData) {
+function getPreviewStatusText(data: NotePreviewData) {
   if (data.status === 'missing') return 'note preview target is missing.'
   if (data.status === 'blocked') return 'note preview blocked to prevent recursive rendering.'
   if (data.status === 'empty') return 'note preview is empty.'
   return ''
 }
 
-function getPreviewTitleButtonClassName(kind: ContextPreviewData['titleButtons'][number]['kind']): string {
+function getPreviewTitleButtonClassName(kind: NotePreviewData['titleButtons'][number]['kind']): string {
   if (kind === 'domain') return 'rail-control context-preview-title-btn compact-scope-btn compact-domain-btn is-domain'
   if (kind === 'space') return 'rail-control context-preview-title-btn compact-scope-btn compact-space-btn is-space'
   if (kind === 'parent') return 'rail-control context-preview-title-btn btn btn-sm tab-btn parent-tab-btn is-parent'
   return 'rail-control context-preview-title-btn btn btn-sm tab-btn subtab-btn is-subtab'
 }
 
-function getPreviewNavigationTarget(payload: NoteContextReferencePayload): NoteNavigationTarget {
+function getPreviewNavigationTarget(payload: NotePreviewReferencePayload): NoteNavigationTarget {
   return {
     ...payload.target,
     heading: payload.heading,
@@ -134,7 +134,7 @@ function stopReadonlyPreviewPointerEvent(event: Event) {
   event.stopPropagation()
 }
 
-function renderReadonlyPreviewTitleContent(wrapper: HTMLElement, data: ContextPreviewData) {
+function renderReadonlyPreviewTitleContent(wrapper: HTMLElement, data: NotePreviewData) {
   wrapper.replaceChildren()
   if (data.titleButtons.length === 0) {
     const fallback = document.createElement('span')
@@ -439,11 +439,11 @@ function fitPreviewEditorHeight(
   }
 }
 
-export function createReadonlyContextPreviewWidgetElement(
-  payload: NoteContextReferencePayload,
+export function createReadonlyNotePreviewWidgetElement(
+  payload: NotePreviewReferencePayload,
   options: NotePreviewWidgetOptions,
 ) {
-  const data = options.getContextPreviewData(payload, options.sourceNoteBodyId)
+  const data = options.getNotePreviewData(payload, options.sourceNoteBodyId)
   const wrapper = document.createElement('span')
   wrapper.className = 'context-preview-navigation-widget'
   wrapper.setAttribute('contenteditable', 'false')
@@ -543,9 +543,9 @@ export function createReadonlyContextPreviewWidgetElement(
 }
 
 function createReadonlyPreviewReferencePlugin(context: any, options: NotePreviewWidgetOptions) {
-  const resolveContextPreviewToken = options.resolveContextPreviewToken
+  const resolvePreviewToken = options.resolvePreviewToken
   const resolveInternalNoteReferenceToken = options.resolveInternalNoteReferenceToken
-  if (!resolveContextPreviewToken || !resolveInternalNoteReferenceToken) return null
+  if (!resolvePreviewToken || !resolveInternalNoteReferenceToken) return null
 
   const { Plugin } = context.pmState
   const { Decoration, DecorationSet } = context.pmView
@@ -559,13 +559,13 @@ function createReadonlyPreviewReferencePlugin(context: any, options: NotePreview
               const docText = collectProseMirrorTextPositions(editorState.doc)
               editorState.doc.descendants((node: any, pos: number) => {
                 if (!node.isText || typeof node.text !== 'string') return
-                for (const match of node.text.matchAll(NOTE_CONTEXT_REFERENCE_RE)) {
-                  const payload = resolveContextPreviewToken(match[0])
+                for (const match of node.text.matchAll(NOTE_PREVIEW_REFERENCE_RE)) {
+                  const payload = resolvePreviewToken(match[0])
                   if (!payload) continue
                   const from = pos + (match.index ?? 0)
                   const to = from + match[0].length
                   decorations.push(
-                    Decoration.widget(from, () => createReadonlyContextPreviewWidgetElement(payload, options), {
+                    Decoration.widget(from, () => createReadonlyNotePreviewWidgetElement(payload, options), {
                       key: `readonly-note-preview-${from}-${to}-${match[0]}`,
                       side: -1,
                       destroy: (node: HTMLElement & { destroyReadonlyPreview?: () => void }) => node.destroyReadonlyPreview?.(),
@@ -625,8 +625,8 @@ function createReadonlyPreviewReferencePlugin(context: any, options: NotePreview
   }
 }
 
-export function createContextPreviewWidgetElement(
-  payload: NoteContextReferencePayload,
+export function createNotePreviewWidgetElement(
+  payload: NotePreviewReferencePayload,
   options: NotePreviewWidgetOptions,
 ) {
   const wrapper = document.createElement('span')
@@ -675,11 +675,11 @@ export function createContextPreviewWidgetElement(
 
   const activatePreviewTarget = (event: Event) => {
     stopWidgetEvent(event)
-    const data = options.getContextPreviewData(payload, options.sourceNoteBodyId)
+    const data = options.getNotePreviewData(payload, options.sourceNoteBodyId)
     if (data.status === 'ready' || data.status === 'empty') options.navigateToNoteLocation({ ...payload.target, heading: payload.heading })
   }
 
-  const renderTitleButtons = (data: ContextPreviewData) => {
+  const renderTitleButtons = (data: NotePreviewData) => {
     titleGroup.replaceChildren()
     titleGroup.title = data.locationLabel
     if (data.titleButtons.length === 0) {
@@ -703,7 +703,7 @@ export function createContextPreviewWidgetElement(
     })
   }
 
-  const renderContextEditor = (data: ContextPreviewData) => {
+  const renderPreviewEditor = (data: NotePreviewData) => {
     const aisle = data.selectedAisle as ResolvedNoteAisle
     const shell = document.createElement('span')
     shell.className = 'context-bar-editor'
@@ -726,7 +726,7 @@ export function createContextPreviewWidgetElement(
       return createReadonlyPreviewReferencePlugin(context, options)
     }
     const referencePlugins =
-      options.resolveContextPreviewToken && options.resolveInternalNoteReferenceToken
+      options.resolvePreviewToken && options.resolveInternalNoteReferenceToken
         ? [readonlyPreviewReferencesPlugin]
         : []
     const editor = new Editor({
@@ -753,7 +753,7 @@ export function createContextPreviewWidgetElement(
     restoreEditorBlankParagraphs(editor, currentMarkdown)
     const smartHeight = fitPreviewEditorHeight(editorHost, heightRem, () => currentMarkdown, editor)
     let currentStartKey = ''
-    const schedulePreviewStartScroll = (nextData: ContextPreviewData) => {
+    const schedulePreviewStartScroll = (nextData: NotePreviewData) => {
       const lastPositionSelection = nextData.previewCursorSelection
       const nextStartKey =
         payload.heading?.aisleId === currentAisleId
@@ -783,7 +783,7 @@ export function createContextPreviewWidgetElement(
     }
 
     const refreshPreviewEditor = () => {
-      const nextData = options.getContextPreviewData(payload, options.sourceNoteBodyId)
+      const nextData = options.getNotePreviewData(payload, options.sourceNoteBodyId)
       if (nextData.status !== 'ready' || !nextData.selectedAisle) {
         renderLowerBar()
         return
@@ -847,7 +847,7 @@ export function createContextPreviewWidgetElement(
   }
 
   const renderLowerBar = () => {
-    const data = options.getContextPreviewData(payload, options.sourceNoteBodyId)
+    const data = options.getNotePreviewData(payload, options.sourceNoteBodyId)
     wrapper.classList.toggle('is-blocked', data.status === 'blocked')
     wrapper.classList.toggle('is-missing', data.status === 'missing')
     wrapper.classList.toggle('is-empty', data.status === 'empty')
@@ -871,7 +871,7 @@ export function createContextPreviewWidgetElement(
 
     const editorGroup = document.createElement('span')
     editorGroup.className = 'context-bar-editors'
-    if (data.selectedAisle) editorGroup.append(renderContextEditor(data))
+    if (data.selectedAisle) editorGroup.append(renderPreviewEditor(data))
     lowerBar.append(editorGroup)
   }
 
@@ -898,7 +898,7 @@ export function createContextPreviewWidgetElement(
   deleteButton.addEventListener('mousedown', stopWidgetEvent)
   deleteButton.addEventListener('click', (event) => {
     stopWidgetEvent(event)
-    options.deleteContextPreview(payload.id)
+    options.deleteNotePreview(payload.id)
   })
 
   sizeControl.append(shrinkButton, growButton)

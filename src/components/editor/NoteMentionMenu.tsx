@@ -10,6 +10,7 @@ import type {
 } from '../../notes/note-mention-picker'
 import { NOTE_MENTION_ACTIONS, isNoteMentionCopyAction } from '../../notes/note-mention-picker'
 import type { NoteSearchEntry } from '../../notes/note-locations'
+import { getNoteMentionActionLabel } from '../../notes/copy-reference-labels'
 import {
   handleNoteMentionSearchAisleClick,
   handleNoteMentionSearchResultClick,
@@ -68,13 +69,6 @@ function getSearchContextChipClassName(kind: NoteMentionSearchContextChip['kind'
     return 'note-mention-result-context-chip rail-control context-preview-title-btn btn btn-sm tab-btn parent-tab-btn is-parent'
   }
   return 'note-mention-result-context-chip rail-control context-preview-title-btn btn btn-sm tab-btn subtab-btn is-subtab'
-}
-
-function getNoteMentionActionLabel(action: NoteMentionAction): string {
-  if (action === 'context') return 'note preview'
-  if (action === 'independent-copy') return 'make independent copy'
-  if (action === 'synced-copy') return 'synced copy'
-  return 'note link'
 }
 
 function NoteMentionActions({
@@ -251,7 +245,7 @@ export function NoteMentionMenu(props: NoteMentionMenuProps) {
         </div>
       )}
       <NoteMentionActions
-        actions={searchMode ? NOTE_MENTION_ACTIONS : NOTE_MENTION_ACTIONS.slice(0, 2)}
+        actions={NOTE_MENTION_ACTIONS}
         focusedActionIndex={props.focusedActionIndex}
         focusedConfirmIndex={props.focusedConfirmIndex}
         pendingCopyAction={props.pendingCopyAction}

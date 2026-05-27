@@ -97,13 +97,13 @@ describe('copy-note modal text', () => {
     expect(text.body).toContain('independent copy')
   })
 
-  it('describes linked copy mode', () => {
+  it('describes synced copy mode', () => {
     const modal: ModalState = { type: 'copy-note', mode: 'linked', destinationMode: 'replace', source, target }
     const text = getModalText(modal, createModalTextState())
 
     expect(text.title).toBe('make copy')
     expect(text.action).toBe('make copy')
-    expect(text.body).toContain('linked copy')
+    expect(text.body).toContain('synced copy')
   })
 })
 

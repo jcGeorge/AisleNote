@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AppState, Domain, NoteLocation, Space } from '../types/app'
 import { getHeadingOutlineFromMarkdown } from '../editor/heading-outline'
-import { buildContextToken, parseContextToken } from './note-references'
+import { buildPreviewToken, parsePreviewToken } from './note-references'
 import {
   buildDefaultNoteReferenceDraft,
   buildExternalLinkEditDraft,
@@ -208,7 +208,7 @@ describe('note reference model', () => {
     expect(preview.ok).toBe(true)
     if (!preview.ok) throw new Error('expected valid preview')
     expect(preview.token).toMatch(/^!\[\[Beta prime--[0-9a-f]{6}\]\]$/)
-    expect(parseContextToken(preview.token, state)).toMatchObject({
+    expect(parsePreviewToken(preview.token, state)).toMatchObject({
       target: preview.payload.target,
     })
 
@@ -221,10 +221,10 @@ describe('note reference model', () => {
     expect(lastPositionPreview.ok).toBe(true)
     if (!lastPositionPreview.ok) throw new Error('expected valid last-position preview')
     expect(lastPositionPreview.token).toMatch(/^!\[\[Beta prime--[0-9a-f]{6}#last position\]\]$/)
-    expect(parseContextToken(lastPositionPreview.token, state)).toMatchObject({
+    expect(parsePreviewToken(lastPositionPreview.token, state)).toMatchObject({
       previewStart: 'last-position',
     })
-    expect(parseContextToken(lastPositionPreview.token, state)?.heading).toBeUndefined()
+    expect(parsePreviewToken(lastPositionPreview.token, state)?.heading).toBeUndefined()
 
     expect(getNoteReferencePreviewSpec(state, 'body-sub-a', source)).toEqual({
       ok: false,
@@ -234,7 +234,7 @@ describe('note reference model', () => {
 
   it('blocks preview cycles through the shared validation path', () => {
     const cyclicState = createReferenceState()
-    const backRef = buildContextToken(cyclicState, {
+    const backRef = buildPreviewToken(cyclicState, {
         id: 'back-ref',
         target: { domainId: 'domain-a', spaceId: 'space-b', tabId: 'tab-c', subTabId: null },
     })

@@ -4,7 +4,7 @@ import { registerAssetBytes, registerImageAssetBytes } from '../markdown/image-a
 import { DEFAULT_CUSTOM_THEME_PALETTE } from '../settings/defaults'
 import { parseSavedState } from '../state/app-state'
 import { getAisleMarkdown } from '../notes/note-markdown'
-import { buildContextToken } from '../notes/note-references'
+import { buildPreviewToken } from '../notes/note-references'
 import { buildHybridFileMapFromSerializedState, readSerializedStateFromHybridFileMap } from './browser-hybrid-state'
 import { STORAGE_PATH_SEGMENT_MAX_LENGTH } from './storage-path-segments.js'
 
@@ -441,6 +441,7 @@ describe('browser hybrid storage', () => {
           findRegex: true,
           findReplaceMode: 'replace',
           removeNoteReferencesOnTrash: false,
+          noteMentionCopyRequiresConfirmation: false,
           decoupledItemsKeepData: false,
           tableAddTargetMode: 'active-cell',
           tableDeleteTargetMode: 'active-cell',
@@ -481,6 +482,7 @@ describe('browser hybrid storage', () => {
     expect(getRecord(appSettings.ui).findRegex).toBe(true)
     expect(getRecord(appSettings.ui).findReplaceMode).toBe('replace')
     expect(getRecord(appSettings.ui).removeNoteReferencesOnTrash).toBe(false)
+    expect(getRecord(appSettings.ui).noteMentionCopyRequiresConfirmation).toBe(false)
     expect(getRecord(appSettings.ui).tableOfContentsScope).toBe('focused-aisle')
     expect(getRecord(appSettings.ui).newAislePlacement).toBe('right-of-focus')
     expect(getRecord(appSettings.ui).showParentHomeTab).toBe(false)
@@ -501,6 +503,7 @@ describe('browser hybrid storage', () => {
     expect(roundTripped.ui.findRegex).toBe(true)
     expect(roundTripped.ui.findReplaceMode).toBe('replace')
     expect(roundTripped.ui.removeNoteReferencesOnTrash).toBe(false)
+    expect(roundTripped.ui.noteMentionCopyRequiresConfirmation).toBe(false)
     expect(roundTripped.ui.tableOfContentsScope).toBe('focused-aisle')
     expect(roundTripped.ui.newAislePlacement).toBe('right-of-focus')
     expect(roundTripped.ui.themePalettes?.dawn?.primary).toBe('#123456')
@@ -1220,7 +1223,7 @@ describe('browser hybrid storage', () => {
     const bytes = new Uint8Array([1, 2, 3, 4])
     const assetPath = 'assets/asset-browser-readable.png'
     registerImageAssetBytes(assetPath, bytes, 'image/png')
-    const previewToken = buildContextToken(state, {
+    const previewToken = buildPreviewToken(state, {
       id: 'preview-1',
       target: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
     })

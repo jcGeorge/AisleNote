@@ -8,7 +8,7 @@ import {
   STORAGE_TRASH_DIR,
 } from '../types/storage-schema'
 import { normalizeImageResizeMetadataFragment, splitImageResizeMetadataFromUrl } from '../markdown/image-metadata'
-import { normalizeContextReferenceTokensForMarkdown } from '../markdown/note-context-tokens.js'
+import { normalizePreviewReferenceTokensForMarkdown } from '../markdown/note-context-tokens.js'
 import {
   buildImageAssetUrl,
   MARKDOWN_LINK_PATTERN,
@@ -399,7 +399,7 @@ function writeNoteBodyAtPath({
       fileMap,
       joinPosix(STORAGE_ROOT_DIR, primaryFile),
       externalizeMarkdownImages(
-        normalizeContextReferenceTokensForMarkdown(composeAisleMarkdownForStorage(markdown, sourceAisleBody), appState),
+        normalizePreviewReferenceTokensForMarkdown(composeAisleMarkdownForStorage(markdown, sourceAisleBody), appState),
         primaryFile,
         assetBank,
       ),
@@ -435,7 +435,7 @@ function writeNoteBodyAtPath({
       fileMap,
       joinPosix(STORAGE_ROOT_DIR, file),
       externalizeMarkdownImages(
-        normalizeContextReferenceTokensForMarkdown(composeAisleMarkdownForStorage(markdown, sourceAisleBody), appState),
+        normalizePreviewReferenceTokensForMarkdown(composeAisleMarkdownForStorage(markdown, sourceAisleBody), appState),
         file,
         assetBank,
       ),

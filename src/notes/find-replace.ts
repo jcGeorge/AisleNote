@@ -2,7 +2,7 @@ import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
 import { syncNoteAisleBodyMarkdownInState } from './aisle-body-state'
 import { getAisleBodyId, getAisleMarkdown } from './note-markdown'
 import { getLocationInfo, getNoteLocationBreadcrumbLabel, listSearchableNoteLocations } from './note-locations'
-import { getContextReferenceTokenLengthAt, getWikiReferenceDisplayText, parseWikiReferenceToken } from './note-references'
+import { getPreviewReferenceTokenLengthAt, getWikiReferenceDisplayText, parseWikiReferenceToken } from './note-references'
 import type { AppState, NoteLocation } from '../types/app'
 
 export type FindReplaceScope = 'note' | 'parent' | 'space' | 'domain' | 'project'
@@ -117,7 +117,7 @@ function appendHiddenContextTokenBoundary(index: VisibleMarkdownIndex) {
 function appendPlainVisibleMarkdown(index: VisibleMarkdownIndex, line: string, lineStart: number) {
   let offset = 0
   while (offset < line.length) {
-    const contextTokenLength = getContextReferenceTokenLengthAt(line, offset)
+    const contextTokenLength = getPreviewReferenceTokenLengthAt(line, offset)
     if (contextTokenLength > 0) {
       appendHiddenContextTokenBoundary(index)
       offset += contextTokenLength
@@ -137,7 +137,7 @@ function appendInlineVisibleMarkdown(index: VisibleMarkdownIndex, line: string, 
   let offset = stripBlockPrefix(line)
   while (offset < line.length) {
     const rest = line.slice(offset)
-    const contextTokenLength = getContextReferenceTokenLengthAt(line, offset)
+    const contextTokenLength = getPreviewReferenceTokenLengthAt(line, offset)
     if (contextTokenLength > 0) {
       appendHiddenContextTokenBoundary(index)
       offset += contextTokenLength

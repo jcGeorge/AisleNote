@@ -56,6 +56,10 @@ import { DataSectionSwitch } from './DataSectionSwitch'
 import { ThemePreview } from './ThemePreview'
 import { ToolbarSettingsPanel } from './ToolbarSettingsPanel'
 import { VisualsSectionSwitch } from './VisualsSectionSwitch'
+import type {
+  SyncedUiBooleanSettingKey,
+  SyncedUiBooleanSettingView,
+} from '../../settings/synced-ui-settings-registry.js'
 import {
   DEFAULT_THEME_PREVIEW_RAIL_SELECTION,
   DEFAULT_THEME_PREVIEW_TASK_STATE,
@@ -117,8 +121,7 @@ type SettingsPageProps = {
   tableDeleteTargetModeDraft: TableControlTargetMode
   tableOfContentsScopeDraft: TableOfContentsScope
   newAislePlacementDraft: NewAislePlacement
-  removeNoteReferencesOnTrashDraft: boolean
-  noteMentionCopyRequiresConfirmationDraft: boolean
+  miscSyncedUiBooleanSettings: SyncedUiBooleanSettingView[]
   frontmatterDraft: FrontmatterSettings
   frontmatterDraftDirty: boolean
   toolbarLayouts: ToolbarLayout[]
@@ -149,8 +152,7 @@ type SettingsPageProps = {
   onTableDeleteTargetModeChange: (mode: TableControlTargetMode) => void
   onTableOfContentsScopeChange: (scope: TableOfContentsScope) => void
   onNewAislePlacementChange: (placement: NewAislePlacement) => void
-  onRemoveNoteReferencesOnTrashChange: (enabled: boolean) => void
-  onNoteMentionCopyRequiresConfirmationChange: (enabled: boolean) => void
+  onSyncedUiBooleanSettingChange: (key: SyncedUiBooleanSettingKey, enabled: boolean) => void
   onTipEnabledChange: (tipId: TipId, enabled: boolean) => void
   onSelectToolbarLayout: (layoutId: string) => void
   onCreateToolbarLayout: () => void
@@ -207,8 +209,7 @@ export function SettingsPage({
   tableDeleteTargetModeDraft,
   tableOfContentsScopeDraft,
   newAislePlacementDraft,
-  removeNoteReferencesOnTrashDraft,
-  noteMentionCopyRequiresConfirmationDraft,
+  miscSyncedUiBooleanSettings,
   frontmatterDraft,
   frontmatterDraftDirty,
   toolbarLayouts,
@@ -239,8 +240,7 @@ export function SettingsPage({
   onTableDeleteTargetModeChange,
   onTableOfContentsScopeChange,
   onNewAislePlacementChange,
-  onRemoveNoteReferencesOnTrashChange,
-  onNoteMentionCopyRequiresConfirmationChange,
+  onSyncedUiBooleanSettingChange,
   onTipEnabledChange,
   onSelectToolbarLayout,
   onCreateToolbarLayout,
@@ -431,33 +431,17 @@ export function SettingsPage({
     )
   }
 
-  const renderRemoveNoteReferencesOnTrashSetting = () => (
-    <div className="settings-hotkey-row">
-      <span className="settings-hotkey-label">remove all links to a note when it's trashed</span>
+  const renderMiscSyncedUiBooleanSetting = (setting: SyncedUiBooleanSettingView) => (
+    <div key={setting.key} className="settings-hotkey-row">
+      <span className="settings-hotkey-label">{setting.label}</span>
       <div className="form-check form-switch settings-switch">
         <input
           className="form-check-input"
           type="checkbox"
           role="switch"
-          checked={removeNoteReferencesOnTrashDraft}
-          aria-label="remove all links to a note when it's trashed"
-          onChange={(event) => onRemoveNoteReferencesOnTrashChange(event.target.checked)}
-        />
-      </div>
-    </div>
-  )
-
-  const renderNoteMentionCopyRequiresConfirmationSetting = () => (
-    <div className="settings-hotkey-row">
-      <span className="settings-hotkey-label">@ menu requires confirmation for replacing note with synced or independent copy</span>
-      <div className="form-check form-switch settings-switch">
-        <input
-          className="form-check-input"
-          type="checkbox"
-          role="switch"
-          checked={noteMentionCopyRequiresConfirmationDraft}
-          aria-label="@ menu requires confirmation for replacing note with synced or independent copy"
-          onChange={(event) => onNoteMentionCopyRequiresConfirmationChange(event.target.checked)}
+          checked={setting.checked}
+          aria-label={setting.ariaLabel}
+          onChange={(event) => onSyncedUiBooleanSettingChange(setting.key, event.target.checked)}
         />
       </div>
     </div>
@@ -978,8 +962,7 @@ export function SettingsPage({
             <p className="settings-help">synced profile settings</p>
             {renderTableOfContentsScopeSetting()}
             {renderNewAislePlacementSetting()}
-            {renderRemoveNoteReferencesOnTrashSetting()}
-            {renderNoteMentionCopyRequiresConfirmationSetting()}
+            {miscSyncedUiBooleanSettings.map((setting) => renderMiscSyncedUiBooleanSetting(setting))}
             {renderTableControlTargetSetting(
               'add table row or column',
               tableAddTargetModeDraft,

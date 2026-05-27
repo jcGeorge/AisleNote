@@ -7,15 +7,11 @@ import {
 } from '../editor/prosemirror-utils'
 import type { AppState, NoteCopyMode, NoteLocation, ViewMode } from '../types/app'
 import {
-  NOTE_MENTION_ACTIONS,
   buildNoteMentionNavigatorRows,
   createDefaultNoteMentionSelection,
   filterNoteMentionSearchEntries,
   getNoteMentionAisleItems,
   getNoteMentionSearchEntryDetails,
-  getNoteMentionSearchSelectionAfterClick,
-  getNoteMentionSearchSelectionAfterHover,
-  getNoteMentionSearchSelectionAfterKeyboard,
   getNoteMentionSelectedAisleId,
   getNoteMentionTarget,
   isNoteMentionCopyAction,
@@ -27,14 +23,22 @@ import {
   type NoteMentionNavigatorItem,
   type NoteMentionNavigatorRowId,
   type NoteMentionSearchEntryDetails,
-  type NoteMentionSearchFocusStage,
-  type NoteMentionSearchSelectionState,
   type NoteMentionSelection,
   type NoteMentionTarget,
 } from './note-mention-picker'
+import {
+  createNoteMentionSearchMachineState,
+  getNoteMentionSearchEffectiveIndex,
+  getNoteMentionSearchResolvedTarget,
+  reduceNoteMentionSearchMachine,
+  type NoteMentionSearchMachineContext,
+  type NoteMentionSearchMachineEvent,
+  type NoteMentionSearchMachineIntent,
+  type NoteMentionSearchMachineState,
+} from './note-mention-state-machine'
 import { shouldDismissEmptyNoteMentionOnSpace } from './note-mention-keyboard'
 import { listSearchableNoteLocations, type NoteSearchEntry } from './note-locations'
-import type { NoteReferenceAction, NoteReferenceCommandResult } from './note-reference-model'
+import type { NoteReferenceAction, NoteReferenceEditorCommandResult } from './note-reference-model'
 
 type NoteMentionMenuState = {
   top: number
@@ -81,11 +85,11 @@ type UseNoteMentionControllerParams = {
     action: NoteReferenceAction
     from: number
     to: number
-  }) => NoteReferenceCommandResult
+  }) => NoteReferenceEditorCommandResult
   replaceCurrentNoteFromMention: (params: {
     target: NoteMentionTarget
     mode: NoteCopyMode
-  }) => NoteReferenceCommandResult
+  }) => NoteReferenceEditorCommandResult
   requireCopyConfirmation: boolean
   syncToolbarFormatState: () => void
 }
@@ -170,7 +174,7 @@ function getEstimatedMenuSize(itemCount: number, viewport: NoteMentionViewport, 
 }
 
 function toReferenceAction(action: NoteMentionAction): NoteReferenceAction {
-  return action === 'context' ? 'preview' : 'link'
+  return action === 'preview' ? 'preview' : 'link'
 }
 
 function getCopyModeForMentionAction(action: NoteMentionAction): NoteCopyMode {
@@ -192,54 +196,37 @@ export function useNoteMentionController({
   syncToolbarFormatState,
 }: UseNoteMentionControllerParams) {
   const [menu, setMenu] = useState<NoteMentionMenuState | null>(null)
-  const [activeSearchIndex, setActiveSearchIndex] = useState(0)
-  const [selectedSearchIndex, setSelectedSearchIndex] = useState<number | null>(null)
-  const [searchFocusStage, setSearchFocusStage] = useState<NoteMentionSearchFocusStage>('typing')
-  const [focusedAisleIndex, setFocusedAisleIndex] = useState(0)
-  const [focusedActionIndex, setFocusedActionIndex] = useState(0)
-  const [focusedConfirmIndex, setFocusedConfirmIndex] = useState(0)
-  const [pendingCopyAction, setPendingCopyAction] = useState<NoteMentionAction | null>(null)
-  const activeSearchIndexRef = useRef(0)
-  const selectedSearchIndexRef = useRef<number | null>(null)
-  const searchFocusStageRef = useRef<NoteMentionSearchFocusStage>('typing')
-  const focusedAisleIndexRef = useRef(0)
-  const focusedActionIndexRef = useRef(0)
-  const focusedConfirmIndexRef = useRef(0)
-  const pendingCopyActionRef = useRef<NoteMentionAction | null>(null)
+  const [searchMachine, setSearchMachine] = useState<NoteMentionSearchMachineState>(() =>
+    createNoteMentionSearchMachineState(),
+  )
+  const searchMachineRef = useRef<NoteMentionSearchMachineState>(searchMachine)
   const menuRef = useRef<NoteMentionMenuState | null>(null)
   const dismissedQueryRef = useRef<NoteMentionQuery | null>(null)
   const closeMenuRef = useRef<(options?: { restoreEditorFocus?: boolean }) => void>(() => {})
-  const chooseSearchEntryRef = useRef<(entry: NoteSearchEntry, action: NoteMentionAction) => void>(() => {})
   const chooseTargetRef = useRef<(target: NoteMentionTarget, action: NoteMentionAction) => void>(() => {})
-  const chooseFocusedSearchActionRef = useRef<(action: NoteMentionAction) => void>(() => {})
-  const confirmPendingCopyActionRef = useRef<() => void>(() => {})
-  const cancelPendingCopyActionRef = useRef<() => void>(() => {})
+  const pendingNavigatorCopyTargetRef = useRef<NoteMentionTarget | null>(null)
 
   menuRef.current = menu
-  activeSearchIndexRef.current = activeSearchIndex
-  selectedSearchIndexRef.current = selectedSearchIndex
-  searchFocusStageRef.current = searchFocusStage
-  focusedAisleIndexRef.current = focusedAisleIndex
-  focusedActionIndexRef.current = focusedActionIndex
-  focusedConfirmIndexRef.current = focusedConfirmIndex
-  pendingCopyActionRef.current = pendingCopyAction
+  searchMachineRef.current = searchMachine
+
+  const applySearchMachineState = useCallback((nextState: NoteMentionSearchMachineState) => {
+    searchMachineRef.current = nextState
+    setSearchMachine(nextState)
+    setMenu((current) => {
+      if (!current) return current
+      const nextAisleId = nextState.searchAisleId
+      return current.searchAisleId === nextAisleId ? current : { ...current, searchAisleId: nextAisleId }
+    })
+  }, [])
+
+  const resetSearchMachine = useCallback(() => {
+    pendingNavigatorCopyTargetRef.current = null
+    applySearchMachineState(createNoteMentionSearchMachineState())
+  }, [applySearchMachineState])
 
   const closeMenu = useCallback((options: { restoreEditorFocus?: boolean } = {}) => {
     const editorToRestore = options.restoreEditorFocus ? editorRef.current : null
-    activeSearchIndexRef.current = 0
-    selectedSearchIndexRef.current = null
-    searchFocusStageRef.current = 'typing'
-    focusedAisleIndexRef.current = 0
-    focusedActionIndexRef.current = 0
-    focusedConfirmIndexRef.current = 0
-    pendingCopyActionRef.current = null
-    setActiveSearchIndex(0)
-    setSelectedSearchIndex(null)
-    setSearchFocusStage('typing')
-    setFocusedAisleIndex(0)
-    setFocusedActionIndex(0)
-    setFocusedConfirmIndex(0)
-    setPendingCopyAction(null)
+    resetSearchMachine()
     setMenu(null)
     if (!editorToRestore) return
     window.requestAnimationFrame(() => {
@@ -247,7 +234,7 @@ export function useNoteMentionController({
       editorToRestore.focus()
       syncToolbarFormatState()
     })
-  }, [editorRef, syncToolbarFormatState])
+  }, [editorRef, resetSearchMachine, syncToolbarFormatState])
   closeMenuRef.current = closeMenu
 
   const dismissCurrentQuery = useCallback(() => {
@@ -256,39 +243,6 @@ export function useNoteMentionController({
     if (currentQuery) dismissedQueryRef.current = currentQuery
     closeMenuRef.current()
   }, [editorRef])
-
-  const setSearchStage = useCallback((stage: NoteMentionSearchFocusStage) => {
-    searchFocusStageRef.current = stage
-    setSearchFocusStage(stage)
-  }, [])
-
-  const setFocusedAisle = useCallback((index: number) => {
-    const nextIndex = Math.max(0, index)
-    focusedAisleIndexRef.current = nextIndex
-    setFocusedAisleIndex(nextIndex)
-  }, [])
-
-  const setFocusedAction = useCallback((index: number) => {
-    const nextIndex = clamp(index, 0, NOTE_MENTION_ACTIONS.length - 1)
-    focusedActionIndexRef.current = nextIndex
-    setFocusedActionIndex(nextIndex)
-  }, [])
-
-  const setFocusedConfirm = useCallback((index: number) => {
-    const nextIndex = clamp(index, 0, 1)
-    focusedConfirmIndexRef.current = nextIndex
-    setFocusedConfirmIndex(nextIndex)
-  }, [])
-
-  const clearPendingCopyAction = useCallback(() => {
-    pendingCopyActionRef.current = null
-    setPendingCopyAction(null)
-  }, [])
-
-  const setPendingCopy = useCallback((action: NoteMentionAction | null) => {
-    pendingCopyActionRef.current = action
-    setPendingCopyAction(action)
-  }, [])
 
   const getSearchEntries = useCallback(
     (query: string) => filterNoteMentionSearchEntries(listSearchableNoteLocations(stateRef.current), query, activeNoteLocation),
@@ -309,16 +263,6 @@ export function useNoteMentionController({
   const getAisleItemsForEntry = useCallback((entry: NoteSearchEntry) =>
     getNoteMentionAisleItems(stateRef.current, getEntryLocation(entry)), [getEntryLocation, stateRef])
 
-  const setFocusedAisleForEntry = useCallback((entry: NoteSearchEntry) => {
-    const aisleItems = getAisleItemsForEntry(entry)
-    const selectedAisleId = getNoteMentionSelectedAisleId(stateRef.current, getEntryLocation(entry), menuRef.current?.searchAisleId)
-    const selectedIndex = Math.max(0, aisleItems.findIndex((item) => item.id === selectedAisleId))
-    setFocusedAisle(selectedIndex)
-  }, [getAisleItemsForEntry, getEntryLocation, setFocusedAisle, stateRef])
-
-  const getNextSearchStageForEntry = useCallback((entry: NoteSearchEntry): NoteMentionSearchFocusStage =>
-    getAisleItemsForEntry(entry).length > 0 ? 'aisles' : 'actions', [getAisleItemsForEntry])
-
   const restoreEditorFocus = useCallback(() => {
     const editorToRestore = editorRef.current
     if (!editorToRestore) return
@@ -329,68 +273,72 @@ export function useNoteMentionController({
     })
   }, [editorRef, syncToolbarFormatState])
 
-  const getCurrentSearchSelectionState = useCallback((): NoteMentionSearchSelectionState => ({
-    activeIndex: activeSearchIndexRef.current,
-    selectedIndex: selectedSearchIndexRef.current,
-    searchAisleId: menuRef.current?.searchAisleId ?? null,
-  }), [])
+  const getSearchMachineContext = useCallback((
+    entries: NoteSearchEntry[],
+    options: { index?: number } = {},
+  ): NoteMentionSearchMachineContext => {
+    const index = typeof options.index === 'number'
+      ? clamp(options.index, 0, Math.max(0, entries.length - 1))
+      : getNoteMentionSearchEffectiveIndex(searchMachineRef.current, entries.length)
+    const entry = entries[index]
+    const aisleItems = entry ? getAisleItemsForEntry(entry) : []
+    const target = entry ? getEntryLocation(entry) : null
+    const selectedAisleId = target
+      ? getNoteMentionSelectedAisleId(stateRef.current, target, menuRef.current?.searchAisleId)
+      : null
+    const selectedAisleIndex = Math.max(0, aisleItems.findIndex((item) => item.id === selectedAisleId))
+    return {
+      resultCount: entries.length,
+      aisleCount: aisleItems.length,
+      aisleIds: aisleItems.map((item) => item.id),
+      selectedAisleId,
+      selectedAisleIndex,
+      copyRequiresConfirmation: requireCopyConfirmation,
+    }
+  }, [getAisleItemsForEntry, getEntryLocation, requireCopyConfirmation, stateRef])
 
-  const applySearchSelectionState = useCallback((nextState: NoteMentionSearchSelectionState) => {
-    const nextAisleId = nextState.searchAisleId ?? null
-    const currentAisleId = menuRef.current?.searchAisleId ?? null
-    const activeChanged = activeSearchIndexRef.current !== nextState.activeIndex
-    const selectedChanged = selectedSearchIndexRef.current !== nextState.selectedIndex
-    const aisleChanged = currentAisleId !== nextAisleId
-    if (!activeChanged && !selectedChanged && !aisleChanged) return
-
-    activeSearchIndexRef.current = nextState.activeIndex
-    selectedSearchIndexRef.current = nextState.selectedIndex
-    setActiveSearchIndex(nextState.activeIndex)
-    setSelectedSearchIndex(nextState.selectedIndex)
-    setMenu((current) => (current ? { ...current, searchAisleId: nextAisleId } : current))
-  }, [])
+  const dispatchSearchMachineEvent = useCallback((
+    event: NoteMentionSearchMachineEvent,
+    context: NoteMentionSearchMachineContext,
+  ): NoteMentionSearchMachineIntent => {
+    const result = reduceNoteMentionSearchMachine(searchMachineRef.current, event, context)
+    applySearchMachineState(result.state)
+    return result.intent
+  }, [applySearchMachineState])
 
   const highlightSearchResult = useCallback((index: number) => {
-    applySearchSelectionState(getNoteMentionSearchSelectionAfterHover(getCurrentSearchSelectionState(), index))
-  }, [applySearchSelectionState, getCurrentSearchSelectionState])
+    const currentMenu = menuRef.current
+    if (!currentMenu) return
+    const entries = getSearchEntries(currentMenu.query.query)
+    dispatchSearchMachineEvent(
+      { type: 'hover-result', index },
+      getSearchMachineContext(entries, { index }),
+    )
+  }, [dispatchSearchMachineEvent, getSearchEntries, getSearchMachineContext])
 
   const selectSearchResult = useCallback((index: number) => {
-    applySearchSelectionState(getNoteMentionSearchSelectionAfterClick(getCurrentSearchSelectionState(), index))
     const currentMenu = menuRef.current
-    const entry = currentMenu ? getSearchEntries(currentMenu.query.query)[index] : null
-    if (entry) {
-      setFocusedAisleForEntry(entry)
-      setSearchStage(getNextSearchStageForEntry(entry))
-    }
-    clearPendingCopyAction()
-  }, [
-    applySearchSelectionState,
-    clearPendingCopyAction,
-    getCurrentSearchSelectionState,
-    getNextSearchStageForEntry,
-    getSearchEntries,
-    setFocusedAisleForEntry,
-    setSearchStage,
-  ])
-
-  const moveSearchResultFromKeyboard = useCallback((index: number) => {
-    applySearchSelectionState(getNoteMentionSearchSelectionAfterKeyboard(getCurrentSearchSelectionState(), index))
-    setSearchStage('results')
-    clearPendingCopyAction()
-  }, [applySearchSelectionState, clearPendingCopyAction, getCurrentSearchSelectionState, setSearchStage])
+    if (!currentMenu) return
+    const entries = getSearchEntries(currentMenu.query.query)
+    dispatchSearchMachineEvent(
+      { type: 'click-result', index },
+      getSearchMachineContext(entries, { index }),
+    )
+  }, [dispatchSearchMachineEvent, getSearchEntries, getSearchMachineContext])
 
   const clampSearchSelection = useCallback((entriesLength: number, options: { clearSelection?: boolean } = {}) => {
-    const maxIndex = Math.max(0, entriesLength - 1)
-    const nextActiveIndex = Math.max(0, Math.min(maxIndex, activeSearchIndexRef.current))
-    const nextSelectedIndex =
-      options.clearSelection || selectedSearchIndexRef.current === null
-        ? null
-        : Math.max(0, Math.min(maxIndex, selectedSearchIndexRef.current))
-    activeSearchIndexRef.current = nextActiveIndex
-    selectedSearchIndexRef.current = nextSelectedIndex
-    setActiveSearchIndex(nextActiveIndex)
-    setSelectedSearchIndex(nextSelectedIndex)
-  }, [])
+    dispatchSearchMachineEvent(
+      { type: 'clamp-results', clearSelection: options.clearSelection },
+      { resultCount: entriesLength, copyRequiresConfirmation: requireCopyConfirmation },
+    )
+  }, [dispatchSearchMachineEvent, requireCopyConfirmation])
+
+  const setFocusedAction = useCallback((index: number) => {
+    dispatchSearchMachineEvent(
+      { type: 'focus-action', index },
+      { resultCount: 0, copyRequiresConfirmation: requireCopyConfirmation },
+    )
+  }, [dispatchSearchMachineEvent, requireCopyConfirmation])
 
   const refreshQuery = useCallback(() => {
     if (viewMode !== 'main' || !editorRef.current) return
@@ -422,11 +370,7 @@ export function useNoteMentionController({
     const queryChanged = currentMenu?.query.query !== query.query
     clampSearchSelection(entries.length, { clearSelection: queryChanged })
     if (queryChanged || !currentMenu) {
-      setSearchStage('typing')
-      setFocusedAisle(0)
-      setFocusedAction(0)
-      setFocusedConfirm(0)
-      clearPendingCopyAction()
+      resetSearchMachine()
     }
     setMenu({
       ...getViewportSafeNoteMentionMenuPosition(
@@ -447,16 +391,12 @@ export function useNoteMentionController({
     getCurrentNoteLocation,
     getSearchEntries,
     clampSearchSelection,
-    clearPendingCopyAction,
+    resetSearchMachine,
     stateRef,
-    setFocusedAction,
-    setFocusedAisle,
-    setFocusedConfirm,
-    setSearchStage,
     viewMode,
   ])
 
-  const chooseTarget = useCallback((target: NoteMentionTarget, action: NoteMentionAction) => {
+  const executeTargetAction = useCallback((target: NoteMentionTarget, action: NoteMentionAction) => {
     const currentMenu = menuRef.current
     if (!currentMenu) return
     if (isNoteMentionCopyAction(action)) {
@@ -475,64 +415,115 @@ export function useNoteMentionController({
     })
     closeMenu()
   }, [closeMenu, insertNoteReferenceFromMention, replaceCurrentNoteFromMention])
+
+  const chooseTarget = useCallback((target: NoteMentionTarget, action: NoteMentionAction) => {
+    if (isNoteMentionCopyAction(action) && requireCopyConfirmation) {
+      pendingNavigatorCopyTargetRef.current = target
+      dispatchSearchMachineEvent(
+        { type: 'choose-action', action },
+        { resultCount: 0, copyRequiresConfirmation: requireCopyConfirmation },
+      )
+      return
+    }
+    executeTargetAction(target, action)
+  }, [dispatchSearchMachineEvent, executeTargetAction, requireCopyConfirmation])
   chooseTargetRef.current = chooseTarget
 
-  const getSearchEntryTarget = useCallback((entry: NoteSearchEntry): NoteMentionTarget => {
+  const getSearchEntryTarget = useCallback((entry: NoteSearchEntry, aisleIdOverride?: string | null): NoteMentionTarget => {
     const target = getEntryLocation(entry)
-    const aisleId = getNoteMentionSelectedAisleId(stateRef.current, target, menuRef.current?.searchAisleId)
+    const aisleId = getNoteMentionSelectedAisleId(
+      stateRef.current,
+      target,
+      aisleIdOverride ?? menuRef.current?.searchAisleId,
+    )
     return aisleId ? { ...target, aisleIds: [aisleId] } : target
   }, [getEntryLocation, stateRef])
 
   const chooseSearchEntry = useCallback((entry: NoteSearchEntry, action: NoteMentionAction) => {
     chooseTargetRef.current(getSearchEntryTarget(entry), action)
   }, [getSearchEntryTarget])
-  chooseSearchEntryRef.current = chooseSearchEntry
+
+  const executeSearchAction = useCallback((action: NoteMentionAction) => {
+    const currentMenu = menuRef.current
+    if (!currentMenu) return
+    const entries = getSearchEntries(currentMenu.query.query)
+    const resolved = getNoteMentionSearchResolvedTarget(searchMachineRef.current, entries)
+    if (!resolved) return
+    chooseTargetRef.current(getSearchEntryTarget(resolved.entry, resolved.aisleId), action)
+  }, [getSearchEntries, getSearchEntryTarget])
+
+  const handleSearchMachineIntent = useCallback((intent: NoteMentionSearchMachineIntent) => {
+    if (intent.type === 'none' || intent.type === 'request-copy-confirm' || intent.type === 'cancel-copy') return
+    if (intent.type === 'return-to-typing') {
+      restoreEditorFocus()
+      return
+    }
+    if (intent.type === 'dismiss-menu') {
+      const currentMenu = menuRef.current
+      if (currentMenu) dismissedQueryRef.current = currentMenu.query
+      closeMenuRef.current({ restoreEditorFocus: true })
+      return
+    }
+    executeSearchAction(intent.action)
+  }, [executeSearchAction, restoreEditorFocus])
 
   const chooseFocusedSearchAction = useCallback((action: NoteMentionAction) => {
     const currentMenu = menuRef.current
     if (!currentMenu) return
     const entries = getSearchEntries(currentMenu.query.query)
-    const index = selectedSearchIndexRef.current ?? activeSearchIndexRef.current
-    const entry = entries[clamp(index, 0, entries.length - 1)]
-    if (!entry) return
-    if (isNoteMentionCopyAction(action)) {
-      if (!requireCopyConfirmation) {
-        chooseSearchEntryRef.current(entry, action)
-        return
-      }
-      setPendingCopy(action)
-      setFocusedConfirm(0)
-      setSearchStage('copy-confirm')
-      return
-    }
-    chooseSearchEntryRef.current(entry, action)
-  }, [getSearchEntries, requireCopyConfirmation, setFocusedConfirm, setPendingCopy, setSearchStage])
-  chooseFocusedSearchActionRef.current = chooseFocusedSearchAction
+    const intent = dispatchSearchMachineEvent(
+      { type: 'choose-action', action },
+      getSearchMachineContext(entries),
+    )
+    handleSearchMachineIntent(intent)
+  }, [dispatchSearchMachineEvent, getSearchEntries, getSearchMachineContext, handleSearchMachineIntent])
 
   const confirmPendingCopyAction = useCallback(() => {
-    const action = pendingCopyActionRef.current
-    if (!action || !isNoteMentionCopyAction(action)) return
     const currentMenu = menuRef.current
     if (!currentMenu) return
+    if (!currentMenu.query.query.trim()) {
+      const action = searchMachineRef.current.pendingCopyAction
+      const target = pendingNavigatorCopyTargetRef.current ?? getNoteMentionTarget(currentMenu.selection)
+      if (!action || !isNoteMentionCopyAction(action)) return
+      pendingNavigatorCopyTargetRef.current = null
+      executeTargetAction(target, action)
+      return
+    }
     const entries = getSearchEntries(currentMenu.query.query)
-    const index = selectedSearchIndexRef.current ?? activeSearchIndexRef.current
-    const entry = entries[clamp(index, 0, entries.length - 1)]
-    if (!entry) return
-    chooseSearchEntryRef.current(entry, action)
-  }, [getSearchEntries])
-  confirmPendingCopyActionRef.current = confirmPendingCopyAction
+    const intent = dispatchSearchMachineEvent(
+      { type: 'confirm-copy' },
+      getSearchMachineContext(entries),
+    )
+    handleSearchMachineIntent(intent)
+  }, [dispatchSearchMachineEvent, executeTargetAction, getSearchEntries, getSearchMachineContext, handleSearchMachineIntent])
 
   const cancelPendingCopyAction = useCallback(() => {
-    clearPendingCopyAction()
-    setSearchStage('actions')
-  }, [clearPendingCopyAction, setSearchStage])
-  cancelPendingCopyActionRef.current = cancelPendingCopyAction
+    pendingNavigatorCopyTargetRef.current = null
+    const currentMenu = menuRef.current
+    const entries = currentMenu ? getSearchEntries(currentMenu.query.query) : []
+    const intent = dispatchSearchMachineEvent(
+      { type: 'cancel-copy' },
+      getSearchMachineContext(entries),
+    )
+    handleSearchMachineIntent(intent)
+  }, [dispatchSearchMachineEvent, getSearchEntries, getSearchMachineContext, handleSearchMachineIntent])
+
+  const clearNavigatorCopyConfirmation = useCallback(() => {
+    if (!pendingNavigatorCopyTargetRef.current && !searchMachineRef.current.pendingCopyAction) return
+    pendingNavigatorCopyTargetRef.current = null
+    dispatchSearchMachineEvent(
+      { type: 'cancel-copy' },
+      { resultCount: 0, copyRequiresConfirmation: requireCopyConfirmation },
+    )
+  }, [dispatchSearchMachineEvent, requireCopyConfirmation])
 
   const setActiveRow = useCallback((rowId: NoteMentionNavigatorRowId) => {
+    clearNavigatorCopyConfirmation()
     setMenu((current) => (current ? { ...current, activeRow: rowId } : current))
-  }, [])
+  }, [clearNavigatorCopyConfirmation])
 
   const selectNavigatorItem = useCallback((rowId: NoteMentionNavigatorRowId, itemId: string) => {
+    clearNavigatorCopyConfirmation()
     setMenu((current) =>
       current
         ? {
@@ -542,21 +533,29 @@ export function useNoteMentionController({
           }
         : current,
     )
-  }, [stateRef])
+  }, [clearNavigatorCopyConfirmation, stateRef])
 
   const selectSearchAisle = useCallback((aisleId: string) => {
     const currentMenu = menuRef.current
     if (currentMenu?.query.query.trim()) {
       const entries = getSearchEntries(currentMenu.query.query)
-      const entry = entries[selectedSearchIndexRef.current ?? activeSearchIndexRef.current]
+      const effectiveIndex = getNoteMentionSearchEffectiveIndex(searchMachineRef.current, entries.length)
+      const entry = entries[effectiveIndex]
       const aisleItems = entry ? getAisleItemsForEntry(entry) : []
       const nextIndex = aisleItems.findIndex((item) => item.id === aisleId)
-      setFocusedAisle(Math.max(0, nextIndex))
-      setSearchStage('actions')
-      clearPendingCopyAction()
+      dispatchSearchMachineEvent(
+        {
+          type: 'select-aisle',
+          aisleId,
+          index: Math.max(0, nextIndex),
+          advanceToActions: true,
+        },
+        getSearchMachineContext(entries, { index: effectiveIndex }),
+      )
+      return
     }
     setMenu((current) => (current ? { ...current, searchAisleId: aisleId } : current))
-  }, [clearPendingCopyAction, getAisleItemsForEntry, getSearchEntries, setFocusedAisle, setSearchStage])
+  }, [dispatchSearchMachineEvent, getAisleItemsForEntry, getSearchEntries, getSearchMachineContext])
 
   useEffect(() => {
     if (!menu) return
@@ -571,15 +570,6 @@ export function useNoteMentionController({
       const searchMode = menu.query.query.trim().length > 0
       const entries = searchMode ? getSearchEntries(menu.query.query) : []
       const itemCount = entries.length
-      const baseSearchIndex = selectedSearchIndexRef.current ?? activeSearchIndex
-      const normalizedActiveIndex = Math.max(0, Math.min(Math.max(0, itemCount - 1), baseSearchIndex))
-      const entry = entries[normalizedActiveIndex]
-      const searchAisleItems = entry ? getNoteMentionAisleItems(stateRef.current, {
-        domainId: entry.domainId,
-        spaceId: entry.spaceId,
-        tabId: entry.tabId,
-        subTabId: entry.subTabId,
-      }) : []
       const isPreviewShortcut = !searchMode && event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey
       const isNavigatorHorizontalKey = !searchMode && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')
       const isSearchHorizontalKey = searchMode && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')
@@ -598,18 +588,12 @@ export function useNoteMentionController({
       event.stopPropagation()
 
       if (event.key === 'Escape') {
-        if (searchMode && (searchFocusStageRef.current !== 'typing' || selectedSearchIndexRef.current !== null || pendingCopyActionRef.current)) {
-          applySearchSelectionState({
-            activeIndex: activeSearchIndexRef.current,
-            selectedIndex: null,
-            searchAisleId: null,
-          })
-          setSearchStage('typing')
-          setFocusedAisle(0)
-          setFocusedAction(0)
-          setFocusedConfirm(0)
-          clearPendingCopyAction()
-          restoreEditorFocus()
+        if (searchMode) {
+          const intent = dispatchSearchMachineEvent(
+            { type: 'escape' },
+            getSearchMachineContext(entries),
+          )
+          handleSearchMachineIntent(intent)
           return
         }
         dismissedQueryRef.current = menu.query
@@ -654,122 +638,50 @@ export function useNoteMentionController({
           })
           return
         }
-        chooseTargetRef.current(getNoteMentionTarget(menu.selection), isPreviewShortcut ? 'context' : 'link')
+        chooseTargetRef.current(getNoteMentionTarget(menu.selection), isPreviewShortcut ? 'preview' : 'link')
         return
       }
 
       if (itemCount <= 0) return
 
-      const lockSearchResult = (index: number) => {
-        const nextIndex = clamp(index, 0, itemCount - 1)
-        const nextEntry = entries[nextIndex]
-        if (!nextEntry) return
-        applySearchSelectionState(getNoteMentionSearchSelectionAfterClick(getCurrentSearchSelectionState(), nextIndex))
-        setFocusedAisleForEntry(nextEntry)
-        setFocusedAction(0)
-        setFocusedConfirm(0)
-        clearPendingCopyAction()
-        setSearchStage(getNextSearchStageForEntry(nextEntry))
-      }
-
-      const selectAisleIndex = (index: number, nextStage?: NoteMentionSearchFocusStage) => {
-        if (!entry || searchAisleItems.length <= 0) return
-        const nextIndex = clamp(index, 0, searchAisleItems.length - 1)
-        const aisleId = searchAisleItems[nextIndex]?.id
-        if (!aisleId) return
-        setFocusedAisle(nextIndex)
-        setMenu((current) => {
-          if (!current) return current
-          return { ...current, searchAisleId: aisleId }
-        })
-        if (nextStage) setSearchStage(nextStage)
+      const dispatchSearchKeyEvent = (
+        machineEvent: NoteMentionSearchMachineEvent,
+        options: { index?: number } = {},
+      ) => {
+        const intent = dispatchSearchMachineEvent(machineEvent, getSearchMachineContext(entries, options))
+        handleSearchMachineIntent(intent)
       }
 
       if (event.key === 'Enter') {
-        if (searchFocusStageRef.current === 'copy-confirm') {
-          if (focusedConfirmIndexRef.current === 0) confirmPendingCopyActionRef.current()
-          else cancelPendingCopyActionRef.current()
-          return
-        }
-        if (searchFocusStageRef.current === 'actions') {
-          chooseFocusedSearchActionRef.current(NOTE_MENTION_ACTIONS[focusedActionIndexRef.current] ?? 'link')
-          return
-        }
-        if (searchFocusStageRef.current === 'aisles') {
-          selectAisleIndex(focusedAisleIndexRef.current, 'actions')
-          return
-        }
-        lockSearchResult(normalizedActiveIndex)
+        dispatchSearchKeyEvent({ type: 'enter' })
         return
       }
 
       if (event.key === 'Tab') {
-        const delta = event.shiftKey ? -1 : 1
-        if (searchFocusStageRef.current === 'copy-confirm') {
-          if (delta < 0 && focusedConfirmIndexRef.current === 0) {
-            clearPendingCopyAction()
-            setSearchStage('actions')
-            return
-          }
-          setFocusedConfirm(focusedConfirmIndexRef.current + delta)
-          return
-        }
-        if (searchFocusStageRef.current === 'actions') {
-          const nextIndex = focusedActionIndexRef.current + delta
-          if (nextIndex < 0) {
-            setSearchStage(searchAisleItems.length > 0 ? 'aisles' : 'results')
-            return
-          }
-          setFocusedAction(nextIndex)
-          return
-        }
-        if (searchFocusStageRef.current === 'aisles') {
-          const nextIndex = focusedAisleIndexRef.current + delta
-          if (nextIndex < 0) {
-            setSearchStage('results')
-            return
-          }
-          if (nextIndex >= searchAisleItems.length) {
-            setSearchStage('actions')
-            return
-          }
-          selectAisleIndex(nextIndex)
-          return
-        }
-        lockSearchResult(normalizedActiveIndex)
+        dispatchSearchKeyEvent({ type: 'tab', shiftKey: event.shiftKey })
         return
       }
 
       if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-        const delta = event.key === 'ArrowRight' ? 1 : -1
-        if (searchFocusStageRef.current === 'copy-confirm') {
-          setFocusedConfirm(focusedConfirmIndexRef.current + delta)
-          return
-        }
-        if (searchFocusStageRef.current === 'actions') {
-          setFocusedAction(focusedActionIndexRef.current + delta)
-          return
-        }
-        if (entry && searchAisleItems.length > 0) {
-          setSearchStage('aisles')
-          selectAisleIndex(focusedAisleIndexRef.current + delta)
-        }
+        dispatchSearchKeyEvent({ type: 'horizontal', delta: event.key === 'ArrowRight' ? 1 : -1 })
         return
       }
       if (event.key === 'ArrowDown') {
-        moveSearchResultFromKeyboard((normalizedActiveIndex + 1) % itemCount)
+        const index = (getNoteMentionSearchEffectiveIndex(searchMachineRef.current, itemCount) + 1) % itemCount
+        dispatchSearchKeyEvent({ type: 'keyboard-result-move', index }, { index })
         return
       }
       if (event.key === 'ArrowUp') {
-        moveSearchResultFromKeyboard((normalizedActiveIndex - 1 + itemCount) % itemCount)
+        const index = (getNoteMentionSearchEffectiveIndex(searchMachineRef.current, itemCount) - 1 + itemCount) % itemCount
+        dispatchSearchKeyEvent({ type: 'keyboard-result-move', index }, { index })
         return
       }
       if (event.key === 'Home') {
-        moveSearchResultFromKeyboard(0)
+        dispatchSearchKeyEvent({ type: 'keyboard-result-move', index: 0 }, { index: 0 })
         return
       }
       if (event.key === 'End') {
-        moveSearchResultFromKeyboard(itemCount - 1)
+        dispatchSearchKeyEvent({ type: 'keyboard-result-move', index: itemCount - 1 }, { index: itemCount - 1 })
         return
       }
     }
@@ -787,20 +699,11 @@ export function useNoteMentionController({
       document.removeEventListener('pointerdown', handlePointerDown, true)
     }
   }, [
-    activeSearchIndex,
-    applySearchSelectionState,
-    clearPendingCopyAction,
-    getCurrentSearchSelectionState,
-    getNextSearchStageForEntry,
+    dispatchSearchMachineEvent,
+    getSearchMachineContext,
     getSearchEntries,
+    handleSearchMachineIntent,
     menu,
-    moveSearchResultFromKeyboard,
-    restoreEditorFocus,
-    setFocusedAction,
-    setFocusedAisle,
-    setFocusedAisleForEntry,
-    setFocusedConfirm,
-    setSearchStage,
     stateRef,
   ])
 
@@ -814,11 +717,11 @@ export function useNoteMentionController({
       : [],
     [activeNoteLocation, menu, state],
   )
-  const normalizedActiveSearchIndex = Math.max(0, Math.min(Math.max(0, searchEntries.length - 1), activeSearchIndex))
-  const normalizedSelectedSearchIndex = selectedSearchIndex === null
+  const normalizedActiveSearchIndex = Math.max(0, Math.min(Math.max(0, searchEntries.length - 1), searchMachine.activeIndex))
+  const normalizedSelectedSearchIndex = searchMachine.selectedIndex === null
     ? null
-    : Math.max(0, Math.min(Math.max(0, searchEntries.length - 1), selectedSearchIndex))
-  const effectiveSearchIndex = normalizedSelectedSearchIndex ?? normalizedActiveSearchIndex
+    : Math.max(0, Math.min(Math.max(0, searchEntries.length - 1), searchMachine.selectedIndex))
+  const effectiveSearchIndex = getNoteMentionSearchEffectiveIndex(searchMachine, searchEntries.length)
   const activeSearchEntry = searchEntries[effectiveSearchIndex] ?? null
   const activeSearchLocation = useMemo(() => activeSearchEntry
     ? {
@@ -863,7 +766,7 @@ export function useNoteMentionController({
     .map((row) => `${row.id}:${row.selectedId}:${row.items.length}`)
     .join('|')
   const menuLayoutKey = menu
-    ? `${menu.query.from}:${menu.query.to}:${menu.query.query}:${menu.activeRow}:${activeSearchIndex}:${normalizedSelectedSearchIndex ?? 'none'}:${navigatorLayoutKey}:${searchEntries.length}:${selectedSearchAisleId}:${searchAisleItems.length}:${searchFocusStage}:${focusedActionIndex}:${pendingCopyAction ?? 'none'}`
+    ? `${menu.query.from}:${menu.query.to}:${menu.query.query}:${menu.activeRow}:${normalizedActiveSearchIndex}:${normalizedSelectedSearchIndex ?? 'none'}:${navigatorLayoutKey}:${searchEntries.length}:${selectedSearchAisleId}:${searchAisleItems.length}:${searchMachine.stage}:${searchMachine.focusedActionIndex}:${searchMachine.pendingCopyAction ?? 'none'}`
     : ''
 
   useLayoutEffect(() => {
@@ -886,11 +789,11 @@ export function useNoteMentionController({
     selectedSearchIndex: normalizedSelectedSearchIndex,
     searchAisleItems,
     selectedSearchAisleId,
-    searchFocusStage,
-    focusedAisleIndex: Math.max(0, Math.min(Math.max(0, searchAisleItems.length - 1), focusedAisleIndex)),
-    focusedActionIndex,
-    focusedConfirmIndex,
-    pendingCopyAction,
+    searchFocusStage: searchMachine.stage,
+    focusedAisleIndex: Math.max(0, Math.min(Math.max(0, searchAisleItems.length - 1), searchMachine.focusedAisleIndex)),
+    focusedActionIndex: searchMachine.focusedActionIndex,
+    focusedConfirmIndex: searchMachine.focusedConfirmIndex,
+    pendingCopyAction: searchMachine.pendingCopyAction,
     setActiveSearchIndex: highlightSearchResult,
     selectSearchResult,
     selectSearchAisle,

@@ -1,5 +1,6 @@
 import type { AppState, ModalState } from '../../types/app'
 import { noteLocationHasContent } from '../../notes/note-locations'
+import { getNoteCopyModeLabel } from '../../notes/copy-reference-labels'
 
 export type ModalText = {
   title: string
@@ -40,15 +41,16 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
     const appendAisles = modal.destinationMode === 'append'
     if (modal.mode === 'linked') {
       const linkedAisleCopy = selectedAisles || appendAisles
+      const copyModeLabel = getNoteCopyModeLabel(modal.mode)
       return {
         title: 'make copy',
         body: linkedAisleCopy
           ? appendAisles
-            ? 'this note will receive synced copies of the target aisles. edits in any synced aisle will affect each copy.'
-            : 'this note will be replaced with synced copies of the selected target aisles. edits in any synced aisle will affect each copy.'
+            ? `this note will receive ${copyModeLabel} copies of the target aisles. edits in any ${copyModeLabel} aisle will affect each copy.`
+            : `this note will be replaced with ${copyModeLabel} copies of the selected target aisles. edits in any ${copyModeLabel} aisle will affect each copy.`
           : hasExistingContent
-            ? 'this note will be replaced with a synced copy of the target note. edits in either location will affect both.'
-            : 'this note will become a synced copy of the target note. edits in either location will affect both.',
+            ? `this note will be replaced with a ${copyModeLabel} copy of the target note. edits in either location will affect both.`
+            : `this note will become a ${copyModeLabel} copy of the target note. edits in either location will affect both.`,
         action: 'make copy',
       }
     }

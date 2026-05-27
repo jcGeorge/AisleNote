@@ -17,7 +17,7 @@ function renderModal(
       aisles={aisles}
       linkedAisleIds={options.linkedAisleIds}
       initialStagedDecoupleAisleIds={options.initialStagedDecoupleAisleIds}
-      getContextPreviewLabel={() => 'Domain / Space / Parent / Child'}
+      getNotePreviewLabel={() => 'Domain / Space / Parent / Child'}
       onCancel={() => undefined}
       onApply={() => undefined}
       onWarn={() => undefined}

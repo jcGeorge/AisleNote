@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { DeletedSubTabEntry, DeletedTabEntry, SubTab, Tab, WorkspaceData } from '../types/app'
 import {
-  getNotePreviewCleanupTargetsForDeleteTarget,
-  getNotePreviewCleanupTargetsForTrash,
-} from './delete-preview-cleanup'
+  getNoteReferenceCleanupTargetsForDeleteTarget,
+  getNoteReferenceCleanupTargetsForTrash,
+} from './note-reference-cleanup'
 
 function subTab(id: string): SubTab {
   return { id, title: id, noteBodyId: `body-${id}`}
@@ -43,10 +43,10 @@ function workspace(data: Partial<WorkspaceData> = {}): WorkspaceData {
   }
 }
 
-describe('delete preview cleanup targets', () => {
+describe('note reference cleanup targets', () => {
   it('targets a deleted sub-tab precisely', () => {
     expect(
-      getNotePreviewCleanupTargetsForDeleteTarget(workspace(), 'domain', 'space', {
+      getNoteReferenceCleanupTargetsForDeleteTarget(workspace(), 'domain', 'space', {
         type: 'subtab',
         tabId: 'parent',
         subTabId: 'sub-a',
@@ -56,7 +56,7 @@ describe('delete preview cleanup targets', () => {
 
   it('targets a deleted parent index and its child sub-tabs', () => {
     expect(
-      getNotePreviewCleanupTargetsForDeleteTarget(workspace(), 'domain', 'space', {
+      getNoteReferenceCleanupTargetsForDeleteTarget(workspace(), 'domain', 'space', {
         type: 'tab',
         tabId: 'parent',
       }),
@@ -76,7 +76,7 @@ describe('delete preview cleanup targets', () => {
     })
 
     expect(
-      getNotePreviewCleanupTargetsForDeleteTarget(data, 'domain', 'space', {
+      getNoteReferenceCleanupTargetsForDeleteTarget(data, 'domain', 'space', {
         type: 'trash-subtab',
         source: 'subtabs-only',
         deletedTabEntryId: null,
@@ -92,7 +92,7 @@ describe('delete preview cleanup targets', () => {
       deletedSubTabs: [deletedSubTab('deleted-sub-entry', 'parent', subTab('loose-sub'))],
     })
 
-    expect(getNotePreviewCleanupTargetsForTrash(data, 'domain', 'space')).toEqual([
+    expect(getNoteReferenceCleanupTargetsForTrash(data, 'domain', 'space')).toEqual([
       { domainId: 'domain', spaceId: 'space', tabId: 'deleted-parent', subTabId: null },
       { domainId: 'domain', spaceId: 'space', tabId: 'deleted-parent', subTabId: 'nested-sub' },
       { domainId: 'domain', spaceId: 'space', tabId: 'parent', subTabId: 'loose-sub' },
