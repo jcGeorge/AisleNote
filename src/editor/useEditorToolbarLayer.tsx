@@ -50,6 +50,8 @@ type UseEditorToolbarLayerOptions = {
   openFrontmatterModalForActiveNote: () => void
   openTableOfContents: () => void
   openAisleEditModal: () => void
+  openDirector: () => void
+  openFindReplace: () => void
   pushToast: (message: string, tone?: ToastTone) => void
   onDisabledToolbarInteraction: () => void
 }
@@ -83,6 +85,8 @@ export function useEditorToolbarLayer({
   openFrontmatterModalForActiveNote,
   openTableOfContents,
   openAisleEditModal,
+  openDirector,
+  openFindReplace,
   pushToast,
   onDisabledToolbarInteraction,
 }: UseEditorToolbarLayerOptions) {
@@ -182,6 +186,16 @@ export function useEditorToolbarLayer({
     openAisleEditModal()
   }
 
+  const openDirectorFromToolbar = () => {
+    closeToolbarMenus()
+    openDirector()
+  }
+
+  const openFindReplaceFromToolbar = () => {
+    closeToolbarMenus()
+    openFindReplace()
+  }
+
   const toggleHeadingToolbarPopover = () => {
     setCopyMenuOpen(false)
     setToolbarPopoverPosition((previous) => ({ ...previous, copy: null }))
@@ -216,6 +230,8 @@ export function useEditorToolbarLayer({
         onOpenFrontmatter={openFrontmatterModalForActiveNote}
         onOpenTableOfContents={openTableOfContentsFromToolbar}
         onOpenAisleEditModal={openAisleEditModalFromToolbar}
+        onOpenDirector={openDirectorFromToolbar}
+        onOpenFindReplace={openFindReplaceFromToolbar}
         onToggleHeading={toggleHeadingToolbarPopover}
         onCommand={executeToolbarCommand}
         onHistory={executeToolbarHistory}

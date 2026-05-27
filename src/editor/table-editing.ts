@@ -844,6 +844,37 @@ export function moveTableCellSelectionByTab(
   return { handled, changed: handled }
 }
 
+export function selectFirstTableCellAfterPosition(view: any, position: number): boolean {
+  const doc = view?.state?.doc
+  const transaction = view?.state?.tr
+  if (!doc || !transaction || typeof view?.dispatch !== 'function') return false
+
+  let selectedNode: any | null = null
+  let selectedPos = -1
+  let selectedDistance = Number.POSITIVE_INFINITY
+  const anchor = Number.isFinite(position) ? Math.max(0, position) : 0
+  doc.descendants((node: any, pos: number) => {
+    if (node?.type?.name !== 'table') return true
+    const distance = pos >= anchor ? pos - anchor : Number.MAX_SAFE_INTEGER + Math.abs(pos - anchor)
+    if (distance < selectedDistance) {
+      selectedNode = node
+      selectedPos = pos
+      selectedDistance = distance
+    }
+    return false
+  })
+
+  if (!selectedNode || selectedPos < 0) return false
+  const selectionPosition = getCellInnerPosition(selectedNode, selectedPos, 0, 0)
+  if (selectionPosition === null) return false
+  setSelectionNearPosition(transaction, selectionPosition)
+  view.dispatch(transaction.setMeta('addToHistory', false).scrollIntoView())
+  if (typeof view.focus === 'function') {
+    view.focus()
+  }
+  return true
+}
+
 export function applyTableReorderOperationToView(
   view: any,
   axis: TableReorderAxis,

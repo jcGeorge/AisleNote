@@ -250,6 +250,7 @@ export const useNoteReferenceActions = ({
               target: internalEdit.target,
               aisleIds: internalEdit.aisleIds,
               heading: internalEdit.heading,
+              startAt: internalEdit.startAt,
               from: internalEdit.from ?? 0,
               to: internalEdit.to ?? 0,
               occurrence: internalEdit.occurrence ?? 0,
@@ -320,6 +321,7 @@ export const useNoteReferenceActions = ({
       ...contextMenu.target,
       heading: contextMenu.heading,
       aisleId: contextMenu.heading ? undefined : contextMenu.aisleIds?.[0],
+      startAt: contextMenu.startAt,
     }
     setContextMenu(null)
     navigateToNoteLocation(target)
@@ -336,7 +338,12 @@ export const useNoteReferenceActions = ({
 
     const nextSyntax = buildInternalNoteLinkToken(
       stateRef.current,
-      { ...linkContext.target, aisleIds: linkContext.aisleIds, heading: linkContext.heading },
+      {
+        ...linkContext.target,
+        aisleIds: linkContext.aisleIds,
+        heading: linkContext.heading,
+        startAt: linkContext.startAt,
+      },
       nextLabel,
     )
     const updated = dispatchEditorTransaction(editorOperationRuntime, ({ view }) => {

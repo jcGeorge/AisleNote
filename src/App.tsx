@@ -113,6 +113,7 @@ import { useEditorToolbarState } from './editor/useEditorToolbarState'
 import { DEFAULT_TOOLBAR_LAYOUT_ID, resolveToolbarLayout } from './editor/toolbar-layouts'
 import { useImageTools } from './editor/useImageTools'
 import { useTableControls } from './editor/useTableControls'
+import { selectFirstTableCellAfterPosition } from './editor/table-editing'
 import { clearEditorMarkdownForDisplay, getEditorMarkdownForPersistence, setEditorMarkdownForDisplay } from './editor/editor-markdown-display'
 import type { MultiLineHeadingLevel } from './editor/multiline-format-operations'
 import type { MultiLineListOperation } from './editor/multiline-list-operations'
@@ -146,11 +147,14 @@ import {
   getNoteReferencePreviewSpec,
 } from './notes/note-reference-model'
 import {
-  applyCopyAsDuplicatePayloadToState,
+  applyCopyAsStructuralPayloadToState,
   buildCopyAsClipboardData,
+  buildCopyAsReferenceText,
   getCopyAsAisleIdForNoteContext,
   getCopyAsPasteSuccessMessage,
   getCopyAsSuccessMessage,
+  isCopyAsClipboardTextMarker,
+  parseCopyAsTextMarker,
   readCopyAsPayloadFromClipboard,
   type CopyAsAction,
   type CopyAsClipboardPayload,
@@ -269,7 +273,7 @@ type CopyAsMenuState = {
   aisle?: Record<CopyAsAction, CopyAsMenuItemState>
 }
 
-const COPY_AS_MENU_ACTIONS: CopyAsAction[] = ['duplicate', 'link', 'copy', 'preview']
+const COPY_AS_MENU_ACTIONS: CopyAsAction[] = ['copy', 'duplicate', 'link', 'preview']
 
 const TOOLBAR_LIST_COMMAND_TO_MULTILINE_OPERATION: Partial<Record<ToolbarListCommand, MultiLineListOperation>> = {
   taskList: 'task',
@@ -318,7 +322,7 @@ function App() {
   const [tableOfContentsPanels, setTableOfContentsPanels] = useState<TableOfContentsPanelsState | null>(null)
   const [findReplacePanel, setFindReplacePanel] = useState<FindReplacePanelState>({
     open: false,
-    replaceMode: false,
+    replaceMode: state.ui.findReplaceMode === 'replace',
     focusRequestId: 0,
     query: initialDeviceSettingsRef.current?.lastFindQuery ?? '',
     replacement: '',
@@ -353,6 +357,7 @@ function App() {
   const pendingFocusToAisleIdRef = useRef<string | null>(null)
   const pendingNavigationHeadingRef = useRef<NonNullable<NoteNavigationTarget['heading']> | null>(null)
   const pendingNavigationAisleIdRef = useRef<string | null>(null)
+  const pendingNavigationTopAisleIdRef = useRef<string | null>(null)
   const editorEventRootRef = useRef<HTMLElement | null>(null)
   const closeShortcutMenuRef = useRef<(options?: { restoreEditorFocus?: boolean }) => void>(() => {})
   const runShortcutOperationFromMenuRef = useRef<(operation: NewlineOperationId) => void>(() => {})
@@ -565,11 +570,15 @@ function App() {
       const caseSensitive = state.ui.findCaseSensitive ?? false
       const wholeWord = state.ui.findWholeWord ?? false
       const regex = state.ui.findRegex ?? false
-      return current.caseSensitive === caseSensitive && current.wholeWord === wholeWord && current.regex === regex
+      const replaceMode = state.ui.findReplaceMode === 'replace'
+      return current.caseSensitive === caseSensitive &&
+        current.wholeWord === wholeWord &&
+        current.regex === regex &&
+        current.replaceMode === replaceMode
         ? current
-        : { ...current, caseSensitive, wholeWord, regex }
+        : { ...current, caseSensitive, wholeWord, regex, replaceMode }
     })
-  }, [state.ui.findCaseSensitive, state.ui.findRegex, state.ui.findWholeWord])
+  }, [state.ui.findCaseSensitive, state.ui.findRegex, state.ui.findReplaceMode, state.ui.findWholeWord])
 
   useEffect(() => {
     setFindReplacePanel((current) => {
@@ -923,7 +932,19 @@ function App() {
       return
     }
     pendingNavigationHeadingRef.current = location.heading ?? null
-    pendingNavigationAisleIdRef.current = location.heading ? null : location.aisleId ?? null
+    pendingNavigationTopAisleIdRef.current = null
+    if (location.heading) {
+      pendingNavigationAisleIdRef.current = null
+    } else if (location.startAt === 'top') {
+      const targetBody = targetInfo.noteBodyId
+        ? stateRef.current.noteBodies.find((body) => body.id === targetInfo.noteBodyId) ?? null
+        : null
+      const topAisleId = location.aisleId ?? location.aisleIds?.[0] ?? targetBody?.aisles[0]?.id ?? null
+      pendingNavigationAisleIdRef.current = topAisleId
+      pendingNavigationTopAisleIdRef.current = topAisleId
+    } else {
+      pendingNavigationAisleIdRef.current = location.aisleId ?? null
+    }
 
     if (arrangeMode.active) {
       exitArrangeMode()
@@ -1809,6 +1830,7 @@ function App() {
     pendingCreatedEditRef,
     pendingFocusToAisleIdRef,
     pendingCursorRestoreRef,
+    pendingNavigationTopAisleIdRef,
     activateAisleEditor,
   })
 
@@ -1918,6 +1940,9 @@ function App() {
     const currentEditor = editorRef.current
     if (!currentEditor) return false
     currentEditor.focus()
+    const tableInsertAnchor = command === 'addTable'
+      ? (getWysiwygView(currentEditor)?.state?.selection?.from ?? 0)
+      : null
     if (command === 'bold' || command === 'italic' || command === 'strike' || command === 'highlight') {
       return runActiveEditorFormatCommand(command)
     }
@@ -1966,6 +1991,14 @@ function App() {
       runEditorCommandOperation(editorOperationRuntime, command, payload, {
         commitMode: 'none',
         syncToolbar: false,
+      })
+    }
+    if (tableInsertAnchor !== null) {
+      window.requestAnimationFrame(() => {
+        const view = getWysiwygView(currentEditor)
+        if (view) {
+          selectFirstTableCellAfterPosition(view, tableInsertAnchor)
+        }
       })
     }
     scheduleActiveEditorCommandCommit(currentEditor)
@@ -2021,8 +2054,8 @@ function App() {
     const latestState = buildStateWithLatestEditorContent()
     const destination = getCurrentNoteLocation()
 
-    if (payload.action === 'duplicate') {
-      const result = applyCopyAsDuplicatePayloadToState(latestState, destination, payload, MAX_NOTE_AISLES)
+    if (payload.action === 'copy' || payload.action === 'duplicate') {
+      const result = applyCopyAsStructuralPayloadToState(latestState, destination, payload, MAX_NOTE_AISLES)
       if (result.status !== 'applied') {
         pushToast(result.status === 'max-aisles' ? MAX_AISLE_WARNING_MESSAGE : result.message, 'warning')
         return true
@@ -2034,13 +2067,13 @@ function App() {
       return true
     }
 
-    const data = buildCopyAsClipboardData(latestState, payload.source, payload.scope, payload.action, payload.aisleId)
-    if (!data.ok) {
-      pushToast(data.message, 'warning')
+    const reference = buildCopyAsReferenceText(latestState, payload)
+    if (!reference.ok) {
+      pushToast(reference.message, 'warning')
       return true
     }
 
-    let text = data.text
+    let text = reference.text
     if (payload.action === 'preview') {
       const activeInfo = getLocationInfo(latestState, destination)
       const previewTarget = {
@@ -2087,10 +2120,6 @@ function App() {
         pushToast('clipboard copy is unavailable here.', 'warning')
         return
       }
-      if (data.privatePayloadRequired && !result.privatePayloadWritten) {
-        pushToast(`${scope === 'aisle' ? 'aisle' : 'note'} content copied; duplicate paste is unavailable here.`, 'warning')
-        return
-      }
       pushToast(getCopyAsSuccessMessage(scope, action), 'success')
     })
   }
@@ -2111,6 +2140,15 @@ function App() {
 
     const pasteText = (text: string) => {
       if (!text) return
+      const copyAsPayload = parseCopyAsTextMarker(text)
+      if (copyAsPayload) {
+        pasteCopyAsPayload(copyAsPayload)
+        return
+      }
+      if (isCopyAsClipboardTextMarker(text)) {
+        pushToast('clipboard copy command is invalid.', 'warning')
+        return
+      }
       insertEditorTextOperation(editorOperationRuntime, text)
     }
 
@@ -2203,6 +2241,7 @@ function App() {
         ...link.target,
         heading: link.heading,
         aisleId: link.heading ? undefined : link.aisleIds?.[0],
+        startAt: link.startAt,
       })
       return
     }
@@ -2220,6 +2259,7 @@ function App() {
         target: link.target,
         aisleIds: link.aisleIds,
         heading: link.heading,
+        startAt: link.startAt,
         from: link.from,
         to: link.to,
         occurrence: link.occurrence,
@@ -2250,11 +2290,12 @@ function App() {
     }
   }
 
-  const openFindReplacePanel = useCallback((replaceMode = true) => {
+  const openFindReplacePanel = useCallback(() => {
     setContextMenu(null)
     flushPendingContent()
     const selectedText = getActiveEditorSelectedText()
     const lastFindQuery = loadDeviceSettings().lastFindQuery
+    const replaceMode = state.ui.findReplaceMode === 'replace'
     if (!lastFindQuery && selectedText.trim()) savePartialDeviceSettings({ lastFindQuery: selectedText })
     setFindReplacePanel((current) => ({
       ...current,
@@ -2264,7 +2305,7 @@ function App() {
       query: lastFindQuery || current.query || selectedText,
       activeIndex: 0,
     }))
-  }, [flushPendingContent, getActiveEditorSelectedText])
+  }, [flushPendingContent, getActiveEditorSelectedText, state.ui.findReplaceMode])
 
   const setFindReplaceActiveIndex = (index: number) => {
     const safeIndex = Math.max(0, Math.min(Math.max(0, findReplaceMatches.length - 1), index))
@@ -2357,11 +2398,23 @@ function App() {
       if (!shortcutMode || viewMode !== 'main') return
       event.preventDefault()
       event.stopPropagation()
-      openFindReplacePanel(shortcutMode === 'replace')
+      openFindReplacePanel()
     }
     document.addEventListener('keydown', handleFindShortcut, true)
     return () => document.removeEventListener('keydown', handleFindShortcut, true)
   }, [isMacPlatform, viewMode, openFindReplacePanel])
+
+  useEffect(() => {
+    if (!findReplacePanel.open) return undefined
+    const handleFindPanelEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopPropagation()
+      setFindReplacePanel((current) => ({ ...current, open: false }))
+    }
+    document.addEventListener('keydown', handleFindPanelEscape, true)
+    return () => document.removeEventListener('keydown', handleFindPanelEscape, true)
+  }, [findReplacePanel.open])
 
   const runEditorHistoryOnly = (direction: WysiwygHistoryDirection): WysiwygHistoryResult => {
     const currentEditor = editorRef.current
@@ -2618,6 +2671,10 @@ function App() {
     openExternalLink: openExternalWebUrl,
     insertPastedUrlAsLink: (label, url) => insertLinkIntoActiveEditor(label, url),
     onPasteCopyAsPayload: pasteCopyAsPayload,
+    onPasteInvalidCopyAsPayload: () => {
+      pushToast('clipboard copy command is invalid.', 'warning')
+      return true
+    },
     getToolbarFormatShortcut,
     queueToolbarShortcutFeedback,
     syncToolbarFormatState,
@@ -2979,6 +3036,11 @@ function App() {
       closeImageTools()
       openAisleEditModal()
     },
+    openDirector: () => {
+      closeImageTools()
+      stageManager.open()
+    },
+    openFindReplace: openFindReplacePanel,
     pushToast,
     onDisabledToolbarInteraction: exitArrangeMode,
   })
@@ -3535,6 +3597,7 @@ function App() {
           tableDeleteTargetModeDraft={settingsController.tableDeleteTargetModeDraft}
           tableOfContentsScopeDraft={settingsController.tableOfContentsScopeDraft}
           newAislePlacementDraft={settingsController.newAislePlacementDraft}
+          removeNoteReferencesOnTrashDraft={settingsController.removeNoteReferencesOnTrashDraft}
           frontmatterDraft={settingsController.frontmatterDraft}
           frontmatterDraftDirty={settingsController.frontmatterDraftDirty}
           toolbarLayouts={settingsController.toolbarLayouts}
@@ -3569,6 +3632,7 @@ function App() {
           onTableDeleteTargetModeChange={settingsController.updateTableDeleteTargetModeSetting}
           onTableOfContentsScopeChange={settingsController.updateTableOfContentsScopeSetting}
           onNewAislePlacementChange={settingsController.updateNewAislePlacementSetting}
+          onRemoveNoteReferencesOnTrashChange={settingsController.updateRemoveNoteReferencesOnTrashSetting}
           onTipEnabledChange={settingsController.updateTipEnabledSetting}
           onSelectToolbarLayout={settingsController.selectToolbarLayoutForEditing}
           onCreateToolbarLayout={settingsController.createToolbarLayoutSetting}
@@ -3809,7 +3873,16 @@ function App() {
           queryError={findReplaceQueryError}
           matches={findReplaceMatches}
           activeIndex={Math.max(0, Math.min(findReplacePanel.activeIndex, Math.max(0, findReplaceMatches.length - 1)))}
-          onReplaceModeChange={(replaceMode) => setFindReplacePanel((current) => ({ ...current, replaceMode }))}
+          onReplaceModeChange={(replaceMode) => {
+            setFindReplacePanel((current) => ({ ...current, replaceMode }))
+            setState((previous) => ({
+              ...previous,
+              ui: {
+                ...previous.ui,
+                findReplaceMode: replaceMode ? 'replace' : 'find',
+              },
+            }))
+          }}
           onQueryChange={(query) => {
             setFindReplacePanel((current) => ({ ...current, query, activeIndex: 0 }))
             if (query.trim()) savePartialDeviceSettings({ lastFindQuery: query })

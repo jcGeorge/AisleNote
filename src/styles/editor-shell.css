@@ -137,7 +137,6 @@
 }
 
 .note-context-widget {
-  --context-preview-title-control-height: calc(30px * var(--tab-button-scale));
   display: block;
   margin: 0.65rem 0;
   border: 0;
@@ -203,9 +202,12 @@
 .context-preview-title-btn {
   --rail-control-flex: 0 1 auto;
   --rail-control-max-width: min(calc(300px * var(--tab-button-scale)), 100%);
-  --rail-control-height: var(--context-preview-title-control-height);
-  --rail-control-padding: calc(0.14rem * var(--tab-button-scale)) calc(0.5rem * var(--tab-button-scale));
   --rail-control-font-weight: 400;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .context-preview-title-btn.btn {
@@ -213,18 +215,24 @@
 }
 
 .toastui-editor .ProseMirror .note-context-widget .context-preview-title-btn,
-.toastui-editor-contents .note-context-widget .context-preview-title-btn {
-  height: auto !important;
+.toastui-editor .ProseMirror .context-preview-navigation-widget .context-preview-title-btn,
+.toastui-editor-contents .note-context-widget .context-preview-title-btn,
+.toastui-editor-contents .context-preview-navigation-widget .context-preview-title-btn {
+  box-sizing: border-box !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: var(--rail-control-height) !important;
   min-height: var(--rail-control-height) !important;
+  max-height: var(--rail-control-height) !important;
   padding: var(--rail-control-padding) !important;
   color: var(--rail-control-text) !important;
   background: var(--rail-control-bg) !important;
   background-color: var(--rail-control-bg) !important;
   border: 1px solid var(--rail-control-border) !important;
   border-color: var(--rail-control-border) !important;
-  outline: 1px solid var(--rail-control-border) !important;
-  outline-offset: -1px !important;
-  box-shadow: inset 0 0 0 1px var(--rail-control-border) !important;
+  outline: 0 !important;
+  box-shadow: none !important;
   font-size: var(--rail-control-font-size) !important;
   font-weight: 400 !important;
   line-height: var(--rail-control-line-height) !important;
@@ -232,14 +240,16 @@
 }
 
 .toastui-editor .ProseMirror .note-context-widget .context-preview-title-btn:hover,
-.toastui-editor-contents .note-context-widget .context-preview-title-btn:hover {
+.toastui-editor .ProseMirror .context-preview-navigation-widget .context-preview-title-btn:hover,
+.toastui-editor-contents .note-context-widget .context-preview-title-btn:hover,
+.toastui-editor-contents .context-preview-navigation-widget .context-preview-title-btn:hover {
   color: var(--rail-control-hover-text) !important;
   background: var(--rail-control-hover-bg) !important;
   background-color: var(--rail-control-hover-bg) !important;
   border: 1px solid var(--rail-control-hover-border) !important;
   border-color: var(--rail-control-hover-border) !important;
-  outline-color: var(--rail-control-hover-border) !important;
-  box-shadow: inset 0 0 0 1px var(--rail-control-hover-border) !important;
+  outline: 0 !important;
+  box-shadow: none !important;
 }
 
 .context-preview-title-missing {
@@ -247,6 +257,46 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.context-preview-navigation-widget {
+  display: grid;
+  width: 100%;
+  max-width: 100%;
+  align-items: stretch;
+  gap: 0.5rem;
+  margin: 0.55rem 0;
+  padding: 0.5rem;
+  border: 1px solid var(--app-border);
+  border-radius: 0.35rem;
+  background: var(--app-bg);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.context-preview-navigation-widget.is-blocked,
+.context-preview-navigation-widget.is-missing {
+  cursor: default;
+}
+
+.context-preview-navigation-title {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  justify-self: start;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.context-preview-navigation-status {
+  color: var(--app-muted-text);
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .context-bar-actions {
@@ -268,6 +318,8 @@
   color: var(--stage-action-text);
   padding: 0;
   font-size: 0.75em;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .context-bar-icon-btn.is-active {
@@ -364,6 +416,12 @@
   height: var(--note-preview-editor-height, 21.5rem) !important;
   border: 0;
   background: transparent;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.context-preview-nested-editor-host {
+  margin-top: 0.1rem;
 }
 
 .context-preview-editor-host .toastui-editor-toolbar {
@@ -393,6 +451,8 @@
   padding-inline: 0;
   padding-top: 0 !important;
   background: transparent !important;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .context-preview-editor-host .ProseMirror {
@@ -403,6 +463,34 @@
   padding-inline: 0;
   padding-top: 0 !important;
   background: transparent !important;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.context-preview-editor-host .toastui-editor-contents p,
+.context-preview-editor-host .toastui-editor-contents li,
+.context-preview-editor-host .toastui-editor-contents span:not(.context-preview-navigation-widget):not(.context-preview-title-btn),
+.context-preview-editor-host .toastui-editor-contents div,
+.context-preview-editor-host .toastui-editor-contents strong,
+.context-preview-editor-host .toastui-editor-contents em,
+.context-preview-editor-host .toastui-editor-contents code,
+.context-preview-editor-host .toastui-editor-contents blockquote,
+.context-preview-editor-host .toastui-editor-contents th,
+.context-preview-editor-host .toastui-editor-contents td,
+.context-preview-editor-host .toastui-editor-contents a,
+.context-preview-editor-host .ProseMirror p,
+.context-preview-editor-host .ProseMirror li,
+.context-preview-editor-host .ProseMirror span:not(.context-preview-navigation-widget):not(.context-preview-title-btn),
+.context-preview-editor-host .ProseMirror div,
+.context-preview-editor-host .ProseMirror strong,
+.context-preview-editor-host .ProseMirror em,
+.context-preview-editor-host .ProseMirror code,
+.context-preview-editor-host .ProseMirror blockquote,
+.context-preview-editor-host .ProseMirror th,
+.context-preview-editor-host .ProseMirror td,
+.context-preview-editor-host .ProseMirror a {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .context-preview-editor-host .toastui-editor-contents > :first-child,
@@ -564,29 +652,70 @@
   gap: 0;
   overflow-x: auto;
   overflow-y: hidden;
-  scrollbar-gutter: stable;
-  scrollbar-color: var(--app-border) var(--app-surface);
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   padding: 0;
 }
 
 .note-aisle-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.note-aisle-horizontal-scrollbar {
+  flex: 0 0 0.85rem;
   height: 0.85rem;
-}
-
-.note-aisle-scroll::-webkit-scrollbar-track {
-  background: var(--app-surface);
+  min-height: 0.85rem;
+  display: flex;
+  align-items: stretch;
+  padding: 0;
   border-top: 1px solid var(--app-border-muted);
+  background: var(--app-surface);
+  user-select: none;
+  -webkit-user-select: none;
 }
 
-.note-aisle-scroll::-webkit-scrollbar-thumb {
+.note-aisle-horizontal-scrollbar.is-hidden {
+  display: none;
+}
+
+.note-aisle-horizontal-scrollbar-track {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  background: var(--app-surface);
+  cursor: pointer;
+  touch-action: none;
+}
+
+.note-aisle-horizontal-scrollbar-track:focus-visible {
+  outline: 2px solid var(--app-primary-border);
+  outline-offset: -2px;
+}
+
+.note-aisle-horizontal-scrollbar-thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
   min-width: 3rem;
+  height: 100%;
   border: 0.2rem solid var(--app-surface);
   border-radius: 999px;
   background: var(--app-border);
+  cursor: grab;
+  touch-action: none;
+  will-change: transform;
 }
 
-.note-aisle-scroll::-webkit-scrollbar-thumb:hover {
+.note-aisle-horizontal-scrollbar-thumb:hover,
+.note-aisle-horizontal-scrollbar-thumb:active {
   background: var(--app-primary-border);
+}
+
+.note-aisle-horizontal-scrollbar-thumb:active {
+  cursor: grabbing;
 }
 
 .note-aisles-shell.is-single .note-aisle-scroll {

@@ -127,6 +127,9 @@ export function useSettingsController({
   const [newAislePlacementDraft, setNewAislePlacementDraft] = useState(
     DEFAULT_UI_SETTINGS.newAislePlacement ?? 'end',
   )
+  const [removeNoteReferencesOnTrashDraft, setRemoveNoteReferencesOnTrashDraft] = useState(
+    DEFAULT_UI_SETTINGS.removeNoteReferencesOnTrash ?? true,
+  )
   const [tabButtonScaleDraft, setTabButtonScaleDraft] = useState(DEFAULT_UI_SETTINGS.tabButtonScale)
   const [noteFontScaleDraft, setNoteFontScaleDraft] = useState(DEFAULT_UI_SETTINGS.noteFontScale)
   const [tooltipScaleDraft, setTooltipScaleDraft] = useState(DEFAULT_UI_SETTINGS.tooltipScale ?? 1)
@@ -160,6 +163,9 @@ export function useSettingsController({
       state.ui.tableOfContentsScope ?? DEFAULT_UI_SETTINGS.tableOfContentsScope ?? 'all-aisles',
     )
     setNewAislePlacementDraft(state.ui.newAislePlacement ?? DEFAULT_UI_SETTINGS.newAislePlacement ?? 'end')
+    setRemoveNoteReferencesOnTrashDraft(
+      state.ui.removeNoteReferencesOnTrash ?? DEFAULT_UI_SETTINGS.removeNoteReferencesOnTrash ?? true,
+    )
     setTabButtonScaleDraft(state.ui.tabButtonScale)
     setNoteFontScaleDraft(state.ui.noteFontScale)
     setTooltipScaleDraft(state.ui.tooltipScale ?? DEFAULT_UI_SETTINGS.tooltipScale ?? 1)
@@ -194,6 +200,7 @@ export function useSettingsController({
     state.ui.tableDeleteTargetMode,
     state.ui.tableOfContentsScope,
     state.ui.newAislePlacement,
+    state.ui.removeNoteReferencesOnTrash,
     state.ui.tabButtonScale,
     state.ui.noteFontScale,
     state.ui.tooltipScale,
@@ -386,6 +393,17 @@ export function useSettingsController({
       ui: {
         ...previous.ui,
         newAislePlacement: placement,
+      },
+    }))
+  }
+
+  const updateRemoveNoteReferencesOnTrashSetting = (enabled: boolean) => {
+    setRemoveNoteReferencesOnTrashDraft(enabled)
+    commitImmediateSettingsState((previous) => ({
+      ...previous,
+      ui: {
+        ...previous.ui,
+        removeNoteReferencesOnTrash: enabled,
       },
     }))
   }
@@ -901,6 +919,7 @@ export function useSettingsController({
     tableDeleteTargetModeDraft,
     tableOfContentsScopeDraft,
     newAislePlacementDraft,
+    removeNoteReferencesOnTrashDraft,
     frontmatterDraft,
     frontmatterDraftDirty,
     toolbarLayouts: getToolbarLayouts(state.ui.toolbarLayouts),
@@ -922,6 +941,7 @@ export function useSettingsController({
     updateTableDeleteTargetModeSetting,
     updateTableOfContentsScopeSetting,
     updateNewAislePlacementSetting,
+    updateRemoveNoteReferencesOnTrashSetting,
     updateTipEnabledSetting,
     updateTabButtonScaleSetting,
     updateNoteFontScaleSetting,

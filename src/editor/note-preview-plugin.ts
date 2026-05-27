@@ -4,6 +4,7 @@ import {
 import {
   createContextPreviewWidgetElement,
   createInternalNoteLinkWidgetElement,
+  createReadonlyContextPreviewWidgetElement,
   type NotePreviewWidgetOptions,
 } from './note-preview-widget'
 import {
@@ -16,6 +17,7 @@ import {
 type NotePreviewPluginOptions = NotePreviewWidgetOptions & {
   resolveContextPreviewToken: (token: string) => NoteContextReferencePayload | null
   resolveInternalNoteReferenceToken: (token: string) => ResolvedWikiNoteReference | null
+  renderMode?: 'editor' | 'readonly-preview'
 }
 
 export type { ContextPreviewData } from '../notes/note-preview-data'
@@ -23,6 +25,7 @@ export type { ContextPreviewData } from '../notes/note-preview-data'
 export function createContextPreviewPlugin(context: any, options: NotePreviewPluginOptions) {
   const { Plugin } = context.pmState
   const { Decoration, DecorationSet } = context.pmView
+  const renderMode = options.renderMode ?? 'editor'
   return {
     wysiwygPlugins: [
       () =>
@@ -39,11 +42,16 @@ export function createContextPreviewPlugin(context: any, options: NotePreviewPlu
                   const from = pos + (match.index ?? 0)
                   const to = from + match[0].length
                   decorations.push(
-                    Decoration.widget(from, () => createContextPreviewWidgetElement(payload, options), {
-                      key: `note-preview-${payload.id}`,
-                      side: -1,
-                      destroy: (node: HTMLElement & { destroyNotePreview?: () => void }) => node.destroyNotePreview?.(),
-                    }),
+                    renderMode === 'readonly-preview'
+                      ? Decoration.widget(from, () => createReadonlyContextPreviewWidgetElement(payload, options), {
+                          key: `readonly-note-preview-${payload.id}`,
+                          side: -1,
+                        })
+                      : Decoration.widget(from, () => createContextPreviewWidgetElement(payload, options), {
+                          key: `note-preview-${payload.id}`,
+                          side: -1,
+                          destroy: (node: HTMLElement & { destroyNotePreview?: () => void }) => node.destroyNotePreview?.(),
+                        }),
                   )
                   decorations.push(Decoration.inline(from, to, { class: 'note-context-token-hidden' }))
                 }

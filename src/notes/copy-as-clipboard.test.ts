@@ -5,12 +5,17 @@ import { getLocationInfo } from './note-locations'
 import { getAisleMarkdown } from './note-markdown'
 import {
   COPY_AS_CLIPBOARD_MIME,
-  applyCopyAsDuplicatePayloadToState,
+  applyCopyAsStructuralPayloadToState,
   buildCopyAsClipboardData,
+  buildCopyAsReferenceText,
   getCopyAsAisleIdForNoteContext,
+  isCopyAsClipboardTextMarker,
   parseCopyAsPayload,
+  parseCopyAsTextMarker,
+  readCopyAsPayloadFromClipboard,
   readCopyAsPayloadFromDataTransfer,
   serializeCopyAsPayload,
+  serializeCopyAsTextMarker,
   writeCopyAsClipboardData,
   type CopyAsClipboardPayload,
 } from './copy-as-clipboard'
@@ -128,26 +133,46 @@ describe('copy-as clipboard helpers', () => {
       aisleId: 'aisle-source-2',
     }
 
+    const marker = serializeCopyAsTextMarker(payload)
     expect(parseCopyAsPayload(serializeCopyAsPayload(payload))).toEqual(payload)
+    expect(parseCopyAsTextMarker(marker)).toEqual(payload)
+    expect(isCopyAsClipboardTextMarker(marker)).toBe(true)
     expect(parseCopyAsPayload('{"version":1,"scope":"aisle","action":"duplicate","source":{}}')).toBeNull()
+    expect(parseCopyAsTextMarker('{{tabs-copy-as:not-json}}')).toBeNull()
   })
 
-  it('builds markdown fallback, note links, and aisle previews', () => {
+  it('builds opaque clipboard markers and separate reference text', () => {
     const state = createCopyAsState()
 
-    expect(buildCopyAsClipboardData(state, sourceLocation, 'note', 'copy')).toMatchObject({
-      ok: true,
-      text: 'source one\n\nsource two',
-    })
-    expect(buildCopyAsClipboardData(state, sourceLocation, 'note', 'link')).toMatchObject({
+    const noteCopy = buildCopyAsClipboardData(state, sourceLocation, 'note', 'copy')
+    expect(noteCopy).toMatchObject({ ok: true, privatePayloadRequired: false })
+    if (!noteCopy.ok) throw new Error('expected copy-as marker data')
+    expect(parseCopyAsTextMarker(noteCopy.text)).toEqual(noteCopy.payload)
+
+    const noteLinkPayload: CopyAsClipboardPayload = { version: 1, scope: 'note', action: 'link', source: sourceLocation }
+    expect(buildCopyAsClipboardData(state, sourceLocation, 'note', 'link')).toMatchObject({ ok: true })
+    expect(buildCopyAsReferenceText(state, noteLinkPayload)).toMatchObject({
       ok: true,
       text: expect.stringMatching(/^\[\[Source--[0-9a-f]{6}\]\]$/),
     })
-    expect(buildCopyAsClipboardData(state, sourceLocation, 'aisle', 'link', 'aisle-source-2')).toMatchObject({
+
+    const aisleLinkPayload: CopyAsClipboardPayload = {
+      version: 1,
+      scope: 'aisle',
+      action: 'link',
+      source: sourceLocation,
+      aisleId: 'aisle-source-2',
+    }
+    expect(buildCopyAsReferenceText(state, aisleLinkPayload)).toMatchObject({
       ok: true,
       text: expect.stringMatching(/^\[\[Source--[0-9a-f]{6}#aisle 2--[0-9a-f]{6}\|aisle 2\]\]$/),
     })
-    expect(buildCopyAsClipboardData(state, sourceLocation, 'aisle', 'preview', 'aisle-source-2')).toMatchObject({
+    expect(
+      buildCopyAsReferenceText(state, {
+        ...aisleLinkPayload,
+        action: 'preview',
+      }),
+    ).toMatchObject({
       ok: true,
       text: expect.stringMatching(/^!\[\[Source--[0-9a-f]{6}#aisle 2--[0-9a-f]{6}\]\]$/),
     })
@@ -159,7 +184,6 @@ describe('copy-as clipboard helpers', () => {
 
   it('writes private clipboard payloads and falls back to plain text', async () => {
     const payload: CopyAsClipboardPayload = { version: 1, scope: 'note', action: 'link', source: sourceLocation }
-    const write = vi.fn(async () => undefined)
     class FakeClipboardItem {
       items: Record<string, Blob>
 
@@ -167,6 +191,10 @@ describe('copy-as clipboard helpers', () => {
         this.items = items
       }
     }
+    const writtenItems: FakeClipboardItem[][] = []
+    const write = vi.fn(async (items: ClipboardItem[]) => {
+      writtenItems.push(items as unknown as FakeClipboardItem[])
+    })
 
     await expect(
       writeCopyAsClipboardData(
@@ -175,6 +203,10 @@ describe('copy-as clipboard helpers', () => {
       ),
     ).resolves.toEqual({ ok: true, privatePayloadWritten: true })
     expect(write).toHaveBeenCalledWith([expect.any(FakeClipboardItem)])
+    const item = writtenItems[0]?.[0]
+    expect(item).toBeDefined()
+    expect(item.items['text/plain']).toBeDefined()
+    await expect(item!.items['text/plain']!.text()).resolves.toBe(serializeCopyAsTextMarker(payload))
 
     const writeText = vi.fn(async () => undefined)
     await expect(
@@ -186,16 +218,29 @@ describe('copy-as clipboard helpers', () => {
         },
       ),
     ).resolves.toEqual({ ok: true, privatePayloadWritten: false })
-    expect(writeText).toHaveBeenCalledWith('plain')
+    expect(writeText).toHaveBeenCalledWith(serializeCopyAsTextMarker(payload))
   })
 
-  it('reads private payloads from paste data', () => {
+  it('reads private payloads and text markers from paste data', async () => {
     const payload: CopyAsClipboardPayload = { version: 1, scope: 'note', action: 'preview', source: sourceLocation }
     const dataTransfer = {
       getData: (type: string) => (type === COPY_AS_CLIPBOARD_MIME ? serializeCopyAsPayload(payload) : ''),
     } as DataTransfer
 
     expect(readCopyAsPayloadFromDataTransfer(dataTransfer)).toEqual(payload)
+
+    const textDataTransfer = {
+      getData: (type: string) => (type === 'text/plain' ? serializeCopyAsTextMarker(payload) : ''),
+    } as DataTransfer
+    expect(readCopyAsPayloadFromDataTransfer(textDataTransfer)).toEqual(payload)
+
+    await expect(
+      readCopyAsPayloadFromClipboard({
+        clipboard: {
+          readText: async () => serializeCopyAsTextMarker(payload),
+        },
+      }),
+    ).resolves.toEqual(payload)
   })
 
   it('uses the focused aisle only when the copied note is active', () => {
@@ -206,23 +251,72 @@ describe('copy-as clipboard helpers', () => {
     expect(getCopyAsAisleIdForNoteContext(state, sourceLocation, sourceLocation, 'missing')).toBe('aisle-source-1')
   })
 
-  it('applies note and aisle duplicate payloads to destination notes', () => {
+  it('applies independent copy payloads structurally and preserves markdown', () => {
     const state = createCopyAsState()
-    const noteResult = applyCopyAsDuplicatePayloadToState(state, targetLocation, {
+    const richMarkdown = [
+      '[[ref--c9965d#aisle 2--e13b89]]',
+      '',
+      '![[ref--c9965d#aisle 2--e13b89]]',
+      '',
+      '![image.png](tabs-asset:///assets/asset-dcdbc207744070fe.png)',
+      '',
+      '| a | b |',
+      '| --- | --- |',
+      '| c | d |',
+      '',
+      '~~struck out~~',
+      '',
+      '* [ ] Task goes here',
+      '> now quote',
+      '1. Numbered list mayhaps?',
+    ].join('\n')
+    state.noteAisleBodies = (state.noteAisleBodies ?? []).map((body) =>
+      body.id === 'aisle-source-1' ? { ...body, markdown: richMarkdown } : body,
+    )
+
+    const noteResult = applyCopyAsStructuralPayloadToState(state, targetLocation, {
+      version: 1,
+      scope: 'note',
+      action: 'copy',
+      source: sourceLocation,
+    })
+    expect(noteResult.status).toBe('applied')
+    const copiedBodyId = getLocationInfo(noteResult.state, targetLocation).noteBodyId
+    expect(copiedBodyId).not.toBe('body-source')
+    const copiedBody = noteResult.state.noteBodies.find((body) => body.id === copiedBodyId)
+    expect(copiedBody?.aisles.map((aisle) => getAisleMarkdown(aisle, noteResult.state.noteAisleBodies))).toEqual([
+      richMarkdown,
+      'source two',
+    ])
+
+    const aisleResult = applyCopyAsStructuralPayloadToState(state, targetLocation, {
+      version: 1,
+      scope: 'aisle',
+      action: 'copy',
+      source: sourceLocation,
+      aisleId: 'aisle-source-2',
+    })
+    expect(aisleResult.status).toBe('applied')
+    const targetBody = aisleResult.state.noteBodies.find((body) => body.id === 'body-target')
+    expect(targetBody?.aisles.map((aisle) => getAisleMarkdown(aisle, aisleResult.state.noteAisleBodies))).toEqual([
+      'target text',
+      'source two',
+    ])
+    expect(targetBody?.aisles[1]?.aisleBodyId).not.toBe('aisle-source-2')
+  })
+
+  it('applies linked duplicate payloads structurally', () => {
+    const state = createCopyAsState()
+    const noteResult = applyCopyAsStructuralPayloadToState(state, targetLocation, {
       version: 1,
       scope: 'note',
       action: 'duplicate',
       source: sourceLocation,
     })
     expect(noteResult.status).toBe('applied')
-    const duplicatedBodyId = getLocationInfo(noteResult.state, targetLocation).noteBodyId
-    const duplicatedBody = noteResult.state.noteBodies.find((body) => body.id === duplicatedBodyId)
-    expect(duplicatedBody?.aisles.map((aisle) => getAisleMarkdown(aisle, noteResult.state.noteAisleBodies))).toEqual([
-      'source one',
-      'source two',
-    ])
+    expect(getLocationInfo(noteResult.state, targetLocation).noteBodyId).toBe('body-source')
 
-    const aisleResult = applyCopyAsDuplicatePayloadToState(state, targetLocation, {
+    const aisleResult = applyCopyAsStructuralPayloadToState(state, targetLocation, {
       version: 1,
       scope: 'aisle',
       action: 'duplicate',
@@ -235,10 +329,11 @@ describe('copy-as clipboard helpers', () => {
       'target text',
       'source two',
     ])
+    expect(targetBody?.aisles[1]?.aisleBodyId).toBe('aisle-source-2')
   })
 
   it('blocks aisle duplicate pastes when the destination is full', () => {
-    const result = applyCopyAsDuplicatePayloadToState(createCopyAsState(), targetLocation, {
+    const result = applyCopyAsStructuralPayloadToState(createCopyAsState(), targetLocation, {
       version: 1,
       scope: 'aisle',
       action: 'duplicate',

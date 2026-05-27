@@ -101,7 +101,12 @@ export function buildInternalNoteLinkEditDraft(
   source: NoteLocation,
   edit: InternalNoteLinkEdit,
 ): NoteReferenceDraft {
-  const target = normalizeNoteReferenceTarget(appState, { ...edit.target, aisleIds: edit.aisleIds, heading: edit.heading })
+  const target = normalizeNoteReferenceTarget(appState, {
+    ...edit.target,
+    aisleIds: edit.aisleIds,
+    heading: edit.heading,
+    previewStart: edit.startAt === 'last-position' ? 'last-position' : undefined,
+  })
   return {
     ...buildDefaultNoteReferenceDraft(appState, source, 'note', '', 'context-menu'),
     modeLocked: true,
@@ -128,6 +133,11 @@ export function getNoteReferenceLinkSpec(
     ...normalizedTarget,
     aisleIds: target.aisleIds && target.aisleIds.length > 0 ? normalizedTarget.aisleIds : undefined,
     heading: normalizedTarget.heading,
+    startAt: normalizedTarget.heading
+      ? undefined
+      : normalizedTarget.previewStart === 'last-position'
+        ? 'last-position' as const
+        : 'top' as const,
   }
   const targetInfo = getLocationInfo(appState, normalizedTarget)
   if (!targetInfo.domain || !targetInfo.space || !targetInfo.tab || !targetInfo.noteBodyId) {
@@ -140,7 +150,10 @@ export function getNoteReferenceLinkSpec(
     href: syntax,
     syntax,
     label: labelOverride.trim() || getDefaultNoteLinkLabel(appState, source, normalizedTarget),
-    target: normalizedTarget,
+    target: {
+      ...normalizedTarget,
+      startAt: syntaxTarget.startAt,
+    },
     noteBodyId: targetInfo.noteBodyId,
   }
 }

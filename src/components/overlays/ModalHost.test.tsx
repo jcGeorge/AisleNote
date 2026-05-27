@@ -334,8 +334,11 @@ describe('link modal rendering', () => {
 
     expect(html).toContain('>aisle 1</button>')
     expect(html).toContain('>aisle 2</button>')
-    expect(html).toContain('aria-label="Header target"')
+    expect(html).toContain('aria-label="Link start"')
+    expect(html).toContain('>link starts at</span>')
+    expect(html).toMatch(/note-reference-heading-btn is-active"[^>]*>at the top<\/button>[\s\S]*>last position<\/button>/)
     expect(html).toContain('>last position</button>')
+    expect(html).toMatch(/>last position<\/button>[\s\S]*note-reference-heading-separator[\s\S]*>Alpha<\/button>/)
     expect(html).toContain('>Alpha</button>')
     expect(html).toContain('>Beta</button>')
     expect(html).toContain('--note-reference-heading-indent:0.78rem')
@@ -365,7 +368,7 @@ describe('link modal rendering', () => {
     expect(html).toContain('--note-reference-heading-indent:0.78rem')
   })
 
-  it('hides the heading chooser when the selected aisle has no headings', () => {
+  it('keeps the link start picker visible when the selected aisle has no headings', () => {
     const state = createState()
     state.noteBodies = [
       {
@@ -396,7 +399,10 @@ describe('link modal rendering', () => {
     )
 
     expect(html).toContain('>aisle 1</button>')
-    expect(html).not.toContain('aria-label="Header target"')
+    expect(html).toContain('aria-label="Link start"')
+    expect(html).toContain('>at the top</button>')
+    expect(html).toContain('>last position</button>')
+    expect(html).not.toContain('note-reference-heading-separator')
   })
 
   it('keeps the preview start picker visible when the selected aisle has no headings', () => {
@@ -454,6 +460,32 @@ describe('link modal rendering', () => {
     )
 
     expect(html).toContain('aria-label="Preview start"')
+    expect(html).toMatch(/note-reference-heading-btn "[^>]*>at the top<\/button>[\s\S]*note-reference-heading-btn is-active"[^>]*>last position<\/button>/)
+  })
+
+  it('preselects last position for note link edits that use saved-position starts', () => {
+    const html = renderModal(
+      {
+        type: 'insert-note-reference',
+        mode: 'note',
+        modeLocked: true,
+        insertAs: 'link',
+        source,
+        target: { ...source, previewStart: 'last-position' },
+        noteLabel: 'Existing',
+        url: '',
+        urlLabel: '',
+        internalEdit: {
+          label: 'Existing',
+          href: '[[Tab--123abc#last position|Existing]]',
+          target: source,
+          startAt: 'last-position',
+        },
+      },
+      createHeadingState(),
+    )
+
+    expect(html).toContain('aria-label="Link start"')
     expect(html).toMatch(/note-reference-heading-btn "[^>]*>at the top<\/button>[\s\S]*note-reference-heading-btn is-active"[^>]*>last position<\/button>/)
   })
 

@@ -1,11 +1,13 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const createInternalNoteLinkWidgetElement = vi.hoisted(() => vi.fn(() => ({ nodeType: 'link-widget' })))
 const createContextPreviewWidgetElement = vi.hoisted(() => vi.fn(() => ({ nodeType: 'preview-widget' })))
+const createReadonlyContextPreviewWidgetElement = vi.hoisted(() => vi.fn(() => ({ nodeType: 'readonly-preview-widget' })))
 
 vi.mock('./note-preview-widget', () => ({
   createContextPreviewWidgetElement,
   createInternalNoteLinkWidgetElement,
+  createReadonlyContextPreviewWidgetElement,
 }))
 
 import { createContextPreviewPlugin } from './note-preview-plugin'
@@ -52,6 +54,57 @@ function createTextDoc(text: string) {
 }
 
 describe('note preview plugin', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('renders full preview widgets in editor mode', () => {
+    const context = createPluginContext()
+    const payload = {
+      id: 'preview-id',
+      target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
+    }
+    const pluginFactory = createContextPreviewPlugin(context, {
+      sourceNoteBodyId: 'source-body',
+      getContextPreviewData: vi.fn(),
+      resolveContextPreviewToken: vi.fn(() => payload),
+      resolveInternalNoteReferenceToken: vi.fn(() => null),
+      navigateToNoteLocation: vi.fn(),
+      deleteContextPreview: vi.fn(),
+    }).wysiwygPlugins[0]()
+
+    const decorations = pluginFactory.props.decorations({ doc: createTextDoc('Before ![[Linked--123abc]] after') })
+    const widget = decorations.find((decoration: any) => decoration.type === 'widget')
+    widget.factory()
+
+    expect(createContextPreviewWidgetElement).toHaveBeenCalledWith(payload, expect.objectContaining({ sourceNoteBodyId: 'source-body' }))
+    expect(createReadonlyContextPreviewWidgetElement).not.toHaveBeenCalled()
+  })
+
+  it('renders navigation-only preview widgets in readonly-preview mode', () => {
+    const context = createPluginContext()
+    const payload = {
+      id: 'preview-id',
+      target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
+    }
+    const pluginFactory = createContextPreviewPlugin(context, {
+      sourceNoteBodyId: 'source-body',
+      getContextPreviewData: vi.fn(),
+      resolveContextPreviewToken: vi.fn(() => payload),
+      resolveInternalNoteReferenceToken: vi.fn(() => null),
+      navigateToNoteLocation: vi.fn(),
+      deleteContextPreview: vi.fn(),
+      renderMode: 'readonly-preview',
+    }).wysiwygPlugins[0]()
+
+    const decorations = pluginFactory.props.decorations({ doc: createTextDoc('Before ![[Linked--123abc]] after') })
+    const widget = decorations.find((decoration: any) => decoration.type === 'widget')
+    widget.factory()
+
+    expect(createReadonlyContextPreviewWidgetElement).toHaveBeenCalledWith(payload, expect.objectContaining({ sourceNoteBodyId: 'source-body' }))
+    expect(createContextPreviewWidgetElement).not.toHaveBeenCalled()
+  })
+
   it('passes stable source metadata to internal note link widgets', () => {
     const context = createPluginContext()
     const pluginFactory = createContextPreviewPlugin(context, {

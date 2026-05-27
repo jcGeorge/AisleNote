@@ -23,6 +23,7 @@ import {
   getBulletListMarkerFromMarkdownChar,
 } from './list-markers'
 import { BLOCK_INDENT_TOKEN, isHorizontalRuleMarkerLine } from '../markdown/markdown-utils'
+import { NOTE_CONTEXT_REFERENCE_RE } from '../notes/note-references'
 
 type ToastHtmlOpenTagToken = {
   type?: string
@@ -923,6 +924,32 @@ export function headingSpaceShortcutPlugin(context: {
     return true
   }
 
+  const isPreviewOnlyParagraph = (node: any) => {
+    if (node?.type?.name !== 'paragraph') return false
+    const text = String(node.textContent ?? '').replace(/\u200b/g, '').trim()
+    if (!text) return false
+    const withoutPreviews = text.replace(NOTE_CONTEXT_REFERENCE_RE, '').trim()
+    NOTE_CONTEXT_REFERENCE_RE.lastIndex = 0
+    return withoutPreviews.length === 0
+  }
+
+  const handleDeleteFromEmptyParagraphAfterPreview = (state: any, dispatch?: (tr: unknown) => void) => {
+    const context = getBlockContext(state)
+    if (!context) return false
+    const { $from, currentNode, previousNode, from } = context
+    if (currentNode.type.name !== 'paragraph') return false
+    if (!isEmptyEditorTextBlock(currentNode)) return false
+    if ($from.parentOffset !== currentNode.content.size) return false
+    if (!isPreviewOnlyParagraph(previousNode)) return false
+
+    const previousFrom = from - previousNode.nodeSize
+    let nextTr = state.tr.delete(previousFrom, from)
+    const caretPos = Math.min(previousFrom + 1, nextTr.doc.content.size)
+    nextTr = nextTr.setSelection(TextSelection.create(nextTr.doc, caretPos, caretPos)).scrollIntoView()
+    dispatch?.(nextTr)
+    return true
+  }
+
   const handleBackspaceFromEmptyParagraphAfterList = (state: any, dispatch?: (tr: unknown) => void) => {
     const context = getBlockContext(state)
     if (!context) return false
@@ -1010,6 +1037,7 @@ export function headingSpaceShortcutPlugin(context: {
             handleBackspaceFromHeadingAfterEmptyParagraph(state, dispatch) ||
             handleBackspaceFromEmptyParagraphAfterList(state, dispatch),
           Delete: (state: any, dispatch?: (tr: unknown) => void) =>
+            handleDeleteFromEmptyParagraphAfterPreview(state, dispatch) ||
             handleDeleteFromEmptyParagraphBeforeHeading(state, dispatch) ||
             handleDeleteFromEmptyParagraphBeforeList(state, dispatch),
           Space: applyParagraphSpaceShortcut,

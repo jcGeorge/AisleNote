@@ -87,6 +87,10 @@
   .toastui-editor-toolbar button.table-of-contents-toolbar-btn,
   .toastui-editor-defaultUI-toolbar button.aisles-toolbar-btn,
   .toastui-editor-toolbar button.aisles-toolbar-btn,
+  .toastui-editor-defaultUI-toolbar button.director-toolbar-btn,
+  .toastui-editor-toolbar button.director-toolbar-btn,
+  .toastui-editor-defaultUI-toolbar button.find-replace-toolbar-btn,
+  .toastui-editor-toolbar button.find-replace-toolbar-btn,
   .toastui-editor-defaultUI-toolbar button.editor-history-toolbar-btn,
   .toastui-editor-toolbar button.editor-history-toolbar-btn,
   .image-tool-btn {

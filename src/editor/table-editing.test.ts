@@ -19,6 +19,7 @@ import {
   moveSelectedTableBoundaryCaret,
   placeCaretOutsideTableAtCoords,
   placeTableCaretAtCoords,
+  selectFirstTableCellAfterPosition,
   selectTableNodeAtPosition,
   type TableControlOperation,
   type TableReorderAxis,
@@ -647,6 +648,25 @@ describe('table editing controls', () => {
 
     expect(moveTableCellSelectionByTab(view, 'forward')).toEqual({ handled: true, changed: false })
     expectSelectionInCell(view, 1, 1)
+  })
+
+  it('selects the first cell in the inserted table after a command anchor', () => {
+    const before = paragraph('before')
+    const table = buildTableBlock()
+    const doc = buildDocWithBlocks([before, table])
+    const view: any = {
+      state: EditorState.create({
+        doc,
+        selection: TextSelection.create(doc, 1),
+      }),
+      dispatch(transaction: any) {
+        view.state = view.state.apply(transaction)
+      },
+      focus: () => undefined,
+    }
+
+    expect(selectFirstTableCellAfterPosition(view, before.nodeSize)).toBe(true)
+    expect(view.state.selection.from).toBe(before.nodeSize + getCellTextPosition(buildDoc(), 0, 0))
   })
 
   it('wraps forward table tab navigation to the next row', () => {

@@ -7,7 +7,7 @@ import {
   getLocationInfo,
   listNoteLocationsForBody,
 } from '../notes/note-locations'
-import { removeContextReferencesForNoteLocationsFromAppState } from '../notes/note-references'
+import { removeNoteReferencesForNoteLocationsFromAppState } from '../notes/note-references'
 import { applyNoteCopyToState } from './note-copy'
 import { decoupleNoteLocationsInState } from './note-decouple'
 import {
@@ -112,10 +112,10 @@ export const useAppOverlayActions = ({
     return true
   }
 
-  const removeNotePreviewsForLocations = (locations: NoteLocation[]) => {
+  const removeNoteReferencesForLocations = (locations: NoteLocation[], resolverState = stateRef.current) => {
     if (locations.length === 0) return
     setState((previous) => {
-      const nextState = removeContextReferencesForNoteLocationsFromAppState(previous, locations)
+      const nextState = removeNoteReferencesForNoteLocationsFromAppState(previous, locations, resolverState)
       if (nextState !== previous) {
         stateRef.current = nextState
       }
@@ -352,13 +352,18 @@ export const useAppOverlayActions = ({
     }
 
     let nextToastMessage: string | null = null
+    const cleanupResolverState = stateRef.current
     const cleanupSpace = getActiveSpaceSnapshot()
-    const previewCleanupTargets = getNotePreviewCleanupTargetsForDeleteTarget(
-      cleanupSpace.data,
-      stateRef.current.activeDomainId,
-      cleanupSpace.id,
-      target,
-    )
+    const shouldRemoveReferences =
+      permanent || cleanupResolverState.ui.removeNoteReferencesOnTrash !== false
+    const referenceCleanupTargets = shouldRemoveReferences
+      ? getNotePreviewCleanupTargetsForDeleteTarget(
+          cleanupSpace.data,
+          cleanupResolverState.activeDomainId,
+          cleanupSpace.id,
+          target,
+        )
+      : []
 
     if (target.type === 'space') {
       deleteSpace(target.spaceId)
@@ -496,7 +501,7 @@ export const useAppOverlayActions = ({
     if (nextToastMessage) {
       pushToast(nextToastMessage, 'success')
     }
-    removeNotePreviewsForLocations(previewCleanupTargets)
+    removeNoteReferencesForLocations(referenceCleanupTargets, cleanupResolverState)
   }
 
   const deleteFromContext = () => {
@@ -762,10 +767,11 @@ export const useAppOverlayActions = ({
 
   const deleteAllTrash = () => {
     saveActiveCursorBeforeNavigation()
+    const cleanupResolverState = stateRef.current
     const cleanupSpace = getActiveSpaceSnapshot()
-    const previewCleanupTargets = getNotePreviewCleanupTargetsForTrash(
+    const referenceCleanupTargets = getNotePreviewCleanupTargetsForTrash(
       cleanupSpace.data,
-      stateRef.current.activeDomainId,
+      cleanupResolverState.activeDomainId,
       cleanupSpace.id,
     )
     setState((previous) => {
@@ -785,7 +791,7 @@ export const useAppOverlayActions = ({
         })),
       })
     })
-    removeNotePreviewsForLocations(previewCleanupTargets)
+    removeNoteReferencesForLocations(referenceCleanupTargets, cleanupResolverState)
     setTrashDomainId?.('')
     setTrashSpaceId?.('')
     setTrashTabId(TRASH_HOME_ID)

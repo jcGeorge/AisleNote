@@ -24,8 +24,8 @@ describe('toolbar layout model', () => {
     const toolIds = layout.items.flatMap((item) => (item.type === 'tool' ? [item.toolId] : []))
 
     expect(layout).toMatchObject({ id: DEFAULT_TOOLBAR_LAYOUT_ID, name: 'default' })
-    expect(toolIds.slice(0, 4)).toEqual(['copy', 'frontmatter', 'tableOfContents', 'aisles'])
-    expect(toolIds.slice(4, 6)).toEqual(['undo', 'redo'])
+    expect(toolIds.slice(0, 6)).toEqual(['copy', 'frontmatter', 'tableOfContents', 'aisles', 'director', 'findReplace'])
+    expect(toolIds.slice(6, 8)).toEqual(['undo', 'redo'])
     expect(toolIds).toContain('clear')
     expect(layout.items.filter((item) => item.type === 'spacer').length).toBeGreaterThan(0)
   })

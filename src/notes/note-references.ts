@@ -57,6 +57,7 @@ export type InternalNoteLinkHit = {
   target: NoteLocation
   aisleIds?: string[]
   heading?: NoteHeadingAnchor
+  startAt?: NoteNavigationTarget['startAt']
   from: number
   to: number
   occurrence: number
@@ -126,6 +127,20 @@ export function removeContextReferencesForNoteLocationsFromMarkdown(
   )
 }
 
+export function removeNoteReferencesForNoteLocationsFromMarkdown(
+  markdown: string,
+  sourceState: AppState,
+  deletedLocations: readonly NoteLocation[],
+  resolverState: AppState = sourceState,
+): string {
+  if (deletedLocations.length === 0) return markdown
+  const deletedLocationKeys = new Set(deletedLocations.map((location) => buildNoteLocationKey(location)))
+  return String(markdown ?? '').replace(WIKI_NOTE_REFERENCE_RE, (token) => {
+    const reference = resolveWikiReferenceToken(resolverState, token)
+    return reference && deletedLocationKeys.has(buildNoteLocationKey(reference.payload.target)) ? '' : token
+  })
+}
+
 export function removeContextReferencesForNoteLocationsFromAppState(
   sourceState: AppState,
   deletedLocations: readonly NoteLocation[],
@@ -138,6 +153,37 @@ export function removeContextReferencesForNoteLocationsFromAppState(
     const aisles = body.aisles.map((aisle) => {
       const currentMarkdown = getAisleMarkdown(aisle, nextState.noteAisleBodies)
       const markdown = removeContextReferencesForNoteLocationsFromMarkdown(currentMarkdown, nextState, deletedLocations)
+      if (markdown === currentMarkdown) return aisle
+      bodyChanged = true
+      return { ...aisle, markdown }
+    })
+
+    if (bodyChanged) {
+      nextState = syncNoteBodyAislesInState(nextState, body.id, aisles)
+    }
+  }
+
+  return nextState
+}
+
+export function removeNoteReferencesForNoteLocationsFromAppState(
+  sourceState: AppState,
+  deletedLocations: readonly NoteLocation[],
+  resolverState: AppState = sourceState,
+): AppState {
+  if (deletedLocations.length === 0) return sourceState
+
+  let nextState = sourceState
+  for (const body of sourceState.noteBodies) {
+    let bodyChanged = false
+    const aisles = body.aisles.map((aisle) => {
+      const currentMarkdown = getAisleMarkdown(aisle, nextState.noteAisleBodies)
+      const markdown = removeNoteReferencesForNoteLocationsFromMarkdown(
+        currentMarkdown,
+        nextState,
+        deletedLocations,
+        resolverState,
+      )
       if (markdown === currentMarkdown) return aisle
       bodyChanged = true
       return { ...aisle, markdown }

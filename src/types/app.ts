@@ -184,11 +184,13 @@ export type NoteHeadingAnchor = {
 }
 
 export type NotePreviewStart = 'last-position'
+export type NoteNavigationStart = 'top' | 'last-position'
 
 export type NoteNavigationTarget = NoteLocation & {
   aisleIds?: string[]
   heading?: NoteHeadingAnchor
   aisleId?: string
+  startAt?: NoteNavigationStart
 }
 
 export type NoteCursorEndpoint = {
@@ -217,6 +219,8 @@ export type ToolbarToolId =
   | 'frontmatter'
   | 'tableOfContents'
   | 'aisles'
+  | 'director'
+  | 'findReplace'
   | 'undo'
   | 'redo'
   | 'heading'
@@ -351,6 +355,8 @@ export type AppState = {
     findCaseSensitive?: boolean
     findWholeWord?: boolean
     findRegex?: boolean
+    findReplaceMode?: 'find' | 'replace'
+    removeNoteReferencesOnTrash?: boolean
     decoupledItemsKeepData?: boolean
     tableAddTargetMode: TableControlTargetMode
     tableDeleteTargetMode: TableControlTargetMode
@@ -662,6 +668,7 @@ export type InternalNoteLinkEdit = {
   target: NoteLocation
   aisleIds?: string[]
   heading?: NoteHeadingAnchor
+  startAt?: NoteNavigationStart
   from?: number
   to?: number
   occurrence?: number
@@ -710,6 +717,7 @@ export type ContextMenuState =
       target: NoteLocation
       aisleIds?: string[]
       heading?: NoteHeadingAnchor
+      startAt?: NoteNavigationStart
       from: number
       to: number
       occurrence: number

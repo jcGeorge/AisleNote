@@ -36,7 +36,11 @@ import {
   type WysiwygHistoryResult,
 } from './prosemirror-utils'
 import { type InternalNoteLinkHit, type ResolvedWikiNoteReference } from '../notes/note-references'
-import { readCopyAsPayloadFromDataTransfer, type CopyAsClipboardPayload } from '../notes/copy-as-clipboard'
+import {
+  isCopyAsClipboardTextMarker,
+  readCopyAsPayloadFromDataTransfer,
+  type CopyAsClipboardPayload,
+} from '../notes/copy-as-clipboard'
 import { insertPastedListIntoView } from './list-paste'
 import {
   getActiveTableContext,
@@ -78,6 +82,7 @@ type UseEditorDomEventsOptions = {
   openExternalLink: (url: string) => boolean
   insertPastedUrlAsLink: (label: string, url: string) => boolean
   onPasteCopyAsPayload: (payload: CopyAsClipboardPayload) => boolean
+  onPasteInvalidCopyAsPayload: () => boolean
   getToolbarFormatShortcut: (event: KeyboardEvent) => ToolbarFormatKey | null
   queueToolbarShortcutFeedback: (format: ToolbarFormatKey) => void
   syncToolbarFormatState: () => void
@@ -250,6 +255,7 @@ export function getInternalNoteLinkWidgetHitFromTarget(
     },
     aisleIds: reference.payload?.aisleIds ? [...reference.payload.aisleIds] : undefined,
     heading: reference.target.heading,
+    startAt: reference.target.startAt,
     from,
     to,
     occurrence,
@@ -319,6 +325,7 @@ export function useEditorDomEvents({
   openExternalLink,
   insertPastedUrlAsLink,
   onPasteCopyAsPayload,
+  onPasteInvalidCopyAsPayload,
   getToolbarFormatShortcut,
   queueToolbarShortcutFeedback,
   syncToolbarFormatState,
@@ -406,6 +413,7 @@ export function useEditorDomEvents({
         ...internalLinkHit.target,
         heading: internalLinkHit.heading,
         aisleId: internalLinkHit.heading ? undefined : internalLinkHit.aisleIds?.[0],
+        startAt: internalLinkHit.startAt,
       })
       return true
     }
@@ -643,14 +651,19 @@ export function useEditorDomEvents({
         pasteEvent.stopImmediatePropagation?.()
         return
       }
+      const rawText = pasteEvent.clipboardData?.getData('text/plain') ?? ''
+      if (isCopyAsClipboardTextMarker(rawText) && onPasteInvalidCopyAsPayload()) {
+        pasteEvent.preventDefault()
+        pasteEvent.stopPropagation()
+        pasteEvent.stopImmediatePropagation?.()
+        return
+      }
       if (multiLineEditRef.current) {
-        const text = pasteEvent.clipboardData?.getData('text/plain') ?? ''
-        if (text.length > 0 && tryApplyMultiLineEditInput({ type: 'insert-text', text })) {
+        if (rawText.length > 0 && tryApplyMultiLineEditInput({ type: 'insert-text', text: rawText })) {
           pasteEvent.preventDefault()
           return
         }
       }
-      const rawText = pasteEvent.clipboardData?.getData('text/plain') ?? ''
       const link = getPastedUrlLink(rawText)
       if (!link) return
       if (!insertPastedUrlAsLink(link.label, link.url)) return

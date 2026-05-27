@@ -29,6 +29,8 @@ type SharedEditorToolbarProps = {
   onOpenFrontmatter: () => void
   onOpenTableOfContents: () => void
   onOpenAisleEditModal: () => void
+  onOpenDirector: () => void
+  onOpenFindReplace: () => void
   onToggleHeading: () => void
   onCommand: (command: string, payload?: Record<string, unknown>) => void
   onHistory: (direction: 'undo' | 'redo') => void
@@ -50,6 +52,8 @@ type ToolbarRenderContext = {
   onOpenFrontmatter: () => void
   onOpenTableOfContents: () => void
   onOpenAisleEditModal: () => void
+  onOpenDirector: () => void
+  onOpenFindReplace: () => void
   onToggleHeading: () => void
   onCommand: (command: string, payload?: Record<string, unknown>) => void
   onHistory: (direction: 'undo' | 'redo') => void
@@ -90,6 +94,12 @@ function runToolbarTool(toolId: ToolbarToolId, context: ToolbarRenderContext) {
       return
     case 'aisles':
       context.onOpenAisleEditModal()
+      return
+    case 'director':
+      context.onOpenDirector()
+      return
+    case 'findReplace':
+      context.onOpenFindReplace()
       return
     case 'undo':
       context.onHistory('undo')
@@ -170,6 +180,8 @@ export function SharedEditorToolbar({
   onOpenFrontmatter,
   onOpenTableOfContents,
   onOpenAisleEditModal,
+  onOpenDirector,
+  onOpenFindReplace,
   onToggleHeading,
   onCommand,
   onHistory,
@@ -192,6 +204,8 @@ export function SharedEditorToolbar({
     onOpenFrontmatter,
     onOpenTableOfContents,
     onOpenAisleEditModal,
+    onOpenDirector,
+    onOpenFindReplace,
     onToggleHeading,
     onCommand,
     onHistory,

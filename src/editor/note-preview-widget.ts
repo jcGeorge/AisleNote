@@ -9,7 +9,7 @@ import {
   thematicBreakShortcutPlugin,
 } from './editor-setup'
 import { NOTE_PREVIEW_EDITOR_HOST_CLASS } from './note-preview-dom'
-import { getWysiwygView, restoreEditorCursorSelection } from './prosemirror-utils'
+import { collectProseMirrorTextPositions, getWysiwygView, restoreEditorCursorSelection } from './prosemirror-utils'
 import {
   prepareMarkdownForEditorDisplay,
   restoreEditorBlankParagraphs,
@@ -18,7 +18,10 @@ import {
 import { getHeadingOutlineFromDoc } from './heading-outline'
 import {
   getMarkdownLinkLabel,
+  INTERNAL_NOTE_LINK_MARKDOWN_RE,
+  NOTE_CONTEXT_REFERENCE_RE,
   type NoteContextReferencePayload,
+  type ResolvedWikiNoteReference,
 } from '../notes/note-references'
 import type { ContextPreviewData } from '../notes/note-preview-data'
 import type { NoteNavigationTarget, ResolvedNoteAisle } from '../types/app'
@@ -37,6 +40,8 @@ const DEFAULT_ROOT_FONT_SIZE_PX = 16
 export type NotePreviewWidgetOptions = {
   sourceNoteBodyId: string
   getContextPreviewData: (payload: NoteContextReferencePayload, sourceNoteBodyId: string) => ContextPreviewData
+  resolveContextPreviewToken?: (token: string) => NoteContextReferencePayload | null
+  resolveInternalNoteReferenceToken?: (token: string) => ResolvedWikiNoteReference | null
   navigateToNoteLocation: (target: NoteNavigationTarget) => void
   deleteContextPreview: (tokenId: string) => void
 }
@@ -105,6 +110,46 @@ function getPreviewTitleButtonClassName(kind: ContextPreviewData['titleButtons']
   if (kind === 'space') return 'rail-control context-preview-title-btn compact-scope-btn compact-space-btn is-space'
   if (kind === 'parent') return 'rail-control context-preview-title-btn btn btn-sm tab-btn parent-tab-btn is-parent'
   return 'rail-control context-preview-title-btn btn btn-sm tab-btn subtab-btn is-subtab'
+}
+
+function getPreviewNavigationTarget(payload: NoteContextReferencePayload): NoteNavigationTarget {
+  return {
+    ...payload.target,
+    heading: payload.heading,
+    aisleId: payload.heading ? undefined : payload.aisleIds?.[0],
+  }
+}
+
+function stopPreviewNavigationEvent(event: Event) {
+  event.preventDefault()
+  event.stopPropagation()
+}
+
+function blockReadonlyPreviewEditEvent(event: Event) {
+  event.stopPropagation()
+  event.preventDefault()
+}
+
+function stopReadonlyPreviewPointerEvent(event: Event) {
+  event.stopPropagation()
+}
+
+function renderReadonlyPreviewTitleContent(wrapper: HTMLElement, data: ContextPreviewData) {
+  wrapper.replaceChildren()
+  if (data.titleButtons.length === 0) {
+    const fallback = document.createElement('span')
+    fallback.className = 'context-preview-title-missing'
+    fallback.textContent = data.locationLabel
+    wrapper.append(fallback)
+    return
+  }
+
+  data.titleButtons.forEach((button) => {
+    const chip = document.createElement('span')
+    chip.className = getPreviewTitleButtonClassName(button.kind)
+    chip.textContent = button.label
+    wrapper.append(chip)
+  })
 }
 
 function getPreviewHeightCapRem(previewSize: NotePreviewSize): number {
@@ -394,6 +439,192 @@ function fitPreviewEditorHeight(
   }
 }
 
+export function createReadonlyContextPreviewWidgetElement(
+  payload: NoteContextReferencePayload,
+  options: NotePreviewWidgetOptions,
+) {
+  const data = options.getContextPreviewData(payload, options.sourceNoteBodyId)
+  const wrapper = document.createElement('span')
+  wrapper.className = 'context-preview-navigation-widget'
+  wrapper.setAttribute('contenteditable', 'false')
+  wrapper.title = data.locationLabel
+  if (data.status !== 'ready' && data.status !== 'empty') wrapper.setAttribute('aria-disabled', 'true')
+  wrapper.classList.toggle('is-blocked', data.status === 'blocked')
+  wrapper.classList.toggle('is-missing', data.status === 'missing')
+  const title = document.createElement('span')
+  title.className = 'context-preview-navigation-title'
+  title.setAttribute('role', 'button')
+  title.setAttribute('tabindex', '0')
+  title.setAttribute('aria-label', `Open note preview target: ${data.locationLabel}`)
+  renderReadonlyPreviewTitleContent(title, data)
+  wrapper.append(title)
+
+  let cleanupContent = () => {}
+
+  const activate = (event: Event) => {
+    stopPreviewNavigationEvent(event)
+    if (data.status !== 'ready' && data.status !== 'empty') return
+    options.navigateToNoteLocation(getPreviewNavigationTarget(payload))
+  }
+
+  title.addEventListener('pointerdown', stopPreviewNavigationEvent)
+  title.addEventListener('mousedown', stopPreviewNavigationEvent)
+  title.addEventListener('click', activate)
+  title.addEventListener('keydown', (event) => {
+    const keyboardEvent = event as KeyboardEvent
+    if (keyboardEvent.key !== 'Enter' && keyboardEvent.key !== ' ') return
+    activate(keyboardEvent)
+  })
+
+  if (data.status === 'ready' && data.selectedAisle) {
+    const editorHost = document.createElement('span')
+    editorHost.className = `${NOTE_PREVIEW_EDITOR_HOST_CLASS} context-preview-nested-editor-host is-readonly`
+    const heightRem = NOTE_PREVIEW_SMALL_HEIGHT_CAP_REM
+    const rootFontSizePx = getRootFontSizePx(editorHost)
+    editorHost.style.setProperty('--note-preview-editor-height', `${heightRem}rem`)
+    ;['pointerdown', 'mousedown', 'click'].forEach((eventName) => {
+      editorHost.addEventListener(eventName, stopReadonlyPreviewPointerEvent)
+    })
+    ;['keydown', 'beforeinput', 'paste', 'drop'].forEach((eventName) => {
+      editorHost.addEventListener(eventName, blockReadonlyPreviewEditEvent, true)
+    })
+
+    const editor = new Editor({
+      el: editorHost,
+      initialValue: prepareMarkdownForEditorDisplay(data.selectedAisle.markdown),
+      initialEditType: 'wysiwyg',
+      previewStyle: 'tab',
+      hideModeSwitch: true,
+      toolbarItems: [],
+      height: `${getPreviewHeightPx(heightRem, rootFontSizePx)}px`,
+      minHeight: '0px',
+      autofocus: false,
+      usageStatistics: false,
+      plugins: [
+        listMarkerPlugin,
+        blockIndentPlugin,
+        annotationLinePlugin,
+        highlightPlugin,
+        headingSpaceShortcutPlugin,
+        thematicBreakShortcutPlugin,
+      ],
+    })
+    restoreEditorBlankParagraphs(editor, data.selectedAisle.markdown)
+    const smartHeight = fitPreviewEditorHeight(editorHost, heightRem, () => data.selectedAisle?.markdown ?? '', editor)
+    const view = getWysiwygView(editor)
+    if (view?.setProps) {
+      view.setProps({ editable: () => false })
+      view.dom?.setAttribute?.('contenteditable', 'false')
+    }
+    cleanupContent = () => {
+      smartHeight.cleanup()
+      ;['pointerdown', 'mousedown', 'click'].forEach((eventName) => {
+        editorHost.removeEventListener(eventName, stopReadonlyPreviewPointerEvent)
+      })
+      ;['keydown', 'beforeinput', 'paste', 'drop'].forEach((eventName) => {
+        editorHost.removeEventListener(eventName, blockReadonlyPreviewEditEvent, true)
+      })
+      try {
+        editor.destroy()
+      } catch {
+        // Toast UI can throw if an embedded editor is destroyed during ProseMirror widget cleanup.
+      }
+    }
+    wrapper.append(editorHost)
+  } else if (data.status !== 'ready') {
+    const status = document.createElement('span')
+    status.className = 'context-preview-navigation-status'
+    status.textContent = getPreviewStatusText(data)
+    if (status.textContent) wrapper.append(status)
+  }
+
+  ;(wrapper as HTMLElement & { destroyReadonlyPreview?: () => void }).destroyReadonlyPreview = cleanupContent
+  return wrapper
+}
+
+function createReadonlyPreviewReferencePlugin(context: any, options: NotePreviewWidgetOptions) {
+  const resolveContextPreviewToken = options.resolveContextPreviewToken
+  const resolveInternalNoteReferenceToken = options.resolveInternalNoteReferenceToken
+  if (!resolveContextPreviewToken || !resolveInternalNoteReferenceToken) return null
+
+  const { Plugin } = context.pmState
+  const { Decoration, DecorationSet } = context.pmView
+  return {
+    wysiwygPlugins: [
+      () =>
+        new Plugin({
+          props: {
+            decorations: (editorState: any) => {
+              const decorations: unknown[] = []
+              const docText = collectProseMirrorTextPositions(editorState.doc)
+              editorState.doc.descendants((node: any, pos: number) => {
+                if (!node.isText || typeof node.text !== 'string') return
+                for (const match of node.text.matchAll(NOTE_CONTEXT_REFERENCE_RE)) {
+                  const payload = resolveContextPreviewToken(match[0])
+                  if (!payload) continue
+                  const from = pos + (match.index ?? 0)
+                  const to = from + match[0].length
+                  decorations.push(
+                    Decoration.widget(from, () => createReadonlyContextPreviewWidgetElement(payload, options), {
+                      key: `readonly-note-preview-${from}-${to}-${match[0]}`,
+                      side: -1,
+                      destroy: (node: HTMLElement & { destroyReadonlyPreview?: () => void }) => node.destroyReadonlyPreview?.(),
+                    }),
+                  )
+                  decorations.push(Decoration.inline(from, to, { class: 'note-context-token-hidden' }))
+                }
+              })
+
+              let internalLinkOccurrence = 0
+              for (const match of docText.text.matchAll(INTERNAL_NOTE_LINK_MARKDOWN_RE)) {
+                if (match[0].startsWith('!')) continue
+                const occurrence = internalLinkOccurrence
+                internalLinkOccurrence += 1
+                const reference = resolveInternalNoteReferenceToken(match[0])
+                if (!reference) continue
+
+                const startIndex = match.index ?? 0
+                const endIndex = startIndex + match[0].length - 1
+                const from = docText.positions[startIndex]
+                const last = docText.positions[endIndex]
+                const rangePositions = docText.positions.slice(startIndex, endIndex + 1)
+                if (
+                  from === undefined ||
+                  last === undefined ||
+                  from < 0 ||
+                  last < from ||
+                  rangePositions.some((position) => position < 0)
+                ) {
+                  continue
+                }
+
+                decorations.push(
+                  Decoration.widget(
+                    from,
+                    () =>
+                      createInternalNoteLinkWidgetElement(
+                        reference.label,
+                        reference.target,
+                        match[0],
+                        options.navigateToNoteLocation,
+                        { from, to: last + 1, occurrence },
+                      ),
+                    {
+                      key: `readonly-internal-note-link-${from}-${last}-${match[0]}`,
+                      side: -1,
+                    },
+                  ),
+                )
+                decorations.push(Decoration.inline(from, last + 1, { class: 'internal-note-link-source-hidden' }))
+              }
+              return DecorationSet.create(editorState.doc, decorations)
+            },
+          },
+        }),
+    ],
+  }
+}
+
 export function createContextPreviewWidgetElement(
   payload: NoteContextReferencePayload,
   options: NotePreviewWidgetOptions,
@@ -482,18 +713,22 @@ export function createContextPreviewWidgetElement(
     const rootFontSizePx = getRootFontSizePx(editorHost)
     editorHost.style.setProperty('--note-preview-editor-height', `${heightRem}rem`)
 
-    const stopOuterEditorEvent = (event: Event) => {
-      event.stopPropagation()
-      if (event.type === 'keydown' || event.type === 'beforeinput' || event.type === 'paste' || event.type === 'drop') {
-        event.preventDefault()
-      }
-    }
-    ;['pointerdown', 'mousedown', 'click', 'keydown', 'beforeinput', 'paste', 'drop'].forEach((eventName) => {
-      editorHost.addEventListener(eventName, stopOuterEditorEvent, true)
+    ;['pointerdown', 'mousedown', 'click'].forEach((eventName) => {
+      editorHost.addEventListener(eventName, stopReadonlyPreviewPointerEvent)
+    })
+    ;['keydown', 'beforeinput', 'paste', 'drop'].forEach((eventName) => {
+      editorHost.addEventListener(eventName, blockReadonlyPreviewEditEvent, true)
     })
 
     let currentAisleId = aisle.id
     let currentMarkdown = aisle.markdown
+    function readonlyPreviewReferencesPlugin(context: any) {
+      return createReadonlyPreviewReferencePlugin(context, options)
+    }
+    const referencePlugins =
+      options.resolveContextPreviewToken && options.resolveInternalNoteReferenceToken
+        ? [readonlyPreviewReferencesPlugin]
+        : []
     const editor = new Editor({
       el: editorHost,
       initialValue: prepareMarkdownForEditorDisplay(currentMarkdown),
@@ -512,6 +747,7 @@ export function createContextPreviewWidgetElement(
         highlightPlugin,
         headingSpaceShortcutPlugin,
         thematicBreakShortcutPlugin,
+        ...referencePlugins,
       ],
     })
     restoreEditorBlankParagraphs(editor, currentMarkdown)
@@ -572,8 +808,11 @@ export function createContextPreviewWidgetElement(
     contextEditorCleanups.push(() => {
       smartHeight.cleanup()
       if (refreshInterval) ownerWindow.clearInterval?.(refreshInterval)
-      ;['pointerdown', 'mousedown', 'click', 'keydown', 'beforeinput', 'paste', 'drop'].forEach((eventName) => {
-        editorHost.removeEventListener(eventName, stopOuterEditorEvent, true)
+      ;['pointerdown', 'mousedown', 'click'].forEach((eventName) => {
+        editorHost.removeEventListener(eventName, stopReadonlyPreviewPointerEvent)
+      })
+      ;['keydown', 'beforeinput', 'paste', 'drop'].forEach((eventName) => {
+        editorHost.removeEventListener(eventName, blockReadonlyPreviewEditEvent, true)
       })
       try {
         editor.destroy()

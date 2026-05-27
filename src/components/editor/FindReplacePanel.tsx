@@ -228,6 +228,12 @@ export function FindReplacePanel({
       className="find-replace-panel"
       role="dialog"
       aria-label={replaceMode ? 'Find and replace' : 'Find'}
+      onKeyDownCapture={(event) => {
+        if (event.key !== 'Escape') return
+        event.preventDefault()
+        event.stopPropagation()
+        onClose()
+      }}
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
     >

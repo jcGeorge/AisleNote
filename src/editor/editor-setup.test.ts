@@ -132,6 +132,28 @@ describe('paragraph space shortcuts', () => {
     expect(getParagraphSpaceShortcut('*')).toEqual({ kind: 'bulletList' })
     expect(getParagraphSpaceShortcut('2.')).toEqual({ kind: 'numberedList', order: 2 })
   })
+
+  it('deletes a preview-only paragraph before an empty paragraph on forward Delete', () => {
+    const bindings = getParagraphSpaceBindings()
+    const preview = paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text('![[Linked--123abc]]'))
+    const empty = paragraphShortcutSchema.nodes.paragraph.create()
+    const heading = paragraphShortcutSchema.nodes.heading.create({ level: 2 }, paragraphShortcutSchema.text('After'))
+    const doc = paragraphShortcutSchema.nodes.doc.create(null, [preview, empty, heading])
+    const state = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, preview.nodeSize + 1),
+    })
+    let nextState = state
+
+    expect(bindings.Delete(state, (tr: unknown) => {
+      nextState = state.apply(tr as any)
+    })).toBe(true)
+
+    expect(nextState.doc.childCount).toBe(2)
+    expect(nextState.doc.child(0).textContent).toBe('')
+    expect(nextState.doc.child(1).textContent).toBe('After')
+    expect(nextState.selection.from).toBe(1)
+  })
 })
 
 const paragraphShortcutSchema = new Schema({

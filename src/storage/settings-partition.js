@@ -46,6 +46,8 @@ const DEFAULT_SYNCED_UI_SETTINGS = {
   findCaseSensitive: false,
   findWholeWord: false,
   findRegex: false,
+  findReplaceMode: 'find',
+  removeNoteReferencesOnTrash: true,
   decoupledItemsKeepData: true,
   tableAddTargetMode: 'bottom-right',
   tableDeleteTargetMode: 'bottom-right',
@@ -81,6 +83,10 @@ function optionalString(value, fallback) {
 
 function normalizeNewAislePlacement(value) {
   return value === 'right-of-focus' || value === 'end' ? value : DEFAULT_SYNCED_UI_SETTINGS.newAislePlacement
+}
+
+function normalizeFindReplaceMode(value) {
+  return value === 'replace' || value === 'find' ? value : DEFAULT_SYNCED_UI_SETTINGS.findReplaceMode
 }
 
 function optionalArray(value, fallback) {
@@ -270,6 +276,11 @@ export function extractSyncedUiSettings(rawUi) {
     findCaseSensitive: optionalBoolean(ui.findCaseSensitive, DEFAULT_SYNCED_UI_SETTINGS.findCaseSensitive),
     findWholeWord: optionalBoolean(ui.findWholeWord, DEFAULT_SYNCED_UI_SETTINGS.findWholeWord),
     findRegex: optionalBoolean(ui.findRegex, DEFAULT_SYNCED_UI_SETTINGS.findRegex),
+    findReplaceMode: normalizeFindReplaceMode(ui.findReplaceMode),
+    removeNoteReferencesOnTrash: optionalBoolean(
+      ui.removeNoteReferencesOnTrash,
+      DEFAULT_SYNCED_UI_SETTINGS.removeNoteReferencesOnTrash,
+    ),
     decoupledItemsKeepData: optionalBoolean(ui.decoupledItemsKeepData, DEFAULT_SYNCED_UI_SETTINGS.decoupledItemsKeepData),
     tableAddTargetMode: optionalString(ui.tableAddTargetMode, DEFAULT_SYNCED_UI_SETTINGS.tableAddTargetMode),
     tableDeleteTargetMode: optionalString(ui.tableDeleteTargetMode, DEFAULT_SYNCED_UI_SETTINGS.tableDeleteTargetMode),
@@ -338,6 +349,8 @@ export function extractUiPreferences(appState) {
     findCaseSensitive: syncedUi.findCaseSensitive,
     findWholeWord: syncedUi.findWholeWord,
     findRegex: syncedUi.findRegex,
+    findReplaceMode: syncedUi.findReplaceMode,
+    removeNoteReferencesOnTrash: syncedUi.removeNoteReferencesOnTrash,
     decoupledItemsKeepData: syncedUi.decoupledItemsKeepData,
     tableAddTargetMode: syncedUi.tableAddTargetMode,
     tableDeleteTargetMode: syncedUi.tableDeleteTargetMode,

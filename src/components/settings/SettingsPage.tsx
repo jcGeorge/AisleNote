@@ -117,6 +117,7 @@ type SettingsPageProps = {
   tableDeleteTargetModeDraft: TableControlTargetMode
   tableOfContentsScopeDraft: TableOfContentsScope
   newAislePlacementDraft: NewAislePlacement
+  removeNoteReferencesOnTrashDraft: boolean
   frontmatterDraft: FrontmatterSettings
   frontmatterDraftDirty: boolean
   toolbarLayouts: ToolbarLayout[]
@@ -147,6 +148,7 @@ type SettingsPageProps = {
   onTableDeleteTargetModeChange: (mode: TableControlTargetMode) => void
   onTableOfContentsScopeChange: (scope: TableOfContentsScope) => void
   onNewAislePlacementChange: (placement: NewAislePlacement) => void
+  onRemoveNoteReferencesOnTrashChange: (enabled: boolean) => void
   onTipEnabledChange: (tipId: TipId, enabled: boolean) => void
   onSelectToolbarLayout: (layoutId: string) => void
   onCreateToolbarLayout: () => void
@@ -203,6 +205,7 @@ export function SettingsPage({
   tableDeleteTargetModeDraft,
   tableOfContentsScopeDraft,
   newAislePlacementDraft,
+  removeNoteReferencesOnTrashDraft,
   frontmatterDraft,
   frontmatterDraftDirty,
   toolbarLayouts,
@@ -233,6 +236,7 @@ export function SettingsPage({
   onTableDeleteTargetModeChange,
   onTableOfContentsScopeChange,
   onNewAislePlacementChange,
+  onRemoveNoteReferencesOnTrashChange,
   onTipEnabledChange,
   onSelectToolbarLayout,
   onCreateToolbarLayout,
@@ -422,6 +426,22 @@ export function SettingsPage({
       </div>
     )
   }
+
+  const renderRemoveNoteReferencesOnTrashSetting = () => (
+    <div className="settings-hotkey-row">
+      <span className="settings-hotkey-label">remove all links to a note when it's trashed</span>
+      <div className="form-check form-switch settings-switch">
+        <input
+          className="form-check-input"
+          type="checkbox"
+          role="switch"
+          checked={removeNoteReferencesOnTrashDraft}
+          aria-label="remove all links to a note when it's trashed"
+          onChange={(event) => onRemoveNoteReferencesOnTrashChange(event.target.checked)}
+        />
+      </div>
+    </div>
+  )
 
   return (
     <section className="settings-page-wrap">
@@ -938,6 +958,7 @@ export function SettingsPage({
             <p className="settings-help">synced profile settings</p>
             {renderTableOfContentsScopeSetting()}
             {renderNewAislePlacementSetting()}
+            {renderRemoveNoteReferencesOnTrashSetting()}
             {renderTableControlTargetSetting(
               'add table row or column',
               tableAddTargetModeDraft,

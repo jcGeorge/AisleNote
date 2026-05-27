@@ -14,6 +14,8 @@ export const TOOLBAR_TOOL_IDS = [
   'frontmatter',
   'tableOfContents',
   'aisles',
+  'director',
+  'findReplace',
   'undo',
   'redo',
   'heading',
@@ -42,6 +44,8 @@ export const TOOLBAR_TOOL_LABELS: Record<ToolbarToolId, string> = {
   frontmatter: 'Frontmatter',
   tableOfContents: 'Table of contents',
   aisles: 'Aisles',
+  director: 'Director',
+  findReplace: 'Find & replace',
   undo: 'Undo',
   redo: 'Redo',
   heading: 'Headings',
@@ -66,12 +70,12 @@ export const TOOLBAR_TOOL_LABELS: Record<ToolbarToolId, string> = {
 }
 
 const TOOLBAR_TOOL_ID_SET = new Set<string>(TOOLBAR_TOOL_IDS)
-const NOTE_TOOL_IDS = new Set<ToolbarToolId>(['copy', 'frontmatter', 'tableOfContents', 'aisles'])
+const NOTE_TOOL_IDS = new Set<ToolbarToolId>(['copy', 'frontmatter', 'tableOfContents', 'aisles', 'director', 'findReplace'])
 const HISTORY_TOOL_IDS = new Set<ToolbarToolId>(['undo', 'redo'])
 const FORMAT_TOOL_IDS = new Set<ToolbarToolId>(['heading', 'bold', 'italic', 'highlight', 'strike'])
 
 const DEFAULT_TOOLBAR_TOOL_GROUPS: ToolbarToolId[][] = [
-  ['copy', 'frontmatter', 'tableOfContents', 'aisles'],
+  ['copy', 'frontmatter', 'tableOfContents', 'aisles', 'director', 'findReplace'],
   ['undo', 'redo'],
   ['heading', 'bold', 'italic', 'highlight', 'strike'],
   ['taskList', 'bulletList', 'orderedList', 'dashList'],

@@ -1,5 +1,6 @@
 import { Editor } from '@toast-ui/editor'
 import { useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
+import { TextSelection } from 'prosemirror-state'
 import { buildAisleEditorKey } from './aisle-editor'
 import {
   getEditorCursorSelection,
@@ -52,6 +53,7 @@ type UsePendingNoteCursorRestoreParams = {
   pendingCreatedEditRef: MutableRefObject<unknown>
   pendingFocusToAisleIdRef: MutableRefObject<string | null>
   pendingCursorRestoreRef: MutableRefObject<PendingCursorRestore | null>
+  pendingNavigationTopAisleIdRef: MutableRefObject<string | null>
   activateAisleEditor: (editorKey: string, options?: { focus?: boolean; flushPrevious?: boolean; allowDuringPendingRename?: boolean }) => boolean
 }
 
@@ -164,6 +166,7 @@ export const usePendingNoteCursorRestore = ({
   pendingCreatedEditRef,
   pendingFocusToAisleIdRef,
   pendingCursorRestoreRef,
+  pendingNavigationTopAisleIdRef,
   activateAisleEditor,
 }: UsePendingNoteCursorRestoreParams) => {
   useEffect(() => {
@@ -184,6 +187,16 @@ export const usePendingNoteCursorRestore = ({
     const animationFrame = window.requestAnimationFrame(() => {
       const editorKey = buildAisleEditorKey(activeNoteBodyId, targetAisleId)
       if (activateAisleEditor(editorKey, { focus: shouldFocus })) {
+        if (pendingNavigationTopAisleIdRef.current === targetAisleId) {
+          const view = getWysiwygView(editorRef.current)
+          const docSize = view?.state?.doc?.content?.size ?? 0
+          if (view && typeof view.dispatch === 'function') {
+            const topPosition = Math.min(1, Math.max(0, docSize))
+            view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, topPosition, topPosition)).scrollIntoView())
+          }
+          pendingNavigationTopAisleIdRef.current = null
+          pendingCursorRestoreRef.current = null
+        }
         if (pendingFocusToAisleIdRef.current === targetAisleId) {
           pendingFocusToAisleIdRef.current = null
         }
@@ -210,5 +223,6 @@ export const usePendingNoteCursorRestore = ({
     pendingCreatedEditRef,
     pendingFocusToAisleIdRef,
     pendingCursorRestoreRef,
+    pendingNavigationTopAisleIdRef,
   ])
 }

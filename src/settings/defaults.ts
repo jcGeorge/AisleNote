@@ -52,6 +52,8 @@ export const DEFAULT_UI_SETTINGS: AppState['ui'] = {
   findCaseSensitive: false,
   findWholeWord: false,
   findRegex: false,
+  findReplaceMode: 'find',
+  removeNoteReferencesOnTrash: true,
   decoupledItemsKeepData: true,
   tableAddTargetMode: 'bottom-right',
   tableDeleteTargetMode: 'bottom-right',
@@ -373,6 +375,10 @@ export function normalizeNewAislePlacement(value: unknown): NewAislePlacement {
   return value === 'right-of-focus' || value === 'end' ? value : 'end'
 }
 
+export function normalizeFindReplaceMode(value: unknown): AppState['ui']['findReplaceMode'] {
+  return value === 'replace' || value === 'find' ? value : DEFAULT_UI_SETTINGS.findReplaceMode
+}
+
 export function normalizeUiSettings(raw: unknown): AppState['ui'] {
   if (!raw || typeof raw !== 'object') return DEFAULT_UI_SETTINGS
   const obj = raw as Record<string, unknown>
@@ -401,6 +407,11 @@ export function normalizeUiSettings(raw: unknown): AppState['ui'] {
       typeof obj.findWholeWord === 'boolean' ? obj.findWholeWord : DEFAULT_UI_SETTINGS.findWholeWord,
     findRegex:
       typeof obj.findRegex === 'boolean' ? obj.findRegex : DEFAULT_UI_SETTINGS.findRegex,
+    findReplaceMode: normalizeFindReplaceMode(obj.findReplaceMode),
+    removeNoteReferencesOnTrash:
+      typeof obj.removeNoteReferencesOnTrash === 'boolean'
+        ? obj.removeNoteReferencesOnTrash
+        : DEFAULT_UI_SETTINGS.removeNoteReferencesOnTrash,
     decoupledItemsKeepData:
       typeof obj.decoupledItemsKeepData === 'boolean'
         ? obj.decoupledItemsKeepData

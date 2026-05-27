@@ -58,6 +58,16 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html).toContain('<strong>preview</strong>')
   })
 
+  it('renders the custom horizontal aisle scrollbar for split notes', () => {
+    const html = renderWorkspace(new Set(['a']))
+
+    expect(html).toContain('note-aisle-horizontal-scrollbar')
+    expect(html).toContain('note-aisle-horizontal-scrollbar-track')
+    expect(html).toContain('note-aisle-horizontal-scrollbar-thumb')
+    expect(html).toContain('role="scrollbar"')
+    expect(html).toContain('aria-label="Scroll aisles horizontally"')
+  })
+
   it('renders data image previews without stripping the image URL', () => {
     const imageAisles: ResolvedNoteAisle[] = [{ id: 'image', aisleBodyId: 'image', markdown: '![Diagram](data:image/png;base64,abc)' }]
     const html = renderToStaticMarkup(
@@ -82,6 +92,7 @@ describe('NoteWorkspace aisle mounting', () => {
     )
 
     expect(html).toContain('src="data:image/png;base64,abc"')
+    expect(html).not.toContain('note-aisle-horizontal-scrollbar')
   })
 
   it('renders fallback aisles that start with a heading', () => {

@@ -318,6 +318,7 @@ export function getInternalNoteLinkHitAtDocPosition(
         },
         aisleIds: reference.payload?.aisleIds ? [...reference.payload.aisleIds] : undefined,
         heading: reference.target.heading,
+        startAt: reference.target.startAt,
         from,
         to: last + 1,
         occurrence: currentOccurrence,

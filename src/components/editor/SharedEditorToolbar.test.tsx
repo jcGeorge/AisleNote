@@ -31,6 +31,8 @@ describe('SharedEditorToolbar block quote and block indent controls', () => {
         onOpenFrontmatter={noop}
         onOpenTableOfContents={noop}
         onOpenAisleEditModal={noop}
+        onOpenDirector={noop}
+        onOpenFindReplace={noop}
         onToggleHeading={noop}
         onCommand={noop}
         onHistory={noop}
@@ -59,6 +61,12 @@ describe('SharedEditorToolbar block quote and block indent controls', () => {
     expect(html).not.toContain('>ToC</button>')
     expect(html).toContain('aisles-toolbar-icon')
     expect(html).toContain('viewBox="0 0 36 32"')
+    expect(html).toContain('title="Director"')
+    expect(html).toContain('aria-label="Director"')
+    expect(html).toContain('director-toolbar-icon')
+    expect(html).toContain('title="Find &amp; replace"')
+    expect(html).toContain('aria-label="Find &amp; replace"')
+    expect(html).toContain('find-replace-toolbar-icon')
     expect(html).toContain('title="Highlight"')
     expect(html).toContain('aria-label="Highlight"')
     expect(html).toContain('highlight')
@@ -68,7 +76,7 @@ describe('SharedEditorToolbar block quote and block indent controls', () => {
     expect(html).toContain('aria-label="Redo"')
     expect(html).toContain('editor-history-toolbar-btn-undo')
     expect(html).toContain('editor-history-toolbar-btn-redo')
-    expect(html.match(/viewBox="0 0 32 32"/g)).toHaveLength(2)
+    expect(html.match(/editor-history-toolbar-icon/g)).toHaveLength(2)
     expect(html).toContain('editor-history-toolbar-head')
     expect(html).not.toContain('note-link-toolbar-btn')
   })
@@ -89,6 +97,8 @@ describe('SharedEditorToolbar block quote and block indent controls', () => {
         onOpenFrontmatter={noop}
         onOpenTableOfContents={noop}
         onOpenAisleEditModal={noop}
+        onOpenDirector={noop}
+        onOpenFindReplace={noop}
         onToggleHeading={noop}
         onCommand={noop}
         onHistory={noop}
@@ -123,6 +133,8 @@ describe('SharedEditorToolbar block quote and block indent controls', () => {
         onOpenFrontmatter={noop}
         onOpenTableOfContents={noop}
         onOpenAisleEditModal={noop}
+        onOpenDirector={noop}
+        onOpenFindReplace={noop}
         onToggleHeading={noop}
         onCommand={noop}
         onHistory={noop}
@@ -170,6 +182,8 @@ describe('SharedEditorToolbar block quote and block indent controls', () => {
         onOpenFrontmatter={noop}
         onOpenTableOfContents={noop}
         onOpenAisleEditModal={noop}
+        onOpenDirector={noop}
+        onOpenFindReplace={noop}
         onToggleHeading={noop}
         onCommand={noop}
         onHistory={noop}
@@ -199,6 +213,8 @@ describe('SharedEditorToolbar block quote and block indent controls', () => {
         onOpenFrontmatter={noop}
         onOpenTableOfContents={noop}
         onOpenAisleEditModal={noop}
+        onOpenDirector={noop}
+        onOpenFindReplace={noop}
         onToggleHeading={noop}
         onCommand={noop}
         onHistory={noop}

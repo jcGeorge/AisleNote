@@ -107,6 +107,7 @@ describe('note reference model', () => {
     expect(sameSpace.href).toMatch(/^\[\[Beta prime--[0-9a-f]{6}\]\]$/)
     expect(crossSpace.href).toMatch(/^\[\[Elsewhere--[0-9a-f]{6}\]\]$/)
     expect(sameSpace.href).not.toContain('#')
+    expect(sameSpace.target.startAt).toBe('top')
   })
 
   it('keeps @-style no-heading links unanchored and serializes edited heading anchors', () => {
@@ -136,6 +137,22 @@ describe('note reference model', () => {
     expect(anchored.ok).toBe(true)
     if (!anchored.ok) throw new Error('expected valid anchored link')
     expect(anchored.href).toMatch(/^\[\[Beta prime--[0-9a-f]{6}#Details--[0-9a-f]{6}\]\]$/)
+
+    const lastPosition = getNoteReferenceLinkSpec(
+      state,
+      source,
+      {
+        domainId: 'domain-a',
+        spaceId: 'space-a',
+        tabId: 'tab-b',
+        subTabId: null,
+        previewStart: 'last-position',
+      },
+    )
+    expect(lastPosition.ok).toBe(true)
+    if (!lastPosition.ok) throw new Error('expected valid last-position link')
+    expect(lastPosition.href).toMatch(/^\[\[Beta prime--[0-9a-f]{6}#last position\]\]$/)
+    expect(lastPosition.target.startAt).toBe('last-position')
   })
 
   it('builds modal defaults and locked edit drafts without duplicating setup in App', () => {

@@ -142,6 +142,7 @@ function renderSettingsPage(
       tableDeleteTargetModeDraft={state.ui.tableDeleteTargetMode}
       tableOfContentsScopeDraft={state.ui.tableOfContentsScope ?? 'all-aisles'}
       newAislePlacementDraft={state.ui.newAislePlacement ?? 'end'}
+      removeNoteReferencesOnTrashDraft={state.ui.removeNoteReferencesOnTrash ?? true}
       frontmatterDraft={frontmatterDraft}
       frontmatterDraftDirty={frontmatterDraftDirty}
       toolbarLayouts={getToolbarLayouts(state.ui.toolbarLayouts)}
@@ -172,6 +173,7 @@ function renderSettingsPage(
       onTableDeleteTargetModeChange={() => undefined}
       onTableOfContentsScopeChange={() => undefined}
       onNewAislePlacementChange={() => undefined}
+      onRemoveNoteReferencesOnTrashChange={() => undefined}
       onTipEnabledChange={() => undefined}
       onSelectToolbarLayout={() => undefined}
       onCreateToolbarLayout={() => undefined}
@@ -249,6 +251,19 @@ describe('frontmatter settings page', () => {
     expect(html).toContain('aria-checked="false" class="settings-segmented-option ">end of note</button>')
     expect(html).toContain('aria-checked="true" class="settings-segmented-option is-selected">right of focus</button>')
     expect(html.indexOf('new aisles are added to')).toBeLessThan(html.indexOf('add table row or column'))
+  })
+
+  it('renders the remove-note-references-on-trash setting in misc settings', () => {
+    const state = createState()
+    state.ui.removeNoteReferencesOnTrash = true
+    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'misc', state })
+
+    expect(html).toContain("remove all links to a note when it&#x27;s trashed")
+    expect(html).toContain('aria-label="remove all links to a note when it&#x27;s trashed"')
+    expect(html).toContain('role="switch" aria-label="remove all links to a note when it&#x27;s trashed" checked=""')
+    expect(html.indexOf("remove all links to a note when it&#x27;s trashed")).toBeLessThan(
+      html.indexOf('add table row or column'),
+    )
   })
 
   it('renders strikethrough as a selectable new-line operation', () => {
@@ -517,7 +532,11 @@ describe('frontmatter settings page', () => {
     expect(html).not.toContain('settings-toolbar-icon-box note-shared-toolbar')
     expect(html).not.toContain('settings-toolbar-drop-zone')
     expect(html).toContain('aria-label="Make copy"')
+    expect(html).toContain('aria-label="Director"')
+    expect(html).toContain('aria-label="Find &amp; replace"')
     expect(html).toContain('table-of-contents-toolbar-icon')
+    expect(html).toContain('director-toolbar-icon')
+    expect(html).toContain('find-replace-toolbar-icon')
     expect(html).toContain('title="spacer"')
     expect(html).toContain('>spacer</button>')
     expect(html).toContain('show icons with names')
@@ -564,7 +583,11 @@ describe('frontmatter settings page', () => {
     expect(html).toContain('aria-label="Bold"')
     expect(html).toContain('aria-label="Italic"')
     expect(html).toContain('aria-label="Make copy"')
+    expect(html).toContain('aria-label="Director"')
+    expect(html).toContain('aria-label="Find &amp; replace"')
     expect(html).toContain('table-of-contents-toolbar-icon')
+    expect(html).toContain('director-toolbar-icon')
+    expect(html).toContain('find-replace-toolbar-icon')
     expect(html).toContain('title="spacer"')
     expect(html).toContain('>spacer</button>')
     expect(html).toContain('show icons with names')
@@ -600,6 +623,8 @@ describe('frontmatter settings page', () => {
     expect(html).not.toContain('settings-toolbar-editable-spacer')
     expect(html).toContain('settings-toolbar-icon-box is-editable')
     expect(html).toContain('aria-label="Make copy"')
+    expect(html).toContain('aria-label="Director"')
+    expect(html).toContain('aria-label="Find &amp; replace"')
     expect(html).toContain('aria-label="Clear contents"')
     expect(html).toContain('title="spacer"')
   })

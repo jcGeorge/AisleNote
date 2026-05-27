@@ -8,6 +8,8 @@ import {
   normalizeContextReferenceTokensForMarkdown,
   removeContextReferencesForNoteLocationsFromAppState,
   removeContextReferencesForNoteLocationsFromMarkdown,
+  removeNoteReferencesForNoteLocationsFromMarkdown,
+  removeNoteReferencesForNoteLocationsFromAppState,
   removeContextTokenById,
   resolveWikiReferenceToken,
 } from './note-references'
@@ -157,23 +159,29 @@ describe('note context references', () => {
     expect(parseContextReferences(token, state)[0]?.payload.heading).toEqual({ aisleId: heading.aisleId, headingKey: heading.key })
   })
 
-  it('round-trips wiki preview payload last-position starts without enabling note links', () => {
+  it('round-trips wiki preview and note-link last-position starts', () => {
     const state = createReferenceState()
     const previewPayload = {
       ...payload('last-position', targetLocation('parent', 'sub')),
       previewStart: 'last-position' as const,
     }
     const token = buildContextToken(state, previewPayload)
+    const link = buildInternalNoteLinkToken(state, { ...targetLocation('parent', 'sub'), startAt: 'last-position' })
     const staleToken = token.replace('#last position', '#LAST   POSITION')
 
     expect(token).toMatch(/^!\[\[Sub note--[0-9a-f]{6}#last position\]\]$/)
+    expect(link).toMatch(/^\[\[Sub note--[0-9a-f]{6}#last position\]\]$/)
     expect(parseContextToken(token, state)).toMatchObject({
       target: previewPayload.target,
       previewStart: 'last-position',
     })
+    expect(resolveWikiReferenceToken(state, link)?.target).toMatchObject({
+      ...targetLocation('parent', 'sub'),
+      startAt: 'last-position',
+    })
     expect(resolveWikiReferenceToken(state, token)?.canonicalToken).toBe(token)
     expect(resolveWikiReferenceToken(state, staleToken)?.canonicalToken).toBe(token)
-    expect(resolveWikiReferenceToken(state, token.slice(1))).toBeNull()
+    expect(resolveWikiReferenceToken(state, token.slice(1))?.target.startAt).toBe('last-position')
   })
 
   it('does not parse old encoded or directive context preview tokens', () => {
@@ -239,5 +247,41 @@ describe('note context references', () => {
     expect(getAisleMarkdown(next.noteBodies[0].aisles[0], next.noteAisleBodies)).toBe('a\n')
     expect(getAisleMarkdown(next.noteBodies[2].aisles[0], next.noteAisleBodies)).toBe(`${retainedToken}\nb`)
     expect(getAisleMarkdown(next.noteBodies[1].aisles[0], next.noteAisleBodies)).toBe('\nc')
+  })
+
+  it('removes note links and previews for deleted note locations using a pre-delete resolver state', () => {
+    const resolverState = createReferenceState()
+    const deleted = targetLocation('parent', 'sub')
+    const retained = targetLocation('parent', 'retained-sub')
+    const deletedLink = buildInternalNoteLinkToken(resolverState, deleted)
+    const deletedPreview = buildContextToken(resolverState, payload('deleted', deleted))
+    const retainedLink = buildInternalNoteLinkToken(resolverState, retained)
+    const markdown = `${deletedLink}\n${deletedPreview}\n${retainedLink}\n[external](https://example.com)\n[[missing--abc123]]`
+    const sourceState = createReferenceState()
+    sourceState.domains[0].spaces[0].data.tabs[0].subTabs = sourceState.domains[0].spaces[0].data.tabs[0].subTabs.filter(
+      (subTab) => subTab.id !== 'sub',
+    )
+
+    expect(removeNoteReferencesForNoteLocationsFromMarkdown(markdown, sourceState, [deleted], resolverState)).toBe(
+      `\n\n${retainedLink}\n[external](https://example.com)\n[[missing--abc123]]`,
+    )
+  })
+
+  it('removes note links and previews across app state', () => {
+    const state = createReferenceState()
+    const deleted = targetLocation('parent', 'sub')
+    const deletedLink = buildInternalNoteLinkToken(state, deleted)
+    const deletedPreview = buildContextToken(state, payload('deleted', deleted))
+    state.noteAisleBodies = [
+      { id: 'body-parent-aisle-body', markdown: `${deletedLink}\n${deletedPreview}` },
+      { id: 'body-sub-aisle-body', markdown: 'target' },
+      { id: 'body-retained-aisle-body', markdown: '' },
+      { id: 'body-other-aisle-body', markdown: '' },
+      { id: 'body-deleted-parent-aisle-body', markdown: '' },
+    ]
+
+    const next = removeNoteReferencesForNoteLocationsFromAppState(state, [deleted], state)
+
+    expect(getAisleMarkdown(next.noteBodies[0].aisles[0], next.noteAisleBodies)).toBe('\n')
   })
 })

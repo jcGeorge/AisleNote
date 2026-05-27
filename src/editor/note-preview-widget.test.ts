@@ -4,6 +4,7 @@ import type { NoteContextReferencePayload } from '../notes/note-references'
 import {
   createContextPreviewWidgetElement,
   createInternalNoteLinkWidgetElement,
+  createReadonlyContextPreviewWidgetElement,
   getNotePreviewFittedHeightRem,
 } from './note-preview-widget'
 
@@ -372,6 +373,47 @@ function createPreviewData(overrides: Partial<ContextPreviewData> = {}): Context
     ],
     status: 'empty',
     ...overrides,
+  }
+}
+
+function createReadonlyPluginContext() {
+  class Plugin {
+    props: any
+
+    constructor(config: any) {
+      this.props = config.props
+    }
+  }
+
+  return {
+    pmState: { Plugin },
+    pmView: {
+      Decoration: {
+        widget: vi.fn((from: number, factory: () => unknown, options: Record<string, unknown>) => ({
+          type: 'widget',
+          from,
+          factory,
+          options,
+        })),
+        inline: vi.fn((from: number, to: number, attrs: Record<string, unknown>) => ({
+          type: 'inline',
+          from,
+          to,
+          attrs,
+        })),
+      },
+      DecorationSet: {
+        create: vi.fn((_doc: unknown, decorations: unknown[]) => decorations),
+      },
+    },
+  }
+}
+
+function createTextDoc(text: string) {
+  return {
+    descendants(callback: (node: unknown, pos: number) => void) {
+      callback({ isText: true, text }, 1)
+    },
   }
 }
 
@@ -744,11 +786,116 @@ describe('note preview widget', () => {
     expect(editorInstances[0].setHeight).toHaveBeenLastCalledWith('166.08px')
   })
 
+  it('installs readonly reference rendering inside embedded preview editors', () => {
+    const payload: NoteContextReferencePayload = {
+      id: 'preview-id',
+      target: { domainId: 'domain', spaceId: 'space', tabId: 'parent', subTabId: 'child' },
+    }
+    const nestedPayload: NoteContextReferencePayload = {
+      id: 'nested-preview-id',
+      target: { domainId: 'domain', spaceId: 'space', tabId: 'other', subTabId: null },
+    }
+    createContextPreviewWidgetElement(payload, {
+      sourceNoteBodyId: 'source-body',
+      getContextPreviewData: vi.fn(() =>
+        createPreviewData({
+          status: 'ready',
+          selectedAisle: { id: 'aisle', markdown: 'preview with [[Linked--123abc]] and ![[Other--456def]]' } as any,
+        }),
+      ),
+      resolveContextPreviewToken: vi.fn((token: string) => (token.startsWith('!') ? nestedPayload : null)),
+      resolveInternalNoteReferenceToken: vi.fn((token: string) =>
+        token === '[[Linked--123abc]]'
+          ? {
+              token,
+              parsed: {
+                token,
+                embed: false,
+                target: 'Linked--123abc',
+                noteHandle: 'Linked--123abc',
+                suffixHandle: '',
+                alias: '',
+              },
+              payload: {
+                id: 'wiki-link:Linked--123abc',
+                target: { domainId: 'domain', spaceId: 'space', tabId: 'linked', subTabId: null },
+              },
+              target: { domainId: 'domain', spaceId: 'space', tabId: 'linked', subTabId: null },
+              label: 'Linked',
+              canonicalTarget: 'Linked--123abc',
+              canonicalToken: '[[Linked--123abc]]',
+            }
+          : null,
+      ),
+      navigateToNoteLocation: vi.fn(),
+      deleteContextPreview: vi.fn(),
+    })
+
+    const pluginFactory = editorInstances[0].options.plugins.find(
+      (plugin: { name?: string }) => plugin.name === 'readonlyPreviewReferencesPlugin',
+    )
+    const pluginBundle = pluginFactory(createReadonlyPluginContext())
+    const plugin = pluginBundle.wysiwygPlugins[0]()
+    const decorations = plugin.props.decorations({ doc: createTextDoc('preview with [[Linked--123abc]] and ![[Other--456def]]') })
+    const widgets = decorations.filter((decoration: any) => decoration.type === 'widget')
+
+    expect(
+      editorInstances[0].options.plugins.some((plugin: { name?: string }) => plugin.name === 'readonlyPreviewReferencesPlugin'),
+    ).toBe(true)
+    expect(pluginBundle.wysiwygPlugins).toHaveLength(1)
+    expect(widgets).toHaveLength(2)
+    expect((widgets[0].factory() as FakeElement).className).toContain('context-preview-navigation-widget')
+    expect((widgets[1].factory() as FakeElement).className).toContain('internal-note-link-widget')
+  })
+
+  it('renders nested note previews as readonly content with navigable title chips', () => {
+    const payload: NoteContextReferencePayload = {
+      id: 'nested-preview-id',
+      target: { domainId: 'domain', spaceId: 'space', tabId: 'parent', subTabId: 'child' },
+      aisleIds: ['aisle-2'],
+    }
+    const navigateToNoteLocation = vi.fn()
+    const widget = createReadonlyContextPreviewWidgetElement(payload, {
+      sourceNoteBodyId: 'source-body',
+      getContextPreviewData: vi.fn(() =>
+        createPreviewData({
+          status: 'ready',
+          selectedAisle: { id: 'aisle-2', markdown: 'nested preview content' } as any,
+          titleButtons: [
+            { kind: 'parent', label: 'Parent' },
+            { kind: 'subtab', label: 'Child' },
+          ],
+        }),
+      ),
+      navigateToNoteLocation,
+      deleteContextPreview: vi.fn(),
+    }) as unknown as FakeElement
+
+    expect(widget.className).toContain('context-preview-navigation-widget')
+    expect(findAllByClass(widget, 'context-preview-title-btn').map((button) => button.textContent)).toEqual(['Parent', 'Child'])
+    expect(findAllByClass(widget, 'context-bar-size-btn')).toHaveLength(0)
+    expect(findAllByClass(widget, 'context-bar-delete-btn')).toHaveLength(0)
+    expect(findAllByClass(widget, 'context-preview-nested-editor-host')).toHaveLength(1)
+    expect(editorInstances[editorInstances.length - 1]?.options.initialValue).toBe('nested preview content')
+
+    findAllByClass(widget, 'context-preview-navigation-title')[0].dispatch('click')
+
+    expect(navigateToNoteLocation).toHaveBeenCalledWith({
+      domainId: 'domain',
+      spaceId: 'space',
+      tabId: 'parent',
+      subTabId: 'child',
+      heading: undefined,
+      aisleId: 'aisle-2',
+    })
+  })
+
   it('leaves normal internal note hyperlinks as plain link widgets', () => {
     const navigateToNoteLocation = vi.fn()
+    const target = { domainId: 'domain', spaceId: 'space', tabId: 'parent', subTabId: null }
     const link = createInternalNoteLinkWidgetElement(
       'Linked note',
-      { domainId: 'domain', spaceId: 'space', tabId: 'parent', subTabId: null },
+      target,
       '[[Linked note--123abc]]',
       navigateToNoteLocation,
       { from: 3, to: 26, occurrence: 1 },
@@ -762,5 +909,9 @@ describe('note preview widget', () => {
     expect(link.getAttribute('data-internal-note-link-occurrence')).toBe('1')
     expect(link.textContent).toBe('Linked note')
     expect(findAllByClass(link, 'context-preview-title-btn')).toHaveLength(0)
+
+    link.dispatch('click')
+
+    expect(navigateToNoteLocation).toHaveBeenCalledWith(target)
   })
 })

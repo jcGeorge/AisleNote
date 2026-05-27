@@ -837,6 +837,7 @@ describe('app state normalization', () => {
         findCaseSensitive: true,
         findWholeWord: true,
         findRegex: true,
+        findReplaceMode: 'replace',
       },
     })
     const invalid = parseModernState({
@@ -844,6 +845,7 @@ describe('app state normalization', () => {
         findCaseSensitive: 'yes',
         findWholeWord: 1,
         findRegex: null,
+        findReplaceMode: 'both',
       },
     })
     const missing = parseModernState({ ui: {} })
@@ -851,12 +853,27 @@ describe('app state normalization', () => {
     expect(enabled.ui.findCaseSensitive).toBe(true)
     expect(enabled.ui.findWholeWord).toBe(true)
     expect(enabled.ui.findRegex).toBe(true)
+    expect(enabled.ui.findReplaceMode).toBe('replace')
     expect(invalid.ui.findCaseSensitive).toBe(false)
     expect(invalid.ui.findWholeWord).toBe(false)
     expect(invalid.ui.findRegex).toBe(false)
+    expect(invalid.ui.findReplaceMode).toBe('find')
     expect(missing.ui.findCaseSensitive).toBe(false)
     expect(missing.ui.findWholeWord).toBe(false)
     expect(missing.ui.findRegex).toBe(false)
+    expect(missing.ui.findReplaceMode).toBe('find')
+  })
+
+  it('normalizes remove-note-references-on-trash setting', () => {
+    const enabled = parseModernState({ ui: { removeNoteReferencesOnTrash: true } })
+    const disabled = parseModernState({ ui: { removeNoteReferencesOnTrash: false } })
+    const invalid = parseModernState({ ui: { removeNoteReferencesOnTrash: 'no' } })
+    const missing = parseModernState({ ui: {} })
+
+    expect(enabled.ui.removeNoteReferencesOnTrash).toBe(true)
+    expect(disabled.ui.removeNoteReferencesOnTrash).toBe(false)
+    expect(invalid.ui.removeNoteReferencesOnTrash).toBe(true)
+    expect(missing.ui.removeNoteReferencesOnTrash).toBe(true)
   })
 
   it('normalizes synced toolbar layouts while leaving active toolbar selection local', () => {

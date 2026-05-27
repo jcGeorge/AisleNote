@@ -78,6 +78,7 @@ export type StorageVisualsSettingsSection = 'theming' | 'otherVisuals'
 export type StorageTableControlTargetMode = 'active-cell' | 'bottom-right'
 export type StorageTableOfContentsScope = 'all-aisles' | 'focused-aisle'
 export type StorageNewAislePlacement = 'end' | 'right-of-focus'
+export type StorageFindReplaceMode = 'find' | 'replace'
 export type StorageTipId = 'task-undo' | 'tab-create-after-rename'
 
 export type StorageGlobalSettings = {
@@ -100,6 +101,8 @@ export type StorageGlobalSettings = {
     findCaseSensitive?: boolean
     findWholeWord?: boolean
     findRegex?: boolean
+    findReplaceMode?: StorageFindReplaceMode
+    removeNoteReferencesOnTrash?: boolean
     decoupledItemsKeepData?: boolean
     tableAddTargetMode?: StorageTableControlTargetMode
     tableDeleteTargetMode?: StorageTableControlTargetMode

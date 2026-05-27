@@ -341,6 +341,10 @@ body.app-tooltips-disabled .toastui-editor-tooltip {
 .toastui-editor-toolbar button.table-of-contents-toolbar-btn,
 .toastui-editor-defaultUI-toolbar button.aisles-toolbar-btn,
 .toastui-editor-toolbar button.aisles-toolbar-btn,
+.toastui-editor-defaultUI-toolbar button.director-toolbar-btn,
+.toastui-editor-toolbar button.director-toolbar-btn,
+.toastui-editor-defaultUI-toolbar button.find-replace-toolbar-btn,
+.toastui-editor-toolbar button.find-replace-toolbar-btn,
 .toastui-editor-defaultUI-toolbar button.editor-history-toolbar-btn,
 .toastui-editor-toolbar button.editor-history-toolbar-btn {
   width: 26px !important;
@@ -370,6 +374,10 @@ body.app-tooltips-disabled .toastui-editor-tooltip {
 .toastui-editor-toolbar button.table-of-contents-toolbar-btn,
 .toastui-editor-defaultUI-toolbar button.aisles-toolbar-btn,
 .toastui-editor-toolbar button.aisles-toolbar-btn,
+.toastui-editor-defaultUI-toolbar button.director-toolbar-btn,
+.toastui-editor-toolbar button.director-toolbar-btn,
+.toastui-editor-defaultUI-toolbar button.find-replace-toolbar-btn,
+.toastui-editor-toolbar button.find-replace-toolbar-btn,
 .toastui-editor-defaultUI-toolbar button.editor-history-toolbar-btn,
 .toastui-editor-toolbar button.editor-history-toolbar-btn {
   position: relative !important;
@@ -385,6 +393,10 @@ body.app-tooltips-disabled .toastui-editor-tooltip {
 .toastui-editor-toolbar button.table-of-contents-toolbar-btn,
 .toastui-editor-defaultUI-toolbar button.aisles-toolbar-btn,
 .toastui-editor-toolbar button.aisles-toolbar-btn,
+.toastui-editor-defaultUI-toolbar button.director-toolbar-btn,
+.toastui-editor-toolbar button.director-toolbar-btn,
+.toastui-editor-defaultUI-toolbar button.find-replace-toolbar-btn,
+.toastui-editor-toolbar button.find-replace-toolbar-btn,
 .toastui-editor-defaultUI-toolbar button.editor-history-toolbar-btn,
 .toastui-editor-toolbar button.editor-history-toolbar-btn {
   font-weight: 700 !important;
@@ -470,6 +482,23 @@ body.app-tooltips-disabled .toastui-editor-tooltip {
 .editor-history-toolbar-btn-redo .editor-history-toolbar-icon {
   transform: scaleX(-1);
   transform-origin: center;
+}
+
+.director-toolbar-icon,
+.find-replace-toolbar-icon {
+  width: 1.15rem;
+  height: 1.15rem;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.director-toolbar-icon-center {
+  fill: currentColor;
+  stroke: none;
 }
 
 .toastui-editor-defaultUI-toolbar button.table-of-contents-toolbar-btn,

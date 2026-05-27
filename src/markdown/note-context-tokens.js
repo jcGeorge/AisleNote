@@ -313,7 +313,7 @@ export function getWikiReferenceDisplayText(token) {
   const parsed = parseWikiReferenceToken(token)
   if (!parsed) return ''
   if (parsed.alias) return parsed.alias
-  if (parsed.embed && normalizeSyntheticSuffixHandle(parsed.suffixHandle) === PREVIEW_LAST_POSITION_SUFFIX_HANDLE) {
+  if (normalizeSyntheticSuffixHandle(parsed.suffixHandle) === PREVIEW_LAST_POSITION_SUFFIX_HANDLE) {
     return parsed.noteHandle.replace(SHORT_HASH_RE, '').trim() || parsed.noteHandle.trim()
   }
   const source = parsed.suffixHandle || parsed.noteHandle
@@ -327,25 +327,26 @@ export function resolveWikiReferenceToken(appState, token) {
   const note = resolveIndexedHandle(index.noteIndexes, parsed.noteHandle)
   if (!note) return null
 
-  const isLastPositionPreview =
-    parsed.embed && normalizeSyntheticSuffixHandle(parsed.suffixHandle) === PREVIEW_LAST_POSITION_SUFFIX_HANDLE
-  const suffix = parsed.suffixHandle && !isLastPositionPreview ? resolveIndexedHandle(note.suffixIndexes, parsed.suffixHandle) : null
-  if (parsed.suffixHandle && !suffix && !isLastPositionPreview) return null
+  const isLastPositionReference = normalizeSyntheticSuffixHandle(parsed.suffixHandle) === PREVIEW_LAST_POSITION_SUFFIX_HANDLE
+  const suffix = parsed.suffixHandle && !isLastPositionReference ? resolveIndexedHandle(note.suffixIndexes, parsed.suffixHandle) : null
+  if (parsed.suffixHandle && !suffix && !isLastPositionReference) return null
 
   const payload = {
     id: buildWikiReferenceId(parsed),
     target: { ...note.target },
     ...(suffix?.aisleIds?.length ? { aisleIds: [...suffix.aisleIds] } : {}),
     ...(suffix?.heading ? { heading: { ...suffix.heading } } : {}),
-    ...(isLastPositionPreview ? { previewStart: 'last-position' } : {}),
+    ...(parsed.embed && isLastPositionReference ? { previewStart: 'last-position' } : {}),
   }
   const navigationTarget = {
     ...note.target,
     ...(suffix?.type === 'aisle' && suffix?.aisleId ? { aisleId: suffix.aisleId } : {}),
     ...(suffix?.heading ? { heading: { ...suffix.heading } } : {}),
+    ...(!parsed.embed && !suffix ? { startAt: isLastPositionReference ? 'last-position' : 'top' } : {}),
+    ...(!parsed.embed && suffix && !suffix.heading ? { startAt: 'top' } : {}),
   }
   const displayLabel = parsed.alias || note.displayName
-  const canonicalTarget = `${note.handle}${isLastPositionPreview ? `#${PREVIEW_LAST_POSITION_SUFFIX_HANDLE}` : suffix ? `#${suffix.handle}` : ''}`
+  const canonicalTarget = `${note.handle}${isLastPositionReference ? `#${PREVIEW_LAST_POSITION_SUFFIX_HANDLE}` : suffix ? `#${suffix.handle}` : ''}`
   return {
     token: parsed.token,
     parsed,
@@ -411,7 +412,7 @@ export function getCanonicalWikiTargetForPayload(appState, payload) {
   const index = buildWikiReferenceIndex(appState)
   const note = index.noteByLocationKey.get(buildLocationKey(target))
   if (!note) return null
-  if (payload?.previewStart === 'last-position') {
+  if (payload?.previewStart === 'last-position' || payload?.startAt === 'last-position') {
     return {
       note,
       suffix: null,
