@@ -2,13 +2,18 @@ import { NOTE_PREVIEW_REFERENCE_RE, parseWikiReferenceToken } from '../notes/not
 
 export const TERMINAL_BLOCK_LANDING_ZONE_ATTR = 'data-tabs-terminal-block-landing-zone'
 export const TERMINAL_BLOCK_LANDING_ZONE_CLASS = 'tabs-terminal-block-landing-zone'
+const TERMINAL_BLOCK_BOUNDARY_CLICK_MAX_DISTANCE_PX = 64
 
-type TerminalBlockLandingKind = 'codeBlock' | 'notePreview'
+export type TerminalBlockLandingKind = 'codeBlock' | 'notePreview' | 'image' | 'table'
 
 export type TerminalBlockLandingTarget = {
   kind: TerminalBlockLandingKind
   position: number
 }
+
+type TextSelectionFactory = { create: (doc: any, anchor: number, head?: number) => unknown }
+type TerminalBlockContext = { node: any; start: number; end: number; index: number }
+type TerminalBlockBoundarySide = 'before' | 'after'
 
 function getDocEnd(doc: any): number {
   if (typeof doc?.content?.size === 'number') return doc.content.size
@@ -33,6 +38,32 @@ export function isNotePreviewOnlyParagraphText(text: string): boolean {
   return hasValidToken && remaining.trim().length === 0
 }
 
+function isBlankSentinelText(text: string): boolean {
+  return String(text ?? '').replace(/\u200b/g, '').trim().length === 0
+}
+
+function isImageOnlyParagraphNode(node: any): boolean {
+  if (node?.type?.name !== 'paragraph') return false
+  const childCount = Number(node?.childCount ?? 0)
+  if (childCount <= 0 || typeof node?.child !== 'function') return false
+
+  let hasImage = false
+  for (let index = 0; index < childCount; index += 1) {
+    const child = node.child(index)
+    const typeName = child?.type?.name
+    if (typeName === 'image') {
+      hasImage = true
+      continue
+    }
+    if ((child?.isText || typeName === 'text') && isBlankSentinelText(child.text ?? child.textContent ?? '')) {
+      continue
+    }
+    return false
+  }
+
+  return hasImage
+}
+
 export function getTerminalBlockLandingTarget(doc: any): TerminalBlockLandingTarget | null {
   const childCount = Number(doc?.childCount ?? 0)
   if (childCount <= 0 || typeof doc?.child !== 'function') return null
@@ -42,8 +73,16 @@ export function getTerminalBlockLandingTarget(doc: any): TerminalBlockLandingTar
     return { kind: 'codeBlock', position: getDocEnd(doc) }
   }
 
+  if (lastNode?.type?.name === 'table') {
+    return { kind: 'table', position: getDocEnd(doc) }
+  }
+
   if (lastNode?.type?.name === 'paragraph' && isNotePreviewOnlyParagraphText(lastNode.textContent ?? '')) {
     return { kind: 'notePreview', position: getDocEnd(doc) }
+  }
+
+  if (isImageOnlyParagraphNode(lastNode)) {
+    return { kind: 'image', position: getDocEnd(doc) }
   }
 
   return null
@@ -65,9 +104,108 @@ function createTerminalLandingParagraphNodes(schema: any, text: string) {
   )
 }
 
+function getLastTopLevelNodeContext(doc: any): { node: any; start: number; end: number } | null {
+  const childCount = Number(doc?.childCount ?? 0)
+  if (childCount <= 0 || typeof doc?.child !== 'function') return null
+  const node = doc.child(childCount - 1)
+  const end = getDocEnd(doc)
+  return { node, start: end - (node?.nodeSize ?? 0), end }
+}
+
+function getTopLevelNodeContextAtPosition(doc: any, position: number): TerminalBlockContext | null {
+  const childCount = Number(doc?.childCount ?? 0)
+  if (childCount <= 0 || typeof doc?.child !== 'function') return null
+
+  let start = 0
+  for (let index = 0; index < childCount; index += 1) {
+    const node = doc.child(index)
+    const end = start + (node?.nodeSize ?? 0)
+    if (position >= start && position <= end) return { node, start, end, index }
+    start = end
+  }
+  return null
+}
+
+function getTopLevelNodeContextByIndex(doc: any, index: number): TerminalBlockContext | null {
+  const childCount = Number(doc?.childCount ?? 0)
+  if (index < 0 || index >= childCount || typeof doc?.child !== 'function') return null
+
+  let start = 0
+  for (let current = 0; current < index; current += 1) {
+    start += doc.child(current)?.nodeSize ?? 0
+  }
+  const node = doc.child(index)
+  return { node, start, end: start + (node?.nodeSize ?? 0), index }
+}
+
+function isTerminalBlockContext(context: TerminalBlockContext | null): context is TerminalBlockContext {
+  if (!context) return false
+  const typeName = context.node?.type?.name
+  return (
+    typeName === 'codeBlock' ||
+    typeName === 'table' ||
+    (typeName === 'paragraph' &&
+      (isNotePreviewOnlyParagraphText(context.node.textContent ?? '') || isImageOnlyParagraphNode(context.node)))
+  )
+}
+
+function isEmptyTextBlockNode(node: any): boolean {
+  return Boolean(node?.isTextblock) && isBlankSentinelText(node.textContent ?? '')
+}
+
+export function placeCaretInFinalEmptyTextBlock(
+  view: any,
+  TextSelection: TextSelectionFactory,
+): boolean {
+  const { state } = view ?? {}
+  const context = getLastTopLevelNodeContext(state?.doc)
+  if (!context || !isEmptyTextBlockNode(context.node)) return false
+
+  const selectionPos = context.start + 1 + (context.node.content?.size ?? 0)
+  let tr = state.tr.setSelection(TextSelection.create(state.doc, selectionPos, selectionPos)).scrollIntoView()
+  tr = tr.setMeta?.('addToHistory', false) ?? tr
+  view.dispatch(tr)
+  view.focus?.()
+  return true
+}
+
+function getTextBlockSelectionPosition(node: any, start: number, side: TerminalBlockBoundarySide): number {
+  const contentSize = typeof node?.content?.size === 'number' ? node.content.size : 0
+  return start + 1 + (side === 'before' ? contentSize : 0)
+}
+
+export function placeCaretBesideTerminalBlock(
+  view: any,
+  TextSelection: TextSelectionFactory,
+  context: TerminalBlockContext,
+  side: TerminalBlockBoundarySide,
+): boolean {
+  const { state } = view ?? {}
+  const paragraphType = state?.schema?.nodes?.paragraph
+  if (!state?.tr || !paragraphType || !isTerminalBlockContext(context)) return false
+
+  const siblingIndex = side === 'before' ? context.index - 1 : context.index + 1
+  const sibling = getTopLevelNodeContextByIndex(state.doc, siblingIndex)
+  if (sibling?.node?.isTextblock) {
+    const selectionPos = getTextBlockSelectionPosition(sibling.node, sibling.start, side)
+    let tr = state.tr.setSelection(TextSelection.create(state.doc, selectionPos, selectionPos)).scrollIntoView()
+    tr = tr.setMeta?.('addToHistory', false) ?? tr
+    view.dispatch(tr)
+    view.focus?.()
+    return true
+  }
+
+  const insertPos = side === 'before' ? context.start : context.end
+  let tr = state.tr.insert(insertPos, paragraphType.create())
+  tr = tr.setSelection(TextSelection.create(tr.doc, insertPos + 1, insertPos + 1)).scrollIntoView()
+  view.dispatch(tr)
+  view.focus?.()
+  return true
+}
+
 export function insertTerminalLandingParagraphs(
   view: any,
-  TextSelection: { create: (doc: unknown, anchor: number, head?: number) => unknown },
+  TextSelection: TextSelectionFactory,
   text = '',
 ): boolean {
   const { state } = view
@@ -94,9 +232,156 @@ function shouldHandlePrintableKey(event: KeyboardEvent): boolean {
   return event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey
 }
 
+function getMouseButton(event: Event): number {
+  return typeof (event as MouseEvent).button === 'number' ? (event as MouseEvent).button : 0
+}
+
+function getMouseClientPoint(event: Event): { left: number; top: number } | null {
+  const left = (event as MouseEvent).clientX
+  const top = (event as MouseEvent).clientY
+  return Number.isFinite(left) && Number.isFinite(top) ? { left, top } : null
+}
+
+export function handleTerminalLandingZoneClick(
+  event: Event,
+  view: any,
+  TextSelection: TextSelectionFactory,
+): boolean {
+  if (getMouseButton(event) !== 0) return false
+  event.preventDefault()
+  event.stopPropagation()
+  return insertTerminalLandingParagraphs(view, TextSelection)
+}
+
+function isEditorBlankSurfaceTarget(target: Element | null, view: any): boolean {
+  return Boolean(target && view?.dom && target === view.dom)
+}
+
+function getTerminalBlockElementCandidates(view: any): Element[] {
+  if (typeof view?.dom?.querySelectorAll !== 'function') return []
+  return (Array.from(
+    view.dom.querySelectorAll(
+      [
+        '.note-context-widget',
+        '.toastui-editor-ww-code-block',
+        'table',
+        'pre',
+        'img',
+      ].join(', '),
+    ),
+  ) as Element[]).filter((element): element is Element => {
+    if (!element || typeof (element as Element).closest !== 'function') return false
+    if (typeof Element !== 'undefined' && !(element instanceof Element)) return false
+    if (element.closest('.context-preview-editor-host')) return false
+    if (typeof element.matches === 'function' && element.matches('pre') && element.closest('.toastui-editor-ww-code-block')) return false
+    if (typeof element.matches === 'function' && element.matches('img') && !element.closest('p')) return false
+    return true
+  })
+}
+
+function getCandidatePositionsForElement(view: any, element: Element, event: Event): number[] {
+  const positions: number[] = []
+  const pushPosition = (position: unknown) => {
+    if (typeof position === 'number' && Number.isFinite(position)) positions.push(position)
+  }
+
+  if (typeof view?.posAtDOM === 'function') {
+    try {
+      pushPosition(view.posAtDOM(element, 0))
+    } catch {
+      // Some Toast UI wrapper elements are decorations, not direct ProseMirror DOM nodes.
+    }
+    try {
+      pushPosition(view.posAtDOM(element, element.childNodes?.length ?? 0))
+    } catch {
+      // Some Toast UI wrapper elements are decorations, not direct ProseMirror DOM nodes.
+    }
+  }
+
+  const point = getMouseClientPoint(event)
+  if (typeof view?.posAtCoords === 'function' && point) {
+    const rect = typeof element.getBoundingClientRect === 'function' ? element.getBoundingClientRect() : null
+    const left = rect ? Math.max(rect.left + 1, Math.min(rect.right - 1, point.left)) : point.left
+    const top = rect ? Math.max(rect.top + 1, Math.min(rect.bottom - 1, point.top)) : point.top
+    try {
+      pushPosition(view.posAtCoords({ left, top })?.pos)
+    } catch {
+      // Coordinate lookup can fail for hidden decoration wrappers.
+    }
+  }
+
+  return [...new Set(positions)]
+}
+
+function getTerminalBlockContextForElement(view: any, element: Element, event: Event): TerminalBlockContext | null {
+  const doc = view?.state?.doc
+  for (const position of getCandidatePositionsForElement(view, element, event)) {
+    const context = getTopLevelNodeContextAtPosition(doc, position)
+    if (isTerminalBlockContext(context)) return context
+  }
+  return null
+}
+
+function getNearestTerminalBoundaryClick(
+  event: Event,
+  view: any,
+): { context: TerminalBlockContext; side: TerminalBlockBoundarySide } | null {
+  const point = getMouseClientPoint(event)
+  if (!point) return null
+  const candidates = getTerminalBlockElementCandidates(view)
+    .map((element) => {
+      const rect = typeof element.getBoundingClientRect === 'function' ? element.getBoundingClientRect() : null
+      if (!rect) return null
+      const side = point.top < rect.top ? 'before' : point.top > rect.bottom ? 'after' : null
+      if (!side) return null
+      const distance = side === 'before' ? rect.top - point.top : point.top - rect.bottom
+      if (distance > TERMINAL_BLOCK_BOUNDARY_CLICK_MAX_DISTANCE_PX) return null
+      const context = getTerminalBlockContextForElement(view, element, event)
+      return context ? { context, side, distance } : null
+    })
+    .filter((candidate): candidate is { context: TerminalBlockContext; side: TerminalBlockBoundarySide; distance: number } =>
+      Boolean(candidate),
+    )
+    .sort((left, right) => left.distance - right.distance)
+
+  return candidates[0] ? { context: candidates[0].context, side: candidates[0].side } : null
+}
+
+function isClickBelowLastRenderedChild(event: Event, view: any): boolean {
+  const lastChild = view?.dom?.lastElementChild
+  if (!lastChild || typeof lastChild.getBoundingClientRect !== 'function') return true
+  const clientY = (event as MouseEvent).clientY
+  if (!Number.isFinite(clientY)) return false
+  return clientY >= lastChild.getBoundingClientRect().bottom
+}
+
+export function handleTerminalBlankAreaClick(
+  event: Event,
+  target: Element | null,
+  view: any,
+  TextSelection: TextSelectionFactory,
+): boolean {
+  if (getMouseButton(event) !== 0) return false
+  if (!isEditorBlankSurfaceTarget(target, view)) return false
+
+  const boundary = getNearestTerminalBoundaryClick(event, view)
+  const handled = boundary
+    ? placeCaretBesideTerminalBlock(view, TextSelection, boundary.context, boundary.side)
+    : isClickBelowLastRenderedChild(event, view)
+      ? getTerminalBlockLandingTarget(view?.state?.doc)
+        ? insertTerminalLandingParagraphs(view, TextSelection)
+        : placeCaretInFinalEmptyTextBlock(view, TextSelection)
+      : false
+  if (!handled) return false
+
+  event.preventDefault()
+  event.stopPropagation()
+  return true
+}
+
 function createLandingZoneElement(
   view: any,
-  TextSelection: { create: (doc: unknown, anchor: number, head?: number) => unknown },
+  TextSelection: TextSelectionFactory,
 ) {
   const element = document.createElement('span')
   element.className = TERMINAL_BLOCK_LANDING_ZONE_CLASS
@@ -106,15 +391,28 @@ function createLandingZoneElement(
   element.setAttribute('role', 'textbox')
   element.setAttribute('aria-label', 'Add text after this block')
 
+  let handledPointerDown = false
+
   const stop = (event: Event) => {
     event.stopPropagation()
   }
 
-  element.addEventListener('pointerdown', stop)
+  element.addEventListener('pointerdown', (event) => {
+    handledPointerDown = handleTerminalLandingZoneClick(event, view, TextSelection)
+    if (!handledPointerDown) stop(event)
+  })
   element.addEventListener('mousedown', stop)
   element.addEventListener('click', (event) => {
-    event.stopPropagation()
-    element.focus()
+    if (handledPointerDown) {
+      handledPointerDown = false
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
+    if (!handleTerminalLandingZoneClick(event, view, TextSelection)) {
+      event.stopPropagation()
+      element.focus()
+    }
   })
   element.addEventListener('focus', () => {
     element.classList.add('is-active')

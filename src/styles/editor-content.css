@@ -501,7 +501,6 @@
   transition: opacity 120ms ease;
 }
 
-.toastui-editor .ProseMirror .tabs-terminal-block-landing-zone:hover::before,
 .toastui-editor .ProseMirror .tabs-terminal-block-landing-zone.is-active::before,
 .toastui-editor .ProseMirror .tabs-terminal-block-landing-zone:focus-visible::before {
   opacity: 1;

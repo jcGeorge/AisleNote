@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
+import { Schema } from 'prosemirror-model'
+import { EditorState, TextSelection } from 'prosemirror-state'
 import {
+  applyPreviewForwardDeleteBeforeInput,
   getPastedHttpUrl,
   getPastedUrlLink,
   getEditorPageMovementForEvent,
@@ -14,6 +17,24 @@ import {
   shouldSkipTableExitRepairTarget,
 } from './useEditorDomEvents'
 import { runEditorHistoryCommand } from './editor-command'
+
+const previewDeleteSchema = new Schema({
+  nodes: {
+    doc: { content: 'block+' },
+    text: { group: 'inline' },
+    paragraph: {
+      group: 'block',
+      content: 'inline*',
+      toDOM: () => ['p', 0],
+    },
+    heading: {
+      group: 'block',
+      content: 'inline*',
+      attrs: { level: { default: 1 } },
+      toDOM: (node) => [`h${node.attrs.level}`, 0],
+    },
+  },
+})
 
 function fakeTarget(matchedSelector: string | null): Element {
   return {
@@ -139,6 +160,41 @@ describe('editor DOM events', () => {
     expect(getMultiLineDeleteInputForBeforeInputType('deleteContentForward')).toEqual({ type: 'delete' })
     expect(getMultiLineDeleteInputForBeforeInputType('deleteContentBackward')).toEqual({ type: 'backspace' })
     expect(getMultiLineDeleteInputForBeforeInputType('insertText')).toBeNull()
+  })
+
+  it('routes beforeinput forward delete through preview-adjacent deletion when not multiline editing', () => {
+    const preview = previewDeleteSchema.nodes.paragraph.create(null, previewDeleteSchema.text('![[Linked--123abc]]'))
+    const empty = previewDeleteSchema.nodes.paragraph.create()
+    const heading = previewDeleteSchema.nodes.heading.create({ level: 2 }, previewDeleteSchema.text('After'))
+    const doc = previewDeleteSchema.nodes.doc.create(null, [preview, empty, heading])
+    const state = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, preview.nodeSize + 1),
+    })
+    const view = {
+      state,
+      dispatch: vi.fn(),
+    }
+
+    expect(applyPreviewForwardDeleteBeforeInput({
+      inputType: 'deleteContentForward',
+      hasMultiLineEdit: false,
+      view,
+    })).toBe(true)
+
+    expect(view.dispatch).toHaveBeenCalledTimes(1)
+    const nextState = state.apply(view.dispatch.mock.calls[0][0])
+    expect(nextState.doc.childCount).toBe(2)
+    expect(nextState.doc.child(0).textContent).toBe('')
+    expect(nextState.doc.child(1).textContent).toBe('After')
+  })
+
+  it('does not route beforeinput preview deletion while multiline editing is active', () => {
+    expect(applyPreviewForwardDeleteBeforeInput({
+      inputType: 'deleteContentForward',
+      hasMultiLineEdit: true,
+      view: { dispatch: vi.fn() },
+    })).toBe(false)
   })
 
   it('prioritizes editor history before aisle structural history inside the editor', () => {

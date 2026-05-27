@@ -6,6 +6,7 @@ import {
   isEmptyEditorTextBlock,
   shouldDeleteEmptyParagraphAtListBoundary,
 } from './empty-paragraph-list-delete'
+import { isNotePreviewOnlyParagraphText } from './terminal-block-landing'
 import {
   applyAnnotationLineClassToHtmlToken,
   applyAnnotationMarkerToTextHtmlToken,
@@ -23,7 +24,6 @@ import {
   getBulletListMarkerFromMarkdownChar,
 } from './list-markers'
 import { BLOCK_INDENT_TOKEN, isHorizontalRuleMarkerLine } from '../markdown/markdown-utils'
-import { NOTE_PREVIEW_REFERENCE_RE } from '../notes/note-references'
 
 type ToastHtmlOpenTagToken = {
   type?: string
@@ -798,6 +798,76 @@ export function deleteEmptyListItemBackward(state: any, dispatch?: (tr: unknown)
   return true
 }
 
+function getCollapsedTopLevelBlockContext(state: any) {
+  const { selection } = state ?? {}
+  if (!selection?.empty) return null
+
+  const { $from } = selection
+  const blockDepth = $from?.depth
+  if (typeof blockDepth !== 'number' || blockDepth <= 0) return null
+
+  const parentDepth = blockDepth - 1
+  const parentNode = $from.node(parentDepth)
+  const blockIndex = $from.index(parentDepth)
+  const from = $from.before(blockDepth)
+  const to = $from.after(blockDepth)
+
+  return {
+    $from,
+    parentNode,
+    blockIndex,
+    from,
+    to,
+    currentNode: $from.parent,
+    previousNode: blockIndex > 0 ? parentNode.child(blockIndex - 1) : null,
+    nextNode: blockIndex < parentNode.childCount - 1 ? parentNode.child(blockIndex + 1) : null,
+  }
+}
+
+function isPreviewOnlyParagraphNode(node: any) {
+  return node?.type?.name === 'paragraph' && isNotePreviewOnlyParagraphText(node.textContent ?? '')
+}
+
+function isEmptyParagraphNode(node: any) {
+  return node?.type?.name === 'paragraph' && isEmptyEditorTextBlock(node)
+}
+
+function getPreviousPreviewInBlankRun(context: ReturnType<typeof getCollapsedTopLevelBlockContext>) {
+  if (!context) return null
+
+  let siblingIndex = context.blockIndex - 1
+  let siblingFrom = context.from
+
+  while (siblingIndex >= 0) {
+    const sibling = context.parentNode.child(siblingIndex)
+    siblingFrom -= sibling.nodeSize
+    if (isPreviewOnlyParagraphNode(sibling)) {
+      return { node: sibling, from: siblingFrom, to: siblingFrom + sibling.nodeSize }
+    }
+    if (!isEmptyParagraphNode(sibling)) return null
+    siblingIndex -= 1
+  }
+
+  return null
+}
+
+export function deletePreviewBeforeBlankRun(state: any, dispatch?: (tr: unknown) => void): boolean {
+  const context = getCollapsedTopLevelBlockContext(state)
+  if (!context) return false
+  const { $from, currentNode } = context
+  if (currentNode.type.name !== 'paragraph') return false
+  if (!isEmptyEditorTextBlock(currentNode)) return false
+  if ($from.parentOffset !== 0 && $from.parentOffset !== currentNode.content.size) return false
+  const previousPreview = getPreviousPreviewInBlankRun(context)
+  if (!previousPreview) return false
+
+  let nextTr = state.tr.delete(previousPreview.from, previousPreview.to)
+  const caretPos = Math.min(previousPreview.from + 1, nextTr.doc.content.size)
+  nextTr = nextTr.setSelection(TextSelection.create(nextTr.doc, caretPos, caretPos)).scrollIntoView()
+  dispatch?.(nextTr)
+  return true
+}
+
 export function applyParagraphSpaceShortcut(state: any, dispatch?: (tr: unknown) => void): boolean {
   const { selection, schema } = state
   if (!selection?.empty) return false
@@ -881,31 +951,7 @@ export function headingSpaceShortcutPlugin(context: {
   const { keymap } = context.pmKeymap
   const { Selection } = context.pmState
 
-  const getBlockContext = (state: any) => {
-    const { selection } = state
-    if (!selection.empty) return null
-
-    const { $from } = selection
-    const blockDepth = $from.depth
-    if (blockDepth <= 0) return null
-
-    const parentDepth = blockDepth - 1
-    const parentNode = $from.node(parentDepth)
-    const blockIndex = $from.index(parentDepth)
-    const from = $from.before(blockDepth)
-    const to = $from.after(blockDepth)
-
-    return {
-      $from,
-      parentNode,
-      blockIndex,
-      from,
-      to,
-      currentNode: $from.parent,
-      previousNode: blockIndex > 0 ? parentNode.child(blockIndex - 1) : null,
-      nextNode: blockIndex < parentNode.childCount - 1 ? parentNode.child(blockIndex + 1) : null,
-    }
-  }
+  const getBlockContext = getCollapsedTopLevelBlockContext
 
   const deleteEmptyParagraphAndPlaceSelectionNear = (
     state: any,
@@ -920,32 +966,6 @@ export function headingSpaceShortcutPlugin(context: {
     const safePos = Math.max(0, Math.min(docSize, selectionPos))
     const nextSelection = Selection.near(nextTr.doc.resolve(safePos), bias)
     nextTr = nextTr.setSelection(nextSelection).scrollIntoView()
-    dispatch?.(nextTr)
-    return true
-  }
-
-  const isPreviewOnlyParagraph = (node: any) => {
-    if (node?.type?.name !== 'paragraph') return false
-    const text = String(node.textContent ?? '').replace(/\u200b/g, '').trim()
-    if (!text) return false
-    const withoutPreviews = text.replace(NOTE_PREVIEW_REFERENCE_RE, '').trim()
-    NOTE_PREVIEW_REFERENCE_RE.lastIndex = 0
-    return withoutPreviews.length === 0
-  }
-
-  const handleDeleteFromEmptyParagraphAfterPreview = (state: any, dispatch?: (tr: unknown) => void) => {
-    const context = getBlockContext(state)
-    if (!context) return false
-    const { $from, currentNode, previousNode, from } = context
-    if (currentNode.type.name !== 'paragraph') return false
-    if (!isEmptyEditorTextBlock(currentNode)) return false
-    if ($from.parentOffset !== currentNode.content.size) return false
-    if (!isPreviewOnlyParagraph(previousNode)) return false
-
-    const previousFrom = from - previousNode.nodeSize
-    let nextTr = state.tr.delete(previousFrom, from)
-    const caretPos = Math.min(previousFrom + 1, nextTr.doc.content.size)
-    nextTr = nextTr.setSelection(TextSelection.create(nextTr.doc, caretPos, caretPos)).scrollIntoView()
     dispatch?.(nextTr)
     return true
   }
@@ -1037,7 +1057,7 @@ export function headingSpaceShortcutPlugin(context: {
             handleBackspaceFromHeadingAfterEmptyParagraph(state, dispatch) ||
             handleBackspaceFromEmptyParagraphAfterList(state, dispatch),
           Delete: (state: any, dispatch?: (tr: unknown) => void) =>
-            handleDeleteFromEmptyParagraphAfterPreview(state, dispatch) ||
+            deletePreviewBeforeBlankRun(state, dispatch) ||
             handleDeleteFromEmptyParagraphBeforeHeading(state, dispatch) ||
             handleDeleteFromEmptyParagraphBeforeList(state, dispatch),
           Space: applyParagraphSpaceShortcut,

@@ -1,6 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import type { Editor } from '@toast-ui/editor'
+import { TextSelection } from 'prosemirror-state'
 import type { ToolbarFormatKey } from '../components/editor/toolbar-state'
 import type {
   AppState,
@@ -18,7 +19,11 @@ import {
   resolveEditorBeforeInputIntent,
   resolveEditorKeyDownIntent,
 } from './editor-input-intents'
-import { applyParagraphSpaceShortcut, getMultilineSelectionShortcutDirection } from './editor-setup'
+import {
+  applyParagraphSpaceShortcut,
+  deletePreviewBeforeBlankRun,
+  getMultilineSelectionShortcutDirection,
+} from './editor-setup'
 import {
   applySingleCursorPageMovement,
   type EditorPageMovement,
@@ -26,7 +31,10 @@ import {
   type MultiLineEditInput,
 } from './multiline-edit'
 import { isInsideReadonlyNotePreview } from './note-preview-dom'
-import { isInsideTerminalBlockLandingZone } from './terminal-block-landing'
+import {
+  handleTerminalBlankAreaClick,
+  isInsideTerminalBlockLandingZone,
+} from './terminal-block-landing'
 import {
   getElementFromEventTarget,
   getExternalLinkRangeAtDocPosition,
@@ -298,6 +306,20 @@ export function runEditorHistoryEvent({
   return { handled: command.handled, result: command.historyResult ?? 'unavailable' }
 }
 
+export function applyPreviewForwardDeleteBeforeInput({
+  inputType,
+  hasMultiLineEdit,
+  view,
+}: {
+  inputType: string
+  hasMultiLineEdit: boolean
+  view: any
+}): boolean {
+  if (hasMultiLineEdit || inputType !== 'deleteContentForward') return false
+  if (!view?.state || typeof view.dispatch !== 'function') return false
+  return deletePreviewBeforeBlankRun(view.state, (transaction) => view.dispatch(transaction))
+}
+
 export function useEditorDomEvents({
   viewMode,
   displayContent,
@@ -363,6 +385,7 @@ export function useEditorDomEvents({
     if (!root) return
 
     let linkHandledOnPointerDown = false
+    let terminalBlankAreaHandledOnPointerDown = false
     let pendingTableExitRepair: {
       coords: { left: number; top: number }
       range: TableRange
@@ -524,6 +547,24 @@ export function useEditorDomEvents({
         clearPendingTableExitRepair()
         return
       }
+      const view = getWysiwygView(editorRef.current)
+      if (
+        isActiveWysiwygEditorContentTarget(target, view) &&
+        handleTerminalBlankAreaClick(event, target, view, TextSelection)
+      ) {
+        terminalBlankAreaHandledOnPointerDown = true
+        clearPendingTableExitRepair()
+        if (chromeClosePlan.closeImageTools) {
+          closeImageTools()
+        }
+        if (chromeClosePlan.closeLinkPrompt) {
+          closeLinkPrompt()
+        }
+        window.setTimeout(syncToolbarFormatState, 0)
+        onEditorSelectionChange()
+        onEditorMentionQueryChange()
+        return
+      }
       if (chromeClosePlan.closeImageTools) {
         closeImageTools()
       }
@@ -536,6 +577,13 @@ export function useEditorDomEvents({
       const target = getElementFromEventTarget(event.target)
       if (!target) return
       if (isInsideTerminalBlockLandingZone(target)) return
+      if (terminalBlankAreaHandledOnPointerDown) {
+        terminalBlankAreaHandledOnPointerDown = false
+        clearPendingTableExitRepair()
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
       if (linkHandledOnPointerDown) {
         linkHandledOnPointerDown = false
         clearPendingTableExitRepair()
@@ -549,6 +597,17 @@ export function useEditorDomEvents({
       }
       if (handleInternalLinkWidgetInteraction(event, target)) {
         clearPendingTableExitRepair()
+        return
+      }
+      const view = getWysiwygView(editorRef.current)
+      if (
+        isActiveWysiwygEditorContentTarget(target, view) &&
+        handleTerminalBlankAreaClick(event, target, view, TextSelection)
+      ) {
+        clearPendingTableExitRepair()
+        window.setTimeout(syncToolbarFormatState, 0)
+        onEditorSelectionChange()
+        onEditorMentionQueryChange()
         return
       }
       scheduleTableExitRepair()
@@ -896,6 +955,23 @@ export function useEditorDomEvents({
       const inputEvent = event as InputEvent
       if (isInsideTerminalBlockLandingZone(getElementFromEventTarget(inputEvent.target))) return
       activateEditorFromEventTarget(inputEvent.target)
+      const inputTarget = getElementFromEventTarget(inputEvent.target)
+      const view = getWysiwygView(editorRef.current)
+      if (
+        isActiveWysiwygEditorContentTarget(inputTarget, view) &&
+        applyPreviewForwardDeleteBeforeInput({
+          inputType: inputEvent.inputType,
+          hasMultiLineEdit: Boolean(multiLineEditRef.current),
+          view,
+        })
+      ) {
+        inputEvent.preventDefault()
+        inputEvent.stopPropagation()
+        window.setTimeout(syncToolbarFormatState, 0)
+        onEditorSelectionChange()
+        onEditorMentionQueryChange()
+        return
+      }
       const inputIntent = resolveEditorBeforeInputIntent({
         inputType: inputEvent.inputType,
         data: inputEvent.data,
@@ -917,7 +993,6 @@ export function useEditorDomEvents({
         }
         return
       }
-      const inputTarget = getElementFromEventTarget(inputEvent.target)
       if (inputIntent.type === 'paragraph-space-shortcut') {
         if (!multiLineEditRef.current && tryApplySingleCursorParagraphSpaceShortcut(inputTarget)) {
           inputEvent.preventDefault()
