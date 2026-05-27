@@ -81,10 +81,10 @@ describe('ContextMenuHost copy actions', () => {
     expect(html).toContain('copy note as')
     expect(html).toContain('copy aisle as')
     expect(html).toContain('aria-disabled="true"')
-    expect(html).toContain('duplicate')
-    expect(html).toContain('preview')
+    expect(html).toContain('synced copy')
+    expect(html).toContain('note preview')
     expect(html).toMatch(
-      /copy note as[\s\S]*>copy<\/button>[\s\S]*>duplicate<\/button>[\s\S]*role="separator"[\s\S]*>link<\/button>[\s\S]*>preview<\/button>/,
+      /copy note as[\s\S]*>independent copy<\/button>[\s\S]*>synced copy<\/button>[\s\S]*role="separator"[\s\S]*>note link<\/button>[\s\S]*>note preview<\/button>/,
     )
   })
 

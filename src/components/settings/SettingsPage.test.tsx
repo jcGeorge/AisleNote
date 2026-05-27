@@ -143,6 +143,7 @@ function renderSettingsPage(
       tableOfContentsScopeDraft={state.ui.tableOfContentsScope ?? 'all-aisles'}
       newAislePlacementDraft={state.ui.newAislePlacement ?? 'end'}
       removeNoteReferencesOnTrashDraft={state.ui.removeNoteReferencesOnTrash ?? true}
+      noteMentionCopyRequiresConfirmationDraft={state.ui.noteMentionCopyRequiresConfirmation ?? true}
       frontmatterDraft={frontmatterDraft}
       frontmatterDraftDirty={frontmatterDraftDirty}
       toolbarLayouts={getToolbarLayouts(state.ui.toolbarLayouts)}
@@ -174,6 +175,7 @@ function renderSettingsPage(
       onTableOfContentsScopeChange={() => undefined}
       onNewAislePlacementChange={() => undefined}
       onRemoveNoteReferencesOnTrashChange={() => undefined}
+      onNoteMentionCopyRequiresConfirmationChange={() => undefined}
       onTipEnabledChange={() => undefined}
       onSelectToolbarLayout={() => undefined}
       onCreateToolbarLayout={() => undefined}
@@ -262,6 +264,19 @@ describe('frontmatter settings page', () => {
     expect(html).toContain('aria-label="remove all links to a note when it&#x27;s trashed"')
     expect(html).toContain('role="switch" aria-label="remove all links to a note when it&#x27;s trashed" checked=""')
     expect(html.indexOf("remove all links to a note when it&#x27;s trashed")).toBeLessThan(
+      html.indexOf('add table row or column'),
+    )
+  })
+
+  it('renders the @ menu copy confirmation setting in misc settings', () => {
+    const state = createState()
+    state.ui.noteMentionCopyRequiresConfirmation = true
+    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'misc', state })
+
+    expect(html).toContain('@ menu requires confirmation for replacing note with synced or independent copy')
+    expect(html).toContain('aria-label="@ menu requires confirmation for replacing note with synced or independent copy"')
+    expect(html).toContain('role="switch" aria-label="@ menu requires confirmation for replacing note with synced or independent copy" checked=""')
+    expect(html.indexOf('@ menu requires confirmation for replacing note with synced or independent copy')).toBeLessThan(
       html.indexOf('add table row or column'),
     )
   })

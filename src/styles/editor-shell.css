@@ -1328,6 +1328,10 @@
   overflow: hidden;
 }
 
+.note-mention-menu.is-search {
+  width: min(45.6rem, calc(100vw - 1rem));
+}
+
 .note-mention-navigator {
   display: grid;
   gap: 0.45rem;
@@ -1399,6 +1403,18 @@
   --rail-control-selected-border: var(--subtab-rail-selected-border);
 }
 
+.note-mention-nav-row.is-aisle-row {
+  --rail-control-text: var(--subtab-rail-text);
+  --rail-control-bg: var(--subtab-rail-bg);
+  --rail-control-border: var(--subtab-rail-border);
+  --rail-control-hover-text: var(--subtab-rail-hover-text);
+  --rail-control-hover-bg: var(--subtab-rail-hover-bg);
+  --rail-control-hover-border: var(--subtab-rail-hover-border);
+  --rail-control-selected-text: var(--subtab-rail-selected-text);
+  --rail-control-selected-bg: var(--subtab-rail-selected-bg);
+  --rail-control-selected-border: var(--subtab-rail-selected-border);
+}
+
 .note-mention-row-items {
   min-width: 0;
   display: flex;
@@ -1425,9 +1441,9 @@
   min-width: 0;
   min-height: 2.32rem;
   display: grid;
-  grid-template-columns: minmax(8rem, 0.8fr) minmax(0, 1.2fr);
+  grid-template-columns: auto minmax(8rem, 0.72fr) minmax(0, 1.28fr);
   align-items: center;
-  gap: 0.7rem;
+  gap: 0.45rem;
   border: 0;
   border-radius: 0.35rem;
   background: transparent;
@@ -1438,26 +1454,86 @@
 }
 
 .note-mention-result-card:hover,
-.note-mention-result-card.is-active {
+.note-mention-result-card.is-active,
+.note-mention-result-card.is-selected-search {
   background: var(--context-menu-item-hover-bg);
 }
 
-.note-mention-result-title,
-.note-mention-result-breadcrumb {
+.note-mention-result-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.9em;
+  font-weight: 400;
+}
+
+.note-mention-result-context-chip {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+  unicode-bidi: plaintext;
+}
+
+.note-mention-result-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.45em;
+  height: 1.45em;
+  border: 1px solid var(--context-menu-border);
+  border-radius: 999px;
+  background: var(--stage-action-bg);
+  color: var(--stage-action-text);
+  font-size: 0.78em;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.note-mention-result-context {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.24em;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.note-mention-result-title {
-  font-size: 0.9em;
-  font-weight: 700;
+.note-mention-result-context-chip {
+  --rail-control-flex: 0 1 auto;
+  --rail-control-min-width: 0;
+  --rail-control-max-width: 9em;
+  --rail-control-height: 1.55em;
+  --rail-control-padding: 0.12em 0.45em;
+  --rail-control-radius: 0.34em;
+  --rail-control-font-size: 0.78em;
+  --rail-control-font-weight: 400;
+  --rail-control-line-height: 1.1;
 }
 
-.note-mention-result-breadcrumb {
-  color: var(--app-text-subtle);
-  font-size: 0.78em;
+.note-mention-result-context-chip.is-domain {
+  flex-shrink: 6;
+  max-width: 7.5em;
+}
+
+.note-mention-result-context-chip.is-space {
+  flex-shrink: 5;
+  max-width: 8em;
+}
+
+.note-mention-result-context-chip.is-parent {
+  flex-shrink: 3;
+  max-width: 9em;
+}
+
+.note-mention-result-context-chip.is-subtab {
+  flex: 0 0 auto;
+  max-width: 10.5em;
 }
 
 .note-mention-empty {
@@ -1467,11 +1543,26 @@
 }
 
 .note-mention-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.35rem;
+  display: grid;
+  gap: 0.45rem;
   border-top: 1px solid var(--context-menu-border);
   padding-top: 0.45rem;
+}
+
+.note-mention-action-list,
+.note-mention-copy-confirm {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.note-mention-copy-confirm-text {
+  color: var(--app-text-muted);
+  font-size: 0.78em;
+  font-weight: 700;
 }
 
 .note-mention-action-btn {
@@ -1486,10 +1577,17 @@
 }
 
 .note-mention-action-btn:hover,
-.note-mention-action-btn.is-primary {
+.note-mention-action-btn.is-primary,
+.note-mention-action-btn.is-focused,
+.note-mention-action-btn.is-pending-copy {
   border-color: var(--stage-action-selected-border);
   background: var(--stage-action-selected-bg);
   color: var(--stage-action-selected-text);
+}
+
+.note-mention-nav-chip[data-focused="true"] {
+  outline: 2px solid var(--stage-action-selected-border);
+  outline-offset: 1px;
 }
 
 .find-replace-panel {

@@ -1,12 +1,21 @@
-import type { AppState, Domain, NoteLocation, Space, SubTab, Tab } from '../types/app'
-import { filterNoteSearchEntries, type NoteSearchEntry } from './note-locations'
+import type { AppState, Domain, NoteLocation, NoteNavigationTarget, Space, SubTab, Tab } from '../types/app'
+import { filterNoteSearchEntries, getLocationInfo, type NoteSearchEntry } from './note-locations'
 
-export type NoteMentionNavigatorRowId = 'domain' | 'space' | 'tab' | 'note'
+export type NoteMentionNavigatorRowId = 'domain' | 'space' | 'tab' | 'note' | 'aisle'
+export type NoteMentionTarget = NoteNavigationTarget
+export type NoteMentionAction = 'link' | 'context' | 'independent-copy' | 'synced-copy'
+export type NoteMentionSearchFocusStage = 'typing' | 'results' | 'aisles' | 'actions' | 'copy-confirm'
+
+export const NOTE_MENTION_ACTIONS: NoteMentionAction[] = ['link', 'context', 'independent-copy', 'synced-copy']
+
+export function isNoteMentionCopyAction(action: NoteMentionAction): action is 'independent-copy' | 'synced-copy' {
+  return action === 'independent-copy' || action === 'synced-copy'
+}
 
 export type NoteMentionNavigatorItem = {
   id: string
   label: string
-  target?: NoteLocation
+  target?: NoteMentionTarget
 }
 
 export type NoteMentionNavigatorRow = {
@@ -16,7 +25,26 @@ export type NoteMentionNavigatorRow = {
   selectedId: string
 }
 
-export type NoteMentionSelection = NoteLocation
+export type NoteMentionSearchContextChip = {
+  kind: 'domain' | 'space' | 'parent' | 'note'
+  label: string
+}
+
+export type NoteMentionSearchEntryDetails = {
+  key: string
+  aisleCount: number
+  contextChips: NoteMentionSearchContextChip[]
+}
+
+export type NoteMentionSearchSelectionState = {
+  activeIndex: number
+  selectedIndex: number | null
+  searchAisleId?: string | null
+}
+
+export type NoteMentionSelection = NoteLocation & {
+  aisleId?: string | null
+}
 
 const NAVIGATOR_ROW_IDS: NoteMentionNavigatorRowId[] = ['domain', 'space', 'tab', 'note']
 const HOME_NOTE_ID = '__home__'
@@ -45,6 +73,97 @@ function getSubTab(tab: Tab | null, subTabId: string | null): SubTab | null {
   return subTabId && tab ? tab.subTabs.find((subTab) => subTab.id === subTabId) ?? null : null
 }
 
+function getNoteBodyAisles(sourceState: AppState, target: NoteLocation) {
+  const noteBodyId = getLocationInfo(sourceState, target).noteBodyId
+  if (!noteBodyId) return []
+  return sourceState.noteBodies?.find((body) => body.id === noteBodyId)?.aisles ?? []
+}
+
+export function getNoteMentionAisleItems(sourceState: AppState, target: NoteLocation): NoteMentionNavigatorItem[] {
+  const aisles = getNoteBodyAisles(sourceState, target)
+  if (aisles.length <= 1) return []
+  return aisles.map((aisle, index) => ({
+    id: aisle.id,
+    label: `aisle ${index + 1}`,
+    target: {
+      ...target,
+      aisleIds: [aisle.id],
+    },
+  }))
+}
+
+export function getNoteMentionSelectedAisleId(
+  sourceState: AppState,
+  target: NoteLocation,
+  aisleId?: string | null,
+): string | null {
+  const items = getNoteMentionAisleItems(sourceState, target)
+  if (items.length === 0) return null
+  return items.some((item) => item.id === aisleId) ? aisleId ?? null : items[0]?.id ?? null
+}
+
+export function getNoteMentionSearchEntryKey(entry: NoteSearchEntry): string {
+  return `${entry.domainId}:${entry.spaceId}:${entry.tabId}:${entry.subTabId ?? 'home'}`
+}
+
+export function getNoteMentionSearchEntryDetails(sourceState: AppState, entry: NoteSearchEntry): NoteMentionSearchEntryDetails {
+  const target: NoteLocation = {
+    domainId: entry.domainId,
+    spaceId: entry.spaceId,
+    tabId: entry.tabId,
+    subTabId: entry.subTabId,
+  }
+  const aisleCount = Math.max(1, Math.min(8, getNoteBodyAisles(sourceState, target).length || 1))
+  return {
+    key: getNoteMentionSearchEntryKey(entry),
+    aisleCount,
+    contextChips: [
+      { kind: 'domain', label: entry.domainName },
+      { kind: 'space', label: entry.spaceName },
+      { kind: 'parent', label: entry.parentName },
+      { kind: 'note', label: entry.noteName },
+    ],
+  }
+}
+
+export function getNoteMentionSearchSelectionAfterHover(
+  current: NoteMentionSearchSelectionState,
+  index: number,
+): NoteMentionSearchSelectionState {
+  if (current.selectedIndex !== null) return current
+  const activeIndex = Math.max(0, index)
+  return {
+    activeIndex,
+    selectedIndex: null,
+    searchAisleId: activeIndex === current.activeIndex ? current.searchAisleId ?? null : null,
+  }
+}
+
+export function getNoteMentionSearchSelectionAfterClick(
+  _current: NoteMentionSearchSelectionState,
+  index: number,
+): NoteMentionSearchSelectionState {
+  const activeIndex = Math.max(0, index)
+  return {
+    activeIndex,
+    selectedIndex: activeIndex,
+    searchAisleId: null,
+  }
+}
+
+export function getNoteMentionSearchSelectionAfterKeyboard(
+  current: NoteMentionSearchSelectionState,
+  index: number,
+): NoteMentionSearchSelectionState {
+  const activeIndex = Math.max(0, index)
+  return {
+    activeIndex,
+    selectedIndex: null,
+    searchAisleId:
+      current.selectedIndex === null && activeIndex === current.activeIndex ? current.searchAisleId ?? null : null,
+  }
+}
+
 function firstSelectionForDomain(sourceState: AppState, domain: Domain | null): NoteMentionSelection {
   const space =
     domain?.spaces.find((candidate) => candidate.id === (domain.id === sourceState.activeDomainId ? sourceState.activeSpaceId : domain.activeSpaceId)) ??
@@ -67,12 +186,14 @@ export function resolveNoteMentionSelection(
   const space = getSpace(domain, selection.spaceId)
   const tab = getTab(space, selection.tabId)
   const subTab = getSubTab(tab, selection.subTabId)
-  return {
+  const baseSelection = {
     domainId: domain?.id ?? '',
     spaceId: space?.id ?? '',
     tabId: tab?.id ?? '',
     subTabId: subTab?.id ?? null,
   }
+  const aisleId = getNoteMentionSelectedAisleId(sourceState, baseSelection, selection.aisleId)
+  return aisleId ? { ...baseSelection, aisleId } : baseSelection
 }
 
 export function createDefaultNoteMentionSelection(
@@ -103,8 +224,10 @@ export function buildNoteMentionNavigatorRows(
       target: { domainId: resolved.domainId, spaceId: resolved.spaceId, tabId: resolved.tabId, subTabId: subTab.id },
     })) ?? []),
   ]
+  const target = getNoteMentionTarget(resolved)
+  const aisleItems = getNoteMentionAisleItems(sourceState, target)
 
-  return [
+  const rows: NoteMentionNavigatorRow[] = [
     {
       id: 'domain',
       label: 'domains',
@@ -130,6 +253,15 @@ export function buildNoteMentionNavigatorRows(
       items: noteItems,
     },
   ]
+  if (aisleItems.length > 0) {
+    rows.push({
+      id: 'aisle',
+      label: 'aisles',
+      selectedId: resolved.aisleId ?? aisleItems[0]?.id ?? '',
+      items: aisleItems,
+    })
+  }
+  return rows
 }
 
 export function updateNoteMentionSelectionForRow(
@@ -161,8 +293,11 @@ export function updateNoteMentionSelectionForRow(
       subTabId: null,
     }
   }
+  if (rowId === 'aisle') return { ...resolved, aisleId: itemId }
+  const baseSelection = { ...resolved }
+  delete baseSelection.aisleId
   return {
-    ...resolved,
+    ...baseSelection,
     subTabId: itemId === HOME_NOTE_ID ? null : itemId,
   }
 }
@@ -170,10 +305,11 @@ export function updateNoteMentionSelectionForRow(
 export function moveNoteMentionActiveRow(
   currentRow: NoteMentionNavigatorRowId,
   delta: number,
+  rowIds: NoteMentionNavigatorRowId[] = NAVIGATOR_ROW_IDS,
 ): NoteMentionNavigatorRowId {
-  const currentIndex = NAVIGATOR_ROW_IDS.indexOf(currentRow)
-  const nextIndex = Math.max(0, Math.min(NAVIGATOR_ROW_IDS.length - 1, currentIndex + delta))
-  return NAVIGATOR_ROW_IDS[nextIndex] ?? 'space'
+  const currentIndex = Math.max(0, rowIds.indexOf(currentRow))
+  const nextIndex = Math.max(0, Math.min(rowIds.length - 1, currentIndex + delta))
+  return rowIds[nextIndex] ?? 'space'
 }
 
 export function moveNoteMentionSelectionInRow(
@@ -190,13 +326,15 @@ export function moveNoteMentionSelectionInRow(
   return updateNoteMentionSelectionForRow(sourceState, selection, rowId, row.items[nextIndex]?.id ?? row.selectedId)
 }
 
-export function getNoteMentionTarget(selection: NoteMentionSelection): NoteLocation {
-  return {
+export function getNoteMentionTarget(selection: NoteMentionSelection): NoteMentionTarget {
+  const target: NoteMentionTarget = {
     domainId: selection.domainId,
     spaceId: selection.spaceId,
     tabId: selection.tabId,
     subTabId: selection.subTabId,
   }
+  if (selection.aisleId) target.aisleIds = [selection.aisleId]
+  return target
 }
 
 export function filterNoteMentionSearchEntries(

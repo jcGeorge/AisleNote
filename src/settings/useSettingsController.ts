@@ -130,6 +130,9 @@ export function useSettingsController({
   const [removeNoteReferencesOnTrashDraft, setRemoveNoteReferencesOnTrashDraft] = useState(
     DEFAULT_UI_SETTINGS.removeNoteReferencesOnTrash ?? true,
   )
+  const [noteMentionCopyRequiresConfirmationDraft, setNoteMentionCopyRequiresConfirmationDraft] = useState(
+    DEFAULT_UI_SETTINGS.noteMentionCopyRequiresConfirmation ?? true,
+  )
   const [tabButtonScaleDraft, setTabButtonScaleDraft] = useState(DEFAULT_UI_SETTINGS.tabButtonScale)
   const [noteFontScaleDraft, setNoteFontScaleDraft] = useState(DEFAULT_UI_SETTINGS.noteFontScale)
   const [tooltipScaleDraft, setTooltipScaleDraft] = useState(DEFAULT_UI_SETTINGS.tooltipScale ?? 1)
@@ -166,6 +169,9 @@ export function useSettingsController({
     setRemoveNoteReferencesOnTrashDraft(
       state.ui.removeNoteReferencesOnTrash ?? DEFAULT_UI_SETTINGS.removeNoteReferencesOnTrash ?? true,
     )
+    setNoteMentionCopyRequiresConfirmationDraft(
+      state.ui.noteMentionCopyRequiresConfirmation ?? DEFAULT_UI_SETTINGS.noteMentionCopyRequiresConfirmation ?? true,
+    )
     setTabButtonScaleDraft(state.ui.tabButtonScale)
     setNoteFontScaleDraft(state.ui.noteFontScale)
     setTooltipScaleDraft(state.ui.tooltipScale ?? DEFAULT_UI_SETTINGS.tooltipScale ?? 1)
@@ -201,6 +207,7 @@ export function useSettingsController({
     state.ui.tableOfContentsScope,
     state.ui.newAislePlacement,
     state.ui.removeNoteReferencesOnTrash,
+    state.ui.noteMentionCopyRequiresConfirmation,
     state.ui.tabButtonScale,
     state.ui.noteFontScale,
     state.ui.tooltipScale,
@@ -404,6 +411,17 @@ export function useSettingsController({
       ui: {
         ...previous.ui,
         removeNoteReferencesOnTrash: enabled,
+      },
+    }))
+  }
+
+  const updateNoteMentionCopyRequiresConfirmationSetting = (enabled: boolean) => {
+    setNoteMentionCopyRequiresConfirmationDraft(enabled)
+    commitImmediateSettingsState((previous) => ({
+      ...previous,
+      ui: {
+        ...previous.ui,
+        noteMentionCopyRequiresConfirmation: enabled,
       },
     }))
   }
@@ -920,6 +938,7 @@ export function useSettingsController({
     tableOfContentsScopeDraft,
     newAislePlacementDraft,
     removeNoteReferencesOnTrashDraft,
+    noteMentionCopyRequiresConfirmationDraft,
     frontmatterDraft,
     frontmatterDraftDirty,
     toolbarLayouts: getToolbarLayouts(state.ui.toolbarLayouts),
@@ -942,6 +961,7 @@ export function useSettingsController({
     updateTableOfContentsScopeSetting,
     updateNewAislePlacementSetting,
     updateRemoveNoteReferencesOnTrashSetting,
+    updateNoteMentionCopyRequiresConfirmationSetting,
     updateTipEnabledSetting,
     updateTabButtonScaleSetting,
     updateNoteFontScaleSetting,

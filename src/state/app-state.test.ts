@@ -876,6 +876,18 @@ describe('app state normalization', () => {
     expect(missing.ui.removeNoteReferencesOnTrash).toBe(true)
   })
 
+  it('normalizes @ menu copy confirmation setting', () => {
+    const enabled = parseModernState({ ui: { noteMentionCopyRequiresConfirmation: true } })
+    const disabled = parseModernState({ ui: { noteMentionCopyRequiresConfirmation: false } })
+    const invalid = parseModernState({ ui: { noteMentionCopyRequiresConfirmation: 'no' } })
+    const missing = parseModernState({ ui: {} })
+
+    expect(enabled.ui.noteMentionCopyRequiresConfirmation).toBe(true)
+    expect(disabled.ui.noteMentionCopyRequiresConfirmation).toBe(false)
+    expect(invalid.ui.noteMentionCopyRequiresConfirmation).toBe(true)
+    expect(missing.ui.noteMentionCopyRequiresConfirmation).toBe(true)
+  })
+
   it('normalizes synced toolbar layouts while leaving active toolbar selection local', () => {
     const state = parseModernState({
       ui: {

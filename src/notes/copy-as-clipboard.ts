@@ -201,17 +201,17 @@ export async function writeCopyAsClipboardData(
 
 export function getCopyAsSuccessMessage(scope: CopyAsScope, action: CopyAsAction): string {
   const subject = scope === 'aisle' ? 'aisle' : 'note'
-  if (action === 'duplicate') return `${subject} duplicate copied.`
+  if (action === 'duplicate') return `synced ${subject} copy copied.`
   if (action === 'link') return `${subject} link copied.`
-  if (action === 'copy') return `${subject} copy copied.`
+  if (action === 'copy') return `independent ${subject} copy copied.`
   return `${subject} preview copied.`
 }
 
 export function getCopyAsPasteSuccessMessage(scope: CopyAsScope, action: CopyAsAction): string {
   const subject = scope === 'aisle' ? 'aisle' : 'note'
-  if (action === 'duplicate') return `${subject} duplicated.`
+  if (action === 'duplicate') return `synced ${subject} copy created.`
   if (action === 'link') return `${subject} link pasted.`
-  if (action === 'copy') return `${subject} copied.`
+  if (action === 'copy') return `independent ${subject} copy created.`
   return `${subject} preview pasted.`
 }
 
@@ -345,7 +345,7 @@ export function applyCopyAsStructuralPayloadToState(
   }
 
   const mode = payload.action === 'duplicate' ? 'linked' : 'independent'
-  const noun = payload.action === 'duplicate' ? 'duplicate' : 'copy'
+  const noun = payload.action === 'duplicate' ? 'synced copy' : 'independent copy'
   const sourceInfo = getLocationInfo(appState, payload.source)
   const sourceBody = sourceInfo.noteBodyId ? appState.noteBodies.find((body) => body.id === sourceInfo.noteBodyId) ?? null : null
   if (!sourceInfo.noteBodyId || !sourceBody) {

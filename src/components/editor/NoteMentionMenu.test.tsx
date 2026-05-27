@@ -1,16 +1,76 @@
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it, vi } from 'vitest'
-import { NoteMentionMenu } from './NoteMentionMenu'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  handleNoteMentionSearchAisleClick,
+  handleNoteMentionSearchResultClick,
+  handleNoteMentionSearchResultDoubleClick,
+  handleNoteMentionSearchResultHover,
+} from './note-mention-menu-events'
+import {
+  NoteMentionMenu,
+} from './NoteMentionMenu'
 
 const handlers = {
   onActiveRowChange: vi.fn(),
   onSelectNavigatorItem: vi.fn(),
+  onSelectSearchResult: vi.fn(),
+  onSelectSearchAisle: vi.fn(),
   onHighlightSearch: vi.fn(),
+  onFocusAction: vi.fn(),
+  onChooseAction: vi.fn(),
+  onConfirmCopyAction: vi.fn(),
+  onCancelCopyAction: vi.fn(),
   onChooseSearchEntry: vi.fn(),
   onChooseTarget: vi.fn(),
 }
 
+const menuStateProps = {
+  searchFocusStage: 'typing' as const,
+  focusedAisleIndex: 0,
+  focusedActionIndex: 0,
+  focusedConfirmIndex: 0,
+  pendingCopyAction: null,
+}
+
+const searchEntry = {
+  domainId: 'domain',
+  spaceId: 'space',
+  tabId: 'tab',
+  subTabId: 'sub',
+  noteBodyId: 'body',
+  domainName: 'Humble beginnings',
+  spaceName: 'mySpace',
+  parentName: 'codex',
+  noteName: 'ref',
+  label: 'Humble beginnings > mySpace > codex > ref',
+  searchText: 'humble beginnings myspace codex ref',
+}
+
+const searchEntryDetails = [
+  {
+    key: 'domain:space:tab:sub',
+    aisleCount: 2,
+    contextChips: [
+      { kind: 'domain' as const, label: 'Humble beginnings' },
+      { kind: 'space' as const, label: 'mySpace' },
+      { kind: 'parent' as const, label: 'codex' },
+      { kind: 'note' as const, label: 'ref' },
+    ],
+  },
+]
+
+function createPointerEventStub() {
+  return {
+    preventDefault: vi.fn(),
+    stopPropagation: vi.fn(),
+  }
+}
+
 describe('NoteMentionMenu', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   it('renders four navigator rows with active and selected states', () => {
     const html = renderToStaticMarkup(
       <NoteMentionMenu
@@ -19,8 +79,11 @@ describe('NoteMentionMenu', () => {
         query=""
         activeRow="space"
         activeSearchIndex={0}
-        modifierLabel="Cmd"
+        selectedSearchIndex={null}
+        searchAisleItems={[]}
+        selectedSearchAisleId=""
         searchEntries={[]}
+        searchEntryDetails={[]}
         navigatorRows={[
           { id: 'domain', label: 'domains', selectedId: 'domain', items: [{ id: 'domain', label: 'Humble beginnings' }] },
           { id: 'space', label: 'spaces', selectedId: 'space', items: [{ id: 'space', label: 'mySpace' }] },
@@ -32,6 +95,7 @@ describe('NoteMentionMenu', () => {
             items: [{ id: '__home__', label: 'home', target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null } }],
           },
         ]}
+        {...menuStateProps}
         {...handlers}
       />,
     )
@@ -51,8 +115,10 @@ describe('NoteMentionMenu', () => {
     expect(html).not.toContain('>prime tabs</button>')
     expect(html).not.toContain('>notes</button>')
     expect(html).toContain('rail-control note-mention-nav-chip is-selected')
-    expect(html).toContain('Enter link')
-    expect(html).toContain('Cmd+Enter preview')
+    expect(html).toContain('note link')
+    expect(html).toContain('note preview')
+    expect(html).not.toContain('make independent copy')
+    expect(html).not.toContain('synced copy')
     expect(html).not.toContain('tabIndex')
   })
 
@@ -64,34 +130,32 @@ describe('NoteMentionMenu', () => {
         query="codex"
         activeRow="space"
         activeSearchIndex={0}
-        modifierLabel="Ctrl"
+        selectedSearchIndex={null}
+        searchAisleItems={[]}
+        selectedSearchAisleId=""
         navigatorRows={[]}
-        searchEntries={[
-          {
-            domainId: 'domain',
-            spaceId: 'space',
-            tabId: 'tab',
-            subTabId: null,
-            noteBodyId: 'body',
-            domainName: 'Humble beginnings',
-            spaceName: 'mySpace',
-            parentName: 'codex',
-            noteName: 'home',
-            label: 'Humble beginnings > mySpace > codex > home',
-            searchText: 'humble beginnings myspace codex home',
-          },
-        ]}
+        searchEntries={[{ ...searchEntry, subTabId: null, noteName: 'home', label: 'Humble beginnings > mySpace > codex > home' }]}
+        searchEntryDetails={[{ ...searchEntryDetails[0], aisleCount: 1, contextChips: searchEntryDetails[0].contextChips.map((chip) => chip.kind === 'note' ? { ...chip, label: 'home' } : chip) }]}
+        {...menuStateProps}
         {...handlers}
       />,
     )
 
     expect(html).toContain('aria-label="Note search"')
     expect(html).toContain('note-mention-result-card is-active')
+    expect(html).toContain('note-mention-result-count')
     expect(html).toContain('note-mention-result-title')
     expect(html).toContain('>home</span>')
-    expect(html).toContain('note-mention-result-breadcrumb')
-    expect(html).toContain('Humble beginnings / mySpace / codex / home')
-    expect(html).toContain('Ctrl+Enter preview')
+    expect(html).toContain('note-mention-result-context')
+    expect(html).toContain('compact-domain-btn is-domain')
+    expect(html).toContain('compact-space-btn is-space')
+    expect(html).toContain('parent-tab-btn is-parent')
+    expect(html).toContain('subtab-btn is-subtab')
+    expect(html).not.toContain('note-mention-result-breadcrumb')
+    expect(html).not.toContain('Humble beginnings / mySpace / codex / home')
+    expect(html).toContain('note preview')
+    expect(html).toContain('make independent copy')
+    expect(html).toContain('synced copy')
 
     const emptyHtml = renderToStaticMarkup(
       <NoteMentionMenu
@@ -100,12 +164,147 @@ describe('NoteMentionMenu', () => {
         query="missing"
         activeRow="space"
         activeSearchIndex={0}
-        modifierLabel="Cmd"
+        selectedSearchIndex={null}
+        searchAisleItems={[]}
+        selectedSearchAisleId=""
         navigatorRows={[]}
         searchEntries={[]}
+        searchEntryDetails={[]}
+        {...menuStateProps}
         {...handlers}
       />,
     )
     expect(emptyHtml).toContain('no matching notes')
+  })
+
+  it('renders aisle selection for navigator and search targets', () => {
+    const target = { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: 'sub', aisleIds: ['aisle-2'] }
+    const navigatorHtml = renderToStaticMarkup(
+      <NoteMentionMenu
+        top={10}
+        left={12}
+        query=""
+        activeRow="aisle"
+        activeSearchIndex={0}
+        selectedSearchIndex={null}
+        searchAisleItems={[]}
+        selectedSearchAisleId=""
+        searchEntries={[]}
+        searchEntryDetails={[]}
+        navigatorRows={[
+          { id: 'domain', label: 'domains', selectedId: 'domain', items: [{ id: 'domain', label: 'Humble beginnings' }] },
+          { id: 'space', label: 'spaces', selectedId: 'space', items: [{ id: 'space', label: 'mySpace' }] },
+          { id: 'tab', label: 'prime tabs', selectedId: 'tab', items: [{ id: 'tab', label: 'codex' }] },
+          {
+            id: 'note',
+            label: 'notes',
+            selectedId: 'sub',
+            items: [{ id: 'sub', label: 'ref', target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: 'sub' } }],
+          },
+          {
+            id: 'aisle',
+            label: 'aisles',
+            selectedId: 'aisle-2',
+            items: [
+              { id: 'aisle-1', label: 'aisle 1', target: { ...target, aisleIds: ['aisle-1'] } },
+              { id: 'aisle-2', label: 'aisle 2', target },
+            ],
+          },
+        ]}
+        {...menuStateProps}
+        {...handlers}
+      />,
+    )
+
+    expect(navigatorHtml).toContain('aria-label="aisles"')
+    expect(navigatorHtml).toContain('note-mention-nav-row is-aisle-row is-active-row')
+    expect(navigatorHtml).toContain('>aisle 2</button>')
+
+    const searchHtml = renderToStaticMarkup(
+      <NoteMentionMenu
+        top={10}
+        left={12}
+        query="ref"
+        activeRow="space"
+        activeSearchIndex={0}
+        selectedSearchIndex={0}
+        searchAisleItems={[
+          { id: 'aisle-1', label: 'aisle 1', target: { ...target, aisleIds: ['aisle-1'] } },
+          { id: 'aisle-2', label: 'aisle 2', target },
+        ]}
+        selectedSearchAisleId="aisle-2"
+        navigatorRows={[]}
+        searchEntries={[searchEntry]}
+        searchEntryDetails={searchEntryDetails}
+        {...menuStateProps}
+        {...handlers}
+      />,
+    )
+
+    expect(searchHtml).toContain('aria-label="aisles"')
+    expect(searchHtml).toContain('aria-selected="true"')
+    expect(searchHtml).toContain('rail-control note-mention-nav-chip is-selected')
+    expect(searchHtml).toContain('>aisle 2</button>')
+  })
+
+  it('renders copy confirmation controls inside typed search actions', () => {
+    const html = renderToStaticMarkup(
+      <NoteMentionMenu
+        top={10}
+        left={12}
+        query="ref"
+        activeRow="space"
+        activeSearchIndex={0}
+        selectedSearchIndex={0}
+        searchAisleItems={[]}
+        selectedSearchAisleId=""
+        searchFocusStage="copy-confirm"
+        focusedAisleIndex={0}
+        focusedActionIndex={2}
+        focusedConfirmIndex={1}
+        pendingCopyAction="independent-copy"
+        navigatorRows={[]}
+        searchEntries={[searchEntry]}
+        searchEntryDetails={searchEntryDetails}
+        {...handlers}
+      />,
+    )
+
+    expect(html).toContain('this operation will replace this note')
+    expect(html).toContain('>proceed</button>')
+    expect(html).toContain('>nevermind</button>')
+    expect(html).toContain('is-pending-copy')
+  })
+
+  it('inserts search result links only on double click', () => {
+    const doubleClickEvent = createPointerEventStub()
+    handleNoteMentionSearchResultDoubleClick(doubleClickEvent, searchEntry, handlers.onChooseSearchEntry)
+
+    expect(doubleClickEvent.preventDefault).toHaveBeenCalledTimes(1)
+    expect(doubleClickEvent.stopPropagation).toHaveBeenCalledTimes(1)
+    expect(handlers.onChooseSearchEntry).toHaveBeenCalledWith(searchEntry, 'link')
+  })
+
+  it('selects search results on click without inserting', () => {
+    const clickEvent = createPointerEventStub()
+
+    handleNoteMentionSearchResultClick(clickEvent, 2, handlers.onSelectSearchResult)
+
+    expect(clickEvent.preventDefault).toHaveBeenCalledTimes(1)
+    expect(clickEvent.stopPropagation).toHaveBeenCalledTimes(1)
+    expect(handlers.onSelectSearchResult).toHaveBeenCalledWith(2)
+    expect(handlers.onChooseSearchEntry).not.toHaveBeenCalled()
+  })
+
+  it('keeps search hover and aisle click selection behavior', () => {
+    const aisleClickEvent = createPointerEventStub()
+
+    handleNoteMentionSearchResultHover(1, handlers.onHighlightSearch)
+    handleNoteMentionSearchAisleClick(aisleClickEvent, 'aisle-2', handlers.onSelectSearchAisle)
+
+    expect(handlers.onHighlightSearch).toHaveBeenCalledWith(1)
+    expect(aisleClickEvent.preventDefault).toHaveBeenCalledTimes(1)
+    expect(aisleClickEvent.stopPropagation).toHaveBeenCalledTimes(1)
+    expect(handlers.onSelectSearchAisle).toHaveBeenCalledWith('aisle-2')
   })
 })

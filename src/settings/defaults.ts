@@ -54,6 +54,7 @@ export const DEFAULT_UI_SETTINGS: AppState['ui'] = {
   findRegex: false,
   findReplaceMode: 'find',
   removeNoteReferencesOnTrash: true,
+  noteMentionCopyRequiresConfirmation: true,
   decoupledItemsKeepData: true,
   tableAddTargetMode: 'bottom-right',
   tableDeleteTargetMode: 'bottom-right',
@@ -412,6 +413,10 @@ export function normalizeUiSettings(raw: unknown): AppState['ui'] {
       typeof obj.removeNoteReferencesOnTrash === 'boolean'
         ? obj.removeNoteReferencesOnTrash
         : DEFAULT_UI_SETTINGS.removeNoteReferencesOnTrash,
+    noteMentionCopyRequiresConfirmation:
+      typeof obj.noteMentionCopyRequiresConfirmation === 'boolean'
+        ? obj.noteMentionCopyRequiresConfirmation
+        : DEFAULT_UI_SETTINGS.noteMentionCopyRequiresConfirmation,
     decoupledItemsKeepData:
       typeof obj.decoupledItemsKeepData === 'boolean'
         ? obj.decoupledItemsKeepData

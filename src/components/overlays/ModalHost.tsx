@@ -707,7 +707,7 @@ export function ModalHost({
                   className={`note-reference-mode-btn ${modal.mode === 'linked' ? 'is-active' : ''}`}
                   onClick={() => setCopyModalMode('linked')}
                 >
-                  linked
+                  synced
                 </button>
               </div>
             </div>

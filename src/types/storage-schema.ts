@@ -103,6 +103,7 @@ export type StorageGlobalSettings = {
     findRegex?: boolean
     findReplaceMode?: StorageFindReplaceMode
     removeNoteReferencesOnTrash?: boolean
+    noteMentionCopyRequiresConfirmation?: boolean
     decoupledItemsKeepData?: boolean
     tableAddTargetMode?: StorageTableControlTargetMode
     tableDeleteTargetMode?: StorageTableControlTargetMode

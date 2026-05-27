@@ -44,11 +44,11 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
         title: 'make copy',
         body: linkedAisleCopy
           ? appendAisles
-            ? 'this note will receive linked copies of the target aisles. edits in any linked aisle will affect each copy.'
-            : 'this note will be replaced with linked copies of the selected target aisles. edits in any linked aisle will affect each copy.'
+            ? 'this note will receive synced copies of the target aisles. edits in any synced aisle will affect each copy.'
+            : 'this note will be replaced with synced copies of the selected target aisles. edits in any synced aisle will affect each copy.'
           : hasExistingContent
-            ? 'this note will be replaced with a linked copy of the target note. edits in either location will affect both.'
-            : 'this note will become a linked copy of the target note. edits in either location will affect both.',
+            ? 'this note will be replaced with a synced copy of the target note. edits in either location will affect both.'
+            : 'this note will become a synced copy of the target note. edits in either location will affect both.',
         action: 'make copy',
       }
     }

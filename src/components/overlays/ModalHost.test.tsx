@@ -651,7 +651,7 @@ describe('copy modal rendering', () => {
     expect(html).toContain('note-location-picker-chip rail-control context-preview-title-btn btn btn-sm tab-btn parent-tab-btn is-parent is-selected')
     expect(html).toContain('note-location-picker-chip rail-control context-preview-title-btn btn btn-sm tab-btn subtab-btn is-subtab is-selected')
     expect(html).toMatch(/note-reference-mode-btn is-active"[^>]*>independent</)
-    expect(html).toContain('>linked</button>')
+    expect(html).toContain('>synced</button>')
     expect(html).toContain('note-copy-behavior-row')
     expect(html).toContain('note-copy-behavior-mode')
     expect(html).toContain('copy behavior')
@@ -661,7 +661,7 @@ describe('copy modal rendering', () => {
     expect(html).not.toContain('>aisle 1</button>')
   })
 
-  it('marks the linked copy mode active', () => {
+  it('marks the synced copy mode active', () => {
     const html = renderModal({
       type: 'copy-note',
       mode: 'linked',
@@ -672,7 +672,7 @@ describe('copy modal rendering', () => {
 
     expect(html).toContain('note-copy-modal')
     expect(html).toContain('>independent</button>')
-    expect(html).toMatch(/note-reference-mode-btn is-active"[^>]*>linked</)
+    expect(html).toMatch(/note-reference-mode-btn is-active"[^>]*>synced</)
     expect(html).toMatch(/note-reference-mode-btn is-active"[^>]*>append as aisles</)
   })
 

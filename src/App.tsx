@@ -162,6 +162,7 @@ import {
   writeCopyAsClipboardData,
 } from './notes/copy-as-clipboard'
 import { useNoteMentionController } from './notes/useNoteMentionController'
+import { applyNoteCopyToState } from './notes/note-copy-service'
 import { getAisleBodyId } from './notes/note-markdown'
 import { getAisleMarkdown } from './notes/aisle-body-state'
 import {
@@ -1590,6 +1591,34 @@ function App() {
   const deleteContextPreview = noteReferenceActions.deleteContextPreview
   const openInternalNoteLinkFromContext = noteReferenceActions.openInternalNoteLinkFromContext
   const renameInternalNoteLinkFromContext = noteReferenceActions.renameInternalNoteLinkFromContext
+  const replaceCurrentNoteFromMention = ({
+    target,
+    mode,
+  }: {
+    target: NoteNavigationTarget
+    mode: NoteCopyMode
+  }) => {
+    if (viewMode !== 'main') {
+      const message = 'open a note before making a copy.'
+      pushToast(message, 'warning')
+      return { handled: false, toast: { message, tone: 'warning' as const } }
+    }
+    const latestState = buildStateWithLatestEditorContent()
+    const destination = getCurrentNoteLocation()
+    const result = applyNoteCopyToState(latestState, destination, target, mode, 'replace')
+    if (result.status !== 'applied') {
+      const message =
+        result.status === 'self-copy' || result.status === 'already-linked'
+          ? 'choose a different note to copy from.'
+          : 'selected note could not be copied.'
+      pushToast(message, 'warning')
+      return { handled: false, toast: { message, tone: 'warning' as const } }
+    }
+    stateRef.current = result.state
+    setState(result.state)
+    pushToast(mode === 'linked' ? 'synced copy created.' : 'independent copy created.', 'success')
+    return { handled: true }
+  }
   const noteMention = useNoteMentionController({
     viewMode,
     state,
@@ -1600,8 +1629,14 @@ function App() {
     activeAisleIdRef,
     getCurrentNoteLocation,
     insertNoteReferenceFromMention: noteReferenceActions.insertNoteReferenceFromMention,
+    replaceCurrentNoteFromMention,
+    requireCopyConfirmation: state.ui.noteMentionCopyRequiresConfirmation ?? true,
     syncToolbarFormatState,
   })
+  const openSettingsWithoutMentionMenu = () => {
+    noteMention.dismissCurrentQuery()
+    openSettings()
+  }
 
   const toggleHeadingCollapse = (aisleId: string, headingKey: string) => {
     if (!activeNoteBodyId) return
@@ -1856,6 +1891,7 @@ function App() {
   }
 
   const openSharedLinkModal = (selectedText = '', initialMode: LinkInsertMode = getLastLinkInsertMode()) => {
+    noteMention.dismissCurrentQuery()
     saveActiveCursorBeforeNavigation()
     setModal(buildDefaultLinkModal(initialMode, selectedText))
   }
@@ -2805,7 +2841,7 @@ function App() {
     settingsController.setSettingsFrontmatterTemplate(templateId)
     settingsController.changeSection('frontmatter')
     setModal(null)
-    openSettings()
+    openSettingsWithoutMentionMenu()
   }
 
   const applyArrangeTabSort = (target: TabSortTarget, mode: TabSortMode) => {
@@ -3028,7 +3064,10 @@ function App() {
     commitActiveEditorMarkdownNow,
     openSharedLinkModal,
     clearActiveNoteContent,
-    openCopyModalForActiveNote,
+    openCopyModalForActiveNote: () => {
+      noteMention.dismissCurrentQuery()
+      openCopyModalForActiveNote()
+    },
     openDeduplicateModalForActiveNote,
     openFrontmatterModalForActiveNote,
     openTableOfContents,
@@ -3096,7 +3135,7 @@ function App() {
     setEditingShortcut: settingsController.setEditingShortcut,
     updateShortcutSetting: settingsController.updateShortcutSetting,
     exitArrangeMode,
-    openSettings,
+    openSettings: openSettingsWithoutMentionMenu,
     toggleSpaceRail: toggleSpaceRailVisibility,
     toggleDomainRail: toggleDomainRailVisibility,
     toggleTrashView,
@@ -3223,7 +3262,7 @@ function App() {
       onToggleDomainRail={toggleDomainRailVisibility}
       onOpenStageManager={stageManager.open}
       onToggleTrash={toggleTrashView}
-      onOpenSettings={openSettings}
+      onOpenSettings={openSettingsWithoutMentionMenu}
     />
   )
   const activeThemePalette = getThemePaletteForTheme(state.theme, state.ui.themePalettes, state.ui.customThemePalette)
@@ -3548,7 +3587,7 @@ function App() {
         onToggleDomainRail={toggleDomainRailVisibility}
         onOpenStageManager={stageManager.open}
         onToggleTrash={toggleTrashView}
-        onOpenSettings={openSettings}
+        onOpenSettings={openSettingsWithoutMentionMenu}
       />
 
       {tabArrangeDragPreview && <TabArrangeDragPreviewOverlay preview={tabArrangeDragPreview} />}
@@ -3598,6 +3637,7 @@ function App() {
           tableOfContentsScopeDraft={settingsController.tableOfContentsScopeDraft}
           newAislePlacementDraft={settingsController.newAislePlacementDraft}
           removeNoteReferencesOnTrashDraft={settingsController.removeNoteReferencesOnTrashDraft}
+          noteMentionCopyRequiresConfirmationDraft={settingsController.noteMentionCopyRequiresConfirmationDraft}
           frontmatterDraft={settingsController.frontmatterDraft}
           frontmatterDraftDirty={settingsController.frontmatterDraftDirty}
           toolbarLayouts={settingsController.toolbarLayouts}
@@ -3633,6 +3673,7 @@ function App() {
           onTableOfContentsScopeChange={settingsController.updateTableOfContentsScopeSetting}
           onNewAislePlacementChange={settingsController.updateNewAislePlacementSetting}
           onRemoveNoteReferencesOnTrashChange={settingsController.updateRemoveNoteReferencesOnTrashSetting}
+          onNoteMentionCopyRequiresConfirmationChange={settingsController.updateNoteMentionCopyRequiresConfirmationSetting}
           onTipEnabledChange={settingsController.updateTipEnabledSetting}
           onSelectToolbarLayout={settingsController.selectToolbarLayoutForEditing}
           onCreateToolbarLayout={settingsController.createToolbarLayoutSetting}
@@ -3850,11 +3891,25 @@ function App() {
           navigatorRows={noteMentionNavigatorRows}
           activeRow={noteMentionMenu.activeRow}
           searchEntries={noteMentionSearchEntries}
+          searchEntryDetails={noteMention.searchEntryDetails}
           activeSearchIndex={noteMentionSearchActiveIndex}
-          modifierLabel={isMacPlatform ? 'Cmd' : 'Ctrl'}
+          selectedSearchIndex={noteMention.selectedSearchIndex}
+          searchAisleItems={noteMention.searchAisleItems}
+          selectedSearchAisleId={noteMention.selectedSearchAisleId}
+          searchFocusStage={noteMention.searchFocusStage}
+          focusedAisleIndex={noteMention.focusedAisleIndex}
+          focusedActionIndex={noteMention.focusedActionIndex}
+          focusedConfirmIndex={noteMention.focusedConfirmIndex}
+          pendingCopyAction={noteMention.pendingCopyAction}
           onActiveRowChange={noteMention.setActiveRow}
           onSelectNavigatorItem={noteMention.selectNavigatorItem}
+          onSelectSearchResult={noteMention.selectSearchResult}
+          onSelectSearchAisle={noteMention.selectSearchAisle}
           onHighlightSearch={noteMention.setActiveSearchIndex}
+          onFocusAction={noteMention.setFocusedAction}
+          onChooseAction={noteMention.chooseFocusedSearchAction}
+          onConfirmCopyAction={noteMention.confirmPendingCopyAction}
+          onCancelCopyAction={noteMention.cancelPendingCopyAction}
           onChooseSearchEntry={noteMention.chooseSearchEntry}
           onChooseTarget={noteMention.chooseTarget}
         />

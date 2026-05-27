@@ -109,10 +109,10 @@ function MenuSeparator() {
 }
 
 const COPY_AS_MENU_LABELS: Record<CopyAsAction, string> = {
-  duplicate: 'duplicate',
-  link: 'link',
-  copy: 'copy',
-  preview: 'preview',
+  duplicate: 'synced copy',
+  link: 'note link',
+  copy: 'independent copy',
+  preview: 'note preview',
 }
 const COPY_AS_MENU_ACTION_ORDER: CopyAsAction[] = ['copy', 'duplicate', 'link', 'preview']
 

@@ -118,6 +118,7 @@ type SettingsPageProps = {
   tableOfContentsScopeDraft: TableOfContentsScope
   newAislePlacementDraft: NewAislePlacement
   removeNoteReferencesOnTrashDraft: boolean
+  noteMentionCopyRequiresConfirmationDraft: boolean
   frontmatterDraft: FrontmatterSettings
   frontmatterDraftDirty: boolean
   toolbarLayouts: ToolbarLayout[]
@@ -149,6 +150,7 @@ type SettingsPageProps = {
   onTableOfContentsScopeChange: (scope: TableOfContentsScope) => void
   onNewAislePlacementChange: (placement: NewAislePlacement) => void
   onRemoveNoteReferencesOnTrashChange: (enabled: boolean) => void
+  onNoteMentionCopyRequiresConfirmationChange: (enabled: boolean) => void
   onTipEnabledChange: (tipId: TipId, enabled: boolean) => void
   onSelectToolbarLayout: (layoutId: string) => void
   onCreateToolbarLayout: () => void
@@ -206,6 +208,7 @@ export function SettingsPage({
   tableOfContentsScopeDraft,
   newAislePlacementDraft,
   removeNoteReferencesOnTrashDraft,
+  noteMentionCopyRequiresConfirmationDraft,
   frontmatterDraft,
   frontmatterDraftDirty,
   toolbarLayouts,
@@ -237,6 +240,7 @@ export function SettingsPage({
   onTableOfContentsScopeChange,
   onNewAislePlacementChange,
   onRemoveNoteReferencesOnTrashChange,
+  onNoteMentionCopyRequiresConfirmationChange,
   onTipEnabledChange,
   onSelectToolbarLayout,
   onCreateToolbarLayout,
@@ -438,6 +442,22 @@ export function SettingsPage({
           checked={removeNoteReferencesOnTrashDraft}
           aria-label="remove all links to a note when it's trashed"
           onChange={(event) => onRemoveNoteReferencesOnTrashChange(event.target.checked)}
+        />
+      </div>
+    </div>
+  )
+
+  const renderNoteMentionCopyRequiresConfirmationSetting = () => (
+    <div className="settings-hotkey-row">
+      <span className="settings-hotkey-label">@ menu requires confirmation for replacing note with synced or independent copy</span>
+      <div className="form-check form-switch settings-switch">
+        <input
+          className="form-check-input"
+          type="checkbox"
+          role="switch"
+          checked={noteMentionCopyRequiresConfirmationDraft}
+          aria-label="@ menu requires confirmation for replacing note with synced or independent copy"
+          onChange={(event) => onNoteMentionCopyRequiresConfirmationChange(event.target.checked)}
         />
       </div>
     </div>
@@ -959,6 +979,7 @@ export function SettingsPage({
             {renderTableOfContentsScopeSetting()}
             {renderNewAislePlacementSetting()}
             {renderRemoveNoteReferencesOnTrashSetting()}
+            {renderNoteMentionCopyRequiresConfirmationSetting()}
             {renderTableControlTargetSetting(
               'add table row or column',
               tableAddTargetModeDraft,

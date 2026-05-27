@@ -357,6 +357,7 @@ export type AppState = {
     findRegex?: boolean
     findReplaceMode?: 'find' | 'replace'
     removeNoteReferencesOnTrash?: boolean
+    noteMentionCopyRequiresConfirmation?: boolean
     decoupledItemsKeepData?: boolean
     tableAddTargetMode: TableControlTargetMode
     tableDeleteTargetMode: TableControlTargetMode

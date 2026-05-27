@@ -147,7 +147,7 @@ export const useNoteReferenceActions = ({
     from,
     to,
   }: {
-    target: NoteLocation
+    target: NoteNavigationTarget
     action: NoteReferenceAction
     from: number
     to: number
