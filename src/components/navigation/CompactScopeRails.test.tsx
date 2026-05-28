@@ -100,6 +100,80 @@ describe('compact scope rails', () => {
     expect(html).toContain('is-arrange-target')
   })
 
+  it('renders dual-sided placement cues for compact space and domain rails', () => {
+    const spaceHtml = renderToStaticMarkup(
+      <CompactSpaceRail
+        spaces={[space('space-a'), space('space-b'), space('space-c')]}
+        activeSpaceId="space-a"
+        editing={null}
+        arrangeMode={{
+          ...arrangeMode,
+          dragItem: { type: 'space', spaceId: 'space-c' },
+          overSpaceId: 'space-b',
+          overSpaceInsert: 'before',
+        }}
+        arrangeableSpaceClassName="is-arrangeable"
+        draggingSpaceId={null}
+        spacesGridRef={createRef<HTMLDivElement>()}
+        onOpenSpace={noop}
+        onOpenContextMenu={noop}
+        onShouldSkipRenameBlur={() => false}
+        onCommitRename={noop}
+        onCancelRename={noop}
+        onRenameDraftChange={noop}
+        onBeginEdit={noop}
+        onAutoSizeRenameInput={autoSizeNoop}
+        onClearRenameDraft={noop}
+        onConsumeArrangeClickSuppression={() => false}
+        onStartArrangeDragSeed={noop}
+        onStartArrangeTapCandidate={noop}
+        onStartArrangePress={noop}
+        onHandleArrangeSpacePointerMove={noop}
+        onHandleArrangeSpacePointerUp={noop}
+        onClearArrangePressTimer={noop}
+        onCancelArrangeSpacePointerDrag={noop}
+      />,
+    )
+    const domainHtml = renderToStaticMarkup(
+      <CompactDomainRail
+        domains={[domain('domain-a'), domain('domain-b'), domain('domain-c')]}
+        activeDomainId="domain-a"
+        editing={null}
+        arrangeMode={{
+          ...arrangeMode,
+          dragItem: { type: 'domain', domainId: 'domain-c' },
+          overDomainId: 'domain-b',
+          overDomainInsert: 'before',
+        }}
+        arrangeableDomainClassName="is-arrangeable"
+        draggingDomainId={null}
+        domainsGridRef={createRef<HTMLDivElement>()}
+        onOpenDomain={noop}
+        onOpenContextMenu={noop}
+        onShouldSkipRenameBlur={() => false}
+        onCommitRename={noop}
+        onCancelRename={noop}
+        onRenameDraftChange={noop}
+        onBeginEdit={noop}
+        onAutoSizeRenameInput={autoSizeNoop}
+        onClearRenameDraft={noop}
+        onConsumeArrangeClickSuppression={() => false}
+        onStartArrangeDragSeed={noop}
+        onStartArrangeTapCandidate={noop}
+        onStartArrangePress={noop}
+        onHandleArrangeDomainPointerMove={noop}
+        onHandleArrangeDomainPointerUp={noop}
+        onClearArrangePressTimer={noop}
+        onCancelArrangeDomainPointerDrag={noop}
+      />,
+    )
+
+    expect(spaceHtml).toContain('is-arrange-neighbor-after')
+    expect(spaceHtml).toContain('is-arrange-target-before')
+    expect(domainHtml).toContain('is-arrange-neighbor-after')
+    expect(domainHtml).toContain('is-arrange-target-before')
+  })
+
   it('renders compact domain buttons with active and drop target classes', () => {
     const html = renderToStaticMarkup(
       <CompactDomainRail

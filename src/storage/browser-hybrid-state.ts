@@ -710,6 +710,32 @@ export function buildHybridFileMapFromSerializedState(serializedState: string): 
     })
   })
 
+  const scratchpad = isRecord(parsed.scratchpad) ? parsed.scratchpad : null
+  const scratchpadNoteBodyId =
+    scratchpad && typeof scratchpad.noteBodyId === 'string' && scratchpad.noteBodyId ? scratchpad.noteBodyId : ''
+  const scratchpadEntry = scratchpadNoteBodyId
+    ? {
+        noteBodyId: scratchpadNoteBodyId,
+        ...(typeof scratchpad?.activeAisleId === 'string' && scratchpad.activeAisleId
+          ? { activeAisleId: scratchpad.activeAisleId }
+          : {}),
+      }
+    : null
+  if (scratchpadNoteBodyId) {
+    writeNoteBodyAtPath({
+      fileMap,
+      noteBodyMap,
+      noteAisleBodyMap,
+      noteBodyRecords,
+      noteAisleBodyRecords,
+      noteBodyId: scratchpadNoteBodyId,
+      primaryFileRelative: joinPosix('scratchpad', 'scratchpad.md'),
+      multiAisleRootRelative: 'scratchpad',
+      assetBank,
+      appState: parsed,
+    })
+  }
+
   const orphanPathForId = createStoragePathAllocator()
   const orphanFileForId = createStoragePathFileNameAllocator('.md')
   noteBodies.forEach((body) => {
@@ -763,7 +789,7 @@ export function buildHybridFileMapFromSerializedState(serializedState: string): 
   setJsonFile(
     fileMap,
     joinPosix(STORAGE_ROOT_DIR, ROOT_SPLIT_FILES.workspaceIndex),
-    { domains: domainEntries },
+    { domains: domainEntries, ...(scratchpadEntry ? { scratchpad: scratchpadEntry } : {}) },
   )
   setJsonFile(
     fileMap,
@@ -914,6 +940,7 @@ function readCurrentRootParts(
       noteAisleBodies: ensureArray<Record<string, unknown>>(noteRegistry.aisleBodies),
     },
     domainEntries: ensureArray<Record<string, unknown>>(splitFiles.workspaceIndex.domains),
+    scratchpad: isRecord(splitFiles.workspaceIndex.scratchpad) ? splitFiles.workspaceIndex.scratchpad : undefined,
     deletedDomains: ensureArray<Record<string, unknown>>(splitFiles.deletedWorkspace.deletedDomains).filter(isRecord),
     deletedSpaces: ensureArray<Record<string, unknown>>(splitFiles.deletedWorkspace.deletedSpaces).filter(isRecord),
     activeDomainId:
@@ -1158,6 +1185,7 @@ export function readSerializedStateFromHybridFileMap(fileMap: Map<string, Browse
     domains,
     deletedDomains: rootParts.deletedDomains,
     deletedSpaces: rootParts.deletedSpaces,
+    scratchpad: rootParts.scratchpad,
     noteBodies,
     noteAisleBodies,
     activeSpaceId,

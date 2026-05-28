@@ -11,12 +11,20 @@ const activeTab: Tab = {
   title: 'Alpha',
   noteBodyId: 'body-1',
   activeSubTabId: 'sub-1',
-  subTabs: [{ id: 'sub-1', title: 'Sub', noteBodyId: 'body-sub-1'}],
+  subTabs: [
+    { id: 'sub-1', title: 'Sub', noteBodyId: 'body-sub-1' },
+    { id: 'sub-2', title: 'Sub Two', noteBodyId: 'body-sub-2' },
+    { id: 'sub-3', title: 'Sub Three', noteBodyId: 'body-sub-3' },
+  ],
 }
 
 const workspace: WorkspaceData = {
   activeTabId: activeTab.id,
-  tabs: [activeTab],
+  tabs: [
+    activeTab,
+    { ...activeTab, id: 'tab-2', title: 'Beta', noteBodyId: 'body-2', activeSubTabId: 'sub-4', subTabs: [] },
+    { ...activeTab, id: 'tab-3', title: 'Gamma', noteBodyId: 'body-3', activeSubTabId: 'sub-5', subTabs: [] },
+  ],
   deletedTabs: [],
   deletedSubTabs: [],
 }
@@ -196,6 +204,24 @@ describe('navigation arrange tooltips', () => {
     expect(parentHtml).toContain('disabled=""')
     expect(subTabHtml).toContain('aria-label="sort sub-tabs"')
     expect(subTabHtml).toContain('disabled=""')
+  })
+
+  it('renders dual-sided parent and sub-tab placement cues while arranging', () => {
+    const parentHtml = renderTopBar(true, {
+      dragItem: { type: 'tab', tabId: 'tab-3' },
+      overParentTabId: 'tab-2',
+      overParentInsert: 'before',
+    })
+    const subTabHtml = renderSubTabRail(true, {
+      dragItem: { type: 'subtab', parentTabId: activeTab.id, subTabId: 'sub-3' },
+      overSubTabId: 'sub-2',
+      overSubTabInsert: 'before',
+    })
+
+    expect(parentHtml).toContain('is-arrange-neighbor-after')
+    expect(parentHtml).toContain('is-arrange-target-before')
+    expect(subTabHtml).toContain('is-arrange-neighbor-after')
+    expect(subTabHtml).toContain('is-arrange-target-before')
   })
 
   it('keeps sub-tab sort labels while omitting title tooltips when disabled', () => {

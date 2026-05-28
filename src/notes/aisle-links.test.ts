@@ -44,6 +44,8 @@ function createAisleLinkTestState(noteBodies: NoteBody[], tabs: Array<{ id: stri
         cycleParentTabPrev: '',
         cycleSubTabNext: '',
         cycleSubTabPrev: '',
+        cycleAislePrev: '',
+        cycleAisleNext: '',
       },
       newlineShortcuts: {
         shortcuts: {

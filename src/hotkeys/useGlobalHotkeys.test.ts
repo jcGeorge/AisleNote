@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { AppState, Tab } from '../types/app'
 import { DEFAULT_NEWLINE_SHORTCUT_SETTINGS, DEFAULT_SHORTCUTS } from './shortcuts'
 import {
+  getCycledAisleTarget,
   getCycledParentTabTarget,
   getDeleteFocusedSubtabShortcutIntent,
   getNumberedPrimeTabTarget,
@@ -45,6 +46,22 @@ describe('parent tab cycle hotkeys', () => {
 
     expect(getCycledParentTabTarget(tabs, 'missing', 1)).toBe('prime-2')
     expect(getCycledParentTabTarget([], 'missing', 1)).toBeNull()
+  })
+})
+
+describe('aisle cycle hotkeys', () => {
+  it('wraps aisle cycling in both directions', () => {
+    const aisles = ['aisle-1', 'aisle-2', 'aisle-3']
+
+    expect(getCycledAisleTarget(aisles, 'aisle-1', 1)).toBe('aisle-2')
+    expect(getCycledAisleTarget(aisles, 'aisle-1', -1)).toBe('aisle-3')
+    expect(getCycledAisleTarget(aisles, 'aisle-3', 1)).toBe('aisle-1')
+  })
+
+  it('falls back from a missing active aisle and ignores single-aisle notes', () => {
+    expect(getCycledAisleTarget(['aisle-1', 'aisle-2'], 'missing', 1)).toBe('aisle-2')
+    expect(getCycledAisleTarget(['aisle-1'], 'aisle-1', 1)).toBeNull()
+    expect(getCycledAisleTarget([], 'missing', 1)).toBeNull()
   })
 })
 

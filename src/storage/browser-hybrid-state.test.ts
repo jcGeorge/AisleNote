@@ -371,6 +371,26 @@ describe('browser hybrid storage', () => {
     })
   })
 
+  it('stores scratchpad markdown under the scratchpad folder and reads it back', () => {
+    const state = createBrowserStorageState()
+    const scratchpadBody = state.noteBodies.find((body) => body.id === state.scratchpad?.noteBodyId)
+    const scratchpadAisle = scratchpadBody?.aisles[0]
+    const scratchpadAisleBody = state.noteAisleBodies?.find((body) => body.id === scratchpadAisle?.aisleBodyId)
+    if (!scratchpadAisleBody) throw new Error('missing scratchpad fixture body')
+    scratchpadAisleBody.markdown = 'scratch note'
+
+    const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
+    const { workspaceIndex } = getBrowserWorkspacePaths(fileMap)
+    const serialized = readSerializedStateFromHybridFileMap(fileMap)
+    const roundTripped = parseSavedState(serialized ?? '')
+    const roundTrippedBody = roundTripped.noteBodies.find((body) => body.id === roundTripped.scratchpad?.noteBodyId)
+    const roundTrippedAisle = roundTrippedBody?.aisles[0]
+
+    expect(getRecord(workspaceIndex.scratchpad).noteBodyId).toBe(state.scratchpad?.noteBodyId)
+    expect(fileMap.get('notes-data/scratchpad/scratchpad.md')).toMatchObject({ kind: 'text', text: 'scratch note' })
+    expect(roundTrippedAisle ? getAisleMarkdown(roundTrippedAisle, roundTripped.noteAisleBodies) : '').toBe('scratch note')
+  })
+
   it('persists app settings and per-space settings in hybrid notes-data manifests', () => {
     const state = parseSavedState(
       JSON.stringify({
@@ -447,7 +467,8 @@ describe('browser hybrid storage', () => {
           tableAddTargetMode: 'active-cell',
           tableDeleteTargetMode: 'active-cell',
           tableOfContentsScope: 'focused-aisle',
-          newAislePlacement: 'right-of-focus',
+          newAislePlacement: 'left-of-focus',
+          scratchpadAisleLimit: 40,
           tabButtonScale: 1.3,
           noteFontScale: 1.2,
           tooltipScale: 1.25,
@@ -486,7 +507,8 @@ describe('browser hybrid storage', () => {
     expect(getRecord(appSettings.ui).noteMentionCopyRequiresConfirmation).toBe(false)
     expect(getRecord(appSettings.ui).deleteSubtabShortcutEnabled).toBe(true)
     expect(getRecord(appSettings.ui).tableOfContentsScope).toBe('focused-aisle')
-    expect(getRecord(appSettings.ui).newAislePlacement).toBe('right-of-focus')
+    expect(getRecord(appSettings.ui).newAislePlacement).toBe('left-of-focus')
+    expect(appSettings.scratchpadAisleLimit).toBe(32)
     expect(getRecord(appSettings.ui).showParentHomeTab).toBe(false)
     expect(getRecord(appSettings.hotkeys)).not.toHaveProperty('enableMouseBackForward')
     expect(getRecord(appSettings.hotkeys)).not.toHaveProperty('enableGenericHistoryHotkeys')
@@ -508,7 +530,8 @@ describe('browser hybrid storage', () => {
     expect(roundTripped.ui.noteMentionCopyRequiresConfirmation).toBe(false)
     expect(roundTripped.ui.deleteSubtabShortcutEnabled).toBe(true)
     expect(roundTripped.ui.tableOfContentsScope).toBe('focused-aisle')
-    expect(roundTripped.ui.newAislePlacement).toBe('right-of-focus')
+    expect(roundTripped.ui.newAislePlacement).toBe('left-of-focus')
+    expect(roundTripped.ui.scratchpadAisleLimit).toBe(32)
     expect(roundTripped.ui.themePalettes?.dawn?.primary).toBe('#123456')
     expect(roundTripped.hotkeys.shortcuts.newTab).toBe('Ctrl+Alt+N')
     expect(roundTripped.hotkeys).not.toHaveProperty('enableMouseBackForward')

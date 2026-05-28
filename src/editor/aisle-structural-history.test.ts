@@ -10,6 +10,7 @@ import type { AppState, NoteCursorLocation, ResolvedNoteAisle, Space } from '../
 import { EDITOR_BLANK_LINE_PLACEHOLDER } from '../markdown/markdown-utils'
 import { DEFAULT_STATE } from '../state/app-state'
 import { resolveNoteAisles } from '../notes/aisle-body-state'
+import { SCRATCHPAD_CURSOR_LOCATION_KEY } from '../state/scratchpad'
 
 const location = {
   domainId: 'domain-1',
@@ -72,6 +73,45 @@ function createStateWithAisles(aisles: ResolvedNoteAisle[], cursorLocations: App
     noteBodies: [
       {
         id: 'body-1',
+        aisles: aisles.map(({ id, aisleBodyId }) => ({ id, aisleBodyId })),
+      },
+    ],
+    noteAisleBodies: aisles.map(({ aisleBodyId, markdown }) => ({ id: aisleBodyId, markdown })),
+    ui: {
+      ...DEFAULT_STATE.ui,
+      noteCursorLocations: cursorLocations,
+    },
+  }
+}
+
+function createScratchpadSnapshot(
+  aisles: ResolvedNoteAisle[],
+  activeAisleId = aisles[0]?.id ?? '',
+  cursorLocation: NoteCursorLocation | null = null,
+): AisleStructuralSnapshot {
+  return {
+    scope: 'scratchpad',
+    locationKey: SCRATCHPAD_CURSOR_LOCATION_KEY,
+    noteBodyId: 'scratch-body',
+    aisles,
+    activeAisleId,
+    cursorLocation,
+  }
+}
+
+function createStateWithScratchpadAisles(
+  aisles: ResolvedNoteAisle[],
+  cursorLocations: AppState['ui']['noteCursorLocations'] = {},
+): AppState {
+  return {
+    ...DEFAULT_STATE,
+    scratchpad: {
+      noteBodyId: 'scratch-body',
+      activeAisleId: aisles[0]?.id,
+    },
+    noteBodies: [
+      {
+        id: 'scratch-body',
         aisles: aisles.map(({ id, aisleBodyId }) => ({ id, aisleBodyId })),
       },
     ],
@@ -182,6 +222,36 @@ describe('aisle structural history', () => {
     expect(nextState?.ui.noteCursorLocations[before.locationKey]).toEqual(beforeCursorLocation)
     expect(nextState?.activeSpaceId).toBe('space-1')
     expect(nextState?.spaces[0]?.data.activeTabId).toBe('tab-1')
+  })
+
+  it('applies scratchpad add-aisle undo without requiring a note location', () => {
+    const beforeCursorLocation: NoteCursorLocation = {
+      activeAisleId: 'aisle-1',
+      aisles: {},
+      updatedAt: 1,
+    }
+    const afterCursorLocation: NoteCursorLocation = {
+      activeAisleId: 'aisle-2',
+      aisles: {},
+      updatedAt: 2,
+    }
+    const before = createScratchpadSnapshot([aisle('aisle-1', 'first', 'body-1')], 'aisle-1', beforeCursorLocation)
+    const after = createScratchpadSnapshot([
+      aisle('aisle-1', 'first', 'body-1'),
+      aisle('aisle-2', '', 'body-2'),
+    ], 'aisle-2', afterCursorLocation)
+    const entry = createAisleStructuralHistoryEntry('add-aisle', before, after)
+    const currentState = createStateWithScratchpadAisles(after.aisles, {
+      [SCRATCHPAD_CURSOR_LOCATION_KEY]: afterCursorLocation,
+    })
+
+    const nextState = applyAisleStructuralEntryToState(currentState, entry, 'undo')
+    const nextBody = nextState?.noteBodies.find((body) => body.id === 'scratch-body')
+
+    expect(nextState).not.toBeNull()
+    expect(nextBody ? resolveNoteAisles(nextBody.aisles, nextState?.noteAisleBodies) : []).toEqual(before.aisles)
+    expect(nextState?.scratchpad?.activeAisleId).toBe('aisle-1')
+    expect(nextState?.ui.noteCursorLocations[SCRATCHPAD_CURSOR_LOCATION_KEY]).toEqual(beforeCursorLocation)
   })
 
   it('allows undoing an added aisle after blank placeholder-only editor content', () => {

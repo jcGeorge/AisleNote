@@ -39,8 +39,51 @@ export type AisleHorizontalScrollbarPointerScrollInput = {
   clientWidth: number
 }
 
+export type HorizontalDragAutoScrollInput = {
+  pointerX: number
+  containerLeft: number
+  containerRight: number
+  currentScrollLeft: number
+  maxScrollLeft: number
+  edgeZoneWidth: number
+  maxStep: number
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
+}
+
+export function getHorizontalDragAutoScrollDelta({
+  pointerX,
+  containerLeft,
+  containerRight,
+  currentScrollLeft,
+  maxScrollLeft,
+  edgeZoneWidth,
+  maxStep,
+}: HorizontalDragAutoScrollInput) {
+  const safeMaxScrollLeft = Math.max(0, maxScrollLeft)
+  const safeScrollLeft = clamp(currentScrollLeft, 0, safeMaxScrollLeft)
+  const safeEdgeZoneWidth = Math.max(0, edgeZoneWidth)
+  const safeMaxStep = Math.max(0, maxStep)
+  const containerWidth = Math.max(0, containerRight - containerLeft)
+  const effectiveEdgeZoneWidth = Math.min(safeEdgeZoneWidth, containerWidth / 2)
+
+  if (safeMaxScrollLeft <= 0 || safeMaxStep <= 0 || effectiveEdgeZoneWidth <= 0) return 0
+
+  const leftEdgeEnd = containerLeft + effectiveEdgeZoneWidth
+  if (pointerX < leftEdgeEnd && safeScrollLeft > 0) {
+    const intensity = clamp((leftEdgeEnd - pointerX) / effectiveEdgeZoneWidth, 0, 1)
+    return Math.max(-safeScrollLeft, -safeMaxStep * intensity)
+  }
+
+  const rightEdgeStart = containerRight - effectiveEdgeZoneWidth
+  if (pointerX > rightEdgeStart && safeScrollLeft < safeMaxScrollLeft) {
+    const intensity = clamp((pointerX - rightEdgeStart) / effectiveEdgeZoneWidth, 0, 1)
+    return Math.min(safeMaxScrollLeft - safeScrollLeft, safeMaxStep * intensity)
+  }
+
+  return 0
 }
 
 export function getScrollLeftToRevealHorizontalPane({

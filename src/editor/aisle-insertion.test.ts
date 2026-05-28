@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getNewAisleInsertIndex, insertNewAisle } from './aisle-insertion'
+import { getNewAisleInsertIndex, insertNewAisle, insertNewAisles } from './aisle-insertion'
 
 const aisle = (id: string) => ({ id })
 
@@ -16,7 +16,19 @@ describe('aisle insertion placement', () => {
     ])
   })
 
-  it('inserts new aisles to the right of the focused aisle when configured', () => {
+  it('inserts new aisles to the left of the current aisle when configured', () => {
+    const aisles = [aisle('a'), aisle('b'), aisle('c')]
+
+    expect(getNewAisleInsertIndex(aisles, 'b', 'left-of-focus')).toBe(1)
+    expect(insertNewAisle(aisles, aisle('new'), 'b', 'left-of-focus').map((item) => item.id)).toEqual([
+      'a',
+      'new',
+      'b',
+      'c',
+    ])
+  })
+
+  it('inserts new aisles to the right of the current aisle when configured', () => {
     const aisles = [aisle('a'), aisle('b'), aisle('c')]
 
     expect(getNewAisleInsertIndex(aisles, 'b', 'right-of-focus')).toBe(2)
@@ -28,10 +40,37 @@ describe('aisle insertion placement', () => {
     ])
   })
 
+  it('inserts multiple new aisles together to the left or right of the current aisle', () => {
+    const aisles = [aisle('a'), aisle('b'), aisle('c')]
+    const newAisles = [aisle('new-1'), aisle('new-2')]
+
+    expect(insertNewAisles(aisles, newAisles, 'b', 'left-of-focus').map((item) => item.id)).toEqual([
+      'a',
+      'new-1',
+      'new-2',
+      'b',
+      'c',
+    ])
+    expect(insertNewAisles(aisles, newAisles, 'b', 'right-of-focus').map((item) => item.id)).toEqual([
+      'a',
+      'b',
+      'new-1',
+      'new-2',
+      'c',
+    ])
+  })
+
   it('falls back to appending when the focused aisle is missing', () => {
     const aisles = [aisle('a'), aisle('b'), aisle('c')]
 
+    expect(getNewAisleInsertIndex(aisles, 'missing', 'left-of-focus')).toBe(3)
     expect(getNewAisleInsertIndex(aisles, 'missing', 'right-of-focus')).toBe(3)
+    expect(insertNewAisle(aisles, aisle('new'), 'missing', 'left-of-focus').map((item) => item.id)).toEqual([
+      'a',
+      'b',
+      'c',
+      'new',
+    ])
     expect(insertNewAisle(aisles, aisle('new'), 'missing', 'right-of-focus').map((item) => item.id)).toEqual([
       'a',
       'b',

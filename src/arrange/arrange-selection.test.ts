@@ -82,6 +82,8 @@ function appState(domains: Domain[], activeDomainId = domains[0].id, activeSpace
         cycleParentTabPrev: '',
         cycleSubTabNext: '',
         cycleSubTabPrev: '',
+        cycleAislePrev: '',
+        cycleAisleNext: '',
       },
       newlineShortcuts: {
         shortcuts: {

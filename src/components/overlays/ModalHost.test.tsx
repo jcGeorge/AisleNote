@@ -19,6 +19,24 @@ const space: Space = {
   },
 }
 
+function createSpace(
+  id: string,
+  name: string,
+  tabs: Space['data']['tabs'],
+): Space {
+  return {
+    id,
+    name,
+    settings: { autoRemoveDeletedDays: 30 },
+    data: {
+      activeTabId: tabs[0]?.id ?? '',
+      tabs,
+      deletedTabs: [],
+      deletedSubTabs: [],
+    },
+  }
+}
+
 function createState(): AppState {
   return {
     theme: 'dawn',
@@ -40,6 +58,8 @@ function createState(): AppState {
         cycleParentTabPrev: '',
         cycleSubTabNext: '',
         cycleSubTabPrev: '',
+        cycleAislePrev: '',
+        cycleAisleNext: '',
       },
       newlineShortcuts: {
         shortcuts: {
@@ -77,6 +97,79 @@ function createState(): AppState {
       disabledTipIds: [],
     },
   }
+}
+
+function createDuplicateLocationState() {
+  const state = createState()
+  const duplicatedSpace = {
+    ...state.spaces[0],
+    data: {
+      ...state.spaces[0].data,
+      tabs: [
+        ...state.spaces[0].data.tabs,
+        { id: 'tab-2', title: 'Second', noteBodyId: 'body-1', activeSubTabId: null, subTabs: [] },
+      ],
+    },
+  }
+  state.spaces = [duplicatedSpace]
+  state.domains = [{ ...state.domains[0], spaces: [duplicatedSpace] }]
+  return state
+}
+
+function createSortedDuplicateLocationState() {
+  const state = createState()
+  const alphaSpace = createSpace('space-alpha', 'Alpha Space', [
+    {
+      id: 'parent-alpha',
+      title: 'Alpha Parent',
+      noteBodyId: 'body-other',
+      activeSubTabId: 'sub-zulu',
+      subTabs: [
+        { id: 'sub-zulu', title: 'Zulu Sub', noteBodyId: 'body-1' },
+        { id: 'sub-alpha', title: 'Alpha Sub', noteBodyId: 'body-1' },
+      ],
+    },
+    { id: 'parent-beta', title: 'Beta Parent', noteBodyId: 'body-1', activeSubTabId: null, subTabs: [] },
+  ])
+  const zetaSpace = createSpace('space-zeta', 'Zeta Space', [
+    { id: 'parent-zeta', title: 'Zeta Parent', noteBodyId: 'body-1', activeSubTabId: null, subTabs: [] },
+  ])
+  const betaSpace = createSpace('space-beta', 'Alpha Space', [
+    { id: 'parent-beta-domain', title: 'Alpha Parent', noteBodyId: 'body-1', activeSubTabId: null, subTabs: [] },
+  ])
+
+  state.activeDomainId = 'domain-beta'
+  state.activeSpaceId = 'space-beta'
+  state.spaces = [betaSpace]
+  state.domains = [
+    { id: 'domain-beta', name: 'Beta Domain', activeSpaceId: 'space-beta', spaces: [betaSpace] },
+    { id: 'domain-alpha', name: 'Alpha Domain', activeSpaceId: 'space-alpha', spaces: [zetaSpace, alphaSpace] },
+  ]
+  state.noteBodies = [
+    { id: 'body-1', aisles: [{ id: 'aisle-1', aisleBodyId: 'aisle-body-1' }] },
+    { id: 'body-other', aisles: [{ id: 'aisle-other', aisleBodyId: 'aisle-body-other' }] },
+  ]
+  return state
+}
+
+function createManyDuplicateLocationState() {
+  const state = createState()
+  const manySpace = createSpace(
+    'space-many',
+    'Many Space',
+    Array.from({ length: 6 }, (_, index) => ({
+      id: `tab-${index + 1}`,
+      title: `Tab ${index + 1}`,
+      noteBodyId: 'body-1',
+      activeSubTabId: null,
+      subTabs: [],
+    })),
+  )
+
+  state.activeSpaceId = manySpace.id
+  state.spaces = [manySpace]
+  state.domains = [{ ...state.domains[0], spaces: [manySpace], activeSpaceId: manySpace.id }]
+  return state
 }
 
 function renderFrontmatterModal(modal: ModalState) {
@@ -124,6 +217,21 @@ function renderModal(modal: ModalState, state = createState()) {
 }
 
 describe('sort modal rendering', () => {
+  it('renders the scratchpad about modal', () => {
+    const html = renderModal({ type: 'scratchpad-about' })
+
+    expect(html).toContain('about scratchpad')
+    expect(html).toContain('quick standalone place to put unsorted notes')
+    expect(html).toContain('stored with your other notes')
+    expect(html).toContain('searching your entire notebook')
+    expect(html).toContain('allows 16 aisles by default')
+    expect(html).toContain('adjustable up to 32')
+    expect(html).toContain('added to the left by default')
+    expect(html).toContain('>return</button>')
+    expect(html).not.toContain('>cancel</button>')
+    expect(shouldModalBackdropClose({ type: 'scratchpad-about' })).toBe(true)
+  })
+
   it('renders the parent sort title, close control, and sort options', () => {
     const html = renderModal({ type: 'sort-tabs', target: 'parents' })
 
@@ -553,6 +661,34 @@ describe('de-couple modal rendering', () => {
     })
 
     expect(html).toMatch(/<button type="button" class="btn btn-sm modal-primary-btn">apply<\/button>/)
+    expect(html).toContain('decouple-location-card is-decoupled')
+    expect(html).toContain('aria-pressed="true"')
+    expect(html).toContain('<span class="decouple-location-status">de-coupled</span>')
+  })
+
+  it('renders a horizontal card strip instead of checkbox rows', () => {
+    const html = renderModal({
+      type: 'deduplicate-note',
+      noteBodyId: 'body-1',
+      keepLocationKeys: ['domain-1::space-1::tab-1::__home__'],
+      keepData: true,
+    })
+
+    expect(html).toContain('Select items to de-couple.')
+    expect(html).toContain('decouple-note-modal-shell')
+    expect(html).toContain('style="--decouple-modal-content-width:20rem"')
+    expect(html).toContain('decouple-location-list')
+    expect(html).toContain('decouple-location-horizontal-scrollbar')
+    expect(html).toContain('role="scrollbar"')
+    expect(html).toContain('aria-label="Scroll de-couple locations horizontally"')
+    expect(html).toContain('Domain')
+    expect(html).toContain('Space')
+    expect(html).toContain('Tab')
+    expect(html).toContain('home')
+    expect(html).not.toContain('decouple-location-status')
+    expect(html).not.toContain('duplicate-note-list')
+    expect(html).not.toContain('duplicate-note-choice')
+    expect(html).not.toContain('draggable')
   })
 
   it('renders the persistent keep-data switch', () => {
@@ -566,6 +702,91 @@ describe('de-couple modal rendering', () => {
     expect(html).toContain('keep data in de-coupled notes?')
     expect(html).toContain('aria-label="keep data in de-coupled notes?"')
     expect(html).toContain('checked=""')
+    expect(html).toMatch(/<div class="deduplicate-keep-data-switch form-check form-switch settings-switch"><span>keep data in de-coupled notes\?<\/span><input/)
+    expect(html).not.toContain('<label class="deduplicate-keep-data-switch')
+  })
+
+  it('marks omitted keep keys as selected for de-couple', () => {
+    const html = renderModal(
+      {
+        type: 'deduplicate-note',
+        noteBodyId: 'body-1',
+        keepLocationKeys: ['domain-1::space-1::tab-1::__home__'],
+        keepData: true,
+      },
+      createDuplicateLocationState(),
+    )
+
+    expect(html).toContain('aria-label="Domain / Space / Tab / home. Will stay coupled."')
+    expect(html).toContain('aria-label="Domain / Space / Second / home. Will be de-coupled."')
+    expect(html).toContain('decouple-location-card is-decoupled')
+    expect(html).toContain('aria-pressed="true"')
+    expect(html).toContain('<span class="decouple-location-status">de-coupled</span>')
+    expect(html.match(/class="decouple-location-status"/g) ?? []).toHaveLength(1)
+  })
+
+  it('sorts de-couple cards by domain, space, parent, then subtab', () => {
+    const html = renderModal(
+      {
+        type: 'deduplicate-note',
+        noteBodyId: 'body-1',
+        keepLocationKeys: [
+          'domain-alpha::space-alpha::parent-alpha::sub-alpha',
+          'domain-alpha::space-alpha::parent-alpha::sub-zulu',
+          'domain-alpha::space-alpha::parent-beta::__home__',
+          'domain-alpha::space-zeta::parent-zeta::__home__',
+          'domain-beta::space-beta::parent-beta-domain::__home__',
+        ],
+        keepData: true,
+      },
+      createSortedDuplicateLocationState(),
+    )
+
+    const alphaSub = html.indexOf('Alpha Domain / Alpha Space / Alpha Parent / Alpha Sub')
+    const zuluSub = html.indexOf('Alpha Domain / Alpha Space / Alpha Parent / Zulu Sub')
+    const betaParent = html.indexOf('Alpha Domain / Alpha Space / Beta Parent / home')
+    const zetaSpace = html.indexOf('Alpha Domain / Zeta Space / Zeta Parent / home')
+    const betaDomain = html.indexOf('Beta Domain / Alpha Space / Alpha Parent / home')
+
+    expect(alphaSub).toBeGreaterThanOrEqual(0)
+    expect(alphaSub).toBeLessThan(zuluSub)
+    expect(zuluSub).toBeLessThan(betaParent)
+    expect(betaParent).toBeLessThan(zetaSpace)
+    expect(zetaSpace).toBeLessThan(betaDomain)
+  })
+
+  it('shrinks for small duplicate sets and caps the wide layout', () => {
+    const smallHtml = renderModal(
+      {
+        type: 'deduplicate-note',
+        noteBodyId: 'body-1',
+        keepLocationKeys: [
+          'domain-1::space-1::tab-1::__home__',
+          'domain-1::space-1::tab-2::__home__',
+        ],
+        keepData: true,
+      },
+      createDuplicateLocationState(),
+    )
+    const largeHtml = renderModal(
+      {
+        type: 'deduplicate-note',
+        noteBodyId: 'body-1',
+        keepLocationKeys: [
+          'domain-1::space-many::tab-1::__home__',
+          'domain-1::space-many::tab-2::__home__',
+          'domain-1::space-many::tab-3::__home__',
+          'domain-1::space-many::tab-4::__home__',
+          'domain-1::space-many::tab-5::__home__',
+          'domain-1::space-many::tab-6::__home__',
+        ],
+        keepData: true,
+      },
+      createManyDuplicateLocationState(),
+    )
+
+    expect(smallHtml).toContain('style="--decouple-modal-content-width:24.55rem"')
+    expect(largeHtml).toContain('style="--decouple-modal-content-width:70rem"')
   })
 })
 
@@ -584,23 +805,13 @@ describe('linked aisle modal rendering', () => {
     expect(html).toContain('linked aisle')
     expect(html).toContain('this aisle shares content with another aisle')
     expect(html).toMatch(/<button type="button" class="btn btn-sm modal-primary-btn">de-couple aisle<\/button>/)
+    expect(html).not.toContain('decouple-note-modal-shell')
+    expect(html).not.toContain('--decouple-modal-content-width')
     expect(html).not.toContain('duplicate-note-list')
   })
 
   it('renders note-location de-couple controls for whole-note links', () => {
-    const state = createState()
-    const duplicatedSpace = {
-      ...state.spaces[0],
-      data: {
-        ...state.spaces[0].data,
-        tabs: [
-          ...state.spaces[0].data.tabs,
-          { id: 'tab-2', title: 'Second', noteBodyId: 'body-1', activeSubTabId: null, subTabs: [] },
-        ],
-      },
-    }
-    state.spaces = [duplicatedSpace]
-    state.domains = [{ ...state.domains[0], spaces: [duplicatedSpace] }]
+    const state = createDuplicateLocationState()
 
     const html = renderModal(
       {
@@ -620,9 +831,12 @@ describe('linked aisle modal rendering', () => {
     )
 
     expect(html).toContain('linked note')
-    expect(html).toContain('duplicate-note-list')
-    expect(html).toContain('Domain / Space / Tab / home')
-    expect(html).toContain('Domain / Space / Second / home')
+    expect(html).toContain('Select items to de-couple.')
+    expect(html).toContain('decouple-location-list')
+    expect(html).toContain('style="--decouple-modal-content-width:24.55rem"')
+    expect(html).toContain('aria-label="Domain / Space / Tab / home. Will stay coupled."')
+    expect(html).toContain('aria-label="Domain / Space / Second / home. Will stay coupled."')
+    expect(html).not.toContain('duplicate-note-list')
     expect(html).toContain('keep data in de-coupled notes?')
     expect(html).toMatch(/<button type="button" class="btn btn-sm modal-primary-btn">apply<\/button>/)
   })

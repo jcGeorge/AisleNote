@@ -111,12 +111,32 @@
   box-shadow: var(--domain-rail-target-after-shadow) !important;
 }
 
+.compact-domain-btn.is-arrange-neighbor-before {
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--domain-rail-target-border) 52%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--domain-rail-target-border) 10%, transparent) !important;
+}
+
+.compact-domain-btn.is-arrange-neighbor-after {
+  box-shadow: inset -1px 0 0 color-mix(in srgb, var(--domain-rail-target-border) 52%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--domain-rail-target-border) 10%, transparent) !important;
+}
+
 .compact-space-btn.is-arrange-target-before {
   box-shadow: var(--space-rail-target-before-shadow) !important;
 }
 
 .compact-space-btn.is-arrange-target-after {
   box-shadow: var(--space-rail-target-after-shadow) !important;
+}
+
+.compact-space-btn.is-arrange-neighbor-before {
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--space-rail-target-border) 52%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--space-rail-target-border) 10%, transparent) !important;
+}
+
+.compact-space-btn.is-arrange-neighbor-after {
+  box-shadow: inset -1px 0 0 color-mix(in srgb, var(--space-rail-target-border) 52%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--space-rail-target-border) 10%, transparent) !important;
 }
 
 .compact-scope-add-btn {

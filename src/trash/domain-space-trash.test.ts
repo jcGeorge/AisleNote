@@ -81,6 +81,8 @@ function appState(domains: Domain[]): AppState {
         cycleParentTabPrev: '',
         cycleSubTabNext: '',
         cycleSubTabPrev: '',
+        cycleAislePrev: '',
+        cycleAisleNext: '',
       },
       newlineShortcuts: {
         shortcuts: { controlEnter: 'normalNewLine', shiftEnter: 'normalNewLine', commandEnter: 'normalNewLine' },

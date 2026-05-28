@@ -5,6 +5,7 @@ import {
   NEWLINE_OPERATION_LABELS,
   SHORTCUT_MENU_ELIGIBLE_OPERATIONS,
   eventMatchesShortcut,
+  formatShortcutLabel,
   normalizeHotkeySettings,
 } from './shortcuts'
 
@@ -82,6 +83,29 @@ describe('newline shortcut settings', () => {
     ).toBe(false)
   })
 
+  it('defaults aisle cycle shortcuts to alt brackets and recognizes physical bracket keys', () => {
+    expect(DEFAULT_SHORTCUTS.cycleAislePrev).toBe('Alt+[')
+    expect(DEFAULT_SHORTCUTS.cycleAisleNext).toBe('Alt+]')
+    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.cycleAislePrev, true)).toBe('option+[')
+    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.cycleAisleNext, true)).toBe('option+]')
+    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.cycleAislePrev, false)).toBe('alt+[')
+    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.cycleAisleNext, false)).toBe('alt+]')
+    expect(
+      eventMatchesShortcut(
+        { key: '“', code: 'BracketLeft', ctrlKey: false, metaKey: false, altKey: true, shiftKey: false } as KeyboardEvent,
+        DEFAULT_SHORTCUTS.cycleAislePrev,
+        true,
+      ),
+    ).toBe(true)
+    expect(
+      eventMatchesShortcut(
+        { key: ']', code: 'BracketRight', ctrlKey: false, metaKey: false, altKey: true, shiftKey: false } as KeyboardEvent,
+        DEFAULT_SHORTCUTS.cycleAisleNext,
+        false,
+      ),
+    ).toBe(true)
+  })
+
   it('normalizes missing parent-tab cycle shortcuts to empty strings', () => {
     const normalized = normalizeHotkeySettings({
       shortcuts: {
@@ -91,6 +115,8 @@ describe('newline shortcut settings', () => {
 
     expect(normalized.shortcuts.cycleParentTabNext).toBe('')
     expect(normalized.shortcuts.cycleParentTabPrev).toBe('')
+    expect(normalized.shortcuts.cycleAislePrev).toBe('Alt+[')
+    expect(normalized.shortcuts.cycleAisleNext).toBe('Alt+]')
     expect(normalized.shortcuts.formatStrikethrough).toBe('')
   })
 })

@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { BLOCK_INDENT_TOKEN } from '../../markdown/markdown-utils'
@@ -6,6 +9,7 @@ import type { ResolvedNoteAisle } from '../../types/app'
 import { AisleEditModal } from './AisleEditModal'
 
 const aisle = (id: string, markdown = id): ResolvedNoteAisle => ({ id, aisleBodyId: id, markdown })
+const componentDir = dirname(fileURLToPath(import.meta.url))
 
 function renderModal(
   aisles: ResolvedNoteAisle[],
@@ -40,6 +44,35 @@ describe('AisleEditModal', () => {
     expect(html).not.toContain('2 / 8')
     expect(html).toContain('First aisle')
     expect(html).toContain('Second aisle text')
+    expect(html).toContain('aisle-edit-horizontal-scrollbar')
+    expect(html).toContain('role="scrollbar"')
+    expect(html).toContain('aria-label="Scroll edit aisles horizontally"')
+  })
+
+  it('uses before and after drop-target classes for aisle drag placement', () => {
+    const source = readFileSync(join(componentDir, 'AisleEditModal.tsx'), 'utf8')
+
+    expect(source).toContain("type AisleDropTarget =")
+    expect(source).toContain("position: 'before' | 'after'")
+    expect(source).toContain('is-drop-target-${dropTarget.position}')
+    expect(source).toContain('is-drop-neighbor-before')
+    expect(source).toContain('is-drop-neighbor-after')
+    expect(source).toContain('getPlacementNeighborId')
+    expect(source).toContain('reorderAisleDraftByInsertion')
+    expect(source).not.toContain('is-drop-target\'')
+    expect(source).not.toContain('is-drop-target"')
+  })
+
+  it('uses the same contained horizontal layout for wide normal and scratchpad aisle sets', () => {
+    const normalHtml = renderModal(Array.from({ length: MAX_NOTE_AISLES }, (_, index) => aisle(`normal-${index}`)))
+    const scratchpadHtml = renderModal(Array.from({ length: 16 }, (_, index) => aisle(`scratchpad-${index}`)))
+
+    for (const html of [normalHtml, scratchpadHtml]) {
+      expect(html).toContain('aisle-edit-scroll-shell')
+      expect(html).toContain('aisle-edit-list')
+      expect(html).toContain('aisle-edit-horizontal-scrollbar')
+      expect(html).toContain('aria-label="Scroll edit aisles horizontally"')
+    }
   })
 
   it('hides delete when only one aisle remains', () => {

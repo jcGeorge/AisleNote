@@ -42,6 +42,7 @@ import type {
   NewlineOperationId,
   NewlineShortcutId,
   NewAislePlacement,
+  ScratchpadNewAisleSide,
   SettingsSection,
   ShortcutId,
   StorageProfileStatus,
@@ -51,6 +52,7 @@ import type {
   ToolbarLayout,
   VisualsSettingsSection,
 } from '../../types/app'
+import { MAX_SCRATCHPAD_AISLE_LIMIT } from '../../state/scratchpad'
 import { CustomThemeEditor } from './CustomThemeEditor'
 import { DataSectionSwitch } from './DataSectionSwitch'
 import { ThemePreview } from './ThemePreview'
@@ -89,8 +91,14 @@ const TABLE_OF_CONTENTS_SCOPE_OPTIONS: Array<{ id: TableOfContentsScope; label: 
 ]
 
 const NEW_AISLE_PLACEMENT_OPTIONS: Array<{ id: NewAislePlacement; label: string }> = [
-  { id: 'end', label: 'end of note' },
-  { id: 'right-of-focus', label: 'right of focus' },
+  { id: 'end', label: 'end of aisles' },
+  { id: 'left-of-focus', label: 'left of current' },
+  { id: 'right-of-focus', label: 'right of current' },
+]
+
+const SCRATCHPAD_NEW_AISLE_SIDE_OPTIONS: Array<{ id: ScratchpadNewAisleSide; label: string }> = [
+  { id: 'left', label: 'left' },
+  { id: 'right', label: 'right' },
 ]
 
 function isFrontmatterBooleanTrue(value: string) {
@@ -121,6 +129,8 @@ type SettingsPageProps = {
   tableDeleteTargetModeDraft: TableControlTargetMode
   tableOfContentsScopeDraft: TableOfContentsScope
   newAislePlacementDraft: NewAislePlacement
+  scratchpadAisleLimitDraft: string
+  scratchpadNewAisleSideDraft: ScratchpadNewAisleSide
   miscSyncedUiBooleanSettings: SyncedUiBooleanSettingView[]
   frontmatterDraft: FrontmatterSettings
   frontmatterDraftDirty: boolean
@@ -152,6 +162,8 @@ type SettingsPageProps = {
   onTableDeleteTargetModeChange: (mode: TableControlTargetMode) => void
   onTableOfContentsScopeChange: (scope: TableOfContentsScope) => void
   onNewAislePlacementChange: (placement: NewAislePlacement) => void
+  onScratchpadAisleLimitChange: (value: string, commit?: boolean) => void
+  onScratchpadNewAisleSideChange: (side: ScratchpadNewAisleSide) => void
   onSyncedUiBooleanSettingChange: (key: SyncedUiBooleanSettingKey, enabled: boolean) => void
   onTipEnabledChange: (tipId: TipId, enabled: boolean) => void
   onSelectToolbarLayout: (layoutId: string) => void
@@ -209,6 +221,8 @@ export function SettingsPage({
   tableDeleteTargetModeDraft,
   tableOfContentsScopeDraft,
   newAislePlacementDraft,
+  scratchpadAisleLimitDraft,
+  scratchpadNewAisleSideDraft,
   miscSyncedUiBooleanSettings,
   frontmatterDraft,
   frontmatterDraftDirty,
@@ -240,6 +254,8 @@ export function SettingsPage({
   onTableDeleteTargetModeChange,
   onTableOfContentsScopeChange,
   onNewAislePlacementChange,
+  onScratchpadAisleLimitChange,
+  onScratchpadNewAisleSideChange,
   onSyncedUiBooleanSettingChange,
   onTipEnabledChange,
   onSelectToolbarLayout,
@@ -276,6 +292,12 @@ export function SettingsPage({
   const activeFrontmatterTemplate =
     frontmatterDraft.templates.find((template) => template.id === frontmatterDraft.settingsTemplateId) ??
     frontmatterDraft.templates[0]
+  const scratchpadDeleteShortcutSetting = miscSyncedUiBooleanSettings.find(
+    (setting) => setting.key === 'scratchpadDeleteAisleShortcutEnabled',
+  )
+  const generalMiscSyncedUiBooleanSettings = miscSyncedUiBooleanSettings.filter(
+    (setting) => setting.key !== 'scratchpadDeleteAisleShortcutEnabled',
+  )
   const storageHealth =
     storageProfileStatus?.health ?? (storageProfileStatus?.status === 'error' ? 'error' : 'healthy')
   const storageIssues = storageProfileStatus?.issues ?? []
@@ -413,15 +435,64 @@ export function SettingsPage({
         <span className="settings-hotkey-label" id={labelId}>
           new aisles are added to
         </span>
+        <div className="settings-inline-control-stack">
+          <div className="settings-segmented-control settings-segmented-control-three" role="radiogroup" aria-labelledby={labelId}>
+            {NEW_AISLE_PLACEMENT_OPTIONS.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                role="radio"
+                aria-checked={newAislePlacementDraft === option.id}
+                className={`settings-segmented-option ${newAislePlacementDraft === option.id ? 'is-selected' : ''}`}
+                onClick={() => onNewAislePlacementChange(option.id)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          <p className="settings-help settings-inline-help">
+            in the edit aisle menu, new aisles are always added to the end
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  const renderScratchpadAisleLimitSetting = () => (
+    <div className="settings-hotkey-row">
+      <span className="settings-hotkey-label">scratchpad aisle limit</span>
+      <div className="settings-field-row">
+        <input
+          type="number"
+          className="settings-number-input settings-number-input-half"
+          min={1}
+          max={MAX_SCRATCHPAD_AISLE_LIMIT}
+          step={1}
+          value={scratchpadAisleLimitDraft}
+          onChange={(event) => onScratchpadAisleLimitChange(event.target.value)}
+          onBlur={() => onScratchpadAisleLimitChange(scratchpadAisleLimitDraft, true)}
+        />
+        <span className="settings-field-suffix">aisles</span>
+      </div>
+    </div>
+  )
+
+  const renderScratchpadNewAisleSideSetting = () => {
+    const labelId = 'settings-scratchpad-new-aisle-side-label'
+    return (
+      <div className="settings-hotkey-row">
+        <span className="settings-hotkey-label" id={labelId}>
+          command+n in scratch pad creates an aisle to the
+        </span>
         <div className="settings-segmented-control" role="radiogroup" aria-labelledby={labelId}>
-          {NEW_AISLE_PLACEMENT_OPTIONS.map((option) => (
+          {SCRATCHPAD_NEW_AISLE_SIDE_OPTIONS.map((option) => (
             <button
               key={option.id}
               type="button"
               role="radio"
-              aria-checked={newAislePlacementDraft === option.id}
-              className={`settings-segmented-option ${newAislePlacementDraft === option.id ? 'is-selected' : ''}`}
-              onClick={() => onNewAislePlacementChange(option.id)}
+              aria-checked={scratchpadNewAisleSideDraft === option.id}
+              className={`settings-segmented-option ${scratchpadNewAisleSideDraft === option.id ? 'is-selected' : ''}`}
+              onClick={() => onScratchpadNewAisleSideChange(option.id)}
             >
               {option.label}
             </button>
@@ -633,12 +704,12 @@ export function SettingsPage({
                   </button>
                 </div>
                 <div className="settings-hotkey-row">
-                  <label className="settings-hotkey-label" htmlFor="settings-export-tabs-project">
-                    export to other tabs project
+                  <label className="settings-hotkey-label" htmlFor="settings-export-tabs-notebook">
+                    export to other tabs notebook
                   </label>
                   <div className="form-check form-switch settings-switch">
                     <input
-                      id="settings-export-tabs-project"
+                      id="settings-export-tabs-notebook"
                       className="form-check-input"
                       type="checkbox"
                       role="switch"
@@ -962,7 +1033,7 @@ export function SettingsPage({
             <p className="settings-help">synced profile settings</p>
             {renderTableOfContentsScopeSetting()}
             {renderNewAislePlacementSetting()}
-            {miscSyncedUiBooleanSettings.map((setting) => renderMiscSyncedUiBooleanSetting(setting))}
+            {generalMiscSyncedUiBooleanSettings.map((setting) => renderMiscSyncedUiBooleanSetting(setting))}
             {renderTableControlTargetSetting(
               'add table row or column',
               tableAddTargetModeDraft,
@@ -973,6 +1044,12 @@ export function SettingsPage({
               tableDeleteTargetModeDraft,
               onTableDeleteTargetModeChange,
             )}
+            <h2 className="settings-subsection-heading">scratchpad</h2>
+            {scratchpadDeleteShortcutSetting
+              ? renderMiscSyncedUiBooleanSetting(scratchpadDeleteShortcutSetting)
+              : null}
+            {renderScratchpadAisleLimitSetting()}
+            {renderScratchpadNewAisleSideSetting()}
           </div>
         )}
 

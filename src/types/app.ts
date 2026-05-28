@@ -31,6 +31,8 @@ export type ShortcutId =
   | 'cycleParentTabPrev'
   | 'cycleSubTabNext'
   | 'cycleSubTabPrev'
+  | 'cycleAislePrev'
+  | 'cycleAisleNext'
 export type SettingsSection =
   | 'data'
   | 'frontmatter'
@@ -44,7 +46,8 @@ export type DataSettingsSection = 'cloud' | 'trash' | 'export' | 'import'
 export type VisualsSettingsSection = 'theming' | 'otherVisuals'
 export type TableControlTargetMode = 'active-cell' | 'bottom-right'
 export type TableOfContentsScope = 'all-aisles' | 'focused-aisle'
-export type NewAislePlacement = 'end' | 'right-of-focus'
+export type NewAislePlacement = 'end' | 'left-of-focus' | 'right-of-focus'
+export type ScratchpadNewAisleSide = 'left' | 'right'
 export type TipId = 'task-undo' | 'delete-subtab-shortcut'
 
 export type NewlineOperationId =
@@ -152,6 +155,11 @@ export type NoteBody = {
   createdAt?: string
   updatedAt?: string
   aisles: NoteAisle[]
+}
+
+export type ScratchpadState = {
+  noteBodyId: string
+  activeAisleId?: string
 }
 
 export type ResolvedNoteBody = Omit<NoteBody, 'aisles'> & {
@@ -334,6 +342,7 @@ export type AppState = {
   domains: Domain[]
   deletedDomains?: DeletedDomainEntry[]
   deletedSpaces?: DeletedSpaceEntry[]
+  scratchpad?: ScratchpadState
   noteBodies: NoteBody[]
   noteAisleBodies?: NoteAisleBody[]
   /** Transitional projection of the active domain. Remove after App.tsx is fully domain-scoped. */
@@ -359,6 +368,9 @@ export type AppState = {
     removeNoteReferencesOnTrash?: boolean
     noteMentionCopyRequiresConfirmation?: boolean
     deleteSubtabShortcutEnabled?: boolean
+    scratchpadDeleteAisleShortcutEnabled?: boolean
+    scratchpadAisleLimit?: number
+    scratchpadNewAisleSide?: ScratchpadNewAisleSide
     decoupledItemsKeepData?: boolean
     tableAddTargetMode: TableControlTargetMode
     tableDeleteTargetMode: TableControlTargetMode
@@ -762,6 +774,7 @@ export type ContextMenuState =
     }
   | { x: number; y: number; type: 'space'; spaceId: string }
   | { x: number; y: number; type: 'domain'; domainId: string }
+  | { x: number; y: number; type: 'scratchpad' }
 
 export type DeleteTarget =
   | { type: 'tab'; tabId: string }
@@ -808,6 +821,7 @@ export type ModalState =
   | { type: 'trash-delete-all' }
   | { type: 'trash-restore-all' }
   | { type: 'export-space'; spaceId: string }
+  | { type: 'scratchpad-about' }
   | {
       type: 'copy-note'
       mode: NoteCopyMode

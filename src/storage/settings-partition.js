@@ -55,6 +55,7 @@ const DEFAULT_SYNCED_UI_SETTINGS = {
   tabButtonScale: 1,
   noteFontScale: 1,
   tooltipScale: 1,
+  scratchpadAisleLimit: 16,
   noteCursorLocations: {},
   headingCollapseState: {},
   seenTipIds: [],
@@ -74,6 +75,12 @@ function optionalString(value, fallback) {
 
 function optionalArray(value, fallback) {
   return Array.isArray(value) ? value : fallback
+}
+
+function optionalScratchpadAisleLimit(value, fallback) {
+  const parsed = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10)
+  if (!Number.isFinite(parsed)) return fallback
+  return Math.min(32, Math.max(1, Math.floor(parsed)))
 }
 
 function normalizeTimestamp(value) {
@@ -127,14 +134,17 @@ export function buildLiveNoteCursorLocationKeys(appState) {
             if (!tabId) return
             keys.add(buildNoteCursorLocationKey(domainId, spaceId, tabId))
             ensureArray(tab.subTabs)
-              .filter(isRecord)
-              .forEach((subTab) => {
-                const subTabId = typeof subTab.id === 'string' ? subTab.id : ''
-                if (subTabId) keys.add(buildNoteCursorLocationKey(domainId, spaceId, tabId, subTabId))
-              })
+      .filter(isRecord)
+      .forEach((subTab) => {
+        const subTabId = typeof subTab.id === 'string' ? subTab.id : ''
+        if (subTabId) keys.add(buildNoteCursorLocationKey(domainId, spaceId, tabId, subTabId))
+      })
           })
       })
   })
+  if (isRecord(appState?.scratchpad) && typeof appState.scratchpad.noteBodyId === 'string') {
+    keys.add('scratchpad')
+  }
   return keys
 }
 
@@ -256,6 +266,10 @@ export function extractSyncedUiSettings(rawUi) {
     customThemePalette: isRecord(themePalettes.custom1) ? themePalettes.custom1 : legacyCustomPalette,
     themePalettes,
     toolbarLayouts: optionalArray(ui.toolbarLayouts, DEFAULT_SYNCED_UI_SETTINGS.toolbarLayouts),
+    scratchpadAisleLimit: optionalScratchpadAisleLimit(
+      ui.scratchpadAisleLimit,
+      DEFAULT_SYNCED_UI_SETTINGS.scratchpadAisleLimit,
+    ),
     disabledTipIds: optionalArray(ui.disabledTipIds, DEFAULT_SYNCED_UI_SETTINGS.disabledTipIds),
   }
 }
@@ -289,6 +303,10 @@ export function extractAppearanceSettings(appState) {
       typeof ui.tooltipScale === 'number'
         ? ui.tooltipScale
         : DEFAULT_SYNCED_UI_SETTINGS.tooltipScale,
+    scratchpadAisleLimit: optionalScratchpadAisleLimit(
+      ui.scratchpadAisleLimit,
+      DEFAULT_SYNCED_UI_SETTINGS.scratchpadAisleLimit,
+    ),
   }
 }
 

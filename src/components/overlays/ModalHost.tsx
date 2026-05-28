@@ -14,11 +14,7 @@ import {
   isFrontmatterComputedValueCompatibleWithFieldType,
 } from '../../frontmatter/frontmatter'
 import { buildFrontmatterModalDraftForAisle, buildFrontmatterRowsForAisle } from '../../frontmatter/frontmatter-state'
-import {
-  buildNoteLocationKey,
-  getDefaultNoteLinkLabel,
-  listNoteLocationsForBody,
-} from '../../notes/note-locations'
+import { getDefaultNoteLinkLabel, listNoteLocationsForBody } from '../../notes/note-locations'
 import { getAisleBodyId } from '../../notes/note-markdown'
 import { normalizeNoteReferenceTarget, resolveNoteReferenceTarget } from '../../notes/note-reference-targets'
 import { createId } from '../../state/workspace'
@@ -40,6 +36,7 @@ import { shouldSubmitInsertNoteReferenceOnEnter } from './modal-keyboard'
 import { makeFrontmatterRowsManual, normalizeFrontmatterModalRows } from './frontmatter-modal-state'
 import { getModalText } from './modal-text'
 import { getNoteCopyModeLabel } from '../../notes/copy-reference-labels'
+import { DecoupleLocationCardStrip } from './DecoupleLocationCardStrip'
 
 type ModalHostProps = {
   modal: ModalState | null
@@ -61,6 +58,21 @@ type ModalHostProps = {
 
 const MENU_SLOT_LABELS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']
 const SHORTCUT_MENU_DRAG_MIME = 'application/x-tabs-shortcut-menu-operation'
+const DECOUPLE_MODAL_MIN_WIDTH_REM = 20
+const DECOUPLE_MODAL_MAX_WIDTH_REM = 70
+const DECOUPLE_LOCATION_CARD_WIDTH_REM = 12
+const DECOUPLE_LOCATION_CARD_GAP_REM = 0.55
+
+function getDecoupleModalContentWidth(locationCount: number) {
+  const cardCount = Math.max(1, locationCount)
+  const cardStripWidth =
+    cardCount * DECOUPLE_LOCATION_CARD_WIDTH_REM + Math.max(0, cardCount - 1) * DECOUPLE_LOCATION_CARD_GAP_REM
+  const clampedWidth = Math.min(
+    DECOUPLE_MODAL_MAX_WIDTH_REM,
+    Math.max(DECOUPLE_MODAL_MIN_WIDTH_REM, cardStripWidth),
+  )
+  return `${Number(clampedWidth.toFixed(2))}rem`
+}
 
 function ShortcutMenuSettings({
   operations,
@@ -281,6 +293,16 @@ export function ModalHost({
     modal.type === 'sort-tabs' ||
     modal.type === 'shortcut-menu-settings'
   const isNotePickerModal = modal.type === 'copy-note' || modal.type === 'insert-note-reference'
+  const isNoteLevelDecoupleModal =
+    modal.type === 'deduplicate-note' || (modal.type === 'linked-aisle' && modal.reason === 'note-body')
+  const decoupleLocationCount = isNoteLevelDecoupleModal
+    ? listNoteLocationsForBody(state, modal.noteBodyId).length
+    : 0
+  const modalStyle = isNoteLevelDecoupleModal
+    ? ({
+        '--decouple-modal-content-width': getDecoupleModalContentWidth(decoupleLocationCount),
+      } as CSSProperties)
+    : undefined
 
   const setLinkModalMode = (mode: LinkInsertMode) => {
     if (modal.type !== 'insert-note-reference' || modal.modeLocked) return
@@ -663,9 +685,10 @@ export function ModalHost({
           modal.type === 'shortcut-menu-settings' ? 'shortcut-settings-modal' : ''
         } ${modal.type === 'sort-tabs' ? 'sort-modal' : ''} ${
           modal.type === 'insert-note-reference' ? 'insert-note-reference-modal-shell' : ''
-        }`}
+        } ${isNoteLevelDecoupleModal ? 'decouple-note-modal-shell' : ''}`}
         role="dialog"
         aria-modal="true"
+        style={modalStyle}
         onClick={(event) => event.stopPropagation()}
         onKeyDown={handleDialogKeyDown}
       >
@@ -676,6 +699,21 @@ export function ModalHost({
           </button>
         )}
         {modalText.body ? <p>{modalText.body}</p> : null}
+        {modal.type === 'scratchpad-about' && (
+          <div className="scratchpad-about-modal">
+            <p>scratchpad is a quick standalone place to put unsorted notes and spur of the moment thoughts.</p>
+            <p>
+              it is stored with your other notes, but it does not belong to a domain, space, parent, or tab.
+            </p>
+            <p>
+              scratchpad results appear when searching your entire notebook, or when searching within scratchpad itself.
+            </p>
+            <p>
+              scratchpad allows 16 aisles by default, adjustable up to 32 in the misc settings. new scratchpad aisles
+              are added to the left by default, also adjustable in the settings.
+            </p>
+          </div>
+        )}
         {modal.type === 'export-space' && (
           <label className="settings-modal-field">
             <span>space</span>
@@ -744,27 +782,13 @@ export function ModalHost({
         )}
         {modal.type === 'deduplicate-note' && (
           <div className="deduplicate-note-modal">
-            <div className="duplicate-note-list">
-              {listNoteLocationsForBody(state, modal.noteBodyId).map((location) => {
-                const locationKey = buildNoteLocationKey(location)
-                return (
-                  <label key={locationKey} className="duplicate-note-choice">
-                    <input
-                      type="checkbox"
-                      checked={modal.keepLocationKeys.includes(locationKey)}
-                      onChange={(event) => {
-                        const keepLocationKeys = event.target.checked
-                          ? [...modal.keepLocationKeys, locationKey]
-                          : modal.keepLocationKeys.filter((key) => key !== locationKey)
-                        onModalChange({ ...modal, keepLocationKeys })
-                      }}
-                    />
-                    <span>{location.label}</span>
-                  </label>
-                )
-              })}
-            </div>
-            <label className="deduplicate-keep-data-switch form-check form-switch settings-switch">
+            <DecoupleLocationCardStrip
+              state={state}
+              noteBodyId={modal.noteBodyId}
+              keepLocationKeys={modal.keepLocationKeys}
+              onKeepLocationKeysChange={(keepLocationKeys) => onModalChange({ ...modal, keepLocationKeys })}
+            />
+            <div className="deduplicate-keep-data-switch form-check form-switch settings-switch">
               <span>keep data in de-coupled notes?</span>
               <input
                 type="checkbox"
@@ -774,34 +798,20 @@ export function ModalHost({
                 checked={modal.keepData}
                 onChange={(event) => setDeduplicateKeepData(event.target.checked)}
               />
-            </label>
+            </div>
           </div>
         )}
         {modal.type === 'linked-aisle' && (
           <div className="linked-aisle-modal">
             {modal.reason === 'note-body' ? (
               <>
-                <div className="duplicate-note-list">
-                  {listNoteLocationsForBody(state, modal.noteBodyId).map((location) => {
-                    const locationKey = buildNoteLocationKey(location)
-                    return (
-                      <label key={locationKey} className="duplicate-note-choice">
-                        <input
-                          type="checkbox"
-                          checked={modal.keepLocationKeys.includes(locationKey)}
-                          onChange={(event) => {
-                            const keepLocationKeys = event.target.checked
-                              ? [...modal.keepLocationKeys, locationKey]
-                              : modal.keepLocationKeys.filter((key) => key !== locationKey)
-                            onModalChange({ ...modal, keepLocationKeys })
-                          }}
-                        />
-                        <span>{location.label}</span>
-                      </label>
-                    )
-                  })}
-                </div>
-                <label className="deduplicate-keep-data-switch form-check form-switch settings-switch">
+                <DecoupleLocationCardStrip
+                  state={state}
+                  noteBodyId={modal.noteBodyId}
+                  keepLocationKeys={modal.keepLocationKeys}
+                  onKeepLocationKeysChange={(keepLocationKeys) => onModalChange({ ...modal, keepLocationKeys })}
+                />
+                <div className="deduplicate-keep-data-switch form-check form-switch settings-switch">
                   <span>keep data in de-coupled notes?</span>
                   <input
                     type="checkbox"
@@ -811,7 +821,7 @@ export function ModalHost({
                     checked={modal.keepData}
                     onChange={(event) => setLinkedAisleKeepData(event.target.checked)}
                   />
-                </label>
+                </div>
               </>
             ) : (
               <div className="linked-aisle-summary">
@@ -1162,7 +1172,13 @@ export function ModalHost({
             </div>
           </div>
         )}
-        {modal.type !== 'sort-tabs' && (
+        {modal.type === 'scratchpad-about' ? (
+          <div className="delete-modal-actions">
+            <button type="button" className="btn btn-sm modal-primary-btn" onClick={() => onModalChange(null)}>
+              {modalText.action}
+            </button>
+          </div>
+        ) : modal.type !== 'sort-tabs' && (
           <div className="delete-modal-actions">
             <button type="button" className="btn btn-sm btn-outline-light modal-cancel-btn" onClick={() => onModalChange(null)}>
               cancel

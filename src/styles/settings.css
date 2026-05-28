@@ -50,6 +50,17 @@
   color: var(--settings-help-text) !important;
 }
 
+.settings-inline-control-stack {
+  display: grid;
+  gap: 0.24rem;
+  justify-items: stretch;
+}
+
+.settings-inline-help {
+  margin: 0 !important;
+  text-align: right;
+}
+
 .settings-page-wrap {
   --settings-text-scale: var(--note-font-scale, 1);
   flex: 1 1 auto;
@@ -166,6 +177,15 @@
   height: 1px;
   background: var(--settings-divider-bg);
   margin: 0.65rem 0 0.55rem;
+}
+
+.settings-subsection-heading {
+  margin: 0.8rem 0 0.35rem;
+  color: var(--settings-help-text);
+  font-size: 0.82em;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
 }
 
 .settings-hotkeys-list {
@@ -401,6 +421,10 @@
   border: 1px solid var(--theme-switch-border);
   border-radius: 0.42rem;
   background: var(--theme-switch-bg);
+}
+
+.settings-segmented-control-three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .settings-data-section-control {

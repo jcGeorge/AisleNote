@@ -20,6 +20,7 @@ import {
   writeCopyAsClipboardData,
   type CopyAsClipboardPayload,
 } from './copy-as-clipboard'
+import { materializeStructuralAisleCopiesForInsertion } from './note-copy-service'
 
 const sourceLocation: NoteLocation = {
   domainId: 'domain-1',
@@ -96,6 +97,8 @@ function createCopyAsState(): AppState {
         cycleParentTabPrev: '',
         cycleSubTabNext: '',
         cycleSubTabPrev: '',
+        cycleAislePrev: '',
+        cycleAisleNext: '',
       },
       newlineShortcuts: {
         shortcuts: {
@@ -316,6 +319,34 @@ describe('copy-as clipboard helpers', () => {
       'source two',
     ])
     expect(targetBody?.aisles[1]?.aisleBodyId).toBe('aisle-source-2')
+  })
+
+  it('materializes structural copy-as aisles for explicit insertion placement', () => {
+    const state = createCopyAsState()
+
+    const independent = materializeStructuralAisleCopiesForInsertion(state, {
+      scope: 'aisle',
+      action: 'copy',
+      source: sourceLocation,
+      aisleId: 'aisle-source-2',
+    })
+    expect(independent.status).toBe('applied')
+    if (independent.status !== 'applied') throw new Error('expected independent aisle copies')
+    expect(independent.aisles).toHaveLength(1)
+    expect(independent.aisles[0]?.markdown).toBe('source two')
+    expect(independent.aisles[0]?.aisleBodyId).not.toBe('aisle-source-2')
+    expect(independent.aisleBodies).toHaveLength(1)
+
+    const linked = materializeStructuralAisleCopiesForInsertion(state, {
+      scope: 'note',
+      action: 'duplicate',
+      source: sourceLocation,
+    })
+    expect(linked.status).toBe('applied')
+    if (linked.status !== 'applied') throw new Error('expected linked aisle copies')
+    expect(linked.aisles.map((aisle) => aisle.markdown)).toEqual(['source one', 'source two'])
+    expect(linked.aisles.map((aisle) => aisle.aisleBodyId)).toEqual(['aisle-source-1', 'aisle-source-2'])
+    expect(linked.aisleBodies).toHaveLength(0)
   })
 
   it('blocks aisle duplicate pastes when the destination is full', () => {

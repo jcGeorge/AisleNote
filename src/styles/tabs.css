@@ -31,6 +31,23 @@
   display: block;
 }
 
+.scratchpad-rail-btn {
+  margin-left: auto;
+  max-width: calc(36px * var(--tab-button-scale));
+  min-width: calc(36px * var(--tab-button-scale));
+  padding-inline: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.scratchpad-rail-icon {
+  width: calc(20px * var(--tab-button-scale));
+  height: calc(20px * var(--tab-button-scale));
+  display: block;
+  color: currentColor;
+}
+
 .tab-btn.is-arrangeable {
   animation: arrangeJiggle 0.18s ease-in-out infinite alternate;
   transform-origin: center;
@@ -142,6 +159,18 @@
   box-shadow: var(--parent-tab-target-after-shadow) !important;
 }
 
+.parent-tab-btn.is-arrange-neighbor-before {
+  border-color: color-mix(in srgb, var(--parent-tab-target-border) 36%, transparent) !important;
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--parent-tab-target-border) 52%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--parent-tab-target-border) 10%, transparent) !important;
+}
+
+.parent-tab-btn.is-arrange-neighbor-after {
+  border-color: color-mix(in srgb, var(--parent-tab-target-border) 36%, transparent) !important;
+  box-shadow: inset -1px 0 0 color-mix(in srgb, var(--parent-tab-target-border) 52%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--parent-tab-target-border) 10%, transparent) !important;
+}
+
 .subtab-btn.is-arrange-target-before {
   border-color: var(--subtab-target-border) !important;
   box-shadow: var(--subtab-target-before-shadow) !important;
@@ -150,6 +179,18 @@
 .subtab-btn.is-arrange-target-after {
   border-color: var(--subtab-target-border) !important;
   box-shadow: var(--subtab-target-after-shadow) !important;
+}
+
+.subtab-btn.is-arrange-neighbor-before {
+  border-color: color-mix(in srgb, var(--subtab-target-border) 36%, transparent) !important;
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--subtab-target-border) 52%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--subtab-target-border) 10%, transparent) !important;
+}
+
+.subtab-btn.is-arrange-neighbor-after {
+  border-color: color-mix(in srgb, var(--subtab-target-border) 36%, transparent) !important;
+  box-shadow: inset -1px 0 0 color-mix(in srgb, var(--subtab-target-border) 52%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--subtab-target-border) 10%, transparent) !important;
 }
 
 .trash-home-tab {

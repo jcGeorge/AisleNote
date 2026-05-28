@@ -9,12 +9,33 @@ import { buildNoteLocationKey, getLocationInfo, updateNoteLocationBody } from '.
 import { ensureNoteBodiesForAppState } from '../state/app-state'
 import { createId, createTimestamp } from '../state/workspace'
 import type { AppState, FrontmatterMeta, NoteAisle, NoteAisleBody, NoteBody, NoteCopyDestinationMode, NoteCopyMode, NoteLocation, ResolvedNoteAisle } from '../types/app'
+import { ensureScratchpadInAppState, getScratchpadNoteBody } from '../state/scratchpad'
 
 export type ApplyNoteCopyResult =
   | { status: 'applied'; state: AppState; mode: NoteCopyMode }
   | { status: 'already-linked'; state: AppState; mode: NoteCopyMode }
   | { status: 'missing-target'; state: AppState; mode: NoteCopyMode }
   | { status: 'self-copy'; state: AppState; mode: NoteCopyMode }
+
+export type StructuralAisleCopyPayload = {
+  scope: 'note' | 'aisle'
+  action: 'copy' | 'duplicate'
+  source: NoteLocation
+  aisleId?: string
+}
+
+export type MaterializeStructuralAisleCopiesResult =
+  | {
+      status: 'applied'
+      mode: NoteCopyMode
+      aisles: ResolvedNoteAisle[]
+      aisleBodies: NoteAisleBody[]
+    }
+  | {
+      status: 'blocked'
+      mode: NoteCopyMode
+      message: string
+    }
 
 type NoteCopyTarget = NoteLocation & { aisleIds?: string[] }
 
@@ -84,6 +105,44 @@ function resolveAisleMarkdowns(sourceState: AppState, aisles: NoteAisle[]): Reso
     aisleBodyId: getAisleBodyId(aisle),
     markdown: getAisleMarkdown(aisle, sourceState.noteAisleBodies),
   }))
+}
+
+export function materializeStructuralAisleCopiesForInsertion(
+  sourceState: AppState,
+  payload: StructuralAisleCopyPayload,
+): MaterializeStructuralAisleCopiesResult {
+  const mode: NoteCopyMode = payload.action === 'duplicate' ? 'linked' : 'independent'
+  const workingState = ensureNoteBodiesForAppState(sourceState)
+  const sourceInfo = getLocationInfo(workingState, payload.source)
+  const sourceBody = sourceInfo.noteBodyId
+    ? workingState.noteBodies.find((candidate) => candidate.id === sourceInfo.noteBodyId) ?? null
+    : null
+  if (!sourceInfo.noteBodyId || !sourceBody) {
+    return { status: 'blocked', mode, message: 'copied note no longer exists.' }
+  }
+
+  const selectedSourceAisles =
+    payload.scope === 'aisle'
+      ? sourceBody.aisles.filter((aisle) => aisle.id === payload.aisleId)
+      : sourceBody.aisles
+  if (selectedSourceAisles.length <= 0) {
+    return { status: 'blocked', mode, message: 'copied aisle no longer exists.' }
+  }
+
+  const resolvedSourceAisles = resolveAisleMarkdowns(workingState, selectedSourceAisles)
+  const copied = mode === 'linked'
+    ? { aisles: createLinkedAisleCopies(resolvedSourceAisles), aisleBodies: [] }
+    : createIndependentAisleCopies(workingState, resolvedSourceAisles)
+  const stateWithCopiedBodies = copied.aisleBodies.length > 0
+    ? { ...workingState, noteAisleBodies: [...(workingState.noteAisleBodies ?? []), ...copied.aisleBodies] }
+    : workingState
+
+  return {
+    status: 'applied',
+    mode,
+    aisles: resolveAisleMarkdowns(stateWithCopiedBodies, copied.aisles),
+    aisleBodies: copied.aisleBodies,
+  }
 }
 
 function updateNoteBodyAisles(
@@ -195,5 +254,42 @@ export function applyNoteCopyToState(
       copied.body.id,
     ),
     mode,
+  }
+}
+
+export function applyIndependentCopyToScratchpad(
+  sourceState: AppState,
+  target: NoteCopyTarget,
+  destinationMode: NoteCopyDestinationMode = 'replace',
+  maxAisles = Number.POSITIVE_INFINITY,
+): ApplyNoteCopyResult {
+  const workingState = ensureScratchpadInAppState(ensureNoteBodiesForAppState(sourceState))
+  const targetInfo = getLocationInfo(workingState, target)
+  const targetBody = targetInfo.noteBodyId
+    ? workingState.noteBodies.find((candidate) => candidate.id === targetInfo.noteBodyId) ?? null
+    : null
+  const scratchpadBody = getScratchpadNoteBody(workingState)
+  if (!targetInfo.noteBodyId || !targetBody || !scratchpadBody) {
+    return { status: 'missing-target', state: workingState, mode: 'independent' }
+  }
+
+  const selectedAisles = resolveAisleMarkdowns(workingState, getSelectedTargetAisles(targetBody, target.aisleIds))
+  if (selectedAisles.length === 0) return { status: 'missing-target', state: workingState, mode: 'independent' }
+  if (destinationMode === 'append' && scratchpadBody.aisles.length + selectedAisles.length > maxAisles) {
+    return { status: 'missing-target', state: workingState, mode: 'independent' }
+  }
+  const copied = createIndependentAisleCopies(workingState, selectedAisles)
+  const nextAisles = destinationMode === 'append' ? [...scratchpadBody.aisles, ...copied.aisles] : copied.aisles
+  return {
+    status: 'applied',
+    state: ensureScratchpadInAppState(updateNoteBodyAisles(
+      {
+        ...workingState,
+        noteAisleBodies: [...(workingState.noteAisleBodies ?? []), ...copied.aisleBodies],
+      },
+      scratchpadBody.id,
+      nextAisles,
+    )),
+    mode: 'independent',
   }
 }

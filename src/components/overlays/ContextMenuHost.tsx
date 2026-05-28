@@ -56,7 +56,7 @@ type ContextMenuHostProps = {
   onOpenCopyModal: () => void
   onMoveToTrash: () => void
   onRestoreFromTrash: () => void
-  onEditorClipboard: (action: 'cut' | 'copy' | 'paste' | 'pastePlainText') => void
+  onEditorClipboard: (action: EditorClipboardAction, destination?: EditorPasteDestination) => void
   onEditorCommand: (command: string, payload?: Record<string, unknown>) => void
   onEditorInsertLink: (mode: LinkInsertMode | null) => void
   onEditorInsertAisle: () => void
@@ -64,10 +64,14 @@ type ContextMenuHostProps = {
   onEditorFindReplace: () => void
   onEditorOpenContextLink: () => void
   onEditorEditContextLink: () => void
+  onOpenScratchpadAbout: () => void
   copyAsMenu: CopyAsMenuState | null
   onCopyAs: (scope: CopyAsScope, action: CopyAsAction) => void
   onCopyAsUnavailable: (message: string) => void
 }
+
+export type EditorClipboardAction = 'cut' | 'copy' | 'paste' | 'pastePlainText'
+export type EditorPasteDestination = 'here' | 'new-aisle-left' | 'new-aisle-right'
 
 type CopyAsMenuItemState = {
   available: boolean
@@ -114,9 +118,11 @@ const COPY_AS_MENU_ACTION_ORDER: CopyAsAction[] = ['copy', 'duplicate', 'link', 
 function SubMenu({
   label,
   children,
+  onClick,
 }: {
   label: string
   children: ReactNode
+  onClick?: () => void
 }) {
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
@@ -142,6 +148,7 @@ function SubMenu({
         type="button"
         className="tab-context-delete tab-context-submenu-trigger"
         aria-haspopup="menu"
+        onClick={onClick}
       >
         {label}
         <span aria-hidden="true">›</span>
@@ -184,6 +191,7 @@ export function ContextMenuHost({
   onEditorFindReplace,
   onEditorOpenContextLink,
   onEditorEditContextLink,
+  onOpenScratchpadAbout,
   copyAsMenu,
   onCopyAs,
   onCopyAsUnavailable,
@@ -240,6 +248,14 @@ export function ContextMenuHost({
       </SubMenu>
     )
   }
+
+  const renderPasteSubmenu = (action: Extract<EditorClipboardAction, 'paste' | 'pastePlainText'>, label: string) => (
+    <SubMenu label={label} onClick={() => onEditorClipboard(action, 'here')}>
+      <MenuButton onClick={() => onEditorClipboard(action, 'new-aisle-left')}>new aisle on left</MenuButton>
+      <MenuButton onClick={() => onEditorClipboard(action, 'new-aisle-right')}>new aisle on right</MenuButton>
+      <MenuButton onClick={() => onEditorClipboard(action, 'here')}>here</MenuButton>
+    </SubMenu>
+  )
 
   return (
     <div
@@ -302,6 +318,8 @@ export function ContextMenuHost({
         <button type="button" className="tab-context-delete" onClick={onCopyImage}>
           copy image
         </button>
+      ) : contextMenu.type === 'scratchpad' ? (
+        <MenuButton onClick={onOpenScratchpadAbout}>about scratchpad</MenuButton>
       ) : contextMenu.type === 'editor' ? (
         <>
           {contextMenu.link && (
@@ -315,8 +333,8 @@ export function ContextMenuHost({
           )}
           <MenuButton onClick={() => onEditorClipboard('cut')}>cut</MenuButton>
           <MenuButton onClick={() => onEditorClipboard('copy')}>copy</MenuButton>
-          <MenuButton onClick={() => onEditorClipboard('paste')}>paste</MenuButton>
-          <MenuButton onClick={() => onEditorClipboard('pastePlainText')}>paste as plain text</MenuButton>
+          {renderPasteSubmenu('paste', 'paste')}
+          {renderPasteSubmenu('pastePlainText', 'paste as plain text')}
           <MenuButton onClick={() => onEditorInsertLink(null)}>add link</MenuButton>
           <MenuSeparator />
           <MenuButton onClick={onEditorFindReplace}>find & replace</MenuButton>

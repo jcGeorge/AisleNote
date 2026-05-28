@@ -1114,6 +1114,32 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
     })
   }
 
+  const scratchpad = isRecord(parsedState.scratchpad) ? parsedState.scratchpad : null
+  const scratchpadNoteBodyId =
+    scratchpad && typeof scratchpad.noteBodyId === 'string' && scratchpad.noteBodyId ? scratchpad.noteBodyId : ''
+  const scratchpadEntry = scratchpadNoteBodyId
+    ? {
+        noteBodyId: scratchpadNoteBodyId,
+        ...(typeof scratchpad?.activeAisleId === 'string' && scratchpad.activeAisleId
+          ? { activeAisleId: scratchpad.activeAisleId }
+          : {}),
+      }
+    : null
+  if (scratchpadNoteBodyId) {
+    writeNoteBodyAtPath({
+      fileMap,
+      noteBodyMap,
+      noteAisleBodyMap,
+      noteBodyRecords,
+      noteAisleBodyRecords,
+      noteBodyId: scratchpadNoteBodyId,
+      primaryFileRelative: posixPath.join('scratchpad', 'scratchpad.md'),
+      multiAisleRootRelative: 'scratchpad',
+      assetBank,
+      appState: parsedState,
+    })
+  }
+
   const orphanPathForId = createStoragePathAllocator()
   const orphanFileForId = createStoragePathFileNameAllocator('.md')
   for (const body of noteBodies) {
@@ -1166,7 +1192,10 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
     aisleBodyEntries.push(bodyId && liveAisleBodyIds.has(bodyId) ? body : { ...body, storageStatus: 'unlinked' })
   }
 
-  setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.workspaceIndex, { domains: domainEntries })
+  setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.workspaceIndex, {
+    domains: domainEntries,
+    ...(scratchpadEntry ? { scratchpad: scratchpadEntry } : {}),
+  })
   setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.navigationState, buildNavigationState(parsedState))
   setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.appSettings, extractAppSettings(parsedState))
   setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.frontmatterSettings, extractFrontmatterSettings(parsedState))
@@ -1340,6 +1369,7 @@ function readCurrentRootParts(rootPath, rootManifest, issues = null) {
       noteAisleBodies: ensureArray(noteRegistry.aisleBodies),
     },
     domainEntries: ensureArray(splitFiles.workspaceIndex?.domains),
+    scratchpad: isRecord(splitFiles.workspaceIndex?.scratchpad) ? splitFiles.workspaceIndex.scratchpad : undefined,
     deletedDomains: ensureArray(splitFiles.deletedWorkspace?.deletedDomains).filter(isRecord),
     deletedSpaces: ensureArray(splitFiles.deletedWorkspace?.deletedSpaces).filter(isRecord),
     activeDomainId:
@@ -1535,6 +1565,7 @@ function readHybridAppStateFromRootManifest(rootPath, rootManifest, issues = nul
     domains,
     deletedDomains: rootParts.deletedDomains,
     deletedSpaces: rootParts.deletedSpaces,
+    scratchpad: rootParts.scratchpad,
     noteBodies,
     noteAisleBodies,
     activeSpaceId: activeDomain.activeSpaceId,

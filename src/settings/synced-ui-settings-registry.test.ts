@@ -41,7 +41,7 @@ describe('synced UI settings registry', () => {
       tableAddTargetMode: 'active-cell',
       tableDeleteTargetMode: 'not-real',
       tableOfContentsScope: 'focused-aisle',
-      newAislePlacement: 'right-of-focus',
+      newAislePlacement: 'left-of-focus',
       removeNoteReferencesOnTrash: 'false',
       deleteSubtabShortcutEnabled: true,
     })
@@ -55,7 +55,7 @@ describe('synced UI settings registry', () => {
       tableAddTargetMode: 'active-cell',
       tableDeleteTargetMode: 'bottom-right',
       tableOfContentsScope: 'focused-aisle',
-      newAislePlacement: 'right-of-focus',
+      newAislePlacement: 'left-of-focus',
       removeNoteReferencesOnTrash: true,
       deleteSubtabShortcutEnabled: true,
     })
@@ -79,6 +79,7 @@ describe('synced UI settings registry', () => {
       'removeNoteReferencesOnTrash',
       'noteMentionCopyRequiresConfirmation',
       'deleteSubtabShortcutEnabled',
+      'scratchpadDeleteAisleShortcutEnabled',
     ])
   })
 })

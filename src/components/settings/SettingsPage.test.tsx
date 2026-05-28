@@ -61,6 +61,8 @@ function createState(): AppState {
         cycleParentTabPrev: '',
         cycleSubTabNext: '',
         cycleSubTabPrev: '',
+        cycleAislePrev: '',
+        cycleAisleNext: '',
       },
       newlineShortcuts: {
         shortcuts: {
@@ -126,6 +128,8 @@ function renderSettingsPage(
         cycleParentTabPrev: '',
         cycleSubTabNext: '',
         cycleSubTabPrev: '',
+        cycleAislePrev: '',
+        cycleAisleNext: '',
       }}
       newlineShortcutDrafts={{
         controlEnter: 'normalNewLine',
@@ -147,6 +151,8 @@ function renderSettingsPage(
       tableDeleteTargetModeDraft={state.ui.tableDeleteTargetMode}
       tableOfContentsScopeDraft={state.ui.tableOfContentsScope ?? 'all-aisles'}
       newAislePlacementDraft={state.ui.newAislePlacement ?? 'end'}
+      scratchpadAisleLimitDraft={String(state.ui.scratchpadAisleLimit ?? 16)}
+      scratchpadNewAisleSideDraft={state.ui.scratchpadNewAisleSide ?? 'left'}
       miscSyncedUiBooleanSettings={MISC_SYNCED_UI_BOOLEAN_SETTINGS.map((setting) => ({
         ...setting,
         checked: getSyncedUiBooleanSettings(state.ui)[setting.key],
@@ -181,6 +187,8 @@ function renderSettingsPage(
       onTableDeleteTargetModeChange={() => undefined}
       onTableOfContentsScopeChange={() => undefined}
       onNewAislePlacementChange={() => undefined}
+      onScratchpadAisleLimitChange={() => undefined}
+      onScratchpadNewAisleSideChange={() => undefined}
       onSyncedUiBooleanSettingChange={() => undefined}
       onTipEnabledChange={() => undefined}
       onSelectToolbarLayout={() => undefined}
@@ -233,6 +241,8 @@ describe('frontmatter settings page', () => {
 
     expect(html).toContain('next parent tab')
     expect(html).toContain('previous parent tab')
+    expect(html).toContain('next aisle')
+    expect(html).toContain('previous aisle')
     expect(html).toContain('strikethrough')
     expect(html).toContain('settings-shortcut-btn')
   })
@@ -256,8 +266,12 @@ describe('frontmatter settings page', () => {
 
     expect(html).toContain('new aisles are added to')
     expect(html).toContain('role="radiogroup" aria-labelledby="settings-new-aisle-placement-label"')
-    expect(html).toContain('aria-checked="false" class="settings-segmented-option ">end of note</button>')
-    expect(html).toContain('aria-checked="true" class="settings-segmented-option is-selected">right of focus</button>')
+    expect(html).toContain('aria-checked="false" class="settings-segmented-option ">end of aisles</button>')
+    expect(html).toContain('aria-checked="false" class="settings-segmented-option ">left of current</button>')
+    expect(html).toContain('aria-checked="true" class="settings-segmented-option is-selected">right of current</button>')
+    expect(html).toContain('in the edit aisle menu, new aisles are always added to the end')
+    expect(html).not.toContain('end of note')
+    expect(html).not.toContain('right of focus')
     expect(html.indexOf('new aisles are added to')).toBeLessThan(html.indexOf('add table row or column'))
   })
 
@@ -303,6 +317,23 @@ describe('frontmatter settings page', () => {
     )
   })
 
+  it('renders scratchpad settings with the 32 aisle maximum', () => {
+    const state = createState()
+    state.ui.scratchpadAisleLimit = 16
+    state.ui.scratchpadNewAisleSide = 'left'
+    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'misc', state })
+
+    expect(html).toContain('scratchpad')
+    expect(html).toContain('command/control+w deletes active aisle in scratchpad')
+    expect(html).toContain('scratchpad aisle limit')
+    expect(html).toContain('type="number"')
+    expect(html).toContain('max="32"')
+    expect(html).toContain('value="16"')
+    expect(html).toContain('command+n in scratch pad creates an aisle to the')
+    expect(html).toContain('aria-checked="true" class="settings-segmented-option is-selected">left</button>')
+    expect(html).toContain('aria-checked="false" class="settings-segmented-option ">right</button>')
+  })
+
   it('renders strikethrough as a selectable new-line operation', () => {
     const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'shortcuts' })
 
@@ -331,8 +362,8 @@ describe('frontmatter settings page', () => {
     expect(exportHtml).toContain('aria-checked="true" class="settings-segmented-option is-selected">export</button>')
     expect(exportHtml).toContain('export backup')
     expect(exportHtml).toContain('export all')
-    expect(exportHtml).toContain('export to other tabs project')
-    expect(exportHtml).toContain('id="settings-export-tabs-project"')
+    expect(exportHtml).toContain('export to other tabs notebook')
+    expect(exportHtml).toContain('id="settings-export-tabs-notebook"')
     expect(exportHtml).toContain('disabled=""')
     expect(exportHtml).not.toContain('export space')
     expect(exportHtml).not.toContain('choose sync folder')

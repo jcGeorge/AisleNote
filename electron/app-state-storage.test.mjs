@@ -313,7 +313,8 @@ describe('Electron app state storage load result', () => {
         tableAddTargetMode: 'active-cell',
         tableDeleteTargetMode: 'active-cell',
         tableOfContentsScope: 'focused-aisle',
-        newAislePlacement: 'right-of-focus',
+        newAislePlacement: 'left-of-focus',
+        scratchpadAisleLimit: 40,
       }
       state.domains[0].spaces[0].settings = { autoRemoveDeletedDays: 21 }
       state.spaces = state.domains[0].spaces
@@ -357,7 +358,8 @@ describe('Electron app state storage load result', () => {
       expect(appSettings.ui.noteMentionCopyRequiresConfirmation).toBe(false)
       expect(appSettings.ui.deleteSubtabShortcutEnabled).toBe(true)
       expect(appSettings.ui.tableOfContentsScope).toBe('focused-aisle')
-      expect(appSettings.ui.newAislePlacement).toBe('right-of-focus')
+      expect(appSettings.ui.newAislePlacement).toBe('left-of-focus')
+      expect(appSettings.scratchpadAisleLimit).toBe(32)
       expect(appSettings.hotkeys.enableMouseBackForward).toBe(false)
       expect(appSettings.hotkeys.shortcuts.newTab).toBe('Ctrl+Alt+N')
       expect(frontmatterSettings.settingsTemplateId).toBe('template-1')
@@ -369,7 +371,8 @@ describe('Electron app state storage load result', () => {
       expect(parsed.ui.noteMentionCopyRequiresConfirmation).toBe(false)
       expect(parsed.ui.deleteSubtabShortcutEnabled).toBe(true)
       expect(parsed.ui.tableOfContentsScope).toBe('focused-aisle')
-      expect(parsed.ui.newAislePlacement).toBe('right-of-focus')
+      expect(parsed.ui.newAislePlacement).toBe('left-of-focus')
+      expect(parsed.ui.scratchpadAisleLimit).toBe(32)
       expect(parsed.hotkeys.shortcuts.newTab).toBe('Ctrl+Alt+N')
       expect(parsed.hotkeys.enableMouseBackForward).toBe(false)
       expect(parsed.frontmatter.settingsTemplateId).toBe('template-1')

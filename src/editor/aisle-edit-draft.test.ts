@@ -11,6 +11,7 @@ import {
   getAislePreviewText,
   moveAisleInDraft,
   reorderAisleDraft,
+  reorderAisleDraftByInsertion,
 } from './aisle-edit-draft'
 import { MAX_NOTE_AISLES } from '../state/workspace'
 import type { ResolvedNoteAisle } from '../types/app'
@@ -71,6 +72,24 @@ describe('aisle edit draft helpers', () => {
     expect(moveAisleInDraft(draft, 'b', 'down')).toBe(draft)
     expect(reorderAisleDraft(draft, -1, 1)).toBe(draft)
     expect(reorderAisleDraft(draft, 0, 9)).toBe(draft)
+  })
+
+  it('reorders aisles before and after insertion targets', () => {
+    const draft = [aisle('a'), aisle('b'), aisle('c'), aisle('d')]
+
+    expect(reorderAisleDraftByInsertion(draft, 0, 2, 'before').map((item) => item.id)).toEqual(['b', 'a', 'c', 'd'])
+    expect(reorderAisleDraftByInsertion(draft, 0, 2, 'after').map((item) => item.id)).toEqual(['b', 'c', 'a', 'd'])
+    expect(reorderAisleDraftByInsertion(draft, 3, 1, 'before').map((item) => item.id)).toEqual(['a', 'd', 'b', 'c'])
+    expect(reorderAisleDraftByInsertion(draft, 3, 1, 'after').map((item) => item.id)).toEqual(['a', 'b', 'd', 'c'])
+  })
+
+  it('keeps invalid insertion moves unchanged', () => {
+    const draft = [aisle('a'), aisle('b'), aisle('c')]
+
+    expect(reorderAisleDraftByInsertion(draft, 1, 1, 'before')).toBe(draft)
+    expect(reorderAisleDraftByInsertion(draft, 1, 1, 'after')).toBe(draft)
+    expect(reorderAisleDraftByInsertion(draft, -1, 1, 'before')).toBe(draft)
+    expect(reorderAisleDraftByInsertion(draft, 1, 9, 'after')).toBe(draft)
   })
 
   it('builds compact previews for empty and long markdown', () => {

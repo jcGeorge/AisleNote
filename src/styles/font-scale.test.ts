@@ -106,6 +106,50 @@ describe('menu font scaling styles', () => {
     expect(customThumbRule).toContain('cursor: grab;')
   })
 
+  it('contains edit aisle horizontal overflow inside the modal', () => {
+    const css = readStyle('editor-shell.css')
+    const tabCss = readStyle('tabs.css')
+    const topbarCss = readStyle('topbar.css')
+    const modalRule = extractRule(css, '.aisle-edit-modal')
+    const shellRule = extractRule(css, '.aisle-edit-scroll-shell')
+    const listRule = extractRule(css, '.aisle-edit-list')
+    const nativeWebkitRule = extractRule(css, '.aisle-edit-list::-webkit-scrollbar')
+    const customBarRule = extractRule(css, '.aisle-edit-horizontal-scrollbar.note-aisle-horizontal-scrollbar')
+    const beforeDropRule = extractRule(css, '.aisle-edit-card.is-drop-target-before')
+    const afterDropRule = extractRule(css, '.aisle-edit-card.is-drop-target-after')
+    const beforeDropNeighborRule = extractRule(css, '.aisle-edit-card.is-drop-neighbor-before')
+    const afterDropNeighborRule = extractRule(css, '.aisle-edit-card.is-drop-neighbor-after')
+    const parentNeighborRule = extractRule(tabCss, '.parent-tab-btn.is-arrange-neighbor-before')
+    const subtabNeighborRule = extractRule(tabCss, '.subtab-btn.is-arrange-neighbor-after')
+    const compactDomainNeighborRule = extractRule(topbarCss, '.compact-domain-btn.is-arrange-neighbor-before')
+    const compactSpaceNeighborRule = extractRule(topbarCss, '.compact-space-btn.is-arrange-neighbor-after')
+
+    expect(modalRule).toContain('max-width: calc(100vw - 2rem);')
+    expect(modalRule).toContain('min-width: 0;')
+    expect(modalRule).toContain('overflow: hidden;')
+    expect(shellRule).toContain('min-width: 0;')
+    expect(shellRule).toContain('width: 100%;')
+    expect(shellRule).toContain('max-width: 100%;')
+    expect(shellRule).toContain('overflow: hidden;')
+    expect(listRule).toContain('min-width: 0;')
+    expect(listRule).toContain('width: 100%;')
+    expect(listRule).toContain('max-width: 100%;')
+    expect(listRule).toContain('overflow-x: auto;')
+    expect(listRule).toContain('scrollbar-width: none;')
+    expect(nativeWebkitRule).toContain('display: none;')
+    expect(customBarRule).toContain('overflow: hidden;')
+    expect(beforeDropRule).toContain('inset 3px 0 0 var(--subtab-target-border)')
+    expect(afterDropRule).toContain('inset -3px 0 0 var(--subtab-target-border)')
+    expect(beforeDropNeighborRule).toContain('inset 1px 0 0 color-mix')
+    expect(beforeDropNeighborRule).toContain(' 8%, transparent')
+    expect(afterDropNeighborRule).toContain('inset -1px 0 0 color-mix')
+    expect(parentNeighborRule).toContain('inset 1px 0 0 color-mix')
+    expect(subtabNeighborRule).toContain('inset -1px 0 0 color-mix')
+    expect(compactDomainNeighborRule).toContain('inset 1px 0 0 color-mix')
+    expect(compactSpaceNeighborRule).toContain('inset -1px 0 0 color-mix')
+    expect(css).not.toContain('.aisle-edit-card.is-drop-target {')
+  })
+
   it('renders toolbar layout spacers as cumulative fixed-width gaps', () => {
     const editorShellCss = readStyle('editor-shell.css')
     const responsiveCss = readStyle('responsive.css')
@@ -500,6 +544,17 @@ describe('compact scope tab scaling styles', () => {
     expect(resultContextChipRule).toContain('text-align: left;')
     expect(resultSubtabChipRule).toContain('flex: 0 0 auto;')
     expect(editorShellCss).not.toContain('--note-mention-chip-')
+  })
+
+  it('left-aligns find result chips so long labels truncate from the right', () => {
+    const editorShellCss = readStyle('editor-shell.css')
+    const chipRule = extractRule(
+      editorShellCss,
+      '.find-replace-context-chip.rail-control,\n.find-replace-context-chip.compact-scope-btn,\n.find-replace-context-chip.tab-btn',
+    )
+
+    expect(chipRule).toContain('justify-content: flex-start;')
+    expect(chipRule).toContain('text-align: left;')
   })
 
   it('reuses rail button classes for context preview title buttons', () => {

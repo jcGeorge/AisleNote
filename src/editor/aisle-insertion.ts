@@ -9,9 +9,10 @@ export function getNewAisleInsertIndex(
   activeAisleId: string | null | undefined,
   placement: NewAislePlacement,
 ) {
-  if (placement !== 'right-of-focus') return aisles.length
+  if (placement === 'end') return aisles.length
   const activeIndex = aisles.findIndex((aisle) => aisle.id === activeAisleId)
-  return activeIndex >= 0 ? activeIndex + 1 : aisles.length
+  if (activeIndex < 0) return aisles.length
+  return placement === 'left-of-focus' ? activeIndex : activeIndex + 1
 }
 
 export function insertNewAisle<T extends AisleIdentity>(
@@ -22,4 +23,14 @@ export function insertNewAisle<T extends AisleIdentity>(
 ) {
   const insertIndex = getNewAisleInsertIndex(aisles, activeAisleId, placement)
   return [...aisles.slice(0, insertIndex), aisle, ...aisles.slice(insertIndex)]
+}
+
+export function insertNewAisles<T extends AisleIdentity>(
+  aisles: readonly T[],
+  newAisles: readonly T[],
+  activeAisleId: string | null | undefined,
+  placement: NewAislePlacement,
+) {
+  const insertIndex = getNewAisleInsertIndex(aisles, activeAisleId, placement)
+  return [...aisles.slice(0, insertIndex), ...newAisles, ...aisles.slice(insertIndex)]
 }

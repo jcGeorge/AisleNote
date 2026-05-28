@@ -49,6 +49,11 @@ import {
   getNextWorkspaceTrashAutoPurgeTime,
 } from './workspace'
 import { getWorkspaceTrashAutoPurgeCutoff } from './workspace'
+import {
+  SCRATCHPAD_CONTENT_TARGET_ID,
+  ensureScratchpadInAppState,
+  normalizeScratchpadState,
+} from './scratchpad'
 
 const DEFAULT_DOMAIN = createDefaultDomain()
 
@@ -58,6 +63,7 @@ const RAW_DEFAULT_STATE: AppState = {
   domains: [DEFAULT_DOMAIN],
   deletedDomains: [],
   deletedSpaces: [],
+  scratchpad: normalizeScratchpadState(null),
   noteBodies: [],
   noteAisleBodies: [],
   activeSpaceId: DEFAULT_DOMAIN.activeSpaceId,
@@ -416,7 +422,7 @@ export function ensureNoteBodiesForAppState(appState: AppState): AppState {
   const spaces = activeDomain?.spaces ?? projected.spaces
   const syncedContent = normalizeNoteContent(Array.from(noteBodies.values()), Array.from(noteAisleBodies.values()))
 
-  return projectActiveDomainState({
+  return ensureScratchpadInAppState(projectActiveDomainState({
     ...projected,
     domains,
     deletedDomains,
@@ -428,7 +434,7 @@ export function ensureNoteBodiesForAppState(appState: AppState): AppState {
         ? activeDomain.activeSpaceId
         : projected.activeSpaceId,
     spaces,
-  })
+  }))
 }
 
 export const DEFAULT_STATE: AppState = ensureNoteBodiesForAppState(RAW_DEFAULT_STATE)
@@ -750,6 +756,7 @@ export function parseSavedState(raw: string | null): AppState {
       domains: parsedDomains,
       deletedDomains: normalizeDeletedDomainEntries(parsed.deletedDomains),
       deletedSpaces: normalizeDeletedSpaceEntries(parsed.deletedSpaces),
+      scratchpad: normalizeScratchpadState(parsed.scratchpad),
       noteBodies: noteContent.noteBodies,
       noteAisleBodies: noteContent.noteAisleBodies,
       activeSpaceId,
@@ -776,7 +783,11 @@ export function applyMarkdownToAppState(
   const projected = ensureNoteBodiesForAppState(previous)
   let targetNoteBodyId: string | null = null
 
-  projected.spaces.forEach((space) => {
+  if (spaceId === SCRATCHPAD_CONTENT_TARGET_ID && tabId === SCRATCHPAD_CONTENT_TARGET_ID) {
+    targetNoteBodyId = normalizeScratchpadState(projected.scratchpad).noteBodyId
+  }
+
+  if (!targetNoteBodyId) projected.spaces.forEach((space) => {
     if (space.id !== spaceId) return space
 
     const data = space.data

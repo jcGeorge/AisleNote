@@ -98,6 +98,8 @@ function createCopyTestState(): AppState {
         cycleParentTabPrev: '',
         cycleSubTabNext: '',
         cycleSubTabPrev: '',
+        cycleAislePrev: '',
+        cycleAisleNext: '',
       },
       newlineShortcuts: {
         shortcuts: {
@@ -134,7 +136,7 @@ describe('note copy helpers', () => {
     const sourceInfo = getLocationInfo(result.state, sourceLocation)
     expect(sourceInfo.noteBodyId).not.toBe('body-source')
     expect(sourceInfo.noteBodyId).not.toBe('body-target')
-    expect(result.state.noteBodies).toHaveLength(3)
+    expect(result.state.noteBodies).toHaveLength(4)
     const sourceAisle = result.state.noteBodies.find((body) => body.id === sourceInfo.noteBodyId)?.aisles[0]
     expect(aisleMarkdown(result.state, sourceAisle)).toBe('target text')
     expect(getLocationInfo(result.state, targetLocation).noteBodyId).toBe('body-target')
@@ -146,7 +148,7 @@ describe('note copy helpers', () => {
     expect(result.status).toBe('applied')
     expect(getLocationInfo(result.state, sourceLocation).noteBodyId).toBe('body-target')
     expect(getLocationInfo(result.state, peerLocation).noteBodyId).toBe('body-source')
-    expect(result.state.noteBodies).toHaveLength(2)
+    expect(result.state.noteBodies).toHaveLength(3)
   })
 
   it('no-ops when linking a note to a target that already shares its body', () => {
@@ -166,7 +168,7 @@ describe('note copy helpers', () => {
 
     expect(result.status).toBe('applied')
     expect(sourceBodyId).not.toBe('body-target')
-    expect(result.state.noteBodies).toHaveLength(3)
+    expect(result.state.noteBodies).toHaveLength(4)
     const sourceAisle = result.state.noteBodies.find((body) => body.id === sourceBodyId)?.aisles[0]
     expect(aisleMarkdown(result.state, sourceAisle)).toBe('target text')
     expect(getLocationInfo(result.state, targetLocation).noteBodyId).toBe('body-target')

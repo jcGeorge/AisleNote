@@ -11,10 +11,12 @@ import {
   applyCursorLocationSnapshot,
   applyNoteLocationToState,
 } from '../notes/note-state'
+import { setScratchpadActiveAisleId } from '../state/scratchpad'
 import type { AppState, NoteAisle, NoteCursorLocation, NoteLocation, ResolvedNoteAisle } from '../types/app'
 
 export type AisleStructuralSnapshot = {
-  location: NoteLocation
+  scope?: 'note' | 'scratchpad'
+  location?: NoteLocation
   locationKey: string
   noteBodyId: string
   aisles: ResolvedNoteAisle[]
@@ -127,6 +129,8 @@ export function applyAisleStructuralEntryToState(
   const withAisles = entry.type === 'add-aisle'
     ? syncNoteBodyAislesInState(previous, entry.noteBodyId, target.aisles)
     : syncNoteBodyAisleStructureInState(previous, entry.noteBodyId, target.aisles)
-  const withLocation = applyNoteLocationToState(withAisles, target.location)
+  const withLocation = target.scope === 'scratchpad' || !target.location
+    ? setScratchpadActiveAisleId(withAisles, target.activeAisleId)
+    : applyNoteLocationToState(withAisles, target.location)
   return applyCursorLocationSnapshot(withLocation, target.locationKey, target.cursorLocation)
 }

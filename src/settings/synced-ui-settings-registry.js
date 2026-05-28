@@ -10,11 +10,13 @@ export const SYNCED_UI_SIMPLE_SETTING_DEFINITIONS = Object.freeze([
   { key: 'removeNoteReferencesOnTrash', kind: 'boolean', defaultValue: true },
   { key: 'noteMentionCopyRequiresConfirmation', kind: 'boolean', defaultValue: true },
   { key: 'deleteSubtabShortcutEnabled', kind: 'boolean', defaultValue: false },
+  { key: 'scratchpadDeleteAisleShortcutEnabled', kind: 'boolean', defaultValue: false },
+  { key: 'scratchpadNewAisleSide', kind: 'enum', defaultValue: 'left', values: ['left', 'right'] },
   { key: 'decoupledItemsKeepData', kind: 'boolean', defaultValue: true },
   { key: 'tableAddTargetMode', kind: 'enum', defaultValue: 'bottom-right', values: ['bottom-right', 'active-cell'] },
   { key: 'tableDeleteTargetMode', kind: 'enum', defaultValue: 'bottom-right', values: ['bottom-right', 'active-cell'] },
   { key: 'tableOfContentsScope', kind: 'enum', defaultValue: 'all-aisles', values: ['all-aisles', 'focused-aisle'] },
-  { key: 'newAislePlacement', kind: 'enum', defaultValue: 'end', values: ['end', 'right-of-focus'] },
+  { key: 'newAislePlacement', kind: 'enum', defaultValue: 'end', values: ['end', 'left-of-focus', 'right-of-focus'] },
   { key: 'toolbarEditorShowNames', kind: 'boolean', defaultValue: false },
 ])
 
@@ -47,6 +49,11 @@ export const MISC_SYNCED_UI_BOOLEAN_SETTINGS = Object.freeze([
     key: 'deleteSubtabShortcutEnabled',
     label: 'command/control+w deletes current subtab',
     ariaLabel: 'command/control+w deletes current subtab',
+  },
+  {
+    key: 'scratchpadDeleteAisleShortcutEnabled',
+    label: 'command/control+w deletes active aisle in scratchpad',
+    ariaLabel: 'command/control+w deletes active aisle in scratchpad',
   },
 ])
 

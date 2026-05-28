@@ -59,6 +59,8 @@ function createModalTextState(): AppState {
         cycleParentTabPrev: '',
         cycleSubTabNext: '',
         cycleSubTabPrev: '',
+        cycleAislePrev: '',
+        cycleAisleNext: '',
       },
       newlineShortcuts: {
         shortcuts: {
@@ -136,7 +138,7 @@ describe('de-couple modal text', () => {
     const text = getModalText(modal, createModalTextState())
 
     expect(text.title).toBe('de-couple')
-    expect(text.body).toContain('independent copies')
+    expect(text.body).toBe('Select items to de-couple.')
   })
 
   it('describes linked aisle and whole-note link pages', () => {
@@ -160,6 +162,6 @@ describe('de-couple modal text', () => {
 
     expect(aisleText).toMatchObject({ title: 'linked aisle', action: 'de-couple aisle' })
     expect(noteText).toMatchObject({ title: 'linked note', action: 'apply' })
-    expect(noteText.body).toContain('whole note is linked')
+    expect(noteText.body).toBe('Select items to de-couple.')
   })
 })

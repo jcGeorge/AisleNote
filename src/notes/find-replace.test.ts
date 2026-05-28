@@ -3,6 +3,7 @@ import { DEFAULT_FRONTMATTER_SETTINGS } from '../frontmatter/frontmatter'
 import type { AppState, NoteBody, NoteLocation, Space, Tab } from '../types/app'
 import {
   applyFindReplacementToState,
+  SCRATCHPAD_FIND_LOCATION,
   buildVisibleMarkdownIndex,
   collectFindReplaceLocations,
   findVisibleMatches,
@@ -92,6 +93,8 @@ function createFindReplaceState(): AppState {
         cycleParentTabPrev: '',
         cycleSubTabNext: '',
         cycleSubTabPrev: '',
+        cycleAislePrev: '',
+        cycleAisleNext: '',
       },
       newlineShortcuts: {
         shortcuts: {
@@ -128,7 +131,7 @@ const ACTIVE_LOCATION: NoteLocation = {
 }
 
 describe('find and replace scope collection', () => {
-  it('collects note, parent, space, domain, and project scopes from the active location', () => {
+  it('collects note, parent, space, domain, and notebook scopes from the active location', () => {
     const state = createFindReplaceState()
 
     expect(collectFindReplaceLocations(state, ACTIVE_LOCATION, 'note').map((location) => location.noteBodyId)).toEqual([
@@ -152,13 +155,77 @@ describe('find and replace scope collection', () => {
       'body-parent-b',
       'body-space-b',
     ])
-    expect(collectFindReplaceLocations(state, ACTIVE_LOCATION, 'project').map((location) => location.noteBodyId)).toEqual([
+    expect(collectFindReplaceLocations(state, ACTIVE_LOCATION, 'notebook').map((location) => location.noteBodyId)).toEqual([
       'body-home',
       'body-sub',
       'body-linked-a',
       'body-parent-b',
       'body-space-b',
       'body-linked-b',
+    ])
+  })
+
+  it('includes scratchpad only in scratchpad-local and notebook scopes', () => {
+    const state = createFindReplaceState()
+    state.scratchpad = { noteBodyId: 'body-scratch', activeAisleId: 'aisle-scratch' }
+    state.noteBodies.push(body('body-scratch', 'aisle-scratch', 'aisle-body-scratch'))
+    state.noteAisleBodies?.push({ id: 'aisle-body-scratch', markdown: 'scratch target' })
+
+    expect(collectFindReplaceLocations(state, ACTIVE_LOCATION, 'domain').map((location) => location.noteBodyId)).not.toContain(
+      'body-scratch',
+    )
+    expect(collectFindReplaceLocations(state, ACTIVE_LOCATION, 'notebook').map((location) => location.noteBodyId)).toContain(
+      'body-scratch',
+    )
+    expect(collectFindReplaceLocations(state, SCRATCHPAD_FIND_LOCATION, 'note').map((location) => location.noteBodyId)).toEqual([
+      'body-scratch',
+    ])
+    expect(findVisibleMatches(state, SCRATCHPAD_FIND_LOCATION, 'note', 'scratch', {
+      caseSensitive: false,
+      wholeWord: false,
+      regex: false,
+    })[0]?.context.noteKind).toBe('scratchpad')
+  })
+
+  it('adds aisle display metadata to normal and scratchpad matches', () => {
+    const state = createFindReplaceState()
+    const homeBody = state.noteBodies.find((candidate) => candidate.id === 'body-home')
+    homeBody?.aisles.push({ id: 'aisle-home-2', aisleBodyId: 'aisle-body-home-2' })
+    state.noteAisleBodies?.push({ id: 'aisle-body-home-2', markdown: 'second target' })
+
+    const normalMatches = findVisibleMatches(state, ACTIVE_LOCATION, 'note', 'target', {
+      caseSensitive: false,
+      wholeWord: false,
+      regex: false,
+    })
+
+    expect(normalMatches.map((match) => [match.aisleId, match.aisleIndex, match.aisleNumber, match.aisleCount])).toEqual([
+      ['aisle-home', 0, 1, 2],
+      ['aisle-home-2', 1, 2, 2],
+    ])
+
+    state.scratchpad = { noteBodyId: 'body-scratch', activeAisleId: 'aisle-scratch-2' }
+    state.noteBodies.push({
+      id: 'body-scratch',
+      aisles: [
+        { id: 'aisle-scratch-1', aisleBodyId: 'aisle-body-scratch-1' },
+        { id: 'aisle-scratch-2', aisleBodyId: 'aisle-body-scratch-2' },
+      ],
+    })
+    state.noteAisleBodies?.push(
+      { id: 'aisle-body-scratch-1', markdown: 'scratch first' },
+      { id: 'aisle-body-scratch-2', markdown: 'scratch second' },
+    )
+
+    const scratchpadMatches = findVisibleMatches(state, SCRATCHPAD_FIND_LOCATION, 'note', 'scratch', {
+      caseSensitive: false,
+      wholeWord: false,
+      regex: false,
+    })
+
+    expect(scratchpadMatches.map((match) => [match.aisleId, match.aisleIndex, match.aisleNumber, match.aisleCount])).toEqual([
+      ['aisle-scratch-1', 0, 1, 2],
+      ['aisle-scratch-2', 1, 2, 2],
     ])
   })
 })
@@ -281,7 +348,7 @@ describe('visible markdown matching', () => {
 
   it('deduplicates replacements for linked aisle bodies while keeping duplicate locations searchable', () => {
     const state = createFindReplaceState()
-    const matches = findVisibleMatches(state, ACTIVE_LOCATION, 'project', 'shared target', {
+    const matches = findVisibleMatches(state, ACTIVE_LOCATION, 'notebook', 'shared target', {
       caseSensitive: false,
       wholeWord: true,
       regex: false,

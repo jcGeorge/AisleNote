@@ -10,6 +10,7 @@ import type {
   TrashDomainBucket,
   TrashSpaceBucket,
 } from '../../types/app'
+import { getPlacementNeighborId } from '../../arrange/arrange-utils'
 import { getRenameInputKeyAction } from '../../navigation/rename-draft'
 import { SortIcon } from './SortIcon'
 import { ArrangeDragPreviewPortal } from './ArrangeDragPreviewPortal'
@@ -179,6 +180,13 @@ export function CompactSpaceRail({
   onClearArrangePressTimer,
   onCancelArrangeSpacePointerDrag,
 }: CompactSpaceRailProps) {
+  const spacePlacementNeighborId = getPlacementNeighborId(
+    spaces.map((space) => space.id),
+    arrangeMode.overSpaceInsert ? arrangeMode.overSpaceId : null,
+    arrangeMode.overSpaceInsert,
+    arrangeMode.dragItem?.type === 'space' ? arrangeMode.dragItem.spaceId : draggingSpaceId,
+  )
+
   return (
     <header className={`compact-scope-rail compact-space-rail ${arrangeMode.active ? 'is-arranging' : ''}`}>
       <div className="tabbar-row compact-scope-row">
@@ -224,6 +232,10 @@ export function CompactSpaceRail({
             const isArrangeSpaceTarget = arrangeMode.active && arrangeMode.overSpaceId === space.id
             const isArrangeSpaceBeforeTarget = isArrangeSpaceTarget && arrangeMode.overSpaceInsert === 'before'
             const isArrangeSpaceAfterTarget = isArrangeSpaceTarget && arrangeMode.overSpaceInsert === 'after'
+            const isArrangeSpaceBeforeNeighbor =
+              arrangeMode.active && spacePlacementNeighborId === space.id && arrangeMode.overSpaceInsert === 'after'
+            const isArrangeSpaceAfterNeighbor =
+              arrangeMode.active && spacePlacementNeighborId === space.id && arrangeMode.overSpaceInsert === 'before'
             const isStageManagerSelected = stageManagerSelectedSpaceIds?.has(space.id) ?? false
             const isArrangeSelected = arrangeSelectedSpaceIds?.has(space.id) ?? false
             const buttonClassName = [
@@ -236,6 +248,8 @@ export function CompactSpaceRail({
               isArrangeSpaceTarget ? 'is-arrange-target' : '',
               isArrangeSpaceBeforeTarget ? 'is-arrange-target-before' : '',
               isArrangeSpaceAfterTarget ? 'is-arrange-target-after' : '',
+              isArrangeSpaceBeforeNeighbor ? 'is-arrange-neighbor-before' : '',
+              isArrangeSpaceAfterNeighbor ? 'is-arrange-neighbor-after' : '',
               draggingSpaceId === space.id ? 'is-dragging' : '',
             ]
               .filter(Boolean)
@@ -392,6 +406,13 @@ export function CompactDomainRail({
   onClearArrangePressTimer,
   onCancelArrangeDomainPointerDrag,
 }: CompactDomainRailProps) {
+  const domainPlacementNeighborId = getPlacementNeighborId(
+    domains.map((domain) => domain.id),
+    arrangeMode.overDomainInsert ? arrangeMode.overDomainId : null,
+    arrangeMode.overDomainInsert,
+    arrangeMode.dragItem?.type === 'domain' ? arrangeMode.dragItem.domainId : draggingDomainId,
+  )
+
   return (
     <header className={`compact-scope-rail compact-domain-rail ${arrangeMode.active ? 'is-arranging' : ''}`}>
       <div className="tabbar-row compact-scope-row">
@@ -437,6 +458,10 @@ export function CompactDomainRail({
             const isArrangeDomainTarget = arrangeMode.active && arrangeMode.overDomainId === domain.id
             const isArrangeDomainBeforeTarget = isArrangeDomainTarget && arrangeMode.overDomainInsert === 'before'
             const isArrangeDomainAfterTarget = isArrangeDomainTarget && arrangeMode.overDomainInsert === 'after'
+            const isArrangeDomainBeforeNeighbor =
+              arrangeMode.active && domainPlacementNeighborId === domain.id && arrangeMode.overDomainInsert === 'after'
+            const isArrangeDomainAfterNeighbor =
+              arrangeMode.active && domainPlacementNeighborId === domain.id && arrangeMode.overDomainInsert === 'before'
             const isStageManagerSelected = stageManagerSelectedDomainIds?.has(domain.id) ?? false
             const isArrangeSelected = arrangeSelectedDomainIds?.has(domain.id) ?? false
             const buttonClassName = [
@@ -449,6 +474,8 @@ export function CompactDomainRail({
               isArrangeDomainTarget ? 'is-arrange-target' : '',
               isArrangeDomainBeforeTarget ? 'is-arrange-target-before' : '',
               isArrangeDomainAfterTarget ? 'is-arrange-target-after' : '',
+              isArrangeDomainBeforeNeighbor ? 'is-arrange-neighbor-before' : '',
+              isArrangeDomainAfterNeighbor ? 'is-arrange-neighbor-after' : '',
               draggingDomainId === domain.id ? 'is-dragging' : '',
             ]
               .filter(Boolean)

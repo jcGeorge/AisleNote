@@ -12,6 +12,8 @@ export type SimpleSyncedUiSettingKey =
   | 'removeNoteReferencesOnTrash'
   | 'noteMentionCopyRequiresConfirmation'
   | 'deleteSubtabShortcutEnabled'
+  | 'scratchpadDeleteAisleShortcutEnabled'
+  | 'scratchpadNewAisleSide'
   | 'decoupledItemsKeepData'
   | 'tableAddTargetMode'
   | 'tableDeleteTargetMode'
@@ -28,6 +30,7 @@ export type SyncedUiBooleanSettingKey =
   | 'removeNoteReferencesOnTrash'
   | 'noteMentionCopyRequiresConfirmation'
   | 'deleteSubtabShortcutEnabled'
+  | 'scratchpadDeleteAisleShortcutEnabled'
   | 'decoupledItemsKeepData'
   | 'toolbarEditorShowNames'
 
@@ -81,6 +84,11 @@ export function normalizeRegisteredSyncedUiSetting(
 export function normalizeRegisteredSyncedUiSetting(key: 'removeNoteReferencesOnTrash', value: unknown): boolean
 export function normalizeRegisteredSyncedUiSetting(key: 'noteMentionCopyRequiresConfirmation', value: unknown): boolean
 export function normalizeRegisteredSyncedUiSetting(key: 'deleteSubtabShortcutEnabled', value: unknown): boolean
+export function normalizeRegisteredSyncedUiSetting(key: 'scratchpadDeleteAisleShortcutEnabled', value: unknown): boolean
+export function normalizeRegisteredSyncedUiSetting(
+  key: 'scratchpadNewAisleSide',
+  value: unknown,
+): NonNullable<AppState['ui']['scratchpadNewAisleSide']>
 export function normalizeRegisteredSyncedUiSetting(key: 'decoupledItemsKeepData', value: unknown): boolean
 export function normalizeRegisteredSyncedUiSetting(
   key: 'tableAddTargetMode',

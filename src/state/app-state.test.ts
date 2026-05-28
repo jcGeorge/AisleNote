@@ -22,6 +22,7 @@ import {
   getNextAutoPurgeTimeForAppState,
   parseSavedState,
 } from './app-state'
+import { getScratchpadNoteBody } from './scratchpad'
 import { AUTO_PURGE_DAY_MS } from './workspace'
 
 const liveTab: Tab = {
@@ -182,6 +183,25 @@ function parseModernState(raw: Record<string, unknown>): AppState {
 }
 
 describe('app state normalization', () => {
+  it('normalizes missing scratchpad data into a single editable aisle', () => {
+    const state = parseModernState({ ui: {} })
+    const scratchpadBody = getScratchpadNoteBody(state)
+
+    expect(state.scratchpad?.noteBodyId).toBeTruthy()
+    expect(scratchpadBody?.aisles).toHaveLength(1)
+    expect(state.noteAisleBodies?.some((body) => body.id === scratchpadBody?.aisles[0]?.aisleBodyId)).toBe(true)
+  })
+
+  it('normalizes scratchpad aisle limits independently from normal note limits', () => {
+    const missing = parseModernState({ ui: {} })
+    const custom = parseModernState({ ui: { scratchpadAisleLimit: 24 } })
+    const tooLarge = parseModernState({ ui: { scratchpadAisleLimit: 99 } })
+
+    expect(missing.ui.scratchpadAisleLimit).toBe(16)
+    expect(custom.ui.scratchpadAisleLimit).toBe(24)
+    expect(tooLarge.ui.scratchpadAisleLimit).toBe(32)
+  })
+
   it('rejects legacy spaces-only app data', () => {
     const state = parseSavedState(
       JSON.stringify({
@@ -989,11 +1009,13 @@ describe('app state normalization', () => {
 
   it('normalizes persisted new aisle placement', () => {
     const rightOfFocus = parseModernState({ ui: { newAislePlacement: 'right-of-focus' } })
+    const leftOfFocus = parseModernState({ ui: { newAislePlacement: 'left-of-focus' } })
     const end = parseModernState({ ui: { newAislePlacement: 'end' } })
     const invalid = parseModernState({ ui: { newAislePlacement: 'middle' } })
     const missing = parseModernState({ ui: {} })
 
     expect(rightOfFocus.ui.newAislePlacement).toBe('right-of-focus')
+    expect(leftOfFocus.ui.newAislePlacement).toBe('left-of-focus')
     expect(end.ui.newAislePlacement).toBe('end')
     expect(invalid.ui.newAislePlacement).toBe('end')
     expect(missing.ui.newAislePlacement).toBe('end')

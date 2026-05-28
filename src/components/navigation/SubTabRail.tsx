@@ -11,6 +11,7 @@ import type {
   TrashParentBucket,
   ViewMode,
 } from '../../types/app'
+import { getPlacementNeighborId } from '../../arrange/arrange-utils'
 import { getRenameInputKeyAction } from '../../navigation/rename-draft'
 import { SortIcon } from './SortIcon'
 
@@ -88,6 +89,9 @@ type SubTabRailProps = {
   ) => void
   onAddSubTab: () => void
   onOpenSubTabSortModal: () => void
+  scratchpadActive?: boolean
+  onOpenScratchpad?: () => void
+  onOpenContextMenuForScratchpad?: (event: MouseEvent<HTMLButtonElement>) => void
 }
 
 function getSelectionClickModifiers(event: MouseEvent | ReactPointerEvent<HTMLButtonElement>): SelectionClickModifiers {
@@ -100,6 +104,21 @@ function getSelectionClickModifiers(event: MouseEvent | ReactPointerEvent<HTMLBu
 
 function hasSelectionClickModifier(event: MouseEvent | ReactPointerEvent<HTMLButtonElement>) {
   return event.shiftKey || event.ctrlKey || event.metaKey
+}
+
+function ScratchpadIcon() {
+  return (
+    <svg className="scratchpad-rail-icon" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+      <path
+        d="M7.2 18.6c2.6-8.8 17.1-11.3 18.1-3.7.8 6.5-13.6 11.9-17.4 5.1-3.2-5.8 4.9-15.5 12.4-11.6 8.6 4.5 2.9 17.7-6.3 16.1-8.4-1.5-7.2-13.8.5-16.1 8.9-2.6 14.6 7.8 8.8 13.9-5.4 5.8-16.7 2.8-16.2-5.2.4-6.1 8.6-9.5 14.2-6.5 6.4 3.4 5.5 12.8-1.4 15.1-6.7 2.2-13.6-3.8-11.2-10.2 2.8-7.5 15.6-7.1 17.3.8"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.15"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
 }
 
 export function SubTabRail({
@@ -149,8 +168,23 @@ export function SubTabRail({
   onOpenContextMenuForTrashSubTab,
   onAddSubTab,
   onOpenSubTabSortModal,
+  scratchpadActive = false,
+  onOpenScratchpad = () => undefined,
+  onOpenContextMenuForScratchpad = () => undefined,
 }: SubTabRailProps) {
   if (!isNoteWorkspaceView && !(viewMode === 'trash' && selectedTrashTab)) return null
+  const subTabPlacementPosition =
+    arrangeMode.active &&
+    arrangeMode.dragItem?.type === 'subtab' &&
+    arrangeMode.dragItem.parentTabId === activeTab.id
+      ? arrangeMode.overSubTabInsert
+      : null
+  const subTabPlacementNeighborId = getPlacementNeighborId(
+    activeTab.subTabs.map((subTab) => subTab.id),
+    subTabPlacementPosition ? arrangeMode.overSubTabId : null,
+    subTabPlacementPosition,
+    arrangeMode.dragItem?.type === 'subtab' ? arrangeMode.dragItem.subTabId : draggingSubTabId,
+  )
 
   return (
     <header
@@ -163,8 +197,8 @@ export function SubTabRail({
           <button
             type="button"
             role="tab"
-            aria-selected={viewMode === 'main' && !activeSubTabId}
-            className={`btn btn-sm ${viewMode === 'main' && !activeSubTabId ? 'btn-info' : 'btn-outline-info'} tab-btn subtab-btn home-subtab-btn ${arrangeableSubTabClassName} ${
+            aria-selected={viewMode === 'main' && !scratchpadActive && !activeSubTabId}
+            className={`btn btn-sm ${viewMode === 'main' && !scratchpadActive && !activeSubTabId ? 'btn-info' : 'btn-outline-info'} tab-btn subtab-btn home-subtab-btn ${arrangeableSubTabClassName} ${
               viewMode === 'stage-manager' && onGetStageManagerParentSelection(activeTab).mode === 'full'
                 ? 'stage-manager-home-selected'
                 : ''
@@ -272,100 +306,114 @@ export function SubTabRail({
                 }}
               />
             ) : (
-              <button
-                key={subTab.id}
-                data-arrange-subtab-id={subTab.id}
-                type="button"
-                role="tab"
-                aria-selected={viewMode === 'main' && subTab.id === activeSubTabId}
-                draggable={false}
-                className={`btn btn-sm ${viewMode === 'main' && subTab.id === activeSubTabId ? 'btn-info' : 'btn-outline-info'} tab-btn subtab-btn ${arrangeableSubTabClassName} ${arrangeSelectedSubTabIds.has(subTab.id) ? 'is-arrange-selected' : ''} ${
-                  arrangeMode.active &&
-                  arrangeMode.dragItem?.type === 'subtab' &&
-                  arrangeMode.dragItem.parentTabId === activeTab.id &&
-                  arrangeMode.overSubTabId === subTab.id &&
-                  arrangeMode.overSubTabInsert === 'before'
-                    ? 'is-arrange-target-before'
-                    : ''
-                } ${
-                  arrangeMode.active &&
-                  arrangeMode.dragItem?.type === 'subtab' &&
-                  arrangeMode.dragItem.parentTabId === activeTab.id &&
-                  arrangeMode.overSubTabId === subTab.id &&
-                  arrangeMode.overSubTabInsert === 'after'
-                    ? 'is-arrange-target-after'
-                    : ''
-                } ${draggingSubTabId === subTab.id ? 'is-dragging' : ''} ${
-                  viewMode === 'stage-manager' && onGetStageManagerParentSelection(activeTab).selectedSubTabIds.includes(subTab.id)
-                    ? 'stage-manager-subtab-selected'
-                    : ''
-                }`}
-                onClick={(event) => {
-                  const modifiers = getSelectionClickModifiers(event)
-                  if (viewMode === 'stage-manager') {
-                    onStageManagerSubTabClick(activeTab, subTab.id, modifiers)
-                    return
-                  }
-                  if (onConsumeArrangeClickSuppression(`subtab:${subTab.id}`)) return
-                  if (onHandleArrangeSubTabSelectionClick(activeTab.id, subTab.id, modifiers)) {
-                    event.preventDefault()
-                    return
-                  }
-                  onClearArrangeSelection()
-                  onSelectSubTab(subTab.id)
-                }}
-                onDoubleClick={() => {
-                  if (viewMode !== 'main' || arrangeMode.active) return
-                  onBeginEdit({ type: 'subtab', id: subTab.id })
-                }}
-                onContextMenu={(event) => {
-                  if (viewMode !== 'main') return
-                  onOpenContextMenuForSubTab(event, activeTab.id, subTab.id)
-                }}
-                onPointerDown={(event) => {
-                  if (viewMode !== 'main') return
-                  if (hasSelectionClickModifier(event)) {
-                    onClearArrangePressTimer()
-                    return
-                  }
-                  if (event.button === 0) {
-                    event.currentTarget.setPointerCapture(event.pointerId)
-                  }
-                  onStartArrangeDragSeed(`subtab:${subTab.id}`, event)
-                  if (arrangeMode.active) {
-                    onStartArrangeTapCandidate({ key: `subtab:${subTab.id}`, type: 'subtab', subTabId: subTab.id }, event)
-                    return
-                  }
-                  onStartArrangePress(event, { type: 'subtab', parentTabId: activeTab.id, subTabId: subTab.id }, `subtab:${subTab.id}`)
-                }}
-                onPointerMove={(event) =>
-                  onHandleArrangeTabPointerMove(
-                    event,
-                    { type: 'subtab', parentTabId: activeTab.id, subTabId: subTab.id },
-                    subTab.title,
-                    'subtab',
-                  )
-                }
-                onPointerUp={(event) => {
-                  if (viewMode !== 'main') return
-                  onHandleArrangeTabPointerUp(event, `subtab:${subTab.id}`, () => {
-                    onClearArrangeSelection()
-                    onSelectSubTab(subTab.id)
-                  })
-                }}
-                onPointerLeave={() => {
-                  if (viewMode !== 'main') return
-                  if (!arrangeMode.active) {
-                    onClearArrangePressTimer()
-                  }
-                }}
-                onPointerCancel={() => {
-                  if (viewMode !== 'main') return
-                  onCancelArrangeTabPointerDrag()
-                }}
-              >
-                {subTab.title}
-              </button>
+              (() => {
+                const isArrangeBeforeNeighbor =
+                  subTabPlacementNeighborId === subTab.id && subTabPlacementPosition === 'after'
+                const isArrangeAfterNeighbor =
+                  subTabPlacementNeighborId === subTab.id && subTabPlacementPosition === 'before'
+                return (
+                  <button
+                    key={subTab.id}
+                    data-arrange-subtab-id={subTab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={viewMode === 'main' && !scratchpadActive && subTab.id === activeSubTabId}
+                    draggable={false}
+                    className={`btn btn-sm ${viewMode === 'main' && !scratchpadActive && subTab.id === activeSubTabId ? 'btn-info' : 'btn-outline-info'} tab-btn subtab-btn ${arrangeableSubTabClassName} ${arrangeSelectedSubTabIds.has(subTab.id) ? 'is-arrange-selected' : ''} ${
+                      arrangeMode.active &&
+                      arrangeMode.dragItem?.type === 'subtab' &&
+                      arrangeMode.dragItem.parentTabId === activeTab.id &&
+                      arrangeMode.overSubTabId === subTab.id &&
+                      arrangeMode.overSubTabInsert === 'before'
+                        ? 'is-arrange-target-before'
+                        : ''
+                    } ${
+                      arrangeMode.active &&
+                      arrangeMode.dragItem?.type === 'subtab' &&
+                      arrangeMode.dragItem.parentTabId === activeTab.id &&
+                      arrangeMode.overSubTabId === subTab.id &&
+                      arrangeMode.overSubTabInsert === 'after'
+                        ? 'is-arrange-target-after'
+                        : ''
+                    } ${isArrangeBeforeNeighbor ? 'is-arrange-neighbor-before' : ''} ${
+                      isArrangeAfterNeighbor ? 'is-arrange-neighbor-after' : ''
+                    } ${draggingSubTabId === subTab.id ? 'is-dragging' : ''} ${
+                      viewMode === 'stage-manager' && onGetStageManagerParentSelection(activeTab).selectedSubTabIds.includes(subTab.id)
+                        ? 'stage-manager-subtab-selected'
+                        : ''
+                    }`}
+                    onClick={(event) => {
+                      const modifiers = getSelectionClickModifiers(event)
+                      if (viewMode === 'stage-manager') {
+                        onStageManagerSubTabClick(activeTab, subTab.id, modifiers)
+                        return
+                      }
+                      if (onConsumeArrangeClickSuppression(`subtab:${subTab.id}`)) return
+                      if (onHandleArrangeSubTabSelectionClick(activeTab.id, subTab.id, modifiers)) {
+                        event.preventDefault()
+                        return
+                      }
+                      onClearArrangeSelection()
+                      onSelectSubTab(subTab.id)
+                    }}
+                    onDoubleClick={() => {
+                      if (viewMode !== 'main' || arrangeMode.active) return
+                      onBeginEdit({ type: 'subtab', id: subTab.id })
+                    }}
+                    onContextMenu={(event) => {
+                      if (viewMode !== 'main') return
+                      onOpenContextMenuForSubTab(event, activeTab.id, subTab.id)
+                    }}
+                    onPointerDown={(event) => {
+                      if (viewMode !== 'main') return
+                      if (hasSelectionClickModifier(event)) {
+                        onClearArrangePressTimer()
+                        return
+                      }
+                      if (event.button === 0) {
+                        event.currentTarget.setPointerCapture(event.pointerId)
+                      }
+                      onStartArrangeDragSeed(`subtab:${subTab.id}`, event)
+                      if (arrangeMode.active) {
+                        onStartArrangeTapCandidate({ key: `subtab:${subTab.id}`, type: 'subtab', subTabId: subTab.id }, event)
+                        return
+                      }
+                      onStartArrangePress(
+                        event,
+                        { type: 'subtab', parentTabId: activeTab.id, subTabId: subTab.id },
+                        `subtab:${subTab.id}`,
+                      )
+                    }}
+                    onPointerMove={(event) =>
+                      onHandleArrangeTabPointerMove(
+                        event,
+                        { type: 'subtab', parentTabId: activeTab.id, subTabId: subTab.id },
+                        subTab.title,
+                        'subtab',
+                      )
+                    }
+                    onPointerUp={(event) => {
+                      if (viewMode !== 'main') return
+                      onHandleArrangeTabPointerUp(event, `subtab:${subTab.id}`, () => {
+                        onClearArrangeSelection()
+                        onSelectSubTab(subTab.id)
+                      })
+                    }}
+                    onPointerLeave={() => {
+                      if (viewMode !== 'main') return
+                      if (!arrangeMode.active) {
+                        onClearArrangePressTimer()
+                      }
+                    }}
+                    onPointerCancel={() => {
+                      if (viewMode !== 'main') return
+                      onCancelArrangeTabPointerDrag()
+                    }}
+                  >
+                    {subTab.title}
+                  </button>
+                )
+              })()
             ),
           )}
 
@@ -412,6 +460,26 @@ export function SubTabRail({
             +
           </button>
         ) : null}
+
+        {isNoteWorkspaceView && (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={scratchpadActive}
+            className={`btn btn-sm ${scratchpadActive ? 'btn-info' : 'btn-outline-info'} tab-btn subtab-btn scratchpad-rail-btn ${
+              scratchpadActive ? 'is-selected' : ''
+            }`}
+            title={tooltipsDisabled ? undefined : 'scratchpad'}
+            aria-label="scratchpad"
+            onClick={onOpenScratchpad}
+            onContextMenu={(event) => {
+              if (viewMode !== 'main') return
+              onOpenContextMenuForScratchpad(event)
+            }}
+          >
+            <ScratchpadIcon />
+          </button>
+        )}
       </div>
     </header>
   )

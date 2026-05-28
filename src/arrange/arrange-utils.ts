@@ -34,6 +34,19 @@ export function moveItemByInsertion<T>(
   return nextItems
 }
 
+export function getPlacementNeighborId(
+  itemIds: readonly string[],
+  targetId: string | null | undefined,
+  position: ArrangeInsertPosition | null | undefined,
+  sourceId: string | null | undefined = null,
+) {
+  if (!targetId || !position) return null
+  const orderedIds = itemIds.filter((id) => id && id !== sourceId)
+  const targetIndex = orderedIds.indexOf(targetId)
+  if (targetIndex < 0) return null
+  return position === 'before' ? (orderedIds[targetIndex - 1] ?? null) : (orderedIds[targetIndex + 1] ?? null)
+}
+
 export function getArrangeRailInsertionTarget(
   rail: HTMLElement,
   selector: string,

@@ -26,6 +26,7 @@ import type {
   NewlineOperationId,
   NewlineShortcutId,
   NewAislePlacement,
+  ScratchpadNewAisleSide,
   SettingsSection,
   ShortcutId,
   Space,
@@ -35,6 +36,10 @@ import type {
   VisualsSettingsSection,
   ViewMode,
 } from '../types/app'
+import {
+  DEFAULT_SCRATCHPAD_AISLE_LIMIT,
+  clampScratchpadAisleLimit,
+} from '../state/scratchpad'
 import {
   clampAutoRemoveDays,
   clampNoteFontScale,
@@ -134,6 +139,12 @@ export function useSettingsController({
   const [newAislePlacementDraft, setNewAislePlacementDraft] = useState(
     DEFAULT_UI_SETTINGS.newAislePlacement ?? 'end',
   )
+  const [scratchpadAisleLimitDraft, setScratchpadAisleLimitDraft] = useState(
+    String(DEFAULT_SCRATCHPAD_AISLE_LIMIT),
+  )
+  const [scratchpadNewAisleSideDraft, setScratchpadNewAisleSideDraft] = useState<ScratchpadNewAisleSide>(
+    DEFAULT_UI_SETTINGS.scratchpadNewAisleSide ?? 'left',
+  )
   const [tabButtonScaleDraft, setTabButtonScaleDraft] = useState(DEFAULT_UI_SETTINGS.tabButtonScale)
   const [noteFontScaleDraft, setNoteFontScaleDraft] = useState(DEFAULT_UI_SETTINGS.noteFontScale)
   const [tooltipScaleDraft, setTooltipScaleDraft] = useState(DEFAULT_UI_SETTINGS.tooltipScale ?? 1)
@@ -167,6 +178,7 @@ export function useSettingsController({
       removeNoteReferencesOnTrash: state.ui.removeNoteReferencesOnTrash,
       noteMentionCopyRequiresConfirmation: state.ui.noteMentionCopyRequiresConfirmation,
       deleteSubtabShortcutEnabled: state.ui.deleteSubtabShortcutEnabled,
+      scratchpadDeleteAisleShortcutEnabled: state.ui.scratchpadDeleteAisleShortcutEnabled,
       decoupledItemsKeepData: state.ui.decoupledItemsKeepData,
       toolbarEditorShowNames: state.ui.toolbarEditorShowNames,
     }))
@@ -178,6 +190,8 @@ export function useSettingsController({
       state.ui.tableOfContentsScope ?? DEFAULT_UI_SETTINGS.tableOfContentsScope ?? 'all-aisles',
     )
     setNewAislePlacementDraft(state.ui.newAislePlacement ?? DEFAULT_UI_SETTINGS.newAislePlacement ?? 'end')
+    setScratchpadAisleLimitDraft(String(clampScratchpadAisleLimit(state.ui.scratchpadAisleLimit)))
+    setScratchpadNewAisleSideDraft(state.ui.scratchpadNewAisleSide ?? DEFAULT_UI_SETTINGS.scratchpadNewAisleSide ?? 'left')
     setTabButtonScaleDraft(state.ui.tabButtonScale)
     setNoteFontScaleDraft(state.ui.noteFontScale)
     setTooltipScaleDraft(state.ui.tooltipScale ?? DEFAULT_UI_SETTINGS.tooltipScale ?? 1)
@@ -212,6 +226,9 @@ export function useSettingsController({
     state.ui.tableDeleteTargetMode,
     state.ui.tableOfContentsScope,
     state.ui.newAislePlacement,
+    state.ui.scratchpadDeleteAisleShortcutEnabled,
+    state.ui.scratchpadAisleLimit,
+    state.ui.scratchpadNewAisleSide,
     state.ui.stageManagerOpenDestinationAfterApply,
     state.ui.findCaseSensitive,
     state.ui.findWholeWord,
@@ -417,6 +434,31 @@ export function useSettingsController({
       ui: {
         ...previous.ui,
         newAislePlacement: placement,
+      },
+    }))
+  }
+
+  const updateScratchpadAisleLimitSetting = (value: string, commit = false) => {
+    setScratchpadAisleLimitDraft(value)
+    if (!commit) return
+    const limit = clampScratchpadAisleLimit(value)
+    setScratchpadAisleLimitDraft(String(limit))
+    commitImmediateSettingsState((previous) => ({
+      ...previous,
+      ui: {
+        ...previous.ui,
+        scratchpadAisleLimit: limit,
+      },
+    }))
+  }
+
+  const updateScratchpadNewAisleSideSetting = (side: ScratchpadNewAisleSide) => {
+    setScratchpadNewAisleSideDraft(side)
+    commitImmediateSettingsState((previous) => ({
+      ...previous,
+      ui: {
+        ...previous.ui,
+        scratchpadNewAisleSide: side,
       },
     }))
   }
@@ -920,6 +962,8 @@ export function useSettingsController({
     tableDeleteTargetModeDraft,
     tableOfContentsScopeDraft,
     newAislePlacementDraft,
+    scratchpadAisleLimitDraft,
+    scratchpadNewAisleSideDraft,
     miscSyncedUiBooleanSettings: MISC_SYNCED_UI_BOOLEAN_SETTINGS.map((setting) => ({
       ...setting,
       checked: syncedUiBooleanDrafts[setting.key],
@@ -945,6 +989,8 @@ export function useSettingsController({
     updateTableDeleteTargetModeSetting,
     updateTableOfContentsScopeSetting,
     updateNewAislePlacementSetting,
+    updateScratchpadAisleLimitSetting,
+    updateScratchpadNewAisleSideSetting,
     updateSyncedUiBooleanSetting,
     updateTipEnabledSetting,
     updateTabButtonScaleSetting,

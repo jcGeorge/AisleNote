@@ -54,6 +54,8 @@ const state: AppState = {
       cycleParentTabPrev: '',
       cycleSubTabNext: '',
       cycleSubTabPrev: '',
+      cycleAislePrev: '',
+      cycleAisleNext: '',
     },
     newlineShortcuts: {
       shortcuts: {

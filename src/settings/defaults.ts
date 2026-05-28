@@ -16,6 +16,7 @@ import { normalizeNoteCursorLocations } from '../notes/note-cursors'
 import { normalizeTipIds } from '../tips/tips'
 import { normalizeHeadingCollapseState } from '../editor/heading-collapse-state'
 import { normalizeToolbarLayouts } from '../editor/toolbar-layouts'
+import { clampScratchpadAisleLimit, DEFAULT_SCRATCHPAD_AISLE_LIMIT } from '../state/scratchpad'
 import {
   DEFAULT_SIMPLE_SYNCED_UI_SETTINGS,
   normalizeRegisteredSyncedUiSetting,
@@ -54,6 +55,7 @@ export const DEFAULT_UI_SETTINGS: AppState['ui'] = {
   tabButtonScale: 1,
   noteFontScale: 1,
   tooltipScale: 1,
+  scratchpadAisleLimit: DEFAULT_SCRATCHPAD_AISLE_LIMIT,
   settingsSection: DEFAULT_SETTINGS_SECTION,
   dataSettingsSection: DEFAULT_DATA_SETTINGS_SECTION,
   visualsSettingsSection: DEFAULT_VISUALS_SETTINGS_SECTION,
@@ -366,6 +368,10 @@ export function normalizeNewAislePlacement(value: unknown): NewAislePlacement {
   return normalizeRegisteredSyncedUiSetting('newAislePlacement', value)
 }
 
+export function normalizeScratchpadNewAisleSide(value: unknown): AppState['ui']['scratchpadNewAisleSide'] {
+  return normalizeRegisteredSyncedUiSetting('scratchpadNewAisleSide', value)
+}
+
 export function normalizeFindReplaceMode(value: unknown): AppState['ui']['findReplaceMode'] {
   return normalizeRegisteredSyncedUiSetting('findReplaceMode', value)
 }
@@ -398,6 +404,10 @@ export function normalizeUiSettings(raw: unknown): AppState['ui'] {
       typeof obj.tooltipScale === 'number'
         ? clampTooltipScale(obj.tooltipScale)
         : DEFAULT_UI_SETTINGS.tooltipScale,
+    scratchpadAisleLimit:
+      typeof obj.scratchpadAisleLimit === 'number' || typeof obj.scratchpadAisleLimit === 'string'
+        ? clampScratchpadAisleLimit(obj.scratchpadAisleLimit)
+        : DEFAULT_SCRATCHPAD_AISLE_LIMIT,
     settingsSection: normalizeSettingsSection(obj.settingsSection),
     visualsSettingsSection: normalizeVisualsSettingsSection(
       obj.visualsSettingsSection,

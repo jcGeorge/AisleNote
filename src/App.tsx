@@ -69,10 +69,18 @@ import {
 } from './components/navigation/TabArrangeDragPreviewOverlay'
 import { TopBar } from './components/navigation/TopBar'
 import { ArrangeDestinationPrompt } from './components/overlays/ArrangeDestinationPrompt'
-import { ContextMenuHost } from './components/overlays/ContextMenuHost'
+import {
+  ContextMenuHost,
+  type EditorClipboardAction,
+  type EditorPasteDestination,
+} from './components/overlays/ContextMenuHost'
 import { ModalHost } from './components/overlays/ModalHost'
 import { TipHost } from './components/overlays/TipHost'
 import { ToastHost } from './components/overlays/ToastHost'
+import {
+  shouldDismissContextMenuFromKey,
+  shouldDismissContextMenuFromPointerTarget,
+} from './components/overlays/context-menu-dismissal'
 import { appendToastToStack } from './components/overlays/toast-stack'
 import { SettingsPage } from './components/settings/SettingsPage'
 import { StageManagerView } from './components/stage-manager/StageManagerView'
@@ -87,6 +95,8 @@ import {
 } from './editor/editor-operation-runner'
 import { closeEditorEphemera, type CloseEditorEphemeraOptions } from './editor/editor-ephemera'
 import { MAX_AISLE_WARNING_MESSAGE } from './editor/aisle-edit-draft'
+import type { AisleStructuralSnapshot } from './editor/aisle-structural-history'
+import { insertNewAisles } from './editor/aisle-insertion'
 import { getAisleIdFromAisleEditorKey } from './editor/aisle-editor'
 import { shouldFocusAislePointerActivation } from './editor/aisle-activation'
 import { useAisleController } from './editor/useAisleController'
@@ -111,6 +121,7 @@ import { useEditorDomEvents } from './editor/useEditorDomEvents'
 import { useEditorPersistence } from './editor/useEditorPersistence'
 import { useEditorToolbarLayer } from './editor/useEditorToolbarLayer'
 import { useEditorToolbarState } from './editor/useEditorToolbarState'
+import { readClipboardMarkdown } from './editor/clipboard-paste-markdown'
 import { DEFAULT_TOOLBAR_LAYOUT_ID, resolveToolbarLayout } from './editor/toolbar-layouts'
 import { useImageTools } from './editor/useImageTools'
 import { useTableControls } from './editor/useTableControls'
@@ -126,9 +137,9 @@ import {
 } from './editor/task-behavior'
 import { exportAppData, type ExportScope } from './export/export-data'
 import { buildFrontmatterModalDraftForAisle } from './frontmatter/frontmatter-state'
-import { useGlobalHotkeys } from './hotkeys/useGlobalHotkeys'
+import { getCycledAisleTarget, useGlobalHotkeys } from './hotkeys/useGlobalHotkeys'
 import { normalizeMarkdownForPersistence } from './markdown/markdown-utils'
-import { importBlobAsAssetUrl } from './markdown/image-asset-registry'
+import { importBlobAsAssetUrl, importImageBlobAsAssetUrl } from './markdown/image-asset-registry'
 import { useNavigationHistory } from './navigation/useNavigationHistory'
 import { useAppNavigationActions } from './navigation/useAppNavigationActions'
 import {
@@ -150,6 +161,7 @@ import {
 import {
   buildCopyAsClipboardData,
   getCopyAsAisleIdForNoteContext,
+  getCopyAsPasteSuccessMessage,
   getCopyAsSuccessMessage,
   isCopyAsClipboardTextMarker,
   parseCopyAsTextMarker,
@@ -161,13 +173,19 @@ import {
 } from './notes/copy-as-clipboard'
 import { buildCopyAsPasteCommand, getNoteBodyPreviewMarkdowns } from './notes/note-reference-commands'
 import { useNoteMentionController } from './notes/useNoteMentionController'
-import { applyNoteCopyToState } from './notes/note-copy-service'
+import {
+  applyIndependentCopyToScratchpad,
+  applyNoteCopyToState,
+  materializeStructuralAisleCopiesForInsertion,
+} from './notes/note-copy-service'
 import { getAisleBodyId } from './notes/note-markdown'
-import { getAisleMarkdown } from './notes/aisle-body-state'
+import { cloneAisles, getAisleMarkdown } from './notes/aisle-body-state'
 import {
   applyFindReplacementToState,
+  SCRATCHPAD_FIND_LOCATION,
   findVisibleMatches,
   getFindReplaceQueryError,
+  isScratchpadFindLocation,
   type FindReplaceScope,
 } from './notes/find-replace'
 import { useNoteReferenceActions } from './notes/useNoteReferenceActions'
@@ -183,6 +201,14 @@ import {
 } from './settings/defaults'
 import { useSettingsController } from './settings/useSettingsController'
 import { applyAutoPurgeToAppState, ensureNoteBodiesForAppState } from './state/app-state'
+import {
+  DEFAULT_SCRATCHPAD_AISLE_LIMIT,
+  SCRATCHPAD_CONTENT_TARGET_ID,
+  SCRATCHPAD_CURSOR_LOCATION_KEY,
+  clampScratchpadAisleLimit,
+  getScratchpadNoteBody,
+  setScratchpadActiveAisleId,
+} from './state/scratchpad'
 import {
   projectActiveDomainState,
   addDomain,
@@ -223,11 +249,14 @@ import type {
   LinkInsertMode,
   ModalState,
   MultiLineInlineFormat,
+  NewAislePlacement,
   NewlineOperationId,
+  NoteAisleBody,
   NoteCopyMode,
   NoteLocation,
   NoteNavigationTarget,
   PendingCreatedEdit,
+  ResolvedNoteAisle,
   TabSortMode,
   TabSortTarget,
   TabArrangeDragPreview,
@@ -309,6 +338,7 @@ function App() {
   }
   const { state, setState, stateRef, flushPendingPersistence, commitAppStateNow } = usePersistentAppState()
   const [viewMode, setViewMode] = useState<ViewMode>(() => initialDeviceSettingsRef.current?.lastOpened?.viewMode ?? 'main')
+  const [scratchpadActive, setScratchpadActive] = useState(false)
   const [editing, setEditing] = useState<{ type: EditableEntityType; id: string } | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [modal, setModal] = useState<ModalState | null>(null)
@@ -437,6 +467,26 @@ function App() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!contextMenu) return
+    const closeContextMenuOnOutsidePointerDown = (event: PointerEvent) => {
+      if (shouldDismissContextMenuFromPointerTarget(event.target)) {
+        setContextMenu(null)
+      }
+    }
+    const closeContextMenuOnEscape = (event: KeyboardEvent) => {
+      if (shouldDismissContextMenuFromKey(event.key)) {
+        setContextMenu(null)
+      }
+    }
+    document.addEventListener('pointerdown', closeContextMenuOnOutsidePointerDown, true)
+    document.addEventListener('keydown', closeContextMenuOnEscape, true)
+    return () => {
+      document.removeEventListener('pointerdown', closeContextMenuOnOutsidePointerDown, true)
+      document.removeEventListener('keydown', closeContextMenuOnEscape, true)
+    }
+  }, [contextMenu])
+
   useEffect(() => () => {
     toastTimersRef.current.forEach((timer) => window.clearTimeout(timer))
     toastTimersRef.current.clear()
@@ -474,15 +524,18 @@ function App() {
   } = useActiveNoteModel({
     state,
     activeAisleId,
+    scratchpadActive: viewMode === 'main' && scratchpadActive,
   })
+  const scratchpadWorkspaceActive = viewMode === 'main' && scratchpadActive
   const activeNoteLocations = useMemo(
     () => (activeNoteBodyId ? listNoteLocationsForBody(state, activeNoteBodyId) : []),
     [activeNoteBodyId, state],
   )
+  const activeAisleIds = useMemo(() => activeNoteAisles.map((aisle) => aisle.id), [activeNoteAisles])
   const activeNoteDuplicateCount = activeNoteLocations.length
   const contextMenuNoteLocation = useMemo<NoteLocation | null>(() => {
     if (!contextMenu) return null
-    if (contextMenu.type === 'editor') return activeNoteLocation
+    if (contextMenu.type === 'editor') return scratchpadWorkspaceActive ? null : activeNoteLocation
     if (contextMenu.type !== 'tab' && contextMenu.type !== 'subtab' && contextMenu.type !== 'home-tab') return null
     return {
       domainId: state.activeDomainId,
@@ -490,7 +543,7 @@ function App() {
       tabId: contextMenu.tabId,
       subTabId: contextMenu.type === 'subtab' ? contextMenu.subTabId : null,
     }
-  }, [activeNoteLocation, activeSpace.id, contextMenu, state.activeDomainId])
+  }, [activeNoteLocation, activeSpace.id, contextMenu, scratchpadWorkspaceActive, state.activeDomainId])
   const copyAsMenu = useMemo<CopyAsMenuState | null>(() => {
     const source = contextMenuNoteLocation
     if (!source) return null
@@ -524,12 +577,13 @@ function App() {
       ) as Record<CopyAsAction, CopyAsMenuItemState>,
     }
   }, [activeNoteLocation, contextMenuNoteLocation, resolvedActiveAisleId, state])
+  const findReplaceCurrentLocation = scratchpadWorkspaceActive ? SCRATCHPAD_FIND_LOCATION : activeNoteLocation
   const findReplaceMatches = useMemo(
     () =>
       findReplacePanel.open
         ? findVisibleMatches(
             state,
-            activeNoteLocation,
+            findReplaceCurrentLocation,
             findReplacePanel.scope,
             findReplacePanel.query,
             {
@@ -540,7 +594,7 @@ function App() {
           )
         : [],
     [
-      activeNoteLocation,
+      findReplaceCurrentLocation,
       findReplacePanel.caseSensitive,
       findReplacePanel.open,
       findReplacePanel.query,
@@ -703,13 +757,19 @@ function App() {
 
   useEffect(() => {
     closeEditorEphemeraRef.current()
-  }, [activeSpace.id, activeTab.id, activeSubTab?.id, activeNoteBodyId, viewMode])
+  }, [activeSpace.id, activeTab.id, activeSubTab?.id, activeNoteBodyId, scratchpadWorkspaceActive, viewMode])
 
   useEffect(() => {
     if (resolvedActiveAisleId && resolvedActiveAisleId !== activeAisleId) {
       setActiveAisleId(resolvedActiveAisleId)
     }
   }, [activeAisleId, resolvedActiveAisleId])
+
+  useEffect(() => {
+    if (!scratchpadWorkspaceActive || !resolvedActiveAisleId) return
+    if (state.scratchpad?.activeAisleId === resolvedActiveAisleId) return
+    setState((previous) => setScratchpadActiveAisleId(previous, resolvedActiveAisleId))
+  }, [resolvedActiveAisleId, scratchpadWorkspaceActive, state.scratchpad?.activeAisleId, setState])
 
   const scrollAisleIntoHorizontalView = useCallback((aisleId: string) => {
     const scrollNode = aisleScrollRef.current
@@ -772,9 +832,9 @@ function App() {
   const displayContent = viewMode === 'trash' ? trashDisplay.markdown : activeContent
 
   activeDomainIdRef.current = state.activeDomainId
-  activeSpaceIdRef.current = activeSpace.id
-  activeTabIdRef.current = activeTab.id
-  activeSubTabIdRef.current = activeSubTab?.id ?? null
+  activeSpaceIdRef.current = scratchpadWorkspaceActive ? SCRATCHPAD_CONTENT_TARGET_ID : activeSpace.id
+  activeTabIdRef.current = scratchpadWorkspaceActive ? SCRATCHPAD_CONTENT_TARGET_ID : activeTab.id
+  activeSubTabIdRef.current = scratchpadWorkspaceActive ? null : activeSubTab?.id ?? null
   activeAisleIdRef.current = resolvedActiveAisleId
   activeNoteLocationKeyRef.current = activeNoteLocationKey
   isMainViewRef.current = viewMode === 'main'
@@ -880,6 +940,11 @@ function App() {
     activeTabIdRef,
     activeSubTabIdRef,
     activeAisleIdRef,
+    structuralScope: scratchpadWorkspaceActive ? 'scratchpad' : 'note',
+    maxAisles: scratchpadWorkspaceActive ? getScratchpadAisleLimit() : MAX_NOTE_AISLES,
+    maxAislesWarningMessage: scratchpadWorkspaceActive
+      ? 'scratchpad aisle limit reached. you can raise it to 32 in misc settings.'
+      : MAX_AISLE_WARNING_MESSAGE,
     editorRef,
     pendingScrollToAisleIdRef,
     pendingFocusToAisleIdRef,
@@ -904,6 +969,51 @@ function App() {
     aisleController.shouldRunAisleStructuralHistoryBeforeEditorHistory
   const addAisleToActiveNote = aisleController.addAisleToActiveNote
   const applyAisleEditDraftToActiveNote = aisleController.applyAisleEditDraftToActiveNote
+
+  function getScratchpadAisleLimit() {
+    return clampScratchpadAisleLimit(stateRef.current.ui.scratchpadAisleLimit ?? DEFAULT_SCRATCHPAD_AISLE_LIMIT)
+  }
+
+  const showScratchpadAisleLimitToast = () => {
+    pushToast('scratchpad aisle limit reached. you can raise it to 32 in misc settings.', 'warning')
+  }
+
+  const addScratchpadAisle = (
+    markdown = '',
+    options: { beforeSnapshot?: AisleStructuralSnapshot | null; placement?: NewAislePlacement } = {},
+  ) => {
+    if (!scratchpadWorkspaceActive) return false
+    const latestState = buildStateWithLatestEditorContent()
+    const body = getScratchpadNoteBody(latestState)
+    if (!body) return false
+    const limit = getScratchpadAisleLimit()
+    if (body.aisles.length >= limit) {
+      showScratchpadAisleLimitToast()
+      return false
+    }
+    const side = latestState.ui.scratchpadNewAisleSide ?? 'left'
+    return addAisleToActiveNote(markdown, {
+      beforeSnapshot: options.beforeSnapshot,
+      placement: options.placement ?? (side === 'right' ? 'right-of-focus' : 'left-of-focus'),
+    })
+  }
+
+  const deleteScratchpadActiveAisle = () => {
+    if (!scratchpadWorkspaceActive) return false
+    const latestState = buildStateWithLatestEditorContent()
+    const body = getScratchpadNoteBody(latestState)
+    if (!body) return false
+    if (body.aisles.length <= 1) {
+      pushToast('scratchpad must keep at least one aisle.', 'warning')
+      return false
+    }
+    const currentAisles = cloneAisles(body.aisles, latestState.noteAisleBodies)
+    const activeIndex = Math.max(0, currentAisles.findIndex((aisle) => aisle.id === activeAisleIdRef.current))
+    const nextAisles = currentAisles.filter((aisle) => aisle.id !== activeAisleIdRef.current)
+    const nextActiveAisleId = nextAisles[Math.min(activeIndex, nextAisles.length - 1)]?.id ?? nextAisles[0]?.id ?? ''
+    applyAisleEditDraftToActiveNote(nextAisles, { activeAisleId: nextActiveAisleId })
+    return true
+  }
 
   const navigateToNoteLocation = (location: NoteNavigationTarget) => {
     saveActiveCursorBeforeNavigation()
@@ -932,6 +1042,7 @@ function App() {
       exitArrangeMode()
     }
 
+    setScratchpadActive(false)
     setState((previous) => {
       const domainState = setActiveDomain(previous, location.domainId)
       const spaceState = setActiveSpaceInActiveDomain(domainState, location.spaceId)
@@ -1284,6 +1395,7 @@ function App() {
     }
     saveActiveCursorBeforeNavigation()
     closeEditorEphemeraRef.current()
+    setScratchpadActive(false)
     setState((previous) => setActiveSpaceInActiveDomain(previous, spaceId))
     setViewMode('main')
     setMenuOpen(false)
@@ -1308,6 +1420,7 @@ function App() {
     }
     saveActiveCursorBeforeNavigation()
     closeEditorEphemeraRef.current()
+    setScratchpadActive(false)
     setState((previous) => setActiveDomain(previous, domainId))
     setViewMode('main')
     setMenuOpen(false)
@@ -1339,6 +1452,7 @@ function App() {
       }
       return
     }
+    setScratchpadActive(false)
     selectTab(tabId)
   }
 
@@ -1373,12 +1487,41 @@ function App() {
 
   const selectSubTabFromRail = (subTabId: string) => {
     if (arrangeDestinationPrompt) return
+    setScratchpadActive(false)
     selectSubTab(subTabId)
   }
 
   const selectParentHomeTabFromRail = () => {
     if (arrangeDestinationPrompt) return
+    setScratchpadActive(false)
     selectParentHomeTab()
+  }
+
+  const openScratchpadFromRail = () => {
+    if (viewMode === 'stage-manager' || mainArrangementActive || arrangeDestinationPrompt) {
+      pushToast('scratchpad cannot be used in this mode.', 'warning')
+      return
+    }
+    saveActiveCursorBeforeNavigation()
+    closeEditorEphemeraRef.current()
+    setViewMode('main')
+    setScratchpadActive(true)
+    setMenuOpen(false)
+    setEditing(null)
+  }
+
+  const openContextMenuForScratchpad = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    if (viewMode !== 'main') return
+    event.preventDefault()
+    event.stopPropagation()
+    setMenuOpen(false)
+    closeEditorEphemeraRef.current()
+    setContextMenu({ type: 'scratchpad', x: event.clientX, y: event.clientY })
+  }
+
+  const openScratchpadAboutModal = () => {
+    closeEditorEphemeraRef.current()
+    setModal({ type: 'scratchpad-about' })
   }
 
   const { navigateHistoryBy, returnToLastTabLikeView } = useNavigationHistory({
@@ -1579,6 +1722,23 @@ function App() {
       return { handled: false, toast: { message, tone: 'warning' as const } }
     }
     const latestState = buildStateWithLatestEditorContent()
+    if (scratchpadWorkspaceActive) {
+      if (mode === 'linked') {
+        const message = 'scratchpad cannot receive synced copies.'
+        pushToast(message, 'warning')
+        return { handled: false, toast: { message, tone: 'warning' as const } }
+      }
+      const result = applyIndependentCopyToScratchpad(latestState, target, 'replace', getScratchpadAisleLimit())
+      if (result.status !== 'applied') {
+        const message = 'selected note could not be copied.'
+        pushToast(message, 'warning')
+        return { handled: false, toast: { message, tone: 'warning' as const } }
+      }
+      stateRef.current = result.state
+      setState(result.state)
+      pushToast(getNoteCopyCreatedToast(mode), 'success')
+      return { handled: true }
+    }
     const destination = getCurrentNoteLocation()
     const result = applyNoteCopyToState(latestState, destination, target, mode, 'replace')
     if (result.status !== 'applied') {
@@ -2066,6 +2226,51 @@ function App() {
     }
 
     const latestState = buildStateWithLatestEditorContent()
+    if (scratchpadWorkspaceActive && (payload.action === 'copy' || payload.action === 'duplicate')) {
+      if (payload.action === 'duplicate') {
+        pushToast('scratchpad cannot receive synced copies.', 'warning')
+        return true
+      }
+      const sourceInfo = getLocationInfo(latestState, payload.source)
+      const sourceBody = sourceInfo.noteBodyId
+        ? latestState.noteBodies.find((candidate) => candidate.id === sourceInfo.noteBodyId) ?? null
+        : null
+      const sourceAisleCount =
+        payload.scope === 'aisle'
+          ? payload.aisleId && sourceBody?.aisles.some((aisle) => aisle.id === payload.aisleId)
+            ? 1
+            : 0
+          : sourceBody?.aisles.length ?? 0
+      const scratchpadBody = getScratchpadNoteBody(latestState)
+      const nextAisleCount =
+        payload.scope === 'aisle' ? (scratchpadBody?.aisles.length ?? 0) + sourceAisleCount : sourceAisleCount
+      if (!sourceBody || sourceAisleCount <= 0) {
+        pushToast(payload.scope === 'aisle' ? 'copied aisle no longer exists.' : 'copied note no longer exists.', 'warning')
+        return true
+      }
+      if (nextAisleCount > getScratchpadAisleLimit()) {
+        showScratchpadAisleLimitToast()
+        return true
+      }
+      const target = payload.scope === 'aisle' && payload.aisleId
+        ? { ...payload.source, aisleIds: [payload.aisleId] }
+        : payload.source
+      const result = applyIndependentCopyToScratchpad(
+        latestState,
+        target,
+        payload.scope === 'aisle' ? 'append' : 'replace',
+        getScratchpadAisleLimit(),
+      )
+      if (result.status !== 'applied') {
+        pushToast(payload.scope === 'aisle' ? 'copied aisle no longer exists.' : 'copied note no longer exists.', 'warning')
+        return true
+      }
+      stateRef.current = result.state
+      setState(result.state)
+      closeEditorEphemeraRef.current()
+      pushToast(getCopyAsPasteSuccessMessage(payload.scope, payload.action), 'success')
+      return true
+    }
     const destination = getCurrentNoteLocation()
     const activeInfo = getLocationInfo(latestState, destination)
     const command = buildCopyAsPasteCommand({
@@ -2123,7 +2328,147 @@ function App() {
     })
   }
 
-  const runEditorContextClipboardAction = (action: 'cut' | 'copy' | 'paste' | 'pastePlainText') => {
+  const getEditorPasteAislePlacement = (
+    destination: Exclude<EditorPasteDestination, 'here'>,
+  ): NewAislePlacement => destination === 'new-aisle-left' ? 'left-of-focus' : 'right-of-focus'
+
+  const addMarkdownAisleFromClipboardPaste = (
+    markdown: string,
+    destination: Exclude<EditorPasteDestination, 'here'>,
+    beforeSnapshot: AisleStructuralSnapshot,
+  ): boolean => {
+    const placement = getEditorPasteAislePlacement(destination)
+    return scratchpadWorkspaceActive
+      ? addScratchpadAisle(markdown, { beforeSnapshot, placement })
+      : addAisleToActiveNote(markdown, { beforeSnapshot, placement })
+  }
+
+  const insertAislesFromClipboardPaste = (
+    newAisles: ResolvedNoteAisle[],
+    destination: Exclude<EditorPasteDestination, 'here'>,
+    beforeSnapshot: AisleStructuralSnapshot,
+    additionalAisleBodies: NoteAisleBody[] = [],
+  ): boolean => {
+    if (newAisles.length <= 0) return false
+    const latestState = buildStateWithLatestEditorContent()
+    const body = latestState.noteBodies.find((candidate) => candidate.id === beforeSnapshot.noteBodyId)
+    if (!body) {
+      pushToast('open a note before pasting.', 'warning')
+      return false
+    }
+    const baseAisles = cloneAisles(body.aisles, latestState.noteAisleBodies)
+    const nextAisleCount = baseAisles.length + newAisles.length
+    const maxAisles = scratchpadWorkspaceActive ? getScratchpadAisleLimit() : MAX_NOTE_AISLES
+    if (nextAisleCount > maxAisles) {
+      if (scratchpadWorkspaceActive) {
+        showScratchpadAisleLimitToast()
+      } else {
+        pushToast(MAX_AISLE_WARNING_MESSAGE, 'warning')
+      }
+      return false
+    }
+    const nextAisles = insertNewAisles(
+      baseAisles,
+      newAisles,
+      beforeSnapshot.activeAisleId,
+      getEditorPasteAislePlacement(destination),
+    )
+    applyAisleEditDraftToActiveNote(nextAisles, {
+      activeAisleId: newAisles[0]?.id,
+      additionalAisleBodies,
+    })
+    return true
+  }
+
+  const pasteCopyAsPayloadIntoNewAisle = (
+    payload: CopyAsClipboardPayload,
+    destination: Exclude<EditorPasteDestination, 'here'>,
+    beforeSnapshot: AisleStructuralSnapshot,
+  ): boolean => {
+    const latestState = buildStateWithLatestEditorContent()
+
+    if (payload.action === 'copy' || payload.action === 'duplicate') {
+      if (scratchpadWorkspaceActive && payload.action === 'duplicate') {
+        pushToast('scratchpad cannot receive synced copies.', 'warning')
+        return true
+      }
+      const structuralAction: 'copy' | 'duplicate' = payload.action
+      const result = materializeStructuralAisleCopiesForInsertion(latestState, {
+        scope: payload.scope,
+        action: structuralAction,
+        source: payload.source,
+        aisleId: payload.aisleId,
+      })
+      if (result.status !== 'applied') {
+        pushToast(result.message, 'warning')
+        return true
+      }
+      if (insertAislesFromClipboardPaste(result.aisles, destination, beforeSnapshot, result.aisleBodies)) {
+        pushToast(getCopyAsPasteSuccessMessage(payload.scope, payload.action), 'success')
+      }
+      return true
+    }
+
+    const currentDestination = getCurrentNoteLocation()
+    const activeInfo = getLocationInfo(latestState, currentDestination)
+    const command = buildCopyAsPasteCommand({
+      appState: latestState,
+      destination: currentDestination,
+      payload,
+      activeNoteBodyId: activeInfo.noteBodyId,
+      previewMarkdowns: activeInfo.noteBodyId ? getNoteBodyPreviewMarkdowns(latestState, activeInfo.noteBodyId) : [],
+      maxAisles: scratchpadWorkspaceActive ? getScratchpadAisleLimit() : MAX_NOTE_AISLES,
+    })
+
+    if (command.status === 'blocked') {
+      const message = command.message === 'maximum aisle count reached.' ? MAX_AISLE_WARNING_MESSAGE : command.message
+      pushToast(message, command.tone ?? 'warning')
+      return true
+    }
+
+    if (command.status === 'structural') {
+      pushToast('clipboard paste is unavailable here.', 'warning')
+      return true
+    }
+
+    if (addMarkdownAisleFromClipboardPaste(command.text, destination, beforeSnapshot)) {
+      pushToast(command.toast.message, command.toast.tone ?? 'success')
+    }
+    return true
+  }
+
+  const pasteClipboardIntoNewAisle = async (
+    action: Extract<EditorClipboardAction, 'paste' | 'pastePlainText'>,
+    destination: Exclude<EditorPasteDestination, 'here'>,
+    beforeSnapshot: AisleStructuralSnapshot,
+  ) => {
+    const payload = await readCopyAsPayloadFromClipboard().catch(() => null)
+    if (payload) {
+      pasteCopyAsPayloadIntoNewAisle(payload, destination, beforeSnapshot)
+      return
+    }
+
+    const result = await readClipboardMarkdown({
+      mode: action === 'paste' ? 'rich' : 'plainText',
+      importImageBlobAsAssetUrl,
+    })
+    if (!result.ok) {
+      if (result.reason === 'unavailable') {
+        pushToast('clipboard paste is unavailable here.', 'warning')
+      }
+      return
+    }
+    if (result.text && isCopyAsClipboardTextMarker(result.text)) {
+      pushToast('clipboard copy command is invalid.', 'warning')
+      return
+    }
+    addMarkdownAisleFromClipboardPaste(result.markdown, destination, beforeSnapshot)
+  }
+
+  const runEditorContextClipboardAction = (
+    action: EditorClipboardAction,
+    destination: EditorPasteDestination = 'here',
+  ) => {
     closeEditorEphemeraRef.current()
     const currentEditor = editorRef.current
     if (!currentEditor) {
@@ -2149,6 +2494,17 @@ function App() {
         return
       }
       insertEditorTextOperation(editorOperationRuntime, text)
+    }
+
+    if (destination !== 'here') {
+      const beforeSnapshot = captureActiveAisleStructuralSnapshot()
+      if (!beforeSnapshot) {
+        pushToast('open a note before using the editor menu.', 'warning')
+        return
+      }
+      void pasteClipboardIntoNewAisle(action, destination, beforeSnapshot)
+        .catch(() => pushToast('clipboard paste is unavailable here.', 'warning'))
+      return
     }
 
     if (action === 'paste') {
@@ -2311,7 +2667,22 @@ function App() {
     setFindReplacePanel((current) => ({ ...current, activeIndex: safeIndex }))
     const match = findReplaceMatches[safeIndex]
     if (!match) return
+    if (isScratchpadFindLocation(match.location)) {
+      if (!scratchpadWorkspaceActive) {
+        setViewMode('main')
+        setScratchpadActive(true)
+      }
+      if (match.aisleId !== activeAisleIdRef.current) {
+        setActiveAisleId(match.aisleId)
+        activeAisleIdRef.current = match.aisleId
+        pendingScrollToAisleIdRef.current = match.aisleId
+        pendingFocusToAisleIdRef.current = match.aisleId
+      }
+      window.setTimeout(() => selectActiveEditorFindMatch(match), 0)
+      return
+    }
     if (
+      scratchpadWorkspaceActive ||
       match.location.domainId !== activeNoteLocation.domainId ||
       match.location.spaceId !== activeNoteLocation.spaceId ||
       match.location.tabId !== activeNoteLocation.tabId ||
@@ -2344,8 +2715,10 @@ function App() {
       lastEditorMarkdownByAisleRef.current.set(aisleBodyId, updatedBody?.markdown ?? '')
     })
     const currentEditor = editorRef.current
-    const activeInfo = getLocationInfo(nextState, activeNoteLocation)
-    const activeBody = nextState.noteBodies.find((body) => body.id === activeInfo.noteBodyId)
+    const activeInfo = scratchpadWorkspaceActive ? null : getLocationInfo(nextState, activeNoteLocation)
+    const activeBody = scratchpadWorkspaceActive
+      ? getScratchpadNoteBody(nextState)
+      : nextState.noteBodies.find((body) => body.id === activeInfo?.noteBodyId)
     const activeAisle = activeBody?.aisles.find((aisle) => aisle.id === activeAisleIdRef.current)
     if (!currentEditor || !activeAisle) return
     const activeAisleBodyId = getAisleBodyId(activeAisle)
@@ -2373,7 +2746,7 @@ function App() {
       return
     }
     const latestState = buildStateWithLatestEditorContent()
-    const latestMatches = findVisibleMatches(latestState, activeNoteLocation, findReplacePanel.scope, findReplacePanel.query, {
+    const latestMatches = findVisibleMatches(latestState, findReplaceCurrentLocation, findReplacePanel.scope, findReplacePanel.query, {
       caseSensitive: findReplacePanel.caseSensitive,
       wholeWord: findReplacePanel.wholeWord,
       regex: findReplacePanel.regex,
@@ -2450,7 +2823,11 @@ function App() {
     if (operation === 'strikethrough') {
       return runActiveEditorFormatCommand('strike')
     }
-    if (operation === 'aisle' && activeNoteAisles.length >= MAX_NOTE_AISLES) {
+    if (operation === 'aisle' && scratchpadWorkspaceActive && activeNoteAisles.length >= getScratchpadAisleLimit()) {
+      showScratchpadAisleLimitToast()
+      return false
+    }
+    if (operation === 'aisle' && !scratchpadWorkspaceActive && activeNoteAisles.length >= MAX_NOTE_AISLES) {
       pushToast(MAX_AISLE_WARNING_MESSAGE, 'warning')
       return false
     }
@@ -2486,10 +2863,14 @@ function App() {
     finishEditorOperation(editorOperationRuntime, currentEditor, { syncToolbar: true })
     if (operation === 'aisle') {
       closeEditorEphemeraRef.current()
-      addAisleToActiveNote(result.aisleMarkdown ?? '', {
-        beforeSnapshot: beforeAisleSnapshot,
-        placement: stateRef.current.ui.newAislePlacement ?? 'end',
-      })
+      if (scratchpadWorkspaceActive) {
+        addScratchpadAisle(result.aisleMarkdown ?? '', { beforeSnapshot: beforeAisleSnapshot })
+      } else {
+        addAisleToActiveNote(result.aisleMarkdown ?? '', {
+          beforeSnapshot: beforeAisleSnapshot,
+          placement: stateRef.current.ui.newAislePlacement ?? 'end',
+        })
+      }
     }
     return true
   }
@@ -2612,6 +2993,7 @@ function App() {
     isEditorView,
     displayContent,
     syncKey: [
+      scratchpadWorkspaceActive ? SCRATCHPAD_CURSOR_LOCATION_KEY : '',
       activeSpace.id,
       activeTab.id,
       activeSubTab?.id ?? '',
@@ -2732,6 +3114,10 @@ function App() {
     })
 
   const openFrontmatterModalForAisle = (aisleId: string | null = null) => {
+    if (scratchpadWorkspaceActive) {
+      pushToast('scratchpad does not use frontmatter.', 'warning')
+      return
+    }
     if (viewMode !== 'main' || !activeNoteBodyId) return
     saveActiveCursorBeforeNavigation()
     const latestState = stateRef.current
@@ -2768,6 +3154,10 @@ function App() {
   }
 
   const openLinkedAisleModal = (aisleId: string) => {
+    if (scratchpadWorkspaceActive) {
+      pushToast('scratchpad aisles cannot be linked copies.', 'warning')
+      return
+    }
     if (viewMode !== 'main' || !activeNoteBodyId) return
     saveActiveCursorBeforeNavigation()
     const latestState = stateRef.current
@@ -2938,6 +3328,42 @@ function App() {
     deleteTarget({ type: 'subtab', tabId: activeTab.id, subTabId: activeSubTabId }, false)
   }
 
+  const cycleActiveAisle = useCallback((direction: -1 | 1) => {
+    if (viewMode !== 'main' || arrangeMode.active || activeAisleIds.length <= 1) return
+    const targetAisleId = getCycledAisleTarget(activeAisleIds, activeAisleIdRef.current, direction)
+    if (!targetAisleId || targetAisleId === activeAisleIdRef.current) return
+
+    closeEditorEphemeraRef.current()
+    saveActiveCursorLocation()
+    flushPendingContent()
+
+    const noteLocationKey = activeNoteLocationKeyRef.current || activeNoteLocationKey
+    const savedLocation = stateRef.current.ui.noteCursorLocations[noteLocationKey] ?? null
+    pendingCursorRestoreRef.current = {
+      noteLocationKey,
+      aisleId: targetAisleId,
+      selection: savedLocation?.aisles[targetAisleId] ?? null,
+      focusIntent: 'aisle-activation',
+    }
+    pendingFocusToAisleIdRef.current = targetAisleId
+    pendingScrollToAisleIdRef.current = targetAisleId
+    setActiveAisleId(targetAisleId)
+    activeAisleIdRef.current = targetAisleId
+    window.requestAnimationFrame(() => {
+      scrollAisleIntoHorizontalView(targetAisleId)
+    })
+  }, [
+    activeAisleIds,
+    activeNoteLocationKey,
+    arrangeMode.active,
+    flushPendingContent,
+    pendingCursorRestoreRef,
+    saveActiveCursorLocation,
+    scrollAisleIntoHorizontalView,
+    stateRef,
+    viewMode,
+  ])
+
   const autoSizeRenameInput = (input: HTMLInputElement) => {
     if (!renameInputMeasureContext) {
       renameInputMeasureContext = document.createElement('canvas').getContext('2d')
@@ -3040,10 +3466,18 @@ function App() {
     clearActiveNoteContent,
     openCopyModalForActiveNote: () => {
       closeEditorEphemeraRef.current()
+      if (scratchpadWorkspaceActive) {
+        pushToast('scratchpad cannot be used as a copy source.', 'warning')
+        return
+      }
       openCopyModalForActiveNote()
     },
     openDeduplicateModalForActiveNote: () => {
       closeEditorEphemeraRef.current()
+      if (scratchpadWorkspaceActive) {
+        pushToast('scratchpad cannot be used as a synced copy.', 'warning')
+        return
+      }
       openDeduplicateModalForActiveNote()
     },
     openFrontmatterModalForActiveNote,
@@ -3109,6 +3543,10 @@ function App() {
     arrangeMode,
     hotkeys: state.hotkeys,
     deleteSubtabShortcutEnabled: state.ui.deleteSubtabShortcutEnabled ?? false,
+    scratchpadActive: scratchpadWorkspaceActive,
+    scratchpadDeleteAisleShortcutEnabled: state.ui.scratchpadDeleteAisleShortcutEnabled ?? false,
+    activeAisleIds,
+    activeAisleId: resolvedActiveAisleId,
     isMacPlatform,
     editingShortcut: settingsController.editingShortcut,
     setEditingShortcut: settingsController.setEditingShortcut,
@@ -3122,12 +3560,29 @@ function App() {
     navigateHistoryBy,
     showTip,
     warnHomeSubtabDelete: () => pushToast('home tabs cannot be deleted', 'warning'),
+    warnScratchpadDeleteShortcutDisabled: () =>
+      pushToast('You can enable command/control+w to delete scratchpad aisles in the misc tab of the settings.', 'warning'),
     addTab,
     addSubTab,
+    addScratchpadAisle: () => {
+      closeEditorEphemeraRef.current()
+      addScratchpadAisle('')
+    },
     deleteFocusedSubTab: deleteFocusedSubTabFromShortcut,
+    deleteScratchpadAisle: () => {
+      closeEditorEphemeraRef.current()
+      deleteScratchpadActiveAisle()
+    },
+    cycleAisle: cycleActiveAisle,
     formatStrikethrough: () => runActiveEditorFormatCommand('strike'),
-    selectTab,
-    selectSubTab,
+    selectTab: (tabId) => {
+      setScratchpadActive(false)
+      selectTab(tabId)
+    },
+    selectSubTab: (subTabId) => {
+      setScratchpadActive(false)
+      selectSubTab(subTabId)
+    },
   })
 
   const persistedHierarchyLevel = state.ui.alwaysShowDomains ? 2 : state.ui.alwaysShowSpaces ? 1 : 0
@@ -3618,6 +4073,8 @@ function App() {
           tableDeleteTargetModeDraft={settingsController.tableDeleteTargetModeDraft}
           tableOfContentsScopeDraft={settingsController.tableOfContentsScopeDraft}
           newAislePlacementDraft={settingsController.newAislePlacementDraft}
+          scratchpadAisleLimitDraft={settingsController.scratchpadAisleLimitDraft}
+          scratchpadNewAisleSideDraft={settingsController.scratchpadNewAisleSideDraft}
           miscSyncedUiBooleanSettings={settingsController.miscSyncedUiBooleanSettings}
           frontmatterDraft={settingsController.frontmatterDraft}
           frontmatterDraftDirty={settingsController.frontmatterDraftDirty}
@@ -3653,6 +4110,8 @@ function App() {
           onTableDeleteTargetModeChange={settingsController.updateTableDeleteTargetModeSetting}
           onTableOfContentsScopeChange={settingsController.updateTableOfContentsScopeSetting}
           onNewAislePlacementChange={settingsController.updateNewAislePlacementSetting}
+          onScratchpadAisleLimitChange={settingsController.updateScratchpadAisleLimitSetting}
+          onScratchpadNewAisleSideChange={settingsController.updateScratchpadNewAisleSideSetting}
           onSyncedUiBooleanSettingChange={settingsController.updateSyncedUiBooleanSetting}
           onTipEnabledChange={settingsController.updateTipEnabledSetting}
           onSelectToolbarLayout={settingsController.selectToolbarLayoutForEditing}
@@ -3687,7 +4146,7 @@ function App() {
           <SubTabRail
             viewMode={viewMode}
             activeTab={activeTab}
-            activeSubTabId={activeSubTab?.id ?? null}
+            activeSubTabId={scratchpadWorkspaceActive ? null : activeSubTab?.id ?? null}
             editing={editing}
             arrangeMode={arrangeMode}
             tooltipsDisabled={mainArrangementActive}
@@ -3729,8 +4188,14 @@ function App() {
             onCancelArrangeTabPointerDrag={cancelArrangeTabPointerDrag}
             onSetTrashSubTabId={setTrashSubTabId}
             onOpenContextMenuForTrashSubTab={openContextMenuForTrashSubTab}
-            onAddSubTab={addSubTab}
+            onAddSubTab={() => {
+              setScratchpadActive(false)
+              addSubTab()
+            }}
             onOpenSubTabSortModal={() => setModal({ type: 'sort-tabs', target: 'subtabs' })}
+            scratchpadActive={scratchpadWorkspaceActive}
+            onOpenScratchpad={openScratchpadFromRail}
+            onOpenContextMenuForScratchpad={openContextMenuForScratchpad}
           />
 
           {viewMode === 'stage-manager' ? (
@@ -3984,6 +4449,10 @@ function App() {
         onOpenCopyModal={() => {
           if (contextMenu?.type === 'editor') {
             closeEditorEphemeraRef.current()
+            if (scratchpadWorkspaceActive) {
+              pushToast('scratchpad cannot be used as a copy source.', 'warning')
+              return
+            }
             openCopyModalForActiveNote()
             return
           }
@@ -3999,6 +4468,7 @@ function App() {
         onEditorFindReplace={openFindReplacePanel}
         onEditorOpenContextLink={openEditorContextLink}
         onEditorEditContextLink={editEditorContextLink}
+        onOpenScratchpadAbout={openScratchpadAboutModal}
         copyAsMenu={copyAsMenu}
         onCopyAs={copyContextMenuItemAs}
         onCopyAsUnavailable={(message) => {
@@ -4029,6 +4499,12 @@ function App() {
         open={aisleEditModalOpen && viewMode === 'main'}
         aisles={activeNoteAisles}
         linkedAisleIds={activeLinkedAisleIds}
+        maxAisles={scratchpadWorkspaceActive ? getScratchpadAisleLimit() : MAX_NOTE_AISLES}
+        maxAislesWarningMessage={
+          scratchpadWorkspaceActive
+            ? 'scratchpad aisle limit reached. you can raise it to 32 in misc settings.'
+            : MAX_AISLE_WARNING_MESSAGE
+        }
         onCancel={closeAisleEditModal}
         onApply={applyAisleEditDraftToActiveNote}
         onWarn={(message) => pushToast(message, 'warning')}

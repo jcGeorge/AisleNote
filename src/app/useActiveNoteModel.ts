@@ -1,16 +1,24 @@
 import { useMemo } from 'react'
 import { getNoteBodyMarkdown, resolveNoteBody } from '../notes/aisle-body-state'
 import { buildNoteCursorLocationKey } from '../notes/note-cursors'
+import {
+  SCRATCHPAD_CURSOR_LOCATION_KEY,
+  getScratchpadActiveAisleId,
+  getScratchpadNoteBody,
+  normalizeScratchpadState,
+} from '../state/scratchpad'
 import type { AppState, NoteLocation } from '../types/app'
 
 type UseActiveNoteModelOptions = {
   state: AppState
   activeAisleId: string
+  scratchpadActive?: boolean
 }
 
 export const useActiveNoteModel = ({
   state,
   activeAisleId,
+  scratchpadActive = false,
 }: UseActiveNoteModelOptions) => {
   const activeSpace = useMemo(
     () => state.spaces.find((space) => space.id === state.activeSpaceId) ?? state.spaces[0],
@@ -32,10 +40,14 @@ export const useActiveNoteModel = ({
     [activeTab],
   )
 
-  const activeNoteBodyId = activeSubTab?.noteBodyId ?? activeTab.noteBodyId
+  const hierarchyNoteBodyId = activeSubTab?.noteBodyId ?? activeTab.noteBodyId
+  const activeNoteBodyId = scratchpadActive ? normalizeScratchpadState(state.scratchpad).noteBodyId : hierarchyNoteBodyId
   const storedActiveNoteBody = useMemo(
-    () => state.noteBodies.find((body) => body.id === activeNoteBodyId) ?? null,
-    [activeNoteBodyId, state.noteBodies],
+    () =>
+      scratchpadActive
+        ? getScratchpadNoteBody(state)
+        : state.noteBodies.find((body) => body.id === activeNoteBodyId) ?? null,
+    [activeNoteBodyId, scratchpadActive, state],
   )
   const activeNoteBody = useMemo(
     () => (storedActiveNoteBody ? resolveNoteBody(storedActiveNoteBody, state.noteAisleBodies) : null),
@@ -53,14 +65,16 @@ export const useActiveNoteModel = ({
     [state.activeDomainId, activeSpace.id, activeTab.id, activeSubTab?.id],
   )
 
-  const activeNoteLocationKey = buildNoteCursorLocationKey(activeNoteLocation)
+  const activeNoteLocationKey = scratchpadActive ? SCRATCHPAD_CURSOR_LOCATION_KEY : buildNoteCursorLocationKey(activeNoteLocation)
   const savedCursorLocation = state.ui.noteCursorLocations[activeNoteLocationKey] ?? null
   const savedActiveAisleId =
     savedCursorLocation && activeNoteAisles.some((aisle) => aisle.id === savedCursorLocation.activeAisleId)
       ? savedCursorLocation.activeAisleId
       : ''
   const resolvedActiveAisleId =
-    activeNoteAisles.some((aisle) => aisle.id === activeAisleId)
+    scratchpadActive
+      ? getScratchpadActiveAisleId(state, activeAisleId || savedActiveAisleId)
+      : activeNoteAisles.some((aisle) => aisle.id === activeAisleId)
       ? activeAisleId
       : savedActiveAisleId || (activeNoteAisles[0]?.id ?? '')
 

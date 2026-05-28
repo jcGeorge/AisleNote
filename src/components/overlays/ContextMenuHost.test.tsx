@@ -38,6 +38,7 @@ function createContextMenuProps(
     onEditorFindReplace: noop,
     onEditorOpenContextLink: noop,
     onEditorEditContextLink: noop,
+    onOpenScratchpadAbout: noop,
     copyAsMenu: null,
     onCopyAs: noop,
     onCopyAsUnavailable: noop,
@@ -173,6 +174,9 @@ describe('ContextMenuHost copy actions', () => {
     expect(html).toContain('cut')
     expect(html).toContain('copy')
     expect(html).toContain('paste as plain text')
+    expect(html).toContain('new aisle on left')
+    expect(html).toContain('new aisle on right')
+    expect(html).toContain('here')
     expect(html).toContain('add link')
     expect(html).toContain('find &amp; replace')
     expect(html).toContain('make copy')
@@ -187,8 +191,20 @@ describe('ContextMenuHost copy actions', () => {
     expect(html).toContain('attachment')
     expect(html).toContain('code block')
     expect(html).toMatch(
+      /paste[\s\S]*>new aisle on left<\/button>[\s\S]*>new aisle on right<\/button>[\s\S]*>here<\/button>[\s\S]*paste as plain text[\s\S]*>new aisle on left<\/button>[\s\S]*>new aisle on right<\/button>[\s\S]*>here<\/button>/,
+    )
+    expect(html).toMatch(
       /insert[\s\S]*>note link<\/button>[\s\S]*>url link<\/button>[\s\S]*role="separator"[\s\S]*>aisle<\/button>[\s\S]*role="separator"[\s\S]*>attachment<\/button>[\s\S]*>table<\/button>[\s\S]*>horizontal rule<\/button>[\s\S]*role="separator"[\s\S]*>code block<\/button>/,
     )
+  })
+
+  it('shows only about scratchpad for scratchpad context menus', () => {
+    const html = renderContextMenu({ type: 'scratchpad', x: 0, y: 0 })
+
+    expect(html).toContain('about scratchpad')
+    expect(html).not.toContain('make copy')
+    expect(html).not.toContain('move to trash')
+    expect(html).not.toContain('arrange')
   })
 
   it('shows contextual link actions inside the editor menu', () => {

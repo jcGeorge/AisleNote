@@ -7,6 +7,7 @@ function match(
   id: string,
   context: FindReplaceMatch['context'],
   snippet = 'matching text',
+  aisleInfo: Partial<Pick<FindReplaceMatch, 'aisleIndex' | 'aisleNumber' | 'aisleCount'>> = {},
 ): FindReplaceMatch {
   return {
     id,
@@ -20,6 +21,9 @@ function match(
     context,
     noteBodyId: `body-${id}`,
     aisleId: `aisle-${id}`,
+    aisleIndex: aisleInfo.aisleIndex ?? 0,
+    aisleNumber: aisleInfo.aisleNumber ?? 1,
+    aisleCount: aisleInfo.aisleCount ?? 1,
     aisleBodyId: `aisle-body-${id}`,
     markdownFrom: 0,
     markdownTo: 5,
@@ -28,6 +32,18 @@ function match(
     snippet,
     matchedText: 'match',
   }
+}
+
+const SCRATCHPAD_CONTEXT: FindReplaceMatch['context'] = {
+  domainId: 'scratchpad',
+  domainName: 'scratchpad',
+  spaceId: 'scratchpad',
+  spaceName: 'scratchpad',
+  parentId: 'scratchpad',
+  parentName: 'scratchpad',
+  noteId: 'scratchpad',
+  noteName: 'scratchpad',
+  noteKind: 'scratchpad',
 }
 
 function renderPanel(overrides: Partial<Parameters<typeof FindReplacePanel>[0]> = {}) {
@@ -75,7 +91,7 @@ describe('FindReplacePanel', () => {
     expect(html).toContain('>parent</button>')
     expect(html).toContain('>space</button>')
     expect(html).toContain('>domain</button>')
-    expect(html).toContain('>project</button>')
+    expect(html).toContain('>notebook</button>')
     expect(html).toContain('>regex</span>')
   })
 
@@ -112,6 +128,59 @@ describe('FindReplacePanel', () => {
     expect(html).toContain('subtab-btn')
     expect(html).toContain('>Sub A</span>')
     expect(html).not.toContain('Domain A &gt; Space A &gt; Parent A &gt; Sub A')
+  })
+
+  it('renders scratchpad results without fake hierarchy chips', () => {
+    const html = renderPanel({
+      matches: [match('scratch', SCRATCHPAD_CONTEXT)],
+    })
+
+    expect(html).toContain('>scratchpad</span>')
+    expect(html).toContain('subtab-btn is-subtab')
+    expect(html).not.toContain('compact-domain-btn')
+    expect(html).not.toContain('compact-space-btn')
+    expect(html).not.toContain('parent-tab-btn')
+    expect(html).not.toContain('find-replace-result-separator')
+  })
+
+  it('separates scratchpad results from normal hierarchy results', () => {
+    const html = renderPanel({
+      matches: [
+        match('normal', {
+          domainId: 'domain-a',
+          domainName: 'Domain A',
+          spaceId: 'space-a',
+          spaceName: 'Space A',
+          parentId: 'parent-a',
+          parentName: 'Parent A',
+          noteId: 'sub-a',
+          noteName: 'Sub A',
+          noteKind: 'subtab',
+        }),
+        match('scratch', SCRATCHPAD_CONTEXT),
+      ],
+    })
+
+    expect(html).toContain('find-replace-result-separator')
+    expect(html).toContain('compact-domain-btn')
+    expect(html).toContain('>scratchpad</span>')
+  })
+
+  it('shows aisle numbers only for multi-aisle match rows', () => {
+    const html = renderPanel({
+      matches: [
+        match('single', SCRATCHPAD_CONTEXT),
+        match('multi', { ...SCRATCHPAD_CONTEXT, noteName: 'scratchpad' }, 'multi match', {
+          aisleIndex: 1,
+          aisleNumber: 2,
+          aisleCount: 3,
+        }),
+      ],
+    })
+
+    expect(html).toContain('>2</span>')
+    expect(html).not.toContain('>1</span>')
+    expect(html).not.toContain('>aisle 2</span>')
   })
 
   it('shows an inline invalid regex state', () => {

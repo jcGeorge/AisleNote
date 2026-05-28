@@ -12,10 +12,12 @@ import {
   syncNoteBodyAislesInState,
 } from '../notes/aisle-body-state'
 import { applyCursorLocationSnapshot } from '../notes/note-state'
+import { SCRATCHPAD_CURSOR_LOCATION_KEY, setScratchpadActiveAisleId } from '../state/scratchpad'
 import { createId, MAX_NOTE_AISLES } from '../state/workspace'
 import type {
   AppState,
   ContextMenuState,
+  NoteAisleBody,
   NoteBody,
   NoteCursorLocation,
   NoteLocation,
@@ -50,6 +52,9 @@ type UseAisleControllerParams = {
   activeTabIdRef: MutableRefObject<string>
   activeSubTabIdRef: MutableRefObject<string | null>
   activeAisleIdRef: MutableRefObject<string>
+  structuralScope?: 'note' | 'scratchpad'
+  maxAisles?: number
+  maxAislesWarningMessage?: string
   editorRef: MutableRefObject<Editor | null>
   pendingScrollToAisleIdRef: MutableRefObject<string | null>
   pendingFocusToAisleIdRef: MutableRefObject<string | null>
@@ -77,6 +82,9 @@ export const useAisleController = ({
   activeTabIdRef,
   activeSubTabIdRef,
   activeAisleIdRef,
+  structuralScope = 'note',
+  maxAisles = MAX_NOTE_AISLES,
+  maxAislesWarningMessage = MAX_AISLE_WARNING_MESSAGE,
   editorRef,
   pendingScrollToAisleIdRef,
   pendingFocusToAisleIdRef,
@@ -114,6 +122,22 @@ export const useAisleController = ({
   const captureActiveAisleStructuralSnapshot = (
     sourceState = buildStateWithLatestEditorContent(),
   ): AisleStructuralSnapshot | null => {
+    if (structuralScope === 'scratchpad') {
+      const body = activeNoteBodyId
+        ? sourceState.noteBodies.find((candidate) => candidate.id === activeNoteBodyId) ?? null
+        : null
+      const aisles = activeNoteBodyId ? getResolvedAislesForStructuralSnapshot(sourceState, activeNoteBodyId) : null
+      if (!activeNoteBodyId || !body || !aisles) return null
+      return {
+        scope: 'scratchpad',
+        locationKey: SCRATCHPAD_CURSOR_LOCATION_KEY,
+        noteBodyId: activeNoteBodyId,
+        aisles,
+        activeAisleId: activeAisleIdRef.current,
+        cursorLocation: sourceState.ui.noteCursorLocations[SCRATCHPAD_CURSOR_LOCATION_KEY] ?? null,
+      }
+    }
+
     const location: NoteLocation = {
       domainId: activeDomainIdRef.current,
       spaceId: activeSpaceIdRef.current,
@@ -128,6 +152,7 @@ export const useAisleController = ({
     if (!locationInfo.noteBodyId || !body || !aisles) return null
     const locationKey = buildNoteCursorLocationKey(location)
     return {
+      scope: 'note',
       location,
       locationKey,
       noteBodyId: locationInfo.noteBodyId,
@@ -152,6 +177,8 @@ export const useAisleController = ({
 
   const getActiveNoteStructuralScopeKey = () =>
     [
+      structuralScope,
+      activeNoteBodyId,
       activeSpaceIdRef.current,
       activeTabIdRef.current,
       activeSubTabIdRef.current ?? '__home__',
@@ -238,16 +265,16 @@ export const useAisleController = ({
       recordHistory?: boolean
     } = {},
   ) => {
-    if (!activeNoteBodyId) return
+    if (!activeNoteBodyId) return false
     const currentAisleCount = activeNoteBody?.aisles.length ?? 0
-    if (currentAisleCount <= 0) return
-    if (currentAisleCount >= MAX_NOTE_AISLES) {
-      pushToast(MAX_AISLE_WARNING_MESSAGE, 'warning')
-      return
+    if (currentAisleCount <= 0) return false
+    if (currentAisleCount >= maxAisles) {
+      pushToast(maxAislesWarningMessage, 'warning')
+      return false
     }
 
     const beforeSnapshot = options.beforeSnapshot ?? captureActiveAisleStructuralSnapshot()
-    if (!beforeSnapshot) return
+    if (!beforeSnapshot) return false
     const newAisle: ResolvedNoteAisle = {
       id: createId(),
       aisleBodyId: createId(),
@@ -279,9 +306,12 @@ export const useAisleController = ({
     setState((previous) => {
       const body = previous.noteBodies.find((candidate) => candidate.id === beforeSnapshot.noteBodyId)
       if (!body) return previous
-      if (afterAisles.length > MAX_NOTE_AISLES) return previous
+      if (afterAisles.length > maxAisles) return previous
       const withAisles = syncNoteBodyAislesInState(previous, beforeSnapshot.noteBodyId, afterAisles)
-      return applyCursorLocationSnapshot(withAisles, afterSnapshot.locationKey, afterSnapshot.cursorLocation)
+      const withCursor = applyCursorLocationSnapshot(withAisles, afterSnapshot.locationKey, afterSnapshot.cursorLocation)
+      return structuralScope === 'scratchpad'
+        ? setScratchpadActiveAisleId(withCursor, afterSnapshot.activeAisleId)
+        : withCursor
     })
     if (options.recordHistory !== false) {
       pushAisleStructuralHistory('add-aisle', beforeSnapshot, afterSnapshot)
@@ -290,22 +320,26 @@ export const useAisleController = ({
     pendingScrollToAisleIdRef.current = newAisle.id
     pendingFocusToAisleIdRef.current = newAisle.id
     closeAisleEditModal()
+    return true
   }
 
   const applyAisleEditDraftToActiveNote = (
     nextAisles: ResolvedNoteAisle[],
-    options: { decoupleAisleIds?: Iterable<string> } = {},
+    options: { decoupleAisleIds?: Iterable<string>; activeAisleId?: string; additionalAisleBodies?: NoteAisleBody[] } = {},
   ) => {
     if (!activeNoteBodyId) return
     const draftAisles = cloneAisles(nextAisles)
     const stagedDecoupleAisleIds = new Set(options.decoupleAisleIds ?? [])
     const afterAisleIds = draftAisles.map((aisle) => aisle.id)
     if (draftAisles.length <= 0) {
-      pushToast('a note must keep at least one aisle.', 'warning')
+      pushToast(
+        structuralScope === 'scratchpad' ? 'scratchpad must keep at least one aisle.' : 'a note must keep at least one aisle.',
+        'warning',
+      )
       return
     }
-    if (draftAisles.length > MAX_NOTE_AISLES) {
-      pushToast(MAX_AISLE_WARNING_MESSAGE, 'warning')
+    if (draftAisles.length > maxAisles) {
+      pushToast(maxAislesWarningMessage, 'warning')
       return
     }
     if (afterAisleIds.some((aisleId) => aisleId.trim().length <= 0) || new Set(afterAisleIds).size !== draftAisles.length) {
@@ -326,7 +360,12 @@ export const useAisleController = ({
 
     flushPendingContent()
     const afterAisleIdSet = new Set(afterAisleIds)
-    const afterActiveAisleId = afterAisleIdSet.has(beforeSnapshot.activeAisleId)
+    const requestedActiveAisleId = options.activeAisleId && afterAisleIdSet.has(options.activeAisleId)
+      ? options.activeAisleId
+      : null
+    const afterActiveAisleId = requestedActiveAisleId
+      ? requestedActiveAisleId
+      : afterAisleIdSet.has(beforeSnapshot.activeAisleId)
       ? beforeSnapshot.activeAisleId
       : afterAisles[0]?.id ?? ''
     const afterAisleCursors = Object.fromEntries(
@@ -346,8 +385,24 @@ export const useAisleController = ({
     setState((previous) => {
       const body = previous.noteBodies.find((candidate) => candidate.id === beforeSnapshot.noteBodyId)
       if (!body) return previous
-      const withAisles = syncNoteBodyAisleStructureInState(previous, beforeSnapshot.noteBodyId, afterAisles)
-      return applyCursorLocationSnapshot(withAisles, afterSnapshot.locationKey, afterSnapshot.cursorLocation)
+      const previousWithAdditionalAisleBodies = options.additionalAisleBodies?.length
+        ? {
+            ...previous,
+            noteAisleBodies: Array.from(new Map([
+              ...(previous.noteAisleBodies ?? []).map((aisleBody) => [aisleBody.id, aisleBody] as const),
+              ...options.additionalAisleBodies.map((aisleBody) => [aisleBody.id, aisleBody] as const),
+            ]).values()),
+          }
+        : previous
+      const withAisles = syncNoteBodyAisleStructureInState(
+        previousWithAdditionalAisleBodies,
+        beforeSnapshot.noteBodyId,
+        afterAisles,
+      )
+      const withCursor = applyCursorLocationSnapshot(withAisles, afterSnapshot.locationKey, afterSnapshot.cursorLocation)
+      return structuralScope === 'scratchpad'
+        ? setScratchpadActiveAisleId(withCursor, afterSnapshot.activeAisleId)
+        : withCursor
     })
     pushAisleStructuralHistory('edit-aisles', beforeSnapshot, afterSnapshot)
     setActiveAisleId(afterActiveAisleId)

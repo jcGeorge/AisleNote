@@ -4,6 +4,7 @@ import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
 import { getAisleBodyId, getNoteBodyMarkdown } from '../notes/aisle-body-state'
 import { measureSlowOperation } from '../performance/performance-logging'
 import { applyAutoPurgeToAppState, applyMarkdownToAppState } from '../state/app-state'
+import { SCRATCHPAD_CONTENT_TARGET_ID, normalizeScratchpadState } from '../state/scratchpad'
 import { appPersistenceService } from '../storage/app-persistence-service'
 import type { AppStateSaveOptions } from '../storage/persistence-debounce'
 import type { AppState, NoteBody, PendingContent } from '../types/app'
@@ -83,6 +84,9 @@ export function pendingContentMatchesTarget(pending: PendingContent, target: Edi
 }
 
 function getLocationNoteBodyId(sourceState: AppState, target: EditorContentTarget): string | null {
+  if (target.spaceId === SCRATCHPAD_CONTENT_TARGET_ID && target.tabId === SCRATCHPAD_CONTENT_TARGET_ID) {
+    return normalizeScratchpadState(sourceState.scratchpad).noteBodyId
+  }
   const space = sourceState.spaces.find((candidate) => candidate.id === target.spaceId)
   const tab = space?.data.tabs.find((candidate) => candidate.id === target.tabId)
   if (!tab) return null

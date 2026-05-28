@@ -38,9 +38,10 @@ export function addAisleToDraftOrWarn(
   aisle: NoteAisle,
   onWarn: (message: string) => void,
   maxAisles = MAX_NOTE_AISLES,
+  warningMessage = MAX_AISLE_WARNING_MESSAGE,
 ): ResolvedNoteAisle[] {
   if (!canAddAisleToDraft(draft, maxAisles)) {
-    onWarn(MAX_AISLE_WARNING_MESSAGE)
+    onWarn(warningMessage)
     return draft
   }
   return addAisleToDraft(draft, aisle, maxAisles)
@@ -60,6 +61,24 @@ export function reorderAisleDraft(draft: ResolvedNoteAisle[], fromIndex: number,
   const next = [...draft]
   const [moved] = next.splice(fromIndex, 1)
   next.splice(toIndex, 0, moved)
+  return next
+}
+
+export function reorderAisleDraftByInsertion(
+  draft: ResolvedNoteAisle[],
+  fromIndex: number,
+  targetIndex: number,
+  position: 'before' | 'after',
+): ResolvedNoteAisle[] {
+  if (fromIndex < 0 || fromIndex >= draft.length) return draft
+  if (targetIndex < 0 || targetIndex >= draft.length) return draft
+  if (fromIndex === targetIndex) return draft
+
+  const next = [...draft]
+  const [moved] = next.splice(fromIndex, 1)
+  const rawInsertIndex = targetIndex + (position === 'after' ? 1 : 0)
+  const insertIndex = fromIndex < rawInsertIndex ? rawInsertIndex - 1 : rawInsertIndex
+  next.splice(insertIndex, 0, moved)
   return next
 }
 

@@ -9,6 +9,10 @@ type UseGlobalHotkeysParams = {
   arrangeMode: ArrangeModeState
   hotkeys: AppState['hotkeys']
   deleteSubtabShortcutEnabled: boolean
+  scratchpadActive?: boolean
+  scratchpadDeleteAisleShortcutEnabled?: boolean
+  activeAisleIds?: string[]
+  activeAisleId?: string
   isMacPlatform: boolean
   editingShortcut: ShortcutId | null
   setEditingShortcut: Dispatch<SetStateAction<ShortcutId | null>>
@@ -22,9 +26,13 @@ type UseGlobalHotkeysParams = {
   navigateHistoryBy: (delta: number) => void
   showTip: (tipId: TipId) => void
   warnHomeSubtabDelete: () => void
+  warnScratchpadDeleteShortcutDisabled?: () => void
   addTab: () => void
   addSubTab: () => void
+  addScratchpadAisle?: () => void
   deleteFocusedSubTab: () => void
+  deleteScratchpadAisle?: () => void
+  cycleAisle?: (direction: -1 | 1) => void
   formatStrikethrough: () => void
   selectTab: (tabId: string) => void
   selectSubTab: (subTabId: string) => void
@@ -48,6 +56,14 @@ export function getCycledParentTabTarget(tabs: Tab[], activeTabId: string, direc
   return tabs[nextIndex]?.id ?? null
 }
 
+export function getCycledAisleTarget(aisleIds: string[], activeAisleId: string, direction: -1 | 1): string | null {
+  if (aisleIds.length <= 1) return null
+  const activeIndex = aisleIds.findIndex((aisleId) => aisleId === activeAisleId)
+  const safeActiveIndex = activeIndex >= 0 ? activeIndex : 0
+  const nextIndex = (safeActiveIndex + direction + aisleIds.length) % aisleIds.length
+  return aisleIds[nextIndex] ?? null
+}
+
 export function getRailVisibilityShortcutTarget(
   event: KeyboardEvent,
   hotkeys: AppState['hotkeys'],
@@ -63,6 +79,14 @@ export type DeleteFocusedSubtabShortcutIntent = 'show-tip' | 'delete-subtab' | '
 export function isDeleteFocusedSubtabShortcut(event: KeyboardEvent, isMacPlatform: boolean): boolean {
   const isW = event.code === 'KeyW' || event.key?.toLowerCase?.() === 'w'
   if (!isW || event.altKey || event.shiftKey) return false
+  return isMacPlatform
+    ? event.metaKey && !event.ctrlKey
+    : event.ctrlKey && !event.metaKey
+}
+
+export function isPrimaryNewAisleShortcut(event: KeyboardEvent, isMacPlatform: boolean): boolean {
+  const isN = event.code === 'KeyN' || event.key?.toLowerCase?.() === 'n'
+  if (!isN || event.altKey || event.shiftKey) return false
   return isMacPlatform
     ? event.metaKey && !event.ctrlKey
     : event.ctrlKey && !event.metaKey
@@ -96,6 +120,10 @@ export function useGlobalHotkeys({
   arrangeMode,
   hotkeys,
   deleteSubtabShortcutEnabled,
+  scratchpadActive = false,
+  scratchpadDeleteAisleShortcutEnabled = false,
+  activeAisleIds = [],
+  activeAisleId = '',
   isMacPlatform,
   editingShortcut,
   setEditingShortcut,
@@ -109,9 +137,13 @@ export function useGlobalHotkeys({
   navigateHistoryBy,
   showTip,
   warnHomeSubtabDelete,
+  warnScratchpadDeleteShortcutDisabled = () => undefined,
   addTab,
   addSubTab,
+  addScratchpadAisle = () => undefined,
   deleteFocusedSubTab,
+  deleteScratchpadAisle = () => undefined,
+  cycleAisle = () => undefined,
   formatStrikethrough,
   selectTab,
   selectSubTab,
@@ -128,9 +160,13 @@ export function useGlobalHotkeys({
     navigateHistoryBy,
     showTip,
     warnHomeSubtabDelete,
+    warnScratchpadDeleteShortcutDisabled,
     addTab,
     addSubTab,
+    addScratchpadAisle,
     deleteFocusedSubTab,
+    deleteScratchpadAisle,
+    cycleAisle,
     formatStrikethrough,
     selectTab,
     selectSubTab,
@@ -148,9 +184,13 @@ export function useGlobalHotkeys({
     navigateHistoryBy,
     showTip,
     warnHomeSubtabDelete,
+    warnScratchpadDeleteShortcutDisabled,
     addTab,
     addSubTab,
+    addScratchpadAisle,
     deleteFocusedSubTab,
+    deleteScratchpadAisle,
+    cycleAisle,
     formatStrikethrough,
     selectTab,
     selectSubTab,
@@ -258,6 +298,42 @@ export function useGlobalHotkeys({
       if (viewMode !== 'main') return
       if (arrangeMode.active) return
 
+      const isCommandNewTab = eventMatchesShortcut(event, hotkeys.shortcuts.newTab, isMacPlatform)
+      const isCycleNextShortcut = eventMatchesShortcut(event, hotkeys.shortcuts.cycleSubTabNext, isMacPlatform)
+      const isCyclePrevShortcut = eventMatchesShortcut(event, hotkeys.shortcuts.cycleSubTabPrev, isMacPlatform)
+      const isCycleAisleNextShortcut = eventMatchesShortcut(event, hotkeys.shortcuts.cycleAisleNext, isMacPlatform)
+      const isCycleAislePrevShortcut = eventMatchesShortcut(event, hotkeys.shortcuts.cycleAislePrev, isMacPlatform)
+
+      if (isCycleAisleNextShortcut || isCycleAislePrevShortcut) {
+        event.preventDefault()
+        const direction = isCycleAislePrevShortcut ? -1 : 1
+        if (getCycledAisleTarget(activeAisleIds, activeAisleId, direction)) {
+          actions.cycleAisle(direction)
+        }
+        return
+      }
+
+      if (scratchpadActive) {
+        if (isDeleteFocusedSubtabShortcut(event, isMacPlatform)) {
+          event.preventDefault()
+          if (!scratchpadDeleteAisleShortcutEnabled) {
+            actions.warnScratchpadDeleteShortcutDisabled()
+            return
+          }
+          actions.deleteScratchpadAisle()
+          return
+        }
+        if (isPrimaryNewAisleShortcut(event, isMacPlatform) || isCommandNewTab) {
+          event.preventDefault()
+          actions.addScratchpadAisle()
+          return
+        }
+        if (isCycleNextShortcut || isCyclePrevShortcut) {
+          event.preventDefault()
+          return
+        }
+      }
+
       const deleteFocusedSubtabShortcutIntent = getDeleteFocusedSubtabShortcutIntent({
         event,
         isMacPlatform,
@@ -280,7 +356,6 @@ export function useGlobalHotkeys({
         return
       }
 
-      const isCommandNewTab = eventMatchesShortcut(event, hotkeys.shortcuts.newTab, isMacPlatform)
       if (isCommandNewTab) {
         event.preventDefault()
         actions.addTab()
@@ -327,8 +402,6 @@ export function useGlobalHotkeys({
       const childTargets: Array<string | null> = [null, ...activeTab.subTabs.map((sub) => sub.id)]
       if (childTargets.length === 0) return
 
-      const isCycleNextShortcut = eventMatchesShortcut(event, hotkeys.shortcuts.cycleSubTabNext, isMacPlatform)
-      const isCyclePrevShortcut = eventMatchesShortcut(event, hotkeys.shortcuts.cycleSubTabPrev, isMacPlatform)
       if (!isCycleNextShortcut && !isCyclePrevShortcut) return
 
       event.preventDefault()
@@ -375,6 +448,10 @@ export function useGlobalHotkeys({
     isMacPlatform,
     hotkeys,
     deleteSubtabShortcutEnabled,
+    scratchpadActive,
+    scratchpadDeleteAisleShortcutEnabled,
+    activeAisleIds,
+    activeAisleId,
     arrangeMode.active,
     arrangeMode.scope,
   ])

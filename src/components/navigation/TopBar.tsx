@@ -14,6 +14,7 @@ import type {
   ViewMode,
   WorkspaceData,
 } from '../../types/app'
+import { getPlacementNeighborId } from '../../arrange/arrange-utils'
 import { getRenameInputKeyAction } from '../../navigation/rename-draft'
 import { NavigationRailControls, type NavigationRailAction } from './NavigationRailControls'
 import { SortIcon } from './SortIcon'
@@ -240,6 +241,22 @@ export function TopBar({
     viewMode === 'settings' ||
     viewMode === 'stage-manager' ||
     (arrangeMode.active && viewMode === 'main')
+  const parentPlacementTargetId =
+    arrangeMode.active && arrangeMode.dragItem?.type === 'tab'
+      ? arrangeMode.overParentTabId
+      : guidedParentRailTarget?.position
+        ? guidedParentRailTarget.targetId
+        : null
+  const parentPlacementPosition =
+    arrangeMode.active && arrangeMode.dragItem?.type === 'tab'
+      ? arrangeMode.overParentInsert
+      : guidedParentRailTarget?.position ?? null
+  const parentPlacementNeighborId = getPlacementNeighborId(
+    workspace.tabs.map((tab) => tab.id),
+    parentPlacementTargetId,
+    parentPlacementPosition,
+    arrangeMode.dragItem?.type === 'tab' ? arrangeMode.dragItem.tabId : draggingParentTabId,
+  )
 
   return (
     <header className={`tabbar ${arrangeMode.active && viewMode === 'main' ? 'is-arranging' : ''}`}>
@@ -305,6 +322,10 @@ export function TopBar({
                       arrangeMode.overParentTabId === tab.id &&
                       arrangeMode.overParentInsert === 'after') ||
                     (guidedParentRailTarget?.targetId === tab.id && guidedParentRailTarget.position === 'after')
+                  const isArrangeBeforeNeighbor =
+                    parentPlacementNeighborId === tab.id && parentPlacementPosition === 'after'
+                  const isArrangeAfterNeighbor =
+                    parentPlacementNeighborId === tab.id && parentPlacementPosition === 'before'
                   const isArrangeSelected = arrangeSelectedParentIds.has(tab.id)
                   return (
                     <button
@@ -314,7 +335,7 @@ export function TopBar({
                       role="tab"
                       aria-selected={tab.id === activeTab.id}
                       draggable={false}
-                      className={`btn btn-sm ${tab.id === activeTab.id ? 'btn-primary' : 'btn-outline-secondary'} tab-btn parent-tab-btn ${arrangeableParentTabClassName} ${isArrangeSelected ? 'is-arrange-selected' : ''} ${isArrangeMoveTarget ? 'is-arrange-target' : ''} ${isArrangeBeforeTarget ? 'is-arrange-target-before' : ''} ${isArrangeAfterTarget ? 'is-arrange-target-after' : ''} ${draggingParentTabId === tab.id ? 'is-dragging' : ''} ${
+                      className={`btn btn-sm ${tab.id === activeTab.id ? 'btn-primary' : 'btn-outline-secondary'} tab-btn parent-tab-btn ${arrangeableParentTabClassName} ${isArrangeSelected ? 'is-arrange-selected' : ''} ${isArrangeMoveTarget ? 'is-arrange-target' : ''} ${isArrangeBeforeTarget ? 'is-arrange-target-before' : ''} ${isArrangeAfterTarget ? 'is-arrange-target-after' : ''} ${isArrangeBeforeNeighbor ? 'is-arrange-neighbor-before' : ''} ${isArrangeAfterNeighbor ? 'is-arrange-neighbor-after' : ''} ${draggingParentTabId === tab.id ? 'is-dragging' : ''} ${
                         stageManagerSelection?.mode === 'partial' ? 'stage-manager-parent-partial' : ''
                       } ${stageManagerSelection?.mode === 'full' ? 'stage-manager-parent-full' : ''}`}
                       onClick={(event) => {

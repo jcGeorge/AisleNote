@@ -3,9 +3,10 @@ import { syncNoteAisleBodyMarkdownInState } from './aisle-body-state'
 import { getAisleBodyId, getAisleMarkdown } from './note-markdown'
 import { getLocationInfo, getNoteLocationBreadcrumbLabel, listSearchableNoteLocations } from './note-locations'
 import { getPreviewReferenceTokenLengthAt, getWikiReferenceDisplayText, parseWikiReferenceToken } from './note-references'
+import { SCRATCHPAD_CONTENT_TARGET_ID, getScratchpadNoteBody, normalizeScratchpadState } from '../state/scratchpad'
 import type { AppState, NoteLocation } from '../types/app'
 
-export type FindReplaceScope = 'note' | 'parent' | 'space' | 'domain' | 'project'
+export type FindReplaceScope = 'note' | 'parent' | 'space' | 'domain' | 'notebook'
 
 export type FindReplaceOptions = {
   caseSensitive: boolean
@@ -22,7 +23,7 @@ export type FindReplaceLocationContext = {
   parentName: string
   noteId: string
   noteName: string
-  noteKind: 'parent' | 'subtab'
+  noteKind: 'parent' | 'subtab' | 'scratchpad'
 }
 
 export type FindReplaceMatch = {
@@ -32,6 +33,9 @@ export type FindReplaceMatch = {
   context: FindReplaceLocationContext
   noteBodyId: string
   aisleId: string
+  aisleIndex: number
+  aisleNumber: number
+  aisleCount: number
   aisleBodyId: string
   markdownFrom: number
   markdownTo: number
@@ -60,6 +64,21 @@ type FindReplaceLocation = NoteLocation & {
   label: string
   noteBodyId: string
   context: FindReplaceLocationContext
+}
+
+export const SCRATCHPAD_FIND_LOCATION: NoteLocation = {
+  domainId: SCRATCHPAD_CONTENT_TARGET_ID,
+  spaceId: SCRATCHPAD_CONTENT_TARGET_ID,
+  tabId: SCRATCHPAD_CONTENT_TARGET_ID,
+  subTabId: null,
+}
+
+export function isScratchpadFindLocation(location: NoteLocation): boolean {
+  return (
+    location.domainId === SCRATCHPAD_CONTENT_TARGET_ID &&
+    location.spaceId === SCRATCHPAD_CONTENT_TARGET_ID &&
+    location.tabId === SCRATCHPAD_CONTENT_TARGET_ID
+  )
 }
 
 type VisibleFindRange = {
@@ -295,11 +314,38 @@ function getFindReplaceLocationContext(
   }
 }
 
+function getScratchpadFindReplaceLocation(state: AppState): FindReplaceLocation | null {
+  const scratchpad = normalizeScratchpadState(state.scratchpad)
+  const body = getScratchpadNoteBody(state)
+  if (!body) return null
+  return {
+    ...SCRATCHPAD_FIND_LOCATION,
+    label: 'scratchpad',
+    noteBodyId: scratchpad.noteBodyId,
+    context: {
+      domainId: SCRATCHPAD_CONTENT_TARGET_ID,
+      domainName: 'scratchpad',
+      spaceId: SCRATCHPAD_CONTENT_TARGET_ID,
+      spaceName: 'scratchpad',
+      parentId: SCRATCHPAD_CONTENT_TARGET_ID,
+      parentName: 'scratchpad',
+      noteId: SCRATCHPAD_CONTENT_TARGET_ID,
+      noteName: 'scratchpad',
+      noteKind: 'scratchpad',
+    },
+  }
+}
+
 export function collectFindReplaceLocations(
   state: AppState,
   currentLocation: NoteLocation,
   scope: FindReplaceScope,
 ): FindReplaceLocation[] {
+  if (isScratchpadFindLocation(currentLocation)) {
+    return scope === 'note' || scope === 'notebook'
+      ? [getScratchpadFindReplaceLocation(state)].filter((location): location is FindReplaceLocation => location !== null)
+      : []
+  }
   const currentInfo = getLocationInfo(state, currentLocation)
   if (scope === 'note') {
     return currentInfo.noteBodyId
@@ -314,9 +360,9 @@ export function collectFindReplaceLocations(
       : []
   }
   const entries = listSearchableNoteLocations(state)
-  return entries
+  const locations: FindReplaceLocation[] = entries
     .filter((entry) => {
-      if (scope === 'project') return true
+      if (scope === 'notebook') return true
       if (scope === 'domain') return entry.domainId === currentLocation.domainId
       if (scope === 'space') return entry.domainId === currentLocation.domainId && entry.spaceId === currentLocation.spaceId
       if (scope === 'parent') {
@@ -337,6 +383,11 @@ export function collectFindReplaceLocations(
         noteName: entry.noteName,
       }),
     }))
+  if (scope === 'notebook') {
+    const scratchpad = getScratchpadFindReplaceLocation(state)
+    if (scratchpad) locations.push(scratchpad)
+  }
+  return locations
 }
 
 export function findVisibleMatches(
@@ -353,7 +404,8 @@ export function findVisibleMatches(
   locations.forEach((location) => {
     const body = noteBodiesById.get(location.noteBodyId)
     if (!body) return
-    body.aisles.forEach((aisle) => {
+    const aisleCount = body.aisles.length
+    body.aisles.forEach((aisle, aisleIndex) => {
       const aisleBodyId = getAisleBodyId(aisle)
       const markdown = getAisleMarkdown(aisle, state.noteAisleBodies)
       findVisibleRanges(markdown, query, options).forEach((range, rangeIndex) => {
@@ -364,6 +416,9 @@ export function findVisibleMatches(
           context: location.context,
           noteBodyId: body.id,
           aisleId: aisle.id,
+          aisleIndex,
+          aisleNumber: aisleIndex + 1,
+          aisleCount,
           aisleBodyId,
           ...range,
         })

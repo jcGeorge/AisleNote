@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   getAisleHorizontalScrollbarGeometry,
+  getHorizontalDragAutoScrollDelta,
   getScrollLeftForAisleHorizontalScrollbarPointer,
   getScrollLeftForAisleHorizontalScrollbarThumb,
   getScrollLeftToRevealHorizontalPane,
@@ -49,6 +50,78 @@ describe('horizontal aisle reveal geometry', () => {
         paneRight: 1200,
       }),
     ).toBe(720)
+  })
+})
+
+describe('horizontal drag auto-scroll geometry', () => {
+  const baseInput = {
+    containerLeft: 100,
+    containerRight: 500,
+    currentScrollLeft: 200,
+    maxScrollLeft: 800,
+    edgeZoneWidth: 80,
+    maxStep: 8,
+  }
+
+  it('does not scroll when the pointer is outside the edge zones', () => {
+    expect(getHorizontalDragAutoScrollDelta({ ...baseInput, pointerX: 260 })).toBe(0)
+  })
+
+  it('scrolls left near the left edge and right near the right edge', () => {
+    expect(getHorizontalDragAutoScrollDelta({ ...baseInput, pointerX: 120 })).toBeLessThan(0)
+    expect(getHorizontalDragAutoScrollDelta({ ...baseInput, pointerX: 480 })).toBeGreaterThan(0)
+  })
+
+  it('clamps at the horizontal scroll boundaries', () => {
+    expect(
+      getHorizontalDragAutoScrollDelta({
+        ...baseInput,
+        pointerX: 90,
+        currentScrollLeft: 0,
+      }),
+    ).toBe(0)
+
+    expect(
+      getHorizontalDragAutoScrollDelta({
+        ...baseInput,
+        pointerX: 510,
+        currentScrollLeft: 800,
+      }),
+    ).toBe(0)
+
+    expect(
+      getHorizontalDragAutoScrollDelta({
+        ...baseInput,
+        pointerX: 90,
+        currentScrollLeft: 3,
+      }),
+    ).toBe(-3)
+
+    expect(
+      getHorizontalDragAutoScrollDelta({
+        ...baseInput,
+        pointerX: 510,
+        currentScrollLeft: 797,
+      }),
+    ).toBe(3)
+  })
+
+  it('ramps speed up as the pointer gets closer to an edge and caps the step', () => {
+    const shallowRight = getHorizontalDragAutoScrollDelta({ ...baseInput, pointerX: 430 })
+    const deepRight = getHorizontalDragAutoScrollDelta({ ...baseInput, pointerX: 495 })
+    const beyondRight = getHorizontalDragAutoScrollDelta({ ...baseInput, pointerX: 620 })
+
+    expect(shallowRight).toBeGreaterThan(0)
+    expect(deepRight).toBeGreaterThan(shallowRight)
+    expect(beyondRight).toBe(8)
+
+    const shallowLeft = getHorizontalDragAutoScrollDelta({ ...baseInput, pointerX: 170 })
+    const deepLeft = getHorizontalDragAutoScrollDelta({ ...baseInput, pointerX: 105 })
+    const beyondLeft = getHorizontalDragAutoScrollDelta({ ...baseInput, pointerX: -20 })
+
+    expect(shallowLeft).toBeLessThan(0)
+    expect(deepLeft).toBeLessThan(shallowLeft)
+    expect(beyondLeft).toBe(-8)
   })
 })
 

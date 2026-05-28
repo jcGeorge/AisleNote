@@ -33,7 +33,7 @@ const FIND_SCOPES: Array<{ id: FindReplaceScope; label: string }> = [
   { id: 'parent', label: 'parent' },
   { id: 'space', label: 'space' },
   { id: 'domain', label: 'domain' },
-  { id: 'project', label: 'project' },
+  { id: 'notebook', label: 'notebook' },
 ]
 
 type FindReplaceResultItem = {
@@ -43,10 +43,11 @@ type FindReplaceResultItem = {
 
 type FindReplaceResultRow =
   | { type: 'header'; key: string; level: number; chips: FindReplaceChip[] }
+  | { type: 'separator'; key: string }
   | { type: 'match'; key: string; level: number; item: FindReplaceResultItem }
 
 type FindReplaceChip = {
-  kind: 'domain' | 'space' | 'parent' | 'subtab'
+  kind: 'domain' | 'space' | 'parent' | 'subtab' | 'aisle'
   label: string
 }
 
@@ -78,9 +79,8 @@ function pushMatchRows(rows: FindReplaceResultRow[], items: FindReplaceResultIte
   })
 }
 
-function buildFindReplaceResultRows(matches: FindReplaceMatch[], limit: number): FindReplaceResultRow[] {
+function buildGroupedNormalResultRows(items: FindReplaceResultItem[]): FindReplaceResultRow[] {
   const rows: FindReplaceResultRow[] = []
-  const items = matches.slice(0, limit).map((match, index) => ({ match, index }))
   const domainGroups = groupResultItems(items, (item) => item.match.context.domainId)
   domainGroups.forEach((domainGroup) => {
     const firstDomainMatch = domainGroup.items[0]?.match
@@ -157,6 +157,35 @@ function buildFindReplaceResultRows(matches: FindReplaceMatch[], limit: number):
   return rows
 }
 
+function buildFindReplaceResultRows(matches: FindReplaceMatch[], limit: number): FindReplaceResultRow[] {
+  const items = matches.slice(0, limit).map((match, index) => ({ match, index }))
+  const normalItems = items.filter((item) => item.match.context.noteKind !== 'scratchpad')
+  const scratchpadItems = items.filter((item) => item.match.context.noteKind === 'scratchpad')
+
+  if (scratchpadItems.length === 0) return buildGroupedNormalResultRows(normalItems)
+  if (normalItems.length === 0) {
+    const rows: FindReplaceResultRow[] = []
+    pushMatchRows(rows, scratchpadItems, 0)
+    return rows
+  }
+
+  const normalRows = buildGroupedNormalResultRows(normalItems)
+  const scratchpadRows: FindReplaceResultRow[] = []
+  pushMatchRows(scratchpadRows, scratchpadItems, 0)
+
+  return scratchpadItems[0].index < normalItems[0].index
+    ? [
+        ...scratchpadRows,
+        { type: 'separator', key: 'scratchpad-normal-separator' },
+        ...normalRows,
+      ]
+    : [
+        ...normalRows,
+        { type: 'separator', key: 'normal-scratchpad-separator' },
+        ...scratchpadRows,
+      ]
+}
+
 function getContextChipClassName(kind: FindReplaceChip['kind']) {
   if (kind === 'domain') {
     return 'find-replace-context-chip rail-control context-preview-title-btn compact-scope-btn compact-domain-btn is-domain'
@@ -167,6 +196,9 @@ function getContextChipClassName(kind: FindReplaceChip['kind']) {
   if (kind === 'parent') {
     return 'find-replace-context-chip rail-control context-preview-title-btn btn btn-sm tab-btn parent-tab-btn is-parent'
   }
+  if (kind === 'aisle') {
+    return 'find-replace-context-chip find-replace-aisle-chip rail-control context-preview-title-btn btn btn-sm tab-btn subtab-btn is-subtab'
+  }
   return 'find-replace-context-chip rail-control context-preview-title-btn btn btn-sm tab-btn subtab-btn is-subtab'
 }
 
@@ -176,6 +208,20 @@ function renderContextChips(chips: FindReplaceChip[]) {
       {chip.label}
     </span>
   ))
+}
+
+function getMatchContextChips(match: FindReplaceMatch): FindReplaceChip[] {
+  const noteKind = match.context.noteKind === 'scratchpad' ? 'subtab' : match.context.noteKind
+  const chips: FindReplaceChip[] = [
+    {
+      kind: noteKind,
+      label: match.context.noteName,
+    },
+  ]
+  if (match.aisleCount > 1) {
+    chips.push({ kind: 'aisle', label: String(match.aisleNumber) })
+  }
+  return chips
 }
 
 function getResultLevelClassName(level: number) {
@@ -346,6 +392,9 @@ export function FindReplacePanel({
               </div>
             )
           }
+          if (row.type === 'separator') {
+            return <div key={row.key} className="find-replace-result-separator" aria-hidden="true" />
+          }
           const { match, index } = row.item
           return (
             <button
@@ -356,12 +405,7 @@ export function FindReplacePanel({
               onClick={() => onSelectMatch(index)}
             >
               <span className="find-replace-result-context">
-                {renderContextChips([
-                  {
-                    kind: match.context.noteKind === 'subtab' ? 'subtab' : 'parent',
-                    label: match.context.noteName,
-                  },
-                ])}
+                {renderContextChips(getMatchContextChips(match))}
               </span>
               <span className="find-replace-result-snippet">{match.snippet}</span>
             </button>

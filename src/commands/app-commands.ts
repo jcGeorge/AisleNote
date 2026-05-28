@@ -19,6 +19,8 @@ export const APP_COMMANDS: AppCommandDefinition[] = [
   { id: 'cycleParentTabPrev', label: 'previous parent tab', defaultShortcut: '' },
   { id: 'cycleSubTabNext', label: 'next sub tab', defaultShortcut: 'Ctrl+Tab' },
   { id: 'cycleSubTabPrev', label: 'previous sub tab', defaultShortcut: 'Ctrl+Shift+Tab' },
+  { id: 'cycleAislePrev', label: 'previous aisle', defaultShortcut: 'Alt+[' },
+  { id: 'cycleAisleNext', label: 'next aisle', defaultShortcut: 'Alt+]' },
 ]
 
 export const APP_COMMAND_LABELS = APP_COMMANDS.reduce<Record<AppCommandId, string>>(

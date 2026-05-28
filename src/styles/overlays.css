@@ -173,6 +173,11 @@
   width: min(660px, calc(100vw - 2rem));
 }
 
+.settings-modal.decouple-note-modal-shell {
+  width: min(var(--decouple-modal-content-width, 70rem), calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+}
+
 .settings-modal.note-picker-modal.insert-note-reference-modal-shell {
   flex: 0 0 auto;
 }
@@ -480,27 +485,16 @@
   color: var(--stage-action-selected-text);
 }
 
-.duplicate-note-list,
+.deduplicate-note-modal,
 .note-reference-modal {
   display: grid;
   gap: 0.6rem;
   text-align: left;
 }
 
-.duplicate-note-list {
-  max-height: min(22rem, 50vh);
-  overflow: auto;
-  padding: 0.25rem;
-}
-
-.duplicate-note-choice {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: start;
-  gap: 0.5rem;
-  padding: 0.4rem 0.2rem;
-  color: var(--app-text);
-  font-size: 0.88em;
+.deduplicate-note-modal,
+.linked-aisle-modal {
+  min-width: 0;
 }
 
 .linked-aisle-modal,
@@ -512,6 +506,127 @@
 
 .linked-aisle-summary p {
   margin: 0;
+}
+
+.decouple-location-scroll-shell {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.decouple-location-list {
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 0.55rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.decouple-location-list::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.decouple-location-card {
+  flex: 0 0 clamp(10rem, 18vw, 12rem);
+  width: clamp(10rem, 18vw, 12rem);
+  min-width: 0;
+  height: 12.5rem;
+  min-height: 12.5rem;
+  display: block;
+  position: relative;
+  box-sizing: border-box;
+  overflow: hidden;
+  padding: 0.55rem 0.55rem 2.25rem;
+  border: 1px solid var(--settings-control-border);
+  border-radius: 0.5rem;
+  background: var(--settings-control-bg);
+  color: var(--modal-text);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    filter 120ms ease,
+    opacity 120ms ease;
+}
+
+.decouple-location-card:hover {
+  border-color: var(--modal-primary-bg);
+  background: var(--settings-control-hover-bg);
+}
+
+.decouple-location-card:focus-visible {
+  outline: 2px solid var(--app-primary-border);
+  outline-offset: 2px;
+}
+
+.decouple-location-card.is-decoupled {
+  opacity: 0.58;
+  filter: grayscale(0.45);
+  background: color-mix(in srgb, var(--settings-control-bg) 76%, var(--modal-bg));
+}
+
+.decouple-location-card.is-decoupled:hover,
+.decouple-location-card.is-decoupled:focus-visible {
+  opacity: 0.72;
+}
+
+.decouple-location-chip-stack {
+  display: grid;
+  gap: 0.35rem;
+  align-content: start;
+}
+
+.decouple-location-chip {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  justify-content: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.decouple-location-status {
+  position: absolute;
+  left: 0.55rem;
+  right: 0.55rem;
+  bottom: 0.55rem;
+  min-height: 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--app-border-muted);
+  border-radius: 0.35rem;
+  background: var(--app-surface);
+  color: var(--modal-muted-text);
+  font-size: var(--ui-font-2xs);
+  line-height: 1;
+  pointer-events: none;
+}
+
+.decouple-location-horizontal-scrollbar.note-aisle-horizontal-scrollbar {
+  margin-top: 0.55rem;
+  border: 1px solid var(--app-border-muted);
+  border-radius: 999px;
+  background: var(--app-surface);
+  overflow: hidden;
+}
+
+.deduplicate-keep-data-switch {
+  margin: 0;
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding-left: 0;
 }
 
 .note-copy-modal {

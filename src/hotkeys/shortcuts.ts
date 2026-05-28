@@ -142,6 +142,8 @@ function isModifierToken(token: string): boolean {
 
 function getEventKeyToken(event: KeyboardEvent): string | null {
   if (event.code === 'Backquote') return 'Backquote'
+  if (event.code === 'BracketLeft') return '['
+  if (event.code === 'BracketRight') return ']'
   if (event.key === 'Tab') return 'Tab'
   if (event.key.length === 1) return event.key.toUpperCase()
   return null

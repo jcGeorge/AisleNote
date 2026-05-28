@@ -167,6 +167,9 @@ function collectNoteBodyIdsFromDeletedSpaceEntries(entries, ids) {
  */
 export function collectReferencedNoteBodyIdsFromAppState(appState) {
   const ids = new Set()
+  if (isRecord(appState.scratchpad)) {
+    addNoteBodyId(ids, appState.scratchpad.noteBodyId)
+  }
   getDomainsFromAppState(appState).forEach((domain) => {
     ensureArray(domain.spaces).filter(isRecord).forEach((space) => {
       collectNoteBodyIdsFromSpace(space, ids)

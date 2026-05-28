@@ -35,6 +35,14 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
     }
   }
 
+  if (modal.type === 'scratchpad-about') {
+    return {
+      title: 'about scratchpad',
+      body: '',
+      action: 'return',
+    }
+  }
+
   if (modal.type === 'copy-note') {
     const hasExistingContent = noteLocationHasContent(state, modal.source)
     const selectedAisles = Boolean(modal.target.aisleIds && modal.target.aisleIds.length > 0)
@@ -71,9 +79,7 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
   if (modal.type === 'deduplicate-note') {
     return {
       title: 'de-couple',
-      body: modal.keepData
-        ? 'checked notes remain linked. Unchecked notes become independent copies with their current data.'
-        : 'checked notes remain linked. Unchecked notes become empty independent notes.',
+      body: 'Select items to de-couple.',
       action: 'apply',
     }
   }
@@ -82,9 +88,7 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
     if (modal.reason === 'note-body') {
       return {
         title: 'linked note',
-        body: modal.keepData
-          ? 'this whole note is linked elsewhere. checked notes remain linked. unchecked notes become independent copies with their current data.'
-          : 'this whole note is linked elsewhere. checked notes remain linked. unchecked notes become empty independent notes.',
+        body: 'Select items to de-couple.',
         action: 'apply',
       }
     }
