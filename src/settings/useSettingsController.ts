@@ -166,6 +166,7 @@ export function useSettingsController({
       findRegex: state.ui.findRegex,
       removeNoteReferencesOnTrash: state.ui.removeNoteReferencesOnTrash,
       noteMentionCopyRequiresConfirmation: state.ui.noteMentionCopyRequiresConfirmation,
+      deleteSubtabShortcutEnabled: state.ui.deleteSubtabShortcutEnabled,
       decoupledItemsKeepData: state.ui.decoupledItemsKeepData,
       toolbarEditorShowNames: state.ui.toolbarEditorShowNames,
     }))
@@ -217,6 +218,7 @@ export function useSettingsController({
     state.ui.findRegex,
     state.ui.removeNoteReferencesOnTrash,
     state.ui.noteMentionCopyRequiresConfirmation,
+    state.ui.deleteSubtabShortcutEnabled,
     state.ui.decoupledItemsKeepData,
     state.ui.toolbarEditorShowNames,
     state.ui.tabButtonScale,

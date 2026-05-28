@@ -79,7 +79,7 @@ export type StorageTableControlTargetMode = 'active-cell' | 'bottom-right'
 export type StorageTableOfContentsScope = 'all-aisles' | 'focused-aisle'
 export type StorageNewAislePlacement = 'end' | 'right-of-focus'
 export type StorageFindReplaceMode = 'find' | 'replace'
-export type StorageTipId = 'task-undo' | 'tab-create-after-rename'
+export type StorageTipId = 'task-undo' | 'delete-subtab-shortcut'
 
 export type StorageGlobalSettings = {
   theme: StorageTheme
@@ -104,6 +104,7 @@ export type StorageGlobalSettings = {
     findReplaceMode?: StorageFindReplaceMode
     removeNoteReferencesOnTrash?: boolean
     noteMentionCopyRequiresConfirmation?: boolean
+    deleteSubtabShortcutEnabled?: boolean
     decoupledItemsKeepData?: boolean
     tableAddTargetMode?: StorageTableControlTargetMode
     tableDeleteTargetMode?: StorageTableControlTargetMode

@@ -1,4 +1,4 @@
-export const TIP_IDS = ['task-undo', 'tab-create-after-rename'] as const
+export const TIP_IDS = ['task-undo', 'delete-subtab-shortcut'] as const
 
 export type TipId = (typeof TIP_IDS)[number]
 
@@ -6,6 +6,10 @@ export type TipDefinition = {
   id: TipId
   label: string
   message: string
+}
+
+type TipDefinitionOptions = {
+  isMacPlatform?: boolean
 }
 
 export const TIP_DEFINITIONS: TipDefinition[] = [
@@ -16,20 +20,13 @@ export const TIP_DEFINITIONS: TipDefinition[] = [
       'Tip: If a task disappears after a quick click, press Cmd+Z to undo it. Hold the task checkbox for half a second to toggle it without deleting.',
   },
   {
-    id: 'tab-create-after-rename',
-    label: 'tab creation',
-    message: 'Tip: When creating several tabs, press Tab after naming one to save it and immediately create the next one.',
+    id: 'delete-subtab-shortcut',
+    label: 'delete subtab shortcut',
+    message: 'Tip: You can enable command/control+w to delete subtabs in the misc tab of the settings.',
   },
 ]
 
 const TIP_ID_SET = new Set<string>(TIP_IDS)
-
-export type TabCreateTipRenameType = 'tab' | 'subtab'
-
-export type TabCreateTipSequence = {
-  type: TabCreateTipRenameType
-  count: number
-}
 
 export function isTipId(value: unknown): value is TipId {
   return typeof value === 'string' && TIP_ID_SET.has(value)
@@ -47,21 +44,15 @@ export function normalizeTipIds(value: unknown): TipId[] {
   return ids
 }
 
-export function getTipDefinition(tipId: TipId): TipDefinition {
-  return TIP_DEFINITIONS.find((tip) => tip.id === tipId) ?? TIP_DEFINITIONS[0]
+function getDeleteSubtabShortcutTipMessage(isMacPlatform: boolean | undefined) {
+  return `You can enable ${isMacPlatform ? 'command' : 'control'}+w to delete subtabs in the misc tab of the settings.`
 }
 
-export function getNextTabCreateTipSequence(
-  previous: TabCreateTipSequence | null,
-  event: { type: TabCreateTipRenameType; wasPendingCreated: boolean; wasRenamedFromDefault: boolean },
-): { sequence: TabCreateTipSequence | null; shouldShowTip: boolean } {
-  if (!event.wasPendingCreated || !event.wasRenamedFromDefault) {
-    return { sequence: null, shouldShowTip: false }
-  }
-
-  const count = previous?.type === event.type ? previous.count + 1 : 1
+export function getTipDefinition(tipId: TipId, options: TipDefinitionOptions = {}): TipDefinition {
+  const tip = TIP_DEFINITIONS.find((candidate) => candidate.id === tipId) ?? TIP_DEFINITIONS[0]
+  if (tip.id !== 'delete-subtab-shortcut') return tip
   return {
-    sequence: { type: event.type, count },
-    shouldShowTip: count === 2,
+    ...tip,
+    message: getDeleteSubtabShortcutTipMessage(options.isMacPlatform),
   }
 }

@@ -9,6 +9,7 @@ export const SYNCED_UI_SIMPLE_SETTING_DEFINITIONS = Object.freeze([
   { key: 'findReplaceMode', kind: 'enum', defaultValue: 'find', values: ['find', 'replace'] },
   { key: 'removeNoteReferencesOnTrash', kind: 'boolean', defaultValue: true },
   { key: 'noteMentionCopyRequiresConfirmation', kind: 'boolean', defaultValue: true },
+  { key: 'deleteSubtabShortcutEnabled', kind: 'boolean', defaultValue: false },
   { key: 'decoupledItemsKeepData', kind: 'boolean', defaultValue: true },
   { key: 'tableAddTargetMode', kind: 'enum', defaultValue: 'bottom-right', values: ['bottom-right', 'active-cell'] },
   { key: 'tableDeleteTargetMode', kind: 'enum', defaultValue: 'bottom-right', values: ['bottom-right', 'active-cell'] },
@@ -41,6 +42,11 @@ export const MISC_SYNCED_UI_BOOLEAN_SETTINGS = Object.freeze([
     key: 'noteMentionCopyRequiresConfirmation',
     label: '@ menu requires confirmation for replacing note with synced or independent copy',
     ariaLabel: '@ menu requires confirmation for replacing note with synced or independent copy',
+  },
+  {
+    key: 'deleteSubtabShortcutEnabled',
+    label: 'command/control+w deletes current subtab',
+    ariaLabel: 'command/control+w deletes current subtab',
   },
 ])
 

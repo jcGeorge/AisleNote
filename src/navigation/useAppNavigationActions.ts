@@ -75,10 +75,6 @@ type UseAppNavigationActionsParams = {
   exitArrangeMode: () => void
   saveActiveCursorBeforeNavigation: () => void
   updateActiveSpaceData: (updater: (data: WorkspaceData) => WorkspaceData) => void
-  onCommittedTabRenameForTips: (
-    type: 'tab' | 'subtab',
-    event: { wasPendingCreated: boolean; wasRenamedFromDefault: boolean },
-  ) => void
   setTrashTabId: Dispatch<SetStateAction<string>>
   setTrashSubTabId: Dispatch<SetStateAction<string | null>>
 }
@@ -108,7 +104,6 @@ export const useAppNavigationActions = ({
   exitArrangeMode,
   saveActiveCursorBeforeNavigation,
   updateActiveSpaceData,
-  onCommittedTabRenameForTips,
   setTrashTabId,
   setTrashSubTabId,
 }: UseAppNavigationActionsParams) => {
@@ -124,13 +119,6 @@ export const useAppNavigationActions = ({
   ) => {
     const isPendingCreatedRename =
       pendingCreatedEditRef.current?.type === type && pendingCreatedEditRef.current.id === id
-    const originalTitle =
-      type === 'tab'
-        ? workspace.tabs.find((tab) => tab.id === id)?.title
-        : type === 'subtab'
-          ? activeTab.subTabs.find((subTab) => subTab.id === id)?.title
-          : null
-
     if ((type === 'tab' || type === 'subtab') && !isPendingCreatedRename) {
       saveActiveCursorBeforeNavigation()
     }
@@ -141,13 +129,6 @@ export const useAppNavigationActions = ({
       pendingCreatedEditRef.current = null
     }
     if (!title) return
-
-    if (type === 'tab' || type === 'subtab') {
-      onCommittedTabRenameForTips(type, {
-        wasPendingCreated: isPendingCreatedRename,
-        wasRenamedFromDefault: isPendingCreatedRename && title !== (originalTitle ?? '').trim(),
-      })
-    }
 
     if (type === 'domain') {
       setState((previous) => renameDomain(previous, id, title))

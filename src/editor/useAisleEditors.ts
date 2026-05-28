@@ -12,6 +12,7 @@ import { installImageDisplayMetadataSync } from './image-dom-metadata'
 import {
   annotationLinePlugin,
   blockIndentPlugin,
+  codeBlockBacktickShortcutPlugin,
   EDITOR_TOOLBAR_ITEMS,
   headingSpaceShortcutPlugin,
   highlightPlugin,
@@ -724,6 +725,7 @@ export function useAisleEditors({
           blockIndentPlugin,
           annotationLinePlugin,
           highlightPlugin,
+          codeBlockBacktickShortcutPlugin,
           terminalBlockLandingPlugin,
           createCodeBlockControlsPlugin({ pushToast }),
           (context: any) =>

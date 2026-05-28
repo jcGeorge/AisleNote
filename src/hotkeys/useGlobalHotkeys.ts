@@ -1,6 +1,6 @@
 import { useEffect, useRef, type Dispatch, type SetStateAction } from 'react'
 import { buildShortcutFromKeyboardEvent, eventMatchesShortcut } from './shortcuts'
-import type { AppState, ArrangeModeState, ShortcutId, Tab, ViewMode } from '../types/app'
+import type { AppState, ArrangeModeState, ShortcutId, Tab, TipId, ViewMode } from '../types/app'
 
 type UseGlobalHotkeysParams = {
   viewMode: ViewMode
@@ -8,6 +8,7 @@ type UseGlobalHotkeysParams = {
   primeTabs: Tab[]
   arrangeMode: ArrangeModeState
   hotkeys: AppState['hotkeys']
+  deleteSubtabShortcutEnabled: boolean
   isMacPlatform: boolean
   editingShortcut: ShortcutId | null
   setEditingShortcut: Dispatch<SetStateAction<ShortcutId | null>>
@@ -19,8 +20,11 @@ type UseGlobalHotkeysParams = {
   toggleTrashView: () => void
   returnToLastTabLikeView: () => void
   navigateHistoryBy: (delta: number) => void
+  showTip: (tipId: TipId) => void
+  warnHomeSubtabDelete: () => void
   addTab: () => void
   addSubTab: () => void
+  deleteFocusedSubTab: () => void
   formatStrikethrough: () => void
   selectTab: (tabId: string) => void
   selectSubTab: (subTabId: string) => void
@@ -54,12 +58,44 @@ export function getRailVisibilityShortcutTarget(
   return null
 }
 
+export type DeleteFocusedSubtabShortcutIntent = 'show-tip' | 'delete-subtab' | 'warn-home'
+
+export function isDeleteFocusedSubtabShortcut(event: KeyboardEvent, isMacPlatform: boolean): boolean {
+  const isW = event.code === 'KeyW' || event.key?.toLowerCase?.() === 'w'
+  if (!isW || event.altKey || event.shiftKey) return false
+  return isMacPlatform
+    ? event.metaKey && !event.ctrlKey
+    : event.ctrlKey && !event.metaKey
+}
+
+export function getDeleteFocusedSubtabShortcutIntent({
+  event,
+  isMacPlatform,
+  viewMode,
+  arrangeActive,
+  enabled,
+  activeSubTabId,
+}: {
+  event: KeyboardEvent
+  isMacPlatform: boolean
+  viewMode: ViewMode
+  arrangeActive: boolean
+  enabled: boolean
+  activeSubTabId: string | null
+}): DeleteFocusedSubtabShortcutIntent | null {
+  if (viewMode !== 'main' || arrangeActive) return null
+  if (!isDeleteFocusedSubtabShortcut(event, isMacPlatform)) return null
+  if (!enabled) return 'show-tip'
+  return activeSubTabId ? 'delete-subtab' : 'warn-home'
+}
+
 export function useGlobalHotkeys({
   viewMode,
   activeTab,
   primeTabs,
   arrangeMode,
   hotkeys,
+  deleteSubtabShortcutEnabled,
   isMacPlatform,
   editingShortcut,
   setEditingShortcut,
@@ -71,8 +107,11 @@ export function useGlobalHotkeys({
   toggleTrashView,
   returnToLastTabLikeView,
   navigateHistoryBy,
+  showTip,
+  warnHomeSubtabDelete,
   addTab,
   addSubTab,
+  deleteFocusedSubTab,
   formatStrikethrough,
   selectTab,
   selectSubTab,
@@ -87,8 +126,11 @@ export function useGlobalHotkeys({
     toggleTrashView,
     returnToLastTabLikeView,
     navigateHistoryBy,
+    showTip,
+    warnHomeSubtabDelete,
     addTab,
     addSubTab,
+    deleteFocusedSubTab,
     formatStrikethrough,
     selectTab,
     selectSubTab,
@@ -104,8 +146,11 @@ export function useGlobalHotkeys({
     toggleTrashView,
     returnToLastTabLikeView,
     navigateHistoryBy,
+    showTip,
+    warnHomeSubtabDelete,
     addTab,
     addSubTab,
+    deleteFocusedSubTab,
     formatStrikethrough,
     selectTab,
     selectSubTab,
@@ -213,6 +258,28 @@ export function useGlobalHotkeys({
       if (viewMode !== 'main') return
       if (arrangeMode.active) return
 
+      const deleteFocusedSubtabShortcutIntent = getDeleteFocusedSubtabShortcutIntent({
+        event,
+        isMacPlatform,
+        viewMode,
+        arrangeActive: arrangeMode.active,
+        enabled: deleteSubtabShortcutEnabled,
+        activeSubTabId: activeTab.activeSubTabId,
+      })
+      if (deleteFocusedSubtabShortcutIntent) {
+        event.preventDefault()
+        if (deleteFocusedSubtabShortcutIntent === 'show-tip') {
+          actions.showTip('delete-subtab-shortcut')
+          return
+        }
+        if (deleteFocusedSubtabShortcutIntent === 'warn-home') {
+          actions.warnHomeSubtabDelete()
+          return
+        }
+        actions.deleteFocusedSubTab()
+        return
+      }
+
       const isCommandNewTab = eventMatchesShortcut(event, hotkeys.shortcuts.newTab, isMacPlatform)
       if (isCommandNewTab) {
         event.preventDefault()
@@ -307,6 +374,7 @@ export function useGlobalHotkeys({
     editingShortcut,
     isMacPlatform,
     hotkeys,
+    deleteSubtabShortcutEnabled,
     arrangeMode.active,
     arrangeMode.scope,
   ])

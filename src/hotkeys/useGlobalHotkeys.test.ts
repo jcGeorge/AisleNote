@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { AppState, Tab } from '../types/app'
 import { DEFAULT_NEWLINE_SHORTCUT_SETTINGS, DEFAULT_SHORTCUTS } from './shortcuts'
-import { getCycledParentTabTarget, getNumberedPrimeTabTarget, getRailVisibilityShortcutTarget } from './useGlobalHotkeys'
+import {
+  getCycledParentTabTarget,
+  getDeleteFocusedSubtabShortcutIntent,
+  getNumberedPrimeTabTarget,
+  getRailVisibilityShortcutTarget,
+  isDeleteFocusedSubtabShortcut,
+} from './useGlobalHotkeys'
 
 const makeTab = (id: string): Tab => ({
   id,
@@ -61,5 +67,86 @@ describe('rail visibility hotkeys', () => {
   it('maps saved openSpaces and openDomains shortcuts to rail visibility actions', () => {
     expect(getRailVisibilityShortcutTarget(keyboardEvent('s'), hotkeys, false)).toBe('space')
     expect(getRailVisibilityShortcutTarget(keyboardEvent('d'), hotkeys, false)).toBe('domain')
+  })
+})
+
+describe('delete focused subtab hotkey', () => {
+  const keyboardEvent = (
+    key: string,
+    modifiers: Partial<Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>> = {},
+  ): KeyboardEvent =>
+    ({
+      key,
+      code: `Key${key.toUpperCase()}`,
+      ctrlKey: false,
+      metaKey: false,
+      altKey: false,
+      shiftKey: false,
+      ...modifiers,
+    }) as KeyboardEvent
+
+  it('matches plain primary-modifier W only', () => {
+    expect(isDeleteFocusedSubtabShortcut(keyboardEvent('w', { metaKey: true }), true)).toBe(true)
+    expect(isDeleteFocusedSubtabShortcut(keyboardEvent('w', { ctrlKey: true }), false)).toBe(true)
+    expect(isDeleteFocusedSubtabShortcut(keyboardEvent('w', { metaKey: true, shiftKey: true }), true)).toBe(false)
+    expect(isDeleteFocusedSubtabShortcut(keyboardEvent('w', { ctrlKey: true, altKey: true }), false)).toBe(false)
+    expect(isDeleteFocusedSubtabShortcut(keyboardEvent('w', { ctrlKey: true }), true)).toBe(false)
+  })
+
+  it('returns disabled, delete, home-warning, and ignored intents', () => {
+    expect(
+      getDeleteFocusedSubtabShortcutIntent({
+        event: keyboardEvent('w', { ctrlKey: true }),
+        isMacPlatform: false,
+        viewMode: 'main',
+        arrangeActive: false,
+        enabled: false,
+        activeSubTabId: 'sub-1',
+      }),
+    ).toBe('show-tip')
+
+    expect(
+      getDeleteFocusedSubtabShortcutIntent({
+        event: keyboardEvent('w', { ctrlKey: true }),
+        isMacPlatform: false,
+        viewMode: 'main',
+        arrangeActive: false,
+        enabled: true,
+        activeSubTabId: 'sub-1',
+      }),
+    ).toBe('delete-subtab')
+
+    expect(
+      getDeleteFocusedSubtabShortcutIntent({
+        event: keyboardEvent('w', { ctrlKey: true }),
+        isMacPlatform: false,
+        viewMode: 'main',
+        arrangeActive: false,
+        enabled: true,
+        activeSubTabId: null,
+      }),
+    ).toBe('warn-home')
+
+    expect(
+      getDeleteFocusedSubtabShortcutIntent({
+        event: keyboardEvent('w', { ctrlKey: true }),
+        isMacPlatform: false,
+        viewMode: 'settings',
+        arrangeActive: false,
+        enabled: true,
+        activeSubTabId: 'sub-1',
+      }),
+    ).toBeNull()
+
+    expect(
+      getDeleteFocusedSubtabShortcutIntent({
+        event: keyboardEvent('w', { ctrlKey: true }),
+        isMacPlatform: false,
+        viewMode: 'main',
+        arrangeActive: true,
+        enabled: true,
+        activeSubTabId: 'sub-1',
+      }),
+    ).toBeNull()
   })
 })

@@ -263,6 +263,87 @@ function applyTypedHighlightMarkerShortcut(view: any, from: number, to: number, 
   return true
 }
 
+function canReplaceWith(parentNode: any, fromIndex: number, toIndex: number, nodeType: any): boolean {
+  return typeof parentNode?.canReplaceWith === 'function'
+    ? parentNode.canReplaceWith(fromIndex, toIndex, nodeType)
+    : true
+}
+
+export function applyTypedCodeBlockShortcut(view: any, from: number, to: number, inputText: string): boolean {
+  if (inputText !== '`' || from !== to) return false
+  const { state } = view ?? {}
+  const selection = state?.selection
+  const codeBlockType = state?.schema?.nodes?.codeBlock
+  if (!selection?.empty || !codeBlockType || !selection.$from?.parent?.isTextblock) return false
+  if (selection.from !== from || selection.to !== to) return false
+  if (selection.$from.parent.type?.spec?.code || cursorHasCodeMark(state)) return false
+
+  const parent = selection.$from.parent
+  const parentOffset = selection.$from.parentOffset
+  if (parentOffset !== parent.content?.size) return false
+
+  const beforeText =
+    typeof parent.textBetween === 'function'
+      ? parent.textBetween(0, parentOffset, '\n', '\n')
+      : String(parent.textContent ?? '').slice(0, parentOffset)
+  if (!beforeText.endsWith('``')) return false
+
+  const blockDepth = selection.$from.depth
+  if (typeof blockDepth !== 'number' || blockDepth <= 0) return false
+
+  const parentDepth = blockDepth - 1
+  const containingNode = selection.$from.node(parentDepth)
+  const blockIndex = selection.$from.index(parentDepth)
+  const blockFrom = selection.$from.before(blockDepth)
+  const blockTo = selection.$from.after(blockDepth)
+  const codeBlockNode = codeBlockType.create()
+  const textBeforeMarker = beforeText.slice(0, -2)
+
+  if (textBeforeMarker.trim().length === 0) {
+    if (!canReplaceWith(containingNode, blockIndex, blockIndex + 1, codeBlockType)) return false
+    if (!view.dispatch) return true
+    const nextTr = state.tr.replaceWith(blockFrom, blockTo, codeBlockNode)
+    const caretPos = Math.min(blockFrom + 1, nextTr.doc.content.size)
+    view.dispatch(nextTr.setSelection(TextSelection.create(nextTr.doc, caretPos, caretPos)).scrollIntoView())
+    return true
+  }
+
+  if (!canReplaceWith(containingNode, blockIndex + 1, blockIndex + 1, codeBlockType)) return false
+  if (!view.dispatch) return true
+
+  const blockStart = selection.$from.start(blockDepth)
+  const markerFrom = blockStart + beforeText.length - 2
+  let nextTr = state.tr.delete(markerFrom, from)
+  const insertPos = nextTr.mapping.map(blockTo)
+  nextTr = nextTr.insert(insertPos, codeBlockNode)
+  const caretPos = Math.min(insertPos + 1, nextTr.doc.content.size)
+  view.dispatch(nextTr.setSelection(TextSelection.create(nextTr.doc, caretPos, caretPos)).scrollIntoView())
+  return true
+}
+
+export function codeBlockBacktickShortcutPlugin(context: {
+  pmState: {
+    Plugin: new (spec: {
+      props?: {
+        handleTextInput?: (view: any, from: number, to: number, text: string) => boolean
+      }
+    }) => unknown
+  }
+}) {
+  const { Plugin } = context.pmState
+
+  return {
+    wysiwygPlugins: [
+      () =>
+        new Plugin({
+          props: {
+            handleTextInput: applyTypedCodeBlockShortcut,
+          },
+        }),
+    ],
+  }
+}
+
 export function highlightPlugin(context: {
   pmState: {
     Plugin: new (spec: {

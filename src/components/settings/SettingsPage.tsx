@@ -984,7 +984,7 @@ export function SettingsPage({
             ) : (
               <div className="settings-hotkeys-list">
                 {state.ui.seenTipIds.map((tipId) => {
-                  const tip = getTipDefinition(tipId)
+                  const tip = getTipDefinition(tipId, { isMacPlatform })
                   const enabled = !state.ui.disabledTipIds.includes(tipId)
                   return (
                     <div key={tipId} className="settings-hotkey-row settings-tip-row">

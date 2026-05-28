@@ -819,14 +819,14 @@ describe('app state normalization', () => {
   it('normalizes persisted tip settings', () => {
     const valid = parseModernState({
       ui: {
-        seenTipIds: ['task-undo', 'bad-tip', 'task-undo', 'tab-create-after-rename', 'aisle-shortcut'],
-        disabledTipIds: ['tab-create-after-rename', 'unknown'],
+        seenTipIds: ['task-undo', 'bad-tip', 'task-undo', 'tab-create-after-rename', 'delete-subtab-shortcut'],
+        disabledTipIds: ['tab-create-after-rename', 'delete-subtab-shortcut', 'unknown'],
       },
     })
     const missing = parseModernState({ ui: {} })
 
-    expect(valid.ui.seenTipIds).toEqual(['task-undo', 'tab-create-after-rename'])
-    expect(valid.ui.disabledTipIds).toEqual(['tab-create-after-rename'])
+    expect(valid.ui.seenTipIds).toEqual(['task-undo', 'delete-subtab-shortcut'])
+    expect(valid.ui.disabledTipIds).toEqual(['delete-subtab-shortcut'])
     expect(missing.ui.seenTipIds).toEqual([])
     expect(missing.ui.disabledTipIds).toEqual([])
   })
@@ -886,6 +886,18 @@ describe('app state normalization', () => {
     expect(disabled.ui.noteMentionCopyRequiresConfirmation).toBe(false)
     expect(invalid.ui.noteMentionCopyRequiresConfirmation).toBe(true)
     expect(missing.ui.noteMentionCopyRequiresConfirmation).toBe(true)
+  })
+
+  it('normalizes delete-subtab shortcut setting', () => {
+    const enabled = parseModernState({ ui: { deleteSubtabShortcutEnabled: true } })
+    const disabled = parseModernState({ ui: { deleteSubtabShortcutEnabled: false } })
+    const invalid = parseModernState({ ui: { deleteSubtabShortcutEnabled: 'yes' } })
+    const missing = parseModernState({ ui: {} })
+
+    expect(enabled.ui.deleteSubtabShortcutEnabled).toBe(true)
+    expect(disabled.ui.deleteSubtabShortcutEnabled).toBe(false)
+    expect(invalid.ui.deleteSubtabShortcutEnabled).toBe(false)
+    expect(missing.ui.deleteSubtabShortcutEnabled).toBe(false)
   })
 
   it('normalizes synced toolbar layouts while leaving active toolbar selection local', () => {

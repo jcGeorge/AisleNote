@@ -11,6 +11,7 @@ export type SimpleSyncedUiSettingKey =
   | 'findReplaceMode'
   | 'removeNoteReferencesOnTrash'
   | 'noteMentionCopyRequiresConfirmation'
+  | 'deleteSubtabShortcutEnabled'
   | 'decoupledItemsKeepData'
   | 'tableAddTargetMode'
   | 'tableDeleteTargetMode'
@@ -26,6 +27,7 @@ export type SyncedUiBooleanSettingKey =
   | 'findRegex'
   | 'removeNoteReferencesOnTrash'
   | 'noteMentionCopyRequiresConfirmation'
+  | 'deleteSubtabShortcutEnabled'
   | 'decoupledItemsKeepData'
   | 'toolbarEditorShowNames'
 
@@ -78,6 +80,7 @@ export function normalizeRegisteredSyncedUiSetting(
 ): NonNullable<AppState['ui']['findReplaceMode']>
 export function normalizeRegisteredSyncedUiSetting(key: 'removeNoteReferencesOnTrash', value: unknown): boolean
 export function normalizeRegisteredSyncedUiSetting(key: 'noteMentionCopyRequiresConfirmation', value: unknown): boolean
+export function normalizeRegisteredSyncedUiSetting(key: 'deleteSubtabShortcutEnabled', value: unknown): boolean
 export function normalizeRegisteredSyncedUiSetting(key: 'decoupledItemsKeepData', value: unknown): boolean
 export function normalizeRegisteredSyncedUiSetting(
   key: 'tableAddTargetMode',

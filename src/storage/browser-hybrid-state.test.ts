@@ -442,6 +442,7 @@ describe('browser hybrid storage', () => {
           findReplaceMode: 'replace',
           removeNoteReferencesOnTrash: false,
           noteMentionCopyRequiresConfirmation: false,
+          deleteSubtabShortcutEnabled: true,
           decoupledItemsKeepData: false,
           tableAddTargetMode: 'active-cell',
           tableDeleteTargetMode: 'active-cell',
@@ -483,6 +484,7 @@ describe('browser hybrid storage', () => {
     expect(getRecord(appSettings.ui).findReplaceMode).toBe('replace')
     expect(getRecord(appSettings.ui).removeNoteReferencesOnTrash).toBe(false)
     expect(getRecord(appSettings.ui).noteMentionCopyRequiresConfirmation).toBe(false)
+    expect(getRecord(appSettings.ui).deleteSubtabShortcutEnabled).toBe(true)
     expect(getRecord(appSettings.ui).tableOfContentsScope).toBe('focused-aisle')
     expect(getRecord(appSettings.ui).newAislePlacement).toBe('right-of-focus')
     expect(getRecord(appSettings.ui).showParentHomeTab).toBe(false)
@@ -504,6 +506,7 @@ describe('browser hybrid storage', () => {
     expect(roundTripped.ui.findReplaceMode).toBe('replace')
     expect(roundTripped.ui.removeNoteReferencesOnTrash).toBe(false)
     expect(roundTripped.ui.noteMentionCopyRequiresConfirmation).toBe(false)
+    expect(roundTripped.ui.deleteSubtabShortcutEnabled).toBe(true)
     expect(roundTripped.ui.tableOfContentsScope).toBe('focused-aisle')
     expect(roundTripped.ui.newAislePlacement).toBe('right-of-focus')
     expect(roundTripped.ui.themePalettes?.dawn?.primary).toBe('#123456')

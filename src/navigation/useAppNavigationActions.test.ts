@@ -111,7 +111,6 @@ describe('app navigation rename actions', () => {
         calls.push('update-workspace')
         latestWorkspace = updater(latestWorkspace)
       },
-      onCommittedTabRenameForTips: vi.fn(),
       setTrashTabId: vi.fn(),
       setTrashSubTabId: vi.fn(),
     })

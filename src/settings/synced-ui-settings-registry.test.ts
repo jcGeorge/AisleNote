@@ -21,6 +21,7 @@ describe('synced UI settings registry', () => {
       findReplaceMode: 'find',
       removeNoteReferencesOnTrash: true,
       noteMentionCopyRequiresConfirmation: true,
+      deleteSubtabShortcutEnabled: false,
       decoupledItemsKeepData: true,
       tableAddTargetMode: 'bottom-right',
       tableDeleteTargetMode: 'bottom-right',
@@ -42,6 +43,7 @@ describe('synced UI settings registry', () => {
       tableOfContentsScope: 'focused-aisle',
       newAislePlacement: 'right-of-focus',
       removeNoteReferencesOnTrash: 'false',
+      deleteSubtabShortcutEnabled: true,
     })
 
     expect(normalized).toMatchObject({
@@ -55,6 +57,7 @@ describe('synced UI settings registry', () => {
       tableOfContentsScope: 'focused-aisle',
       newAislePlacement: 'right-of-focus',
       removeNoteReferencesOnTrash: true,
+      deleteSubtabShortcutEnabled: true,
     })
     expect(normalizeRegisteredSyncedUiSetting('findReplaceMode', 'bad')).toBe('find')
   })
@@ -67,6 +70,7 @@ describe('synced UI settings registry', () => {
     expect(getSyncedUiBooleanSettings({ noteMentionCopyRequiresConfirmation: false })).toMatchObject({
       noteMentionCopyRequiresConfirmation: false,
       removeNoteReferencesOnTrash: true,
+      deleteSubtabShortcutEnabled: false,
     })
   })
 
@@ -74,6 +78,7 @@ describe('synced UI settings registry', () => {
     expect(MISC_SYNCED_UI_BOOLEAN_SETTINGS.map((setting) => setting.key)).toEqual([
       'removeNoteReferencesOnTrash',
       'noteMentionCopyRequiresConfirmation',
+      'deleteSubtabShortcutEnabled',
     ])
   })
 })

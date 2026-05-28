@@ -173,7 +173,7 @@ describe('device settings store', () => {
           dataSettingsSection: 'trash',
           visualsSettingsSection: 'otherVisuals',
           seenTipIds: ['task-undo'],
-          disabledTipIds: ['tab-create-after-rename'],
+          disabledTipIds: ['delete-subtab-shortcut'],
           tabButtonScale: 1.1,
           noteFontScale: 1.15,
           tooltipScale: 1.2,

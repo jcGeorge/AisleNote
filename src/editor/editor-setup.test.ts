@@ -16,6 +16,7 @@ import {
 import { shouldDeleteEmptyParagraphAtListBoundary } from './empty-paragraph-list-delete'
 import {
   applyParagraphSpaceShortcut,
+  applyTypedCodeBlockShortcut,
   annotationLinePlugin,
   BLOCK_INDENT_CLASS_NAME,
   BLOCK_INDENT_TOKEN_HIDDEN_CLASS_NAME,
@@ -238,6 +239,13 @@ const paragraphShortcutSchema = new Schema({
       content: 'paragraph block*',
       toDOM: () => ['li', 0],
     },
+    codeBlock: {
+      group: 'block',
+      content: 'text*',
+      marks: '',
+      code: true,
+      toDOM: () => ['pre', ['code', 0]],
+    },
     thematicBreak: {
       group: 'block',
       toDOM: () => ['hr'],
@@ -306,6 +314,25 @@ function applyParagraphSpaceShortcutToText(text: string, cursorOffset: number) {
     nextState = state.apply(transaction)
   })
   return { handled, state: nextState }
+}
+
+function textNode(text: string) {
+  return text.length > 0 ? paragraphShortcutSchema.text(text) : undefined
+}
+
+function createShortcutView(doc: any, selectionPosition: number) {
+  const state = EditorState.create({
+    doc,
+    selection: TextSelection.create(doc, selectionPosition),
+  })
+  let nextState = state
+  const view = {
+    state,
+    dispatch: (transaction: any) => {
+      nextState = state.apply(transaction)
+    },
+  }
+  return { state, get nextState() { return nextState }, view }
 }
 
 describe('paragraph space shortcut WYSIWYG behavior', () => {
@@ -455,6 +482,63 @@ describe('paragraph space shortcut WYSIWYG behavior', () => {
 
     expect(nextState.doc.child(0).type.name).toBe('thematicBreak')
     expect(nextState.doc.child(1).type.name).toBe(expectedNodeType)
+  })
+})
+
+describe('typed code block shortcut WYSIWYG behavior', () => {
+  it('turns triple backticks on a whitespace-only line into an empty code block', () => {
+    const doc = paragraphShortcutSchema.nodes.doc.create(null, [
+      paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text('  ``')),
+    ])
+    const fixture = createShortcutView(doc, getTextBlockEnd(doc, '  ``'))
+
+    expect(applyTypedCodeBlockShortcut(fixture.view, fixture.view.state.selection.from, fixture.view.state.selection.from, '`')).toBe(true)
+
+    const nextState = fixture.nextState
+    expect(nextState.doc.childCount).toBe(1)
+    expect(nextState.doc.child(0).type.name).toBe('codeBlock')
+    expect(nextState.doc.child(0).textContent).toBe('')
+    expect(nextState.selection.from).toBe(1)
+  })
+
+  it('moves the code block to a new line when text already exists before the marker', () => {
+    const doc = paragraphShortcutSchema.nodes.doc.create(null, [
+      paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text('hello ``')),
+    ])
+    const fixture = createShortcutView(doc, getTextBlockEnd(doc, 'hello ``'))
+
+    expect(applyTypedCodeBlockShortcut(fixture.view, fixture.view.state.selection.from, fixture.view.state.selection.from, '`')).toBe(true)
+
+    const nextState = fixture.nextState
+    expect(nextState.doc.childCount).toBe(2)
+    expect(nextState.doc.child(0).type.name).toBe('paragraph')
+    expect(nextState.doc.child(0).textContent).toBe('hello ')
+    expect(nextState.doc.child(1).type.name).toBe('codeBlock')
+    expect(nextState.doc.child(1).textContent).toBe('')
+    expect(nextState.selection.from).toBe(nextState.doc.child(0).nodeSize + 1)
+  })
+
+  it('does not trigger in the middle of a paragraph', () => {
+    const doc = paragraphShortcutSchema.nodes.doc.create(null, [
+      paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text('hello `` after')),
+    ])
+    const fixture = createShortcutView(doc, 1 + 'hello ``'.length)
+
+    expect(applyTypedCodeBlockShortcut(fixture.view, fixture.view.state.selection.from, fixture.view.state.selection.from, '`')).toBe(false)
+    const nextState = fixture.nextState
+    expect(nextState.doc.child(0).textContent).toBe('hello `` after')
+  })
+
+  it('does not trigger inside an existing code block', () => {
+    const doc = paragraphShortcutSchema.nodes.doc.create(null, [
+      paragraphShortcutSchema.nodes.codeBlock.create(null, textNode('``')),
+    ])
+    const fixture = createShortcutView(doc, getTextBlockEnd(doc, '``'))
+
+    expect(applyTypedCodeBlockShortcut(fixture.view, fixture.view.state.selection.from, fixture.view.state.selection.from, '`')).toBe(false)
+    const nextState = fixture.nextState
+    expect(nextState.doc.child(0).type.name).toBe('codeBlock')
+    expect(nextState.doc.child(0).textContent).toBe('``')
   })
 })
 

@@ -308,6 +308,7 @@ describe('Electron app state storage load result', () => {
         findReplaceMode: 'replace',
         removeNoteReferencesOnTrash: false,
         noteMentionCopyRequiresConfirmation: false,
+        deleteSubtabShortcutEnabled: true,
         decoupledItemsKeepData: false,
         tableAddTargetMode: 'active-cell',
         tableDeleteTargetMode: 'active-cell',
@@ -354,6 +355,7 @@ describe('Electron app state storage load result', () => {
       expect(appSettings.ui.findReplaceMode).toBe('replace')
       expect(appSettings.ui.removeNoteReferencesOnTrash).toBe(false)
       expect(appSettings.ui.noteMentionCopyRequiresConfirmation).toBe(false)
+      expect(appSettings.ui.deleteSubtabShortcutEnabled).toBe(true)
       expect(appSettings.ui.tableOfContentsScope).toBe('focused-aisle')
       expect(appSettings.ui.newAislePlacement).toBe('right-of-focus')
       expect(appSettings.hotkeys.enableMouseBackForward).toBe(false)
@@ -365,6 +367,7 @@ describe('Electron app state storage load result', () => {
       expect(parsed.ui.findReplaceMode).toBe('replace')
       expect(parsed.ui.removeNoteReferencesOnTrash).toBe(false)
       expect(parsed.ui.noteMentionCopyRequiresConfirmation).toBe(false)
+      expect(parsed.ui.deleteSubtabShortcutEnabled).toBe(true)
       expect(parsed.ui.tableOfContentsScope).toBe('focused-aisle')
       expect(parsed.ui.newAislePlacement).toBe('right-of-focus')
       expect(parsed.hotkeys.shortcuts.newTab).toBe('Ctrl+Alt+N')

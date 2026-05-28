@@ -210,12 +210,7 @@ import {
   type DeviceSettings,
 } from './storage/device-settings-store'
 import { useStorageProfileController } from './storage/useStorageProfileController'
-import {
-  getNextTabCreateTipSequence,
-  getTipDefinition,
-  type TabCreateTipSequence,
-  type TabCreateTipRenameType,
-} from './tips/tips'
+import { getTipDefinition } from './tips/tips'
 import { TRASH_HOME_ID } from './trash/trash-model'
 import { useTrashSelection } from './trash/useTrashSelection'
 import type {
@@ -383,7 +378,6 @@ function App() {
   const completedTaskDeleteUndoCandidateRef = useRef<{ beforeMarkdown: string; deletedAt: number } | null>(null)
   const completedTaskUndoToastAtRef = useRef(0)
   const dismissedTipIdsThisSessionRef = useRef<Set<TipId>>(new Set())
-  const tabCreateTipSequenceRef = useRef<TabCreateTipSequence | null>(null)
   const activeSpaceIdRef = useRef<string>('')
   const activeDomainIdRef = useRef<string>('')
   const activeTabIdRef = useRef<string>('')
@@ -674,17 +668,6 @@ function App() {
   useEffect(() => {
     setVisibleTips((currentTips) => currentTips.filter((tipId) => !state.ui.disabledTipIds.includes(tipId)))
   }, [state.ui.disabledTipIds])
-
-  const trackTabCreateRenameForTips = (
-    type: TabCreateTipRenameType,
-    event: { wasPendingCreated: boolean; wasRenamedFromDefault: boolean },
-  ) => {
-    const result = getNextTabCreateTipSequence(tabCreateTipSequenceRef.current, { type, ...event })
-    tabCreateTipSequenceRef.current = result.sequence
-    if (result.shouldShowTip) {
-      showTip('tab-create-after-rename')
-    }
-  }
 
   const storageProfileController = useStorageProfileController({
     pushToast,
@@ -1225,7 +1208,6 @@ function App() {
     exitArrangeMode,
     saveActiveCursorBeforeNavigation,
     updateActiveSpaceData,
-    onCommittedTabRenameForTips: trackTabCreateRenameForTips,
     setTrashTabId,
     setTrashSubTabId,
   })
@@ -2909,6 +2891,7 @@ function App() {
   const openContextMenuForDomain = overlayActions.openContextMenuForDomain
   const openDeleteModalFromContext = overlayActions.openDeleteModalFromContext
   const deleteFromContext = overlayActions.deleteFromContext
+  const deleteTarget = overlayActions.deleteTarget
   const restoreFromContext = overlayActions.restoreFromContext
   const openCopyModalFromContext = overlayActions.openCopyModalFromContext
   const openCopyModalForActiveNote = overlayActions.openCopyModalForActiveNote
@@ -2943,6 +2926,16 @@ function App() {
     setState(appliedState)
     setModal(null)
     pushToast('notes de-coupled.', 'success')
+  }
+
+  const deleteFocusedSubTabFromShortcut = () => {
+    closeEditorEphemeraRef.current()
+    const activeSubTabId = activeTab.activeSubTabId
+    if (!activeSubTabId) {
+      pushToast('home tabs cannot be deleted', 'warning')
+      return
+    }
+    deleteTarget({ type: 'subtab', tabId: activeTab.id, subTabId: activeSubTabId }, false)
   }
 
   const autoSizeRenameInput = (input: HTMLInputElement) => {
@@ -3115,6 +3108,7 @@ function App() {
     primeTabs: workspace.tabs,
     arrangeMode,
     hotkeys: state.hotkeys,
+    deleteSubtabShortcutEnabled: state.ui.deleteSubtabShortcutEnabled ?? false,
     isMacPlatform,
     editingShortcut: settingsController.editingShortcut,
     setEditingShortcut: settingsController.setEditingShortcut,
@@ -3126,8 +3120,11 @@ function App() {
     toggleTrashView,
     returnToLastTabLikeView,
     navigateHistoryBy,
+    showTip,
+    warnHomeSubtabDelete: () => pushToast('home tabs cannot be deleted', 'warning'),
     addTab,
     addSubTab,
+    deleteFocusedSubTab: deleteFocusedSubTabFromShortcut,
     formatStrikethrough: () => runActiveEditorFormatCommand('strike'),
     selectTab,
     selectSubTab,
@@ -3272,7 +3269,7 @@ function App() {
         : ''
   const visibleTipDefinitions = visibleTips
     .filter((tipId) => !state.ui.disabledTipIds.includes(tipId))
-    .map((tipId) => getTipDefinition(tipId))
+    .map((tipId) => getTipDefinition(tipId, { isMacPlatform }))
   const activeTableOfContentsPanels =
     tableOfContentsPanels?.noteBodyId === activeNoteBodyId ? tableOfContentsPanels : null
   const noteMentionMenu = noteMention.menu

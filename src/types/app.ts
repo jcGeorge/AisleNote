@@ -45,7 +45,7 @@ export type VisualsSettingsSection = 'theming' | 'otherVisuals'
 export type TableControlTargetMode = 'active-cell' | 'bottom-right'
 export type TableOfContentsScope = 'all-aisles' | 'focused-aisle'
 export type NewAislePlacement = 'end' | 'right-of-focus'
-export type TipId = 'task-undo' | 'tab-create-after-rename'
+export type TipId = 'task-undo' | 'delete-subtab-shortcut'
 
 export type NewlineOperationId =
   | 'normalNewLine'
@@ -358,6 +358,7 @@ export type AppState = {
     findReplaceMode?: 'find' | 'replace'
     removeNoteReferencesOnTrash?: boolean
     noteMentionCopyRequiresConfirmation?: boolean
+    deleteSubtabShortcutEnabled?: boolean
     decoupledItemsKeepData?: boolean
     tableAddTargetMode: TableControlTargetMode
     tableDeleteTargetMode: TableControlTargetMode

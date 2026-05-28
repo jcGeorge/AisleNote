@@ -7,7 +7,10 @@ import {
   DEFAULT_VISUALS_SETTINGS_SECTION,
   getThemePaletteForTheme,
 } from '../../settings/defaults'
-import { MISC_SYNCED_UI_BOOLEAN_SETTINGS } from '../../settings/synced-ui-settings-registry.js'
+import {
+  MISC_SYNCED_UI_BOOLEAN_SETTINGS,
+  getSyncedUiBooleanSettings,
+} from '../../settings/synced-ui-settings-registry.js'
 import { DEFAULT_TOOLBAR_LAYOUT_ID, getToolbarLayouts } from '../../editor/toolbar-layouts'
 import type {
   AppState,
@@ -101,6 +104,7 @@ function renderSettingsPage(
     storageProfileStatus?: StorageProfileStatus | null
     toolbarEditorLayoutId?: string
     toolbarEditorShowNames?: boolean
+    isMacPlatform?: boolean
   } = {},
 ) {
   const state = options.state ?? createState()
@@ -110,7 +114,7 @@ function renderSettingsPage(
       section={options.section ?? 'frontmatter'}
       dataSection={options.dataSection ?? state.ui.dataSettingsSection ?? DEFAULT_DATA_SETTINGS_SECTION}
       visualsSection={options.visualsSection ?? state.ui.visualsSettingsSection ?? DEFAULT_VISUALS_SETTINGS_SECTION}
-      isMacPlatform={false}
+      isMacPlatform={options.isMacPlatform ?? false}
       shortcutDrafts={{
         toggleTabTrash: '',
         openDomains: '',
@@ -145,10 +149,7 @@ function renderSettingsPage(
       newAislePlacementDraft={state.ui.newAislePlacement ?? 'end'}
       miscSyncedUiBooleanSettings={MISC_SYNCED_UI_BOOLEAN_SETTINGS.map((setting) => ({
         ...setting,
-        checked:
-          setting.key === 'removeNoteReferencesOnTrash'
-            ? state.ui.removeNoteReferencesOnTrash ?? true
-            : state.ui.noteMentionCopyRequiresConfirmation ?? true,
+        checked: getSyncedUiBooleanSettings(state.ui)[setting.key],
       }))}
       frontmatterDraft={frontmatterDraft}
       frontmatterDraftDirty={frontmatterDraftDirty}
@@ -282,6 +283,22 @@ describe('frontmatter settings page', () => {
     expect(html).toContain('aria-label="@ menu requires confirmation for replacing note with synced or independent copy"')
     expect(html).toContain('role="switch" aria-label="@ menu requires confirmation for replacing note with synced or independent copy" checked=""')
     expect(html.indexOf('@ menu requires confirmation for replacing note with synced or independent copy')).toBeLessThan(
+      html.indexOf('add table row or column'),
+    )
+  })
+
+  it('renders the delete-subtab shortcut setting in misc settings after @ confirmation', () => {
+    const state = createState()
+    state.ui.deleteSubtabShortcutEnabled = false
+    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'misc', state })
+
+    expect(html).toContain('command/control+w deletes current subtab')
+    expect(html).toContain('aria-label="command/control+w deletes current subtab"')
+    expect(html).not.toContain('role="switch" aria-label="command/control+w deletes current subtab" checked=""')
+    expect(html.indexOf('@ menu requires confirmation for replacing note with synced or independent copy')).toBeLessThan(
+      html.indexOf('command/control+w deletes current subtab'),
+    )
+    expect(html.indexOf('command/control+w deletes current subtab')).toBeLessThan(
       html.indexOf('add table row or column'),
     )
   })
@@ -698,6 +715,21 @@ describe('frontmatter settings page', () => {
     expect(html).toContain('aria-label="task undo tip enabled"')
     expect(html).not.toContain('tab creation')
     expect(html).not.toContain('checked=""')
+  })
+
+  it('renders platform-specific delete-subtab shortcut tip text', () => {
+    const state = createState()
+    state.ui.seenTipIds = ['delete-subtab-shortcut']
+
+    const macHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, true, {
+      section: 'tips',
+      state,
+      isMacPlatform: true,
+    })
+    const windowsHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'tips', state })
+
+    expect(macHtml).toContain('You can enable command+w to delete subtabs in the misc tab of the settings.')
+    expect(windowsHtml).toContain('You can enable control+w to delete subtabs in the misc tab of the settings.')
   })
 
   it('renders draft template changes behind explicit save controls', () => {

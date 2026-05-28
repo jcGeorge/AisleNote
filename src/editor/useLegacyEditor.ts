@@ -5,6 +5,7 @@ import { createCodeBlockControlsPlugin } from './code-block-controls'
 import {
   annotationLinePlugin,
   blockIndentPlugin,
+  codeBlockBacktickShortcutPlugin,
   EDITOR_TOOLBAR_ITEMS,
   headingSpaceShortcutPlugin,
   highlightPlugin,
@@ -119,6 +120,7 @@ export function useLegacyEditor({
         blockIndentPlugin,
         annotationLinePlugin,
         highlightPlugin,
+        codeBlockBacktickShortcutPlugin,
         terminalBlockLandingPlugin,
         createCodeBlockControlsPlugin({ pushToast }),
         uncheckedTaskEnterPlugin,
