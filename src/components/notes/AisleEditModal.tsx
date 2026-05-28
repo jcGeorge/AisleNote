@@ -224,10 +224,6 @@ export function AisleEditModal({
   }
 
   const updateDropTarget = (event: DragEvent, targetAisleId: string) => {
-    if (draggingAisleId === targetAisleId) {
-      setDropTarget(null)
-      return
-    }
     const nextTarget = getAisleDropTarget(event, targetAisleId)
     setDropTarget((previous) =>
       previous?.aisleId === nextTarget.aisleId && previous.position === nextTarget.position ? previous : nextTarget,

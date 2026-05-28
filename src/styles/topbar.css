@@ -95,6 +95,16 @@
   box-shadow: var(--space-rail-dragging-shadow) !important;
 }
 
+.compact-scope-btn.is-arrangeable.is-dragging.is-arrange-neighbor-before {
+  box-shadow: inset 1px 0 0 color-mix(in srgb, currentColor 52%, transparent),
+    0 0 0 1px color-mix(in srgb, currentColor 10%, transparent) !important;
+}
+
+.compact-scope-btn.is-arrangeable.is-dragging.is-arrange-neighbor-after {
+  box-shadow: inset -1px 0 0 color-mix(in srgb, currentColor 52%, transparent),
+    0 0 0 1px color-mix(in srgb, currentColor 10%, transparent) !important;
+}
+
 .compact-domain-btn.is-arrange-target {
   box-shadow: var(--domain-rail-target-shadow) !important;
 }

@@ -71,6 +71,16 @@
   box-shadow: var(--tab-dragging-shadow) !important;
 }
 
+.tab-btn.is-arrangeable.is-dragging.is-arrange-neighbor-before {
+  box-shadow: inset 1px 0 0 color-mix(in srgb, currentColor 52%, transparent),
+    0 0 0 1px color-mix(in srgb, currentColor 10%, transparent) !important;
+}
+
+.tab-btn.is-arrangeable.is-dragging.is-arrange-neighbor-after {
+  box-shadow: inset -1px 0 0 color-mix(in srgb, currentColor 52%, transparent),
+    0 0 0 1px color-mix(in srgb, currentColor 10%, transparent) !important;
+}
+
 .parent-tab-btn.is-arrange-selected {
   color: var(--parent-tab-selected-text) !important;
   background: var(--parent-tab-selected-bg) !important;

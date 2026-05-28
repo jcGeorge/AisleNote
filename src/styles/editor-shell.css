@@ -1007,6 +1007,16 @@
   opacity: 0.58;
 }
 
+.aisle-edit-card.is-dragging.is-drop-neighbor-before {
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--subtab-target-border) 46%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--subtab-target-border) 8%, transparent);
+}
+
+.aisle-edit-card.is-dragging.is-drop-neighbor-after {
+  box-shadow: inset -1px 0 0 color-mix(in srgb, var(--subtab-target-border) 46%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--subtab-target-border) 8%, transparent);
+}
+
 .aisle-edit-card.is-drop-target-before {
   border-color: var(--subtab-target-border);
   box-shadow: inset 3px 0 0 var(--subtab-target-border),

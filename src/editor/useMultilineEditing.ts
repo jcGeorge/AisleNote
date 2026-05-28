@@ -5,6 +5,7 @@ import { Selection, TextSelection } from 'prosemirror-state'
 import {
   buildDeletedLineMultiLineState,
   buildForwardBoundaryDeletePlan,
+  buildMissingMultiLineDownTargetLinePlan,
   buildSelectedRowDeletePlan,
   buildSplitLineMultiLineState,
   cloneMultiLineEditState,
@@ -600,6 +601,59 @@ export function useMultilineEditing({
     const blockRanges = getEditorTextLineRanges(view)
     if (blockRanges.length === 0) return false
 
+    const createMissingDownTargetLine = (
+      baseState: MultiLineEditState,
+      selectedIndices: number[],
+      useCursorBlockIndices: boolean,
+    ) => {
+      if (direction !== 'down' || baseState.headBlockIndex !== blockRanges.length - 1) return false
+      const plan = buildMissingMultiLineDownTargetLinePlan(view.state.tr, blockRanges, baseState.headBlockIndex)
+      if (!plan) return false
+
+      const beforeMarkdown = getNormalizedEditorMarkdown(currentEditor)
+      const beforeState = cloneMultiLineEditState(baseState)
+      view.dispatch(plan.transaction.scrollIntoView())
+
+      const nextBlockRanges = getEditorTextLineRanges(view)
+      const targetRange = nextBlockRanges[plan.targetBlockIndex]
+      if (!targetRange) {
+        editStateRef.current = null
+        const markdownAfterMissingLine = getNormalizedEditorMarkdown(currentEditor)
+        commitMarkdown(markdownAfterMissingLine)
+        currentEditor.focus()
+        return true
+      }
+
+      const headColumn = getMultiLineHeadColumnOffset(baseState, blockRanges)
+      const targetColumn = Math.min(targetRange.length, headColumn)
+      editStateRef.current = useCursorBlockIndices
+        ? {
+            ...baseState,
+            headBlockIndex: plan.targetBlockIndex,
+            columnOffset: targetColumn,
+            columnOffsets: {
+              ...(baseState.columnOffsets ?? {}),
+              [plan.targetBlockIndex]: targetColumn,
+            },
+            cursorBlockIndices: [...selectedIndices, plan.targetBlockIndex].sort((a, b) => a - b),
+            selectionAnchorOffsets: undefined,
+          }
+        : {
+            ...baseState,
+            headBlockIndex: plan.targetBlockIndex,
+            selectionAnchorOffsets: undefined,
+          }
+      syncVisualSelection()
+
+      const markdownAfterMissingLine = getNormalizedEditorMarkdown(currentEditor)
+      commitMarkdown(markdownAfterMissingLine)
+      if (editStateRef.current) {
+        recordHistory(beforeMarkdown, beforeState, markdownAfterMissingLine, editStateRef.current)
+      }
+      currentEditor.focus()
+      return true
+    }
+
     const existing = editStateRef.current
     if (existing) {
       if (existing.cursorBlockIndices?.length) {
@@ -608,7 +662,10 @@ export function useMultilineEditing({
           direction === 'down'
             ? Math.min(blockRanges.length - 1, existing.headBlockIndex + 1)
             : Math.max(0, existing.headBlockIndex - 1)
-        if (nextHeadIndex === existing.headBlockIndex || existingIndices.includes(nextHeadIndex)) return false
+        if (nextHeadIndex === existing.headBlockIndex) {
+          return createMissingDownTargetLine(existing, existingIndices, true)
+        }
+        if (existingIndices.includes(nextHeadIndex)) return false
         const nextHeadRange = blockRanges[nextHeadIndex]
         if (!nextHeadRange) return false
         const nextColumn = Math.min(nextHeadRange.length, getMultiLineHeadColumnOffset(existing, blockRanges))
@@ -629,7 +686,9 @@ export function useMultilineEditing({
         direction === 'down'
           ? Math.min(blockRanges.length - 1, existing.headBlockIndex + 1)
           : Math.max(0, existing.headBlockIndex - 1)
-      if (nextHeadIndex === existing.headBlockIndex) return false
+      if (nextHeadIndex === existing.headBlockIndex) {
+        return createMissingDownTargetLine(existing, getMultiLineSelectedBlockIndices(existing, blockRanges), false)
+      }
       editStateRef.current = {
         ...existing,
         headBlockIndex: nextHeadIndex,
@@ -644,10 +703,21 @@ export function useMultilineEditing({
       direction === 'down'
         ? Math.min(blockRanges.length - 1, headBlockIndex + 1)
         : Math.max(0, headBlockIndex - 1)
-    if (targetIndex === headBlockIndex) return false
 
     const currentHeadBlock = blockRanges[headBlockIndex]
     const columnOffset = Math.max(0, Math.min(currentHeadBlock.length, state.selection.head - currentHeadBlock.start))
+    if (targetIndex === headBlockIndex) {
+      return createMissingDownTargetLine(
+        {
+          anchorBlockIndex: headBlockIndex,
+          headBlockIndex,
+          columnOffset,
+        },
+        [headBlockIndex],
+        false,
+      )
+    }
+
     editStateRef.current = {
       anchorBlockIndex: headBlockIndex,
       headBlockIndex: targetIndex,

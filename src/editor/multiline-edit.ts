@@ -1,7 +1,7 @@
 import type { EditorTextLineRange, MultiLineEditState } from '../types/app'
 import { Selection, TextSelection } from 'prosemirror-state'
 import { canSplit } from 'prosemirror-transform'
-import { findEditorTextLineRangeIndex, getEditorTextLineRanges } from './multiline-ranges'
+import { findEditorTextLineRangeIndex, getEditorTextLineRanges, isCodeBlockTextLineRange } from './multiline-ranges'
 
 export type MultiLineEditInput =
   | { type: 'insert-text'; text: string }
@@ -171,6 +171,30 @@ export function getMultiLineSplitPlan(doc: any, pos: number): { depth: number; t
   return canSplit(doc, pos, 1) ? { depth: 1 } : null
 }
 
+export function buildMissingMultiLineDownTargetLinePlan(
+  transaction: any,
+  blockRanges: EditorTextLineRange[],
+  sourceBlockIndex: number,
+): MissingMultiLineDownTargetLinePlan | null {
+  const sourceRange = blockRanges[sourceBlockIndex]
+  if (!sourceRange || sourceBlockIndex !== blockRanges.length - 1) return null
+
+  const insertPos = sourceRange.end
+  if (isCodeBlockTextLineRange(sourceRange)) {
+    return {
+      transaction: transaction.insertText('\n', insertPos, insertPos),
+      targetBlockIndex: sourceBlockIndex + 1,
+    }
+  }
+
+  const splitPlan = getMultiLineSplitPlan(transaction.doc, insertPos)
+  if (!splitPlan) return null
+  return {
+    transaction: transaction.split(insertPos, splitPlan.depth, splitPlan.typesAfter),
+    targetBlockIndex: sourceBlockIndex + 1,
+  }
+}
+
 export type EmptyMultiLineBlockDeleteTarget = {
   blockIndex: number
   from: number
@@ -189,6 +213,11 @@ export type SelectedRowDeletePlan = {
   transaction: any
   deletedLineBlockIndices: number[]
   nextColumnOffsets: Record<number, number>
+}
+
+type MissingMultiLineDownTargetLinePlan = {
+  transaction: any
+  targetBlockIndex: number
 }
 
 type SelectedRowDeleteContext =
@@ -851,15 +880,73 @@ function clampRowDelta(selectedIndices: number[], blockRanges: EditorTextLineRan
   return Math.max(minDelta, Math.min(maxDelta, rowDelta))
 }
 
+type MultiLineCursorRowsByDeltaOptions = {
+  extendSelection?: boolean
+  collapseAtBoundary?: boolean
+}
+
+function shouldCollapseCursorRowsAtBoundary(
+  selectedIndices: number[],
+  blockRanges: EditorTextLineRange[],
+  rowDelta: number,
+): boolean {
+  if (selectedIndices.length < 2 || blockRanges.length === 0 || rowDelta === 0) return false
+  if (rowDelta < 0) return Math.min(...selectedIndices) <= 0
+  return Math.max(...selectedIndices) >= blockRanges.length - 1
+}
+
+function collapseMultiLineCursorRowsAtBoundary(
+  multiLineEdit: MultiLineEditState,
+  selectedIndices: number[],
+  blockRanges: EditorTextLineRange[],
+  rowDelta: number,
+): MultiLineEditState {
+  const retainedIndices = rowDelta < 0 ? selectedIndices.slice(0, -1) : selectedIndices.slice(1)
+  if (retainedIndices.length === 0) {
+    return {
+      ...multiLineEdit,
+      selectionAnchorOffsets: undefined,
+    }
+  }
+
+  const nextHeadIndex = rowDelta < 0 ? retainedIndices[0] : retainedIndices[retainedIndices.length - 1]
+  const nextAnchorIndex = rowDelta < 0 ? retainedIndices[retainedIndices.length - 1] : retainedIndices[0]
+  const nextColumnOffsets = retainedIndices.reduce<Record<number, number>>((acc, blockIndex) => {
+    const range = blockRanges[blockIndex]
+    if (range) {
+      acc[blockIndex] = getMultiLineColumnOffset(multiLineEdit, blockIndex, range)
+    }
+    return acc
+  }, {})
+
+  return {
+    ...multiLineEdit,
+    anchorBlockIndex: nextAnchorIndex,
+    headBlockIndex: nextHeadIndex,
+    columnOffset: nextColumnOffsets[nextHeadIndex] ?? multiLineEdit.columnOffset,
+    columnOffsets: nextColumnOffsets,
+    cursorBlockIndices: multiLineEdit.cursorBlockIndices ? retainedIndices : undefined,
+    selectionAnchorOffsets: undefined,
+  }
+}
+
 export function moveMultiLineCursorRowsByDelta(
   multiLineEdit: MultiLineEditState,
   selectedIndices: number[],
   blockRanges: EditorTextLineRange[],
   rowDelta: number,
-  options: { extendSelection?: boolean } = {},
+  options: MultiLineCursorRowsByDeltaOptions = {},
 ): MultiLineEditState {
   const delta = clampRowDelta(selectedIndices, blockRanges, rowDelta)
   if (delta === 0) {
+    if (
+      options.collapseAtBoundary &&
+      !options.extendSelection &&
+      shouldCollapseCursorRowsAtBoundary(selectedIndices, blockRanges, rowDelta)
+    ) {
+      return collapseMultiLineCursorRowsAtBoundary(multiLineEdit, selectedIndices, blockRanges, rowDelta)
+    }
+
     return {
       ...multiLineEdit,
       selectionAnchorOffsets: options.extendSelection ? multiLineEdit.selectionAnchorOffsets : undefined,
@@ -1027,7 +1114,7 @@ export function moveMultiLineCursorState(
   selectedIndices: number[],
   blockRanges: EditorTextLineRange[],
   movement: MultiLineCursorMovement,
-  options: { extendSelection?: boolean; pageRowDelta?: number } = {},
+  options: MultiLineCursorRowsByDeltaOptions & { pageRowDelta?: number } = {},
 ): MultiLineEditState | null {
   if (movement === 'up' || movement === 'down' || movement === 'page-up' || movement === 'page-down') {
     const rowDelta =
@@ -1036,7 +1123,10 @@ export function moveMultiLineCursorState(
         : movement === 'down'
           ? 1
           : options.pageRowDelta ?? (movement === 'page-up' ? -10 : 10)
-    return moveMultiLineCursorRowsByDelta(multiLineEdit, selectedIndices, blockRanges, rowDelta, options)
+    return moveMultiLineCursorRowsByDelta(multiLineEdit, selectedIndices, blockRanges, rowDelta, {
+      ...options,
+      collapseAtBoundary: options.collapseAtBoundary ?? (movement === 'up' || movement === 'down'),
+    })
   }
 
   const nextAnchorIndex = multiLineEdit.anchorBlockIndex

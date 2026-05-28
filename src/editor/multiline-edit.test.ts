@@ -6,12 +6,14 @@ import {
   applySingleCursorPageMovement,
   buildDeletedLineMultiLineState,
   buildForwardBoundaryDeletePlan,
+  buildMissingMultiLineDownTargetLinePlan,
   buildSelectedRowDeletePlan,
   buildSplitLineMultiLineState,
   getEmptyMultiLineBlockDeleteTargets,
   getMultiLinePageMovementRowDelta,
   getMultiLineSplitPlan,
   moveMultiLineCursorRowsByDelta,
+  moveMultiLineCursorState,
   shouldApplyMultiLineBoundaryDelete,
   shouldApplyMultiLineWholeSelectionBoundaryDelete,
 } from './multiline-edit'
@@ -292,6 +294,36 @@ describe('multi-cursor split line editing', () => {
   })
 })
 
+describe('multi-cursor missing line creation', () => {
+  it('creates a paragraph target line when expanding down after the final paragraph', () => {
+    const view = createView(multilineEditSchema.nodes.doc.create(null, [paragraph('alpha')]))
+    const ranges = getEditorTextLineRanges(view)
+    const plan = buildMissingMultiLineDownTargetLinePlan(view.state.tr, ranges, 0)
+
+    expect(plan).not.toBeNull()
+    expect(plan?.targetBlockIndex).toBe(1)
+    view.apply(plan!.transaction)
+
+    expect(view.state.doc.childCount).toBe(2)
+    expect(view.state.doc.child(0).textContent).toBe('alpha')
+    expect(view.state.doc.child(1).textContent).toBe('')
+    expect(getEditorTextLineRanges(view).map((range) => range.text)).toEqual(['alpha', ''])
+  })
+
+  it('creates a code block target line when expanding down after the final code line', () => {
+    const view = createView(multilineEditSchema.nodes.doc.create(null, [codeBlock('alpha')]))
+    const ranges = getEditorTextLineRanges(view)
+    const plan = buildMissingMultiLineDownTargetLinePlan(view.state.tr, ranges, 0)
+
+    expect(plan).not.toBeNull()
+    expect(plan?.targetBlockIndex).toBe(1)
+    view.apply(plan!.transaction)
+
+    expect(view.state.doc.childCount).toBe(1)
+    expect(getEditorTextLineRanges(view).map((range) => range.text)).toEqual(['alpha', ''])
+  })
+})
+
 describe('multi-cursor page movement editing', () => {
   it('moves all cursor rows by a page delta while preserving and clamping columns', () => {
     const view = createView(
@@ -331,6 +363,18 @@ describe('multi-cursor page movement editing', () => {
     expect(bottomState.cursorBlockIndices).toEqual([1, 2])
     expect(bottomState.anchorBlockIndex).toBe(1)
     expect(bottomState.headBlockIndex).toBe(2)
+  })
+
+  it('keeps page movement clamped instead of shrinking boundary cursors', () => {
+    const view = createView(multilineEditSchema.nodes.doc.create(null, ['a', 'bb', 'ccc'].map((text) => paragraph(text))))
+    const ranges = getEditorTextLineRanges(view)
+    const nextState = moveMultiLineCursorState(multiLineState([1, 2], 1), [1, 2], ranges, 'page-down', {
+      pageRowDelta: 10,
+    })
+
+    expect(nextState?.cursorBlockIndices).toEqual([1, 2])
+    expect(nextState?.anchorBlockIndex).toBe(1)
+    expect(nextState?.headBlockIndex).toBe(2)
   })
 
   it('derives page row deltas from editor coordinates', () => {
@@ -458,6 +502,40 @@ describe('single-cursor page movement editing', () => {
     expect(view.state.selection.anchor).toBe(anchor)
     expect(view.state.selection.head).toBe(ranges[5].start + 1)
     expect(view.state.selection.empty).toBe(false)
+  })
+})
+
+describe('multi-cursor boundary row movement editing', () => {
+  it('shrinks upward boundary movement by dropping the bottommost cursor', () => {
+    const view = createView(multilineEditSchema.nodes.doc.create(null, ['zero', 'one', 'two'].map((text) => paragraph(text))))
+    const ranges = getEditorTextLineRanges(view)
+    const state: MultiLineEditState = {
+      ...multiLineState([0, 1, 2], 2),
+      columnOffsets: { 0: 1, 1: 2, 2: 3 },
+    }
+    const nextState = moveMultiLineCursorState(state, [0, 1, 2], ranges, 'up')
+
+    expect(nextState?.cursorBlockIndices).toEqual([0, 1])
+    expect(nextState?.anchorBlockIndex).toBe(1)
+    expect(nextState?.headBlockIndex).toBe(0)
+    expect(nextState?.columnOffsets).toEqual({ 0: 1, 1: 2 })
+    expect(nextState?.selectionAnchorOffsets).toBeUndefined()
+  })
+
+  it('shrinks downward boundary movement by dropping the topmost cursor', () => {
+    const view = createView(multilineEditSchema.nodes.doc.create(null, ['zero', 'one', 'two'].map((text) => paragraph(text))))
+    const ranges = getEditorTextLineRanges(view)
+    const state: MultiLineEditState = {
+      ...multiLineState([1, 2], 2),
+      columnOffsets: { 1: 1, 2: 2 },
+    }
+    const nextState = moveMultiLineCursorState(state, [1, 2], ranges, 'down')
+
+    expect(nextState?.cursorBlockIndices).toEqual([2])
+    expect(nextState?.anchorBlockIndex).toBe(2)
+    expect(nextState?.headBlockIndex).toBe(2)
+    expect(nextState?.columnOffsets).toEqual({ 2: 2 })
+    expect(nextState?.selectionAnchorOffsets).toBeUndefined()
   })
 })
 

@@ -15,8 +15,8 @@ describe('arrange placement neighbor helpers', () => {
     expect(getPlacementNeighborId(['a', 'b', 'c'], 'c', 'after')).toBeNull()
   })
 
-  it('ignores the dragged source item when resolving the companion cue', () => {
-    expect(getPlacementNeighborId(['a', 'b', 'c', 'd'], 'c', 'before', 'b')).toBe('a')
-    expect(getPlacementNeighborId(['a', 'b', 'c', 'd'], 'b', 'after', 'c')).toBe('d')
+  it('keeps the dragged source item eligible as a companion cue', () => {
+    expect(getPlacementNeighborId(['a', 'b', 'c', 'd'], 'c', 'before', 'b')).toBe('b')
+    expect(getPlacementNeighborId(['a', 'b', 'c', 'd'], 'a', 'after', 'b')).toBe('b')
   })
 })

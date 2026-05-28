@@ -119,10 +119,16 @@ describe('menu font scaling styles', () => {
     const afterDropRule = extractRule(css, '.aisle-edit-card.is-drop-target-after')
     const beforeDropNeighborRule = extractRule(css, '.aisle-edit-card.is-drop-neighbor-before')
     const afterDropNeighborRule = extractRule(css, '.aisle-edit-card.is-drop-neighbor-after')
+    const draggedDropNeighborRule = extractRule(css, '.aisle-edit-card.is-dragging.is-drop-neighbor-before')
     const parentNeighborRule = extractRule(tabCss, '.parent-tab-btn.is-arrange-neighbor-before')
     const subtabNeighborRule = extractRule(tabCss, '.subtab-btn.is-arrange-neighbor-after')
+    const draggedTabNeighborRule = extractRule(tabCss, '.tab-btn.is-arrangeable.is-dragging.is-arrange-neighbor-before')
     const compactDomainNeighborRule = extractRule(topbarCss, '.compact-domain-btn.is-arrange-neighbor-before')
     const compactSpaceNeighborRule = extractRule(topbarCss, '.compact-space-btn.is-arrange-neighbor-after')
+    const draggedCompactNeighborRule = extractRule(
+      topbarCss,
+      '.compact-scope-btn.is-arrangeable.is-dragging.is-arrange-neighbor-before',
+    )
 
     expect(modalRule).toContain('max-width: calc(100vw - 2rem);')
     expect(modalRule).toContain('min-width: 0;')
@@ -143,10 +149,13 @@ describe('menu font scaling styles', () => {
     expect(beforeDropNeighborRule).toContain('inset 1px 0 0 color-mix')
     expect(beforeDropNeighborRule).toContain(' 8%, transparent')
     expect(afterDropNeighborRule).toContain('inset -1px 0 0 color-mix')
+    expect(draggedDropNeighborRule).toContain('inset 1px 0 0 color-mix')
     expect(parentNeighborRule).toContain('inset 1px 0 0 color-mix')
     expect(subtabNeighborRule).toContain('inset -1px 0 0 color-mix')
+    expect(draggedTabNeighborRule).toContain('inset 1px 0 0 color-mix')
     expect(compactDomainNeighborRule).toContain('inset 1px 0 0 color-mix')
     expect(compactSpaceNeighborRule).toContain('inset -1px 0 0 color-mix')
+    expect(draggedCompactNeighborRule).toContain('inset 1px 0 0 color-mix')
     expect(css).not.toContain('.aisle-edit-card.is-drop-target {')
   })
 

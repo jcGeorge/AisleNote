@@ -59,6 +59,7 @@ describe('AisleEditModal', () => {
     expect(source).toContain('is-drop-neighbor-after')
     expect(source).toContain('getPlacementNeighborId')
     expect(source).toContain('reorderAisleDraftByInsertion')
+    expect(source).not.toContain('draggingAisleId === targetAisleId')
     expect(source).not.toContain('is-drop-target\'')
     expect(source).not.toContain('is-drop-target"')
   })

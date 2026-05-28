@@ -40,8 +40,9 @@ export function getPlacementNeighborId(
   position: ArrangeInsertPosition | null | undefined,
   sourceId: string | null | undefined = null,
 ) {
+  void sourceId
   if (!targetId || !position) return null
-  const orderedIds = itemIds.filter((id) => id && id !== sourceId)
+  const orderedIds = itemIds.filter(Boolean)
   const targetIndex = orderedIds.indexOf(targetId)
   if (targetIndex < 0) return null
   return position === 'before' ? (orderedIds[targetIndex - 1] ?? null) : (orderedIds[targetIndex + 1] ?? null)
