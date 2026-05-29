@@ -1,6 +1,7 @@
-import { readFileSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { buildAppStateExportArchive, getHybridStorageRoot, importAppStateArchive } from './app-state-storage.mjs'
+import { parseStrictPortableAppSettingsJson } from '../src/storage/settings-partition.js'
 
 const USER_SETTINGS_MAX_BYTES = 1024 * 1024
 
@@ -126,6 +127,44 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
         canceled: false,
         ok: true,
         contents: readFileSync(filePath, 'utf8'),
+        filePath,
+      }
+    } catch (error) {
+      return {
+        canceled: false,
+        ok: false,
+        error: error instanceof Error ? error.message : 'User settings file could not be opened.',
+      }
+    }
+  })
+
+  ipcMain.handle('open-user-settings-from-notebook-folder', async () => {
+    const openResult = await dialog.showOpenDialog({
+      title: 'Import user settings from notebook folder',
+      properties: ['openDirectory'],
+    })
+
+    if (openResult.canceled || !openResult.filePaths?.[0]) return { canceled: true }
+
+    const folderPath = openResult.filePaths[0]
+    const filePath = path.join(folderPath, 'settings', 'app-settings.json')
+    if (!existsSync(filePath)) {
+      return { canceled: false, ok: false, error: 'Notebook folder does not contain settings/app-settings.json.' }
+    }
+
+    try {
+      const stats = statSync(filePath)
+      if (stats.size > USER_SETTINGS_MAX_BYTES) {
+        return { canceled: false, ok: false, error: 'User settings file is too large.' }
+      }
+      const contents = readFileSync(filePath, 'utf8')
+      if (!parseStrictPortableAppSettingsJson(contents).ok) {
+        return { canceled: false, ok: false, error: 'User settings file does not match app-settings.json structure.' }
+      }
+      return {
+        canceled: false,
+        ok: true,
+        contents,
         filePath,
       }
     } catch (error) {

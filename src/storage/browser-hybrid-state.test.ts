@@ -451,7 +451,7 @@ describe('browser hybrid storage', () => {
           showParentHomeTab: false,
           stageManagerOpenDestinationAfterApply: false,
           settingsSection: 'toolbar',
-          dataSettingsSection: 'export',
+          dataSettingsSection: 'storage',
           selectedCustomTheme: 'custom2',
           lastNoteCopyMode: 'linked',
           findCaseSensitive: true,
@@ -497,7 +497,7 @@ describe('browser hybrid storage', () => {
     expect(appSettings.noteFontScale).toBe(1.2)
     expect(appSettings.tooltipScale).toBe(1.25)
     expect(getRecord(appSettings.ui).settingsSection).toBe('toolbar')
-    expect(getRecord(appSettings.ui).dataSettingsSection).toBe('export')
+    expect(getRecord(appSettings.ui).dataSettingsSection).toBe('storage')
     expect(getRecord(appSettings.ui).lastNoteCopyMode).toBe('linked')
     expect(getRecord(appSettings.ui).findCaseSensitive).toBe(true)
     expect(getRecord(appSettings.ui).findWholeWord).toBe(true)
@@ -527,7 +527,7 @@ describe('browser hybrid storage', () => {
     expect(roundTripped.ui.tabButtonScale).toBe(1.3)
     expect(roundTripped.ui.noteFontScale).toBe(1.2)
     expect(roundTripped.ui.tooltipScale).toBe(1.25)
-    expect(roundTripped.ui.dataSettingsSection).toBe('export')
+    expect(roundTripped.ui.dataSettingsSection).toBe('storage')
     expect(roundTripped.ui.findCaseSensitive).toBe(true)
     expect(roundTripped.ui.findWholeWord).toBe(true)
     expect(roundTripped.ui.findRegex).toBe(true)

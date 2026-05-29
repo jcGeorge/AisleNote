@@ -210,10 +210,10 @@ import {
 import { useSettingsController } from './settings/useSettingsController'
 import {
   applyPortableAppSettings,
-  parsePortableAppSettingsJson,
+  parseStrictPortableAppSettingsJson,
   stringifyPortableAppSettings,
 } from './storage/settings-partition.js'
-import { applyAutoPurgeToAppState, ensureNoteBodiesForAppState, parseSavedState } from './state/app-state'
+import { DEFAULT_STATE, applyAutoPurgeToAppState, ensureNoteBodiesForAppState, parseSavedState } from './state/app-state'
 import { mergeImportedBackupState } from './import/backup-import'
 import {
   materializeNotebookImportAssets,
@@ -345,6 +345,10 @@ function getMultiLineListOperationForNewlineOperation(
 
 const DEFAULT_TOAST_DURATION_MS = 3000
 const HOVERED_TOAST_DURATION_MS = 2000
+const USER_SETTINGS_FILE_STRUCTURE_ERROR = "The file selected doesn't match our app-settings.json structure."
+const USER_SETTINGS_FOLDER_STRUCTURE_ERROR =
+  "The folder selected doesn't contain an app-settings.json file that matches this project's structure."
+const USER_SETTINGS_FOLDER_IMPORT_HINT = 'Export or copy app-settings.json into that notebook folder, then try again.'
 
 type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
 
@@ -3262,13 +3266,26 @@ function App() {
     returnToLastTabLikeView()
   }
 
-  const exportData = (scope: ExportScope, spaceId?: string) =>
-    exportAppData({
+  const buildBlankNotebookSerializedState = () => {
+    const latestState = buildStateWithLatestEditorContent()
+    const blankState = parseSavedState(JSON.stringify(DEFAULT_STATE))
+    return JSON.stringify(applyPortableAppSettings(blankState, latestState))
+  }
+
+  const createNotebook = () => storageProfileController.createNotebook(buildBlankNotebookSerializedState)
+
+  const exportData = (scope: ExportScope, spaceId?: string) => {
+    if (scope === 'all' && !window.electronAPI?.exportAppState) {
+      settingsController.setExportStatus('backup export is available in the desktop app.')
+      return undefined
+    }
+    return exportAppData({
       scope,
       spaceId,
       getLatestState: buildStateWithLatestEditorContent,
       setStatus: settingsController.setExportStatus,
     })
+  }
 
   const exportNotebook = () =>
     exportNotebookArchive({
@@ -3319,11 +3336,11 @@ function App() {
         return
       }
       if (!result.ok) {
-        settingsController.setImportStatus(result.error ? `import failed: ${result.error}` : 'import failed.')
+        settingsController.setImportStatus(result.error ? `backup import failed: ${result.error}` : 'backup import failed.')
         return
       }
       if (!result.serializedState) {
-        settingsController.setImportStatus('import failed: archive did not contain app state.')
+        settingsController.setImportStatus('backup import failed: archive did not contain app state.')
         return
       }
 
@@ -3336,11 +3353,11 @@ function App() {
       const warningCount = summary.warnings.length + (result.issues?.filter((issue) => issue.severity === 'warning').length ?? 0)
       const warningText = warningCount > 0 ? ` ${warningCount} warning(s).` : ''
       settingsController.setImportStatus(
-        `imported ${summary.domains} domain(s), ${summary.spaces} space(s), ${summary.tabs} tab(s), ${summary.notes} note(s).${unresolvedText}${warningText}`,
+        `imported backup: ${summary.domains} domain(s), ${summary.spaces} space(s), ${summary.tabs} tab(s), ${summary.notes} note(s).${unresolvedText}${warningText}`,
       )
     } catch (error) {
       const message = error instanceof Error ? error.message : 'unknown error'
-      settingsController.setImportStatus(`import failed: ${message}`)
+      settingsController.setImportStatus(`backup import failed: ${message}`)
     }
   }
 
@@ -3400,9 +3417,9 @@ function App() {
         return
       }
       const contents = 'contents' in openResult ? openResult.contents : ''
-      const parsedSettings = parsePortableAppSettingsJson(contents)
+      const parsedSettings = parseStrictPortableAppSettingsJson(contents)
       if (!parsedSettings.ok) {
-        settingsController.setImportStatus(`user settings import failed: ${parsedSettings.error}`)
+        settingsController.setImportStatus(USER_SETTINGS_FILE_STRUCTURE_ERROR)
         return
       }
       if (!window.confirm('Importing user settings will overwrite current theme, hotkeys, shortcuts, and app preferences. Continue?')) {
@@ -3413,6 +3430,46 @@ function App() {
       const latestState = buildStateWithLatestEditorContent()
       await commitAppStateNow(applyPortableAppSettings(latestState, parsedSettings.settings))
       settingsController.setImportStatus('user settings imported.')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'unknown error'
+      settingsController.setImportStatus(`user settings import failed: ${message}`)
+    }
+  }
+
+  const importUserSettingsFromNotebookFolder = async () => {
+    const openFromNotebookFolder = window.electronAPI?.openUserSettingsFromNotebookFolder
+    if (!openFromNotebookFolder) {
+      settingsController.setImportStatus('import from notebook folder is available in the desktop app.')
+      return
+    }
+
+    settingsController.setImportStatus('choose a notebook folder to import user settings from.')
+    try {
+      const openResult = await openFromNotebookFolder()
+      if (openResult.canceled) {
+        settingsController.setImportStatus('user settings import canceled.')
+        return
+      }
+      if (!openResult.ok) {
+        settingsController.setImportStatus(USER_SETTINGS_FOLDER_STRUCTURE_ERROR)
+        pushToast(USER_SETTINGS_FOLDER_IMPORT_HINT, 'warning', 6000)
+        return
+      }
+
+      const parsedSettings = parseStrictPortableAppSettingsJson(openResult.contents)
+      if (!parsedSettings.ok) {
+        settingsController.setImportStatus(USER_SETTINGS_FOLDER_STRUCTURE_ERROR)
+        pushToast(USER_SETTINGS_FOLDER_IMPORT_HINT, 'warning', 6000)
+        return
+      }
+      if (!window.confirm('Importing user settings will overwrite current theme, hotkeys, shortcuts, and app preferences. Continue?')) {
+        settingsController.setImportStatus('user settings import canceled.')
+        return
+      }
+
+      const latestState = buildStateWithLatestEditorContent()
+      await commitAppStateNow(applyPortableAppSettings(latestState, parsedSettings.settings))
+      settingsController.setImportStatus('user settings imported from notebook folder.')
     } catch (error) {
       const message = error instanceof Error ? error.message : 'unknown error'
       settingsController.setImportStatus(`user settings import failed: ${message}`)
@@ -4496,6 +4553,7 @@ function App() {
           onImportBackup={importBackup}
           onImportNotebook={importNotebook}
           onImportUserSettings={importUserSettings}
+          onImportUserSettingsFromNotebookFolder={importUserSettingsFromNotebookFolder}
           notebookImportSummary={pendingNotebookImport?.summary ?? null}
           notebookImportScratchpadEnabled={notebookImportScratchpadEnabled}
           notebookImportHasScratchpad={Boolean(pendingNotebookImport?.scratchpad)}
@@ -4546,7 +4604,8 @@ function App() {
           onDeleteFrontmatterTemplateField={settingsController.deleteFrontmatterTemplateField}
           onSaveFrontmatterTemplates={settingsController.saveFrontmatterTemplates}
           onDiscardFrontmatterTemplateChanges={settingsController.discardFrontmatterTemplateChanges}
-          onChooseStorageFolder={storageProfileController.chooseStorageFolder}
+          onCreateNotebook={createNotebook}
+          onSwitchNotebook={storageProfileController.switchNotebook}
           onMoveStorageProfile={storageProfileController.moveStorageProfile}
           onRevealStorageProfile={storageProfileController.revealStorageProfile}
           onRetryStorageProfile={storageProfileController.retryStorageProfile}
@@ -4721,7 +4780,7 @@ function App() {
 
       {storageProfileStatus?.status === 'error' && (
         <div className="storage-status-banner" role="alert">
-          <span>{storageProfileStatus.error ?? 'storage profile could not be loaded. saves are paused.'}</span>
+          <span>{storageProfileStatus.error ?? 'notebook folder could not be loaded. saves are paused.'}</span>
           <button type="button" className="btn btn-sm settings-action-btn" onClick={storageProfileController.retryStorageProfile}>
             retry
           </button>

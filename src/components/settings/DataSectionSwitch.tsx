@@ -1,10 +1,10 @@
 import type { DataSettingsSection } from '../../types/app'
 
 const DATA_SECTION_OPTIONS: Array<{ id: DataSettingsSection; label: string }> = [
-  { id: 'cloud', label: 'cloud' },
+  { id: 'notebook', label: 'notebook' },
+  { id: 'settings', label: 'settings' },
+  { id: 'storage', label: 'folder' },
   { id: 'trash', label: 'trash' },
-  { id: 'export', label: 'export' },
-  { id: 'import', label: 'import' },
 ]
 
 type DataSectionSwitchProps = {

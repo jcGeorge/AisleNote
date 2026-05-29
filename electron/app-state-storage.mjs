@@ -548,7 +548,7 @@ function createRecoverySnapshot(rootPath, userDataPath) {
   const snapshotPath = path.join(recoveryParent, `${HYBRID_ROOT_DIR}-${Date.now()}`)
   measureSlowMainOperation('storage recovery snapshot', () => {
     cpSync(rootPath, snapshotPath, { recursive: true, force: true })
-    const userSettingsPath = getUserSettingsFilePath(path.dirname(rootPath))
+    const userSettingsPath = getUserSettingsFilePath(userDataPath)
     if (existsSync(userSettingsPath)) {
       const snapshotSettingsPath = path.join(snapshotPath, USER_SETTINGS_FILE_PATH)
       mkdirSync(path.dirname(snapshotSettingsPath), { recursive: true })
@@ -1386,7 +1386,11 @@ function readAppSettingsForProfile(profileRootPath, issues = null) {
   return readAppSettingsJsonFile(userSettingsPath, USER_SETTINGS_FILE_PATH, issues)
 }
 
-function readCurrentRootParts(rootPath, rootManifest, issues = null, profileRootPath = path.dirname(rootPath)) {
+function getUserSettingsRoot(profileRootPath, options = {}) {
+  return typeof options.userSettingsRoot === 'string' ? options.userSettingsRoot : profileRootPath
+}
+
+function readCurrentRootParts(rootPath, rootManifest, issues = null, profileRootPath = path.dirname(rootPath), options = {}) {
   if (!isRecord(rootManifest?.files)) {
     addStorageIssue(
       issues,
@@ -1404,7 +1408,7 @@ function readCurrentRootParts(rootPath, rootManifest, issues = null, profileRoot
     if (!file) return null
     splitFiles[key] = file
   }
-  splitFiles.appSettings = readAppSettingsForProfile(profileRootPath, issues)
+  splitFiles.appSettings = readAppSettingsForProfile(getUserSettingsRoot(profileRootPath, options), issues)
   splitFiles.editorState = readRootSplitJsonFile(rootPath, rootManifest, 'editorState', false, issues) ?? {}
   const noteRegistry = splitFiles.noteRegistry
 
@@ -1498,8 +1502,8 @@ function readSpace(rootPath, spaceRootRelative, spaceEntry, issues = null) {
   }
 }
 
-function readHybridAppStateFromRootManifest(rootPath, rootManifest, issues = null, profileRootPath = path.dirname(rootPath)) {
-  const rootParts = readCurrentRootParts(rootPath, rootManifest, issues, profileRootPath)
+function readHybridAppStateFromRootManifest(rootPath, rootManifest, issues = null, profileRootPath = path.dirname(rootPath), options = {}) {
+  const rootParts = readCurrentRootParts(rootPath, rootManifest, issues, profileRootPath, options)
   if (!rootParts) return null
 
   const noteBodies = readNoteBodiesFromRoot(rootParts.noteBodiesRoot)
@@ -1624,7 +1628,7 @@ function readHybridAppStateFromRootManifest(rootPath, rootManifest, issues = nul
   }))
 }
 
-function readHybridAppStateResultFromRoot(rootPath, profileRootPath = path.dirname(rootPath)) {
+function readHybridAppStateResultFromRoot(rootPath, profileRootPath = path.dirname(rootPath), options = {}) {
   const issues = []
   if (!existsSync(rootPath)) return { serializedState: null, schemaVersion: null, issues }
 
@@ -1658,22 +1662,22 @@ function readHybridAppStateResultFromRoot(rootPath, profileRootPath = path.dirna
   }
 
   return {
-    serializedState: readHybridAppStateFromRootManifest(rootPath, rawRootManifest, issues, profileRootPath),
+    serializedState: readHybridAppStateFromRootManifest(rootPath, rawRootManifest, issues, profileRootPath, options),
     schemaVersion: rawRootManifest.schemaVersion,
     issues,
   }
 }
 
-function readHybridAppStateFromRoot(rootPath, profileRootPath = path.dirname(rootPath)) {
-  return readHybridAppStateResultFromRoot(rootPath, profileRootPath).serializedState
+function readHybridAppStateFromRoot(rootPath, profileRootPath = path.dirname(rootPath), options = {}) {
+  return readHybridAppStateResultFromRoot(rootPath, profileRootPath, options).serializedState
 }
 
-export function loadAppState(profileRootPath) {
-  const result = loadAppStateResult(profileRootPath)
+export function loadAppState(profileRootPath, options = {}) {
+  const result = loadAppStateResult(profileRootPath, options)
   return result.ok ? result.serializedState : null
 }
 
-export function loadAppStateResult(profileRootPath) {
+export function loadAppStateResult(profileRootPath, options = {}) {
   const finalRoot = getHybridStorageRoot(profileRootPath)
   const finalExists = existsSync(finalRoot)
   const conflicts = detectStorageConflicts(profileRootPath, finalRoot)
@@ -1695,7 +1699,7 @@ export function loadAppStateResult(profileRootPath) {
     ))
   }
 
-  const hybridResult = readHybridAppStateResultFromRoot(finalRoot, profileRootPath)
+  const hybridResult = readHybridAppStateResultFromRoot(finalRoot, profileRootPath, options)
   if (hybridResult.serializedState !== null) {
     return withStorageHealth({
       ok: true,
@@ -1731,6 +1735,12 @@ export function loadAppStateResult(profileRootPath) {
 export function saveAppState(profileRootPath, serializedState, options = {}) {
   const finalRoot = getHybridStorageRoot(profileRootPath)
   const recoveryRoot = typeof options.userDataPath === 'string' ? options.userDataPath : profileRootPath
+  const userSettingsRoot =
+    typeof options.userSettingsRoot === 'string'
+      ? options.userSettingsRoot
+      : typeof options.userDataPath === 'string'
+        ? options.userDataPath
+        : profileRootPath
   const snapshotMode = Object.values(STORAGE_SNAPSHOT_MODES).includes(options.snapshotMode)
     ? options.snapshotMode
     : STORAGE_SNAPSHOT_MODES.FORCE
@@ -1746,7 +1756,7 @@ export function saveAppState(profileRootPath, serializedState, options = {}) {
   measureSlowMainOperation('hybrid app-state write', () =>
     writeHybridStorage(finalRoot, serializedState, {
       assetSourceRoot: typeof options.assetSourceRoot === 'string' ? options.assetSourceRoot : finalRoot,
-      userSettingsRoot: profileRootPath,
+      userSettingsRoot,
     }),
   )
 
@@ -1766,7 +1776,9 @@ export function restoreStorageRecoverySnapshot(profileRootPath, userDataPath, sn
     return { ok: false, error: 'No recovery snapshot is available.' }
   }
 
-  const snapshotResult = readHybridAppStateResultFromRoot(selectedSnapshot.path, selectedSnapshot.path)
+  const snapshotResult = readHybridAppStateResultFromRoot(selectedSnapshot.path, selectedSnapshot.path, {
+    userSettingsRoot: selectedSnapshot.path,
+  })
   if (snapshotResult.serializedState === null) {
     return { ok: false, error: 'Recovery snapshot could not be loaded.', snapshot: selectedSnapshot }
   }
@@ -1777,12 +1789,12 @@ export function restoreStorageRecoverySnapshot(profileRootPath, userDataPath, sn
   cpSync(selectedSnapshot.path, finalRoot, { recursive: true, force: true })
   const snapshotSettingsPath = path.join(selectedSnapshot.path, USER_SETTINGS_FILE_PATH)
   if (existsSync(snapshotSettingsPath)) {
-    mkdirSync(path.dirname(getUserSettingsFilePath(profileRootPath)), { recursive: true })
-    cpSync(snapshotSettingsPath, getUserSettingsFilePath(profileRootPath), { force: true })
+    mkdirSync(path.dirname(getUserSettingsFilePath(userDataPath)), { recursive: true })
+    cpSync(snapshotSettingsPath, getUserSettingsFilePath(userDataPath), { force: true })
   }
   rmSync(path.join(finalRoot, USER_SETTINGS_DIR), { recursive: true, force: true })
   pruneStorageRecoverySnapshots(userDataPath)
-  return { ok: true, snapshot: selectedSnapshot, loadResult: loadAppStateResult(profileRootPath) }
+  return { ok: true, snapshot: selectedSnapshot, loadResult: loadAppStateResult(profileRootPath, { userSettingsRoot: userDataPath }) }
 }
 
 export function createPreWriteStorageSnapshot(finalRoot, backupRoot) {

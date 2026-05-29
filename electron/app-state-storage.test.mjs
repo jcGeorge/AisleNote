@@ -557,6 +557,32 @@ describe('Electron app state storage load result', () => {
       expect(parsed.domains[0].spaces[0].data.tabs[0].title).toBe('Tab')
     }))
 
+  it('uses app support user settings when loading a selected notebook folder', () =>
+    withTempUserDataPath((userDataPath) => {
+      const profileRootPath = mkdtempSync(path.join(os.tmpdir(), 'tabs-profile-'))
+      try {
+        const state = JSON.parse(serializedAppState())
+        state.theme = 'light'
+        saveAppState(profileRootPath, JSON.stringify(state), { userDataPath })
+
+        const globalSettingsPath = path.join(userDataPath, 'settings', 'app-settings.json')
+        const folderSettingsPath = path.join(profileRootPath, 'settings', 'app-settings.json')
+        const globalSettings = readJson(globalSettingsPath)
+        expect(existsSync(folderSettingsPath)).toBe(false)
+        expect(globalSettings.theme).toBe('light')
+
+        mkdirSync(path.dirname(folderSettingsPath), { recursive: true })
+        writeFileSync(folderSettingsPath, `${JSON.stringify({ ...globalSettings, theme: 'blues' }, null, 2)}\n`, 'utf8')
+        writeFileSync(globalSettingsPath, `${JSON.stringify({ ...globalSettings, theme: 'dawn' }, null, 2)}\n`, 'utf8')
+
+        const result = loadAppStateResult(profileRootPath, { userSettingsRoot: userDataPath })
+        expect(result.ok).toBe(true)
+        expect(JSON.parse(result.serializedState).theme).toBe('dawn')
+      } finally {
+        rmSync(profileRootPath, { recursive: true, force: true })
+      }
+    }))
+
   it('ignores and prunes notes app-settings when sibling settings are missing', () =>
     withTempUserDataPath((userDataPath) => {
       saveAppState(userDataPath, serializedAppState())

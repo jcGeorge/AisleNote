@@ -7,11 +7,9 @@ import {
   NEWLINE_OPERATIONS,
 } from '../../hotkeys/shortcuts'
 import {
-  MAX_AUTO_REMOVE_DAYS,
   MAX_NOTE_FONT_SCALE,
   MAX_TAB_BUTTON_SCALE,
   MAX_TOOLTIP_SCALE,
-  MIN_AUTO_REMOVE_DAYS,
   MIN_NOTE_FONT_SCALE,
   MIN_TAB_BUTTON_SCALE,
   MIN_TOOLTIP_SCALE,
@@ -53,7 +51,7 @@ import type {
 } from '../../types/app'
 import { MAX_SCRATCHPAD_AISLE_LIMIT } from '../../state/scratchpad'
 import { CustomThemeEditor } from './CustomThemeEditor'
-import { DataSectionSwitch } from './DataSectionSwitch'
+import { DataSettingsPanel } from './DataSettingsPanel'
 import { ThemePreview } from './ThemePreview'
 import { ToolbarSettingsPanel } from './ToolbarSettingsPanel'
 import { VisualsSectionSwitch } from './VisualsSectionSwitch'
@@ -145,6 +143,7 @@ type SettingsPageProps = {
   onImportBackup: () => void
   onImportNotebook: () => void
   onImportUserSettings: () => void
+  onImportUserSettingsFromNotebookFolder: () => void
   notebookImportSummary: NotebookArchiveSummary | null
   notebookImportScratchpadEnabled: boolean
   notebookImportHasScratchpad: boolean
@@ -195,7 +194,8 @@ type SettingsPageProps = {
   onDeleteFrontmatterTemplateField: (templateId: string, fieldId: string) => void
   onSaveFrontmatterTemplates: () => void
   onDiscardFrontmatterTemplateChanges: () => void
-  onChooseStorageFolder: () => void
+  onCreateNotebook: () => void
+  onSwitchNotebook: () => void
   onMoveStorageProfile: () => void
   onRevealStorageProfile: () => void
   onRetryStorageProfile: () => void
@@ -247,6 +247,7 @@ export function SettingsPage({
   onImportBackup,
   onImportNotebook,
   onImportUserSettings,
+  onImportUserSettingsFromNotebookFolder,
   notebookImportSummary,
   notebookImportScratchpadEnabled,
   notebookImportHasScratchpad,
@@ -293,7 +294,8 @@ export function SettingsPage({
   onDeleteFrontmatterTemplateField,
   onSaveFrontmatterTemplates,
   onDiscardFrontmatterTemplateChanges,
-  onChooseStorageFolder,
+  onCreateNotebook,
+  onSwitchNotebook,
   onMoveStorageProfile,
   onRevealStorageProfile,
   onRetryStorageProfile,
@@ -312,15 +314,6 @@ export function SettingsPage({
   const generalMiscSyncedUiBooleanSettings = miscSyncedUiBooleanSettings.filter(
     (setting) => setting.key !== 'scratchpadDeleteAisleShortcutEnabled',
   )
-  const storageHealth =
-    storageProfileStatus?.health ?? (storageProfileStatus?.status === 'error' ? 'error' : 'healthy')
-  const storageIssues = storageProfileStatus?.issues ?? []
-  const storageProfileCardClassName = [
-    'storage-profile-card',
-    storageHealth === 'error' ? 'is-error' : '',
-    storageHealth === 'warning' ? 'is-warning' : '',
-  ].filter(Boolean).join(' ')
-
   const selectThemePreviewRail = (rail: ThemePreviewRail, sample: ThemePreviewRailSample) => {
     setThemePreviewRailSelection((previous) => selectThemePreviewRailSample(previous, rail, sample))
   }
@@ -523,7 +516,7 @@ export function SettingsPage({
         {section === 'hotkeys' && (
           <div className="settings-section-panel" role="tabpanel">
             <p>hotkeys ({isMacPlatform ? 'mac' : 'windows'}):</p>
-            <p className="settings-help">synced profile settings</p>
+            <p className="settings-help">user settings</p>
             <div className="settings-hotkeys-list">
               {APP_COMMANDS.map(({ id: shortcutId, label }) => (
                 <div key={shortcutId} className="settings-hotkey-row">
@@ -579,174 +572,34 @@ export function SettingsPage({
         )}
 
         {section === 'data' && (
-          <div className="settings-section-panel" role="tabpanel">
-            <DataSectionSwitch dataSection={dataSection} onDataSectionChange={onDataSectionChange} />
-            {dataSection === 'cloud' && (
-              <>
-                <p>cloud and storage:</p>
-                <p className="settings-help">notes, arrangement, and synced profile settings live in this folder.</p>
-                <div className={storageProfileCardClassName}>
-                  <div className="storage-profile-row">
-                    <span className="settings-hotkey-label">current folder</span>
-                    <code className="storage-profile-path">
-                      {storageProfileStatus?.profileRootPath ?? 'desktop storage unavailable'}
-                    </code>
-                  </div>
-                  <div className="storage-profile-row">
-                    <span className="settings-hotkey-label">status</span>
-                    <span>{storageProfileStatus ? (storageProfileStatus.status === 'ready' ? 'ready' : 'error') : 'browser local'}</span>
-                  </div>
-                  <div className="storage-profile-row">
-                    <span className="settings-hotkey-label">health</span>
-                    <span>{storageProfileStatus ? storageHealth : 'local'}</span>
-                  </div>
-                  <div className="storage-profile-row">
-                    <span className="settings-hotkey-label">schema</span>
-                    <span>{storageProfileStatus?.schemaVersion ?? 'n/a'}</span>
-                  </div>
-                  <div className="storage-profile-row">
-                    <span className="settings-hotkey-label">writable</span>
-                    <span>{storageProfileStatus ? (storageProfileStatus.canWrite ? 'yes' : 'paused') : 'browser local'}</span>
-                  </div>
-                  <div className="storage-profile-row">
-                    <span className="settings-hotkey-label">recovery snapshots</span>
-                    <span>{storageProfileStatus?.recoverySnapshotCount ?? 0}</span>
-                  </div>
-                  {storageProfileStatus?.error && <p className="settings-help storage-profile-error">{storageProfileStatus.error}</p>}
-                  {storageIssues.length > 0 && (
-                    <div className="storage-profile-issues" aria-label="storage health issues">
-                      {storageIssues.map((issue, index) => (
-                        <p
-                          key={`${issue.code}-${issue.path ?? index}`}
-                          className={`settings-help storage-profile-issue ${issue.severity === 'error' ? 'is-error' : 'is-warning'}`}
-                        >
-                          {issue.message}
-                          {issue.path ? ` (${issue.path})` : ''}
-                        </p>
-                      ))}
-                    </div>
-                  )}
-                  <div className="settings-page-actions">
-                    <button type="button" className="btn btn-sm settings-action-btn" onClick={onChooseStorageFolder}>
-                      choose sync folder
-                    </button>
-                    <button type="button" className="btn btn-sm settings-action-btn" onClick={onMoveStorageProfile}>
-                      move current data
-                    </button>
-                    <button type="button" className="btn btn-sm settings-action-btn" onClick={onRevealStorageProfile}>
-                      reveal folder
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-sm settings-action-btn"
-                      onClick={onRetryStorageProfile}
-                    >
-                      retry
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-sm settings-action-btn"
-                      onClick={onRestoreStorageRecoverySnapshot}
-                      disabled={!storageProfileStatus || (storageProfileStatus.recoverySnapshotCount ?? 0) <= 0}
-                    >
-                      restore latest snapshot
-                    </button>
-                  </div>
-                  <p className="settings-help">
-                    choose a local cloud folder; tabs stores a portable profile inside it.
-                  </p>
-                </div>
-              </>
-            )}
-            {dataSection === 'trash' && (
-              <>
-                <p>automatically remove deleted items after:</p>
-                <div className="settings-field-row">
-                  <input
-                    type="number"
-                    className="settings-number-input settings-number-input-half"
-                    min={MIN_AUTO_REMOVE_DAYS}
-                    max={MAX_AUTO_REMOVE_DAYS}
-                    step={1}
-                    value={settingsDaysDraft}
-                    onChange={(event) => onAutoRemoveDaysChange(event.target.value)}
-                    onBlur={() => onAutoRemoveDaysChange(settingsDaysDraft, true)}
-                  />
-                  <span className="settings-field-suffix">days</span>
-                </div>
-              </>
-            )}
-            {dataSection === 'export' && (
-              <>
-                <p>export:</p>
-                <div className="settings-page-actions">
-                  <button type="button" className="btn btn-sm settings-action-btn" onClick={onExportNotebook}>
-                    export notebook
-                  </button>
-                  <button type="button" className="btn btn-sm settings-action-btn" onClick={onExportUserSettings}>
-                    export user settings
-                  </button>
-                  <button type="button" className="btn btn-sm settings-action-btn" onClick={onExportAll}>
-                    export backup
-                  </button>
-                </div>
-                <p className="settings-help">notebook exports are readable markdown archives. backups are the full internal app-state archive.</p>
-                {exportStatus && <p className="settings-help">{exportStatus}</p>}
-              </>
-            )}
-            {dataSection === 'import' && (
-              <>
-                <p>import:</p>
-                <div className="settings-page-actions">
-                  <button type="button" className="btn btn-sm settings-action-btn" onClick={onImportNotebook}>
-                    import notebook
-                  </button>
-                  <button type="button" className="btn btn-sm settings-action-btn" onClick={onImportUserSettings}>
-                    import user settings
-                  </button>
-                  <button type="button" className="btn btn-sm settings-action-btn" onClick={onImportBackup}>
-                    import backup
-                  </button>
-                </div>
-                {notebookImportSummary && (
-                  <div className="settings-import-options" role="group" aria-label="notebook import options">
-                    <p className="settings-help">
-                      notebook contains {notebookImportSummary.domains} domain(s), {notebookImportSummary.spaces} space(s), {notebookImportSummary.tabs} tab(s), {notebookImportSummary.notes} note(s).
-                    </p>
-                    <div className="settings-hotkey-row">
-                      <label className="settings-hotkey-label" htmlFor="settings-import-notebook-scratchpad">
-                        scratchpad
-                      </label>
-                      <div className="form-check form-switch settings-switch">
-                        <input
-                          id="settings-import-notebook-scratchpad"
-                          className="form-check-input"
-                          type="checkbox"
-                          role="switch"
-                          checked={notebookImportScratchpadEnabled}
-                          disabled={!notebookImportHasScratchpad}
-                          onChange={(event) => onNotebookImportScratchpadEnabledChange(event.target.checked)}
-                        />
-                      </div>
-                    </div>
-                    {notebookImportScratchpadEnabled && (
-                      <p className="settings-help">current scratchpad content will be overwritten and cannot be recovered from this import flow.</p>
-                    )}
-                    <div className="settings-page-actions">
-                      <button type="button" className="btn btn-sm settings-action-btn" onClick={onConfirmNotebookImport}>
-                        import notebook
-                      </button>
-                      <button type="button" className="btn btn-sm settings-action-btn" onClick={onCancelNotebookImport}>
-                        cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
-                <p className="settings-help">notebook imports append remapped domains. user settings move separately through app-settings.json.</p>
-                {importStatus && <p className="settings-help">{importStatus}</p>}
-              </>
-            )}
-          </div>
+          <DataSettingsPanel
+            dataSection={dataSection}
+            settingsDaysDraft={settingsDaysDraft}
+            exportStatus={exportStatus}
+            importStatus={importStatus}
+            storageProfileStatus={storageProfileStatus}
+            notebookImportSummary={notebookImportSummary}
+            notebookImportScratchpadEnabled={notebookImportScratchpadEnabled}
+            notebookImportHasScratchpad={notebookImportHasScratchpad}
+            onDataSectionChange={onDataSectionChange}
+            onAutoRemoveDaysChange={onAutoRemoveDaysChange}
+            onExportAll={onExportAll}
+            onExportNotebook={onExportNotebook}
+            onExportUserSettings={onExportUserSettings}
+            onImportBackup={onImportBackup}
+            onImportNotebook={onImportNotebook}
+            onImportUserSettings={onImportUserSettings}
+            onImportUserSettingsFromNotebookFolder={onImportUserSettingsFromNotebookFolder}
+            onNotebookImportScratchpadEnabledChange={onNotebookImportScratchpadEnabledChange}
+            onConfirmNotebookImport={onConfirmNotebookImport}
+            onCancelNotebookImport={onCancelNotebookImport}
+            onCreateNotebook={onCreateNotebook}
+            onSwitchNotebook={onSwitchNotebook}
+            onMoveStorageProfile={onMoveStorageProfile}
+            onRevealStorageProfile={onRevealStorageProfile}
+            onRetryStorageProfile={onRetryStorageProfile}
+            onRestoreStorageRecoverySnapshot={onRestoreStorageRecoverySnapshot}
+          />
         )}
 
         {section === 'visuals' && visualsSection === 'theming' && (
@@ -893,7 +746,7 @@ export function SettingsPage({
 
         {section === 'frontmatter' && (
           <div className="settings-section-panel" role="tabpanel">
-            <p className="settings-help">synced profile settings</p>
+            <p className="settings-help">notebook metadata</p>
             <div className="settings-hotkey-row">
               <label className="settings-hotkey-label" htmlFor="settings-frontmatter-template">
                 template
@@ -1047,7 +900,7 @@ export function SettingsPage({
 
         {section === 'misc' && (
           <div className="settings-section-panel" role="tabpanel">
-            <p className="settings-help">synced profile settings</p>
+            <p className="settings-help">user settings</p>
             {renderTableOfContentsScopeSetting()}
             {generalMiscSyncedUiBooleanSettings.map((setting) => renderMiscSyncedUiBooleanSetting(setting))}
             {renderTableControlTargetSetting(
@@ -1071,7 +924,7 @@ export function SettingsPage({
 
         {section === 'tips' && (
           <div className="settings-section-panel" role="tabpanel" aria-label="tips settings">
-            <p className="settings-help">seen tips are this-device settings; disabled tips sync with your notes profile.</p>
+            <p className="settings-help">seen tips are this-device settings; disabled tips are user settings.</p>
             {state.ui.seenTipIds.length === 0 ? (
               <p className="settings-help">tips you have seen will appear here.</p>
             ) : (
@@ -1105,7 +958,7 @@ export function SettingsPage({
 
         {section === 'toolbar' && (
           <div className="settings-section-panel" role="tabpanel" aria-label="toolbar settings">
-            <p className="settings-help">toolbar layouts sync with your notes profile; the active toolbar is set per device.</p>
+            <p className="settings-help">toolbar layouts are user settings; the active toolbar is set per device.</p>
             <ToolbarSettingsPanel
               toolbarLayouts={toolbarLayouts}
               toolbarEditorLayoutId={toolbarEditorLayoutId}

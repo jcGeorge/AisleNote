@@ -137,6 +137,16 @@ declare global {
       readAsset?: (payload: { url?: string; assetPath?: string }) => Promise<ReadAssetResult>
       onAppStateUpdated?: (handler: (payload: { serializedState: string; revision: number }) => void) => () => void
       getStorageProfileStatus?: () => Promise<StorageProfileStatus>
+      createNotebook?: (payload: { serializedState: string }) => Promise<
+        | { canceled: true; status: StorageProfileStatus }
+        | { ok: true; status: StorageProfileStatus }
+        | { ok: false; error: string; status: StorageProfileStatus }
+      >
+      switchNotebook?: () => Promise<
+        | { canceled: true; status: StorageProfileStatus }
+        | { ok: true; status: StorageProfileStatus }
+        | { ok: false; error: string; status: StorageProfileStatus }
+      >
       chooseStorageFolder?: () => Promise<
         | { canceled: true; status: StorageProfileStatus }
         | { ok: true; status: StorageProfileStatus }
@@ -163,6 +173,7 @@ declare global {
       importAppStateArchive?: () => Promise<ImportAppStateArchiveResult>
       openNotebookArchive?: () => Promise<OpenNotebookArchiveResult>
       openUserSettingsFile?: () => Promise<OpenUserSettingsFileResult>
+      openUserSettingsFromNotebookFolder?: () => Promise<OpenUserSettingsFileResult>
       saveUserSettingsFile?: (payload: { defaultPath: string; contents: string }) => Promise<{
         canceled: boolean
         filePath?: string

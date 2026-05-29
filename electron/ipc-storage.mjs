@@ -89,9 +89,11 @@ function getAssetExtensionFromImportPayload(payload) {
 export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null, shell = null }) {
   const userDataPath = app.getPath('userData')
   let profile = { ...resolveStorageProfile(userDataPath), userDataPath }
+  const loadNotebookResult = (profileRootPath) => loadAppStateResult(profileRootPath, { userSettingsRoot: userDataPath })
   const coordinator = createAppStateCoordinator({
     userDataPath,
     profileRootPath: profile.profileRootPath,
+    load: loadNotebookResult,
   })
   let watcher = null
   let status = createStorageStatus({ profile, coordinator })
@@ -213,13 +215,15 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     return getRendererSerializedStateForProfileMove(event)
   }
 
-  const switchToProfileRoot = (profileRootPath, event = 'profile-changed') => {
+  const switchToProfileRoot = (profileRootPath, event = 'profile-changed', options = {}) => {
     const previousProfile = profile
-    const result = coordinator.reloadProfileRoot(profileRootPath)
+    const result = coordinator.reloadProfileRoot(profileRootPath, {
+      requireSerializedState: options.requireSerializedState === true,
+    })
     if (!result.ok) {
       coordinator.reloadProfileRoot(previousProfile.profileRootPath)
       updateStatus('profile-error', result.error)
-      return { ok: false, status, error: result.error }
+      return { ok: false, status, error: result.error ?? 'Notebook folder could not be loaded.' }
     }
     profile = { ...writeStorageProfileConfig(userDataPath, profileRootPath), userDataPath }
     updateStatus(result.ok ? event : 'profile-error', result.ok ? null : result.error)
@@ -241,6 +245,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     try {
       saveAppState(profileRootPath, serializedState, {
         userDataPath,
+        userSettingsRoot: userDataPath,
         replaceExisting: true,
         assetSourceRoot: getHybridStorageRoot(profile.profileRootPath),
       })
@@ -248,7 +253,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     } catch (error) {
       return {
         ok: false,
-        error: error instanceof Error ? error.message : 'Storage profile could not be written.',
+        error: error instanceof Error ? error.message : 'Notebook folder could not be written.',
         status,
       }
     }
@@ -260,7 +265,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     }
 
     const selection = await dialog.showOpenDialog({
-      title: mode === 'move' ? 'Move Tabs data to sync folder' : 'Choose Tabs sync folder',
+      title: mode === 'move' ? 'Move notebook folder' : 'Choose notebook folder',
       properties: ['openDirectory', 'createDirectory'],
     })
     if (selection.canceled || !selection.filePaths?.[0]) return { canceled: true, status }
@@ -268,7 +273,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     const profileRootPath = path.resolve(selection.filePaths[0])
     if (profileRootPath === profile.profileRootPath) return { ok: true, status }
 
-    const targetResult = loadAppStateResult(profileRootPath)
+    const targetResult = loadNotebookResult(profileRootPath)
     const targetHasProfile = existsSync(getHybridStorageRoot(profileRootPath))
 
     if (mode === 'move') {
@@ -279,7 +284,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
           cancelId: 1,
           defaultId: 0,
           message: 'This folder already contains Tabs data.',
-          detail: 'Replacing it will write your current Tabs profile into this folder. The current source profile is left in place.',
+          detail: 'Replacing it will write your current notebook into this folder. Current user settings stay in app support.',
         })
         if (overwrite.response !== 0) return { canceled: true, status }
       }
@@ -290,11 +295,11 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
       if (!dialog?.showMessageBox) return switchToProfileRoot(profileRootPath)
       const choice = await dialog.showMessageBox({
         type: 'question',
-        buttons: ['Use this profile', 'Replace with current data', 'Cancel'],
+        buttons: ['Use this notebook folder', 'Replace with current data', 'Cancel'],
         cancelId: 2,
         defaultId: 0,
         message: 'This folder already contains Tabs data.',
-        detail: 'Use the existing profile in this folder, or replace it with your current Tabs data.',
+        detail: 'Use the existing notebook in this folder, or replace it with your current notebook. Current user settings stay in app support.',
       })
       if (choice.response === 0) return switchToProfileRoot(profileRootPath)
       if (choice.response === 1) return replaceProfileWithCurrentData(profileRootPath, event)
@@ -315,12 +320,84 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
         buttons: ['Save current data here', 'Cancel'],
         cancelId: 1,
         defaultId: 0,
-        message: 'Use this folder for Tabs data?',
-        detail: 'Tabs will create a notes folder here and save your current app state into it.',
+        message: 'Use this notebook folder?',
+        detail: 'Tabs will create notes/ here and save your current notebook into it. Current user settings stay in app support.',
       })
       if (initialize.response !== 0) return { canceled: true, status }
     }
     return replaceProfileWithCurrentData(profileRootPath, event)
+  }
+
+  const switchNotebook = async () => {
+    if (!dialog || typeof dialog.showOpenDialog !== 'function') {
+      return { ok: false, error: 'Folder selection is unavailable.', status }
+    }
+
+    const selection = await dialog.showOpenDialog({
+      title: 'Switch notebook',
+      properties: ['openDirectory'],
+    })
+    if (selection.canceled || !selection.filePaths?.[0]) return { canceled: true, status }
+
+    const profileRootPath = path.resolve(selection.filePaths[0])
+    if (profileRootPath === profile.profileRootPath) return { ok: true, status }
+
+    const targetResult = loadNotebookResult(profileRootPath)
+    if (targetResult.ok && typeof targetResult.serializedState === 'string') {
+      return switchToProfileRoot(profileRootPath, 'notebook-switched', { requireSerializedState: true })
+    }
+    if (targetResult.ok && targetResult.serializedState === null) {
+      return {
+        ok: false,
+        error: 'This folder does not contain a notebook. Use new notebook to create one.',
+        status,
+      }
+    }
+    return {
+      ok: false,
+      error: targetResult.error ?? 'Notebook folder could not be loaded.',
+      status,
+    }
+  }
+
+  const createNotebook = async (_event, payload = {}) => {
+    if (typeof payload?.serializedState !== 'string' || payload.serializedState.trim().length === 0) {
+      return { ok: false, error: 'Blank notebook state is invalid.', status }
+    }
+    if (!dialog || typeof dialog.showOpenDialog !== 'function') {
+      return { ok: false, error: 'Folder selection is unavailable.', status }
+    }
+
+    const selection = await dialog.showOpenDialog({
+      title: 'New notebook',
+      properties: ['openDirectory', 'createDirectory'],
+    })
+    if (selection.canceled || !selection.filePaths?.[0]) return { canceled: true, status }
+
+    const profileRootPath = path.resolve(selection.filePaths[0])
+    if (existsSync(getHybridStorageRoot(profileRootPath))) {
+      return {
+        ok: false,
+        error: 'This folder already contains a notebook. Use switch notebook instead.',
+        status,
+      }
+    }
+
+    try {
+      saveAppState(profileRootPath, payload.serializedState, {
+        userDataPath,
+        userSettingsRoot: userDataPath,
+        replaceExisting: true,
+        assetSourceRoot: getHybridStorageRoot(profile.profileRootPath),
+      })
+      return switchToProfileRoot(profileRootPath, 'notebook-created', { requireSerializedState: true })
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : 'Notebook folder could not be created.',
+        status,
+      }
+    }
   }
 
   startWatcher()
@@ -353,6 +430,8 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
   })
 
   ipcMain.handle?.('get-storage-profile-status', async () => status)
+  ipcMain.handle?.('create-notebook', createNotebook)
+  ipcMain.handle?.('switch-notebook', switchNotebook)
   ipcMain.handle?.('choose-storage-folder', async (event) => chooseProfileRoot('choose', event))
   ipcMain.handle?.('move-storage-profile', async (event) => chooseProfileRoot('move', event))
   ipcMain.handle?.('reveal-storage-profile', async () => {

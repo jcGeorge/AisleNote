@@ -82,7 +82,7 @@ function createState(): AppState {
       tabButtonScale: 1,
       noteFontScale: 1,
       settingsSection: 'hotkeys',
-      dataSettingsSection: 'cloud',
+      dataSettingsSection: 'notebook',
       visualsSettingsSection: 'theming',
       selectedCustomTheme: 'custom1',
       themePalettes: {},
@@ -106,6 +106,7 @@ function renderSettingsPage(
     toolbarEditorLayoutId?: string
     toolbarEditorShowNames?: boolean
     isMacPlatform?: boolean
+    importStatus?: string
   } = {},
 ) {
   const state = options.state ?? createState()
@@ -138,7 +139,7 @@ function renderSettingsPage(
       editingShortcut={null}
       settingsDaysDraft="30"
       exportStatus=""
-      importStatus=""
+      importStatus={options.importStatus ?? ''}
       tabButtonScaleDraft={1}
       noteFontScaleDraft={1}
       tooltipScaleDraft={1}
@@ -175,6 +176,7 @@ function renderSettingsPage(
       onImportBackup={() => undefined}
       onImportNotebook={() => undefined}
       onImportUserSettings={() => undefined}
+      onImportUserSettingsFromNotebookFolder={() => undefined}
       notebookImportSummary={null}
       notebookImportScratchpadEnabled={false}
       notebookImportHasScratchpad={false}
@@ -221,7 +223,8 @@ function renderSettingsPage(
       onDeleteFrontmatterTemplateField={() => undefined}
       onSaveFrontmatterTemplates={() => undefined}
       onDiscardFrontmatterTemplateChanges={() => undefined}
-      onChooseStorageFolder={() => undefined}
+      onCreateNotebook={() => undefined}
+      onSwitchNotebook={() => undefined}
       onMoveStorageProfile={() => undefined}
       onRevealStorageProfile={() => undefined}
       onRetryStorageProfile={() => undefined}
@@ -353,42 +356,63 @@ describe('frontmatter settings page', () => {
     expect(html).not.toContain('<option value="aisle">aisle</option>')
   })
 
-  it('splits data settings into cloud, trash, export, and import sub-sections', () => {
-    const cloudHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'data' })
+  it('splits data settings into notebook, settings, folder, and trash sub-sections', () => {
+    const notebookHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'data' })
+    const settingsHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'data', dataSection: 'settings' })
+    const storageHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'data', dataSection: 'storage' })
     const trashHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'data', dataSection: 'trash' })
-    const exportHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'data', dataSection: 'export' })
-    const importHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'data', dataSection: 'import' })
 
-    expect(cloudHtml).toContain('role="radiogroup" aria-labelledby="settings-data-section-label"')
-    expect(cloudHtml).toContain('aria-checked="true" class="settings-segmented-option is-selected">cloud</button>')
-    expect(cloudHtml).toContain('cloud and storage:')
-    expect(cloudHtml).toContain('choose sync folder')
-    expect(cloudHtml).not.toContain('automatically remove deleted items after:')
-    expect(cloudHtml).not.toContain('export space')
+    expect(notebookHtml).toContain('role="radiogroup" aria-labelledby="settings-data-section-label"')
+    expect(notebookHtml).toContain('aria-checked="true" class="settings-segmented-option is-selected">notebook</button>')
+    expect(notebookHtml).toContain('notebook archives:')
+    expect(notebookHtml).toContain('export notebook archive')
+    expect(notebookHtml).toContain('import notebook archive')
+    expect(notebookHtml).toContain('notebook archives are readable markdown ZIPs')
+    expect(notebookHtml).not.toContain('choose notebook folder')
+    expect(notebookHtml).not.toContain('automatically remove deleted items after:')
+
+    expect(settingsHtml).toContain('aria-checked="true" class="settings-segmented-option is-selected">settings</button>')
+    expect(settingsHtml).toContain('user settings:')
+    expect(settingsHtml).toContain('export user settings')
+    expect(settingsHtml).toContain('import user settings')
+    expect(settingsHtml).toContain('import from notebook folder')
+    expect(settingsHtml).toContain('app-settings.json')
+    expect(settingsHtml).not.toContain('current user settings will be overwritten')
+    expect(settingsHtml).not.toContain('choose notebook folder')
+
+    expect(storageHtml).toContain('aria-checked="true" class="settings-segmented-option is-selected">folder</button>')
+    expect(storageHtml).toContain('notebook folder:')
+    expect(storageHtml).toContain('new notebook')
+    expect(storageHtml).toContain('switch notebook')
+    expect(storageHtml).toContain('move notebook folder')
+    expect(storageHtml).toContain('export backup')
+    expect(storageHtml).toContain('import backup')
+    expect(storageHtml).toContain('app-settings.json')
+    expect(storageHtml).not.toContain('choose sync folder')
+    expect(storageHtml).not.toContain('internal backup')
 
     expect(trashHtml).toContain('aria-checked="true" class="settings-segmented-option is-selected">trash</button>')
     expect(trashHtml).toContain('automatically remove deleted items after:')
     expect(trashHtml).toContain('class="settings-number-input settings-number-input-half"')
-    expect(trashHtml).not.toContain('choose sync folder')
-    expect(trashHtml).not.toContain('export space')
+    expect(trashHtml).not.toContain('choose notebook folder')
+  })
 
-    expect(exportHtml).toContain('aria-checked="true" class="settings-segmented-option is-selected">export</button>')
-    expect(exportHtml).toContain('export notebook')
-    expect(exportHtml).toContain('export user settings')
-    expect(exportHtml).toContain('export backup')
-    expect(exportHtml).toContain('notebook exports are readable markdown archives')
-    expect(exportHtml).not.toContain('export space')
-    expect(exportHtml).not.toContain('choose sync folder')
-    expect(exportHtml).not.toContain('automatically remove deleted items after:')
+  it('renders persistent user settings import failures', () => {
+    const fileHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, {
+      section: 'data',
+      dataSection: 'settings',
+      importStatus: "The file selected doesn't match our app-settings.json structure.",
+    })
+    const folderHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, {
+      section: 'data',
+      dataSection: 'settings',
+      importStatus: "The folder selected doesn't contain an app-settings.json file that matches this project's structure.",
+    })
 
-    expect(importHtml).toContain('aria-checked="true" class="settings-segmented-option is-selected">import</button>')
-    expect(importHtml).toContain('import notebook')
-    expect(importHtml).toContain('import user settings')
-    expect(importHtml).toContain('import backup')
-    expect(importHtml).toContain('user settings move separately through app-settings.json')
-    expect(importHtml).not.toContain('current user settings will be overwritten')
-    expect(importHtml).not.toContain('choose sync folder')
-    expect(importHtml).not.toContain('export space')
+    expect(fileHtml).toContain("The file selected doesn&#x27;t match our app-settings.json structure.")
+    expect(folderHtml).toContain(
+      "The folder selected doesn&#x27;t contain an app-settings.json file that matches this project&#x27;s structure.",
+    )
   })
 
   it('renders custom theme palette controls when a custom theme is selected', () => {
@@ -848,9 +872,10 @@ describe('frontmatter settings page', () => {
     expect(html).toContain('type="datetime-local" class="settings-text-input frontmatter-default-input" aria-label="frontmatter default value" value=""')
   })
 
-  it('renders warning storage health with recovery actions', () => {
+  it('renders warning notebook folder health with recovery actions', () => {
     const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, {
       section: 'data',
+      dataSection: 'storage',
       storageProfileStatus: {
         status: 'ready',
         health: 'warning',
@@ -879,15 +904,16 @@ describe('frontmatter settings page', () => {
     expect(html).toContain('schema</span><span>2</span>')
     expect(html).toContain('writable</span><span>yes</span>')
     expect(html).toContain('recovery snapshots</span><span>2</span>')
-    expect(html).toContain('aria-label="storage health issues"')
+    expect(html).toContain('aria-label="notebook folder health issues"')
     expect(html).toContain('Markdown file is missing; this note was loaded as empty.')
-    expect(html).not.toContain('export backup')
+    expect(html).toContain('export backup')
     expect(html).toContain('restore latest snapshot</button>')
   })
 
-  it('renders error storage health with paused writes and disabled restore when no snapshots exist', () => {
+  it('renders error notebook folder health with paused writes and disabled restore when no snapshots exist', () => {
     const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, {
       section: 'data',
+      dataSection: 'storage',
       storageProfileStatus: {
         status: 'error',
         health: 'error',

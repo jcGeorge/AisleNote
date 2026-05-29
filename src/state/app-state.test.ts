@@ -843,7 +843,7 @@ describe('app state normalization', () => {
 
   it('normalizes persisted settings section memory', () => {
     const valid = parseModernState({ ui: { settingsSection: 'visuals' } })
-    const data = parseModernState({ ui: { settingsSection: 'data', dataSettingsSection: 'export' } })
+    const data = parseModernState({ ui: { settingsSection: 'data', dataSettingsSection: 'storage' } })
     const invalidData = parseModernState({ ui: { settingsSection: 'data', dataSettingsSection: 'sync' } })
     const misc = parseModernState({ ui: { settingsSection: 'misc' } })
     const theming = parseModernState({ ui: { settingsSection: 'theming' } })
@@ -856,8 +856,8 @@ describe('app state normalization', () => {
 
     expect(valid.ui.settingsSection).toBe('visuals')
     expect(data.ui.settingsSection).toBe('data')
-    expect(data.ui.dataSettingsSection).toBe('export')
-    expect(invalidData.ui.dataSettingsSection).toBe('cloud')
+    expect(data.ui.dataSettingsSection).toBe('storage')
+    expect(invalidData.ui.dataSettingsSection).toBe('notebook')
     expect(misc.ui.settingsSection).toBe('misc')
     expect(theming.ui.settingsSection).toBe('hotkeys')
     expect(theming.ui.visualsSettingsSection).toBe('theming')

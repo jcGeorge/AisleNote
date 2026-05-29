@@ -45,7 +45,7 @@ const DEFAULT_SYNCED_UI_SETTINGS = {
   themePalettes: {},
   toolbarLayouts: [],
   settingsSection: 'hotkeys',
-  dataSettingsSection: 'cloud',
+  dataSettingsSection: 'notebook',
   visualsSettingsSection: 'theming',
   tabButtonScale: 1,
   noteFontScale: 1,
@@ -59,6 +59,8 @@ const DEFAULT_SYNCED_UI_SETTINGS = {
 
 const THEME_PALETTE_IDS = ['dark', 'light', 'dawn', 'blues', 'custom1', 'custom2', 'custom3']
 const CUSTOM_THEME_IDS = ['custom1', 'custom2', 'custom3']
+const DATA_SETTINGS_SECTIONS = ['notebook', 'settings', 'storage', 'trash']
+const CURRENT_APP_SETTING_THEME_IDS = ['dark', 'light', 'dawn', 'blues', 'custom1', 'custom2', 'custom3']
 
 function optionalBoolean(value, fallback) {
   return typeof value === 'boolean' ? value : fallback
@@ -66,6 +68,10 @@ function optionalBoolean(value, fallback) {
 
 function optionalString(value, fallback) {
   return typeof value === 'string' ? value : fallback
+}
+
+function optionalDataSettingsSection(value, fallback) {
+  return DATA_SETTINGS_SECTIONS.includes(value) ? value : fallback
 }
 
 function optionalArray(value, fallback) {
@@ -255,7 +261,7 @@ export function extractSyncedUiSettings(rawUi) {
     ...registeredUi,
     alwaysShowSpaces,
     alwaysShowDomains,
-    dataSettingsSection: optionalString(ui.dataSettingsSection, DEFAULT_SYNCED_UI_SETTINGS.dataSettingsSection),
+    dataSettingsSection: optionalDataSettingsSection(ui.dataSettingsSection, DEFAULT_SYNCED_UI_SETTINGS.dataSettingsSection),
     selectedCustomTheme: normalizeSelectedCustomTheme(ui.selectedCustomTheme),
     themePalettes,
     toolbarLayouts: optionalArray(ui.toolbarLayouts, DEFAULT_SYNCED_UI_SETTINGS.toolbarLayouts),
@@ -370,6 +376,30 @@ export function parsePortableAppSettingsJson(raw) {
   }
 }
 
+function hasCurrentPortableAppSettingsShape(value) {
+  return Boolean(
+    isPortableSettingsRecord(value) &&
+      CURRENT_APP_SETTING_THEME_IDS.includes(value.theme) &&
+      isPortableSettingsRecord(value.hotkeys) &&
+      isPortableSettingsRecord(value.ui),
+  )
+}
+
+export function parseStrictPortableAppSettingsJson(raw) {
+  if (typeof raw !== 'string' || raw.trim().length === 0) {
+    return { ok: false, error: 'Settings file does not match app-settings.json structure.' }
+  }
+  try {
+    const parsed = JSON.parse(raw)
+    if (!hasCurrentPortableAppSettingsShape(parsed)) {
+      return { ok: false, error: 'Settings file does not match app-settings.json structure.' }
+    }
+    return { ok: true, settings: normalizePortableAppSettings(parsed) }
+  } catch {
+    return { ok: false, error: 'Settings file does not match app-settings.json structure.' }
+  }
+}
+
 export function applyPortableAppSettings(appState, rawSettings) {
   const appSettings = normalizePortableAppSettings(rawSettings)
   const currentUi = isRecord(appState?.ui) ? appState.ui : {}
@@ -429,7 +459,7 @@ export function buildSyncedSettingsFromSplitFiles(parts) {
       typeof appSettings.tooltipScale === 'number'
         ? appSettings.tooltipScale
         : DEFAULT_SYNCED_UI_SETTINGS.tooltipScale,
-    dataSettingsSection: optionalString(
+    dataSettingsSection: optionalDataSettingsSection(
       uiPreferences.dataSettingsSection,
       DEFAULT_SYNCED_UI_SETTINGS.dataSettingsSection,
     ),

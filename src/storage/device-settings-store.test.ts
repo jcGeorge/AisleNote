@@ -46,11 +46,12 @@ describe('device settings store', () => {
       ...DEFAULT_DEVICE_SETTINGS,
       lastFindQuery: 'bear',
     })
-    expect(parseDeviceSettings(JSON.stringify({ dataSettingsSection: 'trash' }))).toEqual({
+    expect(parseDeviceSettings(JSON.stringify({ dataSettingsSection: 'settings' }))).toEqual({
       ...DEFAULT_DEVICE_SETTINGS,
-      dataSettingsSection: 'trash',
+      dataSettingsSection: 'settings',
     })
-    expect(parseDeviceSettings(JSON.stringify({ dataSettingsSection: 'sync' })).dataSettingsSection).toBe('cloud')
+    expect(parseDeviceSettings(JSON.stringify({ dataSettingsSection: 'sync' })).dataSettingsSection).toBe('notebook')
+    expect(parseDeviceSettings(JSON.stringify({ dataSettingsSection: 'cloud' })).dataSettingsSection).toBe('notebook')
     expect(parseDeviceSettings(JSON.stringify({ tooltipScale: 9 })).tooltipScale).toBe(1.6)
     expect(parseDeviceSettings(JSON.stringify({ lastFindQuery: 123 })).lastFindQuery).toBe('')
   })
@@ -161,7 +162,7 @@ describe('device settings store', () => {
         viewMode: 'main',
       },
       settingsSection: 'visuals',
-      dataSettingsSection: 'import',
+      dataSettingsSection: 'storage',
       visualsSettingsSection: 'otherVisuals',
       seenTipIds: ['task-undo'],
       tabButtonScale: 1.3,
@@ -172,7 +173,7 @@ describe('device settings store', () => {
     expect(merged.spaces[0]?.data.activeTabId).toBe('tab-b')
     expect(merged.spaces[0]?.data.tabs[1]?.activeSubTabId).toBe('sub-b')
     expect(merged.ui.settingsSection).toBe('visuals')
-    expect(merged.ui.dataSettingsSection).toBe('import')
+    expect(merged.ui.dataSettingsSection).toBe('storage')
     expect(merged.ui.visualsSettingsSection).toBe('otherVisuals')
     expect(merged.ui.seenTipIds).toEqual(['task-undo'])
     expect(merged.ui.tabButtonScale).toBe(1.3)
@@ -182,14 +183,14 @@ describe('device settings store', () => {
 
   it('leaves app-state local-ish values in place until device settings exist', () => {
     const state = parseModernState({
-      ui: { settingsSection: 'visuals', dataSettingsSection: 'export', visualsSettingsSection: 'otherVisuals', tabButtonScale: 1.2 },
+      ui: { settingsSection: 'visuals', dataSettingsSection: 'settings', visualsSettingsSection: 'otherVisuals', tabButtonScale: 1.2 },
     })
 
     expect(mergeLoadedSettings(state, { settings: DEFAULT_DEVICE_SETTINGS, hasStoredSettings: false }).ui.settingsSection).toBe('visuals')
-    expect(mergeLoadedSettings(state, { settings: DEFAULT_DEVICE_SETTINGS, hasStoredSettings: false }).ui.dataSettingsSection).toBe('export')
+    expect(mergeLoadedSettings(state, { settings: DEFAULT_DEVICE_SETTINGS, hasStoredSettings: false }).ui.dataSettingsSection).toBe('settings')
     expect(mergeLoadedSettings(state, { settings: DEFAULT_DEVICE_SETTINGS, hasStoredSettings: false }).ui.visualsSettingsSection).toBe('otherVisuals')
     expect(mergeLoadedSettings(state, { settings: DEFAULT_DEVICE_SETTINGS, hasStoredSettings: true }).ui.settingsSection).toBe('hotkeys')
-    expect(mergeLoadedSettings(state, { settings: DEFAULT_DEVICE_SETTINGS, hasStoredSettings: true }).ui.dataSettingsSection).toBe('cloud')
+    expect(mergeLoadedSettings(state, { settings: DEFAULT_DEVICE_SETTINGS, hasStoredSettings: true }).ui.dataSettingsSection).toBe('notebook')
     expect(mergeLoadedSettings(state, { settings: DEFAULT_DEVICE_SETTINGS, hasStoredSettings: true }).ui.visualsSettingsSection).toBe('theming')
   })
 

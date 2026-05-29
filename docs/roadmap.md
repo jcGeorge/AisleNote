@@ -8,9 +8,9 @@ The guiding rule is: data integrity and recovery come before visual polish and p
 
 Cleaned up on 2026-05-17.
 
-- **Phase 1 is complete.** The stabilization pass covered real-workspace persistence, frontmatter, Stage Manager/Director flows, rename persistence, trash/restore, export/images, and storage-profile reload/move behavior.
-- **Phase 2 is complete for the current schema 1 storage model.** The active `domains/` manifest/Markdown/assets format is documented, Electron/browser storage behavior is hardened, storage health is visible in settings, and recovery snapshots are available outside the synced profile.
-- **Phase 3 is complete for this roadmap gate.** The first targeted refactor pass extracted storage-profile orchestration and cleared the hook-dependency cleanup target. Larger refactor slices are now normal engineering hygiene, not blockers for Phase 4.
+- **Phase 1 is complete.** The stabilization pass covered real-workspace persistence, frontmatter, Stage Manager/Director flows, rename persistence, trash/restore, export/images, and notebook-folder reload/move behavior.
+- **Phase 2 is complete for the current schema 1 storage model.** The active `domains/` manifest/Markdown/assets format is documented, Electron/browser storage behavior is hardened, notebook-folder health is visible in settings, global user settings are separated from selected notebook folders, and recovery snapshots are available outside the active `notes/` tree.
+- **Phase 3 is complete for this roadmap gate.** The first targeted refactor pass extracted notebook-folder orchestration and cleared the hook-dependency cleanup target. Larger refactor slices are now normal engineering hygiene, not blockers for Phase 4.
 - **Phase 4 is the current active phase.** The first input-polish slice is largely implemented; remaining Phase 4 work is continued bug polish plus the later design-system/UI overhaul.
 
 ## Phase 1: Stabilization Pass — Complete
@@ -22,7 +22,7 @@ Completed outcomes:
 - Frontmatter templates, computed values, default values, manual rows, derived rows, null date/datetime values, picker behavior, and template switching were tested and fixed where needed.
 - Director/Stage Manager operations were exercised for frontmatter application, note movement, migration, deletion, restore, and review flows.
 - Rename persistence for domains, spaces, parent tabs, and sub-tabs was validated across app restart/storage reload.
-- Trash restore/delete behavior, export output, image asset handling, image resize/crop/rotation metadata, and storage-profile move/retry/reload behavior were validated.
+- Trash restore/delete behavior, export output, image asset handling, image resize/crop/rotation metadata, and notebook-folder move/retry/reload behavior were validated.
 - The manual real-workspace pass used QA-only data and a backup-first workflow.
 
 Ongoing rule:
@@ -37,7 +37,7 @@ Completed outcomes:
 
 - `docs/storage-schema.md` now describes the current schema 1 `notes/domains/...` layout as canonical; the future `topics/` idea remains explicitly deferred.
 - Missing Markdown files, missing/corrupt trash manifests, corrupt branch manifests, corrupt/unsupported root manifests, stale revisions, conflict folders, and paused-write recovery paths are covered by storage behavior and tests.
-- Settings > Data surfaces storage health, profile path, schema/writable state, issue details, recovery snapshot count, reveal folder, retry reload, export backup, and restore latest snapshot actions.
+- Settings > Data surfaces notebook archive actions, user-settings transfer, notebook create/switch/move actions, notebook-folder health, folder path, schema/writable state, issue details, recovery snapshot count, reveal folder, retry reload, backup, and restore latest snapshot actions.
 - Browser hybrid storage and Electron filesystem storage have parity coverage for the current logical app state.
 - Electron recovery snapshots are created outside synced `notes/` and retention pruning keeps bounded restore points across the latest active days.
 - Pre-production storage compatibility has been removed before launch.
@@ -52,7 +52,7 @@ Goal: reduce risk in future feature work without doing a broad rewrite.
 
 Completed outcomes:
 
-- Storage-profile state/actions moved out of `App.tsx` into a focused controller hook.
+- Notebook-folder state/actions moved out of `App.tsx` into a focused controller hook.
 - Storage status loading, subscription, choose/move/reveal/retry/restore actions, and related toast handling are owned by the controller.
 - Hook-dependency warning cleanup was completed for the targeted editor/image-tools, navigation-history, note-body, and global-hotkey paths.
 - The pass stayed behavior-preserving and avoided Stage Manager/image-tools internals until there is a specific reason to split them.
@@ -165,7 +165,7 @@ Focus areas:
 Exit criteria:
 
 - A clean machine can install, launch, choose storage, create notes, restart, and update without data loss.
-- Storage profile and backup behavior are understandable from inside the app.
+- Notebook folder and backup behavior are understandable from inside the app.
 - Release checklist passes on macOS and Windows.
 
 ## Phase 9: PWA And Mobile Deployment Prep
@@ -178,7 +178,7 @@ Focus areas:
 - IndexedDB durability and recovery.
 - iOS Safari limitations, Android behavior, and Android-compatible desktop/PWA targets such as AluminiumOS.
 - Touch ergonomics for editing, navigation, tooltip controls, and settings.
-- File access limitations compared with Electron storage folders.
+- File access limitations compared with Electron notebook folders.
 
 Exit criteria:
 

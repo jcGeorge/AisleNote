@@ -42,7 +42,7 @@ export type SettingsSection =
   | 'tips'
   | 'toolbar'
   | 'visuals'
-export type DataSettingsSection = 'cloud' | 'trash' | 'export' | 'import'
+export type DataSettingsSection = 'notebook' | 'settings' | 'storage' | 'trash'
 export type VisualsSettingsSection = 'theming' | 'otherVisuals'
 export type TableControlTargetMode = 'active-cell' | 'bottom-right'
 export type TableOfContentsScope = 'all-aisles' | 'focused-aisle'

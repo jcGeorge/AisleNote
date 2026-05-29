@@ -2,7 +2,7 @@
 
 This document describes the current schema 1 on-disk storage format for the app.
 
-The current source of truth is a `notes/` folder with a tiny root manifest, root-level notebook registries, domain manifests, space manifests, Markdown note files, and asset files. Portable user settings live beside it in `settings/app-settings.json`. A future `topics/` layer may be introduced later, but it is not part of the active schema 1 layout.
+The current notebook source of truth is a `notes/` folder with a tiny root manifest, root-level notebook registries, domain manifests, space manifests, Markdown note files, and asset files. In Electron, active user settings live outside the selected notebook folder at `<electron-user-data>/settings/app-settings.json` and are transferred only through explicit user-settings import/export. A future `topics/` layer may be introduced later, but it is not part of the active schema 1 layout.
 
 The design goals are:
 
@@ -16,45 +16,48 @@ The design goals are:
 ## Root Layout
 
 ```text
-settings/
-  app-settings.json
-notes/
-  manifest.json
-  workspace-index.json
-  navigation-state.json
-  frontmatter-settings.json
-  editor-state.json
-  deleted-workspace.json
-  note-registry.json
-  domains/
-    <domain-title>--<id-hash>/
-      manifest.json
-      <space-title>--<id-hash>/
+<notebook-folder>/
+  notes/
+    manifest.json
+    workspace-index.json
+    navigation-state.json
+    frontmatter-settings.json
+    editor-state.json
+    deleted-workspace.json
+    note-registry.json
+    domains/
+      <domain-title>--<id-hash>/
         manifest.json
-        <parent-tab-title>--<id-hash>/
-          home.md
-          home/
-            aisle 1--<id-hash>.md
-            aisle 2--<id-hash>.md
-          <sub-tab-title>--<id-hash>.md
-          <sub-tab-title>--<id-hash>/
-            aisle 1--<id-hash>.md
-            aisle 2--<id-hash>.md
-        trash/
+        <space-title>--<id-hash>/
           manifest.json
-          <deleted-title>--<id-hash>/
+          <parent-tab-title>--<id-hash>/
             home.md
-            <nested-sub-tab-title>--<id-hash>.md
-          <deleted-sub-tab-title>--<id-hash>.md
-    ...
-  _internal/
-    orphan-bodies/
-      <orphan-title>--<id-hash>.md
-      <orphan-title>--<id-hash>/
-        aisle 1--<id-hash>.md
-        aisle 2--<id-hash>.md
-  assets/
-    asset-<content-hash>.<ext>
+            home/
+              aisle 1--<id-hash>.md
+              aisle 2--<id-hash>.md
+            <sub-tab-title>--<id-hash>.md
+            <sub-tab-title>--<id-hash>/
+              aisle 1--<id-hash>.md
+              aisle 2--<id-hash>.md
+          trash/
+            manifest.json
+            <deleted-title>--<id-hash>/
+              home.md
+              <nested-sub-tab-title>--<id-hash>.md
+            <deleted-sub-tab-title>--<id-hash>.md
+      ...
+    _internal/
+      orphan-bodies/
+        <orphan-title>--<id-hash>.md
+        <orphan-title>--<id-hash>/
+          aisle 1--<id-hash>.md
+          aisle 2--<id-hash>.md
+    assets/
+      asset-<content-hash>.<ext>
+
+<electron-user-data>/
+  settings/
+    app-settings.json
 ```
 
 Readable path segments include a title plus an ID-derived hash. Stable IDs remain the durable identity; path names are for human readability and collision avoidance.
@@ -128,7 +131,7 @@ Markdown references assets with relative paths. Runtime/editor layers may inline
 
 Active asset cleanup uses the same save pass that writes Markdown. Each save rebuilds the expected file list from live notes, aisle bodies, unlinked note bodies, and trash/deleted content, then prunes files in `notes/` that are not in that expected set. Image resize changes only the persisted image metadata fragment and does not create a new image file. Image crop and transform operations can create immediate preview assets, but any unreferenced intermediate assets in the active `notes/assets/` folder are removed by the next save/prune pass.
 
-Recovery snapshots are exact historical copies of `notes/`, including the asset files from that moment. They are stored outside the synced profile and pruned by retention policy rather than sharing the latest active asset versions.
+Recovery snapshots are exact historical copies of `notes/`, including the asset files from that moment. They are stored outside the active `notes/` tree and pruned by retention policy rather than sharing the latest active asset versions.
 
 Example:
 
@@ -204,7 +207,7 @@ All root split files live directly under `notes/`, beside `manifest.json`.
 - `deleted-workspace.json`: deleted domains and deleted spaces.
 - `note-registry.json`: note body records and shared aisle body records, including unlinked preservation records marked with `storageStatus: "unlinked"`.
 
-Portable user preferences live in sibling `settings/app-settings.json`, not in `notes/`. Missing required split files block load. Missing optional `editor-state.json` falls back to defaults.
+Portable user preferences live in `<electron-user-data>/settings/app-settings.json`, not in the selected notebook folder's `notes/`. Missing required split files block load. Missing optional `editor-state.json` falls back to defaults.
 
 ### Domain Manifest
 
@@ -281,13 +284,13 @@ Current recovery behavior:
 
 Recovery UI should surface:
 
-- current profile path
+- current notebook folder path
 - schema version
 - writable/paused state
-- storage health (`healthy`, `warning`, or `error`)
+- notebook folder health (`healthy`, `warning`, or `error`)
 - issue codes/messages/paths
 - recovery snapshot count
-- reveal folder, retry reload, export backup, and restore snapshot actions
+- reveal folder, retry reload, backup, and restore snapshot actions
 
 ## Browser Adapter
 
@@ -305,7 +308,7 @@ Browser storage should remain logically compatible with the Electron filesystem 
 
 ## Legacy Storage
 
-Pre-production storage folders and old app-state backup archives are not loaded or migrated. A missing `notes/` folder loads as an empty notebook and is recreated on save. Unsupported schema versions are not silently migrated or overwritten.
+Pre-production notebook folders and old app-state backup archives are not loaded or migrated. A missing `notes/` folder loads as an empty notebook and is recreated on save. Unsupported schema versions are not silently migrated or overwritten.
 
 ## Future Topic Layer
 

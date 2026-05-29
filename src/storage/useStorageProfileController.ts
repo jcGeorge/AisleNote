@@ -6,6 +6,8 @@ type StorageProfileActionResult =
   | { ok: true; status: StorageProfileStatus }
   | { ok: false; error?: string; status: StorageProfileStatus }
 
+type SerializedStateSource = string | (() => string)
+
 type BeforeStorageActionOptions = {
   snapshotMode?: 'force' | 'skip'
 }
@@ -23,11 +25,11 @@ export function getStorageProfileStatusToast(nextStatus: StorageProfileStatus): 
   durationMs?: number
 } | null {
   if (nextStatus.event === 'external-loaded') {
-    return { message: 'external storage changes loaded.', tone: 'success' }
+    return { message: 'external notebook folder changes loaded.', tone: 'success' }
   }
   if (nextStatus.status === 'error') {
     return {
-      message: nextStatus.error ?? 'storage profile could not be loaded. saves are paused.',
+      message: nextStatus.error ?? 'notebook folder could not be loaded. saves are paused.',
       tone: 'error',
       durationMs: STORAGE_ERROR_TOAST_DURATION_MS,
     }
@@ -74,7 +76,7 @@ export function useStorageProfileController({ pushToast, beforeStorageAction }: 
       return
     }
     pushToastRef.current(
-      'ok' in result ? result.error ?? 'storage profile action failed.' : 'storage profile action failed.',
+      'ok' in result ? result.error ?? 'notebook folder action failed.' : 'notebook folder action failed.',
       'error',
       STORAGE_ERROR_TOAST_DURATION_MS,
     )
@@ -84,20 +86,42 @@ export function useStorageProfileController({ pushToast, beforeStorageAction }: 
     await beforeStorageActionRef.current?.()
     const result = await window.electronAPI?.chooseStorageFolder?.()
     if (!result) {
-      pushToastRef.current('sync folder selection is only available in the desktop app.', 'warning')
+      pushToastRef.current('notebook folder selection is only available in the desktop app.', 'warning')
       return
     }
-    handleStorageProfileResult(result, 'storage folder updated.')
+    handleStorageProfileResult(result, 'notebook folder updated.')
+  }
+
+  const createNotebook = async (serializedStateSource: SerializedStateSource) => {
+    await beforeStorageActionRef.current?.()
+    const serializedState =
+      typeof serializedStateSource === 'function' ? serializedStateSource() : serializedStateSource
+    const result = await window.electronAPI?.createNotebook?.({ serializedState })
+    if (!result) {
+      pushToastRef.current('new notebook is only available in the desktop app.', 'warning')
+      return
+    }
+    handleStorageProfileResult(result, 'new notebook created.')
+  }
+
+  const switchNotebook = async () => {
+    await beforeStorageActionRef.current?.()
+    const result = await window.electronAPI?.switchNotebook?.()
+    if (!result) {
+      pushToastRef.current('notebook switching is only available in the desktop app.', 'warning')
+      return
+    }
+    handleStorageProfileResult(result, 'notebook switched.')
   }
 
   const moveStorageProfile = async () => {
     await beforeStorageActionRef.current?.()
     const result = await window.electronAPI?.moveStorageProfile?.()
     if (!result) {
-      pushToastRef.current('storage folder migration is only available in the desktop app.', 'warning')
+      pushToastRef.current('notebook folder migration is only available in the desktop app.', 'warning')
       return
     }
-    handleStorageProfileResult(result, 'current data moved to storage folder.')
+    handleStorageProfileResult(result, 'notebook folder moved.')
   }
 
   const revealStorageProfile = async () => {
@@ -113,17 +137,17 @@ export function useStorageProfileController({ pushToast, beforeStorageAction }: 
     await beforeStorageActionRef.current?.()
     const result = await window.electronAPI?.retryStorageProfile?.()
     if (!result) {
-      pushToastRef.current('storage retry is only available in the desktop app.', 'warning')
+      pushToastRef.current('notebook folder reload is only available in the desktop app.', 'warning')
       return
     }
-    handleStorageProfileResult(result, 'storage profile reloaded.')
+    handleStorageProfileResult(result, 'notebook folder reloaded.')
   }
 
   const restoreStorageRecoverySnapshot = async () => {
     await beforeStorageActionRef.current?.({ snapshotMode: 'skip' })
     const result = await window.electronAPI?.restoreStorageRecoverySnapshot?.()
     if (!result) {
-      pushToastRef.current('storage recovery is only available in the desktop app.', 'warning')
+      pushToastRef.current('notebook folder recovery is only available in the desktop app.', 'warning')
       return
     }
     handleStorageProfileResult(result, 'latest recovery snapshot restored.')
@@ -132,6 +156,8 @@ export function useStorageProfileController({ pushToast, beforeStorageAction }: 
   return {
     storageProfileStatus,
     chooseStorageFolder,
+    createNotebook,
+    switchNotebook,
     moveStorageProfile,
     revealStorageProfile,
     retryStorageProfile,

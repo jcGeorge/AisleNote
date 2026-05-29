@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('app-state-updated', listener)
   },
   getStorageProfileStatus: () => ipcRenderer.invoke('get-storage-profile-status'),
+  createNotebook: (payload) => ipcRenderer.invoke('create-notebook', payload),
+  switchNotebook: () => ipcRenderer.invoke('switch-notebook'),
   chooseStorageFolder: () => ipcRenderer.invoke('choose-storage-folder'),
   moveStorageProfile: () => ipcRenderer.invoke('move-storage-profile'),
   revealStorageProfile: () => ipcRenderer.invoke('reveal-storage-profile'),
@@ -30,6 +32,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   importAppStateArchive: () => ipcRenderer.invoke('import-app-state-archive'),
   openNotebookArchive: () => ipcRenderer.invoke('open-notebook-archive'),
   openUserSettingsFile: () => ipcRenderer.invoke('open-user-settings-file'),
+  openUserSettingsFromNotebookFolder: () => ipcRenderer.invoke('open-user-settings-from-notebook-folder'),
   saveUserSettingsFile: (payload) => ipcRenderer.invoke('save-user-settings-file', payload),
   saveFile: (payload) => ipcRenderer.invoke('save-file', payload),
   copyImageDataUrl: (dataUrl) => ipcRenderer.invoke('copy-image-data-url', dataUrl),

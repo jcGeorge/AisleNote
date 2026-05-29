@@ -40,8 +40,8 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   'toolbar',
   'visuals',
 ]
-export const DEFAULT_DATA_SETTINGS_SECTION: DataSettingsSection = 'cloud'
-export const DATA_SETTINGS_SECTIONS: DataSettingsSection[] = ['cloud', 'trash', 'export', 'import']
+export const DEFAULT_DATA_SETTINGS_SECTION: DataSettingsSection = 'notebook'
+export const DATA_SETTINGS_SECTIONS: DataSettingsSection[] = ['notebook', 'settings', 'storage', 'trash']
 export const DEFAULT_VISUALS_SETTINGS_SECTION: VisualsSettingsSection = 'theming'
 export const VISUALS_SETTINGS_SECTIONS: VisualsSettingsSection[] = ['theming', 'otherVisuals']
 export const MIN_AUTO_REMOVE_DAYS = 1

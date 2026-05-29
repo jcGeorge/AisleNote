@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -184,6 +184,63 @@ describe('electron ipc boundaries', () => {
         canceled: false,
         ok: false,
         error: 'User settings file is too large.',
+      })
+    }))
+
+  it('opens user settings from notebook folders with validation', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const missingFolder = path.join(userDataPath, 'missing-settings')
+      const corruptFolder = path.join(userDataPath, 'corrupt-settings')
+      const validFolder = path.join(userDataPath, 'valid-settings')
+      const corruptSettingsPath = path.join(corruptFolder, 'settings', 'app-settings.json')
+      const validSettingsPath = path.join(validFolder, 'settings', 'app-settings.json')
+      const validSettings = `${JSON.stringify({
+        theme: 'dawn',
+        hotkeys: { shortcuts: {} },
+        ui: {
+          settingsSection: 'data',
+          dataSettingsSection: 'settings',
+        },
+      }, null, 2)}\n`
+      mkdirSync(missingFolder, { recursive: true })
+      mkdirSync(path.dirname(corruptSettingsPath), { recursive: true })
+      mkdirSync(path.dirname(validSettingsPath), { recursive: true })
+      writeFileSync(corruptSettingsPath, '{', 'utf8')
+      writeFileSync(validSettingsPath, validSettings, 'utf8')
+
+      const showOpenDialog = vi
+        .fn()
+        .mockResolvedValueOnce({ canceled: true, filePaths: [] })
+        .mockResolvedValueOnce({ canceled: false, filePaths: [missingFolder] })
+        .mockResolvedValueOnce({ canceled: false, filePaths: [corruptFolder] })
+        .mockResolvedValueOnce({ canceled: false, filePaths: [validFolder] })
+      const ipcMain = createIpcMain()
+      registerFileIpc({
+        ipcMain,
+        dialog: { showOpenDialog },
+      })
+      const handler = ipcMain.handlers.get('open-user-settings-from-notebook-folder')
+
+      await expect(handler()).resolves.toEqual({ canceled: true })
+      await expect(handler()).resolves.toMatchObject({
+        canceled: false,
+        ok: false,
+        error: 'Notebook folder does not contain settings/app-settings.json.',
+      })
+      await expect(handler()).resolves.toMatchObject({
+        canceled: false,
+        ok: false,
+        error: 'User settings file does not match app-settings.json structure.',
+      })
+      await expect(handler()).resolves.toEqual({
+        canceled: false,
+        ok: true,
+        contents: validSettings,
+        filePath: validSettingsPath,
+      })
+      expect(showOpenDialog).toHaveBeenCalledWith({
+        title: 'Import user settings from notebook folder',
+        properties: ['openDirectory'],
       })
     }))
 
@@ -551,10 +608,158 @@ describe('electron ipc boundaries', () => {
         })
 
         expect(loadAppStateResult(userDataPath).ok).toBe(true)
-        expect(loadAppStateResult(targetRoot).ok).toBe(true)
+        expect(loadAppStateResult(targetRoot, { userSettingsRoot: userDataPath }).ok).toBe(true)
+        expect(existsSync(path.join(targetRoot, 'settings', 'app-settings.json'))).toBe(false)
+        expect(JSON.parse(readFileSync(path.join(userDataPath, 'settings', 'app-settings.json'), 'utf8')).theme).toBe('dawn')
       } finally {
         rmSync(targetRoot, { recursive: true, force: true })
       }
+    }))
+
+  it('switches notebooks while preserving global user settings', async () =>
+    withTempUserDataPath(async (userDataPath) => {
+      const targetRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-switch-target-'))
+      try {
+        const targetState = JSON.parse(serializedAppState('light'))
+        targetState.domains[0].name = 'Target Domain'
+        saveAppState(targetRoot, JSON.stringify(targetState))
+
+        const ipcMain = createIpcMain()
+        const window = {
+          isDestroyed: vi.fn(() => false),
+          webContents: { id: 2, send: vi.fn() },
+        }
+        registerStorageIpc({
+          ipcMain,
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow([window]),
+          dialog: {
+            showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [targetRoot] })),
+          },
+        })
+
+        const saveEvent = { sender: { id: 1 }, returnValue: null }
+        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 0 })
+        window.webContents.send.mockClear()
+
+        await expect(ipcMain.handlers.get('switch-notebook')()).resolves.toMatchObject({
+          ok: true,
+          status: {
+            profileRootPath: targetRoot,
+            isDefault: false,
+          },
+        })
+
+        const updateCall = window.webContents.send.mock.calls.find(([channel]) => channel === 'app-state-updated')
+        expect(updateCall).toBeDefined()
+        const switchedState = JSON.parse(updateCall[1].serializedState)
+        expect(switchedState.theme).toBe('dawn')
+        expect(switchedState.domains[0].name).toBe('Target Domain')
+      } finally {
+        rmSync(targetRoot, { recursive: true, force: true })
+      }
+    }))
+
+  it('rejects switching to a folder without a notebook', async () =>
+    withTempUserDataPath(async (userDataPath) => {
+      const targetRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-switch-empty-'))
+      try {
+        const ipcMain = createIpcMain()
+        registerStorageIpc({
+          ipcMain,
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow(),
+          dialog: {
+            showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [targetRoot] })),
+          },
+        })
+
+        await expect(ipcMain.handlers.get('switch-notebook')()).resolves.toMatchObject({
+          ok: false,
+          error: 'This folder does not contain a notebook. Use new notebook to create one.',
+        })
+      } finally {
+        rmSync(targetRoot, { recursive: true, force: true })
+      }
+    }))
+
+  it('creates a new notebook without folder-local user settings', async () =>
+    withTempUserDataPath(async (userDataPath) => {
+      const targetRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-new-notebook-'))
+      try {
+        const ipcMain = createIpcMain()
+        registerStorageIpc({
+          ipcMain,
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow(),
+          dialog: {
+            showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [targetRoot] })),
+          },
+        })
+
+        const saveEvent = { sender: { id: 1 }, returnValue: null }
+        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 0 })
+
+        await expect(
+          ipcMain.handlers.get('create-notebook')(null, { serializedState: serializedAppState('dawn') }),
+        ).resolves.toMatchObject({
+          ok: true,
+          status: {
+            profileRootPath: targetRoot,
+            isDefault: false,
+          },
+        })
+        expect(existsSync(path.join(targetRoot, 'notes', 'manifest.json'))).toBe(true)
+        expect(existsSync(path.join(targetRoot, 'settings', 'app-settings.json'))).toBe(false)
+        expect(JSON.parse(readFileSync(path.join(userDataPath, 'settings', 'app-settings.json'), 'utf8')).theme).toBe('dawn')
+      } finally {
+        rmSync(targetRoot, { recursive: true, force: true })
+      }
+    }))
+
+  it('rejects new notebooks in existing notebook folders', async () =>
+    withTempUserDataPath(async (userDataPath) => {
+      const targetRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-existing-notebook-'))
+      try {
+        saveAppState(targetRoot, serializedAppState('light'))
+
+        const ipcMain = createIpcMain()
+        registerStorageIpc({
+          ipcMain,
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow(),
+          dialog: {
+            showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [targetRoot] })),
+          },
+        })
+
+        await expect(
+          ipcMain.handlers.get('create-notebook')(null, { serializedState: serializedAppState('dawn') }),
+        ).resolves.toMatchObject({
+          ok: false,
+          error: 'This folder already contains a notebook. Use switch notebook instead.',
+        })
+      } finally {
+        rmSync(targetRoot, { recursive: true, force: true })
+      }
+    }))
+
+  it('handles canceled notebook create and switch dialogs', async () =>
+    withTempUserDataPath(async (userDataPath) => {
+      const ipcMain = createIpcMain()
+      registerStorageIpc({
+        ipcMain,
+        app: { getPath: () => userDataPath },
+        BrowserWindow: createBrowserWindow(),
+        dialog: {
+          showOpenDialog: vi.fn(async () => ({ canceled: true, filePaths: [] })),
+        },
+      })
+
+      await expect(
+        ipcMain.handlers.get('create-notebook')(null, { serializedState: serializedAppState('dawn') }),
+      ).resolves.toMatchObject({ canceled: true })
+      await expect(ipcMain.handlers.get('switch-notebook')()).resolves.toMatchObject({ canceled: true })
     }))
 
   it('uses the renderer app-state snapshot when choosing a folder after the current profile failed to load', async () =>
@@ -593,7 +798,7 @@ describe('electron ipc boundaries', () => {
           },
         })
 
-        const targetResult = loadAppStateResult(targetRoot)
+        const targetResult = loadAppStateResult(targetRoot, { userSettingsRoot: userDataPath })
         expect(targetResult.ok).toBe(true)
         expect(JSON.parse(targetResult.serializedState).theme).toBe('light')
         expect(sender.executeJavaScript).toHaveBeenCalledWith(expect.stringContaining('__tabsGetLatestAppState'), true)

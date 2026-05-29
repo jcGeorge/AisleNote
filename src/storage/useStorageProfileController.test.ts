@@ -15,10 +15,10 @@ function storageStatus(event: string, overrides: Partial<StorageProfileStatus> =
   }
 }
 
-describe('storage profile status toasts', () => {
-  it('shows a toast for true external profile loads', () => {
+describe('notebook folder status toasts', () => {
+  it('shows a toast for true external folder loads', () => {
     expect(getStorageProfileStatusToast(storageStatus('external-loaded'))).toEqual({
-      message: 'external storage changes loaded.',
+      message: 'external notebook folder changes loaded.',
       tone: 'success',
     })
   })

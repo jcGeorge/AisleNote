@@ -1,0 +1,305 @@
+import {
+  MAX_AUTO_REMOVE_DAYS,
+  MIN_AUTO_REMOVE_DAYS,
+} from '../../settings/defaults'
+import type { DataSettingsSection, StorageProfileStatus } from '../../types/app'
+import type { NotebookArchiveSummary } from '../../notebook/notebook-archive'
+import { DataSectionSwitch } from './DataSectionSwitch'
+
+type DataSettingsPanelProps = {
+  dataSection: DataSettingsSection
+  settingsDaysDraft: string
+  exportStatus: string
+  importStatus: string
+  storageProfileStatus: StorageProfileStatus | null
+  notebookImportSummary: NotebookArchiveSummary | null
+  notebookImportScratchpadEnabled: boolean
+  notebookImportHasScratchpad: boolean
+  onDataSectionChange: (section: DataSettingsSection) => void
+  onAutoRemoveDaysChange: (value: string, commit?: boolean) => void
+  onExportAll: () => void
+  onExportNotebook: () => void
+  onExportUserSettings: () => void
+  onImportBackup: () => void
+  onImportNotebook: () => void
+  onImportUserSettings: () => void
+  onImportUserSettingsFromNotebookFolder: () => void
+  onNotebookImportScratchpadEnabledChange: (enabled: boolean) => void
+  onConfirmNotebookImport: () => void
+  onCancelNotebookImport: () => void
+  onCreateNotebook: () => void
+  onSwitchNotebook: () => void
+  onMoveStorageProfile: () => void
+  onRevealStorageProfile: () => void
+  onRetryStorageProfile: () => void
+  onRestoreStorageRecoverySnapshot: () => void
+}
+
+function NotebookDataSection({
+  exportStatus,
+  importStatus,
+  notebookImportSummary,
+  notebookImportScratchpadEnabled,
+  notebookImportHasScratchpad,
+  onExportNotebook,
+  onImportNotebook,
+  onNotebookImportScratchpadEnabledChange,
+  onConfirmNotebookImport,
+  onCancelNotebookImport,
+}: Pick<
+  DataSettingsPanelProps,
+  | 'exportStatus'
+  | 'importStatus'
+  | 'notebookImportSummary'
+  | 'notebookImportScratchpadEnabled'
+  | 'notebookImportHasScratchpad'
+  | 'onExportNotebook'
+  | 'onImportNotebook'
+  | 'onNotebookImportScratchpadEnabledChange'
+  | 'onConfirmNotebookImport'
+  | 'onCancelNotebookImport'
+>) {
+  return (
+    <>
+      <p>notebook archives:</p>
+      <div className="settings-page-actions">
+        <button type="button" className="btn btn-sm settings-action-btn" onClick={onExportNotebook}>
+          export notebook archive
+        </button>
+        <button type="button" className="btn btn-sm settings-action-btn" onClick={onImportNotebook}>
+          import notebook archive
+        </button>
+      </div>
+      {notebookImportSummary && (
+        <div className="settings-import-options" role="group" aria-label="notebook import options">
+          <p className="settings-help">
+            notebook contains {notebookImportSummary.domains} domain(s), {notebookImportSummary.spaces} space(s), {notebookImportSummary.tabs} tab(s), {notebookImportSummary.notes} note(s).
+          </p>
+          <div className="settings-hotkey-row">
+            <label className="settings-hotkey-label" htmlFor="settings-import-notebook-scratchpad">
+              scratchpad
+            </label>
+            <div className="form-check form-switch settings-switch">
+              <input
+                id="settings-import-notebook-scratchpad"
+                className="form-check-input"
+                type="checkbox"
+                role="switch"
+                checked={notebookImportScratchpadEnabled}
+                disabled={!notebookImportHasScratchpad}
+                onChange={(event) => onNotebookImportScratchpadEnabledChange(event.target.checked)}
+              />
+            </div>
+          </div>
+          {notebookImportScratchpadEnabled && (
+            <p className="settings-help">current scratchpad content will be overwritten and cannot be recovered from this import flow.</p>
+          )}
+          <div className="settings-page-actions">
+            <button type="button" className="btn btn-sm settings-action-btn" onClick={onConfirmNotebookImport}>
+              import notebook archive
+            </button>
+            <button type="button" className="btn btn-sm settings-action-btn" onClick={onCancelNotebookImport}>
+              cancel
+            </button>
+          </div>
+        </div>
+      )}
+      <p className="settings-help">notebook archives are readable markdown ZIPs. imports append remapped domains and keep user settings separate.</p>
+      {exportStatus && <p className="settings-help">{exportStatus}</p>}
+      {importStatus && <p className="settings-help">{importStatus}</p>}
+    </>
+  )
+}
+
+function UserSettingsDataSection({
+  exportStatus,
+  importStatus,
+  onExportUserSettings,
+  onImportUserSettings,
+  onImportUserSettingsFromNotebookFolder,
+}: Pick<
+  DataSettingsPanelProps,
+  'exportStatus' | 'importStatus' | 'onExportUserSettings' | 'onImportUserSettings' | 'onImportUserSettingsFromNotebookFolder'
+>) {
+  return (
+    <>
+      <p>user settings:</p>
+      <div className="settings-page-actions">
+        <button type="button" className="btn btn-sm settings-action-btn" onClick={onExportUserSettings}>
+          export user settings
+        </button>
+        <button type="button" className="btn btn-sm settings-action-btn" onClick={onImportUserSettings}>
+          import user settings
+        </button>
+        <button type="button" className="btn btn-sm settings-action-btn" onClick={onImportUserSettingsFromNotebookFolder}>
+          import from notebook folder
+        </button>
+      </div>
+      <p className="settings-help">user settings are stored in app-settings.json. importing overwrites current theme, hotkeys, shortcuts, toolbar layouts, and app preferences after confirmation.</p>
+      {exportStatus && <p className="settings-help">{exportStatus}</p>}
+      {importStatus && <p className="settings-help">{importStatus}</p>}
+    </>
+  )
+}
+
+function StorageDataSection({
+  exportStatus,
+  importStatus,
+  storageProfileStatus,
+  onCreateNotebook,
+  onSwitchNotebook,
+  onMoveStorageProfile,
+  onRevealStorageProfile,
+  onRetryStorageProfile,
+  onRestoreStorageRecoverySnapshot,
+  onExportAll,
+  onImportBackup,
+}: Pick<
+  DataSettingsPanelProps,
+  | 'exportStatus'
+  | 'importStatus'
+  | 'storageProfileStatus'
+  | 'onCreateNotebook'
+  | 'onSwitchNotebook'
+  | 'onMoveStorageProfile'
+  | 'onRevealStorageProfile'
+  | 'onRetryStorageProfile'
+  | 'onRestoreStorageRecoverySnapshot'
+  | 'onExportAll'
+  | 'onImportBackup'
+>) {
+  const storageHealth =
+    storageProfileStatus?.health ?? (storageProfileStatus?.status === 'error' ? 'error' : 'healthy')
+  const storageIssues = storageProfileStatus?.issues ?? []
+  const storageProfileCardClassName = [
+    'storage-profile-card',
+    storageHealth === 'error' ? 'is-error' : '',
+    storageHealth === 'warning' ? 'is-warning' : '',
+  ].filter(Boolean).join(' ')
+
+  return (
+    <>
+      <p>notebook folder:</p>
+      <p className="settings-help">the notebook folder contains notes/. user settings stay with this app and transfer only through app-settings.json import/export.</p>
+      <div className={storageProfileCardClassName}>
+        <div className="storage-profile-row">
+          <span className="settings-hotkey-label">current notebook folder</span>
+          <code className="storage-profile-path">
+            {storageProfileStatus?.profileRootPath ?? 'desktop notebook folder unavailable'}
+          </code>
+        </div>
+        <div className="storage-profile-row">
+          <span className="settings-hotkey-label">status</span>
+          <span>{storageProfileStatus ? (storageProfileStatus.status === 'ready' ? 'ready' : 'error') : 'browser local'}</span>
+        </div>
+        <div className="storage-profile-row">
+          <span className="settings-hotkey-label">health</span>
+          <span>{storageProfileStatus ? storageHealth : 'local'}</span>
+        </div>
+        <div className="storage-profile-row">
+          <span className="settings-hotkey-label">schema</span>
+          <span>{storageProfileStatus?.schemaVersion ?? 'n/a'}</span>
+        </div>
+        <div className="storage-profile-row">
+          <span className="settings-hotkey-label">writable</span>
+          <span>{storageProfileStatus ? (storageProfileStatus.canWrite ? 'yes' : 'paused') : 'browser local'}</span>
+        </div>
+        <div className="storage-profile-row">
+          <span className="settings-hotkey-label">recovery snapshots</span>
+          <span>{storageProfileStatus?.recoverySnapshotCount ?? 0}</span>
+        </div>
+        {storageProfileStatus?.error && <p className="settings-help storage-profile-error">{storageProfileStatus.error}</p>}
+        {storageIssues.length > 0 && (
+          <div className="storage-profile-issues" aria-label="notebook folder health issues">
+            {storageIssues.map((issue, index) => (
+              <p
+                key={`${issue.code}-${issue.path ?? index}`}
+                className={`settings-help storage-profile-issue ${issue.severity === 'error' ? 'is-error' : 'is-warning'}`}
+              >
+                {issue.message}
+                {issue.path ? ` (${issue.path})` : ''}
+              </p>
+            ))}
+          </div>
+        )}
+        <div className="settings-page-actions">
+          <button type="button" className="btn btn-sm settings-action-btn" onClick={onCreateNotebook}>
+            new notebook
+          </button>
+          <button type="button" className="btn btn-sm settings-action-btn" onClick={onSwitchNotebook}>
+            switch notebook
+          </button>
+          <button type="button" className="btn btn-sm settings-action-btn" onClick={onMoveStorageProfile}>
+            move notebook folder
+          </button>
+          <button type="button" className="btn btn-sm settings-action-btn" onClick={onRevealStorageProfile}>
+            reveal folder
+          </button>
+          <button
+            type="button"
+            className="btn btn-sm settings-action-btn"
+            onClick={onRetryStorageProfile}
+          >
+            retry
+          </button>
+          <button
+            type="button"
+            className="btn btn-sm settings-action-btn"
+            onClick={onRestoreStorageRecoverySnapshot}
+            disabled={!storageProfileStatus || (storageProfileStatus.recoverySnapshotCount ?? 0) <= 0}
+          >
+            restore latest snapshot
+          </button>
+          <button type="button" className="btn btn-sm settings-action-btn" onClick={onExportAll}>
+            export backup
+          </button>
+          <button type="button" className="btn btn-sm settings-action-btn" onClick={onImportBackup}>
+            import backup
+          </button>
+        </div>
+        <p className="settings-help">
+          choose a local or cloud-synced notebook folder; Tabs stores notebook content in notes/.
+        </p>
+      </div>
+      <p className="settings-help">backups are full app-state archives for recovery and diagnostics.</p>
+      {exportStatus && <p className="settings-help">{exportStatus}</p>}
+      {importStatus && <p className="settings-help">{importStatus}</p>}
+    </>
+  )
+}
+
+function TrashDataSection({
+  settingsDaysDraft,
+  onAutoRemoveDaysChange,
+}: Pick<DataSettingsPanelProps, 'settingsDaysDraft' | 'onAutoRemoveDaysChange'>) {
+  return (
+    <>
+      <p>automatically remove deleted items after:</p>
+      <div className="settings-field-row">
+        <input
+          type="number"
+          className="settings-number-input settings-number-input-half"
+          min={MIN_AUTO_REMOVE_DAYS}
+          max={MAX_AUTO_REMOVE_DAYS}
+          step={1}
+          value={settingsDaysDraft}
+          onChange={(event) => onAutoRemoveDaysChange(event.target.value)}
+          onBlur={() => onAutoRemoveDaysChange(settingsDaysDraft, true)}
+        />
+        <span className="settings-field-suffix">days</span>
+      </div>
+    </>
+  )
+}
+
+export function DataSettingsPanel(props: DataSettingsPanelProps) {
+  return (
+    <div className="settings-section-panel" role="tabpanel">
+      <DataSectionSwitch dataSection={props.dataSection} onDataSectionChange={props.onDataSectionChange} />
+      {props.dataSection === 'notebook' && <NotebookDataSection {...props} />}
+      {props.dataSection === 'settings' && <UserSettingsDataSection {...props} />}
+      {props.dataSection === 'storage' && <StorageDataSection {...props} />}
+      {props.dataSection === 'trash' && <TrashDataSection {...props} />}
+    </div>
+  )
+}
