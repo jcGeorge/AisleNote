@@ -113,4 +113,16 @@
   --rail-control-selected-text: var(--subtab-rail-selected-text);
   --rail-control-selected-bg: var(--subtab-rail-selected-bg);
   --rail-control-selected-border: var(--subtab-rail-selected-border);
+  --bs-btn-color: var(--rail-control-text);
+  --bs-btn-bg: var(--rail-control-bg);
+  --bs-btn-border-color: var(--rail-control-border);
+  --bs-btn-hover-color: var(--rail-control-hover-text);
+  --bs-btn-hover-bg: var(--rail-control-hover-bg);
+  --bs-btn-hover-border-color: var(--rail-control-hover-border);
+  --bs-btn-active-color: var(--rail-control-selected-text);
+  --bs-btn-active-bg: var(--rail-control-selected-bg);
+  --bs-btn-active-border-color: var(--rail-control-selected-border);
+  --bs-btn-disabled-color: var(--rail-control-text);
+  --bs-btn-disabled-bg: var(--rail-control-bg);
+  --bs-btn-disabled-border-color: var(--rail-control-border);
 }

@@ -986,6 +986,7 @@
 }
 
 .aisle-edit-card {
+  --aisle-edit-drag-border-color: var(--settings-control-border);
   position: relative;
   flex: 0 0 clamp(9.5rem, 18vw, 12rem);
   width: clamp(9.5rem, 18vw, 12rem);
@@ -1008,37 +1009,37 @@
 }
 
 .aisle-edit-card.is-dragging.is-drop-neighbor-before {
-  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--subtab-target-border) 46%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--subtab-target-border) 8%, transparent);
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--aisle-edit-drag-border-color) 72%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--aisle-edit-drag-border-color) 14%, transparent);
 }
 
 .aisle-edit-card.is-dragging.is-drop-neighbor-after {
-  box-shadow: inset -1px 0 0 color-mix(in srgb, var(--subtab-target-border) 46%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--subtab-target-border) 8%, transparent);
+  box-shadow: inset -1px 0 0 color-mix(in srgb, var(--aisle-edit-drag-border-color) 72%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--aisle-edit-drag-border-color) 14%, transparent);
 }
 
 .aisle-edit-card.is-drop-target-before {
-  border-color: var(--subtab-target-border);
-  box-shadow: inset 3px 0 0 var(--subtab-target-border),
-    0 0 0 1px color-mix(in srgb, var(--subtab-target-border) 24%, transparent);
+  border-color: var(--aisle-edit-drag-border-color);
+  box-shadow: inset 3px 0 0 var(--aisle-edit-drag-border-color),
+    0 0 0 1px color-mix(in srgb, var(--aisle-edit-drag-border-color) 32%, transparent);
 }
 
 .aisle-edit-card.is-drop-target-after {
-  border-color: var(--subtab-target-border);
-  box-shadow: inset -3px 0 0 var(--subtab-target-border),
-    0 0 0 1px color-mix(in srgb, var(--subtab-target-border) 24%, transparent);
+  border-color: var(--aisle-edit-drag-border-color);
+  box-shadow: inset -3px 0 0 var(--aisle-edit-drag-border-color),
+    0 0 0 1px color-mix(in srgb, var(--aisle-edit-drag-border-color) 32%, transparent);
 }
 
 .aisle-edit-card.is-drop-neighbor-before {
-  border-color: color-mix(in srgb, var(--subtab-target-border) 30%, transparent);
-  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--subtab-target-border) 46%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--subtab-target-border) 8%, transparent);
+  border-color: color-mix(in srgb, var(--aisle-edit-drag-border-color) 42%, transparent);
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--aisle-edit-drag-border-color) 72%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--aisle-edit-drag-border-color) 14%, transparent);
 }
 
 .aisle-edit-card.is-drop-neighbor-after {
-  border-color: color-mix(in srgb, var(--subtab-target-border) 30%, transparent);
-  box-shadow: inset -1px 0 0 color-mix(in srgb, var(--subtab-target-border) 46%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--subtab-target-border) 8%, transparent);
+  border-color: color-mix(in srgb, var(--aisle-edit-drag-border-color) 42%, transparent);
+  box-shadow: inset -1px 0 0 color-mix(in srgb, var(--aisle-edit-drag-border-color) 72%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--aisle-edit-drag-border-color) 14%, transparent);
 }
 
 .aisle-edit-modal-actions {

@@ -99,6 +99,32 @@
     var(--tab-arrangeable-shadow) !important;
 }
 
+.subtab-btn.is-arrangeable,
+.subtab-btn.is-arrangeable:hover,
+.subtab-btn.is-arrangeable:focus,
+.subtab-btn.is-arrangeable:active,
+.subtab-btn.is-arrangeable.is-dragging,
+.subtab-btn.is-arrangeable.is-dragging:hover,
+.subtab-btn.is-arrangeable.is-dragging:focus,
+.subtab-btn.is-arrangeable.is-dragging:active {
+  color: var(--subtab-btn-text) !important;
+  background: var(--subtab-btn-bg) !important;
+  background-color: var(--subtab-btn-bg) !important;
+  border-color: var(--subtab-btn-border) !important;
+}
+
+.subtab-btn.is-arrangeable[aria-selected='true'],
+.subtab-btn.is-arrangeable[aria-selected='true']:hover,
+.subtab-btn.is-arrangeable[aria-selected='true']:focus,
+.subtab-btn.is-arrangeable[aria-selected='true']:active,
+.subtab-btn.is-arrangeable[aria-selected='true'].is-dragging,
+.subtab-btn.is-arrangeable.is-arrange-selected {
+  color: var(--subtab-selected-text) !important;
+  background: var(--subtab-selected-bg) !important;
+  background-color: var(--subtab-selected-bg) !important;
+  border-color: var(--subtab-selected-border) !important;
+}
+
 .tab-arrange-preview {
   position: fixed;
   z-index: 80;
