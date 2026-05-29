@@ -155,6 +155,7 @@ export function useSettingsController({
     resolveToolbarLayoutId(state.ui.toolbarLayouts, activeToolbarLayoutId),
   )
   const [exportStatus, setExportStatus] = useState<string>('')
+  const [importStatus, setImportStatus] = useState<string>('')
   const pendingSettingsFrontmatterTemplateIdRef = useRef<string | null>(null)
   const pendingSettingsSectionRef = useRef<SettingsSection | null>(null)
   const pendingDataSettingsSectionRef = useRef<DataSettingsSection | null>(null)
@@ -933,6 +934,7 @@ export function useSettingsController({
     editingShortcut,
     settingsDaysDraft,
     exportStatus,
+    importStatus,
     tabButtonScaleDraft,
     noteFontScaleDraft,
     tooltipScaleDraft,
@@ -958,6 +960,7 @@ export function useSettingsController({
     toolbarEditorShowNames: state.ui.toolbarEditorShowNames ?? DEFAULT_UI_SETTINGS.toolbarEditorShowNames ?? false,
     setEditingShortcut,
     setExportStatus,
+    setImportStatus,
     changeSection,
     changeDataSection,
     changeVisualsSection,

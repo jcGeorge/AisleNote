@@ -135,6 +135,7 @@ class FakeElement {
   disabled = false
   private scrollHeightValue = 0
   clientWidth = 0
+  scrollWidth = 0
   naturalScrollHeight: number | null = null
   ownerDocument: typeof fakeDocument
   parentElement: FakeElement | null = null
@@ -252,6 +253,7 @@ class FakeElement {
     clone.hidden = this.hidden
     clone.disabled = this.disabled
     clone.clientWidth = this.clientWidth
+    clone.scrollWidth = this.scrollWidth
     clone.scrollHeight = this.scrollHeightValue
     clone.naturalScrollHeight = this.naturalScrollHeight
     clone.rect = { ...this.rect }
@@ -490,6 +492,32 @@ describe('note preview widget', () => {
     expect(navigateToNoteLocation).toHaveBeenNthCalledWith(2, { ...payload.target, heading: payload.heading })
   })
 
+  it('marks over-wide preview title rows for left-edge fading', () => {
+    const payload: NotePreviewReferencePayload = {
+      id: 'preview-id',
+      target: { domainId: 'domain', spaceId: 'space', tabId: 'parent', subTabId: 'child' },
+    }
+    const widget = createNotePreviewWidgetElement(payload, {
+      sourceNoteBodyId: 'source-body',
+      getNotePreviewData: vi.fn(() => createPreviewData()),
+      navigateToNoteLocation: vi.fn(),
+      deleteNotePreview: vi.fn(),
+    }) as unknown as FakeElement
+    const titleGroup = findAllByClass(widget, 'context-bar-title')[0]
+    const titleObserver = resizeObserverInstances.find((observer) => observer.observed.has(titleGroup))
+
+    expect(titleObserver).toBeDefined()
+
+    titleGroup.clientWidth = 180
+    titleGroup.scrollWidth = 360
+    titleObserver?.trigger()
+    expect(titleGroup.className).toContain('is-overflowing')
+
+    titleGroup.scrollWidth = 170
+    titleObserver?.trigger()
+    expect(titleGroup.className).not.toContain('is-overflowing')
+  })
+
   it('keeps missing previews non-navigating with fallback label text', () => {
     const payload: NotePreviewReferencePayload = {
       id: 'preview-id',
@@ -680,18 +708,18 @@ describe('note preview widget', () => {
       deleteNotePreview: vi.fn(),
     }) as unknown as FakeElement
     const editorHost = findAllByClass(widget, 'context-preview-editor-host')[0]
-    const observer = resizeObserverInstances[0]
     const originalRoot = editorInstances[0].contentRoot as FakeElement
+    const observer = resizeObserverInstances.find((candidate) => candidate.observed.has(originalRoot))
 
     expect(editorHost.style.values.get('--note-preview-editor-height')).toBe('4.5rem')
-    expect(observer.observed.has(originalRoot)).toBe(true)
+    expect(observer?.observed.has(originalRoot)).toBe(true)
 
     const replacementRoot = editorInstances[0].replaceRoot('medium preview content')
     vi.advanceTimersByTime(40)
 
     expect(editorHost.style.values.get('--note-preview-editor-height')).toBe('10.38rem')
-    expect(observer.observed.has(originalRoot)).toBe(false)
-    expect(observer.observed.has(replacementRoot)).toBe(true)
+    expect(observer?.observed.has(originalRoot)).toBe(false)
+    expect(observer?.observed.has(replacementRoot)).toBe(true)
   })
 
   it('caps tall preview content at the current size maximum', () => {

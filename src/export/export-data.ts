@@ -3,9 +3,10 @@ import { composeMarkdownFrontmatter } from '../frontmatter/frontmatter'
 import { resolveFrontmatterReferencesForState } from '../frontmatter/frontmatter-state'
 import { splitImageResizeMetadataFromUrl } from '../markdown/image-metadata'
 import { parseImageAssetUrl } from '../markdown/image-asset-refs.js'
-import { getRegisteredImageAssetBytes } from '../markdown/image-asset-registry'
+import { getRegisteredAssetBytes, getRegisteredImageAssetBytes } from '../markdown/image-asset-registry'
 import { normalizePreviewReferenceTokensForMarkdown } from '../markdown/note-context-tokens.js'
 import { convertInternalTabsForExport } from '../markdown/markdown-utils'
+import { buildNotebookArchive, toNotebookArchiveArrayBuffer } from '../notebook/notebook-archive'
 import { getAisleBodyId, getAisleMarkdown } from '../notes/note-markdown'
 import type { AppState, Space, SpaceSettings } from '../types/app'
 
@@ -14,6 +15,11 @@ export type ExportScope = 'space' | 'all'
 type ExportAppDataOptions = {
   scope: ExportScope
   spaceId?: string
+  getLatestState: () => AppState
+  setStatus: (status: string) => void
+}
+
+type ExportNotebookArchiveOptions = {
   getLatestState: () => AppState
   setStatus: (status: string) => void
 }
@@ -241,5 +247,52 @@ export async function exportAppData({
     setStatus('export saved')
   } catch {
     setStatus('export failed')
+  }
+}
+
+export async function exportNotebookArchive({
+  getLatestState,
+  setStatus,
+}: ExportNotebookArchiveOptions) {
+  try {
+    setStatus('building notebook archive...')
+    const latestState = getLatestState()
+    const result = await buildNotebookArchive({
+      state: latestState,
+      readAssetBytes: async (assetPath) => {
+        const fromDesktop = await window.electronAPI?.readAsset?.({ assetPath })
+        if (fromDesktop?.ok && fromDesktop.bytes) return new Uint8Array(fromDesktop.bytes)
+        return getRegisteredAssetBytes(assetPath)
+      },
+    })
+    const data = toNotebookArchiveArrayBuffer(result.bytes)
+    const defaultPath = 'tabs-notebook.zip'
+
+    if (window.electronAPI?.saveFile) {
+      const saveResult = await window.electronAPI.saveFile({ defaultPath, data })
+      if (saveResult?.canceled) {
+        setStatus('notebook export canceled')
+        return
+      }
+      if (saveResult?.error) {
+        setStatus('notebook export failed')
+        return
+      }
+      const warningText = result.issues.length > 0 ? ` ${result.issues.length} warning(s).` : ''
+      setStatus(`notebook export saved.${warningText}`)
+      return
+    }
+
+    const blob = new Blob([data], { type: 'application/zip' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = defaultPath
+    anchor.click()
+    URL.revokeObjectURL(url)
+    const warningText = result.issues.length > 0 ? ` ${result.issues.length} warning(s).` : ''
+    setStatus(`notebook export saved.${warningText}`)
+  } catch {
+    setStatus('notebook export failed')
   }
 }

@@ -54,6 +54,7 @@ import {
   ensureScratchpadInAppState,
   normalizeScratchpadState,
 } from './scratchpad'
+import { repairAppStateEntityIds } from '../import/id-repair'
 
 const DEFAULT_DOMAIN = createDefaultDomain()
 
@@ -212,15 +213,13 @@ function normalizeNoteAisles(raw: unknown): NoteAisle[] {
 
 function normalizeNoteAisleBodies(raw: unknown): NoteAisleBody[] {
   if (!Array.isArray(raw)) return []
-  const seen = new Set<string>()
   const bodies: NoteAisleBody[] = []
   const fallbackTimestamp = createTimestamp()
   for (const entry of raw) {
     if (!entry || typeof entry !== 'object') continue
     const candidate = entry as Record<string, unknown>
     const body = normalizeNoteAisleBodyRecord(candidate, fallbackTimestamp)
-    if (!body || seen.has(body.id)) continue
-    seen.add(body.id)
+    if (!body) continue
     bodies.push(body)
   }
   return bodies
@@ -231,7 +230,11 @@ function normalizeNoteContent(
   rawNoteAisleBodies: unknown,
 ): { noteBodies: NoteBody[]; noteAisleBodies: NoteAisleBody[] } {
   const noteBodies = normalizeNoteBodies(rawNoteBodies)
-  const aisleBodyMap = new Map(normalizeNoteAisleBodies(rawNoteAisleBodies).map((body) => [body.id, body]))
+  const noteAisleBodies = normalizeNoteAisleBodies(rawNoteAisleBodies)
+  const aisleBodyMap = new Map<string, NoteAisleBody>()
+  noteAisleBodies.forEach((body) => {
+    if (!aisleBodyMap.has(body.id)) aisleBodyMap.set(body.id, body)
+  })
   const fallbackTimestamp = createTimestamp()
   const syncedNoteBodies = noteBodies.map((body) => ({
     ...body,
@@ -264,20 +267,19 @@ function normalizeNoteContent(
       }
     }),
   }))
-  return { noteBodies: syncedNoteBodies, noteAisleBodies: Array.from(aisleBodyMap.values()) }
+  const existingIds = new Set(noteAisleBodies.map((body) => body.id))
+  const generatedBodies = Array.from(aisleBodyMap.values()).filter((body) => !existingIds.has(body.id))
+  return { noteBodies: syncedNoteBodies, noteAisleBodies: [...noteAisleBodies, ...generatedBodies] }
 }
 
 function normalizeNoteBodies(raw: unknown): NoteBody[] {
   if (!Array.isArray(raw)) return []
-  const seen = new Set<string>()
   const bodies: NoteBody[] = []
   const fallbackTimestamp = createTimestamp()
   for (const entry of raw) {
     if (!entry || typeof entry !== 'object') continue
     const candidate = entry as Record<string, unknown>
     const id = typeof candidate.id === 'string' && candidate.id ? candidate.id : createId()
-    if (seen.has(id)) continue
-    seen.add(id)
     const aisles = normalizeNoteAisles(candidate.aisles)
     const fallbackAisleBodyId = createId()
     const fallbackAisles =
@@ -750,7 +752,7 @@ export function parseSavedState(raw: string | null): AppState {
           : spaces[0]?.id ?? ''
 
     const noteContent = normalizeNoteContent(parsed.noteBodies, parsed.noteAisleBodies)
-    return ensureNoteBodiesForAppState(projectActiveDomainState({
+    const normalizedState = projectActiveDomainState({
       theme,
       activeDomainId: activeDomain.id,
       domains: parsedDomains,
@@ -764,7 +766,9 @@ export function parseSavedState(raw: string | null): AppState {
       hotkeys: normalizeHotkeySettings(parsed.hotkeys),
       frontmatter: normalizeFrontmatterSettings(parsed.frontmatter),
       ui: normalizeUiSettings(parsed.ui),
-    }))
+    })
+    const repairedState = repairAppStateEntityIds(normalizedState).state
+    return ensureNoteBodiesForAppState(repairedState)
   } catch {
     return DEFAULT_STATE
   }

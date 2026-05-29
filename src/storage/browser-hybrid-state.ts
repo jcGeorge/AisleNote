@@ -5,6 +5,7 @@ import {
   STORAGE_MANIFEST_FILE,
   STORAGE_ROOT_DIR,
   STORAGE_SCHEMA_VERSION,
+  STORAGE_SETTINGS_DIR,
   STORAGE_TRASH_DIR,
 } from '../types/storage-schema'
 import { normalizeImageResizeMetadataFragment, splitImageResizeMetadataFromUrl } from '../markdown/image-metadata'
@@ -54,8 +55,10 @@ import {
   extractAppSettings,
   extractEditorState,
   extractFrontmatterSettings,
+  LEGACY_APP_SETTINGS_FILE,
   pruneAppStateEditorLocations,
   ROOT_SPLIT_FILES,
+  USER_SETTINGS_FILE,
 } from './settings-partition.js'
 
 type BrowserStoredFile =
@@ -798,7 +801,7 @@ export function buildHybridFileMapFromSerializedState(serializedState: string): 
   )
   setJsonFile(
     fileMap,
-    joinPosix(STORAGE_ROOT_DIR, ROOT_SPLIT_FILES.appSettings),
+    joinPosix(STORAGE_SETTINGS_DIR, USER_SETTINGS_FILE),
     extractAppSettings(parsed),
   )
   setJsonFile(
@@ -916,18 +919,49 @@ function readRootSplitJsonFile(
   }
 }
 
+function readJsonRecordFromFileMap(fileMap: Map<string, BrowserStoredFile>, filePath: string): Record<string, unknown> | null {
+  const raw = getTextFile(fileMap, filePath)
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    return isRecord(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function getLegacyAppSettingsFileName(rootManifest: Record<string, unknown>): string {
+  const files = isRecord(rootManifest.files) ? rootManifest.files : null
+  const value = files?.appSettings
+  return typeof value === 'string' && isRootSplitFileName(value) ? value : LEGACY_APP_SETTINGS_FILE
+}
+
+function readAppSettingsFromFileMap(
+  fileMap: Map<string, BrowserStoredFile>,
+  rootManifest: Record<string, unknown>,
+): Record<string, unknown> {
+  const userSettings = readJsonRecordFromFileMap(fileMap, joinPosix(STORAGE_SETTINGS_DIR, USER_SETTINGS_FILE))
+  if (userSettings) return userSettings
+  const legacySettings = readJsonRecordFromFileMap(
+    fileMap,
+    joinPosix(STORAGE_ROOT_DIR, getLegacyAppSettingsFileName(rootManifest)),
+  )
+  return legacySettings ?? {}
+}
+
 function readCurrentRootParts(
   fileMap: Map<string, BrowserStoredFile>,
   rootManifest: Record<string, unknown>,
 ) {
   if (!isRecord(rootManifest.files)) return null
   const splitFiles: Record<string, Record<string, unknown>> = {}
-  const requiredKeys = ['workspaceIndex', 'navigationState', 'appSettings', 'frontmatterSettings', 'deletedWorkspace', 'noteRegistry']
+  const requiredKeys = ['workspaceIndex', 'navigationState', 'frontmatterSettings', 'deletedWorkspace', 'noteRegistry']
   for (const key of requiredKeys) {
     const file = readRootSplitJsonFile(fileMap, rootManifest, key, true)
     if (!file) return null
     splitFiles[key] = file
   }
+  splitFiles.appSettings = readAppSettingsFromFileMap(fileMap, rootManifest)
   splitFiles.editorState = readRootSplitJsonFile(fileMap, rootManifest, 'editorState', false) ?? {}
   const noteRegistry = splitFiles.noteRegistry
 

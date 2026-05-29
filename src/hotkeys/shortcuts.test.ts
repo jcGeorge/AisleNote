@@ -36,7 +36,7 @@ describe('newline shortcut settings', () => {
       'blockQuote',
       'strikethrough',
     ])
-    expect(DEFAULT_NEWLINE_SHORTCUT_SETTINGS.menuOperations).not.toContain('aisle' as any)
+    expect(DEFAULT_NEWLINE_SHORTCUT_SETTINGS.menuOperations).not.toContain('aisle' as never)
   })
 
   it('exposes strikethrough as a menu operation and unbound command shortcut', () => {

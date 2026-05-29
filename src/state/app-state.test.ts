@@ -277,6 +277,61 @@ describe('app state normalization', () => {
     expect(body?.aisles[0] ? getAisleMarkdown(body.aisles[0], state.noteAisleBodies) : '').toBe('body text')
   })
 
+  it('repairs duplicate entity ids while parsing manually edited state', () => {
+    const state = parseModernState({
+        spaces: [
+          {
+            id: 'space-1',
+            name: 'Space',
+            data: {
+              activeTabId: 'tab-1',
+              tabs: [
+                {
+                  id: 'tab-1',
+                  title: 'Tab',
+                  noteBodyId: 'body-1',
+                  activeSubTabId: 'sub-1',
+                  subTabs: [{ id: 'sub-1', title: 'Sub', noteBodyId: 'body-2' }],
+                },
+                {
+                  id: 'tab-1',
+                  title: 'Duplicate Tab',
+                  noteBodyId: 'body-1',
+                  activeSubTabId: 'sub-1',
+                  subTabs: [{ id: 'sub-1', title: 'Duplicate Sub', noteBodyId: 'body-2' }],
+                },
+              ],
+              deletedTabs: [],
+              deletedSubTabs: [],
+            },
+          },
+        ],
+        noteBodies: [
+          { id: 'body-1', aisles: [{ id: 'aisle-1', aisleBodyId: 'aisle-body-1' }] },
+          { id: 'body-1', aisles: [{ id: 'aisle-2', aisleBodyId: 'aisle-body-2' }] },
+          { id: 'body-2', aisles: [{ id: 'aisle-3', aisleBodyId: 'aisle-body-3' }] },
+        ],
+        noteAisleBodies: [
+          { id: 'aisle-body-1', markdown: 'first' },
+          { id: 'aisle-body-1', markdown: 'duplicate' },
+          { id: 'aisle-body-2', markdown: 'second' },
+          { id: 'aisle-body-3', markdown: 'sub' },
+        ],
+      })
+    const tabs = state.spaces[0].data.tabs
+    const tabIds = tabs.map((tabEntry) => tabEntry.id)
+    const subTabIds = tabs.flatMap((tabEntry) => tabEntry.subTabs.map((subTab) => subTab.id))
+    const noteBodyIds = state.noteBodies.map((body) => body.id)
+    const aisleBodyIds = (state.noteAisleBodies ?? []).map((body) => body.id)
+
+    expect(new Set(tabIds).size).toBe(tabIds.length)
+    expect(new Set(subTabIds).size).toBe(subTabIds.length)
+    expect(new Set(noteBodyIds).size).toBe(noteBodyIds.length)
+    expect(new Set(aisleBodyIds).size).toBe(aisleBodyIds.length)
+    expect(tabs[0].noteBodyId).toBe('body-1')
+    expect(tabs[1].noteBodyId).toBe('body-1')
+  })
+
   it('updates duplicate linked aisle slots together without stale sibling whitespace winning', () => {
     const state = parseModernState({
         spaces: [

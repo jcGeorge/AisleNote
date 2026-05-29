@@ -661,6 +661,36 @@ export function createNotePreviewWidgetElement(
 
   let previewSize: NotePreviewSize = 'small'
   let contextEditorCleanups: Array<() => void> = []
+  let titleOverflowMeasureQueued = false
+  let titleOverflowMeasureFrame = 0
+
+  const measureTitleOverflow = () => {
+    titleGroup.classList.toggle(
+      'is-overflowing',
+      titleGroup.clientWidth > 0 && titleGroup.scrollWidth > titleGroup.clientWidth + 1,
+    )
+  }
+
+  const scheduleTitleOverflowMeasure = () => {
+    if (titleOverflowMeasureQueued) return
+    titleOverflowMeasureQueued = true
+    const ownerWindow = titleGroup.ownerDocument?.defaultView ?? window
+    if (ownerWindow.requestAnimationFrame) {
+      const frameId = ownerWindow.requestAnimationFrame(() => {
+        titleOverflowMeasureQueued = false
+        titleOverflowMeasureFrame = 0
+        measureTitleOverflow()
+      })
+      titleOverflowMeasureFrame = titleOverflowMeasureQueued ? frameId : 0
+      return
+    }
+    titleOverflowMeasureQueued = false
+    measureTitleOverflow()
+  }
+
+  const titleOverflowObserver =
+    typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => scheduleTitleOverflowMeasure())
+  titleOverflowObserver?.observe(titleGroup)
 
   const stopWidgetEvent = (event: Event) => {
     event.preventDefault()
@@ -687,6 +717,7 @@ export function createNotePreviewWidgetElement(
       fallback.className = 'context-preview-title-missing'
       fallback.textContent = data.locationLabel
       titleGroup.append(fallback)
+      scheduleTitleOverflowMeasure()
       return
     }
 
@@ -701,6 +732,7 @@ export function createNotePreviewWidgetElement(
       titleButton.addEventListener('click', activatePreviewTarget)
       titleGroup.append(titleButton)
     })
+    scheduleTitleOverflowMeasure()
   }
 
   const renderPreviewEditor = (data: NotePreviewData) => {
@@ -908,6 +940,13 @@ export function createNotePreviewWidgetElement(
   renderLowerBar()
   ;(wrapper as HTMLElement & { destroyNotePreview?: () => void }).destroyNotePreview = () => {
     clearLowerBar()
+    titleOverflowObserver?.disconnect()
+    titleOverflowMeasureQueued = false
+    if (titleOverflowMeasureFrame) {
+      const ownerWindow = titleGroup.ownerDocument?.defaultView ?? window
+      ownerWindow.cancelAnimationFrame?.(titleOverflowMeasureFrame)
+      titleOverflowMeasureFrame = 0
+    }
   }
   return wrapper
 }

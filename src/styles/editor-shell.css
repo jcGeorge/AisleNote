@@ -202,6 +202,11 @@
   line-height: 1.2;
 }
 
+.note-context-widget .context-bar-title.is-overflowing {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 1.75rem, #000 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 1.75rem, #000 100%);
+}
+
 .context-preview-title-btn {
   --rail-control-flex: 0 1 auto;
   --rail-control-max-width: min(calc(300px * var(--tab-button-scale)), 100%);

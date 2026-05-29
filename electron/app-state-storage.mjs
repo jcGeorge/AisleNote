@@ -38,7 +38,10 @@ import {
   createStoragePathFileNameAllocator,
 } from '../src/storage/storage-path-segments.js'
 import {
+  LEGACY_APP_SETTINGS_FILE,
   ROOT_SPLIT_FILES,
+  USER_SETTINGS_DIR,
+  USER_SETTINGS_FILE_PATH,
   buildSyncedSettingsFromSplitFiles,
   extractAppSettings,
   extractEditorState,
@@ -397,6 +400,10 @@ export function getHybridStorageRoot(profileRootPath) {
   return path.join(profileRootPath, HYBRID_ROOT_DIR)
 }
 
+export function getUserSettingsFilePath(profileRootPath) {
+  return path.join(profileRootPath, USER_SETTINGS_FILE_PATH)
+}
+
 function readTextFileIfExists(filePath, issues = null, issueOptions = {}) {
   try {
     if (!existsSync(filePath)) {
@@ -542,6 +549,10 @@ function createRecoverySnapshot(rootPath, userDataPath) {
   const snapshotPath = path.join(recoveryParent, `${HYBRID_ROOT_DIR}-${Date.now()}`)
   measureSlowMainOperation('storage recovery snapshot', () => {
     cpSync(rootPath, snapshotPath, { recursive: true, force: true })
+    const userSettingsPath = getUserSettingsFilePath(path.dirname(rootPath))
+    if (existsSync(userSettingsPath)) {
+      cpSync(userSettingsPath, path.join(snapshotPath, LEGACY_APP_SETTINGS_FILE), { force: true })
+    }
   })
   return snapshotPath
 }
@@ -1197,7 +1208,6 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
     ...(scratchpadEntry ? { scratchpad: scratchpadEntry } : {}),
   })
   setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.navigationState, buildNavigationState(parsedState))
-  setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.appSettings, extractAppSettings(parsedState))
   setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.frontmatterSettings, extractFrontmatterSettings(parsedState))
   setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.editorState, extractEditorState(parsedState))
   setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.deletedWorkspace, {
@@ -1215,7 +1225,16 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
   }
   const rootManifest = fileMap.get('manifest.json')
   writeTextFileAtomic(tempRoot, 'manifest.json', rootManifest.contents)
-  pruneStorageRoot(tempRoot, fileMap.keys())
+  const expectedFiles = new Set(fileMap.keys())
+  if (existsSync(path.join(tempRoot, LEGACY_APP_SETTINGS_FILE))) expectedFiles.add(LEGACY_APP_SETTINGS_FILE)
+  pruneStorageRoot(tempRoot, expectedFiles)
+  if (typeof options.userSettingsRoot === 'string') {
+    writeTextFileAtomic(
+      options.userSettingsRoot,
+      USER_SETTINGS_FILE_PATH,
+      `${JSON.stringify(extractAppSettings(parsedState), null, 2)}\n`,
+    )
+  }
 }
 
 function readNoteBodiesFromRoot(rootManifest) {
@@ -1339,7 +1358,67 @@ function readRootSplitJsonFile(rootPath, rootManifest, key, required, issues = n
   return parsed
 }
 
-function readCurrentRootParts(rootPath, rootManifest, issues = null) {
+function readAppSettingsJsonFile(filePath, issuePath, issues = null) {
+  const parsed = readJsonFileIfExists(filePath, issues, {
+    rootPath: path.dirname(path.dirname(filePath)),
+    missingCode: 'missing-app-settings',
+    missingMessage: `Portable app settings file ${issuePath} is missing. Default user settings were used.`,
+    parseCode: 'corrupt-app-settings',
+    parseMessage: `Portable app settings file ${issuePath} is corrupt. Default user settings were used.`,
+    severity: 'warning',
+  })
+  if (parsed === null) return {}
+  if (!isRecord(parsed) || Array.isArray(parsed)) {
+    addStorageIssue(
+      issues,
+      'invalid-app-settings',
+      'warning',
+      issuePath,
+      `Portable app settings file ${issuePath} does not contain a JSON object. Default user settings were used.`,
+    )
+    return {}
+  }
+  return parsed
+}
+
+function getLegacyAppSettingsFileName(rootManifest, issues = null) {
+  const files = isRecord(rootManifest?.files) ? rootManifest.files : null
+  const configuredFile = files?.appSettings
+  if (configuredFile === undefined) return LEGACY_APP_SETTINGS_FILE
+  if (isRootSplitFileName(configuredFile)) return configuredFile
+  addStorageIssue(
+    issues,
+    'invalid-root-split-file-entry',
+    'warning',
+    path.posix.join(HYBRID_ROOT_DIR, 'manifest.json'),
+    'Root manifest has an invalid legacy app settings file pointer.',
+  )
+  return LEGACY_APP_SETTINGS_FILE
+}
+
+function readAppSettingsForProfile(profileRootPath, rootPath, rootManifest, issues = null) {
+  const userSettingsPath = getUserSettingsFilePath(profileRootPath)
+  if (existsSync(userSettingsPath)) {
+    return readAppSettingsJsonFile(userSettingsPath, USER_SETTINGS_FILE_PATH, issues)
+  }
+
+  const legacyFileName = getLegacyAppSettingsFileName(rootManifest, issues)
+  const legacyPath = path.join(rootPath, legacyFileName)
+  if (existsSync(legacyPath)) {
+    addStorageIssue(
+      issues,
+      'legacy-app-settings',
+      'warning',
+      path.posix.join(HYBRID_ROOT_DIR, legacyFileName),
+      `Loaded user settings from legacy ${path.posix.join(HYBRID_ROOT_DIR, legacyFileName)}. They will be written to ${USER_SETTINGS_FILE_PATH} on the next save.`,
+    )
+    return readAppSettingsJsonFile(legacyPath, path.posix.join(HYBRID_ROOT_DIR, legacyFileName), issues)
+  }
+
+  return readAppSettingsJsonFile(userSettingsPath, USER_SETTINGS_FILE_PATH, issues)
+}
+
+function readCurrentRootParts(rootPath, rootManifest, issues = null, profileRootPath = path.dirname(rootPath)) {
   if (!isRecord(rootManifest?.files)) {
     addStorageIssue(
       issues,
@@ -1351,12 +1430,13 @@ function readCurrentRootParts(rootPath, rootManifest, issues = null) {
     return null
   }
   const splitFiles = {}
-  const requiredKeys = ['workspaceIndex', 'navigationState', 'appSettings', 'frontmatterSettings', 'deletedWorkspace', 'noteRegistry']
+  const requiredKeys = ['workspaceIndex', 'navigationState', 'frontmatterSettings', 'deletedWorkspace', 'noteRegistry']
   for (const key of requiredKeys) {
     const file = readRootSplitJsonFile(rootPath, rootManifest, key, true, issues)
     if (!file) return null
     splitFiles[key] = file
   }
+  splitFiles.appSettings = readAppSettingsForProfile(profileRootPath, rootPath, rootManifest, issues)
   splitFiles.editorState = readRootSplitJsonFile(rootPath, rootManifest, 'editorState', false, issues) ?? {}
   const noteRegistry = splitFiles.noteRegistry
 
@@ -1450,8 +1530,8 @@ function readSpace(rootPath, spaceRootRelative, spaceEntry, issues = null) {
   }
 }
 
-function readHybridAppStateFromRootManifest(rootPath, rootManifest, issues = null) {
-  const rootParts = readCurrentRootParts(rootPath, rootManifest, issues)
+function readHybridAppStateFromRootManifest(rootPath, rootManifest, issues = null, profileRootPath = path.dirname(rootPath)) {
+  const rootParts = readCurrentRootParts(rootPath, rootManifest, issues, profileRootPath)
   if (!rootParts) return null
 
   const noteBodies = readNoteBodiesFromRoot(rootParts.noteBodiesRoot)
@@ -1576,7 +1656,7 @@ function readHybridAppStateFromRootManifest(rootPath, rootManifest, issues = nul
   }))
 }
 
-function readHybridAppStateResultFromRoot(rootPath) {
+function readHybridAppStateResultFromRoot(rootPath, profileRootPath = path.dirname(rootPath)) {
   const issues = []
   if (!existsSync(rootPath)) return { serializedState: null, schemaVersion: null, issues }
 
@@ -1610,14 +1690,14 @@ function readHybridAppStateResultFromRoot(rootPath) {
   }
 
   return {
-    serializedState: readHybridAppStateFromRootManifest(rootPath, rawRootManifest, issues),
+    serializedState: readHybridAppStateFromRootManifest(rootPath, rawRootManifest, issues, profileRootPath),
     schemaVersion: rawRootManifest.schemaVersion,
     issues,
   }
 }
 
-function readHybridAppStateFromRoot(rootPath) {
-  return readHybridAppStateResultFromRoot(rootPath).serializedState
+function readHybridAppStateFromRoot(rootPath, profileRootPath = path.dirname(rootPath)) {
+  return readHybridAppStateResultFromRoot(rootPath, profileRootPath).serializedState
 }
 
 export function loadAppState(profileRootPath) {
@@ -1647,7 +1727,7 @@ export function loadAppStateResult(profileRootPath) {
     ))
   }
 
-  const hybridResult = readHybridAppStateResultFromRoot(finalRoot)
+  const hybridResult = readHybridAppStateResultFromRoot(finalRoot, profileRootPath)
   if (hybridResult.serializedState !== null) {
     return withStorageHealth({
       ok: true,
@@ -1698,6 +1778,7 @@ export function saveAppState(profileRootPath, serializedState, options = {}) {
   measureSlowMainOperation('hybrid app-state write', () =>
     writeHybridStorage(finalRoot, serializedState, {
       assetSourceRoot: typeof options.assetSourceRoot === 'string' ? options.assetSourceRoot : finalRoot,
+      userSettingsRoot: profileRootPath,
     }),
   )
 
@@ -1726,6 +1807,11 @@ export function restoreStorageRecoverySnapshot(profileRootPath, userDataPath, sn
   createRecoverySnapshot(finalRoot, userDataPath)
   rmSync(finalRoot, { recursive: true, force: true })
   cpSync(selectedSnapshot.path, finalRoot, { recursive: true, force: true })
+  const snapshotSettingsPath = path.join(selectedSnapshot.path, LEGACY_APP_SETTINGS_FILE)
+  if (existsSync(snapshotSettingsPath)) {
+    mkdirSync(path.dirname(getUserSettingsFilePath(profileRootPath)), { recursive: true })
+    cpSync(snapshotSettingsPath, getUserSettingsFilePath(profileRootPath), { force: true })
+  }
   pruneStorageRecoverySnapshots(userDataPath)
   return { ok: true, snapshot: selectedSnapshot, loadResult: loadAppStateResult(profileRootPath) }
 }
@@ -1746,10 +1832,145 @@ export async function buildAppStateExportArchive(serializedState, options = {}) 
     const exportState = normalizeAppStateForExport(parsedState)
     writeHybridStorage(exportRoot, JSON.stringify(exportState), {
       assetSourceRoot: typeof options.assetSourceRoot === 'string' ? options.assetSourceRoot : null,
+      userSettingsRoot: tempParent,
     })
     const zip = new JSZip()
     addDirectoryToZip(zip, exportRoot, HYBRID_ROOT_DIR)
+    const settingsRoot = path.join(tempParent, USER_SETTINGS_DIR)
+    if (existsSync(settingsRoot)) addDirectoryToZip(zip, settingsRoot, USER_SETTINGS_DIR)
     return await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' })
+  } finally {
+    rmSync(tempParent, { recursive: true, force: true })
+  }
+}
+
+function normalizeArchiveEntryName(entry) {
+  const rawName = String(entry?.unsafeOriginalName ?? entry?.name ?? '')
+  if (!rawName) {
+    return {
+      ok: false,
+      issue: createStorageIssue('unsafe-archive-entry', 'error', undefined, 'Archive contains an empty file path.'),
+    }
+  }
+  if (rawName.includes('\\') || /^[a-zA-Z]:/.test(rawName)) {
+    return {
+      ok: false,
+      issue: createStorageIssue('unsafe-archive-entry', 'error', rawName, 'Archive contains an unsafe file path.'),
+    }
+  }
+  const rawParts = rawName.split('/').filter(Boolean)
+  const normalized = path.posix.normalize(rawName).replace(/\/+$/, '')
+  const parts = normalized.split('/').filter(Boolean)
+  if (
+    path.posix.isAbsolute(rawName) ||
+    normalized === '.' ||
+    normalized.startsWith('../') ||
+    rawParts.includes('..') ||
+    parts.includes('..')
+  ) {
+    return {
+      ok: false,
+      issue: createStorageIssue('unsafe-archive-entry', 'error', rawName, 'Archive contains a path traversal entry.'),
+    }
+  }
+  if (
+    normalized !== HYBRID_ROOT_DIR &&
+    !normalized.startsWith(`${HYBRID_ROOT_DIR}/`) &&
+    normalized !== USER_SETTINGS_DIR &&
+    normalized !== USER_SETTINGS_FILE_PATH
+  ) {
+    return {
+      ok: false,
+      issue: createStorageIssue(
+        'unexpected-archive-entry',
+        'error',
+        rawName,
+        'Archive contains files outside notes-data or settings.',
+      ),
+    }
+  }
+  return { ok: true, name: normalized }
+}
+
+function isPathInside(parent, child) {
+  const parentPath = path.resolve(parent)
+  const childPath = path.resolve(child)
+  return childPath === parentPath || childPath.startsWith(`${parentPath}${path.sep}`)
+}
+
+function failedImportArchiveResult(error, issues = []) {
+  return withStorageHealth({
+    ok: false,
+    serializedState: null,
+    error,
+  }, issues)
+}
+
+export async function importAppStateArchive(archivePath) {
+  if (typeof archivePath !== 'string' || !archivePath.trim()) {
+    return failedImportArchiveResult('Invalid archive path.', [
+      createStorageIssue('invalid-archive-path', 'error', undefined, 'Archive path is invalid.'),
+    ])
+  }
+
+  let zip
+  try {
+    zip = await JSZip.loadAsync(readFileSync(archivePath))
+  } catch {
+    return failedImportArchiveResult('Archive is not a readable zip file.', [
+      createStorageIssue('invalid-archive', 'error', archivePath, 'Archive is not a readable zip file.'),
+    ])
+  }
+
+  const tempParent = mkdtempSync(path.join(os.tmpdir(), 'tabs-import-'))
+  const writtenFiles = new Set()
+
+  try {
+    let hasManifest = false
+    for (const entry of Object.values(zip.files)) {
+      const normalized = normalizeArchiveEntryName(entry)
+      if (!normalized.ok) {
+        return failedImportArchiveResult(normalized.issue.message, [normalized.issue])
+      }
+      if (entry.dir) continue
+      if (normalized.name === HYBRID_ROOT_DIR || normalized.name === USER_SETTINGS_DIR) {
+        const issue = createStorageIssue('unsafe-archive-entry', 'error', normalized.name, 'Archive contains an invalid directory file.')
+        return failedImportArchiveResult(issue.message, [issue])
+      }
+      if (writtenFiles.has(normalized.name)) {
+        const issue = createStorageIssue('duplicate-archive-entry', 'error', normalized.name, 'Archive contains duplicate file entries.')
+        return failedImportArchiveResult(issue.message, [issue])
+      }
+      writtenFiles.add(normalized.name)
+      if (normalized.name === path.posix.join(HYBRID_ROOT_DIR, 'manifest.json')) hasManifest = true
+      const destination = path.join(tempParent, ...normalized.name.split('/'))
+      if (!isPathInside(tempParent, destination)) {
+        const issue = createStorageIssue('unsafe-archive-entry', 'error', normalized.name, 'Archive entry escapes the import directory.')
+        return failedImportArchiveResult(issue.message, [issue])
+      }
+      mkdirSync(path.dirname(destination), { recursive: true })
+      writeFileSync(destination, await entry.async('nodebuffer'))
+    }
+
+    if (!hasManifest) {
+      const issue = createStorageIssue(
+        'missing-root-manifest',
+        'error',
+        path.posix.join(HYBRID_ROOT_DIR, 'manifest.json'),
+        'Archive is missing notes-data/manifest.json.',
+      )
+      return failedImportArchiveResult(issue.message, [issue])
+    }
+
+    const result = loadAppStateResult(tempParent)
+    if (!result.ok) {
+      return failedImportArchiveResult(result.error ?? 'Imported archive could not be loaded.', result.issues ?? [])
+    }
+    return withStorageHealth({
+      ok: true,
+      serializedState: result.serializedState,
+      schemaVersion: result.schemaVersion ?? null,
+    }, result.issues ?? [])
   } finally {
     rmSync(tempParent, { recursive: true, force: true })
   }

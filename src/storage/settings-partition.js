@@ -13,10 +13,13 @@ import {
 } from '../settings/synced-ui-settings-registry.js'
 
 export const MAX_NOTE_CURSOR_LOCATIONS = 500
+export const USER_SETTINGS_DIR = 'settings'
+export const USER_SETTINGS_FILE = 'app-settings.json'
+export const USER_SETTINGS_FILE_PATH = `${USER_SETTINGS_DIR}/${USER_SETTINGS_FILE}`
+export const LEGACY_APP_SETTINGS_FILE = 'app-settings.json'
 export const ROOT_SPLIT_FILES = Object.freeze({
   workspaceIndex: 'workspace-index.json',
   navigationState: 'navigation-state.json',
-  appSettings: 'app-settings.json',
   frontmatterSettings: 'frontmatter-settings.json',
   editorState: 'editor-state.json',
   deletedWorkspace: 'deleted-workspace.json',
@@ -26,7 +29,6 @@ export const ROOT_SPLIT_FILES = Object.freeze({
 export const REQUIRED_ROOT_SPLIT_FILE_KEYS = Object.freeze([
   'workspaceIndex',
   'navigationState',
-  'appSettings',
   'frontmatterSettings',
   'deletedWorkspace',
   'noteRegistry',
@@ -81,6 +83,10 @@ function optionalScratchpadAisleLimit(value, fallback) {
   const parsed = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10)
   if (!Number.isFinite(parsed)) return fallback
   return Math.min(32, Math.max(1, Math.floor(parsed)))
+}
+
+function isPortableSettingsRecord(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
 function normalizeTimestamp(value) {
@@ -345,6 +351,63 @@ export function extractAppSettings(appState) {
   }
 }
 
+export function normalizePortableAppSettings(rawSettings) {
+  const appSettings = isPortableSettingsRecord(rawSettings) ? rawSettings : {}
+  const uiPreferences = isPortableSettingsRecord(appSettings.ui) ? appSettings.ui : {}
+  const uiSource = {
+    ...appSettings,
+    ...uiPreferences,
+  }
+  return extractAppSettings({
+    theme: appSettings.theme,
+    hotkeys: appSettings.hotkeys,
+    ui: uiSource,
+  })
+}
+
+export function stringifyPortableAppSettings(appState) {
+  return `${JSON.stringify(extractAppSettings(appState), null, 2)}\n`
+}
+
+export function parsePortableAppSettingsJson(raw) {
+  if (typeof raw !== 'string' || raw.trim().length === 0) {
+    return { ok: false, error: 'Settings file is empty.' }
+  }
+  try {
+    const parsed = JSON.parse(raw)
+    if (!isPortableSettingsRecord(parsed)) {
+      return { ok: false, error: 'Settings file must contain a JSON object.' }
+    }
+    return { ok: true, settings: normalizePortableAppSettings(parsed) }
+  } catch {
+    return { ok: false, error: 'Settings file is not valid JSON.' }
+  }
+}
+
+export function applyPortableAppSettings(appState, rawSettings) {
+  const appSettings = normalizePortableAppSettings(rawSettings)
+  const currentUi = isRecord(appState?.ui) ? appState.ui : {}
+  const syncedSettings = buildSyncedSettingsFromSplitFiles({
+    appSettings,
+    frontmatterSettings: isRecord(appState?.frontmatter) ? appState.frontmatter : {},
+    editorState: extractEditorState(appState),
+  })
+  return {
+    ...appState,
+    theme: syncedSettings.theme,
+    hotkeys: syncedSettings.hotkeys,
+    ui: {
+      ...syncedSettings.ui,
+      noteCursorLocations: isRecord(currentUi.noteCursorLocations)
+        ? currentUi.noteCursorLocations
+        : DEFAULT_SYNCED_UI_SETTINGS.noteCursorLocations,
+      headingCollapseState: isRecord(currentUi.headingCollapseState)
+        ? currentUi.headingCollapseState
+        : DEFAULT_SYNCED_UI_SETTINGS.headingCollapseState,
+    },
+  }
+}
+
 export function extractEditorState(appState) {
   const ui = isRecord(appState?.ui) ? appState.ui : {}
   return {
@@ -354,7 +417,7 @@ export function extractEditorState(appState) {
 }
 
 export function buildSyncedSettingsFromSplitFiles(parts) {
-  const appSettings = isRecord(parts?.appSettings) ? parts.appSettings : {}
+  const appSettings = normalizePortableAppSettings(parts?.appSettings)
   const shortcutSettings = isRecord(appSettings.hotkeys)
     ? appSettings.hotkeys
     : DEFAULT_HOTKEY_SETTINGS

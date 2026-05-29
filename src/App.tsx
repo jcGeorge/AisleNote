@@ -143,7 +143,7 @@ import {
   COMPLETED_TASK_UNDO_HINT_COOLDOWN_MS,
   COMPLETED_TASK_UNDO_HINT_DETECTION_MS,
 } from './editor/task-behavior'
-import { exportAppData, type ExportScope } from './export/export-data'
+import { exportAppData, exportNotebookArchive, type ExportScope } from './export/export-data'
 import { buildFrontmatterModalDraftForAisle } from './frontmatter/frontmatter-state'
 import { getCycledAisleTarget, useGlobalHotkeys } from './hotkeys/useGlobalHotkeys'
 import { normalizeMarkdownForPersistence } from './markdown/markdown-utils'
@@ -208,7 +208,21 @@ import {
   isThemePaletteSeed,
 } from './settings/defaults'
 import { useSettingsController } from './settings/useSettingsController'
-import { applyAutoPurgeToAppState, ensureNoteBodiesForAppState } from './state/app-state'
+import {
+  applyPortableAppSettings,
+  parsePortableAppSettingsJson,
+  stringifyPortableAppSettings,
+} from './storage/settings-partition.js'
+import { applyAutoPurgeToAppState, ensureNoteBodiesForAppState, parseSavedState } from './state/app-state'
+import { mergeImportedBackupState } from './import/backup-import'
+import {
+  materializeNotebookImportAssets,
+  mergeImportedNotebookState,
+  parseNotebookArchive,
+  toNotebookArchiveArrayBuffer,
+  type NotebookArchiveSummary,
+  type ParsedNotebookArchive,
+} from './notebook/notebook-archive'
 import {
   DEFAULT_SCRATCHPAD_AISLE_LIMIT,
   SCRATCHPAD_CONTENT_TARGET_ID,
@@ -340,6 +354,72 @@ function getCurrentTimestamp() {
   return Date.now()
 }
 
+function chooseNotebookArchiveWithBrowserInput(): Promise<{ canceled: true } | { canceled: false; bytes: ArrayBuffer }> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.zip,application/zip'
+    input.style.display = 'none'
+    const cleanup = () => {
+      input.remove()
+    }
+    input.addEventListener('change', () => {
+      const file = input.files?.[0] ?? null
+      if (!file) {
+        cleanup()
+        resolve({ canceled: true })
+        return
+      }
+      file.arrayBuffer()
+        .then((bytes) => resolve({ canceled: false, bytes }))
+        .catch(() => resolve({ canceled: true }))
+        .finally(cleanup)
+    }, { once: true })
+    document.body.appendChild(input)
+    input.click()
+  })
+}
+
+function chooseUserSettingsWithBrowserInput(): Promise<{ canceled: true } | { canceled: false; contents: string }> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.json,application/json'
+    input.style.display = 'none'
+    const cleanup = () => {
+      input.remove()
+    }
+    input.addEventListener('change', () => {
+      const file = input.files?.[0] ?? null
+      if (!file) {
+        cleanup()
+        resolve({ canceled: true })
+        return
+      }
+      file.text()
+        .then((contents) => resolve({ canceled: false, contents }))
+        .catch(() => resolve({ canceled: true }))
+        .finally(cleanup)
+    }, { once: true })
+    document.body.appendChild(input)
+    input.click()
+  })
+}
+
+function downloadTextFile(defaultPath: string, contents: string, type: string) {
+  const blob = new Blob([contents], { type })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = defaultPath
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
+function formatNotebookArchiveSummary(summary: NotebookArchiveSummary): string {
+  return `${summary.domains} domain(s), ${summary.spaces} space(s), ${summary.tabs} tab(s), ${summary.notes} note(s)`
+}
+
 function App() {
   const initialDeviceSettingsRef = useRef<DeviceSettings | null>(null)
   if (initialDeviceSettingsRef.current === null) {
@@ -353,6 +433,8 @@ function App() {
   const [editing, setEditing] = useState<{ type: EditableEntityType; id: string } | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [modal, setModal] = useState<ModalState | null>(null)
+  const [pendingNotebookImport, setPendingNotebookImport] = useState<ParsedNotebookArchive | null>(null)
+  const [notebookImportScratchpadEnabled, setNotebookImportScratchpadEnabled] = useState(false)
   const [shortcutMenu, setShortcutMenu] = useState<ShortcutMenuState | null>(null)
   const [shortcutMenuActiveIndex, setShortcutMenuActiveIndex] = useState(0)
   const [tableOfContentsPanels, setTableOfContentsPanels] = useState<TableOfContentsPanelsState | null>(null)
@@ -3188,6 +3270,205 @@ function App() {
       setStatus: settingsController.setExportStatus,
     })
 
+  const exportNotebook = () =>
+    exportNotebookArchive({
+      getLatestState: buildStateWithLatestEditorContent,
+      setStatus: settingsController.setExportStatus,
+    })
+
+  const exportUserSettings = async () => {
+    settingsController.setExportStatus('building user settings export...')
+    try {
+      const contents = stringifyPortableAppSettings(buildStateWithLatestEditorContent())
+      const defaultPath = 'app-settings.json'
+      const saveUserSettingsFile = window.electronAPI?.saveUserSettingsFile
+      if (saveUserSettingsFile) {
+        const result = await saveUserSettingsFile({ defaultPath, contents })
+        if (result.canceled) {
+          settingsController.setExportStatus('user settings export canceled')
+          return
+        }
+        if (result.error) {
+          settingsController.setExportStatus(`user settings export failed: ${result.error}`)
+          return
+        }
+        settingsController.setExportStatus('user settings exported')
+        return
+      }
+
+      downloadTextFile(defaultPath, contents, 'application/json')
+      settingsController.setExportStatus('user settings exported')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'unknown error'
+      settingsController.setExportStatus(`user settings export failed: ${message}`)
+    }
+  }
+
+  const importBackup = async () => {
+    const importArchive = window.electronAPI?.importAppStateArchive
+    if (!importArchive) {
+      settingsController.setImportStatus('backup import is available in the desktop app.')
+      return
+    }
+
+    settingsController.setImportStatus('choose a backup archive to import.')
+    try {
+      const result = await importArchive()
+      if (result.canceled) {
+        settingsController.setImportStatus('import canceled.')
+        return
+      }
+      if (!result.ok) {
+        settingsController.setImportStatus(result.error ? `import failed: ${result.error}` : 'import failed.')
+        return
+      }
+      if (!result.serializedState) {
+        settingsController.setImportStatus('import failed: archive did not contain app state.')
+        return
+      }
+
+      const latestState = buildStateWithLatestEditorContent()
+      const importedState = parseSavedState(result.serializedState)
+      const { state: nextState, summary } = mergeImportedBackupState(latestState, importedState)
+      await commitAppStateNow(nextState)
+      const unresolvedText =
+        summary.unresolvedReferences > 0 ? ` ${summary.unresolvedReferences} reference(s) stayed unresolved.` : ''
+      const warningCount = summary.warnings.length + (result.issues?.filter((issue) => issue.severity === 'warning').length ?? 0)
+      const warningText = warningCount > 0 ? ` ${warningCount} warning(s).` : ''
+      settingsController.setImportStatus(
+        `imported ${summary.domains} domain(s), ${summary.spaces} space(s), ${summary.tabs} tab(s), ${summary.notes} note(s).${unresolvedText}${warningText}`,
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'unknown error'
+      settingsController.setImportStatus(`import failed: ${message}`)
+    }
+  }
+
+  const importNotebook = async () => {
+    settingsController.setImportStatus('choose a notebook archive to import.')
+    setPendingNotebookImport(null)
+    setNotebookImportScratchpadEnabled(false)
+    try {
+      const desktopOpen = window.electronAPI?.openNotebookArchive
+      const openResult = desktopOpen ? await desktopOpen() : await chooseNotebookArchiveWithBrowserInput()
+      if (openResult.canceled) {
+        settingsController.setImportStatus('notebook import canceled.')
+        return
+      }
+      if ('ok' in openResult && !openResult.ok) {
+        settingsController.setImportStatus(openResult.error ? `notebook import failed: ${openResult.error}` : 'notebook import failed.')
+        return
+      }
+      const archiveBytes = 'bytes' in openResult ? openResult.bytes : null
+      if (!archiveBytes) {
+        settingsController.setImportStatus('notebook import failed: archive did not contain file data.')
+        return
+      }
+
+      settingsController.setImportStatus('validating notebook archive...')
+      const parseResult = await parseNotebookArchive(archiveBytes)
+      if (!parseResult.ok) {
+        settingsController.setImportStatus(`notebook import failed: ${parseResult.error}`)
+        return
+      }
+
+      setPendingNotebookImport(parseResult.archive)
+      const warningCount = parseResult.archive.issues.filter((issue) => issue.severity === 'warning').length
+      const warningText = warningCount > 0 ? ` ${warningCount} warning(s).` : ''
+      settingsController.setImportStatus(
+        `ready to import notebook: ${formatNotebookArchiveSummary(parseResult.archive.summary)}.${warningText}`,
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'unknown error'
+      settingsController.setImportStatus(`notebook import failed: ${message}`)
+    }
+  }
+
+  const importUserSettings = async () => {
+    settingsController.setImportStatus('choose an app-settings.json file to import.')
+    try {
+      const desktopOpen = window.electronAPI?.openUserSettingsFile
+      const openResult = desktopOpen ? await desktopOpen() : await chooseUserSettingsWithBrowserInput()
+      if (openResult.canceled) {
+        settingsController.setImportStatus('user settings import canceled.')
+        return
+      }
+      if ('ok' in openResult && !openResult.ok) {
+        settingsController.setImportStatus(
+          openResult.error ? `user settings import failed: ${openResult.error}` : 'user settings import failed.',
+        )
+        return
+      }
+      const contents = 'contents' in openResult ? openResult.contents : ''
+      const parsedSettings = parsePortableAppSettingsJson(contents)
+      if (!parsedSettings.ok) {
+        settingsController.setImportStatus(`user settings import failed: ${parsedSettings.error}`)
+        return
+      }
+      if (!window.confirm('Importing user settings will overwrite current theme, hotkeys, shortcuts, and app preferences. Continue?')) {
+        settingsController.setImportStatus('user settings import canceled.')
+        return
+      }
+
+      const latestState = buildStateWithLatestEditorContent()
+      await commitAppStateNow(applyPortableAppSettings(latestState, parsedSettings.settings))
+      settingsController.setImportStatus('user settings imported.')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'unknown error'
+      settingsController.setImportStatus(`user settings import failed: ${message}`)
+    }
+  }
+
+  const cancelNotebookImport = () => {
+    setPendingNotebookImport(null)
+    setNotebookImportScratchpadEnabled(false)
+    settingsController.setImportStatus('notebook import canceled.')
+  }
+
+  const confirmNotebookImport = async () => {
+    const pendingImport = pendingNotebookImport
+    if (!pendingImport) return
+
+    settingsController.setImportStatus('importing notebook...')
+    try {
+      const materializedImport = await materializeNotebookImportAssets(pendingImport, {
+        includeScratchpad: notebookImportScratchpadEnabled,
+        importAsset: window.electronAPI?.importAsset
+          ? async (asset) => {
+              const result = await window.electronAPI?.importAsset?.({
+                bytes: toNotebookArchiveArrayBuffer(asset.bytes),
+                name: asset.file.split('/').pop() ?? 'asset',
+                type: asset.mimeType,
+                extension: asset.extension,
+              })
+              return result?.ok ? result.url : null
+            }
+          : undefined,
+      })
+      const latestState = buildStateWithLatestEditorContent()
+      const { state: nextState, summary } = mergeImportedNotebookState(latestState, materializedImport, {
+        includeScratchpad: notebookImportScratchpadEnabled,
+      })
+      await commitAppStateNow(nextState)
+      setPendingNotebookImport(null)
+      setNotebookImportScratchpadEnabled(false)
+      const unresolvedText =
+        summary.unresolvedReferences && summary.unresolvedReferences > 0
+          ? ` ${summary.unresolvedReferences} reference(s) stayed unresolved.`
+          : ''
+      const appliedText = summary.appliedScratchpad ? 'scratchpad applied' : ''
+      const optionText = appliedText ? ` ${appliedText}.` : ''
+      const warningCount = (summary.warnings?.length ?? 0) + materializedImport.issues.filter((issue) => issue.severity === 'warning').length
+      const warningText = warningCount > 0 ? ` ${warningCount} warning(s).` : ''
+      settingsController.setImportStatus(
+        `imported notebook: ${summary.domains} domain(s), ${summary.spaces} space(s), ${summary.tabs} tab(s), ${summary.notes} note(s).${optionText}${unresolvedText}${warningText}`,
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'unknown error'
+      settingsController.setImportStatus(`notebook import failed: ${message}`)
+    }
+  }
+
   const openFrontmatterModalForAisle = (aisleId: string | null = null) => {
     if (scratchpadWorkspaceActive) {
       pushToast('scratchpad does not use frontmatter.', 'warning')
@@ -4181,6 +4462,7 @@ function App() {
           editingShortcut={settingsController.editingShortcut}
           settingsDaysDraft={settingsController.settingsDaysDraft}
           exportStatus={settingsController.exportStatus}
+          importStatus={settingsController.importStatus}
           tabButtonScaleDraft={settingsController.tabButtonScaleDraft}
           noteFontScaleDraft={settingsController.noteFontScaleDraft}
           tooltipScaleDraft={settingsController.tooltipScaleDraft}
@@ -4209,6 +4491,17 @@ function App() {
           onOpenShortcutMenuSettings={() => setModal({ type: 'shortcut-menu-settings' })}
           onAutoRemoveDaysChange={settingsController.updateAutoRemoveDaysSetting}
           onExportAll={() => exportData('all')}
+          onExportNotebook={exportNotebook}
+          onExportUserSettings={exportUserSettings}
+          onImportBackup={importBackup}
+          onImportNotebook={importNotebook}
+          onImportUserSettings={importUserSettings}
+          notebookImportSummary={pendingNotebookImport?.summary ?? null}
+          notebookImportScratchpadEnabled={notebookImportScratchpadEnabled}
+          notebookImportHasScratchpad={Boolean(pendingNotebookImport?.scratchpad)}
+          onNotebookImportScratchpadEnabledChange={setNotebookImportScratchpadEnabled}
+          onConfirmNotebookImport={confirmNotebookImport}
+          onCancelNotebookImport={cancelNotebookImport}
           onThemeChange={settingsController.updateThemeSetting}
           onSelectedCustomThemeChange={settingsController.updateSelectedCustomThemeSetting}
           onCustomThemePaletteChange={settingsController.updateCustomThemePaletteSetting}

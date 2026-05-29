@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { createAppStateCoordinator, LOAD_FAILED_SAVE_ERROR } from './app-state-coordinator.mjs'
 import {
@@ -454,6 +454,28 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
       return error ? { ok: false, error } : { ok: true }
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : 'Asset could not be opened.' }
+    }
+  })
+
+  ipcMain.handle?.('read-asset', async (_event, payload = {}) => {
+    try {
+      const assetPath = typeof payload?.url === 'string'
+        ? parseImageAssetUrl(payload.url)
+        : normalizeImageAssetPath(payload?.assetPath)
+      if (!assetPath) return { ok: false, error: 'Invalid asset.' }
+      const notesRoot = getStorageProfileNotesPath(profile.profileRootPath)
+      const absoluteAssetPath = path.resolve(notesRoot, assetPath)
+      if (!absoluteAssetPath.startsWith(notesRoot + path.sep)) {
+        return { ok: false, error: 'Invalid asset path.' }
+      }
+      if (!existsSync(absoluteAssetPath)) return { ok: false, error: 'Asset does not exist.' }
+      const bytes = readFileSync(absoluteAssetPath)
+      return {
+        ok: true,
+        bytes: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+      }
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : 'Asset could not be read.' }
     }
   })
 

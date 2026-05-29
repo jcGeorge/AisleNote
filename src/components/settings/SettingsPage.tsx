@@ -61,6 +61,7 @@ import type {
   SyncedUiBooleanSettingKey,
   SyncedUiBooleanSettingView,
 } from '../../settings/synced-ui-settings-registry.js'
+import type { NotebookArchiveSummary } from '../../notebook/notebook-archive'
 import {
   DEFAULT_THEME_PREVIEW_RAIL_SELECTION,
   DEFAULT_THEME_PREVIEW_TASK_STATE,
@@ -110,6 +111,7 @@ type SettingsPageProps = {
   editingShortcut: ShortcutId | null
   settingsDaysDraft: string
   exportStatus: string
+  importStatus: string
   tabButtonScaleDraft: number
   noteFontScaleDraft: number
   tooltipScaleDraft: number
@@ -138,6 +140,17 @@ type SettingsPageProps = {
   onOpenShortcutMenuSettings: () => void
   onAutoRemoveDaysChange: (value: string, commit?: boolean) => void
   onExportAll: () => void
+  onExportNotebook: () => void
+  onExportUserSettings: () => void
+  onImportBackup: () => void
+  onImportNotebook: () => void
+  onImportUserSettings: () => void
+  notebookImportSummary: NotebookArchiveSummary | null
+  notebookImportScratchpadEnabled: boolean
+  notebookImportHasScratchpad: boolean
+  onNotebookImportScratchpadEnabledChange: (enabled: boolean) => void
+  onConfirmNotebookImport: () => void
+  onCancelNotebookImport: () => void
   onThemeChange: (theme: AppTheme) => void
   onSelectedCustomThemeChange: (theme: CustomThemeId) => void
   onCustomThemePaletteChange: (slot: CustomThemePaletteSlot, value: string) => void
@@ -200,6 +213,7 @@ export function SettingsPage({
   editingShortcut,
   settingsDaysDraft,
   exportStatus,
+  importStatus,
   tabButtonScaleDraft,
   noteFontScaleDraft,
   tooltipScaleDraft,
@@ -228,6 +242,17 @@ export function SettingsPage({
   onOpenShortcutMenuSettings,
   onAutoRemoveDaysChange,
   onExportAll,
+  onExportNotebook,
+  onExportUserSettings,
+  onImportBackup,
+  onImportNotebook,
+  onImportUserSettings,
+  notebookImportSummary,
+  notebookImportScratchpadEnabled,
+  notebookImportHasScratchpad,
+  onNotebookImportScratchpadEnabledChange,
+  onConfirmNotebookImport,
+  onCancelNotebookImport,
   onThemeChange,
   onSelectedCustomThemeChange,
   onCustomThemePaletteChange,
@@ -655,37 +680,70 @@ export function SettingsPage({
               <>
                 <p>export:</p>
                 <div className="settings-page-actions">
+                  <button type="button" className="btn btn-sm settings-action-btn" onClick={onExportNotebook}>
+                    export notebook
+                  </button>
+                  <button type="button" className="btn btn-sm settings-action-btn" onClick={onExportUserSettings}>
+                    export user settings
+                  </button>
                   <button type="button" className="btn btn-sm settings-action-btn" onClick={onExportAll}>
                     export backup
                   </button>
-                  <button type="button" className="btn btn-sm settings-action-btn" onClick={onExportAll}>
-                    export all
-                  </button>
                 </div>
-                <div className="settings-hotkey-row">
-                  <label className="settings-hotkey-label" htmlFor="settings-export-tabs-notebook">
-                    export to other tabs notebook
-                  </label>
-                  <div className="form-check form-switch settings-switch">
-                    <input
-                      id="settings-export-tabs-notebook"
-                      className="form-check-input"
-                      type="checkbox"
-                      role="switch"
-                      checked={false}
-                      disabled
-                      readOnly
-                    />
-                  </div>
-                </div>
-                <p className="settings-help">exports convert internal tab markers to four spaces for clean markdown files.</p>
+                <p className="settings-help">notebook exports are readable markdown archives. backups are the full internal app-state archive.</p>
                 {exportStatus && <p className="settings-help">{exportStatus}</p>}
               </>
             )}
             {dataSection === 'import' && (
               <>
                 <p>import:</p>
-                <p className="settings-help">import tools are not available yet.</p>
+                <div className="settings-page-actions">
+                  <button type="button" className="btn btn-sm settings-action-btn" onClick={onImportNotebook}>
+                    import notebook
+                  </button>
+                  <button type="button" className="btn btn-sm settings-action-btn" onClick={onImportUserSettings}>
+                    import user settings
+                  </button>
+                  <button type="button" className="btn btn-sm settings-action-btn" onClick={onImportBackup}>
+                    import backup
+                  </button>
+                </div>
+                {notebookImportSummary && (
+                  <div className="settings-import-options" role="group" aria-label="notebook import options">
+                    <p className="settings-help">
+                      notebook contains {notebookImportSummary.domains} domain(s), {notebookImportSummary.spaces} space(s), {notebookImportSummary.tabs} tab(s), {notebookImportSummary.notes} note(s).
+                    </p>
+                    <div className="settings-hotkey-row">
+                      <label className="settings-hotkey-label" htmlFor="settings-import-notebook-scratchpad">
+                        scratchpad
+                      </label>
+                      <div className="form-check form-switch settings-switch">
+                        <input
+                          id="settings-import-notebook-scratchpad"
+                          className="form-check-input"
+                          type="checkbox"
+                          role="switch"
+                          checked={notebookImportScratchpadEnabled}
+                          disabled={!notebookImportHasScratchpad}
+                          onChange={(event) => onNotebookImportScratchpadEnabledChange(event.target.checked)}
+                        />
+                      </div>
+                    </div>
+                    {notebookImportScratchpadEnabled && (
+                      <p className="settings-help">current scratchpad content will be overwritten and cannot be recovered from this import flow.</p>
+                    )}
+                    <div className="settings-page-actions">
+                      <button type="button" className="btn btn-sm settings-action-btn" onClick={onConfirmNotebookImport}>
+                        import notebook
+                      </button>
+                      <button type="button" className="btn btn-sm settings-action-btn" onClick={onCancelNotebookImport}>
+                        cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <p className="settings-help">notebook imports append remapped domains. user settings move separately through app-settings.json.</p>
+                {importStatus && <p className="settings-help">{importStatus}</p>}
               </>
             )}
           </div>

@@ -2,11 +2,12 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
+import JSZip from 'jszip'
 import { registerClipboardIpc } from './ipc-clipboard.mjs'
 import { registerFileIpc } from './ipc-files.mjs'
 import { registerStorageIpc } from './ipc-storage.mjs'
 import { registerUpdateIpc } from './ipc-updates.mjs'
-import { loadAppStateResult, saveAppState } from './app-state-storage.mjs'
+import { buildAppStateExportArchive, loadAppStateResult, saveAppState } from './app-state-storage.mjs'
 import { createNoopUpdateService } from './update-service.mjs'
 
 function createIpcMain() {
@@ -37,6 +38,23 @@ function withTempUserDataPath(run) {
   } finally {
     rmSync(userDataPath, { recursive: true, force: true })
   }
+}
+
+async function withTempUserDataPathAsync(run) {
+  const userDataPath = mkdtempSync(path.join(os.tmpdir(), 'tabs-ipc-user-data-'))
+  try {
+    return await run(userDataPath)
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true })
+  }
+}
+
+async function writeZipArchive(filePath, entries) {
+  const zip = new JSZip()
+  Object.entries(entries).forEach(([entryPath, contents]) => {
+    zip.file(entryPath, contents)
+  })
+  writeFileSync(filePath, await zip.generateAsync({ type: 'nodebuffer' }))
 }
 
 function serializedAppState(theme = 'dawn') {
@@ -91,6 +109,238 @@ describe('electron ipc boundaries', () => {
       error: 'Invalid payload',
     })
   })
+
+  it('saves user settings json files', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const settingsPath = path.join(userDataPath, 'app-settings.json')
+      const ipcMain = createIpcMain()
+      registerFileIpc({
+        ipcMain,
+        dialog: {
+          showSaveDialog: vi.fn(async () => ({ canceled: false, filePath: settingsPath })),
+        },
+      })
+
+      await expect(
+        ipcMain.handlers.get('save-user-settings-file')(null, {
+          defaultPath: 'app-settings.json',
+          contents: '{"theme":"light"}\n',
+        }),
+      ).resolves.toEqual({ canceled: false, filePath: settingsPath })
+      expect(readFileSync(settingsPath, 'utf8')).toBe('{"theme":"light"}\n')
+    }))
+
+  it('rejects invalid user settings save payloads and handles open cancelation', async () => {
+    const ipcMain = createIpcMain()
+    registerFileIpc({
+      ipcMain,
+      dialog: {
+        showSaveDialog: vi.fn(),
+        showOpenDialog: vi.fn(async () => ({ canceled: true, filePaths: [] })),
+      },
+    })
+
+    await expect(ipcMain.handlers.get('save-user-settings-file')(null, { contents: 42 })).resolves.toEqual({
+      canceled: true,
+      error: 'Invalid payload',
+    })
+    await expect(ipcMain.handlers.get('open-user-settings-file')()).resolves.toEqual({ canceled: true })
+  })
+
+  it('opens user settings json files with extension and size validation', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const settingsPath = path.join(userDataPath, 'app-settings.json')
+      const textPath = path.join(userDataPath, 'app-settings.txt')
+      const hugePath = path.join(userDataPath, 'huge.json')
+      writeFileSync(settingsPath, '{"theme":"light"}\n', 'utf8')
+      writeFileSync(textPath, '{"theme":"light"}\n', 'utf8')
+      writeFileSync(hugePath, 'x'.repeat(1024 * 1024 + 1), 'utf8')
+      const showOpenDialog = vi
+        .fn()
+        .mockResolvedValueOnce({ canceled: false, filePaths: [settingsPath] })
+        .mockResolvedValueOnce({ canceled: false, filePaths: [textPath] })
+        .mockResolvedValueOnce({ canceled: false, filePaths: [hugePath] })
+      const ipcMain = createIpcMain()
+      registerFileIpc({
+        ipcMain,
+        dialog: {
+          showOpenDialog,
+        },
+      })
+      const handler = ipcMain.handlers.get('open-user-settings-file')
+
+      await expect(handler()).resolves.toEqual({
+        canceled: false,
+        ok: true,
+        contents: '{"theme":"light"}\n',
+        filePath: settingsPath,
+      })
+      await expect(handler()).resolves.toMatchObject({
+        canceled: false,
+        ok: false,
+        error: 'User settings file must be a .json file.',
+      })
+      await expect(handler()).resolves.toMatchObject({
+        canceled: false,
+        ok: false,
+        error: 'User settings file is too large.',
+      })
+    }))
+
+  it('returns canceled when backup import dialog is canceled', async () => {
+    const ipcMain = createIpcMain()
+    registerFileIpc({
+      ipcMain,
+      dialog: {
+        showSaveDialog: vi.fn(),
+        showOpenDialog: vi.fn(async () => ({ canceled: true, filePaths: [] })),
+      },
+    })
+
+    await expect(ipcMain.handlers.get('import-app-state-archive')()).resolves.toEqual({ canceled: true })
+  })
+
+  it('returns canceled when notebook archive dialog is canceled', async () => {
+    const ipcMain = createIpcMain()
+    registerFileIpc({
+      ipcMain,
+      dialog: {
+        showSaveDialog: vi.fn(),
+        showOpenDialog: vi.fn(async () => ({ canceled: true, filePaths: [] })),
+      },
+    })
+
+    await expect(ipcMain.handlers.get('open-notebook-archive')()).resolves.toEqual({ canceled: true })
+  })
+
+  it('opens notebook archive bytes without parsing or mutating storage', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const archivePath = path.join(userDataPath, 'notebook.zip')
+      writeFileSync(archivePath, Buffer.from([80, 75, 3, 4]))
+      const ipcMain = createIpcMain()
+      registerFileIpc({
+        ipcMain,
+        dialog: {
+          showSaveDialog: vi.fn(),
+          showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [archivePath] })),
+        },
+      })
+
+      const result = await ipcMain.handlers.get('open-notebook-archive')()
+      expect(result).toMatchObject({ canceled: false, ok: true, filePath: archivePath })
+      expect(Buffer.from(result.bytes)).toEqual(Buffer.from([80, 75, 3, 4]))
+      expect(loadAppStateResult(userDataPath).source).toBe('empty')
+    }))
+
+  it('rejects invalid backup import zips', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const archivePath = path.join(userDataPath, 'bad.zip')
+      writeFileSync(archivePath, 'not a zip', 'utf8')
+      const ipcMain = createIpcMain()
+      registerFileIpc({
+        ipcMain,
+        dialog: {
+          showSaveDialog: vi.fn(),
+          showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [archivePath] })),
+        },
+      })
+
+      await expect(ipcMain.handlers.get('import-app-state-archive')()).resolves.toMatchObject({
+        canceled: false,
+        ok: false,
+        issues: [expect.objectContaining({ code: 'invalid-archive', severity: 'error' })],
+      })
+    }))
+
+  it('rejects backup import archives with path traversal entries', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const archivePath = path.join(userDataPath, 'traversal.zip')
+      await writeZipArchive(archivePath, {
+        'notes-data/manifest.json': JSON.stringify({ schemaVersion: 1, files: {} }),
+        '../outside.txt': 'bad',
+      })
+      const ipcMain = createIpcMain()
+      registerFileIpc({
+        ipcMain,
+        dialog: {
+          showSaveDialog: vi.fn(),
+          showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [archivePath] })),
+        },
+      })
+
+      await expect(ipcMain.handlers.get('import-app-state-archive')()).resolves.toMatchObject({
+        canceled: false,
+        ok: false,
+        issues: [expect.objectContaining({ code: 'unsafe-archive-entry', severity: 'error' })],
+      })
+    }))
+
+  it('rejects backup import archives missing notes-data/manifest.json', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const archivePath = path.join(userDataPath, 'missing-manifest.zip')
+      await writeZipArchive(archivePath, { 'notes-data/readme.txt': 'missing' })
+      const ipcMain = createIpcMain()
+      registerFileIpc({
+        ipcMain,
+        dialog: {
+          showSaveDialog: vi.fn(),
+          showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [archivePath] })),
+        },
+      })
+
+      await expect(ipcMain.handlers.get('import-app-state-archive')()).resolves.toMatchObject({
+        canceled: false,
+        ok: false,
+        issues: [expect.objectContaining({ code: 'missing-root-manifest', severity: 'error' })],
+      })
+    }))
+
+  it('rejects backup import archives with unsupported schemas', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const archivePath = path.join(userDataPath, 'unsupported.zip')
+      await writeZipArchive(archivePath, {
+        'notes-data/manifest.json': JSON.stringify({ schemaVersion: 999, files: {} }),
+      })
+      const ipcMain = createIpcMain()
+      registerFileIpc({
+        ipcMain,
+        dialog: {
+          showSaveDialog: vi.fn(),
+          showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [archivePath] })),
+        },
+      })
+
+      await expect(ipcMain.handlers.get('import-app-state-archive')()).resolves.toMatchObject({
+        canceled: false,
+        ok: false,
+        issues: [expect.objectContaining({ code: 'unsupported-root-manifest', severity: 'error' })],
+      })
+    }))
+
+  it('loads valid backup import archives without mutating the current profile', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const archivePath = path.join(userDataPath, 'backup.zip')
+      const archiveBytes = await buildAppStateExportArchive(serializedAppState('light'))
+      const zip = await JSZip.loadAsync(archiveBytes)
+      expect(zip.file('settings/app-settings.json')).not.toBeNull()
+      expect(zip.file('notes-data/app-settings.json')).toBeNull()
+      writeFileSync(archivePath, archiveBytes)
+      const ipcMain = createIpcMain()
+      registerFileIpc({
+        ipcMain,
+        dialog: {
+          showSaveDialog: vi.fn(),
+          showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [archivePath] })),
+        },
+      })
+
+      await expect(ipcMain.handlers.get('import-app-state-archive')()).resolves.toMatchObject({
+        canceled: false,
+        ok: true,
+        serializedState: expect.stringContaining('"light"'),
+      })
+      expect(loadAppStateResult(userDataPath).source).toBe('empty')
+    }))
 
   it('keeps clipboard invalid payload behavior unchanged', async () => {
     const ipcMain = createIpcMain()
@@ -234,7 +484,7 @@ describe('electron ipc boundaries', () => {
       })
     }))
 
-  it('imports and opens generic assets through storage ipc', async () => {
+  it('imports, reads, and opens generic assets through storage ipc', async () => {
     const userDataPath = mkdtempSync(path.join(os.tmpdir(), 'tabs-ipc-user-data-'))
     try {
       const ipcMain = createIpcMain()
@@ -258,6 +508,14 @@ describe('electron ipc boundaries', () => {
         url: expect.stringMatching(/^tabs-asset:\/\/\/assets\/asset-[a-f0-9]+\.mp4$/),
       })
       expect(readFileSync(path.join(userDataPath, 'notes-data', imported.assetPath))).toEqual(Buffer.from([1, 2, 3]))
+
+      await expect(ipcMain.handlers.get('read-asset')(null, { url: imported.url })).resolves.toMatchObject({
+        ok: true,
+        bytes: expect.any(ArrayBuffer),
+      })
+      const readResult = await ipcMain.handlers.get('read-asset')(null, { assetPath: imported.assetPath })
+      expect(readResult.ok).toBe(true)
+      expect(Buffer.from(readResult.bytes)).toEqual(Buffer.from([1, 2, 3]))
 
       await expect(ipcMain.handlers.get('open-asset')(null, { url: imported.url })).resolves.toEqual({ ok: true })
       expect(shell.openPath).toHaveBeenCalledWith(path.join(userDataPath, 'notes-data', imported.assetPath))

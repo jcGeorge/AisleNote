@@ -275,7 +275,7 @@ describe('Electron app state storage load result', () => {
       expect(parsed.ui.themePalettes.custom2.primary).toBe('#225599')
     }))
 
-  it('writes app settings and per-space settings into notes-data manifests', () =>
+  it('writes app settings beside notes-data and per-space settings into notes-data manifests', () =>
     withTempUserDataPath((userDataPath) => {
       const state = JSON.parse(serializedAppState())
       state.theme = 'custom3'
@@ -322,7 +322,7 @@ describe('Electron app state storage load result', () => {
       saveAppState(userDataPath, JSON.stringify(state))
 
       const { root, rootManifest, spaceManifest } = getStoredWorkspacePaths(userDataPath)
-      const appSettings = readJson(path.join(root, rootManifest.files.appSettings))
+      const appSettings = readJson(path.join(userDataPath, 'settings', 'app-settings.json'))
       const frontmatterSettings = readJson(path.join(root, rootManifest.files.frontmatterSettings))
       const result = loadAppStateResult(userDataPath)
       expect(result.ok).toBe(true)
@@ -331,7 +331,6 @@ describe('Electron app state storage load result', () => {
       expect(rootManifest.schemaVersion).toBe(1)
       expect(Object.keys(rootManifest).sort()).toEqual(['files', 'schemaVersion'])
       expect(Object.keys(rootManifest.files).sort()).toEqual([
-        'appSettings',
         'deletedWorkspace',
         'editorState',
         'frontmatterSettings',
@@ -339,6 +338,7 @@ describe('Electron app state storage load result', () => {
         'noteRegistry',
         'workspaceIndex',
       ])
+      expect(existsSync(path.join(root, 'app-settings.json'))).toBe(false)
       expect(existsSync(path.join(root, 'profile-settings.json'))).toBe(false)
       expect(existsSync(path.join(root, 'appearance-settings.json'))).toBe(false)
       expect(existsSync(path.join(root, 'shortcut-settings.json'))).toBe(false)
@@ -358,7 +358,7 @@ describe('Electron app state storage load result', () => {
       expect(appSettings.ui.noteMentionCopyRequiresConfirmation).toBe(false)
       expect(appSettings.ui.deleteSubtabShortcutEnabled).toBe(true)
       expect(appSettings.ui.tableOfContentsScope).toBe('focused-aisle')
-      expect(appSettings.ui.newAislePlacement).toBe('left-of-focus')
+      expect(appSettings.ui).not.toHaveProperty('newAislePlacement')
       expect(appSettings.scratchpadAisleLimit).toBe(32)
       expect(appSettings.hotkeys.enableMouseBackForward).toBe(false)
       expect(appSettings.hotkeys.shortcuts.newTab).toBe('Ctrl+Alt+N')
@@ -371,7 +371,7 @@ describe('Electron app state storage load result', () => {
       expect(parsed.ui.noteMentionCopyRequiresConfirmation).toBe(false)
       expect(parsed.ui.deleteSubtabShortcutEnabled).toBe(true)
       expect(parsed.ui.tableOfContentsScope).toBe('focused-aisle')
-      expect(parsed.ui.newAislePlacement).toBe('left-of-focus')
+      expect(parsed.ui).not.toHaveProperty('newAislePlacement')
       expect(parsed.ui.scratchpadAisleLimit).toBe(32)
       expect(parsed.hotkeys.shortcuts.newTab).toBe('Ctrl+Alt+N')
       expect(parsed.hotkeys.enableMouseBackForward).toBe(false)
@@ -481,7 +481,7 @@ describe('Electron app state storage load result', () => {
       const manifestPath = path.join(rootPath, 'manifest.json')
       const profileSettingsPath = path.join(rootPath, 'profile-settings.json')
       const rootManifest = readJson(manifestPath)
-      const appSettings = readJson(path.join(rootPath, rootManifest.files.appSettings))
+      const appSettings = readJson(path.join(userDataPath, 'settings', 'app-settings.json'))
       const frontmatterSettings = readJson(path.join(rootPath, rootManifest.files.frontmatterSettings))
       const editorState = readJson(path.join(rootPath, rootManifest.files.editorState))
       const profileSettings = {
@@ -514,6 +514,101 @@ describe('Electron app state storage load result', () => {
         'utf8',
       )
       expect(loadAppStateResult(userDataPath).ok).toBe(false)
+    }))
+
+  it('loads manually replaced app-settings without changing notebook content', () =>
+    withTempUserDataPath((userDataPath) => {
+      saveAppState(userDataPath, serializedAppState())
+      const appSettingsPath = path.join(userDataPath, 'settings', 'app-settings.json')
+      const appSettings = readJson(appSettingsPath)
+      writeFileSync(
+        appSettingsPath,
+        `${JSON.stringify(
+          {
+            ...appSettings,
+            theme: 'light',
+            hotkeys: {
+              ...appSettings.hotkeys,
+              shortcuts: {
+                ...appSettings.hotkeys.shortcuts,
+                newTab: 'Ctrl+Alt+N',
+              },
+            },
+            ui: {
+              ...appSettings.ui,
+              settingsSection: 'visuals',
+              findCaseSensitive: true,
+            },
+          },
+          null,
+          2,
+        )}\n`,
+        'utf8',
+      )
+
+      const result = loadAppStateResult(userDataPath)
+      expect(result.ok).toBe(true)
+      const parsed = JSON.parse(result.serializedState)
+      expect(parsed.theme).toBe('light')
+      expect(parsed.hotkeys.shortcuts.newTab).toBe('Ctrl+Alt+N')
+      expect(parsed.ui.settingsSection).toBe('visuals')
+      expect(parsed.ui.findCaseSensitive).toBe(true)
+      expect(parsed.frontmatter.settingsTemplateId).toBe('template-1')
+      expect(parsed.noteAisleBodies[0].markdown).toBe('hello')
+      expect(parsed.domains[0].spaces[0].data.tabs[0].title).toBe('Tab')
+    }))
+
+  it('falls back to legacy notes-data app-settings when sibling settings are missing', () =>
+    withTempUserDataPath((userDataPath) => {
+      saveAppState(userDataPath, serializedAppState())
+      const siblingSettingsPath = path.join(userDataPath, 'settings', 'app-settings.json')
+      const legacySettingsPath = path.join(userDataPath, 'notes-data', 'app-settings.json')
+      const appSettings = readJson(siblingSettingsPath)
+      rmSync(siblingSettingsPath, { force: true })
+      writeFileSync(
+        legacySettingsPath,
+        `${JSON.stringify(
+          {
+            ...appSettings,
+            theme: 'light',
+          },
+          null,
+          2,
+        )}\n`,
+        'utf8',
+      )
+
+      const result = loadAppStateResult(userDataPath)
+      expect(result.ok).toBe(true)
+      expect(result.health).toBe('warning')
+      expect(result.issues).toContainEqual(expect.objectContaining({ code: 'legacy-app-settings', severity: 'warning' }))
+      expect(JSON.parse(result.serializedState).theme).toBe('light')
+
+      saveAppState(userDataPath, result.serializedState)
+      expect(readJson(siblingSettingsPath).theme).toBe('light')
+      expect(existsSync(legacySettingsPath)).toBe(true)
+    }))
+
+  it('recovers with default user settings when app-settings is missing or corrupt', () =>
+    withTempUserDataPath((userDataPath) => {
+      saveAppState(userDataPath, serializedAppState())
+      const appSettingsPath = path.join(userDataPath, 'settings', 'app-settings.json')
+
+      rmSync(appSettingsPath, { force: true })
+      const missingResult = loadAppStateResult(userDataPath)
+      expect(missingResult.ok).toBe(true)
+      expect(missingResult.health).toBe('warning')
+      expect(missingResult.issues).toContainEqual(expect.objectContaining({ code: 'missing-app-settings', severity: 'warning' }))
+      expect(JSON.parse(missingResult.serializedState).theme).toBe('dawn')
+      expect(JSON.parse(missingResult.serializedState).frontmatter.settingsTemplateId).toBe('template-1')
+
+      writeFileSync(appSettingsPath, '{', 'utf8')
+      const corruptResult = loadAppStateResult(userDataPath)
+      expect(corruptResult.ok).toBe(true)
+      expect(corruptResult.health).toBe('warning')
+      expect(corruptResult.issues).toContainEqual(expect.objectContaining({ code: 'corrupt-app-settings', severity: 'warning' }))
+      expect(JSON.parse(corruptResult.serializedState).theme).toBe('dawn')
+      expect(JSON.parse(corruptResult.serializedState).noteAisleBodies[0].markdown).toBe('hello')
     }))
 
   it('round-trips rearranged parent and sub-tab order through notes-data storage', () =>
@@ -1205,7 +1300,7 @@ describe('Electron app state storage load result', () => {
       saveAppState(userDataPath, serializedAppState())
       const root = path.join(userDataPath, 'notes-data')
       const rootManifest = readJson(path.join(root, 'manifest.json'))
-      const appSettings = readJson(path.join(root, rootManifest.files.appSettings))
+      const appSettings = readJson(path.join(userDataPath, 'settings', 'app-settings.json'))
       const noteRegistry = readJson(path.join(root, rootManifest.files.noteRegistry))
       const wideFiles = {
         workspaceIndex: 'workspace-index.json',

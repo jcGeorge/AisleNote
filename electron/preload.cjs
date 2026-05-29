@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   importAsset: (payload) => ipcRenderer.invoke('import-asset', payload),
   importImageAsset: (payload) => ipcRenderer.invoke('import-image-asset', payload),
   openAsset: (payload) => ipcRenderer.invoke('open-asset', payload),
+  readAsset: (payload) => ipcRenderer.invoke('read-asset', payload),
   onAppStateUpdated: (handler) => {
     const listener = (_event, payload) => handler(payload)
     ipcRenderer.on('app-state-updated', listener)
@@ -26,6 +27,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('storage-profile-status-updated', listener)
   },
   exportAppState: (payload) => ipcRenderer.invoke('export-app-state', payload),
+  importAppStateArchive: () => ipcRenderer.invoke('import-app-state-archive'),
+  openNotebookArchive: () => ipcRenderer.invoke('open-notebook-archive'),
+  openUserSettingsFile: () => ipcRenderer.invoke('open-user-settings-file'),
+  saveUserSettingsFile: (payload) => ipcRenderer.invoke('save-user-settings-file', payload),
   saveFile: (payload) => ipcRenderer.invoke('save-file', payload),
   copyImageDataUrl: (dataUrl) => ipcRenderer.invoke('copy-image-data-url', dataUrl),
   openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),

@@ -45,6 +45,69 @@ type ImportAssetResult =
 
 type ImportImageAssetResult = ImportAssetResult
 
+type ReadAssetResult =
+  | {
+      ok: true
+      bytes: ArrayBuffer
+    }
+  | {
+      ok: false
+      error: string
+    }
+
+type ImportAppStateArchiveResult =
+  | {
+      canceled: true
+    }
+  | {
+      canceled: false
+      ok: true
+      serializedState: string | null
+      schemaVersion?: number | null
+      health?: 'healthy' | 'warning' | 'error'
+      issues?: StorageProfileStatus['issues']
+    }
+  | {
+      canceled: false
+      ok: false
+      serializedState: null
+      error: string
+      health?: 'healthy' | 'warning' | 'error'
+      issues?: StorageProfileStatus['issues']
+    }
+
+type OpenNotebookArchiveResult =
+  | {
+      canceled: true
+    }
+  | {
+      canceled: false
+      ok: true
+      bytes: ArrayBuffer
+      filePath?: string
+    }
+  | {
+      canceled: false
+      ok: false
+      error: string
+    }
+
+type OpenUserSettingsFileResult =
+  | {
+      canceled: true
+    }
+  | {
+      canceled: false
+      ok: true
+      contents: string
+      filePath?: string
+    }
+  | {
+      canceled: false
+      ok: false
+      error: string
+    }
+
 declare global {
   interface Window {
     electronAPI?: {
@@ -71,6 +134,7 @@ declare global {
       importAsset?: (payload: ImportAssetPayload) => Promise<ImportAssetResult>
       importImageAsset?: (payload: ImportImageAssetPayload) => Promise<ImportImageAssetResult>
       openAsset?: (payload: { url?: string; assetPath?: string }) => Promise<{ ok: boolean; error?: string }>
+      readAsset?: (payload: { url?: string; assetPath?: string }) => Promise<ReadAssetResult>
       onAppStateUpdated?: (handler: (payload: { serializedState: string; revision: number }) => void) => () => void
       getStorageProfileStatus?: () => Promise<StorageProfileStatus>
       chooseStorageFolder?: () => Promise<
@@ -92,6 +156,14 @@ declare global {
       >
       onStorageProfileStatusUpdated?: (handler: (payload: StorageProfileStatus) => void) => () => void
       exportAppState: (payload: { defaultPath: string; serializedState: string }) => Promise<{
+        canceled: boolean
+        filePath?: string
+        error?: string
+      }>
+      importAppStateArchive?: () => Promise<ImportAppStateArchiveResult>
+      openNotebookArchive?: () => Promise<OpenNotebookArchiveResult>
+      openUserSettingsFile?: () => Promise<OpenUserSettingsFileResult>
+      saveUserSettingsFile?: (payload: { defaultPath: string; contents: string }) => Promise<{
         canceled: boolean
         filePath?: string
         error?: string

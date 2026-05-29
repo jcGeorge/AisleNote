@@ -37,6 +37,7 @@ export type StorageShortcutId =
 export const STORAGE_SCHEMA_VERSION: StorageSchemaVersion = 1
 
 export const STORAGE_ROOT_DIR = 'notes-data' as const
+export const STORAGE_SETTINGS_DIR = 'settings' as const
 export const STORAGE_DOMAINS_DIR = 'domains' as const
 export const STORAGE_ASSETS_DIR = 'assets' as const
 export const STORAGE_TRASH_DIR = 'trash' as const
@@ -194,7 +195,6 @@ export type StorageNoteAisleBodyRecord = {
 export type StorageRootFileMap = {
   workspaceIndex: string
   navigationState: string
-  appSettings: string
   frontmatterSettings: string
   editorState: string
   deletedWorkspace: string

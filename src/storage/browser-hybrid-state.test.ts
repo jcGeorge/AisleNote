@@ -39,6 +39,10 @@ function getRootSplitFileJson(
   return getTextFileJson(fileMap, `notes-data/${fileName}`)
 }
 
+function getUserSettingsFileJson(fileMap: ReturnType<typeof buildHybridFileMapFromSerializedState>) {
+  return getTextFileJson(fileMap, 'settings/app-settings.json')
+}
+
 function createBrowserStorageState() {
   const space = {
     id: 'space-1',
@@ -264,7 +268,7 @@ describe('browser hybrid storage', () => {
     const rootManifest =
       rootManifestEntry?.kind === 'text' ? (JSON.parse(rootManifestEntry.text) as Record<string, unknown>) : null
     const workspaceIndex = getRootSplitFileJson(fileMap, getRecord(rootManifest), 'workspaceIndex', 'workspace-index.json')
-    const appSettings = getRootSplitFileJson(fileMap, getRecord(rootManifest), 'appSettings', 'app-settings.json')
+    const appSettings = getUserSettingsFileJson(fileMap)
     const editorState = getRootSplitFileJson(fileMap, getRecord(rootManifest), 'editorState', 'editor-state.json')
     const noteRegistry = getRootSplitFileJson(fileMap, getRecord(rootManifest), 'noteRegistry', 'note-registry.json')
     const firstDomain = getRecord(Array.isArray(workspaceIndex.domains) ? workspaceIndex.domains[0] : null)
@@ -278,7 +282,6 @@ describe('browser hybrid storage', () => {
     expect(rootManifest?.schemaVersion).toBe(1)
     expect(Object.keys(getRecord(rootManifest)).sort()).toEqual(['files', 'schemaVersion'])
     expect(Object.keys(getRecord(rootManifest?.files)).sort()).toEqual([
-      'appSettings',
       'deletedWorkspace',
       'editorState',
       'frontmatterSettings',
@@ -287,6 +290,8 @@ describe('browser hybrid storage', () => {
       'workspaceIndex',
     ])
     expect(fileMap.has('notes-data/profile-settings.json')).toBe(false)
+    expect(fileMap.has('notes-data/app-settings.json')).toBe(false)
+    expect(fileMap.has('settings/app-settings.json')).toBe(true)
     expect(fileMap.has('notes-data/appearance-settings.json')).toBe(false)
     expect(fileMap.has('notes-data/shortcut-settings.json')).toBe(false)
     expect(fileMap.has('notes-data/ui-preferences.json')).toBe(false)
@@ -484,12 +489,14 @@ describe('browser hybrid storage', () => {
 
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
     const { rootManifest, spaceManifest } = getBrowserWorkspacePaths(fileMap)
-    const appSettings = getRootSplitFileJson(fileMap, rootManifest, 'appSettings', 'app-settings.json')
+    const appSettings = getUserSettingsFileJson(fileMap)
     const frontmatterSettings = getRootSplitFileJson(fileMap, rootManifest, 'frontmatterSettings', 'frontmatter-settings.json')
     const roundTripped = parseSavedState(readSerializedStateFromHybridFileMap(fileMap) ?? '')
 
     expect(Object.keys(rootManifest).sort()).toEqual(['files', 'schemaVersion'])
     expect(fileMap.has('notes-data/profile-settings.json')).toBe(false)
+    expect(fileMap.has('notes-data/app-settings.json')).toBe(false)
+    expect(fileMap.has('settings/app-settings.json')).toBe(true)
     expect(appSettings.theme).toBe('custom2')
     expect(appSettings.selectedCustomTheme).toBe('custom2')
     expect(getRecord(appSettings.themePalettes).dawn).toMatchObject({ primary: '#123456' })
@@ -551,7 +558,7 @@ describe('browser hybrid storage', () => {
     const state = createBrowserStorageState()
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify({ ...state, theme: 'dawn' }))
     const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
-    const appSettings = getRootSplitFileJson(fileMap, rootManifest, 'appSettings', 'app-settings.json')
+    const appSettings = getUserSettingsFileJson(fileMap)
     const frontmatterSettings = getRootSplitFileJson(fileMap, rootManifest, 'frontmatterSettings', 'frontmatter-settings.json')
     const editorState = getRootSplitFileJson(fileMap, rootManifest, 'editorState', 'editor-state.json')
     const profileSettings = {
@@ -1088,6 +1095,37 @@ describe('browser hybrid storage', () => {
     expect(roundTripped.ui.noteCursorLocations).toEqual({})
   })
 
+  it('loads current schema file maps with portable app-settings missing', () => {
+    const state = createBrowserStorageState()
+    state.theme = 'light'
+    const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
+
+    fileMap.delete('settings/app-settings.json')
+
+    const roundTripped = parseSavedState(readSerializedStateFromHybridFileMap(fileMap) ?? '')
+    expect(roundTripped.domains).toHaveLength(1)
+    expect(roundTripped.theme).toBe('dawn')
+    expect(roundTripped.domains[0].spaces[0].data.tabs[0].title).toBe('Tab')
+    expect(getFirstAisleBodyMarkdown(roundTripped)).toBe('home body')
+  })
+
+  it('falls back to legacy notes-data app-settings in browser file maps', () => {
+    const state = createBrowserStorageState()
+    state.theme = 'light'
+    const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
+    const appSettings = getUserSettingsFileJson(fileMap)
+    fileMap.delete('settings/app-settings.json')
+    fileMap.set('notes-data/app-settings.json', {
+      path: 'notes-data/app-settings.json',
+      kind: 'text',
+      text: `${JSON.stringify({ ...appSettings, theme: 'light' }, null, 2)}\n`,
+    })
+
+    const roundTripped = parseSavedState(readSerializedStateFromHybridFileMap(fileMap) ?? '')
+    expect(roundTripped.theme).toBe('light')
+    expect(getFirstAisleBodyMarkdown(roundTripped)).toBe('home body')
+  })
+
   it('prunes stale note cursor locations when loading editor state', () => {
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(createBrowserStorageState()))
     const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
@@ -1140,7 +1178,7 @@ describe('browser hybrid storage', () => {
   it('rejects temporary wider schema 3 file maps', () => {
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(createBrowserStorageState()))
     const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
-    const appSettings = getRootSplitFileJson(fileMap, rootManifest, 'appSettings', 'app-settings.json')
+    const appSettings = getUserSettingsFileJson(fileMap)
     const noteRegistry = getRootSplitFileJson(fileMap, rootManifest, 'noteRegistry', 'note-registry.json')
     const wideFiles = {
       workspaceIndex: 'workspace-index.json',

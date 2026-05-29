@@ -139,6 +139,7 @@ function renderSettingsPage(
       editingShortcut={null}
       settingsDaysDraft="30"
       exportStatus=""
+      importStatus=""
       tabButtonScaleDraft={1}
       noteFontScaleDraft={1}
       tooltipScaleDraft={1}
@@ -170,6 +171,17 @@ function renderSettingsPage(
       onOpenShortcutMenuSettings={() => undefined}
       onAutoRemoveDaysChange={() => undefined}
       onExportAll={() => undefined}
+      onExportNotebook={() => undefined}
+      onExportUserSettings={() => undefined}
+      onImportBackup={() => undefined}
+      onImportNotebook={() => undefined}
+      onImportUserSettings={() => undefined}
+      notebookImportSummary={null}
+      notebookImportScratchpadEnabled={false}
+      notebookImportHasScratchpad={false}
+      onNotebookImportScratchpadEnabledChange={() => undefined}
+      onConfirmNotebookImport={() => undefined}
+      onCancelNotebookImport={() => undefined}
       onThemeChange={() => undefined}
       onSelectedCustomThemeChange={() => undefined}
       onCustomThemePaletteChange={() => undefined}
@@ -362,17 +374,20 @@ describe('frontmatter settings page', () => {
     expect(trashHtml).not.toContain('export space')
 
     expect(exportHtml).toContain('aria-checked="true" class="settings-segmented-option is-selected">export</button>')
+    expect(exportHtml).toContain('export notebook')
+    expect(exportHtml).toContain('export user settings')
     expect(exportHtml).toContain('export backup')
-    expect(exportHtml).toContain('export all')
-    expect(exportHtml).toContain('export to other tabs notebook')
-    expect(exportHtml).toContain('id="settings-export-tabs-notebook"')
-    expect(exportHtml).toContain('disabled=""')
+    expect(exportHtml).toContain('notebook exports are readable markdown archives')
     expect(exportHtml).not.toContain('export space')
     expect(exportHtml).not.toContain('choose sync folder')
     expect(exportHtml).not.toContain('automatically remove deleted items after:')
 
     expect(importHtml).toContain('aria-checked="true" class="settings-segmented-option is-selected">import</button>')
-    expect(importHtml).toContain('import tools are not available yet.')
+    expect(importHtml).toContain('import notebook')
+    expect(importHtml).toContain('import user settings')
+    expect(importHtml).toContain('import backup')
+    expect(importHtml).toContain('user settings move separately through app-settings.json')
+    expect(importHtml).not.toContain('current user settings will be overwritten')
     expect(importHtml).not.toContain('choose sync folder')
     expect(importHtml).not.toContain('export space')
   })
