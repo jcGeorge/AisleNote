@@ -383,7 +383,6 @@ export type AppState = {
     dataSettingsSection?: DataSettingsSection
     visualsSettingsSection?: VisualsSettingsSection
     selectedCustomTheme?: CustomThemeId
-    customThemePalette: CustomThemePalette | null
     themePalettes?: ThemePaletteOverrides
     noteCursorLocations: Record<string, NoteCursorLocation>
     headingCollapseState: HeadingCollapseState
@@ -622,7 +621,7 @@ export type StorageProfileStatus = {
   }>
   event?: string
   profileRootPath: string
-  notesDataPath: string
+  notesPath: string
   isDefault: boolean
   hasProfile: boolean
   canWrite: boolean

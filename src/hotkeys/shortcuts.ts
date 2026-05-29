@@ -94,14 +94,12 @@ export function normalizeHotkeySettings(raw: unknown): AppState['hotkeys'] {
 }
 
 function normalizeNewlineOperation(value: unknown, fallback: NewlineOperationId): NewlineOperationId {
-  if (value === 'aisle') return 'aisleRight'
   return typeof value === 'string' && NEWLINE_OPERATION_IDS.has(value as NewlineOperationId)
     ? (value as NewlineOperationId)
     : fallback
 }
 
 function normalizeShortcutMenuOperation(value: unknown): NewlineOperationId | null {
-  if (value === 'aisle') return 'aisleRight'
   if (typeof value !== 'string') return null
   const operation = value as NewlineOperationId
   return SHORTCUT_MENU_ELIGIBLE_OPERATION_IDS.has(operation) ? operation : null

@@ -4103,7 +4103,7 @@ function App() {
       onOpenSettings={openSettingsWithoutMentionMenu}
     />
   )
-  const activeThemePalette = getThemePaletteForTheme(state.theme, state.ui.themePalettes, state.ui.customThemePalette)
+  const activeThemePalette = getThemePaletteForTheme(state.theme, state.ui.themePalettes)
   const activeThemeIsCustom = isCustomTheme(state.theme)
   const customThemeSeedSource = activeThemeIsCustom ? getCustomThemePaletteSeedMatch(activeThemePalette) : null
   const builtInThemeOverride = activeThemeIsCustom ? null : state.ui.themePalettes?.[state.theme] ?? null

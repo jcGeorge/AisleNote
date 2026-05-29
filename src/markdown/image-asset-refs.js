@@ -5,7 +5,7 @@ export const MARKDOWN_LINK_PATTERN = /(!?)\[([^\]]*)\]\(([^)]+)\)/g
 
 export function normalizeImageAssetPath(value) {
   const source = String(value ?? '').replace(/\\/g, '/').trim()
-  const withoutLeadingRoot = source.replace(/^\/+/, '').replace(/^notes-data\//, '')
+  const withoutLeadingRoot = source.replace(/^\/+/, '').replace(/^notes\//, '')
   const segments = withoutLeadingRoot
     .split('/')
     .filter((segment) => segment.length > 0 && segment !== '.')

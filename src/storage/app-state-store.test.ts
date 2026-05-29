@@ -95,7 +95,7 @@ describe('Electron app state store', () => {
       | ((status: {
           status: 'ready' | 'error'
           profileRootPath: string
-          notesDataPath: string
+          notesPath: string
           isDefault: boolean
           hasProfile: boolean
           canWrite: boolean
@@ -133,7 +133,7 @@ describe('Electron app state store', () => {
     statusHandler?.({
       status: 'ready',
       profileRootPath: '/tmp/tabs',
-      notesDataPath: '/tmp/tabs/notes-data',
+      notesPath: '/tmp/tabs/notes',
       isDefault: false,
       hasProfile: false,
       canWrite: true,

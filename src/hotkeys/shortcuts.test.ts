@@ -77,7 +77,7 @@ describe('newline shortcut settings', () => {
     expect(normalized.newlineShortcuts.menuOperations).toEqual(['dashList', 'bulletList', 'strikethrough'])
   })
 
-  it('migrates legacy generic aisle shortcut settings to aisle right', () => {
+  it('falls back for invalid aisle shortcut aliases', () => {
     const normalized = normalizeHotkeySettings({
       newlineShortcuts: {
         shortcuts: {

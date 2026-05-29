@@ -120,7 +120,6 @@ function serializedAppState() {
       noteFontScale: 1,
       settingsSection: 'frontmatter',
       selectedCustomTheme: 'custom1',
-      customThemePalette: customThemePaletteFixture,
       themePalettes: {
         custom1: customThemePaletteFixture,
         dawn: {
@@ -140,7 +139,7 @@ function readJson(filePath) {
 }
 
 function createRecoverySnapshotDirectory(userDataPath, timestamp) {
-  const snapshotPath = path.join(userDataPath, 'storage-recovery', `notes-data-${timestamp}`)
+  const snapshotPath = path.join(userDataPath, 'storage-recovery', `notes-${timestamp}`)
   mkdirSync(snapshotPath, { recursive: true })
   writeFileSync(path.join(snapshotPath, 'marker.txt'), String(timestamp), 'utf8')
   const snapshotDate = new Date(timestamp)
@@ -177,7 +176,7 @@ afterEach(() => {
 function getStoredWorkspacePaths(profileRootPath, indexes = {}) {
   const domainIndex = indexes.domainIndex ?? 0
   const spaceIndex = indexes.spaceIndex ?? 0
-  const root = path.join(profileRootPath, 'notes-data')
+  const root = path.join(profileRootPath, 'notes')
   const rootManifest = readJson(path.join(root, 'manifest.json'))
   const workspaceIndex = readJson(path.join(root, rootManifest.files?.workspaceIndex ?? 'workspace-index.json'))
   const noteRegistry = readJson(path.join(root, rootManifest.files?.noteRegistry ?? 'note-registry.json'))
@@ -248,7 +247,7 @@ describe('Electron app state storage load result', () => {
       expect(parsed.frontmatter.settingsTemplateId).toBe('template-1')
       expect(parsed.frontmatter.lastAppliedTemplateId).toBe('template-1')
       expect(parsed.ui.settingsSection).toBe('frontmatter')
-      expect(parsed.ui.customThemePalette.primary).toBe('#8844cc')
+      expect(parsed.ui).not.toHaveProperty('customThemePalette')
       expect(parsed.ui.themePalettes.custom1.primary).toBe('#8844cc')
       expect(parsed.ui.themePalettes.dawn.primary).toBe('#123456')
     }))
@@ -270,12 +269,12 @@ describe('Electron app state storage load result', () => {
       const parsed = JSON.parse(result.serializedState)
       expect(parsed.theme).toBe('custom2')
       expect(parsed.ui.selectedCustomTheme).toBe('custom2')
-      expect(parsed.ui.customThemePalette).toEqual(customThemePaletteFixture)
+      expect(parsed.ui).not.toHaveProperty('customThemePalette')
       expect(parsed.ui.themePalettes.custom1).toEqual(customThemePaletteFixture)
       expect(parsed.ui.themePalettes.custom2.primary).toBe('#225599')
     }))
 
-  it('writes app settings beside notes-data and per-space settings into notes-data manifests', () =>
+  it('writes app settings beside notes and per-space settings into notes manifests', () =>
     withTempUserDataPath((userDataPath) => {
       const state = JSON.parse(serializedAppState())
       state.theme = 'custom3'
@@ -474,10 +473,10 @@ describe('Electron app state storage load result', () => {
       expect(parsed.ui.headingCollapseState).toEqual({ 'body-1': { 'aisle-1': ['heading'] } })
     }))
 
-  it('ignores legacy profile-settings and rejects old root manifests', () =>
+  it('ignores stale profile-settings and rejects unsupported root manifests', () =>
     withTempUserDataPath((userDataPath) => {
       saveAppState(userDataPath, serializedAppState())
-      const rootPath = path.join(userDataPath, 'notes-data')
+      const rootPath = path.join(userDataPath, 'notes')
       const manifestPath = path.join(rootPath, 'manifest.json')
       const profileSettingsPath = path.join(rootPath, 'profile-settings.json')
       const rootManifest = readJson(manifestPath)
@@ -558,11 +557,11 @@ describe('Electron app state storage load result', () => {
       expect(parsed.domains[0].spaces[0].data.tabs[0].title).toBe('Tab')
     }))
 
-  it('falls back to legacy notes-data app-settings when sibling settings are missing', () =>
+  it('ignores and prunes notes app-settings when sibling settings are missing', () =>
     withTempUserDataPath((userDataPath) => {
       saveAppState(userDataPath, serializedAppState())
       const siblingSettingsPath = path.join(userDataPath, 'settings', 'app-settings.json')
-      const legacySettingsPath = path.join(userDataPath, 'notes-data', 'app-settings.json')
+      const legacySettingsPath = path.join(userDataPath, 'notes', 'app-settings.json')
       const appSettings = readJson(siblingSettingsPath)
       rmSync(siblingSettingsPath, { force: true })
       writeFileSync(
@@ -581,12 +580,12 @@ describe('Electron app state storage load result', () => {
       const result = loadAppStateResult(userDataPath)
       expect(result.ok).toBe(true)
       expect(result.health).toBe('warning')
-      expect(result.issues).toContainEqual(expect.objectContaining({ code: 'legacy-app-settings', severity: 'warning' }))
-      expect(JSON.parse(result.serializedState).theme).toBe('light')
+      expect(result.issues).toContainEqual(expect.objectContaining({ code: 'missing-app-settings', severity: 'warning' }))
+      expect(JSON.parse(result.serializedState).theme).toBe('dawn')
 
       saveAppState(userDataPath, result.serializedState)
-      expect(readJson(siblingSettingsPath).theme).toBe('light')
-      expect(existsSync(legacySettingsPath)).toBe(true)
+      expect(readJson(siblingSettingsPath).theme).toBe('dawn')
+      expect(existsSync(legacySettingsPath)).toBe(false)
     }))
 
   it('recovers with default user settings when app-settings is missing or corrupt', () =>
@@ -611,7 +610,7 @@ describe('Electron app state storage load result', () => {
       expect(JSON.parse(corruptResult.serializedState).noteAisleBodies[0].markdown).toBe('hello')
     }))
 
-  it('round-trips rearranged parent and sub-tab order through notes-data storage', () =>
+  it('round-trips rearranged parent and sub-tab order through notes storage', () =>
     withTempUserDataPath((userDataPath) => {
       const state = JSON.parse(serializedAppState())
       const space = state.domains[0].spaces[0]
@@ -661,7 +660,7 @@ describe('Electron app state storage load result', () => {
     withTempUserDataPath((userDataPath) => {
       saveAppState(userDataPath, serializedAppState())
 
-      const root = path.join(userDataPath, 'notes-data')
+      const root = path.join(userDataPath, 'notes')
       const manifest = readJson(path.join(root, 'manifest.json'))
       const workspaceIndex = readJson(path.join(root, manifest.files.workspaceIndex))
 
@@ -677,7 +676,7 @@ describe('Electron app state storage load result', () => {
       expect(existsSync(path.join(root, 'topics'))).toBe(false)
       expect(existsSync(path.join(root, 'note-bodies'))).toBe(false)
       expect(existsSync(path.join(root, 'profile-settings.json'))).toBe(false)
-      expect(existsSync(path.join(userDataPath, 'notes-data.bak'))).toBe(false)
+      expect(existsSync(path.join(userDataPath, 'notes.bak'))).toBe(false)
     }))
 
   it('uses distinct readable paths for duplicate names', () =>
@@ -689,7 +688,7 @@ describe('Electron app state storage load result', () => {
       ]
 
       saveAppState(userDataPath, JSON.stringify(state))
-      const root = path.join(userDataPath, 'notes-data')
+      const root = path.join(userDataPath, 'notes')
       const manifest = readJson(path.join(root, 'manifest.json'))
       const workspaceIndex = readJson(path.join(root, manifest.files.workspaceIndex))
 
@@ -709,7 +708,7 @@ describe('Electron app state storage load result', () => {
       state.noteAisleBodies.push({ id: 'aisle-body-sub', markdown: 'sub body' })
 
       saveAppState(userDataPath, JSON.stringify(state))
-      const root = path.join(userDataPath, 'notes-data')
+      const root = path.join(userDataPath, 'notes')
       const rootManifest = readJson(path.join(root, 'manifest.json'))
       const workspaceIndex = readJson(path.join(root, rootManifest.files.workspaceIndex))
       const domainManifest = readJson(path.join(root, 'domains', workspaceIndex.domains[0].path, 'manifest.json'))
@@ -1089,7 +1088,7 @@ describe('Electron app state storage load result', () => {
 
       saveAppState(userDataPath, JSON.stringify(state))
 
-      const root = path.join(userDataPath, 'notes-data')
+      const root = path.join(userDataPath, 'notes')
       const rootManifest = readJson(path.join(root, 'manifest.json'))
       const workspaceIndex = readJson(path.join(root, rootManifest.files.workspaceIndex))
       const noteRegistry = readJson(path.join(root, rootManifest.files.noteRegistry))
@@ -1186,7 +1185,7 @@ describe('Electron app state storage load result', () => {
 
       saveAppState(userDataPath, JSON.stringify(state))
 
-      const root = path.join(userDataPath, 'notes-data')
+      const root = path.join(userDataPath, 'notes')
       const rootManifest = readJson(path.join(root, 'manifest.json'))
       const noteRegistry = readJson(path.join(root, rootManifest.files.noteRegistry))
       const editorState = readJson(path.join(root, rootManifest.files.editorState))
@@ -1209,7 +1208,7 @@ describe('Electron app state storage load result', () => {
 
   it('rejects a malformed current-schema topic-style profile', () =>
     withTempUserDataPath((userDataPath) => {
-      const root = path.join(userDataPath, 'notes-data')
+      const root = path.join(userDataPath, 'notes')
       mkdirSync(root, { recursive: true })
       writeFileSync(
         path.join(root, 'manifest.json'),
@@ -1234,7 +1233,7 @@ describe('Electron app state storage load result', () => {
   for (const schemaVersion of [2, 3, 4, 999]) {
     it(`rejects unsupported schema ${schemaVersion} profiles`, () =>
       withTempUserDataPath((userDataPath) => {
-        const root = path.join(userDataPath, 'notes-data')
+        const root = path.join(userDataPath, 'notes')
         mkdirSync(root, { recursive: true })
         writeFileSync(path.join(root, 'manifest.json'), JSON.stringify({ schemaVersion }), 'utf8')
 
@@ -1253,7 +1252,7 @@ describe('Electron app state storage load result', () => {
   it('rejects current schema profiles missing required split files', () =>
     withTempUserDataPath((userDataPath) => {
       saveAppState(userDataPath, serializedAppState())
-      const root = path.join(userDataPath, 'notes-data')
+      const root = path.join(userDataPath, 'notes')
       const rootManifest = readJson(path.join(root, 'manifest.json'))
       rmSync(path.join(root, rootManifest.files.noteRegistry), { force: true })
 
@@ -1284,7 +1283,7 @@ describe('Electron app state storage load result', () => {
         },
       }
       saveAppState(userDataPath, JSON.stringify(state))
-      const root = path.join(userDataPath, 'notes-data')
+      const root = path.join(userDataPath, 'notes')
       const rootManifest = readJson(path.join(root, 'manifest.json'))
       rmSync(path.join(root, rootManifest.files.editorState), { force: true })
 
@@ -1298,7 +1297,7 @@ describe('Electron app state storage load result', () => {
   it('rejects temporary wider schema 3 profiles', () =>
     withTempUserDataPath((userDataPath) => {
       saveAppState(userDataPath, serializedAppState())
-      const root = path.join(userDataPath, 'notes-data')
+      const root = path.join(userDataPath, 'notes')
       const rootManifest = readJson(path.join(root, 'manifest.json'))
       const appSettings = readJson(path.join(userDataPath, 'settings', 'app-settings.json'))
       const noteRegistry = readJson(path.join(root, rootManifest.files.noteRegistry))
@@ -1348,14 +1347,14 @@ describe('Electron app state storage load result', () => {
 
   it('fails existing profiles with provider conflict folders', () =>
     withTempUserDataPath((userDataPath) => {
-      const root = path.join(userDataPath, 'notes-data')
+      const root = path.join(userDataPath, 'notes')
       mkdirSync(path.join(root, 'topics 2'), { recursive: true })
       writeFileSync(path.join(root, 'manifest.json'), JSON.stringify({ schemaVersion: 1 }), 'utf8')
 
       expect(loadAppStateResult(userDataPath)).toMatchObject({
         ok: false,
         source: 'hybrid',
-        conflicts: ['notes-data/topics 2'],
+        conflicts: ['notes/topics 2'],
         health: 'error',
         issues: [expect.objectContaining({ code: 'cloud-conflict', severity: 'error' })],
       })
@@ -1372,7 +1371,7 @@ describe('Electron app state storage load result', () => {
 
   it('returns a failed result for an existing corrupt root manifest', () =>
     withTempUserDataPath((userDataPath) => {
-      const root = path.join(userDataPath, 'notes-data')
+      const root = path.join(userDataPath, 'notes')
       mkdirSync(root, { recursive: true })
       writeFileSync(path.join(root, 'manifest.json'), '{nope', 'utf8')
 
@@ -1416,7 +1415,7 @@ describe('Electron app state storage load result', () => {
       const state = JSON.parse(serializedAppState())
       setFirstAisleBodyMarkdown(state, 'image ![pixel](data:image/png;base64,iVBORw0KGgo=)')
       saveAppState(userDataPath, JSON.stringify(state))
-      rmSync(path.join(userDataPath, 'notes-data', 'assets'), { recursive: true, force: true })
+      rmSync(path.join(userDataPath, 'notes', 'assets'), { recursive: true, force: true })
 
       const result = loadAppStateResult(userDataPath)
       const parsed = JSON.parse(result.serializedState)
@@ -1430,7 +1429,7 @@ describe('Electron app state storage load result', () => {
         expect.objectContaining({
           code: 'missing-asset',
           severity: 'warning',
-          path: expect.stringContaining('notes-data/assets/'),
+          path: expect.stringContaining('notes/assets/'),
         }),
       ]))
       expect(getAisleMarkdown(parsed, parsed.noteBodies[0].aisles[0])).toContain('![pixel](')
@@ -1446,7 +1445,7 @@ describe('Electron app state storage load result', () => {
 
       saveAppState(userDataPath, JSON.stringify(state))
 
-      const assetPath = path.join(userDataPath, 'notes-data', asset.assetPath)
+      const assetPath = path.join(userDataPath, 'notes', asset.assetPath)
       expect(readFileSync(assetPath)).toEqual(bytes)
 
       const result = loadAppStateResult(userDataPath)
@@ -1495,8 +1494,8 @@ describe('Electron app state storage load result', () => {
 
       saveAppState(userDataPath, JSON.stringify(state))
 
-      expect(readFileSync(path.join(userDataPath, 'notes-data', keptAsset.assetPath))).toEqual(keptBytes)
-      expect(existsSync(path.join(userDataPath, 'notes-data', staleAsset.assetPath))).toBe(false)
+      expect(readFileSync(path.join(userDataPath, 'notes', keptAsset.assetPath))).toEqual(keptBytes)
+      expect(existsSync(path.join(userDataPath, 'notes', staleAsset.assetPath))).toBe(false)
     }))
 
   it('keeps image assets referenced only from deleted trash content', () =>
@@ -1532,8 +1531,8 @@ describe('Electron app state storage load result', () => {
 
       saveAppState(userDataPath, JSON.stringify(state))
 
-      expect(readFileSync(path.join(userDataPath, 'notes-data', trashAsset.assetPath))).toEqual(trashBytes)
-      expect(existsSync(path.join(userDataPath, 'notes-data', staleAsset.assetPath))).toBe(false)
+      expect(readFileSync(path.join(userDataPath, 'notes', trashAsset.assetPath))).toEqual(trashBytes)
+      expect(existsSync(path.join(userDataPath, 'notes', staleAsset.assetPath))).toBe(false)
     }))
 
   it('loads and re-saves non-image asset links as stable refs', () =>
@@ -1545,7 +1544,7 @@ describe('Electron app state storage load result', () => {
 
       saveAppState(userDataPath, JSON.stringify(state))
 
-      const assetPath = path.join(userDataPath, 'notes-data', asset.assetPath)
+      const assetPath = path.join(userDataPath, 'notes', asset.assetPath)
       expect(readFileSync(assetPath)).toEqual(bytes)
 
       const result = loadAppStateResult(userDataPath)
@@ -1698,9 +1697,9 @@ describe('Electron app state storage load result', () => {
       state.noteBodies.push({ id: 'body-2', aisles: [{ id: 'aisle-2', aisleBodyId: 'aisle-body-2' }] })
       state.noteAisleBodies.push({ id: 'aisle-body-2', markdown: 'second' })
       saveAppState(userDataPath, JSON.stringify(state))
-      const rootManifest = readJson(path.join(userDataPath, 'notes-data', 'manifest.json'))
-      const workspaceIndex = readJson(path.join(userDataPath, 'notes-data', rootManifest.files.workspaceIndex))
-      writeFileSync(path.join(userDataPath, 'notes-data', 'domains', workspaceIndex.domains[0].path, 'manifest.json'), '{bad', 'utf8')
+      const rootManifest = readJson(path.join(userDataPath, 'notes', 'manifest.json'))
+      const workspaceIndex = readJson(path.join(userDataPath, 'notes', rootManifest.files.workspaceIndex))
+      writeFileSync(path.join(userDataPath, 'notes', 'domains', workspaceIndex.domains[0].path, 'manifest.json'), '{bad', 'utf8')
 
       const result = loadAppStateResult(userDataPath)
       const parsed = JSON.parse(result.serializedState)
@@ -1718,9 +1717,9 @@ describe('Electron app state storage load result', () => {
   it('blocks writes when no domains are readable', () =>
     withTempUserDataPath((userDataPath) => {
       saveAppState(userDataPath, serializedAppState())
-      const rootManifest = readJson(path.join(userDataPath, 'notes-data', 'manifest.json'))
-      const workspaceIndex = readJson(path.join(userDataPath, 'notes-data', rootManifest.files.workspaceIndex))
-      writeFileSync(path.join(userDataPath, 'notes-data', 'domains', workspaceIndex.domains[0].path, 'manifest.json'), '{bad', 'utf8')
+      const rootManifest = readJson(path.join(userDataPath, 'notes', 'manifest.json'))
+      const workspaceIndex = readJson(path.join(userDataPath, 'notes', rootManifest.files.workspaceIndex))
+      writeFileSync(path.join(userDataPath, 'notes', 'domains', workspaceIndex.domains[0].path, 'manifest.json'), '{bad', 'utf8')
 
       expect(loadAppStateResult(userDataPath)).toMatchObject({
         ok: false,
@@ -1734,7 +1733,7 @@ describe('Electron app state storage load result', () => {
       })
     }))
 
-  it('creates interrupted-save recovery snapshots outside the synced notes-data tree', () =>
+  it('creates interrupted-save recovery snapshots outside the synced notes tree', () =>
     withTempUserDataPath((userDataPath) => {
       const profileRootPath = mkdtempSync(path.join(os.tmpdir(), 'tabs-profile-'))
       try {
@@ -1747,7 +1746,7 @@ describe('Electron app state storage load result', () => {
 
         expect(snapshots.length).toBeGreaterThanOrEqual(1)
         expect(snapshots[0].path).toContain(path.join(userDataPath, 'storage-recovery'))
-        expect(snapshots[0].path).not.toContain(path.join(profileRootPath, 'notes-data', 'storage-recovery'))
+        expect(snapshots[0].path).not.toContain(path.join(profileRootPath, 'notes', 'storage-recovery'))
         expect(existsSync(path.join(profileRootPath, 'storage-recovery'))).toBe(false)
       } finally {
         rmSync(profileRootPath, { recursive: true, force: true })
@@ -1810,9 +1809,9 @@ describe('Electron app state storage load result', () => {
 
       expect(result).toMatchObject({ removed: 3, kept: RECOVERY_SNAPSHOT_MAX_PER_DAY })
       expect(snapshots).toHaveLength(2)
-      expect(keptNames).toContain(`notes-data-${timestamps[0]}`)
-      expect(keptNames).toContain(`notes-data-${timestamps[timestamps.length - 1]}`)
-      expect(existsSync(path.join(userDataPath, 'storage-recovery', `notes-data-${timestamps[2]}`))).toBe(false)
+      expect(keptNames).toContain(`notes-${timestamps[0]}`)
+      expect(keptNames).toContain(`notes-${timestamps[timestamps.length - 1]}`)
+      expect(existsSync(path.join(userDataPath, 'storage-recovery', `notes-${timestamps[2]}`))).toBe(false)
     }))
 
   it('prunes recovery snapshots to the latest 30 active days while skipping inactive days', () =>
@@ -1828,9 +1827,9 @@ describe('Electron app state storage load result', () => {
       const keptNames = snapshots.map((snapshot) => snapshot.name)
 
       expect(snapshots).toHaveLength(RECOVERY_SNAPSHOT_MAX_ACTIVE_DAYS)
-      expect(keptNames).not.toContain(`notes-data-${timestamps[0]}`)
-      expect(keptNames).toContain(`notes-data-${timestamps[1]}`)
-      expect(keptNames).toContain(`notes-data-${timestamps[timestamps.length - 1]}`)
+      expect(keptNames).not.toContain(`notes-${timestamps[0]}`)
+      expect(keptNames).toContain(`notes-${timestamps[1]}`)
+      expect(keptNames).toContain(`notes-${timestamps[timestamps.length - 1]}`)
     }))
 
   it('restores the latest valid recovery snapshot', () =>

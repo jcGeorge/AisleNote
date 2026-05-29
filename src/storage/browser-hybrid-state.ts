@@ -55,7 +55,6 @@ import {
   extractAppSettings,
   extractEditorState,
   extractFrontmatterSettings,
-  LEGACY_APP_SETTINGS_FILE,
   pruneAppStateEditorLocations,
   ROOT_SPLIT_FILES,
   USER_SETTINGS_FILE,
@@ -930,23 +929,11 @@ function readJsonRecordFromFileMap(fileMap: Map<string, BrowserStoredFile>, file
   }
 }
 
-function getLegacyAppSettingsFileName(rootManifest: Record<string, unknown>): string {
-  const files = isRecord(rootManifest.files) ? rootManifest.files : null
-  const value = files?.appSettings
-  return typeof value === 'string' && isRootSplitFileName(value) ? value : LEGACY_APP_SETTINGS_FILE
-}
-
 function readAppSettingsFromFileMap(
   fileMap: Map<string, BrowserStoredFile>,
-  rootManifest: Record<string, unknown>,
 ): Record<string, unknown> {
   const userSettings = readJsonRecordFromFileMap(fileMap, joinPosix(STORAGE_SETTINGS_DIR, USER_SETTINGS_FILE))
-  if (userSettings) return userSettings
-  const legacySettings = readJsonRecordFromFileMap(
-    fileMap,
-    joinPosix(STORAGE_ROOT_DIR, getLegacyAppSettingsFileName(rootManifest)),
-  )
-  return legacySettings ?? {}
+  return userSettings ?? {}
 }
 
 function readCurrentRootParts(
@@ -961,7 +948,7 @@ function readCurrentRootParts(
     if (!file) return null
     splitFiles[key] = file
   }
-  splitFiles.appSettings = readAppSettingsFromFileMap(fileMap, rootManifest)
+  splitFiles.appSettings = readAppSettingsFromFileMap(fileMap)
   splitFiles.editorState = readRootSplitJsonFile(fileMap, rootManifest, 'editorState', false) ?? {}
   const noteRegistry = splitFiles.noteRegistry
 

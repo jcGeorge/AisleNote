@@ -6,7 +6,7 @@ import { createStorageProfileWatcher } from './storage-watcher.mjs'
 
 function withTempProfile(run) {
   const profileRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-storage-watcher-'))
-  mkdirSync(path.join(profileRoot, 'notes-data'), { recursive: true })
+  mkdirSync(path.join(profileRoot, 'notes'), { recursive: true })
   try {
     return run(profileRoot)
   } finally {
@@ -33,7 +33,7 @@ describe('storage profile watcher', () => {
       })
       try {
         watcher.markAppWrite()
-        writeFileSync(path.join(profileRoot, 'notes-data', 'manifest.json'), '{"schemaVersion":2}', 'utf8')
+        writeFileSync(path.join(profileRoot, 'notes', 'manifest.json'), '{"schemaVersion":2}', 'utf8')
         watcher.scan()
         vi.advanceTimersByTime(600)
         watcher.scan()
@@ -57,7 +57,7 @@ describe('storage profile watcher', () => {
         appWriteQuietMs: 500,
       })
       try {
-        writeFileSync(path.join(profileRoot, 'notes-data', 'manifest.json'), '{"schemaVersion":2}', 'utf8')
+        writeFileSync(path.join(profileRoot, 'notes', 'manifest.json'), '{"schemaVersion":2}', 'utf8')
         watcher.scan()
         vi.advanceTimersByTime(20)
 

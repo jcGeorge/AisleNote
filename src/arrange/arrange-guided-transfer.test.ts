@@ -91,7 +91,6 @@ function appState(domains: Domain[], activeDomainId = domains[0].id, activeSpace
       tabButtonScale: 1,
       noteFontScale: 1,
       settingsSection: 'visuals',
-      customThemePalette: null,
       noteCursorLocations: {},
       headingCollapseState: {},
       seenTipIds: [],

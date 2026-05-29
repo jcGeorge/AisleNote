@@ -9,31 +9,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
-function getPaletteCandidate(parsed: unknown): Record<string, unknown> | null {
-  if (!isRecord(parsed)) return null
-  if (isRecord(parsed.ui)) {
-    const uiTheme =
-      typeof parsed.ui.theme === 'string'
-        ? parsed.ui.theme
-        : typeof parsed.theme === 'string'
-          ? parsed.theme
-          : null
-    if (isRecord(parsed.ui.customThemePalette)) return parsed.ui.customThemePalette
-    if (isRecord(parsed.ui.themePalettes)) {
-      if (uiTheme && isRecord(parsed.ui.themePalettes[uiTheme])) return parsed.ui.themePalettes[uiTheme]
-      if (isRecord(parsed.ui.themePalettes.custom1)) return parsed.ui.themePalettes.custom1
-    }
-  }
-  if (isRecord(parsed.palette)) return parsed.palette
-  if (isRecord(parsed.customThemePalette)) return parsed.customThemePalette
-  if (isRecord(parsed.themePalettes)) {
-    const theme = typeof parsed.theme === 'string' ? parsed.theme : null
-    if (theme && isRecord(parsed.themePalettes[theme])) return parsed.themePalettes[theme]
-    if (isRecord(parsed.themePalettes.custom1)) return parsed.themePalettes.custom1
-  }
-  return parsed
-}
-
 function formatSlotList(slots: CustomThemePaletteSlot[]) {
   const visible = slots.slice(0, 4).join(', ')
   return slots.length > 4 ? `${visible}, and ${slots.length - 4} more` : visible
@@ -51,8 +26,8 @@ export function parseThemeSettingsImport(raw: string, currentPalette: CustomThem
     return { ok: false, error: 'invalid json.' }
   }
 
-  const candidate = getPaletteCandidate(parsed)
-  if (!candidate) return { ok: false, error: 'no theme palette found.' }
+  if (!isRecord(parsed)) return { ok: false, error: 'no theme palette found.' }
+  const candidate = parsed
 
   const importedSlots = CUSTOM_THEME_PALETTE_SLOTS.filter((slot) => Object.prototype.hasOwnProperty.call(candidate, slot))
   if (importedSlots.length === 0) return { ok: false, error: 'no theme colors found.' }

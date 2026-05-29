@@ -36,7 +36,7 @@ function getRootSplitFileJson(
 ) {
   const files = getRecord(rootManifest.files)
   const fileName = typeof files[key] === 'string' ? files[key] : fallbackFile
-  return getTextFileJson(fileMap, `notes-data/${fileName}`)
+  return getTextFileJson(fileMap, `notes/${fileName}`)
 }
 
 function getUserSettingsFileJson(fileMap: ReturnType<typeof buildHybridFileMapFromSerializedState>) {
@@ -98,10 +98,10 @@ function getFirstAisleBodyMarkdown(state: ReturnType<typeof createBrowserStorage
 }
 
 function getBrowserWorkspacePaths(fileMap: ReturnType<typeof buildHybridFileMapFromSerializedState>) {
-  const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
+  const rootManifest = getTextFileJson(fileMap, 'notes/manifest.json')
   const workspaceIndex = getRootSplitFileJson(fileMap, rootManifest, 'workspaceIndex', 'workspace-index.json')
   const domainEntry = getRecord(Array.isArray(workspaceIndex.domains) ? workspaceIndex.domains[0] : null)
-  const domainRoot = `notes-data/domains/${String(domainEntry.path)}`
+  const domainRoot = `notes/domains/${String(domainEntry.path)}`
   const domainManifest = getTextFileJson(fileMap, `${domainRoot}/manifest.json`)
   const spaceEntry = getRecord(Array.isArray(domainManifest.spaces) ? domainManifest.spaces[0] : null)
   const spaceRoot = `${domainRoot}/${String(spaceEntry.path)}`
@@ -211,12 +211,8 @@ describe('browser hybrid storage', () => {
         },
         ui: {
           settingsSection: 'visuals',
-          customThemePalette: {
-            ...DEFAULT_CUSTOM_THEME_PALETTE,
-            primary: '#8844cc',
-          },
           themePalettes: {
-            custom: {
+            custom1: {
               ...DEFAULT_CUSTOM_THEME_PALETTE,
               primary: '#8844cc',
             },
@@ -264,7 +260,7 @@ describe('browser hybrid storage', () => {
       })
 
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
-    const rootManifestEntry = fileMap.get('notes-data/manifest.json')
+    const rootManifestEntry = fileMap.get('notes/manifest.json')
     const rootManifest =
       rootManifestEntry?.kind === 'text' ? (JSON.parse(rootManifestEntry.text) as Record<string, unknown>) : null
     const workspaceIndex = getRootSplitFileJson(fileMap, getRecord(rootManifest), 'workspaceIndex', 'workspace-index.json')
@@ -289,20 +285,20 @@ describe('browser hybrid storage', () => {
       'noteRegistry',
       'workspaceIndex',
     ])
-    expect(fileMap.has('notes-data/profile-settings.json')).toBe(false)
-    expect(fileMap.has('notes-data/app-settings.json')).toBe(false)
+    expect(fileMap.has('notes/profile-settings.json')).toBe(false)
+    expect(fileMap.has('notes/app-settings.json')).toBe(false)
     expect(fileMap.has('settings/app-settings.json')).toBe(true)
-    expect(fileMap.has('notes-data/appearance-settings.json')).toBe(false)
-    expect(fileMap.has('notes-data/shortcut-settings.json')).toBe(false)
-    expect(fileMap.has('notes-data/ui-preferences.json')).toBe(false)
-    expect(fileMap.has('notes-data/note-bodies.json')).toBe(false)
-    expect(fileMap.has('notes-data/aisle-bodies.json')).toBe(false)
-    expect(fileMap.has('notes-data/orphan-note-bodies.json')).toBe(false)
-    expect(fileMap.has('notes-data/orphan-aisle-bodies.json')).toBe(false)
+    expect(fileMap.has('notes/appearance-settings.json')).toBe(false)
+    expect(fileMap.has('notes/shortcut-settings.json')).toBe(false)
+    expect(fileMap.has('notes/ui-preferences.json')).toBe(false)
+    expect(fileMap.has('notes/note-bodies.json')).toBe(false)
+    expect(fileMap.has('notes/aisle-bodies.json')).toBe(false)
+    expect(fileMap.has('notes/orphan-note-bodies.json')).toBe(false)
+    expect(fileMap.has('notes/orphan-aisle-bodies.json')).toBe(false)
     expect(firstDomain.path).toEqual(expect.stringMatching(/^Domain--[a-f0-9]{6}$/))
-    expect(paths.some((path) => path.startsWith('notes-data/domains/'))).toBe(true)
-    expect(paths.some((path) => path.startsWith('notes-data/topics/'))).toBe(false)
-    expect(paths.some((path) => path.startsWith('notes-data/note-bodies/'))).toBe(false)
+    expect(paths.some((path) => path.startsWith('notes/domains/'))).toBe(true)
+    expect(paths.some((path) => path.startsWith('notes/topics/'))).toBe(false)
+    expect(paths.some((path) => path.startsWith('notes/note-bodies/'))).toBe(false)
     expect(paths.some((path) => /\/Tab--[a-f0-9]{6}\/home\.md$/.test(path))).toBe(true)
     expect(paths.some((path) => /\/Tab--[a-f0-9]{6}\/Sub--[a-f0-9]{6}\.md$/.test(path))).toBe(true)
     expect(serialized).not.toBeNull()
@@ -320,10 +316,7 @@ describe('browser hybrid storage', () => {
     expect(JSON.stringify(noteRegistry.noteBodies)).not.toContain('"frontmatter"')
     expect(subBody?.aisles[0] ? getAisleMarkdown(subBody.aisles[0], roundTripped.noteAisleBodies) : '').toBe('sub body')
     expect(roundTripped.theme).toBe('custom1')
-    expect(roundTripped.ui.customThemePalette).toEqual({
-      ...DEFAULT_CUSTOM_THEME_PALETTE,
-      primary: '#8844cc',
-    })
+    expect(roundTripped.ui).not.toHaveProperty('customThemePalette')
     expect(roundTripped.ui.themePalettes?.custom1?.primary).toBe('#8844cc')
     expect(roundTripped.ui.themePalettes?.dawn?.primary).toBe('#123456')
     expect(getRecord(appSettings.themePalettes).custom1).toMatchObject({
@@ -392,11 +385,11 @@ describe('browser hybrid storage', () => {
     const roundTrippedAisle = roundTrippedBody?.aisles[0]
 
     expect(getRecord(workspaceIndex.scratchpad).noteBodyId).toBe(state.scratchpad?.noteBodyId)
-    expect(fileMap.get('notes-data/scratchpad/scratchpad.md')).toMatchObject({ kind: 'text', text: 'scratch note' })
+    expect(fileMap.get('notes/scratchpad/scratchpad.md')).toMatchObject({ kind: 'text', text: 'scratch note' })
     expect(roundTrippedAisle ? getAisleMarkdown(roundTrippedAisle, roundTripped.noteAisleBodies) : '').toBe('scratch note')
   })
 
-  it('persists app settings and per-space settings in hybrid notes-data manifests', () => {
+  it('persists app settings and per-space settings in hybrid notes manifests', () => {
     const state = parseSavedState(
       JSON.stringify({
         theme: 'custom2',
@@ -440,7 +433,7 @@ describe('browser hybrid storage', () => {
               shiftEnter: 'task',
               commandEnter: 'operationsMenu',
             },
-            menuOperations: ['task', 'aisle', 'strikethrough'],
+            menuOperations: ['task', 'aisleRight', 'strikethrough'],
           },
         },
         frontmatter: {
@@ -494,8 +487,8 @@ describe('browser hybrid storage', () => {
     const roundTripped = parseSavedState(readSerializedStateFromHybridFileMap(fileMap) ?? '')
 
     expect(Object.keys(rootManifest).sort()).toEqual(['files', 'schemaVersion'])
-    expect(fileMap.has('notes-data/profile-settings.json')).toBe(false)
-    expect(fileMap.has('notes-data/app-settings.json')).toBe(false)
+    expect(fileMap.has('notes/profile-settings.json')).toBe(false)
+    expect(fileMap.has('notes/app-settings.json')).toBe(false)
     expect(fileMap.has('settings/app-settings.json')).toBe(true)
     expect(appSettings.theme).toBe('custom2')
     expect(appSettings.selectedCustomTheme).toBe('custom2')
@@ -554,10 +547,10 @@ describe('browser hybrid storage', () => {
     expect(roundTripped.domains[0]?.spaces[0]?.settings).toEqual({ autoRemoveDeletedDays: 21 })
   })
 
-  it('ignores legacy profile-settings and rejects old root manifests', () => {
+  it('ignores stale profile-settings and rejects unsupported root manifests', () => {
     const state = createBrowserStorageState()
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify({ ...state, theme: 'dawn' }))
-    const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
+    const rootManifest = getTextFileJson(fileMap, 'notes/manifest.json')
     const appSettings = getUserSettingsFileJson(fileMap)
     const frontmatterSettings = getRootSplitFileJson(fileMap, rootManifest, 'frontmatterSettings', 'frontmatter-settings.json')
     const editorState = getRootSplitFileJson(fileMap, rootManifest, 'editorState', 'editor-state.json')
@@ -575,8 +568,8 @@ describe('browser hybrid storage', () => {
       },
     }
 
-    fileMap.set('notes-data/profile-settings.json', {
-      path: 'notes-data/profile-settings.json',
+    fileMap.set('notes/profile-settings.json', {
+      path: 'notes/profile-settings.json',
       kind: 'text',
       text: `${JSON.stringify({ ...profileSettings, settings: { ...profileSettings.settings, theme: 'blues' } }, null, 2)}\n`,
     })
@@ -585,15 +578,15 @@ describe('browser hybrid storage', () => {
     expect(serialized).toEqual(expect.any(String))
     expect(parseSavedState(serialized).theme).toBe('dawn')
 
-    fileMap.set('notes-data/manifest.json', {
-      path: 'notes-data/manifest.json',
+    fileMap.set('notes/manifest.json', {
+      path: 'notes/manifest.json',
       kind: 'text',
       text: `${JSON.stringify({ schemaVersion: 2, files: rootManifest.files }, null, 2)}\n`,
     })
     expect(readSerializedStateFromHybridFileMap(fileMap)).toBeNull()
   })
 
-  it('persists rearranged parent and sub-tab order in hybrid notes-data storage', () => {
+  it('persists rearranged parent and sub-tab order in hybrid notes storage', () => {
     const state = parseModernBrowserState({
         activeDomainId: 'domain-1',
         activeSpaceId: 'space-1',
@@ -700,7 +693,7 @@ describe('browser hybrid storage', () => {
       })
 
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
-    const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
+    const rootManifest = getTextFileJson(fileMap, 'notes/manifest.json')
     const noteRegistry = getRootSplitFileJson(fileMap, rootManifest, 'noteRegistry', 'note-registry.json')
     const serialized = readSerializedStateFromHybridFileMap(fileMap)
     const roundTripped = parseSavedState(serialized)
@@ -726,7 +719,7 @@ describe('browser hybrid storage', () => {
     ]
 
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
-    const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
+    const rootManifest = getTextFileJson(fileMap, 'notes/manifest.json')
     const noteRegistry = getRootSplitFileJson(fileMap, rootManifest, 'noteRegistry', 'note-registry.json')
     const bodyRecord = getRecord(
       (Array.isArray(noteRegistry.noteBodies) ? noteRegistry.noteBodies : [])
@@ -738,8 +731,8 @@ describe('browser hybrid storage', () => {
 
     expect(aisleFiles[0]).toMatch(/\/home\/aisle 1--[a-f0-9]{6}\.md$/)
     expect(aisleFiles[1]).toMatch(/\/home\/aisle 2--[a-f0-9]{6}\.md$/)
-    expect(fileMap.get(`notes-data/${aisleFiles[0]}`)).toMatchObject({ kind: 'text', text: 'left aisle draft 🚙' })
-    expect(fileMap.get(`notes-data/${aisleFiles[1]}`)).toMatchObject({ kind: 'text', text: 'right aisle draft 🥺' })
+    expect(fileMap.get(`notes/${aisleFiles[0]}`)).toMatchObject({ kind: 'text', text: 'left aisle draft 🚙' })
+    expect(fileMap.get(`notes/${aisleFiles[1]}`)).toMatchObject({ kind: 'text', text: 'right aisle draft 🥺' })
 
     const roundTripped = parseSavedState(readSerializedStateFromHybridFileMap(fileMap) ?? '')
     expect(roundTripped.noteAisleBodies?.find((body) => body.id === 'body-home-aisle')?.markdown).toBe('left aisle draft 🚙')
@@ -795,7 +788,7 @@ describe('browser hybrid storage', () => {
         ],
       })
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
-    const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
+    const rootManifest = getTextFileJson(fileMap, 'notes/manifest.json')
     const noteRegistry = getRootSplitFileJson(fileMap, rootManifest, 'noteRegistry', 'note-registry.json')
     const noteAisleBodyEntries = Array.isArray(noteRegistry.aisleBodies) ? noteRegistry.aisleBodies : []
     const sharedAisleBody = getRecord(noteAisleBodyEntries.find((entry) => getRecord(entry).id === 'shared-aisle-body'))
@@ -807,8 +800,8 @@ describe('browser hybrid storage', () => {
       .map((aisle) => String(aisle.file))
     const staleLinkedFile = linkedAisleFiles.find((file) => file !== sharedAisleBodyFile)
     if (staleLinkedFile) {
-      fileMap.set(`notes-data/${staleLinkedFile}`, {
-        path: `notes-data/${staleLinkedFile}`,
+      fileMap.set(`notes/${staleLinkedFile}`, {
+        path: `notes/${staleLinkedFile}`,
         kind: 'text',
         text: staleMarkdown,
       })
@@ -903,18 +896,18 @@ describe('browser hybrid storage', () => {
     ]
 
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
-    const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
+    const rootManifest = getTextFileJson(fileMap, 'notes/manifest.json')
     const workspaceIndex = getRootSplitFileJson(fileMap, rootManifest, 'workspaceIndex', 'workspace-index.json')
     const domainEntry = getRecord(Array.isArray(workspaceIndex.domains) ? workspaceIndex.domains[0] : null)
-    const domainManifest = getTextFileJson(fileMap, `notes-data/domains/${String(domainEntry.path)}/manifest.json`)
+    const domainManifest = getTextFileJson(fileMap, `notes/domains/${String(domainEntry.path)}/manifest.json`)
     const spaceEntry = getRecord(Array.isArray(domainManifest.spaces) ? domainManifest.spaces[0] : null)
     const spaceManifest = getTextFileJson(
       fileMap,
-      `notes-data/domains/${String(domainEntry.path)}/${String(spaceEntry.path)}/manifest.json`,
+      `notes/domains/${String(domainEntry.path)}/${String(spaceEntry.path)}/manifest.json`,
     )
     const trashManifest = getTextFileJson(
       fileMap,
-      `notes-data/domains/${String(domainEntry.path)}/${String(spaceEntry.path)}/trash/manifest.json`,
+      `notes/domains/${String(domainEntry.path)}/${String(spaceEntry.path)}/trash/manifest.json`,
     )
     const firstTab = getRecord(Array.isArray(spaceManifest.tabs) ? spaceManifest.tabs[0] : null)
     const firstSubTab = getRecord(Array.isArray(firstTab.subTabs) ? firstTab.subTabs[0] : null)
@@ -990,7 +983,7 @@ describe('browser hybrid storage', () => {
     }
 
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
-    const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
+    const rootManifest = getTextFileJson(fileMap, 'notes/manifest.json')
     const noteRegistry = getRootSplitFileJson(fileMap, rootManifest, 'noteRegistry', 'note-registry.json')
     const editorState = getRootSplitFileJson(fileMap, rootManifest, 'editorState', 'editor-state.json')
     const noteBodyEntries = Array.isArray(noteRegistry.noteBodies) ? noteRegistry.noteBodies.map(getRecord) : []
@@ -1008,7 +1001,7 @@ describe('browser hybrid storage', () => {
         'aisle-deleted-workspace': ['deleted-heading'],
       },
     })
-    expect(fileMap.get(`notes-data/${String(aisle.file)}`)).toMatchObject({
+    expect(fileMap.get(`notes/${String(aisle.file)}`)).toMatchObject({
       kind: 'text',
       text: 'deleted workspace body',
     })
@@ -1019,9 +1012,9 @@ describe('browser hybrid storage', () => {
   it('does not read malformed topic/note-body file maps', () => {
     const fileMap = new Map([
       [
-        'notes-data/manifest.json',
+        'notes/manifest.json',
         {
-          path: 'notes-data/manifest.json',
+          path: 'notes/manifest.json',
           kind: 'text' as const,
           text: JSON.stringify({
             schemaVersion: 1,
@@ -1031,9 +1024,9 @@ describe('browser hybrid storage', () => {
         },
       ],
       [
-        'notes-data/topics/domain-1/manifest.json',
+        'notes/topics/domain-1/manifest.json',
         {
-          path: 'notes-data/topics/domain-1/manifest.json',
+          path: 'notes/topics/domain-1/manifest.json',
           kind: 'text' as const,
           text: JSON.stringify({ id: 'domain-1', title: 'Domain', spaces: [] }),
         },
@@ -1046,9 +1039,9 @@ describe('browser hybrid storage', () => {
   for (const schemaVersion of [2, 3, 4, 999]) {
     it(`does not read unsupported schema ${schemaVersion} file maps`, () => {
       const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(createBrowserStorageState()))
-      const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
-      fileMap.set('notes-data/manifest.json', {
-        path: 'notes-data/manifest.json',
+      const rootManifest = getTextFileJson(fileMap, 'notes/manifest.json')
+      fileMap.set('notes/manifest.json', {
+        path: 'notes/manifest.json',
         kind: 'text',
         text: `${JSON.stringify({ ...rootManifest, schemaVersion }, null, 2)}\n`,
       })
@@ -1059,10 +1052,10 @@ describe('browser hybrid storage', () => {
 
   it('does not read current schema file maps missing required split files', () => {
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(createBrowserStorageState()))
-    const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
+    const rootManifest = getTextFileJson(fileMap, 'notes/manifest.json')
     const files = getRecord(rootManifest.files)
 
-    fileMap.delete(`notes-data/${String(files.noteRegistry)}`)
+    fileMap.delete(`notes/${String(files.noteRegistry)}`)
 
     expect(readSerializedStateFromHybridFileMap(fileMap)).toBeNull()
   })
@@ -1084,10 +1077,10 @@ describe('browser hybrid storage', () => {
       },
     }
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
-    const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
+    const rootManifest = getTextFileJson(fileMap, 'notes/manifest.json')
     const files = getRecord(rootManifest.files)
 
-    fileMap.delete(`notes-data/${String(files.editorState)}`)
+    fileMap.delete(`notes/${String(files.editorState)}`)
 
     const roundTripped = parseSavedState(readSerializedStateFromHybridFileMap(fileMap) ?? '')
     expect(roundTripped.domains).toHaveLength(1)
@@ -1109,32 +1102,32 @@ describe('browser hybrid storage', () => {
     expect(getFirstAisleBodyMarkdown(roundTripped)).toBe('home body')
   })
 
-  it('falls back to legacy notes-data app-settings in browser file maps', () => {
+  it('ignores notes app-settings in browser file maps', () => {
     const state = createBrowserStorageState()
     state.theme = 'light'
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
     const appSettings = getUserSettingsFileJson(fileMap)
     fileMap.delete('settings/app-settings.json')
-    fileMap.set('notes-data/app-settings.json', {
-      path: 'notes-data/app-settings.json',
+    fileMap.set('notes/app-settings.json', {
+      path: 'notes/app-settings.json',
       kind: 'text',
       text: `${JSON.stringify({ ...appSettings, theme: 'light' }, null, 2)}\n`,
     })
 
     const roundTripped = parseSavedState(readSerializedStateFromHybridFileMap(fileMap) ?? '')
-    expect(roundTripped.theme).toBe('light')
+    expect(roundTripped.theme).toBe('dawn')
     expect(getFirstAisleBodyMarkdown(roundTripped)).toBe('home body')
   })
 
   it('prunes stale note cursor locations when loading editor state', () => {
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(createBrowserStorageState()))
-    const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
+    const rootManifest = getTextFileJson(fileMap, 'notes/manifest.json')
     const files = getRecord(rootManifest.files)
     const editorStateFile = typeof files.editorState === 'string' ? files.editorState : 'editor-state.json'
     const liveKey = 'domain-1::space-1::tab-1::__home__'
     const staleKey = 'domain-1::space-1::missing-tab::__home__'
-    fileMap.set(`notes-data/${editorStateFile}`, {
-      path: `notes-data/${editorStateFile}`,
+    fileMap.set(`notes/${editorStateFile}`, {
+      path: `notes/${editorStateFile}`,
       kind: 'text',
       text: `${JSON.stringify(
         {
@@ -1177,7 +1170,7 @@ describe('browser hybrid storage', () => {
 
   it('rejects temporary wider schema 3 file maps', () => {
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(createBrowserStorageState()))
-    const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
+    const rootManifest = getTextFileJson(fileMap, 'notes/manifest.json')
     const appSettings = getUserSettingsFileJson(fileMap)
     const noteRegistry = getRootSplitFileJson(fileMap, rootManifest, 'noteRegistry', 'note-registry.json')
     const wideFiles = {
@@ -1195,48 +1188,48 @@ describe('browser hybrid storage', () => {
       orphanAisleBodies: 'orphan-aisle-bodies.json',
     }
 
-    fileMap.set('notes-data/appearance-settings.json', {
-      path: 'notes-data/appearance-settings.json',
+    fileMap.set('notes/appearance-settings.json', {
+      path: 'notes/appearance-settings.json',
       kind: 'text',
       text: `${JSON.stringify(appSettings, null, 2)}\n`,
     })
-    fileMap.set('notes-data/shortcut-settings.json', {
-      path: 'notes-data/shortcut-settings.json',
+    fileMap.set('notes/shortcut-settings.json', {
+      path: 'notes/shortcut-settings.json',
       kind: 'text',
       text: `${JSON.stringify(getRecord(appSettings.hotkeys), null, 2)}\n`,
     })
-    fileMap.set('notes-data/ui-preferences.json', {
-      path: 'notes-data/ui-preferences.json',
+    fileMap.set('notes/ui-preferences.json', {
+      path: 'notes/ui-preferences.json',
       kind: 'text',
       text: `${JSON.stringify(getRecord(appSettings.ui), null, 2)}\n`,
     })
-    fileMap.set('notes-data/note-bodies.json', {
-      path: 'notes-data/note-bodies.json',
+    fileMap.set('notes/note-bodies.json', {
+      path: 'notes/note-bodies.json',
       kind: 'text',
       text: `${JSON.stringify({ noteBodies: noteRegistry.noteBodies }, null, 2)}\n`,
     })
-    fileMap.set('notes-data/aisle-bodies.json', {
-      path: 'notes-data/aisle-bodies.json',
+    fileMap.set('notes/aisle-bodies.json', {
+      path: 'notes/aisle-bodies.json',
       kind: 'text',
       text: `${JSON.stringify({ noteAisleBodies: noteRegistry.aisleBodies }, null, 2)}\n`,
     })
-    fileMap.set('notes-data/orphan-note-bodies.json', {
-      path: 'notes-data/orphan-note-bodies.json',
+    fileMap.set('notes/orphan-note-bodies.json', {
+      path: 'notes/orphan-note-bodies.json',
       kind: 'text',
       text: `${JSON.stringify({ noteBodies: [] }, null, 2)}\n`,
     })
-    fileMap.set('notes-data/orphan-aisle-bodies.json', {
-      path: 'notes-data/orphan-aisle-bodies.json',
+    fileMap.set('notes/orphan-aisle-bodies.json', {
+      path: 'notes/orphan-aisle-bodies.json',
       kind: 'text',
       text: `${JSON.stringify({ noteAisleBodies: [] }, null, 2)}\n`,
     })
-    fileMap.set('notes-data/manifest.json', {
-      path: 'notes-data/manifest.json',
+    fileMap.set('notes/manifest.json', {
+      path: 'notes/manifest.json',
       kind: 'text',
       text: `${JSON.stringify({ schemaVersion: 3, files: wideFiles }, null, 2)}\n`,
     })
-    fileMap.delete('notes-data/app-settings.json')
-    fileMap.delete('notes-data/note-registry.json')
+    fileMap.delete('notes/app-settings.json')
+    fileMap.delete('notes/note-registry.json')
 
     expect(readSerializedStateFromHybridFileMap(fileMap)).toBeNull()
   })
@@ -1260,7 +1253,7 @@ describe('browser hybrid storage', () => {
     setFirstAisleBodyMarkdown(state, 'image ![pixel](data:image/png;base64,iVBORw0KGgo=)')
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
     Array.from(fileMap.keys())
-      .filter((path) => path.startsWith('notes-data/assets/'))
+      .filter((path) => path.startsWith('notes/assets/'))
       .forEach((path) => fileMap.delete(path))
 
     const serialized = readSerializedStateFromHybridFileMap(fileMap)
@@ -1279,7 +1272,7 @@ describe('browser hybrid storage', () => {
     setFirstAisleBodyMarkdown(state, `image ![pixel](${buildImageAssetUrl(assetPath)})`)
 
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
-    const assetEntry = fileMap.get(`notes-data/${assetPath}`)
+    const assetEntry = fileMap.get(`notes/${assetPath}`)
     const serialized = readSerializedStateFromHybridFileMap(fileMap)
     const roundTripped = parseSavedState(serialized ?? '')
 
@@ -1326,7 +1319,7 @@ describe('browser hybrid storage', () => {
     setFirstAisleBodyMarkdown(state, `[report](${buildImageAssetUrl(assetPath)})`)
 
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
-    const assetEntry = fileMap.get(`notes-data/${assetPath}`)
+    const assetEntry = fileMap.get(`notes/${assetPath}`)
     const serialized = readSerializedStateFromHybridFileMap(fileMap)
     const roundTripped = parseSavedState(serialized ?? '')
 
@@ -1435,10 +1428,10 @@ describe('browser hybrid storage', () => {
     state.noteBodies.push({ id: 'body-2', aisles: [{ id: 'aisle-2', aisleBodyId: 'aisle-body-2' }] })
     state.noteAisleBodies?.push({ id: 'aisle-body-2', markdown: 'second body' })
     const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
-    const rootManifest = getTextFileJson(fileMap, 'notes-data/manifest.json')
+    const rootManifest = getTextFileJson(fileMap, 'notes/manifest.json')
     const workspaceIndex = getRootSplitFileJson(fileMap, rootManifest, 'workspaceIndex', 'workspace-index.json')
     const firstDomain = getRecord(Array.isArray(workspaceIndex.domains) ? workspaceIndex.domains[0] : null)
-    const firstDomainManifestPath = `notes-data/domains/${String(firstDomain.path)}/manifest.json`
+    const firstDomainManifestPath = `notes/domains/${String(firstDomain.path)}/manifest.json`
     fileMap.set(firstDomainManifestPath, { path: firstDomainManifestPath, kind: 'text', text: '{bad' })
 
     const serialized = readSerializedStateFromHybridFileMap(fileMap)

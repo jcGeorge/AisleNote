@@ -256,7 +256,7 @@ describe('electron ipc boundaries', () => {
     withTempUserDataPathAsync(async (userDataPath) => {
       const archivePath = path.join(userDataPath, 'traversal.zip')
       await writeZipArchive(archivePath, {
-        'notes-data/manifest.json': JSON.stringify({ schemaVersion: 1, files: {} }),
+        'notes/manifest.json': JSON.stringify({ schemaVersion: 1, files: {} }),
         '../outside.txt': 'bad',
       })
       const ipcMain = createIpcMain()
@@ -275,10 +275,10 @@ describe('electron ipc boundaries', () => {
       })
     }))
 
-  it('rejects backup import archives missing notes-data/manifest.json', async () =>
+  it('rejects backup import archives missing notes/manifest.json', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
       const archivePath = path.join(userDataPath, 'missing-manifest.zip')
-      await writeZipArchive(archivePath, { 'notes-data/readme.txt': 'missing' })
+      await writeZipArchive(archivePath, { 'notes/readme.txt': 'missing' })
       const ipcMain = createIpcMain()
       registerFileIpc({
         ipcMain,
@@ -299,7 +299,7 @@ describe('electron ipc boundaries', () => {
     withTempUserDataPathAsync(async (userDataPath) => {
       const archivePath = path.join(userDataPath, 'unsupported.zip')
       await writeZipArchive(archivePath, {
-        'notes-data/manifest.json': JSON.stringify({ schemaVersion: 999, files: {} }),
+        'notes/manifest.json': JSON.stringify({ schemaVersion: 999, files: {} }),
       })
       const ipcMain = createIpcMain()
       registerFileIpc({
@@ -323,7 +323,7 @@ describe('electron ipc boundaries', () => {
       const archiveBytes = await buildAppStateExportArchive(serializedAppState('light'))
       const zip = await JSZip.loadAsync(archiveBytes)
       expect(zip.file('settings/app-settings.json')).not.toBeNull()
-      expect(zip.file('notes-data/app-settings.json')).toBeNull()
+      expect(zip.file('notes/app-settings.json')).toBeNull()
       writeFileSync(archivePath, archiveBytes)
       const ipcMain = createIpcMain()
       registerFileIpc({
@@ -370,7 +370,7 @@ describe('electron ipc boundaries', () => {
 
   it('blocks app-state writes after a failed load result', () =>
     withTempUserDataPath((userDataPath) => {
-      const root = path.join(userDataPath, 'notes-data')
+      const root = path.join(userDataPath, 'notes')
       mkdirSync(root, { recursive: true })
       writeFileSync(path.join(root, 'manifest.json'), '{nope', 'utf8')
 
@@ -477,7 +477,7 @@ describe('electron ipc boundaries', () => {
       await expect(ipcMain.handlers.get('get-storage-profile-status')()).resolves.toMatchObject({
         status: 'ready',
         profileRootPath: userDataPath,
-        notesDataPath: path.join(userDataPath, 'notes-data'),
+        notesPath: path.join(userDataPath, 'notes'),
         isDefault: true,
         canWrite: true,
         source: 'empty',
@@ -507,7 +507,7 @@ describe('electron ipc boundaries', () => {
         assetPath: expect.stringMatching(/^assets\/asset-[a-f0-9]+\.mp4$/),
         url: expect.stringMatching(/^tabs-asset:\/\/\/assets\/asset-[a-f0-9]+\.mp4$/),
       })
-      expect(readFileSync(path.join(userDataPath, 'notes-data', imported.assetPath))).toEqual(Buffer.from([1, 2, 3]))
+      expect(readFileSync(path.join(userDataPath, 'notes', imported.assetPath))).toEqual(Buffer.from([1, 2, 3]))
 
       await expect(ipcMain.handlers.get('read-asset')(null, { url: imported.url })).resolves.toMatchObject({
         ok: true,
@@ -518,7 +518,7 @@ describe('electron ipc boundaries', () => {
       expect(Buffer.from(readResult.bytes)).toEqual(Buffer.from([1, 2, 3]))
 
       await expect(ipcMain.handlers.get('open-asset')(null, { url: imported.url })).resolves.toEqual({ ok: true })
-      expect(shell.openPath).toHaveBeenCalledWith(path.join(userDataPath, 'notes-data', imported.assetPath))
+      expect(shell.openPath).toHaveBeenCalledWith(path.join(userDataPath, 'notes', imported.assetPath))
     } finally {
       rmSync(userDataPath, { recursive: true, force: true })
     }
@@ -561,9 +561,9 @@ describe('electron ipc boundaries', () => {
     withTempUserDataPath(async (userDataPath) => {
       const targetRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-sync-target-'))
       try {
-        mkdirSync(path.join(userDataPath, 'notes-data'), { recursive: true })
+        mkdirSync(path.join(userDataPath, 'notes'), { recursive: true })
         writeFileSync(
-          path.join(userDataPath, 'notes-data', 'manifest.json'),
+          path.join(userDataPath, 'notes', 'manifest.json'),
           `${JSON.stringify({ schemaVersion: 3, files: {} }, null, 2)}\n`,
           'utf8',
         )
@@ -606,9 +606,9 @@ describe('electron ipc boundaries', () => {
     withTempUserDataPath(async (userDataPath) => {
       const targetRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-sync-target-'))
       try {
-        mkdirSync(path.join(userDataPath, 'notes-data'), { recursive: true })
+        mkdirSync(path.join(userDataPath, 'notes'), { recursive: true })
         writeFileSync(
-          path.join(userDataPath, 'notes-data', 'manifest.json'),
+          path.join(userDataPath, 'notes', 'manifest.json'),
           `${JSON.stringify({ schemaVersion: 3, files: {} }, null, 2)}\n`,
           'utf8',
         )

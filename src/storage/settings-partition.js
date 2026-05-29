@@ -16,7 +16,6 @@ export const MAX_NOTE_CURSOR_LOCATIONS = 500
 export const USER_SETTINGS_DIR = 'settings'
 export const USER_SETTINGS_FILE = 'app-settings.json'
 export const USER_SETTINGS_FILE_PATH = `${USER_SETTINGS_DIR}/${USER_SETTINGS_FILE}`
-export const LEGACY_APP_SETTINGS_FILE = 'app-settings.json'
 export const ROOT_SPLIT_FILES = Object.freeze({
   workspaceIndex: 'workspace-index.json',
   navigationState: 'navigation-state.json',
@@ -34,11 +33,6 @@ export const REQUIRED_ROOT_SPLIT_FILE_KEYS = Object.freeze([
   'noteRegistry',
 ])
 
-export const OPTIONAL_ROOT_SPLIT_FILE_KEYS = Object.freeze([
-  'uiPreferences',
-  'editorState',
-])
-
 const DEFAULT_HOTKEY_SETTINGS = {
   shortcuts: {},
 }
@@ -48,7 +42,6 @@ const DEFAULT_SYNCED_UI_SETTINGS = {
   alwaysShowSpaces: false,
   alwaysShowDomains: false,
   selectedCustomTheme: 'custom1',
-  customThemePalette: null,
   themePalettes: {},
   toolbarLayouts: [],
   settingsSection: 'hotkeys',
@@ -239,16 +232,12 @@ function normalizeSelectedCustomTheme(value) {
   return CUSTOM_THEME_IDS.includes(value) ? value : DEFAULT_SYNCED_UI_SETTINGS.selectedCustomTheme
 }
 
-function normalizeThemePalettes(value, legacyCustomPalette) {
-  if (!isRecord(value)) {
-    return legacyCustomPalette ? { custom1: legacyCustomPalette } : DEFAULT_SYNCED_UI_SETTINGS.themePalettes
-  }
+function normalizeThemePalettes(value) {
+  if (!isRecord(value)) return DEFAULT_SYNCED_UI_SETTINGS.themePalettes
   const themePalettes = {}
   THEME_PALETTE_IDS.forEach((theme) => {
     if (isRecord(value[theme])) themePalettes[theme] = value[theme]
   })
-  if (!themePalettes.custom1 && isRecord(value.custom)) themePalettes.custom1 = value.custom
-  if (!themePalettes.custom1 && legacyCustomPalette) themePalettes.custom1 = legacyCustomPalette
   return themePalettes
 }
 
@@ -260,8 +249,7 @@ export function extractSyncedUiSettings(rawUi) {
     alwaysShowSpaces && typeof ui.alwaysShowDomains === 'boolean'
       ? ui.alwaysShowDomains
       : DEFAULT_SYNCED_UI_SETTINGS.alwaysShowDomains
-  const legacyCustomPalette = isRecord(ui.customThemePalette) ? ui.customThemePalette : null
-  const themePalettes = normalizeThemePalettes(ui.themePalettes, legacyCustomPalette)
+  const themePalettes = normalizeThemePalettes(ui.themePalettes)
 
   return {
     ...registeredUi,
@@ -269,7 +257,6 @@ export function extractSyncedUiSettings(rawUi) {
     alwaysShowDomains,
     dataSettingsSection: optionalString(ui.dataSettingsSection, DEFAULT_SYNCED_UI_SETTINGS.dataSettingsSection),
     selectedCustomTheme: normalizeSelectedCustomTheme(ui.selectedCustomTheme),
-    customThemePalette: isRecord(themePalettes.custom1) ? themePalettes.custom1 : legacyCustomPalette,
     themePalettes,
     toolbarLayouts: optionalArray(ui.toolbarLayouts, DEFAULT_SYNCED_UI_SETTINGS.toolbarLayouts),
     scratchpadAisleLimit: optionalScratchpadAisleLimit(
@@ -295,7 +282,6 @@ export function extractAppearanceSettings(appState) {
   return {
     theme: normalizeStorageTheme(appState?.theme),
     selectedCustomTheme: syncedUi.selectedCustomTheme,
-    customThemePalette: syncedUi.customThemePalette,
     themePalettes: syncedUi.themePalettes,
     tabButtonScale:
       typeof ui.tabButtonScale === 'number'

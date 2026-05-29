@@ -7,7 +7,7 @@ function storageStatus(event: string, overrides: Partial<StorageProfileStatus> =
     status: 'ready',
     event,
     profileRootPath: '/tmp/tabs',
-    notesDataPath: '/tmp/tabs/notes-data',
+    notesPath: '/tmp/tabs/notes',
     isDefault: true,
     hasProfile: true,
     canWrite: true,

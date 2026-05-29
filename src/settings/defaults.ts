@@ -59,7 +59,6 @@ export const DEFAULT_UI_SETTINGS: AppState['ui'] = {
   dataSettingsSection: DEFAULT_DATA_SETTINGS_SECTION,
   visualsSettingsSection: DEFAULT_VISUALS_SETTINGS_SECTION,
   selectedCustomTheme: DEFAULT_CUSTOM_THEME_ID,
-  customThemePalette: null,
   themePalettes: {},
   noteCursorLocations: {},
   headingCollapseState: {},
@@ -164,17 +163,6 @@ export const BUILT_IN_THEME_PALETTE_SEEDS: Record<BuiltInAppTheme, CustomThemePa
   },
 }
 
-const LEGACY_BUILT_IN_THEME_PALETTE_SEEDS: Partial<Record<BuiltInAppTheme, CustomThemePalette>> = {
-  dawn: {
-    ...BUILT_IN_THEME_PALETTE_SEEDS.dawn,
-    canvas: '#776238',
-  },
-  blues: {
-    ...BUILT_IN_THEME_PALETTE_SEEDS.blues,
-    canvas: '#25324d',
-  },
-}
-
 export const MIN_TAB_BUTTON_SCALE = 1
 export const MAX_TAB_BUTTON_SCALE = 1.6
 export const TAB_BUTTON_SCALE_STEP = 0.05
@@ -246,27 +234,14 @@ function isExactThemePaletteSeed(seed: CustomThemePalette, palette: CustomThemeP
   return CUSTOM_THEME_PALETTE_SLOTS.every((slot) => normalizeHexColor(palette[slot]) === seed[slot])
 }
 
-function isLegacyBuiltInThemePaletteSeed(theme: AppTheme, palette: CustomThemePalette): boolean {
-  if (isCustomTheme(theme)) return false
-  const legacySeed = LEGACY_BUILT_IN_THEME_PALETTE_SEEDS[theme]
-  return legacySeed ? isExactThemePaletteSeed(legacySeed, palette) : false
-}
-
-export function normalizeThemePalettes(raw: unknown, legacyCustomPalette?: CustomThemePalette | null): ThemePaletteOverrides {
+export function normalizeThemePalettes(raw: unknown): ThemePaletteOverrides {
   const palettes: ThemePaletteOverrides = {}
   if (raw && typeof raw === 'object') {
     const obj = raw as Record<string, unknown>
     APP_THEME_IDS.forEach((theme) => {
       const palette = normalizeCustomThemePalette(obj[theme])
-      if (palette && !isLegacyBuiltInThemePaletteSeed(theme, palette)) palettes[theme] = palette
+      if (palette) palettes[theme] = palette
     })
-    const legacyCustom = normalizeCustomThemePalette(obj.custom)
-    if (!palettes.custom1 && legacyCustom) {
-      palettes.custom1 = legacyCustom
-    }
-  }
-  if (!palettes.custom1 && legacyCustomPalette) {
-    palettes.custom1 = legacyCustomPalette
   }
   return palettes
 }
@@ -279,10 +254,8 @@ export function getCustomThemePaletteSeed(theme: AppTheme): CustomThemePalette {
 export function getThemePaletteForTheme(
   theme: AppTheme,
   themePalettes: ThemePaletteOverrides | null | undefined,
-  legacyCustomPalette?: CustomThemePalette | null,
 ): CustomThemePalette {
-  const override = themePalettes?.[theme] ?? (isCustomTheme(theme) && theme === DEFAULT_CUSTOM_THEME_ID ? legacyCustomPalette : null)
-  if (override && isLegacyBuiltInThemePaletteSeed(theme, override)) return getCustomThemePaletteSeed(theme)
+  const override = themePalettes?.[theme] ?? null
   return { ...(override ?? getCustomThemePaletteSeed(theme)) }
 }
 
@@ -323,7 +296,6 @@ export function getCustomThemePaletteSeedMatch(palette: CustomThemePalette | nul
 }
 
 export function normalizeSettingsSection(value: unknown): SettingsSection {
-  if (value === 'theming') return 'visuals'
   return typeof value === 'string' && SETTINGS_SECTIONS.includes(value as SettingsSection)
     ? (value as SettingsSection)
     : DEFAULT_SETTINGS_SECTION
@@ -375,8 +347,7 @@ export function normalizeUiSettings(raw: unknown): AppState['ui'] {
   if (!raw || typeof raw !== 'object') return DEFAULT_UI_SETTINGS
   const obj = raw as Record<string, unknown>
   const registeredSettings = normalizeRegisteredSyncedUiSettings(obj)
-  const customThemePalette = normalizeCustomThemePalette(obj.customThemePalette)
-  const themePalettes = normalizeThemePalettes(obj.themePalettes, customThemePalette)
+  const themePalettes = normalizeThemePalettes(obj.themePalettes)
   const alwaysShowSpaces =
     typeof obj.alwaysShowSpaces === 'boolean' ? obj.alwaysShowSpaces : DEFAULT_UI_SETTINGS.alwaysShowSpaces
   const alwaysShowDomains =
@@ -406,11 +377,10 @@ export function normalizeUiSettings(raw: unknown): AppState['ui'] {
     settingsSection: normalizeSettingsSection(obj.settingsSection),
     visualsSettingsSection: normalizeVisualsSettingsSection(
       obj.visualsSettingsSection,
-      obj.settingsSection === 'theming' ? 'theming' : DEFAULT_UI_SETTINGS.visualsSettingsSection,
+      DEFAULT_UI_SETTINGS.visualsSettingsSection,
     ),
     dataSettingsSection: normalizeDataSettingsSection(obj.dataSettingsSection),
     selectedCustomTheme: normalizeCustomThemeId(obj.selectedCustomTheme),
-    customThemePalette: themePalettes.custom1 ?? customThemePalette ?? null,
     themePalettes,
     noteCursorLocations: normalizeNoteCursorLocations(obj.noteCursorLocations),
     headingCollapseState: normalizeHeadingCollapseState(obj.headingCollapseState),

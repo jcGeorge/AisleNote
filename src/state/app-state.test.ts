@@ -743,17 +743,21 @@ describe('app state normalization', () => {
     const valid = parseModernState({
       theme: 'custom',
       ui: {
-        customThemePalette: {
-          primary: '#AbC',
-          text: '#123456',
+        themePalettes: {
+          custom1: {
+            primary: '#AbC',
+            text: '#123456',
+          },
         },
       },
     })
     const invalid = parseModernState({
       theme: 'custom',
       ui: {
-        customThemePalette: {
-          primary: 'red',
+        themePalettes: {
+          custom1: {
+            primary: 'red',
+          },
         },
       },
     })
@@ -761,14 +765,14 @@ describe('app state normalization', () => {
 
     expect(valid.theme).toBe('custom1')
     expect(valid.ui.selectedCustomTheme).toBe('custom1')
-    expect(valid.ui.customThemePalette).toEqual({
+    expect(valid.ui).not.toHaveProperty('customThemePalette')
+    expect(valid.ui.themePalettes?.custom1).toEqual({
       ...DEFAULT_CUSTOM_THEME_PALETTE,
       primary: '#aabbcc',
       text: '#123456',
     })
-    expect(valid.ui.themePalettes?.custom1).toEqual(valid.ui.customThemePalette)
-    expect(invalid.ui.customThemePalette?.primary).toBe(DEFAULT_CUSTOM_THEME_PALETTE.primary)
-    expect(missing.ui.customThemePalette).toBeNull()
+    expect(invalid.ui.themePalettes?.custom1?.primary).toBe(DEFAULT_CUSTOM_THEME_PALETTE.primary)
+    expect(missing.ui).not.toHaveProperty('customThemePalette')
     expect(missing.ui.themePalettes).toEqual({})
   })
 
@@ -792,10 +796,10 @@ describe('app state normalization', () => {
     const state = parseModernState({
       theme: 'dawn',
       ui: {
-        customThemePalette: {
-          primary: '#AbC',
-        },
         themePalettes: {
+          custom1: {
+            primary: '#AbC',
+          },
           dawn: {
             primary: '#123456',
             domainRail: '#a95429',
@@ -817,7 +821,7 @@ describe('app state normalization', () => {
     expect(Object.keys(state.ui.themePalettes ?? {}).sort()).toEqual(['custom1', 'dawn', 'light'])
   })
 
-  it('drops exact legacy dawn and blues seed palette overrides', () => {
+  it('keeps persisted per-theme palette overrides as current settings', () => {
     const state = parseModernState({
       ui: {
         themePalettes: {
@@ -833,8 +837,8 @@ describe('app state normalization', () => {
       },
     })
 
-    expect(state.ui.themePalettes?.dawn).toBeUndefined()
-    expect(state.ui.themePalettes?.blues).toBeUndefined()
+    expect(state.ui.themePalettes?.dawn?.canvas).toBe('#776238')
+    expect(state.ui.themePalettes?.blues?.canvas).toBe('#25324d')
   })
 
   it('normalizes persisted settings section memory', () => {
@@ -855,7 +859,7 @@ describe('app state normalization', () => {
     expect(data.ui.dataSettingsSection).toBe('export')
     expect(invalidData.ui.dataSettingsSection).toBe('cloud')
     expect(misc.ui.settingsSection).toBe('misc')
-    expect(theming.ui.settingsSection).toBe('visuals')
+    expect(theming.ui.settingsSection).toBe('hotkeys')
     expect(theming.ui.visualsSettingsSection).toBe('theming')
     expect(nestedVisuals.ui.settingsSection).toBe('visuals')
     expect(nestedVisuals.ui.visualsSettingsSection).toBe('otherVisuals')

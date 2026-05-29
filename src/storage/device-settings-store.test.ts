@@ -55,7 +55,7 @@ describe('device settings store', () => {
     expect(parseDeviceSettings(JSON.stringify({ lastFindQuery: 123 })).lastFindQuery).toBe('')
   })
 
-  it('normalizes legacy domain and space screen last-opened modes to main', () => {
+  it('normalizes invalid screen last-opened modes to main', () => {
     const baseLastOpened = {
       domainId: 'domain-a',
       spaceId: 'space-a',
@@ -82,7 +82,7 @@ describe('device settings store', () => {
     const scratchpadMain = parseDeviceSettings(
       JSON.stringify({ lastOpened: { ...baseLastOpened, viewMode: 'main', scratchpadActive: true } }),
     ).lastOpened
-    const legacyMain = parseDeviceSettings(
+    const inactiveScratchpadMain = parseDeviceSettings(
       JSON.stringify({ lastOpened: { ...baseLastOpened, viewMode: 'main' } }),
     ).lastOpened
     const scratchpadSettings = parseDeviceSettings(
@@ -91,8 +91,8 @@ describe('device settings store', () => {
 
     expect(scratchpadMain?.scratchpadActive).toBe(true)
     expect(shouldRestoreScratchpadWorkspace(scratchpadMain)).toBe(true)
-    expect(legacyMain?.scratchpadActive).toBe(false)
-    expect(shouldRestoreScratchpadWorkspace(legacyMain)).toBe(false)
+    expect(inactiveScratchpadMain?.scratchpadActive).toBe(false)
+    expect(shouldRestoreScratchpadWorkspace(inactiveScratchpadMain)).toBe(false)
     expect(scratchpadSettings?.scratchpadActive).toBe(false)
     expect(shouldRestoreScratchpadWorkspace(scratchpadSettings)).toBe(false)
   })
@@ -180,7 +180,7 @@ describe('device settings store', () => {
     expect(merged.ui.tooltipScale).toBe(1.25)
   })
 
-  it('leaves legacy cloud local-ish values in place until device settings exist', () => {
+  it('leaves app-state local-ish values in place until device settings exist', () => {
     const state = parseModernState({
       ui: { settingsSection: 'visuals', dataSettingsSection: 'export', visualsSettingsSection: 'otherVisuals', tabButtonScale: 1.2 },
     })
@@ -237,11 +237,11 @@ describe('device settings store', () => {
     expect(extractDeviceSettingsFromAppState(state)).not.toHaveProperty('disabledTipIds')
   })
 
-  it('normalizes nested visuals settings and legacy top-level theming', () => {
+  it('normalizes nested visuals settings', () => {
     expect(parseDeviceSettings(JSON.stringify({ visualsSettingsSection: 'otherVisuals' })).visualsSettingsSection).toBe('otherVisuals')
     expect(parseDeviceSettings(JSON.stringify({ visualsSettingsSection: 'colors' })).visualsSettingsSection).toBe('theming')
     expect(parseDeviceSettings(JSON.stringify({ settingsSection: 'theming' }))).toMatchObject({
-      settingsSection: 'visuals',
+      settingsSection: 'hotkeys',
       visualsSettingsSection: 'theming',
     })
   })

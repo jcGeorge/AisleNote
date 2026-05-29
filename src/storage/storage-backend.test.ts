@@ -47,22 +47,22 @@ describe('storage backend file map helpers', () => {
   it('writes and reads text and binary files through the storage boundary', async () => {
     const backend = new MemoryStorageBackend()
     const fileMap = new Map([
-      ['notes-data/manifest.json', { path: 'notes-data/manifest.json', kind: 'text' as const, text: '{}' }],
+      ['notes/manifest.json', { path: 'notes/manifest.json', kind: 'text' as const, text: '{}' }],
       [
-        'notes-data/assets/image.png',
-        { path: 'notes-data/assets/image.png', kind: 'binary' as const, bytes: new Uint8Array([1, 2, 3]) },
+        'notes/assets/image.png',
+        { path: 'notes/assets/image.png', kind: 'binary' as const, bytes: new Uint8Array([1, 2, 3]) },
       ],
     ])
 
     await writeFileMapToStorageBackend(backend, fileMap)
     const roundTripped = await readFileMapFromStorageBackend(backend)
 
-    expect(roundTripped.get('notes-data/manifest.json')).toEqual({
-      path: 'notes-data/manifest.json',
+    expect(roundTripped.get('notes/manifest.json')).toEqual({
+      path: 'notes/manifest.json',
       kind: 'text',
       text: '{}',
     })
-    const imageEntry = roundTripped.get('notes-data/assets/image.png')
+    const imageEntry = roundTripped.get('notes/assets/image.png')
     expect(imageEntry?.kind).toBe('binary')
     expect(imageEntry?.kind === 'binary' ? Array.from(imageEntry.bytes) : []).toEqual([1, 2, 3])
   })

@@ -28,7 +28,7 @@ function createStorageStatus({ profile, coordinator, event = 'ready', error = nu
     issues: loadResult.issues ?? [],
     event,
     profileRootPath: profile.profileRootPath,
-    notesDataPath: getStorageProfileNotesPath(profile.profileRootPath),
+    notesPath: getStorageProfileNotesPath(profile.profileRootPath),
     isDefault: profile.isDefault,
     hasProfile,
     canWrite: coordinator.canWriteAppState(),
@@ -316,7 +316,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
         cancelId: 1,
         defaultId: 0,
         message: 'Use this folder for Tabs data?',
-        detail: 'Tabs will create a notes-data folder here and save your current app state into it.',
+        detail: 'Tabs will create a notes folder here and save your current app state into it.',
       })
       if (initialize.response !== 0) return { canceled: true, status }
     }

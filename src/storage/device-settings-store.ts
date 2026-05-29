@@ -85,7 +85,6 @@ function normalizeDeviceLastOpened(raw: unknown): DeviceLastOpened | null {
 }
 
 function normalizeDeviceViewMode(raw: unknown): ViewMode {
-  if (raw === 'domains' || raw === 'spaces') return 'main'
   return typeof raw === 'string' && VIEW_MODES.includes(raw as ViewMode) ? (raw as ViewMode) : 'main'
 }
 
@@ -104,7 +103,7 @@ function normalizeDeviceSettingsValue(raw: unknown): DeviceSettings {
     dataSettingsSection: normalizeDataSettingsSection(obj.dataSettingsSection),
     visualsSettingsSection: normalizeVisualsSettingsSection(
       obj.visualsSettingsSection,
-      obj.settingsSection === 'theming' ? 'theming' : DEFAULT_DEVICE_SETTINGS.visualsSettingsSection,
+      DEFAULT_DEVICE_SETTINGS.visualsSettingsSection,
     ),
     seenTipIds: normalizeTipIds(obj.seenTipIds),
     tabButtonScale:

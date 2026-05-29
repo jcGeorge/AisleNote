@@ -16,7 +16,7 @@ describe('theme transfer helpers', () => {
     expect(parsed).not.toHaveProperty('palette')
   })
 
-  it('imports legacy wrapped theme json', () => {
+  it('rejects wrapped theme json', () => {
     const result = parseThemeSettingsImport(
       JSON.stringify({
         type: 'tabs.theme-settings',
@@ -30,14 +30,7 @@ describe('theme transfer helpers', () => {
       DEFAULT_CUSTOM_THEME_PALETTE,
     )
 
-    expect(result).toEqual({
-      ok: true,
-      palette: {
-        ...DEFAULT_CUSTOM_THEME_PALETTE,
-        primary: '#abcdef',
-      },
-      importedSlots: Object.keys(DEFAULT_CUSTOM_THEME_PALETTE),
-    })
+    expect(result).toEqual({ ok: false, error: 'no theme colors found.' })
   })
 
   it('imports a partial plain palette object into the current palette', () => {
@@ -57,7 +50,7 @@ describe('theme transfer helpers', () => {
     })
   })
 
-  it('imports a palette nested in app state ui settings', () => {
+  it('rejects a palette nested in app state ui settings', () => {
     const result = parseThemeSettingsImport(JSON.stringify({
       theme: 'dawn',
       ui: {
@@ -70,21 +63,14 @@ describe('theme transfer helpers', () => {
       },
     }), DEFAULT_CUSTOM_THEME_PALETTE)
 
-    expect(result).toEqual({
-      ok: true,
-      palette: {
-        ...DEFAULT_CUSTOM_THEME_PALETTE,
-        primary: '#654321',
-      },
-      importedSlots: Object.keys(DEFAULT_CUSTOM_THEME_PALETTE),
-    })
+    expect(result).toEqual({ ok: false, error: 'no theme colors found.' })
   })
 
   it('rejects invalid palette json', () => {
     expect(parseThemeSettingsImport('{', DEFAULT_CUSTOM_THEME_PALETTE)).toEqual({ ok: false, error: 'invalid json.' })
     expect(parseThemeSettingsImport(JSON.stringify({ palette: { primary: '#not-hex' } }), DEFAULT_CUSTOM_THEME_PALETTE)).toEqual({
       ok: false,
-      error: 'missing or invalid colors: primary.',
+      error: 'no theme colors found.',
     })
     expect(parseThemeSettingsImport(JSON.stringify({ nope: '#123456' }), DEFAULT_CUSTOM_THEME_PALETTE)).toEqual({
       ok: false,

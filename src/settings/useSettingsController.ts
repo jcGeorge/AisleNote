@@ -148,7 +148,7 @@ export function useSettingsController({
     isCustomTheme(state.theme) ? state.theme : normalizeCustomThemeId(state.ui.selectedCustomTheme),
   )
   const [customThemePaletteDraft, setCustomThemePaletteDraft] = useState<CustomThemePalette>(
-    getThemePaletteForTheme(state.theme, state.ui.themePalettes, state.ui.customThemePalette),
+    getThemePaletteForTheme(state.theme, state.ui.themePalettes),
   )
   const [frontmatterDraft, setFrontmatterDraft] = useState<FrontmatterSettings>(state.frontmatter)
   const [toolbarEditorLayoutId, setToolbarEditorLayoutId] = useState<string>(() =>
@@ -206,9 +206,7 @@ export function useSettingsController({
     if (pendingDataSettingsSectionRef.current === currentDataSection) {
       pendingDataSettingsSectionRef.current = null
     }
-    setCustomThemePaletteDraft(
-      getThemePaletteForTheme(state.theme, state.ui.themePalettes, state.ui.customThemePalette),
-    )
+    setCustomThemePaletteDraft(getThemePaletteForTheme(state.theme, state.ui.themePalettes))
     setEditingShortcut(null)
   }, [
     viewMode,
@@ -240,7 +238,6 @@ export function useSettingsController({
     state.ui.settingsSection,
     state.ui.dataSettingsSection,
     state.ui.visualsSettingsSection,
-    state.ui.customThemePalette,
     state.ui.themePalettes,
   ])
 
@@ -505,7 +502,7 @@ export function useSettingsController({
     if (isCustomTheme(theme)) {
       setSelectedCustomTheme(theme)
     }
-    setCustomThemePaletteDraft(getThemePaletteForTheme(theme, current.ui.themePalettes, current.ui.customThemePalette))
+    setCustomThemePaletteDraft(getThemePaletteForTheme(theme, current.ui.themePalettes))
     commitImmediateSettingsState((previous) => {
       return {
         ...previous,
@@ -522,7 +519,7 @@ export function useSettingsController({
     const current = stateRef.current
     setSelectedCustomTheme(theme)
     if (isCustomTheme(current.theme)) {
-      setCustomThemePaletteDraft(getThemePaletteForTheme(theme, current.ui.themePalettes, current.ui.customThemePalette))
+      setCustomThemePaletteDraft(getThemePaletteForTheme(theme, current.ui.themePalettes))
     }
     commitImmediateSettingsState((previous) => ({
       ...previous,
@@ -540,14 +537,13 @@ export function useSettingsController({
     if (!normalized) return
     commitDebouncedSettingsState((previous) => {
       const nextPalette = {
-        ...getThemePaletteForTheme(previous.theme, previous.ui.themePalettes, previous.ui.customThemePalette),
+        ...getThemePaletteForTheme(previous.theme, previous.ui.themePalettes),
         [slot]: normalized,
       }
       return {
         ...previous,
         ui: {
           ...previous.ui,
-          customThemePalette: previous.theme === DEFAULT_CUSTOM_THEME_ID ? nextPalette : previous.ui.customThemePalette,
           themePalettes: setThemePaletteOverride(previous.ui.themePalettes, previous.theme, nextPalette),
         },
       }
@@ -561,7 +557,6 @@ export function useSettingsController({
       ...previous,
       ui: {
         ...previous.ui,
-        customThemePalette: previous.theme === DEFAULT_CUSTOM_THEME_ID ? null : previous.ui.customThemePalette,
         themePalettes: removeThemePaletteOverride(previous.ui.themePalettes, previous.theme),
       },
     }))
@@ -573,7 +568,6 @@ export function useSettingsController({
       ...previous,
       ui: {
         ...previous.ui,
-        customThemePalette: previous.theme === DEFAULT_CUSTOM_THEME_ID ? palette : previous.ui.customThemePalette,
         themePalettes: setThemePaletteOverride(previous.ui.themePalettes, previous.theme, palette),
       },
     }))
@@ -582,7 +576,7 @@ export function useSettingsController({
   const seedCustomThemePaletteFromCurrentTheme = () => {
     const current = stateRef.current
     const targetTheme = normalizeCustomThemeId(selectedCustomTheme, DEFAULT_CUSTOM_THEME_ID)
-    const palette = getThemePaletteForTheme(current.theme, current.ui.themePalettes, current.ui.customThemePalette)
+    const palette = getThemePaletteForTheme(current.theme, current.ui.themePalettes)
     setCustomThemePaletteDraft(palette)
     setSelectedCustomTheme(targetTheme)
     commitImmediateSettingsState((previous) => ({
@@ -591,7 +585,6 @@ export function useSettingsController({
       ui: {
         ...previous.ui,
         selectedCustomTheme: targetTheme,
-        customThemePalette: targetTheme === DEFAULT_CUSTOM_THEME_ID ? palette : previous.ui.customThemePalette,
         themePalettes: setThemePaletteOverride(previous.ui.themePalettes, targetTheme, palette),
       },
     }))

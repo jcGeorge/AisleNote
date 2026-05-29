@@ -9,7 +9,7 @@ import {
 } from './theme-preview-state'
 
 describe('ThemePreview', () => {
-  const getPalette = (theme: AppTheme) => getThemePaletteForTheme(theme, {}, null)
+  const getPalette = (theme: AppTheme) => getThemePaletteForTheme(theme, {})
 
   it('renders theme rails, toolbar, editor samples, task samples, and toasts', () => {
     const html = renderToStaticMarkup(

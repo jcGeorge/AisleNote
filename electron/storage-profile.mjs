@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import path from 'node:path'
 
 export const STORAGE_PROFILE_CONFIG_FILE = 'storage-profile.json'
-export const STORAGE_PROFILE_NOTES_DIR = 'notes-data'
+export const STORAGE_PROFILE_NOTES_DIR = 'notes'
 
 function readJsonFile(filePath) {
   try {
@@ -47,7 +47,7 @@ export function resolveStorageProfile(userDataPath) {
   const profileRootPath = config.profileRootPath ?? defaultProfileRootPath
   return {
     profileRootPath,
-    notesDataPath: getStorageProfileNotesPath(profileRootPath),
+    notesPath: getStorageProfileNotesPath(profileRootPath),
     isDefault: profileRootPath === defaultProfileRootPath,
   }
 }

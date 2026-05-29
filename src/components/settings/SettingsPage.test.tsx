@@ -85,7 +85,6 @@ function createState(): AppState {
       dataSettingsSection: 'cloud',
       visualsSettingsSection: 'theming',
       selectedCustomTheme: 'custom1',
-      customThemePalette: null,
       themePalettes: {},
       noteCursorLocations: {},
       headingCollapseState: {},
@@ -144,7 +143,7 @@ function renderSettingsPage(
       noteFontScaleDraft={1}
       tooltipScaleDraft={1}
       selectedCustomTheme={state.ui.selectedCustomTheme ?? 'custom1'}
-      customThemePaletteDraft={getThemePaletteForTheme(state.theme, state.ui.themePalettes, state.ui.customThemePalette)}
+      customThemePaletteDraft={getThemePaletteForTheme(state.theme, state.ui.themePalettes)}
       showParentHomeTabDraft
       alwaysShowSpacesDraft={state.ui.alwaysShowSpaces ?? false}
       alwaysShowDomainsDraft={state.ui.alwaysShowDomains ?? false}
@@ -395,9 +394,11 @@ describe('frontmatter settings page', () => {
   it('renders custom theme palette controls when a custom theme is selected', () => {
     const state = createState()
     state.theme = 'custom1'
-    state.ui.customThemePalette = {
-      ...DEFAULT_CUSTOM_THEME_PALETTE,
-      primary: '#8844cc',
+    state.ui.themePalettes = {
+      custom1: {
+        ...DEFAULT_CUSTOM_THEME_PALETTE,
+        primary: '#8844cc',
+      },
     }
     const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'visuals', state })
 
@@ -857,19 +858,19 @@ describe('frontmatter settings page', () => {
           {
             code: 'missing-markdown',
             severity: 'warning',
-            path: 'notes-data/domains/domain/space/tab/home.md',
+            path: 'notes/domains/domain/space/tab/home.md',
             message: 'Markdown file is missing; this note was loaded as empty.',
           },
         ],
         profileRootPath: '/tmp/tabs',
-        notesDataPath: '/tmp/tabs/notes-data',
+        notesPath: '/tmp/tabs/notes',
         isDefault: false,
         hasProfile: true,
         canWrite: true,
         source: 'hybrid',
         schemaVersion: 2,
         recoverySnapshotCount: 2,
-        latestRecoverySnapshotPath: '/tmp/tabs/storage-recovery/notes-data-1',
+        latestRecoverySnapshotPath: '/tmp/tabs/storage-recovery/notes-1',
       },
     })
 
@@ -894,13 +895,13 @@ describe('frontmatter settings page', () => {
           {
             code: 'corrupt-root-manifest',
             severity: 'error',
-            path: 'notes-data/manifest.json',
+            path: 'notes/manifest.json',
             message: 'Root manifest is corrupt.',
           },
         ],
         event: 'retry-error',
         profileRootPath: '/tmp/tabs',
-        notesDataPath: '/tmp/tabs/notes-data',
+        notesPath: '/tmp/tabs/notes',
         isDefault: true,
         hasProfile: true,
         canWrite: false,

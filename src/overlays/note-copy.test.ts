@@ -119,7 +119,6 @@ function createCopyTestState(): AppState {
       tabButtonScale: 1,
       noteFontScale: 1,
       settingsSection: 'hotkeys',
-      customThemePalette: null,
       noteCursorLocations: {},
       headingCollapseState: {},
       seenTipIds: [],

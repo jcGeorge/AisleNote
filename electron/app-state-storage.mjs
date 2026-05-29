@@ -38,7 +38,6 @@ import {
   createStoragePathFileNameAllocator,
 } from '../src/storage/storage-path-segments.js'
 import {
-  LEGACY_APP_SETTINGS_FILE,
   ROOT_SPLIT_FILES,
   USER_SETTINGS_DIR,
   USER_SETTINGS_FILE_PATH,
@@ -57,7 +56,7 @@ import {
 import { normalizeImageResizeMetadataFragment } from '../src/markdown/image-metadata-core.js'
 import { normalizePreviewReferenceTokensForMarkdown } from '../src/markdown/note-context-tokens.js'
 
-export const HYBRID_ROOT_DIR = 'notes-data'
+export const HYBRID_ROOT_DIR = 'notes'
 const SCHEMA_VERSION = 1
 const SUPPORTED_SCHEMA_VERSIONS = new Set([SCHEMA_VERSION])
 const DOMAINS_DIR = 'domains'
@@ -489,8 +488,8 @@ function readMarkdownFile(baseDirectory, relativeFile, issues = null, issueRootP
 
 function hasCloudConflictName(name) {
   return (
-    /^notes-data(?: \d+)?\.bak$/i.test(name) ||
-    /^notes-data \d+$/i.test(name) ||
+    /^notes(?: \d+)?\.bak$/i.test(name) ||
+    /^notes \d+$/i.test(name) ||
     /^(topics|domains|note-bodies|assets|trash|manifest)(?: \d+)$/i.test(name) ||
     /\.bak$/i.test(name)
   )
@@ -551,7 +550,9 @@ function createRecoverySnapshot(rootPath, userDataPath) {
     cpSync(rootPath, snapshotPath, { recursive: true, force: true })
     const userSettingsPath = getUserSettingsFilePath(path.dirname(rootPath))
     if (existsSync(userSettingsPath)) {
-      cpSync(userSettingsPath, path.join(snapshotPath, LEGACY_APP_SETTINGS_FILE), { force: true })
+      const snapshotSettingsPath = path.join(snapshotPath, USER_SETTINGS_FILE_PATH)
+      mkdirSync(path.dirname(snapshotSettingsPath), { recursive: true })
+      cpSync(userSettingsPath, snapshotSettingsPath, { force: true })
     }
   })
   return snapshotPath
@@ -1226,7 +1227,6 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
   const rootManifest = fileMap.get('manifest.json')
   writeTextFileAtomic(tempRoot, 'manifest.json', rootManifest.contents)
   const expectedFiles = new Set(fileMap.keys())
-  if (existsSync(path.join(tempRoot, LEGACY_APP_SETTINGS_FILE))) expectedFiles.add(LEGACY_APP_SETTINGS_FILE)
   pruneStorageRoot(tempRoot, expectedFiles)
   if (typeof options.userSettingsRoot === 'string') {
     writeTextFileAtomic(
@@ -1381,40 +1381,8 @@ function readAppSettingsJsonFile(filePath, issuePath, issues = null) {
   return parsed
 }
 
-function getLegacyAppSettingsFileName(rootManifest, issues = null) {
-  const files = isRecord(rootManifest?.files) ? rootManifest.files : null
-  const configuredFile = files?.appSettings
-  if (configuredFile === undefined) return LEGACY_APP_SETTINGS_FILE
-  if (isRootSplitFileName(configuredFile)) return configuredFile
-  addStorageIssue(
-    issues,
-    'invalid-root-split-file-entry',
-    'warning',
-    path.posix.join(HYBRID_ROOT_DIR, 'manifest.json'),
-    'Root manifest has an invalid legacy app settings file pointer.',
-  )
-  return LEGACY_APP_SETTINGS_FILE
-}
-
-function readAppSettingsForProfile(profileRootPath, rootPath, rootManifest, issues = null) {
+function readAppSettingsForProfile(profileRootPath, issues = null) {
   const userSettingsPath = getUserSettingsFilePath(profileRootPath)
-  if (existsSync(userSettingsPath)) {
-    return readAppSettingsJsonFile(userSettingsPath, USER_SETTINGS_FILE_PATH, issues)
-  }
-
-  const legacyFileName = getLegacyAppSettingsFileName(rootManifest, issues)
-  const legacyPath = path.join(rootPath, legacyFileName)
-  if (existsSync(legacyPath)) {
-    addStorageIssue(
-      issues,
-      'legacy-app-settings',
-      'warning',
-      path.posix.join(HYBRID_ROOT_DIR, legacyFileName),
-      `Loaded user settings from legacy ${path.posix.join(HYBRID_ROOT_DIR, legacyFileName)}. They will be written to ${USER_SETTINGS_FILE_PATH} on the next save.`,
-    )
-    return readAppSettingsJsonFile(legacyPath, path.posix.join(HYBRID_ROOT_DIR, legacyFileName), issues)
-  }
-
   return readAppSettingsJsonFile(userSettingsPath, USER_SETTINGS_FILE_PATH, issues)
 }
 
@@ -1436,7 +1404,7 @@ function readCurrentRootParts(rootPath, rootManifest, issues = null, profileRoot
     if (!file) return null
     splitFiles[key] = file
   }
-  splitFiles.appSettings = readAppSettingsForProfile(profileRootPath, rootPath, rootManifest, issues)
+  splitFiles.appSettings = readAppSettingsForProfile(profileRootPath, issues)
   splitFiles.editorState = readRootSplitJsonFile(rootPath, rootManifest, 'editorState', false, issues) ?? {}
   const noteRegistry = splitFiles.noteRegistry
 
@@ -1798,7 +1766,7 @@ export function restoreStorageRecoverySnapshot(profileRootPath, userDataPath, sn
     return { ok: false, error: 'No recovery snapshot is available.' }
   }
 
-  const snapshotResult = readHybridAppStateResultFromRoot(selectedSnapshot.path)
+  const snapshotResult = readHybridAppStateResultFromRoot(selectedSnapshot.path, selectedSnapshot.path)
   if (snapshotResult.serializedState === null) {
     return { ok: false, error: 'Recovery snapshot could not be loaded.', snapshot: selectedSnapshot }
   }
@@ -1807,11 +1775,12 @@ export function restoreStorageRecoverySnapshot(profileRootPath, userDataPath, sn
   createRecoverySnapshot(finalRoot, userDataPath)
   rmSync(finalRoot, { recursive: true, force: true })
   cpSync(selectedSnapshot.path, finalRoot, { recursive: true, force: true })
-  const snapshotSettingsPath = path.join(selectedSnapshot.path, LEGACY_APP_SETTINGS_FILE)
+  const snapshotSettingsPath = path.join(selectedSnapshot.path, USER_SETTINGS_FILE_PATH)
   if (existsSync(snapshotSettingsPath)) {
     mkdirSync(path.dirname(getUserSettingsFilePath(profileRootPath)), { recursive: true })
     cpSync(snapshotSettingsPath, getUserSettingsFilePath(profileRootPath), { force: true })
   }
+  rmSync(path.join(finalRoot, USER_SETTINGS_DIR), { recursive: true, force: true })
   pruneStorageRecoverySnapshots(userDataPath)
   return { ok: true, snapshot: selectedSnapshot, loadResult: loadAppStateResult(profileRootPath) }
 }
@@ -1885,7 +1854,7 @@ function normalizeArchiveEntryName(entry) {
         'unexpected-archive-entry',
         'error',
         rawName,
-        'Archive contains files outside notes-data or settings.',
+        'Archive contains files outside notes or settings.',
       ),
     }
   }
@@ -1957,7 +1926,7 @@ export async function importAppStateArchive(archivePath) {
         'missing-root-manifest',
         'error',
         path.posix.join(HYBRID_ROOT_DIR, 'manifest.json'),
-        'Archive is missing notes-data/manifest.json.',
+        'Archive is missing notes/manifest.json.',
       )
       return failedImportArchiveResult(issue.message, [issue])
     }

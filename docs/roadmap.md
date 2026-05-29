@@ -35,12 +35,12 @@ Goal: make the manifest/Markdown/assets storage model resilient enough for real 
 
 Completed outcomes:
 
-- `docs/storage-schema.md` now describes the current schema 1 `notes-data/domains/...` layout as canonical; the future `topics/` idea remains explicitly deferred.
+- `docs/storage-schema.md` now describes the current schema 1 `notes/domains/...` layout as canonical; the future `topics/` idea remains explicitly deferred.
 - Missing Markdown files, missing/corrupt trash manifests, corrupt branch manifests, corrupt/unsupported root manifests, stale revisions, conflict folders, and paused-write recovery paths are covered by storage behavior and tests.
 - Settings > Data surfaces storage health, profile path, schema/writable state, issue details, recovery snapshot count, reveal folder, retry reload, export backup, and restore latest snapshot actions.
 - Browser hybrid storage and Electron filesystem storage have parity coverage for the current logical app state.
-- Electron recovery snapshots are created outside synced `notes-data/` and retention pruning keeps bounded restore points across the latest active days.
-- Legacy JSON parsing and migration behavior remain preserved.
+- Electron recovery snapshots are created outside synced `notes/` and retention pruning keeps bounded restore points across the latest active days.
+- Pre-production storage compatibility has been removed before launch.
 
 Remaining storage follow-up:
 

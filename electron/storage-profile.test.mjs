@@ -23,12 +23,12 @@ describe('Electron storage profile config', () => {
     withTempUserDataPath((userDataPath) => {
       expect(resolveStorageProfile(userDataPath)).toEqual({
         profileRootPath: userDataPath,
-        notesDataPath: path.join(userDataPath, 'notes-data'),
+        notesPath: path.join(userDataPath, 'notes'),
         isDefault: true,
       })
     }))
 
-  it('persists a custom sync folder outside notes-data', () =>
+  it('persists a custom sync folder outside notes', () =>
     withTempUserDataPath((userDataPath) => {
       const syncFolder = path.join(userDataPath, '..', 'tabs-sync-folder')
 
@@ -36,7 +36,7 @@ describe('Electron storage profile config', () => {
 
       expect(profile).toEqual({
         profileRootPath: path.resolve(syncFolder),
-        notesDataPath: getStorageProfileNotesPath(path.resolve(syncFolder)),
+        notesPath: getStorageProfileNotesPath(path.resolve(syncFolder)),
         isDefault: false,
       })
       expect(JSON.parse(readFileSync(getStorageProfileConfigPath(userDataPath), 'utf8'))).toEqual({

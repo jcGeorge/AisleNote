@@ -98,7 +98,6 @@ function appState(domains: Domain[]): AppState {
       tabButtonScale: 1,
       noteFontScale: 1,
       settingsSection: 'visuals',
-      customThemePalette: null,
       noteCursorLocations: {},
       headingCollapseState: {},
       seenTipIds: [],

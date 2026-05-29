@@ -38,7 +38,7 @@ describe('custom theme seed matching', () => {
     expect(BUILT_IN_THEME_PALETTE_SEEDS.blues.page).toBe('#314563')
   })
 
-  it('drops exact legacy dawn and blues seed overrides', () => {
+  it('keeps persisted per-theme palette overrides', () => {
     const palettes = normalizeThemePalettes({
       dawn: {
         ...BUILT_IN_THEME_PALETTE_SEEDS.dawn,
@@ -54,24 +54,23 @@ describe('custom theme seed matching', () => {
       },
     })
 
-    expect(palettes.dawn).toBeUndefined()
-    expect(palettes.blues).toBeUndefined()
+    expect(palettes.dawn?.canvas).toBe('#776238')
+    expect(palettes.blues?.canvas).toBe('#25324d')
     expect(palettes.light?.primary).toBe('#123456')
     expect(getThemePaletteForTheme('dawn', {
       dawn: {
         ...BUILT_IN_THEME_PALETTE_SEEDS.dawn,
         canvas: '#776238',
       },
-    }).canvas).toBe('#d8c9a3')
+    }).canvas).toBe('#776238')
   })
 
-  it('normalizes per-theme palette overrides and migrates legacy custom palettes', () => {
-    const legacyCustom = {
-      primary: '#AbC',
-      domainRail: '#a95429',
-    }
-    const palettes = normalizeThemePalettes(
-      {
+  it('normalizes per-theme palette overrides', () => {
+    const palettes = normalizeThemePalettes({
+      custom1: {
+        primary: '#AbC',
+        domainRail: '#a95429',
+      },
         dawn: {
           primary: '#123456',
           spaceRail: '#997b28',
@@ -79,9 +78,7 @@ describe('custom theme seed matching', () => {
         unknown: {
           primary: '#ffffff',
         },
-      },
-      normalizeThemePalettes({ custom: legacyCustom }).custom1,
-    )
+    })
 
     expect(palettes.dawn?.primary).toBe('#123456')
     expect(palettes.dawn?.spaceRail).toBe('#997b28')
