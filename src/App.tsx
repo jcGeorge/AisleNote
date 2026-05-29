@@ -86,7 +86,11 @@ import { SettingsPage } from './components/settings/SettingsPage'
 import { StageManagerView } from './components/stage-manager/StageManagerView'
 import { TrashHomeNote } from './components/trash/TrashHomeNote'
 import { applyListToolbarCommand, type ToolbarListCommand } from './editor/list-marker-commands'
-import { applyEditorNewlineOperation } from './editor/newline-operations'
+import {
+  applyEditorNewlineOperation,
+  getAislePlacementForNewlineOperation,
+  isAisleNewlineOperation,
+} from './editor/newline-operations'
 import {
   finishEditorOperation,
   insertEditorTextOperation,
@@ -2892,11 +2896,12 @@ function App() {
     if (operation === 'strikethrough') {
       return runActiveEditorFormatCommand('strike')
     }
-    if (operation === 'aisle' && scratchpadWorkspaceActive && activeNoteAisles.length >= getScratchpadAisleLimit()) {
+    const aislePlacement = getAislePlacementForNewlineOperation(operation)
+    if (aislePlacement && scratchpadWorkspaceActive && activeNoteAisles.length >= getScratchpadAisleLimit()) {
       showScratchpadAisleLimitToast()
       return false
     }
-    if (operation === 'aisle' && !scratchpadWorkspaceActive && activeNoteAisles.length >= MAX_NOTE_AISLES) {
+    if (aislePlacement && !scratchpadWorkspaceActive && activeNoteAisles.length >= MAX_NOTE_AISLES) {
       pushToast(MAX_AISLE_WARNING_MESSAGE, 'warning')
       return false
     }
@@ -2925,19 +2930,19 @@ function App() {
       return true
     }
 
-    const beforeAisleSnapshot = operation === 'aisle' ? captureActiveAisleStructuralSnapshot() : null
+    const beforeAisleSnapshot = isAisleNewlineOperation(operation) ? captureActiveAisleStructuralSnapshot() : null
     const result = applyEditorNewlineOperation(currentEditor, operation)
     if (!result.handled) return false
 
     finishEditorOperation(editorOperationRuntime, currentEditor, { syncToolbar: true })
-    if (operation === 'aisle') {
+    if (aislePlacement) {
       closeEditorEphemeraRef.current()
       if (scratchpadWorkspaceActive) {
-        addScratchpadAisle(result.aisleMarkdown ?? '', { beforeSnapshot: beforeAisleSnapshot })
+        addScratchpadAisle(result.aisleMarkdown ?? '', { beforeSnapshot: beforeAisleSnapshot, placement: aislePlacement })
       } else {
         addAisleToActiveNote(result.aisleMarkdown ?? '', {
           beforeSnapshot: beforeAisleSnapshot,
-          placement: stateRef.current.ui.newAislePlacement ?? 'end',
+          placement: aislePlacement,
         })
       }
     }
@@ -2950,7 +2955,7 @@ function App() {
       pushToast('open a note before using the editor menu.', 'warning')
       return
     }
-    runActiveNewlineOperation('aisle')
+    runActiveNewlineOperation('aisleRight')
   }
 
   const getShortcutMenuPosition = (operationCount: number): Pick<ShortcutMenuState, 'top' | 'left'> => {
@@ -4187,7 +4192,6 @@ function App() {
           tableAddTargetModeDraft={settingsController.tableAddTargetModeDraft}
           tableDeleteTargetModeDraft={settingsController.tableDeleteTargetModeDraft}
           tableOfContentsScopeDraft={settingsController.tableOfContentsScopeDraft}
-          newAislePlacementDraft={settingsController.newAislePlacementDraft}
           scratchpadAisleLimitDraft={settingsController.scratchpadAisleLimitDraft}
           scratchpadNewAisleSideDraft={settingsController.scratchpadNewAisleSideDraft}
           miscSyncedUiBooleanSettings={settingsController.miscSyncedUiBooleanSettings}
@@ -4224,7 +4228,6 @@ function App() {
           onTableAddTargetModeChange={settingsController.updateTableAddTargetModeSetting}
           onTableDeleteTargetModeChange={settingsController.updateTableDeleteTargetModeSetting}
           onTableOfContentsScopeChange={settingsController.updateTableOfContentsScopeSetting}
-          onNewAislePlacementChange={settingsController.updateNewAislePlacementSetting}
           onScratchpadAisleLimitChange={settingsController.updateScratchpadAisleLimitSetting}
           onScratchpadNewAisleSideChange={settingsController.updateScratchpadNewAisleSideSetting}
           onSyncedUiBooleanSettingChange={settingsController.updateSyncedUiBooleanSetting}

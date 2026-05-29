@@ -1,7 +1,7 @@
 import type { Editor } from '@toast-ui/editor'
 import { Fragment, type Node as ProseMirrorNode } from 'prosemirror-model'
 import { Selection, TextSelection } from 'prosemirror-state'
-import type { NewlineOperationId } from '../types/app'
+import type { NewAislePlacement, NewlineOperationId } from '../types/app'
 import { isCompatibleListNodeForOperation, isListNewlineOperation } from './list-operation-compatibility'
 import {
   createOperationListItems,
@@ -40,6 +40,20 @@ const EMPTY_LINE_REPLACEMENT_OPERATIONS = new Set<NewlineOperationId>([
   'codeBlock',
   'blockQuote',
 ])
+
+export function isAisleNewlineOperation(
+  operation: NewlineOperationId,
+): operation is 'aisleLeft' | 'aisleRight' {
+  return operation === 'aisleLeft' || operation === 'aisleRight'
+}
+
+export function getAislePlacementForNewlineOperation(
+  operation: NewlineOperationId,
+): NewAislePlacement | null {
+  if (operation === 'aisleLeft') return 'left-of-focus'
+  if (operation === 'aisleRight') return 'right-of-focus'
+  return null
+}
 
 export function getEmptyLineReplacementRangeForOperation(
   operation: NewlineOperationId,
@@ -512,7 +526,7 @@ export function applyEditorNewlineOperation(
   operation: NewlineOperationId,
 ): EditorNewlineOperationResult {
   if (operation === 'operationsMenu') return { handled: false }
-  if (operation === 'aisle') return extractSelectionForAisle(editor)
+  if (isAisleNewlineOperation(operation)) return extractSelectionForAisle(editor)
   if (operation === 'strikethrough') {
     editor.focus()
     getCommandCapableEditor(editor).exec('strike')

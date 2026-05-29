@@ -5,7 +5,6 @@ import type {
   CustomThemePalette,
   CustomThemePaletteSlot,
   DataSettingsSection,
-  NewAislePlacement,
   SettingsSection,
   TableControlTargetMode,
   TableOfContentsScope,
@@ -362,10 +361,6 @@ export function normalizeTableControlTargetMode(value: unknown): TableControlTar
 
 export function normalizeTableOfContentsScope(value: unknown): TableOfContentsScope {
   return normalizeRegisteredSyncedUiSetting('tableOfContentsScope', value)
-}
-
-export function normalizeNewAislePlacement(value: unknown): NewAislePlacement {
-  return normalizeRegisteredSyncedUiSetting('newAislePlacement', value)
 }
 
 export function normalizeScratchpadNewAisleSide(value: unknown): AppState['ui']['scratchpadNewAisleSide'] {

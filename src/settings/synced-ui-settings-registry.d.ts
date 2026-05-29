@@ -18,7 +18,6 @@ export type SimpleSyncedUiSettingKey =
   | 'tableAddTargetMode'
   | 'tableDeleteTargetMode'
   | 'tableOfContentsScope'
-  | 'newAislePlacement'
   | 'toolbarEditorShowNames'
 
 export type SyncedUiBooleanSettingKey =
@@ -102,10 +101,6 @@ export function normalizeRegisteredSyncedUiSetting(
   key: 'tableOfContentsScope',
   value: unknown,
 ): NonNullable<AppState['ui']['tableOfContentsScope']>
-export function normalizeRegisteredSyncedUiSetting(
-  key: 'newAislePlacement',
-  value: unknown,
-): NonNullable<AppState['ui']['newAislePlacement']>
 export function normalizeRegisteredSyncedUiSetting(key: 'toolbarEditorShowNames', value: unknown): boolean
 export function normalizeRegisteredSyncedUiSetting(key: SimpleSyncedUiSettingKey, value: unknown): unknown
 

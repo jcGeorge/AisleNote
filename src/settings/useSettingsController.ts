@@ -25,7 +25,6 @@ import type {
   FrontmatterTemplateField,
   NewlineOperationId,
   NewlineShortcutId,
-  NewAislePlacement,
   ScratchpadNewAisleSide,
   SettingsSection,
   ShortcutId,
@@ -136,9 +135,6 @@ export function useSettingsController({
   const [tableOfContentsScopeDraft, setTableOfContentsScopeDraft] = useState(
     DEFAULT_UI_SETTINGS.tableOfContentsScope ?? 'all-aisles',
   )
-  const [newAislePlacementDraft, setNewAislePlacementDraft] = useState(
-    DEFAULT_UI_SETTINGS.newAislePlacement ?? 'end',
-  )
   const [scratchpadAisleLimitDraft, setScratchpadAisleLimitDraft] = useState(
     String(DEFAULT_SCRATCHPAD_AISLE_LIMIT),
   )
@@ -189,7 +185,6 @@ export function useSettingsController({
     setTableOfContentsScopeDraft(
       state.ui.tableOfContentsScope ?? DEFAULT_UI_SETTINGS.tableOfContentsScope ?? 'all-aisles',
     )
-    setNewAislePlacementDraft(state.ui.newAislePlacement ?? DEFAULT_UI_SETTINGS.newAislePlacement ?? 'end')
     setScratchpadAisleLimitDraft(String(clampScratchpadAisleLimit(state.ui.scratchpadAisleLimit)))
     setScratchpadNewAisleSideDraft(state.ui.scratchpadNewAisleSide ?? DEFAULT_UI_SETTINGS.scratchpadNewAisleSide ?? 'left')
     setTabButtonScaleDraft(state.ui.tabButtonScale)
@@ -225,7 +220,6 @@ export function useSettingsController({
     state.ui.tableAddTargetMode,
     state.ui.tableDeleteTargetMode,
     state.ui.tableOfContentsScope,
-    state.ui.newAislePlacement,
     state.ui.scratchpadDeleteAisleShortcutEnabled,
     state.ui.scratchpadAisleLimit,
     state.ui.scratchpadNewAisleSide,
@@ -423,17 +417,6 @@ export function useSettingsController({
       ui: {
         ...previous.ui,
         tableOfContentsScope: scope,
-      },
-    }))
-  }
-
-  const updateNewAislePlacementSetting = (placement: NewAislePlacement) => {
-    setNewAislePlacementDraft(placement)
-    commitImmediateSettingsState((previous) => ({
-      ...previous,
-      ui: {
-        ...previous.ui,
-        newAislePlacement: placement,
       },
     }))
   }
@@ -961,7 +944,6 @@ export function useSettingsController({
     tableAddTargetModeDraft,
     tableDeleteTargetModeDraft,
     tableOfContentsScopeDraft,
-    newAislePlacementDraft,
     scratchpadAisleLimitDraft,
     scratchpadNewAisleSideDraft,
     miscSyncedUiBooleanSettings: MISC_SYNCED_UI_BOOLEAN_SETTINGS.map((setting) => ({
@@ -988,7 +970,6 @@ export function useSettingsController({
     updateTableAddTargetModeSetting,
     updateTableDeleteTargetModeSetting,
     updateTableOfContentsScopeSetting,
-    updateNewAislePlacementSetting,
     updateScratchpadAisleLimitSetting,
     updateScratchpadNewAisleSideSetting,
     updateSyncedUiBooleanSetting,

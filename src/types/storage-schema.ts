@@ -57,7 +57,8 @@ export type StorageNewlineOperationId =
   | 'dashList'
   | 'bulletList'
   | 'numberedList'
-  | 'aisle'
+  | 'aisleLeft'
+  | 'aisleRight'
   | 'horizontalLine'
   | 'codeBlock'
   | 'inlineCode'
@@ -79,7 +80,6 @@ export type StorageDataSettingsSection = 'cloud' | 'trash' | 'export' | 'import'
 export type StorageVisualsSettingsSection = 'theming' | 'otherVisuals'
 export type StorageTableControlTargetMode = 'active-cell' | 'bottom-right'
 export type StorageTableOfContentsScope = 'all-aisles' | 'focused-aisle'
-export type StorageNewAislePlacement = 'end' | 'left-of-focus' | 'right-of-focus'
 export type StorageScratchpadNewAisleSide = 'left' | 'right'
 export type StorageFindReplaceMode = 'find' | 'replace'
 export type StorageTipId = 'task-undo' | 'delete-subtab-shortcut'
@@ -115,7 +115,6 @@ export type StorageGlobalSettings = {
     tableAddTargetMode?: StorageTableControlTargetMode
     tableDeleteTargetMode?: StorageTableControlTargetMode
     tableOfContentsScope?: StorageTableOfContentsScope
-    newAislePlacement?: StorageNewAislePlacement
     tabButtonScale?: number
     noteFontScale?: number
     tooltipScale?: number

@@ -26,9 +26,9 @@ describe('synced UI settings registry', () => {
       tableAddTargetMode: 'bottom-right',
       tableDeleteTargetMode: 'bottom-right',
       tableOfContentsScope: 'all-aisles',
-      newAislePlacement: 'end',
       toolbarEditorShowNames: false,
     })
+    expect(DEFAULT_SIMPLE_SYNCED_UI_SETTINGS).not.toHaveProperty('newAislePlacement')
   })
 
   it('normalizes booleans and enum values with invalid-value fallbacks', () => {
@@ -55,10 +55,10 @@ describe('synced UI settings registry', () => {
       tableAddTargetMode: 'active-cell',
       tableDeleteTargetMode: 'bottom-right',
       tableOfContentsScope: 'focused-aisle',
-      newAislePlacement: 'left-of-focus',
       removeNoteReferencesOnTrash: true,
       deleteSubtabShortcutEnabled: true,
     })
+    expect(normalized).not.toHaveProperty('newAislePlacement')
     expect(normalizeRegisteredSyncedUiSetting('findReplaceMode', 'bad')).toBe('find')
   })
 

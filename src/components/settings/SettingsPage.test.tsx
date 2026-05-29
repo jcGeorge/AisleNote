@@ -150,7 +150,6 @@ function renderSettingsPage(
       tableAddTargetModeDraft={state.ui.tableAddTargetMode}
       tableDeleteTargetModeDraft={state.ui.tableDeleteTargetMode}
       tableOfContentsScopeDraft={state.ui.tableOfContentsScope ?? 'all-aisles'}
-      newAislePlacementDraft={state.ui.newAislePlacement ?? 'end'}
       scratchpadAisleLimitDraft={String(state.ui.scratchpadAisleLimit ?? 16)}
       scratchpadNewAisleSideDraft={state.ui.scratchpadNewAisleSide ?? 'left'}
       miscSyncedUiBooleanSettings={MISC_SYNCED_UI_BOOLEAN_SETTINGS.map((setting) => ({
@@ -186,7 +185,6 @@ function renderSettingsPage(
       onTableAddTargetModeChange={() => undefined}
       onTableDeleteTargetModeChange={() => undefined}
       onTableOfContentsScopeChange={() => undefined}
-      onNewAislePlacementChange={() => undefined}
       onScratchpadAisleLimitChange={() => undefined}
       onScratchpadNewAisleSideChange={() => undefined}
       onSyncedUiBooleanSettingChange={() => undefined}
@@ -259,20 +257,16 @@ describe('frontmatter settings page', () => {
     expect(html.indexOf('table of contents shows for')).toBeLessThan(html.indexOf('add table row or column'))
   })
 
-  it('renders the new aisle placement setting in misc settings', () => {
+  it('does not render the removed normal-note aisle placement setting in misc settings', () => {
     const state = createState()
-    state.ui.newAislePlacement = 'right-of-focus'
     const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'misc', state })
 
-    expect(html).toContain('new aisles are added to')
-    expect(html).toContain('role="radiogroup" aria-labelledby="settings-new-aisle-placement-label"')
-    expect(html).toContain('aria-checked="false" class="settings-segmented-option ">end of aisles</button>')
-    expect(html).toContain('aria-checked="false" class="settings-segmented-option ">left of current</button>')
-    expect(html).toContain('aria-checked="true" class="settings-segmented-option is-selected">right of current</button>')
-    expect(html).toContain('in the edit aisle menu, new aisles are always added to the end')
+    expect(html).not.toContain('new aisles are added to')
+    expect(html).not.toContain('settings-new-aisle-placement-label')
+    expect(html).not.toContain('end of aisles')
+    expect(html).not.toContain('left of current')
     expect(html).not.toContain('end of note')
     expect(html).not.toContain('right of focus')
-    expect(html.indexOf('new aisles are added to')).toBeLessThan(html.indexOf('add table row or column'))
   })
 
   it('renders the remove-note-references-on-trash setting in misc settings', () => {
@@ -338,6 +332,14 @@ describe('frontmatter settings page', () => {
     const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'shortcuts' })
 
     expect(html).toContain('<option value="strikethrough">strikethrough</option>')
+  })
+
+  it('renders explicit aisle direction operations as selectable new-line operations', () => {
+    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'shortcuts' })
+
+    expect(html).toContain('<option value="aisleLeft">aisle to the left</option>')
+    expect(html).toContain('<option value="aisleRight">aisle to the right</option>')
+    expect(html).not.toContain('<option value="aisle">aisle</option>')
   })
 
   it('splits data settings into cloud, trash, export, and import sub-sections', () => {

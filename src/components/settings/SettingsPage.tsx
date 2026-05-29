@@ -41,7 +41,6 @@ import type {
   FrontmatterTemplateField,
   NewlineOperationId,
   NewlineShortcutId,
-  NewAislePlacement,
   ScratchpadNewAisleSide,
   SettingsSection,
   ShortcutId,
@@ -90,12 +89,6 @@ const TABLE_OF_CONTENTS_SCOPE_OPTIONS: Array<{ id: TableOfContentsScope; label: 
   { id: 'focused-aisle', label: 'focused aisle' },
 ]
 
-const NEW_AISLE_PLACEMENT_OPTIONS: Array<{ id: NewAislePlacement; label: string }> = [
-  { id: 'end', label: 'end of aisles' },
-  { id: 'left-of-focus', label: 'left of current' },
-  { id: 'right-of-focus', label: 'right of current' },
-]
-
 const SCRATCHPAD_NEW_AISLE_SIDE_OPTIONS: Array<{ id: ScratchpadNewAisleSide; label: string }> = [
   { id: 'left', label: 'left' },
   { id: 'right', label: 'right' },
@@ -128,7 +121,6 @@ type SettingsPageProps = {
   tableAddTargetModeDraft: TableControlTargetMode
   tableDeleteTargetModeDraft: TableControlTargetMode
   tableOfContentsScopeDraft: TableOfContentsScope
-  newAislePlacementDraft: NewAislePlacement
   scratchpadAisleLimitDraft: string
   scratchpadNewAisleSideDraft: ScratchpadNewAisleSide
   miscSyncedUiBooleanSettings: SyncedUiBooleanSettingView[]
@@ -161,7 +153,6 @@ type SettingsPageProps = {
   onTableAddTargetModeChange: (mode: TableControlTargetMode) => void
   onTableDeleteTargetModeChange: (mode: TableControlTargetMode) => void
   onTableOfContentsScopeChange: (scope: TableOfContentsScope) => void
-  onNewAislePlacementChange: (placement: NewAislePlacement) => void
   onScratchpadAisleLimitChange: (value: string, commit?: boolean) => void
   onScratchpadNewAisleSideChange: (side: ScratchpadNewAisleSide) => void
   onSyncedUiBooleanSettingChange: (key: SyncedUiBooleanSettingKey, enabled: boolean) => void
@@ -220,7 +211,6 @@ export function SettingsPage({
   tableAddTargetModeDraft,
   tableDeleteTargetModeDraft,
   tableOfContentsScopeDraft,
-  newAislePlacementDraft,
   scratchpadAisleLimitDraft,
   scratchpadNewAisleSideDraft,
   miscSyncedUiBooleanSettings,
@@ -253,7 +243,6 @@ export function SettingsPage({
   onTableAddTargetModeChange,
   onTableDeleteTargetModeChange,
   onTableOfContentsScopeChange,
-  onNewAislePlacementChange,
   onScratchpadAisleLimitChange,
   onScratchpadNewAisleSideChange,
   onSyncedUiBooleanSettingChange,
@@ -423,36 +412,6 @@ export function SettingsPage({
               {option.label}
             </button>
           ))}
-        </div>
-      </div>
-    )
-  }
-
-  const renderNewAislePlacementSetting = () => {
-    const labelId = 'settings-new-aisle-placement-label'
-    return (
-      <div className="settings-hotkey-row">
-        <span className="settings-hotkey-label" id={labelId}>
-          new aisles are added to
-        </span>
-        <div className="settings-inline-control-stack">
-          <div className="settings-segmented-control settings-segmented-control-three" role="radiogroup" aria-labelledby={labelId}>
-            {NEW_AISLE_PLACEMENT_OPTIONS.map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                role="radio"
-                aria-checked={newAislePlacementDraft === option.id}
-                className={`settings-segmented-option ${newAislePlacementDraft === option.id ? 'is-selected' : ''}`}
-                onClick={() => onNewAislePlacementChange(option.id)}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-          <p className="settings-help settings-inline-help">
-            in the edit aisle menu, new aisles are always added to the end
-          </p>
         </div>
       </div>
     )
@@ -1032,7 +991,6 @@ export function SettingsPage({
           <div className="settings-section-panel" role="tabpanel">
             <p className="settings-help">synced profile settings</p>
             {renderTableOfContentsScopeSetting()}
-            {renderNewAislePlacementSetting()}
             {generalMiscSyncedUiBooleanSettings.map((setting) => renderMiscSyncedUiBooleanSetting(setting))}
             {renderTableControlTargetSetting(
               'add table row or column',

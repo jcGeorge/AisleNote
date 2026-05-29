@@ -9,7 +9,8 @@ export const NEWLINE_OPERATIONS: Array<{ id: NewlineOperationId; label: string }
   { id: 'dashList', label: 'dash list' },
   { id: 'bulletList', label: 'bullet list' },
   { id: 'numberedList', label: 'numbered list' },
-  { id: 'aisle', label: 'aisle' },
+  { id: 'aisleLeft', label: 'aisle to the left' },
+  { id: 'aisleRight', label: 'aisle to the right' },
   { id: 'horizontalLine', label: 'horizontal line' },
   { id: 'codeBlock', label: 'code block' },
   { id: 'inlineCode', label: 'inline code block' },
@@ -32,7 +33,8 @@ export const SHORTCUT_MENU_ELIGIBLE_OPERATIONS: NewlineOperationId[] = [
   'dashList',
   'bulletList',
   'numberedList',
-  'aisle',
+  'aisleLeft',
+  'aisleRight',
   'horizontalLine',
   'codeBlock',
   'inlineCode',
@@ -43,10 +45,8 @@ export const SHORTCUT_MENU_ELIGIBLE_OPERATIONS: NewlineOperationId[] = [
 
 const DEFAULT_SHORTCUT_MENU_OPERATIONS: NewlineOperationId[] = [
   'task',
-  'dashList',
-  'bulletList',
-  'numberedList',
-  'aisle',
+  'aisleLeft',
+  'aisleRight',
   'horizontalLine',
   'codeBlock',
   'inlineCode',
@@ -56,7 +56,7 @@ const DEFAULT_SHORTCUT_MENU_OPERATIONS: NewlineOperationId[] = [
 
 export const DEFAULT_NEWLINE_SHORTCUT_SETTINGS: AppState['hotkeys']['newlineShortcuts'] = {
   shortcuts: {
-    controlEnter: 'aisle',
+    controlEnter: 'aisleRight',
     shiftEnter: 'task',
     commandEnter: 'operationsMenu',
   },
@@ -94,9 +94,17 @@ export function normalizeHotkeySettings(raw: unknown): AppState['hotkeys'] {
 }
 
 function normalizeNewlineOperation(value: unknown, fallback: NewlineOperationId): NewlineOperationId {
+  if (value === 'aisle') return 'aisleRight'
   return typeof value === 'string' && NEWLINE_OPERATION_IDS.has(value as NewlineOperationId)
     ? (value as NewlineOperationId)
     : fallback
+}
+
+function normalizeShortcutMenuOperation(value: unknown): NewlineOperationId | null {
+  if (value === 'aisle') return 'aisleRight'
+  if (typeof value !== 'string') return null
+  const operation = value as NewlineOperationId
+  return SHORTCUT_MENU_ELIGIBLE_OPERATION_IDS.has(operation) ? operation : null
 }
 
 function normalizeNewlineShortcutSettings(raw: unknown): AppState['hotkeys']['newlineShortcuts'] {
@@ -105,11 +113,9 @@ function normalizeNewlineShortcutSettings(raw: unknown): AppState['hotkeys']['ne
   const rawShortcutMap =
     obj.shortcuts && typeof obj.shortcuts === 'object' ? (obj.shortcuts as Record<string, unknown>) : {}
   const rawMenuOperations = Array.isArray(obj.menuOperations) ? obj.menuOperations : []
-  const menuOperations = rawMenuOperations.filter(
-    (operation): operation is NewlineOperationId =>
-      typeof operation === 'string' &&
-      SHORTCUT_MENU_ELIGIBLE_OPERATION_IDS.has(operation as NewlineOperationId),
-  )
+  const menuOperations = rawMenuOperations
+    .map(normalizeShortcutMenuOperation)
+    .filter((operation): operation is NewlineOperationId => Boolean(operation))
   const dedupedMenuOperations = Array.from(new Set(menuOperations)).slice(0, 10)
   const normalizedMenuOperations =
     dedupedMenuOperations.length > 0 ? [...dedupedMenuOperations] : [...DEFAULT_NEWLINE_SHORTCUT_SETTINGS.menuOperations]

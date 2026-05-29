@@ -10,10 +10,33 @@ import {
 } from './shortcuts'
 
 describe('newline shortcut settings', () => {
-  it('exposes dash lists as a labeled shortcut menu operation', () => {
+  it('keeps list operations available without selecting them by default', () => {
     expect(NEWLINE_OPERATION_LABELS.dashList).toBe('dash list')
     expect(SHORTCUT_MENU_ELIGIBLE_OPERATIONS).toContain('dashList')
-    expect(DEFAULT_NEWLINE_SHORTCUT_SETTINGS.menuOperations).toContain('dashList')
+    expect(SHORTCUT_MENU_ELIGIBLE_OPERATIONS).toContain('bulletList')
+    expect(SHORTCUT_MENU_ELIGIBLE_OPERATIONS).toContain('numberedList')
+    expect(DEFAULT_NEWLINE_SHORTCUT_SETTINGS.menuOperations).not.toContain('dashList')
+    expect(DEFAULT_NEWLINE_SHORTCUT_SETTINGS.menuOperations).not.toContain('bulletList')
+    expect(DEFAULT_NEWLINE_SHORTCUT_SETTINGS.menuOperations).not.toContain('numberedList')
+  })
+
+  it('exposes explicit left and right aisle operations by default', () => {
+    expect(NEWLINE_OPERATION_LABELS.aisleLeft).toBe('aisle to the left')
+    expect(NEWLINE_OPERATION_LABELS.aisleRight).toBe('aisle to the right')
+    expect(SHORTCUT_MENU_ELIGIBLE_OPERATIONS).toContain('aisleLeft')
+    expect(SHORTCUT_MENU_ELIGIBLE_OPERATIONS).toContain('aisleRight')
+    expect(DEFAULT_NEWLINE_SHORTCUT_SETTINGS.shortcuts.controlEnter).toBe('aisleRight')
+    expect(DEFAULT_NEWLINE_SHORTCUT_SETTINGS.menuOperations).toEqual([
+      'task',
+      'aisleLeft',
+      'aisleRight',
+      'horizontalLine',
+      'codeBlock',
+      'inlineCode',
+      'blockQuote',
+      'strikethrough',
+    ])
+    expect(DEFAULT_NEWLINE_SHORTCUT_SETTINGS.menuOperations).not.toContain('aisle' as any)
   })
 
   it('exposes strikethrough as a menu operation and unbound command shortcut', () => {
@@ -30,7 +53,7 @@ describe('newline shortcut settings', () => {
     expect(SHORTCUT_MENU_ELIGIBLE_OPERATIONS).toContain('blockIndent')
     expect(DEFAULT_NEWLINE_SHORTCUT_SETTINGS.menuOperations).toContain('blockQuote')
     expect(DEFAULT_NEWLINE_SHORTCUT_SETTINGS.menuOperations).not.toContain('blockIndent')
-    expect(DEFAULT_NEWLINE_SHORTCUT_SETTINGS.menuOperations).toHaveLength(10)
+    expect(DEFAULT_NEWLINE_SHORTCUT_SETTINGS.menuOperations).toHaveLength(8)
   })
 
   it('labels the operations menu shortcut as shortcut menu', () => {
@@ -52,6 +75,23 @@ describe('newline shortcut settings', () => {
     expect(normalized.newlineShortcuts.shortcuts.controlEnter).toBe('dashList')
     expect(normalized.newlineShortcuts.shortcuts.shiftEnter).toBe('dashList')
     expect(normalized.newlineShortcuts.menuOperations).toEqual(['dashList', 'bulletList', 'strikethrough'])
+  })
+
+  it('migrates legacy generic aisle shortcut settings to aisle right', () => {
+    const normalized = normalizeHotkeySettings({
+      newlineShortcuts: {
+        shortcuts: {
+          controlEnter: 'aisle',
+          shiftEnter: 'aisleLeft',
+          commandEnter: 'operationsMenu',
+        },
+        menuOperations: ['task', 'aisle', 'aisleRight', 'aisleLeft'],
+      },
+    })
+
+    expect(normalized.newlineShortcuts.shortcuts.controlEnter).toBe('aisleRight')
+    expect(normalized.newlineShortcuts.shortcuts.shiftEnter).toBe('aisleLeft')
+    expect(normalized.newlineShortcuts.menuOperations).toEqual(['task', 'aisleRight', 'aisleLeft', 'strikethrough'])
   })
 
   it('normalizes persisted block indent menu entries and shortcuts', () => {

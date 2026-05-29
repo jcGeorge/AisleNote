@@ -56,7 +56,8 @@ export type NewlineOperationId =
   | 'dashList'
   | 'bulletList'
   | 'numberedList'
-  | 'aisle'
+  | 'aisleLeft'
+  | 'aisleRight'
   | 'horizontalLine'
   | 'codeBlock'
   | 'inlineCode'
@@ -375,7 +376,6 @@ export type AppState = {
     tableAddTargetMode: TableControlTargetMode
     tableDeleteTargetMode: TableControlTargetMode
     tableOfContentsScope?: TableOfContentsScope
-    newAislePlacement?: NewAislePlacement
     tabButtonScale: number
     noteFontScale: number
     tooltipScale?: number

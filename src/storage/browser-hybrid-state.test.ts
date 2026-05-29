@@ -507,12 +507,18 @@ describe('browser hybrid storage', () => {
     expect(getRecord(appSettings.ui).noteMentionCopyRequiresConfirmation).toBe(false)
     expect(getRecord(appSettings.ui).deleteSubtabShortcutEnabled).toBe(true)
     expect(getRecord(appSettings.ui).tableOfContentsScope).toBe('focused-aisle')
-    expect(getRecord(appSettings.ui).newAislePlacement).toBe('left-of-focus')
+    expect(getRecord(appSettings.ui)).not.toHaveProperty('newAislePlacement')
     expect(appSettings.scratchpadAisleLimit).toBe(32)
     expect(getRecord(appSettings.ui).showParentHomeTab).toBe(false)
     expect(getRecord(appSettings.hotkeys)).not.toHaveProperty('enableMouseBackForward')
     expect(getRecord(appSettings.hotkeys)).not.toHaveProperty('enableGenericHistoryHotkeys')
     expect(getRecord(getRecord(appSettings.hotkeys).shortcuts).newTab).toBe('Ctrl+Alt+N')
+    expect(getRecord(getRecord(getRecord(appSettings.hotkeys).newlineShortcuts).shortcuts).controlEnter).toBe('horizontalLine')
+    expect(getRecord(getRecord(appSettings.hotkeys).newlineShortcuts).menuOperations).toEqual([
+      'task',
+      'aisleRight',
+      'strikethrough',
+    ])
     expect(frontmatterSettings.settingsTemplateId).toBe('template-1')
     expect(spaceManifest.settings).toEqual({ autoRemoveDeletedDays: 21 })
     expect(roundTripped.ui.settingsSection).toBe('toolbar')
@@ -530,10 +536,11 @@ describe('browser hybrid storage', () => {
     expect(roundTripped.ui.noteMentionCopyRequiresConfirmation).toBe(false)
     expect(roundTripped.ui.deleteSubtabShortcutEnabled).toBe(true)
     expect(roundTripped.ui.tableOfContentsScope).toBe('focused-aisle')
-    expect(roundTripped.ui.newAislePlacement).toBe('left-of-focus')
+    expect(roundTripped.ui).not.toHaveProperty('newAislePlacement')
     expect(roundTripped.ui.scratchpadAisleLimit).toBe(32)
     expect(roundTripped.ui.themePalettes?.dawn?.primary).toBe('#123456')
     expect(roundTripped.hotkeys.shortcuts.newTab).toBe('Ctrl+Alt+N')
+    expect(roundTripped.hotkeys.newlineShortcuts.menuOperations).toEqual(['task', 'aisleRight', 'strikethrough'])
     expect(roundTripped.hotkeys).not.toHaveProperty('enableMouseBackForward')
     expect(roundTripped.hotkeys).not.toHaveProperty('enableGenericHistoryHotkeys')
     expect(roundTripped.frontmatter.settingsTemplateId).toBe('template-1')

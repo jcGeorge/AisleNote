@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_FRONTMATTER_SETTINGS } from '../../frontmatter/frontmatter'
-import type { AppState, ModalState, Space } from '../../types/app'
+import type { AppState, ModalState, NewlineOperationId, Space } from '../../types/app'
 import { makeFrontmatterRowsManual, normalizeFrontmatterModalRows } from './frontmatter-modal-state'
 import { shouldModalBackdropClose } from './modal-behavior'
 import { shouldSubmitInsertNoteReferenceOnEnter } from './modal-keyboard'
@@ -216,6 +216,28 @@ function renderModal(modal: ModalState, state = createState()) {
   )
 }
 
+function renderShortcutMenuSettingsModal(shortcutMenuOperations: NewlineOperationId[]) {
+  return renderToStaticMarkup(
+    <ModalHost
+      modal={{ type: 'shortcut-menu-settings' }}
+      state={createState()}
+      activeSpace={space}
+      domainsForPickers={[]}
+      shortcutMenuOperations={shortcutMenuOperations}
+      onModalChange={() => undefined}
+      onShortcutMenuOperationsChange={() => undefined}
+      onEditFrontmatterTemplate={() => undefined}
+      onWarn={() => undefined}
+      onError={() => undefined}
+      onApplyTabSort={() => undefined}
+      onLinkInsertModeChange={() => undefined}
+      onNoteCopyModeChange={() => undefined}
+      onDeduplicateKeepDataChange={() => undefined}
+      onConfirm={() => undefined}
+    />,
+  )
+}
+
 describe('sort modal rendering', () => {
   it('renders the scratchpad about modal', () => {
     const html = renderModal({ type: 'scratchpad-about' })
@@ -276,6 +298,17 @@ describe('sort modal rendering', () => {
       urlLabel: '',
     })).toBe(false)
     expect(shouldModalBackdropClose({ type: 'shortcut-menu-settings' })).toBe(true)
+  })
+
+  it('renders explicit aisle direction commands in shortcut menu settings', () => {
+    const html = renderShortcutMenuSettingsModal(['aisleLeft'])
+
+    expect(html).toContain('aisle to the left')
+    expect(html).toContain('aisle to the right')
+    expect(html).toContain('dash list')
+    expect(html).toContain('bullet list')
+    expect(html).toContain('numbered list')
+    expect(html).not.toContain('>aisle</button>')
   })
 })
 

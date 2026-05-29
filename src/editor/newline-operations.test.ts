@@ -3,7 +3,11 @@ import { Schema } from 'prosemirror-model'
 import { EditorState, TextSelection } from 'prosemirror-state'
 import { getBulletListMarkerFromAttrs } from './list-markers'
 import { isCompatibleListNodeForOperation } from './list-operation-compatibility'
-import { applyEditorNewlineOperation, getEmptyLineReplacementRangeForOperation } from './newline-operations'
+import {
+  applyEditorNewlineOperation,
+  getAislePlacementForNewlineOperation,
+  getEmptyLineReplacementRangeForOperation,
+} from './newline-operations'
 import { createOperationNodes } from './newline-operation-nodes'
 import { getEditorTextLineRanges } from './multiline-ranges'
 import type { NewlineOperationId } from '../types/app'
@@ -262,7 +266,7 @@ describe('editor newline operations', () => {
   })
 
   it('does not replace empty lines for non-block shortcut operations', () => {
-    const operations: NewlineOperationId[] = ['normalNewLine', 'aisle', 'inlineCode', 'strikethrough']
+    const operations: NewlineOperationId[] = ['normalNewLine', 'aisleLeft', 'aisleRight', 'inlineCode', 'strikethrough']
 
     operations.forEach((operation) => {
       expect(getEmptyLineReplacementRangeForOperation(operation, createSelectionState())).toBeNull()
@@ -278,16 +282,24 @@ describe('editor newline operations', () => {
     expect(focus).toHaveBeenCalled()
   })
 
+  it('maps aisle newline operations to explicit placements', () => {
+    expect(getAislePlacementForNewlineOperation('aisleLeft')).toBe('left-of-focus')
+    expect(getAislePlacementForNewlineOperation('aisleRight')).toBe('right-of-focus')
+    expect(getAislePlacementForNewlineOperation('task')).toBeNull()
+  })
+
   it('keeps create-aisle source deletion out of ProseMirror history', () => {
-    const doc = newlineOperationSchema.nodes.doc.create(null, [paragraphNode('move me')])
-    const { editor, view } = createEditorForDoc(doc, 1, 8)
+    ;(['aisleLeft', 'aisleRight'] as const).forEach((operation) => {
+      const doc = newlineOperationSchema.nodes.doc.create(null, [paragraphNode('move me')])
+      const { editor, view } = createEditorForDoc(doc, 1, 8)
 
-    expect(applyEditorNewlineOperation(editor as any, 'aisle')).toEqual({
-      handled: true,
-      aisleMarkdown: 'move me',
+      expect(applyEditorNewlineOperation(editor as any, operation)).toEqual({
+        handled: true,
+        aisleMarkdown: 'move me',
+      })
+
+      expect(view.dispatch.mock.calls[0]?.[0]?.getMeta('addToHistory')).toBe(false)
     })
-
-    expect(view.dispatch.mock.calls[0]?.[0]?.getMeta('addToHistory')).toBe(false)
   })
 
   it('converts selected mixed-list bullet rows to tasks without deleting earlier task rows', () => {
