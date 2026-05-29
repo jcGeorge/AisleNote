@@ -26,6 +26,7 @@ export type DeviceLastOpened = {
   primeTabId: string | null
   subTabId: string | null
   viewMode: ViewMode
+  scratchpadActive?: boolean
 }
 
 export type DeviceSettings = {
@@ -72,12 +73,14 @@ function normalizeDeviceLastOpened(raw: unknown): DeviceLastOpened | null {
   const primeTabId = typeof obj.primeTabId === 'string' && obj.primeTabId.trim() ? obj.primeTabId.trim() : null
   const subTabId = typeof obj.subTabId === 'string' && obj.subTabId.trim() ? obj.subTabId.trim() : null
   const viewMode = normalizeDeviceViewMode(obj.viewMode)
+  const scratchpadActive = viewMode === 'main' && obj.scratchpadActive === true
   return {
     domainId,
     spaceId,
     primeTabId,
     subTabId,
     viewMode,
+    scratchpadActive,
   }
 }
 
@@ -179,18 +182,24 @@ export function saveActiveToolbarLayoutId(activeToolbarLayoutId: string): void {
   savePartialDeviceSettings({ activeToolbarLayoutId })
 }
 
-function getDeviceLastOpenedFromAppState(appState: AppState, viewMode: ViewMode): DeviceLastOpened | null {
+function getDeviceLastOpenedFromAppState(
+  appState: AppState,
+  viewMode: ViewMode,
+  scratchpadActive = false,
+): DeviceLastOpened | null {
   const projected = projectActiveDomainState(appState)
   const activeDomain = projected.domains.find((domain) => domain.id === projected.activeDomainId) ?? projected.domains[0]
   const activeSpace = activeDomain?.spaces.find((space) => space.id === projected.activeSpaceId) ?? activeDomain?.spaces[0]
   const activeTab = activeSpace?.data.tabs.find((tab) => tab.id === activeSpace.data.activeTabId) ?? activeSpace?.data.tabs[0]
+  const normalizedViewMode = normalizeDeviceViewMode(viewMode)
   if (!activeDomain || !activeSpace) return null
   return {
     domainId: activeDomain.id,
     spaceId: activeSpace.id,
     primeTabId: activeTab?.id ?? null,
     subTabId: activeTab?.activeSubTabId ?? null,
-    viewMode,
+    viewMode: normalizedViewMode,
+    scratchpadActive: normalizedViewMode === 'main' && scratchpadActive,
   }
 }
 
@@ -198,10 +207,11 @@ export function extractDeviceSettingsFromAppState(
   appState: AppState,
   baseSettings: DeviceSettings = loadDeviceSettings(),
   viewMode: ViewMode = baseSettings.lastOpened?.viewMode ?? 'main',
+  scratchpadActive = baseSettings.lastOpened?.scratchpadActive ?? false,
 ): DeviceSettings {
   return {
     ...baseSettings,
-    lastOpened: getDeviceLastOpenedFromAppState(appState, viewMode),
+    lastOpened: getDeviceLastOpenedFromAppState(appState, viewMode, scratchpadActive),
     noteCursorLocations: appState.ui.noteCursorLocations,
     headingCollapseState: appState.ui.headingCollapseState,
     settingsSection: appState.ui.settingsSection,
@@ -212,6 +222,10 @@ export function extractDeviceSettingsFromAppState(
     noteFontScale: appState.ui.noteFontScale,
     tooltipScale: appState.ui.tooltipScale ?? DEFAULT_UI_SETTINGS.tooltipScale ?? 1,
   }
+}
+
+export function shouldRestoreScratchpadWorkspace(lastOpened: DeviceLastOpened | null | undefined): boolean {
+  return lastOpened?.viewMode === 'main' && lastOpened.scratchpadActive === true
 }
 
 function applyLastOpenedToAppState(appState: AppState, lastOpened: DeviceLastOpened | null): AppState {

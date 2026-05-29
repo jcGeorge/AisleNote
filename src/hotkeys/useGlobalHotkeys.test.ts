@@ -63,6 +63,21 @@ describe('aisle cycle hotkeys', () => {
     expect(getCycledAisleTarget(['aisle-1'], 'aisle-1', 1)).toBeNull()
     expect(getCycledAisleTarget([], 'missing', 1)).toBeNull()
   })
+
+  it('keeps repeated aisle cycling stable in both directions', () => {
+    const aisles = ['aisle-1', 'aisle-2', 'aisle-3']
+    let activeAisleId = 'aisle-1'
+
+    for (let index = 0; index < 5; index += 1) {
+      activeAisleId = getCycledAisleTarget(aisles, activeAisleId, 1) ?? activeAisleId
+    }
+    expect(activeAisleId).toBe('aisle-3')
+
+    for (let index = 0; index < 5; index += 1) {
+      activeAisleId = getCycledAisleTarget(aisles, activeAisleId, -1) ?? activeAisleId
+    }
+    expect(activeAisleId).toBe('aisle-1')
+  })
 })
 
 describe('rail visibility hotkeys', () => {

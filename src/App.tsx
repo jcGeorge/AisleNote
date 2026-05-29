@@ -233,6 +233,7 @@ import {
   saveActiveToolbarLayoutId,
   saveDeviceLastOpened,
   savePartialDeviceSettings,
+  shouldRestoreScratchpadWorkspace,
   type DeviceSettings,
 } from './storage/device-settings-store'
 import { useStorageProfileController } from './storage/useStorageProfileController'
@@ -338,7 +339,9 @@ function App() {
   }
   const { state, setState, stateRef, flushPendingPersistence, commitAppStateNow } = usePersistentAppState()
   const [viewMode, setViewMode] = useState<ViewMode>(() => initialDeviceSettingsRef.current?.lastOpened?.viewMode ?? 'main')
-  const [scratchpadActive, setScratchpadActive] = useState(false)
+  const [scratchpadActive, setScratchpadActive] = useState(() =>
+    shouldRestoreScratchpadWorkspace(initialDeviceSettingsRef.current?.lastOpened),
+  )
   const [editing, setEditing] = useState<{ type: EditableEntityType; id: string } | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [modal, setModal] = useState<ModalState | null>(null)
@@ -380,9 +383,12 @@ function App() {
   const aisleHorizontalScrollByBodyRef = useRef<Map<string, number>>(new Map())
   const pendingScrollToAisleIdRef = useRef<string | null>(null)
   const pendingFocusToAisleIdRef = useRef<string | null>(null)
+  const pendingAisleCycleScrollFrameRef = useRef<number | null>(null)
   const pendingNavigationHeadingRef = useRef<NonNullable<NoteNavigationTarget['heading']> | null>(null)
   const pendingNavigationAisleIdRef = useRef<string | null>(null)
   const pendingNavigationTopAisleIdRef = useRef<string | null>(null)
+  const activeAisleIdsRef = useRef<string[]>([])
+  const activeNoteBodyIdRef = useRef<string>('')
   const editorEventRootRef = useRef<HTMLElement | null>(null)
   const closeShortcutMenuRef = useRef<(options?: { restoreEditorFocus?: boolean }) => void>(() => {})
   const runShortcutOperationFromMenuRef = useRef<(operation: NewlineOperationId) => void>(() => {})
@@ -488,6 +494,10 @@ function App() {
   }, [contextMenu])
 
   useEffect(() => () => {
+    if (pendingAisleCycleScrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(pendingAisleCycleScrollFrameRef.current)
+      pendingAisleCycleScrollFrameRef.current = null
+    }
     toastTimersRef.current.forEach((timer) => window.clearTimeout(timer))
     toastTimersRef.current.clear()
   }, [])
@@ -836,6 +846,8 @@ function App() {
   activeTabIdRef.current = scratchpadWorkspaceActive ? SCRATCHPAD_CONTENT_TARGET_ID : activeTab.id
   activeSubTabIdRef.current = scratchpadWorkspaceActive ? null : activeSubTab?.id ?? null
   activeAisleIdRef.current = resolvedActiveAisleId
+  activeAisleIdsRef.current = activeAisleIds
+  activeNoteBodyIdRef.current = activeNoteBodyId
   activeNoteLocationKeyRef.current = activeNoteLocationKey
   isMainViewRef.current = viewMode === 'main'
 
@@ -846,8 +858,9 @@ function App() {
       primeTabId: activeTab.id,
       subTabId: activeSubTab?.id ?? null,
       viewMode,
+      scratchpadActive: scratchpadWorkspaceActive,
     })
-  }, [activeSpace.id, activeSubTab?.id, activeTab.id, state.activeDomainId, viewMode])
+  }, [activeSpace.id, activeSubTab?.id, activeTab.id, scratchpadWorkspaceActive, state.activeDomainId, viewMode])
 
   const updateActiveSpaceData = (updater: (data: WorkspaceData) => WorkspaceData) => {
     setState((previous) => {
@@ -3329,15 +3342,24 @@ function App() {
   }
 
   const cycleActiveAisle = useCallback((direction: -1 | 1) => {
-    if (viewMode !== 'main' || arrangeMode.active || activeAisleIds.length <= 1) return
-    const targetAisleId = getCycledAisleTarget(activeAisleIds, activeAisleIdRef.current, direction)
-    if (!targetAisleId || targetAisleId === activeAisleIdRef.current) return
+    const currentAisleIds = activeAisleIdsRef.current
+    if (viewMode !== 'main' || arrangeMode.active || currentAisleIds.length <= 1) return
+    const currentAisleId = activeAisleIdRef.current
+    const targetAisleId = getCycledAisleTarget(currentAisleIds, currentAisleId, direction)
+    if (!targetAisleId || targetAisleId === currentAisleId || !currentAisleIds.includes(targetAisleId)) return
+
+    if (pendingAisleCycleScrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(pendingAisleCycleScrollFrameRef.current)
+      pendingAisleCycleScrollFrameRef.current = null
+    }
 
     closeEditorEphemeraRef.current()
     saveActiveCursorLocation()
     flushPendingContent()
 
-    const noteLocationKey = activeNoteLocationKeyRef.current || activeNoteLocationKey
+    const noteLocationKey = scratchpadWorkspaceActive
+      ? SCRATCHPAD_CURSOR_LOCATION_KEY
+      : activeNoteLocationKeyRef.current || activeNoteLocationKey
     const savedLocation = stateRef.current.ui.noteCursorLocations[noteLocationKey] ?? null
     pendingCursorRestoreRef.current = {
       noteLocationKey,
@@ -3347,19 +3369,35 @@ function App() {
     }
     pendingFocusToAisleIdRef.current = targetAisleId
     pendingScrollToAisleIdRef.current = targetAisleId
+    if (scratchpadWorkspaceActive) {
+      setState((previous) => setScratchpadActiveAisleId(previous, targetAisleId))
+    }
     setActiveAisleId(targetAisleId)
     activeAisleIdRef.current = targetAisleId
-    window.requestAnimationFrame(() => {
+    const scheduledNoteBodyId = activeNoteBodyIdRef.current
+    pendingAisleCycleScrollFrameRef.current = window.requestAnimationFrame(() => {
+      pendingAisleCycleScrollFrameRef.current = null
+      if (activeNoteBodyIdRef.current !== scheduledNoteBodyId) return
+      if (!activeAisleIdsRef.current.includes(targetAisleId)) {
+        if (pendingFocusToAisleIdRef.current === targetAisleId) pendingFocusToAisleIdRef.current = null
+        if (pendingScrollToAisleIdRef.current === targetAisleId) pendingScrollToAisleIdRef.current = null
+        const pending = pendingCursorRestoreRef.current
+        if (pending?.noteLocationKey === noteLocationKey && pending.aisleId === targetAisleId) {
+          pendingCursorRestoreRef.current = null
+        }
+        return
+      }
       scrollAisleIntoHorizontalView(targetAisleId)
     })
   }, [
-    activeAisleIds,
     activeNoteLocationKey,
     arrangeMode.active,
     flushPendingContent,
     pendingCursorRestoreRef,
     saveActiveCursorLocation,
+    scratchpadWorkspaceActive,
     scrollAisleIntoHorizontalView,
+    setState,
     stateRef,
     viewMode,
   ])

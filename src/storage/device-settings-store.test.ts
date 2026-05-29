@@ -9,6 +9,7 @@ import {
   mergeLoadedSettings,
   parseDeviceSettings,
   saveDeviceSettings,
+  shouldRestoreScratchpadWorkspace,
 } from './device-settings-store'
 import { parseSavedState } from '../state/app-state'
 
@@ -68,6 +69,32 @@ describe('device settings store', () => {
     expect(parseDeviceSettings(JSON.stringify({ lastOpened: { ...baseLastOpened, viewMode: 'spaces' } })).lastOpened?.viewMode).toBe(
       'main',
     )
+  })
+
+  it('normalizes scratchpad last-opened state as a main-view device preference', () => {
+    const baseLastOpened = {
+      domainId: 'domain-a',
+      spaceId: 'space-a',
+      primeTabId: 'tab-a',
+      subTabId: null,
+    }
+
+    const scratchpadMain = parseDeviceSettings(
+      JSON.stringify({ lastOpened: { ...baseLastOpened, viewMode: 'main', scratchpadActive: true } }),
+    ).lastOpened
+    const legacyMain = parseDeviceSettings(
+      JSON.stringify({ lastOpened: { ...baseLastOpened, viewMode: 'main' } }),
+    ).lastOpened
+    const scratchpadSettings = parseDeviceSettings(
+      JSON.stringify({ lastOpened: { ...baseLastOpened, viewMode: 'settings', scratchpadActive: true } }),
+    ).lastOpened
+
+    expect(scratchpadMain?.scratchpadActive).toBe(true)
+    expect(shouldRestoreScratchpadWorkspace(scratchpadMain)).toBe(true)
+    expect(legacyMain?.scratchpadActive).toBe(false)
+    expect(shouldRestoreScratchpadWorkspace(legacyMain)).toBe(false)
+    expect(scratchpadSettings?.scratchpadActive).toBe(false)
+    expect(shouldRestoreScratchpadWorkspace(scratchpadSettings)).toBe(false)
   })
 
   it('loads and saves active toolbar layout id separately from app state', () => {
@@ -188,6 +215,25 @@ describe('device settings store', () => {
     expect(extractDeviceSettingsFromAppState(state, { ...DEFAULT_DEVICE_SETTINGS, lastFindQuery: 'bear' }).lastFindQuery).toBe(
       'bear',
     )
+    expect(
+      extractDeviceSettingsFromAppState(state, {
+        ...DEFAULT_DEVICE_SETTINGS,
+        lastOpened: {
+          domainId: 'domain-a',
+          spaceId: 'space-a',
+          primeTabId: 'tab-a',
+          subTabId: null,
+          viewMode: 'main',
+          scratchpadActive: true,
+        },
+      }).lastOpened?.scratchpadActive,
+    ).toBe(true)
+    expect(extractDeviceSettingsFromAppState(state, DEFAULT_DEVICE_SETTINGS, 'main', true).lastOpened?.scratchpadActive).toBe(
+      true,
+    )
+    expect(
+      extractDeviceSettingsFromAppState(state, DEFAULT_DEVICE_SETTINGS, 'settings', true).lastOpened?.scratchpadActive,
+    ).toBe(false)
     expect(extractDeviceSettingsFromAppState(state)).not.toHaveProperty('disabledTipIds')
   })
 
