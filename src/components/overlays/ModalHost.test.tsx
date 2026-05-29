@@ -785,7 +785,7 @@ describe('de-couple modal rendering', () => {
       createManyDuplicateLocationState(),
     )
 
-    expect(smallHtml).toContain('style="--decouple-modal-content-width:24.55rem"')
+    expect(smallHtml).toContain('style="--decouple-modal-content-width:30rem"')
     expect(largeHtml).toContain('style="--decouple-modal-content-width:70rem"')
   })
 })
@@ -833,7 +833,7 @@ describe('linked aisle modal rendering', () => {
     expect(html).toContain('linked note')
     expect(html).toContain('Select items to de-couple.')
     expect(html).toContain('decouple-location-list')
-    expect(html).toContain('style="--decouple-modal-content-width:24.55rem"')
+    expect(html).toContain('style="--decouple-modal-content-width:30rem"')
     expect(html).toContain('aria-label="Domain / Space / Tab / home. Will stay coupled."')
     expect(html).toContain('aria-label="Domain / Space / Second / home. Will stay coupled."')
     expect(html).not.toContain('duplicate-note-list')

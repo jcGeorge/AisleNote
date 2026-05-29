@@ -7,6 +7,7 @@ import {
   type ResolvedWikiNoteReference,
 } from '../notes/note-references'
 import {
+  getMeaningfulCursorTextLength,
   getLogicalEndpointForPosition,
   resolveLogicalEndpointPosition,
   type EditorCursorTextBlock,
@@ -36,6 +37,15 @@ export type EditorCursorSelection = {
     blockIndex: number
     offset: number
   }
+}
+
+export type PlainEditorTextBlockClickGeometry = {
+  start: number
+  text: string
+  top: number
+  bottom: number
+  left: number
+  textRight: number
 }
 
 export type WysiwygHistoryDirection = 'undo' | 'redo'
@@ -205,6 +215,86 @@ function collectEditorTextBlocks(doc: any): EditorCursorTextBlock[] {
   return blocks
 }
 
+function getTextNodeAtOffset(root: Element, targetOffset: number): { node: Text; offset: number } | null {
+  const safeOffset = Math.max(0, Math.floor(targetOffset))
+  const walker = document.createTreeWalker(root, 4)
+  let remaining = safeOffset
+  let current = walker.nextNode()
+  while (current) {
+    const textNode = current as Text
+    const length = textNode.nodeValue?.length ?? 0
+    if (remaining <= length) return { node: textNode, offset: remaining }
+    remaining -= length
+    current = walker.nextNode()
+  }
+  return null
+}
+
+function getMeaningfulTextRight(element: Element, meaningfulLength: number, fallbackLeft: number): number {
+  if (typeof document === 'undefined' || meaningfulLength <= 0) return fallbackLeft
+  const endpoint = getTextNodeAtOffset(element, meaningfulLength)
+  if (!endpoint) return fallbackLeft
+  try {
+    const range = document.createRange()
+    range.setStart(element, 0)
+    range.setEnd(endpoint.node, endpoint.offset)
+    const rects = Array.from(range.getClientRects())
+    range.detach?.()
+    return rects[rects.length - 1]?.right ?? fallbackLeft
+  } catch {
+    return fallbackLeft
+  }
+}
+
+export function getPlainEditorTextBlockClickGeometry(view: any): PlainEditorTextBlockClickGeometry[] {
+  const doc = view?.state?.doc
+  if (!doc || typeof view?.nodeDOM !== 'function') return []
+  const blocks: PlainEditorTextBlockClickGeometry[] = []
+  doc.descendants?.((node: any, pos: number) => {
+    if (!node?.isTextblock) return true
+    const element = view.nodeDOM(pos)
+    if (!(element instanceof Element) || typeof element.getBoundingClientRect !== 'function') return true
+    const rect = element.getBoundingClientRect()
+    const text = String(node.textContent ?? '')
+    const meaningfulLength = getMeaningfulCursorTextLength(text)
+    blocks.push({
+      start: pos + 1,
+      text,
+      top: rect.top,
+      bottom: rect.bottom,
+      left: rect.left,
+      textRight: getMeaningfulTextRight(element, meaningfulLength, rect.left),
+    })
+    return true
+  })
+  return blocks
+}
+
+export function getPlainTextBlockEndPositionForBlankClick({
+  blocks,
+  clientX,
+  clientY,
+  selectionEmpty,
+  edgePadding = 2,
+}: {
+  blocks: PlainEditorTextBlockClickGeometry[]
+  clientX: number
+  clientY: number
+  selectionEmpty: boolean
+  edgePadding?: number
+}): number | null {
+  if (!selectionEmpty || blocks.length === 0 || !Number.isFinite(clientX) || !Number.isFinite(clientY)) return null
+  const blockAtY = blocks.find((block) => clientY >= block.top && clientY <= block.bottom)
+  if (blockAtY) {
+    return clientX > blockAtY.textRight + edgePadding
+      ? blockAtY.start + getMeaningfulCursorTextLength(blockAtY.text)
+      : null
+  }
+  const precedingBlocks = blocks.filter((block) => clientY > block.bottom)
+  const precedingBlock = precedingBlocks[precedingBlocks.length - 1]
+  return precedingBlock ? precedingBlock.start + getMeaningfulCursorTextLength(precedingBlock.text) : null
+}
+
 export function getEditorCursorSelection(editor: Editor | null): EditorCursorSelection | null {
   const view = getWysiwygView(editor)
   const selection = view?.state?.selection
@@ -233,10 +323,10 @@ export function restoreEditorCursorSelection(
   options: { focus?: boolean } = {},
 ): boolean {
   const view = getWysiwygView(editor)
-  if (!editor || !view) return false
+  if (!editor || !view?.state?.doc || typeof view.dispatch !== 'function') return false
 
   const doc = view.state.doc
-  const docSize = doc.content.size
+  const docSize = typeof doc.content?.size === 'number' ? doc.content.size : 0
   const blocks = collectEditorTextBlocks(doc)
   const anchor = resolveLogicalEndpointPosition(blocks, selection.anchorBlock, docSize) ??
     clampEditorPosition(selection.anchor, docSize)
@@ -256,7 +346,11 @@ export function restoreEditorCursorSelection(
   }
 
   if (options.focus !== false) {
-    editor.focus()
+    try {
+      editor.focus()
+    } catch {
+      return false
+    }
   }
   return true
 }

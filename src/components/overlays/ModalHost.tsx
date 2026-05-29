@@ -59,17 +59,20 @@ type ModalHostProps = {
 const MENU_SLOT_LABELS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']
 const SHORTCUT_MENU_DRAG_MIME = 'application/x-tabs-shortcut-menu-operation'
 const DECOUPLE_MODAL_MIN_WIDTH_REM = 20
+const DECOUPLE_MODAL_SMALL_SET_MIN_WIDTH_REM = 30
 const DECOUPLE_MODAL_MAX_WIDTH_REM = 70
 const DECOUPLE_LOCATION_CARD_WIDTH_REM = 12
 const DECOUPLE_LOCATION_CARD_GAP_REM = 0.55
+const DECOUPLE_MODAL_HORIZONTAL_CHROME_REM = 2.1
 
 function getDecoupleModalContentWidth(locationCount: number) {
   const cardCount = Math.max(1, locationCount)
   const cardStripWidth =
     cardCount * DECOUPLE_LOCATION_CARD_WIDTH_REM + Math.max(0, cardCount - 1) * DECOUPLE_LOCATION_CARD_GAP_REM
+  const minimumWidth = cardCount <= 1 ? DECOUPLE_MODAL_MIN_WIDTH_REM : DECOUPLE_MODAL_SMALL_SET_MIN_WIDTH_REM
   const clampedWidth = Math.min(
     DECOUPLE_MODAL_MAX_WIDTH_REM,
-    Math.max(DECOUPLE_MODAL_MIN_WIDTH_REM, cardStripWidth),
+    Math.max(minimumWidth, cardStripWidth + DECOUPLE_MODAL_HORIZONTAL_CHROME_REM),
   )
   return `${Number(clampedWidth.toFixed(2))}rem`
 }

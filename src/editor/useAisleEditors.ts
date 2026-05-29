@@ -89,6 +89,7 @@ type UseAisleEditorsOptions = {
   activeTabIdRef: MutableRefObject<string>
   activeSubTabIdRef: MutableRefObject<string | null>
   activeAisleIdRef: MutableRefObject<string>
+  activeEditorAisleIdRef: MutableRefObject<string>
   isMainViewRef: MutableRefObject<boolean>
   closeImageToolsRef: MutableRefObject<() => void>
   closeImageToolsIfSelectedImageMissingRef: MutableRefObject<() => void>
@@ -152,6 +153,7 @@ export function useAisleEditors({
   activeTabIdRef,
   activeSubTabIdRef,
   activeAisleIdRef,
+  activeEditorAisleIdRef,
   isMainViewRef,
   closeImageToolsRef,
   closeImageToolsIfSelectedImageMissingRef,
@@ -274,11 +276,15 @@ export function useAisleEditors({
     editorKey: string,
     options: ActivateAisleEditorOptions = {},
   ) => {
-    if (isPendingCreatedRenameActive() && !options.allowDuringPendingRename) return false
+    if (isPendingCreatedRenameActive() && !options.allowDuringPendingRename) {
+      return false
+    }
     const meta = aisleEditorMetaRef.current.get(editorKey)
     if (!meta) {
       const aisleId = getAisleIdFromAisleEditorKey(editorKey)
-      if (!activeAisleIds.includes(aisleId)) return false
+      if (!activeAisleIds.includes(aisleId)) {
+        return false
+      }
       if (activeAisleIdRef.current !== aisleId && options.flushPrevious) {
         saveActiveCursorLocation()
         flushPendingContent()
@@ -286,6 +292,7 @@ export function useAisleEditors({
         closeImageToolsRef.current()
       }
       activeAisleIdRef.current = aisleId
+      activeEditorAisleIdRef.current = ''
       setActiveAisleId(aisleId)
       retainRecentAisleId(aisleId)
       setRetainedAisleIds((currentIds) => new Set([...currentIds, aisleId]))
@@ -302,6 +309,7 @@ export function useAisleEditors({
         activeAisleStateMatches: activeAisleIdRef.current === meta.aisleId,
       })
     ) {
+      activeEditorAisleIdRef.current = meta.aisleId
       if (options.focus) {
         meta.editor.focus()
       }
@@ -317,6 +325,7 @@ export function useAisleEditors({
 
     editorRef.current = meta.editor
     activeAisleIdRef.current = meta.aisleId
+    activeEditorAisleIdRef.current = meta.aisleId
     multiLineCursorPluginKeyRef.current = meta.pluginKey
     const currentMarkdown = getNormalizedEditorMarkdown(meta.editor)
     lastEditorMarkdownRef.current = currentMarkdown
@@ -598,6 +607,7 @@ export function useAisleEditors({
     normalizingAisleIdsRef.current.delete(meta.aisleId)
     if (editorRef.current === meta.editor) {
       editorRef.current = null
+      activeEditorAisleIdRef.current = ''
       multiLineCursorPluginKeyRef.current = null
     }
   }
@@ -812,7 +822,12 @@ export function useAisleEditors({
           } catch {
             // Toast UI can throw during teardown if the toolbar DOM was customized.
           }
-          root.innerHTML = ''
+          if (activeEditorAisleIdRef.current === aisle.id) {
+            activeEditorAisleIdRef.current = ''
+          }
+          if (root.dataset.aisleHostMode === 'editor') {
+            root.innerHTML = ''
+          }
         },
       })
       restoreEditorBlankParagraphs(editor, initialMarkdown)

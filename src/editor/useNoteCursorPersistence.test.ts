@@ -5,6 +5,7 @@ import {
   shouldFocusPendingCursorRestore,
   shouldFocusSavedCursorRestoreOnActivation,
 } from './cursor-restore-focus'
+import { getPersistableCursorSelectionForActiveEditor } from './useNoteCursorPersistence'
 import { shouldFocusForEditorIntent } from './focus-intent'
 
 describe('pending note cursor restore focus', () => {
@@ -94,5 +95,29 @@ describe('pending note cursor restore focus', () => {
     expect(shouldFocusForEditorIntent('initial-load')).toBe(false)
     expect(shouldFocusForEditorIntent('none')).toBe(false)
     expect(shouldFocusForEditorIntent('toolbar-command')).toBe(true)
+  })
+})
+
+describe('active editor cursor persistence', () => {
+  it('persists cursor selections only when the editor belongs to the active aisle', () => {
+    expect(
+      getPersistableCursorSelectionForActiveEditor({
+        activeAisleId: 'aisle-2',
+        activeEditorAisleId: 'aisle-2',
+        rawSelection: { anchor: 99, head: 3 },
+        docSize: 10,
+        updatedAt: 12,
+      }),
+    ).toEqual({ anchor: 10, head: 3, updatedAt: 12 })
+
+    expect(
+      getPersistableCursorSelectionForActiveEditor({
+        activeAisleId: 'aisle-2',
+        activeEditorAisleId: 'aisle-1',
+        rawSelection: { anchor: 4, head: 4 },
+        docSize: 10,
+        updatedAt: 12,
+      }),
+    ).toBeNull()
   })
 })

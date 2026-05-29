@@ -58,6 +58,13 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html).toContain('<strong>preview</strong>')
   })
 
+  it('marks editor and preview hosts as separate DOM ownership modes', () => {
+    const html = renderWorkspace(new Set(['a']))
+
+    expect(html).toContain('data-aisle-editor-key="body-1::a" data-aisle-host-mode="editor"')
+    expect(html.match(/data-aisle-host-mode="preview"/g) ?? []).toHaveLength(2)
+  })
+
   it('renders the custom horizontal aisle scrollbar for split notes', () => {
     const html = renderWorkspace(new Set(['a']))
 

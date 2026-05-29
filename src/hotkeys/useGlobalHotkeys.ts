@@ -11,8 +11,6 @@ type UseGlobalHotkeysParams = {
   deleteSubtabShortcutEnabled: boolean
   scratchpadActive?: boolean
   scratchpadDeleteAisleShortcutEnabled?: boolean
-  activeAisleIds?: string[]
-  activeAisleId?: string
   isMacPlatform: boolean
   editingShortcut: ShortcutId | null
   setEditingShortcut: Dispatch<SetStateAction<ShortcutId | null>>
@@ -62,6 +60,100 @@ export function getCycledAisleTarget(aisleIds: string[], activeAisleId: string, 
   const safeActiveIndex = activeIndex >= 0 ? activeIndex : 0
   const nextIndex = (safeActiveIndex + direction + aisleIds.length) % aisleIds.length
   return aisleIds[nextIndex] ?? null
+}
+
+export const AISLE_BRACKET_CHORD_GUARD_MS = 40
+
+export type AisleCycleBracketKey = 'left' | 'right'
+
+type AisleBracketCycleGuardTimer = ReturnType<typeof globalThis.setTimeout>
+
+type AisleBracketCycleGuardOptions = {
+  delayMs?: number
+  setTimeoutFn?: typeof globalThis.setTimeout
+  clearTimeoutFn?: typeof globalThis.clearTimeout
+}
+
+type HandleAisleBracketCycleKeydownOptions = {
+  bracketKey: AisleCycleBracketKey
+  direction: -1 | 1
+  repeat?: boolean
+  run: (direction: -1 | 1) => void
+}
+
+export function getAisleCycleBracketKey(event: Pick<KeyboardEvent, 'code'>): AisleCycleBracketKey | null {
+  if (event.code === 'BracketLeft') return 'left'
+  if (event.code === 'BracketRight') return 'right'
+  return null
+}
+
+export function createAisleBracketCycleGuard({
+  delayMs = AISLE_BRACKET_CHORD_GUARD_MS,
+  setTimeoutFn = globalThis.setTimeout,
+  clearTimeoutFn = globalThis.clearTimeout,
+}: AisleBracketCycleGuardOptions = {}) {
+  const heldKeys = new Set<AisleCycleBracketKey>()
+  let pending:
+    | {
+        bracketKey: AisleCycleBracketKey
+        timer: AisleBracketCycleGuardTimer
+      }
+    | null = null
+  let suppressUntilRelease = false
+
+  const cancelPending = () => {
+    if (!pending) return
+    clearTimeoutFn(pending.timer)
+    pending = null
+  }
+
+  const reset = () => {
+    cancelPending()
+    heldKeys.clear()
+    suppressUntilRelease = false
+  }
+
+  const handleKeydown = ({ bracketKey, direction, repeat = false, run }: HandleAisleBracketCycleKeydownOptions) => {
+    heldKeys.add(bracketKey)
+    const oppositeBracketKey: AisleCycleBracketKey = bracketKey === 'left' ? 'right' : 'left'
+
+    if (heldKeys.has(oppositeBracketKey) || pending?.bracketKey === oppositeBracketKey) {
+      cancelPending()
+      suppressUntilRelease = true
+      return
+    }
+
+    if (suppressUntilRelease) return
+
+    if (repeat) {
+      if (!pending) {
+        run(direction)
+      }
+      return
+    }
+
+    cancelPending()
+    const timer = setTimeoutFn(() => {
+      pending = null
+      if (!suppressUntilRelease) {
+        run(direction)
+      }
+    }, delayMs)
+    pending = { bracketKey, timer }
+  }
+
+  const handleKeyup = (bracketKey: AisleCycleBracketKey) => {
+    heldKeys.delete(bracketKey)
+    if (heldKeys.size === 0) {
+      suppressUntilRelease = false
+    }
+  }
+
+  return {
+    handleKeydown,
+    handleKeyup,
+    reset,
+  }
 }
 
 export function getRailVisibilityShortcutTarget(
@@ -122,8 +214,6 @@ export function useGlobalHotkeys({
   deleteSubtabShortcutEnabled,
   scratchpadActive = false,
   scratchpadDeleteAisleShortcutEnabled = false,
-  activeAisleIds = [],
-  activeAisleId = '',
   isMacPlatform,
   editingShortcut,
   setEditingShortcut,
@@ -148,6 +238,7 @@ export function useGlobalHotkeys({
   selectTab,
   selectSubTab,
 }: UseGlobalHotkeysParams) {
+  const aisleBracketCycleGuardRef = useRef(createAisleBracketCycleGuard())
   const actionsRef = useRef({
     setEditingShortcut,
     updateShortcutSetting,
@@ -307,7 +398,15 @@ export function useGlobalHotkeys({
       if (isCycleAisleNextShortcut || isCycleAislePrevShortcut) {
         event.preventDefault()
         const direction = isCycleAislePrevShortcut ? -1 : 1
-        if (getCycledAisleTarget(activeAisleIds, activeAisleId, direction)) {
+        const bracketKey = getAisleCycleBracketKey(event)
+        if (bracketKey) {
+          aisleBracketCycleGuardRef.current.handleKeydown({
+            bracketKey,
+            direction,
+            repeat: event.repeat,
+            run: (nextDirection) => actionsRef.current.cycleAisle(nextDirection),
+          })
+        } else {
           actions.cycleAisle(direction)
         }
         return
@@ -420,6 +519,23 @@ export function useGlobalHotkeys({
       actions.selectSubTab(nextChild)
     }
 
+    const handleKeyup = (event: KeyboardEvent) => {
+      const bracketKey = getAisleCycleBracketKey(event)
+      if (bracketKey) {
+        aisleBracketCycleGuardRef.current.handleKeyup(bracketKey)
+      }
+    }
+
+    const resetAisleBracketCycleGuard = () => {
+      aisleBracketCycleGuardRef.current.reset()
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        resetAisleBracketCycleGuard()
+      }
+    }
+
     const handleMouseNavigation = (event: globalThis.MouseEvent) => {
       if (event.button === 3) {
         event.preventDefault()
@@ -433,10 +549,16 @@ export function useGlobalHotkeys({
     }
 
     window.addEventListener('keydown', handleKeydown)
+    window.addEventListener('keyup', handleKeyup)
+    window.addEventListener('blur', resetAisleBracketCycleGuard)
     window.addEventListener('mouseup', handleMouseNavigation)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
     return () => {
       window.removeEventListener('keydown', handleKeydown)
+      window.removeEventListener('keyup', handleKeyup)
+      window.removeEventListener('blur', resetAisleBracketCycleGuard)
       window.removeEventListener('mouseup', handleMouseNavigation)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [
     viewMode,
@@ -450,9 +572,9 @@ export function useGlobalHotkeys({
     deleteSubtabShortcutEnabled,
     scratchpadActive,
     scratchpadDeleteAisleShortcutEnabled,
-    activeAisleIds,
-    activeAisleId,
     arrangeMode.active,
     arrangeMode.scope,
   ])
+
+  useEffect(() => () => aisleBracketCycleGuardRef.current.reset(), [])
 }

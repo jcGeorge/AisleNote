@@ -1,7 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { getActiveAisleRefSyncValue } from '../editor/aisle-activation'
 import type { AppState, Tab } from '../types/app'
 import { DEFAULT_NEWLINE_SHORTCUT_SETTINGS, DEFAULT_SHORTCUTS } from './shortcuts'
 import {
+  AISLE_BRACKET_CHORD_GUARD_MS,
+  createAisleBracketCycleGuard,
+  getAisleCycleBracketKey,
   getCycledAisleTarget,
   getCycledParentTabTarget,
   getDeleteFocusedSubtabShortcutIntent,
@@ -16,6 +20,10 @@ const makeTab = (id: string): Tab => ({
   noteBodyId: `${id}-body`,
   activeSubTabId: null,
   subTabs: [],
+})
+
+afterEach(() => {
+  vi.useRealTimers()
 })
 
 describe('global numbered hotkeys', () => {
@@ -58,8 +66,27 @@ describe('aisle cycle hotkeys', () => {
     expect(getCycledAisleTarget(aisles, 'aisle-3', 1)).toBe('aisle-1')
   })
 
+  it('cycles directly between aisle seven and aisle eight at the note limit', () => {
+    const aisles = Array.from({ length: 8 }, (_, index) => `aisle-${index + 1}`)
+
+    expect(getCycledAisleTarget(aisles, 'aisle-7', 1)).toBe('aisle-8')
+    expect(getCycledAisleTarget(aisles, 'aisle-1', -1)).toBe('aisle-8')
+  })
+
+  it('cycles from the freshly focused aisle when the rendered active aisle is stale', () => {
+    const aisles = Array.from({ length: 8 }, (_, index) => `aisle-${index + 1}`)
+    const activeAisleFromFocus = getActiveAisleRefSyncValue({
+      currentAisleId: 'aisle-7',
+      resolvedActiveAisleId: 'aisle-8',
+      activeAisleIds: aisles,
+    })
+
+    expect(getCycledAisleTarget(aisles, activeAisleFromFocus, 1)).toBe('aisle-8')
+  })
+
   it('falls back from a missing active aisle and ignores single-aisle notes', () => {
     expect(getCycledAisleTarget(['aisle-1', 'aisle-2'], 'missing', 1)).toBe('aisle-2')
+    expect(getCycledAisleTarget(Array.from({ length: 8 }, (_, index) => `aisle-${index + 1}`), 'missing', -1)).toBe('aisle-8')
     expect(getCycledAisleTarget(['aisle-1'], 'aisle-1', 1)).toBeNull()
     expect(getCycledAisleTarget([], 'missing', 1)).toBeNull()
   })
@@ -77,6 +104,84 @@ describe('aisle cycle hotkeys', () => {
       activeAisleId = getCycledAisleTarget(aisles, activeAisleId, -1) ?? activeAisleId
     }
     expect(activeAisleId).toBe('aisle-1')
+  })
+
+  it('identifies physical bracket keys for guarded aisle cycling', () => {
+    expect(getAisleCycleBracketKey({ code: 'BracketLeft' } as KeyboardEvent)).toBe('left')
+    expect(getAisleCycleBracketKey({ code: 'BracketRight' } as KeyboardEvent)).toBe('right')
+    expect(getAisleCycleBracketKey({ code: 'KeyA' } as KeyboardEvent)).toBeNull()
+  })
+
+  it('runs a single previous-aisle bracket shortcut after the chord guard', () => {
+    vi.useFakeTimers()
+    const cycles: (-1 | 1)[] = []
+    const guard = createAisleBracketCycleGuard()
+
+    guard.handleKeydown({ bracketKey: 'left', direction: -1, run: (direction) => cycles.push(direction) })
+
+    vi.advanceTimersByTime(AISLE_BRACKET_CHORD_GUARD_MS - 1)
+    expect(cycles).toEqual([])
+
+    vi.advanceTimersByTime(1)
+    expect(cycles).toEqual([-1])
+  })
+
+  it('runs a single next-aisle bracket shortcut after the chord guard', () => {
+    vi.useFakeTimers()
+    const cycles: (-1 | 1)[] = []
+    const guard = createAisleBracketCycleGuard()
+
+    guard.handleKeydown({ bracketKey: 'right', direction: 1, run: (direction) => cycles.push(direction) })
+
+    vi.advanceTimersByTime(AISLE_BRACKET_CHORD_GUARD_MS)
+    expect(cycles).toEqual([1])
+  })
+
+  it('suppresses opposite bracket keydowns during the chord guard', () => {
+    vi.useFakeTimers()
+    const cycles: (-1 | 1)[] = []
+    const guard = createAisleBracketCycleGuard()
+    const run = (direction: -1 | 1) => cycles.push(direction)
+
+    guard.handleKeydown({ bracketKey: 'left', direction: -1, run })
+    vi.advanceTimersByTime(AISLE_BRACKET_CHORD_GUARD_MS - 1)
+    guard.handleKeydown({ bracketKey: 'right', direction: 1, run })
+    vi.advanceTimersByTime(AISLE_BRACKET_CHORD_GUARD_MS)
+
+    expect(cycles).toEqual([])
+  })
+
+  it('keeps dual-bracket suppression until both bracket keys are released', () => {
+    vi.useFakeTimers()
+    const cycles: (-1 | 1)[] = []
+    const guard = createAisleBracketCycleGuard()
+    const run = (direction: -1 | 1) => cycles.push(direction)
+
+    guard.handleKeydown({ bracketKey: 'left', direction: -1, run })
+    guard.handleKeydown({ bracketKey: 'right', direction: 1, run })
+    guard.handleKeyup('left')
+    guard.handleKeydown({ bracketKey: 'right', direction: 1, repeat: true, run })
+    vi.advanceTimersByTime(AISLE_BRACKET_CHORD_GUARD_MS)
+    expect(cycles).toEqual([])
+
+    guard.handleKeyup('right')
+    guard.handleKeydown({ bracketKey: 'right', direction: 1, run })
+    vi.advanceTimersByTime(AISLE_BRACKET_CHORD_GUARD_MS)
+    expect(cycles).toEqual([1])
+  })
+
+  it('keeps held single-bracket repeat cycling responsive after the initial guard', () => {
+    vi.useFakeTimers()
+    const cycles: (-1 | 1)[] = []
+    const guard = createAisleBracketCycleGuard()
+    const run = (direction: -1 | 1) => cycles.push(direction)
+
+    guard.handleKeydown({ bracketKey: 'left', direction: -1, run })
+    vi.advanceTimersByTime(AISLE_BRACKET_CHORD_GUARD_MS)
+    guard.handleKeydown({ bracketKey: 'left', direction: -1, repeat: true, run })
+    guard.handleKeydown({ bracketKey: 'left', direction: -1, repeat: true, run })
+
+    expect(cycles).toEqual([-1, -1, -1])
   })
 })
 

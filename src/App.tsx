@@ -98,7 +98,11 @@ import { MAX_AISLE_WARNING_MESSAGE } from './editor/aisle-edit-draft'
 import type { AisleStructuralSnapshot } from './editor/aisle-structural-history'
 import { insertNewAisles } from './editor/aisle-insertion'
 import { getAisleIdFromAisleEditorKey } from './editor/aisle-editor'
-import { shouldFocusAislePointerActivation } from './editor/aisle-activation'
+import {
+  getActiveAisleRefSyncValue,
+  shouldDeferAisleCycleForMouseActivation,
+  shouldFocusAislePointerActivation,
+} from './editor/aisle-activation'
 import { useAisleController } from './editor/useAisleController'
 import { useLegacyEditor } from './editor/useLegacyEditor'
 import { isHeadingCollapsed, setHeadingCollapsed } from './editor/heading-collapse-state'
@@ -384,6 +388,8 @@ function App() {
   const pendingScrollToAisleIdRef = useRef<string | null>(null)
   const pendingFocusToAisleIdRef = useRef<string | null>(null)
   const pendingAisleCycleScrollFrameRef = useRef<number | null>(null)
+  const pendingMouseAisleActivationRef = useRef<{ aisleId: string; settled: boolean } | null>(null)
+  const pendingMouseAisleCycleFrameRef = useRef<number | null>(null)
   const pendingNavigationHeadingRef = useRef<NonNullable<NoteNavigationTarget['heading']> | null>(null)
   const pendingNavigationAisleIdRef = useRef<string | null>(null)
   const pendingNavigationTopAisleIdRef = useRef<string | null>(null)
@@ -419,6 +425,7 @@ function App() {
   const activeTabIdRef = useRef<string>('')
   const activeSubTabIdRef = useRef<string | null>(null)
   const activeAisleIdRef = useRef<string>('')
+  const activeEditorAisleIdRef = useRef<string>('')
   const activeNoteLocationKeyRef = useRef<string>('')
   const isMainViewRef = useRef(true)
   const flushStorageActionStateRef = useRef<
@@ -497,6 +504,10 @@ function App() {
     if (pendingAisleCycleScrollFrameRef.current !== null) {
       window.cancelAnimationFrame(pendingAisleCycleScrollFrameRef.current)
       pendingAisleCycleScrollFrameRef.current = null
+    }
+    if (pendingMouseAisleCycleFrameRef.current !== null) {
+      window.cancelAnimationFrame(pendingMouseAisleCycleFrameRef.current)
+      pendingMouseAisleCycleFrameRef.current = null
     }
     toastTimersRef.current.forEach((timer) => window.clearTimeout(timer))
     toastTimersRef.current.clear()
@@ -769,11 +780,50 @@ function App() {
     closeEditorEphemeraRef.current()
   }, [activeSpace.id, activeTab.id, activeSubTab?.id, activeNoteBodyId, scratchpadWorkspaceActive, viewMode])
 
+  const syncActiveAisleSelection = useCallback((aisleId: string) => {
+    if (!aisleId || !activeAisleIdsRef.current.includes(aisleId)) {
+      return false
+    }
+    activeAisleIdRef.current = aisleId
+    setActiveAisleId(aisleId)
+    if (scratchpadWorkspaceActive) {
+      setState((previous) =>
+        previous.scratchpad?.activeAisleId === aisleId ? previous : setScratchpadActiveAisleId(previous, aisleId),
+      )
+    }
+    return true
+  }, [scratchpadWorkspaceActive, setState])
+
+  const getAisleIdFromCurrentDomFocus = useCallback(() => {
+    if (typeof document === 'undefined') return ''
+    const candidates: Array<Node | null> = []
+    candidates.push(document.activeElement)
+    const selectionNode = window.getSelection?.()?.anchorNode ?? null
+    candidates.push(selectionNode)
+    for (const candidate of candidates) {
+      const element = candidate instanceof Element ? candidate : candidate?.parentElement ?? null
+      const editorHost = element?.closest?.('[data-aisle-editor-key]')
+      if (!(editorHost instanceof HTMLElement)) continue
+      const aisleId = getAisleIdFromAisleEditorKey(editorHost.dataset.aisleEditorKey ?? '')
+      if (aisleId && activeAisleIdsRef.current.includes(aisleId)) return aisleId
+    }
+    return ''
+  }, [])
+
+  const markMouseAisleActivationSettled = useCallback(() => {
+    const pending = pendingMouseAisleActivationRef.current
+    if (!pending) return
+    const focusedAisleId = getAisleIdFromCurrentDomFocus()
+    if (!focusedAisleId || focusedAisleId === pending.aisleId) {
+      pendingMouseAisleActivationRef.current = null
+    }
+  }, [getAisleIdFromCurrentDomFocus])
+
   useEffect(() => {
     if (resolvedActiveAisleId && resolvedActiveAisleId !== activeAisleId) {
-      setActiveAisleId(resolvedActiveAisleId)
+      syncActiveAisleSelection(resolvedActiveAisleId)
     }
-  }, [activeAisleId, resolvedActiveAisleId])
+  }, [activeAisleId, resolvedActiveAisleId, syncActiveAisleSelection])
 
   useEffect(() => {
     if (!scratchpadWorkspaceActive || !resolvedActiveAisleId) return
@@ -845,8 +895,12 @@ function App() {
   activeSpaceIdRef.current = scratchpadWorkspaceActive ? SCRATCHPAD_CONTENT_TARGET_ID : activeSpace.id
   activeTabIdRef.current = scratchpadWorkspaceActive ? SCRATCHPAD_CONTENT_TARGET_ID : activeTab.id
   activeSubTabIdRef.current = scratchpadWorkspaceActive ? null : activeSubTab?.id ?? null
-  activeAisleIdRef.current = resolvedActiveAisleId
   activeAisleIdsRef.current = activeAisleIds
+  activeAisleIdRef.current = getActiveAisleRefSyncValue({
+    currentAisleId: activeAisleIdRef.current,
+    resolvedActiveAisleId,
+    activeAisleIds,
+  })
   activeNoteBodyIdRef.current = activeNoteBodyId
   activeNoteLocationKeyRef.current = activeNoteLocationKey
   isMainViewRef.current = viewMode === 'main'
@@ -877,6 +931,7 @@ function App() {
   const cursorPersistence = useNoteCursorPersistence({
     setState,
     editorRef,
+    activeEditorAisleIdRef,
     viewMode,
     activeNoteBodyId,
     activeNoteLocationKey,
@@ -1849,6 +1904,7 @@ function App() {
     activeTabIdRef,
     activeSubTabIdRef,
     activeAisleIdRef,
+    activeEditorAisleIdRef,
     isMainViewRef,
     closeImageToolsRef,
     closeImageToolsIfSelectedImageMissingRef,
@@ -1960,7 +2016,7 @@ function App() {
     pendingScrollToAisleIdRef.current = pending.aisleId
     pendingFocusToAisleIdRef.current = pending.aisleId
     if (activeAisleId !== pending.aisleId) {
-      setActiveAisleId(pending.aisleId)
+      syncActiveAisleSelection(pending.aisleId)
     }
     scrollToAisleHeading(pending.aisleId, pending.headingKey)
     pendingNavigationHeadingRef.current = null
@@ -1973,7 +2029,7 @@ function App() {
     pendingFocusToAisleIdRef,
     pendingScrollToAisleIdRef,
     scrollToAisleHeading,
-    setActiveAisleId,
+    syncActiveAisleSelection,
     viewMode,
   ])
 
@@ -1988,7 +2044,7 @@ function App() {
     pendingScrollToAisleIdRef.current = pendingAisleId
     pendingFocusToAisleIdRef.current = pendingAisleId
     if (activeAisleId !== pendingAisleId) {
-      setActiveAisleId(pendingAisleId)
+      syncActiveAisleSelection(pendingAisleId)
     }
     pendingNavigationAisleIdRef.current = null
   }, [
@@ -1998,7 +2054,7 @@ function App() {
     pendingCursorRestoreRef,
     pendingFocusToAisleIdRef,
     pendingScrollToAisleIdRef,
-    setActiveAisleId,
+    syncActiveAisleSelection,
     viewMode,
   ])
 
@@ -3077,6 +3133,7 @@ function App() {
     onRunFormatCommand: runActiveEditorFormatCommand,
     getEditorHistoryDirection,
     onEditorSelectionChange: saveActiveCursorLocation,
+    onEditorSelectionSettled: markMouseAisleActivationSettled,
     onEditorMentionQueryChange: noteMention.refreshQuery,
     onRunStructuralHistory: runAisleStructuralHistory,
     onRunEditorHistory: runEditorHistoryOnly,
@@ -3341,12 +3398,37 @@ function App() {
     deleteTarget({ type: 'subtab', tabId: activeTab.id, subTabId: activeSubTabId }, false)
   }
 
-  const cycleActiveAisle = useCallback((direction: -1 | 1) => {
+  const cycleActiveAisle = useCallback((direction: -1 | 1, options: { allowMouseActivationDefer?: boolean } = {}) => {
     const currentAisleIds = activeAisleIdsRef.current
-    if (viewMode !== 'main' || arrangeMode.active || currentAisleIds.length <= 1) return
-    const currentAisleId = activeAisleIdRef.current
+    if (viewMode !== 'main' || arrangeMode.active || currentAisleIds.length <= 1) {
+      return
+    }
+    const pendingMouseActivation = pendingMouseAisleActivationRef.current
+    const focusedAisleId = pendingMouseActivation && !pendingMouseActivation.settled
+      ? pendingMouseActivation.aisleId
+      : getAisleIdFromCurrentDomFocus()
+    if (focusedAisleId && focusedAisleId !== activeAisleIdRef.current) {
+      syncActiveAisleSelection(focusedAisleId)
+    }
+    const currentAisleId = focusedAisleId || activeAisleIdRef.current
+    if (
+      options.allowMouseActivationDefer !== false &&
+      shouldDeferAisleCycleForMouseActivation(pendingMouseActivation, currentAisleId)
+    ) {
+      if (pendingMouseAisleCycleFrameRef.current !== null) {
+        window.cancelAnimationFrame(pendingMouseAisleCycleFrameRef.current)
+      }
+      pendingMouseAisleCycleFrameRef.current = window.requestAnimationFrame(() => {
+        pendingMouseAisleCycleFrameRef.current = null
+        pendingMouseAisleActivationRef.current = null
+        cycleActiveAisle(direction, { allowMouseActivationDefer: false })
+      })
+      return
+    }
     const targetAisleId = getCycledAisleTarget(currentAisleIds, currentAisleId, direction)
-    if (!targetAisleId || targetAisleId === currentAisleId || !currentAisleIds.includes(targetAisleId)) return
+    if (!targetAisleId || targetAisleId === currentAisleId || !currentAisleIds.includes(targetAisleId)) {
+      return
+    }
 
     if (pendingAisleCycleScrollFrameRef.current !== null) {
       window.cancelAnimationFrame(pendingAisleCycleScrollFrameRef.current)
@@ -3369,11 +3451,7 @@ function App() {
     }
     pendingFocusToAisleIdRef.current = targetAisleId
     pendingScrollToAisleIdRef.current = targetAisleId
-    if (scratchpadWorkspaceActive) {
-      setState((previous) => setScratchpadActiveAisleId(previous, targetAisleId))
-    }
-    setActiveAisleId(targetAisleId)
-    activeAisleIdRef.current = targetAisleId
+    syncActiveAisleSelection(targetAisleId)
     const scheduledNoteBodyId = activeNoteBodyIdRef.current
     pendingAisleCycleScrollFrameRef.current = window.requestAnimationFrame(() => {
       pendingAisleCycleScrollFrameRef.current = null
@@ -3393,12 +3471,13 @@ function App() {
     activeNoteLocationKey,
     arrangeMode.active,
     flushPendingContent,
+    getAisleIdFromCurrentDomFocus,
     pendingCursorRestoreRef,
     saveActiveCursorLocation,
     scratchpadWorkspaceActive,
     scrollAisleIntoHorizontalView,
-    setState,
     stateRef,
+    syncActiveAisleSelection,
     viewMode,
   ])
 
@@ -3583,8 +3662,6 @@ function App() {
     deleteSubtabShortcutEnabled: state.ui.deleteSubtabShortcutEnabled ?? false,
     scratchpadActive: scratchpadWorkspaceActive,
     scratchpadDeleteAisleShortcutEnabled: state.ui.scratchpadDeleteAisleShortcutEnabled ?? false,
-    activeAisleIds,
-    activeAisleId: resolvedActiveAisleId,
     isMacPlatform,
     editingShortcut: settingsController.editingShortcut,
     setEditingShortcut: settingsController.setEditingShortcut,
@@ -4313,12 +4390,18 @@ function App() {
               }}
               onActivateAisle={(editorKey) => {
                 const targetAisleId = getAisleIdFromAisleEditorKey(editorKey)
+                if (!targetAisleId || !activeAisleIdsRef.current.includes(targetAisleId) || isPendingCreatedRenameActive()) {
+                  return
+                }
+                pendingMouseAisleActivationRef.current = { aisleId: targetAisleId, settled: false }
+                const shouldFocus = shouldFocusAislePointerActivation(activeAisleIdRef.current, targetAisleId)
                 pendingCursorRestoreRef.current = null
                 pendingScrollToAisleIdRef.current = targetAisleId
                 activateAisleEditor(editorKey, {
                   flushPrevious: true,
-                  focus: shouldFocusAislePointerActivation(activeAisleIdRef.current, targetAisleId),
+                  focus: shouldFocus,
                 })
+                syncActiveAisleSelection(targetAisleId)
                 window.requestAnimationFrame(() => {
                   scrollAisleIntoHorizontalView(targetAisleId)
                 })

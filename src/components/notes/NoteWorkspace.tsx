@@ -305,12 +305,19 @@ export function NoteWorkspace({
               <section className={`editor-shell note-aisle-editor-shell ${editorReadOnly ? 'editor-readonly' : ''}`}>
                 {editorMounted ? (
                   <div
+                    key={`${editorKey}:editor`}
                     ref={(node) => onRegisterAisleEditorRoot(editorKey, node)}
                     className="toast-editor-host"
                     data-aisle-editor-key={editorKey}
+                    data-aisle-host-mode="editor"
                   />
                 ) : (
-                  <div className="toast-editor-host aisle-editor-preview-fallback" aria-hidden="true">
+                  <div
+                    key={`${editorKey}:preview`}
+                    className="toast-editor-host aisle-editor-preview-fallback"
+                    data-aisle-host-mode="preview"
+                    aria-hidden="true"
+                  >
                     {previewMarkdown.trim().length > 0 ? (
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm]}

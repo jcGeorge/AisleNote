@@ -38,6 +38,8 @@ import {
 import {
   getElementFromEventTarget,
   getExternalLinkRangeAtDocPosition,
+  getPlainEditorTextBlockClickGeometry,
+  getPlainTextBlockEndPositionForBlankClick,
   getWysiwygView,
   type ExternalLinkRange,
   type WysiwygHistoryDirection,
@@ -98,6 +100,7 @@ type UseEditorDomEventsOptions = {
   onRunFormatCommand: (format: MultiLineInlineFormat) => boolean
   getEditorHistoryDirection: (event: KeyboardEvent) => 'undo' | 'redo' | null
   onEditorSelectionChange: () => void
+  onEditorSelectionSettled?: () => void
   onEditorMentionQueryChange: () => void
   onRunStructuralHistory: (direction: 'undo' | 'redo') => boolean
   onRunEditorHistory: (direction: WysiwygHistoryDirection) => WysiwygHistoryResult
@@ -356,6 +359,7 @@ export function useEditorDomEvents({
   onRunFormatCommand,
   getEditorHistoryDirection,
   onEditorSelectionChange,
+  onEditorSelectionSettled = () => undefined,
   onEditorMentionQueryChange,
   onRunStructuralHistory,
   onRunEditorHistory,
@@ -489,6 +493,34 @@ export function useEditorDomEvents({
       }, 0)
     }
 
+    const placeCaretForPlainBlankAreaClick = (event: Event, target: Element) => {
+      if (!(event instanceof MouseEvent) || event.button !== 0) return false
+      if (isEditorPointerChromeTarget(target) || shouldSkipTableExitRepairTarget(target)) return false
+      if (isInsideReadonlyNotePreview(target) || isInsideTerminalBlockLandingZone(target)) return false
+      const view = getWysiwygView(editorRef.current)
+      if (!isActiveWysiwygEditorContentTarget(target, view)) return false
+      const selection = view?.state?.selection
+      const domSelection = window.getSelection?.()
+      const selectionEmpty = Boolean(selection?.empty !== false && !domSelection?.toString())
+      const position = getPlainTextBlockEndPositionForBlankClick({
+        blocks: getPlainEditorTextBlockClickGeometry(view),
+        clientX: event.clientX,
+        clientY: event.clientY,
+        selectionEmpty,
+      })
+      if (position === null) return false
+      try {
+        view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, position, position)).scrollIntoView())
+      } catch {
+        return false
+      }
+      window.setTimeout(syncToolbarFormatState, 0)
+      onEditorSelectionChange()
+      onEditorSelectionSettled()
+      onEditorMentionQueryChange()
+      return true
+    }
+
     const handlePointerDown = (event: Event) => {
       const target = getElementFromEventTarget(event.target)
       if (!target) {
@@ -608,6 +640,10 @@ export function useEditorDomEvents({
         window.setTimeout(syncToolbarFormatState, 0)
         onEditorSelectionChange()
         onEditorMentionQueryChange()
+        return
+      }
+      if (!pendingTableExitRepair && placeCaretForPlainBlankAreaClick(event, target)) {
+        clearPendingTableExitRepair()
         return
       }
       scheduleTableExitRepair()
@@ -1050,6 +1086,7 @@ export function useEditorDomEvents({
       }
       syncToolbarFormatState()
       onEditorSelectionChange()
+      onEditorSelectionSettled()
       onEditorMentionQueryChange()
     }
 
@@ -1070,6 +1107,7 @@ export function useEditorDomEvents({
         toolbarSelectionSyncTimer = null
         syncToolbarFormatState()
         onEditorSelectionChange()
+        onEditorSelectionSettled()
         onEditorMentionQueryChange()
       }, 50)
     }

@@ -1,4 +1,4 @@
-import { Editor } from '@toast-ui/editor'
+import type { Editor } from '@toast-ui/editor'
 import { useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import { TextSelection } from 'prosemirror-state'
 import { buildAisleEditorKey } from './aisle-editor'
@@ -29,6 +29,7 @@ export type PendingCursorRestore = {
 type UseNoteCursorPersistenceParams = {
   setState: Dispatch<SetStateAction<AppState>>
   editorRef: MutableRefObject<Editor | null>
+  activeEditorAisleIdRef: MutableRefObject<string>
   viewMode: ViewMode
   activeNoteBodyId: string
   activeNoteLocationKey: string
@@ -57,9 +58,27 @@ type UsePendingNoteCursorRestoreParams = {
   activateAisleEditor: (editorKey: string, options?: { focus?: boolean; flushPrevious?: boolean; allowDuringPendingRename?: boolean }) => boolean
 }
 
+export function getPersistableCursorSelectionForActiveEditor({
+  activeAisleId,
+  activeEditorAisleId,
+  rawSelection,
+  docSize,
+  updatedAt,
+}: {
+  activeAisleId: string
+  activeEditorAisleId: string
+  rawSelection: ReturnType<typeof getEditorCursorSelection>
+  docSize: number
+  updatedAt: number
+}): NoteCursorSelection | null {
+  if (!rawSelection || activeEditorAisleId !== activeAisleId) return null
+  return clampNoteCursorSelection({ ...rawSelection, updatedAt }, docSize)
+}
+
 export const useNoteCursorPersistence = ({
   setState,
   editorRef,
+  activeEditorAisleIdRef,
   viewMode,
   activeNoteBodyId,
   activeNoteLocationKey,
@@ -78,16 +97,23 @@ export const useNoteCursorPersistence = ({
 
   const applyActiveCursorToState = (previous: AppState): AppState => {
     if (!isMainViewRef.current) return previous
-    const currentEditor = editorRef.current
-    const view = getWysiwygView(currentEditor)
     const aisleId = activeAisleIdRef.current
     const noteLocationKey = activeNoteLocationKeyRef.current
-    if (!currentEditor || !view || !aisleId || !noteLocationKey) return previous
+    if (!aisleId || !noteLocationKey) return previous
+    const currentEditor = editorRef.current
+    const view = getWysiwygView(currentEditor)
+    if (!currentEditor || !view || activeEditorAisleIdRef.current !== aisleId) {
+      return updateCursorLocationInState(previous, noteLocationKey, aisleId, null)
+    }
 
     const rawSelection = getEditorCursorSelection(currentEditor)
-    const selection = rawSelection
-      ? clampNoteCursorSelection({ ...rawSelection, updatedAt: Date.now() }, view.state.doc.content.size)
-      : null
+    const selection = getPersistableCursorSelectionForActiveEditor({
+      activeAisleId: aisleId,
+      activeEditorAisleId: activeEditorAisleIdRef.current,
+      rawSelection,
+      docSize: view.state.doc.content.size,
+      updatedAt: Date.now(),
+    })
     return updateCursorLocationInState(previous, noteLocationKey, aisleId, selection)
   }
 

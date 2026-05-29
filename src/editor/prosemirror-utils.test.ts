@@ -18,8 +18,10 @@ import {
   getInternalNoteLinkHitAtDocPosition,
   getLinkMarkAttrs,
   getNoteMentionQueryAtSelection,
+  getPlainTextBlockEndPositionForBlankClick,
   isProseMirrorDocMeaningful,
   markWysiwygLoadedUndoBoundary,
+  restoreEditorCursorSelection,
   runWysiwygHistory,
   shouldBlockWysiwygUndo,
 } from './prosemirror-utils'
@@ -267,6 +269,104 @@ describe('note mention query detection', () => {
   it('does not detect a mention query when the first character after @ is a space', () => {
     expect(getNoteMentionQueryAtSelection(viewForText('see @ '))).toBeNull()
     expect(getNoteMentionQueryAtSelection(viewForText('see @ parent'))).toBeNull()
+  })
+})
+
+describe('plain editor blank-area caret placement', () => {
+  const asdfBlock = {
+    start: 1,
+    text: 'asdf',
+    top: 10,
+    bottom: 30,
+    left: 10,
+    textRight: 42,
+  }
+
+  it('places a plain click below and to the right at the meaningful text end', () => {
+    expect(
+      getPlainTextBlockEndPositionForBlankClick({
+        blocks: [asdfBlock],
+        clientX: 120,
+        clientY: 80,
+        selectionEmpty: true,
+      }),
+    ).toBe(5)
+  })
+
+  it('places a same-line right-side click at the meaningful text end', () => {
+    expect(
+      getPlainTextBlockEndPositionForBlankClick({
+        blocks: [asdfBlock],
+        clientX: 120,
+        clientY: 20,
+        selectionEmpty: true,
+      }),
+    ).toBe(5)
+  })
+
+  it('does not override clicks inside text or real selections', () => {
+    expect(
+      getPlainTextBlockEndPositionForBlankClick({
+        blocks: [asdfBlock],
+        clientX: 20,
+        clientY: 20,
+        selectionEmpty: true,
+      }),
+    ).toBeNull()
+    expect(
+      getPlainTextBlockEndPositionForBlankClick({
+        blocks: [asdfBlock],
+        clientX: 120,
+        clientY: 20,
+        selectionEmpty: false,
+      }),
+    ).toBeNull()
+  })
+})
+
+describe('cursor selection restore safety', () => {
+  it('returns false when dispatch fails', () => {
+    const doc = schema.nodes.doc.create(null, [schema.nodes.paragraph.create(null, [schema.text('asdf')])])
+    const view = {
+      state: {
+        doc,
+        tr: {
+          setSelection: vi.fn(() => {
+            throw new Error('dispatch prep failed')
+          }),
+        },
+      },
+      dispatch: vi.fn(),
+    }
+
+    expect(restoreEditorCursorSelection({ wwEditor: { view }, focus: vi.fn() } as unknown as Editor, {
+      anchor: 5,
+      head: 5,
+    })).toBe(false)
+  })
+
+  it('returns false when focus fails after selection restore', () => {
+    const doc = schema.nodes.doc.create(null, [schema.nodes.paragraph.create(null, [schema.text('asdf')])])
+    const transaction = { scrollIntoView: vi.fn(() => 'transaction') }
+    const view = {
+      state: {
+        doc,
+        tr: {
+          setSelection: vi.fn(() => transaction),
+        },
+      },
+      dispatch: vi.fn(),
+    }
+
+    expect(restoreEditorCursorSelection({
+      wwEditor: { view },
+      focus: vi.fn(() => {
+        throw new Error('focus failed')
+      }),
+    } as unknown as Editor, {
+      anchor: 5,
+      head: 5,
+    })).toBe(false)
   })
 })
 

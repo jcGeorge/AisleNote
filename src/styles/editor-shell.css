@@ -194,6 +194,9 @@
 }
 
 .note-context-widget .context-bar-title {
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  overflow: hidden;
   font-size: 1.35em;
   font-weight: 800;
   line-height: 1.2;
@@ -212,6 +215,11 @@
 
 .context-preview-title-btn.btn {
   font-weight: 400;
+}
+
+.note-context-widget .context-preview-title-btn {
+  --rail-control-flex: 0 0 auto;
+  flex: 0 0 auto;
 }
 
 .toastui-editor .ProseMirror .note-context-widget .context-preview-title-btn,
@@ -303,7 +311,7 @@
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.5rem;
 }
 
 .context-bar-icon-btn {
@@ -369,7 +377,6 @@
 }
 
 .context-bar-delete-btn {
-  margin-left: 0.85rem;
   border-color: var(--stage-action-border);
   border-radius: 0.25rem;
   background: var(--stage-action-bg);
