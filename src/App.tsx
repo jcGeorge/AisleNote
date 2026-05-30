@@ -259,6 +259,7 @@ import {
   type DeviceSettings,
 } from './storage/device-settings-store'
 import { useStorageProfileController } from './storage/useStorageProfileController'
+import { useUserSettingsLocationController } from './storage/useUserSettingsLocationController'
 import { getTipDefinition } from './tips/tips'
 import { TRASH_HOME_ID } from './trash/trash-model'
 import { useTrashSelection } from './trash/useTrashSelection'
@@ -839,6 +840,11 @@ function App() {
     beforeStorageAction: () => flushStorageActionStateRef.current(),
   })
   const storageProfileStatus = storageProfileController.storageProfileStatus
+  const userSettingsLocationController = useUserSettingsLocationController({
+    pushToast,
+    beforeUserSettingsLocationAction: () => flushStorageActionStateRef.current(),
+  })
+  const userSettingsLocationStatus = userSettingsLocationController.userSettingsLocationStatus
 
   const trackCompletedTaskQuickDelete = (beforeMarkdown: string) => {
     completedTaskDeleteUndoCandidateRef.current = {
@@ -4540,6 +4546,7 @@ function App() {
           toolbarEditorLayoutId={settingsController.toolbarEditorLayoutId}
           toolbarEditorShowNames={settingsController.toolbarEditorShowNames}
           storageProfileStatus={storageProfileStatus}
+          userSettingsLocationStatus={userSettingsLocationStatus}
           onSectionChange={settingsController.changeSection}
           onDataSectionChange={settingsController.changeDataSection}
           onVisualsSectionChange={settingsController.changeVisualsSection}
@@ -4554,6 +4561,10 @@ function App() {
           onImportNotebook={importNotebook}
           onImportUserSettings={importUserSettings}
           onImportUserSettingsFromNotebookFolder={importUserSettingsFromNotebookFolder}
+          onChooseUserSettingsFolder={userSettingsLocationController.chooseUserSettingsFolder}
+          onRevealUserSettingsFolder={userSettingsLocationController.revealUserSettingsFolder}
+          onRetryUserSettingsSync={userSettingsLocationController.retryUserSettingsSync}
+          onResetUserSettingsFolder={userSettingsLocationController.resetUserSettingsFolder}
           notebookImportSummary={pendingNotebookImport?.summary ?? null}
           notebookImportScratchpadEnabled={notebookImportScratchpadEnabled}
           notebookImportHasScratchpad={Boolean(pendingNotebookImport?.scratchpad)}

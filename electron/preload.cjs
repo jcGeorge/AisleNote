@@ -16,10 +16,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('app-state-updated', listener)
   },
   getStorageProfileStatus: () => ipcRenderer.invoke('get-storage-profile-status'),
+  getUserSettingsLocationStatus: () => ipcRenderer.invoke('get-user-settings-location-status'),
   createNotebook: (payload) => ipcRenderer.invoke('create-notebook', payload),
   switchNotebook: () => ipcRenderer.invoke('switch-notebook'),
   chooseStorageFolder: () => ipcRenderer.invoke('choose-storage-folder'),
   moveStorageProfile: () => ipcRenderer.invoke('move-storage-profile'),
+  chooseUserSettingsFolder: () => ipcRenderer.invoke('choose-user-settings-folder'),
+  resetUserSettingsFolder: () => ipcRenderer.invoke('reset-user-settings-folder'),
+  retryUserSettingsSync: () => ipcRenderer.invoke('retry-user-settings-sync'),
+  revealUserSettingsFolder: () => ipcRenderer.invoke('reveal-user-settings-folder'),
   revealStorageProfile: () => ipcRenderer.invoke('reveal-storage-profile'),
   retryStorageProfile: () => ipcRenderer.invoke('retry-storage-profile'),
   restoreStorageRecoverySnapshot: (payload) => ipcRenderer.invoke('restore-storage-recovery-snapshot', payload),
@@ -27,6 +32,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const listener = (_event, payload) => handler(payload)
     ipcRenderer.on('storage-profile-status-updated', listener)
     return () => ipcRenderer.removeListener('storage-profile-status-updated', listener)
+  },
+  onUserSettingsLocationStatusUpdated: (handler) => {
+    const listener = (_event, payload) => handler(payload)
+    ipcRenderer.on('user-settings-location-status-updated', listener)
+    return () => ipcRenderer.removeListener('user-settings-location-status-updated', listener)
   },
   exportAppState: (payload) => ipcRenderer.invoke('export-app-state', payload),
   importAppStateArchive: () => ipcRenderer.invoke('import-app-state-archive'),

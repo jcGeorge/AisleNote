@@ -2,7 +2,7 @@ import {
   MAX_AUTO_REMOVE_DAYS,
   MIN_AUTO_REMOVE_DAYS,
 } from '../../settings/defaults'
-import type { DataSettingsSection, StorageProfileStatus } from '../../types/app'
+import type { DataSettingsSection, StorageProfileStatus, UserSettingsLocationStatus } from '../../types/app'
 import type { NotebookArchiveSummary } from '../../notebook/notebook-archive'
 import { DataSectionSwitch } from './DataSectionSwitch'
 
@@ -12,6 +12,7 @@ type DataSettingsPanelProps = {
   exportStatus: string
   importStatus: string
   storageProfileStatus: StorageProfileStatus | null
+  userSettingsLocationStatus: UserSettingsLocationStatus | null
   notebookImportSummary: NotebookArchiveSummary | null
   notebookImportScratchpadEnabled: boolean
   notebookImportHasScratchpad: boolean
@@ -24,6 +25,10 @@ type DataSettingsPanelProps = {
   onImportNotebook: () => void
   onImportUserSettings: () => void
   onImportUserSettingsFromNotebookFolder: () => void
+  onChooseUserSettingsFolder: () => void
+  onRevealUserSettingsFolder: () => void
+  onRetryUserSettingsSync: () => void
+  onResetUserSettingsFolder: () => void
   onNotebookImportScratchpadEnabledChange: (enabled: boolean) => void
   onConfirmNotebookImport: () => void
   onCancelNotebookImport: () => void
@@ -114,16 +119,84 @@ function NotebookDataSection({
 function UserSettingsDataSection({
   exportStatus,
   importStatus,
+  userSettingsLocationStatus,
   onExportUserSettings,
   onImportUserSettings,
   onImportUserSettingsFromNotebookFolder,
+  onChooseUserSettingsFolder,
+  onRevealUserSettingsFolder,
+  onRetryUserSettingsSync,
+  onResetUserSettingsFolder,
 }: Pick<
   DataSettingsPanelProps,
-  'exportStatus' | 'importStatus' | 'onExportUserSettings' | 'onImportUserSettings' | 'onImportUserSettingsFromNotebookFolder'
+  | 'exportStatus'
+  | 'importStatus'
+  | 'userSettingsLocationStatus'
+  | 'onExportUserSettings'
+  | 'onImportUserSettings'
+  | 'onImportUserSettingsFromNotebookFolder'
+  | 'onChooseUserSettingsFolder'
+  | 'onRevealUserSettingsFolder'
+  | 'onRetryUserSettingsSync'
+  | 'onResetUserSettingsFolder'
 >) {
+  const settingsLocationClassName = [
+    'storage-profile-card',
+    userSettingsLocationStatus?.status === 'error' ? 'is-error' : '',
+    userSettingsLocationStatus?.status === 'warning' ? 'is-warning' : '',
+  ].filter(Boolean).join(' ')
+
   return (
     <>
       <p>user settings:</p>
+      <div className={settingsLocationClassName}>
+        <div className="storage-profile-row">
+          <span className="settings-hotkey-label">current settings folder</span>
+          <code className="storage-profile-path">
+            {userSettingsLocationStatus?.settingsRootPath ?? 'desktop settings folder unavailable'}
+          </code>
+        </div>
+        <div className="storage-profile-row">
+          <span className="settings-hotkey-label">status</span>
+          <span>{userSettingsLocationStatus?.status ?? 'browser local'}</span>
+        </div>
+        <div className="storage-profile-row">
+          <span className="settings-hotkey-label">sync</span>
+          <span>{userSettingsLocationStatus?.syncStatus ?? 'local'}</span>
+        </div>
+        <div className="storage-profile-row">
+          <span className="settings-hotkey-label">settings file</span>
+          <code className="storage-profile-path">
+            {userSettingsLocationStatus?.settingsPath ?? 'settings/app-settings.json'}
+          </code>
+        </div>
+        <div className="storage-profile-row">
+          <span className="settings-hotkey-label">local cache</span>
+          <code className="storage-profile-path">
+            {userSettingsLocationStatus?.localSettingsPath ?? 'desktop local cache unavailable'}
+          </code>
+        </div>
+        {userSettingsLocationStatus?.error && (
+          <p className="settings-help storage-profile-error">{userSettingsLocationStatus.error}</p>
+        )}
+        <div className="settings-page-actions">
+          <button type="button" className="btn btn-sm settings-action-btn" onClick={onChooseUserSettingsFolder}>
+            choose settings folder
+          </button>
+          <button type="button" className="btn btn-sm settings-action-btn" onClick={onRevealUserSettingsFolder}>
+            reveal settings folder
+          </button>
+          <button type="button" className="btn btn-sm settings-action-btn" onClick={onRetryUserSettingsSync}>
+            retry settings sync
+          </button>
+          <button type="button" className="btn btn-sm settings-action-btn" onClick={onResetUserSettingsFolder}>
+            reset to local settings
+          </button>
+        </div>
+        <p className="settings-help">
+          choose a cloud-synced settings folder to read and write settings/app-settings.json there. notebook folders cannot be used for live user settings.
+        </p>
+      </div>
       <div className="settings-page-actions">
         <button type="button" className="btn btn-sm settings-action-btn" onClick={onExportUserSettings}>
           export user settings

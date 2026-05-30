@@ -19,6 +19,7 @@ import type {
   SettingsSection,
   Space,
   StorageProfileStatus,
+  UserSettingsLocationStatus,
   VisualsSettingsSection,
 } from '../../types/app'
 import { SettingsPage } from './SettingsPage'
@@ -103,6 +104,7 @@ function renderSettingsPage(
     visualsSection?: VisualsSettingsSection
     state?: AppState
     storageProfileStatus?: StorageProfileStatus | null
+    userSettingsLocationStatus?: UserSettingsLocationStatus | null
     toolbarEditorLayoutId?: string
     toolbarEditorShowNames?: boolean
     isMacPlatform?: boolean
@@ -163,6 +165,7 @@ function renderSettingsPage(
       toolbarEditorLayoutId={options.toolbarEditorLayoutId ?? DEFAULT_TOOLBAR_LAYOUT_ID}
       toolbarEditorShowNames={options.toolbarEditorShowNames ?? state.ui.toolbarEditorShowNames ?? false}
       storageProfileStatus={options.storageProfileStatus ?? null}
+      userSettingsLocationStatus={options.userSettingsLocationStatus ?? null}
       onSectionChange={() => undefined}
       onDataSectionChange={() => undefined}
       onVisualsSectionChange={() => undefined}
@@ -177,6 +180,10 @@ function renderSettingsPage(
       onImportNotebook={() => undefined}
       onImportUserSettings={() => undefined}
       onImportUserSettingsFromNotebookFolder={() => undefined}
+      onChooseUserSettingsFolder={() => undefined}
+      onRevealUserSettingsFolder={() => undefined}
+      onRetryUserSettingsSync={() => undefined}
+      onResetUserSettingsFolder={() => undefined}
       notebookImportSummary={null}
       notebookImportScratchpadEnabled={false}
       notebookImportHasScratchpad={false}
@@ -376,6 +383,11 @@ describe('frontmatter settings page', () => {
     expect(settingsHtml).toContain('export user settings')
     expect(settingsHtml).toContain('import user settings')
     expect(settingsHtml).toContain('import from notebook folder')
+    expect(settingsHtml).toContain('choose settings folder')
+    expect(settingsHtml).toContain('reveal settings folder')
+    expect(settingsHtml).toContain('retry settings sync')
+    expect(settingsHtml).toContain('reset to local settings')
+    expect(settingsHtml).toContain('desktop settings folder unavailable')
     expect(settingsHtml).toContain('app-settings.json')
     expect(settingsHtml).not.toContain('current user settings will be overwritten')
     expect(settingsHtml).not.toContain('choose notebook folder')
@@ -413,6 +425,30 @@ describe('frontmatter settings page', () => {
     expect(folderHtml).toContain(
       "The folder selected doesn&#x27;t contain an app-settings.json file that matches this project&#x27;s structure.",
     )
+  })
+
+  it('renders user settings folder status and warnings', () => {
+    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, {
+      section: 'data',
+      dataSection: 'settings',
+      userSettingsLocationStatus: {
+        status: 'warning',
+        event: 'settings-sync-missing',
+        settingsRootPath: '/Users/me/Cloud/Tabs Settings',
+        settingsPath: '/Users/me/Cloud/Tabs Settings/settings/app-settings.json',
+        localSettingsPath: '/Users/me/Library/Application Support/Tabs/settings/app-settings.json',
+        isDefault: false,
+        canWrite: false,
+        syncStatus: 'fallback',
+        source: 'local-cache',
+        error: 'Settings folder does not contain settings/app-settings.json. Using local app settings.',
+      },
+    })
+
+    expect(html).toContain('storage-profile-card is-warning')
+    expect(html).toContain('/Users/me/Cloud/Tabs Settings')
+    expect(html).toContain('sync</span><span>fallback</span>')
+    expect(html).toContain('Settings folder does not contain settings/app-settings.json. Using local app settings.')
   })
 
   it('renders custom theme palette controls when a custom theme is selected', () => {

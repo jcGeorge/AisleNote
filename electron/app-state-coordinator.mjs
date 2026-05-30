@@ -37,6 +37,7 @@ export function createAppStateCoordinator({
   profileRootPath = userDataPath,
   load = loadAppStateResult,
   save = saveAppState,
+  canonicalizeAfterSave = save === saveAppState,
   now = () => Date.now(),
   recentAppSaveEchoTtlMs = RECENT_APP_SAVE_ECHO_TTL_MS,
 }) {
@@ -122,7 +123,7 @@ export function createAppStateCoordinator({
         ...(getSnapshotMode(payload) ? { snapshotMode: getSnapshotMode(payload) } : {}),
       })
       rememberRecentAppSave(payload.serializedState)
-      if (save === saveAppState) {
+      if (canonicalizeAfterSave) {
         const persistedLoadResult = load(activeProfileRootPath)
         lastSavedCanonicalState =
           persistedLoadResult.ok && typeof persistedLoadResult.serializedState === 'string'

@@ -16,6 +16,19 @@ import {
   writeStorageProfileConfig,
 } from './storage-profile.mjs'
 import { createStorageProfileWatcher } from './storage-watcher.mjs'
+import {
+  createUserSettingsLocation,
+  createUserSettingsLocationStatus,
+  initializeUserSettingsLocationFromState,
+  readUserSettingsFromLocation,
+  recreateMissingUserSettingsLocationFile,
+  refreshLocalUserSettingsFromLocation,
+  resetUserSettingsLocationConfig,
+  resolveUserSettingsLocation,
+  validateUserSettingsFolderCandidate,
+  writeUserSettingsLocationConfig,
+  writeUserSettingsLocationFromState,
+} from './user-settings-location.mjs'
 import { normalizeImageAssetPath, parseImageAssetUrl } from '../src/markdown/image-asset-refs.js'
 
 function createStorageStatus({ profile, coordinator, event = 'ready', error = null }) {
@@ -89,11 +102,25 @@ function getAssetExtensionFromImportPayload(payload) {
 export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null, shell = null }) {
   const userDataPath = app.getPath('userData')
   let profile = { ...resolveStorageProfile(userDataPath), userDataPath }
+  let userSettingsLocation = resolveUserSettingsLocation(userDataPath)
+  let userSettingsLocationRefresh = refreshLocalUserSettingsFromLocation(userDataPath, userSettingsLocation)
+  let userSettingsLocationStatus = userSettingsLocationRefresh.status
   const loadNotebookResult = (profileRootPath) => loadAppStateResult(profileRootPath, { userSettingsRoot: userDataPath })
+  const saveNotebookState = (profileRootPath, serializedState, options = {}) => {
+    saveAppState(profileRootPath, serializedState, {
+      ...options,
+      userDataPath,
+      userSettingsRoot: userDataPath,
+    })
+    const syncResult = writeUserSettingsLocationFromState(userDataPath, userSettingsLocation, serializedState)
+    if (!userSettingsLocation.isDefault || !syncResult.ok) updateUserSettingsLocationStatus(syncResult.status)
+  }
   const coordinator = createAppStateCoordinator({
     userDataPath,
     profileRootPath: profile.profileRootPath,
     load: loadNotebookResult,
+    save: saveNotebookState,
+    canonicalizeAfterSave: true,
   })
   let watcher = null
   let status = createStorageStatus({ profile, coordinator })
@@ -113,10 +140,23 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     }
   }
 
+  const broadcastUserSettingsLocationStatus = () => {
+    for (const window of getAllWindows(BrowserWindow)) {
+      if (!window || window.isDestroyed?.()) continue
+      window.webContents?.send?.('user-settings-location-status-updated', userSettingsLocationStatus)
+    }
+  }
+
   const updateStatus = (event = 'ready', error = null) => {
     status = createStorageStatus({ profile, coordinator, event, error })
     broadcastStorageStatus()
     return status
+  }
+
+  const updateUserSettingsLocationStatus = (nextStatus) => {
+    userSettingsLocationStatus = nextStatus
+    broadcastUserSettingsLocationStatus()
+    return userSettingsLocationStatus
   }
 
   const logExternalStorageEvent = (event) => {
@@ -215,6 +255,34 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     return getRendererSerializedStateForProfileMove(event)
   }
 
+  const reloadActiveProfileForSettingsChange = (event = 'settings-sync-loaded') => {
+    const result = coordinator.reloadProfileRoot(profile.profileRootPath, {
+      requireSerializedState: coordinator.getSerializedState() !== null,
+      detectAppSaveEcho: false,
+    })
+    updateStatus(result.ok ? event : 'profile-error', result.ok ? null : result.error)
+    if (result.ok && typeof result.serializedState === 'string' && !result.unchanged) {
+      broadcastAppStateUpdate({
+        serializedState: result.serializedState,
+        revision: result.revision,
+      })
+      watcher?.reset()
+    }
+    return result
+  }
+
+  const updateUserSettingsLocationFailure = (event, error) =>
+    updateUserSettingsLocationStatus(
+      createUserSettingsLocationStatus(userDataPath, userSettingsLocation, {
+        status: 'error',
+        event,
+        syncStatus: userSettingsLocation.isDefault ? 'local' : 'fallback',
+        source: 'local-cache',
+        canWrite: false,
+        error,
+      }),
+    )
+
   const switchToProfileRoot = (profileRootPath, event = 'profile-changed', options = {}) => {
     const previousProfile = profile
     const result = coordinator.reloadProfileRoot(profileRootPath, {
@@ -243,7 +311,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
       return { ok: false, error: 'Current app state is not ready to move.', status }
     }
     try {
-      saveAppState(profileRootPath, serializedState, {
+      saveNotebookState(profileRootPath, serializedState, {
         userDataPath,
         userSettingsRoot: userDataPath,
         replaceExisting: true,
@@ -384,7 +452,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     }
 
     try {
-      saveAppState(profileRootPath, payload.serializedState, {
+      saveNotebookState(profileRootPath, payload.serializedState, {
         userDataPath,
         userSettingsRoot: userDataPath,
         replaceExisting: true,
@@ -397,6 +465,153 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
         error: error instanceof Error ? error.message : 'Notebook folder could not be created.',
         status,
       }
+    }
+  }
+
+  const chooseUserSettingsFolder = async (event = null) => {
+    if (!dialog || typeof dialog.showOpenDialog !== 'function') {
+      return { ok: false, error: 'Folder selection is unavailable.', status: userSettingsLocationStatus }
+    }
+
+    const selection = await dialog.showOpenDialog({
+      title: 'Choose settings folder',
+      properties: ['openDirectory', 'createDirectory'],
+    })
+    if (selection.canceled || !selection.filePaths?.[0]) {
+      return { canceled: true, status: userSettingsLocationStatus }
+    }
+
+    const settingsRootPath = path.resolve(selection.filePaths[0])
+    const candidateLocation = createUserSettingsLocation(userDataPath, settingsRootPath)
+    const validation = validateUserSettingsFolderCandidate(settingsRootPath, profile.profileRootPath)
+    if (!validation.ok) {
+      updateUserSettingsLocationFailure('settings-folder-rejected', validation.error)
+      return { ok: false, error: validation.error, status: userSettingsLocationStatus }
+    }
+
+    const existingSettings = readUserSettingsFromLocation(candidateLocation)
+    if (existingSettings.ok) {
+      if (dialog?.showMessageBox) {
+        const choice = await dialog.showMessageBox({
+          type: 'warning',
+          buttons: ['Apply settings', 'Cancel'],
+          cancelId: 1,
+          defaultId: 0,
+          message: 'Apply settings from this folder?',
+          detail:
+            'Tabs will use this folder for live user settings and overwrite the current local app settings cache with settings/app-settings.json from that folder.',
+        })
+        if (choice.response !== 0) return { canceled: true, status: userSettingsLocationStatus }
+      }
+
+      try {
+        userSettingsLocation = writeUserSettingsLocationConfig(userDataPath, settingsRootPath)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Settings folder could not be saved.'
+        updateUserSettingsLocationFailure('settings-folder-error', message)
+        return { ok: false, error: message, status: userSettingsLocationStatus }
+      }
+
+      const refresh = refreshLocalUserSettingsFromLocation(userDataPath, userSettingsLocation)
+      updateUserSettingsLocationStatus(refresh.status)
+      if (!refresh.ok) return { ok: false, error: refresh.status.error, status: userSettingsLocationStatus }
+      const reload = reloadActiveProfileForSettingsChange('settings-folder-loaded')
+      return { ok: reload.ok, status: userSettingsLocationStatus, error: reload.ok ? undefined : reload.error }
+    }
+
+    if (!existingSettings.missing) {
+      const error = "The folder selected doesn't contain an app-settings.json file that matches this project's structure."
+      updateUserSettingsLocationFailure('settings-folder-invalid', error)
+      return { ok: false, error, status: userSettingsLocationStatus }
+    }
+
+    const serializedState = await getCurrentSerializedStateForProfileMove(event)
+    if (serializedState === null) {
+      const error = 'Current app settings are not ready to copy.'
+      updateUserSettingsLocationFailure('settings-folder-error', error)
+      return { ok: false, error, status: userSettingsLocationStatus }
+    }
+
+    const initializeResult = initializeUserSettingsLocationFromState(userDataPath, candidateLocation, serializedState)
+    if (!initializeResult.ok) {
+      updateUserSettingsLocationStatus(initializeResult.status)
+      return { ok: false, error: initializeResult.status.error, status: userSettingsLocationStatus }
+    }
+
+    try {
+      userSettingsLocation = writeUserSettingsLocationConfig(userDataPath, settingsRootPath)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Settings folder could not be saved.'
+      updateUserSettingsLocationFailure('settings-folder-error', message)
+      return { ok: false, error: message, status: userSettingsLocationStatus }
+    }
+
+    updateUserSettingsLocationStatus(
+      createUserSettingsLocationStatus(userDataPath, userSettingsLocation, {
+        event: 'settings-folder-initialized',
+        syncStatus: 'synced',
+        source: 'settings-folder',
+      }),
+    )
+    return { ok: true, status: userSettingsLocationStatus }
+  }
+
+  const retryUserSettingsSync = async (event = null) => {
+    if (userSettingsLocation.isDefault) {
+      updateUserSettingsLocationStatus(
+        createUserSettingsLocationStatus(userDataPath, userSettingsLocation, {
+          event: 'local-settings-ready',
+          syncStatus: 'local',
+          source: 'local-cache',
+        }),
+      )
+      return { ok: true, status: userSettingsLocationStatus }
+    }
+
+    const cloudSettings = readUserSettingsFromLocation(userSettingsLocation)
+    if (cloudSettings.ok) {
+      const refresh = refreshLocalUserSettingsFromLocation(userDataPath, userSettingsLocation)
+      updateUserSettingsLocationStatus(refresh.status)
+      if (!refresh.ok) return { ok: false, error: refresh.status.error, status: userSettingsLocationStatus }
+      const reload = reloadActiveProfileForSettingsChange('settings-sync-loaded')
+      return { ok: reload.ok, status: userSettingsLocationStatus, error: reload.ok ? undefined : reload.error }
+    }
+
+    if (cloudSettings.missing) {
+      const serializedState = await getCurrentSerializedStateForProfileMove(event)
+      const recreateResult = recreateMissingUserSettingsLocationFile(
+        userDataPath,
+        userSettingsLocation,
+        serializedState,
+      )
+      updateUserSettingsLocationStatus(recreateResult.status)
+      return {
+        ok: recreateResult.ok,
+        status: userSettingsLocationStatus,
+        error: recreateResult.ok ? undefined : recreateResult.status.error,
+      }
+    }
+
+    const error = "The folder selected doesn't contain an app-settings.json file that matches this project's structure."
+    updateUserSettingsLocationFailure('settings-sync-invalid', error)
+    return { ok: false, error, status: userSettingsLocationStatus }
+  }
+
+  const resetUserSettingsFolder = async () => {
+    try {
+      userSettingsLocation = resetUserSettingsLocationConfig(userDataPath)
+      updateUserSettingsLocationStatus(
+        createUserSettingsLocationStatus(userDataPath, userSettingsLocation, {
+          event: 'settings-folder-reset',
+          syncStatus: 'local',
+          source: 'local-cache',
+        }),
+      )
+      return { ok: true, status: userSettingsLocationStatus }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Settings folder could not be reset.'
+      updateUserSettingsLocationFailure('settings-folder-reset-error', message)
+      return { ok: false, error: message, status: userSettingsLocationStatus }
     }
   }
 
@@ -430,10 +645,21 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
   })
 
   ipcMain.handle?.('get-storage-profile-status', async () => status)
+  ipcMain.handle?.('get-user-settings-location-status', async () => userSettingsLocationStatus)
   ipcMain.handle?.('create-notebook', createNotebook)
   ipcMain.handle?.('switch-notebook', switchNotebook)
   ipcMain.handle?.('choose-storage-folder', async (event) => chooseProfileRoot('choose', event))
   ipcMain.handle?.('move-storage-profile', async (event) => chooseProfileRoot('move', event))
+  ipcMain.handle?.('choose-user-settings-folder', chooseUserSettingsFolder)
+  ipcMain.handle?.('reset-user-settings-folder', resetUserSettingsFolder)
+  ipcMain.handle?.('retry-user-settings-sync', retryUserSettingsSync)
+  ipcMain.handle?.('reveal-user-settings-folder', async () => {
+    if (!shell || typeof shell.openPath !== 'function') {
+      return { ok: false, error: 'Reveal is unavailable.' }
+    }
+    const error = await shell.openPath(userSettingsLocation.settingsRootPath)
+    return error ? { ok: false, error } : { ok: true }
+  })
   ipcMain.handle?.('reveal-storage-profile', async () => {
     if (!shell || typeof shell.openPath !== 'function') {
       return { ok: false, error: 'Reveal is unavailable.' }
@@ -563,6 +789,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     getLoadResult: coordinator.getLoadResult,
     getProfileRootPath: () => profile.profileRootPath,
     getStorageProfileStatus: () => status,
+    getUserSettingsLocationStatus: () => userSettingsLocationStatus,
     saveAppStateSnapshot: saveRevisionedState,
     scanStorageProfile: () => watcher?.scan(),
     close: () => watcher?.close(),

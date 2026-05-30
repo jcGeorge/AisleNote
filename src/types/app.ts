@@ -634,6 +634,19 @@ export type StorageProfileStatus = {
   error?: string
 }
 
+export type UserSettingsLocationStatus = {
+  status: 'ready' | 'warning' | 'error'
+  event?: string
+  settingsRootPath: string
+  settingsPath: string
+  localSettingsPath: string
+  isDefault: boolean
+  canWrite: boolean
+  syncStatus: 'local' | 'synced' | 'fallback'
+  source: 'local-cache' | 'settings-folder'
+  error?: string
+}
+
 export type ImageToolsState = {
   visible: boolean
   menuMode: 'start' | 'transform'

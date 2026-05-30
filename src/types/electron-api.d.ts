@@ -1,6 +1,6 @@
 export {}
 
-import type { StorageProfileStatus } from './app'
+import type { StorageProfileStatus, UserSettingsLocationStatus } from './app'
 import type { AppStateSnapshotMode } from '../storage/persistence-debounce'
 
 type SaveAppStatePayload = {
@@ -137,6 +137,7 @@ declare global {
       readAsset?: (payload: { url?: string; assetPath?: string }) => Promise<ReadAssetResult>
       onAppStateUpdated?: (handler: (payload: { serializedState: string; revision: number }) => void) => () => void
       getStorageProfileStatus?: () => Promise<StorageProfileStatus>
+      getUserSettingsLocationStatus?: () => Promise<UserSettingsLocationStatus>
       createNotebook?: (payload: { serializedState: string }) => Promise<
         | { canceled: true; status: StorageProfileStatus }
         | { ok: true; status: StorageProfileStatus }
@@ -157,6 +158,18 @@ declare global {
         | { ok: true; status: StorageProfileStatus }
         | { ok: false; error: string; status: StorageProfileStatus }
       >
+      chooseUserSettingsFolder?: () => Promise<
+        | { canceled: true; status: UserSettingsLocationStatus }
+        | { ok: true; status: UserSettingsLocationStatus }
+        | { ok: false; error?: string; status: UserSettingsLocationStatus }
+      >
+      resetUserSettingsFolder?: () => Promise<
+        { ok: true; status: UserSettingsLocationStatus } | { ok: false; error?: string; status: UserSettingsLocationStatus }
+      >
+      retryUserSettingsSync?: () => Promise<
+        { ok: true; status: UserSettingsLocationStatus } | { ok: false; error?: string; status: UserSettingsLocationStatus }
+      >
+      revealUserSettingsFolder?: () => Promise<{ ok: true } | { ok: false; error: string }>
       revealStorageProfile?: () => Promise<{ ok: true } | { ok: false; error: string }>
       retryStorageProfile?: () => Promise<
         { ok: true; status: StorageProfileStatus } | { ok: false; error?: string; status: StorageProfileStatus }
@@ -165,6 +178,7 @@ declare global {
         { ok: true; status: StorageProfileStatus } | { ok: false; error?: string; status: StorageProfileStatus }
       >
       onStorageProfileStatusUpdated?: (handler: (payload: StorageProfileStatus) => void) => () => void
+      onUserSettingsLocationStatusUpdated?: (handler: (payload: UserSettingsLocationStatus) => void) => () => void
       exportAppState: (payload: { defaultPath: string; serializedState: string }) => Promise<{
         canceled: boolean
         filePath?: string

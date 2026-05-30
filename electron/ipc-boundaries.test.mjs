@@ -539,6 +539,191 @@ describe('electron ipc boundaries', () => {
         canWrite: true,
         source: 'empty',
       })
+      await expect(ipcMain.handlers.get('get-user-settings-location-status')()).resolves.toMatchObject({
+        status: 'ready',
+        settingsRootPath: userDataPath,
+        settingsPath: path.join(userDataPath, 'settings', 'app-settings.json'),
+        localSettingsPath: path.join(userDataPath, 'settings', 'app-settings.json'),
+        isDefault: true,
+        syncStatus: 'local',
+      })
+    }))
+
+  it('rejects notebook folders as live user settings folders', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const otherNotebookRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-settings-notebook-'))
+      try {
+        mkdirSync(path.join(otherNotebookRoot, 'notes'), { recursive: true })
+        writeFileSync(path.join(otherNotebookRoot, 'notes', 'manifest.json'), '{"schemaVersion":1}', 'utf8')
+        const showOpenDialog = vi
+          .fn()
+          .mockResolvedValueOnce({ canceled: false, filePaths: [userDataPath] })
+          .mockResolvedValueOnce({ canceled: false, filePaths: [otherNotebookRoot] })
+        const ipcMain = createIpcMain()
+        registerStorageIpc({
+          ipcMain,
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow(),
+          dialog: { showOpenDialog },
+        })
+
+        await expect(ipcMain.handlers.get('choose-user-settings-folder')()).resolves.toMatchObject({
+          ok: false,
+          error: 'Notebook folders cannot be used as the live settings folder. Choose a different folder.',
+        })
+        await expect(ipcMain.handlers.get('choose-user-settings-folder')()).resolves.toMatchObject({
+          ok: false,
+          error: 'This folder contains a notebook. Choose a folder that only stores user settings.',
+        })
+      } finally {
+        rmSync(otherNotebookRoot, { recursive: true, force: true })
+      }
+    }))
+
+  it('initializes an empty live user settings folder from current settings', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const settingsRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-live-settings-'))
+      try {
+        const ipcMain = createIpcMain()
+        registerStorageIpc({
+          ipcMain,
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow(),
+          dialog: {
+            showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [settingsRoot] })),
+          },
+        })
+
+        const saveEvent = { sender: { id: 1 }, returnValue: null }
+        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('blues'), baseRevision: 0 })
+
+        await expect(ipcMain.handlers.get('choose-user-settings-folder')()).resolves.toMatchObject({
+          ok: true,
+          status: {
+            settingsRootPath: settingsRoot,
+            isDefault: false,
+            syncStatus: 'synced',
+          },
+        })
+        expect(JSON.parse(readFileSync(path.join(settingsRoot, 'settings', 'app-settings.json'), 'utf8')).theme).toBe('blues')
+        expect(JSON.parse(readFileSync(path.join(userDataPath, 'settings', 'app-settings.json'), 'utf8')).theme).toBe('blues')
+      } finally {
+        rmSync(settingsRoot, { recursive: true, force: true })
+      }
+    }))
+
+  it('applies valid live user settings after confirmation', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const settingsRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-live-settings-'))
+      try {
+        saveAppState(settingsRoot, serializedAppState('light'))
+        rmSync(path.join(settingsRoot, 'notes'), { recursive: true, force: true })
+        const window = {
+          isDestroyed: vi.fn(() => false),
+          webContents: { id: 2, send: vi.fn() },
+        }
+        const ipcMain = createIpcMain()
+        registerStorageIpc({
+          ipcMain,
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow([window]),
+          dialog: {
+            showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [settingsRoot] })),
+            showMessageBox: vi.fn(async () => ({ response: 0 })),
+          },
+        })
+
+        const saveEvent = { sender: { id: 1 }, returnValue: null }
+        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 0 })
+        window.webContents.send.mockClear()
+
+        await expect(ipcMain.handlers.get('choose-user-settings-folder')()).resolves.toMatchObject({
+          ok: true,
+          status: {
+            settingsRootPath: settingsRoot,
+            syncStatus: 'synced',
+          },
+        })
+        expect(JSON.parse(readFileSync(path.join(userDataPath, 'settings', 'app-settings.json'), 'utf8')).theme).toBe('light')
+        const updateCall = window.webContents.send.mock.calls.find(([channel]) => channel === 'app-state-updated')
+        expect(updateCall).toBeDefined()
+        expect(JSON.parse(updateCall[1].serializedState).theme).toBe('light')
+      } finally {
+        rmSync(settingsRoot, { recursive: true, force: true })
+      }
+    }))
+
+  it('rejects invalid live user settings folders', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const settingsRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-invalid-settings-'))
+      try {
+        mkdirSync(path.join(settingsRoot, 'settings'), { recursive: true })
+        writeFileSync(path.join(settingsRoot, 'settings', 'app-settings.json'), '{"theme":"dawn"}\n', 'utf8')
+        const ipcMain = createIpcMain()
+        registerStorageIpc({
+          ipcMain,
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow(),
+          dialog: {
+            showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [settingsRoot] })),
+          },
+        })
+
+        await expect(ipcMain.handlers.get('choose-user-settings-folder')()).resolves.toMatchObject({
+          ok: false,
+          error: "The folder selected doesn't contain an app-settings.json file that matches this project's structure.",
+          status: {
+            status: 'error',
+          },
+        })
+      } finally {
+        rmSync(settingsRoot, { recursive: true, force: true })
+      }
+    }))
+
+  it('retries missing live user settings by recreating the cloud file and supports reset/reveal', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const settingsRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-live-settings-'))
+      const shell = { openPath: vi.fn(async () => '') }
+      try {
+        const ipcMain = createIpcMain()
+        registerStorageIpc({
+          ipcMain,
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow(),
+          shell,
+          dialog: {
+            showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [settingsRoot] })),
+          },
+        })
+        const saveEvent = { sender: { id: 1 }, returnValue: null }
+        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('custom1'), baseRevision: 0 })
+        await ipcMain.handlers.get('choose-user-settings-folder')()
+        rmSync(path.join(settingsRoot, 'settings', 'app-settings.json'), { force: true })
+
+        await expect(ipcMain.handlers.get('retry-user-settings-sync')()).resolves.toMatchObject({
+          ok: true,
+          status: {
+            event: 'settings-sync-recreated',
+            syncStatus: 'synced',
+          },
+        })
+        expect(JSON.parse(readFileSync(path.join(settingsRoot, 'settings', 'app-settings.json'), 'utf8')).theme).toBe('custom1')
+
+        await expect(ipcMain.handlers.get('reveal-user-settings-folder')()).resolves.toEqual({ ok: true })
+        expect(shell.openPath).toHaveBeenCalledWith(settingsRoot)
+
+        await expect(ipcMain.handlers.get('reset-user-settings-folder')()).resolves.toMatchObject({
+          ok: true,
+          status: {
+            settingsRootPath: userDataPath,
+            isDefault: true,
+            syncStatus: 'local',
+          },
+        })
+      } finally {
+        rmSync(settingsRoot, { recursive: true, force: true })
+      }
     }))
 
   it('imports, reads, and opens generic assets through storage ipc', async () => {

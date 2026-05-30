@@ -473,6 +473,15 @@ function writeBinaryFileAtomic(rootPath, relativeFile, contents) {
   renameSync(tempPath, absolutePath)
 }
 
+export function writeAppSettingsForState(userSettingsRoot, serializedState) {
+  const parsedState = JSON.parse(serializedState)
+  writeTextFileAtomic(
+    userSettingsRoot,
+    USER_SETTINGS_FILE_PATH,
+    `${JSON.stringify(extractAppSettings(parsedState), null, 2)}\n`,
+  )
+}
+
 function readMarkdownFile(baseDirectory, relativeFile, issues = null, issueRootPath = null) {
   const absolutePath = path.join(baseDirectory, relativeFile)
   const markdown = readTextFileIfExists(absolutePath, issues, {
@@ -1229,11 +1238,7 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
   const expectedFiles = new Set(fileMap.keys())
   pruneStorageRoot(tempRoot, expectedFiles)
   if (typeof options.userSettingsRoot === 'string') {
-    writeTextFileAtomic(
-      options.userSettingsRoot,
-      USER_SETTINGS_FILE_PATH,
-      `${JSON.stringify(extractAppSettings(parsedState), null, 2)}\n`,
-    )
+    writeAppSettingsForState(options.userSettingsRoot, serializedState)
   }
 }
 

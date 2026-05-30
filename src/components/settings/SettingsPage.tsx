@@ -47,6 +47,7 @@ import type {
   TableOfContentsScope,
   TipId,
   ToolbarLayout,
+  UserSettingsLocationStatus,
   VisualsSettingsSection,
 } from '../../types/app'
 import { MAX_SCRATCHPAD_AISLE_LIMIT } from '../../state/scratchpad'
@@ -130,6 +131,7 @@ type SettingsPageProps = {
   toolbarEditorLayoutId: string
   toolbarEditorShowNames: boolean
   storageProfileStatus: StorageProfileStatus | null
+  userSettingsLocationStatus: UserSettingsLocationStatus | null
   onSectionChange: (section: SettingsSection) => void
   onDataSectionChange: (section: DataSettingsSection) => void
   onVisualsSectionChange: (section: VisualsSettingsSection) => void
@@ -144,6 +146,10 @@ type SettingsPageProps = {
   onImportNotebook: () => void
   onImportUserSettings: () => void
   onImportUserSettingsFromNotebookFolder: () => void
+  onChooseUserSettingsFolder: () => void
+  onRevealUserSettingsFolder: () => void
+  onRetryUserSettingsSync: () => void
+  onResetUserSettingsFolder: () => void
   notebookImportSummary: NotebookArchiveSummary | null
   notebookImportScratchpadEnabled: boolean
   notebookImportHasScratchpad: boolean
@@ -234,6 +240,7 @@ export function SettingsPage({
   toolbarEditorLayoutId,
   toolbarEditorShowNames,
   storageProfileStatus,
+  userSettingsLocationStatus,
   onSectionChange,
   onDataSectionChange,
   onVisualsSectionChange,
@@ -248,6 +255,10 @@ export function SettingsPage({
   onImportNotebook,
   onImportUserSettings,
   onImportUserSettingsFromNotebookFolder,
+  onChooseUserSettingsFolder,
+  onRevealUserSettingsFolder,
+  onRetryUserSettingsSync,
+  onResetUserSettingsFolder,
   notebookImportSummary,
   notebookImportScratchpadEnabled,
   notebookImportHasScratchpad,
@@ -578,6 +589,7 @@ export function SettingsPage({
             exportStatus={exportStatus}
             importStatus={importStatus}
             storageProfileStatus={storageProfileStatus}
+            userSettingsLocationStatus={userSettingsLocationStatus}
             notebookImportSummary={notebookImportSummary}
             notebookImportScratchpadEnabled={notebookImportScratchpadEnabled}
             notebookImportHasScratchpad={notebookImportHasScratchpad}
@@ -590,6 +602,10 @@ export function SettingsPage({
             onImportNotebook={onImportNotebook}
             onImportUserSettings={onImportUserSettings}
             onImportUserSettingsFromNotebookFolder={onImportUserSettingsFromNotebookFolder}
+            onChooseUserSettingsFolder={onChooseUserSettingsFolder}
+            onRevealUserSettingsFolder={onRevealUserSettingsFolder}
+            onRetryUserSettingsSync={onRetryUserSettingsSync}
+            onResetUserSettingsFolder={onResetUserSettingsFolder}
             onNotebookImportScratchpadEnabledChange={onNotebookImportScratchpadEnabledChange}
             onConfirmNotebookImport={onConfirmNotebookImport}
             onCancelNotebookImport={onCancelNotebookImport}
