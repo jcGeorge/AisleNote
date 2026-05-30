@@ -8,6 +8,7 @@ import { normalizePreviewReferenceTokensForMarkdown } from '../markdown/note-con
 import { convertInternalTabsForExport } from '../markdown/markdown-utils'
 import { buildNotebookArchive, toNotebookArchiveArrayBuffer } from '../notebook/notebook-archive'
 import { getAisleBodyId, getAisleMarkdown } from '../notes/note-markdown'
+import { savePortableBinaryFile } from '../platform/portable-file-service'
 import type { AppState, Space, SpaceSettings } from '../types/app'
 
 export type ExportScope = 'space' | 'all'
@@ -280,6 +281,21 @@ export async function exportNotebookArchive({
       }
       const warningText = result.issues.length > 0 ? ` ${result.issues.length} warning(s).` : ''
       setStatus(`notebook export saved.${warningText}`)
+      return
+    }
+
+    const portableSave = await savePortableBinaryFile({
+      defaultPath,
+      data,
+      title: 'Export notebook archive',
+    })
+    if (portableSave.handled) {
+      if (portableSave.error) {
+        setStatus(`notebook export failed: ${portableSave.error}`)
+        return
+      }
+      const warningText = result.issues.length > 0 ? ` ${result.issues.length} warning(s).` : ''
+      setStatus(`notebook export shared.${warningText}`)
       return
     }
 

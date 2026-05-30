@@ -24,9 +24,20 @@
     "start:windows": "npm run build:electron:windows",
     "dev:electron": "npm run electron:dev",
     "dev:electron:mac": "npm run electron:dev:mac",
-    "dev:electron:windows": "npm run electron:dev:windows"
+    "dev:electron:windows": "npm run electron:dev:windows",
+    "cap:add:ios": "npx cap add ios",
+    "cap:add:android": "npx cap add android",
+    "cap:sync": "npm run build && npx cap sync",
+    "cap:open:ios": "npx cap open ios",
+    "cap:open:android": "npx cap open android"
   },
   "dependencies": {
+    "@capacitor/android": "^8.3.4",
+    "@capacitor/cli": "^8.3.4",
+    "@capacitor/core": "^8.3.4",
+    "@capacitor/filesystem": "^8.1.2",
+    "@capacitor/ios": "^8.3.4",
+    "@capacitor/share": "^8.0.1",
     "@toast-ui/editor": "^3.2.2",
     "bootstrap": "^5.3.8",
     "jszip": "^3.10.1",

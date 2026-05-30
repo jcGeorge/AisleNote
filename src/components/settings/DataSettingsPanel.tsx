@@ -4,6 +4,7 @@ import {
 } from '../../settings/defaults'
 import type { DataSettingsSection, StorageProfileStatus, UserSettingsLocationStatus } from '../../types/app'
 import type { NotebookArchiveSummary } from '../../notebook/notebook-archive'
+import type { DataPlatformCapabilities } from '../../platform/data-platform'
 import { DataSectionSwitch } from './DataSectionSwitch'
 
 type DataSettingsPanelProps = {
@@ -11,6 +12,7 @@ type DataSettingsPanelProps = {
   settingsDaysDraft: string
   exportStatus: string
   importStatus: string
+  dataCapabilities: DataPlatformCapabilities
   storageProfileStatus: StorageProfileStatus | null
   userSettingsLocationStatus: UserSettingsLocationStatus | null
   notebookImportSummary: NotebookArchiveSummary | null
@@ -25,6 +27,7 @@ type DataSettingsPanelProps = {
   onImportNotebook: () => void
   onImportUserSettings: () => void
   onImportUserSettingsFromNotebookFolder: () => void
+  onExportRecoveryCopy: () => void
   onChooseUserSettingsFolder: () => void
   onRevealUserSettingsFolder: () => void
   onRetryUserSettingsSync: () => void
@@ -41,6 +44,7 @@ type DataSettingsPanelProps = {
 }
 
 function NotebookDataSection({
+  dataCapabilities,
   exportStatus,
   importStatus,
   notebookImportSummary,
@@ -55,6 +59,7 @@ function NotebookDataSection({
   DataSettingsPanelProps,
   | 'exportStatus'
   | 'importStatus'
+  | 'dataCapabilities'
   | 'notebookImportSummary'
   | 'notebookImportScratchpadEnabled'
   | 'notebookImportHasScratchpad'
@@ -110,6 +115,9 @@ function NotebookDataSection({
         </div>
       )}
       <p className="settings-help">notebook archives are readable markdown ZIPs. imports append remapped domains and keep user settings separate.</p>
+      {dataCapabilities.runtime === 'mobile' && (
+        <p className="settings-help">mobile and tablet transfers use archive import/export through this device's share sheet or file picker.</p>
+      )}
       {exportStatus && <p className="settings-help">{exportStatus}</p>}
       {importStatus && <p className="settings-help">{importStatus}</p>}
     </>
@@ -117,6 +125,7 @@ function NotebookDataSection({
 }
 
 function UserSettingsDataSection({
+  dataCapabilities,
   exportStatus,
   importStatus,
   userSettingsLocationStatus,
@@ -131,6 +140,7 @@ function UserSettingsDataSection({
   DataSettingsPanelProps,
   | 'exportStatus'
   | 'importStatus'
+  | 'dataCapabilities'
   | 'userSettingsLocationStatus'
   | 'onExportUserSettings'
   | 'onImportUserSettings'
@@ -149,54 +159,62 @@ function UserSettingsDataSection({
   return (
     <>
       <p>user settings:</p>
-      <div className={settingsLocationClassName}>
-        <div className="storage-profile-row">
-          <span className="settings-hotkey-label">current settings folder</span>
-          <code className="storage-profile-path">
-            {userSettingsLocationStatus?.settingsRootPath ?? 'desktop settings folder unavailable'}
-          </code>
+      {dataCapabilities.settingsFolders ? (
+        <div className={settingsLocationClassName}>
+          <div className="storage-profile-row">
+            <span className="settings-hotkey-label">current settings folder</span>
+            <code className="storage-profile-path">
+              {userSettingsLocationStatus?.settingsRootPath ?? 'desktop settings folder unavailable'}
+            </code>
+          </div>
+          <div className="storage-profile-row">
+            <span className="settings-hotkey-label">status</span>
+            <span>{userSettingsLocationStatus?.status ?? 'browser local'}</span>
+          </div>
+          <div className="storage-profile-row">
+            <span className="settings-hotkey-label">sync</span>
+            <span>{userSettingsLocationStatus?.syncStatus ?? 'local'}</span>
+          </div>
+          <div className="storage-profile-row">
+            <span className="settings-hotkey-label">settings file</span>
+            <code className="storage-profile-path">
+              {userSettingsLocationStatus?.settingsPath ?? 'settings/app-settings.json'}
+            </code>
+          </div>
+          <div className="storage-profile-row">
+            <span className="settings-hotkey-label">local cache</span>
+            <code className="storage-profile-path">
+              {userSettingsLocationStatus?.localSettingsPath ?? 'desktop local cache unavailable'}
+            </code>
+          </div>
+          {userSettingsLocationStatus?.error && (
+            <p className="settings-help storage-profile-error">{userSettingsLocationStatus.error}</p>
+          )}
+          <div className="settings-page-actions">
+            <button type="button" className="btn btn-sm settings-action-btn" onClick={onChooseUserSettingsFolder}>
+              choose settings folder
+            </button>
+            <button type="button" className="btn btn-sm settings-action-btn" onClick={onRevealUserSettingsFolder}>
+              reveal settings folder
+            </button>
+            <button type="button" className="btn btn-sm settings-action-btn" onClick={onRetryUserSettingsSync}>
+              retry settings sync
+            </button>
+            <button type="button" className="btn btn-sm settings-action-btn" onClick={onResetUserSettingsFolder}>
+              reset to local settings
+            </button>
+          </div>
+          <p className="settings-help">
+            choose a cloud-synced settings folder to read and write settings/app-settings.json there. notebook folders cannot be used for live user settings.
+          </p>
         </div>
-        <div className="storage-profile-row">
-          <span className="settings-hotkey-label">status</span>
-          <span>{userSettingsLocationStatus?.status ?? 'browser local'}</span>
-        </div>
-        <div className="storage-profile-row">
-          <span className="settings-hotkey-label">sync</span>
-          <span>{userSettingsLocationStatus?.syncStatus ?? 'local'}</span>
-        </div>
-        <div className="storage-profile-row">
-          <span className="settings-hotkey-label">settings file</span>
-          <code className="storage-profile-path">
-            {userSettingsLocationStatus?.settingsPath ?? 'settings/app-settings.json'}
-          </code>
-        </div>
-        <div className="storage-profile-row">
-          <span className="settings-hotkey-label">local cache</span>
-          <code className="storage-profile-path">
-            {userSettingsLocationStatus?.localSettingsPath ?? 'desktop local cache unavailable'}
-          </code>
-        </div>
-        {userSettingsLocationStatus?.error && (
-          <p className="settings-help storage-profile-error">{userSettingsLocationStatus.error}</p>
-        )}
-        <div className="settings-page-actions">
-          <button type="button" className="btn btn-sm settings-action-btn" onClick={onChooseUserSettingsFolder}>
-            choose settings folder
-          </button>
-          <button type="button" className="btn btn-sm settings-action-btn" onClick={onRevealUserSettingsFolder}>
-            reveal settings folder
-          </button>
-          <button type="button" className="btn btn-sm settings-action-btn" onClick={onRetryUserSettingsSync}>
-            retry settings sync
-          </button>
-          <button type="button" className="btn btn-sm settings-action-btn" onClick={onResetUserSettingsFolder}>
-            reset to local settings
-          </button>
-        </div>
+      ) : (
         <p className="settings-help">
-          choose a cloud-synced settings folder to read and write settings/app-settings.json there. notebook folders cannot be used for live user settings.
+          {dataCapabilities.runtime === 'mobile'
+            ? 'mobile and tablet store live user settings inside this app. transfer settings by exporting or importing app-settings.json.'
+            : 'browser stores live user settings with local browser data. transfer settings by downloading or uploading app-settings.json.'}
         </p>
-      </div>
+      )}
       <div className="settings-page-actions">
         <button type="button" className="btn btn-sm settings-action-btn" onClick={onExportUserSettings}>
           export user settings
@@ -204,9 +222,11 @@ function UserSettingsDataSection({
         <button type="button" className="btn btn-sm settings-action-btn" onClick={onImportUserSettings}>
           import user settings
         </button>
-        <button type="button" className="btn btn-sm settings-action-btn" onClick={onImportUserSettingsFromNotebookFolder}>
-          import from notebook folder
-        </button>
+        {dataCapabilities.notebookFolders && (
+          <button type="button" className="btn btn-sm settings-action-btn" onClick={onImportUserSettingsFromNotebookFolder}>
+            import from notebook folder
+          </button>
+        )}
       </div>
       <p className="settings-help">user settings are stored in app-settings.json. importing overwrites current theme, hotkeys, shortcuts, toolbar layouts, and app preferences after confirmation.</p>
       {exportStatus && <p className="settings-help">{exportStatus}</p>}
@@ -216,6 +236,7 @@ function UserSettingsDataSection({
 }
 
 function StorageDataSection({
+  dataCapabilities,
   exportStatus,
   importStatus,
   storageProfileStatus,
@@ -225,12 +246,14 @@ function StorageDataSection({
   onRevealStorageProfile,
   onRetryStorageProfile,
   onRestoreStorageRecoverySnapshot,
+  onExportRecoveryCopy,
   onExportAll,
   onImportBackup,
 }: Pick<
   DataSettingsPanelProps,
   | 'exportStatus'
   | 'importStatus'
+  | 'dataCapabilities'
   | 'storageProfileStatus'
   | 'onCreateNotebook'
   | 'onSwitchNotebook'
@@ -238,6 +261,7 @@ function StorageDataSection({
   | 'onRevealStorageProfile'
   | 'onRetryStorageProfile'
   | 'onRestoreStorageRecoverySnapshot'
+  | 'onExportRecoveryCopy'
   | 'onExportAll'
   | 'onImportBackup'
 >) {
@@ -249,6 +273,41 @@ function StorageDataSection({
     storageHealth === 'error' ? 'is-error' : '',
     storageHealth === 'warning' ? 'is-warning' : '',
   ].filter(Boolean).join(' ')
+
+  if (!dataCapabilities.notebookFolders) {
+    return (
+      <>
+        <p>{dataCapabilities.runtime === 'mobile' ? 'local app notebook:' : 'local browser notebook:'}</p>
+        <p className="settings-help">
+          {dataCapabilities.runtime === 'mobile'
+            ? 'mobile and tablet store notebook content inside this app. use notebook archives to move notebooks between devices.'
+            : 'browser stores notebook content in local browser storage. use notebook archives to move notebooks between devices.'}
+        </p>
+        <div className="storage-profile-card">
+          <div className="storage-profile-row">
+            <span className="settings-hotkey-label">storage</span>
+            <span>{dataCapabilities.runtime === 'mobile' ? 'app-private local' : 'browser local'}</span>
+          </div>
+          <div className="storage-profile-row">
+            <span className="settings-hotkey-label">folder controls</span>
+            <span>desktop only</span>
+          </div>
+          {dataCapabilities.recoverySnapshots && (
+            <div className="settings-page-actions">
+              <button type="button" className="btn btn-sm settings-action-btn" onClick={onExportRecoveryCopy}>
+                export recovery copy
+              </button>
+            </div>
+          )}
+          <p className="settings-help">
+            live notebook folders, live settings folders, backups, and folder switching are desktop features.
+          </p>
+        </div>
+        {exportStatus && <p className="settings-help">{exportStatus}</p>}
+        {importStatus && <p className="settings-help">{importStatus}</p>}
+      </>
+    )
+  }
 
   return (
     <>

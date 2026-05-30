@@ -61,6 +61,7 @@ import type {
   SyncedUiBooleanSettingView,
 } from '../../settings/synced-ui-settings-registry.js'
 import type { NotebookArchiveSummary } from '../../notebook/notebook-archive'
+import type { DataPlatformCapabilities } from '../../platform/data-platform'
 import {
   DEFAULT_THEME_PREVIEW_RAIL_SELECTION,
   DEFAULT_THEME_PREVIEW_TASK_STATE,
@@ -130,6 +131,7 @@ type SettingsPageProps = {
   toolbarLayouts: ToolbarLayout[]
   toolbarEditorLayoutId: string
   toolbarEditorShowNames: boolean
+  dataCapabilities: DataPlatformCapabilities
   storageProfileStatus: StorageProfileStatus | null
   userSettingsLocationStatus: UserSettingsLocationStatus | null
   onSectionChange: (section: SettingsSection) => void
@@ -146,6 +148,7 @@ type SettingsPageProps = {
   onImportNotebook: () => void
   onImportUserSettings: () => void
   onImportUserSettingsFromNotebookFolder: () => void
+  onExportRecoveryCopy: () => void
   onChooseUserSettingsFolder: () => void
   onRevealUserSettingsFolder: () => void
   onRetryUserSettingsSync: () => void
@@ -239,6 +242,7 @@ export function SettingsPage({
   toolbarLayouts,
   toolbarEditorLayoutId,
   toolbarEditorShowNames,
+  dataCapabilities,
   storageProfileStatus,
   userSettingsLocationStatus,
   onSectionChange,
@@ -255,6 +259,7 @@ export function SettingsPage({
   onImportNotebook,
   onImportUserSettings,
   onImportUserSettingsFromNotebookFolder,
+  onExportRecoveryCopy,
   onChooseUserSettingsFolder,
   onRevealUserSettingsFolder,
   onRetryUserSettingsSync,
@@ -588,6 +593,7 @@ export function SettingsPage({
             settingsDaysDraft={settingsDaysDraft}
             exportStatus={exportStatus}
             importStatus={importStatus}
+            dataCapabilities={dataCapabilities}
             storageProfileStatus={storageProfileStatus}
             userSettingsLocationStatus={userSettingsLocationStatus}
             notebookImportSummary={notebookImportSummary}
@@ -602,6 +608,7 @@ export function SettingsPage({
             onImportNotebook={onImportNotebook}
             onImportUserSettings={onImportUserSettings}
             onImportUserSettingsFromNotebookFolder={onImportUserSettingsFromNotebookFolder}
+            onExportRecoveryCopy={onExportRecoveryCopy}
             onChooseUserSettingsFolder={onChooseUserSettingsFolder}
             onRevealUserSettingsFolder={onRevealUserSettingsFolder}
             onRetryUserSettingsSync={onRetryUserSettingsSync}

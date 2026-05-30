@@ -200,6 +200,8 @@ import { useNoteReferenceActions } from './notes/useNoteReferenceActions'
 import { formatMovedToTrashToast, useAppOverlayActions } from './overlays/useAppOverlayActions'
 import { decoupleNoteLocationsInState } from './overlays/note-decouple'
 import { measureSlowOperation } from './performance/performance-logging'
+import { getRuntimeDataCapabilities } from './platform/data-platform'
+import { savePortableTextFile } from './platform/portable-file-service'
 import {
   ALWAYS_SHOW_DOMAINS_WITHOUT_SPACES_MESSAGE,
   getCustomThemePaletteSeedMatch,
@@ -213,6 +215,7 @@ import {
   parseStrictPortableAppSettingsJson,
   stringifyPortableAppSettings,
 } from './storage/settings-partition.js'
+import { createCapacitorRecoveryNotebookArchive } from './storage/capacitor-hybrid-state'
 import { DEFAULT_STATE, applyAutoPurgeToAppState, ensureNoteBodiesForAppState, parseSavedState } from './state/app-state'
 import { mergeImportedBackupState } from './import/backup-import'
 import {
@@ -426,6 +429,7 @@ function formatNotebookArchiveSummary(summary: NotebookArchiveSummary): string {
 }
 
 function App() {
+  const dataCapabilities = useMemo(() => getRuntimeDataCapabilities(), [])
   const initialDeviceSettingsRef = useRef<DeviceSettings | null>(null)
   if (initialDeviceSettingsRef.current === null) {
     initialDeviceSettingsRef.current = loadDeviceSettings()
@@ -3319,12 +3323,41 @@ function App() {
         return
       }
 
+      const portableSave = await savePortableTextFile({
+        defaultPath,
+        contents,
+        title: 'Export user settings',
+      })
+      if (portableSave.handled) {
+        if (portableSave.error) {
+          settingsController.setExportStatus(`user settings export failed: ${portableSave.error}`)
+          return
+        }
+        settingsController.setExportStatus('user settings shared')
+        return
+      }
+
       downloadTextFile(defaultPath, contents, 'application/json')
       settingsController.setExportStatus('user settings exported')
     } catch (error) {
       const message = error instanceof Error ? error.message : 'unknown error'
       settingsController.setExportStatus(`user settings export failed: ${message}`)
     }
+  }
+
+  const exportRecoveryCopy = async () => {
+    if (!dataCapabilities.appPrivateNotebook) {
+      settingsController.setExportStatus('recovery copy export is available in the mobile and tablet app.')
+      return
+    }
+
+    settingsController.setExportStatus('creating recovery copy...')
+    const result = await createCapacitorRecoveryNotebookArchive(JSON.stringify(buildStateWithLatestEditorContent()))
+    if (!result.ok) {
+      settingsController.setExportStatus(`recovery copy failed: ${result.error}`)
+      return
+    }
+    settingsController.setExportStatus(`recovery copy created: ${result.uri ?? result.path}`)
   }
 
   const importBackup = async () => {
@@ -4545,6 +4578,7 @@ function App() {
           toolbarLayouts={settingsController.toolbarLayouts}
           toolbarEditorLayoutId={settingsController.toolbarEditorLayoutId}
           toolbarEditorShowNames={settingsController.toolbarEditorShowNames}
+          dataCapabilities={dataCapabilities}
           storageProfileStatus={storageProfileStatus}
           userSettingsLocationStatus={userSettingsLocationStatus}
           onSectionChange={settingsController.changeSection}
@@ -4561,6 +4595,7 @@ function App() {
           onImportNotebook={importNotebook}
           onImportUserSettings={importUserSettings}
           onImportUserSettingsFromNotebookFolder={importUserSettingsFromNotebookFolder}
+          onExportRecoveryCopy={exportRecoveryCopy}
           onChooseUserSettingsFolder={userSettingsLocationController.chooseUserSettingsFolder}
           onRevealUserSettingsFolder={userSettingsLocationController.revealUserSettingsFolder}
           onRetryUserSettingsSync={userSettingsLocationController.retryUserSettingsSync}

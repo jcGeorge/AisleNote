@@ -22,6 +22,11 @@ import type {
   UserSettingsLocationStatus,
   VisualsSettingsSection,
 } from '../../types/app'
+import {
+  DESKTOP_DATA_CAPABILITIES,
+  MOBILE_DATA_CAPABILITIES,
+  type DataPlatformCapabilities,
+} from '../../platform/data-platform'
 import { SettingsPage } from './SettingsPage'
 import {
   DEFAULT_THEME_PREVIEW_RAIL_SELECTION,
@@ -105,6 +110,7 @@ function renderSettingsPage(
     state?: AppState
     storageProfileStatus?: StorageProfileStatus | null
     userSettingsLocationStatus?: UserSettingsLocationStatus | null
+    dataCapabilities?: DataPlatformCapabilities
     toolbarEditorLayoutId?: string
     toolbarEditorShowNames?: boolean
     isMacPlatform?: boolean
@@ -164,6 +170,7 @@ function renderSettingsPage(
       toolbarLayouts={getToolbarLayouts(state.ui.toolbarLayouts)}
       toolbarEditorLayoutId={options.toolbarEditorLayoutId ?? DEFAULT_TOOLBAR_LAYOUT_ID}
       toolbarEditorShowNames={options.toolbarEditorShowNames ?? state.ui.toolbarEditorShowNames ?? false}
+      dataCapabilities={options.dataCapabilities ?? DESKTOP_DATA_CAPABILITIES}
       storageProfileStatus={options.storageProfileStatus ?? null}
       userSettingsLocationStatus={options.userSettingsLocationStatus ?? null}
       onSectionChange={() => undefined}
@@ -180,6 +187,7 @@ function renderSettingsPage(
       onImportNotebook={() => undefined}
       onImportUserSettings={() => undefined}
       onImportUserSettingsFromNotebookFolder={() => undefined}
+      onExportRecoveryCopy={() => undefined}
       onChooseUserSettingsFolder={() => undefined}
       onRevealUserSettingsFolder={() => undefined}
       onRetryUserSettingsSync={() => undefined}
@@ -449,6 +457,35 @@ describe('frontmatter settings page', () => {
     expect(html).toContain('/Users/me/Cloud/Tabs Settings')
     expect(html).toContain('sync</span><span>fallback</span>')
     expect(html).toContain('Settings folder does not contain settings/app-settings.json. Using local app settings.')
+  })
+
+  it('hides desktop-only folder controls on mobile and exposes archive-based recovery', () => {
+    const settingsHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, {
+      section: 'data',
+      dataSection: 'settings',
+      dataCapabilities: MOBILE_DATA_CAPABILITIES,
+    })
+    const folderHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, {
+      section: 'data',
+      dataSection: 'storage',
+      dataCapabilities: MOBILE_DATA_CAPABILITIES,
+    })
+
+    expect(settingsHtml).toContain('mobile and tablet store live user settings inside this app')
+    expect(settingsHtml).toContain('export user settings')
+    expect(settingsHtml).toContain('import user settings')
+    expect(settingsHtml).not.toContain('choose settings folder')
+    expect(settingsHtml).not.toContain('import from notebook folder')
+
+    expect(folderHtml).toContain('local app notebook:')
+    expect(folderHtml).toContain('app-private local')
+    expect(folderHtml).toContain('export recovery copy')
+    expect(folderHtml).toContain('live notebook folders, live settings folders, backups, and folder switching are desktop features')
+    expect(folderHtml).not.toContain('new notebook')
+    expect(folderHtml).not.toContain('switch notebook')
+    expect(folderHtml).not.toContain('move notebook folder')
+    expect(folderHtml).not.toContain('export backup')
+    expect(folderHtml).not.toContain('import backup')
   })
 
   it('renders custom theme palette controls when a custom theme is selected', () => {
