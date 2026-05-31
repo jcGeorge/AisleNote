@@ -14,20 +14,29 @@ const aisles: ResolvedNoteAisle[] = [
 function renderWorkspace(
   mountedAisleIds: Set<string>,
   options: {
+    activeAisleId?: string
+    aisles?: ResolvedNoteAisle[]
     frontmatterAisleIds?: Set<string>
     linkedAisleIds?: Set<string>
     wholeNoteLinked?: boolean
+    scratchpadAisleControls?: {
+      canDeleteActiveAisle: boolean
+      onAddAisleLeft: () => void
+      onAddAisleRight: () => void
+      onDeleteActiveAisle: () => void
+    }
   } = {},
 ) {
   return renderToStaticMarkup(
     <NoteWorkspace
       noteBodyId="body-1"
-      aisles={aisles}
-      activeAisleId="a"
+      aisles={options.aisles ?? aisles}
+      activeAisleId={options.activeAisleId ?? 'a'}
       editorReadOnly={false}
       frontmatterAisleIds={options.frontmatterAisleIds}
       linkedAisleIds={options.linkedAisleIds}
       wholeNoteLinked={options.wholeNoteLinked}
+      scratchpadAisleControls={options.scratchpadAisleControls}
       aisleScrollRef={{ current: null }}
       toolbar={null}
       headingPopover={null}
@@ -43,6 +52,13 @@ function renderWorkspace(
     />,
   )
 }
+
+const scratchpadAisleControls = (canDeleteActiveAisle: boolean) => ({
+  canDeleteActiveAisle,
+  onAddAisleLeft: () => undefined,
+  onAddAisleRight: () => undefined,
+  onDeleteActiveAisle: () => undefined,
+})
 
 describe('NoteWorkspace aisle mounting', () => {
   it('keeps every aisle pane in the scroll strip while only mounted aisles get editor hosts', () => {
@@ -169,6 +185,40 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html).not.toContain('note-aisle-action-layer')
     expect(html).not.toContain('note-aisle-link-btn')
     expect(html).not.toContain('note-aisle-frontmatter-btn')
+    expect(html).not.toContain('note-scratchpad-aisle-controls')
+  })
+
+  it('renders scratchpad controls only for the active aisle', () => {
+    const html = renderWorkspace(new Set(['b']), {
+      activeAisleId: 'b',
+      scratchpadAisleControls: scratchpadAisleControls(true),
+    })
+
+    expect(html.match(/note-scratchpad-aisle-controls/g) ?? []).toHaveLength(1)
+    expect(html).toContain('Scratchpad aisle 2 controls')
+    expect(html).not.toContain('Scratchpad aisle 1 controls')
+    expect(html).not.toContain('Scratchpad aisle 3 controls')
+    expect(html).toContain('Add aisle to left of aisle 2')
+    expect(html).toContain('Add aisle to right of aisle 2')
+    expect(html).toContain('Delete aisle 2')
+    expect(html).toContain('aisle-edit-delete-icon note-scratchpad-aisle-delete-icon')
+  })
+
+  it('hides scratchpad delete when only one aisle remains', () => {
+    const singleAisle: ResolvedNoteAisle[] = [{ id: 'solo', aisleBodyId: 'solo', markdown: 'single' }]
+    const html = renderWorkspace(new Set(['solo']), {
+      aisles: singleAisle,
+      activeAisleId: 'solo',
+      scratchpadAisleControls: scratchpadAisleControls(false),
+    })
+
+    expect(html).toContain('Scratchpad aisle 1 controls')
+    expect(html.match(/note-scratchpad-aisle-add-btn/g) ?? []).toHaveLength(2)
+    expect(html).toContain('Add aisle to left of aisle 1')
+    expect(html).toContain('Add aisle to right of aisle 1')
+    expect(html).not.toContain('Delete aisle 1')
+    expect(html).not.toContain('note-scratchpad-aisle-delete-btn')
+    expect(html).not.toContain('aisle-edit-delete-icon note-scratchpad-aisle-delete-icon')
   })
 
   it('renders fm only for aisles with valid frontmatter', () => {

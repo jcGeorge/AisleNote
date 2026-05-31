@@ -4446,6 +4446,25 @@ function App() {
               frontmatterAisleIds={activeFrontmatterAisleIds}
               linkedAisleIds={activeLinkedAisleIds}
               wholeNoteLinked={activeNoteDuplicateCount > 1}
+              scratchpadAisleControls={
+                scratchpadWorkspaceActive
+                  ? {
+                      canDeleteActiveAisle: activeNoteAisles.length > 1,
+                      onAddAisleLeft: () => {
+                        closeEditorEphemeraRef.current()
+                        addScratchpadAisle('', { placement: 'left-of-focus' })
+                      },
+                      onAddAisleRight: () => {
+                        closeEditorEphemeraRef.current()
+                        addScratchpadAisle('', { placement: 'right-of-focus' })
+                      },
+                      onDeleteActiveAisle: () => {
+                        closeEditorEphemeraRef.current()
+                        deleteScratchpadActiveAisle()
+                      },
+                    }
+                  : undefined
+              }
               aisleScrollRef={aisleScrollRef}
               toolbar={editorToolbarLayer.toolbar}
               headingPopover={editorToolbarLayer.popovers}

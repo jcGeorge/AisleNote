@@ -40,6 +40,13 @@ function assignRef<T>(ref: Ref<T>, value: T | null) {
   }
 }
 
+type ScratchpadAisleControls = {
+  canDeleteActiveAisle: boolean
+  onAddAisleLeft: () => void
+  onAddAisleRight: () => void
+  onDeleteActiveAisle: () => void
+}
+
 type NoteWorkspaceProps = {
   noteBodyId: string
   aisles: ResolvedNoteAisle[]
@@ -70,6 +77,7 @@ type NoteWorkspaceProps = {
   onOpenTableOfContentsLink?: (aisleId: string, link: TableOfContentsLinkItem) => void
   onOpenAisleFrontmatter?: (aisleId: string) => void
   onOpenAisleLink?: (aisleId: string) => void
+  scratchpadAisleControls?: ScratchpadAisleControls
   onRegisterAislePaneRoot: (aisleId: string, node: HTMLElement | null) => void
   onRegisterAisleEditorRoot: (editorKey: string, node: HTMLElement | null) => void
 }
@@ -208,6 +216,7 @@ export function NoteWorkspace({
   onOpenTableOfContentsLink = () => undefined,
   onOpenAisleFrontmatter = () => undefined,
   onOpenAisleLink = () => undefined,
+  scratchpadAisleControls,
   onRegisterAislePaneRoot,
   onRegisterAisleEditorRoot,
 }: NoteWorkspaceProps) {
@@ -252,6 +261,7 @@ export function NoteWorkspace({
             (tableOfContentsHeadings.length > 0 || tableOfContentsLinks.length > 0)
           const showLinkButton = wholeNoteLinked || linkedAisleIds.has(aisle.id)
           const showFrontmatterButton = frontmatterAisleIds.has(aisle.id)
+          const showScratchpadAisleControls = Boolean(scratchpadAisleControls && aisle.id === activeAisleId)
           return (
             <section
               key={aisle.id}
@@ -330,6 +340,60 @@ export function NoteWorkspace({
                   </div>
                 )}
               </section>
+              {showScratchpadAisleControls && scratchpadAisleControls && (
+                <div className="note-scratchpad-aisle-controls" aria-label={`Scratchpad aisle ${index + 1} controls`}>
+                  <button
+                    type="button"
+                    className="note-scratchpad-aisle-control-btn note-scratchpad-aisle-add-btn note-scratchpad-aisle-add-left-btn"
+                    aria-label={`Add aisle to left of aisle ${index + 1}`}
+                    title="Add aisle left"
+                    onPointerDown={(event) => {
+                      event.stopPropagation()
+                    }}
+                    onClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      scratchpadAisleControls.onAddAisleLeft()
+                    }}
+                  >
+                    <span className="note-scratchpad-aisle-plus-icon" aria-hidden="true">+</span>
+                  </button>
+                  {scratchpadAisleControls.canDeleteActiveAisle && (
+                    <button
+                      type="button"
+                      className="note-scratchpad-aisle-control-btn note-scratchpad-aisle-delete-btn"
+                      aria-label={`Delete aisle ${index + 1}`}
+                      title="Delete aisle"
+                      onPointerDown={(event) => {
+                        event.stopPropagation()
+                      }}
+                      onClick={(event) => {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        scratchpadAisleControls.onDeleteActiveAisle()
+                      }}
+                    >
+                      <span className="aisle-edit-delete-icon note-scratchpad-aisle-delete-icon" aria-hidden="true" />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="note-scratchpad-aisle-control-btn note-scratchpad-aisle-add-btn note-scratchpad-aisle-add-right-btn"
+                    aria-label={`Add aisle to right of aisle ${index + 1}`}
+                    title="Add aisle right"
+                    onPointerDown={(event) => {
+                      event.stopPropagation()
+                    }}
+                    onClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      scratchpadAisleControls.onAddAisleRight()
+                    }}
+                  >
+                    <span className="note-scratchpad-aisle-plus-icon" aria-hidden="true">+</span>
+                  </button>
+                </div>
+              )}
               {tableOfContentsOpen && (
                 <AisleTableOfContentsPanel
                   aisleId={aisle.id}

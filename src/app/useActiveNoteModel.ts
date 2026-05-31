@@ -71,10 +71,13 @@ export const useActiveNoteModel = ({
     savedCursorLocation && activeNoteAisles.some((aisle) => aisle.id === savedCursorLocation.activeAisleId)
       ? savedCursorLocation.activeAisleId
       : ''
+  const activeAisleIdInBody = activeNoteAisles.some((aisle) => aisle.id === activeAisleId)
   const resolvedActiveAisleId =
     scratchpadActive
-      ? getScratchpadActiveAisleId(state, activeAisleId || savedActiveAisleId)
-      : activeNoteAisles.some((aisle) => aisle.id === activeAisleId)
+      ? activeAisleIdInBody
+        ? activeAisleId
+        : getScratchpadActiveAisleId(state, savedActiveAisleId)
+      : activeAisleIdInBody
       ? activeAisleId
       : savedActiveAisleId || (activeNoteAisles[0]?.id ?? '')
 

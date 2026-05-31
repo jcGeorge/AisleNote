@@ -4,6 +4,7 @@ import {
   getHorizontalDragAutoScrollDelta,
   getScrollLeftForAisleHorizontalScrollbarPointer,
   getScrollLeftForAisleHorizontalScrollbarThumb,
+  getScrollLeftToFocusHorizontalPane,
   getScrollLeftToRevealHorizontalPane,
 } from './aisle-horizontal-scroll'
 
@@ -50,6 +51,63 @@ describe('horizontal aisle reveal geometry', () => {
         paneRight: 1200,
       }),
     ).toBe(720)
+  })
+})
+
+describe('horizontal aisle focus geometry', () => {
+  it('left-aligns a fully visible but offset pane', () => {
+    expect(
+      getScrollLeftToFocusHorizontalPane({
+        currentScrollLeft: 120,
+        viewportWidth: 500,
+        paneLeft: 180,
+        maxScrollLeft: 900,
+      }),
+    ).toBe(180)
+  })
+
+  it('left-aligns a barely visible right-side pane instead of only revealing its right edge', () => {
+    expect(
+      getScrollLeftToFocusHorizontalPane({
+        currentScrollLeft: 0,
+        viewportWidth: 900,
+        paneLeft: 860,
+        maxScrollLeft: 1200,
+      }),
+    ).toBe(860)
+  })
+
+  it('left-aligns a pane clipped before the viewport', () => {
+    expect(
+      getScrollLeftToFocusHorizontalPane({
+        currentScrollLeft: 300,
+        viewportWidth: 500,
+        paneLeft: 100,
+        maxScrollLeft: 900,
+      }),
+    ).toBe(100)
+  })
+
+  it('clamps focus near the end of the scroll strip', () => {
+    expect(
+      getScrollLeftToFocusHorizontalPane({
+        currentScrollLeft: 600,
+        viewportWidth: 500,
+        paneLeft: 1100,
+        maxScrollLeft: 900,
+      }),
+    ).toBe(900)
+  })
+
+  it('keeps a safe current scroll when the viewport has no width', () => {
+    expect(
+      getScrollLeftToFocusHorizontalPane({
+        currentScrollLeft: 950,
+        viewportWidth: 0,
+        paneLeft: 100,
+        maxScrollLeft: 900,
+      }),
+    ).toBe(900)
   })
 })
 
