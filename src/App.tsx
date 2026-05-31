@@ -206,7 +206,6 @@ import {
 import { decoupleNoteLocationsInState } from './overlays/note-decouple'
 import { measureSlowOperation } from './performance/performance-logging'
 import { getRuntimeDataCapabilities } from './platform/data-platform'
-import { savePortableTextFile } from './platform/portable-file-service'
 import {
   ALWAYS_SHOW_DOMAINS_WITHOUT_SPACES_MESSAGE,
   getCustomThemePaletteSeedMatch,
@@ -215,14 +214,10 @@ import {
   isThemePaletteSeed,
 } from './settings/defaults'
 import { useSettingsController } from './settings/useSettingsController'
-import {
-  applyPortableAppSettings,
-  createDefaultPortableAppSettings,
-  parseStrictPortableAppSettingsJson,
-  stringifyPortableAppSettings,
-} from './storage/settings-partition.js'
+import { applyPortableAppSettings } from './storage/settings-partition.js'
 import { DEFAULT_STATE, applyAutoPurgeToAppState, ensureNoteBodiesForAppState, parseSavedState } from './state/app-state'
 import { useNotebookTransferActions } from './import/useNotebookTransferActions'
+import { useUserSettingsTransferActions } from './settings/useUserSettingsTransferActions'
 import {
   DEFAULT_SCRATCHPAD_AISLE_LIMIT,
   SCRATCHPAD_CONTENT_TARGET_ID,
@@ -346,10 +341,6 @@ function getMultiLineListOperationForNewlineOperation(
 
 const DEFAULT_TOAST_DURATION_MS = 6000
 const HOVERED_TOAST_DURATION_MS = 4000
-const USER_SETTINGS_FILE_STRUCTURE_ERROR = "The file selected doesn't match our app-settings.json structure."
-const USER_SETTINGS_FOLDER_STRUCTURE_ERROR =
-  "The folder selected doesn't contain an app-settings.json file that matches this project's structure."
-const USER_SETTINGS_FOLDER_IMPORT_HINT = 'Export or copy app-settings.json into that notebook folder, then try again.'
 
 type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
 
@@ -357,42 +348,6 @@ let renameInputMeasureContext: CanvasRenderingContext2D | null = null
 
 function getCurrentTimestamp() {
   return Date.now()
-}
-
-function chooseUserSettingsWithBrowserInput(): Promise<{ canceled: true } | { canceled: false; contents: string }> {
-  return new Promise((resolve) => {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = '.json,application/json'
-    input.style.display = 'none'
-    const cleanup = () => {
-      input.remove()
-    }
-    input.addEventListener('change', () => {
-      const file = input.files?.[0] ?? null
-      if (!file) {
-        cleanup()
-        resolve({ canceled: true })
-        return
-      }
-      file.text()
-        .then((contents) => resolve({ canceled: false, contents }))
-        .catch(() => resolve({ canceled: true }))
-        .finally(cleanup)
-    }, { once: true })
-    document.body.appendChild(input)
-    input.click()
-  })
-}
-
-function downloadTextFile(defaultPath: string, contents: string, type: string) {
-  const blob = new Blob([contents], { type })
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = defaultPath
-  anchor.click()
-  URL.revokeObjectURL(url)
 }
 
 function App() {
@@ -3277,144 +3232,13 @@ function App() {
     setImportStatus: settingsController.setImportStatus,
   })
 
-  const exportUserSettings = async () => {
-    settingsController.setExportStatus('building user settings export...')
-    try {
-      const contents = stringifyPortableAppSettings(buildStateWithLatestEditorContent())
-      const defaultPath = 'app-settings.json'
-      const saveUserSettingsFile = window.electronAPI?.saveUserSettingsFile
-      if (saveUserSettingsFile) {
-        const result = await saveUserSettingsFile({ defaultPath, contents })
-        if (result.canceled) {
-          settingsController.setExportStatus('user settings export canceled')
-          return
-        }
-        if (result.error) {
-          settingsController.setExportStatus(`user settings export failed: ${result.error}`)
-          return
-        }
-        settingsController.setExportStatus('user settings exported')
-        return
-      }
-
-      const portableSave = await savePortableTextFile({
-        defaultPath,
-        contents,
-        title: 'Export user settings',
-      })
-      if (portableSave.handled) {
-        if (portableSave.error) {
-          settingsController.setExportStatus(`user settings export failed: ${portableSave.error}`)
-          return
-        }
-        settingsController.setExportStatus('user settings shared')
-        return
-      }
-
-      downloadTextFile(defaultPath, contents, 'application/json')
-      settingsController.setExportStatus('user settings exported')
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'unknown error'
-      settingsController.setExportStatus(`user settings export failed: ${message}`)
-    }
-  }
-
-  const resetUserSettingsToDefaults = async () => {
-    if (!window.confirm('Reset user settings to defaults? Notebook content will not be changed.')) {
-      settingsController.setImportStatus('user settings reset canceled.')
-      return
-    }
-
-    const resetDesktopSettings = window.electronAPI?.resetUserSettingsToDefaults
-    if (resetDesktopSettings) {
-      const result = await resetDesktopSettings()
-      if (!result.ok) {
-        settingsController.setImportStatus(`user settings reset failed: ${result.error ?? 'unknown error'}`)
-        return
-      }
-      settingsController.setImportStatus('user settings reset to defaults.')
-      return
-    }
-
-    const latestState = buildStateWithLatestEditorContent()
-    await commitAppStateNow(applyPortableAppSettings(latestState, createDefaultPortableAppSettings()))
-    settingsController.setImportStatus('user settings reset to defaults.')
-  }
-
-  const importUserSettings = async () => {
-    settingsController.setImportStatus('choose an app-settings.json file to import.')
-    try {
-      const desktopOpen = window.electronAPI?.openUserSettingsFile
-      const openResult = desktopOpen ? await desktopOpen() : await chooseUserSettingsWithBrowserInput()
-      if (openResult.canceled) {
-        settingsController.setImportStatus('user settings import canceled.')
-        return
-      }
-      if ('ok' in openResult && !openResult.ok) {
-        settingsController.setImportStatus(
-          openResult.error ? `user settings import failed: ${openResult.error}` : 'user settings import failed.',
-        )
-        return
-      }
-      const contents = 'contents' in openResult ? openResult.contents : ''
-      const parsedSettings = parseStrictPortableAppSettingsJson(contents)
-      if (!parsedSettings.ok) {
-        settingsController.setImportStatus(USER_SETTINGS_FILE_STRUCTURE_ERROR)
-        return
-      }
-      if (!window.confirm('Importing user settings will overwrite current theme, hotkeys, shortcuts, and app preferences. Continue?')) {
-        settingsController.setImportStatus('user settings import canceled.')
-        return
-      }
-
-      const latestState = buildStateWithLatestEditorContent()
-      await commitAppStateNow(applyPortableAppSettings(latestState, parsedSettings.settings))
-      settingsController.setImportStatus('user settings imported.')
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'unknown error'
-      settingsController.setImportStatus(`user settings import failed: ${message}`)
-    }
-  }
-
-  const importUserSettingsFromNotebookFolder = async () => {
-    const openFromNotebookFolder = window.electronAPI?.openUserSettingsFromNotebookFolder
-    if (!openFromNotebookFolder) {
-      settingsController.setImportStatus('import from notebook folder is available in the desktop app.')
-      return
-    }
-
-    settingsController.setImportStatus('choose a notebook folder to import user settings from.')
-    try {
-      const openResult = await openFromNotebookFolder()
-      if (openResult.canceled) {
-        settingsController.setImportStatus('user settings import canceled.')
-        return
-      }
-      if (!openResult.ok) {
-        settingsController.setImportStatus(USER_SETTINGS_FOLDER_STRUCTURE_ERROR)
-        pushToast(USER_SETTINGS_FOLDER_IMPORT_HINT, 'warning', 6000)
-        return
-      }
-
-      const parsedSettings = parseStrictPortableAppSettingsJson(openResult.contents)
-      if (!parsedSettings.ok) {
-        settingsController.setImportStatus(USER_SETTINGS_FOLDER_STRUCTURE_ERROR)
-        pushToast(USER_SETTINGS_FOLDER_IMPORT_HINT, 'warning', 6000)
-        return
-      }
-      if (!window.confirm('Importing user settings will overwrite current theme, hotkeys, shortcuts, and app preferences. Continue?')) {
-        settingsController.setImportStatus('user settings import canceled.')
-        return
-      }
-
-      const latestState = buildStateWithLatestEditorContent()
-      await commitAppStateNow(applyPortableAppSettings(latestState, parsedSettings.settings))
-      settingsController.setImportStatus('user settings imported from notebook folder.')
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'unknown error'
-      settingsController.setImportStatus(`user settings import failed: ${message}`)
-    }
-  }
+  const userSettingsTransferActions = useUserSettingsTransferActions({
+    getLatestState: buildStateWithLatestEditorContent,
+    commitAppStateNow,
+    setExportStatus: settingsController.setExportStatus,
+    setImportStatus: settingsController.setImportStatus,
+    pushToast,
+  })
 
   const openFrontmatterModalForAisle = (aisleId: string | null = null) => {
     if (scratchpadWorkspaceActive) {
@@ -4442,17 +4266,17 @@ function App() {
           onAutoRemoveDaysChange={settingsController.updateAutoRemoveDaysSetting}
           onExportAll={() => notebookTransferActions.exportData('all')}
           onExportNotebook={notebookTransferActions.exportNotebook}
-          onExportUserSettings={exportUserSettings}
+          onExportUserSettings={userSettingsTransferActions.exportUserSettings}
           onImportBackup={notebookTransferActions.importBackup}
           onImportNotebook={notebookTransferActions.importNotebook}
-          onImportUserSettings={importUserSettings}
-          onImportUserSettingsFromNotebookFolder={importUserSettingsFromNotebookFolder}
+          onImportUserSettings={userSettingsTransferActions.importUserSettings}
+          onImportUserSettingsFromNotebookFolder={userSettingsTransferActions.importUserSettingsFromNotebookFolder}
           onExportRecoveryCopy={notebookTransferActions.exportRecoveryCopy}
           onChooseUserSettingsFolder={userSettingsLocationController.chooseUserSettingsFolder}
           onRevealUserSettingsFolder={userSettingsLocationController.revealUserSettingsFolder}
           onRetryUserSettingsSync={userSettingsLocationController.retryUserSettingsSync}
           onResetUserSettingsFolder={userSettingsLocationController.resetUserSettingsFolder}
-          onResetUserSettingsToDefaults={resetUserSettingsToDefaults}
+          onResetUserSettingsToDefaults={userSettingsTransferActions.resetUserSettingsToDefaults}
           onChooseNotebookBackupFolder={notebookTransferActions.chooseNotebookBackupFolder}
           onRunNotebookBackupNow={notebookTransferActions.runNotebookBackupNow}
           onRevealNotebookBackupFolder={notebookTransferActions.revealNotebookBackupFolder}

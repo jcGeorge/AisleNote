@@ -78,4 +78,25 @@ export const dataTransferMessages = {
     const warningCount = (summary.warnings?.length ?? 0) + materializedWarningCount
     return `imported notebook: ${summary.domains} domain(s), ${summary.spaces} space(s), ${summary.tabs} tab(s), ${summary.notes} note(s).${appliedText}${unresolvedText}${warningSuffix(warningCount)}`
   },
+  userSettingsExportBuilding: 'building user settings export...',
+  userSettingsExportCanceled: 'user settings export canceled',
+  userSettingsExportFailed: (message?: string) => `user settings export failed${message ? `: ${message}` : ''}`,
+  userSettingsExported: 'user settings exported',
+  userSettingsShared: 'user settings shared',
+  userSettingsImportChooseFile: 'choose an app-settings.json file to import.',
+  userSettingsImportChooseNotebookFolder: 'choose a notebook folder to import user settings from.',
+  userSettingsImportCanceled: 'user settings import canceled.',
+  userSettingsImportFailed: (message?: string) => `user settings import failed${message ? `: ${message}` : '.'}`,
+  userSettingsImported: 'user settings imported.',
+  userSettingsImportedFromNotebookFolder: 'user settings imported from notebook folder.',
+  userSettingsFileStructureError: "The file selected doesn't match our app-settings.json structure.",
+  userSettingsFolderStructureError:
+    "The folder selected doesn't contain an app-settings.json file that matches this project's structure.",
+  userSettingsFolderImportHint: 'Export or copy app-settings.json into that notebook folder, then try again.',
+  userSettingsFolderImportDesktopOnly: 'import from notebook folder is available in the desktop app.',
+  userSettingsOverwriteConfirm: 'Importing user settings will overwrite current theme, hotkeys, shortcuts, and app preferences. Continue?',
+  userSettingsResetConfirm: 'Reset user settings to defaults? Notebook content will not be changed.',
+  userSettingsResetCanceled: 'user settings reset canceled.',
+  userSettingsResetFailed: (message?: string) => `user settings reset failed: ${message ?? 'unknown error'}`,
+  userSettingsResetToDefaults: 'user settings reset to defaults.',
 }
