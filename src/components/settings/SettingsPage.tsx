@@ -421,7 +421,7 @@ export function SettingsPage({
         <span className="settings-hotkey-label" id={labelId}>
           {label}
         </span>
-        <div className="settings-segmented-control" role="radiogroup" aria-labelledby={labelId}>
+        <div className="settings-segmented-control settings-flag-segmented-control" role="radiogroup" aria-labelledby={labelId}>
           {TABLE_CONTROL_TARGET_OPTIONS.map((option) => (
             <button
               key={option.id}
@@ -446,7 +446,7 @@ export function SettingsPage({
         <span className="settings-hotkey-label" id={labelId}>
           table of contents shows for
         </span>
-        <div className="settings-segmented-control" role="radiogroup" aria-labelledby={labelId}>
+        <div className="settings-segmented-control settings-flag-segmented-control" role="radiogroup" aria-labelledby={labelId}>
           {TABLE_OF_CONTENTS_SCOPE_OPTIONS.map((option) => (
             <button
               key={option.id}
@@ -490,7 +490,7 @@ export function SettingsPage({
         <span className="settings-hotkey-label" id={labelId}>
           command+n in scratch pad creates an aisle to the
         </span>
-        <div className="settings-segmented-control" role="radiogroup" aria-labelledby={labelId}>
+        <div className="settings-segmented-control settings-flag-segmented-control" role="radiogroup" aria-labelledby={labelId}>
           {SCRATCHPAD_NEW_AISLE_SIDE_OPTIONS.map((option) => (
             <button
               key={option.id}
@@ -942,7 +942,6 @@ export function SettingsPage({
 
         {section === 'misc' && (
           <div className="settings-section-panel" role="tabpanel">
-            <p className="settings-help">user settings</p>
             {renderTableOfContentsScopeSetting()}
             {generalMiscSyncedUiBooleanSettings.map((setting) => renderMiscSyncedUiBooleanSetting(setting))}
             {renderTableControlTargetSetting(
@@ -955,7 +954,7 @@ export function SettingsPage({
               tableDeleteTargetModeDraft,
               onTableDeleteTargetModeChange,
             )}
-            <h2 className="settings-subsection-heading">scratchpad</h2>
+            <p className="settings-help settings-subsection-label">scratchpad</p>
             {scratchpadDeleteShortcutSetting
               ? renderMiscSyncedUiBooleanSetting(scratchpadDeleteShortcutSetting)
               : null}

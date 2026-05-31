@@ -143,11 +143,10 @@ import {
   COMPLETED_TASK_UNDO_HINT_COOLDOWN_MS,
   COMPLETED_TASK_UNDO_HINT_DETECTION_MS,
 } from './editor/task-behavior'
-import { exportAppData, exportNotebookArchive, type ExportScope } from './export/export-data'
 import { buildFrontmatterModalDraftForAisle } from './frontmatter/frontmatter-state'
 import { getCycledAisleTarget, useGlobalHotkeys } from './hotkeys/useGlobalHotkeys'
 import { normalizeMarkdownForPersistence } from './markdown/markdown-utils'
-import { getRegisteredAssetBytes, importBlobAsAssetUrl, importImageBlobAsAssetUrl } from './markdown/image-asset-registry'
+import { importBlobAsAssetUrl, importImageBlobAsAssetUrl } from './markdown/image-asset-registry'
 import { useNavigationHistory } from './navigation/useNavigationHistory'
 import { useAppNavigationActions } from './navigation/useAppNavigationActions'
 import {
@@ -222,19 +221,8 @@ import {
   parseStrictPortableAppSettingsJson,
   stringifyPortableAppSettings,
 } from './storage/settings-partition.js'
-import { createCapacitorRecoveryNotebookArchive } from './storage/capacitor-hybrid-state'
 import { DEFAULT_STATE, applyAutoPurgeToAppState, ensureNoteBodiesForAppState, parseSavedState } from './state/app-state'
-import { mergeImportedBackupState } from './import/backup-import'
-import { formatMarkdownFolderImportSummary, mergeMarkdownFolderImport, parseMarkdownFolderZip } from './import/markdown-folder-import'
-import {
-  materializeNotebookImportAssets,
-  mergeImportedNotebookState,
-  buildNotebookArchive,
-  parseNotebookArchive,
-  toNotebookArchiveArrayBuffer,
-  type NotebookArchiveSummary,
-  type ParsedNotebookArchive,
-} from './notebook/notebook-archive'
+import { useNotebookTransferActions } from './import/useNotebookTransferActions'
 import {
   DEFAULT_SCRATCHPAD_AISLE_LIMIT,
   SCRATCHPAD_CONTENT_TARGET_ID,
@@ -287,7 +275,6 @@ import type {
   MultiLineInlineFormat,
   NewAislePlacement,
   NewlineOperationId,
-  NotebookBackupStatus,
   NoteAisleBody,
   NoteCopyMode,
   NoteLocation,
@@ -372,32 +359,6 @@ function getCurrentTimestamp() {
   return Date.now()
 }
 
-function chooseNotebookArchiveWithBrowserInput(): Promise<{ canceled: true } | { canceled: false; bytes: ArrayBuffer }> {
-  return new Promise((resolve) => {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = '.zip,application/zip'
-    input.style.display = 'none'
-    const cleanup = () => {
-      input.remove()
-    }
-    input.addEventListener('change', () => {
-      const file = input.files?.[0] ?? null
-      if (!file) {
-        cleanup()
-        resolve({ canceled: true })
-        return
-      }
-      file.arrayBuffer()
-        .then((bytes) => resolve({ canceled: false, bytes }))
-        .catch(() => resolve({ canceled: true }))
-        .finally(cleanup)
-    }, { once: true })
-    document.body.appendChild(input)
-    input.click()
-  })
-}
-
 function chooseUserSettingsWithBrowserInput(): Promise<{ canceled: true } | { canceled: false; contents: string }> {
   return new Promise((resolve) => {
     const input = document.createElement('input')
@@ -434,10 +395,6 @@ function downloadTextFile(defaultPath: string, contents: string, type: string) {
   URL.revokeObjectURL(url)
 }
 
-function formatNotebookArchiveSummary(summary: NotebookArchiveSummary): string {
-  return `${summary.domains} domain(s), ${summary.spaces} space(s), ${summary.tabs} tab(s), ${summary.notes} note(s)`
-}
-
 function App() {
   const dataCapabilities = useMemo(() => getRuntimeDataCapabilities(), [])
   const initialDeviceSettingsRef = useRef<DeviceSettings | null>(null)
@@ -452,9 +409,6 @@ function App() {
   const [editing, setEditing] = useState<{ type: EditableEntityType; id: string } | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [modal, setModal] = useState<ModalState | null>(null)
-  const [pendingNotebookImport, setPendingNotebookImport] = useState<ParsedNotebookArchive | null>(null)
-  const [notebookImportScratchpadEnabled, setNotebookImportScratchpadEnabled] = useState(false)
-  const [notebookBackupStatus, setNotebookBackupStatus] = useState<NotebookBackupStatus | null>(null)
   const [shortcutMenu, setShortcutMenu] = useState<ShortcutMenuState | null>(null)
   const [shortcutMenuActiveIndex, setShortcutMenuActiveIndex] = useState(0)
   const [tableOfContentsPanels, setTableOfContentsPanels] = useState<TableOfContentsPanelsState | null>(null)
@@ -537,9 +491,6 @@ function App() {
   const flushStorageActionStateRef = useRef<
     (options?: { snapshotMode?: Extract<AppStateSnapshotMode, 'force' | 'skip'> }) => Promise<void> | void
   >(() => {})
-  const notebookBackupStatusRef = useRef<NotebookBackupStatus | null>(null)
-  const notebookBackupInFlightRef = useRef(false)
-  const suppressNextAutomaticBackupRef = useRef(false)
 
   function clearToastTimer(toastId: number) {
     const timer = toastTimersRef.current.get(toastId)
@@ -863,26 +814,6 @@ function App() {
     beforeUserSettingsLocationAction: () => flushStorageActionStateRef.current(),
   })
   const userSettingsLocationStatus = userSettingsLocationController.userSettingsLocationStatus
-
-  useEffect(() => {
-    let disposed = false
-    const applyNotebookBackupStatus = (nextStatus: NotebookBackupStatus) => {
-      notebookBackupStatusRef.current = nextStatus
-      setNotebookBackupStatus(nextStatus)
-    }
-
-    void window.electronAPI?.getNotebookBackupStatus?.().then((status) => {
-      if (!disposed && status) applyNotebookBackupStatus(status)
-    })
-    const unsubscribe =
-      window.electronAPI?.onNotebookBackupStatusUpdated?.((status) => {
-        if (!disposed) applyNotebookBackupStatus(status)
-      }) ?? (() => undefined)
-    return () => {
-      disposed = true
-      unsubscribe()
-    }
-  }, [])
 
   const trackCompletedTaskQuickDelete = (beforeMarkdown: string) => {
     completedTaskDeleteUndoCandidateRef.current = {
@@ -3337,170 +3268,14 @@ function App() {
 
   const createNotebook = () => storageProfileController.createNotebook(buildBlankNotebookSerializedState)
 
-  const exportData = (scope: ExportScope, spaceId?: string) => {
-    if (scope === 'all' && !window.electronAPI?.exportAppState) {
-      settingsController.setExportStatus('support archive export is available in the desktop app.')
-      return undefined
-    }
-    return exportAppData({
-      scope,
-      spaceId,
-      getLatestState: buildStateWithLatestEditorContent,
-      setStatus: settingsController.setExportStatus,
-    })
-  }
-
-  const exportNotebook = () =>
-    exportNotebookArchive({
-      getLatestState: buildStateWithLatestEditorContent,
-      setStatus: settingsController.setExportStatus,
-    })
-
-  const buildNotebookArchiveData = async (
-    serializedState: string,
-    readAssetBytes?: (assetPath: string) => Promise<Uint8Array | null> | Uint8Array | null,
-  ): Promise<ArrayBuffer> => {
-    const archiveState = parseSavedState(serializedState)
-    const result = await buildNotebookArchive({
-      state: archiveState,
-      readAssetBytes: readAssetBytes ?? (async (assetPath) => {
-        const fromDesktop = await window.electronAPI?.readAsset?.({ assetPath })
-        if (fromDesktop?.ok && fromDesktop.bytes) return new Uint8Array(fromDesktop.bytes)
-        return getRegisteredAssetBytes(assetPath)
-      }),
-    })
-    return toNotebookArchiveArrayBuffer(result.bytes)
-  }
-
-  const writeNotebookBackup = useCallback(
-    async (
-      serializedState: string,
-      trigger: 'manual' | 'automatic',
-      options: { reportToSettings?: boolean } = {},
-    ) => {
-      const runBackup = window.electronAPI?.runNotebookBackupNow
-      if (!runBackup) {
-        if (options.reportToSettings) {
-          settingsController.setExportStatus('notebook backups are available in the desktop app.')
-        }
-        return
-      }
-      if (notebookBackupInFlightRef.current) return
-
-      notebookBackupInFlightRef.current = true
-      if (options.reportToSettings) settingsController.setExportStatus('building notebook backup...')
-      try {
-        const data = await buildNotebookArchiveData(serializedState)
-        const result = await runBackup({ data, trigger })
-        if ('status' in result && result.status) {
-          notebookBackupStatusRef.current = result.status
-          setNotebookBackupStatus(result.status)
-        }
-
-        if (options.reportToSettings) {
-          if ('canceled' in result && result.canceled) {
-            settingsController.setExportStatus('notebook backup canceled.')
-          } else if ('ok' in result && result.ok) {
-            settingsController.setExportStatus(
-              result.skipped ? 'notebook backup skipped.' : 'notebook backup saved.',
-            )
-          } else {
-            settingsController.setExportStatus(
-              `notebook backup failed: ${'error' in result ? result.error ?? 'unknown error' : 'unknown error'}`,
-            )
-          }
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'unknown error'
-        if (options.reportToSettings) settingsController.setExportStatus(`notebook backup failed: ${message}`)
-      } finally {
-        notebookBackupInFlightRef.current = false
-      }
-    },
-    [settingsController],
-  )
-
-  const chooseNotebookBackupFolder = async () => {
-    const result = await window.electronAPI?.chooseNotebookBackupFolder?.()
-    if (!result) {
-      settingsController.setExportStatus('backup folder selection is available in the desktop app.')
-      return
-    }
-    if ('status' in result && result.status) {
-      notebookBackupStatusRef.current = result.status
-      setNotebookBackupStatus(result.status)
-    }
-    if ('canceled' in result && result.canceled) {
-      settingsController.setExportStatus('backup folder selection canceled.')
-      return
-    }
-    if ('ok' in result && result.ok) {
-      settingsController.setExportStatus('backup folder updated.')
-      return
-    }
-    settingsController.setExportStatus(
-      `backup folder failed: ${'error' in result ? result.error ?? 'unknown error' : 'unknown error'}`,
-    )
-  }
-
-  const runNotebookBackupNow = async () => {
-    suppressNextAutomaticBackupRef.current = true
-    try {
-      await flushStorageActionStateRef.current({ snapshotMode: 'force' })
-    } finally {
-      suppressNextAutomaticBackupRef.current = false
-    }
-    await writeNotebookBackup(JSON.stringify(buildStateWithLatestEditorContent()), 'manual', {
-      reportToSettings: true,
-    })
-  }
-
-  const revealNotebookBackupFolder = async () => {
-    const result = await window.electronAPI?.revealNotebookBackupFolder?.()
-    if (!result) {
-      settingsController.setExportStatus('reveal backup folder is available in the desktop app.')
-      return
-    }
-    if (!result.ok) settingsController.setExportStatus(`reveal backup folder failed: ${result.error}`)
-  }
-
-  const resetNotebookBackupFolder = async () => {
-    const result = await window.electronAPI?.resetNotebookBackupFolder?.()
-    if (!result) {
-      settingsController.setExportStatus('turn off backups is available in the desktop app.')
-      return
-    }
-    if ('status' in result && result.status) {
-      notebookBackupStatusRef.current = result.status
-      setNotebookBackupStatus(result.status)
-    }
-    if ('ok' in result && result.ok) {
-      settingsController.setExportStatus('automatic backups turned off.')
-      return
-    }
-    settingsController.setExportStatus(
-      `turn off backups failed: ${'error' in result ? result.error ?? 'unknown error' : 'unknown error'}`,
-    )
-  }
-
-  useEffect(() => {
-    const handleSavedState = (event: Event) => {
-      const detail = (event as CustomEvent<{ serializedState?: string; snapshotMode?: AppStateSnapshotMode }>).detail
-      if (!detail || typeof detail.serializedState !== 'string') return
-      if (suppressNextAutomaticBackupRef.current) {
-        suppressNextAutomaticBackupRef.current = false
-        return
-      }
-      if (detail.snapshotMode === 'skip') return
-      const status = notebookBackupStatusRef.current
-      if (!status?.enabled) return
-      if (typeof status.nextBackupAt === 'number' && Date.now() < status.nextBackupAt) return
-      void writeNotebookBackup(detail.serializedState, 'automatic')
-    }
-
-    window.addEventListener('tabs:app-state-saved', handleSavedState)
-    return () => window.removeEventListener('tabs:app-state-saved', handleSavedState)
-  }, [writeNotebookBackup])
+  const notebookTransferActions = useNotebookTransferActions({
+    dataCapabilities,
+    getLatestState: buildStateWithLatestEditorContent,
+    commitAppStateNow,
+    flushStorageActionState: (options) => flushStorageActionStateRef.current(options),
+    setExportStatus: settingsController.setExportStatus,
+    setImportStatus: settingsController.setImportStatus,
+  })
 
   const exportUserSettings = async () => {
     settingsController.setExportStatus('building user settings export...')
@@ -3564,222 +3339,6 @@ function App() {
     const latestState = buildStateWithLatestEditorContent()
     await commitAppStateNow(applyPortableAppSettings(latestState, createDefaultPortableAppSettings()))
     settingsController.setImportStatus('user settings reset to defaults.')
-  }
-
-  const exportRecoveryCopy = async () => {
-    if (!dataCapabilities.appPrivateNotebook) {
-      settingsController.setExportStatus('recovery copy export is available in the mobile and tablet app.')
-      return
-    }
-
-    settingsController.setExportStatus('creating recovery copy...')
-    const result = await createCapacitorRecoveryNotebookArchive(JSON.stringify(buildStateWithLatestEditorContent()))
-    if (!result.ok) {
-      settingsController.setExportStatus(`recovery copy failed: ${result.error}`)
-      return
-    }
-    settingsController.setExportStatus(`recovery copy created: ${result.uri ?? result.path}`)
-  }
-
-  const importBackup = async () => {
-    const importArchive = window.electronAPI?.importAppStateArchive
-    if (!importArchive) {
-      settingsController.setImportStatus('support archive import is available in the desktop app.')
-      return
-    }
-
-    settingsController.setImportStatus('choose a support archive to import.')
-    try {
-      const result = await importArchive()
-      if (result.canceled) {
-        settingsController.setImportStatus('import canceled.')
-        return
-      }
-      if (!result.ok) {
-        settingsController.setImportStatus(result.error ? `support archive import failed: ${result.error}` : 'support archive import failed.')
-        return
-      }
-      if (!result.serializedState) {
-        settingsController.setImportStatus('support archive import failed: archive did not contain app state.')
-        return
-      }
-
-      const latestState = buildStateWithLatestEditorContent()
-      const importedState = parseSavedState(result.serializedState)
-      const { state: nextState, summary } = mergeImportedBackupState(latestState, importedState)
-      await commitAppStateNow(nextState)
-      const unresolvedText =
-        summary.unresolvedReferences > 0 ? ` ${summary.unresolvedReferences} reference(s) stayed unresolved.` : ''
-      const warningCount = summary.warnings.length + (result.issues?.filter((issue) => issue.severity === 'warning').length ?? 0)
-      const warningText = warningCount > 0 ? ` ${warningCount} warning(s).` : ''
-      settingsController.setImportStatus(
-        `imported support archive: ${summary.domains} domain(s), ${summary.spaces} space(s), ${summary.tabs} tab(s), ${summary.notes} note(s).${unresolvedText}${warningText}`,
-      )
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'unknown error'
-      settingsController.setImportStatus(`support archive import failed: ${message}`)
-    }
-  }
-
-  const importMarkdownAsset = async (asset: { bytes: ArrayBuffer; name?: string; mimeType?: string; extension?: string }) => {
-    if (window.electronAPI?.importAsset) {
-      const result = await window.electronAPI.importAsset({
-        bytes: asset.bytes,
-        name: asset.name ?? 'asset',
-        type: asset.mimeType,
-        extension: asset.extension,
-      })
-      return result?.ok ? result.url : null
-    }
-    return importBlobAsAssetUrl(new Blob([asset.bytes], { type: asset.mimeType ?? 'application/octet-stream' }), asset.name ?? 'asset')
-  }
-
-  const commitMarkdownImport = async (
-    payload: Parameters<typeof mergeMarkdownFolderImport>[1],
-    readAsset: NonNullable<Parameters<typeof mergeMarkdownFolderImport>[2]>['readAsset'],
-  ) => {
-    settingsController.setImportStatus('importing notebook...')
-    const latestState = buildStateWithLatestEditorContent()
-    const { state: nextState, summary } = await mergeMarkdownFolderImport(latestState, payload, {
-      readAsset,
-      importAsset: importMarkdownAsset,
-    })
-    await commitAppStateNow(nextState)
-    settingsController.setImportStatus(formatMarkdownFolderImportSummary(summary))
-  }
-
-  const stageNotebookArchiveImport = (
-    archive: ParsedNotebookArchive,
-    options: { extraWarningCount?: number } = {},
-  ) => {
-    setPendingNotebookImport(archive)
-    const warningCount = archive.issues.filter((issue) => issue.severity === 'warning').length + (options.extraWarningCount ?? 0)
-    const warningText = warningCount > 0 ? ` ${warningCount} warning(s).` : ''
-    settingsController.setImportStatus(
-      `ready to import notebook: ${formatNotebookArchiveSummary(archive.summary)}.${warningText}`,
-    )
-  }
-
-  const prepareNotebookArchiveImport = async (
-    archiveBytes: ArrayBuffer | Uint8Array,
-    options: { extraWarningCount?: number } = {},
-  ): Promise<boolean> => {
-    settingsController.setImportStatus('validating notebook...')
-    const parseResult = await parseNotebookArchive(archiveBytes)
-    if (!parseResult.ok) return false
-
-    stageNotebookArchiveImport(parseResult.archive, options)
-    return true
-  }
-
-  const importZipNotebookSource = async (archiveBytes: ArrayBuffer | Uint8Array) => {
-    settingsController.setImportStatus('validating notebook...')
-    const notebookParseResult = await parseNotebookArchive(archiveBytes)
-    if (notebookParseResult.ok) {
-      stageNotebookArchiveImport(notebookParseResult.archive)
-      return
-    }
-
-    const canTryMarkdownZip = notebookParseResult.issues.some((issue) => issue.code === 'missing-manifest')
-    if (!canTryMarkdownZip) {
-      settingsController.setImportStatus(`notebook import failed: ${notebookParseResult.error}`)
-      return
-    }
-
-    const markdownZip = await parseMarkdownFolderZip(archiveBytes)
-    if (!markdownZip.ok) {
-      settingsController.setImportStatus(`notebook import failed: ${markdownZip.error}`)
-      return
-    }
-    await commitMarkdownImport(markdownZip.payload, (relativePath) => markdownZip.assets.get(relativePath) ?? null)
-  }
-
-  const importNotebookFolderSource = async (source: {
-    sourceId: string
-    serializedState: string
-    issues?: Array<{ severity: 'warning' | 'error' }>
-  }) => {
-    const readFolderImportAsset = window.electronAPI?.readFolderImportAsset
-    if (!readFolderImportAsset) {
-      settingsController.setImportStatus('notebook folder import is available in the desktop app.')
-      return
-    }
-    const archiveBytes = await buildNotebookArchiveData(source.serializedState, async (assetPath) => {
-      const assetResult = await readFolderImportAsset({ sourceId: source.sourceId, relativePath: assetPath })
-      if (assetResult.ok && assetResult.bytes) return new Uint8Array(assetResult.bytes)
-      return null
-    })
-    const loaderWarningCount = source.issues?.filter((issue) => issue.severity === 'warning').length ?? 0
-    const prepared = await prepareNotebookArchiveImport(archiveBytes, {
-      extraWarningCount: loaderWarningCount,
-    })
-    if (!prepared) settingsController.setImportStatus('notebook import failed: notebook folder could not be converted.')
-  }
-
-  const importMarkdownFolderSource = async (source: {
-    sourceId: string
-    rootName?: string
-    files: Array<{ relativePath: string; markdown: string; size?: number }>
-  }) => {
-    const readFolderImportAsset = window.electronAPI?.readFolderImportAsset
-    if (!readFolderImportAsset) {
-      settingsController.setImportStatus('Markdown folder import is available in the desktop app.')
-      return
-    }
-    await commitMarkdownImport(
-      {
-        sourceId: source.sourceId,
-        rootName: source.rootName,
-        files: source.files,
-      },
-      async (relativePath) => {
-        const assetResult = await readFolderImportAsset({ sourceId: source.sourceId, relativePath })
-        if (!assetResult.ok) return null
-        return {
-          bytes: assetResult.bytes,
-          name: assetResult.name ?? assetResult.fileName,
-          mimeType: assetResult.mimeType,
-          extension: assetResult.extension,
-        }
-      },
-    )
-  }
-
-  const importNotebook = async () => {
-    settingsController.setImportStatus('choose a notebook to import.')
-    setPendingNotebookImport(null)
-    setNotebookImportScratchpadEnabled(false)
-    try {
-      const desktopOpen = window.electronAPI?.openNotebookImportSource
-      const openResult = desktopOpen ? await desktopOpen() : await chooseNotebookArchiveWithBrowserInput()
-      if (openResult.canceled) {
-        settingsController.setImportStatus('notebook import canceled.')
-        return
-      }
-      if ('ok' in openResult && !openResult.ok) {
-        settingsController.setImportStatus(openResult.error ? `notebook import failed: ${openResult.error}` : 'notebook import failed.')
-        return
-      }
-
-      if ('kind' in openResult && openResult.kind === 'notebook-folder') {
-        await importNotebookFolderSource(openResult)
-        return
-      }
-      if ('kind' in openResult && openResult.kind === 'markdown-folder') {
-        await importMarkdownFolderSource(openResult)
-        return
-      }
-
-      const archiveBytes = 'bytes' in openResult ? openResult.bytes : null
-      if (!archiveBytes) {
-        settingsController.setImportStatus('notebook import failed: source did not contain file data.')
-        return
-      }
-      await importZipNotebookSource(archiveBytes)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'unknown error'
-      settingsController.setImportStatus(`notebook import failed: ${message}`)
-    }
   }
 
   const importUserSettings = async () => {
@@ -3854,56 +3413,6 @@ function App() {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'unknown error'
       settingsController.setImportStatus(`user settings import failed: ${message}`)
-    }
-  }
-
-  const cancelNotebookImport = () => {
-    setPendingNotebookImport(null)
-    setNotebookImportScratchpadEnabled(false)
-    settingsController.setImportStatus('notebook import canceled.')
-  }
-
-  const confirmNotebookImport = async () => {
-    const pendingImport = pendingNotebookImport
-    if (!pendingImport) return
-
-    settingsController.setImportStatus('importing notebook...')
-    try {
-      const materializedImport = await materializeNotebookImportAssets(pendingImport, {
-        includeScratchpad: notebookImportScratchpadEnabled,
-        importAsset: window.electronAPI?.importAsset
-          ? async (asset) => {
-              const result = await window.electronAPI?.importAsset?.({
-                bytes: toNotebookArchiveArrayBuffer(asset.bytes),
-                name: asset.file.split('/').pop() ?? 'asset',
-                type: asset.mimeType,
-                extension: asset.extension,
-              })
-              return result?.ok ? result.url : null
-            }
-          : undefined,
-      })
-      const latestState = buildStateWithLatestEditorContent()
-      const { state: nextState, summary } = mergeImportedNotebookState(latestState, materializedImport, {
-        includeScratchpad: notebookImportScratchpadEnabled,
-      })
-      await commitAppStateNow(nextState)
-      setPendingNotebookImport(null)
-      setNotebookImportScratchpadEnabled(false)
-      const unresolvedText =
-        summary.unresolvedReferences && summary.unresolvedReferences > 0
-          ? ` ${summary.unresolvedReferences} reference(s) stayed unresolved.`
-          : ''
-      const appliedText = summary.appliedScratchpad ? 'scratchpad applied' : ''
-      const optionText = appliedText ? ` ${appliedText}.` : ''
-      const warningCount = (summary.warnings?.length ?? 0) + materializedImport.issues.filter((issue) => issue.severity === 'warning').length
-      const warningText = warningCount > 0 ? ` ${warningCount} warning(s).` : ''
-      settingsController.setImportStatus(
-        `imported notebook: ${summary.domains} domain(s), ${summary.spaces} space(s), ${summary.tabs} tab(s), ${summary.notes} note(s).${optionText}${unresolvedText}${warningText}`,
-      )
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'unknown error'
-      settingsController.setImportStatus(`notebook import failed: ${message}`)
     }
   }
 
@@ -4061,7 +3570,7 @@ function App() {
     setTrashDomainId,
     setTrashSpaceId,
     insertNoteReference,
-    exportData,
+    exportData: notebookTransferActions.exportData,
     pushToast,
   })
   const openContextMenuForTab = overlayActions.openContextMenuForTab
@@ -4923,7 +4432,7 @@ function App() {
           dataCapabilities={dataCapabilities}
           storageProfileStatus={storageProfileStatus}
           userSettingsLocationStatus={userSettingsLocationStatus}
-          notebookBackupStatus={notebookBackupStatus}
+          notebookBackupStatus={notebookTransferActions.notebookBackupStatus}
           onSectionChange={settingsController.changeSection}
           onDataSectionChange={settingsController.changeDataSection}
           onVisualsSectionChange={settingsController.changeVisualsSection}
@@ -4931,29 +4440,29 @@ function App() {
           onNewlineShortcutChange={settingsController.updateNewlineShortcutSetting}
           onOpenShortcutMenuSettings={() => setModal({ type: 'shortcut-menu-settings' })}
           onAutoRemoveDaysChange={settingsController.updateAutoRemoveDaysSetting}
-          onExportAll={() => exportData('all')}
-          onExportNotebook={exportNotebook}
+          onExportAll={() => notebookTransferActions.exportData('all')}
+          onExportNotebook={notebookTransferActions.exportNotebook}
           onExportUserSettings={exportUserSettings}
-          onImportBackup={importBackup}
-          onImportNotebook={importNotebook}
+          onImportBackup={notebookTransferActions.importBackup}
+          onImportNotebook={notebookTransferActions.importNotebook}
           onImportUserSettings={importUserSettings}
           onImportUserSettingsFromNotebookFolder={importUserSettingsFromNotebookFolder}
-          onExportRecoveryCopy={exportRecoveryCopy}
+          onExportRecoveryCopy={notebookTransferActions.exportRecoveryCopy}
           onChooseUserSettingsFolder={userSettingsLocationController.chooseUserSettingsFolder}
           onRevealUserSettingsFolder={userSettingsLocationController.revealUserSettingsFolder}
           onRetryUserSettingsSync={userSettingsLocationController.retryUserSettingsSync}
           onResetUserSettingsFolder={userSettingsLocationController.resetUserSettingsFolder}
           onResetUserSettingsToDefaults={resetUserSettingsToDefaults}
-          onChooseNotebookBackupFolder={chooseNotebookBackupFolder}
-          onRunNotebookBackupNow={runNotebookBackupNow}
-          onRevealNotebookBackupFolder={revealNotebookBackupFolder}
-          onResetNotebookBackupFolder={resetNotebookBackupFolder}
-          notebookImportSummary={pendingNotebookImport?.summary ?? null}
-          notebookImportScratchpadEnabled={notebookImportScratchpadEnabled}
-          notebookImportHasScratchpad={Boolean(pendingNotebookImport?.scratchpad)}
-          onNotebookImportScratchpadEnabledChange={setNotebookImportScratchpadEnabled}
-          onConfirmNotebookImport={confirmNotebookImport}
-          onCancelNotebookImport={cancelNotebookImport}
+          onChooseNotebookBackupFolder={notebookTransferActions.chooseNotebookBackupFolder}
+          onRunNotebookBackupNow={notebookTransferActions.runNotebookBackupNow}
+          onRevealNotebookBackupFolder={notebookTransferActions.revealNotebookBackupFolder}
+          onResetNotebookBackupFolder={notebookTransferActions.resetNotebookBackupFolder}
+          notebookImportSummary={notebookTransferActions.notebookImportSummary}
+          notebookImportScratchpadEnabled={notebookTransferActions.notebookImportScratchpadEnabled}
+          notebookImportHasScratchpad={notebookTransferActions.notebookImportHasScratchpad}
+          onNotebookImportScratchpadEnabledChange={notebookTransferActions.setNotebookImportScratchpadEnabled}
+          onConfirmNotebookImport={notebookTransferActions.confirmNotebookImport}
+          onCancelNotebookImport={notebookTransferActions.cancelNotebookImport}
           onThemeChange={settingsController.updateThemeSetting}
           onSelectedCustomThemeChange={settingsController.updateSelectedCustomThemeSetting}
           onCustomThemePaletteChange={settingsController.updateCustomThemePaletteSetting}

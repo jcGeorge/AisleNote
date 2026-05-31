@@ -76,62 +76,6 @@ type ImportAppStateArchiveResult =
       issues?: StorageProfileStatus['issues']
     }
 
-type OpenNotebookArchiveResult =
-  | {
-      canceled: true
-    }
-  | {
-      canceled: false
-      ok: true
-      bytes: ArrayBuffer
-      filePath?: string
-    }
-  | {
-      canceled: false
-      ok: false
-      error: string
-    }
-
-type OpenNotebookFolderImportResult =
-  | {
-      canceled: true
-    }
-  | {
-      canceled: false
-      ok: true
-      sourceId: string
-      folderPath: string
-      serializedState: string
-      schemaVersion?: number | null
-      health?: 'healthy' | 'warning' | 'error'
-      issues?: StorageProfileStatus['issues']
-    }
-  | {
-      canceled: false
-      ok: false
-      error: string
-      health?: 'healthy' | 'warning' | 'error'
-      issues?: StorageProfileStatus['issues']
-    }
-
-type OpenMarkdownFolderImportResult =
-  | {
-      canceled: true
-    }
-  | {
-      canceled: false
-      ok: true
-      sourceId: string
-      folderPath: string
-      rootName?: string
-      files: Array<{ relativePath: string; markdown: string; size?: number }>
-    }
-  | {
-      canceled: false
-      ok: false
-      error: string
-    }
-
 type OpenNotebookImportSourceResult =
   | {
       canceled: true
@@ -296,10 +240,7 @@ declare global {
         error?: string
       }>
       importAppStateArchive?: () => Promise<ImportAppStateArchiveResult>
-      openNotebookArchive?: () => Promise<OpenNotebookArchiveResult>
       openNotebookImportSource?: () => Promise<OpenNotebookImportSourceResult>
-      openNotebookFolderImport?: () => Promise<OpenNotebookFolderImportResult>
-      openMarkdownFolderImport?: () => Promise<OpenMarkdownFolderImportResult>
       readFolderImportAsset?: (payload: { sourceId: string; relativePath: string }) => Promise<ReadFolderImportAssetResult>
       openUserSettingsFile?: () => Promise<OpenUserSettingsFileResult>
       openUserSettingsFromNotebookFolder?: () => Promise<OpenUserSettingsFileResult>

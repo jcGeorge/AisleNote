@@ -9,6 +9,7 @@ import { convertInternalTabsForExport } from '../markdown/markdown-utils'
 import { buildNotebookArchive, toNotebookArchiveArrayBuffer } from '../notebook/notebook-archive'
 import { getAisleBodyId, getAisleMarkdown } from '../notes/note-markdown'
 import { savePortableBinaryFile } from '../platform/portable-file-service'
+import { dataTransferMessages } from '../settings/data-transfer-messages'
 import type { AppState, Space, SpaceSettings } from '../types/app'
 
 export type ExportScope = 'space' | 'all'
@@ -117,7 +118,7 @@ export async function exportAppData({
   setStatus,
 }: ExportAppDataOptions) {
   try {
-    setStatus(scope === 'all' ? 'building support archive...' : 'building export...')
+    setStatus(dataTransferMessages.exportBuilding(scope))
     const latestState = getLatestState()
     let exportState: AppState
     let defaultName: string
@@ -129,7 +130,7 @@ export async function exportAppData({
         latestState.spaces.find((space) => space.id === latestState.activeSpaceId) ??
         latestState.spaces[0]
       if (!selectedSpace) {
-        setStatus('export failed')
+        setStatus(dataTransferMessages.exportFailed(scope))
         return
       }
       exportState = {
@@ -151,14 +152,14 @@ export async function exportAppData({
         serializedState: JSON.stringify(exportState),
       })
       if (result?.canceled) {
-        setStatus(scope === 'all' ? 'support archive export canceled' : 'export canceled')
+        setStatus(dataTransferMessages.exportCanceled(scope))
         return
       }
       if (result?.error) {
-        setStatus(scope === 'all' ? 'support archive export failed' : 'export failed')
+        setStatus(dataTransferMessages.exportFailed(scope))
         return
       }
-      setStatus(scope === 'all' ? 'support archive exported' : 'export saved')
+      setStatus(dataTransferMessages.exportSaved(scope))
       return
     }
 
@@ -231,10 +232,10 @@ export async function exportAppData({
         data: exportBuffer,
       })
       if (result?.canceled) {
-        setStatus('export canceled')
+        setStatus(dataTransferMessages.exportCanceled(scope))
         return
       }
-      setStatus('export saved')
+      setStatus(dataTransferMessages.exportSaved(scope))
       return
     }
 
@@ -245,9 +246,9 @@ export async function exportAppData({
     anchor.download = defaultName
     anchor.click()
     URL.revokeObjectURL(url)
-    setStatus('export saved')
+    setStatus(dataTransferMessages.exportSaved(scope))
   } catch {
-    setStatus('export failed')
+    setStatus(dataTransferMessages.exportFailed(scope))
   }
 }
 
@@ -256,7 +257,7 @@ export async function exportNotebookArchive({
   setStatus,
 }: ExportNotebookArchiveOptions) {
   try {
-    setStatus('building notebook archive...')
+    setStatus(dataTransferMessages.notebookExportBuilding)
     const latestState = getLatestState()
     const result = await buildNotebookArchive({
       state: latestState,
@@ -272,15 +273,14 @@ export async function exportNotebookArchive({
     if (window.electronAPI?.saveFile) {
       const saveResult = await window.electronAPI.saveFile({ defaultPath, data })
       if (saveResult?.canceled) {
-        setStatus('notebook export canceled')
+        setStatus(dataTransferMessages.notebookExportCanceled)
         return
       }
       if (saveResult?.error) {
-        setStatus('notebook export failed')
+        setStatus(dataTransferMessages.notebookExportFailed())
         return
       }
-      const warningText = result.issues.length > 0 ? ` ${result.issues.length} warning(s).` : ''
-      setStatus(`notebook export saved.${warningText}`)
+      setStatus(dataTransferMessages.notebookExportSaved(result.issues.length))
       return
     }
 
@@ -291,11 +291,10 @@ export async function exportNotebookArchive({
     })
     if (portableSave.handled) {
       if (portableSave.error) {
-        setStatus(`notebook export failed: ${portableSave.error}`)
+        setStatus(dataTransferMessages.notebookExportFailed(portableSave.error))
         return
       }
-      const warningText = result.issues.length > 0 ? ` ${result.issues.length} warning(s).` : ''
-      setStatus(`notebook export shared.${warningText}`)
+      setStatus(dataTransferMessages.notebookExportShared(result.issues.length))
       return
     }
 
@@ -306,9 +305,8 @@ export async function exportNotebookArchive({
     anchor.download = defaultPath
     anchor.click()
     URL.revokeObjectURL(url)
-    const warningText = result.issues.length > 0 ? ` ${result.issues.length} warning(s).` : ''
-    setStatus(`notebook export saved.${warningText}`)
+    setStatus(dataTransferMessages.notebookExportSaved(result.issues.length))
   } catch {
-    setStatus('notebook export failed')
+    setStatus(dataTransferMessages.notebookExportFailed())
   }
 }

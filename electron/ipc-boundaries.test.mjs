@@ -257,7 +257,7 @@ describe('electron ipc boundaries', () => {
     await expect(ipcMain.handlers.get('import-app-state-archive')()).resolves.toEqual({ canceled: true })
   })
 
-  it('returns canceled when notebook archive dialog is canceled', async () => {
+  it('returns canceled when notebook import source dialog is canceled', async () => {
     const ipcMain = createIpcMain()
     registerFileIpc({
       ipcMain,
@@ -267,7 +267,7 @@ describe('electron ipc boundaries', () => {
       },
     })
 
-    await expect(ipcMain.handlers.get('open-notebook-archive')()).resolves.toEqual({ canceled: true })
+    await expect(ipcMain.handlers.get('open-notebook-import-source')()).resolves.toEqual({ canceled: true })
   })
 
   it('opens notebook archive bytes without parsing or mutating storage', async () =>
@@ -283,8 +283,8 @@ describe('electron ipc boundaries', () => {
         },
       })
 
-      const result = await ipcMain.handlers.get('open-notebook-archive')()
-      expect(result).toMatchObject({ canceled: false, ok: true, filePath: archivePath })
+      const result = await ipcMain.handlers.get('open-notebook-import-source')()
+      expect(result).toMatchObject({ canceled: false, ok: true, kind: 'zip', filePath: archivePath })
       expect(Buffer.from(result.bytes)).toEqual(Buffer.from([80, 75, 3, 4]))
       expect(loadAppStateResult(userDataPath).source).toBe('empty')
     }))
@@ -347,10 +347,11 @@ describe('electron ipc boundaries', () => {
         },
       })
 
-      const result = await ipcMain.handlers.get('open-notebook-folder-import')()
+      const result = await ipcMain.handlers.get('open-notebook-import-source')()
       expect(result).toMatchObject({
         canceled: false,
         ok: true,
+        kind: 'notebook-folder',
         folderPath: sourceRoot,
       })
       expect(typeof result.sourceId).toBe('string')
@@ -376,21 +377,7 @@ describe('electron ipc boundaries', () => {
       ).resolves.toMatchObject({ ok: false, error: 'Invalid import asset path.' })
     }))
 
-  it('returns canceled when folder import dialogs are canceled', async () => {
-    const ipcMain = createIpcMain()
-    registerFileIpc({
-      ipcMain,
-      dialog: {
-        showOpenDialog: vi.fn(async () => ({ canceled: true, filePaths: [] })),
-      },
-    })
-
-    await expect(ipcMain.handlers.get('open-notebook-folder-import')()).resolves.toEqual({ canceled: true })
-    await expect(ipcMain.handlers.get('open-markdown-folder-import')()).resolves.toEqual({ canceled: true })
-    await expect(ipcMain.handlers.get('open-notebook-import-source')()).resolves.toEqual({ canceled: true })
-  })
-
-  it('rejects notebook folder imports without notes/manifest.json', async () =>
+  it('rejects import folders without readable notebook or Markdown content', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
       const sourceRoot = path.join(userDataPath, 'not-a-notebook')
       mkdirSync(sourceRoot, { recursive: true })
@@ -402,10 +389,10 @@ describe('electron ipc boundaries', () => {
         },
       })
 
-      await expect(ipcMain.handlers.get('open-notebook-folder-import')()).resolves.toMatchObject({
+      await expect(ipcMain.handlers.get('open-notebook-import-source')()).resolves.toMatchObject({
         canceled: false,
         ok: false,
-        error: 'Folder does not contain notes/manifest.json.',
+        error: 'Folder does not contain Markdown files.',
       })
     }))
 
@@ -425,10 +412,11 @@ describe('electron ipc boundaries', () => {
         },
       })
 
-      const result = await ipcMain.handlers.get('open-markdown-folder-import')()
+      const result = await ipcMain.handlers.get('open-notebook-import-source')()
       expect(result).toMatchObject({
         canceled: false,
         ok: true,
+        kind: 'markdown-folder',
         folderPath: markdownRoot,
         files: [{ relativePath: 'Domain/Space/Parent/home.md', markdown: '# Home' }],
       })
@@ -459,7 +447,7 @@ describe('electron ipc boundaries', () => {
           },
         })
 
-        await expect(symlinkIpcMain.handlers.get('open-markdown-folder-import')()).resolves.toMatchObject({
+        await expect(symlinkIpcMain.handlers.get('open-notebook-import-source')()).resolves.toMatchObject({
           canceled: false,
           ok: false,
           error: expect.stringContaining('does not allow symlinks'),

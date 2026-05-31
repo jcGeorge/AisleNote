@@ -354,6 +354,8 @@ describe('frontmatter settings page', () => {
     state.ui.scratchpadNewAisleSide = 'left'
     const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'misc', state })
 
+    expect(html).not.toContain('<p class="settings-help">user settings</p>')
+    expect(html).toContain('<p class="settings-help settings-subsection-label">scratchpad</p>')
     expect(html).toContain('scratchpad')
     expect(html).toContain('command/control+w deletes active aisle in scratchpad')
     expect(html).toContain('scratchpad aisle limit')
