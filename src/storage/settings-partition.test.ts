@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  createDefaultPortableAppSettings,
   parsePortableAppSettingsJson,
   parseStrictPortableAppSettingsJson,
   stringifyPortableAppSettings,
@@ -24,6 +25,27 @@ function currentSettingsJson() {
 }
 
 describe('portable app settings parsing', () => {
+  it('builds a current default app-settings shape', () => {
+    expect(createDefaultPortableAppSettings()).toMatchObject({
+      theme: 'dawn',
+      hotkeys: {
+        shortcuts: {
+          newTab: 'Mod+Shift+N',
+        },
+        newlineShortcuts: {
+          shortcuts: {
+            controlEnter: 'aisleRight',
+          },
+        },
+      },
+      ui: {
+        settingsSection: 'hotkeys',
+        dataSettingsSection: 'notebook',
+        toolbarLayouts: [],
+      },
+    })
+  })
+
   it('accepts current exported app-settings json for explicit imports', () => {
     const result = parseStrictPortableAppSettingsJson(currentSettingsJson())
 

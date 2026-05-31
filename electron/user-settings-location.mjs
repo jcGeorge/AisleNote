@@ -12,7 +12,10 @@ import {
   getUserSettingsFilePath,
   writeAppSettingsForState,
 } from './app-state-storage.mjs'
-import { parseStrictPortableAppSettingsJson } from '../src/storage/settings-partition.js'
+import {
+  parseStrictPortableAppSettingsJson,
+  stringifyDefaultPortableAppSettings,
+} from '../src/storage/settings-partition.js'
 
 export const USER_SETTINGS_LOCATION_CONFIG_FILE = 'user-settings-location.json'
 
@@ -23,6 +26,8 @@ const SETTINGS_LOCATION_INVALID_MESSAGE =
   'Settings folder contains invalid app-settings.json. Using local app settings.'
 const SETTINGS_LOCATION_WRITE_FAILED_MESSAGE =
   'Settings folder could not be updated. Using local app settings.'
+const SETTINGS_LOCATION_RECREATED_MESSAGE =
+  'Settings folder did not contain settings/app-settings.json. It was recreated from local app settings.'
 
 function writeTextFileAtomic(absolutePath, contents) {
   mkdirSync(path.dirname(absolutePath), { recursive: true })
@@ -76,6 +81,32 @@ function readSettingsFile(settingsPath) {
       ok: false,
       unreadable: true,
       error: error instanceof Error ? error.message : 'User settings file could not be read.',
+    }
+  }
+}
+
+function writeDefaultSettingsFile(settingsPath) {
+  writeTextFileAtomic(settingsPath, stringifyDefaultPortableAppSettings())
+}
+
+function ensureLocalSettingsFile(userDataPath) {
+  const localSettingsPath = getUserSettingsFilePath(userDataPath)
+  const localSettings = readSettingsFile(localSettingsPath)
+  if (localSettings.ok) return { ok: true, contents: localSettings.contents, created: false }
+  if (!localSettings.missing) {
+    return {
+      ok: false,
+      error: localSettings.error ?? 'Local app settings cache could not be loaded.',
+      invalid: true,
+    }
+  }
+  try {
+    writeDefaultSettingsFile(localSettingsPath)
+    return { ok: true, contents: stringifyDefaultPortableAppSettings(), created: true }
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : 'Local app settings cache could not be created.',
     }
   }
 }
@@ -161,11 +192,26 @@ export function readUserSettingsFromLocation(location) {
 
 export function refreshLocalUserSettingsFromLocation(userDataPath, location = resolveUserSettingsLocation(userDataPath)) {
   if (location.isDefault) {
+    const localSettings = ensureLocalSettingsFile(userDataPath)
+    if (!localSettings.ok) {
+      return {
+        ok: false,
+        status: createUserSettingsLocationStatus(userDataPath, location, {
+          status: 'warning',
+          event: localSettings.invalid ? 'local-settings-invalid' : 'local-settings-error',
+          syncStatus: 'local',
+          source: 'local-cache',
+          canWrite: false,
+          error: localSettings.error,
+        }),
+      }
+    }
     return {
       ok: true,
       copied: false,
+      created: localSettings.created,
       status: createUserSettingsLocationStatus(userDataPath, location, {
-        event: 'local-settings-ready',
+        event: localSettings.created ? 'local-settings-created' : 'local-settings-ready',
         syncStatus: 'local',
         source: 'local-cache',
       }),
@@ -188,6 +234,49 @@ export function refreshLocalUserSettingsFromLocation(userDataPath, location = re
 
   const cloudSettings = readSettingsFile(location.settingsPath)
   if (!cloudSettings.ok) {
+    if (cloudSettings.missing) {
+      const localSettings = ensureLocalSettingsFile(userDataPath)
+      if (!localSettings.ok) {
+        return {
+          ok: false,
+          status: createUserSettingsLocationStatus(userDataPath, location, {
+            status: 'warning',
+            event: 'settings-cache-invalid',
+            syncStatus: 'fallback',
+            source: 'local-cache',
+            canWrite: false,
+            error: 'Local app settings cache could not be used to recreate the settings folder.',
+          }),
+        }
+      }
+      try {
+        writeTextFileAtomic(location.settingsPath, localSettings.contents)
+        return {
+          ok: true,
+          copied: false,
+          recreated: true,
+          status: createUserSettingsLocationStatus(userDataPath, location, {
+            status: 'warning',
+            event: 'settings-sync-recreated',
+            syncStatus: 'synced',
+            source: 'local-cache',
+            error: SETTINGS_LOCATION_RECREATED_MESSAGE,
+          }),
+        }
+      } catch (error) {
+        return {
+          ok: false,
+          status: createUserSettingsLocationStatus(userDataPath, location, {
+            status: 'warning',
+            event: 'settings-sync-write-failed',
+            syncStatus: 'fallback',
+            source: 'local-cache',
+            canWrite: false,
+            error: error instanceof Error ? error.message : SETTINGS_LOCATION_WRITE_FAILED_MESSAGE,
+          }),
+        }
+      }
+    }
     const error = cloudSettings.missing
       ? SETTINGS_LOCATION_MISSING_MESSAGE
       : cloudSettings.invalid
@@ -373,6 +462,57 @@ export function recreateMissingUserSettingsLocationFile(userDataPath, location, 
         source: 'local-cache',
         canWrite: false,
         error: error instanceof Error ? error.message : SETTINGS_LOCATION_WRITE_FAILED_MESSAGE,
+      }),
+    }
+  }
+}
+
+export function resetUserSettingsLocationToDefaults(userDataPath, location = resolveUserSettingsLocation(userDataPath)) {
+  try {
+    const defaultSettings = stringifyDefaultPortableAppSettings()
+    writeTextFileAtomic(location.localSettingsPath, defaultSettings)
+    if (location.isDefault) {
+      return {
+        ok: true,
+        status: createUserSettingsLocationStatus(userDataPath, location, {
+          event: 'settings-reset-defaults',
+          syncStatus: 'local',
+          source: 'local-cache',
+        }),
+      }
+    }
+    if (!existsSync(location.settingsRootPath)) {
+      return {
+        ok: true,
+        status: createUserSettingsLocationStatus(userDataPath, location, {
+          status: 'warning',
+          event: 'settings-reset-defaults',
+          syncStatus: 'fallback',
+          source: 'local-cache',
+          canWrite: false,
+          error: SETTINGS_LOCATION_NOT_READY_MESSAGE,
+        }),
+      }
+    }
+    writeTextFileAtomic(location.settingsPath, defaultSettings)
+    return {
+      ok: true,
+      status: createUserSettingsLocationStatus(userDataPath, location, {
+        event: 'settings-reset-defaults',
+        syncStatus: 'synced',
+        source: 'settings-folder',
+      }),
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      status: createUserSettingsLocationStatus(userDataPath, location, {
+        status: 'warning',
+        event: 'settings-reset-defaults-error',
+        syncStatus: location.isDefault ? 'local' : 'fallback',
+        source: 'local-cache',
+        canWrite: false,
+        error: error instanceof Error ? error.message : 'User settings could not be reset.',
       }),
     }
   }

@@ -109,20 +109,18 @@ describe('copy-note modal text', () => {
 })
 
 describe('delete target modal text', () => {
-  it('describes domain deletion and protects the final domain', () => {
+  it('describes domain deletion modes', () => {
     const modal: ModalState = { type: 'delete-target', target: { type: 'domain', domainId: 'domain-1' }, permanent: false }
-    const singleDomainText = getModalText(modal, createModalTextState())
-    const stateWithSecondDomain = {
-      ...createModalTextState(),
-      domains: [
-        ...createModalTextState().domains,
-        { id: 'domain-2', name: 'Other', activeSpaceId: 'space-1', spaces: createModalTextState().spaces },
-      ],
-    }
-    const multiDomainText = getModalText(modal, stateWithSecondDomain)
+    const permanentModal: ModalState = { ...modal, permanent: true }
 
-    expect(singleDomainText).toMatchObject({ title: 'cannot delete domain', action: 'ok' })
-    expect(multiDomainText).toMatchObject({ title: 'delete domain?', action: 'delete domain' })
+    expect(getModalText(modal, createModalTextState())).toMatchObject({
+      title: 'move domain to trash?',
+      action: 'delete domain',
+    })
+    expect(getModalText(permanentModal, createModalTextState())).toMatchObject({
+      title: 'delete domain for real?',
+      action: 'delete for real',
+    })
   })
 })
 

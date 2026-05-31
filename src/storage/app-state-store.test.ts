@@ -149,7 +149,18 @@ describe('Electron app state store', () => {
 
   it('allows saves after a successful structured load result', () => {
     const saveAppState = vi.fn()
+    const dispatchEvent = vi.fn()
+    class TestCustomEvent {
+      type: string
+      detail: unknown
+
+      constructor(type: string, init?: { detail?: unknown }) {
+        this.type = type
+        this.detail = init?.detail
+      }
+    }
     vi.stubGlobal('window', {
+      dispatchEvent,
       electronAPI: {
         loadAppStateResult: () => ({
           ok: true,
@@ -163,7 +174,9 @@ describe('Electron app state store', () => {
           revision: 2,
         }),
       },
+      CustomEvent: TestCustomEvent,
     })
+    vi.stubGlobal('CustomEvent', TestCustomEvent)
 
     const store = createAppStateStore()
 
@@ -173,6 +186,13 @@ describe('Electron app state store', () => {
       serializedState: '{"theme":"light"}',
       baseRevision: 1,
     })
+    expect(dispatchEvent).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'tabs:app-state-saved',
+      detail: {
+        serializedState: '{"theme":"light"}',
+        snapshotMode: 'force',
+      },
+    }))
   })
 
   it('allows saves after a truly empty profile load result', () => {
@@ -206,12 +226,23 @@ describe('Electron app state store', () => {
   it('uses async Electron saves when available and keeps revisions ordered', async () => {
     let nextRevision = 2
     const saveAppState = vi.fn()
+    const dispatchEvent = vi.fn()
+    class TestCustomEvent {
+      type: string
+      detail: unknown
+
+      constructor(type: string, init?: { detail?: unknown }) {
+        this.type = type
+        this.detail = init?.detail
+      }
+    }
     const saveAppStateAsync = vi.fn(async (payload) => ({
       ok: true,
       serializedState: payload.serializedState,
       revision: nextRevision++,
     }))
     vi.stubGlobal('window', {
+      dispatchEvent,
       electronAPI: {
         loadAppStateResult: () => ({
           ok: true,
@@ -222,7 +253,9 @@ describe('Electron app state store', () => {
         saveAppState,
         saveAppStateAsync,
       },
+      CustomEvent: TestCustomEvent,
     })
+    vi.stubGlobal('CustomEvent', TestCustomEvent)
 
     const store = createAppStateStore()
 
@@ -243,6 +276,13 @@ describe('Electron app state store', () => {
       baseRevision: 2,
       snapshotMode: 'debounced',
     })
+    expect(dispatchEvent).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: 'tabs:app-state-saved',
+      detail: {
+        serializedState: '{"theme":"dark"}',
+        snapshotMode: 'debounced',
+      },
+    }))
   })
 
   it('falls back to sync Electron saves when async save is unavailable or sync is preferred', () => {

@@ -16,6 +16,7 @@ import type {
   AppState,
   DataSettingsSection,
   FrontmatterSettings,
+  NotebookBackupStatus,
   SettingsSection,
   Space,
   StorageProfileStatus,
@@ -110,6 +111,7 @@ function renderSettingsPage(
     state?: AppState
     storageProfileStatus?: StorageProfileStatus | null
     userSettingsLocationStatus?: UserSettingsLocationStatus | null
+    notebookBackupStatus?: NotebookBackupStatus | null
     dataCapabilities?: DataPlatformCapabilities
     toolbarEditorLayoutId?: string
     toolbarEditorShowNames?: boolean
@@ -173,6 +175,7 @@ function renderSettingsPage(
       dataCapabilities={options.dataCapabilities ?? DESKTOP_DATA_CAPABILITIES}
       storageProfileStatus={options.storageProfileStatus ?? null}
       userSettingsLocationStatus={options.userSettingsLocationStatus ?? null}
+      notebookBackupStatus={options.notebookBackupStatus ?? null}
       onSectionChange={() => undefined}
       onDataSectionChange={() => undefined}
       onVisualsSectionChange={() => undefined}
@@ -192,6 +195,11 @@ function renderSettingsPage(
       onRevealUserSettingsFolder={() => undefined}
       onRetryUserSettingsSync={() => undefined}
       onResetUserSettingsFolder={() => undefined}
+      onResetUserSettingsToDefaults={() => undefined}
+      onChooseNotebookBackupFolder={() => undefined}
+      onRunNotebookBackupNow={() => undefined}
+      onRevealNotebookBackupFolder={() => undefined}
+      onResetNotebookBackupFolder={() => undefined}
       notebookImportSummary={null}
       notebookImportScratchpadEnabled={false}
       notebookImportHasScratchpad={false}
@@ -371,18 +379,26 @@ describe('frontmatter settings page', () => {
     expect(html).not.toContain('<option value="aisle">aisle</option>')
   })
 
-  it('splits data settings into notebook, settings, folder, and trash sub-sections', () => {
+  it('splits data settings into backup, settings, notebook, and trash sub-sections', () => {
     const notebookHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'data' })
     const settingsHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'data', dataSection: 'settings' })
     const storageHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'data', dataSection: 'storage' })
     const trashHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'data', dataSection: 'trash' })
 
     expect(notebookHtml).toContain('role="radiogroup" aria-labelledby="settings-data-section-label"')
-    expect(notebookHtml).toContain('aria-checked="true" class="settings-segmented-option is-selected">notebook</button>')
+    expect(notebookHtml).toContain('aria-checked="true" class="settings-segmented-option is-selected">backup</button>')
     expect(notebookHtml).toContain('notebook archives:')
     expect(notebookHtml).toContain('export notebook archive')
-    expect(notebookHtml).toContain('import notebook archive')
+    expect(notebookHtml).toContain('import notebook')
+    expect(notebookHtml).not.toContain('import notebook archive')
+    expect(notebookHtml).not.toContain('import notebook folder')
+    expect(notebookHtml).not.toContain('import Markdown folder')
     expect(notebookHtml).toContain('notebook archives are readable markdown ZIPs')
+    expect(notebookHtml).toContain('folders or ZIPs containing a domain/space/parent/subtab markdown hierarchy')
+    expect(notebookHtml).toContain('imports append remapped content and keep user settings separate')
+    expect(notebookHtml).toContain('automatic backups:')
+    expect(notebookHtml).toContain('choose backup folder')
+    expect(notebookHtml).toContain('backup now')
     expect(notebookHtml).not.toContain('choose notebook folder')
     expect(notebookHtml).not.toContain('automatically remove deleted items after:')
 
@@ -391,6 +407,7 @@ describe('frontmatter settings page', () => {
     expect(settingsHtml).toContain('export user settings')
     expect(settingsHtml).toContain('import user settings')
     expect(settingsHtml).toContain('import from notebook folder')
+    expect(settingsHtml).toContain('reset user settings to defaults')
     expect(settingsHtml).toContain('choose settings folder')
     expect(settingsHtml).toContain('reveal settings folder')
     expect(settingsHtml).toContain('retry settings sync')
@@ -400,13 +417,15 @@ describe('frontmatter settings page', () => {
     expect(settingsHtml).not.toContain('current user settings will be overwritten')
     expect(settingsHtml).not.toContain('choose notebook folder')
 
-    expect(storageHtml).toContain('aria-checked="true" class="settings-segmented-option is-selected">folder</button>')
+    expect(storageHtml).toContain('aria-checked="true" class="settings-segmented-option is-selected">notebook</button>')
     expect(storageHtml).toContain('notebook folder:')
     expect(storageHtml).toContain('new notebook')
     expect(storageHtml).toContain('switch notebook')
     expect(storageHtml).toContain('move notebook folder')
-    expect(storageHtml).toContain('export backup')
-    expect(storageHtml).toContain('import backup')
+    expect(storageHtml).toContain('advanced support:')
+    expect(storageHtml).toContain('export support archive')
+    expect(storageHtml).toContain('import support archive')
+    expect(storageHtml).toContain('support archives are internal Tabs diagnostics')
     expect(storageHtml).toContain('app-settings.json')
     expect(storageHtml).not.toContain('choose sync folder')
     expect(storageHtml).not.toContain('internal backup')
@@ -465,6 +484,11 @@ describe('frontmatter settings page', () => {
       dataSection: 'settings',
       dataCapabilities: MOBILE_DATA_CAPABILITIES,
     })
+    const backupHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, {
+      section: 'data',
+      dataSection: 'notebook',
+      dataCapabilities: MOBILE_DATA_CAPABILITIES,
+    })
     const folderHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, {
       section: 'data',
       dataSection: 'storage',
@@ -477,6 +501,12 @@ describe('frontmatter settings page', () => {
     expect(settingsHtml).not.toContain('choose settings folder')
     expect(settingsHtml).not.toContain('import from notebook folder')
 
+    expect(backupHtml).toContain('import notebook')
+    expect(backupHtml).toContain('folders or ZIPs containing a domain/space/parent/subtab markdown hierarchy')
+    expect(backupHtml).not.toContain('folder imports are desktop only')
+    expect(backupHtml).not.toContain('import notebook folder')
+    expect(backupHtml).not.toContain('import Markdown folder')
+
     expect(folderHtml).toContain('local app notebook:')
     expect(folderHtml).toContain('app-private local')
     expect(folderHtml).toContain('export recovery copy')
@@ -484,8 +514,8 @@ describe('frontmatter settings page', () => {
     expect(folderHtml).not.toContain('new notebook')
     expect(folderHtml).not.toContain('switch notebook')
     expect(folderHtml).not.toContain('move notebook folder')
-    expect(folderHtml).not.toContain('export backup')
-    expect(folderHtml).not.toContain('import backup')
+    expect(folderHtml).not.toContain('export support archive')
+    expect(folderHtml).not.toContain('import support archive')
   })
 
   it('renders custom theme palette controls when a custom theme is selected', () => {
@@ -979,7 +1009,7 @@ describe('frontmatter settings page', () => {
     expect(html).toContain('recovery snapshots</span><span>2</span>')
     expect(html).toContain('aria-label="notebook folder health issues"')
     expect(html).toContain('Markdown file is missing; this note was loaded as empty.')
-    expect(html).toContain('export backup')
+    expect(html).toContain('export support archive')
     expect(html).toContain('restore latest snapshot</button>')
   })
 

@@ -5,6 +5,8 @@ import type { AppState, Domain, Space, SubTab, Tab } from '../types/app'
 import {
   moveDomainToTrash,
   moveSpaceToTrash,
+  permanentlyDeleteLiveDomain,
+  permanentlyDeleteLiveSpace,
   restoreDeletedDomainTrashItem,
   restoreTrashDomain,
   restoreTrashSpace,
@@ -131,6 +133,46 @@ describe('domain and space trash helpers', () => {
     expect(restored.changed).toBe(true)
     expect(restored.state.domains[0].spaces.map((space) => space.id)).toEqual(['space-a', 'space-b'])
     expect(restored.state.deletedSpaces).toEqual([])
+  })
+
+  it('permanently deletes a live space without adding it to trash', () => {
+    const first = workspaceSpace('space-a', 'A')
+    const second = workspaceSpace('space-b', 'B')
+    const initial = appState([domain('domain-a', 'Domain A', [first, second])])
+
+    const deleted = permanentlyDeleteLiveSpace(initial, 'domain-a', 'space-b')
+
+    expect(deleted.changed).toBe(true)
+    expect(deleted.state.domains[0].spaces.map((space) => space.id)).toEqual(['space-a'])
+    expect(deleted.state.deletedSpaces).toEqual([])
+  })
+
+  it('permanently deletes a live domain and any standalone trash from that domain', () => {
+    const first = workspaceSpace('space-a', 'A')
+    const second = workspaceSpace('space-b', 'B')
+    const other = domain('domain-b', 'Domain B', [workspaceSpace('space-c', 'C')])
+    const initial = appState([domain('domain-a', 'Domain A', [first, second]), other])
+    const withDeletedSpace = moveSpaceToTrash(initial, 'domain-a', 'space-b', () => 'deleted-space-a').state
+
+    const deleted = permanentlyDeleteLiveDomain(withDeletedSpace, 'domain-a')
+
+    expect(deleted.changed).toBe(true)
+    expect(deleted.state.domains.map((entry) => entry.id)).toEqual(['domain-b'])
+    expect(deleted.state.deletedSpaces).toEqual([])
+    expect(deleted.state.deletedDomains).toEqual([])
+  })
+
+  it('blocks permanent deletion of the last live domain and space', () => {
+    const initial = appState([domain('domain-a', 'Domain A', [workspaceSpace('space-a', 'A')])])
+
+    expect(permanentlyDeleteLiveSpace(initial, 'domain-a', 'space-a')).toMatchObject({
+      changed: false,
+      reason: 'last-space',
+    })
+    expect(permanentlyDeleteLiveDomain(initial, 'domain-a')).toMatchObject({
+      changed: false,
+      reason: 'last-domain',
+    })
   })
 
   it('moves deleted spaces into a deleted domain and restores them after the domain returns', () => {

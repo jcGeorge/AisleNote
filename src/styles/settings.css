@@ -100,6 +100,9 @@
 }
 
 .settings-section-tabs {
+  --settings-section-tab-active-bg: var(--parent-rail-accent);
+  --settings-section-tab-active-border: var(--parent-rail-selected-border);
+  --settings-section-tab-active-text: var(--parent-rail-selected-text);
   display: flex;
   flex-wrap: nowrap;
   align-items: center;

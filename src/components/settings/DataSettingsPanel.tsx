@@ -2,7 +2,12 @@ import {
   MAX_AUTO_REMOVE_DAYS,
   MIN_AUTO_REMOVE_DAYS,
 } from '../../settings/defaults'
-import type { DataSettingsSection, StorageProfileStatus, UserSettingsLocationStatus } from '../../types/app'
+import type {
+  DataSettingsSection,
+  NotebookBackupStatus,
+  StorageProfileStatus,
+  UserSettingsLocationStatus,
+} from '../../types/app'
 import type { NotebookArchiveSummary } from '../../notebook/notebook-archive'
 import type { DataPlatformCapabilities } from '../../platform/data-platform'
 import { DataSectionSwitch } from './DataSectionSwitch'
@@ -15,6 +20,7 @@ type DataSettingsPanelProps = {
   dataCapabilities: DataPlatformCapabilities
   storageProfileStatus: StorageProfileStatus | null
   userSettingsLocationStatus: UserSettingsLocationStatus | null
+  notebookBackupStatus: NotebookBackupStatus | null
   notebookImportSummary: NotebookArchiveSummary | null
   notebookImportScratchpadEnabled: boolean
   notebookImportHasScratchpad: boolean
@@ -32,6 +38,11 @@ type DataSettingsPanelProps = {
   onRevealUserSettingsFolder: () => void
   onRetryUserSettingsSync: () => void
   onResetUserSettingsFolder: () => void
+  onResetUserSettingsToDefaults: () => void
+  onChooseNotebookBackupFolder: () => void
+  onRunNotebookBackupNow: () => void
+  onRevealNotebookBackupFolder: () => void
+  onResetNotebookBackupFolder: () => void
   onNotebookImportScratchpadEnabledChange: (enabled: boolean) => void
   onConfirmNotebookImport: () => void
   onCancelNotebookImport: () => void
@@ -47,11 +58,16 @@ function NotebookDataSection({
   dataCapabilities,
   exportStatus,
   importStatus,
+  notebookBackupStatus,
   notebookImportSummary,
   notebookImportScratchpadEnabled,
   notebookImportHasScratchpad,
   onExportNotebook,
   onImportNotebook,
+  onChooseNotebookBackupFolder,
+  onRunNotebookBackupNow,
+  onRevealNotebookBackupFolder,
+  onResetNotebookBackupFolder,
   onNotebookImportScratchpadEnabledChange,
   onConfirmNotebookImport,
   onCancelNotebookImport,
@@ -60,15 +76,30 @@ function NotebookDataSection({
   | 'exportStatus'
   | 'importStatus'
   | 'dataCapabilities'
+  | 'notebookBackupStatus'
   | 'notebookImportSummary'
   | 'notebookImportScratchpadEnabled'
   | 'notebookImportHasScratchpad'
   | 'onExportNotebook'
   | 'onImportNotebook'
+  | 'onChooseNotebookBackupFolder'
+  | 'onRunNotebookBackupNow'
+  | 'onRevealNotebookBackupFolder'
+  | 'onResetNotebookBackupFolder'
   | 'onNotebookImportScratchpadEnabledChange'
   | 'onConfirmNotebookImport'
   | 'onCancelNotebookImport'
 >) {
+  const backupCardClassName = [
+    'storage-profile-card',
+    notebookBackupStatus?.status === 'warning' ? 'is-warning' : '',
+    notebookBackupStatus?.status === 'error' ? 'is-error' : '',
+  ].filter(Boolean).join(' ')
+  const backupLastSuccess =
+    typeof notebookBackupStatus?.lastSuccessfulAt === 'number'
+      ? new Date(notebookBackupStatus.lastSuccessfulAt).toLocaleString()
+      : 'never'
+
   return (
     <>
       <p>notebook archives:</p>
@@ -77,7 +108,7 @@ function NotebookDataSection({
           export notebook archive
         </button>
         <button type="button" className="btn btn-sm settings-action-btn" onClick={onImportNotebook}>
-          import notebook archive
+          import notebook
         </button>
       </div>
       {notebookImportSummary && (
@@ -106,7 +137,7 @@ function NotebookDataSection({
           )}
           <div className="settings-page-actions">
             <button type="button" className="btn btn-sm settings-action-btn" onClick={onConfirmNotebookImport}>
-              import notebook archive
+              import notebook
             </button>
             <button type="button" className="btn btn-sm settings-action-btn" onClick={onCancelNotebookImport}>
               cancel
@@ -114,7 +145,71 @@ function NotebookDataSection({
           </div>
         </div>
       )}
-      <p className="settings-help">notebook archives are readable markdown ZIPs. imports append remapped domains and keep user settings separate.</p>
+      <p className="settings-help">notebook archives are readable markdown ZIPs. import handles notebooks, notebook archives, and folders or ZIPs containing a domain/space/parent/subtab markdown hierarchy. imports append remapped content and keep user settings separate.</p>
+      {dataCapabilities.backups ? (
+        <>
+          <p>automatic backups:</p>
+          <div className={backupCardClassName}>
+            <div className="storage-profile-row">
+              <span className="settings-hotkey-label">backup folder</span>
+              <code className="storage-profile-path">
+                {notebookBackupStatus?.destinationRootPath ?? 'not configured'}
+              </code>
+            </div>
+            <div className="storage-profile-row">
+              <span className="settings-hotkey-label">status</span>
+              <span>{notebookBackupStatus?.status ?? 'unavailable'}</span>
+            </div>
+            <div className="storage-profile-row">
+              <span className="settings-hotkey-label">last backup</span>
+              <span>{backupLastSuccess}</span>
+            </div>
+            {notebookBackupStatus?.lastBackupPath && (
+              <div className="storage-profile-row">
+                <span className="settings-hotkey-label">latest archive</span>
+                <code className="storage-profile-path">{notebookBackupStatus.lastBackupPath}</code>
+              </div>
+            )}
+            {notebookBackupStatus?.error && (
+              <p className="settings-help storage-profile-error">{notebookBackupStatus.error}</p>
+            )}
+            <div className="settings-page-actions">
+              <button type="button" className="btn btn-sm settings-action-btn" onClick={onChooseNotebookBackupFolder}>
+                choose backup folder
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm settings-action-btn"
+                onClick={onRunNotebookBackupNow}
+                disabled={!notebookBackupStatus?.enabled}
+              >
+                backup now
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm settings-action-btn"
+                onClick={onRevealNotebookBackupFolder}
+                disabled={!notebookBackupStatus?.destinationRootPath}
+              >
+                reveal backup folder
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm settings-action-btn"
+                onClick={onResetNotebookBackupFolder}
+                disabled={!notebookBackupStatus?.enabled}
+              >
+                turn off backups
+              </button>
+            </div>
+            <p className="settings-help">
+              backups are timestamped notebook archive ZIPs saved every 4 hours after notebook changes. Tabs keeps the latest 30 archives in its managed backup folder and does not mirror or delete cloud files when the destination is unavailable.
+            </p>
+          </div>
+        </>
+      ) : (
+        <p className="settings-help">automatic backup folders are desktop only. use notebook archive export to make a portable copy on this device.</p>
+      )}
       {dataCapabilities.runtime === 'mobile' && (
         <p className="settings-help">mobile and tablet transfers use archive import/export through this device's share sheet or file picker.</p>
       )}
@@ -136,6 +231,7 @@ function UserSettingsDataSection({
   onRevealUserSettingsFolder,
   onRetryUserSettingsSync,
   onResetUserSettingsFolder,
+  onResetUserSettingsToDefaults,
 }: Pick<
   DataSettingsPanelProps,
   | 'exportStatus'
@@ -149,6 +245,7 @@ function UserSettingsDataSection({
   | 'onRevealUserSettingsFolder'
   | 'onRetryUserSettingsSync'
   | 'onResetUserSettingsFolder'
+  | 'onResetUserSettingsToDefaults'
 >) {
   const settingsLocationClassName = [
     'storage-profile-card',
@@ -227,6 +324,9 @@ function UserSettingsDataSection({
             import from notebook folder
           </button>
         )}
+        <button type="button" className="btn btn-sm settings-action-btn" onClick={onResetUserSettingsToDefaults}>
+          reset user settings to defaults
+        </button>
       </div>
       <p className="settings-help">user settings are stored in app-settings.json. importing overwrites current theme, hotkeys, shortcuts, toolbar layouts, and app preferences after confirmation.</p>
       {exportStatus && <p className="settings-help">{exportStatus}</p>}
@@ -382,18 +482,25 @@ function StorageDataSection({
           >
             restore latest snapshot
           </button>
-          <button type="button" className="btn btn-sm settings-action-btn" onClick={onExportAll}>
-            export backup
-          </button>
-          <button type="button" className="btn btn-sm settings-action-btn" onClick={onImportBackup}>
-            import backup
-          </button>
         </div>
         <p className="settings-help">
           choose a local or cloud-synced notebook folder; Tabs stores notebook content in notes/.
         </p>
       </div>
-      <p className="settings-help">backups are full app-state archives for recovery and diagnostics.</p>
+      <p>advanced support:</p>
+      <div className="storage-profile-card">
+        <div className="settings-page-actions">
+          <button type="button" className="btn btn-sm settings-action-btn" onClick={onExportAll}>
+            export support archive
+          </button>
+          <button type="button" className="btn btn-sm settings-action-btn" onClick={onImportBackup}>
+            import support archive
+          </button>
+        </div>
+        <p className="settings-help">
+          support archives are internal Tabs diagnostics. use notebook archives for normal backup and transfer.
+        </p>
+      </div>
       {exportStatus && <p className="settings-help">{exportStatus}</p>}
       {importStatus && <p className="settings-help">{importStatus}</p>}
     </>

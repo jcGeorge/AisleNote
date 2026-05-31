@@ -1434,6 +1434,9 @@ describe('Electron app state storage load result', () => {
       const parsed = JSON.parse(result.serializedState)
       expect(parsed.domains[0].spaces[0].data.tabs[0].homeContent).toBeUndefined()
       expect(getAisleMarkdown(parsed, parsed.noteBodies[0].aisles[0])).toBe('')
+
+      saveAppState(userDataPath, result.serializedState)
+      expect(existsSync(path.join(spaceRoot, spaceManifest.tabs[0].homeNoteFile))).toBe(true)
     }))
 
   it('keeps markdown references for missing image assets with a warning', () =>
@@ -1740,23 +1743,112 @@ describe('Electron app state storage load result', () => {
       expect(parsed.activeDomainId).toBe('domain-2')
     }))
 
-  it('blocks writes when no domains are readable', () =>
+  it('creates a blank space when a surviving domain has no readable spaces', () =>
+    withTempUserDataPath((userDataPath) => {
+      const state = JSON.parse(serializedAppState())
+      state.deletedSpaces = [
+        {
+          id: 'deleted-space-entry',
+          domainId: 'domain-1',
+          domainName: 'Domain',
+          space: {
+            id: 'deleted-space',
+            name: 'Deleted Space',
+            settings: { autoRemoveDeletedDays: 7 },
+            data: { activeTabId: 'deleted-tab', tabs: [], deletedTabs: [], deletedSubTabs: [] },
+          },
+          deletedAt: 1,
+        },
+      ]
+      saveAppState(userDataPath, JSON.stringify(state))
+      const { domainRoot, domainManifest } = getStoredWorkspacePaths(userDataPath)
+      rmSync(path.join(domainRoot, domainManifest.spaces[0].path), { recursive: true, force: true })
+
+      const result = loadAppStateResult(userDataPath)
+      const parsed = JSON.parse(result.serializedState)
+
+      expect(result).toMatchObject({
+        ok: true,
+        health: 'warning',
+        issues: expect.arrayContaining([
+          expect.objectContaining({ code: 'missing-space-manifest', severity: 'warning' }),
+          expect.objectContaining({ code: 'domain-has-no-readable-spaces', severity: 'warning' }),
+        ]),
+      })
+      expect(parsed.domains).toHaveLength(1)
+      expect(parsed.domains[0].id).toBe('domain-1')
+      expect(parsed.domains[0].spaces).toHaveLength(1)
+      expect(parsed.domains[0].spaces[0].id).not.toBe('space-1')
+      expect(parsed.domains[0].spaces[0].data.tabs).toHaveLength(1)
+      expect(parsed.deletedSpaces[0].space.id).toBe('deleted-space')
+    }))
+
+  it('creates a blank parent tab when a surviving space has no readable parents', () =>
+    withTempUserDataPath((userDataPath) => {
+      const state = JSON.parse(serializedAppState())
+      state.domains[0].spaces[0].data.deletedTabs = [
+        {
+          id: 'deleted-parent-entry',
+          tab: state.domains[0].spaces[0].data.tabs[0],
+          deletedAt: 1,
+        },
+      ]
+      saveAppState(userDataPath, JSON.stringify(state))
+      const { spaceRoot, spaceManifest } = getStoredWorkspacePaths(userDataPath)
+      writeFileSync(
+        path.join(spaceRoot, 'manifest.json'),
+        `${JSON.stringify({ ...spaceManifest, tabs: [], activeTabId: 'missing-tab' }, null, 2)}\n`,
+        'utf8',
+      )
+
+      const result = loadAppStateResult(userDataPath)
+      const parsed = JSON.parse(result.serializedState)
+      const repairedSpace = parsed.domains[0].spaces[0]
+
+      expect(result).toMatchObject({
+        ok: true,
+        health: 'warning',
+        issues: expect.arrayContaining([
+          expect.objectContaining({ code: 'space-has-no-readable-tabs', severity: 'warning' }),
+        ]),
+      })
+      expect(repairedSpace.data.tabs).toHaveLength(1)
+      expect(repairedSpace.data.tabs[0].title).toBe('tab')
+      expect(repairedSpace.data.deletedTabs).toHaveLength(1)
+      expect(repairedSpace.data.deletedTabs[0].tab.id).toBe('tab-1')
+
+      saveAppState(userDataPath, result.serializedState)
+      const repaired = getStoredWorkspacePaths(userDataPath)
+      expect(repaired.spaceManifest.tabs).toHaveLength(1)
+      expect(existsSync(path.join(repaired.spaceRoot, repaired.spaceManifest.tabs[0].homeNoteFile))).toBe(true)
+    }))
+
+  it('loads a blank notebook when no domains are readable', () =>
     withTempUserDataPath((userDataPath) => {
       saveAppState(userDataPath, serializedAppState())
       const rootManifest = readJson(path.join(userDataPath, 'notes', 'manifest.json'))
       const workspaceIndex = readJson(path.join(userDataPath, 'notes', rootManifest.files.workspaceIndex))
-      writeFileSync(path.join(userDataPath, 'notes', 'domains', workspaceIndex.domains[0].path, 'manifest.json'), '{bad', 'utf8')
+      const staleDomainRoot = path.join(userDataPath, 'notes', 'domains', workspaceIndex.domains[0].path)
+      writeFileSync(path.join(staleDomainRoot, 'manifest.json'), '{bad', 'utf8')
 
-      expect(loadAppStateResult(userDataPath)).toMatchObject({
-        ok: false,
-        serializedState: null,
+      const result = loadAppStateResult(userDataPath)
+      const parsed = JSON.parse(result.serializedState)
+
+      expect(result).toMatchObject({
+        ok: true,
         source: 'hybrid',
-        health: 'error',
+        health: 'warning',
         issues: expect.arrayContaining([
           expect.objectContaining({ code: 'corrupt-domain-manifest', severity: 'warning' }),
-          expect.objectContaining({ code: 'no-readable-domains', severity: 'error' }),
+          expect.objectContaining({ code: 'no-readable-domains', severity: 'warning' }),
         ]),
       })
+      expect(parsed.domains).toHaveLength(1)
+      expect(parsed.domains[0].spaces).toHaveLength(1)
+      expect(parsed.domains[0].spaces[0].data.tabs).toHaveLength(1)
+
+      saveAppState(userDataPath, result.serializedState)
+      expect(existsSync(staleDomainRoot)).toBe(false)
     }))
 
   it('creates interrupted-save recovery snapshots outside the synced notes tree', () =>
@@ -1773,6 +1865,7 @@ describe('Electron app state storage load result', () => {
         expect(snapshots.length).toBeGreaterThanOrEqual(1)
         expect(snapshots[0].path).toContain(path.join(userDataPath, 'storage-recovery'))
         expect(snapshots[0].path).not.toContain(path.join(profileRootPath, 'notes', 'storage-recovery'))
+        expect(existsSync(path.join(snapshots[0].path, 'settings', 'app-settings.json'))).toBe(false)
         expect(existsSync(path.join(profileRootPath, 'storage-recovery'))).toBe(false)
       } finally {
         rmSync(profileRootPath, { recursive: true, force: true })
@@ -1858,7 +1951,7 @@ describe('Electron app state storage load result', () => {
       expect(keptNames).toContain(`notes-${timestamps[timestamps.length - 1]}`)
     }))
 
-  it('restores the latest valid recovery snapshot', () =>
+  it('restores the latest valid recovery snapshot without changing current user settings', () =>
     withTempUserDataPath((userDataPath) => {
       const profileRootPath = mkdtempSync(path.join(os.tmpdir(), 'tabs-profile-'))
       try {
@@ -1868,14 +1961,42 @@ describe('Electron app state storage load result', () => {
         saveAppState(profileRootPath, JSON.stringify(secondState), { userDataPath })
 
         const restoreResult = restoreStorageRecoverySnapshot(profileRootPath, userDataPath)
-        const loadResult = loadAppStateResult(profileRootPath)
-        const parsed = JSON.parse(loadResult.serializedState)
+        const parsed = JSON.parse(restoreResult.loadResult.serializedState)
 
         expect(restoreResult).toMatchObject({
           ok: true,
           loadResult: { ok: true },
         })
-        expect(parsed.theme).toBe('dawn')
+        expect(parsed.theme).toBe('light')
+      } finally {
+        rmSync(profileRootPath, { recursive: true, force: true })
+      }
+    }))
+
+  it('ignores user settings folders from old recovery snapshots', () =>
+    withTempUserDataPath((userDataPath) => {
+      const profileRootPath = mkdtempSync(path.join(os.tmpdir(), 'tabs-profile-'))
+      try {
+        const firstState = JSON.parse(serializedAppStateWithMarkdown('first'))
+        const secondState = { ...firstState, theme: 'light' }
+        saveAppState(profileRootPath, JSON.stringify(firstState), { userDataPath })
+        saveAppState(profileRootPath, JSON.stringify(secondState), { userDataPath })
+        const snapshots = listStorageRecoverySnapshots(userDataPath)
+        const oldSnapshotSettingsPath = path.join(snapshots[0].path, 'settings', 'app-settings.json')
+        mkdirSync(path.dirname(oldSnapshotSettingsPath), { recursive: true })
+        writeFileSync(
+          oldSnapshotSettingsPath,
+          `${JSON.stringify({ theme: 'dark', hotkeys: { shortcuts: {} }, ui: {} }, null, 2)}\n`,
+          'utf8',
+        )
+
+        const restoreResult = restoreStorageRecoverySnapshot(profileRootPath, userDataPath)
+        const parsed = JSON.parse(restoreResult.loadResult.serializedState)
+
+        expect(restoreResult.ok).toBe(true)
+        expect(parsed.theme).toBe('light')
+        expect(getAisleMarkdown(parsed, parsed.noteBodies[0].aisles[0])).toBe('first')
+        expect(existsSync(path.join(profileRootPath, 'notes', 'settings'))).toBe(false)
       } finally {
         rmSync(profileRootPath, { recursive: true, force: true })
       }

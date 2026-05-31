@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -289,6 +289,184 @@ describe('electron ipc boundaries', () => {
       expect(loadAppStateResult(userDataPath).source).toBe('empty')
     }))
 
+  it('classifies unified notebook import sources', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const archivePath = path.join(userDataPath, 'notebook.zip')
+      const notebookRoot = path.join(userDataPath, 'source-notebook')
+      const markdownRoot = path.join(userDataPath, 'markdown-import')
+      const homePath = path.join(markdownRoot, 'Domain', 'Space', 'Parent', 'home.md')
+      writeFileSync(archivePath, Buffer.from([80, 75, 3, 4]))
+      saveAppState(notebookRoot, serializedAppState(), { userDataPath })
+      mkdirSync(path.dirname(homePath), { recursive: true })
+      writeFileSync(homePath, '# Home', 'utf8')
+      const showOpenDialog = vi
+        .fn()
+        .mockResolvedValueOnce({ canceled: false, filePaths: [archivePath] })
+        .mockResolvedValueOnce({ canceled: false, filePaths: [notebookRoot] })
+        .mockResolvedValueOnce({ canceled: false, filePaths: [markdownRoot] })
+      const ipcMain = createIpcMain()
+      registerFileIpc({
+        ipcMain,
+        dialog: { showOpenDialog },
+      })
+      const handler = ipcMain.handlers.get('open-notebook-import-source')
+
+      const zipResult = await handler()
+      expect(zipResult).toMatchObject({ canceled: false, ok: true, kind: 'zip', filePath: archivePath })
+      expect(Buffer.from(zipResult.bytes)).toEqual(Buffer.from([80, 75, 3, 4]))
+
+      await expect(handler()).resolves.toMatchObject({
+        canceled: false,
+        ok: true,
+        kind: 'notebook-folder',
+        folderPath: notebookRoot,
+        serializedState: expect.any(String),
+      })
+
+      await expect(handler()).resolves.toMatchObject({
+        canceled: false,
+        ok: true,
+        kind: 'markdown-folder',
+        folderPath: markdownRoot,
+        files: [{ relativePath: 'Domain/Space/Parent/home.md', markdown: '# Home' }],
+      })
+    }))
+
+  it('opens existing notebook folders for non-mutating import and scopes asset reads', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const sourceRoot = path.join(userDataPath, 'source-notebook')
+      saveAppState(sourceRoot, serializedAppState(), { userDataPath })
+      const assetPath = path.join(sourceRoot, 'notes', 'assets', 'source.txt')
+      mkdirSync(path.dirname(assetPath), { recursive: true })
+      writeFileSync(assetPath, 'asset bytes', 'utf8')
+      const ipcMain = createIpcMain()
+      registerFileIpc({
+        ipcMain,
+        dialog: {
+          showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [sourceRoot] })),
+        },
+      })
+
+      const result = await ipcMain.handlers.get('open-notebook-folder-import')()
+      expect(result).toMatchObject({
+        canceled: false,
+        ok: true,
+        folderPath: sourceRoot,
+      })
+      expect(typeof result.sourceId).toBe('string')
+      expect(typeof result.serializedState).toBe('string')
+      expect(loadAppStateResult(userDataPath).source).toBe('empty')
+
+      const assetResult = await ipcMain.handlers.get('read-folder-import-asset')(null, {
+        sourceId: result.sourceId,
+        relativePath: 'assets/source.txt',
+      })
+      expect(assetResult).toMatchObject({
+        ok: true,
+        fileName: 'source.txt',
+        mimeType: 'application/octet-stream',
+      })
+      expect(Buffer.from(assetResult.bytes).toString('utf8')).toBe('asset bytes')
+
+      await expect(
+        ipcMain.handlers.get('read-folder-import-asset')(null, {
+          sourceId: result.sourceId,
+          relativePath: '../source.txt',
+        }),
+      ).resolves.toMatchObject({ ok: false, error: 'Invalid import asset path.' })
+    }))
+
+  it('returns canceled when folder import dialogs are canceled', async () => {
+    const ipcMain = createIpcMain()
+    registerFileIpc({
+      ipcMain,
+      dialog: {
+        showOpenDialog: vi.fn(async () => ({ canceled: true, filePaths: [] })),
+      },
+    })
+
+    await expect(ipcMain.handlers.get('open-notebook-folder-import')()).resolves.toEqual({ canceled: true })
+    await expect(ipcMain.handlers.get('open-markdown-folder-import')()).resolves.toEqual({ canceled: true })
+    await expect(ipcMain.handlers.get('open-notebook-import-source')()).resolves.toEqual({ canceled: true })
+  })
+
+  it('rejects notebook folder imports without notes/manifest.json', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const sourceRoot = path.join(userDataPath, 'not-a-notebook')
+      mkdirSync(sourceRoot, { recursive: true })
+      const ipcMain = createIpcMain()
+      registerFileIpc({
+        ipcMain,
+        dialog: {
+          showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [sourceRoot] })),
+        },
+      })
+
+      await expect(ipcMain.handlers.get('open-notebook-folder-import')()).resolves.toMatchObject({
+        canceled: false,
+        ok: false,
+        error: 'Folder does not contain notes/manifest.json.',
+      })
+    }))
+
+  it('opens markdown folder imports and rejects symlinks', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const markdownRoot = path.join(userDataPath, 'markdown-import')
+      const homePath = path.join(markdownRoot, 'Domain', 'Space', 'Parent', 'home.md')
+      const assetPath = path.join(markdownRoot, 'Domain', 'Space', 'Parent', 'image.png')
+      mkdirSync(path.dirname(homePath), { recursive: true })
+      writeFileSync(homePath, '# Home', 'utf8')
+      writeFileSync(assetPath, Buffer.from([1, 2, 3]))
+      const ipcMain = createIpcMain()
+      registerFileIpc({
+        ipcMain,
+        dialog: {
+          showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [markdownRoot] })),
+        },
+      })
+
+      const result = await ipcMain.handlers.get('open-markdown-folder-import')()
+      expect(result).toMatchObject({
+        canceled: false,
+        ok: true,
+        folderPath: markdownRoot,
+        files: [{ relativePath: 'Domain/Space/Parent/home.md', markdown: '# Home' }],
+      })
+
+      const assetResult = await ipcMain.handlers.get('read-folder-import-asset')(null, {
+        sourceId: result.sourceId,
+        relativePath: 'Domain/Space/Parent/image.png',
+      })
+      expect(assetResult).toMatchObject({ ok: true, fileName: 'image.png', mimeType: 'image/png' })
+      expect(Buffer.from(assetResult.bytes)).toEqual(Buffer.from([1, 2, 3]))
+
+      const symlinkRoot = path.join(userDataPath, 'symlink-import')
+      mkdirSync(symlinkRoot, { recursive: true })
+      writeFileSync(path.join(userDataPath, 'outside.md'), '# Outside', 'utf8')
+      let symlinkCreated = false
+      try {
+        symlinkSync(path.join(userDataPath, 'outside.md'), path.join(symlinkRoot, 'linked.md'))
+        symlinkCreated = true
+      } catch {
+        symlinkCreated = false
+      }
+      if (symlinkCreated) {
+        const symlinkIpcMain = createIpcMain()
+        registerFileIpc({
+          ipcMain: symlinkIpcMain,
+          dialog: {
+            showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [symlinkRoot] })),
+          },
+        })
+
+        await expect(symlinkIpcMain.handlers.get('open-markdown-folder-import')()).resolves.toMatchObject({
+          canceled: false,
+          ok: false,
+          error: expect.stringContaining('does not allow symlinks'),
+        })
+      }
+    }))
+
   it('rejects invalid backup import zips', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
       const archivePath = path.join(userDataPath, 'bad.zip')
@@ -547,6 +725,94 @@ describe('electron ipc boundaries', () => {
         isDefault: true,
         syncStatus: 'local',
       })
+      await expect(ipcMain.handlers.get('get-notebook-backup-status')()).resolves.toMatchObject({
+        status: 'disabled',
+        enabled: false,
+        destinationRootPath: null,
+        managedFolderPath: null,
+      })
+    }))
+
+  it('chooses, writes, reveals, and resets notebook backup folders', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const destinationRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-notebook-backups-'))
+      const shell = { openPath: vi.fn(async () => '') }
+      try {
+        const ipcMain = createIpcMain()
+        registerStorageIpc({
+          ipcMain,
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow(),
+          shell,
+          dialog: {
+            showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [destinationRoot] })),
+          },
+        })
+
+        await expect(ipcMain.handlers.get('choose-notebook-backup-folder')()).resolves.toMatchObject({
+          ok: true,
+          status: {
+            enabled: true,
+            destinationRootPath: destinationRoot,
+          },
+        })
+        const backupBytes = Buffer.from('notebook zip')
+        await expect(
+          ipcMain.handlers.get('run-notebook-backup-now')(null, {
+            data: backupBytes.buffer.slice(backupBytes.byteOffset, backupBytes.byteOffset + backupBytes.byteLength),
+            trigger: 'manual',
+          }),
+        ).resolves.toMatchObject({
+          ok: true,
+          status: {
+            enabled: true,
+            status: 'ready',
+          },
+        })
+        const backupStatus = await ipcMain.handlers.get('get-notebook-backup-status')()
+        expect(readFileSync(backupStatus.lastBackupPath, 'utf8')).toBe('notebook zip')
+
+        await expect(ipcMain.handlers.get('reveal-notebook-backup-folder')()).resolves.toEqual({ ok: true })
+        expect(shell.openPath).toHaveBeenCalledWith(backupStatus.managedFolderPath)
+
+        await expect(ipcMain.handlers.get('reset-notebook-backup-folder')()).resolves.toMatchObject({
+          ok: true,
+          status: {
+            enabled: false,
+            status: 'disabled',
+          },
+        })
+      } finally {
+        rmSync(destinationRoot, { recursive: true, force: true })
+      }
+    }))
+
+  it('handles canceled and rejected notebook backup folder selection', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const ipcMain = createIpcMain()
+      const showOpenDialog = vi
+        .fn()
+        .mockResolvedValueOnce({ canceled: true, filePaths: [] })
+        .mockResolvedValueOnce({ canceled: false, filePaths: [userDataPath] })
+        .mockResolvedValueOnce({ canceled: false, filePaths: [path.join(userDataPath, 'notes', 'backups')] })
+      registerStorageIpc({
+        ipcMain,
+        app: { getPath: () => userDataPath },
+        BrowserWindow: createBrowserWindow(),
+        dialog: { showOpenDialog },
+      })
+
+      await expect(ipcMain.handlers.get('choose-notebook-backup-folder')()).resolves.toMatchObject({
+        canceled: true,
+      })
+      await expect(ipcMain.handlers.get('choose-notebook-backup-folder')()).resolves.toMatchObject({
+        ok: false,
+        error: 'The active notebook folder cannot be used as its backup folder. Choose a different folder.',
+      })
+      await expect(ipcMain.handlers.get('choose-notebook-backup-folder')()).resolves.toMatchObject({
+        ok: false,
+        error: 'Backup folders cannot be inside the active notes folder. Choose a different folder.',
+      })
     }))
 
   it('rejects notebook folders as live user settings folders', async () =>
@@ -721,6 +987,51 @@ describe('electron ipc boundaries', () => {
             syncStatus: 'local',
           },
         })
+      } finally {
+        rmSync(settingsRoot, { recursive: true, force: true })
+      }
+    }))
+
+  it('resets user settings to defaults without changing notebook content', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const settingsRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-reset-settings-'))
+      try {
+        const window = {
+          isDestroyed: vi.fn(() => false),
+          webContents: { id: 2, send: vi.fn() },
+        }
+        const ipcMain = createIpcMain()
+        registerStorageIpc({
+          ipcMain,
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow([window]),
+          dialog: {
+            showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [settingsRoot] })),
+          },
+        })
+
+        const darkState = JSON.parse(serializedAppState('custom1'))
+        darkState.domains[0].name = 'Kept Domain'
+        const saveEvent = { sender: { id: 1 }, returnValue: null }
+        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: JSON.stringify(darkState), baseRevision: 0 })
+        await ipcMain.handlers.get('choose-user-settings-folder')()
+        window.webContents.send.mockClear()
+
+        await expect(ipcMain.handlers.get('reset-user-settings-to-defaults')()).resolves.toMatchObject({
+          ok: true,
+          status: {
+            event: 'settings-reset-defaults',
+            syncStatus: 'synced',
+          },
+        })
+
+        expect(JSON.parse(readFileSync(path.join(userDataPath, 'settings', 'app-settings.json'), 'utf8')).theme).toBe('dawn')
+        expect(JSON.parse(readFileSync(path.join(settingsRoot, 'settings', 'app-settings.json'), 'utf8')).theme).toBe('dawn')
+        const updateCall = window.webContents.send.mock.calls.find(([channel]) => channel === 'app-state-updated')
+        expect(updateCall).toBeDefined()
+        const resetState = JSON.parse(updateCall[1].serializedState)
+        expect(resetState.theme).toBe('dawn')
+        expect(resetState.domains[0].name).toBe('Kept Domain')
       } finally {
         rmSync(settingsRoot, { recursive: true, force: true })
       }
@@ -1165,8 +1476,8 @@ describe('electron ipc boundaries', () => {
         },
       })
       expect(window.webContents.send).toHaveBeenCalledWith('app-state-updated', {
-        serializedState: expect.stringContaining('"dawn"'),
-        revision: 3,
+        serializedState: expect.stringContaining('"light"'),
+        revision: 2,
       })
     }))
 })

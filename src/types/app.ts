@@ -647,6 +647,23 @@ export type UserSettingsLocationStatus = {
   error?: string
 }
 
+export type NotebookBackupStatus = {
+  status: 'disabled' | 'ready' | 'warning' | 'error'
+  event?: string
+  enabled: boolean
+  destinationRootPath: string | null
+  managedFolderPath: string | null
+  intervalMs: number
+  retentionCount: number
+  lastAttemptAt: number | null
+  lastSuccessfulAt: number | null
+  lastBackupPath: string | null
+  nextBackupAt: number | null
+  canWrite: boolean
+  error?: string
+  lastSkippedReason?: string
+}
+
 export type ImageToolsState = {
   visible: boolean
   menuMode: 'start' | 'transform'

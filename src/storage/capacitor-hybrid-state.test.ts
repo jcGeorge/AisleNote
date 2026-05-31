@@ -103,6 +103,36 @@ describe('Capacitor filesystem storage backend', () => {
     expect(reloadedState.noteBodies.length).toBeGreaterThan(0)
   })
 
+  it('heals app-private notebook storage when no domains are readable', async () => {
+    const filesystem = createFakeFilesystem()
+    const backend = new CapacitorFilesystemStorageBackend(filesystem as never)
+    const adapter = new BrowserHybridStateAdapter(backend)
+
+    await adapter.saveSerializedState(JSON.stringify(DEFAULT_STATE))
+    const rootManifest = JSON.parse(filesystem.files.get('notes/manifest.json')?.data ?? '{}') as Record<string, unknown>
+    const files =
+      rootManifest.files && typeof rootManifest.files === 'object'
+        ? (rootManifest.files as Record<string, unknown>)
+        : {}
+    const workspaceIndexPath = `notes/${String(files.workspaceIndex)}`
+    const workspaceIndex = JSON.parse(filesystem.files.get(workspaceIndexPath)?.data ?? '{}') as Record<string, unknown>
+    const firstDomain = Array.isArray(workspaceIndex.domains) ? workspaceIndex.domains[0] as Record<string, unknown> : {}
+    const staleDomainManifest = `notes/domains/${String(firstDomain.path)}/manifest.json`
+    filesystem.files.set(staleDomainManifest, { data: '{bad' })
+
+    const reloadedAdapter = new BrowserHybridStateAdapter(new CapacitorFilesystemStorageBackend(filesystem as never))
+    const reloaded = await reloadedAdapter.loadSerializedState()
+    const reloadedState = parseSavedState(reloaded)
+
+    expect(reloaded).not.toBeNull()
+    expect(reloadedState.domains).toHaveLength(1)
+    expect(reloadedState.domains[0].spaces).toHaveLength(1)
+    expect(reloadedState.domains[0].spaces[0].data.tabs).toHaveLength(1)
+
+    await reloadedAdapter.saveSerializedState(reloaded ?? '')
+    expect(() => JSON.parse(filesystem.files.get(staleDomainManifest)?.data ?? '')).not.toThrow()
+  })
+
   it('does not prune app-private recovery files during normal notebook saves', async () => {
     const filesystem = createFakeFilesystem()
     const backend = new CapacitorFilesystemStorageBackend(filesystem as never)

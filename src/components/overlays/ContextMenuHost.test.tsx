@@ -158,6 +158,7 @@ describe('ContextMenuHost copy actions', () => {
     expect(html).toContain('arrange')
     expect(html).toContain('rename')
     expect(html).toContain('move to trash')
+    expect(html).toContain('delete now')
   })
 
   it('shows duplicate, rename, and move to trash for space context menus', () => {
@@ -166,6 +167,34 @@ describe('ContextMenuHost copy actions', () => {
     expect(html).toContain('duplicate')
     expect(html).toContain('rename')
     expect(html).toContain('move to trash')
+    expect(html).toContain('delete now')
+  })
+
+  it('keeps the space trash action clickable when it is the only space', () => {
+    const html = renderToStaticMarkup(
+      <ContextMenuHost
+        {...createContextMenuProps({ type: 'space', spaceId: 'space-1', x: 0, y: 0 }, 1, {
+          canDeleteSpace: false,
+        })}
+      />,
+    )
+
+    expect(html).toContain('move to trash')
+    expect(html).not.toContain('disabled=""')
+  })
+
+  it('keeps domain delete actions clickable when it is the only domain', () => {
+    const html = renderToStaticMarkup(
+      <ContextMenuHost
+        {...createContextMenuProps({ type: 'domain', domainId: 'domain-1', x: 0, y: 0 }, 1, {
+          canDeleteDomain: false,
+        })}
+      />,
+    )
+
+    expect(html).toContain('move to trash')
+    expect(html).toContain('delete now')
+    expect(html).not.toContain('disabled=""')
   })
 
   it('shows editor clipboard actions, root make copy, and expandable command groups', () => {

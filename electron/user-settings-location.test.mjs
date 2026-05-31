@@ -7,6 +7,7 @@ import {
   createUserSettingsLocation,
   recreateMissingUserSettingsLocationFile,
   refreshLocalUserSettingsFromLocation,
+  resetUserSettingsLocationToDefaults,
   resolveUserSettingsLocation,
   validateUserSettingsFolderCandidate,
   writeUserSettingsLocationConfig,
@@ -49,12 +50,15 @@ describe('user settings location storage', () => {
 
       expect(refreshLocalUserSettingsFromLocation(userDataPath, location)).toMatchObject({
         ok: true,
+        created: true,
         status: {
           status: 'ready',
+          event: 'local-settings-created',
           syncStatus: 'local',
           source: 'local-cache',
         },
       })
+      expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('dawn')
     }))
 
   it('loads valid cloud settings into the local cache', () =>
@@ -107,6 +111,52 @@ describe('user settings location storage', () => {
         })
     }))
 
+  it('recreates missing cloud settings from valid local cache during launch refresh', () =>
+    withTempDir((root) => {
+      const userDataPath = path.join(root, 'user-data')
+      const settingsRootPath = path.join(root, 'cloud-settings')
+      const location = createUserSettingsLocation(userDataPath, settingsRootPath)
+      mkdirSync(settingsRootPath, { recursive: true })
+      writeAppSettingsForState(userDataPath, serializedAppState('blues'))
+
+      const refresh = refreshLocalUserSettingsFromLocation(userDataPath, location)
+
+      expect(refresh).toMatchObject({
+        ok: true,
+        recreated: true,
+        status: {
+          status: 'warning',
+          event: 'settings-sync-recreated',
+          syncStatus: 'synced',
+          source: 'local-cache',
+        },
+      })
+      expect(JSON.parse(readFileSync(getUserSettingsFilePath(settingsRootPath), 'utf8')).theme).toBe('blues')
+      expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('blues')
+    }))
+
+  it('creates default local and cloud settings when both are missing but the cloud root is reachable', () =>
+    withTempDir((root) => {
+      const userDataPath = path.join(root, 'user-data')
+      const settingsRootPath = path.join(root, 'cloud-settings')
+      const location = createUserSettingsLocation(userDataPath, settingsRootPath)
+      mkdirSync(settingsRootPath, { recursive: true })
+
+      const refresh = refreshLocalUserSettingsFromLocation(userDataPath, location)
+
+      expect(refresh).toMatchObject({
+        ok: true,
+        recreated: true,
+        status: {
+          status: 'warning',
+          event: 'settings-sync-recreated',
+          syncStatus: 'synced',
+        },
+      })
+      expect(JSON.parse(readFileSync(getUserSettingsFilePath(settingsRootPath), 'utf8')).theme).toBe('dawn')
+      expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('dawn')
+    }))
+
   it('recreates a missing cloud settings file from current settings', () =>
     withTempDir((root) => {
       const userDataPath = path.join(root, 'user-data')
@@ -142,6 +192,27 @@ describe('user settings location storage', () => {
         },
       })
       expect(JSON.parse(readFileSync(getUserSettingsFilePath(settingsRootPath), 'utf8')).theme).toBe('custom1')
+    }))
+
+  it('resets local and reachable cloud settings to defaults', () =>
+    withTempDir((root) => {
+      const userDataPath = path.join(root, 'user-data')
+      const settingsRootPath = path.join(root, 'cloud-settings')
+      const location = createUserSettingsLocation(userDataPath, settingsRootPath)
+      writeAppSettingsForState(userDataPath, serializedAppState('custom1'))
+      writeAppSettingsForState(settingsRootPath, serializedAppState('light'))
+
+      const result = resetUserSettingsLocationToDefaults(userDataPath, location)
+
+      expect(result).toMatchObject({
+        ok: true,
+        status: {
+          event: 'settings-reset-defaults',
+          syncStatus: 'synced',
+        },
+      })
+      expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('dawn')
+      expect(JSON.parse(readFileSync(getUserSettingsFilePath(settingsRootPath), 'utf8')).theme).toBe('dawn')
     }))
 
   it('does not recreate an unreachable settings root during automatic mirror writes', () =>

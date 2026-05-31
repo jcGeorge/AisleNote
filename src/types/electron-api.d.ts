@@ -1,6 +1,6 @@
 export {}
 
-import type { StorageProfileStatus, UserSettingsLocationStatus } from './app'
+import type { NotebookBackupStatus, StorageProfileStatus, UserSettingsLocationStatus } from './app'
 import type { AppStateSnapshotMode } from '../storage/persistence-debounce'
 
 type SaveAppStatePayload = {
@@ -92,6 +92,100 @@ type OpenNotebookArchiveResult =
       error: string
     }
 
+type OpenNotebookFolderImportResult =
+  | {
+      canceled: true
+    }
+  | {
+      canceled: false
+      ok: true
+      sourceId: string
+      folderPath: string
+      serializedState: string
+      schemaVersion?: number | null
+      health?: 'healthy' | 'warning' | 'error'
+      issues?: StorageProfileStatus['issues']
+    }
+  | {
+      canceled: false
+      ok: false
+      error: string
+      health?: 'healthy' | 'warning' | 'error'
+      issues?: StorageProfileStatus['issues']
+    }
+
+type OpenMarkdownFolderImportResult =
+  | {
+      canceled: true
+    }
+  | {
+      canceled: false
+      ok: true
+      sourceId: string
+      folderPath: string
+      rootName?: string
+      files: Array<{ relativePath: string; markdown: string; size?: number }>
+    }
+  | {
+      canceled: false
+      ok: false
+      error: string
+    }
+
+type OpenNotebookImportSourceResult =
+  | {
+      canceled: true
+    }
+  | {
+      canceled: false
+      ok: true
+      kind: 'zip'
+      bytes: ArrayBuffer
+      filePath?: string
+    }
+  | {
+      canceled: false
+      ok: true
+      kind: 'notebook-folder'
+      sourceId: string
+      folderPath: string
+      serializedState: string
+      schemaVersion?: number | null
+      health?: 'healthy' | 'warning' | 'error'
+      issues?: StorageProfileStatus['issues']
+    }
+  | {
+      canceled: false
+      ok: true
+      kind: 'markdown-folder'
+      sourceId: string
+      folderPath: string
+      rootName?: string
+      files: Array<{ relativePath: string; markdown: string; size?: number }>
+    }
+  | {
+      canceled: false
+      ok: false
+      error: string
+      health?: 'healthy' | 'warning' | 'error'
+      issues?: StorageProfileStatus['issues']
+    }
+
+type ReadFolderImportAssetResult =
+  | {
+      ok: true
+      bytes: ArrayBuffer
+      fileName?: string
+      name?: string
+      mimeType?: string
+      extension?: string
+      relativePath?: string
+    }
+  | {
+      ok: false
+      error: string
+    }
+
 type OpenUserSettingsFileResult =
   | {
       canceled: true
@@ -107,6 +201,11 @@ type OpenUserSettingsFileResult =
       ok: false
       error: string
     }
+
+type NotebookBackupActionResult =
+  | { canceled: true; status: NotebookBackupStatus }
+  | { ok: true; status: NotebookBackupStatus; skipped?: boolean; backupPath?: string; prunedPaths?: string[] }
+  | { ok: false; error?: string; status: NotebookBackupStatus; skipped?: boolean }
 
 declare global {
   interface Window {
@@ -138,6 +237,7 @@ declare global {
       onAppStateUpdated?: (handler: (payload: { serializedState: string; revision: number }) => void) => () => void
       getStorageProfileStatus?: () => Promise<StorageProfileStatus>
       getUserSettingsLocationStatus?: () => Promise<UserSettingsLocationStatus>
+      getNotebookBackupStatus?: () => Promise<NotebookBackupStatus>
       createNotebook?: (payload: { serializedState: string }) => Promise<
         | { canceled: true; status: StorageProfileStatus }
         | { ok: true; status: StorageProfileStatus }
@@ -166,9 +266,19 @@ declare global {
       resetUserSettingsFolder?: () => Promise<
         { ok: true; status: UserSettingsLocationStatus } | { ok: false; error?: string; status: UserSettingsLocationStatus }
       >
+      resetUserSettingsToDefaults?: () => Promise<
+        { ok: true; status: UserSettingsLocationStatus } | { ok: false; error?: string; status: UserSettingsLocationStatus }
+      >
       retryUserSettingsSync?: () => Promise<
         { ok: true; status: UserSettingsLocationStatus } | { ok: false; error?: string; status: UserSettingsLocationStatus }
       >
+      chooseNotebookBackupFolder?: () => Promise<NotebookBackupActionResult>
+      runNotebookBackupNow?: (payload: {
+        data: ArrayBuffer
+        trigger?: 'manual' | 'automatic'
+      }) => Promise<NotebookBackupActionResult>
+      revealNotebookBackupFolder?: () => Promise<{ ok: true } | { ok: false; error: string }>
+      resetNotebookBackupFolder?: () => Promise<NotebookBackupActionResult>
       revealUserSettingsFolder?: () => Promise<{ ok: true } | { ok: false; error: string }>
       revealStorageProfile?: () => Promise<{ ok: true } | { ok: false; error: string }>
       retryStorageProfile?: () => Promise<
@@ -179,6 +289,7 @@ declare global {
       >
       onStorageProfileStatusUpdated?: (handler: (payload: StorageProfileStatus) => void) => () => void
       onUserSettingsLocationStatusUpdated?: (handler: (payload: UserSettingsLocationStatus) => void) => () => void
+      onNotebookBackupStatusUpdated?: (handler: (payload: NotebookBackupStatus) => void) => () => void
       exportAppState: (payload: { defaultPath: string; serializedState: string }) => Promise<{
         canceled: boolean
         filePath?: string
@@ -186,6 +297,10 @@ declare global {
       }>
       importAppStateArchive?: () => Promise<ImportAppStateArchiveResult>
       openNotebookArchive?: () => Promise<OpenNotebookArchiveResult>
+      openNotebookImportSource?: () => Promise<OpenNotebookImportSourceResult>
+      openNotebookFolderImport?: () => Promise<OpenNotebookFolderImportResult>
+      openMarkdownFolderImport?: () => Promise<OpenMarkdownFolderImportResult>
+      readFolderImportAsset?: (payload: { sourceId: string; relativePath: string }) => Promise<ReadFolderImportAssetResult>
       openUserSettingsFile?: () => Promise<OpenUserSettingsFileResult>
       openUserSettingsFromNotebookFolder?: () => Promise<OpenUserSettingsFileResult>
       saveUserSettingsFile?: (payload: { defaultPath: string; contents: string }) => Promise<{

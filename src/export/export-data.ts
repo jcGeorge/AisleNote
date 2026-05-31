@@ -117,7 +117,7 @@ export async function exportAppData({
   setStatus,
 }: ExportAppDataOptions) {
   try {
-    setStatus('building export...')
+    setStatus(scope === 'all' ? 'building support archive...' : 'building export...')
     const latestState = getLatestState()
     let exportState: AppState
     let defaultName: string
@@ -141,7 +141,7 @@ export async function exportAppData({
       spacesToExport = [selectedSpace]
     } else {
       exportState = latestState
-      defaultName = 'notes-export-all.zip'
+      defaultName = 'tabs-support-archive.zip'
       spacesToExport = exportState.spaces
     }
 
@@ -151,14 +151,14 @@ export async function exportAppData({
         serializedState: JSON.stringify(exportState),
       })
       if (result?.canceled) {
-        setStatus('export canceled')
+        setStatus(scope === 'all' ? 'support archive export canceled' : 'export canceled')
         return
       }
       if (result?.error) {
-        setStatus('export failed')
+        setStatus(scope === 'all' ? 'support archive export failed' : 'export failed')
         return
       }
-      setStatus('export saved')
+      setStatus(scope === 'all' ? 'support archive exported' : 'export saved')
       return
     }
 

@@ -2,7 +2,12 @@ import type { Dispatch, MouseEvent, SetStateAction } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { DEFAULT_STATE } from '../state/app-state'
 import type { AppState, ContextMenuState, ModalState, NoteLocation } from '../types/app'
-import { useAppOverlayActions as createAppOverlayActions } from './useAppOverlayActions'
+import {
+  LAST_DOMAIN_TOAST,
+  LAST_PARENT_TAB_TOAST,
+  LAST_SPACE_TOAST,
+  useAppOverlayActions as createAppOverlayActions,
+} from './useAppOverlayActions'
 
 const makeContextMenuEvent = () =>
   ({
@@ -24,6 +29,7 @@ function makeActions(options: {
   setTrashTabId?: ReturnType<typeof vi.fn>
   setTrashSubTabId?: ReturnType<typeof vi.fn>
   pushToast?: ReturnType<typeof vi.fn>
+  updateActiveSpaceData?: ReturnType<typeof vi.fn>
 }) {
   const state = options.state ?? DEFAULT_STATE
   const stateRef = { current: state }
@@ -41,7 +47,7 @@ function makeActions(options: {
     setEditing: vi.fn(),
     activeSpaceId: state.activeSpaceId,
     activeNoteLocation: {} as NoteLocation,
-    updateActiveSpaceData: vi.fn(),
+    updateActiveSpaceData: options.updateActiveSpaceData ?? vi.fn(),
     saveActiveCursorBeforeNavigation: vi.fn(),
     setTrashDomainId: options.setTrashDomainId as Dispatch<SetStateAction<string>>,
     setTrashSpaceId: options.setTrashSpaceId as Dispatch<SetStateAction<string>>,
@@ -158,5 +164,86 @@ describe('navigation context menu suppression', () => {
     expect(setTrashTabId).toHaveBeenCalledWith('__trash_home__')
     expect(setTrashSubTabId).toHaveBeenCalledWith(null)
     expect(pushToast).toHaveBeenCalledWith('space restored from trash.', 'success')
+  })
+
+  it('rejects deleting the only live parent tab from normal navigation actions', () => {
+    const pushToast = vi.fn()
+    const updateActiveSpaceData = vi.fn((updater: (data: AppState['spaces'][number]['data']) => AppState['spaces'][number]['data']) => {
+      expect(updater(DEFAULT_STATE.spaces[0].data)).toBe(DEFAULT_STATE.spaces[0].data)
+    })
+    const actions = makeActions({
+      navigationContextMenusDisabled: false,
+      pushToast,
+      updateActiveSpaceData,
+    })
+
+    actions.deleteTarget({ type: 'tab', tabId: DEFAULT_STATE.spaces[0].data.tabs[0].id }, false)
+
+    expect(updateActiveSpaceData).toHaveBeenCalledTimes(1)
+    expect(pushToast).toHaveBeenCalledWith(LAST_PARENT_TAB_TOAST, 'warning')
+  })
+
+  it('permanently deletes live spaces from normal navigation actions without trashing them', () => {
+    const secondSpace = { ...DEFAULT_STATE.spaces[0], id: 'space-b', name: 'Second space' }
+    const spaces = [DEFAULT_STATE.spaces[0], secondSpace]
+    const state: AppState = {
+      ...DEFAULT_STATE,
+      spaces,
+      domains: [
+        {
+          ...DEFAULT_STATE.domains[0],
+          spaces,
+        },
+      ],
+    }
+    let nextState = state
+    const setState = vi.fn((update: SetStateAction<AppState>) => {
+      nextState = typeof update === 'function' ? update(nextState) : update
+    })
+    const pushToast = vi.fn()
+    const actions = makeActions({
+      navigationContextMenusDisabled: false,
+      state,
+      setState,
+      pushToast,
+    })
+
+    actions.deleteTarget({ type: 'space', spaceId: 'space-b' }, true)
+
+    expect(nextState.domains[0].spaces.map((space) => space.id)).toEqual([DEFAULT_STATE.spaces[0].id])
+    expect(nextState.deletedSpaces).toEqual([])
+    expect(pushToast).not.toHaveBeenCalled()
+  })
+
+  it('rejects deleting the only live space from normal navigation actions', () => {
+    const setState = vi.fn((update: SetStateAction<AppState>) => {
+      if (typeof update === 'function') update(DEFAULT_STATE)
+    })
+    const pushToast = vi.fn()
+    const actions = makeActions({
+      navigationContextMenusDisabled: false,
+      setState,
+      pushToast,
+    })
+
+    actions.deleteTarget({ type: 'space', spaceId: DEFAULT_STATE.activeSpaceId }, true)
+
+    expect(pushToast).toHaveBeenCalledWith(LAST_SPACE_TOAST, 'warning')
+  })
+
+  it('rejects deleting the only live domain with notebook deletion guidance', () => {
+    const setState = vi.fn((update: SetStateAction<AppState>) => {
+      if (typeof update === 'function') update(DEFAULT_STATE)
+    })
+    const pushToast = vi.fn()
+    const actions = makeActions({
+      navigationContextMenusDisabled: false,
+      setState,
+      pushToast,
+    })
+
+    actions.deleteTarget({ type: 'domain', domainId: DEFAULT_STATE.activeDomainId }, true)
+
+    expect(pushToast).toHaveBeenCalledWith(LAST_DOMAIN_TOAST, 'warning')
   })
 })

@@ -71,7 +71,24 @@ function sendMultilineShortcut(direction) {
   sendMultilineShortcutToWindow(BrowserWindow.getFocusedWindow(), direction)
 }
 
-function installApplicationMenu({ onNewWindow }) {
+async function confirmAndResetUserSettings(window = BrowserWindow.getFocusedWindow()) {
+  if (!storageSession?.resetUserSettingsToDefaults) return
+  const confirmation = await dialog.showMessageBox(window ?? undefined, {
+    type: 'warning',
+    buttons: ['Reset user settings', 'Cancel'],
+    cancelId: 1,
+    defaultId: 1,
+    message: 'Reset user settings to defaults?',
+    detail: 'This resets theme, hotkeys, shortcuts, toolbar layouts, and app preferences. Notebook content is not changed.',
+  })
+  if (confirmation.response !== 0) return
+  const result = await storageSession.resetUserSettingsToDefaults()
+  if (!result?.ok) {
+    dialog.showErrorBox('User settings reset failed', result?.error ?? 'User settings could not be reset.')
+  }
+}
+
+function installApplicationMenu({ onNewWindow, onResetUserSettings }) {
   const isMac = process.platform === 'darwin'
   if (!isMac) {
     Menu.setApplicationMenu(null)
@@ -94,6 +111,12 @@ function installApplicationMenu({ onNewWindow }) {
           label: 'New Window',
           accelerator: 'CommandOrControl+N',
           click: onNewWindow,
+        },
+        { type: 'separator' },
+        {
+          label: 'Reset User Settings to Defaults',
+          accelerator: 'CommandOrControl+Alt+Shift+R',
+          click: onResetUserSettings,
         },
       ],
     },
@@ -163,6 +186,15 @@ function getMultilineShortcutDirection(input) {
   return isUp ? 'up' : 'down'
 }
 
+function isResetUserSettingsShortcut(input) {
+  if (input.type !== 'keyDown') return false
+  const key = typeof input.key === 'string' ? input.key.toLowerCase() : ''
+  const code = typeof input.code === 'string' ? input.code.toLowerCase() : ''
+  const isR = key === 'r' || code === 'keyr'
+  if (!isR || !input.alt || !input.shift) return false
+  return process.platform === 'darwin' ? Boolean(input.meta && !input.control) : Boolean(input.control && !input.meta)
+}
+
 function createWindow(storageSession) {
   const window = new BrowserWindow({
     width: 1200,
@@ -180,6 +212,11 @@ function createWindow(storageSession) {
   let closeFlushInProgress = false
 
   window.webContents.on('before-input-event', (event, input) => {
+    if (isResetUserSettingsShortcut(input)) {
+      event.preventDefault()
+      void confirmAndResetUserSettings(window)
+      return
+    }
     if (input.type !== 'keyDown') return
     const direction = getMultilineShortcutDirection(input)
     if (!direction) return
@@ -258,7 +295,7 @@ if (!gotSingleInstanceLock) {
     const updateService = createNoopUpdateService(app)
     storageSession = registerStorageIpc({ ipcMain, app, BrowserWindow, dialog, shell })
     registerImageAssetProtocol({ protocol, net, storageSession })
-    installApplicationMenu({ onNewWindow: openAppWindow })
+    installApplicationMenu({ onNewWindow: openAppWindow, onResetUserSettings: () => confirmAndResetUserSettings() })
     registerFileIpc({ ipcMain, dialog, storageSession })
     registerClipboardIpc({ ipcMain, clipboard, nativeImage })
     registerUpdateIpc({ ipcMain, updateService })

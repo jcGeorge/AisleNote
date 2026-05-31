@@ -285,6 +285,32 @@ export function moveDomainToTrash(
   }
 }
 
+export function permanentlyDeleteLiveDomain(appState: AppState, domainId: string): TrashMutationResult {
+  const projected = projectActiveDomainState(appState)
+  if (projected.domains.length <= 1) return { state: projected, changed: false, reason: 'last-domain' }
+
+  const domain = projected.domains.find((candidate) => candidate.id === domainId)
+  if (!domain) return { state: projected, changed: false, reason: 'missing-domain' }
+
+  const domains = projected.domains.filter((candidate) => candidate.id !== domainId)
+  const activeDomain =
+    projected.activeDomainId === domainId
+      ? domains[0]
+      : domains.find((candidate) => candidate.id === projected.activeDomainId) ?? domains[0]
+
+  return {
+    changed: true,
+    state: projectActiveDomainState({
+      ...projected,
+      activeDomainId: activeDomain.id,
+      activeSpaceId: activeDomain.activeSpaceId,
+      spaces: activeDomain.spaces,
+      domains,
+      deletedSpaces: (projected.deletedSpaces ?? []).filter((entry) => entry.domainId !== domainId),
+    }),
+  }
+}
+
 export function moveSpaceToTrash(
   appState: AppState,
   domainId: string,
@@ -321,6 +347,32 @@ export function moveSpaceToTrash(
       spaces: projected.activeDomainId === domainId ? nextSpaces : projected.spaces,
       domains,
       deletedSpaces: [...currentDeletedSpaces, deletedSpace],
+    }),
+  }
+}
+
+export function permanentlyDeleteLiveSpace(appState: AppState, domainId: string, spaceId: string): TrashMutationResult {
+  const projected = projectActiveDomainState(appState)
+  const domain = projected.domains.find((candidate) => candidate.id === domainId)
+  if (!domain) return { state: projected, changed: false, reason: 'missing-domain' }
+  if (domain.spaces.length <= 1) return { state: projected, changed: false, reason: 'last-space' }
+
+  const space = domain.spaces.find((candidate) => candidate.id === spaceId)
+  if (!space) return { state: projected, changed: false, reason: 'missing-space' }
+
+  const nextSpaces = domain.spaces.filter((candidate) => candidate.id !== spaceId)
+  const activeSpaceId = domain.activeSpaceId === spaceId ? nextSpaces[0].id : domain.activeSpaceId
+  const nextDomain = domainWithSpaces(domain, nextSpaces, activeSpaceId)
+  const domains = projected.domains.map((candidate) => (candidate.id === domainId ? nextDomain : candidate))
+
+  return {
+    changed: true,
+    state: projectActiveDomainState({
+      ...projected,
+      activeDomainId: projected.activeDomainId,
+      activeSpaceId: projected.activeDomainId === domainId ? activeSpaceId : projected.activeSpaceId,
+      spaces: projected.activeDomainId === domainId ? nextSpaces : projected.spaces,
+      domains,
     }),
   }
 }

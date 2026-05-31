@@ -247,14 +247,6 @@ export function ModalHost({
 
   const runPrimaryModalAction = () => {
     if (!modal) return
-    if (modal.type === 'delete-target' && modal.target.type === 'space' && state.spaces.length <= 1) {
-      onModalChange(null)
-      return
-    }
-    if (modal.type === 'delete-target' && modal.target.type === 'domain' && state.domains.length <= 1) {
-      onModalChange(null)
-      return
-    }
     onConfirm()
   }
 

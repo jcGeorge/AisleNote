@@ -44,6 +44,7 @@ import {
   isRecord,
   normalizeAssetExtension,
   normalizeStorageTheme,
+  reconcileNotebookStorageState,
 } from './hybrid-storage-core.js'
 import {
   buildStoragePathFileName,
@@ -1137,8 +1138,6 @@ export function readSerializedStateFromHybridFileMap(fileMap: Map<string, Browse
         })
         .filter((space): space is Record<string, unknown> => space !== null)
 
-      if (spaces.length === 0) return null
-
       const lastOpenedSpaceId =
         lastOpened &&
         lastOpened.domainId === domainId &&
@@ -1171,8 +1170,6 @@ export function readSerializedStateFromHybridFileMap(fileMap: Map<string, Browse
     })
     .filter((domain): domain is Record<string, unknown> => domain !== null)
 
-  if (domains.length === 0) return null
-
   const lastOpenedDomainId =
     lastOpened && typeof lastOpened.domainId === 'string'
       ? lastOpened.domainId
@@ -1185,22 +1182,9 @@ export function readSerializedStateFromHybridFileMap(fileMap: Map<string, Browse
         : typeof domains[0]?.id === 'string'
           ? domains[0].id
           : ''
-  const activeDomain = domains.find((domain) => domain.id === activeDomainId) ?? domains[0]
-  const activeSpaces = ensureArray<Record<string, unknown>>(activeDomain.spaces)
-  const activeSpaceId =
-    lastOpened &&
-    lastOpened.domainId === activeDomainId &&
-    typeof lastOpened.spaceId === 'string' &&
-    activeSpaces.some((space) => space.id === lastOpened.spaceId)
-      ? lastOpened.spaceId
-      : typeof activeDomain.activeSpaceId === 'string'
-        ? activeDomain.activeSpaceId
-        : typeof activeSpaces[0]?.id === 'string'
-          ? activeSpaces[0].id
-          : ''
   const theme = normalizeStorageTheme(rootParts.syncedSettings.theme)
 
-  return JSON.stringify(pruneAppStateEditorLocations({
+  const reconciled = reconcileNotebookStorageState({
     theme,
     activeDomainId,
     domains,
@@ -1209,12 +1193,14 @@ export function readSerializedStateFromHybridFileMap(fileMap: Map<string, Browse
     scratchpad: rootParts.scratchpad,
     noteBodies,
     noteAisleBodies,
-    activeSpaceId,
-    spaces: activeSpaces,
+    activeSpaceId: '',
+    spaces: [],
     hotkeys: rootParts.syncedSettings.hotkeys,
     frontmatter: rootParts.syncedSettings.frontmatter,
     ui: rootParts.syncedSettings.ui,
-  }))
+  })
+
+  return JSON.stringify(pruneAppStateEditorLocations(reconciled.state))
 }
 
 function openDatabase(): Promise<IDBDatabase> {

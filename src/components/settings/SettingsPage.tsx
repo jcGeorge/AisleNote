@@ -38,6 +38,7 @@ import type {
   FrontmatterTemplate,
   FrontmatterTemplateField,
   NewlineOperationId,
+  NotebookBackupStatus,
   NewlineShortcutId,
   ScratchpadNewAisleSide,
   SettingsSection,
@@ -134,6 +135,7 @@ type SettingsPageProps = {
   dataCapabilities: DataPlatformCapabilities
   storageProfileStatus: StorageProfileStatus | null
   userSettingsLocationStatus: UserSettingsLocationStatus | null
+  notebookBackupStatus: NotebookBackupStatus | null
   onSectionChange: (section: SettingsSection) => void
   onDataSectionChange: (section: DataSettingsSection) => void
   onVisualsSectionChange: (section: VisualsSettingsSection) => void
@@ -153,6 +155,11 @@ type SettingsPageProps = {
   onRevealUserSettingsFolder: () => void
   onRetryUserSettingsSync: () => void
   onResetUserSettingsFolder: () => void
+  onResetUserSettingsToDefaults: () => void
+  onChooseNotebookBackupFolder: () => void
+  onRunNotebookBackupNow: () => void
+  onRevealNotebookBackupFolder: () => void
+  onResetNotebookBackupFolder: () => void
   notebookImportSummary: NotebookArchiveSummary | null
   notebookImportScratchpadEnabled: boolean
   notebookImportHasScratchpad: boolean
@@ -245,6 +252,7 @@ export function SettingsPage({
   dataCapabilities,
   storageProfileStatus,
   userSettingsLocationStatus,
+  notebookBackupStatus,
   onSectionChange,
   onDataSectionChange,
   onVisualsSectionChange,
@@ -264,6 +272,11 @@ export function SettingsPage({
   onRevealUserSettingsFolder,
   onRetryUserSettingsSync,
   onResetUserSettingsFolder,
+  onResetUserSettingsToDefaults,
+  onChooseNotebookBackupFolder,
+  onRunNotebookBackupNow,
+  onRevealNotebookBackupFolder,
+  onResetNotebookBackupFolder,
   notebookImportSummary,
   notebookImportScratchpadEnabled,
   notebookImportHasScratchpad,
@@ -596,6 +609,7 @@ export function SettingsPage({
             dataCapabilities={dataCapabilities}
             storageProfileStatus={storageProfileStatus}
             userSettingsLocationStatus={userSettingsLocationStatus}
+            notebookBackupStatus={notebookBackupStatus}
             notebookImportSummary={notebookImportSummary}
             notebookImportScratchpadEnabled={notebookImportScratchpadEnabled}
             notebookImportHasScratchpad={notebookImportHasScratchpad}
@@ -613,6 +627,11 @@ export function SettingsPage({
             onRevealUserSettingsFolder={onRevealUserSettingsFolder}
             onRetryUserSettingsSync={onRetryUserSettingsSync}
             onResetUserSettingsFolder={onResetUserSettingsFolder}
+            onResetUserSettingsToDefaults={onResetUserSettingsToDefaults}
+            onChooseNotebookBackupFolder={onChooseNotebookBackupFolder}
+            onRunNotebookBackupNow={onRunNotebookBackupNow}
+            onRevealNotebookBackupFolder={onRevealNotebookBackupFolder}
+            onResetNotebookBackupFolder={onResetNotebookBackupFolder}
             onNotebookImportScratchpadEnabledChange={onNotebookImportScratchpadEnabledChange}
             onConfirmNotebookImport={onConfirmNotebookImport}
             onCancelNotebookImport={onCancelNotebookImport}

@@ -75,6 +75,7 @@ type UseArrangeModeParams = {
   onArrangeHierarchyDrop?: (request: ArrangeHierarchyDropRequest, carriedPreview: TabArrangeDragPreview) => void
   onArrangeDomainMoveBlocked?: (reason: 'last-domain') => void
   onArrangeSpaceMoveBlocked?: (reason: 'last-space') => void
+  onArrangeParentMoveBlocked?: () => void
 }
 
 function areArrangeSelectionsEqual(left: ArrangeSelectionState, right: ArrangeSelectionState) {
@@ -113,6 +114,7 @@ export function useArrangeMode({
   onArrangeHierarchyDrop,
   onArrangeDomainMoveBlocked,
   onArrangeSpaceMoveBlocked,
+  onArrangeParentMoveBlocked,
 }: UseArrangeModeParams) {
   const [mode, setMode] = useState<ArrangeModeState>(DEFAULT_ARRANGE_MODE)
   const [hierarchyRevealLevel, setHierarchyRevealLevel] = useState<ArrangeHierarchyRevealLevel>(0)
@@ -1465,6 +1467,13 @@ export function useArrangeMode({
       const options = {
         createDeletedEntryId: createEntityId,
         createFallbackTab: () => createTab('tab', createEntityId),
+      }
+      if (item.type === 'tab') {
+        const selectedIds = new Set(dragIds)
+        if (data.tabs.length > 0 && data.tabs.every((tab) => selectedIds.has(tab.id))) {
+          onArrangeParentMoveBlocked?.()
+          return data
+        }
       }
       return item.type === 'tab'
         ? moveSelectedParentTabsToTrash(data, dragIds, options)

@@ -31,6 +31,7 @@ import {
   getNoteBodiesFromAppState,
   isRecord,
   normalizeAssetExtension,
+  reconcileNotebookStorageState,
 } from '../src/storage/hybrid-storage-core.js'
 import {
   buildStoragePathFileName,
@@ -106,6 +107,20 @@ function withStorageHealth(result, issues) {
     ...result,
     health: result.ok === false ? 'error' : getStorageHealth(normalizedIssues),
     issues: normalizedIssues,
+  }
+}
+
+function addNotebookReconciliationIssues(issues, repairs) {
+  if (!Array.isArray(issues)) return
+  for (const repair of ensureArray(repairs)) {
+    if (!repair || typeof repair.code !== 'string') continue
+    addStorageIssue(
+      issues,
+      repair.code,
+      'warning',
+      path.posix.join(HYBRID_ROOT_DIR, 'manifest.json'),
+      typeof repair.message === 'string' ? repair.message : 'Notebook storage was repaired.',
+    )
   }
 }
 
@@ -557,12 +572,6 @@ function createRecoverySnapshot(rootPath, userDataPath) {
   const snapshotPath = path.join(recoveryParent, `${HYBRID_ROOT_DIR}-${Date.now()}`)
   measureSlowMainOperation('storage recovery snapshot', () => {
     cpSync(rootPath, snapshotPath, { recursive: true, force: true })
-    const userSettingsPath = getUserSettingsFilePath(userDataPath)
-    if (existsSync(userSettingsPath)) {
-      const snapshotSettingsPath = path.join(snapshotPath, USER_SETTINGS_FILE_PATH)
-      mkdirSync(path.dirname(snapshotSettingsPath), { recursive: true })
-      cpSync(userSettingsPath, snapshotSettingsPath, { force: true })
-    }
   })
   return snapshotPath
 }
@@ -1515,8 +1524,7 @@ function readHybridAppStateFromRootManifest(rootPath, rootManifest, issues = nul
   const noteAisleBodies = readNoteAisleBodiesFromRoot(rootPath, rootParts.noteAisleBodiesRoot, issues)
   const domainEntries = rootParts.domainEntries
   if (domainEntries.length === 0) {
-    addStorageIssue(issues, 'missing-domain-index', 'error', path.posix.join(HYBRID_ROOT_DIR, 'manifest.json'), 'Root manifest has no domains.')
-    return null
+    addStorageIssue(issues, 'missing-domain-index', 'warning', path.posix.join(HYBRID_ROOT_DIR, 'manifest.json'), 'Root manifest has no domains; a blank notebook was created.')
   }
 
   const domains = []
@@ -1557,17 +1565,6 @@ function readHybridAppStateFromRootManifest(rootPath, rootManifest, issues = nul
       if (!space) continue
       spaces.push(space)
     }
-    if (spaces.length === 0) {
-      addStorageIssue(
-        issues,
-        'domain-has-no-readable-spaces',
-        'warning',
-        path.posix.join(HYBRID_ROOT_DIR, domainRootRelative, 'manifest.json'),
-        'Domain has no readable spaces and was skipped.',
-      )
-      continue
-    }
-
     const lastOpened = rootParts.lastOpened
     const lastOpenedSpaceId =
       lastOpened &&
@@ -1580,7 +1577,8 @@ function readHybridAppStateFromRootManifest(rootPath, rootManifest, issues = nul
       (typeof domainManifest.activeSpaceId === 'string' &&
         spaces.some((space) => space.id === domainManifest.activeSpaceId) &&
         domainManifest.activeSpaceId) ||
-      spaces[0].id
+      spaces[0]?.id ||
+      ''
 
     domains.push({
       id: typeof domainManifest.id === 'string' ? domainManifest.id : domainId,
@@ -1590,14 +1588,9 @@ function readHybridAppStateFromRootManifest(rootPath, rootManifest, issues = nul
           : typeof domainEntry.title === 'string'
             ? domainEntry.title
             : DEFAULT_DOMAIN_NAME,
-      activeSpaceId,
+      activeSpaceId: spaces.length > 0 ? activeSpaceId : '',
       spaces,
     })
-  }
-
-  if (domains.length === 0) {
-    addStorageIssue(issues, 'no-readable-domains', 'error', path.posix.join(HYBRID_ROOT_DIR, 'manifest.json'), 'No readable domains were found.')
-    return null
   }
 
   const lastOpened = rootParts.lastOpened
@@ -1605,32 +1598,35 @@ function readHybridAppStateFromRootManifest(rootPath, rootManifest, issues = nul
     lastOpened && typeof lastOpened.domainId === 'string'
       ? lastOpened.domainId
       : null
-  const activeDomainId =
+  const candidateActiveDomainId =
     (lastOpenedDomainId && domains.some((domain) => domain.id === lastOpenedDomainId) && lastOpenedDomainId) ||
     (domains.some((domain) => domain.id === rootParts.activeDomainId) && rootParts.activeDomainId) ||
-    domains[0].id
-  const activeDomain = domains.find((domain) => domain.id === activeDomainId) ?? domains[0]
+    domains[0]?.id ||
+    ''
   const theme = rootParts.syncedSettings?.theme === 'custom'
     ? 'custom1'
     : ['dark', 'light', 'dawn', 'blues', 'custom1', 'custom2', 'custom3'].includes(rootParts.syncedSettings?.theme)
       ? rootParts.syncedSettings.theme
       : 'dawn'
 
-  return JSON.stringify(pruneAppStateEditorLocations({
+  const reconciled = reconcileNotebookStorageState({
     theme,
-    activeDomainId,
+    activeDomainId: candidateActiveDomainId,
     domains,
     deletedDomains: rootParts.deletedDomains,
     deletedSpaces: rootParts.deletedSpaces,
     scratchpad: rootParts.scratchpad,
     noteBodies,
     noteAisleBodies,
-    activeSpaceId: activeDomain.activeSpaceId,
-    spaces: activeDomain.spaces,
+    activeSpaceId: '',
+    spaces: [],
     hotkeys: rootParts.syncedSettings?.hotkeys,
     frontmatter: rootParts.syncedSettings?.frontmatter,
     ui: rootParts.syncedSettings?.ui,
-  }))
+  })
+  addNotebookReconciliationIssues(issues, reconciled.repairs)
+
+  return JSON.stringify(pruneAppStateEditorLocations(reconciled.state))
 }
 
 function readHybridAppStateResultFromRoot(rootPath, profileRootPath = path.dirname(rootPath), options = {}) {
@@ -1782,7 +1778,7 @@ export function restoreStorageRecoverySnapshot(profileRootPath, userDataPath, sn
   }
 
   const snapshotResult = readHybridAppStateResultFromRoot(selectedSnapshot.path, selectedSnapshot.path, {
-    userSettingsRoot: selectedSnapshot.path,
+    userSettingsRoot: userDataPath,
   })
   if (snapshotResult.serializedState === null) {
     return { ok: false, error: 'Recovery snapshot could not be loaded.', snapshot: selectedSnapshot }
@@ -1792,11 +1788,6 @@ export function restoreStorageRecoverySnapshot(profileRootPath, userDataPath, sn
   createRecoverySnapshot(finalRoot, userDataPath)
   rmSync(finalRoot, { recursive: true, force: true })
   cpSync(selectedSnapshot.path, finalRoot, { recursive: true, force: true })
-  const snapshotSettingsPath = path.join(selectedSnapshot.path, USER_SETTINGS_FILE_PATH)
-  if (existsSync(snapshotSettingsPath)) {
-    mkdirSync(path.dirname(getUserSettingsFilePath(userDataPath)), { recursive: true })
-    cpSync(snapshotSettingsPath, getUserSettingsFilePath(userDataPath), { force: true })
-  }
   rmSync(path.join(finalRoot, USER_SETTINGS_DIR), { recursive: true, force: true })
   pruneStorageRecoverySnapshots(userDataPath)
   return { ok: true, snapshot: selectedSnapshot, loadResult: loadAppStateResult(profileRootPath, { userSettingsRoot: userDataPath }) }

@@ -14,4 +14,11 @@ describe('electron application menu', () => {
     expect(mainSource).toContain('getMultilineShortcutDirection(input)')
     expect(mainSource).toContain('sendMultilineShortcutToWindow(window, direction)')
   })
+
+  it('keeps a native user-settings reset escape path outside rendered settings UI', () => {
+    expect(mainSource).toContain('Reset User Settings to Defaults')
+    expect(mainSource).toContain('CommandOrControl+Alt+Shift+R')
+    expect(mainSource).toContain('isResetUserSettingsShortcut(input)')
+    expect(mainSource).toContain('confirmAndResetUserSettings(window)')
+  })
 })

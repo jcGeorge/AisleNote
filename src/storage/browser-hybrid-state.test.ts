@@ -1442,4 +1442,90 @@ describe('browser hybrid storage', () => {
     expect(roundTripped.domains[0]?.id).toBe('domain-2')
     expect(roundTripped.activeDomainId).toBe('domain-2')
   })
+
+  it('creates a blank notebook when no domains are readable', () => {
+    const state = createBrowserStorageState()
+    const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
+    const rootManifest = getTextFileJson(fileMap, 'notes/manifest.json')
+    const workspaceIndex = getRootSplitFileJson(fileMap, rootManifest, 'workspaceIndex', 'workspace-index.json')
+    const firstDomain = getRecord(Array.isArray(workspaceIndex.domains) ? workspaceIndex.domains[0] : null)
+    const staleDomainRoot = `notes/domains/${String(firstDomain.path)}`
+    fileMap.set(`${staleDomainRoot}/manifest.json`, { path: `${staleDomainRoot}/manifest.json`, kind: 'text', text: '{bad' })
+
+    const serialized = readSerializedStateFromHybridFileMap(fileMap)
+    const roundTripped = parseSavedState(serialized ?? '')
+    const saved = buildHybridFileMapFromSerializedState(serialized ?? '')
+
+    expect(serialized).toEqual(expect.any(String))
+    expect(roundTripped.domains).toHaveLength(1)
+    expect(roundTripped.domains[0]?.spaces).toHaveLength(1)
+    expect(roundTripped.domains[0]?.spaces[0]?.data.tabs).toHaveLength(1)
+    expect(saved.has(`${staleDomainRoot}/manifest.json`)).toBe(false)
+  })
+
+  it('creates a blank space when a surviving domain has no readable spaces', () => {
+    const state = createBrowserStorageState()
+    state.deletedSpaces = [
+      {
+        id: 'deleted-space-entry',
+        domainId: 'domain-1',
+        domainName: 'Domain',
+        space: {
+          id: 'deleted-space',
+          name: 'Deleted Space',
+          settings: { autoRemoveDeletedDays: 7 },
+          data: { activeTabId: 'deleted-tab', tabs: [], deletedTabs: [], deletedSubTabs: [] },
+        },
+        deletedAt: 1,
+      },
+    ]
+    const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
+    const { domainManifest, domainRoot } = getBrowserWorkspacePaths(fileMap)
+    const firstSpace = getRecord(Array.isArray(domainManifest.spaces) ? domainManifest.spaces[0] : null)
+    fileMap.delete(`${domainRoot}/${String(firstSpace.path)}/manifest.json`)
+
+    const serialized = readSerializedStateFromHybridFileMap(fileMap)
+    const roundTripped = parseSavedState(serialized ?? '')
+
+    expect(serialized).toEqual(expect.any(String))
+    expect(roundTripped.domains[0]?.id).toBe('domain-1')
+    expect(roundTripped.domains[0]?.spaces).toHaveLength(1)
+    expect(roundTripped.domains[0]?.spaces[0]?.id).not.toBe('space-1')
+    expect(roundTripped.domains[0]?.spaces[0]?.data.tabs).toHaveLength(1)
+    expect(roundTripped.deletedSpaces?.[0]?.space.id).toBe('deleted-space')
+  })
+
+  it('creates a blank parent tab when a surviving space has no readable parents', () => {
+    const state = createBrowserStorageState()
+    state.domains[0].spaces[0].data.deletedTabs = [
+      {
+        id: 'deleted-parent-entry',
+        tab: state.domains[0].spaces[0].data.tabs[0],
+        deletedAt: Date.now(),
+      },
+    ]
+    state.spaces = state.domains[0].spaces
+    const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
+    const { spaceManifest, spaceRoot } = getBrowserWorkspacePaths(fileMap)
+    fileMap.set(`${spaceRoot}/manifest.json`, {
+      path: `${spaceRoot}/manifest.json`,
+      kind: 'text',
+      text: `${JSON.stringify({ ...spaceManifest, tabs: [], activeTabId: 'missing-tab' }, null, 2)}\n`,
+    })
+
+    const serialized = readSerializedStateFromHybridFileMap(fileMap)
+    const roundTripped = parseSavedState(serialized ?? '')
+    const repairedSpace = roundTripped.domains[0]?.spaces[0]
+    const saved = buildHybridFileMapFromSerializedState(serialized ?? '')
+    const savedPaths = getBrowserWorkspacePaths(saved)
+    const savedTabs = Array.isArray(savedPaths.spaceManifest.tabs) ? savedPaths.spaceManifest.tabs : []
+
+    expect(serialized).toEqual(expect.any(String))
+    expect(repairedSpace?.data.tabs).toHaveLength(1)
+    expect(repairedSpace?.data.tabs[0]?.title).toBe('tab')
+    expect(repairedSpace?.data.deletedTabs).toHaveLength(1)
+    expect(repairedSpace?.data.deletedTabs[0]?.tab.id).toBe('tab-1')
+    expect(savedTabs).toHaveLength(1)
+    expect(saved.has(`${savedPaths.spaceRoot}/${String(getRecord(savedTabs[0]).homeNoteFile)}`)).toBe(true)
+  })
 })

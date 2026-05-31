@@ -1,5 +1,6 @@
 import { createDomainFromSpaces, projectActiveDomainState } from '../state/domains'
-import { moveDomainToTrash, moveSpaceToTrash } from '../trash/domain-space-trash'
+import { createId } from '../state/workspace'
+import { moveDomainToTrash } from '../trash/domain-space-trash'
 import type { IdGenerator } from '../state/navigation-ids'
 import type {
   AppState,
@@ -195,7 +196,6 @@ export function migrateStageManagerSpacesToDomain(
 
   const movedSpaces = orderedSelectedSpaces(sourceDomain, selectedSpaceIds)
   if (movedSpaces.length === 0) return { state: projected, changed: false, reason: 'missing-space' }
-  if (sourceDomain.spaces.length - movedSpaces.length < 1) return { state: projected, changed: false, reason: 'last-space' }
 
   const movedSpaceIds = new Set(movedSpaces.map((space) => space.id))
   const sourceSpaces = sourceDomain.spaces.filter((space) => !movedSpaceIds.has(space.id))
@@ -237,7 +237,6 @@ export function promoteStageManagerSpacesToDomains(
 
   const movedSpaces = orderedSelectedSpaces(sourceDomain, selectedSpaceIds)
   if (movedSpaces.length === 0) return { state: projected, changed: false, reason: 'missing-space' }
-  if (sourceDomain.spaces.length - movedSpaces.length < 1) return { state: projected, changed: false, reason: 'last-space' }
 
   const movedSpaceIds = new Set(movedSpaces.map((space) => space.id))
   const sourceSpaces = sourceDomain.spaces.filter((space) => !movedSpaceIds.has(space.id))
@@ -327,16 +326,37 @@ export function moveStageManagerSpacesToTrash(
   if (!sourceDomain) return { state: projected, changed: false, reason: 'missing-domain' }
   const movedSpaces = orderedSelectedSpaces(sourceDomain, selectedSpaceIds)
   if (movedSpaces.length === 0) return { state: projected, changed: false, reason: 'missing-space' }
-  if (sourceDomain.spaces.length - movedSpaces.length < 1) return { state: projected, changed: false, reason: 'last-space' }
 
-  let nextState = projected
-  for (const space of movedSpaces) {
-    const result = moveSpaceToTrash(nextState, sourceDomainId, space.id, createDeletedEntryId)
-    if (!result.changed) return { state: projected, changed: false, reason: result.reason ?? 'missing-space' }
-    nextState = result.state
+  const movedSpaceIds = new Set(movedSpaces.map((space) => space.id))
+  const sourceSpaces = sourceDomain.spaces.filter((space) => !movedSpaceIds.has(space.id))
+  const nextSourceDomain = createDomainFromSpaces(sourceDomain.name, sourceSpaces, {
+    id: sourceDomain.id,
+    activeSpaceId: sourceDomain.activeSpaceId && !movedSpaceIds.has(sourceDomain.activeSpaceId)
+      ? sourceDomain.activeSpaceId
+      : sourceSpaces[0]?.id,
+  })
+  const domains = projected.domains.map((domain) => (domain.id === sourceDomain.id ? nextSourceDomain : domain))
+  const deletedAt = Date.now()
+  const deletedSpaces: DeletedSpaceEntry[] = [
+    ...(projected.deletedSpaces ?? []),
+    ...movedSpaces.map((space) => ({
+      id: createDeletedEntryId?.() ?? createId(),
+      domainId: sourceDomain.id,
+      domainName: sourceDomain.name,
+      space: cloneSpaceForTransfer(space),
+      deletedAt,
+    })),
+  ]
+
+  return {
+    state: buildStageManagerDomainAwareState(
+      { ...projected, deletedSpaces },
+      domains,
+      projected.activeDomainId,
+      projected.activeDomainId === sourceDomain.id ? nextSourceDomain.activeSpaceId : projected.activeSpaceId,
+    ),
+    changed: true,
   }
-
-  return { state: nextState, changed: true }
 }
 
 export function moveStageManagerDomainsToTrash(

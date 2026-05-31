@@ -167,10 +167,7 @@ function SubMenu({
 
 export function ContextMenuHost({
   contextMenu,
-  canDeleteSpace,
-  canDeleteDomain,
   duplicateCount,
-  onClose,
   onEnterArrangeMode,
   onDuplicateSpace,
   onRenameSpace,
@@ -276,19 +273,11 @@ export function ContextMenuHost({
           <button type="button" className="tab-context-delete" onClick={onRenameSpace}>
             rename
           </button>
-          <button
-            type="button"
-            className="tab-context-delete"
-            onClick={() => {
-              if (!canDeleteSpace) {
-                onClose()
-                return
-              }
-              onMoveToTrash()
-            }}
-            disabled={!canDeleteSpace}
-          >
+          <button type="button" className="tab-context-delete" onClick={onMoveToTrash}>
             move to trash
+          </button>
+          <button type="button" className="tab-context-delete tab-context-danger" onClick={() => onOpenDeleteModal(true)}>
+            delete now
           </button>
         </>
       ) : contextMenu.type === 'domain' ? (
@@ -299,19 +288,11 @@ export function ContextMenuHost({
           <button type="button" className="tab-context-delete" onClick={onRenameDomain}>
             rename
           </button>
-          <button
-            type="button"
-            className="tab-context-delete"
-            onClick={() => {
-              if (!canDeleteDomain) {
-                onClose()
-                return
-              }
-              onMoveToTrash()
-            }}
-            disabled={!canDeleteDomain}
-          >
+          <button type="button" className="tab-context-delete" onClick={onMoveToTrash}>
             move to trash
+          </button>
+          <button type="button" className="tab-context-delete tab-context-danger" onClick={() => onOpenDeleteModal(true)}>
+            delete now
           </button>
         </>
       ) : contextMenu.type === 'image' ? (

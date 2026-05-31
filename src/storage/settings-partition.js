@@ -33,8 +33,42 @@ export const REQUIRED_ROOT_SPLIT_FILE_KEYS = Object.freeze([
   'noteRegistry',
 ])
 
+const DEFAULT_COMMAND_SHORTCUTS = {
+  toggleTabTrash: 'Mod+T',
+  openDomains: 'Mod+D',
+  openSpaces: 'Mod+S',
+  newTab: 'Mod+Shift+N',
+  newSubTab: 'Mod+N',
+  formatStrikethrough: '',
+  cycleParentTabNext: '',
+  cycleParentTabPrev: '',
+  cycleSubTabNext: 'Ctrl+Tab',
+  cycleSubTabPrev: 'Ctrl+Shift+Tab',
+  cycleAislePrev: 'Alt+[',
+  cycleAisleNext: 'Alt+]',
+}
+
+const DEFAULT_NEWLINE_SHORTCUT_SETTINGS = {
+  shortcuts: {
+    controlEnter: 'aisleRight',
+    shiftEnter: 'task',
+    commandEnter: 'operationsMenu',
+  },
+  menuOperations: [
+    'task',
+    'aisleLeft',
+    'aisleRight',
+    'horizontalLine',
+    'codeBlock',
+    'inlineCode',
+    'blockQuote',
+    'strikethrough',
+  ],
+}
+
 const DEFAULT_HOTKEY_SETTINGS = {
-  shortcuts: {},
+  shortcuts: DEFAULT_COMMAND_SHORTCUTS,
+  newlineShortcuts: DEFAULT_NEWLINE_SHORTCUT_SETTINGS,
 }
 
 const DEFAULT_SYNCED_UI_SETTINGS = {
@@ -359,6 +393,14 @@ export function normalizePortableAppSettings(rawSettings) {
 
 export function stringifyPortableAppSettings(appState) {
   return `${JSON.stringify(extractAppSettings(appState), null, 2)}\n`
+}
+
+export function createDefaultPortableAppSettings() {
+  return normalizePortableAppSettings({})
+}
+
+export function stringifyDefaultPortableAppSettings() {
+  return `${JSON.stringify(createDefaultPortableAppSettings(), null, 2)}\n`
 }
 
 export function parsePortableAppSettingsJson(raw) {

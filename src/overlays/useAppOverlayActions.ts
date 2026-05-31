@@ -17,12 +17,14 @@ import {
 } from './note-reference-cleanup'
 import { projectActiveDomainState } from '../state/domains'
 import { collectAppNavigationEntityIds, createReservedIdAllocator } from '../state/navigation-ids'
-import { createId, createTab } from '../state/workspace'
+import { createId } from '../state/workspace'
 import {
   permanentlyDeleteDeletedDomainTrashItem,
   deleteAllDomainAndSpaceTrash,
   moveDomainToTrash,
   moveSpaceToTrash,
+  permanentlyDeleteLiveDomain,
+  permanentlyDeleteLiveSpace,
   permanentlyDeleteTrashDomain,
   permanentlyDeleteTrashSpace,
   restoreDeletedDomainTrashItem,
@@ -50,6 +52,11 @@ type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
 export function formatMovedToTrashToast(kind: 'domain' | 'space' | 'parent tab' | 'tab', name: string) {
   return `${kind} "${name}" has been moved to trash`
 }
+
+export const LAST_DOMAIN_TOAST =
+  'at least one domain must remain. To delete this notebook, switch to another notebook first, then delete this notebook folder from your file system.'
+export const LAST_SPACE_TOAST = 'at least one space must remain.'
+export const LAST_PARENT_TAB_TOAST = 'at least one parent tab must remain.'
 
 type UseAppOverlayActionsParams = {
   state: AppState
@@ -304,26 +311,30 @@ export const useAppOverlayActions = ({
     setContextMenu(null)
   }
 
-  const deleteSpace = (spaceId: string) => {
+  const deleteSpace = (spaceId: string, permanent: boolean) => {
     setState((previous) => {
       const projected = projectActiveDomainState(previous)
       const spaceName = projected.spaces.find((space) => space.id === spaceId)?.name ?? 'space'
       const createEntityId = createReservedIdAllocator(collectAppNavigationEntityIds(previous))
-      const result = moveSpaceToTrash(previous, previous.activeDomainId, spaceId, createEntityId)
-      if (result.reason === 'last-space') pushToast('at least one space must remain.', 'warning')
-      if (result.changed) pushToast(formatMovedToTrashToast('space', spaceName), 'success')
+      const result = permanent
+        ? permanentlyDeleteLiveSpace(previous, previous.activeDomainId, spaceId)
+        : moveSpaceToTrash(previous, previous.activeDomainId, spaceId, createEntityId)
+      if (result.reason === 'last-space') pushToast(LAST_SPACE_TOAST, 'warning')
+      if (result.changed && !permanent) pushToast(formatMovedToTrashToast('space', spaceName), 'success')
       return result.state
     })
   }
 
-  const deleteDomain = (domainId: string) => {
+  const deleteDomain = (domainId: string, permanent: boolean) => {
     setState((previous) => {
       const projected = projectActiveDomainState(previous)
       const domainName = projected.domains.find((domain) => domain.id === domainId)?.name ?? 'domain'
       const createEntityId = createReservedIdAllocator(collectAppNavigationEntityIds(previous))
-      const result = moveDomainToTrash(previous, domainId, createEntityId)
-      if (result.reason === 'last-domain') pushToast('at least one domain must remain.', 'warning')
-      if (result.changed) pushToast(formatMovedToTrashToast('domain', domainName), 'success')
+      const result = permanent
+        ? permanentlyDeleteLiveDomain(previous, domainId)
+        : moveDomainToTrash(previous, domainId, createEntityId)
+      if (result.reason === 'last-domain') pushToast(LAST_DOMAIN_TOAST, 'warning')
+      if (result.changed && !permanent) pushToast(formatMovedToTrashToast('domain', domainName), 'success')
       return result.state
     })
   }
@@ -331,7 +342,7 @@ export const useAppOverlayActions = ({
   const deleteTarget = (target: DeleteTarget, permanent: boolean) => {
     saveActiveCursorBeforeNavigation()
     if (target.type === 'domain') {
-      deleteDomain(target.domainId)
+      deleteDomain(target.domainId, permanent)
       return
     }
 
@@ -367,7 +378,7 @@ export const useAppOverlayActions = ({
       : []
 
     if (target.type === 'space') {
-      deleteSpace(target.spaceId)
+      deleteSpace(target.spaceId, permanent)
       return
     }
 
@@ -424,11 +435,15 @@ export const useAppOverlayActions = ({
       if (target.type === 'tab') {
         const tabToDelete = data.tabs.find((tab) => tab.id === target.tabId)
         if (!tabToDelete) return data
+        const remaining = data.tabs.filter((tab) => tab.id !== target.tabId)
+        if (remaining.length === 0) {
+          nextToastMessage = LAST_PARENT_TAB_TOAST
+          return data
+        }
         if (!permanent) {
           nextToastMessage = formatMovedToTrashToast('parent tab', tabToDelete.title)
         }
 
-        const remaining = data.tabs.filter((tab) => tab.id !== target.tabId)
         const deletedTabs = permanent
           ? data.deletedTabs
           : [
@@ -439,16 +454,6 @@ export const useAppOverlayActions = ({
                 deletedAt: Date.now(),
               },
             ]
-
-        if (remaining.length === 0) {
-          const fallback = createTab('tab', createEntityId)
-          return {
-            ...data,
-            activeTabId: fallback.id,
-            tabs: [fallback],
-            deletedTabs,
-          }
-        }
 
         const nextActiveId = data.activeTabId === target.tabId ? remaining[0].id : data.activeTabId
         return {
@@ -500,7 +505,7 @@ export const useAppOverlayActions = ({
       setTrashSubTabId(null)
     }
     if (nextToastMessage) {
-      pushToast(nextToastMessage, 'success')
+      pushToast(nextToastMessage, nextToastMessage === LAST_PARENT_TAB_TOAST ? 'warning' : 'success')
     }
     removeNoteReferencesForLocations(referenceCleanupTargets, cleanupResolverState)
   }

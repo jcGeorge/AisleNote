@@ -143,30 +143,30 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
   if (modal.type !== 'delete-target') return { title: '', body: '', action: 'confirm' }
 
   if (modal.target.type === 'space') {
-    if (state.spaces.length <= 1) {
+    if (modal.permanent) {
       return {
-        title: 'cannot delete space',
-        body: 'at least one space must remain.',
-        action: 'ok',
+        title: 'delete space for real?',
+        body: 'this permanently deletes the space and everything inside it, skipping trash.',
+        action: 'delete for real',
       }
     }
     return {
-      title: 'delete space?',
+      title: 'move space to trash?',
       body: 'this moves the space and everything inside it into trash.',
       action: 'delete space',
     }
   }
 
   if (modal.target.type === 'domain') {
-    if (state.domains.length <= 1) {
+    if (modal.permanent) {
       return {
-        title: 'cannot delete domain',
-        body: 'at least one domain must remain.',
-        action: 'ok',
+        title: 'delete domain for real?',
+        body: 'this permanently deletes the domain and everything inside it, skipping trash.',
+        action: 'delete for real',
       }
     }
     return {
-      title: 'delete domain?',
+      title: 'move domain to trash?',
       body: 'this moves the domain and everything inside it into trash.',
       action: 'delete domain',
     }

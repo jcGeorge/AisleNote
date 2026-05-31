@@ -190,14 +190,29 @@ describe('stage manager domain operations', () => {
     expect(result.state.domains[2].spaces).toMatchObject([{ id: 'space-c', name: 'main' }])
   })
 
-  it('blocks space migration, promotion, and trash when the source domain would be empty', () => {
+  it('lets director space migration, promotion, and trash create a replacement source space', () => {
     const migrate = migrateStageManagerSpacesToDomain(state, 'domain-a', ['space-runtime'], 'domain-b')
     const promote = promoteStageManagerSpacesToDomains(state, 'domain-a', ['space-runtime'], () => 'new-domain')
     const trash = moveStageManagerSpacesToTrash(state, 'domain-a', ['space-runtime'], () => 'trash-entry')
 
-    expect(migrate.reason).toBe('last-space')
-    expect(promote.reason).toBe('last-space')
-    expect(trash.reason).toBe('last-space')
+    expect(migrate.changed).toBe(true)
+    expect(migrate.state.domains.find((domain) => domain.id === 'domain-a')?.spaces).toHaveLength(1)
+    expect(migrate.state.domains.find((domain) => domain.id === 'domain-a')?.spaces[0].id).not.toBe('space-runtime')
+    expect(migrate.state.domains.find((domain) => domain.id === 'domain-b')?.spaces.map((space) => space.id)).toContain('space-runtime')
+
+    expect(promote.changed).toBe(true)
+    expect(promote.state.domains.find((domain) => domain.id === 'domain-a')?.spaces).toHaveLength(1)
+    expect(promote.state.domains.find((domain) => domain.id === 'domain-a')?.spaces[0].id).not.toBe('space-runtime')
+    expect(promote.state.domains.some((domain) => domain.spaces.some((space) => space.id === 'space-runtime'))).toBe(true)
+
+    expect(trash.changed).toBe(true)
+    expect(trash.state.domains.find((domain) => domain.id === 'domain-a')?.spaces).toHaveLength(1)
+    expect(trash.state.domains.find((domain) => domain.id === 'domain-a')?.spaces[0].id).not.toBe('space-runtime')
+    expect(trash.state.deletedSpaces?.[0]).toMatchObject({
+      id: 'trash-entry',
+      domainId: 'domain-a',
+      space: expect.objectContaining({ id: 'space-runtime' }),
+    })
   })
 
   it('demotes single-space domains into another domain and blocks invalid domain demotions', () => {
