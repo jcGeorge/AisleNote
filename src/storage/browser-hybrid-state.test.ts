@@ -813,6 +813,7 @@ describe('browser hybrid storage', () => {
     const roundTrippedBodyTwo = roundTripped.noteBodies.find((body) => body.id === 'body-2')
 
     expect(sharedAisleBodyFile).toBeTruthy()
+    expect(sharedAisleBody.contentHash).toEqual(expect.any(String))
     expect(roundTripped.noteAisleBodies?.find((body) => body.id === 'shared-aisle-body')?.markdown).toBe(currentMarkdown)
     expect(roundTrippedBodyOne?.aisles[0] ? getAisleMarkdown(roundTrippedBodyOne.aisles[0], roundTripped.noteAisleBodies) : '').toBe(currentMarkdown)
     expect(roundTrippedBodyTwo?.aisles[0] ? getAisleMarkdown(roundTrippedBodyTwo.aisles[0], roundTripped.noteAisleBodies) : '').toBe(currentMarkdown)

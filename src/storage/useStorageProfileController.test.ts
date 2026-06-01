@@ -27,6 +27,24 @@ describe('notebook folder status toasts', () => {
     expect(getStorageProfileStatusToast(storageStatus('external-echo-ignored'))).toBeNull()
   })
 
+  it('does not toast linked mirror conflict warnings', () => {
+    expect(
+      getStorageProfileStatusToast(
+        storageStatus('external-loaded', {
+          event: 'ready',
+          health: 'warning',
+          issues: [
+            {
+              code: 'linked-aisle-mirror-conflict-newest-wins',
+              severity: 'warning',
+              message: 'Linked aisle mirror files were edited differently outside the app.',
+            },
+          ],
+        }),
+      ),
+    ).toBeNull()
+  })
+
   it('still shows storage errors', () => {
     expect(
       getStorageProfileStatusToast(

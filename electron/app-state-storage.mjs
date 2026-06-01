@@ -30,6 +30,7 @@ import {
   getMimeTypeFromExtension,
   getNoteBodiesFromAppState,
   isRecord,
+  createStorageContentHash,
   normalizeAssetExtension,
   reconcileNotebookStorageState,
 } from '../src/storage/hybrid-storage-core.js'
@@ -74,13 +75,15 @@ const FRONTMATTER_CLOSE_RE = /(?:^|\r?\n)---[ \t]*(?:\r?\n|$)/
 const INTERNAL_INDENT_TOKEN = '\u2060\u2003\u2003'
 const EDITOR_BLANK_LINE_PLACEHOLDER = '\u200b'
 const EXPORT_TAB_SPACES = '    '
+const LINKED_AISLE_MIRROR_CONFLICT_CODE = 'linked-aisle-mirror-conflict-newest-wins'
 
-function createStorageIssue(code, severity, pathValue, message) {
+function createStorageIssue(code, severity, pathValue, message, details = undefined) {
   return {
     code,
     severity,
     ...(pathValue ? { path: pathValue } : {}),
     message,
+    ...(isRecord(details) ? details : {}),
   }
 }
 
@@ -93,6 +96,11 @@ function getStorageHealth(issues) {
 function addStorageIssue(issues, code, severity, pathValue, message) {
   if (!Array.isArray(issues)) return
   issues.push(createStorageIssue(code, severity, pathValue, message))
+}
+
+function addStorageIssueWithDetails(issues, code, severity, pathValue, message, details) {
+  if (!Array.isArray(issues)) return
+  issues.push(createStorageIssue(code, severity, pathValue, message, details))
 }
 
 function formatStorageIssuePath(rootPath, absolutePath) {
@@ -231,7 +239,51 @@ function buildTrashDataFromManifestItems(trashItems) {
   return { deletedTabs, deletedSubTabs }
 }
 
-function readTrashData(spaceRoot, trashManifestFile, issues = null, issueRootPath = null) {
+function pushVisibleNoteFileRef(visibleNoteFileRefs, noteBodyId, rootRelativeFile) {
+  if (!Array.isArray(visibleNoteFileRefs)) return
+  const bodyId = typeof noteBodyId === 'string' ? noteBodyId : ''
+  const file = typeof rootRelativeFile === 'string' ? rootRelativeFile : ''
+  if (!bodyId || !file) return
+  visibleNoteFileRefs.push({ noteBodyId: bodyId, file })
+}
+
+function collectVisibleNoteFileRefsFromSpaceManifest(spaceRootRelative, spaceManifest, visibleNoteFileRefs) {
+  if (!Array.isArray(visibleNoteFileRefs)) return
+  ensureArray(spaceManifest?.tabs).forEach((tabRecord) => {
+    const noteBodyId = typeof tabRecord?.noteBodyId === 'string' ? tabRecord.noteBodyId : ''
+    const homeNoteFile = typeof tabRecord?.homeNoteFile === 'string' ? tabRecord.homeNoteFile : ''
+    if (noteBodyId && homeNoteFile) {
+      pushVisibleNoteFileRef(visibleNoteFileRefs, noteBodyId, path.posix.join(spaceRootRelative, homeNoteFile))
+    }
+    ensureArray(tabRecord?.subTabs).forEach((subTabRecord) => {
+      const subTabNoteBodyId = typeof subTabRecord?.noteBodyId === 'string' ? subTabRecord.noteBodyId : ''
+      const subTabFile = typeof subTabRecord?.file === 'string' ? subTabRecord.file : ''
+      if (subTabNoteBodyId && subTabFile) {
+        pushVisibleNoteFileRef(visibleNoteFileRefs, subTabNoteBodyId, path.posix.join(spaceRootRelative, subTabFile))
+      }
+    })
+  })
+}
+
+function collectVisibleNoteFileRefsFromTrashItems(trashRootRelative, trashItems, visibleNoteFileRefs) {
+  if (!Array.isArray(visibleNoteFileRefs)) return
+  ensureArray(trashItems).forEach((item) => {
+    const noteBodyId = typeof item?.noteBodyId === 'string' ? item.noteBodyId : ''
+    const file = typeof item?.file === 'string' ? item.file : ''
+    if (noteBodyId && file) {
+      pushVisibleNoteFileRef(visibleNoteFileRefs, noteBodyId, path.posix.join(trashRootRelative, file))
+    }
+    ensureArray(item?.subTabs).forEach((subTabRecord) => {
+      const subTabNoteBodyId = typeof subTabRecord?.noteBodyId === 'string' ? subTabRecord.noteBodyId : ''
+      const subTabFile = typeof subTabRecord?.file === 'string' ? subTabRecord.file : ''
+      if (subTabNoteBodyId && subTabFile) {
+        pushVisibleNoteFileRef(visibleNoteFileRefs, subTabNoteBodyId, path.posix.join(trashRootRelative, subTabFile))
+      }
+    })
+  })
+}
+
+function readTrashData(spaceRoot, trashManifestFile, issues = null, issueRootPath = null, options = {}) {
   const trashRoot = path.join(spaceRoot, 'trash')
   const trashManifestPath = trashManifestFile
     ? path.join(spaceRoot, trashManifestFile)
@@ -247,6 +299,7 @@ function readTrashData(spaceRoot, trashManifestFile, issues = null, issueRootPat
   if (!trashManifest || typeof trashManifest !== 'object') {
     return { deletedTabs: [], deletedSubTabs: [] }
   }
+  collectVisibleNoteFileRefsFromTrashItems(options.trashRootRelative, trashManifest.items, options.visibleNoteFileRefs)
   return buildTrashDataFromManifestItems(trashManifest.items)
 }
 
@@ -750,6 +803,27 @@ function readMarkdownBodyFile(baseDirectory, relativeFile, issues = null, issueR
   return splitMarkdownFrontmatterForStorage(readMarkdownFile(baseDirectory, relativeFile, issues, issueRootPath)).markdown
 }
 
+function normalizeAisleStorageContentForHash(content) {
+  const frontmatterStatus = content?.frontmatterStatus === 'valid' || content?.frontmatterStatus === 'invalid'
+    ? content.frontmatterStatus
+    : 'none'
+  return {
+    markdown: typeof content?.markdown === 'string' ? content.markdown : '',
+    frontmatterStatus,
+    frontmatter: frontmatterStatus === 'valid' && isRecord(content?.frontmatter) ? content.frontmatter : null,
+    frontmatterParseError: frontmatterStatus === 'invalid' && typeof content?.frontmatterParseError === 'string'
+      ? content.frontmatterParseError
+      : undefined,
+    frontmatterRaw: frontmatterStatus === 'invalid' && typeof content?.frontmatterRaw === 'string'
+      ? content.frontmatterRaw
+      : undefined,
+  }
+}
+
+function getAisleStorageContentHash(content) {
+  return createStorageContentHash(normalizeAisleStorageContentForHash(content))
+}
+
 function composeAisleMarkdownForStorage(markdown, aisleBody) {
   if (aisleBody?.frontmatterStatus === 'invalid') return markdown
   const yaml = stringifyFrontmatterYaml(aisleBody?.frontmatter)
@@ -760,6 +834,7 @@ function buildNoteAisleBodyManifestRecord(aisleBodyId, file, aisleBody) {
   return {
     id: aisleBodyId,
     file,
+    contentHash: getAisleStorageContentHash(aisleBody),
     frontmatterMeta: isRecord(aisleBody?.frontmatterMeta) ? aisleBody.frontmatterMeta : undefined,
   }
 }
@@ -817,7 +892,14 @@ function writeNoteBodyAtPath({
     setStorageTextFile(fileMap, primaryFileRelative, externalizeMarkdownImages('', primaryFileRelative, assetBank))
     if (body && bodyId) {
       const aisleId = `${bodyId}-home`
-      noteBodyRecords.set(bodyId, buildNoteBodyManifestRecord(body, [{ id: aisleId, aisleBodyId: aisleId, file: primaryFileRelative }]))
+      noteBodyRecords.set(bodyId, buildNoteBodyManifestRecord(body, [
+        {
+          id: aisleId,
+          aisleBodyId: aisleId,
+          file: primaryFileRelative,
+          contentHash: getAisleStorageContentHash(undefined),
+        },
+      ]))
       if (!noteAisleBodyRecords.has(aisleId)) {
         noteAisleBodyRecords.set(aisleId, buildNoteAisleBodyManifestRecord(aisleId, primaryFileRelative, undefined))
       }
@@ -842,7 +924,7 @@ function writeNoteBodyAtPath({
         assetBank,
       ),
     )
-    aisleRecords.push({ id: aisleId, aisleBodyId, file })
+    aisleRecords.push({ id: aisleId, aisleBodyId, file, contentHash: getAisleStorageContentHash(sourceAisleBody) })
     if (!noteAisleBodyRecords.has(aisleBodyId)) {
       noteAisleBodyRecords.set(aisleBodyId, buildNoteAisleBodyManifestRecord(aisleBodyId, file, sourceAisleBody))
     }
@@ -1263,22 +1345,221 @@ function readNoteBodiesFromRoot(rootManifest) {
     .filter(Boolean)
 }
 
-function readNoteAisleBodiesFromRoot(rootPath, rootManifest, issues = null) {
-  const aisleBodies = []
-  const seen = new Set()
-  for (const body of ensureArray(rootManifest?.noteAisleBodies)) {
+function getRegistryContentHash(record) {
+  return typeof record?.contentHash === 'string' && record.contentHash ? record.contentHash : ''
+}
+
+function getFileMtimeMs(filePath) {
+  try {
+    return statSync(filePath).mtimeMs
+  } catch {
+    return 0
+  }
+}
+
+function readMarkdownCandidate(rootPath, relativeFile, issues = null) {
+  const absolutePath = path.join(rootPath, relativeFile)
+  const rawMarkdown = readTextFileIfExists(absolutePath, issues, {
+    rootPath,
+    missingCode: 'missing-markdown',
+    readCode: 'unreadable-markdown',
+    severity: 'warning',
+    missingMessage: 'Markdown file is missing; this note was loaded as empty.',
+    readMessage: 'Markdown file could not be read; this note was loaded as empty.',
+  })
+  if (rawMarkdown === null) return null
+  const markdown = referenceMarkdownImages(rawMarkdown, absolutePath, issues, rootPath)
+  const parsedMarkdown = splitMarkdownFrontmatterForStorage(markdown)
+  const content = normalizeAisleStorageContentForHash(parsedMarkdown)
+  return {
+    file: relativeFile,
+    issuePath: path.posix.join(HYBRID_ROOT_DIR, relativeFile),
+    mtimeMs: getFileMtimeMs(absolutePath),
+    content,
+    contentHash: createStorageContentHash(content),
+    parsedMarkdown,
+  }
+}
+
+function getCandidateSortPath(candidate) {
+  return candidate?.file ?? ''
+}
+
+function chooseNewestCandidate(candidates) {
+  return [...candidates].sort((left, right) => {
+    const mtimeDelta = right.mtimeMs - left.mtimeMs
+    if (mtimeDelta !== 0) return mtimeDelta
+    if (left.canonical !== right.canonical) return left.canonical ? -1 : 1
+    return getCandidateSortPath(left).localeCompare(getCandidateSortPath(right))
+  })[0] ?? null
+}
+
+function addAisleCandidateRef(candidateRefsByAisleBodyId, aisleBodyId, file, options = {}) {
+  const bodyId = typeof aisleBodyId === 'string' ? aisleBodyId : ''
+  const relativeFile = typeof file === 'string' ? file : ''
+  if (!bodyId || !relativeFile) return
+  const refs = candidateRefsByAisleBodyId.get(bodyId) ?? []
+  refs.push({
+    file: relativeFile,
+    expectedHash: typeof options.expectedHash === 'string' ? options.expectedHash : '',
+    canonical: Boolean(options.canonical),
+  })
+  candidateRefsByAisleBodyId.set(bodyId, refs)
+}
+
+function buildAisleCandidateRefs(noteBodiesRoot, noteAisleBodiesRoot, visibleNoteFileRefs) {
+  const candidateRefsByAisleBodyId = new Map()
+  const aisleBodyRecordsById = new Map()
+  ensureArray(noteAisleBodiesRoot?.noteAisleBodies).forEach((body) => {
+    const bodyId = typeof body?.id === 'string' ? body.id : ''
+    if (bodyId && !aisleBodyRecordsById.has(bodyId)) aisleBodyRecordsById.set(bodyId, body)
+  })
+
+  const noteBodyRecordsById = new Map()
+  ensureArray(noteBodiesRoot?.noteBodies).forEach((body) => {
+    const bodyId = typeof body?.id === 'string' ? body.id : ''
+    if (!bodyId || noteBodyRecordsById.has(bodyId)) return
+    noteBodyRecordsById.set(bodyId, body)
+    ensureArray(body?.aisles).forEach((aisle) => {
+      const aisleBodyId =
+        typeof aisle?.aisleBodyId === 'string' && aisle.aisleBodyId
+          ? aisle.aisleBodyId
+          : typeof aisle?.id === 'string'
+            ? aisle.id
+            : ''
+      const file = typeof aisle?.file === 'string' ? aisle.file : ''
+      const bodyRecord = aisleBodyRecordsById.get(aisleBodyId)
+      addAisleCandidateRef(candidateRefsByAisleBodyId, aisleBodyId, file, {
+        expectedHash: getRegistryContentHash(aisle) || getRegistryContentHash(bodyRecord),
+        canonical: bodyRecord?.file === file,
+      })
+    })
+  })
+
+  ensureArray(visibleNoteFileRefs).forEach((ref) => {
+    const bodyId = typeof ref?.noteBodyId === 'string' ? ref.noteBodyId : ''
+    const file = typeof ref?.file === 'string' ? ref.file : ''
+    const bodyRecord = noteBodyRecordsById.get(bodyId)
+    const firstAisle = ensureArray(bodyRecord?.aisles)[0]
+    const aisleBodyId =
+      typeof firstAisle?.aisleBodyId === 'string' && firstAisle.aisleBodyId
+        ? firstAisle.aisleBodyId
+        : typeof firstAisle?.id === 'string'
+          ? firstAisle.id
+          : ''
+    const aisleBodyRecord = aisleBodyRecordsById.get(aisleBodyId)
+    addAisleCandidateRef(candidateRefsByAisleBodyId, aisleBodyId, file, {
+      expectedHash: getRegistryContentHash(firstAisle) || getRegistryContentHash(aisleBodyRecord),
+      canonical: aisleBodyRecord?.file === file,
+    })
+  })
+
+  ensureArray(noteAisleBodiesRoot?.noteAisleBodies).forEach((body) => {
     const bodyId = typeof body?.id === 'string' ? body.id : ''
     const file = typeof body?.file === 'string' ? body.file : ''
-    if (!bodyId || !file || seen.has(bodyId)) continue
+    addAisleCandidateRef(candidateRefsByAisleBodyId, bodyId, file, {
+      expectedHash: getRegistryContentHash(body),
+      canonical: true,
+    })
+  })
+  return candidateRefsByAisleBodyId
+}
+
+function dedupeAisleCandidateRefs(refs) {
+  const byFile = new Map()
+  refs.forEach((ref) => {
+    if (!ref.file) return
+    const existing = byFile.get(ref.file)
+    if (!existing) {
+      byFile.set(ref.file, ref)
+      return
+    }
+    byFile.set(ref.file, {
+      file: ref.file,
+      expectedHash: existing.expectedHash || ref.expectedHash,
+      canonical: existing.canonical || ref.canonical,
+    })
+  })
+  return Array.from(byFile.values())
+}
+
+function reconcileAisleBodyCandidates(rootPath, aisleBodyId, bodyRecord, candidateRefs, issues = null) {
+  const refs = dedupeAisleCandidateRefs(candidateRefs)
+  const candidates = refs
+    .map((ref) => {
+      const candidate = readMarkdownCandidate(rootPath, ref.file, issues)
+      if (!candidate) return null
+      const expectedHash = ref.expectedHash || getRegistryContentHash(bodyRecord)
+      return {
+        ...candidate,
+        expectedHash,
+        canonical: Boolean(ref.canonical),
+        changed: Boolean(expectedHash && candidate.contentHash !== expectedHash),
+      }
+    })
+    .filter(Boolean)
+
+  const fallback = candidates.find((candidate) => candidate.canonical) ?? candidates[0] ?? null
+  if (!fallback) {
+    return normalizeAisleStorageContentForHash({ markdown: '' })
+  }
+
+  if (!candidates.some((candidate) => candidate.expectedHash)) {
+    return fallback.content
+  }
+
+  const changedCandidates = candidates.filter((candidate) => candidate.changed)
+  if (changedCandidates.length === 0) {
+    return fallback.content
+  }
+
+  const changedHashes = new Set(changedCandidates.map((candidate) => candidate.contentHash))
+  if (changedHashes.size <= 1) {
+    return chooseNewestCandidate(changedCandidates)?.content ?? changedCandidates[0].content
+  }
+
+  const winner = chooseNewestCandidate(changedCandidates) ?? changedCandidates[0]
+  const ignoredPaths = changedCandidates
+    .filter((candidate) => candidate !== winner)
+    .map((candidate) => candidate.issuePath)
+  addStorageIssueWithDetails(
+    issues,
+    LINKED_AISLE_MIRROR_CONFLICT_CODE,
+    'warning',
+    winner.issuePath,
+    'Linked aisle mirror files were edited differently outside the app. The newest file was used and other mirror edits will be overwritten on the next save.',
+    {
+      aisleBodyId,
+      chosenPath: winner.issuePath,
+      ignoredPaths,
+      candidateCount: changedCandidates.length,
+    },
+  )
+  return winner.content
+}
+
+function readNoteAisleBodiesFromRoot(rootPath, noteAisleBodiesRoot, noteBodiesRoot, visibleNoteFileRefs, issues = null) {
+  const aisleBodies = []
+  const seen = new Set()
+  const candidateRefsByAisleBodyId = buildAisleCandidateRefs(noteBodiesRoot, noteAisleBodiesRoot, visibleNoteFileRefs)
+  for (const body of ensureArray(noteAisleBodiesRoot?.noteAisleBodies)) {
+    const bodyId = typeof body?.id === 'string' ? body.id : ''
+    if (!bodyId || seen.has(bodyId)) continue
     seen.add(bodyId)
-    const parsedMarkdown = splitMarkdownFrontmatterForStorage(readMarkdownFile(rootPath, file, issues, rootPath))
+    const content = reconcileAisleBodyCandidates(
+      rootPath,
+      bodyId,
+      body,
+      candidateRefsByAisleBodyId.get(bodyId) ?? [],
+      issues,
+    )
     aisleBodies.push({
       id: bodyId,
-      markdown: parsedMarkdown.markdown,
-      frontmatter: parsedMarkdown.frontmatter,
-      frontmatterStatus: parsedMarkdown.frontmatterStatus,
-      frontmatterParseError: parsedMarkdown.frontmatterParseError,
-      frontmatterRaw: parsedMarkdown.frontmatterRaw,
+      markdown: content.markdown,
+      frontmatter: content.frontmatter,
+      frontmatterStatus: content.frontmatterStatus,
+      frontmatterParseError: content.frontmatterParseError,
+      frontmatterRaw: content.frontmatterRaw,
       frontmatterMeta: isRecord(body.frontmatterMeta) ? body.frontmatterMeta : undefined,
     })
   }
@@ -1444,7 +1725,7 @@ function addDirectoryToZip(zip, directoryPath, zipPrefix) {
   }
 }
 
-function readSpace(rootPath, spaceRootRelative, spaceEntry, issues = null) {
+function readSpace(rootPath, spaceRootRelative, spaceEntry, issues = null, visibleNoteFileRefs = null) {
   const spaceRoot = path.join(rootPath, spaceRootRelative)
   const spaceManifest = readJsonFileIfExists(path.join(spaceRoot, 'manifest.json'), issues, {
     rootPath,
@@ -1455,6 +1736,7 @@ function readSpace(rootPath, spaceRootRelative, spaceEntry, issues = null) {
     parseMessage: 'Space manifest is corrupt; this space was skipped.',
   })
   if (!spaceManifest || typeof spaceManifest !== 'object') return null
+  collectVisibleNoteFileRefsFromSpaceManifest(spaceRootRelative, spaceManifest, visibleNoteFileRefs)
 
   const tabs = ensureArray(spaceManifest.tabs)
     .map((tabRecord) => ({
@@ -1475,6 +1757,10 @@ function readSpace(rootPath, spaceRootRelative, spaceEntry, issues = null) {
     typeof spaceManifest.trashManifestFile === 'string' ? spaceManifest.trashManifestFile : null,
     issues,
     rootPath,
+    {
+      trashRootRelative: path.posix.join(spaceRootRelative, 'trash'),
+      visibleNoteFileRefs,
+    },
   )
 
   return {
@@ -1506,7 +1792,7 @@ function readHybridAppStateFromRootManifest(rootPath, rootManifest, issues = nul
   if (!rootParts) return null
 
   const noteBodies = readNoteBodiesFromRoot(rootParts.noteBodiesRoot)
-  const noteAisleBodies = readNoteAisleBodiesFromRoot(rootPath, rootParts.noteAisleBodiesRoot, issues)
+  const visibleNoteFileRefs = []
   const domainEntries = rootParts.domainEntries
   if (domainEntries.length === 0) {
     addStorageIssue(issues, 'missing-domain-index', 'warning', path.posix.join(HYBRID_ROOT_DIR, 'manifest.json'), 'Root manifest has no domains; a blank notebook was created.')
@@ -1546,7 +1832,7 @@ function readHybridAppStateFromRootManifest(rootPath, rootManifest, issues = nul
         )
         continue
       }
-      const space = readSpace(rootPath, path.posix.join(domainRootRelative, spacePath), spaceEntry, issues)
+      const space = readSpace(rootPath, path.posix.join(domainRootRelative, spacePath), spaceEntry, issues, visibleNoteFileRefs)
       if (!space) continue
       spaces.push(space)
     }
@@ -1577,6 +1863,13 @@ function readHybridAppStateFromRootManifest(rootPath, rootManifest, issues = nul
       spaces,
     })
   }
+  const noteAisleBodies = readNoteAisleBodiesFromRoot(
+    rootPath,
+    rootParts.noteAisleBodiesRoot,
+    rootParts.noteBodiesRoot,
+    visibleNoteFileRefs,
+    issues,
+  )
 
   const lastOpened = rootParts.lastOpened
   const lastOpenedDomainId =

@@ -22,6 +22,35 @@ export function ensureArray(value) {
   return Array.isArray(value) ? value : []
 }
 
+function normalizeContentHashValue(value) {
+  if (Array.isArray(value)) return value.map((entry) => normalizeContentHashValue(entry))
+  if (!value || typeof value !== 'object') return value
+  return Object.fromEntries(
+    Object.keys(value)
+      .filter((key) => value[key] !== undefined)
+      .sort()
+      .map((key) => [key, normalizeContentHashValue(value[key])]),
+  )
+}
+
+function createStableHexHash(value) {
+  const source = String(value ?? '')
+  let h1 = 0xdeadbeef
+  let h2 = 0x41c6ce57
+  for (let index = 0; index < source.length; index += 1) {
+    const code = source.charCodeAt(index)
+    h1 = Math.imul(h1 ^ code, 2654435761)
+    h2 = Math.imul(h2 ^ code, 1597334677)
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909)
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909)
+  return `${(h2 >>> 0).toString(16).padStart(8, '0')}${(h1 >>> 0).toString(16).padStart(8, '0')}`
+}
+
+export function createStorageContentHash(value) {
+  return `tabs-content-v1:${createStableHexHash(JSON.stringify(normalizeContentHashValue(value)))}`
+}
+
 function normalizeRepairIdSegment(value) {
   const normalized = String(value ?? '')
     .toLowerCase()

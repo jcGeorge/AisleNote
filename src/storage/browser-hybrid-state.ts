@@ -42,6 +42,7 @@ import {
   getMimeTypeFromExtension,
   getNoteBodiesFromAppState,
   isRecord,
+  createStorageContentHash,
   normalizeAssetExtension,
   normalizeStorageTheme,
   reconcileNotebookStorageState,
@@ -330,6 +331,30 @@ function composeAisleMarkdownForStorage(markdown: string, aisleBody: Record<stri
   return composeMarkdownFrontmatter(markdown, isRecord(aisleBody?.frontmatter) ? aisleBody.frontmatter : null)
 }
 
+function normalizeAisleStorageContentForHash(content: Record<string, unknown> | undefined): Record<string, unknown> {
+  const frontmatterStatus =
+    content?.frontmatterStatus === 'valid' || content?.frontmatterStatus === 'invalid'
+      ? content.frontmatterStatus
+      : 'none'
+  return {
+    markdown: typeof content?.markdown === 'string' ? content.markdown : '',
+    frontmatterStatus,
+    frontmatter: frontmatterStatus === 'valid' && isRecord(content?.frontmatter) ? content.frontmatter : null,
+    frontmatterParseError:
+      frontmatterStatus === 'invalid' && typeof content?.frontmatterParseError === 'string'
+        ? content.frontmatterParseError
+        : undefined,
+    frontmatterRaw:
+      frontmatterStatus === 'invalid' && typeof content?.frontmatterRaw === 'string'
+        ? content.frontmatterRaw
+        : undefined,
+  }
+}
+
+function getAisleStorageContentHash(aisleBody: Record<string, unknown> | undefined): string {
+  return createStorageContentHash(normalizeAisleStorageContentForHash(aisleBody))
+}
+
 function getAisleBodyForStorage(
   aisleIndex: number,
   aisleBody: Record<string, unknown> | undefined,
@@ -346,6 +371,7 @@ function buildNoteAisleBodyManifestRecord(
   return {
     id: aisleBodyId,
     file,
+    contentHash: getAisleStorageContentHash(aisleBody),
     frontmatterMeta: isRecord(aisleBody?.frontmatterMeta) ? aisleBody.frontmatterMeta : undefined,
   }
 }
@@ -416,7 +442,14 @@ function writeNoteBodyAtPath({
     )
     if (body && bodyId) {
       const aisleId = `${bodyId}-home`
-      noteBodyRecords.set(bodyId, buildNoteBodyManifestRecord(body, [{ id: aisleId, aisleBodyId: aisleId, file: primaryFileRelative }]))
+      noteBodyRecords.set(bodyId, buildNoteBodyManifestRecord(body, [
+        {
+          id: aisleId,
+          aisleBodyId: aisleId,
+          file: primaryFileRelative,
+          contentHash: getAisleStorageContentHash(undefined),
+        },
+      ]))
       if (!noteAisleBodyRecords.has(aisleId)) {
         noteAisleBodyRecords.set(aisleId, buildNoteAisleBodyManifestRecord(aisleId, primaryFileRelative, undefined))
       }
@@ -441,7 +474,7 @@ function writeNoteBodyAtPath({
         assetBank,
       ),
     )
-    aisleRecords.push({ id: aisleId, aisleBodyId, file })
+    aisleRecords.push({ id: aisleId, aisleBodyId, file, contentHash: getAisleStorageContentHash(sourceAisleBody) })
     if (!noteAisleBodyRecords.has(aisleBodyId)) {
       noteAisleBodyRecords.set(aisleBodyId, buildNoteAisleBodyManifestRecord(aisleBodyId, file, sourceAisleBody))
     }

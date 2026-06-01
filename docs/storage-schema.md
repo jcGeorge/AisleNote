@@ -111,7 +111,9 @@ Note contents are stored in `.md` files.
 - sub-tab note with multiple aisles: `<space>/<parent-tab>/<sub-tab>--<id-hash>/aisle N--<id-hash>.md`
 - unlinked note bodies use the same single-file or multi-aisle-folder rule under `_internal/orphan-bodies/`
 
-User frontmatter values live inside the aisle Markdown file as a top YAML block. `note-registry.json` keeps note-body IDs, aisle slots, shared aisle-body IDs, file references, and internal `frontmatterMeta`, keyed by shared `aisleBodyId`. Unlinked preservation records are marked with `storageStatus: "unlinked"` and keep their Markdown under `_internal/orphan-bodies/`.
+User frontmatter values live inside the aisle Markdown file as a top YAML block. `note-registry.json` keeps note-body IDs, aisle slots, shared aisle-body IDs, file references, optional content hashes, and internal `frontmatterMeta`, keyed by shared `aisleBodyId`. Unlinked preservation records are marked with `storageStatus: "unlinked"` and keep their Markdown under `_internal/orphan-bodies/`.
+
+Linked note and aisle mirrors can produce more than one visible Markdown file for the same `aisleBodyId`. On load, schema 1 readers use stored `contentHash` values to detect closed-app edits to any mirror. If one mirror changed, that file becomes the shared aisle body. If multiple mirrors changed differently, the newest modified file wins and a warning issue is reported before the next save rewrites all mirrors from that shared content.
 
 Example aisle file:
 

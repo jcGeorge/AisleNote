@@ -837,7 +837,7 @@ describe('Electron app state storage load result', () => {
 
       const { root, noteBodiesRegistry, aisleBodiesRegistry } = getStoredWorkspacePaths(userDataPath)
       const aisleBodyEntry = aisleBodiesRegistry.aisleBodies.find((body) => body.id === 'shared-aisle-body')
-      expect(aisleBodyEntry).toMatchObject({ id: 'shared-aisle-body', file: expect.any(String) })
+      expect(aisleBodyEntry).toMatchObject({ id: 'shared-aisle-body', file: expect.any(String), contentHash: expect.any(String) })
       expect(readFileSync(path.join(root, aisleBodyEntry.file), 'utf8')).toBe('shared aisle text')
       expect(JSON.stringify(noteBodiesRegistry.noteBodies)).toContain('"aisleBodyId":"shared-aisle-body"')
 
@@ -850,6 +850,117 @@ describe('Electron app state storage load result', () => {
       expect(bodyOne.aisles[0].aisleBodyId).toBe('shared-aisle-body')
       expect(bodyTwo.aisles[0].aisleBodyId).toBe('shared-aisle-body')
       expect(parsed.noteAisleBodies.find((body) => body.id === 'shared-aisle-body').markdown).toBe('shared aisle text')
+    }))
+
+  it('uses a changed non-authoritative linked aisle mirror as the shared aisle body on load', () =>
+    withTempUserDataPath((userDataPath) => {
+      const state = JSON.parse(serializedAppState())
+      const space = state.domains[0].spaces[0]
+      space.data.tabs.push({
+        id: 'tab-2',
+        title: 'Linked Tab',
+        noteBodyId: 'body-2',
+        activeSubTabId: null,
+        subTabs: [],
+      })
+      state.noteAisleBodies = [{ id: 'shared-aisle-body', markdown: 'shared aisle text' }]
+      state.noteBodies = [
+        { id: 'body-1', aisles: [{ id: 'aisle-1', aisleBodyId: 'shared-aisle-body' }] },
+        { id: 'body-2', aisles: [{ id: 'aisle-2', aisleBodyId: 'shared-aisle-body' }] },
+      ]
+
+      saveAppState(userDataPath, JSON.stringify(state))
+
+      const { root, noteBodiesRegistry, aisleBodiesRegistry } = getStoredWorkspacePaths(userDataPath)
+      const aisleBodyEntry = aisleBodiesRegistry.aisleBodies.find((body) => body.id === 'shared-aisle-body')
+      const mirrorFile = noteBodiesRegistry.noteBodies
+        .flatMap((body) => body.aisles)
+        .find((aisle) => aisle.aisleBodyId === 'shared-aisle-body' && aisle.file !== aisleBodyEntry.file)?.file
+      expect(aisleBodyEntry.contentHash).toEqual(expect.any(String))
+      expect(mirrorFile).toBeTruthy()
+
+      writeFileSync(path.join(root, mirrorFile), 'external mirror edit', 'utf8')
+
+      const result = loadAppStateResult(userDataPath)
+      expect(result.ok).toBe(true)
+      const parsed = JSON.parse(result.serializedState)
+      expect(parsed.noteAisleBodies.find((body) => body.id === 'shared-aisle-body').markdown).toBe('external mirror edit')
+      expect(result.issues.some((issue) => issue.code === 'linked-aisle-mirror-conflict-newest-wins')).toBe(false)
+    }))
+
+  it('uses a changed duplicate whole-note mirror as the shared aisle body on load', () =>
+    withTempUserDataPath((userDataPath) => {
+      const state = JSON.parse(serializedAppState())
+      const space = state.domains[0].spaces[0]
+      space.data.tabs.push({
+        id: 'tab-2',
+        title: 'Duplicate Tab',
+        noteBodyId: 'body-1',
+        activeSubTabId: null,
+        subTabs: [],
+      })
+      state.noteAisleBodies = [{ id: 'aisle-body-1', markdown: 'source text' }]
+
+      saveAppState(userDataPath, JSON.stringify(state))
+
+      const { root, spaceRoot, spaceManifest, aisleBodiesRegistry } = getStoredWorkspacePaths(userDataPath)
+      const aisleBodyEntry = aisleBodiesRegistry.aisleBodies.find((body) => body.id === 'aisle-body-1')
+      const duplicateFile = spaceManifest.tabs.find((tab) => tab.id === 'tab-2')?.homeNoteFile
+      expect(aisleBodyEntry.contentHash).toEqual(expect.any(String))
+      expect(duplicateFile).toBeTruthy()
+      expect(path.relative(root, path.join(spaceRoot, duplicateFile)).split(path.sep).join('/')).not.toBe(aisleBodyEntry.file)
+
+      writeFileSync(path.join(spaceRoot, duplicateFile), 'whole note mirror edit', 'utf8')
+
+      const result = loadAppStateResult(userDataPath)
+      expect(result.ok).toBe(true)
+      const parsed = JSON.parse(result.serializedState)
+      expect(parsed.noteAisleBodies.find((body) => body.id === 'aisle-body-1').markdown).toBe('whole note mirror edit')
+    }))
+
+  it('chooses the newest divergent linked aisle mirror and reports a storage alert issue', () =>
+    withTempUserDataPath((userDataPath) => {
+      const state = JSON.parse(serializedAppState())
+      const space = state.domains[0].spaces[0]
+      space.data.tabs.push({
+        id: 'tab-2',
+        title: 'Linked Tab',
+        noteBodyId: 'body-2',
+        activeSubTabId: null,
+        subTabs: [],
+      })
+      state.noteAisleBodies = [{ id: 'shared-aisle-body', markdown: 'shared aisle text' }]
+      state.noteBodies = [
+        { id: 'body-1', aisles: [{ id: 'aisle-1', aisleBodyId: 'shared-aisle-body' }] },
+        { id: 'body-2', aisles: [{ id: 'aisle-2', aisleBodyId: 'shared-aisle-body' }] },
+      ]
+
+      saveAppState(userDataPath, JSON.stringify(state))
+
+      const { root, noteBodiesRegistry, aisleBodiesRegistry } = getStoredWorkspacePaths(userDataPath)
+      const aisleBodyEntry = aisleBodiesRegistry.aisleBodies.find((body) => body.id === 'shared-aisle-body')
+      const mirrorFile = noteBodiesRegistry.noteBodies
+        .flatMap((body) => body.aisles)
+        .find((aisle) => aisle.aisleBodyId === 'shared-aisle-body' && aisle.file !== aisleBodyEntry.file)?.file
+      const canonicalPath = path.join(root, aisleBodyEntry.file)
+      const mirrorPath = path.join(root, mirrorFile)
+      writeFileSync(canonicalPath, 'older canonical edit', 'utf8')
+      writeFileSync(mirrorPath, 'newer mirror edit', 'utf8')
+      utimesSync(canonicalPath, new Date(1_700_000_000_000), new Date(1_700_000_000_000))
+      utimesSync(mirrorPath, new Date(1_700_000_100_000), new Date(1_700_000_100_000))
+
+      const result = loadAppStateResult(userDataPath)
+      expect(result.ok).toBe(true)
+      const parsed = JSON.parse(result.serializedState)
+      const issue = result.issues.find((candidate) => candidate.code === 'linked-aisle-mirror-conflict-newest-wins')
+      expect(parsed.noteAisleBodies.find((body) => body.id === 'shared-aisle-body').markdown).toBe('newer mirror edit')
+      expect(issue).toMatchObject({
+        severity: 'warning',
+        aisleBodyId: 'shared-aisle-body',
+        chosenPath: `notes/${mirrorFile}`,
+        ignoredPaths: [`notes/${aisleBodyEntry.file}`],
+        candidateCount: 2,
+      })
     }))
 
   it('round-trips distinct aisle body markdown without collapsing sibling aisle files', () =>

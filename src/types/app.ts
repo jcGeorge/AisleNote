@@ -618,6 +618,10 @@ export type StorageProfileStatus = {
     severity: 'warning' | 'error'
     path?: string
     message: string
+    aisleBodyId?: string
+    chosenPath?: string
+    ignoredPaths?: string[]
+    candidateCount?: number
   }>
   event?: string
   profileRootPath: string

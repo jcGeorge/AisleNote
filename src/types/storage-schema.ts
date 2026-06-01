@@ -168,6 +168,7 @@ export type StorageNoteAisleRecord = {
   id: StorageEntityId
   aisleBodyId?: StorageEntityId
   file: string
+  contentHash?: string
 }
 
 export type StorageNoteBodyRecord = {
@@ -182,6 +183,7 @@ export type StorageNoteAisleBodyRecord = {
   id: StorageEntityId
   storageStatus?: 'unlinked'
   file: string
+  contentHash?: string
   frontmatterMeta?: {
     templateId?: string
     templateDerived?: boolean

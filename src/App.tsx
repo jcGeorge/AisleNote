@@ -81,6 +81,7 @@ import {
   type EditorPasteDestination,
 } from './components/overlays/ContextMenuHost'
 import { ModalHost } from './components/overlays/ModalHost'
+import { StorageAlertHost, type StorageAlert } from './components/overlays/StorageAlertHost'
 import { TipHost } from './components/overlays/TipHost'
 import { ToastHost } from './components/overlays/ToastHost'
 import {
@@ -330,6 +331,7 @@ type CopyAsMenuState = {
 }
 
 const COPY_AS_MENU_ACTIONS: CopyAsAction[] = ['copy', 'duplicate', 'link', 'preview']
+const LINKED_AISLE_MIRROR_CONFLICT_CODE = 'linked-aisle-mirror-conflict-newest-wins'
 
 const TOOLBAR_LIST_COMMAND_TO_MULTILINE_OPERATION: Partial<Record<ToolbarListCommand, MultiLineListOperation>> = {
   taskList: 'task',
@@ -408,6 +410,7 @@ function App() {
   )
   const [toasts, setToasts] = useState<ToastState[]>([])
   const [visibleTips, setVisibleTips] = useState<TipId[]>([])
+  const [dismissedStorageAlertSignatures, setDismissedStorageAlertSignatures] = useState<string[]>([])
 
   const editorMountRef = useRef<HTMLDivElement | null>(null)
   const editorRef = useRef<Editor | null>(null)
@@ -4007,6 +4010,35 @@ function App() {
   const visibleTipDefinitions = visibleTips
     .filter((tipId) => !state.ui.disabledTipIds.includes(tipId))
     .map((tipId) => getTipDefinition(tipId, { isMacPlatform }))
+  const storageAlerts = useMemo<StorageAlert[]>(() => {
+    const dismissed = new Set(dismissedStorageAlertSignatures)
+    return (storageProfileStatus?.issues ?? []).flatMap((issue) => {
+      if (issue.code !== LINKED_AISLE_MIRROR_CONFLICT_CODE) return []
+      const ignoredPaths = issue.ignoredPaths ?? []
+      const signature = [
+        storageProfileStatus?.revision ?? 0,
+        issue.code,
+        issue.aisleBodyId ?? '',
+        issue.chosenPath ?? issue.path ?? '',
+        ignoredPaths.join('|'),
+      ].join('::')
+      if (dismissed.has(signature)) return []
+      const ignoredPreview = ignoredPaths.slice(0, 3).join(', ')
+      const ignoredSuffix =
+        ignoredPaths.length > 3 ? `, and ${ignoredPaths.length - 3} more` : ''
+      return [{
+        signature,
+        label: 'linked aisle mirror conflict',
+        message: issue.message,
+        detail: `Used ${issue.chosenPath ?? issue.path ?? 'the newest mirror file'}.${ignoredPaths.length > 0 ? ` Ignored ${ignoredPreview}${ignoredSuffix}.` : ''}`,
+      }]
+    })
+  }, [dismissedStorageAlertSignatures, storageProfileStatus])
+  const dismissStorageAlert = useCallback((signature: string) => {
+    setDismissedStorageAlertSignatures((currentSignatures) =>
+      currentSignatures.includes(signature) ? currentSignatures : [...currentSignatures, signature],
+    )
+  }, [])
   const activeTableOfContentsPanels =
     tableOfContentsPanels?.noteBodyId === activeNoteBodyId ? tableOfContentsPanels : null
   const noteMentionMenu = noteMention.menu
@@ -4841,6 +4873,7 @@ function App() {
       />
 
       <TipHost tips={visibleTipDefinitions} onDismissTip={dismissTip} />
+      <StorageAlertHost alerts={storageAlerts} onDismissAlert={dismissStorageAlert} />
 
       <ToastHost
         toasts={toasts}
