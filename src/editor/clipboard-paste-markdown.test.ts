@@ -100,6 +100,59 @@ describe('clipboard markdown paste helpers', () => {
     expect(importImageBlobAsAssetUrl).toHaveBeenCalledWith(expect.any(Blob), 'clipboard-image.png')
   })
 
+  it('imports media-only clipboard items as media links', async () => {
+    const importBlobAsAssetUrl = vi.fn(async (_blob: Blob, fileName?: string) => `tabs-asset:///assets/${fileName}`)
+
+    const result = await readClipboardMarkdown({
+      mode: 'rich',
+      clipboard: {
+        read: async () => [
+          clipboardItem({
+            'audio/mpeg': new Blob([new Uint8Array([1, 2, 3])], { type: 'audio/mpeg' }),
+            'video/webm': new Blob([new Uint8Array([4, 5, 6])], { type: 'video/webm' }),
+          }),
+        ],
+      },
+      importBlobAsAssetUrl,
+    })
+
+    expect(result).toEqual({
+      ok: true,
+      markdown:
+        '[clipboard-audio.mp3](tabs-asset:///assets/clipboard-audio.mp3)\n\n[clipboard-video-2.webm](tabs-asset:///assets/clipboard-video-2.webm)',
+      source: 'media',
+    })
+    expect(importBlobAsAssetUrl).toHaveBeenCalledWith(expect.any(Blob), 'clipboard-audio.mp3')
+    expect(importBlobAsAssetUrl).toHaveBeenCalledWith(expect.any(Blob), 'clipboard-video-2.webm')
+  })
+
+  it('keeps image clipboard items on the image import path before media', async () => {
+    const importImageBlobAsAssetUrl = vi.fn(async () => 'tabs-asset:///assets/image.png')
+    const importBlobAsAssetUrl = vi.fn(async () => 'tabs-asset:///assets/song.mp3')
+
+    const result = await readClipboardMarkdown({
+      mode: 'rich',
+      clipboard: {
+        read: async () => [
+          clipboardItem({
+            'image/png': new Blob([new Uint8Array([1])], { type: 'image/png' }),
+            'audio/mpeg': new Blob([new Uint8Array([2])], { type: 'audio/mpeg' }),
+          }),
+        ],
+      },
+      importImageBlobAsAssetUrl,
+      importBlobAsAssetUrl,
+    })
+
+    expect(result).toEqual({
+      ok: true,
+      markdown: '![clipboard-image.png](tabs-asset:///assets/image.png)',
+      source: 'image',
+    })
+    expect(importImageBlobAsAssetUrl).toHaveBeenCalled()
+    expect(importBlobAsAssetUrl).not.toHaveBeenCalled()
+  })
+
   it('does not produce markdown for empty clipboard text', async () => {
     await expect(
       readClipboardMarkdown({

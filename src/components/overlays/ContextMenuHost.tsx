@@ -49,6 +49,7 @@ type ContextMenuHostProps = {
   onRenameSpace: () => void
   onRenameDomain: () => void
   onCopyImage: () => void
+  onRevealMediaFile: () => void
   onOpenInternalNoteLink: () => void
   onRenameInternalNoteLink: () => void
   onOpenDeleteModal: (permanent: boolean) => void
@@ -173,6 +174,7 @@ export function ContextMenuHost({
   onRenameSpace,
   onRenameDomain,
   onCopyImage,
+  onRevealMediaFile,
   onOpenInternalNoteLink,
   onRenameInternalNoteLink,
   onOpenDeleteModal,
@@ -299,6 +301,8 @@ export function ContextMenuHost({
         <button type="button" className="tab-context-delete" onClick={onCopyImage}>
           copy image
         </button>
+      ) : contextMenu.type === 'media' ? (
+        <MenuButton onClick={onRevealMediaFile}>reveal file</MenuButton>
       ) : contextMenu.type === 'scratchpad' ? (
         <MenuButton onClick={onOpenScratchpadAbout}>about scratchpad</MenuButton>
       ) : contextMenu.type === 'editor' ? (

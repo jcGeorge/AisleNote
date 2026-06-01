@@ -201,14 +201,22 @@ function getMimeTypeFromFileName(fileName: string): string {
       return 'image/avif'
     case 'pdf':
       return 'application/pdf'
+    case 'aac':
+      return 'audio/aac'
+    case 'flac':
+      return 'audio/flac'
     case 'mp3':
       return 'audio/mpeg'
-    case 'wav':
-      return 'audio/wav'
     case 'm4a':
       return 'audio/mp4'
+    case 'oga':
     case 'ogg':
+    case 'opus':
       return 'audio/ogg'
+    case 'wav':
+      return 'audio/wav'
+    case 'm4v':
+      return 'video/mp4'
     case 'webm':
       return 'video/webm'
     case 'mp4':

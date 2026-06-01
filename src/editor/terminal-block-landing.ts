@@ -1,10 +1,11 @@
 import { NOTE_PREVIEW_REFERENCE_RE, parseWikiReferenceToken } from '../notes/note-references'
+import { getMediaKindFromUrl, MEDIA_PLAYER_SELECTOR } from '../media/media-utils'
 
 export const TERMINAL_BLOCK_LANDING_ZONE_ATTR = 'data-tabs-terminal-block-landing-zone'
 export const TERMINAL_BLOCK_LANDING_ZONE_CLASS = 'tabs-terminal-block-landing-zone'
 const TERMINAL_BLOCK_BOUNDARY_CLICK_MAX_DISTANCE_PX = 64
 
-export type TerminalBlockLandingKind = 'codeBlock' | 'notePreview' | 'image' | 'table'
+export type TerminalBlockLandingKind = 'codeBlock' | 'notePreview' | 'image' | 'media' | 'table'
 
 export type TerminalBlockLandingTarget = {
   kind: TerminalBlockLandingKind
@@ -14,6 +15,7 @@ export type TerminalBlockLandingTarget = {
 type TextSelectionFactory = { create: (doc: any, anchor: number, head?: number) => unknown }
 type TerminalBlockContext = { node: any; start: number; end: number; index: number }
 type TerminalBlockBoundarySide = 'before' | 'after'
+export type TerminalBlockArrowDirection = 'up' | 'down'
 
 function getDocEnd(doc: any): number {
   if (typeof doc?.content?.size === 'number') return doc.content.size
@@ -64,6 +66,39 @@ function isImageOnlyParagraphNode(node: any): boolean {
   return hasImage
 }
 
+function getTextNodeMediaLinkHref(node: any): string | null {
+  if (!node?.isText && node?.type?.name !== 'text') return null
+  const marks = Array.isArray(node?.marks) ? node.marks : []
+  const linkMark = marks.find(
+    (mark: any) =>
+      mark?.type?.name === 'link' &&
+      (typeof mark?.attrs?.linkUrl === 'string' || typeof mark?.attrs?.href === 'string'),
+  )
+  const href = String(linkMark?.attrs?.linkUrl ?? linkMark?.attrs?.href ?? '').trim()
+  return href && getMediaKindFromUrl(href) ? href : null
+}
+
+function isMediaOnlyParagraphNode(node: any): boolean {
+  if (node?.type?.name !== 'paragraph') return false
+  const childCount = Number(node?.childCount ?? 0)
+  if (childCount <= 0 || typeof node?.child !== 'function') return false
+
+  let hasMediaLink = false
+  for (let index = 0; index < childCount; index += 1) {
+    const child = node.child(index)
+    if ((child?.isText || child?.type?.name === 'text') && isBlankSentinelText(child.text ?? child.textContent ?? '')) {
+      continue
+    }
+    if (getTextNodeMediaLinkHref(child)) {
+      hasMediaLink = true
+      continue
+    }
+    return false
+  }
+
+  return hasMediaLink
+}
+
 export function getTerminalBlockLandingTarget(doc: any): TerminalBlockLandingTarget | null {
   const childCount = Number(doc?.childCount ?? 0)
   if (childCount <= 0 || typeof doc?.child !== 'function') return null
@@ -83,6 +118,10 @@ export function getTerminalBlockLandingTarget(doc: any): TerminalBlockLandingTar
 
   if (isImageOnlyParagraphNode(lastNode)) {
     return { kind: 'image', position: getDocEnd(doc) }
+  }
+
+  if (isMediaOnlyParagraphNode(lastNode)) {
+    return { kind: 'media', position: getDocEnd(doc) }
   }
 
   return null
@@ -126,6 +165,24 @@ function getTopLevelNodeContextAtPosition(doc: any, position: number): TerminalB
   return null
 }
 
+function getTopLevelNodeContextForSelection(doc: any, position: number): TerminalBlockContext | null {
+  const childCount = Number(doc?.childCount ?? 0)
+  if (childCount <= 0 || typeof doc?.child !== 'function') return null
+
+  let start = 0
+  let containing: TerminalBlockContext | null = null
+  for (let index = 0; index < childCount; index += 1) {
+    const node = doc.child(index)
+    const end = start + (node?.nodeSize ?? 0)
+    if (position === start) return { node, start, end, index }
+    if (!containing && position > start && position <= end) {
+      containing = { node, start, end, index }
+    }
+    start = end
+  }
+  return containing
+}
+
 function getTopLevelNodeContextByIndex(doc: any, index: number): TerminalBlockContext | null {
   const childCount = Number(doc?.childCount ?? 0)
   if (index < 0 || index >= childCount || typeof doc?.child !== 'function') return null
@@ -145,12 +202,18 @@ function isTerminalBlockContext(context: TerminalBlockContext | null): context i
     typeName === 'codeBlock' ||
     typeName === 'table' ||
     (typeName === 'paragraph' &&
-      (isNotePreviewOnlyParagraphText(context.node.textContent ?? '') || isImageOnlyParagraphNode(context.node)))
+      (isNotePreviewOnlyParagraphText(context.node.textContent ?? '') ||
+        isImageOnlyParagraphNode(context.node) ||
+        isMediaOnlyParagraphNode(context.node)))
   )
 }
 
 function isEmptyTextBlockNode(node: any): boolean {
   return Boolean(node?.isTextblock) && isBlankSentinelText(node.textContent ?? '')
+}
+
+function isEditableSiblingTextBlock(context: TerminalBlockContext): boolean {
+  return Boolean(context.node?.isTextblock) && !isTerminalBlockContext(context)
 }
 
 export function placeCaretInFinalEmptyTextBlock(
@@ -186,7 +249,7 @@ export function placeCaretBesideTerminalBlock(
 
   const siblingIndex = side === 'before' ? context.index - 1 : context.index + 1
   const sibling = getTopLevelNodeContextByIndex(state.doc, siblingIndex)
-  if (sibling?.node?.isTextblock) {
+  if (sibling && isEditableSiblingTextBlock(sibling)) {
     const selectionPos = getTextBlockSelectionPosition(sibling.node, sibling.start, side)
     let tr = state.tr.setSelection(TextSelection.create(state.doc, selectionPos, selectionPos)).scrollIntoView()
     tr = tr.setMeta?.('addToHistory', false) ?? tr
@@ -201,6 +264,101 @@ export function placeCaretBesideTerminalBlock(
   view.dispatch(tr)
   view.focus?.()
   return true
+}
+
+function getSelectedTopLevelNodeContext(state: any): TerminalBlockContext | null {
+  const selection = state?.selection
+  const selectedNode = selection?.node
+  if (!selectedNode || typeof selection.from !== 'number' || typeof selection.to !== 'number') return null
+  const index = typeof selection.$from?.index === 'function' ? selection.$from.index() : 0
+  return {
+    node: selectedNode,
+    start: selection.from,
+    end: selection.to,
+    index,
+  }
+}
+
+function getTextBlockSelectionOffset(context: TerminalBlockContext, selection: any): number | null {
+  const position = typeof selection?.head === 'number'
+    ? selection.head
+    : typeof selection?.from === 'number'
+      ? selection.from
+      : null
+  if (position === null) return null
+  return position - context.start - 1
+}
+
+function isCodeBlockArrowAtBoundary(
+  view: any,
+  direction: TerminalBlockArrowDirection,
+  context: TerminalBlockContext,
+  selection: any,
+): boolean {
+  if (typeof view?.endOfTextblock === 'function') {
+    try {
+      if (!view.endOfTextblock(direction)) return false
+      return true
+    } catch {
+      // Fall back to logical start/end below.
+    }
+  }
+
+  const offset = getTextBlockSelectionOffset(context, selection)
+  if (offset === null) return false
+  const contentSize = typeof context.node?.content?.size === 'number' ? context.node.content.size : 0
+  return direction === 'up' ? offset <= 0 : offset >= contentSize
+}
+
+function isTextTerminalArrowAtBoundary(
+  direction: TerminalBlockArrowDirection,
+  context: TerminalBlockContext,
+  selection: any,
+): boolean {
+  const offset = getTextBlockSelectionOffset(context, selection)
+  if (offset === null) return false
+  const contentSize = typeof context.node?.content?.size === 'number' ? context.node.content.size : 0
+  if (isImageOnlyParagraphNode(context.node)) {
+    return offset >= 0 && offset <= contentSize
+  }
+  return direction === 'up' ? offset <= 0 : offset >= contentSize
+}
+
+function getTerminalArrowBoundary(
+  view: any,
+  direction: TerminalBlockArrowDirection,
+): { context: TerminalBlockContext; side: TerminalBlockBoundarySide } | null {
+  const state = view?.state
+  const selection = state?.selection
+  if (!state?.doc || !selection) return null
+
+  const side: TerminalBlockBoundarySide = direction === 'up' ? 'before' : 'after'
+  const selectedContext = getSelectedTopLevelNodeContext(state)
+  if (selectedContext && isTerminalBlockContext(selectedContext)) {
+    return { context: selectedContext, side }
+  }
+
+  if (!selection.empty) return null
+  const position = typeof selection.head === 'number' ? selection.head : selection.from
+  if (typeof position !== 'number') return null
+  const context = getTopLevelNodeContextForSelection(state.doc, position)
+  if (!isTerminalBlockContext(context)) return null
+
+  const typeName = context.node?.type?.name
+  const atBoundary = typeName === 'codeBlock'
+    ? isCodeBlockArrowAtBoundary(view, direction, context, selection)
+    : isTextTerminalArrowAtBoundary(direction, context, selection)
+  return atBoundary ? { context, side } : null
+}
+
+export function moveTerminalBlockBoundaryCaretByArrow(
+  view: any,
+  direction: TerminalBlockArrowDirection,
+  TextSelection: TextSelectionFactory,
+): boolean {
+  const boundary = getTerminalArrowBoundary(view, direction)
+  if (!boundary) return false
+  return placeCaretBesideTerminalBlock(view, TextSelection, boundary.context, boundary.side)
 }
 
 export function insertTerminalLandingParagraphs(
@@ -264,6 +422,7 @@ function getTerminalBlockElementCandidates(view: any): Element[] {
       [
         '.note-context-widget',
         '.toastui-editor-ww-code-block',
+        MEDIA_PLAYER_SELECTOR,
         'table',
         'pre',
         'img',

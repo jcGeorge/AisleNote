@@ -1,8 +1,14 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, useRef, useState, type MouseEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react'
 import type { Editor } from '@toast-ui/editor'
-import { NodeSelection } from 'prosemirror-state'
 import type { InlineCropDragMode } from '../components/editor/ImageToolsOverlay'
+import {
+  DEFAULT_CROP_RATIO_PRESET_ID,
+  fitCropRectToRatio,
+  getCropRatioValue,
+  normalizeCropRatioPresetId,
+  type CropRatioPresetId,
+} from './crop-ratios'
 import {
   syncImageDisplayMetadata,
   syncImageDisplayMetadataInRoot,
@@ -24,6 +30,10 @@ import {
 } from './image-transform'
 import { isInsideReadonlyNotePreview } from './note-preview-dom'
 import { getWysiwygView } from './prosemirror-utils'
+import {
+  findImageNodeHitForElement,
+  placeCaretAfterImageElement,
+} from './image-node-selection'
 import type { ImageToolsState, InlineCropState, ToastTone } from '../types/app'
 
 export const CLOSED_IMAGE_TOOLS_STATE: ImageToolsState = {
@@ -37,6 +47,7 @@ export const CLOSED_IMAGE_TOOLS_STATE: ImageToolsState = {
 
 export const CLOSED_INLINE_CROP_STATE: InlineCropState = {
   active: false,
+  ratioPresetId: DEFAULT_CROP_RATIO_PRESET_ID,
   relX: 0,
   relY: 0,
   relWidth: 1,
@@ -144,6 +155,30 @@ export function useImageTools({
       startRelWidth: 1,
       startRelHeight: 1,
     }
+  }
+
+  const getSelectedImageRatioBounds = (image: HTMLImageElement, rect: DOMRect | { width: number; height: number }) => ({
+    width: image.naturalWidth > 0 ? image.naturalWidth : rect.width,
+    height: image.naturalHeight > 0 ? image.naturalHeight : rect.height,
+  })
+
+  const updateInlineCropFromPixels = (
+    imageRect: DOMRect,
+    cropRect: { x: number; y: number; width: number; height: number },
+    ratioPresetId = normalizeCropRatioPresetId(inlineCropRef.current.ratioPresetId),
+  ) => {
+    updateInlineCrop((previous) => ({
+      ...previous,
+      ratioPresetId,
+      relX: imageRect.width > 0 ? cropRect.x / imageRect.width : 0,
+      relY: imageRect.height > 0 ? cropRect.y / imageRect.height : 0,
+      relWidth: imageRect.width > 0 ? cropRect.width / imageRect.width : previous.relWidth,
+      relHeight: imageRect.height > 0 ? cropRect.height / imageRect.height : previous.relHeight,
+      top: imageRect.top + cropRect.y,
+      left: imageRect.left + cropRect.x,
+      width: cropRect.width,
+      height: cropRect.height,
+    }))
   }
 
   const captureScrollSnapshot = (source: HTMLElement | null) => {
@@ -337,20 +372,30 @@ export function useImageTools({
 
     updateInlineCrop((previous) => {
       if (!previous.active) return previous
-      const width = Math.max(24, previous.relWidth * rect.width)
-      const height = Math.max(24, previous.relHeight * rect.height)
-      const x = Math.max(0, Math.min(rect.width - width, previous.relX * rect.width))
-      const y = Math.max(0, Math.min(rect.height - height, previous.relY * rect.height))
+      const ratioPresetId = normalizeCropRatioPresetId(previous.ratioPresetId)
+      const sourceBounds = getSelectedImageRatioBounds(image, rect)
+      const ratio = getCropRatioValue(ratioPresetId, sourceBounds.width, sourceBounds.height)
+      const nextCropRect = fitCropRectToRatio(
+        {
+          x: previous.relX * rect.width,
+          y: previous.relY * rect.height,
+          width: Math.max(24, previous.relWidth * rect.width),
+          height: Math.max(24, previous.relHeight * rect.height),
+        },
+        { width: rect.width, height: rect.height },
+        ratio,
+      )
       return {
         ...previous,
-        relX: rect.width > 0 ? x / rect.width : 0,
-        relY: rect.height > 0 ? y / rect.height : 0,
-        relWidth: rect.width > 0 ? width / rect.width : previous.relWidth,
-        relHeight: rect.height > 0 ? height / rect.height : previous.relHeight,
-        top: rect.top + y,
-        left: rect.left + x,
-        width,
-        height,
+        ratioPresetId,
+        relX: rect.width > 0 ? nextCropRect.x / rect.width : 0,
+        relY: rect.height > 0 ? nextCropRect.y / rect.height : 0,
+        relWidth: rect.width > 0 ? nextCropRect.width / rect.width : previous.relWidth,
+        relHeight: rect.height > 0 ? nextCropRect.height / rect.height : previous.relHeight,
+        top: rect.top + nextCropRect.y,
+        left: rect.left + nextCropRect.x,
+        width: nextCropRect.width,
+        height: nextCropRect.height,
       }
     })
     return true
@@ -374,25 +419,12 @@ export function useImageTools({
     activateEditorFromEventTarget(image)
     restoreScrollSnapshot(scrollSnapshot)
     const view = getWysiwygView(editorRef.current)
-    const hit = findImageNodeHitForElement(view, image)
+    const hit = view ? placeCaretAfterImageElement(view, image, { focus: false }) : null
     if (view && hit) {
-      try {
-        view.dispatch(
-          view.state.tr
-            .setSelection(NodeSelection.create(view.state.doc, hit.pos))
-            .setMeta('addToHistory', false),
-        )
-        activeImageLookupRef.current = {
-          sourceUrl,
-          altText,
-          position: hit.pos,
-        }
-      } catch {
-        activeImageLookupRef.current = {
-          sourceUrl,
-          altText,
-          position: activeImageLookupRef.current?.position ?? null,
-        }
+      activeImageLookupRef.current = {
+        sourceUrl,
+        altText,
+        position: hit.pos,
       }
       restoreScrollSnapshot(scrollSnapshot)
     }
@@ -472,46 +504,6 @@ export function useImageTools({
       pushToast('could not copy image.', 'warning')
       return false
     }
-  }
-
-  const findImageNodeHitForElement = (view: any, image: HTMLImageElement): { node: any; pos: number } | null => {
-    if (!view?.dom?.contains(image)) return null
-    const docSize = view.state.doc.content.size
-    const clampPos = (pos: number) => Math.max(0, Math.min(docSize, pos))
-    const inspectPos = (rawPos: number) => {
-      const pos = clampPos(rawPos)
-      const nodeAt = view.state.doc.nodeAt(pos)
-      if (nodeAt?.type?.name === 'image') return { node: nodeAt, pos }
-
-      const resolved = view.state.doc.resolve(pos)
-      if (resolved.nodeAfter?.type?.name === 'image') return { node: resolved.nodeAfter, pos }
-      if (resolved.nodeBefore?.type?.name === 'image') {
-        return { node: resolved.nodeBefore, pos: Math.max(0, pos - resolved.nodeBefore.nodeSize) }
-      }
-      return null
-    }
-
-    try {
-      const domPos = view.posAtDOM(image, 0)
-      for (const candidatePos of [domPos, domPos - 1, domPos + 1]) {
-        const hit = inspectPos(candidatePos)
-        if (hit) return hit
-      }
-    } catch {
-      // Fall back to matching below.
-    }
-
-    const imageUrl = image.getAttribute('src') ?? ''
-    const altText = image.getAttribute('alt') ?? ''
-    let fallback: { node: any; pos: number } | null = null
-    view.state.doc.descendants((node: any, pos: number) => {
-      if (fallback || node?.type?.name !== 'image') return
-      const attrs = node.attrs ?? {}
-      if ((attrs.imageUrl ?? '') === imageUrl && (attrs.altText ?? '') === altText) {
-        fallback = { node, pos }
-      }
-    })
-    return fallback
   }
 
   const getRenderedImageAtPosition = (view: any, position: number): HTMLImageElement | null => {
@@ -770,6 +762,7 @@ export function useImageTools({
     const top = rect.top + (rect.height - height) / 2
     updateInlineCrop({
       active: true,
+      ratioPresetId: DEFAULT_CROP_RATIO_PRESET_ID,
       relX: rect.width > 0 ? (left - rect.left) / rect.width : 0,
       relY: rect.height > 0 ? (top - rect.top) / rect.height : 0,
       relWidth: rect.width > 0 ? width / rect.width : 0.8,
@@ -793,6 +786,30 @@ export function useImageTools({
   const cancelCrop = () => {
     resetInlineCropDrag()
     updateInlineCrop((previous) => ({ ...previous, active: false, top: 0, left: 0, width: 0, height: 0 }))
+  }
+
+  const setCropRatio = (presetId: CropRatioPresetId) => {
+    const image = activeImageRef.current?.isConnected ? activeImageRef.current : recoverActiveImage()
+    const crop = inlineCropRef.current
+    if (!image || !crop.active) return false
+
+    const rect = image.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) return false
+
+    const sourceBounds = getSelectedImageRatioBounds(image, rect)
+    const ratio = getCropRatioValue(presetId, sourceBounds.width, sourceBounds.height)
+    const nextCropRect = fitCropRectToRatio(
+      {
+        x: crop.relX * rect.width,
+        y: crop.relY * rect.height,
+        width: Math.max(24, crop.relWidth * rect.width),
+        height: Math.max(24, crop.relHeight * rect.height),
+      },
+      { width: rect.width, height: rect.height },
+      ratio,
+    )
+    updateInlineCropFromPixels(rect, nextCropRect, presetId)
+    return true
   }
 
   const applyCrop = async () => {
@@ -1062,21 +1079,15 @@ export function useImageTools({
       const dy = clientY - drag.startY
 
       const commitCropPixels = (x: number, y: number, width: number, height: number) => {
-        const nextX = Math.max(0, Math.min(rect.width - width, x))
-        const nextY = Math.max(0, Math.min(rect.height - height, y))
-        const nextWidth = Math.max(24, Math.min(width, rect.width - nextX))
-        const nextHeight = Math.max(24, Math.min(height, rect.height - nextY))
-        updateInlineCrop((previous) => ({
-          ...previous,
-          relX: rect.width > 0 ? nextX / rect.width : 0,
-          relY: rect.height > 0 ? nextY / rect.height : 0,
-          relWidth: rect.width > 0 ? nextWidth / rect.width : previous.relWidth,
-          relHeight: rect.height > 0 ? nextHeight / rect.height : previous.relHeight,
-          top: rect.top + nextY,
-          left: rect.left + nextX,
-          width: nextWidth,
-          height: nextHeight,
-        }))
+        const ratioPresetId = normalizeCropRatioPresetId(crop.ratioPresetId)
+        const sourceBounds = getSelectedImageRatioBounds(image, rect)
+        const ratio = getCropRatioValue(ratioPresetId, sourceBounds.width, sourceBounds.height)
+        const nextCropRect = fitCropRectToRatio(
+          { x, y, width, height },
+          { width: rect.width, height: rect.height },
+          ratio,
+        )
+        updateInlineCropFromPixels(rect, nextCropRect, ratioPresetId)
       }
 
       if (drag.mode === 'move') {
@@ -1175,6 +1186,7 @@ export function useImageTools({
     returnToStartMenu,
     transformSelectedImage,
     cancelCrop,
+    setCropRatio,
     applyCrop,
     beginCropMouseDrag,
   }

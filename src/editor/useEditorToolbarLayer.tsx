@@ -4,8 +4,9 @@ import { EditorToolbarPopovers } from '../components/editor/EditorToolbarPopover
 import { SharedEditorToolbar } from '../components/editor/SharedEditorToolbar'
 import type { ToolbarFormatKey, ToolbarFormatState, ToolbarHeadingLevel } from '../components/editor/toolbar-state'
 import type { ToastTone, ToolbarLayout } from '../types/app'
-import { getCommandCapableEditor } from './prosemirror-utils'
+import { getCommandCapableEditor, getWysiwygView } from './prosemirror-utils'
 import { importImageBlobAsAssetUrl } from '../markdown/image-asset-registry'
+import { withDefaultInsertedImageDisplayWidth } from './image-insertion'
 
 type ToolbarPopoverPosition = {
   top: number
@@ -120,13 +121,19 @@ export function useEditorToolbarLayer({
     input.onchange = () => {
       const file = input.files?.[0]
       if (!file) return
-      void importImageBlobAsAssetUrl(file, file.name).then((assetUrl) => {
+      void importImageBlobAsAssetUrl(file, file.name).then(async (assetUrl) => {
         if (!assetUrl) {
           pushToast('could not import image.', 'warning')
           return
         }
+        const view = getWysiwygView(currentEditor)
+        const displayUrl = await withDefaultInsertedImageDisplayWidth(
+          assetUrl,
+          file,
+          view?.dom instanceof HTMLElement ? view.dom : null,
+        )
         currentEditor.focus()
-        getCommandCapableEditor(currentEditor).exec('addImage', { imageUrl: assetUrl, altText: file.name })
+        getCommandCapableEditor(currentEditor).exec('addImage', { imageUrl: displayUrl, altText: file.name })
         commitActiveEditorMarkdownNow(currentEditor)
       })
     }

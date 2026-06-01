@@ -359,7 +359,8 @@ describe('Electron app state storage load result', () => {
       expect(appSettings.ui.tableOfContentsScope).toBe('focused-aisle')
       expect(appSettings.ui).not.toHaveProperty('newAislePlacement')
       expect(appSettings.scratchpadAisleLimit).toBe(32)
-      expect(appSettings.hotkeys.enableMouseBackForward).toBe(false)
+      expect(appSettings.hotkeys).not.toHaveProperty('enableMouseBackForward')
+      expect(appSettings.hotkeys).not.toHaveProperty('enableGenericHistoryHotkeys')
       expect(appSettings.hotkeys.shortcuts.newTab).toBe('Ctrl+Alt+N')
       expect(frontmatterSettings.settingsTemplateId).toBe('template-1')
       expect(spaceManifest.settings).toEqual({ autoRemoveDeletedDays: 21 })
@@ -373,7 +374,8 @@ describe('Electron app state storage load result', () => {
       expect(parsed.ui).not.toHaveProperty('newAislePlacement')
       expect(parsed.ui.scratchpadAisleLimit).toBe(32)
       expect(parsed.hotkeys.shortcuts.newTab).toBe('Ctrl+Alt+N')
-      expect(parsed.hotkeys.enableMouseBackForward).toBe(false)
+      expect(parsed.hotkeys).not.toHaveProperty('enableMouseBackForward')
+      expect(parsed.hotkeys).not.toHaveProperty('enableGenericHistoryHotkeys')
       expect(parsed.frontmatter.settingsTemplateId).toBe('template-1')
       expect(parsed.domains[0].spaces[0].settings).toEqual({ autoRemoveDeletedDays: 21 })
     }))
@@ -1527,6 +1529,24 @@ describe('Electron app state storage load result', () => {
       expect(existsSync(path.join(userDataPath, 'notes', staleAsset.assetPath))).toBe(false)
     }))
 
+  it('keeps media assets referenced by escaped markdown link labels', () =>
+    withTempUserDataPath((userDataPath) => {
+      const keptBytes = Buffer.from([0x49, 0x44, 0x33, 10, 20, 30])
+      const staleBytes = Buffer.from([0x49, 0x44, 0x33, 40, 50, 60])
+      const keptAsset = writeAssetToProfile(userDataPath, keptBytes, 'mp3')
+      const staleAsset = writeAssetToProfile(userDataPath, staleBytes, 'mp3')
+      const state = JSON.parse(serializedAppState())
+      setFirstAisleBodyMarkdown(state, `[song [demo\\].mp3](${keptAsset.url}#tabs-media=width=320)`)
+
+      saveAppState(userDataPath, JSON.stringify(state))
+
+      expect(readFileSync(path.join(userDataPath, 'notes', keptAsset.assetPath))).toEqual(keptBytes)
+      expect(existsSync(path.join(userDataPath, 'notes', staleAsset.assetPath))).toBe(false)
+      const stored = getStoredWorkspacePaths(userDataPath)
+      const markdown = readFileSync(path.join(stored.spaceRoot, stored.spaceManifest.tabs[0].homeNoteFile), 'utf8')
+      expect(markdown).toContain('#tabs-media=width=320')
+    }))
+
   it('keeps image assets referenced only from deleted trash content', () =>
     withTempUserDataPath((userDataPath) => {
       const trashBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 70, 80, 90])
@@ -1562,6 +1582,44 @@ describe('Electron app state storage load result', () => {
 
       expect(readFileSync(path.join(userDataPath, 'notes', trashAsset.assetPath))).toEqual(trashBytes)
       expect(existsSync(path.join(userDataPath, 'notes', staleAsset.assetPath))).toBe(false)
+    }))
+
+  it('keeps media assets in trash until the trash entry is permanently removed', () =>
+    withTempUserDataPath((userDataPath) => {
+      const trashBytes = Buffer.from([0x49, 0x44, 0x33, 70, 80, 90])
+      const trashAsset = writeAssetToProfile(userDataPath, trashBytes, 'mp3')
+      const state = JSON.parse(serializedAppState())
+      const space = state.domains[0].spaces[0]
+      state.noteBodies.push({
+        id: 'body-deleted-media',
+        aisles: [{ id: 'aisle-deleted-media', aisleBodyId: 'aisle-body-deleted-media' }],
+      })
+      state.noteAisleBodies.push({
+        id: 'aisle-body-deleted-media',
+        markdown: `deleted [song](${trashAsset.url})`,
+      })
+      space.data.deletedTabs = [
+        {
+          id: 'deleted-media-entry',
+          deletedAt: 1,
+          tab: {
+            id: 'deleted-media',
+            title: 'Deleted Media',
+            noteBodyId: 'body-deleted-media',
+            activeSubTabId: null,
+            subTabs: [],
+          },
+        },
+      ]
+      state.spaces = state.domains[0].spaces
+
+      saveAppState(userDataPath, JSON.stringify(state))
+      const assetPath = path.join(userDataPath, 'notes', trashAsset.assetPath)
+      expect(readFileSync(assetPath)).toEqual(trashBytes)
+
+      space.data.deletedTabs = []
+      saveAppState(userDataPath, JSON.stringify(state))
+      expect(existsSync(assetPath)).toBe(false)
     }))
 
   it('loads and re-saves non-image asset links as stable refs', () =>

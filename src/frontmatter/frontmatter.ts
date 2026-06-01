@@ -40,20 +40,16 @@ export type MarkdownFrontmatterSplit = {
   error?: string
 }
 
-const FRONTMATTER_OPEN_RE = /^---[ \t]*(?:\r?\n|$)/
-const FRONTMATTER_CLOSE_RE = /(?:^|\r?\n)---[ \t]*(?:\r?\n|$)/
-const DEFAULT_TEMPLATE_ID = 'basic-frontmatter'
+export function getFrontmatterFieldTypes(): FrontmatterFieldType[] {
+  return ['text', 'number', 'boolean', 'date', 'datetime', 'list']
+}
 
-export const FRONTMATTER_FIELD_TYPES: FrontmatterFieldType[] = ['text', 'number', 'boolean', 'date', 'datetime', 'list']
-export const FRONTMATTER_COMPUTED_VALUES: FrontmatterComputedValue[] = [
-  'none',
-  'createdAt',
-  'updatedAt',
-  'noteTitle',
-  'spaceName',
-  'domainName',
-  'isLinked',
-]
+export function getFrontmatterComputedValues(): FrontmatterComputedValue[] {
+  return ['none', 'createdAt', 'updatedAt', 'noteTitle', 'spaceName', 'domainName', 'isLinked']
+}
+
+export const FRONTMATTER_FIELD_TYPES: FrontmatterFieldType[] = getFrontmatterFieldTypes()
+export const FRONTMATTER_COMPUTED_VALUES: FrontmatterComputedValue[] = getFrontmatterComputedValues()
 
 export function isFrontmatterComputedValueCompatibleWithFieldType(
   computed: FrontmatterComputedValue,
@@ -67,51 +63,55 @@ export function isFrontmatterComputedValueCompatibleWithFieldType(
 }
 
 export function getFrontmatterComputedValuesForFieldType(type: FrontmatterFieldType) {
-  return FRONTMATTER_COMPUTED_VALUES.filter((computed) =>
+  return getFrontmatterComputedValues().filter((computed) =>
     isFrontmatterComputedValueCompatibleWithFieldType(computed, type),
   )
 }
 
-export const DEFAULT_FRONTMATTER_SETTINGS: FrontmatterSettings = {
-  settingsTemplateId: '',
-  lastAppliedTemplateId: '',
-  templates: [
-    {
-      id: DEFAULT_TEMPLATE_ID,
-      name: 'basic',
-      fields: [
-        {
-          id: 'fm-field-tags',
-          key: 'tags',
-          type: 'list',
-          defaultValue: '',
-          computed: 'none',
-        },
-        {
-          id: 'fm-field-status',
-          key: 'status',
-          type: 'text',
-          defaultValue: '',
-          computed: 'none',
-        },
-        {
-          id: 'fm-field-created',
-          key: 'created',
-          type: 'date',
-          defaultValue: '',
-          computed: 'createdAt',
-        },
-        {
-          id: 'fm-field-updated',
-          key: 'updated',
-          type: 'datetime',
-          defaultValue: '',
-          computed: 'updatedAt',
-        },
-      ],
-    },
-  ],
+export function createDefaultFrontmatterSettings(): FrontmatterSettings {
+  return {
+    settingsTemplateId: '',
+    lastAppliedTemplateId: '',
+    templates: [
+      {
+        id: 'basic-frontmatter',
+        name: 'basic',
+        fields: [
+          {
+            id: 'fm-field-tags',
+            key: 'tags',
+            type: 'list',
+            defaultValue: '',
+            computed: 'none',
+          },
+          {
+            id: 'fm-field-status',
+            key: 'status',
+            type: 'text',
+            defaultValue: '',
+            computed: 'none',
+          },
+          {
+            id: 'fm-field-created',
+            key: 'created',
+            type: 'date',
+            defaultValue: '',
+            computed: 'createdAt',
+          },
+          {
+            id: 'fm-field-updated',
+            key: 'updated',
+            type: 'datetime',
+            defaultValue: '',
+            computed: 'updatedAt',
+          },
+        ],
+      },
+    ],
+  }
 }
+
+export const DEFAULT_FRONTMATTER_SETTINGS: FrontmatterSettings = createDefaultFrontmatterSettings()
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -151,8 +151,17 @@ export function stringifyFrontmatterYaml(frontmatter: FrontmatterData | null): s
   }).trimEnd()
 }
 
+function getFrontmatterOpenRegex(): RegExp {
+  return /^---[ \t]*(?:\r?\n|$)/
+}
+
+function getFrontmatterCloseRegex(): RegExp {
+  return /(?:^|\r?\n)---[ \t]*(?:\r?\n|$)/
+}
+
 export function splitMarkdownFrontmatter(markdown: string): MarkdownFrontmatterSplit {
-  if (!FRONTMATTER_OPEN_RE.test(markdown)) {
+  const openRegex = getFrontmatterOpenRegex()
+  if (!openRegex.test(markdown)) {
     return {
       status: 'none',
       frontmatter: null,
@@ -161,10 +170,10 @@ export function splitMarkdownFrontmatter(markdown: string): MarkdownFrontmatterS
     }
   }
 
-  const openMatch = markdown.match(FRONTMATTER_OPEN_RE)
+  const openMatch = markdown.match(openRegex)
   const bodyStart = openMatch?.[0].length ?? 0
   const remainder = markdown.slice(bodyStart)
-  const closeMatch = remainder.match(FRONTMATTER_CLOSE_RE)
+  const closeMatch = remainder.match(getFrontmatterCloseRegex())
   if (!closeMatch || closeMatch.index == null) {
     return {
       status: 'invalid',
@@ -437,10 +446,10 @@ function normalizeField(raw: unknown, index: number): FrontmatterTemplateField |
   if (!isRecord(raw)) return null
   const key = typeof raw.key === 'string' ? raw.key.trim() : ''
   if (!key) return null
-  const type = FRONTMATTER_FIELD_TYPES.includes(raw.type as FrontmatterFieldType)
+  const type = getFrontmatterFieldTypes().includes(raw.type as FrontmatterFieldType)
     ? (raw.type as FrontmatterFieldType)
     : 'text'
-  const computed = FRONTMATTER_COMPUTED_VALUES.includes(raw.computed as FrontmatterComputedValue)
+  const computed = getFrontmatterComputedValues().includes(raw.computed as FrontmatterComputedValue)
     ? (raw.computed as FrontmatterComputedValue)
     : 'none'
   const normalizedComputed = isFrontmatterComputedValueCompatibleWithFieldType(computed, type) ? computed : 'none'
@@ -470,11 +479,11 @@ export function normalizeFrontmatterData(raw: unknown): FrontmatterData | null {
 }
 
 export function normalizeFrontmatterSettings(raw: unknown): FrontmatterSettings {
-  if (!isRecord(raw)) return DEFAULT_FRONTMATTER_SETTINGS
+  if (!isRecord(raw)) return createDefaultFrontmatterSettings()
   const templates = Array.isArray(raw.templates)
     ? raw.templates.map(normalizeTemplate).filter((template): template is FrontmatterTemplate => Boolean(template))
     : []
-  const normalizedTemplates = templates.length > 0 ? templates : DEFAULT_FRONTMATTER_SETTINGS.templates
+  const normalizedTemplates = templates.length > 0 ? templates : createDefaultFrontmatterSettings().templates
   const normalizeTemplateId = (value: unknown) =>
     typeof value === 'string' && normalizedTemplates.some((template) => template.id === value) ? value : ''
   const settingsTemplateId = normalizeTemplateId(raw.settingsTemplateId ?? raw.activeTemplateId)

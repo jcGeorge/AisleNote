@@ -8,6 +8,7 @@ import {
   listMarkerPlugin,
   thematicBreakShortcutPlugin,
 } from './editor-setup'
+import { createMediaLinkPlugin } from './media-link-plugin'
 import { NOTE_PREVIEW_EDITOR_HOST_CLASS } from './note-preview-dom'
 import { collectProseMirrorTextPositions, getWysiwygView, restoreEditorCursorSelection } from './prosemirror-utils'
 import {
@@ -23,6 +24,7 @@ import {
   type NotePreviewReferencePayload,
   type ResolvedWikiNoteReference,
 } from '../notes/note-references'
+import { MEDIA_PLAYER_SELECTOR } from '../media/media-utils'
 import type { NotePreviewData } from '../notes/note-preview-data'
 import type { NoteNavigationTarget, ResolvedNoteAisle } from '../types/app'
 
@@ -126,6 +128,14 @@ function stopPreviewNavigationEvent(event: Event) {
 }
 
 function blockReadonlyPreviewEditEvent(event: Event) {
+  const target = event.target instanceof Element
+    ? event.target
+    : event.target instanceof Text
+      ? event.target.parentElement
+      : null
+  if (target?.closest(MEDIA_PLAYER_SELECTOR)) {
+    return
+  }
   event.stopPropagation()
   event.preventDefault()
 }
@@ -505,6 +515,7 @@ export function createReadonlyNotePreviewWidgetElement(
         blockIndentPlugin,
         annotationLinePlugin,
         highlightPlugin,
+        createMediaLinkPlugin,
         headingSpaceShortcutPlugin,
         thematicBreakShortcutPlugin,
       ],
@@ -777,6 +788,7 @@ export function createNotePreviewWidgetElement(
         blockIndentPlugin,
         annotationLinePlugin,
         highlightPlugin,
+        createMediaLinkPlugin,
         headingSpaceShortcutPlugin,
         thematicBreakShortcutPlugin,
         ...referencePlugins,

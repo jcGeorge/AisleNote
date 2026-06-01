@@ -72,6 +72,8 @@ describe('newline shortcut settings', () => {
       },
     })
 
+    expect(normalized.shortcuts.toggleTabTrash).toBe(DEFAULT_SHORTCUTS.toggleTabTrash)
+    expect(normalized.shortcuts.openSpaces).toBe(DEFAULT_SHORTCUTS.openSpaces)
     expect(normalized.newlineShortcuts.shortcuts.controlEnter).toBe('dashList')
     expect(normalized.newlineShortcuts.shortcuts.shiftEnter).toBe('dashList')
     expect(normalized.newlineShortcuts.menuOperations).toEqual(['dashList', 'bulletList', 'strikethrough'])

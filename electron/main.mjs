@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, nativeImage, net, protocol, shell } from 'electron'
+import { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, nativeImage, protocol, shell } from 'electron'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { registerClipboardIpc } from './ipc-clipboard.mjs'
@@ -294,7 +294,7 @@ if (!gotSingleInstanceLock) {
   app.whenReady().then(() => {
     const updateService = createNoopUpdateService(app)
     storageSession = registerStorageIpc({ ipcMain, app, BrowserWindow, dialog, shell })
-    registerImageAssetProtocol({ protocol, net, storageSession })
+    registerImageAssetProtocol({ protocol, storageSession })
     installApplicationMenu({ onNewWindow: openAppWindow, onResetUserSettings: () => confirmAndResetUserSettings() })
     registerFileIpc({ ipcMain, dialog, storageSession })
     registerClipboardIpc({ ipcMain, clipboard, nativeImage })

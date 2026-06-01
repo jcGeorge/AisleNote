@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
-import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
+import { useEffect, useMemo, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import type { Editor } from '@toast-ui/editor'
-import { TextSelection } from 'prosemirror-state'
+import { Selection, TextSelection } from 'prosemirror-state'
 import type { ToolbarFormatKey } from '../components/editor/toolbar-state'
 import type {
   AppState,
@@ -12,7 +12,7 @@ import type {
   NoteNavigationTarget,
   ViewMode,
 } from '../types/app'
-import { getNewlineShortcutIdForEvent } from '../hotkeys/shortcuts'
+import { getNewlineShortcutIdForEvent, normalizeHotkeySettings } from '../hotkeys/shortcuts'
 import { runEditorHistoryCommand } from './editor-command'
 import {
   getMultiLineBeforeInputEdit,
@@ -24,6 +24,7 @@ import {
   deletePreviewBeforeBlankRun,
   getMultilineSelectionShortcutDirection,
 } from './editor-setup'
+import { findImageElementForSameLineBlankClick } from './image-node-selection'
 import {
   applySingleCursorPageMovement,
   type EditorPageMovement,
@@ -34,12 +35,12 @@ import { isInsideReadonlyNotePreview } from './note-preview-dom'
 import {
   handleTerminalBlankAreaClick,
   isInsideTerminalBlockLandingZone,
+  moveTerminalBlockBoundaryCaretByArrow,
+  type TerminalBlockArrowDirection,
 } from './terminal-block-landing'
 import {
   getElementFromEventTarget,
   getExternalLinkRangeAtDocPosition,
-  getPlainEditorTextBlockClickGeometry,
-  getPlainTextBlockEndPositionForBlankClick,
   getWysiwygView,
   type ExternalLinkRange,
   type WysiwygHistoryDirection,
@@ -51,6 +52,17 @@ import {
   readCopyAsPayloadFromDataTransfer,
   type CopyAsClipboardPayload,
 } from '../notes/copy-as-clipboard'
+import { importBlobAsAssetUrl } from '../markdown/image-asset-registry'
+import { getSteppedMediaVolumePercent } from '../media/media-playback-settings'
+import { getMediaKeyboardAction, MEDIA_PLAYER_SELECTOR } from '../media/media-utils'
+import { getMediaRevealContextMenuDetailFromTarget } from '../media/media-context-menu'
+import {
+  dataTransferHasMediaFiles,
+  getMediaFilesFromDataTransfer,
+  importMediaFilesAsLinks,
+  insertAssetLinksIntoWysiwygView,
+} from './media-file-insertion'
+import { deleteAdjacentMediaLinkRange, type MediaLinkDeleteDirection } from './media-link-plugin'
 import { insertPastedListIntoView } from './list-paste'
 import {
   getActiveTableContext,
@@ -73,15 +85,19 @@ type UseEditorDomEventsOptions = {
   editorEventRootRef: MutableRefObject<HTMLElement | null>
   editorRef: MutableRefObject<Editor | null>
   activeImageRef: MutableRefObject<HTMLImageElement | null>
+  activeMediaRef: MutableRefObject<HTMLElement | null>
   multiLineEditRef: MutableRefObject<MultiLineEditState | null>
   activateEditorFromEventTarget: (target: EventTarget | null) => boolean | void
   clearMultiLineEdit: (collapseToHead?: boolean, options?: { deferWidgetClear?: boolean }) => void
   closeImageTools: () => void
+  closeMediaTools: () => void
   closeLinkPrompt: () => void
   isImageCropActive: () => boolean
   isLinkPromptOpen: () => boolean
   selectImageForTools: (image: HTMLImageElement) => void
+  selectMediaForTools: (media: HTMLElement) => void
   refreshImageToolsPosition: () => void
+  refreshMediaToolsPosition: () => void
   copySelectedImageToClipboard: () => void | Promise<unknown>
   deleteActiveEditorImageNode: () => boolean
   commitActiveEditorMarkdownNow: (editor: Editor) => void
@@ -192,6 +208,26 @@ export function getTableBoundaryCaretDirectionForEvent(event: KeyboardEvent): Ta
   return null
 }
 
+export function getTerminalBlockArrowDirectionForEvent(event: KeyboardEvent): TerminalBlockArrowDirection | null {
+  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return null
+  if (event.key === 'ArrowUp' || event.code === 'ArrowUp') return 'up'
+  if (event.key === 'ArrowDown' || event.code === 'ArrowDown') return 'down'
+  return null
+}
+
+export function getMediaLinkDeleteDirectionForKeyEvent(event: KeyboardEvent): MediaLinkDeleteDirection | null {
+  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return null
+  if (event.key === 'Backspace' || event.code === 'Backspace') return 'backward'
+  if (event.key === 'Delete' || event.code === 'Delete') return 'forward'
+  return null
+}
+
+export function getMediaLinkDeleteDirectionForBeforeInput(event: InputEvent): MediaLinkDeleteDirection | null {
+  if (event.inputType === 'deleteContentBackward') return 'backward'
+  if (event.inputType === 'deleteContentForward') return 'forward'
+  return null
+}
+
 export function isActiveWysiwygEditorContentTarget(target: Element | null, view: any): boolean {
   if (!target || !view?.dom || isEditorToolbarInteractionTarget(target)) return false
   return target === view.dom || Boolean(view.dom.contains?.(target))
@@ -202,18 +238,110 @@ export function isEditorPointerChromeTarget(target: Element | null): boolean {
     target?.closest(
       [
         '.image-tools',
+        '.media-tools',
         '.image-resize-handle',
+        '.media-resize-handle',
         '.inline-crop-box',
         '.inline-crop-edge-handle',
         '.inline-crop-resize-handle',
         '.table-tools',
         '.table-reorder-marker',
         '.link-prompt',
+        MEDIA_PLAYER_SELECTOR,
         '.aisle-toc-panel',
         '.aisle-toc-panel-layer',
       ].join(', '),
     ),
   )
+}
+
+export type MediaPlayerPointerAction =
+  | { type: 'none' }
+  | { type: 'ignore-controls' }
+  | { type: 'select-video'; mediaPlayer: Element }
+  | { type: 'toggle-video'; mediaPlayer: Element }
+  | { type: 'hide-video-tools'; mediaPlayer: Element }
+  | { type: 'close-non-video'; mediaPlayer: Element }
+
+export function getMediaPlayerPointerAction(
+  target: Element | null,
+  isPrimaryActivation: boolean,
+): MediaPlayerPointerAction {
+  const mediaPlayer = target?.closest(MEDIA_PLAYER_SELECTOR) ?? null
+  if (!mediaPlayer) return { type: 'none' }
+  const isControlTarget = Boolean(target?.closest('button, input, select, textarea'))
+  if (!isPrimaryActivation || isControlTarget) return { type: 'ignore-controls' }
+  if (mediaPlayer.getAttribute('data-media-kind') !== 'video') return { type: 'close-non-video', mediaPlayer }
+  if (target?.closest('.tabs-media-viewport')) return { type: 'toggle-video', mediaPlayer }
+  if (target?.closest('.tabs-media-title, .tabs-media-controls')) return { type: 'hide-video-tools', mediaPlayer }
+  return { type: 'select-video', mediaPlayer }
+}
+
+export function placeCaretAfterMediaPlayer(view: any | null, mediaPlayer: Element | null): boolean {
+  if (!view?.state?.doc || typeof view.dispatch !== 'function' || !mediaPlayer) return false
+  const sourceToRaw = mediaPlayer.getAttribute('data-media-source-to')
+  if (sourceToRaw === null || sourceToRaw.trim() === '') return false
+  const sourceTo = Number(sourceToRaw)
+  if (!Number.isFinite(sourceTo)) return false
+
+  const doc = view.state.doc
+  const docSize = Number(doc.content?.size ?? sourceTo)
+  const position = Math.max(0, Math.min(Math.floor(sourceTo), docSize))
+  try {
+    const transaction = view.state.tr
+      .setSelection(TextSelection.create(doc, position, position))
+      .setMeta('addToHistory', false)
+      .scrollIntoView()
+    view.dispatch(transaction)
+    view.focus?.()
+    return true
+  } catch {
+    try {
+      const transaction = view.state.tr
+        .setSelection(Selection.near(doc.resolve(position), 1))
+        .setMeta('addToHistory', false)
+        .scrollIntoView()
+      view.dispatch(transaction)
+      view.focus?.()
+      return true
+    } catch {
+      return false
+    }
+  }
+}
+
+export function runMediaPlayerKeyboardAction(mediaPlayer: Element | null, event: KeyboardEvent): boolean {
+  if (!mediaPlayer) return false
+  const action = getMediaKeyboardAction(event)
+  if (!action) return false
+  event.preventDefault()
+  event.stopPropagation()
+  if (action === 'volume-down' || action === 'volume-up') {
+    const volumeSlider = mediaPlayer.querySelector<HTMLInputElement>('.tabs-media-volume-slider')
+    if (volumeSlider) {
+      volumeSlider.value = String(getSteppedMediaVolumePercent(volumeSlider.value, action === 'volume-up' ? 'up' : 'down'))
+      volumeSlider.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    return true
+  }
+  const buttonSelector =
+    action === 'toggle-playback'
+      ? '.tabs-media-play-btn'
+      : action === 'seek-backward'
+        ? '.tabs-media-back-btn'
+        : '.tabs-media-forward-btn'
+  const button = mediaPlayer.querySelector(buttonSelector)
+  if (button && typeof (button as HTMLButtonElement).click === 'function') {
+    ;(button as HTMLButtonElement).click()
+  }
+  return true
+}
+
+export function consumeHandledEmbedCaretClick(event: Event, handledOnPointerDown: boolean): boolean {
+  if (!handledOnPointerDown) return false
+  if (event.cancelable) event.preventDefault()
+  event.stopPropagation()
+  return true
 }
 
 export function shouldSkipTableExitRepairTarget(target: Element | null): boolean {
@@ -229,13 +357,16 @@ export function shouldSkipTableExitRepairTarget(target: Element | null): boolean
         'table',
         '[contenteditable="false"]',
         '.image-tools',
+        '.media-tools',
         '.image-resize-handle',
+        '.media-resize-handle',
         '.inline-crop-box',
         '.inline-crop-edge-handle',
         '.inline-crop-resize-handle',
         '.table-tools',
         '.table-reorder-marker',
         '.link-prompt',
+        MEDIA_PLAYER_SELECTOR,
         '.aisle-toc-panel',
         '.aisle-toc-panel-layer',
       ].join(', '),
@@ -332,15 +463,19 @@ export function useEditorDomEvents({
   editorEventRootRef,
   editorRef,
   activeImageRef,
+  activeMediaRef,
   multiLineEditRef,
   activateEditorFromEventTarget,
   clearMultiLineEdit,
   closeImageTools,
+  closeMediaTools,
   closeLinkPrompt,
   isImageCropActive,
   isLinkPromptOpen,
   selectImageForTools,
+  selectMediaForTools,
   refreshImageToolsPosition,
+  refreshMediaToolsPosition,
   copySelectedImageToClipboard,
   deleteActiveEditorImageNode,
   commitActiveEditorMarkdownNow,
@@ -377,6 +512,8 @@ export function useEditorDomEvents({
   copyMultiLineSelectionToClipboard,
   cutMultiLineSelectionToClipboard,
 }: UseEditorDomEventsOptions) {
+  const normalizedHotkeys = useMemo(() => normalizeHotkeySettings(hotkeys), [hotkeys])
+
   useEffect(() => {
     if (viewMode !== 'main') {
       clearMultiLineEdit(false)
@@ -390,6 +527,8 @@ export function useEditorDomEvents({
 
     let linkHandledOnPointerDown = false
     let terminalBlankAreaHandledOnPointerDown = false
+    let embedCaretHandledOnPointerDown = false
+    let activeKeyboardMediaPlayer: Element | null = null
     let pendingTableExitRepair: {
       coords: { left: number; top: number }
       range: TableRange
@@ -479,6 +618,12 @@ export function useEditorDomEvents({
       pendingTableExitRepair = null
     }
 
+    const syncSelectionChromeAfterEmbedCaret = () => {
+      window.setTimeout(syncToolbarFormatState, 0)
+      onEditorSelectionChange()
+      onEditorMentionQueryChange()
+    }
+
     const scheduleTableExitRepair = () => {
       const pending = pendingTableExitRepair
       pendingTableExitRepair = null
@@ -493,40 +638,87 @@ export function useEditorDomEvents({
       }, 0)
     }
 
-    const placeCaretForPlainBlankAreaClick = (event: Event, target: Element) => {
-      if (!(event instanceof MouseEvent) || event.button !== 0) return false
-      if (isEditorPointerChromeTarget(target) || shouldSkipTableExitRepairTarget(target)) return false
-      if (isInsideReadonlyNotePreview(target) || isInsideTerminalBlockLandingZone(target)) return false
-      const view = getWysiwygView(editorRef.current)
-      if (!isActiveWysiwygEditorContentTarget(target, view)) return false
-      const selection = view?.state?.selection
-      const domSelection = window.getSelection?.()
-      const selectionEmpty = Boolean(selection?.empty !== false && !domSelection?.toString())
-      const position = getPlainTextBlockEndPositionForBlankClick({
-        blocks: getPlainEditorTextBlockClickGeometry(view),
-        clientX: event.clientX,
-        clientY: event.clientY,
-        selectionEmpty,
-      })
-      if (position === null) return false
-      try {
-        view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, position, position)).scrollIntoView())
-      } catch {
+    const insertMediaLinksIntoEditor = (
+      editor: Editor,
+      links: Array<{ label: string; url: string }>,
+      coords?: { left: number; top: number } | null,
+    ) => {
+      const view = getWysiwygView(editor)
+      editor.focus()
+      if (insertAssetLinksIntoWysiwygView(view, links, coords)) {
+        commitActiveEditorMarkdownNow(editor)
+      }
+    }
+
+    const importAndInsertMediaFiles = (
+      files: Blob[],
+      event: ClipboardEvent | DragEvent,
+      coords?: { left: number; top: number } | null,
+    ) => {
+      if (files.length === 0) return false
+      const target = getElementFromEventTarget(event.target)
+      if (
+        target &&
+        (isEditorToolbarInteractionTarget(target) ||
+          isInsideReadonlyNotePreview(target) ||
+          isInsideTerminalBlockLandingZone(target))
+      ) {
         return false
       }
-      window.setTimeout(syncToolbarFormatState, 0)
-      onEditorSelectionChange()
-      onEditorSelectionSettled()
-      onEditorMentionQueryChange()
+      activateEditorFromEventTarget(event.target)
+      const editor = editorRef.current
+      if (!editor) return false
+
+      event.preventDefault()
+      event.stopPropagation()
+      event.stopImmediatePropagation?.()
+      clearMultiLineEdit(false)
+      closeLinkPrompt()
+      void importMediaFilesAsLinks(files, importBlobAsAssetUrl).then((links) => {
+        if (links.length === 0 || editorRef.current !== editor) return
+        insertMediaLinksIntoEditor(editor, links, coords)
+      })
       return true
+    }
+
+    const handleMediaPaste = (event: ClipboardEvent) => {
+      const files = getMediaFilesFromDataTransfer(event.clipboardData)
+      return importAndInsertMediaFiles(files, event, null)
+    }
+
+    const handleMediaDragOver = (event: Event) => {
+      const dragEvent = event as DragEvent
+      if (!dataTransferHasMediaFiles(dragEvent.dataTransfer)) return
+      const target = getElementFromEventTarget(dragEvent.target)
+      if (
+        !target ||
+        isEditorToolbarInteractionTarget(target) ||
+        isInsideReadonlyNotePreview(target) ||
+        isInsideTerminalBlockLandingZone(target)
+      ) {
+        return
+      }
+      dragEvent.preventDefault()
+      dragEvent.stopPropagation()
+      if (dragEvent.dataTransfer) dragEvent.dataTransfer.dropEffect = 'copy'
+    }
+
+    const handleMediaDrop = (event: Event) => {
+      const dragEvent = event as DragEvent
+      const files = getMediaFilesFromDataTransfer(dragEvent.dataTransfer)
+      const coords =
+        dragEvent instanceof MouseEvent ? { left: dragEvent.clientX, top: dragEvent.clientY } : null
+      importAndInsertMediaFiles(files, dragEvent, coords)
     }
 
     const handlePointerDown = (event: Event) => {
       const target = getElementFromEventTarget(event.target)
+      activeKeyboardMediaPlayer = target?.closest(MEDIA_PLAYER_SELECTOR) ?? null
       if (!target) {
         if (!isImageCropActive()) {
           closeImageTools()
         }
+        closeMediaTools()
         closeLinkPrompt()
         return
       }
@@ -534,10 +726,49 @@ export function useEditorDomEvents({
         if (!isImageCropActive()) {
           closeImageTools()
         }
+        closeMediaTools()
         closeLinkPrompt()
         return
       }
       if (isEditorToolbarInteractionTarget(target)) return
+      const mediaAction = getMediaPlayerPointerAction(target, isPrimaryMouseActivation(event))
+      if (mediaAction.type !== 'none') {
+        if (
+          (mediaAction.type === 'select-video' ||
+            mediaAction.type === 'toggle-video' ||
+            mediaAction.type === 'hide-video-tools') &&
+          mediaAction.mediaPlayer instanceof HTMLElement
+        ) {
+          if (event.cancelable) {
+            event.preventDefault()
+          }
+          event.stopPropagation()
+          clearMultiLineEdit(false)
+          closeImageTools()
+          placeCaretAfterMediaPlayer(getWysiwygView(editorRef.current), mediaAction.mediaPlayer)
+          if (mediaAction.type === 'hide-video-tools') {
+            closeMediaTools()
+          } else if (mediaAction.type === 'toggle-video' && activeMediaRef.current === mediaAction.mediaPlayer) {
+            closeMediaTools()
+          } else {
+            selectMediaForTools(mediaAction.mediaPlayer)
+          }
+          embedCaretHandledOnPointerDown = true
+          syncSelectionChromeAfterEmbedCaret()
+        } else if (mediaAction.type === 'close-non-video') {
+          if (event.cancelable) {
+            event.preventDefault()
+          }
+          event.stopPropagation()
+          clearMultiLineEdit(false)
+          closeImageTools()
+          placeCaretAfterMediaPlayer(getWysiwygView(editorRef.current), mediaAction.mediaPlayer)
+          closeMediaTools()
+          embedCaretHandledOnPointerDown = true
+          syncSelectionChromeAfterEmbedCaret()
+        }
+        return
+      }
       if (isEditorPointerChromeTarget(target)) return
       const image = target.closest('img')
       if (image instanceof HTMLImageElement) {
@@ -549,7 +780,10 @@ export function useEditorDomEvents({
           event.stopPropagation()
         }
         clearMultiLineEdit(false)
+        closeMediaTools()
         selectImageForTools(image)
+        embedCaretHandledOnPointerDown = isPrimaryActivation
+        syncSelectionChromeAfterEmbedCaret()
         return
       }
       const chromeClosePlan = getPlainTextPointerChromeClosePlan({
@@ -557,15 +791,38 @@ export function useEditorDomEvents({
         imageCropActive: isImageCropActive(),
         linkPromptOpen: isLinkPromptOpen(),
       })
+      const closeMediaToolsIfNeeded = () => {
+        if (activeMediaRef.current) {
+          closeMediaTools()
+        }
+      }
       const tableExitRepair = getPendingTableExitRepair(event, target)
       activateEditorFromEventTarget(target)
       clearMultiLineEdit(false, { deferWidgetClear: true })
       pendingTableExitRepair = tableExitRepair
+      const view = getWysiwygView(editorRef.current)
+      if (event instanceof MouseEvent && event.button === 0 && isActiveWysiwygEditorContentTarget(target, view)) {
+        const blankImage = findImageElementForSameLineBlankClick(view, target, {
+          left: event.clientX,
+          top: event.clientY,
+        })
+        if (blankImage) {
+          if (event.cancelable) event.preventDefault()
+          event.stopPropagation()
+          clearPendingTableExitRepair()
+          closeMediaToolsIfNeeded()
+          selectImageForTools(blankImage)
+          embedCaretHandledOnPointerDown = true
+          syncSelectionChromeAfterEmbedCaret()
+          return
+        }
+      }
       if (handleTableSideSelection(event, target)) {
         clearPendingTableExitRepair()
         if (chromeClosePlan.closeImageTools) {
           closeImageTools()
         }
+        closeMediaToolsIfNeeded()
         if (chromeClosePlan.closeLinkPrompt) {
           closeLinkPrompt()
         }
@@ -579,7 +836,6 @@ export function useEditorDomEvents({
         clearPendingTableExitRepair()
         return
       }
-      const view = getWysiwygView(editorRef.current)
       if (
         isActiveWysiwygEditorContentTarget(target, view) &&
         handleTerminalBlankAreaClick(event, target, view, TextSelection)
@@ -589,6 +845,7 @@ export function useEditorDomEvents({
         if (chromeClosePlan.closeImageTools) {
           closeImageTools()
         }
+        closeMediaToolsIfNeeded()
         if (chromeClosePlan.closeLinkPrompt) {
           closeLinkPrompt()
         }
@@ -600,15 +857,22 @@ export function useEditorDomEvents({
       if (chromeClosePlan.closeImageTools) {
         closeImageTools()
       }
+      closeMediaToolsIfNeeded()
       if (chromeClosePlan.closeLinkPrompt) {
         closeLinkPrompt()
       }
     }
 
     const handleClick = (event: Event) => {
+      if (consumeHandledEmbedCaretClick(event, embedCaretHandledOnPointerDown)) {
+        embedCaretHandledOnPointerDown = false
+        clearPendingTableExitRepair()
+        return
+      }
       const target = getElementFromEventTarget(event.target)
       if (!target) return
       if (isInsideTerminalBlockLandingZone(target)) return
+      if (isEditorPointerChromeTarget(target)) return
       if (terminalBlankAreaHandledOnPointerDown) {
         terminalBlankAreaHandledOnPointerDown = false
         clearPendingTableExitRepair()
@@ -642,10 +906,6 @@ export function useEditorDomEvents({
         onEditorMentionQueryChange()
         return
       }
-      if (!pendingTableExitRepair && placeCaretForPlainBlankAreaClick(event, target)) {
-        clearPendingTableExitRepair()
-        return
-      }
       scheduleTableExitRepair()
     }
 
@@ -653,6 +913,23 @@ export function useEditorDomEvents({
       const mouseEvent = event as globalThis.MouseEvent
       const target = getElementFromEventTarget(mouseEvent.target)
       if (!target) return
+      const mediaContextMenu = getMediaRevealContextMenuDetailFromTarget(target, mouseEvent.clientX, mouseEvent.clientY)
+      if (mediaContextMenu) {
+        mouseEvent.preventDefault()
+        mouseEvent.stopPropagation()
+        onDismissEditorEphemeraBeforeContextMenu?.()
+        closeLinkPrompt()
+        setMenuOpen(false)
+        setContextMenu({
+          type: 'media',
+          x: mediaContextMenu.x,
+          y: mediaContextMenu.y,
+          kind: mediaContextMenu.kind,
+          source: mediaContextMenu.source,
+        })
+        return
+      }
+      if (isEditorPointerChromeTarget(target)) return
       if (isInsideReadonlyNotePreview(target)) {
         closeImageTools()
         closeLinkPrompt()
@@ -726,8 +1003,12 @@ export function useEditorDomEvents({
     }
 
     const handleScrollOrResize = () => {
-      if (!activeImageRef.current) return
-      refreshImageToolsPosition()
+      if (activeImageRef.current) {
+        refreshImageToolsPosition()
+      }
+      if (activeMediaRef.current) {
+        refreshMediaToolsPosition()
+      }
     }
 
     const tryApplySingleCursorParagraphSpaceShortcut = (target: Element | null) => {
@@ -756,6 +1037,7 @@ export function useEditorDomEvents({
         pasteEvent.stopImmediatePropagation?.()
         return
       }
+      if (handleMediaPaste(pasteEvent)) return
       if (multiLineEditRef.current) {
         if (rawText.length > 0 && tryApplyMultiLineEditInput({ type: 'insert-text', text: rawText })) {
           pasteEvent.preventDefault()
@@ -805,9 +1087,15 @@ export function useEditorDomEvents({
 
     const handleKeyDown = (event: Event) => {
       const keyboardEvent = event as KeyboardEvent
-      if (isInsideTerminalBlockLandingZone(getElementFromEventTarget(keyboardEvent.target))) return
+      const keyboardTarget = getElementFromEventTarget(keyboardEvent.target)
+      if (keyboardTarget?.closest(MEDIA_PLAYER_SELECTOR)) return
+      if (activeKeyboardMediaPlayer && !activeKeyboardMediaPlayer.isConnected) {
+        activeKeyboardMediaPlayer = null
+      }
+      if (activeKeyboardMediaPlayer && runMediaPlayerKeyboardAction(activeKeyboardMediaPlayer, keyboardEvent)) return
+      if (isInsideTerminalBlockLandingZone(keyboardTarget)) return
       activateEditorFromEventTarget(keyboardEvent.target)
-      const targetElement = getElementFromEventTarget(keyboardEvent.target)
+      const targetElement = keyboardTarget
       const isTextInputTarget = Boolean(targetElement?.closest('input, textarea, select, .link-prompt'))
       const currentEditor = editorRef.current
       const view = getWysiwygView(currentEditor)
@@ -818,8 +1106,14 @@ export function useEditorDomEvents({
       const toolbarFormatShortcut = isTextInputTarget ? null : getToolbarFormatShortcut(keyboardEvent)
       const editorHistoryDirection = getEditorHistoryDirection(keyboardEvent)
       const newlineShortcutId = !isTextInputTarget ? getNewlineShortcutIdForEvent(keyboardEvent, isMacPlatform) : null
-      const newlineOperation = newlineShortcutId ? hotkeys.newlineShortcuts.shortcuts[newlineShortcutId] : null
+      const newlineOperation = newlineShortcutId ? normalizedHotkeys.newlineShortcuts.shortcuts[newlineShortcutId] : null
       const tableBoundaryDirection = isTextInputTarget ? null : getTableBoundaryCaretDirectionForEvent(keyboardEvent)
+      const terminalBlockArrowDirection = isTextInputTarget
+        ? null
+        : getTerminalBlockArrowDirectionForEvent(keyboardEvent)
+      const mediaDeleteDirection = !isTextInputTarget && !multiLineEditRef.current
+        ? getMediaLinkDeleteDirectionForKeyEvent(keyboardEvent)
+        : null
       const inputIntent = resolveEditorKeyDownIntent({
         key: keyboardEvent.key,
         altKey: keyboardEvent.altKey,
@@ -879,6 +1173,21 @@ export function useEditorDomEvents({
         }
         return
       }
+      if (
+        mediaDeleteDirection &&
+        currentEditor &&
+        isActiveWysiwygEditorContentTarget(targetElement, view) &&
+        deleteAdjacentMediaLinkRange(view, mediaDeleteDirection)
+      ) {
+        keyboardEvent.preventDefault()
+        keyboardEvent.stopPropagation()
+        closeMediaTools()
+        commitActiveEditorMarkdownNow(currentEditor)
+        window.setTimeout(syncToolbarFormatState, 0)
+        onEditorSelectionChange()
+        onEditorMentionQueryChange()
+        return
+      }
       if (inputIntent.type === 'table-boundary-caret') {
         if (
           isActiveWysiwygEditorContentTarget(targetElement, view) &&
@@ -888,6 +1197,19 @@ export function useEditorDomEvents({
           keyboardEvent.stopPropagation()
           window.setTimeout(syncToolbarFormatState, 0)
         }
+        return
+      }
+      if (
+        terminalBlockArrowDirection &&
+        !multiLineEditRef.current &&
+        isActiveWysiwygEditorContentTarget(targetElement, view) &&
+        moveTerminalBlockBoundaryCaretByArrow(view, terminalBlockArrowDirection, TextSelection)
+      ) {
+        keyboardEvent.preventDefault()
+        keyboardEvent.stopPropagation()
+        window.setTimeout(syncToolbarFormatState, 0)
+        onEditorSelectionChange()
+        onEditorMentionQueryChange()
         return
       }
       if (inputIntent.type === 'table-cell-navigation') {
@@ -989,10 +1311,29 @@ export function useEditorDomEvents({
 
     const handleBeforeInput = (event: Event) => {
       const inputEvent = event as InputEvent
-      if (isInsideTerminalBlockLandingZone(getElementFromEventTarget(inputEvent.target))) return
-      activateEditorFromEventTarget(inputEvent.target)
       const inputTarget = getElementFromEventTarget(inputEvent.target)
+      if (isInsideTerminalBlockLandingZone(inputTarget) || inputTarget?.closest(MEDIA_PLAYER_SELECTOR)) return
+      activateEditorFromEventTarget(inputEvent.target)
       const view = getWysiwygView(editorRef.current)
+      const currentEditor = editorRef.current
+      const mediaDeleteDirection = !multiLineEditRef.current
+        ? getMediaLinkDeleteDirectionForBeforeInput(inputEvent)
+        : null
+      if (
+        mediaDeleteDirection &&
+        currentEditor &&
+        isActiveWysiwygEditorContentTarget(inputTarget, view) &&
+        deleteAdjacentMediaLinkRange(view, mediaDeleteDirection)
+      ) {
+        inputEvent.preventDefault()
+        inputEvent.stopPropagation()
+        closeMediaTools()
+        commitActiveEditorMarkdownNow(currentEditor)
+        window.setTimeout(syncToolbarFormatState, 0)
+        onEditorSelectionChange()
+        onEditorMentionQueryChange()
+        return
+      }
       if (
         isActiveWysiwygEditorContentTarget(inputTarget, view) &&
         applyPreviewForwardDeleteBeforeInput({
@@ -1117,6 +1458,8 @@ export function useEditorDomEvents({
     root.addEventListener('contextmenu', handleContextMenu, true)
     root.addEventListener('paste', handlePaste, true)
     root.addEventListener('paste', handlePastedList, true)
+    root.addEventListener('dragover', handleMediaDragOver, true)
+    root.addEventListener('drop', handleMediaDrop, true)
     root.addEventListener('copy', handleCopy, true)
     root.addEventListener('cut', handleCut, true)
     root.addEventListener('keydown', handleKeyDown, true)
@@ -1132,6 +1475,8 @@ export function useEditorDomEvents({
       root.removeEventListener('contextmenu', handleContextMenu, true)
       root.removeEventListener('paste', handlePaste, true)
       root.removeEventListener('paste', handlePastedList, true)
+      root.removeEventListener('dragover', handleMediaDragOver, true)
+      root.removeEventListener('drop', handleMediaDrop, true)
       root.removeEventListener('copy', handleCopy, true)
       root.removeEventListener('cut', handleCut, true)
       root.removeEventListener('keydown', handleKeyDown, true)
@@ -1143,5 +1488,5 @@ export function useEditorDomEvents({
       window.removeEventListener('resize', handleScrollOrResize)
       clearScheduledToolbarSelectionSync()
     }
-  }, [viewMode, displayContent, activeNoteAisleCount, hotkeys, isMacPlatform])
+  }, [viewMode, displayContent, activeNoteAisleCount, normalizedHotkeys, isMacPlatform])
 }

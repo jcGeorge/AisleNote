@@ -54,7 +54,7 @@ import {
   normalizeImageAssetPath,
   parseImageAssetUrl,
 } from '../src/markdown/image-asset-refs.js'
-import { normalizeImageResizeMetadataFragment } from '../src/markdown/image-metadata-core.js'
+import { splitAssetMetadataFromUrl } from '../src/markdown/asset-metadata.js'
 import { normalizePreviewReferenceTokensForMarkdown } from '../src/markdown/note-context-tokens.js'
 
 export const HYBRID_ROOT_DIR = 'notes'
@@ -69,7 +69,6 @@ export const STORAGE_SNAPSHOT_MODES = Object.freeze({
   DEBOUNCED: 'debounced',
   SKIP: 'skip',
 })
-const IMAGE_METADATA_FRAGMENT_PREFIX = '#tabs-image='
 const FRONTMATTER_OPEN_RE = /^---[ \t]*(?:\r?\n|$)/
 const FRONTMATTER_CLOSE_RE = /(?:^|\r?\n)---[ \t]*(?:\r?\n|$)/
 const INTERNAL_INDENT_TOKEN = '\u2060\u2003\u2003'
@@ -121,18 +120,6 @@ function addNotebookReconciliationIssues(issues, repairs) {
       path.posix.join(HYBRID_ROOT_DIR, 'manifest.json'),
       typeof repair.message === 'string' ? repair.message : 'Notebook storage was repaired.',
     )
-  }
-}
-
-function splitImageMetadataFromUrl(url) {
-  const source = String(url ?? '')
-  const index = source.indexOf(IMAGE_METADATA_FRAGMENT_PREFIX)
-  if (index < 0) {
-    return { imageUrl: source, metadataFragment: '' }
-  }
-  return {
-    imageUrl: source.slice(0, index),
-    metadataFragment: source.slice(index),
   }
 }
 
@@ -303,11 +290,10 @@ function externalizeMarkdownImages(markdown, noteFileRelative, assetBank) {
   return String(markdown ?? '').replace(MARKDOWN_LINK_PATTERN, (fullMatch, imageBang, label, srcRaw) => {
     const src = String(srcRaw ?? '').trim()
     if (!src) return fullMatch
-    const { imageUrl, metadataFragment } = splitImageMetadataFromUrl(src)
-    const normalizedMetadataFragment = normalizeImageResizeMetadataFragment(metadataFragment)
+    const { assetUrl, metadataFragment: normalizedMetadataFragment } = splitAssetMetadataFromUrl(src)
 
     let decoded = null
-    let assetRelativePath = parseImageAssetUrl(imageUrl)
+    let assetRelativePath = parseImageAssetUrl(assetUrl)
 
     if (assetRelativePath) {
       assetRelativePath = normalizeImageAssetPath(assetRelativePath)
@@ -317,11 +303,11 @@ function externalizeMarkdownImages(markdown, noteFileRelative, assetBank) {
           assetBank.files.set(assetRelativePath, readFileSync(existingAssetPath))
         }
       }
-    } else if (imageBang === '!' && imageUrl.startsWith('data:image/')) {
-      decoded = decodeImageDataUrl(imageUrl)
-    } else if (imageUrl.startsWith('file://')) {
+    } else if (imageBang === '!' && assetUrl.startsWith('data:image/')) {
+      decoded = decodeImageDataUrl(assetUrl)
+    } else if (assetUrl.startsWith('file://')) {
       try {
-        const absolutePath = fileURLToPath(imageUrl)
+        const absolutePath = fileURLToPath(assetUrl)
         if (existsSync(absolutePath)) {
           decoded = {
             bytes: readFileSync(absolutePath),
@@ -348,26 +334,25 @@ function referenceMarkdownImages(markdown, noteFilePath, issues = null, issueRoo
   return String(markdown ?? '').replace(MARKDOWN_LINK_PATTERN, (fullMatch, imageBang, label, srcRaw) => {
     const src = String(srcRaw ?? '').trim()
     if (!src) return fullMatch
-    const { imageUrl, metadataFragment } = splitImageMetadataFromUrl(src)
-    const normalizedMetadataFragment = normalizeImageResizeMetadataFragment(metadataFragment)
-    if (parseImageAssetUrl(imageUrl)) return fullMatch
-    if (imageBang === '!' && imageUrl.startsWith('data:image/')) {
-      const decoded = decodeImageDataUrl(imageUrl)
+    const { assetUrl, metadataFragment: normalizedMetadataFragment } = splitAssetMetadataFromUrl(src)
+    if (parseImageAssetUrl(assetUrl)) return fullMatch
+    if (imageBang === '!' && assetUrl.startsWith('data:image/')) {
+      const decoded = decodeImageDataUrl(assetUrl)
       if (!decoded || !issueRootPath) return fullMatch
       const assetPath = addAssetToNotesRoot(issueRootPath, decoded.bytes, decoded.extension)
       return `${imageBang}[${label}](${buildImageAssetUrl(assetPath)}${normalizedMetadataFragment})`
     }
-    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(imageUrl) && !imageUrl.startsWith('file://')) return fullMatch
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(assetUrl) && !assetUrl.startsWith('file://')) return fullMatch
 
     let absolutePath = null
-    if (imageUrl.startsWith('file://')) {
+    if (assetUrl.startsWith('file://')) {
       try {
-        absolutePath = fileURLToPath(imageUrl)
+        absolutePath = fileURLToPath(assetUrl)
       } catch {
         absolutePath = null
       }
     } else {
-      absolutePath = path.resolve(path.dirname(noteFilePath), imageUrl)
+      absolutePath = path.resolve(path.dirname(noteFilePath), assetUrl)
     }
 
     if (!imageBang && !absolutePath) return fullMatch

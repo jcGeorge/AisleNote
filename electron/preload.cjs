@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   importAsset: (payload) => ipcRenderer.invoke('import-asset', payload),
   importImageAsset: (payload) => ipcRenderer.invoke('import-image-asset', payload),
   openAsset: (payload) => ipcRenderer.invoke('open-asset', payload),
+  revealAsset: (payload) => ipcRenderer.invoke('reveal-asset', payload),
   readAsset: (payload) => ipcRenderer.invoke('read-asset', payload),
   onAppStateUpdated: (handler) => {
     const listener = (_event, payload) => handler(payload)

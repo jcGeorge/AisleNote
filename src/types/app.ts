@@ -675,6 +675,7 @@ export type ImageToolsState = {
 
 export type InlineCropState = {
   active: boolean
+  ratioPresetId: string
   relX: number
   relY: number
   relWidth: number
@@ -743,6 +744,7 @@ export type ContextMenuState =
   | { x: number; y: number; type: 'subtab'; tabId: string; subTabId: string }
   | { x: number; y: number; type: 'home-tab'; tabId: string }
   | { x: number; y: number; type: 'image' }
+  | { x: number; y: number; type: 'media'; kind: 'audio' | 'video'; source: string }
   | {
       x: number
       y: number

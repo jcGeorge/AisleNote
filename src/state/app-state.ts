@@ -1,7 +1,7 @@
 import { DEFAULT_NEWLINE_SHORTCUT_SETTINGS, DEFAULT_SHORTCUTS, normalizeHotkeySettings } from '../hotkeys/shortcuts'
 import {
-  FRONTMATTER_COMPUTED_VALUES,
-  DEFAULT_FRONTMATTER_SETTINGS,
+  createDefaultFrontmatterSettings,
+  getFrontmatterComputedValues,
   normalizeFrontmatterData,
   normalizeFrontmatterSettings,
   splitMarkdownFrontmatter,
@@ -73,7 +73,7 @@ const RAW_DEFAULT_STATE: AppState = {
     shortcuts: DEFAULT_SHORTCUTS,
     newlineShortcuts: DEFAULT_NEWLINE_SHORTCUT_SETTINGS,
   },
-  frontmatter: DEFAULT_FRONTMATTER_SETTINGS,
+  frontmatter: createDefaultFrontmatterSettings(),
   ui: DEFAULT_UI_SETTINGS,
 }
 
@@ -135,7 +135,7 @@ function normalizeFrontmatterComputedFields(value: unknown): FrontmatterComputed
   Object.entries(value as Record<string, unknown>).forEach(([key, entry]) => {
     const normalizedKey = key.trim()
     if (!normalizedKey || typeof entry !== 'string' || entry === 'none') return
-    if (!FRONTMATTER_COMPUTED_VALUES.includes(entry as FrontmatterComputedFieldMap[string])) return
+    if (!getFrontmatterComputedValues().includes(entry as FrontmatterComputedFieldMap[string])) return
     computedFields[normalizedKey] = entry as FrontmatterComputedFieldMap[string]
   })
   return Object.keys(computedFields).length > 0 ? computedFields : undefined

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import type { ImageToolsState, InlineCropState } from '../../types/app'
@@ -14,6 +15,7 @@ const baseImageTools: ImageToolsState = {
 
 const inactiveCrop: InlineCropState = {
   active: false,
+  ratioPresetId: 'freeform',
   relX: 0,
   relY: 0,
   relWidth: 1,
@@ -26,6 +28,7 @@ const inactiveCrop: InlineCropState = {
 
 const activeCrop: InlineCropState = {
   active: true,
+  ratioPresetId: 'youtube',
   relX: 0.1,
   relY: 0.1,
   relWidth: 0.8,
@@ -50,6 +53,7 @@ function renderOverlay(imageTools: ImageToolsState, inlineCrop: InlineCropState 
       onTransformImage={noop}
       onApplyCrop={noop}
       onCancelCrop={noop}
+      onSetCropRatio={noop}
       onBeginResize={noop}
       onBeginCropDrag={noop}
     />,
@@ -89,7 +93,18 @@ describe('ImageToolsOverlay transform menu', () => {
 
     expect(html).toContain('apply')
     expect(html).toContain('cancel')
+    expect(html).toContain('YouTube 16:9')
+    expect(html).toContain('Reels 9:16')
     expect(html).not.toContain('transform')
     expect(html).not.toContain('Rotate clockwise')
+  })
+
+  it('keeps tool button active state border-only with rail-like rounding', () => {
+    const css = readFileSync(new URL('../../styles/editor-shell.css', import.meta.url), 'utf8')
+
+    expect(css).toContain('border-radius: calc(0.42rem * var(--tab-button-scale, 1));')
+    expect(css).toContain('.image-tool-btn:active')
+    expect(css).toContain('border-color: var(--editor-link-text);')
+    expect(css).toContain('background: var(--image-tool-btn-bg) !important;')
   })
 })

@@ -23,6 +23,7 @@ import {
   uncheckedTaskEnterPlugin,
 } from './editor-setup'
 import { terminalBlockLandingPlugin } from './terminal-block-landing'
+import { createMediaLinkPlugin } from './media-link-plugin'
 import { createNotePreviewPlugin, type NotePreviewData } from './note-preview-plugin'
 import {
   getTableOfContentsLinksFromDoc,
@@ -40,6 +41,7 @@ import { measureSlowOperation } from '../performance/performance-logging'
 import {
   importImageBlobAsAssetUrl,
 } from '../markdown/image-asset-registry'
+import { withDefaultInsertedImageDisplayWidth } from './image-insertion'
 import {
   prepareMarkdownForEditorDisplay,
   restoreEditorBlankParagraphs,
@@ -737,6 +739,7 @@ export function useAisleEditors({
           highlightPlugin,
           codeBlockBacktickShortcutPlugin,
           terminalBlockLandingPlugin,
+          createMediaLinkPlugin,
           createCodeBlockControlsPlugin({ pushToast }),
           (context: any) =>
             headingCollapsePlugin(context, {
@@ -777,8 +780,10 @@ export function useAisleEditors({
                 pushToast('could not import image.', 'warning')
                 return
               }
-              callback(assetUrl, blob instanceof File ? blob.name : 'image')
-              window.setTimeout(() => commitCurrentEditorContent(), 30)
+              void withDefaultInsertedImageDisplayWidth(assetUrl, blob, root).then((displayUrl) => {
+                callback(displayUrl, blob instanceof File ? blob.name : 'image')
+                window.setTimeout(() => commitCurrentEditorContent(), 30)
+              })
             })
           },
         },

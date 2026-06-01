@@ -5,13 +5,6 @@ export type HorizontalPaneScrollGeometry = {
   paneRight: number
 }
 
-export type HorizontalPaneFocusScrollGeometry = {
-  currentScrollLeft: number
-  viewportWidth: number
-  paneLeft: number
-  maxScrollLeft: number
-}
-
 const DEFAULT_SCROLLBAR_MIN_THUMB_WIDTH = 48
 
 export type AisleHorizontalScrollbarGeometryInput = {
@@ -111,17 +104,6 @@ export function getScrollLeftToRevealHorizontalPane({
   return Math.max(0, nextScrollLeft)
 }
 
-export function getScrollLeftToFocusHorizontalPane({
-  currentScrollLeft,
-  viewportWidth,
-  paneLeft,
-  maxScrollLeft,
-}: HorizontalPaneFocusScrollGeometry) {
-  const safeMaxScrollLeft = Math.max(0, maxScrollLeft)
-  if (viewportWidth <= 0) return clamp(currentScrollLeft, 0, safeMaxScrollLeft)
-  return clamp(paneLeft, 0, safeMaxScrollLeft)
-}
-
 export function getAisleHorizontalScrollbarGeometry({
   scrollLeft,
   scrollWidth,
@@ -203,11 +185,11 @@ export function scrollAislePaneIntoHorizontalView(scrollNode: HTMLElement, aisle
   }
 
   const paneLeft = scrollNode.scrollLeft + paneRect.left - scrollRect.left
-  const nextScrollLeft = getScrollLeftToFocusHorizontalPane({
+  const nextScrollLeft = getScrollLeftToRevealHorizontalPane({
     currentScrollLeft: scrollNode.scrollLeft,
     viewportWidth: scrollNode.clientWidth,
     paneLeft,
-    maxScrollLeft: scrollNode.scrollWidth - scrollNode.clientWidth,
+    paneRight: paneLeft + paneWidth,
   })
 
   if (Math.abs(nextScrollLeft - scrollNode.scrollLeft) > 0.5) {

@@ -3,16 +3,23 @@ import { Schema } from 'prosemirror-model'
 import { EditorState, TextSelection } from 'prosemirror-state'
 import {
   applyPreviewForwardDeleteBeforeInput,
+  consumeHandledEmbedCaretClick,
   getPastedHttpUrl,
   getPastedUrlLink,
   getEditorPageMovementForEvent,
   getMultiLineDeleteInputForBeforeInputType,
   getInternalNoteLinkWidgetHitFromTarget,
+  getMediaLinkDeleteDirectionForBeforeInput,
+  getMediaLinkDeleteDirectionForKeyEvent,
+  getMediaPlayerPointerAction,
   getPlainTextPointerChromeClosePlan,
   getTableBoundaryCaretDirectionForEvent,
+  getTerminalBlockArrowDirectionForEvent,
   isActiveWysiwygEditorContentTarget,
   isEditorToolbarInteractionTarget,
   isEditorPointerChromeTarget,
+  placeCaretAfterMediaPlayer,
+  runMediaPlayerKeyboardAction,
   runEditorHistoryEvent,
   shouldSkipTableExitRepairTarget,
 } from './useEditorDomEvents'
@@ -54,6 +61,45 @@ function fakeInternalLinkTarget(): Element {
   }
   return {
     closest: (selector: string) => selector === 'a[data-internal-note-link="true"]' ? anchor : null,
+  } as unknown as Element
+}
+
+function fakeMediaTarget(
+  kind: 'audio' | 'video',
+  options: { control?: boolean; title?: boolean; viewport?: boolean; controls?: boolean } = {},
+): Element {
+  const mediaPlayer = fakeMediaPlayer(kind, '5')
+  const control = {}
+  const title = {}
+  const viewport = {}
+  const controls = {}
+  return {
+    closest: (selector: string) => {
+      if (selector.includes('.tabs-media-player')) return mediaPlayer
+      if (options.control && selector.includes('button')) return control
+      if (options.title && selector.includes('.tabs-media-title')) return title
+      if (options.viewport && selector.includes('.tabs-media-viewport')) return viewport
+      if (options.controls && selector.includes('.tabs-media-controls')) return controls
+      return null
+    },
+  } as unknown as Element
+}
+
+function fakeMediaPlayer(kind: 'audio' | 'video', sourceTo: string | null): Element {
+  return {
+    getAttribute: (name: string) =>
+      name === 'data-media-kind' ? kind : name === 'data-media-source-to' ? sourceTo : null,
+  } as unknown as Element
+}
+
+function fakeKeyboardMediaPlayer(onClick: (selector: string) => void, volumeSlider?: HTMLInputElement): Element {
+  return {
+    querySelector: (selector: string) => {
+      if (selector === '.tabs-media-volume-slider') return volumeSlider ?? null
+      return {
+        click: () => onClick(selector),
+      }
+    },
   } as unknown as Element
 }
 
@@ -110,11 +156,156 @@ describe('editor DOM events', () => {
 
   it('treats editor chrome as special pointer targets outside normal text selection', () => {
     expect(isEditorPointerChromeTarget(fakeTarget('.image-tools'))).toBe(true)
+    expect(isEditorPointerChromeTarget(fakeTarget('.media-tools'))).toBe(true)
     expect(isEditorPointerChromeTarget(fakeTarget('.table-tools'))).toBe(true)
     expect(isEditorPointerChromeTarget(fakeTarget('.table-reorder-marker'))).toBe(true)
     expect(isEditorPointerChromeTarget(fakeTarget('.link-prompt'))).toBe(true)
     expect(isEditorPointerChromeTarget(fakeTarget('.aisle-toc-panel'))).toBe(true)
     expect(isEditorPointerChromeTarget(fakeTarget(null))).toBe(false)
+  })
+
+  it('routes primary video player chrome clicks by target region', () => {
+    expect(getMediaPlayerPointerAction(fakeMediaTarget('video'), true)).toMatchObject({ type: 'select-video' })
+    expect(getMediaPlayerPointerAction(fakeMediaTarget('video', { viewport: true }), true)).toMatchObject({
+      type: 'toggle-video',
+    })
+    expect(getMediaPlayerPointerAction(fakeMediaTarget('video', { title: true }), true)).toMatchObject({
+      type: 'hide-video-tools',
+    })
+    expect(getMediaPlayerPointerAction(fakeMediaTarget('video', { controls: true }), true)).toMatchObject({
+      type: 'hide-video-tools',
+    })
+    expect(getMediaPlayerPointerAction(fakeMediaTarget('audio'), true)).toMatchObject({ type: 'close-non-video' })
+    expect(getMediaPlayerPointerAction(fakeMediaTarget('video', { control: true }), true)).toEqual({
+      type: 'ignore-controls',
+    })
+    expect(getMediaPlayerPointerAction(fakeMediaTarget('video'), false)).toEqual({ type: 'ignore-controls' })
+    expect(getMediaPlayerPointerAction(fakeTarget(null), true)).toEqual({ type: 'none' })
+  })
+
+  it('places the cursor after a media widget source range', () => {
+    const doc = previewDeleteSchema.nodes.doc.create(null, [
+      previewDeleteSchema.nodes.paragraph.create(null, previewDeleteSchema.text('song after')),
+    ])
+    const initialState = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, 1),
+    })
+    const view = {
+      state: initialState,
+      dispatch: vi.fn((transaction) => {
+        view.state = view.state.apply(transaction)
+      }),
+      focus: vi.fn(),
+    }
+
+    expect(placeCaretAfterMediaPlayer(view, fakeMediaPlayer('audio', '5'))).toBe(true)
+    expect(view.state.selection.from).toBe(5)
+    expect(view.state.selection.to).toBe(5)
+    expect(view.focus).toHaveBeenCalled()
+  })
+
+  it('routes active media player keyboard shortcuts through player controls', () => {
+    const clickedSelectors: string[] = []
+    const mediaPlayer = fakeKeyboardMediaPlayer((selector) => clickedSelectors.push(selector))
+    const event = {
+      key: ' ',
+      code: 'Space',
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    } as unknown as KeyboardEvent
+
+    expect(runMediaPlayerKeyboardAction(mediaPlayer, event)).toBe(true)
+    expect(clickedSelectors).toEqual(['.tabs-media-play-btn'])
+    expect(event.preventDefault).toHaveBeenCalled()
+    expect(event.stopPropagation).toHaveBeenCalled()
+  })
+
+  it('routes active media player arrow shortcuts through seek controls', () => {
+    const clickedSelectors: string[] = []
+    const mediaPlayer = fakeKeyboardMediaPlayer((selector) => clickedSelectors.push(selector))
+
+    expect(
+      runMediaPlayerKeyboardAction(mediaPlayer, {
+        key: 'ArrowLeft',
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      } as unknown as KeyboardEvent),
+    ).toBe(true)
+    expect(
+      runMediaPlayerKeyboardAction(mediaPlayer, {
+        key: 'ArrowRight',
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      } as unknown as KeyboardEvent),
+    ).toBe(true)
+    expect(clickedSelectors).toEqual(['.tabs-media-back-btn', '.tabs-media-forward-btn'])
+  })
+
+  it('routes active media player vertical arrows through volume control', () => {
+    const volumeSlider = {
+      value: '100',
+      dispatchEvent: vi.fn(),
+    } as unknown as HTMLInputElement
+    const mediaPlayer = fakeKeyboardMediaPlayer(vi.fn(), volumeSlider)
+
+    expect(
+      runMediaPlayerKeyboardAction(mediaPlayer, {
+        key: 'ArrowUp',
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      } as unknown as KeyboardEvent),
+    ).toBe(true)
+    expect(volumeSlider.value).toBe('105')
+    expect(volumeSlider.dispatchEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'input' }))
+
+    expect(
+      runMediaPlayerKeyboardAction(mediaPlayer, {
+        key: 'ArrowDown',
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      } as unknown as KeyboardEvent),
+    ).toBe(true)
+    expect(volumeSlider.value).toBe('100')
+  })
+
+  it('consumes the follow-up click after an embed caret pointerdown', () => {
+    const handledEvent = {
+      cancelable: true,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    } as unknown as Event
+    const idleEvent = {
+      cancelable: true,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    } as unknown as Event
+
+    expect(consumeHandledEmbedCaretClick(handledEvent, true)).toBe(true)
+    expect(handledEvent.preventDefault).toHaveBeenCalled()
+    expect(handledEvent.stopPropagation).toHaveBeenCalled()
+    expect(consumeHandledEmbedCaretClick(idleEvent, false)).toBe(false)
+    expect(idleEvent.preventDefault).not.toHaveBeenCalled()
+    expect(idleEvent.stopPropagation).not.toHaveBeenCalled()
+  })
+
+  it('ignores media widgets without a valid source end position', () => {
+    const doc = previewDeleteSchema.nodes.doc.create(null, [
+      previewDeleteSchema.nodes.paragraph.create(null, previewDeleteSchema.text('song after')),
+    ])
+    const view = {
+      state: EditorState.create({
+        doc,
+        selection: TextSelection.create(doc, 1),
+      }),
+      dispatch: vi.fn(),
+    }
+    const mediaPlayer = {
+      getAttribute: () => null,
+    } as unknown as Element
+
+    expect(placeCaretAfterMediaPlayer(view, mediaPlayer)).toBe(false)
+    expect(view.dispatch).not.toHaveBeenCalled()
   })
 
   it('skips table exit repair for interactive and table targets only', () => {
@@ -123,6 +314,7 @@ describe('editor DOM events', () => {
     expect(shouldSkipTableExitRepairTarget(fakeTarget('table'))).toBe(true)
     expect(shouldSkipTableExitRepairTarget(fakeTarget('.table-tools'))).toBe(true)
     expect(shouldSkipTableExitRepairTarget(fakeTarget('.image-tools'))).toBe(true)
+    expect(shouldSkipTableExitRepairTarget(fakeTarget('.media-tools'))).toBe(true)
     expect(shouldSkipTableExitRepairTarget(fakeTarget('.aisle-toc-panel'))).toBe(true)
     expect(shouldSkipTableExitRepairTarget(fakeTarget(null))).toBe(false)
     expect(shouldSkipTableExitRepairTarget(null)).toBe(false)
@@ -372,6 +564,45 @@ describe('editor DOM events', () => {
         metaKey: true,
       } as KeyboardEvent),
     ).toBeNull()
+  })
+
+  it('maps only plain vertical arrows to terminal block boundary caret movement', () => {
+    expect(getTerminalBlockArrowDirectionForEvent({ key: 'ArrowUp', code: '' } as KeyboardEvent)).toBe('up')
+    expect(getTerminalBlockArrowDirectionForEvent({ key: '', code: 'ArrowDown' } as KeyboardEvent)).toBe('down')
+    expect(getTerminalBlockArrowDirectionForEvent({ key: 'ArrowLeft', code: 'ArrowLeft' } as KeyboardEvent)).toBeNull()
+    expect(
+      getTerminalBlockArrowDirectionForEvent({
+        key: 'ArrowDown',
+        code: 'ArrowDown',
+        shiftKey: true,
+      } as KeyboardEvent),
+    ).toBeNull()
+    expect(
+      getTerminalBlockArrowDirectionForEvent({
+        key: 'ArrowUp',
+        code: 'ArrowUp',
+        altKey: true,
+      } as KeyboardEvent),
+    ).toBeNull()
+  })
+
+  it('maps only plain delete keys and delete beforeinput events to media link deletion', () => {
+    expect(getMediaLinkDeleteDirectionForKeyEvent({ key: 'Backspace', code: '' } as KeyboardEvent)).toBe('backward')
+    expect(getMediaLinkDeleteDirectionForKeyEvent({ key: '', code: 'Delete' } as KeyboardEvent)).toBe('forward')
+    expect(
+      getMediaLinkDeleteDirectionForKeyEvent({
+        key: 'Backspace',
+        code: 'Backspace',
+        altKey: true,
+      } as KeyboardEvent),
+    ).toBeNull()
+    expect(getMediaLinkDeleteDirectionForBeforeInput({ inputType: 'deleteContentBackward' } as InputEvent)).toBe(
+      'backward',
+    )
+    expect(getMediaLinkDeleteDirectionForBeforeInput({ inputType: 'deleteContentForward' } as InputEvent)).toBe(
+      'forward',
+    )
+    expect(getMediaLinkDeleteDirectionForBeforeInput({ inputType: 'insertText' } as InputEvent)).toBeNull()
   })
 
   it('routes normal page movement only from active wysiwyg editor content', () => {

@@ -8,7 +8,7 @@ import {
   STORAGE_SETTINGS_DIR,
   STORAGE_TRASH_DIR,
 } from '../types/storage-schema'
-import { normalizeImageResizeMetadataFragment, splitImageResizeMetadataFromUrl } from '../markdown/image-metadata'
+import { splitAssetMetadataFromUrl } from '../markdown/asset-metadata.js'
 import { normalizePreviewReferenceTokensForMarkdown } from '../markdown/note-context-tokens.js'
 import {
   buildImageAssetUrl,
@@ -225,9 +225,8 @@ function getBinaryFile(fileMap: Map<string, BrowserStoredFile>, path: string): U
 function externalizeMarkdownImages(markdown: string, noteFileRelative: string, assetBank: AssetBank): string {
   return markdown.replace(MARKDOWN_LINK_PATTERN, (fullMatch, imageBang: string, label: string, srcRaw: string) => {
     const src = srcRaw.trim()
-    const { imageUrl, metadataFragment } = splitImageResizeMetadataFromUrl(src)
-    const normalizedMetadataFragment = normalizeImageResizeMetadataFragment(metadataFragment)
-    let assetRelativePath = parseImageAssetUrl(imageUrl)
+    const { assetUrl, metadataFragment: normalizedMetadataFragment } = splitAssetMetadataFromUrl(src)
+    let assetRelativePath = parseImageAssetUrl(assetUrl)
 
     if (assetRelativePath) {
       assetRelativePath = normalizeImageAssetPath(assetRelativePath)
@@ -235,8 +234,8 @@ function externalizeMarkdownImages(markdown: string, noteFileRelative: string, a
       if (bytes) {
         assetBank.files.set(assetRelativePath, bytes)
       }
-    } else if (imageBang === '!' && imageUrl.startsWith('data:image/')) {
-      const decoded = decodeDataUrl(imageUrl)
+    } else if (imageBang === '!' && assetUrl.startsWith('data:image/')) {
+      const decoded = decodeDataUrl(assetUrl)
       if (!decoded) return fullMatch
       assetRelativePath = addAssetToBank(assetBank, decoded.bytes, decoded.extension)
     } else {
@@ -253,20 +252,19 @@ function referenceMarkdownImages(markdown: string, notePath: string, fileMap: Ma
   return markdown.replace(MARKDOWN_LINK_PATTERN, (fullMatch, imageBang: string, label: string, srcRaw: string) => {
     const src = srcRaw.trim()
     if (!src) return fullMatch
-    const { imageUrl, metadataFragment } = splitImageResizeMetadataFromUrl(src)
-    const normalizedMetadataFragment = normalizeImageResizeMetadataFragment(metadataFragment)
-    if (parseImageAssetUrl(imageUrl)) return fullMatch
-    if (imageBang === '!' && imageUrl.startsWith('data:image/')) {
-      const decoded = decodeDataUrl(imageUrl)
+    const { assetUrl, metadataFragment: normalizedMetadataFragment } = splitAssetMetadataFromUrl(src)
+    if (parseImageAssetUrl(assetUrl)) return fullMatch
+    if (imageBang === '!' && assetUrl.startsWith('data:image/')) {
+      const decoded = decodeDataUrl(assetUrl)
       if (!decoded) return fullMatch
       const assetPath = joinPosix(STORAGE_ASSETS_DIR, `asset-${createAssetHash(decoded.bytes)}.${normalizeAssetExtension(decoded.extension)}`)
       setBinaryFile(fileMap, joinPosix(STORAGE_ROOT_DIR, assetPath), decoded.bytes)
       registerAssetBytes(assetPath, decoded.bytes, getMimeTypeFromExtension(decoded.extension))
       return `${imageBang}[${label}](${buildImageAssetUrl(assetPath)}${normalizedMetadataFragment})`
     }
-    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(imageUrl) && !imageUrl.startsWith('file://')) return fullMatch
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(assetUrl) && !assetUrl.startsWith('file://')) return fullMatch
 
-    const assetPath = normalizePosixPath(joinPosix(dirnamePosix(notePath), imageUrl))
+    const assetPath = normalizePosixPath(joinPosix(dirnamePosix(notePath), assetUrl))
     const rootRelativeAssetPath = normalizeImageAssetPath(assetPath.replace(new RegExp(`^${STORAGE_ROOT_DIR}/`), ''))
     if (!imageBang && !rootRelativeAssetPath.startsWith(`${STORAGE_ASSETS_DIR}/`)) return fullMatch
     const assetBytes = getBinaryFile(fileMap, assetPath)

@@ -1,4 +1,5 @@
 import { splitImageResizeMetadataFromUrl } from './image-metadata'
+import { splitAssetMetadataFromUrl } from './asset-metadata.js'
 import {
   buildAssetUrl,
   buildImageAssetUrl,
@@ -44,14 +45,22 @@ function getMimeTypeFromExtension(extension: string): string {
       return 'image/avif'
     case 'pdf':
       return 'application/pdf'
+    case 'aac':
+      return 'audio/aac'
+    case 'flac':
+      return 'audio/flac'
     case 'mp3':
       return 'audio/mpeg'
-    case 'wav':
-      return 'audio/wav'
     case 'm4a':
       return 'audio/mp4'
+    case 'oga':
     case 'ogg':
+    case 'opus':
       return 'audio/ogg'
+    case 'wav':
+      return 'audio/wav'
+    case 'm4v':
+      return 'video/mp4'
     case 'webm':
       return 'video/webm'
     case 'mp4':
@@ -66,9 +75,10 @@ function getMimeTypeFromExtension(extension: string): string {
 }
 
 function getExtensionFromAssetBlob(blob: Blob, fileName = ''): string {
+  const fileMatch = fileName.match(/\.([a-zA-Z0-9]+)$/)
+  if (fileMatch) return normalizeAssetExtension(fileMatch[1] ?? 'bin', 'bin')
   const typeMatch = blob.type.match(/^[a-zA-Z0-9+.-]+\/([a-zA-Z0-9+.-]+)$/)
   if (typeMatch) return normalizeAssetExtension(typeMatch[1], 'bin')
-  const fileMatch = fileName.match(/\.([a-zA-Z0-9]+)$/)
   return normalizeAssetExtension(fileMatch?.[1] ?? 'bin', 'bin')
 }
 
@@ -232,8 +242,8 @@ export function normalizeMarkdownImageSourcesForPersistence(markdown: string): s
 
 export function normalizeMarkdownAssetSourcesForPersistence(markdown: string): string {
   return rewriteMarkdownLinkSources(markdown, (src: string) => {
-    const { imageUrl, metadataFragment } = splitImageResizeMetadataFromUrl(src)
-    return `${normalizeAssetDisplayUrl(imageUrl)}${metadataFragment}`
+    const { assetUrl, metadataFragment } = splitAssetMetadataFromUrl(src)
+    return `${normalizeAssetDisplayUrl(assetUrl)}${metadataFragment}`
   })
 }
 
@@ -250,6 +260,17 @@ export function openAssetUrl(url: string): boolean {
   if (typeof window === 'undefined' || typeof window.open !== 'function') return false
   window.open(displayUrl, '_blank', 'noopener,noreferrer')
   return true
+}
+
+export async function revealAssetUrl(url: string): Promise<{ ok: boolean; error?: string }> {
+  const assetPath = parseAssetUrl(url)
+  if (!assetPath) return { ok: false, error: 'Invalid asset.' }
+
+  if (typeof window !== 'undefined' && typeof window.electronAPI?.revealAsset === 'function') {
+    return window.electronAPI.revealAsset({ url })
+  }
+
+  return { ok: false, error: 'Reveal file is only available in the desktop app.' }
 }
 
 export function revokeImageAssetObjectUrls() {

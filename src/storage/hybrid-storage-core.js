@@ -622,6 +622,8 @@ export function normalizeAssetExtension(raw) {
 export function getExtensionFromMimeType(mimeType) {
   if (mimeType.startsWith('image/')) return normalizeImageExtension(mimeType.slice('image/'.length))
   if (mimeType === 'application/pdf') return 'pdf'
+  if (mimeType === 'audio/aac') return 'aac'
+  if (mimeType === 'audio/flac' || mimeType === 'audio/x-flac') return 'flac'
   if (mimeType === 'audio/mpeg') return 'mp3'
   if (mimeType === 'audio/mp4') return 'm4a'
   if (mimeType === 'audio/wav' || mimeType === 'audio/wave') return 'wav'
@@ -640,10 +642,13 @@ export function getMimeTypeFromExtension(extension) {
   if (normalized === 'svg') return 'image/svg+xml'
   if (normalized === 'png' || normalized === 'gif' || normalized === 'webp' || normalized === 'avif') return `image/${normalized}`
   if (normalized === 'pdf') return 'application/pdf'
+  if (normalized === 'aac') return 'audio/aac'
+  if (normalized === 'flac') return 'audio/flac'
   if (normalized === 'mp3') return 'audio/mpeg'
-  if (normalized === 'wav') return 'audio/wav'
   if (normalized === 'm4a') return 'audio/mp4'
-  if (normalized === 'ogg') return 'audio/ogg'
+  if (normalized === 'oga' || normalized === 'ogg' || normalized === 'opus') return 'audio/ogg'
+  if (normalized === 'wav') return 'audio/wav'
+  if (normalized === 'm4v') return 'video/mp4'
   if (normalized === 'webm') return 'video/webm'
   if (normalized === 'mp4') return 'video/mp4'
   if (normalized === 'mov') return 'video/quicktime'

@@ -1,5 +1,5 @@
-import { useEffect, useRef, type Dispatch, type SetStateAction } from 'react'
-import { buildShortcutFromKeyboardEvent, eventMatchesShortcut } from './shortcuts'
+import { useEffect, useMemo, useRef, type Dispatch, type SetStateAction } from 'react'
+import { buildShortcutFromKeyboardEvent, eventMatchesShortcut, normalizeHotkeySettings } from './shortcuts'
 import type { AppState, ArrangeModeState, ShortcutId, Tab, TipId, ViewMode } from '../types/app'
 
 type UseGlobalHotkeysParams = {
@@ -161,8 +161,9 @@ export function getRailVisibilityShortcutTarget(
   hotkeys: AppState['hotkeys'],
   isMacPlatform: boolean,
 ): 'space' | 'domain' | null {
-  if (eventMatchesShortcut(event, hotkeys.shortcuts.openSpaces, isMacPlatform)) return 'space'
-  if (eventMatchesShortcut(event, hotkeys.shortcuts.openDomains, isMacPlatform)) return 'domain'
+  const normalizedHotkeys = normalizeHotkeySettings(hotkeys)
+  if (eventMatchesShortcut(event, normalizedHotkeys.shortcuts.openSpaces, isMacPlatform)) return 'space'
+  if (eventMatchesShortcut(event, normalizedHotkeys.shortcuts.openDomains, isMacPlatform)) return 'domain'
   return null
 }
 
@@ -239,6 +240,7 @@ export function useGlobalHotkeys({
   selectSubTab,
 }: UseGlobalHotkeysParams) {
   const aisleBracketCycleGuardRef = useRef(createAisleBracketCycleGuard())
+  const normalizedHotkeys = useMemo(() => normalizeHotkeySettings(hotkeys), [hotkeys])
   const actionsRef = useRef({
     setEditingShortcut,
     updateShortcutSetting,
@@ -346,7 +348,7 @@ export function useGlobalHotkeys({
         return
       }
 
-      const isTabTrashShortcut = eventMatchesShortcut(event, hotkeys.shortcuts.toggleTabTrash, isMacPlatform)
+      const isTabTrashShortcut = eventMatchesShortcut(event, normalizedHotkeys.shortcuts.toggleTabTrash, isMacPlatform)
       if (isTabTrashShortcut) {
         event.preventDefault()
         if (viewMode === 'main' || viewMode === 'trash') {
@@ -373,7 +375,7 @@ export function useGlobalHotkeys({
         return
       }
 
-      const railVisibilityShortcutTarget = getRailVisibilityShortcutTarget(event, hotkeys, isMacPlatform)
+      const railVisibilityShortcutTarget = getRailVisibilityShortcutTarget(event, normalizedHotkeys, isMacPlatform)
       if (railVisibilityShortcutTarget === 'space') {
         event.preventDefault()
         actions.toggleSpaceRail()
@@ -389,11 +391,11 @@ export function useGlobalHotkeys({
       if (viewMode !== 'main') return
       if (arrangeMode.active) return
 
-      const isCommandNewTab = eventMatchesShortcut(event, hotkeys.shortcuts.newTab, isMacPlatform)
-      const isCycleNextShortcut = eventMatchesShortcut(event, hotkeys.shortcuts.cycleSubTabNext, isMacPlatform)
-      const isCyclePrevShortcut = eventMatchesShortcut(event, hotkeys.shortcuts.cycleSubTabPrev, isMacPlatform)
-      const isCycleAisleNextShortcut = eventMatchesShortcut(event, hotkeys.shortcuts.cycleAisleNext, isMacPlatform)
-      const isCycleAislePrevShortcut = eventMatchesShortcut(event, hotkeys.shortcuts.cycleAislePrev, isMacPlatform)
+      const isCommandNewTab = eventMatchesShortcut(event, normalizedHotkeys.shortcuts.newTab, isMacPlatform)
+      const isCycleNextShortcut = eventMatchesShortcut(event, normalizedHotkeys.shortcuts.cycleSubTabNext, isMacPlatform)
+      const isCyclePrevShortcut = eventMatchesShortcut(event, normalizedHotkeys.shortcuts.cycleSubTabPrev, isMacPlatform)
+      const isCycleAisleNextShortcut = eventMatchesShortcut(event, normalizedHotkeys.shortcuts.cycleAisleNext, isMacPlatform)
+      const isCycleAislePrevShortcut = eventMatchesShortcut(event, normalizedHotkeys.shortcuts.cycleAislePrev, isMacPlatform)
 
       if (isCycleAisleNextShortcut || isCycleAislePrevShortcut) {
         event.preventDefault()
@@ -461,22 +463,34 @@ export function useGlobalHotkeys({
         return
       }
 
-      const isCommandNewSubTab = eventMatchesShortcut(event, hotkeys.shortcuts.newSubTab, isMacPlatform)
+      const isCommandNewSubTab = eventMatchesShortcut(event, normalizedHotkeys.shortcuts.newSubTab, isMacPlatform)
       if (isCommandNewSubTab) {
         event.preventDefault()
         actions.addSubTab()
         return
       }
 
-      const isFormatStrikethroughShortcut = eventMatchesShortcut(event, hotkeys.shortcuts.formatStrikethrough, isMacPlatform)
+      const isFormatStrikethroughShortcut = eventMatchesShortcut(
+        event,
+        normalizedHotkeys.shortcuts.formatStrikethrough,
+        isMacPlatform,
+      )
       if (isFormatStrikethroughShortcut) {
         event.preventDefault()
         actions.formatStrikethrough()
         return
       }
 
-      const isCycleParentNextShortcut = eventMatchesShortcut(event, hotkeys.shortcuts.cycleParentTabNext, isMacPlatform)
-      const isCycleParentPrevShortcut = eventMatchesShortcut(event, hotkeys.shortcuts.cycleParentTabPrev, isMacPlatform)
+      const isCycleParentNextShortcut = eventMatchesShortcut(
+        event,
+        normalizedHotkeys.shortcuts.cycleParentTabNext,
+        isMacPlatform,
+      )
+      const isCycleParentPrevShortcut = eventMatchesShortcut(
+        event,
+        normalizedHotkeys.shortcuts.cycleParentTabPrev,
+        isMacPlatform,
+      )
       if (isCycleParentNextShortcut || isCycleParentPrevShortcut) {
         event.preventDefault()
         const direction = isCycleParentPrevShortcut ? -1 : 1
@@ -568,7 +582,7 @@ export function useGlobalHotkeys({
     primeTabs,
     editingShortcut,
     isMacPlatform,
-    hotkeys,
+    normalizedHotkeys,
     deleteSubtabShortcutEnabled,
     scratchpadActive,
     scratchpadDeleteAisleShortcutEnabled,

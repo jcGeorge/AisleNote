@@ -230,9 +230,21 @@ describe('mergeMarkdownFolderImport', () => {
     zip.file('myImports/Domain/Space/Zip Parent/home.md', '![img](./image.png)\n[[Target|target]]\n[go](./target.md)')
     zip.file('myImports/Domain/Space/Zip Parent/target.md', 'target body')
     zip.file('myImports/Domain/Space/Zip Parent/image.png', new Uint8Array([1, 2, 3]))
+    zip.file('myImports/Domain/Space/Zip Parent/song.opus', new Uint8Array([4, 5, 6]))
+    zip.file('myImports/Domain/Space/Zip Parent/clip.m4v', new Uint8Array([7, 8, 9]))
     const parsed = await parseMarkdownFolderZip(await zip.generateAsync({ type: 'uint8array' }))
     expect(parsed.ok).toBe(true)
     if (!parsed.ok) return
+    expect(parsed.assets.get('myImports/Domain/Space/Zip Parent/song.opus')).toMatchObject({
+      name: 'song.opus',
+      mimeType: 'audio/ogg',
+      extension: 'opus',
+    })
+    expect(parsed.assets.get('myImports/Domain/Space/Zip Parent/clip.m4v')).toMatchObject({
+      name: 'clip.m4v',
+      mimeType: 'video/mp4',
+      extension: 'm4v',
+    })
 
     const importedAssetUrl = buildAssetUrl('assets/from-zip.png')
     const { state, summary } = await mergeMarkdownFolderImport(createState(), parsed.payload, {

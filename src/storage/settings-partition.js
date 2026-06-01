@@ -66,10 +66,37 @@ const DEFAULT_NEWLINE_SHORTCUT_SETTINGS = {
   ],
 }
 
-const DEFAULT_HOTKEY_SETTINGS = {
-  shortcuts: DEFAULT_COMMAND_SHORTCUTS,
-  newlineShortcuts: DEFAULT_NEWLINE_SHORTCUT_SETTINGS,
-}
+const NEWLINE_OPERATION_IDS = new Set([
+  'normalNewLine',
+  'task',
+  'dashList',
+  'bulletList',
+  'numberedList',
+  'aisleLeft',
+  'aisleRight',
+  'horizontalLine',
+  'codeBlock',
+  'inlineCode',
+  'blockQuote',
+  'blockIndent',
+  'strikethrough',
+  'operationsMenu',
+])
+
+const SHORTCUT_MENU_ELIGIBLE_OPERATION_IDS = new Set([
+  'task',
+  'dashList',
+  'bulletList',
+  'numberedList',
+  'aisleLeft',
+  'aisleRight',
+  'horizontalLine',
+  'codeBlock',
+  'inlineCode',
+  'blockQuote',
+  'blockIndent',
+  'strikethrough',
+])
 
 const DEFAULT_SYNCED_UI_SETTINGS = {
   ...DEFAULT_SIMPLE_SYNCED_UI_SETTINGS,
@@ -110,6 +137,69 @@ function optionalDataSettingsSection(value, fallback) {
 
 function optionalArray(value, fallback) {
   return Array.isArray(value) ? value : fallback
+}
+
+function normalizeShortcutValue(raw, fallback) {
+  if (typeof raw !== 'string') return fallback
+  const trimmed = raw.trim()
+  return trimmed.length > 0 ? trimmed : fallback
+}
+
+function normalizeNewlineOperation(value, fallback) {
+  return typeof value === 'string' && NEWLINE_OPERATION_IDS.has(value) ? value : fallback
+}
+
+function normalizeShortcutMenuOperation(value) {
+  return typeof value === 'string' && SHORTCUT_MENU_ELIGIBLE_OPERATION_IDS.has(value) ? value : null
+}
+
+function normalizeNewlineShortcutSettings(raw) {
+  if (!isRecord(raw)) return DEFAULT_NEWLINE_SHORTCUT_SETTINGS
+  const rawShortcutMap = isRecord(raw.shortcuts) ? raw.shortcuts : {}
+  const rawMenuOperations = Array.isArray(raw.menuOperations) ? raw.menuOperations : []
+  const menuOperations = rawMenuOperations.map(normalizeShortcutMenuOperation).filter(Boolean)
+  const dedupedMenuOperations = Array.from(new Set(menuOperations)).slice(0, 10)
+  const normalizedMenuOperations =
+    dedupedMenuOperations.length > 0
+      ? [...dedupedMenuOperations]
+      : [...DEFAULT_NEWLINE_SHORTCUT_SETTINGS.menuOperations]
+  if (!normalizedMenuOperations.includes('strikethrough') && normalizedMenuOperations.length < 10) {
+    normalizedMenuOperations.push('strikethrough')
+  }
+
+  return {
+    shortcuts: {
+      controlEnter: normalizeNewlineOperation(
+        rawShortcutMap.controlEnter,
+        DEFAULT_NEWLINE_SHORTCUT_SETTINGS.shortcuts.controlEnter,
+      ),
+      shiftEnter: normalizeNewlineOperation(
+        rawShortcutMap.shiftEnter,
+        DEFAULT_NEWLINE_SHORTCUT_SETTINGS.shortcuts.shiftEnter,
+      ),
+      commandEnter: normalizeNewlineOperation(
+        rawShortcutMap.commandEnter,
+        DEFAULT_NEWLINE_SHORTCUT_SETTINGS.shortcuts.commandEnter,
+      ),
+    },
+    menuOperations: normalizedMenuOperations,
+  }
+}
+
+function normalizeShortcutSettings(raw) {
+  const source = isRecord(raw) ? raw : {}
+  const rawShortcuts = isRecord(source.shortcuts) ? source.shortcuts : {}
+  const shortcuts = Object.fromEntries(
+    Object.entries(DEFAULT_COMMAND_SHORTCUTS).map(([key, value]) => [
+      key,
+      normalizeShortcutValue(rawShortcuts[key], value),
+    ]),
+  )
+
+  return {
+    shortcuts,
+    newlineShortcuts: normalizeNewlineShortcutSettings(source.newlineShortcuts),
+  }
 }
 
 function optionalScratchpadAisleLimit(value, fallback) {
@@ -310,7 +400,7 @@ export function extractSyncedUiSettings(rawUi) {
 export function extractSyncedGlobalSettings(appState) {
   return {
     theme: normalizeStorageTheme(appState?.theme),
-    hotkeys: isRecord(appState?.hotkeys) ? appState.hotkeys : DEFAULT_HOTKEY_SETTINGS,
+    hotkeys: normalizeShortcutSettings(appState?.hotkeys),
     ui: extractSyncedUiSettings(appState?.ui),
     frontmatter: isRecord(appState?.frontmatter) ? appState.frontmatter : undefined,
   }
@@ -343,7 +433,7 @@ export function extractAppearanceSettings(appState) {
 }
 
 export function extractShortcutSettings(appState) {
-  return isRecord(appState?.hotkeys) ? appState.hotkeys : DEFAULT_HOTKEY_SETTINGS
+  return normalizeShortcutSettings(appState?.hotkeys)
 }
 
 export function extractFrontmatterSettings(appState) {
@@ -476,9 +566,7 @@ export function extractEditorState(appState) {
 
 export function buildSyncedSettingsFromSplitFiles(parts) {
   const appSettings = normalizePortableAppSettings(parts?.appSettings)
-  const shortcutSettings = isRecord(appSettings.hotkeys)
-    ? appSettings.hotkeys
-    : DEFAULT_HOTKEY_SETTINGS
+  const shortcutSettings = normalizeShortcutSettings(appSettings.hotkeys)
   const frontmatterSettings = isRecord(parts?.frontmatterSettings) ? parts.frontmatterSettings : {}
   const uiPreferences = isRecord(appSettings.ui)
     ? appSettings.ui

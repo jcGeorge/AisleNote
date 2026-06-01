@@ -131,6 +131,8 @@ Markdown references assets with relative paths. Runtime/editor layers may inline
 
 Active asset cleanup uses the same save pass that writes Markdown. Each save rebuilds the expected file list from live notes, aisle bodies, unlinked note bodies, and trash/deleted content, then prunes files in `notes/` that are not in that expected set. Image resize changes only the persisted image metadata fragment and does not create a new image file. Image crop and transform operations can create immediate preview assets, but any unreferenced intermediate assets in the active `notes/assets/` folder are removed by the next save/prune pass.
 
+Video resize, rotate, flip, and crop operations are metadata-only. They keep the original asset file and store display metadata in a `#tabs-media=...` URL fragment on the Markdown link. Crop rectangles use normalized source coordinates, so no resized or transcoded video copy is created by default.
+
 Recovery snapshots are exact historical copies of `notes/`, including the asset files from that moment. They are stored outside the active `notes/` tree and pruned by retention policy rather than sharing the latest active asset versions.
 
 Example:

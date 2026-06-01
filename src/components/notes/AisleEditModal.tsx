@@ -21,7 +21,7 @@ import { createNoteAisle } from '../../state/workspace'
 import type { ResolvedNoteAisle } from '../../types/app'
 import { AisleHorizontalScrollbar } from './AisleHorizontalScrollbar'
 import { getHorizontalDragAutoScrollDelta } from './aisle-horizontal-scroll'
-import { MarkdownPreviewParagraph } from './markdown-preview-components'
+import { MarkdownPreviewLink, MarkdownPreviewParagraph } from './markdown-preview-components'
 
 const AISLE_DRAG_MIME = 'application/x-tabs-aisle-id'
 const EMPTY_STAGED_DECOUPLE_IDS: string[] = []
@@ -42,6 +42,7 @@ const transformAislePreviewUrl = (url: string, key: string) => {
 }
 
 const aislePreviewMarkdownComponents = {
+  a: MarkdownPreviewLink,
   p: MarkdownPreviewParagraph,
   img: ({ node, ...props }: ImgHTMLAttributes<HTMLImageElement> & { node?: unknown }) => {
     void node

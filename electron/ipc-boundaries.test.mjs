@@ -401,9 +401,13 @@ describe('electron ipc boundaries', () => {
       const markdownRoot = path.join(userDataPath, 'markdown-import')
       const homePath = path.join(markdownRoot, 'Domain', 'Space', 'Parent', 'home.md')
       const assetPath = path.join(markdownRoot, 'Domain', 'Space', 'Parent', 'image.png')
+      const audioAssetPath = path.join(markdownRoot, 'Domain', 'Space', 'Parent', 'mix.flac')
+      const videoAssetPath = path.join(markdownRoot, 'Domain', 'Space', 'Parent', 'clip.m4v')
       mkdirSync(path.dirname(homePath), { recursive: true })
       writeFileSync(homePath, '# Home', 'utf8')
       writeFileSync(assetPath, Buffer.from([1, 2, 3]))
+      writeFileSync(audioAssetPath, Buffer.from([4, 5, 6]))
+      writeFileSync(videoAssetPath, Buffer.from([7, 8, 9]))
       const ipcMain = createIpcMain()
       registerFileIpc({
         ipcMain,
@@ -427,6 +431,19 @@ describe('electron ipc boundaries', () => {
       })
       expect(assetResult).toMatchObject({ ok: true, fileName: 'image.png', mimeType: 'image/png' })
       expect(Buffer.from(assetResult.bytes)).toEqual(Buffer.from([1, 2, 3]))
+
+      await expect(
+        ipcMain.handlers.get('read-folder-import-asset')(null, {
+          sourceId: result.sourceId,
+          relativePath: 'Domain/Space/Parent/mix.flac',
+        }),
+      ).resolves.toMatchObject({ ok: true, fileName: 'mix.flac', mimeType: 'audio/flac' })
+      await expect(
+        ipcMain.handlers.get('read-folder-import-asset')(null, {
+          sourceId: result.sourceId,
+          relativePath: 'Domain/Space/Parent/clip.m4v',
+        }),
+      ).resolves.toMatchObject({ ok: true, fileName: 'clip.m4v', mimeType: 'video/mp4' })
 
       const symlinkRoot = path.join(userDataPath, 'symlink-import')
       mkdirSync(symlinkRoot, { recursive: true })
@@ -1029,7 +1046,7 @@ describe('electron ipc boundaries', () => {
     const userDataPath = mkdtempSync(path.join(os.tmpdir(), 'tabs-ipc-user-data-'))
     try {
       const ipcMain = createIpcMain()
-      const shell = { openPath: vi.fn(async () => '') }
+      const shell = { openPath: vi.fn(async () => ''), showItemInFolder: vi.fn() }
       registerStorageIpc({
         ipcMain,
         app: { getPath: () => userDataPath },
@@ -1060,6 +1077,14 @@ describe('electron ipc boundaries', () => {
 
       await expect(ipcMain.handlers.get('open-asset')(null, { url: imported.url })).resolves.toEqual({ ok: true })
       expect(shell.openPath).toHaveBeenCalledWith(path.join(userDataPath, 'notes', imported.assetPath))
+      await expect(
+        ipcMain.handlers.get('reveal-asset')(null, { url: `${imported.url}#tabs-media=speed=1.5` }),
+      ).resolves.toEqual({ ok: true })
+      expect(shell.showItemInFolder).toHaveBeenCalledWith(path.join(userDataPath, 'notes', imported.assetPath))
+      await expect(ipcMain.handlers.get('reveal-asset')(null, { url: 'tabs-asset:///assets/missing.mp3' })).resolves.toEqual({
+        ok: false,
+        error: 'Asset does not exist.',
+      })
     } finally {
       rmSync(userDataPath, { recursive: true, force: true })
     }

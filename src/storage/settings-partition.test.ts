@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildSyncedSettingsFromSplitFiles,
   createDefaultPortableAppSettings,
   parsePortableAppSettingsJson,
   parseStrictPortableAppSettingsJson,
@@ -93,5 +94,59 @@ describe('portable app settings parsing', () => {
         theme: 'dawn',
       },
     })
+  })
+
+  it('fills missing command shortcuts when only newline shortcuts are present', () => {
+    const settings = parsePortableAppSettingsJson(JSON.stringify({
+      theme: 'dawn',
+      hotkeys: {
+        newlineShortcuts: {
+          shortcuts: {
+            controlEnter: 'horizontalLine',
+          },
+        },
+      },
+      ui: {
+        settingsSection: 'hotkeys',
+      },
+    }))
+
+    expect(settings).toMatchObject({
+      ok: true,
+      settings: {
+        hotkeys: {
+          shortcuts: {
+            toggleTabTrash: 'Mod+T',
+            newTab: 'Mod+Shift+N',
+          },
+          newlineShortcuts: {
+            shortcuts: {
+              controlEnter: 'horizontalLine',
+              shiftEnter: 'task',
+            },
+          },
+        },
+      },
+    })
+  })
+
+  it('normalizes split-file hotkeys before hydrating app state', () => {
+    const syncedSettings = buildSyncedSettingsFromSplitFiles({
+      appSettings: {
+        theme: 'dawn',
+        hotkeys: {
+          newlineShortcuts: {
+            menuOperations: ['blockQuote'],
+          },
+        },
+        ui: {
+          settingsSection: 'hotkeys',
+        },
+      },
+    })
+
+    expect(syncedSettings.hotkeys.shortcuts.toggleTabTrash).toBe('Mod+T')
+    expect(syncedSettings.hotkeys.shortcuts.cycleAisleNext).toBe('Alt+]')
+    expect(syncedSettings.hotkeys.newlineShortcuts.menuOperations).toEqual(['blockQuote', 'strikethrough'])
   })
 })

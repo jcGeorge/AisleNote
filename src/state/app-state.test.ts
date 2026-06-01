@@ -202,6 +202,26 @@ describe('app state normalization', () => {
     expect(tooLarge.ui.scratchpadAisleLimit).toBe(32)
   })
 
+  it('fills default command shortcuts when saved hotkeys only contain newline shortcuts', () => {
+    const state = parseModernState({
+      hotkeys: {
+        newlineShortcuts: {
+          shortcuts: {
+            controlEnter: 'blockQuote',
+          },
+          menuOperations: ['blockQuote'],
+        },
+      },
+    })
+
+    expect(state.hotkeys.shortcuts.toggleTabTrash).toBe(DEFAULT_SHORTCUTS.toggleTabTrash)
+    expect(state.hotkeys.shortcuts.openSpaces).toBe(DEFAULT_SHORTCUTS.openSpaces)
+    expect(state.hotkeys.newlineShortcuts.shortcuts.controlEnter).toBe('blockQuote')
+    expect(state.hotkeys.newlineShortcuts.shortcuts.shiftEnter).toBe(
+      DEFAULT_NEWLINE_SHORTCUT_SETTINGS.shortcuts.shiftEnter,
+    )
+  })
+
   it('rejects legacy spaces-only app data', () => {
     const state = parseSavedState(
       JSON.stringify({

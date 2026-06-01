@@ -7,10 +7,15 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
-import { Editor } from '@toast-ui/editor'
+import type { Editor } from '@toast-ui/editor'
 import { TextSelection } from 'prosemirror-state'
 import '@toast-ui/editor/dist/toastui-editor.css'
 import './App.css'
+import {
+  cancelScheduledAisleFocusScroll,
+  scheduleFocusedAisleScroll,
+  type ScheduledAisleFocusScroll,
+} from './app/focused-aisle-scroll'
 import { useActiveNoteModel } from './app/useActiveNoteModel'
 import {
   getArrangeDestinationPromptMessage,
@@ -41,6 +46,7 @@ import { sortNamedItems, sortSubTabs, sortTabs } from './arrange/tab-sort'
 import { useArrangeMode } from './arrange/useArrangeMode'
 import { getToggledRailVisibilitySettings, type RailVisibilityTarget } from './navigation/rail-visibility'
 import { ImageToolsOverlay } from './components/editor/ImageToolsOverlay'
+import { MediaToolsOverlay } from './components/editor/MediaToolsOverlay'
 import { FindReplacePanel } from './components/editor/FindReplacePanel'
 import { LegacyEditorShell } from './components/editor/LegacyEditorShell'
 import { NoteMentionMenu } from './components/editor/NoteMentionMenu'
@@ -132,9 +138,12 @@ import { useEditorToolbarState } from './editor/useEditorToolbarState'
 import { readClipboardMarkdown } from './editor/clipboard-paste-markdown'
 import { DEFAULT_TOOLBAR_LAYOUT_ID, resolveToolbarLayout } from './editor/toolbar-layouts'
 import { useImageTools } from './editor/useImageTools'
+import { useMediaTools } from './editor/useMediaTools'
 import { useTableControls } from './editor/useTableControls'
 import { selectFirstTableCellAfterPosition } from './editor/table-editing'
 import { clearEditorMarkdownForDisplay, getEditorMarkdownForPersistence, setEditorMarkdownForDisplay } from './editor/editor-markdown-display'
+import { withDefaultInsertedImageDisplayWidth } from './editor/image-insertion'
+import { buildMediaMarkdownLink, insertAssetLinksIntoWysiwygView } from './editor/media-file-insertion'
 import type { MultiLineHeadingLevel } from './editor/multiline-format-operations'
 import type { MultiLineListOperation } from './editor/multiline-list-operations'
 import { useMultilineEditing } from './editor/useMultilineEditing'
@@ -145,8 +154,13 @@ import {
 } from './editor/task-behavior'
 import { buildFrontmatterModalDraftForAisle } from './frontmatter/frontmatter-state'
 import { getCycledAisleTarget, useGlobalHotkeys } from './hotkeys/useGlobalHotkeys'
+import { normalizeHotkeySettings } from './hotkeys/shortcuts'
 import { normalizeMarkdownForPersistence } from './markdown/markdown-utils'
-import { importBlobAsAssetUrl, importImageBlobAsAssetUrl } from './markdown/image-asset-registry'
+import { importBlobAsAssetUrl, importImageBlobAsAssetUrl, revealAssetUrl } from './markdown/image-asset-registry'
+import {
+  MEDIA_REVEAL_CONTEXT_MENU_EVENT,
+  type MediaRevealContextMenuDetail,
+} from './media/media-context-menu'
 import { useNavigationHistory } from './navigation/useNavigationHistory'
 import { useAppNavigationActions } from './navigation/useAppNavigationActions'
 import {
@@ -158,7 +172,6 @@ import {
 import { buildNoteLocationKey, getLocationInfo, listNoteLocationsForBody } from './notes/note-locations'
 import { getLinkedAisleIdsForNoteBody } from './notes/aisle-links'
 import { openExternalWebUrl } from './notes/external-links'
-import { escapeMarkdownLinkLabel } from './notes/note-references'
 import { getNoteCopyCreatedToast } from './notes/copy-reference-labels'
 import {
   buildDefaultNoteReferenceDraft,
@@ -401,8 +414,11 @@ function App() {
   const aisleScrollRef = useRef<HTMLDivElement | null>(null)
   const aisleHorizontalScrollByBodyRef = useRef<Map<string, number>>(new Map())
   const pendingScrollToAisleIdRef = useRef<string | null>(null)
+  const pendingAisleFocusScrollRef = useRef<ScheduledAisleFocusScroll>({
+    firstFrameId: null,
+    followupFrameId: null,
+  })
   const pendingFocusToAisleIdRef = useRef<string | null>(null)
-  const pendingAisleCycleScrollFrameRef = useRef<number | null>(null)
   const pendingMouseAisleActivationRef = useRef<{ aisleId: string; settled: boolean } | null>(null)
   const pendingMouseAisleCycleFrameRef = useRef<number | null>(null)
   const pendingNavigationHeadingRef = useRef<NonNullable<NoteNavigationTarget['heading']> | null>(null)
@@ -424,6 +440,7 @@ function App() {
   const toastsRef = useRef<ToastState[]>([])
   const closeImageToolsRef = useRef<() => void>(() => {})
   const closeImageToolsIfSelectedImageMissingRef = useRef<() => void>(() => {})
+  const closeMediaToolsRef = useRef<() => void>(() => {})
   const closeTableControlsRef = useRef<() => void>(() => {})
   const closeEditorEphemeraRef = useRef<(options?: CloseEditorEphemeraOptions) => void>(() => {})
   const activateAisleEditorRef = useRef<
@@ -515,11 +532,26 @@ function App() {
     }
   }, [contextMenu])
 
-  useEffect(() => () => {
-    if (pendingAisleCycleScrollFrameRef.current !== null) {
-      window.cancelAnimationFrame(pendingAisleCycleScrollFrameRef.current)
-      pendingAisleCycleScrollFrameRef.current = null
+  useEffect(() => {
+    const openMediaContextMenu = (event: Event) => {
+      const detail = (event as CustomEvent<MediaRevealContextMenuDetail>).detail
+      if (!detail?.source) return
+      closeEditorEphemeraRef.current()
+      setMenuOpen(false)
+      setContextMenu({
+        type: 'media',
+        x: detail.x,
+        y: detail.y,
+        kind: detail.kind,
+        source: detail.source,
+      })
     }
+    window.addEventListener(MEDIA_REVEAL_CONTEXT_MENU_EVENT, openMediaContextMenu)
+    return () => window.removeEventListener(MEDIA_REVEAL_CONTEXT_MENU_EVENT, openMediaContextMenu)
+  }, [])
+
+  useEffect(() => () => {
+    cancelScheduledAisleFocusScroll(pendingAisleFocusScrollRef.current, window)
     if (pendingMouseAisleCycleFrameRef.current !== null) {
       window.cancelAnimationFrame(pendingMouseAisleCycleFrameRef.current)
       pendingMouseAisleCycleFrameRef.current = null
@@ -689,6 +721,7 @@ function App() {
     )
   }, [activeNoteAisles, state.noteAisleBodies])
   const activeToolbarLayout = resolveToolbarLayout(state.ui.toolbarLayouts, activeToolbarLayoutId)
+  const normalizedHotkeys = useMemo(() => normalizeHotkeySettings(state.hotkeys), [state.hotkeys])
 
   const setActiveToolbarLayoutId = useCallback((layoutId: string) => {
     const nextLayoutId = layoutId.trim() || DEFAULT_TOOLBAR_LAYOUT_ID
@@ -861,6 +894,22 @@ function App() {
     }
     return true
   }, [activeNoteBodyId])
+
+  const scheduleAisleFocusScroll = useCallback((aisleId: string, options?: { onInvalidAisle?: (aisleId: string) => void }) => {
+    const scheduledNoteBodyId = activeNoteBodyIdRef.current || activeNoteBodyId
+    if (!scheduledNoteBodyId) return
+    pendingScrollToAisleIdRef.current = aisleId
+    scheduleFocusedAisleScroll({
+      scheduled: pendingAisleFocusScrollRef.current,
+      aisleId,
+      noteBodyId: scheduledNoteBodyId,
+      scheduler: window,
+      getCurrentNoteBodyId: () => activeNoteBodyIdRef.current,
+      hasAisle: (targetAisleId) => activeAisleIdsRef.current.includes(targetAisleId),
+      scrollAisleIntoHorizontalView,
+      onInvalidAisle: options?.onInvalidAisle,
+    })
+  }, [activeNoteBodyId, scrollAisleIntoHorizontalView])
 
   useEffect(() => {
     const scrollNode = aisleScrollRef.current
@@ -2175,10 +2224,29 @@ function App() {
   const returnToImageToolsMenu = imageToolsController.returnToStartMenu
   const transformSelectedImage = imageToolsController.transformSelectedImage
   const cancelInlineCrop = imageToolsController.cancelCrop
+  const setInlineCropRatio = imageToolsController.setCropRatio
   const applyInlineCrop = imageToolsController.applyCrop
   const beginInlineCropMouseDrag = imageToolsController.beginCropMouseDrag
   closeImageToolsRef.current = closeImageTools
   closeImageToolsIfSelectedImageMissingRef.current = closeImageToolsIfSelectedImageMissing
+
+  const mediaToolsController = useMediaTools({
+    editorRef,
+    editorEventRootRef,
+    activateEditorFromEventTarget,
+    commitCurrentEditorContent,
+    commitActiveEditorMarkdownNow,
+  })
+  const mediaTools = mediaToolsController.mediaTools
+  const activeMediaRef = mediaToolsController.activeMediaRef
+  const closeMediaTools = mediaToolsController.close
+  const refreshMediaToolsPosition = mediaToolsController.refreshPosition
+  const selectMediaForTools = mediaToolsController.select
+  const beginMediaResize = mediaToolsController.beginResize
+  const openMediaTransformMenu = mediaToolsController.openTransformMenu
+  const returnToMediaToolsMenu = mediaToolsController.returnToStartMenu
+  const transformSelectedMedia = mediaToolsController.transformSelectedMedia
+  closeMediaToolsRef.current = closeMediaTools
 
   const tableControlsController = useTableControls({
     visible: viewMode === 'main' && !aisleEditModalOpen,
@@ -2201,7 +2269,10 @@ function App() {
           setToolbarPopoverPosition({ copy: null, heading: null })
         },
         closeContextMenu: () => setContextMenu(null),
-        closeImageTools: () => closeImageToolsRef.current(),
+        closeImageTools: () => {
+          closeImageToolsRef.current()
+          closeMediaToolsRef.current()
+        },
         closeTableTools: () => closeTableControlsRef.current(),
         closeTableOfContents: () => setTableOfContentsPanels(null),
         closeShortcutMenu: (shortcutOptions) => closeShortcutMenuRef.current(shortcutOptions),
@@ -2559,6 +2630,7 @@ function App() {
     const result = await readClipboardMarkdown({
       mode: action === 'paste' ? 'rich' : 'plainText',
       importImageBlobAsAssetUrl,
+      importBlobAsAssetUrl,
     })
     if (!result.ok) {
       if (result.reason === 'unavailable') {
@@ -2678,21 +2750,52 @@ function App() {
     input.onchange = () => {
       const file = input.files?.[0]
       if (!file) return
-      void importBlobAsAssetUrl(file, file.name).then((assetUrl) => {
+      const insertImageAttachment = async () => {
+        const assetUrl = await importImageBlobAsAssetUrl(file, file.name)
+        if (!assetUrl) {
+          pushToast('could not import attachment.', 'warning')
+          return
+        }
+        const view = getWysiwygView(currentEditor)
+        const displayUrl = await withDefaultInsertedImageDisplayWidth(
+          assetUrl,
+          file,
+          view?.dom instanceof HTMLElement ? view.dom : null,
+        )
+        currentEditor.focus()
+        runEditorCommandOperation(editorOperationRuntime, 'addImage', { imageUrl: displayUrl, altText: file.name })
+      }
+
+      const insertLinkedAttachment = async () => {
+        const assetUrl = await importBlobAsAssetUrl(file, file.name)
         if (!assetUrl) {
           pushToast('could not import attachment.', 'warning')
           return
         }
         currentEditor.focus()
-        if (file.type.startsWith('image/')) {
-          runEditorCommandOperation(editorOperationRuntime, 'addImage', { imageUrl: assetUrl, altText: file.name })
-        } else {
-          const label = escapeMarkdownLinkLabel(file.name.trim() || 'attachment')
-          insertEditorTextOperation(editorOperationRuntime, `[${label}](${assetUrl})`)
+        if (insertAssetLinksIntoWysiwygView(getWysiwygView(currentEditor), [
+          { label: file.name.trim() || 'attachment', url: assetUrl },
+        ])) {
+          commitActiveEditorMarkdownNow(currentEditor)
+          return
         }
-      })
+        insertEditorTextOperation(editorOperationRuntime, buildMediaMarkdownLink(file.name.trim() || 'attachment', assetUrl))
+      }
+
+      void (file.type.startsWith('image/') ? insertImageAttachment() : insertLinkedAttachment())
     }
     input.click()
+  }
+
+  const revealMediaFileFromContext = () => {
+    if (!contextMenu || contextMenu.type !== 'media') return
+    const source = contextMenu.source
+    setContextMenu(null)
+    closeEditorEphemeraRef.current()
+    void revealAssetUrl(source).then((result) => {
+      if (result.ok) return
+      pushToast(result.error || 'could not reveal file.', 'warning')
+    })
   }
 
   const openEditorContextLink = () => {
@@ -3025,7 +3128,7 @@ function App() {
 
   const openShortcutMenu = () => {
     if (viewMode !== 'main' || !editorRef.current) return
-    const operations = stateRef.current.hotkeys.newlineShortcuts.menuOperations
+    const operations = normalizeHotkeySettings(stateRef.current.hotkeys).newlineShortcuts.menuOperations
     closeEditorEphemeraRef.current()
     setShortcutMenuActiveIndex(0)
     setShortcutMenu({
@@ -3127,7 +3230,10 @@ function App() {
     commitCurrentEditorContent,
     clearActiveNoteContent,
     flushPendingContent,
-    closeImageTools,
+    closeImageTools: () => {
+      closeImageTools()
+      closeMediaTools()
+    },
     pushToast,
     maybeShowCompletedTaskUndoHint,
     trackCompletedTaskQuickDelete,
@@ -3138,20 +3244,24 @@ function App() {
     viewMode,
     displayContent,
     activeNoteAisleCount: activeNoteAisles.length,
-    hotkeys: state.hotkeys,
+    hotkeys: normalizedHotkeys,
     isMacPlatform,
     editorEventRootRef,
     editorRef,
     activeImageRef,
+    activeMediaRef,
     multiLineEditRef,
     activateEditorFromEventTarget,
     clearMultiLineEdit,
     closeImageTools,
+    closeMediaTools,
     closeLinkPrompt,
     isLinkPromptOpen: () => false,
     isImageCropActive,
     selectImageForTools,
+    selectMediaForTools,
     refreshImageToolsPosition,
+    refreshMediaToolsPosition,
     copySelectedImageToClipboard,
     deleteActiveEditorImageNode,
     commitActiveEditorMarkdownNow,
@@ -3487,11 +3597,6 @@ function App() {
       return
     }
 
-    if (pendingAisleCycleScrollFrameRef.current !== null) {
-      window.cancelAnimationFrame(pendingAisleCycleScrollFrameRef.current)
-      pendingAisleCycleScrollFrameRef.current = null
-    }
-
     closeEditorEphemeraRef.current()
     saveActiveCursorLocation()
     flushPendingContent()
@@ -3507,22 +3612,16 @@ function App() {
       focusIntent: 'aisle-activation',
     }
     pendingFocusToAisleIdRef.current = targetAisleId
-    pendingScrollToAisleIdRef.current = targetAisleId
     syncActiveAisleSelection(targetAisleId)
-    const scheduledNoteBodyId = activeNoteBodyIdRef.current
-    pendingAisleCycleScrollFrameRef.current = window.requestAnimationFrame(() => {
-      pendingAisleCycleScrollFrameRef.current = null
-      if (activeNoteBodyIdRef.current !== scheduledNoteBodyId) return
-      if (!activeAisleIdsRef.current.includes(targetAisleId)) {
+    scheduleAisleFocusScroll(targetAisleId, {
+      onInvalidAisle: () => {
         if (pendingFocusToAisleIdRef.current === targetAisleId) pendingFocusToAisleIdRef.current = null
         if (pendingScrollToAisleIdRef.current === targetAisleId) pendingScrollToAisleIdRef.current = null
         const pending = pendingCursorRestoreRef.current
         if (pending?.noteLocationKey === noteLocationKey && pending.aisleId === targetAisleId) {
           pendingCursorRestoreRef.current = null
         }
-        return
-      }
-      scrollAisleIntoHorizontalView(targetAisleId)
+      },
     })
   }, [
     activeNoteLocationKey,
@@ -3532,7 +3631,7 @@ function App() {
     pendingCursorRestoreRef,
     saveActiveCursorLocation,
     scratchpadWorkspaceActive,
-    scrollAisleIntoHorizontalView,
+    scheduleAisleFocusScroll,
     stateRef,
     syncActiveAisleSelection,
     viewMode,
@@ -3671,20 +3770,31 @@ function App() {
   })
 
   const renderImageToolsOverlay = () => (
-    <ImageToolsOverlay
-      visible={viewMode === 'main' && !aisleEditModalOpen && !mainArrangementActive}
-      imageTools={imageTools}
-      inlineCrop={inlineCrop}
-      onStartCrop={startInlineCrop}
-      onOpenTransform={openImageTransformMenu}
-      onCopyImage={copySelectedImageToClipboard}
-      onReturnToStart={returnToImageToolsMenu}
-      onTransformImage={transformSelectedImage}
-      onApplyCrop={applyInlineCrop}
-      onCancelCrop={cancelInlineCrop}
-      onBeginResize={beginImageResize}
-      onBeginCropDrag={beginInlineCropMouseDrag}
-    />
+    <>
+      <ImageToolsOverlay
+        visible={viewMode === 'main' && !aisleEditModalOpen && !mainArrangementActive}
+        imageTools={imageTools}
+        inlineCrop={inlineCrop}
+        onStartCrop={startInlineCrop}
+        onOpenTransform={openImageTransformMenu}
+        onCopyImage={copySelectedImageToClipboard}
+        onReturnToStart={returnToImageToolsMenu}
+        onTransformImage={transformSelectedImage}
+        onApplyCrop={applyInlineCrop}
+        onCancelCrop={cancelInlineCrop}
+        onSetCropRatio={setInlineCropRatio}
+        onBeginResize={beginImageResize}
+        onBeginCropDrag={beginInlineCropMouseDrag}
+      />
+      <MediaToolsOverlay
+        visible={viewMode === 'main' && !aisleEditModalOpen && !mainArrangementActive}
+        mediaTools={mediaTools}
+        onOpenTransform={openMediaTransformMenu}
+        onReturnToStart={returnToMediaToolsMenu}
+        onTransformMedia={transformSelectedMedia}
+        onBeginResize={beginMediaResize}
+      />
+    </>
   )
 
   const renderTableControlsOverlay = () => (
@@ -3715,7 +3825,7 @@ function App() {
     activeTab,
     primeTabs: workspace.tabs,
     arrangeMode,
-    hotkeys: state.hotkeys,
+    hotkeys: normalizedHotkeys,
     deleteSubtabShortcutEnabled: state.ui.deleteSubtabShortcutEnabled ?? false,
     scratchpadActive: scratchpadWorkspaceActive,
     scratchpadDeleteAisleShortcutEnabled: state.ui.scratchpadDeleteAisleShortcutEnabled ?? false,
@@ -4497,15 +4607,12 @@ function App() {
                 pendingMouseAisleActivationRef.current = { aisleId: targetAisleId, settled: false }
                 const shouldFocus = shouldFocusAislePointerActivation(activeAisleIdRef.current, targetAisleId)
                 pendingCursorRestoreRef.current = null
-                pendingScrollToAisleIdRef.current = targetAisleId
                 activateAisleEditor(editorKey, {
                   flushPrevious: true,
                   focus: shouldFocus,
                 })
                 syncActiveAisleSelection(targetAisleId)
-                window.requestAnimationFrame(() => {
-                  scrollAisleIntoHorizontalView(targetAisleId)
-                })
+                scheduleAisleFocusScroll(targetAisleId)
               }}
               mountedAisleIds={mountedAisleIds}
               getPreviewMarkdownForAisle={getPreviewMarkdownForAisle}
@@ -4664,6 +4771,7 @@ function App() {
           setContextMenu(null)
           void copySelectedImageToClipboard()
         }}
+        onRevealMediaFile={revealMediaFileFromContext}
         onOpenInternalNoteLink={openInternalNoteLinkFromContext}
         onRenameInternalNoteLink={renameInternalNoteLinkFromContext}
         onOpenDeleteModal={openDeleteModalFromContext}

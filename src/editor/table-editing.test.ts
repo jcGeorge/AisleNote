@@ -13,6 +13,7 @@ import {
   getTableReorderDragDecision,
   isBlankTableSideSelectionTarget,
   isEditorRootFocused,
+  isPointInTableAfterSelectionZone,
   isPointInTableRightSelectionZone,
   isSelectedTableNode,
   moveTableCellSelectionByTab,
@@ -480,6 +481,16 @@ describe('table editing controls', () => {
     expect(isPointInTableRightSelectionZone(tableRect, { left: 344, top: 153 })).toBe(false)
   })
 
+  it('detects bottom-line table clicks across the table width', () => {
+    const tableRect = { top: 80, left: 120, width: 220, height: 72 }
+
+    expect(isPointInTableAfterSelectionZone(tableRect, { left: 180, top: 152 })).toBe(true)
+    expect(isPointInTableAfterSelectionZone(tableRect, { left: 180, top: 158 })).toBe(true)
+    expect(isPointInTableAfterSelectionZone(tableRect, { left: 180, top: 144 })).toBe(false)
+    expect(isPointInTableAfterSelectionZone(tableRect, { left: 100, top: 152 })).toBe(false)
+    expect(isPointInTableAfterSelectionZone(tableRect, { left: 360, top: 152 })).toBe(false)
+  })
+
   it('requires browser focus inside the editor root before showing table controls', () => {
     const activeElement = { id: 'cell' }
     const root = {
@@ -492,13 +503,24 @@ describe('table editing controls', () => {
     expect(isEditorRootFocused(null, activeElement)).toBe(false)
   })
 
-  it('limits table side selection to blank editor surface targets', () => {
+  it('limits table side selection to non-interactive editor targets', () => {
     const editorSurface = {} as Element
-    const paragraphTarget = {} as Element
+    const paragraphTarget = {
+      closest: () => null,
+    } as unknown as Element
+    const imageTarget = {
+      closest: (selector: string) => (selector.includes('img') ? imageTarget : null),
+    } as unknown as Element
+    const view = {
+      dom: {
+        contains: (target: Element) => target === paragraphTarget || target === imageTarget,
+      },
+    }
 
     expect(isBlankTableSideSelectionTarget({ dom: editorSurface }, editorSurface)).toBe(true)
-    expect(isBlankTableSideSelectionTarget({ dom: editorSurface }, paragraphTarget)).toBe(false)
-    expect(isBlankTableSideSelectionTarget({ dom: editorSurface }, null)).toBe(false)
+    expect(isBlankTableSideSelectionTarget(view, paragraphTarget)).toBe(true)
+    expect(isBlankTableSideSelectionTarget(view, imageTarget)).toBe(false)
+    expect(isBlankTableSideSelectionTarget(view, null)).toBe(false)
   })
 
   it('selects the whole table node for right-side table clicks', () => {

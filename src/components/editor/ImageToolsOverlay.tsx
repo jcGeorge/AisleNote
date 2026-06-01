@@ -1,6 +1,8 @@
 import type { MouseEvent, PointerEvent, ReactNode } from 'react'
+import type { CropRatioPresetId } from '../../editor/crop-ratios'
 import type { ImageTransformOperation } from '../../editor/image-transform'
 import type { ImageToolsState, InlineCropState } from '../../types/app'
+import { CropRatioSelect } from './CropRatioSelect'
 
 export type InlineCropDragMode = 'move' | 'resize-n' | 'resize-e' | 'resize-s' | 'resize-w' | 'resize-se'
 
@@ -15,6 +17,7 @@ type ImageToolsOverlayProps = {
   onTransformImage: (operation: ImageTransformOperation) => void | Promise<unknown>
   onApplyCrop: () => void
   onCancelCrop: () => void
+  onSetCropRatio: (presetId: CropRatioPresetId) => void
   onBeginResize: (event: PointerEvent<HTMLButtonElement>) => void
   onBeginCropDrag: (mode: InlineCropDragMode, event: MouseEvent<HTMLElement>) => void
 }
@@ -121,6 +124,7 @@ export function ImageToolsOverlay({
   onTransformImage,
   onApplyCrop,
   onCancelCrop,
+  onSetCropRatio,
   onBeginResize,
   onBeginCropDrag,
 }: ImageToolsOverlayProps) {
@@ -201,6 +205,7 @@ export function ImageToolsOverlay({
           )
         ) : (
           <>
+            <CropRatioSelect value={inlineCrop.ratioPresetId} onChange={onSetCropRatio} />
             <CropButton onClick={onApplyCrop} title="Apply crop">
               apply
             </CropButton>

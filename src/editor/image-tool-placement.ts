@@ -15,6 +15,7 @@ export type ImageToolPlacement = {
 
 const VIEWPORT_PADDING = 8
 const TOOLBAR_IMAGE_INSET = 6
+const RESIZE_HANDLE_INSET = 2
 
 export function isUsableImageToolPlacementRect(rect: ImageToolPlacementRect): boolean {
   return (
@@ -33,7 +34,16 @@ export function getImageToolPlacement(rect: ImageToolPlacementRect): ImageToolPl
   return {
     toolbarTop: Math.max(VIEWPORT_PADDING, rect.top + TOOLBAR_IMAGE_INSET),
     toolbarLeft: Math.max(VIEWPORT_PADDING, rect.left + TOOLBAR_IMAGE_INSET),
-    resizeTop: Math.max(VIEWPORT_PADDING, rect.bottom - 2),
-    resizeLeft: Math.max(VIEWPORT_PADDING, rect.right - 2),
+    resizeTop: Math.max(VIEWPORT_PADDING, rect.bottom - RESIZE_HANDLE_INSET),
+    resizeLeft: Math.max(VIEWPORT_PADDING, rect.right - RESIZE_HANDLE_INSET),
+  }
+}
+
+export function getVideoViewportResizeToolPlacement(
+  rect: ImageToolPlacementRect,
+): Pick<ImageToolPlacement, 'resizeTop' | 'resizeLeft'> {
+  return {
+    resizeTop: Math.max(VIEWPORT_PADDING, rect.bottom - RESIZE_HANDLE_INSET),
+    resizeLeft: Math.max(VIEWPORT_PADDING, rect.right - RESIZE_HANDLE_INSET),
   }
 }

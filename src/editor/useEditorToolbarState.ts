@@ -7,7 +7,7 @@ import {
   type ToolbarHeadingLevel,
   type ToolbarFormatState,
 } from '../components/editor/toolbar-state'
-import { eventMatchesShortcut } from '../hotkeys/shortcuts'
+import { eventMatchesShortcut, normalizeHotkeySettings } from '../hotkeys/shortcuts'
 import type { AppState, ViewMode } from '../types/app'
 import { getActiveHeadingLevel } from './editor-setup'
 import { getWysiwygView } from './prosemirror-utils'
@@ -174,13 +174,14 @@ export function useEditorToolbarState({
   }
 
   const getToolbarFormatShortcut = (event: KeyboardEvent): ToolbarFormatKey | null => {
-    if (eventMatchesShortcut(event, stateRef.current.hotkeys.shortcuts.formatStrikethrough, isMacPlatform)) return 'strike'
+    const hotkeys = normalizeHotkeySettings(stateRef.current.hotkeys)
+    if (eventMatchesShortcut(event, hotkeys.shortcuts.formatStrikethrough, isMacPlatform)) return 'strike'
     const key = event.key.toLowerCase()
     const isMod = isMacPlatform ? event.metaKey : event.ctrlKey
     if (!isMod || event.altKey) return null
     if (key === 'b') return 'bold'
     if (key === 'i') return 'italic'
-    if (key === 's' && !eventMatchesShortcut(event, stateRef.current.hotkeys.shortcuts.openSpaces, isMacPlatform)) return 'strike'
+    if (key === 's' && !eventMatchesShortcut(event, hotkeys.shortcuts.openSpaces, isMacPlatform)) return 'strike'
     return null
   }
 

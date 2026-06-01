@@ -2,7 +2,7 @@ import JSZip from 'jszip'
 import { composeMarkdownFrontmatter, splitMarkdownFrontmatter } from '../frontmatter/frontmatter'
 import { resolveFrontmatterReferencesForState } from '../frontmatter/frontmatter-state'
 import { MARKDOWN_LINK_PATTERN, buildAssetUrl, parseAssetUrl } from '../markdown/image-asset-refs.js'
-import { splitImageResizeMetadataFromUrl, normalizeImageResizeMetadataFragment } from '../markdown/image-metadata'
+import { splitAssetMetadataFromUrl } from '../markdown/asset-metadata.js'
 import {
   getRegisteredAssetBytes,
   getRegisteredAssetMimeType,
@@ -307,14 +307,22 @@ function getMimeTypeFromExtension(extension: string): string {
       return 'image/avif'
     case 'pdf':
       return 'application/pdf'
+    case 'aac':
+      return 'audio/aac'
+    case 'flac':
+      return 'audio/flac'
     case 'mp3':
       return 'audio/mpeg'
-    case 'wav':
-      return 'audio/wav'
     case 'm4a':
       return 'audio/mp4'
+    case 'oga':
     case 'ogg':
+    case 'opus':
       return 'audio/ogg'
+    case 'wav':
+      return 'audio/wav'
+    case 'm4v':
+      return 'video/mp4'
     case 'webm':
       return 'video/webm'
     case 'mp4':
@@ -330,6 +338,15 @@ function getExtensionFromMimeType(mimeType: string): string {
   const normalized = mimeType.toLowerCase()
   if (normalized === 'image/jpeg') return 'jpg'
   if (normalized === 'image/svg+xml') return 'svg'
+  if (normalized === 'audio/aac') return 'aac'
+  if (normalized === 'audio/flac' || normalized === 'audio/x-flac') return 'flac'
+  if (normalized === 'audio/mpeg') return 'mp3'
+  if (normalized === 'audio/mp4') return 'm4a'
+  if (normalized === 'audio/ogg') return 'ogg'
+  if (normalized === 'audio/wav' || normalized === 'audio/wave') return 'wav'
+  if (normalized === 'video/mp4') return 'mp4'
+  if (normalized === 'video/webm') return 'webm'
+  if (normalized === 'video/quicktime') return 'mov'
   const match = normalized.match(/^[a-z0-9+.-]+\/([a-z0-9+.-]+)$/)
   return normalizeExtension(match?.[1] ?? 'bin')
 }
@@ -558,10 +575,9 @@ async function rewriteMarkdownAssetsForExport(
     const imageBang = match[1] ?? ''
     const label = match[2] ?? ''
     const source = String(match[3] ?? '').trim()
-    const { imageUrl, metadataFragment } = splitImageResizeMetadataFromUrl(source)
-    const normalizedMetadataFragment = normalizeImageResizeMetadataFragment(metadataFragment)
-    const assetPath = parseAssetUrl(imageUrl)
-    const decoded = assetPath ? null : decodeDataUrl(imageUrl)
+    const { assetUrl, metadataFragment: normalizedMetadataFragment } = splitAssetMetadataFromUrl(source)
+    const assetPath = parseAssetUrl(assetUrl)
+    const decoded = assetPath ? null : decodeDataUrl(assetUrl)
     if (!assetPath && !decoded) {
       output += match[0]
       continue
@@ -583,7 +599,7 @@ async function rewriteMarkdownAssetsForExport(
 
     const mimeType = assetPath ? getRegisteredAssetMimeType(assetPath) : decoded?.mimeType ?? 'application/octet-stream'
     const preferredName = assetPath ? basename(assetPath) : `asset-${assetBank.files.size + 1}.${getExtensionFromMimeType(mimeType)}`
-    const assetFile = assetBank.add(assetPath ?? imageUrl, preferredName, bytes, mimeType)
+    const assetFile = assetBank.add(assetPath ?? assetUrl, preferredName, bytes, mimeType)
     output += `${imageBang}[${label}](${relativePath(noteFile, assetFile)}${normalizedMetadataFragment})`
   }
   output += markdown.slice(lastIndex)
@@ -851,16 +867,15 @@ async function rewriteMarkdownAssetsForImport(
     const imageBang = match[1] ?? ''
     const label = match[2] ?? ''
     const source = String(match[3] ?? '').trim()
-    const { imageUrl, metadataFragment } = splitImageResizeMetadataFromUrl(source)
-    const normalizedMetadataFragment = normalizeImageResizeMetadataFragment(metadataFragment)
-    if (parseAssetUrl(imageUrl) || imageUrl.startsWith('data:') || isProtocolUrl(imageUrl)) {
+    const { assetUrl, metadataFragment: normalizedMetadataFragment } = splitAssetMetadataFromUrl(source)
+    if (parseAssetUrl(assetUrl) || assetUrl.startsWith('data:') || isProtocolUrl(assetUrl)) {
       output += match[0]
       continue
     }
 
-    const assetFile = resolveArchiveAssetReference(noteFile, imageUrl, parsed.assetFiles)
+    const assetFile = resolveArchiveAssetReference(noteFile, assetUrl, parsed.assetFiles)
     if (!assetFile) {
-      if (warnings.length < MAX_IMPORT_ASSET_WARNINGS) warnings.push(`asset reference could not be resolved: ${imageUrl}`)
+      if (warnings.length < MAX_IMPORT_ASSET_WARNINGS) warnings.push(`asset reference could not be resolved: ${assetUrl}`)
       output += match[0]
       continue
     }

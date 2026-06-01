@@ -205,6 +205,15 @@ describe('rail visibility hotkeys', () => {
     expect(getRailVisibilityShortcutTarget(keyboardEvent('s'), hotkeys, false)).toBe('space')
     expect(getRailVisibilityShortcutTarget(keyboardEvent('d'), hotkeys, false)).toBe('domain')
   })
+
+  it('falls back to default command shortcuts when persisted hotkeys are partial', () => {
+    const partialHotkeys = {
+      newlineShortcuts: DEFAULT_NEWLINE_SHORTCUT_SETTINGS,
+    } as AppState['hotkeys']
+
+    expect(getRailVisibilityShortcutTarget(keyboardEvent('s'), partialHotkeys, false)).toBe('space')
+    expect(getRailVisibilityShortcutTarget(keyboardEvent('d'), partialHotkeys, false)).toBe('domain')
+  })
 })
 
 describe('delete focused subtab hotkey', () => {

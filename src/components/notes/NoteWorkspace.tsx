@@ -14,8 +14,12 @@ import type { TableOfContentsLinkItem } from '../../editor/table-of-contents-lin
 import { resolveAssetDisplayUrl } from '../../markdown/image-asset-registry'
 import type { ResolvedNoteAisle } from '../../types/app'
 import { AisleHorizontalScrollbar } from './AisleHorizontalScrollbar'
-import { MarkdownPreviewParagraph } from './markdown-preview-components'
-import { scheduleNoteWorkspaceArrangeExit, shouldExitArrangeModeFromNoteWorkspacePointer } from './note-workspace-events'
+import { MarkdownPreviewLink, MarkdownPreviewParagraph } from './markdown-preview-components'
+import {
+  getAisleEditorKeyFromNoteWorkspacePointerTarget,
+  scheduleNoteWorkspaceArrangeExit,
+  shouldExitArrangeModeFromNoteWorkspacePointer,
+} from './note-workspace-events'
 
 const transformAislePreviewUrl = (url: string, key: string) => {
   if (key === 'href' && /^tabs-asset:/i.test(url)) return url
@@ -26,6 +30,7 @@ const transformAislePreviewUrl = (url: string, key: string) => {
 }
 
 const noteWorkspacePreviewMarkdownComponents = {
+  a: MarkdownPreviewLink,
   p: MarkdownPreviewParagraph,
 }
 
@@ -106,6 +111,7 @@ function AisleTableOfContentsPanel({
   return (
     <div
       className="aisle-toc-panel-layer"
+      data-note-workspace-skip-aisle-activation="true"
       onPointerDown={(event) => {
         event.preventDefault()
         event.stopPropagation()
@@ -247,6 +253,10 @@ export function NoteWorkspace({
           if (shouldExitArrangeModeFromNoteWorkspacePointer(arrangeModeActive, event.button)) {
             scheduleNoteWorkspaceArrangeExit(onExitArrangeMode)
           }
+          const editorKey = getAisleEditorKeyFromNoteWorkspacePointerTarget(event.target)
+          if (editorKey) {
+            onActivateAisle(editorKey)
+          }
         }}
         onScroll={(event) => onAisleScroll(event.currentTarget.scrollLeft)}
       >
@@ -270,7 +280,6 @@ export function NoteWorkspace({
               aria-label={`Aisle ${index + 1}`}
               data-aisle-id={aisle.id}
               data-aisle-editor-key={editorKey}
-              onPointerDown={() => onActivateAisle(editorKey)}
             >
               {(showLinkButton || showFrontmatterButton) && (
                 <div className="note-aisle-action-layer" aria-label={`Aisle ${index + 1} actions`}>
@@ -280,6 +289,7 @@ export function NoteWorkspace({
                       className="note-aisle-action-btn note-aisle-link-btn"
                       aria-label={`Open link controls for aisle ${index + 1}`}
                       title="Link"
+                      data-note-workspace-skip-aisle-activation="true"
                       onPointerDown={(event) => {
                         event.stopPropagation()
                       }}
@@ -298,6 +308,7 @@ export function NoteWorkspace({
                       className="note-aisle-action-btn note-aisle-frontmatter-btn"
                       aria-label={`Open frontmatter for aisle ${index + 1}`}
                       title="Frontmatter"
+                      data-note-workspace-skip-aisle-activation="true"
                       onPointerDown={(event) => {
                         event.stopPropagation()
                       }}
@@ -347,6 +358,7 @@ export function NoteWorkspace({
                     className="note-scratchpad-aisle-control-btn note-scratchpad-aisle-add-btn note-scratchpad-aisle-add-left-btn"
                     aria-label={`Add aisle to left of aisle ${index + 1}`}
                     title="Add aisle left"
+                    data-note-workspace-skip-aisle-activation="true"
                     onPointerDown={(event) => {
                       event.stopPropagation()
                     }}
@@ -364,6 +376,7 @@ export function NoteWorkspace({
                       className="note-scratchpad-aisle-control-btn note-scratchpad-aisle-delete-btn"
                       aria-label={`Delete aisle ${index + 1}`}
                       title="Delete aisle"
+                      data-note-workspace-skip-aisle-activation="true"
                       onPointerDown={(event) => {
                         event.stopPropagation()
                       }}
@@ -381,6 +394,7 @@ export function NoteWorkspace({
                     className="note-scratchpad-aisle-control-btn note-scratchpad-aisle-add-btn note-scratchpad-aisle-add-right-btn"
                     aria-label={`Add aisle to right of aisle ${index + 1}`}
                     title="Add aisle right"
+                    data-note-workspace-skip-aisle-activation="true"
                     onPointerDown={(event) => {
                       event.stopPropagation()
                     }}

@@ -59,6 +59,7 @@ const TABLE_REORDER_DRAG_SLOP_PX = 18
 const TABLE_REORDER_AXIS_LOCK_RATIO = 2
 const TABLE_REORDER_MARKER_AXIS_NUDGE_PX = 2
 const TABLE_REORDER_MARKER_EXTENSION_PX = 10
+const TABLE_EDGE_SELECTION_PX = 6
 
 type TableRectLike = {
   top: number
@@ -115,6 +116,28 @@ export function isPointInTableRightSelectionZone(tableRect: TableRectLike, point
     return false
   }
   return point.left > rectRight(tableRect) && point.top >= tableRect.top && point.top <= rectBottom(tableRect)
+}
+
+export function isPointInTableAfterSelectionZone(tableRect: TableRectLike, point: PointLike): boolean {
+  if (
+    !Number.isFinite(tableRect.top) ||
+    !Number.isFinite(tableRect.left) ||
+    !Number.isFinite(tableRect.width) ||
+    !Number.isFinite(tableRect.height) ||
+    tableRect.width <= 0 ||
+    tableRect.height <= 0 ||
+    !Number.isFinite(point.left) ||
+    !Number.isFinite(point.top)
+  ) {
+    return false
+  }
+  const bottom = rectBottom(tableRect)
+  return (
+    point.left >= tableRect.left &&
+    point.left <= rectRight(tableRect) &&
+    point.top >= bottom - TABLE_EDGE_SELECTION_PX / 2 &&
+    point.top <= bottom + TABLE_EDGE_SELECTION_PX
+  )
 }
 
 function getAdjustedMoveIndex(sourceIndex: number, insertIndex: number) {
@@ -307,10 +330,8 @@ function getTableStartForElement(view: any, table: HTMLTableElement): number | n
 export function getTableSideSelectionTarget(
   view: any,
   point: PointLike,
-  eventTarget?: Element | null,
 ): { table: HTMLTableElement; tableStart: number } | null {
   if (!view?.dom || typeof view.dom.querySelectorAll !== 'function') return null
-  if (eventTarget?.closest('table')) return null
 
   const tables = Array.from(view.dom.querySelectorAll('table')).filter((table): table is HTMLTableElement => {
     return table instanceof HTMLTableElement
@@ -320,8 +341,12 @@ export function getTableSideSelectionTarget(
       table,
       rect: table.getBoundingClientRect(),
     }))
-    .filter(({ rect }) => isPointInTableRightSelectionZone(rect, point))
-    .sort((left, right) => Math.abs(point.left - rectRight(left.rect)) - Math.abs(point.left - rectRight(right.rect)))
+    .filter(({ rect }) => isPointInTableRightSelectionZone(rect, point) || isPointInTableAfterSelectionZone(rect, point))
+    .sort((left, right) => {
+      const leftDistance = Math.min(Math.abs(point.left - rectRight(left.rect)), Math.abs(point.top - rectBottom(left.rect)))
+      const rightDistance = Math.min(Math.abs(point.left - rectRight(right.rect)), Math.abs(point.top - rectBottom(right.rect)))
+      return leftDistance - rightDistance
+    })
 
   for (const candidate of candidates) {
     const tableStart = getTableStartForElement(view, candidate.table)
@@ -338,7 +363,24 @@ export function getTableSideSelectionTarget(
 
 export function isBlankTableSideSelectionTarget(view: any, eventTarget?: Element | null): boolean {
   if (!view?.dom || !eventTarget) return false
-  return eventTarget === view.dom
+  if (eventTarget === view.dom) return true
+  if (!view.dom.contains?.(eventTarget)) return false
+  return !eventTarget.closest(
+    [
+      'a',
+      'button',
+      'input',
+      'textarea',
+      'select',
+      'img',
+      '[contenteditable="false"]',
+      '.image-tools',
+      '.media-tools',
+      '.table-tools',
+      '.link-prompt',
+      '.tabs-media-player',
+    ].join(', '),
+  )
 }
 
 export function selectTableNodeAtPosition(view: any, tableStart: number): boolean {
@@ -367,7 +409,9 @@ export function isSelectedTableNode(view: any, tableStart?: number): boolean {
 }
 
 export function selectTableFromSideClick(view: any, point: PointLike, eventTarget?: Element | null): boolean {
-  const target = getTableSideSelectionTarget(view, point, eventTarget)
+  const target = (eventTarget === undefined || isBlankTableSideSelectionTarget(view, eventTarget))
+    ? getTableSideSelectionTarget(view, point)
+    : null
   return target ? selectTableNodeAtPosition(view, target.tableStart) : false
 }
 

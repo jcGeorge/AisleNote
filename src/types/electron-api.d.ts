@@ -177,6 +177,7 @@ declare global {
       importAsset?: (payload: ImportAssetPayload) => Promise<ImportAssetResult>
       importImageAsset?: (payload: ImportImageAssetPayload) => Promise<ImportImageAssetResult>
       openAsset?: (payload: { url?: string; assetPath?: string }) => Promise<{ ok: boolean; error?: string }>
+      revealAsset?: (payload: { url?: string; assetPath?: string }) => Promise<{ ok: boolean; error?: string }>
       readAsset?: (payload: { url?: string; assetPath?: string }) => Promise<ReadAssetResult>
       onAppStateUpdated?: (handler: (payload: { serializedState: string; revision: number }) => void) => () => void
       getStorageProfileStatus?: () => Promise<StorageProfileStatus>

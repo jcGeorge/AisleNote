@@ -4,9 +4,49 @@ import {
   getHorizontalDragAutoScrollDelta,
   getScrollLeftForAisleHorizontalScrollbarPointer,
   getScrollLeftForAisleHorizontalScrollbarThumb,
-  getScrollLeftToFocusHorizontalPane,
   getScrollLeftToRevealHorizontalPane,
+  scrollAislePaneIntoHorizontalView,
 } from './aisle-horizontal-scroll'
+
+function createRect(left: number, width: number): DOMRect {
+  return {
+    x: left,
+    y: 0,
+    width,
+    height: 0,
+    top: 0,
+    right: left + width,
+    bottom: 0,
+    left,
+    toJSON: () => ({}),
+  } as DOMRect
+}
+
+function createHorizontalScrollFixture({
+  scrollLeft,
+  viewportWidth,
+  paneLeftInViewport,
+  paneWidth,
+}: {
+  scrollLeft: number
+  viewportWidth: number
+  paneLeftInViewport: number
+  paneWidth: number
+}) {
+  const pane = {
+    dataset: { aisleId: 'target' },
+    offsetWidth: paneWidth,
+    getBoundingClientRect: () => createRect(paneLeftInViewport, paneWidth),
+    scrollIntoView: () => undefined,
+  } as unknown as HTMLElement
+  return {
+    scrollLeft,
+    clientWidth: viewportWidth,
+    scrollWidth: 2000,
+    getBoundingClientRect: () => createRect(0, viewportWidth),
+    querySelectorAll: () => [pane],
+  } as unknown as HTMLElement
+}
 
 describe('horizontal aisle reveal geometry', () => {
   it('keeps the current scroll when the pane is already fully visible', () => {
@@ -54,60 +94,69 @@ describe('horizontal aisle reveal geometry', () => {
   })
 })
 
-describe('horizontal aisle focus geometry', () => {
-  it('left-aligns a fully visible but offset pane', () => {
-    expect(
-      getScrollLeftToFocusHorizontalPane({
-        currentScrollLeft: 120,
-        viewportWidth: 500,
-        paneLeft: 180,
-        maxScrollLeft: 900,
-      }),
-    ).toBe(180)
+describe('horizontal aisle pane scroll reveal', () => {
+  it('keeps the current scroll when the target aisle is already fully visible', () => {
+    const scrollNode = createHorizontalScrollFixture({
+      scrollLeft: 120,
+      viewportWidth: 500,
+      paneLeftInViewport: 60,
+      paneWidth: 240,
+    })
+
+    expect(scrollAislePaneIntoHorizontalView(scrollNode, 'target')).toBe(true)
+
+    expect(scrollNode.scrollLeft).toBe(120)
   })
 
-  it('left-aligns a barely visible right-side pane instead of only revealing its right edge', () => {
-    expect(
-      getScrollLeftToFocusHorizontalPane({
-        currentScrollLeft: 0,
-        viewportWidth: 900,
-        paneLeft: 860,
-        maxScrollLeft: 1200,
-      }),
-    ).toBe(860)
+  it('scrolls a right-clipped aisle only enough to reveal its right edge', () => {
+    const scrollNode = createHorizontalScrollFixture({
+      scrollLeft: 0,
+      viewportWidth: 900,
+      paneLeftInViewport: 860,
+      paneWidth: 460,
+    })
+
+    expect(scrollAislePaneIntoHorizontalView(scrollNode, 'target')).toBe(true)
+
+    expect(scrollNode.scrollLeft).toBe(420)
   })
 
-  it('left-aligns a pane clipped before the viewport', () => {
-    expect(
-      getScrollLeftToFocusHorizontalPane({
-        currentScrollLeft: 300,
-        viewportWidth: 500,
-        paneLeft: 100,
-        maxScrollLeft: 900,
-      }),
-    ).toBe(100)
+  it('scrolls a left-clipped aisle back to its left edge', () => {
+    const scrollNode = createHorizontalScrollFixture({
+      scrollLeft: 300,
+      viewportWidth: 500,
+      paneLeftInViewport: -200,
+      paneWidth: 360,
+    })
+
+    expect(scrollAislePaneIntoHorizontalView(scrollNode, 'target')).toBe(true)
+
+    expect(scrollNode.scrollLeft).toBe(100)
   })
 
-  it('clamps focus near the end of the scroll strip', () => {
-    expect(
-      getScrollLeftToFocusHorizontalPane({
-        currentScrollLeft: 600,
-        viewportWidth: 500,
-        paneLeft: 1100,
-        maxScrollLeft: 900,
-      }),
-    ).toBe(900)
+  it('aligns oversized aisles to their left edge because they cannot fully fit', () => {
+    const scrollNode = createHorizontalScrollFixture({
+      scrollLeft: 0,
+      viewportWidth: 360,
+      paneLeftInViewport: 720,
+      paneWidth: 480,
+    })
+
+    expect(scrollAislePaneIntoHorizontalView(scrollNode, 'target')).toBe(true)
+
+    expect(scrollNode.scrollLeft).toBe(720)
   })
 
-  it('keeps a safe current scroll when the viewport has no width', () => {
-    expect(
-      getScrollLeftToFocusHorizontalPane({
-        currentScrollLeft: 950,
-        viewportWidth: 0,
-        paneLeft: 100,
-        maxScrollLeft: 900,
-      }),
-    ).toBe(900)
+  it('does nothing when the target aisle is missing', () => {
+    const scrollNode = createHorizontalScrollFixture({
+      scrollLeft: 120,
+      viewportWidth: 500,
+      paneLeftInViewport: 60,
+      paneWidth: 240,
+    })
+
+    expect(scrollAislePaneIntoHorizontalView(scrollNode, 'missing')).toBe(false)
+    expect(scrollNode.scrollLeft).toBe(120)
   })
 })
 

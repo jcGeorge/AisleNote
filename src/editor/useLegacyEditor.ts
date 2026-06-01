@@ -17,12 +17,14 @@ import {
   uncheckedTaskEnterPlugin,
 } from './editor-setup'
 import { sanitizeEditorHtml } from './editor-sanitizer'
+import { createMediaLinkPlugin } from './media-link-plugin'
 import { terminalBlockLandingPlugin } from './terminal-block-landing'
 import {
   installCompletedTaskCheckboxBehavior,
   installTaskTextReorderBehavior,
 } from './task-behavior'
 import { importImageBlobAsAssetUrl } from '../markdown/image-asset-registry'
+import { withDefaultInsertedImageDisplayWidth } from './image-insertion'
 import { measureSlowOperation } from '../performance/performance-logging'
 import type { ToastTone, ViewMode } from '../types/app'
 import { prepareMarkdownForEditorDisplay, restoreEditorBlankParagraphs, setEditorMarkdownForDisplay } from './editor-markdown-display'
@@ -122,6 +124,7 @@ export function useLegacyEditor({
         highlightPlugin,
         codeBlockBacktickShortcutPlugin,
         terminalBlockLandingPlugin,
+        createMediaLinkPlugin,
         createCodeBlockControlsPlugin({ pushToast }),
         uncheckedTaskEnterPlugin,
         headingSpaceShortcutPlugin,
@@ -142,8 +145,10 @@ export function useLegacyEditor({
               pushToast('could not import image.', 'warning')
               return
             }
-            callback(assetUrl, blob instanceof File ? blob.name : 'image')
-            window.setTimeout(() => commitCurrentEditorContent(), 30)
+            void withDefaultInsertedImageDisplayWidth(assetUrl, blob, editorMountRef.current).then((displayUrl) => {
+              callback(displayUrl, blob instanceof File ? blob.name : 'image')
+              window.setTimeout(() => commitCurrentEditorContent(), 30)
+            })
           })
         },
       },

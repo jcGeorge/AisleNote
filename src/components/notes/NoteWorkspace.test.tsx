@@ -2,7 +2,10 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { BLOCK_INDENT_TOKEN } from '../../markdown/markdown-utils'
 import { NoteWorkspace } from './NoteWorkspace'
-import { shouldExitArrangeModeFromNoteWorkspacePointer } from './note-workspace-events'
+import {
+  getAisleEditorKeyFromNoteWorkspacePointerTarget,
+  shouldExitArrangeModeFromNoteWorkspacePointer,
+} from './note-workspace-events'
 import type { ResolvedNoteAisle } from '../../types/app'
 
 const aisles: ResolvedNoteAisle[] = [
@@ -116,6 +119,48 @@ describe('NoteWorkspace aisle mounting', () => {
 
     expect(html).toContain('src="data:image/png;base64,abc"')
     expect(html).not.toContain('note-aisle-horizontal-scrollbar')
+  })
+
+  it('renders media links as players in fallback previews while leaving normal links alone', () => {
+    const mediaAisles: ResolvedNoteAisle[] = [
+      {
+        id: 'media',
+        aisleBodyId: 'media',
+        markdown: [
+          '[Song](tabs-asset:///assets/song.mp3)',
+          '[Voice](tabs-asset:///assets/voice.wav)',
+          '[Movie](tabs-asset:///assets/movie.mp4)',
+          '[Clip](tabs-asset:///assets/clip.webm)',
+          '[Site](https://example.com)',
+        ].join('\n\n'),
+      },
+    ]
+    const html = renderToStaticMarkup(
+      <NoteWorkspace
+        noteBodyId="body-1"
+        aisles={mediaAisles}
+        activeAisleId="media"
+        editorReadOnly={false}
+        aisleScrollRef={{ current: null }}
+        toolbar={null}
+        headingPopover={null}
+        imageToolsOverlay={null}
+        tableControlsOverlay={null}
+        mountedAisleIds={new Set()}
+        getPreviewMarkdownForAisle={(aisle) => aisle.markdown}
+        onRootChange={() => undefined}
+        onAisleScroll={() => undefined}
+        onActivateAisle={() => undefined}
+        onRegisterAislePaneRoot={() => undefined}
+        onRegisterAisleEditorRoot={() => undefined}
+      />,
+    )
+
+    expect(html.match(/tabs-media-player/g) ?? []).toHaveLength(4)
+    expect(html.match(/data-media-kind="audio"/g) ?? []).toHaveLength(2)
+    expect(html.match(/data-media-kind="video"/g) ?? []).toHaveLength(2)
+    expect(html).toContain('aria-label="Song player"')
+    expect(html).toContain('<a href="https://example.com">Site</a>')
   })
 
   it('renders fallback aisles that start with a heading', () => {
@@ -341,5 +386,60 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(shouldExitArrangeModeFromNoteWorkspacePointer(true, 1)).toBe(false)
     expect(shouldExitArrangeModeFromNoteWorkspacePointer(true, 2)).toBe(false)
     expect(shouldExitArrangeModeFromNoteWorkspacePointer(false, 0)).toBe(false)
+  })
+
+  it('resolves aisle activation from nested editor content before bubbling handlers can stop propagation', () => {
+    const target = {
+      closest: (selector: string) => {
+        if (selector === '[data-note-workspace-skip-aisle-activation="true"]') return null
+        expect(selector).toBe('[data-aisle-editor-key]')
+        return { dataset: { aisleEditorKey: 'body-1::b' } }
+      },
+    } as unknown as EventTarget
+
+    expect(getAisleEditorKeyFromNoteWorkspacePointerTarget(target)).toBe('body-1::b')
+  })
+
+  it('resolves inactive right-edge aisle activation from the containing pane', () => {
+    const target = {
+      closest: (selector: string) => (
+        selector === '[data-aisle-editor-key]' ? { dataset: { aisleEditorKey: 'body-1::c' } } : null
+      ),
+    } as unknown as EventTarget
+
+    expect(getAisleEditorKeyFromNoteWorkspacePointerTarget(target)).toBe('body-1::c')
+  })
+
+  it('ignores pointer targets outside aisle panes', () => {
+    const target = {
+      closest: () => null,
+    } as unknown as EventTarget
+
+    expect(getAisleEditorKeyFromNoteWorkspacePointerTarget(target)).toBe('')
+    expect(getAisleEditorKeyFromNoteWorkspacePointerTarget(null)).toBe('')
+  })
+
+  it('ignores pointer targets inside controls that suppress aisle activation', () => {
+    const target = {
+      closest: (selector: string) => (
+        selector === '[data-note-workspace-skip-aisle-activation="true"]'
+          ? { dataset: {} }
+          : { dataset: { aisleEditorKey: 'body-1::b' } }
+      ),
+    } as unknown as EventTarget
+
+    expect(getAisleEditorKeyFromNoteWorkspacePointerTarget(target)).toBe('')
+  })
+
+  it('resolves aisle activation from text-node style targets through the parent element', () => {
+    const target = {
+      parentElement: {
+        closest: (selector: string) => (
+          selector === '[data-aisle-editor-key]' ? { dataset: { aisleEditorKey: 'body-1::a' } } : null
+        ),
+      },
+    } as unknown as EventTarget
+
+    expect(getAisleEditorKeyFromNoteWorkspacePointerTarget(target)).toBe('body-1::a')
   })
 })

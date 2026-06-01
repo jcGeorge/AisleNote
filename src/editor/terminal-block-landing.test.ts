@@ -5,6 +5,7 @@ import {
   handleTerminalBlankAreaClick,
   insertTerminalLandingParagraphs,
   isNotePreviewOnlyParagraphText,
+  moveTerminalBlockBoundaryCaretByArrow,
   placeCaretInFinalEmptyTextBlock,
 } from './terminal-block-landing'
 
@@ -18,6 +19,7 @@ type FakePmNode = {
   nodeSize: number
   childCount: number
   child: (index: number) => FakePmNode
+  marks?: Array<{ type: { name: string }; attrs: Record<string, string> }>
 }
 
 function pmNode(
@@ -25,17 +27,22 @@ function pmNode(
   textContent = '',
   nodeSize = textContent.length + 2,
   children: FakePmNode[] = [],
+  marks: FakePmNode['marks'] = [],
 ): FakePmNode {
+  const contentSize = children.length > 0
+    ? children.reduce((sum, child) => sum + child.nodeSize, 0)
+    : textContent.length
   return {
     type: { name: typeName },
     textContent,
     text: textContent,
     isText: typeName === 'text',
     isTextblock: typeName === 'paragraph' || typeName === 'codeBlock',
-    content: { size: textContent.length },
+    content: { size: contentSize },
     nodeSize,
     childCount: children.length,
     child: (index: number) => children[index],
+    marks,
   }
 }
 
@@ -49,6 +56,10 @@ function pmDoc(children: Array<ReturnType<typeof pmNode>>) {
 
 function contextToken(id = 'preview-token') {
   return `![[Preview ${id}--123abc]]`
+}
+
+function mediaTextNode(text = 'Song', href = 'tabs-asset:///assets/song.mp3') {
+  return pmNode('text', text, text.length, [], [{ type: { name: 'link' }, attrs: { linkUrl: href } }])
 }
 
 describe('terminal block landing target detection', () => {
@@ -91,15 +102,27 @@ describe('terminal block landing target detection', () => {
     })
   })
 
+  it('detects a final media-only paragraph', () => {
+    const mediaText = mediaTextNode('Song')
+    const doc = pmDoc([pmNode('paragraph', 'Song', 6, [mediaText])])
+
+    expect(getTerminalBlockLandingTarget(doc)).toEqual({
+      kind: 'media',
+      position: 6,
+    })
+  })
+
   it('ignores normal paragraphs, blank trailing paragraphs, and mixed visual paragraphs', () => {
     const token = contextToken()
     const image = pmNode('image', '', 1)
     const text = pmNode('text', 'caption', 7)
+    const mediaText = mediaTextNode('Song')
 
     expect(getTerminalBlockLandingTarget(pmDoc([pmNode('paragraph', 'normal text')]))).toBeNull()
     expect(getTerminalBlockLandingTarget(pmDoc([pmNode('codeBlock', 'code'), pmNode('paragraph', '')]))).toBeNull()
     expect(getTerminalBlockLandingTarget(pmDoc([pmNode('paragraph', `${token} extra text`)]))).toBeNull()
     expect(getTerminalBlockLandingTarget(pmDoc([pmNode('paragraph', 'caption', 10, [image, text])]))).toBeNull()
+    expect(getTerminalBlockLandingTarget(pmDoc([pmNode('paragraph', 'Song caption', 14, [mediaText, text])]))).toBeNull()
     expect(isNotePreviewOnlyParagraphText('{{tabs-context:bad}}')).toBe(false)
   })
 })
@@ -144,7 +167,7 @@ function createFakeView(children: Array<ReturnType<typeof pmNode>>) {
   }
 }
 
-function fakeTerminalElement(kind: 'code' | 'table' | 'preview' | 'image') {
+function fakeTerminalElement(kind: 'code' | 'table' | 'preview' | 'image' | 'media') {
   return {
     childNodes: [],
     getBoundingClientRect: () => ({ top: 100, bottom: 200, left: 40, right: 240 }),
@@ -153,12 +176,14 @@ function fakeTerminalElement(kind: 'code' | 'table' | 'preview' | 'image') {
       if (kind === 'table') return selector === 'table'
       if (kind === 'preview') return selector === '.note-context-widget'
       if (kind === 'image') return selector === 'img'
+      if (kind === 'media') return selector === '.tabs-media-player'
       return false
     },
     closest: (selector: string) => {
       if (selector === '.context-preview-editor-host') return null
       if (selector === 'p' && kind === 'image') return {}
       if (selector === '.toastui-editor-ww-code-block' && kind === 'code') return {}
+      if (selector === '.tabs-media-player' && kind === 'media') return {}
       return null
     },
   } as unknown as Element
@@ -179,14 +204,46 @@ function createBoundaryView(children: Array<ReturnType<typeof pmNode>>, element:
   }
 }
 
+function setTerminalArrowSelection(
+  view: ReturnType<typeof createFakeView>['view'],
+  node: ReturnType<typeof pmNode>,
+  direction: 'up' | 'down',
+  start = 0,
+  index = 0,
+) {
+  if (node.type.name === 'table') {
+    ;(view.state as any).selection = {
+      node,
+      from: start,
+      to: start + node.nodeSize,
+      $from: { index: () => index },
+    }
+    return
+  }
+
+  const position = direction === 'up' ? start + 1 : start + 1 + node.content.size
+  ;(view.state as any).selection = {
+    empty: true,
+    from: position,
+    to: position,
+    head: position,
+  }
+}
+
 const terminalBoundaryCases = [
   { label: 'code block', kind: 'code' as const, node: () => pmNode('codeBlock', 'code', 6), domPosition: 1 },
   { label: 'table', kind: 'table' as const, node: () => pmNode('table', '', 8), domPosition: 1 },
-  { label: 'note preview', kind: 'preview' as const, node: () => pmNode('paragraph', contextToken(), 30), domPosition: 1 },
+  { label: 'note preview', kind: 'preview' as const, node: () => pmNode('paragraph', contextToken()), domPosition: 1 },
   {
     label: 'image',
     kind: 'image' as const,
     node: () => pmNode('paragraph', '', 3, [pmNode('image', '', 1)]),
+    domPosition: 1,
+  },
+  {
+    label: 'media player',
+    kind: 'media' as const,
+    node: () => pmNode('paragraph', 'Song', 6, [mediaTextNode('Song')]),
     domPosition: 1,
   },
 ]
@@ -364,5 +421,90 @@ describe('terminal block landing insertion', () => {
     expect(tr.insert).not.toHaveBeenCalled()
     expect(TextSelection.create).toHaveBeenCalledWith(tr.doc, terminalNode.nodeSize + 1, terminalNode.nodeSize + 1)
     expect(view.focus).toHaveBeenCalled()
+  })
+
+  it.each(terminalBoundaryCases)('inserts a paragraph after a final $label from ArrowDown', ({ node }) => {
+    const terminalNode = node()
+    const { view, tr } = createFakeView([terminalNode])
+    const TextSelection = { create: vi.fn((_doc, anchor, head) => ({ anchor, head })) }
+    setTerminalArrowSelection(view, terminalNode, 'down')
+
+    expect(moveTerminalBlockBoundaryCaretByArrow(view, 'down', TextSelection)).toBe(true)
+
+    expect(tr.insert).toHaveBeenCalledWith(
+      terminalNode.nodeSize,
+      expect.objectContaining({ type: { name: 'paragraph' }, textContent: '' }),
+    )
+    expect(TextSelection.create).toHaveBeenCalledWith(tr.doc, terminalNode.nodeSize + 1, terminalNode.nodeSize + 1)
+    expect(view.focus).toHaveBeenCalled()
+  })
+
+  it.each(terminalBoundaryCases)('inserts a paragraph before a first $label from ArrowUp', ({ node }) => {
+    const terminalNode = node()
+    const { view, tr } = createFakeView([terminalNode])
+    const TextSelection = { create: vi.fn((_doc, anchor, head) => ({ anchor, head })) }
+    setTerminalArrowSelection(view, terminalNode, 'up')
+
+    expect(moveTerminalBlockBoundaryCaretByArrow(view, 'up', TextSelection)).toBe(true)
+
+    expect(tr.insert).toHaveBeenCalledWith(
+      0,
+      expect.objectContaining({ type: { name: 'paragraph' }, textContent: '' }),
+    )
+    expect(TextSelection.create).toHaveBeenCalledWith(tr.doc, 1, 1)
+    expect(view.focus).toHaveBeenCalled()
+  })
+
+  it('moves ArrowDown into an existing following paragraph without inserting another one', () => {
+    const terminalNode = pmNode('codeBlock', 'code', 6)
+    const { view, tr } = createFakeView([terminalNode, pmNode('paragraph', 'after', 7)])
+    const TextSelection = { create: vi.fn((_doc, anchor, head) => ({ anchor, head })) }
+    setTerminalArrowSelection(view, terminalNode, 'down')
+
+    expect(moveTerminalBlockBoundaryCaretByArrow(view, 'down', TextSelection)).toBe(true)
+
+    expect(tr.insert).not.toHaveBeenCalled()
+    expect(TextSelection.create).toHaveBeenCalledWith(tr.doc, terminalNode.nodeSize + 1, terminalNode.nodeSize + 1)
+  })
+
+  it('moves ArrowUp into an existing previous paragraph without inserting another one', () => {
+    const before = pmNode('paragraph', 'before', 8)
+    const terminalNode = pmNode('codeBlock', 'code', 6)
+    const { view, tr } = createFakeView([before, terminalNode])
+    const TextSelection = { create: vi.fn((_doc, anchor, head) => ({ anchor, head })) }
+    setTerminalArrowSelection(view, terminalNode, 'up', before.nodeSize, 1)
+
+    expect(moveTerminalBlockBoundaryCaretByArrow(view, 'up', TextSelection)).toBe(true)
+
+    expect(tr.insert).not.toHaveBeenCalled()
+    expect(TextSelection.create).toHaveBeenCalledWith(tr.doc, 7, 7)
+  })
+
+  it('treats the caret after an image-only paragraph as an ArrowUp boundary', () => {
+    const terminalNode = pmNode('paragraph', '', 3, [pmNode('image', '', 1)])
+    const { view, tr } = createFakeView([terminalNode])
+    const TextSelection = { create: vi.fn((_doc, anchor, head) => ({ anchor, head })) }
+    setTerminalArrowSelection(view, terminalNode, 'down')
+
+    expect(moveTerminalBlockBoundaryCaretByArrow(view, 'up', TextSelection)).toBe(true)
+
+    expect(tr.insert).toHaveBeenCalledWith(
+      0,
+      expect.objectContaining({ type: { name: 'paragraph' }, textContent: '' }),
+    )
+    expect(TextSelection.create).toHaveBeenCalledWith(tr.doc, 1, 1)
+  })
+
+  it('does not hijack ArrowDown in the middle of a code block', () => {
+    const terminalNode = pmNode('codeBlock', 'const x = 1', 13)
+    const { view, tr } = createFakeView([terminalNode])
+    const TextSelection = { create: vi.fn((_doc, anchor, head) => ({ anchor, head })) }
+    ;(view.state as any).selection = { empty: true, from: 4, to: 4, head: 4 }
+    ;(view as any).endOfTextblock = vi.fn(() => false)
+
+    expect(moveTerminalBlockBoundaryCaretByArrow(view, 'down', TextSelection)).toBe(false)
+
+    expect(tr.insert).not.toHaveBeenCalled()
+    expect(TextSelection.create).not.toHaveBeenCalled()
   })
 })

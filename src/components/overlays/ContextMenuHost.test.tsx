@@ -23,6 +23,7 @@ function createContextMenuProps(
     onRenameSpace: noop,
     onRenameDomain: noop,
     onCopyImage: noop,
+    onRevealMediaFile: noop,
     onOpenInternalNoteLink: noop,
     onRenameInternalNoteLink: noop,
     onOpenDeleteModal: noop,
@@ -195,6 +196,19 @@ describe('ContextMenuHost copy actions', () => {
     expect(html).toContain('move to trash')
     expect(html).toContain('delete now')
     expect(html).not.toContain('disabled=""')
+  })
+
+  it('shows reveal file for media context menus', () => {
+    const html = renderContextMenu({
+      type: 'media',
+      kind: 'audio',
+      source: 'tabs-asset:///assets/song.mp3',
+      x: 0,
+      y: 0,
+    })
+
+    expect(html).toContain('reveal file')
+    expect(html).not.toContain('copy image')
   })
 
   it('shows editor clipboard actions, root make copy, and expandable command groups', () => {

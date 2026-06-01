@@ -6,7 +6,7 @@ import {
   type MutableRefObject,
   type SetStateAction,
 } from 'react'
-import { DEFAULT_NEWLINE_SHORTCUT_SETTINGS, DEFAULT_SHORTCUTS } from '../hotkeys/shortcuts'
+import { DEFAULT_NEWLINE_SHORTCUT_SETTINGS, DEFAULT_SHORTCUTS, normalizeHotkeySettings } from '../hotkeys/shortcuts'
 import {
   applyAutoPurgeToAppState,
 } from '../state/app-state'
@@ -162,10 +162,11 @@ export function useSettingsController({
   const pendingVisualsSettingsSectionRef = useRef<VisualsSettingsSection | null>(null)
   useEffect(() => {
     if (viewMode !== 'settings') return
+    const hotkeys = normalizeHotkeySettings(state.hotkeys)
     setSettingsDaysDraft(String(activeSpace.settings.autoRemoveDeletedDays))
-    setShortcutDrafts(state.hotkeys.shortcuts)
-    setNewlineShortcutDrafts(state.hotkeys.newlineShortcuts.shortcuts)
-    setShortcutMenuOperationsDraft(state.hotkeys.newlineShortcuts.menuOperations)
+    setShortcutDrafts(hotkeys.shortcuts)
+    setNewlineShortcutDrafts(hotkeys.newlineShortcuts.shortcuts)
+    setShortcutMenuOperationsDraft(hotkeys.newlineShortcuts.menuOperations)
     setSyncedUiBooleanDrafts(getSyncedUiBooleanSettings({
       showParentHomeTab: state.ui.showParentHomeTab,
       stageManagerOpenDestinationAfterApply: state.ui.stageManagerOpenDestinationAfterApply,
@@ -592,47 +593,56 @@ export function useSettingsController({
 
   const updateShortcutSetting = (shortcutId: ShortcutId, nextShortcut: string) => {
     setShortcutDrafts((previous) => ({ ...previous, [shortcutId]: nextShortcut }))
-    commitImmediateSettingsState((previous) => ({
-      ...previous,
-      hotkeys: {
-        ...previous.hotkeys,
-        shortcuts: {
-          ...previous.hotkeys.shortcuts,
-          [shortcutId]: nextShortcut,
+    commitImmediateSettingsState((previous) => {
+      const hotkeys = normalizeHotkeySettings(previous.hotkeys)
+      return {
+        ...previous,
+        hotkeys: {
+          ...hotkeys,
+          shortcuts: {
+            ...hotkeys.shortcuts,
+            [shortcutId]: nextShortcut,
+          },
         },
-      },
-    }))
+      }
+    })
   }
 
   const updateNewlineShortcutSetting = (shortcutId: NewlineShortcutId, operation: NewlineOperationId) => {
     setNewlineShortcutDrafts((previous) => ({ ...previous, [shortcutId]: operation }))
-    commitImmediateSettingsState((previous) => ({
-      ...previous,
-      hotkeys: {
-        ...previous.hotkeys,
-        newlineShortcuts: {
-          ...previous.hotkeys.newlineShortcuts,
-          shortcuts: {
-            ...previous.hotkeys.newlineShortcuts.shortcuts,
-            [shortcutId]: operation,
+    commitImmediateSettingsState((previous) => {
+      const hotkeys = normalizeHotkeySettings(previous.hotkeys)
+      return {
+        ...previous,
+        hotkeys: {
+          ...hotkeys,
+          newlineShortcuts: {
+            ...hotkeys.newlineShortcuts,
+            shortcuts: {
+              ...hotkeys.newlineShortcuts.shortcuts,
+              [shortcutId]: operation,
+            },
           },
         },
-      },
-    }))
+      }
+    })
   }
 
   const updateShortcutMenuOperationsSetting = (menuOperations: NewlineOperationId[]) => {
     setShortcutMenuOperationsDraft(menuOperations)
-    commitImmediateSettingsState((previous) => ({
-      ...previous,
-      hotkeys: {
-        ...previous.hotkeys,
-        newlineShortcuts: {
-          ...previous.hotkeys.newlineShortcuts,
-          menuOperations,
+    commitImmediateSettingsState((previous) => {
+      const hotkeys = normalizeHotkeySettings(previous.hotkeys)
+      return {
+        ...previous,
+        hotkeys: {
+          ...hotkeys,
+          newlineShortcuts: {
+            ...hotkeys.newlineShortcuts,
+            menuOperations,
+          },
         },
-      },
-    }))
+      }
+    })
   }
 
   const updateStageManagerOpenDestinationSetting = (checked: boolean) => {

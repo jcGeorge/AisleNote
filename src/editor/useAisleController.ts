@@ -1,4 +1,4 @@
-import { Editor } from '@toast-ui/editor'
+import type { Editor } from '@toast-ui/editor'
 import { useEffect, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
 import { materializeDecoupledAisleCopies } from '../notes/aisle-links'

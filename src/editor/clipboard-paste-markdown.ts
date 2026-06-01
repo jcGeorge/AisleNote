@@ -1,9 +1,14 @@
-import { importImageBlobAsAssetUrl as defaultImportImageBlobAsAssetUrl } from '../markdown/image-asset-registry'
+import {
+  importBlobAsAssetUrl as defaultImportBlobAsAssetUrl,
+  importImageBlobAsAssetUrl as defaultImportImageBlobAsAssetUrl,
+} from '../markdown/image-asset-registry'
 import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
-import { sanitizeEditorHtml } from './editor-sanitizer'
+import { importMediaFilesAsMarkdown, type ImportAssetBlob } from './media-file-insertion'
+import { withDefaultInsertedImageDisplayWidth } from './image-insertion'
+import type { TransientToastEditor } from './transient-toast-editor'
 
 export type ClipboardPasteMode = 'rich' | 'plainText'
-export type ClipboardMarkdownSource = 'html' | 'plain-text' | 'image'
+export type ClipboardMarkdownSource = 'html' | 'plain-text' | 'image' | 'media'
 
 export type ClipboardMarkdownReadResult =
   | { ok: true; markdown: string; source: ClipboardMarkdownSource; text?: string }
@@ -20,14 +25,6 @@ export type ClipboardItemLike = {
 }
 
 type MarkdownConverter = (value: string) => string | Promise<string>
-
-type ToastEditorLike = {
-  setHTML: (html: string, cursorToEnd?: boolean) => void
-  insertText: (text: string) => void
-  getMarkdown: () => string
-  destroy: () => void
-  focus?: () => void
-}
 
 const HTML_MIME = 'text/html'
 const PLAIN_TEXT_MIME = 'text/plain'
@@ -48,38 +45,9 @@ function toResult(
     : { ok: true, markdown: normalized, source, text }
 }
 
-async function withTransientToastEditor(run: (editor: ToastEditorLike) => void): Promise<string> {
-  if (typeof document === 'undefined') throw new Error('clipboard markdown conversion requires a DOM')
-  const { Editor } = await import('@toast-ui/editor')
-  const el = document.createElement('div')
-  el.setAttribute('aria-hidden', 'true')
-  el.style.position = 'fixed'
-  el.style.left = '-10000px'
-  el.style.top = '-10000px'
-  el.style.width = '1px'
-  el.style.height = '1px'
-  el.style.overflow = 'hidden'
-  document.body.appendChild(el)
-
-  const editor = new Editor({
-    el,
-    initialValue: '',
-    initialEditType: 'wysiwyg',
-    previewStyle: 'tab',
-    hideModeSwitch: true,
-    customHTMLSanitizer: sanitizeEditorHtml,
-    toolbarItems: [],
-    height: '1px',
-    usageStatistics: false,
-  }) as unknown as ToastEditorLike
-
-  try {
-    run(editor)
-    return normalizeMarkdownForPersistence(editor.getMarkdown())
-  } finally {
-    editor.destroy()
-    el.remove()
-  }
+async function withTransientToastEditor(run: (editor: TransientToastEditor) => void): Promise<string> {
+  const { runWithTransientToastEditor } = await import('./transient-toast-editor')
+  return runWithTransientToastEditor(run)
 }
 
 export async function convertClipboardHtmlToMarkdown(html: string): Promise<string> {
@@ -142,7 +110,8 @@ async function getImageMarkdowns(
         const fileName = getImageFileName(blob, markdowns.length + 1)
         const assetUrl = await importImageBlobAsAssetUrl(blob, fileName)
         if (assetUrl) {
-          markdowns.push(`![${escapeMarkdownImageAltText(fileName)}](${assetUrl})`)
+          const displayUrl = await withDefaultInsertedImageDisplayWidth(assetUrl, blob, null)
+          markdowns.push(`![${escapeMarkdownImageAltText(fileName)}](${displayUrl})`)
         }
       } catch {
         // Ignore a failed image item and keep checking the rest of the clipboard.
@@ -150,6 +119,25 @@ async function getImageMarkdowns(
     }
   }
   return markdowns
+}
+
+async function getMediaMarkdown(
+  items: readonly ClipboardItemLike[],
+  importBlobAsAssetUrl: ImportAssetBlob,
+): Promise<string | null> {
+  const blobs: Blob[] = []
+  for (const item of items) {
+    const mediaTypes = (item.types ?? []).filter((type) => type.startsWith('audio/') || type.startsWith('video/'))
+    for (const mediaType of mediaTypes) {
+      if (!item.getType) continue
+      try {
+        blobs.push(await item.getType(mediaType))
+      } catch {
+        // Ignore a failed media item and keep checking the rest of the clipboard.
+      }
+    }
+  }
+  return importMediaFilesAsMarkdown(blobs, importBlobAsAssetUrl)
 }
 
 async function convertTextResult(
@@ -184,12 +172,14 @@ export async function readClipboardMarkdown({
   convertHtmlToMarkdown = convertClipboardHtmlToMarkdown,
   convertPlainTextToMarkdown = convertClipboardPlainTextToMarkdown,
   importImageBlobAsAssetUrl = defaultImportImageBlobAsAssetUrl,
+  importBlobAsAssetUrl = defaultImportBlobAsAssetUrl,
 }: {
   mode: ClipboardPasteMode
   clipboard?: ClipboardLike | null
   convertHtmlToMarkdown?: MarkdownConverter
   convertPlainTextToMarkdown?: MarkdownConverter
   importImageBlobAsAssetUrl?: (blob: Blob, fileName?: string) => Promise<string | null>
+  importBlobAsAssetUrl?: ImportAssetBlob
 }): Promise<ClipboardMarkdownReadResult> {
   if (!clipboard) return { ok: false, reason: 'unavailable' }
 
@@ -215,6 +205,9 @@ export async function readClipboardMarkdown({
 
       const imageMarkdowns = await getImageMarkdowns(items, importImageBlobAsAssetUrl)
       if (imageMarkdowns.length > 0) return toResult(imageMarkdowns.join('\n\n'), 'image')
+
+      const mediaMarkdown = await getMediaMarkdown(items, importBlobAsAssetUrl)
+      if (mediaMarkdown) return toResult(mediaMarkdown, 'media')
     } catch {
       // Fall through to readText.
     }

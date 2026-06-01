@@ -1,4 +1,4 @@
-import { Editor } from '@toast-ui/editor'
+import type { Editor } from '@toast-ui/editor'
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import {
   createLinkMark,

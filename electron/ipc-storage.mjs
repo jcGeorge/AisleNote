@@ -107,6 +107,19 @@ function getAssetExtensionFromImportPayload(payload) {
   return normalizeAssetExtension(nameMatch?.[1] ?? 'bin')
 }
 
+function resolveProfileAssetPath(profileRootPath, payload) {
+  const assetPath = typeof payload?.url === 'string'
+    ? parseImageAssetUrl(payload.url)
+    : normalizeImageAssetPath(payload?.assetPath)
+  if (!assetPath) return { ok: false, error: 'Invalid asset.' }
+  const notesRoot = getStorageProfileNotesPath(profileRootPath)
+  const absoluteAssetPath = path.resolve(notesRoot, assetPath)
+  if (!absoluteAssetPath.startsWith(notesRoot + path.sep)) {
+    return { ok: false, error: 'Invalid asset path.' }
+  }
+  return { ok: true, assetPath, absoluteAssetPath }
+}
+
 export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null, shell = null }) {
   const userDataPath = app.getPath('userData')
   let profile = { ...resolveStorageProfile(userDataPath), userDataPath }
@@ -892,35 +905,36 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
   ipcMain.handle?.('open-asset', async (_event, payload = {}) => {
     if (!shell || typeof shell.openPath !== 'function') return { ok: false, error: 'Asset opening is unavailable.' }
     try {
-      const assetPath = typeof payload?.url === 'string'
-        ? parseImageAssetUrl(payload.url)
-        : normalizeImageAssetPath(payload?.assetPath)
-      if (!assetPath) return { ok: false, error: 'Invalid asset.' }
-      const notesRoot = getStorageProfileNotesPath(profile.profileRootPath)
-      const absoluteAssetPath = path.resolve(notesRoot, assetPath)
-      if (!absoluteAssetPath.startsWith(notesRoot + path.sep)) {
-        return { ok: false, error: 'Invalid asset path.' }
-      }
-      const error = await shell.openPath(absoluteAssetPath)
+      const resolved = resolveProfileAssetPath(profile.profileRootPath, payload)
+      if (!resolved.ok) return { ok: false, error: resolved.error }
+      const error = await shell.openPath(resolved.absoluteAssetPath)
       return error ? { ok: false, error } : { ok: true }
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : 'Asset could not be opened.' }
     }
   })
 
+  ipcMain.handle?.('reveal-asset', async (_event, payload = {}) => {
+    if (!shell || typeof shell.showItemInFolder !== 'function') {
+      return { ok: false, error: 'Asset reveal is unavailable.' }
+    }
+    try {
+      const resolved = resolveProfileAssetPath(profile.profileRootPath, payload)
+      if (!resolved.ok) return { ok: false, error: resolved.error }
+      if (!existsSync(resolved.absoluteAssetPath)) return { ok: false, error: 'Asset does not exist.' }
+      shell.showItemInFolder(resolved.absoluteAssetPath)
+      return { ok: true }
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : 'Asset could not be revealed.' }
+    }
+  })
+
   ipcMain.handle?.('read-asset', async (_event, payload = {}) => {
     try {
-      const assetPath = typeof payload?.url === 'string'
-        ? parseImageAssetUrl(payload.url)
-        : normalizeImageAssetPath(payload?.assetPath)
-      if (!assetPath) return { ok: false, error: 'Invalid asset.' }
-      const notesRoot = getStorageProfileNotesPath(profile.profileRootPath)
-      const absoluteAssetPath = path.resolve(notesRoot, assetPath)
-      if (!absoluteAssetPath.startsWith(notesRoot + path.sep)) {
-        return { ok: false, error: 'Invalid asset path.' }
-      }
-      if (!existsSync(absoluteAssetPath)) return { ok: false, error: 'Asset does not exist.' }
-      const bytes = readFileSync(absoluteAssetPath)
+      const resolved = resolveProfileAssetPath(profile.profileRootPath, payload)
+      if (!resolved.ok) return { ok: false, error: resolved.error }
+      if (!existsSync(resolved.absoluteAssetPath)) return { ok: false, error: 'Asset does not exist.' }
+      const bytes = readFileSync(resolved.absoluteAssetPath)
       return {
         ok: true,
         bytes: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),

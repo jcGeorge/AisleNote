@@ -1,7 +1,7 @@
 export const IMAGE_ASSET_URL_SCHEME = 'tabs-asset:'
 export const IMAGE_ASSET_URL_PREFIX = 'tabs-asset:///'
-export const IMAGE_MARKDOWN_PATTERN = /!\[([^\]]*)\]\(([^)]+)\)/g
-export const MARKDOWN_LINK_PATTERN = /(!?)\[([^\]]*)\]\(([^)]+)\)/g
+export const IMAGE_MARKDOWN_PATTERN = /!\[((?:\\.|[^\]\\])*)\]\(([^)]+)\)/g
+export const MARKDOWN_LINK_PATTERN = /(!?)\[((?:\\.|[^\]\\])*)\]\(([^)]+)\)/g
 
 export function normalizeImageAssetPath(value) {
   const source = String(value ?? '').replace(/\\/g, '/').trim()

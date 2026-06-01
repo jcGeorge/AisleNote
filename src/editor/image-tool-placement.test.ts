@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { getImageToolPlacement, isUsableImageToolPlacementRect } from './image-tool-placement'
+import {
+  getImageToolPlacement,
+  getVideoViewportResizeToolPlacement,
+  isUsableImageToolPlacementRect,
+} from './image-tool-placement'
 
 describe('image tool placement', () => {
   it('places the toolbar inside the image top-left when there is room', () => {
@@ -14,6 +18,20 @@ describe('image tool placement', () => {
 
     expect(placement.toolbarTop).toBe(8)
     expect(placement.toolbarLeft).toBe(8)
+  })
+
+  it('places the video resize handle inside the viewport bottom-right', () => {
+    const placement = getVideoViewportResizeToolPlacement({ top: 120, left: 40, right: 240, bottom: 260, width: 200 })
+
+    expect(placement.resizeTop).toBe(258)
+    expect(placement.resizeLeft).toBe(238)
+  })
+
+  it('keeps video resize fallback placement on the player bottom-right', () => {
+    const placement = getVideoViewportResizeToolPlacement({ top: 20, left: 12, right: 312, bottom: 90, width: 300 })
+
+    expect(placement.resizeTop).toBe(88)
+    expect(placement.resizeLeft).toBe(310)
   })
 
   it('rejects zero-sized image rects before placement can jump to the viewport corner', () => {

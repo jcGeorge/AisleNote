@@ -1,7 +1,19 @@
 import type { AppState, NewlineOperationId, NewlineShortcutId, ShortcutId } from '../types/app'
-import { DEFAULT_COMMAND_SHORTCUTS } from '../commands/app-commands'
 
-export const DEFAULT_SHORTCUTS: Record<ShortcutId, string> = DEFAULT_COMMAND_SHORTCUTS
+export const DEFAULT_SHORTCUTS: Record<ShortcutId, string> = {
+  toggleTabTrash: 'Mod+T',
+  openDomains: 'Mod+D',
+  openSpaces: 'Mod+S',
+  newTab: 'Mod+Shift+N',
+  newSubTab: 'Mod+N',
+  formatStrikethrough: '',
+  cycleParentTabNext: '',
+  cycleParentTabPrev: '',
+  cycleSubTabNext: 'Ctrl+Tab',
+  cycleSubTabPrev: 'Ctrl+Shift+Tab',
+  cycleAislePrev: 'Alt+[',
+  cycleAisleNext: 'Alt+]',
+}
 
 export const NEWLINE_OPERATIONS: Array<{ id: NewlineOperationId; label: string }> = [
   { id: 'normalNewLine', label: 'normal new line' },
