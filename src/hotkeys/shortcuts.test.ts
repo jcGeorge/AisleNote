@@ -6,6 +6,7 @@ import {
   SHORTCUT_MENU_ELIGIBLE_OPERATIONS,
   eventMatchesShortcut,
   formatShortcutLabel,
+  getNewlineShortcutIdForEvent,
   normalizeHotkeySettings,
 } from './shortcuts'
 
@@ -25,7 +26,7 @@ describe('newline shortcut settings', () => {
     expect(NEWLINE_OPERATION_LABELS.aisleRight).toBe('aisle to the right')
     expect(SHORTCUT_MENU_ELIGIBLE_OPERATIONS).toContain('aisleLeft')
     expect(SHORTCUT_MENU_ELIGIBLE_OPERATIONS).toContain('aisleRight')
-    expect(DEFAULT_NEWLINE_SHORTCUT_SETTINGS.shortcuts.controlEnter).toBe('aisleRight')
+    expect(DEFAULT_NEWLINE_SHORTCUT_SETTINGS.shortcuts.commandEnter).toBe('aisleRight')
     expect(DEFAULT_NEWLINE_SHORTCUT_SETTINGS.menuOperations).toEqual([
       'task',
       'aisleLeft',
@@ -37,6 +38,35 @@ describe('newline shortcut settings', () => {
       'strikethrough',
     ])
     expect(DEFAULT_NEWLINE_SHORTCUT_SETTINGS.menuOperations).not.toContain('aisle' as never)
+  })
+
+  it('swaps the default shortcut menu and right-aisle enter actions without changing physical key detection', () => {
+    expect(DEFAULT_NEWLINE_SHORTCUT_SETTINGS.shortcuts.controlEnter).toBe('operationsMenu')
+    expect(DEFAULT_NEWLINE_SHORTCUT_SETTINGS.shortcuts.commandEnter).toBe('aisleRight')
+    expect(
+      getNewlineShortcutIdForEvent(
+        { key: 'Enter', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent,
+        true,
+      ),
+    ).toBe('controlEnter')
+    expect(
+      getNewlineShortcutIdForEvent(
+        { key: 'Enter', ctrlKey: false, metaKey: true, altKey: false, shiftKey: false } as KeyboardEvent,
+        true,
+      ),
+    ).toBe('commandEnter')
+    expect(
+      getNewlineShortcutIdForEvent(
+        { key: 'Enter', ctrlKey: false, metaKey: false, altKey: true, shiftKey: false } as KeyboardEvent,
+        false,
+      ),
+    ).toBe('controlEnter')
+    expect(
+      getNewlineShortcutIdForEvent(
+        { key: 'Enter', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent,
+        false,
+      ),
+    ).toBe('commandEnter')
   })
 
   it('exposes strikethrough as a menu operation and unbound command shortcut', () => {
@@ -91,7 +121,7 @@ describe('newline shortcut settings', () => {
       },
     })
 
-    expect(normalized.newlineShortcuts.shortcuts.controlEnter).toBe('aisleRight')
+    expect(normalized.newlineShortcuts.shortcuts.controlEnter).toBe('operationsMenu')
     expect(normalized.newlineShortcuts.shortcuts.shiftEnter).toBe('aisleLeft')
     expect(normalized.newlineShortcuts.menuOperations).toEqual(['task', 'aisleRight', 'aisleLeft', 'strikethrough'])
   })

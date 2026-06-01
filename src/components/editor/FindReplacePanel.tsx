@@ -173,17 +173,11 @@ function buildFindReplaceResultRows(matches: FindReplaceMatch[], limit: number):
   const scratchpadRows: FindReplaceResultRow[] = []
   pushMatchRows(scratchpadRows, scratchpadItems, 0)
 
-  return scratchpadItems[0].index < normalItems[0].index
-    ? [
-        ...scratchpadRows,
-        { type: 'separator', key: 'scratchpad-normal-separator' },
-        ...normalRows,
-      ]
-    : [
-        ...normalRows,
-        { type: 'separator', key: 'normal-scratchpad-separator' },
-        ...scratchpadRows,
-      ]
+  return [
+    ...normalRows,
+    { type: 'separator', key: 'normal-scratchpad-separator' },
+    ...scratchpadRows,
+  ]
 }
 
 function getContextChipClassName(kind: FindReplaceChip['kind']) {

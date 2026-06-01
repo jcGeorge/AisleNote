@@ -26,7 +26,6 @@ function createContextMenuProps(
     onRevealMediaFile: noop,
     onOpenInternalNoteLink: noop,
     onRenameInternalNoteLink: noop,
-    onOpenDeleteModal: noop,
     onOpenDeduplicateModal: noop,
     onOpenCopyModal: noop,
     onMoveToTrash: noop,
@@ -56,6 +55,9 @@ describe('ContextMenuHost copy actions', () => {
     const html = renderContextMenu({ type: 'tab', tabId: 'tab-1', x: 0, y: 0 })
 
     expect(html).toContain('make copy')
+    expect(html).toContain('trash it')
+    expect(html).not.toContain('move to trash')
+    expect(html).not.toContain('delete now')
   })
 
   it('shows copy note as and copy aisle as submenus for multi-aisle notes', () => {
@@ -149,26 +151,29 @@ describe('ContextMenuHost copy actions', () => {
     expect(html).toContain('make copy')
     expect(html).not.toContain('arrange')
     expect(html).not.toContain('move to trash')
+    expect(html).not.toContain('trash it')
     expect(html).not.toContain('delete now')
     expect(html).not.toContain('de-couple')
   })
 
-  it('shows arrange, rename, and move to trash for domain context menus', () => {
+  it('shows arrange, rename, and trash it for domain context menus', () => {
     const html = renderContextMenu({ type: 'domain', domainId: 'domain-1', x: 0, y: 0 })
 
     expect(html).toContain('arrange')
     expect(html).toContain('rename')
-    expect(html).toContain('move to trash')
-    expect(html).toContain('delete now')
+    expect(html).toContain('trash it')
+    expect(html).not.toContain('move to trash')
+    expect(html).not.toContain('delete now')
   })
 
-  it('shows duplicate, rename, and move to trash for space context menus', () => {
+  it('shows duplicate, rename, and trash it for space context menus', () => {
     const html = renderContextMenu({ type: 'space', spaceId: 'space-1', x: 0, y: 0 })
 
     expect(html).toContain('duplicate')
     expect(html).toContain('rename')
-    expect(html).toContain('move to trash')
-    expect(html).toContain('delete now')
+    expect(html).toContain('trash it')
+    expect(html).not.toContain('move to trash')
+    expect(html).not.toContain('delete now')
   })
 
   it('keeps the space trash action clickable when it is the only space', () => {
@@ -180,11 +185,11 @@ describe('ContextMenuHost copy actions', () => {
       />,
     )
 
-    expect(html).toContain('move to trash')
+    expect(html).toContain('trash it')
     expect(html).not.toContain('disabled=""')
   })
 
-  it('keeps domain delete actions clickable when it is the only domain', () => {
+  it('keeps domain trash action clickable when it is the only domain', () => {
     const html = renderToStaticMarkup(
       <ContextMenuHost
         {...createContextMenuProps({ type: 'domain', domainId: 'domain-1', x: 0, y: 0 }, 1, {
@@ -193,8 +198,9 @@ describe('ContextMenuHost copy actions', () => {
       />,
     )
 
-    expect(html).toContain('move to trash')
-    expect(html).toContain('delete now')
+    expect(html).toContain('trash it')
+    expect(html).not.toContain('move to trash')
+    expect(html).not.toContain('delete now')
     expect(html).not.toContain('disabled=""')
   })
 
@@ -247,6 +253,7 @@ describe('ContextMenuHost copy actions', () => {
     expect(html).toContain('about scratchpad')
     expect(html).not.toContain('make copy')
     expect(html).not.toContain('move to trash')
+    expect(html).not.toContain('trash it')
     expect(html).not.toContain('arrange')
   })
 
@@ -268,7 +275,7 @@ describe('ContextMenuHost copy actions', () => {
     expect(html).toContain('find &amp; replace')
   })
 
-  it('shows restore and permanent delete actions for trash items', () => {
+  it('shows restore without permanent delete actions for trash items', () => {
     const html = renderContextMenu({
       type: 'trash-subtab',
       source: 'subtabs-only',
@@ -280,7 +287,8 @@ describe('ContextMenuHost copy actions', () => {
     })
 
     expect(html).toContain('restore')
-    expect(html).toContain('delete for real')
+    expect(html).not.toContain('delete for real')
+    expect(html).not.toContain('delete now')
   })
 })
 

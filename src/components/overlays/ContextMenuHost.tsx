@@ -52,7 +52,6 @@ type ContextMenuHostProps = {
   onRevealMediaFile: () => void
   onOpenInternalNoteLink: () => void
   onRenameInternalNoteLink: () => void
-  onOpenDeleteModal: (permanent: boolean) => void
   onOpenDeduplicateModal: () => void
   onOpenCopyModal: () => void
   onMoveToTrash: () => void
@@ -177,7 +176,6 @@ export function ContextMenuHost({
   onRevealMediaFile,
   onOpenInternalNoteLink,
   onRenameInternalNoteLink,
-  onOpenDeleteModal,
   onOpenDeduplicateModal,
   onOpenCopyModal,
   onMoveToTrash,
@@ -276,10 +274,7 @@ export function ContextMenuHost({
             rename
           </button>
           <button type="button" className="tab-context-delete" onClick={onMoveToTrash}>
-            move to trash
-          </button>
-          <button type="button" className="tab-context-delete tab-context-danger" onClick={() => onOpenDeleteModal(true)}>
-            delete now
+            trash it
           </button>
         </>
       ) : contextMenu.type === 'domain' ? (
@@ -291,10 +286,7 @@ export function ContextMenuHost({
             rename
           </button>
           <button type="button" className="tab-context-delete" onClick={onMoveToTrash}>
-            move to trash
-          </button>
-          <button type="button" className="tab-context-delete tab-context-danger" onClick={() => onOpenDeleteModal(true)}>
-            delete now
+            trash it
           </button>
         </>
       ) : contextMenu.type === 'image' ? (
@@ -381,9 +373,6 @@ export function ContextMenuHost({
           <button type="button" className="tab-context-delete" onClick={onRestoreFromTrash}>
             restore
           </button>
-          <button type="button" className="tab-context-delete tab-context-danger" onClick={() => onOpenDeleteModal(true)}>
-            delete for real
-          </button>
         </>
       ) : contextMenu.type === 'home-tab' ? (
         <>
@@ -409,10 +398,7 @@ export function ContextMenuHost({
             </button>
           )}
           <button type="button" className="tab-context-delete" onClick={onMoveToTrash}>
-            move to trash
-          </button>
-          <button type="button" className="tab-context-delete tab-context-danger" onClick={() => onOpenDeleteModal(true)}>
-            delete now
+            trash it
           </button>
         </>
       )}

@@ -281,6 +281,7 @@ describe('browser hybrid storage', () => {
       'deletedWorkspace',
       'editorState',
       'frontmatterSettings',
+      'messages',
       'navigationState',
       'noteRegistry',
       'workspaceIndex',

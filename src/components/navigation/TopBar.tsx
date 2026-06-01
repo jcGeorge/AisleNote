@@ -95,7 +95,10 @@ type TopBarProps = {
   onToggleDomainRail: () => void
   onOpenStageManager: () => void
   onToggleTrash: () => void
+  onOpenMain: () => void
+  onOpenMessages: () => void
   onOpenSettings: () => void
+  messagesCount?: number
 }
 
 function getSelectionClickModifiers(event: MouseEvent | ReactPointerEvent<HTMLButtonElement>): SelectionClickModifiers {
@@ -170,7 +173,10 @@ export function TopBar({
   onToggleDomainRail,
   onOpenStageManager,
   onToggleTrash,
+  onOpenMain,
+  onOpenMessages,
   onOpenSettings,
+  messagesCount = 0,
 }: TopBarProps) {
   const primaryTablistProps =
     viewMode === 'settings'
@@ -200,6 +206,17 @@ export function TopBar({
           {
             key: 'settings-view',
             label: 'settings',
+            selected: false,
+            className: 'btn btn-sm tab-btn topbar-action-btn topbar-context-btn',
+            onClick: () => undefined,
+          },
+        ]
+      : []),
+    ...(viewMode === 'messages'
+      ? [
+          {
+            key: 'messages-view',
+            label: 'messages',
             selected: false,
             className: 'btn btn-sm tab-btn topbar-action-btn topbar-context-btn',
             onClick: () => undefined,
@@ -239,6 +256,7 @@ export function TopBar({
   ]
   const topbarShowsCloseControl =
     viewMode === 'settings' ||
+    viewMode === 'messages' ||
     viewMode === 'stage-manager' ||
     (arrangeMode.active && viewMode === 'main')
   const parentPlacementTargetId =
@@ -473,6 +491,10 @@ export function TopBar({
               }
               if (viewMode === 'settings') {
                 onCloseSettingsView()
+                return
+              }
+              if (viewMode === 'messages') {
+                onOpenMain()
               }
             }}
             onSetMenuOpen={onSetMenuOpen}
@@ -480,7 +502,9 @@ export function TopBar({
             onToggleDomainRail={onToggleDomainRail}
             onOpenStageManager={onOpenStageManager}
             onToggleTrash={onToggleTrash}
+            onOpenMessages={onOpenMessages}
             onOpenSettings={onOpenSettings}
+            messagesCount={messagesCount}
           />
         )}
       </div>

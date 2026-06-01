@@ -65,6 +65,7 @@ const RAW_DEFAULT_STATE: AppState = {
   deletedDomains: [],
   deletedSpaces: [],
   scratchpad: normalizeScratchpadState(null),
+  messages: [],
   noteBodies: [],
   noteAisleBodies: [],
   activeSpaceId: DEFAULT_DOMAIN.activeSpaceId,

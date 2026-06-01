@@ -19,6 +19,7 @@ function renderMenu(spaceRailVisible = false, domainRailVisible = false) {
       onToggleDomainRail={noop}
       onOpenStageManager={noop}
       onToggleTrash={noop}
+      onOpenMessages={noop}
       onOpenSettings={noop}
     />,
   )

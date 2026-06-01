@@ -2451,6 +2451,84 @@
   margin-bottom: 0.25rem;
 }
 
+.messages-view {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 1.2rem 1rem 0.9rem;
+  background-color: var(--editor-bg);
+  color: var(--editor-text);
+  font-size: calc(1rem * var(--note-font-scale, 1));
+}
+
+.messages-view-header h2 {
+  margin: 0 0 0.8rem;
+  color: var(--editor-heading-text);
+  font-size: 2em;
+}
+
+.messages-empty {
+  margin: 0;
+}
+
+.messages-list {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 56rem;
+}
+
+.message-card {
+  border: 1px solid var(--settings-card-border, var(--editor-border));
+  border-left: 4px solid var(--toast-warning);
+  border-radius: 0.5rem;
+  padding: 0.85rem 1rem;
+  background: var(--settings-card-bg, var(--editor-surface));
+  box-shadow: var(--toast-shadow);
+}
+
+.message-card-header {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.message-card h3 {
+  margin: 0 0 0.35rem;
+  color: var(--editor-heading-text);
+  font-size: 1.15em;
+}
+
+.message-card p {
+  margin: 0 0 0.6rem;
+}
+
+.message-path,
+.message-path-list {
+  display: grid;
+  gap: 0.3rem;
+  margin-top: 0.65rem;
+}
+
+.message-path span,
+.message-path-list span {
+  color: var(--settings-muted-text, var(--editor-muted-text));
+  font-size: 0.9em;
+}
+
+.message-path code,
+.message-path-list code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.message-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.8rem;
+}
+
 .trash-home-actions {
   display: flex;
   gap: 0.45rem;

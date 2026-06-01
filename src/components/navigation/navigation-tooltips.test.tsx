@@ -108,6 +108,8 @@ function renderTopBar(
       onToggleDomainRail={noop}
       onOpenStageManager={noop}
       onToggleTrash={noop}
+      onOpenMain={noop}
+      onOpenMessages={noop}
       onOpenSettings={noop}
     />,
   )

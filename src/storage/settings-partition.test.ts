@@ -35,7 +35,8 @@ describe('portable app settings parsing', () => {
         },
         newlineShortcuts: {
           shortcuts: {
-            controlEnter: 'aisleRight',
+            controlEnter: 'operationsMenu',
+            commandEnter: 'aisleRight',
           },
         },
       },
@@ -123,6 +124,7 @@ describe('portable app settings parsing', () => {
             shortcuts: {
               controlEnter: 'horizontalLine',
               shiftEnter: 'task',
+              commandEnter: 'aisleRight',
             },
           },
         },

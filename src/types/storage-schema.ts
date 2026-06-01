@@ -198,6 +198,7 @@ export type StorageRootFileMap = {
   navigationState: string
   frontmatterSettings: string
   editorState: string
+  messages?: string
   deletedWorkspace: string
   noteRegistry: string
 }
@@ -212,7 +213,7 @@ export type StorageLastOpened = {
   spaceId: StorageEntityId
   primeTabId?: StorageEntityId | null
   subTabId: StorageEntityId | null
-  viewMode: 'main' | 'trash' | 'settings' | 'stage-manager'
+  viewMode: 'main' | 'trash' | 'settings' | 'stage-manager' | 'messages'
 }
 
 export type StorageWorkspaceIndex = {

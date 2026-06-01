@@ -19,7 +19,7 @@ afterEach(() => {
 })
 
 describe('storage profile watcher', () => {
-  it('suppresses app-owned writes during the quiet window', () =>
+  it('defers quiet-window changes and reports them after rechecking', () =>
     withTempProfile((profileRoot) => {
       vi.useFakeTimers()
       vi.setSystemTime(1_000)
@@ -35,8 +35,33 @@ describe('storage profile watcher', () => {
         watcher.markAppWrite()
         writeFileSync(path.join(profileRoot, 'notes', 'manifest.json'), '{"schemaVersion":2}', 'utf8')
         watcher.scan()
+
+        expect(onExternalChange).not.toHaveBeenCalled()
         vi.advanceTimersByTime(600)
+        expect(onExternalChange).toHaveBeenCalledTimes(1)
+      } finally {
+        watcher.close()
+      }
+    }))
+
+  it('suppresses app-owned writes after the saved signature is marked', () =>
+    withTempProfile((profileRoot) => {
+      vi.useFakeTimers()
+      vi.setSystemTime(1_000)
+      const onExternalChange = vi.fn()
+      const watcher = createStorageProfileWatcher({
+        getProfileRootPath: () => profileRoot,
+        onExternalChange,
+        intervalMs: 60_000,
+        debounceMs: 20,
+        appWriteQuietMs: 500,
+      })
+      try {
+        watcher.markAppWrite()
+        writeFileSync(path.join(profileRoot, 'notes', 'manifest.json'), '{"schemaVersion":2}', 'utf8')
+        watcher.markAppWrite()
         watcher.scan()
+        vi.advanceTimersByTime(600)
 
         expect(onExternalChange).not.toHaveBeenCalled()
       } finally {

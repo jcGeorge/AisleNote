@@ -35,9 +35,9 @@ describe('notebook folder status toasts', () => {
           health: 'warning',
           issues: [
             {
-              code: 'linked-aisle-mirror-conflict-newest-wins',
+              code: 'linked-aisle-mirror-auto-decoupled',
               severity: 'warning',
-              message: 'Linked aisle mirror files were edited differently outside the app.',
+              message: 'Linked duplicate files were edited differently outside the app.',
             },
           ],
         }),

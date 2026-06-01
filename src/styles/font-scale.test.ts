@@ -227,6 +227,83 @@ describe('editor annotation styles', () => {
     )
     expect(css).toContain('top: 1.18em;')
   })
+
+  it('renders annotation arrows with the editor text color at full opacity', () => {
+    const css = readStyle('editor-content.css')
+    const annotationArrowCss = css.slice(
+      css.indexOf('.toastui-editor-contents p.tabs-annotation-line-arrow::before'),
+      css.indexOf('.toastui-editor-contents .tabs-annotation-line-marker,'),
+    )
+    const lineArrowRule = extractRule(
+      css,
+      '.toastui-editor-contents p.tabs-annotation-line-arrow::before,\n.toastui-editor .ProseMirror p.tabs-annotation-line-arrow::before',
+    )
+    const lineArrowHeadRule = extractRule(
+      css,
+      '.toastui-editor-contents p.tabs-annotation-line-arrow::after,\n.toastui-editor .ProseMirror p.tabs-annotation-line-arrow::after',
+    )
+    const inlineArrowContainerRule = extractRule(
+      css,
+      '.toastui-editor-contents .tabs-annotation-inline-arrow,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow',
+    )
+    const inlineArrowShaftRule = extractRule(
+      css,
+      '.toastui-editor-contents .tabs-annotation-inline-arrow::before,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow::before',
+    )
+    const inlineArrowHeadRule = extractRule(
+      css,
+      '.toastui-editor-contents .tabs-annotation-inline-arrow::after,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow::after',
+    )
+    const horizontalArrowShaftRule = extractRule(
+      css,
+      '.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-right::before,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-right::before,\n.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-left::before,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-left::before',
+    )
+    const horizontalArrowHeadRule = extractRule(
+      css,
+      '.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-right::after,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-right::after,\n.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-left::after,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-left::after',
+    )
+    const turnArrowCurveRule = extractRule(
+      css,
+      '.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up::before,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up::before,\n.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down::before,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down::before',
+    )
+    const downArrowOffsetRule = extractRule(
+      css,
+      '.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down',
+    )
+    const wysiwygMarkerRule = extractRule(
+      css,
+      '.toastui-editor .ProseMirror .tabs-annotation-line-marker.tabs-annotation-inline-arrow',
+    )
+    const wysiwygMarkerPseudoRule = extractRule(
+      css,
+      '.toastui-editor .ProseMirror .tabs-annotation-line-marker.tabs-annotation-inline-arrow::before,\n.toastui-editor .ProseMirror .tabs-annotation-line-marker.tabs-annotation-inline-arrow::after',
+    )
+
+    expect(annotationArrowCss).not.toContain('mask-image')
+    expect(annotationArrowCss).not.toContain('-webkit-mask-image')
+    expect(annotationArrowCss).not.toContain('data:image/svg+xml')
+    expect(annotationArrowCss).not.toContain('1.116rem')
+    expect(lineArrowRule).toContain('color: var(--editor-text) !important;')
+    expect(lineArrowRule).toContain('opacity: 1;')
+    expect(lineArrowHeadRule).toContain("content: '';")
+    expect(lineArrowHeadRule).toContain('color: var(--editor-text) !important;')
+    expect(inlineArrowContainerRule).toContain('width: 0.95em;')
+    expect(inlineArrowContainerRule).toContain('height: 1em;')
+    expect(inlineArrowContainerRule).toContain('color: var(--editor-text) !important;')
+    expect(inlineArrowContainerRule).toContain('vertical-align: -0.08em;')
+    expect(inlineArrowContainerRule).toContain('opacity: 1;')
+    expect(inlineArrowShaftRule).toContain("content: '';")
+    expect(inlineArrowShaftRule).toContain('color: var(--editor-text) !important;')
+    expect(inlineArrowHeadRule).toContain("content: '';")
+    expect(inlineArrowHeadRule).toContain('color: var(--editor-text) !important;')
+    expect(horizontalArrowShaftRule).toContain('background: currentColor !important;')
+    expect(horizontalArrowHeadRule).toContain('background: transparent !important;')
+    expect(turnArrowCurveRule).toContain('border-color: currentColor;')
+    expect(turnArrowCurveRule).toContain('width: 0.48em;')
+    expect(downArrowOffsetRule).toContain('--annotation-arrow-down-offset: 0.14em;')
+    expect(wysiwygMarkerRule).toContain('vertical-align: -0.08em;')
+    expect(wysiwygMarkerPseudoRule).toContain('color: var(--editor-text) !important;')
+  })
 })
 
 describe('compact scope tab scaling styles', () => {

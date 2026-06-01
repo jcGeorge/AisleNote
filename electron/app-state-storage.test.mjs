@@ -333,6 +333,7 @@ describe('Electron app state storage load result', () => {
         'deletedWorkspace',
         'editorState',
         'frontmatterSettings',
+        'messages',
         'navigationState',
         'noteRegistry',
         'workspaceIndex',
@@ -885,7 +886,7 @@ describe('Electron app state storage load result', () => {
       expect(result.ok).toBe(true)
       const parsed = JSON.parse(result.serializedState)
       expect(parsed.noteAisleBodies.find((body) => body.id === 'shared-aisle-body').markdown).toBe('external mirror edit')
-      expect(result.issues.some((issue) => issue.code === 'linked-aisle-mirror-conflict-newest-wins')).toBe(false)
+      expect(result.issues.some((issue) => issue.code === 'linked-aisle-mirror-auto-decoupled')).toBe(false)
     }))
 
   it('uses a changed duplicate whole-note mirror as the shared aisle body on load', () =>
@@ -918,7 +919,7 @@ describe('Electron app state storage load result', () => {
       expect(parsed.noteAisleBodies.find((body) => body.id === 'aisle-body-1').markdown).toBe('whole note mirror edit')
     }))
 
-  it('chooses the newest divergent linked aisle mirror and reports a storage alert issue', () =>
+  it('keeps the newest divergent linked aisle mirror and de-couples the older changed mirror', () =>
     withTempUserDataPath((userDataPath) => {
       const state = JSON.parse(serializedAppState())
       const space = state.domains[0].spaces[0]
@@ -952,15 +953,122 @@ describe('Electron app state storage load result', () => {
       const result = loadAppStateResult(userDataPath)
       expect(result.ok).toBe(true)
       const parsed = JSON.parse(result.serializedState)
-      const issue = result.issues.find((candidate) => candidate.code === 'linked-aisle-mirror-conflict-newest-wins')
+      const issue = result.issues.find((candidate) => candidate.code === 'linked-aisle-mirror-auto-decoupled')
       expect(parsed.noteAisleBodies.find((body) => body.id === 'shared-aisle-body').markdown).toBe('newer mirror edit')
+      const decoupledBody = parsed.noteBodies.find((body) => body.id === 'body-1')
+      const anchorBody = parsed.noteBodies.find((body) => body.id === 'body-2')
+      const decoupledAisleBodyId = decoupledBody.aisles[0].aisleBodyId
+      expect(anchorBody.aisles[0].aisleBodyId).toBe('shared-aisle-body')
+      expect(decoupledAisleBodyId).not.toBe('shared-aisle-body')
+      expect(parsed.noteAisleBodies.find((body) => body.id === decoupledAisleBodyId).markdown).toBe('older canonical edit')
+      expect(parsed.messages).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          type: 'duplicate-auto-decoupled',
+          status: 'unread',
+          anchorPath: `notes/${mirrorFile}`,
+          decoupledPaths: [`notes/${aisleBodyEntry.file}`],
+        }),
+      ]))
       expect(issue).toMatchObject({
         severity: 'warning',
         aisleBodyId: 'shared-aisle-body',
-        chosenPath: `notes/${mirrorFile}`,
-        ignoredPaths: [`notes/${aisleBodyEntry.file}`],
+        anchorPath: `notes/${mirrorFile}`,
+        decoupledPaths: [`notes/${aisleBodyEntry.file}`],
         candidateCount: 2,
+        changedVersionCount: 2,
       })
+    }))
+
+  it('keeps linked mirrors together when multiple changed files have the same content', () =>
+    withTempUserDataPath((userDataPath) => {
+      const state = JSON.parse(serializedAppState())
+      const space = state.domains[0].spaces[0]
+      space.data.tabs.push({
+        id: 'tab-2',
+        title: 'Linked Tab',
+        noteBodyId: 'body-2',
+        activeSubTabId: null,
+        subTabs: [],
+      })
+      state.noteAisleBodies = [{ id: 'shared-aisle-body', markdown: 'shared aisle text' }]
+      state.noteBodies = [
+        { id: 'body-1', aisles: [{ id: 'aisle-1', aisleBodyId: 'shared-aisle-body' }] },
+        { id: 'body-2', aisles: [{ id: 'aisle-2', aisleBodyId: 'shared-aisle-body' }] },
+      ]
+
+      saveAppState(userDataPath, JSON.stringify(state))
+
+      const { root, noteBodiesRegistry, aisleBodiesRegistry } = getStoredWorkspacePaths(userDataPath)
+      const aisleBodyEntry = aisleBodiesRegistry.aisleBodies.find((body) => body.id === 'shared-aisle-body')
+      const mirrorFile = noteBodiesRegistry.noteBodies
+        .flatMap((body) => body.aisles)
+        .find((aisle) => aisle.aisleBodyId === 'shared-aisle-body' && aisle.file !== aisleBodyEntry.file)?.file
+      writeFileSync(path.join(root, aisleBodyEntry.file), 'same outside edit', 'utf8')
+      writeFileSync(path.join(root, mirrorFile), 'same outside edit', 'utf8')
+
+      const result = loadAppStateResult(userDataPath)
+      const parsed = JSON.parse(result.serializedState)
+
+      expect(result.issues.some((issue) => issue.code === 'linked-aisle-mirror-auto-decoupled')).toBe(false)
+      expect(parsed.noteBodies.find((body) => body.id === 'body-1').aisles[0].aisleBodyId).toBe('shared-aisle-body')
+      expect(parsed.noteBodies.find((body) => body.id === 'body-2').aisles[0].aisleBodyId).toBe('shared-aisle-body')
+      expect(parsed.noteAisleBodies.find((body) => body.id === 'shared-aisle-body').markdown).toBe('same outside edit')
+      expect(parsed.messages ?? []).toHaveLength(0)
+    }))
+
+  it('de-couples divergent duplicate whole-note mirrors and persists the message once', () =>
+    withTempUserDataPath((userDataPath) => {
+      const state = JSON.parse(serializedAppState())
+      const space = state.domains[0].spaces[0]
+      space.data.tabs.push({
+        id: 'tab-2',
+        title: 'Duplicate Tab',
+        noteBodyId: 'body-1',
+        activeSubTabId: null,
+        subTabs: [],
+      })
+
+      saveAppState(userDataPath, JSON.stringify(state))
+
+      const { root, spaceManifest, domainEntry, spaceEntry, aisleBodiesRegistry } = getStoredWorkspacePaths(userDataPath)
+      const aisleBodyEntry = aisleBodiesRegistry.aisleBodies.find((body) => body.id === 'aisle-body-1')
+      const duplicateHomeFile = spaceManifest.tabs.find((tab) => tab.id === 'tab-2').homeNoteFile
+      const duplicateFile = path.posix.join('domains', domainEntry.path, spaceEntry.path, duplicateHomeFile)
+      const canonicalPath = path.join(root, aisleBodyEntry.file)
+      const duplicatePath = path.join(root, duplicateFile)
+      writeFileSync(canonicalPath, 'older duplicate edit', 'utf8')
+      writeFileSync(duplicatePath, 'newer duplicate edit', 'utf8')
+      utimesSync(canonicalPath, new Date(1_700_000_000_000), new Date(1_700_000_000_000))
+      utimesSync(duplicatePath, new Date(1_700_000_100_000), new Date(1_700_000_100_000))
+
+      const result = loadAppStateResult(userDataPath)
+      expect(result.ok).toBe(true)
+      const parsed = JSON.parse(result.serializedState)
+      const parsedSpace = parsed.domains[0].spaces[0]
+      const firstTab = parsedSpace.data.tabs.find((tab) => tab.id === 'tab-1')
+      const secondTab = parsedSpace.data.tabs.find((tab) => tab.id === 'tab-2')
+      const firstBody = parsed.noteBodies.find((body) => body.id === firstTab.noteBodyId)
+      const firstAisleBody = parsed.noteAisleBodies.find((body) => body.id === firstBody.aisles[0].aisleBodyId)
+
+      expect(secondTab.noteBodyId).toBe('body-1')
+      expect(firstTab.noteBodyId).not.toBe('body-1')
+      expect(parsed.noteAisleBodies.find((body) => body.id === 'aisle-body-1').markdown).toBe('newer duplicate edit')
+      expect(firstAisleBody.markdown).toBe('older duplicate edit')
+      expect(parsed.messages).toEqual([
+        expect.objectContaining({
+          type: 'duplicate-auto-decoupled',
+          status: 'unread',
+          anchorPath: `notes/${duplicateFile}`,
+          decoupledPaths: [`notes/${aisleBodyEntry.file}`],
+        }),
+      ])
+
+      parsed.messages[0].status = 'dismissed'
+      saveAppState(userDataPath, JSON.stringify(parsed))
+      const reloaded = JSON.parse(loadAppStateResult(userDataPath).serializedState)
+      expect(reloaded.messages).toHaveLength(1)
+      expect(reloaded.messages[0].signature).toBe(parsed.messages[0].signature)
+      expect(reloaded.messages[0].status).toBe('dismissed')
     }))
 
   it('round-trips distinct aisle body markdown without collapsing sibling aisle files', () =>

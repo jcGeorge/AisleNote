@@ -43,6 +43,7 @@ export function createStorageProfileWatcher({
 }) {
   let lastSignature = computeStorageSignature(getProfileRootPath())
   let debounceTimer = null
+  let quietTimer = null
   let appWriteQuietUntil = 0
 
   const clearDebounce = () => {
@@ -51,8 +52,25 @@ export function createStorageProfileWatcher({
     debounceTimer = null
   }
 
+  const clearQuietTimer = () => {
+    if (quietTimer === null) return
+    clearTimeout(quietTimer)
+    quietTimer = null
+  }
+
+  const scheduleQuietRescan = () => {
+    clearQuietTimer()
+    const delayMs = Math.max(0, appWriteQuietUntil - Date.now()) + debounceMs
+    quietTimer = setTimeout(() => {
+      quietTimer = null
+      scan()
+    }, delayMs)
+    quietTimer.unref?.()
+  }
+
   const markAppWrite = () => {
     clearDebounce()
+    clearQuietTimer()
     appWriteQuietUntil = Date.now() + appWriteQuietMs
     lastSignature = computeStorageSignature(getProfileRootPath())
   }
@@ -60,15 +78,19 @@ export function createStorageProfileWatcher({
   const scan = () => {
     const nextSignature = computeStorageSignature(getProfileRootPath())
     if (nextSignature === lastSignature) return
-    lastSignature = nextSignature
     clearDebounce()
-    if (Date.now() < appWriteQuietUntil) return
+    if (Date.now() < appWriteQuietUntil) {
+      scheduleQuietRescan()
+      return
+    }
+    lastSignature = nextSignature
     debounceTimer = setTimeout(() => {
       debounceTimer = null
       if (Date.now() < appWriteQuietUntil) {
-        lastSignature = computeStorageSignature(getProfileRootPath())
+        scheduleQuietRescan()
         return
       }
+      lastSignature = computeStorageSignature(getProfileRootPath())
       onExternalChange()
     }, debounceMs)
     debounceTimer.unref?.()
@@ -84,6 +106,7 @@ export function createStorageProfileWatcher({
     close: () => {
       clearInterval(interval)
       clearDebounce()
+      clearQuietTimer()
     },
   }
 }

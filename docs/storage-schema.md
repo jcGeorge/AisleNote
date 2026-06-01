@@ -23,6 +23,7 @@ The design goals are:
     navigation-state.json
     frontmatter-settings.json
     editor-state.json
+    messages.json
     deleted-workspace.json
     note-registry.json
     domains/
@@ -113,7 +114,7 @@ Note contents are stored in `.md` files.
 
 User frontmatter values live inside the aisle Markdown file as a top YAML block. `note-registry.json` keeps note-body IDs, aisle slots, shared aisle-body IDs, file references, optional content hashes, and internal `frontmatterMeta`, keyed by shared `aisleBodyId`. Unlinked preservation records are marked with `storageStatus: "unlinked"` and keep their Markdown under `_internal/orphan-bodies/`.
 
-Linked note and aisle mirrors can produce more than one visible Markdown file for the same `aisleBodyId`. On load, schema 1 readers use stored `contentHash` values to detect closed-app edits to any mirror. If one mirror changed, that file becomes the shared aisle body. If multiple mirrors changed differently, the newest modified file wins and a warning issue is reported before the next save rewrites all mirrors from that shared content.
+Linked note and aisle mirrors can produce more than one visible Markdown file for the same `aisleBodyId`. On load, schema 1 readers use stored `contentHash` values to detect closed-app edits to any mirror. If one unique changed content exists, that file becomes the shared body. If multiple unique changed contents exist, the newest locally modified content stays linked and the other changed mirrors are de-coupled into independent notes or aisles. `messages.json` stores durable user-facing records for those automatic de-couplings.
 
 Example aisle file:
 

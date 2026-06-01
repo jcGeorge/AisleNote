@@ -164,26 +164,79 @@ describe('find and replace scope collection', () => {
     ])
   })
 
-  it('includes scratchpad only in scratchpad-local and notebook scopes', () => {
+  it('appends scratchpad to every normal scope and searches it after project results', () => {
     const state = createFindReplaceState()
     state.scratchpad = { noteBodyId: 'body-scratch', activeAisleId: 'aisle-scratch' }
     state.noteBodies.push(body('body-scratch', 'aisle-scratch', 'aisle-body-scratch'))
     state.noteAisleBodies?.push({ id: 'aisle-body-scratch', markdown: 'scratch target' })
 
-    expect(collectFindReplaceLocations(state, ACTIVE_LOCATION, 'domain').map((location) => location.noteBodyId)).not.toContain(
-      'body-scratch',
-    )
-    expect(collectFindReplaceLocations(state, ACTIVE_LOCATION, 'notebook').map((location) => location.noteBodyId)).toContain(
-      'body-scratch',
-    )
-    expect(collectFindReplaceLocations(state, SCRATCHPAD_FIND_LOCATION, 'note').map((location) => location.noteBodyId)).toEqual([
+    expect(collectFindReplaceLocations(state, ACTIVE_LOCATION, 'note').map((location) => location.noteBodyId)).toEqual([
+      'body-home',
       'body-scratch',
     ])
-    expect(findVisibleMatches(state, SCRATCHPAD_FIND_LOCATION, 'note', 'scratch', {
+    expect(collectFindReplaceLocations(state, ACTIVE_LOCATION, 'parent').map((location) => location.noteBodyId)).toEqual([
+      'body-home',
+      'body-sub',
+      'body-linked-a',
+      'body-scratch',
+    ])
+    expect(collectFindReplaceLocations(state, ACTIVE_LOCATION, 'space').map((location) => location.noteBodyId)).toEqual([
+      'body-home',
+      'body-sub',
+      'body-linked-a',
+      'body-parent-b',
+      'body-scratch',
+    ])
+    expect(collectFindReplaceLocations(state, ACTIVE_LOCATION, 'domain').map((location) => location.noteBodyId)).toEqual([
+      'body-home',
+      'body-sub',
+      'body-linked-a',
+      'body-parent-b',
+      'body-space-b',
+      'body-scratch',
+    ])
+    expect(collectFindReplaceLocations(state, ACTIVE_LOCATION, 'notebook').map((location) => location.noteBodyId)).toEqual([
+      'body-home',
+      'body-sub',
+      'body-linked-a',
+      'body-parent-b',
+      'body-space-b',
+      'body-linked-b',
+      'body-scratch',
+    ])
+    expect(findVisibleMatches(state, ACTIVE_LOCATION, 'note', 'target', {
       caseSensitive: false,
       wholeWord: false,
       regex: false,
-    })[0]?.context.noteKind).toBe('scratchpad')
+    }).map((match) => match.context.noteKind)).toEqual(['parent', 'scratchpad'])
+  })
+
+  it('uses scratchpad for scratchpad-local scopes and appends it after notebook results', () => {
+    const state = createFindReplaceState()
+    state.scratchpad = { noteBodyId: 'body-scratch', activeAisleId: 'aisle-scratch' }
+    state.noteBodies.push(body('body-scratch', 'aisle-scratch', 'aisle-body-scratch'))
+    state.noteAisleBodies?.push({ id: 'aisle-body-scratch', markdown: 'scratch target' })
+
+    const scratchpadLocalScopes = ['note', 'parent', 'space', 'domain'] as const
+    scratchpadLocalScopes.forEach((scope) => {
+      expect(collectFindReplaceLocations(state, SCRATCHPAD_FIND_LOCATION, scope).map((location) => location.noteBodyId)).toEqual([
+        'body-scratch',
+      ])
+    })
+    expect(collectFindReplaceLocations(state, SCRATCHPAD_FIND_LOCATION, 'notebook').map((location) => location.noteBodyId)).toEqual([
+      'body-home',
+      'body-sub',
+      'body-linked-a',
+      'body-parent-b',
+      'body-space-b',
+      'body-linked-b',
+      'body-scratch',
+    ])
+    expect(findVisibleMatches(state, SCRATCHPAD_FIND_LOCATION, 'notebook', 'target', {
+      caseSensitive: false,
+      wholeWord: false,
+      regex: false,
+    }).at(-1)?.context.noteKind).toBe('scratchpad')
   })
 
   it('adds aisle display metadata to normal and scratchpad matches', () => {

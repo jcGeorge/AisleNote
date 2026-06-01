@@ -166,6 +166,33 @@ describe('FindReplacePanel', () => {
     expect(html).toContain('>scratchpad</span>')
   })
 
+  it('keeps scratchpad results after normal results regardless of incoming match order', () => {
+    const html = renderPanel({
+      matches: [
+        match('scratch', SCRATCHPAD_CONTEXT, 'scratch match'),
+        match(
+          'normal',
+          {
+            domainId: 'domain-a',
+            domainName: 'Domain A',
+            spaceId: 'space-a',
+            spaceName: 'Space A',
+            parentId: 'parent-a',
+            parentName: 'Parent A',
+            noteId: 'sub-a',
+            noteName: 'Sub A',
+            noteKind: 'subtab',
+          },
+          'normal match',
+        ),
+      ],
+    })
+
+    expect(html.indexOf('normal match')).toBeLessThan(html.indexOf('scratch match'))
+    expect(html.indexOf('find-replace-result-separator')).toBeGreaterThan(html.indexOf('normal match'))
+    expect(html.indexOf('find-replace-result-separator')).toBeLessThan(html.indexOf('scratch match'))
+  })
+
   it('shows aisle numbers only for multi-aisle match rows', () => {
     const html = renderPanel({
       matches: [

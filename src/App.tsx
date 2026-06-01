@@ -58,6 +58,7 @@ import {
   isShortcutMenuKeyboardKey,
 } from './components/editor/shortcut-menu-keyboard'
 import { AisleEditModal } from './components/notes/AisleEditModal'
+import { MessagesView } from './components/messages/MessagesView'
 import { NoteWorkspace } from './components/notes/NoteWorkspace'
 import { scrollAislePaneIntoHorizontalView } from './components/notes/aisle-horizontal-scroll'
 import { SubTabRail } from './components/navigation/SubTabRail'
@@ -331,7 +332,7 @@ type CopyAsMenuState = {
 }
 
 const COPY_AS_MENU_ACTIONS: CopyAsAction[] = ['copy', 'duplicate', 'link', 'preview']
-const LINKED_AISLE_MIRROR_CONFLICT_CODE = 'linked-aisle-mirror-conflict-newest-wins'
+const DUPLICATE_AUTO_DECOUPLED_MESSAGE_TYPE = 'duplicate-auto-decoupled'
 
 const TOOLBAR_LIST_COMMAND_TO_MULTILINE_OPERATION: Partial<Record<ToolbarListCommand, MultiLineListOperation>> = {
   taskList: 'task',
@@ -1200,6 +1201,35 @@ function App() {
     setViewMode('main')
     setMenuOpen(false)
     setEditing(null)
+  }
+
+  const openMessagesView = () => {
+    closeEditorEphemeraRef.current()
+    if (arrangeMode.active) exitArrangeMode()
+    setScratchpadActive(false)
+    setViewMode('messages')
+    setMenuOpen(false)
+    setEditing(null)
+  }
+
+  const openMainView = () => {
+    closeEditorEphemeraRef.current()
+    setViewMode('main')
+    setMenuOpen(false)
+    setEditing(null)
+  }
+
+  const dismissMessage = (messageId: string) => {
+    setState((previous) => ({
+      ...previous,
+      messages: (previous.messages ?? []).map((message) =>
+        message.id === messageId ? { ...message, status: 'dismissed' } : message,
+      ),
+    }))
+  }
+
+  const openMessageLocation = (location: NoteLocation) => {
+    navigateToNoteLocation({ ...location, startAt: 'top' })
   }
 
   const applyArrangeParentMoveToSpace = (
@@ -3519,7 +3549,6 @@ function App() {
   const openContextMenuForTrashSpace = overlayActions.openContextMenuForTrashSpace
   const openContextMenuForSpace = overlayActions.openContextMenuForSpace
   const openContextMenuForDomain = overlayActions.openContextMenuForDomain
-  const openDeleteModalFromContext = overlayActions.openDeleteModalFromContext
   const deleteFromContext = overlayActions.deleteFromContext
   const deleteTarget = overlayActions.deleteTarget
   const restoreFromContext = overlayActions.restoreFromContext
@@ -3984,7 +4013,9 @@ function App() {
       onToggleDomainRail={toggleDomainRailVisibility}
       onOpenStageManager={stageManager.open}
       onToggleTrash={toggleTrashView}
+      onOpenMessages={openMessagesView}
       onOpenSettings={openSettingsWithoutMentionMenu}
+      messagesCount={unresolvedMessageCount}
     />
   )
   const activeThemePalette = getThemePaletteForTheme(state.theme, state.ui.themePalettes)
@@ -4010,30 +4041,23 @@ function App() {
   const visibleTipDefinitions = visibleTips
     .filter((tipId) => !state.ui.disabledTipIds.includes(tipId))
     .map((tipId) => getTipDefinition(tipId, { isMacPlatform }))
+  const unresolvedMessages = (state.messages ?? []).filter((message) => message.status !== 'dismissed')
+  const unresolvedMessageCount = unresolvedMessages.length
   const storageAlerts = useMemo<StorageAlert[]>(() => {
     const dismissed = new Set(dismissedStorageAlertSignatures)
-    return (storageProfileStatus?.issues ?? []).flatMap((issue) => {
-      if (issue.code !== LINKED_AISLE_MIRROR_CONFLICT_CODE) return []
-      const ignoredPaths = issue.ignoredPaths ?? []
-      const signature = [
-        storageProfileStatus?.revision ?? 0,
-        issue.code,
-        issue.aisleBodyId ?? '',
-        issue.chosenPath ?? issue.path ?? '',
-        ignoredPaths.join('|'),
-      ].join('::')
+    return unresolvedMessages.flatMap((message) => {
+      if (message.type !== DUPLICATE_AUTO_DECOUPLED_MESSAGE_TYPE) return []
+      const signature = message.signature || message.id
       if (dismissed.has(signature)) return []
-      const ignoredPreview = ignoredPaths.slice(0, 3).join(', ')
-      const ignoredSuffix =
-        ignoredPaths.length > 3 ? `, and ${ignoredPaths.length - 3} more` : ''
       return [{
         signature,
-        label: 'linked aisle mirror conflict',
-        message: issue.message,
-        detail: `Used ${issue.chosenPath ?? issue.path ?? 'the newest mirror file'}.${ignoredPaths.length > 0 ? ` Ignored ${ignoredPreview}${ignoredSuffix}.` : ''}`,
+        label: 'duplicate files de-coupled',
+        message: 'Duplicate files were edited differently. Some copies were de-coupled.',
+        detail: message.body,
+        actionLabel: 'open messages',
       }]
     })
-  }, [dismissedStorageAlertSignatures, storageProfileStatus])
+  }, [dismissedStorageAlertSignatures, unresolvedMessages])
   const dismissStorageAlert = useCallback((signature: string) => {
     setDismissedStorageAlertSignatures((currentSignatures) =>
       currentSignatures.includes(signature) ? currentSignatures : [...currentSignatures, signature],
@@ -4338,7 +4362,10 @@ function App() {
         onToggleDomainRail={toggleDomainRailVisibility}
         onOpenStageManager={stageManager.open}
         onToggleTrash={toggleTrashView}
+        onOpenMain={openMainView}
+        onOpenMessages={openMessagesView}
         onOpenSettings={openSettingsWithoutMentionMenu}
+        messagesCount={unresolvedMessageCount}
       />
 
       {tabArrangeDragPreview && <TabArrangeDragPreviewOverlay preview={tabArrangeDragPreview} />}
@@ -4578,6 +4605,12 @@ function App() {
               onRestoreAll={() => setModal({ type: 'trash-restore-all' })}
               onDeleteAll={() => setModal({ type: 'trash-delete-all' })}
             />
+          ) : viewMode === 'messages' ? (
+            <MessagesView
+              messages={state.messages ?? []}
+              onDismissMessage={dismissMessage}
+              onOpenLocation={openMessageLocation}
+            />
           ) : viewMode === 'main' ? (
             <NoteWorkspace
               noteBodyId={activeNoteBodyId}
@@ -4806,7 +4839,6 @@ function App() {
         onRevealMediaFile={revealMediaFileFromContext}
         onOpenInternalNoteLink={openInternalNoteLinkFromContext}
         onRenameInternalNoteLink={renameInternalNoteLinkFromContext}
-        onOpenDeleteModal={openDeleteModalFromContext}
         onOpenDeduplicateModal={openDeduplicateModalFromContext}
         onOpenCopyModal={() => {
           if (contextMenu?.type === 'editor') {
@@ -4873,7 +4905,11 @@ function App() {
       />
 
       <TipHost tips={visibleTipDefinitions} onDismissTip={dismissTip} />
-      <StorageAlertHost alerts={storageAlerts} onDismissAlert={dismissStorageAlert} />
+      <StorageAlertHost
+        alerts={storageAlerts}
+        onDismissAlert={dismissStorageAlert}
+        onAlertAction={openMessagesView}
+      />
 
       <ToastHost
         toasts={toasts}

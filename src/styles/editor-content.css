@@ -282,27 +282,169 @@
 
 .toastui-editor-contents p.tabs-annotation-line-arrow::before,
 .toastui-editor .ProseMirror p.tabs-annotation-line-arrow::before {
-  left: 0.46rem;
-  top: 0.28em;
-  width: 1.116rem;
-  height: 1.116rem;
-  border-radius: 0;
+  color: var(--editor-text) !important;
+  width: 0.58em;
+  height: 0.14em;
+  border-radius: 999px;
+  opacity: 1;
+  box-sizing: border-box;
+}
+
+.toastui-editor-contents p.tabs-annotation-line-arrow::after,
+.toastui-editor .ProseMirror p.tabs-annotation-line-arrow::after {
+  content: '';
+  position: absolute;
+  display: block;
+  color: var(--editor-text) !important;
+  opacity: 1;
+  box-sizing: border-box;
+}
+
+.toastui-editor-contents p.tabs-annotation-line-arrow-right::before,
+.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-right::before,
+.toastui-editor-contents p.tabs-annotation-line-arrow-left::before,
+.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-left::before {
+  top: 0.88em;
   background: currentColor !important;
-  opacity: 0.82;
-  transform-origin: 50% 50%;
-  mask-repeat: no-repeat;
-  mask-position: center;
-  mask-size: contain;
-  -webkit-mask-repeat: no-repeat;
-  -webkit-mask-position: center;
-  -webkit-mask-size: contain;
+  transform: translateY(-50%);
+}
+
+.toastui-editor-contents p.tabs-annotation-line-arrow-right::after,
+.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-right::after,
+.toastui-editor-contents p.tabs-annotation-line-arrow-left::after,
+.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-left::after {
+  top: 0.88em;
+  width: 0;
+  height: 0;
+  background: transparent !important;
+  border-top: 0.27em solid transparent;
+  border-bottom: 0.27em solid transparent;
+  transform: translateY(-50%);
+}
+
+.toastui-editor-contents p.tabs-annotation-line-arrow-right::before,
+.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-right::before {
+  left: 0.48rem;
+}
+
+.toastui-editor-contents p.tabs-annotation-line-arrow-right::after,
+.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-right::after {
+  left: 1.02rem;
+  border-left: 0.29em solid currentColor;
+}
+
+.toastui-editor-contents p.tabs-annotation-line-arrow-left::before,
+.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-left::before {
+  left: 0.76rem;
+}
+
+.toastui-editor-contents p.tabs-annotation-line-arrow-left::after,
+.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-left::after {
+  left: 0.42rem;
+  border-right: 0.29em solid currentColor;
+}
+
+.toastui-editor-contents p.tabs-annotation-line-arrow-up::before,
+.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-up::before,
+.toastui-editor-contents p.tabs-annotation-line-arrow-down::before,
+.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-down::before {
+  width: 0.48em;
+  height: 0.48em;
+  background: transparent !important;
+  border-color: currentColor;
+  border-style: solid;
+  border-width: 0;
+  border-radius: 0.18em;
+}
+
+.toastui-editor-contents p.tabs-annotation-line-arrow-up::after,
+.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-up::after,
+.toastui-editor-contents p.tabs-annotation-line-arrow-down::after,
+.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-down::after {
+  width: 0;
+  height: 0;
+  background: transparent !important;
+  border-left: 0.27em solid transparent;
+  border-right: 0.27em solid transparent;
+}
+
+.toastui-editor-contents p.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-left::before,
+.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-left::before {
+  left: 0.66rem;
+  top: 0.58em;
+  border-right-width: 0.14em;
+  border-bottom-width: 0.14em;
+  border-bottom-right-radius: 0.3em;
+}
+
+.toastui-editor-contents p.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-left::after,
+.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-left::after {
+  left: 0.94rem;
+  top: 0.39em;
+  border-bottom: 0.29em solid currentColor;
+}
+
+.toastui-editor-contents p.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-right::before,
+.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-right::before {
+  left: 0.42rem;
+  top: 0.58em;
+  border-left-width: 0.14em;
+  border-bottom-width: 0.14em;
+  border-bottom-left-radius: 0.3em;
+}
+
+.toastui-editor-contents p.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-right::after,
+.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-right::after {
+  left: 0.31rem;
+  top: 0.39em;
+  border-bottom: 0.29em solid currentColor;
+}
+
+.toastui-editor-contents p.tabs-annotation-line-arrow-down,
+.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-down {
+  --annotation-arrow-down-offset: 0.14em;
+}
+
+.toastui-editor-contents p.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-left::before,
+.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-left::before {
+  left: 0.66rem;
+  top: calc(0.38em + var(--annotation-arrow-down-offset));
+  border-right-width: 0.14em;
+  border-top-width: 0.14em;
+  border-top-right-radius: 0.3em;
+}
+
+.toastui-editor-contents p.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-left::after,
+.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-left::after {
+  left: 0.94rem;
+  top: calc(0.77em + var(--annotation-arrow-down-offset));
+  border-top: 0.29em solid currentColor;
+}
+
+.toastui-editor-contents p.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-right::before,
+.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-right::before {
+  left: 0.42rem;
+  top: calc(0.38em + var(--annotation-arrow-down-offset));
+  border-left-width: 0.14em;
+  border-top-width: 0.14em;
+  border-top-left-radius: 0.3em;
+}
+
+.toastui-editor-contents p.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-right::after,
+.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-right::after {
+  left: 0.31rem;
+  top: calc(0.77em + var(--annotation-arrow-down-offset));
+  border-top: 0.29em solid currentColor;
 }
 
 .toastui-editor-contents .tabs-annotation-inline-arrow,
-.toastui-editor .ProseMirror .tabs-annotation-inline-arrow:not(.tabs-annotation-line-marker) {
+.toastui-editor .ProseMirror .tabs-annotation-inline-arrow {
+  --annotation-arrow-stroke: 0.14em;
+  --annotation-arrow-head: 0.27em;
+  --annotation-arrow-down-offset: 0.08em;
   display: inline-block;
   position: relative;
-  width: 1.116rem;
+  width: 0.95em;
   height: 1em;
   margin: 0 0.08rem;
   border-radius: 0;
@@ -311,92 +453,167 @@
   font-size: inherit !important;
   line-height: inherit !important;
   opacity: 1;
-  vertical-align: baseline;
-  mask-image: none !important;
-  -webkit-mask-image: none !important;
+  vertical-align: -0.08em;
 }
 
 .toastui-editor-contents .tabs-annotation-inline-arrow::before,
 .toastui-editor .ProseMirror .tabs-annotation-inline-arrow::before {
   content: '';
   position: absolute;
-  left: 50%;
-  top: 50%;
   display: block;
-  width: 1.116rem;
-  height: 1.116rem;
-  border-radius: 0;
-  background: currentColor !important;
-  opacity: 0.82;
-  transform: translate(-50%, -50%);
-  mask-repeat: no-repeat;
-  mask-position: center;
-  mask-size: contain;
-  -webkit-mask-repeat: no-repeat;
-  -webkit-mask-position: center;
-  -webkit-mask-size: contain;
+  color: var(--editor-text) !important;
+  opacity: 1;
+  box-sizing: border-box;
 }
 
-.toastui-editor-contents p.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-left::before,
-.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-left::before,
-.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-left::before,
-.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-left::before {
-  mask-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D'0%200%2064%2064'%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%3E%3Cg%20transform%3D'rotate(90%2032%2032)'%3E%3Cpath%20d%3D'M56%2056%20C56%2034%2044%2022%2024%2022'%20fill%3D'none'%20stroke%3D'black'%20stroke-width%3D'14'%20stroke-linecap%3D'butt'%20stroke-linejoin%3D'round'%2F%3E%3Cpath%20d%3D'M24%203%20L3%2024%20L24%2045%20Z'%20fill%3D'black'%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E");
-  -webkit-mask-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D'0%200%2064%2064'%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%3E%3Cg%20transform%3D'rotate(90%2032%2032)'%3E%3Cpath%20d%3D'M56%2056%20C56%2034%2044%2022%2024%2022'%20fill%3D'none'%20stroke%3D'black'%20stroke-width%3D'14'%20stroke-linecap%3D'butt'%20stroke-linejoin%3D'round'%2F%3E%3Cpath%20d%3D'M24%203%20L3%2024%20L24%2045%20Z'%20fill%3D'black'%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E");
-}
-
-.toastui-editor-contents p.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-right::before,
-.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-right::before,
-.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-right::before,
-.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-right::before {
-  mask-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D'0%200%2064%2064'%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%3E%3Cg%20transform%3D'translate(64%200)%20scale(-1%201)'%3E%3Cg%20transform%3D'rotate(90%2032%2032)'%3E%3Cpath%20d%3D'M56%2056%20C56%2034%2044%2022%2024%2022'%20fill%3D'none'%20stroke%3D'black'%20stroke-width%3D'14'%20stroke-linecap%3D'butt'%20stroke-linejoin%3D'round'%2F%3E%3Cpath%20d%3D'M24%203%20L3%2024%20L24%2045%20Z'%20fill%3D'black'%2F%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E");
-  -webkit-mask-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D'0%200%2064%2064'%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%3E%3Cg%20transform%3D'translate(64%200)%20scale(-1%201)'%3E%3Cg%20transform%3D'rotate(90%2032%2032)'%3E%3Cpath%20d%3D'M56%2056%20C56%2034%2044%2022%2024%2022'%20fill%3D'none'%20stroke%3D'black'%20stroke-width%3D'14'%20stroke-linecap%3D'butt'%20stroke-linejoin%3D'round'%2F%3E%3Cpath%20d%3D'M24%203%20L3%2024%20L24%2045%20Z'%20fill%3D'black'%2F%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E");
-}
-
-.toastui-editor-contents p.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-left::before,
-.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-left::before,
-.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-left::before,
-.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-left::before {
-  mask-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D'0%200%2064%2064'%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%3E%3Cg%20transform%3D'translate(64%200)%20scale(-1%201)'%3E%3Cg%20transform%3D'rotate(-90%2032%2032)'%3E%3Cpath%20d%3D'M56%2056%20C56%2034%2044%2022%2024%2022'%20fill%3D'none'%20stroke%3D'black'%20stroke-width%3D'14'%20stroke-linecap%3D'butt'%20stroke-linejoin%3D'round'%2F%3E%3Cpath%20d%3D'M24%203%20L3%2024%20L24%2045%20Z'%20fill%3D'black'%2F%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E");
-  -webkit-mask-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D'0%200%2064%2064'%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%3E%3Cg%20transform%3D'translate(64%200)%20scale(-1%201)'%3E%3Cg%20transform%3D'rotate(-90%2032%2032)'%3E%3Cpath%20d%3D'M56%2056%20C56%2034%2044%2022%2024%2022'%20fill%3D'none'%20stroke%3D'black'%20stroke-width%3D'14'%20stroke-linecap%3D'butt'%20stroke-linejoin%3D'round'%2F%3E%3Cpath%20d%3D'M24%203%20L3%2024%20L24%2045%20Z'%20fill%3D'black'%2F%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E");
-}
-
-.toastui-editor-contents p.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-right::before,
-.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-right::before,
-.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-right::before,
-.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-right::before {
-  mask-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D'0%200%2064%2064'%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%3E%3Cg%20transform%3D'rotate(-90%2032%2032)'%3E%3Cpath%20d%3D'M56%2056%20C56%2034%2044%2022%2024%2022'%20fill%3D'none'%20stroke%3D'black'%20stroke-width%3D'14'%20stroke-linecap%3D'butt'%20stroke-linejoin%3D'round'%2F%3E%3Cpath%20d%3D'M24%203%20L3%2024%20L24%2045%20Z'%20fill%3D'black'%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E");
-  -webkit-mask-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D'0%200%2064%2064'%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%3E%3Cg%20transform%3D'rotate(-90%2032%2032)'%3E%3Cpath%20d%3D'M56%2056%20C56%2034%2044%2022%2024%2022'%20fill%3D'none'%20stroke%3D'black'%20stroke-width%3D'14'%20stroke-linecap%3D'butt'%20stroke-linejoin%3D'round'%2F%3E%3Cpath%20d%3D'M24%203%20L3%2024%20L24%2045%20Z'%20fill%3D'black'%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E");
-}
-
-.toastui-editor-contents p.tabs-annotation-line-arrow-right::before,
-.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-right::before,
-.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-right::before,
-.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-right::before {
-  mask-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D'0%200%2064%2064'%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%3E%3Cpath%20d%3D'M7%2032%20H46'%20fill%3D'none'%20stroke%3D'black'%20stroke-width%3D'12'%20stroke-linecap%3D'butt'%2F%3E%3Cpath%20d%3D'M40%2011%20L61%2032%20L40%2053%20Z'%20fill%3D'black'%2F%3E%3C%2Fsvg%3E");
-  -webkit-mask-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D'0%200%2064%2064'%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%3E%3Cpath%20d%3D'M7%2032%20H46'%20fill%3D'none'%20stroke%3D'black'%20stroke-width%3D'12'%20stroke-linecap%3D'butt'%2F%3E%3Cpath%20d%3D'M40%2011%20L61%2032%20L40%2053%20Z'%20fill%3D'black'%2F%3E%3C%2Fsvg%3E");
-}
-
-.toastui-editor-contents p.tabs-annotation-line-arrow-left::before,
-.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-left::before,
-.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-left::before,
-.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-left::before {
-  mask-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D'0%200%2064%2064'%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%3E%3Cg%20transform%3D'translate(64%200)%20scale(-1%201)'%3E%3Cpath%20d%3D'M7%2032%20H46'%20fill%3D'none'%20stroke%3D'black'%20stroke-width%3D'12'%20stroke-linecap%3D'butt'%2F%3E%3Cpath%20d%3D'M40%2011%20L61%2032%20L40%2053%20Z'%20fill%3D'black'%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E");
-  -webkit-mask-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D'0%200%2064%2064'%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%3E%3Cg%20transform%3D'translate(64%200)%20scale(-1%201)'%3E%3Cpath%20d%3D'M7%2032%20H46'%20fill%3D'none'%20stroke%3D'black'%20stroke-width%3D'12'%20stroke-linecap%3D'butt'%2F%3E%3Cpath%20d%3D'M40%2011%20L61%2032%20L40%2053%20Z'%20fill%3D'black'%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E");
+.toastui-editor-contents .tabs-annotation-inline-arrow::after,
+.toastui-editor .ProseMirror .tabs-annotation-inline-arrow::after {
+  content: '';
+  position: absolute;
+  display: block;
+  color: var(--editor-text) !important;
+  opacity: 1;
+  box-sizing: border-box;
 }
 
 .toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-right::before,
 .toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-right::before,
 .toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-left::before,
 .toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-left::before {
-  top: 82%;
+  top: 50%;
+  width: 0.58em;
+  height: var(--annotation-arrow-stroke);
+  border-radius: 999px;
+  background: currentColor !important;
+  transform: translateY(-50%);
 }
 
-.toastui-editor-contents p.tabs-annotation-line-arrow-right::before,
-.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-right::before,
-.toastui-editor-contents p.tabs-annotation-line-arrow-left::before,
-.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-left::before {
-  top: 0.48em;
+.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-right::after,
+.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-right::after,
+.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-left::after,
+.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-left::after {
+  top: 50%;
+  width: 0;
+  height: 0;
+  background: transparent !important;
+  border-top: var(--annotation-arrow-head) solid transparent;
+  border-bottom: var(--annotation-arrow-head) solid transparent;
+  transform: translateY(-50%);
+}
+
+.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-right::before,
+.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-right::before {
+  left: 0.09em;
+}
+
+.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-right::after,
+.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-right::after {
+  right: 0.05em;
+  border-left: calc(var(--annotation-arrow-head) * 1.08) solid currentColor;
+}
+
+.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-left::before,
+.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-left::before {
+  right: 0.09em;
+}
+
+.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-left::after,
+.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-left::after {
+  left: 0.05em;
+  border-right: calc(var(--annotation-arrow-head) * 1.08) solid currentColor;
+}
+
+.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up::before,
+.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up::before,
+.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down::before,
+.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down::before {
+  width: 0.48em;
+  height: 0.48em;
+  background: transparent !important;
+  border-color: currentColor;
+  border-style: solid;
+  border-width: 0;
+  border-radius: 0.18em;
+}
+
+.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up::after,
+.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up::after,
+.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down::after,
+.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down::after {
+  width: 0;
+  height: 0;
+  background: transparent !important;
+  border-left: var(--annotation-arrow-head) solid transparent;
+  border-right: var(--annotation-arrow-head) solid transparent;
+}
+
+.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-left::before,
+.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-left::before {
+  left: 0.24em;
+  top: 0.32em;
+  border-right-width: var(--annotation-arrow-stroke);
+  border-bottom-width: var(--annotation-arrow-stroke);
+  border-bottom-right-radius: 0.3em;
+}
+
+.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-left::after,
+.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-left::after {
+  left: 0.52em;
+  top: 0.13em;
+  border-bottom: calc(var(--annotation-arrow-head) * 1.08) solid currentColor;
+}
+
+.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-right::before,
+.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-right::before {
+  right: 0.24em;
+  top: 0.32em;
+  border-left-width: var(--annotation-arrow-stroke);
+  border-bottom-width: var(--annotation-arrow-stroke);
+  border-bottom-left-radius: 0.3em;
+}
+
+.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-right::after,
+.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-right::after {
+  right: 0.52em;
+  top: 0.13em;
+  border-bottom: calc(var(--annotation-arrow-head) * 1.08) solid currentColor;
+}
+
+.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down,
+.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down {
+  --annotation-arrow-down-offset: 0.14em;
+}
+
+.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-left::before,
+.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-left::before {
+  left: 0.24em;
+  top: calc(0.16em + var(--annotation-arrow-down-offset));
+  border-right-width: var(--annotation-arrow-stroke);
+  border-top-width: var(--annotation-arrow-stroke);
+  border-top-right-radius: 0.3em;
+}
+
+.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-left::after,
+.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-left::after {
+  left: 0.52em;
+  top: calc(0.55em + var(--annotation-arrow-down-offset));
+  border-top: calc(var(--annotation-arrow-head) * 1.08) solid currentColor;
+}
+
+.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-right::before,
+.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-right::before {
+  right: 0.24em;
+  top: calc(0.16em + var(--annotation-arrow-down-offset));
+  border-left-width: var(--annotation-arrow-stroke);
+  border-top-width: var(--annotation-arrow-stroke);
+  border-top-left-radius: 0.3em;
+}
+
+.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-right::after,
+.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-right::after {
+  right: 0.52em;
+  top: calc(0.55em + var(--annotation-arrow-down-offset));
+  border-top: calc(var(--annotation-arrow-head) * 1.08) solid currentColor;
 }
 
 .toastui-editor-contents .tabs-annotation-line-marker,
@@ -432,10 +649,12 @@
   caret-color: transparent !important;
   font-size: inherit !important;
   line-height: inherit !important;
+  vertical-align: -0.08em;
 }
 
-.toastui-editor .ProseMirror .tabs-annotation-line-marker.tabs-annotation-inline-arrow::before {
-  background: var(--editor-text) !important;
+.toastui-editor .ProseMirror .tabs-annotation-line-marker.tabs-annotation-inline-arrow::before,
+.toastui-editor .ProseMirror .tabs-annotation-line-marker.tabs-annotation-inline-arrow::after {
+  color: var(--editor-text) !important;
 }
 
 .toastui-editor .ProseMirror .tabs-annotation-arrow-boundary-caret {

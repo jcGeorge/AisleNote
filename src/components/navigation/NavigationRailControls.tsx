@@ -25,7 +25,9 @@ type NavigationRailControlsProps = {
   onToggleDomainRail: () => void
   onOpenStageManager: () => void
   onToggleTrash: () => void
+  onOpenMessages: () => void
   onOpenSettings: () => void
+  messagesCount?: number
 }
 
 export function NavigationRailControls({
@@ -41,7 +43,9 @@ export function NavigationRailControls({
   onToggleDomainRail,
   onOpenStageManager,
   onToggleTrash,
+  onOpenMessages,
   onOpenSettings,
+  messagesCount = 0,
 }: NavigationRailControlsProps) {
   return (
     <div className="tabbar-controls">
@@ -102,6 +106,9 @@ export function NavigationRailControls({
             )}
             <button type="button" className="menu-item" onClick={onToggleTrash}>
               {viewMode === 'trash' ? 'tabs' : 'trash'}
+            </button>
+            <button type="button" className="menu-item" onClick={onOpenMessages}>
+              messages{messagesCount > 0 ? ` (${messagesCount})` : ''}
             </button>
             <button type="button" className="menu-item" onClick={onOpenSettings}>
               settings

@@ -19,7 +19,7 @@ export type CustomThemePaletteSlot =
   | 'subtabRail'
 export type CustomThemePalette = Record<CustomThemePaletteSlot, string>
 export type ThemePaletteOverrides = Partial<Record<AppTheme, CustomThemePalette>>
-export type ViewMode = 'main' | 'trash' | 'settings' | 'stage-manager'
+export type ViewMode = 'main' | 'trash' | 'settings' | 'stage-manager' | 'messages'
 export type ShortcutId =
   | 'toggleTabTrash'
   | 'openDomains'
@@ -187,6 +187,27 @@ export type NoteLocation = {
   subTabId: string | null
 }
 
+export type AppMessageAffectedLocation = {
+  label: string
+  path?: string
+  noteBodyId?: string
+  aisleBodyId?: string
+  location?: NoteLocation
+}
+
+export type AppMessage = {
+  id: string
+  type: 'duplicate-auto-decoupled'
+  status: 'unread' | 'dismissed'
+  createdAt: string
+  signature: string
+  title: string
+  body: string
+  anchorPath?: string
+  decoupledPaths?: string[]
+  affectedLocations?: AppMessageAffectedLocation[]
+}
+
 export type NoteHeadingAnchor = {
   aisleId: string
   headingKey: string
@@ -344,6 +365,7 @@ export type AppState = {
   deletedDomains?: DeletedDomainEntry[]
   deletedSpaces?: DeletedSpaceEntry[]
   scratchpad?: ScratchpadState
+  messages?: AppMessage[]
   noteBodies: NoteBody[]
   noteAisleBodies?: NoteAisleBody[]
   /** Transitional projection of the active domain. Remove after App.tsx is fully domain-scoped. */
@@ -619,9 +641,10 @@ export type StorageProfileStatus = {
     path?: string
     message: string
     aisleBodyId?: string
-    chosenPath?: string
-    ignoredPaths?: string[]
+    anchorPath?: string
+    decoupledPaths?: string[]
     candidateCount?: number
+    changedVersionCount?: number
   }>
   event?: string
   profileRootPath: string

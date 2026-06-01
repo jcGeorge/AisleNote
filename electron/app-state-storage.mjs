@@ -75,7 +75,7 @@ const FRONTMATTER_CLOSE_RE = /(?:^|\r?\n)---[ \t]*(?:\r?\n|$)/
 const INTERNAL_INDENT_TOKEN = '\u2060\u2003\u2003'
 const EDITOR_BLANK_LINE_PLACEHOLDER = '\u200b'
 const EXPORT_TAB_SPACES = '    '
-const LINKED_AISLE_MIRROR_CONFLICT_CODE = 'linked-aisle-mirror-conflict-newest-wins'
+const LINKED_AISLE_MIRROR_AUTO_DECOUPLED_CODE = 'linked-aisle-mirror-auto-decoupled'
 
 function createStorageIssue(code, severity, pathValue, message, details = undefined) {
   return {
@@ -239,27 +239,43 @@ function buildTrashDataFromManifestItems(trashItems) {
   return { deletedTabs, deletedSubTabs }
 }
 
-function pushVisibleNoteFileRef(visibleNoteFileRefs, noteBodyId, rootRelativeFile) {
+function pushVisibleNoteFileRef(visibleNoteFileRefs, noteBodyId, rootRelativeFile, details = {}) {
   if (!Array.isArray(visibleNoteFileRefs)) return
   const bodyId = typeof noteBodyId === 'string' ? noteBodyId : ''
   const file = typeof rootRelativeFile === 'string' ? rootRelativeFile : ''
   if (!bodyId || !file) return
-  visibleNoteFileRefs.push({ noteBodyId: bodyId, file })
+  visibleNoteFileRefs.push({
+    noteBodyId: bodyId,
+    file,
+    ...(isRecord(details) ? details : {}),
+  })
 }
 
-function collectVisibleNoteFileRefsFromSpaceManifest(spaceRootRelative, spaceManifest, visibleNoteFileRefs) {
+function collectVisibleNoteFileRefsFromSpaceManifest(spaceRootRelative, spaceManifest, visibleNoteFileRefs, details = {}) {
   if (!Array.isArray(visibleNoteFileRefs)) return
+  const domainId = typeof details.domainId === 'string' ? details.domainId : ''
+  const spaceId = typeof details.spaceId === 'string' ? details.spaceId : ''
   ensureArray(spaceManifest?.tabs).forEach((tabRecord) => {
+    const tabId = typeof tabRecord?.id === 'string' ? tabRecord.id : ''
     const noteBodyId = typeof tabRecord?.noteBodyId === 'string' ? tabRecord.noteBodyId : ''
     const homeNoteFile = typeof tabRecord?.homeNoteFile === 'string' ? tabRecord.homeNoteFile : ''
     if (noteBodyId && homeNoteFile) {
-      pushVisibleNoteFileRef(visibleNoteFileRefs, noteBodyId, path.posix.join(spaceRootRelative, homeNoteFile))
+      pushVisibleNoteFileRef(visibleNoteFileRefs, noteBodyId, path.posix.join(spaceRootRelative, homeNoteFile), {
+        location: domainId && spaceId && tabId
+          ? { domainId, spaceId, tabId, subTabId: null }
+          : undefined,
+      })
     }
     ensureArray(tabRecord?.subTabs).forEach((subTabRecord) => {
+      const subTabId = typeof subTabRecord?.id === 'string' ? subTabRecord.id : ''
       const subTabNoteBodyId = typeof subTabRecord?.noteBodyId === 'string' ? subTabRecord.noteBodyId : ''
       const subTabFile = typeof subTabRecord?.file === 'string' ? subTabRecord.file : ''
       if (subTabNoteBodyId && subTabFile) {
-        pushVisibleNoteFileRef(visibleNoteFileRefs, subTabNoteBodyId, path.posix.join(spaceRootRelative, subTabFile))
+        pushVisibleNoteFileRef(visibleNoteFileRefs, subTabNoteBodyId, path.posix.join(spaceRootRelative, subTabFile), {
+          location: domainId && spaceId && tabId && subTabId
+            ? { domainId, spaceId, tabId, subTabId }
+            : undefined,
+        })
       }
     })
   })
@@ -1296,6 +1312,9 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
   setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.navigationState, buildNavigationState(parsedState))
   setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.frontmatterSettings, extractFrontmatterSettings(parsedState))
   setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.editorState, extractEditorState(parsedState))
+  setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.messages, {
+    messages: ensureArray(parsedState.messages).filter(isRecord),
+  })
   setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.deletedWorkspace, {
     deletedDomains: ensureArray(parsedState.deletedDomains).filter(isRecord),
     deletedSpaces: ensureArray(parsedState.deletedSpaces).filter(isRecord),
@@ -1403,8 +1422,27 @@ function addAisleCandidateRef(candidateRefsByAisleBodyId, aisleBodyId, file, opt
     file: relativeFile,
     expectedHash: typeof options.expectedHash === 'string' ? options.expectedHash : '',
     canonical: Boolean(options.canonical),
+    noteBodyId: typeof options.noteBodyId === 'string' ? options.noteBodyId : '',
+    aisleId: typeof options.aisleId === 'string' ? options.aisleId : '',
+    location: isRecord(options.location) ? options.location : null,
   })
   candidateRefsByAisleBodyId.set(bodyId, refs)
+}
+
+function getAisleBodyIdFromRecord(aisle) {
+  return typeof aisle?.aisleBodyId === 'string' && aisle.aisleBodyId
+    ? aisle.aisleBodyId
+    : typeof aisle?.id === 'string'
+      ? aisle.id
+      : ''
+}
+
+function getExpandedVisibleAisleFile(ref, aisle, aisles) {
+  const refFile = typeof ref?.file === 'string' ? ref.file : ''
+  const aisleFile = typeof aisle?.file === 'string' ? aisle.file : ''
+  if (!refFile || !aisleFile) return ''
+  if (aisles.length <= 1) return refFile
+  return path.posix.join(path.posix.dirname(refFile), path.posix.basename(aisleFile))
 }
 
 function buildAisleCandidateRefs(noteBodiesRoot, noteAisleBodiesRoot, visibleNoteFileRefs) {
@@ -1421,36 +1459,33 @@ function buildAisleCandidateRefs(noteBodiesRoot, noteAisleBodiesRoot, visibleNot
     if (!bodyId || noteBodyRecordsById.has(bodyId)) return
     noteBodyRecordsById.set(bodyId, body)
     ensureArray(body?.aisles).forEach((aisle) => {
-      const aisleBodyId =
-        typeof aisle?.aisleBodyId === 'string' && aisle.aisleBodyId
-          ? aisle.aisleBodyId
-          : typeof aisle?.id === 'string'
-            ? aisle.id
-            : ''
+      const aisleBodyId = getAisleBodyIdFromRecord(aisle)
       const file = typeof aisle?.file === 'string' ? aisle.file : ''
       const bodyRecord = aisleBodyRecordsById.get(aisleBodyId)
       addAisleCandidateRef(candidateRefsByAisleBodyId, aisleBodyId, file, {
         expectedHash: getRegistryContentHash(aisle) || getRegistryContentHash(bodyRecord),
         canonical: bodyRecord?.file === file,
+        noteBodyId: bodyId,
+        aisleId: typeof aisle?.id === 'string' ? aisle.id : '',
       })
     })
   })
 
   ensureArray(visibleNoteFileRefs).forEach((ref) => {
     const bodyId = typeof ref?.noteBodyId === 'string' ? ref.noteBodyId : ''
-    const file = typeof ref?.file === 'string' ? ref.file : ''
     const bodyRecord = noteBodyRecordsById.get(bodyId)
-    const firstAisle = ensureArray(bodyRecord?.aisles)[0]
-    const aisleBodyId =
-      typeof firstAisle?.aisleBodyId === 'string' && firstAisle.aisleBodyId
-        ? firstAisle.aisleBodyId
-        : typeof firstAisle?.id === 'string'
-          ? firstAisle.id
-          : ''
-    const aisleBodyRecord = aisleBodyRecordsById.get(aisleBodyId)
-    addAisleCandidateRef(candidateRefsByAisleBodyId, aisleBodyId, file, {
-      expectedHash: getRegistryContentHash(firstAisle) || getRegistryContentHash(aisleBodyRecord),
-      canonical: aisleBodyRecord?.file === file,
+    const aisles = ensureArray(bodyRecord?.aisles)
+    aisles.forEach((aisle) => {
+      const aisleBodyId = getAisleBodyIdFromRecord(aisle)
+      const file = getExpandedVisibleAisleFile(ref, aisle, aisles)
+      const aisleBodyRecord = aisleBodyRecordsById.get(aisleBodyId)
+      addAisleCandidateRef(candidateRefsByAisleBodyId, aisleBodyId, file, {
+        expectedHash: getRegistryContentHash(aisle) || getRegistryContentHash(aisleBodyRecord),
+        canonical: aisleBodyRecord?.file === file,
+        noteBodyId: bodyId,
+        aisleId: typeof aisle?.id === 'string' ? aisle.id : '',
+        location: ref.location,
+      })
     })
   })
 
@@ -1478,6 +1513,9 @@ function dedupeAisleCandidateRefs(refs) {
       file: ref.file,
       expectedHash: existing.expectedHash || ref.expectedHash,
       canonical: existing.canonical || ref.canonical,
+      noteBodyId: existing.noteBodyId || ref.noteBodyId,
+      aisleId: existing.aisleId || ref.aisleId,
+      location: existing.location || ref.location,
     })
   })
   return Array.from(byFile.values())
@@ -1494,6 +1532,9 @@ function reconcileAisleBodyCandidates(rootPath, aisleBodyId, bodyRecord, candida
         ...candidate,
         expectedHash,
         canonical: Boolean(ref.canonical),
+        noteBodyId: ref.noteBodyId,
+        aisleId: ref.aisleId,
+        location: ref.location,
         changed: Boolean(expectedHash && candidate.contentHash !== expectedHash),
       }
     })
@@ -1501,58 +1542,88 @@ function reconcileAisleBodyCandidates(rootPath, aisleBodyId, bodyRecord, candida
 
   const fallback = candidates.find((candidate) => candidate.canonical) ?? candidates[0] ?? null
   if (!fallback) {
-    return normalizeAisleStorageContentForHash({ markdown: '' })
+    return { content: normalizeAisleStorageContentForHash({ markdown: '' }), decouples: [], messages: [] }
   }
 
   if (!candidates.some((candidate) => candidate.expectedHash)) {
-    return fallback.content
+    return { content: fallback.content, decouples: [], messages: [] }
   }
 
   const changedCandidates = candidates.filter((candidate) => candidate.changed)
   if (changedCandidates.length === 0) {
-    return fallback.content
+    return { content: fallback.content, decouples: [], messages: [] }
   }
 
   const changedHashes = new Set(changedCandidates.map((candidate) => candidate.contentHash))
   if (changedHashes.size <= 1) {
-    return chooseNewestCandidate(changedCandidates)?.content ?? changedCandidates[0].content
+    return { content: chooseNewestCandidate(changedCandidates)?.content ?? changedCandidates[0].content, decouples: [], messages: [] }
   }
 
   const winner = chooseNewestCandidate(changedCandidates) ?? changedCandidates[0]
-  const ignoredPaths = changedCandidates
-    .filter((candidate) => candidate !== winner)
-    .map((candidate) => candidate.issuePath)
+  const decouples = changedCandidates
+    .filter((candidate) => candidate.contentHash !== winner.contentHash)
+    .map((candidate) => ({
+      sourceAisleBodyId: aisleBodyId,
+      sourceNoteBodyId: candidate.noteBodyId,
+      sourceAisleId: candidate.aisleId,
+      file: candidate.file,
+      issuePath: candidate.issuePath,
+      content: candidate.content,
+      contentHash: candidate.contentHash,
+      location: candidate.location,
+      winnerPath: winner.issuePath,
+      winnerHash: winner.contentHash,
+    }))
+  const decoupledPaths = decouples.map((candidate) => candidate.issuePath)
   addStorageIssueWithDetails(
     issues,
-    LINKED_AISLE_MIRROR_CONFLICT_CODE,
+    LINKED_AISLE_MIRROR_AUTO_DECOUPLED_CODE,
     'warning',
     winner.issuePath,
-    'Linked aisle mirror files were edited differently outside the app. The newest file was used and other mirror edits will be overwritten on the next save.',
+    'Linked duplicate files were edited differently outside the app. The newest version stayed linked and other changed versions were de-coupled.',
     {
       aisleBodyId,
-      chosenPath: winner.issuePath,
-      ignoredPaths,
+      anchorPath: winner.issuePath,
+      decoupledPaths,
       candidateCount: changedCandidates.length,
+      changedVersionCount: changedHashes.size,
     },
   )
-  return winner.content
+  return {
+    content: winner.content,
+    decouples,
+    messages: [{
+      sourceAisleBodyId: aisleBodyId,
+      anchorPath: winner.issuePath,
+      anchorHash: winner.contentHash,
+      anchorNoteBodyId: winner.noteBodyId,
+      anchorLocation: winner.location,
+      decoupledPaths,
+      decoupledHashes: Array.from(new Set(decouples.map((candidate) => candidate.contentHash))).sort(),
+    }],
+  }
 }
 
 function readNoteAisleBodiesFromRoot(rootPath, noteAisleBodiesRoot, noteBodiesRoot, visibleNoteFileRefs, issues = null) {
   const aisleBodies = []
+  const decouples = []
+  const messages = []
   const seen = new Set()
   const candidateRefsByAisleBodyId = buildAisleCandidateRefs(noteBodiesRoot, noteAisleBodiesRoot, visibleNoteFileRefs)
   for (const body of ensureArray(noteAisleBodiesRoot?.noteAisleBodies)) {
     const bodyId = typeof body?.id === 'string' ? body.id : ''
     if (!bodyId || seen.has(bodyId)) continue
     seen.add(bodyId)
-    const content = reconcileAisleBodyCandidates(
+    const result = reconcileAisleBodyCandidates(
       rootPath,
       bodyId,
       body,
       candidateRefsByAisleBodyId.get(bodyId) ?? [],
       issues,
     )
+    const content = result.content
+    decouples.push(...result.decouples)
+    messages.push(...result.messages)
     aisleBodies.push({
       id: bodyId,
       markdown: content.markdown,
@@ -1563,7 +1634,231 @@ function readNoteAisleBodiesFromRoot(rootPath, noteAisleBodiesRoot, noteBodiesRo
       frontmatterMeta: isRecord(body.frontmatterMeta) ? body.frontmatterMeta : undefined,
     })
   }
-  return aisleBodies
+  return { aisleBodies, decouples, messages }
+}
+
+function createStorageGeneratedId(prefix, parts, usedIds) {
+  const hash = createHash('sha256')
+    .update(JSON.stringify(parts))
+    .digest('hex')
+    .slice(0, 16)
+  const base = `${prefix}-${hash}`
+  let candidate = base
+  let suffix = 2
+  while (usedIds.has(candidate)) {
+    candidate = `${base}-${suffix}`
+    suffix += 1
+  }
+  usedIds.add(candidate)
+  return candidate
+}
+
+function getDecoupleLocationKey(decouple) {
+  const location = decouple?.location
+  if (!isRecord(location)) return ''
+  const subTabId = typeof location.subTabId === 'string' ? location.subTabId : '__home__'
+  return [location.domainId, location.spaceId, location.tabId, subTabId].join('::')
+}
+
+function countLiveNoteBodyLocations(domains) {
+  const counts = new Map()
+  ensureArray(domains).forEach((domain) => {
+    ensureArray(domain?.spaces).forEach((space) => {
+      ensureArray(space?.data?.tabs).forEach((tab) => {
+        const noteBodyId = typeof tab?.noteBodyId === 'string' ? tab.noteBodyId : ''
+        if (noteBodyId) counts.set(noteBodyId, (counts.get(noteBodyId) ?? 0) + 1)
+        ensureArray(tab?.subTabs).forEach((subTab) => {
+          const subTabNoteBodyId = typeof subTab?.noteBodyId === 'string' ? subTab.noteBodyId : ''
+          if (subTabNoteBodyId) counts.set(subTabNoteBodyId, (counts.get(subTabNoteBodyId) ?? 0) + 1)
+        })
+      })
+    })
+  })
+  return counts
+}
+
+function updateLiveNoteLocationBody(domains, location, noteBodyId) {
+  if (!isRecord(location) || typeof noteBodyId !== 'string' || !noteBodyId) return domains
+  return ensureArray(domains).map((domain) => {
+    if (domain?.id !== location.domainId) return domain
+    return {
+      ...domain,
+      spaces: ensureArray(domain.spaces).map((space) => {
+        if (space?.id !== location.spaceId) return space
+        return {
+          ...space,
+          data: {
+            ...space.data,
+            tabs: ensureArray(space?.data?.tabs).map((tab) => {
+              if (tab?.id !== location.tabId) return tab
+              if (location.subTabId === null) return { ...tab, noteBodyId }
+              return {
+                ...tab,
+                subTabs: ensureArray(tab.subTabs).map((subTab) =>
+                  subTab?.id === location.subTabId ? { ...subTab, noteBodyId } : subTab,
+                ),
+              }
+            }),
+          },
+        }
+      }),
+    }
+  })
+}
+
+function aisleContentToBodyRecord(id, content, sourceBody = null) {
+  return {
+    ...(isRecord(sourceBody) ? sourceBody : {}),
+    id,
+    markdown: typeof content?.markdown === 'string' ? content.markdown : '',
+    frontmatter: content?.frontmatter,
+    frontmatterStatus: content?.frontmatterStatus,
+    frontmatterParseError: content?.frontmatterParseError,
+    frontmatterRaw: content?.frontmatterRaw,
+  }
+}
+
+function collectUsedContentIds(noteBodies, noteAisleBodies, messages) {
+  const usedIds = new Set()
+  ensureArray(noteBodies).forEach((body) => {
+    if (typeof body?.id === 'string') usedIds.add(body.id)
+    ensureArray(body?.aisles).forEach((aisle) => {
+      if (typeof aisle?.id === 'string') usedIds.add(aisle.id)
+      if (typeof aisle?.aisleBodyId === 'string') usedIds.add(aisle.aisleBodyId)
+    })
+  })
+  ensureArray(noteAisleBodies).forEach((body) => {
+    if (typeof body?.id === 'string') usedIds.add(body.id)
+  })
+  ensureArray(messages).forEach((message) => {
+    if (typeof message?.id === 'string') usedIds.add(message.id)
+  })
+  return usedIds
+}
+
+function buildAutoDecoupleMessage(messagePlan, decouples, usedIds) {
+  const decoupledPaths = Array.from(new Set(decouples.map((decouple) => decouple.issuePath).filter(Boolean))).sort()
+  const signature = [
+    'duplicate-auto-decoupled',
+    messagePlan.sourceAisleBodyId,
+    messagePlan.anchorHash,
+    messagePlan.anchorPath,
+    messagePlan.decoupledHashes.join('|'),
+    decoupledPaths.join('|'),
+  ].join('::')
+  return {
+    id: createStorageGeneratedId('message', [signature], usedIds),
+    type: 'duplicate-auto-decoupled',
+    status: 'unread',
+    createdAt: new Date().toISOString(),
+    signature,
+    title: 'duplicate files de-coupled',
+    body: `${decoupledPaths.length} changed duplicate ${decoupledPaths.length === 1 ? 'file was' : 'files were'} de-coupled because linked files had different outside edits.`,
+    anchorPath: messagePlan.anchorPath,
+    decoupledPaths,
+    affectedLocations: [
+      {
+        label: 'stayed linked',
+        path: messagePlan.anchorPath,
+        noteBodyId: messagePlan.anchorNoteBodyId,
+        aisleBodyId: messagePlan.sourceAisleBodyId,
+        ...(isRecord(messagePlan.anchorLocation) ? { location: messagePlan.anchorLocation } : {}),
+      },
+      ...decouples.map((decouple) => ({
+        label: 'de-coupled',
+        path: decouple.issuePath,
+        noteBodyId: decouple.sourceNoteBodyId,
+        aisleBodyId: decouple.sourceAisleBodyId,
+        ...(isRecord(decouple.location) ? { location: decouple.location } : {}),
+      })),
+    ],
+  }
+}
+
+function applyLinkedMirrorDecouples({ domains, noteBodies, noteAisleBodies, existingMessages, decouples, messagePlans }) {
+  if (decouples.length === 0) {
+    return { domains, noteBodies, noteAisleBodies, messages: existingMessages }
+  }
+
+  let nextDomains = domains
+  let nextNoteBodies = ensureArray(noteBodies).map((body) => ({ ...body, aisles: ensureArray(body?.aisles).map((aisle) => ({ ...aisle })) }))
+  const nextAisleBodies = ensureArray(noteAisleBodies).map((body) => ({ ...body }))
+  const messages = ensureArray(existingMessages).filter(isRecord).map((message) => ({ ...message }))
+  const usedIds = collectUsedContentIds(nextNoteBodies, nextAisleBodies, messages)
+  const noteBodyMap = new Map(nextNoteBodies.map((body) => [body.id, body]))
+  const aisleBodyMap = new Map(nextAisleBodies.map((body) => [body.id, body]))
+  const locationCounts = countLiveNoteBodyLocations(domains)
+  const noteDecouplesByLocation = new Map()
+  const aisleDecouples = []
+
+  for (const decouple of decouples) {
+    if (!decouple.sourceNoteBodyId || !decouple.sourceAisleId) continue
+    const locationKey = getDecoupleLocationKey(decouple)
+    if (locationKey && (locationCounts.get(decouple.sourceNoteBodyId) ?? 0) > 1) {
+      const existing = noteDecouplesByLocation.get(locationKey) ?? {
+        noteBodyId: decouple.sourceNoteBodyId,
+        location: decouple.location,
+        decouples: [],
+      }
+      existing.decouples.push(decouple)
+      noteDecouplesByLocation.set(locationKey, existing)
+      continue
+    }
+    aisleDecouples.push(decouple)
+  }
+
+  for (const entry of noteDecouplesByLocation.values()) {
+    const originalBody = noteBodyMap.get(entry.noteBodyId)
+    if (!originalBody || !isRecord(entry.location)) continue
+    const decoupleByAisleId = new Map(entry.decouples.map((decouple) => [decouple.sourceAisleId, decouple]))
+    const newBodyId = createStorageGeneratedId('note-body', [entry.noteBodyId, getDecoupleLocationKey(entry), entry.decouples.map((decouple) => decouple.contentHash).sort()], usedIds)
+    const newAisles = ensureArray(originalBody.aisles).map((aisle) => {
+      const originalAisleBodyId = getAisleBodyIdFromRecord(aisle)
+      const decouple = decoupleByAisleId.get(aisle.id)
+      const sourceBody = aisleBodyMap.get(originalAisleBodyId)
+      const newAisleBodyId = createStorageGeneratedId('aisle-body', [newBodyId, aisle.id, decouple?.contentHash ?? originalAisleBodyId], usedIds)
+      const newAisleId = createStorageGeneratedId('aisle', [newBodyId, aisle.id], usedIds)
+      nextAisleBodies.push(aisleContentToBodyRecord(newAisleBodyId, decouple?.content ?? sourceBody, sourceBody))
+      return { id: newAisleId, aisleBodyId: newAisleBodyId }
+    })
+    const newBody = {
+      ...originalBody,
+      id: newBodyId,
+      aisles: newAisles,
+    }
+    nextNoteBodies.push(newBody)
+    noteBodyMap.set(newBodyId, newBody)
+    nextDomains = updateLiveNoteLocationBody(nextDomains, entry.location, newBodyId)
+  }
+
+  for (const decouple of aisleDecouples) {
+    const originalBody = noteBodyMap.get(decouple.sourceNoteBodyId)
+    if (!originalBody) continue
+    const sourceBody = aisleBodyMap.get(decouple.sourceAisleBodyId)
+    const newAisleBodyId = createStorageGeneratedId('aisle-body', [decouple.sourceNoteBodyId, decouple.sourceAisleId, decouple.contentHash, decouple.file], usedIds)
+    const newAisleBody = aisleContentToBodyRecord(newAisleBodyId, decouple.content, sourceBody)
+    nextAisleBodies.push(newAisleBody)
+    aisleBodyMap.set(newAisleBodyId, newAisleBody)
+    const nextBody = {
+      ...originalBody,
+      aisles: ensureArray(originalBody.aisles).map((aisle) =>
+        aisle.id === decouple.sourceAisleId ? { ...aisle, aisleBodyId: newAisleBodyId } : aisle,
+      ),
+    }
+    nextNoteBodies = nextNoteBodies.map((body) => (body.id === nextBody.id ? nextBody : body))
+    noteBodyMap.set(nextBody.id, nextBody)
+  }
+
+  const existingSignatures = new Set(messages.map((message) => message.signature).filter(Boolean))
+  for (const messagePlan of messagePlans) {
+    const relatedDecouples = decouples.filter((decouple) => decouple.sourceAisleBodyId === messagePlan.sourceAisleBodyId)
+    const message = buildAutoDecoupleMessage(messagePlan, relatedDecouples, usedIds)
+    if (existingSignatures.has(message.signature)) continue
+    messages.push(message)
+    existingSignatures.add(message.signature)
+  }
+
+  return { domains: nextDomains, noteBodies: nextNoteBodies, noteAisleBodies: nextAisleBodies, messages }
 }
 
 function isRootSplitFileName(value) {
@@ -1690,6 +1985,7 @@ function readCurrentRootParts(rootPath, rootManifest, issues = null, profileRoot
   }
   splitFiles.appSettings = readAppSettingsForProfile(getUserSettingsRoot(profileRootPath, options), issues)
   splitFiles.editorState = readRootSplitJsonFile(rootPath, rootManifest, 'editorState', false, issues) ?? {}
+  splitFiles.messages = readRootSplitJsonFile(rootPath, rootManifest, 'messages', false, issues) ?? {}
   const noteRegistry = splitFiles.noteRegistry
 
   return {
@@ -1702,6 +1998,7 @@ function readCurrentRootParts(rootPath, rootManifest, issues = null, profileRoot
     },
     domainEntries: ensureArray(splitFiles.workspaceIndex?.domains),
     scratchpad: isRecord(splitFiles.workspaceIndex?.scratchpad) ? splitFiles.workspaceIndex.scratchpad : undefined,
+    messages: ensureArray(splitFiles.messages?.messages).filter(isRecord),
     deletedDomains: ensureArray(splitFiles.deletedWorkspace?.deletedDomains).filter(isRecord),
     deletedSpaces: ensureArray(splitFiles.deletedWorkspace?.deletedSpaces).filter(isRecord),
     activeDomainId:
@@ -1725,7 +2022,7 @@ function addDirectoryToZip(zip, directoryPath, zipPrefix) {
   }
 }
 
-function readSpace(rootPath, spaceRootRelative, spaceEntry, issues = null, visibleNoteFileRefs = null) {
+function readSpace(rootPath, spaceRootRelative, spaceEntry, issues = null, visibleNoteFileRefs = null, options = {}) {
   const spaceRoot = path.join(rootPath, spaceRootRelative)
   const spaceManifest = readJsonFileIfExists(path.join(spaceRoot, 'manifest.json'), issues, {
     rootPath,
@@ -1736,7 +2033,11 @@ function readSpace(rootPath, spaceRootRelative, spaceEntry, issues = null, visib
     parseMessage: 'Space manifest is corrupt; this space was skipped.',
   })
   if (!spaceManifest || typeof spaceManifest !== 'object') return null
-  collectVisibleNoteFileRefsFromSpaceManifest(spaceRootRelative, spaceManifest, visibleNoteFileRefs)
+  const spaceId = typeof spaceManifest.id === 'string' ? spaceManifest.id : spaceEntry.id
+  collectVisibleNoteFileRefsFromSpaceManifest(spaceRootRelative, spaceManifest, visibleNoteFileRefs, {
+    domainId: options.domainId,
+    spaceId,
+  })
 
   const tabs = ensureArray(spaceManifest.tabs)
     .map((tabRecord) => ({
@@ -1764,7 +2065,7 @@ function readSpace(rootPath, spaceRootRelative, spaceEntry, issues = null, visib
   )
 
   return {
-    id: typeof spaceManifest.id === 'string' ? spaceManifest.id : spaceEntry.id,
+    id: spaceId,
     name:
       typeof spaceManifest.title === 'string'
         ? spaceManifest.title
@@ -1832,7 +2133,9 @@ function readHybridAppStateFromRootManifest(rootPath, rootManifest, issues = nul
         )
         continue
       }
-      const space = readSpace(rootPath, path.posix.join(domainRootRelative, spacePath), spaceEntry, issues, visibleNoteFileRefs)
+      const space = readSpace(rootPath, path.posix.join(domainRootRelative, spacePath), spaceEntry, issues, visibleNoteFileRefs, {
+        domainId,
+      })
       if (!space) continue
       spaces.push(space)
     }
@@ -1863,13 +2166,21 @@ function readHybridAppStateFromRootManifest(rootPath, rootManifest, issues = nul
       spaces,
     })
   }
-  const noteAisleBodies = readNoteAisleBodiesFromRoot(
+  const aisleReadResult = readNoteAisleBodiesFromRoot(
     rootPath,
     rootParts.noteAisleBodiesRoot,
     rootParts.noteBodiesRoot,
     visibleNoteFileRefs,
     issues,
   )
+  const decoupledState = applyLinkedMirrorDecouples({
+    domains,
+    noteBodies,
+    noteAisleBodies: aisleReadResult.aisleBodies,
+    existingMessages: rootParts.messages,
+    decouples: aisleReadResult.decouples,
+    messagePlans: aisleReadResult.messages,
+  })
 
   const lastOpened = rootParts.lastOpened
   const lastOpenedDomainId =
@@ -1877,9 +2188,9 @@ function readHybridAppStateFromRootManifest(rootPath, rootManifest, issues = nul
       ? lastOpened.domainId
       : null
   const candidateActiveDomainId =
-    (lastOpenedDomainId && domains.some((domain) => domain.id === lastOpenedDomainId) && lastOpenedDomainId) ||
-    (domains.some((domain) => domain.id === rootParts.activeDomainId) && rootParts.activeDomainId) ||
-    domains[0]?.id ||
+    (lastOpenedDomainId && decoupledState.domains.some((domain) => domain.id === lastOpenedDomainId) && lastOpenedDomainId) ||
+    (decoupledState.domains.some((domain) => domain.id === rootParts.activeDomainId) && rootParts.activeDomainId) ||
+    decoupledState.domains[0]?.id ||
     ''
   const theme = rootParts.syncedSettings?.theme === 'custom'
     ? 'custom1'
@@ -1890,12 +2201,13 @@ function readHybridAppStateFromRootManifest(rootPath, rootManifest, issues = nul
   const reconciled = reconcileNotebookStorageState({
     theme,
     activeDomainId: candidateActiveDomainId,
-    domains,
+    domains: decoupledState.domains,
     deletedDomains: rootParts.deletedDomains,
     deletedSpaces: rootParts.deletedSpaces,
     scratchpad: rootParts.scratchpad,
-    noteBodies,
-    noteAisleBodies,
+    messages: decoupledState.messages,
+    noteBodies: decoupledState.noteBodies,
+    noteAisleBodies: decoupledState.noteAisleBodies,
     activeSpaceId: '',
     spaces: [],
     hotkeys: rootParts.syncedSettings?.hotkeys,

@@ -21,6 +21,7 @@ export const ROOT_SPLIT_FILES = Object.freeze({
   navigationState: 'navigation-state.json',
   frontmatterSettings: 'frontmatter-settings.json',
   editorState: 'editor-state.json',
+  messages: 'messages.json',
   deletedWorkspace: 'deleted-workspace.json',
   noteRegistry: 'note-registry.json',
 })
@@ -50,9 +51,9 @@ const DEFAULT_COMMAND_SHORTCUTS = {
 
 const DEFAULT_NEWLINE_SHORTCUT_SETTINGS = {
   shortcuts: {
-    controlEnter: 'aisleRight',
+    controlEnter: 'operationsMenu',
     shiftEnter: 'task',
-    commandEnter: 'operationsMenu',
+    commandEnter: 'aisleRight',
   },
   menuOperations: [
     'task',

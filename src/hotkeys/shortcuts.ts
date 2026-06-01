@@ -68,9 +68,9 @@ const DEFAULT_SHORTCUT_MENU_OPERATIONS: NewlineOperationId[] = [
 
 export const DEFAULT_NEWLINE_SHORTCUT_SETTINGS: AppState['hotkeys']['newlineShortcuts'] = {
   shortcuts: {
-    controlEnter: 'aisleRight',
+    controlEnter: 'operationsMenu',
     shiftEnter: 'task',
-    commandEnter: 'operationsMenu',
+    commandEnter: 'aisleRight',
   },
   menuOperations: DEFAULT_SHORTCUT_MENU_OPERATIONS,
 }

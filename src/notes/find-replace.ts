@@ -336,15 +336,27 @@ function getScratchpadFindReplaceLocation(state: AppState): FindReplaceLocation 
   }
 }
 
-export function collectFindReplaceLocations(
+function appendScratchpadFindReplaceLocation(state: AppState, locations: FindReplaceLocation[]): FindReplaceLocation[] {
+  const scratchpad = getScratchpadFindReplaceLocation(state)
+  return scratchpad ? [...locations, scratchpad] : locations
+}
+
+function collectNormalFindReplaceLocations(
   state: AppState,
   currentLocation: NoteLocation,
   scope: FindReplaceScope,
 ): FindReplaceLocation[] {
   if (isScratchpadFindLocation(currentLocation)) {
-    return scope === 'note' || scope === 'notebook'
-      ? [getScratchpadFindReplaceLocation(state)].filter((location): location is FindReplaceLocation => location !== null)
-      : []
+    if (scope !== 'notebook') return []
+    return listSearchableNoteLocations(state).map((entry) => ({
+      ...entry,
+      context: getFindReplaceLocationContext(state, entry, {
+        domainName: entry.domainName,
+        spaceName: entry.spaceName,
+        parentName: entry.parentName,
+        noteName: entry.noteName,
+      }),
+    }))
   }
   const currentInfo = getLocationInfo(state, currentLocation)
   if (scope === 'note') {
@@ -383,11 +395,15 @@ export function collectFindReplaceLocations(
         noteName: entry.noteName,
       }),
     }))
-  if (scope === 'notebook') {
-    const scratchpad = getScratchpadFindReplaceLocation(state)
-    if (scratchpad) locations.push(scratchpad)
-  }
   return locations
+}
+
+export function collectFindReplaceLocations(
+  state: AppState,
+  currentLocation: NoteLocation,
+  scope: FindReplaceScope,
+): FindReplaceLocation[] {
+  return appendScratchpadFindReplaceLocation(state, collectNormalFindReplaceLocations(state, currentLocation, scope))
 }
 
 export function findVisibleMatches(
