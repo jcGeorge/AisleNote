@@ -7,12 +7,13 @@ import {
   ReactFlow,
   ReactFlowProvider,
   Handle,
+  useReactFlow,
   type Edge as FlowEdge,
   type Node as FlowNode,
   type NodeMouseHandler,
   type NodeProps,
 } from '@xyflow/react'
-import type { FrontmatterFieldType, NoteLocation } from '../../types/app'
+import type { FrontmatterFieldType, NoteLocation, VisualizerLayoutMode } from '../../types/app'
 import {
   DEFAULT_VISUALIZER_FILTER,
   normalizeVisualizerFilter,
@@ -38,6 +39,14 @@ type VisualizerTopbarControlsProps = {
   graph: VisualizerGraph
   filter: VisualizerFilterState
   onFilterChange: (updater: (filter: VisualizerFilterState) => VisualizerFilterState) => void
+}
+
+type VisualizerSettingsPopoverProps = {
+  homeNodesResideInParent: boolean
+  layoutMode: VisualizerLayoutMode
+  onHomeNodesResideInParentChange: (enabled: boolean) => void
+  onLayoutModeChange: (mode: VisualizerLayoutMode) => void
+  onClose: () => void
 }
 
 type VisualizerFlowNodeData = Record<string, unknown> & {
@@ -77,6 +86,12 @@ const EDGE_KIND_LABELS: Record<VisualizerEdgeKind, string> = {
 const FRONTMATTER_FIELD_TYPES: Array<FrontmatterFieldType | ''> = ['', 'text', 'number', 'boolean', 'date', 'datetime', 'list']
 const VISUALIZER_FILTER_MODES = ['duplicates', 'tags', 'frontmatter'] as const
 type VisualizerFilterPopover = (typeof VISUALIZER_FILTER_MODES)[number]
+const VISUALIZER_LAYOUT_CHOICES: Array<{ mode: VisualizerLayoutMode; label: string }> = [
+  { mode: 'wedge-fan', label: 'wedge fan' },
+  { mode: 'strict-rings', label: 'strict rings' },
+  { mode: 'compact-cluster', label: 'compact cluster' },
+  { mode: 'link-tree', label: 'link tree' },
+]
 
 function getHierarchyChipClassName(kind: VisualizerHierarchyChipKind) {
   if (kind === 'domain') {
@@ -189,6 +204,13 @@ function buildFlowEdges(graph: VisualizerGraph): FlowEdge[] {
   })
 }
 
+function getGraphLayoutSignature(graph: VisualizerGraph): string {
+  return graph.nodes
+    .map((node) => `${node.id}:${node.position.x.toFixed(2)}:${node.position.y.toFixed(2)}`)
+    .sort()
+    .join('|')
+}
+
 function VisualizerGraphCanvas({
   graph,
   selectedNodeId,
@@ -200,6 +222,8 @@ function VisualizerGraphCanvas({
 }) {
   const flowNodes = useMemo(() => buildFlowNodes(graph, selectedNodeId), [graph, selectedNodeId])
   const flowEdges = useMemo(() => buildFlowEdges(graph), [graph])
+  const layoutSignature = useMemo(() => getGraphLayoutSignature(graph), [graph])
+  const { fitView } = useReactFlow()
 
   const handleNodeClick = useCallback<NodeMouseHandler<VisualizerFlowNode>>(
     (_event, node) => {
@@ -207,6 +231,13 @@ function VisualizerGraphCanvas({
     },
     [onSelectedNodeChange],
   )
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      fitView({ padding: 0.18, duration: 120 })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [fitView, layoutSignature])
 
   return (
     <ReactFlow
@@ -219,7 +250,6 @@ function VisualizerGraphCanvas({
       minZoom={0.2}
       maxZoom={2.4}
       onlyRenderVisibleElements
-      fitView
       onNodeClick={handleNodeClick}
     >
       <Background gap={28} size={1} className="visualizer-background" />
@@ -524,6 +554,75 @@ export function VisualizerTopbarControls({
         </div>
       )}
     </div>
+  )
+}
+
+export function VisualizerSettingsPopover({
+  homeNodesResideInParent,
+  layoutMode,
+  onHomeNodesResideInParentChange,
+  onLayoutModeChange,
+  onClose,
+}: VisualizerSettingsPopoverProps) {
+  const popoverRef = useRef<HTMLElement | null>(null)
+
+  useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (popoverRef.current?.contains(target)) return
+      if (popoverRef.current?.closest('.topbar-action-wrap-visualizer-settings')?.contains(target)) return
+      onClose()
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [onClose])
+
+  return (
+    <section
+      ref={popoverRef}
+      className="visualizer-settings-popover"
+      role="dialog"
+      aria-labelledby="visualizer-settings-title"
+    >
+      <h2 id="visualizer-settings-title">visualizer settings</h2>
+      <div className="visualizer-settings-layout-row">
+        <span>layout</span>
+        <div className="visualizer-layout-options" role="radiogroup" aria-label="visualizer layout">
+          {VISUALIZER_LAYOUT_CHOICES.map((choice) => (
+            <button
+              key={choice.mode}
+              type="button"
+              role="radio"
+              aria-checked={layoutMode === choice.mode}
+              className={`visualizer-layout-option ${layoutMode === choice.mode ? 'is-selected' : ''}`}
+              onClick={() => onLayoutModeChange(choice.mode)}
+            >
+              {choice.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <label className="visualizer-settings-switch-row">
+        <span>home nodes reside in parent</span>
+        <span className="form-check form-switch settings-switch">
+          <input
+            type="checkbox"
+            className="form-check-input"
+            role="switch"
+            aria-label="home nodes reside in parent"
+            checked={homeNodesResideInParent}
+            onChange={(event) => onHomeNodesResideInParentChange(event.target.checked)}
+          />
+        </span>
+      </label>
+    </section>
   )
 }
 

@@ -2,11 +2,13 @@ import type { ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import { DEFAULT_STATE } from '../../state/app-state'
+import type { AppState, Space } from '../../types/app'
 import {
   buildVisualizerGraph,
   DEFAULT_VISUALIZER_FILTER,
+  getVisualizerLocationNodeId,
 } from '../../visualizer/visualizer-graph'
-import { VisualizerTopbarControls, VisualizerView } from './VisualizerView'
+import { VisualizerSettingsPopover, VisualizerTopbarControls, VisualizerView } from './VisualizerView'
 
 vi.mock('@xyflow/react', () => ({
   Background: () => <div className="react-flow__background" />,
@@ -51,6 +53,7 @@ vi.mock('@xyflow/react', () => ({
   ReactFlow: ({
     children,
     edges,
+    fitView,
     nodes,
     nodeTypes,
     onNodeMouseEnter,
@@ -58,6 +61,7 @@ vi.mock('@xyflow/react', () => ({
   }: {
     children: ReactNode
     edges: Array<{ id: string; sourceHandle?: string; targetHandle?: string }>
+    fitView?: unknown
     nodes: Array<{ id: string; type?: string; data: unknown }>
     nodeTypes: Record<string, (props: { data: unknown }) => ReactNode>
     onNodeMouseEnter?: unknown
@@ -66,6 +70,7 @@ vi.mock('@xyflow/react', () => ({
     <div
       className="react-flow"
       data-edge-count={edges.length}
+      data-has-fit-view-prop={Boolean(fitView)}
       data-has-node-mouse-enter={Boolean(onNodeMouseEnter)}
       data-has-node-mouse-leave={Boolean(onNodeMouseLeave)}
       data-node-count={nodes.length}
@@ -86,9 +91,47 @@ vi.mock('@xyflow/react', () => ({
     </div>
   ),
   ReactFlowProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+  useReactFlow: () => ({ fitView: vi.fn() }),
 }))
 
 const noop = () => undefined
+
+function createSubtabState(): AppState {
+  const space: Space = {
+    id: 'space-a',
+    name: 'Space A',
+    settings: { autoRemoveDeletedDays: 7 },
+    data: {
+      activeTabId: 'parent-a',
+      tabs: [
+        {
+          id: 'parent-a',
+          title: 'Tags2',
+          noteBodyId: 'body-home',
+          activeSubTabId: 'sub-a',
+          subTabs: [{ id: 'sub-a', title: 'Tab', noteBodyId: 'body-sub' }],
+        },
+      ],
+      deletedTabs: [],
+      deletedSubTabs: [],
+    },
+  }
+  return {
+    ...DEFAULT_STATE,
+    activeDomainId: 'domain-a',
+    activeSpaceId: 'space-a',
+    domains: [{ id: 'domain-a', name: 'Testing', activeSpaceId: 'space-a', spaces: [space] }],
+    spaces: [space],
+    noteBodies: [
+      { id: 'body-home', aisles: [{ id: 'aisle-home', aisleBodyId: 'aisle-body-home' }] },
+      { id: 'body-sub', aisles: [{ id: 'aisle-sub', aisleBodyId: 'aisle-body-sub' }] },
+    ],
+    noteAisleBodies: [
+      { id: 'aisle-body-home', markdown: 'home markdown' },
+      { id: 'aisle-body-sub', markdown: 'subtab markdown' },
+    ],
+  }
+}
 
 describe('VisualizerView', () => {
   it('renders a full-screen graph shell without a utility card and opens the preview as a drawer', () => {
@@ -151,6 +194,30 @@ describe('VisualizerView', () => {
     expect(selectedHtml).not.toContain('is-dimmed')
   })
 
+  it('renders overview subtabs and opens a subtab preview drawer', () => {
+    const graph = buildVisualizerGraph(createSubtabState())
+    const subtabNodeId = getVisualizerLocationNodeId({
+      domainId: 'domain-a',
+      spaceId: 'space-a',
+      tabId: 'parent-a',
+      subTabId: 'sub-a',
+    })
+    const html = renderToStaticMarkup(
+      <VisualizerView
+        graph={graph}
+        selectedNodeId={subtabNodeId}
+        onSelectedNodeChange={noop}
+        onClosePreview={noop}
+        onOpenLocation={noop}
+      />,
+    )
+
+    expect(html).toContain('visualizer-node-subtab is-selected')
+    expect(html).toContain('class="visualizer-preview-panel"')
+    expect(html).toContain('class="btn btn-sm btn-primary visualizer-open-note-btn"')
+    expect(html).toContain('>open note</button>')
+  })
+
   it('does not pass hover handlers to React Flow and configures the minimap palette', () => {
     const graph = buildVisualizerGraph(DEFAULT_STATE)
     const html = renderToStaticMarkup(
@@ -163,6 +230,7 @@ describe('VisualizerView', () => {
       />,
     )
 
+    expect(html).toContain('data-has-fit-view-prop="false"')
     expect(html).toContain('data-has-node-mouse-enter="false"')
     expect(html).toContain('data-has-node-mouse-leave="false"')
     expect(html).toContain('data-bg-color="var(--settings-page-bg)"')
@@ -210,5 +278,44 @@ describe('VisualizerView', () => {
     expect(html).toContain('>tags</button>')
     expect(html).toContain('>front matter</button>')
     expect(html).toContain('>clear filter</button>')
+  })
+
+  it('renders the visualizer settings popover with the persisted home-node switch', () => {
+    const enabledHtml = renderToStaticMarkup(
+      <VisualizerSettingsPopover
+        homeNodesResideInParent
+        layoutMode="wedge-fan"
+        onHomeNodesResideInParentChange={noop}
+        onLayoutModeChange={noop}
+        onClose={noop}
+      />,
+    )
+    const disabledHtml = renderToStaticMarkup(
+      <VisualizerSettingsPopover
+        homeNodesResideInParent={false}
+        layoutMode="link-tree"
+        onHomeNodesResideInParentChange={noop}
+        onLayoutModeChange={noop}
+        onClose={noop}
+      />,
+    )
+
+    expect(enabledHtml).toContain('role="dialog"')
+    expect(enabledHtml).toContain('visualizer-settings-popover')
+    expect(enabledHtml).not.toContain('aria-modal')
+    expect(enabledHtml).not.toContain('delete-modal-backdrop')
+    expect(enabledHtml).toContain('visualizer settings')
+    expect(enabledHtml).toContain('visualizer layout')
+    expect(enabledHtml).toContain('wedge fan')
+    expect(enabledHtml).toContain('strict rings')
+    expect(enabledHtml).toContain('compact cluster')
+    expect(enabledHtml).toContain('link tree')
+    expect(enabledHtml).toContain('aria-checked="true"')
+    expect(enabledHtml).toContain('home nodes reside in parent')
+    expect(enabledHtml).toContain('role="switch"')
+    expect(enabledHtml).toContain('aria-label="home nodes reside in parent"')
+    expect(enabledHtml).toContain('checked=""')
+    expect(disabledHtml).toContain('link tree')
+    expect(disabledHtml).not.toContain('checked=""')
   })
 })

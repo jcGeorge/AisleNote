@@ -83,6 +83,7 @@ export type StorageDataSettingsSection = 'notebook' | 'settings' | 'storage' | '
 export type StorageVisualsSettingsSection = 'theming' | 'otherVisuals'
 export type StorageTableControlTargetMode = 'active-cell' | 'bottom-right'
 export type StorageTableOfContentsScope = 'all-aisles' | 'focused-aisle'
+export type StorageVisualizerLayoutMode = 'wedge-fan' | 'strict-rings' | 'compact-cluster' | 'link-tree'
 export type StorageScratchpadNewAisleSide = 'left' | 'right'
 export type StorageFindReplaceMode = 'find' | 'replace'
 export type StorageTipId = 'task-undo' | 'delete-subtab-shortcut'
@@ -115,6 +116,8 @@ export type StorageGlobalSettings = {
     scratchpadAisleLimit?: number
     scratchpadNewAisleSide?: StorageScratchpadNewAisleSide
     decoupledItemsKeepData?: boolean
+    visualizerHomeNodesResideInParent?: boolean
+    visualizerLayoutMode?: StorageVisualizerLayoutMode
     tableAddTargetMode?: StorageTableControlTargetMode
     tableDeleteTargetMode?: StorageTableControlTargetMode
     tableOfContentsScope?: StorageTableOfContentsScope

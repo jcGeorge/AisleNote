@@ -140,6 +140,86 @@
   font-size: var(--ui-font-control);
 }
 
+.visualizer-settings-popover {
+  position: absolute;
+  top: calc(100% + 0.45rem);
+  right: 0;
+  z-index: 85;
+  width: min(24rem, calc(100vw - 1rem));
+  display: grid;
+  gap: 0.7rem;
+  padding: 0.6rem;
+  border: 1px solid var(--settings-card-border);
+  border-radius: 0.42rem;
+  background: color-mix(in srgb, var(--settings-card-bg) 92%, var(--app-surface-raised));
+  color: var(--settings-card-text);
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.24);
+}
+
+.visualizer-settings-popover h2 {
+  margin: 0;
+  color: var(--settings-card-text);
+  font-size: var(--ui-font-control);
+  font-weight: 650;
+  line-height: 1.2;
+  text-transform: lowercase;
+}
+
+.visualizer-settings-layout-row {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--settings-card-text);
+  font-size: var(--ui-font-control);
+}
+
+.visualizer-settings-layout-row > span:first-child {
+  min-width: 0;
+  text-transform: lowercase;
+}
+
+.visualizer-layout-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.3rem;
+}
+
+.visualizer-layout-option {
+  min-height: 2rem;
+  border: 1px solid var(--settings-input-border);
+  border-radius: 0.34rem;
+  padding: 0.25rem 0.42rem;
+  background: var(--settings-input-bg);
+  color: var(--settings-input-text);
+  font: inherit;
+  font-size: var(--ui-font-control);
+  line-height: 1.12;
+  text-align: center;
+  text-transform: lowercase;
+  cursor: pointer;
+}
+
+.visualizer-layout-option:hover,
+.visualizer-layout-option:focus-visible,
+.visualizer-layout-option.is-selected {
+  border-color: var(--app-primary-border);
+  background: var(--app-primary);
+  color: var(--app-primary-text);
+}
+
+.visualizer-settings-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  color: var(--settings-card-text);
+  font-size: var(--ui-font-control);
+}
+
+.visualizer-settings-switch-row > span:first-child {
+  min-width: 0;
+  text-transform: lowercase;
+}
+
 .visualizer-overflow-notice {
   position: absolute;
   top: 0.75rem;

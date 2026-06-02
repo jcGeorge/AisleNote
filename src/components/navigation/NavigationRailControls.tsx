@@ -4,6 +4,9 @@ import type { ViewMode } from '../../types/app'
 export type NavigationRailAction = {
   key: string
   label: string
+  ariaLabel?: string
+  icon?: ReactNode
+  popover?: ReactNode
   visibleLabel?: string
   sizeLabel?: string
   selected: boolean
@@ -58,25 +61,30 @@ export function NavigationRailControls({
       {(actions.length > 0 || tagFilterControl) && (
         <div className="topbar-actions" role="group" aria-label="Top bar actions">
           {actions.map((action) => (
-            <button
-              key={action.key}
-              ref={action.buttonRef}
-              type="button"
-              aria-pressed={action.selected}
-              className={`${action.className} ${action.selected ? 'is-selected' : ''}`}
-              onClick={action.onClick}
-            >
-              {action.sizeLabel ? (
-                <>
-                  <span className="topbar-action-size-label" aria-hidden="true">
-                    {action.sizeLabel}
-                  </span>
-                  <span className="topbar-action-visible-label">{action.visibleLabel ?? action.label}</span>
-                </>
-              ) : (
-                action.label
-              )}
-            </button>
+            <div key={action.key} className={`topbar-action-wrap topbar-action-wrap-${action.key}`}>
+              <button
+                ref={action.buttonRef}
+                type="button"
+                aria-label={action.ariaLabel}
+                aria-pressed={action.selected}
+                className={`${action.className} ${action.selected ? 'is-selected' : ''}`}
+                onClick={action.onClick}
+              >
+                {action.icon ? (
+                  action.icon
+                ) : action.sizeLabel ? (
+                  <>
+                    <span className="topbar-action-size-label" aria-hidden="true">
+                      {action.sizeLabel}
+                    </span>
+                    <span className="topbar-action-visible-label">{action.visibleLabel ?? action.label}</span>
+                  </>
+                ) : (
+                  action.label
+                )}
+              </button>
+              {action.popover}
+            </div>
           ))}
           {tagFilterControl}
         </div>

@@ -35,6 +35,8 @@ type TopBarProps = {
   tagFilterActive?: boolean
   tagFilterControl?: ReactNode
   visualizerFilterControl?: ReactNode
+  visualizerSettingsOpen?: boolean
+  visualizerSettingsPopover?: ReactNode
   getTabLabel?: (tab: Tab) => ReactNode
   settingsSection: SettingsSection
   primaryTabRailRef: RefObject<HTMLDivElement | null>
@@ -104,6 +106,7 @@ type TopBarProps = {
   onToggleTrash: () => void
   onOpenMessages: () => void
   onOpenVisualizer: () => void
+  onOpenVisualizerSettings: () => void
   onOpenSettings: () => void
   onOpenAbout: () => void
   onSettingsSectionChange: (section: SettingsSection) => void
@@ -123,6 +126,21 @@ function hasSelectionClickModifier(event: MouseEvent | ReactPointerEvent<HTMLBut
   return event.shiftKey || event.ctrlKey || event.metaKey
 }
 
+function VisualizerSettingsIcon() {
+  return (
+    <svg className="topbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path
+        d="M12 8.25a3.75 3.75 0 1 0 0 7.5 3.75 3.75 0 0 0 0-7.5Zm0 1.5a2.25 2.25 0 1 1 0 4.5 2.25 2.25 0 0 1 0-4.5Z"
+        fill="currentColor"
+      />
+      <path
+        d="m19.36 13.68 1.19.93-1.5 2.6-1.42-.56a7.8 7.8 0 0 1-1.63.94l-.22 1.51h-3l-.22-1.51a7.8 7.8 0 0 1-1.63-.94l-1.42.56-1.5-2.6 1.19-.93a7.4 7.4 0 0 1 0-1.88l-1.19-.93 1.5-2.6 1.42.56c.5-.38 1.05-.7 1.63-.94l.22-1.51h3l.22 1.51c.58.24 1.13.56 1.63.94l1.42-.56 1.5 2.6-1.19.93c.08.62.08 1.26 0 1.88Zm-1.56-.03c.1-.6.1-1.22 0-1.82l-.08-.48 1-.78-.36-.62-1.2.47-.38-.31a6.2 6.2 0 0 0-1.74-1l-.46-.17-.19-1.27h-.72l-.19 1.27-.46.17a6.2 6.2 0 0 0-1.74 1l-.38.31-1.2-.47-.36.62 1 .78-.08.48a5.9 5.9 0 0 0 0 1.82l.08.48-1 .78.36.62 1.2-.47.38.31c.52.43 1.1.76 1.74 1l.46.17.19 1.27h.72l.19-1.27.46-.17a6.2 6.2 0 0 0 1.74-1l.38-.31 1.2.47.36-.62-1-.78.08-.48Z"
+        fill="currentColor"
+      />
+    </svg>
+  )
+}
+
 export function TopBar({
   viewMode,
   workspace,
@@ -135,6 +153,8 @@ export function TopBar({
   tagFilterActive = false,
   tagFilterControl = null,
   visualizerFilterControl = null,
+  visualizerSettingsOpen = false,
+  visualizerSettingsPopover = null,
   getTabLabel = (tab) => tab.title,
   settingsSection,
   primaryTabRailRef,
@@ -190,6 +210,7 @@ export function TopBar({
   onToggleTrash,
   onOpenMessages,
   onOpenVisualizer,
+  onOpenVisualizerSettings,
   onOpenSettings,
   onOpenAbout,
   onSettingsSectionChange,
@@ -267,6 +288,16 @@ export function TopBar({
       : []),
     ...(viewMode === 'visualizer'
       ? [
+          {
+            key: 'visualizer-settings',
+            label: 'visualizer settings',
+            ariaLabel: 'visualizer settings',
+            icon: <VisualizerSettingsIcon />,
+            popover: visualizerSettingsPopover,
+            selected: visualizerSettingsOpen,
+            className: 'btn btn-sm tab-btn topbar-action-btn topbar-context-btn topbar-icon-btn visualizer-settings-topbar-btn',
+            onClick: onOpenVisualizerSettings,
+          },
           {
             key: 'visualizer-view',
             label: 'visualizer',

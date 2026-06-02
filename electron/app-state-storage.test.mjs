@@ -385,6 +385,8 @@ describe('Electron app state storage load result', () => {
         noteMentionCopyRequiresConfirmation: false,
         deleteSubtabShortcutEnabled: true,
         decoupledItemsKeepData: false,
+        visualizerHomeNodesResideInParent: true,
+        visualizerLayoutMode: 'link-tree',
         tableAddTargetMode: 'active-cell',
         tableDeleteTargetMode: 'active-cell',
         tableOfContentsScope: 'focused-aisle',
@@ -433,6 +435,8 @@ describe('Electron app state storage load result', () => {
       expect(appSettings.ui.removeNoteReferencesOnTrash).toBe(false)
       expect(appSettings.ui.noteMentionCopyRequiresConfirmation).toBe(false)
       expect(appSettings.ui.deleteSubtabShortcutEnabled).toBe(true)
+      expect(appSettings.ui.visualizerHomeNodesResideInParent).toBe(true)
+      expect(appSettings.ui.visualizerLayoutMode).toBe('link-tree')
       expect(appSettings.ui.tableOfContentsScope).toBe('focused-aisle')
       expect(appSettings.ui).not.toHaveProperty('newAislePlacement')
       expect(appSettings.scratchpadAisleLimit).toBe(32)
@@ -447,6 +451,8 @@ describe('Electron app state storage load result', () => {
       expect(parsed.ui.removeNoteReferencesOnTrash).toBe(false)
       expect(parsed.ui.noteMentionCopyRequiresConfirmation).toBe(false)
       expect(parsed.ui.deleteSubtabShortcutEnabled).toBe(true)
+      expect(parsed.ui.visualizerHomeNodesResideInParent).toBe(true)
+      expect(parsed.ui.visualizerLayoutMode).toBe('link-tree')
       expect(parsed.ui.tableOfContentsScope).toBe('focused-aisle')
       expect(parsed.ui).not.toHaveProperty('newAislePlacement')
       expect(parsed.ui.scratchpadAisleLimit).toBe(32)

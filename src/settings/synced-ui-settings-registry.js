@@ -13,6 +13,8 @@ export const SYNCED_UI_SIMPLE_SETTING_DEFINITIONS = Object.freeze([
   { key: 'scratchpadDeleteAisleShortcutEnabled', kind: 'boolean', defaultValue: false },
   { key: 'scratchpadNewAisleSide', kind: 'enum', defaultValue: 'left', values: ['left', 'right'] },
   { key: 'decoupledItemsKeepData', kind: 'boolean', defaultValue: true },
+  { key: 'visualizerHomeNodesResideInParent', kind: 'boolean', defaultValue: false },
+  { key: 'visualizerLayoutMode', kind: 'enum', defaultValue: 'wedge-fan', values: ['wedge-fan', 'strict-rings', 'compact-cluster', 'link-tree'] },
   { key: 'tableAddTargetMode', kind: 'enum', defaultValue: 'bottom-right', values: ['bottom-right', 'active-cell'] },
   { key: 'tableDeleteTargetMode', kind: 'enum', defaultValue: 'bottom-right', values: ['bottom-right', 'active-cell'] },
   { key: 'tableOfContentsScope', kind: 'enum', defaultValue: 'all-aisles', values: ['all-aisles', 'focused-aisle'] },

@@ -23,6 +23,8 @@ describe('synced UI settings registry', () => {
       noteMentionCopyRequiresConfirmation: true,
       deleteSubtabShortcutEnabled: false,
       decoupledItemsKeepData: true,
+      visualizerHomeNodesResideInParent: false,
+      visualizerLayoutMode: 'wedge-fan',
       tableAddTargetMode: 'bottom-right',
       tableDeleteTargetMode: 'bottom-right',
       tableOfContentsScope: 'all-aisles',
@@ -44,6 +46,8 @@ describe('synced UI settings registry', () => {
       newAislePlacement: 'left-of-focus',
       removeNoteReferencesOnTrash: 'false',
       deleteSubtabShortcutEnabled: true,
+      visualizerHomeNodesResideInParent: true,
+      visualizerLayoutMode: 'link-tree',
     })
 
     expect(normalized).toMatchObject({
@@ -57,9 +61,12 @@ describe('synced UI settings registry', () => {
       tableOfContentsScope: 'focused-aisle',
       removeNoteReferencesOnTrash: true,
       deleteSubtabShortcutEnabled: true,
+      visualizerHomeNodesResideInParent: true,
+      visualizerLayoutMode: 'link-tree',
     })
     expect(normalized).not.toHaveProperty('newAislePlacement')
     expect(normalizeRegisteredSyncedUiSetting('findReplaceMode', 'bad')).toBe('find')
+    expect(normalizeRegisteredSyncedUiSetting('visualizerLayoutMode', 'bad')).toBe('wedge-fan')
   })
 
   it('picks registered settings and boolean drafts from a source object', () => {
@@ -71,6 +78,7 @@ describe('synced UI settings registry', () => {
       noteMentionCopyRequiresConfirmation: false,
       removeNoteReferencesOnTrash: true,
       deleteSubtabShortcutEnabled: false,
+      visualizerHomeNodesResideInParent: false,
     })
   })
 

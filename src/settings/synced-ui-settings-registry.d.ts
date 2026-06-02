@@ -15,6 +15,8 @@ export type SimpleSyncedUiSettingKey =
   | 'scratchpadDeleteAisleShortcutEnabled'
   | 'scratchpadNewAisleSide'
   | 'decoupledItemsKeepData'
+  | 'visualizerHomeNodesResideInParent'
+  | 'visualizerLayoutMode'
   | 'tableAddTargetMode'
   | 'tableDeleteTargetMode'
   | 'tableOfContentsScope'
@@ -31,6 +33,7 @@ export type SyncedUiBooleanSettingKey =
   | 'deleteSubtabShortcutEnabled'
   | 'scratchpadDeleteAisleShortcutEnabled'
   | 'decoupledItemsKeepData'
+  | 'visualizerHomeNodesResideInParent'
   | 'toolbarEditorShowNames'
 
 export type SimpleSyncedUiSettings = Pick<AppState['ui'], SimpleSyncedUiSettingKey>
@@ -89,6 +92,11 @@ export function normalizeRegisteredSyncedUiSetting(
   value: unknown,
 ): NonNullable<AppState['ui']['scratchpadNewAisleSide']>
 export function normalizeRegisteredSyncedUiSetting(key: 'decoupledItemsKeepData', value: unknown): boolean
+export function normalizeRegisteredSyncedUiSetting(key: 'visualizerHomeNodesResideInParent', value: unknown): boolean
+export function normalizeRegisteredSyncedUiSetting(
+  key: 'visualizerLayoutMode',
+  value: unknown,
+): NonNullable<AppState['ui']['visualizerLayoutMode']>
 export function normalizeRegisteredSyncedUiSetting(
   key: 'tableAddTargetMode',
   value: unknown,

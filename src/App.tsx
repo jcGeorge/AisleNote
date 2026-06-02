@@ -97,7 +97,7 @@ import { SettingsPage } from './components/settings/SettingsPage'
 import { StageManagerView } from './components/stage-manager/StageManagerView'
 import { TrashHomeNote } from './components/trash/TrashHomeNote'
 import { AboutView } from './components/about/AboutView'
-import { VisualizerTopbarControls, VisualizerView } from './components/visualizer/VisualizerView'
+import { VisualizerSettingsPopover, VisualizerTopbarControls, VisualizerView } from './components/visualizer/VisualizerView'
 import {
   buildVisualizerGraph,
   DEFAULT_VISUALIZER_FILTER,
@@ -335,6 +335,7 @@ import type {
   TipId,
   ToastState,
   ToastTone,
+  VisualizerLayoutMode,
   ViewMode,
   WorkspaceData,
 } from './types/app'
@@ -462,6 +463,7 @@ function App() {
   const [viewMode, setViewMode] = useState<ViewMode>(() => initialDeviceSettingsRef.current?.lastOpened?.viewMode ?? 'main')
   const [visualizerFilter, setVisualizerFilter] = useState<VisualizerFilterState>(DEFAULT_VISUALIZER_FILTER)
   const [visualizerSelectedNodeId, setVisualizerSelectedNodeId] = useState('')
+  const [visualizerSettingsOpen, setVisualizerSettingsOpen] = useState(false)
   const [scratchpadActive, setScratchpadActive] = useState(() =>
     shouldRestoreScratchpadWorkspace(initialDeviceSettingsRef.current?.lastOpened),
   )
@@ -4556,9 +4558,17 @@ function App() {
       onSortModeChange={setTagFilterSortMode}
     />
   ) : null
+  const visualizerHomeNodesResideInParent = state.ui.visualizerHomeNodesResideInParent === true
+  const visualizerLayoutMode = state.ui.visualizerLayoutMode ?? 'wedge-fan'
   const visualizerGraph = useMemo(
-    () => (viewMode === 'visualizer' ? buildVisualizerGraph(state, visualizerFilter) : null),
-    [state, viewMode, visualizerFilter],
+    () =>
+      viewMode === 'visualizer'
+        ? buildVisualizerGraph(state, visualizerFilter, {
+            homeNodesResideInParent: visualizerHomeNodesResideInParent,
+            layoutMode: visualizerLayoutMode,
+          })
+        : null,
+    [state, viewMode, visualizerFilter, visualizerHomeNodesResideInParent, visualizerLayoutMode],
   )
   const updateVisualizerFilter = useCallback((updater: (filter: VisualizerFilterState) => VisualizerFilterState) => {
     setVisualizerFilter((previous) => normalizeVisualizerFilter(updater(previous)))
@@ -4577,12 +4587,75 @@ function App() {
         : previous,
     )
   }, [visualizerSelectedNodeId])
+  useEffect(() => {
+    if (viewMode !== 'visualizer' || !visualizerSelectedNodeId || visualizerSettingsOpen) return undefined
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      closeVisualizerPreview()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [closeVisualizerPreview, viewMode, visualizerSelectedNodeId, visualizerSettingsOpen])
+  const toggleVisualizerSettings = useCallback(() => {
+    setVisualizerSettingsOpen((open) => !open)
+  }, [])
+  const closeVisualizerSettings = useCallback(() => {
+    setVisualizerSettingsOpen(false)
+  }, [])
+  const updateVisualizerHomeNodesResideInParent = useCallback(
+    (enabled: boolean) => {
+      setState((previous) =>
+        previous.ui.visualizerHomeNodesResideInParent === enabled
+          ? previous
+          : {
+              ...previous,
+              ui: {
+                ...previous.ui,
+                visualizerHomeNodesResideInParent: enabled,
+              },
+            },
+      )
+      setVisualizerSelectedNodeId('')
+      setVisualizerFilter((previous) => normalizeVisualizerFilter({ ...previous, focusedNodeId: '' }))
+    },
+    [setState],
+  )
+  const updateVisualizerLayoutMode = useCallback(
+    (layoutMode: VisualizerLayoutMode) => {
+      setState((previous) =>
+        previous.ui.visualizerLayoutMode === layoutMode
+          ? previous
+          : {
+              ...previous,
+              ui: {
+                ...previous.ui,
+                visualizerLayoutMode: layoutMode,
+              },
+            },
+      )
+    },
+    [setState],
+  )
+  useEffect(() => {
+    if (viewMode !== 'visualizer') setVisualizerSettingsOpen(false)
+  }, [viewMode])
   const visualizerFilterControl =
     visualizerGraph && viewMode === 'visualizer' ? (
       <VisualizerTopbarControls
         graph={visualizerGraph}
         filter={visualizerFilter}
         onFilterChange={updateVisualizerFilter}
+      />
+    ) : null
+  const visualizerSettingsPopover =
+    viewMode === 'visualizer' && visualizerSettingsOpen ? (
+      <VisualizerSettingsPopover
+        homeNodesResideInParent={visualizerHomeNodesResideInParent}
+        layoutMode={visualizerLayoutMode}
+        onHomeNodesResideInParentChange={updateVisualizerHomeNodesResideInParent}
+        onLayoutModeChange={updateVisualizerLayoutMode}
+        onClose={closeVisualizerSettings}
       />
     ) : null
   const mainTopRailActions: NavigationRailAction[] = mainArrangementActive
@@ -4911,6 +4984,8 @@ function App() {
         tagFilterActive={tagFilterActive}
         tagFilterControl={topVisibleMainRail === 'parents' ? tagFilterControl : null}
         visualizerFilterControl={visualizerFilterControl}
+        visualizerSettingsOpen={visualizerSettingsOpen}
+        visualizerSettingsPopover={visualizerSettingsPopover}
         getTabLabel={(tab) =>
           appendTagFilterCount(
             tab.title,
@@ -4985,6 +5060,7 @@ function App() {
         onToggleTrash={toggleTrashView}
         onOpenMessages={openMessagesView}
         onOpenVisualizer={openVisualizerView}
+        onOpenVisualizerSettings={toggleVisualizerSettings}
         onOpenSettings={openSettingsWithoutMentionMenu}
         onOpenAbout={openAboutView}
         settingsSection={settingsController.section}

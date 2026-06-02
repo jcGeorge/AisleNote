@@ -118,6 +118,7 @@ function renderTopBar(
       onToggleTrash={noop}
       onOpenMessages={noop}
       onOpenVisualizer={noop}
+      onOpenVisualizerSettings={noop}
       onOpenSettings={noop}
       onOpenAbout={noop}
       onSettingsSectionChange={noop}
@@ -237,6 +238,8 @@ describe('navigation arrange tooltips', () => {
     expect(visualizerHtml).toContain('>front matter</button>')
     expect(visualizerHtml).toContain('>clear filter</button>')
     expect(visualizerHtml).not.toContain('utility-view-rail-btn">visualizer</button>')
+    expect(visualizerHtml).toContain('aria-label="visualizer settings"')
+    expect(visualizerHtml.indexOf('aria-label="visualizer settings"')).toBeLessThan(visualizerHtml.indexOf('>visualizer</button>'))
     expect(visualizerHtml).toMatch(/topbar-context-btn[^"]*">visualizer<\/button>/)
     expect(aboutHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn parent-tab-btn utility-view-rail-btn">about</button>')
     expect(aboutHtml).toMatch(/topbar-context-btn[^"]*">about<\/button>/)

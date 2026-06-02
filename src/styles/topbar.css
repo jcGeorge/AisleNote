@@ -228,12 +228,30 @@
   flex: 0 0 auto;
 }
 
+.topbar-action-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
 .topbar-action-btn {
   flex: 0 0 auto;
   display: inline-flex !important;
   align-items: center;
   justify-content: center;
   height: var(--tab-control-height);
+}
+
+.topbar-icon-btn {
+  width: var(--tab-control-height);
+  padding-inline: 0 !important;
+}
+
+.topbar-icon {
+  width: 1.05rem;
+  height: 1.05rem;
+  display: block;
 }
 
 .topbar-end-arrangement-btn,

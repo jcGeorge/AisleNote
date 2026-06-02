@@ -48,6 +48,7 @@ export type DataSettingsSection = 'notebook' | 'settings' | 'storage' | 'trash'
 export type VisualsSettingsSection = 'theming' | 'otherVisuals'
 export type TableControlTargetMode = 'active-cell' | 'bottom-right'
 export type TableOfContentsScope = 'all-aisles' | 'focused-aisle'
+export type VisualizerLayoutMode = 'wedge-fan' | 'strict-rings' | 'compact-cluster' | 'link-tree'
 export type NewAislePlacement = 'end' | 'left-of-focus' | 'right-of-focus'
 export type ScratchpadNewAisleSide = 'left' | 'right'
 export type TipId = 'task-undo' | 'delete-subtab-shortcut'
@@ -399,6 +400,8 @@ export type AppState = {
     scratchpadAisleLimit?: number
     scratchpadNewAisleSide?: ScratchpadNewAisleSide
     decoupledItemsKeepData?: boolean
+    visualizerHomeNodesResideInParent?: boolean
+    visualizerLayoutMode?: VisualizerLayoutMode
     tableAddTargetMode: TableControlTargetMode
     tableDeleteTargetMode: TableControlTargetMode
     tableOfContentsScope?: TableOfContentsScope
