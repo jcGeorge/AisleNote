@@ -1468,6 +1468,64 @@
   font-size: 0.86em;
 }
 
+.tag-autocomplete-menu {
+  position: fixed;
+  z-index: 3400;
+  width: min(18rem, calc(100vw - 1rem));
+  display: grid;
+  gap: 0.12rem;
+  padding: 0.28rem;
+  border: 1px solid var(--context-menu-border);
+  border-radius: 0.42rem;
+  background: var(--context-menu-bg);
+  color: var(--context-menu-item-text);
+  box-shadow: var(--context-menu-shadow);
+  font-size: var(--ui-font-body);
+  max-height: min(18rem, calc(100vh - 1rem));
+  overflow: auto;
+}
+
+.tag-autocomplete-item {
+  width: 100%;
+  min-height: 2rem;
+  display: flex;
+  align-items: center;
+  border: 0;
+  border-radius: 0.3rem;
+  background: transparent;
+  color: var(--context-menu-item-text);
+  padding: 0.32rem 0.42rem;
+  font: inherit;
+  font-size: 0.9em;
+  text-align: left;
+}
+
+.tag-autocomplete-item:focus,
+.tag-autocomplete-item:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.tag-autocomplete-item:hover,
+.tag-autocomplete-item.is-active {
+  background: var(--context-menu-item-hover-bg);
+}
+
+.tag-autocomplete-token.tabs-tag-token {
+  color: var(--editor-tag-text);
+  background: var(--editor-tag-bg);
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  padding: 0.02em 0.22em;
+  border: 0;
+  border-radius: 0.28em;
+  text-decoration: none;
+  cursor: default;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
 .note-mention-menu {
   position: fixed;
   z-index: 3400;

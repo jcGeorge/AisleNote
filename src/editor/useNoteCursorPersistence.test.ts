@@ -5,7 +5,11 @@ import {
   shouldFocusPendingCursorRestore,
   shouldFocusSavedCursorRestoreOnActivation,
 } from './cursor-restore-focus'
-import { getPersistableCursorSelectionForActiveEditor } from './useNoteCursorPersistence'
+import {
+  getPendingCursorRestoreTargetAisleId,
+  getPersistableCursorSelectionForActiveEditor,
+  shouldClearSuppressedSavedCursorRestore,
+} from './useNoteCursorPersistence'
 import { shouldFocusForEditorIntent } from './focus-intent'
 
 describe('pending note cursor restore focus', () => {
@@ -95,6 +99,46 @@ describe('pending note cursor restore focus', () => {
     expect(shouldFocusForEditorIntent('initial-load')).toBe(false)
     expect(shouldFocusForEditorIntent('none')).toBe(false)
     expect(shouldFocusForEditorIntent('toolbar-command')).toBe(true)
+  })
+
+  it('suppresses saved cursor restore targets while tag navigation is pending', () => {
+    const pendingCursorRestore = {
+      noteLocationKey: 'domain::space::tab::__home__',
+      aisleId: 'saved-aisle',
+    }
+
+    expect(
+      getPendingCursorRestoreTargetAisleId({
+        pendingFocusAisleId: null,
+        pendingCursorRestore,
+        activeNoteLocationKey: 'domain::space::tab::__home__',
+        suppressSavedCursorRestore: true,
+      }),
+    ).toBe('')
+    expect(
+      shouldClearSuppressedSavedCursorRestore({
+        pendingFocusAisleId: null,
+        pendingCursorRestore,
+        activeNoteLocationKey: 'domain::space::tab::__home__',
+        suppressSavedCursorRestore: true,
+      }),
+    ).toBe(true)
+    expect(
+      getPendingCursorRestoreTargetAisleId({
+        pendingFocusAisleId: 'explicit-aisle',
+        pendingCursorRestore,
+        activeNoteLocationKey: 'domain::space::tab::__home__',
+        suppressSavedCursorRestore: true,
+      }),
+    ).toBe('explicit-aisle')
+    expect(
+      shouldClearSuppressedSavedCursorRestore({
+        pendingFocusAisleId: 'explicit-aisle',
+        pendingCursorRestore,
+        activeNoteLocationKey: 'domain::space::tab::__home__',
+        suppressSavedCursorRestore: true,
+      }),
+    ).toBe(false)
   })
 })
 

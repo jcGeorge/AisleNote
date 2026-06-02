@@ -20,7 +20,6 @@ const THEME_OPTIONS: Array<{ id: AppTheme; label: string }> = [
   { id: 'dark', label: 'dark' },
   { id: 'light', label: 'light' },
   { id: 'dawn', label: 'dawn' },
-  { id: 'blues', label: 'blues' },
 ]
 
 const CUSTOM_THEME_OPTIONS: Array<{ id: CustomThemeId; label: string }> = [
@@ -42,6 +41,8 @@ const CUSTOM_THEME_SLOT_LABELS: Record<CustomThemePaletteSlot, string> = {
   danger: 'danger',
   warning: 'warning',
   success: 'success',
+  tagText: 'tag font',
+  tagBg: 'tag back',
   domainRail: 'domain',
   spaceRail: 'space',
   parentRail: 'parent tab',

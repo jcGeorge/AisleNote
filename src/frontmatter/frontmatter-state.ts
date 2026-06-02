@@ -1,5 +1,6 @@
 import { isNoteBodyLinked as resolveNoteBodyLinkedStatus } from '../notes/link-status'
 import { getLocationInfo } from '../notes/note-locations'
+import { getAisleBodyTags } from '../tags/tags.js'
 import type {
   AppState,
   FrontmatterComputedFieldMap,
@@ -167,10 +168,13 @@ export function buildFrontmatterContext(
   location: NoteLocation,
   now = new Date(),
   noteBodyIdOverride?: string,
+  aisleBodyIdOverride?: string,
 ) {
   const info = getLocationInfo(state, location)
   const noteBodyId = noteBodyIdOverride ?? info.noteBodyId
   const noteBody = noteBodyId ? state.noteBodies.find((body) => body.id === noteBodyId) : null
+  const aisleBodyId = aisleBodyIdOverride || noteBody?.aisles[0]?.aisleBodyId || ''
+  const aisleBody = aisleBodyId ? getAisleBody(state, aisleBodyId) : null
   const fallbackTimestamp = now.toISOString()
   return {
     now,
@@ -179,6 +183,7 @@ export function buildFrontmatterContext(
     noteUpdatedAt: noteBody?.updatedAt ?? noteBody?.createdAt ?? fallbackTimestamp,
     noteTitle: info.title,
     isLinked: isNoteBodyLinked(state, noteBodyId),
+    tags: getAisleBodyTags(aisleBody),
     tabId: location.tabId,
     subTabId: location.subTabId,
     spaceId: location.spaceId,
@@ -340,7 +345,7 @@ export function buildFrontmatterRowsForAisle(
   const includeExisting = options.includeExisting ?? true
   const meta = getTargetFrontmatterMeta(state, noteBodyId, aisleBodyId)
   const existing = includeExisting ? resolveFrontmatterReferencesForState(state, getTargetFrontmatter(state, noteBodyId, aisleBodyId)) : null
-  const context = buildFrontmatterContext(state, location, new Date(), noteBodyId)
+  const context = buildFrontmatterContext(state, location, new Date(), noteBodyId, aisleBodyId)
   const rows: FrontmatterRowDraft[] = []
   const templateKeys = new Set<string>()
   const derived = Boolean(template && (options.derived ?? meta?.templateDerived))
@@ -451,7 +456,7 @@ export function buildFrontmatterDataFromRows(
   noteBodyId: string,
   location: NoteLocation,
   rows: FrontmatterRowDraft[],
-  options: { selectedTemplateId?: string; templateDerived?: boolean } = {},
+  options: { selectedTemplateId?: string; templateDerived?: boolean; aisleBodyId?: string } = {},
 ): {
   ok: true
   frontmatter: FrontmatterData | null
@@ -460,7 +465,7 @@ export function buildFrontmatterDataFromRows(
   computedFields: FrontmatterComputedFieldMap
   warnings: string[]
 } | { ok: false; message: string } {
-  const context = buildFrontmatterContext(state, location, new Date(), noteBodyId)
+  const context = buildFrontmatterContext(state, location, new Date(), noteBodyId, options.aisleBodyId)
   const seenKeys = new Set<string>()
   const templateFieldOrigins: FrontmatterFieldOriginMap = {}
   const computedFields: FrontmatterComputedFieldMap = {}
@@ -590,7 +595,7 @@ export function applyTemplateToAisleBody(
   const nextFrontmatter = applyFrontmatterTemplate(
     aisleBody.frontmatter ?? null,
     template,
-    buildFrontmatterContext(state, location, now),
+    buildFrontmatterContext(state, location, now, noteBodyId, aisleBodyId),
   )
   const templateFieldOrigins: FrontmatterFieldOriginMap = {}
   const computedFields: FrontmatterComputedFieldMap = {}
@@ -623,7 +628,7 @@ export function applyTemplateToNoteBody(
   const nextFrontmatter = applyFrontmatterTemplate(
     getTargetFrontmatter(ensuredState, noteBodyId, aisleBodyId),
     template,
-    buildFrontmatterContext(ensuredState, location, now),
+    buildFrontmatterContext(ensuredState, location, now, noteBodyId, aisleBodyId),
   )
   const templateFieldOrigins: FrontmatterFieldOriginMap = {}
   const computedFields: FrontmatterComputedFieldMap = {}

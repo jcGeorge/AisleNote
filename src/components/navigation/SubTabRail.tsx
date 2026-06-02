@@ -1,10 +1,11 @@
-import type { MouseEvent, PointerEvent as ReactPointerEvent, RefObject } from 'react'
+import type { MouseEvent, PointerEvent as ReactPointerEvent, ReactNode, RefObject } from 'react'
 import type {
   ArrangeDragItem,
   ArrangeModeState,
   ArrangeTapCandidateSeed,
   SelectionClickModifiers,
   StageManagerParentSelection,
+  SubTab,
   Tab,
   TabArrangeDragItem,
   TabArrangeDragPreview,
@@ -25,6 +26,10 @@ type SubTabRailProps = {
   arrangeMode: ArrangeModeState
   tooltipsDisabled?: boolean
   showParentHomeTab: boolean
+  tagFilterActive?: boolean
+  getHomeLabel?: () => ReactNode
+  getSubTabLabel?: (subTab: SubTab) => ReactNode
+  scratchpadTagCountLabel?: string
   isNoteWorkspaceView: boolean
   selectedTrashTab: TrashParentBucket | null
   trashSubTabs: TrashParentBucket['subTabs']
@@ -129,6 +134,10 @@ export function SubTabRail({
   arrangeMode,
   tooltipsDisabled = false,
   showParentHomeTab,
+  tagFilterActive = false,
+  getHomeLabel = () => 'home',
+  getSubTabLabel = (subTab) => subTab.title,
+  scratchpadTagCountLabel = '',
   isNoteWorkspaceView,
   selectedTrashTab,
   trashSubTabs,
@@ -228,6 +237,7 @@ export function SubTabRail({
             }}
             onPointerDown={(event) => {
               if (viewMode !== 'main') return
+              if (tagFilterActive) return
               if (hasSelectionClickModifier(event)) {
                 onClearArrangePressTimer()
                 return
@@ -240,6 +250,7 @@ export function SubTabRail({
             }}
             onPointerUp={(event) => {
               if (viewMode !== 'main') return
+              if (tagFilterActive) return
               if (arrangeMode.active) {
                 onFinalizeArrangeTapCandidate(`home:${activeTab.id}`, event, () => {
                   onClearArrangeSelection()
@@ -251,17 +262,19 @@ export function SubTabRail({
             }}
             onPointerLeave={() => {
               if (viewMode !== 'main') return
+              if (tagFilterActive) return
               if (!arrangeMode.active) {
                 onClearArrangePressTimer()
               }
             }}
             onPointerCancel={() => {
               if (viewMode !== 'main') return
+              if (tagFilterActive) return
               onClearArrangePressTimer()
               onClearArrangeTapCandidate()
             }}
           >
-            home
+            {getHomeLabel()}
           </button>
         )}
 
@@ -297,7 +310,7 @@ export function SubTabRail({
                   }
                   if (action === 'commit-and-create') {
                     event.preventDefault()
-                    onAddSubTab()
+                    if (!tagFilterActive) onAddSubTab()
                   }
                   if (action === 'cancel') {
                     event.preventDefault()
@@ -366,6 +379,7 @@ export function SubTabRail({
                     }}
                     onPointerDown={(event) => {
                       if (viewMode !== 'main') return
+                      if (tagFilterActive) return
                       if (hasSelectionClickModifier(event)) {
                         onClearArrangePressTimer()
                         return
@@ -384,16 +398,18 @@ export function SubTabRail({
                         `subtab:${subTab.id}`,
                       )
                     }}
-                    onPointerMove={(event) =>
+                    onPointerMove={(event) => {
+                      if (tagFilterActive) return
                       onHandleArrangeTabPointerMove(
                         event,
                         { type: 'subtab', parentTabId: activeTab.id, subTabId: subTab.id },
                         subTab.title,
                         'subtab',
                       )
-                    }
+                    }}
                     onPointerUp={(event) => {
                       if (viewMode !== 'main') return
+                      if (tagFilterActive) return
                       onHandleArrangeTabPointerUp(event, `subtab:${subTab.id}`, () => {
                         onClearArrangeSelection()
                         onSelectSubTab(subTab.id)
@@ -401,16 +417,18 @@ export function SubTabRail({
                     }}
                     onPointerLeave={() => {
                       if (viewMode !== 'main') return
+                      if (tagFilterActive) return
                       if (!arrangeMode.active) {
                         onClearArrangePressTimer()
                       }
                     }}
                     onPointerCancel={() => {
                       if (viewMode !== 'main') return
+                      if (tagFilterActive) return
                       onCancelArrangeTabPointerDrag()
                     }}
                   >
-                    {subTab.title}
+                    {getSubTabLabel(subTab)}
                   </button>
                 )
               })()
@@ -435,7 +453,7 @@ export function SubTabRail({
             </button>
           ))}
 
-        {viewMode === 'main' && arrangeMode.active ? (
+        {!tagFilterActive && viewMode === 'main' && arrangeMode.active ? (
           <button
             type="button"
             className="tab-sort-btn"
@@ -450,7 +468,7 @@ export function SubTabRail({
           >
             <SortIcon />
           </button>
-        ) : viewMode === 'main' && !arrangeMode.active ? (
+        ) : !tagFilterActive && viewMode === 'main' && !arrangeMode.active ? (
           <button
             type="button"
             className="btn btn-sm btn-outline-light add-tab-btn"
@@ -468,7 +486,7 @@ export function SubTabRail({
             aria-selected={scratchpadActive}
             className={`btn btn-sm ${scratchpadActive ? 'btn-info' : 'btn-outline-info'} tab-btn subtab-btn scratchpad-rail-btn ${
               scratchpadActive ? 'is-selected' : ''
-            }`}
+            } ${scratchpadTagCountLabel ? 'has-tag-count' : ''}`}
             title={tooltipsDisabled ? undefined : 'scratchpad'}
             aria-label="scratchpad"
             onClick={onOpenScratchpad}
@@ -478,6 +496,11 @@ export function SubTabRail({
             }}
           >
             <ScratchpadIcon />
+            {scratchpadTagCountLabel ? (
+              <span className="scratchpad-rail-tag-count" aria-hidden="true">
+                ({scratchpadTagCountLabel})
+              </span>
+            ) : null}
           </button>
         )}
       </div>

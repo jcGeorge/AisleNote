@@ -1,5 +1,5 @@
 export type CustomThemeId = 'custom1' | 'custom2' | 'custom3'
-export type AppTheme = 'dark' | 'light' | 'dawn' | 'blues' | CustomThemeId
+export type AppTheme = 'dark' | 'light' | 'dawn' | CustomThemeId
 export type CustomThemePaletteSlot =
   | 'canvas'
   | 'page'
@@ -13,13 +13,15 @@ export type CustomThemePaletteSlot =
   | 'danger'
   | 'warning'
   | 'success'
+  | 'tagText'
+  | 'tagBg'
   | 'domainRail'
   | 'spaceRail'
   | 'parentRail'
   | 'subtabRail'
 export type CustomThemePalette = Record<CustomThemePaletteSlot, string>
 export type ThemePaletteOverrides = Partial<Record<AppTheme, CustomThemePalette>>
-export type ViewMode = 'main' | 'trash' | 'settings' | 'stage-manager' | 'messages'
+export type ViewMode = 'main' | 'trash' | 'settings' | 'stage-manager' | 'messages' | 'about'
 export type ShortcutId =
   | 'toggleTabTrash'
   | 'openDomains'
@@ -87,6 +89,7 @@ export type NoteAisleBody = {
   createdAt?: string
   updatedAt?: string
   markdown: string
+  tags?: string[]
   frontmatter?: FrontmatterData | null
   frontmatterStatus?: FrontmatterParseStatus
   frontmatterParseError?: string
@@ -106,6 +109,7 @@ export type FrontmatterComputedValue =
   | 'spaceName'
   | 'domainName'
   | 'isLinked'
+  | 'tags'
 
 export type FrontmatterTemplateField = {
   id: string

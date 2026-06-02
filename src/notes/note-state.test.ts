@@ -136,16 +136,18 @@ describe('note-state helpers', () => {
 
   it('syncs note body aisles into note bodies and aisle bodies', () => {
     const next = syncNoteBodyAislesInState(createTestState(), 'body-1', [
-      { id: 'aisle-1', aisleBodyId: 'aisle-1', markdown: 'updated' },
-      { id: 'aisle-2', aisleBodyId: 'aisle-2', markdown: 'second' },
+      { id: 'aisle-1', aisleBodyId: 'aisle-1', markdown: 'updated #Alpha' },
+      { id: 'aisle-2', aisleBodyId: 'aisle-2', markdown: 'second #Beta' },
     ])
 
     expectAisles(next.noteBodies.find((body) => body.id === 'body-1')?.aisles, [
       { id: 'aisle-1', aisleBodyId: 'aisle-1' },
       { id: 'aisle-2', aisleBodyId: 'aisle-2' },
     ])
-    expect(getAisleBodyMarkdown(next.noteAisleBodies, 'aisle-1')).toBe('updated')
-    expect(getAisleBodyMarkdown(next.noteAisleBodies, 'aisle-2')).toBe('second')
+    expect(getAisleBodyMarkdown(next.noteAisleBodies, 'aisle-1')).toBe('updated #Alpha')
+    expect(getAisleBodyMarkdown(next.noteAisleBodies, 'aisle-2')).toBe('second #Beta')
+    expect(next.noteAisleBodies?.find((body) => body.id === 'aisle-1')?.tags).toEqual(['Alpha'])
+    expect(next.noteAisleBodies?.find((body) => body.id === 'aisle-2')?.tags).toEqual(['Beta'])
   })
 
   it('syncs aisle structure without replacing current aisle body markdown', () => {
@@ -223,9 +225,10 @@ describe('note-state helpers', () => {
       ],
     }
 
-    const next = syncNoteAisleBodyMarkdownInState(state, 'shared-aisle-body', 'current')
+    const next = syncNoteAisleBodyMarkdownInState(state, 'shared-aisle-body', 'current #Shared')
 
-    expect(next.noteAisleBodies?.find((body) => body.id === 'shared-aisle-body')?.markdown).toBe('current')
+    expect(next.noteAisleBodies?.find((body) => body.id === 'shared-aisle-body')?.markdown).toBe('current #Shared')
+    expect(next.noteAisleBodies?.find((body) => body.id === 'shared-aisle-body')?.tags).toEqual(['Shared'])
     expectAisles(next.noteBodies.find((body) => body.id === 'body-1')?.aisles, [
       { id: 'aisle-a', aisleBodyId: 'shared-aisle-body' },
       { id: 'aisle-b', aisleBodyId: 'shared-aisle-body' },
@@ -235,7 +238,7 @@ describe('note-state helpers', () => {
   it('applies a staged aisle de-couple to only the selected aisle slot', () => {
     const state = {
       ...createTestState(),
-      noteAisleBodies: [{ id: 'shared-aisle-body', markdown: 'current shared text' }],
+      noteAisleBodies: [{ id: 'shared-aisle-body', markdown: 'current shared text #Shared' }],
       noteBodies: [
         {
           id: 'body-1',
@@ -258,12 +261,13 @@ describe('note-state helpers', () => {
 
     expect(decoupledAisle?.id).toBe('aisle-a')
     expect(decoupledAisle?.aisleBodyId).not.toBe('shared-aisle-body')
-    expect(decoupledAisle ? getAisleMarkdown(decoupledAisle, next.noteAisleBodies) : '').toBe('current shared text')
+    expect(decoupledAisle ? getAisleMarkdown(decoupledAisle, next.noteAisleBodies) : '').toBe('current shared text #Shared')
     expect(next.noteAisleBodies?.find((body) => body.id === decoupledAisle?.aisleBodyId)?.markdown).toBe(
-      'current shared text',
+      'current shared text #Shared',
     )
+    expect(next.noteAisleBodies?.find((body) => body.id === decoupledAisle?.aisleBodyId)?.tags).toEqual(['Shared'])
     expect(linkedAisle).toEqual({ id: 'aisle-b', aisleBodyId: 'shared-aisle-body' })
-    expect(next.noteAisleBodies?.find((body) => body.id === 'shared-aisle-body')?.markdown).toBe('current shared text')
+    expect(next.noteAisleBodies?.find((body) => body.id === 'shared-aisle-body')?.markdown).toBe('current shared text #Shared')
   })
 
   it('applies note location across domain, space, tab, and sub-tab state', () => {

@@ -28,6 +28,11 @@ function getTextFileJson(fileMap: ReturnType<typeof buildHybridFileMapFromSerial
   return entry?.kind === 'text' ? (JSON.parse(entry.text) as Record<string, unknown>) : {}
 }
 
+function getTextFile(fileMap: ReturnType<typeof buildHybridFileMapFromSerializedState>, path: string) {
+  const entry = fileMap.get(path)
+  return entry?.kind === 'text' ? entry.text : ''
+}
+
 function getRootSplitFileJson(
   fileMap: ReturnType<typeof buildHybridFileMapFromSerializedState>,
   rootManifest: Record<string, unknown>,
@@ -572,7 +577,7 @@ describe('browser hybrid storage', () => {
     fileMap.set('notes/profile-settings.json', {
       path: 'notes/profile-settings.json',
       kind: 'text',
-      text: `${JSON.stringify({ ...profileSettings, settings: { ...profileSettings.settings, theme: 'blues' } }, null, 2)}\n`,
+      text: `${JSON.stringify({ ...profileSettings, settings: { ...profileSettings.settings, theme: 'light' } }, null, 2)}\n`,
     })
 
     const serialized = readSerializedStateFromHybridFileMap(fileMap)
@@ -706,6 +711,83 @@ describe('browser hybrid storage', () => {
     expect(bodyTwo?.aisles[0]?.aisleBodyId).toBe('shared-aisle-body')
     expect(roundTripped.noteAisleBodies?.find((body) => body.id === 'shared-aisle-body')?.markdown).toBe('shared aisle text')
     expect(JSON.stringify(manifestBodies)).toContain('"aisleBodyId":"shared-aisle-body"')
+  })
+
+  it('round trips inline aisle tags without forcing frontmatter', () => {
+    const state = createBrowserStorageState()
+    const aisleBody = state.noteAisleBodies?.find((body) => body.id === 'aisle-body-1')
+    if (!aisleBody) throw new Error('missing aisle body')
+    aisleBody.markdown = '#Project\n\nBody #Review'
+    delete aisleBody.frontmatter
+    delete aisleBody.frontmatterMeta
+    delete aisleBody.frontmatterStatus
+    delete aisleBody.tags
+
+    const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
+    const rootManifest = getTextFileJson(fileMap, 'notes/manifest.json')
+    const noteRegistry = getRootSplitFileJson(fileMap, rootManifest, 'noteRegistry', 'note-registry.json')
+    const aisleBodyEntry = getRecord(
+      (Array.isArray(noteRegistry.aisleBodies) ? noteRegistry.aisleBodies : [])
+        .find((entry) => getRecord(entry).id === 'aisle-body-1'),
+    )
+    const aisleFile = typeof aisleBodyEntry.file === 'string' ? aisleBodyEntry.file : ''
+    const serialized = readSerializedStateFromHybridFileMap(fileMap)
+    const roundTripped = parseSavedState(serialized)
+
+    expect(getTextFile(fileMap, `notes/${aisleFile}`).startsWith('---')).toBe(false)
+    expect(aisleBodyEntry.tags).toEqual(['Project', 'Review'])
+    expect(roundTripped.noteAisleBodies?.find((body) => body.id === 'aisle-body-1')?.tags).toEqual(['Project', 'Review'])
+  })
+
+  it('migrates frontmatter tags into visible aisle markdown and keeps computed tags updated', () => {
+    const state = createBrowserStorageState()
+    const aisleBody = state.noteAisleBodies?.find((body) => body.id === 'aisle-body-1')
+    if (!aisleBody) throw new Error('missing aisle body')
+    aisleBody.markdown = 'Body text'
+    delete aisleBody.frontmatter
+    delete aisleBody.frontmatterMeta
+    delete aisleBody.frontmatterStatus
+    delete aisleBody.tags
+
+    const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
+    const rootManifest = getTextFileJson(fileMap, 'notes/manifest.json')
+    const noteRegistry = getRootSplitFileJson(fileMap, rootManifest, 'noteRegistry', 'note-registry.json')
+    const aisleBodyEntry = getRecord(
+      (Array.isArray(noteRegistry.aisleBodies) ? noteRegistry.aisleBodies : [])
+        .find((entry) => getRecord(entry).id === 'aisle-body-1'),
+    )
+    const aisleFile = typeof aisleBodyEntry.file === 'string' ? aisleBodyEntry.file : ''
+    fileMap.set(`notes/${aisleFile}`, {
+      path: `notes/${aisleFile}`,
+      kind: 'text',
+      text: '---\ntags:\n  - Card\n  - Unfinished\n---\nBody text',
+    })
+
+    const roundTripped = parseSavedState(readSerializedStateFromHybridFileMap(fileMap) ?? '')
+    const roundTrippedAisleBody = roundTripped.noteAisleBodies?.find((body) => body.id === 'aisle-body-1')
+    if (!roundTrippedAisleBody) throw new Error('missing round-tripped aisle body')
+
+    expect(roundTrippedAisleBody.markdown).toBe('#Card #Unfinished\n\nBody text')
+    expect(roundTrippedAisleBody.tags).toEqual(['Card', 'Unfinished'])
+    expect(roundTrippedAisleBody.frontmatter).toEqual({ tags: ['Card', 'Unfinished'] })
+    expect(roundTrippedAisleBody.frontmatterMeta?.computedFields).toEqual({ tags: 'tags' })
+
+    roundTrippedAisleBody.markdown = 'Body without tags'
+    roundTrippedAisleBody.tags = []
+    const savedMap = buildHybridFileMapFromSerializedState(JSON.stringify(roundTripped))
+    const savedRootManifest = getTextFileJson(savedMap, 'notes/manifest.json')
+    const savedNoteRegistry = getRootSplitFileJson(savedMap, savedRootManifest, 'noteRegistry', 'note-registry.json')
+    const savedAisleBodyEntry = getRecord(
+      (Array.isArray(savedNoteRegistry.aisleBodies) ? savedNoteRegistry.aisleBodies : [])
+        .find((entry) => getRecord(entry).id === 'aisle-body-1'),
+    )
+    const savedAisleFile = typeof savedAisleBodyEntry.file === 'string' ? savedAisleBodyEntry.file : ''
+    const reloaded = parseSavedState(readSerializedStateFromHybridFileMap(savedMap) ?? '')
+
+    expect(getTextFile(savedMap, `notes/${savedAisleFile}`)).toBe('---\ntags: []\n---\nBody without tags')
+    expect(savedAisleBodyEntry.tags).toEqual([])
+    expect(reloaded.noteAisleBodies?.find((body) => body.id === 'aisle-body-1')?.frontmatter).toEqual({ tags: [] })
+    expect(reloaded.noteAisleBodies?.find((body) => body.id === 'aisle-body-1')?.tags).toEqual([])
   })
 
   it('round trips distinct aisle body markdown without collapsing sibling aisles', () => {

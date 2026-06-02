@@ -434,6 +434,8 @@
   --editor-code-bg: #121826;
   --editor-popup-bg: #0f1b32;
   --editor-link-text: #9bbcff;
+  --editor-tag-text: #06141a;
+  --editor-tag-bg: #22d3ee;
   --editor-tooltip-bg: #0f1b32;
   --editor-tooltip-border: #2f4672;
   --editor-tooltip-text: #dce9ff;
@@ -537,6 +539,8 @@
   --custom-palette-danger: var(--custom-theme-danger, #963442);
   --custom-palette-warning: var(--custom-theme-warning, #d9a441);
   --custom-palette-success: var(--custom-theme-success, #2fb36d);
+  --custom-palette-tag-text: var(--custom-theme-tag-text, #06141a);
+  --custom-palette-tag-bg: var(--custom-theme-tag-bg, #22d3ee);
   --custom-palette-domain-rail: var(--custom-theme-domain-rail, #a95429);
   --custom-palette-space-rail: var(--custom-theme-space-rail, #997b28);
   --custom-palette-parent-rail: var(--custom-theme-parent-rail, #2f5da8);
@@ -854,6 +858,8 @@
   --editor-code-bg: color-mix(in srgb, var(--custom-palette-canvas) 84%, black);
   --editor-popup-bg: var(--custom-palette-surface-raised);
   --editor-link-text: color-mix(in srgb, var(--custom-palette-primary) 52%, var(--app-text-bright));
+  --editor-tag-text: var(--custom-palette-tag-text);
+  --editor-tag-bg: var(--custom-palette-tag-bg);
   --editor-tooltip-bg: var(--custom-palette-surface-raised);
   --editor-tooltip-border: var(--app-border);
   --editor-tooltip-text: var(--app-text-soft);

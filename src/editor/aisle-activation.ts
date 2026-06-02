@@ -1,3 +1,5 @@
+export type AisleActivationSource = 'pointer' | 'focus' | 'programmatic'
+
 export function shouldUseFastSameAisleActivation({
   switchingAisle,
   editorRefMatches,
@@ -13,7 +15,15 @@ export function shouldUseFastSameAisleActivation({
 }
 
 export function shouldFocusAislePointerActivation(currentAisleId: string, targetAisleId: string): boolean {
-  return Boolean(targetAisleId && currentAisleId !== targetAisleId)
+  void currentAisleId
+  void targetAisleId
+  return false
+}
+
+export function shouldClearPendingCursorRestoreForAisleActivation(
+  source: AisleActivationSource | undefined,
+): boolean {
+  return source === 'pointer'
 }
 
 export function getActiveAisleRefSyncValue({

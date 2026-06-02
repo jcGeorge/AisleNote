@@ -14,7 +14,17 @@ import type { TableOfContentsLinkItem } from '../../editor/table-of-contents-lin
 import { resolveAssetDisplayUrl } from '../../markdown/image-asset-registry'
 import type { ResolvedNoteAisle } from '../../types/app'
 import { AisleHorizontalScrollbar } from './AisleHorizontalScrollbar'
-import { MarkdownPreviewLink, MarkdownPreviewParagraph } from './markdown-preview-components'
+import {
+  MarkdownPreviewHeading1,
+  MarkdownPreviewHeading2,
+  MarkdownPreviewHeading3,
+  MarkdownPreviewHeading4,
+  MarkdownPreviewHeading5,
+  MarkdownPreviewHeading6,
+  MarkdownPreviewLink,
+  MarkdownPreviewListItem,
+  MarkdownPreviewParagraph,
+} from './markdown-preview-components'
 import {
   getAisleEditorKeyFromNoteWorkspacePointerTarget,
   scheduleNoteWorkspaceArrangeExit,
@@ -31,6 +41,13 @@ const transformAislePreviewUrl = (url: string, key: string) => {
 
 const noteWorkspacePreviewMarkdownComponents = {
   a: MarkdownPreviewLink,
+  h1: MarkdownPreviewHeading1,
+  h2: MarkdownPreviewHeading2,
+  h3: MarkdownPreviewHeading3,
+  h4: MarkdownPreviewHeading4,
+  h5: MarkdownPreviewHeading5,
+  h6: MarkdownPreviewHeading6,
+  li: MarkdownPreviewListItem,
   p: MarkdownPreviewParagraph,
 }
 
@@ -82,6 +99,7 @@ type NoteWorkspaceProps = {
   onOpenTableOfContentsLink?: (aisleId: string, link: TableOfContentsLinkItem) => void
   onOpenAisleFrontmatter?: (aisleId: string) => void
   onOpenAisleLink?: (aisleId: string) => void
+  onOpenTagFilter?: (tag: string) => void
   scratchpadAisleControls?: ScratchpadAisleControls
   onRegisterAislePaneRoot: (aisleId: string, node: HTMLElement | null) => void
   onRegisterAisleEditorRoot: (editorKey: string, node: HTMLElement | null) => void
@@ -222,6 +240,7 @@ export function NoteWorkspace({
   onOpenTableOfContentsLink = () => undefined,
   onOpenAisleFrontmatter = () => undefined,
   onOpenAisleLink = () => undefined,
+  onOpenTagFilter = () => undefined,
   scratchpadAisleControls,
   onRegisterAislePaneRoot,
   onRegisterAisleEditorRoot,
@@ -257,6 +276,15 @@ export function NoteWorkspace({
           if (editorKey) {
             onActivateAisle(editorKey)
           }
+        }}
+        onClickCapture={(event) => {
+          const target = event.target instanceof Element ? event.target : null
+          const tagToken = target?.closest<HTMLElement>('[data-tabs-tag]')
+          const tag = tagToken?.dataset.tabsTag?.trim()
+          if (!tag) return
+          event.preventDefault()
+          event.stopPropagation()
+          onOpenTagFilter(tag)
         }}
         onScroll={(event) => onAisleScroll(event.currentTarget.scrollLeft)}
       >

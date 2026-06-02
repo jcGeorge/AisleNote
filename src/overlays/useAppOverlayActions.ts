@@ -882,6 +882,7 @@ export const useAppOverlayActions = ({
       const result = buildFrontmatterDataFromRows(stateRef.current, modal.noteBodyId, modal.location, modal.rows, {
         selectedTemplateId: modal.selectedTemplateId,
         templateDerived: modal.templateDerived,
+        aisleBodyId: modal.aisleBodyId,
       })
       if (!result.ok) {
         pushToast(result.message, 'error')

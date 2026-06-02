@@ -18,6 +18,10 @@ import {
 } from '../markdown/image-asset-refs.js'
 import { composeMarkdownFrontmatter } from '../frontmatter/frontmatter'
 import {
+  extractMarkdownTags,
+  materializeComputedFrontmatterTags,
+} from '../tags/tags.js'
+import {
   getRegisteredAssetBytes,
   registerAssetBytes,
 } from '../markdown/image-asset-registry'
@@ -328,7 +332,9 @@ function buildNoteBodyManifestRecord(body: Record<string, unknown>, aisles: Arra
 
 function composeAisleMarkdownForStorage(markdown: string, aisleBody: Record<string, unknown> | undefined): string {
   if (aisleBody?.frontmatterStatus === 'invalid') return markdown
-  return composeMarkdownFrontmatter(markdown, isRecord(aisleBody?.frontmatter) ? aisleBody.frontmatter : null)
+  const tags = extractMarkdownTags(markdown)
+  const frontmatter = materializeComputedFrontmatterTags(aisleBody?.frontmatter, aisleBody?.frontmatterMeta, tags)
+  return composeMarkdownFrontmatter(markdown, isRecord(frontmatter) ? frontmatter : null)
 }
 
 function normalizeAisleStorageContentForHash(content: Record<string, unknown> | undefined): Record<string, unknown> {
@@ -336,10 +342,13 @@ function normalizeAisleStorageContentForHash(content: Record<string, unknown> | 
     content?.frontmatterStatus === 'valid' || content?.frontmatterStatus === 'invalid'
       ? content.frontmatterStatus
       : 'none'
+  const markdown = typeof content?.markdown === 'string' ? content.markdown : ''
+  const tags = extractMarkdownTags(markdown)
+  const frontmatter = materializeComputedFrontmatterTags(content?.frontmatter, content?.frontmatterMeta, tags)
   return {
-    markdown: typeof content?.markdown === 'string' ? content.markdown : '',
+    markdown,
     frontmatterStatus,
-    frontmatter: frontmatterStatus === 'valid' && isRecord(content?.frontmatter) ? content.frontmatter : null,
+    frontmatter: frontmatterStatus === 'valid' && isRecord(frontmatter) ? frontmatter : null,
     frontmatterParseError:
       frontmatterStatus === 'invalid' && typeof content?.frontmatterParseError === 'string'
         ? content.frontmatterParseError
@@ -372,6 +381,7 @@ function buildNoteAisleBodyManifestRecord(
     id: aisleBodyId,
     file,
     contentHash: getAisleStorageContentHash(aisleBody),
+    tags: extractMarkdownTags(String(aisleBody?.markdown ?? '')),
     frontmatterMeta: isRecord(aisleBody?.frontmatterMeta) ? aisleBody.frontmatterMeta : undefined,
   }
 }
@@ -448,6 +458,7 @@ function writeNoteBodyAtPath({
           aisleBodyId: aisleId,
           file: primaryFileRelative,
           contentHash: getAisleStorageContentHash(undefined),
+          tags: [],
         },
       ]))
       if (!noteAisleBodyRecords.has(aisleId)) {
@@ -474,7 +485,13 @@ function writeNoteBodyAtPath({
         assetBank,
       ),
     )
-    aisleRecords.push({ id: aisleId, aisleBodyId, file, contentHash: getAisleStorageContentHash(sourceAisleBody) })
+    aisleRecords.push({
+      id: aisleId,
+      aisleBodyId,
+      file,
+      contentHash: getAisleStorageContentHash(sourceAisleBody),
+      tags: extractMarkdownTags(String(sourceAisleBody?.markdown ?? '')),
+    })
     if (!noteAisleBodyRecords.has(aisleBodyId)) {
       noteAisleBodyRecords.set(aisleBodyId, buildNoteAisleBodyManifestRecord(aisleBodyId, file, sourceAisleBody))
     }
@@ -917,6 +934,7 @@ function readNoteAisleBodiesFromRootManifest(
     aisleBodies.push({
       id: bodyId,
       markdown: readTextFileWithReferencedImages(fileMap, joinPosix(STORAGE_ROOT_DIR, file)),
+      tags: Array.isArray(body.tags) ? body.tags : undefined,
       frontmatterMeta: isRecord(body.frontmatterMeta) ? body.frontmatterMeta : undefined,
     })
   }

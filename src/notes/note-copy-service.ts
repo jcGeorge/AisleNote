@@ -8,6 +8,7 @@ import {
 import { buildNoteLocationKey, getLocationInfo, updateNoteLocationBody } from './note-locations'
 import { ensureNoteBodiesForAppState } from '../state/app-state'
 import { createId, createTimestamp } from '../state/workspace'
+import { getAisleBodyTags } from '../tags/tags.js'
 import type { AppState, FrontmatterMeta, NoteAisle, NoteAisleBody, NoteBody, NoteCopyDestinationMode, NoteCopyMode, NoteLocation, ResolvedNoteAisle } from '../types/app'
 import { ensureScratchpadInAppState, getScratchpadNoteBody } from '../state/scratchpad'
 
@@ -72,6 +73,7 @@ function createIndependentAisleCopies(
       createdAt: timestamp,
       updatedAt: timestamp,
       markdown: aisle.markdown,
+      tags: getAisleBodyTags(sourceBody ?? aisle),
       frontmatter: sourceBody?.frontmatter && typeof sourceBody.frontmatter === 'object'
         ? { ...sourceBody.frontmatter }
         : sourceBody?.frontmatter ?? null,

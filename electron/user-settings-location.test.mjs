@@ -117,7 +117,7 @@ describe('user settings location storage', () => {
       const settingsRootPath = path.join(root, 'cloud-settings')
       const location = createUserSettingsLocation(userDataPath, settingsRootPath)
       mkdirSync(settingsRootPath, { recursive: true })
-      writeAppSettingsForState(userDataPath, serializedAppState('blues'))
+      writeAppSettingsForState(userDataPath, serializedAppState('light'))
 
       const refresh = refreshLocalUserSettingsFromLocation(userDataPath, location)
 
@@ -131,8 +131,8 @@ describe('user settings location storage', () => {
           source: 'local-cache',
         },
       })
-      expect(JSON.parse(readFileSync(getUserSettingsFilePath(settingsRootPath), 'utf8')).theme).toBe('blues')
-      expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('blues')
+      expect(JSON.parse(readFileSync(getUserSettingsFilePath(settingsRootPath), 'utf8')).theme).toBe('light')
+      expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('light')
     }))
 
   it('creates default local and cloud settings when both are missing but the cloud root is reachable', () =>
@@ -164,7 +164,7 @@ describe('user settings location storage', () => {
       const location = createUserSettingsLocation(userDataPath, settingsRootPath)
       mkdirSync(settingsRootPath, { recursive: true })
 
-      const result = recreateMissingUserSettingsLocationFile(userDataPath, location, serializedAppState('blues'))
+      const result = recreateMissingUserSettingsLocationFile(userDataPath, location, serializedAppState('light'))
 
       expect(result).toMatchObject({
         ok: true,
@@ -173,8 +173,8 @@ describe('user settings location storage', () => {
           syncStatus: 'synced',
         },
       })
-      expect(JSON.parse(readFileSync(getUserSettingsFilePath(settingsRootPath), 'utf8')).theme).toBe('blues')
-      expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('blues')
+      expect(JSON.parse(readFileSync(getUserSettingsFilePath(settingsRootPath), 'utf8')).theme).toBe('light')
+      expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('light')
     }))
 
   it('mirrors app settings changes to reachable custom settings folders', () =>

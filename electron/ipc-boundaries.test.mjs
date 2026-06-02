@@ -866,7 +866,7 @@ describe('electron ipc boundaries', () => {
         })
 
         const saveEvent = { sender: { id: 1 }, returnValue: null }
-        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('blues'), baseRevision: 0 })
+        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('light'), baseRevision: 0 })
 
         await expect(ipcMain.handlers.get('choose-user-settings-folder')()).resolves.toMatchObject({
           ok: true,
@@ -876,8 +876,8 @@ describe('electron ipc boundaries', () => {
             syncStatus: 'synced',
           },
         })
-        expect(JSON.parse(readFileSync(path.join(settingsRoot, 'settings', 'app-settings.json'), 'utf8')).theme).toBe('blues')
-        expect(JSON.parse(readFileSync(path.join(userDataPath, 'settings', 'app-settings.json'), 'utf8')).theme).toBe('blues')
+        expect(JSON.parse(readFileSync(path.join(settingsRoot, 'settings', 'app-settings.json'), 'utf8')).theme).toBe('light')
+        expect(JSON.parse(readFileSync(path.join(userDataPath, 'settings', 'app-settings.json'), 'utf8')).theme).toBe('light')
       } finally {
         rmSync(settingsRoot, { recursive: true, force: true })
       }

@@ -28,7 +28,10 @@ describe('MessagesView', () => {
       <MessagesView messages={[]} onDismissMessage={vi.fn()} onOpenLocation={vi.fn()} />,
     )
 
+    expect(html).toContain('utility-page-wrap messages-view')
+    expect(html).toContain('utility-page-card messages-view-card')
     expect(html).toContain('no messages.')
+    expect(html).not.toContain('<h2>messages</h2>')
   })
 
   it('renders duplicate decouple details and location actions', () => {

@@ -17,6 +17,7 @@ import {
   type EditorFocusIntent,
 } from './cursor-restore-focus'
 import { shouldFocusForEditorIntent } from './focus-intent'
+import type { AisleActivationSource } from './aisle-activation'
 
 export type PendingCursorRestore = {
   noteLocationKey: string
@@ -43,6 +44,42 @@ type UseNoteCursorPersistenceParams = {
   setActiveAisleId: Dispatch<SetStateAction<string>>
 }
 
+export function getPendingCursorRestoreTargetAisleId({
+  pendingFocusAisleId,
+  pendingCursorRestore,
+  activeNoteLocationKey,
+  suppressSavedCursorRestore,
+}: {
+  pendingFocusAisleId: string | null | undefined
+  pendingCursorRestore: Pick<PendingCursorRestore, 'noteLocationKey' | 'aisleId'> | null | undefined
+  activeNoteLocationKey: string
+  suppressSavedCursorRestore: boolean
+}): string {
+  const restoreAisleId =
+    !suppressSavedCursorRestore && pendingCursorRestore?.noteLocationKey === activeNoteLocationKey
+      ? pendingCursorRestore.aisleId
+      : ''
+  return pendingFocusAisleId || restoreAisleId
+}
+
+export function shouldClearSuppressedSavedCursorRestore({
+  pendingFocusAisleId,
+  pendingCursorRestore,
+  activeNoteLocationKey,
+  suppressSavedCursorRestore,
+}: {
+  pendingFocusAisleId: string | null | undefined
+  pendingCursorRestore: Pick<PendingCursorRestore, 'noteLocationKey'> | null | undefined
+  activeNoteLocationKey: string
+  suppressSavedCursorRestore: boolean
+}): boolean {
+  return Boolean(
+    suppressSavedCursorRestore &&
+      !pendingFocusAisleId &&
+      pendingCursorRestore?.noteLocationKey === activeNoteLocationKey,
+  )
+}
+
 type UsePendingNoteCursorRestoreParams = {
   viewMode: ViewMode
   activeNoteBodyId: string
@@ -55,7 +92,16 @@ type UsePendingNoteCursorRestoreParams = {
   pendingFocusToAisleIdRef: MutableRefObject<string | null>
   pendingCursorRestoreRef: MutableRefObject<PendingCursorRestore | null>
   pendingNavigationTopAisleIdRef: MutableRefObject<string | null>
-  activateAisleEditor: (editorKey: string, options?: { focus?: boolean; flushPrevious?: boolean; allowDuringPendingRename?: boolean }) => boolean
+  suppressSavedCursorRestoreRef?: { readonly current: unknown }
+  activateAisleEditor: (
+    editorKey: string,
+    options?: {
+      focus?: boolean
+      flushPrevious?: boolean
+      allowDuringPendingRename?: boolean
+      source?: AisleActivationSource
+    },
+  ) => boolean
 }
 
 export function getPersistableCursorSelectionForActiveEditor({
@@ -193,14 +239,27 @@ export const usePendingNoteCursorRestore = ({
   pendingFocusToAisleIdRef,
   pendingCursorRestoreRef,
   pendingNavigationTopAisleIdRef,
+  suppressSavedCursorRestoreRef,
   activateAisleEditor,
 }: UsePendingNoteCursorRestoreParams) => {
   useEffect(() => {
     const pendingAisleId = pendingFocusToAisleIdRef.current
     const pendingCursorRestore = pendingCursorRestoreRef.current
-    const restoreAisleId =
-      pendingCursorRestore?.noteLocationKey === activeNoteLocationKey ? pendingCursorRestore.aisleId : ''
-    const targetAisleId = pendingAisleId || restoreAisleId
+    const suppressSavedCursorRestore = Boolean(suppressSavedCursorRestoreRef?.current)
+    const targetAisleId = getPendingCursorRestoreTargetAisleId({
+      pendingFocusAisleId: pendingAisleId,
+      pendingCursorRestore,
+      activeNoteLocationKey,
+      suppressSavedCursorRestore,
+    })
+    if (shouldClearSuppressedSavedCursorRestore({
+      pendingFocusAisleId: pendingAisleId,
+      pendingCursorRestore,
+      activeNoteLocationKey,
+      suppressSavedCursorRestore,
+    })) {
+      pendingCursorRestoreRef.current = null
+    }
     if (viewMode !== 'main' || !activeNoteBodyId || !targetAisleId) return
     if (pendingCreatedEditRef.current) return
     const focusIntent = getCursorRestoreFocusIntent({
@@ -250,5 +309,6 @@ export const usePendingNoteCursorRestore = ({
     pendingFocusToAisleIdRef,
     pendingCursorRestoreRef,
     pendingNavigationTopAisleIdRef,
+    suppressSavedCursorRestoreRef,
   ])
 }

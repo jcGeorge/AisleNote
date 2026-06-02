@@ -13,6 +13,7 @@ import {
   installHeadingPopupActiveState,
   listMarkerPlugin,
   multiLineSelectionShortcutPlugin,
+  tagAppearancePlugin,
   thematicBreakShortcutPlugin,
   uncheckedTaskEnterPlugin,
 } from './editor-setup'
@@ -121,6 +122,7 @@ export function useLegacyEditor({
         listMarkerPlugin,
         blockIndentPlugin,
         annotationLinePlugin,
+        tagAppearancePlugin,
         highlightPlugin,
         codeBlockBacktickShortcutPlugin,
         terminalBlockLandingPlugin,

@@ -61,7 +61,8 @@
   text-align: right;
 }
 
-.settings-page-wrap {
+.settings-page-wrap,
+.utility-page-wrap {
   --settings-text-scale: var(--note-font-scale, 1);
   flex: 1 1 auto;
   min-height: 0;
@@ -74,7 +75,8 @@
   font-size: calc(1rem * var(--settings-text-scale, 1));
 }
 
-.settings-page-card {
+.settings-page-card,
+.utility-page-card {
   width: min(840px, 100%);
   background: var(--settings-card-bg);
   border: 1px solid var(--settings-card-border);
@@ -83,20 +85,47 @@
   color: var(--settings-card-text);
 }
 
-.settings-page-card h2 {
+.settings-page-card h2,
+.utility-page-card h2 {
   margin: 0 0 0.45rem;
   font-size: 1.15em;
   text-transform: lowercase;
 }
 
-.settings-page-card p {
+.settings-page-card p,
+.utility-page-card p {
   margin: 0 0 0.75rem;
   color: var(--settings-card-body-text);
   font-size: 1em;
 }
 
-.settings-page-card code {
+.settings-page-card code,
+.utility-page-card code {
   color: inherit;
+}
+
+.about-runtime-list {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0.95rem 0 0;
+}
+
+.about-runtime-list div {
+  display: grid;
+  grid-template-columns: minmax(6rem, 0.35fr) 1fr;
+  gap: 0.75rem;
+  align-items: baseline;
+}
+
+.about-runtime-list dt {
+  color: var(--settings-muted-text);
+  font-size: 0.9em;
+  text-transform: lowercase;
+}
+
+.about-runtime-list dd {
+  margin: 0;
+  color: var(--settings-card-text);
 }
 
 .settings-section-tabs {
@@ -391,7 +420,7 @@
   --theme-switch-option-selected-bg: var(--subtab-rail-accent);
   --theme-switch-option-selected-text: var(--subtab-rail-selected-text);
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.18rem;
   min-width: 240px;
   padding: 0.18rem;
@@ -840,6 +869,13 @@
   font-size: calc(1.08rem * var(--note-font-scale, 1)) !important;
   font-weight: 700;
   line-height: 1.1;
+}
+
+.visuals-preview-tag-line {
+  margin: 0 0 0.25rem !important;
+  color: var(--editor-text) !important;
+  font-size: inherit;
+  line-height: 1.35;
 }
 
 .visuals-preview-list {

@@ -2,7 +2,7 @@ export type StorageSchemaVersion = 1
 
 export type StorageEntityId = string
 export type StorageCustomThemeId = 'custom1' | 'custom2' | 'custom3'
-export type StorageTheme = 'dark' | 'light' | 'dawn' | 'blues' | StorageCustomThemeId
+export type StorageTheme = 'dark' | 'light' | 'dawn' | StorageCustomThemeId
 export type StorageCustomThemePaletteSlot =
   | 'canvas'
   | 'page'
@@ -16,6 +16,8 @@ export type StorageCustomThemePaletteSlot =
   | 'danger'
   | 'warning'
   | 'success'
+  | 'tagText'
+  | 'tagBg'
   | 'domainRail'
   | 'spaceRail'
   | 'parentRail'
@@ -169,6 +171,7 @@ export type StorageNoteAisleRecord = {
   aisleBodyId?: StorageEntityId
   file: string
   contentHash?: string
+  tags?: string[]
 }
 
 export type StorageNoteBodyRecord = {
@@ -184,6 +187,7 @@ export type StorageNoteAisleBodyRecord = {
   storageStatus?: 'unlinked'
   file: string
   contentHash?: string
+  tags?: string[]
   frontmatterMeta?: {
     templateId?: string
     templateDerived?: boolean
@@ -213,7 +217,7 @@ export type StorageLastOpened = {
   spaceId: StorageEntityId
   primeTabId?: StorageEntityId | null
   subTabId: StorageEntityId | null
-  viewMode: 'main' | 'trash' | 'settings' | 'stage-manager' | 'messages'
+  viewMode: 'main' | 'trash' | 'settings' | 'stage-manager' | 'messages' | 'about'
 }
 
 export type StorageWorkspaceIndex = {

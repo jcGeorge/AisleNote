@@ -119,10 +119,10 @@ const DEFAULT_SYNCED_UI_SETTINGS = {
   disabledTipIds: [],
 }
 
-const THEME_PALETTE_IDS = ['dark', 'light', 'dawn', 'blues', 'custom1', 'custom2', 'custom3']
+const THEME_PALETTE_IDS = ['dark', 'light', 'dawn', 'custom1', 'custom2', 'custom3']
 const CUSTOM_THEME_IDS = ['custom1', 'custom2', 'custom3']
 const DATA_SETTINGS_SECTIONS = ['notebook', 'settings', 'storage', 'trash']
-const CURRENT_APP_SETTING_THEME_IDS = ['dark', 'light', 'dawn', 'blues', 'custom1', 'custom2', 'custom3']
+const CURRENT_APP_SETTING_THEME_IDS = ['dark', 'light', 'dawn', 'custom1', 'custom2', 'custom3']
 
 function optionalBoolean(value, fallback) {
   return typeof value === 'boolean' ? value : fallback

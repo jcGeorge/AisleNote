@@ -8,6 +8,11 @@ import {
 } from '../frontmatter/frontmatter'
 import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
 import {
+  extractMarkdownTags,
+  materializeComputedFrontmatterTags,
+  migrateAisleTags,
+} from '../tags/tags.js'
+import {
   DEFAULT_AUTO_REMOVE_DAYS,
   DEFAULT_UI_SETTINGS,
   APP_THEME_IDS,
@@ -98,6 +103,7 @@ function createNoteBodyContentWithId(id: string, markdown = ''): { noteBody: Not
       createdAt: timestamp,
       updatedAt: timestamp,
       markdown,
+      tags: extractMarkdownTags(markdown),
       frontmatter: null,
       frontmatterStatus: 'none',
     },
@@ -165,37 +171,53 @@ function normalizeNoteAisleBodyRecord(
   if (!id) return null
   const markdown = normalizeMarkdownForPersistence(typeof candidate.markdown === 'string' ? candidate.markdown : '')
   const savedFrontmatter = normalizeFrontmatterData(candidate.frontmatter)
+  const savedFrontmatterMeta = normalizeFrontmatterMeta(candidate.frontmatterMeta)
   const split = splitMarkdownFrontmatter(markdown)
   const base = {
     id,
     createdAt: normalizeTimestamp(candidate.createdAt, fallbackTimestamp),
     updatedAt: normalizeTimestamp(candidate.updatedAt, fallbackTimestamp),
-    frontmatterMeta: normalizeFrontmatterMeta(candidate.frontmatterMeta),
+    frontmatterMeta: savedFrontmatterMeta,
   }
   if (split.status === 'valid') {
-    return {
-      ...base,
+    const migrated = migrateAisleTags({
       markdown: normalizeMarkdownForPersistence(split.markdown),
       frontmatter: split.frontmatter,
+      frontmatterMeta: savedFrontmatterMeta,
+    })
+    return {
+      ...base,
+      markdown: normalizeMarkdownForPersistence(migrated.markdown),
+      tags: migrated.tags,
+      frontmatter: migrated.frontmatter,
       frontmatterStatus: 'valid',
       frontmatterRaw: split.rawFrontmatter ?? undefined,
+      frontmatterMeta: migrated.frontmatterMeta,
     }
   }
   if (split.status === 'invalid') {
     return {
       ...base,
       markdown,
+      tags: extractMarkdownTags(markdown),
       frontmatter: null,
       frontmatterStatus: 'invalid',
       frontmatterParseError: split.error,
       frontmatterRaw: split.rawFrontmatter ?? undefined,
     }
   }
-  return {
-    ...base,
+  const migrated = migrateAisleTags({
     markdown,
     frontmatter: savedFrontmatter,
-    frontmatterStatus: savedFrontmatter ? 'valid' : 'none',
+    frontmatterMeta: savedFrontmatterMeta,
+  })
+  return {
+    ...base,
+    markdown: normalizeMarkdownForPersistence(migrated.markdown),
+    tags: migrated.tags,
+    frontmatter: materializeComputedFrontmatterTags(migrated.frontmatter, migrated.frontmatterMeta, migrated.tags),
+    frontmatterStatus: migrated.frontmatter ? 'valid' : savedFrontmatter ? 'valid' : 'none',
+    frontmatterMeta: migrated.frontmatterMeta,
   }
 }
 
@@ -257,6 +279,7 @@ function normalizeNoteContent(
           createdAt: body.createdAt ?? fallbackTimestamp,
           updatedAt: body.updatedAt ?? fallbackTimestamp,
           markdown: '',
+          tags: [],
           frontmatter: null,
           frontmatterStatus: 'none',
         }
@@ -445,7 +468,6 @@ export const DEFAULT_STATE: AppState = ensureNoteBodiesForAppState(RAW_DEFAULT_S
 function normalizeAppTheme(value: unknown): AppTheme {
   if (value === 'custom') return 'custom1'
   if (typeof value === 'string' && APP_THEME_IDS.includes(value as AppTheme)) return value as AppTheme
-  if (value === 'dusk') return 'blues'
   return 'dawn'
 }
 

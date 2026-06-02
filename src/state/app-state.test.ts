@@ -225,7 +225,7 @@ describe('app state normalization', () => {
   it('rejects legacy spaces-only app data', () => {
     const state = parseSavedState(
       JSON.stringify({
-        theme: 'dusk',
+        theme: 'invalid-theme',
         spaces: [
           {
             id: 'space-1',
@@ -261,6 +261,54 @@ describe('app state normalization', () => {
     const nextBody = next.noteBodies.find((body) => body.id === nextTab.noteBodyId)
 
     expect(nextBody?.aisles[0] ? getAisleMarkdown(nextBody.aisles[0], next.noteAisleBodies) : '').toBe('updated')
+  })
+
+  it('updates derived aisle tags when markdown changes', () => {
+    const state = parseSavedState(null)
+    const space = state.spaces[0]
+    const tab = space.data.tabs[0]
+    const body = state.noteBodies.find((candidate) => candidate.id === tab.noteBodyId)
+    const aisle = body?.aisles[0]
+    const next = applyMarkdownToAppState(state, space.id, tab.id, null, aisle?.id ?? '', '#Sermon\n\nBody #Study')
+    const nextAisleBody = next.noteAisleBodies?.find((candidate) => candidate.id === aisle?.aisleBodyId)
+
+    expect(nextAisleBody?.tags).toEqual(['Sermon', 'Study'])
+  })
+
+  it('migrates frontmatter tags into visible markdown and marks them computed', () => {
+    const state = parseModernState({
+      noteBodies: [{ id: 'body-1', aisles: [{ id: 'aisle-1', aisleBodyId: 'aisle-body-1' }] }],
+      noteAisleBodies: [
+        {
+          id: 'aisle-body-1',
+          markdown: '---\ntags:\n  - Card\n  - Unfinished\n---\nBody',
+        },
+      ],
+    })
+    const aisleBody = state.noteAisleBodies?.find((candidate) => candidate.id === 'aisle-body-1')
+
+    expect(aisleBody?.markdown).toBe('#Card #Unfinished\n\nBody')
+    expect(aisleBody?.tags).toEqual(['Card', 'Unfinished'])
+    expect(aisleBody?.frontmatter).toEqual({ tags: ['Card', 'Unfinished'] })
+    expect(aisleBody?.frontmatterMeta?.computedFields).toEqual({ tags: 'tags' })
+  })
+
+  it('does not re-import stale computed frontmatter tags after visible tags are removed', () => {
+    const state = parseModernState({
+      noteBodies: [{ id: 'body-1', aisles: [{ id: 'aisle-1', aisleBodyId: 'aisle-body-1' }] }],
+      noteAisleBodies: [
+        {
+          id: 'aisle-body-1',
+          markdown: '---\ntags:\n  - Old\n---\nBody without tags',
+          frontmatterMeta: { computedFields: { tags: 'tags' } },
+        },
+      ],
+    })
+    const aisleBody = state.noteAisleBodies?.find((candidate) => candidate.id === 'aisle-body-1')
+
+    expect(aisleBody?.markdown).toBe('Body without tags')
+    expect(aisleBody?.tags).toEqual([])
+    expect(aisleBody?.frontmatter).toEqual({ tags: [] })
   })
 
   it('normalizes structural aisles with shared aisle body records', () => {
@@ -849,16 +897,16 @@ describe('app state normalization', () => {
             ...BUILT_IN_THEME_PALETTE_SEEDS.dawn,
             canvas: '#776238',
           },
-          blues: {
-            ...BUILT_IN_THEME_PALETTE_SEEDS.blues,
-            canvas: '#25324d',
+          light: {
+            ...BUILT_IN_THEME_PALETTE_SEEDS.light,
+            canvas: '#f5f7fb',
           },
         },
       },
     })
 
     expect(state.ui.themePalettes?.dawn?.canvas).toBe('#776238')
-    expect(state.ui.themePalettes?.blues?.canvas).toBe('#25324d')
+    expect(state.ui.themePalettes?.light?.canvas).toBe('#f5f7fb')
   })
 
   it('normalizes persisted settings section memory', () => {

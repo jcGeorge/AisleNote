@@ -1,4 +1,5 @@
 import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
+import { extractMarkdownTags } from '../tags/tags.js'
 import {
   getAisleBodyId,
   resolveNoteBody,
@@ -39,6 +40,7 @@ function createAisleBody(aisleBodyId: string, markdown = ''): NoteAisleBody {
     createdAt: timestamp,
     updatedAt: timestamp,
     markdown: normalizeMarkdownForPersistence(markdown),
+    tags: extractMarkdownTags(markdown),
     frontmatter: null,
     frontmatterStatus: 'none',
   }

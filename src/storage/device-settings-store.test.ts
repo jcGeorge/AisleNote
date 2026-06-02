@@ -54,6 +54,10 @@ describe('device settings store', () => {
     expect(parseDeviceSettings(JSON.stringify({ dataSettingsSection: 'cloud' })).dataSettingsSection).toBe('notebook')
     expect(parseDeviceSettings(JSON.stringify({ tooltipScale: 9 })).tooltipScale).toBe(1.6)
     expect(parseDeviceSettings(JSON.stringify({ lastFindQuery: 123 })).lastFindQuery).toBe('')
+    expect(
+      parseDeviceSettings(JSON.stringify({ tagAutocompleteRecentKeys: ['Tag', '#tag', 'nested/Tag', '', 44] }))
+        .tagAutocompleteRecentKeys,
+    ).toEqual(['tag', 'nested/tag'])
   })
 
   it('normalizes invalid screen last-opened modes to main', () => {
@@ -69,6 +73,9 @@ describe('device settings store', () => {
     )
     expect(parseDeviceSettings(JSON.stringify({ lastOpened: { ...baseLastOpened, viewMode: 'spaces' } })).lastOpened?.viewMode).toBe(
       'main',
+    )
+    expect(parseDeviceSettings(JSON.stringify({ lastOpened: { ...baseLastOpened, viewMode: 'about' } })).lastOpened?.viewMode).toBe(
+      'about',
     )
   })
 
@@ -216,6 +223,12 @@ describe('device settings store', () => {
     expect(extractDeviceSettingsFromAppState(state, { ...DEFAULT_DEVICE_SETTINGS, lastFindQuery: 'bear' }).lastFindQuery).toBe(
       'bear',
     )
+    expect(
+      extractDeviceSettingsFromAppState(state, {
+        ...DEFAULT_DEVICE_SETTINGS,
+        tagAutocompleteRecentKeys: ['bear'],
+      }).tagAutocompleteRecentKeys,
+    ).toEqual(['bear'])
     expect(
       extractDeviceSettingsFromAppState(state, {
         ...DEFAULT_DEVICE_SETTINGS,

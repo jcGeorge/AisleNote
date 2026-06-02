@@ -1,5 +1,10 @@
 import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
 import { splitMarkdownFrontmatter } from '../frontmatter/frontmatter'
+import {
+  extractMarkdownTags,
+  materializeComputedFrontmatterTags,
+  migrateAisleTags,
+} from '../tags/tags.js'
 import { setActiveDomain, setActiveSpaceInActiveDomain, updateSpaceInActiveDomain } from '../state/domains'
 import { createId, createTimestamp } from '../state/workspace'
 import type { AppState, NoteAisle, NoteAisleBody, NoteCursorLocation, NoteCursorSelection, NoteLocation, ResolvedNoteAisle } from '../types/app'
@@ -64,32 +69,47 @@ const buildSyncedAisleBody = (
     updatedAt: now,
   }
   if (split.status === 'valid') {
-    return {
-      ...base,
+    const migrated = migrateAisleTags({
       markdown: normalizeMarkdownForPersistence(split.markdown),
       frontmatter: split.frontmatter,
+      frontmatterMeta: existing?.frontmatterMeta,
+    })
+    return {
+      ...base,
+      markdown: normalizeMarkdownForPersistence(migrated.markdown),
+      tags: migrated.tags,
+      frontmatter: migrated.frontmatter,
       frontmatterStatus: 'valid',
       frontmatterParseError: undefined,
       frontmatterRaw: split.rawFrontmatter ?? undefined,
+      frontmatterMeta: migrated.frontmatterMeta,
     }
   }
   if (split.status === 'invalid') {
     return {
       ...base,
       markdown: normalizedMarkdown,
+      tags: extractMarkdownTags(normalizedMarkdown),
       frontmatter: null,
       frontmatterStatus: 'invalid',
       frontmatterParseError: split.error,
       frontmatterRaw: split.rawFrontmatter ?? undefined,
     }
   }
-  return {
-    ...base,
+  const migrated = migrateAisleTags({
     markdown: normalizedMarkdown,
     frontmatter: cloneFrontmatter(existing?.frontmatter),
-    frontmatterStatus: existing?.frontmatterStatus ?? (existing?.frontmatter ? 'valid' : 'none'),
+    frontmatterMeta: existing?.frontmatterMeta,
+  })
+  return {
+    ...base,
+    markdown: normalizeMarkdownForPersistence(migrated.markdown),
+    tags: migrated.tags,
+    frontmatter: materializeComputedFrontmatterTags(migrated.frontmatter, migrated.frontmatterMeta, migrated.tags),
+    frontmatterStatus: migrated.frontmatter ? 'valid' : existing?.frontmatterStatus ?? (existing?.frontmatter ? 'valid' : 'none'),
     frontmatterParseError: existing?.frontmatterParseError,
     frontmatterRaw: existing?.frontmatterRaw,
+    frontmatterMeta: migrated.frontmatterMeta,
   }
 }
 
@@ -99,7 +119,9 @@ const aisleBodyContentEqual = (left: NoteAisleBody | undefined, right: NoteAisle
   left?.frontmatterStatus === right.frontmatterStatus &&
   left?.frontmatterParseError === right.frontmatterParseError &&
   left?.frontmatterRaw === right.frontmatterRaw &&
-  JSON.stringify(left?.frontmatter ?? null) === JSON.stringify(right.frontmatter ?? null)
+  JSON.stringify(left?.frontmatter ?? null) === JSON.stringify(right.frontmatter ?? null) &&
+  JSON.stringify(left?.frontmatterMeta ?? null) === JSON.stringify(right.frontmatterMeta ?? null) &&
+  JSON.stringify(left?.tags ?? []) === JSON.stringify(right.tags ?? [])
 
 export const syncNoteBodyAislesInState = (previous: AppState, noteBodyId: string, aisles: NoteAisleInput[]): AppState => {
   const now = createTimestamp()
@@ -167,6 +189,7 @@ export const syncNoteBodyAisleStructureInState = (previous: AppState, noteBodyId
           ...previousAisleBody,
           id: aisleBodyId,
           markdown: normalizeMarkdownForPersistence(aisle.markdown ?? previousAisleBody.markdown),
+          tags: extractMarkdownTags(normalizeMarkdownForPersistence(aisle.markdown ?? previousAisleBody.markdown)),
           frontmatter: cloneFrontmatter(previousAisleBody.frontmatter),
         }
         currentAisleBodiesById.set(aisleBodyId, syntheticAisleBody)

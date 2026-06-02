@@ -1,4 +1,4 @@
-import type { Dispatch, RefObject, SetStateAction } from 'react'
+import type { Dispatch, ReactNode, RefObject, SetStateAction } from 'react'
 import type { ViewMode } from '../../types/app'
 
 export type NavigationRailAction = {
@@ -27,7 +27,9 @@ type NavigationRailControlsProps = {
   onToggleTrash: () => void
   onOpenMessages: () => void
   onOpenSettings: () => void
+  onOpenAbout: () => void
   messagesCount?: number
+  tagFilterControl?: ReactNode
 }
 
 export function NavigationRailControls({
@@ -45,11 +47,13 @@ export function NavigationRailControls({
   onToggleTrash,
   onOpenMessages,
   onOpenSettings,
+  onOpenAbout,
   messagesCount = 0,
+  tagFilterControl,
 }: NavigationRailControlsProps) {
   return (
     <div className="tabbar-controls">
-      {actions.length > 0 && (
+      {(actions.length > 0 || tagFilterControl) && (
         <div className="topbar-actions" role="group" aria-label="Top bar actions">
           {actions.map((action) => (
             <button
@@ -72,6 +76,7 @@ export function NavigationRailControls({
               )}
             </button>
           ))}
+          {tagFilterControl}
         </div>
       )}
 
@@ -112,6 +117,9 @@ export function NavigationRailControls({
             </button>
             <button type="button" className="menu-item" onClick={onOpenSettings}>
               settings
+            </button>
+            <button type="button" className="menu-item" onClick={onOpenAbout}>
+              about
             </button>
           </div>
         )}

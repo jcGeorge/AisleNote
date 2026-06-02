@@ -24,6 +24,7 @@ import {
   getBulletListMarkerFromMarkdownChar,
 } from './list-markers'
 import { BLOCK_INDENT_TOKEN, isHorizontalRuleMarkerLine } from '../markdown/markdown-utils'
+import { extractMarkdownTagRanges, TAG_TOKEN_CLASS_NAME } from '../tags/tags.js'
 
 type ToastHtmlOpenTagToken = {
   type?: string
@@ -42,6 +43,23 @@ type ToastListMdNode = {
 const ANNOTATION_ARROW_BOUNDARY_CARET_CLASS_NAME = 'tabs-annotation-arrow-boundary-caret'
 export const BLOCK_INDENT_CLASS_NAME = 'tabs-block-indent'
 export const BLOCK_INDENT_TOKEN_HIDDEN_CLASS_NAME = 'tabs-block-indent-token-hidden'
+
+export type TagDecorationRange = {
+  from: number
+  to: number
+  text: string
+  tag: string
+}
+
+export type TagJumpHighlightRange = {
+  from: number
+  to: number
+  requestId: number
+}
+
+export const TAG_JUMP_HIGHLIGHT_META = 'tabs-tag-jump-highlight'
+export const TAG_JUMP_TARGET_CLASS_NAME = 'tabs-tag-jump-target'
+export const TAG_JUMP_GLOW_DURATION_MS = 1400
 
 function getTextOffsetDecorationRange(
   node: any,
@@ -170,6 +188,118 @@ export function blockIndentPlugin(context: {
             },
           },
         }),
+    ],
+  }
+}
+
+function isCodeNodeType(node: any): boolean {
+  const typeName = String(node?.type?.name ?? '').toLocaleLowerCase()
+  return Boolean(node?.type?.spec?.code) || typeName === 'codeblock' || typeName === 'code_block'
+}
+
+function hasCodeMark(node: any): boolean {
+  if (!Array.isArray(node?.marks)) return false
+  return node.marks.some((mark: any) => mark?.type?.name === 'code' || mark?.type?.spec?.code)
+}
+
+export function getTagDecorationRanges(doc: any): TagDecorationRange[] {
+  const ranges: TagDecorationRange[] = []
+  if (!doc || typeof doc.descendants !== 'function') return ranges
+
+  doc.descendants((node: any, position: number, parent: any) => {
+    if (isCodeNodeType(node)) return false
+    if (!node?.isText || typeof node.text !== 'string') return true
+    if (hasCodeMark(node) || isCodeNodeType(parent)) return true
+
+    extractMarkdownTagRanges(node.text).forEach((range) => {
+      ranges.push({
+        from: position + range.from,
+        to: position + range.to,
+        text: range.text,
+        tag: range.tag,
+      })
+    })
+    return true
+  })
+
+  return ranges
+}
+
+export function tagAppearancePlugin(context: {
+  pmState: {
+    Plugin: new (spec: {
+      state?: {
+        init: () => unknown
+        apply: (transaction: any, value: unknown) => unknown
+      }
+      props?: {
+        decorations?: (state: { doc: any }) => unknown
+      }
+    }) => unknown
+  }
+  pmView: {
+    Decoration: {
+      inline: (from: number, to: number, attrs: Record<string, string>, spec?: Record<string, unknown>) => unknown
+    }
+    DecorationSet: {
+      create: (doc: unknown, decorations: unknown[]) => unknown
+    }
+  }
+}) {
+  const { Plugin } = context.pmState
+  const { Decoration, DecorationSet } = context.pmView
+
+  function normalizeJumpHighlightRange(value: unknown): TagJumpHighlightRange | null {
+    if (!value || typeof value !== 'object') return null
+    const range = value as Partial<TagJumpHighlightRange>
+    if (!Number.isFinite(range.from) || !Number.isFinite(range.to) || !Number.isFinite(range.requestId)) return null
+    const from = Number(range.from)
+    const to = Number(range.to)
+    if (to <= from) return null
+    return {
+      from,
+      to,
+      requestId: Number(range.requestId),
+    }
+  }
+
+  return {
+    wysiwygPlugins: [
+      () => {
+        let activeJumpRange: TagJumpHighlightRange | null = null
+
+        return new Plugin({
+          state: {
+            init: () => null,
+            apply: (transaction: any, value: unknown) => {
+              if (!transaction || typeof transaction.getMeta !== 'function') return value
+              const meta = transaction.getMeta(TAG_JUMP_HIGHLIGHT_META)
+              if (meta === undefined) return value
+              activeJumpRange = normalizeJumpHighlightRange(meta)
+              return activeJumpRange
+            },
+          },
+          props: {
+            decorations: (state: { doc: any }) => {
+              const decorations = getTagDecorationRanges(state.doc).map((range, index) =>
+                Decoration.inline(
+                  range.from,
+                  range.to,
+                  {
+                    class: activeJumpRange && activeJumpRange.from === range.from && activeJumpRange.to === range.to
+                      ? `${TAG_TOKEN_CLASS_NAME} ${TAG_JUMP_TARGET_CLASS_NAME}`
+                      : TAG_TOKEN_CLASS_NAME,
+                    'data-tabs-tag': range.tag,
+                    title: 'filter by tag',
+                  },
+                  { key: `tag-token-${index}-${range.from}-${range.to}` },
+                ),
+              )
+              return DecorationSet.create(state.doc, decorations)
+            },
+          },
+        })
+      },
     ],
   }
 }

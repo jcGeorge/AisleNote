@@ -1,4 +1,4 @@
-import type { MouseEvent, PointerEvent as ReactPointerEvent, RefObject } from 'react'
+import type { MouseEvent, PointerEvent as ReactPointerEvent, ReactNode, RefObject } from 'react'
 import { TRASH_HOME_ID } from '../../trash/trash-model'
 import type {
   ArrangeDragItem,
@@ -6,6 +6,7 @@ import type {
   ArrangeModeState,
   ArrangeTapCandidateSeed,
   SelectionClickModifiers,
+  SettingsSection,
   StageManagerParentSelection,
   Tab,
   TabArrangeDragItem,
@@ -16,6 +17,7 @@ import type {
 } from '../../types/app'
 import { getPlacementNeighborId } from '../../arrange/arrange-utils'
 import { getRenameInputKeyAction } from '../../navigation/rename-draft'
+import { SETTINGS_SECTIONS } from '../../settings/defaults'
 import { NavigationRailControls, type NavigationRailAction } from './NavigationRailControls'
 import { SortIcon } from './SortIcon'
 
@@ -30,6 +32,10 @@ type TopBarProps = {
   tooltipsDisabled?: boolean
   showGlobalControls?: boolean
   isDraggingArrangeItem?: boolean
+  tagFilterActive?: boolean
+  tagFilterControl?: ReactNode
+  getTabLabel?: (tab: Tab) => ReactNode
+  settingsSection: SettingsSection
   primaryTabRailRef: RefObject<HTMLDivElement | null>
   isNoteWorkspaceView: boolean
   arrangeableParentTabClassName: string
@@ -95,9 +101,11 @@ type TopBarProps = {
   onToggleDomainRail: () => void
   onOpenStageManager: () => void
   onToggleTrash: () => void
-  onOpenMain: () => void
   onOpenMessages: () => void
   onOpenSettings: () => void
+  onOpenAbout: () => void
+  onSettingsSectionChange: (section: SettingsSection) => void
+  onExitTagFilterMode?: () => void
   messagesCount?: number
 }
 
@@ -122,6 +130,10 @@ export function TopBar({
   tooltipsDisabled = false,
   showGlobalControls = true,
   isDraggingArrangeItem = false,
+  tagFilterActive = false,
+  tagFilterControl = null,
+  getTabLabel = (tab) => tab.title,
+  settingsSection,
   primaryTabRailRef,
   isNoteWorkspaceView,
   arrangeableParentTabClassName,
@@ -173,14 +185,24 @@ export function TopBar({
   onToggleDomainRail,
   onOpenStageManager,
   onToggleTrash,
-  onOpenMain,
   onOpenMessages,
   onOpenSettings,
+  onOpenAbout,
+  onSettingsSectionChange,
+  onExitTagFilterMode = () => undefined,
   messagesCount = 0,
 }: TopBarProps) {
   const primaryTablistProps =
     viewMode === 'settings'
-      ? {}
+      ? ({
+          role: 'tablist',
+          'aria-label': 'settings sections',
+        } as const)
+      : viewMode === 'messages' || viewMode === 'about'
+        ? ({
+            role: 'tablist',
+            'aria-label': 'utility pages',
+          } as const)
       : ({
           role: 'tablist',
           'aria-label': 'Primary tabs',
@@ -216,7 +238,18 @@ export function TopBar({
       ? [
           {
             key: 'messages-view',
-            label: 'messages',
+            label: messagesCount > 0 ? `messages (${messagesCount})` : 'messages',
+            selected: false,
+            className: 'btn btn-sm tab-btn topbar-action-btn topbar-context-btn',
+            onClick: () => undefined,
+          },
+        ]
+      : []),
+    ...(viewMode === 'about'
+      ? [
+          {
+            key: 'about-view',
+            label: 'about',
             selected: false,
             className: 'btn btn-sm tab-btn topbar-action-btn topbar-context-btn',
             onClick: () => undefined,
@@ -257,7 +290,9 @@ export function TopBar({
   const topbarShowsCloseControl =
     viewMode === 'settings' ||
     viewMode === 'messages' ||
+    viewMode === 'about' ||
     viewMode === 'stage-manager' ||
+    (tagFilterActive && viewMode === 'main') ||
     (arrangeMode.active && viewMode === 'main')
   const parentPlacementTargetId =
     arrangeMode.active && arrangeMode.dragItem?.type === 'tab'
@@ -280,6 +315,42 @@ export function TopBar({
     <header className={`tabbar ${arrangeMode.active && viewMode === 'main' ? 'is-arranging' : ''}`}>
       <div className="tabbar-row">
         <div ref={primaryTabRailRef} className="tabbar-scroll tabbar-primary" {...primaryTablistProps}>
+          {viewMode === 'settings' &&
+            SETTINGS_SECTIONS.map((section) => (
+              <button
+                key={section}
+                type="button"
+                role="tab"
+                aria-selected={settingsSection === section}
+                className={`btn btn-sm ${settingsSection === section ? 'btn-primary' : 'btn-outline-secondary'} tab-btn parent-tab-btn settings-section-rail-btn`}
+                onClick={() => onSettingsSectionChange(section)}
+              >
+                {section}
+              </button>
+            ))}
+
+          {viewMode === 'messages' && (
+            <button
+              type="button"
+              role="tab"
+              aria-selected
+              className="btn btn-sm btn-primary tab-btn parent-tab-btn utility-view-rail-btn"
+            >
+              messages{messagesCount > 0 ? ` (${messagesCount})` : ''}
+            </button>
+          )}
+
+          {viewMode === 'about' && (
+            <button
+              type="button"
+              role="tab"
+              aria-selected
+              className="btn btn-sm btn-primary tab-btn parent-tab-btn utility-view-rail-btn"
+            >
+              about
+            </button>
+          )}
+
           {isNoteWorkspaceView &&
             workspace.tabs.map((tab) =>
               editing?.type === 'tab' && editing.id === tab.id ? (
@@ -312,7 +383,7 @@ export function TopBar({
                     }
                     if (action === 'commit-and-create') {
                       event.preventDefault()
-                      onAddTab()
+                      if (!tagFilterActive) onAddTab()
                     }
                     if (action === 'cancel') {
                       event.preventDefault()
@@ -380,6 +451,7 @@ export function TopBar({
                       }}
                       onPointerDown={(event) => {
                         if (viewMode !== 'main') return
+                        if (tagFilterActive) return
                         if (hasSelectionClickModifier(event)) {
                           onClearArrangePressTimer()
                           return
@@ -395,11 +467,13 @@ export function TopBar({
                         onStartArrangePress(event, { type: 'tab', tabId: tab.id }, `tab:${tab.id}`)
                       }}
                       onPointerMove={(event) => {
+                        if (tagFilterActive) return
                         onGuidedParentPointerMove(tab.id, event)
                         onHandleArrangeTabPointerMove(event, { type: 'tab', tabId: tab.id }, tab.title, 'parent')
                       }}
                       onPointerUp={(event) => {
                         if (viewMode !== 'main') return
+                        if (tagFilterActive) return
                         onHandleArrangeTabPointerUp(event, `tab:${tab.id}`, () => {
                           onClearArrangeSelection()
                           onSelectTab(tab.id, event)
@@ -407,6 +481,7 @@ export function TopBar({
                       }}
                       onPointerLeave={() => {
                         if (viewMode !== 'main') return
+                        if (tagFilterActive) return
                         onGuidedParentPointerLeave(tab.id)
                         if (!arrangeMode.active) {
                           onClearArrangePressTimer()
@@ -414,10 +489,11 @@ export function TopBar({
                       }}
                       onPointerCancel={() => {
                         if (viewMode !== 'main') return
+                        if (tagFilterActive) return
                         onCancelArrangeTabPointerDrag()
                       }}
                     >
-                      {tab.title}
+                      {getTabLabel(tab)}
                     </button>
                   )
                 })()
@@ -445,7 +521,7 @@ export function TopBar({
             </>
           )}
 
-          {viewMode === 'main' && arrangeMode.active ? (
+          {!tagFilterActive && viewMode === 'main' && arrangeMode.active ? (
             <button
               type="button"
               className="tab-sort-btn"
@@ -460,7 +536,7 @@ export function TopBar({
             >
               <SortIcon />
             </button>
-          ) : viewMode === 'main' && !arrangeMode.active ? (
+          ) : !tagFilterActive && viewMode === 'main' && !arrangeMode.active ? (
             <button
               type="button"
               className="btn btn-sm btn-outline-light add-tab-btn"
@@ -481,6 +557,10 @@ export function TopBar({
             spaceRailVisible={spaceRailVisible}
             domainRailVisible={domainRailVisible}
             onCloseAction={() => {
+              if (tagFilterActive && viewMode === 'main') {
+                onExitTagFilterMode()
+                return
+              }
               if (arrangeMode.active) {
                 onExitArrangeMode()
                 return
@@ -489,12 +569,8 @@ export function TopBar({
                 onEndStageManager()
                 return
               }
-              if (viewMode === 'settings') {
+              if (viewMode === 'settings' || viewMode === 'messages' || viewMode === 'about') {
                 onCloseSettingsView()
-                return
-              }
-              if (viewMode === 'messages') {
-                onOpenMain()
               }
             }}
             onSetMenuOpen={onSetMenuOpen}
@@ -504,7 +580,9 @@ export function TopBar({
             onToggleTrash={onToggleTrash}
             onOpenMessages={onOpenMessages}
             onOpenSettings={onOpenSettings}
+            onOpenAbout={onOpenAbout}
             messagesCount={messagesCount}
+            tagFilterControl={tagFilterControl}
           />
         )}
       </div>

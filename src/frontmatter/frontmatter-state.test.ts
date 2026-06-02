@@ -257,6 +257,42 @@ describe('frontmatter row state', () => {
     })
   })
 
+  it('computes tag frontmatter from the selected aisle markdown', () => {
+    const state = createFrontmatterState()
+    const aisleBody = getAisleBody(state)
+    if (!aisleBody) throw new Error('missing aisle body')
+    aisleBody.markdown = '#Alpha\n\nBody #beta'
+    delete aisleBody.tags
+
+    const rows: FrontmatterRowDraft[] = [
+      {
+        id: 'manual:tags',
+        key: 'tags',
+        type: 'list',
+        value: 'stale',
+        computed: 'tags',
+        computedEnabled: true,
+        computedLocked: false,
+        locked: true,
+      },
+    ]
+
+    expect(buildFrontmatterDataFromRows(state, 'body-1', location, rows, {
+      aisleBodyId: 'aisle-body-1',
+    })).toEqual({
+      ok: true,
+      frontmatter: {
+        tags: ['Alpha', 'beta'],
+      },
+      templateFieldOrigins: {},
+      templateRemovedFieldIds: [],
+      computedFields: {
+        tags: 'tags',
+      },
+      warnings: [],
+    })
+  })
+
   it('computes isLinked when the note body has multiple note locations', () => {
     const state = createFrontmatterState()
     const homeTab = state.spaces[0].data.tabs[0]

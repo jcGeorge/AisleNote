@@ -6,6 +6,7 @@ import {
   headingSpaceShortcutPlugin,
   highlightPlugin,
   listMarkerPlugin,
+  tagAppearancePlugin,
   thematicBreakShortcutPlugin,
 } from './editor-setup'
 import { createMediaLinkPlugin } from './media-link-plugin'
@@ -514,6 +515,7 @@ export function createReadonlyNotePreviewWidgetElement(
         listMarkerPlugin,
         blockIndentPlugin,
         annotationLinePlugin,
+        tagAppearancePlugin,
         highlightPlugin,
         createMediaLinkPlugin,
         headingSpaceShortcutPlugin,
@@ -787,6 +789,7 @@ export function createNotePreviewWidgetElement(
         listMarkerPlugin,
         blockIndentPlugin,
         annotationLinePlugin,
+        tagAppearancePlugin,
         highlightPlugin,
         createMediaLinkPlugin,
         headingSpaceShortcutPlugin,

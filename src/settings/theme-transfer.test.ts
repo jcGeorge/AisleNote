@@ -37,6 +37,7 @@ describe('theme transfer helpers', () => {
     const result = parseThemeSettingsImport(JSON.stringify({
       primary: 'abc',
       secondary: '#112233',
+      tagBg: '#ddeeff',
     }), DEFAULT_CUSTOM_THEME_PALETTE)
 
     expect(result).toEqual({
@@ -45,8 +46,9 @@ describe('theme transfer helpers', () => {
         ...DEFAULT_CUSTOM_THEME_PALETTE,
         primary: '#aabbcc',
         secondary: '#112233',
+        tagBg: '#ddeeff',
       },
-      importedSlots: ['primary', 'secondary'],
+      importedSlots: ['primary', 'secondary', 'tagBg'],
     })
   })
 

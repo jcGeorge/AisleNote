@@ -11,6 +11,10 @@ import {
   resolveLogicalEndpointPosition,
   type EditorCursorTextBlock,
 } from './editor-cursor-position'
+import {
+  getTagAutocompleteQueryFromText,
+  type TagAutocompleteQuery,
+} from '../tags/tag-autocomplete'
 
 export const CODE_BLOCK_INDENT_TEXT = '    '
 
@@ -344,6 +348,21 @@ export type NoteMentionQuery = {
   query: string
 }
 
+function isCodeNodeType(node: any): boolean {
+  const typeName = String(node?.type?.name ?? '').toLocaleLowerCase()
+  return Boolean(node?.type?.spec?.code) || typeName === 'codeblock' || typeName === 'code_block'
+}
+
+function hasCodeMark(marks: unknown): boolean {
+  return Array.isArray(marks) && marks.some((mark: any) => mark?.type?.name === 'code' || mark?.type?.spec?.code)
+}
+
+function isCursorInInlineCode($from: any, parentOffset: number): boolean {
+  if (hasCodeMark(typeof $from?.marks === 'function' ? $from.marks() : $from?.marks)) return true
+  const before = typeof $from?.parent?.childBefore === 'function' ? $from.parent.childBefore(parentOffset)?.node : null
+  return hasCodeMark(before?.marks)
+}
+
 export function getNoteMentionQueryAtSelection(view: any | null): NoteMentionQuery | null {
   const selection = view?.state?.selection
   if (!selection || !selection.empty) return null
@@ -363,6 +382,20 @@ export function getNoteMentionQueryAtSelection(view: any | null): NoteMentionQue
     to: cursorPosition,
     query,
   }
+}
+
+export function getTagAutocompleteQueryAtSelection(view: any | null): TagAutocompleteQuery | null {
+  const selection = view?.state?.selection
+  if (!selection || !selection.empty) return null
+  const cursorPosition = selection.from
+  const $from = selection.$from
+  const parent = $from?.parent
+  const parentOffset = $from?.parentOffset
+  if (!parent?.isTextblock || typeof parentOffset !== 'number') return null
+  if (isCodeNodeType(parent) || isCursorInInlineCode($from, parentOffset)) return null
+
+  const textBeforeCursor = String(parent.textBetween?.(0, parentOffset, '\n', '\n') ?? '')
+  return getTagAutocompleteQueryFromText(textBeforeCursor, cursorPosition)
 }
 
 function getLinkMarkHref(mark: any): string | null {

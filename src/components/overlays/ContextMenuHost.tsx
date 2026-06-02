@@ -43,11 +43,13 @@ type ContextMenuHostProps = {
   canDeleteSpace: boolean
   canDeleteDomain: boolean
   duplicateCount: number
+  tagFilterActive?: boolean
   onClose: () => void
   onEnterArrangeMode: () => void
   onDuplicateSpace: () => void
   onRenameSpace: () => void
   onRenameDomain: () => void
+  onRenameNavigationItem?: () => void
   onCopyImage: () => void
   onRevealMediaFile: () => void
   onOpenInternalNoteLink: () => void
@@ -168,10 +170,12 @@ function SubMenu({
 export function ContextMenuHost({
   contextMenu,
   duplicateCount,
+  tagFilterActive = false,
   onEnterArrangeMode,
   onDuplicateSpace,
   onRenameSpace,
   onRenameDomain,
+  onRenameNavigationItem = () => undefined,
   onCopyImage,
   onRevealMediaFile,
   onOpenInternalNoteLink,
@@ -216,6 +220,14 @@ export function ContextMenuHost({
   }, [contextMenu])
 
   if (!contextMenu) return null
+
+  const tagFilterNavigationMenu =
+    tagFilterActive &&
+    (contextMenu.type === 'space' ||
+      contextMenu.type === 'domain' ||
+      contextMenu.type === 'tab' ||
+      contextMenu.type === 'subtab' ||
+      contextMenu.type === 'home-tab')
 
   const renderCopyAsSubmenu = (scope: CopyAsScope, items: Record<CopyAsAction, CopyAsMenuItemState> | undefined) => {
     if (!items) return null
@@ -262,7 +274,28 @@ export function ContextMenuHost({
       role="menu"
       onClick={(event) => event.stopPropagation()}
     >
-      {contextMenu.type === 'space' ? (
+      {tagFilterNavigationMenu ? (
+        <>
+          {contextMenu.type === 'space' ? (
+            <button type="button" className="tab-context-delete" onClick={onRenameSpace}>
+              rename
+            </button>
+          ) : contextMenu.type === 'domain' ? (
+            <button type="button" className="tab-context-delete" onClick={onRenameDomain}>
+              rename
+            </button>
+          ) : (
+            <button type="button" className="tab-context-delete" onClick={onRenameNavigationItem}>
+              rename
+            </button>
+          )}
+          {contextMenu.type !== 'home-tab' && (
+            <button type="button" className="tab-context-delete" onClick={onMoveToTrash}>
+              trash it
+            </button>
+          )}
+        </>
+      ) : contextMenu.type === 'space' ? (
         <>
           <button type="button" className="tab-context-delete" onClick={onEnterArrangeMode}>
             arrange

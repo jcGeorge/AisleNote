@@ -16,7 +16,6 @@ import {
   NOTE_FONT_SCALE_STEP,
   TAB_BUTTON_SCALE_STEP,
   TOOLTIP_SCALE_STEP,
-  SETTINGS_SECTIONS,
 } from '../../settings/defaults'
 import {
   FRONTMATTER_FIELD_TYPES,
@@ -136,7 +135,6 @@ type SettingsPageProps = {
   storageProfileStatus: StorageProfileStatus | null
   userSettingsLocationStatus: UserSettingsLocationStatus | null
   notebookBackupStatus: NotebookBackupStatus | null
-  onSectionChange: (section: SettingsSection) => void
   onDataSectionChange: (section: DataSettingsSection) => void
   onVisualsSectionChange: (section: VisualsSettingsSection) => void
   onToggleShortcutEdit: (shortcutId: ShortcutId) => void
@@ -253,7 +251,6 @@ export function SettingsPage({
   storageProfileStatus,
   userSettingsLocationStatus,
   notebookBackupStatus,
-  onSectionChange,
   onDataSectionChange,
   onVisualsSectionChange,
   onToggleShortcutEdit,
@@ -527,21 +524,6 @@ export function SettingsPage({
   return (
     <section className="settings-page-wrap">
       <div className="settings-page-card">
-        <div className="settings-section-tabs" role="tablist" aria-label="settings sections">
-          {SETTINGS_SECTIONS.map((settingsSection) => (
-            <button
-              key={settingsSection}
-              type="button"
-              role="tab"
-              aria-selected={section === settingsSection}
-              className={`settings-section-tab ${section === settingsSection ? 'is-active' : ''}`}
-              onClick={() => onSectionChange(settingsSection)}
-            >
-              {settingsSection}
-            </button>
-          ))}
-        </div>
-
         {section === 'hotkeys' && (
           <div className="settings-section-panel" role="tabpanel">
             <p>hotkeys ({isMacPlatform ? 'mac' : 'windows'}):</p>

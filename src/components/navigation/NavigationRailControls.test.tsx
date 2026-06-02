@@ -21,6 +21,7 @@ function renderMenu(spaceRailVisible = false, domainRailVisible = false) {
       onToggleTrash={noop}
       onOpenMessages={noop}
       onOpenSettings={noop}
+      onOpenAbout={noop}
     />,
   )
 }
@@ -36,6 +37,14 @@ describe('NavigationRailControls', () => {
     expect(html).not.toMatch(/\brails?\b/)
     expect(html.indexOf('>show space<')).toBeLessThan(html.indexOf('>show domain<'))
     expect(html.indexOf('>show domain<')).toBeLessThan(html.indexOf('>director<'))
+  })
+
+  it('renders utility menu rows in trash messages settings about order', () => {
+    const html = renderMenu()
+
+    expect(html.indexOf('>trash<')).toBeLessThan(html.indexOf('>messages<'))
+    expect(html.indexOf('>messages<')).toBeLessThan(html.indexOf('>settings<'))
+    expect(html.indexOf('>settings<')).toBeLessThan(html.indexOf('>about<'))
   })
 
   it('uses show labels when both rails are hidden', () => {

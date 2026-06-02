@@ -2,7 +2,6 @@ import type { CSSProperties, KeyboardEvent } from 'react'
 import {
   DEFAULT_CUSTOM_THEME_PALETTE,
   isCustomTheme,
-  isThemePaletteSeed,
   normalizeHexColor,
 } from '../../settings/defaults'
 import type {
@@ -72,28 +71,24 @@ const BUILT_IN_THEME_PREVIEW_NAV_RAIL_BG: Partial<Record<AppTheme, string>> = {
   dark: '#0f1b32',
   light: '#eef4fb',
   dawn: '#b99a45',
-  blues: '#8797b0',
 }
 
 const BUILT_IN_THEME_PREVIEW_NAV_RAIL_BORDER: Partial<Record<AppTheme, string>> = {
   dark: 'color-mix(in srgb, #24334d 70%, transparent)',
   light: 'rgba(134, 157, 195, 0.24)',
   dawn: 'rgba(93, 75, 34, 0.24)',
-  blues: 'rgba(47, 65, 98, 0.24)',
 }
 
 const BUILT_IN_THEME_PREVIEW_EDITOR_TOOLBAR_BG: Partial<Record<AppTheme, string>> = {
   dark: '#0f1b32',
   light: '#f4f7fc',
   dawn: '#c7b37a',
-  blues: '#8fa0b8',
 }
 
 const BUILT_IN_THEME_PREVIEW_EDITOR_BORDER: Partial<Record<AppTheme, string>> = {
   dark: '#24334d',
   light: '#d2dbe9',
   dawn: '#8a744a',
-  blues: '#61728f',
 }
 
 type ThemePreviewProps = {
@@ -127,23 +122,22 @@ export function ThemePreview({
   const derivedPreviewNavRailBorder = `color-mix(in srgb, ${getPaletteValue('border')} 62%, transparent)`
   const derivedPreviewEditorBorder =
     `color-mix(in srgb, ${getPaletteValue('border')} 74%, ${getPaletteValue('canvas')})`
-  const previewUsesBuiltInSeed = !isCustomTheme(theme) && isThemePaletteSeed(theme, customThemePaletteDraft)
-  const previewNavRailBg = previewUsesBuiltInSeed
-    ? BUILT_IN_THEME_PREVIEW_NAV_RAIL_BG[theme] ?? derivedPreviewNavRailBg
-    : derivedPreviewNavRailBg
-  const previewNavRailBorder = previewUsesBuiltInSeed
-    ? BUILT_IN_THEME_PREVIEW_NAV_RAIL_BORDER[theme] ?? derivedPreviewNavRailBorder
-    : derivedPreviewNavRailBorder
-  const previewEditorToolbarBg = previewUsesBuiltInSeed
-    ? BUILT_IN_THEME_PREVIEW_EDITOR_TOOLBAR_BG[theme] ?? getPaletteValue('surface')
-    : getPaletteValue('surface')
-  const previewEditorBorder = previewUsesBuiltInSeed
-    ? BUILT_IN_THEME_PREVIEW_EDITOR_BORDER[theme] ?? derivedPreviewEditorBorder
-    : derivedPreviewEditorBorder
+  const previewIsCustomTheme = isCustomTheme(theme)
+  const previewNavRailBg = previewIsCustomTheme
+    ? derivedPreviewNavRailBg
+    : BUILT_IN_THEME_PREVIEW_NAV_RAIL_BG[theme] ?? derivedPreviewNavRailBg
+  const previewNavRailBorder = previewIsCustomTheme
+    ? derivedPreviewNavRailBorder
+    : BUILT_IN_THEME_PREVIEW_NAV_RAIL_BORDER[theme] ?? derivedPreviewNavRailBorder
+  const previewEditorToolbarBg = previewIsCustomTheme
+    ? getPaletteValue('surface')
+    : BUILT_IN_THEME_PREVIEW_EDITOR_TOOLBAR_BG[theme] ?? getPaletteValue('surface')
+  const previewEditorBorder = previewIsCustomTheme
+    ? derivedPreviewEditorBorder
+    : BUILT_IN_THEME_PREVIEW_EDITOR_BORDER[theme] ?? derivedPreviewEditorBorder
   const previewThemeClassName = [
     'visuals-theme-preview',
-    !isCustomTheme(theme) ? `theme-${theme}` : '',
-    !previewUsesBuiltInSeed ? 'theme-custom-derived' : '',
+    previewIsCustomTheme ? 'theme-custom-derived' : `theme-${theme}`,
   ].filter(Boolean).join(' ')
   const palettePreviewStyle = {
     '--visuals-preview-canvas': getPaletteValue('canvas'),
@@ -173,6 +167,8 @@ export function ThemePreview({
     '--editor-text': getPaletteValue('text'),
     '--editor-muted-text': getPaletteValue('mutedText'),
     '--editor-heading-text': `color-mix(in srgb, ${getPaletteValue('text')} 90%, white)`,
+    '--editor-tag-text': getPaletteValue('tagText'),
+    '--editor-tag-bg': getPaletteValue('tagBg'),
     '--editor-toolbar-icon-color': getPaletteValue('text'),
     '--toast-bg': `color-mix(in srgb, ${getPaletteValue('canvas')} 82%, ${getPaletteValue('surface')})`,
     '--toast-border': getPaletteValue('border'),
@@ -268,6 +264,9 @@ export function ThemePreview({
         <div className="visuals-preview-panel">
           <div className="visuals-preview-editor-sample toastui-editor-contents">
             <h3 className="visuals-preview-heading">header</h3>
+            <p className="visuals-preview-tag-line">
+              <span className="tabs-tag-token">#tag</span>
+            </p>
             <ul className="visuals-preview-list tabs-dash-list" data-tabs-list-marker="dash">
               <li>dash</li>
             </ul>

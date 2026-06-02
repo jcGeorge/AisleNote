@@ -15,6 +15,7 @@ export type FrontmatterTemplateContext = {
   noteUpdatedAt: string
   noteTitle: string
   isLinked: boolean
+  tags: string[]
   tabId: string
   subTabId: string | null
   spaceId: string
@@ -45,7 +46,7 @@ export function getFrontmatterFieldTypes(): FrontmatterFieldType[] {
 }
 
 export function getFrontmatterComputedValues(): FrontmatterComputedValue[] {
-  return ['none', 'createdAt', 'updatedAt', 'noteTitle', 'spaceName', 'domainName', 'isLinked']
+  return ['none', 'createdAt', 'updatedAt', 'noteTitle', 'spaceName', 'domainName', 'isLinked', 'tags']
 }
 
 export const FRONTMATTER_FIELD_TYPES: FrontmatterFieldType[] = getFrontmatterFieldTypes()
@@ -59,6 +60,7 @@ export function isFrontmatterComputedValueCompatibleWithFieldType(
   if (computed === 'createdAt' || computed === 'updatedAt') return type === 'date' || type === 'datetime'
   if (computed === 'noteTitle' || computed === 'spaceName' || computed === 'domainName') return type === 'text'
   if (computed === 'isLinked') return type === 'boolean'
+  if (computed === 'tags') return type === 'list'
   return false
 }
 
@@ -148,7 +150,9 @@ export function stringifyFrontmatterYaml(frontmatter: FrontmatterData | null): s
   return stringifyYaml(frontmatter, {
     collectionStyle: 'block',
     lineWidth: 0,
-  }).trimEnd()
+  })
+    .trimEnd()
+    .replace(/^([ \t]*[^:\n]+:)[ \t]*\r?\n[ \t]+\[\]$/gm, '$1 []')
 }
 
 function getFrontmatterOpenRegex(): RegExp {
@@ -364,6 +368,7 @@ function getComputedValue(computed: FrontmatterComputedValue, context: Frontmatt
   if (computed === 'spaceName') return { id: context.spaceId, name: context.spaceName }
   if (computed === 'domainName') return { id: context.domainId, name: context.domainName }
   if (computed === 'isLinked') return context.isLinked
+  if (computed === 'tags') return context.tags
   return undefined
 }
 

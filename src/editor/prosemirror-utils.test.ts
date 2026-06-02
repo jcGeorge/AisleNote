@@ -18,6 +18,7 @@ import {
   getInternalNoteLinkHitAtDocPosition,
   getLinkMarkAttrs,
   getNoteMentionQueryAtSelection,
+  getTagAutocompleteQueryAtSelection,
   isProseMirrorDocMeaningful,
   markWysiwygLoadedUndoBoundary,
   restoreEditorCursorSelection,
@@ -268,6 +269,61 @@ describe('note mention query detection', () => {
   it('does not detect a mention query when the first character after @ is a space', () => {
     expect(getNoteMentionQueryAtSelection(viewForText('see @ '))).toBeNull()
     expect(getNoteMentionQueryAtSelection(viewForText('see @ parent'))).toBeNull()
+  })
+})
+
+describe('tag autocomplete query detection', () => {
+  function viewForText(
+    text: string,
+    options: { empty?: boolean; codeBlock?: boolean; codeMark?: boolean } = {},
+  ) {
+    const codeMark = options.codeMark
+      ? [{ type: { name: 'code', spec: { code: true } } }]
+      : []
+    return {
+      state: {
+        selection: {
+          empty: options.empty ?? true,
+          from: text.length + 1,
+          $from: {
+            parentOffset: text.length,
+            marks: () => codeMark,
+            parent: {
+              isTextblock: true,
+              type: options.codeBlock ? { name: 'codeBlock', spec: { code: true } } : { name: 'paragraph' },
+              textBetween: () => text,
+              childBefore: () => ({ node: { marks: codeMark } }),
+            },
+          },
+        },
+      },
+    }
+  }
+
+  it('detects tag autocomplete queries before a collapsed cursor', () => {
+    expect(getTagAutocompleteQueryAtSelection(viewForText('#'))).toEqual({ from: 1, to: 2, query: '' })
+    expect(getTagAutocompleteQueryAtSelection(viewForText('see #Tag-3'))).toEqual({
+      from: 5,
+      to: 11,
+      query: 'Tag-3',
+    })
+    expect(getTagAutocompleteQueryAtSelection(viewForText('see #nested/tag'))).toEqual({
+      from: 5,
+      to: 16,
+      query: 'nested/tag',
+    })
+  })
+
+  it('rejects non-tag contexts', () => {
+    expect(getTagAutocompleteQueryAtSelection(viewForText('C#'))).toBeNull()
+    expect(getTagAutocompleteQueryAtSelection(viewForText('https://example.com/#anchor'))).toBeNull()
+    expect(getTagAutocompleteQueryAtSelection(viewForText('see #bad?'))).toBeNull()
+    expect(getTagAutocompleteQueryAtSelection(viewForText('#asdf', { empty: false }))).toBeNull()
+  })
+
+  it('rejects inline code and code block cursors', () => {
+    expect(getTagAutocompleteQueryAtSelection(viewForText('#asdf', { codeMark: true }))).toBeNull()
+    expect(getTagAutocompleteQueryAtSelection(viewForText('#asdf', { codeBlock: true }))).toBeNull()
   })
 })
 

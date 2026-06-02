@@ -25,7 +25,7 @@ import {
 export const DEFAULT_AUTO_REMOVE_DAYS = 7
 export const ALWAYS_SHOW_DOMAINS_WITHOUT_SPACES_MESSAGE = 'you cannot show domains without showing spaces'
 export type BuiltInAppTheme = Exclude<AppTheme, CustomThemeId>
-export const BUILT_IN_THEME_IDS: BuiltInAppTheme[] = ['dark', 'light', 'dawn', 'blues']
+export const BUILT_IN_THEME_IDS: BuiltInAppTheme[] = ['dark', 'light', 'dawn']
 export const CUSTOM_THEME_IDS: CustomThemeId[] = ['custom1', 'custom2', 'custom3']
 export const DEFAULT_CUSTOM_THEME_ID: CustomThemeId = 'custom1'
 export const APP_THEME_IDS: AppTheme[] = [...BUILT_IN_THEME_IDS, ...CUSTOM_THEME_IDS]
@@ -80,6 +80,8 @@ export const CUSTOM_THEME_PALETTE_SLOTS: CustomThemePaletteSlot[] = [
   'danger',
   'warning',
   'success',
+  'tagText',
+  'tagBg',
   'domainRail',
   'spaceRail',
   'parentRail',
@@ -99,6 +101,8 @@ export const DEFAULT_CUSTOM_THEME_PALETTE: CustomThemePalette = {
   danger: '#963442',
   warning: '#d9a441',
   success: '#2fb36d',
+  tagText: '#06141a',
+  tagBg: '#22d3ee',
   domainRail: '#a95429',
   spaceRail: '#997b28',
   parentRail: '#2f5da8',
@@ -120,6 +124,8 @@ export const BUILT_IN_THEME_PALETTE_SEEDS: Record<BuiltInAppTheme, CustomThemePa
     danger: '#c64053',
     warning: '#c7792f',
     success: '#2fb36d',
+    tagText: '#f8fafc',
+    tagBg: '#0f766e',
     domainRail: '#a95429',
     spaceRail: '#997b28',
     parentRail: '#2f5da8',
@@ -138,24 +144,8 @@ export const BUILT_IN_THEME_PALETTE_SEEDS: Record<BuiltInAppTheme, CustomThemePa
     danger: '#8a4d44',
     warning: '#9b6726',
     success: '#3f6f4f',
-    domainRail: '#a95429',
-    spaceRail: '#997b28',
-    parentRail: '#2f5da8',
-    subtabRail: '#2f8a5f',
-  },
-  blues: {
-    canvas: '#aeb8c6',
-    page: '#314563',
-    surface: '#aeb8c6',
-    surfaceRaised: '#bcc4cd',
-    text: '#17223a',
-    mutedText: '#4f5f7a',
-    border: '#61728f',
-    primary: '#38568f',
-    secondary: '#617692',
-    danger: '#653f50',
-    warning: '#a99a5d',
-    success: '#38568f',
+    tagText: '#fff7ed',
+    tagBg: '#0f766e',
     domainRail: '#a95429',
     spaceRail: '#997b28',
     parentRail: '#2f5da8',

@@ -1,4 +1,5 @@
 import { clampAutoRemoveDays, DEFAULT_AUTO_REMOVE_DAYS } from '../settings/defaults'
+import { extractMarkdownTags } from '../tags/tags.js'
 import type { DeletedSubTabEntry, DeletedTabEntry, NoteAisle, NoteAisleBody, NoteBody, Space, SubTab, Tab, WorkspaceData } from '../types/app'
 import { createRandomId, type IdGenerator } from './navigation-ids'
 
@@ -36,6 +37,7 @@ export function createNoteBodyContent(markdown = '', generateId: IdGenerator = c
       createdAt: timestamp,
       updatedAt: timestamp,
       markdown,
+      tags: extractMarkdownTags(markdown),
       frontmatter: null,
       frontmatterStatus: 'none',
     },

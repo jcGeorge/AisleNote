@@ -4,6 +4,7 @@ import { closeEditorEphemera } from './editor-ephemera'
 describe('editor ephemera dismissal', () => {
   it('closes all registered transient editor surfaces', () => {
     const dismissMentionMenu = vi.fn()
+    const dismissTagAutocomplete = vi.fn()
     const closeToolbarPopovers = vi.fn()
     const closeContextMenu = vi.fn()
     const closeImageTools = vi.fn()
@@ -13,6 +14,7 @@ describe('editor ephemera dismissal', () => {
 
     closeEditorEphemera({
       dismissMentionMenu,
+      dismissTagAutocomplete,
       closeToolbarPopovers,
       closeContextMenu,
       closeImageTools,
@@ -22,6 +24,7 @@ describe('editor ephemera dismissal', () => {
     })
 
     expect(dismissMentionMenu).toHaveBeenCalledTimes(1)
+    expect(dismissTagAutocomplete).toHaveBeenCalledTimes(1)
     expect(closeToolbarPopovers).toHaveBeenCalledTimes(1)
     expect(closeContextMenu).toHaveBeenCalledTimes(1)
     expect(closeImageTools).toHaveBeenCalledTimes(1)

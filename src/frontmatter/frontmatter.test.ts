@@ -19,6 +19,7 @@ const context = {
   noteUpdatedAt: '2026-05-14T09:30:00.000Z',
   noteTitle: 'Roadmap',
   isLinked: true,
+  tags: ['Planning', 'Client/Acme'],
   tabId: 'tab-1',
   subTabId: null,
   spaceId: 'space-1',
@@ -61,6 +62,10 @@ describe('frontmatter parsing', () => {
     const markdown = prependMarkdownFrontmatter('body', { status: 'draft', tags: ['one'] })
 
     expect(markdown).toBe('---\nstatus: draft\ntags:\n  - one\n---\nbody')
+  })
+
+  it('writes empty list frontmatter compactly', () => {
+    expect(prependMarkdownFrontmatter('body', { tags: [] })).toBe('---\ntags: []\n---\nbody')
   })
 
   it('rejects non-mapping YAML', () => {
@@ -114,6 +119,8 @@ describe('frontmatter templates', () => {
             { id: 'created', key: 'created', type: 'date', defaultValue: '', computed: 'createdAt' },
             { id: 'title', key: 'title', type: 'text', defaultValue: '', computed: 'noteTitle' },
             { id: 'bad-linked', key: 'badLinked', type: 'text', defaultValue: '', computed: 'isLinked' },
+            { id: 'bad-tags', key: 'badTags', type: 'text', defaultValue: '', computed: 'tags' },
+            { id: 'computed-tags', key: 'computedTags', type: 'list', defaultValue: '', computed: 'tags' },
           ],
         },
       ],
@@ -125,7 +132,21 @@ describe('frontmatter templates', () => {
       'createdAt',
       'noteTitle',
       'none',
+      'none',
+      'tags',
     ])
+  })
+
+  it('applies computed tags to list fields', () => {
+    const result = applyFrontmatterTemplate(null, {
+      id: 'tags-template',
+      name: 'Tags',
+      fields: [
+        { id: 'tags', key: 'tags', type: 'list', defaultValue: '', computed: 'tags' },
+      ],
+    }, context)
+
+    expect(result).toEqual({ tags: ['Planning', 'Client/Acme'] })
   })
 
   it('applies typed defaults and computed values', () => {

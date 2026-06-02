@@ -47,9 +47,11 @@ type CompactSpaceRailProps = {
   controlsSlot?: ReactNode
   tooltipsDisabled?: boolean
   arrangeControlsDisabled?: boolean
+  tagFilterActive?: boolean
   stageManagerMode?: boolean
   stageManagerSelectedSpaceIds?: ReadonlySet<string>
   arrangeSelectedSpaceIds?: ReadonlySet<string>
+  getSpaceLabel?: (space: Space) => ReactNode
   onOpenSpace: (spaceId: string) => void
   onHandleArrangeSpaceSelectionClick?: (
     spaceId: string,
@@ -100,9 +102,11 @@ type CompactDomainRailProps = {
   controlsSlot?: ReactNode
   tooltipsDisabled?: boolean
   arrangeControlsDisabled?: boolean
+  tagFilterActive?: boolean
   stageManagerMode?: boolean
   stageManagerSelectedDomainIds?: ReadonlySet<string>
   arrangeSelectedDomainIds?: ReadonlySet<string>
+  getDomainLabel?: (domain: Domain) => ReactNode
   onOpenDomain: (domainId: string) => void
   onHandleArrangeDomainSelectionClick?: (
     domainId: string,
@@ -153,9 +157,11 @@ export function CompactSpaceRail({
   controlsSlot,
   tooltipsDisabled = false,
   arrangeControlsDisabled = false,
+  tagFilterActive = false,
   stageManagerMode = false,
   stageManagerSelectedSpaceIds,
   arrangeSelectedSpaceIds,
+  getSpaceLabel = (space) => space.name,
   onOpenSpace,
   onHandleArrangeSpaceSelectionClick,
   onStageManagerSpaceClick,
@@ -311,6 +317,7 @@ export function CompactSpaceRail({
                 }}
                 onPointerDown={(event) => {
                   if (stageManagerMode) return
+                  if (tagFilterActive) return
                   if (event.button === 0) {
                     event.currentTarget.setPointerCapture(event.pointerId)
                   }
@@ -322,21 +329,25 @@ export function CompactSpaceRail({
                   onStartArrangePress(event, { type: 'space', spaceId: space.id }, `space:${space.id}`)
                 }}
                 onPointerMove={(event) => {
-                  if (!stageManagerMode) onHandleArrangeSpacePointerMove(event, space)
+                  if (!stageManagerMode && !tagFilterActive) onHandleArrangeSpacePointerMove(event, space)
                 }}
                 onPointerUp={(event) => {
-                  if (!stageManagerMode) onHandleArrangeSpacePointerUp(event, space.id, () => onOpenSpace(space.id))
+                  if (!stageManagerMode && !tagFilterActive) {
+                    onHandleArrangeSpacePointerUp(event, space.id, () => onOpenSpace(space.id))
+                  }
                 }}
                 onPointerLeave={() => {
-                  if (!arrangeMode.active) onClearArrangePressTimer()
+                  if (!tagFilterActive && !arrangeMode.active) onClearArrangePressTimer()
                 }}
-                onPointerCancel={onCancelArrangeSpacePointerDrag}
+                onPointerCancel={() => {
+                  if (!tagFilterActive) onCancelArrangeSpacePointerDrag()
+                }}
               >
-                {space.name}
+                {getSpaceLabel(space)}
               </button>
             )
           })}
-          {arrangeMode.active ? (
+          {!tagFilterActive && arrangeMode.active ? (
             <button
               type="button"
               className="tab-sort-btn compact-scope-sort-btn"
@@ -351,7 +362,7 @@ export function CompactSpaceRail({
             >
               <SortIcon />
             </button>
-          ) : onAddSpace ? (
+          ) : !tagFilterActive && onAddSpace ? (
             <button
               type="button"
               className="btn btn-sm btn-outline-light add-tab-btn compact-scope-add-btn"
@@ -379,9 +390,11 @@ export function CompactDomainRail({
   controlsSlot,
   tooltipsDisabled = false,
   arrangeControlsDisabled = false,
+  tagFilterActive = false,
   stageManagerMode = false,
   stageManagerSelectedDomainIds,
   arrangeSelectedDomainIds,
+  getDomainLabel = (domain) => domain.name,
   onOpenDomain,
   onHandleArrangeDomainSelectionClick,
   onStageManagerDomainClick,
@@ -537,6 +550,7 @@ export function CompactDomainRail({
                 }}
                 onPointerDown={(event) => {
                   if (stageManagerMode) return
+                  if (tagFilterActive) return
                   if (event.button === 0) {
                     event.currentTarget.setPointerCapture(event.pointerId)
                   }
@@ -548,21 +562,25 @@ export function CompactDomainRail({
                   onStartArrangePress(event, { type: 'domain', domainId: domain.id }, `domain:${domain.id}`)
                 }}
                 onPointerMove={(event) => {
-                  if (!stageManagerMode) onHandleArrangeDomainPointerMove(event, domain)
+                  if (!stageManagerMode && !tagFilterActive) onHandleArrangeDomainPointerMove(event, domain)
                 }}
                 onPointerUp={(event) => {
-                  if (!stageManagerMode) onHandleArrangeDomainPointerUp(event, domain.id, () => onOpenDomain(domain.id))
+                  if (!stageManagerMode && !tagFilterActive) {
+                    onHandleArrangeDomainPointerUp(event, domain.id, () => onOpenDomain(domain.id))
+                  }
                 }}
                 onPointerLeave={() => {
-                  if (!arrangeMode.active) onClearArrangePressTimer()
+                  if (!tagFilterActive && !arrangeMode.active) onClearArrangePressTimer()
                 }}
-                onPointerCancel={onCancelArrangeDomainPointerDrag}
+                onPointerCancel={() => {
+                  if (!tagFilterActive) onCancelArrangeDomainPointerDrag()
+                }}
               >
-                {domain.name}
+                {getDomainLabel(domain)}
               </button>
             )
           })}
-          {arrangeMode.active ? (
+          {!tagFilterActive && arrangeMode.active ? (
             <button
               type="button"
               className="tab-sort-btn compact-scope-sort-btn"
@@ -577,7 +595,7 @@ export function CompactDomainRail({
             >
               <SortIcon />
             </button>
-          ) : onAddDomain ? (
+          ) : !tagFilterActive && onAddDomain ? (
             <button
               type="button"
               className="btn btn-sm btn-outline-light add-tab-btn compact-scope-add-btn"

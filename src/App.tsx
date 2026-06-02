@@ -6,6 +6,7 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
+  type CSSProperties,
 } from 'react'
 import type { Editor } from '@toast-ui/editor'
 import { TextSelection } from 'prosemirror-state'
@@ -51,6 +52,7 @@ import { FindReplacePanel } from './components/editor/FindReplacePanel'
 import { LegacyEditorShell } from './components/editor/LegacyEditorShell'
 import { NoteMentionMenu } from './components/editor/NoteMentionMenu'
 import { ShortcutMenu } from './components/editor/ShortcutMenu'
+import { TagAutocompleteMenu } from './components/editor/TagAutocompleteMenu'
 import { TableControlsOverlay } from './components/editor/TableControlsOverlay'
 import { getFindReplaceShortcutMode } from './components/editor/find-replace-shortcuts'
 import {
@@ -70,6 +72,7 @@ import {
   TrashSpaceRail,
 } from './components/navigation/CompactScopeRails'
 import { NavigationRailControls, type NavigationRailAction } from './components/navigation/NavigationRailControls'
+import { TagFilterControl } from './components/navigation/TagFilterControl'
 import {
   GuidedTabArrangeCarryPreview,
   TabArrangeDragPreviewOverlay,
@@ -93,6 +96,7 @@ import { appendToastToStack } from './components/overlays/toast-stack'
 import { SettingsPage } from './components/settings/SettingsPage'
 import { StageManagerView } from './components/stage-manager/StageManagerView'
 import { TrashHomeNote } from './components/trash/TrashHomeNote'
+import { AboutView } from './components/about/AboutView'
 import { applyListToolbarCommand, type ToolbarListCommand } from './editor/list-marker-commands'
 import {
   applyEditorNewlineOperation,
@@ -114,8 +118,15 @@ import {
   getActiveAisleRefSyncValue,
   shouldDeferAisleCycleForMouseActivation,
   shouldFocusAislePointerActivation,
+  type AisleActivationSource,
 } from './editor/aisle-activation'
 import { useAisleController } from './editor/useAisleController'
+import {
+  getTagDecorationRanges,
+  TAG_JUMP_GLOW_DURATION_MS,
+  TAG_JUMP_HIGHLIGHT_META,
+  TAG_JUMP_TARGET_CLASS_NAME,
+} from './editor/editor-setup'
 import { useLegacyEditor } from './editor/useLegacyEditor'
 import { isHeadingCollapsed, setHeadingCollapsed } from './editor/heading-collapse-state'
 import {
@@ -223,12 +234,15 @@ import { measureSlowOperation } from './performance/performance-logging'
 import { getRuntimeDataCapabilities } from './platform/data-platform'
 import {
   ALWAYS_SHOW_DOMAINS_WITHOUT_SPACES_MESSAGE,
-  getCustomThemePaletteSeedMatch,
   getThemePaletteForTheme,
   isCustomTheme,
-  isThemePaletteSeed,
 } from './settings/defaults'
 import { useSettingsController } from './settings/useSettingsController'
+import {
+  getBuiltInThemeOverrideCssVariables,
+  getCustomThemeCssVariables,
+  getThemeShellCustomClassName,
+} from './settings/theme-css-variables'
 import { applyPortableAppSettings } from './storage/settings-partition.js'
 import { DEFAULT_STATE, applyAutoPurgeToAppState, ensureNoteBodiesForAppState, parseSavedState } from './state/app-state'
 import { useNotebookTransferActions } from './import/useNotebookTransferActions'
@@ -259,6 +273,23 @@ import {
 } from './state/workspace'
 import { collectAppNavigationEntityIds, createReservedIdAllocator } from './state/navigation-ids'
 import { useStageManagerController } from './stage-manager/useStageManagerController'
+import {
+  appendTagFilterCount,
+  buildTagFilterIndex,
+  getFirstMatchingLocationForDomain,
+  getFirstMatchingLocationForParent,
+  getFirstMatchingLocationForSpace,
+  getPrimaryTagOccurrencesForLocation,
+  getTagFilterCountLabel,
+  getTagFilterParentKey,
+  getTagFilterSpaceKey,
+  normalizeTagKey,
+  sortTagFilterTags,
+  type TagFilterOccurrence,
+  type TagFilterSortMode,
+} from './tags/tag-filter'
+import { normalizeTagAutocompleteRecentKeys } from './tags/tag-autocomplete'
+import { useTagAutocompleteController } from './tags/useTagAutocompleteController'
 import { usePersistentAppState } from './storage/usePersistentAppState'
 import {
   loadDeviceSettings,
@@ -321,6 +352,14 @@ type FindReplacePanelState = {
   activeIndex: number
 }
 
+type TagFilterModeState = {
+  selectedTagKeys: string[]
+  draftTagKeys: string[]
+  menuOpen: boolean
+  sortMode: TagFilterSortMode
+  cycleByLocation: Record<string, number>
+}
+
 type CopyAsMenuItemState = {
   available: boolean
   reason?: string
@@ -366,6 +405,46 @@ function getCurrentTimestamp() {
   return Date.now()
 }
 
+function getElementForDomPositionNode(node: Node | null): Element | null {
+  if (!node) return null
+  if (typeof Element !== 'undefined' && node instanceof Element) return node
+  return node.parentElement ?? null
+}
+
+type ProseMirrorDomView = {
+  dom: Element
+  domAtPos: (position: number) => { node: Node | null }
+}
+
+function isProseMirrorDomView(value: unknown): value is ProseMirrorDomView {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      'dom' in value &&
+      typeof Element !== 'undefined' &&
+      (value as { dom?: unknown }).dom instanceof Element &&
+      typeof (value as { domAtPos?: unknown }).domAtPos === 'function',
+  )
+}
+
+function scrollProseMirrorTagRangeIntoView(view: unknown, from: number): void {
+  if (!isProseMirrorDomView(view)) return
+  const highlighted = view.dom.querySelector?.(`.${TAG_JUMP_TARGET_CLASS_NAME}`) ?? null
+  if (typeof Element !== 'undefined' && highlighted instanceof Element) {
+    highlighted.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' })
+    return
+  }
+  try {
+    getElementForDomPositionNode(view.domAtPos(from).node)?.scrollIntoView({
+      block: 'center',
+      inline: 'nearest',
+      behavior: 'smooth',
+    })
+  } catch {
+    // The glow is still useful even when a transient editor remount prevents range scrolling.
+  }
+}
+
 function App() {
   const dataCapabilities = useMemo(() => getRuntimeDataCapabilities(), [])
   const initialDeviceSettingsRef = useRef<DeviceSettings | null>(null)
@@ -395,6 +474,10 @@ function App() {
     regex: state.ui.findRegex ?? false,
     activeIndex: 0,
   })
+  const [tagFilter, setTagFilter] = useState<TagFilterModeState | null>(null)
+  const [tagAutocompleteRecentKeys, setTagAutocompleteRecentKeys] = useState<string[]>(() =>
+    normalizeTagAutocompleteRecentKeys(initialDeviceSettingsRef.current?.tagAutocompleteRecentKeys),
+  )
   const [arrangeDestinationPrompt, setArrangeDestinationPrompt] =
     useState<ArrangeDestinationPromptState | null>(null)
   const [guidedParentRailTarget, setGuidedParentRailTarget] =
@@ -428,6 +511,9 @@ function App() {
   const pendingNavigationHeadingRef = useRef<NonNullable<NoteNavigationTarget['heading']> | null>(null)
   const pendingNavigationAisleIdRef = useRef<string | null>(null)
   const pendingNavigationTopAisleIdRef = useRef<string | null>(null)
+  const pendingTagOccurrenceRef = useRef<TagFilterOccurrence | null>(null)
+  const tagJumpClearTimerRef = useRef<number | null>(null)
+  const tagJumpRequestIdRef = useRef(0)
   const activeAisleIdsRef = useRef<string[]>([])
   const activeNoteBodyIdRef = useRef<string>('')
   const editorEventRootRef = useRef<HTMLElement | null>(null)
@@ -450,7 +536,12 @@ function App() {
   const activateAisleEditorRef = useRef<
     (
       editorKey: string,
-      options?: { focus?: boolean; flushPrevious?: boolean; allowDuringPendingRename?: boolean },
+      options?: {
+        focus?: boolean
+        flushPrevious?: boolean
+        allowDuringPendingRename?: boolean
+        source?: AisleActivationSource
+      },
     ) => boolean
   >(() => false)
   const completedTaskDeleteUndoCandidateRef = useRef<{ beforeMarkdown: string; deletedAt: number } | null>(null)
@@ -559,6 +650,10 @@ function App() {
     if (pendingMouseAisleCycleFrameRef.current !== null) {
       window.cancelAnimationFrame(pendingMouseAisleCycleFrameRef.current)
       pendingMouseAisleCycleFrameRef.current = null
+    }
+    if (tagJumpClearTimerRef.current !== null) {
+      window.clearTimeout(tagJumpClearTimerRef.current)
+      tagJumpClearTimerRef.current = null
     }
     toastTimersRef.current.forEach((timer) => window.clearTimeout(timer))
     toastTimersRef.current.clear()
@@ -684,6 +779,22 @@ function App() {
         regex: findReplacePanel.regex,
       }),
     [findReplacePanel.caseSensitive, findReplacePanel.query, findReplacePanel.regex, findReplacePanel.wholeWord],
+  )
+  const tagFilterActive = tagFilter !== null
+  const tagFilterDisplayKeys = tagFilter ? (tagFilter.menuOpen ? tagFilter.draftTagKeys : tagFilter.selectedTagKeys) : []
+  const tagFilterEffectiveKeys = tagFilter
+    ? tagFilter.draftTagKeys.length > 0
+      ? tagFilter.draftTagKeys
+      : tagFilter.selectedTagKeys
+    : []
+  const tagFilterEffectiveKey = tagFilterEffectiveKeys.join('\u0000')
+  const tagFilterIndex = useMemo(
+    () => buildTagFilterIndex(state, tagFilterEffectiveKey ? tagFilterEffectiveKey.split('\u0000') : []),
+    [state, tagFilterEffectiveKey],
+  )
+  const sortedTagFilterTags = useMemo(
+    () => sortTagFilterTags(tagFilterIndex.availableTags, tagFilter?.sortMode ?? 'az'),
+    [tagFilter?.sortMode, tagFilterIndex.availableTags],
   )
 
   useEffect(() => {
@@ -1203,18 +1314,27 @@ function App() {
     setEditing(null)
   }
 
+  const exitTagFilterMode = () => {
+    pendingTagOccurrenceRef.current = null
+    setTagFilter(null)
+  }
+
   const openMessagesView = () => {
     closeEditorEphemeraRef.current()
     if (arrangeMode.active) exitArrangeMode()
+    exitTagFilterMode()
     setScratchpadActive(false)
     setViewMode('messages')
     setMenuOpen(false)
     setEditing(null)
   }
 
-  const openMainView = () => {
+  const openAboutView = () => {
     closeEditorEphemeraRef.current()
-    setViewMode('main')
+    if (arrangeMode.active) exitArrangeMode()
+    exitTagFilterMode()
+    setScratchpadActive(false)
+    setViewMode('about')
     setMenuOpen(false)
     setEditing(null)
   }
@@ -1521,6 +1641,7 @@ function App() {
   const selectParentHomeTab = navigationActions.selectParentHomeTab
   const duplicateSpaceFromContext = navigationActions.duplicateSpaceFromContext
   const toggleTrashView = () => {
+    exitTagFilterMode()
     setTrashDomainId('')
     setTrashSpaceId('')
     navigationActions.toggleTrashView()
@@ -1957,8 +2078,24 @@ function App() {
     requireCopyConfirmation: state.ui.noteMentionCopyRequiresConfirmation ?? true,
     syncToolbarFormatState,
   })
+  const tagAutocomplete = useTagAutocompleteController({
+    viewMode,
+    availableTags: tagFilterIndex.availableTags,
+    recentTagKeys: tagAutocompleteRecentKeys,
+    onRecentTagKeysChange: (keys) => {
+      const normalizedKeys = normalizeTagAutocompleteRecentKeys(keys)
+      setTagAutocompleteRecentKeys(normalizedKeys)
+      savePartialDeviceSettings({ tagAutocompleteRecentKeys: normalizedKeys })
+    },
+    editorRef,
+    editorEventRootRef,
+    activeAisleIdRef,
+    commitActiveEditorMarkdownNow,
+    syncToolbarFormatState,
+  })
   const openSettingsWithoutMentionMenu = () => {
     closeEditorEphemeraRef.current()
+    exitTagFilterMode()
     openSettings()
   }
 
@@ -2021,6 +2158,7 @@ function App() {
     normalizingAisleIdsRef,
     pendingContentRef,
     pendingCursorRestoreRef,
+    pendingFocusToAisleIdRef,
     activeSpaceIdRef,
     activeTabIdRef,
     activeSubTabIdRef,
@@ -2191,6 +2329,7 @@ function App() {
     pendingFocusToAisleIdRef,
     pendingCursorRestoreRef,
     pendingNavigationTopAisleIdRef,
+    suppressSavedCursorRestoreRef: pendingTagOccurrenceRef,
     activateAisleEditor,
   })
 
@@ -2296,6 +2435,7 @@ function App() {
     closeEditorEphemera(
       {
         dismissMentionMenu: noteMention.dismissCurrentQuery,
+        dismissTagAutocomplete: tagAutocomplete.dismissCurrentQuery,
         closeToolbarPopovers: () => {
           setCopyMenuOpen(false)
           setHeadingMenuOpen(false)
@@ -2889,6 +3029,354 @@ function App() {
     }
   }
 
+  const clearActiveTagJumpGlow = useCallback(() => {
+    if (tagJumpClearTimerRef.current !== null) {
+      window.clearTimeout(tagJumpClearTimerRef.current)
+      tagJumpClearTimerRef.current = null
+    }
+    const view = getWysiwygView(editorRef.current)
+    if (!view) return
+    try {
+      view.dispatch(view.state.tr.setMeta(TAG_JUMP_HIGHLIGHT_META, null))
+    } catch {
+      // The editor may have remounted between a jump and its scheduled clear.
+    }
+  }, [])
+
+  const glowActiveEditorTagOccurrence = useCallback((occurrence: TagFilterOccurrence) => {
+    if (occurrence.aisleId !== activeAisleIdRef.current) return false
+    const view = getWysiwygView(editorRef.current)
+    if (!view) return false
+    const renderedTagRanges = getTagDecorationRanges(view.state.doc).filter(
+      (range) => normalizeTagKey(range.tag) === occurrence.key,
+    )
+    const range = renderedTagRanges[occurrence.tagOrdinalInAisle] ?? null
+    if (!range || range.to <= range.from) return false
+    try {
+      if (tagJumpClearTimerRef.current !== null) {
+        window.clearTimeout(tagJumpClearTimerRef.current)
+        tagJumpClearTimerRef.current = null
+      }
+      const requestId = tagJumpRequestIdRef.current + 1
+      tagJumpRequestIdRef.current = requestId
+      view.dispatch(
+        view.state.tr.setMeta(TAG_JUMP_HIGHLIGHT_META, {
+          from: range.from,
+          to: range.to,
+          requestId,
+        }),
+      )
+      scrollProseMirrorTagRangeIntoView(view, range.from)
+      tagJumpClearTimerRef.current = window.setTimeout(() => {
+        tagJumpClearTimerRef.current = null
+        const latestView = getWysiwygView(editorRef.current)
+        if (!latestView) return
+        try {
+          latestView.dispatch(latestView.state.tr.setMeta(TAG_JUMP_HIGHLIGHT_META, null))
+        } catch {
+          // The editor may have remounted between a jump and its scheduled clear.
+        }
+      }, TAG_JUMP_GLOW_DURATION_MS)
+      return true
+    } catch {
+      return false
+    }
+  }, [])
+
+  const getCurrentTagFilterLocationKey = useCallback(
+    () => (scratchpadWorkspaceActive ? buildNoteLocationKey(SCRATCHPAD_FIND_LOCATION) : activeNoteLocationKey),
+    [activeNoteLocationKey, scratchpadWorkspaceActive],
+  )
+
+  const trySelectPendingTagOccurrence = useCallback(() => {
+    const pending = pendingTagOccurrenceRef.current
+    if (!pending || viewMode !== 'main') return false
+    if (buildNoteLocationKey(pending.location) !== getCurrentTagFilterLocationKey()) return false
+    if (pending.aisleId !== activeAisleIdRef.current) {
+      if (!activeAisleIdsRef.current.includes(pending.aisleId)) return false
+      activeAisleIdRef.current = pending.aisleId
+      setActiveAisleId(pending.aisleId)
+      pendingScrollToAisleIdRef.current = pending.aisleId
+      if (scratchpadWorkspaceActive) {
+        setState((previous) => setScratchpadActiveAisleId(previous, pending.aisleId))
+      }
+      return false
+    }
+    if (!glowActiveEditorTagOccurrence(pending)) return false
+    pendingTagOccurrenceRef.current = null
+    return true
+  }, [getCurrentTagFilterLocationKey, glowActiveEditorTagOccurrence, scratchpadWorkspaceActive, setState, viewMode])
+
+  const schedulePendingTagOccurrenceSelection = useCallback(() => {
+    window.setTimeout(() => {
+      if (trySelectPendingTagOccurrence()) return
+      window.requestAnimationFrame(() => {
+        if (trySelectPendingTagOccurrence()) return
+        window.setTimeout(() => trySelectPendingTagOccurrence(), 50)
+      })
+    }, 0)
+  }, [trySelectPendingTagOccurrence])
+
+  useEffect(() => {
+    if (!pendingTagOccurrenceRef.current) return
+    schedulePendingTagOccurrenceSelection()
+  }, [activeAisleId, schedulePendingTagOccurrenceSelection])
+
+  const openTagOccurrence = (occurrence: TagFilterOccurrence) => {
+    clearActiveTagJumpGlow()
+    pendingTagOccurrenceRef.current = occurrence
+    closeEditorEphemeraRef.current()
+    setMenuOpen(false)
+    setEditing(null)
+
+    if (buildNoteLocationKey(occurrence.location) === buildNoteLocationKey(SCRATCHPAD_FIND_LOCATION)) {
+      saveActiveCursorBeforeNavigation()
+      if (arrangeMode.active) exitArrangeMode()
+      setViewMode('main')
+      setScratchpadActive(true)
+      setActiveAisleId(occurrence.aisleId)
+      activeAisleIdRef.current = occurrence.aisleId
+      pendingScrollToAisleIdRef.current = occurrence.aisleId
+      setState((previous) => setScratchpadActiveAisleId(previous, occurrence.aisleId))
+      schedulePendingTagOccurrenceSelection()
+      return
+    }
+
+    if (
+      scratchpadWorkspaceActive ||
+      buildNoteLocationKey(occurrence.location) !== activeNoteLocationKey
+    ) {
+      navigateToNoteLocation(occurrence.location)
+      schedulePendingTagOccurrenceSelection()
+      return
+    }
+
+    if (occurrence.aisleId !== activeAisleIdRef.current) {
+      setActiveAisleId(occurrence.aisleId)
+      activeAisleIdRef.current = occurrence.aisleId
+      pendingScrollToAisleIdRef.current = occurrence.aisleId
+      schedulePendingTagOccurrenceSelection()
+      return
+    }
+
+    schedulePendingTagOccurrenceSelection()
+  }
+
+  const openTagLocation = (location: NoteLocation) => {
+    const locationKey = buildNoteLocationKey(location)
+    const primaryOccurrences = getPrimaryTagOccurrencesForLocation(tagFilterIndex, location)
+    if (primaryOccurrences.length > 0) {
+      const currentLocationKey = getCurrentTagFilterLocationKey()
+      const storedIndex = tagFilter?.cycleByLocation[locationKey] ?? 0
+      const occurrenceIndex = currentLocationKey === locationKey
+        ? storedIndex % primaryOccurrences.length
+        : 0
+      const occurrence = primaryOccurrences[occurrenceIndex]
+      const nextIndex = (occurrenceIndex + 1) % primaryOccurrences.length
+      setTagFilter((current) =>
+        current
+          ? {
+              ...current,
+              cycleByLocation: {
+                ...current.cycleByLocation,
+                [locationKey]: nextIndex,
+              },
+            }
+          : current,
+      )
+      openTagOccurrence(occurrence)
+      return
+    }
+
+    if (locationKey === buildNoteLocationKey(SCRATCHPAD_FIND_LOCATION)) {
+      openScratchpadFromRail()
+      return
+    }
+
+    if (scratchpadWorkspaceActive || activeNoteLocationKey !== locationKey) {
+      navigateToNoteLocation(location)
+    }
+  }
+
+  const openTagFilterForTag = (tag: string) => {
+    const key = normalizeTagKey(tag)
+    if (!key) return
+    const latestState = buildStateWithLatestEditorContent()
+    stateRef.current = latestState
+    setState(latestState)
+    if (arrangeMode.active) exitArrangeMode()
+    closeEditorEphemeraRef.current()
+    setViewMode('main')
+    setMenuOpen(false)
+    setEditing(null)
+    setTagFilter((current) => ({
+      selectedTagKeys: [key],
+      draftTagKeys: [key],
+      menuOpen: false,
+      sortMode: current?.sortMode ?? 'az',
+      cycleByLocation: {},
+    }))
+  }
+
+  const closeTagFilterMenu = () => {
+    setTagFilter((current) => {
+      if (!current) return current
+      if (current.draftTagKeys.length === 0) {
+        pendingTagOccurrenceRef.current = null
+        return null
+      }
+      return {
+        ...current,
+        selectedTagKeys: current.draftTagKeys,
+        menuOpen: false,
+        cycleByLocation: {},
+      }
+    })
+  }
+
+  const toggleTagFilterMenu = () => {
+    setTagFilter((current) => {
+      if (!current) return current
+      if (current.menuOpen) {
+        if (current.draftTagKeys.length === 0) {
+          pendingTagOccurrenceRef.current = null
+          return null
+        }
+        return {
+          ...current,
+          selectedTagKeys: current.draftTagKeys,
+          menuOpen: false,
+          cycleByLocation: {},
+        }
+      }
+      return {
+        ...current,
+        draftTagKeys: current.selectedTagKeys,
+        menuOpen: true,
+      }
+    })
+  }
+
+  const selectAllTagFilters = () => {
+    setTagFilter((current) => {
+      if (!current) return current
+      const sortedKeys = sortedTagFilterTags.map((tag) => tag.key)
+      const primary = current.selectedTagKeys[0] && sortedKeys.includes(current.selectedTagKeys[0])
+        ? current.selectedTagKeys[0]
+        : sortedKeys[0] ?? ''
+      const nextKeys = primary
+        ? [primary, ...sortedKeys.filter((key) => key !== primary)]
+        : sortedKeys
+      return {
+        ...current,
+        selectedTagKeys: nextKeys,
+        draftTagKeys: nextKeys,
+        cycleByLocation: {},
+      }
+    })
+  }
+
+  const deselectAllTagFilters = () => {
+    setTagFilter((current) =>
+      current
+        ? {
+            ...current,
+            draftTagKeys: [],
+            menuOpen: true,
+            cycleByLocation: {},
+          }
+        : current,
+    )
+  }
+
+  const toggleTagFilterTag = (tagKey: string) => {
+    setTagFilter((current) => {
+      if (!current) return current
+      const baseKeys = current.menuOpen ? current.draftTagKeys : current.selectedTagKeys
+      const nextKeys = baseKeys.includes(tagKey)
+        ? baseKeys.filter((key) => key !== tagKey)
+        : [...baseKeys, tagKey]
+      if (!current.menuOpen && nextKeys.length === 0) {
+        pendingTagOccurrenceRef.current = null
+        return null
+      }
+      return {
+        ...current,
+        selectedTagKeys: current.menuOpen && nextKeys.length === 0 ? current.selectedTagKeys : nextKeys,
+        draftTagKeys: nextKeys,
+        cycleByLocation: {},
+      }
+    })
+  }
+
+  const setTagFilterSortMode = (sortMode: TagFilterSortMode) => {
+    setTagFilter((current) => (current ? { ...current, sortMode } : current))
+  }
+
+  const getNoteTagFilterCount = (location: NoteLocation) =>
+    tagFilterIndex.noteCounts.get(buildNoteLocationKey(location)) ?? 0
+
+  const openDomainFromTagFilter = (domainId: string) => {
+    if (!scratchpadWorkspaceActive && activeNoteLocation.domainId === domainId && getNoteTagFilterCount(activeNoteLocation) > 0) {
+      openTagLocation(activeNoteLocation)
+      return
+    }
+    const firstMatch = getFirstMatchingLocationForDomain(tagFilterIndex, domainId)
+    if (firstMatch) openTagLocation(firstMatch)
+  }
+
+  const openSpaceFromTagFilter = (spaceId: string) => {
+    const domainId = state.activeDomainId
+    if (
+      !scratchpadWorkspaceActive &&
+      activeNoteLocation.domainId === domainId &&
+      activeNoteLocation.spaceId === spaceId &&
+      getNoteTagFilterCount(activeNoteLocation) > 0
+    ) {
+      openTagLocation(activeNoteLocation)
+      return
+    }
+    const firstMatch = getFirstMatchingLocationForSpace(tagFilterIndex, domainId, spaceId)
+    if (firstMatch) openTagLocation(firstMatch)
+  }
+
+  const openParentFromTagFilter = (tabId: string) => {
+    const homeLocation: NoteLocation = {
+      domainId: state.activeDomainId,
+      spaceId: activeSpace.id,
+      tabId,
+      subTabId: null,
+    }
+    if (getNoteTagFilterCount(homeLocation) > 0) {
+      openTagLocation(homeLocation)
+      return
+    }
+    const firstMatch = getFirstMatchingLocationForParent(tagFilterIndex, state.activeDomainId, activeSpace.id, tabId)
+    if (firstMatch) openTagLocation(firstMatch)
+  }
+
+  const selectParentHomeFromTagFilter = () => {
+    openTagLocation({
+      domainId: state.activeDomainId,
+      spaceId: activeSpace.id,
+      tabId: activeTab.id,
+      subTabId: null,
+    })
+  }
+
+  const selectSubTabFromTagFilter = (subTabId: string) => {
+    openTagLocation({
+      domainId: state.activeDomainId,
+      spaceId: activeSpace.id,
+      tabId: activeTab.id,
+      subTabId,
+    })
+  }
+
+  const openScratchpadFromTagFilter = () => {
+    openTagLocation(SCRATCHPAD_FIND_LOCATION)
+  }
+
   const openFindReplacePanel = useCallback(() => {
     closeEditorEphemeraRef.current()
     flushPendingContent()
@@ -3317,7 +3805,10 @@ function App() {
     getEditorHistoryDirection,
     onEditorSelectionChange: saveActiveCursorLocation,
     onEditorSelectionSettled: markMouseAisleActivationSettled,
-    onEditorMentionQueryChange: noteMention.refreshQuery,
+    onEditorMentionQueryChange: () => {
+      noteMention.refreshQuery()
+      tagAutocomplete.refreshQuery()
+    },
     onRunStructuralHistory: runAisleStructuralHistory,
     onRunEditorHistory: runEditorHistoryOnly,
     shouldRunStructuralHistoryBeforeEditorHistory: shouldRunAisleStructuralHistoryBeforeEditorHistory,
@@ -3353,6 +3844,10 @@ function App() {
     buildStateWithLatestEditorContent,
     pushToast,
   })
+  const openStageManagerView = () => {
+    exitTagFilterMode()
+    stageManager.open()
+  }
 
   const closeSettingsView = () => {
     returnToLastTabLikeView()
@@ -3561,6 +4056,18 @@ function App() {
   const getCurrentDuplicateCount = overlayActions.getCurrentDuplicateCount
   const beginRenameSpaceFromContext = overlayActions.beginRenameSpaceFromContext
   const beginRenameDomainFromContext = overlayActions.beginRenameDomainFromContext
+  const beginRenameNavigationItemFromContext = () => {
+    if (!contextMenu) return
+    if (contextMenu.type === 'tab' || contextMenu.type === 'home-tab') {
+      setEditing({ type: 'tab', id: contextMenu.tabId })
+      setContextMenu(null)
+      return
+    }
+    if (contextMenu.type === 'subtab') {
+      setEditing({ type: 'subtab', id: contextMenu.subTabId })
+      setContextMenu(null)
+    }
+  }
   const confirmModal = () => {
     if (!modal || modal.type !== 'linked-aisle') {
       overlayActions.confirmModal()
@@ -3699,7 +4206,7 @@ function App() {
   }
 
   const editorReadOnly = viewMode !== 'main'
-  const mainArrangementActive = arrangeMode.active && viewMode === 'main'
+  const mainArrangementActive = !tagFilterActive && arrangeMode.active && viewMode === 'main'
 
   useEffect(() => {
     if (!mainArrangementActive) return
@@ -3793,6 +4300,7 @@ function App() {
     },
     openDirector: () => {
       closeEditorEphemeraRef.current()
+      exitTagFilterMode()
       stageManager.open()
     },
     openFindReplace: openFindReplacePanel,
@@ -3876,8 +4384,12 @@ function App() {
     warnHomeSubtabDelete: () => pushToast('home tabs cannot be deleted', 'warning'),
     warnScratchpadDeleteShortcutDisabled: () =>
       pushToast('You can enable command/control+w to delete scratchpad aisles in the misc tab of the settings.', 'warning'),
-    addTab,
-    addSubTab,
+    addTab: () => {
+      if (!tagFilterActive) addTab()
+    },
+    addSubTab: () => {
+      if (!tagFilterActive) addSubTab()
+    },
     addScratchpadAisle: () => {
       closeEditorEphemeraRef.current()
       addScratchpadAisle('')
@@ -3903,11 +4415,13 @@ function App() {
   const promptHierarchyLevel = arrangeDestinationPrompt?.revealHierarchyLevel ?? 0
   const effectiveHierarchyLevel =
     viewMode === 'main'
-      ? Math.max(
-          persistedHierarchyLevel,
-          mainArrangementActive ? arrangeHierarchyRevealLevel : 0,
-          promptHierarchyLevel,
-        )
+      ? tagFilterActive
+        ? 2
+        : Math.max(
+            persistedHierarchyLevel,
+            mainArrangementActive ? arrangeHierarchyRevealLevel : 0,
+            promptHierarchyLevel,
+          )
       : 0
   const showCompactSpaces = effectiveHierarchyLevel >= 1
   const showCompactDomains = effectiveHierarchyLevel >= 2
@@ -3967,6 +4481,58 @@ function App() {
   const draggingSpaceId =
     arrangeMode.active && arrangeDraggingItem?.type === 'space' ? arrangeDraggingItem.spaceId : null
   const topVisibleMainRail = showCompactDomains ? 'domains' : showCompactSpaces ? 'spaces' : 'parents'
+  const tagFilteredDomains = tagFilterActive
+    ? state.domains.filter((domain) => (tagFilterIndex.domainCounts.get(domain.id) ?? 0) > 0)
+    : state.domains
+  const tagFilteredSpaces = tagFilterActive
+    ? state.spaces.filter(
+        (space) => (tagFilterIndex.spaceCounts.get(getTagFilterSpaceKey(state.activeDomainId, space.id)) ?? 0) > 0,
+      )
+    : state.spaces
+  const tagFilteredWorkspace = tagFilterActive
+    ? {
+        ...workspace,
+        tabs: workspace.tabs.filter(
+          (tab) =>
+            (tagFilterIndex.parentCounts.get(getTagFilterParentKey(state.activeDomainId, activeSpace.id, tab.id)) ?? 0) > 0,
+        ),
+      }
+    : workspace
+  const activeHomeTagLocation: NoteLocation = {
+    domainId: state.activeDomainId,
+    spaceId: activeSpace.id,
+    tabId: activeTab.id,
+    subTabId: null,
+  }
+  const activeHomeTagCount = tagFilterIndex.noteCounts.get(buildNoteLocationKey(activeHomeTagLocation)) ?? 0
+  const tagFilteredActiveTab = tagFilterActive
+    ? {
+        ...activeTab,
+        subTabs: activeTab.subTabs.filter((subTab) => {
+          const location: NoteLocation = {
+            domainId: state.activeDomainId,
+            spaceId: activeSpace.id,
+            tabId: activeTab.id,
+            subTabId: subTab.id,
+          }
+          return (tagFilterIndex.noteCounts.get(buildNoteLocationKey(location)) ?? 0) > 0
+        }),
+      }
+    : activeTab
+  const tagFilterControl = tagFilterActive ? (
+    <TagFilterControl
+      open={tagFilter?.menuOpen ?? false}
+      tags={sortedTagFilterTags}
+      selectedTagKeys={tagFilterDisplayKeys}
+      sortMode={tagFilter?.sortMode ?? 'az'}
+      onToggleOpen={toggleTagFilterMenu}
+      onClose={closeTagFilterMenu}
+      onSelectAll={selectAllTagFilters}
+      onDeselectAll={deselectAllTagFilters}
+      onToggleTag={toggleTagFilterTag}
+      onSortModeChange={setTagFilterSortMode}
+    />
+  ) : null
   const mainTopRailActions: NavigationRailAction[] = mainArrangementActive
     ? [
         {
@@ -4003,41 +4569,40 @@ function App() {
     <NavigationRailControls
       actions={viewForMenu === 'stage-manager' ? stageManagerTopRailActions : mainTopRailActions}
       menuOpen={menuOpen}
-      showCloseControl={viewForMenu === 'stage-manager' || mainArrangementActive}
+      showCloseControl={viewForMenu === 'stage-manager' || mainArrangementActive || (viewForMenu === 'main' && tagFilterActive)}
       viewMode={viewForMenu}
       spaceRailVisible={state.ui.alwaysShowSpaces ?? false}
       domainRailVisible={state.ui.alwaysShowDomains ?? false}
-      onCloseAction={viewForMenu === 'stage-manager' ? stageManager.end : exitArrangeMode}
+      onCloseAction={() => {
+        if (viewForMenu === 'stage-manager') {
+          stageManager.end()
+          return
+        }
+        if (tagFilterActive) {
+          exitTagFilterMode()
+          return
+        }
+        exitArrangeMode()
+      }}
       onSetMenuOpen={setMenuOpen}
       onToggleSpaceRail={toggleSpaceRailVisibility}
       onToggleDomainRail={toggleDomainRailVisibility}
-      onOpenStageManager={stageManager.open}
+      onOpenStageManager={openStageManagerView}
       onToggleTrash={toggleTrashView}
       onOpenMessages={openMessagesView}
       onOpenSettings={openSettingsWithoutMentionMenu}
+      onOpenAbout={openAboutView}
       messagesCount={unresolvedMessageCount}
+      tagFilterControl={viewForMenu === 'main' ? tagFilterControl : null}
     />
   )
   const activeThemePalette = getThemePaletteForTheme(state.theme, state.ui.themePalettes)
   const activeThemeIsCustom = isCustomTheme(state.theme)
-  const customThemeSeedSource = activeThemeIsCustom ? getCustomThemePaletteSeedMatch(activeThemePalette) : null
   const builtInThemeOverride = activeThemeIsCustom ? null : state.ui.themePalettes?.[state.theme] ?? null
-  const customThemePalette =
-    activeThemeIsCustom
-      ? activeThemePalette
-      : builtInThemeOverride && !isThemePaletteSeed(state.theme, builtInThemeOverride)
-        ? builtInThemeOverride
-        : null
-  const customThemeClassName =
-    activeThemeIsCustom
-      ? customThemeSeedSource
-        ? `theme-custom-seed-${customThemeSeedSource} ${
-            customThemeSeedSource === 'dark' ? '' : `theme-${customThemeSeedSource}`
-          }`
-        : 'theme-custom-derived'
-      : customThemePalette
-        ? 'theme-custom-derived'
-        : ''
+  const themeStyleVariables = activeThemeIsCustom
+    ? getCustomThemeCssVariables(activeThemePalette)
+    : getBuiltInThemeOverrideCssVariables(state.theme, builtInThemeOverride)
+  const customThemeClassName = getThemeShellCustomClassName(state.theme, activeThemePalette)
   const visibleTipDefinitions = visibleTips
     .filter((tipId) => !state.ui.disabledTipIds.includes(tipId))
     .map((tipId) => getTipDefinition(tipId, { isMacPlatform }))
@@ -4069,6 +4634,7 @@ function App() {
   const noteMentionNavigatorRows = noteMention.navigatorRows
   const noteMentionSearchEntries = noteMention.searchEntries
   const noteMentionSearchActiveIndex = noteMention.activeSearchIndex
+  const tagAutocompleteMenu = tagAutocomplete.menu
   const stageManagerActiveDomain = stageManager.domains.find((domain) => domain.id === state.activeDomainId) ?? stageManager.domains[0]
   const stageManagerSpaces = stageManagerActiveDomain?.spaces ?? state.spaces
   return (
@@ -4081,27 +4647,8 @@ function App() {
           '--tab-button-scale': String(state.ui.tabButtonScale),
           '--note-font-scale': String(state.ui.noteFontScale),
           '--tooltip-scale': String(state.ui.tooltipScale ?? 1),
-          ...(customThemePalette
-            ? {
-                '--custom-theme-canvas': customThemePalette.canvas,
-                '--custom-theme-page': customThemePalette.page,
-                '--custom-theme-surface': customThemePalette.surface,
-                '--custom-theme-surface-raised': customThemePalette.surfaceRaised,
-                '--custom-theme-text': customThemePalette.text,
-                '--custom-theme-muted-text': customThemePalette.mutedText,
-                '--custom-theme-border': customThemePalette.border,
-                '--custom-theme-primary': customThemePalette.primary,
-                '--custom-theme-secondary': customThemePalette.secondary,
-                '--custom-theme-danger': customThemePalette.danger,
-                '--custom-theme-warning': customThemePalette.warning,
-                '--custom-theme-success': customThemePalette.success,
-                '--custom-theme-domain-rail': customThemePalette.domainRail,
-                '--custom-theme-space-rail': customThemePalette.spaceRail,
-                '--custom-theme-parent-rail': customThemePalette.parentRail,
-                '--custom-theme-subtab-rail': customThemePalette.subtabRail,
-              }
-            : {}),
-        } as React.CSSProperties
+          ...themeStyleVariables,
+        } as CSSProperties
       }
     >
       {viewMode === 'stage-manager' && (
@@ -4173,7 +4720,7 @@ function App() {
 
       {viewMode === 'main' && showCompactDomains && (
         <CompactDomainRail
-          domains={state.domains}
+          domains={tagFilteredDomains}
           activeDomainId={state.activeDomainId}
           editing={editing}
           arrangeMode={arrangeMode}
@@ -4184,7 +4731,9 @@ function App() {
           controlsSlot={topVisibleMainRail === 'domains' ? renderTopRailControls('main') : null}
           tooltipsDisabled={mainArrangementActive}
           arrangeControlsDisabled={arrangeControlsDisabled}
-          onOpenDomain={openDomainFromCompactRail}
+          tagFilterActive={tagFilterActive}
+          getDomainLabel={(domain) => appendTagFilterCount(domain.name, tagFilterIndex.domainCounts.get(domain.id) ?? 0)}
+          onOpenDomain={tagFilterActive ? openDomainFromTagFilter : openDomainFromCompactRail}
           onHandleArrangeDomainSelectionClick={handleArrangeDomainSelectionClick}
           onClearArrangeSelection={clearArrangeSelection}
           onOpenContextMenu={openContextMenuForDomain}
@@ -4210,7 +4759,7 @@ function App() {
 
       {viewMode === 'main' && showCompactSpaces && (
         <CompactSpaceRail
-          spaces={state.spaces}
+          spaces={tagFilteredSpaces}
           activeSpaceId={state.activeSpaceId}
           editing={editing}
           arrangeMode={arrangeMode}
@@ -4221,7 +4770,11 @@ function App() {
           controlsSlot={topVisibleMainRail === 'spaces' ? renderTopRailControls('main') : null}
           tooltipsDisabled={mainArrangementActive}
           arrangeControlsDisabled={arrangeControlsDisabled}
-          onOpenSpace={openSpaceFromCompactRail}
+          tagFilterActive={tagFilterActive}
+          getSpaceLabel={(space) =>
+            appendTagFilterCount(space.name, tagFilterIndex.spaceCounts.get(getTagFilterSpaceKey(state.activeDomainId, space.id)) ?? 0)
+          }
+          onOpenSpace={tagFilterActive ? openSpaceFromTagFilter : openSpaceFromCompactRail}
           onHandleArrangeSpaceSelectionClick={handleArrangeSpaceSelectionClick}
           onClearArrangeSelection={clearArrangeSelection}
           onOpenContextMenu={openContextMenuForSpace}
@@ -4297,11 +4850,19 @@ function App() {
 
       <TopBar
         viewMode={viewMode}
-        workspace={workspace}
+        workspace={tagFilteredWorkspace}
         activeTab={activeTab}
         editing={editing}
         arrangeMode={arrangeMode}
         tooltipsDisabled={mainArrangementActive}
+        tagFilterActive={tagFilterActive}
+        tagFilterControl={topVisibleMainRail === 'parents' ? tagFilterControl : null}
+        getTabLabel={(tab) =>
+          appendTagFilterCount(
+            tab.title,
+            tagFilterIndex.parentCounts.get(getTagFilterParentKey(state.activeDomainId, activeSpace.id, tab.id)) ?? 0,
+          )
+        }
         showGlobalControls={
           viewMode === 'main'
             ? topVisibleMainRail === 'parents'
@@ -4336,7 +4897,13 @@ function App() {
         onHandleArrangeParentSelectionClick={handleArrangeParentSelectionClick}
         onClearArrangeSelection={clearArrangeSelection}
         onConsumeArrangeClickSuppression={consumeArrangeClickSuppression}
-        onSelectTab={selectParentTabFromTopBar}
+        onSelectTab={(tabId, event) => {
+          if (tagFilterActive) {
+            openParentFromTagFilter(tabId)
+            return
+          }
+          selectParentTabFromTopBar(tabId, event)
+        }}
         onBeginEdit={setEditing}
         onOpenContextMenuForTab={openContextMenuForTab}
         onStartArrangeDragSeed={startArrangeDragSeed}
@@ -4351,7 +4918,7 @@ function App() {
         onSetTrashTabId={setTrashTabId}
         onSetTrashSubTabId={setTrashSubTabId}
         onOpenContextMenuForTrashTab={openContextMenuForTrashTab}
-        onAddTab={addTab}
+        onAddTab={tagFilterActive ? () => undefined : addTab}
         onOpenParentSortModal={() => setModal({ type: 'sort-tabs', target: 'parents' })}
         onExitArrangeMode={exitArrangeMode}
         onAdvanceArrangeHierarchyReveal={advanceArrangeHierarchyReveal}
@@ -4360,11 +4927,14 @@ function App() {
         onSetMenuOpen={setMenuOpen}
         onToggleSpaceRail={toggleSpaceRailVisibility}
         onToggleDomainRail={toggleDomainRailVisibility}
-        onOpenStageManager={stageManager.open}
+        onOpenStageManager={openStageManagerView}
         onToggleTrash={toggleTrashView}
-        onOpenMain={openMainView}
         onOpenMessages={openMessagesView}
         onOpenSettings={openSettingsWithoutMentionMenu}
+        onOpenAbout={openAboutView}
+        settingsSection={settingsController.section}
+        onSettingsSectionChange={settingsController.changeSection}
+        onExitTagFilterMode={exitTagFilterMode}
         messagesCount={unresolvedMessageCount}
       />
 
@@ -4426,7 +4996,6 @@ function App() {
           storageProfileStatus={storageProfileStatus}
           userSettingsLocationStatus={userSettingsLocationStatus}
           notebookBackupStatus={notebookTransferActions.notebookBackupStatus}
-          onSectionChange={settingsController.changeSection}
           onDataSectionChange={settingsController.changeDataSection}
           onVisualsSectionChange={settingsController.changeVisualsSection}
           onToggleShortcutEdit={settingsController.toggleShortcutEdit}
@@ -4511,12 +5080,29 @@ function App() {
         <>
           <SubTabRail
             viewMode={viewMode}
-            activeTab={activeTab}
+            activeTab={tagFilteredActiveTab}
             activeSubTabId={scratchpadWorkspaceActive ? null : activeSubTab?.id ?? null}
             editing={editing}
             arrangeMode={arrangeMode}
             tooltipsDisabled={mainArrangementActive}
-            showParentHomeTab={state.ui.showParentHomeTab}
+            showParentHomeTab={tagFilterActive ? activeHomeTagCount > 0 : state.ui.showParentHomeTab}
+            tagFilterActive={tagFilterActive}
+            getHomeLabel={() => appendTagFilterCount('home', activeHomeTagCount)}
+            getSubTabLabel={(subTab) => {
+              const location: NoteLocation = {
+                domainId: state.activeDomainId,
+                spaceId: activeSpace.id,
+                tabId: activeTab.id,
+                subTabId: subTab.id,
+              }
+              return appendTagFilterCount(
+                subTab.title,
+                tagFilterIndex.noteCounts.get(buildNoteLocationKey(location)) ?? 0,
+              )
+            }}
+            scratchpadTagCountLabel={
+              tagFilterIndex.scratchpadCount > 0 ? getTagFilterCountLabel(tagFilterIndex.scratchpadCount) : ''
+            }
             isNoteWorkspaceView={isNoteWorkspaceView}
             selectedTrashTab={selectedTrashTab}
             trashSubTabs={trashSubTabs}
@@ -4538,8 +5124,8 @@ function App() {
             onHandleArrangeSubTabSelectionClick={handleArrangeSubTabSelectionClick}
             onClearArrangeSelection={clearArrangeSelection}
             onConsumeArrangeClickSuppression={consumeArrangeClickSuppression}
-            onSelectParentHomeTab={selectParentHomeTabFromRail}
-            onSelectSubTab={selectSubTabFromRail}
+            onSelectParentHomeTab={tagFilterActive ? selectParentHomeFromTagFilter : selectParentHomeTabFromRail}
+            onSelectSubTab={tagFilterActive ? selectSubTabFromTagFilter : selectSubTabFromRail}
             onBeginEdit={setEditing}
             onOpenContextMenuForHomeTab={openContextMenuForHomeTab}
             onOpenContextMenuForSubTab={openContextMenuForSubTab}
@@ -4555,12 +5141,13 @@ function App() {
             onSetTrashSubTabId={setTrashSubTabId}
             onOpenContextMenuForTrashSubTab={openContextMenuForTrashSubTab}
             onAddSubTab={() => {
+              if (tagFilterActive) return
               setScratchpadActive(false)
               addSubTab()
             }}
             onOpenSubTabSortModal={() => setModal({ type: 'sort-tabs', target: 'subtabs' })}
             scratchpadActive={scratchpadWorkspaceActive}
-            onOpenScratchpad={openScratchpadFromRail}
+            onOpenScratchpad={tagFilterActive ? openScratchpadFromTagFilter : openScratchpadFromRail}
             onOpenContextMenuForScratchpad={openContextMenuForScratchpad}
           />
 
@@ -4611,6 +5198,8 @@ function App() {
               onDismissMessage={dismissMessage}
               onOpenLocation={openMessageLocation}
             />
+          ) : viewMode === 'about' ? (
+            <AboutView />
           ) : viewMode === 'main' ? (
             <NoteWorkspace
               noteBodyId={activeNoteBodyId}
@@ -4671,10 +5260,12 @@ function App() {
                 }
                 pendingMouseAisleActivationRef.current = { aisleId: targetAisleId, settled: false }
                 const shouldFocus = shouldFocusAislePointerActivation(activeAisleIdRef.current, targetAisleId)
+                pendingFocusToAisleIdRef.current = null
                 pendingCursorRestoreRef.current = null
                 activateAisleEditor(editorKey, {
                   flushPrevious: true,
                   focus: shouldFocus,
+                  source: 'pointer',
                 })
                 syncActiveAisleSelection(targetAisleId)
                 scheduleAisleFocusScroll(targetAisleId)
@@ -4687,6 +5278,7 @@ function App() {
               onOpenTableOfContentsLink={openTableOfContentsLinkTarget}
               onOpenAisleFrontmatter={openFrontmatterModalForAisle}
               onOpenAisleLink={openLinkedAisleModal}
+              onOpenTagFilter={openTagFilterForTag}
               onRegisterAislePaneRoot={registerAislePaneRoot}
               onRegisterAisleEditorRoot={registerAisleEditorRoot}
             />
@@ -4719,6 +5311,17 @@ function App() {
           )}
           onHighlight={setShortcutMenuActiveIndex}
           onRun={runShortcutOperationFromMenu}
+        />
+      )}
+
+      {tagAutocompleteMenu && (
+        <TagAutocompleteMenu
+          top={tagAutocompleteMenu.top}
+          left={tagAutocompleteMenu.left}
+          suggestions={tagAutocompleteMenu.suggestions}
+          activeIndex={tagAutocompleteMenu.activeIndex}
+          onHighlight={tagAutocomplete.setActiveIndex}
+          onChoose={tagAutocomplete.acceptSuggestion}
         />
       )}
 
@@ -4827,11 +5430,13 @@ function App() {
         canDeleteSpace={canDeleteSpace}
         canDeleteDomain={canDeleteDomain}
         duplicateCount={getCurrentDuplicateCount()}
+        tagFilterActive={tagFilterActive}
         onClose={() => closeEditorEphemeraRef.current()}
         onEnterArrangeMode={enterArrangeModeFromContext}
         onDuplicateSpace={duplicateSpaceFromContext}
         onRenameSpace={beginRenameSpaceFromContext}
         onRenameDomain={beginRenameDomainFromContext}
+        onRenameNavigationItem={beginRenameNavigationItemFromContext}
         onCopyImage={() => {
           setContextMenu(null)
           void copySelectedImageToClipboard()

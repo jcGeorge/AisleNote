@@ -171,6 +171,7 @@ function createBlankNoteBodyContent(noteBodyId, seed, usedIds) {
     noteAisleBody: {
       id: aisleBodyId,
       markdown: '',
+      tags: [],
       frontmatter: null,
       frontmatterStatus: 'none',
     },
@@ -199,6 +200,7 @@ function ensureNoteBodyContent(noteBodyId, seed, noteBodies, noteAisleBodies, us
     noteAisleBodies.push({
       id: aisleBodyId,
       markdown: '',
+      tags: [],
       frontmatter: null,
       frontmatterStatus: 'none',
     })
@@ -216,6 +218,7 @@ function ensureNoteBodyContent(noteBodyId, seed, noteBodies, noteAisleBodies, us
       noteAisleBodies.push({
         id: aisleBodyId,
         markdown: '',
+        tags: [],
         frontmatter: null,
         frontmatterStatus: 'none',
       })
@@ -614,14 +617,12 @@ export function normalizeStorageTheme(value) {
     value === 'dark' ||
     value === 'light' ||
     value === 'dawn' ||
-    value === 'blues' ||
     value === 'custom1' ||
     value === 'custom2' ||
     value === 'custom3'
   ) {
     return value
   }
-  if (value === 'dusk') return 'blues'
   return 'dawn'
 }
 

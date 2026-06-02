@@ -1,4 +1,5 @@
 import { createId, createTimestamp } from '../state/workspace'
+import { getAisleBodyTags } from '../tags/tags.js'
 import type { FrontmatterMeta, NoteAisle, NoteAisleBody, NoteBody, ResolvedNoteAisle, ResolvedNoteBody } from '../types/app'
 
 export type IndependentNoteBodyCopy = {
@@ -41,8 +42,10 @@ function cloneFrontmatterMeta(meta: FrontmatterMeta | undefined): FrontmatterMet
 function cloneAisleBodyFrontmatter(source: NoteAisleBody | undefined): Pick<
   NoteAisleBody,
   'frontmatter' | 'frontmatterStatus' | 'frontmatterParseError' | 'frontmatterRaw' | 'frontmatterMeta'
+  | 'tags'
 > {
   return {
+    tags: getAisleBodyTags(source),
     frontmatter: source?.frontmatter && typeof source.frontmatter === 'object' ? { ...source.frontmatter } : source?.frontmatter ?? null,
     frontmatterStatus: source?.frontmatterStatus ?? (source?.frontmatter ? 'valid' : 'none'),
     frontmatterParseError: source?.frontmatterParseError,

@@ -290,6 +290,85 @@
     0 0 0 2px color-mix(in srgb, var(--trash-parent-selected-border) 28%, transparent);
 }
 
+.tag-filter-control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: var(--tab-control-height);
+}
+
+.topbar-tags-btn.is-selected {
+  color: var(--topbar-action-hover-text) !important;
+  background: var(--topbar-action-hover-bg) !important;
+  border-color: var(--topbar-action-hover-border) !important;
+}
+
+.tag-filter-dropdown {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  z-index: 35;
+  display: grid;
+  gap: 0.55rem;
+  width: min(28rem, calc(100vw - 1rem));
+  max-height: min(24rem, calc(100vh - 5rem));
+  overflow: auto;
+  padding: 0.7rem;
+  border: 1px solid var(--menu-border);
+  border-radius: 0.42rem;
+  background: var(--menu-bg);
+  color: var(--menu-item-text);
+  box-shadow: var(--app-shadow-popover);
+}
+
+.tag-filter-menu-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.tag-filter-menu-command {
+  border: 0;
+  border-radius: 0.28rem;
+  background: transparent;
+  color: var(--menu-item-text);
+  font-size: var(--ui-font-menu);
+  line-height: 1.2;
+  padding: 0.2rem 0.32rem;
+}
+
+.tag-filter-menu-command:hover,
+.tag-filter-menu-command:focus-visible,
+.tag-filter-menu-command.is-selected {
+  background: var(--menu-item-hover-bg);
+  color: var(--topbar-action-hover-text);
+}
+
+.tag-filter-tag-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.32rem 0.42rem;
+  align-items: center;
+}
+
+.tag-filter-tag-btn.tabs-tag-token {
+  appearance: none;
+  border: 0 !important;
+  background: transparent !important;
+  color: var(--menu-item-text) !important;
+  cursor: pointer !important;
+  padding: 0.04em 0.16em !important;
+}
+
+.tag-filter-tag-btn.tabs-tag-token:hover,
+.tag-filter-tag-btn.tabs-tag-token:focus-visible,
+.tag-filter-tag-btn.tabs-tag-token.is-selected {
+  background: var(--editor-tag-bg, transparent) !important;
+  color: var(--editor-tag-text, var(--menu-item-text)) !important;
+  box-shadow: none !important;
+}
+
 .view-settings .topbar-context-btn,
 .view-stage-manager .topbar-context-btn {
   font-size: calc(1rem * var(--note-font-scale, 1)) !important;

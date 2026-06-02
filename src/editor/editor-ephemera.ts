@@ -4,6 +4,7 @@ export type CloseEditorEphemeraOptions = {
 
 export type EditorEphemeraClosers = {
   dismissMentionMenu?: () => void
+  dismissTagAutocomplete?: () => void
   closeToolbarPopovers?: () => void
   closeContextMenu?: () => void
   closeImageTools?: () => void
@@ -17,6 +18,7 @@ export function closeEditorEphemera(
   options: CloseEditorEphemeraOptions = {},
 ): void {
   closers.dismissMentionMenu?.()
+  closers.dismissTagAutocomplete?.()
   closers.closeToolbarPopovers?.()
   closers.closeContextMenu?.()
   closers.closeImageTools?.()

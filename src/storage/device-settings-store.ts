@@ -1,6 +1,7 @@
 import { DEFAULT_TOOLBAR_LAYOUT_ID } from '../editor/toolbar-layouts'
 import { normalizeHeadingCollapseState } from '../editor/heading-collapse-state'
 import { normalizeNoteCursorLocations } from '../notes/note-cursors'
+import { normalizeTagAutocompleteRecentKeys } from '../tags/tag-autocomplete'
 import {
   DEFAULT_DATA_SETTINGS_SECTION,
   DEFAULT_UI_SETTINGS,
@@ -18,7 +19,7 @@ import type { AppState, DataSettingsSection, ViewMode, VisualsSettingsSection } 
 
 export const DEVICE_SETTINGS_STORAGE_KEY = 'tabs:device-settings:v1'
 
-const VIEW_MODES: ViewMode[] = ['main', 'trash', 'settings', 'stage-manager']
+const VIEW_MODES: ViewMode[] = ['main', 'trash', 'settings', 'stage-manager', 'messages', 'about']
 
 export type DeviceLastOpened = {
   domainId: string
@@ -42,6 +43,7 @@ export type DeviceSettings = {
   noteFontScale: number
   tooltipScale: number
   lastFindQuery: string
+  tagAutocompleteRecentKeys: string[]
 }
 
 export const DEFAULT_DEVICE_SETTINGS: DeviceSettings = {
@@ -57,6 +59,7 @@ export const DEFAULT_DEVICE_SETTINGS: DeviceSettings = {
   noteFontScale: DEFAULT_UI_SETTINGS.noteFontScale,
   tooltipScale: DEFAULT_UI_SETTINGS.tooltipScale ?? 1,
   lastFindQuery: '',
+  tagAutocompleteRecentKeys: [],
 }
 
 export type DeviceSettingsLoadResult = {
@@ -119,6 +122,7 @@ function normalizeDeviceSettingsValue(raw: unknown): DeviceSettings {
         ? clampTooltipScale(obj.tooltipScale)
         : DEFAULT_DEVICE_SETTINGS.tooltipScale,
     lastFindQuery: typeof obj.lastFindQuery === 'string' ? obj.lastFindQuery : DEFAULT_DEVICE_SETTINGS.lastFindQuery,
+    tagAutocompleteRecentKeys: normalizeTagAutocompleteRecentKeys(obj.tagAutocompleteRecentKeys),
   }
 }
 

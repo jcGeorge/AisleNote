@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   getActiveAisleRefSyncValue,
+  shouldClearPendingCursorRestoreForAisleActivation,
   shouldDeferAisleCycleForMouseActivation,
   shouldFocusAislePointerActivation,
   shouldUseFastSameAisleActivation,
@@ -51,10 +52,17 @@ describe('aisle editor activation', () => {
     ).toBe(false)
   })
 
-  it('does not force focus for pointer activation on the already-active aisle', () => {
+  it('does not force focus for pointer activation', () => {
     expect(shouldFocusAislePointerActivation('aisle-1', 'aisle-1')).toBe(false)
-    expect(shouldFocusAislePointerActivation('aisle-1', 'aisle-2')).toBe(true)
+    expect(shouldFocusAislePointerActivation('aisle-1', 'aisle-2')).toBe(false)
     expect(shouldFocusAislePointerActivation('aisle-1', '')).toBe(false)
+  })
+
+  it('clears pending cursor restore only for pointer activation', () => {
+    expect(shouldClearPendingCursorRestoreForAisleActivation('pointer')).toBe(true)
+    expect(shouldClearPendingCursorRestoreForAisleActivation('focus')).toBe(false)
+    expect(shouldClearPendingCursorRestoreForAisleActivation('programmatic')).toBe(false)
+    expect(shouldClearPendingCursorRestoreForAisleActivation(undefined)).toBe(false)
   })
 
   it('preserves a freshly focused aisle when the resolved aisle is stale but still valid', () => {

@@ -43,6 +43,8 @@ describe('CustomThemeEditor', () => {
       palette: {
         ...DEFAULT_CUSTOM_THEME_PALETTE,
         primary: '#8844cc',
+        tagText: '#315577',
+        tagBg: '#dce6f6',
       },
     })
 
@@ -50,18 +52,28 @@ describe('CustomThemeEditor', () => {
     expect(html).toContain('aria-checked="true" class="settings-segmented-option is-selected">theming</button>')
     expect(html).toContain('>other visuals</button>')
     expect(html).toContain('role="radiogroup" aria-labelledby="settings-theme-label"')
+    expect(html.match(/class="theme-switch-option/g)).toHaveLength(3)
+    expect(html).toContain('>dark</button>')
+    expect(html).toContain('>light</button>')
+    expect(html).toContain('>dawn</button>')
     expect(html).toContain('aria-label="custom theme"')
     expect(html).toContain('<option value="custom1" selected="">custom 1</option>')
     expect(html).toContain('<option value="custom2">custom 2</option>')
     expect(html).toContain('<option value="custom3">custom 3</option>')
     expect(html).toContain('aria-label="primary color swatch"')
     expect(html).toContain('aria-label="primary hex value"')
+    expect(html).toContain('aria-label="tag font color swatch"')
+    expect(html).toContain('aria-label="tag font hex value"')
+    expect(html).toContain('aria-label="tag back color swatch"')
+    expect(html).toContain('aria-label="tag back hex value"')
     expect(html).toContain('aria-label="domain color swatch"')
     expect(html).toContain('aria-label="space color swatch"')
     expect(html).toContain('aria-label="parent tab color swatch"')
     expect(html).toContain('aria-label="sub tab color swatch"')
     expect(html).not.toContain('type="color"')
     expect(html).toContain('value="#8844cc"')
+    expect(html).toContain('value="#315577"')
+    expect(html).toContain('value="#dce6f6"')
     expect(html).toContain('value="#a95429"')
     expect(html).toContain('value="#997b28"')
     expect(html).toContain('value="#2f5da8"')

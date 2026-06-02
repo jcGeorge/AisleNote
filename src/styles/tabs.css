@@ -41,11 +41,24 @@
   justify-content: center;
 }
 
+.scratchpad-rail-btn.has-tag-count {
+  gap: calc(0.18rem * var(--tab-button-scale));
+  max-width: calc(62px * var(--tab-button-scale));
+  min-width: calc(62px * var(--tab-button-scale));
+}
+
 .scratchpad-rail-icon {
   width: calc(20px * var(--tab-button-scale));
   height: calc(20px * var(--tab-button-scale));
   display: block;
   color: currentColor;
+}
+
+.scratchpad-rail-tag-count {
+  display: inline-block;
+  font-size: inherit;
+  line-height: inherit;
+  white-space: nowrap;
 }
 
 .tab-btn.is-arrangeable {

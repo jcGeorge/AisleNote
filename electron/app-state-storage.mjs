@@ -57,6 +57,11 @@ import {
 } from '../src/markdown/image-asset-refs.js'
 import { splitAssetMetadataFromUrl } from '../src/markdown/asset-metadata.js'
 import { normalizePreviewReferenceTokensForMarkdown } from '../src/markdown/note-context-tokens.js'
+import {
+  extractMarkdownTags,
+  materializeComputedFrontmatterTags,
+  migrateAisleTags,
+} from '../src/tags/tags.js'
 
 export const HYBRID_ROOT_DIR = 'notes'
 const SCHEMA_VERSION = 1
@@ -760,7 +765,9 @@ function stringifyFrontmatterYaml(frontmatter) {
   return stringifyYaml(frontmatter, {
     collectionStyle: 'block',
     lineWidth: 0,
-  }).trimEnd()
+  })
+    .trimEnd()
+    .replace(/^([ \t]*[^:\n]+:)[ \t]*\r?\n[ \t]+\[\]$/gm, '$1 []')
 }
 
 function parseFrontmatterYaml(rawYaml) {
@@ -823,10 +830,13 @@ function normalizeAisleStorageContentForHash(content) {
   const frontmatterStatus = content?.frontmatterStatus === 'valid' || content?.frontmatterStatus === 'invalid'
     ? content.frontmatterStatus
     : 'none'
+  const markdown = typeof content?.markdown === 'string' ? content.markdown : ''
+  const tags = extractMarkdownTags(markdown)
+  const frontmatter = materializeComputedFrontmatterTags(content?.frontmatter, content?.frontmatterMeta, tags)
   return {
-    markdown: typeof content?.markdown === 'string' ? content.markdown : '',
+    markdown,
     frontmatterStatus,
-    frontmatter: frontmatterStatus === 'valid' && isRecord(content?.frontmatter) ? content.frontmatter : null,
+    frontmatter: frontmatterStatus === 'valid' && isRecord(frontmatter) ? frontmatter : null,
     frontmatterParseError: frontmatterStatus === 'invalid' && typeof content?.frontmatterParseError === 'string'
       ? content.frontmatterParseError
       : undefined,
@@ -842,7 +852,9 @@ function getAisleStorageContentHash(content) {
 
 function composeAisleMarkdownForStorage(markdown, aisleBody) {
   if (aisleBody?.frontmatterStatus === 'invalid') return markdown
-  const yaml = stringifyFrontmatterYaml(aisleBody?.frontmatter)
+  const tags = extractMarkdownTags(markdown)
+  const frontmatter = materializeComputedFrontmatterTags(aisleBody?.frontmatter, aisleBody?.frontmatterMeta, tags)
+  const yaml = stringifyFrontmatterYaml(frontmatter)
   return yaml ? `---\n${yaml}\n---\n${markdown}` : markdown
 }
 
@@ -851,6 +863,7 @@ function buildNoteAisleBodyManifestRecord(aisleBodyId, file, aisleBody) {
     id: aisleBodyId,
     file,
     contentHash: getAisleStorageContentHash(aisleBody),
+    tags: extractMarkdownTags(String(aisleBody?.markdown ?? '')),
     frontmatterMeta: isRecord(aisleBody?.frontmatterMeta) ? aisleBody.frontmatterMeta : undefined,
   }
 }
@@ -914,6 +927,7 @@ function writeNoteBodyAtPath({
           aisleBodyId: aisleId,
           file: primaryFileRelative,
           contentHash: getAisleStorageContentHash(undefined),
+          tags: [],
         },
       ]))
       if (!noteAisleBodyRecords.has(aisleId)) {
@@ -940,7 +954,13 @@ function writeNoteBodyAtPath({
         assetBank,
       ),
     )
-    aisleRecords.push({ id: aisleId, aisleBodyId, file, contentHash: getAisleStorageContentHash(sourceAisleBody) })
+    aisleRecords.push({
+      id: aisleId,
+      aisleBodyId,
+      file,
+      contentHash: getAisleStorageContentHash(sourceAisleBody),
+      tags: extractMarkdownTags(String(sourceAisleBody?.markdown ?? '')),
+    })
     if (!noteAisleBodyRecords.has(aisleBodyId)) {
       noteAisleBodyRecords.set(aisleBodyId, buildNoteAisleBodyManifestRecord(aisleBodyId, file, sourceAisleBody))
     }
@@ -1376,7 +1396,7 @@ function getFileMtimeMs(filePath) {
   }
 }
 
-function readMarkdownCandidate(rootPath, relativeFile, issues = null) {
+function readMarkdownCandidate(rootPath, relativeFile, issues = null, bodyRecord = null) {
   const absolutePath = path.join(rootPath, relativeFile)
   const rawMarkdown = readTextFileIfExists(absolutePath, issues, {
     rootPath,
@@ -1389,13 +1409,36 @@ function readMarkdownCandidate(rootPath, relativeFile, issues = null) {
   if (rawMarkdown === null) return null
   const markdown = referenceMarkdownImages(rawMarkdown, absolutePath, issues, rootPath)
   const parsedMarkdown = splitMarkdownFrontmatterForStorage(markdown)
-  const content = normalizeAisleStorageContentForHash(parsedMarkdown)
+  const migrated = parsedMarkdown.frontmatterStatus === 'valid'
+    ? migrateAisleTags({
+        markdown: parsedMarkdown.markdown,
+        frontmatter: parsedMarkdown.frontmatter,
+        frontmatterMeta: isRecord(bodyRecord?.frontmatterMeta) ? bodyRecord.frontmatterMeta : undefined,
+      })
+    : {
+        markdown: parsedMarkdown.markdown,
+        frontmatter: parsedMarkdown.frontmatter,
+        frontmatterMeta: isRecord(bodyRecord?.frontmatterMeta) ? bodyRecord.frontmatterMeta : undefined,
+        tags: extractMarkdownTags(parsedMarkdown.markdown),
+      }
+  const normalizedContent = normalizeAisleStorageContentForHash({
+    ...parsedMarkdown,
+    markdown: migrated.markdown,
+    frontmatter: migrated.frontmatter,
+    frontmatterMeta: migrated.frontmatterMeta,
+    tags: migrated.tags,
+  })
+  const content = {
+    ...normalizedContent,
+    tags: migrated.tags,
+    frontmatterMeta: migrated.frontmatterMeta,
+  }
   return {
     file: relativeFile,
     issuePath: path.posix.join(HYBRID_ROOT_DIR, relativeFile),
     mtimeMs: getFileMtimeMs(absolutePath),
     content,
-    contentHash: createStorageContentHash(content),
+    contentHash: createStorageContentHash(normalizedContent),
     parsedMarkdown,
   }
 }
@@ -1525,7 +1568,7 @@ function reconcileAisleBodyCandidates(rootPath, aisleBodyId, bodyRecord, candida
   const refs = dedupeAisleCandidateRefs(candidateRefs)
   const candidates = refs
     .map((ref) => {
-      const candidate = readMarkdownCandidate(rootPath, ref.file, issues)
+      const candidate = readMarkdownCandidate(rootPath, ref.file, issues, bodyRecord)
       if (!candidate) return null
       const expectedHash = ref.expectedHash || getRegistryContentHash(bodyRecord)
       return {
@@ -1627,11 +1670,16 @@ function readNoteAisleBodiesFromRoot(rootPath, noteAisleBodiesRoot, noteBodiesRo
     aisleBodies.push({
       id: bodyId,
       markdown: content.markdown,
+      tags: content.tags,
       frontmatter: content.frontmatter,
       frontmatterStatus: content.frontmatterStatus,
       frontmatterParseError: content.frontmatterParseError,
       frontmatterRaw: content.frontmatterRaw,
-      frontmatterMeta: isRecord(body.frontmatterMeta) ? body.frontmatterMeta : undefined,
+      frontmatterMeta: isRecord(content.frontmatterMeta)
+        ? content.frontmatterMeta
+        : isRecord(body.frontmatterMeta)
+          ? body.frontmatterMeta
+          : undefined,
     })
   }
   return { aisleBodies, decouples, messages }
@@ -1711,10 +1759,12 @@ function aisleContentToBodyRecord(id, content, sourceBody = null) {
     ...(isRecord(sourceBody) ? sourceBody : {}),
     id,
     markdown: typeof content?.markdown === 'string' ? content.markdown : '',
+    tags: Array.isArray(content?.tags) ? content.tags : extractMarkdownTags(content?.markdown ?? ''),
     frontmatter: content?.frontmatter,
     frontmatterStatus: content?.frontmatterStatus,
     frontmatterParseError: content?.frontmatterParseError,
     frontmatterRaw: content?.frontmatterRaw,
+    frontmatterMeta: isRecord(content?.frontmatterMeta) ? content.frontmatterMeta : sourceBody?.frontmatterMeta,
   }
 }
 
@@ -2194,7 +2244,7 @@ function readHybridAppStateFromRootManifest(rootPath, rootManifest, issues = nul
     ''
   const theme = rootParts.syncedSettings?.theme === 'custom'
     ? 'custom1'
-    : ['dark', 'light', 'dawn', 'blues', 'custom1', 'custom2', 'custom3'].includes(rootParts.syncedSettings?.theme)
+    : ['dark', 'light', 'dawn', 'custom1', 'custom2', 'custom3'].includes(rootParts.syncedSettings?.theme)
       ? rootParts.syncedSettings.theme
       : 'dawn'
 

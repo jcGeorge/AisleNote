@@ -99,11 +99,13 @@
     height: 32px !important;
   }
 
-  .settings-page-wrap {
+  .settings-page-wrap,
+  .utility-page-wrap {
     padding: 0.5rem 0.55rem 0.75rem;
   }
 
-  .settings-page-card {
+  .settings-page-card,
+  .utility-page-card {
     padding: 0.75rem;
   }
 
@@ -228,7 +230,8 @@
     word-break: break-word !important;
   }
 
-  .settings-page-wrap {
+  .settings-page-wrap,
+  .utility-page-wrap {
     padding-inline: 0.4rem;
   }
 
@@ -239,10 +242,6 @@
   .settings-section-tab {
     padding-inline: 0.12rem;
     font-size: 0.76em;
-  }
-
-  .theme-switch {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .theme-selection-controls {

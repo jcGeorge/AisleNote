@@ -230,45 +230,93 @@ describe('editor annotation styles', () => {
 
   it('renders annotation arrows with the editor text color at full opacity', () => {
     const css = readStyle('editor-content.css')
-    const annotationArrowCss = css.slice(
-      css.indexOf('.toastui-editor-contents p.tabs-annotation-line-arrow::before'),
-      css.indexOf('.toastui-editor-contents .tabs-annotation-line-marker,'),
-    )
     const lineArrowRule = extractRule(
       css,
       '.toastui-editor-contents p.tabs-annotation-line-arrow::before,\n.toastui-editor .ProseMirror p.tabs-annotation-line-arrow::before',
-    )
-    const lineArrowHeadRule = extractRule(
-      css,
-      '.toastui-editor-contents p.tabs-annotation-line-arrow::after,\n.toastui-editor .ProseMirror p.tabs-annotation-line-arrow::after',
     )
     const inlineArrowContainerRule = extractRule(
       css,
       '.toastui-editor-contents .tabs-annotation-inline-arrow,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow',
     )
-    const inlineArrowShaftRule = extractRule(
+    const inlineArrowShapeRule = extractRule(
       css,
       '.toastui-editor-contents .tabs-annotation-inline-arrow::before,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow::before',
     )
-    const inlineArrowHeadRule = extractRule(
-      css,
-      '.toastui-editor-contents .tabs-annotation-inline-arrow::after,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow::after',
-    )
-    const horizontalArrowShaftRule = extractRule(
+    const inlineHorizontalPositionRule = extractRule(
       css,
       '.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-right::before,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-right::before,\n.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-left::before,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-left::before',
     )
-    const horizontalArrowHeadRule = extractRule(
+    const lineHorizontalPositionRule = extractRule(
       css,
-      '.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-right::after,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-right::after,\n.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-left::after,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-left::after',
+      '.toastui-editor-contents p.tabs-annotation-line-arrow-right::before,\n.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-right::before,\n.toastui-editor-contents p.tabs-annotation-line-arrow-left::before,\n.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-left::before',
+    )
+    const rightArrowMaskRule = extractRule(
+      css,
+      '.toastui-editor-contents p.tabs-annotation-line-arrow-right::before,\n.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-right::before,\n.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-right::before,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-right::before',
+    )
+    const leftArrowMaskRule = extractRule(
+      css,
+      '.toastui-editor-contents p.tabs-annotation-line-arrow-left::before,\n.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-left::before,\n.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-left::before,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-left::before',
+    )
+    const turnArrowCss = css.slice(
+      css.indexOf('.toastui-editor-contents p.tabs-annotation-line-arrow-up::before'),
+      css.indexOf('.toastui-editor-contents .tabs-annotation-line-marker,'),
     )
     const turnArrowCurveRule = extractRule(
       css,
-      '.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up::before,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up::before,\n.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down::before,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down::before',
+      '.toastui-editor-contents p.tabs-annotation-line-arrow-up::before,\n.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-up::before,\n.toastui-editor-contents p.tabs-annotation-line-arrow-down::before,\n.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-down::before,\n.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up::before,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up::before,\n.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down::before,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down::before',
     )
-    const downArrowOffsetRule = extractRule(
+    const turnArrowHeadRule = extractRule(
       css,
-      '.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down',
+      '.toastui-editor-contents p.tabs-annotation-line-arrow-up::after,\n.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-up::after,\n.toastui-editor-contents p.tabs-annotation-line-arrow-down::after,\n.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-down::after,\n.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up::after,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up::after,\n.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down::after,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down::after',
+    )
+    const turnArrowSizingRule = extractRule(
+      css,
+      '.toastui-editor-contents p.tabs-annotation-line-arrow-up,\n.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-up,\n.toastui-editor-contents p.tabs-annotation-line-arrow-down,\n.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-down,\n.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up,\n.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down',
+    )
+    const inlineTurnSizingRule = extractLastRule(
+      css,
+      '.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up,\n.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down',
+    )
+    const upLineCurvePositionRule = extractRule(
+      css,
+      '.toastui-editor-contents p.tabs-annotation-line-arrow-up::before,\n.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-up::before',
+    )
+    const upLineHeadPositionRule = extractRule(
+      css,
+      '.toastui-editor-contents p.tabs-annotation-line-arrow-up::after,\n.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-up::after',
+    )
+    const upInlineTailLeftCurveRule = extractRule(
+      css,
+      '.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-left::before,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-left::before',
+    )
+    const upInlineTailLeftHeadRule = extractRule(
+      css,
+      '.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-left::after,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-left::after',
+    )
+    const upInlineTailRightCurveRule = extractRule(
+      css,
+      '.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-right::before,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-right::before',
+    )
+    const downLineCurvePositionRule = extractRule(
+      css,
+      '.toastui-editor-contents p.tabs-annotation-line-arrow-down::before,\n.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-down::before',
+    )
+    const downLineHeadPositionRule = extractRule(
+      css,
+      '.toastui-editor-contents p.tabs-annotation-line-arrow-down::after,\n.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-down::after',
+    )
+    const downInlineTailLeftCurveRule = extractRule(
+      css,
+      '.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-left::before,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-left::before',
+    )
+    const downInlineTailLeftHeadRule = extractRule(
+      css,
+      '.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-left::after,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-left::after',
+    )
+    const downInlineTailRightCurveRule = extractRule(
+      css,
+      '.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-right::before,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-right::before',
     )
     const wysiwygMarkerRule = extractRule(
       css,
@@ -276,32 +324,89 @@ describe('editor annotation styles', () => {
     )
     const wysiwygMarkerPseudoRule = extractRule(
       css,
-      '.toastui-editor .ProseMirror .tabs-annotation-line-marker.tabs-annotation-inline-arrow::before,\n.toastui-editor .ProseMirror .tabs-annotation-line-marker.tabs-annotation-inline-arrow::after',
+      '.toastui-editor .ProseMirror .tabs-annotation-line-marker.tabs-annotation-inline-arrow::before',
     )
 
-    expect(annotationArrowCss).not.toContain('mask-image')
-    expect(annotationArrowCss).not.toContain('-webkit-mask-image')
-    expect(annotationArrowCss).not.toContain('data:image/svg+xml')
-    expect(annotationArrowCss).not.toContain('1.116rem')
+    expect(turnArrowCss).not.toContain('mask-image')
+    expect(turnArrowCss).not.toContain('-webkit-mask-image')
+    expect(turnArrowCss).not.toContain('data:image/svg+xml')
+    expect(turnArrowCss).not.toContain("content: '⤴';")
+    expect(turnArrowCss).not.toContain("content: '⤵';")
+    expect(turnArrowCss).not.toContain('font-weight: 700;')
+    expect(turnArrowCss).not.toContain('font-size: 0.96em;')
+    expect(turnArrowCss).not.toContain('display: flex;')
+    expect(turnArrowCss).not.toContain('scaleX(-1)')
+    expect(turnArrowCss).not.toContain('--annotation-arrow-down-offset')
     expect(lineArrowRule).toContain('color: var(--editor-text) !important;')
+    expect(lineArrowRule).toContain('width: 1.116rem;')
+    expect(lineArrowRule).toContain('height: 1.116rem;')
+    expect(lineArrowRule).toContain('background: currentColor !important;')
     expect(lineArrowRule).toContain('opacity: 1;')
-    expect(lineArrowHeadRule).toContain("content: '';")
-    expect(lineArrowHeadRule).toContain('color: var(--editor-text) !important;')
-    expect(inlineArrowContainerRule).toContain('width: 0.95em;')
+    expect(lineArrowRule).toContain('mask-size: contain;')
+    expect(inlineArrowContainerRule).toContain('--annotation-arrow-size: 1.116rem;')
+    expect(inlineArrowContainerRule).toContain('width: var(--annotation-arrow-size);')
     expect(inlineArrowContainerRule).toContain('height: 1em;')
     expect(inlineArrowContainerRule).toContain('color: var(--editor-text) !important;')
-    expect(inlineArrowContainerRule).toContain('vertical-align: -0.08em;')
+    expect(inlineArrowContainerRule).toContain('vertical-align: baseline;')
     expect(inlineArrowContainerRule).toContain('opacity: 1;')
-    expect(inlineArrowShaftRule).toContain("content: '';")
-    expect(inlineArrowShaftRule).toContain('color: var(--editor-text) !important;')
-    expect(inlineArrowHeadRule).toContain("content: '';")
-    expect(inlineArrowHeadRule).toContain('color: var(--editor-text) !important;')
-    expect(horizontalArrowShaftRule).toContain('background: currentColor !important;')
-    expect(horizontalArrowHeadRule).toContain('background: transparent !important;')
-    expect(turnArrowCurveRule).toContain('border-color: currentColor;')
+    expect(inlineArrowShapeRule).toContain("content: '';")
+    expect(inlineArrowShapeRule).toContain('width: var(--annotation-arrow-size);')
+    expect(inlineArrowShapeRule).toContain('height: var(--annotation-arrow-size);')
+    expect(inlineArrowShapeRule).toContain('color: var(--editor-text) !important;')
+    expect(inlineArrowShapeRule).toContain('background: currentColor !important;')
+    expect(inlineArrowShapeRule).toContain('opacity: 1;')
+    expect(inlineHorizontalPositionRule).toContain('top: 82%;')
+    expect(lineHorizontalPositionRule).toContain('top: 0.48em;')
+    expect(rightArrowMaskRule).toContain('mask-image: url("data:image/svg+xml')
+    expect(rightArrowMaskRule).toContain('-webkit-mask-image: url("data:image/svg+xml')
+    expect(leftArrowMaskRule).toContain('mask-image: url("data:image/svg+xml')
+    expect(leftArrowMaskRule).toContain('-webkit-mask-image: url("data:image/svg+xml')
     expect(turnArrowCurveRule).toContain('width: 0.48em;')
-    expect(downArrowOffsetRule).toContain('--annotation-arrow-down-offset: 0.14em;')
-    expect(wysiwygMarkerRule).toContain('vertical-align: -0.08em;')
+    expect(turnArrowCurveRule).toContain('height: 0.48em;')
+    expect(turnArrowCurveRule).toContain('background: transparent !important;')
+    expect(turnArrowCurveRule).toContain('border-color: currentColor;')
+    expect(turnArrowCurveRule).toContain('border-style: solid;')
+    expect(turnArrowCurveRule).toContain('border-radius: 0.18em;')
+    expect(turnArrowCurveRule).toContain('color: var(--editor-text) !important;')
+    expect(turnArrowCurveRule).toContain('opacity: 1;')
+    expect(turnArrowHeadRule).toContain("content: '';")
+    expect(turnArrowHeadRule).toContain('border-left: var(--annotation-arrow-head) solid transparent;')
+    expect(turnArrowHeadRule).toContain('border-right: var(--annotation-arrow-head) solid transparent;')
+    expect(turnArrowHeadRule).toContain('color: var(--editor-text) !important;')
+    expect(turnArrowHeadRule).toContain('opacity: 1;')
+    expect(turnArrowSizingRule).toContain('--annotation-arrow-stroke: 0.14em;')
+    expect(turnArrowSizingRule).toContain('--annotation-arrow-head: 0.27em;')
+    expect(turnArrowSizingRule).toContain('--annotation-turn-up-shift: 0.08em;')
+    expect(turnArrowSizingRule).toContain('--annotation-turn-down-shift: 0.20em;')
+    expect(inlineTurnSizingRule).toContain('width: 0.95em;')
+    expect(inlineTurnSizingRule).toContain('vertical-align: -0.08em;')
+    expect(upLineCurvePositionRule).toContain('top: calc(0.58em + var(--annotation-turn-up-shift));')
+    expect(upLineHeadPositionRule).toContain('top: calc(0.39em + var(--annotation-turn-up-shift));')
+    expect(upLineHeadPositionRule).toContain('border-bottom: 0.29em solid currentColor;')
+    expect(upInlineTailLeftCurveRule).toContain('top: calc(0.32em + var(--annotation-turn-up-shift));')
+    expect(upInlineTailLeftCurveRule).toContain('border-right-width: var(--annotation-arrow-stroke);')
+    expect(upInlineTailLeftCurveRule).toContain('border-bottom-width: var(--annotation-arrow-stroke);')
+    expect(upInlineTailLeftCurveRule).toContain('transform: none;')
+    expect(upInlineTailLeftHeadRule).toContain('top: calc(0.13em + var(--annotation-turn-up-shift));')
+    expect(upInlineTailLeftHeadRule).toContain(
+      'border-bottom: calc(var(--annotation-arrow-head) * 1.08) solid currentColor;',
+    )
+    expect(upInlineTailRightCurveRule).toContain('right: 0.24em;')
+    expect(upInlineTailRightCurveRule).toContain('border-left-width: var(--annotation-arrow-stroke);')
+    expect(downLineCurvePositionRule).toContain('top: calc(0.38em + var(--annotation-turn-down-shift));')
+    expect(downLineHeadPositionRule).toContain('top: calc(0.77em + var(--annotation-turn-down-shift));')
+    expect(downLineHeadPositionRule).toContain('border-top: 0.29em solid currentColor;')
+    expect(downInlineTailLeftCurveRule).toContain('top: calc(0.16em + var(--annotation-turn-down-shift));')
+    expect(downInlineTailLeftCurveRule).toContain('border-right-width: var(--annotation-arrow-stroke);')
+    expect(downInlineTailLeftCurveRule).toContain('border-top-width: var(--annotation-arrow-stroke);')
+    expect(downInlineTailLeftCurveRule).toContain('transform: none;')
+    expect(downInlineTailLeftHeadRule).toContain('top: calc(0.55em + var(--annotation-turn-down-shift));')
+    expect(downInlineTailLeftHeadRule).toContain(
+      'border-top: calc(var(--annotation-arrow-head) * 1.08) solid currentColor;',
+    )
+    expect(downInlineTailRightCurveRule).toContain('right: 0.24em;')
+    expect(downInlineTailRightCurveRule).toContain('border-left-width: var(--annotation-arrow-stroke);')
+    expect(wysiwygMarkerRule).toContain('vertical-align: baseline;')
     expect(wysiwygMarkerPseudoRule).toContain('color: var(--editor-text) !important;')
   })
 })
@@ -368,6 +473,16 @@ describe('compact scope tab scaling styles', () => {
     expect(previewButtonRule).not.toContain('max-width: none;')
   })
 
+  it('sizes the built-in theme switch for the current theme count', () => {
+    const settingsCss = readStyle('settings.css')
+    const responsiveCss = readStyle('responsive.css')
+    const themeSwitchRule = extractRule(settingsCss, '.theme-switch')
+
+    expect(themeSwitchRule).toContain('grid-template-columns: repeat(3, minmax(0, 1fr));')
+    expect(themeSwitchRule).not.toContain('repeat(4')
+    expect(responsiveCss).not.toContain('.theme-switch {\n    grid-template-columns:')
+  })
+
   it('uses parent/sub-tab rename input styling for compact space/domain rename inputs', () => {
     const topbarCss = readStyle('topbar.css')
     const compactScopeRailsSource = readFileSync(
@@ -408,6 +523,15 @@ describe('compact scope tab scaling styles', () => {
     expect(compactSortRule).toContain('color: var(--rail-control-text);')
   })
 
+  it('keeps the scratchpad tag count on the inherited rail button typography', () => {
+    const tabsCss = readStyle('tabs.css')
+    const countRule = extractRule(tabsCss, '.scratchpad-rail-tag-count')
+
+    expect(countRule).toContain('font-size: inherit;')
+    expect(countRule).toContain('line-height: inherit;')
+    expect(countRule).not.toContain('0.78rem')
+  })
+
   it('uses one shared nav rail background surface for all note-page rows', () => {
     const baseCss = readStyle('base.css')
     const topbarCss = readStyle('topbar.css')
@@ -420,7 +544,7 @@ describe('compact scope tab scaling styles', () => {
     expect(baseCss).toContain('--tabbar-bg: var(--nav-rail-bg);')
     expect(baseCss).toContain('--subtabbar-bg: var(--nav-rail-bg);')
 
-    for (const themeFile of ['themes/light.css', 'themes/dawn.css', 'themes/blues.css']) {
+    for (const themeFile of ['themes/light.css', 'themes/dawn.css']) {
       const themeCss = readStyle(themeFile)
       expect(themeCss).toContain('--nav-rail-bg:')
       expect(themeCss).toContain('--nav-rail-border:')
@@ -598,7 +722,7 @@ describe('compact scope tab scaling styles', () => {
     expect(trashActiveRule).toContain('box-shadow: none;')
     expect(trashActiveRule).not.toContain('inset 0 0 0 2px')
 
-    for (const themeFile of ['themes/light.css', 'themes/dawn.css', 'themes/blues.css']) {
+    for (const themeFile of ['themes/light.css', 'themes/dawn.css']) {
       const themeCss = readStyle(themeFile)
       expect(themeCss).not.toContain('--domain-rail-accent:')
       expect(themeCss).not.toContain('--space-rail-accent:')
@@ -821,6 +945,12 @@ describe('theme editor selector deduplication', () => {
     expect(baseCss).toContain('--editor-hr-opacity:')
     expect(baseCss).toContain('--editor-shell-bg:')
     expect(baseCss).toContain('--editor-trash-home-bg:')
+    expect(baseCss).toContain('--custom-palette-tag-text: var(--custom-theme-tag-text, #06141a);')
+    expect(baseCss).toContain('--custom-palette-tag-bg: var(--custom-theme-tag-bg, #22d3ee);')
+    expect(baseCss).toContain('--editor-tag-text: var(--custom-palette-tag-text);')
+    expect(baseCss).toContain('--editor-tag-bg: var(--custom-palette-tag-bg);')
+    expect(baseCss).toContain('--editor-tag-text: #06141a;')
+    expect(baseCss).toContain('--editor-tag-bg: #22d3ee;')
 
     expect(editorBaseCss).toContain('.toast-editor-host,\n.toastui-editor-defaultUI,\n.toastui-editor-main,')
     expect(editorBaseCss).toContain('.toastui-editor-main .toastui-editor-md-splitter')
@@ -845,13 +975,37 @@ describe('theme editor selector deduplication', () => {
     expect(editorContentCss).toContain('opacity: var(--editor-hr-opacity, 0.74) !important;')
     expect(editorContentCss).toContain('background: var(--editor-pre-bg) !important;')
     expect(editorContentCss).toContain('border: 1px solid var(--editor-pre-border) !important;')
+    const tagTokenRule = extractRule(
+      editorContentCss,
+      '.toastui-editor-contents .tabs-tag-token,\n.toastui-editor .ProseMirror .tabs-tag-token,\n.aisle-editor-preview-fallback .tabs-tag-token,\n.aisle-edit-preview .tabs-tag-token',
+    )
+    expect(tagTokenRule).toContain('color: var(--editor-tag-text, #06141a) !important;')
+    expect(tagTokenRule).toContain(
+      'background: var(--editor-tag-bg, #22d3ee) !important;',
+    )
+    expect(tagTokenRule).toContain('border: 0 !important;')
+    expect(tagTokenRule).toContain('border-radius: 0.28em !important;')
+    expect(tagTokenRule).toContain('padding: 0.02em 0.22em !important;')
+    expect(tagTokenRule).toContain('font-size: inherit !important;')
+    expect(tagTokenRule).toContain('font-weight: inherit !important;')
+    expect(tagTokenRule).toContain('line-height: inherit !important;')
+    expect(tagTokenRule).toContain('-webkit-box-decoration-break: clone;')
+    expect(tagTokenRule).toContain('box-decoration-break: clone;')
+    expect(tagTokenRule).not.toContain('font-weight: 600')
+    expect(editorContentCss).toContain('.toastui-editor .ProseMirror .tabs-tag-token.tabs-tag-jump-target')
+    expect(editorContentCss).toContain('@keyframes tabs-tag-jump-glow')
+    expect(editorContentCss).toContain('var(--editor-tag-bg, #22d3ee)')
 
     expect(editorShellCss).toContain('background-color: var(--editor-shell-bg, var(--editor-bg));')
     expect(editorShellCss).toContain('background-color: var(--editor-trash-home-bg, var(--editor-bg));')
+    expect(editorShellCss).toContain('.tag-autocomplete-menu')
+    expect(editorShellCss).toContain('.tag-autocomplete-token.tabs-tag-token')
+    expect(editorShellCss).toContain('color: var(--editor-tag-text);')
+    expect(editorShellCss).toContain('background: var(--editor-tag-bg);')
   })
 
   it('keeps theme files focused on tokens and true exceptions', () => {
-    const themeNames = ['light', 'dawn', 'blues'] as const
+    const themeNames = ['light', 'dawn'] as const
     const removedTokenSelectorFragments = [
       '.editor-shell',
       '.trash-home-note',
@@ -878,6 +1032,8 @@ describe('theme editor selector deduplication', () => {
       expect(css).toContain('--editor-clear-note-toolbar-text:')
       expect(css).toContain('--editor-list-marker-opacity:')
       expect(css).toContain('--editor-hr-opacity:')
+      expect(css).toContain('--editor-tag-text:')
+      expect(css).toContain('--editor-tag-bg:')
       expect(css).toContain('--editor-shell-bg:')
       expect(css).toContain('--editor-trash-home-bg:')
 
@@ -893,13 +1049,11 @@ describe('theme editor selector deduplication', () => {
 
     const dawnCss = readStyle('themes/dawn.css')
     const lightCss = readStyle('themes/light.css')
-    const bluesCss = readStyle('themes/blues.css')
 
     expect(dawnCss).toContain('.theme-dawn .toastui-editor-toolbar-icons.quote,')
     expect(dawnCss).toContain('.theme-dawn .toastui-editor-toolbar-icons.task-list::before')
     expect(dawnCss).toContain('.theme-dawn .toastui-editor-contents .task-list-item.checked::before')
     expect(lightCss).not.toContain('.theme-light .toastui-editor-toolbar-icons.quote')
-    expect(bluesCss).not.toContain('.theme-blues .toastui-editor-toolbar-icons.quote')
   })
 })
 

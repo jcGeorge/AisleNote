@@ -37,6 +37,7 @@ import type {
   WorkspaceData,
 } from '../types/app'
 import type { PendingCursorRestore } from '../editor/useNoteCursorPersistence'
+import type { AisleActivationSource } from '../editor/aisle-activation'
 
 type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
 
@@ -46,7 +47,12 @@ type CommitRenameOptions = {
 
 type ActivateAisleEditor = (
   editorKey: string,
-  options?: { focus?: boolean; flushPrevious?: boolean; allowDuringPendingRename?: boolean },
+  options?: {
+    focus?: boolean
+    flushPrevious?: boolean
+    allowDuringPendingRename?: boolean
+    source?: AisleActivationSource
+  },
 ) => boolean
 type CloseEditorEphemera = (options?: { restoreEditorFocus?: boolean }) => void
 

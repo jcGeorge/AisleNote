@@ -2,7 +2,7 @@ import { createRef } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import { createEmptyStageManagerParentSelection } from '../../stage-manager/selection'
-import type { ArrangeModeState, Tab, WorkspaceData } from '../../types/app'
+import type { ArrangeModeState, SettingsSection, Tab, ViewMode, WorkspaceData } from '../../types/app'
 import { SubTabRail } from './SubTabRail'
 import { TopBar } from './TopBar'
 
@@ -50,17 +50,24 @@ function renderTopBar(
   tooltipsDisabled: boolean,
   arrangeModeOverride: Partial<ArrangeModeState> = {},
   arrangeControlsDisabled = false,
+  options: {
+    viewMode?: ViewMode
+    settingsSection?: SettingsSection
+    messagesCount?: number
+  } = {},
 ) {
+  const viewMode = options.viewMode ?? 'main'
   return renderToStaticMarkup(
     <TopBar
-      viewMode="main"
+      viewMode={viewMode}
       workspace={workspace}
       activeTab={activeTab}
       editing={null}
       arrangeMode={{ ...arrangeMode, ...arrangeModeOverride }}
       tooltipsDisabled={tooltipsDisabled}
+      settingsSection={options.settingsSection ?? 'hotkeys'}
       primaryTabRailRef={createRef<HTMLDivElement>()}
-      isNoteWorkspaceView
+      isNoteWorkspaceView={viewMode === 'main' || viewMode === 'stage-manager'}
       arrangeableParentTabClassName="is-arrangeable"
       arrangeControlsDisabled={arrangeControlsDisabled}
       draggingParentTabId={null}
@@ -108,9 +115,11 @@ function renderTopBar(
       onToggleDomainRail={noop}
       onOpenStageManager={noop}
       onToggleTrash={noop}
-      onOpenMain={noop}
       onOpenMessages={noop}
       onOpenSettings={noop}
+      onOpenAbout={noop}
+      onSettingsSectionChange={noop}
+      messagesCount={options.messagesCount ?? 0}
     />,
   )
 }
@@ -181,6 +190,35 @@ describe('navigation arrange tooltips', () => {
     expect(disabledHtml).not.toContain('title="sort parents"')
     expect(disabledHtml).toContain('aria-label="sort parents"')
     expect(enabledHtml.indexOf('Alpha')).toBeLessThan(enabledHtml.indexOf('aria-label="sort parents"'))
+  })
+
+  it('renders settings section buttons in the primary rail', () => {
+    const html = renderTopBar(false, { active: false }, false, {
+      viewMode: 'settings',
+      settingsSection: 'toolbar',
+    })
+
+    expect(html).toContain('aria-label="settings sections"')
+    expect(html.indexOf('>data</button>')).toBeLessThan(html.indexOf('>frontmatter</button>'))
+    expect(html.indexOf('>frontmatter</button>')).toBeLessThan(html.indexOf('>hotkeys</button>'))
+    expect(html.indexOf('>tips</button>')).toBeLessThan(html.indexOf('>toolbar</button>'))
+    expect(html.indexOf('>toolbar</button>')).toBeLessThan(html.indexOf('>visuals</button>'))
+    expect(html).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn parent-tab-btn settings-section-rail-btn">toolbar</button>')
+    expect(html).toMatch(/topbar-context-btn[^"]*">settings<\/button>/)
+  })
+
+  it('renders messages and about as selected utility rail buttons', () => {
+    const messagesHtml = renderTopBar(false, { active: false }, false, {
+      viewMode: 'messages',
+      messagesCount: 2,
+    })
+    const aboutHtml = renderTopBar(false, { active: false }, false, { viewMode: 'about' })
+
+    expect(messagesHtml).toContain('aria-label="utility pages"')
+    expect(messagesHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn parent-tab-btn utility-view-rail-btn">messages (2)</button>')
+    expect(messagesHtml).toMatch(/topbar-context-btn[^"]*">messages \(2\)<\/button>/)
+    expect(aboutHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn parent-tab-btn utility-view-rail-btn">about</button>')
+    expect(aboutHtml).toMatch(/topbar-context-btn[^"]*">about<\/button>/)
   })
 
   it('keeps parent and sub-tab sort controls visible while arranging spaces or domains', () => {

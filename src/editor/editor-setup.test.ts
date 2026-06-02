@@ -29,13 +29,18 @@ import {
   getBlockIndentDecorationRanges,
   getClosedHighlightMarkerShortcut,
   getParagraphSpaceShortcut,
+  getTagDecorationRanges,
   headingSpaceShortcutPlugin,
   highlightPlugin,
+  TAG_JUMP_HIGHLIGHT_META,
+  TAG_JUMP_TARGET_CLASS_NAME,
   thematicBreakShortcutPlugin,
+  tagAppearancePlugin,
   toggleHighlightMark,
 } from './editor-setup'
 import { getBulletListMarkerFromAttrs } from './list-markers'
 import { BLOCK_INDENT_TOKEN, INDENT_TOKEN } from '../markdown/markdown-utils'
+import { TAG_TOKEN_CLASS_NAME } from '../tags/tags.js'
 
 function node(typeName: string, textContent = '', contentSize = 0) {
   return {
@@ -907,6 +912,71 @@ function getBlockIndentDecorationCalls(textContent: string, textChildren?: Array
   return calls
 }
 
+function tagDoc(children: Array<{
+  text: string
+  position: number
+  marks?: Array<{ type?: { name?: string; spec?: Record<string, unknown> } }>
+  parentType?: { name?: string; spec?: Record<string, unknown> }
+}>) {
+  return {
+    descendants: (visitor: (node: unknown, pos: number, parent?: unknown) => unknown) => {
+      children.forEach((child) => {
+        visitor(
+          {
+            isText: true,
+            text: child.text,
+            marks: child.marks ?? [],
+            type: { name: 'text' },
+          },
+          child.position,
+          { type: child.parentType ?? { name: 'paragraph' } },
+        )
+      })
+    },
+  }
+}
+
+function getTagDecorationCalls(doc: unknown, jumpMeta?: unknown) {
+  const calls: DecorationCall[] = []
+  class FakePlugin {
+    spec: any
+
+    constructor(spec: any) {
+      this.spec = spec
+    }
+  }
+
+  const pluginBundle = tagAppearancePlugin({
+    pmState: {
+      Plugin: FakePlugin,
+    },
+    pmView: {
+      Decoration: {
+        inline: (from: number, to: number, attrs: Record<string, string>) => {
+          calls.push({ kind: 'inline', from, to, attrs })
+          return calls.at(-1)
+        },
+      },
+      DecorationSet: {
+        create: (_doc: unknown, decorations: unknown[]) => decorations,
+      },
+    },
+  })
+  const plugin = pluginBundle.wysiwygPlugins[0]() as FakePlugin
+
+  const jumpMetas = jumpMeta === undefined ? [] : Array.isArray(jumpMeta) ? jumpMeta : [jumpMeta]
+  jumpMetas.forEach((meta) => {
+    plugin.spec.state.apply(
+      {
+        getMeta: (key: string) => (key === TAG_JUMP_HIGHLIGHT_META ? meta : undefined),
+      },
+      null,
+    )
+  })
+  plugin.spec.props.decorations({ doc })
+  return calls
+}
+
 describe('block indent WYSIWYG decorations', () => {
   it('finds only the block indent marker range and leaves paragraph indents stackable', () => {
     const ranges = getBlockIndentDecorationRanges(blockIndentDoc(`${BLOCK_INDENT_TOKEN}${INDENT_TOKEN}one`))
@@ -940,6 +1010,67 @@ describe('block indent WYSIWYG decorations', () => {
         to: 1 + BLOCK_INDENT_TOKEN.length,
         attrs: { class: BLOCK_INDENT_TOKEN_HIDDEN_CLASS_NAME },
       },
+    ])
+  })
+})
+
+describe('tag WYSIWYG decorations', () => {
+  it('maps authored hashtag ranges through ProseMirror text positions', () => {
+    expect(getTagDecorationRanges(tagDoc([
+      { text: 'Read #Tag-3 and #asdf', position: 1 },
+    ]))).toEqual([
+      { from: 6, to: 12, text: '#Tag-3', tag: 'Tag-3' },
+      { from: 17, to: 22, text: '#asdf', tag: 'asdf' },
+    ])
+  })
+
+  it('skips inline code marks and code block parents', () => {
+    const codeMark = { type: { name: 'code' } }
+    expect(getTagDecorationRanges(tagDoc([
+      { text: '#Visible', position: 1 },
+      { text: '#Inline', position: 12, marks: [codeMark] },
+      { text: '#Fenced', position: 24, parentType: { name: 'codeBlock', spec: { code: true } } },
+    ]))).toEqual([
+      { from: 1, to: 9, text: '#Visible', tag: 'Visible' },
+    ])
+  })
+
+  it('creates inline decorations with the shared tag token class and tag metadata', () => {
+    expect(getTagDecorationCalls(tagDoc([{ text: '#Tag-3', position: 4 }]))).toEqual([
+      {
+        kind: 'inline',
+        from: 4,
+        to: 10,
+        attrs: { class: TAG_TOKEN_CLASS_NAME, 'data-tabs-tag': 'Tag-3', title: 'filter by tag' },
+      },
+    ])
+  })
+
+  it('adds and clears the transient tag jump glow class by transaction metadata', () => {
+    const doc = tagDoc([{ text: '#one #two', position: 1 }])
+    const highlighted = getTagDecorationCalls(doc, { from: 1, to: 5, requestId: 1 })
+
+    expect(highlighted).toEqual([
+      {
+        kind: 'inline',
+        from: 1,
+        to: 5,
+        attrs: {
+          class: `${TAG_TOKEN_CLASS_NAME} ${TAG_JUMP_TARGET_CLASS_NAME}`,
+          'data-tabs-tag': 'one',
+          title: 'filter by tag',
+        },
+      },
+      {
+        kind: 'inline',
+        from: 6,
+        to: 10,
+        attrs: { class: TAG_TOKEN_CLASS_NAME, 'data-tabs-tag': 'two', title: 'filter by tag' },
+      },
+    ])
+    expect(getTagDecorationCalls(doc, [{ from: 1, to: 5, requestId: 1 }, null]).map((call) => call.attrs?.class)).toEqual([
+      TAG_TOKEN_CLASS_NAME,
+      TAG_TOKEN_CLASS_NAME,
     ])
   })
 })

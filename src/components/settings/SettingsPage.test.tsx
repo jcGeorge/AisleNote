@@ -176,7 +176,6 @@ function renderSettingsPage(
       storageProfileStatus={options.storageProfileStatus ?? null}
       userSettingsLocationStatus={options.userSettingsLocationStatus ?? null}
       notebookBackupStatus={options.notebookBackupStatus ?? null}
-      onSectionChange={() => undefined}
       onDataSectionChange={() => undefined}
       onVisualsSectionChange={() => undefined}
       onToggleShortcutEdit={() => undefined}
@@ -257,18 +256,13 @@ function renderSettingsPage(
 }
 
 describe('frontmatter settings page', () => {
-  it('renders settings tabs in alphabetical order with toolbar and visuals included', () => {
+  it('does not render the old in-page settings section rail', () => {
     const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'hotkeys' })
 
-    expect(html).toContain('>toolbar</button>')
-    expect(html).not.toContain('>theming</button>')
-    expect(html.indexOf('>data</button>')).toBeLessThan(html.indexOf('>frontmatter</button>'))
-    expect(html.indexOf('>frontmatter</button>')).toBeLessThan(html.indexOf('>hotkeys</button>'))
-    expect(html.indexOf('>hotkeys</button>')).toBeLessThan(html.indexOf('>misc</button>'))
-    expect(html.indexOf('>misc</button>')).toBeLessThan(html.indexOf('>shortcuts</button>'))
-    expect(html.indexOf('>shortcuts</button>')).toBeLessThan(html.indexOf('>tips</button>'))
-    expect(html.indexOf('>tips</button>')).toBeLessThan(html.indexOf('>toolbar</button>'))
-    expect(html.indexOf('>toolbar</button>')).toBeLessThan(html.indexOf('>visuals</button>'))
+    expect(html).not.toContain('settings-section-tabs')
+    expect(html).not.toContain('settings-section-tab')
+    expect(html).toContain('hotkeys')
+    expect(html).toContain('settings-shortcut-btn')
   })
 
   it('renders parent-tab cycle hotkey rows as unbound shortcuts', () => {
@@ -527,6 +521,8 @@ describe('frontmatter settings page', () => {
       custom1: {
         ...DEFAULT_CUSTOM_THEME_PALETTE,
         primary: '#8844cc',
+        tagText: '#315577',
+        tagBg: '#dce6f6',
       },
     }
     const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'visuals', state })
@@ -541,12 +537,18 @@ describe('frontmatter settings page', () => {
     expect(html).toContain('aria-label="theme color preview"')
     expect(html).toContain('aria-label="primary color swatch"')
     expect(html).toContain('aria-label="primary hex value"')
+    expect(html).toContain('aria-label="tag font color swatch"')
+    expect(html).toContain('aria-label="tag font hex value"')
+    expect(html).toContain('aria-label="tag back color swatch"')
+    expect(html).toContain('aria-label="tag back hex value"')
     expect(html).toContain('aria-label="domain color swatch"')
     expect(html).toContain('aria-label="space color swatch"')
     expect(html).toContain('aria-label="parent tab color swatch"')
     expect(html).toContain('aria-label="sub tab color swatch"')
     expect(html).not.toContain('type="color"')
     expect(html).toContain('value="#8844cc"')
+    expect(html).toContain('value="#315577"')
+    expect(html).toContain('value="#dce6f6"')
     expect(html).toContain('value="#a95429"')
     expect(html).toContain('value="#997b28"')
     expect(html).toContain('value="#2f5da8"')
@@ -575,6 +577,7 @@ describe('frontmatter settings page', () => {
       expect(html).toContain(`title="${label}" aria-label="${label}" disabled=""`)
     })
     expect(html).toContain('<h3 class="visuals-preview-heading">header</h3>')
+    expect(html).toContain('<p class="visuals-preview-tag-line"><span class="tabs-tag-token">#tag</span></p>')
     expect(html).toContain('<ul class="visuals-preview-list tabs-dash-list" data-tabs-list-marker="dash"><li>dash</li></ul>')
     expect(html).toContain('<li>bullet</li>')
     expect(html).toContain('<li>number</li>')
@@ -601,6 +604,8 @@ describe('frontmatter settings page', () => {
     expect(html).toContain('--nav-rail-border:rgba(93, 75, 34, 0.24)')
     expect(html).toContain('--editor-toolbar-bg:#c7b37a')
     expect(html).toContain('--editor-border:#8a744a')
+    expect(html).toContain('--editor-tag-text:#fff7ed')
+    expect(html).toContain('--editor-tag-bg:#0f766e')
     expect(html).toContain('class="visuals-preview-rail-row is-count-2" aria-label="domain rail samples"')
     expect(html).toContain('class="visuals-preview-rail-row is-count-2" aria-label="space rail samples"')
     expect(html).toContain('class="visuals-preview-rail-row is-count-2" aria-label="parent rail samples"')
@@ -635,19 +640,6 @@ describe('frontmatter settings page', () => {
     expect(html).not.toContain('aria-label="subtab rail sample 3"')
   })
 
-  it('renders blues theme preview with the light editor background', () => {
-    const state = createState()
-    state.theme = 'blues'
-    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'visuals', state })
-
-    expect(html).toContain('--visuals-preview-page:#314563')
-    expect(html).toContain('--visuals-preview-panel-bg:#aeb8c6')
-    expect(html).toContain('--nav-rail-bg:#8797b0')
-    expect(html).toContain('--nav-rail-border:rgba(47, 65, 98, 0.24)')
-    expect(html).toContain('--editor-toolbar-bg:#8fa0b8')
-    expect(html).toContain('--editor-border:#61728f')
-  })
-
   it('selects one theme preview rail sample per rail', () => {
     const nextSelection = selectThemePreviewRailSample(DEFAULT_THEME_PREVIEW_RAIL_SELECTION, 'domain', 1)
 
@@ -677,11 +669,12 @@ describe('frontmatter settings page', () => {
     state.theme = 'dawn'
     state.ui.themePalettes = {
       dawn: {
-        ...DEFAULT_CUSTOM_THEME_PALETTE,
+        ...getThemePaletteForTheme('dawn', {}),
         primary: '#123456',
+        parentRail: '#654321',
       },
       light: {
-        ...DEFAULT_CUSTOM_THEME_PALETTE,
+        ...getThemePaletteForTheme('light', {}),
         primary: '#abcdef',
       },
     }
@@ -691,9 +684,15 @@ describe('frontmatter settings page', () => {
     const lightHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'visuals', state: lightState })
 
     expect(dawnHtml).toContain('value="#123456"')
+    expect(dawnHtml).toContain('value="#654321"')
     expect(dawnHtml).not.toContain('value="#abcdef"')
+    expect(dawnHtml).toContain('class="visuals-theme-preview theme-dawn" aria-label="theme color preview"')
+    expect(dawnHtml).not.toContain('theme-custom-derived')
+    expect(dawnHtml).toContain('--parent-rail-accent:#654321')
+    expect(dawnHtml).toContain('--visuals-preview-page:#8a744a')
     expect(lightHtml).toContain('value="#abcdef"')
     expect(lightHtml).not.toContain('value="#123456"')
+    expect(lightHtml).not.toContain('value="#654321"')
   })
 
   it('renders always-visible navigation switches in other visuals', () => {
@@ -719,7 +718,6 @@ describe('frontmatter settings page', () => {
   it('renders misc table target controls with bottom-right defaults', () => {
     const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'misc' })
 
-    expect(html).toContain('>misc</button>')
     expect(html).toContain('add table row or column')
     expect(html).toContain('delete table row or column')
     expect(html.match(/>at active cell<\/button>/g)).toHaveLength(2)
@@ -730,7 +728,6 @@ describe('frontmatter settings page', () => {
   it('renders toolbar settings with a protected default layout', () => {
     const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'toolbar' })
 
-    expect(html).toContain('aria-selected="true" class="settings-section-tab is-active">toolbar</button>')
     expect(html).toContain('role="tabpanel" aria-label="toolbar settings"')
     expect(html).not.toContain('toolbar used')
     expect(html).not.toContain('id="settings-device-toolbar"')
@@ -877,7 +874,6 @@ describe('frontmatter settings page', () => {
   it('renders an empty tips settings panel before any tips are seen', () => {
     const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'tips' })
 
-    expect(html).toContain('aria-selected="true" class="settings-section-tab is-active">tips</button>')
     expect(html).toContain('tips you have seen will appear here.')
     expect(html).not.toContain('task undo')
   })

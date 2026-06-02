@@ -274,6 +274,82 @@ describe('Electron app state storage load result', () => {
       expect(parsed.ui.themePalettes.custom2.primary).toBe('#225599')
     }))
 
+  it('round-trips inline aisle tags without forcing frontmatter', () =>
+    withTempUserDataPath((userDataPath) => {
+      const state = JSON.parse(serializedAppState())
+      const aisleBody = state.noteAisleBodies[0]
+      aisleBody.markdown = '#Project\n\nBody #Review'
+      delete aisleBody.frontmatter
+      delete aisleBody.frontmatterMeta
+      delete aisleBody.frontmatterStatus
+      delete aisleBody.tags
+
+      saveAppState(userDataPath, JSON.stringify(state))
+
+      const { root, aisleBodiesRegistry } = getStoredWorkspacePaths(userDataPath)
+      const aisleBodyEntry = aisleBodiesRegistry.aisleBodies.find((body) => body.id === 'aisle-body-1')
+      if (!aisleBodyEntry || typeof aisleBodyEntry.file !== 'string') {
+        throw new Error('missing aisle body registry entry')
+      }
+      const storedMarkdown = readFileSync(path.join(root, aisleBodyEntry.file), 'utf8')
+      const result = loadAppStateResult(userDataPath)
+      const parsed = JSON.parse(result.serializedState)
+
+      expect(storedMarkdown.startsWith('---')).toBe(false)
+      expect(aisleBodyEntry.tags).toEqual(['Project', 'Review'])
+      expect(parsed.noteAisleBodies.find((body) => body.id === 'aisle-body-1')?.tags).toEqual(['Project', 'Review'])
+    }))
+
+  it('migrates frontmatter tags into visible aisle markdown and keeps computed tags updated', () =>
+    withTempUserDataPath((userDataPath) => {
+      const state = JSON.parse(serializedAppState())
+      const aisleBody = state.noteAisleBodies[0]
+      aisleBody.markdown = 'Body text'
+      delete aisleBody.frontmatter
+      delete aisleBody.frontmatterMeta
+      delete aisleBody.frontmatterStatus
+      delete aisleBody.tags
+      saveAppState(userDataPath, JSON.stringify(state))
+
+      const firstPaths = getStoredWorkspacePaths(userDataPath)
+      const firstAisleBodyEntry = firstPaths.aisleBodiesRegistry.aisleBodies.find((body) => body.id === 'aisle-body-1')
+      if (!firstAisleBodyEntry || typeof firstAisleBodyEntry.file !== 'string') {
+        throw new Error('missing aisle body registry entry')
+      }
+      writeFileSync(
+        path.join(firstPaths.root, firstAisleBodyEntry.file),
+        '---\ntags:\n  - Card\n  - Unfinished\n---\nBody text',
+        'utf8',
+      )
+
+      const result = loadAppStateResult(userDataPath)
+      const parsed = JSON.parse(result.serializedState)
+      const parsedAisleBody = parsed.noteAisleBodies.find((body) => body.id === 'aisle-body-1')
+
+      expect(parsedAisleBody?.markdown).toBe('#Card #Unfinished\n\nBody text')
+      expect(parsedAisleBody?.tags).toEqual(['Card', 'Unfinished'])
+      expect(parsedAisleBody?.frontmatter).toEqual({ tags: ['Card', 'Unfinished'] })
+      expect(parsedAisleBody?.frontmatterMeta?.computedFields).toEqual({ tags: 'tags' })
+
+      parsedAisleBody.markdown = 'Body without tags'
+      parsedAisleBody.tags = []
+      saveAppState(userDataPath, JSON.stringify(parsed))
+
+      const secondPaths = getStoredWorkspacePaths(userDataPath)
+      const secondAisleBodyEntry = secondPaths.aisleBodiesRegistry.aisleBodies.find((body) => body.id === 'aisle-body-1')
+      if (!secondAisleBodyEntry || typeof secondAisleBodyEntry.file !== 'string') {
+        throw new Error('missing aisle body registry entry')
+      }
+      const savedMarkdown = readFileSync(path.join(secondPaths.root, secondAisleBodyEntry.file), 'utf8')
+      const reloaded = JSON.parse(loadAppStateResult(userDataPath).serializedState)
+      const reloadedAisleBody = reloaded.noteAisleBodies.find((body) => body.id === 'aisle-body-1')
+
+      expect(savedMarkdown).toBe('---\ntags: []\n---\nBody without tags')
+      expect(secondAisleBodyEntry.tags).toEqual([])
+      expect(reloadedAisleBody?.frontmatter).toEqual({ tags: [] })
+      expect(reloadedAisleBody?.tags).toEqual([])
+    }))
+
   it('writes app settings beside notes and per-space settings into notes manifests', () =>
     withTempUserDataPath((userDataPath) => {
       const state = JSON.parse(serializedAppState())
@@ -502,7 +578,7 @@ describe('Electron app state storage load result', () => {
 
       writeFileSync(
         profileSettingsPath,
-        `${JSON.stringify({ ...profileSettings, settings: { ...profileSettings.settings, theme: 'blues' } }, null, 2)}\n`,
+        `${JSON.stringify({ ...profileSettings, settings: { ...profileSettings.settings, theme: 'light' } }, null, 2)}\n`,
         'utf8',
       )
 
@@ -575,7 +651,7 @@ describe('Electron app state storage load result', () => {
         expect(globalSettings.theme).toBe('light')
 
         mkdirSync(path.dirname(folderSettingsPath), { recursive: true })
-        writeFileSync(folderSettingsPath, `${JSON.stringify({ ...globalSettings, theme: 'blues' }, null, 2)}\n`, 'utf8')
+        writeFileSync(folderSettingsPath, `${JSON.stringify({ ...globalSettings, theme: 'light' }, null, 2)}\n`, 'utf8')
         writeFileSync(globalSettingsPath, `${JSON.stringify({ ...globalSettings, theme: 'dawn' }, null, 2)}\n`, 'utf8')
 
         const result = loadAppStateResult(profileRootPath, { userSettingsRoot: userDataPath })
@@ -880,12 +956,14 @@ describe('Electron app state storage load result', () => {
       expect(aisleBodyEntry.contentHash).toEqual(expect.any(String))
       expect(mirrorFile).toBeTruthy()
 
-      writeFileSync(path.join(root, mirrorFile), 'external mirror edit', 'utf8')
+      writeFileSync(path.join(root, mirrorFile), 'external mirror edit #Mirror', 'utf8')
 
       const result = loadAppStateResult(userDataPath)
       expect(result.ok).toBe(true)
       const parsed = JSON.parse(result.serializedState)
-      expect(parsed.noteAisleBodies.find((body) => body.id === 'shared-aisle-body').markdown).toBe('external mirror edit')
+      const sharedAisleBody = parsed.noteAisleBodies.find((body) => body.id === 'shared-aisle-body')
+      expect(sharedAisleBody.markdown).toBe('external mirror edit #Mirror')
+      expect(sharedAisleBody.tags).toEqual(['Mirror'])
       expect(result.issues.some((issue) => issue.code === 'linked-aisle-mirror-auto-decoupled')).toBe(false)
     }))
 
@@ -945,8 +1023,8 @@ describe('Electron app state storage load result', () => {
         .find((aisle) => aisle.aisleBodyId === 'shared-aisle-body' && aisle.file !== aisleBodyEntry.file)?.file
       const canonicalPath = path.join(root, aisleBodyEntry.file)
       const mirrorPath = path.join(root, mirrorFile)
-      writeFileSync(canonicalPath, 'older canonical edit', 'utf8')
-      writeFileSync(mirrorPath, 'newer mirror edit', 'utf8')
+      writeFileSync(canonicalPath, 'older canonical edit #Older', 'utf8')
+      writeFileSync(mirrorPath, 'newer mirror edit #Newer', 'utf8')
       utimesSync(canonicalPath, new Date(1_700_000_000_000), new Date(1_700_000_000_000))
       utimesSync(mirrorPath, new Date(1_700_000_100_000), new Date(1_700_000_100_000))
 
@@ -954,13 +1032,17 @@ describe('Electron app state storage load result', () => {
       expect(result.ok).toBe(true)
       const parsed = JSON.parse(result.serializedState)
       const issue = result.issues.find((candidate) => candidate.code === 'linked-aisle-mirror-auto-decoupled')
-      expect(parsed.noteAisleBodies.find((body) => body.id === 'shared-aisle-body').markdown).toBe('newer mirror edit')
+      const anchorAisleBody = parsed.noteAisleBodies.find((body) => body.id === 'shared-aisle-body')
+      expect(anchorAisleBody.markdown).toBe('newer mirror edit #Newer')
+      expect(anchorAisleBody.tags).toEqual(['Newer'])
       const decoupledBody = parsed.noteBodies.find((body) => body.id === 'body-1')
       const anchorBody = parsed.noteBodies.find((body) => body.id === 'body-2')
       const decoupledAisleBodyId = decoupledBody.aisles[0].aisleBodyId
       expect(anchorBody.aisles[0].aisleBodyId).toBe('shared-aisle-body')
       expect(decoupledAisleBodyId).not.toBe('shared-aisle-body')
-      expect(parsed.noteAisleBodies.find((body) => body.id === decoupledAisleBodyId).markdown).toBe('older canonical edit')
+      const decoupledAisleBody = parsed.noteAisleBodies.find((body) => body.id === decoupledAisleBodyId)
+      expect(decoupledAisleBody.markdown).toBe('older canonical edit #Older')
+      expect(decoupledAisleBody.tags).toEqual(['Older'])
       expect(parsed.messages).toEqual(expect.arrayContaining([
         expect.objectContaining({
           type: 'duplicate-auto-decoupled',
@@ -1036,8 +1118,8 @@ describe('Electron app state storage load result', () => {
       const duplicateFile = path.posix.join('domains', domainEntry.path, spaceEntry.path, duplicateHomeFile)
       const canonicalPath = path.join(root, aisleBodyEntry.file)
       const duplicatePath = path.join(root, duplicateFile)
-      writeFileSync(canonicalPath, 'older duplicate edit', 'utf8')
-      writeFileSync(duplicatePath, 'newer duplicate edit', 'utf8')
+      writeFileSync(canonicalPath, 'older duplicate edit #Older', 'utf8')
+      writeFileSync(duplicatePath, 'newer duplicate edit #Newer', 'utf8')
       utimesSync(canonicalPath, new Date(1_700_000_000_000), new Date(1_700_000_000_000))
       utimesSync(duplicatePath, new Date(1_700_000_100_000), new Date(1_700_000_100_000))
 
@@ -1052,8 +1134,11 @@ describe('Electron app state storage load result', () => {
 
       expect(secondTab.noteBodyId).toBe('body-1')
       expect(firstTab.noteBodyId).not.toBe('body-1')
-      expect(parsed.noteAisleBodies.find((body) => body.id === 'aisle-body-1').markdown).toBe('newer duplicate edit')
-      expect(firstAisleBody.markdown).toBe('older duplicate edit')
+      const linkedAisleBody = parsed.noteAisleBodies.find((body) => body.id === 'aisle-body-1')
+      expect(linkedAisleBody.markdown).toBe('newer duplicate edit #Newer')
+      expect(linkedAisleBody.tags).toEqual(['Newer'])
+      expect(firstAisleBody.markdown).toBe('older duplicate edit #Older')
+      expect(firstAisleBody.tags).toEqual(['Older'])
       expect(parsed.messages).toEqual([
         expect.objectContaining({
           type: 'duplicate-auto-decoupled',

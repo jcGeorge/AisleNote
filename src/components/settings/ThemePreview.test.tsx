@@ -37,6 +37,7 @@ describe('ThemePreview', () => {
     expect(html).toContain('aria-label="theme preview toolbar"')
     expect(html.match(/visuals-preview-toolbar-tool/g)?.length).toBe(5)
     expect(html).toContain('<h3 class="visuals-preview-heading">header</h3>')
+    expect(html).toContain('<p class="visuals-preview-tag-line"><span class="tabs-tag-token">#tag</span></p>')
     expect(html).toContain('<ul class="visuals-preview-list tabs-dash-list" data-tabs-list-marker="dash"><li>dash</li></ul>')
     expect(html).toContain(
       '<li class="task-list-item checked" data-task="" data-task-checked="" role="checkbox" aria-checked="true" tabindex="0">done task</li>',
@@ -51,14 +52,19 @@ describe('ThemePreview', () => {
     expect(html).toContain('--visuals-preview-panel-bg:#d8c9a3')
     expect(html).toContain('--nav-rail-bg:#b99a45')
     expect(html).toContain('--editor-toolbar-bg:#c7b37a')
+    expect(html).toContain('--editor-tag-text:#fff7ed')
+    expect(html).toContain('--editor-tag-bg:#0f766e')
     expect(html).not.toContain('--editor-toolbar-dash-icon-text')
   })
 
-  it('uses built-in blues preview surface values', () => {
+  it('keeps edited built-in theme previews on built-in chrome', () => {
     const html = renderToStaticMarkup(
       <ThemePreview
-        theme="blues"
-        customThemePaletteDraft={getPalette('blues')}
+        theme="dawn"
+        customThemePaletteDraft={{
+          ...getPalette('dawn'),
+          parentRail: '#123456',
+        }}
         tabButtonScaleDraft={1}
         noteFontScaleDraft={1}
         railSelection={DEFAULT_THEME_PREVIEW_RAIL_SELECTION}
@@ -68,10 +74,11 @@ describe('ThemePreview', () => {
       />,
     )
 
-    expect(html).toContain('--visuals-preview-page:#314563')
-    expect(html).toContain('--visuals-preview-panel-bg:#aeb8c6')
-    expect(html).toContain('--nav-rail-bg:#8797b0')
-    expect(html).toContain('--editor-toolbar-bg:#8fa0b8')
-    expect(html).toContain('--editor-border:#61728f')
+    expect(html).toContain('class="visuals-theme-preview theme-dawn" aria-label="theme color preview"')
+    expect(html).not.toContain('theme-custom-derived')
+    expect(html).toContain('--parent-rail-accent:#123456')
+    expect(html).toContain('--visuals-preview-page:#8a744a')
+    expect(html).toContain('--nav-rail-bg:#b99a45')
+    expect(html).not.toContain('color-mix(in srgb, #d4c39a 78%, #8a744a)')
   })
 })

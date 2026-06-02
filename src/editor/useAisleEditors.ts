@@ -3,7 +3,11 @@ import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'rea
 import { Editor } from '@toast-ui/editor'
 import { TextSelection } from 'prosemirror-state'
 import { buildAisleEditorKey, getAisleIdFromAisleEditorKey, type AisleEditorMeta } from './aisle-editor'
-import { shouldUseFastSameAisleActivation } from './aisle-activation'
+import {
+  shouldClearPendingCursorRestoreForAisleActivation,
+  shouldUseFastSameAisleActivation,
+  type AisleActivationSource,
+} from './aisle-activation'
 import { createCodeBlockControlsPlugin } from './code-block-controls'
 import { headingCollapsePlugin } from './heading-collapse-plugin'
 import { getCollapsedHeadingKeysForAisle } from './heading-collapse-state'
@@ -19,6 +23,7 @@ import {
   installHeadingPopupActiveState,
   listMarkerPlugin,
   multiLineSelectionShortcutPlugin,
+  tagAppearancePlugin,
   thematicBreakShortcutPlugin,
   uncheckedTaskEnterPlugin,
 } from './editor-setup'
@@ -69,6 +74,7 @@ type ActivateAisleEditorOptions = {
   flushPrevious?: boolean
   focus?: boolean
   allowDuringPendingRename?: boolean
+  source?: AisleActivationSource
 }
 
 type UseAisleEditorsOptions = {
@@ -87,6 +93,7 @@ type UseAisleEditorsOptions = {
   normalizingAisleIdsRef: MutableRefObject<Set<string>>
   pendingContentRef: MutableRefObject<PendingContentMap>
   pendingCursorRestoreRef: MutableRefObject<PendingCursorRestore | null>
+  pendingFocusToAisleIdRef: MutableRefObject<string | null>
   activeSpaceIdRef: MutableRefObject<string>
   activeTabIdRef: MutableRefObject<string>
   activeSubTabIdRef: MutableRefObject<string | null>
@@ -151,6 +158,7 @@ export function useAisleEditors({
   normalizingAisleIdsRef,
   pendingContentRef,
   pendingCursorRestoreRef,
+  pendingFocusToAisleIdRef,
   activeSpaceIdRef,
   activeTabIdRef,
   activeSubTabIdRef,
@@ -287,6 +295,10 @@ export function useAisleEditors({
       if (!activeAisleIds.includes(aisleId)) {
         return false
       }
+      if (shouldClearPendingCursorRestoreForAisleActivation(options.source)) {
+        pendingCursorRestoreRef.current = null
+        pendingFocusToAisleIdRef.current = null
+      }
       if (activeAisleIdRef.current !== aisleId && options.flushPrevious) {
         saveActiveCursorLocation()
         flushPendingContent()
@@ -300,6 +312,11 @@ export function useAisleEditors({
       setRetainedAisleIds((currentIds) => new Set([...currentIds, aisleId]))
       if (options.focus) pendingFocusAfterMountAisleIdRef.current = aisleId
       return false
+    }
+
+    if (shouldClearPendingCursorRestoreForAisleActivation(options.source)) {
+      pendingCursorRestoreRef.current = null
+      pendingFocusToAisleIdRef.current = null
     }
 
     const switchingAisle = activeAisleIdRef.current !== meta.aisleId
@@ -736,6 +753,7 @@ export function useAisleEditors({
           listMarkerPlugin,
           blockIndentPlugin,
           annotationLinePlugin,
+          tagAppearancePlugin,
           highlightPlugin,
           codeBlockBacktickShortcutPlugin,
           terminalBlockLandingPlugin,
@@ -789,12 +807,13 @@ export function useAisleEditors({
         },
         events: {
           change: () => handleAisleEditorChange(editorKey, aisle.id, editor),
-          focus: () => activateAisleEditor(editorKey, { flushPrevious: true }),
+          focus: () => activateAisleEditor(editorKey, { flushPrevious: true, source: 'focus' }),
         },
       })
-      const activate = () => activateAisleEditor(editorKey, { flushPrevious: true })
-      root.addEventListener('focusin', activate)
-      root.addEventListener('pointerdown', activate, true)
+      const activateFromFocus = () => activateAisleEditor(editorKey, { flushPrevious: true, source: 'focus' })
+      const activateFromPointer = () => activateAisleEditor(editorKey, { flushPrevious: true, source: 'pointer' })
+      root.addEventListener('focusin', activateFromFocus)
+      root.addEventListener('pointerdown', activateFromPointer, true)
       const cleanupImageDisplayMetadataSync = installImageDisplayMetadataSync(root)
       const cleanupHeadingPopupActiveState = installHeadingPopupActiveState(root, () => editor)
       const cleanupCompletedTaskCheckboxBehavior = installCompletedTaskCheckboxBehavior(
@@ -820,8 +839,8 @@ export function useAisleEditors({
           cleanupTaskTextReorderBehavior()
           cleanupCompletedTaskCheckboxBehavior()
           cleanupHeadingPopupActiveState()
-          root.removeEventListener('focusin', activate)
-          root.removeEventListener('pointerdown', activate, true)
+          root.removeEventListener('focusin', activateFromFocus)
+          root.removeEventListener('pointerdown', activateFromPointer, true)
           try {
             editor.destroy()
           } catch {
