@@ -223,7 +223,7 @@ export function useTagAutocompleteController({
   }, [activeAisleIdRef, editorEventRootRef, editorRef, viewMode])
 
   useEffect(() => {
-    if (viewMode !== 'main') closeMenu()
+    if (viewMode !== 'main' && menuRef.current) closeMenu()
   }, [closeMenu, viewMode])
 
   const acceptSuggestion = useCallback((index: number) => {

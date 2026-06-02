@@ -97,6 +97,13 @@ import { SettingsPage } from './components/settings/SettingsPage'
 import { StageManagerView } from './components/stage-manager/StageManagerView'
 import { TrashHomeNote } from './components/trash/TrashHomeNote'
 import { AboutView } from './components/about/AboutView'
+import { VisualizerTopbarControls, VisualizerView } from './components/visualizer/VisualizerView'
+import {
+  buildVisualizerGraph,
+  DEFAULT_VISUALIZER_FILTER,
+  normalizeVisualizerFilter,
+  type VisualizerFilterState,
+} from './visualizer/visualizer-graph'
 import { applyListToolbarCommand, type ToolbarListCommand } from './editor/list-marker-commands'
 import {
   applyEditorNewlineOperation,
@@ -453,6 +460,8 @@ function App() {
   }
   const { state, setState, stateRef, flushPendingPersistence, commitAppStateNow } = usePersistentAppState()
   const [viewMode, setViewMode] = useState<ViewMode>(() => initialDeviceSettingsRef.current?.lastOpened?.viewMode ?? 'main')
+  const [visualizerFilter, setVisualizerFilter] = useState<VisualizerFilterState>(DEFAULT_VISUALIZER_FILTER)
+  const [visualizerSelectedNodeId, setVisualizerSelectedNodeId] = useState('')
   const [scratchpadActive, setScratchpadActive] = useState(() =>
     shouldRestoreScratchpadWorkspace(initialDeviceSettingsRef.current?.lastOpened),
   )
@@ -1329,6 +1338,16 @@ function App() {
     setEditing(null)
   }
 
+  const openVisualizerView = () => {
+    closeEditorEphemeraRef.current()
+    if (arrangeMode.active) exitArrangeMode()
+    exitTagFilterMode()
+    setScratchpadActive(false)
+    setViewMode('visualizer')
+    setMenuOpen(false)
+    setEditing(null)
+  }
+
   const openAboutView = () => {
     closeEditorEphemeraRef.current()
     if (arrangeMode.active) exitArrangeMode()
@@ -1350,6 +1369,10 @@ function App() {
 
   const openMessageLocation = (location: NoteLocation) => {
     navigateToNoteLocation({ ...location, startAt: 'top' })
+  }
+
+  const openVisualizerLocation = (location: NoteLocation, aisleId?: string) => {
+    navigateToNoteLocation({ ...location, aisleId, startAt: 'top' })
   }
 
   const applyArrangeParentMoveToSpace = (
@@ -4533,6 +4556,35 @@ function App() {
       onSortModeChange={setTagFilterSortMode}
     />
   ) : null
+  const visualizerGraph = useMemo(
+    () => (viewMode === 'visualizer' ? buildVisualizerGraph(state, visualizerFilter) : null),
+    [state, viewMode, visualizerFilter],
+  )
+  const updateVisualizerFilter = useCallback((updater: (filter: VisualizerFilterState) => VisualizerFilterState) => {
+    setVisualizerFilter((previous) => normalizeVisualizerFilter(updater(previous)))
+    setVisualizerSelectedNodeId('')
+  }, [])
+  const handleVisualizerNodeSelection = useCallback((nodeId: string) => {
+    setVisualizerSelectedNodeId(nodeId)
+    setVisualizerFilter((previous) => normalizeVisualizerFilter({ ...previous, focusedNodeId: nodeId }))
+  }, [])
+  const closeVisualizerPreview = useCallback(() => {
+    if (!visualizerSelectedNodeId) return
+    setVisualizerSelectedNodeId('')
+    setVisualizerFilter((previous) =>
+      previous.focusedNodeId === visualizerSelectedNodeId
+        ? normalizeVisualizerFilter({ ...previous, focusedNodeId: '' })
+        : previous,
+    )
+  }, [visualizerSelectedNodeId])
+  const visualizerFilterControl =
+    visualizerGraph && viewMode === 'visualizer' ? (
+      <VisualizerTopbarControls
+        graph={visualizerGraph}
+        filter={visualizerFilter}
+        onFilterChange={updateVisualizerFilter}
+      />
+    ) : null
   const mainTopRailActions: NavigationRailAction[] = mainArrangementActive
     ? [
         {
@@ -4590,6 +4642,7 @@ function App() {
       onOpenStageManager={openStageManagerView}
       onToggleTrash={toggleTrashView}
       onOpenMessages={openMessagesView}
+      onOpenVisualizer={openVisualizerView}
       onOpenSettings={openSettingsWithoutMentionMenu}
       onOpenAbout={openAboutView}
       messagesCount={unresolvedMessageCount}
@@ -4857,6 +4910,7 @@ function App() {
         tooltipsDisabled={mainArrangementActive}
         tagFilterActive={tagFilterActive}
         tagFilterControl={topVisibleMainRail === 'parents' ? tagFilterControl : null}
+        visualizerFilterControl={visualizerFilterControl}
         getTabLabel={(tab) =>
           appendTagFilterCount(
             tab.title,
@@ -4930,6 +4984,7 @@ function App() {
         onOpenStageManager={openStageManagerView}
         onToggleTrash={toggleTrashView}
         onOpenMessages={openMessagesView}
+        onOpenVisualizer={openVisualizerView}
         onOpenSettings={openSettingsWithoutMentionMenu}
         onOpenAbout={openAboutView}
         settingsSection={settingsController.section}
@@ -5198,6 +5253,16 @@ function App() {
               onDismissMessage={dismissMessage}
               onOpenLocation={openMessageLocation}
             />
+          ) : viewMode === 'visualizer' ? (
+            visualizerGraph && (
+              <VisualizerView
+                graph={visualizerGraph}
+                selectedNodeId={visualizerSelectedNodeId}
+                onSelectedNodeChange={handleVisualizerNodeSelection}
+                onClosePreview={closeVisualizerPreview}
+                onOpenLocation={openVisualizerLocation}
+              />
+            )
           ) : viewMode === 'about' ? (
             <AboutView />
           ) : viewMode === 'main' ? (

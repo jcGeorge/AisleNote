@@ -26,6 +26,7 @@ type NavigationRailControlsProps = {
   onOpenStageManager: () => void
   onToggleTrash: () => void
   onOpenMessages: () => void
+  onOpenVisualizer: () => void
   onOpenSettings: () => void
   onOpenAbout: () => void
   messagesCount?: number
@@ -46,6 +47,7 @@ export function NavigationRailControls({
   onOpenStageManager,
   onToggleTrash,
   onOpenMessages,
+  onOpenVisualizer,
   onOpenSettings,
   onOpenAbout,
   messagesCount = 0,
@@ -114,6 +116,9 @@ export function NavigationRailControls({
             </button>
             <button type="button" className="menu-item" onClick={onOpenMessages}>
               messages{messagesCount > 0 ? ` (${messagesCount})` : ''}
+            </button>
+            <button type="button" className="menu-item" onClick={onOpenVisualizer}>
+              visualizer
             </button>
             <button type="button" className="menu-item" onClick={onOpenSettings}>
               settings

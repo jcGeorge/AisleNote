@@ -217,7 +217,7 @@ export type StorageLastOpened = {
   spaceId: StorageEntityId
   primeTabId?: StorageEntityId | null
   subTabId: StorageEntityId | null
-  viewMode: 'main' | 'trash' | 'settings' | 'stage-manager' | 'messages' | 'about'
+  viewMode: 'main' | 'trash' | 'settings' | 'stage-manager' | 'messages' | 'visualizer' | 'about'
 }
 
 export type StorageWorkspaceIndex = {

@@ -21,7 +21,7 @@ export type CustomThemePaletteSlot =
   | 'subtabRail'
 export type CustomThemePalette = Record<CustomThemePaletteSlot, string>
 export type ThemePaletteOverrides = Partial<Record<AppTheme, CustomThemePalette>>
-export type ViewMode = 'main' | 'trash' | 'settings' | 'stage-manager' | 'messages' | 'about'
+export type ViewMode = 'main' | 'trash' | 'settings' | 'stage-manager' | 'messages' | 'visualizer' | 'about'
 export type ShortcutId =
   | 'toggleTabTrash'
   | 'openDomains'

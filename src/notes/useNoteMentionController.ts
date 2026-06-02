@@ -250,7 +250,7 @@ export function useNoteMentionController({
   )
 
   useEffect(() => {
-    if (viewMode !== 'main') closeMenu()
+    if (viewMode !== 'main' && menuRef.current) closeMenu()
   }, [closeMenu, viewMode])
 
   const getEntryLocation = useCallback((entry: NoteSearchEntry): NoteLocation => ({

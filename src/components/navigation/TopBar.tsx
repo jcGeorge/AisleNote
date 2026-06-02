@@ -34,6 +34,7 @@ type TopBarProps = {
   isDraggingArrangeItem?: boolean
   tagFilterActive?: boolean
   tagFilterControl?: ReactNode
+  visualizerFilterControl?: ReactNode
   getTabLabel?: (tab: Tab) => ReactNode
   settingsSection: SettingsSection
   primaryTabRailRef: RefObject<HTMLDivElement | null>
@@ -102,6 +103,7 @@ type TopBarProps = {
   onOpenStageManager: () => void
   onToggleTrash: () => void
   onOpenMessages: () => void
+  onOpenVisualizer: () => void
   onOpenSettings: () => void
   onOpenAbout: () => void
   onSettingsSectionChange: (section: SettingsSection) => void
@@ -132,6 +134,7 @@ export function TopBar({
   isDraggingArrangeItem = false,
   tagFilterActive = false,
   tagFilterControl = null,
+  visualizerFilterControl = null,
   getTabLabel = (tab) => tab.title,
   settingsSection,
   primaryTabRailRef,
@@ -186,6 +189,7 @@ export function TopBar({
   onOpenStageManager,
   onToggleTrash,
   onOpenMessages,
+  onOpenVisualizer,
   onOpenSettings,
   onOpenAbout,
   onSettingsSectionChange,
@@ -198,7 +202,12 @@ export function TopBar({
           role: 'tablist',
           'aria-label': 'settings sections',
         } as const)
-      : viewMode === 'messages' || viewMode === 'about'
+      : viewMode === 'visualizer'
+        ? ({
+            role: 'tablist',
+            'aria-label': 'visualizer filters',
+          } as const)
+        : viewMode === 'messages' || viewMode === 'about'
         ? ({
             role: 'tablist',
             'aria-label': 'utility pages',
@@ -256,6 +265,17 @@ export function TopBar({
           },
         ]
       : []),
+    ...(viewMode === 'visualizer'
+      ? [
+          {
+            key: 'visualizer-view',
+            label: 'visualizer',
+            selected: false,
+            className: 'btn btn-sm tab-btn topbar-action-btn topbar-context-btn',
+            onClick: () => undefined,
+          },
+        ]
+      : []),
     ...(viewMode === 'stage-manager'
       ? [
           {
@@ -290,6 +310,7 @@ export function TopBar({
   const topbarShowsCloseControl =
     viewMode === 'settings' ||
     viewMode === 'messages' ||
+    viewMode === 'visualizer' ||
     viewMode === 'about' ||
     viewMode === 'stage-manager' ||
     (tagFilterActive && viewMode === 'main') ||
@@ -350,6 +371,8 @@ export function TopBar({
               about
             </button>
           )}
+
+          {viewMode === 'visualizer' && visualizerFilterControl}
 
           {isNoteWorkspaceView &&
             workspace.tabs.map((tab) =>
@@ -569,7 +592,7 @@ export function TopBar({
                 onEndStageManager()
                 return
               }
-              if (viewMode === 'settings' || viewMode === 'messages' || viewMode === 'about') {
+              if (viewMode === 'settings' || viewMode === 'messages' || viewMode === 'visualizer' || viewMode === 'about') {
                 onCloseSettingsView()
               }
             }}
@@ -579,6 +602,7 @@ export function TopBar({
             onOpenStageManager={onOpenStageManager}
             onToggleTrash={onToggleTrash}
             onOpenMessages={onOpenMessages}
+            onOpenVisualizer={onOpenVisualizer}
             onOpenSettings={onOpenSettings}
             onOpenAbout={onOpenAbout}
             messagesCount={messagesCount}

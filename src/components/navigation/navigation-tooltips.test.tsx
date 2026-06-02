@@ -1,4 +1,4 @@
-import { createRef } from 'react'
+import { createRef, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import { createEmptyStageManagerParentSelection } from '../../stage-manager/selection'
@@ -54,6 +54,7 @@ function renderTopBar(
     viewMode?: ViewMode
     settingsSection?: SettingsSection
     messagesCount?: number
+    visualizerFilterControl?: ReactNode
   } = {},
 ) {
   const viewMode = options.viewMode ?? 'main'
@@ -116,10 +117,12 @@ function renderTopBar(
       onOpenStageManager={noop}
       onToggleTrash={noop}
       onOpenMessages={noop}
+      onOpenVisualizer={noop}
       onOpenSettings={noop}
       onOpenAbout={noop}
       onSettingsSectionChange={noop}
       messagesCount={options.messagesCount ?? 0}
+      visualizerFilterControl={options.visualizerFilterControl}
     />,
   )
 }
@@ -207,16 +210,34 @@ describe('navigation arrange tooltips', () => {
     expect(html).toMatch(/topbar-context-btn[^"]*">settings<\/button>/)
   })
 
-  it('renders messages and about as selected utility rail buttons', () => {
+  it('renders messages and about as selected utility rail buttons while visualizer uses filter controls', () => {
     const messagesHtml = renderTopBar(false, { active: false }, false, {
       viewMode: 'messages',
       messagesCount: 2,
+    })
+    const visualizerHtml = renderTopBar(false, { active: false }, false, {
+      viewMode: 'visualizer',
+      visualizerFilterControl: (
+        <>
+          <button type="button" className="visualizer-filter-btn">duplicates</button>
+          <button type="button" className="visualizer-filter-btn">tags</button>
+          <button type="button" className="visualizer-filter-btn">front matter</button>
+          <button type="button" className="visualizer-filter-btn">clear filter</button>
+        </>
+      ),
     })
     const aboutHtml = renderTopBar(false, { active: false }, false, { viewMode: 'about' })
 
     expect(messagesHtml).toContain('aria-label="utility pages"')
     expect(messagesHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn parent-tab-btn utility-view-rail-btn">messages (2)</button>')
     expect(messagesHtml).toMatch(/topbar-context-btn[^"]*">messages \(2\)<\/button>/)
+    expect(visualizerHtml).toContain('aria-label="visualizer filters"')
+    expect(visualizerHtml).toContain('>duplicates</button>')
+    expect(visualizerHtml).toContain('>tags</button>')
+    expect(visualizerHtml).toContain('>front matter</button>')
+    expect(visualizerHtml).toContain('>clear filter</button>')
+    expect(visualizerHtml).not.toContain('utility-view-rail-btn">visualizer</button>')
+    expect(visualizerHtml).toMatch(/topbar-context-btn[^"]*">visualizer<\/button>/)
     expect(aboutHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn parent-tab-btn utility-view-rail-btn">about</button>')
     expect(aboutHtml).toMatch(/topbar-context-btn[^"]*">about<\/button>/)
   })

@@ -1,8 +1,10 @@
+@import '@xyflow/react/dist/style.css';
 @import './styles/base.css';
 @import './styles/rail-controls.css';
 @import './styles/topbar.css';
 @import './styles/toasts.css';
 @import './styles/stage-manager.css';
+@import './styles/visualizer.css';
 @import './styles/tabs.css';
 @import './styles/editor-shell.css';
 @import './styles/editor-base.css';

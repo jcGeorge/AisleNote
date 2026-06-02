@@ -20,6 +20,7 @@ function renderMenu(spaceRailVisible = false, domainRailVisible = false) {
       onOpenStageManager={noop}
       onToggleTrash={noop}
       onOpenMessages={noop}
+      onOpenVisualizer={noop}
       onOpenSettings={noop}
       onOpenAbout={noop}
     />,
@@ -39,11 +40,12 @@ describe('NavigationRailControls', () => {
     expect(html.indexOf('>show domain<')).toBeLessThan(html.indexOf('>director<'))
   })
 
-  it('renders utility menu rows in trash messages settings about order', () => {
+  it('renders utility menu rows in trash messages visualizer settings about order', () => {
     const html = renderMenu()
 
     expect(html.indexOf('>trash<')).toBeLessThan(html.indexOf('>messages<'))
-    expect(html.indexOf('>messages<')).toBeLessThan(html.indexOf('>settings<'))
+    expect(html.indexOf('>messages<')).toBeLessThan(html.indexOf('>visualizer<'))
+    expect(html.indexOf('>visualizer<')).toBeLessThan(html.indexOf('>settings<'))
     expect(html.indexOf('>settings<')).toBeLessThan(html.indexOf('>about<'))
   })
 

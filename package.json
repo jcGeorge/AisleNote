@@ -39,6 +39,7 @@
     "@capacitor/ios": "^8.3.4",
     "@capacitor/share": "^8.0.1",
     "@toast-ui/editor": "^3.2.2",
+    "@xyflow/react": "^12.11.0",
     "bootstrap": "^5.3.8",
     "jszip": "^3.10.1",
     "prosemirror-transform": "^1.12.0",

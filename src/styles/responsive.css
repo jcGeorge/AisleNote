@@ -24,6 +24,10 @@
     scrollbar-width: thin;
   }
 
+  .view-visualizer .tabbar-scroll {
+    overflow: visible;
+  }
+
   .compact-scope-scroll {
     flex-wrap: nowrap;
     overflow-x: auto;
@@ -233,6 +237,10 @@
   .settings-page-wrap,
   .utility-page-wrap {
     padding-inline: 0.4rem;
+  }
+
+  .view-visualizer .tabbar-scroll {
+    overflow: visible;
   }
 
   .settings-section-tabs {
