@@ -3,6 +3,7 @@ import { DEFAULT_FRONTMATTER_SETTINGS } from '../frontmatter/frontmatter'
 import type { AppState, ArrangeSelectionState, Domain, Space, SubTab, Tab, WorkspaceData } from '../types/app'
 import {
   EMPTY_ARRANGE_SELECTION,
+  getArrangeSelectionActiveReplacementId,
   moveSelectedDomainsByInsertion,
   moveSelectedDomainsToTrash,
   moveSelectedItemsByInsertion,
@@ -229,6 +230,161 @@ describe('arrange modifier selection', () => {
 
     expect(first.selectedIds).toEqual(['parent-1', 'parent-3'])
     expect(second.selectedIds).toEqual(['parent-3'])
+  })
+
+  it('ctrl/cmd can remove the current domain or space from an existing group', () => {
+    const domainSelection = updateArrangeSelectionForClick({
+      selection: {
+        kind: 'domain',
+        parentTabId: null,
+        domainId: null,
+        selectedIds: ['domain-1', 'domain-3'],
+        anchorId: 'domain-3',
+      },
+      kind: 'domain',
+      itemId: 'domain-1',
+      orderedIds: ['domain-1', 'domain-2', 'domain-3'],
+      currentId: 'domain-1',
+      modifiers: { shiftKey: false, ctrlKey: false, metaKey: true },
+    })
+    const spaceSelection = updateArrangeSelectionForClick({
+      selection: {
+        kind: 'space',
+        parentTabId: null,
+        domainId: 'domain-1',
+        selectedIds: ['space-1', 'space-3'],
+        anchorId: 'space-3',
+      },
+      kind: 'space',
+      domainId: 'domain-1',
+      itemId: 'space-1',
+      orderedIds: ['space-1', 'space-2', 'space-3'],
+      currentId: 'space-1',
+      modifiers: { shiftKey: false, ctrlKey: true, metaKey: false },
+    })
+
+    expect(domainSelection.selectedIds).toEqual(['domain-3'])
+    expect(spaceSelection.selectedIds).toEqual(['space-3'])
+  })
+
+  it('ctrl/cmd can remove the active original domain from a three-item group', () => {
+    const domainSelection = updateArrangeSelectionForClick({
+      selection: {
+        kind: 'domain',
+        parentTabId: null,
+        domainId: null,
+        selectedIds: ['domain-1', 'domain-2', 'domain-3'],
+        anchorId: 'domain-1',
+      },
+      kind: 'domain',
+      itemId: 'domain-1',
+      orderedIds: ['domain-1', 'domain-2', 'domain-3', 'domain-4'],
+      currentId: 'domain-1',
+      modifiers: { shiftKey: false, ctrlKey: false, metaKey: true },
+    })
+
+    expect(domainSelection).toMatchObject({
+      kind: 'domain',
+      selectedIds: ['domain-2', 'domain-3'],
+      anchorId: 'domain-1',
+    })
+  })
+
+  it('returns the last remaining selected id when the active item is toggled out', () => {
+    const previousSelection: ArrangeSelectionState = {
+      kind: 'domain',
+      parentTabId: null,
+      domainId: null,
+      selectedIds: ['domain-1', 'domain-2', 'domain-3'],
+      anchorId: 'domain-1',
+    }
+    const nextSelection = updateArrangeSelectionForClick({
+      selection: previousSelection,
+      kind: 'domain',
+      itemId: 'domain-1',
+      orderedIds: ['domain-1', 'domain-2', 'domain-3'],
+      currentId: 'domain-1',
+      modifiers: { shiftKey: false, ctrlKey: false, metaKey: true },
+    })
+
+    expect(
+      getArrangeSelectionActiveReplacementId({
+        previousSelection,
+        nextSelection,
+        kind: 'domain',
+        itemId: 'domain-1',
+        currentId: 'domain-1',
+        modifiers: { shiftKey: false, ctrlKey: false, metaKey: true },
+      }),
+    ).toBe('domain-3')
+  })
+
+  it('does not replace active context for non-active toggles, shift ranges, or empty results', () => {
+    const previousSelection: ArrangeSelectionState = {
+      kind: 'domain',
+      parentTabId: null,
+      domainId: null,
+      selectedIds: ['domain-1', 'domain-2', 'domain-3'],
+      anchorId: 'domain-1',
+    }
+    const nonActiveToggle = updateArrangeSelectionForClick({
+      selection: previousSelection,
+      kind: 'domain',
+      itemId: 'domain-2',
+      orderedIds: ['domain-1', 'domain-2', 'domain-3'],
+      currentId: 'domain-1',
+      modifiers: { shiftKey: false, ctrlKey: false, metaKey: true },
+    })
+    const shiftRange = updateArrangeSelectionForClick({
+      selection: previousSelection,
+      kind: 'domain',
+      itemId: 'domain-3',
+      orderedIds: ['domain-1', 'domain-2', 'domain-3'],
+      currentId: 'domain-1',
+      modifiers: { shiftKey: true, ctrlKey: false, metaKey: false },
+    })
+    const emptySelection = updateArrangeSelectionForClick({
+      selection: {
+        ...previousSelection,
+        selectedIds: ['domain-1'],
+      },
+      kind: 'domain',
+      itemId: 'domain-1',
+      orderedIds: ['domain-1', 'domain-2', 'domain-3'],
+      currentId: 'domain-1',
+      modifiers: { shiftKey: false, ctrlKey: true, metaKey: false },
+    })
+
+    expect(
+      getArrangeSelectionActiveReplacementId({
+        previousSelection,
+        nextSelection: nonActiveToggle,
+        kind: 'domain',
+        itemId: 'domain-2',
+        currentId: 'domain-1',
+        modifiers: { shiftKey: false, ctrlKey: false, metaKey: true },
+      }),
+    ).toBeNull()
+    expect(
+      getArrangeSelectionActiveReplacementId({
+        previousSelection,
+        nextSelection: shiftRange,
+        kind: 'domain',
+        itemId: 'domain-3',
+        currentId: 'domain-1',
+        modifiers: { shiftKey: true, ctrlKey: false, metaKey: false },
+      }),
+    ).toBeNull()
+    expect(
+      getArrangeSelectionActiveReplacementId({
+        previousSelection: { ...previousSelection, selectedIds: ['domain-1'] },
+        nextSelection: emptySelection,
+        kind: 'domain',
+        itemId: 'domain-1',
+        currentId: 'domain-1',
+        modifiers: { shiftKey: false, ctrlKey: true, metaKey: false },
+      }),
+    ).toBeNull()
   })
 
   it('switching selection kind clears the previous homogeneous group', () => {

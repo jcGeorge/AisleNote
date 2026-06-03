@@ -458,6 +458,119 @@ describe('compact scope rails', () => {
     expect(onHandleArrangeDomainPointerUp).not.toHaveBeenCalled()
   })
 
+  it('lets modifier clicks deselect compact scope selections without starting drag tracking', () => {
+    const onHandleArrangeSpaceSelectionClick = vi.fn(() => true)
+    const onHandleArrangeDomainSelectionClick = vi.fn(() => true)
+    const onStartArrangeSpaceDragSeed = vi.fn()
+    const onStartArrangeDomainDragSeed = vi.fn()
+    const onStartArrangeSpaceTapCandidate = vi.fn()
+    const onStartArrangeDomainTapCandidate = vi.fn()
+    const onStartArrangeSpacePress = vi.fn()
+    const onStartArrangeDomainPress = vi.fn()
+    const onClearSpaceArrangePressTimer = vi.fn()
+    const onClearDomainArrangePressTimer = vi.fn()
+    const spaceTree = CompactSpaceRail({
+      spaces: [space('space-a'), space('space-b')],
+      activeSpaceId: 'space-a',
+      editing: null,
+      arrangeMode,
+      arrangeableSpaceClassName: 'is-arrangeable',
+      draggingSpaceId: null,
+      spacesGridRef: createRef<HTMLDivElement>(),
+      onOpenSpace: noop,
+      onOpenContextMenu: noop,
+      onShouldSkipRenameBlur: () => false,
+      onCommitRename: noop,
+      onCancelRename: noop,
+      onRenameDraftChange: noop,
+      onBeginEdit: noop,
+      onAutoSizeRenameInput: autoSizeNoop,
+      onClearRenameDraft: noop,
+      onConsumeArrangeClickSuppression: () => false,
+      onHandleArrangeSpaceSelectionClick,
+      onStartArrangeDragSeed: onStartArrangeSpaceDragSeed,
+      onStartArrangeTapCandidate: onStartArrangeSpaceTapCandidate,
+      onStartArrangePress: onStartArrangeSpacePress,
+      onHandleArrangeSpacePointerMove: noop,
+      onHandleArrangeSpacePointerUp: noop,
+      onClearArrangePressTimer: onClearSpaceArrangePressTimer,
+      onCancelArrangeSpacePointerDrag: noop,
+    })
+    const domainTree = CompactDomainRail({
+      domains: [domain('domain-a'), domain('domain-b')],
+      activeDomainId: 'domain-a',
+      editing: null,
+      arrangeMode,
+      arrangeableDomainClassName: 'is-arrangeable',
+      draggingDomainId: null,
+      domainsGridRef: createRef<HTMLDivElement>(),
+      onOpenDomain: noop,
+      onOpenContextMenu: noop,
+      onShouldSkipRenameBlur: () => false,
+      onCommitRename: noop,
+      onCancelRename: noop,
+      onRenameDraftChange: noop,
+      onBeginEdit: noop,
+      onAutoSizeRenameInput: autoSizeNoop,
+      onClearRenameDraft: noop,
+      onConsumeArrangeClickSuppression: () => false,
+      onHandleArrangeDomainSelectionClick,
+      onStartArrangeDragSeed: onStartArrangeDomainDragSeed,
+      onStartArrangeTapCandidate: onStartArrangeDomainTapCandidate,
+      onStartArrangePress: onStartArrangeDomainPress,
+      onHandleArrangeDomainPointerMove: noop,
+      onHandleArrangeDomainPointerUp: noop,
+      onClearArrangePressTimer: onClearDomainArrangePressTimer,
+      onCancelArrangeDomainPointerDrag: noop,
+    })
+    const spaceButton = findElementByProp(spaceTree, 'data-arrange-space-id', 'space-b')
+    const domainButton = findElementByProp(domainTree, 'data-arrange-domain-id', 'domain-b')
+    const spaceClickEvent = {
+      shiftKey: false,
+      ctrlKey: false,
+      metaKey: true,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    }
+    const domainClickEvent = {
+      shiftKey: false,
+      ctrlKey: true,
+      metaKey: false,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    }
+
+    expect(spaceButton).not.toBeNull()
+    expect(domainButton).not.toBeNull()
+    ;(spaceButton?.props.onPointerDown as TestHandler)({ button: 0, shiftKey: false, ctrlKey: false, metaKey: true })
+    ;(domainButton?.props.onPointerDown as TestHandler)({ button: 0, shiftKey: true, ctrlKey: false, metaKey: false })
+    ;(spaceButton?.props.onClick as TestHandler)(spaceClickEvent)
+    ;(domainButton?.props.onClick as TestHandler)(domainClickEvent)
+
+    expect(onClearSpaceArrangePressTimer).toHaveBeenCalledTimes(1)
+    expect(onClearDomainArrangePressTimer).toHaveBeenCalledTimes(1)
+    expect(onStartArrangeSpaceDragSeed).not.toHaveBeenCalled()
+    expect(onStartArrangeDomainDragSeed).not.toHaveBeenCalled()
+    expect(onStartArrangeSpaceTapCandidate).not.toHaveBeenCalled()
+    expect(onStartArrangeDomainTapCandidate).not.toHaveBeenCalled()
+    expect(onStartArrangeSpacePress).not.toHaveBeenCalled()
+    expect(onStartArrangeDomainPress).not.toHaveBeenCalled()
+    expect(onHandleArrangeSpaceSelectionClick).toHaveBeenCalledWith('space-b', {
+      shiftKey: false,
+      ctrlKey: false,
+      metaKey: true,
+    })
+    expect(onHandleArrangeDomainSelectionClick).toHaveBeenCalledWith('domain-b', {
+      shiftKey: false,
+      ctrlKey: true,
+      metaKey: false,
+    })
+    expect(spaceClickEvent.preventDefault).toHaveBeenCalled()
+    expect(spaceClickEvent.stopPropagation).toHaveBeenCalled()
+    expect(domainClickEvent.preventDefault).toHaveBeenCalled()
+    expect(domainClickEvent.stopPropagation).toHaveBeenCalled()
+  })
+
   it('cancels active arrangement before opening compact scope context menus', () => {
     const spaceCalls: string[] = []
     const domainCalls: string[] = []
@@ -1186,11 +1299,13 @@ describe('compact scope rails', () => {
 
     expect(spaceHtml).toContain('data-drag-count="2"')
     expect(spaceHtml).toContain('class="arrange-preview-stack is-stacked"')
+    expect(spaceHtml).toContain('--arrange-preview-primary-x:0px')
+    expect(spaceHtml).toContain('--arrange-preview-primary-y:0px')
     expect(spaceHtml).toContain(
       'compact-scope-arrange-preview compact-scope-btn compact-space-btn is-space is-active is-selected arrange-preview-card arrange-preview-ghost is-ghost-1',
     )
     expect(spaceHtml).toContain('--arrange-preview-ghost-x:-32px')
-    expect(spaceHtml).toContain('--arrange-preview-ghost-rotation:-30deg')
+    expect(spaceHtml).toContain('--arrange-preview-ghost-rotation:-8deg')
     expect(spaceHtml).not.toContain('arrange-preview-ghost is-ghost-2')
     expect(spaceHtml).toContain('width:92px')
     expect(spaceHtml.match(/Space A/g)).toHaveLength(1)
@@ -1204,7 +1319,7 @@ describe('compact scope rails', () => {
       'compact-scope-arrange-preview compact-scope-btn compact-domain-btn is-domain is-active is-selected arrange-preview-card arrange-preview-ghost is-ghost-2',
     )
     expect(domainHtml).toContain('--arrange-preview-ghost-x:64px')
-    expect(domainHtml).toContain('--arrange-preview-ghost-rotation:30deg')
+    expect(domainHtml).toContain('--arrange-preview-ghost-rotation:8deg')
     expect(domainHtml).toContain('left:90px')
     expect(domainHtml).toContain('top:72px')
     expect(domainHtml).toContain('width:104px')

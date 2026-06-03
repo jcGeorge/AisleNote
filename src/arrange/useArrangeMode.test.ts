@@ -30,6 +30,73 @@ describe('useArrangeMode arrange preview labels', () => {
   })
 })
 
+describe('useArrangeMode arrange focus cleanup', () => {
+  it('blurs arrange rail controls on live drag start and cleanup', () => {
+    const source = readFileSync(join(arrangeDir, 'useArrangeMode.ts'), 'utf8')
+
+    expect(source).toContain("import { blurActiveArrangeRailControl, blurArrangeRailControl } from './arrange-focus-cleanup'")
+    expect(source.match(/blurArrangeRailControl\(event\.currentTarget\)/g)).toHaveLength(3)
+    expect(source).toContain('const clearDomainPointerDrag = () => {')
+    expect(source).toContain('const clearSpacePointerDrag = () => {')
+    expect(source).toContain('const clearTabPointerDrag = () => {')
+    expect(source.match(/blurActiveArrangeRailControl\(\)/g)?.length ?? 0).toBeGreaterThanOrEqual(5)
+  })
+})
+
+describe('useArrangeMode arrange selection active replacement', () => {
+  it('reassigns active context when the active arrange item is toggled out', () => {
+    const source = readFileSync(join(arrangeDir, 'useArrangeMode.ts'), 'utf8')
+
+    expect(source).toContain('getArrangeSelectionActiveReplacementId')
+    expect(source).toContain("import { projectActiveDomainState, setActiveDomain, setActiveSpaceInActiveDomain } from '../state/domains'")
+    expect(source).toContain(
+      "import { selectPrimeTabWithMemory, selectSubTabWithMemory } from '../state/navigation-memory'",
+    )
+    expect(source).toContain('const applyArrangeSelectionActiveReplacement = (')
+    expect(source.match(/getArrangeSelectionActiveReplacementId\(\{/g)).toHaveLength(4)
+    expect(source).toContain("if (kind === 'domain') {")
+    expect(source).toContain('setState((previous) => setActiveDomain(previous, replacementId))')
+    expect(source).toContain("if (kind === 'space') {")
+    expect(source).toContain('setState((previous) => setActiveSpaceInActiveDomain(previous, replacementId))')
+    expect(source).toContain("if (kind === 'parent') {")
+    expect(source).toContain('updateActiveSpaceData((data) => selectPrimeTabWithMemory(data, replacementId))')
+    expect(source).toContain("if (kind === 'subtab') {")
+    expect(source).toContain('updateActiveSpaceData((data) => selectSubTabWithMemory(data, replacementId))')
+    expect(source.match(/applyArrangeSelectionActiveReplacement\('/g)).toHaveLength(4)
+  })
+})
+
+describe('useArrangeMode no-op drag selection cleanup', () => {
+  it('preserves domain and space multi-selection when insertion drops do not move anything', () => {
+    const source = readFileSync(join(arrangeDir, 'useArrangeMode.ts'), 'utf8')
+
+    expect(source).toContain('function wouldInsertionMoveItems')
+    expect(source).toContain('const didMoveDomain = wouldInsertionMoveItems(')
+    expect(source).toContain('if (didMoveDomain) {')
+    expect(source).toContain('const didMoveSpace = wouldInsertionMoveItems(')
+    expect(source).toContain('if (didMoveSpace) {')
+    expect(source).not.toContain('suppressNextDomainArrangeExitClick()\n    clearSelection()\n    clearDomainPointerDrag()')
+    expect(source).not.toContain('suppressNextSpaceArrangeExitClick()\n    clearSelection()\n    clearSpacePointerDrag()')
+  })
+
+  it('keeps selection clearing for actual cross-domain space moves and skips same-domain no-ops', () => {
+    const source = readFileSync(join(arrangeDir, 'useArrangeMode.ts'), 'utf8')
+
+    expect(source).toContain('const shouldNotifyCrossDomainMove =')
+    expect(source).toContain('if (shouldNotifyCrossDomainMove) {')
+    expect(source).toContain('moveSelectedSpacesToDomain(previous, drag.sourceDomainId, dragIds, domainTarget.targetId')
+    expect(source).toContain('onArrangeSpaceMovedAcrossDomains?.(')
+    expect(source).toContain('clearSelection()')
+  })
+
+  it('treats sub-tab drops on the source parent as no-op cleanup', () => {
+    const source = readFileSync(join(arrangeDir, 'useArrangeMode.ts'), 'utf8')
+
+    expect(source).toContain('if (parentTarget && parentTarget.targetId !== item.parentTabId) {')
+    expect(source).toContain('moveSubTabsToParent(item.parentTabId, dragIds, parentTarget.targetId)')
+  })
+})
+
 describe('arrange preview ghost items', () => {
   const createElement = (id: string, left: number, top: number, width = 40, height = 24) => ({
     getAttribute: (name: string) => (name === 'data-arrange-tab-id' ? id : null),

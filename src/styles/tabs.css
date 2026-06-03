@@ -93,10 +93,25 @@
     0 0 0 1px color-mix(in srgb, currentColor 10%, transparent) !important;
 }
 
+.parent-tab-btn.is-arrangeable:not(.is-arrange-selected):not(.is-dragging):not([aria-selected='true']),
+.parent-tab-btn.is-arrangeable:not(.is-arrange-selected):not(.is-dragging):not([aria-selected='true']):hover,
+.parent-tab-btn.is-arrangeable:not(.is-arrange-selected):not(.is-dragging):not([aria-selected='true']):focus,
+.parent-tab-btn.is-arrangeable:not(.is-arrange-selected):not(.is-dragging):not([aria-selected='true']):active {
+  color: var(--tab-btn-text) !important;
+  background: var(--tab-btn-bg) !important;
+  background-color: var(--tab-btn-bg) !important;
+  border-color: var(--tab-btn-border) !important;
+  box-shadow: var(--tab-arrangeable-shadow) !important;
+}
+
 .parent-tab-btn.is-arrangeable.is-dragging,
 .parent-tab-btn.is-arrangeable.is-dragging:hover,
 .parent-tab-btn.is-arrangeable.is-dragging:focus,
 .parent-tab-btn.is-arrangeable.is-dragging:active,
+.parent-tab-btn.is-arrangeable[aria-selected='true'],
+.parent-tab-btn.is-arrangeable[aria-selected='true']:hover,
+.parent-tab-btn.is-arrangeable[aria-selected='true']:focus,
+.parent-tab-btn.is-arrangeable[aria-selected='true']:active,
 .parent-tab-btn.is-arrange-selected {
   color: var(--parent-tab-selected-text) !important;
   background: var(--parent-tab-selected-bg) !important;
@@ -198,6 +213,8 @@
 
 .arrange-preview-card.arrange-preview-primary {
   z-index: 3;
+  transform: translate(var(--arrange-preview-primary-x, 0px), var(--arrange-preview-primary-y, 0px));
+  will-change: transform;
 }
 
 .arrange-preview-card.arrange-preview-ghost {
@@ -210,18 +227,33 @@
 }
 
 .arrange-preview-card.arrange-preview-ghost.is-ghost-1 {
-  --arrange-preview-ghost-rotation: -30deg;
+  --arrange-preview-ghost-rotation: -8deg;
   --arrange-preview-ghost-opacity: 1;
 }
 
 .arrange-preview-card.arrange-preview-ghost.is-ghost-2 {
-  --arrange-preview-ghost-rotation: 30deg;
+  --arrange-preview-ghost-rotation: 8deg;
+  --arrange-preview-ghost-opacity: 1;
+}
+
+.arrange-preview-card.arrange-preview-ghost.is-ghost-3 {
+  --arrange-preview-ghost-rotation: -12deg;
+  --arrange-preview-ghost-opacity: 1;
+}
+
+.arrange-preview-card.arrange-preview-ghost.is-ghost-4 {
+  --arrange-preview-ghost-rotation: 12deg;
   --arrange-preview-ghost-opacity: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .arrange-preview-card.arrange-preview-primary {
+    will-change: auto;
+  }
+
   .arrange-preview-card.arrange-preview-ghost {
-    transform: rotate(var(--arrange-preview-ghost-rotation, 0deg));
+    transform: translate(var(--arrange-preview-ghost-x, 0px), var(--arrange-preview-ghost-y, 0px))
+      rotate(var(--arrange-preview-ghost-rotation, 0deg));
     will-change: auto;
   }
 }

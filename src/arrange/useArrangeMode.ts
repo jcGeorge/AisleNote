@@ -14,6 +14,7 @@ import {
 } from './arrange-hit-testing'
 import {
   EMPTY_ARRANGE_SELECTION,
+  getArrangeSelectionActiveReplacementId,
   isSelectionModifier,
   moveSelectedDomainsByInsertion,
   moveSelectedDomainsToTrash,
@@ -29,7 +30,9 @@ import {
 } from './arrange-selection'
 import { copyTabArrangeCarryPreview, isSubTabDropOnSourceSpace } from './arrange-guided-prompt'
 import { attachArrangeWindowDragListeners } from './arrange-window-drag'
-import { projectActiveDomainState } from '../state/domains'
+import { blurActiveArrangeRailControl, blurArrangeRailControl } from './arrange-focus-cleanup'
+import { projectActiveDomainState, setActiveDomain, setActiveSpaceInActiveDomain } from '../state/domains'
+import { selectPrimeTabWithMemory, selectSubTabWithMemory } from '../state/navigation-memory'
 import { collectAppNavigationEntityIds, createReservedIdAllocator } from '../state/navigation-ids'
 import { createSpace, createTab } from '../state/workspace'
 import type {
@@ -41,6 +44,7 @@ import type {
   ArrangeModeState,
   ArrangePreviewGhostItem,
   ArrangeSelectionState,
+  ArrangeSelectionKind,
   ArrangeScope,
   ArrangeSource,
   ArrangeTapCandidate,
@@ -153,6 +157,16 @@ export function getArrangePreviewGhostItems({
     })
   }
   return ghosts
+}
+
+function wouldInsertionMoveItems<T extends { id: string }>(
+  items: T[] | undefined,
+  selectedIds: string[],
+  targetId: string,
+  position: ArrangeInsertPosition,
+) {
+  if (!items) return false
+  return moveSelectedItemsByInsertion(items, selectedIds, targetId, position) !== items
 }
 
 export function useArrangeMode({
@@ -329,22 +343,55 @@ export function useArrangeMode({
     setMode((previous) => (previous.active ? { ...previous, scope } : previous))
   }
 
+  const applyArrangeSelectionActiveReplacement = (
+    kind: ArrangeSelectionKind,
+    replacementId: string | null,
+  ) => {
+    if (!replacementId) return
+    flushPendingContent()
+    if (kind === 'domain') {
+      setState((previous) => setActiveDomain(previous, replacementId))
+      return
+    }
+    if (kind === 'space') {
+      setState((previous) => setActiveSpaceInActiveDomain(previous, replacementId))
+      return
+    }
+    if (kind === 'parent') {
+      updateActiveSpaceData((data) => selectPrimeTabWithMemory(data, replacementId))
+      return
+    }
+    if (kind === 'subtab') {
+      updateActiveSpaceData((data) => selectSubTabWithMemory(data, replacementId))
+    }
+  }
+
   const handleParentSelectionClick = (tabId: string, modifiers: SelectionClickModifiers) => {
     if (viewMode !== 'main' || !isSelectionModifier(modifiers)) return false
     clearPressTimer()
     clearTapCandidate()
     clearDragSeed()
     enterArrangeModeForSelection('tabs')
-    setSelection((previous) =>
-      updateArrangeSelectionForClick({
-        selection: previous,
-        kind: 'parent',
-        itemId: tabId,
-        orderedIds: workspace.tabs.map((tab) => tab.id),
-        currentId: workspace.activeTabId,
-        modifiers,
-      }),
-    )
+    const orderedIds = workspace.tabs.map((tab) => tab.id)
+    const currentId = workspace.activeTabId
+    const nextSelection = updateArrangeSelectionForClick({
+      selection,
+      kind: 'parent',
+      itemId: tabId,
+      orderedIds,
+      currentId,
+      modifiers,
+    })
+    const replacementId = getArrangeSelectionActiveReplacementId({
+      previousSelection: selection,
+      nextSelection,
+      kind: 'parent',
+      itemId: tabId,
+      currentId,
+      modifiers,
+    })
+    setSelection(nextSelection)
+    applyArrangeSelectionActiveReplacement('parent', replacementId)
     return true
   }
 
@@ -358,17 +405,28 @@ export function useArrangeMode({
     clearTapCandidate()
     clearDragSeed()
     enterArrangeModeForSelection('tabs')
-    setSelection((previous) =>
-      updateArrangeSelectionForClick({
-        selection: previous,
-        kind: 'subtab',
-        parentTabId,
-        itemId: subTabId,
-        orderedIds: activeTab.subTabs.map((subTab) => subTab.id),
-        currentId: activeTab.activeSubTabId,
-        modifiers,
-      }),
-    )
+    const orderedIds = activeTab.subTabs.map((subTab) => subTab.id)
+    const currentId = activeTab.activeSubTabId
+    const nextSelection = updateArrangeSelectionForClick({
+      selection,
+      kind: 'subtab',
+      parentTabId,
+      itemId: subTabId,
+      orderedIds,
+      currentId,
+      modifiers,
+    })
+    const replacementId = getArrangeSelectionActiveReplacementId({
+      previousSelection: selection,
+      nextSelection,
+      kind: 'subtab',
+      parentTabId,
+      itemId: subTabId,
+      currentId,
+      modifiers,
+    })
+    setSelection(nextSelection)
+    applyArrangeSelectionActiveReplacement('subtab', replacementId)
     return true
   }
 
@@ -378,16 +436,26 @@ export function useArrangeMode({
     clearTapCandidate()
     clearDragSeed()
     enterArrangeModeForSelection('domains')
-    setSelection((previous) =>
-      updateArrangeSelectionForClick({
-        selection: previous,
-        kind: 'domain',
-        itemId: domainId,
-        orderedIds: state.domains.map((domain) => domain.id),
-        currentId: state.activeDomainId,
-        modifiers,
-      }),
-    )
+    const orderedIds = state.domains.map((domain) => domain.id)
+    const currentId = state.activeDomainId
+    const nextSelection = updateArrangeSelectionForClick({
+      selection,
+      kind: 'domain',
+      itemId: domainId,
+      orderedIds,
+      currentId,
+      modifiers,
+    })
+    const replacementId = getArrangeSelectionActiveReplacementId({
+      previousSelection: selection,
+      nextSelection,
+      kind: 'domain',
+      itemId: domainId,
+      currentId,
+      modifiers,
+    })
+    setSelection(nextSelection)
+    applyArrangeSelectionActiveReplacement('domain', replacementId)
     return true
   }
 
@@ -397,17 +465,28 @@ export function useArrangeMode({
     clearTapCandidate()
     clearDragSeed()
     enterArrangeModeForSelection('spaces')
-    setSelection((previous) =>
-      updateArrangeSelectionForClick({
-        selection: previous,
-        kind: 'space',
-        domainId: state.activeDomainId,
-        itemId: spaceId,
-        orderedIds: state.spaces.map((space) => space.id),
-        currentId: state.activeSpaceId,
-        modifiers,
-      }),
-    )
+    const orderedIds = state.spaces.map((space) => space.id)
+    const currentId = state.activeSpaceId
+    const nextSelection = updateArrangeSelectionForClick({
+      selection,
+      kind: 'space',
+      domainId: state.activeDomainId,
+      itemId: spaceId,
+      orderedIds,
+      currentId,
+      modifiers,
+    })
+    const replacementId = getArrangeSelectionActiveReplacementId({
+      previousSelection: selection,
+      nextSelection,
+      kind: 'space',
+      domainId: state.activeDomainId,
+      itemId: spaceId,
+      currentId,
+      modifiers,
+    })
+    setSelection(nextSelection)
+    applyArrangeSelectionActiveReplacement('space', replacementId)
     return true
   }
 
@@ -430,6 +509,7 @@ export function useArrangeMode({
     setTabDragPreview(null)
     setHierarchyRevealLevel(0)
     clearSelection()
+    blurActiveArrangeRailControl()
     setMode(DEFAULT_ARRANGE_MODE)
   }
 
@@ -578,6 +658,7 @@ export function useArrangeMode({
     domainDragRef.current = null
     detachArrangeDragWindowListeners()
     setDomainDragPreview(null)
+    blurActiveArrangeRailControl()
   }
 
   const suppressNextDomainArrangeExitClick = () => {
@@ -632,6 +713,7 @@ export function useArrangeMode({
     prepareForDrag({ type: 'domain', domainId: domain.id })
     domainDragRef.current = nextDrag
     setDomainDragPreview(nextDrag)
+    blurArrangeRailControl(event.currentTarget)
     attachDomainDragWindowListeners()
     updateDomainDropTarget(event.clientX, event.clientY)
   }
@@ -704,12 +786,20 @@ export function useArrangeMode({
       return true
     }
     if (insertionTarget) {
-      markClickSuppressed(`domain:${insertionTarget.targetId}`)
-      moveDomainToTarget(dragIds, insertionTarget)
+      const didMoveDomain = wouldInsertionMoveItems(
+        projectActiveDomainState(state).domains,
+        dragIds,
+        insertionTarget.targetId,
+        insertionTarget.position,
+      )
+      if (didMoveDomain) {
+        markClickSuppressed(`domain:${insertionTarget.targetId}`)
+        moveDomainToTarget(dragIds, insertionTarget)
+        clearSelection()
+      }
     }
 
     suppressNextDomainArrangeExitClick()
-    clearSelection()
     clearDomainPointerDrag()
     clearTapCandidate()
     clearDragSeed()
@@ -865,6 +955,7 @@ export function useArrangeMode({
     spaceDragRef.current = null
     detachArrangeDragWindowListeners()
     setSpaceDragPreview(null)
+    blurActiveArrangeRailControl()
   }
 
   const suppressNextSpaceArrangeExitClick = () => {
@@ -927,6 +1018,7 @@ export function useArrangeMode({
     prepareForDrag({ type: 'space', spaceId: space.id })
     spaceDragRef.current = nextDrag
     setSpaceDragPreview(nextDrag)
+    blurArrangeRailControl(event.currentTarget)
     attachSpaceDragWindowListeners()
     updateSpaceDropTarget(event.clientX, event.clientY)
   }
@@ -1038,22 +1130,22 @@ export function useArrangeMode({
         !!sourceDomain &&
         !!targetDomain &&
         movedSpaces.length > 0
-      const createEntityId = createReservedIdAllocator(collectAppNavigationEntityIds(state))
-      setState((previous) => {
-        const result = moveSelectedSpacesToDomain(previous, drag.sourceDomainId, dragIds, domainTarget.targetId, {
-          createFallbackSpace: () => createSpace('space', createEntityId),
+      if (shouldNotifyCrossDomainMove) {
+        const createEntityId = createReservedIdAllocator(collectAppNavigationEntityIds(state))
+        setState((previous) => {
+          const result = moveSelectedSpacesToDomain(previous, drag.sourceDomainId, dragIds, domainTarget.targetId, {
+            createFallbackSpace: () => createSpace('space', createEntityId),
+          })
+          if (result.reason === 'last-space') onArrangeSpaceMoveBlocked?.('last-space')
+          return result.state
         })
-        if (result.reason === 'last-space') onArrangeSpaceMoveBlocked?.('last-space')
-        return result.state
-      })
-      if (shouldNotifyCrossDomainMove && targetDomain) {
         onArrangeSpaceMovedAcrossDomains?.(
           movedSpaces.map((space) => space.name),
           targetDomain.name,
         )
+        clearSelection()
       }
       suppressNextSpaceArrangeExitClick()
-      clearSelection()
       clearSpacePointerDrag()
       clearTapCandidate()
       clearDragSeed()
@@ -1077,12 +1169,20 @@ export function useArrangeMode({
       return true
     }
     if (insertionTarget) {
-      markClickSuppressed(`space:${insertionTarget.targetId}`)
-      moveSpaceToTarget(dragIds, insertionTarget)
+      const didMoveSpace = wouldInsertionMoveItems(
+        projectActiveDomainState(state).domains.find((domain) => domain.id === drag.sourceDomainId)?.spaces,
+        dragIds,
+        insertionTarget.targetId,
+        insertionTarget.position,
+      )
+      if (didMoveSpace) {
+        markClickSuppressed(`space:${insertionTarget.targetId}`)
+        moveSpaceToTarget(dragIds, insertionTarget)
+        clearSelection()
+      }
     }
 
     suppressNextSpaceArrangeExitClick()
-    clearSelection()
     clearSpacePointerDrag()
     clearTapCandidate()
     clearDragSeed()
@@ -1440,6 +1540,7 @@ export function useArrangeMode({
     tabDragGroupRef.current = null
     detachArrangeDragWindowListeners()
     setTabDragPreview(null)
+    blurActiveArrangeRailControl()
   }
 
   const cleanupFinishedTabPointerDrag = () => {
@@ -1518,6 +1619,7 @@ export function useArrangeMode({
     tabDragGroupRef.current = { item, ids: dragIds }
     tabDragRef.current = nextDrag
     setTabDragPreview(nextDrag)
+    blurArrangeRailControl(event.currentTarget)
     attachTabDragWindowListeners()
     updateTabDropTarget(item, event.clientX, event.clientY)
   }
@@ -1651,7 +1753,7 @@ export function useArrangeMode({
       }
     } else if (item.type === 'subtab') {
       const parentTarget = getParentInsertionTargetFromPoint(clientX, clientY)
-      if (parentTarget) {
+      if (parentTarget && parentTarget.targetId !== item.parentTabId) {
         markClickSuppressed(`tab:${parentTarget.targetId}`)
         moveSubTabsToParent(item.parentTabId, dragIds, parentTarget.targetId)
       } else {
@@ -1825,6 +1927,7 @@ export function useArrangeMode({
     setTabDragPreview(null)
     clearSelection()
     setHierarchyRevealLevel(0)
+    blurActiveArrangeRailControl()
     setMode((previous) => (previous.active ? DEFAULT_ARRANGE_MODE : previous))
   }, [viewMode])
 

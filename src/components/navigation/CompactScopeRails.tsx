@@ -29,6 +29,10 @@ type CompactScopeDragPreviewProps =
   | { type: 'domain'; preview: DomainArrangeDragPreview; active: boolean }
   | { type: 'space'; preview: SpaceArrangeDragPreview; active: boolean }
 
+function hasSelectionClickModifier(event: Pick<ReactPointerEvent<HTMLButtonElement>, 'shiftKey' | 'ctrlKey' | 'metaKey'>) {
+  return event.shiftKey || event.ctrlKey || event.metaKey
+}
+
 export function CompactScopeDragPreview({ type, preview }: CompactScopeDragPreviewProps) {
   const kindClass = type === 'domain' ? 'compact-domain-btn is-domain' : 'compact-space-btn is-space'
   const cardClassName = `compact-scope-arrange-preview compact-scope-btn ${kindClass} is-active is-selected`
@@ -361,6 +365,10 @@ export function CompactSpaceRail({
                   if (tagFilterActive) return
                   if (guidedDestinationActive) return
                   if (event.button !== 0) return
+                  if (hasSelectionClickModifier(event)) {
+                    onClearArrangePressTimer()
+                    return
+                  }
                   event.currentTarget.setPointerCapture(event.pointerId)
                   onStartArrangeDragSeed(`space:${space.id}`, event)
                   if (arrangeMode.active) {
@@ -620,6 +628,10 @@ export function CompactDomainRail({
                   if (tagFilterActive) return
                   if (guidedDestinationActive) return
                   if (event.button !== 0) return
+                  if (hasSelectionClickModifier(event)) {
+                    onClearArrangePressTimer()
+                    return
+                  }
                   event.currentTarget.setPointerCapture(event.pointerId)
                   onStartArrangeDragSeed(`domain:${domain.id}`, event)
                   if (arrangeMode.active) {

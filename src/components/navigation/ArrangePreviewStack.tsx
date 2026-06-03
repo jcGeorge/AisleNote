@@ -2,9 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import type { ArrangePreviewGhostItem } from '../../types/app'
 import {
+  ARRANGE_PREVIEW_PRIMARY_CONFIG,
   createArrangePreviewFollowers,
+  createArrangePreviewPrimaryFollower,
   getArrangePreviewGhostConfig,
   getArrangePreviewGhostCssProperties,
+  getArrangePreviewPrimaryCssProperties,
   updateArrangePreviewFollower,
   type ArrangePreviewFollower,
   type ArrangePreviewTargetRect,
@@ -47,14 +50,21 @@ export function ArrangePreviewStack({
   const normalizedDragCount = Math.max(1, dragCount)
   const ghostCount = ghostItems.length
   const targetRectRef = useRef(targetRect)
+  const primaryFollowerRef = useRef<ArrangePreviewFollower>(createArrangePreviewPrimaryFollower(targetRect))
   const followersRef = useRef<ArrangePreviewFollower[]>([])
   const ghostItemsKey = useMemo(() => getGhostItemsKey(ghostItems), [ghostItems])
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(() => getPrefersReducedMotion())
-  const [ghostStyles, setGhostStyles] = useState<CSSProperties[]>(() => {
+  const [primaryFollower, setPrimaryFollower] = useState<ArrangePreviewFollower>(() => primaryFollowerRef.current)
+  const [followers, setFollowers] = useState<ArrangePreviewFollower[]>(() => {
     const followers = createArrangePreviewFollowers(ghostItems, targetRect)
     followersRef.current = followers
-    return followers.map((follower, index) => getArrangePreviewGhostCssProperties(index, follower, targetRect))
+    return followers
   })
+  const primaryStyle =
+    ghostCount > 0 ? getArrangePreviewPrimaryCssProperties(primaryFollower, targetRect, prefersReducedMotion) : undefined
+  const ghostStyles = followers.map((follower, index) =>
+    getArrangePreviewGhostCssProperties(index, follower, targetRect, prefersReducedMotion),
+  )
 
   targetRectRef.current = targetRect
 
@@ -74,13 +84,12 @@ export function ArrangePreviewStack({
   }, [])
 
   useEffect(() => {
+    const primaryFollower = createArrangePreviewPrimaryFollower(targetRectRef.current)
     const followers = createArrangePreviewFollowers(ghostItems, targetRectRef.current)
+    primaryFollowerRef.current = primaryFollower
     followersRef.current = followers
-    setGhostStyles(
-      followers.map((follower, index) =>
-        getArrangePreviewGhostCssProperties(index, follower, targetRectRef.current, prefersReducedMotion),
-      ),
-    )
+    setPrimaryFollower(primaryFollower)
+    setFollowers(followers)
   }, [ghostItemsKey, prefersReducedMotion, targetRect.height, targetRect.width])
 
   useEffect(() => {
@@ -91,13 +100,12 @@ export function ArrangePreviewStack({
       typeof window.requestAnimationFrame !== 'function' ||
       typeof window.cancelAnimationFrame !== 'function'
     ) {
+      const primaryFollower = createArrangePreviewPrimaryFollower(targetRectRef.current)
       const centeredFollowers = createArrangePreviewFollowers(ghostItems, targetRectRef.current)
+      primaryFollowerRef.current = primaryFollower
       followersRef.current = centeredFollowers
-      setGhostStyles(
-        centeredFollowers.map((follower, index) =>
-          getArrangePreviewGhostCssProperties(index, follower, targetRectRef.current, true),
-        ),
-      )
+      setPrimaryFollower(primaryFollower)
+      setFollowers(centeredFollowers)
       return
     }
 
@@ -108,13 +116,19 @@ export function ArrangePreviewStack({
       const deltaMs = lastFrameTime === null ? 16 : frameTime - lastFrameTime
       lastFrameTime = frameTime
       const currentTarget = targetRectRef.current
+      const nextPrimaryFollower = updateArrangePreviewFollower(
+        primaryFollowerRef.current,
+        currentTarget,
+        deltaMs,
+        ARRANGE_PREVIEW_PRIMARY_CONFIG,
+      )
       const nextFollowers = followersRef.current.map((follower, index) =>
         updateArrangePreviewFollower(follower, currentTarget, deltaMs, getArrangePreviewGhostConfig(index)),
       )
+      primaryFollowerRef.current = nextPrimaryFollower
       followersRef.current = nextFollowers
-      setGhostStyles(
-        nextFollowers.map((follower, index) => getArrangePreviewGhostCssProperties(index, follower, currentTarget)),
-      )
+      setPrimaryFollower(nextPrimaryFollower)
+      setFollowers(nextFollowers)
       frameId = window.requestAnimationFrame(step)
     }
 
@@ -142,7 +156,9 @@ export function ArrangePreviewStack({
           <span>{ghost.label}</span>
         </div>
       ))}
-      <div className={`${cardClassName} arrange-preview-card arrange-preview-primary`}>{children}</div>
+      <div className={`${cardClassName} arrange-preview-card arrange-preview-primary`} style={primaryStyle}>
+        {children}
+      </div>
     </div>
   )
 }

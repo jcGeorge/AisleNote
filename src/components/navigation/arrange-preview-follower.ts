@@ -22,12 +22,25 @@ export type ArrangePreviewFollowerConfig = {
   maxLag: number
   smoothingMs: number
   rotationDeg: number
+  settleOffsetX: number
+  settleOffsetY: number
 }
 
 export const ARRANGE_PREVIEW_GHOST_CONFIGS: ArrangePreviewFollowerConfig[] = [
-  { lagMs: 55, maxLag: 72, smoothingMs: 58, rotationDeg: -30 },
-  { lagMs: 75, maxLag: 96, smoothingMs: 72, rotationDeg: 30 },
+  { lagMs: 55, maxLag: 72, smoothingMs: 58, rotationDeg: -8, settleOffsetX: -8, settleOffsetY: -3 },
+  { lagMs: 75, maxLag: 96, smoothingMs: 72, rotationDeg: 8, settleOffsetX: 8, settleOffsetY: 3 },
+  { lagMs: 55, maxLag: 72, smoothingMs: 58, rotationDeg: -12, settleOffsetX: -12, settleOffsetY: 5 },
+  { lagMs: 75, maxLag: 96, smoothingMs: 72, rotationDeg: 12, settleOffsetX: 12, settleOffsetY: -5 },
 ]
+
+export const ARRANGE_PREVIEW_PRIMARY_CONFIG: ArrangePreviewFollowerConfig = {
+  lagMs: 38,
+  maxLag: 56,
+  smoothingMs: 48,
+  rotationDeg: 0,
+  settleOffsetX: 0,
+  settleOffsetY: 0,
+}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
@@ -39,10 +52,7 @@ function getSafeDeltaMs(deltaMs: number): number {
 }
 
 export function getArrangePreviewGhostConfig(index: number): ArrangePreviewFollowerConfig {
-  return {
-    ...ARRANGE_PREVIEW_GHOST_CONFIGS[index % ARRANGE_PREVIEW_GHOST_CONFIGS.length],
-    rotationDeg: index % 2 === 0 ? -30 : 30,
-  }
+  return ARRANGE_PREVIEW_GHOST_CONFIGS[index % ARRANGE_PREVIEW_GHOST_CONFIGS.length]
 }
 
 export function createArrangePreviewFollower(
@@ -59,6 +69,17 @@ export function createArrangePreviewFollower(
   }
 }
 
+export function createArrangePreviewPrimaryFollower(targetRect: ArrangePreviewTargetRect): ArrangePreviewFollower {
+  return {
+    x: targetRect.left,
+    y: targetRect.top,
+    previousTargetLeft: targetRect.left,
+    previousTargetTop: targetRect.top,
+    width: targetRect.width,
+    height: targetRect.height,
+  }
+}
+
 export function createArrangePreviewFollowers(
   ghostItems: ArrangePreviewGhostItem[] | undefined,
   targetRect: ArrangePreviewTargetRect,
@@ -66,10 +87,14 @@ export function createArrangePreviewFollowers(
   return (ghostItems ?? []).map((ghostItem) => createArrangePreviewFollower(targetRect, ghostItem))
 }
 
-function getCenteredGhostTarget(follower: ArrangePreviewFollower, targetRect: ArrangePreviewTargetRect) {
+function getSettledGhostTarget(
+  follower: ArrangePreviewFollower,
+  targetRect: ArrangePreviewTargetRect,
+  config: ArrangePreviewFollowerConfig,
+) {
   return {
-    left: targetRect.left + (targetRect.width - follower.width) / 2,
-    top: targetRect.top + (targetRect.height - follower.height) / 2,
+    left: targetRect.left + (targetRect.width - follower.width) / 2 + config.settleOffsetX,
+    top: targetRect.top + (targetRect.height - follower.height) / 2 + config.settleOffsetY,
   }
 }
 
@@ -80,21 +105,21 @@ export function getArrangePreviewLaggedTarget(
   config: ArrangePreviewFollowerConfig,
 ): { x: number; y: number } {
   const safeDeltaMs = getSafeDeltaMs(deltaMs)
-  const centeredTarget = getCenteredGhostTarget(follower, targetRect)
-  const previousCenteredTarget = {
-    left: follower.previousTargetLeft + (targetRect.width - follower.width) / 2,
-    top: follower.previousTargetTop + (targetRect.height - follower.height) / 2,
+  const settledTarget = getSettledGhostTarget(follower, targetRect, config)
+  const previousSettledTarget = {
+    left: follower.previousTargetLeft + (targetRect.width - follower.width) / 2 + config.settleOffsetX,
+    top: follower.previousTargetTop + (targetRect.height - follower.height) / 2 + config.settleOffsetY,
   }
-  const velocityX = (centeredTarget.left - previousCenteredTarget.left) / safeDeltaMs
-  const velocityY = (centeredTarget.top - previousCenteredTarget.top) / safeDeltaMs
+  const velocityX = (settledTarget.left - previousSettledTarget.left) / safeDeltaMs
+  const velocityY = (settledTarget.top - previousSettledTarget.top) / safeDeltaMs
   const rawLagX = -velocityX * config.lagMs
   const rawLagY = -velocityY * config.lagMs
   const rawLagDistance = Math.hypot(rawLagX, rawLagY)
   const lagScale = rawLagDistance > config.maxLag ? config.maxLag / rawLagDistance : 1
 
   return {
-    x: centeredTarget.left + rawLagX * lagScale,
-    y: centeredTarget.top + rawLagY * lagScale,
+    x: settledTarget.left + rawLagX * lagScale,
+    y: settledTarget.top + rawLagY * lagScale,
   }
 }
 
@@ -112,11 +137,11 @@ export function updateArrangePreviewFollower(
   const targetIsStill =
     Math.abs(targetRect.left - follower.previousTargetLeft) < 0.01 &&
     Math.abs(targetRect.top - follower.previousTargetTop) < 0.01
-  const centeredTarget = getCenteredGhostTarget(follower, targetRect)
+  const settledTarget = getSettledGhostTarget(follower, targetRect, config)
 
   return {
-    x: targetIsStill && Math.abs(nextX - centeredTarget.left) < 0.25 ? centeredTarget.left : nextX,
-    y: targetIsStill && Math.abs(nextY - centeredTarget.top) < 0.25 ? centeredTarget.top : nextY,
+    x: targetIsStill && Math.abs(nextX - settledTarget.left) < 0.25 ? settledTarget.left : nextX,
+    y: targetIsStill && Math.abs(nextY - settledTarget.top) < 0.25 ? settledTarget.top : nextY,
     previousTargetLeft: targetRect.left,
     previousTargetTop: targetRect.top,
     width: follower.width,
@@ -131,12 +156,25 @@ export function getArrangePreviewGhostCssProperties(
   reducedMotion = false,
 ): CSSProperties {
   const config = getArrangePreviewGhostConfig(index)
-  const centeredTarget = getCenteredGhostTarget(follower, targetRect)
-  const x = reducedMotion ? centeredTarget.left - targetRect.left : follower.x - targetRect.left
-  const y = reducedMotion ? centeredTarget.top - targetRect.top : follower.y - targetRect.top
+  const settledTarget = getSettledGhostTarget(follower, targetRect, config)
+  const x = reducedMotion ? settledTarget.left - targetRect.left : follower.x - targetRect.left
+  const y = reducedMotion ? settledTarget.top - targetRect.top : follower.y - targetRect.top
   return {
     '--arrange-preview-ghost-x': `${Math.round(x)}px`,
     '--arrange-preview-ghost-y': `${Math.round(y)}px`,
     '--arrange-preview-ghost-rotation': `${config.rotationDeg}deg`,
+  } as CSSProperties
+}
+
+export function getArrangePreviewPrimaryCssProperties(
+  follower: ArrangePreviewFollower,
+  targetRect: ArrangePreviewTargetRect,
+  reducedMotion = false,
+): CSSProperties {
+  const x = reducedMotion ? 0 : follower.x - targetRect.left
+  const y = reducedMotion ? 0 : follower.y - targetRect.top
+  return {
+    '--arrange-preview-primary-x': `${Math.round(x)}px`,
+    '--arrange-preview-primary-y': `${Math.round(y)}px`,
   } as CSSProperties
 }

@@ -575,15 +575,33 @@ describe('compact scope tab scaling styles', () => {
     const spaceRule = extractRule(railCss, '.rail-control.is-space,\n.compact-space-btn')
     const parentRule = extractRule(railCss, '.rail-control.is-parent,\n.parent-tab-btn')
     const subtabRule = extractRule(railCss, '.rail-control.is-subtab,\n.subtab-btn')
-    const arrangeSelectedDomainRule = extractRule(topbarCss, '.compact-domain-btn.is-arrange-selected')
-    const arrangeSelectedSpaceRule = extractRule(topbarCss, '.compact-space-btn.is-arrange-selected')
+    const arrangeActiveDomainRule = extractRule(
+      topbarCss,
+      '.compact-domain-btn.is-arrangeable.is-active,\n.compact-domain-btn.is-arrangeable.is-active:hover,\n.compact-domain-btn.is-arrangeable.is-active:focus,\n.compact-domain-btn.is-arrangeable.is-active:active,\n.compact-domain-btn.is-arrange-selected',
+    )
+    const arrangeActiveSpaceRule = extractRule(
+      topbarCss,
+      '.compact-space-btn.is-arrangeable.is-active,\n.compact-space-btn.is-arrangeable.is-active:hover,\n.compact-space-btn.is-arrangeable.is-active:focus,\n.compact-space-btn.is-arrangeable.is-active:active,\n.compact-space-btn.is-arrange-selected',
+    )
     const draggedTabRule = extractRule(tabsCss, '.tab-btn.is-arrangeable.is-dragging')
     const draggedScopeRule = extractRule(topbarCss, '.compact-scope-btn.is-arrangeable.is-dragging')
+    const arrangeUnselectedDomainRule = extractRule(
+      topbarCss,
+      '.compact-domain-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging),\n.compact-domain-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging):hover,\n.compact-domain-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging):focus,\n.compact-domain-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging):active',
+    )
+    const arrangeUnselectedSpaceRule = extractRule(
+      topbarCss,
+      '.compact-space-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging),\n.compact-space-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging):hover,\n.compact-space-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging):focus,\n.compact-space-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging):active',
+    )
     const arrangeDraggingDomainRule = extractRule(topbarCss, '.compact-domain-btn.is-arrangeable.is-dragging')
     const arrangeDraggingSpaceRule = extractRule(topbarCss, '.compact-space-btn.is-arrangeable.is-dragging')
+    const arrangeUnselectedParentRule = extractRule(
+      tabsCss,
+      ".parent-tab-btn.is-arrangeable:not(.is-arrange-selected):not(.is-dragging):not([aria-selected='true']),\n.parent-tab-btn.is-arrangeable:not(.is-arrange-selected):not(.is-dragging):not([aria-selected='true']):hover,\n.parent-tab-btn.is-arrangeable:not(.is-arrange-selected):not(.is-dragging):not([aria-selected='true']):focus,\n.parent-tab-btn.is-arrangeable:not(.is-arrange-selected):not(.is-dragging):not([aria-selected='true']):active",
+    )
     const arrangeSelectedParentRule = extractRule(
       tabsCss,
-      '.parent-tab-btn.is-arrangeable.is-dragging,\n.parent-tab-btn.is-arrangeable.is-dragging:hover,\n.parent-tab-btn.is-arrangeable.is-dragging:focus,\n.parent-tab-btn.is-arrangeable.is-dragging:active,\n.parent-tab-btn.is-arrange-selected',
+      ".parent-tab-btn.is-arrangeable.is-dragging,\n.parent-tab-btn.is-arrangeable.is-dragging:hover,\n.parent-tab-btn.is-arrangeable.is-dragging:focus,\n.parent-tab-btn.is-arrangeable.is-dragging:active,\n.parent-tab-btn.is-arrangeable[aria-selected='true'],\n.parent-tab-btn.is-arrangeable[aria-selected='true']:hover,\n.parent-tab-btn.is-arrangeable[aria-selected='true']:focus,\n.parent-tab-btn.is-arrangeable[aria-selected='true']:active,\n.parent-tab-btn.is-arrange-selected",
     )
     const arrangeSubTabPressedRule = extractRule(
       tabsCss,
@@ -673,9 +691,15 @@ describe('compact scope tab scaling styles', () => {
     expect(domainRule).toContain('--rail-control-selected-bg: var(--domain-rail-selected-bg);')
     expect(domainRule).toContain('--rail-control-selected-border: var(--domain-rail-selected-border);')
     expect(domainRule).not.toContain('--trash-parent')
-    expect(arrangeSelectedDomainRule).toContain('color: var(--domain-rail-selected-text) !important;')
-    expect(arrangeSelectedDomainRule).toContain('background: var(--domain-rail-selected-bg) !important;')
-    expect(arrangeSelectedDomainRule).toContain('border-color: var(--domain-rail-selected-border) !important;')
+    expect(arrangeActiveDomainRule).toContain('color: var(--domain-rail-selected-text) !important;')
+    expect(arrangeActiveDomainRule).toContain('background: var(--domain-rail-selected-bg) !important;')
+    expect(arrangeActiveDomainRule).toContain('border-color: var(--domain-rail-selected-border) !important;')
+    expect(arrangeActiveDomainRule).toContain('background-color: var(--domain-rail-selected-bg) !important;')
+    expect(arrangeActiveDomainRule).toContain('var(--domain-rail-arrangeable-shadow)')
+    expect(arrangeUnselectedDomainRule).toContain('color: var(--domain-rail-text) !important;')
+    expect(arrangeUnselectedDomainRule).toContain('background: var(--domain-rail-bg) !important;')
+    expect(arrangeUnselectedDomainRule).toContain('border-color: var(--domain-rail-border) !important;')
+    expect(arrangeUnselectedDomainRule).toContain('var(--domain-rail-arrangeable-shadow)')
     expect(arrangeDraggingDomainRule).toContain('color: var(--domain-rail-selected-text) !important;')
     expect(arrangeDraggingDomainRule).toContain('background: var(--domain-rail-selected-bg) !important;')
     expect(arrangeDraggingDomainRule).toContain('border-color: var(--domain-rail-selected-border) !important;')
@@ -693,9 +717,15 @@ describe('compact scope tab scaling styles', () => {
     expect(spaceRule).not.toContain('#d6bd71')
     expect(spaceRule).not.toContain('#1b170d')
     expect(spaceRule).not.toContain('#72591e')
-    expect(arrangeSelectedSpaceRule).toContain('color: var(--space-rail-selected-text) !important;')
-    expect(arrangeSelectedSpaceRule).toContain('background: var(--space-rail-selected-bg) !important;')
-    expect(arrangeSelectedSpaceRule).toContain('border-color: var(--space-rail-selected-border) !important;')
+    expect(arrangeActiveSpaceRule).toContain('color: var(--space-rail-selected-text) !important;')
+    expect(arrangeActiveSpaceRule).toContain('background: var(--space-rail-selected-bg) !important;')
+    expect(arrangeActiveSpaceRule).toContain('border-color: var(--space-rail-selected-border) !important;')
+    expect(arrangeActiveSpaceRule).toContain('background-color: var(--space-rail-selected-bg) !important;')
+    expect(arrangeActiveSpaceRule).toContain('var(--space-rail-arrangeable-shadow)')
+    expect(arrangeUnselectedSpaceRule).toContain('color: var(--space-rail-text) !important;')
+    expect(arrangeUnselectedSpaceRule).toContain('background: var(--space-rail-bg) !important;')
+    expect(arrangeUnselectedSpaceRule).toContain('border-color: var(--space-rail-border) !important;')
+    expect(arrangeUnselectedSpaceRule).toContain('var(--space-rail-arrangeable-shadow)')
     expect(arrangeDraggingSpaceRule).toContain('color: var(--space-rail-selected-text) !important;')
     expect(arrangeDraggingSpaceRule).toContain('background: var(--space-rail-selected-bg) !important;')
     expect(arrangeDraggingSpaceRule).toContain('border-color: var(--space-rail-selected-border) !important;')
@@ -706,6 +736,10 @@ describe('compact scope tab scaling styles', () => {
     expect(parentRule).toContain('--rail-control-selected-text: var(--parent-rail-selected-text);')
     expect(parentRule).toContain('--rail-control-selected-bg: var(--parent-rail-selected-bg);')
     expect(parentRule).toContain('--rail-control-selected-border: var(--parent-rail-selected-border);')
+    expect(arrangeUnselectedParentRule).toContain('color: var(--tab-btn-text) !important;')
+    expect(arrangeUnselectedParentRule).toContain('background: var(--tab-btn-bg) !important;')
+    expect(arrangeUnselectedParentRule).toContain('border-color: var(--tab-btn-border) !important;')
+    expect(arrangeUnselectedParentRule).toContain('var(--tab-arrangeable-shadow)')
     expect(arrangeSelectedParentRule).toContain('color: var(--parent-tab-selected-text) !important;')
     expect(arrangeSelectedParentRule).toContain('background: var(--parent-tab-selected-bg) !important;')
     expect(arrangeSelectedParentRule).toContain('border-color: var(--parent-tab-selected-border) !important;')
@@ -810,10 +844,13 @@ describe('compact scope tab scaling styles', () => {
       '.arrange-preview-card.tab-arrange-preview,\n.arrange-preview-card.compact-scope-arrange-preview',
     )
     const ghostRule = extractRule(css, '.arrange-preview-card.arrange-preview-ghost')
+    const primaryRule = extractRule(css, '.arrange-preview-card.arrange-preview-primary')
     const firstGhostRule = extractRule(css, '.arrange-preview-card.arrange-preview-ghost.is-ghost-1')
     const secondGhostRule = extractRule(css, '.arrange-preview-card.arrange-preview-ghost.is-ghost-2')
+    const thirdGhostRule = extractRule(css, '.arrange-preview-card.arrange-preview-ghost.is-ghost-3')
+    const fourthGhostRule = extractRule(css, '.arrange-preview-card.arrange-preview-ghost.is-ghost-4')
     const reducedMotionRule = css.match(
-      /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.arrange-preview-card\.arrange-preview-ghost\s*\{[^}]+\}\s*\}/,
+      /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?\.arrange-preview-card\.arrange-preview-ghost\s*\{[^}]+\}\s*\}/,
     )?.[0] ?? ''
 
     expect(css).toContain('.arrange-preview-stack')
@@ -831,6 +868,10 @@ describe('compact scope tab scaling styles', () => {
     expect(tabPreviewLabelRule).toContain('text-overflow: ellipsis;')
     expect(sharedCardRule).toContain('width: 100%;')
     expect(sharedCardRule).toContain('height: 100%;')
+    expect(primaryRule).toContain(
+      'transform: translate(var(--arrange-preview-primary-x, 0px), var(--arrange-preview-primary-y, 0px));',
+    )
+    expect(primaryRule).toContain('will-change: transform;')
     expect(ghostRule).toContain('opacity: var(--arrange-preview-ghost-opacity, 1);')
     expect(ghostRule).toContain('transform-origin: center;')
     expect(ghostRule).toContain(
@@ -839,15 +880,22 @@ describe('compact scope tab scaling styles', () => {
     expect(ghostRule).toContain('rotate(var(--arrange-preview-ghost-rotation, 0deg));')
     expect(ghostRule).toContain('will-change: transform;')
     expect(ghostRule).not.toContain('animation:')
-    expect(firstGhostRule).toContain('--arrange-preview-ghost-rotation: -30deg;')
+    expect(firstGhostRule).toContain('--arrange-preview-ghost-rotation: -8deg;')
     expect(firstGhostRule).toContain('--arrange-preview-ghost-opacity: 1;')
-    expect(secondGhostRule).toContain('--arrange-preview-ghost-rotation: 30deg;')
+    expect(secondGhostRule).toContain('--arrange-preview-ghost-rotation: 8deg;')
     expect(secondGhostRule).toContain('--arrange-preview-ghost-opacity: 1;')
+    expect(thirdGhostRule).toContain('--arrange-preview-ghost-rotation: -12deg;')
+    expect(thirdGhostRule).toContain('--arrange-preview-ghost-opacity: 1;')
+    expect(fourthGhostRule).toContain('--arrange-preview-ghost-rotation: 12deg;')
+    expect(fourthGhostRule).toContain('--arrange-preview-ghost-opacity: 1;')
     expect(css).not.toContain('--arrange-preview-ghost-mid-x:')
     expect(css).not.toContain('scale(1.2)')
     expect(reducedMotionRule).toContain('@media (prefers-reduced-motion: reduce)')
-    expect(reducedMotionRule).toContain('transform: rotate(var(--arrange-preview-ghost-rotation, 0deg));')
     expect(reducedMotionRule).toContain('will-change: auto;')
+    expect(reducedMotionRule).toContain(
+      'transform: translate(var(--arrange-preview-ghost-x, 0px), var(--arrange-preview-ghost-y, 0px))',
+    )
+    expect(reducedMotionRule).toContain('rotate(var(--arrange-preview-ghost-rotation, 0deg));')
   })
 
   it('left-aligns find result chips so long labels truncate from the right', () => {

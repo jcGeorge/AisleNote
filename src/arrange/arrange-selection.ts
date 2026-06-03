@@ -33,6 +33,17 @@ type UpdateArrangeSelectionForClickOptions = {
   modifiers: SelectionClickModifiers
 }
 
+type GetArrangeSelectionActiveReplacementIdOptions = {
+  previousSelection: ArrangeSelectionState
+  nextSelection: ArrangeSelectionState
+  kind: ArrangeSelectionKind
+  parentTabId?: string | null
+  domainId?: string | null
+  itemId: string
+  currentId: string | null
+  modifiers: SelectionClickModifiers
+}
+
 type NormalizeArrangeSelectionOptions = {
   selection: ArrangeSelectionState
   orderedParentIds: string[]
@@ -97,6 +108,21 @@ export function getContiguousRangeIds(orderedIds: string[], anchorId: string, ta
   return orderedIds.slice(start, end + 1)
 }
 
+function isArrangeSelectionContext(
+  selection: ArrangeSelectionState,
+  kind: ArrangeSelectionKind,
+  parentTabId: string | null,
+  domainId: string | null,
+) {
+  return (
+    selection.kind === kind &&
+    (kind === 'parent' ||
+      kind === 'domain' ||
+      (kind === 'subtab' && selection.parentTabId === parentTabId) ||
+      (kind === 'space' && selection.domainId === domainId))
+  )
+}
+
 export function updateArrangeSelectionForClick({
   selection,
   kind,
@@ -113,12 +139,7 @@ export function updateArrangeSelectionForClick({
 
   const selectionParentTabId = kind === 'subtab' ? parentTabId : null
   const selectionDomainId = kind === 'space' ? domainId : null
-  const isSameSelection =
-    selection.kind === kind &&
-    (kind === 'parent' ||
-      kind === 'domain' ||
-      (kind === 'subtab' && selection.parentTabId === selectionParentTabId) ||
-      (kind === 'space' && selection.domainId === selectionDomainId))
+  const isSameSelection = isArrangeSelectionContext(selection, kind, selectionParentTabId, selectionDomainId)
   const currentIdIsValid = Boolean(currentId && orderedIds.includes(currentId))
   const fallbackAnchorId =
     isSameSelection && selection.anchorId && orderedIds.includes(selection.anchorId)
@@ -161,6 +182,29 @@ export function updateArrangeSelectionForClick({
         selectedIds: orderedSelectedIds,
         anchorId: itemId,
       }
+}
+
+export function getArrangeSelectionActiveReplacementId({
+  previousSelection,
+  nextSelection,
+  kind,
+  parentTabId = null,
+  domainId = null,
+  itemId,
+  currentId,
+  modifiers,
+}: GetArrangeSelectionActiveReplacementIdOptions): string | null {
+  if (modifiers.shiftKey || (!modifiers.ctrlKey && !modifiers.metaKey)) return null
+  if (!currentId || itemId !== currentId) return null
+
+  const selectionParentTabId = kind === 'subtab' ? parentTabId : null
+  const selectionDomainId = kind === 'space' ? domainId : null
+  if (!isArrangeSelectionContext(previousSelection, kind, selectionParentTabId, selectionDomainId)) return null
+  if (!previousSelection.selectedIds.includes(currentId)) return null
+  if (!isArrangeSelectionContext(nextSelection, kind, selectionParentTabId, selectionDomainId)) return null
+  if (nextSelection.selectedIds.includes(currentId)) return null
+
+  return nextSelection.selectedIds.at(-1) ?? null
 }
 
 export function normalizeArrangeSelection({
