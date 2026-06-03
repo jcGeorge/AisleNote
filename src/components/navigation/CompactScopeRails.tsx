@@ -38,7 +38,7 @@ export function CompactScopeDragPreview({ type, preview }: CompactScopeDragPrevi
       <ArrangePreviewStack
         cardClassName={cardClassName}
         dragCount={preview.dragCount}
-        ghostOrigins={preview.ghostOrigins}
+        ghostItems={preview.ghostItems}
         style={getArrangeDragPreviewStyleFromRect(targetRect)}
         targetRect={targetRect}
       >

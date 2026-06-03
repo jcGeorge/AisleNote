@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import type { ArrangePreviewGhostOrigin } from '../../types/app'
+import type { ArrangePreviewGhostItem } from '../../types/app'
 import {
   createArrangePreviewFollowers,
   getArrangePreviewGhostConfig,
@@ -13,14 +13,21 @@ import {
 type ArrangePreviewStackProps = {
   cardClassName: string
   dragCount?: number
-  ghostOrigins?: ArrangePreviewGhostOrigin[]
+  ghostItems?: ArrangePreviewGhostItem[]
   style: CSSProperties
   targetRect: ArrangePreviewTargetRect
   children: ReactNode
 }
 
-function getGhostOriginKey(ghostOrigins: ArrangePreviewGhostOrigin[] | undefined): string {
-  return (ghostOrigins ?? []).map((origin) => `${Math.round(origin.x)}:${Math.round(origin.y)}`).join('|')
+const EMPTY_GHOST_ITEMS: ArrangePreviewGhostItem[] = []
+
+function getGhostItemsKey(ghostItems: ArrangePreviewGhostItem[] | undefined): string {
+  return (ghostItems ?? [])
+    .map(
+      (ghost) =>
+        `${ghost.id}:${ghost.label}:${Math.round(ghost.x)}:${Math.round(ghost.y)}:${Math.round(ghost.width)}:${Math.round(ghost.height)}`,
+    )
+    .join('|')
 }
 
 function getPrefersReducedMotion(): boolean {
@@ -32,19 +39,19 @@ function getPrefersReducedMotion(): boolean {
 export function ArrangePreviewStack({
   cardClassName,
   dragCount = 1,
-  ghostOrigins,
+  ghostItems = EMPTY_GHOST_ITEMS,
   style,
   targetRect,
   children,
 }: ArrangePreviewStackProps) {
   const normalizedDragCount = Math.max(1, dragCount)
-  const ghostCount = Math.min(2, normalizedDragCount - 1)
+  const ghostCount = ghostItems.length
   const targetRectRef = useRef(targetRect)
   const followersRef = useRef<ArrangePreviewFollower[]>([])
-  const ghostOriginKey = useMemo(() => getGhostOriginKey(ghostOrigins), [ghostOrigins])
+  const ghostItemsKey = useMemo(() => getGhostItemsKey(ghostItems), [ghostItems])
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(() => getPrefersReducedMotion())
   const [ghostStyles, setGhostStyles] = useState<CSSProperties[]>(() => {
-    const followers = createArrangePreviewFollowers(ghostCount, ghostOrigins, targetRect)
+    const followers = createArrangePreviewFollowers(ghostItems, targetRect)
     followersRef.current = followers
     return followers.map((follower, index) => getArrangePreviewGhostCssProperties(index, follower, targetRect))
   })
@@ -67,14 +74,14 @@ export function ArrangePreviewStack({
   }, [])
 
   useEffect(() => {
-    const followers = createArrangePreviewFollowers(ghostCount, ghostOrigins, targetRectRef.current)
+    const followers = createArrangePreviewFollowers(ghostItems, targetRectRef.current)
     followersRef.current = followers
     setGhostStyles(
       followers.map((follower, index) =>
         getArrangePreviewGhostCssProperties(index, follower, targetRectRef.current, prefersReducedMotion),
       ),
     )
-  }, [ghostCount, ghostOriginKey, prefersReducedMotion, targetRect.height, targetRect.width])
+  }, [ghostItemsKey, prefersReducedMotion, targetRect.height, targetRect.width])
 
   useEffect(() => {
     if (ghostCount <= 0) return
@@ -84,11 +91,7 @@ export function ArrangePreviewStack({
       typeof window.requestAnimationFrame !== 'function' ||
       typeof window.cancelAnimationFrame !== 'function'
     ) {
-      const centeredFollowers = createArrangePreviewFollowers(ghostCount, [], targetRectRef.current).map((follower) => ({
-        ...follower,
-        x: targetRectRef.current.left,
-        y: targetRectRef.current.top,
-      }))
+      const centeredFollowers = createArrangePreviewFollowers(ghostItems, targetRectRef.current)
       followersRef.current = centeredFollowers
       setGhostStyles(
         centeredFollowers.map((follower, index) =>
@@ -117,7 +120,7 @@ export function ArrangePreviewStack({
 
     frameId = window.requestAnimationFrame(step)
     return () => window.cancelAnimationFrame(frameId)
-  }, [ghostCount, ghostOriginKey, prefersReducedMotion])
+  }, [ghostCount, ghostItemsKey, prefersReducedMotion])
 
   return (
     <div
@@ -125,14 +128,18 @@ export function ArrangePreviewStack({
       data-drag-count={normalizedDragCount}
       style={style}
     >
-      {Array.from({ length: ghostCount }, (_, index) => (
+      {ghostItems.map((ghost, index) => (
         <div
-          key={index}
+          key={ghost.id}
           aria-hidden="true"
           className={`${cardClassName} arrange-preview-card arrange-preview-ghost is-ghost-${index + 1}`}
-          style={ghostStyles[index]}
+          style={{
+            ...ghostStyles[index],
+            width: `${ghost.width}px`,
+            height: `${ghost.height}px`,
+          }}
         >
-          {children}
+          <span>{ghost.label}</span>
         </div>
       ))}
       <div className={`${cardClassName} arrange-preview-card arrange-preview-primary`}>{children}</div>

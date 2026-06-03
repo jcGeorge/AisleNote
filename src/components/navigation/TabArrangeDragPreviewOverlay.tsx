@@ -19,7 +19,7 @@ export function TabArrangeDragPreviewOverlay({ preview }: TabArrangeDragPreviewO
       <ArrangePreviewStack
         cardClassName={cardClassName}
         dragCount={preview.dragCount}
-        ghostOrigins={preview.ghostOrigins}
+        ghostItems={preview.ghostItems}
         style={getArrangeDragPreviewStyleFromRect(targetRect)}
         targetRect={targetRect}
       >

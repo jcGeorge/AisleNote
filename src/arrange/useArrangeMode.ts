@@ -39,7 +39,7 @@ import type {
   ArrangeHierarchyDropRequest,
   ArrangeInsertPosition,
   ArrangeModeState,
-  ArrangePreviewGhostOrigin,
+  ArrangePreviewGhostItem,
   ArrangeSelectionState,
   ArrangeScope,
   ArrangeSource,
@@ -101,46 +101,58 @@ export function getNextArrangeHierarchyRevealLevel(
   return visibleLevel >= 2 ? 2 : ((visibleLevel + 1) as ArrangeHierarchyRevealLevel)
 }
 
-export function getArrangePreviewGhostOrigins({
+const FALLBACK_GHOST_ITEM_OFFSETS = [
+  { x: -34, y: -18 },
+  { x: -58, y: 18 },
+]
+
+export function getArrangePreviewGhostItems({
   rail,
   selector,
   attributeName,
   selectedIds,
   draggedId,
+  getLabel,
   previewLeft,
   previewTop,
-  limit = 2,
+  fallbackWidth,
+  fallbackHeight,
 }: {
   rail: HTMLElement | null
   selector: string
   attributeName: string
   selectedIds: readonly string[]
   draggedId: string
+  getLabel: (id: string) => string | undefined
   previewLeft: number
   previewTop: number
-  limit?: number
-}): ArrangePreviewGhostOrigin[] {
-  if (!rail || limit <= 0) return []
-  const elements = Array.from(rail.querySelectorAll<HTMLElement>(selector))
-  if (elements.length === 0) return []
+  fallbackWidth: number
+  fallbackHeight: number
+}): ArrangePreviewGhostItem[] {
+  const elements = rail ? Array.from(rail.querySelectorAll<HTMLElement>(selector)) : []
   const elementsById = new Map(
     elements
       .map((element) => [element.getAttribute(attributeName) ?? '', element] as const)
       .filter(([id]) => Boolean(id)),
   )
-  const origins: ArrangePreviewGhostOrigin[] = []
+  const ghosts: ArrangePreviewGhostItem[] = []
   for (const id of selectedIds) {
     if (id === draggedId) continue
+    const label = getLabel(id)
+    if (!label) continue
     const element = elementsById.get(id)
-    if (!element) continue
-    const rect = element.getBoundingClientRect()
-    origins.push({
-      x: rect.left - previewLeft,
-      y: rect.top - previewTop,
+    const rect = element?.getBoundingClientRect()
+    const fallbackOffset = FALLBACK_GHOST_ITEM_OFFSETS[ghosts.length % FALLBACK_GHOST_ITEM_OFFSETS.length]
+    ghosts.push({
+      id,
+      label,
+      x: rect ? rect.left - previewLeft : fallbackOffset.x,
+      y: rect ? rect.top - previewTop : fallbackOffset.y,
+      width: rect?.width ?? fallbackWidth,
+      height: rect?.height ?? fallbackHeight,
     })
-    if (origins.length >= limit) break
   }
-  return origins
+  return ghosts
 }
 
 export function useArrangeMode({
@@ -581,32 +593,29 @@ export function useArrangeMode({
     return state.domains.filter((domain) => selectedIdSet.has(domain.id)).map((domain) => domain.id)
   }
 
-  const getDomainDragPreviewLabel = (domainId: string, fallbackLabel: string) => {
-    const dragIds = getSelectedDomainDragIds(domainId)
-    if (dragIds.length <= 1) return fallbackLabel
-    const firstLabel = state.domains.find((domain) => domain.id === dragIds[0])?.name
-    return `${firstLabel ?? fallbackLabel} + ${dragIds.length - 1}`
-  }
-
   const startDomainPointerDrag = (event: ReactPointerEvent<HTMLButtonElement>, domain: Domain) => {
     if (viewMode !== 'main') return
     const rect = event.currentTarget.getBoundingClientRect()
     const itemIsSelected = selection.kind === 'domain' && selection.selectedIds.includes(domain.id)
     const dragIds = itemIsSelected ? getSelectedDomainDragIds(domain.id) : [domain.id]
+    const previewLabel = domain.name
     const nextDrag: DomainArrangeDragPreview = {
       domainId: domain.id,
       selectedDomainIds: dragIds,
       dragCount: dragIds.length,
-      ghostOrigins: getArrangePreviewGhostOrigins({
+      ghostItems: getArrangePreviewGhostItems({
         rail: domainsGridRef.current,
         selector: '[data-arrange-domain-id]',
         attributeName: 'data-arrange-domain-id',
         selectedIds: dragIds,
         draggedId: domain.id,
+        getLabel: (id) => state.domains.find((entry) => entry.id === id)?.name,
         previewLeft: rect.left,
         previewTop: rect.top,
+        fallbackWidth: rect.width,
+        fallbackHeight: rect.height,
       }),
-      label: itemIsSelected ? getDomainDragPreviewLabel(domain.id, domain.name) : domain.name,
+      label: previewLabel,
       currentX: event.clientX,
       currentY: event.clientY,
       offsetX: event.clientX - rect.left,
@@ -877,34 +886,31 @@ export function useArrangeMode({
     return state.spaces.filter((entry) => selectedIdSet.has(entry.id)).map((entry) => entry.id)
   }
 
-  const getSpaceDragPreviewLabel = (spaceId: string, fallbackLabel: string) => {
-    const dragIds = getSelectedSpaceDragIds(spaceId)
-    if (dragIds.length <= 1) return fallbackLabel
-    const firstLabel = state.spaces.find((entry) => entry.id === dragIds[0])?.name
-    return `${firstLabel ?? fallbackLabel} + ${dragIds.length - 1}`
-  }
-
   const startSpacePointerDrag = (event: ReactPointerEvent<HTMLButtonElement>, space: Space) => {
     if (viewMode !== 'main') return
     const rect = event.currentTarget.getBoundingClientRect()
     const itemIsSelected =
       selection.kind === 'space' && selection.domainId === state.activeDomainId && selection.selectedIds.includes(space.id)
     const dragIds = itemIsSelected ? getSelectedSpaceDragIds(space.id) : [space.id]
+    const previewLabel = space.name
     const nextDrag: SpaceArrangeDragPreview = {
       spaceId: space.id,
       sourceDomainId: state.activeDomainId,
       selectedSpaceIds: dragIds,
       dragCount: dragIds.length,
-      ghostOrigins: getArrangePreviewGhostOrigins({
+      ghostItems: getArrangePreviewGhostItems({
         rail: spacesGridRef.current,
         selector: '[data-arrange-space-id]',
         attributeName: 'data-arrange-space-id',
         selectedIds: dragIds,
         draggedId: space.id,
+        getLabel: (id) => state.spaces.find((entry) => entry.id === id)?.name,
         previewLeft: rect.left,
         previewTop: rect.top,
+        fallbackWidth: rect.width,
+        fallbackHeight: rect.height,
       }),
-      label: itemIsSelected ? getSpaceDragPreviewLabel(space.id, space.name) : space.name,
+      label: previewLabel,
       currentX: event.clientX,
       currentY: event.clientY,
       offsetX: event.clientX - rect.left,
@@ -1252,16 +1258,6 @@ export function useArrangeMode({
     return getTabDragIds(item)
   }
 
-  const getTabDragPreviewLabel = (item: TabArrangeDragItem, fallbackLabel: string) => {
-    const dragIds = getTabDragIds(item)
-    if (dragIds.length <= 1) return fallbackLabel
-    const firstLabel =
-      item.type === 'tab'
-        ? workspace.tabs.find((tab) => tab.id === dragIds[0])?.title
-        : activeTab.subTabs.find((subTab) => subTab.id === dragIds[0])?.title
-    return `${firstLabel ?? fallbackLabel} + ${dragIds.length - 1}`
-  }
-
   const updateTabDropTarget = (item: TabArrangeDragItem, clientX: number, clientY: number) => {
     if (isPointOverTrashDrop(clientX, clientY)) {
       setTrashDropTarget(true)
@@ -1480,7 +1476,7 @@ export function useArrangeMode({
     const rect = event.currentTarget.getBoundingClientRect()
     const itemIsSelected = isTabArrangeItemSelected(item)
     const dragIds = itemIsSelected ? getTabDragIds(item) : [item.type === 'tab' ? item.tabId : item.subTabId]
-    const previewLabel = itemIsSelected ? getTabDragPreviewLabel(item, label) : label
+    const previewLabel = label
     const draggedId = item.type === 'tab' ? item.tabId : item.subTabId
     const rail = item.type === 'tab' ? primaryTabRailRef.current : subTabRailRef.current
     const selector = item.type === 'tab' ? '[data-arrange-tab-id]' : '[data-arrange-subtab-id]'
@@ -1490,14 +1486,20 @@ export function useArrangeMode({
       label: previewLabel,
       variant,
       dragCount: dragIds.length,
-      ghostOrigins: getArrangePreviewGhostOrigins({
+      ghostItems: getArrangePreviewGhostItems({
         rail,
         selector,
         attributeName,
         selectedIds: dragIds,
         draggedId,
+        getLabel: (id) =>
+          item.type === 'tab'
+            ? workspace.tabs.find((tab) => tab.id === id)?.title
+            : activeTab.subTabs.find((subTab) => subTab.id === id)?.title,
         previewLeft: rect.left,
         previewTop: rect.top,
+        fallbackWidth: rect.width,
+        fallbackHeight: rect.height,
       }),
       currentX: event.clientX,
       currentY: event.clientY,

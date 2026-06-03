@@ -9,7 +9,13 @@ type PreviewPortalScope = {
 
 const PREVIEW_CSS_VARIABLES = [
   '--tab-button-scale',
+  '--note-font-scale',
+  '--app-text-scale',
   '--tab-control-height',
+  '--rail-control-font-size',
+  '--rail-control-line-height',
+  '--rail-control-padding',
+  '--rail-control-radius',
   '--domain-rail-accent',
   '--domain-rail-text',
   '--domain-rail-bg',

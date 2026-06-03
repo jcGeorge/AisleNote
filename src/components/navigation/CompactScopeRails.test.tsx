@@ -1150,7 +1150,7 @@ describe('compact scope rails', () => {
         preview={{
           spaceId: 'space-a',
           sourceDomainId: 'domain-a',
-          label: 'Space A + 1',
+          label: 'Space A',
           currentX: 100,
           currentY: 80,
           offsetX: 10,
@@ -1158,7 +1158,7 @@ describe('compact scope rails', () => {
           width: 120,
           height: 26,
           dragCount: 2,
-          ghostOrigins: [{ x: -32, y: 0 }],
+          ghostItems: [{ id: 'space-b', label: 'Space B', x: -32, y: 0, width: 92, height: 26 }],
         }}
       />,
     )
@@ -1168,7 +1168,7 @@ describe('compact scope rails', () => {
         active
         preview={{
           domainId: 'domain-a',
-          label: 'Domain A + 2',
+          label: 'Domain A',
           currentX: 100,
           currentY: 80,
           offsetX: 10,
@@ -1176,9 +1176,9 @@ describe('compact scope rails', () => {
           width: 120,
           height: 26,
           dragCount: 3,
-          ghostOrigins: [
-            { x: -32, y: 0 },
-            { x: 64, y: 0 },
+          ghostItems: [
+            { id: 'domain-b', label: 'Domain B', x: -32, y: 0, width: 104, height: 26 },
+            { id: 'domain-c', label: 'Domain C', x: 64, y: 0, width: 136, height: 26 },
           ],
         }}
       />,
@@ -1192,7 +1192,10 @@ describe('compact scope rails', () => {
     expect(spaceHtml).toContain('--arrange-preview-ghost-x:-32px')
     expect(spaceHtml).toContain('--arrange-preview-ghost-rotation:-30deg')
     expect(spaceHtml).not.toContain('arrange-preview-ghost is-ghost-2')
-    expect(spaceHtml.match(/Space A \+ 1/g)).toHaveLength(2)
+    expect(spaceHtml).toContain('width:92px')
+    expect(spaceHtml.match(/Space A/g)).toHaveLength(1)
+    expect(spaceHtml).toContain('Space B')
+    expect(spaceHtml).not.toContain('Space A +')
     expect(domainHtml).toContain('data-drag-count="3"')
     expect(domainHtml).toContain(
       'compact-scope-arrange-preview compact-scope-btn compact-domain-btn is-domain is-active is-selected arrange-preview-card arrange-preview-ghost is-ghost-1',
@@ -1204,7 +1207,12 @@ describe('compact scope rails', () => {
     expect(domainHtml).toContain('--arrange-preview-ghost-rotation:30deg')
     expect(domainHtml).toContain('left:90px')
     expect(domainHtml).toContain('top:72px')
-    expect(domainHtml.match(/Domain A \+ 2/g)).toHaveLength(3)
+    expect(domainHtml).toContain('width:104px')
+    expect(domainHtml).toContain('width:136px')
+    expect(domainHtml.match(/Domain A/g)).toHaveLength(1)
+    expect(domainHtml).toContain('Domain B')
+    expect(domainHtml).toContain('Domain C')
+    expect(domainHtml).not.toContain('Domain A +')
   })
 
   it('keeps compact scope sort buttons visible but disabled when arrange controls are disabled', () => {
