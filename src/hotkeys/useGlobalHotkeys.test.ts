@@ -8,6 +8,7 @@ import {
   getAisleCycleBracketKey,
   getCycledAisleTarget,
   getCycledParentTabTarget,
+  getCapturedRailVisibilityShortcutTarget,
   getDeleteFocusedSubtabShortcutIntent,
   getNumberedPrimeTabTarget,
   getRailVisibilityShortcutTarget,
@@ -213,6 +214,30 @@ describe('rail visibility hotkeys', () => {
 
     expect(getRailVisibilityShortcutTarget(keyboardEvent('s'), partialHotkeys, false)).toBe('space')
     expect(getRailVisibilityShortcutTarget(keyboardEvent('d'), partialHotkeys, false)).toBe('domain')
+  })
+
+  it('captures rail shortcuts before the editor unless a settings shortcut is recording', () => {
+    const event = keyboardEvent('s')
+
+    expect(
+      getCapturedRailVisibilityShortcutTarget({
+        event,
+        hotkeys,
+        isMacPlatform: false,
+        viewMode: 'main',
+        editingShortcut: null,
+      }),
+    ).toBe('space')
+
+    expect(
+      getCapturedRailVisibilityShortcutTarget({
+        event,
+        hotkeys,
+        isMacPlatform: false,
+        viewMode: 'settings',
+        editingShortcut: 'openSpaces',
+      }),
+    ).toBeNull()
   })
 })
 

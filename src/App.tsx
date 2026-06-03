@@ -92,7 +92,7 @@ import {
   shouldDismissContextMenuFromKey,
   shouldDismissContextMenuFromPointerTarget,
 } from './components/overlays/context-menu-dismissal'
-import { appendToastToStack } from './components/overlays/toast-stack'
+import { appendToastToHistory, appendToastToStack } from './components/overlays/toast-stack'
 import { SettingsPage } from './components/settings/SettingsPage'
 import { StageManagerView } from './components/stage-manager/StageManagerView'
 import { TrashHomeNote } from './components/trash/TrashHomeNote'
@@ -117,7 +117,7 @@ import {
   type EditorOperationRuntime,
 } from './editor/editor-operation-runner'
 import { closeEditorEphemera, type CloseEditorEphemeraOptions } from './editor/editor-ephemera'
-import { MAX_AISLE_WARNING_MESSAGE } from './editor/aisle-edit-draft'
+import { getAislesForNewAisle, MAX_AISLE_WARNING_MESSAGE } from './editor/aisle-edit-draft'
 import type { AisleStructuralSnapshot } from './editor/aisle-structural-history'
 import { insertNewAisles } from './editor/aisle-insertion'
 import { getAisleIdFromAisleEditorKey } from './editor/aisle-editor'
@@ -241,6 +241,7 @@ import { measureSlowOperation } from './performance/performance-logging'
 import { getRuntimeDataCapabilities } from './platform/data-platform'
 import {
   ALWAYS_SHOW_DOMAINS_WITHOUT_SPACES_MESSAGE,
+  DEFAULT_UI_SETTINGS,
   getThemePaletteForTheme,
   isCustomTheme,
 } from './settings/defaults'
@@ -319,6 +320,7 @@ import type {
   InternalNoteLinkEdit,
   LinkEditRange,
   LinkInsertMode,
+  MessagesSection,
   ModalState,
   MultiLineInlineFormat,
   NewAislePlacement,
@@ -495,6 +497,7 @@ function App() {
     useState<{ targetId: string; position: ArrangeInsertPosition | null } | null>(null)
   const isMacPlatform = typeof navigator !== 'undefined' ? /mac/i.test(navigator.platform) : false
   const [menuOpen, setMenuOpen] = useState(false)
+  const [messagesSection, setMessagesSection] = useState<MessagesSection>('inbox')
   const [trashDomainId, setTrashDomainId] = useState<string>('')
   const [trashSpaceId, setTrashSpaceId] = useState<string>('')
   const [trashTabId, setTrashTabId] = useState<string>(TRASH_HOME_ID)
@@ -867,12 +870,23 @@ function App() {
   })
 
   const pushToast = (message: string, tone: ToastTone = 'warning', durationMs = DEFAULT_TOAST_DURATION_MS) => {
+    const toastId = createToastId()
     const nextToast = {
-      id: createToastId(),
+      id: toastId,
       message,
       tone,
       durationMs,
     }
+
+    setState((previous) => ({
+      ...previous,
+      toastHistory: appendToastToHistory(previous.toastHistory ?? [], {
+        id: toastId,
+        createdAt: new Date().toISOString(),
+        message,
+        tone,
+      }),
+    }))
 
     setToasts((currentToasts) => {
       const nextToasts = appendToastToStack(currentToasts, nextToast)
@@ -1206,7 +1220,7 @@ function App() {
     structuralScope: scratchpadWorkspaceActive ? 'scratchpad' : 'note',
     maxAisles: scratchpadWorkspaceActive ? getScratchpadAisleLimit() : MAX_NOTE_AISLES,
     maxAislesWarningMessage: scratchpadWorkspaceActive
-      ? 'scratchpad aisle limit reached. you can raise it to 32 in misc settings.'
+      ? 'scratchpad aisle limit reached. you can raise it to 40 in misc settings.'
       : MAX_AISLE_WARNING_MESSAGE,
     editorRef,
     pendingScrollToAisleIdRef,
@@ -1238,7 +1252,7 @@ function App() {
   }
 
   const showScratchpadAisleLimitToast = () => {
-    pushToast('scratchpad aisle limit reached. you can raise it to 32 in misc settings.', 'warning')
+    pushToast('scratchpad aisle limit reached. you can raise it to 40 in misc settings.', 'warning')
   }
 
   const addScratchpadAisle = (
@@ -1249,15 +1263,11 @@ function App() {
     const latestState = buildStateWithLatestEditorContent()
     const body = getScratchpadNoteBody(latestState)
     if (!body) return false
-    const limit = getScratchpadAisleLimit()
-    if (body.aisles.length >= limit) {
-      showScratchpadAisleLimitToast()
-      return false
-    }
     const side = latestState.ui.scratchpadNewAisleSide ?? 'left'
     return addAisleToActiveNote(markdown, {
       beforeSnapshot: options.beforeSnapshot,
       placement: options.placement ?? (side === 'right' ? 'right-of-focus' : 'left-of-focus'),
+      reclaimEmptyAisleAtLimit: true,
     })
   }
 
@@ -1335,6 +1345,7 @@ function App() {
     if (arrangeMode.active) exitArrangeMode()
     exitTagFilterMode()
     setScratchpadActive(false)
+    setMessagesSection('inbox')
     setViewMode('messages')
     setMenuOpen(false)
     setEditing(null)
@@ -1658,6 +1669,10 @@ function App() {
   })
   const commitRename = navigationActions.commitRename
   const shouldSkipRenameBlur = navigationActions.shouldSkipRenameBlur
+  const isPendingCreatedRename = (type: 'tab' | 'subtab', id: string) =>
+    pendingCreatedEditRef.current?.type === type && pendingCreatedEditRef.current.id === id
+  const tabRenameEnterBehavior =
+    state.ui.tabRenameEnterBehavior ?? DEFAULT_UI_SETTINGS.tabRenameEnterBehavior ?? 'goes-to-note'
   const cancelRename = navigationActions.cancelRename
   const addTab = navigationActions.addTab
   const addSubTab = navigationActions.addSubTab
@@ -3581,7 +3596,11 @@ function App() {
       return runActiveEditorFormatCommand('strike')
     }
     const aislePlacement = getAislePlacementForNewlineOperation(operation)
-    if (aislePlacement && scratchpadWorkspaceActive && activeNoteAisles.length >= getScratchpadAisleLimit()) {
+    if (
+      aislePlacement &&
+      scratchpadWorkspaceActive &&
+      !getAislesForNewAisle(activeNoteAisles, getScratchpadAisleLimit(), true)
+    ) {
       showScratchpadAisleLimitToast()
       return false
     }
@@ -4734,6 +4753,7 @@ function App() {
     .map((tipId) => getTipDefinition(tipId, { isMacPlatform }))
   const unresolvedMessages = (state.messages ?? []).filter((message) => message.status !== 'dismissed')
   const unresolvedMessageCount = unresolvedMessages.length
+  const toastHistoryCount = state.toastHistory?.length ?? 0
   const storageAlerts = useMemo<StorageAlert[]>(() => {
     const dismissed = new Set(dismissedStorageAlertSignatures)
     return unresolvedMessages.flatMap((message) => {
@@ -5016,6 +5036,7 @@ function App() {
         domainRailVisible={state.ui.alwaysShowDomains ?? false}
         onAutoSizeRenameInput={autoSizeRenameInput}
         onShouldSkipRenameBlur={shouldSkipRenameBlur}
+        onIsPendingCreatedRename={isPendingCreatedRename}
         onCommitRename={commitRename}
         onCancelRename={cancelRename}
         onRenameDraftChange={trackRenameDraft}
@@ -5048,6 +5069,7 @@ function App() {
         onSetTrashSubTabId={setTrashSubTabId}
         onOpenContextMenuForTrashTab={openContextMenuForTrashTab}
         onAddTab={tagFilterActive ? () => undefined : addTab}
+        tabRenameEnterBehavior={tabRenameEnterBehavior}
         onOpenParentSortModal={() => setModal({ type: 'sort-tabs', target: 'parents' })}
         onExitArrangeMode={exitArrangeMode}
         onAdvanceArrangeHierarchyReveal={advanceArrangeHierarchyReveal}
@@ -5066,7 +5088,10 @@ function App() {
         settingsSection={settingsController.section}
         onSettingsSectionChange={settingsController.changeSection}
         onExitTagFilterMode={exitTagFilterMode}
+        messagesSection={messagesSection}
         messagesCount={unresolvedMessageCount}
+        toastHistoryCount={toastHistoryCount}
+        onMessagesSectionChange={setMessagesSection}
       />
 
       {tabArrangeDragPreview && <TabArrangeDragPreviewOverlay preview={tabArrangeDragPreview} />}
@@ -5117,6 +5142,7 @@ function App() {
           tableOfContentsScopeDraft={settingsController.tableOfContentsScopeDraft}
           scratchpadAisleLimitDraft={settingsController.scratchpadAisleLimitDraft}
           scratchpadNewAisleSideDraft={settingsController.scratchpadNewAisleSideDraft}
+          tabRenameEnterBehaviorDraft={settingsController.tabRenameEnterBehaviorDraft}
           miscSyncedUiBooleanSettings={settingsController.miscSyncedUiBooleanSettings}
           frontmatterDraft={settingsController.frontmatterDraft}
           frontmatterDraftDirty={settingsController.frontmatterDraftDirty}
@@ -5177,6 +5203,7 @@ function App() {
           onTableOfContentsScopeChange={settingsController.updateTableOfContentsScopeSetting}
           onScratchpadAisleLimitChange={settingsController.updateScratchpadAisleLimitSetting}
           onScratchpadNewAisleSideChange={settingsController.updateScratchpadNewAisleSideSetting}
+          onTabRenameEnterBehaviorChange={settingsController.updateTabRenameEnterBehaviorSetting}
           onSyncedUiBooleanSettingChange={settingsController.updateSyncedUiBooleanSetting}
           onTipEnabledChange={settingsController.updateTipEnabledSetting}
           onSelectToolbarLayout={settingsController.selectToolbarLayoutForEditing}
@@ -5244,6 +5271,7 @@ function App() {
             draggingSubTabId={draggingSubTabId}
             onAutoSizeRenameInput={autoSizeRenameInput}
             onShouldSkipRenameBlur={shouldSkipRenameBlur}
+            onIsPendingCreatedRename={isPendingCreatedRename}
             onCommitRename={commitRename}
             onCancelRename={cancelRename}
             onRenameDraftChange={trackRenameDraft}
@@ -5276,6 +5304,7 @@ function App() {
               setScratchpadActive(false)
               addSubTab()
             }}
+            tabRenameEnterBehavior={tabRenameEnterBehavior}
             onOpenSubTabSortModal={() => setModal({ type: 'sort-tabs', target: 'subtabs' })}
             scratchpadActive={scratchpadWorkspaceActive}
             onOpenScratchpad={tagFilterActive ? openScratchpadFromTagFilter : openScratchpadFromRail}
@@ -5325,7 +5354,9 @@ function App() {
             />
           ) : viewMode === 'messages' ? (
             <MessagesView
+              section={messagesSection}
               messages={state.messages ?? []}
+              toastHistory={state.toastHistory ?? []}
               onDismissMessage={dismissMessage}
               onOpenLocation={openMessageLocation}
             />
@@ -5642,9 +5673,10 @@ function App() {
         maxAisles={scratchpadWorkspaceActive ? getScratchpadAisleLimit() : MAX_NOTE_AISLES}
         maxAislesWarningMessage={
           scratchpadWorkspaceActive
-            ? 'scratchpad aisle limit reached. you can raise it to 32 in misc settings.'
+            ? 'scratchpad aisle limit reached. you can raise it to 40 in misc settings.'
             : MAX_AISLE_WARNING_MESSAGE
         }
+        reclaimEmptyAisleAtLimit={scratchpadWorkspaceActive}
         onCancel={closeAisleEditModal}
         onApply={applyAisleEditDraftToActiveNote}
         onWarn={(message) => pushToast(message, 'warning')}

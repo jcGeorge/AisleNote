@@ -26,6 +26,7 @@ import {
   type VisualizerMode,
   type VisualizerNodeKind,
 } from '../../visualizer/visualizer-graph'
+import { formatVisualizerNodeLabel } from './visualizer-node-label'
 
 type VisualizerViewProps = {
   graph: VisualizerGraph
@@ -128,6 +129,7 @@ function VisualizerHierarchyChips({
 function VisualizerNode({ data }: NodeProps<VisualizerFlowNode>) {
   const graphNode = data.graphNode
   const hierarchyChips = graphNode.hierarchyChips ?? []
+  const labelLines = formatVisualizerNodeLabel(graphNode.label)
   return (
     <button
       type="button"
@@ -139,7 +141,13 @@ function VisualizerNode({ data }: NodeProps<VisualizerFlowNode>) {
       <Handle id="visualizer-target-top" type="target" position={Position.Top} className="visualizer-node-handle" />
       <Handle id="visualizer-source-top" type="source" position={Position.Top} className="visualizer-node-handle" />
       <VisualizerHierarchyChips chips={hierarchyChips} className="visualizer-node-hierarchy" />
-      <span className="visualizer-node-label">{graphNode.label}</span>
+      <span className="visualizer-node-label">
+        {labelLines.map((line, index) => (
+          <span key={`${line}:${index}`} className="visualizer-node-label-line">
+            {line}
+          </span>
+        ))}
+      </span>
       {graphNode.count > 0 ? <span className="visualizer-node-count">{graphNode.count > 99 ? '>99' : graphNode.count}</span> : null}
       <Handle id="visualizer-target-bottom" type="target" position={Position.Bottom} className="visualizer-node-handle" />
       <Handle id="visualizer-source-bottom" type="source" position={Position.Bottom} className="visualizer-node-handle" />

@@ -12,12 +12,13 @@ import { createId, createNoteBodyContent, createTimestamp } from './workspace'
 export const SCRATCHPAD_CURSOR_LOCATION_KEY = 'scratchpad'
 export const SCRATCHPAD_CONTENT_TARGET_ID = '__tabs_scratchpad__'
 export const DEFAULT_SCRATCHPAD_AISLE_LIMIT = 16
-export const MAX_SCRATCHPAD_AISLE_LIMIT = 32
+export const MIN_SCRATCHPAD_AISLE_LIMIT = 8
+export const MAX_SCRATCHPAD_AISLE_LIMIT = 40
 
 export function clampScratchpadAisleLimit(value: unknown): number {
   const parsed = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10)
   if (!Number.isFinite(parsed)) return DEFAULT_SCRATCHPAD_AISLE_LIMIT
-  return Math.min(MAX_SCRATCHPAD_AISLE_LIMIT, Math.max(1, Math.floor(parsed)))
+  return Math.min(MAX_SCRATCHPAD_AISLE_LIMIT, Math.max(MIN_SCRATCHPAD_AISLE_LIMIT, Math.floor(parsed)))
 }
 
 export function createScratchpadState(noteBodyId = createId()): ScratchpadState {

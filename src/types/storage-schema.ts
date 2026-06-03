@@ -85,6 +85,7 @@ export type StorageTableControlTargetMode = 'active-cell' | 'bottom-right'
 export type StorageTableOfContentsScope = 'all-aisles' | 'focused-aisle'
 export type StorageVisualizerLayoutMode = 'wedge-fan' | 'strict-rings' | 'compact-cluster' | 'link-tree'
 export type StorageScratchpadNewAisleSide = 'left' | 'right'
+export type StorageTabRenameEnterBehavior = 'goes-to-note' | 'creates-another-tab'
 export type StorageFindReplaceMode = 'find' | 'replace'
 export type StorageTipId = 'task-undo' | 'delete-subtab-shortcut'
 
@@ -115,6 +116,7 @@ export type StorageGlobalSettings = {
     scratchpadDeleteAisleShortcutEnabled?: boolean
     scratchpadAisleLimit?: number
     scratchpadNewAisleSide?: StorageScratchpadNewAisleSide
+    tabRenameEnterBehavior?: StorageTabRenameEnterBehavior
     decoupledItemsKeepData?: boolean
     visualizerHomeNodesResideInParent?: boolean
     visualizerLayoutMode?: StorageVisualizerLayoutMode

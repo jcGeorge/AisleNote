@@ -163,6 +163,7 @@ function renderSettingsPage(
       tableOfContentsScopeDraft={state.ui.tableOfContentsScope ?? 'all-aisles'}
       scratchpadAisleLimitDraft={String(state.ui.scratchpadAisleLimit ?? 16)}
       scratchpadNewAisleSideDraft={state.ui.scratchpadNewAisleSide ?? 'left'}
+      tabRenameEnterBehaviorDraft={state.ui.tabRenameEnterBehavior ?? 'goes-to-note'}
       miscSyncedUiBooleanSettings={MISC_SYNCED_UI_BOOLEAN_SETTINGS.map((setting) => ({
         ...setting,
         checked: getSyncedUiBooleanSettings(state.ui)[setting.key],
@@ -222,6 +223,7 @@ function renderSettingsPage(
       onTableOfContentsScopeChange={() => undefined}
       onScratchpadAisleLimitChange={() => undefined}
       onScratchpadNewAisleSideChange={() => undefined}
+      onTabRenameEnterBehaviorChange={() => undefined}
       onSyncedUiBooleanSettingChange={() => undefined}
       onTipEnabledChange={() => undefined}
       onSelectToolbarLayout={() => undefined}
@@ -288,6 +290,20 @@ describe('frontmatter settings page', () => {
     expect(html.indexOf('table of contents shows for')).toBeLessThan(html.indexOf('add table row or column'))
   })
 
+  it('renders the tab-name Enter behavior setting in misc settings', () => {
+    const state = createState()
+    state.ui.tabRenameEnterBehavior = 'creates-another-tab'
+    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'misc', state })
+
+    expect(html).toContain('pressing enter after typing tab name')
+    expect(html).toContain('role="radiogroup" aria-labelledby="settings-tab-rename-enter-behavior-label"')
+    expect(html).toContain('aria-checked="false" class="settings-segmented-option ">goes to note</button>')
+    expect(html).toContain('aria-checked="true" class="settings-segmented-option is-selected">creates another tab</button>')
+    expect(html.indexOf('pressing enter after typing tab name')).toBeLessThan(
+      html.indexOf('remove all links to a note when it&#x27;s trashed'),
+    )
+  })
+
   it('does not render the removed normal-note aisle placement setting in misc settings', () => {
     const state = createState()
     const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'misc', state })
@@ -342,7 +358,7 @@ describe('frontmatter settings page', () => {
     )
   })
 
-  it('renders scratchpad settings with the 32 aisle maximum', () => {
+  it('renders scratchpad settings with the 8 aisle minimum and 40 aisle maximum', () => {
     const state = createState()
     state.ui.scratchpadAisleLimit = 16
     state.ui.scratchpadNewAisleSide = 'left'
@@ -354,7 +370,8 @@ describe('frontmatter settings page', () => {
     expect(html).toContain('command/control+w deletes active aisle in scratchpad')
     expect(html).toContain('scratchpad aisle limit')
     expect(html).toContain('type="number"')
-    expect(html).toContain('max="32"')
+    expect(html).toContain('min="8"')
+    expect(html).toContain('max="40"')
     expect(html).toContain('value="16"')
     expect(html).toContain('command+n in scratch pad creates an aisle to the')
     expect(html).toContain('aria-checked="true" class="settings-segmented-option is-selected">left</button>')

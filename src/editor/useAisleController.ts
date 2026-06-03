@@ -35,7 +35,7 @@ import {
   type AisleStructuralHistoryEntry,
   type AisleStructuralSnapshot,
 } from './aisle-structural-history'
-import { MAX_AISLE_WARNING_MESSAGE } from './aisle-edit-draft'
+import { getAislesForNewAisle, MAX_AISLE_WARNING_MESSAGE } from './aisle-edit-draft'
 import { insertNewAisle } from './aisle-insertion'
 import type { PendingCursorRestore } from './useNoteCursorPersistence'
 
@@ -263,15 +263,10 @@ export const useAisleController = ({
       beforeSnapshot?: AisleStructuralSnapshot | null
       placement?: NewAislePlacement
       recordHistory?: boolean
+      reclaimEmptyAisleAtLimit?: boolean
     } = {},
   ) => {
     if (!activeNoteBodyId) return false
-    const currentAisleCount = activeNoteBody?.aisles.length ?? 0
-    if (currentAisleCount <= 0) return false
-    if (currentAisleCount >= maxAisles) {
-      pushToast(maxAislesWarningMessage, 'warning')
-      return false
-    }
 
     const beforeSnapshot = options.beforeSnapshot ?? captureActiveAisleStructuralSnapshot()
     if (!beforeSnapshot) return false
@@ -283,12 +278,27 @@ export const useAisleController = ({
     const latestBeforeAddState = buildStateWithLatestEditorContent()
     const baseAisles =
       getResolvedAislesForStructuralSnapshot(latestBeforeAddState, beforeSnapshot.noteBodyId) ?? beforeSnapshot.aisles
+    if (baseAisles.length <= 0) return false
+    const addBaseAisles = getAislesForNewAisle(
+      baseAisles,
+      maxAisles,
+      Boolean(options.reclaimEmptyAisleAtLimit),
+    )
+    if (!addBaseAisles) {
+      pushToast(maxAislesWarningMessage, 'warning')
+      return false
+    }
     flushPendingContent()
-    const afterAisles = insertNewAisle(baseAisles, newAisle, beforeSnapshot.activeAisleId, options.placement ?? 'end')
+    const afterAisles = insertNewAisle(addBaseAisles, newAisle, beforeSnapshot.activeAisleId, options.placement ?? 'end')
+    const afterAisleIdSet = new Set(afterAisles.map((aisle) => aisle.id))
     const afterCursorLocation: NoteCursorLocation = {
       activeAisleId: newAisle.id,
       aisles: {
-        ...(beforeSnapshot.cursorLocation?.aisles ?? {}),
+        ...Object.fromEntries(
+          Object.entries(beforeSnapshot.cursorLocation?.aisles ?? {}).filter(([aisleId]) =>
+            afterAisleIdSet.has(aisleId),
+          ),
+        ),
         [newAisle.id]: {
           anchor: 1,
           head: 1,

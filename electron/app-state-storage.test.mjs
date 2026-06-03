@@ -390,17 +390,38 @@ describe('Electron app state storage load result', () => {
         tableAddTargetMode: 'active-cell',
         tableDeleteTargetMode: 'active-cell',
         tableOfContentsScope: 'focused-aisle',
+        tabRenameEnterBehavior: 'creates-another-tab',
         newAislePlacement: 'left-of-focus',
         scratchpadAisleLimit: 40,
       }
       state.domains[0].spaces[0].settings = { autoRemoveDeletedDays: 21 }
       state.spaces = state.domains[0].spaces
+      state.messages = [
+        {
+          id: 'message-1',
+          type: 'duplicate-auto-decoupled',
+          status: 'unread',
+          createdAt: '2026-06-01T00:00:00.000Z',
+          signature: 'signature-1',
+          title: 'duplicate files de-coupled',
+          body: '1 changed duplicate file was de-coupled.',
+        },
+      ]
+      state.toastHistory = [
+        {
+          id: 1,
+          createdAt: '2026-06-01T00:01:00.000Z',
+          message: 'notebook folder updated.',
+          tone: 'success',
+        },
+      ]
 
       saveAppState(userDataPath, JSON.stringify(state))
 
       const { root, rootManifest, spaceManifest } = getStoredWorkspacePaths(userDataPath)
       const appSettings = readJson(path.join(userDataPath, 'settings', 'app-settings.json'))
       const frontmatterSettings = readJson(path.join(root, rootManifest.files.frontmatterSettings))
+      const messagesFile = readJson(path.join(root, rootManifest.files.messages))
       const result = loadAppStateResult(userDataPath)
       expect(result.ok).toBe(true)
       const parsed = JSON.parse(result.serializedState)
@@ -438,13 +459,36 @@ describe('Electron app state storage load result', () => {
       expect(appSettings.ui.visualizerHomeNodesResideInParent).toBe(true)
       expect(appSettings.ui.visualizerLayoutMode).toBe('link-tree')
       expect(appSettings.ui.tableOfContentsScope).toBe('focused-aisle')
+      expect(appSettings.ui.tabRenameEnterBehavior).toBe('creates-another-tab')
       expect(appSettings.ui).not.toHaveProperty('newAislePlacement')
-      expect(appSettings.scratchpadAisleLimit).toBe(32)
+      expect(appSettings.scratchpadAisleLimit).toBe(40)
       expect(appSettings.hotkeys).not.toHaveProperty('enableMouseBackForward')
       expect(appSettings.hotkeys).not.toHaveProperty('enableGenericHistoryHotkeys')
       expect(appSettings.hotkeys.shortcuts.newTab).toBe('Ctrl+Alt+N')
       expect(frontmatterSettings.settingsTemplateId).toBe('template-1')
+      expect(messagesFile.messages).toEqual([
+        expect.objectContaining({ id: 'message-1', type: 'duplicate-auto-decoupled' }),
+      ])
+      expect(messagesFile.toastHistory).toEqual([
+        {
+          id: 1,
+          createdAt: '2026-06-01T00:01:00.000Z',
+          message: 'notebook folder updated.',
+          tone: 'success',
+        },
+      ])
       expect(spaceManifest.settings).toEqual({ autoRemoveDeletedDays: 21 })
+      expect(parsed.messages).toEqual([
+        expect.objectContaining({ id: 'message-1', type: 'duplicate-auto-decoupled' }),
+      ])
+      expect(parsed.toastHistory).toEqual([
+        {
+          id: 1,
+          createdAt: '2026-06-01T00:01:00.000Z',
+          message: 'notebook folder updated.',
+          tone: 'success',
+        },
+      ])
       expect(parsed.ui.settingsSection).toBe('toolbar')
       expect(parsed.ui.findCaseSensitive).toBe(true)
       expect(parsed.ui.findReplaceMode).toBe('replace')
@@ -454,8 +498,9 @@ describe('Electron app state storage load result', () => {
       expect(parsed.ui.visualizerHomeNodesResideInParent).toBe(true)
       expect(parsed.ui.visualizerLayoutMode).toBe('link-tree')
       expect(parsed.ui.tableOfContentsScope).toBe('focused-aisle')
+      expect(parsed.ui.tabRenameEnterBehavior).toBe('creates-another-tab')
       expect(parsed.ui).not.toHaveProperty('newAislePlacement')
-      expect(parsed.ui.scratchpadAisleLimit).toBe(32)
+      expect(parsed.ui.scratchpadAisleLimit).toBe(40)
       expect(parsed.hotkeys.shortcuts.newTab).toBe('Ctrl+Alt+N')
       expect(parsed.hotkeys).not.toHaveProperty('enableMouseBackForward')
       expect(parsed.hotkeys).not.toHaveProperty('enableGenericHistoryHotkeys')

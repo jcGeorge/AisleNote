@@ -5,10 +5,12 @@ import type {
   ArrangeInsertPosition,
   ArrangeModeState,
   ArrangeTapCandidateSeed,
+  MessagesSection,
   SelectionClickModifiers,
   SettingsSection,
   StageManagerParentSelection,
   Tab,
+  TabRenameEnterBehavior,
   TabArrangeDragItem,
   TabArrangeDragPreview,
   TrashParentBucket,
@@ -16,7 +18,7 @@ import type {
   WorkspaceData,
 } from '../../types/app'
 import { getPlacementNeighborId } from '../../arrange/arrange-utils'
-import { getRenameInputKeyAction } from '../../navigation/rename-draft'
+import { getRenameInputKeyAction, shouldCreateAnotherTabAfterRenameEnter } from '../../navigation/rename-draft'
 import { SETTINGS_SECTIONS } from '../../settings/defaults'
 import { NavigationRailControls, type NavigationRailAction } from './NavigationRailControls'
 import { SortIcon } from './SortIcon'
@@ -55,6 +57,7 @@ type TopBarProps = {
   domainRailVisible: boolean
   onAutoSizeRenameInput: (input: HTMLInputElement) => void
   onShouldSkipRenameBlur: (type: EditableEntityType, id: string) => boolean
+  onIsPendingCreatedRename?: (type: 'tab' | 'subtab', id: string) => boolean
   onCommitRename: (type: EditableEntityType, id: string, name: string) => void
   onCancelRename: (type: EditableEntityType, id: string) => void
   onRenameDraftChange: (type: EditableEntityType, id: string, value: string) => void
@@ -94,6 +97,7 @@ type TopBarProps = {
   onSetTrashSubTabId: (subTabId: string | null) => void
   onOpenContextMenuForTrashTab: (event: MouseEvent<HTMLButtonElement>, trashParent: TrashParentBucket) => void
   onAddTab: () => void
+  tabRenameEnterBehavior?: TabRenameEnterBehavior
   onOpenParentSortModal: () => void
   onExitArrangeMode: () => void
   onAdvanceArrangeHierarchyReveal: () => void
@@ -111,7 +115,10 @@ type TopBarProps = {
   onOpenAbout: () => void
   onSettingsSectionChange: (section: SettingsSection) => void
   onExitTagFilterMode?: () => void
+  messagesSection?: MessagesSection
   messagesCount?: number
+  toastHistoryCount?: number
+  onMessagesSectionChange?: (section: MessagesSection) => void
 }
 
 function getSelectionClickModifiers(event: MouseEvent | ReactPointerEvent<HTMLButtonElement>): SelectionClickModifiers {
@@ -172,6 +179,7 @@ export function TopBar({
   domainRailVisible,
   onAutoSizeRenameInput,
   onShouldSkipRenameBlur,
+  onIsPendingCreatedRename = () => false,
   onCommitRename,
   onCancelRename,
   onRenameDraftChange,
@@ -198,6 +206,7 @@ export function TopBar({
   onSetTrashSubTabId,
   onOpenContextMenuForTrashTab,
   onAddTab,
+  tabRenameEnterBehavior = 'goes-to-note',
   onOpenParentSortModal,
   onExitArrangeMode,
   onAdvanceArrangeHierarchyReveal,
@@ -215,7 +224,10 @@ export function TopBar({
   onOpenAbout,
   onSettingsSectionChange,
   onExitTagFilterMode = () => undefined,
+  messagesSection = 'inbox',
   messagesCount = 0,
+  toastHistoryCount = 0,
+  onMessagesSectionChange = () => undefined,
 }: TopBarProps) {
   const primaryTablistProps =
     viewMode === 'settings'
@@ -382,14 +394,26 @@ export function TopBar({
             ))}
 
           {viewMode === 'messages' && (
-            <button
-              type="button"
-              role="tab"
-              aria-selected
-              className="btn btn-sm btn-primary tab-btn parent-tab-btn utility-view-rail-btn"
-            >
-              messages{messagesCount > 0 ? ` (${messagesCount})` : ''}
-            </button>
+            <>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={messagesSection === 'inbox'}
+                className={`btn btn-sm ${messagesSection === 'inbox' ? 'btn-primary' : 'btn-outline-secondary'} tab-btn parent-tab-btn utility-view-rail-btn`}
+                onClick={() => onMessagesSectionChange('inbox')}
+              >
+                inbox{messagesCount > 0 ? ` (${messagesCount})` : ''}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={messagesSection === 'toast-history'}
+                className={`btn btn-sm ${messagesSection === 'toast-history' ? 'btn-primary' : 'btn-outline-secondary'} tab-btn parent-tab-btn utility-view-rail-btn`}
+                onClick={() => onMessagesSectionChange('toast-history')}
+              >
+                toast history{toastHistoryCount > 0 ? ` (${toastHistoryCount})` : ''}
+              </button>
+            </>
           )}
 
           {viewMode === 'about' && (
@@ -433,6 +457,18 @@ export function TopBar({
                     const action = getRenameInputKeyAction(event)
                     if (action === 'commit') {
                       event.preventDefault()
+                      if (
+                        shouldCreateAnotherTabAfterRenameEnter({
+                          type: 'tab',
+                          isPendingCreated: onIsPendingCreatedRename('tab', tab.id),
+                          tabRenameEnterBehavior,
+                          tagFilterActive,
+                        })
+                      ) {
+                        onRenameDraftChange('tab', tab.id, event.currentTarget.value)
+                        onAddTab()
+                        return
+                      }
                       onCommitRename('tab', tab.id, event.currentTarget.value)
                     }
                     if (action === 'commit-and-create') {

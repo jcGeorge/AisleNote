@@ -2544,6 +2544,18 @@
   box-shadow: var(--toast-shadow);
 }
 
+.toast-history-card-success {
+  border-left-color: var(--toast-success);
+}
+
+.toast-history-card-warning {
+  border-left-color: var(--toast-warning);
+}
+
+.toast-history-card-error {
+  border-left-color: var(--toast-error);
+}
+
 .message-card-header {
   display: flex;
   gap: 1rem;
@@ -2559,6 +2571,19 @@
 
 .message-card p {
   margin: 0 0 0.6rem;
+}
+
+.toast-history-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: baseline;
+  color: var(--settings-muted-text, var(--editor-muted-text));
+  font-size: 0.9em;
+}
+
+.toast-history-meta span {
+  text-transform: lowercase;
 }
 
 .message-path,

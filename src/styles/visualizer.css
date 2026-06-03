@@ -300,12 +300,25 @@
 }
 
 .visualizer-node-label {
+  width: 100%;
   max-width: 100%;
+  max-height: 2.1em;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   overflow: hidden;
   color: var(--visualizer-node-label-text, var(--app-text-bright));
   font-size: var(--ui-font-control);
   font-weight: 650;
-  text-overflow: ellipsis;
+  line-height: 1.05;
+}
+
+.visualizer-node-label-line {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: clip;
   white-space: nowrap;
 }
 

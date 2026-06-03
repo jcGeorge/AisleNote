@@ -14,6 +14,7 @@ export type SimpleSyncedUiSettingKey =
   | 'deleteSubtabShortcutEnabled'
   | 'scratchpadDeleteAisleShortcutEnabled'
   | 'scratchpadNewAisleSide'
+  | 'tabRenameEnterBehavior'
   | 'decoupledItemsKeepData'
   | 'visualizerHomeNodesResideInParent'
   | 'visualizerLayoutMode'
@@ -91,6 +92,10 @@ export function normalizeRegisteredSyncedUiSetting(
   key: 'scratchpadNewAisleSide',
   value: unknown,
 ): NonNullable<AppState['ui']['scratchpadNewAisleSide']>
+export function normalizeRegisteredSyncedUiSetting(
+  key: 'tabRenameEnterBehavior',
+  value: unknown,
+): NonNullable<AppState['ui']['tabRenameEnterBehavior']>
 export function normalizeRegisteredSyncedUiSetting(key: 'decoupledItemsKeepData', value: unknown): boolean
 export function normalizeRegisteredSyncedUiSetting(key: 'visualizerHomeNodesResideInParent', value: unknown): boolean
 export function normalizeRegisteredSyncedUiSetting(

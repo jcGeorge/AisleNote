@@ -9,6 +9,7 @@ import {
   getVisualizerLocationNodeId,
 } from '../../visualizer/visualizer-graph'
 import { VisualizerSettingsPopover, VisualizerTopbarControls, VisualizerView } from './VisualizerView'
+import { formatVisualizerNodeLabel } from './visualizer-node-label'
 
 vi.mock('@xyflow/react', () => ({
   Background: () => <div className="react-flow__background" />,
@@ -95,6 +96,33 @@ vi.mock('@xyflow/react', () => ({
 }))
 
 const noop = () => undefined
+
+describe('formatVisualizerNodeLabel', () => {
+  it('keeps short labels on one line', () => {
+    expect(formatVisualizerNodeLabel('home', 8)).toEqual(['home'])
+  })
+
+  it('wraps whole words onto two lines when they fit', () => {
+    expect(formatVisualizerNodeLabel('alpha beta', 8)).toEqual(['alpha', 'beta'])
+    expect(formatVisualizerNodeLabel('alpha beta gamma', 10)).toEqual(['alpha beta', 'gamma'])
+  })
+
+  it('truncates an overlong first word with a trailing ellipsis', () => {
+    expect(formatVisualizerNodeLabel('Supercalifragilistic', 10)).toEqual(['Superca...', '...ilistic'])
+  })
+
+  it('truncates an overlong final word with a leading ellipsis', () => {
+    expect(formatVisualizerNodeLabel('alpha Supercalifragilistic', 10)).toEqual(['alpha', '...ilistic'])
+  })
+
+  it('omits middle words when the full label cannot fit across two lines', () => {
+    expect(formatVisualizerNodeLabel('alpha beta gamma delta', 10)).toEqual(['alpha beta', '...delta'])
+    expect(formatVisualizerNodeLabel('Supercalifragilistic middle Antidisestablishmentarianism', 10)).toEqual([
+      'Superca...',
+      '...rianism',
+    ])
+  })
+})
 
 function createSubtabState(): AppState {
   const space: Space = {
@@ -183,6 +211,7 @@ describe('VisualizerView', () => {
     expect(selectedHtml).toContain('data-handle-id="visualizer-target-bottom"')
     expect(selectedHtml).toContain('data-handle-id="visualizer-source-bottom"')
     expect(selectedHtml).toContain('class="visualizer-node-label"')
+    expect(selectedHtml).toContain('class="visualizer-node-label-line"')
     expect(selectedHtml).toContain('class="visualizer-node-hierarchy"')
     expect(selectedHtml).toContain('visualizer-hierarchy-chip rail-control context-preview-title-btn')
     expect(selectedHtml).toContain('visualizer-node visualizer-node-parent is-selected')
@@ -192,6 +221,37 @@ describe('VisualizerView', () => {
     expect(selectedHtml).not.toContain('visualizer-node-kind')
     expect(selectedHtml).not.toContain('visualizer-node-detail')
     expect(selectedHtml).not.toContain('is-dimmed')
+  })
+
+  it('renders long graph node labels as fixed two-line text while preserving the full title', () => {
+    const baseGraph = buildVisualizerGraph(DEFAULT_STATE)
+    const targetNode = baseGraph.nodes[0]
+    const graph = {
+      ...baseGraph,
+      nodes: baseGraph.nodes.map((node) =>
+        node.id === targetNode.id
+          ? {
+              ...node,
+              label: 'Supercalifragilistic middle Antidisestablishmentarianism',
+              detailLabel: 'complete long node detail label',
+            }
+          : node,
+      ),
+    }
+    const html = renderToStaticMarkup(
+      <VisualizerView
+        graph={graph}
+        selectedNodeId={targetNode.id}
+        onSelectedNodeChange={noop}
+        onClosePreview={noop}
+        onOpenLocation={noop}
+      />,
+    )
+
+    expect(html).toContain('title="complete long node detail label"')
+    expect(html).toContain('class="visualizer-node-label-line">Supercalif...</span>')
+    expect(html).toContain('class="visualizer-node-label-line">...ntarianism</span>')
+    expect(html).not.toContain('class="visualizer-node-label-line">Supercalifragilistic middle')
   })
 
   it('renders overview subtabs and opens a subtab preview drawer', () => {

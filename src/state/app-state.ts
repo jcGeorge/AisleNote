@@ -20,6 +20,8 @@ import {
   normalizeUiSettings,
 } from '../settings/defaults'
 import type {
+  AppMessage,
+  AppMessageAffectedLocation,
   AppState,
   AppTheme,
   DeletedDomainEntry,
@@ -30,9 +32,12 @@ import type {
   NoteAisle,
   NoteAisleBody,
   NoteBody,
+  NoteLocation,
   Space,
   SubTab,
   Tab,
+  ToastHistoryEntry,
+  ToastTone,
 } from '../types/app'
 import {
   getAisleBodyId,
@@ -62,6 +67,7 @@ import {
 import { repairAppStateEntityIds } from '../import/id-repair'
 
 const DEFAULT_DOMAIN = createDefaultDomain()
+const MAX_NORMALIZED_TOAST_HISTORY_ENTRIES = 70
 
 const RAW_DEFAULT_STATE: AppState = {
   theme: 'dawn',
@@ -71,6 +77,7 @@ const RAW_DEFAULT_STATE: AppState = {
   deletedSpaces: [],
   scratchpad: normalizeScratchpadState(null),
   messages: [],
+  toastHistory: [],
   noteBodies: [],
   noteAisleBodies: [],
   activeSpaceId: DEFAULT_DOMAIN.activeSpaceId,
@@ -120,6 +127,100 @@ function normalizeStringList(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined
   const entries = Array.from(new Set(value.map((entry) => (typeof entry === 'string' ? entry.trim() : '')).filter(Boolean)))
   return entries.length > 0 ? entries : undefined
+}
+
+function normalizeToastTone(value: unknown): ToastTone {
+  return value === 'success' || value === 'error' ? value : 'warning'
+}
+
+function normalizeNoteLocation(value: unknown): NoteLocation | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const candidate = value as Record<string, unknown>
+  const domainId = typeof candidate.domainId === 'string' ? candidate.domainId.trim() : ''
+  const spaceId = typeof candidate.spaceId === 'string' ? candidate.spaceId.trim() : ''
+  const tabId = typeof candidate.tabId === 'string' ? candidate.tabId.trim() : ''
+  const subTabId =
+    candidate.subTabId === null || candidate.subTabId === undefined
+      ? null
+      : typeof candidate.subTabId === 'string'
+        ? candidate.subTabId.trim()
+        : undefined
+  if (!domainId || !spaceId || !tabId || subTabId === undefined) return undefined
+  return { domainId, spaceId, tabId, subTabId: subTabId || null }
+}
+
+function normalizeAppMessageAffectedLocations(value: unknown): AppMessageAffectedLocation[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const locations = value.flatMap((entry): AppMessageAffectedLocation[] => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return []
+    const candidate = entry as Record<string, unknown>
+    const label = typeof candidate.label === 'string' && candidate.label.trim() ? candidate.label.trim() : 'location'
+    const location = normalizeNoteLocation(candidate.location)
+    const path = typeof candidate.path === 'string' && candidate.path.trim() ? candidate.path.trim() : undefined
+    const noteBodyId =
+      typeof candidate.noteBodyId === 'string' && candidate.noteBodyId.trim() ? candidate.noteBodyId.trim() : undefined
+    const aisleBodyId =
+      typeof candidate.aisleBodyId === 'string' && candidate.aisleBodyId.trim()
+        ? candidate.aisleBodyId.trim()
+        : undefined
+    return [{ label, ...(path ? { path } : {}), ...(noteBodyId ? { noteBodyId } : {}), ...(aisleBodyId ? { aisleBodyId } : {}), ...(location ? { location } : {}) }]
+  })
+  return locations.length > 0 ? locations : undefined
+}
+
+function normalizeAppMessages(raw: unknown): AppMessage[] {
+  if (!Array.isArray(raw)) return []
+  const fallbackTimestamp = createTimestamp()
+  return raw.flatMap((entry): AppMessage[] => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return []
+    const candidate = entry as Record<string, unknown>
+    if (candidate.type !== 'duplicate-auto-decoupled') return []
+    const id = typeof candidate.id === 'string' && candidate.id.trim() ? candidate.id.trim() : ''
+    if (!id) return []
+    const signature =
+      typeof candidate.signature === 'string' && candidate.signature.trim() ? candidate.signature.trim() : id
+    const title =
+      typeof candidate.title === 'string' && candidate.title.trim()
+        ? candidate.title.trim()
+        : 'duplicate files de-coupled'
+    const body = typeof candidate.body === 'string' ? candidate.body : ''
+    const anchorPath =
+      typeof candidate.anchorPath === 'string' && candidate.anchorPath.trim() ? candidate.anchorPath.trim() : undefined
+    const decoupledPaths = normalizeStringList(candidate.decoupledPaths)
+    const affectedLocations = normalizeAppMessageAffectedLocations(candidate.affectedLocations)
+    return [{
+      id,
+      type: 'duplicate-auto-decoupled',
+      status: candidate.status === 'dismissed' ? 'dismissed' : 'unread',
+      createdAt: normalizeTimestamp(candidate.createdAt, fallbackTimestamp),
+      signature,
+      title,
+      body,
+      ...(anchorPath ? { anchorPath } : {}),
+      ...(decoupledPaths ? { decoupledPaths } : {}),
+      ...(affectedLocations ? { affectedLocations } : {}),
+    }]
+  })
+}
+
+function normalizeToastHistory(raw: unknown): ToastHistoryEntry[] {
+  if (!Array.isArray(raw)) return []
+  const fallbackTimestamp = createTimestamp()
+  return raw
+    .flatMap((entry): ToastHistoryEntry[] => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return []
+      const candidate = entry as Record<string, unknown>
+      const id = typeof candidate.id === 'number' && Number.isFinite(candidate.id) ? candidate.id : null
+      const message = typeof candidate.message === 'string' ? candidate.message : ''
+      if (id === null || !message) return []
+      return [{
+        id,
+        createdAt: normalizeTimestamp(candidate.createdAt, fallbackTimestamp),
+        message,
+        tone: normalizeToastTone(candidate.tone),
+      }]
+    })
+    .slice(-MAX_NORMALIZED_TOAST_HISTORY_ENTRIES)
 }
 
 function normalizeFrontmatterFieldOrigins(value: unknown): FrontmatterFieldOriginMap | undefined {
@@ -782,6 +883,8 @@ export function parseSavedState(raw: string | null): AppState {
       deletedDomains: normalizeDeletedDomainEntries(parsed.deletedDomains),
       deletedSpaces: normalizeDeletedSpaceEntries(parsed.deletedSpaces),
       scratchpad: normalizeScratchpadState(parsed.scratchpad),
+      messages: normalizeAppMessages(parsed.messages),
+      toastHistory: normalizeToastHistory(parsed.toastHistory),
       noteBodies: noteContent.noteBodies,
       noteAisleBodies: noteContent.noteAisleBodies,
       activeSpaceId,

@@ -246,7 +246,7 @@ describe('sort modal rendering', () => {
     expect(html).toContain('stored with your other notes')
     expect(html).toContain('searching your entire notebook')
     expect(html).toContain('allows 16 aisles by default')
-    expect(html).toContain('adjustable up to 32')
+    expect(html).toContain('adjustable up to 40')
     expect(html).toContain('added to the left by default')
     expect(html).toContain('>return</button>')
     expect(html).not.toContain('>cancel</button>')

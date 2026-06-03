@@ -865,7 +865,10 @@ export function buildHybridFileMapFromSerializedState(serializedState: string): 
   setJsonFile(
     fileMap,
     joinPosix(STORAGE_ROOT_DIR, ROOT_SPLIT_FILES.messages),
-    { messages: ensureArray<Record<string, unknown>>(parsed.messages).filter(isRecord) },
+    {
+      messages: ensureArray<Record<string, unknown>>(parsed.messages).filter(isRecord),
+      toastHistory: ensureArray<Record<string, unknown>>(parsed.toastHistory).filter(isRecord),
+    },
   )
   setJsonFile(
     fileMap,
@@ -1019,6 +1022,7 @@ function readCurrentRootParts(
     domainEntries: ensureArray<Record<string, unknown>>(splitFiles.workspaceIndex.domains),
     scratchpad: isRecord(splitFiles.workspaceIndex.scratchpad) ? splitFiles.workspaceIndex.scratchpad : undefined,
     messages: ensureArray<Record<string, unknown>>(splitFiles.messages.messages).filter(isRecord),
+    toastHistory: ensureArray<Record<string, unknown>>(splitFiles.messages.toastHistory).filter(isRecord),
     deletedDomains: ensureArray<Record<string, unknown>>(splitFiles.deletedWorkspace.deletedDomains).filter(isRecord),
     deletedSpaces: ensureArray<Record<string, unknown>>(splitFiles.deletedWorkspace.deletedSpaces).filter(isRecord),
     activeDomainId:
@@ -1248,6 +1252,7 @@ export function readSerializedStateFromHybridFileMap(fileMap: Map<string, Browse
     deletedSpaces: rootParts.deletedSpaces,
     scratchpad: rootParts.scratchpad,
     messages: rootParts.messages,
+    toastHistory: rootParts.toastHistory,
     noteBodies,
     noteAisleBodies,
     activeSpaceId: '',

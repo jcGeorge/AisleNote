@@ -22,6 +22,7 @@ export type CustomThemePaletteSlot =
 export type CustomThemePalette = Record<CustomThemePaletteSlot, string>
 export type ThemePaletteOverrides = Partial<Record<AppTheme, CustomThemePalette>>
 export type ViewMode = 'main' | 'trash' | 'settings' | 'stage-manager' | 'messages' | 'visualizer' | 'about'
+export type MessagesSection = 'inbox' | 'toast-history'
 export type ShortcutId =
   | 'toggleTabTrash'
   | 'openDomains'
@@ -51,6 +52,7 @@ export type TableOfContentsScope = 'all-aisles' | 'focused-aisle'
 export type VisualizerLayoutMode = 'wedge-fan' | 'strict-rings' | 'compact-cluster' | 'link-tree'
 export type NewAislePlacement = 'end' | 'left-of-focus' | 'right-of-focus'
 export type ScratchpadNewAisleSide = 'left' | 'right'
+export type TabRenameEnterBehavior = 'goes-to-note' | 'creates-another-tab'
 export type TipId = 'task-undo' | 'delete-subtab-shortcut'
 
 export type NewlineOperationId =
@@ -371,6 +373,7 @@ export type AppState = {
   deletedSpaces?: DeletedSpaceEntry[]
   scratchpad?: ScratchpadState
   messages?: AppMessage[]
+  toastHistory?: ToastHistoryEntry[]
   noteBodies: NoteBody[]
   noteAisleBodies?: NoteAisleBody[]
   /** Transitional projection of the active domain. Remove after App.tsx is fully domain-scoped. */
@@ -399,6 +402,7 @@ export type AppState = {
     scratchpadDeleteAisleShortcutEnabled?: boolean
     scratchpadAisleLimit?: number
     scratchpadNewAisleSide?: ScratchpadNewAisleSide
+    tabRenameEnterBehavior?: TabRenameEnterBehavior
     decoupledItemsKeepData?: boolean
     visualizerHomeNodesResideInParent?: boolean
     visualizerLayoutMode?: VisualizerLayoutMode
@@ -637,6 +641,13 @@ export type ToastState = {
   message: string
   tone: ToastTone
   durationMs: number
+}
+
+export type ToastHistoryEntry = {
+  id: number
+  createdAt: string
+  message: string
+  tone: ToastTone
 }
 
 export type StorageProfileStatus = {

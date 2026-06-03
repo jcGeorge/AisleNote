@@ -29,6 +29,7 @@ import type {
   SettingsSection,
   ShortcutId,
   Space,
+  TabRenameEnterBehavior,
   TableControlTargetMode,
   TableOfContentsScope,
   TipId,
@@ -141,6 +142,9 @@ export function useSettingsController({
   const [scratchpadNewAisleSideDraft, setScratchpadNewAisleSideDraft] = useState<ScratchpadNewAisleSide>(
     DEFAULT_UI_SETTINGS.scratchpadNewAisleSide ?? 'left',
   )
+  const [tabRenameEnterBehaviorDraft, setTabRenameEnterBehaviorDraft] = useState<TabRenameEnterBehavior>(
+    DEFAULT_UI_SETTINGS.tabRenameEnterBehavior ?? 'goes-to-note',
+  )
   const [tabButtonScaleDraft, setTabButtonScaleDraft] = useState(DEFAULT_UI_SETTINGS.tabButtonScale)
   const [noteFontScaleDraft, setNoteFontScaleDraft] = useState(DEFAULT_UI_SETTINGS.noteFontScale)
   const [tooltipScaleDraft, setTooltipScaleDraft] = useState(DEFAULT_UI_SETTINGS.tooltipScale ?? 1)
@@ -188,7 +192,12 @@ export function useSettingsController({
       state.ui.tableOfContentsScope ?? DEFAULT_UI_SETTINGS.tableOfContentsScope ?? 'all-aisles',
     )
     setScratchpadAisleLimitDraft(String(clampScratchpadAisleLimit(state.ui.scratchpadAisleLimit)))
-    setScratchpadNewAisleSideDraft(state.ui.scratchpadNewAisleSide ?? DEFAULT_UI_SETTINGS.scratchpadNewAisleSide ?? 'left')
+    setScratchpadNewAisleSideDraft(
+      state.ui.scratchpadNewAisleSide ?? DEFAULT_UI_SETTINGS.scratchpadNewAisleSide ?? 'left',
+    )
+    setTabRenameEnterBehaviorDraft(
+      state.ui.tabRenameEnterBehavior ?? DEFAULT_UI_SETTINGS.tabRenameEnterBehavior ?? 'goes-to-note',
+    )
     setTabButtonScaleDraft(state.ui.tabButtonScale)
     setNoteFontScaleDraft(state.ui.noteFontScale)
     setTooltipScaleDraft(state.ui.tooltipScale ?? DEFAULT_UI_SETTINGS.tooltipScale ?? 1)
@@ -223,6 +232,7 @@ export function useSettingsController({
     state.ui.scratchpadDeleteAisleShortcutEnabled,
     state.ui.scratchpadAisleLimit,
     state.ui.scratchpadNewAisleSide,
+    state.ui.tabRenameEnterBehavior,
     state.ui.stageManagerOpenDestinationAfterApply,
     state.ui.findCaseSensitive,
     state.ui.findWholeWord,
@@ -441,6 +451,17 @@ export function useSettingsController({
       ui: {
         ...previous.ui,
         scratchpadNewAisleSide: side,
+      },
+    }))
+  }
+
+  const updateTabRenameEnterBehaviorSetting = (behavior: TabRenameEnterBehavior) => {
+    setTabRenameEnterBehaviorDraft(behavior)
+    commitImmediateSettingsState((previous) => ({
+      ...previous,
+      ui: {
+        ...previous.ui,
+        tabRenameEnterBehavior: behavior,
       },
     }))
   }
@@ -951,6 +972,7 @@ export function useSettingsController({
     tableOfContentsScopeDraft,
     scratchpadAisleLimitDraft,
     scratchpadNewAisleSideDraft,
+    tabRenameEnterBehaviorDraft,
     miscSyncedUiBooleanSettings: MISC_SYNCED_UI_BOOLEAN_SETTINGS.map((setting) => ({
       ...setting,
       checked: syncedUiBooleanDrafts[setting.key],
@@ -978,6 +1000,7 @@ export function useSettingsController({
     updateTableOfContentsScopeSetting,
     updateScratchpadAisleLimitSetting,
     updateScratchpadNewAisleSideSetting,
+    updateTabRenameEnterBehaviorSetting,
     updateSyncedUiBooleanSetting,
     updateTipEnabledSetting,
     updateTabButtonScaleSetting,

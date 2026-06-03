@@ -8,11 +8,15 @@ import {
   canDeleteAisleFromDraft,
   createAisleEditDraft,
   deleteAisleFromDraft,
+  findRightmostEmptyAisleIndex,
+  getAislesForNewAisle,
   getAislePreviewText,
+  isEmptyAisleMarkdown,
   moveAisleInDraft,
   reorderAisleDraft,
   reorderAisleDraftByInsertion,
 } from './aisle-edit-draft'
+import { EDITOR_BLANK_LINE_PLACEHOLDER } from '../markdown/markdown-utils'
 import { MAX_NOTE_AISLES } from '../state/workspace'
 import type { ResolvedNoteAisle } from '../types/app'
 
@@ -43,6 +47,49 @@ describe('aisle edit draft helpers', () => {
     const onWarn = vi.fn()
 
     expect(addAisleToDraftOrWarn(fullDraft, aisle('blocked'), onWarn)).toBe(fullDraft)
+    expect(onWarn).toHaveBeenCalledWith(MAX_AISLE_WARNING_MESSAGE)
+  })
+
+  it('treats only whitespace and editor blank placeholders as empty aisles', () => {
+    expect(isEmptyAisleMarkdown('')).toBe(true)
+    expect(isEmptyAisleMarkdown(' \n\t\n')).toBe(true)
+    expect(isEmptyAisleMarkdown(`${EDITOR_BLANK_LINE_PLACEHOLDER}\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}`)).toBe(true)
+
+    expect(isEmptyAisleMarkdown('text')).toBe(false)
+    expect(isEmptyAisleMarkdown('---\ntitle: note\n---')).toBe(false)
+    expect(isEmptyAisleMarkdown('#tag')).toBe(false)
+    expect(isEmptyAisleMarkdown('[link](https://example.com)')).toBe(false)
+    expect(isEmptyAisleMarkdown('![image](tabs-asset:image)')).toBe(false)
+    expect(isEmptyAisleMarkdown('-')).toBe(false)
+  })
+
+  it('finds and reclaims the rightmost empty aisle before adding at the limit', () => {
+    const fullDraft = [
+      aisle('a', 'one'),
+      aisle('b', ' '),
+      aisle('c', `${EDITOR_BLANK_LINE_PLACEHOLDER}\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}`),
+      aisle('d', 'two'),
+    ]
+    const onWarn = vi.fn()
+
+    expect(findRightmostEmptyAisleIndex(fullDraft)).toBe(2)
+    expect(getAislesForNewAisle(fullDraft, 4, true)?.map((item) => item.id)).toEqual(['a', 'b', 'd'])
+
+    const next = addAisleToDraftOrWarn(fullDraft, aisle('new'), onWarn, 4, MAX_AISLE_WARNING_MESSAGE, {
+      reclaimEmptyAisleAtLimit: true,
+    })
+
+    expect(next.map((item) => item.id)).toEqual(['a', 'b', 'd', 'new'])
+    expect(onWarn).not.toHaveBeenCalled()
+  })
+
+  it('warns at the limit when empty aisle reclaim is enabled but no empty aisle exists', () => {
+    const fullDraft = Array.from({ length: MAX_NOTE_AISLES }, (_, index) => aisle(`a${index}`, `content ${index}`))
+    const onWarn = vi.fn()
+
+    expect(addAisleToDraftOrWarn(fullDraft, aisle('blocked'), onWarn, MAX_NOTE_AISLES, MAX_AISLE_WARNING_MESSAGE, {
+      reclaimEmptyAisleAtLimit: true,
+    })).toBe(fullDraft)
     expect(onWarn).toHaveBeenCalledWith(MAX_AISLE_WARNING_MESSAGE)
   })
 

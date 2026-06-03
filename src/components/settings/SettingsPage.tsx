@@ -45,12 +45,13 @@ import type {
   StorageProfileStatus,
   TableControlTargetMode,
   TableOfContentsScope,
+  TabRenameEnterBehavior,
   TipId,
   ToolbarLayout,
   UserSettingsLocationStatus,
   VisualsSettingsSection,
 } from '../../types/app'
-import { MAX_SCRATCHPAD_AISLE_LIMIT } from '../../state/scratchpad'
+import { MAX_SCRATCHPAD_AISLE_LIMIT, MIN_SCRATCHPAD_AISLE_LIMIT } from '../../state/scratchpad'
 import { CustomThemeEditor } from './CustomThemeEditor'
 import { DataSettingsPanel } from './DataSettingsPanel'
 import { ThemePreview } from './ThemePreview'
@@ -90,6 +91,11 @@ const TABLE_OF_CONTENTS_SCOPE_OPTIONS: Array<{ id: TableOfContentsScope; label: 
   { id: 'focused-aisle', label: 'focused aisle' },
 ]
 
+const TAB_RENAME_ENTER_BEHAVIOR_OPTIONS: Array<{ id: TabRenameEnterBehavior; label: string }> = [
+  { id: 'goes-to-note', label: 'goes to note' },
+  { id: 'creates-another-tab', label: 'creates another tab' },
+]
+
 const SCRATCHPAD_NEW_AISLE_SIDE_OPTIONS: Array<{ id: ScratchpadNewAisleSide; label: string }> = [
   { id: 'left', label: 'left' },
   { id: 'right', label: 'right' },
@@ -125,6 +131,7 @@ type SettingsPageProps = {
   tableOfContentsScopeDraft: TableOfContentsScope
   scratchpadAisleLimitDraft: string
   scratchpadNewAisleSideDraft: ScratchpadNewAisleSide
+  tabRenameEnterBehaviorDraft: TabRenameEnterBehavior
   miscSyncedUiBooleanSettings: SyncedUiBooleanSettingView[]
   frontmatterDraft: FrontmatterSettings
   frontmatterDraftDirty: boolean
@@ -181,6 +188,7 @@ type SettingsPageProps = {
   onTableOfContentsScopeChange: (scope: TableOfContentsScope) => void
   onScratchpadAisleLimitChange: (value: string, commit?: boolean) => void
   onScratchpadNewAisleSideChange: (side: ScratchpadNewAisleSide) => void
+  onTabRenameEnterBehaviorChange: (behavior: TabRenameEnterBehavior) => void
   onSyncedUiBooleanSettingChange: (key: SyncedUiBooleanSettingKey, enabled: boolean) => void
   onTipEnabledChange: (tipId: TipId, enabled: boolean) => void
   onSelectToolbarLayout: (layoutId: string) => void
@@ -241,6 +249,7 @@ export function SettingsPage({
   tableOfContentsScopeDraft,
   scratchpadAisleLimitDraft,
   scratchpadNewAisleSideDraft,
+  tabRenameEnterBehaviorDraft,
   miscSyncedUiBooleanSettings,
   frontmatterDraft,
   frontmatterDraftDirty,
@@ -297,6 +306,7 @@ export function SettingsPage({
   onTableOfContentsScopeChange,
   onScratchpadAisleLimitChange,
   onScratchpadNewAisleSideChange,
+  onTabRenameEnterBehaviorChange,
   onSyncedUiBooleanSettingChange,
   onTipEnabledChange,
   onSelectToolbarLayout,
@@ -461,6 +471,31 @@ export function SettingsPage({
     )
   }
 
+  const renderTabRenameEnterBehaviorSetting = () => {
+    const labelId = 'settings-tab-rename-enter-behavior-label'
+    return (
+      <div className="settings-hotkey-row">
+        <span className="settings-hotkey-label" id={labelId}>
+          pressing enter after typing tab name
+        </span>
+        <div className="settings-segmented-control settings-flag-segmented-control" role="radiogroup" aria-labelledby={labelId}>
+          {TAB_RENAME_ENTER_BEHAVIOR_OPTIONS.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              role="radio"
+              aria-checked={tabRenameEnterBehaviorDraft === option.id}
+              className={`settings-segmented-option ${tabRenameEnterBehaviorDraft === option.id ? 'is-selected' : ''}`}
+              onClick={() => onTabRenameEnterBehaviorChange(option.id)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   const renderScratchpadAisleLimitSetting = () => (
     <div className="settings-hotkey-row">
       <span className="settings-hotkey-label">scratchpad aisle limit</span>
@@ -468,7 +503,7 @@ export function SettingsPage({
         <input
           type="number"
           className="settings-number-input settings-number-input-half"
-          min={1}
+          min={MIN_SCRATCHPAD_AISLE_LIMIT}
           max={MAX_SCRATCHPAD_AISLE_LIMIT}
           step={1}
           value={scratchpadAisleLimitDraft}
@@ -925,6 +960,7 @@ export function SettingsPage({
         {section === 'misc' && (
           <div className="settings-section-panel" role="tabpanel">
             {renderTableOfContentsScopeSetting()}
+            {renderTabRenameEnterBehaviorSetting()}
             {generalMiscSyncedUiBooleanSettings.map((setting) => renderMiscSyncedUiBooleanSetting(setting))}
             {renderTableControlTargetSetting(
               'add table row or column',

@@ -22,6 +22,7 @@ describe('synced UI settings registry', () => {
       removeNoteReferencesOnTrash: true,
       noteMentionCopyRequiresConfirmation: true,
       deleteSubtabShortcutEnabled: false,
+      tabRenameEnterBehavior: 'goes-to-note',
       decoupledItemsKeepData: true,
       visualizerHomeNodesResideInParent: false,
       visualizerLayoutMode: 'wedge-fan',
@@ -43,6 +44,7 @@ describe('synced UI settings registry', () => {
       tableAddTargetMode: 'active-cell',
       tableDeleteTargetMode: 'not-real',
       tableOfContentsScope: 'focused-aisle',
+      tabRenameEnterBehavior: 'creates-another-tab',
       newAislePlacement: 'left-of-focus',
       removeNoteReferencesOnTrash: 'false',
       deleteSubtabShortcutEnabled: true,
@@ -59,6 +61,7 @@ describe('synced UI settings registry', () => {
       tableAddTargetMode: 'active-cell',
       tableDeleteTargetMode: 'bottom-right',
       tableOfContentsScope: 'focused-aisle',
+      tabRenameEnterBehavior: 'creates-another-tab',
       removeNoteReferencesOnTrash: true,
       deleteSubtabShortcutEnabled: true,
       visualizerHomeNodesResideInParent: true,
@@ -67,6 +70,7 @@ describe('synced UI settings registry', () => {
     expect(normalized).not.toHaveProperty('newAislePlacement')
     expect(normalizeRegisteredSyncedUiSetting('findReplaceMode', 'bad')).toBe('find')
     expect(normalizeRegisteredSyncedUiSetting('visualizerLayoutMode', 'bad')).toBe('wedge-fan')
+    expect(normalizeRegisteredSyncedUiSetting('tabRenameEnterBehavior', 'bad')).toBe('goes-to-note')
   })
 
   it('picks registered settings and boolean drafts from a source object', () => {

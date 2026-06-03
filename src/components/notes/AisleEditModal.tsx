@@ -101,6 +101,7 @@ type AisleEditModalProps = {
   getNotePreviewLabel?: unknown
   maxAisles?: number
   maxAislesWarningMessage?: string
+  reclaimEmptyAisleAtLimit?: boolean
   onCancel: () => void
   onApply: (aisles: ResolvedNoteAisle[], options?: { decoupleAisleIds?: string[]; activeAisleId?: string }) => void
   onWarn: (message: string) => void
@@ -113,6 +114,7 @@ export function AisleEditModal({
   initialStagedDecoupleAisleIds = EMPTY_STAGED_DECOUPLE_IDS,
   maxAisles,
   maxAislesWarningMessage,
+  reclaimEmptyAisleAtLimit = false,
   onCancel,
   onApply,
   onWarn,
@@ -415,7 +417,9 @@ export function AisleEditModal({
               className="btn btn-sm btn-outline-light modal-cancel-btn"
               onClick={() =>
                 setDraft((previous) =>
-                  addAisleToDraftOrWarn(previous, createNoteAisle(), onWarn, maxAisles, maxAislesWarningMessage),
+                  addAisleToDraftOrWarn(previous, createNoteAisle(), onWarn, maxAisles, maxAislesWarningMessage, {
+                    reclaimEmptyAisleAtLimit,
+                  }),
                 )
               }
             >

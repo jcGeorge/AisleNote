@@ -2,7 +2,7 @@ import { createRef, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import { createEmptyStageManagerParentSelection } from '../../stage-manager/selection'
-import type { ArrangeModeState, SettingsSection, Tab, ViewMode, WorkspaceData } from '../../types/app'
+import type { ArrangeModeState, MessagesSection, SettingsSection, Tab, ViewMode, WorkspaceData } from '../../types/app'
 import { SubTabRail } from './SubTabRail'
 import { TopBar } from './TopBar'
 
@@ -53,7 +53,9 @@ function renderTopBar(
   options: {
     viewMode?: ViewMode
     settingsSection?: SettingsSection
+    messagesSection?: MessagesSection
     messagesCount?: number
+    toastHistoryCount?: number
     visualizerFilterControl?: ReactNode
   } = {},
 ) {
@@ -122,7 +124,10 @@ function renderTopBar(
       onOpenSettings={noop}
       onOpenAbout={noop}
       onSettingsSectionChange={noop}
+      messagesSection={options.messagesSection}
       messagesCount={options.messagesCount ?? 0}
+      toastHistoryCount={options.toastHistoryCount ?? 0}
+      onMessagesSectionChange={noop}
       visualizerFilterControl={options.visualizerFilterControl}
     />,
   )
@@ -215,6 +220,13 @@ describe('navigation arrange tooltips', () => {
     const messagesHtml = renderTopBar(false, { active: false }, false, {
       viewMode: 'messages',
       messagesCount: 2,
+      toastHistoryCount: 3,
+    })
+    const toastHistoryHtml = renderTopBar(false, { active: false }, false, {
+      viewMode: 'messages',
+      messagesSection: 'toast-history',
+      messagesCount: 2,
+      toastHistoryCount: 3,
     })
     const visualizerHtml = renderTopBar(false, { active: false }, false, {
       viewMode: 'visualizer',
@@ -230,7 +242,10 @@ describe('navigation arrange tooltips', () => {
     const aboutHtml = renderTopBar(false, { active: false }, false, { viewMode: 'about' })
 
     expect(messagesHtml).toContain('aria-label="utility pages"')
-    expect(messagesHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn parent-tab-btn utility-view-rail-btn">messages (2)</button>')
+    expect(messagesHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn parent-tab-btn utility-view-rail-btn">inbox (2)</button>')
+    expect(messagesHtml).toContain('aria-selected="false" class="btn btn-sm btn-outline-secondary tab-btn parent-tab-btn utility-view-rail-btn">toast history (3)</button>')
+    expect(toastHistoryHtml).toContain('aria-selected="false" class="btn btn-sm btn-outline-secondary tab-btn parent-tab-btn utility-view-rail-btn">inbox (2)</button>')
+    expect(toastHistoryHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn parent-tab-btn utility-view-rail-btn">toast history (3)</button>')
     expect(messagesHtml).toMatch(/topbar-context-btn[^"]*">messages \(2\)<\/button>/)
     expect(visualizerHtml).toContain('aria-label="visualizer filters"')
     expect(visualizerHtml).toContain('>duplicates</button>')

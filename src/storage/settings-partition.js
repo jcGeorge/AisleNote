@@ -119,6 +119,8 @@ const DEFAULT_SYNCED_UI_SETTINGS = {
   disabledTipIds: [],
 }
 
+const MIN_SCRATCHPAD_AISLE_LIMIT = 8
+const MAX_SCRATCHPAD_AISLE_LIMIT = 40
 const THEME_PALETTE_IDS = ['dark', 'light', 'dawn', 'custom1', 'custom2', 'custom3']
 const CUSTOM_THEME_IDS = ['custom1', 'custom2', 'custom3']
 const DATA_SETTINGS_SECTIONS = ['notebook', 'settings', 'storage', 'trash']
@@ -206,7 +208,7 @@ function normalizeShortcutSettings(raw) {
 function optionalScratchpadAisleLimit(value, fallback) {
   const parsed = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10)
   if (!Number.isFinite(parsed)) return fallback
-  return Math.min(32, Math.max(1, Math.floor(parsed)))
+  return Math.min(MAX_SCRATCHPAD_AISLE_LIMIT, Math.max(MIN_SCRATCHPAD_AISLE_LIMIT, Math.floor(parsed)))
 }
 
 function isPortableSettingsRecord(value) {

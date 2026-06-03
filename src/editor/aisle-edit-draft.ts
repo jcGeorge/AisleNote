@@ -1,4 +1,4 @@
-import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
+import { EDITOR_BLANK_LINE_PLACEHOLDER, normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
 import { MAX_NOTE_AISLES } from '../state/workspace'
 import type { NoteAisle, ResolvedNoteAisle } from '../types/app'
 
@@ -21,10 +21,44 @@ export function canDeleteAisleFromDraft(draft: ResolvedNoteAisle[]) {
   return draft.length > 1
 }
 
-export function addAisleToDraft(draft: ResolvedNoteAisle[], aisle: NoteAisle, maxAisles = MAX_NOTE_AISLES): ResolvedNoteAisle[] {
-  if (!canAddAisleToDraft(draft, maxAisles)) return draft
+export function isEmptyAisleMarkdown(markdown: string): boolean {
+  const normalized = normalizeMarkdownForPersistence(markdown)
+  return !normalized.split('\n').some((line) => {
+    const withoutBlankPlaceholders = line.replaceAll(EDITOR_BLANK_LINE_PLACEHOLDER, '')
+    return withoutBlankPlaceholders.trim().length > 0
+  })
+}
+
+export function findRightmostEmptyAisleIndex(aisles: ResolvedNoteAisle[]): number {
+  for (let index = aisles.length - 1; index >= 0; index -= 1) {
+    if (isEmptyAisleMarkdown(aisles[index]?.markdown ?? '')) return index
+  }
+  return -1
+}
+
+export function getAislesForNewAisle(
+  aisles: ResolvedNoteAisle[],
+  maxAisles = MAX_NOTE_AISLES,
+  reclaimEmptyAisleAtLimit = false,
+): ResolvedNoteAisle[] | null {
+  if (aisles.length < maxAisles) return aisles
+  if (!reclaimEmptyAisleAtLimit) return null
+  const emptyAisleIndex = findRightmostEmptyAisleIndex(aisles)
+  if (emptyAisleIndex < 0) return null
+  const reclaimedAisles = aisles.filter((_aisle, index) => index !== emptyAisleIndex)
+  return reclaimedAisles.length < maxAisles ? reclaimedAisles : null
+}
+
+export function addAisleToDraft(
+  draft: ResolvedNoteAisle[],
+  aisle: NoteAisle,
+  maxAisles = MAX_NOTE_AISLES,
+  options: { reclaimEmptyAisleAtLimit?: boolean } = {},
+): ResolvedNoteAisle[] {
+  const addBaseAisles = getAislesForNewAisle(draft, maxAisles, Boolean(options.reclaimEmptyAisleAtLimit))
+  if (!addBaseAisles) return draft
   return [
-    ...draft,
+    ...addBaseAisles,
     {
       id: aisle.id,
       aisleBodyId: aisle.aisleBodyId,
@@ -39,12 +73,14 @@ export function addAisleToDraftOrWarn(
   onWarn: (message: string) => void,
   maxAisles = MAX_NOTE_AISLES,
   warningMessage = MAX_AISLE_WARNING_MESSAGE,
+  options: { reclaimEmptyAisleAtLimit?: boolean } = {},
 ): ResolvedNoteAisle[] {
-  if (!canAddAisleToDraft(draft, maxAisles)) {
+  const nextDraft = addAisleToDraft(draft, aisle, maxAisles, options)
+  if (nextDraft === draft) {
     onWarn(warningMessage)
     return draft
   }
-  return addAisleToDraft(draft, aisle, maxAisles)
+  return nextDraft
 }
 
 export function deleteAisleFromDraft(draft: ResolvedNoteAisle[], aisleId: string): ResolvedNoteAisle[] {

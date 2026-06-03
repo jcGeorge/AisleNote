@@ -195,11 +195,95 @@ describe('app state normalization', () => {
   it('normalizes scratchpad aisle limits independently from normal note limits', () => {
     const missing = parseModernState({ ui: {} })
     const custom = parseModernState({ ui: { scratchpadAisleLimit: 24 } })
+    const tooSmall = parseModernState({ ui: { scratchpadAisleLimit: 2 } })
     const tooLarge = parseModernState({ ui: { scratchpadAisleLimit: 99 } })
 
     expect(missing.ui.scratchpadAisleLimit).toBe(16)
     expect(custom.ui.scratchpadAisleLimit).toBe(24)
-    expect(tooLarge.ui.scratchpadAisleLimit).toBe(32)
+    expect(tooSmall.ui.scratchpadAisleLimit).toBe(8)
+    expect(tooLarge.ui.scratchpadAisleLimit).toBe(40)
+  })
+
+  it('normalizes persisted inbox messages and toast history', () => {
+    const state = parseModernState({
+      messages: [
+        {
+          id: 'message-1',
+          type: 'duplicate-auto-decoupled',
+          status: 'unread',
+          createdAt: '2026-06-01T00:00:00.000Z',
+          signature: 'signature-1',
+          title: 'duplicate files de-coupled',
+          body: '1 changed duplicate file was de-coupled.',
+          anchorPath: 'notes/anchor.md',
+          decoupledPaths: ['notes/other.md'],
+          affectedLocations: [
+            {
+              label: 'de-coupled',
+              path: 'notes/other.md',
+              location: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
+            },
+          ],
+        },
+        { id: 'ignored', type: 'unknown' },
+      ],
+      toastHistory: [
+        {
+          id: 1,
+          createdAt: '2026-06-01T00:00:00.000Z',
+          message: 'first warning',
+          tone: 'warning',
+        },
+        {
+          id: 2,
+          createdAt: '2026-06-01T00:01:00.000Z',
+          message: 'second success',
+          tone: 'success',
+        },
+        { id: 3, message: '', tone: 'error' },
+      ],
+    })
+
+    expect(state.messages).toHaveLength(1)
+    expect(state.messages?.[0]).toMatchObject({
+      id: 'message-1',
+      status: 'unread',
+      anchorPath: 'notes/anchor.md',
+      decoupledPaths: ['notes/other.md'],
+    })
+    expect(state.messages?.[0].affectedLocations?.[0].location).toEqual({
+      domainId: 'domain',
+      spaceId: 'space',
+      tabId: 'tab',
+      subTabId: null,
+    })
+    expect(state.toastHistory).toEqual([
+      {
+        id: 1,
+        createdAt: '2026-06-01T00:00:00.000Z',
+        message: 'first warning',
+        tone: 'warning',
+      },
+      {
+        id: 2,
+        createdAt: '2026-06-01T00:01:00.000Z',
+        message: 'second success',
+        tone: 'success',
+      },
+    ])
+  })
+
+  it('keeps only the newest 70 normalized toast history entries', () => {
+    const state = parseModernState({
+      toastHistory: Array.from({ length: 72 }, (_, index) => ({
+        id: index + 1,
+        createdAt: `2026-06-01T00:${String(index).padStart(2, '0')}:00.000Z`,
+        message: `toast ${index + 1}`,
+        tone: 'warning',
+      })),
+    })
+
+    expect(state.toastHistory?.map((toast) => toast.id)).toEqual(Array.from({ length: 70 }, (_, index) => index + 3))
   })
 
   it('fills default command shortcuts when saved hotkeys only contain newline shortcuts', () => {
@@ -1055,6 +1139,18 @@ describe('app state normalization', () => {
     expect(disabled.ui.deleteSubtabShortcutEnabled).toBe(false)
     expect(invalid.ui.deleteSubtabShortcutEnabled).toBe(false)
     expect(missing.ui.deleteSubtabShortcutEnabled).toBe(false)
+  })
+
+  it('normalizes tab rename Enter behavior setting', () => {
+    const createAnother = parseModernState({ ui: { tabRenameEnterBehavior: 'creates-another-tab' } })
+    const goesToNote = parseModernState({ ui: { tabRenameEnterBehavior: 'goes-to-note' } })
+    const invalid = parseModernState({ ui: { tabRenameEnterBehavior: 'keep-editing' } })
+    const missing = parseModernState({ ui: {} })
+
+    expect(createAnother.ui.tabRenameEnterBehavior).toBe('creates-another-tab')
+    expect(goesToNote.ui.tabRenameEnterBehavior).toBe('goes-to-note')
+    expect(invalid.ui.tabRenameEnterBehavior).toBe('goes-to-note')
+    expect(missing.ui.tabRenameEnterBehavior).toBe('goes-to-note')
   })
 
   it('normalizes synced toolbar layouts while leaving active toolbar selection local', () => {

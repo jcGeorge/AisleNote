@@ -24,6 +24,8 @@ export type RenameInputKeyEventLike = {
   altKey?: boolean
 }
 
+export type TabRenameEnterBehaviorLike = 'goes-to-note' | 'creates-another-tab'
+
 export function createRenameDraft(type: RenameEntityType, id: string, value: string): RenameDraft {
   return { type, id, value }
 }
@@ -59,4 +61,18 @@ export function getRenameInputKeyAction(event: RenameInputKeyEventLike): RenameI
     return 'commit-and-create'
   }
   return null
+}
+
+export function shouldCreateAnotherTabAfterRenameEnter(input: {
+  type: RenameEntityType
+  isPendingCreated: boolean
+  tabRenameEnterBehavior: TabRenameEnterBehaviorLike
+  tagFilterActive?: boolean
+}): boolean {
+  return (
+    (input.type === 'tab' || input.type === 'subtab') &&
+    input.isPendingCreated &&
+    input.tabRenameEnterBehavior === 'creates-another-tab' &&
+    !input.tagFilterActive
+  )
 }

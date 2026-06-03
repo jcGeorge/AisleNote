@@ -12,6 +12,12 @@ export const SYNCED_UI_SIMPLE_SETTING_DEFINITIONS = Object.freeze([
   { key: 'deleteSubtabShortcutEnabled', kind: 'boolean', defaultValue: false },
   { key: 'scratchpadDeleteAisleShortcutEnabled', kind: 'boolean', defaultValue: false },
   { key: 'scratchpadNewAisleSide', kind: 'enum', defaultValue: 'left', values: ['left', 'right'] },
+  {
+    key: 'tabRenameEnterBehavior',
+    kind: 'enum',
+    defaultValue: 'goes-to-note',
+    values: ['goes-to-note', 'creates-another-tab'],
+  },
   { key: 'decoupledItemsKeepData', kind: 'boolean', defaultValue: true },
   { key: 'visualizerHomeNodesResideInParent', kind: 'boolean', defaultValue: false },
   { key: 'visualizerLayoutMode', kind: 'enum', defaultValue: 'wedge-fan', values: ['wedge-fan', 'strict-rings', 'compact-cluster', 'link-tree'] },

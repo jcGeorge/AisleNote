@@ -704,7 +704,7 @@ export function ModalHost({
               scratchpad results appear when searching your entire notebook, or when searching within scratchpad itself.
             </p>
             <p>
-              scratchpad allows 16 aisles by default, adjustable up to 32 in the misc settings. new scratchpad aisles
+              scratchpad allows 16 aisles by default, adjustable up to 40 in the misc settings. new scratchpad aisles
               are added to the left by default, also adjustable in the settings.
             </p>
           </div>

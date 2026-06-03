@@ -203,6 +203,25 @@ describe('browser hybrid storage', () => {
           },
           { id: 'aisle-body-sub', markdown: 'sub body' },
         ],
+        messages: [
+          {
+            id: 'message-1',
+            type: 'duplicate-auto-decoupled',
+            status: 'unread',
+            createdAt: '2026-06-01T00:00:00.000Z',
+            signature: 'signature-1',
+            title: 'duplicate files de-coupled',
+            body: '1 changed duplicate file was de-coupled.',
+          },
+        ],
+        toastHistory: [
+          {
+            id: 1,
+            createdAt: '2026-06-01T00:01:00.000Z',
+            message: 'notebook folder updated.',
+            tone: 'success',
+          },
+        ],
         frontmatter: {
           settingsTemplateId: 'template-1',
           lastAppliedTemplateId: 'template-1',
@@ -271,6 +290,7 @@ describe('browser hybrid storage', () => {
     const workspaceIndex = getRootSplitFileJson(fileMap, getRecord(rootManifest), 'workspaceIndex', 'workspace-index.json')
     const appSettings = getUserSettingsFileJson(fileMap)
     const editorState = getRootSplitFileJson(fileMap, getRecord(rootManifest), 'editorState', 'editor-state.json')
+    const messagesFile = getRootSplitFileJson(fileMap, getRecord(rootManifest), 'messages', 'messages.json')
     const noteRegistry = getRootSplitFileJson(fileMap, getRecord(rootManifest), 'noteRegistry', 'note-registry.json')
     const firstDomain = getRecord(Array.isArray(workspaceIndex.domains) ? workspaceIndex.domains[0] : null)
     const paths = Array.from(fileMap.keys())
@@ -307,7 +327,29 @@ describe('browser hybrid storage', () => {
     expect(paths.some((path) => path.startsWith('notes/note-bodies/'))).toBe(false)
     expect(paths.some((path) => /\/Tab--[a-f0-9]{6}\/home\.md$/.test(path))).toBe(true)
     expect(paths.some((path) => /\/Tab--[a-f0-9]{6}\/Sub--[a-f0-9]{6}\.md$/.test(path))).toBe(true)
+    expect(messagesFile.messages).toEqual([
+      expect.objectContaining({ id: 'message-1', type: 'duplicate-auto-decoupled' }),
+    ])
+    expect(messagesFile.toastHistory).toEqual([
+      {
+        id: 1,
+        createdAt: '2026-06-01T00:01:00.000Z',
+        message: 'notebook folder updated.',
+        tone: 'success',
+      },
+    ])
     expect(serialized).not.toBeNull()
+    expect(roundTripped.messages).toEqual([
+      expect.objectContaining({ id: 'message-1', type: 'duplicate-auto-decoupled' }),
+    ])
+    expect(roundTripped.toastHistory).toEqual([
+      {
+        id: 1,
+        createdAt: '2026-06-01T00:01:00.000Z',
+        message: 'notebook folder updated.',
+        tone: 'success',
+      },
+    ])
     expect(homeBody?.aisles[0] ? getAisleMarkdown(homeBody.aisles[0], roundTripped.noteAisleBodies) : '').toBe('home body')
     expect(homeAisleBody?.frontmatter).toEqual({ created: '2024-01-01' })
     expect(homeAisleBody?.frontmatterMeta).toMatchObject({
@@ -473,6 +515,7 @@ describe('browser hybrid storage', () => {
           tableAddTargetMode: 'active-cell',
           tableDeleteTargetMode: 'active-cell',
           tableOfContentsScope: 'focused-aisle',
+          tabRenameEnterBehavior: 'creates-another-tab',
           newAislePlacement: 'left-of-focus',
           scratchpadAisleLimit: 40,
           tabButtonScale: 1.3,
@@ -517,8 +560,9 @@ describe('browser hybrid storage', () => {
     expect(getRecord(appSettings.ui).visualizerHomeNodesResideInParent).toBe(true)
     expect(getRecord(appSettings.ui).visualizerLayoutMode).toBe('strict-rings')
     expect(getRecord(appSettings.ui).tableOfContentsScope).toBe('focused-aisle')
+    expect(getRecord(appSettings.ui).tabRenameEnterBehavior).toBe('creates-another-tab')
     expect(getRecord(appSettings.ui)).not.toHaveProperty('newAislePlacement')
-    expect(appSettings.scratchpadAisleLimit).toBe(32)
+    expect(appSettings.scratchpadAisleLimit).toBe(40)
     expect(getRecord(appSettings.ui).showParentHomeTab).toBe(false)
     expect(getRecord(appSettings.hotkeys)).not.toHaveProperty('enableMouseBackForward')
     expect(getRecord(appSettings.hotkeys)).not.toHaveProperty('enableGenericHistoryHotkeys')
@@ -548,8 +592,9 @@ describe('browser hybrid storage', () => {
     expect(roundTripped.ui.visualizerHomeNodesResideInParent).toBe(true)
     expect(roundTripped.ui.visualizerLayoutMode).toBe('strict-rings')
     expect(roundTripped.ui.tableOfContentsScope).toBe('focused-aisle')
+    expect(roundTripped.ui.tabRenameEnterBehavior).toBe('creates-another-tab')
     expect(roundTripped.ui).not.toHaveProperty('newAislePlacement')
-    expect(roundTripped.ui.scratchpadAisleLimit).toBe(32)
+    expect(roundTripped.ui.scratchpadAisleLimit).toBe(40)
     expect(roundTripped.ui.themePalettes?.dawn?.primary).toBe('#123456')
     expect(roundTripped.hotkeys.shortcuts.newTab).toBe('Ctrl+Alt+N')
     expect(roundTripped.hotkeys.newlineShortcuts.menuOperations).toEqual(['task', 'aisleRight', 'strikethrough'])

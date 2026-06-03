@@ -7,13 +7,14 @@ import type {
   StageManagerParentSelection,
   SubTab,
   Tab,
+  TabRenameEnterBehavior,
   TabArrangeDragItem,
   TabArrangeDragPreview,
   TrashParentBucket,
   ViewMode,
 } from '../../types/app'
 import { getPlacementNeighborId } from '../../arrange/arrange-utils'
-import { getRenameInputKeyAction } from '../../navigation/rename-draft'
+import { getRenameInputKeyAction, shouldCreateAnotherTabAfterRenameEnter } from '../../navigation/rename-draft'
 import { SortIcon } from './SortIcon'
 
 type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
@@ -40,6 +41,7 @@ type SubTabRailProps = {
   draggingSubTabId: string | null
   onAutoSizeRenameInput: (input: HTMLInputElement) => void
   onShouldSkipRenameBlur: (type: EditableEntityType, id: string) => boolean
+  onIsPendingCreatedRename?: (type: 'tab' | 'subtab', id: string) => boolean
   onCommitRename: (type: EditableEntityType, id: string, name: string) => void
   onCancelRename: (type: EditableEntityType, id: string) => void
   onRenameDraftChange: (type: EditableEntityType, id: string, value: string) => void
@@ -93,6 +95,7 @@ type SubTabRailProps = {
     currentSubTabId: string,
   ) => void
   onAddSubTab: () => void
+  tabRenameEnterBehavior?: TabRenameEnterBehavior
   onOpenSubTabSortModal: () => void
   scratchpadActive?: boolean
   onOpenScratchpad?: () => void
@@ -148,6 +151,7 @@ export function SubTabRail({
   draggingSubTabId,
   onAutoSizeRenameInput,
   onShouldSkipRenameBlur,
+  onIsPendingCreatedRename = () => false,
   onCommitRename,
   onCancelRename,
   onRenameDraftChange,
@@ -176,6 +180,7 @@ export function SubTabRail({
   onSetTrashSubTabId,
   onOpenContextMenuForTrashSubTab,
   onAddSubTab,
+  tabRenameEnterBehavior = 'goes-to-note',
   onOpenSubTabSortModal,
   scratchpadActive = false,
   onOpenScratchpad = () => undefined,
@@ -306,6 +311,18 @@ export function SubTabRail({
                   const action = getRenameInputKeyAction(event)
                   if (action === 'commit') {
                     event.preventDefault()
+                    if (
+                      shouldCreateAnotherTabAfterRenameEnter({
+                        type: 'subtab',
+                        isPendingCreated: onIsPendingCreatedRename('subtab', subTab.id),
+                        tabRenameEnterBehavior,
+                        tagFilterActive,
+                      })
+                    ) {
+                      onRenameDraftChange('subtab', subTab.id, event.currentTarget.value)
+                      onAddSubTab()
+                      return
+                    }
                     onCommitRename('subtab', subTab.id, event.currentTarget.value)
                   }
                   if (action === 'commit-and-create') {

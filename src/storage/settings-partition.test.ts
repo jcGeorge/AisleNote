@@ -43,6 +43,7 @@ describe('portable app settings parsing', () => {
       ui: {
         settingsSection: 'hotkeys',
         dataSettingsSection: 'notebook',
+        tabRenameEnterBehavior: 'goes-to-note',
         toolbarLayouts: [],
       },
     })
@@ -63,6 +64,7 @@ describe('portable app settings parsing', () => {
         ui: {
           settingsSection: 'data',
           dataSettingsSection: 'settings',
+          tabRenameEnterBehavior: 'goes-to-note',
         },
       },
     })

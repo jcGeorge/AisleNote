@@ -167,6 +167,23 @@ export function getRailVisibilityShortcutTarget(
   return null
 }
 
+export function getCapturedRailVisibilityShortcutTarget({
+  event,
+  hotkeys,
+  isMacPlatform,
+  viewMode,
+  editingShortcut,
+}: {
+  event: KeyboardEvent
+  hotkeys: AppState['hotkeys']
+  isMacPlatform: boolean
+  viewMode: ViewMode
+  editingShortcut: ShortcutId | null
+}): 'space' | 'domain' | null {
+  if (viewMode === 'settings' && editingShortcut) return null
+  return getRailVisibilityShortcutTarget(event, hotkeys, isMacPlatform)
+}
+
 export type DeleteFocusedSubtabShortcutIntent = 'show-tip' | 'delete-subtab' | 'warn-home'
 
 export function isDeleteFocusedSubtabShortcut(event: KeyboardEvent, isMacPlatform: boolean): boolean {
@@ -290,6 +307,26 @@ export function useGlobalHotkeys({
   }
 
   useEffect(() => {
+    const handleCapturedKeydown = (event: KeyboardEvent) => {
+      const railVisibilityShortcutTarget = getCapturedRailVisibilityShortcutTarget({
+        event,
+        hotkeys: normalizedHotkeys,
+        isMacPlatform,
+        viewMode,
+        editingShortcut,
+      })
+      if (!railVisibilityShortcutTarget) return
+
+      event.preventDefault()
+      event.stopPropagation()
+      if (event.repeat) return
+      if (railVisibilityShortcutTarget === 'space') {
+        actionsRef.current.toggleSpaceRail()
+        return
+      }
+      actionsRef.current.toggleDomainRail()
+    }
+
     const handleKeydown = (event: KeyboardEvent) => {
       const actions = actionsRef.current
 
@@ -562,12 +599,14 @@ export function useGlobalHotkeys({
       }
     }
 
+    window.addEventListener('keydown', handleCapturedKeydown, true)
     window.addEventListener('keydown', handleKeydown)
     window.addEventListener('keyup', handleKeyup)
     window.addEventListener('blur', resetAisleBracketCycleGuard)
     window.addEventListener('mouseup', handleMouseNavigation)
     document.addEventListener('visibilitychange', handleVisibilityChange)
     return () => {
+      window.removeEventListener('keydown', handleCapturedKeydown, true)
       window.removeEventListener('keydown', handleKeydown)
       window.removeEventListener('keyup', handleKeyup)
       window.removeEventListener('blur', resetAisleBracketCycleGuard)

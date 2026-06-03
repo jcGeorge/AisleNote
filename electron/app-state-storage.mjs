@@ -1334,6 +1334,7 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
   setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.editorState, extractEditorState(parsedState))
   setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.messages, {
     messages: ensureArray(parsedState.messages).filter(isRecord),
+    toastHistory: ensureArray(parsedState.toastHistory).filter(isRecord),
   })
   setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.deletedWorkspace, {
     deletedDomains: ensureArray(parsedState.deletedDomains).filter(isRecord),
@@ -2049,6 +2050,7 @@ function readCurrentRootParts(rootPath, rootManifest, issues = null, profileRoot
     domainEntries: ensureArray(splitFiles.workspaceIndex?.domains),
     scratchpad: isRecord(splitFiles.workspaceIndex?.scratchpad) ? splitFiles.workspaceIndex.scratchpad : undefined,
     messages: ensureArray(splitFiles.messages?.messages).filter(isRecord),
+    toastHistory: ensureArray(splitFiles.messages?.toastHistory).filter(isRecord),
     deletedDomains: ensureArray(splitFiles.deletedWorkspace?.deletedDomains).filter(isRecord),
     deletedSpaces: ensureArray(splitFiles.deletedWorkspace?.deletedSpaces).filter(isRecord),
     activeDomainId:
@@ -2256,6 +2258,7 @@ function readHybridAppStateFromRootManifest(rootPath, rootManifest, issues = nul
     deletedSpaces: rootParts.deletedSpaces,
     scratchpad: rootParts.scratchpad,
     messages: decoupledState.messages,
+    toastHistory: rootParts.toastHistory,
     noteBodies: decoupledState.noteBodies,
     noteAisleBodies: decoupledState.noteAisleBodies,
     activeSpaceId: '',

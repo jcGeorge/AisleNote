@@ -5,6 +5,7 @@ import {
   getActiveRenameDraft,
   getRenameDraftCommitRequest,
   getRenameInputKeyAction,
+  shouldCreateAnotherTabAfterRenameEnter,
 } from './rename-draft'
 
 describe('rename draft helper', () => {
@@ -56,5 +57,39 @@ describe('rename draft helper', () => {
     expect(getRenameInputKeyAction({ key: 'Tab' })).toBe('commit-and-create')
     expect(getRenameInputKeyAction({ key: 'Tab', shiftKey: true })).toBeNull()
     expect(getRenameInputKeyAction({ key: 'Tab', metaKey: true })).toBeNull()
+  })
+
+  it('only creates another tab on Enter for pending created tab renames with the opt-in setting', () => {
+    expect(shouldCreateAnotherTabAfterRenameEnter({
+      type: 'tab',
+      isPendingCreated: true,
+      tabRenameEnterBehavior: 'creates-another-tab',
+    })).toBe(true)
+    expect(shouldCreateAnotherTabAfterRenameEnter({
+      type: 'subtab',
+      isPendingCreated: true,
+      tabRenameEnterBehavior: 'creates-another-tab',
+    })).toBe(true)
+    expect(shouldCreateAnotherTabAfterRenameEnter({
+      type: 'tab',
+      isPendingCreated: false,
+      tabRenameEnterBehavior: 'creates-another-tab',
+    })).toBe(false)
+    expect(shouldCreateAnotherTabAfterRenameEnter({
+      type: 'tab',
+      isPendingCreated: true,
+      tabRenameEnterBehavior: 'goes-to-note',
+    })).toBe(false)
+    expect(shouldCreateAnotherTabAfterRenameEnter({
+      type: 'space',
+      isPendingCreated: true,
+      tabRenameEnterBehavior: 'creates-another-tab',
+    })).toBe(false)
+    expect(shouldCreateAnotherTabAfterRenameEnter({
+      type: 'tab',
+      isPendingCreated: true,
+      tabRenameEnterBehavior: 'creates-another-tab',
+      tagFilterActive: true,
+    })).toBe(false)
   })
 })

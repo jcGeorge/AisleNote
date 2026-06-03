@@ -56,6 +56,22 @@ const hasActiveEditorMark = (view: any, markName: string) => {
   return state.doc.rangeHasMark(selection.from, selection.to, markType)
 }
 
+export function getToolbarFormatShortcutForEvent(
+  event: KeyboardEvent,
+  hotkeys: AppState['hotkeys'],
+  isMacPlatform: boolean,
+): ToolbarFormatKey | null {
+  const normalizedHotkeys = normalizeHotkeySettings(hotkeys)
+  if (eventMatchesShortcut(event, normalizedHotkeys.shortcuts.formatStrikethrough, isMacPlatform)) return 'strike'
+
+  const key = event.key.toLowerCase()
+  const isMod = isMacPlatform ? event.metaKey : event.ctrlKey
+  if (!isMod || event.altKey) return null
+  if (key === 'b') return 'bold'
+  if (key === 'i') return 'italic'
+  return null
+}
+
 export function useEditorToolbarState({
   viewMode,
   isMacPlatform,
@@ -174,15 +190,7 @@ export function useEditorToolbarState({
   }
 
   const getToolbarFormatShortcut = (event: KeyboardEvent): ToolbarFormatKey | null => {
-    const hotkeys = normalizeHotkeySettings(stateRef.current.hotkeys)
-    if (eventMatchesShortcut(event, hotkeys.shortcuts.formatStrikethrough, isMacPlatform)) return 'strike'
-    const key = event.key.toLowerCase()
-    const isMod = isMacPlatform ? event.metaKey : event.ctrlKey
-    if (!isMod || event.altKey) return null
-    if (key === 'b') return 'bold'
-    if (key === 'i') return 'italic'
-    if (key === 's' && !eventMatchesShortcut(event, hotkeys.shortcuts.openSpaces, isMacPlatform)) return 'strike'
-    return null
+    return getToolbarFormatShortcutForEvent(event, stateRef.current.hotkeys, isMacPlatform)
   }
 
   const queueToolbarShortcutFeedback = (format: ToolbarFormatKey) => {
