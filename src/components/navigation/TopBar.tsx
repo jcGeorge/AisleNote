@@ -24,6 +24,9 @@ import { NavigationRailControls, type NavigationRailAction } from './NavigationR
 import { SortIcon } from './SortIcon'
 
 type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
+type NavigationContextMenuOptions = {
+  force?: boolean
+}
 
 type TopBarProps = {
   viewMode: ViewMode
@@ -70,7 +73,11 @@ type TopBarProps = {
   onConsumeArrangeClickSuppression: (key: string) => boolean
   onSelectTab: (tabId: string, event?: MouseEvent<HTMLButtonElement> | ReactPointerEvent<HTMLButtonElement>) => void
   onBeginEdit: (editing: { type: EditableEntityType; id: string }) => void
-  onOpenContextMenuForTab: (event: MouseEvent<HTMLButtonElement>, tabId: string) => void
+  onOpenContextMenuForTab: (
+    event: MouseEvent<HTMLButtonElement>,
+    tabId: string,
+    options?: NavigationContextMenuOptions,
+  ) => void
   onStartArrangeDragSeed: (key: string, event: ReactPointerEvent<HTMLButtonElement>) => void
   onStartArrangeTapCandidate: (candidate: ArrangeTapCandidateSeed, event: ReactPointerEvent<HTMLButtonElement>) => void
   onStartArrangePress: (
@@ -537,18 +544,19 @@ export function TopBar({
                       }}
                       onContextMenu={(event) => {
                         if (viewMode !== 'main') return
-                        onOpenContextMenuForTab(event, tab.id)
+                        const forceMenu = arrangeMode.active
+                        if (forceMenu) onExitArrangeMode()
+                        onOpenContextMenuForTab(event, tab.id, forceMenu ? { force: true } : undefined)
                       }}
                       onPointerDown={(event) => {
                         if (viewMode !== 'main') return
                         if (tagFilterActive) return
+                        if (event.button !== 0) return
                         if (hasSelectionClickModifier(event)) {
                           onClearArrangePressTimer()
                           return
                         }
-                        if (event.button === 0) {
-                          event.currentTarget.setPointerCapture(event.pointerId)
-                        }
+                        event.currentTarget.setPointerCapture(event.pointerId)
                         onStartArrangeDragSeed(`tab:${tab.id}`, event)
                         if (arrangeMode.active) {
                           onStartArrangeTapCandidate({ key: `tab:${tab.id}`, type: 'tab', tabId: tab.id }, event)

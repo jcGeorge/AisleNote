@@ -577,16 +577,23 @@ describe('compact scope tab scaling styles', () => {
     const subtabRule = extractRule(railCss, '.rail-control.is-subtab,\n.subtab-btn')
     const arrangeSelectedDomainRule = extractRule(topbarCss, '.compact-domain-btn.is-arrange-selected')
     const arrangeSelectedSpaceRule = extractRule(topbarCss, '.compact-space-btn.is-arrange-selected')
-    const arrangeSelectedParentRule = extractRule(tabsCss, '.parent-tab-btn.is-arrange-selected')
-    const arrangeSelectedSubTabRule = extractRule(tabsCss, '.subtab-btn.is-arrange-selected')
+    const draggedTabRule = extractRule(tabsCss, '.tab-btn.is-arrangeable.is-dragging')
+    const draggedScopeRule = extractRule(topbarCss, '.compact-scope-btn.is-arrangeable.is-dragging')
+    const arrangeDraggingDomainRule = extractRule(topbarCss, '.compact-domain-btn.is-arrangeable.is-dragging')
+    const arrangeDraggingSpaceRule = extractRule(topbarCss, '.compact-space-btn.is-arrangeable.is-dragging')
+    const arrangeSelectedParentRule = extractRule(
+      tabsCss,
+      '.parent-tab-btn.is-arrangeable.is-dragging,\n.parent-tab-btn.is-arrangeable.is-dragging:hover,\n.parent-tab-btn.is-arrangeable.is-dragging:focus,\n.parent-tab-btn.is-arrangeable.is-dragging:active,\n.parent-tab-btn.is-arrange-selected',
+    )
     const arrangeSubTabPressedRule = extractRule(
       tabsCss,
-      '.subtab-btn.is-arrangeable,\n.subtab-btn.is-arrangeable:hover,\n.subtab-btn.is-arrangeable:focus,\n.subtab-btn.is-arrangeable:active,\n.subtab-btn.is-arrangeable.is-dragging,\n.subtab-btn.is-arrangeable.is-dragging:hover,\n.subtab-btn.is-arrangeable.is-dragging:focus,\n.subtab-btn.is-arrangeable.is-dragging:active',
+      '.subtab-btn.is-arrangeable,\n.subtab-btn.is-arrangeable:hover,\n.subtab-btn.is-arrangeable:focus,\n.subtab-btn.is-arrangeable:active',
     )
-    const arrangeSubTabSelectedPressedRule = extractRule(
+    const arrangeSelectedSubTabRule = extractRule(
       tabsCss,
-      ".subtab-btn.is-arrangeable[aria-selected='true'],\n.subtab-btn.is-arrangeable[aria-selected='true']:hover,\n.subtab-btn.is-arrangeable[aria-selected='true']:focus,\n.subtab-btn.is-arrangeable[aria-selected='true']:active,\n.subtab-btn.is-arrangeable[aria-selected='true'].is-dragging,\n.subtab-btn.is-arrangeable.is-arrange-selected",
+      ".subtab-btn.is-arrangeable[aria-selected='true'],\n.subtab-btn.is-arrangeable[aria-selected='true']:hover,\n.subtab-btn.is-arrangeable[aria-selected='true']:focus,\n.subtab-btn.is-arrangeable[aria-selected='true']:active,\n.subtab-btn.is-arrangeable[aria-selected='true'].is-dragging,\n.subtab-btn.is-arrangeable.is-dragging,\n.subtab-btn.is-arrangeable.is-dragging:hover,\n.subtab-btn.is-arrangeable.is-dragging:focus,\n.subtab-btn.is-arrangeable.is-dragging:active,\n.subtab-btn.is-arrangeable.is-arrange-selected",
     )
+    const arrangeSubTabSelectedPressedRule = arrangeSelectedSubTabRule
     const addTabRule = extractLastRule(tabsCss, '.add-tab-btn')
     const addTabHoverRule = extractRule(tabsCss, '.add-tab-btn:hover')
     const trashActiveRule = extractRule(topbarCss, '.trash-domain-btn.is-active,\n.trash-space-btn.is-active')
@@ -669,6 +676,10 @@ describe('compact scope tab scaling styles', () => {
     expect(arrangeSelectedDomainRule).toContain('color: var(--domain-rail-selected-text) !important;')
     expect(arrangeSelectedDomainRule).toContain('background: var(--domain-rail-selected-bg) !important;')
     expect(arrangeSelectedDomainRule).toContain('border-color: var(--domain-rail-selected-border) !important;')
+    expect(arrangeDraggingDomainRule).toContain('color: var(--domain-rail-selected-text) !important;')
+    expect(arrangeDraggingDomainRule).toContain('background: var(--domain-rail-selected-bg) !important;')
+    expect(arrangeDraggingDomainRule).toContain('border-color: var(--domain-rail-selected-border) !important;')
+    expect(arrangeDraggingDomainRule).toContain('var(--domain-rail-dragging-shadow)')
 
     expect(spaceRule).toContain('--rail-control-text: var(--space-rail-text);')
     expect(spaceRule).toContain('--rail-control-bg: var(--space-rail-bg);')
@@ -685,6 +696,10 @@ describe('compact scope tab scaling styles', () => {
     expect(arrangeSelectedSpaceRule).toContain('color: var(--space-rail-selected-text) !important;')
     expect(arrangeSelectedSpaceRule).toContain('background: var(--space-rail-selected-bg) !important;')
     expect(arrangeSelectedSpaceRule).toContain('border-color: var(--space-rail-selected-border) !important;')
+    expect(arrangeDraggingSpaceRule).toContain('color: var(--space-rail-selected-text) !important;')
+    expect(arrangeDraggingSpaceRule).toContain('background: var(--space-rail-selected-bg) !important;')
+    expect(arrangeDraggingSpaceRule).toContain('border-color: var(--space-rail-selected-border) !important;')
+    expect(arrangeDraggingSpaceRule).toContain('var(--space-rail-dragging-shadow)')
     expect(parentRule).toContain('--rail-control-text: var(--parent-rail-text);')
     expect(parentRule).toContain('--rail-control-bg: var(--parent-rail-bg);')
     expect(parentRule).toContain('--rail-control-border: var(--parent-rail-border);')
@@ -712,6 +727,10 @@ describe('compact scope tab scaling styles', () => {
     expect(arrangeSubTabSelectedPressedRule).toContain('color: var(--subtab-selected-text) !important;')
     expect(arrangeSubTabSelectedPressedRule).toContain('background-color: var(--subtab-selected-bg) !important;')
     expect(arrangeSubTabSelectedPressedRule).toContain('border-color: var(--subtab-selected-border) !important;')
+    expect(draggedTabRule).toContain('cursor: grabbing;')
+    expect(draggedTabRule).not.toContain('opacity:')
+    expect(draggedScopeRule).toContain('cursor: grabbing;')
+    expect(draggedScopeRule).not.toContain('opacity:')
 
     expect(addTabRule).toContain('color: var(--add-tab-text) !important;')
     expect(addTabRule).toContain('background-color: var(--add-tab-bg) !important;')
@@ -780,6 +799,55 @@ describe('compact scope tab scaling styles', () => {
     expect(resultContextChipRule).toContain('text-align: left;')
     expect(resultSubtabChipRule).toContain('flex: 0 0 auto;')
     expect(editorShellCss).not.toContain('--note-mention-chip-')
+  })
+
+  it('uses pointer-follow multi-item arrange preview ghost cards and respects reduced motion', () => {
+    const css = readStyle('tabs.css')
+    const tabPreviewRule = extractRule(css, '.tab-arrange-preview')
+    const tabPreviewLabelRule = extractRule(css, '.tab-arrange-preview span')
+    const sharedCardRule = extractRule(
+      css,
+      '.arrange-preview-card.tab-arrange-preview,\n.arrange-preview-card.compact-scope-arrange-preview',
+    )
+    const ghostRule = extractRule(css, '.arrange-preview-card.arrange-preview-ghost')
+    const firstGhostRule = extractRule(css, '.arrange-preview-card.arrange-preview-ghost.is-ghost-1')
+    const secondGhostRule = extractRule(css, '.arrange-preview-card.arrange-preview-ghost.is-ghost-2')
+    const reducedMotionRule = css.match(
+      /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.arrange-preview-card\.arrange-preview-ghost\s*\{[^}]+\}\s*\}/,
+    )?.[0] ?? ''
+
+    expect(css).toContain('.arrange-preview-stack')
+    expect(css).toContain('.arrange-preview-card.arrange-preview-primary')
+    expect(css).not.toContain('@keyframes arrangePreviewGhostFlyIn')
+    expect(css).not.toContain('animation-delay:')
+    expect(tabPreviewRule).toContain('border-radius: var(--rail-control-radius);')
+    expect(tabPreviewRule).toContain('padding: var(--rail-control-padding);')
+    expect(tabPreviewRule).toContain('font-size: var(--rail-control-font-size);')
+    expect(tabPreviewRule).toContain('line-height: var(--rail-control-line-height);')
+    expect(tabPreviewRule).toContain('white-space: nowrap;')
+    expect(tabPreviewRule).not.toContain('font-size: calc(0.95rem * var(--tab-button-scale));')
+    expect(tabPreviewRule).not.toContain('line-height: calc(1.1 * var(--tab-button-scale));')
+    expect(tabPreviewLabelRule).toContain('overflow: hidden;')
+    expect(tabPreviewLabelRule).toContain('text-overflow: ellipsis;')
+    expect(sharedCardRule).toContain('width: 100%;')
+    expect(sharedCardRule).toContain('height: 100%;')
+    expect(ghostRule).toContain('opacity: var(--arrange-preview-ghost-opacity, 1);')
+    expect(ghostRule).toContain('transform-origin: center;')
+    expect(ghostRule).toContain(
+      'transform: translate(var(--arrange-preview-ghost-x, 0px), var(--arrange-preview-ghost-y, 0px))',
+    )
+    expect(ghostRule).toContain('rotate(var(--arrange-preview-ghost-rotation, 0deg));')
+    expect(ghostRule).toContain('will-change: transform;')
+    expect(ghostRule).not.toContain('animation:')
+    expect(firstGhostRule).toContain('--arrange-preview-ghost-rotation: -30deg;')
+    expect(firstGhostRule).toContain('--arrange-preview-ghost-opacity: 1;')
+    expect(secondGhostRule).toContain('--arrange-preview-ghost-rotation: 30deg;')
+    expect(secondGhostRule).toContain('--arrange-preview-ghost-opacity: 1;')
+    expect(css).not.toContain('--arrange-preview-ghost-mid-x:')
+    expect(css).not.toContain('scale(1.2)')
+    expect(reducedMotionRule).toContain('@media (prefers-reduced-motion: reduce)')
+    expect(reducedMotionRule).toContain('transform: rotate(var(--arrange-preview-ghost-rotation, 0deg));')
+    expect(reducedMotionRule).toContain('will-change: auto;')
   })
 
   it('left-aligns find result chips so long labels truncate from the right', () => {

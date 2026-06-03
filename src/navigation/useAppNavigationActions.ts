@@ -136,16 +136,6 @@ export const useAppNavigationActions = ({
     }
     if (!title) return
 
-    if (type === 'domain') {
-      setState((previous) => renameDomain(previous, id, title))
-      return
-    }
-
-    if (type === 'space') {
-      setState((previous) => renameSpaceInActiveDomain(previous, id, title))
-      return
-    }
-
     const focusEditorSoon = () => {
       if (viewMode !== 'main') return
       window.requestAnimationFrame(() => {
@@ -154,6 +144,18 @@ export const useAppNavigationActions = ({
         if (editorKey && activateAisleEditorRef.current(editorKey, { focus: true, allowDuringPendingRename: true })) return
         editorRef.current?.focus()
       })
+    }
+
+    if (type === 'domain') {
+      setState((previous) => renameDomain(previous, id, title))
+      if (isPendingCreatedRename && options.focusEditor === true) focusEditorSoon()
+      return
+    }
+
+    if (type === 'space') {
+      setState((previous) => renameSpaceInActiveDomain(previous, id, title))
+      if (isPendingCreatedRename && options.focusEditor === true) focusEditorSoon()
+      return
     }
 
     if (type === 'tab') {

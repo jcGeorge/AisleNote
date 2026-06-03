@@ -1,4 +1,4 @@
-import { createId, createTab } from '../state/workspace'
+import { createId, createSpace, createTab } from '../state/workspace'
 import { createDomainFromSpaces, projectActiveDomainState } from '../state/domains'
 import { moveDomainToTrash, moveSpaceToTrash } from '../trash/domain-space-trash'
 import type {
@@ -47,6 +47,10 @@ type MoveSelectedItemsToTrashOptions = {
   deletedAt?: number
   createDeletedEntryId?: () => string
   createFallbackTab?: () => Tab
+}
+
+type MoveSelectedSpacesToDomainOptions = {
+  createFallbackSpace?: () => Space
 }
 
 export type ArrangeDomainSpaceMutationResult = {
@@ -314,6 +318,7 @@ export function moveSelectedSpacesToDomain(
   sourceDomainId: string,
   selectedSpaceIds: string[],
   targetDomainId: string,
+  options: MoveSelectedSpacesToDomainOptions = {},
 ): ArrangeDomainSpaceMutationResult {
   const projected = projectActiveDomainState(appState)
   if (sourceDomainId === targetDomainId) return { state: projected, changed: false, reason: 'same-domain' }
@@ -325,10 +330,11 @@ export function moveSelectedSpacesToDomain(
 
   const movedSpaces = orderSpaces(sourceDomain.spaces, selectedSpaceIds)
   if (movedSpaces.length === 0) return { state: projected, changed: false, reason: 'missing-space' }
-  if (sourceDomain.spaces.length - movedSpaces.length < 1) return { state: projected, changed: false, reason: 'last-space' }
 
   const movedIdSet = new Set(movedSpaces.map((space) => space.id))
-  const sourceSpaces = sourceDomain.spaces.filter((space) => !movedIdSet.has(space.id))
+  const remainingSourceSpaces = sourceDomain.spaces.filter((space) => !movedIdSet.has(space.id))
+  const sourceSpaces =
+    remainingSourceSpaces.length > 0 ? remainingSourceSpaces : [options.createFallbackSpace?.() ?? createSpace('space')]
   const nextSourceDomain = createDomainFromSpaces(sourceDomain.name, sourceSpaces, {
     id: sourceDomain.id,
     activeSpaceId: sourceDomain.activeSpaceId && !movedIdSet.has(sourceDomain.activeSpaceId)

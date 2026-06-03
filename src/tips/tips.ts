@@ -17,7 +17,7 @@ export const TIP_DEFINITIONS: TipDefinition[] = [
     id: 'task-undo',
     label: 'task undo',
     message:
-      'Tip: If a task disappears after a quick click, press Cmd+Z to undo it. Hold the task checkbox for half a second to toggle it without deleting.',
+      'Tip: Clicking a completed task will delete it. Click & hold the checkbox for half a second to toggle it off.',
   },
   {
     id: 'delete-subtab-shortcut',

@@ -517,10 +517,17 @@ export type ArrangeDragSeed = {
   startY: number
 }
 
+export type ArrangePreviewGhostOrigin = {
+  x: number
+  y: number
+}
+
 export type SpaceArrangeDragPreview = {
   spaceId: string
   sourceDomainId: string
   selectedSpaceIds?: string[]
+  dragCount?: number
+  ghostOrigins?: ArrangePreviewGhostOrigin[]
   label: string
   currentX: number
   currentY: number
@@ -533,6 +540,8 @@ export type SpaceArrangeDragPreview = {
 export type DomainArrangeDragPreview = {
   domainId: string
   selectedDomainIds?: string[]
+  dragCount?: number
+  ghostOrigins?: ArrangePreviewGhostOrigin[]
   label: string
   currentX: number
   currentY: number
@@ -546,6 +555,8 @@ export type TabArrangeDragPreview = {
   item: TabArrangeDragItem
   label: string
   variant: 'parent' | 'subtab'
+  dragCount?: number
+  ghostOrigins?: ArrangePreviewGhostOrigin[]
   currentX: number
   currentY: number
   offsetX: number

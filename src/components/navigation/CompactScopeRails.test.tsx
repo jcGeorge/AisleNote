@@ -47,6 +47,7 @@ const noop = () => undefined
 const autoSizeNoop = () => undefined
 
 type TestElement = ReactElement<Record<string, unknown> & { children?: ReactNode }>
+type TestHandler = (event: Record<string, unknown>) => void
 
 function findElementByProp(node: ReactNode, propName: string, propValue: string): TestElement | null {
   if (Array.isArray(node)) {
@@ -209,6 +210,600 @@ describe('compact scope rails', () => {
     expect(html).toContain('compact-domain-btn is-active is-arrangeable')
     expect(html).toContain('data-arrange-domain-id="domain-b"')
     expect(html).toContain('is-arrange-target')
+  })
+
+  it('renders tappable add controls for compact space and domain rails', () => {
+    const onAddSpace = vi.fn()
+    const onAddDomain = vi.fn()
+    const spaceHtml = renderToStaticMarkup(
+      <CompactSpaceRail
+        spaces={[space('space-a')]}
+        activeSpaceId="space-a"
+        editing={null}
+        arrangeMode={{ ...arrangeMode, active: false }}
+        arrangeableSpaceClassName=""
+        draggingSpaceId={null}
+        spacesGridRef={createRef<HTMLDivElement>()}
+        onOpenSpace={noop}
+        onOpenContextMenu={noop}
+        onShouldSkipRenameBlur={() => false}
+        onCommitRename={noop}
+        onCancelRename={noop}
+        onRenameDraftChange={noop}
+        onBeginEdit={noop}
+        onAutoSizeRenameInput={autoSizeNoop}
+        onClearRenameDraft={noop}
+        onAddSpace={onAddSpace}
+        onConsumeArrangeClickSuppression={() => false}
+        onStartArrangeDragSeed={noop}
+        onStartArrangeTapCandidate={noop}
+        onStartArrangePress={noop}
+        onHandleArrangeSpacePointerMove={noop}
+        onHandleArrangeSpacePointerUp={noop}
+        onClearArrangePressTimer={noop}
+        onCancelArrangeSpacePointerDrag={noop}
+      />,
+    )
+    const domainHtml = renderToStaticMarkup(
+      <CompactDomainRail
+        domains={[domain('domain-a')]}
+        activeDomainId="domain-a"
+        editing={null}
+        arrangeMode={{ ...arrangeMode, active: false }}
+        arrangeableDomainClassName=""
+        draggingDomainId={null}
+        domainsGridRef={createRef<HTMLDivElement>()}
+        onOpenDomain={noop}
+        onOpenContextMenu={noop}
+        onShouldSkipRenameBlur={() => false}
+        onCommitRename={noop}
+        onCancelRename={noop}
+        onRenameDraftChange={noop}
+        onBeginEdit={noop}
+        onAutoSizeRenameInput={autoSizeNoop}
+        onClearRenameDraft={noop}
+        onAddDomain={onAddDomain}
+        onConsumeArrangeClickSuppression={() => false}
+        onStartArrangeDragSeed={noop}
+        onStartArrangeTapCandidate={noop}
+        onStartArrangePress={noop}
+        onHandleArrangeDomainPointerMove={noop}
+        onHandleArrangeDomainPointerUp={noop}
+        onClearArrangePressTimer={noop}
+        onCancelArrangeDomainPointerDrag={noop}
+      />,
+    )
+
+    expect(spaceHtml).toContain('compact-scope-add-btn')
+    expect(spaceHtml).toContain('aria-label="add space"')
+    expect(domainHtml).toContain('compact-scope-add-btn')
+    expect(domainHtml).toContain('aria-label="add domain"')
+  })
+
+  it('runs compact space and domain add callbacks without bubbling tap events to the rail', () => {
+    const onAddSpace = vi.fn()
+    const onAddDomain = vi.fn()
+    const spaceTree = CompactSpaceRail({
+      spaces: [space('space-a')],
+      activeSpaceId: 'space-a',
+      editing: null,
+      arrangeMode: { ...arrangeMode, active: false },
+      arrangeableSpaceClassName: '',
+      draggingSpaceId: null,
+      spacesGridRef: createRef<HTMLDivElement>(),
+      onOpenSpace: noop,
+      onOpenContextMenu: noop,
+      onShouldSkipRenameBlur: () => false,
+      onCommitRename: noop,
+      onCancelRename: noop,
+      onRenameDraftChange: noop,
+      onBeginEdit: noop,
+      onAutoSizeRenameInput: autoSizeNoop,
+      onClearRenameDraft: noop,
+      onAddSpace,
+      onConsumeArrangeClickSuppression: () => false,
+      onStartArrangeDragSeed: noop,
+      onStartArrangeTapCandidate: noop,
+      onStartArrangePress: noop,
+      onHandleArrangeSpacePointerMove: noop,
+      onHandleArrangeSpacePointerUp: noop,
+      onClearArrangePressTimer: noop,
+      onCancelArrangeSpacePointerDrag: noop,
+    })
+    const domainTree = CompactDomainRail({
+      domains: [domain('domain-a')],
+      activeDomainId: 'domain-a',
+      editing: null,
+      arrangeMode: { ...arrangeMode, active: false },
+      arrangeableDomainClassName: '',
+      draggingDomainId: null,
+      domainsGridRef: createRef<HTMLDivElement>(),
+      onOpenDomain: noop,
+      onOpenContextMenu: noop,
+      onShouldSkipRenameBlur: () => false,
+      onCommitRename: noop,
+      onCancelRename: noop,
+      onRenameDraftChange: noop,
+      onBeginEdit: noop,
+      onAutoSizeRenameInput: autoSizeNoop,
+      onClearRenameDraft: noop,
+      onAddDomain,
+      onConsumeArrangeClickSuppression: () => false,
+      onStartArrangeDragSeed: noop,
+      onStartArrangeTapCandidate: noop,
+      onStartArrangePress: noop,
+      onHandleArrangeDomainPointerMove: noop,
+      onHandleArrangeDomainPointerUp: noop,
+      onClearArrangePressTimer: noop,
+      onCancelArrangeDomainPointerDrag: noop,
+    })
+    const spaceAddButton = findElementByProp(spaceTree, 'aria-label', 'add space')
+    const domainAddButton = findElementByProp(domainTree, 'aria-label', 'add domain')
+    const spacePointerEvent = { stopPropagation: vi.fn() }
+    const spaceClickEvent = { stopPropagation: vi.fn() }
+    const domainPointerEvent = { stopPropagation: vi.fn() }
+    const domainClickEvent = { stopPropagation: vi.fn() }
+
+    expect(spaceAddButton).not.toBeNull()
+    expect(domainAddButton).not.toBeNull()
+    ;(spaceAddButton?.props.onPointerDown as (event: unknown) => void)(spacePointerEvent)
+    ;(spaceAddButton?.props.onClick as (event: unknown) => void)(spaceClickEvent)
+    ;(domainAddButton?.props.onPointerDown as (event: unknown) => void)(domainPointerEvent)
+    ;(domainAddButton?.props.onClick as (event: unknown) => void)(domainClickEvent)
+
+    expect(spacePointerEvent.stopPropagation).toHaveBeenCalled()
+    expect(spaceClickEvent.stopPropagation).toHaveBeenCalled()
+    expect(domainPointerEvent.stopPropagation).toHaveBeenCalled()
+    expect(domainClickEvent.stopPropagation).toHaveBeenCalled()
+    expect(onAddSpace).toHaveBeenCalledTimes(1)
+    expect(onAddDomain).toHaveBeenCalledTimes(1)
+  })
+
+  it('bypasses arrange handlers while compact rails are selecting a guided destination', () => {
+    const onOpenSpace = vi.fn()
+    const onOpenDomain = vi.fn()
+    const onHandleArrangeSpaceSelectionClick = vi.fn(() => true)
+    const onHandleArrangeDomainSelectionClick = vi.fn(() => true)
+    const onStartArrangeSpaceDragSeed = vi.fn()
+    const onStartArrangeDomainDragSeed = vi.fn()
+    const onHandleArrangeSpacePointerMove = vi.fn()
+    const onHandleArrangeDomainPointerMove = vi.fn()
+    const onHandleArrangeSpacePointerUp = vi.fn()
+    const onHandleArrangeDomainPointerUp = vi.fn()
+    const spaceTree = CompactSpaceRail({
+      spaces: [space('space-a'), space('space-b')],
+      activeSpaceId: 'space-a',
+      editing: null,
+      arrangeMode,
+      arrangeableSpaceClassName: 'is-arrangeable',
+      draggingSpaceId: null,
+      guidedDestinationActive: true,
+      spacesGridRef: createRef<HTMLDivElement>(),
+      onOpenSpace,
+      onOpenContextMenu: noop,
+      onShouldSkipRenameBlur: () => false,
+      onCommitRename: noop,
+      onCancelRename: noop,
+      onRenameDraftChange: noop,
+      onBeginEdit: noop,
+      onAutoSizeRenameInput: autoSizeNoop,
+      onClearRenameDraft: noop,
+      onConsumeArrangeClickSuppression: () => false,
+      onHandleArrangeSpaceSelectionClick,
+      onStartArrangeDragSeed: onStartArrangeSpaceDragSeed,
+      onStartArrangeTapCandidate: vi.fn(),
+      onStartArrangePress: vi.fn(),
+      onHandleArrangeSpacePointerMove,
+      onHandleArrangeSpacePointerUp,
+      onClearArrangePressTimer: noop,
+      onCancelArrangeSpacePointerDrag: noop,
+    })
+    const domainTree = CompactDomainRail({
+      domains: [domain('domain-a'), domain('domain-b')],
+      activeDomainId: 'domain-a',
+      editing: null,
+      arrangeMode,
+      arrangeableDomainClassName: 'is-arrangeable',
+      draggingDomainId: null,
+      guidedDestinationActive: true,
+      domainsGridRef: createRef<HTMLDivElement>(),
+      onOpenDomain,
+      onOpenContextMenu: noop,
+      onShouldSkipRenameBlur: () => false,
+      onCommitRename: noop,
+      onCancelRename: noop,
+      onRenameDraftChange: noop,
+      onBeginEdit: noop,
+      onAutoSizeRenameInput: autoSizeNoop,
+      onClearRenameDraft: noop,
+      onConsumeArrangeClickSuppression: () => false,
+      onHandleArrangeDomainSelectionClick,
+      onStartArrangeDragSeed: onStartArrangeDomainDragSeed,
+      onStartArrangeTapCandidate: vi.fn(),
+      onStartArrangePress: vi.fn(),
+      onHandleArrangeDomainPointerMove,
+      onHandleArrangeDomainPointerUp,
+      onClearArrangePressTimer: noop,
+      onCancelArrangeDomainPointerDrag: noop,
+    })
+    const spaceButton = findElementByProp(spaceTree, 'data-arrange-space-id', 'space-b')
+    const domainButton = findElementByProp(domainTree, 'data-arrange-domain-id', 'domain-b')
+    const spaceClickEvent = { preventDefault: vi.fn(), stopPropagation: vi.fn() }
+    const domainClickEvent = { preventDefault: vi.fn(), stopPropagation: vi.fn() }
+
+    expect(spaceButton).not.toBeNull()
+    expect(domainButton).not.toBeNull()
+    ;(spaceButton?.props.onPointerDown as TestHandler)({ button: 0 })
+    ;(spaceButton?.props.onPointerMove as TestHandler)({})
+    ;(spaceButton?.props.onPointerUp as TestHandler)({})
+    ;(spaceButton?.props.onClick as TestHandler)(spaceClickEvent)
+    ;(domainButton?.props.onPointerDown as TestHandler)({ button: 0 })
+    ;(domainButton?.props.onPointerMove as TestHandler)({})
+    ;(domainButton?.props.onPointerUp as TestHandler)({})
+    ;(domainButton?.props.onClick as TestHandler)(domainClickEvent)
+
+    expect(onOpenSpace).toHaveBeenCalledWith('space-b')
+    expect(onOpenDomain).toHaveBeenCalledWith('domain-b')
+    expect(spaceClickEvent.preventDefault).toHaveBeenCalled()
+    expect(spaceClickEvent.stopPropagation).toHaveBeenCalled()
+    expect(domainClickEvent.preventDefault).toHaveBeenCalled()
+    expect(domainClickEvent.stopPropagation).toHaveBeenCalled()
+    expect(onHandleArrangeSpaceSelectionClick).not.toHaveBeenCalled()
+    expect(onHandleArrangeDomainSelectionClick).not.toHaveBeenCalled()
+    expect(onStartArrangeSpaceDragSeed).not.toHaveBeenCalled()
+    expect(onStartArrangeDomainDragSeed).not.toHaveBeenCalled()
+    expect(onHandleArrangeSpacePointerMove).not.toHaveBeenCalled()
+    expect(onHandleArrangeDomainPointerMove).not.toHaveBeenCalled()
+    expect(onHandleArrangeSpacePointerUp).not.toHaveBeenCalled()
+    expect(onHandleArrangeDomainPointerUp).not.toHaveBeenCalled()
+  })
+
+  it('cancels active arrangement before opening compact scope context menus', () => {
+    const spaceCalls: string[] = []
+    const domainCalls: string[] = []
+    const onCancelSpaceArrangeMode = vi.fn(() => spaceCalls.push('cancel'))
+    const onCancelDomainArrangeMode = vi.fn(() => domainCalls.push('cancel'))
+    const onOpenSpaceContextMenu = vi.fn(() => spaceCalls.push('menu'))
+    const onOpenDomainContextMenu = vi.fn(() => domainCalls.push('menu'))
+    const onStartArrangeSpaceDragSeed = vi.fn()
+    const onStartArrangeDomainDragSeed = vi.fn()
+    const spaceTree = CompactSpaceRail({
+      spaces: [space('space-a')],
+      activeSpaceId: 'space-a',
+      editing: null,
+      arrangeMode,
+      arrangeableSpaceClassName: 'is-arrangeable',
+      draggingSpaceId: null,
+      spacesGridRef: createRef<HTMLDivElement>(),
+      onOpenSpace: noop,
+      onOpenContextMenu: onOpenSpaceContextMenu,
+      onCancelArrangeMode: onCancelSpaceArrangeMode,
+      onShouldSkipRenameBlur: () => false,
+      onCommitRename: noop,
+      onCancelRename: noop,
+      onRenameDraftChange: noop,
+      onBeginEdit: noop,
+      onAutoSizeRenameInput: autoSizeNoop,
+      onClearRenameDraft: noop,
+      onConsumeArrangeClickSuppression: () => false,
+      onStartArrangeDragSeed: onStartArrangeSpaceDragSeed,
+      onStartArrangeTapCandidate: noop,
+      onStartArrangePress: noop,
+      onHandleArrangeSpacePointerMove: noop,
+      onHandleArrangeSpacePointerUp: noop,
+      onClearArrangePressTimer: noop,
+      onCancelArrangeSpacePointerDrag: noop,
+    })
+    const domainTree = CompactDomainRail({
+      domains: [domain('domain-a')],
+      activeDomainId: 'domain-a',
+      editing: null,
+      arrangeMode,
+      arrangeableDomainClassName: 'is-arrangeable',
+      draggingDomainId: null,
+      domainsGridRef: createRef<HTMLDivElement>(),
+      onOpenDomain: noop,
+      onOpenContextMenu: onOpenDomainContextMenu,
+      onCancelArrangeMode: onCancelDomainArrangeMode,
+      onShouldSkipRenameBlur: () => false,
+      onCommitRename: noop,
+      onCancelRename: noop,
+      onRenameDraftChange: noop,
+      onBeginEdit: noop,
+      onAutoSizeRenameInput: autoSizeNoop,
+      onClearRenameDraft: noop,
+      onConsumeArrangeClickSuppression: () => false,
+      onStartArrangeDragSeed: onStartArrangeDomainDragSeed,
+      onStartArrangeTapCandidate: noop,
+      onStartArrangePress: noop,
+      onHandleArrangeDomainPointerMove: noop,
+      onHandleArrangeDomainPointerUp: noop,
+      onClearArrangePressTimer: noop,
+      onCancelArrangeDomainPointerDrag: noop,
+    })
+    const spaceButton = findElementByProp(spaceTree, 'data-arrange-space-id', 'space-a')
+    const domainButton = findElementByProp(domainTree, 'data-arrange-domain-id', 'domain-a')
+
+    expect(spaceButton).not.toBeNull()
+    expect(domainButton).not.toBeNull()
+    ;(spaceButton?.props.onPointerDown as TestHandler)({ button: 2 })
+    ;(domainButton?.props.onPointerDown as TestHandler)({ button: 2 })
+    ;(spaceButton?.props.onContextMenu as TestHandler)({})
+    ;(domainButton?.props.onContextMenu as TestHandler)({})
+
+    expect(spaceCalls).toEqual(['cancel', 'menu'])
+    expect(domainCalls).toEqual(['cancel', 'menu'])
+    expect(onOpenSpaceContextMenu).toHaveBeenCalledWith(expect.anything(), 'space-a', { force: true })
+    expect(onOpenDomainContextMenu).toHaveBeenCalledWith(expect.anything(), 'domain-a', { force: true })
+    expect(onStartArrangeSpaceDragSeed).not.toHaveBeenCalled()
+    expect(onStartArrangeDomainDragSeed).not.toHaveBeenCalled()
+  })
+
+  it('keeps compact scope context menus unchanged when arrangement is inactive', () => {
+    const onCancelArrangeMode = vi.fn()
+    const onOpenContextMenu = vi.fn()
+    const inactiveArrangeMode = { ...arrangeMode, active: false }
+    const tree = CompactSpaceRail({
+      spaces: [space('space-a')],
+      activeSpaceId: 'space-a',
+      editing: null,
+      arrangeMode: inactiveArrangeMode,
+      arrangeableSpaceClassName: '',
+      draggingSpaceId: null,
+      spacesGridRef: createRef<HTMLDivElement>(),
+      onOpenSpace: noop,
+      onOpenContextMenu,
+      onCancelArrangeMode,
+      onShouldSkipRenameBlur: () => false,
+      onCommitRename: noop,
+      onCancelRename: noop,
+      onRenameDraftChange: noop,
+      onBeginEdit: noop,
+      onAutoSizeRenameInput: autoSizeNoop,
+      onClearRenameDraft: noop,
+      onConsumeArrangeClickSuppression: () => false,
+      onStartArrangeDragSeed: noop,
+      onStartArrangeTapCandidate: noop,
+      onStartArrangePress: noop,
+      onHandleArrangeSpacePointerMove: noop,
+      onHandleArrangeSpacePointerUp: noop,
+      onClearArrangePressTimer: noop,
+      onCancelArrangeSpacePointerDrag: noop,
+    })
+    const button = findElementByProp(tree, 'data-arrange-space-id', 'space-a')
+
+    expect(button).not.toBeNull()
+    ;(button?.props.onContextMenu as TestHandler)({})
+
+    expect(onCancelArrangeMode).not.toHaveBeenCalled()
+    expect(onOpenContextMenu).toHaveBeenCalledWith(expect.anything(), 'space-a', undefined)
+  })
+
+  it('requests editor focus only from Enter commits while renaming compact spaces and domains', () => {
+    const onCommitRename = vi.fn()
+    const spaceTree = CompactSpaceRail({
+      spaces: [space('space-a')],
+      activeSpaceId: 'space-a',
+      editing: { type: 'space', id: 'space-a' },
+      arrangeMode,
+      arrangeableSpaceClassName: '',
+      draggingSpaceId: null,
+      spacesGridRef: createRef<HTMLDivElement>(),
+      onOpenSpace: noop,
+      onOpenContextMenu: noop,
+      onShouldSkipRenameBlur: () => false,
+      onCommitRename,
+      onCancelRename: noop,
+      onRenameDraftChange: noop,
+      onBeginEdit: noop,
+      onAutoSizeRenameInput: autoSizeNoop,
+      onClearRenameDraft: noop,
+      onConsumeArrangeClickSuppression: () => false,
+      onStartArrangeDragSeed: noop,
+      onStartArrangeTapCandidate: noop,
+      onStartArrangePress: noop,
+      onHandleArrangeSpacePointerMove: noop,
+      onHandleArrangeSpacePointerUp: noop,
+      onClearArrangePressTimer: noop,
+      onCancelArrangeSpacePointerDrag: noop,
+    })
+    const domainTree = CompactDomainRail({
+      domains: [domain('domain-a')],
+      activeDomainId: 'domain-a',
+      editing: { type: 'domain', id: 'domain-a' },
+      arrangeMode,
+      arrangeableDomainClassName: '',
+      draggingDomainId: null,
+      domainsGridRef: createRef<HTMLDivElement>(),
+      onOpenDomain: noop,
+      onOpenContextMenu: noop,
+      onShouldSkipRenameBlur: () => false,
+      onCommitRename,
+      onCancelRename: noop,
+      onRenameDraftChange: noop,
+      onBeginEdit: noop,
+      onAutoSizeRenameInput: autoSizeNoop,
+      onClearRenameDraft: noop,
+      onConsumeArrangeClickSuppression: () => false,
+      onStartArrangeDragSeed: noop,
+      onStartArrangeTapCandidate: noop,
+      onStartArrangePress: noop,
+      onHandleArrangeDomainPointerMove: noop,
+      onHandleArrangeDomainPointerUp: noop,
+      onClearArrangePressTimer: noop,
+      onCancelArrangeDomainPointerDrag: noop,
+    })
+    const spaceInput = findElementByProp(spaceTree, 'className', 'tab-rename-input compact-scope-rename-input')
+    const domainInput = findElementByProp(domainTree, 'className', 'tab-rename-input compact-scope-rename-input')
+    const spaceEnterEvent = { key: 'Enter', currentTarget: { value: 'Renamed Space' }, preventDefault: vi.fn() }
+    const domainEnterEvent = { key: 'Enter', currentTarget: { value: 'Renamed Domain' }, preventDefault: vi.fn() }
+
+    expect(spaceInput).not.toBeNull()
+    expect(domainInput).not.toBeNull()
+    ;(spaceInput?.props.onBlur as TestHandler)({ target: { value: 'Blurred Space' } })
+    ;(domainInput?.props.onBlur as TestHandler)({ target: { value: 'Blurred Domain' } })
+    ;(spaceInput?.props.onKeyDown as TestHandler)(spaceEnterEvent)
+    ;(domainInput?.props.onKeyDown as TestHandler)(domainEnterEvent)
+
+    expect(spaceEnterEvent.preventDefault).toHaveBeenCalled()
+    expect(domainEnterEvent.preventDefault).toHaveBeenCalled()
+    expect(onCommitRename).toHaveBeenCalledWith('space', 'space-a', 'Blurred Space')
+    expect(onCommitRename).toHaveBeenCalledWith('domain', 'domain-a', 'Blurred Domain')
+    expect(onCommitRename).toHaveBeenCalledWith('space', 'space-a', 'Renamed Space', { focusEditor: true })
+    expect(onCommitRename).toHaveBeenCalledWith('domain', 'domain-a', 'Renamed Domain', { focusEditor: true })
+  })
+
+  it('creates another space or domain from a plain Tab key while renaming', () => {
+    const onAddSpace = vi.fn()
+    const onAddDomain = vi.fn()
+    const onCommitRename = vi.fn()
+    const spaceTree = CompactSpaceRail({
+      spaces: [space('space-a')],
+      activeSpaceId: 'space-a',
+      editing: { type: 'space', id: 'space-a' },
+      arrangeMode,
+      arrangeableSpaceClassName: '',
+      draggingSpaceId: null,
+      spacesGridRef: createRef<HTMLDivElement>(),
+      onOpenSpace: noop,
+      onOpenContextMenu: noop,
+      onShouldSkipRenameBlur: () => false,
+      onCommitRename,
+      onCancelRename: noop,
+      onRenameDraftChange: noop,
+      onBeginEdit: noop,
+      onAutoSizeRenameInput: autoSizeNoop,
+      onClearRenameDraft: noop,
+      onAddSpace,
+      onConsumeArrangeClickSuppression: () => false,
+      onStartArrangeDragSeed: noop,
+      onStartArrangeTapCandidate: noop,
+      onStartArrangePress: noop,
+      onHandleArrangeSpacePointerMove: noop,
+      onHandleArrangeSpacePointerUp: noop,
+      onClearArrangePressTimer: noop,
+      onCancelArrangeSpacePointerDrag: noop,
+    })
+    const domainTree = CompactDomainRail({
+      domains: [domain('domain-a')],
+      activeDomainId: 'domain-a',
+      editing: { type: 'domain', id: 'domain-a' },
+      arrangeMode,
+      arrangeableDomainClassName: '',
+      draggingDomainId: null,
+      domainsGridRef: createRef<HTMLDivElement>(),
+      onOpenDomain: noop,
+      onOpenContextMenu: noop,
+      onShouldSkipRenameBlur: () => false,
+      onCommitRename,
+      onCancelRename: noop,
+      onRenameDraftChange: noop,
+      onBeginEdit: noop,
+      onAutoSizeRenameInput: autoSizeNoop,
+      onClearRenameDraft: noop,
+      onAddDomain,
+      onConsumeArrangeClickSuppression: () => false,
+      onStartArrangeDragSeed: noop,
+      onStartArrangeTapCandidate: noop,
+      onStartArrangePress: noop,
+      onHandleArrangeDomainPointerMove: noop,
+      onHandleArrangeDomainPointerUp: noop,
+      onClearArrangePressTimer: noop,
+      onCancelArrangeDomainPointerDrag: noop,
+    })
+    const spaceInput = findElementByProp(spaceTree, 'className', 'tab-rename-input compact-scope-rename-input')
+    const domainInput = findElementByProp(domainTree, 'className', 'tab-rename-input compact-scope-rename-input')
+    const spaceEvent = { key: 'Tab', currentTarget: { value: 'Renamed Space' }, preventDefault: vi.fn() }
+    const domainEvent = { key: 'Tab', currentTarget: { value: 'Renamed Domain' }, preventDefault: vi.fn() }
+
+    expect(spaceInput).not.toBeNull()
+    expect(domainInput).not.toBeNull()
+    ;(spaceInput?.props.onKeyDown as TestHandler)(spaceEvent)
+    ;(domainInput?.props.onKeyDown as TestHandler)(domainEvent)
+
+    expect(spaceEvent.preventDefault).toHaveBeenCalled()
+    expect(domainEvent.preventDefault).toHaveBeenCalled()
+    expect(onCommitRename).toHaveBeenCalledWith('space', 'space-a', 'Renamed Space')
+    expect(onCommitRename).toHaveBeenCalledWith('domain', 'domain-a', 'Renamed Domain')
+    expect(onAddSpace).toHaveBeenCalledTimes(1)
+    expect(onAddDomain).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not create another space or domain from modified Tab while renaming', () => {
+    const onAddSpace = vi.fn()
+    const onAddDomain = vi.fn()
+    const spaceTree = CompactSpaceRail({
+      spaces: [space('space-a')],
+      activeSpaceId: 'space-a',
+      editing: { type: 'space', id: 'space-a' },
+      arrangeMode,
+      arrangeableSpaceClassName: '',
+      draggingSpaceId: null,
+      spacesGridRef: createRef<HTMLDivElement>(),
+      onOpenSpace: noop,
+      onOpenContextMenu: noop,
+      onShouldSkipRenameBlur: () => false,
+      onCommitRename: noop,
+      onCancelRename: noop,
+      onRenameDraftChange: noop,
+      onBeginEdit: noop,
+      onAutoSizeRenameInput: autoSizeNoop,
+      onClearRenameDraft: noop,
+      onAddSpace,
+      onConsumeArrangeClickSuppression: () => false,
+      onStartArrangeDragSeed: noop,
+      onStartArrangeTapCandidate: noop,
+      onStartArrangePress: noop,
+      onHandleArrangeSpacePointerMove: noop,
+      onHandleArrangeSpacePointerUp: noop,
+      onClearArrangePressTimer: noop,
+      onCancelArrangeSpacePointerDrag: noop,
+    })
+    const domainTree = CompactDomainRail({
+      domains: [domain('domain-a')],
+      activeDomainId: 'domain-a',
+      editing: { type: 'domain', id: 'domain-a' },
+      arrangeMode,
+      arrangeableDomainClassName: '',
+      draggingDomainId: null,
+      domainsGridRef: createRef<HTMLDivElement>(),
+      onOpenDomain: noop,
+      onOpenContextMenu: noop,
+      onShouldSkipRenameBlur: () => false,
+      onCommitRename: noop,
+      onCancelRename: noop,
+      onRenameDraftChange: noop,
+      onBeginEdit: noop,
+      onAutoSizeRenameInput: autoSizeNoop,
+      onClearRenameDraft: noop,
+      onAddDomain,
+      onConsumeArrangeClickSuppression: () => false,
+      onStartArrangeDragSeed: noop,
+      onStartArrangeTapCandidate: noop,
+      onStartArrangePress: noop,
+      onHandleArrangeDomainPointerMove: noop,
+      onHandleArrangeDomainPointerUp: noop,
+      onClearArrangePressTimer: noop,
+      onCancelArrangeDomainPointerDrag: noop,
+    })
+    const spaceInput = findElementByProp(spaceTree, 'className', 'tab-rename-input compact-scope-rename-input')
+    const domainInput = findElementByProp(domainTree, 'className', 'tab-rename-input compact-scope-rename-input')
+
+    ;(spaceInput?.props.onKeyDown as TestHandler)({
+      key: 'Tab',
+      shiftKey: true,
+      currentTarget: { value: 'Renamed Space' },
+      preventDefault: vi.fn(),
+    })
+    ;(domainInput?.props.onKeyDown as TestHandler)({
+      key: 'Tab',
+      metaKey: true,
+      currentTarget: { value: 'Renamed Domain' },
+      preventDefault: vi.fn(),
+    })
+
+    expect(onAddSpace).not.toHaveBeenCalled()
+    expect(onAddDomain).not.toHaveBeenCalled()
   })
 
   it('renders stage-manager selected classes on compact space and domain rails', () => {
@@ -499,11 +1094,11 @@ describe('compact scope rails', () => {
     expect(domainHtml).not.toContain('space-rename-input compact-scope-rename-input')
   })
 
-  it('renders compact drag previews with matching button classes and active state', () => {
+  it('renders compact drag previews with focused button classes even when inactive', () => {
     const spaceHtml = renderToStaticMarkup(
       <CompactScopeDragPreview
         type="space"
-        active
+        active={false}
         preview={{
           spaceId: 'space-a',
           sourceDomainId: 'domain-a',
@@ -520,7 +1115,7 @@ describe('compact scope rails', () => {
     const domainHtml = renderToStaticMarkup(
       <CompactScopeDragPreview
         type="domain"
-        active
+        active={false}
         preview={{
           domainId: 'domain-a',
           label: 'Domain A',
@@ -534,10 +1129,82 @@ describe('compact scope rails', () => {
       />,
     )
 
-    expect(spaceHtml).toContain('compact-scope-arrange-preview compact-scope-btn compact-space-btn is-space is-active')
-    expect(domainHtml).toContain('compact-scope-arrange-preview compact-scope-btn compact-domain-btn is-domain is-active')
+    expect(spaceHtml).toContain('data-drag-count="1"')
+    expect(domainHtml).toContain('data-drag-count="1"')
+    expect(spaceHtml).toContain(
+      'compact-scope-arrange-preview compact-scope-btn compact-space-btn is-space is-active is-selected arrange-preview-card arrange-preview-primary',
+    )
+    expect(domainHtml).toContain(
+      'compact-scope-arrange-preview compact-scope-btn compact-domain-btn is-domain is-active is-selected arrange-preview-card arrange-preview-primary',
+    )
+    expect(spaceHtml).not.toContain('arrange-preview-ghost')
     expect(spaceHtml).toContain('left:90px')
     expect(domainHtml).toContain('top:72px')
+  })
+
+  it('renders compact scope preview ghost cards for multi-item drags', () => {
+    const spaceHtml = renderToStaticMarkup(
+      <CompactScopeDragPreview
+        type="space"
+        active
+        preview={{
+          spaceId: 'space-a',
+          sourceDomainId: 'domain-a',
+          label: 'Space A + 1',
+          currentX: 100,
+          currentY: 80,
+          offsetX: 10,
+          offsetY: 8,
+          width: 120,
+          height: 26,
+          dragCount: 2,
+          ghostOrigins: [{ x: -32, y: 0 }],
+        }}
+      />,
+    )
+    const domainHtml = renderToStaticMarkup(
+      <CompactScopeDragPreview
+        type="domain"
+        active
+        preview={{
+          domainId: 'domain-a',
+          label: 'Domain A + 2',
+          currentX: 100,
+          currentY: 80,
+          offsetX: 10,
+          offsetY: 8,
+          width: 120,
+          height: 26,
+          dragCount: 3,
+          ghostOrigins: [
+            { x: -32, y: 0 },
+            { x: 64, y: 0 },
+          ],
+        }}
+      />,
+    )
+
+    expect(spaceHtml).toContain('data-drag-count="2"')
+    expect(spaceHtml).toContain('class="arrange-preview-stack is-stacked"')
+    expect(spaceHtml).toContain(
+      'compact-scope-arrange-preview compact-scope-btn compact-space-btn is-space is-active is-selected arrange-preview-card arrange-preview-ghost is-ghost-1',
+    )
+    expect(spaceHtml).toContain('--arrange-preview-ghost-x:-32px')
+    expect(spaceHtml).toContain('--arrange-preview-ghost-rotation:-30deg')
+    expect(spaceHtml).not.toContain('arrange-preview-ghost is-ghost-2')
+    expect(spaceHtml.match(/Space A \+ 1/g)).toHaveLength(2)
+    expect(domainHtml).toContain('data-drag-count="3"')
+    expect(domainHtml).toContain(
+      'compact-scope-arrange-preview compact-scope-btn compact-domain-btn is-domain is-active is-selected arrange-preview-card arrange-preview-ghost is-ghost-1',
+    )
+    expect(domainHtml).toContain(
+      'compact-scope-arrange-preview compact-scope-btn compact-domain-btn is-domain is-active is-selected arrange-preview-card arrange-preview-ghost is-ghost-2',
+    )
+    expect(domainHtml).toContain('--arrange-preview-ghost-x:64px')
+    expect(domainHtml).toContain('--arrange-preview-ghost-rotation:30deg')
+    expect(domainHtml).toContain('left:90px')
+    expect(domainHtml).toContain('top:72px')
+    expect(domainHtml.match(/Domain A \+ 2/g)).toHaveLength(3)
   })
 
   it('keeps compact scope sort buttons visible but disabled when arrange controls are disabled', () => {
@@ -610,10 +1277,12 @@ describe('compact scope rails', () => {
 
   it('wires compact space/domain rename parity handlers', () => {
     const source = readFileSync(join(componentDir, 'CompactScopeRails.tsx'), 'utf8')
+    const appSource = readFileSync(join(componentDir, '../../App.tsx'), 'utf8')
 
     expect(source).toContain('onAutoSizeRenameInput(event.currentTarget)')
     expect(source).toContain('const action = getRenameInputKeyAction(event)')
     expect(source).toContain("if (action === 'commit')")
+    expect(source).toContain("if (action === 'commit-and-create')")
     expect(source).toContain("if (action === 'cancel')")
     expect(source).toContain("onBeginEdit({ type: 'space', id: space.id })")
     expect(source).toContain("onBeginEdit({ type: 'domain', id: domain.id })")
@@ -621,5 +1290,7 @@ describe('compact scope rails', () => {
     expect(source).toContain('onHandleArrangeDomainSelectionClick?.(domain.id, modifiers)')
     expect(source).toContain('onClearArrangeSelection?.()')
     expect(source).toContain('if (arrangeMode.active) return')
+    expect(appSource).not.toContain("arrangeMode.scope === 'spaces' &&")
+    expect(appSource).not.toContain("arrangeMode.scope === 'domains' &&")
   })
 })

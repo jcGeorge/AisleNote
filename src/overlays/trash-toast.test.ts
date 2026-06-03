@@ -10,11 +10,11 @@ describe('trash toast labels', () => {
   })
 
   it('describes the blocked last parent tab delete', () => {
-    expect(LAST_PARENT_TAB_TOAST).toBe('at least one parent tab must remain.')
+    expect(LAST_PARENT_TAB_TOAST).toBe('at least one parent tab must remain')
   })
 
   it('describes blocked last space and domain deletes', () => {
-    expect(LAST_SPACE_TOAST).toBe('at least one space must remain.')
+    expect(LAST_SPACE_TOAST).toBe('at least one space must remain')
     expect(LAST_DOMAIN_TOAST).toContain('switch to another notebook first')
     expect(LAST_DOMAIN_TOAST).toContain('delete this notebook folder')
   })

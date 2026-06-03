@@ -28,8 +28,10 @@ import {
   updateArrangeSelectionForClick,
 } from './arrange-selection'
 import { copyTabArrangeCarryPreview, isSubTabDropOnSourceSpace } from './arrange-guided-prompt'
+import { attachArrangeWindowDragListeners } from './arrange-window-drag'
+import { projectActiveDomainState } from '../state/domains'
 import { collectAppNavigationEntityIds, createReservedIdAllocator } from '../state/navigation-ids'
-import { createTab } from '../state/workspace'
+import { createSpace, createTab } from '../state/workspace'
 import type {
   AppState,
   ArrangeDragItem,
@@ -37,6 +39,7 @@ import type {
   ArrangeHierarchyDropRequest,
   ArrangeInsertPosition,
   ArrangeModeState,
+  ArrangePreviewGhostOrigin,
   ArrangeSelectionState,
   ArrangeScope,
   ArrangeSource,
@@ -75,6 +78,7 @@ type UseArrangeModeParams = {
   onArrangeHierarchyDrop?: (request: ArrangeHierarchyDropRequest, carriedPreview: TabArrangeDragPreview) => void
   onArrangeDomainMoveBlocked?: (reason: 'last-domain') => void
   onArrangeSpaceMoveBlocked?: (reason: 'last-space') => void
+  onArrangeSpaceMovedAcrossDomains?: (spaceNames: string[], targetDomainName: string) => void
   onArrangeParentMoveBlocked?: () => void
 }
 
@@ -97,6 +101,48 @@ export function getNextArrangeHierarchyRevealLevel(
   return visibleLevel >= 2 ? 2 : ((visibleLevel + 1) as ArrangeHierarchyRevealLevel)
 }
 
+export function getArrangePreviewGhostOrigins({
+  rail,
+  selector,
+  attributeName,
+  selectedIds,
+  draggedId,
+  previewLeft,
+  previewTop,
+  limit = 2,
+}: {
+  rail: HTMLElement | null
+  selector: string
+  attributeName: string
+  selectedIds: readonly string[]
+  draggedId: string
+  previewLeft: number
+  previewTop: number
+  limit?: number
+}): ArrangePreviewGhostOrigin[] {
+  if (!rail || limit <= 0) return []
+  const elements = Array.from(rail.querySelectorAll<HTMLElement>(selector))
+  if (elements.length === 0) return []
+  const elementsById = new Map(
+    elements
+      .map((element) => [element.getAttribute(attributeName) ?? '', element] as const)
+      .filter(([id]) => Boolean(id)),
+  )
+  const origins: ArrangePreviewGhostOrigin[] = []
+  for (const id of selectedIds) {
+    if (id === draggedId) continue
+    const element = elementsById.get(id)
+    if (!element) continue
+    const rect = element.getBoundingClientRect()
+    origins.push({
+      x: rect.left - previewLeft,
+      y: rect.top - previewTop,
+    })
+    if (origins.length >= limit) break
+  }
+  return origins
+}
+
 export function useArrangeMode({
   state,
   setState,
@@ -114,6 +160,7 @@ export function useArrangeMode({
   onArrangeHierarchyDrop,
   onArrangeDomainMoveBlocked,
   onArrangeSpaceMoveBlocked,
+  onArrangeSpaceMovedAcrossDomains,
   onArrangeParentMoveBlocked,
 }: UseArrangeModeParams) {
   const [mode, setMode] = useState<ArrangeModeState>(DEFAULT_ARRANGE_MODE)
@@ -136,7 +183,7 @@ export function useArrangeMode({
   const spaceDragRef = useRef<SpaceArrangeDragPreview | null>(null)
   const tabDragRef = useRef<TabArrangeDragPreview | null>(null)
   const tabDragGroupRef = useRef<{ item: TabArrangeDragItem; ids: string[] } | null>(null)
-  const tabDragWindowCleanupRef = useRef<(() => void) | null>(null)
+  const dragWindowCleanupRef = useRef<(() => void) | null>(null)
   const suppressClickRef = useRef<Set<string>>(new Set())
   const suppressNextDomainArrangeExitRef = useRef(false)
   const suppressNextSpaceArrangeExitRef = useRef(false)
@@ -168,9 +215,9 @@ export function useArrangeMode({
     setIsDraggingOverTrashDrop(active)
   }
 
-  const detachTabDragWindowListeners = () => {
-    tabDragWindowCleanupRef.current?.()
-    tabDragWindowCleanupRef.current = null
+  const detachArrangeDragWindowListeners = () => {
+    dragWindowCleanupRef.current?.()
+    dragWindowCleanupRef.current = null
   }
 
   const startDragSeed = (key: string, event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -361,7 +408,7 @@ export function useArrangeMode({
     spaceDragRef.current = null
     tabDragRef.current = null
     tabDragGroupRef.current = null
-    detachTabDragWindowListeners()
+    detachArrangeDragWindowListeners()
     suppressNextDomainArrangeExitRef.current = false
     suppressNextSpaceArrangeExitRef.current = false
     setTrashDropTarget(false)
@@ -517,6 +564,7 @@ export function useArrangeMode({
 
   const clearDomainPointerDrag = () => {
     domainDragRef.current = null
+    detachArrangeDragWindowListeners()
     setDomainDragPreview(null)
   }
 
@@ -548,6 +596,16 @@ export function useArrangeMode({
     const nextDrag: DomainArrangeDragPreview = {
       domainId: domain.id,
       selectedDomainIds: dragIds,
+      dragCount: dragIds.length,
+      ghostOrigins: getArrangePreviewGhostOrigins({
+        rail: domainsGridRef.current,
+        selector: '[data-arrange-domain-id]',
+        attributeName: 'data-arrange-domain-id',
+        selectedIds: dragIds,
+        draggedId: domain.id,
+        previewLeft: rect.left,
+        previewTop: rect.top,
+      }),
       label: itemIsSelected ? getDomainDragPreviewLabel(domain.id, domain.name) : domain.name,
       currentX: event.clientX,
       currentY: event.clientY,
@@ -565,6 +623,7 @@ export function useArrangeMode({
     prepareForDrag({ type: 'domain', domainId: domain.id })
     domainDragRef.current = nextDrag
     setDomainDragPreview(nextDrag)
+    attachDomainDragWindowListeners()
     updateDomainDropTarget(event.clientX, event.clientY)
   }
 
@@ -795,6 +854,7 @@ export function useArrangeMode({
 
   const clearSpacePointerDrag = () => {
     spaceDragRef.current = null
+    detachArrangeDragWindowListeners()
     setSpaceDragPreview(null)
   }
 
@@ -834,6 +894,16 @@ export function useArrangeMode({
       spaceId: space.id,
       sourceDomainId: state.activeDomainId,
       selectedSpaceIds: dragIds,
+      dragCount: dragIds.length,
+      ghostOrigins: getArrangePreviewGhostOrigins({
+        rail: spacesGridRef.current,
+        selector: '[data-arrange-space-id]',
+        attributeName: 'data-arrange-space-id',
+        selectedIds: dragIds,
+        draggedId: space.id,
+        previewLeft: rect.left,
+        previewTop: rect.top,
+      }),
       label: itemIsSelected ? getSpaceDragPreviewLabel(space.id, space.name) : space.name,
       currentX: event.clientX,
       currentY: event.clientY,
@@ -851,6 +921,7 @@ export function useArrangeMode({
     prepareForDrag({ type: 'space', spaceId: space.id })
     spaceDragRef.current = nextDrag
     setSpaceDragPreview(nextDrag)
+    attachSpaceDragWindowListeners()
     updateSpaceDropTarget(event.clientX, event.clientY)
   }
 
@@ -952,11 +1023,29 @@ export function useArrangeMode({
     const domainTarget = getDomainItemTargetFromPoint(clientX, clientY)
     if (domainTarget) {
       markClickSuppressed(`domain:${domainTarget.targetId}`)
+      const projected = projectActiveDomainState(state)
+      const sourceDomain = projected.domains.find((domain) => domain.id === drag.sourceDomainId)
+      const targetDomain = projected.domains.find((domain) => domain.id === domainTarget.targetId)
+      const movedSpaces = sourceDomain?.spaces.filter((space) => dragIds.includes(space.id)) ?? []
+      const shouldNotifyCrossDomainMove =
+        drag.sourceDomainId !== domainTarget.targetId &&
+        !!sourceDomain &&
+        !!targetDomain &&
+        movedSpaces.length > 0
+      const createEntityId = createReservedIdAllocator(collectAppNavigationEntityIds(state))
       setState((previous) => {
-        const result = moveSelectedSpacesToDomain(previous, drag.sourceDomainId, dragIds, domainTarget.targetId)
+        const result = moveSelectedSpacesToDomain(previous, drag.sourceDomainId, dragIds, domainTarget.targetId, {
+          createFallbackSpace: () => createSpace('space', createEntityId),
+        })
         if (result.reason === 'last-space') onArrangeSpaceMoveBlocked?.('last-space')
         return result.state
       })
+      if (shouldNotifyCrossDomainMove && targetDomain) {
+        onArrangeSpaceMovedAcrossDomains?.(
+          movedSpaces.map((space) => space.name),
+          targetDomain.name,
+        )
+      }
       suppressNextSpaceArrangeExitClick()
       clearSelection()
       clearSpacePointerDrag()
@@ -1353,7 +1442,7 @@ export function useArrangeMode({
   const clearTabPointerDrag = () => {
     tabDragRef.current = null
     tabDragGroupRef.current = null
-    detachTabDragWindowListeners()
+    detachArrangeDragWindowListeners()
     setTabDragPreview(null)
   }
 
@@ -1392,10 +1481,24 @@ export function useArrangeMode({
     const itemIsSelected = isTabArrangeItemSelected(item)
     const dragIds = itemIsSelected ? getTabDragIds(item) : [item.type === 'tab' ? item.tabId : item.subTabId]
     const previewLabel = itemIsSelected ? getTabDragPreviewLabel(item, label) : label
+    const draggedId = item.type === 'tab' ? item.tabId : item.subTabId
+    const rail = item.type === 'tab' ? primaryTabRailRef.current : subTabRailRef.current
+    const selector = item.type === 'tab' ? '[data-arrange-tab-id]' : '[data-arrange-subtab-id]'
+    const attributeName = item.type === 'tab' ? 'data-arrange-tab-id' : 'data-arrange-subtab-id'
     const nextDrag: TabArrangeDragPreview = {
       item,
       label: previewLabel,
       variant,
+      dragCount: dragIds.length,
+      ghostOrigins: getArrangePreviewGhostOrigins({
+        rail,
+        selector,
+        attributeName,
+        selectedIds: dragIds,
+        draggedId,
+        previewLeft: rect.left,
+        previewTop: rect.top,
+      }),
       currentX: event.clientX,
       currentY: event.clientY,
       offsetX: event.clientX - rect.left,
@@ -1587,52 +1690,60 @@ export function useArrangeMode({
     )
   }
 
+  const attachDomainDragWindowListeners = () => {
+    detachArrangeDragWindowListeners()
+    dragWindowCleanupRef.current = attachArrangeWindowDragListeners(window, {
+      isActive: () => domainDragRef.current !== null,
+      getCurrentPoint: () => {
+        const activeDrag = domainDragRef.current
+        return activeDrag ? { clientX: activeDrag.currentX, clientY: activeDrag.currentY } : null
+      },
+      onMarkDragged: () => {
+        const activeDrag = domainDragRef.current
+        if (activeDrag) markTapDragged(`domain:${activeDrag.domainId}`)
+      },
+      onMove: ({ clientX, clientY }) => updateDomainPointerDrag(clientX, clientY),
+      onFinish: ({ clientX, clientY }) => finishDomainPointerDrag(clientX, clientY),
+      onCancel: () => cancelDomainPointerDrag(),
+    })
+  }
+
+  const attachSpaceDragWindowListeners = () => {
+    detachArrangeDragWindowListeners()
+    dragWindowCleanupRef.current = attachArrangeWindowDragListeners(window, {
+      isActive: () => spaceDragRef.current !== null,
+      getCurrentPoint: () => {
+        const activeDrag = spaceDragRef.current
+        return activeDrag ? { clientX: activeDrag.currentX, clientY: activeDrag.currentY } : null
+      },
+      onMarkDragged: () => {
+        const activeDrag = spaceDragRef.current
+        if (activeDrag) markTapDragged(`space:${activeDrag.spaceId}`)
+      },
+      onMove: ({ clientX, clientY }) => updateSpacePointerDrag(clientX, clientY),
+      onFinish: ({ clientX, clientY }) => finishSpacePointerDrag(clientX, clientY),
+      onCancel: () => cancelSpacePointerDrag(),
+    })
+  }
+
   const attachTabDragWindowListeners = () => {
-    detachTabDragWindowListeners()
-
-    const getActiveDragKey = () => {
-      const activeDrag = tabDragRef.current
-      if (!activeDrag) return null
-      return activeDrag.item.type === 'tab' ? `tab:${activeDrag.item.tabId}` : `subtab:${activeDrag.item.subTabId}`
-    }
-
-    const handleWindowPointerMove = (event: PointerEvent) => {
-      const activeDrag = tabDragRef.current
-      if (!activeDrag) return
-      const key = getActiveDragKey()
-      if (key) markTapDragged(key)
-
-      if (event.buttons === 0) {
-        finishTabPointerDrag(activeDrag.currentX, activeDrag.currentY)
-        return
-      }
-
-      event.preventDefault()
-      updateTabPointerDrag(event.clientX, event.clientY)
-    }
-
-    const handleWindowPointerUp = (event: PointerEvent) => {
-      if (!tabDragRef.current) return
-      event.preventDefault()
-      event.stopPropagation()
-      finishTabPointerDrag(event.clientX, event.clientY)
-    }
-
-    const handleWindowPointerCancel = () => {
-      if (!tabDragRef.current) return
-      cancelTabPointerDrag()
-    }
-
-    window.addEventListener('pointermove', handleWindowPointerMove, true)
-    window.addEventListener('pointerup', handleWindowPointerUp, true)
-    window.addEventListener('pointercancel', handleWindowPointerCancel, true)
-    window.addEventListener('blur', handleWindowPointerCancel)
-    tabDragWindowCleanupRef.current = () => {
-      window.removeEventListener('pointermove', handleWindowPointerMove, true)
-      window.removeEventListener('pointerup', handleWindowPointerUp, true)
-      window.removeEventListener('pointercancel', handleWindowPointerCancel, true)
-      window.removeEventListener('blur', handleWindowPointerCancel)
-    }
+    detachArrangeDragWindowListeners()
+    dragWindowCleanupRef.current = attachArrangeWindowDragListeners(window, {
+      isActive: () => tabDragRef.current !== null,
+      getCurrentPoint: () => {
+        const activeDrag = tabDragRef.current
+        return activeDrag ? { clientX: activeDrag.currentX, clientY: activeDrag.currentY } : null
+      },
+      onMarkDragged: () => {
+        const activeDrag = tabDragRef.current
+        if (!activeDrag) return
+        const key = activeDrag.item.type === 'tab' ? `tab:${activeDrag.item.tabId}` : `subtab:${activeDrag.item.subTabId}`
+        markTapDragged(key)
+      },
+      onMove: ({ clientX, clientY }) => updateTabPointerDrag(clientX, clientY),
+      onFinish: ({ clientX, clientY }) => finishTabPointerDrag(clientX, clientY),
+      onCancel: () => cancelTabPointerDrag(),
+    })
   }
 
   const handleTabPointerMove = (
@@ -1686,12 +1797,30 @@ export function useArrangeMode({
     clearPressTimer()
   }
 
-  useEffect(() => () => clearPressTimer(), [])
+  useEffect(
+    () => () => {
+      clearPressTimer()
+      detachArrangeDragWindowListeners()
+    },
+    [],
+  )
 
   useEffect(() => {
     if (viewMode === 'main') return
+    clearPressTimer()
+    clearTapCandidate()
+    clearDragSeed()
+    detachArrangeDragWindowListeners()
+    domainDragRef.current = null
+    spaceDragRef.current = null
+    tabDragRef.current = null
+    tabDragGroupRef.current = null
     isDraggingOverTrashDropRef.current = false
     setIsDraggingOverTrashDrop(false)
+    setDraggingItem(null)
+    setDomainDragPreview(null)
+    setSpaceDragPreview(null)
+    setTabDragPreview(null)
     clearSelection()
     setHierarchyRevealLevel(0)
     setMode((previous) => (previous.active ? DEFAULT_ARRANGE_MODE : previous))

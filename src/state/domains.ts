@@ -404,11 +404,16 @@ export type MoveSpaceToDomainResult = {
   reason?: 'missing-source-domain' | 'missing-target-domain' | 'missing-space' | 'last-space' | 'same-domain'
 }
 
+type MoveSpaceToDomainOptions = {
+  createFallbackSpace?: () => Space
+}
+
 export function moveSpaceToDomain(
   appState: AppState,
   sourceDomainId: string,
   spaceId: string,
   targetDomainId: string,
+  options: MoveSpaceToDomainOptions = {},
 ): MoveSpaceToDomainResult {
   const projected = projectActiveDomainState(appState)
   if (sourceDomainId === targetDomainId) {
@@ -419,12 +424,15 @@ export function moveSpaceToDomain(
   const targetDomain = projected.domains.find((domain) => domain.id === targetDomainId)
   if (!sourceDomain) return { state: projected, changed: false, reason: 'missing-source-domain' }
   if (!targetDomain) return { state: projected, changed: false, reason: 'missing-target-domain' }
-  if (sourceDomain.spaces.length <= 1) return { state: projected, changed: false, reason: 'last-space' }
 
   const movedSpace = sourceDomain.spaces.find((space) => space.id === spaceId)
   if (!movedSpace) return { state: projected, changed: false, reason: 'missing-space' }
 
-  const sourceSpaces = sourceDomain.spaces.filter((space) => space.id !== spaceId)
+  const remainingSourceSpaces = sourceDomain.spaces.filter((space) => space.id !== spaceId)
+  const sourceSpaces =
+    remainingSourceSpaces.length > 0
+      ? remainingSourceSpaces
+      : [options.createFallbackSpace?.() ?? createSpace(DEFAULT_NEW_SPACE_NAME)]
   const nextSourceDomain = createDomainFromSpaces(sourceDomain.name, sourceSpaces, {
     id: sourceDomain.id,
     activeSpaceId: sourceDomain.activeSpaceId === spaceId ? sourceSpaces[0]?.id : sourceDomain.activeSpaceId,

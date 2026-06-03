@@ -1,4 +1,4 @@
-import { createRef, type ReactNode } from 'react'
+import { createRef, isValidElement, type ReactElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import { createEmptyStageManagerParentSelection } from '../../stage-manager/selection'
@@ -46,7 +46,37 @@ const arrangeMode: ArrangeModeState = {
 
 const noop = () => undefined
 
-function renderTopBar(
+type TestElement = ReactElement<Record<string, unknown> & { children?: ReactNode }>
+type TestHandler = (event: Record<string, unknown>) => void
+type TopBarTestCallbacks = Partial<
+  Pick<Parameters<typeof TopBar>[0], 'onExitArrangeMode' | 'onOpenContextMenuForTab' | 'onStartArrangeDragSeed'>
+>
+type SubTabRailTestCallbacks = Partial<
+  Pick<
+    Parameters<typeof SubTabRail>[0],
+    'onExitArrangeMode' | 'onOpenContextMenuForHomeTab' | 'onOpenContextMenuForSubTab' | 'onStartArrangeDragSeed'
+  >
+>
+
+function findElementByProp(node: ReactNode, propName: string, propValue: unknown): TestElement | null {
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const match = findElementByProp(child, propName, propValue)
+      if (match) return match
+    }
+    return null
+  }
+  if (!isValidElement(node)) return null
+  const element = node as TestElement
+  if (element.props[propName] === propValue) return element
+  return findElementByProp(element.props.children, propName, propValue)
+}
+
+function renderFunctionComponent<P>(element: ReactElement<P>): ReactNode {
+  return (element.type as (props: P) => ReactNode)(element.props)
+}
+
+function createTopBarElement(
   tooltipsDisabled: boolean,
   arrangeModeOverride: Partial<ArrangeModeState> = {},
   arrangeControlsDisabled = false,
@@ -58,9 +88,10 @@ function renderTopBar(
     toastHistoryCount?: number
     visualizerFilterControl?: ReactNode
   } = {},
+  callbacks: TopBarTestCallbacks = {},
 ) {
   const viewMode = options.viewMode ?? 'main'
-  return renderToStaticMarkup(
+  return (
     <TopBar
       viewMode={viewMode}
       workspace={workspace}
@@ -96,8 +127,8 @@ function renderTopBar(
       onConsumeArrangeClickSuppression={() => false}
       onSelectTab={noop}
       onBeginEdit={noop}
-      onOpenContextMenuForTab={noop}
-      onStartArrangeDragSeed={noop}
+      onOpenContextMenuForTab={callbacks.onOpenContextMenuForTab ?? noop}
+      onStartArrangeDragSeed={callbacks.onStartArrangeDragSeed ?? noop}
       onStartArrangeTapCandidate={noop}
       onStartArrangePress={noop}
       onHandleArrangeTabPointerMove={noop}
@@ -109,7 +140,7 @@ function renderTopBar(
       onOpenContextMenuForTrashTab={noop}
       onAddTab={noop}
       onOpenParentSortModal={vi.fn()}
-      onExitArrangeMode={noop}
+      onExitArrangeMode={callbacks.onExitArrangeMode ?? noop}
       onAdvanceArrangeHierarchyReveal={noop}
       onEndStageManager={noop}
       onCloseSettingsView={noop}
@@ -129,16 +160,33 @@ function renderTopBar(
       toastHistoryCount={options.toastHistoryCount ?? 0}
       onMessagesSectionChange={noop}
       visualizerFilterControl={options.visualizerFilterControl}
-    />,
+    />
   )
 }
 
-function renderSubTabRail(
+function renderTopBar(
   tooltipsDisabled: boolean,
   arrangeModeOverride: Partial<ArrangeModeState> = {},
   arrangeControlsDisabled = false,
+  options: {
+    viewMode?: ViewMode
+    settingsSection?: SettingsSection
+    messagesSection?: MessagesSection
+    messagesCount?: number
+    toastHistoryCount?: number
+    visualizerFilterControl?: ReactNode
+  } = {},
 ) {
-  return renderToStaticMarkup(
+  return renderToStaticMarkup(createTopBarElement(tooltipsDisabled, arrangeModeOverride, arrangeControlsDisabled, options))
+}
+
+function createSubTabRailElement(
+  tooltipsDisabled: boolean,
+  arrangeModeOverride: Partial<ArrangeModeState> = {},
+  arrangeControlsDisabled = false,
+  callbacks: SubTabRailTestCallbacks = {},
+) {
+  return (
     <SubTabRail
       viewMode="main"
       activeTab={activeTab}
@@ -171,9 +219,10 @@ function renderSubTabRail(
       onSelectParentHomeTab={noop}
       onSelectSubTab={noop}
       onBeginEdit={noop}
-      onOpenContextMenuForHomeTab={noop}
-      onOpenContextMenuForSubTab={noop}
-      onStartArrangeDragSeed={noop}
+      onOpenContextMenuForHomeTab={callbacks.onOpenContextMenuForHomeTab ?? noop}
+      onOpenContextMenuForSubTab={callbacks.onOpenContextMenuForSubTab ?? noop}
+      onExitArrangeMode={callbacks.onExitArrangeMode ?? noop}
+      onStartArrangeDragSeed={callbacks.onStartArrangeDragSeed ?? noop}
       onStartArrangeTapCandidate={noop}
       onStartArrangePress={noop}
       onFinalizeArrangeTapCandidate={noop}
@@ -186,8 +235,16 @@ function renderSubTabRail(
       onOpenContextMenuForTrashSubTab={noop}
       onAddSubTab={noop}
       onOpenSubTabSortModal={vi.fn()}
-    />,
+    />
   )
+}
+
+function renderSubTabRail(
+  tooltipsDisabled: boolean,
+  arrangeModeOverride: Partial<ArrangeModeState> = {},
+  arrangeControlsDisabled = false,
+) {
+  return renderToStaticMarkup(createSubTabRailElement(tooltipsDisabled, arrangeModeOverride, arrangeControlsDisabled))
 }
 
 describe('navigation arrange tooltips', () => {
@@ -301,6 +358,70 @@ describe('navigation arrange tooltips', () => {
     expect(parentHtml).toContain('is-arrange-target-before')
     expect(subTabHtml).toContain('is-arrange-neighbor-after')
     expect(subTabHtml).toContain('is-arrange-target-before')
+  })
+
+  it('cancels active arrangement before opening parent and sub-tab context menus', () => {
+    const parentCalls: string[] = []
+    const subTabCalls: string[] = []
+    const onExitParentArrangeMode = vi.fn(() => parentCalls.push('cancel'))
+    const onExitSubTabArrangeMode = vi.fn(() => subTabCalls.push('cancel'))
+    const onOpenContextMenuForTab = vi.fn(() => parentCalls.push('menu'))
+    const onOpenContextMenuForSubTab = vi.fn(() => subTabCalls.push('menu'))
+    const onStartParentArrangeDragSeed = vi.fn()
+    const onStartSubTabArrangeDragSeed = vi.fn()
+    const topBarTree = renderFunctionComponent(
+      createTopBarElement(true, {}, false, {}, {
+        onExitArrangeMode: onExitParentArrangeMode,
+        onOpenContextMenuForTab,
+        onStartArrangeDragSeed: onStartParentArrangeDragSeed,
+      }),
+    )
+    const subTabRailTree = renderFunctionComponent(
+      createSubTabRailElement(true, {}, false, {
+        onExitArrangeMode: onExitSubTabArrangeMode,
+        onOpenContextMenuForSubTab,
+        onStartArrangeDragSeed: onStartSubTabArrangeDragSeed,
+      }),
+    )
+    const parentButton = findElementByProp(topBarTree, 'aria-selected', true)
+    const subTabButton = findElementByProp(subTabRailTree, 'aria-selected', true)
+
+    expect(parentButton).not.toBeNull()
+    expect(subTabButton).not.toBeNull()
+    ;(parentButton?.props.onPointerDown as TestHandler)({ button: 2 })
+    ;(subTabButton?.props.onPointerDown as TestHandler)({ button: 2 })
+    ;(parentButton?.props.onContextMenu as TestHandler)({})
+    ;(subTabButton?.props.onContextMenu as TestHandler)({})
+
+    expect(parentCalls).toEqual(['cancel', 'menu'])
+    expect(subTabCalls).toEqual(['cancel', 'menu'])
+    expect(onOpenContextMenuForTab).toHaveBeenCalledWith(expect.anything(), activeTab.id, { force: true })
+    expect(onOpenContextMenuForSubTab).toHaveBeenCalledWith(expect.anything(), activeTab.id, 'sub-1', { force: true })
+    expect(onStartParentArrangeDragSeed).not.toHaveBeenCalled()
+    expect(onStartSubTabArrangeDragSeed).not.toHaveBeenCalled()
+  })
+
+  it('keeps parent and sub-tab context menus unchanged when arrangement is inactive', () => {
+    const onExitArrangeMode = vi.fn()
+    const onOpenContextMenuForTab = vi.fn()
+    const onOpenContextMenuForSubTab = vi.fn()
+    const topBarTree = renderFunctionComponent(
+      createTopBarElement(false, { active: false }, false, {}, { onExitArrangeMode, onOpenContextMenuForTab }),
+    )
+    const subTabRailTree = renderFunctionComponent(
+      createSubTabRailElement(false, { active: false }, false, { onExitArrangeMode, onOpenContextMenuForSubTab }),
+    )
+    const parentButton = findElementByProp(topBarTree, 'aria-selected', true)
+    const subTabButton = findElementByProp(subTabRailTree, 'aria-selected', true)
+
+    expect(parentButton).not.toBeNull()
+    expect(subTabButton).not.toBeNull()
+    ;(parentButton?.props.onContextMenu as TestHandler)({})
+    ;(subTabButton?.props.onContextMenu as TestHandler)({})
+
+    expect(onExitArrangeMode).not.toHaveBeenCalled()
+    expect(onOpenContextMenuForTab).toHaveBeenCalledWith(expect.anything(), activeTab.id, undefined)
+    expect(onOpenContextMenuForSubTab).toHaveBeenCalledWith(expect.anything(), activeTab.id, 'sub-1', undefined)
   })
 
   it('keeps sub-tab sort labels while omitting title tooltips when disabled', () => {

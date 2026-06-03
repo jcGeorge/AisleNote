@@ -14,24 +14,36 @@ import { getPlacementNeighborId } from '../../arrange/arrange-utils'
 import { getRenameInputKeyAction } from '../../navigation/rename-draft'
 import { SortIcon } from './SortIcon'
 import { ArrangeDragPreviewPortal } from './ArrangeDragPreviewPortal'
-import { getArrangeDragPreviewStyle } from './arrange-drag-preview-style'
+import { ArrangePreviewStack } from './ArrangePreviewStack'
+import { getArrangeDragPreviewRect, getArrangeDragPreviewStyleFromRect } from './arrange-drag-preview-style'
 
 type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
+type CommitRenameOptions = {
+  focusEditor?: boolean
+}
+type NavigationContextMenuOptions = {
+  force?: boolean
+}
 
 type CompactScopeDragPreviewProps =
   | { type: 'domain'; preview: DomainArrangeDragPreview; active: boolean }
   | { type: 'space'; preview: SpaceArrangeDragPreview; active: boolean }
 
-export function CompactScopeDragPreview({ type, preview, active }: CompactScopeDragPreviewProps) {
+export function CompactScopeDragPreview({ type, preview }: CompactScopeDragPreviewProps) {
   const kindClass = type === 'domain' ? 'compact-domain-btn is-domain' : 'compact-space-btn is-space'
+  const cardClassName = `compact-scope-arrange-preview compact-scope-btn ${kindClass} is-active is-selected`
+  const targetRect = getArrangeDragPreviewRect(preview)
   return (
     <ArrangeDragPreviewPortal>
-      <div
-        className={`compact-scope-arrange-preview compact-scope-btn ${kindClass} ${active ? 'is-active' : ''}`}
-        style={getArrangeDragPreviewStyle(preview)}
+      <ArrangePreviewStack
+        cardClassName={cardClassName}
+        dragCount={preview.dragCount}
+        ghostOrigins={preview.ghostOrigins}
+        style={getArrangeDragPreviewStyleFromRect(targetRect)}
+        targetRect={targetRect}
       >
         <span>{preview.label}</span>
-      </div>
+      </ArrangePreviewStack>
     </ArrangeDragPreviewPortal>
   )
 }
@@ -48,6 +60,7 @@ type CompactSpaceRailProps = {
   tooltipsDisabled?: boolean
   arrangeControlsDisabled?: boolean
   tagFilterActive?: boolean
+  guidedDestinationActive?: boolean
   stageManagerMode?: boolean
   stageManagerSelectedSpaceIds?: ReadonlySet<string>
   arrangeSelectedSpaceIds?: ReadonlySet<string>
@@ -63,9 +76,14 @@ type CompactSpaceRailProps = {
   ) => void
   onStageManagerSpaceDoubleClick?: (spaceId: string) => void
   onClearArrangeSelection?: () => void
-  onOpenContextMenu: (event: MouseEvent<HTMLButtonElement>, spaceId: string) => void
+  onOpenContextMenu: (
+    event: MouseEvent<HTMLButtonElement>,
+    spaceId: string,
+    options?: NavigationContextMenuOptions,
+  ) => void
+  onCancelArrangeMode?: () => void
   onShouldSkipRenameBlur: (type: EditableEntityType, id: string) => boolean
-  onCommitRename: (type: EditableEntityType, id: string, value: string) => void
+  onCommitRename: (type: EditableEntityType, id: string, value: string, options?: CommitRenameOptions) => void
   onCancelRename: (type: EditableEntityType, id: string) => void
   onRenameDraftChange: (type: EditableEntityType, id: string, value: string) => void
   onBeginEdit: (target: { type: EditableEntityType; id: string }) => void
@@ -103,6 +121,7 @@ type CompactDomainRailProps = {
   tooltipsDisabled?: boolean
   arrangeControlsDisabled?: boolean
   tagFilterActive?: boolean
+  guidedDestinationActive?: boolean
   stageManagerMode?: boolean
   stageManagerSelectedDomainIds?: ReadonlySet<string>
   arrangeSelectedDomainIds?: ReadonlySet<string>
@@ -118,9 +137,14 @@ type CompactDomainRailProps = {
   ) => void
   onStageManagerDomainDoubleClick?: (domainId: string) => void
   onClearArrangeSelection?: () => void
-  onOpenContextMenu: (event: MouseEvent<HTMLButtonElement>, domainId: string) => void
+  onOpenContextMenu: (
+    event: MouseEvent<HTMLButtonElement>,
+    domainId: string,
+    options?: NavigationContextMenuOptions,
+  ) => void
+  onCancelArrangeMode?: () => void
   onShouldSkipRenameBlur: (type: EditableEntityType, id: string) => boolean
-  onCommitRename: (type: EditableEntityType, id: string, value: string) => void
+  onCommitRename: (type: EditableEntityType, id: string, value: string, options?: CommitRenameOptions) => void
   onCancelRename: (type: EditableEntityType, id: string) => void
   onRenameDraftChange: (type: EditableEntityType, id: string, value: string) => void
   onBeginEdit: (target: { type: EditableEntityType; id: string }) => void
@@ -158,6 +182,7 @@ export function CompactSpaceRail({
   tooltipsDisabled = false,
   arrangeControlsDisabled = false,
   tagFilterActive = false,
+  guidedDestinationActive = false,
   stageManagerMode = false,
   stageManagerSelectedSpaceIds,
   arrangeSelectedSpaceIds,
@@ -168,6 +193,7 @@ export function CompactSpaceRail({
   onStageManagerSpaceDoubleClick,
   onClearArrangeSelection,
   onOpenContextMenu,
+  onCancelArrangeMode,
   onShouldSkipRenameBlur,
   onCommitRename,
   onCancelRename,
@@ -225,7 +251,14 @@ export function CompactSpaceRail({
                     const action = getRenameInputKeyAction(event)
                     if (action === 'commit') {
                       event.preventDefault()
-                      onCommitRename('space', space.id, event.currentTarget.value)
+                      onCommitRename('space', space.id, event.currentTarget.value, { focusEditor: true })
+                    }
+                    if (action === 'commit-and-create') {
+                      event.preventDefault()
+                      if (!tagFilterActive && onAddSpace) {
+                        onCommitRename('space', space.id, event.currentTarget.value)
+                        onAddSpace()
+                      }
                     }
                     if (action === 'cancel') {
                       event.preventDefault()
@@ -283,6 +316,12 @@ export function CompactSpaceRail({
                     })
                     return
                   }
+                  if (guidedDestinationActive) {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    onOpenSpace(space.id)
+                    return
+                  }
                   const modifiers = {
                     shiftKey: event.shiftKey,
                     ctrlKey: event.ctrlKey,
@@ -301,7 +340,9 @@ export function CompactSpaceRail({
                     event.preventDefault()
                     return
                   }
-                  onOpenContextMenu(event, space.id)
+                  const forceMenu = arrangeMode.active
+                  if (forceMenu) onCancelArrangeMode?.()
+                  onOpenContextMenu(event, space.id, forceMenu ? { force: true } : undefined)
                 }}
                 onDoubleClick={(event) => {
                   if (arrangeMode.active) return
@@ -318,9 +359,9 @@ export function CompactSpaceRail({
                 onPointerDown={(event) => {
                   if (stageManagerMode) return
                   if (tagFilterActive) return
-                  if (event.button === 0) {
-                    event.currentTarget.setPointerCapture(event.pointerId)
-                  }
+                  if (guidedDestinationActive) return
+                  if (event.button !== 0) return
+                  event.currentTarget.setPointerCapture(event.pointerId)
                   onStartArrangeDragSeed(`space:${space.id}`, event)
                   if (arrangeMode.active) {
                     onStartArrangeTapCandidate({ key: `space:${space.id}`, type: 'space', spaceId: space.id }, event)
@@ -329,10 +370,12 @@ export function CompactSpaceRail({
                   onStartArrangePress(event, { type: 'space', spaceId: space.id }, `space:${space.id}`)
                 }}
                 onPointerMove={(event) => {
-                  if (!stageManagerMode && !tagFilterActive) onHandleArrangeSpacePointerMove(event, space)
+                  if (!stageManagerMode && !tagFilterActive && !guidedDestinationActive) {
+                    onHandleArrangeSpacePointerMove(event, space)
+                  }
                 }}
                 onPointerUp={(event) => {
-                  if (!stageManagerMode && !tagFilterActive) {
+                  if (!stageManagerMode && !tagFilterActive && !guidedDestinationActive) {
                     onHandleArrangeSpacePointerUp(event, space.id, () => onOpenSpace(space.id))
                   }
                 }}
@@ -366,8 +409,15 @@ export function CompactSpaceRail({
             <button
               type="button"
               className="btn btn-sm btn-outline-light add-tab-btn compact-scope-add-btn"
-              onClick={onAddSpace}
+              onPointerDown={(event) => {
+                event.stopPropagation()
+              }}
+              onClick={(event) => {
+                event.stopPropagation()
+                onAddSpace()
+              }}
               title={tooltipsDisabled ? undefined : 'Add space'}
+              aria-label="add space"
             >
               +
             </button>
@@ -391,6 +441,7 @@ export function CompactDomainRail({
   tooltipsDisabled = false,
   arrangeControlsDisabled = false,
   tagFilterActive = false,
+  guidedDestinationActive = false,
   stageManagerMode = false,
   stageManagerSelectedDomainIds,
   arrangeSelectedDomainIds,
@@ -401,6 +452,7 @@ export function CompactDomainRail({
   onStageManagerDomainDoubleClick,
   onClearArrangeSelection,
   onOpenContextMenu,
+  onCancelArrangeMode,
   onShouldSkipRenameBlur,
   onCommitRename,
   onCancelRename,
@@ -458,7 +510,14 @@ export function CompactDomainRail({
                     const action = getRenameInputKeyAction(event)
                     if (action === 'commit') {
                       event.preventDefault()
-                      onCommitRename('domain', domain.id, event.currentTarget.value)
+                      onCommitRename('domain', domain.id, event.currentTarget.value, { focusEditor: true })
+                    }
+                    if (action === 'commit-and-create') {
+                      event.preventDefault()
+                      if (!tagFilterActive && onAddDomain) {
+                        onCommitRename('domain', domain.id, event.currentTarget.value)
+                        onAddDomain()
+                      }
                     }
                     if (action === 'cancel') {
                       event.preventDefault()
@@ -516,6 +575,12 @@ export function CompactDomainRail({
                     })
                     return
                   }
+                  if (guidedDestinationActive) {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    onOpenDomain(domain.id)
+                    return
+                  }
                   const modifiers = {
                     shiftKey: event.shiftKey,
                     ctrlKey: event.ctrlKey,
@@ -534,7 +599,9 @@ export function CompactDomainRail({
                     event.preventDefault()
                     return
                   }
-                  onOpenContextMenu(event, domain.id)
+                  const forceMenu = arrangeMode.active
+                  if (forceMenu) onCancelArrangeMode?.()
+                  onOpenContextMenu(event, domain.id, forceMenu ? { force: true } : undefined)
                 }}
                 onDoubleClick={(event) => {
                   if (arrangeMode.active) return
@@ -551,9 +618,9 @@ export function CompactDomainRail({
                 onPointerDown={(event) => {
                   if (stageManagerMode) return
                   if (tagFilterActive) return
-                  if (event.button === 0) {
-                    event.currentTarget.setPointerCapture(event.pointerId)
-                  }
+                  if (guidedDestinationActive) return
+                  if (event.button !== 0) return
+                  event.currentTarget.setPointerCapture(event.pointerId)
                   onStartArrangeDragSeed(`domain:${domain.id}`, event)
                   if (arrangeMode.active) {
                     onStartArrangeTapCandidate({ key: `domain:${domain.id}`, type: 'domain', domainId: domain.id }, event)
@@ -562,10 +629,12 @@ export function CompactDomainRail({
                   onStartArrangePress(event, { type: 'domain', domainId: domain.id }, `domain:${domain.id}`)
                 }}
                 onPointerMove={(event) => {
-                  if (!stageManagerMode && !tagFilterActive) onHandleArrangeDomainPointerMove(event, domain)
+                  if (!stageManagerMode && !tagFilterActive && !guidedDestinationActive) {
+                    onHandleArrangeDomainPointerMove(event, domain)
+                  }
                 }}
                 onPointerUp={(event) => {
-                  if (!stageManagerMode && !tagFilterActive) {
+                  if (!stageManagerMode && !tagFilterActive && !guidedDestinationActive) {
                     onHandleArrangeDomainPointerUp(event, domain.id, () => onOpenDomain(domain.id))
                   }
                 }}
@@ -599,8 +668,15 @@ export function CompactDomainRail({
             <button
               type="button"
               className="btn btn-sm btn-outline-light add-tab-btn compact-scope-add-btn"
-              onClick={onAddDomain}
+              onPointerDown={(event) => {
+                event.stopPropagation()
+              }}
+              onClick={(event) => {
+                event.stopPropagation()
+                onAddDomain()
+              }}
               title={tooltipsDisabled ? undefined : 'Add domain'}
+              aria-label="add domain"
             >
               +
             </button>

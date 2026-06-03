@@ -403,6 +403,36 @@ describe('arrange group operations', () => {
     expect(result.state.activeSpaceId).toBe('space-1')
   })
 
+  it('moves all selected spaces out of a domain and leaves one fallback space behind', () => {
+    const fallbackSpace: Space = {
+      ...space('fallback-space'),
+      name: 'space',
+      data: workspace([tab('fallback-tab', 'tab')], 'fallback-tab'),
+    }
+    const initial = appState(
+      [
+        domain('domain-1', [space('space-1'), space('space-2')]),
+        domain('domain-2', [space('space-3')]),
+      ],
+      'domain-1',
+      'space-1',
+    )
+    const result = moveSelectedSpacesToDomain(initial, 'domain-1', ['space-1', 'space-2'], 'domain-2', {
+      createFallbackSpace: () => fallbackSpace,
+    })
+
+    const sourceDomain = result.state.domains.find((entry) => entry.id === 'domain-1')
+    const targetDomain = result.state.domains.find((entry) => entry.id === 'domain-2')
+    expect(result.changed).toBe(true)
+    expect(sourceDomain?.activeSpaceId).toBe('fallback-space')
+    expect(sourceDomain?.spaces.map((entry) => entry.id)).toEqual(['fallback-space'])
+    expect(sourceDomain?.spaces[0].name).toBe('space')
+    expect(sourceDomain?.spaces[0].data.tabs.map((entry) => entry.title)).toEqual(['tab'])
+    expect(targetDomain?.spaces.map((entry) => entry.id)).toEqual(['space-3', 'space-1', 'space-2'])
+    expect(result.state.activeDomainId).toBe('domain-2')
+    expect(result.state.activeSpaceId).toBe('space-1')
+  })
+
   it('moves selected domains to trash while blocking the last live domain', () => {
     const ids = ['deleted-domain-1', 'deleted-domain-2']
     const initial = appState([domain('domain-1'), domain('domain-2'), domain('domain-3')])

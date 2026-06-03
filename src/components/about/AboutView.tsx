@@ -17,7 +17,7 @@ export function AboutViewContent({
       <div className="utility-page-card about-view-card">
         <h2>Tabs</h2>
         <p>
-          Tabs is a local-first notebook for organizing notes across domains, spaces, parents, tabs, and aisles.
+          Tabs is a local-first notebook for organizing notes across domains, spaces, parents, subtabs, and aisles.
         </p>
         <dl className="about-runtime-list">
           <div>

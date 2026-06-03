@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { createBulletListAttrs, getBulletListMarkerFromAttrs } from './list-markers'
 import {
   buildMultiLineListOperationPlan,
+  buildMultiLineStructuralListIndentPlan,
   createMultiLineListNode,
   getAdjacentIndexGroups,
   getMultiLineListMarkerShortcut,
@@ -87,8 +88,8 @@ function blockQuote(texts: string[]) {
   return multilineListSchema.nodes.blockQuote.create(null, texts.map((text) => paragraph(text)))
 }
 
-function listItem(text: string, attrs: Record<string, unknown> | null = null) {
-  return multilineListSchema.nodes.listItem.create(attrs, paragraph(text))
+function listItem(text: string, attrs: Record<string, unknown> | null = null, children: any[] = []) {
+  return multilineListSchema.nodes.listItem.create(attrs, [paragraph(text), ...children])
 }
 
 function bulletList(texts: string[], marker: 'bullet' | 'dash' = 'bullet') {
@@ -133,6 +134,14 @@ function listTexts(listNode: any): string[] {
   return texts
 }
 
+function listItemParagraphTexts(listNode: any): string[] {
+  const texts: string[] = []
+  for (let index = 0; index < listNode.childCount; index += 1) {
+    texts.push(listNode.child(index).child(0).textContent)
+  }
+  return texts
+}
+
 function docChildTypes(doc: any): string[] {
   const types: string[] = []
   for (let index = 0; index < doc.childCount; index += 1) {
@@ -155,6 +164,16 @@ function applyListOperation(doc: any, indices: number[], operation: MultiLineLis
   const plan = buildMultiLineListOperationPlan(view, multiLineState(indices), operation)
   expect(plan).not.toBeNull()
   return view.apply(plan!.transaction).doc
+}
+
+function applyStructuralListIndent(doc: any, indices: number[], outdent = false) {
+  const view = createView(doc)
+  const plan = buildMultiLineStructuralListIndentPlan(view, multiLineState(indices), outdent)
+  expect(plan).not.toBeNull()
+  return {
+    plan: plan!,
+    doc: view.apply(plan!.transaction).doc,
+  }
 }
 
 describe('multi-cursor list operations', () => {
@@ -401,5 +420,83 @@ describe('multi-cursor list operations', () => {
     expect(doc.child(0).textContent).toBe('keep')
     expect(listTexts(doc.child(1))).toEqual(['one', 'two'])
     expect(doc.child(2).textContent).toBe('keep')
+  })
+
+  it('indents adjacent bullet rows under the previous sibling', () => {
+    const { doc } = applyStructuralListIndent(
+      multilineListSchema.nodes.doc.create(null, [bulletList(['one', 'two', 'three', 'four'])]),
+      [1, 2],
+    )
+
+    const rootList = doc.child(0)
+    const nestedList = rootList.child(0).child(1)
+    expect(listItemParagraphTexts(rootList)).toEqual(['one', 'four'])
+    expect(nestedList.type.name).toBe('bulletList')
+    expect(getBulletListMarkerFromAttrs(nestedList.attrs)).toBe('bullet')
+    expect(listItemParagraphTexts(nestedList)).toEqual(['two', 'three'])
+  })
+
+  it('indents dash rows into nested dash lists', () => {
+    const { doc } = applyStructuralListIndent(
+      multilineListSchema.nodes.doc.create(null, [bulletList(['one', 'two'], 'dash')]),
+      [1],
+    )
+
+    const nestedList = doc.child(0).child(0).child(1)
+    expect(nestedList.type.name).toBe('bulletList')
+    expect(getBulletListMarkerFromAttrs(nestedList.attrs)).toBe('dash')
+    expect(listItemParagraphTexts(nestedList)).toEqual(['two'])
+  })
+
+  it('indents task rows while preserving task item attrs', () => {
+    const { doc } = applyStructuralListIndent(
+      multilineListSchema.nodes.doc.create(null, [taskList(['one', 'two'])]),
+      [1],
+    )
+
+    const nestedItem = doc.child(0).child(0).child(1).child(0)
+    expect(nestedItem.attrs).toMatchObject({ task: true, checked: false })
+    expect(nestedItem.child(0).textContent).toBe('two')
+  })
+
+  it('indents ordered rows into a nested ordered list', () => {
+    const { doc } = applyStructuralListIndent(
+      multilineListSchema.nodes.doc.create(null, [orderedList(['one', 'two', 'three'])]),
+      [1, 2],
+    )
+
+    const nestedList = doc.child(0).child(0).child(1)
+    expect(nestedList.type.name).toBe('orderedList')
+    expect(nestedList.attrs).toMatchObject({ order: 1 })
+    expect(listItemParagraphTexts(nestedList)).toEqual(['two', 'three'])
+  })
+
+  it('handles first list rows as no-op structural indentation', () => {
+    const { plan, doc } = applyStructuralListIndent(
+      multilineListSchema.nodes.doc.create(null, [bulletList(['one', 'two'])]),
+      [0],
+    )
+
+    expect(plan.changed).toBe(false)
+    expect(listItemParagraphTexts(doc.child(0))).toEqual(['one', 'two'])
+  })
+
+  it('does not structurally indent mixed list and non-list rows', () => {
+    const view = createView(multilineListSchema.nodes.doc.create(null, [bulletList(['one']), paragraph('two')]))
+    const plan = buildMultiLineStructuralListIndentPlan(view, multiLineState([0, 1]), false)
+
+    expect(plan).toBeNull()
+  })
+
+  it('outdents nested rows one list level', () => {
+    const nestedList = bulletList(['two', 'three'])
+    const rootList = multilineListSchema.nodes.bulletList.create(createBulletListAttrs('bullet'), [
+      listItem('one', null, [nestedList]),
+      listItem('four'),
+    ])
+    const { doc } = applyStructuralListIndent(multilineListSchema.nodes.doc.create(null, [rootList]), [1, 2], true)
+
+    expect(listItemParagraphTexts(doc.child(0))).toEqual(['one', 'two', 'three', 'four'])
+    expect(doc.child(0).child(0).childCount).toBe(1)
   })
 })

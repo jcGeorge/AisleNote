@@ -126,6 +126,58 @@ describe('arrange hierarchy moves', () => {
     expect(next.spaces.find((entry) => entry.id === 'space-b')?.data.activeTabId).toBe('parent-b')
   })
 
+  it('appends a single parent tab to a chosen space in another domain', () => {
+    const sourceA = tab('parent-a')
+    const sourceB = tab('parent-b')
+    const target = tab('parent-c')
+    const state = appState(
+      [domain('domain-a', [space('source', [sourceA, sourceB])], 'source'), domain('domain-b', [space('target', [target])])],
+      'domain-a',
+      'source',
+    )
+
+    const next = moveParentTabsToSpace(state, 'domain-a', 'source', ['parent-a'], 'domain-b', 'target', {
+      createFallbackTab: () => tab('fallback'),
+    })
+
+    const sourceAfter = next.domains.find((entry) => entry.id === 'domain-a')?.spaces[0]
+    const targetAfter = next.domains.find((entry) => entry.id === 'domain-b')?.spaces[0]
+    expect(sourceAfter?.data.tabs.map((entry) => entry.id)).toEqual(['parent-b'])
+    expect(targetAfter?.data.tabs.map((entry) => entry.id)).toEqual(['parent-c', 'parent-a'])
+    expect(next.activeDomainId).toBe('domain-b')
+    expect(next.activeSpaceId).toBe('target')
+    expect(next.spaces.map((entry) => entry.id)).toEqual(['target'])
+  })
+
+  it('appends multiple parent tabs to a chosen space in another domain and leaves a fallback behind', () => {
+    const sourceA = tab('parent-a')
+    const sourceB = tab('parent-b')
+    const target = tab('parent-c')
+    const state = appState(
+      [domain('domain-a', [space('source', [sourceA, sourceB])], 'source'), domain('domain-b', [space('target', [target])])],
+      'domain-a',
+      'source',
+    )
+
+    const next = moveParentTabsToSpace(
+      state,
+      'domain-a',
+      'source',
+      ['parent-a', 'parent-b'],
+      'domain-b',
+      'target',
+      {
+        createFallbackTab: () => tab('fallback'),
+      },
+    )
+
+    const sourceAfter = next.domains.find((entry) => entry.id === 'domain-a')?.spaces[0]
+    const targetAfter = next.domains.find((entry) => entry.id === 'domain-b')?.spaces[0]
+    expect(sourceAfter?.data.tabs.map((entry) => entry.id)).toEqual(['fallback'])
+    expect(targetAfter?.data.tabs.map((entry) => entry.id)).toEqual(['parent-c', 'parent-a', 'parent-b'])
+    expect(targetAfter?.data.activeTabId).toBe('parent-a')
+  })
+
   it('moves selected parent tabs before a chosen parent in the target space', () => {
     const sourceA = tab('parent-a')
     const sourceB = tab('parent-b')
@@ -302,17 +354,30 @@ describe('arrange hierarchy moves', () => {
     ])
   })
 
-  it('blocks moving the last space out of a domain', () => {
+  it('moves the last space out of a domain and leaves one fallback space behind', () => {
+    const fallbackSpace = {
+      ...space('fallback-space', [tab('fallback-tab', 'tab')]),
+      name: 'space',
+    }
     const state = appState(
       [domain('domain-a', [space('space-a', [tab('parent-a')])]), domain('domain-b', [space('space-b', [tab('parent-b')])])],
       'domain-a',
       'space-a',
     )
 
-    const result = moveSpaceToDomain(state, 'domain-a', 'space-a', 'domain-b')
+    const result = moveSpaceToDomain(state, 'domain-a', 'space-a', 'domain-b', {
+      createFallbackSpace: () => fallbackSpace,
+    })
 
-    expect(result.changed).toBe(false)
-    expect(result.reason).toBe('last-space')
-    expect(result.state.activeDomainId).toBe('domain-a')
+    const sourceDomain = result.state.domains.find((entry) => entry.id === 'domain-a')
+    const targetDomain = result.state.domains.find((entry) => entry.id === 'domain-b')
+    expect(result.changed).toBe(true)
+    expect(sourceDomain?.activeSpaceId).toBe('fallback-space')
+    expect(sourceDomain?.spaces.map((entry) => entry.id)).toEqual(['fallback-space'])
+    expect(sourceDomain?.spaces[0].name).toBe('space')
+    expect(sourceDomain?.spaces[0].data.tabs.map((entry) => entry.title)).toEqual(['tab'])
+    expect(targetDomain?.spaces.map((entry) => entry.id)).toEqual(['space-b', 'space-a'])
+    expect(result.state.activeDomainId).toBe('domain-b')
+    expect(result.state.activeSpaceId).toBe('space-a')
   })
 })

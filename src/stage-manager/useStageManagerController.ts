@@ -787,7 +787,7 @@ export function useStageManagerController({
       if (sourceDomain.spaces.length - spaceSelectionSnapshot.spaces.length < 1) {
         return {
           valid: false,
-          message: 'at least one space must remain.',
+          message: 'at least one space must remain',
         }
       }
       if (action === 'migrate') {
@@ -1241,7 +1241,7 @@ export function useStageManagerController({
       if (!result.changed) {
         const fallbackMessage =
           result.reason === 'last-space'
-            ? 'at least one space must remain.'
+            ? 'at least one space must remain'
             : result.reason === 'last-domain'
               ? 'at least one domain must remain.'
               : result.reason === 'same-domain'

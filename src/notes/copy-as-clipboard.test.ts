@@ -128,12 +128,12 @@ function createCopyAsState(): AppState {
 
 describe('copy-as clipboard helpers', () => {
   it('uses centralized user-facing copy and paste wording', () => {
-    expect(getCopyAsSuccessMessage('note', 'copy')).toBe('independent note copy copied.')
-    expect(getCopyAsSuccessMessage('note', 'duplicate')).toBe('synced note copy copied.')
+    expect(getCopyAsSuccessMessage('note', 'copy')).toBe('independent note pasted')
+    expect(getCopyAsSuccessMessage('note', 'duplicate')).toBe('synced note created.')
     expect(getCopyAsSuccessMessage('aisle', 'link')).toBe('aisle link copied.')
     expect(getCopyAsSuccessMessage('aisle', 'preview')).toBe('aisle preview copied.')
-    expect(getCopyAsPasteSuccessMessage('note', 'copy')).toBe('independent note copy created.')
-    expect(getCopyAsPasteSuccessMessage('note', 'duplicate')).toBe('synced note copy created.')
+    expect(getCopyAsPasteSuccessMessage('note', 'copy')).toBe('independent note copied to clipboard')
+    expect(getCopyAsPasteSuccessMessage('note', 'duplicate')).toBe('synced note copied to clipboard')
     expect(getCopyAsPasteSuccessMessage('aisle', 'link')).toBe('aisle link pasted.')
     expect(getCopyAsPasteSuccessMessage('aisle', 'preview')).toBe('aisle preview pasted.')
   })

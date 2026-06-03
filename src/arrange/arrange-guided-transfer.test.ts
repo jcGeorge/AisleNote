@@ -238,6 +238,29 @@ describe('arrange guided transfer resolution', () => {
     })
   })
 
+  it('moves carried parents immediately when selecting a destination space from a domain prompt', () => {
+    const state = appState([
+      domain('domain-a', [space('source', [tab('parent-a')])], 'source'),
+      domain(
+        'domain-b',
+        [space('target-a', [tab('parent-b'), tab('parent-c')]), space('target-b', [tab('parent-d')])],
+        'target-a',
+      ),
+    ])
+    const promptResolution = resolveArrangeDomainDestination(state, parentToDomain, preview, 'domain-b')
+    if (promptResolution.type !== 'prompt') throw new Error('expected prompt')
+
+    const resolution = resolveArrangePromptSpaceSelection(state, promptResolution.prompt, 'target-b')
+
+    expect(resolution).toMatchObject({
+      type: 'move-parent-to-space',
+      targetDomainId: 'domain-b',
+      targetSpaceId: 'target-b',
+    })
+    if (resolution.type !== 'move-parent-to-space') throw new Error('expected parent move')
+    expect(resolution.placement).toBeUndefined()
+  })
+
   it('confirms a carried parent drop on the same domain by appending to that domain first space', () => {
     const state = appState([
       domain('domain-a', [space('source', [tab('parent-a')])], 'source'),

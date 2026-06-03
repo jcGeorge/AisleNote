@@ -237,7 +237,12 @@ export function resolveArrangePromptSpaceSelection(
 ): ArrangeGuidedTransferResolution {
   if (!promptAllowsSpaceSelection(prompt)) return { type: 'none' }
   if (prompt.request.item.type === 'parent') {
-    return resolveParentDomainDestination(prompt.request, prompt.carriedPreview, prompt.targetDomainId, spaceId)
+    return {
+      type: 'move-parent-to-space',
+      request: prompt.request,
+      targetDomainId: prompt.targetDomainId,
+      targetSpaceId: spaceId,
+    }
   }
 
   return resolveSubTabSpaceDestination(

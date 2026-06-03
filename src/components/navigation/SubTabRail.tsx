@@ -18,6 +18,9 @@ import { getRenameInputKeyAction, shouldCreateAnotherTabAfterRenameEnter } from 
 import { SortIcon } from './SortIcon'
 
 type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
+type NavigationContextMenuOptions = {
+  force?: boolean
+}
 
 type SubTabRailProps = {
   viewMode: ViewMode
@@ -60,8 +63,18 @@ type SubTabRailProps = {
   onSelectParentHomeTab: () => void
   onSelectSubTab: (subTabId: string) => void
   onBeginEdit: (editing: { type: EditableEntityType; id: string }) => void
-  onOpenContextMenuForHomeTab: (event: MouseEvent<HTMLButtonElement>, tabId: string) => void
-  onOpenContextMenuForSubTab: (event: MouseEvent<HTMLButtonElement>, tabId: string, subTabId: string) => void
+  onOpenContextMenuForHomeTab: (
+    event: MouseEvent<HTMLButtonElement>,
+    tabId: string,
+    options?: NavigationContextMenuOptions,
+  ) => void
+  onOpenContextMenuForSubTab: (
+    event: MouseEvent<HTMLButtonElement>,
+    tabId: string,
+    subTabId: string,
+    options?: NavigationContextMenuOptions,
+  ) => void
+  onExitArrangeMode: () => void
   onStartArrangeDragSeed: (key: string, event: ReactPointerEvent<HTMLButtonElement>) => void
   onStartArrangeTapCandidate: (candidate: ArrangeTapCandidateSeed, event: ReactPointerEvent<HTMLButtonElement>) => void
   onStartArrangePress: (
@@ -168,6 +181,7 @@ export function SubTabRail({
   onBeginEdit,
   onOpenContextMenuForHomeTab,
   onOpenContextMenuForSubTab,
+  onExitArrangeMode,
   onStartArrangeDragSeed,
   onStartArrangeTapCandidate,
   onStartArrangePress,
@@ -238,11 +252,14 @@ export function SubTabRail({
             title={tooltipsDisabled ? undefined : 'home note'}
             onContextMenu={(event) => {
               if (viewMode !== 'main') return
-              onOpenContextMenuForHomeTab(event, activeTab.id)
+              const forceMenu = arrangeMode.active
+              if (forceMenu) onExitArrangeMode()
+              onOpenContextMenuForHomeTab(event, activeTab.id, forceMenu ? { force: true } : undefined)
             }}
             onPointerDown={(event) => {
               if (viewMode !== 'main') return
               if (tagFilterActive) return
+              if (event.button !== 0) return
               if (hasSelectionClickModifier(event)) {
                 onClearArrangePressTimer()
                 return
@@ -392,18 +409,19 @@ export function SubTabRail({
                     }}
                     onContextMenu={(event) => {
                       if (viewMode !== 'main') return
-                      onOpenContextMenuForSubTab(event, activeTab.id, subTab.id)
+                      const forceMenu = arrangeMode.active
+                      if (forceMenu) onExitArrangeMode()
+                      onOpenContextMenuForSubTab(event, activeTab.id, subTab.id, forceMenu ? { force: true } : undefined)
                     }}
                     onPointerDown={(event) => {
                       if (viewMode !== 'main') return
                       if (tagFilterActive) return
+                      if (event.button !== 0) return
                       if (hasSelectionClickModifier(event)) {
                         onClearArrangePressTimer()
                         return
                       }
-                      if (event.button === 0) {
-                        event.currentTarget.setPointerCapture(event.pointerId)
-                      }
+                      event.currentTarget.setPointerCapture(event.pointerId)
                       onStartArrangeDragSeed(`subtab:${subTab.id}`, event)
                       if (arrangeMode.active) {
                         onStartArrangeTapCandidate({ key: `subtab:${subTab.id}`, type: 'subtab', subTabId: subTab.id }, event)

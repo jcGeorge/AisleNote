@@ -43,6 +43,7 @@ import {
   moveParentTabsToSpace,
   moveSubTabsToParentInSpace,
 } from './arrange/arrange-hierarchy'
+import { formatArrangeCrossDomainMoveToast, type ArrangeCrossDomainMoveKind } from './arrange/arrange-move-toast'
 import { sortNamedItems, sortSubTabs, sortTabs } from './arrange/tab-sort'
 import { useArrangeMode } from './arrange/useArrangeMode'
 import { getToggledRailVisibilitySettings, type RailVisibilityTarget } from './navigation/rail-visibility'
@@ -903,6 +904,15 @@ function App() {
     }
   }
 
+  const pushArrangeCrossDomainMoveToast = (
+    kind: ArrangeCrossDomainMoveKind,
+    itemNames: string[],
+    targetDomainName: string | null | undefined,
+  ) => {
+    const message = formatArrangeCrossDomainMoveToast(kind, itemNames, targetDomainName)
+    if (message) pushToast(message, 'success')
+  }
+
   const showTip = (tipId: TipId) => {
     const currentState = stateRef.current
     if (currentState.ui.disabledTipIds.includes(tipId)) return
@@ -1399,11 +1409,16 @@ function App() {
     const projected = projectActiveDomainState(stateRef.current)
     const sourceDomain = projected.domains.find((domain) => domain.id === request.sourceDomainId)
     const sourceSpace = sourceDomain?.spaces.find((space) => space.id === request.sourceSpaceId)
+    const targetDomain = projected.domains.find((domain) => domain.id === targetDomainId)
+    const targetSpace = targetDomain?.spaces.find((space) => space.id === targetSpaceId)
     const movedIds = new Set(item.parentTabIds)
-    if (sourceSpace && sourceSpace.data.tabs.length > 0 && sourceSpace.data.tabs.every((tab) => movedIds.has(tab.id))) {
-      pushToast(LAST_PARENT_TAB_TOAST, 'warning')
-      return
-    }
+    const targetParentTabIds = new Set(targetSpace?.data.tabs.map((tab) => tab.id) ?? [])
+    const movedParentTabNames =
+      request.sourceDomainId !== targetDomainId && sourceSpace && targetSpace
+        ? sourceSpace.data.tabs
+            .filter((tab) => movedIds.has(tab.id) && !targetParentTabIds.has(tab.id))
+            .map((tab) => tab.title)
+        : []
     saveActiveCursorBeforeNavigation()
     setState((previous) => {
       const createEntityId = createReservedIdAllocator(collectAppNavigationEntityIds(previous))
@@ -1426,6 +1441,7 @@ function App() {
     setEditing(null)
     setArrangeDestinationPrompt(null)
     setGuidedParentRailTarget(null)
+    pushArrangeCrossDomainMoveToast('parent', movedParentTabNames, targetDomain?.name)
   }
 
   const applyArrangeSubTabsMoveToParent = (
@@ -1436,6 +1452,21 @@ function App() {
   ) => {
     if (request.item.type !== 'subtab') return
     const item = request.item
+    const projected = projectActiveDomainState(stateRef.current)
+    const sourceDomain = projected.domains.find((domain) => domain.id === request.sourceDomainId)
+    const sourceSpace = sourceDomain?.spaces.find((space) => space.id === request.sourceSpaceId)
+    const sourceParent = sourceSpace?.data.tabs.find((tab) => tab.id === item.parentTabId)
+    const targetDomain = projected.domains.find((domain) => domain.id === targetDomainId)
+    const targetSpace = targetDomain?.spaces.find((space) => space.id === targetSpaceId)
+    const targetParent = targetSpace?.data.tabs.find((tab) => tab.id === targetParentTabId)
+    const movedIds = new Set(item.subTabIds)
+    const targetSubTabIds = new Set(targetParent?.subTabs.map((subTab) => subTab.id) ?? [])
+    const movedSubTabNames =
+      request.sourceDomainId !== targetDomainId && sourceParent && targetParent
+        ? sourceParent.subTabs
+            .filter((subTab) => movedIds.has(subTab.id) && !targetSubTabIds.has(subTab.id))
+            .map((subTab) => subTab.title)
+        : []
     saveActiveCursorBeforeNavigation()
     setState((previous) =>
       moveSubTabsToParentInSpace(
@@ -1455,6 +1486,7 @@ function App() {
     setEditing(null)
     setArrangeDestinationPrompt(null)
     setGuidedParentRailTarget(null)
+    pushArrangeCrossDomainMoveToast('subtab', movedSubTabNames, targetDomain?.name)
   }
 
   const focusArrangeDestinationSpace = (targetDomainId: string, targetSpaceId: string) => {
@@ -1545,6 +1577,9 @@ function App() {
     },
     onArrangeSpaceMoveBlocked: (reason) => {
       if (reason === 'last-space') pushToast(LAST_SPACE_TOAST, 'warning')
+    },
+    onArrangeSpaceMovedAcrossDomains: (spaceNames, targetDomainName) => {
+      pushArrangeCrossDomainMoveToast('space', spaceNames, targetDomainName)
     },
     onArrangeParentMoveBlocked: () => pushToast(LAST_PARENT_TAB_TOAST, 'warning'),
   })
@@ -1706,7 +1741,8 @@ function App() {
     const previousState = stateRef.current
     const createEntityId = createReservedIdAllocator(collectAppNavigationEntityIds(previousState))
     const newSpace = createSpace('space', createEntityId)
-    setState((previous) => addSpaceToActiveDomain(previous, newSpace))
+    setScratchpadActive(false)
+    setState((previous) => ensureNoteBodiesForAppState(addSpaceToActiveDomain(previous, newSpace)))
     pendingCreatedEditRef.current = {
       type: 'space',
       id: newSpace.id,
@@ -1724,7 +1760,8 @@ function App() {
     const previousState = stateRef.current
     const createEntityId = createReservedIdAllocator(collectAppNavigationEntityIds(previousState))
     const newDomain = createDomain('domain', createEntityId)
-    setState((previous) => addDomain(previous, newDomain))
+    setScratchpadActive(false)
+    setState((previous) => ensureNoteBodiesForAppState(addDomain(previous, newDomain)))
     pendingCreatedEditRef.current = {
       type: 'domain',
       id: newDomain.id,
@@ -4506,17 +4543,13 @@ function App() {
   const draggingSubTabId =
     arrangeMode.active && arrangeDraggingItem?.type === 'subtab' ? arrangeDraggingItem.subTabId : null
   const arrangeableSpaceClassName =
-    arrangeMode.active &&
+    mainArrangementActive &&
     (!arrangeDestinationPrompt || promptAllowsSpaceSelection(arrangeDestinationPrompt)) &&
-    arrangeMode.scope === 'spaces' &&
-    viewMode === 'main' &&
     showCompactSpaces
       ? 'is-arrangeable'
       : ''
   const arrangeableDomainClassName =
-    arrangeMode.active &&
-    arrangeMode.scope === 'domains' &&
-    viewMode === 'main' &&
+    mainArrangementActive &&
     showCompactDomains
       ? 'is-arrangeable'
       : ''
@@ -4872,6 +4905,7 @@ function App() {
           arrangeMode={arrangeMode}
           arrangeableDomainClassName={arrangeableDomainClassName}
           draggingDomainId={draggingDomainId}
+          guidedDestinationActive={Boolean(arrangeDestinationPrompt)}
           arrangeSelectedDomainIds={arrangeSelectedDomainIds}
           domainsGridRef={domainsGridRef}
           controlsSlot={topVisibleMainRail === 'domains' ? renderTopRailControls('main') : null}
@@ -4883,6 +4917,7 @@ function App() {
           onHandleArrangeDomainSelectionClick={handleArrangeDomainSelectionClick}
           onClearArrangeSelection={clearArrangeSelection}
           onOpenContextMenu={openContextMenuForDomain}
+          onCancelArrangeMode={exitArrangeMode}
           onShouldSkipRenameBlur={shouldSkipRenameBlur}
           onCommitRename={commitRename}
           onCancelRename={cancelRename}
@@ -4911,6 +4946,9 @@ function App() {
           arrangeMode={arrangeMode}
           arrangeableSpaceClassName={arrangeableSpaceClassName}
           draggingSpaceId={draggingSpaceId}
+          guidedDestinationActive={Boolean(
+            arrangeDestinationPrompt && promptAllowsSpaceSelection(arrangeDestinationPrompt),
+          )}
           arrangeSelectedSpaceIds={arrangeSelectedSpaceIds}
           spacesGridRef={spacesGridRef}
           controlsSlot={topVisibleMainRail === 'spaces' ? renderTopRailControls('main') : null}
@@ -4924,6 +4962,7 @@ function App() {
           onHandleArrangeSpaceSelectionClick={handleArrangeSpaceSelectionClick}
           onClearArrangeSelection={clearArrangeSelection}
           onOpenContextMenu={openContextMenuForSpace}
+          onCancelArrangeMode={exitArrangeMode}
           onShouldSkipRenameBlur={shouldSkipRenameBlur}
           onCommitRename={commitRename}
           onCancelRename={cancelRename}
@@ -5288,6 +5327,7 @@ function App() {
             onBeginEdit={setEditing}
             onOpenContextMenuForHomeTab={openContextMenuForHomeTab}
             onOpenContextMenuForSubTab={openContextMenuForSubTab}
+            onExitArrangeMode={exitArrangeMode}
             onStartArrangeDragSeed={startArrangeDragSeed}
             onStartArrangeTapCandidate={startArrangeTapCandidate}
             onStartArrangePress={startArrangePress}

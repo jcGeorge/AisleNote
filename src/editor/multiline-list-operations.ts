@@ -61,6 +61,29 @@ type MultiLineListOperationPlan = {
   nextState: MultiLineEditState
 }
 
+type MultiLineStructuralListIndentPlan = MultiLineListOperationPlan & {
+  changed: boolean
+}
+
+type StructuralListPathStep = {
+  itemIndex: number
+  childIndex: number
+}
+
+type StructuralListItemRowContext = {
+  rootListStart: number
+  rootListEnd: number
+  rootListNode: ProseMirrorNode
+  parentListPath: StructuralListPathStep[]
+  itemIndex: number
+}
+
+type StructuralListTransformResult = {
+  node: ProseMirrorNode | null
+  changed: boolean
+  liftedItems?: ProseMirrorNode[]
+}
+
 function stripEditorPlaceholders(text: string): string {
   return text.replace(/\u200b/g, '')
 }
@@ -194,6 +217,75 @@ function getListItemDepth(resolved: any): number | null {
     if (resolved.node(depth)?.type?.name === 'listItem') return depth
   }
   return null
+}
+
+function isListNode(node: ProseMirrorNode | null | undefined): boolean {
+  return node?.type?.name === 'bulletList' || node?.type?.name === 'orderedList'
+}
+
+function getListDepths(resolved: any): number[] {
+  const depths: number[] = []
+  for (let depth = 1; depth <= resolved.depth; depth += 1) {
+    if (isListNode(resolved.node(depth))) depths.push(depth)
+  }
+  return depths
+}
+
+function getNodeChildren(node: ProseMirrorNode): ProseMirrorNode[] {
+  const children: ProseMirrorNode[] = []
+  node.forEach((child) => {
+    children.push(child)
+  })
+  return children
+}
+
+function createNodeWithChildren(node: ProseMirrorNode, children: ProseMirrorNode[]): ProseMirrorNode {
+  return node.type.create(node.attrs, Fragment.fromArray(children))
+}
+
+function getListPathKey(path: StructuralListPathStep[]): string {
+  return path.map((step) => `${step.itemIndex}:${step.childIndex}`).join('/')
+}
+
+function areAttrsEqual(left: Record<string, unknown> | null | undefined, right: Record<string, unknown> | null | undefined): boolean {
+  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null)
+}
+
+function getNestedListAttrsForList(listNode: ProseMirrorNode): Record<string, unknown> | null {
+  return listNode.type.name === 'orderedList' ? { order: 1 } : listNode.attrs
+}
+
+function isCompatibleNestedList(listNode: ProseMirrorNode, templateListNode: ProseMirrorNode): boolean {
+  return (
+    listNode.type === templateListNode.type &&
+    areAttrsEqual(listNode.attrs, getNestedListAttrsForList(templateListNode))
+  )
+}
+
+function createNestedListLike(listNode: ProseMirrorNode, items: ProseMirrorNode[]): ProseMirrorNode {
+  return listNode.type.create(getNestedListAttrsForList(listNode), Fragment.fromArray(items))
+}
+
+function appendItemToNestedList(
+  parentItem: ProseMirrorNode,
+  templateListNode: ProseMirrorNode,
+  itemToAppend: ProseMirrorNode,
+): ProseMirrorNode {
+  const children = getNodeChildren(parentItem)
+  const existingListIndex = [...children]
+    .reverse()
+    .findIndex((child) => isCompatibleNestedList(child, templateListNode))
+
+  if (existingListIndex >= 0) {
+    const childIndex = children.length - 1 - existingListIndex
+    const childList = children[childIndex]
+    const childItems = getNodeChildren(childList)
+    children[childIndex] = childList.type.create(childList.attrs, Fragment.fromArray([...childItems, itemToAppend]))
+  } else {
+    children.push(createNestedListLike(templateListNode, [itemToAppend]))
+  }
+
+  return createNodeWithChildren(parentItem, children)
 }
 
 function getCodeBlockLineIndex(codeNode: ProseMirrorNode, codeStart: number, range: EditorTextLineRange): number {
@@ -544,6 +636,200 @@ function getMultiLineListOperationContexts(view: any, multiLineEdit: MultiLineEd
     blockRanges,
     selectedIndices,
     contexts: contexts as RowContext[],
+  }
+}
+
+function getStructuralListItemRowContext(
+  view: any,
+  range: EditorTextLineRange,
+): StructuralListItemRowContext | null {
+  const doc = view?.state?.doc
+  const resolved = resolveSafe(doc, range.start)
+  if (!resolved) return null
+
+  const listItemDepth = getListItemDepth(resolved)
+  const listDepths = getListDepths(resolved)
+  const parentListDepth = listDepths.at(-1)
+  const rootListDepth = listDepths[0]
+  if (listItemDepth === null || parentListDepth === undefined || rootListDepth === undefined) return null
+  if (listItemDepth !== parentListDepth + 1) return null
+
+  const parentListPath = listDepths.slice(0, -1).map((listDepth) => ({
+    itemIndex: resolved.index(listDepth),
+    childIndex: resolved.index(listDepth + 1),
+  }))
+
+  return {
+    rootListStart: resolved.before(rootListDepth),
+    rootListEnd: resolved.after(rootListDepth),
+    rootListNode: resolved.node(rootListDepth),
+    parentListPath,
+    itemIndex: resolved.index(parentListDepth),
+  }
+}
+
+function getMultiLineStructuralListIndentContexts(view: any, multiLineEdit: MultiLineEditState) {
+  const blockRanges = getEditorTextLineRanges(view)
+  if (blockRanges.length === 0) return null
+
+  const selectedIndices = getMultiLineSelectedBlockIndices(multiLineEdit, blockRanges)
+  if (selectedIndices.length < 1) return null
+
+  const contexts = selectedIndices.map((index) => {
+    const range = blockRanges[index]
+    return range ? getStructuralListItemRowContext(view, range) : null
+  })
+  if (contexts.some((context) => context === null)) return null
+
+  return {
+    contexts: contexts as StructuralListItemRowContext[],
+  }
+}
+
+function groupSelectedStructuralListItems(contexts: StructuralListItemRowContext[]) {
+  const selectedByListPath = new Map<string, Set<number>>()
+
+  contexts.forEach((context) => {
+    const key = getListPathKey(context.parentListPath)
+    const selectedIndices = selectedByListPath.get(key) ?? new Set<number>()
+    selectedIndices.add(context.itemIndex)
+    selectedByListPath.set(key, selectedIndices)
+  })
+
+  return selectedByListPath
+}
+
+function indentStructuralList(
+  listNode: ProseMirrorNode,
+  listPath: StructuralListPathStep[],
+  selectedByListPath: Map<string, Set<number>>,
+): StructuralListTransformResult {
+  const selectedIndices = selectedByListPath.get(getListPathKey(listPath)) ?? new Set<number>()
+  const resultItems: ProseMirrorNode[] = []
+  let changed = false
+
+  getNodeChildren(listNode).forEach((itemNode, itemIndex) => {
+    const transformedChildren = getNodeChildren(itemNode).map((child, childIndex) => {
+      if (!isListNode(child)) return child
+      const childResult = indentStructuralList(
+        child,
+        [...listPath, { itemIndex, childIndex }],
+        selectedByListPath,
+      )
+      changed = changed || childResult.changed
+      return childResult.node ?? child
+    })
+    const transformedItem = createNodeWithChildren(itemNode, transformedChildren)
+
+    if (selectedIndices.has(itemIndex) && resultItems.length > 0) {
+      const previousIndex = resultItems.length - 1
+      resultItems[previousIndex] = appendItemToNestedList(resultItems[previousIndex], listNode, transformedItem)
+      changed = true
+      return
+    }
+
+    resultItems.push(transformedItem)
+  })
+
+  return {
+    node: changed ? createNodeWithChildren(listNode, resultItems) : listNode,
+    changed,
+  }
+}
+
+function outdentStructuralList(
+  listNode: ProseMirrorNode,
+  listPath: StructuralListPathStep[],
+  selectedByListPath: Map<string, Set<number>>,
+  isRootList: boolean,
+): StructuralListTransformResult {
+  const selectedIndices = selectedByListPath.get(getListPathKey(listPath)) ?? new Set<number>()
+  const resultItems: ProseMirrorNode[] = []
+  const liftedItems: ProseMirrorNode[] = []
+  let changed = false
+
+  getNodeChildren(listNode).forEach((itemNode, itemIndex) => {
+    const liftedAfterCurrentItem: ProseMirrorNode[] = []
+    const transformedChildren: ProseMirrorNode[] = []
+
+    getNodeChildren(itemNode).forEach((child, childIndex) => {
+      if (!isListNode(child)) {
+        transformedChildren.push(child)
+        return
+      }
+
+      const childResult = outdentStructuralList(
+        child,
+        [...listPath, { itemIndex, childIndex }],
+        selectedByListPath,
+        false,
+      )
+      changed = changed || childResult.changed
+      if (childResult.node) transformedChildren.push(childResult.node)
+      liftedAfterCurrentItem.push(...(childResult.liftedItems ?? []))
+    })
+
+    const transformedItem = createNodeWithChildren(itemNode, transformedChildren)
+    if (selectedIndices.has(itemIndex) && !isRootList) {
+      liftedItems.push(transformedItem)
+      changed = true
+    } else {
+      resultItems.push(transformedItem)
+      resultItems.push(...liftedAfterCurrentItem)
+    }
+  })
+
+  return {
+    node: resultItems.length > 0 ? createNodeWithChildren(listNode, resultItems) : null,
+    changed,
+    liftedItems,
+  }
+}
+
+export function buildMultiLineStructuralListIndentPlan(
+  view: any,
+  multiLineEdit: MultiLineEditState,
+  outdent: boolean,
+): MultiLineStructuralListIndentPlan | null {
+  const context = getMultiLineStructuralListIndentContexts(view, multiLineEdit)
+  if (!context) return null
+
+  const contextsByRootListStart = new Map<number, StructuralListItemRowContext[]>()
+  context.contexts.forEach((rowContext) => {
+    const existing = contextsByRootListStart.get(rowContext.rootListStart) ?? []
+    existing.push(rowContext)
+    contextsByRootListStart.set(rowContext.rootListStart, existing)
+  })
+
+  const replacements: Array<ReplacementRange & { node: ProseMirrorNode }> = []
+  for (const contexts of contextsByRootListStart.values()) {
+    const first = contexts[0]
+    if (!first) continue
+    const selectedByListPath = groupSelectedStructuralListItems(contexts)
+    const result = outdent
+      ? outdentStructuralList(first.rootListNode, [], selectedByListPath, true)
+      : indentStructuralList(first.rootListNode, [], selectedByListPath)
+    if (result.changed && result.node) {
+      replacements.push({
+        from: first.rootListStart,
+        to: first.rootListEnd,
+        node: result.node,
+      })
+    }
+  }
+
+  let transaction = view.state.tr
+  for (const replacement of [...replacements].sort((a, b) => b.from - a.from)) {
+    transaction = transaction.replaceWith(replacement.from, replacement.to, replacement.node)
+  }
+
+  return {
+    transaction,
+    changed: replacements.length > 0,
+    nextState: {
+      ...multiLineEdit,
+      selectionAnchorOffsets: undefined,
+    },
   }
 }
 

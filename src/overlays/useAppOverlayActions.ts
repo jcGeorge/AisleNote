@@ -48,6 +48,9 @@ import type {
 } from '../types/app'
 
 type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
+type NavigationContextMenuOptions = {
+  force?: boolean
+}
 
 export function formatMovedToTrashToast(kind: 'domain' | 'space' | 'parent tab' | 'tab', name: string) {
   return `${kind} "${name}" has been moved to trash`
@@ -55,8 +58,8 @@ export function formatMovedToTrashToast(kind: 'domain' | 'space' | 'parent tab' 
 
 export const LAST_DOMAIN_TOAST =
   'at least one domain must remain. To delete this notebook, switch to another notebook first, then delete this notebook folder from your file system.'
-export const LAST_SPACE_TOAST = 'at least one space must remain.'
-export const LAST_PARENT_TAB_TOAST = 'at least one parent tab must remain.'
+export const LAST_SPACE_TOAST = 'at least one space must remain'
+export const LAST_PARENT_TAB_TOAST = 'at least one parent tab must remain'
 
 type UseAppOverlayActionsParams = {
   state: AppState
@@ -131,25 +134,38 @@ export const useAppOverlayActions = ({
     })
   }
 
-  const openContextMenuForTab = (event: MouseEvent<HTMLButtonElement>, tabId: string) => {
+  const openContextMenuForTab = (
+    event: MouseEvent<HTMLButtonElement>,
+    tabId: string,
+    options: NavigationContextMenuOptions = {},
+  ) => {
     if (viewMode !== 'main') return
-    if (suppressNavigationContextMenuIfDisabled(event)) return
+    if (!options.force && suppressNavigationContextMenuIfDisabled(event)) return
     event.preventDefault()
     setMenuOpen(false)
     setContextMenu({ type: 'tab', tabId, x: event.clientX, y: event.clientY })
   }
 
-  const openContextMenuForSubTab = (event: MouseEvent<HTMLButtonElement>, tabId: string, subTabId: string) => {
+  const openContextMenuForSubTab = (
+    event: MouseEvent<HTMLButtonElement>,
+    tabId: string,
+    subTabId: string,
+    options: NavigationContextMenuOptions = {},
+  ) => {
     if (viewMode !== 'main') return
-    if (suppressNavigationContextMenuIfDisabled(event)) return
+    if (!options.force && suppressNavigationContextMenuIfDisabled(event)) return
     event.preventDefault()
     setMenuOpen(false)
     setContextMenu({ type: 'subtab', tabId, subTabId, x: event.clientX, y: event.clientY })
   }
 
-  const openContextMenuForHomeTab = (event: MouseEvent<HTMLButtonElement>, tabId: string) => {
+  const openContextMenuForHomeTab = (
+    event: MouseEvent<HTMLButtonElement>,
+    tabId: string,
+    options: NavigationContextMenuOptions = {},
+  ) => {
     if (viewMode !== 'main') return
-    if (suppressNavigationContextMenuIfDisabled(event)) return
+    if (!options.force && suppressNavigationContextMenuIfDisabled(event)) return
     event.preventDefault()
     setMenuOpen(false)
     setContextMenu({ type: 'home-tab', tabId, x: event.clientX, y: event.clientY })
@@ -234,17 +250,25 @@ export const useAppOverlayActions = ({
     })
   }
 
-  const openContextMenuForSpace = (event: MouseEvent<HTMLButtonElement>, spaceId: string) => {
+  const openContextMenuForSpace = (
+    event: MouseEvent<HTMLButtonElement>,
+    spaceId: string,
+    options: NavigationContextMenuOptions = {},
+  ) => {
     if (viewMode !== 'main') return
-    if (suppressNavigationContextMenuIfDisabled(event)) return
+    if (!options.force && suppressNavigationContextMenuIfDisabled(event)) return
     event.preventDefault()
     setMenuOpen(false)
     setContextMenu({ type: 'space', spaceId, x: event.clientX, y: event.clientY })
   }
 
-  const openContextMenuForDomain = (event: MouseEvent<HTMLButtonElement>, domainId: string) => {
+  const openContextMenuForDomain = (
+    event: MouseEvent<HTMLButtonElement>,
+    domainId: string,
+    options: NavigationContextMenuOptions = {},
+  ) => {
     if (viewMode !== 'main') return
-    if (suppressNavigationContextMenuIfDisabled(event)) return
+    if (!options.force && suppressNavigationContextMenuIfDisabled(event)) return
     event.preventDefault()
     setMenuOpen(false)
     setContextMenu({ type: 'domain', domainId, x: event.clientX, y: event.clientY })

@@ -36,6 +36,7 @@ import {
 import { applyStructuralListIndent } from './list-marker-commands'
 import {
   buildMultiLineListOperationPlan,
+  buildMultiLineStructuralListIndentPlan,
   getMultiLineListMarkerShortcut,
   type MultiLineListOperation,
 } from './multiline-list-operations'
@@ -976,7 +977,38 @@ export function useMultilineEditing({
     return selectedIndices.every((index) => isCodeBlockTextLineRange(blockRanges[index]))
   }
 
+  const tryApplyStructuralListTabInput = (outdent: boolean) => {
+    const { currentEditor, view } = getCurrentEditorAndView()
+    const multiLineEdit = editStateRef.current
+    if (!currentEditor || !view || !multiLineEdit) return false
+
+    const beforeMarkdown = getNormalizedEditorMarkdown(currentEditor)
+    const beforeState = cloneMultiLineEditState(multiLineEdit)
+    const plan = buildMultiLineStructuralListIndentPlan(view, multiLineEdit, outdent)
+    if (!plan) return false
+
+    if (!plan.changed) {
+      editStateRef.current = plan.nextState
+      syncVisualSelection()
+      currentEditor.focus()
+      return true
+    }
+
+    view.dispatch(plan.transaction.scrollIntoView())
+    editStateRef.current = plan.nextState
+    syncVisualSelection()
+    const markdownAfterListIndent = getNormalizedEditorMarkdown(currentEditor)
+    commitMarkdown(markdownAfterListIndent)
+    if (editStateRef.current) {
+      recordHistory(beforeMarkdown, beforeState, markdownAfterListIndent, editStateRef.current)
+    }
+    currentEditor.focus()
+    return true
+  }
+
   const tryApplyTabInput = (shiftKey: boolean) => {
+    if (tryApplyStructuralListTabInput(shiftKey)) return true
+
     if (shiftKey) {
       return tryRemoveBlockIndentOperation() || tryApplyInput({ type: 'backspace' })
     }
