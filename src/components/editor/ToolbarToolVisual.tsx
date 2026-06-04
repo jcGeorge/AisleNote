@@ -28,7 +28,6 @@ function getToolbarToolClassName(toolId: ToolbarToolId): string {
   if (toolId === 'frontmatter') return 'frontmatter-toolbar-btn'
   if (toolId === 'tableOfContents') return 'table-of-contents-toolbar-btn'
   if (toolId === 'aisles') return 'aisles-toolbar-btn'
-  if (toolId === 'director') return 'director-toolbar-btn'
   if (toolId === 'findReplace') return 'find-replace-toolbar-btn'
   if (toolId === 'undo') return 'editor-history-toolbar-btn editor-history-toolbar-btn-undo'
   if (toolId === 'redo') return 'editor-history-toolbar-btn editor-history-toolbar-btn-redo'
@@ -71,16 +70,6 @@ function AislesToolbarIcon() {
   )
 }
 
-function DirectorToolbarIcon() {
-  return (
-    <svg className="director-toolbar-icon" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
-      <path className="director-toolbar-icon-ring" d="M16 4.5a11.5 11.5 0 1 0 0 23 11.5 11.5 0 0 0 0-23Z" />
-      <path className="director-toolbar-icon-needle" d="m20.9 9.9-2.3 8.7-7.5 3.5 2.3-8.7Z" />
-      <path className="director-toolbar-icon-center" d="M16 15.1a1.7 1.7 0 1 0 0 3.4 1.7 1.7 0 0 0 0-3.4Z" />
-    </svg>
-  )
-}
-
 function FindReplaceToolbarIcon() {
   return (
     <svg className="find-replace-toolbar-icon" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
@@ -105,8 +94,6 @@ function getToolbarToolChildren(toolId: ToolbarToolId): ReactNode {
       return <TableOfContentsToolbarIcon />
     case 'aisles':
       return <AislesToolbarIcon />
-    case 'director':
-      return <DirectorToolbarIcon />
     case 'findReplace':
       return <FindReplaceToolbarIcon />
     case 'undo':

@@ -1003,10 +1003,6 @@ describe('app state normalization', () => {
     const invalidNestedVisuals = parseModernState({ ui: { settingsSection: 'visuals', visualsSettingsSection: 'colors' } })
     const tips = parseModernState({ ui: { settingsSection: 'tips' } })
     const toolbar = parseModernState({ ui: { settingsSection: 'toolbar' } })
-    const visualizerHomeMerge = parseModernState({ ui: { visualizerHomeNodesResideInParent: true } })
-    const invalidVisualizerHomeMerge = parseModernState({ ui: { visualizerHomeNodesResideInParent: 'true' } })
-    const visualizerLayout = parseModernState({ ui: { visualizerLayoutMode: 'link-tree' } })
-    const invalidVisualizerLayout = parseModernState({ ui: { visualizerLayoutMode: 'tree' } })
     const invalid = parseModernState({ ui: { settingsSection: 'unknown' } })
     const missing = parseModernState({ ui: {} })
 
@@ -1022,14 +1018,8 @@ describe('app state normalization', () => {
     expect(invalidNestedVisuals.ui.visualsSettingsSection).toBe('theming')
     expect(tips.ui.settingsSection).toBe('tips')
     expect(toolbar.ui.settingsSection).toBe('toolbar')
-    expect(visualizerHomeMerge.ui.visualizerHomeNodesResideInParent).toBe(true)
-    expect(invalidVisualizerHomeMerge.ui.visualizerHomeNodesResideInParent).toBe(false)
-    expect(visualizerLayout.ui.visualizerLayoutMode).toBe('link-tree')
-    expect(invalidVisualizerLayout.ui.visualizerLayoutMode).toBe('wedge-fan')
     expect(invalid.ui.settingsSection).toBe('hotkeys')
     expect(missing.ui.settingsSection).toBe('hotkeys')
-    expect(missing.ui.visualizerHomeNodesResideInParent).toBe(false)
-    expect(missing.ui.visualizerLayoutMode).toBe('wedge-fan')
   })
 
   it('normalizes tooltip scale settings', () => {

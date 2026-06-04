@@ -8,7 +8,7 @@ The guiding rule is: data integrity and recovery come before visual polish and p
 
 Cleaned up on 2026-05-17.
 
-- **Phase 1 is complete.** The stabilization pass covered real-workspace persistence, frontmatter, Stage Manager/Director flows, rename persistence, trash/restore, export/images, and notebook-folder reload/move behavior.
+- **Phase 1 is complete.** The stabilization pass covered real-workspace persistence, frontmatter, batch note workflows, rename persistence, trash/restore, export/images, and notebook-folder reload/move behavior.
 - **Phase 2 is complete for the current schema 1 storage model.** The active `domains/` manifest/Markdown/assets format is documented, Electron/browser storage behavior is hardened, notebook-folder health is visible in settings, global user settings are separated from selected notebook folders, and recovery snapshots are available outside the active `notes/` tree.
 - **Phase 3 is complete for this roadmap gate.** The first targeted refactor pass extracted notebook-folder orchestration and cleared the hook-dependency cleanup target. Larger refactor slices are now normal engineering hygiene, not blockers for Phase 4.
 - **Phase 4 is the current active phase.** The first input-polish slice is largely implemented; remaining Phase 4 work is continued bug polish plus the later design-system/UI overhaul.
@@ -20,7 +20,7 @@ Goal: prove the app can preserve user data through normal and stressful workflow
 Completed outcomes:
 
 - Frontmatter templates, computed values, default values, manual rows, derived rows, null date/datetime values, picker behavior, and template switching were tested and fixed where needed.
-- Director/Stage Manager operations were exercised for frontmatter application, note movement, migration, deletion, restore, and review flows.
+- Batch note operations were exercised for frontmatter application, note movement, deletion, restore, and review flows.
 - Rename persistence for domains, spaces, parent tabs, and sub-tabs was validated across app restart/storage reload.
 - Trash restore/delete behavior, export output, image asset handling, image resize/crop/rotation metadata, and notebook-folder move/retry/reload behavior were validated.
 - The manual real-workspace pass used QA-only data and a backup-first workflow.
@@ -55,12 +55,12 @@ Completed outcomes:
 - Notebook-folder state/actions moved out of `App.tsx` into a focused controller hook.
 - Storage status loading, subscription, choose/move/reveal/retry/restore actions, and related toast handling are owned by the controller.
 - Hook-dependency warning cleanup was completed for the targeted editor/image-tools, navigation-history, note-body, and global-hotkey paths.
-- The pass stayed behavior-preserving and avoided Stage Manager/image-tools internals until there is a specific reason to split them.
+- The pass stayed behavior-preserving and avoided image-tools internals until there is a specific reason to split them.
 
 Remaining refactor guidance:
 
 - Treat future refactors as incremental slices attached to real feature or bug work.
-- Highest-value future surfaces remain settings/frontmatter controllers, editor/image helpers, and Stage Manager coordination.
+- Highest-value future surfaces remain settings/frontmatter controllers and editor/image helpers.
 - Do not bundle broad UI redesign into refactor-only work.
 
 ## Phase 4: UI/UX Stabilization And Input Polish — Current
@@ -106,7 +106,7 @@ Goal: teach workflows after those workflows are stable.
 Focus areas:
 
 - Lightweight tips surface instead of a large static manual.
-- Contextual tips for first use of domains, spaces, tabs, sub-tabs, aisles, frontmatter, Stage Manager, and storage.
+- Contextual tips for first use of domains, spaces, tabs, sub-tabs, aisles, frontmatter, and storage.
 - Workflow tip for pressing Tab after naming a domain, space, parent tab, or sub-tab once that behavior exists.
 
 Exit criteria:
@@ -121,7 +121,7 @@ Goal: expand frontmatter power after frontmatter semantics are stable.
 
 Focus areas:
 
-- Broaden current Director/frontmatter application into higher-level batch controls.
+- Broaden current frontmatter workflows into higher-level batch controls.
 - Support preview/review before applying batch metadata changes.
 - Handle conflicts between existing note frontmatter and template-derived fields.
 - Keep derived/manual/computed behavior clear in batch operations.
@@ -206,7 +206,7 @@ Editing:
 
 Frontmatter:
 
-- Manual fields, template fields, computed values, derived rows, date/datetime pickers, null values, and Director application behave as expected.
+- Manual fields, template fields, computed values, derived rows, date/datetime pickers, null values, and active-note frontmatter application behave as expected.
 - Exported Markdown remains readable.
 
 UX and accessibility:

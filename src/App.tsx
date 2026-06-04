@@ -95,16 +95,8 @@ import {
 } from './components/overlays/context-menu-dismissal'
 import { appendToastToHistory, appendToastToStack } from './components/overlays/toast-stack'
 import { SettingsPage } from './components/settings/SettingsPage'
-import { StageManagerView } from './components/stage-manager/StageManagerView'
 import { TrashHomeNote } from './components/trash/TrashHomeNote'
 import { AboutView } from './components/about/AboutView'
-import { VisualizerSettingsPopover, VisualizerTopbarControls, VisualizerView } from './components/visualizer/VisualizerView'
-import {
-  buildVisualizerGraph,
-  DEFAULT_VISUALIZER_FILTER,
-  normalizeVisualizerFilter,
-  type VisualizerFilterState,
-} from './visualizer/visualizer-graph'
 import { applyListToolbarCommand, type ToolbarListCommand } from './editor/list-marker-commands'
 import {
   applyEditorNewlineOperation,
@@ -281,7 +273,6 @@ import {
   MAX_NOTE_AISLES,
 } from './state/workspace'
 import { collectAppNavigationEntityIds, createReservedIdAllocator } from './state/navigation-ids'
-import { useStageManagerController } from './stage-manager/useStageManagerController'
 import {
   appendTagFilterCount,
   buildTagFilterIndex,
@@ -338,7 +329,6 @@ import type {
   TipId,
   ToastState,
   ToastTone,
-  VisualizerLayoutMode,
   ViewMode,
   WorkspaceData,
 } from './types/app'
@@ -464,9 +454,6 @@ function App() {
   }
   const { state, setState, stateRef, flushPendingPersistence, commitAppStateNow } = usePersistentAppState()
   const [viewMode, setViewMode] = useState<ViewMode>(() => initialDeviceSettingsRef.current?.lastOpened?.viewMode ?? 'main')
-  const [visualizerFilter, setVisualizerFilter] = useState<VisualizerFilterState>(DEFAULT_VISUALIZER_FILTER)
-  const [visualizerSelectedNodeId, setVisualizerSelectedNodeId] = useState('')
-  const [visualizerSettingsOpen, setVisualizerSettingsOpen] = useState(false)
   const [scratchpadActive, setScratchpadActive] = useState(() =>
     shouldRestoreScratchpadWorkspace(initialDeviceSettingsRef.current?.lastOpened),
   )
@@ -1361,16 +1348,6 @@ function App() {
     setEditing(null)
   }
 
-  const openVisualizerView = () => {
-    closeEditorEphemeraRef.current()
-    if (arrangeMode.active) exitArrangeMode()
-    exitTagFilterMode()
-    setScratchpadActive(false)
-    setViewMode('visualizer')
-    setMenuOpen(false)
-    setEditing(null)
-  }
-
   const openAboutView = () => {
     closeEditorEphemeraRef.current()
     if (arrangeMode.active) exitArrangeMode()
@@ -1392,10 +1369,6 @@ function App() {
 
   const openMessageLocation = (location: NoteLocation) => {
     navigateToNoteLocation({ ...location, startAt: 'top' })
-  }
-
-  const openVisualizerLocation = (location: NoteLocation, aisleId?: string) => {
-    navigateToNoteLocation({ ...location, aisleId, startAt: 'top' })
   }
 
   const applyArrangeParentMoveToSpace = (
@@ -1885,7 +1858,7 @@ function App() {
   }
 
   const openScratchpadFromRail = () => {
-    if (viewMode === 'stage-manager' || mainArrangementActive || arrangeDestinationPrompt) {
+    if (mainArrangementActive || arrangeDestinationPrompt) {
       pushToast('scratchpad cannot be used in this mode.', 'warning')
       return
     }
@@ -3907,29 +3880,6 @@ function App() {
     cutMultiLineSelectionToClipboard,
   })
 
-  const stageManager = useStageManagerController({
-    state,
-    setState,
-    commitAppStateNow,
-    activeSpace,
-    workspace,
-    viewMode,
-    setViewMode,
-    setMenuOpen,
-    setContextMenu,
-    setEditing,
-    flushPendingContent: saveActiveCursorBeforeNavigation,
-    exitArrangeMode,
-    returnToLastTabLikeView,
-    selectTab,
-    buildStateWithLatestEditorContent,
-    pushToast,
-  })
-  const openStageManagerView = () => {
-    exitTagFilterMode()
-    stageManager.open()
-  }
-
   const closeSettingsView = () => {
     returnToLastTabLikeView()
   }
@@ -4379,11 +4329,6 @@ function App() {
       closeEditorEphemeraRef.current()
       openAisleEditModal()
     },
-    openDirector: () => {
-      closeEditorEphemeraRef.current()
-      exitTagFilterMode()
-      stageManager.open()
-    },
     openFindReplace: openFindReplacePanel,
     pushToast,
     onDisabledToolbarInteraction: exitArrangeMode,
@@ -4506,7 +4451,7 @@ function App() {
       : 0
   const showCompactSpaces = effectiveHierarchyLevel >= 1
   const showCompactDomains = effectiveHierarchyLevel >= 2
-  const isNoteWorkspaceView = viewMode === 'main' || viewMode === 'stage-manager'
+  const isNoteWorkspaceView = viewMode === 'main'
   const promptTargetsActiveSpace =
     Boolean(arrangeDestinationPrompt) &&
     arrangeDestinationPrompt?.targetDomainId === state.activeDomainId &&
@@ -4610,106 +4555,6 @@ function App() {
       onSortModeChange={setTagFilterSortMode}
     />
   ) : null
-  const visualizerHomeNodesResideInParent = state.ui.visualizerHomeNodesResideInParent === true
-  const visualizerLayoutMode = state.ui.visualizerLayoutMode ?? 'wedge-fan'
-  const visualizerGraph = useMemo(
-    () =>
-      viewMode === 'visualizer'
-        ? buildVisualizerGraph(state, visualizerFilter, {
-            homeNodesResideInParent: visualizerHomeNodesResideInParent,
-            layoutMode: visualizerLayoutMode,
-          })
-        : null,
-    [state, viewMode, visualizerFilter, visualizerHomeNodesResideInParent, visualizerLayoutMode],
-  )
-  const updateVisualizerFilter = useCallback((updater: (filter: VisualizerFilterState) => VisualizerFilterState) => {
-    setVisualizerFilter((previous) => normalizeVisualizerFilter(updater(previous)))
-    setVisualizerSelectedNodeId('')
-  }, [])
-  const handleVisualizerNodeSelection = useCallback((nodeId: string) => {
-    setVisualizerSelectedNodeId(nodeId)
-    setVisualizerFilter((previous) => normalizeVisualizerFilter({ ...previous, focusedNodeId: nodeId }))
-  }, [])
-  const closeVisualizerPreview = useCallback(() => {
-    if (!visualizerSelectedNodeId) return
-    setVisualizerSelectedNodeId('')
-    setVisualizerFilter((previous) =>
-      previous.focusedNodeId === visualizerSelectedNodeId
-        ? normalizeVisualizerFilter({ ...previous, focusedNodeId: '' })
-        : previous,
-    )
-  }, [visualizerSelectedNodeId])
-  useEffect(() => {
-    if (viewMode !== 'visualizer' || !visualizerSelectedNodeId || visualizerSettingsOpen) return undefined
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
-      event.preventDefault()
-      closeVisualizerPreview()
-    }
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [closeVisualizerPreview, viewMode, visualizerSelectedNodeId, visualizerSettingsOpen])
-  const toggleVisualizerSettings = useCallback(() => {
-    setVisualizerSettingsOpen((open) => !open)
-  }, [])
-  const closeVisualizerSettings = useCallback(() => {
-    setVisualizerSettingsOpen(false)
-  }, [])
-  const updateVisualizerHomeNodesResideInParent = useCallback(
-    (enabled: boolean) => {
-      setState((previous) =>
-        previous.ui.visualizerHomeNodesResideInParent === enabled
-          ? previous
-          : {
-              ...previous,
-              ui: {
-                ...previous.ui,
-                visualizerHomeNodesResideInParent: enabled,
-              },
-            },
-      )
-      setVisualizerSelectedNodeId('')
-      setVisualizerFilter((previous) => normalizeVisualizerFilter({ ...previous, focusedNodeId: '' }))
-    },
-    [setState],
-  )
-  const updateVisualizerLayoutMode = useCallback(
-    (layoutMode: VisualizerLayoutMode) => {
-      setState((previous) =>
-        previous.ui.visualizerLayoutMode === layoutMode
-          ? previous
-          : {
-              ...previous,
-              ui: {
-                ...previous.ui,
-                visualizerLayoutMode: layoutMode,
-              },
-            },
-      )
-    },
-    [setState],
-  )
-  useEffect(() => {
-    if (viewMode !== 'visualizer') setVisualizerSettingsOpen(false)
-  }, [viewMode])
-  const visualizerFilterControl =
-    visualizerGraph && viewMode === 'visualizer' ? (
-      <VisualizerTopbarControls
-        graph={visualizerGraph}
-        filter={visualizerFilter}
-        onFilterChange={updateVisualizerFilter}
-      />
-    ) : null
-  const visualizerSettingsPopover =
-    viewMode === 'visualizer' && visualizerSettingsOpen ? (
-      <VisualizerSettingsPopover
-        homeNodesResideInParent={visualizerHomeNodesResideInParent}
-        layoutMode={visualizerLayoutMode}
-        onHomeNodesResideInParentChange={updateVisualizerHomeNodesResideInParent}
-        onLayoutModeChange={updateVisualizerLayoutMode}
-        onClose={closeVisualizerSettings}
-      />
-    ) : null
   const mainTopRailActions: NavigationRailAction[] = mainArrangementActive
     ? [
         {
@@ -4733,28 +4578,15 @@ function App() {
         },
       ]
     : []
-  const stageManagerTopRailActions: NavigationRailAction[] = [
-    {
-      key: 'end-stage-manager',
-      label: 'director',
-      selected: false,
-      className: 'btn btn-sm tab-btn topbar-action-btn topbar-context-btn',
-      onClick: () => undefined,
-    },
-  ]
   const renderTopRailControls = (viewForMenu: ViewMode = viewMode) => (
     <NavigationRailControls
-      actions={viewForMenu === 'stage-manager' ? stageManagerTopRailActions : mainTopRailActions}
+      actions={mainTopRailActions}
       menuOpen={menuOpen}
-      showCloseControl={viewForMenu === 'stage-manager' || mainArrangementActive || (viewForMenu === 'main' && tagFilterActive)}
+      showCloseControl={mainArrangementActive || (viewForMenu === 'main' && tagFilterActive)}
       viewMode={viewForMenu}
       spaceRailVisible={state.ui.alwaysShowSpaces ?? false}
       domainRailVisible={state.ui.alwaysShowDomains ?? false}
       onCloseAction={() => {
-        if (viewForMenu === 'stage-manager') {
-          stageManager.end()
-          return
-        }
         if (tagFilterActive) {
           exitTagFilterMode()
           return
@@ -4764,10 +4596,8 @@ function App() {
       onSetMenuOpen={setMenuOpen}
       onToggleSpaceRail={toggleSpaceRailVisibility}
       onToggleDomainRail={toggleDomainRailVisibility}
-      onOpenStageManager={openStageManagerView}
       onToggleTrash={toggleTrashView}
       onOpenMessages={openMessagesView}
-      onOpenVisualizer={openVisualizerView}
       onOpenSettings={openSettingsWithoutMentionMenu}
       onOpenAbout={openAboutView}
       messagesCount={unresolvedMessageCount}
@@ -4814,13 +4644,9 @@ function App() {
   const noteMentionSearchEntries = noteMention.searchEntries
   const noteMentionSearchActiveIndex = noteMention.activeSearchIndex
   const tagAutocompleteMenu = tagAutocomplete.menu
-  const stageManagerActiveDomain = stageManager.domains.find((domain) => domain.id === state.activeDomainId) ?? stageManager.domains[0]
-  const stageManagerSpaces = stageManagerActiveDomain?.spaces ?? state.spaces
   return (
     <main
-      className={`app-shell theme-${state.theme} ${customThemeClassName} view-${viewMode} ${
-        viewMode === 'stage-manager' ? 'view-stage-manager' : ''
-      } ${mainArrangementActive ? 'tooltips-disabled' : ''}`}
+      className={`app-shell theme-${state.theme} ${customThemeClassName} view-${viewMode} ${mainArrangementActive ? 'tooltips-disabled' : ''}`}
       style={
         {
           '--tab-button-scale': String(state.ui.tabButtonScale),
@@ -4830,73 +4656,6 @@ function App() {
         } as CSSProperties
       }
     >
-      {viewMode === 'stage-manager' && (
-        <CompactDomainRail
-          domains={stageManager.domains}
-          activeDomainId={state.activeDomainId}
-          editing={null}
-          arrangeMode={arrangeMode}
-          arrangeableDomainClassName=""
-          draggingDomainId={null}
-          domainsGridRef={domainsGridRef}
-          controlsSlot={renderTopRailControls('stage-manager')}
-          stageManagerMode
-          stageManagerSelectedDomainIds={stageManager.selectedDomainIds}
-          onStageManagerDomainClick={stageManager.handleDomainClick}
-          onStageManagerDomainDoubleClick={stageManager.handleDomainDoubleClick}
-          onOpenDomain={openDomainFromCompactRail}
-          onOpenContextMenu={openContextMenuForDomain}
-          onShouldSkipRenameBlur={shouldSkipRenameBlur}
-          onCommitRename={commitRename}
-          onCancelRename={cancelRename}
-          onRenameDraftChange={trackRenameDraft}
-          onBeginEdit={setEditing}
-          onAutoSizeRenameInput={autoSizeRenameInput}
-          onClearRenameDraft={clearRenameDraft}
-          onConsumeArrangeClickSuppression={consumeArrangeClickSuppression}
-          onStartArrangeDragSeed={startArrangeDragSeed}
-          onStartArrangeTapCandidate={startArrangeTapCandidate}
-          onStartArrangePress={startArrangePress}
-          onHandleArrangeDomainPointerMove={handleArrangeDomainPointerMove}
-          onHandleArrangeDomainPointerUp={handleArrangeDomainPointerUp}
-          onClearArrangePressTimer={clearArrangePressTimer}
-          onCancelArrangeDomainPointerDrag={cancelArrangeDomainPointerDrag}
-        />
-      )}
-
-      {viewMode === 'stage-manager' && (
-        <CompactSpaceRail
-          spaces={stageManagerSpaces}
-          activeSpaceId={state.activeSpaceId}
-          editing={null}
-          arrangeMode={arrangeMode}
-          arrangeableSpaceClassName=""
-          draggingSpaceId={null}
-          spacesGridRef={spacesGridRef}
-          stageManagerMode
-          stageManagerSelectedSpaceIds={stageManager.selectedSpaceIds}
-          onStageManagerSpaceClick={stageManager.handleSpaceClick}
-          onStageManagerSpaceDoubleClick={stageManager.handleSpaceDoubleClick}
-          onOpenSpace={openSpaceFromCompactRail}
-          onOpenContextMenu={openContextMenuForSpace}
-          onShouldSkipRenameBlur={shouldSkipRenameBlur}
-          onCommitRename={commitRename}
-          onCancelRename={cancelRename}
-          onRenameDraftChange={trackRenameDraft}
-          onBeginEdit={setEditing}
-          onAutoSizeRenameInput={autoSizeRenameInput}
-          onClearRenameDraft={clearRenameDraft}
-          onConsumeArrangeClickSuppression={consumeArrangeClickSuppression}
-          onStartArrangeDragSeed={startArrangeDragSeed}
-          onStartArrangeTapCandidate={startArrangeTapCandidate}
-          onStartArrangePress={startArrangePress}
-          onHandleArrangeSpacePointerMove={handleArrangeSpacePointerMove}
-          onHandleArrangeSpacePointerUp={handleArrangeSpacePointerUp}
-          onClearArrangePressTimer={clearArrangePressTimer}
-          onCancelArrangeSpacePointerDrag={cancelArrangeSpacePointerDrag}
-        />
-      )}
-
       {viewMode === 'main' && showCompactDomains && (
         <CompactDomainRail
           domains={tagFilteredDomains}
@@ -5042,9 +4801,6 @@ function App() {
         tooltipsDisabled={mainArrangementActive}
         tagFilterActive={tagFilterActive}
         tagFilterControl={topVisibleMainRail === 'parents' ? tagFilterControl : null}
-        visualizerFilterControl={visualizerFilterControl}
-        visualizerSettingsOpen={visualizerSettingsOpen}
-        visualizerSettingsPopover={visualizerSettingsPopover}
         getTabLabel={(tab) =>
           appendTagFilterCount(
             tab.title,
@@ -5056,7 +4812,7 @@ function App() {
             ? topVisibleMainRail === 'parents'
             : viewMode === 'trash'
               ? false
-              : viewMode !== 'stage-manager'
+              : true
         }
         isDraggingArrangeItem={isDraggingArrangeItem}
         primaryTabRailRef={primaryTabRailRef}
@@ -5080,8 +4836,6 @@ function App() {
         onCancelRename={cancelRename}
         onRenameDraftChange={trackRenameDraft}
         onClearRenameDraft={clearRenameDraft}
-        onGetStageManagerParentSelection={stageManager.getParentSelection}
-        onStageManagerParentClick={stageManager.handleParentClick}
         arrangeSelectedParentIds={arrangeSelectedParentIds}
         onHandleArrangeParentSelectionClick={handleArrangeParentSelectionClick}
         onClearArrangeSelection={clearArrangeSelection}
@@ -5112,16 +4866,12 @@ function App() {
         onOpenParentSortModal={() => setModal({ type: 'sort-tabs', target: 'parents' })}
         onExitArrangeMode={exitArrangeMode}
         onAdvanceArrangeHierarchyReveal={advanceArrangeHierarchyReveal}
-        onEndStageManager={stageManager.end}
         onCloseSettingsView={closeSettingsView}
         onSetMenuOpen={setMenuOpen}
         onToggleSpaceRail={toggleSpaceRailVisibility}
         onToggleDomainRail={toggleDomainRailVisibility}
-        onOpenStageManager={openStageManagerView}
         onToggleTrash={toggleTrashView}
         onOpenMessages={openMessagesView}
-        onOpenVisualizer={openVisualizerView}
-        onOpenVisualizerSettings={toggleVisualizerSettings}
         onOpenSettings={openSettingsWithoutMentionMenu}
         onOpenAbout={openAboutView}
         settingsSection={settingsController.section}
@@ -5315,9 +5065,6 @@ function App() {
             onCancelRename={cancelRename}
             onRenameDraftChange={trackRenameDraft}
             onClearRenameDraft={clearRenameDraft}
-            onGetStageManagerParentSelection={stageManager.getParentSelection}
-            onStageManagerHomeClick={stageManager.handleHomeClick}
-            onStageManagerSubTabClick={stageManager.handleSubTabClick}
             arrangeSelectedSubTabIds={arrangeSelectedSubTabIds}
             onHandleArrangeSubTabSelectionClick={handleArrangeSubTabSelectionClick}
             onClearArrangeSelection={clearArrangeSelection}
@@ -5351,43 +5098,7 @@ function App() {
             onOpenContextMenuForScratchpad={openContextMenuForScratchpad}
           />
 
-          {viewMode === 'stage-manager' ? (
-            <StageManagerView
-              domains={stageManager.domains}
-              step={stageManager.step}
-              action={stageManager.action}
-              selectionKind={stageManager.selectionKind}
-              availableActions={stageManager.availableActions}
-              draft={stageManager.draft}
-              selectionSnapshot={stageManager.selectionSnapshot}
-              selectionCounts={stageManager.selectionCounts}
-              promoteDomainId={stageManager.promoteDomainId}
-              promoteDestinationSpaces={stageManager.promoteDestinationSpaces}
-              demoteDomainId={stageManager.demoteDomainId}
-              demoteSpaces={stageManager.demoteSpaces}
-              demoteSpace={stageManager.demoteSpace}
-              demoteParentOptions={stageManager.demoteParentOptions}
-              migrateDomainId={stageManager.migrateDomainId}
-              migrateDestinationSpaces={stageManager.migrateDestinationSpaces}
-              strayHandlingSelectValue={stageManager.strayHandlingSelectValue}
-              strayExistingParentOptions={stageManager.strayExistingParentOptions}
-              migrateParentDomainId={stageManager.migrateParentDomainId}
-              migrateParentSpaces={stageManager.migrateParentSpaces}
-              migrateParentOptions={stageManager.migrateParentOptions}
-              frontmatterTemplates={state.frontmatter.templates}
-              openDestinationAfterApply={state.ui.stageManagerOpenDestinationAfterApply}
-              reviewDetails={stageManager.reviewDetails}
-              reviewWarning={stageManager.reviewWarning}
-              onSelectAll={stageManager.selectAll}
-              onDeselectAll={stageManager.deselectAll}
-              onSelectAction={stageManager.selectAction}
-              onDraftChange={stageManager.updateDraft}
-              onOpenDestinationChange={settingsController.updateStageManagerOpenDestinationSetting}
-              onPrevious={stageManager.previous}
-              onNext={stageManager.next}
-              onApply={stageManager.apply}
-            />
-          ) : isTrashHomeSelected ? (
+          {isTrashHomeSelected ? (
             <TrashHomeNote
               onRestoreAll={() => setModal({ type: 'trash-restore-all' })}
               onDeleteAll={() => setModal({ type: 'trash-delete-all' })}
@@ -5400,16 +5111,6 @@ function App() {
               onDismissMessage={dismissMessage}
               onOpenLocation={openMessageLocation}
             />
-          ) : viewMode === 'visualizer' ? (
-            visualizerGraph && (
-              <VisualizerView
-                graph={visualizerGraph}
-                selectedNodeId={visualizerSelectedNodeId}
-                onSelectedNodeChange={handleVisualizerNodeSelection}
-                onClosePreview={closeVisualizerPreview}
-                onOpenLocation={openVisualizerLocation}
-              />
-            )
           ) : viewMode === 'about' ? (
             <AboutView />
           ) : viewMode === 'main' ? (

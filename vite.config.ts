@@ -56,7 +56,7 @@ export default defineConfig({
             },
             {
               name: 'app-domain',
-              test: /[\\/]src[\\/](notes|arrange|navigation|overlays|trash|stage-manager|frontmatter|hotkeys|app|markdown|media)[\\/]/,
+              test: /[\\/]src[\\/](notes|arrange|navigation|overlays|trash|frontmatter|hotkeys|app|markdown|media)[\\/]/,
               priority: 5,
               maxSize: 450 * 1024,
             },

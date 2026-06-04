@@ -22,7 +22,7 @@ describe('TipHost', () => {
     expect(html).toContain('app-tip-card')
     expect(html).toContain('Dismiss task undo tip')
     expect(html).toContain('Dismiss delete subtab shortcut tip')
-    expect(html).toContain('Cmd+Z')
+    expect(html).toContain('Click &amp; hold')
     expect(html).not.toContain('tab creation')
     expect(html).not.toContain('press Tab')
     expect(html).toContain('command+w')

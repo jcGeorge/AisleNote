@@ -291,8 +291,8 @@ describe('note reference commands', () => {
       payload: { version: 1, scope: 'note', action: 'duplicate', source: sourceLocation },
     })
 
-    expect(independent).toMatchObject({ status: 'structural', toast: { message: 'independent note copied to clipboard' } })
-    expect(synced).toMatchObject({ status: 'structural', toast: { message: 'synced note copied to clipboard' } })
+    expect(independent).toMatchObject({ status: 'structural', toast: { message: 'independent note copy created.' } })
+    expect(synced).toMatchObject({ status: 'structural', toast: { message: 'synced note copy created.' } })
     if (independent.status !== 'structural' || synced.status !== 'structural') {
       throw new Error('expected structural command results')
     }

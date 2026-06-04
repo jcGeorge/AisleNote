@@ -173,7 +173,6 @@ export function useSettingsController({
     setShortcutMenuOperationsDraft(hotkeys.newlineShortcuts.menuOperations)
     setSyncedUiBooleanDrafts(getSyncedUiBooleanSettings({
       showParentHomeTab: state.ui.showParentHomeTab,
-      stageManagerOpenDestinationAfterApply: state.ui.stageManagerOpenDestinationAfterApply,
       findCaseSensitive: state.ui.findCaseSensitive,
       findWholeWord: state.ui.findWholeWord,
       findRegex: state.ui.findRegex,
@@ -233,7 +232,6 @@ export function useSettingsController({
     state.ui.scratchpadAisleLimit,
     state.ui.scratchpadNewAisleSide,
     state.ui.tabRenameEnterBehavior,
-    state.ui.stageManagerOpenDestinationAfterApply,
     state.ui.findCaseSensitive,
     state.ui.findWholeWord,
     state.ui.findRegex,
@@ -666,10 +664,6 @@ export function useSettingsController({
     })
   }
 
-  const updateStageManagerOpenDestinationSetting = (checked: boolean) => {
-    updateSyncedUiBooleanSetting('stageManagerOpenDestinationAfterApply', checked)
-  }
-
   const commitToolbarLayouts = (buildNextLayouts: (layouts: AppState['ui']['toolbarLayouts']) => AppState['ui']['toolbarLayouts']) => {
     commitImmediateSettingsState((previous) => ({
       ...previous,
@@ -1014,7 +1008,6 @@ export function useSettingsController({
     updateShortcutSetting,
     updateNewlineShortcutSetting,
     updateShortcutMenuOperationsSetting,
-    updateStageManagerOpenDestinationSetting,
     selectToolbarLayoutForEditing,
     createToolbarLayoutSetting,
     duplicateToolbarLayoutSetting,

@@ -1,6 +1,5 @@
 import type {
   NoteBody,
-  StageManagerDestinationSortMode,
   SubTab,
   Tab,
   TabSortMode,
@@ -20,11 +19,6 @@ export const NAME_SORT_OPTIONS: Array<{ mode: Extract<TabSortMode, 'alpha-asc' |
   { mode: 'alpha-desc', label: 'z-a' },
 ]
 
-export const STAGE_MANAGER_DESTINATION_SORT_OPTIONS: Array<{ mode: StageManagerDestinationSortMode; label: string }> = [
-  { mode: 'default', label: 'default (moves to end)' },
-  ...TAB_SORT_OPTIONS,
-]
-
 const titleCollator = new Intl.Collator(undefined, {
   numeric: true,
   sensitivity: 'base',
@@ -38,10 +32,6 @@ type SortableNoteLocation = {
 type IndexedItem<T> = {
   item: T
   index: number
-}
-
-export function getDestinationSortLabel(mode: StageManagerDestinationSortMode): string {
-  return STAGE_MANAGER_DESTINATION_SORT_OPTIONS.find((option) => option.mode === mode)?.label ?? 'default (moves to end)'
 }
 
 function buildNoteBodyMap(noteBodies: NoteBody[] | Map<string, NoteBody>): Map<string, NoteBody> {

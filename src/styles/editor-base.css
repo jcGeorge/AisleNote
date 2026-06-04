@@ -341,8 +341,6 @@ body.app-tooltips-disabled .toastui-editor-tooltip {
 .toastui-editor-toolbar button.table-of-contents-toolbar-btn,
 .toastui-editor-defaultUI-toolbar button.aisles-toolbar-btn,
 .toastui-editor-toolbar button.aisles-toolbar-btn,
-.toastui-editor-defaultUI-toolbar button.director-toolbar-btn,
-.toastui-editor-toolbar button.director-toolbar-btn,
 .toastui-editor-defaultUI-toolbar button.find-replace-toolbar-btn,
 .toastui-editor-toolbar button.find-replace-toolbar-btn,
 .toastui-editor-defaultUI-toolbar button.editor-history-toolbar-btn,
@@ -374,8 +372,6 @@ body.app-tooltips-disabled .toastui-editor-tooltip {
 .toastui-editor-toolbar button.table-of-contents-toolbar-btn,
 .toastui-editor-defaultUI-toolbar button.aisles-toolbar-btn,
 .toastui-editor-toolbar button.aisles-toolbar-btn,
-.toastui-editor-defaultUI-toolbar button.director-toolbar-btn,
-.toastui-editor-toolbar button.director-toolbar-btn,
 .toastui-editor-defaultUI-toolbar button.find-replace-toolbar-btn,
 .toastui-editor-toolbar button.find-replace-toolbar-btn,
 .toastui-editor-defaultUI-toolbar button.editor-history-toolbar-btn,
@@ -393,8 +389,6 @@ body.app-tooltips-disabled .toastui-editor-tooltip {
 .toastui-editor-toolbar button.table-of-contents-toolbar-btn,
 .toastui-editor-defaultUI-toolbar button.aisles-toolbar-btn,
 .toastui-editor-toolbar button.aisles-toolbar-btn,
-.toastui-editor-defaultUI-toolbar button.director-toolbar-btn,
-.toastui-editor-toolbar button.director-toolbar-btn,
 .toastui-editor-defaultUI-toolbar button.find-replace-toolbar-btn,
 .toastui-editor-toolbar button.find-replace-toolbar-btn,
 .toastui-editor-defaultUI-toolbar button.editor-history-toolbar-btn,
@@ -484,7 +478,6 @@ body.app-tooltips-disabled .toastui-editor-tooltip {
   transform-origin: center;
 }
 
-.director-toolbar-icon,
 .find-replace-toolbar-icon {
   width: 1.15rem;
   height: 1.15rem;
@@ -494,11 +487,6 @@ body.app-tooltips-disabled .toastui-editor-tooltip {
   stroke-width: 2.5;
   stroke-linecap: round;
   stroke-linejoin: round;
-}
-
-.director-toolbar-icon-center {
-  fill: currentColor;
-  stroke: none;
 }
 
 .toastui-editor-defaultUI-toolbar button.table-of-contents-toolbar-btn,

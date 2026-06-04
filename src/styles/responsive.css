@@ -24,10 +24,6 @@
     scrollbar-width: thin;
   }
 
-  .view-visualizer .tabbar-scroll {
-    overflow: visible;
-  }
-
   .compact-scope-scroll {
     flex-wrap: nowrap;
     overflow-x: auto;
@@ -91,8 +87,6 @@
   .toastui-editor-toolbar button.table-of-contents-toolbar-btn,
   .toastui-editor-defaultUI-toolbar button.aisles-toolbar-btn,
   .toastui-editor-toolbar button.aisles-toolbar-btn,
-  .toastui-editor-defaultUI-toolbar button.director-toolbar-btn,
-  .toastui-editor-toolbar button.director-toolbar-btn,
   .toastui-editor-defaultUI-toolbar button.find-replace-toolbar-btn,
   .toastui-editor-toolbar button.find-replace-toolbar-btn,
   .toastui-editor-defaultUI-toolbar button.editor-history-toolbar-btn,
@@ -237,10 +231,6 @@
   .settings-page-wrap,
   .utility-page-wrap {
     padding-inline: 0.4rem;
-  }
-
-  .view-visualizer .tabbar-scroll {
-    overflow: visible;
   }
 
   .settings-section-tabs {

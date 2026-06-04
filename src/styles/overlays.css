@@ -471,18 +471,18 @@
 }
 
 .note-picker-aisle-choice {
-  border: 1px solid var(--stage-action-border);
+  border: 1px solid var(--action-chip-border);
   border-radius: 0.35rem;
-  background: var(--stage-action-bg);
-  color: var(--stage-action-text);
+  background: var(--action-chip-bg);
+  color: var(--action-chip-text);
   padding: 0.25rem 0.5rem;
   font-size: 0.8em;
 }
 
 .note-picker-aisle-choice.is-active {
-  border-color: var(--stage-action-selected-border);
-  background: var(--stage-action-selected-bg);
-  color: var(--stage-action-selected-text);
+  border-color: var(--action-chip-selected-border);
+  background: var(--action-chip-selected-bg);
+  color: var(--action-chip-selected-text);
 }
 
 .deduplicate-note-modal,
@@ -686,19 +686,19 @@
 }
 
 .note-reference-heading-btn {
-  border: 1px solid var(--stage-action-border);
+  border: 1px solid var(--action-chip-border);
   border-radius: 0.35rem;
-  background: var(--stage-action-bg);
-  color: var(--stage-action-text);
+  background: var(--action-chip-bg);
+  color: var(--action-chip-text);
   padding: 0.28rem 0.5rem 0.28rem calc(0.5rem + var(--note-reference-heading-indent, 0rem));
   font-size: 0.8em;
   text-align: left;
 }
 
 .note-reference-heading-btn.is-active {
-  border-color: var(--stage-action-selected-border);
-  background: var(--stage-action-selected-bg);
-  color: var(--stage-action-selected-text);
+  border-color: var(--action-chip-selected-border);
+  background: var(--action-chip-selected-bg);
+  color: var(--action-chip-selected-text);
 }
 
 .note-copy-behavior-row {
@@ -752,10 +752,10 @@
   align-items: center;
   justify-content: center;
   min-height: 1.85rem;
-  border: 1px solid var(--stage-action-border);
+  border: 1px solid var(--action-chip-border);
   border-radius: 0.42rem;
-  background: var(--stage-action-bg);
-  color: var(--stage-action-text);
+  background: var(--action-chip-bg);
+  color: var(--action-chip-text);
   padding: 0.24rem 0.55rem;
   font: inherit;
   font-size: 0.84em;
@@ -765,9 +765,9 @@
 }
 
 .note-reference-mode-btn.is-active {
-  border-color: var(--stage-action-selected-border);
-  background: var(--stage-action-selected-bg);
-  color: var(--stage-action-selected-text);
+  border-color: var(--action-chip-selected-border);
+  background: var(--action-chip-selected-bg);
+  color: var(--action-chip-selected-text);
 }
 
 .shortcut-menu-settings {
@@ -789,7 +789,7 @@
   grid-template-columns: 2rem minmax(0, 1fr);
   align-items: center;
   gap: 0.45rem;
-  border: 1px solid var(--stage-action-border);
+  border: 1px solid var(--action-chip-border);
   border-radius: 0.42rem;
   background: rgba(8, 15, 28, 0.28);
   padding: 0.25rem;
@@ -805,10 +805,10 @@
 }
 
 .shortcut-menu-slot.is-drop-target {
-  border-color: var(--stage-action-selected-border);
+  border-color: var(--action-chip-selected-border);
   background: rgba(47, 103, 222, 0.24);
   box-shadow:
-    0 0 0 1px var(--stage-action-selected-border),
+    0 0 0 1px var(--action-chip-selected-border),
     inset 0 0 0 1px rgba(255, 255, 255, 0.16);
 }
 
@@ -823,8 +823,8 @@
   width: 1.65rem;
   height: 1.65rem;
   border-radius: 0.3rem;
-  background: var(--stage-action-bg);
-  color: var(--stage-action-text);
+  background: var(--action-chip-bg);
+  color: var(--action-chip-text);
   font-size: 0.82em;
   font-weight: 700;
 }
@@ -838,10 +838,10 @@
 
 .shortcut-menu-operation-chip {
   min-width: 0;
-  border: 1px solid var(--stage-action-border);
+  border: 1px solid var(--action-chip-border);
   border-radius: 0.35rem;
-  background: var(--stage-action-bg);
-  color: var(--stage-action-text);
+  background: var(--action-chip-bg);
+  color: var(--action-chip-text);
   padding: 0.32rem 0.5rem;
   font: inherit;
   font-size: 0.86em;
@@ -859,9 +859,9 @@
 
 .shortcut-menu-operation-chip:hover,
 .shortcut-menu-operation-chip:focus-visible {
-  border-color: var(--stage-action-selected-border);
-  background: var(--stage-action-selected-bg);
-  color: var(--stage-action-selected-text);
+  border-color: var(--action-chip-selected-border);
+  background: var(--action-chip-selected-bg);
+  color: var(--action-chip-selected-text);
 }
 
 .shortcut-menu-operation-chip:active {
@@ -885,7 +885,7 @@
 }
 
 .shortcut-menu-pool.is-drop-target {
-  border-color: var(--stage-action-selected-border);
+  border-color: var(--action-chip-selected-border);
   background: rgba(47, 103, 222, 0.12);
 }
 

@@ -38,7 +38,6 @@ describe('menu font scaling styles', () => {
       'overlays.css',
       'rail-controls.css',
       'settings.css',
-      'stage-manager.css',
       'topbar.css',
       'toasts.css',
     ]
@@ -993,9 +992,9 @@ describe('compact scope tab scaling styles', () => {
     expect(editorShellCss).toContain('margin-bottom: 0 !important;')
     expect(actionsRule).toContain('gap: 0.5rem;')
     expect(deleteRule).not.toContain('margin-left:')
-    expect(deleteRule).toContain('border-color: var(--stage-action-border);')
+    expect(deleteRule).toContain('border-color: var(--action-chip-border);')
     expect(deleteRule).toContain('border-radius: 0.25rem;')
-    expect(deleteRule).toContain('background: var(--stage-action-bg);')
+    expect(deleteRule).toContain('background: var(--action-chip-bg);')
     expect(deleteIconRule).toContain('width: 1.2rem;')
     expect(deleteIconRule).toContain('height: 1.2rem;')
     expect(editorShellCss).not.toContain('.context-preview-title-btn.is-domain')

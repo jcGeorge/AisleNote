@@ -4,7 +4,6 @@ import type {
   ArrangeModeState,
   ArrangeTapCandidateSeed,
   SelectionClickModifiers,
-  StageManagerParentSelection,
   SubTab,
   Tab,
   TabRenameEnterBehavior,
@@ -54,9 +53,6 @@ type SubTabRailProps = {
   onCancelRename: (type: EditableEntityType, id: string) => void
   onRenameDraftChange: (type: EditableEntityType, id: string, value: string) => void
   onClearRenameDraft: (type: EditableEntityType, id: string) => void
-  onGetStageManagerParentSelection: (tab: Tab) => StageManagerParentSelection
-  onStageManagerHomeClick: () => void
-  onStageManagerSubTabClick: (tab: Tab, subTabId: string, modifiers: SelectionClickModifiers) => void
   arrangeSelectedSubTabIds: ReadonlySet<string>
   onHandleArrangeSubTabSelectionClick: (
     parentTabId: string,
@@ -162,9 +158,6 @@ export function SubTabRail({
   onCancelRename,
   onRenameDraftChange,
   onClearRenameDraft,
-  onGetStageManagerParentSelection,
-  onStageManagerHomeClick,
-  onStageManagerSubTabClick,
   arrangeSelectedSubTabIds,
   onHandleArrangeSubTabSelectionClick,
   onClearArrangeSelection,
@@ -219,11 +212,7 @@ export function SubTabRail({
             type="button"
             role="tab"
             aria-selected={viewMode === 'main' && !scratchpadActive && !activeSubTabId}
-            className={`btn btn-sm ${viewMode === 'main' && !scratchpadActive && !activeSubTabId ? 'btn-info' : 'btn-outline-info'} tab-btn subtab-btn home-subtab-btn ${arrangeableSubTabClassName} ${
-              viewMode === 'stage-manager' && onGetStageManagerParentSelection(activeTab).mode === 'full'
-                ? 'stage-manager-home-selected'
-                : ''
-            } ${arrangeMode.active ? 'is-arrange-fixed' : ''} ${
+            className={`btn btn-sm ${viewMode === 'main' && !scratchpadActive && !activeSubTabId ? 'btn-info' : 'btn-outline-info'} tab-btn subtab-btn home-subtab-btn ${arrangeableSubTabClassName} ${arrangeMode.active ? 'is-arrange-fixed' : ''} ${
               arrangeMode.active &&
               arrangeMode.dragItem?.type === 'subtab' &&
               arrangeMode.dragItem.parentTabId === activeTab.id &&
@@ -234,10 +223,6 @@ export function SubTabRail({
                 : ''
             }`}
             onClick={() => {
-              if (viewMode === 'stage-manager') {
-                onStageManagerHomeClick()
-                return
-              }
               if (onConsumeArrangeClickSuppression(`home:${activeTab.id}`)) return
               onClearArrangeSelection()
               onSelectParentHomeTab()
@@ -385,17 +370,9 @@ export function SubTabRail({
                         : ''
                     } ${isArrangeBeforeNeighbor ? 'is-arrange-neighbor-before' : ''} ${
                       isArrangeAfterNeighbor ? 'is-arrange-neighbor-after' : ''
-                    } ${draggingSubTabId === subTab.id ? 'is-dragging' : ''} ${
-                      viewMode === 'stage-manager' && onGetStageManagerParentSelection(activeTab).selectedSubTabIds.includes(subTab.id)
-                        ? 'stage-manager-subtab-selected'
-                        : ''
-                    }`}
+                    } ${draggingSubTabId === subTab.id ? 'is-dragging' : ''}`}
                     onClick={(event) => {
                       const modifiers = getSelectionClickModifiers(event)
-                      if (viewMode === 'stage-manager') {
-                        onStageManagerSubTabClick(activeTab, subTab.id, modifiers)
-                        return
-                      }
                       if (onConsumeArrangeClickSuppression(`subtab:${subTab.id}`)) return
                       if (onHandleArrangeSubTabSelectionClick(activeTab.id, subTab.id, modifiers)) {
                         event.preventDefault()

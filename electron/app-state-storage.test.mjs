@@ -115,7 +115,6 @@ function serializedAppState() {
     },
     ui: {
       showParentHomeTab: true,
-      stageManagerOpenDestinationAfterApply: true,
       tabButtonScale: 1,
       noteFontScale: 1,
       settingsSection: 'frontmatter',
@@ -375,7 +374,6 @@ describe('Electron app state storage load result', () => {
       state.ui = {
         ...state.ui,
         showParentHomeTab: false,
-        stageManagerOpenDestinationAfterApply: false,
         settingsSection: 'toolbar',
         selectedCustomTheme: 'custom3',
         lastNoteCopyMode: 'linked',
@@ -385,8 +383,6 @@ describe('Electron app state storage load result', () => {
         noteMentionCopyRequiresConfirmation: false,
         deleteSubtabShortcutEnabled: true,
         decoupledItemsKeepData: false,
-        visualizerHomeNodesResideInParent: true,
-        visualizerLayoutMode: 'link-tree',
         tableAddTargetMode: 'active-cell',
         tableDeleteTargetMode: 'active-cell',
         tableOfContentsScope: 'focused-aisle',
@@ -456,8 +452,6 @@ describe('Electron app state storage load result', () => {
       expect(appSettings.ui.removeNoteReferencesOnTrash).toBe(false)
       expect(appSettings.ui.noteMentionCopyRequiresConfirmation).toBe(false)
       expect(appSettings.ui.deleteSubtabShortcutEnabled).toBe(true)
-      expect(appSettings.ui.visualizerHomeNodesResideInParent).toBe(true)
-      expect(appSettings.ui.visualizerLayoutMode).toBe('link-tree')
       expect(appSettings.ui.tableOfContentsScope).toBe('focused-aisle')
       expect(appSettings.ui.tabRenameEnterBehavior).toBe('creates-another-tab')
       expect(appSettings.ui).not.toHaveProperty('newAislePlacement')
@@ -495,8 +489,6 @@ describe('Electron app state storage load result', () => {
       expect(parsed.ui.removeNoteReferencesOnTrash).toBe(false)
       expect(parsed.ui.noteMentionCopyRequiresConfirmation).toBe(false)
       expect(parsed.ui.deleteSubtabShortcutEnabled).toBe(true)
-      expect(parsed.ui.visualizerHomeNodesResideInParent).toBe(true)
-      expect(parsed.ui.visualizerLayoutMode).toBe('link-tree')
       expect(parsed.ui.tableOfContentsScope).toBe('focused-aisle')
       expect(parsed.ui.tabRenameEnterBehavior).toBe('creates-another-tab')
       expect(parsed.ui).not.toHaveProperty('newAislePlacement')

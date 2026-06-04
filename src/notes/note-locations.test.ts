@@ -87,7 +87,6 @@ function createState(): AppState {
     frontmatter: { templates: [], settingsTemplateId: '', lastAppliedTemplateId: '' },
     ui: {
       showParentHomeTab: true,
-      stageManagerOpenDestinationAfterApply: true,
       lastLinkInsertMode: 'note',
       tableAddTargetMode: 'bottom-right',
       tableDeleteTargetMode: 'bottom-right',

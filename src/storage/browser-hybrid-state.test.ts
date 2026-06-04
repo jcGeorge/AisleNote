@@ -497,7 +497,6 @@ describe('browser hybrid storage', () => {
         },
         ui: {
           showParentHomeTab: false,
-          stageManagerOpenDestinationAfterApply: false,
           settingsSection: 'toolbar',
           dataSettingsSection: 'storage',
           selectedCustomTheme: 'custom2',
@@ -510,8 +509,6 @@ describe('browser hybrid storage', () => {
           noteMentionCopyRequiresConfirmation: false,
           deleteSubtabShortcutEnabled: true,
           decoupledItemsKeepData: false,
-          visualizerHomeNodesResideInParent: true,
-          visualizerLayoutMode: 'strict-rings',
           tableAddTargetMode: 'active-cell',
           tableDeleteTargetMode: 'active-cell',
           tableOfContentsScope: 'focused-aisle',
@@ -557,8 +554,6 @@ describe('browser hybrid storage', () => {
     expect(getRecord(appSettings.ui).removeNoteReferencesOnTrash).toBe(false)
     expect(getRecord(appSettings.ui).noteMentionCopyRequiresConfirmation).toBe(false)
     expect(getRecord(appSettings.ui).deleteSubtabShortcutEnabled).toBe(true)
-    expect(getRecord(appSettings.ui).visualizerHomeNodesResideInParent).toBe(true)
-    expect(getRecord(appSettings.ui).visualizerLayoutMode).toBe('strict-rings')
     expect(getRecord(appSettings.ui).tableOfContentsScope).toBe('focused-aisle')
     expect(getRecord(appSettings.ui).tabRenameEnterBehavior).toBe('creates-another-tab')
     expect(getRecord(appSettings.ui)).not.toHaveProperty('newAislePlacement')
@@ -589,8 +584,6 @@ describe('browser hybrid storage', () => {
     expect(roundTripped.ui.removeNoteReferencesOnTrash).toBe(false)
     expect(roundTripped.ui.noteMentionCopyRequiresConfirmation).toBe(false)
     expect(roundTripped.ui.deleteSubtabShortcutEnabled).toBe(true)
-    expect(roundTripped.ui.visualizerHomeNodesResideInParent).toBe(true)
-    expect(roundTripped.ui.visualizerLayoutMode).toBe('strict-rings')
     expect(roundTripped.ui.tableOfContentsScope).toBe('focused-aisle')
     expect(roundTripped.ui.tabRenameEnterBehavior).toBe('creates-another-tab')
     expect(roundTripped.ui).not.toHaveProperty('newAislePlacement')

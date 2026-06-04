@@ -12,7 +12,6 @@ describe('synced UI settings registry', () => {
   it('exposes defaults for simple synced UI settings', () => {
     expect(DEFAULT_SIMPLE_SYNCED_UI_SETTINGS).toMatchObject({
       showParentHomeTab: true,
-      stageManagerOpenDestinationAfterApply: true,
       lastLinkInsertMode: 'note',
       lastNoteCopyMode: 'independent',
       findCaseSensitive: false,
@@ -24,8 +23,6 @@ describe('synced UI settings registry', () => {
       deleteSubtabShortcutEnabled: false,
       tabRenameEnterBehavior: 'goes-to-note',
       decoupledItemsKeepData: true,
-      visualizerHomeNodesResideInParent: false,
-      visualizerLayoutMode: 'wedge-fan',
       tableAddTargetMode: 'bottom-right',
       tableDeleteTargetMode: 'bottom-right',
       tableOfContentsScope: 'all-aisles',
@@ -48,8 +45,6 @@ describe('synced UI settings registry', () => {
       newAislePlacement: 'left-of-focus',
       removeNoteReferencesOnTrash: 'false',
       deleteSubtabShortcutEnabled: true,
-      visualizerHomeNodesResideInParent: true,
-      visualizerLayoutMode: 'link-tree',
     })
 
     expect(normalized).toMatchObject({
@@ -64,12 +59,9 @@ describe('synced UI settings registry', () => {
       tabRenameEnterBehavior: 'creates-another-tab',
       removeNoteReferencesOnTrash: true,
       deleteSubtabShortcutEnabled: true,
-      visualizerHomeNodesResideInParent: true,
-      visualizerLayoutMode: 'link-tree',
     })
     expect(normalized).not.toHaveProperty('newAislePlacement')
     expect(normalizeRegisteredSyncedUiSetting('findReplaceMode', 'bad')).toBe('find')
-    expect(normalizeRegisteredSyncedUiSetting('visualizerLayoutMode', 'bad')).toBe('wedge-fan')
     expect(normalizeRegisteredSyncedUiSetting('tabRenameEnterBehavior', 'bad')).toBe('goes-to-note')
   })
 
@@ -82,7 +74,6 @@ describe('synced UI settings registry', () => {
       noteMentionCopyRequiresConfirmation: false,
       removeNoteReferencesOnTrash: true,
       deleteSubtabShortcutEnabled: false,
-      visualizerHomeNodesResideInParent: false,
     })
   })
 

@@ -17,10 +17,8 @@ function renderMenu(spaceRailVisible = false, domainRailVisible = false) {
       onSetMenuOpen={vi.fn()}
       onToggleSpaceRail={noop}
       onToggleDomainRail={noop}
-      onOpenStageManager={noop}
       onToggleTrash={noop}
       onOpenMessages={noop}
-      onOpenVisualizer={noop}
       onOpenSettings={noop}
       onOpenAbout={noop}
     />,
@@ -28,7 +26,7 @@ function renderMenu(spaceRailVisible = false, domainRailVisible = false) {
 }
 
 describe('NavigationRailControls', () => {
-  it('renders exactly two visibility rows before director without static domain or space rows', () => {
+  it('renders exactly two visibility rows before utility rows without static domain or space rows', () => {
     const html = renderMenu()
     const visibilityLabels = html.match(/(?:show|hide) (?:space|domain)/g) ?? []
 
@@ -37,15 +35,14 @@ describe('NavigationRailControls', () => {
     expect(html).not.toContain('>spaces<')
     expect(html).not.toMatch(/\brails?\b/)
     expect(html.indexOf('>show space<')).toBeLessThan(html.indexOf('>show domain<'))
-    expect(html.indexOf('>show domain<')).toBeLessThan(html.indexOf('>director<'))
+    expect(html.indexOf('>show domain<')).toBeLessThan(html.indexOf('>trash<'))
   })
 
-  it('renders utility menu rows in trash messages visualizer settings about order', () => {
+  it('renders utility menu rows in trash messages settings about order', () => {
     const html = renderMenu()
 
     expect(html.indexOf('>trash<')).toBeLessThan(html.indexOf('>messages<'))
-    expect(html.indexOf('>messages<')).toBeLessThan(html.indexOf('>visualizer<'))
-    expect(html.indexOf('>visualizer<')).toBeLessThan(html.indexOf('>settings<'))
+    expect(html.indexOf('>messages<')).toBeLessThan(html.indexOf('>settings<'))
     expect(html.indexOf('>settings<')).toBeLessThan(html.indexOf('>about<'))
   })
 

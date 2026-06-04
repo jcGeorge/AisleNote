@@ -62,8 +62,6 @@ type CompactSpaceRailProps = {
   arrangeControlsDisabled?: boolean
   tagFilterActive?: boolean
   guidedDestinationActive?: boolean
-  stageManagerMode?: boolean
-  stageManagerSelectedSpaceIds?: ReadonlySet<string>
   arrangeSelectedSpaceIds?: ReadonlySet<string>
   getSpaceLabel?: (space: Space) => ReactNode
   onOpenSpace: (spaceId: string) => void
@@ -71,11 +69,6 @@ type CompactSpaceRailProps = {
     spaceId: string,
     modifiers: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean },
   ) => boolean
-  onStageManagerSpaceClick?: (
-    spaceId: string,
-    modifiers: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean },
-  ) => void
-  onStageManagerSpaceDoubleClick?: (spaceId: string) => void
   onClearArrangeSelection?: () => void
   onOpenContextMenu: (
     event: MouseEvent<HTMLButtonElement>,
@@ -123,8 +116,6 @@ type CompactDomainRailProps = {
   arrangeControlsDisabled?: boolean
   tagFilterActive?: boolean
   guidedDestinationActive?: boolean
-  stageManagerMode?: boolean
-  stageManagerSelectedDomainIds?: ReadonlySet<string>
   arrangeSelectedDomainIds?: ReadonlySet<string>
   getDomainLabel?: (domain: Domain) => ReactNode
   onOpenDomain: (domainId: string) => void
@@ -132,11 +123,6 @@ type CompactDomainRailProps = {
     domainId: string,
     modifiers: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean },
   ) => boolean
-  onStageManagerDomainClick?: (
-    domainId: string,
-    modifiers: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean },
-  ) => void
-  onStageManagerDomainDoubleClick?: (domainId: string) => void
   onClearArrangeSelection?: () => void
   onOpenContextMenu: (
     event: MouseEvent<HTMLButtonElement>,
@@ -184,14 +170,10 @@ export function CompactSpaceRail({
   arrangeControlsDisabled = false,
   tagFilterActive = false,
   guidedDestinationActive = false,
-  stageManagerMode = false,
-  stageManagerSelectedSpaceIds,
   arrangeSelectedSpaceIds,
   getSpaceLabel = (space) => space.name,
   onOpenSpace,
   onHandleArrangeSpaceSelectionClick,
-  onStageManagerSpaceClick,
-  onStageManagerSpaceDoubleClick,
   onClearArrangeSelection,
   onOpenContextMenu,
   onCancelArrangeMode,
@@ -276,13 +258,11 @@ export function CompactSpaceRail({
               arrangeMode.active && spacePlacementNeighborId === space.id && arrangeMode.overSpaceInsert === 'after'
             const isArrangeSpaceAfterNeighbor =
               arrangeMode.active && spacePlacementNeighborId === space.id && arrangeMode.overSpaceInsert === 'before'
-            const isStageManagerSelected = stageManagerSelectedSpaceIds?.has(space.id) ?? false
             const isArrangeSelected = arrangeSelectedSpaceIds?.has(space.id) ?? false
             const buttonClassName = [
               'compact-scope-btn',
               'compact-space-btn',
               space.id === activeSpaceId ? 'is-active' : '',
-              isStageManagerSelected ? 'stage-manager-space-selected' : '',
               isArrangeSelected ? 'is-arrange-selected' : '',
               arrangeableSpaceClassName,
               isArrangeSpaceTarget ? 'is-arrange-target' : '',
@@ -308,15 +288,6 @@ export function CompactSpaceRail({
                     event.stopPropagation()
                     return
                   }
-                  if (stageManagerMode && onStageManagerSpaceClick) {
-                    event.stopPropagation()
-                    onStageManagerSpaceClick(space.id, {
-                      shiftKey: event.shiftKey,
-                      ctrlKey: event.ctrlKey,
-                      metaKey: event.metaKey,
-                    })
-                    return
-                  }
                   if (guidedDestinationActive) {
                     event.preventDefault()
                     event.stopPropagation()
@@ -338,7 +309,7 @@ export function CompactSpaceRail({
                 }}
                 onContextMenu={(event) => {
                   const contextPolicy = getArrangeRailContextMenuPolicy({
-                    disabled: stageManagerMode,
+                    disabled: false,
                     arrangeActive: arrangeMode.active,
                   })
                   if (contextPolicy.action === 'ignore') {
@@ -350,12 +321,6 @@ export function CompactSpaceRail({
                 }}
                 onDoubleClick={(event) => {
                   if (arrangeMode.active) return
-                  if (stageManagerMode) {
-                    event.preventDefault()
-                    event.stopPropagation()
-                    onStageManagerSpaceDoubleClick?.(space.id)
-                    return
-                  }
                   event.preventDefault()
                   event.stopPropagation()
                   onBeginEdit({ type: 'space', id: space.id })
@@ -366,7 +331,7 @@ export function CompactSpaceRail({
                     shiftKey: event.shiftKey,
                     ctrlKey: event.ctrlKey,
                     metaKey: event.metaKey,
-                    disabled: stageManagerMode || tagFilterActive || guidedDestinationActive,
+                    disabled: tagFilterActive || guidedDestinationActive,
                   })
                   if (pointerAction === 'ignore') return
                   if (pointerAction === 'clear-press-timer') {
@@ -382,12 +347,12 @@ export function CompactSpaceRail({
                   onStartArrangePress(event, { type: 'space', spaceId: space.id }, `space:${space.id}`)
                 }}
                 onPointerMove={(event) => {
-                  if (!stageManagerMode && !tagFilterActive && !guidedDestinationActive) {
+                  if (!tagFilterActive && !guidedDestinationActive) {
                     onHandleArrangeSpacePointerMove(event, space)
                   }
                 }}
                 onPointerUp={(event) => {
-                  if (!stageManagerMode && !tagFilterActive && !guidedDestinationActive) {
+                  if (!tagFilterActive && !guidedDestinationActive) {
                     onHandleArrangeSpacePointerUp(event, space.id, () => onOpenSpace(space.id))
                   }
                 }}
@@ -454,14 +419,10 @@ export function CompactDomainRail({
   arrangeControlsDisabled = false,
   tagFilterActive = false,
   guidedDestinationActive = false,
-  stageManagerMode = false,
-  stageManagerSelectedDomainIds,
   arrangeSelectedDomainIds,
   getDomainLabel = (domain) => domain.name,
   onOpenDomain,
   onHandleArrangeDomainSelectionClick,
-  onStageManagerDomainClick,
-  onStageManagerDomainDoubleClick,
   onClearArrangeSelection,
   onOpenContextMenu,
   onCancelArrangeMode,
@@ -546,13 +507,11 @@ export function CompactDomainRail({
               arrangeMode.active && domainPlacementNeighborId === domain.id && arrangeMode.overDomainInsert === 'after'
             const isArrangeDomainAfterNeighbor =
               arrangeMode.active && domainPlacementNeighborId === domain.id && arrangeMode.overDomainInsert === 'before'
-            const isStageManagerSelected = stageManagerSelectedDomainIds?.has(domain.id) ?? false
             const isArrangeSelected = arrangeSelectedDomainIds?.has(domain.id) ?? false
             const buttonClassName = [
               'compact-scope-btn',
               'compact-domain-btn',
               domain.id === activeDomainId ? 'is-active' : '',
-              isStageManagerSelected ? 'stage-manager-domain-selected' : '',
               isArrangeSelected ? 'is-arrange-selected' : '',
               arrangeableDomainClassName,
               isArrangeDomainTarget ? 'is-arrange-target' : '',
@@ -578,15 +537,6 @@ export function CompactDomainRail({
                     event.stopPropagation()
                     return
                   }
-                  if (stageManagerMode && onStageManagerDomainClick) {
-                    event.stopPropagation()
-                    onStageManagerDomainClick(domain.id, {
-                      shiftKey: event.shiftKey,
-                      ctrlKey: event.ctrlKey,
-                      metaKey: event.metaKey,
-                    })
-                    return
-                  }
                   if (guidedDestinationActive) {
                     event.preventDefault()
                     event.stopPropagation()
@@ -608,7 +558,7 @@ export function CompactDomainRail({
                 }}
                 onContextMenu={(event) => {
                   const contextPolicy = getArrangeRailContextMenuPolicy({
-                    disabled: stageManagerMode,
+                    disabled: false,
                     arrangeActive: arrangeMode.active,
                   })
                   if (contextPolicy.action === 'ignore') {
@@ -620,12 +570,6 @@ export function CompactDomainRail({
                 }}
                 onDoubleClick={(event) => {
                   if (arrangeMode.active) return
-                  if (stageManagerMode) {
-                    event.preventDefault()
-                    event.stopPropagation()
-                    onStageManagerDomainDoubleClick?.(domain.id)
-                    return
-                  }
                   event.preventDefault()
                   event.stopPropagation()
                   onBeginEdit({ type: 'domain', id: domain.id })
@@ -636,7 +580,7 @@ export function CompactDomainRail({
                     shiftKey: event.shiftKey,
                     ctrlKey: event.ctrlKey,
                     metaKey: event.metaKey,
-                    disabled: stageManagerMode || tagFilterActive || guidedDestinationActive,
+                    disabled: tagFilterActive || guidedDestinationActive,
                   })
                   if (pointerAction === 'ignore') return
                   if (pointerAction === 'clear-press-timer') {
@@ -652,12 +596,12 @@ export function CompactDomainRail({
                   onStartArrangePress(event, { type: 'domain', domainId: domain.id }, `domain:${domain.id}`)
                 }}
                 onPointerMove={(event) => {
-                  if (!stageManagerMode && !tagFilterActive && !guidedDestinationActive) {
+                  if (!tagFilterActive && !guidedDestinationActive) {
                     onHandleArrangeDomainPointerMove(event, domain)
                   }
                 }}
                 onPointerUp={(event) => {
-                  if (!stageManagerMode && !tagFilterActive && !guidedDestinationActive) {
+                  if (!tagFilterActive && !guidedDestinationActive) {
                     onHandleArrangeDomainPointerUp(event, domain.id, () => onOpenDomain(domain.id))
                   }
                 }}

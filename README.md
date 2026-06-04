@@ -1,13 +1,12 @@
 # Tabs
 
-Tabs is a local-first React/Electron note workspace with domains, spaces, parent tabs, sub-tabs, trash, aisles, image handling, keyboard shortcuts, and a Stage Manager for bulk note movement.
+Tabs is a local-first React/Electron note workspace with domains, spaces, parent tabs, sub-tabs, trash, aisles, image handling, and keyboard shortcuts.
 
 ## Architecture Map
 
 - `src/App.tsx` is still the main shell, but persistence and trash selection live in focused hooks under `src/storage/` and `src/trash/`.
 - `src/state/` owns durable app-state normalization, domain projection, workspace creation, trash purging, and legacy migration.
 - `src/editor/` wraps Toast UI Editor and ProseMirror internals. Keep editor-specific `any` usage inside this boundary.
-- `src/stage-manager/` owns Director/Stage Manager selection, validation helpers, domain-aware transforms, and UI coordination.
 - `src/storage/` owns the hybrid manifest/Markdown storage adapter. Browser IndexedDB and Electron filesystem storage share common helpers in `hybrid-storage-core.js`.
 - `electron/` owns the desktop shell, preload bridge, filesystem storage adapter, export archive creation, and native menu shortcuts.
 
@@ -56,6 +55,5 @@ npm run build
 - Legacy JSON state must still parse through `parseSavedState`.
 - Browser hybrid storage must round-trip manifest and Markdown content.
 - Electron storage must preserve the same logical schema as browser storage.
-- Stage Manager must preserve selected note bodies when promoting, demoting, migrating, or deleting.
 - Trash restore/delete flows must preserve original parent/sub-tab relationships.
 - Export should keep Markdown readable and externalize image assets where possible.

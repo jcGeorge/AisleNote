@@ -1,6 +1,5 @@
 export const SYNCED_UI_SIMPLE_SETTING_DEFINITIONS = Object.freeze([
   { key: 'showParentHomeTab', kind: 'boolean', defaultValue: true },
-  { key: 'stageManagerOpenDestinationAfterApply', kind: 'boolean', defaultValue: true },
   { key: 'lastLinkInsertMode', kind: 'enum', defaultValue: 'note', values: ['note', 'url'] },
   { key: 'lastNoteCopyMode', kind: 'enum', defaultValue: 'independent', values: ['independent', 'linked'] },
   { key: 'findCaseSensitive', kind: 'boolean', defaultValue: false },
@@ -19,8 +18,6 @@ export const SYNCED_UI_SIMPLE_SETTING_DEFINITIONS = Object.freeze([
     values: ['goes-to-note', 'creates-another-tab'],
   },
   { key: 'decoupledItemsKeepData', kind: 'boolean', defaultValue: true },
-  { key: 'visualizerHomeNodesResideInParent', kind: 'boolean', defaultValue: false },
-  { key: 'visualizerLayoutMode', kind: 'enum', defaultValue: 'wedge-fan', values: ['wedge-fan', 'strict-rings', 'compact-cluster', 'link-tree'] },
   { key: 'tableAddTargetMode', kind: 'enum', defaultValue: 'bottom-right', values: ['bottom-right', 'active-cell'] },
   { key: 'tableDeleteTargetMode', kind: 'enum', defaultValue: 'bottom-right', values: ['bottom-right', 'active-cell'] },
   { key: 'tableOfContentsScope', kind: 'enum', defaultValue: 'all-aisles', values: ['all-aisles', 'focused-aisle'] },

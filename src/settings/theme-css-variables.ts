@@ -31,7 +31,7 @@ const CUSTOM_THEME_VARIABLE_BY_SLOT: Record<CustomThemePaletteSlot, `--${string}
 
 const BUILT_IN_OVERRIDE_VARIABLES_BY_SLOT: Partial<Record<CustomThemePaletteSlot, `--${string}`[]>> = {
   canvas: ['--app-bg', '--editor-bg', '--editor-shell-bg', '--editor-trash-home-bg'],
-  page: ['--app-page-bg', '--spaces-page-bg', '--settings-page-bg', '--stage-page-bg'],
+  page: ['--app-page-bg', '--spaces-page-bg', '--settings-page-bg'],
   surface: ['--app-surface', '--editor-panel-bg', '--editor-toolbar-bg', '--settings-card-bg'],
   surfaceRaised: ['--app-surface-raised', '--menu-bg'],
   text: ['--app-text', '--app-text-heading', '--editor-text', '--editor-heading-text', '--editor-toolbar-icon-color'],

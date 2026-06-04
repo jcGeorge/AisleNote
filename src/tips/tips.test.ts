@@ -20,7 +20,7 @@ describe('tips', () => {
   })
 
   it('resolves known tip definitions', () => {
-    expect(getTipDefinition('task-undo').message).toContain('Cmd+Z')
+    expect(getTipDefinition('task-undo').message).toContain('Click & hold')
   })
 
   it('formats the delete-subtab shortcut tip for the current platform', () => {

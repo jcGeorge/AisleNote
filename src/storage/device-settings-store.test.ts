@@ -77,9 +77,6 @@ describe('device settings store', () => {
     expect(parseDeviceSettings(JSON.stringify({ lastOpened: { ...baseLastOpened, viewMode: 'about' } })).lastOpened?.viewMode).toBe(
       'about',
     )
-    expect(parseDeviceSettings(JSON.stringify({ lastOpened: { ...baseLastOpened, viewMode: 'visualizer' } })).lastOpened?.viewMode).toBe(
-      'visualizer',
-    )
   })
 
   it('normalizes scratchpad last-opened state as a main-view device preference', () => {

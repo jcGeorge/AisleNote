@@ -83,7 +83,6 @@ export type StorageDataSettingsSection = 'notebook' | 'settings' | 'storage' | '
 export type StorageVisualsSettingsSection = 'theming' | 'otherVisuals'
 export type StorageTableControlTargetMode = 'active-cell' | 'bottom-right'
 export type StorageTableOfContentsScope = 'all-aisles' | 'focused-aisle'
-export type StorageVisualizerLayoutMode = 'wedge-fan' | 'strict-rings' | 'compact-cluster' | 'link-tree'
 export type StorageScratchpadNewAisleSide = 'left' | 'right'
 export type StorageTabRenameEnterBehavior = 'goes-to-note' | 'creates-another-tab'
 export type StorageFindReplaceMode = 'find' | 'replace'
@@ -103,7 +102,6 @@ export type StorageGlobalSettings = {
     showParentHomeTab: boolean
     alwaysShowSpaces?: boolean
     alwaysShowDomains?: boolean
-    stageManagerOpenDestinationAfterApply: boolean
     lastLinkInsertMode?: 'note' | 'url'
     lastNoteCopyMode?: 'independent' | 'linked'
     findCaseSensitive?: boolean
@@ -118,8 +116,6 @@ export type StorageGlobalSettings = {
     scratchpadNewAisleSide?: StorageScratchpadNewAisleSide
     tabRenameEnterBehavior?: StorageTabRenameEnterBehavior
     decoupledItemsKeepData?: boolean
-    visualizerHomeNodesResideInParent?: boolean
-    visualizerLayoutMode?: StorageVisualizerLayoutMode
     tableAddTargetMode?: StorageTableControlTargetMode
     tableDeleteTargetMode?: StorageTableControlTargetMode
     tableOfContentsScope?: StorageTableOfContentsScope
@@ -222,7 +218,7 @@ export type StorageLastOpened = {
   spaceId: StorageEntityId
   primeTabId?: StorageEntityId | null
   subTabId: StorageEntityId | null
-  viewMode: 'main' | 'trash' | 'settings' | 'stage-manager' | 'messages' | 'visualizer' | 'about'
+  viewMode: 'main' | 'trash' | 'settings' | 'messages' | 'about'
 }
 
 export type StorageWorkspaceIndex = {

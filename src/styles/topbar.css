@@ -396,8 +396,7 @@
   box-shadow: none !important;
 }
 
-.view-settings .topbar-context-btn,
-.view-stage-manager .topbar-context-btn {
+.view-settings .topbar-context-btn {
   font-size: calc(1rem * var(--note-font-scale, 1)) !important;
   line-height: 1.1 !important;
 }

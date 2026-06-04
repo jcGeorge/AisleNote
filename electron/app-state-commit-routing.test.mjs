@@ -15,11 +15,4 @@ describe('immediate app-state commit routing', () => {
     expect(source).not.toContain('saveSerializedState')
   })
 
-  it('routes Stage Manager apply commits through usePersistentAppState commitAppStateNow', () => {
-    const source = readSource('src/stage-manager/useStageManagerController.ts')
-
-    expect(source).toContain('commitAppStateNow')
-    expect(source).not.toContain('appPersistenceService')
-    expect(source).not.toContain('saveSerializedState')
-  })
 })

@@ -19,7 +19,7 @@ import type { AppState, DataSettingsSection, ViewMode, VisualsSettingsSection } 
 
 export const DEVICE_SETTINGS_STORAGE_KEY = 'tabs:device-settings:v1'
 
-const VIEW_MODES: ViewMode[] = ['main', 'trash', 'settings', 'stage-manager', 'messages', 'visualizer', 'about']
+const VIEW_MODES: ViewMode[] = ['main', 'trash', 'settings', 'messages', 'about']
 
 export type DeviceLastOpened = {
   domainId: string

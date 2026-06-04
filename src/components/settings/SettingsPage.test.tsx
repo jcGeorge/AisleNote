@@ -83,7 +83,6 @@ function createState(): AppState {
     frontmatter: DEFAULT_FRONTMATTER_SETTINGS,
     ui: {
       showParentHomeTab: true,
-      stageManagerOpenDestinationAfterApply: true,
       tableAddTargetMode: 'bottom-right',
       tableDeleteTargetMode: 'bottom-right',
       tabButtonScale: 1,
@@ -761,10 +760,8 @@ describe('frontmatter settings page', () => {
     expect(html).not.toContain('settings-toolbar-icon-box note-shared-toolbar')
     expect(html).not.toContain('settings-toolbar-drop-zone')
     expect(html).toContain('aria-label="Make copy"')
-    expect(html).toContain('aria-label="Director"')
     expect(html).toContain('aria-label="Find &amp; replace"')
     expect(html).toContain('table-of-contents-toolbar-icon')
-    expect(html).toContain('director-toolbar-icon')
     expect(html).toContain('find-replace-toolbar-icon')
     expect(html).toContain('title="spacer"')
     expect(html).toContain('>spacer</button>')
@@ -812,10 +809,8 @@ describe('frontmatter settings page', () => {
     expect(html).toContain('aria-label="Bold"')
     expect(html).toContain('aria-label="Italic"')
     expect(html).toContain('aria-label="Make copy"')
-    expect(html).toContain('aria-label="Director"')
     expect(html).toContain('aria-label="Find &amp; replace"')
     expect(html).toContain('table-of-contents-toolbar-icon')
-    expect(html).toContain('director-toolbar-icon')
     expect(html).toContain('find-replace-toolbar-icon')
     expect(html).toContain('title="spacer"')
     expect(html).toContain('>spacer</button>')
@@ -852,7 +847,6 @@ describe('frontmatter settings page', () => {
     expect(html).not.toContain('settings-toolbar-editable-spacer')
     expect(html).toContain('settings-toolbar-icon-box is-editable')
     expect(html).toContain('aria-label="Make copy"')
-    expect(html).toContain('aria-label="Director"')
     expect(html).toContain('aria-label="Find &amp; replace"')
     expect(html).toContain('aria-label="Clear contents"')
     expect(html).toContain('title="spacer"')
@@ -902,7 +896,7 @@ describe('frontmatter settings page', () => {
     const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'tips', state })
 
     expect(html).toContain('task undo')
-    expect(html).toContain('Cmd+Z')
+    expect(html).toContain('Click &amp; hold')
     expect(html).toContain('aria-label="task undo tip enabled"')
     expect(html).not.toContain('tab creation')
     expect(html).not.toContain('checked=""')

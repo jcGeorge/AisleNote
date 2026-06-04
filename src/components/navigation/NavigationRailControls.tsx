@@ -26,10 +26,8 @@ type NavigationRailControlsProps = {
   onSetMenuOpen: Dispatch<SetStateAction<boolean>>
   onToggleSpaceRail: () => void
   onToggleDomainRail: () => void
-  onOpenStageManager: () => void
   onToggleTrash: () => void
   onOpenMessages: () => void
-  onOpenVisualizer: () => void
   onOpenSettings: () => void
   onOpenAbout: () => void
   messagesCount?: number
@@ -47,10 +45,8 @@ export function NavigationRailControls({
   onSetMenuOpen,
   onToggleSpaceRail,
   onToggleDomainRail,
-  onOpenStageManager,
   onToggleTrash,
   onOpenMessages,
-  onOpenVisualizer,
   onOpenSettings,
   onOpenAbout,
   messagesCount = 0,
@@ -114,19 +110,11 @@ export function NavigationRailControls({
             <button type="button" className="menu-item" onClick={onToggleDomainRail}>
               {domainRailVisible ? 'hide' : 'show'} domain
             </button>
-            {viewMode === 'main' && (
-              <button type="button" className="menu-item" onClick={onOpenStageManager}>
-                director
-              </button>
-            )}
             <button type="button" className="menu-item" onClick={onToggleTrash}>
               {viewMode === 'trash' ? 'tabs' : 'trash'}
             </button>
             <button type="button" className="menu-item" onClick={onOpenMessages}>
               messages{messagesCount > 0 ? ` (${messagesCount})` : ''}
-            </button>
-            <button type="button" className="menu-item" onClick={onOpenVisualizer}>
-              visualizer
             </button>
             <button type="button" className="menu-item" onClick={onOpenSettings}>
               settings

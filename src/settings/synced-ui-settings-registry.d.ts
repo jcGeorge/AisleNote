@@ -2,7 +2,6 @@ import type { AppState } from '../types/app'
 
 export type SimpleSyncedUiSettingKey =
   | 'showParentHomeTab'
-  | 'stageManagerOpenDestinationAfterApply'
   | 'lastLinkInsertMode'
   | 'lastNoteCopyMode'
   | 'findCaseSensitive'
@@ -16,8 +15,6 @@ export type SimpleSyncedUiSettingKey =
   | 'scratchpadNewAisleSide'
   | 'tabRenameEnterBehavior'
   | 'decoupledItemsKeepData'
-  | 'visualizerHomeNodesResideInParent'
-  | 'visualizerLayoutMode'
   | 'tableAddTargetMode'
   | 'tableDeleteTargetMode'
   | 'tableOfContentsScope'
@@ -25,7 +22,6 @@ export type SimpleSyncedUiSettingKey =
 
 export type SyncedUiBooleanSettingKey =
   | 'showParentHomeTab'
-  | 'stageManagerOpenDestinationAfterApply'
   | 'findCaseSensitive'
   | 'findWholeWord'
   | 'findRegex'
@@ -34,7 +30,6 @@ export type SyncedUiBooleanSettingKey =
   | 'deleteSubtabShortcutEnabled'
   | 'scratchpadDeleteAisleShortcutEnabled'
   | 'decoupledItemsKeepData'
-  | 'visualizerHomeNodesResideInParent'
   | 'toolbarEditorShowNames'
 
 export type SimpleSyncedUiSettings = Pick<AppState['ui'], SimpleSyncedUiSettingKey>
@@ -66,10 +61,6 @@ export function normalizeRegisteredSyncedUiSetting(
   value: unknown,
 ): AppState['ui']['showParentHomeTab']
 export function normalizeRegisteredSyncedUiSetting(
-  key: 'stageManagerOpenDestinationAfterApply',
-  value: unknown,
-): AppState['ui']['stageManagerOpenDestinationAfterApply']
-export function normalizeRegisteredSyncedUiSetting(
   key: 'lastLinkInsertMode',
   value: unknown,
 ): NonNullable<AppState['ui']['lastLinkInsertMode']>
@@ -97,11 +88,6 @@ export function normalizeRegisteredSyncedUiSetting(
   value: unknown,
 ): NonNullable<AppState['ui']['tabRenameEnterBehavior']>
 export function normalizeRegisteredSyncedUiSetting(key: 'decoupledItemsKeepData', value: unknown): boolean
-export function normalizeRegisteredSyncedUiSetting(key: 'visualizerHomeNodesResideInParent', value: unknown): boolean
-export function normalizeRegisteredSyncedUiSetting(
-  key: 'visualizerLayoutMode',
-  value: unknown,
-): NonNullable<AppState['ui']['visualizerLayoutMode']>
 export function normalizeRegisteredSyncedUiSetting(
   key: 'tableAddTargetMode',
   value: unknown,

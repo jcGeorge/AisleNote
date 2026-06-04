@@ -1,7 +1,6 @@
 import { createRef, isValidElement, type ReactElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import { createEmptyStageManagerParentSelection } from '../../stage-manager/selection'
 import type { ArrangeModeState, MessagesSection, SettingsSection, Tab, ViewMode, WorkspaceData } from '../../types/app'
 import { SubTabRail } from './SubTabRail'
 import { TopBar } from './TopBar'
@@ -86,7 +85,6 @@ function createTopBarElement(
     messagesSection?: MessagesSection
     messagesCount?: number
     toastHistoryCount?: number
-    visualizerFilterControl?: ReactNode
   } = {},
   callbacks: TopBarTestCallbacks = {},
 ) {
@@ -101,7 +99,7 @@ function createTopBarElement(
       tooltipsDisabled={tooltipsDisabled}
       settingsSection={options.settingsSection ?? 'hotkeys'}
       primaryTabRailRef={createRef<HTMLDivElement>()}
-      isNoteWorkspaceView={viewMode === 'main' || viewMode === 'stage-manager'}
+      isNoteWorkspaceView={viewMode === 'main'}
       arrangeableParentTabClassName="is-arrangeable"
       arrangeControlsDisabled={arrangeControlsDisabled}
       draggingParentTabId={null}
@@ -119,8 +117,6 @@ function createTopBarElement(
       onCancelRename={noop}
       onRenameDraftChange={noop}
       onClearRenameDraft={noop}
-      onGetStageManagerParentSelection={createEmptyStageManagerParentSelection}
-      onStageManagerParentClick={noop}
       arrangeSelectedParentIds={new Set()}
       onHandleArrangeParentSelectionClick={() => false}
       onClearArrangeSelection={noop}
@@ -142,16 +138,12 @@ function createTopBarElement(
       onOpenParentSortModal={vi.fn()}
       onExitArrangeMode={callbacks.onExitArrangeMode ?? noop}
       onAdvanceArrangeHierarchyReveal={noop}
-      onEndStageManager={noop}
       onCloseSettingsView={noop}
       onSetMenuOpen={noop}
       onToggleSpaceRail={noop}
       onToggleDomainRail={noop}
-      onOpenStageManager={noop}
       onToggleTrash={noop}
       onOpenMessages={noop}
-      onOpenVisualizer={noop}
-      onOpenVisualizerSettings={noop}
       onOpenSettings={noop}
       onOpenAbout={noop}
       onSettingsSectionChange={noop}
@@ -159,7 +151,6 @@ function createTopBarElement(
       messagesCount={options.messagesCount ?? 0}
       toastHistoryCount={options.toastHistoryCount ?? 0}
       onMessagesSectionChange={noop}
-      visualizerFilterControl={options.visualizerFilterControl}
     />
   )
 }
@@ -174,7 +165,6 @@ function renderTopBar(
     messagesSection?: MessagesSection
     messagesCount?: number
     toastHistoryCount?: number
-    visualizerFilterControl?: ReactNode
   } = {},
 ) {
   return renderToStaticMarkup(createTopBarElement(tooltipsDisabled, arrangeModeOverride, arrangeControlsDisabled, options))
@@ -209,9 +199,6 @@ function createSubTabRailElement(
       onCancelRename={noop}
       onRenameDraftChange={noop}
       onClearRenameDraft={noop}
-      onGetStageManagerParentSelection={createEmptyStageManagerParentSelection}
-      onStageManagerHomeClick={noop}
-      onStageManagerSubTabClick={noop}
       arrangeSelectedSubTabIds={new Set()}
       onHandleArrangeSubTabSelectionClick={() => false}
       onClearArrangeSelection={noop}
@@ -273,7 +260,7 @@ describe('navigation arrange tooltips', () => {
     expect(html).toMatch(/topbar-context-btn[^"]*">settings<\/button>/)
   })
 
-  it('renders messages and about as selected utility rail buttons while visualizer uses filter controls', () => {
+  it('renders messages and about as selected utility rail buttons', () => {
     const messagesHtml = renderTopBar(false, { active: false }, false, {
       viewMode: 'messages',
       messagesCount: 2,
@@ -285,17 +272,6 @@ describe('navigation arrange tooltips', () => {
       messagesCount: 2,
       toastHistoryCount: 3,
     })
-    const visualizerHtml = renderTopBar(false, { active: false }, false, {
-      viewMode: 'visualizer',
-      visualizerFilterControl: (
-        <>
-          <button type="button" className="visualizer-filter-btn">duplicates</button>
-          <button type="button" className="visualizer-filter-btn">tags</button>
-          <button type="button" className="visualizer-filter-btn">front matter</button>
-          <button type="button" className="visualizer-filter-btn">clear filter</button>
-        </>
-      ),
-    })
     const aboutHtml = renderTopBar(false, { active: false }, false, { viewMode: 'about' })
 
     expect(messagesHtml).toContain('aria-label="utility pages"')
@@ -304,15 +280,6 @@ describe('navigation arrange tooltips', () => {
     expect(toastHistoryHtml).toContain('aria-selected="false" class="btn btn-sm btn-outline-secondary tab-btn parent-tab-btn utility-view-rail-btn">inbox (2)</button>')
     expect(toastHistoryHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn parent-tab-btn utility-view-rail-btn">toast history (3)</button>')
     expect(messagesHtml).toMatch(/topbar-context-btn[^"]*">messages \(2\)<\/button>/)
-    expect(visualizerHtml).toContain('aria-label="visualizer filters"')
-    expect(visualizerHtml).toContain('>duplicates</button>')
-    expect(visualizerHtml).toContain('>tags</button>')
-    expect(visualizerHtml).toContain('>front matter</button>')
-    expect(visualizerHtml).toContain('>clear filter</button>')
-    expect(visualizerHtml).not.toContain('utility-view-rail-btn">visualizer</button>')
-    expect(visualizerHtml).toContain('aria-label="visualizer settings"')
-    expect(visualizerHtml.indexOf('aria-label="visualizer settings"')).toBeLessThan(visualizerHtml.indexOf('>visualizer</button>'))
-    expect(visualizerHtml).toMatch(/topbar-context-btn[^"]*">visualizer<\/button>/)
     expect(aboutHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn parent-tab-btn utility-view-rail-btn">about</button>')
     expect(aboutHtml).toMatch(/topbar-context-btn[^"]*">about<\/button>/)
   })

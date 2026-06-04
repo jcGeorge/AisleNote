@@ -21,7 +21,7 @@ export type CustomThemePaletteSlot =
   | 'subtabRail'
 export type CustomThemePalette = Record<CustomThemePaletteSlot, string>
 export type ThemePaletteOverrides = Partial<Record<AppTheme, CustomThemePalette>>
-export type ViewMode = 'main' | 'trash' | 'settings' | 'stage-manager' | 'messages' | 'visualizer' | 'about'
+export type ViewMode = 'main' | 'trash' | 'settings' | 'messages' | 'about'
 export type MessagesSection = 'inbox' | 'toast-history'
 export type ShortcutId =
   | 'toggleTabTrash'
@@ -49,7 +49,6 @@ export type DataSettingsSection = 'notebook' | 'settings' | 'storage' | 'trash'
 export type VisualsSettingsSection = 'theming' | 'otherVisuals'
 export type TableControlTargetMode = 'active-cell' | 'bottom-right'
 export type TableOfContentsScope = 'all-aisles' | 'focused-aisle'
-export type VisualizerLayoutMode = 'wedge-fan' | 'strict-rings' | 'compact-cluster' | 'link-tree'
 export type NewAislePlacement = 'end' | 'left-of-focus' | 'right-of-focus'
 export type ScratchpadNewAisleSide = 'left' | 'right'
 export type TabRenameEnterBehavior = 'goes-to-note' | 'creates-another-tab'
@@ -256,7 +255,6 @@ export type ToolbarToolId =
   | 'frontmatter'
   | 'tableOfContents'
   | 'aisles'
-  | 'director'
   | 'findReplace'
   | 'undo'
   | 'redo'
@@ -389,7 +387,6 @@ export type AppState = {
     showParentHomeTab: boolean
     alwaysShowSpaces?: boolean
     alwaysShowDomains?: boolean
-    stageManagerOpenDestinationAfterApply: boolean
     lastLinkInsertMode?: LinkInsertMode
     lastNoteCopyMode?: NoteCopyMode
     findCaseSensitive?: boolean
@@ -404,8 +401,6 @@ export type AppState = {
     scratchpadNewAisleSide?: ScratchpadNewAisleSide
     tabRenameEnterBehavior?: TabRenameEnterBehavior
     decoupledItemsKeepData?: boolean
-    visualizerHomeNodesResideInParent?: boolean
-    visualizerLayoutMode?: VisualizerLayoutMode
     tableAddTargetMode: TableControlTargetMode
     tableDeleteTargetMode: TableControlTargetMode
     tableOfContentsScope?: TableOfContentsScope
@@ -446,7 +441,6 @@ export type ArrangeSource = 'context' | 'press'
 export type ArrangeInsertPosition = 'before' | 'after'
 export type ArrangeScope = 'tabs' | 'spaces' | 'domains'
 export type TabSortMode = 'alpha-asc' | 'alpha-desc' | 'created-asc' | 'created-desc' | 'updated-asc' | 'updated-desc'
-export type StageManagerDestinationSortMode = 'default' | TabSortMode
 export type TabSortTarget = 'parents' | 'subtabs' | 'spaces' | 'domains'
 export type LinkInsertMode = 'note' | 'url'
 export type NoteReferenceInsertKind = 'link' | 'preview'
@@ -567,86 +561,6 @@ export type TabArrangeDragPreview = {
   offsetY: number
   width: number
   height: number
-}
-
-export type StageManagerStep = 'select' | 'action' | 'configure' | 'review'
-export type StageManagerAction = 'migrate' | 'promote' | 'demote' | 'frontmatter' | 'mass-delete'
-export type StageManagerSelectionKind = 'notes' | 'spaces' | 'domains'
-export type StageManagerPartialDirection = 'toward-none' | 'toward-all'
-export type StageManagerParentSelectionMode = 'none' | 'partial' | 'full'
-export type StageManagerPromoteSpaceMode = 'existing' | 'new'
-export type StageManagerDestinationSpaceMode = 'existing' | 'new'
-export type StageManagerDestinationParentMode = 'existing' | 'new'
-export type StageManagerMigrateTarget = 'space' | 'parent' | null
-export type StageManagerMigrateParentSpaceMode = 'current' | 'existing' | 'new'
-export type StageManagerStrayHandlingMode = 'promote' | 'selected-parent' | 'existing-parent' | 'new-parent'
-export type StageManagerMassDeleteMode = 'trash' | 'permanent'
-
-export type StageManagerParentSelection = {
-  mode: StageManagerParentSelectionMode
-  selectedSubTabIds: string[]
-  cachedPartialSubTabIds: string[] | null
-  partialDirection: StageManagerPartialDirection | null
-}
-
-export type StageManagerSelectionState = Record<string, StageManagerParentSelection>
-export type StageManagerSelectionAnchor =
-  | { kind: 'parent'; tabId: string }
-  | { kind: 'subtab'; parentTabId: string; subTabId: string }
-
-export type StageManagerIdSelection = {
-  selectedIds: string[]
-  anchorId: string | null
-}
-
-export type StageManagerSpaceSelectionSnapshot = {
-  sourceDomainId: string
-  sourceDomainName: string
-  spaces: Space[]
-  hasSelection: boolean
-}
-
-export type StageManagerDomainSelectionSnapshot = {
-  domains: Domain[]
-  domainIds: Set<string>
-  hasSelection: boolean
-}
-
-export type StageManagerDraft = {
-  promoteDomainId: string
-  promoteSpaceMode: StageManagerPromoteSpaceMode
-  promoteSpaceId: string
-  newSpaceName: string
-  demoteDomainId: string
-  demoteSpaceId: string
-  demoteParentMode: StageManagerDestinationParentMode
-  demoteParentId: string
-  demoteNewParentName: string
-  migrateTarget: StageManagerMigrateTarget
-  migrateDomainId: string
-  migrateSpaceMode: StageManagerDestinationSpaceMode
-  migrateSpaceId: string
-  migrateParentDomainId: string
-  migrateParentSpaceMode: StageManagerMigrateParentSpaceMode
-  migrateParentSpaceId: string
-  migrateParentMode: StageManagerDestinationParentMode
-  migrateParentId: string
-  migrateNewParentName: string
-  strayHandlingMode: StageManagerStrayHandlingMode
-  straySelectedParentId: string
-  strayExistingParentId: string
-  strayNewParentName: string
-  destinationSortMode: StageManagerDestinationSortMode
-  frontmatterTemplateId: string
-  massDeleteMode: StageManagerMassDeleteMode
-}
-
-export type StageManagerSelectionSnapshot = {
-  fullParents: Tab[]
-  partialParents: Array<{ tab: Tab; selectedSubTabs: SubTab[] }>
-  looseSubTabs: Array<{ parentTab: Tab; subTab: SubTab }>
-  fullParentIds: Set<string>
-  hasSelection: boolean
 }
 
 export type ToastTone = 'success' | 'warning' | 'error'

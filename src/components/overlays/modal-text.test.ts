@@ -74,7 +74,6 @@ function createModalTextState(): AppState {
     frontmatter: DEFAULT_FRONTMATTER_SETTINGS,
     ui: {
       showParentHomeTab: true,
-      stageManagerOpenDestinationAfterApply: true,
       tableAddTargetMode: 'bottom-right',
       tableDeleteTargetMode: 'bottom-right',
       tabButtonScale: 1,

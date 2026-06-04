@@ -8,7 +8,6 @@ import type {
   MessagesSection,
   SelectionClickModifiers,
   SettingsSection,
-  StageManagerParentSelection,
   Tab,
   TabRenameEnterBehavior,
   TabArrangeDragItem,
@@ -44,9 +43,6 @@ type TopBarProps = {
   isDraggingArrangeItem?: boolean
   tagFilterActive?: boolean
   tagFilterControl?: ReactNode
-  visualizerFilterControl?: ReactNode
-  visualizerSettingsOpen?: boolean
-  visualizerSettingsPopover?: ReactNode
   getTabLabel?: (tab: Tab) => ReactNode
   settingsSection: SettingsSection
   primaryTabRailRef: RefObject<HTMLDivElement | null>
@@ -70,8 +66,6 @@ type TopBarProps = {
   onCancelRename: (type: EditableEntityType, id: string) => void
   onRenameDraftChange: (type: EditableEntityType, id: string, value: string) => void
   onClearRenameDraft: (type: EditableEntityType, id: string) => void
-  onGetStageManagerParentSelection: (tab: Tab) => StageManagerParentSelection
-  onStageManagerParentClick: (tab: Tab, modifiers: SelectionClickModifiers) => void
   arrangeSelectedParentIds: ReadonlySet<string>
   onHandleArrangeParentSelectionClick: (tabId: string, modifiers: SelectionClickModifiers) => boolean
   onClearArrangeSelection: () => void
@@ -113,16 +107,12 @@ type TopBarProps = {
   onOpenParentSortModal: () => void
   onExitArrangeMode: () => void
   onAdvanceArrangeHierarchyReveal: () => void
-  onEndStageManager: () => void
   onCloseSettingsView: () => void
   onSetMenuOpen: (updater: boolean | ((open: boolean) => boolean)) => void
   onToggleSpaceRail: () => void
   onToggleDomainRail: () => void
-  onOpenStageManager: () => void
   onToggleTrash: () => void
   onOpenMessages: () => void
-  onOpenVisualizer: () => void
-  onOpenVisualizerSettings: () => void
   onOpenSettings: () => void
   onOpenAbout: () => void
   onSettingsSectionChange: (section: SettingsSection) => void
@@ -131,21 +121,6 @@ type TopBarProps = {
   messagesCount?: number
   toastHistoryCount?: number
   onMessagesSectionChange?: (section: MessagesSection) => void
-}
-
-function VisualizerSettingsIcon() {
-  return (
-    <svg className="topbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path
-        d="M12 8.25a3.75 3.75 0 1 0 0 7.5 3.75 3.75 0 0 0 0-7.5Zm0 1.5a2.25 2.25 0 1 1 0 4.5 2.25 2.25 0 0 1 0-4.5Z"
-        fill="currentColor"
-      />
-      <path
-        d="m19.36 13.68 1.19.93-1.5 2.6-1.42-.56a7.8 7.8 0 0 1-1.63.94l-.22 1.51h-3l-.22-1.51a7.8 7.8 0 0 1-1.63-.94l-1.42.56-1.5-2.6 1.19-.93a7.4 7.4 0 0 1 0-1.88l-1.19-.93 1.5-2.6 1.42.56c.5-.38 1.05-.7 1.63-.94l.22-1.51h3l.22 1.51c.58.24 1.13.56 1.63.94l1.42-.56 1.5 2.6-1.19.93c.08.62.08 1.26 0 1.88Zm-1.56-.03c.1-.6.1-1.22 0-1.82l-.08-.48 1-.78-.36-.62-1.2.47-.38-.31a6.2 6.2 0 0 0-1.74-1l-.46-.17-.19-1.27h-.72l-.19 1.27-.46.17a6.2 6.2 0 0 0-1.74 1l-.38.31-1.2-.47-.36.62 1 .78-.08.48a5.9 5.9 0 0 0 0 1.82l.08.48-1 .78.36.62 1.2-.47.38.31c.52.43 1.1.76 1.74 1l.46.17.19 1.27h.72l.19-1.27.46-.17a6.2 6.2 0 0 0 1.74-1l.38-.31 1.2.47.36-.62-1-.78.08-.48Z"
-        fill="currentColor"
-      />
-    </svg>
-  )
 }
 
 export function TopBar({
@@ -159,9 +134,6 @@ export function TopBar({
   isDraggingArrangeItem = false,
   tagFilterActive = false,
   tagFilterControl = null,
-  visualizerFilterControl = null,
-  visualizerSettingsOpen = false,
-  visualizerSettingsPopover = null,
   getTabLabel = (tab) => tab.title,
   settingsSection,
   primaryTabRailRef,
@@ -184,8 +156,6 @@ export function TopBar({
   onCancelRename,
   onRenameDraftChange,
   onClearRenameDraft,
-  onGetStageManagerParentSelection,
-  onStageManagerParentClick,
   arrangeSelectedParentIds,
   onHandleArrangeParentSelectionClick,
   onClearArrangeSelection,
@@ -210,16 +180,12 @@ export function TopBar({
   onOpenParentSortModal,
   onExitArrangeMode,
   onAdvanceArrangeHierarchyReveal,
-  onEndStageManager,
   onCloseSettingsView,
   onSetMenuOpen,
   onToggleSpaceRail,
   onToggleDomainRail,
-  onOpenStageManager,
   onToggleTrash,
   onOpenMessages,
-  onOpenVisualizer,
-  onOpenVisualizerSettings,
   onOpenSettings,
   onOpenAbout,
   onSettingsSectionChange,
@@ -235,12 +201,7 @@ export function TopBar({
           role: 'tablist',
           'aria-label': 'settings sections',
         } as const)
-      : viewMode === 'visualizer'
-        ? ({
-            role: 'tablist',
-            'aria-label': 'visualizer filters',
-          } as const)
-        : viewMode === 'messages' || viewMode === 'about'
+      : viewMode === 'messages' || viewMode === 'about'
         ? ({
             role: 'tablist',
             'aria-label': 'utility pages',
@@ -298,38 +259,6 @@ export function TopBar({
           },
         ]
       : []),
-    ...(viewMode === 'visualizer'
-      ? [
-          {
-            key: 'visualizer-settings',
-            label: 'visualizer settings',
-            ariaLabel: 'visualizer settings',
-            icon: <VisualizerSettingsIcon />,
-            popover: visualizerSettingsPopover,
-            selected: visualizerSettingsOpen,
-            className: 'btn btn-sm tab-btn topbar-action-btn topbar-context-btn topbar-icon-btn visualizer-settings-topbar-btn',
-            onClick: onOpenVisualizerSettings,
-          },
-          {
-            key: 'visualizer-view',
-            label: 'visualizer',
-            selected: false,
-            className: 'btn btn-sm tab-btn topbar-action-btn topbar-context-btn',
-            onClick: () => undefined,
-          },
-        ]
-      : []),
-    ...(viewMode === 'stage-manager'
-      ? [
-          {
-            key: 'end-stage-manager',
-            label: 'director',
-            selected: false,
-            className: 'btn btn-sm tab-btn topbar-action-btn topbar-context-btn',
-            onClick: () => undefined,
-          },
-        ]
-      : []),
     ...(arrangeMode.active && viewMode === 'main'
       ? [
           {
@@ -353,9 +282,7 @@ export function TopBar({
   const topbarShowsCloseControl =
     viewMode === 'settings' ||
     viewMode === 'messages' ||
-    viewMode === 'visualizer' ||
     viewMode === 'about' ||
-    viewMode === 'stage-manager' ||
     (tagFilterActive && viewMode === 'main') ||
     (arrangeMode.active && viewMode === 'main')
   const parentPlacementTargetId =
@@ -427,8 +354,6 @@ export function TopBar({
             </button>
           )}
 
-          {viewMode === 'visualizer' && visualizerFilterControl}
-
           {isNoteWorkspaceView &&
             workspace.tabs.map((tab) =>
               editing?.type === 'tab' && editing.id === tab.id ? (
@@ -483,7 +408,6 @@ export function TopBar({
                 />
               ) : (
                 (() => {
-                  const stageManagerSelection = viewMode === 'stage-manager' ? onGetStageManagerParentSelection(tab) : null
                   const isArrangeMoveTarget =
                     (arrangeMode.active &&
                       arrangeMode.dragItem?.type === 'subtab' &&
@@ -514,15 +438,9 @@ export function TopBar({
                       role="tab"
                       aria-selected={tab.id === activeTab.id}
                       draggable={false}
-                      className={`btn btn-sm ${tab.id === activeTab.id ? 'btn-primary' : 'btn-outline-secondary'} tab-btn parent-tab-btn ${arrangeableParentTabClassName} ${isArrangeSelected ? 'is-arrange-selected' : ''} ${isArrangeMoveTarget ? 'is-arrange-target' : ''} ${isArrangeBeforeTarget ? 'is-arrange-target-before' : ''} ${isArrangeAfterTarget ? 'is-arrange-target-after' : ''} ${isArrangeBeforeNeighbor ? 'is-arrange-neighbor-before' : ''} ${isArrangeAfterNeighbor ? 'is-arrange-neighbor-after' : ''} ${draggingParentTabId === tab.id ? 'is-dragging' : ''} ${
-                        stageManagerSelection?.mode === 'partial' ? 'stage-manager-parent-partial' : ''
-                      } ${stageManagerSelection?.mode === 'full' ? 'stage-manager-parent-full' : ''}`}
+                      className={`btn btn-sm ${tab.id === activeTab.id ? 'btn-primary' : 'btn-outline-secondary'} tab-btn parent-tab-btn ${arrangeableParentTabClassName} ${isArrangeSelected ? 'is-arrange-selected' : ''} ${isArrangeMoveTarget ? 'is-arrange-target' : ''} ${isArrangeBeforeTarget ? 'is-arrange-target-before' : ''} ${isArrangeAfterTarget ? 'is-arrange-target-after' : ''} ${isArrangeBeforeNeighbor ? 'is-arrange-neighbor-before' : ''} ${isArrangeAfterNeighbor ? 'is-arrange-neighbor-after' : ''} ${draggingParentTabId === tab.id ? 'is-dragging' : ''}`}
                       onClick={(event) => {
                         const modifiers = getSelectionClickModifiers(event)
-                        if (viewMode === 'stage-manager') {
-                          onStageManagerParentClick(tab, modifiers)
-                          return
-                        }
                         if (onConsumeArrangeClickSuppression(`tab:${tab.id}`)) return
                         if (onHandleArrangeParentSelectionClick(tab.id, modifiers)) {
                           event.preventDefault()
@@ -668,21 +586,15 @@ export function TopBar({
                 onExitArrangeMode()
                 return
               }
-              if (viewMode === 'stage-manager') {
-                onEndStageManager()
-                return
-              }
-              if (viewMode === 'settings' || viewMode === 'messages' || viewMode === 'visualizer' || viewMode === 'about') {
+              if (viewMode === 'settings' || viewMode === 'messages' || viewMode === 'about') {
                 onCloseSettingsView()
               }
             }}
             onSetMenuOpen={onSetMenuOpen}
             onToggleSpaceRail={onToggleSpaceRail}
             onToggleDomainRail={onToggleDomainRail}
-            onOpenStageManager={onOpenStageManager}
             onToggleTrash={onToggleTrash}
             onOpenMessages={onOpenMessages}
-            onOpenVisualizer={onOpenVisualizer}
             onOpenSettings={onOpenSettings}
             onOpenAbout={onOpenAbout}
             messagesCount={messagesCount}

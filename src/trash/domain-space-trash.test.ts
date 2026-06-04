@@ -94,7 +94,6 @@ function appState(domains: Domain[]): AppState {
     frontmatter: { templates: [], settingsTemplateId: '', lastAppliedTemplateId: '' },
     ui: {
       showParentHomeTab: true,
-      stageManagerOpenDestinationAfterApply: true,
       tableAddTargetMode: 'bottom-right',
       tableDeleteTargetMode: 'bottom-right',
       tabButtonScale: 1,

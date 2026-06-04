@@ -16,7 +16,6 @@ import type {
   NoteAisleBody,
   NoteBody,
   NoteLocation,
-  StageManagerSelectionSnapshot,
 } from '../types/app'
 import {
   applyFrontmatterTemplate,
@@ -647,55 +646,4 @@ export function applyTemplateToNoteBody(
         computedFields,
       })
     : state
-}
-
-export function buildSelectedStageManagerNoteTargets(
-  state: AppState,
-  activeSpaceId: string,
-  snapshot: StageManagerSelectionSnapshot,
-): NoteLocation[] {
-  const targets: NoteLocation[] = []
-  for (const tab of snapshot.fullParents) {
-    targets.push({
-      domainId: state.activeDomainId,
-      spaceId: activeSpaceId,
-      tabId: tab.id,
-      subTabId: null,
-    })
-    for (const subTab of tab.subTabs) {
-      targets.push({
-        domainId: state.activeDomainId,
-        spaceId: activeSpaceId,
-        tabId: tab.id,
-        subTabId: subTab.id,
-      })
-    }
-  }
-  for (const { parentTab, subTab } of snapshot.looseSubTabs) {
-    targets.push({
-      domainId: state.activeDomainId,
-      spaceId: activeSpaceId,
-      tabId: parentTab.id,
-      subTabId: subTab.id,
-    })
-  }
-  return targets
-}
-
-export function applyTemplateToStageManagerSelection(
-  state: AppState,
-  activeSpaceId: string,
-  snapshot: StageManagerSelectionSnapshot,
-  template: FrontmatterTemplate,
-  now = new Date(),
-): AppState {
-  let nextState = state
-  const seenBodyIds = new Set<string>()
-  for (const location of buildSelectedStageManagerNoteTargets(state, activeSpaceId, snapshot)) {
-    const noteBodyId = getLocationInfo(nextState, location).noteBodyId
-    if (!noteBodyId || seenBodyIds.has(noteBodyId)) continue
-    seenBodyIds.add(noteBodyId)
-    nextState = applyTemplateToNoteBody(nextState, noteBodyId, location, template, now)
-  }
-  return nextState
 }
