@@ -15,6 +15,11 @@ import type {
 } from '../../types/app'
 import { getPlacementNeighborId } from '../../arrange/arrange-utils'
 import { getRenameInputKeyAction, shouldCreateAnotherTabAfterRenameEnter } from '../../navigation/rename-draft'
+import {
+  getArrangeRailContextMenuPolicy,
+  getArrangeRailPointerDownAction,
+  getSelectionClickModifiers,
+} from './arrange-rail-events'
 import { SortIcon } from './SortIcon'
 
 type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
@@ -113,18 +118,6 @@ type SubTabRailProps = {
   scratchpadActive?: boolean
   onOpenScratchpad?: () => void
   onOpenContextMenuForScratchpad?: (event: MouseEvent<HTMLButtonElement>) => void
-}
-
-function getSelectionClickModifiers(event: MouseEvent | ReactPointerEvent<HTMLButtonElement>): SelectionClickModifiers {
-  return {
-    shiftKey: event.shiftKey,
-    ctrlKey: event.ctrlKey,
-    metaKey: event.metaKey,
-  }
-}
-
-function hasSelectionClickModifier(event: MouseEvent | ReactPointerEvent<HTMLButtonElement>) {
-  return event.shiftKey || event.ctrlKey || event.metaKey
 }
 
 function ScratchpadIcon() {
@@ -251,16 +244,24 @@ export function SubTabRail({
             }}
             title={tooltipsDisabled ? undefined : 'home note'}
             onContextMenu={(event) => {
-              if (viewMode !== 'main') return
-              const forceMenu = arrangeMode.active
-              if (forceMenu) onExitArrangeMode()
-              onOpenContextMenuForHomeTab(event, activeTab.id, forceMenu ? { force: true } : undefined)
+              const contextPolicy = getArrangeRailContextMenuPolicy({
+                disabled: viewMode !== 'main',
+                arrangeActive: arrangeMode.active,
+              })
+              if (contextPolicy.action === 'ignore') return
+              if (contextPolicy.cancelArrange) onExitArrangeMode()
+              onOpenContextMenuForHomeTab(event, activeTab.id, contextPolicy.forceMenu ? { force: true } : undefined)
             }}
             onPointerDown={(event) => {
-              if (viewMode !== 'main') return
-              if (tagFilterActive) return
-              if (event.button !== 0) return
-              if (hasSelectionClickModifier(event)) {
+              const pointerAction = getArrangeRailPointerDownAction({
+                button: event.button,
+                shiftKey: event.shiftKey,
+                ctrlKey: event.ctrlKey,
+                metaKey: event.metaKey,
+                disabled: viewMode !== 'main' || tagFilterActive,
+              })
+              if (pointerAction === 'ignore') return
+              if (pointerAction === 'clear-press-timer') {
                 onClearArrangePressTimer()
                 return
               }
@@ -408,16 +409,29 @@ export function SubTabRail({
                       onBeginEdit({ type: 'subtab', id: subTab.id })
                     }}
                     onContextMenu={(event) => {
-                      if (viewMode !== 'main') return
-                      const forceMenu = arrangeMode.active
-                      if (forceMenu) onExitArrangeMode()
-                      onOpenContextMenuForSubTab(event, activeTab.id, subTab.id, forceMenu ? { force: true } : undefined)
+                      const contextPolicy = getArrangeRailContextMenuPolicy({
+                        disabled: viewMode !== 'main',
+                        arrangeActive: arrangeMode.active,
+                      })
+                      if (contextPolicy.action === 'ignore') return
+                      if (contextPolicy.cancelArrange) onExitArrangeMode()
+                      onOpenContextMenuForSubTab(
+                        event,
+                        activeTab.id,
+                        subTab.id,
+                        contextPolicy.forceMenu ? { force: true } : undefined,
+                      )
                     }}
                     onPointerDown={(event) => {
-                      if (viewMode !== 'main') return
-                      if (tagFilterActive) return
-                      if (event.button !== 0) return
-                      if (hasSelectionClickModifier(event)) {
+                      const pointerAction = getArrangeRailPointerDownAction({
+                        button: event.button,
+                        shiftKey: event.shiftKey,
+                        ctrlKey: event.ctrlKey,
+                        metaKey: event.metaKey,
+                        disabled: viewMode !== 'main' || tagFilterActive,
+                      })
+                      if (pointerAction === 'ignore') return
+                      if (pointerAction === 'clear-press-timer') {
                         onClearArrangePressTimer()
                         return
                       }

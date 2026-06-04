@@ -575,26 +575,19 @@ describe('compact scope tab scaling styles', () => {
     const spaceRule = extractRule(railCss, '.rail-control.is-space,\n.compact-space-btn')
     const parentRule = extractRule(railCss, '.rail-control.is-parent,\n.parent-tab-btn')
     const subtabRule = extractRule(railCss, '.rail-control.is-subtab,\n.subtab-btn')
-    const arrangeActiveDomainRule = extractRule(
+    const arrangeDomainVarsRule = extractRule(topbarCss, '.compact-domain-btn.is-arrangeable')
+    const arrangeSpaceVarsRule = extractRule(topbarCss, '.compact-space-btn.is-arrangeable')
+    const arrangeActiveScopeRule = extractRule(
       topbarCss,
-      '.compact-domain-btn.is-arrangeable.is-active,\n.compact-domain-btn.is-arrangeable.is-active:hover,\n.compact-domain-btn.is-arrangeable.is-active:focus,\n.compact-domain-btn.is-arrangeable.is-active:active,\n.compact-domain-btn.is-arrange-selected',
-    )
-    const arrangeActiveSpaceRule = extractRule(
-      topbarCss,
-      '.compact-space-btn.is-arrangeable.is-active,\n.compact-space-btn.is-arrangeable.is-active:hover,\n.compact-space-btn.is-arrangeable.is-active:focus,\n.compact-space-btn.is-arrangeable.is-active:active,\n.compact-space-btn.is-arrange-selected',
+      '.compact-scope-btn.is-arrangeable.is-active,\n.compact-scope-btn.is-arrangeable.is-active:hover,\n.compact-scope-btn.is-arrangeable.is-active:focus,\n.compact-scope-btn.is-arrangeable.is-active:active,\n.compact-scope-btn.is-arrange-selected',
     )
     const draggedTabRule = extractRule(tabsCss, '.tab-btn.is-arrangeable.is-dragging')
     const draggedScopeRule = extractRule(topbarCss, '.compact-scope-btn.is-arrangeable.is-dragging')
-    const arrangeUnselectedDomainRule = extractRule(
+    const arrangeUnselectedScopeRule = extractRule(
       topbarCss,
-      '.compact-domain-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging),\n.compact-domain-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging):hover,\n.compact-domain-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging):focus,\n.compact-domain-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging):active',
+      '.compact-scope-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging),\n.compact-scope-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging):hover,\n.compact-scope-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging):focus,\n.compact-scope-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging):active',
     )
-    const arrangeUnselectedSpaceRule = extractRule(
-      topbarCss,
-      '.compact-space-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging),\n.compact-space-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging):hover,\n.compact-space-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging):focus,\n.compact-space-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging):active',
-    )
-    const arrangeDraggingDomainRule = extractRule(topbarCss, '.compact-domain-btn.is-arrangeable.is-dragging')
-    const arrangeDraggingSpaceRule = extractRule(topbarCss, '.compact-space-btn.is-arrangeable.is-dragging')
+    const arrangeDraggingScopeRule = draggedScopeRule
     const arrangeUnselectedParentRule = extractRule(
       tabsCss,
       ".parent-tab-btn.is-arrangeable:not(.is-arrange-selected):not(.is-dragging):not([aria-selected='true']),\n.parent-tab-btn.is-arrangeable:not(.is-arrange-selected):not(.is-dragging):not([aria-selected='true']):hover,\n.parent-tab-btn.is-arrangeable:not(.is-arrange-selected):not(.is-dragging):not([aria-selected='true']):focus,\n.parent-tab-btn.is-arrangeable:not(.is-arrange-selected):not(.is-dragging):not([aria-selected='true']):active",
@@ -691,19 +684,21 @@ describe('compact scope tab scaling styles', () => {
     expect(domainRule).toContain('--rail-control-selected-bg: var(--domain-rail-selected-bg);')
     expect(domainRule).toContain('--rail-control-selected-border: var(--domain-rail-selected-border);')
     expect(domainRule).not.toContain('--trash-parent')
-    expect(arrangeActiveDomainRule).toContain('color: var(--domain-rail-selected-text) !important;')
-    expect(arrangeActiveDomainRule).toContain('background: var(--domain-rail-selected-bg) !important;')
-    expect(arrangeActiveDomainRule).toContain('border-color: var(--domain-rail-selected-border) !important;')
-    expect(arrangeActiveDomainRule).toContain('background-color: var(--domain-rail-selected-bg) !important;')
-    expect(arrangeActiveDomainRule).toContain('var(--domain-rail-arrangeable-shadow)')
-    expect(arrangeUnselectedDomainRule).toContain('color: var(--domain-rail-text) !important;')
-    expect(arrangeUnselectedDomainRule).toContain('background: var(--domain-rail-bg) !important;')
-    expect(arrangeUnselectedDomainRule).toContain('border-color: var(--domain-rail-border) !important;')
-    expect(arrangeUnselectedDomainRule).toContain('var(--domain-rail-arrangeable-shadow)')
-    expect(arrangeDraggingDomainRule).toContain('color: var(--domain-rail-selected-text) !important;')
-    expect(arrangeDraggingDomainRule).toContain('background: var(--domain-rail-selected-bg) !important;')
-    expect(arrangeDraggingDomainRule).toContain('border-color: var(--domain-rail-selected-border) !important;')
-    expect(arrangeDraggingDomainRule).toContain('var(--domain-rail-dragging-shadow)')
+    expect(arrangeDomainVarsRule).toContain('--compact-scope-arrange-shadow: var(--domain-rail-arrangeable-shadow);')
+    expect(arrangeDomainVarsRule).toContain('--compact-scope-dragging-shadow: var(--domain-rail-dragging-shadow);')
+    expect(arrangeActiveScopeRule).toContain('color: var(--rail-control-selected-text) !important;')
+    expect(arrangeActiveScopeRule).toContain('background: var(--rail-control-selected-bg) !important;')
+    expect(arrangeActiveScopeRule).toContain('border-color: var(--rail-control-selected-border) !important;')
+    expect(arrangeActiveScopeRule).toContain('background-color: var(--rail-control-selected-bg) !important;')
+    expect(arrangeActiveScopeRule).toContain('var(--compact-scope-arrange-shadow)')
+    expect(arrangeUnselectedScopeRule).toContain('color: var(--rail-control-text) !important;')
+    expect(arrangeUnselectedScopeRule).toContain('background: var(--rail-control-bg) !important;')
+    expect(arrangeUnselectedScopeRule).toContain('border-color: var(--rail-control-border) !important;')
+    expect(arrangeUnselectedScopeRule).toContain('var(--compact-scope-arrange-shadow)')
+    expect(arrangeDraggingScopeRule).toContain('color: var(--rail-control-selected-text) !important;')
+    expect(arrangeDraggingScopeRule).toContain('background: var(--rail-control-selected-bg) !important;')
+    expect(arrangeDraggingScopeRule).toContain('border-color: var(--rail-control-selected-border) !important;')
+    expect(arrangeDraggingScopeRule).toContain('var(--compact-scope-dragging-shadow)')
 
     expect(spaceRule).toContain('--rail-control-text: var(--space-rail-text);')
     expect(spaceRule).toContain('--rail-control-bg: var(--space-rail-bg);')
@@ -717,19 +712,8 @@ describe('compact scope tab scaling styles', () => {
     expect(spaceRule).not.toContain('#d6bd71')
     expect(spaceRule).not.toContain('#1b170d')
     expect(spaceRule).not.toContain('#72591e')
-    expect(arrangeActiveSpaceRule).toContain('color: var(--space-rail-selected-text) !important;')
-    expect(arrangeActiveSpaceRule).toContain('background: var(--space-rail-selected-bg) !important;')
-    expect(arrangeActiveSpaceRule).toContain('border-color: var(--space-rail-selected-border) !important;')
-    expect(arrangeActiveSpaceRule).toContain('background-color: var(--space-rail-selected-bg) !important;')
-    expect(arrangeActiveSpaceRule).toContain('var(--space-rail-arrangeable-shadow)')
-    expect(arrangeUnselectedSpaceRule).toContain('color: var(--space-rail-text) !important;')
-    expect(arrangeUnselectedSpaceRule).toContain('background: var(--space-rail-bg) !important;')
-    expect(arrangeUnselectedSpaceRule).toContain('border-color: var(--space-rail-border) !important;')
-    expect(arrangeUnselectedSpaceRule).toContain('var(--space-rail-arrangeable-shadow)')
-    expect(arrangeDraggingSpaceRule).toContain('color: var(--space-rail-selected-text) !important;')
-    expect(arrangeDraggingSpaceRule).toContain('background: var(--space-rail-selected-bg) !important;')
-    expect(arrangeDraggingSpaceRule).toContain('border-color: var(--space-rail-selected-border) !important;')
-    expect(arrangeDraggingSpaceRule).toContain('var(--space-rail-dragging-shadow)')
+    expect(arrangeSpaceVarsRule).toContain('--compact-scope-arrange-shadow: var(--space-rail-arrangeable-shadow);')
+    expect(arrangeSpaceVarsRule).toContain('--compact-scope-dragging-shadow: var(--space-rail-dragging-shadow);')
     expect(parentRule).toContain('--rail-control-text: var(--parent-rail-text);')
     expect(parentRule).toContain('--rail-control-bg: var(--parent-rail-bg);')
     expect(parentRule).toContain('--rail-control-border: var(--parent-rail-border);')

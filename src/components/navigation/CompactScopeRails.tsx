@@ -16,6 +16,7 @@ import { SortIcon } from './SortIcon'
 import { ArrangeDragPreviewPortal } from './ArrangeDragPreviewPortal'
 import { ArrangePreviewStack } from './ArrangePreviewStack'
 import { getArrangeDragPreviewRect, getArrangeDragPreviewStyleFromRect } from './arrange-drag-preview-style'
+import { getArrangeRailContextMenuPolicy, getArrangeRailPointerDownAction } from './arrange-rail-events'
 
 type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
 type CommitRenameOptions = {
@@ -28,10 +29,6 @@ type NavigationContextMenuOptions = {
 type CompactScopeDragPreviewProps =
   | { type: 'domain'; preview: DomainArrangeDragPreview; active: boolean }
   | { type: 'space'; preview: SpaceArrangeDragPreview; active: boolean }
-
-function hasSelectionClickModifier(event: Pick<ReactPointerEvent<HTMLButtonElement>, 'shiftKey' | 'ctrlKey' | 'metaKey'>) {
-  return event.shiftKey || event.ctrlKey || event.metaKey
-}
 
 export function CompactScopeDragPreview({ type, preview }: CompactScopeDragPreviewProps) {
   const kindClass = type === 'domain' ? 'compact-domain-btn is-domain' : 'compact-space-btn is-space'
@@ -340,13 +337,16 @@ export function CompactSpaceRail({
                   onOpenSpace(space.id)
                 }}
                 onContextMenu={(event) => {
-                  if (stageManagerMode) {
+                  const contextPolicy = getArrangeRailContextMenuPolicy({
+                    disabled: stageManagerMode,
+                    arrangeActive: arrangeMode.active,
+                  })
+                  if (contextPolicy.action === 'ignore') {
                     event.preventDefault()
                     return
                   }
-                  const forceMenu = arrangeMode.active
-                  if (forceMenu) onCancelArrangeMode?.()
-                  onOpenContextMenu(event, space.id, forceMenu ? { force: true } : undefined)
+                  if (contextPolicy.cancelArrange) onCancelArrangeMode?.()
+                  onOpenContextMenu(event, space.id, contextPolicy.forceMenu ? { force: true } : undefined)
                 }}
                 onDoubleClick={(event) => {
                   if (arrangeMode.active) return
@@ -361,11 +361,15 @@ export function CompactSpaceRail({
                   onBeginEdit({ type: 'space', id: space.id })
                 }}
                 onPointerDown={(event) => {
-                  if (stageManagerMode) return
-                  if (tagFilterActive) return
-                  if (guidedDestinationActive) return
-                  if (event.button !== 0) return
-                  if (hasSelectionClickModifier(event)) {
+                  const pointerAction = getArrangeRailPointerDownAction({
+                    button: event.button,
+                    shiftKey: event.shiftKey,
+                    ctrlKey: event.ctrlKey,
+                    metaKey: event.metaKey,
+                    disabled: stageManagerMode || tagFilterActive || guidedDestinationActive,
+                  })
+                  if (pointerAction === 'ignore') return
+                  if (pointerAction === 'clear-press-timer') {
                     onClearArrangePressTimer()
                     return
                   }
@@ -603,13 +607,16 @@ export function CompactDomainRail({
                   onOpenDomain(domain.id)
                 }}
                 onContextMenu={(event) => {
-                  if (stageManagerMode) {
+                  const contextPolicy = getArrangeRailContextMenuPolicy({
+                    disabled: stageManagerMode,
+                    arrangeActive: arrangeMode.active,
+                  })
+                  if (contextPolicy.action === 'ignore') {
                     event.preventDefault()
                     return
                   }
-                  const forceMenu = arrangeMode.active
-                  if (forceMenu) onCancelArrangeMode?.()
-                  onOpenContextMenu(event, domain.id, forceMenu ? { force: true } : undefined)
+                  if (contextPolicy.cancelArrange) onCancelArrangeMode?.()
+                  onOpenContextMenu(event, domain.id, contextPolicy.forceMenu ? { force: true } : undefined)
                 }}
                 onDoubleClick={(event) => {
                   if (arrangeMode.active) return
@@ -624,11 +631,15 @@ export function CompactDomainRail({
                   onBeginEdit({ type: 'domain', id: domain.id })
                 }}
                 onPointerDown={(event) => {
-                  if (stageManagerMode) return
-                  if (tagFilterActive) return
-                  if (guidedDestinationActive) return
-                  if (event.button !== 0) return
-                  if (hasSelectionClickModifier(event)) {
+                  const pointerAction = getArrangeRailPointerDownAction({
+                    button: event.button,
+                    shiftKey: event.shiftKey,
+                    ctrlKey: event.ctrlKey,
+                    metaKey: event.metaKey,
+                    disabled: stageManagerMode || tagFilterActive || guidedDestinationActive,
+                  })
+                  if (pointerAction === 'ignore') return
+                  if (pointerAction === 'clear-press-timer') {
                     onClearArrangePressTimer()
                     return
                   }

@@ -47,13 +47,15 @@ describe('useArrangeMode arrange selection active replacement', () => {
   it('reassigns active context when the active arrange item is toggled out', () => {
     const source = readFileSync(join(arrangeDir, 'useArrangeMode.ts'), 'utf8')
 
-    expect(source).toContain('getArrangeSelectionActiveReplacementId')
+    expect(source).toContain("import { resolveArrangeSelectionClick } from './arrange-active-context'")
     expect(source).toContain("import { projectActiveDomainState, setActiveDomain, setActiveSpaceInActiveDomain } from '../state/domains'")
     expect(source).toContain(
       "import { selectPrimeTabWithMemory, selectSubTabWithMemory } from '../state/navigation-memory'",
     )
     expect(source).toContain('const applyArrangeSelectionActiveReplacement = (')
-    expect(source.match(/getArrangeSelectionActiveReplacementId\(\{/g)).toHaveLength(4)
+    expect(source).toContain('const handleArrangeSelectionClick = ({')
+    expect(source).toContain('const { nextSelection, activeReplacementId } = resolveArrangeSelectionClick({')
+    expect(source).toContain('applyArrangeSelectionActiveReplacement(kind, activeReplacementId)')
     expect(source).toContain("if (kind === 'domain') {")
     expect(source).toContain('setState((previous) => setActiveDomain(previous, replacementId))')
     expect(source).toContain("if (kind === 'space') {")
@@ -62,7 +64,25 @@ describe('useArrangeMode arrange selection active replacement', () => {
     expect(source).toContain('updateActiveSpaceData((data) => selectPrimeTabWithMemory(data, replacementId))')
     expect(source).toContain("if (kind === 'subtab') {")
     expect(source).toContain('updateActiveSpaceData((data) => selectSubTabWithMemory(data, replacementId))')
-    expect(source.match(/applyArrangeSelectionActiveReplacement\('/g)).toHaveLength(4)
+    expect(source.match(/handleArrangeSelectionClick\(\{/g)).toHaveLength(4)
+  })
+})
+
+describe('useArrangeMode live drag lifecycle policy', () => {
+  it('uses explicit finish kinds and shared cleanup policy', () => {
+    const source = readFileSync(join(arrangeDir, 'useArrangeMode.ts'), 'utf8')
+
+    expect(source).toContain("import {\n  clearArrangeModeLiveDragState,\n  shouldClearArrangeSelectionAfterLiveDragFinish,")
+    expect(source).toContain('const completeArrangeLiveDrag = ({')
+    expect(source).toContain("finishKind: 'noop'")
+    expect(source).toContain("finishKind = 'reorder'")
+    expect(source).toContain("finishKind = 'cross-domain-move'")
+    expect(source).toContain("'hierarchy-drop'")
+    expect(source).toContain("'blocked'")
+    expect(source).toContain('shouldClearArrangeSelectionAfterLiveDragFinish({ itemKind, finishKind })')
+    expect(source).toContain('resetArrangeLiveDragMode(resetScope)')
+    expect(source.match(/return finishKind/g)?.length ?? 0).toBeGreaterThanOrEqual(3)
+    expect(source.match(/if \(!drag\) return null/g)).toHaveLength(3)
   })
 })
 

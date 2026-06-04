@@ -53,61 +53,40 @@
 }
 
 .compact-domain-btn.is-arrangeable {
+  --compact-scope-arrange-shadow: var(--domain-rail-arrangeable-shadow);
+  --compact-scope-dragging-shadow: var(--domain-rail-dragging-shadow);
   box-shadow: var(--domain-rail-arrangeable-shadow) !important;
 }
 
 .compact-space-btn.is-arrangeable {
+  --compact-scope-arrange-shadow: var(--space-rail-arrangeable-shadow);
+  --compact-scope-dragging-shadow: var(--space-rail-dragging-shadow);
   box-shadow: var(--space-rail-arrangeable-shadow) !important;
 }
 
-.compact-domain-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging),
-.compact-domain-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging):hover,
-.compact-domain-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging):focus,
-.compact-domain-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging):active {
-  color: var(--domain-rail-text) !important;
-  background: var(--domain-rail-bg) !important;
-  background-color: var(--domain-rail-bg) !important;
-  border-color: var(--domain-rail-border) !important;
-  box-shadow: var(--domain-rail-arrangeable-shadow) !important;
+.compact-scope-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging),
+.compact-scope-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging):hover,
+.compact-scope-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging):focus,
+.compact-scope-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging):active {
+  color: var(--rail-control-text) !important;
+  background: var(--rail-control-bg) !important;
+  background-color: var(--rail-control-bg) !important;
+  border-color: var(--rail-control-border) !important;
+  box-shadow: var(--compact-scope-arrange-shadow) !important;
 }
 
-.compact-space-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging),
-.compact-space-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging):hover,
-.compact-space-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging):focus,
-.compact-space-btn.is-arrangeable:not(.is-active):not(.is-arrange-selected):not(.is-dragging):active {
-  color: var(--space-rail-text) !important;
-  background: var(--space-rail-bg) !important;
-  background-color: var(--space-rail-bg) !important;
-  border-color: var(--space-rail-border) !important;
-  box-shadow: var(--space-rail-arrangeable-shadow) !important;
-}
-
-.compact-domain-btn.is-arrangeable.is-active,
-.compact-domain-btn.is-arrangeable.is-active:hover,
-.compact-domain-btn.is-arrangeable.is-active:focus,
-.compact-domain-btn.is-arrangeable.is-active:active,
-.compact-domain-btn.is-arrange-selected {
-  color: var(--domain-rail-selected-text) !important;
-  background: var(--domain-rail-selected-bg) !important;
-  background-color: var(--domain-rail-selected-bg) !important;
-  border-color: var(--domain-rail-selected-border) !important;
+.compact-scope-btn.is-arrangeable.is-active,
+.compact-scope-btn.is-arrangeable.is-active:hover,
+.compact-scope-btn.is-arrangeable.is-active:focus,
+.compact-scope-btn.is-arrangeable.is-active:active,
+.compact-scope-btn.is-arrange-selected {
+  color: var(--rail-control-selected-text) !important;
+  background: var(--rail-control-selected-bg) !important;
+  background-color: var(--rail-control-selected-bg) !important;
+  border-color: var(--rail-control-selected-border) !important;
   box-shadow:
-    inset 0 0 0 2px color-mix(in srgb, var(--domain-rail-selected-border) 72%, transparent),
-    var(--domain-rail-arrangeable-shadow) !important;
-}
-
-.compact-space-btn.is-arrangeable.is-active,
-.compact-space-btn.is-arrangeable.is-active:hover,
-.compact-space-btn.is-arrangeable.is-active:focus,
-.compact-space-btn.is-arrangeable.is-active:active,
-.compact-space-btn.is-arrange-selected {
-  color: var(--space-rail-selected-text) !important;
-  background: var(--space-rail-selected-bg) !important;
-  background-color: var(--space-rail-selected-bg) !important;
-  border-color: var(--space-rail-selected-border) !important;
-  box-shadow:
-    inset 0 0 0 2px color-mix(in srgb, var(--space-rail-selected-border) 72%, transparent),
-    var(--space-rail-arrangeable-shadow) !important;
+    inset 0 0 0 2px color-mix(in srgb, var(--rail-control-selected-border) 72%, transparent),
+    var(--compact-scope-arrange-shadow) !important;
 }
 
 .compact-scope-btn.is-arrangeable:hover {
@@ -116,26 +95,13 @@
 
 .compact-scope-btn.is-arrangeable.is-dragging {
   cursor: grabbing;
-}
-
-.compact-domain-btn.is-arrangeable.is-dragging {
-  color: var(--domain-rail-selected-text) !important;
-  background: var(--domain-rail-selected-bg) !important;
-  background-color: var(--domain-rail-selected-bg) !important;
-  border-color: var(--domain-rail-selected-border) !important;
+  color: var(--rail-control-selected-text) !important;
+  background: var(--rail-control-selected-bg) !important;
+  background-color: var(--rail-control-selected-bg) !important;
+  border-color: var(--rail-control-selected-border) !important;
   box-shadow:
-    inset 0 0 0 2px color-mix(in srgb, var(--domain-rail-selected-border) 72%, transparent),
-    var(--domain-rail-dragging-shadow) !important;
-}
-
-.compact-space-btn.is-arrangeable.is-dragging {
-  color: var(--space-rail-selected-text) !important;
-  background: var(--space-rail-selected-bg) !important;
-  background-color: var(--space-rail-selected-bg) !important;
-  border-color: var(--space-rail-selected-border) !important;
-  box-shadow:
-    inset 0 0 0 2px color-mix(in srgb, var(--space-rail-selected-border) 72%, transparent),
-    var(--space-rail-dragging-shadow) !important;
+    inset 0 0 0 2px color-mix(in srgb, var(--rail-control-selected-border) 72%, transparent),
+    var(--compact-scope-dragging-shadow) !important;
 }
 
 .compact-scope-btn.is-arrangeable.is-dragging.is-arrange-neighbor-before {

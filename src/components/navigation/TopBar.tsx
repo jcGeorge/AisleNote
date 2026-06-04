@@ -20,6 +20,11 @@ import type {
 import { getPlacementNeighborId } from '../../arrange/arrange-utils'
 import { getRenameInputKeyAction, shouldCreateAnotherTabAfterRenameEnter } from '../../navigation/rename-draft'
 import { SETTINGS_SECTIONS } from '../../settings/defaults'
+import {
+  getArrangeRailContextMenuPolicy,
+  getArrangeRailPointerDownAction,
+  getSelectionClickModifiers,
+} from './arrange-rail-events'
 import { NavigationRailControls, type NavigationRailAction } from './NavigationRailControls'
 import { SortIcon } from './SortIcon'
 
@@ -126,18 +131,6 @@ type TopBarProps = {
   messagesCount?: number
   toastHistoryCount?: number
   onMessagesSectionChange?: (section: MessagesSection) => void
-}
-
-function getSelectionClickModifiers(event: MouseEvent | ReactPointerEvent<HTMLButtonElement>): SelectionClickModifiers {
-  return {
-    shiftKey: event.shiftKey,
-    ctrlKey: event.ctrlKey,
-    metaKey: event.metaKey,
-  }
-}
-
-function hasSelectionClickModifier(event: MouseEvent | ReactPointerEvent<HTMLButtonElement>) {
-  return event.shiftKey || event.ctrlKey || event.metaKey
 }
 
 function VisualizerSettingsIcon() {
@@ -543,16 +536,28 @@ export function TopBar({
                         onBeginEdit({ type: 'tab', id: tab.id })
                       }}
                       onContextMenu={(event) => {
-                        if (viewMode !== 'main') return
-                        const forceMenu = arrangeMode.active
-                        if (forceMenu) onExitArrangeMode()
-                        onOpenContextMenuForTab(event, tab.id, forceMenu ? { force: true } : undefined)
+                        const contextPolicy = getArrangeRailContextMenuPolicy({
+                          disabled: viewMode !== 'main',
+                          arrangeActive: arrangeMode.active,
+                        })
+                        if (contextPolicy.action === 'ignore') return
+                        if (contextPolicy.cancelArrange) onExitArrangeMode()
+                        onOpenContextMenuForTab(
+                          event,
+                          tab.id,
+                          contextPolicy.forceMenu ? { force: true } : undefined,
+                        )
                       }}
                       onPointerDown={(event) => {
-                        if (viewMode !== 'main') return
-                        if (tagFilterActive) return
-                        if (event.button !== 0) return
-                        if (hasSelectionClickModifier(event)) {
+                        const pointerAction = getArrangeRailPointerDownAction({
+                          button: event.button,
+                          shiftKey: event.shiftKey,
+                          ctrlKey: event.ctrlKey,
+                          metaKey: event.metaKey,
+                          disabled: viewMode !== 'main' || tagFilterActive,
+                        })
+                        if (pointerAction === 'ignore') return
+                        if (pointerAction === 'clear-press-timer') {
                           onClearArrangePressTimer()
                           return
                         }
