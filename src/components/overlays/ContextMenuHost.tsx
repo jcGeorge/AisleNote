@@ -265,6 +265,7 @@ export function ContextMenuHost({
       <MenuButton onClick={() => onEditorClipboard(action, 'here')}>here</MenuButton>
     </SubMenu>
   )
+  const aisleCopyAsMenu = contextMenu.type === 'subtab' ? undefined : copyAsMenu?.aisle
 
   return (
     <div
@@ -350,7 +351,7 @@ export function ContextMenuHost({
           <MenuButton onClick={onEditorFindReplace}>find & replace</MenuButton>
           <MenuButton onClick={onOpenCopyModal}>make copy</MenuButton>
           {renderCopyAsSubmenu('note', copyAsMenu?.note)}
-          {renderCopyAsSubmenu('aisle', copyAsMenu?.aisle)}
+          {renderCopyAsSubmenu('aisle', aisleCopyAsMenu)}
           <MenuSeparator />
           <SubMenu label="format">
             <MenuButton onClick={() => onEditorCommand('bold')}>bold</MenuButton>
@@ -413,7 +414,7 @@ export function ContextMenuHost({
             make copy
           </button>
           {renderCopyAsSubmenu('note', copyAsMenu?.note)}
-          {renderCopyAsSubmenu('aisle', copyAsMenu?.aisle)}
+          {renderCopyAsSubmenu('aisle', aisleCopyAsMenu)}
         </>
       ) : (
         <>
@@ -424,7 +425,7 @@ export function ContextMenuHost({
             make copy
           </button>
           {renderCopyAsSubmenu('note', copyAsMenu?.note)}
-          {renderCopyAsSubmenu('aisle', copyAsMenu?.aisle)}
+          {renderCopyAsSubmenu('aisle', aisleCopyAsMenu)}
           {duplicateCount > 1 && (
             <button type="button" className="tab-context-delete" onClick={onOpenDeduplicateModal}>
               de-couple

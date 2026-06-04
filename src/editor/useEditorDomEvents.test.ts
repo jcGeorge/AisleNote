@@ -41,6 +41,12 @@ const previewDeleteSchema = new Schema({
       toDOM: (node) => [`h${node.attrs.level}`, 0],
     },
   },
+  marks: {
+    link: {
+      attrs: { linkUrl: {} },
+      toDOM: (mark) => ['a', { href: mark.attrs.linkUrl }, 0],
+    },
+  },
 })
 
 function fakeTarget(matchedSelector: string | null): Element {
@@ -203,6 +209,32 @@ describe('editor DOM events', () => {
     expect(view.state.selection.from).toBe(5)
     expect(view.state.selection.to).toBe(5)
     expect(view.focus).toHaveBeenCalled()
+  })
+
+  it('places the cursor after the current media range when player offsets are stale', () => {
+    const mediaMark = previewDeleteSchema.marks.link.create({ linkUrl: 'tabs-asset:///assets/song.mp3' })
+    const doc = previewDeleteSchema.nodes.doc.create(null, [
+      previewDeleteSchema.nodes.paragraph.create(null, [
+        previewDeleteSchema.text('before '),
+        previewDeleteSchema.text('Song', [mediaMark]),
+        previewDeleteSchema.text(' after'),
+      ]),
+    ])
+    const view = {
+      state: EditorState.create({
+        doc,
+        selection: TextSelection.create(doc, 1),
+      }),
+      dispatch: vi.fn((transaction) => {
+        view.state = view.state.apply(transaction)
+      }),
+      focus: vi.fn(),
+      posAtDOM: vi.fn(() => 8),
+    }
+
+    expect(placeCaretAfterMediaPlayer(view, fakeMediaPlayer('audio', '5'))).toBe(true)
+    expect(view.state.selection.from).toBe(12)
+    expect(view.state.selection.to).toBe(12)
   })
 
   it('routes active media player keyboard shortcuts through player controls', () => {

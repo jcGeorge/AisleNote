@@ -252,6 +252,18 @@ describe('sort modal rendering', () => {
     expect(shouldModalBackdropClose({ type: 'scratchpad-about' })).toBe(true)
   })
 
+  it('renders synced note paste confirmation', () => {
+    const html = renderModal({
+      type: 'confirm-synced-note-paste',
+      source: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-source', subTabId: null },
+      destination: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
+    })
+
+    expect(html).toContain('paste synced note?')
+    expect(html).toContain('synced aisle')
+    expect(html).toContain('paste synced note')
+  })
+
   it('renders the parent sort title, close control, and sort options', () => {
     const html = renderModal({ type: 'sort-tabs', target: 'parents' })
 

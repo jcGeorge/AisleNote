@@ -3,6 +3,7 @@ import { DEFAULT_FRONTMATTER_SETTINGS } from '../frontmatter/frontmatter'
 import type { AppState, NoteLocation, Space } from '../types/app'
 import { getLocationInfo } from './note-locations'
 import { getAisleMarkdown } from './note-markdown'
+import { syncNoteAisleBodyMarkdownInState } from './aisle-body-state'
 import {
   COPY_AS_CLIPBOARD_MIME,
   applyCopyAsStructuralPayloadToState,
@@ -169,6 +170,26 @@ describe('copy-as clipboard helpers', () => {
     })
   })
 
+  it('builds aisle payloads for single-aisle notes', () => {
+    const state = createCopyAsState()
+    state.noteBodies = state.noteBodies.map((body) =>
+      body.id === 'body-source'
+        ? { ...body, aisles: [{ id: 'aisle-source-1', aisleBodyId: 'aisle-source-1' }] }
+        : body,
+    )
+
+    const aisleCopy = buildCopyAsClipboardData(state, sourceLocation, 'aisle', 'duplicate', 'aisle-source-1')
+
+    expect(aisleCopy).toMatchObject({
+      ok: true,
+      payload: {
+        scope: 'aisle',
+        action: 'duplicate',
+        aisleId: 'aisle-source-1',
+      },
+    })
+  })
+
   it('writes private clipboard payloads and falls back to plain text', async () => {
     const payload: CopyAsClipboardPayload = { version: 1, scope: 'note', action: 'link', source: sourceLocation }
     class FakeClipboardItem {
@@ -317,6 +338,53 @@ describe('copy-as clipboard helpers', () => {
       'source two',
     ])
     expect(targetBody?.aisles[1]?.aisleBodyId).toBe('aisle-source-2')
+  })
+
+  it('keeps synced single-aisle copies linked after the source note gains another aisle', () => {
+    const state = createCopyAsState()
+    state.noteBodies = state.noteBodies.map((body) =>
+      body.id === 'body-source'
+        ? { ...body, aisles: [{ id: 'aisle-source-1', aisleBodyId: 'aisle-source-1' }] }
+        : body,
+    )
+
+    const result = applyCopyAsStructuralPayloadToState(state, targetLocation, {
+      version: 1,
+      scope: 'aisle',
+      action: 'duplicate',
+      source: sourceLocation,
+      aisleId: 'aisle-source-1',
+    })
+    expect(result.status).toBe('applied')
+    if (result.status !== 'applied') throw new Error('expected linked aisle copy')
+
+    const expandedState: AppState = {
+      ...result.state,
+      noteBodies: result.state.noteBodies.map((body) =>
+        body.id === 'body-source'
+          ? {
+              ...body,
+              aisles: [...body.aisles, { id: 'aisle-source-new', aisleBodyId: 'aisle-source-new' }],
+            }
+          : body,
+      ),
+      noteAisleBodies: [
+        ...(result.state.noteAisleBodies ?? []),
+        { id: 'aisle-source-new', markdown: 'new source aisle', frontmatterStatus: 'none' },
+      ],
+    }
+    const edited = syncNoteAisleBodyMarkdownInState(expandedState, 'aisle-source-1', 'edited shared source')
+    const targetBody = edited.noteBodies.find((body) => body.id === 'body-target')
+
+    expect(targetBody?.aisles.map((aisle) => getAisleMarkdown(aisle, edited.noteAisleBodies))).toEqual([
+      'target text',
+      'edited shared source',
+    ])
+    expect(
+      edited.noteBodies
+        .find((body) => body.id === 'body-source')
+        ?.aisles.map((aisle) => getAisleMarkdown(aisle, edited.noteAisleBodies)),
+    ).toEqual(['edited shared source', 'new source aisle'])
   })
 
   it('materializes structural copy-as aisles for explicit insertion placement', () => {

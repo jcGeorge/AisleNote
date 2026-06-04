@@ -164,11 +164,107 @@ describe('media link plugin', () => {
       onSourceChange: expect.any(Function),
     })
     expect(widget.from).toBe(1)
-    expect(widget.options.key).toBe('media-link-1-5-tabs-asset:///assets/clip.mp4')
+    expect(widget.options.key).toBe('media-link-video:tabs-asset:///assets/clip.mp4:Clip-0')
     expect(inline).toMatchObject({
       from: 1,
       to: 5,
       attrs: { class: 'tabs-media-link-source-hidden' },
+    })
+  })
+
+  it('keeps media widget keys stable when text is inserted before them', () => {
+    const context = createPluginContext()
+    const plugin = createMediaLinkPlugin(context).wysiwygPlugins[0]()
+    const source = 'tabs-asset:///assets/song.mp3#tabs-media=speed=1.25'
+
+    const originalDecorations = plugin.props.decorations({
+      doc: createDoc([{ text: 'Song', href: source }]),
+    })
+    const shiftedDecorations = plugin.props.decorations({
+      doc: createDoc([{ text: 'before ' }, { text: 'Song', href: source }]),
+    })
+
+    const originalWidget = originalDecorations.find((decoration: any) => decoration.type === 'widget')
+    const shiftedWidget = shiftedDecorations.find((decoration: any) => decoration.type === 'widget')
+
+    expect(originalWidget.from).toBe(1)
+    expect(shiftedWidget.from).toBe(8)
+    expect(shiftedWidget.options.key).toBe(originalWidget.options.key)
+  })
+
+  it('keeps duplicate media widget keys distinct by occurrence', () => {
+    const context = createPluginContext()
+    const plugin = createMediaLinkPlugin(context).wysiwygPlugins[0]()
+
+    const decorations = plugin.props.decorations({
+      doc: createDoc([
+        { text: 'Song', href: 'tabs-asset:///assets/song.mp3' },
+        { text: ' and ' },
+        { text: 'Song', href: 'tabs-asset:///assets/song.mp3' },
+      ]),
+    })
+    const keys = decorations
+      .filter((decoration: any) => decoration.type === 'widget')
+      .map((decoration: any) => decoration.options.key)
+
+    expect(keys).toEqual([
+      'media-link-audio:tabs-asset:///assets/song.mp3:Song-0',
+      'media-link-audio:tabs-asset:///assets/song.mp3:Song-1',
+    ])
+  })
+
+  it('persists source changes to the media range at the widget current position', () => {
+    const context = createPluginContext()
+    const plugin = createMediaLinkPlugin(context).wysiwygPlugins[0]()
+    const source = 'tabs-asset:///assets/song.mp3'
+    const initialDecorations = plugin.props.decorations({
+      doc: createDoc([{ text: 'Song', href: source }]),
+    })
+    const widget = initialDecorations.find((decoration: any) => decoration.type === 'widget')
+
+    const linkMarkType = {
+      attrs: { linkUrl: {}, title: {} },
+      create: vi.fn((attrs: Record<string, unknown>) => ({ type: linkMarkType, attrs })),
+    }
+    const shiftedDoc = {
+      descendants(callback: (node: unknown, pos: number) => void) {
+        callback({ isText: true, text: 'before ', marks: [] }, 1)
+        callback({ isText: true, text: 'Song', marks: [linkMark(source)] }, 8)
+      },
+      nodesBetween: vi.fn((_from: number, _to: number, visitor: (node: unknown) => boolean) => {
+        visitor({
+          isText: true,
+          marks: [{ type: linkMarkType, attrs: { linkUrl: source, title: 'Song title' } }],
+        })
+      }),
+    }
+    const tr = {
+      removeMark: vi.fn(() => tr),
+      addMark: vi.fn(() => tr),
+    }
+    const view = {
+      state: {
+        tr,
+        schema: { marks: { link: linkMarkType } },
+        doc: shiftedDoc,
+      },
+      dispatch: vi.fn(),
+    }
+
+    widget.factory(view, () => 8)
+    const mediaPlayerCalls = createMediaPlayerElement.mock.calls as unknown as Array<[
+      { onSourceChange?: (nextSrc: string) => void },
+    ]>
+    const onSourceChange = mediaPlayerCalls.at(-1)?.[0].onSourceChange
+    onSourceChange?.('tabs-asset:///assets/song.mp3#tabs-media=speed=1.25')
+
+    expect(tr.removeMark).toHaveBeenCalledWith(8, 12, linkMarkType)
+    expect(tr.addMark).toHaveBeenCalledWith(8, 12, {
+      type: linkMarkType,
+      attrs: {
+        linkUrl: 'tabs-asset:///assets/song.mp3#tabs-media=speed=1.25',
+        title: 'Song title',
+      },
     })
   })
 

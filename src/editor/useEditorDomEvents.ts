@@ -62,7 +62,11 @@ import {
   importMediaFilesAsLinks,
   insertAssetLinksIntoWysiwygView,
 } from './media-file-insertion'
-import { deleteAdjacentMediaLinkRange, type MediaLinkDeleteDirection } from './media-link-plugin'
+import {
+  deleteAdjacentMediaLinkRange,
+  getMediaLinkRangeForPlayer,
+  type MediaLinkDeleteDirection,
+} from './media-link-plugin'
 import { insertPastedListIntoView } from './list-paste'
 import {
   getActiveTableContext,
@@ -279,9 +283,9 @@ export function getMediaPlayerPointerAction(
 
 export function placeCaretAfterMediaPlayer(view: any | null, mediaPlayer: Element | null): boolean {
   if (!view?.state?.doc || typeof view.dispatch !== 'function' || !mediaPlayer) return false
-  const sourceToRaw = mediaPlayer.getAttribute('data-media-source-to')
-  if (sourceToRaw === null || sourceToRaw.trim() === '') return false
-  const sourceTo = Number(sourceToRaw)
+  const currentRange = getMediaLinkRangeForPlayer(view, mediaPlayer)
+  const sourceToRaw = currentRange ? null : mediaPlayer.getAttribute('data-media-source-to')
+  const sourceTo = currentRange?.to ?? (sourceToRaw === null || sourceToRaw.trim() === '' ? NaN : Number(sourceToRaw))
   if (!Number.isFinite(sourceTo)) return false
 
   const doc = view.state.doc

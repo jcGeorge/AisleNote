@@ -105,6 +105,16 @@ describe('copy-note modal text', () => {
     expect(text.action).toBe('make copy')
     expect(text.body).toContain('synced copy')
   })
+
+  it('warns before pasting a synced note over aisles', () => {
+    const modal: ModalState = { type: 'confirm-synced-note-paste', source, destination: target }
+    const text = getModalText(modal, createModalTextState())
+
+    expect(text.title).toBe('paste synced note?')
+    expect(text.action).toBe('paste synced note')
+    expect(text.body).toContain('replace this note and all of its aisles')
+    expect(text.body).toContain('synced aisle')
+  })
 })
 
 describe('delete target modal text', () => {

@@ -42,8 +42,20 @@ const getShortcutIndex = (key: string): number | null => {
   return null
 }
 
+function usesPlatformPrimaryModifier(event: KeyboardEvent, isMacPlatform: boolean): boolean {
+  if (event.altKey || event.shiftKey) return false
+  return isMacPlatform
+    ? event.metaKey && !event.ctrlKey
+    : event.ctrlKey && !event.metaKey
+}
+
 export function getNumberedPrimeTabTarget(tabs: Tab[], shortcutIndex: number): string | null {
   return tabs[shortcutIndex]?.id ?? null
+}
+
+export function getNumberedPrimeTabShortcutIndex(event: KeyboardEvent, isMacPlatform: boolean): number | null {
+  if (!usesPlatformPrimaryModifier(event, isMacPlatform)) return null
+  return getShortcutIndex(event.key)
 }
 
 export function getCycledParentTabTarget(tabs: Tab[], activeTabId: string, direction: -1 | 1): string | null {
@@ -202,6 +214,11 @@ export function isPrimaryNewAisleShortcut(event: KeyboardEvent, isMacPlatform: b
     : event.ctrlKey && !event.metaKey
 }
 
+export function isSettingsShortcut(event: KeyboardEvent, isMacPlatform: boolean): boolean {
+  if (event.key !== ',' && event.code !== 'Comma') return false
+  return usesPlatformPrimaryModifier(event, isMacPlatform)
+}
+
 export function getDeleteFocusedSubtabShortcutIntent({
   event,
   isMacPlatform,
@@ -349,14 +366,7 @@ export function useGlobalHotkeys({
         return
       }
 
-      const isSettingsShortcut =
-        isMacPlatform &&
-        event.metaKey &&
-        !event.ctrlKey &&
-        !event.altKey &&
-        !event.shiftKey &&
-        (event.key === ',' || event.code === 'Comma')
-      if (isSettingsShortcut) {
+      if (isSettingsShortcut(event, isMacPlatform)) {
         event.preventDefault()
         actions.openSettings()
         return
@@ -537,10 +547,9 @@ export function useGlobalHotkeys({
         return
       }
 
-      const shortcutIndex = getShortcutIndex(event.key)
-      const usesCommand = event.metaKey && !event.ctrlKey && !event.altKey
+      const shortcutIndex = getNumberedPrimeTabShortcutIndex(event, isMacPlatform)
 
-      if (usesCommand && !event.shiftKey && shortcutIndex !== null) {
+      if (shortcutIndex !== null) {
         event.preventDefault()
 
         const nextPrimeTabId = getNumberedPrimeTabTarget(primeTabs, shortcutIndex)

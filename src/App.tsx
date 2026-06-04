@@ -110,9 +110,9 @@ import {
   type EditorOperationRuntime,
 } from './editor/editor-operation-runner'
 import { closeEditorEphemera, type CloseEditorEphemeraOptions } from './editor/editor-ephemera'
-import { getAislesForNewAisle, MAX_AISLE_WARNING_MESSAGE } from './editor/aisle-edit-draft'
+import { getAislesForNewAisle, isEmptyAisleMarkdown, MAX_AISLE_WARNING_MESSAGE } from './editor/aisle-edit-draft'
 import type { AisleStructuralSnapshot } from './editor/aisle-structural-history'
-import { insertNewAisles } from './editor/aisle-insertion'
+import { insertNewAisles, replaceFocusedAisleWithNewAisles } from './editor/aisle-insertion'
 import { getAisleIdFromAisleEditorKey } from './editor/aisle-editor'
 import {
   getActiveAisleRefSyncValue,
@@ -731,7 +731,7 @@ function App() {
       ]),
     ) as Record<CopyAsAction, CopyAsMenuItemState>
 
-    if (body.aisles.length <= 1) return { note }
+    if (body.aisles.length <= 0 || contextMenu?.type === 'subtab') return { note }
     const sourceKey = buildNoteLocationKey(source)
     const activeSourceKey = buildNoteLocationKey(activeNoteLocation)
     const focusedAisle = sourceKey === activeSourceKey
@@ -745,7 +745,7 @@ function App() {
         COPY_AS_MENU_ACTIONS.map((action) => [action, { available: true }]),
       ) as Record<CopyAsAction, CopyAsMenuItemState>,
     }
-  }, [activeNoteLocation, contextMenuNoteLocation, resolvedActiveAisleId, state])
+  }, [activeNoteLocation, contextMenu?.type, contextMenuNoteLocation, resolvedActiveAisleId, state])
   const findReplaceCurrentLocation = scratchpadWorkspaceActive ? SCRATCHPAD_FIND_LOCATION : activeNoteLocation
   const findReplaceMatches = useMemo(
     () =>
@@ -2621,6 +2621,65 @@ function App() {
     return getCopyAsAisleIdForNoteContext(latestState, source, getCurrentNoteLocation(), activeAisleIdRef.current)
   }
 
+  const shouldConfirmSyncedNotePaste = (
+    latestState: AppState,
+    payload: CopyAsClipboardPayload,
+    destination: NoteLocation,
+  ): boolean => {
+    if (payload.scope !== 'note' || payload.action !== 'duplicate') return false
+    const sourceInfo = getLocationInfo(latestState, payload.source)
+    const destinationInfo = getLocationInfo(latestState, destination)
+    if (!sourceInfo.noteBodyId || !destinationInfo.noteBodyId) return false
+    if (sourceInfo.noteBodyId === destinationInfo.noteBodyId) return false
+    const destinationBody = latestState.noteBodies.find((body) => body.id === destinationInfo.noteBodyId) ?? null
+    return Boolean(destinationBody && destinationBody.aisles.length > 1)
+  }
+
+  const replaceFocusedBlankAisleWithStructuralCopy = (
+    latestState: AppState,
+    payload: CopyAsClipboardPayload,
+    beforeSnapshot: AisleStructuralSnapshot | null = captureActiveAisleStructuralSnapshot(latestState),
+  ): boolean => {
+    if (payload.scope !== 'aisle' || (payload.action !== 'copy' && payload.action !== 'duplicate')) return false
+    if (!beforeSnapshot) return false
+    const result = materializeStructuralAisleCopiesForInsertion(latestState, {
+      scope: payload.scope,
+      action: payload.action,
+      source: payload.source,
+      aisleId: payload.aisleId,
+    })
+    if (result.status !== 'applied') return false
+
+    const body = latestState.noteBodies.find((candidate) => candidate.id === beforeSnapshot.noteBodyId)
+    if (!body) return false
+    const baseAisles = cloneAisles(body.aisles, latestState.noteAisleBodies)
+    const nextAisles = replaceFocusedAisleWithNewAisles(
+      baseAisles,
+      result.aisles,
+      beforeSnapshot.activeAisleId,
+      (aisle) => isEmptyAisleMarkdown(aisle.markdown),
+    )
+    if (!nextAisles) return false
+
+    const maxAisles = scratchpadWorkspaceActive ? getScratchpadAisleLimit() : MAX_NOTE_AISLES
+    if (nextAisles.length > maxAisles) {
+      if (scratchpadWorkspaceActive) {
+        showScratchpadAisleLimitToast()
+      } else {
+        pushToast(MAX_AISLE_WARNING_MESSAGE, 'warning')
+      }
+      return true
+    }
+
+    applyAisleEditDraftToActiveNote(nextAisles, {
+      activeAisleId: result.aisles[0]?.id,
+      additionalAisleBodies: result.aisleBodies,
+    })
+    closeEditorEphemeraRef.current()
+    pushToast(getCopyAsPasteSuccessMessage(payload.scope, payload.action), 'success')
+    return true
+  }
+
   const pasteCopyAsPayload = (payload: CopyAsClipboardPayload): boolean => {
     if (viewMode !== 'main') {
       pushToast('open a note before pasting.', 'warning')
@@ -2628,11 +2687,12 @@ function App() {
     }
 
     const latestState = buildStateWithLatestEditorContent()
+    if (scratchpadWorkspaceActive && payload.action === 'duplicate') {
+      pushToast('scratchpad cannot receive synced copies.', 'warning')
+      return true
+    }
+    if (replaceFocusedBlankAisleWithStructuralCopy(latestState, payload)) return true
     if (scratchpadWorkspaceActive && (payload.action === 'copy' || payload.action === 'duplicate')) {
-      if (payload.action === 'duplicate') {
-        pushToast('scratchpad cannot receive synced copies.', 'warning')
-        return true
-      }
       const sourceInfo = getLocationInfo(latestState, payload.source)
       const sourceBody = sourceInfo.noteBodyId
         ? latestState.noteBodies.find((candidate) => candidate.id === sourceInfo.noteBodyId) ?? null
@@ -2674,6 +2734,11 @@ function App() {
       return true
     }
     const destination = getCurrentNoteLocation()
+    if (shouldConfirmSyncedNotePaste(latestState, payload, destination)) {
+      closeEditorEphemeraRef.current()
+      setModal({ type: 'confirm-synced-note-paste', source: payload.source, destination })
+      return true
+    }
     const activeInfo = getLocationInfo(latestState, destination)
     const command = buildCopyAsPasteCommand({
       appState: latestState,
@@ -2794,6 +2859,7 @@ function App() {
         pushToast('scratchpad cannot receive synced copies.', 'warning')
         return true
       }
+      if (replaceFocusedBlankAisleWithStructuralCopy(latestState, payload, beforeSnapshot)) return true
       const structuralAction: 'copy' | 'duplicate' = payload.action
       const result = materializeStructuralAisleCopiesForInsertion(latestState, {
         scope: payload.scope,
@@ -4100,7 +4166,32 @@ function App() {
     }
   }
   const confirmModal = () => {
-    if (!modal || modal.type !== 'linked-aisle') {
+    if (!modal) return
+
+    if (modal.type === 'confirm-synced-note-paste') {
+      const latestState = buildStateWithLatestEditorContent()
+      const result = applyNoteCopyToState(latestState, modal.destination, modal.source, 'linked', 'replace')
+      setModal(null)
+      if (result.status === 'self-copy') {
+        pushToast('choose a different note to paste this synced copy.', 'warning')
+        return
+      }
+      if (result.status === 'already-linked') {
+        pushToast('destination already links to copied note.', 'warning')
+        return
+      }
+      if (result.status !== 'applied') {
+        pushToast('copied note no longer exists.', 'warning')
+        return
+      }
+      stateRef.current = result.state
+      setState(result.state)
+      closeEditorEphemeraRef.current()
+      pushToast(getCopyAsPasteSuccessMessage('note', 'duplicate'), 'success')
+      return
+    }
+
+    if (modal.type !== 'linked-aisle') {
       overlayActions.confirmModal()
       return
     }

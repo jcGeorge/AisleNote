@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { getNewAisleInsertIndex, insertNewAisle, insertNewAisles } from './aisle-insertion'
+import {
+  getNewAisleInsertIndex,
+  insertNewAisle,
+  insertNewAisles,
+  replaceFocusedAisleWithNewAisles,
+} from './aisle-insertion'
 
 const aisle = (id: string) => ({ id })
 
@@ -77,5 +82,23 @@ describe('aisle insertion placement', () => {
       'c',
       'new',
     ])
+  })
+
+  it('replaces the focused aisle when the caller marks it replaceable', () => {
+    const aisles = [aisle('a'), aisle('blank'), aisle('c')]
+    const newAisles = [aisle('linked')]
+
+    expect(
+      replaceFocusedAisleWithNewAisles(aisles, newAisles, 'blank', (candidate) => candidate.id === 'blank')?.map(
+        (item) => item.id,
+      ),
+    ).toEqual(['a', 'linked', 'c'])
+  })
+
+  it('does not replace missing or non-replaceable focused aisles', () => {
+    const aisles = [aisle('a'), aisle('b'), aisle('c')]
+
+    expect(replaceFocusedAisleWithNewAisles(aisles, [aisle('new')], 'missing', () => true)).toBeNull()
+    expect(replaceFocusedAisleWithNewAisles(aisles, [aisle('new')], 'b', () => false)).toBeNull()
   })
 })

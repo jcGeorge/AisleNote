@@ -119,6 +119,58 @@ describe('ContextMenuHost copy actions', () => {
     expect(html).toContain('copy aisle as')
   })
 
+  it('shows copy aisle as for a plain single-aisle editor note', () => {
+    const html = renderToStaticMarkup(
+      <ContextMenuHost
+        {...createContextMenuProps({ type: 'editor', x: 0, y: 0 }, 1, {
+          copyAsMenu: {
+            note: {
+              duplicate: { available: true },
+              link: { available: true },
+              copy: { available: true },
+              preview: { available: true },
+            },
+            aisle: {
+              duplicate: { available: true },
+              link: { available: true },
+              copy: { available: true },
+              preview: { available: true },
+            },
+          },
+        })}
+      />,
+    )
+
+    expect(html).toContain('copy note as')
+    expect(html).toContain('copy aisle as')
+  })
+
+  it('hides copy aisle as from subtab rail context menus', () => {
+    const html = renderToStaticMarkup(
+      <ContextMenuHost
+        {...createContextMenuProps({ type: 'subtab', tabId: 'tab-1', subTabId: 'sub-1', x: 0, y: 0 }, 1, {
+          copyAsMenu: {
+            note: {
+              duplicate: { available: true },
+              link: { available: true },
+              copy: { available: true },
+              preview: { available: true },
+            },
+            aisle: {
+              duplicate: { available: true },
+              link: { available: true },
+              copy: { available: true },
+              preview: { available: true },
+            },
+          },
+        })}
+      />,
+    )
+
+    expect(html).toContain('copy note as')
+    expect(html).not.toContain('copy aisle as')
+  })
+
   it('renders unavailable copy-as actions as clickable aria-disabled menu rows', () => {
     const onCopyAsUnavailable = vi.fn()
     const props = createContextMenuProps({ type: 'tab', tabId: 'tab-1', x: 0, y: 0 }, 1, {

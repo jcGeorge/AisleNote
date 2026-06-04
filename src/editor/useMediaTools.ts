@@ -8,7 +8,7 @@ import {
   getVideoViewportResizeToolPlacement,
   isUsableImageToolPlacementRect,
 } from './image-tool-placement'
-import { collectMediaLinkRanges, type MediaLinkRange } from './media-link-plugin'
+import { getMediaLinkRangeForPlayer, type MediaLinkRange } from './media-link-plugin'
 import { isInsideReadonlyNotePreview } from './note-preview-dom'
 import { getWysiwygView } from './prosemirror-utils'
 import {
@@ -85,14 +85,7 @@ function getCurrentMetadata(sourceUrl: string): MediaTransformMetadata {
 }
 
 function findMediaLinkRange(view: any, player: HTMLElement, sourceUrl: string): MediaLinkRange | null {
-  const ranges = collectMediaLinkRanges(view?.state?.doc)
-  const from = getDatasetNumber(player, 'mediaSourceFrom')
-  const to = getDatasetNumber(player, 'mediaSourceTo')
-  if (from !== null && to !== null) {
-    const exact = ranges.find((range) => range.from === from && range.to === to)
-    if (exact) return exact
-  }
-  return ranges.find((range) => range.href === sourceUrl) ?? null
+  return getMediaLinkRangeForPlayer(view, player, sourceUrl)
 }
 
 function getLinkMarkAttrsForRange(view: any, range: MediaLinkRange): Record<string, unknown> {
@@ -249,11 +242,12 @@ export function useMediaTools({
       close()
       return
     }
+    const currentRange = getMediaLinkRangeForPlayer(getWysiwygView(editorRef.current), media, sourceUrl)
     activeMediaRef.current = media
     activeMediaLookupRef.current = {
       sourceUrl,
-      from: getDatasetNumber(media, 'mediaSourceFrom'),
-      to: getDatasetNumber(media, 'mediaSourceTo'),
+      from: currentRange?.from ?? getDatasetNumber(media, 'mediaSourceFrom'),
+      to: currentRange?.to ?? getDatasetNumber(media, 'mediaSourceTo'),
     }
     activateEditorFromEventTarget(media)
     updateMediaTools((previous) => ({ ...previous, menuMode: 'start' }))
@@ -291,6 +285,8 @@ export function useMediaTools({
       return false
     }
     media.dataset.mediaSource = nextUrl
+    media.dataset.mediaSourceFrom = String(range.from)
+    media.dataset.mediaSourceTo = String(range.to)
     activeMediaLookupRef.current = {
       sourceUrl: nextUrl,
       from: range.from,

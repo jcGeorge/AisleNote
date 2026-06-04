@@ -835,6 +835,11 @@ export type ModalState =
       target: NoteLocation & { aisleIds?: string[] }
     }
   | {
+      type: 'confirm-synced-note-paste'
+      source: NoteLocation
+      destination: NoteLocation
+    }
+  | {
       type: 'deduplicate-note'
       noteBodyId: string
       keepLocationKeys: string[]

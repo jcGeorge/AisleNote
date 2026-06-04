@@ -11,8 +11,10 @@ import {
   getCapturedRailVisibilityShortcutTarget,
   getDeleteFocusedSubtabShortcutIntent,
   getNumberedPrimeTabTarget,
+  getNumberedPrimeTabShortcutIndex,
   getRailVisibilityShortcutTarget,
   isDeleteFocusedSubtabShortcut,
+  isSettingsShortcut,
 } from './useGlobalHotkeys'
 
 const makeTab = (id: string): Tab => ({
@@ -22,6 +24,21 @@ const makeTab = (id: string): Tab => ({
   activeSubTabId: null,
   subTabs: [],
 })
+
+const keyboardEvent = (
+  key: string,
+  modifiers: Partial<Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>> = {},
+  code = key === ',' ? 'Comma' : `Key${key.toUpperCase()}`,
+): KeyboardEvent =>
+  ({
+    key,
+    code,
+    ctrlKey: false,
+    metaKey: false,
+    altKey: false,
+    shiftKey: false,
+    ...modifiers,
+  }) as KeyboardEvent
 
 afterEach(() => {
   vi.useRealTimers()
@@ -38,6 +55,31 @@ describe('global numbered hotkeys', () => {
 
   it('ignores numeric shortcuts beyond the available prime tabs', () => {
     expect(getNumberedPrimeTabTarget([makeTab('prime-1')], 9)).toBeNull()
+  })
+
+  it('maps platform primary numeric shortcuts to parent tab indexes', () => {
+    const tabs = Array.from({ length: 10 }, (_, index) => makeTab(`prime-${index + 1}`))
+    const macFirstIndex = getNumberedPrimeTabShortcutIndex(keyboardEvent('1', { metaKey: true }), true)
+    const macTenthIndex = getNumberedPrimeTabShortcutIndex(keyboardEvent('0', { metaKey: true }), true)
+    const windowsFirstIndex = getNumberedPrimeTabShortcutIndex(keyboardEvent('1', { ctrlKey: true }), false)
+    const windowsTenthIndex = getNumberedPrimeTabShortcutIndex(keyboardEvent('0', { ctrlKey: true }), false)
+
+    expect(macFirstIndex).toBe(0)
+    expect(macTenthIndex).toBe(9)
+    expect(windowsFirstIndex).toBe(0)
+    expect(windowsTenthIndex).toBe(9)
+    expect(getNumberedPrimeTabTarget(tabs, macFirstIndex ?? -1)).toBe('prime-1')
+    expect(getNumberedPrimeTabTarget(tabs, macTenthIndex ?? -1)).toBe('prime-10')
+    expect(getNumberedPrimeTabTarget(tabs, windowsFirstIndex ?? -1)).toBe('prime-1')
+    expect(getNumberedPrimeTabTarget(tabs, windowsTenthIndex ?? -1)).toBe('prime-10')
+  })
+
+  it('ignores numeric shortcuts with non-primary or mixed modifiers', () => {
+    expect(getNumberedPrimeTabShortcutIndex(keyboardEvent('1', { ctrlKey: true }), true)).toBeNull()
+    expect(getNumberedPrimeTabShortcutIndex(keyboardEvent('1', { metaKey: true }), false)).toBeNull()
+    expect(getNumberedPrimeTabShortcutIndex(keyboardEvent('1', { metaKey: true, ctrlKey: true }), true)).toBeNull()
+    expect(getNumberedPrimeTabShortcutIndex(keyboardEvent('1', { ctrlKey: true, altKey: true }), false)).toBeNull()
+    expect(getNumberedPrimeTabShortcutIndex(keyboardEvent('1', { ctrlKey: true, shiftKey: true }), false)).toBeNull()
   })
 })
 
@@ -192,19 +234,9 @@ describe('rail visibility hotkeys', () => {
     newlineShortcuts: DEFAULT_NEWLINE_SHORTCUT_SETTINGS,
   }
 
-  const keyboardEvent = (key: string): KeyboardEvent =>
-    ({
-      key,
-      code: `Key${key.toUpperCase()}`,
-      ctrlKey: true,
-      metaKey: false,
-      altKey: false,
-      shiftKey: false,
-    }) as KeyboardEvent
-
   it('maps saved openSpaces and openDomains shortcuts to rail visibility actions', () => {
-    expect(getRailVisibilityShortcutTarget(keyboardEvent('s'), hotkeys, false)).toBe('space')
-    expect(getRailVisibilityShortcutTarget(keyboardEvent('d'), hotkeys, false)).toBe('domain')
+    expect(getRailVisibilityShortcutTarget(keyboardEvent('s', { ctrlKey: true }), hotkeys, false)).toBe('space')
+    expect(getRailVisibilityShortcutTarget(keyboardEvent('d', { ctrlKey: true }), hotkeys, false)).toBe('domain')
   })
 
   it('falls back to default command shortcuts when persisted hotkeys are partial', () => {
@@ -212,12 +244,12 @@ describe('rail visibility hotkeys', () => {
       newlineShortcuts: DEFAULT_NEWLINE_SHORTCUT_SETTINGS,
     } as AppState['hotkeys']
 
-    expect(getRailVisibilityShortcutTarget(keyboardEvent('s'), partialHotkeys, false)).toBe('space')
-    expect(getRailVisibilityShortcutTarget(keyboardEvent('d'), partialHotkeys, false)).toBe('domain')
+    expect(getRailVisibilityShortcutTarget(keyboardEvent('s', { ctrlKey: true }), partialHotkeys, false)).toBe('space')
+    expect(getRailVisibilityShortcutTarget(keyboardEvent('d', { ctrlKey: true }), partialHotkeys, false)).toBe('domain')
   })
 
   it('captures rail shortcuts before the editor unless a settings shortcut is recording', () => {
-    const event = keyboardEvent('s')
+    const event = keyboardEvent('s', { ctrlKey: true })
 
     expect(
       getCapturedRailVisibilityShortcutTarget({
@@ -241,21 +273,22 @@ describe('rail visibility hotkeys', () => {
   })
 })
 
-describe('delete focused subtab hotkey', () => {
-  const keyboardEvent = (
-    key: string,
-    modifiers: Partial<Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>> = {},
-  ): KeyboardEvent =>
-    ({
-      key,
-      code: `Key${key.toUpperCase()}`,
-      ctrlKey: false,
-      metaKey: false,
-      altKey: false,
-      shiftKey: false,
-      ...modifiers,
-    }) as KeyboardEvent
+describe('settings hotkey', () => {
+  it('matches platform primary comma shortcuts', () => {
+    expect(isSettingsShortcut(keyboardEvent(',', { metaKey: true }), true)).toBe(true)
+    expect(isSettingsShortcut(keyboardEvent(',', { ctrlKey: true }), false)).toBe(true)
+  })
 
+  it('ignores comma shortcuts with non-primary or mixed modifiers', () => {
+    expect(isSettingsShortcut(keyboardEvent(',', { ctrlKey: true }), true)).toBe(false)
+    expect(isSettingsShortcut(keyboardEvent(',', { metaKey: true }), false)).toBe(false)
+    expect(isSettingsShortcut(keyboardEvent(',', { metaKey: true, ctrlKey: true }), true)).toBe(false)
+    expect(isSettingsShortcut(keyboardEvent(',', { ctrlKey: true, altKey: true }), false)).toBe(false)
+    expect(isSettingsShortcut(keyboardEvent(',', { ctrlKey: true, shiftKey: true }), false)).toBe(false)
+  })
+})
+
+describe('delete focused subtab hotkey', () => {
   it('matches plain primary-modifier W only', () => {
     expect(isDeleteFocusedSubtabShortcut(keyboardEvent('w', { metaKey: true }), true)).toBe(true)
     expect(isDeleteFocusedSubtabShortcut(keyboardEvent('w', { ctrlKey: true }), false)).toBe(true)

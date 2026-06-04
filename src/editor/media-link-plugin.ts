@@ -13,6 +13,63 @@ export type MediaLinkRange = {
 
 export type MediaLinkDeleteDirection = 'backward' | 'forward'
 
+function getMediaRangeIdentity(range: Pick<MediaLinkRange, 'href' | 'kind' | 'label'>): string {
+  return `${range.kind}:${stripMediaMetadataFromUrl(range.href)}:${range.label}`
+}
+
+function getElementDatasetNumber(element: Element | null | undefined, name: string): number | null {
+  const rawValue = element?.getAttribute(name)
+  if (rawValue === null || rawValue === undefined || rawValue.trim() === '') return null
+  const value = Number(rawValue)
+  return Number.isFinite(value) ? Math.floor(value) : null
+}
+
+export function getMediaPlayerDocumentPosition(view: any | null, mediaPlayer: Element | null): number | null {
+  if (!view || !mediaPlayer || typeof view.posAtDOM !== 'function') return null
+  try {
+    const position = view.posAtDOM(mediaPlayer, 0, -1)
+    return Number.isFinite(position) ? Math.floor(position) : null
+  } catch {
+    return null
+  }
+}
+
+export function getMediaLinkRangeAtPosition(doc: any, position: unknown): MediaLinkRange | null {
+  if (typeof position !== 'number' || !Number.isFinite(position)) return null
+  const cursor = Math.floor(position)
+  return collectMediaLinkRanges(doc).find((range) => range.from === cursor) ?? null
+}
+
+export function getMediaLinkRangeForPlayer(
+  view: any | null,
+  mediaPlayer: Element | null,
+  sourceUrl?: string,
+): MediaLinkRange | null {
+  const ranges = collectMediaLinkRanges(view?.state?.doc)
+  if (ranges.length === 0) return null
+
+  const widgetPosition = getMediaPlayerDocumentPosition(view, mediaPlayer)
+  if (widgetPosition !== null) {
+    const currentRange = ranges.find((range) => range.from === widgetPosition)
+    if (currentRange) return currentRange
+  }
+
+  const sourceFrom = getElementDatasetNumber(mediaPlayer, 'data-media-source-from')
+  const sourceTo = getElementDatasetNumber(mediaPlayer, 'data-media-source-to')
+  if (sourceFrom !== null && sourceTo !== null) {
+    const exactRange = ranges.find((range) => range.from === sourceFrom && range.to === sourceTo)
+    if (exactRange) return exactRange
+  }
+
+  const source = sourceUrl ?? mediaPlayer?.getAttribute('data-media-source') ?? ''
+  if (!source) return null
+  const exactSource = ranges.find((range) => range.href === source)
+  if (exactSource) return exactSource
+
+  const strippedSource = stripMediaMetadataFromUrl(source)
+  return ranges.find((range) => stripMediaMetadataFromUrl(range.href) === strippedSource) ?? null
+}
+
 function getTextNodeLinkMark(node: any): { href: string; title?: string } | null {
   const marks = Array.isArray(node?.marks) ? node.marks : []
   const linkMark = marks.find(
@@ -137,21 +194,34 @@ export function createMediaLinkPlugin(context: any) {
           props: {
             decorations: (editorState: any) => {
               const decorations: unknown[] = []
+              const mediaRangeIdentityCounts = new Map<string, number>()
               for (const range of collectMediaLinkRanges(editorState.doc)) {
+                const rangeIdentity = getMediaRangeIdentity(range)
+                const occurrence = mediaRangeIdentityCounts.get(rangeIdentity) ?? 0
+                mediaRangeIdentityCounts.set(rangeIdentity, occurrence + 1)
                 decorations.push(
                   Decoration.widget(
                     range.from,
-                    (view: any) =>
-                      createMediaPlayerElement({
+                    (view: any, getPos?: () => number | undefined) => {
+                      let playerElement: HTMLElement | null = null
+                      playerElement = createMediaPlayerElement({
                         kind: range.kind,
                         src: range.href,
                         label: range.label,
                         sourceFrom: range.from,
                         sourceTo: range.to,
-                        onSourceChange: (nextSrc) => updateMediaLinkRangeUrl(view, range, nextSrc),
-                      }),
+                        onSourceChange: (nextSrc) => {
+                          const currentRange =
+                            getMediaLinkRangeAtPosition(view?.state?.doc, getPos?.()) ??
+                            getMediaLinkRangeForPlayer(view, playerElement, range.href) ??
+                            range
+                          updateMediaLinkRangeUrl(view, currentRange, nextSrc)
+                        },
+                      })
+                      return playerElement
+                    },
                     {
-                      key: `media-link-${range.from}-${range.to}-${stripMediaMetadataFromUrl(range.href)}`,
+                      key: `media-link-${rangeIdentity}-${occurrence}`,
                       side: -1,
                     },
                   ),
