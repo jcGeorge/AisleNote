@@ -613,7 +613,8 @@ export type StorageProfileStatus = {
   }>
   event?: string
   profileRootPath: string
-  notesPath: string
+  notebookPath: string
+  notebookName: string
   isDefault: boolean
   hasProfile: boolean
   canWrite: boolean
@@ -825,6 +826,8 @@ export type ModalState =
   | { type: 'trash-delete-all' }
   | { type: 'trash-restore-all' }
   | { type: 'export-space'; spaceId: string }
+  | { type: 'create-notebook'; name: string; locationPath: string; error?: string }
+  | { type: 'rename-notebook'; name: string; error?: string }
   | { type: 'scratchpad-about' }
   | {
       type: 'copy-note'

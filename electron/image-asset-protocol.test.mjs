@@ -19,7 +19,7 @@ async function withTempProfile(run) {
 }
 
 function writeAsset(profileRootPath, assetName, bytes) {
-  const assetPath = path.join(profileRootPath, 'notes', 'assets', assetName)
+  const assetPath = path.join(profileRootPath, 'assets', assetName)
   mkdirSync(path.dirname(assetPath), { recursive: true })
   writeFileSync(assetPath, bytes)
 }

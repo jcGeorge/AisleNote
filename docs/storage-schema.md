@@ -2,7 +2,7 @@
 
 This document describes the current schema 1 on-disk storage format for the app.
 
-The current notebook source of truth is a `notes/` folder with a tiny root manifest, root-level notebook registries, domain manifests, space manifests, Markdown note files, and asset files. In Electron, active user settings live outside the selected notebook folder at `<electron-user-data>/settings/app-settings.json` and are transferred only through explicit user-settings import/export. A future `topics/` layer may be introduced later, but it is not part of the active schema 1 layout.
+The current notebook source of truth is the named notebook folder itself. It contains a tiny root manifest, root-level notebook registries, domain manifests, space manifests, Markdown note files, and asset files. In Electron, active user settings live outside the selected notebook folder at `<electron-user-data>/settings/app-settings.json` and are transferred only through explicit user-settings import/export. A future `topics/` layer may be introduced later, but it is not part of the active schema 1 layout.
 
 The design goals are:
 
@@ -17,44 +17,43 @@ The design goals are:
 
 ```text
 <notebook-folder>/
-  notes/
-    manifest.json
-    workspace-index.json
-    navigation-state.json
-    frontmatter-settings.json
-    editor-state.json
-    messages.json
-    deleted-workspace.json
-    note-registry.json
-    domains/
-      <domain-title>--<id-hash>/
+  manifest.json
+  workspace-index.json
+  navigation-state.json
+  frontmatter-settings.json
+  editor-state.json
+  messages.json
+  deleted-workspace.json
+  note-registry.json
+  domains/
+    <domain-title>--<id-hash>/
+      manifest.json
+      <space-title>--<id-hash>/
         manifest.json
-        <space-title>--<id-hash>/
+        <parent-tab-title>--<id-hash>/
+          home.md
+          home/
+            aisle 1--<id-hash>.md
+            aisle 2--<id-hash>.md
+          <sub-tab-title>--<id-hash>.md
+          <sub-tab-title>--<id-hash>/
+            aisle 1--<id-hash>.md
+            aisle 2--<id-hash>.md
+        trash/
           manifest.json
-          <parent-tab-title>--<id-hash>/
+          <deleted-title>--<id-hash>/
             home.md
-            home/
-              aisle 1--<id-hash>.md
-              aisle 2--<id-hash>.md
-            <sub-tab-title>--<id-hash>.md
-            <sub-tab-title>--<id-hash>/
-              aisle 1--<id-hash>.md
-              aisle 2--<id-hash>.md
-          trash/
-            manifest.json
-            <deleted-title>--<id-hash>/
-              home.md
-              <nested-sub-tab-title>--<id-hash>.md
-            <deleted-sub-tab-title>--<id-hash>.md
-      ...
-    _internal/
-      orphan-bodies/
-        <orphan-title>--<id-hash>.md
-        <orphan-title>--<id-hash>/
-          aisle 1--<id-hash>.md
-          aisle 2--<id-hash>.md
-    assets/
-      asset-<content-hash>.<ext>
+            <nested-sub-tab-title>--<id-hash>.md
+          <deleted-sub-tab-title>--<id-hash>.md
+    ...
+  _internal/
+    orphan-bodies/
+      <orphan-title>--<id-hash>.md
+      <orphan-title>--<id-hash>/
+        aisle 1--<id-hash>.md
+        aisle 2--<id-hash>.md
+  assets/
+    asset-<content-hash>.<ext>
 
 <electron-user-data>/
   settings/
@@ -122,11 +121,11 @@ Markdown body text.
 
 ### Assets
 
-Images and similar binary files are stored under `notes/assets/`.
+Images and similar binary files are stored under `assets/`.
 
 Markdown references assets with relative paths. Runtime/editor layers may inline those files temporarily for rendering or editing, but saves write assets back out as normal files.
 
-Active asset cleanup uses the same save pass that writes Markdown. Each save rebuilds the expected file list from live notes, aisle bodies, unlinked note bodies, and trash/deleted content, then prunes files in `notes/` that are not in that expected set. Image resize changes only the persisted image metadata fragment and does not create a new image file. Image crop and transform operations can create immediate preview assets, but any unreferenced intermediate assets in the active `notes/assets/` folder are removed by the next save/prune pass.
+Active asset cleanup uses the same save pass that writes Markdown. Each save rebuilds the expected file list from live notes, aisle bodies, unlinked note bodies, and trash/deleted content, then prunes files in the notebook root that are not in that expected set. Image resize changes only the persisted image metadata fragment and does not create a new image file. Image crop and transform operations can create immediate preview assets, but any unreferenced intermediate assets in the active `assets/` folder are removed by the next save/prune pass.
 
 Video resize, rotate, flip, and crop operations are metadata-only. They keep the original asset file and store display metadata in a `#tabs-media=...` URL fragment on the Markdown link. Crop rectangles use normalized source coordinates, so no resized or transcoded video copy is created by default.
 
@@ -143,7 +142,7 @@ Trash is modeled explicitly, not as a boolean field on active notes.
 Each space has a trash manifest:
 
 ```text
-notes/domains/<domain>/<space>/trash/manifest.json
+domains/<domain>/<space>/trash/manifest.json
 ```
 
 The trash manifest tracks:
@@ -159,7 +158,7 @@ The trash manifest tracks:
 
 ### Root Manifest
 
-`notes/manifest.json`
+`manifest.json`
 
 Stores:
 
@@ -180,13 +179,13 @@ Example:
 
 ```json
 {
-  "schemaVersion": 3,
+  "schemaVersion": 1,
   "files": {
     "workspaceIndex": "workspace-index.json",
     "navigationState": "navigation-state.json",
-    "appSettings": "app-settings.json",
     "frontmatterSettings": "frontmatter-settings.json",
     "editorState": "editor-state.json",
+    "messages": "messages.json",
     "deletedWorkspace": "deleted-workspace.json",
     "noteRegistry": "note-registry.json"
   }
@@ -195,7 +194,7 @@ Example:
 
 ### Root Split Files
 
-All root split files live directly under `notes/`, beside `manifest.json`.
+All root split files live directly under the notebook root, beside `manifest.json`.
 
 - `workspace-index.json`: domain order, domain titles, and domain paths.
 - `navigation-state.json`: `activeDomainId` and optional `lastOpened`.
@@ -204,11 +203,11 @@ All root split files live directly under `notes/`, beside `manifest.json`.
 - `deleted-workspace.json`: deleted domains and deleted spaces.
 - `note-registry.json`: note body records and shared aisle body records, including unlinked preservation records marked with `storageStatus: "unlinked"`.
 
-Portable user preferences live in `<electron-user-data>/settings/app-settings.json`, not in the selected notebook folder's `notes/`. Missing required split files block load. Missing optional `editor-state.json` falls back to defaults.
+Portable user preferences live in `<electron-user-data>/settings/app-settings.json`, not in the selected notebook folder. Missing required split files block load. Missing optional `editor-state.json` falls back to defaults.
 
 ### Domain Manifest
 
-`notes/domains/<domain-title>--<id-hash>/manifest.json`
+`domains/<domain-title>--<id-hash>/manifest.json`
 
 Stores:
 
@@ -219,7 +218,7 @@ Stores:
 
 ### Space Manifest
 
-`notes/domains/<domain-title>--<id-hash>/<space-title>--<id-hash>/manifest.json`
+`domains/<domain-title>--<id-hash>/<space-title>--<id-hash>/manifest.json`
 
 Stores:
 
@@ -238,7 +237,7 @@ Does not store Markdown body text or asset binary contents.
 
 ### Trash Manifest
 
-`notes/domains/<domain>/<space>/trash/manifest.json`
+`domains/<domain>/<space>/trash/manifest.json`
 
 Stores:
 
@@ -290,7 +289,7 @@ Storage health UI should surface:
 
 ## Browser Adapter
 
-Browser builds persist the same logical `notes` tree in IndexedDB as virtual files.
+Browser builds persist the same logical notebook tree in IndexedDB as virtual files. Browser and mobile runtimes may keep an app-private virtual `notes/` prefix internally because it is not a user-visible filesystem notebook folder.
 
 Browser storage should remain logically compatible with the Electron filesystem adapter for:
 
@@ -304,7 +303,7 @@ Browser storage should remain logically compatible with the Electron filesystem 
 
 ## Legacy Storage
 
-Pre-production notebook folders are not loaded or migrated. A missing `notes/` folder loads as an empty notebook and is recreated on save. Unsupported schema versions are not silently migrated or overwritten.
+Pre-production notebook folders are not loaded or migrated. Electron expects `manifest.json` at the notebook root. Old parent folders that only contain a `notes/` child are not searched for notebook data; selecting the `notes/` child directly may still load if it contains `manifest.json`. Unsupported schema versions are not silently migrated or overwritten.
 
 ## Future Topic Layer
 

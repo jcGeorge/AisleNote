@@ -195,12 +195,11 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
 
   function openNotebookFolderImportPath(folderPathRaw) {
     const folderPath = path.resolve(folderPathRaw)
-    const notesRootPath = getHybridStorageRoot(folderPath)
-    const manifestPath = path.join(notesRootPath, 'manifest.json')
+    const notebookRootPath = getHybridStorageRoot(folderPath)
+    const manifestPath = path.join(notebookRootPath, 'manifest.json')
     try {
       const folderStats = lstatSync(folderPath)
-      const notesStats = existsSync(notesRootPath) ? lstatSync(notesRootPath) : null
-      if (folderStats.isSymbolicLink() || notesStats?.isSymbolicLink()) {
+      if (folderStats.isSymbolicLink()) {
         return { canceled: false, ok: false, error: 'Notebook folder import does not allow symlinks.' }
       }
     } catch (error) {
@@ -214,7 +213,7 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
       return {
         canceled: false,
         ok: false,
-        error: 'Folder does not contain notes/manifest.json.',
+        error: 'Folder does not contain manifest.json.',
       }
     }
 
@@ -231,7 +230,7 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
 
     const sourceId = rememberFolderImportSource(folderImportSources, {
       kind: 'notebook',
-      rootPath: notesRootPath,
+      rootPath: notebookRootPath,
       folderPath,
     })
     return {
@@ -295,7 +294,7 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
     }
     if (stats.isSymbolicLink()) return { canceled: false, ok: false, error: 'Notebook import does not allow symlinks.' }
     if (stats.isDirectory()) {
-      const notebookResult = existsSync(path.join(getHybridStorageRoot(selectedPath), 'manifest.json'))
+      const notebookResult = existsSync(path.join(selectedPath, 'manifest.json'))
         ? openNotebookFolderImportPath(selectedPath)
         : openMarkdownFolderImportPath(selectedPath)
       return notebookResult
@@ -363,7 +362,12 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
       return { canceled: false, ok: false, error: 'Choose a folder outside the active notebook folder.' }
     }
     if (existsSync(getHybridStorageRoot(destinationRootPath))) {
-      return { canceled: false, ok: false, error: 'Destination folder already contains a notebook.' }
+      if (existsSync(path.join(getHybridStorageRoot(destinationRootPath), 'manifest.json'))) {
+        return { canceled: false, ok: false, error: 'Destination folder already contains a notebook.' }
+      }
+      if (readdirSync(getHybridStorageRoot(destinationRootPath)).length > 0) {
+        return { canceled: false, ok: false, error: 'Destination notebook folder must be empty.' }
+      }
     }
 
     try {

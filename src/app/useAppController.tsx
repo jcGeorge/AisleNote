@@ -4029,7 +4029,55 @@ export function useAppController(): AppController {
     return JSON.stringify(applyPortableAppSettings(blankState, latestState))
   }
 
-  const createNotebook = () => storageProfileController.createNotebook(buildBlankNotebookSerializedState)
+  const getNotebookParentLocation = () => {
+    const notebookPath = storageProfileStatus?.notebookPath ?? storageProfileStatus?.profileRootPath ?? ''
+    const separatorIndex = Math.max(notebookPath.lastIndexOf('/'), notebookPath.lastIndexOf('\\'))
+    return separatorIndex > 0 ? notebookPath.slice(0, separatorIndex) : ''
+  }
+
+  const openCreateNotebookModal = () => {
+    setModal({
+      type: 'create-notebook',
+      name: '',
+      locationPath: getNotebookParentLocation(),
+    })
+  }
+
+  const openRenameNotebookModal = () => {
+    setModal({
+      type: 'rename-notebook',
+      name: storageProfileStatus?.notebookName ?? '',
+    })
+  }
+
+  const confirmCreateNotebookModal = async (currentModal: Extract<ModalState, { type: 'create-notebook' }>) => {
+    const name = currentModal.name
+    const locationPath = currentModal.locationPath.trim()
+    if (!name.trim()) {
+      setModal({ ...currentModal, error: 'Notebook name is required.' })
+      return
+    }
+    if (!locationPath) {
+      setModal({ ...currentModal, error: 'Notebook location is required.' })
+      return
+    }
+    const ok = await storageProfileController.createNotebook({
+      name,
+      locationPath,
+      serializedState: buildBlankNotebookSerializedState,
+    })
+    if (ok) setModal(null)
+  }
+
+  const confirmRenameNotebookModal = async (currentModal: Extract<ModalState, { type: 'rename-notebook' }>) => {
+    const name = currentModal.name
+    if (!name.trim()) {
+      setModal({ ...currentModal, error: 'Notebook name is required.' })
+      return
+    }
+    const ok = await storageProfileController.renameNotebook(name)
+    if (ok) setModal(null)
+  }
 
   const notebookTransferActions = useNotebookTransferActions({
     getLatestState: buildStateWithLatestEditorContent,
@@ -4380,6 +4428,16 @@ export function useAppController(): AppController {
 
   const confirmModal = () => {
     if (!modal) return
+
+    if (modal.type === 'create-notebook') {
+      void confirmCreateNotebookModal(modal)
+      return
+    }
+
+    if (modal.type === 'rename-notebook') {
+      void confirmRenameNotebookModal(modal)
+      return
+    }
 
     if (modal.type === 'confirm-synced-note-paste') {
       const latestState = buildStateWithLatestEditorContent()
@@ -5283,7 +5341,8 @@ export function useAppController(): AppController {
           onDeleteFrontmatterTemplateField={settingsController.deleteFrontmatterTemplateField}
           onSaveFrontmatterTemplates={settingsController.saveFrontmatterTemplates}
           onDiscardFrontmatterTemplateChanges={settingsController.discardFrontmatterTemplateChanges}
-          onCreateNotebook={createNotebook}
+          onCreateNotebook={openCreateNotebookModal}
+          onRenameNotebook={openRenameNotebookModal}
           onSwitchNotebook={storageProfileController.switchNotebook}
           onMoveStorageProfile={storageProfileController.moveStorageProfile}
           onRevealStorageProfile={storageProfileController.revealStorageProfile}
@@ -5673,6 +5732,7 @@ export function useAppController(): AppController {
         onDeduplicateKeepDataChange={setDecoupledItemsKeepData}
         onPasteSyncedNoteAsAisle={pasteSyncedNoteAsAisleFromModal}
         onOpenSyncedFilter={openSyncedFilterFromLinkedModal}
+        onChooseNotebookLocation={storageProfileController.chooseNotebookLocation}
         onConfirm={confirmModal}
       />
 

@@ -230,6 +230,7 @@ function renderSettingsPage(
       onSaveFrontmatterTemplates={() => undefined}
       onDiscardFrontmatterTemplateChanges={() => undefined}
       onCreateNotebook={() => undefined}
+      onRenameNotebook={() => undefined}
       onSwitchNotebook={() => undefined}
       onMoveStorageProfile={() => undefined}
       onRevealStorageProfile={() => undefined}
@@ -424,8 +425,11 @@ describe('frontmatter settings page', () => {
     expect(settingsHtml).not.toContain('choose notebook folder')
 
     expect(storageHtml).toContain('aria-checked="true" class="settings-segmented-option is-selected">notebook</button>')
-    expect(storageHtml).toContain('notebook folder:')
+    expect(storageHtml).toContain('notebook:</p>')
+    expect(storageHtml).toContain('notebook name')
+    expect(storageHtml).toContain('notebook folder')
     expect(storageHtml).toContain('new notebook')
+    expect(storageHtml).toContain('rename notebook')
     expect(storageHtml).toContain('switch notebook')
     expect(storageHtml).toContain('move notebook folder')
     expect(storageHtml).toContain('app-settings.json')
@@ -981,12 +985,13 @@ describe('frontmatter settings page', () => {
           {
             code: 'missing-markdown',
             severity: 'warning',
-            path: 'notes/domains/domain/space/tab/home.md',
+            path: 'domains/domain/space/tab/home.md',
             message: 'Markdown file is missing; this note was loaded as empty.',
           },
         ],
         profileRootPath: '/tmp/tabs',
-        notesPath: '/tmp/tabs/notes',
+        notebookPath: '/tmp/tabs',
+        notebookName: 'tabs',
         isDefault: false,
         hasProfile: true,
         canWrite: true,
@@ -1014,13 +1019,14 @@ describe('frontmatter settings page', () => {
           {
             code: 'corrupt-root-manifest',
             severity: 'error',
-            path: 'notes/manifest.json',
+            path: 'manifest.json',
             message: 'Root manifest is corrupt.',
           },
         ],
         event: 'retry-error',
         profileRootPath: '/tmp/tabs',
-        notesPath: '/tmp/tabs/notes',
+        notebookPath: '/tmp/tabs',
+        notebookName: 'tabs',
         isDefault: true,
         hasProfile: true,
         canWrite: false,

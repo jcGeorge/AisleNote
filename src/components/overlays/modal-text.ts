@@ -35,6 +35,22 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
     }
   }
 
+  if (modal.type === 'create-notebook') {
+    return {
+      title: 'new notebook',
+      body: '',
+      action: 'create',
+    }
+  }
+
+  if (modal.type === 'rename-notebook') {
+    return {
+      title: 'rename notebook',
+      body: '',
+      action: 'rename',
+    }
+  }
+
   if (modal.type === 'scratchpad-about') {
     return {
       title: 'about scratchpad',

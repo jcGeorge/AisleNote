@@ -61,7 +61,8 @@ type ExportNotebookFolderResult =
       canceled: false
       ok: true
       profileRootPath: string
-      notesPath: string
+      notebookPath: string
+      notebookName: string
     }
   | {
       canceled: false
@@ -189,8 +190,17 @@ declare global {
       onAppStateUpdated?: (handler: (payload: { serializedState: string; revision: number }) => void) => () => void
       getStorageProfileStatus?: () => Promise<StorageProfileStatus>
       getUserSettingsLocationStatus?: () => Promise<UserSettingsLocationStatus>
-      createNotebook?: (payload: { serializedState: string }) => Promise<
+      chooseNotebookLocation?: () => Promise<
+        | { canceled: true }
+        | { ok: true; locationPath: string }
+        | { ok: false; error: string }
+      >
+      createNotebook?: (payload: { name: string; locationPath: string; serializedState: string }) => Promise<
         | { canceled: true; status: StorageProfileStatus }
+        | { ok: true; status: StorageProfileStatus }
+        | { ok: false; error: string; status: StorageProfileStatus }
+      >
+      renameNotebook?: (payload: { name: string }) => Promise<
         | { ok: true; status: StorageProfileStatus }
         | { ok: false; error: string; status: StorageProfileStatus }
       >

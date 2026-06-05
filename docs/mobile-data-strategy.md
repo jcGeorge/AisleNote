@@ -4,7 +4,7 @@ Tabs uses different storage capabilities by runtime. The data format stays porta
 
 ## Desktop
 
-- Notebook content lives in a user-selected notebook folder containing `notes/`.
+- Notebook content lives in a user-selected named notebook folder containing root-level `manifest.json`, `domains/`, `_internal/`, and `assets/`.
 - User settings can live in a separate user-selected settings folder containing `settings/app-settings.json`.
 - Folder export/import, folder switching, folder moves, and live filesystem reload are desktop features.
 - Desktop can use OS/cloud-synced folders because the operating system owns that sync behavior.

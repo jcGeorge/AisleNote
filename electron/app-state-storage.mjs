@@ -62,7 +62,7 @@ import {
   migrateAisleTags,
 } from '../src/tags/tags.js'
 
-export const HYBRID_ROOT_DIR = 'notes'
+export const HYBRID_ROOT_DIR = ''
 const SCHEMA_VERSION = 1
 const SUPPORTED_SCHEMA_VERSIONS = new Set([SCHEMA_VERSION])
 const DOMAINS_DIR = 'domains'
@@ -461,7 +461,7 @@ function referenceMarkdownImages(markdown, noteFilePath, issues = null, issueRoo
 }
 
 export function getHybridStorageRoot(profileRootPath) {
-  return path.join(profileRootPath, HYBRID_ROOT_DIR)
+  return path.resolve(profileRootPath)
 }
 
 export function getUserSettingsFilePath(profileRootPath) {
@@ -571,24 +571,21 @@ function hasCloudConflictName(name) {
 
 function detectStorageConflicts(profileRootPath, rootPath) {
   const conflicts = []
-  for (const entry of listDirectoryEntries(profileRootPath)) {
-    if (entry.name === HYBRID_ROOT_DIR) continue
-    if (hasCloudConflictName(entry.name)) conflicts.push(entry.name)
-  }
+  const seen = new Set()
   for (const entry of listDirectoryEntries(rootPath)) {
-    if (hasCloudConflictName(entry.name)) conflicts.push(path.posix.join(HYBRID_ROOT_DIR, entry.name))
+    if (!hasCloudConflictName(entry.name) || seen.has(entry.name)) continue
+    seen.add(entry.name)
+    conflicts.push(entry.name)
   }
+  void profileRootPath
   return conflicts
 }
 
 function removeStorageConflictPaths(profileRootPath, rootPath) {
-  for (const entry of listDirectoryEntries(profileRootPath)) {
-    if (entry.name === HYBRID_ROOT_DIR) continue
-    if (hasCloudConflictName(entry.name)) rmSync(path.join(profileRootPath, entry.name), { recursive: true, force: true })
-  }
   for (const entry of listDirectoryEntries(rootPath)) {
     if (hasCloudConflictName(entry.name)) rmSync(path.join(rootPath, entry.name), { recursive: true, force: true })
   }
+  void profileRootPath
 }
 
 function pruneStorageRoot(rootPath, expectedRelativeFiles) {
@@ -2212,6 +2209,7 @@ export function loadAppState(profileRootPath, options = {}) {
 export function loadAppStateResult(profileRootPath, options = {}) {
   const finalRoot = getHybridStorageRoot(profileRootPath)
   const finalExists = existsSync(finalRoot)
+  const finalRootEntries = finalExists ? listDirectoryEntries(finalRoot) : []
   const conflicts = detectStorageConflicts(profileRootPath, finalRoot)
 
   if (conflicts.length > 0) {
@@ -2241,6 +2239,8 @@ export function loadAppStateResult(profileRootPath, options = {}) {
     }, hybridResult.issues)
   }
 
+  if (!finalExists || finalRootEntries.length === 0) return { ok: true, serializedState: null, source: 'empty' }
+
   if (finalExists) {
     const issues = hybridResult.issues.length > 0
       ? hybridResult.issues
@@ -2253,8 +2253,6 @@ export function loadAppStateResult(profileRootPath, options = {}) {
       schemaVersion: hybridResult.schemaVersion,
     }, issues)
   }
-
-  if (!finalExists) return { ok: true, serializedState: null, source: 'empty' }
 
   return {
     ok: false,
@@ -2292,8 +2290,11 @@ export function writeNotebookFolderExport(destinationRootPath, serializedState, 
   }
   const profileRootPath = path.resolve(destinationRootPath)
   const finalRoot = getHybridStorageRoot(profileRootPath)
-  if (existsSync(finalRoot)) {
+  if (existsSync(path.join(finalRoot, 'manifest.json'))) {
     throw new Error('Destination folder already contains a notebook.')
+  }
+  if (existsSync(finalRoot) && listDirectoryEntries(finalRoot).length > 0) {
+    throw new Error('Destination notebook folder must be empty.')
   }
   const parsedState = JSON.parse(serializedState)
   const exportState = normalizeAppStateForExport(parsedState)
@@ -2302,7 +2303,8 @@ export function writeNotebookFolderExport(destinationRootPath, serializedState, 
   })
   return {
     profileRootPath,
-    notesPath: finalRoot,
+    notebookPath: finalRoot,
+    notebookName: path.basename(finalRoot),
   }
 }
 
@@ -2335,23 +2337,22 @@ function normalizeArchiveEntryName(entry) {
       issue: createStorageIssue('unsafe-archive-entry', 'error', rawName, 'Archive contains a path traversal entry.'),
     }
   }
-  if (
-    normalized !== HYBRID_ROOT_DIR &&
-    !normalized.startsWith(`${HYBRID_ROOT_DIR}/`) &&
-    normalized !== USER_SETTINGS_DIR &&
-    normalized !== USER_SETTINGS_FILE_PATH
-  ) {
-    return {
-      ok: false,
-      issue: createStorageIssue(
-        'unexpected-archive-entry',
-        'error',
-        rawName,
-        'Archive contains files outside notes or settings.',
-      ),
-    }
-  }
   return { ok: true, name: normalized }
+}
+
+function getNotebookArchiveRootPrefix(entryNames) {
+  const names = entryNames.filter((name) => name !== USER_SETTINGS_DIR && !name.startsWith(`${USER_SETTINGS_DIR}/`))
+  if (names.includes('manifest.json')) return ''
+  const topLevelNames = new Set(names.map((name) => name.split('/')[0]).filter(Boolean))
+  if (topLevelNames.size !== 1) return null
+  const [prefix] = Array.from(topLevelNames)
+  return names.includes(path.posix.join(prefix, 'manifest.json')) ? prefix : null
+}
+
+function stripNotebookArchiveRootPrefix(entryName, rootPrefix) {
+  if (!rootPrefix) return entryName
+  if (entryName === rootPrefix) return ''
+  return entryName.startsWith(`${rootPrefix}/`) ? entryName.slice(rootPrefix.length + 1) : null
 }
 
 function isPathInside(parent, child) {
@@ -2421,41 +2422,50 @@ export async function importNotebookZipArchive(archivePath) {
   const writtenFiles = new Set()
 
   try {
-    let hasManifest = false
+    const normalizedEntries = []
     for (const entry of Object.values(zip.files)) {
       const normalized = normalizeArchiveEntryName(entry)
       if (!normalized.ok) {
         return failedImportArchiveResult(normalized.issue.message, [normalized.issue])
       }
+      normalizedEntries.push({ entry, name: normalized.name })
+    }
+
+    const archiveRootPrefix = getNotebookArchiveRootPrefix(normalizedEntries.map((entry) => entry.name))
+    if (archiveRootPrefix === null) {
+      const issue = createStorageIssue(
+        'missing-root-manifest',
+        'error',
+        'manifest.json',
+        'Archive is missing manifest.json.',
+      )
+      return failedImportArchiveResult(issue.message, [issue])
+    }
+
+    for (const { entry, name } of normalizedEntries) {
       if (entry.dir) continue
-      if (normalized.name === HYBRID_ROOT_DIR || normalized.name === USER_SETTINGS_DIR) {
-        const issue = createStorageIssue('unsafe-archive-entry', 'error', normalized.name, 'Archive contains an invalid directory file.')
+      if (name === USER_SETTINGS_DIR || name.startsWith(`${USER_SETTINGS_DIR}/`)) continue
+      const strippedName = stripNotebookArchiveRootPrefix(name, archiveRootPrefix)
+      if (strippedName === null) {
+        const issue = createStorageIssue('unexpected-archive-entry', 'error', name, 'Archive contains files outside the notebook folder.')
         return failedImportArchiveResult(issue.message, [issue])
       }
-      if (normalized.name.startsWith(`${USER_SETTINGS_DIR}/`)) continue
-      if (writtenFiles.has(normalized.name)) {
-        const issue = createStorageIssue('duplicate-archive-entry', 'error', normalized.name, 'Archive contains duplicate file entries.')
+      if (!strippedName) {
+        const issue = createStorageIssue('unsafe-archive-entry', 'error', name, 'Archive contains an invalid directory file.')
         return failedImportArchiveResult(issue.message, [issue])
       }
-      writtenFiles.add(normalized.name)
-      if (normalized.name === path.posix.join(HYBRID_ROOT_DIR, 'manifest.json')) hasManifest = true
-      const destination = path.join(tempParent, ...normalized.name.split('/'))
+      if (writtenFiles.has(strippedName)) {
+        const issue = createStorageIssue('duplicate-archive-entry', 'error', strippedName, 'Archive contains duplicate file entries.')
+        return failedImportArchiveResult(issue.message, [issue])
+      }
+      writtenFiles.add(strippedName)
+      const destination = path.join(tempParent, ...strippedName.split('/'))
       if (!isPathInside(tempParent, destination)) {
-        const issue = createStorageIssue('unsafe-archive-entry', 'error', normalized.name, 'Archive entry escapes the import directory.')
+        const issue = createStorageIssue('unsafe-archive-entry', 'error', strippedName, 'Archive entry escapes the import directory.')
         return failedImportArchiveResult(issue.message, [issue])
       }
       mkdirSync(path.dirname(destination), { recursive: true })
       writeFileSync(destination, await entry.async('nodebuffer'))
-    }
-
-    if (!hasManifest) {
-      const issue = createStorageIssue(
-        'missing-root-manifest',
-        'error',
-        path.posix.join(HYBRID_ROOT_DIR, 'manifest.json'),
-        'Archive is missing notes/manifest.json.',
-      )
-      return failedImportArchiveResult(issue.message, [issue])
     }
 
     const result = loadAppStateResult(tempParent, { includeUserSettings: false })

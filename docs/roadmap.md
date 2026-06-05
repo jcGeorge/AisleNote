@@ -35,7 +35,7 @@ Goal: make the manifest/Markdown/assets storage model resilient enough for real 
 
 Completed outcomes:
 
-- `docs/storage-schema.md` now describes the current schema 1 `notes/domains/...` layout as canonical; the future `topics/` idea remains explicitly deferred.
+- `docs/storage-schema.md` now describes the current schema 1 named-root `domains/...` layout as canonical; the future `topics/` idea remains explicitly deferred.
 - Missing Markdown files, missing/corrupt trash manifests, corrupt branch manifests, corrupt/unsupported root manifests, stale revisions, conflict folders, and paused-write safeguards are covered by storage behavior and tests.
 - Settings > Data surfaces notebook folder transfer, user-settings transfer, notebook create/switch/move actions, notebook-folder health, folder path, schema/writable state, issue details, reveal folder, and retry reload actions.
 - Browser hybrid storage and Electron filesystem storage have parity coverage for the current logical app state.

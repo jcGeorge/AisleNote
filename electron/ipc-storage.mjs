@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync } from 'node:fs'
 import path from 'node:path'
 import { createAppStateCoordinator, LOAD_FAILED_SAVE_ERROR } from './app-state-coordinator.mjs'
 import {
@@ -9,8 +9,9 @@ import {
   writeImageAssetToProfile,
 } from './app-state-storage.mjs'
 import {
-  getStorageProfileNotesPath,
+  getStorageProfileNotebookName,
   resolveStorageProfile,
+  validateNotebookName,
   writeStorageProfileConfig,
 } from './storage-profile.mjs'
 import { createStorageProfileWatcher } from './storage-watcher.mjs'
@@ -33,13 +34,15 @@ import { normalizeImageAssetPath, parseImageAssetUrl } from '../src/markdown/ima
 function createStorageStatus({ profile, coordinator, event = 'ready', error = null }) {
   const loadResult = coordinator.getLoadResult()
   const hasProfile = existsSync(getHybridStorageRoot(profile.profileRootPath))
+  const notebookPath = getHybridStorageRoot(profile.profileRootPath)
   return {
     status: loadResult.ok ? 'ready' : 'error',
     health: loadResult.health ?? (loadResult.ok ? 'healthy' : 'error'),
     issues: loadResult.issues ?? [],
     event,
     profileRootPath: profile.profileRootPath,
-    notesPath: getStorageProfileNotesPath(profile.profileRootPath),
+    notebookPath,
+    notebookName: getStorageProfileNotebookName(profile.profileRootPath),
     isDefault: profile.isDefault,
     hasProfile,
     canWrite: coordinator.canWriteAppState(),
@@ -100,9 +103,9 @@ function resolveProfileAssetPath(profileRootPath, payload) {
     ? parseImageAssetUrl(payload.url)
     : normalizeImageAssetPath(payload?.assetPath)
   if (!assetPath) return { ok: false, error: 'Invalid asset.' }
-  const notesRoot = getStorageProfileNotesPath(profileRootPath)
-  const absoluteAssetPath = path.resolve(notesRoot, assetPath)
-  if (!absoluteAssetPath.startsWith(notesRoot + path.sep)) {
+  const notebookRoot = getHybridStorageRoot(profileRootPath)
+  const absoluteAssetPath = path.resolve(notebookRoot, assetPath)
+  if (!absoluteAssetPath.startsWith(notebookRoot + path.sep)) {
     return { ok: false, error: 'Invalid asset path.' }
   }
   return { ok: true, assetPath, absoluteAssetPath }
@@ -185,6 +188,54 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
 
   const logExternalStorageEvent = (event) => {
     console.info?.(`[tabs:storage] ${event}`)
+  }
+
+  const isInsidePath = (parentPath, candidatePath) => {
+    const relative = path.relative(parentPath, candidatePath)
+    return relative === '' || (!!relative && !relative.startsWith('..') && !path.isAbsolute(relative))
+  }
+
+  const validateNotebookLocationPath = (locationPath) => {
+    if (typeof locationPath !== 'string' || !locationPath.trim()) {
+      return { ok: false, error: 'Notebook location is required.' }
+    }
+    const resolvedPath = path.resolve(locationPath)
+    let stats
+    try {
+      stats = lstatSync(resolvedPath)
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : 'Notebook location could not be opened.',
+      }
+    }
+    if (stats.isSymbolicLink() || !stats.isDirectory()) {
+      return { ok: false, error: 'Notebook location must be a normal folder.' }
+    }
+    if (isInsidePath(profile.profileRootPath, resolvedPath)) {
+      return { ok: false, error: 'Choose a location outside the active notebook folder.' }
+    }
+    return { ok: true, locationPath: resolvedPath }
+  }
+
+  const buildNotebookTargetPath = (locationPath, name) => {
+    const validation = validateNotebookName(name)
+    if (!validation.ok) return validation
+    const locationValidation = validateNotebookLocationPath(locationPath)
+    if (!locationValidation.ok) return locationValidation
+    return {
+      ok: true,
+      name: validation.name,
+      profileRootPath: path.join(locationValidation.locationPath, validation.name),
+    }
+  }
+
+  const notebookDirectoryHasEntries = (profileRootPath) => {
+    try {
+      return existsSync(profileRootPath) && readdirSync(profileRootPath).length > 0
+    } catch {
+      return true
+    }
   }
 
   const startWatcher = () => {
@@ -329,6 +380,35 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     return { ok: true, status }
   }
 
+  const renameNotebook = async (_event, payload = {}) => {
+    const validation = validateNotebookName(payload?.name)
+    if (!validation.ok) return { ok: false, error: validation.error, status }
+    const nextProfileRootPath = path.join(path.dirname(profile.profileRootPath), validation.name)
+    if (nextProfileRootPath === profile.profileRootPath) return { ok: true, status }
+    if (existsSync(nextProfileRootPath)) {
+      return { ok: false, error: 'A folder with that notebook name already exists.', status }
+    }
+    try {
+      mkdirSync(path.dirname(nextProfileRootPath), { recursive: true })
+      watcher?.markAppWrite()
+      renameSync(profile.profileRootPath, nextProfileRootPath)
+      profile = { ...writeStorageProfileConfig(userDataPath, nextProfileRootPath), userDataPath }
+      const result = coordinator.reloadProfileRoot(nextProfileRootPath, { requireSerializedState: true })
+      updateStatus(result.ok ? 'notebook-renamed' : 'profile-error', result.ok ? null : result.error)
+      startWatcher()
+      return result.ok
+        ? { ok: true, status }
+        : { ok: false, error: result.error ?? 'Renamed notebook could not be loaded.', status }
+    } catch (error) {
+      updateStatus('notebook-rename-error', error instanceof Error ? error.message : 'Notebook folder could not be renamed.')
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : 'Notebook folder could not be renamed.',
+        status,
+      }
+    }
+  }
+
   const replaceProfileWithCurrentData = async (profileRootPath, event = null) => {
     const serializedState = await getCurrentSerializedStateForProfileMove(event)
     if (serializedState === null) {
@@ -366,7 +446,16 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     if (profileRootPath === profile.profileRootPath) return { ok: true, status }
 
     const targetResult = loadNotebookResult(profileRootPath)
-    const targetHasProfile = existsSync(getHybridStorageRoot(profileRootPath))
+    const targetHasProfile = existsSync(path.join(getHybridStorageRoot(profileRootPath), 'manifest.json'))
+    const targetHasEntries = notebookDirectoryHasEntries(profileRootPath)
+
+    if (!targetHasProfile && targetHasEntries && !targetResult.ok) {
+      return {
+        ok: false,
+        error: 'Notebook folder must be empty or contain manifest.json.',
+        status,
+      }
+    }
 
     if (mode === 'move') {
       if (targetHasProfile && dialog?.showMessageBox) {
@@ -413,7 +502,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
         cancelId: 1,
         defaultId: 0,
         message: 'Use this notebook folder?',
-        detail: 'Tabs will create notes/ here and save your current notebook into it. Current user settings stay in app support.',
+        detail: 'Tabs will save your current notebook into this folder. Current user settings stay in app support.',
       })
       if (initialize.response !== 0) return { canceled: true, status }
     }
@@ -452,37 +541,42 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     }
   }
 
+  const chooseNotebookLocation = async () => {
+    if (!dialog || typeof dialog.showOpenDialog !== 'function') {
+      return { ok: false, error: 'Folder selection is unavailable.' }
+    }
+
+    const selection = await dialog.showOpenDialog({
+      title: 'Choose notebook location',
+      properties: ['openDirectory', 'createDirectory'],
+    })
+    if (selection.canceled || !selection.filePaths?.[0]) return { canceled: true }
+    const validation = validateNotebookLocationPath(selection.filePaths[0])
+    if (!validation.ok) return { ok: false, error: validation.error }
+    return { ok: true, locationPath: validation.locationPath }
+  }
+
   const createNotebook = async (_event, payload = {}) => {
     if (typeof payload?.serializedState !== 'string' || payload.serializedState.trim().length === 0) {
       return { ok: false, error: 'Blank notebook state is invalid.', status }
     }
-    if (!dialog || typeof dialog.showOpenDialog !== 'function') {
-      return { ok: false, error: 'Folder selection is unavailable.', status }
-    }
-
-    const selection = await dialog.showOpenDialog({
-      title: 'New notebook',
-      properties: ['openDirectory', 'createDirectory'],
-    })
-    if (selection.canceled || !selection.filePaths?.[0]) return { canceled: true, status }
-
-    const profileRootPath = path.resolve(selection.filePaths[0])
-    if (existsSync(getHybridStorageRoot(profileRootPath))) {
+    const target = buildNotebookTargetPath(payload?.locationPath, payload?.name)
+    if (!target.ok) return { ok: false, error: target.error, status }
+    if (existsSync(target.profileRootPath)) {
       return {
         ok: false,
-        error: 'This folder already contains a notebook. Use switch notebook instead.',
+        error: 'This folder already exists. Choose a different notebook name.',
         status,
       }
     }
 
     try {
-      saveNotebookState(profileRootPath, payload.serializedState, {
+      saveNotebookState(target.profileRootPath, payload.serializedState, {
         userDataPath,
         userSettingsRoot: userDataPath,
-        replaceExisting: true,
         assetSourceRoot: getHybridStorageRoot(profile.profileRootPath),
       })
-      return switchToProfileRoot(profileRootPath, 'notebook-created', { requireSerializedState: true })
+      return switchToProfileRoot(target.profileRootPath, 'notebook-created', { requireSerializedState: true })
     } catch (error) {
       return {
         ok: false,
@@ -686,7 +780,9 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
 
   ipcMain.handle?.('get-storage-profile-status', async () => status)
   ipcMain.handle?.('get-user-settings-location-status', async () => userSettingsLocationStatus)
+  ipcMain.handle?.('choose-notebook-location', chooseNotebookLocation)
   ipcMain.handle?.('create-notebook', createNotebook)
+  ipcMain.handle?.('rename-notebook', renameNotebook)
   ipcMain.handle?.('switch-notebook', switchNotebook)
   ipcMain.handle?.('choose-storage-folder', async (event) => chooseProfileRoot('choose', event))
   ipcMain.handle?.('move-storage-profile', async (event) => chooseProfileRoot('move', event))

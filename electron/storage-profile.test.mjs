@@ -3,9 +3,10 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
+  STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME,
   getStorageProfileConfigPath,
-  getStorageProfileNotesPath,
   resolveStorageProfile,
+  validateNotebookName,
   writeStorageProfileConfig,
 } from './storage-profile.mjs'
 
@@ -21,9 +22,11 @@ function withTempUserDataPath(run) {
 describe('Electron storage profile config', () => {
   it('uses the app support profile by default', () =>
     withTempUserDataPath((userDataPath) => {
+      const notebookPath = path.join(userDataPath, STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME)
       expect(resolveStorageProfile(userDataPath)).toEqual({
-        profileRootPath: userDataPath,
-        notesPath: path.join(userDataPath, 'notes'),
+        profileRootPath: notebookPath,
+        notebookPath,
+        notebookName: STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME,
         isDefault: true,
       })
     }))
@@ -36,7 +39,8 @@ describe('Electron storage profile config', () => {
 
       expect(profile).toEqual({
         profileRootPath: path.resolve(syncFolder),
-        notesPath: getStorageProfileNotesPath(path.resolve(syncFolder)),
+        notebookPath: path.resolve(syncFolder),
+        notebookName: 'tabs-sync-folder',
         isDefault: false,
       })
       expect(JSON.parse(readFileSync(getStorageProfileConfigPath(userDataPath), 'utf8'))).toEqual({
@@ -48,9 +52,18 @@ describe('Electron storage profile config', () => {
   it('removes the custom config when reset to the default profile', () =>
     withTempUserDataPath((userDataPath) => {
       writeStorageProfileConfig(userDataPath, path.join(userDataPath, '..', 'tabs-sync-folder'))
-      const profile = writeStorageProfileConfig(userDataPath, userDataPath)
+      const profile = writeStorageProfileConfig(userDataPath, path.join(userDataPath, STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME))
 
       expect(profile.isDefault).toBe(true)
       expect(existsSync(getStorageProfileConfigPath(userDataPath))).toBe(false)
     }))
+
+  it('validates notebook folder names', () => {
+    expect(validateNotebookName('Project Notes')).toEqual({ ok: true, name: 'Project Notes' })
+    expect(validateNotebookName('')).toMatchObject({ ok: false })
+    expect(validateNotebookName('../bad')).toMatchObject({ ok: false })
+    expect(validateNotebookName('CON')).toMatchObject({ ok: false })
+    expect(validateNotebookName('bad:name')).toMatchObject({ ok: false })
+    expect(validateNotebookName('bad ')).toMatchObject({ ok: false })
+  })
 })

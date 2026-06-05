@@ -31,6 +31,7 @@ type DataSettingsPanelProps = {
   onResetUserSettingsFolder: () => void
   onResetUserSettingsToDefaults: () => void
   onCreateNotebook: () => void
+  onRenameNotebook: () => void
   onSwitchNotebook: () => void
   onMoveStorageProfile: () => void
   onRevealStorageProfile: () => void
@@ -201,6 +202,7 @@ function StorageDataSection({
   importStatus,
   storageProfileStatus,
   onCreateNotebook,
+  onRenameNotebook,
   onSwitchNotebook,
   onMoveStorageProfile,
   onRevealStorageProfile,
@@ -212,6 +214,7 @@ function StorageDataSection({
   | 'dataCapabilities'
   | 'storageProfileStatus'
   | 'onCreateNotebook'
+  | 'onRenameNotebook'
   | 'onSwitchNotebook'
   | 'onMoveStorageProfile'
   | 'onRevealStorageProfile'
@@ -256,13 +259,17 @@ function StorageDataSection({
 
   return (
     <>
-      <p>notebook folder:</p>
-      <p className="settings-help">the notebook folder contains notes/. user settings stay with this app and transfer only through app-settings.json import/export.</p>
+      <p>notebook:</p>
+      <p className="settings-help">the notebook folder is the named folder that contains this notebook's manifest, notes, and assets. user settings stay with this app and transfer only through app-settings.json import/export.</p>
       <div className={storageProfileCardClassName}>
         <div className="storage-profile-row">
-          <span className="settings-hotkey-label">current notebook folder</span>
+          <span className="settings-hotkey-label">notebook name</span>
+          <span>{storageProfileStatus?.notebookName ?? 'desktop notebook unavailable'}</span>
+        </div>
+        <div className="storage-profile-row">
+          <span className="settings-hotkey-label">notebook folder</span>
           <code className="storage-profile-path">
-            {storageProfileStatus?.profileRootPath ?? 'desktop notebook folder unavailable'}
+            {storageProfileStatus?.notebookPath ?? storageProfileStatus?.profileRootPath ?? 'desktop notebook folder unavailable'}
           </code>
         </div>
         <div className="storage-profile-row">
@@ -299,6 +306,9 @@ function StorageDataSection({
           <button type="button" className="btn btn-sm settings-action-btn" onClick={onCreateNotebook}>
             new notebook
           </button>
+          <button type="button" className="btn btn-sm settings-action-btn" onClick={onRenameNotebook}>
+            rename notebook
+          </button>
           <button type="button" className="btn btn-sm settings-action-btn" onClick={onSwitchNotebook}>
             switch notebook
           </button>
@@ -317,7 +327,7 @@ function StorageDataSection({
           </button>
         </div>
         <p className="settings-help">
-          choose a local or cloud-synced notebook folder; Tabs stores notebook content in notes/.
+          choose a local or cloud-synced notebook folder. Tabs stores notebook content directly inside that folder.
         </p>
       </div>
       {exportStatus && <p className="settings-help">{exportStatus}</p>}

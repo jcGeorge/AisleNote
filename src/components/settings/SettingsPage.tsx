@@ -199,6 +199,7 @@ type SettingsPageProps = {
   onSaveFrontmatterTemplates: () => void
   onDiscardFrontmatterTemplateChanges: () => void
   onCreateNotebook: () => void
+  onRenameNotebook: () => void
   onSwitchNotebook: () => void
   onMoveStorageProfile: () => void
   onRevealStorageProfile: () => void
@@ -296,6 +297,7 @@ export function SettingsPage({
   onSaveFrontmatterTemplates,
   onDiscardFrontmatterTemplateChanges,
   onCreateNotebook,
+  onRenameNotebook,
   onSwitchNotebook,
   onMoveStorageProfile,
   onRevealStorageProfile,
@@ -603,6 +605,7 @@ export function SettingsPage({
             onResetUserSettingsFolder={onResetUserSettingsFolder}
             onResetUserSettingsToDefaults={onResetUserSettingsToDefaults}
             onCreateNotebook={onCreateNotebook}
+            onRenameNotebook={onRenameNotebook}
             onSwitchNotebook={onSwitchNotebook}
             onMoveStorageProfile={onMoveStorageProfile}
             onRevealStorageProfile={onRevealStorageProfile}

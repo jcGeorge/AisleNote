@@ -189,6 +189,7 @@ function renderFrontmatterModal(modal: ModalState) {
       onDeduplicateKeepDataChange={() => undefined}
       onPasteSyncedNoteAsAisle={() => undefined}
       onOpenSyncedFilter={() => undefined}
+      onChooseNotebookLocation={async () => null}
       onConfirm={() => undefined}
     />,
   )
@@ -213,6 +214,7 @@ function renderModal(modal: ModalState, state = createState()) {
       onDeduplicateKeepDataChange={() => undefined}
       onPasteSyncedNoteAsAisle={() => undefined}
       onOpenSyncedFilter={() => undefined}
+      onChooseNotebookLocation={async () => null}
       onConfirm={() => undefined}
     />,
   )
@@ -237,6 +239,7 @@ function renderShortcutMenuSettingsModal(shortcutMenuOperations: NewlineOperatio
       onDeduplicateKeepDataChange={() => undefined}
       onPasteSyncedNoteAsAisle={() => undefined}
       onOpenSyncedFilter={() => undefined}
+      onChooseNotebookLocation={async () => null}
       onConfirm={() => undefined}
     />,
   )

@@ -23,6 +23,7 @@ import {
   USER_SETTINGS_LOCATION_CONFIG_FILE,
   writeUserSettingsLocationConfig,
 } from './user-settings-location.mjs'
+import { STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME } from './storage-profile.mjs'
 
 function createIpcMain() {
   const handlers = new Map()
@@ -43,6 +44,10 @@ function createBrowserWindow(windows = []) {
   return {
     getAllWindows: vi.fn(() => windows),
   }
+}
+
+function defaultNotebookRoot(userDataPath) {
+  return path.join(userDataPath, STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME)
 }
 
 function withTempUserDataPath(run) {
@@ -71,9 +76,10 @@ async function writeZipArchive(filePath, entries) {
   writeFileSync(filePath, await zip.generateAsync({ type: 'nodebuffer' }))
 }
 
-async function writeNotebookZipFromFolder(filePath, notebookRootPath) {
+async function writeNotebookZipFromFolder(filePath, notebookRootPath, prefix = '') {
   const zip = new JSZip()
-  const root = path.join(notebookRootPath, 'notes')
+  const root = notebookRootPath
+  const archivePrefix = String(prefix ?? '').replace(/^\/+|\/+$/g, '')
 
   function visit(directoryPath) {
     for (const entry of readdirSync(directoryPath)) {
@@ -85,7 +91,7 @@ async function writeNotebookZipFromFolder(filePath, notebookRootPath) {
       }
       if (!stats.isFile()) continue
       const relativePath = path.relative(notebookRootPath, absolutePath).split(path.sep).join('/')
-      zip.file(relativePath, readFileSync(absolutePath))
+      zip.file(archivePrefix ? path.posix.join(archivePrefix, relativePath) : relativePath, readFileSync(absolutePath))
     }
   }
 
@@ -319,7 +325,7 @@ describe('electron ipc boundaries', () => {
       expect(result).toMatchObject({ canceled: false, ok: true, kind: 'zip', filePath: archivePath })
       expect(Buffer.from(result.bytes).byteLength).toBeGreaterThan(0)
       expect(result.nativeNotebookError).toBeTruthy()
-      expect(loadAppStateResult(userDataPath).source).toBe('empty')
+      expect(loadAppStateResult(defaultNotebookRoot(userDataPath)).source).toBe('empty')
     }))
 
   it('classifies unified notebook import sources', async () =>
@@ -376,7 +382,7 @@ describe('electron ipc boundaries', () => {
     withTempUserDataPathAsync(async (userDataPath) => {
       const sourceRoot = path.join(userDataPath, 'source-notebook')
       saveAppState(sourceRoot, serializedAppState(), { userDataPath })
-      const assetPath = path.join(sourceRoot, 'notes', 'assets', 'source.txt')
+      const assetPath = path.join(sourceRoot, 'assets', 'source.txt')
       mkdirSync(path.dirname(assetPath), { recursive: true })
       writeFileSync(assetPath, 'asset bytes', 'utf8')
       const ipcMain = createIpcMain()
@@ -396,7 +402,7 @@ describe('electron ipc boundaries', () => {
       })
       expect(typeof result.sourceId).toBe('string')
       expect(typeof result.serializedState).toBe('string')
-      expect(loadAppStateResult(userDataPath).source).toBe('empty')
+      expect(loadAppStateResult(defaultNotebookRoot(userDataPath)).source).toBe('empty')
 
       const assetResult = await ipcMain.handlers.get('read-folder-import-asset')(null, {
         sourceId: result.sourceId,
@@ -415,6 +421,30 @@ describe('electron ipc boundaries', () => {
           relativePath: '../source.txt',
         }),
       ).resolves.toMatchObject({ ok: false, error: 'Invalid import asset path.' })
+    }))
+
+  it('treats old parent folders containing notes as Markdown imports, not notebook roots', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const oldParentRoot = path.join(userDataPath, 'old-parent')
+      const legacyMarkdownPath = path.join(oldParentRoot, 'notes', 'legacy.md')
+      mkdirSync(path.dirname(legacyMarkdownPath), { recursive: true })
+      writeFileSync(path.join(oldParentRoot, 'notes', 'manifest.json'), '{"schemaVersion":1}', 'utf8')
+      writeFileSync(legacyMarkdownPath, '# Legacy', 'utf8')
+      const ipcMain = createIpcMain()
+      registerFileIpc({
+        ipcMain,
+        dialog: {
+          showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [oldParentRoot] })),
+        },
+      })
+
+      await expect(ipcMain.handlers.get('open-notebook-import-source')()).resolves.toMatchObject({
+        canceled: false,
+        ok: true,
+        kind: 'markdown-folder',
+        folderPath: oldParentRoot,
+        files: [{ relativePath: 'notes/legacy.md', markdown: '# Legacy' }],
+      })
     }))
 
   it('rejects import folders without readable notebook or Markdown content', async () =>
@@ -536,7 +566,7 @@ describe('electron ipc boundaries', () => {
     withTempUserDataPathAsync(async (userDataPath) => {
       const archivePath = path.join(userDataPath, 'traversal.zip')
       await writeZipArchive(archivePath, {
-        'notes/manifest.json': JSON.stringify({ schemaVersion: 1, files: {} }),
+        'manifest.json': JSON.stringify({ schemaVersion: 1, files: {} }),
         '../outside.txt': 'bad',
       })
       const ipcMain = createIpcMain()
@@ -559,7 +589,7 @@ describe('electron ipc boundaries', () => {
     withTempUserDataPathAsync(async (userDataPath) => {
       const archivePath = path.join(userDataPath, 'unsupported.zip')
       await writeZipArchive(archivePath, {
-        'notes/manifest.json': JSON.stringify({ schemaVersion: 999, files: {} }),
+        'manifest.json': JSON.stringify({ schemaVersion: 999, files: {} }),
       })
       const ipcMain = createIpcMain()
       registerFileIpc({
@@ -584,7 +614,7 @@ describe('electron ipc boundaries', () => {
       saveAppState(sourceRoot, serializedAppState('light'), { userDataPath })
       await writeNotebookZipFromFolder(archivePath, sourceRoot)
       const zip = await JSZip.loadAsync(readFileSync(archivePath))
-      expect(zip.file('notes/manifest.json')).not.toBeNull()
+      expect(zip.file('manifest.json')).not.toBeNull()
       expect(zip.file('settings/app-settings.json')).toBeNull()
       const ipcMain = createIpcMain()
       registerFileIpc({
@@ -601,7 +631,33 @@ describe('electron ipc boundaries', () => {
         kind: 'notebook-zip',
         serializedState: expect.stringContaining('"hello"'),
       })
-      expect(loadAppStateResult(userDataPath).source).toBe('empty')
+      expect(loadAppStateResult(defaultNotebookRoot(userDataPath)).source).toBe('empty')
+    }))
+
+  it('loads native notebook ZIPs with a single top-level folder wrapper', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const archivePath = path.join(userDataPath, 'wrapped-notebook.zip')
+      const sourceRoot = path.join(userDataPath, 'source-notebook')
+      saveAppState(sourceRoot, serializedAppState('light'), { userDataPath })
+      await writeNotebookZipFromFolder(archivePath, sourceRoot, 'Wrapped Notebook')
+      const zip = await JSZip.loadAsync(readFileSync(archivePath))
+      expect(zip.file('Wrapped Notebook/manifest.json')).not.toBeNull()
+      const ipcMain = createIpcMain()
+      registerFileIpc({
+        ipcMain,
+        dialog: {
+          showSaveDialog: vi.fn(),
+          showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [archivePath] })),
+        },
+      })
+
+      await expect(ipcMain.handlers.get('open-notebook-import-source')()).resolves.toMatchObject({
+        canceled: false,
+        ok: true,
+        kind: 'notebook-zip',
+        serializedState: expect.stringContaining('"hello"'),
+      })
+      expect(loadAppStateResult(defaultNotebookRoot(userDataPath)).source).toBe('empty')
     }))
 
   it('keeps clipboard invalid payload behavior unchanged', async () => {
@@ -632,7 +688,7 @@ describe('electron ipc boundaries', () => {
 
   it('blocks app-state writes after a failed load result', () =>
     withTempUserDataPath((userDataPath) => {
-      const root = path.join(userDataPath, 'notes')
+      const root = defaultNotebookRoot(userDataPath)
       mkdirSync(root, { recursive: true })
       writeFileSync(path.join(root, 'manifest.json'), '{nope', 'utf8')
 
@@ -694,7 +750,7 @@ describe('electron ipc boundaries', () => {
     }))
 
   it('handles async app-state saves and broadcasts them to other windows', async () =>
-    withTempUserDataPath(async (userDataPath) => {
+    withTempUserDataPathAsync(async (userDataPath) => {
       const ipcMain = createIpcMain()
       const sourceWindow = {
         isDestroyed: vi.fn(() => false),
@@ -728,7 +784,7 @@ describe('electron ipc boundaries', () => {
     }))
 
   it('reports the default storage profile status', async () =>
-    withTempUserDataPath(async (userDataPath) => {
+    withTempUserDataPathAsync(async (userDataPath) => {
       const ipcMain = createIpcMain()
       registerStorageIpc({
         ipcMain,
@@ -738,8 +794,9 @@ describe('electron ipc boundaries', () => {
 
       await expect(ipcMain.handlers.get('get-storage-profile-status')()).resolves.toMatchObject({
         status: 'ready',
-        profileRootPath: userDataPath,
-        notesPath: path.join(userDataPath, 'notes'),
+        profileRootPath: defaultNotebookRoot(userDataPath),
+        notebookPath: defaultNotebookRoot(userDataPath),
+        notebookName: STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME,
         isDefault: true,
         canWrite: true,
         source: 'empty',
@@ -780,27 +837,31 @@ describe('electron ipc boundaries', () => {
           canceled: false,
           ok: true,
           profileRootPath: destinationRoot,
-          notesPath: path.join(destinationRoot, 'notes'),
+          notebookPath: destinationRoot,
+          notebookName: path.basename(destinationRoot),
         })
-        expect(existsSync(path.join(destinationRoot, 'notes', 'manifest.json'))).toBe(true)
+        expect(existsSync(path.join(destinationRoot, 'manifest.json'))).toBe(true)
         expect(existsSync(path.join(destinationRoot, 'settings', 'app-settings.json'))).toBe(false)
-        expect(readFileSync(path.join(destinationRoot, 'notes', asset.assetPath))).toEqual(assetBytes)
+        expect(readFileSync(path.join(destinationRoot, asset.assetPath))).toEqual(assetBytes)
       } finally {
         rmSync(destinationRoot, { recursive: true, force: true })
       }
     }))
 
-  it('rejects notebook folder export destinations that are active or already contain notes', async () =>
+  it('rejects notebook folder export destinations that are active, non-empty, or already contain notebooks', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
       const existingNotebookRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-existing-notebook-'))
+      const nonEmptyRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-non-empty-export-'))
       try {
-        mkdirSync(path.join(existingNotebookRoot, 'notes'), { recursive: true })
+        writeFileSync(path.join(existingNotebookRoot, 'manifest.json'), '{"schemaVersion":1}', 'utf8')
+        writeFileSync(path.join(nonEmptyRoot, 'readme.txt'), 'keep me', 'utf8')
         const ipcMain = createIpcMain()
         const showOpenDialog = vi
           .fn()
           .mockResolvedValueOnce({ canceled: true, filePaths: [] })
           .mockResolvedValueOnce({ canceled: false, filePaths: [userDataPath] })
           .mockResolvedValueOnce({ canceled: false, filePaths: [existingNotebookRoot] })
+          .mockResolvedValueOnce({ canceled: false, filePaths: [nonEmptyRoot] })
         registerFileIpc({
           ipcMain,
           dialog: { showOpenDialog },
@@ -822,8 +883,13 @@ describe('electron ipc boundaries', () => {
           ok: false,
           error: 'Destination folder already contains a notebook.',
         })
+        await expect(handler(null, payload)).resolves.toMatchObject({
+          ok: false,
+          error: 'Destination notebook folder must be empty.',
+        })
       } finally {
         rmSync(existingNotebookRoot, { recursive: true, force: true })
+        rmSync(nonEmptyRoot, { recursive: true, force: true })
       }
     }))
 
@@ -831,11 +897,11 @@ describe('electron ipc boundaries', () => {
     withTempUserDataPathAsync(async (userDataPath) => {
       const otherNotebookRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-settings-notebook-'))
       try {
-        mkdirSync(path.join(otherNotebookRoot, 'notes'), { recursive: true })
-        writeFileSync(path.join(otherNotebookRoot, 'notes', 'manifest.json'), '{"schemaVersion":1}', 'utf8')
+        mkdirSync(otherNotebookRoot, { recursive: true })
+        writeFileSync(path.join(otherNotebookRoot, 'manifest.json'), '{"schemaVersion":1}', 'utf8')
         const showOpenDialog = vi
           .fn()
-          .mockResolvedValueOnce({ canceled: false, filePaths: [userDataPath] })
+          .mockResolvedValueOnce({ canceled: false, filePaths: [defaultNotebookRoot(userDataPath)] })
           .mockResolvedValueOnce({ canceled: false, filePaths: [otherNotebookRoot] })
         const ipcMain = createIpcMain()
         registerStorageIpc({
@@ -895,7 +961,9 @@ describe('electron ipc boundaries', () => {
       const settingsRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-live-settings-'))
       try {
         saveAppState(settingsRoot, serializedAppState('light'))
-        rmSync(path.join(settingsRoot, 'notes'), { recursive: true, force: true })
+        for (const entry of readdirSync(settingsRoot)) {
+          if (entry !== 'settings') rmSync(path.join(settingsRoot, entry), { recursive: true, force: true })
+        }
         const window = {
           isDestroyed: vi.fn(() => false),
           webContents: { id: 2, send: vi.fn() },
@@ -1223,6 +1291,7 @@ describe('electron ipc boundaries', () => {
   it('imports, reads, and opens generic assets through storage ipc', async () => {
     const userDataPath = mkdtempSync(path.join(os.tmpdir(), 'tabs-ipc-user-data-'))
     try {
+      const activeRoot = defaultNotebookRoot(userDataPath)
       const ipcMain = createIpcMain()
       const shell = { openPath: vi.fn(async () => ''), showItemInFolder: vi.fn() }
       registerStorageIpc({
@@ -1243,7 +1312,7 @@ describe('electron ipc boundaries', () => {
         assetPath: expect.stringMatching(/^assets\/asset-[a-f0-9]+\.mp4$/),
         url: expect.stringMatching(/^tabs-asset:\/\/\/assets\/asset-[a-f0-9]+\.mp4$/),
       })
-      expect(readFileSync(path.join(userDataPath, 'notes', imported.assetPath))).toEqual(Buffer.from([1, 2, 3]))
+      expect(readFileSync(path.join(activeRoot, imported.assetPath))).toEqual(Buffer.from([1, 2, 3]))
 
       await expect(ipcMain.handlers.get('read-asset')(null, { url: imported.url })).resolves.toMatchObject({
         ok: true,
@@ -1254,11 +1323,11 @@ describe('electron ipc boundaries', () => {
       expect(Buffer.from(readResult.bytes)).toEqual(Buffer.from([1, 2, 3]))
 
       await expect(ipcMain.handlers.get('open-asset')(null, { url: imported.url })).resolves.toEqual({ ok: true })
-      expect(shell.openPath).toHaveBeenCalledWith(path.join(userDataPath, 'notes', imported.assetPath))
+      expect(shell.openPath).toHaveBeenCalledWith(path.join(activeRoot, imported.assetPath))
       await expect(
         ipcMain.handlers.get('reveal-asset')(null, { url: `${imported.url}#tabs-media=speed=1.5` }),
       ).resolves.toEqual({ ok: true })
-      expect(shell.showItemInFolder).toHaveBeenCalledWith(path.join(userDataPath, 'notes', imported.assetPath))
+      expect(shell.showItemInFolder).toHaveBeenCalledWith(path.join(activeRoot, imported.assetPath))
       await expect(ipcMain.handlers.get('reveal-asset')(null, { url: 'tabs-asset:///assets/missing.mp3' })).resolves.toEqual({
         ok: false,
         error: 'Asset does not exist.',
@@ -1269,7 +1338,7 @@ describe('electron ipc boundaries', () => {
   })
 
   it('moves current app data into a chosen sync folder without deleting the source profile', async () =>
-    withTempUserDataPath(async (userDataPath) => {
+    withTempUserDataPathAsync(async (userDataPath) => {
       const targetRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-sync-target-'))
       try {
         const ipcMain = createIpcMain()
@@ -1294,7 +1363,7 @@ describe('electron ipc boundaries', () => {
           },
         })
 
-        expect(loadAppStateResult(userDataPath).ok).toBe(true)
+        expect(loadAppStateResult(defaultNotebookRoot(userDataPath)).ok).toBe(true)
         expect(loadAppStateResult(targetRoot, { userSettingsRoot: userDataPath }).ok).toBe(true)
         expect(existsSync(path.join(targetRoot, 'settings', 'app-settings.json'))).toBe(false)
         expect(JSON.parse(readFileSync(path.join(userDataPath, 'settings', 'app-settings.json'), 'utf8')).theme).toBe('dawn')
@@ -1303,8 +1372,39 @@ describe('electron ipc boundaries', () => {
       }
     }))
 
+  it('rejects moving current app data into a non-empty folder without a notebook manifest', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const targetRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-non-empty-target-'))
+      try {
+        writeFileSync(path.join(targetRoot, 'readme.txt'), 'keep me', 'utf8')
+        const ipcMain = createIpcMain()
+        const showMessageBox = vi.fn(async () => ({ response: 0 }))
+        registerStorageIpc({
+          ipcMain,
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow(),
+          dialog: {
+            showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [targetRoot] })),
+            showMessageBox,
+          },
+        })
+
+        const saveEvent = { returnValue: null }
+        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 0 })
+
+        await expect(ipcMain.handlers.get('move-storage-profile')()).resolves.toMatchObject({
+          ok: false,
+          error: 'Notebook folder must be empty or contain manifest.json.',
+        })
+        expect(showMessageBox).not.toHaveBeenCalled()
+        expect(readFileSync(path.join(targetRoot, 'readme.txt'), 'utf8')).toBe('keep me')
+      } finally {
+        rmSync(targetRoot, { recursive: true, force: true })
+      }
+    }))
+
   it('switches notebooks while preserving global user settings', async () =>
-    withTempUserDataPath(async (userDataPath) => {
+    withTempUserDataPathAsync(async (userDataPath) => {
       const targetRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-switch-target-'))
       try {
         const targetState = JSON.parse(serializedAppState('light'))
@@ -1348,7 +1448,7 @@ describe('electron ipc boundaries', () => {
     }))
 
   it('rejects switching to a folder without a notebook', async () =>
-    withTempUserDataPath(async (userDataPath) => {
+    withTempUserDataPathAsync(async (userDataPath) => {
       const targetRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-switch-empty-'))
       try {
         const ipcMain = createIpcMain()
@@ -1371,42 +1471,49 @@ describe('electron ipc boundaries', () => {
     }))
 
   it('creates a new notebook without folder-local user settings', async () =>
-    withTempUserDataPath(async (userDataPath) => {
-      const targetRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-new-notebook-'))
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const targetLocation = mkdtempSync(path.join(os.tmpdir(), 'tabs-new-notebook-location-'))
+      const notebookName = 'Project Notes'
+      const targetRoot = path.join(targetLocation, notebookName)
       try {
         const ipcMain = createIpcMain()
         registerStorageIpc({
           ipcMain,
           app: { getPath: () => userDataPath },
           BrowserWindow: createBrowserWindow(),
-          dialog: {
-            showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [targetRoot] })),
-          },
         })
 
         const saveEvent = { sender: { id: 1 }, returnValue: null }
         ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 0 })
 
         await expect(
-          ipcMain.handlers.get('create-notebook')(null, { serializedState: serializedAppState('dawn') }),
+          ipcMain.handlers.get('create-notebook')(null, {
+            name: notebookName,
+            locationPath: targetLocation,
+            serializedState: serializedAppState('dawn'),
+          }),
         ).resolves.toMatchObject({
           ok: true,
           status: {
             profileRootPath: targetRoot,
+            notebookPath: targetRoot,
+            notebookName,
             isDefault: false,
           },
         })
-        expect(existsSync(path.join(targetRoot, 'notes', 'manifest.json'))).toBe(true)
+        expect(existsSync(path.join(targetRoot, 'manifest.json'))).toBe(true)
         expect(existsSync(path.join(targetRoot, 'settings', 'app-settings.json'))).toBe(false)
         expect(JSON.parse(readFileSync(path.join(userDataPath, 'settings', 'app-settings.json'), 'utf8')).theme).toBe('dawn')
       } finally {
-        rmSync(targetRoot, { recursive: true, force: true })
+        rmSync(targetLocation, { recursive: true, force: true })
       }
     }))
 
   it('rejects new notebooks in existing notebook folders', async () =>
-    withTempUserDataPath(async (userDataPath) => {
-      const targetRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-existing-notebook-'))
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const targetLocation = mkdtempSync(path.join(os.tmpdir(), 'tabs-existing-notebook-location-'))
+      const notebookName = 'Existing Notebook'
+      const targetRoot = path.join(targetLocation, notebookName)
       try {
         saveAppState(targetRoot, serializedAppState('light'))
 
@@ -1415,24 +1522,25 @@ describe('electron ipc boundaries', () => {
           ipcMain,
           app: { getPath: () => userDataPath },
           BrowserWindow: createBrowserWindow(),
-          dialog: {
-            showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [targetRoot] })),
-          },
         })
 
         await expect(
-          ipcMain.handlers.get('create-notebook')(null, { serializedState: serializedAppState('dawn') }),
+          ipcMain.handlers.get('create-notebook')(null, {
+            name: notebookName,
+            locationPath: targetLocation,
+            serializedState: serializedAppState('dawn'),
+          }),
         ).resolves.toMatchObject({
           ok: false,
-          error: 'This folder already contains a notebook. Use switch notebook instead.',
+          error: 'This folder already exists. Choose a different notebook name.',
         })
       } finally {
-        rmSync(targetRoot, { recursive: true, force: true })
+        rmSync(targetLocation, { recursive: true, force: true })
       }
     }))
 
-  it('handles canceled notebook create and switch dialogs', async () =>
-    withTempUserDataPath(async (userDataPath) => {
+  it('handles canceled notebook location and switch dialogs', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
       const ipcMain = createIpcMain()
       registerStorageIpc({
         ipcMain,
@@ -1443,19 +1551,18 @@ describe('electron ipc boundaries', () => {
         },
       })
 
-      await expect(
-        ipcMain.handlers.get('create-notebook')(null, { serializedState: serializedAppState('dawn') }),
-      ).resolves.toMatchObject({ canceled: true })
+      await expect(ipcMain.handlers.get('choose-notebook-location')()).resolves.toMatchObject({ canceled: true })
       await expect(ipcMain.handlers.get('switch-notebook')()).resolves.toMatchObject({ canceled: true })
     }))
 
   it('uses the renderer app-state snapshot when choosing a folder after the current profile failed to load', async () =>
-    withTempUserDataPath(async (userDataPath) => {
+    withTempUserDataPathAsync(async (userDataPath) => {
       const targetRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-sync-target-'))
       try {
-        mkdirSync(path.join(userDataPath, 'notes'), { recursive: true })
+        const activeRoot = defaultNotebookRoot(userDataPath)
+        mkdirSync(activeRoot, { recursive: true })
         writeFileSync(
-          path.join(userDataPath, 'notes', 'manifest.json'),
+          path.join(activeRoot, 'manifest.json'),
           `${JSON.stringify({ schemaVersion: 3, files: {} }, null, 2)}\n`,
           'utf8',
         )
@@ -1495,12 +1602,13 @@ describe('electron ipc boundaries', () => {
     }))
 
   it('keeps move blocked when neither storage nor renderer has current app state', async () =>
-    withTempUserDataPath(async (userDataPath) => {
+    withTempUserDataPathAsync(async (userDataPath) => {
       const targetRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-sync-target-'))
       try {
-        mkdirSync(path.join(userDataPath, 'notes'), { recursive: true })
+        const activeRoot = defaultNotebookRoot(userDataPath)
+        mkdirSync(activeRoot, { recursive: true })
         writeFileSync(
-          path.join(userDataPath, 'notes', 'manifest.json'),
+          path.join(activeRoot, 'manifest.json'),
           `${JSON.stringify({ schemaVersion: 3, files: {} }, null, 2)}\n`,
           'utf8',
         )
@@ -1526,7 +1634,7 @@ describe('electron ipc boundaries', () => {
     }))
 
   it('reloads valid external profile changes and broadcasts them to windows on retry', async () =>
-    withTempUserDataPath(async (userDataPath) => {
+    withTempUserDataPathAsync(async (userDataPath) => {
       const window = {
         isDestroyed: vi.fn(() => false),
         webContents: { id: 2, send: vi.fn() },
@@ -1540,7 +1648,9 @@ describe('electron ipc boundaries', () => {
 
       const saveEvent = { sender: { id: 1 }, returnValue: null }
       ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 0 })
-      saveAppState(userDataPath, serializedAppState('light'))
+      const externalState = JSON.parse(serializedAppState('dawn'))
+      externalState.domains[0].name = 'External Domain'
+      saveAppState(defaultNotebookRoot(userDataPath), JSON.stringify(externalState))
 
       await expect(ipcMain.handlers.get('retry-storage-profile')()).resolves.toMatchObject({
         ok: true,
@@ -1550,13 +1660,13 @@ describe('electron ipc boundaries', () => {
         },
       })
       expect(window.webContents.send).toHaveBeenCalledWith('app-state-updated', {
-        serializedState: expect.stringContaining('"light"'),
+        serializedState: expect.stringContaining('External Domain'),
         revision: 2,
       })
     }))
 
   it('does not broadcast unchanged profile reloads on retry', async () =>
-    withTempUserDataPath(async (userDataPath) => {
+    withTempUserDataPathAsync(async (userDataPath) => {
       const window = {
         isDestroyed: vi.fn(() => false),
         webContents: { id: 2, send: vi.fn() },
@@ -1613,7 +1723,7 @@ describe('electron ipc boundaries', () => {
         window.webContents.send.mockClear()
 
         vi.setSystemTime(10_000)
-        saveAppState(userDataPath, serializedAppState('dawn'))
+        saveAppState(defaultNotebookRoot(userDataPath), serializedAppState('dawn'))
         storageSession.scanStorageProfile()
         vi.advanceTimersByTime(400)
 

@@ -56,6 +56,7 @@ type ModalHostProps = {
   onDeduplicateKeepDataChange: (keepData: boolean) => void
   onPasteSyncedNoteAsAisle: () => void
   onOpenSyncedFilter: () => void
+  onChooseNotebookLocation: () => Promise<string | null>
   onConfirm: () => void
 }
 
@@ -226,6 +227,7 @@ export function ModalHost({
   onDeduplicateKeepDataChange,
   onPasteSyncedNoteAsAisle,
   onOpenSyncedFilter,
+  onChooseNotebookLocation,
   onConfirm,
 }: ModalHostProps) {
   const enterSubmitPendingRef = useRef(false)
@@ -265,6 +267,13 @@ export function ModalHost({
     onConfirm()
   }
 
+  const chooseNotebookLocation = async () => {
+    if (!modal || modal.type !== 'create-notebook') return
+    const locationPath = await onChooseNotebookLocation()
+    if (!locationPath) return
+    onModalChange({ ...modal, locationPath, error: undefined })
+  }
+
   const handleDialogKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const target = event.target instanceof HTMLElement ? event.target : null
     if (!shouldSubmitInsertNoteReferenceOnEnter({
@@ -295,6 +304,8 @@ export function ModalHost({
   const modalText = getModalText(modal, state)
   const isPickerModal =
     modal.type === 'export-space' ||
+    modal.type === 'create-notebook' ||
+    modal.type === 'rename-notebook' ||
     modal.type === 'copy-note' ||
     modal.type === 'deduplicate-note' ||
     modal.type === 'linked-aisle' ||
@@ -746,6 +757,50 @@ export function ModalHost({
               ))}
             </select>
           </label>
+        )}
+        {modal.type === 'create-notebook' && (
+          <div className="settings-modal-fields">
+            <label className="settings-modal-field">
+              <span>notebook name</span>
+              <input
+                type="text"
+                className="settings-text-input"
+                value={modal.name}
+                onChange={(event) => onModalChange({ ...modal, name: event.target.value, error: undefined })}
+                autoFocus
+              />
+            </label>
+            <label className="settings-modal-field">
+              <span>location</span>
+              <div className="settings-field-row">
+                <input
+                  type="text"
+                  className="settings-text-input"
+                  value={modal.locationPath}
+                  onChange={(event) => onModalChange({ ...modal, locationPath: event.target.value, error: undefined })}
+                />
+                <button type="button" className="btn btn-sm settings-action-btn" onClick={chooseNotebookLocation}>
+                  browse
+                </button>
+              </div>
+            </label>
+            {modal.error && <p className="settings-help storage-profile-error">{modal.error}</p>}
+          </div>
+        )}
+        {modal.type === 'rename-notebook' && (
+          <div className="settings-modal-fields">
+            <label className="settings-modal-field">
+              <span>notebook name</span>
+              <input
+                type="text"
+                className="settings-text-input"
+                value={modal.name}
+                onChange={(event) => onModalChange({ ...modal, name: event.target.value, error: undefined })}
+                autoFocus
+              />
+            </label>
+            {modal.error && <p className="settings-help storage-profile-error">{modal.error}</p>}
+          </div>
         )}
         {modal.type === 'copy-note' && (
           <div className="note-copy-modal">

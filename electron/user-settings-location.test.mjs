@@ -292,8 +292,8 @@ describe('user settings location storage', () => {
     withTempDir((root) => {
       const activeNotebook = path.join(root, 'notebook')
       const otherNotebook = path.join(root, 'other-notebook')
-      mkdirSync(path.join(otherNotebook, 'notes'), { recursive: true })
-      writeFileSync(path.join(otherNotebook, 'notes', 'manifest.json'), '{"schemaVersion":1}', 'utf8')
+      mkdirSync(otherNotebook, { recursive: true })
+      writeFileSync(path.join(otherNotebook, 'manifest.json'), '{"schemaVersion":1}', 'utf8')
 
       expect(validateUserSettingsFolderCandidate(activeNotebook, activeNotebook)).toMatchObject({ ok: false })
       expect(validateUserSettingsFolderCandidate(otherNotebook, activeNotebook)).toMatchObject({ ok: false })

@@ -156,7 +156,7 @@ afterEach(() => {
 function getStoredWorkspacePaths(profileRootPath, indexes = {}) {
   const domainIndex = indexes.domainIndex ?? 0
   const spaceIndex = indexes.spaceIndex ?? 0
-  const root = path.join(profileRootPath, 'notes')
+  const root = profileRootPath
   const rootManifest = readJson(path.join(root, 'manifest.json'))
   const workspaceIndex = readJson(path.join(root, rootManifest.files?.workspaceIndex ?? 'workspace-index.json'))
   const noteRegistry = readJson(path.join(root, rootManifest.files?.noteRegistry ?? 'note-registry.json'))
@@ -578,7 +578,7 @@ describe('Electron app state storage load result', () => {
   it('ignores stale profile-settings and rejects unsupported root manifests', () =>
     withTempUserDataPath((userDataPath) => {
       saveAppState(userDataPath, serializedAppState())
-      const rootPath = path.join(userDataPath, 'notes')
+      const rootPath = userDataPath
       const manifestPath = path.join(rootPath, 'manifest.json')
       const profileSettingsPath = path.join(rootPath, 'profile-settings.json')
       const rootManifest = readJson(manifestPath)
@@ -689,7 +689,7 @@ describe('Electron app state storage load result', () => {
     withTempUserDataPath((userDataPath) => {
       saveAppState(userDataPath, serializedAppState())
       const siblingSettingsPath = path.join(userDataPath, 'settings', 'app-settings.json')
-      const legacySettingsPath = path.join(userDataPath, 'notes', 'app-settings.json')
+      const legacySettingsPath = path.join(userDataPath, 'app-settings.json')
       const appSettings = readJson(siblingSettingsPath)
       rmSync(siblingSettingsPath, { force: true })
       writeFileSync(
@@ -788,7 +788,7 @@ describe('Electron app state storage load result', () => {
     withTempUserDataPath((userDataPath) => {
       saveAppState(userDataPath, serializedAppState())
 
-      const root = path.join(userDataPath, 'notes')
+      const root = userDataPath
       const manifest = readJson(path.join(root, 'manifest.json'))
       const workspaceIndex = readJson(path.join(root, manifest.files.workspaceIndex))
 
@@ -816,7 +816,7 @@ describe('Electron app state storage load result', () => {
       ]
 
       saveAppState(userDataPath, JSON.stringify(state))
-      const root = path.join(userDataPath, 'notes')
+      const root = userDataPath
       const manifest = readJson(path.join(root, 'manifest.json'))
       const workspaceIndex = readJson(path.join(root, manifest.files.workspaceIndex))
 
@@ -836,7 +836,7 @@ describe('Electron app state storage load result', () => {
       state.noteAisleBodies.push({ id: 'aisle-body-sub', markdown: 'sub body' })
 
       saveAppState(userDataPath, JSON.stringify(state))
-      const root = path.join(userDataPath, 'notes')
+      const root = userDataPath
       const rootManifest = readJson(path.join(root, 'manifest.json'))
       const workspaceIndex = readJson(path.join(root, rootManifest.files.workspaceIndex))
       const domainManifest = readJson(path.join(root, 'domains', workspaceIndex.domains[0].path, 'manifest.json'))
@@ -1070,15 +1070,15 @@ describe('Electron app state storage load result', () => {
         expect.objectContaining({
           type: 'duplicate-auto-decoupled',
           status: 'unread',
-          anchorPath: `notes/${mirrorFile}`,
-          decoupledPaths: [`notes/${aisleBodyEntry.file}`],
+          anchorPath: mirrorFile,
+          decoupledPaths: [aisleBodyEntry.file],
         }),
       ]))
       expect(issue).toMatchObject({
         severity: 'warning',
         aisleBodyId: 'shared-aisle-body',
-        anchorPath: `notes/${mirrorFile}`,
-        decoupledPaths: [`notes/${aisleBodyEntry.file}`],
+        anchorPath: mirrorFile,
+        decoupledPaths: [aisleBodyEntry.file],
         candidateCount: 2,
         changedVersionCount: 2,
       })
@@ -1166,8 +1166,8 @@ describe('Electron app state storage load result', () => {
         expect.objectContaining({
           type: 'duplicate-auto-decoupled',
           status: 'unread',
-          anchorPath: `notes/${duplicateFile}`,
-          decoupledPaths: [`notes/${aisleBodyEntry.file}`],
+          anchorPath: duplicateFile,
+          decoupledPaths: [aisleBodyEntry.file],
         }),
       ])
 
@@ -1443,7 +1443,7 @@ describe('Electron app state storage load result', () => {
 
       saveAppState(userDataPath, JSON.stringify(state))
 
-      const root = path.join(userDataPath, 'notes')
+      const root = userDataPath
       const rootManifest = readJson(path.join(root, 'manifest.json'))
       const workspaceIndex = readJson(path.join(root, rootManifest.files.workspaceIndex))
       const noteRegistry = readJson(path.join(root, rootManifest.files.noteRegistry))
@@ -1540,7 +1540,7 @@ describe('Electron app state storage load result', () => {
 
       saveAppState(userDataPath, JSON.stringify(state))
 
-      const root = path.join(userDataPath, 'notes')
+      const root = userDataPath
       const rootManifest = readJson(path.join(root, 'manifest.json'))
       const noteRegistry = readJson(path.join(root, rootManifest.files.noteRegistry))
       const editorState = readJson(path.join(root, rootManifest.files.editorState))
@@ -1563,7 +1563,7 @@ describe('Electron app state storage load result', () => {
 
   it('rejects a malformed current-schema topic-style profile', () =>
     withTempUserDataPath((userDataPath) => {
-      const root = path.join(userDataPath, 'notes')
+      const root = userDataPath
       mkdirSync(root, { recursive: true })
       writeFileSync(
         path.join(root, 'manifest.json'),
@@ -1588,7 +1588,7 @@ describe('Electron app state storage load result', () => {
   for (const schemaVersion of [2, 3, 4, 999]) {
     it(`rejects unsupported schema ${schemaVersion} profiles`, () =>
       withTempUserDataPath((userDataPath) => {
-        const root = path.join(userDataPath, 'notes')
+        const root = userDataPath
         mkdirSync(root, { recursive: true })
         writeFileSync(path.join(root, 'manifest.json'), JSON.stringify({ schemaVersion }), 'utf8')
 
@@ -1607,7 +1607,7 @@ describe('Electron app state storage load result', () => {
   it('rejects current schema profiles missing required split files', () =>
     withTempUserDataPath((userDataPath) => {
       saveAppState(userDataPath, serializedAppState())
-      const root = path.join(userDataPath, 'notes')
+      const root = userDataPath
       const rootManifest = readJson(path.join(root, 'manifest.json'))
       rmSync(path.join(root, rootManifest.files.noteRegistry), { force: true })
 
@@ -1638,7 +1638,7 @@ describe('Electron app state storage load result', () => {
         },
       }
       saveAppState(userDataPath, JSON.stringify(state))
-      const root = path.join(userDataPath, 'notes')
+      const root = userDataPath
       const rootManifest = readJson(path.join(root, 'manifest.json'))
       rmSync(path.join(root, rootManifest.files.editorState), { force: true })
 
@@ -1652,7 +1652,7 @@ describe('Electron app state storage load result', () => {
   it('rejects temporary wider schema 3 profiles', () =>
     withTempUserDataPath((userDataPath) => {
       saveAppState(userDataPath, serializedAppState())
-      const root = path.join(userDataPath, 'notes')
+      const root = userDataPath
       const rootManifest = readJson(path.join(root, 'manifest.json'))
       const appSettings = readJson(path.join(userDataPath, 'settings', 'app-settings.json'))
       const noteRegistry = readJson(path.join(root, rootManifest.files.noteRegistry))
@@ -1702,14 +1702,14 @@ describe('Electron app state storage load result', () => {
 
   it('fails existing profiles with provider conflict folders', () =>
     withTempUserDataPath((userDataPath) => {
-      const root = path.join(userDataPath, 'notes')
+      const root = userDataPath
       mkdirSync(path.join(root, 'topics 2'), { recursive: true })
       writeFileSync(path.join(root, 'manifest.json'), JSON.stringify({ schemaVersion: 1 }), 'utf8')
 
       expect(loadAppStateResult(userDataPath)).toMatchObject({
         ok: false,
         source: 'hybrid',
-        conflicts: ['notes/topics 2'],
+        conflicts: ['topics 2'],
         health: 'error',
         issues: [expect.objectContaining({ code: 'cloud-conflict', severity: 'error' })],
       })
@@ -1726,7 +1726,7 @@ describe('Electron app state storage load result', () => {
 
   it('returns a failed result for an existing corrupt root manifest', () =>
     withTempUserDataPath((userDataPath) => {
-      const root = path.join(userDataPath, 'notes')
+      const root = userDataPath
       mkdirSync(root, { recursive: true })
       writeFileSync(path.join(root, 'manifest.json'), '{nope', 'utf8')
 
@@ -1773,7 +1773,7 @@ describe('Electron app state storage load result', () => {
       const state = JSON.parse(serializedAppState())
       setFirstAisleBodyMarkdown(state, 'image ![pixel](data:image/png;base64,iVBORw0KGgo=)')
       saveAppState(userDataPath, JSON.stringify(state))
-      rmSync(path.join(userDataPath, 'notes', 'assets'), { recursive: true, force: true })
+      rmSync(path.join(userDataPath, 'assets'), { recursive: true, force: true })
 
       const result = loadAppStateResult(userDataPath)
       const parsed = JSON.parse(result.serializedState)
@@ -1787,7 +1787,7 @@ describe('Electron app state storage load result', () => {
         expect.objectContaining({
           code: 'missing-asset',
           severity: 'warning',
-          path: expect.stringContaining('notes/assets/'),
+          path: expect.stringContaining('assets/'),
         }),
       ]))
       expect(getAisleMarkdown(parsed, parsed.noteBodies[0].aisles[0])).toContain('![pixel](')
@@ -1803,7 +1803,7 @@ describe('Electron app state storage load result', () => {
 
       saveAppState(userDataPath, JSON.stringify(state))
 
-      const assetPath = path.join(userDataPath, 'notes', asset.assetPath)
+      const assetPath = path.join(userDataPath, asset.assetPath)
       expect(readFileSync(assetPath)).toEqual(bytes)
 
       const result = loadAppStateResult(userDataPath)
@@ -1852,8 +1852,8 @@ describe('Electron app state storage load result', () => {
 
       saveAppState(userDataPath, JSON.stringify(state))
 
-      expect(readFileSync(path.join(userDataPath, 'notes', keptAsset.assetPath))).toEqual(keptBytes)
-      expect(existsSync(path.join(userDataPath, 'notes', staleAsset.assetPath))).toBe(false)
+      expect(readFileSync(path.join(userDataPath, keptAsset.assetPath))).toEqual(keptBytes)
+      expect(existsSync(path.join(userDataPath, staleAsset.assetPath))).toBe(false)
     }))
 
   it('keeps media assets referenced by escaped markdown link labels', () =>
@@ -1867,8 +1867,8 @@ describe('Electron app state storage load result', () => {
 
       saveAppState(userDataPath, JSON.stringify(state))
 
-      expect(readFileSync(path.join(userDataPath, 'notes', keptAsset.assetPath))).toEqual(keptBytes)
-      expect(existsSync(path.join(userDataPath, 'notes', staleAsset.assetPath))).toBe(false)
+      expect(readFileSync(path.join(userDataPath, keptAsset.assetPath))).toEqual(keptBytes)
+      expect(existsSync(path.join(userDataPath, staleAsset.assetPath))).toBe(false)
       const stored = getStoredWorkspacePaths(userDataPath)
       const markdown = readFileSync(path.join(stored.spaceRoot, stored.spaceManifest.tabs[0].homeNoteFile), 'utf8')
       expect(markdown).toContain('#tabs-media=width=320')
@@ -1907,8 +1907,8 @@ describe('Electron app state storage load result', () => {
 
       saveAppState(userDataPath, JSON.stringify(state))
 
-      expect(readFileSync(path.join(userDataPath, 'notes', trashAsset.assetPath))).toEqual(trashBytes)
-      expect(existsSync(path.join(userDataPath, 'notes', staleAsset.assetPath))).toBe(false)
+      expect(readFileSync(path.join(userDataPath, trashAsset.assetPath))).toEqual(trashBytes)
+      expect(existsSync(path.join(userDataPath, staleAsset.assetPath))).toBe(false)
     }))
 
   it('keeps media assets in trash until the trash entry is permanently removed', () =>
@@ -1941,7 +1941,7 @@ describe('Electron app state storage load result', () => {
       state.spaces = state.domains[0].spaces
 
       saveAppState(userDataPath, JSON.stringify(state))
-      const assetPath = path.join(userDataPath, 'notes', trashAsset.assetPath)
+      const assetPath = path.join(userDataPath, trashAsset.assetPath)
       expect(readFileSync(assetPath)).toEqual(trashBytes)
 
       space.data.deletedTabs = []
@@ -1958,7 +1958,7 @@ describe('Electron app state storage load result', () => {
 
       saveAppState(userDataPath, JSON.stringify(state))
 
-      const assetPath = path.join(userDataPath, 'notes', asset.assetPath)
+      const assetPath = path.join(userDataPath, asset.assetPath)
       expect(readFileSync(assetPath)).toEqual(bytes)
 
       const result = loadAppStateResult(userDataPath)
@@ -2111,9 +2111,9 @@ describe('Electron app state storage load result', () => {
       state.noteBodies.push({ id: 'body-2', aisles: [{ id: 'aisle-2', aisleBodyId: 'aisle-body-2' }] })
       state.noteAisleBodies.push({ id: 'aisle-body-2', markdown: 'second' })
       saveAppState(userDataPath, JSON.stringify(state))
-      const rootManifest = readJson(path.join(userDataPath, 'notes', 'manifest.json'))
-      const workspaceIndex = readJson(path.join(userDataPath, 'notes', rootManifest.files.workspaceIndex))
-      writeFileSync(path.join(userDataPath, 'notes', 'domains', workspaceIndex.domains[0].path, 'manifest.json'), '{bad', 'utf8')
+      const rootManifest = readJson(path.join(userDataPath, 'manifest.json'))
+      const workspaceIndex = readJson(path.join(userDataPath, rootManifest.files.workspaceIndex))
+      writeFileSync(path.join(userDataPath, 'domains', workspaceIndex.domains[0].path, 'manifest.json'), '{bad', 'utf8')
 
       const result = loadAppStateResult(userDataPath)
       const parsed = JSON.parse(result.serializedState)
@@ -2211,9 +2211,9 @@ describe('Electron app state storage load result', () => {
   it('loads a blank notebook when no domains are readable', () =>
     withTempUserDataPath((userDataPath) => {
       saveAppState(userDataPath, serializedAppState())
-      const rootManifest = readJson(path.join(userDataPath, 'notes', 'manifest.json'))
-      const workspaceIndex = readJson(path.join(userDataPath, 'notes', rootManifest.files.workspaceIndex))
-      const staleDomainRoot = path.join(userDataPath, 'notes', 'domains', workspaceIndex.domains[0].path)
+      const rootManifest = readJson(path.join(userDataPath, 'manifest.json'))
+      const workspaceIndex = readJson(path.join(userDataPath, rootManifest.files.workspaceIndex))
+      const staleDomainRoot = path.join(userDataPath, 'domains', workspaceIndex.domains[0].path)
       writeFileSync(path.join(staleDomainRoot, 'manifest.json'), '{bad', 'utf8')
 
       const result = loadAppStateResult(userDataPath)
