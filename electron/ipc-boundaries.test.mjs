@@ -23,7 +23,7 @@ import {
   USER_SETTINGS_LOCATION_CONFIG_FILE,
   writeUserSettingsLocationConfig,
 } from './user-settings-location.mjs'
-import { STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME } from './storage-profile.mjs'
+import { STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME, writeStorageProfileConfig } from './storage-profile.mjs'
 
 function createIpcMain() {
   const handlers = new Map()
@@ -686,7 +686,7 @@ describe('electron ipc boundaries', () => {
     await expect(ipcMain.handlers.get('check-for-updates')()).resolves.toEqual({ status: 'not-available' })
   })
 
-  it('blocks app-state writes after a failed load result', () =>
+  it('resets a corrupt default notebook and resumes app-state writes', () =>
     withTempUserDataPath((userDataPath) => {
       const root = defaultNotebookRoot(userDataPath)
       mkdirSync(root, { recursive: true })
@@ -702,17 +702,34 @@ describe('electron ipc boundaries', () => {
       const loadEvent = { returnValue: null }
       ipcMain.listeners.get('load-app-state-result')(loadEvent)
 
+      expect(loadEvent.returnValue).toMatchObject({
+        ok: true,
+        source: 'hybrid',
+        revision: 1,
+      })
+      expect(JSON.parse(loadEvent.returnValue.serializedState).messages).toEqual([
+        expect.objectContaining({
+          type: 'storage-notebook-recovered',
+          recoveryMode: 'reset-default',
+          failedNotebookPath: root,
+        }),
+      ])
+      expect(storageSession.canWriteAppState()).toBe(true)
+      expect(storageSession.getStorageProfileStatus()).toMatchObject({
+        status: 'ready',
+        event: 'notebook-auto-recovered',
+        profileRootPath: root,
+        recovery: {
+          mode: 'reset-default',
+          failedNotebookPath: root,
+          activeNotebookPath: root,
+        },
+      })
       const saveEvent = { returnValue: null }
-      ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: '{"theme":"dawn"}', baseRevision: 0 })
-
-      expect(loadEvent.returnValue.ok).toBe(false)
-      expect(storageSession.canWriteAppState()).toBe(false)
-      expect(saveEvent.returnValue).toEqual({
-        ok: false,
-        reason: 'load-failed',
-        error: 'App state did not load; refusing to overwrite existing data.',
-        currentRevision: 0,
-        serializedState: null,
+      ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 1 })
+      expect(saveEvent.returnValue).toMatchObject({
+        ok: true,
+        revision: 2,
       })
     }))
 
@@ -809,6 +826,203 @@ describe('electron ipc boundaries', () => {
         isDefault: true,
         syncStatus: 'local',
       })
+    }))
+
+  it('disconnects from a corrupt external notebook on startup and creates a local notebook', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const externalRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-corrupt-external-'))
+      try {
+        const seedRoot = path.join(userDataPath, 'settings-seed')
+        saveAppState(seedRoot, serializedAppState('light'), { userSettingsRoot: userDataPath })
+        rmSync(seedRoot, { recursive: true, force: true })
+        writeFileSync(path.join(externalRoot, 'manifest.json'), '{nope', 'utf8')
+        writeStorageProfileConfig(userDataPath, externalRoot)
+
+        const shell = { openPath: vi.fn(async () => '') }
+        const ipcMain = createIpcMain()
+        registerStorageIpc({
+          ipcMain,
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow(),
+          shell,
+        })
+
+        const status = await ipcMain.handlers.get('get-storage-profile-status')()
+        expect(status).toMatchObject({
+          status: 'ready',
+          event: 'notebook-auto-recovered',
+          profileRootPath: defaultNotebookRoot(userDataPath),
+          notebookPath: defaultNotebookRoot(userDataPath),
+          notebookName: STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME,
+          isDefault: true,
+          recovery: {
+            mode: 'created-local',
+            failedNotebookPath: externalRoot,
+            activeNotebookPath: defaultNotebookRoot(userDataPath),
+          },
+        })
+        expect(readFileSync(path.join(externalRoot, 'manifest.json'), 'utf8')).toBe('{nope')
+        expect(existsSync(path.join(defaultNotebookRoot(userDataPath), 'manifest.json'))).toBe(true)
+
+        const loadEvent = { returnValue: null }
+        ipcMain.listeners.get('load-app-state-result')(loadEvent)
+        const state = JSON.parse(loadEvent.returnValue.serializedState)
+        expect(state.theme).toBe('light')
+        expect(state.messages).toEqual([
+          expect.objectContaining({
+            type: 'storage-notebook-recovered',
+            recoveryMode: 'created-local',
+            failedNotebookPath: externalRoot,
+          }),
+        ])
+
+        await expect(ipcMain.handlers.get('reveal-recovered-notebook-location')()).resolves.toEqual({ ok: true })
+        expect(shell.openPath).toHaveBeenCalledWith(externalRoot)
+      } finally {
+        rmSync(externalRoot, { recursive: true, force: true })
+      }
+    }))
+
+  it('disconnects from a missing external notebook folder on startup', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const externalRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-missing-external-'))
+      rmSync(externalRoot, { recursive: true, force: true })
+      writeStorageProfileConfig(userDataPath, externalRoot)
+
+      const shell = { openPath: vi.fn(async () => '') }
+      const ipcMain = createIpcMain()
+      registerStorageIpc({
+        ipcMain,
+        app: { getPath: () => userDataPath },
+        BrowserWindow: createBrowserWindow(),
+        shell,
+      })
+
+      const status = await ipcMain.handlers.get('get-storage-profile-status')()
+      expect(status).toMatchObject({
+        status: 'ready',
+        event: 'notebook-auto-recovered',
+        profileRootPath: defaultNotebookRoot(userDataPath),
+        recovery: {
+          mode: 'created-local',
+          failedNotebookPath: externalRoot,
+          failedNotebookAvailable: false,
+          issueSummary: ['Unable to locate folder.'],
+        },
+      })
+
+      const loadEvent = { returnValue: null }
+      ipcMain.listeners.get('load-app-state-result')(loadEvent)
+      const state = JSON.parse(loadEvent.returnValue.serializedState)
+      expect(state.messages).toEqual([
+        expect.objectContaining({
+          type: 'storage-notebook-recovered',
+          failedNotebookPath: externalRoot,
+          failedNotebookAvailable: false,
+          issueSummary: ['Unable to locate folder.'],
+        }),
+      ])
+
+      await expect(ipcMain.handlers.get('reveal-recovered-notebook-location')()).resolves.toEqual({
+        ok: false,
+        error: 'No recovered notebook folder is available.',
+      })
+      expect(shell.openPath).not.toHaveBeenCalled()
+    }))
+
+  it('reveals a recovered notebook folder from a persisted recovery message after restart', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const externalRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-corrupt-external-'))
+      let firstSession = null
+      let secondSession = null
+      try {
+        writeFileSync(path.join(externalRoot, 'manifest.json'), '{nope', 'utf8')
+        writeStorageProfileConfig(userDataPath, externalRoot)
+
+        const firstIpcMain = createIpcMain()
+        firstSession = registerStorageIpc({
+          ipcMain: firstIpcMain,
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow(),
+        })
+
+        const firstLoadEvent = { returnValue: null }
+        firstIpcMain.listeners.get('load-app-state-result')(firstLoadEvent)
+        const recoveredState = JSON.parse(firstLoadEvent.returnValue.serializedState)
+        recoveredState.messages[0].status = 'acknowledged'
+        saveAppState(defaultNotebookRoot(userDataPath), JSON.stringify(recoveredState), { userSettingsRoot: userDataPath })
+        firstSession.close()
+        firstSession = null
+
+        const shell = { openPath: vi.fn(async () => '') }
+        const secondIpcMain = createIpcMain()
+        secondSession = registerStorageIpc({
+          ipcMain: secondIpcMain,
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow(),
+          shell,
+        })
+
+        await expect(
+          secondIpcMain.handlers.get('reveal-recovered-notebook-location')(null, {
+            messageId: recoveredState.messages[0].id,
+            signature: recoveredState.messages[0].signature,
+          }),
+        ).resolves.toEqual({ ok: true })
+        expect(shell.openPath).toHaveBeenCalledWith(externalRoot)
+
+        shell.openPath.mockClear()
+        await expect(
+          secondIpcMain.handlers.get('reveal-recovered-notebook-location')(null, {
+            messageId: 'missing-message',
+            signature: 'missing-signature',
+            failedNotebookPath: externalRoot,
+          }),
+        ).resolves.toEqual({ ok: false, error: 'No recovered notebook folder is available.' })
+        expect(shell.openPath).not.toHaveBeenCalled()
+      } finally {
+        firstSession?.close()
+        secondSession?.close()
+        rmSync(externalRoot, { recursive: true, force: true })
+      }
+    }))
+
+  it('preserves a healthy local notebook when disconnecting from a corrupt external notebook', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const externalRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-corrupt-external-'))
+      try {
+        const localState = JSON.parse(serializedAppState('dawn'))
+        localState.domains[0].name = 'Local Domain'
+        saveAppState(defaultNotebookRoot(userDataPath), JSON.stringify(localState), { userSettingsRoot: userDataPath })
+        writeFileSync(path.join(externalRoot, 'manifest.json'), '{nope', 'utf8')
+        writeStorageProfileConfig(userDataPath, externalRoot)
+
+        const ipcMain = createIpcMain()
+        registerStorageIpc({
+          ipcMain,
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow(),
+        })
+
+        const loadEvent = { returnValue: null }
+        ipcMain.listeners.get('load-app-state-result')(loadEvent)
+        const state = JSON.parse(loadEvent.returnValue.serializedState)
+        expect(state.domains[0].name).toBe('Local Domain')
+        expect(state.messages).toEqual([
+          expect.objectContaining({
+            type: 'storage-notebook-recovered',
+            recoveryMode: 'disconnected-to-local',
+            failedNotebookPath: externalRoot,
+          }),
+        ])
+        expect(loadAppStateResult(defaultNotebookRoot(userDataPath), { userSettingsRoot: userDataPath })).toMatchObject({
+          ok: true,
+          source: 'hybrid',
+        })
+        expect(readFileSync(path.join(externalRoot, 'manifest.json'), 'utf8')).toBe('{nope')
+      } finally {
+        rmSync(externalRoot, { recursive: true, force: true })
+      }
     }))
 
   it('exports a native notebook folder without settings and copies active assets', async () =>
@@ -1555,18 +1769,10 @@ describe('electron ipc boundaries', () => {
       await expect(ipcMain.handlers.get('switch-notebook')()).resolves.toMatchObject({ canceled: true })
     }))
 
-  it('uses the renderer app-state snapshot when choosing a folder after the current profile failed to load', async () =>
+  it('uses the renderer app-state snapshot when choosing a folder before storage has current app state', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
       const targetRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-sync-target-'))
       try {
-        const activeRoot = defaultNotebookRoot(userDataPath)
-        mkdirSync(activeRoot, { recursive: true })
-        writeFileSync(
-          path.join(activeRoot, 'manifest.json'),
-          `${JSON.stringify({ schemaVersion: 3, files: {} }, null, 2)}\n`,
-          'utf8',
-        )
-
         const ipcMain = createIpcMain()
         registerStorageIpc({
           ipcMain,
@@ -1605,14 +1811,6 @@ describe('electron ipc boundaries', () => {
     withTempUserDataPathAsync(async (userDataPath) => {
       const targetRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-sync-target-'))
       try {
-        const activeRoot = defaultNotebookRoot(userDataPath)
-        mkdirSync(activeRoot, { recursive: true })
-        writeFileSync(
-          path.join(activeRoot, 'manifest.json'),
-          `${JSON.stringify({ schemaVersion: 3, files: {} }, null, 2)}\n`,
-          'utf8',
-        )
-
         const ipcMain = createIpcMain()
         registerStorageIpc({
           ipcMain,
@@ -1691,6 +1889,117 @@ describe('electron ipc boundaries', () => {
         },
       })
       expect(window.webContents.send).not.toHaveBeenCalledWith('app-state-updated', expect.anything())
+    }))
+
+  it('auto-recovers when the active external notebook becomes corrupt while running', () =>
+    withTempUserDataPath((userDataPath) => {
+      vi.useFakeTimers()
+      vi.setSystemTime(1_000)
+      const externalRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-runtime-corrupt-'))
+      const consoleInfoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+      let storageSession = null
+      try {
+        saveAppState(externalRoot, serializedAppState('dawn'), { userSettingsRoot: userDataPath })
+        writeStorageProfileConfig(userDataPath, externalRoot)
+        const window = {
+          isDestroyed: vi.fn(() => false),
+          webContents: { id: 2, send: vi.fn() },
+        }
+        const ipcMain = createIpcMain()
+        storageSession = registerStorageIpc({
+          ipcMain,
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow([window]),
+        })
+
+        window.webContents.send.mockClear()
+        writeFileSync(path.join(externalRoot, 'manifest.json'), '{nope', 'utf8')
+        storageSession.scanStorageProfile()
+        vi.advanceTimersByTime(400)
+
+        expect(storageSession.getProfileRootPath()).toBe(defaultNotebookRoot(userDataPath))
+        expect(window.webContents.send).toHaveBeenCalledWith(
+          'storage-profile-status-updated',
+          expect.objectContaining({
+            event: 'notebook-auto-recovered',
+            profileRootPath: defaultNotebookRoot(userDataPath),
+            recovery: expect.objectContaining({
+              mode: 'created-local',
+              failedNotebookPath: externalRoot,
+            }),
+          }),
+        )
+        expect(window.webContents.send).toHaveBeenCalledWith(
+          'app-state-updated',
+          expect.objectContaining({
+            serializedState: expect.stringContaining('storage-notebook-recovered'),
+          }),
+        )
+        expect(consoleInfoSpy).toHaveBeenCalledWith('[tabs:storage] notebook-auto-recovered:external-error')
+      } finally {
+        storageSession?.close()
+        rmSync(externalRoot, { recursive: true, force: true })
+        consoleInfoSpy.mockRestore()
+        vi.useRealTimers()
+      }
+    }))
+
+  it('auto-recovers with a missing-folder summary when the active external notebook folder disappears', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      vi.useFakeTimers()
+      vi.setSystemTime(1_000)
+      const externalRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-runtime-missing-'))
+      const shell = { openPath: vi.fn(async () => '') }
+      let storageSession = null
+      try {
+        saveAppState(externalRoot, serializedAppState('dawn'), { userSettingsRoot: userDataPath })
+        writeStorageProfileConfig(userDataPath, externalRoot)
+        const ipcMain = createIpcMain()
+        storageSession = registerStorageIpc({
+          ipcMain,
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow(),
+          shell,
+        })
+
+        rmSync(externalRoot, { recursive: true, force: true })
+        storageSession.scanStorageProfile()
+        vi.advanceTimersByTime(400)
+
+        const status = storageSession.getStorageProfileStatus()
+        expect(status).toMatchObject({
+          event: 'notebook-auto-recovered',
+          profileRootPath: defaultNotebookRoot(userDataPath),
+          recovery: {
+            mode: 'created-local',
+            failedNotebookPath: externalRoot,
+            failedNotebookAvailable: false,
+            issueSummary: ['Unable to locate folder.'],
+          },
+        })
+
+        const loadEvent = { returnValue: null }
+        ipcMain.listeners.get('load-app-state-result')(loadEvent)
+        const state = JSON.parse(loadEvent.returnValue.serializedState)
+        expect(state.messages).toEqual([
+          expect.objectContaining({
+            type: 'storage-notebook-recovered',
+            failedNotebookPath: externalRoot,
+            failedNotebookAvailable: false,
+            issueSummary: ['Unable to locate folder.'],
+          }),
+        ])
+
+        await expect(ipcMain.handlers.get('reveal-recovered-notebook-location')()).resolves.toEqual({
+          ok: false,
+          error: 'No recovered notebook folder is available.',
+        })
+        expect(shell.openPath).not.toHaveBeenCalled()
+      } finally {
+        storageSession?.close()
+        rmSync(externalRoot, { recursive: true, force: true })
+        vi.useRealTimers()
+      }
     }))
 
   it('ignores cloud-style echoes of recent app-owned saves without broadcasting app state', () =>

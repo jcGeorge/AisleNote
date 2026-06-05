@@ -174,7 +174,11 @@ function normalizeAppMessages(raw: unknown): AppMessage[] {
   return raw.flatMap((entry): AppMessage[] => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return []
     const candidate = entry as Record<string, unknown>
-    if (candidate.type !== 'duplicate-auto-decoupled') return []
+    const type =
+      candidate.type === 'duplicate-auto-decoupled' || candidate.type === 'storage-notebook-recovered'
+        ? candidate.type
+        : null
+    if (!type) return []
     const id = typeof candidate.id === 'string' && candidate.id.trim() ? candidate.id.trim() : ''
     if (!id) return []
     const signature =
@@ -182,16 +186,44 @@ function normalizeAppMessages(raw: unknown): AppMessage[] {
     const title =
       typeof candidate.title === 'string' && candidate.title.trim()
         ? candidate.title.trim()
-        : 'duplicate files de-coupled'
+        : type === 'storage-notebook-recovered'
+          ? 'Started local notebook'
+          : 'duplicate files de-coupled'
     const body = typeof candidate.body === 'string' ? candidate.body : ''
     const anchorPath =
       typeof candidate.anchorPath === 'string' && candidate.anchorPath.trim() ? candidate.anchorPath.trim() : undefined
     const decoupledPaths = normalizeStringList(candidate.decoupledPaths)
     const affectedLocations = normalizeAppMessageAffectedLocations(candidate.affectedLocations)
+    const failedNotebookPath =
+      typeof candidate.failedNotebookPath === 'string' && candidate.failedNotebookPath.trim()
+        ? candidate.failedNotebookPath.trim()
+        : undefined
+    const failedNotebookAvailable =
+      typeof candidate.failedNotebookAvailable === 'boolean' ? candidate.failedNotebookAvailable : undefined
+    const activeNotebookPath =
+      typeof candidate.activeNotebookPath === 'string' && candidate.activeNotebookPath.trim()
+        ? candidate.activeNotebookPath.trim()
+        : undefined
+    const activeNotebookName =
+      typeof candidate.activeNotebookName === 'string' && candidate.activeNotebookName.trim()
+        ? candidate.activeNotebookName.trim()
+        : undefined
+    const recoveryMode =
+      candidate.recoveryMode === 'disconnected-to-local' ||
+      candidate.recoveryMode === 'created-local' ||
+      candidate.recoveryMode === 'reset-default'
+        ? candidate.recoveryMode
+        : undefined
+    const issueSummary = normalizeStringList(candidate.issueSummary)
     return [{
       id,
-      type: 'duplicate-auto-decoupled',
-      status: candidate.status === 'dismissed' ? 'dismissed' : 'unread',
+      type,
+      status:
+        candidate.status === 'dismissed'
+          ? 'dismissed'
+          : candidate.status === 'acknowledged'
+            ? 'acknowledged'
+            : 'unread',
       createdAt: normalizeTimestamp(candidate.createdAt, fallbackTimestamp),
       signature,
       title,
@@ -199,6 +231,12 @@ function normalizeAppMessages(raw: unknown): AppMessage[] {
       ...(anchorPath ? { anchorPath } : {}),
       ...(decoupledPaths ? { decoupledPaths } : {}),
       ...(affectedLocations ? { affectedLocations } : {}),
+      ...(failedNotebookPath ? { failedNotebookPath } : {}),
+      ...(failedNotebookAvailable !== undefined ? { failedNotebookAvailable } : {}),
+      ...(activeNotebookPath ? { activeNotebookPath } : {}),
+      ...(activeNotebookName ? { activeNotebookName } : {}),
+      ...(recoveryMode ? { recoveryMode } : {}),
+      ...(issueSummary ? { issueSummary } : {}),
     }]
   })
 }

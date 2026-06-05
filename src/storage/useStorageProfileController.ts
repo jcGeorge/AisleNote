@@ -14,6 +14,11 @@ type CreateNotebookPayload = {
   serializedState: SerializedStateSource
 }
 
+type RevealRecoveredNotebookLocationPayload = {
+  messageId?: string
+  signature?: string
+}
+
 type UseStorageProfileControllerParams = {
   pushToast: (message: string, tone?: ToastTone, durationMs?: number) => void
   beforeStorageAction?: () => Promise<void> | void
@@ -29,6 +34,7 @@ export function getStorageProfileStatusToast(nextStatus: StorageProfileStatus): 
   if (nextStatus.event === 'external-loaded') {
     return { message: 'external notebook folder changes loaded.', tone: 'success' }
   }
+  if (nextStatus.event === 'notebook-auto-recovered') return null
   if (nextStatus.status === 'error') {
     return {
       message: nextStatus.error ?? 'notebook folder could not be loaded. saves are paused.',
@@ -162,6 +168,15 @@ export function useStorageProfileController({ pushToast, beforeStorageAction }: 
     if (!result.ok) pushToastRef.current(result.error, 'error', STORAGE_ERROR_TOAST_DURATION_MS)
   }
 
+  const revealRecoveredNotebookLocation = async (payload: RevealRecoveredNotebookLocationPayload = {}) => {
+    const result = await window.electronAPI?.revealRecoveredNotebookLocation?.(payload)
+    if (!result) {
+      pushToastRef.current('reveal folder is only available in the desktop app.', 'warning')
+      return
+    }
+    if (!result.ok) pushToastRef.current(result.error, 'error', STORAGE_ERROR_TOAST_DURATION_MS)
+  }
+
   const retryStorageProfile = async () => {
     await beforeStorageActionRef.current?.()
     const result = await window.electronAPI?.retryStorageProfile?.()
@@ -181,6 +196,7 @@ export function useStorageProfileController({ pushToast, beforeStorageAction }: 
     switchNotebook,
     moveStorageProfile,
     revealStorageProfile,
+    revealRecoveredNotebookLocation,
     retryStorageProfile,
   }
 }

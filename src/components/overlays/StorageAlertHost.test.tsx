@@ -30,4 +30,26 @@ describe('StorageAlertHost', () => {
     expect(html).toContain('Close linked aisle mirror conflict')
     expect(html).toContain('Used notes/example.md')
   })
+
+  it('renders alert actions when provided', () => {
+    const html = renderToStaticMarkup(
+      <StorageAlertHost
+        alerts={[
+          {
+            signature: 'recovery-1',
+            label: 'local notebook started',
+            message: 'Tabs started a local notebook because the connected notebook could not be loaded.',
+            actionLabel: 'open previous notebook folder',
+          },
+        ]}
+        onDismissAlert={vi.fn()}
+        onAlertAction={vi.fn()}
+      />,
+    )
+
+    expect(html).toContain('local notebook started')
+    expect(html).toContain('open previous notebook folder')
+    expect(html).not.toContain('app-storage-alert-detail')
+    expect(html).not.toContain('The previous folder was left untouched')
+  })
 })

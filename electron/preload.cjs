@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   retryUserSettingsSync: () => ipcRenderer.invoke('retry-user-settings-sync'),
   revealUserSettingsFolder: () => ipcRenderer.invoke('reveal-user-settings-folder'),
   revealStorageProfile: () => ipcRenderer.invoke('reveal-storage-profile'),
+  revealRecoveredNotebookLocation: (payload) => ipcRenderer.invoke('reveal-recovered-notebook-location', payload),
   retryStorageProfile: () => ipcRenderer.invoke('retry-storage-profile'),
   onStorageProfileStatusUpdated: (handler) => {
     const listener = (_event, payload) => handler(payload)

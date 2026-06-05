@@ -225,6 +225,21 @@ describe('app state normalization', () => {
             },
           ],
         },
+        {
+          id: 'message-2',
+          type: 'storage-notebook-recovered',
+          status: 'acknowledged',
+          createdAt: '2026-06-01T00:02:00.000Z',
+          signature: 'storage-recovery-1',
+          title: 'Started local notebook',
+          body: 'Tabs could not load the connected notebook.',
+          failedNotebookPath: '/tmp/Bad Notebook',
+          failedNotebookAvailable: false,
+          activeNotebookPath: '/tmp/Default Notebook',
+          activeNotebookName: 'Default Notebook',
+          recoveryMode: 'created-local',
+          issueSummary: ['manifest.json: Root manifest is corrupt.'],
+        },
         { id: 'ignored', type: 'unknown' },
       ],
       toastHistory: [
@@ -244,12 +259,23 @@ describe('app state normalization', () => {
       ],
     })
 
-    expect(state.messages).toHaveLength(1)
+    expect(state.messages).toHaveLength(2)
     expect(state.messages?.[0]).toMatchObject({
       id: 'message-1',
       status: 'unread',
       anchorPath: 'notes/anchor.md',
       decoupledPaths: ['notes/other.md'],
+    })
+    expect(state.messages?.[1]).toMatchObject({
+      id: 'message-2',
+      type: 'storage-notebook-recovered',
+      status: 'acknowledged',
+      failedNotebookPath: '/tmp/Bad Notebook',
+      failedNotebookAvailable: false,
+      activeNotebookPath: '/tmp/Default Notebook',
+      activeNotebookName: 'Default Notebook',
+      recoveryMode: 'created-local',
+      issueSummary: ['manifest.json: Root manifest is corrupt.'],
     })
     expect(state.messages?.[0].affectedLocations?.[0].location).toEqual({
       domainId: 'domain',
@@ -271,6 +297,27 @@ describe('app state normalization', () => {
         tone: 'success',
       },
     ])
+  })
+
+  it('normalizes unknown message statuses to unread', () => {
+    const state = parseModernState({
+      messages: [
+        {
+          id: 'message-1',
+          type: 'storage-notebook-recovered',
+          status: 'snoozed',
+          createdAt: '2026-06-01T00:00:00.000Z',
+          signature: 'storage-recovery-1',
+          title: 'Started local notebook',
+          body: 'Tabs could not load the connected notebook.',
+        },
+      ],
+    })
+
+    expect(state.messages?.[0]).toMatchObject({
+      id: 'message-1',
+      status: 'unread',
+    })
   })
 
   it('keeps only the newest 70 normalized toast history entries', () => {

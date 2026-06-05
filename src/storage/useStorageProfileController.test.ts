@@ -28,6 +28,24 @@ describe('notebook folder status toasts', () => {
     expect(getStorageProfileStatusToast(storageStatus('external-echo-ignored'))).toBeNull()
   })
 
+  it('does not show the old paused-save toast after notebook auto recovery', () => {
+    expect(
+      getStorageProfileStatusToast(
+        storageStatus('notebook-auto-recovered', {
+          recovery: {
+            event: 'notebook-auto-recovered',
+            mode: 'created-local',
+            failedNotebookPath: '/tmp/Broken',
+            failedNotebookName: 'Broken',
+            activeNotebookPath: '/tmp/Default Notebook',
+            activeNotebookName: 'Default Notebook',
+            createdAt: '2026-06-01T00:00:00.000Z',
+          },
+        }),
+      ),
+    ).toBeNull()
+  })
+
   it('does not toast linked mirror conflict warnings', () => {
     expect(
       getStorageProfileStatusToast(

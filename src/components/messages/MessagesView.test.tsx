@@ -45,6 +45,7 @@ describe('MessagesView', () => {
         messages={[]}
         toastHistory={[]}
         onDismissMessage={vi.fn()}
+        onOpenRecoveredNotebookLocation={vi.fn()}
         onOpenLocation={vi.fn()}
       />,
     )
@@ -62,6 +63,7 @@ describe('MessagesView', () => {
         messages={[message]}
         toastHistory={[]}
         onDismissMessage={vi.fn()}
+        onOpenRecoveredNotebookLocation={vi.fn()}
         onOpenLocation={vi.fn()}
       />,
     )
@@ -77,6 +79,7 @@ describe('MessagesView', () => {
         messages={[message]}
         toastHistory={[]}
         onDismissMessage={vi.fn()}
+        onOpenRecoveredNotebookLocation={vi.fn()}
         onOpenLocation={vi.fn()}
       />,
     )
@@ -87,6 +90,70 @@ describe('MessagesView', () => {
     expect(html).toContain('open de-coupled')
   })
 
+  it('renders storage recovery details', () => {
+    const recoveryMessage: AppMessage = {
+      id: 'message-2',
+      type: 'storage-notebook-recovered',
+      status: 'acknowledged',
+      createdAt: '2026-06-01T00:02:00.000Z',
+      signature: 'storage-recovered-1',
+      title: 'Started local notebook',
+      body: 'Tabs could not load the connected notebook.',
+      failedNotebookPath: '/Users/me/Broken Notebook',
+      recoveryMode: 'created-local',
+      issueSummary: ['manifest.json: Root manifest is corrupt.'],
+    }
+    const html = renderToStaticMarkup(
+      <MessagesView
+        section="inbox"
+        messages={[recoveryMessage]}
+        toastHistory={[]}
+        onDismissMessage={vi.fn()}
+        onOpenRecoveredNotebookLocation={vi.fn()}
+        onOpenLocation={vi.fn()}
+      />,
+    )
+
+    expect(html).toContain('Started local notebook')
+    expect(html).toContain('failed notebook folder')
+    expect(html).toContain('/Users/me/Broken Notebook')
+    expect(html).toContain('issue summary')
+    expect(html).toContain('manifest.json: Root manifest is corrupt.')
+    expect(html).toContain('open previous notebook folder')
+  })
+
+  it('hides recovery folder actions when the failed folder is unavailable', () => {
+    const recoveryMessage: AppMessage = {
+      id: 'message-2',
+      type: 'storage-notebook-recovered',
+      status: 'acknowledged',
+      createdAt: '2026-06-01T00:02:00.000Z',
+      signature: 'storage-recovered-1',
+      title: 'Started local notebook',
+      body: 'Tabs could not load the connected notebook.',
+      failedNotebookPath: '/Users/me/Missing Notebook',
+      failedNotebookAvailable: false,
+      recoveryMode: 'created-local',
+      issueSummary: ['Unable to locate folder.'],
+    }
+    const html = renderToStaticMarkup(
+      <MessagesView
+        section="inbox"
+        messages={[recoveryMessage]}
+        toastHistory={[]}
+        onDismissMessage={vi.fn()}
+        onOpenRecoveredNotebookLocation={vi.fn()}
+        onOpenLocation={vi.fn()}
+      />,
+    )
+
+    expect(html).toContain('failed notebook folder')
+    expect(html).toContain('/Users/me/Missing Notebook')
+    expect(html).toContain('Unable to locate folder.')
+    expect(html).not.toContain('open previous notebook folder')
+    expect(html).not.toContain('open local notebook folder')
+  })
+
   it('renders toast history newest first with tone and timestamp', () => {
     const html = renderToStaticMarkup(
       <MessagesView
@@ -94,6 +161,7 @@ describe('MessagesView', () => {
         messages={[message]}
         toastHistory={toastHistory}
         onDismissMessage={vi.fn()}
+        onOpenRecoveredNotebookLocation={vi.fn()}
         onOpenLocation={vi.fn()}
       />,
     )

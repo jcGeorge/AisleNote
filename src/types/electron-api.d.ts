@@ -235,6 +235,9 @@ declare global {
       >
       revealUserSettingsFolder?: () => Promise<{ ok: true } | { ok: false; error: string }>
       revealStorageProfile?: () => Promise<{ ok: true } | { ok: false; error: string }>
+      revealRecoveredNotebookLocation?: (payload?: { messageId?: string; signature?: string }) => Promise<
+        { ok: true } | { ok: false; error: string }
+      >
       retryStorageProfile?: () => Promise<
         { ok: true; status: StorageProfileStatus } | { ok: false; error?: string; status: StorageProfileStatus }
       >

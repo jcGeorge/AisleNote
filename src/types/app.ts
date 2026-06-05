@@ -222,8 +222,8 @@ export type AppMessageAffectedLocation = {
 
 export type AppMessage = {
   id: string
-  type: 'duplicate-auto-decoupled'
-  status: 'unread' | 'dismissed'
+  type: 'duplicate-auto-decoupled' | 'storage-notebook-recovered'
+  status: 'unread' | 'acknowledged' | 'dismissed'
   createdAt: string
   signature: string
   title: string
@@ -231,6 +231,12 @@ export type AppMessage = {
   anchorPath?: string
   decoupledPaths?: string[]
   affectedLocations?: AppMessageAffectedLocation[]
+  failedNotebookPath?: string
+  failedNotebookAvailable?: boolean
+  activeNotebookPath?: string
+  activeNotebookName?: string
+  recoveryMode?: 'disconnected-to-local' | 'created-local' | 'reset-default'
+  issueSummary?: string[]
 }
 
 export type NoteHeadingAnchor = {
@@ -597,20 +603,36 @@ export type ToastHistoryEntry = {
   tone: ToastTone
 }
 
+export type StorageProfileIssue = {
+  code: string
+  severity: 'warning' | 'error'
+  path?: string
+  message: string
+  aisleBodyId?: string
+  anchorPath?: string
+  decoupledPaths?: string[]
+  candidateCount?: number
+  changedVersionCount?: number
+}
+
+export type StorageProfileRecovery = {
+  event: 'notebook-auto-recovered'
+  mode: 'disconnected-to-local' | 'created-local' | 'reset-default'
+  failedNotebookPath: string
+  failedNotebookName: string
+  failedNotebookAvailable?: boolean
+  activeNotebookPath: string
+  activeNotebookName: string
+  originalError?: string
+  issueSummary?: string[]
+  issues?: StorageProfileIssue[]
+  createdAt: string
+}
+
 export type StorageProfileStatus = {
   status: 'ready' | 'error'
   health?: 'healthy' | 'warning' | 'error'
-  issues?: Array<{
-    code: string
-    severity: 'warning' | 'error'
-    path?: string
-    message: string
-    aisleBodyId?: string
-    anchorPath?: string
-    decoupledPaths?: string[]
-    candidateCount?: number
-    changedVersionCount?: number
-  }>
+  issues?: StorageProfileIssue[]
   event?: string
   profileRootPath: string
   notebookPath: string
@@ -623,6 +645,7 @@ export type StorageProfileStatus = {
   conflicts?: string[]
   revision?: number
   error?: string
+  recovery?: StorageProfileRecovery
 }
 
 export type UserSettingsLocationStatus = {

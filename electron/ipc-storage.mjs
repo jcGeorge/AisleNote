@@ -2,6 +2,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync
 import path from 'node:path'
 import { createAppStateCoordinator, LOAD_FAILED_SAVE_ERROR } from './app-state-coordinator.mjs'
 import {
+  getUserSettingsFilePath,
   getHybridStorageRoot,
   loadAppStateResult,
   saveAppState,
@@ -9,6 +10,7 @@ import {
   writeImageAssetToProfile,
 } from './app-state-storage.mjs'
 import {
+  getDefaultStorageProfileRoot,
   getStorageProfileNotebookName,
   resolveStorageProfile,
   validateNotebookName,
@@ -30,8 +32,14 @@ import {
   writeUserSettingsLocationFromState,
 } from './user-settings-location.mjs'
 import { normalizeImageAssetPath, parseImageAssetUrl } from '../src/markdown/image-asset-refs.js'
+import {
+  createDefaultPortableAppSettings,
+  parsePortableAppSettingsJson,
+} from '../src/storage/settings-partition.js'
 
-function createStorageStatus({ profile, coordinator, event = 'ready', error = null }) {
+const STORAGE_NOTEBOOK_RECOVERED_MESSAGE_TYPE = 'storage-notebook-recovered'
+
+function createStorageStatus({ profile, coordinator, event = 'ready', error = null, recovery = null }) {
   const loadResult = coordinator.getLoadResult()
   const hasProfile = existsSync(getHybridStorageRoot(profile.profileRootPath))
   const notebookPath = getHybridStorageRoot(profile.profileRootPath)
@@ -51,6 +59,7 @@ function createStorageStatus({ profile, coordinator, event = 'ready', error = nu
     conflicts: loadResult.conflicts,
     revision: loadResult.revision,
     error: error ?? (loadResult.ok ? undefined : loadResult.error),
+    ...(recovery ? { recovery } : {}),
   }
 }
 
@@ -111,6 +120,170 @@ function resolveProfileAssetPath(profileRootPath, payload) {
   return { ok: true, assetPath, absoluteAssetPath }
 }
 
+function createRecoveryIssueSummary(loadResult, failedNotebookPath = null) {
+  if (typeof failedNotebookPath === 'string' && failedNotebookPath.length > 0 && !existsSync(failedNotebookPath)) {
+    return ['Unable to locate folder.']
+  }
+  const issues = Array.isArray(loadResult?.issues) ? loadResult.issues : []
+  return issues
+    .filter((issue) => issue && typeof issue.message === 'string')
+    .slice(0, 5)
+    .map((issue) => [
+      issue.path ? `${issue.path}: ` : '',
+      issue.message,
+    ].join(''))
+}
+
+function createMissingActiveNotebookResult(profileRootPath, loadResult = {}) {
+  const folderExists = typeof profileRootPath === 'string' && existsSync(profileRootPath)
+  return {
+    ok: false,
+    serializedState: null,
+    source: loadResult.source ?? 'empty',
+    error: 'Existing app state could not be loaded.',
+    issues: [{
+      code: folderExists ? 'missing-notebook-data' : 'missing-notebook-folder',
+      severity: 'error',
+      path: profileRootPath,
+      message: folderExists ? 'Notebook data could not be found in this folder.' : 'Unable to locate folder.',
+    }],
+  }
+}
+
+function readPortableAppSettings(userDataPath) {
+  try {
+    const settingsPath = getUserSettingsFilePath(userDataPath)
+    if (!existsSync(settingsPath)) return createDefaultPortableAppSettings()
+    const parsed = parsePortableAppSettingsJson(readFileSync(settingsPath, 'utf8'))
+    return parsed.ok ? parsed.settings : createDefaultPortableAppSettings()
+  } catch {
+    return createDefaultPortableAppSettings()
+  }
+}
+
+function createBlankNotebookState(userDataPath, messages = []) {
+  const portableSettings = readPortableAppSettings(userDataPath)
+  const space = {
+    id: 'space-1',
+    name: 'Space',
+    settings: { autoRemoveDeletedDays: 7 },
+    data: {
+      activeTabId: 'tab-1',
+      tabs: [
+        {
+          id: 'tab-1',
+          title: 'Tab',
+          noteBodyId: 'body-1',
+          activeSubTabId: null,
+          subTabs: [],
+        },
+      ],
+      deletedTabs: [],
+      deletedSubTabs: [],
+    },
+  }
+  return {
+    theme: portableSettings.theme,
+    activeDomainId: 'domain-1',
+    domains: [{ id: 'domain-1', name: 'humble beginnings', activeSpaceId: space.id, spaces: [space] }],
+    deletedDomains: [],
+    deletedSpaces: [],
+    messages,
+    toastHistory: [],
+    noteBodies: [{ id: 'body-1', aisles: [{ id: 'aisle-1', aisleBodyId: 'aisle-body-1' }] }],
+    noteAisleBodies: [{ id: 'aisle-body-1', markdown: '' }],
+    activeSpaceId: space.id,
+    spaces: [space],
+    hotkeys: portableSettings.hotkeys,
+    frontmatter: { templates: [], settingsTemplateId: '', lastAppliedTemplateId: '' },
+    ui: portableSettings.ui,
+  }
+}
+
+function createRecoveryMessage(recovery) {
+  const issueSummary = Array.isArray(recovery?.issueSummary) ? recovery.issueSummary : []
+  const timestamp = new Date().toISOString()
+  const failedLocalNotebook =
+    typeof recovery?.failedNotebookPath === 'string' &&
+    typeof recovery?.activeNotebookPath === 'string' &&
+    path.resolve(recovery.failedNotebookPath) === path.resolve(recovery.activeNotebookPath)
+  const body = failedLocalNotebook
+    ? 'Tabs could not load the local notebook, so it reset the local notebook on this device.'
+    : 'Tabs could not load the connected notebook, so it stopped using that folder and returned to the local notebook on this device. The original folder was left untouched.'
+  const details = [
+    body,
+    recovery.failedNotebookPath ? `Failed folder: ${recovery.failedNotebookPath}` : '',
+    issueSummary.length > 0 ? `Issue summary: ${issueSummary.join(' ')}` : '',
+  ].filter(Boolean)
+  return {
+    id: `storage-recovered-${timestamp}`,
+    type: STORAGE_NOTEBOOK_RECOVERED_MESSAGE_TYPE,
+    status: 'unread',
+    createdAt: timestamp,
+    signature: `storage-notebook-recovered:${timestamp}:${recovery.failedNotebookPath ?? 'local'}`,
+    title: 'Started local notebook',
+    body: details.join('\n'),
+    failedNotebookPath: recovery.failedNotebookPath,
+    failedNotebookAvailable: recovery.failedNotebookAvailable,
+    activeNotebookPath: recovery.activeNotebookPath,
+    activeNotebookName: recovery.activeNotebookName,
+    recoveryMode: recovery.mode,
+    issueSummary,
+  }
+}
+
+function appendRecoveryMessage(serializedState, recovery) {
+  const parsed = JSON.parse(serializedState)
+  const messages = Array.isArray(parsed.messages)
+    ? parsed.messages.filter((message) => message && typeof message === 'object' && !Array.isArray(message))
+    : []
+  parsed.messages = [...messages, createRecoveryMessage(recovery)]
+  return JSON.stringify(parsed)
+}
+
+function normalizeRecoveryRevealSelector(payload) {
+  const candidate = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {}
+  const messageId = typeof candidate.messageId === 'string' && candidate.messageId.trim()
+    ? candidate.messageId.trim()
+    : null
+  const signature = typeof candidate.signature === 'string' && candidate.signature.trim()
+    ? candidate.signature.trim()
+    : null
+  return {
+    messageId,
+    signature,
+    hasSelector: messageId !== null || signature !== null,
+  }
+}
+
+function getSerializedStateForRecoveryReveal(coordinator) {
+  const currentSerializedState = coordinator.getSerializedState()
+  if (typeof currentSerializedState === 'string') return currentSerializedState
+  const loadResult = coordinator.getLoadResult()
+  return loadResult.ok && typeof loadResult.serializedState === 'string' ? loadResult.serializedState : null
+}
+
+function getRecoveredNotebookPathFromSerializedState(serializedState, selector) {
+  if (!selector.hasSelector || typeof serializedState !== 'string') return null
+  try {
+    const parsed = JSON.parse(serializedState)
+    const messages = Array.isArray(parsed?.messages) ? parsed.messages : []
+    const message = messages.find((entry) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false
+      if (entry.type !== STORAGE_NOTEBOOK_RECOVERED_MESSAGE_TYPE) return false
+      const idMatches = selector.messageId !== null && entry.id === selector.messageId
+      const signatureMatches = selector.signature !== null && entry.signature === selector.signature
+      return idMatches || signatureMatches
+    })
+    if (message?.failedNotebookAvailable === false) return null
+    return typeof message?.failedNotebookPath === 'string' && message.failedNotebookPath.trim()
+      ? message.failedNotebookPath
+      : null
+  } catch {
+    return null
+  }
+}
+
 export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null, shell = null }) {
   const userDataPath = app.getPath('userData')
   let profile = { ...resolveStorageProfile(userDataPath), userDataPath }
@@ -144,7 +317,8 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     canonicalizeAfterSave: true,
   })
   let watcher = null
-  let status = createStorageStatus({ profile, coordinator })
+  let latestRecovery = null
+  let status = createStorageStatus({ profile, coordinator, recovery: latestRecovery })
 
   const broadcastAppStateUpdate = (payload, sourceWebContentsId) => {
     for (const window of getAllWindows(BrowserWindow)) {
@@ -168,8 +342,11 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     }
   }
 
-  const updateStatus = (event = 'ready', error = null) => {
-    status = createStorageStatus({ profile, coordinator, event, error })
+  const updateStatus = (event = 'ready', error = null, options = {}) => {
+    if (Object.prototype.hasOwnProperty.call(options, 'recovery')) {
+      latestRecovery = options.recovery
+    }
+    status = createStorageStatus({ profile, coordinator, event, error, recovery: latestRecovery })
     broadcastStorageStatus()
     return status
   }
@@ -238,6 +415,118 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     }
   }
 
+  const createRecoveryMetadata = (failedProfile, failedResult, mode) => {
+    const activeNotebookPath = getDefaultStorageProfileRoot(userDataPath)
+    const failedNotebookAvailable = existsSync(failedProfile.profileRootPath)
+    return {
+      event: 'notebook-auto-recovered',
+      mode,
+      failedNotebookPath: failedProfile.profileRootPath,
+      failedNotebookName: getStorageProfileNotebookName(failedProfile.profileRootPath),
+      failedNotebookAvailable,
+      activeNotebookPath,
+      activeNotebookName: getStorageProfileNotebookName(activeNotebookPath),
+      originalError: failedResult?.error ?? 'Existing app state could not be loaded.',
+      issueSummary: createRecoveryIssueSummary(failedResult, failedProfile.profileRootPath),
+      issues: Array.isArray(failedResult?.issues) ? failedResult.issues : [],
+      createdAt: new Date().toISOString(),
+    }
+  }
+
+  const persistRecoveredDefaultNotebook = (serializedState, replaceExisting) => {
+    watcher?.markAppWrite()
+    saveNotebookState(getDefaultStorageProfileRoot(userDataPath), serializedState, {
+      userDataPath,
+      userSettingsRoot: userDataPath,
+      replaceExisting,
+    })
+    watcher?.markAppWrite()
+  }
+
+  const loadRecoveredDefaultNotebook = (recovery) => {
+    const defaultProfileRootPath = getDefaultStorageProfileRoot(userDataPath)
+    profile = { ...writeStorageProfileConfig(userDataPath, defaultProfileRootPath), userDataPath }
+    const result = coordinator.reloadProfileRoot(defaultProfileRootPath, {
+      requireSerializedState: true,
+      detectAppSaveEcho: false,
+    })
+    if (!result.ok) {
+      updateStatus('notebook-recovery-error', result.error ?? 'Local notebook could not be loaded after recovery.', {
+        recovery,
+      })
+      return { ok: false, result }
+    }
+    updateStatus('notebook-auto-recovered', null, { recovery })
+    startWatcher()
+    if (typeof result.serializedState === 'string') {
+      broadcastAppStateUpdate({
+        serializedState: result.serializedState,
+        revision: result.revision,
+      })
+    }
+    return { ok: true, result }
+  }
+
+  const recoverActiveNotebookLoadFailure = (failedResult, trigger = 'startup-error') => {
+    const failedProfile = profile
+    const defaultProfileRootPath = getDefaultStorageProfileRoot(userDataPath)
+    const failedIsDefault = path.resolve(failedProfile.profileRootPath) === path.resolve(defaultProfileRootPath)
+    const defaultResult = failedIsDefault
+      ? failedResult
+      : loadNotebookResult(defaultProfileRootPath)
+    const defaultIsHealthyNotebook =
+      !failedIsDefault &&
+      defaultResult.ok &&
+      typeof defaultResult.serializedState === 'string'
+    const defaultIsEmptyOrMissing =
+      !failedIsDefault &&
+      defaultResult.ok &&
+      defaultResult.serializedState === null
+    const mode = defaultIsHealthyNotebook
+      ? 'disconnected-to-local'
+      : defaultIsEmptyOrMissing
+        ? 'created-local'
+        : 'reset-default'
+    const recovery = createRecoveryMetadata(failedProfile, failedResult, mode)
+
+    try {
+      const recoveredSerializedState = defaultIsHealthyNotebook
+        ? appendRecoveryMessage(defaultResult.serializedState, recovery)
+        : JSON.stringify(createBlankNotebookState(userDataPath, [createRecoveryMessage(recovery)]))
+      persistRecoveredDefaultNotebook(recoveredSerializedState, !defaultIsHealthyNotebook)
+      const recoveredLoad = loadRecoveredDefaultNotebook(recovery)
+      if (!recoveredLoad.ok) return false
+      logExternalStorageEvent(`notebook-auto-recovered:${trigger}`)
+      return true
+    } catch (error) {
+      updateStatus(
+        'notebook-recovery-error',
+        error instanceof Error ? error.message : 'Local notebook could not be written after recovery.',
+        { recovery },
+      )
+      return false
+    }
+  }
+
+  const retryThenRecoverActiveNotebook = (failedResult, trigger = 'startup-error') => {
+    const retryResult = coordinator.reloadProfileRoot(profile.profileRootPath, {
+      requireSerializedState: coordinator.getSerializedState() !== null,
+      detectAppSaveEcho: false,
+    })
+    if (retryResult.ok) {
+      updateStatus('retry-loaded')
+      if (typeof retryResult.serializedState === 'string' && !retryResult.unchanged) {
+        broadcastAppStateUpdate({
+          serializedState: retryResult.serializedState,
+          revision: retryResult.revision,
+        })
+      }
+      startWatcher()
+      return true
+    }
+    return recoverActiveNotebookLoadFailure(retryResult ?? failedResult, trigger)
+  }
+
   const startWatcher = () => {
     watcher?.close()
     watcher = createStorageProfileWatcher({
@@ -266,7 +555,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
           return
         }
         logExternalStorageEvent('external-error')
-        updateStatus('external-error', result.error ?? 'Existing app state could not be loaded.')
+        retryThenRecoverActiveNotebook(result, 'external-error')
       },
     })
   }
@@ -749,7 +1038,25 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     }
   }
 
-  startWatcher()
+  const initialLoadResult = coordinator.getLoadResult()
+  const activeExternalNotebookMissing =
+    !profile.isDefault &&
+    initialLoadResult.ok &&
+    initialLoadResult.serializedState === null
+  if (activeExternalNotebookMissing) {
+    if (!recoverActiveNotebookLoadFailure(
+      createMissingActiveNotebookResult(profile.profileRootPath, initialLoadResult),
+      'startup-missing',
+    )) {
+      startWatcher()
+    }
+  } else if (!initialLoadResult.ok) {
+    if (!retryThenRecoverActiveNotebook(initialLoadResult, 'startup-error')) {
+      startWatcher()
+    }
+  } else {
+    startWatcher()
+  }
 
   ipcMain.on('load-app-state', (event) => {
     const result = coordinator.getLoadResult()
@@ -802,6 +1109,25 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
       return { ok: false, error: 'Reveal is unavailable.' }
     }
     const error = await shell.openPath(profile.profileRootPath)
+    return error ? { ok: false, error } : { ok: true }
+  })
+  ipcMain.handle?.('reveal-recovered-notebook-location', async (_event, payload = {}) => {
+    if (!shell || typeof shell.openPath !== 'function') {
+      return { ok: false, error: 'Reveal is unavailable.' }
+    }
+    const selector = normalizeRecoveryRevealSelector(payload)
+    const failedNotebookPath = selector.hasSelector
+      ? getRecoveredNotebookPathFromSerializedState(getSerializedStateForRecoveryReveal(coordinator), selector)
+      : latestRecovery?.failedNotebookAvailable === false
+        ? null
+        : latestRecovery?.failedNotebookPath
+    if (typeof failedNotebookPath !== 'string' || failedNotebookPath.length === 0) {
+      return { ok: false, error: 'No recovered notebook folder is available.' }
+    }
+    if (!existsSync(failedNotebookPath)) {
+      return { ok: false, error: 'Recovered notebook folder could not be found.' }
+    }
+    const error = await shell.openPath(failedNotebookPath)
     return error ? { ok: false, error } : { ok: true }
   })
   ipcMain.handle?.('retry-storage-profile', async () => {

@@ -65,6 +65,7 @@
 }
 
 .app-storage-alert-card {
+  width: min(calc(24rem + 20px), calc(100vw - 2rem));
   border-left-color: var(--toast-error);
 }
 

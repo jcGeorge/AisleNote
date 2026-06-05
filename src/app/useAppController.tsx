@@ -17,6 +17,11 @@ import {
   scheduleFocusedAisleScroll,
   type ScheduledAisleFocusScroll,
 } from './focused-aisle-scroll'
+import {
+  STORAGE_NOTEBOOK_RECOVERED_MESSAGE_TYPE,
+  buildStorageAlerts,
+  shouldShowTipOverlays,
+} from './storage-alerts'
 import { useActiveNoteModel } from './useActiveNoteModel'
 import { useAppNotifications } from './useAppNotifications'
 import {
@@ -329,6 +334,7 @@ import { useUserSettingsLocationController } from '../storage/useUserSettingsLoc
 import { TRASH_HOME_ID } from '../trash/trash-model'
 import { useTrashSelection } from '../trash/useTrashSelection'
 import type {
+  AppMessage,
   AppState,
   ArrangeHierarchyDropRequest,
   ArrangeInsertPosition,
@@ -387,7 +393,6 @@ type CopyAsMenuState = {
 }
 
 const COPY_AS_MENU_ACTIONS: CopyAsAction[] = ['copy', 'duplicate', 'link', 'preview']
-const DUPLICATE_AUTO_DECOUPLED_MESSAGE_TYPE = 'duplicate-auto-decoupled'
 
 const TOOLBAR_LIST_COMMAND_TO_MULTILINE_OPERATION: Partial<Record<ToolbarListCommand, MultiLineListOperation>> = {
   taskList: 'task',
@@ -1331,8 +1336,28 @@ export function useAppController(): AppController {
     }))
   }
 
+  const acknowledgeMessage = (messageId: string) => {
+    setState((previous) => ({
+      ...previous,
+      messages: (previous.messages ?? []).map((message) =>
+        message.id === messageId && message.status !== 'dismissed'
+          ? { ...message, status: 'acknowledged' }
+          : message,
+      ),
+    }))
+  }
+
   const openMessageLocation = (location: NoteLocation) => {
     navigateToNoteLocation({ ...location, startAt: 'top' })
+  }
+
+  const openRecoveredNotebookLocationFromMessage = (message: AppMessage) => {
+    if (message.type !== STORAGE_NOTEBOOK_RECOVERED_MESSAGE_TYPE) return
+    acknowledgeMessage(message.id)
+    void storageProfileController.revealRecoveredNotebookLocation({
+      messageId: message.id,
+      signature: message.signature,
+    })
   }
 
   const applyArrangeParentMoveToSpace = (
@@ -4951,29 +4976,37 @@ export function useAppController(): AppController {
     ? getCustomThemeCssVariables(activeThemePalette)
     : getBuiltInThemeOverrideCssVariables(state.theme, builtInThemeOverride)
   const customThemeClassName = getThemeShellCustomClassName(state.theme, activeThemePalette)
-  const unresolvedMessages = (state.messages ?? []).filter((message) => message.status !== 'dismissed')
-  const unresolvedMessageCount = unresolvedMessages.length
+  const visibleMessages = (state.messages ?? []).filter((message) => message.status !== 'dismissed')
+  const unreadMessages = visibleMessages.filter((message) => message.status === 'unread')
+  const unresolvedMessageCount = unreadMessages.length
   const toastHistoryCount = state.toastHistory?.length ?? 0
-  const storageAlerts = useMemo<StorageAlert[]>(() => {
-    const dismissed = new Set(dismissedStorageAlertSignatures)
-    return unresolvedMessages.flatMap((message) => {
-      if (message.type !== DUPLICATE_AUTO_DECOUPLED_MESSAGE_TYPE) return []
-      const signature = message.signature || message.id
-      if (dismissed.has(signature)) return []
-      return [{
-        signature,
-        label: 'duplicate files de-coupled',
-        message: 'Duplicate files were edited differently. Some copies were de-coupled.',
-        detail: message.body,
-        actionLabel: 'open messages',
-      }]
-    })
-  }, [dismissedStorageAlertSignatures, unresolvedMessages])
-  const dismissStorageAlert = useCallback((signature: string) => {
+  const storageAlerts = useMemo<StorageAlert[]>(
+    () => buildStorageAlerts(unreadMessages, dismissedStorageAlertSignatures),
+    [dismissedStorageAlertSignatures, unreadMessages],
+  )
+  const tipOverlaysVisible = shouldShowTipOverlays(viewMode)
+  const dismissStorageAlert = (signature: string) => {
+    const message = unreadMessages.find((candidate) => (candidate.signature || candidate.id) === signature)
+    if (message?.type === STORAGE_NOTEBOOK_RECOVERED_MESSAGE_TYPE) {
+      acknowledgeMessage(message.id)
+      return
+    }
     setDismissedStorageAlertSignatures((currentSignatures) =>
       currentSignatures.includes(signature) ? currentSignatures : [...currentSignatures, signature],
     )
-  }, [])
+  }
+  const handleStorageAlertAction = (signature: string) => {
+    const message = unreadMessages.find((candidate) => (candidate.signature || candidate.id) === signature)
+    if (message?.type === STORAGE_NOTEBOOK_RECOVERED_MESSAGE_TYPE) {
+      acknowledgeMessage(message.id)
+      void storageProfileController.revealRecoveredNotebookLocation({
+        messageId: message.id,
+        signature: message.signature,
+      })
+      return
+    }
+    openMessagesView()
+  }
   const activeTableOfContentsPanels =
     tableOfContentsPanels?.noteBodyId === activeNoteBodyId ? tableOfContentsPanels : null
   const noteMentionMenu = noteMention.menu
@@ -5433,6 +5466,7 @@ export function useAppController(): AppController {
               messages={state.messages ?? []}
               toastHistory={state.toastHistory ?? []}
               onDismissMessage={dismissMessage}
+              onOpenRecoveredNotebookLocation={openRecoveredNotebookLocationFromMessage}
               onOpenLocation={openMessageLocation}
             />
           ) : viewMode === 'about' ? (
@@ -5530,9 +5564,6 @@ export function useAppController(): AppController {
       {storageProfileStatus?.status === 'error' && (
         <div className="storage-status-banner" role="alert">
           <span>{storageProfileStatus.error ?? 'notebook folder could not be loaded. saves are paused.'}</span>
-          <button type="button" className="btn btn-sm settings-action-btn" onClick={storageProfileController.retryStorageProfile}>
-            retry
-          </button>
           <button type="button" className="btn btn-sm settings-action-btn" onClick={storageProfileController.revealStorageProfile}>
             reveal folder
           </button>
@@ -5752,13 +5783,15 @@ export function useAppController(): AppController {
         onWarn={(message) => pushToast(message, 'warning')}
       />
 
-      <TipHost tips={visibleTipDefinitions} onDismissTip={dismissTip} />
+      {tipOverlaysVisible && <TipHost tips={visibleTipDefinitions} onDismissTip={dismissTip} />}
       <AppTooltipLayer disabled={mainArrangementActive} />
-      <StorageAlertHost
-        alerts={storageAlerts}
-        onDismissAlert={dismissStorageAlert}
-        onAlertAction={openMessagesView}
-      />
+      {tipOverlaysVisible && (
+        <StorageAlertHost
+          alerts={storageAlerts}
+          onDismissAlert={dismissStorageAlert}
+          onAlertAction={handleStorageAlertAction}
+        />
+      )}
 
       <ToastHost
         toasts={toasts}
