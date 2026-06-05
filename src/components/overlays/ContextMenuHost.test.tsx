@@ -289,13 +289,15 @@ describe('ContextMenuHost copy actions', () => {
     expect(html).toContain('heading 6')
     expect(html).toContain('note link')
     expect(html).toContain('aisle')
+    expect(html).toContain('to the left')
+    expect(html).toContain('to the right')
     expect(html).toContain('attachment')
     expect(html).toContain('code block')
     expect(html).toMatch(
       /paste[\s\S]*>new aisle on left<\/button>[\s\S]*>new aisle on right<\/button>[\s\S]*>here<\/button>[\s\S]*paste as plain text[\s\S]*>new aisle on left<\/button>[\s\S]*>new aisle on right<\/button>[\s\S]*>here<\/button>/,
     )
     expect(html).toMatch(
-      /insert[\s\S]*>note link<\/button>[\s\S]*>url link<\/button>[\s\S]*role="separator"[\s\S]*>aisle<\/button>[\s\S]*role="separator"[\s\S]*>attachment<\/button>[\s\S]*>table<\/button>[\s\S]*>horizontal rule<\/button>[\s\S]*role="separator"[\s\S]*>code block<\/button>/,
+      /insert[\s\S]*>note link<\/button>[\s\S]*>url link<\/button>[\s\S]*role="separator"[\s\S]*>aisle<span aria-hidden="true">›<\/span><\/button>[\s\S]*>to the left<\/button>[\s\S]*>to the right<\/button>[\s\S]*role="separator"[\s\S]*>attachment<\/button>[\s\S]*>table<\/button>[\s\S]*>horizontal rule<\/button>[\s\S]*role="separator"[\s\S]*>code block<\/button>/,
     )
   })
 

@@ -54,6 +54,10 @@ describe('ThemePreview', () => {
     expect(html).toContain('--editor-toolbar-bg:#c7b37a')
     expect(html).toContain('--editor-tag-text:#fff7ed')
     expect(html).toContain('--editor-tag-bg:#0f766e')
+    expect(html).toContain('--editor-toolbar-icon-primary:#555555')
+    expect(html).toContain('--editor-toolbar-icon-secondary:#8a744a')
+    expect(html).toContain('toolbar-tool-icon-table')
+    expect(html).not.toContain('toastui-editor-toolbar-icons')
     expect(html).not.toContain('--editor-toolbar-dash-icon-text')
   })
 

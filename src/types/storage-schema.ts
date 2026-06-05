@@ -18,12 +18,14 @@ export type StorageCustomThemePaletteSlot =
   | 'success'
   | 'tagText'
   | 'tagBg'
+  | 'tooltipPrimary'
+  | 'tooltipSecondary'
   | 'domainRail'
   | 'spaceRail'
   | 'parentRail'
   | 'subtabRail'
 export type StorageShortcutId =
-  | 'toggleTabTrash'
+  | 'toggleTabsTarget'
   | 'openDomains'
   | 'openSpaces'
   | 'newTab'
@@ -86,7 +88,22 @@ export type StorageTableOfContentsScope = 'all-aisles' | 'focused-aisle'
 export type StorageScratchpadNewAisleSide = 'left' | 'right'
 export type StorageTabRenameEnterBehavior = 'goes-to-note' | 'creates-another-tab'
 export type StorageFindReplaceMode = 'find' | 'replace'
-export type StorageTipId = 'task-undo' | 'delete-subtab-shortcut'
+export type StorageTipId = 'task-undo' | 'delete-active-aisle-shortcut'
+export type StorageNoteFilterKind = 'tags' | 'synced' | 'frontmatter'
+export type StorageNoteFilterSettings = {
+  active?: boolean
+  kind?: StorageNoteFilterKind
+  tags?: {
+    selectedKeys?: string[]
+    sortMode?: 'az' | 'occurrences'
+  }
+  synced?: {
+    selectedKeys?: string[]
+  }
+  frontmatter?: {
+    selectedKeys?: string[]
+  }
+}
 
 export type StorageGlobalSettings = {
   theme: StorageTheme
@@ -99,29 +116,29 @@ export type StorageGlobalSettings = {
     }
   }
   ui: {
-    showParentHomeTab: boolean
     alwaysShowSpaces?: boolean
     alwaysShowDomains?: boolean
     lastLinkInsertMode?: 'note' | 'url'
     lastNoteCopyMode?: 'independent' | 'linked'
+    toggleTabsTarget?: 'trash' | 'settings' | 'messages' | 'about' | 'filter'
     findCaseSensitive?: boolean
     findWholeWord?: boolean
     findRegex?: boolean
     findReplaceMode?: StorageFindReplaceMode
     removeNoteReferencesOnTrash?: boolean
     noteMentionCopyRequiresConfirmation?: boolean
-    deleteSubtabShortcutEnabled?: boolean
-    scratchpadDeleteAisleShortcutEnabled?: boolean
+    deleteActiveAisleShortcutEnabled?: boolean
     scratchpadAisleLimit?: number
     scratchpadNewAisleSide?: StorageScratchpadNewAisleSide
     tabRenameEnterBehavior?: StorageTabRenameEnterBehavior
     decoupledItemsKeepData?: boolean
+    noteFilter?: StorageNoteFilterSettings
     tableAddTargetMode?: StorageTableControlTargetMode
     tableDeleteTargetMode?: StorageTableControlTargetMode
     tableOfContentsScope?: StorageTableOfContentsScope
     tabButtonScale?: number
     noteFontScale?: number
-    tooltipScale?: number
+    toolbarButtonScale?: number
     settingsSection?: StorageSettingsSection
     dataSettingsSection?: StorageDataSettingsSection
     selectedCustomTheme?: StorageCustomThemeId

@@ -1,8 +1,10 @@
 import { createRef } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
+import { TOOLBAR_TOOL_IDS } from '../../editor/toolbar-layouts'
 import { DEFAULT_TOOLBAR_FORMAT_STATE } from './toolbar-state'
 import { SharedEditorToolbar } from './SharedEditorToolbar'
+import { TOOLBAR_ICON_COLOR_CLASSES, TOOLBAR_ICON_DEFINITIONS } from './ToolbarToolIcon'
 import type { ToolbarLayout } from '../../types/app'
 
 const CUSTOM_LAYOUT: ToolbarLayout = {
@@ -16,7 +18,21 @@ const CUSTOM_LAYOUT: ToolbarLayout = {
   ],
 }
 
+function getToolbarIconClass(toolId: string): string {
+  return `toolbar-tool-icon-${toolId.replace(/[A-Z]/g, (match) => `-${match.toLowerCase()}`)}`
+}
+
 describe('SharedEditorToolbar block quote and block indent controls', () => {
+  it('has one icon registry definition for every toolbar tool', () => {
+    expect(Object.keys(TOOLBAR_ICON_DEFINITIONS).sort()).toEqual([...TOOLBAR_TOOL_IDS].sort())
+    expect(Object.values(TOOLBAR_ICON_COLOR_CLASSES).sort()).toEqual([
+      'toolbar-tool-icon-primary-fill',
+      'toolbar-tool-icon-primary-stroke',
+      'toolbar-tool-icon-secondary-fill',
+      'toolbar-tool-icon-secondary-stroke',
+    ])
+  })
+
   it('labels block quote, block indent, and remove block indent controls', () => {
     const noop = vi.fn()
     const html = renderToStaticMarkup(
@@ -41,43 +57,47 @@ describe('SharedEditorToolbar block quote and block indent controls', () => {
       />,
     )
 
-    expect(html).toContain('title="Block quote"')
+    expect(html).toContain('data-app-tooltip="Block quote"')
     expect(html).toContain('aria-label="Block quote"')
-    expect(html).toContain('title="Block indent"')
+    expect(html).toContain('data-app-tooltip="Block indent"')
     expect(html).toContain('aria-label="Block indent"')
-    expect(html).toContain('title="Remove block indent"')
+    expect(html).toContain('data-app-tooltip="Remove block indent"')
     expect(html).toContain('aria-label="Remove block indent"')
     expect(html).toContain('aria-label="Insert link"')
-    expect(html).toContain('note-copy-toolbar-document')
-    expect(html).toContain('note-copy-toolbar-chain')
-    expect(html).not.toContain('note-copy-toolbar-page-back')
+    expect(html).toContain('toolbar-tool-icon-copy')
     expect(html).toContain('aria-label="Frontmatter"')
-    expect(html).toContain('frontmatter-toolbar-icon')
+    expect(html).toContain('toolbar-tool-icon-frontmatter')
     expect(html).toContain('>fm</span>')
-    expect(html).toContain('title="Table of contents"')
+    expect(html).toContain('data-app-tooltip="Table of contents"')
     expect(html).toContain('aria-label="Table of contents"')
-    expect(html).toContain('table-of-contents-toolbar-icon')
+    expect(html).toContain('toolbar-tool-icon-table-of-contents')
     expect(html).not.toContain('>ToC</button>')
-    expect(html).toContain('aisles-toolbar-icon')
+    expect(html).toContain('toolbar-tool-icon-aisles')
     expect(html).toContain('viewBox="0 0 36 32"')
-    expect(html).toContain('title="Find &amp; replace"')
+    expect(html).toContain('data-app-tooltip="Find &amp; replace"')
     expect(html).toContain('aria-label="Find &amp; replace"')
-    expect(html).toContain('find-replace-toolbar-icon')
-    expect(html).toContain('title="Highlight"')
+    expect(html).toContain('toolbar-tool-icon-find-replace')
+    expect(html).toContain('data-app-tooltip="Highlight"')
     expect(html).toContain('aria-label="Highlight"')
-    expect(html).toContain('highlight')
-    expect(html).toContain('title="Undo"')
+    TOOLBAR_TOOL_IDS.forEach((toolId) => {
+      expect(html).toContain(getToolbarIconClass(toolId))
+    })
+    expect(html).toContain('toolbar-tool-icon-primary-stroke')
+    expect(html).toContain('toolbar-tool-icon-secondary-stroke')
+    expect(html).not.toContain('toolbar-tool-sprite-icon')
+    expect(html).not.toContain('toastui-editor-toolbar-icons')
+    expect(html).not.toMatch(/\s(?:fill|stroke)="#/i)
+    expect(html).not.toMatch(/<(?:style|title)\b/i)
+    expect(html).toContain('data-app-tooltip="Undo"')
     expect(html).toContain('aria-label="Undo"')
-    expect(html).toContain('title="Redo"')
+    expect(html).toContain('data-app-tooltip="Redo"')
     expect(html).toContain('aria-label="Redo"')
     expect(html).toContain('editor-history-toolbar-btn-undo')
     expect(html).toContain('editor-history-toolbar-btn-redo')
-    expect(html.match(/editor-history-toolbar-icon/g)).toHaveLength(2)
-    expect(html).toContain('editor-history-toolbar-head')
     expect(html).not.toContain('note-link-toolbar-btn')
   })
 
-  it('keeps labels but omits title tooltips when disabled', () => {
+  it('keeps labels but omits app tooltips when disabled', () => {
     const noop = vi.fn()
     const html = renderToStaticMarkup(
       <SharedEditorToolbar
@@ -104,6 +124,7 @@ describe('SharedEditorToolbar block quote and block indent controls', () => {
     )
 
     expect(html).not.toContain('title=')
+    expect(html).not.toContain('data-app-tooltip=')
     expect(html).toContain('aria-disabled="true"')
     expect(html).toContain('is-interaction-disabled')
     expect(html).toContain('aria-label="Block quote"')
@@ -141,10 +162,13 @@ describe('SharedEditorToolbar block quote and block indent controls', () => {
     expect(html.indexOf('aria-label="Bold"')).toBeLessThan(html.indexOf('aria-label="Make copy"'))
     expect(html.indexOf('aria-label="Make copy"')).toBeLessThan(html.indexOf('aria-label="Headings"'))
     expect(html).toContain('aria-label="Bold"')
-    expect(html).toContain('toastui-editor-toolbar-icons bold active')
+    expect(html).toContain('app-toolbar-tool-btn app-toolbar-tool-btn-bold active')
+    expect(html).toContain('toolbar-tool-icon-bold')
     expect(html).toContain('note-toolbar-shortcut-feedback')
     expect(html).toContain('aria-label="Headings"')
-    expect(html).toContain('heading active')
+    expect(html).toContain('app-toolbar-tool-btn-heading active')
+    expect(html).toContain('toolbar-tool-icon-heading')
+    expect(html).not.toContain('toastui-editor-toolbar-icons')
     expect(html).not.toContain('aria-label="Undo"')
     expect(html).not.toContain('aria-label="Table of contents"')
     expect(html.match(/toastui-editor-toolbar-group/g)?.length ?? 0).toBeGreaterThanOrEqual(2)

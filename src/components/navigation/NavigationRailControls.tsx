@@ -30,6 +30,7 @@ type NavigationRailControlsProps = {
   onOpenMessages: () => void
   onOpenSettings: () => void
   onOpenAbout: () => void
+  onOpenFilter: () => void
   messagesCount?: number
   tagFilterControl?: ReactNode
 }
@@ -49,6 +50,7 @@ export function NavigationRailControls({
   onOpenMessages,
   onOpenSettings,
   onOpenAbout,
+  onOpenFilter,
   messagesCount = 0,
   tagFilterControl,
 }: NavigationRailControlsProps) {
@@ -62,6 +64,7 @@ export function NavigationRailControls({
                 ref={action.buttonRef}
                 type="button"
                 aria-label={action.ariaLabel}
+                data-app-tooltip={action.ariaLabel ?? action.label}
                 aria-pressed={action.selected}
                 className={`${action.className} ${action.selected ? 'is-selected' : ''}`}
                 onClick={action.onClick}
@@ -98,6 +101,7 @@ export function NavigationRailControls({
             onSetMenuOpen((open) => !open)
           }}
           aria-label={showCloseControl ? 'Close' : 'Menu'}
+          data-app-tooltip={showCloseControl ? 'Close' : 'Menu'}
         >
           <span className="menu-btn-line" />
           <span className="menu-btn-line" />
@@ -112,6 +116,9 @@ export function NavigationRailControls({
             </button>
             <button type="button" className="menu-item" onClick={onToggleTrash}>
               {viewMode === 'trash' ? 'tabs' : 'trash'}
+            </button>
+            <button type="button" className="menu-item" onClick={onOpenFilter}>
+              filter
             </button>
             <button type="button" className="menu-item" onClick={onOpenMessages}>
               messages{messagesCount > 0 ? ` (${messagesCount})` : ''}

@@ -1,7 +1,7 @@
 import type { AppState, NewlineOperationId, NewlineShortcutId, ShortcutId } from '../types/app'
 
 export const DEFAULT_SHORTCUTS: Record<ShortcutId, string> = {
-  toggleTabTrash: 'Mod+T',
+  toggleTabsTarget: 'Mod+T',
   openDomains: 'Mod+D',
   openSpaces: 'Mod+S',
   newTab: 'Mod+Shift+N',

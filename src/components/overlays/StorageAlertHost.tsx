@@ -34,6 +34,7 @@ export function StorageAlertHost({ alerts, onDismissAlert, onAlertAction }: Stor
             type="button"
             className="app-tip-dismiss"
             aria-label={`Close ${alert.label}`}
+            data-app-tooltip={`Close ${alert.label}`}
             onClick={() => onDismissAlert(alert.signature)}
           >
             ×

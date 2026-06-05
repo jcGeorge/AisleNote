@@ -42,15 +42,15 @@ function CropHandle({
       style={style}
       draggable={false}
       aria-label={label}
+      data-app-tooltip={label}
       onMouseDown={(event) => onBeginCropDrag(mode, event)}
       onDragStart={(event) => event.preventDefault()}
       onClick={(event) => event.preventDefault()}
-      title={label}
     />
   )
 }
 
-function CropButton({ children, onClick, title }: { children: ReactNode; onClick: () => void; title: string }) {
+function CropButton({ children, onClick, label }: { children: ReactNode; onClick: () => void; label: string }) {
   return (
     <button
       type="button"
@@ -60,7 +60,8 @@ function CropButton({ children, onClick, title }: { children: ReactNode; onClick
         event.preventDefault()
         onClick()
       }}
-      title={title}
+      aria-label={label}
+      data-app-tooltip={label}
     >
       {children}
     </button>
@@ -87,8 +88,8 @@ function ImageTransformButton({
         event.preventDefault()
         void onTransformImage(operation)
       }}
-      title={label}
       aria-label={label}
+      data-app-tooltip={label}
     >
       <span className={`image-transform-icon ${iconClassName}`} aria-hidden="true" />
     </button>
@@ -105,8 +106,8 @@ function ImageCopyButton({ onCopyImage }: { onCopyImage: () => void | Promise<un
         event.preventDefault()
         void onCopyImage()
       }}
-      title="Copy image"
       aria-label="Copy image"
+      data-app-tooltip="Copy image"
     >
       <span className="image-copy-icon" aria-hidden="true" />
     </button>
@@ -186,18 +187,18 @@ export function ImageToolsOverlay({
                   event.preventDefault()
                   onReturnToStart()
                 }}
-                title="Return"
                 aria-label="Return"
+                data-app-tooltip="Return"
               >
                 return
               </button>
             </>
           ) : (
             <>
-              <CropButton onClick={onStartCrop} title="Crop">
+              <CropButton onClick={onStartCrop} label="Crop">
                 crop
               </CropButton>
-              <CropButton onClick={onOpenTransform} title="Transform">
+              <CropButton onClick={onOpenTransform} label="Transform">
                 transform
               </CropButton>
               <ImageCopyButton onCopyImage={onCopyImage} />
@@ -206,10 +207,10 @@ export function ImageToolsOverlay({
         ) : (
           <>
             <CropRatioSelect value={inlineCrop.ratioPresetId} onChange={onSetCropRatio} />
-            <CropButton onClick={onApplyCrop} title="Apply crop">
+            <CropButton onClick={onApplyCrop} label="Apply crop">
               apply
             </CropButton>
-            <CropButton onClick={onCancelCrop} title="Cancel crop">
+            <CropButton onClick={onCancelCrop} label="Cancel crop">
               cancel
             </CropButton>
           </>
@@ -225,7 +226,7 @@ export function ImageToolsOverlay({
           onClick={(event) => event.preventDefault()}
           onPointerDown={onBeginResize}
           aria-label="Resize image"
-          title="Drag to resize"
+          data-app-tooltip="Drag to resize"
         />
       )}
 

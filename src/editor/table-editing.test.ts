@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import {
   applyTableControlOperationToView,
   applyTableReorderOperationToView,
+  createTableNodeFromSelection,
   getActiveTableContext,
   getActiveTableRange,
   getTableColumnReorderMarkerStyle,
@@ -20,6 +21,7 @@ import {
   moveSelectedTableBoundaryCaret,
   placeCaretOutsideTableAtCoords,
   placeTableCaretAtCoords,
+  replaceSelectedTextWithTable,
   selectFirstTableCellAfterPosition,
   selectTableNodeAtPosition,
   type TableControlOperation,
@@ -32,6 +34,7 @@ const schema = new Schema({
     doc: { content: 'block+' },
     text: { group: 'inline' },
     paragraph: { group: 'block', content: 'inline*' },
+    hardBreak: { inline: true, group: 'inline', selectable: false },
     thematicBreak: { group: 'block' },
     table: {
       group: 'block',
@@ -72,6 +75,16 @@ const schema = new Schema({
         extended: { default: null },
       },
       isolating: true,
+    },
+  },
+  marks: {
+    link: {
+      attrs: { linkUrl: {} },
+      inclusive: false,
+      toDOM: (mark) => ['a', { href: mark.attrs.linkUrl }, 0],
+    },
+    strong: {
+      toDOM: () => ['strong', 0],
     },
   },
 })
@@ -120,6 +133,16 @@ function buildDocWithBlocks(blocks: any[]) {
 
 function getTable(doc: any) {
   return doc.childCount > 0 && doc.child(0).type.name === 'table' ? doc.child(0) : null
+}
+
+function getFirstTable(doc: any) {
+  let found: any | null = null
+  doc.descendants((node: any) => {
+    if (node?.type?.name !== 'table') return true
+    found = node
+    return false
+  })
+  return found
 }
 
 function getChildTypes(doc: any) {
@@ -210,6 +233,29 @@ function createTableSelectionView(doc: any, options: { withHistory?: boolean } =
     },
   }
   return view
+}
+
+function createSelectedTextView(doc: any, from = 1, to = doc.content.size - 1) {
+  const view: any = {
+    state: EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, from, to),
+    }),
+    dispatch(transaction: any) {
+      view.state = view.state.apply(transaction)
+    },
+    focus: () => undefined,
+  }
+  return view
+}
+
+function getCellNode(table: any, rowIndex: number, columnIndex: number) {
+  const rowNode = rowIndex === 0 ? table.child(0).child(0) : table.child(1).child(rowIndex - 1)
+  return rowNode.child(columnIndex)
+}
+
+function getCellParagraph(table: any, rowIndex: number, columnIndex: number) {
+  return getCellNode(table, rowIndex, columnIndex).child(0)
 }
 
 function expectSelectionInCell(view: any, rowIndex: number, columnIndex: number) {
@@ -689,6 +735,120 @@ describe('table editing controls', () => {
 
     expect(selectFirstTableCellAfterPosition(view, before.nodeSize)).toBe(true)
     expect(view.state.selection.from).toBe(before.nodeSize + getCellTextPosition(buildDoc(), 0, 0))
+  })
+
+  it('replaces selected lines with table rows and tab-separated columns', () => {
+    const doc = buildDocWithBlocks([
+      paragraph('one\thttps://example.com/one'),
+      paragraph('two\thttps://example.com/two'),
+    ])
+    const view = createSelectedTextView(doc)
+
+    expect(replaceSelectedTextWithTable(view)).toBe(true)
+    const table = getFirstTable(view.state.doc)
+
+    expect(getCellText(table, 0, 0)).toBe('one')
+    expect(getCellText(table, 0, 1)).toBe('https://example.com/one')
+    expect(getCellText(table, 1, 0)).toBe('two')
+    expect(getCellText(table, 1, 1)).toBe('https://example.com/two')
+    expect(getActiveTableContext(view)).toMatchObject({ rowIndex: 0, columnIndex: 0 })
+  })
+
+  it('preserves leading, consecutive, and trailing tab cells', () => {
+    const doc = buildDocWithBlocks([paragraph('\tleft\t\tlast\t')])
+    const view = createSelectedTextView(doc)
+
+    expect(replaceSelectedTextWithTable(view)).toBe(true)
+    const table = getFirstTable(view.state.doc)
+
+    expect(table.child(0).child(0).childCount).toBe(5)
+    expect(getBodyRows(table)[0].childCount).toBe(5)
+    expect(getCellText(table, 0, 0)).toBe('')
+    expect(getCellText(table, 0, 1)).toBe('left')
+    expect(getCellText(table, 0, 2)).toBe('')
+    expect(getCellText(table, 0, 3)).toBe('last')
+    expect(getCellText(table, 0, 4)).toBe('')
+    expect(getCellText(table, 1, 4)).toBe('')
+  })
+
+  it('treats hard breaks as selected table row boundaries', () => {
+    const doc = buildDocWithBlocks([
+      schema.nodes.paragraph.create(null, [
+        schema.text('one'),
+        schema.nodes.hardBreak.create(),
+        schema.text('two'),
+      ]),
+    ])
+    const view = createSelectedTextView(doc)
+
+    expect(replaceSelectedTextWithTable(view)).toBe(true)
+    const table = getFirstTable(view.state.doc)
+
+    expect(getCellText(table, 0, 0)).toBe('one')
+    expect(getCellText(table, 1, 0)).toBe('two')
+  })
+
+  it('trims leading and trailing blank selected rows while preserving internal blanks', () => {
+    const doc = buildDocWithBlocks([
+      paragraph(''),
+      paragraph('one'),
+      paragraph(''),
+      paragraph('two'),
+      paragraph(''),
+    ])
+    const view = createSelectedTextView(doc)
+
+    expect(replaceSelectedTextWithTable(view)).toBe(true)
+    const table = getFirstTable(view.state.doc)
+
+    expect(getCellText(table, 0, 0)).toBe('one')
+    expect(getCellText(table, 1, 0)).toBe('')
+    expect(getCellText(table, 2, 0)).toBe('two')
+  })
+
+  it('preserves selected inline marks in converted table cells', () => {
+    const linkMark = schema.marks.link.create({ linkUrl: 'https://example.com' })
+    const strongMark = schema.marks.strong.create()
+    const doc = buildDocWithBlocks([
+      schema.nodes.paragraph.create(null, [
+        schema.text('Name '),
+        schema.text('Link', [linkMark]),
+        schema.text('\t'),
+        schema.text('Bold', [strongMark]),
+      ]),
+    ])
+    const view = createSelectedTextView(doc)
+
+    expect(replaceSelectedTextWithTable(view)).toBe(true)
+    const table = getFirstTable(view.state.doc)
+    const firstCellParagraph = getCellParagraph(table, 0, 0)
+    const secondCellParagraph = getCellParagraph(table, 0, 1)
+
+    expect(firstCellParagraph.textContent).toBe('Name Link')
+    expect(firstCellParagraph.child(1).marks[0].attrs).toEqual({ linkUrl: 'https://example.com' })
+    expect(secondCellParagraph.textContent).toBe('Bold')
+    expect(secondCellParagraph.child(0).marks[0].type.name).toBe('strong')
+  })
+
+  it('adds an empty body row when a one-line selection becomes the header row', () => {
+    const view = createSelectedTextView(buildDocWithBlocks([paragraph('only row')]))
+
+    expect(replaceSelectedTextWithTable(view)).toBe(true)
+    const table = getFirstTable(view.state.doc)
+
+    expect(getCellText(table, 0, 0)).toBe('only row')
+    expect(getBodyRows(table)).toHaveLength(1)
+    expect(getCellText(table, 1, 0)).toBe('')
+  })
+
+  it('does not convert collapsed or blank selections into tables', () => {
+    const collapsedView = createSelectedTextView(buildDocWithBlocks([paragraph('only row')]), 1, 1)
+    const blankView = createSelectedTextView(buildDocWithBlocks([paragraph(''), paragraph('')]))
+
+    expect(createTableNodeFromSelection(collapsedView.state)).toBeNull()
+    expect(replaceSelectedTextWithTable(collapsedView)).toBe(false)
+    expect(createTableNodeFromSelection(blankView.state)).toBeNull()
+    expect(replaceSelectedTextWithTable(blankView)).toBe(false)
   })
 
   it('wraps forward table tab navigation to the next row', () => {

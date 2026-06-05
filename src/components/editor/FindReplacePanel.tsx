@@ -287,7 +287,13 @@ export function FindReplacePanel({
           />
           <span>and replace</span>
         </label>
-        <button type="button" className="find-replace-icon-btn" aria-label="Close find" onClick={onClose}>
+        <button
+          type="button"
+          className="find-replace-icon-btn"
+          aria-label="Close find"
+          data-app-tooltip="Close find"
+          onClick={onClose}
+        >
           ×
         </button>
       </div>

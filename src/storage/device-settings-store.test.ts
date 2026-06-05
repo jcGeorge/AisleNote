@@ -52,7 +52,7 @@ describe('device settings store', () => {
     })
     expect(parseDeviceSettings(JSON.stringify({ dataSettingsSection: 'sync' })).dataSettingsSection).toBe('notebook')
     expect(parseDeviceSettings(JSON.stringify({ dataSettingsSection: 'cloud' })).dataSettingsSection).toBe('notebook')
-    expect(parseDeviceSettings(JSON.stringify({ tooltipScale: 9 })).tooltipScale).toBe(1.6)
+    expect(parseDeviceSettings(JSON.stringify({ toolbarButtonScale: 9 })).toolbarButtonScale).toBe(1.6)
     expect(parseDeviceSettings(JSON.stringify({ lastFindQuery: 123 })).lastFindQuery).toBe('')
     expect(
       parseDeviceSettings(JSON.stringify({ tagAutocompleteRecentKeys: ['Tag', '#tag', 'nested/Tag', '', 44] }))
@@ -174,7 +174,7 @@ describe('device settings store', () => {
       seenTipIds: ['task-undo'],
       tabButtonScale: 1.3,
       noteFontScale: 1.2,
-      tooltipScale: 1.25,
+      toolbarButtonScale: 1.25,
     })
 
     expect(merged.spaces[0]?.data.activeTabId).toBe('tab-b')
@@ -185,7 +185,7 @@ describe('device settings store', () => {
     expect(merged.ui.seenTipIds).toEqual(['task-undo'])
     expect(merged.ui.tabButtonScale).toBe(1.3)
     expect(merged.ui.noteFontScale).toBe(1.2)
-    expect(merged.ui.tooltipScale).toBe(1.25)
+    expect(merged.ui.toolbarButtonScale).toBe(1.25)
   })
 
   it('leaves app-state local-ish values in place until device settings exist', () => {
@@ -208,10 +208,10 @@ describe('device settings store', () => {
           dataSettingsSection: 'trash',
           visualsSettingsSection: 'otherVisuals',
           seenTipIds: ['task-undo'],
-          disabledTipIds: ['delete-subtab-shortcut'],
+          disabledTipIds: ['delete-active-aisle-shortcut'],
           tabButtonScale: 1.1,
           noteFontScale: 1.15,
-          tooltipScale: 1.2,
+          toolbarButtonScale: 1.2,
         },
       })
 
@@ -219,7 +219,7 @@ describe('device settings store', () => {
     expect(extractDeviceSettingsFromAppState(state).dataSettingsSection).toBe('trash')
     expect(extractDeviceSettingsFromAppState(state).visualsSettingsSection).toBe('otherVisuals')
     expect(extractDeviceSettingsFromAppState(state).seenTipIds).toEqual(['task-undo'])
-    expect(extractDeviceSettingsFromAppState(state).tooltipScale).toBe(1.2)
+    expect(extractDeviceSettingsFromAppState(state).toolbarButtonScale).toBe(1.2)
     expect(extractDeviceSettingsFromAppState(state, { ...DEFAULT_DEVICE_SETTINGS, lastFindQuery: 'bear' }).lastFindQuery).toBe(
       'bear',
     )

@@ -12,6 +12,7 @@ describe('arrange destination prompt', () => {
     )
 
     expect(html).toContain('now select a space or parent tab')
+    expect(html).toContain('<h2 class="arrange-destination-title">now select a space or parent tab</h2>')
     expect(html).not.toContain('cancel')
     expect(html).not.toContain('arrange-destination-cancel')
     expect(html).not.toContain('arrange-destination-options')

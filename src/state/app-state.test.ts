@@ -298,7 +298,7 @@ describe('app state normalization', () => {
       },
     })
 
-    expect(state.hotkeys.shortcuts.toggleTabTrash).toBe(DEFAULT_SHORTCUTS.toggleTabTrash)
+    expect(state.hotkeys.shortcuts.toggleTabsTarget).toBe(DEFAULT_SHORTCUTS.toggleTabsTarget)
     expect(state.hotkeys.shortcuts.openSpaces).toBe(DEFAULT_SHORTCUTS.openSpaces)
     expect(state.hotkeys.newlineShortcuts.shortcuts.controlEnter).toBe('blockQuote')
     expect(state.hotkeys.newlineShortcuts.shortcuts.shiftEnter).toBe(
@@ -1022,16 +1022,16 @@ describe('app state normalization', () => {
     expect(missing.ui.settingsSection).toBe('hotkeys')
   })
 
-  it('normalizes tooltip scale settings', () => {
-    const valid = parseModernState({ ui: { tooltipScale: 1.25 } })
-    const tooLarge = parseModernState({ ui: { tooltipScale: 8 } })
-    const tooSmall = parseModernState({ ui: { tooltipScale: 0.1 } })
+  it('normalizes toolbar button scale settings', () => {
+    const valid = parseModernState({ ui: { toolbarButtonScale: 1.25 } })
+    const tooLarge = parseModernState({ ui: { toolbarButtonScale: 8 } })
+    const tooSmall = parseModernState({ ui: { toolbarButtonScale: 0.1 } })
     const missing = parseModernState({ ui: {} })
 
-    expect(valid.ui.tooltipScale).toBe(1.25)
-    expect(tooLarge.ui.tooltipScale).toBe(1.6)
-    expect(tooSmall.ui.tooltipScale).toBe(0.8)
-    expect(missing.ui.tooltipScale).toBe(1)
+    expect(valid.ui.toolbarButtonScale).toBe(1.25)
+    expect(tooLarge.ui.toolbarButtonScale).toBe(1.6)
+    expect(tooSmall.ui.toolbarButtonScale).toBe(0.8)
+    expect(missing.ui.toolbarButtonScale).toBe(1)
   })
 
   it('normalizes always-visible navigation hierarchy settings', () => {
@@ -1050,14 +1050,14 @@ describe('app state normalization', () => {
   it('normalizes persisted tip settings', () => {
     const valid = parseModernState({
       ui: {
-        seenTipIds: ['task-undo', 'bad-tip', 'task-undo', 'tab-create-after-rename', 'delete-subtab-shortcut'],
-        disabledTipIds: ['tab-create-after-rename', 'delete-subtab-shortcut', 'unknown'],
+        seenTipIds: ['task-undo', 'bad-tip', 'task-undo', 'tab-create-after-rename', 'delete-active-aisle-shortcut'],
+        disabledTipIds: ['tab-create-after-rename', 'delete-active-aisle-shortcut', 'unknown'],
       },
     })
     const missing = parseModernState({ ui: {} })
 
-    expect(valid.ui.seenTipIds).toEqual(['task-undo', 'delete-subtab-shortcut'])
-    expect(valid.ui.disabledTipIds).toEqual(['delete-subtab-shortcut'])
+    expect(valid.ui.seenTipIds).toEqual(['task-undo', 'delete-active-aisle-shortcut'])
+    expect(valid.ui.disabledTipIds).toEqual(['delete-active-aisle-shortcut'])
     expect(missing.ui.seenTipIds).toEqual([])
     expect(missing.ui.disabledTipIds).toEqual([])
   })
@@ -1119,16 +1119,16 @@ describe('app state normalization', () => {
     expect(missing.ui.noteMentionCopyRequiresConfirmation).toBe(true)
   })
 
-  it('normalizes delete-subtab shortcut setting', () => {
-    const enabled = parseModernState({ ui: { deleteSubtabShortcutEnabled: true } })
-    const disabled = parseModernState({ ui: { deleteSubtabShortcutEnabled: false } })
-    const invalid = parseModernState({ ui: { deleteSubtabShortcutEnabled: 'yes' } })
+  it('normalizes delete active aisle shortcut setting', () => {
+    const enabled = parseModernState({ ui: { deleteActiveAisleShortcutEnabled: true } })
+    const disabled = parseModernState({ ui: { deleteActiveAisleShortcutEnabled: false } })
+    const invalid = parseModernState({ ui: { deleteActiveAisleShortcutEnabled: 'yes' } })
     const missing = parseModernState({ ui: {} })
 
-    expect(enabled.ui.deleteSubtabShortcutEnabled).toBe(true)
-    expect(disabled.ui.deleteSubtabShortcutEnabled).toBe(false)
-    expect(invalid.ui.deleteSubtabShortcutEnabled).toBe(false)
-    expect(missing.ui.deleteSubtabShortcutEnabled).toBe(false)
+    expect(enabled.ui.deleteActiveAisleShortcutEnabled).toBe(true)
+    expect(disabled.ui.deleteActiveAisleShortcutEnabled).toBe(false)
+    expect(invalid.ui.deleteActiveAisleShortcutEnabled).toBe(false)
+    expect(missing.ui.deleteActiveAisleShortcutEnabled).toBe(false)
   })
 
   it('normalizes tab rename Enter behavior setting', () => {
@@ -1260,6 +1260,48 @@ describe('app state normalization', () => {
     expect(clear.ui.decoupledItemsKeepData).toBe(false)
     expect(invalid.ui.decoupledItemsKeepData).toBe(true)
     expect(missing.ui.decoupledItemsKeepData).toBe(true)
+  })
+
+  it('normalizes persisted note filter settings', () => {
+    const parsed = parseModernState({
+      ui: {
+        noteFilter: {
+          active: true,
+          kind: 'frontmatter',
+          tags: { selectedKeys: [' Tag ', 'tag'], sortMode: 'occurrences' },
+          synced: { selectedKeys: ['synced-note:body-1'] },
+          frontmatter: { selectedKeys: ['fm-property:Status', 'fm-property:Status'] },
+        },
+      },
+    })
+    const invalid = parseModernState({
+      ui: {
+        noteFilter: {
+          active: 'yes',
+          kind: 'bad',
+          tags: { selectedKeys: ['tag'], sortMode: 'count' },
+          synced: { selectedKeys: [1] },
+          frontmatter: null,
+        },
+      },
+    })
+    const missing = parseModernState({ ui: {} })
+
+    expect(parsed.ui.noteFilter).toEqual({
+      active: true,
+      kind: 'frontmatter',
+      tags: { selectedKeys: ['Tag', 'tag'], sortMode: 'occurrences' },
+      synced: { selectedKeys: ['synced-note:body-1'] },
+      frontmatter: { selectedKeys: ['fm-property:Status'] },
+    })
+    expect(invalid.ui.noteFilter).toEqual({
+      active: false,
+      kind: 'tags',
+      tags: { selectedKeys: ['tag'], sortMode: 'az' },
+      synced: { selectedKeys: [] },
+      frontmatter: { selectedKeys: [] },
+    })
+    expect(missing.ui.noteFilter).toEqual(DEFAULT_UI_SETTINGS.noteFilter)
   })
 })
 

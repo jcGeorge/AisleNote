@@ -1,15 +1,14 @@
 export const SYNCED_UI_SIMPLE_SETTING_DEFINITIONS = Object.freeze([
-  { key: 'showParentHomeTab', kind: 'boolean', defaultValue: true },
   { key: 'lastLinkInsertMode', kind: 'enum', defaultValue: 'note', values: ['note', 'url'] },
   { key: 'lastNoteCopyMode', kind: 'enum', defaultValue: 'independent', values: ['independent', 'linked'] },
+  { key: 'toggleTabsTarget', kind: 'enum', defaultValue: 'trash', values: ['trash', 'settings', 'messages', 'about', 'filter'] },
   { key: 'findCaseSensitive', kind: 'boolean', defaultValue: false },
   { key: 'findWholeWord', kind: 'boolean', defaultValue: false },
   { key: 'findRegex', kind: 'boolean', defaultValue: false },
   { key: 'findReplaceMode', kind: 'enum', defaultValue: 'find', values: ['find', 'replace'] },
   { key: 'removeNoteReferencesOnTrash', kind: 'boolean', defaultValue: true },
   { key: 'noteMentionCopyRequiresConfirmation', kind: 'boolean', defaultValue: true },
-  { key: 'deleteSubtabShortcutEnabled', kind: 'boolean', defaultValue: false },
-  { key: 'scratchpadDeleteAisleShortcutEnabled', kind: 'boolean', defaultValue: false },
+  { key: 'deleteActiveAisleShortcutEnabled', kind: 'boolean', defaultValue: false },
   { key: 'scratchpadNewAisleSide', kind: 'enum', defaultValue: 'left', values: ['left', 'right'] },
   {
     key: 'tabRenameEnterBehavior',
@@ -50,14 +49,9 @@ export const MISC_SYNCED_UI_BOOLEAN_SETTINGS = Object.freeze([
     ariaLabel: '@ menu requires confirmation for replacing note with synced or independent copy',
   },
   {
-    key: 'deleteSubtabShortcutEnabled',
-    label: 'command/control+w deletes current subtab',
-    ariaLabel: 'command/control+w deletes current subtab',
-  },
-  {
-    key: 'scratchpadDeleteAisleShortcutEnabled',
-    label: 'command/control+w deletes active aisle in scratchpad',
-    ariaLabel: 'command/control+w deletes active aisle in scratchpad',
+    key: 'deleteActiveAisleShortcutEnabled',
+    label: 'primary+w deletes active aisle',
+    ariaLabel: 'primary+w deletes active aisle',
   },
 ])
 

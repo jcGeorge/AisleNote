@@ -21,4 +21,12 @@ describe('electron application menu', () => {
     expect(mainSource).toContain('isResetUserSettingsShortcut(input)')
     expect(mainSource).toContain('confirmAndResetUserSettings(window)')
   })
+
+  it('leaves Command+W available to the renderer tab/aisle delete shortcut', () => {
+    expect(mainSource).not.toContain("{ role: 'close' }")
+    expect(mainSource).not.toContain('CommandOrControl+W')
+    expect(mainSource).not.toContain('Command+W')
+    expect(mainSource).toContain("label: 'Close Window'")
+    expect(mainSource).toContain('targetWindow?.close()')
+  })
 })

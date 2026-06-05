@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { getActiveAisleRefSyncValue } from '../editor/aisle-activation'
 import type { AppState, Tab } from '../types/app'
 import { DEFAULT_NEWLINE_SHORTCUT_SETTINGS, DEFAULT_SHORTCUTS } from './shortcuts'
@@ -9,13 +12,20 @@ import {
   getCycledAisleTarget,
   getCycledParentTabTarget,
   getCapturedRailVisibilityShortcutTarget,
-  getDeleteFocusedSubtabShortcutIntent,
+  getDeleteActiveAisleShortcutIntent,
+  handleDeleteActiveAisleShortcutCapture,
   getNumberedPrimeTabTarget,
   getNumberedPrimeTabShortcutIndex,
   getRailVisibilityShortcutTarget,
-  isDeleteFocusedSubtabShortcut,
+  isDeleteActiveAisleShortcut,
   isSettingsShortcut,
 } from './useGlobalHotkeys'
+
+const hotkeysDir = dirname(fileURLToPath(import.meta.url))
+
+function readUseGlobalHotkeysSource() {
+  return readFileSync(join(hotkeysDir, 'useGlobalHotkeys.ts'), 'utf8')
+}
 
 const makeTab = (id: string): Tab => ({
   id,
@@ -40,8 +50,38 @@ const keyboardEvent = (
     ...modifiers,
   }) as KeyboardEvent
 
+const capturedKeyboardEvent = (
+  key: string,
+  modifiers: Partial<Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>> = {},
+  code = key === ',' ? 'Comma' : `Key${key.toUpperCase()}`,
+) => {
+  const event = keyboardEvent(key, modifiers, code) as KeyboardEvent & {
+    preventDefault: ReturnType<typeof vi.fn>
+    stopPropagation: ReturnType<typeof vi.fn>
+  }
+  event.preventDefault = vi.fn()
+  event.stopPropagation = vi.fn()
+  return event
+}
+
+const makeDeleteCaptureActions = () => ({
+  showTip: vi.fn(),
+  deleteActiveAisle: vi.fn(),
+  deleteScratchpadAisle: vi.fn(),
+})
+
 afterEach(() => {
   vi.useRealTimers()
+})
+
+describe('global hotkey suspension', () => {
+  it('short-circuits captured and bubble shortcut handlers', () => {
+    const source = readUseGlobalHotkeysSource()
+
+    expect(source).toContain('shortcutsSuspended?: boolean')
+    expect(source).toContain('const shortcutsSuspendedRef = useRef(shortcutsSuspended)')
+    expect(source.match(/if \(shortcutsSuspendedRef\.current\) return/g)).toHaveLength(2)
+  })
 })
 
 describe('global numbered hotkeys', () => {
@@ -288,69 +328,180 @@ describe('settings hotkey', () => {
   })
 })
 
-describe('delete focused subtab hotkey', () => {
+describe('delete active aisle hotkey', () => {
   it('matches plain primary-modifier W only', () => {
-    expect(isDeleteFocusedSubtabShortcut(keyboardEvent('w', { metaKey: true }), true)).toBe(true)
-    expect(isDeleteFocusedSubtabShortcut(keyboardEvent('w', { ctrlKey: true }), false)).toBe(true)
-    expect(isDeleteFocusedSubtabShortcut(keyboardEvent('w', { metaKey: true, shiftKey: true }), true)).toBe(false)
-    expect(isDeleteFocusedSubtabShortcut(keyboardEvent('w', { ctrlKey: true, altKey: true }), false)).toBe(false)
-    expect(isDeleteFocusedSubtabShortcut(keyboardEvent('w', { ctrlKey: true }), true)).toBe(false)
+    expect(isDeleteActiveAisleShortcut(keyboardEvent('w', { metaKey: true }), true)).toBe(true)
+    expect(isDeleteActiveAisleShortcut(keyboardEvent('w', { ctrlKey: true }), false)).toBe(true)
+    expect(isDeleteActiveAisleShortcut(keyboardEvent('w', { metaKey: true, shiftKey: true }), true)).toBe(false)
+    expect(isDeleteActiveAisleShortcut(keyboardEvent('w', { ctrlKey: true, altKey: true }), false)).toBe(false)
+    expect(isDeleteActiveAisleShortcut(keyboardEvent('w', { ctrlKey: true }), true)).toBe(false)
   })
 
-  it('returns disabled, delete, home-warning, and ignored intents', () => {
+  it('returns disabled, delete, and ignored intents', () => {
     expect(
-      getDeleteFocusedSubtabShortcutIntent({
+      getDeleteActiveAisleShortcutIntent({
         event: keyboardEvent('w', { ctrlKey: true }),
         isMacPlatform: false,
         viewMode: 'main',
         arrangeActive: false,
         enabled: false,
-        activeSubTabId: 'sub-1',
       }),
     ).toBe('show-tip')
 
     expect(
-      getDeleteFocusedSubtabShortcutIntent({
+      getDeleteActiveAisleShortcutIntent({
         event: keyboardEvent('w', { ctrlKey: true }),
         isMacPlatform: false,
         viewMode: 'main',
         arrangeActive: false,
         enabled: true,
-        activeSubTabId: 'sub-1',
       }),
-    ).toBe('delete-subtab')
+    ).toBe('delete-active-aisle')
 
     expect(
-      getDeleteFocusedSubtabShortcutIntent({
-        event: keyboardEvent('w', { ctrlKey: true }),
-        isMacPlatform: false,
-        viewMode: 'main',
-        arrangeActive: false,
-        enabled: true,
-        activeSubTabId: null,
-      }),
-    ).toBe('warn-home')
-
-    expect(
-      getDeleteFocusedSubtabShortcutIntent({
+      getDeleteActiveAisleShortcutIntent({
         event: keyboardEvent('w', { ctrlKey: true }),
         isMacPlatform: false,
         viewMode: 'settings',
         arrangeActive: false,
         enabled: true,
-        activeSubTabId: 'sub-1',
       }),
     ).toBeNull()
 
     expect(
-      getDeleteFocusedSubtabShortcutIntent({
+      getDeleteActiveAisleShortcutIntent({
         event: keyboardEvent('w', { ctrlKey: true }),
         isMacPlatform: false,
         viewMode: 'main',
         arrangeActive: true,
         enabled: true,
-        activeSubTabId: 'sub-1',
       }),
     ).toBeNull()
+  })
+
+  it('captures enabled normal note deletion before the editor handles W', () => {
+    const event = capturedKeyboardEvent('w', { ctrlKey: true })
+    const actions = makeDeleteCaptureActions()
+
+    expect(
+      handleDeleteActiveAisleShortcutCapture({
+        event,
+        isMacPlatform: false,
+        viewMode: 'main',
+        arrangeActive: false,
+        deleteActiveAisleShortcutEnabled: true,
+        scratchpadActive: false,
+        actions,
+      }),
+    ).toBe('delete-active-aisle')
+
+    expect(event.preventDefault).toHaveBeenCalledTimes(1)
+    expect(event.stopPropagation).toHaveBeenCalledTimes(1)
+    expect(actions.deleteActiveAisle).toHaveBeenCalledTimes(1)
+    expect(actions.showTip).not.toHaveBeenCalled()
+  })
+
+  it('captures disabled normal note deletion and shows the existing tip', () => {
+    const event = capturedKeyboardEvent('w', { ctrlKey: true })
+    const actions = makeDeleteCaptureActions()
+
+    expect(
+      handleDeleteActiveAisleShortcutCapture({
+        event,
+        isMacPlatform: false,
+        viewMode: 'main',
+        arrangeActive: false,
+        deleteActiveAisleShortcutEnabled: false,
+        scratchpadActive: false,
+        actions,
+      }),
+    ).toBe('show-tip')
+
+    expect(event.preventDefault).toHaveBeenCalledTimes(1)
+    expect(event.stopPropagation).toHaveBeenCalledTimes(1)
+    expect(actions.showTip).toHaveBeenCalledWith('delete-active-aisle-shortcut')
+    expect(actions.deleteActiveAisle).not.toHaveBeenCalled()
+  })
+
+  it('captures scratchpad aisle deletion with the unified enabled setting', () => {
+    const event = capturedKeyboardEvent('w', { metaKey: true })
+    const actions = makeDeleteCaptureActions()
+
+    expect(
+      handleDeleteActiveAisleShortcutCapture({
+        event,
+        isMacPlatform: true,
+        viewMode: 'main',
+        arrangeActive: false,
+        deleteActiveAisleShortcutEnabled: true,
+        scratchpadActive: true,
+        actions,
+      }),
+    ).toBe('delete-scratchpad-aisle')
+
+    expect(event.preventDefault).toHaveBeenCalledTimes(1)
+    expect(event.stopPropagation).toHaveBeenCalledTimes(1)
+    expect(actions.deleteScratchpadAisle).toHaveBeenCalledTimes(1)
+    expect(actions.deleteActiveAisle).not.toHaveBeenCalled()
+  })
+
+  it('captures disabled scratchpad aisle deletion and shows the active aisle tip', () => {
+    const event = capturedKeyboardEvent('w', { ctrlKey: true })
+    const actions = makeDeleteCaptureActions()
+
+    expect(
+      handleDeleteActiveAisleShortcutCapture({
+        event,
+        isMacPlatform: false,
+        viewMode: 'main',
+        arrangeActive: false,
+        deleteActiveAisleShortcutEnabled: false,
+        scratchpadActive: true,
+        actions,
+      }),
+    ).toBe('show-tip')
+
+    expect(event.preventDefault).toHaveBeenCalledTimes(1)
+    expect(event.stopPropagation).toHaveBeenCalledTimes(1)
+    expect(actions.showTip).toHaveBeenCalledWith('delete-active-aisle-shortcut')
+    expect(actions.deleteScratchpadAisle).not.toHaveBeenCalled()
+  })
+
+  it('leaves non-main and arrange-mode W shortcuts for the rest of the app', () => {
+    const settingsEvent = capturedKeyboardEvent('w', { ctrlKey: true })
+    const arrangeEvent = capturedKeyboardEvent('w', { ctrlKey: true })
+    const settingsActions = makeDeleteCaptureActions()
+    const arrangeActions = makeDeleteCaptureActions()
+
+    expect(
+      handleDeleteActiveAisleShortcutCapture({
+        event: settingsEvent,
+        isMacPlatform: false,
+        viewMode: 'settings',
+        arrangeActive: false,
+        deleteActiveAisleShortcutEnabled: true,
+        scratchpadActive: false,
+        actions: settingsActions,
+      }),
+    ).toBe('ignored')
+
+    expect(
+      handleDeleteActiveAisleShortcutCapture({
+        event: arrangeEvent,
+        isMacPlatform: false,
+        viewMode: 'main',
+        arrangeActive: true,
+        deleteActiveAisleShortcutEnabled: true,
+        scratchpadActive: false,
+        actions: arrangeActions,
+      }),
+    ).toBe('ignored')
+
+    expect(settingsEvent.preventDefault).not.toHaveBeenCalled()
+    expect(settingsEvent.stopPropagation).not.toHaveBeenCalled()
+    expect(arrangeEvent.preventDefault).not.toHaveBeenCalled()
+    expect(arrangeEvent.stopPropagation).not.toHaveBeenCalled()
+    expect(settingsActions.deleteActiveAisle).not.toHaveBeenCalled()
+    expect(arrangeActions.deleteActiveAisle).not.toHaveBeenCalled()
   })
 })

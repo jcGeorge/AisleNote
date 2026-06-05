@@ -33,6 +33,7 @@ import type {
   TableControlTargetMode,
   TableOfContentsScope,
   TipId,
+  ToggleTabsTarget,
   VisualsSettingsSection,
   ViewMode,
 } from '../types/app'
@@ -44,7 +45,7 @@ import {
   clampAutoRemoveDays,
   clampNoteFontScale,
   clampTabButtonScale,
-  clampTooltipScale,
+  clampToolbarButtonScale,
   DEFAULT_AUTO_REMOVE_DAYS,
   DEFAULT_CUSTOM_THEME_ID,
   DEFAULT_DATA_SETTINGS_SECTION,
@@ -61,6 +62,7 @@ import {
 import {
   MISC_SYNCED_UI_BOOLEAN_SETTINGS,
   getSyncedUiBooleanSettings,
+  normalizeRegisteredSyncedUiSetting,
   type SyncedUiBooleanSettingKey,
 } from './synced-ui-settings-registry.js'
 import {
@@ -129,6 +131,9 @@ export function useSettingsController({
   const [syncedUiBooleanDrafts, setSyncedUiBooleanDrafts] = useState(() =>
     getSyncedUiBooleanSettings(DEFAULT_UI_SETTINGS),
   )
+  const [toggleTabsTargetDraft, setToggleTabsTargetDraft] = useState<ToggleTabsTarget>(
+    DEFAULT_UI_SETTINGS.toggleTabsTarget ?? 'trash',
+  )
   const [alwaysShowSpacesDraft, setAlwaysShowSpacesDraft] = useState(DEFAULT_UI_SETTINGS.alwaysShowSpaces ?? false)
   const [alwaysShowDomainsDraft, setAlwaysShowDomainsDraft] = useState(DEFAULT_UI_SETTINGS.alwaysShowDomains ?? false)
   const [tableAddTargetModeDraft, setTableAddTargetModeDraft] = useState(DEFAULT_UI_SETTINGS.tableAddTargetMode)
@@ -147,7 +152,7 @@ export function useSettingsController({
   )
   const [tabButtonScaleDraft, setTabButtonScaleDraft] = useState(DEFAULT_UI_SETTINGS.tabButtonScale)
   const [noteFontScaleDraft, setNoteFontScaleDraft] = useState(DEFAULT_UI_SETTINGS.noteFontScale)
-  const [tooltipScaleDraft, setTooltipScaleDraft] = useState(DEFAULT_UI_SETTINGS.tooltipScale ?? 1)
+  const [toolbarButtonScaleDraft, setToolbarButtonScaleDraft] = useState(DEFAULT_UI_SETTINGS.toolbarButtonScale ?? 1)
   const [selectedCustomTheme, setSelectedCustomTheme] = useState<CustomThemeId>(
     isCustomTheme(state.theme) ? state.theme : normalizeCustomThemeId(state.ui.selectedCustomTheme),
   )
@@ -171,18 +176,8 @@ export function useSettingsController({
     setShortcutDrafts(hotkeys.shortcuts)
     setNewlineShortcutDrafts(hotkeys.newlineShortcuts.shortcuts)
     setShortcutMenuOperationsDraft(hotkeys.newlineShortcuts.menuOperations)
-    setSyncedUiBooleanDrafts(getSyncedUiBooleanSettings({
-      showParentHomeTab: state.ui.showParentHomeTab,
-      findCaseSensitive: state.ui.findCaseSensitive,
-      findWholeWord: state.ui.findWholeWord,
-      findRegex: state.ui.findRegex,
-      removeNoteReferencesOnTrash: state.ui.removeNoteReferencesOnTrash,
-      noteMentionCopyRequiresConfirmation: state.ui.noteMentionCopyRequiresConfirmation,
-      deleteSubtabShortcutEnabled: state.ui.deleteSubtabShortcutEnabled,
-      scratchpadDeleteAisleShortcutEnabled: state.ui.scratchpadDeleteAisleShortcutEnabled,
-      decoupledItemsKeepData: state.ui.decoupledItemsKeepData,
-      toolbarEditorShowNames: state.ui.toolbarEditorShowNames,
-    }))
+    setSyncedUiBooleanDrafts(getSyncedUiBooleanSettings(state.ui))
+    setToggleTabsTargetDraft(state.ui.toggleTabsTarget ?? DEFAULT_UI_SETTINGS.toggleTabsTarget ?? 'trash')
     setAlwaysShowSpacesDraft(state.ui.alwaysShowSpaces ?? DEFAULT_UI_SETTINGS.alwaysShowSpaces ?? false)
     setAlwaysShowDomainsDraft(state.ui.alwaysShowDomains ?? DEFAULT_UI_SETTINGS.alwaysShowDomains ?? false)
     setTableAddTargetModeDraft(state.ui.tableAddTargetMode)
@@ -199,7 +194,7 @@ export function useSettingsController({
     )
     setTabButtonScaleDraft(state.ui.tabButtonScale)
     setNoteFontScaleDraft(state.ui.noteFontScale)
-    setTooltipScaleDraft(state.ui.tooltipScale ?? DEFAULT_UI_SETTINGS.tooltipScale ?? 1)
+    setToolbarButtonScaleDraft(state.ui.toolbarButtonScale ?? DEFAULT_UI_SETTINGS.toolbarButtonScale ?? 1)
     setSelectedCustomTheme(isCustomTheme(state.theme) ? state.theme : normalizeCustomThemeId(state.ui.selectedCustomTheme))
     setSection(pendingSettingsSectionRef.current ?? state.ui.settingsSection)
     if (pendingSettingsSectionRef.current === state.ui.settingsSection) {
@@ -222,13 +217,12 @@ export function useSettingsController({
     activeSpace.settings.autoRemoveDeletedDays,
     state.hotkeys,
     state.theme,
-    state.ui.showParentHomeTab,
+    state.ui.toggleTabsTarget,
     state.ui.alwaysShowSpaces,
     state.ui.alwaysShowDomains,
     state.ui.tableAddTargetMode,
     state.ui.tableDeleteTargetMode,
     state.ui.tableOfContentsScope,
-    state.ui.scratchpadDeleteAisleShortcutEnabled,
     state.ui.scratchpadAisleLimit,
     state.ui.scratchpadNewAisleSide,
     state.ui.tabRenameEnterBehavior,
@@ -237,12 +231,12 @@ export function useSettingsController({
     state.ui.findRegex,
     state.ui.removeNoteReferencesOnTrash,
     state.ui.noteMentionCopyRequiresConfirmation,
-    state.ui.deleteSubtabShortcutEnabled,
+    state.ui.deleteActiveAisleShortcutEnabled,
     state.ui.decoupledItemsKeepData,
     state.ui.toolbarEditorShowNames,
     state.ui.tabButtonScale,
     state.ui.noteFontScale,
-    state.ui.tooltipScale,
+    state.ui.toolbarButtonScale,
     state.ui.selectedCustomTheme,
     state.ui.settingsSection,
     state.ui.dataSettingsSection,
@@ -365,8 +359,16 @@ export function useSettingsController({
     }))
   }
 
-  const updateShowParentHomeTabSetting = (checked: boolean) => {
-    updateSyncedUiBooleanSetting('showParentHomeTab', checked)
+  const updateToggleTabsTargetSetting = (target: ToggleTabsTarget) => {
+    const nextTarget = normalizeRegisteredSyncedUiSetting('toggleTabsTarget', target)
+    setToggleTabsTargetDraft(nextTarget)
+    commitImmediateSettingsState((previous) => ({
+      ...previous,
+      ui: {
+        ...previous.ui,
+        toggleTabsTarget: nextTarget,
+      },
+    }))
   }
 
   const updateAlwaysShowSpacesSetting = (checked: boolean) => {
@@ -505,14 +507,14 @@ export function useSettingsController({
     }))
   }
 
-  const updateTooltipScaleSetting = (rawValue: string) => {
-    const nextScale = clampTooltipScale(Number.parseFloat(rawValue))
-    setTooltipScaleDraft(nextScale)
+  const updateToolbarButtonScaleSetting = (rawValue: string) => {
+    const nextScale = clampToolbarButtonScale(Number.parseFloat(rawValue))
+    setToolbarButtonScaleDraft(nextScale)
     commitImmediateSettingsState((previous) => ({
       ...previous,
       ui: {
         ...previous.ui,
-        tooltipScale: nextScale,
+        toolbarButtonScale: nextScale,
       },
     }))
   }
@@ -955,10 +957,10 @@ export function useSettingsController({
     importStatus,
     tabButtonScaleDraft,
     noteFontScaleDraft,
-    tooltipScaleDraft,
+    toolbarButtonScaleDraft,
     selectedCustomTheme,
     customThemePaletteDraft,
-    showParentHomeTabDraft: syncedUiBooleanDrafts.showParentHomeTab,
+    toggleTabsTargetDraft,
     alwaysShowSpacesDraft,
     alwaysShowDomainsDraft,
     tableAddTargetModeDraft,
@@ -986,7 +988,7 @@ export function useSettingsController({
     updateSelectedCustomThemeSetting,
     toggleShortcutEdit,
     updateAutoRemoveDaysSetting,
-    updateShowParentHomeTabSetting,
+    updateToggleTabsTargetSetting,
     updateAlwaysShowSpacesSetting,
     updateAlwaysShowDomainsSetting,
     updateTableAddTargetModeSetting,
@@ -999,7 +1001,7 @@ export function useSettingsController({
     updateTipEnabledSetting,
     updateTabButtonScaleSetting,
     updateNoteFontScaleSetting,
-    updateTooltipScaleSetting,
+    updateToolbarButtonScaleSetting,
     updateThemeSetting,
     updateCustomThemePaletteSetting,
     resetCustomThemePaletteSetting,

@@ -11,6 +11,7 @@ import {
   highlightPlugin,
   installClearToolbarButton,
   installHeadingPopupActiveState,
+  installToolbarAppTooltips,
   listMarkerPlugin,
   multiLineSelectionShortcutPlugin,
   tagAppearancePlugin,
@@ -191,6 +192,7 @@ export function useLegacyEditor({
     restoreEditorBlankParagraphs(editorRef.current, displayContent)
     markWysiwygLoadedUndoBoundary(editorRef.current)
     installClearToolbarButton(editorMountRef.current, clearActiveNoteContent)
+    const cleanupToolbarAppTooltips = installToolbarAppTooltips(editorMountRef.current)
     const cleanupHeadingPopupActiveState = installHeadingPopupActiveState(editorMountRef.current, () => editorRef.current)
     const cleanupCompletedTaskCheckboxBehavior = installCompletedTaskCheckboxBehavior(
       editorMountRef.current,
@@ -203,6 +205,7 @@ export function useLegacyEditor({
     })
 
     return () => {
+      cleanupToolbarAppTooltips()
       cleanupTaskTextReorderBehavior()
       cleanupCompletedTaskCheckboxBehavior()
       cleanupHeadingPopupActiveState()

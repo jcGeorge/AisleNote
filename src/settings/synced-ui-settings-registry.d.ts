@@ -1,17 +1,16 @@
 import type { AppState } from '../types/app'
 
 export type SimpleSyncedUiSettingKey =
-  | 'showParentHomeTab'
   | 'lastLinkInsertMode'
   | 'lastNoteCopyMode'
+  | 'toggleTabsTarget'
   | 'findCaseSensitive'
   | 'findWholeWord'
   | 'findRegex'
   | 'findReplaceMode'
   | 'removeNoteReferencesOnTrash'
   | 'noteMentionCopyRequiresConfirmation'
-  | 'deleteSubtabShortcutEnabled'
-  | 'scratchpadDeleteAisleShortcutEnabled'
+  | 'deleteActiveAisleShortcutEnabled'
   | 'scratchpadNewAisleSide'
   | 'tabRenameEnterBehavior'
   | 'decoupledItemsKeepData'
@@ -21,14 +20,12 @@ export type SimpleSyncedUiSettingKey =
   | 'toolbarEditorShowNames'
 
 export type SyncedUiBooleanSettingKey =
-  | 'showParentHomeTab'
   | 'findCaseSensitive'
   | 'findWholeWord'
   | 'findRegex'
   | 'removeNoteReferencesOnTrash'
   | 'noteMentionCopyRequiresConfirmation'
-  | 'deleteSubtabShortcutEnabled'
-  | 'scratchpadDeleteAisleShortcutEnabled'
+  | 'deleteActiveAisleShortcutEnabled'
   | 'decoupledItemsKeepData'
   | 'toolbarEditorShowNames'
 
@@ -57,10 +54,6 @@ export const DEFAULT_SIMPLE_SYNCED_UI_SETTINGS: SimpleSyncedUiSettings
 export const MISC_SYNCED_UI_BOOLEAN_SETTINGS: readonly SyncedUiBooleanSettingDescriptor[]
 
 export function normalizeRegisteredSyncedUiSetting(
-  key: 'showParentHomeTab',
-  value: unknown,
-): AppState['ui']['showParentHomeTab']
-export function normalizeRegisteredSyncedUiSetting(
   key: 'lastLinkInsertMode',
   value: unknown,
 ): NonNullable<AppState['ui']['lastLinkInsertMode']>
@@ -68,6 +61,10 @@ export function normalizeRegisteredSyncedUiSetting(
   key: 'lastNoteCopyMode',
   value: unknown,
 ): NonNullable<AppState['ui']['lastNoteCopyMode']>
+export function normalizeRegisteredSyncedUiSetting(
+  key: 'toggleTabsTarget',
+  value: unknown,
+): NonNullable<AppState['ui']['toggleTabsTarget']>
 export function normalizeRegisteredSyncedUiSetting(key: 'findCaseSensitive', value: unknown): boolean
 export function normalizeRegisteredSyncedUiSetting(key: 'findWholeWord', value: unknown): boolean
 export function normalizeRegisteredSyncedUiSetting(key: 'findRegex', value: unknown): boolean
@@ -77,8 +74,7 @@ export function normalizeRegisteredSyncedUiSetting(
 ): NonNullable<AppState['ui']['findReplaceMode']>
 export function normalizeRegisteredSyncedUiSetting(key: 'removeNoteReferencesOnTrash', value: unknown): boolean
 export function normalizeRegisteredSyncedUiSetting(key: 'noteMentionCopyRequiresConfirmation', value: unknown): boolean
-export function normalizeRegisteredSyncedUiSetting(key: 'deleteSubtabShortcutEnabled', value: unknown): boolean
-export function normalizeRegisteredSyncedUiSetting(key: 'scratchpadDeleteAisleShortcutEnabled', value: unknown): boolean
+export function normalizeRegisteredSyncedUiSetting(key: 'deleteActiveAisleShortcutEnabled', value: unknown): boolean
 export function normalizeRegisteredSyncedUiSetting(
   key: 'scratchpadNewAisleSide',
   value: unknown,

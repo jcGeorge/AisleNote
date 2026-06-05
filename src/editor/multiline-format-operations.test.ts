@@ -360,8 +360,8 @@ describe('multi-cursor blockquote operations', () => {
   it('strips block indent tokens when converting rows to blockquotes', () => {
     const view = createView(
       multilineFormatSchema.nodes.doc.create(null, [
-        paragraph(`${BLOCK_INDENT_TOKEN}one`),
-        paragraph(`${BLOCK_INDENT_TOKEN}${INDENT_TOKEN}two`),
+        paragraph(`${BLOCK_INDENT_TOKEN.repeat(2)}one`),
+        paragraph(`${BLOCK_INDENT_TOKEN.repeat(2)}${INDENT_TOKEN}two`),
       ]),
     )
     const plan = buildMultiLineBlockQuoteOperationPlan(view, multiLineState([0, 1], 3))
@@ -433,6 +433,17 @@ describe('selection block indent operations', () => {
     expect(nextState.doc.child(0).textContent).toBe(`${BLOCK_INDENT_TOKEN}one`)
   })
 
+  it('stacks block indent tokens on an already block-indented paragraph', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [paragraph(`${BLOCK_INDENT_TOKEN}one`)]))
+    selectTextLines(view, 0)
+
+    const plan = buildSelectionBlockIndentOperationPlan(view)
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(nextState.doc.child(0).textContent).toBe(`${BLOCK_INDENT_TOKEN.repeat(2)}one`)
+  })
+
   it('prefixes adjacent selected paragraphs without creating blockquotes', () => {
     const view = createView(multilineFormatSchema.nodes.doc.create(null, [paragraph('one'), paragraph('two')]))
     selectTextLines(view, 0, 1)
@@ -464,7 +475,7 @@ describe('selection block indent operations', () => {
     const view = createView(
       multilineFormatSchema.nodes.doc.create(null, [
         paragraph(`${BLOCK_INDENT_TOKEN}keep`),
-        paragraph(`${BLOCK_INDENT_TOKEN}lift`),
+        paragraph(`${BLOCK_INDENT_TOKEN.repeat(2)}lift`),
         paragraph(`${BLOCK_INDENT_TOKEN}keep`),
       ]),
     )
@@ -476,7 +487,7 @@ describe('selection block indent operations', () => {
 
     expect(docChildTypes(nextState.doc)).toEqual(['paragraph', 'paragraph', 'paragraph'])
     expect(nextState.doc.child(0).textContent).toBe(`${BLOCK_INDENT_TOKEN}keep`)
-    expect(nextState.doc.child(1).textContent).toBe('lift')
+    expect(nextState.doc.child(1).textContent).toBe(`${BLOCK_INDENT_TOKEN}lift`)
     expect(nextState.doc.child(2).textContent).toBe(`${BLOCK_INDENT_TOKEN}keep`)
   })
 

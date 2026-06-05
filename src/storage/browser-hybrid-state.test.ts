@@ -496,7 +496,7 @@ describe('browser hybrid storage', () => {
           ],
         },
         ui: {
-          showParentHomeTab: false,
+          toggleTabsTarget: 'messages',
           settingsSection: 'toolbar',
           dataSettingsSection: 'storage',
           selectedCustomTheme: 'custom2',
@@ -507,7 +507,7 @@ describe('browser hybrid storage', () => {
           findReplaceMode: 'replace',
           removeNoteReferencesOnTrash: false,
           noteMentionCopyRequiresConfirmation: false,
-          deleteSubtabShortcutEnabled: true,
+          deleteActiveAisleShortcutEnabled: true,
           decoupledItemsKeepData: false,
           tableAddTargetMode: 'active-cell',
           tableDeleteTargetMode: 'active-cell',
@@ -517,7 +517,7 @@ describe('browser hybrid storage', () => {
           scratchpadAisleLimit: 40,
           tabButtonScale: 1.3,
           noteFontScale: 1.2,
-          tooltipScale: 1.25,
+          toolbarButtonScale: 1.25,
           themePalettes: {
             dawn: {
               ...DEFAULT_CUSTOM_THEME_PALETTE,
@@ -543,7 +543,7 @@ describe('browser hybrid storage', () => {
     expect(getRecord(appSettings.themePalettes).dawn).toMatchObject({ primary: '#123456' })
     expect(appSettings.tabButtonScale).toBe(1.3)
     expect(appSettings.noteFontScale).toBe(1.2)
-    expect(appSettings.tooltipScale).toBe(1.25)
+    expect(appSettings.toolbarButtonScale).toBe(1.25)
     expect(getRecord(appSettings.ui).settingsSection).toBe('toolbar')
     expect(getRecord(appSettings.ui).dataSettingsSection).toBe('storage')
     expect(getRecord(appSettings.ui).lastNoteCopyMode).toBe('linked')
@@ -553,12 +553,13 @@ describe('browser hybrid storage', () => {
     expect(getRecord(appSettings.ui).findReplaceMode).toBe('replace')
     expect(getRecord(appSettings.ui).removeNoteReferencesOnTrash).toBe(false)
     expect(getRecord(appSettings.ui).noteMentionCopyRequiresConfirmation).toBe(false)
-    expect(getRecord(appSettings.ui).deleteSubtabShortcutEnabled).toBe(true)
+    expect(getRecord(appSettings.ui).deleteActiveAisleShortcutEnabled).toBe(true)
     expect(getRecord(appSettings.ui).tableOfContentsScope).toBe('focused-aisle')
     expect(getRecord(appSettings.ui).tabRenameEnterBehavior).toBe('creates-another-tab')
+    expect(getRecord(appSettings.ui).toggleTabsTarget).toBe('messages')
     expect(getRecord(appSettings.ui)).not.toHaveProperty('newAislePlacement')
+    expect(getRecord(appSettings.ui)).not.toHaveProperty('showParentHomeTab')
     expect(appSettings.scratchpadAisleLimit).toBe(40)
-    expect(getRecord(appSettings.ui).showParentHomeTab).toBe(false)
     expect(getRecord(appSettings.hotkeys)).not.toHaveProperty('enableMouseBackForward')
     expect(getRecord(appSettings.hotkeys)).not.toHaveProperty('enableGenericHistoryHotkeys')
     expect(getRecord(getRecord(appSettings.hotkeys).shortcuts).newTab).toBe('Ctrl+Alt+N')
@@ -575,7 +576,7 @@ describe('browser hybrid storage', () => {
     expect(roundTripped.ui.selectedCustomTheme).toBe('custom2')
     expect(roundTripped.ui.tabButtonScale).toBe(1.3)
     expect(roundTripped.ui.noteFontScale).toBe(1.2)
-    expect(roundTripped.ui.tooltipScale).toBe(1.25)
+    expect(roundTripped.ui.toolbarButtonScale).toBe(1.25)
     expect(roundTripped.ui.dataSettingsSection).toBe('storage')
     expect(roundTripped.ui.findCaseSensitive).toBe(true)
     expect(roundTripped.ui.findWholeWord).toBe(true)
@@ -583,7 +584,7 @@ describe('browser hybrid storage', () => {
     expect(roundTripped.ui.findReplaceMode).toBe('replace')
     expect(roundTripped.ui.removeNoteReferencesOnTrash).toBe(false)
     expect(roundTripped.ui.noteMentionCopyRequiresConfirmation).toBe(false)
-    expect(roundTripped.ui.deleteSubtabShortcutEnabled).toBe(true)
+    expect(roundTripped.ui.deleteActiveAisleShortcutEnabled).toBe(true)
     expect(roundTripped.ui.tableOfContentsScope).toBe('focused-aisle')
     expect(roundTripped.ui.tabRenameEnterBehavior).toBe('creates-another-tab')
     expect(roundTripped.ui).not.toHaveProperty('newAislePlacement')

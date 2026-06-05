@@ -417,8 +417,7 @@
 }
 
 .theme-switch {
-  --theme-switch-option-selected-bg: var(--subtab-rail-accent);
-  --theme-switch-option-selected-text: var(--subtab-rail-selected-text);
+  --theme-switch-option-selected-bg: var(--settings-switch-checked-bg);
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.18rem;
@@ -451,8 +450,8 @@
 }
 
 .settings-segmented-control {
-  --settings-segmented-option-selected-bg: var(--subtab-rail-accent);
-  --settings-segmented-option-selected-text: var(--subtab-rail-selected-text);
+  --settings-segmented-option-selected-bg: var(--settings-switch-checked-bg);
+  --settings-segmented-option-selected-text: var(--theme-switch-option-selected-text);
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.18rem;
@@ -469,11 +468,6 @@
 
 .settings-data-section-control {
   grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.settings-flag-segmented-control {
-  --settings-segmented-option-selected-bg: var(--settings-switch-checked-bg);
-  --settings-segmented-option-selected-text: var(--theme-switch-option-selected-text);
 }
 
 .settings-segmented-option {

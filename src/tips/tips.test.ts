@@ -12,10 +12,10 @@ describe('tips', () => {
         'bad',
         'task-undo',
         'tab-create-after-rename',
-        'delete-subtab-shortcut',
+        'delete-active-aisle-shortcut',
         'aisle-shortcut',
       ]),
-    ).toEqual(['task-undo', 'delete-subtab-shortcut'])
+    ).toEqual(['task-undo', 'delete-active-aisle-shortcut'])
     expect(normalizeTipIds('task-undo')).toEqual([])
   })
 
@@ -23,12 +23,12 @@ describe('tips', () => {
     expect(getTipDefinition('task-undo').message).toContain('Click & hold')
   })
 
-  it('formats the delete-subtab shortcut tip for the current platform', () => {
-    expect(getTipDefinition('delete-subtab-shortcut', { isMacPlatform: true }).message).toBe(
-      'You can enable command+w to delete subtabs in the misc tab of the settings.',
+  it('formats the active aisle shortcut tip for the current platform', () => {
+    expect(getTipDefinition('delete-active-aisle-shortcut', { isMacPlatform: true }).message).toBe(
+      'You can enable command+w to delete the active aisle in the misc tab of the settings.',
     )
-    expect(getTipDefinition('delete-subtab-shortcut', { isMacPlatform: false }).message).toBe(
-      'You can enable control+w to delete subtabs in the misc tab of the settings.',
+    expect(getTipDefinition('delete-active-aisle-shortcut', { isMacPlatform: false }).message).toBe(
+      'You can enable control+w to delete the active aisle in the misc tab of the settings.',
     )
   })
 

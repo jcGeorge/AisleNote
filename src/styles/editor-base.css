@@ -24,8 +24,8 @@
 .toastui-editor-toolbar {
   background-color: var(--editor-toolbar-bg) !important;
   border-bottom: 1px solid var(--editor-border) !important;
-  min-height: 32px !important;
-  padding: 0.125rem 0.25rem !important;
+  min-height: var(--editor-toolbar-min-height) !important;
+  padding: calc(0.125rem * var(--toolbar-button-scale)) calc(0.25rem * var(--toolbar-button-scale)) !important;
 }
 
 .toastui-editor-main .toastui-editor-md-splitter {
@@ -68,170 +68,13 @@
   color: var(--editor-text) !important;
 }
 
-.app-shell.tooltips-disabled .toastui-editor-tooltip,
+.app-shell .toastui-editor-tooltip,
 body.app-tooltips-disabled .toastui-editor-tooltip {
   display: none !important;
 }
 
 .toastui-editor-tooltip {
-  padding: calc(4px * var(--tooltip-scale, 1)) calc(8px * var(--tooltip-scale, 1)) !important;
-  background-color: var(--editor-tooltip-bg) !important;
-  color: var(--editor-tooltip-text) !important;
-  border: 1px solid var(--editor-tooltip-border);
-  box-shadow: var(--editor-tooltip-shadow);
-  font-size: calc(0.82rem * var(--tooltip-scale, 1)) !important;
-  line-height: 1.25 !important;
-  transform: translateX(calc(-50% + 7px)) !important;
-}
-
-.toastui-editor-tooltip .arrow {
-  left: 50% !important;
-  top: calc(-5px * var(--tooltip-scale, 1)) !important;
-  background-color: var(--editor-tooltip-bg) !important;
-  border: 0 !important;
-  transform: translateX(-50%) rotate(45deg) !important;
-}
-
-.toastui-editor-toolbar-icons,
-.toastui-editor-toolbar-divider {
-  filter: var(
-    --editor-toolbar-icon-filter,
-    invert(88%) sepia(10%) saturate(327%) hue-rotate(183deg) brightness(94%) contrast(91%)
-  );
-}
-
-.toastui-editor-toolbar-icons {
-  background-position-y: 1px !important;
-}
-
-.toastui-editor-toolbar-icons.heading {
-  background-position-x: 1px !important;
-}
-
-.toastui-editor-toolbar-icons.bold {
-  background-position-x: -25px !important;
-}
-
-.toastui-editor-toolbar-icons.italic {
-  background-position-x: -51px !important;
-}
-
-.toastui-editor-toolbar-icons.strike {
-  background-position-x: -77px !important;
-}
-
-.toastui-editor-toolbar-icons.highlight {
-  position: relative !important;
-  background-image: none !important;
-  color: var(--editor-toolbar-icon-color, #c8d0e1) !important;
-  filter: none !important;
-}
-
-.toastui-editor-toolbar-icons.highlight::before {
-  content: 'H';
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  font-size: 13px;
-  font-weight: 800;
-  line-height: 1;
-}
-
-.toastui-editor-toolbar-icons.highlight::after {
-  content: '';
-  position: absolute;
-  left: 6px;
-  right: 6px;
-  bottom: 5px;
-  height: 3px;
-  border-radius: 2px;
-  background: #facc15;
-  opacity: 0.88;
-}
-
-.toastui-editor-toolbar-icons.hrline {
-  background-position-x: -103px !important;
-}
-
-.toastui-editor-toolbar-icons.quote {
-  background-position-x: -129px !important;
-}
-
-.toastui-editor-toolbar-icons.bullet-list {
-  background-position-x: -155px !important;
-}
-
-.toastui-editor-toolbar-icons.dash-list {
-  position: relative !important;
-  background-image: none !important;
-  color: var(--editor-toolbar-dash-icon-text, #555555) !important;
-}
-
-.toastui-editor-toolbar-icons.dash-list::before,
-.toastui-editor-toolbar-icons.dash-list::after {
-  content: '';
-  position: absolute;
-  left: 5px;
-  width: 5px;
-  height: 2px;
-  border-radius: 1px;
-  background: currentColor;
-  box-shadow: 0 6px 0 currentColor, 0 12px 0 currentColor;
-}
-
-.toastui-editor-toolbar-icons.dash-list::before {
-  top: 7px;
-}
-
-.toastui-editor-toolbar-icons.dash-list::after {
-  top: 7px;
-  left: 13px;
-  width: 8px;
-}
-
-.toastui-editor-toolbar-icons.ordered-list {
-  background-position-x: -181px !important;
-}
-
-.toastui-editor-toolbar-icons.task-list {
-  background-position-x: -207px !important;
-}
-
-.toastui-editor-toolbar-icons.indent {
-  background-position-x: -233px !important;
-}
-
-.toastui-editor-toolbar-icons.outdent {
-  background-position-x: -259px !important;
-}
-
-.toastui-editor-toolbar-icons.table {
-  background-position-x: -285px !important;
-}
-
-.toastui-editor-toolbar-icons.image {
-  background-position-x: -311px !important;
-}
-
-.toastui-editor-toolbar-icons.link {
-  background-position-x: -336px !important;
-}
-
-.toastui-editor-toolbar-icons.code {
-  background-position-x: -363px !important;
-}
-
-.toastui-editor-toolbar-icons.codeblock {
-  background-position-x: -390px !important;
-}
-
-.toastui-editor-toolbar-icons.more {
-  background-position-x: -414px !important;
-}
-
-.toastui-editor-toolbar-icons:not(:disabled).active {
-  background-position-y: -25px !important;
+  display: none !important;
 }
 
 .toastui-editor-toolbar-divider {
@@ -248,8 +91,8 @@ body.app-tooltips-disabled .toastui-editor-tooltip {
 
 .toastui-editor-defaultUI-toolbar button,
 .toastui-editor-toolbar button {
-  width: 26px !important;
-  height: 26px !important;
+  width: var(--editor-toolbar-button-size) !important;
+  height: var(--editor-toolbar-button-size) !important;
   margin: 0 !important;
   padding: 0 !important;
   border-radius: 4px !important;
@@ -325,141 +168,154 @@ body.app-tooltips-disabled .toastui-editor-tooltip {
   transform: translate(-50%, 0);
 }
 
-.toastui-editor-toolbar-icons.is-shortcut-feedback {
-  box-shadow: inset 0 0 0 1px var(--editor-toolbar-icon-color, #c8d0e1) !important;
+.app-toolbar-tool-btn.is-shortcut-feedback {
+  box-shadow: inset 0 0 0 1px var(--editor-toolbar-icon-primary, #c8d0e1) !important;
 }
 
-.toastui-editor-defaultUI-toolbar button.clear-note-toolbar-btn,
-.toastui-editor-toolbar button.clear-note-toolbar-btn,
-.toastui-editor-defaultUI-toolbar button.note-link-toolbar-btn,
-.toastui-editor-toolbar button.note-link-toolbar-btn,
-.toastui-editor-defaultUI-toolbar button.note-copy-toolbar-btn,
-.toastui-editor-toolbar button.note-copy-toolbar-btn,
-.toastui-editor-defaultUI-toolbar button.frontmatter-toolbar-btn,
-.toastui-editor-toolbar button.frontmatter-toolbar-btn,
-.toastui-editor-defaultUI-toolbar button.table-of-contents-toolbar-btn,
-.toastui-editor-toolbar button.table-of-contents-toolbar-btn,
-.toastui-editor-defaultUI-toolbar button.aisles-toolbar-btn,
-.toastui-editor-toolbar button.aisles-toolbar-btn,
-.toastui-editor-defaultUI-toolbar button.find-replace-toolbar-btn,
-.toastui-editor-toolbar button.find-replace-toolbar-btn,
-.toastui-editor-defaultUI-toolbar button.editor-history-toolbar-btn,
-.toastui-editor-toolbar button.editor-history-toolbar-btn {
-  width: 26px !important;
-  min-width: 26px !important;
+.toastui-editor-defaultUI-toolbar button.app-toolbar-tool-btn,
+.toastui-editor-toolbar button.app-toolbar-tool-btn {
+  width: var(--editor-toolbar-button-size) !important;
+  min-width: var(--editor-toolbar-button-size) !important;
+  height: var(--editor-toolbar-button-size) !important;
   padding: 0 !important;
   font-size: 14px !important;
   line-height: 1 !important;
   font-weight: 600 !important;
-  color: var(--editor-toolbar-icon-color, #c8d0e1) !important;
+  color: var(--editor-toolbar-icon-primary, #c8d0e1) !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
 }
 
-.toastui-editor-defaultUI-toolbar button.clear-note-toolbar-btn,
-.toastui-editor-toolbar button.clear-note-toolbar-btn {
-  color: var(--editor-clear-note-toolbar-text, var(--editor-toolbar-icon-color, #c8d0e1)) !important;
-}
-
-.toastui-editor-defaultUI-toolbar button.note-link-toolbar-btn,
-.toastui-editor-toolbar button.note-link-toolbar-btn,
-.toastui-editor-defaultUI-toolbar button.note-copy-toolbar-btn,
-.toastui-editor-toolbar button.note-copy-toolbar-btn,
-.toastui-editor-defaultUI-toolbar button.frontmatter-toolbar-btn,
-.toastui-editor-toolbar button.frontmatter-toolbar-btn,
-.toastui-editor-defaultUI-toolbar button.table-of-contents-toolbar-btn,
-.toastui-editor-toolbar button.table-of-contents-toolbar-btn,
-.toastui-editor-defaultUI-toolbar button.aisles-toolbar-btn,
-.toastui-editor-toolbar button.aisles-toolbar-btn,
-.toastui-editor-defaultUI-toolbar button.find-replace-toolbar-btn,
-.toastui-editor-toolbar button.find-replace-toolbar-btn,
-.toastui-editor-defaultUI-toolbar button.editor-history-toolbar-btn,
-.toastui-editor-toolbar button.editor-history-toolbar-btn {
+.toastui-editor-defaultUI-toolbar button.app-toolbar-tool-btn,
+.toastui-editor-toolbar button.app-toolbar-tool-btn {
   position: relative !important;
 }
 
-.toastui-editor-defaultUI-toolbar button.note-link-toolbar-btn,
-.toastui-editor-toolbar button.note-link-toolbar-btn,
-.toastui-editor-defaultUI-toolbar button.note-copy-toolbar-btn,
-.toastui-editor-toolbar button.note-copy-toolbar-btn,
-.toastui-editor-defaultUI-toolbar button.frontmatter-toolbar-btn,
-.toastui-editor-toolbar button.frontmatter-toolbar-btn,
-.toastui-editor-defaultUI-toolbar button.table-of-contents-toolbar-btn,
-.toastui-editor-toolbar button.table-of-contents-toolbar-btn,
-.toastui-editor-defaultUI-toolbar button.aisles-toolbar-btn,
-.toastui-editor-toolbar button.aisles-toolbar-btn,
-.toastui-editor-defaultUI-toolbar button.find-replace-toolbar-btn,
-.toastui-editor-toolbar button.find-replace-toolbar-btn,
-.toastui-editor-defaultUI-toolbar button.editor-history-toolbar-btn,
-.toastui-editor-toolbar button.editor-history-toolbar-btn {
+.toastui-editor-defaultUI-toolbar button.app-toolbar-tool-btn,
+.toastui-editor-toolbar button.app-toolbar-tool-btn {
   font-weight: 700 !important;
   letter-spacing: 0 !important;
 }
 
-.table-of-contents-toolbar-icon {
+.toolbar-tool-icon {
+  width: 20px;
+  height: 20px;
+  display: block !important;
+  color: var(--editor-toolbar-icon-primary, #c8d0e1);
+}
+
+.toolbar-tool-icon-primary,
+.toolbar-tool-icon-primary-stroke,
+.toolbar-tool-icon-secondary,
+.toolbar-tool-icon-secondary-stroke {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.toolbar-tool-icon-primary,
+.toolbar-tool-icon-primary-stroke {
+  stroke: var(--editor-toolbar-icon-primary, #c8d0e1);
+}
+
+.toolbar-tool-icon-secondary,
+.toolbar-tool-icon-secondary-stroke {
+  stroke: var(--editor-toolbar-icon-secondary, #6f7f98);
+}
+
+.toolbar-tool-icon-heavy {
+  stroke-width: 2.4;
+}
+
+.toolbar-tool-icon-dot {
+  stroke-width: 3.2;
+}
+
+.toolbar-tool-icon-primary-fill {
+  fill: var(--editor-toolbar-icon-primary, #c8d0e1);
+  stroke: none;
+}
+
+.toolbar-tool-icon-secondary-fill {
+  fill: var(--editor-toolbar-icon-secondary, #6f7f98);
+  stroke: none;
+}
+
+.toolbar-tool-icon-text-primary,
+.toolbar-tool-text-primary {
+  color: var(--editor-toolbar-icon-primary, #c8d0e1);
+  fill: var(--editor-toolbar-icon-primary, #c8d0e1);
+}
+
+.toolbar-tool-text-secondary {
+  color: var(--editor-toolbar-icon-secondary, #6f7f98);
+}
+
+.toolbar-tool-icon-list-number {
+  font-size: 6px;
+  font-weight: 700;
+}
+
+.toolbar-tool-text-icon {
   position: relative;
-  width: 19px;
-  height: 16px;
-  display: block;
-  color: currentColor;
+  width: 20px;
+  height: 20px;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  color: var(--editor-toolbar-icon-primary, #c8d0e1);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1;
 }
 
-.table-of-contents-toolbar-icon-row {
+.toolbar-tool-icon-frontmatter {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: lowercase;
+}
+
+.toolbar-tool-text-bold {
+  font-weight: 800;
+}
+
+.toolbar-tool-text-italic {
+  font-style: italic;
+  font-weight: 500;
+}
+
+.toolbar-tool-text-highlight {
+  font-weight: 800;
+}
+
+.toolbar-tool-text-accent {
   position: absolute;
+  left: 5px;
+  right: 5px;
+  bottom: 3px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--editor-toolbar-icon-secondary, #6f7f98);
+}
+
+.toolbar-tool-text-strike-line {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: 50%;
   height: 2px;
-  border-radius: 999px;
-  background: currentColor;
+  border-radius: 2px;
+  background: var(--editor-toolbar-icon-secondary, #6f7f98);
+  transform: translateY(-50%);
 }
 
-.table-of-contents-toolbar-icon-row::before {
-  content: '';
-  position: absolute;
-  top: -1px;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.table-of-contents-toolbar-icon-row-1 {
-  top: 1px;
-  left: 8px;
-  width: 10px;
-}
-
-.table-of-contents-toolbar-icon-row-1::before {
-  left: -7px;
-}
-
-.table-of-contents-toolbar-icon-row-2 {
-  top: 5px;
-  left: 11px;
-  width: 7px;
-}
-
-.table-of-contents-toolbar-icon-row-2::before {
-  left: -7px;
-}
-
-.table-of-contents-toolbar-icon-row-3 {
-  top: 9px;
-  left: 14px;
-  width: 5px;
-}
-
-.table-of-contents-toolbar-icon-row-3::before {
-  left: -7px;
-}
-
-.table-of-contents-toolbar-icon-row-4 {
-  top: 13px;
-  left: 8px;
-  width: 10px;
-}
-
-.table-of-contents-toolbar-icon-row-4::before {
-  left: -7px;
+.toolbar-tool-text-code-block {
+  width: 24px;
+  font-size: 10px;
+  font-weight: 600;
+  gap: 1px;
 }
 
 .editor-history-toolbar-icon {
@@ -478,137 +334,10 @@ body.app-tooltips-disabled .toastui-editor-tooltip {
   transform-origin: center;
 }
 
-.find-replace-toolbar-icon {
-  width: 1.15rem;
-  height: 1.15rem;
-  display: block;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
 .toastui-editor-defaultUI-toolbar button.table-of-contents-toolbar-btn,
 .toastui-editor-toolbar button.table-of-contents-toolbar-btn {
   font-size: 14px !important;
   letter-spacing: 0 !important;
-}
-
-.note-reference-toolbar-icon {
-  position: relative;
-  width: 1.34rem;
-  height: 1.34rem;
-  display: block;
-}
-
-.note-reference-toolbar-paper {
-  position: absolute;
-  top: 0.08rem;
-  left: 0.1rem;
-  width: 0.9rem;
-  height: 1.1rem;
-  border: 1.6px solid currentColor;
-  border-radius: 0.12rem;
-}
-
-.note-reference-toolbar-paper::after {
-  content: '';
-  position: absolute;
-  right: -1.6px;
-  bottom: -1.6px;
-  width: 0.28rem;
-  height: 0.28rem;
-  border-top: 1.6px solid currentColor;
-  border-left: 1.6px solid currentColor;
-  border-radius: 0.06rem 0 0.1rem 0;
-  background: var(--editor-toolbar-bg);
-}
-
-.note-reference-toolbar-chain {
-  position: absolute;
-  top: 0.57rem;
-  right: 0.06rem;
-  width: 0.68rem;
-  height: 0.32rem;
-  border: 1.7px solid currentColor;
-  border-radius: 999px;
-  background: var(--editor-toolbar-bg);
-  box-shadow: 0 0 0 2px var(--editor-toolbar-bg);
-  transform: rotate(-48deg);
-  transform-origin: center;
-  z-index: 1;
-}
-
-.note-reference-toolbar-chain::after {
-  content: '';
-  position: absolute;
-  left: -0.41rem;
-  top: -1.7px;
-  width: 0.68rem;
-  height: 0.32rem;
-  border: 1.7px solid currentColor;
-  border-radius: 999px;
-  background: var(--editor-toolbar-bg);
-  box-shadow: 0 0 0 2px var(--editor-toolbar-bg);
-}
-
-.note-copy-toolbar-icon {
-  position: relative;
-  width: 1.34rem;
-  height: 1.34rem;
-  display: block;
-}
-
-.note-copy-toolbar-document {
-  position: absolute;
-  top: 0.08rem;
-  left: 0.1rem;
-  width: 0.9rem;
-  height: 1.1rem;
-  border: 1.6px solid currentColor;
-  border-radius: 0.12rem;
-}
-
-.note-copy-toolbar-document::after {
-  content: '';
-  position: absolute;
-  right: -1.6px;
-  bottom: -1.6px;
-  width: 0.28rem;
-  height: 0.28rem;
-  border-top: 1.6px solid currentColor;
-  border-left: 1.6px solid currentColor;
-  border-radius: 0.06rem 0 0.1rem 0;
-  background: var(--editor-toolbar-bg);
-}
-
-.note-copy-toolbar-chain {
-  position: absolute;
-  top: 0.57rem;
-  right: 0.06rem;
-  width: 0.68rem;
-  height: 0.32rem;
-  border: 1.7px solid currentColor;
-  border-radius: 999px;
-  background: var(--editor-toolbar-bg);
-  box-shadow: 0 0 0 2px var(--editor-toolbar-bg);
-  transform: rotate(-48deg);
-  transform-origin: center;
-  z-index: 1;
-}
-
-.note-copy-toolbar-chain::after {
-  content: '';
-  position: absolute;
-  left: -0.41rem;
-  top: -1.7px;
-  width: 0.68rem;
-  height: 0.32rem;
-  border: 1.7px solid currentColor;
-  border-radius: 999px;
-  background: var(--editor-toolbar-bg);
-  box-shadow: 0 0 0 2px var(--editor-toolbar-bg);
 }
 
 .frontmatter-toolbar-icon {
@@ -626,23 +355,14 @@ body.app-tooltips-disabled .toastui-editor-tooltip {
   transform-origin: center;
 }
 
-.aisles-toolbar-icon {
-  width: 1.42rem;
-  height: 1.32rem;
-  display: block;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.aisles-toolbar-icon-frame,
-.aisles-toolbar-icon-shelf {
-  stroke-width: 2;
-}
-
-.aisles-toolbar-icon-item {
-  stroke-width: 2.25;
+.toastui-editor-defaultUI-toolbar button :where(
+  .toolbar-tool-icon
+),
+.toastui-editor-toolbar button :where(
+  .toolbar-tool-icon
+) {
+  transform: scale(var(--toolbar-button-scale));
+  transform-origin: center;
 }
 
 .toastui-editor-dropdown-toolbar,

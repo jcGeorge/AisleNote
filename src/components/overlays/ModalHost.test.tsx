@@ -48,7 +48,7 @@ function createState(): AppState {
     noteAisleBodies: [{ id: 'aisle-body-1', markdown: '', frontmatterStatus: 'none' }],
     hotkeys: {
       shortcuts: {
-        toggleTabTrash: '',
+        toggleTabsTarget: '',
         openDomains: '',
         openSpaces: '',
         newTab: '',
@@ -83,7 +83,6 @@ function createState(): AppState {
       ],
     },
     ui: {
-      showParentHomeTab: true,
       tableAddTargetMode: 'bottom-right',
       tableDeleteTargetMode: 'bottom-right',
       tabButtonScale: 1,
@@ -187,6 +186,8 @@ function renderFrontmatterModal(modal: ModalState) {
       onLinkInsertModeChange={() => undefined}
       onNoteCopyModeChange={() => undefined}
       onDeduplicateKeepDataChange={() => undefined}
+      onPasteSyncedNoteAsAisle={() => undefined}
+      onOpenSyncedFilter={() => undefined}
       onConfirm={() => undefined}
     />,
   )
@@ -209,6 +210,8 @@ function renderModal(modal: ModalState, state = createState()) {
       onLinkInsertModeChange={() => undefined}
       onNoteCopyModeChange={() => undefined}
       onDeduplicateKeepDataChange={() => undefined}
+      onPasteSyncedNoteAsAisle={() => undefined}
+      onOpenSyncedFilter={() => undefined}
       onConfirm={() => undefined}
     />,
   )
@@ -231,6 +234,8 @@ function renderShortcutMenuSettingsModal(shortcutMenuOperations: NewlineOperatio
       onLinkInsertModeChange={() => undefined}
       onNoteCopyModeChange={() => undefined}
       onDeduplicateKeepDataChange={() => undefined}
+      onPasteSyncedNoteAsAisle={() => undefined}
+      onOpenSyncedFilter={() => undefined}
       onConfirm={() => undefined}
     />,
   )
@@ -257,11 +262,28 @@ describe('sort modal rendering', () => {
       type: 'confirm-synced-note-paste',
       source: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-source', subTabId: null },
       destination: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
+      destinationAisleId: 'aisle-1',
     })
 
     expect(html).toContain('paste synced note?')
     expect(html).toContain('synced aisle')
     expect(html).toContain('paste synced note')
+    expect(html).not.toContain('paste as synced aisle')
+  })
+
+  it('renders synced note paste confirmation with a single-aisle alternative', () => {
+    const html = renderModal({
+      type: 'confirm-synced-note-paste',
+      source: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-source', subTabId: null },
+      destination: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
+      destinationAisleId: 'aisle-1',
+      sourceAisleId: 'source-aisle',
+    })
+
+    expect(html).toContain('paste synced note?')
+    expect(html).toContain('paste synced note')
+    expect(html).toContain('paste as synced aisle')
+    expect(html).toContain('current aisle instead')
   })
 
   it('renders the parent sort title, close control, and sort options', () => {
@@ -427,9 +449,12 @@ describe('link modal rendering', () => {
       noteLabel: 'Tab',
       url: 'https://example.com',
       urlLabel: 'Example',
+      urlInitialFocus: 'label',
     })
 
     expect(html).toContain('placeholder="https://example.com"')
+    expect(html).toContain('aria-label="Link URL"')
+    expect(html).toContain('aria-label="Link label"')
     expect(html).toContain('class="delete-modal-backdrop insert-note-reference-backdrop"')
     expect(html).toContain('insert-note-reference-modal-shell')
     expect(html).toContain('value="https://example.com"')
@@ -834,22 +859,44 @@ describe('de-couple modal rendering', () => {
 })
 
 describe('linked aisle modal rendering', () => {
-  it('renders aisle-body de-couple copy', () => {
-    const html = renderModal({
-      type: 'linked-aisle',
-      reason: 'aisle-body',
-      noteBodyId: 'body-1',
-      aisleId: 'aisle-1',
-      aisleBodyId: 'aisle-body-1',
-      location: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
-    })
+  it('renders aisle-body de-couple controls with aisle slot cards', () => {
+    const state = createState()
+    state.noteBodies = [
+      {
+        id: 'body-1',
+        aisles: [
+          { id: 'aisle-1', aisleBodyId: 'aisle-body-1' },
+          { id: 'aisle-2', aisleBodyId: 'aisle-body-1' },
+        ],
+      },
+    ]
+
+    const html = renderModal(
+      {
+        type: 'linked-aisle',
+        reason: 'aisle-body',
+        noteBodyId: 'body-1',
+        aisleId: 'aisle-1',
+        aisleBodyId: 'aisle-body-1',
+        location: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
+        keepAisleSlotKeys: ['body-1::aisle-1', 'body-1::aisle-2'],
+        keepData: true,
+      },
+      state,
+    )
 
     expect(html).toContain('linked-aisle-modal')
     expect(html).toContain('linked aisle')
-    expect(html).toContain('this aisle shares content with another aisle')
-    expect(html).toMatch(/<button type="button" class="btn btn-sm modal-primary-btn">de-couple aisle<\/button>/)
-    expect(html).not.toContain('decouple-note-modal-shell')
-    expect(html).not.toContain('--decouple-modal-content-width')
+    expect(html).toContain('Select aisles to de-couple.')
+    expect(html).toContain('decouple-note-modal-shell')
+    expect(html).toContain('style="--decouple-modal-content-width:30rem"')
+    expect(html).toContain('aria-label="Synced aisle locations"')
+    expect(html).toContain('aisle 1')
+    expect(html).toContain('aisle 2')
+    expect(html).toContain('synced filter')
+    expect(html).toContain('keep data in de-coupled aisles?')
+    expect(html).toMatch(/<button type="button" class="btn btn-sm modal-primary-btn">apply<\/button>/)
+    expect(html).not.toContain('this aisle shares content with another aisle')
     expect(html).not.toContain('duplicate-note-list')
   })
 
@@ -879,6 +926,7 @@ describe('linked aisle modal rendering', () => {
     expect(html).toContain('style="--decouple-modal-content-width:30rem"')
     expect(html).toContain('aria-label="Domain / Space / Tab / home. Will stay coupled."')
     expect(html).toContain('aria-label="Domain / Space / Second / home. Will stay coupled."')
+    expect(html).toContain('synced filter')
     expect(html).not.toContain('duplicate-note-list')
     expect(html).toContain('keep data in de-coupled notes?')
     expect(html).toMatch(/<button type="button" class="btn btn-sm modal-primary-btn">apply<\/button>/)
@@ -995,7 +1043,7 @@ describe('frontmatter modal rendering', () => {
     expect(html).not.toContain('synced to template')
     expect(html).toContain('>derived</span>')
     expect(html).toContain('>computed</span>')
-    expect(html).toContain('title="template"')
+    expect(html).toContain('data-app-tooltip="template"')
     expect(html).toContain('computed fields that are derived can not be changed here, edit the fm template')
     expect(html).not.toContain('computed fields, once set, can not be changed')
   })

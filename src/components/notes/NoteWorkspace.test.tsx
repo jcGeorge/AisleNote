@@ -191,7 +191,7 @@ describe('NoteWorkspace aisle mounting', () => {
   })
 
   it('renders fallback block indents without exposing the storage marker', () => {
-    const blockIndentAisles: ResolvedNoteAisle[] = [{ id: 'indent', aisleBodyId: 'indent', markdown: `${BLOCK_INDENT_TOKEN}indented` }]
+    const blockIndentAisles: ResolvedNoteAisle[] = [{ id: 'indent', aisleBodyId: 'indent', markdown: `${BLOCK_INDENT_TOKEN.repeat(2)}indented` }]
     const html = renderToStaticMarkup(
       <NoteWorkspace
         noteBodyId="body-1"
@@ -213,6 +213,7 @@ describe('NoteWorkspace aisle mounting', () => {
       />,
     )
 
+    expect(html).toContain('style="--tabs-block-indent-level:2"')
     expect(html).toContain('class="tabs-block-indent"')
     expect(html).toContain('indented')
     expect(html).not.toContain(BLOCK_INDENT_TOKEN)
@@ -281,7 +282,7 @@ describe('NoteWorkspace aisle mounting', () => {
 
     expect(html.match(/note-aisle-link-btn/g) ?? []).toHaveLength(1)
     expect(html).toContain('Open link controls for aisle 2')
-    expect(html).toContain('toastui-editor-toolbar-icons link note-aisle-link-icon')
+    expect(html).toContain('toolbar-tool-icon toolbar-tool-icon-link note-aisle-link-icon')
     expect(html).not.toContain('note-aisle-frontmatter-btn')
   })
 

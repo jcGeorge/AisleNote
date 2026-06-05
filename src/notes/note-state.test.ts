@@ -87,7 +87,7 @@ const createTestState = (): AppState => {
     ],
     hotkeys: {
       shortcuts: {
-        toggleTabTrash: '',
+        toggleTabsTarget: '',
         openDomains: '',
         openSpaces: '',
         newTab: '',
@@ -111,7 +111,6 @@ const createTestState = (): AppState => {
     },
     frontmatter: DEFAULT_FRONTMATTER_SETTINGS,
     ui: {
-      showParentHomeTab: true,
       tableAddTargetMode: 'bottom-right',
       tableDeleteTargetMode: 'bottom-right',
       tabButtonScale: 1,

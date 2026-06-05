@@ -44,3 +44,16 @@ export function shouldDeferAisleCycleForMouseActivation(
 ): boolean {
   return Boolean(pendingActivation && !pendingActivation.settled && pendingActivation.aisleId === currentAisleId)
 }
+
+export function resolveProgrammaticAisleRewriteMarkdown({
+  isProgrammaticRewrite,
+  expectedMarkdown,
+  currentMarkdown,
+}: {
+  isProgrammaticRewrite: boolean
+  expectedMarkdown: string | undefined
+  currentMarkdown: string
+}): string | null {
+  if (!isProgrammaticRewrite) return null
+  return expectedMarkdown ?? currentMarkdown
+}

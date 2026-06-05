@@ -92,6 +92,22 @@ export function buildExternalLinkEditDraft(
   }
 }
 
+export function buildUrlLinkShortcutDraft(
+  appState: AppState,
+  source: NoteLocation,
+  selectedText = '',
+  sourceKind: NoteReferenceSource = 'modal',
+): NoteReferenceDraft {
+  const trimmedSelection = selectedText.trim()
+  const selectedUrl = normalizeExternalWebUrl(trimmedSelection)
+  return {
+    ...buildDefaultNoteReferenceDraft(appState, source, 'url', '', sourceKind),
+    url: selectedUrl ? trimmedSelection : '',
+    urlLabel: selectedUrl ? '' : trimmedSelection,
+    urlInitialFocus: selectedUrl ? 'label' : 'url',
+  }
+}
+
 export function buildInternalNoteLinkEditDraft(
   appState: AppState,
   source: NoteLocation,

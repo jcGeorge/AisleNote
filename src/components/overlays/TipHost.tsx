@@ -17,6 +17,7 @@ export function TipHost({ tips, onDismissTip }: TipHostProps) {
             type="button"
             className="app-tip-dismiss"
             aria-label={`Dismiss ${tip.label} tip`}
+            data-app-tooltip={`Dismiss ${tip.label} tip`}
             onClick={() => onDismissTip(tip.id)}
           >
             ×

@@ -6,7 +6,7 @@ import {
   isEmptyEditorTextBlock,
   shouldDeleteEmptyParagraphAtListBoundary,
 } from './empty-paragraph-list-delete'
-import { isNotePreviewOnlyParagraphText } from './terminal-block-landing'
+import { deleteTerminalBlockBeforeCaret } from './terminal-block-landing'
 import {
   applyAnnotationLineClassToHtmlToken,
   applyAnnotationMarkerToTextHtmlToken,
@@ -23,7 +23,11 @@ import {
   getBulletListMarkdownDelimiter,
   getBulletListMarkerFromMarkdownChar,
 } from './list-markers'
-import { BLOCK_INDENT_TOKEN, isHorizontalRuleMarkerLine } from '../markdown/markdown-utils'
+import {
+  countBlockIndentLevels,
+  getBlockIndentPrefixLength,
+  isHorizontalRuleMarkerLine,
+} from '../markdown/markdown-utils'
 import { extractMarkdownTagRanges, TAG_TOKEN_CLASS_NAME } from '../tags/tags.js'
 
 type ToastHtmlOpenTagToken = {
@@ -116,6 +120,7 @@ export type BlockIndentDecorationRange = {
   nodeTo: number
   tokenFrom: number
   tokenTo: number
+  level: number
 }
 
 export function getBlockIndentDecorationRanges(doc: any): BlockIndentDecorationRange[] {
@@ -123,14 +128,18 @@ export function getBlockIndentDecorationRanges(doc: any): BlockIndentDecorationR
   if (!doc || typeof doc.descendants !== 'function') return ranges
 
   doc.descendants((node: any, position: number) => {
-    if (!node?.isTextblock || !String(node.textContent ?? '').startsWith(BLOCK_INDENT_TOKEN)) return true
-    const tokenRange = getTextOffsetDecorationRange(node, position, 0, BLOCK_INDENT_TOKEN.length)
+    if (!node?.isTextblock) return true
+    const text = String(node.textContent ?? '')
+    const prefixLength = getBlockIndentPrefixLength(text)
+    if (prefixLength <= 0) return true
+    const tokenRange = getTextOffsetDecorationRange(node, position, 0, prefixLength)
     if (!tokenRange) return true
     ranges.push({
       nodeFrom: position,
       nodeTo: position + node.nodeSize,
       tokenFrom: tokenRange.from,
       tokenTo: tokenRange.to,
+      level: countBlockIndentLevels(text),
     })
     return true
   })
@@ -171,7 +180,10 @@ export function blockIndentPlugin(context: {
                   Decoration.node(
                     range.nodeFrom,
                     range.nodeTo,
-                    { class: BLOCK_INDENT_CLASS_NAME },
+                    {
+                      class: BLOCK_INDENT_CLASS_NAME,
+                      style: `--tabs-block-indent-level: ${range.level};`,
+                    },
                     { key: `block-indent-node-${range.nodeFrom}-${index}` },
                   ),
                 )
@@ -290,7 +302,7 @@ export function tagAppearancePlugin(context: {
                       ? `${TAG_TOKEN_CLASS_NAME} ${TAG_JUMP_TARGET_CLASS_NAME}`
                       : TAG_TOKEN_CLASS_NAME,
                     'data-tabs-tag': range.tag,
-                    title: 'filter by tag',
+                    'data-app-tooltip': 'filter by tag',
                   },
                   { key: `tag-token-${index}-${range.from}-${range.to}` },
                 ),
@@ -1035,50 +1047,6 @@ function getCollapsedTopLevelBlockContext(state: any) {
   }
 }
 
-function isPreviewOnlyParagraphNode(node: any) {
-  return node?.type?.name === 'paragraph' && isNotePreviewOnlyParagraphText(node.textContent ?? '')
-}
-
-function isEmptyParagraphNode(node: any) {
-  return node?.type?.name === 'paragraph' && isEmptyEditorTextBlock(node)
-}
-
-function getPreviousPreviewInBlankRun(context: ReturnType<typeof getCollapsedTopLevelBlockContext>) {
-  if (!context) return null
-
-  let siblingIndex = context.blockIndex - 1
-  let siblingFrom = context.from
-
-  while (siblingIndex >= 0) {
-    const sibling = context.parentNode.child(siblingIndex)
-    siblingFrom -= sibling.nodeSize
-    if (isPreviewOnlyParagraphNode(sibling)) {
-      return { node: sibling, from: siblingFrom, to: siblingFrom + sibling.nodeSize }
-    }
-    if (!isEmptyParagraphNode(sibling)) return null
-    siblingIndex -= 1
-  }
-
-  return null
-}
-
-export function deletePreviewBeforeBlankRun(state: any, dispatch?: (tr: unknown) => void): boolean {
-  const context = getCollapsedTopLevelBlockContext(state)
-  if (!context) return false
-  const { $from, currentNode } = context
-  if (currentNode.type.name !== 'paragraph') return false
-  if (!isEmptyEditorTextBlock(currentNode)) return false
-  if ($from.parentOffset !== 0 && $from.parentOffset !== currentNode.content.size) return false
-  const previousPreview = getPreviousPreviewInBlankRun(context)
-  if (!previousPreview) return false
-
-  let nextTr = state.tr.delete(previousPreview.from, previousPreview.to)
-  const caretPos = Math.min(previousPreview.from + 1, nextTr.doc.content.size)
-  nextTr = nextTr.setSelection(TextSelection.create(nextTr.doc, caretPos, caretPos)).scrollIntoView()
-  dispatch?.(nextTr)
-  return true
-}
-
 export function applyParagraphSpaceShortcut(state: any, dispatch?: (tr: unknown) => void): boolean {
   const { selection, schema } = state
   if (!selection?.empty) return false
@@ -1265,10 +1233,11 @@ export function headingSpaceShortcutPlugin(context: {
         keymap({
           Backspace: (state: any, dispatch?: (tr: unknown) => void) =>
             deleteEmptyListItemBackward(state, dispatch) ||
+            deleteTerminalBlockBeforeCaret(state, 'backward', dispatch) ||
             handleBackspaceFromHeadingAfterEmptyParagraph(state, dispatch) ||
             handleBackspaceFromEmptyParagraphAfterList(state, dispatch),
           Delete: (state: any, dispatch?: (tr: unknown) => void) =>
-            deletePreviewBeforeBlankRun(state, dispatch) ||
+            deleteTerminalBlockBeforeCaret(state, 'forward', dispatch) ||
             handleDeleteFromEmptyParagraphBeforeHeading(state, dispatch) ||
             handleDeleteFromEmptyParagraphBeforeList(state, dispatch),
           Space: applyParagraphSpaceShortcut,
@@ -1443,36 +1412,77 @@ export const EDITOR_TOOLBAR_ITEMS: string[][] = [
   ['code', 'codeblock'],
 ]
 
-function bindToolbarTooltip(root: HTMLElement, toolbar: HTMLElement, button: HTMLButtonElement, label: string) {
-  const tooltip = root.querySelector('.toastui-editor-tooltip')
-  const tooltipText = tooltip?.querySelector('.text')
-  if (!(tooltip instanceof HTMLElement) || !(tooltipText instanceof HTMLElement)) return
-
-  const showTooltip = () => {
-    const toolbarRect = toolbar.getBoundingClientRect()
-    const buttonRect = button.getBoundingClientRect()
-    tooltip.style.display = 'block'
-    tooltip.style.left = `${buttonRect.left - toolbarRect.left + 6}px`
-    tooltip.style.top = `${buttonRect.top - toolbarRect.top + button.offsetHeight + 6}px`
-    tooltipText.textContent = label
-  }
-
-  const hideTooltip = () => {
-    tooltip.style.display = 'none'
-  }
-
-  button.addEventListener('mouseover', showTooltip)
-  button.addEventListener('mouseout', hideTooltip)
-  button.addEventListener('focus', showTooltip)
-  button.addEventListener('blur', hideTooltip)
+export const TOAST_UI_TOOLBAR_TOOLTIP_LABELS: Record<string, string> = {
+  heading: 'Headings',
+  bold: 'Bold',
+  italic: 'Italic',
+  strike: 'Strikethrough',
+  hrline: 'Horizontal rule',
+  quote: 'Block quote',
+  'bullet-list': 'Bullet list',
+  'ordered-list': 'Ordered list',
+  'task-list': 'Task',
+  indent: 'Block indent',
+  outdent: 'Remove block indent',
+  table: 'Insert table',
+  image: 'Insert image',
+  link: 'Insert link',
+  code: 'Inline code',
+  codeblock: 'Code block',
+  more: 'More',
 }
 
-function createToolbarTextButton(className: string, label: string, text: string, onClick: () => void) {
+export function getToastUiToolbarTooltipLabelFromClassName(className: string): string | null {
+  const classNames = className.split(/\s+/).filter(Boolean)
+  for (const toolbarClassName of classNames) {
+    const label = TOAST_UI_TOOLBAR_TOOLTIP_LABELS[toolbarClassName]
+    if (label) return label
+  }
+  return null
+}
+
+function getToolbarButtonAppTooltip(button: HTMLButtonElement): string {
+  return (
+    button.dataset.appTooltip?.trim() ||
+    button.getAttribute('aria-label')?.trim() ||
+    button.getAttribute('title')?.trim() ||
+    getToastUiToolbarTooltipLabelFromClassName(button.className) ||
+    button.textContent?.trim() ||
+    ''
+  )
+}
+
+export function installToolbarAppTooltips(root: HTMLElement): () => void {
+  const decorateToolbarButtons = () => {
+    root.querySelectorAll<HTMLButtonElement>('.toastui-editor-defaultUI-toolbar button, .toastui-editor-toolbar button')
+      .forEach((button) => {
+        const tooltip = getToolbarButtonAppTooltip(button)
+        if (tooltip) button.setAttribute('data-app-tooltip', tooltip)
+        if (button.hasAttribute('title')) button.removeAttribute('title')
+      })
+  }
+
+  decorateToolbarButtons()
+  if (typeof MutationObserver === 'undefined') return () => undefined
+
+  const observer = new MutationObserver(decorateToolbarButtons)
+  observer.observe(root, { childList: true, subtree: true })
+  return () => observer.disconnect()
+}
+
+function createToolbarTextButton(
+  className: string,
+  label: string,
+  text: string,
+  onClick: () => void,
+  tooltipLabel = label,
+) {
   const button = document.createElement('button')
   button.type = 'button'
   button.className = className
   button.textContent = text
   button.setAttribute('aria-label', label)
+  button.setAttribute('data-app-tooltip', tooltipLabel)
   button.addEventListener('click', (event) => {
     event.preventDefault()
     event.stopPropagation()
@@ -1494,11 +1504,11 @@ export function installClearToolbarButton(root: HTMLElement, onClear: () => void
   button.className = 'clear-note-toolbar-btn'
   button.textContent = '⌫'
   button.setAttribute('aria-label', 'clear contents')
+  button.setAttribute('data-app-tooltip', 'Clear contents')
   button.addEventListener('click', (event) => {
     event.preventDefault()
     onClear()
   })
-  bindToolbarTooltip(root, toolbar, button, 'Clear contents')
 
   group.appendChild(button)
   toolbar.appendChild(group)
@@ -1517,8 +1527,7 @@ export function installNoteToolsToolbarButtons(
   const group = document.createElement('div')
   group.className = 'toastui-editor-toolbar-group note-tools-toolbar-group'
 
-  const aisleButton = createToolbarTextButton('aisles-toolbar-btn', 'aisles', 'A', options.onAisles)
-  bindToolbarTooltip(root, toolbar, aisleButton, 'Aisles')
+  const aisleButton = createToolbarTextButton('aisles-toolbar-btn', 'aisles', 'A', options.onAisles, 'Aisles')
 
   group.appendChild(aisleButton)
   toolbar.appendChild(group)

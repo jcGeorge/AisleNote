@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
   getActiveAisleRefSyncValue,
+  resolveProgrammaticAisleRewriteMarkdown,
   shouldClearPendingCursorRestoreForAisleActivation,
   shouldDeferAisleCycleForMouseActivation,
   shouldFocusAislePointerActivation,
   shouldUseFastSameAisleActivation,
 } from './aisle-activation'
+import { EDITOR_BLANK_LINE_PLACEHOLDER } from '../markdown/markdown-utils'
 
 describe('aisle editor activation', () => {
   it('uses the fast path only when the current mounted aisle is already active', () => {
@@ -92,5 +94,42 @@ describe('aisle editor activation', () => {
     expect(shouldDeferAisleCycleForMouseActivation({ aisleId: 'aisle-7', settled: true }, 'aisle-7')).toBe(false)
     expect(shouldDeferAisleCycleForMouseActivation({ aisleId: 'aisle-7', settled: false }, 'aisle-8')).toBe(false)
     expect(shouldDeferAisleCycleForMouseActivation(null, 'aisle-7')).toBe(false)
+  })
+})
+
+describe('programmatic aisle editor rewrites', () => {
+  it('commits cached markdown instead of transient editor markdown', () => {
+    const expectedMarkdown = [
+      'Intro',
+      '',
+      EDITOR_BLANK_LINE_PLACEHOLDER,
+      '',
+      '- [ ] icon',
+      '',
+      EDITOR_BLANK_LINE_PLACEHOLDER,
+      '',
+      'Outro',
+    ].join('\n')
+    const transientMarkdown = [
+      'Intro',
+      '',
+      '- [ ] icon',
+      '',
+      'Outro',
+    ].join('\n')
+
+    expect(resolveProgrammaticAisleRewriteMarkdown({
+      isProgrammaticRewrite: true,
+      expectedMarkdown,
+      currentMarkdown: transientMarkdown,
+    })).toBe(expectedMarkdown)
+  })
+
+  it('ignores normal editor changes', () => {
+    expect(resolveProgrammaticAisleRewriteMarkdown({
+      isProgrammaticRewrite: false,
+      expectedMarkdown: 'expected',
+      currentMarkdown: 'current',
+    })).toBeNull()
   })
 })

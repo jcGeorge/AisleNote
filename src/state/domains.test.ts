@@ -59,7 +59,7 @@ function makeState(): AppState {
     spaces: [spaceA, spaceB],
     hotkeys: {
       shortcuts: {
-        toggleTabTrash: '',
+        toggleTabsTarget: '',
         openDomains: '',
         openSpaces: '',
         newTab: '',
@@ -83,7 +83,6 @@ function makeState(): AppState {
     },
     frontmatter: DEFAULT_FRONTMATTER_SETTINGS,
     ui: {
-      showParentHomeTab: true,
       tableAddTargetMode: 'bottom-right',
       tableDeleteTargetMode: 'bottom-right',
       tabButtonScale: 1,

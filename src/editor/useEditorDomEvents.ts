@@ -21,7 +21,6 @@ import {
 } from './editor-input-intents'
 import {
   applyParagraphSpaceShortcut,
-  deletePreviewBeforeBlankRun,
   getMultilineSelectionShortcutDirection,
 } from './editor-setup'
 import { findImageElementForSameLineBlankClick } from './image-node-selection'
@@ -33,9 +32,11 @@ import {
 } from './multiline-edit'
 import { isInsideReadonlyNotePreview } from './note-preview-dom'
 import {
+  deleteTerminalBlockBeforeCaret,
   handleTerminalBlankAreaClick,
   isInsideTerminalBlockLandingZone,
   moveTerminalBlockBoundaryCaretByArrow,
+  type TerminalBlockDeleteDirection,
   type TerminalBlockArrowDirection,
 } from './terminal-block-landing'
 import {
@@ -127,6 +128,7 @@ type UseEditorDomEventsOptions = {
   shouldRunStructuralHistoryBeforeEditorHistory: (direction: WysiwygHistoryDirection) => boolean
   onRunNewlineOperation: (operation: NewlineOperationId) => boolean
   onOpenShortcutMenu: () => void
+  onOpenUrlLinkShortcut: () => void
   tryExpandMultilineSelection: (direction: 'up' | 'down') => boolean
   tryApplyMultiLineEditInput: (input: MultiLineEditInput) => boolean
   tryApplyMultiLineListMarkerShortcut: () => boolean
@@ -173,6 +175,14 @@ function isLikelyUrl(value: string) {
   return getPastedUrlLink(value) !== null
 }
 
+export function isUrlLinkShortcut(event: KeyboardEvent, isMacPlatform: boolean): boolean {
+  const isK = event.code === 'KeyK' || event.key?.toLowerCase?.() === 'k'
+  if (!isK || event.altKey || event.shiftKey) return false
+  return isMacPlatform
+    ? Boolean(event.metaKey && !event.ctrlKey)
+    : Boolean(event.ctrlKey && !event.metaKey)
+}
+
 export function isEditorToolbarInteractionTarget(target: Element | null): boolean {
   return Boolean(
     target?.closest(
@@ -181,7 +191,7 @@ export function isEditorToolbarInteractionTarget(target: Element | null): boolea
         '.note-toolbar-heading-popover',
         '.toastui-editor-defaultUI-toolbar',
         '.toastui-editor-toolbar',
-        '.toastui-editor-toolbar-icons',
+        '.toolbar-tool-icon',
         '.toastui-editor-tooltip',
         '.aisle-toc-panel',
         '.aisle-toc-panel-layer',
@@ -229,6 +239,12 @@ export function getMediaLinkDeleteDirectionForKeyEvent(event: KeyboardEvent): Me
 export function getMediaLinkDeleteDirectionForBeforeInput(event: InputEvent): MediaLinkDeleteDirection | null {
   if (event.inputType === 'deleteContentBackward') return 'backward'
   if (event.inputType === 'deleteContentForward') return 'forward'
+  return null
+}
+
+export function getTerminalBlockDeleteDirectionForBeforeInput(inputType: string): TerminalBlockDeleteDirection | null {
+  if (inputType === 'deleteContentBackward') return 'backward'
+  if (inputType === 'deleteContentForward') return 'forward'
   return null
 }
 
@@ -444,7 +460,7 @@ export function runEditorHistoryEvent({
   return { handled: command.handled, result: command.historyResult ?? 'unavailable' }
 }
 
-export function applyPreviewForwardDeleteBeforeInput({
+export function applyTerminalBlockDeleteBeforeInput({
   inputType,
   hasMultiLineEdit,
   view,
@@ -453,9 +469,10 @@ export function applyPreviewForwardDeleteBeforeInput({
   hasMultiLineEdit: boolean
   view: any
 }): boolean {
-  if (hasMultiLineEdit || inputType !== 'deleteContentForward') return false
+  const direction = getTerminalBlockDeleteDirectionForBeforeInput(inputType)
+  if (hasMultiLineEdit || !direction) return false
   if (!view?.state || typeof view.dispatch !== 'function') return false
-  return deletePreviewBeforeBlankRun(view.state, (transaction) => view.dispatch(transaction))
+  return deleteTerminalBlockBeforeCaret(view.state, direction, (transaction) => view.dispatch(transaction))
 }
 
 export function useEditorDomEvents({
@@ -505,6 +522,7 @@ export function useEditorDomEvents({
   shouldRunStructuralHistoryBeforeEditorHistory,
   onRunNewlineOperation,
   onOpenShortcutMenu,
+  onOpenUrlLinkShortcut,
   tryExpandMultilineSelection,
   tryApplyMultiLineEditInput,
   tryApplyMultiLineListMarkerShortcut,
@@ -1103,6 +1121,17 @@ export function useEditorDomEvents({
       const isTextInputTarget = Boolean(targetElement?.closest('input, textarea, select, .link-prompt'))
       const currentEditor = editorRef.current
       const view = getWysiwygView(currentEditor)
+      if (
+        !isTextInputTarget &&
+        currentEditor &&
+        isUrlLinkShortcut(keyboardEvent, isMacPlatform) &&
+        isActiveWysiwygEditorContentTarget(targetElement, view)
+      ) {
+        keyboardEvent.preventDefault()
+        keyboardEvent.stopPropagation()
+        onOpenUrlLinkShortcut()
+        return
+      }
       const pageMovement =
         !keyboardEvent.metaKey && !keyboardEvent.ctrlKey && !keyboardEvent.altKey
           ? getEditorPageMovementForEvent(keyboardEvent)
@@ -1340,7 +1369,7 @@ export function useEditorDomEvents({
       }
       if (
         isActiveWysiwygEditorContentTarget(inputTarget, view) &&
-        applyPreviewForwardDeleteBeforeInput({
+        applyTerminalBlockDeleteBeforeInput({
           inputType: inputEvent.inputType,
           hasMultiLineEdit: Boolean(multiLineEditRef.current),
           view,

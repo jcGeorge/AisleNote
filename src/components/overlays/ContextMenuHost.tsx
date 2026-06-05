@@ -61,7 +61,7 @@ type ContextMenuHostProps = {
   onEditorClipboard: (action: EditorClipboardAction, destination?: EditorPasteDestination) => void
   onEditorCommand: (command: string, payload?: Record<string, unknown>) => void
   onEditorInsertLink: (mode: LinkInsertMode | null) => void
-  onEditorInsertAisle: () => void
+  onEditorInsertAisle: (side?: EditorAisleInsertSide) => void
   onEditorInsertAttachment: () => void
   onEditorFindReplace: () => void
   onEditorOpenContextLink: () => void
@@ -74,6 +74,7 @@ type ContextMenuHostProps = {
 
 export type EditorClipboardAction = 'cut' | 'copy' | 'paste' | 'pastePlainText'
 export type EditorPasteDestination = 'here' | 'new-aisle-left' | 'new-aisle-right'
+export type EditorAisleInsertSide = 'left' | 'right'
 
 type CopyAsMenuItemState = {
   available: boolean
@@ -381,7 +382,10 @@ export function ContextMenuHost({
             <MenuButton onClick={() => onEditorInsertLink('note')}>note link</MenuButton>
             <MenuButton onClick={() => onEditorInsertLink('url')}>url link</MenuButton>
             <MenuSeparator />
-            <MenuButton onClick={onEditorInsertAisle}>aisle</MenuButton>
+            <SubMenu label="aisle" onClick={() => onEditorInsertAisle('right')}>
+              <MenuButton onClick={() => onEditorInsertAisle('left')}>to the left</MenuButton>
+              <MenuButton onClick={() => onEditorInsertAisle('right')}>to the right</MenuButton>
+            </SubMenu>
             <MenuSeparator />
             <MenuButton onClick={onEditorInsertAttachment}>attachment</MenuButton>
             <MenuButton onClick={() => onEditorCommand('addTable', { rowCount: 2, columnCount: 2 })}>table</MenuButton>

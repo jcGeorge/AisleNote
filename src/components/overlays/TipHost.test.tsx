@@ -21,7 +21,7 @@ describe('TipHost', () => {
     expect(html).toContain('app-tip-layer')
     expect(html).toContain('app-tip-card')
     expect(html).toContain('Dismiss task undo tip')
-    expect(html).toContain('Dismiss delete subtab shortcut tip')
+    expect(html).toContain('Dismiss delete active aisle shortcut tip')
     expect(html).toContain('Click &amp; hold')
     expect(html).not.toContain('tab creation')
     expect(html).not.toContain('press Tab')

@@ -48,10 +48,10 @@ describe('markdown preview tag appearance', () => {
       '- item #nested/tag',
     ].join('\n'))
 
-    expect(html).toContain('<span class="tabs-tag-token" data-tabs-tag="Tag-3" title="filter by tag">#Tag-3</span>')
-    expect(html).toContain('<span class="tabs-tag-token" data-tabs-tag="asdf" title="filter by tag">#asdf</span>')
+    expect(html).toContain('<span class="tabs-tag-token" data-tabs-tag="Tag-3" data-app-tooltip="filter by tag">#Tag-3</span>')
+    expect(html).toContain('<span class="tabs-tag-token" data-tabs-tag="asdf" data-app-tooltip="filter by tag">#asdf</span>')
     expect(html).toContain(
-      '<span class="tabs-tag-token" data-tabs-tag="nested/tag" title="filter by tag">#nested/tag</span>',
+      '<span class="tabs-tag-token" data-tabs-tag="nested/tag" data-app-tooltip="filter by tag">#nested/tag</span>',
     )
   })
 
@@ -64,7 +64,7 @@ describe('markdown preview tag appearance', () => {
       '```',
     ].join('\n'))
 
-    expect(html).toContain('<span class="tabs-tag-token" data-tabs-tag="Tag" title="filter by tag">#Tag</span>')
+    expect(html).toContain('<span class="tabs-tag-token" data-tabs-tag="Tag" data-app-tooltip="filter by tag">#Tag</span>')
     expect(html).toContain('<code>#Inline</code>')
     expect(html).toContain('<code>#Fenced')
     expect(html).not.toContain('<span class="tabs-tag-token">#Inline</span>')

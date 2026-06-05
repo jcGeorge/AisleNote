@@ -597,7 +597,7 @@
   position: relative;
   z-index: 18;
   flex: 0 0 auto;
-  min-height: 2rem;
+  min-height: var(--editor-toolbar-min-height);
   border-bottom: 1px solid var(--app-border);
   background: var(--editor-toolbar-bg);
   padding: 0.125rem 0.25rem;
@@ -623,7 +623,7 @@
   flex: 0 0 var(--editor-toolbar-spacer-width);
   width: var(--editor-toolbar-spacer-width);
   min-width: var(--editor-toolbar-spacer-width);
-  height: 26px;
+  height: var(--editor-toolbar-button-size);
   pointer-events: none;
 }
 
@@ -799,6 +799,43 @@
   color: var(--parent-rail-selected-text);
 }
 
+.note-aisle-action-wrap {
+  position: relative;
+  display: inline-flex;
+  pointer-events: auto;
+}
+
+.note-aisle-action-menu {
+  position: absolute;
+  top: calc(100% + 0.3rem);
+  right: 0;
+  z-index: 38;
+  min-width: 8.5rem;
+  padding: 0.3rem;
+  border: 1px solid var(--editor-popup-input-border);
+  border-radius: var(--rail-control-radius, 0.42rem);
+  background: var(--editor-popup-bg);
+  box-shadow: 0 0.35rem 0.85rem color-mix(in srgb, var(--app-bg) 36%, transparent);
+}
+
+.note-aisle-action-menu-item {
+  width: 100%;
+  padding: 0.32rem 0.46rem;
+  border: 0;
+  border-radius: calc(var(--rail-control-radius, 0.42rem) - 0.12rem);
+  background: transparent;
+  color: var(--editor-text);
+  font-size: calc(0.82rem * var(--app-text-scale, 1));
+  line-height: 1.2;
+  text-align: left;
+}
+
+.note-aisle-action-menu-item:hover,
+.note-aisle-action-menu-item:focus-visible {
+  background: color-mix(in srgb, var(--editor-popup-input-focus-border) 18%, transparent);
+  color: var(--editor-text);
+}
+
 .note-scratchpad-aisle-controls {
   position: absolute;
   right: 0.9rem;
@@ -881,12 +918,10 @@
 }
 
 .note-aisle-link-icon {
-  display: inline-block;
-  width: 24px !important;
-  height: 24px !important;
+  display: block;
+  width: 1.25rem;
+  height: 1.25rem;
   margin: 0 !important;
-  filter: brightness(0) invert(1) !important;
-  transform: none;
 }
 
 .aisle-toc-panel-layer {

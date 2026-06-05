@@ -8,9 +8,9 @@ type UseGlobalHotkeysParams = {
   primeTabs: Tab[]
   arrangeMode: ArrangeModeState
   hotkeys: AppState['hotkeys']
-  deleteSubtabShortcutEnabled: boolean
+  deleteActiveAisleShortcutEnabled: boolean
   scratchpadActive?: boolean
-  scratchpadDeleteAisleShortcutEnabled?: boolean
+  shortcutsSuspended?: boolean
   isMacPlatform: boolean
   editingShortcut: ShortcutId | null
   setEditingShortcut: Dispatch<SetStateAction<ShortcutId | null>>
@@ -19,16 +19,13 @@ type UseGlobalHotkeysParams = {
   openSettings: () => void
   toggleSpaceRail: () => void
   toggleDomainRail: () => void
-  toggleTrashView: () => void
-  returnToLastTabLikeView: () => void
+  toggleTabsTarget: () => void
   navigateHistoryBy: (delta: number) => void
   showTip: (tipId: TipId) => void
-  warnHomeSubtabDelete: () => void
-  warnScratchpadDeleteShortcutDisabled?: () => void
   addTab: () => void
   addSubTab: () => void
   addScratchpadAisle?: () => void
-  deleteFocusedSubTab: () => void
+  deleteActiveAisle: () => void
   deleteScratchpadAisle?: () => void
   cycleAisle?: (direction: -1 | 1) => void
   formatStrikethrough: () => void
@@ -196,9 +193,14 @@ export function getCapturedRailVisibilityShortcutTarget({
   return getRailVisibilityShortcutTarget(event, hotkeys, isMacPlatform)
 }
 
-export type DeleteFocusedSubtabShortcutIntent = 'show-tip' | 'delete-subtab' | 'warn-home'
+export type DeleteActiveAisleShortcutIntent = 'show-tip' | 'delete-active-aisle'
+export type DeleteActiveAisleShortcutCaptureResult =
+  | 'ignored'
+  | 'show-tip'
+  | 'delete-active-aisle'
+  | 'delete-scratchpad-aisle'
 
-export function isDeleteFocusedSubtabShortcut(event: KeyboardEvent, isMacPlatform: boolean): boolean {
+export function isDeleteActiveAisleShortcut(event: KeyboardEvent, isMacPlatform: boolean): boolean {
   const isW = event.code === 'KeyW' || event.key?.toLowerCase?.() === 'w'
   if (!isW || event.altKey || event.shiftKey) return false
   return isMacPlatform
@@ -219,25 +221,64 @@ export function isSettingsShortcut(event: KeyboardEvent, isMacPlatform: boolean)
   return usesPlatformPrimaryModifier(event, isMacPlatform)
 }
 
-export function getDeleteFocusedSubtabShortcutIntent({
+export function getDeleteActiveAisleShortcutIntent({
   event,
   isMacPlatform,
   viewMode,
   arrangeActive,
   enabled,
-  activeSubTabId,
 }: {
   event: KeyboardEvent
   isMacPlatform: boolean
   viewMode: ViewMode
   arrangeActive: boolean
   enabled: boolean
-  activeSubTabId: string | null
-}): DeleteFocusedSubtabShortcutIntent | null {
+}): DeleteActiveAisleShortcutIntent | null {
   if (viewMode !== 'main' || arrangeActive) return null
-  if (!isDeleteFocusedSubtabShortcut(event, isMacPlatform)) return null
+  if (!isDeleteActiveAisleShortcut(event, isMacPlatform)) return null
   if (!enabled) return 'show-tip'
-  return activeSubTabId ? 'delete-subtab' : 'warn-home'
+  return 'delete-active-aisle'
+}
+
+export function handleDeleteActiveAisleShortcutCapture({
+  event,
+  isMacPlatform,
+  viewMode,
+  arrangeActive,
+  deleteActiveAisleShortcutEnabled,
+  scratchpadActive,
+  actions,
+}: {
+  event: KeyboardEvent
+  isMacPlatform: boolean
+  viewMode: ViewMode
+  arrangeActive: boolean
+  deleteActiveAisleShortcutEnabled: boolean
+  scratchpadActive: boolean
+  actions: {
+    showTip: (tipId: TipId) => void
+    deleteActiveAisle: () => void
+    deleteScratchpadAisle: () => void
+  }
+}): DeleteActiveAisleShortcutCaptureResult {
+  if (viewMode !== 'main' || arrangeActive) return 'ignored'
+  if (!isDeleteActiveAisleShortcut(event, isMacPlatform)) return 'ignored'
+
+  event.preventDefault()
+  event.stopPropagation()
+
+  if (!deleteActiveAisleShortcutEnabled) {
+    actions.showTip('delete-active-aisle-shortcut')
+    return 'show-tip'
+  }
+
+  if (scratchpadActive) {
+    actions.deleteScratchpadAisle()
+    return 'delete-scratchpad-aisle'
+  }
+
+  actions.deleteActiveAisle()
+  return 'delete-active-aisle'
 }
 
 export function useGlobalHotkeys({
@@ -246,9 +287,9 @@ export function useGlobalHotkeys({
   primeTabs,
   arrangeMode,
   hotkeys,
-  deleteSubtabShortcutEnabled,
+  deleteActiveAisleShortcutEnabled,
   scratchpadActive = false,
-  scratchpadDeleteAisleShortcutEnabled = false,
+  shortcutsSuspended = false,
   isMacPlatform,
   editingShortcut,
   setEditingShortcut,
@@ -257,16 +298,13 @@ export function useGlobalHotkeys({
   openSettings,
   toggleSpaceRail,
   toggleDomainRail,
-  toggleTrashView,
-  returnToLastTabLikeView,
+  toggleTabsTarget,
   navigateHistoryBy,
   showTip,
-  warnHomeSubtabDelete,
-  warnScratchpadDeleteShortcutDisabled = () => undefined,
   addTab,
   addSubTab,
   addScratchpadAisle = () => undefined,
-  deleteFocusedSubTab,
+  deleteActiveAisle,
   deleteScratchpadAisle = () => undefined,
   cycleAisle = () => undefined,
   formatStrikethrough,
@@ -275,6 +313,8 @@ export function useGlobalHotkeys({
 }: UseGlobalHotkeysParams) {
   const aisleBracketCycleGuardRef = useRef(createAisleBracketCycleGuard())
   const normalizedHotkeys = useMemo(() => normalizeHotkeySettings(hotkeys), [hotkeys])
+  const scratchpadActiveRef = useRef(scratchpadActive)
+  const shortcutsSuspendedRef = useRef(shortcutsSuspended)
   const actionsRef = useRef({
     setEditingShortcut,
     updateShortcutSetting,
@@ -282,16 +322,13 @@ export function useGlobalHotkeys({
     openSettings,
     toggleSpaceRail,
     toggleDomainRail,
-    toggleTrashView,
-    returnToLastTabLikeView,
+    toggleTabsTarget,
     navigateHistoryBy,
     showTip,
-    warnHomeSubtabDelete,
-    warnScratchpadDeleteShortcutDisabled,
     addTab,
     addSubTab,
     addScratchpadAisle,
-    deleteFocusedSubTab,
+    deleteActiveAisle,
     deleteScratchpadAisle,
     cycleAisle,
     formatStrikethrough,
@@ -306,25 +343,25 @@ export function useGlobalHotkeys({
     openSettings,
     toggleSpaceRail,
     toggleDomainRail,
-    toggleTrashView,
-    returnToLastTabLikeView,
+    toggleTabsTarget,
     navigateHistoryBy,
     showTip,
-    warnHomeSubtabDelete,
-    warnScratchpadDeleteShortcutDisabled,
     addTab,
     addSubTab,
     addScratchpadAisle,
-    deleteFocusedSubTab,
+    deleteActiveAisle,
     deleteScratchpadAisle,
     cycleAisle,
     formatStrikethrough,
     selectTab,
     selectSubTab,
   }
+  scratchpadActiveRef.current = scratchpadActive
+  shortcutsSuspendedRef.current = shortcutsSuspended
 
   useEffect(() => {
     const handleCapturedKeydown = (event: KeyboardEvent) => {
+      if (shortcutsSuspendedRef.current) return
       const railVisibilityShortcutTarget = getCapturedRailVisibilityShortcutTarget({
         event,
         hotkeys: normalizedHotkeys,
@@ -332,19 +369,36 @@ export function useGlobalHotkeys({
         viewMode,
         editingShortcut,
       })
-      if (!railVisibilityShortcutTarget) return
-
-      event.preventDefault()
-      event.stopPropagation()
-      if (event.repeat) return
-      if (railVisibilityShortcutTarget === 'space') {
-        actionsRef.current.toggleSpaceRail()
+      if (railVisibilityShortcutTarget) {
+        event.preventDefault()
+        event.stopPropagation()
+        if (event.repeat) return
+        if (railVisibilityShortcutTarget === 'space') {
+          actionsRef.current.toggleSpaceRail()
+          return
+        }
+        actionsRef.current.toggleDomainRail()
         return
       }
-      actionsRef.current.toggleDomainRail()
+
+      const deleteFocusedShortcutResult = handleDeleteActiveAisleShortcutCapture({
+        event,
+        isMacPlatform,
+        viewMode,
+        arrangeActive: arrangeMode.active,
+        deleteActiveAisleShortcutEnabled,
+        scratchpadActive: scratchpadActiveRef.current,
+        actions: {
+          showTip: actionsRef.current.showTip,
+          deleteActiveAisle: actionsRef.current.deleteActiveAisle,
+          deleteScratchpadAisle: actionsRef.current.deleteScratchpadAisle,
+        },
+      })
+      if (deleteFocusedShortcutResult !== 'ignored') return
     }
 
     const handleKeydown = (event: KeyboardEvent) => {
+      if (shortcutsSuspendedRef.current) return
       const actions = actionsRef.current
 
       if (viewMode === 'settings' && editingShortcut) {
@@ -395,14 +449,10 @@ export function useGlobalHotkeys({
         return
       }
 
-      const isTabTrashShortcut = eventMatchesShortcut(event, normalizedHotkeys.shortcuts.toggleTabTrash, isMacPlatform)
-      if (isTabTrashShortcut) {
+      const isToggleTabsTargetShortcut = eventMatchesShortcut(event, normalizedHotkeys.shortcuts.toggleTabsTarget, isMacPlatform)
+      if (isToggleTabsTargetShortcut) {
         event.preventDefault()
-        if (viewMode === 'main' || viewMode === 'trash') {
-          actions.toggleTrashView()
-          return
-        }
-        actions.returnToLastTabLikeView()
+        actions.toggleTabsTarget()
         return
       }
 
@@ -461,16 +511,7 @@ export function useGlobalHotkeys({
         return
       }
 
-      if (scratchpadActive) {
-        if (isDeleteFocusedSubtabShortcut(event, isMacPlatform)) {
-          event.preventDefault()
-          if (!scratchpadDeleteAisleShortcutEnabled) {
-            actions.warnScratchpadDeleteShortcutDisabled()
-            return
-          }
-          actions.deleteScratchpadAisle()
-          return
-        }
+      if (scratchpadActiveRef.current) {
         if (isPrimaryNewAisleShortcut(event, isMacPlatform) || isCommandNewTab) {
           event.preventDefault()
           actions.addScratchpadAisle()
@@ -480,28 +521,6 @@ export function useGlobalHotkeys({
           event.preventDefault()
           return
         }
-      }
-
-      const deleteFocusedSubtabShortcutIntent = getDeleteFocusedSubtabShortcutIntent({
-        event,
-        isMacPlatform,
-        viewMode,
-        arrangeActive: arrangeMode.active,
-        enabled: deleteSubtabShortcutEnabled,
-        activeSubTabId: activeTab.activeSubTabId,
-      })
-      if (deleteFocusedSubtabShortcutIntent) {
-        event.preventDefault()
-        if (deleteFocusedSubtabShortcutIntent === 'show-tip') {
-          actions.showTip('delete-subtab-shortcut')
-          return
-        }
-        if (deleteFocusedSubtabShortcutIntent === 'warn-home') {
-          actions.warnHomeSubtabDelete()
-          return
-        }
-        actions.deleteFocusedSubTab()
-        return
       }
 
       if (isCommandNewTab) {
@@ -631,9 +650,8 @@ export function useGlobalHotkeys({
     editingShortcut,
     isMacPlatform,
     normalizedHotkeys,
-    deleteSubtabShortcutEnabled,
+    deleteActiveAisleShortcutEnabled,
     scratchpadActive,
-    scratchpadDeleteAisleShortcutEnabled,
     arrangeMode.active,
     arrangeMode.scope,
   ])

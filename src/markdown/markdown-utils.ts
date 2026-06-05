@@ -13,7 +13,17 @@ export function getIndentPrefixLength(text: string): number {
 }
 
 export function getBlockIndentPrefixLength(text: string): number {
-  return text.startsWith(BLOCK_INDENT_TOKEN) ? BLOCK_INDENT_TOKEN.length : 0
+  return countBlockIndentLevels(text) * BLOCK_INDENT_TOKEN.length
+}
+
+export function countBlockIndentLevels(text: string): number {
+  let level = 0
+  let remaining = text
+  while (remaining.startsWith(BLOCK_INDENT_TOKEN)) {
+    level += 1
+    remaining = remaining.slice(BLOCK_INDENT_TOKEN.length)
+  }
+  return level
 }
 
 export function hasBlockIndentPrefix(text: string): boolean {
@@ -27,7 +37,7 @@ export function stripBlockIndentPrefix(text: string): string {
 
 export function countLeadingIndentUnits(text: string): number {
   let count = 0
-  let remaining = text
+  let remaining = text.slice(getBlockIndentPrefixLength(text))
   while (true) {
     const length = getIndentPrefixLength(remaining)
     if (length <= 0) return count
@@ -37,12 +47,19 @@ export function countLeadingIndentUnits(text: string): number {
 }
 
 export function stripAllIndentPrefixes(text: string): string {
-  let remaining = text
+  const blockIndentPrefixLength = getBlockIndentPrefixLength(text)
+  const blockIndentPrefix = text.slice(0, blockIndentPrefixLength)
+  let remaining = text.slice(blockIndentPrefixLength)
   while (true) {
     const length = getIndentPrefixLength(remaining)
-    if (length <= 0) return remaining
+    if (length <= 0) return `${blockIndentPrefix}${remaining}`
     remaining = remaining.slice(length)
   }
+}
+
+function applyLeadingIndentAfterBlockIndentPrefix(text: string, indentPrefix: string): string {
+  const blockIndentPrefixLength = getBlockIndentPrefixLength(text)
+  return `${text.slice(0, blockIndentPrefixLength)}${indentPrefix}${text.slice(blockIndentPrefixLength)}`
 }
 
 export function buildNormalizedIndentPrefix(levels: number): string {
@@ -464,7 +481,7 @@ export function mergeLeadingIndentsFromWysiwyg(editor: Editor | null, markdown: 
     const queue = indentedBlockQueue.get(plain)
     if (!queue || queue.length === 0) return line
     const indentPrefix = queue.shift() ?? ''
-    return `${indentPrefix}${plain}`
+    return applyLeadingIndentAfterBlockIndentPrefix(plain, indentPrefix)
   })
 
   return nextLines.join('\n')

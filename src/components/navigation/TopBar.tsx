@@ -115,6 +115,7 @@ type TopBarProps = {
   onOpenMessages: () => void
   onOpenSettings: () => void
   onOpenAbout: () => void
+  onOpenFilter: () => void
   onSettingsSectionChange: (section: SettingsSection) => void
   onExitTagFilterMode?: () => void
   messagesSection?: MessagesSection
@@ -188,6 +189,7 @@ export function TopBar({
   onOpenMessages,
   onOpenSettings,
   onOpenAbout,
+  onOpenFilter,
   onSettingsSectionChange,
   onExitTagFilterMode = () => undefined,
   messagesSection = 'inbox',
@@ -550,8 +552,8 @@ export function TopBar({
                 if (arrangeControlsDisabled) return
                 onOpenParentSortModal()
               }}
-              title={tooltipsDisabled ? undefined : 'sort parents'}
               aria-label="sort parents"
+              data-app-tooltip={tooltipsDisabled ? undefined : 'sort parents'}
               aria-disabled={arrangeControlsDisabled}
               disabled={arrangeControlsDisabled}
             >
@@ -562,7 +564,8 @@ export function TopBar({
               type="button"
               className="btn btn-sm btn-outline-light add-tab-btn"
               onClick={onAddTab}
-              title={tooltipsDisabled ? undefined : 'Add tab'}
+              aria-label="Add tab"
+              data-app-tooltip={tooltipsDisabled ? undefined : 'Add tab'}
             >
               +
             </button>
@@ -597,6 +600,7 @@ export function TopBar({
             onOpenMessages={onOpenMessages}
             onOpenSettings={onOpenSettings}
             onOpenAbout={onOpenAbout}
+            onOpenFilter={onOpenFilter}
             messagesCount={messagesCount}
             tagFilterControl={tagFilterControl}
           />

@@ -1,4 +1,4 @@
-export const TIP_IDS = ['task-undo', 'delete-subtab-shortcut'] as const
+export const TIP_IDS = ['task-undo', 'delete-active-aisle-shortcut'] as const
 
 export type TipId = (typeof TIP_IDS)[number]
 
@@ -20,9 +20,9 @@ export const TIP_DEFINITIONS: TipDefinition[] = [
       'Tip: Clicking a completed task will delete it. Click & hold the checkbox for half a second to toggle it off.',
   },
   {
-    id: 'delete-subtab-shortcut',
-    label: 'delete subtab shortcut',
-    message: 'Tip: You can enable command/control+w to delete subtabs in the misc tab of the settings.',
+    id: 'delete-active-aisle-shortcut',
+    label: 'delete active aisle shortcut',
+    message: 'Tip: You can enable the active aisle delete shortcut in the misc tab of the settings.',
   },
 ]
 
@@ -44,15 +44,15 @@ export function normalizeTipIds(value: unknown): TipId[] {
   return ids
 }
 
-function getDeleteSubtabShortcutTipMessage(isMacPlatform: boolean | undefined) {
-  return `You can enable ${isMacPlatform ? 'command' : 'control'}+w to delete subtabs in the misc tab of the settings.`
+function getDeleteActiveAisleShortcutTipMessage(isMacPlatform: boolean | undefined) {
+  return `You can enable ${isMacPlatform ? 'command' : 'control'}+w to delete the active aisle in the misc tab of the settings.`
 }
 
 export function getTipDefinition(tipId: TipId, options: TipDefinitionOptions = {}): TipDefinition {
   const tip = TIP_DEFINITIONS.find((candidate) => candidate.id === tipId) ?? TIP_DEFINITIONS[0]
-  if (tip.id !== 'delete-subtab-shortcut') return tip
+  if (tip.id !== 'delete-active-aisle-shortcut') return tip
   return {
     ...tip,
-    message: getDeleteSubtabShortcutTipMessage(options.isMacPlatform),
+    message: getDeleteActiveAisleShortcutTipMessage(options.isMacPlatform),
   }
 }

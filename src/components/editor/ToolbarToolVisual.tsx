@@ -1,110 +1,24 @@
-import type { ButtonHTMLAttributes, ReactNode, RefObject } from 'react'
+import type { ButtonHTMLAttributes, RefObject } from 'react'
 import { TOOLBAR_TOOL_LABELS } from '../../editor/toolbar-layouts'
 import type { ToolbarToolId } from '../../types/app'
+import { ToolbarToolIcon } from './ToolbarToolIcon'
 
-const TOOLBAR_TOOL_ICON_CLASS: Partial<Record<ToolbarToolId, string>> = {
-  heading: 'heading',
-  bold: 'bold',
-  italic: 'italic',
-  highlight: 'highlight',
-  strike: 'strike',
-  taskList: 'task-list',
-  bulletList: 'bullet-list',
-  orderedList: 'ordered-list',
-  dashList: 'dash-list',
-  blockQuote: 'quote',
-  blockIndent: 'indent',
-  removeBlockIndent: 'outdent',
-  hr: 'hrline',
-  link: 'link',
-  image: 'image',
-  table: 'table',
-  code: 'code',
-  codeBlock: 'codeblock',
+const TOOLBAR_TOOL_EXTRA_CLASSES: Partial<Record<ToolbarToolId, string>> = {
+  copy: 'note-copy-toolbar-btn',
+  frontmatter: 'frontmatter-toolbar-btn',
+  tableOfContents: 'table-of-contents-toolbar-btn',
+  aisles: 'aisles-toolbar-btn',
+  findReplace: 'find-replace-toolbar-btn',
+  undo: 'editor-history-toolbar-btn editor-history-toolbar-btn-undo',
+  redo: 'editor-history-toolbar-btn editor-history-toolbar-btn-redo',
+  clear: 'clear-note-toolbar-btn',
 }
 
 function getToolbarToolClassName(toolId: ToolbarToolId): string {
-  if (toolId === 'copy') return 'note-copy-toolbar-btn'
-  if (toolId === 'frontmatter') return 'frontmatter-toolbar-btn'
-  if (toolId === 'tableOfContents') return 'table-of-contents-toolbar-btn'
-  if (toolId === 'aisles') return 'aisles-toolbar-btn'
-  if (toolId === 'findReplace') return 'find-replace-toolbar-btn'
-  if (toolId === 'undo') return 'editor-history-toolbar-btn editor-history-toolbar-btn-undo'
-  if (toolId === 'redo') return 'editor-history-toolbar-btn editor-history-toolbar-btn-redo'
-  if (toolId === 'clear') return 'clear-note-toolbar-btn'
-  return `toastui-editor-toolbar-icons ${TOOLBAR_TOOL_ICON_CLASS[toolId] ?? ''}`.trim()
-}
-
-function ToolbarHistoryIcon() {
-  return (
-    <svg className="editor-history-toolbar-icon" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
-      <path className="editor-history-toolbar-arc" d="M9.8 16.2A9.9 9.9 0 1 1 16.8 27.3" />
-      <path className="editor-history-toolbar-head" d="M9.8 9.5v6.7h6.7" />
-    </svg>
-  )
-}
-
-function TableOfContentsToolbarIcon() {
-  return (
-    <span className="table-of-contents-toolbar-icon" aria-hidden="true">
-      <span className="table-of-contents-toolbar-icon-row table-of-contents-toolbar-icon-row-1" />
-      <span className="table-of-contents-toolbar-icon-row table-of-contents-toolbar-icon-row-2" />
-      <span className="table-of-contents-toolbar-icon-row table-of-contents-toolbar-icon-row-3" />
-      <span className="table-of-contents-toolbar-icon-row table-of-contents-toolbar-icon-row-4" />
-    </span>
-  )
-}
-
-function AislesToolbarIcon() {
-  return (
-    <svg className="aisles-toolbar-icon" viewBox="0 0 36 32" aria-hidden="true" focusable="false">
-      <path className="aisles-toolbar-icon-frame" d="M8 5.6 28 2.4v27.2L8 24.4Z" />
-      <path className="aisles-toolbar-icon-shelf" d="M8 13.2h20" />
-      <path className="aisles-toolbar-icon-shelf" d="M8 22.1l20 4" />
-      <path className="aisles-toolbar-icon-item" d="M11.4 9.9h5v3.3h-5z" />
-      <path className="aisles-toolbar-icon-item" d="M16.4 8.7h6.1v4.5" />
-      <path className="aisles-toolbar-icon-item" d="M11.4 18.1h4.8v5.2" />
-      <path className="aisles-toolbar-icon-item" d="M16.2 17.5h5v6.7" />
-      <path className="aisles-toolbar-icon-item" d="M21.2 17h4.8v8.2" />
-    </svg>
-  )
-}
-
-function FindReplaceToolbarIcon() {
-  return (
-    <svg className="find-replace-toolbar-icon" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
-      <path className="find-replace-toolbar-lens" d="M14.1 6.5a7.6 7.6 0 1 0 0 15.2 7.6 7.6 0 0 0 0-15.2Z" />
-      <path className="find-replace-toolbar-handle" d="m19.8 19.8 5.7 5.7" />
-    </svg>
-  )
-}
-
-function getToolbarToolChildren(toolId: ToolbarToolId): ReactNode {
-  switch (toolId) {
-    case 'copy':
-      return (
-        <span className="note-copy-toolbar-icon" aria-hidden="true">
-          <span className="note-copy-toolbar-document" />
-          <span className="note-copy-toolbar-chain" />
-        </span>
-      )
-    case 'frontmatter':
-      return <span className="frontmatter-toolbar-icon" aria-hidden="true">fm</span>
-    case 'tableOfContents':
-      return <TableOfContentsToolbarIcon />
-    case 'aisles':
-      return <AislesToolbarIcon />
-    case 'findReplace':
-      return <FindReplaceToolbarIcon />
-    case 'undo':
-      return <ToolbarHistoryIcon />
-    case 'redo':
-      return <ToolbarHistoryIcon />
-    case 'clear':
-      return '⌫'
-    default:
-      return null
-  }
+  const kebabToolId = toolId.replace(/[A-Z]/g, (match) => `-${match.toLowerCase()}`)
+  return ['app-toolbar-tool-btn', `app-toolbar-tool-btn-${kebabToolId}`, TOOLBAR_TOOL_EXTRA_CLASSES[toolId]]
+    .filter(Boolean)
+    .join(' ')
 }
 
 export type ToolbarToolVisualProps = {
@@ -140,6 +54,7 @@ export function ToolbarToolVisual({
     ...restButtonProps
   } = buttonProps
   const label = TOOLBAR_TOOL_LABELS[toolId]
+  const tooltip = tooltipsDisabled ? undefined : title ?? label
   const classNames = [
     getToolbarToolClassName(toolId),
     active ? 'active' : '',
@@ -154,7 +69,7 @@ export function ToolbarToolVisual({
       ref={buttonRef}
       type={type ?? 'button'}
       className={classNames}
-      title={tooltipsDisabled ? undefined : title ?? label}
+      data-app-tooltip={tooltip}
       aria-label={buttonProps['aria-label'] ?? label}
       disabled={disabled}
       onMouseDown={(event) => {
@@ -170,7 +85,7 @@ export function ToolbarToolVisual({
         onPress?.()
       }}
     >
-      {getToolbarToolChildren(toolId)}
+      <ToolbarToolIcon toolId={toolId} active={active} />
     </button>
   )
 }

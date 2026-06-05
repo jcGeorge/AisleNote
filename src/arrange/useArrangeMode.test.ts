@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { ARRANGE_DRAG_PREVIEW_POINTER_OFFSET_PX } from '../components/navigation/arrange-drag-preview-style'
 import { getArrangePreviewGhostItems } from './useArrangeMode'
 
 const arrangeDir = dirname(fileURLToPath(import.meta.url))
@@ -27,6 +28,22 @@ describe('useArrangeMode arrange preview labels', () => {
     expect(source).toContain('const previewLabel = space.name')
     expect(source).toContain('const previewLabel = label')
     expect(source.match(/width: rect\.width/g)).toHaveLength(3)
+  })
+
+  it('offsets drag preview ghost origins without changing pointer hit testing', () => {
+    const source = readFileSync(join(arrangeDir, 'useArrangeMode.ts'), 'utf8')
+
+    expect(source).toContain(
+      "getArrangeDragPreviewBelowPointerTop,\n  getArrangeDragPreviewCenteredLeft,",
+    )
+    expect(source.match(/previewLeft: getArrangeDragPreviewCenteredLeft\(event\.clientX, rect\.width\)/g)).toHaveLength(3)
+    expect(source.match(/previewTop: getArrangeDragPreviewBelowPointerTop\(event\.clientY, rect\.height\)/g)).toHaveLength(3)
+    expect(source).toContain('updateTabDropTarget(item, event.clientX, event.clientY)')
+    expect(source).toContain('updateTabDropTarget(drag.item, clientX, clientY)')
+    expect(source).toContain('updateDomainDropTarget(event.clientX, event.clientY)')
+    expect(source).toContain('updateDomainDropTarget(clientX, clientY)')
+    expect(source).toContain('updateSpaceDropTarget(event.clientX, event.clientY)')
+    expect(source).toContain('updateSpaceDropTarget(clientX, clientY)')
   })
 })
 
@@ -156,14 +173,14 @@ describe('arrange preview ghost items', () => {
         draggedId: 'parent-b',
         getLabel: (id) => labels.get(id),
         previewLeft: 100,
-        previewTop: 50,
+        previewTop: 50 + ARRANGE_DRAG_PREVIEW_POINTER_OFFSET_PX,
         fallbackWidth: 40,
         fallbackHeight: 24,
       }),
     ).toEqual([
-      { id: 'parent-a', label: 'Parent A', x: -80, y: -40, width: 44, height: 24 },
-      { id: 'parent-c', label: 'Parent C', x: 60, y: 20, width: 52, height: 28 },
-      { id: 'parent-d', label: 'Parent D', x: 120, y: 40, width: 64, height: 30 },
+      { id: 'parent-a', label: 'Parent A', x: -80, y: -72, width: 44, height: 24 },
+      { id: 'parent-c', label: 'Parent C', x: 60, y: -12, width: 52, height: 28 },
+      { id: 'parent-d', label: 'Parent D', x: 120, y: 8, width: 64, height: 30 },
     ])
   })
 
@@ -188,14 +205,14 @@ describe('arrange preview ghost items', () => {
         draggedId: 'parent-b',
         getLabel: (id) => labels.get(id),
         previewLeft: 100,
-        previewTop: 50,
+        previewTop: 50 + ARRANGE_DRAG_PREVIEW_POINTER_OFFSET_PX,
         fallbackWidth: 40,
         fallbackHeight: 24,
       }),
     ).toEqual([
       { id: 'parent-a', label: 'Parent A', x: -34, y: -18, width: 40, height: 24 },
       { id: 'parent-c', label: 'Parent C', x: -58, y: 18, width: 40, height: 24 },
-      { id: 'parent-d', label: 'Parent D', x: 120, y: 40, width: 40, height: 24 },
+      { id: 'parent-d', label: 'Parent D', x: 120, y: 8, width: 40, height: 24 },
     ])
   })
 })

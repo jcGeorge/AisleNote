@@ -41,6 +41,10 @@ import { projectActiveDomainState, setActiveDomain, setActiveSpaceInActiveDomain
 import { selectPrimeTabWithMemory, selectSubTabWithMemory } from '../state/navigation-memory'
 import { collectAppNavigationEntityIds, createReservedIdAllocator } from '../state/navigation-ids'
 import { createSpace, createTab } from '../state/workspace'
+import {
+  getArrangeDragPreviewBelowPointerTop,
+  getArrangeDragPreviewCenteredLeft,
+} from '../components/navigation/arrange-drag-preview-style'
 import type {
   AppState,
   ArrangeDragItem,
@@ -703,8 +707,8 @@ export function useArrangeMode({
         selectedIds: dragIds,
         draggedId: domain.id,
         getLabel: (id) => state.domains.find((entry) => entry.id === id)?.name,
-        previewLeft: rect.left,
-        previewTop: rect.top,
+        previewLeft: getArrangeDragPreviewCenteredLeft(event.clientX, rect.width),
+        previewTop: getArrangeDragPreviewBelowPointerTop(event.clientY, rect.height),
         fallbackWidth: rect.width,
         fallbackHeight: rect.height,
       }),
@@ -963,8 +967,8 @@ export function useArrangeMode({
         selectedIds: dragIds,
         draggedId: space.id,
         getLabel: (id) => state.spaces.find((entry) => entry.id === id)?.name,
-        previewLeft: rect.left,
-        previewTop: rect.top,
+        previewLeft: getArrangeDragPreviewCenteredLeft(event.clientX, rect.width),
+        previewTop: getArrangeDragPreviewBelowPointerTop(event.clientY, rect.height),
         fallbackWidth: rect.width,
         fallbackHeight: rect.height,
       }),
@@ -1482,8 +1486,8 @@ export function useArrangeMode({
           item.type === 'tab'
             ? workspace.tabs.find((tab) => tab.id === id)?.title
             : activeTab.subTabs.find((subTab) => subTab.id === id)?.title,
-        previewLeft: rect.left,
-        previewTop: rect.top,
+        previewLeft: getArrangeDragPreviewCenteredLeft(event.clientX, rect.width),
+        previewTop: getArrangeDragPreviewBelowPointerTop(event.clientY, rect.height),
         fallbackWidth: rect.width,
         fallbackHeight: rect.height,
       }),

@@ -44,6 +44,11 @@ describe('portable app settings parsing', () => {
         settingsSection: 'hotkeys',
         dataSettingsSection: 'notebook',
         tabRenameEnterBehavior: 'goes-to-note',
+        toggleTabsTarget: 'trash',
+        noteFilter: {
+          active: false,
+          kind: 'tags',
+        },
         toolbarLayouts: [],
       },
     })
@@ -65,6 +70,41 @@ describe('portable app settings parsing', () => {
           settingsSection: 'data',
           dataSettingsSection: 'settings',
           tabRenameEnterBehavior: 'goes-to-note',
+          noteFilter: {
+            active: false,
+            kind: 'tags',
+          },
+        },
+      },
+    })
+  })
+
+  it('round-trips portable note filter settings', () => {
+    const settings = parsePortableAppSettingsJson(JSON.stringify({
+      theme: 'dawn',
+      hotkeys: {},
+      ui: {
+        noteFilter: {
+          active: true,
+          kind: 'synced',
+          tags: { selectedKeys: ['tag'], sortMode: 'occurrences' },
+          synced: { selectedKeys: ['synced-note:body-1'] },
+          frontmatter: { selectedKeys: ['fm-property:status'] },
+        },
+      },
+    }))
+
+    expect(settings).toMatchObject({
+      ok: true,
+      settings: {
+        ui: {
+          noteFilter: {
+            active: true,
+            kind: 'synced',
+            tags: { selectedKeys: ['tag'], sortMode: 'occurrences' },
+            synced: { selectedKeys: ['synced-note:body-1'] },
+            frontmatter: { selectedKeys: ['fm-property:status'] },
+          },
         },
       },
     })
@@ -119,7 +159,7 @@ describe('portable app settings parsing', () => {
       settings: {
         hotkeys: {
           shortcuts: {
-            toggleTabTrash: 'Mod+T',
+            toggleTabsTarget: 'Mod+T',
             newTab: 'Mod+Shift+N',
           },
           newlineShortcuts: {
@@ -149,7 +189,7 @@ describe('portable app settings parsing', () => {
       },
     })
 
-    expect(syncedSettings.hotkeys.shortcuts.toggleTabTrash).toBe('Mod+T')
+    expect(syncedSettings.hotkeys.shortcuts.toggleTabsTarget).toBe('Mod+T')
     expect(syncedSettings.hotkeys.shortcuts.cycleAisleNext).toBe('Alt+]')
     expect(syncedSettings.hotkeys.newlineShortcuts.menuOperations).toEqual(['blockQuote', 'strikethrough'])
   })

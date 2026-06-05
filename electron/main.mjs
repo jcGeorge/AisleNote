@@ -154,7 +154,16 @@ function installApplicationMenu({ onNewWindow, onResetUserSettings }) {
     },
     {
       label: 'Window',
-      submenu: [{ role: 'minimize' }, { role: 'close' }],
+      submenu: [
+        { role: 'minimize' },
+        {
+          label: 'Close Window',
+          click: (_menuItem, browserWindow) => {
+            const targetWindow = browserWindow ?? BrowserWindow.getFocusedWindow()
+            targetWindow?.close()
+          },
+        },
+      ],
     },
   ]
 

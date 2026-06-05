@@ -8,6 +8,9 @@ export type TableCellNavigationDirection = 'forward' | 'backward'
 export type TableRange = { tableStart: number; tableEnd: number }
 export type TableCellNavigationResult = { handled: boolean; changed: boolean }
 
+type SelectionTableCellContent = any[]
+type SelectionTableRowContent = SelectionTableCellContent[]
+
 export type ActiveTableContext = {
   tableStart: number
   tableEnd: number
@@ -488,6 +491,193 @@ function createEmptyCell(schema: any, typeName: 'tableHeadCell' | 'tableBodyCell
   return schema.nodes[typeName].create(null, schema.nodes.paragraph.create())
 }
 
+function createEmptySelectionTableRow(): SelectionTableRowContent {
+  return [[]]
+}
+
+function ensureSelectionTableRow(rows: SelectionTableRowContent[]): SelectionTableRowContent {
+  if (rows.length === 0) {
+    rows.push(createEmptySelectionTableRow())
+  }
+  const row = rows[rows.length - 1]
+  if (row.length === 0) {
+    row.push([])
+  }
+  return row
+}
+
+function getCurrentSelectionTableCell(rows: SelectionTableRowContent[]): SelectionTableCellContent {
+  const row = ensureSelectionTableRow(rows)
+  return row[row.length - 1]
+}
+
+function startNextSelectionTableCell(rows: SelectionTableRowContent[]) {
+  ensureSelectionTableRow(rows).push([])
+}
+
+function startNextSelectionTableRow(rows: SelectionTableRowContent[]) {
+  rows.push(createEmptySelectionTableRow())
+}
+
+function appendSelectionText(rows: SelectionTableRowContent[], schema: any, text: string, marks: any[] = []) {
+  const normalizedText = String(text ?? '').replace(/\r\n?/g, '\n')
+  let segmentStart = 0
+
+  const appendSegment = (segmentEnd: number) => {
+    if (segmentEnd <= segmentStart) return
+    getCurrentSelectionTableCell(rows).push(schema.text(normalizedText.slice(segmentStart, segmentEnd), marks))
+  }
+
+  for (let index = 0; index < normalizedText.length; index += 1) {
+    const char = normalizedText[index]
+    if (char !== '\t' && char !== '\n') continue
+
+    appendSegment(index)
+    segmentStart = index + 1
+    if (char === '\t') {
+      startNextSelectionTableCell(rows)
+    } else {
+      startNextSelectionTableRow(rows)
+    }
+  }
+  appendSegment(normalizedText.length)
+}
+
+function stripBlankSentinelText(value: string) {
+  return value
+    .replaceAll('\u200b', '')
+    .replaceAll('\u200c', '')
+    .replaceAll('\u200d', '')
+    .replaceAll('\ufeff', '')
+    .trim()
+}
+
+function isSelectionTableCellBlank(cell: SelectionTableCellContent) {
+  return cell.every((node) => {
+    if (node?.isText) return stripBlankSentinelText(String(node.text ?? node.textContent ?? '')).length === 0
+    return false
+  })
+}
+
+function isSelectionTableRowBlank(row: SelectionTableRowContent) {
+  return row.every(isSelectionTableCellBlank)
+}
+
+function trimBlankSelectionTableRows(rows: SelectionTableRowContent[]) {
+  let startIndex = 0
+  let endIndex = rows.length
+  while (startIndex < endIndex && isSelectionTableRowBlank(rows[startIndex])) startIndex += 1
+  while (endIndex > startIndex && isSelectionTableRowBlank(rows[endIndex - 1])) endIndex -= 1
+  return rows.slice(startIndex, endIndex)
+}
+
+function padSelectionTableRows(rows: SelectionTableRowContent[]) {
+  const columnCount = Math.max(1, ...rows.map((row) => row.length))
+  return rows.map((row) => {
+    const nextRow = row.map((cell) => [...cell])
+    while (nextRow.length < columnCount) {
+      nextRow.push([])
+    }
+    return nextRow
+  })
+}
+
+function isSelectionInsideExistingTable(selection: any) {
+  return Boolean(
+    findAncestorDepth(selection?.$from, new Set(['table'])) ||
+      findAncestorDepth(selection?.$to, new Set(['table'])),
+  )
+}
+
+function collectSelectionTableRows(state: any): SelectionTableRowContent[] | null {
+  const selection = state?.selection
+  const doc = state?.doc
+  const schema = state?.schema
+  if (!selection || selection.empty || !doc || !schema?.text || isSelectionInsideExistingTable(selection)) return null
+
+  const rows: SelectionTableRowContent[] = []
+  doc.nodesBetween(selection.from, selection.to, (node: any, pos: number) => {
+    if (node?.isTextblock) {
+      startNextSelectionTableRow(rows)
+      return true
+    }
+
+    if (rows.length === 0) return true
+
+    if (node?.isText) {
+      const text = String(node.text ?? '')
+      const from = Math.max(0, selection.from - pos)
+      const to = Math.min(text.length, selection.to - pos)
+      if (from < to) {
+        appendSelectionText(rows, schema, text.slice(from, to), node.marks ?? [])
+      }
+      return false
+    }
+
+    if (node?.type?.name === 'hardBreak') {
+      if (selection.from <= pos && selection.to >= pos + (node.nodeSize ?? 1)) {
+        startNextSelectionTableRow(rows)
+      }
+      return false
+    }
+
+    if (node?.isInline) {
+      getCurrentSelectionTableCell(rows).push(node)
+      return false
+    }
+
+    return true
+  })
+
+  const trimmedRows = trimBlankSelectionTableRows(rows)
+  return trimmedRows.length > 0 ? padSelectionTableRows(trimmedRows) : null
+}
+
+function createTableCellFromSelectionContent(
+  schema: any,
+  cellTypeName: 'tableHeadCell' | 'tableBodyCell',
+  content: SelectionTableCellContent,
+) {
+  const cellType = schema.nodes[cellTypeName]
+  const paragraph = schema.nodes.paragraph
+  if (!cellType || !paragraph) return null
+  return cellType.create(null, paragraph.create(null, content.length > 0 ? content : undefined))
+}
+
+function createTableRowFromSelectionContent(
+  schema: any,
+  cellTypeName: 'tableHeadCell' | 'tableBodyCell',
+  rowContent: SelectionTableRowContent,
+) {
+  const cells = rowContent.map((cellContent) => createTableCellFromSelectionContent(schema, cellTypeName, cellContent))
+  if (cells.some((cell) => !cell)) return null
+  return schema.nodes.tableRow?.create(null, cells)
+}
+
+export function createTableNodeFromSelection(state: any): any | null {
+  const schema = state?.schema
+  const rows = collectSelectionTableRows(state)
+  const table = schema?.nodes?.table
+  const tableHead = schema?.nodes?.tableHead
+  const tableBody = schema?.nodes?.tableBody
+  if (!rows || !table || !tableHead || !tableBody || !schema?.nodes?.tableRow) return null
+
+  const columnCount = rows[0]?.length ?? 1
+  const headRow = createTableRowFromSelectionContent(schema, 'tableHeadCell', rows[0])
+  if (!headRow) return null
+
+  const bodySourceRows = rows.length > 1
+    ? rows.slice(1)
+    : [Array.from({ length: columnCount }, () => [] as SelectionTableCellContent)]
+  const bodyRows = bodySourceRows.map((row) => createTableRowFromSelectionContent(schema, 'tableBodyCell', row))
+  if (bodyRows.some((row) => !row)) return null
+
+  return table.create(null, [
+    tableHead.create(null, headRow),
+    tableBody.create(null, bodyRows),
+  ])
+}
+
 function cloneRowAsType(schema: any, row: any, cellTypeName: 'tableHeadCell' | 'tableBodyCell') {
   const cells: any[] = []
   for (let index = 0; index < row.childCount; index += 1) {
@@ -617,6 +807,49 @@ function setTextSelectionAtPosition(transaction: any, position: number, bias: nu
     }
   }
   return transaction
+}
+
+function getFirstTableCellInnerPositionAfterPosition(doc: any, position: number): number | null {
+  let selectedNode: any | null = null
+  let selectedPos = -1
+  let selectedDistance = Number.POSITIVE_INFINITY
+  const anchor = Number.isFinite(position) ? Math.max(0, position) : 0
+  doc?.descendants?.((node: any, pos: number) => {
+    if (node?.type?.name !== 'table') return true
+    const distance = pos >= anchor ? pos - anchor : Number.MAX_SAFE_INTEGER + Math.abs(pos - anchor)
+    if (distance < selectedDistance) {
+      selectedNode = node
+      selectedPos = pos
+      selectedDistance = distance
+    }
+    return false
+  })
+
+  return selectedNode && selectedPos >= 0 ? getCellInnerPosition(selectedNode, selectedPos, 0, 0) : null
+}
+
+export function replaceSelectedTextWithTable(view: any): boolean {
+  const state = view?.state
+  const selection = state?.selection
+  if (!selection || selection.empty || typeof view?.dispatch !== 'function') return false
+
+  const table = createTableNodeFromSelection(state)
+  if (!table) return false
+
+  try {
+    const transaction = state.tr.replaceSelectionWith(table, false)
+    const selectionPosition = getFirstTableCellInnerPositionAfterPosition(transaction.doc, selection.from)
+    if (selectionPosition !== null) {
+      setSelectionNearPosition(transaction, selectionPosition)
+    }
+    view.dispatch(transaction.scrollIntoView())
+    if (typeof view.focus === 'function') {
+      view.focus()
+    }
+    return true
+  } catch {
+    return false
+  }
 }
 
 function getSelectedTableBoundaryContext(state: any): {
@@ -893,23 +1126,7 @@ export function selectFirstTableCellAfterPosition(view: any, position: number): 
   const transaction = view?.state?.tr
   if (!doc || !transaction || typeof view?.dispatch !== 'function') return false
 
-  let selectedNode: any | null = null
-  let selectedPos = -1
-  let selectedDistance = Number.POSITIVE_INFINITY
-  const anchor = Number.isFinite(position) ? Math.max(0, position) : 0
-  doc.descendants((node: any, pos: number) => {
-    if (node?.type?.name !== 'table') return true
-    const distance = pos >= anchor ? pos - anchor : Number.MAX_SAFE_INTEGER + Math.abs(pos - anchor)
-    if (distance < selectedDistance) {
-      selectedNode = node
-      selectedPos = pos
-      selectedDistance = distance
-    }
-    return false
-  })
-
-  if (!selectedNode || selectedPos < 0) return false
-  const selectionPosition = getCellInnerPosition(selectedNode, selectedPos, 0, 0)
+  const selectionPosition = getFirstTableCellInnerPositionAfterPosition(doc, position)
   if (selectionPosition === null) return false
   setSelectionNearPosition(transaction, selectionPosition)
   view.dispatch(transaction.setMeta('addToHistory', false).scrollIntoView())

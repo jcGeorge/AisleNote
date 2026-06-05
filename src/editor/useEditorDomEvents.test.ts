@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { Schema } from 'prosemirror-model'
 import { EditorState, TextSelection } from 'prosemirror-state'
 import {
-  applyPreviewForwardDeleteBeforeInput,
+  applyTerminalBlockDeleteBeforeInput,
   consumeHandledEmbedCaretClick,
   getPastedHttpUrl,
   getPastedUrlLink,
@@ -13,17 +16,25 @@ import {
   getMediaLinkDeleteDirectionForKeyEvent,
   getMediaPlayerPointerAction,
   getPlainTextPointerChromeClosePlan,
+  getTerminalBlockDeleteDirectionForBeforeInput,
   getTableBoundaryCaretDirectionForEvent,
   getTerminalBlockArrowDirectionForEvent,
   isActiveWysiwygEditorContentTarget,
   isEditorToolbarInteractionTarget,
   isEditorPointerChromeTarget,
+  isUrlLinkShortcut,
   placeCaretAfterMediaPlayer,
   runMediaPlayerKeyboardAction,
   runEditorHistoryEvent,
   shouldSkipTableExitRepairTarget,
 } from './useEditorDomEvents'
 import { runEditorHistoryCommand } from './editor-command'
+
+const editorDir = dirname(fileURLToPath(import.meta.url))
+
+function readUseEditorDomEventsSource() {
+  return readFileSync(join(editorDir, 'useEditorDomEvents.ts'), 'utf8')
+}
 
 const previewDeleteSchema = new Schema({
   nodes: {
@@ -39,6 +50,12 @@ const previewDeleteSchema = new Schema({
       content: 'inline*',
       attrs: { level: { default: 1 } },
       toDOM: (node) => [`h${node.attrs.level}`, 0],
+    },
+    codeBlock: {
+      group: 'block',
+      content: 'text*',
+      code: true,
+      toDOM: () => ['pre', ['code', 0]],
     },
   },
   marks: {
@@ -115,7 +132,7 @@ describe('editor DOM events', () => {
     '.note-toolbar-heading-popover',
     '.toastui-editor-defaultUI-toolbar',
     '.toastui-editor-toolbar',
-    '.toastui-editor-toolbar-icons',
+    '.toolbar-tool-icon',
     '.toastui-editor-tooltip',
     '.aisle-toc-panel',
     '.aisle-toc-panel-layer',
@@ -126,6 +143,31 @@ describe('editor DOM events', () => {
   it('does not treat normal editor content as a toolbar interaction target', () => {
     expect(isEditorToolbarInteractionTarget(fakeTarget(null))).toBe(false)
     expect(isEditorToolbarInteractionTarget(null)).toBe(false)
+  })
+
+  it('matches the platform URL link shortcut only with the primary modifier', () => {
+    expect(isUrlLinkShortcut({ key: 'k', code: 'KeyK', metaKey: true } as KeyboardEvent, true)).toBe(true)
+    expect(isUrlLinkShortcut({ key: 'k', code: 'KeyK', ctrlKey: true } as KeyboardEvent, false)).toBe(true)
+    expect(isUrlLinkShortcut({ key: 'K', code: '', metaKey: true } as KeyboardEvent, true)).toBe(true)
+    expect(isUrlLinkShortcut({ key: 'k', code: 'KeyK', ctrlKey: true } as KeyboardEvent, true)).toBe(false)
+    expect(isUrlLinkShortcut({ key: 'k', code: 'KeyK', metaKey: true } as KeyboardEvent, false)).toBe(false)
+    expect(isUrlLinkShortcut({ key: 'k', code: 'KeyK', metaKey: true, ctrlKey: true } as KeyboardEvent, true)).toBe(
+      false,
+    )
+    expect(isUrlLinkShortcut({ key: 'k', code: 'KeyK', metaKey: true, shiftKey: true } as KeyboardEvent, true)).toBe(
+      false,
+    )
+    expect(isUrlLinkShortcut({ key: 'k', code: 'KeyK', ctrlKey: true, altKey: true } as KeyboardEvent, false)).toBe(
+      false,
+    )
+  })
+
+  it('routes command-k through the active editor URL link shortcut path', () => {
+    const source = readUseEditorDomEventsSource()
+
+    expect(source).toContain('isUrlLinkShortcut(keyboardEvent, isMacPlatform)')
+    expect(source).toContain('isActiveWysiwygEditorContentTarget(targetElement, view)')
+    expect(source).toContain('onOpenUrlLinkShortcut()')
   })
 
   it('resolves internal note link hits only from the rendered link widget', () => {
@@ -384,9 +426,12 @@ describe('editor DOM events', () => {
     expect(getMultiLineDeleteInputForBeforeInputType('deleteContentForward')).toEqual({ type: 'delete' })
     expect(getMultiLineDeleteInputForBeforeInputType('deleteContentBackward')).toEqual({ type: 'backspace' })
     expect(getMultiLineDeleteInputForBeforeInputType('insertText')).toBeNull()
+    expect(getTerminalBlockDeleteDirectionForBeforeInput('deleteContentForward')).toBe('forward')
+    expect(getTerminalBlockDeleteDirectionForBeforeInput('deleteContentBackward')).toBe('backward')
+    expect(getTerminalBlockDeleteDirectionForBeforeInput('insertText')).toBeNull()
   })
 
-  it('routes beforeinput forward delete through preview-adjacent deletion when not multiline editing', () => {
+  it('routes beforeinput forward delete through terminal utility deletion when not multiline editing', () => {
     const preview = previewDeleteSchema.nodes.paragraph.create(null, previewDeleteSchema.text('![[Linked--123abc]]'))
     const empty = previewDeleteSchema.nodes.paragraph.create()
     const heading = previewDeleteSchema.nodes.heading.create({ level: 2 }, previewDeleteSchema.text('After'))
@@ -400,7 +445,7 @@ describe('editor DOM events', () => {
       dispatch: vi.fn(),
     }
 
-    expect(applyPreviewForwardDeleteBeforeInput({
+    expect(applyTerminalBlockDeleteBeforeInput({
       inputType: 'deleteContentForward',
       hasMultiLineEdit: false,
       view,
@@ -413,8 +458,34 @@ describe('editor DOM events', () => {
     expect(nextState.doc.child(1).textContent).toBe('After')
   })
 
-  it('does not route beforeinput preview deletion while multiline editing is active', () => {
-    expect(applyPreviewForwardDeleteBeforeInput({
+  it('routes beforeinput backward delete through terminal utility deletion before native block joining', () => {
+    const codeBlock = previewDeleteSchema.nodes.codeBlock.create(null, previewDeleteSchema.text('code'))
+    const after = previewDeleteSchema.nodes.paragraph.create(null, previewDeleteSchema.text('After'))
+    const doc = previewDeleteSchema.nodes.doc.create(null, [codeBlock, after])
+    const state = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, codeBlock.nodeSize + 1),
+    })
+    const view = {
+      state,
+      dispatch: vi.fn(),
+    }
+
+    expect(applyTerminalBlockDeleteBeforeInput({
+      inputType: 'deleteContentBackward',
+      hasMultiLineEdit: false,
+      view,
+    })).toBe(true)
+
+    const nextState = state.apply(view.dispatch.mock.calls[0][0])
+    expect(nextState.doc.childCount).toBe(1)
+    expect(nextState.doc.child(0).type.name).toBe('paragraph')
+    expect(nextState.doc.child(0).textContent).toBe('After')
+    expect(nextState.selection.from).toBe(1)
+  })
+
+  it('does not route beforeinput terminal utility deletion while multiline editing is active', () => {
+    expect(applyTerminalBlockDeleteBeforeInput({
       inputType: 'deleteContentForward',
       hasMultiLineEdit: true,
       view: { dispatch: vi.fn() },

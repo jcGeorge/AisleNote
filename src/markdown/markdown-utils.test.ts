@@ -2,15 +2,19 @@ import { describe, expect, it } from 'vitest'
 import type { Editor } from '@toast-ui/editor'
 import {
   BLOCK_INDENT_TOKEN,
+  countBlockIndentLevels,
+  countLeadingIndentUnits,
   convertInternalTabsForExport,
   EDITOR_BLANK_LINE_PLACEHOLDER,
   INDENT_TOKEN,
+  mergeLeadingIndentsFromWysiwyg,
   normalizeHighlightMarkdownForPersistence,
   normalizeMarkdownForPersistence,
   prepareBlankParagraphsForEditorDisplay,
   prepareMarkdownHighlightsForDisplay,
   preserveBlankParagraphsFromWysiwyg,
   repairBrokenDataImageMarkdown,
+  stripAllIndentPrefixes,
 } from './markdown-utils'
 
 type FakeNode = {
@@ -19,6 +23,7 @@ type FakeNode = {
   childCount?: number
   child?: (index: number) => FakeNode | null
   isText?: boolean
+  isTextblock?: boolean
   text?: string
 }
 
@@ -38,6 +43,7 @@ function block(typeName: string, textContent = ''): FakeNode {
     textContent,
     childCount: children.length,
     child: (index) => children[index] ?? null,
+    isTextblock: typeName !== 'bulletList' && typeName !== 'orderedList',
   }
 }
 
@@ -51,8 +57,14 @@ function editorForBlocks(blocks: FakeNode[]): Editor {
       view: {
         state: {
           doc: {
+            content: {
+              size: blocks.length,
+            },
             forEach: (visitor: (node: FakeNode) => void) => {
               blocks.forEach(visitor)
+            },
+            nodesBetween: (_from: number, _to: number, visitor: (node: FakeNode, position: number) => void) => {
+              blocks.forEach((node, index) => visitor(node, index))
             },
           },
         },
@@ -262,7 +274,16 @@ describe('markdown WYSIWYG blank line preservation', () => {
   })
 
   it('exports block indent and paragraph indent tokens as spaces', () => {
-    expect(convertInternalTabsForExport(`${BLOCK_INDENT_TOKEN}${INDENT_TOKEN}one`)).toBe('        one')
+    expect(countBlockIndentLevels(`${BLOCK_INDENT_TOKEN.repeat(2)}${INDENT_TOKEN}one`)).toBe(2)
+    expect(convertInternalTabsForExport(`${BLOCK_INDENT_TOKEN.repeat(2)}${INDENT_TOKEN}one`)).toBe('            one')
+  })
+
+  it('restores paragraph indents after stacked block indent tokens', () => {
+    const text = `${BLOCK_INDENT_TOKEN.repeat(2)}${INDENT_TOKEN}one`
+
+    expect(countLeadingIndentUnits(text)).toBe(1)
+    expect(stripAllIndentPrefixes(text)).toBe(`${BLOCK_INDENT_TOKEN.repeat(2)}one`)
+    expect(mergeLeadingIndentsFromWysiwyg(editorForBlocks([block('paragraph', text)]), `${BLOCK_INDENT_TOKEN.repeat(2)}one`)).toBe(text)
   })
 
   it('strips legacy block indent tokens from quoted lines during persistence and export', () => {

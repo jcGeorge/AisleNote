@@ -47,6 +47,17 @@ describe('custom theme seed matching', () => {
     expect(DEFAULT_CUSTOM_THEME_PALETTE.tagBg).toBe('#22d3ee')
   })
 
+  it('includes explicit tooltip icon colors in every palette seed', () => {
+    expect(BUILT_IN_THEME_PALETTE_SEEDS.dark.tooltipPrimary).toBe('#c8d0e1')
+    expect(BUILT_IN_THEME_PALETTE_SEEDS.dark.tooltipSecondary).toBe('#6f7f98')
+    expect(BUILT_IN_THEME_PALETTE_SEEDS.light.tooltipPrimary).toBe('#555555')
+    expect(BUILT_IN_THEME_PALETTE_SEEDS.light.tooltipSecondary).toBe('#9aa3b2')
+    expect(BUILT_IN_THEME_PALETTE_SEEDS.dawn.tooltipPrimary).toBe('#555555')
+    expect(BUILT_IN_THEME_PALETTE_SEEDS.dawn.tooltipSecondary).toBe('#8a744a')
+    expect(DEFAULT_CUSTOM_THEME_PALETTE.tooltipPrimary).toBe('#c8d0e1')
+    expect(DEFAULT_CUSTOM_THEME_PALETTE.tooltipSecondary).toBe('#6f7f98')
+  })
+
   it('uses the real editor surfaces for dawn and light palette seeds', () => {
     expect(BUILT_IN_THEME_PALETTE_SEEDS.dawn.canvas).toBe('#d8c9a3')
     expect(BUILT_IN_THEME_PALETTE_SEEDS.dawn.page).toBe('#8a744a')
@@ -133,6 +144,19 @@ describe('custom theme seed matching', () => {
     expect(variables).not.toHaveProperty('--parent-rail-accent')
   })
 
+  it('maps tooltip palette overrides to toolbar icon variables for built-in themes', () => {
+    const variables = getBuiltInThemeOverrideCssVariables('dawn', {
+      ...BUILT_IN_THEME_PALETTE_SEEDS.dawn,
+      tooltipPrimary: '#123456',
+      tooltipSecondary: '#abcdef',
+    })
+
+    expect(variables).toEqual({
+      '--editor-toolbar-icon-primary': '#123456',
+      '--editor-toolbar-icon-secondary': '#abcdef',
+    })
+  })
+
   it('keeps custom themes on the full derived theme variable path', () => {
     const palette = {
       ...DEFAULT_CUSTOM_THEME_PALETTE,
@@ -142,5 +166,7 @@ describe('custom theme seed matching', () => {
     expect(getThemeShellCustomClassName('custom1', palette)).toBe('theme-custom-derived')
     expect(getCustomThemeCssVariables(palette)['--custom-theme-page']).toBe(DEFAULT_CUSTOM_THEME_PALETTE.page)
     expect(getCustomThemeCssVariables(palette)['--custom-theme-primary']).toBe('#123456')
+    expect(getCustomThemeCssVariables(palette)['--custom-theme-tooltip-primary']).toBe(DEFAULT_CUSTOM_THEME_PALETTE.tooltipPrimary)
+    expect(getCustomThemeCssVariables(palette)['--custom-theme-tooltip-secondary']).toBe(DEFAULT_CUSTOM_THEME_PALETTE.tooltipSecondary)
   })
 })

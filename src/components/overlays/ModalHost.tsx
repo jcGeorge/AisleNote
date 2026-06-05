@@ -16,6 +16,7 @@ import {
 import { buildFrontmatterModalDraftForAisle, buildFrontmatterRowsForAisle } from '../../frontmatter/frontmatter-state'
 import { getDefaultNoteLinkLabel, listNoteLocationsForBody } from '../../notes/note-locations'
 import { getAisleBodyId } from '../../notes/note-markdown'
+import { listLinkedAisleSlotsForAisleBody } from '../../notes/aisle-links'
 import { normalizeNoteReferenceTarget, resolveNoteReferenceTarget } from '../../notes/note-reference-targets'
 import { createId } from '../../state/workspace'
 import type {
@@ -53,6 +54,8 @@ type ModalHostProps = {
   onLinkInsertModeChange: (mode: LinkInsertMode) => void
   onNoteCopyModeChange: (mode: NoteCopyMode) => void
   onDeduplicateKeepDataChange: (keepData: boolean) => void
+  onPasteSyncedNoteAsAisle: () => void
+  onOpenSyncedFilter: () => void
   onConfirm: () => void
 }
 
@@ -154,7 +157,8 @@ function ShortcutMenuSettings({
                   onDragStart={(event) => startDrag(event, operation)}
                   onDragEnd={finishDrag}
                   onClick={() => removeOperation(operation)}
-                  title="Click to remove"
+                  aria-label={`Remove ${NEWLINE_OPERATION_LABELS[operation]}`}
+                  data-app-tooltip="Click to remove"
                 >
                   {NEWLINE_OPERATION_LABELS[operation]}
                 </button>
@@ -220,9 +224,13 @@ export function ModalHost({
   onLinkInsertModeChange,
   onNoteCopyModeChange,
   onDeduplicateKeepDataChange,
+  onPasteSyncedNoteAsAisle,
+  onOpenSyncedFilter,
   onConfirm,
 }: ModalHostProps) {
   const enterSubmitPendingRef = useRef(false)
+  const urlInputRef = useRef<HTMLInputElement | null>(null)
+  const urlLabelInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     if (!modal) return
@@ -244,6 +252,13 @@ export function ModalHost({
   useEffect(() => {
     enterSubmitPendingRef.current = false
   }, [modal])
+
+  useEffect(() => {
+    if (!modal || modal.type !== 'insert-note-reference' || modal.mode !== 'url' || !modal.urlInitialFocus) return
+    const input = modal.urlInitialFocus === 'label' ? urlLabelInputRef.current : urlInputRef.current
+    input?.focus()
+    onModalChange({ ...modal, urlInitialFocus: undefined })
+  }, [modal, onModalChange])
 
   const runPrimaryModalAction = () => {
     if (!modal) return
@@ -288,12 +303,13 @@ export function ModalHost({
     modal.type === 'sort-tabs' ||
     modal.type === 'shortcut-menu-settings'
   const isNotePickerModal = modal.type === 'copy-note' || modal.type === 'insert-note-reference'
-  const isNoteLevelDecoupleModal =
-    modal.type === 'deduplicate-note' || (modal.type === 'linked-aisle' && modal.reason === 'note-body')
-  const decoupleLocationCount = isNoteLevelDecoupleModal
-    ? listNoteLocationsForBody(state, modal.noteBodyId).length
+  const isDecoupleCardModal = modal.type === 'deduplicate-note' || modal.type === 'linked-aisle'
+  const decoupleLocationCount = isDecoupleCardModal
+    ? modal.type === 'linked-aisle' && modal.reason === 'aisle-body'
+      ? listLinkedAisleSlotsForAisleBody(state, modal.aisleBodyId).length
+      : listNoteLocationsForBody(state, modal.noteBodyId).length
     : 0
-  const modalStyle = isNoteLevelDecoupleModal
+  const modalStyle = isDecoupleCardModal
     ? ({
         '--decouple-modal-content-width': getDecoupleModalContentWidth(decoupleLocationCount),
       } as CSSProperties)
@@ -333,7 +349,7 @@ export function ModalHost({
   }
 
   const setLinkedAisleKeepData = (keepData: boolean) => {
-    if (modal.type !== 'linked-aisle' || modal.reason !== 'note-body') return
+    if (modal.type !== 'linked-aisle') return
     onDeduplicateKeepDataChange(keepData)
     onModalChange({ ...modal, keepData })
   }
@@ -485,7 +501,7 @@ export function ModalHost({
           className="settings-select-input frontmatter-row-value-input"
           value={row.computed !== 'none' && isFrontmatterComputedValueCompatibleWithFieldType(row.computed, row.type) ? row.computed : ''}
           aria-label="computed frontmatter value"
-          title={isComputedLocked(row) ? getComputedLockedMessage(row) : undefined}
+          data-app-tooltip={isComputedLocked(row) ? getComputedLockedMessage(row) : undefined}
           onMouseDown={isComputedLocked(row) ? (event) => handleComputedLockedMouseDown(event, row) : undefined}
           onKeyDown={isComputedLocked(row) ? (event) => {
             event.preventDefault()
@@ -553,7 +569,7 @@ export function ModalHost({
           role="switch"
           checked={checked}
           aria-label="frontmatter computed"
-          title={isComputedLocked(row) ? getComputedLockedMessage(row) : undefined}
+          data-app-tooltip={isComputedLocked(row) ? getComputedLockedMessage(row) : undefined}
           onKeyDown={(event) => {
             if (isComputedLocked(row)) {
               event.preventDefault()
@@ -680,7 +696,7 @@ export function ModalHost({
           modal.type === 'shortcut-menu-settings' ? 'shortcut-settings-modal' : ''
         } ${modal.type === 'sort-tabs' ? 'sort-modal' : ''} ${
           modal.type === 'insert-note-reference' ? 'insert-note-reference-modal-shell' : ''
-        } ${isNoteLevelDecoupleModal ? 'decouple-note-modal-shell' : ''}`}
+        } ${isDecoupleCardModal ? 'decouple-note-modal-shell' : ''}`}
         role="dialog"
         aria-modal="true"
         style={modalStyle}
@@ -689,7 +705,13 @@ export function ModalHost({
       >
         <h2>{modalText.title}</h2>
         {modal.type === 'sort-tabs' && (
-          <button type="button" className="modal-close-x-btn" onClick={() => onModalChange(null)} aria-label="close sort modal">
+          <button
+            type="button"
+            className="modal-close-x-btn"
+            onClick={() => onModalChange(null)}
+            aria-label="close sort modal"
+            data-app-tooltip="close sort modal"
+          >
             X
           </button>
         )}
@@ -798,6 +820,11 @@ export function ModalHost({
         )}
         {modal.type === 'linked-aisle' && (
           <div className="linked-aisle-modal">
+            <div className="settings-page-actions linked-aisle-filter-actions">
+              <button type="button" className="btn btn-sm settings-action-btn" onClick={onOpenSyncedFilter}>
+                synced filter
+              </button>
+            </div>
             {modal.reason === 'note-body' ? (
               <>
                 <DecoupleLocationCardStrip
@@ -819,9 +846,26 @@ export function ModalHost({
                 </div>
               </>
             ) : (
-              <div className="linked-aisle-summary">
-                <p>this aisle shares content with another aisle. de-couple this aisle to make it independent.</p>
-              </div>
+              <>
+                <DecoupleLocationCardStrip
+                  mode="aisle"
+                  state={state}
+                  aisleBodyId={modal.aisleBodyId}
+                  keepAisleSlotKeys={modal.keepAisleSlotKeys}
+                  onKeepAisleSlotKeysChange={(keepAisleSlotKeys) => onModalChange({ ...modal, keepAisleSlotKeys })}
+                />
+                <div className="deduplicate-keep-data-switch form-check form-switch settings-switch">
+                  <span>keep data in de-coupled aisles?</span>
+                  <input
+                    type="checkbox"
+                    className="form-check-input"
+                    role="switch"
+                    aria-label="keep data in de-coupled aisles?"
+                    checked={modal.keepData}
+                    onChange={(event) => setLinkedAisleKeepData(event.target.checked)}
+                  />
+                </div>
+              </>
             )}
           </div>
         )}
@@ -905,8 +949,10 @@ export function ModalHost({
                 <label className="settings-modal-field">
                   <span>url</span>
                   <input
+                    ref={urlInputRef}
                     type="text"
                     className="settings-text-input"
+                    aria-label="Link URL"
                     value={modal.url}
                     placeholder="https://example.com"
                     onChange={(event) => onModalChange({ ...modal, url: event.target.value })}
@@ -915,8 +961,10 @@ export function ModalHost({
                 <label className="settings-modal-field">
                   <span>label</span>
                   <input
+                    ref={urlLabelInputRef}
                     type="text"
                     className="settings-text-input"
+                    aria-label="Link label"
                     value={modal.urlLabel}
                     onChange={(event) => onModalChange({ ...modal, urlLabel: event.target.value })}
                   />
@@ -1140,8 +1188,8 @@ export function ModalHost({
                       {renderFrontmatterComputedControl(row)}
                       <span
                         className={`frontmatter-derived-indicator ${row.derived ? 'is-derived' : ''}`}
-                        title={derivedTitle}
                         aria-label={derivedTitle ? `derived from ${derivedTitle}` : 'not derived from a template'}
+                        data-app-tooltip={derivedTitle}
                       >
                         <input
                           type="checkbox"
@@ -1178,6 +1226,15 @@ export function ModalHost({
             <button type="button" className="btn btn-sm btn-outline-light modal-cancel-btn" onClick={() => onModalChange(null)}>
               cancel
             </button>
+            {modal.type === 'confirm-synced-note-paste' && modal.sourceAisleId && (
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-light modal-cancel-btn"
+                onClick={onPasteSyncedNoteAsAisle}
+              >
+                paste as synced aisle
+              </button>
+            )}
             <button
               type="button"
               className={`btn btn-sm ${

@@ -385,6 +385,7 @@ export function AisleEditModal({
                           type="button"
                           className="aisle-edit-delete-btn"
                           aria-label={`Delete aisle ${index + 1}`}
+                          data-app-tooltip={`Delete aisle ${index + 1}`}
                           onClick={(event) => {
                             event.preventDefault()
                             event.stopPropagation()

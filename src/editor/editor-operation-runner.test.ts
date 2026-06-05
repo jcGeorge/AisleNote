@@ -1,12 +1,30 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Editor } from '@toast-ui/editor'
+import { Schema } from 'prosemirror-model'
+import { EditorState, TextSelection } from 'prosemirror-state'
 import {
   dispatchEditorTransaction,
   insertEditorTextOperation,
   replaceEditorMarkdownOperation,
+  replaceSelectedTextWithTableOperation,
   runEditorCommandOperation,
   type EditorOperationRuntime,
 } from './editor-operation-runner'
+
+const tableOperationSchema = new Schema({
+  nodes: {
+    doc: { content: 'block+' },
+    text: { group: 'inline' },
+    paragraph: { group: 'block', content: 'inline*' },
+    hardBreak: { inline: true, group: 'inline', selectable: false },
+    table: { group: 'block', content: 'tableHead tableBody' },
+    tableHead: { content: 'tableRow' },
+    tableBody: { content: 'tableRow+' },
+    tableRow: { content: '(tableHeadCell | tableBodyCell)+' },
+    tableHeadCell: { content: 'paragraph+' },
+    tableBodyCell: { content: 'paragraph+' },
+  },
+})
 
 function createTransaction(docChanged = true) {
   return {
@@ -44,6 +62,47 @@ function createRuntime() {
     pushToast: vi.fn(),
   }
   return { runtime, editor, view, transaction }
+}
+
+function createTableSelectionRuntime(text: string, options: { collapsed?: boolean } = {}) {
+  const doc = tableOperationSchema.nodes.doc.create(null, [
+    tableOperationSchema.nodes.paragraph.create(null, tableOperationSchema.text(text)),
+  ])
+  const from = 1
+  const to = options.collapsed ? from : from + text.length
+  const view = {
+    state: EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, from, to),
+    }),
+    dispatch: vi.fn((transaction) => {
+      view.state = view.state.apply(transaction)
+    }),
+  }
+  const editor = {
+    wwEditor: { view },
+    focus: vi.fn(),
+    exec: vi.fn(),
+    insertText: vi.fn(),
+  } as unknown as Editor & { exec: ReturnType<typeof vi.fn>; insertText: ReturnType<typeof vi.fn>; focus: ReturnType<typeof vi.fn> }
+  const runtime: EditorOperationRuntime = {
+    editorRef: { current: editor },
+    commitActiveEditorMarkdownNow: vi.fn(() => 'markdown'),
+    replaceActiveEditorMarkdown: vi.fn(),
+    syncToolbarFormatState: vi.fn(),
+    pushToast: vi.fn(),
+  }
+  return { runtime, editor, view }
+}
+
+function getFirstTable(doc: any) {
+  let table: any | null = null
+  doc.descendants((node: any) => {
+    if (node?.type?.name !== 'table') return true
+    table = node
+    return false
+  })
+  return table
 }
 
 describe('editor operation runner', () => {
@@ -85,6 +144,26 @@ describe('editor operation runner', () => {
     expect(editor.exec).toHaveBeenCalledWith('bold', undefined)
     expect(runtime.commitActiveEditorMarkdownNow).toHaveBeenCalledTimes(1)
     expect(runtime.syncToolbarFormatState).toHaveBeenCalledTimes(1)
+  })
+
+  it('converts selected text to a table before falling back to the Toast UI addTable command', () => {
+    const selected = createTableSelectionRuntime('one\ttwo')
+
+    const converted = replaceSelectedTextWithTableOperation(selected.runtime, { syncToolbar: true })
+    const table = getFirstTable(selected.view.state.doc)
+
+    expect(converted).toMatchObject({ handled: true, changed: true })
+    expect(selected.editor.exec).not.toHaveBeenCalled()
+    expect(selected.runtime.commitActiveEditorMarkdownNow).toHaveBeenCalledTimes(1)
+    expect(selected.runtime.syncToolbarFormatState).toHaveBeenCalledTimes(1)
+    expect(table.child(0).child(0).child(0).textContent).toBe('one')
+    expect(table.child(0).child(0).child(1).textContent).toBe('two')
+
+    const collapsed = createTableSelectionRuntime('one\ttwo', { collapsed: true })
+    expect(replaceSelectedTextWithTableOperation(collapsed.runtime, { commitMode: 'none' }).handled).toBe(false)
+
+    runEditorCommandOperation(collapsed.runtime, 'addTable', { rowCount: 2, columnCount: 2 }, { commitMode: 'none' })
+    expect(collapsed.editor.exec).toHaveBeenCalledWith('addTable', { rowCount: 2, columnCount: 2 })
   })
 
   it('inserts text and replaces markdown through the operation contract', () => {

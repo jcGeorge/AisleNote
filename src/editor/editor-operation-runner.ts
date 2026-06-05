@@ -1,6 +1,7 @@
 import type { MutableRefObject } from 'react'
 import type { Editor } from '@toast-ui/editor'
 import { getCommandCapableEditor, getWysiwygView } from './prosemirror-utils'
+import { replaceSelectedTextWithTable } from './table-editing'
 import type { ToastTone } from '../types/app'
 
 export type EditorOperationHistoryPolicy = 'default' | 'skip'
@@ -187,5 +188,20 @@ export function replaceEditorMarkdownOperation(
   if (context && normalized.focus === 'focus') context.editor.focus()
   if (normalized.syncToolbar) runtime.syncToolbarFormatState?.()
   if (options.toast) runtime.pushToast?.(options.toast.message, options.toast.tone, options.toast.durationMs)
+  return buildEditorOperationResult(true, true, normalized)
+}
+
+export function replaceSelectedTextWithTableOperation(
+  runtime: EditorOperationRuntime,
+  options: EditorOperationOptions = {},
+): EditorOperationResult {
+  const normalized = normalizeOptions(options)
+  const context = getEditorOperationContext(runtime)
+  if (!context?.view) return buildEditorOperationResult(false, false, normalized)
+
+  const handled = replaceSelectedTextWithTable(context.view)
+  if (!handled) return buildEditorOperationResult(false, false, normalized)
+
+  finishEditorOperation(runtime, context.editor, normalized)
   return buildEditorOperationResult(true, true, normalized)
 }

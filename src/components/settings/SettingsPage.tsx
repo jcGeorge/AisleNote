@@ -9,13 +9,13 @@ import {
 import {
   MAX_NOTE_FONT_SCALE,
   MAX_TAB_BUTTON_SCALE,
-  MAX_TOOLTIP_SCALE,
+  MAX_TOOLBAR_BUTTON_SCALE,
   MIN_NOTE_FONT_SCALE,
   MIN_TAB_BUTTON_SCALE,
-  MIN_TOOLTIP_SCALE,
+  MIN_TOOLBAR_BUTTON_SCALE,
   NOTE_FONT_SCALE_STEP,
   TAB_BUTTON_SCALE_STEP,
-  TOOLTIP_SCALE_STEP,
+  TOOLBAR_BUTTON_SCALE_STEP,
 } from '../../settings/defaults'
 import {
   FRONTMATTER_FIELD_TYPES,
@@ -48,6 +48,7 @@ import type {
   TabRenameEnterBehavior,
   TipId,
   ToolbarLayout,
+  ToggleTabsTarget,
   UserSettingsLocationStatus,
   VisualsSettingsSection,
 } from '../../types/app'
@@ -101,6 +102,14 @@ const SCRATCHPAD_NEW_AISLE_SIDE_OPTIONS: Array<{ id: ScratchpadNewAisleSide; lab
   { id: 'right', label: 'right' },
 ]
 
+const TOGGLE_TABS_TARGET_OPTIONS: Array<{ id: ToggleTabsTarget; label: string }> = [
+  { id: 'trash', label: 'trash' },
+  { id: 'settings', label: 'settings' },
+  { id: 'messages', label: 'messages' },
+  { id: 'about', label: 'about' },
+  { id: 'filter', label: 'filter' },
+]
+
 function isFrontmatterBooleanTrue(value: string) {
   const normalized = value.trim().toLowerCase()
   return normalized === 'true' || normalized === 'yes' || normalized === 'on' || normalized === '1'
@@ -120,10 +129,10 @@ type SettingsPageProps = {
   importStatus: string
   tabButtonScaleDraft: number
   noteFontScaleDraft: number
-  tooltipScaleDraft: number
+  toolbarButtonScaleDraft: number
   selectedCustomTheme: CustomThemeId
   customThemePaletteDraft: CustomThemePalette
-  showParentHomeTabDraft: boolean
+  toggleTabsTargetDraft: ToggleTabsTarget
   alwaysShowSpacesDraft: boolean
   alwaysShowDomainsDraft: boolean
   tableAddTargetModeDraft: TableControlTargetMode
@@ -179,8 +188,8 @@ type SettingsPageProps = {
   onCustomThemePaletteSeedFromCurrentTheme: () => void
   onTabButtonScaleChange: (value: string) => void
   onNoteFontScaleChange: (value: string) => void
-  onTooltipScaleChange: (value: string) => void
-  onShowParentHomeTabChange: (enabled: boolean) => void
+  onToolbarButtonScaleChange: (value: string) => void
+  onToggleTabsTargetChange: (target: ToggleTabsTarget) => void
   onAlwaysShowSpacesChange: (enabled: boolean) => void
   onAlwaysShowDomainsChange: (enabled: boolean) => void
   onTableAddTargetModeChange: (mode: TableControlTargetMode) => void
@@ -238,10 +247,10 @@ export function SettingsPage({
   importStatus,
   tabButtonScaleDraft,
   noteFontScaleDraft,
-  tooltipScaleDraft,
+  toolbarButtonScaleDraft,
   selectedCustomTheme,
   customThemePaletteDraft,
-  showParentHomeTabDraft,
+  toggleTabsTargetDraft,
   alwaysShowSpacesDraft,
   alwaysShowDomainsDraft,
   tableAddTargetModeDraft,
@@ -297,8 +306,8 @@ export function SettingsPage({
   onCustomThemePaletteSeedFromCurrentTheme,
   onTabButtonScaleChange,
   onNoteFontScaleChange,
-  onTooltipScaleChange,
-  onShowParentHomeTabChange,
+  onToolbarButtonScaleChange,
+  onToggleTabsTargetChange,
   onAlwaysShowSpacesChange,
   onAlwaysShowDomainsChange,
   onTableAddTargetModeChange,
@@ -344,12 +353,6 @@ export function SettingsPage({
   const activeFrontmatterTemplate =
     frontmatterDraft.templates.find((template) => template.id === frontmatterDraft.settingsTemplateId) ??
     frontmatterDraft.templates[0]
-  const scratchpadDeleteShortcutSetting = miscSyncedUiBooleanSettings.find(
-    (setting) => setting.key === 'scratchpadDeleteAisleShortcutEnabled',
-  )
-  const generalMiscSyncedUiBooleanSettings = miscSyncedUiBooleanSettings.filter(
-    (setting) => setting.key !== 'scratchpadDeleteAisleShortcutEnabled',
-  )
   const selectThemePreviewRail = (rail: ThemePreviewRail, sample: ThemePreviewRailSample) => {
     setThemePreviewRailSelection((previous) => selectThemePreviewRailSample(previous, rail, sample))
   }
@@ -496,6 +499,24 @@ export function SettingsPage({
     )
   }
 
+  const renderToggleTabsTargetSetting = () => (
+    <label className="settings-hotkey-row" htmlFor="settings-toggle-tabs-target">
+      <span className="settings-hotkey-label">toggle tabs /</span>
+      <select
+        id="settings-toggle-tabs-target"
+        className="settings-select-input settings-shortcut-select"
+        value={toggleTabsTargetDraft}
+        onChange={(event) => onToggleTabsTargetChange(event.target.value as ToggleTabsTarget)}
+      >
+        {TOGGLE_TABS_TARGET_OPTIONS.map((option) => (
+          <option key={option.id} value={option.id}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+
   const renderScratchpadAisleLimitSetting = () => (
     <div className="settings-hotkey-row">
       <span className="settings-hotkey-label">scratchpad aisle limit</span>
@@ -540,21 +561,27 @@ export function SettingsPage({
     )
   }
 
-  const renderMiscSyncedUiBooleanSetting = (setting: SyncedUiBooleanSettingView) => (
-    <div key={setting.key} className="settings-hotkey-row">
-      <span className="settings-hotkey-label">{setting.label}</span>
-      <div className="form-check form-switch settings-switch">
-        <input
-          className="form-check-input"
-          type="checkbox"
-          role="switch"
-          checked={setting.checked}
-          aria-label={setting.ariaLabel}
-          onChange={(event) => onSyncedUiBooleanSettingChange(setting.key, event.target.checked)}
-        />
+  const renderMiscSyncedUiBooleanSetting = (setting: SyncedUiBooleanSettingView) => {
+    const label =
+      setting.key === 'deleteActiveAisleShortcutEnabled'
+        ? `${isMacPlatform ? 'command' : 'control'}+w deletes active aisle`
+        : setting.label
+    return (
+      <div key={setting.key} className="settings-hotkey-row">
+        <span className="settings-hotkey-label">{label}</span>
+        <div className="form-check form-switch settings-switch">
+          <input
+            className="form-check-input"
+            type="checkbox"
+            role="switch"
+            checked={setting.checked}
+            aria-label={label}
+            onChange={(event) => onSyncedUiBooleanSettingChange(setting.key, event.target.checked)}
+          />
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   return (
     <section className="settings-page-wrap">
@@ -734,40 +761,21 @@ export function SettingsPage({
               </div>
             </div>
             <div className="settings-hotkey-row settings-slider-row">
-              <label className="settings-hotkey-label" htmlFor="settings-tooltip-scale">
-                tooltip size
+              <label className="settings-hotkey-label" htmlFor="settings-toolbar-button-scale">
+                toolbar button size
               </label>
               <div className="settings-slider-wrap">
                 <input
-                  id="settings-tooltip-scale"
+                  id="settings-toolbar-button-scale"
                   className="form-range settings-range-input"
                   type="range"
-                  min={MIN_TOOLTIP_SCALE}
-                  max={MAX_TOOLTIP_SCALE}
-                  step={TOOLTIP_SCALE_STEP}
-                  value={tooltipScaleDraft}
-                  onChange={(event) => onTooltipScaleChange(event.target.value)}
+                  min={MIN_TOOLBAR_BUTTON_SCALE}
+                  max={MAX_TOOLBAR_BUTTON_SCALE}
+                  step={TOOLBAR_BUTTON_SCALE_STEP}
+                  value={toolbarButtonScaleDraft}
+                  onChange={(event) => onToolbarButtonScaleChange(event.target.value)}
                 />
-                <span className="settings-range-value">{Math.round(tooltipScaleDraft * 100)}%</span>
-              </div>
-            </div>
-            <div className="settings-hotkey-row">
-              <label
-                className="settings-hotkey-label"
-                htmlFor="settings-show-parent-home-tab"
-                title='adds a fixed first sub-tab named "home" for each parent tab.'
-              >
-                show the parent's home tab with the other sub-tabs
-              </label>
-              <div className="form-check form-switch settings-switch">
-                <input
-                  id="settings-show-parent-home-tab"
-                  className="form-check-input"
-                  type="checkbox"
-                  role="switch"
-                  checked={showParentHomeTabDraft}
-                  onChange={(event) => onShowParentHomeTabChange(event.target.checked)}
-                />
+                <span className="settings-range-value">{Math.round(toolbarButtonScaleDraft * 100)}%</span>
               </div>
             </div>
             <div className="settings-hotkey-row">
@@ -930,8 +938,8 @@ export function SettingsPage({
                       {renderFrontmatterDefaultControl(activeFrontmatterTemplate.id, field)}
                       <span
                         className={`frontmatter-computed-lock ${field.computed !== 'none' ? 'is-visible' : ''}`}
-                        title={field.computed !== 'none' ? 'computed values cannot be manually changed.' : undefined}
                         aria-label={field.computed !== 'none' ? 'computed values cannot be manually changed.' : undefined}
+                        data-app-tooltip={field.computed !== 'none' ? 'computed values cannot be manually changed.' : undefined}
                       >
                         {field.computed !== 'none' ? 'lock' : ''}
                       </span>
@@ -959,9 +967,10 @@ export function SettingsPage({
 
         {section === 'misc' && (
           <div className="settings-section-panel" role="tabpanel">
+            {renderToggleTabsTargetSetting()}
             {renderTableOfContentsScopeSetting()}
             {renderTabRenameEnterBehaviorSetting()}
-            {generalMiscSyncedUiBooleanSettings.map((setting) => renderMiscSyncedUiBooleanSetting(setting))}
+            {miscSyncedUiBooleanSettings.map((setting) => renderMiscSyncedUiBooleanSetting(setting))}
             {renderTableControlTargetSetting(
               'add table row or column',
               tableAddTargetModeDraft,
@@ -973,9 +982,6 @@ export function SettingsPage({
               onTableDeleteTargetModeChange,
             )}
             <p className="settings-help settings-subsection-label">scratchpad</p>
-            {scratchpadDeleteShortcutSetting
-              ? renderMiscSyncedUiBooleanSetting(scratchpadDeleteShortcutSetting)
-              : null}
             {renderScratchpadAisleLimitSetting()}
             {renderScratchpadNewAisleSideSetting()}
           </div>

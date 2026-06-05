@@ -11,16 +11,16 @@ import {
 describe('synced UI settings registry', () => {
   it('exposes defaults for simple synced UI settings', () => {
     expect(DEFAULT_SIMPLE_SYNCED_UI_SETTINGS).toMatchObject({
-      showParentHomeTab: true,
       lastLinkInsertMode: 'note',
       lastNoteCopyMode: 'independent',
+      toggleTabsTarget: 'trash',
       findCaseSensitive: false,
       findWholeWord: false,
       findRegex: false,
       findReplaceMode: 'find',
       removeNoteReferencesOnTrash: true,
       noteMentionCopyRequiresConfirmation: true,
-      deleteSubtabShortcutEnabled: false,
+      deleteActiveAisleShortcutEnabled: false,
       tabRenameEnterBehavior: 'goes-to-note',
       decoupledItemsKeepData: true,
       tableAddTargetMode: 'bottom-right',
@@ -33,7 +33,7 @@ describe('synced UI settings registry', () => {
 
   it('normalizes booleans and enum values with invalid-value fallbacks', () => {
     const normalized = normalizeRegisteredSyncedUiSettings({
-      showParentHomeTab: false,
+      toggleTabsTarget: 'messages',
       findRegex: true,
       findReplaceMode: 'replace',
       lastLinkInsertMode: 'url',
@@ -44,11 +44,11 @@ describe('synced UI settings registry', () => {
       tabRenameEnterBehavior: 'creates-another-tab',
       newAislePlacement: 'left-of-focus',
       removeNoteReferencesOnTrash: 'false',
-      deleteSubtabShortcutEnabled: true,
+      deleteActiveAisleShortcutEnabled: true,
     })
 
     expect(normalized).toMatchObject({
-      showParentHomeTab: false,
+      toggleTabsTarget: 'messages',
       findRegex: true,
       findReplaceMode: 'replace',
       lastLinkInsertMode: 'url',
@@ -58,10 +58,12 @@ describe('synced UI settings registry', () => {
       tableOfContentsScope: 'focused-aisle',
       tabRenameEnterBehavior: 'creates-another-tab',
       removeNoteReferencesOnTrash: true,
-      deleteSubtabShortcutEnabled: true,
+      deleteActiveAisleShortcutEnabled: true,
     })
     expect(normalized).not.toHaveProperty('newAislePlacement')
+    expect(normalized).not.toHaveProperty('showParentHomeTab')
     expect(normalizeRegisteredSyncedUiSetting('findReplaceMode', 'bad')).toBe('find')
+    expect(normalizeRegisteredSyncedUiSetting('toggleTabsTarget', 'bad')).toBe('trash')
     expect(normalizeRegisteredSyncedUiSetting('tabRenameEnterBehavior', 'bad')).toBe('goes-to-note')
   })
 
@@ -73,7 +75,7 @@ describe('synced UI settings registry', () => {
     expect(getSyncedUiBooleanSettings({ noteMentionCopyRequiresConfirmation: false })).toMatchObject({
       noteMentionCopyRequiresConfirmation: false,
       removeNoteReferencesOnTrash: true,
-      deleteSubtabShortcutEnabled: false,
+      deleteActiveAisleShortcutEnabled: false,
     })
   })
 
@@ -81,8 +83,7 @@ describe('synced UI settings registry', () => {
     expect(MISC_SYNCED_UI_BOOLEAN_SETTINGS.map((setting) => setting.key)).toEqual([
       'removeNoteReferencesOnTrash',
       'noteMentionCopyRequiresConfirmation',
-      'deleteSubtabShortcutEnabled',
-      'scratchpadDeleteAisleShortcutEnabled',
+      'deleteActiveAisleShortcutEnabled',
     ])
   })
 })

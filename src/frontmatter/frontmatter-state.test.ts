@@ -96,7 +96,7 @@ function createFrontmatterState(): AppState {
     }],
     hotkeys: {
       shortcuts: {
-        toggleTabTrash: '',
+        toggleTabsTarget: '',
         openDomains: '',
         openSpaces: '',
         newTab: '',
@@ -125,7 +125,6 @@ function createFrontmatterState(): AppState {
       templates: [template, otherTemplate],
     },
     ui: {
-      showParentHomeTab: true,
       tableAddTargetMode: 'bottom-right',
       tableDeleteTargetMode: 'bottom-right',
       tabButtonScale: 1,

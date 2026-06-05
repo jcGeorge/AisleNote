@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Schema } from 'prosemirror-model'
-import { EditorState, TextSelection } from 'prosemirror-state'
+import { EditorState, NodeSelection, TextSelection } from 'prosemirror-state'
 import { getBulletListMarkerFromAttrs } from './list-markers'
 import { isCompatibleListNodeForOperation } from './list-operation-compatibility'
 import {
@@ -136,6 +136,25 @@ const newlineOperationSchema = new Schema({
       },
       toDOM: () => ['li', 0],
     },
+    table: {
+      group: 'block',
+      content: 'tableHead tableBody',
+    },
+    tableHead: {
+      content: 'tableRow',
+    },
+    tableBody: {
+      content: 'tableRow+',
+    },
+    tableRow: {
+      content: '(tableHeadCell | tableBodyCell)+',
+    },
+    tableHeadCell: {
+      content: 'paragraph+',
+    },
+    tableBodyCell: {
+      content: 'paragraph+',
+    },
   },
 })
 
@@ -162,9 +181,13 @@ function orderedListNode(texts: string[]) {
 }
 
 function createEditorForDoc(doc: any, selectionFrom: number, selectionTo: number) {
+  return createEditorForSelection(doc, TextSelection.create(doc, selectionFrom, selectionTo))
+}
+
+function createEditorForSelection(doc: any, selection: any, editorExtras: Record<string, unknown> = {}) {
   let state = EditorState.create({
     doc,
-    selection: TextSelection.create(doc, selectionFrom, selectionTo),
+    selection,
   })
   const view = {
     get state() {
@@ -178,9 +201,25 @@ function createEditorForDoc(doc: any, selectionFrom: number, selectionTo: number
     editor: {
       wwEditor: { view },
       focus: vi.fn(),
+      ...editorExtras,
     },
     view,
   }
+}
+
+function tableNode(header: string, body: string) {
+  return newlineOperationSchema.nodes.table.create(null, [
+    newlineOperationSchema.nodes.tableHead.create(null, [
+      newlineOperationSchema.nodes.tableRow.create(null, [
+        newlineOperationSchema.nodes.tableHeadCell.create(null, paragraphNode(header)),
+      ]),
+    ]),
+    newlineOperationSchema.nodes.tableBody.create(null, [
+      newlineOperationSchema.nodes.tableRow.create(null, [
+        newlineOperationSchema.nodes.tableBodyCell.create(null, paragraphNode(body)),
+      ]),
+    ]),
+  ])
 }
 
 function listTexts(listNode: any): string[] {
@@ -300,6 +339,29 @@ describe('editor newline operations', () => {
 
       expect(view.dispatch.mock.calls[0]?.[0]?.getMeta('addToHistory')).toBe(false)
     })
+  })
+
+  it('carries a selected table as markdown when creating an aisle', () => {
+    const table = tableNode('Header', 'Body')
+    const after = paragraphNode('after')
+    const doc = newlineOperationSchema.nodes.doc.create(null, [table, after])
+    const tableStart = 0
+    const toMarkdownText = vi.fn((fragment: any) => {
+      expect(fragment.firstChild?.type?.name).toBe('table')
+      return '| Header |\n| --- |\n| Body |'
+    })
+    const { editor, view } = createEditorForSelection(doc, NodeSelection.create(doc, tableStart), {
+      convertor: { toMarkdownText },
+    })
+
+    expect(applyEditorNewlineOperation(editor as any, 'aisleRight')).toEqual({
+      handled: true,
+      aisleMarkdown: '| Header |\n| --- |\n| Body |',
+    })
+    expect(toMarkdownText).toHaveBeenCalledTimes(1)
+    expect(docChildTypes(view.state.doc)).toEqual(['paragraph'])
+    expect(view.state.doc.textContent).toBe('after')
+    expect(view.dispatch.mock.calls[0]?.[0]?.getMeta('addToHistory')).toBe(false)
   })
 
   it('converts selected mixed-list bullet rows to tasks without deleting earlier task rows', () => {

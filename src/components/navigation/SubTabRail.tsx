@@ -33,7 +33,6 @@ type SubTabRailProps = {
   editing: { type: EditableEntityType; id: string } | null
   arrangeMode: ArrangeModeState
   tooltipsDisabled?: boolean
-  showParentHomeTab: boolean
   tagFilterActive?: boolean
   getHomeLabel?: () => ReactNode
   getSubTabLabel?: (subTab: SubTab) => ReactNode
@@ -138,7 +137,6 @@ export function SubTabRail({
   editing,
   arrangeMode,
   tooltipsDisabled = false,
-  showParentHomeTab,
   tagFilterActive = false,
   getHomeLabel = () => 'home',
   getSubTabLabel = (subTab) => subTab.title,
@@ -207,7 +205,7 @@ export function SubTabRail({
       aria-label="Nested note tabs"
     >
       <div ref={subTabRailRef} className="tabbar-scroll">
-        {isNoteWorkspaceView && showParentHomeTab && (
+        {isNoteWorkspaceView && (
           <button
             type="button"
             role="tab"
@@ -227,7 +225,7 @@ export function SubTabRail({
               onClearArrangeSelection()
               onSelectParentHomeTab()
             }}
-            title={tooltipsDisabled ? undefined : 'home note'}
+            data-app-tooltip={tooltipsDisabled ? undefined : 'home note'}
             onContextMenu={(event) => {
               const contextPolicy = getArrangeRailContextMenuPolicy({
                 disabled: viewMode !== 'main',
@@ -487,8 +485,8 @@ export function SubTabRail({
               if (arrangeControlsDisabled) return
               onOpenSubTabSortModal()
             }}
-            title={tooltipsDisabled ? undefined : 'sort sub-tabs'}
             aria-label="sort sub-tabs"
+            data-app-tooltip={tooltipsDisabled ? undefined : 'sort sub-tabs'}
             aria-disabled={arrangeControlsDisabled}
             disabled={arrangeControlsDisabled}
           >
@@ -499,7 +497,8 @@ export function SubTabRail({
             type="button"
             className="btn btn-sm btn-outline-light add-tab-btn"
             onClick={onAddSubTab}
-            title={tooltipsDisabled ? undefined : 'Add note tab'}
+            aria-label="Add note tab"
+            data-app-tooltip={tooltipsDisabled ? undefined : 'Add note tab'}
           >
             +
           </button>
@@ -513,8 +512,8 @@ export function SubTabRail({
             className={`btn btn-sm ${scratchpadActive ? 'btn-info' : 'btn-outline-info'} tab-btn subtab-btn scratchpad-rail-btn ${
               scratchpadActive ? 'is-selected' : ''
             } ${scratchpadTagCountLabel ? 'has-tag-count' : ''}`}
-            title={tooltipsDisabled ? undefined : 'scratchpad'}
             aria-label="scratchpad"
+            data-app-tooltip={tooltipsDisabled ? undefined : 'scratchpad'}
             onClick={onOpenScratchpad}
             onContextMenu={(event) => {
               if (viewMode !== 'main') return

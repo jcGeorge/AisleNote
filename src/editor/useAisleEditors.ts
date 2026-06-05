@@ -4,6 +4,7 @@ import { Editor } from '@toast-ui/editor'
 import { TextSelection } from 'prosemirror-state'
 import { buildAisleEditorKey, getAisleIdFromAisleEditorKey, type AisleEditorMeta } from './aisle-editor'
 import {
+  resolveProgrammaticAisleRewriteMarkdown,
   shouldClearPendingCursorRestoreForAisleActivation,
   shouldUseFastSameAisleActivation,
   type AisleActivationSource,
@@ -21,6 +22,7 @@ import {
   headingSpaceShortcutPlugin,
   highlightPlugin,
   installHeadingPopupActiveState,
+  installToolbarAppTooltips,
   listMarkerPlugin,
   multiLineSelectionShortcutPlugin,
   tagAppearancePlugin,
@@ -504,22 +506,24 @@ export function useAisleEditors({
     if (!isMainViewRef.current) return
     const markdown = getNormalizedEditorMarkdown(editor)
 
-    if (normalizingAisleIdsRef.current.has(aisleId)) {
-      const normalizedMarkdown = getCachedMarkdownForAisle(aisleId) ?? markdown
+    const programmaticRewriteMarkdown = resolveProgrammaticAisleRewriteMarkdown({
+      isProgrammaticRewrite: normalizingAisleIdsRef.current.has(aisleId),
+      expectedMarkdown: getCachedMarkdownForAisle(aisleId),
+      currentMarkdown: markdown,
+    })
+    if (programmaticRewriteMarkdown !== null) {
       normalizingAisleIdsRef.current.delete(aisleId)
-      if (markdown === normalizedMarkdown) {
-        lastEditorMarkdownRef.current = normalizedMarkdown
-        cacheMarkdownForAisleBody(aisleId, normalizedMarkdown)
-        scheduleContentCommit(
-          normalizedMarkdown,
-          activeSpaceIdRef.current,
-          activeTabIdRef.current,
-          activeSubTabIdRef.current,
-          aisleId,
-          { aisleBodyId: getAisleBodyIdForAisleId(aisleId), noteBodyId: activeNoteBodyIdRef.current },
-        )
-        return
-      }
+      lastEditorMarkdownRef.current = programmaticRewriteMarkdown
+      cacheMarkdownForAisleBody(aisleId, programmaticRewriteMarkdown)
+      scheduleContentCommit(
+        programmaticRewriteMarkdown,
+        activeSpaceIdRef.current,
+        activeTabIdRef.current,
+        activeSubTabIdRef.current,
+        aisleId,
+        { aisleBodyId: getAisleBodyIdForAisleId(aisleId), noteBodyId: activeNoteBodyIdRef.current },
+      )
+      return
     }
 
     activateAisleEditor(editorKey)
@@ -815,6 +819,7 @@ export function useAisleEditors({
       root.addEventListener('focusin', activateFromFocus)
       root.addEventListener('pointerdown', activateFromPointer, true)
       const cleanupImageDisplayMetadataSync = installImageDisplayMetadataSync(root)
+      const cleanupToolbarAppTooltips = installToolbarAppTooltips(root)
       const cleanupHeadingPopupActiveState = installHeadingPopupActiveState(root, () => editor)
       const cleanupCompletedTaskCheckboxBehavior = installCompletedTaskCheckboxBehavior(
         root,
@@ -836,6 +841,7 @@ export function useAisleEditors({
         pluginKey,
         cleanup: () => {
           cleanupImageDisplayMetadataSync()
+          cleanupToolbarAppTooltips()
           cleanupTaskTextReorderBehavior()
           cleanupCompletedTaskCheckboxBehavior()
           cleanupHeadingPopupActiveState()

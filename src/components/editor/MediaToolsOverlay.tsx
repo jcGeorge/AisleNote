@@ -19,7 +19,7 @@ type MediaToolsOverlayProps = {
   onBeginResize: (event: PointerEvent<HTMLButtonElement>) => void
 }
 
-function ToolButton({ children, onClick, title }: { children: ReactNode; onClick: () => void; title: string }) {
+function ToolButton({ children, onClick, label }: { children: ReactNode; onClick: () => void; label: string }) {
   return (
     <button
       type="button"
@@ -29,7 +29,8 @@ function ToolButton({ children, onClick, title }: { children: ReactNode; onClick
         event.preventDefault()
         onClick()
       }}
-      title={title}
+      aria-label={label}
+      data-app-tooltip={label}
     >
       {children}
     </button>
@@ -56,8 +57,8 @@ function TransformButton({
         event.preventDefault()
         void onTransformMedia(operation)
       }}
-      title={label}
       aria-label={label}
+      data-app-tooltip={label}
     >
       <span className={`image-transform-icon ${iconClassName}`} aria-hidden="true" />
     </button>
@@ -129,14 +130,14 @@ export function MediaToolsOverlay({
                 event.preventDefault()
                 onReturnToStart()
               }}
-              title="Return"
               aria-label="Return"
+              data-app-tooltip="Return"
             >
               return
             </button>
           </>
         ) : (
-          <ToolButton onClick={onOpenTransform} title="Transform">
+          <ToolButton onClick={onOpenTransform} label="Transform">
             transform
           </ToolButton>
         )}
@@ -150,7 +151,7 @@ export function MediaToolsOverlay({
         onClick={(event) => event.preventDefault()}
         onPointerDown={onBeginResize}
         aria-label="Resize video"
-        title="Drag to resize"
+        data-app-tooltip="Drag to resize"
       />
     </>
   )

@@ -73,15 +73,17 @@ import {
   TrashSpaceRail,
 } from './components/navigation/CompactScopeRails'
 import { NavigationRailControls, type NavigationRailAction } from './components/navigation/NavigationRailControls'
-import { TagFilterControl } from './components/navigation/TagFilterControl'
+import { NoteFilterControl } from './components/navigation/NoteFilterControl'
 import {
   GuidedTabArrangeCarryPreview,
   TabArrangeDragPreviewOverlay,
 } from './components/navigation/TabArrangeDragPreviewOverlay'
 import { TopBar } from './components/navigation/TopBar'
 import { ArrangeDestinationPrompt } from './components/overlays/ArrangeDestinationPrompt'
+import { AppTooltipLayer } from './components/overlays/AppTooltipLayer'
 import {
   ContextMenuHost,
+  type EditorAisleInsertSide,
   type EditorClipboardAction,
   type EditorPasteDestination,
 } from './components/overlays/ContextMenuHost'
@@ -106,11 +108,17 @@ import {
 import {
   finishEditorOperation,
   insertEditorTextOperation,
+  replaceSelectedTextWithTableOperation,
   runEditorCommandOperation,
   type EditorOperationRuntime,
 } from './editor/editor-operation-runner'
 import { closeEditorEphemera, type CloseEditorEphemeraOptions } from './editor/editor-ephemera'
-import { getAislesForNewAisle, isEmptyAisleMarkdown, MAX_AISLE_WARNING_MESSAGE } from './editor/aisle-edit-draft'
+import {
+  deleteFocusedAisleFromDraft,
+  getAislesForNewAisle,
+  isEmptyAisleMarkdown,
+  MAX_AISLE_WARNING_MESSAGE,
+} from './editor/aisle-edit-draft'
 import type { AisleStructuralSnapshot } from './editor/aisle-structural-history'
 import { insertNewAisles, replaceFocusedAisleWithNewAisles } from './editor/aisle-insertion'
 import { getAisleIdFromAisleEditorKey } from './editor/aisle-editor'
@@ -183,13 +191,20 @@ import {
   type RenameEntityType,
 } from './navigation/rename-draft'
 import { buildNoteLocationKey, getLocationInfo, listNoteLocationsForBody } from './notes/note-locations'
-import { getLinkedAisleIdsForNoteBody } from './notes/aisle-links'
+import {
+  buildAisleSlotKey,
+  decoupleAisleSlotsInState,
+  getLinkedAisleIdsForNoteBody,
+  listLinkedAisleSlotsForAisleBody,
+} from './notes/aisle-links'
 import { openExternalWebUrl } from './notes/external-links'
 import { getNoteCopyCreatedToast } from './notes/copy-reference-labels'
 import {
   buildDefaultNoteReferenceDraft,
   buildExternalLinkEditDraft,
   buildInternalNoteLinkEditDraft,
+  buildUrlLinkShortcutDraft,
+  type NoteReferenceSource,
 } from './notes/note-reference-model'
 import {
   buildCopyAsClipboardData,
@@ -235,6 +250,7 @@ import { getRuntimeDataCapabilities } from './platform/data-platform'
 import {
   ALWAYS_SHOW_DOMAINS_WITHOUT_SPACES_MESSAGE,
   DEFAULT_UI_SETTINGS,
+  clampToolbarButtonScale,
   getThemePaletteForTheme,
   isCustomTheme,
 } from './settings/defaults'
@@ -274,19 +290,26 @@ import {
 } from './state/workspace'
 import { collectAppNavigationEntityIds, createReservedIdAllocator } from './state/navigation-ids'
 import {
-  appendTagFilterCount,
-  buildTagFilterIndex,
-  getFirstMatchingLocationForDomain,
-  getFirstMatchingLocationForParent,
-  getFirstMatchingLocationForSpace,
-  getPrimaryTagOccurrencesForLocation,
-  getTagFilterCountLabel,
-  getTagFilterParentKey,
-  getTagFilterSpaceKey,
+  appendNoteFilterCount,
+  buildNoteFilterIndex,
+  getFirstMatchingNoteFilterLocationForDomain,
+  getFirstMatchingNoteFilterLocationForParent,
+  getFirstMatchingNoteFilterLocationForSpace,
+  getFrontmatterPropertyFilterKey,
+  getFrontmatterTemplateFilterKey,
+  getNoteFilterCountLabel,
+  getNoteFilterOccurrencesForLocation,
+  getNoteFilterParentKey,
+  getNoteFilterSpaceKey,
+  getPrimaryNoteFilterOccurrencesForLocation,
+  getSyncedAisleFilterKey,
+  getSyncedNoteFilterKey,
+  sortNoteFilterOptions,
+  type NoteFilterOccurrence,
+} from './filters/note-filter'
+import {
   normalizeTagKey,
-  sortTagFilterTags,
   type TagFilterOccurrence,
-  type TagFilterSortMode,
 } from './tags/tag-filter'
 import { normalizeTagAutocompleteRecentKeys } from './tags/tag-autocomplete'
 import { useTagAutocompleteController } from './tags/useTagAutocompleteController'
@@ -317,6 +340,9 @@ import type {
   MultiLineInlineFormat,
   NewAislePlacement,
   NewlineOperationId,
+  NoteFilterKind,
+  NoteFilterSettings,
+  NoteBody,
   NoteAisleBody,
   NoteCopyMode,
   NoteLocation,
@@ -329,6 +355,7 @@ import type {
   TipId,
   ToastState,
   ToastTone,
+  ToggleTabsTarget,
   ViewMode,
   WorkspaceData,
 } from './types/app'
@@ -351,14 +378,6 @@ type FindReplacePanelState = {
   wholeWord: boolean
   regex: boolean
   activeIndex: number
-}
-
-type TagFilterModeState = {
-  selectedTagKeys: string[]
-  draftTagKeys: string[]
-  menuOpen: boolean
-  sortMode: TagFilterSortMode
-  cycleByLocation: Record<string, number>
 }
 
 type CopyAsMenuItemState = {
@@ -460,6 +479,7 @@ function App() {
   const [editing, setEditing] = useState<{ type: EditableEntityType; id: string } | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [modal, setModal] = useState<ModalState | null>(null)
+  const insertNoteReferenceModalOpen = modal?.type === 'insert-note-reference'
   const [shortcutMenu, setShortcutMenu] = useState<ShortcutMenuState | null>(null)
   const [shortcutMenuActiveIndex, setShortcutMenuActiveIndex] = useState(0)
   const [tableOfContentsPanels, setTableOfContentsPanels] = useState<TableOfContentsPanelsState | null>(null)
@@ -475,7 +495,8 @@ function App() {
     regex: state.ui.findRegex ?? false,
     activeIndex: 0,
   })
-  const [tagFilter, setTagFilter] = useState<TagFilterModeState | null>(null)
+  const [noteFilterMenuOpen, setNoteFilterMenuOpen] = useState(false)
+  const [noteFilterCycleByLocation, setNoteFilterCycleByLocation] = useState<Record<string, number>>({})
   const [tagAutocompleteRecentKeys, setTagAutocompleteRecentKeys] = useState<string[]>(() =>
     normalizeTagAutocompleteRecentKeys(initialDeviceSettingsRef.current?.tagAutocompleteRecentKeys),
   )
@@ -782,22 +803,40 @@ function App() {
       }),
     [findReplacePanel.caseSensitive, findReplacePanel.query, findReplacePanel.regex, findReplacePanel.wholeWord],
   )
-  const tagFilterActive = tagFilter !== null
-  const tagFilterDisplayKeys = tagFilter ? (tagFilter.menuOpen ? tagFilter.draftTagKeys : tagFilter.selectedTagKeys) : []
-  const tagFilterEffectiveKeys = tagFilter
-    ? tagFilter.draftTagKeys.length > 0
-      ? tagFilter.draftTagKeys
-      : tagFilter.selectedTagKeys
-    : []
-  const tagFilterEffectiveKey = tagFilterEffectiveKeys.join('\u0000')
-  const tagFilterIndex = useMemo(
-    () => buildTagFilterIndex(state, tagFilterEffectiveKey ? tagFilterEffectiveKey.split('\u0000') : []),
-    [state, tagFilterEffectiveKey],
+  const defaultNoteFilter = DEFAULT_UI_SETTINGS.noteFilter as NoteFilterSettings
+  const noteFilter = state.ui.noteFilter ?? defaultNoteFilter
+  const noteFilterKind = noteFilter.kind
+  const noteFilterSelectedKeys =
+    noteFilterKind === 'synced'
+      ? noteFilter.synced.selectedKeys
+      : noteFilterKind === 'frontmatter'
+        ? noteFilter.frontmatter.selectedKeys
+        : noteFilter.tags.selectedKeys
+  const tagFilterActive = noteFilter.active
+  const noteFilterSelectedKey = noteFilterSelectedKeys.join('\u0000')
+  const noteFilterIndex = useMemo(
+    () => buildNoteFilterIndex(state, noteFilterKind, noteFilterSelectedKey ? noteFilterSelectedKey.split('\u0000') : []),
+    [noteFilterKind, noteFilterSelectedKey, state],
   )
-  const sortedTagFilterTags = useMemo(
-    () => sortTagFilterTags(tagFilterIndex.availableTags, tagFilter?.sortMode ?? 'az'),
-    [tagFilter?.sortMode, tagFilterIndex.availableTags],
+  const sortedNoteFilterOptions = useMemo(
+    () => sortNoteFilterOptions(noteFilterIndex.availableOptions, noteFilter.tags.sortMode),
+    [noteFilter.tags.sortMode, noteFilterIndex.availableOptions],
   )
+  const tagAutocompleteFilterIndex = useMemo(() => buildNoteFilterIndex(state, 'tags', []), [state])
+
+  const updateNoteFilter = (updater: (current: NoteFilterSettings) => NoteFilterSettings) => {
+    setState((previous) => {
+      const current = previous.ui.noteFilter ?? defaultNoteFilter
+      const nextFilter = updater(current)
+      return {
+        ...previous,
+        ui: {
+          ...previous.ui,
+          noteFilter: nextFilter,
+        },
+      }
+    })
+  }
 
   useEffect(() => {
     setFindReplacePanel((current) => {
@@ -1244,6 +1283,30 @@ function App() {
   const addAisleToActiveNote = aisleController.addAisleToActiveNote
   const applyAisleEditDraftToActiveNote = aisleController.applyAisleEditDraftToActiveNote
 
+  const getFocusedAisleIdForShortcut = (aisleIds: string[]) => {
+    const pendingMouseActivation = pendingMouseAisleActivationRef.current
+    if (pendingMouseActivation && !pendingMouseActivation.settled && aisleIds.includes(pendingMouseActivation.aisleId)) {
+      return pendingMouseActivation.aisleId
+    }
+    const focusedAisleId = getAisleIdFromCurrentDomFocus()
+    if (focusedAisleId && aisleIds.includes(focusedAisleId)) return focusedAisleId
+    if (activeAisleIdRef.current && aisleIds.includes(activeAisleIdRef.current)) return activeAisleIdRef.current
+    return aisleIds[0] ?? ''
+  }
+
+  const deleteFocusedAisleFromBody = (body: NoteBody, latestState: AppState) => {
+    if (body.aisles.length <= 1) return false
+    const currentAisles = cloneAisles(body.aisles, latestState.noteAisleBodies)
+    const focusedAisleId = getFocusedAisleIdForShortcut(currentAisles.map((aisle) => aisle.id))
+    const result = deleteFocusedAisleFromDraft(currentAisles, focusedAisleId)
+    if (!result) return false
+    if (focusedAisleId !== activeAisleIdRef.current) {
+      syncActiveAisleSelection(focusedAisleId)
+    }
+    applyAisleEditDraftToActiveNote(result.aisles, { activeAisleId: result.activeAisleId })
+    return true
+  }
+
   function getScratchpadAisleLimit() {
     return clampScratchpadAisleLimit(stateRef.current.ui.scratchpadAisleLimit ?? DEFAULT_SCRATCHPAD_AISLE_LIMIT)
   }
@@ -1277,12 +1340,7 @@ function App() {
       pushToast('scratchpad must keep at least one aisle.', 'warning')
       return false
     }
-    const currentAisles = cloneAisles(body.aisles, latestState.noteAisleBodies)
-    const activeIndex = Math.max(0, currentAisles.findIndex((aisle) => aisle.id === activeAisleIdRef.current))
-    const nextAisles = currentAisles.filter((aisle) => aisle.id !== activeAisleIdRef.current)
-    const nextActiveAisleId = nextAisles[Math.min(activeIndex, nextAisles.length - 1)]?.id ?? nextAisles[0]?.id ?? ''
-    applyAisleEditDraftToActiveNote(nextAisles, { activeAisleId: nextActiveAisleId })
-    return true
+    return deleteFocusedAisleFromBody(body, latestState)
   }
 
   const navigateToNoteLocation = (location: NoteNavigationTarget) => {
@@ -1334,7 +1392,9 @@ function App() {
 
   const exitTagFilterMode = () => {
     pendingTagOccurrenceRef.current = null
-    setTagFilter(null)
+    setNoteFilterMenuOpen(false)
+    setNoteFilterCycleByLocation({})
+    updateNoteFilter((current) => ({ ...current, active: false }))
   }
 
   const openMessagesView = () => {
@@ -2001,6 +2061,7 @@ function App() {
   useEffect(() => {
     const handleStructuralHistoryKeydown = (event: KeyboardEvent) => {
       if (viewMode !== 'main') return
+      if (insertNoteReferenceModalOpen) return
       const direction = getEditorHistoryDirection(event)
       if (!direction) return
       const target = event.target instanceof Node ? event.target : null
@@ -2015,7 +2076,7 @@ function App() {
 
     window.addEventListener('keydown', handleStructuralHistoryKeydown, true)
     return () => window.removeEventListener('keydown', handleStructuralHistoryKeydown, true)
-  }, [viewMode, getEditorHistoryDirection, runAisleStructuralHistory])
+  }, [viewMode, insertNoteReferenceModalOpen, getEditorHistoryDirection, runAisleStructuralHistory])
 
   const isPendingCreatedRenameActive = () => {
     return Boolean(pendingCreatedEditRef.current)
@@ -2130,7 +2191,7 @@ function App() {
   })
   const tagAutocomplete = useTagAutocompleteController({
     viewMode,
-    availableTags: tagFilterIndex.availableTags,
+    availableTags: tagAutocompleteFilterIndex.availableOptions,
     recentTagKeys: tagAutocompleteRecentKeys,
     onRecentTagKeysChange: (keys) => {
       const normalizedKeys = normalizeTagAutocompleteRecentKeys(keys)
@@ -2410,6 +2471,14 @@ function App() {
     setModal(buildDefaultLinkModal(initialMode, selectedText))
   }
 
+  const openUrlLinkModalFromSelection = (selectedText = '', sourceKind: NoteReferenceSource = 'modal') => {
+    closeEditorEphemeraRef.current()
+    saveActiveCursorBeforeNavigation()
+    setModal(buildUrlLinkShortcutDraft(stateRef.current, getCurrentNoteLocation(), selectedText, sourceKind))
+  }
+
+  const openUrlLinkModalFromShortcut = () => openUrlLinkModalFromSelection(getActiveEditorSelectedText())
+
   const openExternalLinkEditModal = (href: string, label: string, range: LinkEditRange | null) => {
     closeEditorEphemeraRef.current()
     saveActiveCursorBeforeNavigation()
@@ -2538,6 +2607,16 @@ function App() {
     const tableInsertAnchor = command === 'addTable'
       ? (getWysiwygView(currentEditor)?.state?.selection?.from ?? 0)
       : null
+    if (command === 'addTable') {
+      const tableSelectionResult = replaceSelectedTextWithTableOperation(editorOperationRuntime, {
+        commitMode: 'none',
+        syncToolbar: false,
+      })
+      if (tableSelectionResult.handled) {
+        scheduleActiveEditorCommandCommit(currentEditor)
+        return true
+      }
+    }
     if (command === 'bold' || command === 'italic' || command === 'strike' || command === 'highlight') {
       return runActiveEditorFormatCommand(command)
     }
@@ -2633,6 +2712,25 @@ function App() {
     if (sourceInfo.noteBodyId === destinationInfo.noteBodyId) return false
     const destinationBody = latestState.noteBodies.find((body) => body.id === destinationInfo.noteBodyId) ?? null
     return Boolean(destinationBody && destinationBody.aisles.length > 1)
+  }
+
+  const getSingleAisleIdForSyncedNotePaste = (latestState: AppState, source: NoteLocation): string | undefined => {
+    const sourceInfo = getLocationInfo(latestState, source)
+    const sourceBody = sourceInfo.noteBodyId
+      ? latestState.noteBodies.find((candidate) => candidate.id === sourceInfo.noteBodyId) ?? null
+      : null
+    return sourceBody?.aisles.length === 1 ? sourceBody.aisles[0]?.id : undefined
+  }
+
+  const getDestinationAisleIdForSyncedNotePaste = (latestState: AppState, destination: NoteLocation): string => {
+    const destinationInfo = getLocationInfo(latestState, destination)
+    const destinationBody = destinationInfo.noteBodyId
+      ? latestState.noteBodies.find((candidate) => candidate.id === destinationInfo.noteBodyId) ?? null
+      : null
+    const activeAisleId = activeAisleIdRef.current
+    return destinationBody?.aisles.some((aisle) => aisle.id === activeAisleId)
+      ? activeAisleId
+      : destinationBody?.aisles[0]?.id ?? ''
   }
 
   const replaceFocusedBlankAisleWithStructuralCopy = (
@@ -2736,7 +2834,13 @@ function App() {
     const destination = getCurrentNoteLocation()
     if (shouldConfirmSyncedNotePaste(latestState, payload, destination)) {
       closeEditorEphemeraRef.current()
-      setModal({ type: 'confirm-synced-note-paste', source: payload.source, destination })
+      setModal({
+        type: 'confirm-synced-note-paste',
+        source: payload.source,
+        destination,
+        destinationAisleId: getDestinationAisleIdForSyncedNotePaste(latestState, destination),
+        sourceAisleId: getSingleAisleIdForSyncedNotePaste(latestState, payload.source),
+      })
       return true
     }
     const activeInfo = getLocationInfo(latestState, destination)
@@ -3008,8 +3112,12 @@ function App() {
   }
 
   const openEditorContextLinkModal = (mode: LinkInsertMode | null) => {
-    closeEditorEphemeraRef.current()
-    openSharedLinkModal(getActiveEditorSelectedText(), mode ?? getLastLinkInsertMode())
+    const selectedText = getActiveEditorSelectedText()
+    if (mode === 'note') {
+      openSharedLinkModal(selectedText, 'note')
+      return
+    }
+    openUrlLinkModalFromSelection(selectedText, 'context-menu')
   }
 
   const insertAttachmentFromEditorContext = () => {
@@ -3278,29 +3386,49 @@ function App() {
     schedulePendingTagOccurrenceSelection()
   }
 
+  const openNoteFilterOccurrence = (occurrence: NoteFilterOccurrence) => {
+    if (occurrence.tagOccurrence) {
+      openTagOccurrence(occurrence.tagOccurrence)
+      return
+    }
+
+    clearActiveTagJumpGlow()
+    pendingTagOccurrenceRef.current = null
+    closeEditorEphemeraRef.current()
+    setMenuOpen(false)
+    setEditing(null)
+
+    if (
+      scratchpadWorkspaceActive ||
+      buildNoteLocationKey(occurrence.location) !== activeNoteLocationKey
+    ) {
+      navigateToNoteLocation({ ...occurrence.location, aisleId: occurrence.aisleId })
+      return
+    }
+
+    if (occurrence.aisleId !== activeAisleIdRef.current) {
+      setActiveAisleId(occurrence.aisleId)
+      activeAisleIdRef.current = occurrence.aisleId
+      pendingScrollToAisleIdRef.current = occurrence.aisleId
+    }
+  }
+
   const openTagLocation = (location: NoteLocation) => {
     const locationKey = buildNoteLocationKey(location)
-    const primaryOccurrences = getPrimaryTagOccurrencesForLocation(tagFilterIndex, location)
-    if (primaryOccurrences.length > 0) {
+    const primaryOccurrences = getPrimaryNoteFilterOccurrencesForLocation(noteFilterIndex, location)
+    const matchingOccurrences = primaryOccurrences.length > 0
+      ? primaryOccurrences
+      : getNoteFilterOccurrencesForLocation(noteFilterIndex, location)
+    if (matchingOccurrences.length > 0) {
       const currentLocationKey = getCurrentTagFilterLocationKey()
-      const storedIndex = tagFilter?.cycleByLocation[locationKey] ?? 0
+      const storedIndex = noteFilterCycleByLocation[locationKey] ?? 0
       const occurrenceIndex = currentLocationKey === locationKey
-        ? storedIndex % primaryOccurrences.length
+        ? storedIndex % matchingOccurrences.length
         : 0
-      const occurrence = primaryOccurrences[occurrenceIndex]
-      const nextIndex = (occurrenceIndex + 1) % primaryOccurrences.length
-      setTagFilter((current) =>
-        current
-          ? {
-              ...current,
-              cycleByLocation: {
-                ...current.cycleByLocation,
-                [locationKey]: nextIndex,
-              },
-            }
-          : current,
-      )
-      openTagOccurrence(occurrence)
+      const occurrence = matchingOccurrences[occurrenceIndex]
+      const nextIndex = (occurrenceIndex + 1) % matchingOccurrences.length
+      setNoteFilterCycleByLocation((current) => ({ ...current, [locationKey]: nextIndex }))
+      openNoteFilterOccurrence(occurrence)
       return
     }
 
@@ -3314,6 +3442,21 @@ function App() {
     }
   }
 
+  const activateNoteFilter = (kind: NoteFilterKind, selectedKeys: string[] = []) => {
+    pendingTagOccurrenceRef.current = null
+    setNoteFilterMenuOpen(false)
+    setNoteFilterCycleByLocation({})
+    updateNoteFilter((current) => ({
+      ...current,
+      active: true,
+      kind,
+      [kind]: {
+        ...current[kind],
+        selectedKeys,
+      },
+    }))
+  }
+
   const openTagFilterForTag = (tag: string) => {
     const key = normalizeTagKey(tag)
     if (!key) return
@@ -3325,119 +3468,119 @@ function App() {
     setViewMode('main')
     setMenuOpen(false)
     setEditing(null)
-    setTagFilter((current) => ({
-      selectedTagKeys: [key],
-      draftTagKeys: [key],
-      menuOpen: false,
-      sortMode: current?.sortMode ?? 'az',
-      cycleByLocation: {},
-    }))
+    activateNoteFilter('tags', [key])
   }
 
   const closeTagFilterMenu = () => {
-    setTagFilter((current) => {
-      if (!current) return current
-      if (current.draftTagKeys.length === 0) {
-        pendingTagOccurrenceRef.current = null
-        return null
-      }
-      return {
-        ...current,
-        selectedTagKeys: current.draftTagKeys,
-        menuOpen: false,
-        cycleByLocation: {},
-      }
-    })
+    setNoteFilterMenuOpen(false)
   }
 
   const toggleTagFilterMenu = () => {
-    setTagFilter((current) => {
-      if (!current) return current
-      if (current.menuOpen) {
-        if (current.draftTagKeys.length === 0) {
-          pendingTagOccurrenceRef.current = null
-          return null
-        }
-        return {
-          ...current,
-          selectedTagKeys: current.draftTagKeys,
-          menuOpen: false,
-          cycleByLocation: {},
-        }
+    setNoteFilterMenuOpen((open) => !open)
+  }
+
+  const openNoteFilterFromMenu = () => {
+    closeEditorEphemeraRef.current()
+    if (arrangeMode.active) exitArrangeMode()
+    setViewMode('main')
+    setMenuOpen(false)
+    setEditing(null)
+    setNoteFilterCycleByLocation({})
+    setNoteFilterMenuOpen(true)
+    updateNoteFilter((current) => ({ ...current, active: true }))
+  }
+
+  const toggleTabsTargetFromShortcut = () => {
+    const target: ToggleTabsTarget = stateRef.current.ui.toggleTabsTarget ?? 'trash'
+
+    if (target === 'filter') {
+      if (viewMode === 'main' && (stateRef.current.ui.noteFilter?.active ?? false)) {
+        exitTagFilterMode()
+        return
       }
+      openNoteFilterFromMenu()
+      return
+    }
+
+    if (viewMode === target) {
+      returnToLastTabLikeView()
+      return
+    }
+
+    if (target === 'trash') {
+      toggleTrashView()
+      return
+    }
+
+    if (target === 'settings') {
+      openSettingsWithoutMentionMenu()
+      return
+    }
+
+    if (target === 'messages') {
+      openMessagesView()
+      return
+    }
+
+    openAboutView()
+  }
+
+  const setNoteFilterKind = (kind: NoteFilterKind) => {
+    setNoteFilterCycleByLocation({})
+    updateNoteFilter((current) => ({ ...current, active: true, kind }))
+  }
+
+  const clearCurrentNoteFilter = () => {
+    pendingTagOccurrenceRef.current = null
+    setNoteFilterCycleByLocation({})
+    updateNoteFilter((current) => ({
+      ...current,
+      active: true,
+      [current.kind]: {
+        ...current[current.kind],
+        selectedKeys: [],
+      },
+    }))
+  }
+
+  const toggleNoteFilterOption = (key: string) => {
+    setNoteFilterCycleByLocation({})
+    updateNoteFilter((current) => {
+      const currentKind = current.kind
+      const selectedKeys = current[currentKind].selectedKeys
+      const nextKeys = selectedKeys.includes(key)
+        ? selectedKeys.filter((candidate) => candidate !== key)
+        : [...selectedKeys, key]
       return {
         ...current,
-        draftTagKeys: current.selectedTagKeys,
-        menuOpen: true,
+        active: true,
+        [currentKind]: {
+          ...current[currentKind],
+          selectedKeys: nextKeys,
+        },
       }
     })
   }
 
-  const selectAllTagFilters = () => {
-    setTagFilter((current) => {
-      if (!current) return current
-      const sortedKeys = sortedTagFilterTags.map((tag) => tag.key)
-      const primary = current.selectedTagKeys[0] && sortedKeys.includes(current.selectedTagKeys[0])
-        ? current.selectedTagKeys[0]
-        : sortedKeys[0] ?? ''
-      const nextKeys = primary
-        ? [primary, ...sortedKeys.filter((key) => key !== primary)]
-        : sortedKeys
-      return {
-        ...current,
-        selectedTagKeys: nextKeys,
-        draftTagKeys: nextKeys,
-        cycleByLocation: {},
-      }
-    })
-  }
-
-  const deselectAllTagFilters = () => {
-    setTagFilter((current) =>
-      current
-        ? {
-            ...current,
-            draftTagKeys: [],
-            menuOpen: true,
-            cycleByLocation: {},
-          }
-        : current,
-    )
-  }
-
-  const toggleTagFilterTag = (tagKey: string) => {
-    setTagFilter((current) => {
-      if (!current) return current
-      const baseKeys = current.menuOpen ? current.draftTagKeys : current.selectedTagKeys
-      const nextKeys = baseKeys.includes(tagKey)
-        ? baseKeys.filter((key) => key !== tagKey)
-        : [...baseKeys, tagKey]
-      if (!current.menuOpen && nextKeys.length === 0) {
-        pendingTagOccurrenceRef.current = null
-        return null
-      }
-      return {
-        ...current,
-        selectedTagKeys: current.menuOpen && nextKeys.length === 0 ? current.selectedTagKeys : nextKeys,
-        draftTagKeys: nextKeys,
-        cycleByLocation: {},
-      }
-    })
-  }
-
-  const setTagFilterSortMode = (sortMode: TagFilterSortMode) => {
-    setTagFilter((current) => (current ? { ...current, sortMode } : current))
+  const setTagFilterSortMode = (sortMode: NoteFilterSettings['tags']['sortMode']) => {
+    updateNoteFilter((current) => ({
+      ...current,
+      tags: {
+        ...current.tags,
+        sortMode,
+      },
+    }))
   }
 
   const getNoteTagFilterCount = (location: NoteLocation) =>
-    tagFilterIndex.noteCounts.get(buildNoteLocationKey(location)) ?? 0
+    noteFilterIndex.noteCounts.get(buildNoteLocationKey(location)) ?? 0
 
   const openDomainFromTagFilter = (domainId: string) => {
     if (!scratchpadWorkspaceActive && activeNoteLocation.domainId === domainId && getNoteTagFilterCount(activeNoteLocation) > 0) {
       openTagLocation(activeNoteLocation)
       return
     }
-    const firstMatch = getFirstMatchingLocationForDomain(tagFilterIndex, domainId)
+    const firstMatch = getFirstMatchingNoteFilterLocationForDomain(noteFilterIndex, domainId)
     if (firstMatch) openTagLocation(firstMatch)
   }
 
@@ -3452,7 +3595,7 @@ function App() {
       openTagLocation(activeNoteLocation)
       return
     }
-    const firstMatch = getFirstMatchingLocationForSpace(tagFilterIndex, domainId, spaceId)
+    const firstMatch = getFirstMatchingNoteFilterLocationForSpace(noteFilterIndex, domainId, spaceId)
     if (firstMatch) openTagLocation(firstMatch)
   }
 
@@ -3467,7 +3610,7 @@ function App() {
       openTagLocation(homeLocation)
       return
     }
-    const firstMatch = getFirstMatchingLocationForParent(tagFilterIndex, state.activeDomainId, activeSpace.id, tabId)
+    const firstMatch = getFirstMatchingNoteFilterLocationForParent(noteFilterIndex, state.activeDomainId, activeSpace.id, tabId)
     if (firstMatch) openTagLocation(firstMatch)
   }
 
@@ -3574,6 +3717,12 @@ function App() {
     const nextMarkdown = getAisleMarkdown(activeAisle, nextState.noteAisleBodies)
     lastEditorMarkdownRef.current = nextMarkdown
     lastEditorMarkdownByAisleRef.current.set(activeAisleBodyId, nextMarkdown)
+    try {
+      if (getNormalizedEditorMarkdown(currentEditor) === nextMarkdown) return
+    } catch {
+      // If the editor cannot be read, still push the known replacement result into it.
+    }
+    normalizingAisleIdsRef.current.add(activeAisle.id)
     setEditorMarkdownForDisplay(currentEditor, nextMarkdown, false)
   }
 
@@ -3615,14 +3764,14 @@ function App() {
   useEffect(() => {
     const handleFindShortcut = (event: KeyboardEvent) => {
       const shortcutMode = getFindReplaceShortcutMode(event, isMacPlatform)
-      if (!shortcutMode || viewMode !== 'main') return
+      if (!shortcutMode || viewMode !== 'main' || insertNoteReferenceModalOpen) return
       event.preventDefault()
       event.stopPropagation()
       openFindReplacePanel()
     }
     document.addEventListener('keydown', handleFindShortcut, true)
     return () => document.removeEventListener('keydown', handleFindShortcut, true)
-  }, [isMacPlatform, viewMode, openFindReplacePanel])
+  }, [isMacPlatform, viewMode, insertNoteReferenceModalOpen, openFindReplacePanel])
 
   useEffect(() => {
     if (!findReplacePanel.open) return undefined
@@ -3728,13 +3877,13 @@ function App() {
     return true
   }
 
-  const insertAisleFromEditorContext = () => {
+  const insertAisleFromEditorContext = (side: EditorAisleInsertSide = 'right') => {
     closeEditorEphemeraRef.current()
     if (!editorRef.current) {
       pushToast('open a note before using the editor menu.', 'warning')
       return
     }
-    runActiveNewlineOperation('aisleRight')
+    runActiveNewlineOperation(side === 'left' ? 'aisleLeft' : 'aisleRight')
   }
 
   const getShortcutMenuPosition = (operationCount: number): Pick<ShortcutMenuState, 'top' | 'left'> => {
@@ -3934,6 +4083,7 @@ function App() {
     shouldRunStructuralHistoryBeforeEditorHistory: shouldRunAisleStructuralHistoryBeforeEditorHistory,
     onRunNewlineOperation: runActiveNewlineOperation,
     onOpenShortcutMenu: openShortcutMenu,
+    onOpenUrlLinkShortcut: openUrlLinkModalFromShortcut,
     tryExpandMultilineSelection,
     tryApplyMultiLineEditInput,
     tryApplyMultiLineListMarkerShortcut,
@@ -4045,6 +4195,7 @@ function App() {
 
     const latestLinkedAisleIds = getLinkedAisleIdsForNoteBody(latestState, activeNoteBodyId)
     if (!latestLinkedAisleIds.has(aisleId)) return
+    const linkedAisleSlots = listLinkedAisleSlotsForAisleBody(latestState, aisleBodyId)
     setModal({
       type: 'linked-aisle',
       reason: 'aisle-body',
@@ -4052,7 +4203,78 @@ function App() {
       aisleId,
       aisleBodyId,
       location: activeNoteLocation,
+      keepAisleSlotKeys:
+        linkedAisleSlots.length > 0
+          ? linkedAisleSlots.map((slot) => slot.key)
+          : [buildAisleSlotKey(activeNoteBodyId, aisleId)],
+      keepData: latestState.ui.decoupledItemsKeepData ?? true,
     })
+  }
+
+  const openFrontmatterFilterForAisle = (aisleId: string) => {
+    if (scratchpadWorkspaceActive) {
+      pushToast('scratchpad does not use frontmatter.', 'warning')
+      return
+    }
+    if (viewMode !== 'main' || !activeNoteBodyId) return
+    const latestState = stateRef.current
+    const latestBody = latestState.noteBodies.find((body) => body.id === activeNoteBodyId) ?? activeNoteBody
+    const targetAisle = latestBody?.aisles.find((aisle) => aisle.id === aisleId) ?? null
+    if (!targetAisle) return
+    const aisleBodyId = getAisleBodyId(targetAisle)
+    const aisleBody = (latestState.noteAisleBodies ?? []).find((body) => body.id === aisleBodyId) ?? null
+    const frontmatter = aisleBody?.frontmatter
+    if (aisleBody?.frontmatterStatus !== 'valid' || !frontmatter || typeof frontmatter !== 'object' || Array.isArray(frontmatter)) {
+      pushToast('frontmatter filter needs valid frontmatter.', 'warning')
+      return
+    }
+
+    const templateId = aisleBody.frontmatterMeta?.templateId ?? ''
+    const selectedKeys = templateId && latestState.frontmatter.templates.some((template) => template.id === templateId)
+      ? [getFrontmatterTemplateFilterKey(templateId)]
+      : Object.keys(frontmatter).map(getFrontmatterPropertyFilterKey).filter(Boolean)
+    if (selectedKeys.length === 0) {
+      pushToast('frontmatter filter needs a template or property.', 'warning')
+      return
+    }
+
+    closeEditorEphemeraRef.current()
+    if (arrangeMode.active) exitArrangeMode()
+    setViewMode('main')
+    setMenuOpen(false)
+    setEditing(null)
+    activateNoteFilter('frontmatter', selectedKeys)
+  }
+
+  const openSyncedFilterForAisle = (aisleId: string) => {
+    if (scratchpadWorkspaceActive) {
+      pushToast('scratchpad aisles cannot be synced copies.', 'warning')
+      return
+    }
+    if (viewMode !== 'main' || !activeNoteBodyId) return
+    const latestState = stateRef.current
+    const latestBody = latestState.noteBodies.find((body) => body.id === activeNoteBodyId) ?? activeNoteBody
+    const targetAisle = latestBody?.aisles.find((aisle) => aisle.id === aisleId) ?? null
+    if (!targetAisle) return
+    const latestLocations = listNoteLocationsForBody(latestState, activeNoteBodyId)
+    const selectedKey = latestLocations.length > 1
+      ? getSyncedNoteFilterKey(activeNoteBodyId)
+      : getSyncedAisleFilterKey(getAisleBodyId(targetAisle))
+    closeEditorEphemeraRef.current()
+    if (arrangeMode.active) exitArrangeMode()
+    setViewMode('main')
+    setMenuOpen(false)
+    setEditing(null)
+    activateNoteFilter('synced', [selectedKey])
+  }
+
+  const openSyncedFilterFromLinkedModal = () => {
+    if (!modal || modal.type !== 'linked-aisle') return
+    const selectedKey = modal.reason === 'note-body'
+      ? getSyncedNoteFilterKey(modal.noteBodyId)
+      : getSyncedAisleFilterKey(modal.aisleBodyId)
+    setModal(null)
+    activateNoteFilter('synced', [selectedKey])
   }
 
   const openFrontmatterTemplateSettings = (templateId: string) => {
@@ -4165,6 +4387,75 @@ function App() {
       setContextMenu(null)
     }
   }
+
+  const pasteSyncedNoteAsAisleFromModal = () => {
+    if (!modal || modal.type !== 'confirm-synced-note-paste' || !modal.sourceAisleId) return
+    if (scratchpadWorkspaceActive) {
+      pushToast('scratchpad cannot receive synced copies.', 'warning')
+      return
+    }
+
+    const latestState = buildStateWithLatestEditorContent()
+    const sourceInfo = getLocationInfo(latestState, modal.source)
+    const sourceBody = sourceInfo.noteBodyId
+      ? latestState.noteBodies.find((candidate) => candidate.id === sourceInfo.noteBodyId) ?? null
+      : null
+    if (!sourceBody || sourceBody.aisles.length !== 1 || sourceBody.aisles[0]?.id !== modal.sourceAisleId) {
+      pushToast('copied note no longer has one aisle.', 'warning')
+      return
+    }
+
+    const destinationInfo = getLocationInfo(latestState, modal.destination)
+    const destinationBody = destinationInfo.noteBodyId
+      ? latestState.noteBodies.find((candidate) => candidate.id === destinationInfo.noteBodyId) ?? null
+      : null
+    if (!destinationInfo.noteBodyId || !destinationBody) {
+      pushToast('open a note before pasting.', 'warning')
+      return
+    }
+    if (!destinationBody.aisles.some((aisle) => aisle.id === modal.destinationAisleId)) {
+      pushToast('destination aisle no longer exists.', 'warning')
+      return
+    }
+
+    const beforeSnapshot = captureActiveAisleStructuralSnapshot(latestState)
+    if (!beforeSnapshot || beforeSnapshot.noteBodyId !== destinationInfo.noteBodyId) {
+      pushToast('open the destination note before pasting.', 'warning')
+      return
+    }
+
+    const result = materializeStructuralAisleCopiesForInsertion(latestState, {
+      scope: 'aisle',
+      action: 'duplicate',
+      source: modal.source,
+      aisleId: modal.sourceAisleId,
+    })
+    if (result.status !== 'applied') {
+      pushToast(result.message, 'warning')
+      return
+    }
+
+    const baseAisles = cloneAisles(destinationBody.aisles, latestState.noteAisleBodies)
+    const nextAisles = replaceFocusedAisleWithNewAisles(
+      baseAisles,
+      result.aisles,
+      modal.destinationAisleId,
+      () => true,
+    )
+    if (!nextAisles) {
+      pushToast('destination aisle no longer exists.', 'warning')
+      return
+    }
+
+    applyAisleEditDraftToActiveNote(nextAisles, {
+      activeAisleId: result.aisles[0]?.id,
+      additionalAisleBodies: result.aisleBodies,
+    })
+    setModal(null)
+    closeEditorEphemeraRef.current()
+    pushToast(getCopyAsPasteSuccessMessage('aisle', 'duplicate'), 'success')
+  }
+
   const confirmModal = () => {
     if (!modal) return
 
@@ -4197,9 +4488,19 @@ function App() {
     }
 
     if (modal.reason === 'aisle-body') {
-      applyAisleEditDraftToActiveNote(activeNoteAisles, { decoupleAisleIds: [modal.aisleId] })
+      setDecoupledItemsKeepData(modal.keepData)
+      const keepSlotKeys = new Set(modal.keepAisleSlotKeys)
+      const result = decoupleAisleSlotsInState(stateRef.current, modal.aisleBodyId, keepSlotKeys, modal.keepData)
+      if (result.status === 'blocked') {
+        pushToast(result.message, 'error')
+        return
+      }
+      if (result.state !== stateRef.current) {
+        stateRef.current = result.state
+        setState(result.state)
+      }
       setModal(null)
-      pushToast('aisle de-coupled.', 'success')
+      pushToast('aisles de-coupled.', 'success')
       return
     }
 
@@ -4216,8 +4517,16 @@ function App() {
     pushToast('notes de-coupled.', 'success')
   }
 
-  const deleteFocusedSubTabFromShortcut = () => {
+  const deleteActiveAisleFromShortcut = () => {
     closeEditorEphemeraRef.current()
+    const latestState = buildStateWithLatestEditorContent()
+    const activeBody = activeNoteBodyId
+      ? latestState.noteBodies.find((candidate) => candidate.id === activeNoteBodyId) ?? null
+      : null
+    if (activeBody && activeBody.aisles.length > 1 && deleteFocusedAisleFromBody(activeBody, latestState)) {
+      return
+    }
+
     const activeSubTabId = activeTab.activeSubTabId
     if (!activeSubTabId) {
       pushToast('home tabs cannot be deleted', 'warning')
@@ -4335,45 +4644,6 @@ function App() {
     closeEditorEphemeraRef.current()
   }, [mainArrangementActive])
 
-  useEffect(() => {
-    if (!mainArrangementActive || typeof document === 'undefined') return
-
-    document.body.classList.add('app-tooltips-disabled')
-    const strippedTitles = new Map<HTMLElement, string>()
-    const stripTitles = () => {
-      document.querySelectorAll<HTMLElement>('.app-shell [title]').forEach((element) => {
-        const title = element.getAttribute('title')
-        if (!title) return
-        if (!strippedTitles.has(element)) {
-          strippedTitles.set(element, title)
-        }
-        element.removeAttribute('title')
-      })
-    }
-
-    stripTitles()
-    const appShell = document.querySelector('.app-shell')
-    const observer = new MutationObserver(stripTitles)
-    if (appShell) {
-      observer.observe(appShell, {
-        subtree: true,
-        childList: true,
-        attributes: true,
-        attributeFilter: ['title'],
-      })
-    }
-
-    return () => {
-      observer.disconnect()
-      document.body.classList.remove('app-tooltips-disabled')
-      strippedTitles.forEach((title, element) => {
-        if (element.isConnected && !element.hasAttribute('title')) {
-          element.setAttribute('title', title)
-        }
-      })
-    }
-  }, [mainArrangementActive])
-
   const editorToolbarLayer = useEditorToolbarLayer({
     editorRef,
     copyToolbarButtonRef,
@@ -4483,9 +4753,9 @@ function App() {
     primeTabs: workspace.tabs,
     arrangeMode,
     hotkeys: normalizedHotkeys,
-    deleteSubtabShortcutEnabled: state.ui.deleteSubtabShortcutEnabled ?? false,
+    deleteActiveAisleShortcutEnabled: state.ui.deleteActiveAisleShortcutEnabled ?? false,
     scratchpadActive: scratchpadWorkspaceActive,
-    scratchpadDeleteAisleShortcutEnabled: state.ui.scratchpadDeleteAisleShortcutEnabled ?? false,
+    shortcutsSuspended: insertNoteReferenceModalOpen,
     isMacPlatform,
     editingShortcut: settingsController.editingShortcut,
     setEditingShortcut: settingsController.setEditingShortcut,
@@ -4494,13 +4764,9 @@ function App() {
     openSettings: openSettingsWithoutMentionMenu,
     toggleSpaceRail: toggleSpaceRailVisibility,
     toggleDomainRail: toggleDomainRailVisibility,
-    toggleTrashView,
-    returnToLastTabLikeView,
+    toggleTabsTarget: toggleTabsTargetFromShortcut,
     navigateHistoryBy,
     showTip,
-    warnHomeSubtabDelete: () => pushToast('home tabs cannot be deleted', 'warning'),
-    warnScratchpadDeleteShortcutDisabled: () =>
-      pushToast('You can enable command/control+w to delete scratchpad aisles in the misc tab of the settings.', 'warning'),
     addTab: () => {
       if (!tagFilterActive) addTab()
     },
@@ -4511,7 +4777,7 @@ function App() {
       closeEditorEphemeraRef.current()
       addScratchpadAisle('')
     },
-    deleteFocusedSubTab: deleteFocusedSubTabFromShortcut,
+    deleteActiveAisle: deleteActiveAisleFromShortcut,
     deleteScratchpadAisle: () => {
       closeEditorEphemeraRef.current()
       deleteScratchpadActiveAisle()
@@ -4595,11 +4861,11 @@ function App() {
     arrangeMode.active && arrangeDraggingItem?.type === 'space' ? arrangeDraggingItem.spaceId : null
   const topVisibleMainRail = showCompactDomains ? 'domains' : showCompactSpaces ? 'spaces' : 'parents'
   const tagFilteredDomains = tagFilterActive
-    ? state.domains.filter((domain) => (tagFilterIndex.domainCounts.get(domain.id) ?? 0) > 0)
+    ? state.domains.filter((domain) => (noteFilterIndex.domainCounts.get(domain.id) ?? 0) > 0)
     : state.domains
   const tagFilteredSpaces = tagFilterActive
     ? state.spaces.filter(
-        (space) => (tagFilterIndex.spaceCounts.get(getTagFilterSpaceKey(state.activeDomainId, space.id)) ?? 0) > 0,
+        (space) => (noteFilterIndex.spaceCounts.get(getNoteFilterSpaceKey(state.activeDomainId, space.id)) ?? 0) > 0,
       )
     : state.spaces
   const tagFilteredWorkspace = tagFilterActive
@@ -4607,7 +4873,7 @@ function App() {
         ...workspace,
         tabs: workspace.tabs.filter(
           (tab) =>
-            (tagFilterIndex.parentCounts.get(getTagFilterParentKey(state.activeDomainId, activeSpace.id, tab.id)) ?? 0) > 0,
+            (noteFilterIndex.parentCounts.get(getNoteFilterParentKey(state.activeDomainId, activeSpace.id, tab.id)) ?? 0) > 0,
         ),
       }
     : workspace
@@ -4617,7 +4883,7 @@ function App() {
     tabId: activeTab.id,
     subTabId: null,
   }
-  const activeHomeTagCount = tagFilterIndex.noteCounts.get(buildNoteLocationKey(activeHomeTagLocation)) ?? 0
+  const activeHomeTagCount = noteFilterIndex.noteCounts.get(buildNoteLocationKey(activeHomeTagLocation)) ?? 0
   const tagFilteredActiveTab = tagFilterActive
     ? {
         ...activeTab,
@@ -4628,21 +4894,22 @@ function App() {
             tabId: activeTab.id,
             subTabId: subTab.id,
           }
-          return (tagFilterIndex.noteCounts.get(buildNoteLocationKey(location)) ?? 0) > 0
+          return (noteFilterIndex.noteCounts.get(buildNoteLocationKey(location)) ?? 0) > 0
         }),
       }
     : activeTab
   const tagFilterControl = tagFilterActive ? (
-    <TagFilterControl
-      open={tagFilter?.menuOpen ?? false}
-      tags={sortedTagFilterTags}
-      selectedTagKeys={tagFilterDisplayKeys}
-      sortMode={tagFilter?.sortMode ?? 'az'}
+    <NoteFilterControl
+      open={noteFilterMenuOpen}
+      kind={noteFilterKind}
+      options={sortedNoteFilterOptions}
+      selectedKeys={noteFilterSelectedKeys}
+      sortMode={noteFilter.tags.sortMode}
       onToggleOpen={toggleTagFilterMenu}
       onClose={closeTagFilterMenu}
-      onSelectAll={selectAllTagFilters}
-      onDeselectAll={deselectAllTagFilters}
-      onToggleTag={toggleTagFilterTag}
+      onKindChange={setNoteFilterKind}
+      onClear={clearCurrentNoteFilter}
+      onToggleOption={toggleNoteFilterOption}
       onSortModeChange={setTagFilterSortMode}
     />
   ) : null
@@ -4691,6 +4958,7 @@ function App() {
       onOpenMessages={openMessagesView}
       onOpenSettings={openSettingsWithoutMentionMenu}
       onOpenAbout={openAboutView}
+      onOpenFilter={openNoteFilterFromMenu}
       messagesCount={unresolvedMessageCount}
       tagFilterControl={viewForMenu === 'main' ? tagFilterControl : null}
     />
@@ -4741,8 +5009,10 @@ function App() {
       style={
         {
           '--tab-button-scale': String(state.ui.tabButtonScale),
+          '--toolbar-button-scale': String(
+            clampToolbarButtonScale(state.ui.toolbarButtonScale ?? DEFAULT_UI_SETTINGS.toolbarButtonScale ?? 1),
+          ),
           '--note-font-scale': String(state.ui.noteFontScale),
-          '--tooltip-scale': String(state.ui.tooltipScale ?? 1),
           ...themeStyleVariables,
         } as CSSProperties
       }
@@ -4762,7 +5032,7 @@ function App() {
           tooltipsDisabled={mainArrangementActive}
           arrangeControlsDisabled={arrangeControlsDisabled}
           tagFilterActive={tagFilterActive}
-          getDomainLabel={(domain) => appendTagFilterCount(domain.name, tagFilterIndex.domainCounts.get(domain.id) ?? 0)}
+          getDomainLabel={(domain) => appendNoteFilterCount(domain.name, noteFilterIndex.domainCounts.get(domain.id) ?? 0)}
           onOpenDomain={tagFilterActive ? openDomainFromTagFilter : openDomainFromCompactRail}
           onHandleArrangeDomainSelectionClick={handleArrangeDomainSelectionClick}
           onClearArrangeSelection={clearArrangeSelection}
@@ -4806,7 +5076,7 @@ function App() {
           arrangeControlsDisabled={arrangeControlsDisabled}
           tagFilterActive={tagFilterActive}
           getSpaceLabel={(space) =>
-            appendTagFilterCount(space.name, tagFilterIndex.spaceCounts.get(getTagFilterSpaceKey(state.activeDomainId, space.id)) ?? 0)
+            appendNoteFilterCount(space.name, noteFilterIndex.spaceCounts.get(getNoteFilterSpaceKey(state.activeDomainId, space.id)) ?? 0)
           }
           onOpenSpace={tagFilterActive ? openSpaceFromTagFilter : openSpaceFromCompactRail}
           onHandleArrangeSpaceSelectionClick={handleArrangeSpaceSelectionClick}
@@ -4893,9 +5163,9 @@ function App() {
         tagFilterActive={tagFilterActive}
         tagFilterControl={topVisibleMainRail === 'parents' ? tagFilterControl : null}
         getTabLabel={(tab) =>
-          appendTagFilterCount(
+          appendNoteFilterCount(
             tab.title,
-            tagFilterIndex.parentCounts.get(getTagFilterParentKey(state.activeDomainId, activeSpace.id, tab.id)) ?? 0,
+            noteFilterIndex.parentCounts.get(getNoteFilterParentKey(state.activeDomainId, activeSpace.id, tab.id)) ?? 0,
           )
         }
         showGlobalControls={
@@ -4965,6 +5235,7 @@ function App() {
         onOpenMessages={openMessagesView}
         onOpenSettings={openSettingsWithoutMentionMenu}
         onOpenAbout={openAboutView}
+        onOpenFilter={openNoteFilterFromMenu}
         settingsSection={settingsController.section}
         onSettingsSectionChange={settingsController.changeSection}
         onExitTagFilterMode={exitTagFilterMode}
@@ -5011,10 +5282,10 @@ function App() {
           importStatus={settingsController.importStatus}
           tabButtonScaleDraft={settingsController.tabButtonScaleDraft}
           noteFontScaleDraft={settingsController.noteFontScaleDraft}
-          tooltipScaleDraft={settingsController.tooltipScaleDraft}
+          toolbarButtonScaleDraft={settingsController.toolbarButtonScaleDraft}
           selectedCustomTheme={settingsController.selectedCustomTheme}
           customThemePaletteDraft={settingsController.customThemePaletteDraft}
-          showParentHomeTabDraft={settingsController.showParentHomeTabDraft}
+          toggleTabsTargetDraft={settingsController.toggleTabsTargetDraft}
           alwaysShowSpacesDraft={settingsController.alwaysShowSpacesDraft}
           alwaysShowDomainsDraft={settingsController.alwaysShowDomainsDraft}
           tableAddTargetModeDraft={settingsController.tableAddTargetModeDraft}
@@ -5070,8 +5341,8 @@ function App() {
           onCustomThemePaletteSeedFromCurrentTheme={settingsController.seedCustomThemePaletteFromCurrentTheme}
           onTabButtonScaleChange={settingsController.updateTabButtonScaleSetting}
           onNoteFontScaleChange={settingsController.updateNoteFontScaleSetting}
-          onTooltipScaleChange={settingsController.updateTooltipScaleSetting}
-          onShowParentHomeTabChange={settingsController.updateShowParentHomeTabSetting}
+          onToolbarButtonScaleChange={settingsController.updateToolbarButtonScaleSetting}
+          onToggleTabsTargetChange={settingsController.updateToggleTabsTargetSetting}
           onAlwaysShowSpacesChange={settingsController.updateAlwaysShowSpacesSetting}
           onAlwaysShowDomainsChange={(enabled) => {
             if (!settingsController.updateAlwaysShowDomainsSetting(enabled)) {
@@ -5123,9 +5394,8 @@ function App() {
             editing={editing}
             arrangeMode={arrangeMode}
             tooltipsDisabled={mainArrangementActive}
-            showParentHomeTab={tagFilterActive ? activeHomeTagCount > 0 : state.ui.showParentHomeTab}
             tagFilterActive={tagFilterActive}
-            getHomeLabel={() => appendTagFilterCount('home', activeHomeTagCount)}
+            getHomeLabel={() => appendNoteFilterCount('home', activeHomeTagCount)}
             getSubTabLabel={(subTab) => {
               const location: NoteLocation = {
                 domainId: state.activeDomainId,
@@ -5133,13 +5403,13 @@ function App() {
                 tabId: activeTab.id,
                 subTabId: subTab.id,
               }
-              return appendTagFilterCount(
+              return appendNoteFilterCount(
                 subTab.title,
-                tagFilterIndex.noteCounts.get(buildNoteLocationKey(location)) ?? 0,
+                noteFilterIndex.noteCounts.get(buildNoteLocationKey(location)) ?? 0,
               )
             }}
             scratchpadTagCountLabel={
-              tagFilterIndex.scratchpadCount > 0 ? getTagFilterCountLabel(tagFilterIndex.scratchpadCount) : ''
+              noteFilterIndex.scratchpadCount > 0 ? getNoteFilterCountLabel(noteFilterIndex.scratchpadCount) : ''
             }
             isNoteWorkspaceView={isNoteWorkspaceView}
             selectedTrashTab={selectedTrashTab}
@@ -5281,7 +5551,9 @@ function App() {
               onSelectTableOfContentsLink={selectTableOfContentsLink}
               onOpenTableOfContentsLink={openTableOfContentsLinkTarget}
               onOpenAisleFrontmatter={openFrontmatterModalForAisle}
+              onOpenAisleFrontmatterFilter={openFrontmatterFilterForAisle}
               onOpenAisleLink={openLinkedAisleModal}
+              onOpenAisleSyncedFilter={openSyncedFilterForAisle}
               onOpenTagFilter={openTagFilterForTag}
               onRegisterAislePaneRoot={registerAislePaneRoot}
               onRegisterAisleEditorRoot={registerAisleEditorRoot}
@@ -5495,6 +5767,8 @@ function App() {
         onLinkInsertModeChange={setLastLinkInsertMode}
         onNoteCopyModeChange={(mode: NoteCopyMode) => setLastNoteCopyMode(mode)}
         onDeduplicateKeepDataChange={setDecoupledItemsKeepData}
+        onPasteSyncedNoteAsAisle={pasteSyncedNoteAsAisleFromModal}
+        onOpenSyncedFilter={openSyncedFilterFromLinkedModal}
         onConfirm={confirmModal}
       />
 
@@ -5515,6 +5789,7 @@ function App() {
       />
 
       <TipHost tips={visibleTipDefinitions} onDismissTip={dismissTip} />
+      <AppTooltipLayer disabled={mainArrangementActive} />
       <StorageAlertHost
         alerts={storageAlerts}
         onDismissAlert={dismissStorageAlert}

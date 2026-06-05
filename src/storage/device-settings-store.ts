@@ -8,7 +8,7 @@ import {
   DEFAULT_VISUALS_SETTINGS_SECTION,
   clampNoteFontScale,
   clampTabButtonScale,
-  clampTooltipScale,
+  clampToolbarButtonScale,
   normalizeDataSettingsSection,
   normalizeSettingsSection,
   normalizeVisualsSettingsSection,
@@ -41,7 +41,7 @@ export type DeviceSettings = {
   seenTipIds: AppState['ui']['seenTipIds']
   tabButtonScale: number
   noteFontScale: number
-  tooltipScale: number
+  toolbarButtonScale: number
   lastFindQuery: string
   tagAutocompleteRecentKeys: string[]
 }
@@ -57,7 +57,7 @@ export const DEFAULT_DEVICE_SETTINGS: DeviceSettings = {
   seenTipIds: DEFAULT_UI_SETTINGS.seenTipIds,
   tabButtonScale: DEFAULT_UI_SETTINGS.tabButtonScale,
   noteFontScale: DEFAULT_UI_SETTINGS.noteFontScale,
-  tooltipScale: DEFAULT_UI_SETTINGS.tooltipScale ?? 1,
+  toolbarButtonScale: DEFAULT_UI_SETTINGS.toolbarButtonScale ?? 1,
   lastFindQuery: '',
   tagAutocompleteRecentKeys: [],
 }
@@ -117,10 +117,10 @@ function normalizeDeviceSettingsValue(raw: unknown): DeviceSettings {
       typeof obj.noteFontScale === 'number'
         ? clampNoteFontScale(obj.noteFontScale)
         : DEFAULT_DEVICE_SETTINGS.noteFontScale,
-    tooltipScale:
-      typeof obj.tooltipScale === 'number'
-        ? clampTooltipScale(obj.tooltipScale)
-        : DEFAULT_DEVICE_SETTINGS.tooltipScale,
+    toolbarButtonScale:
+      typeof obj.toolbarButtonScale === 'number'
+        ? clampToolbarButtonScale(obj.toolbarButtonScale)
+        : DEFAULT_DEVICE_SETTINGS.toolbarButtonScale,
     lastFindQuery: typeof obj.lastFindQuery === 'string' ? obj.lastFindQuery : DEFAULT_DEVICE_SETTINGS.lastFindQuery,
     tagAutocompleteRecentKeys: normalizeTagAutocompleteRecentKeys(obj.tagAutocompleteRecentKeys),
   }
@@ -223,7 +223,7 @@ export function extractDeviceSettingsFromAppState(
     seenTipIds: appState.ui.seenTipIds,
     tabButtonScale: appState.ui.tabButtonScale,
     noteFontScale: appState.ui.noteFontScale,
-    tooltipScale: appState.ui.tooltipScale ?? DEFAULT_UI_SETTINGS.tooltipScale ?? 1,
+    toolbarButtonScale: appState.ui.toolbarButtonScale ?? DEFAULT_UI_SETTINGS.toolbarButtonScale ?? 1,
   }
 }
 
@@ -293,7 +293,7 @@ export function applyDeviceSettingsToAppState(appState: AppState, settings: Devi
         seenTipIds: settings.seenTipIds,
         tabButtonScale: settings.tabButtonScale,
         noteFontScale: settings.noteFontScale,
-        tooltipScale: settings.tooltipScale,
+        toolbarButtonScale: settings.toolbarButtonScale,
       },
     },
     settings.lastOpened,

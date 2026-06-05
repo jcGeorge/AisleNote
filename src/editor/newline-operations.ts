@@ -103,6 +103,36 @@ function getCarriedText(view: any): string {
   return getSelectionText(view).trim()
 }
 
+function getSelectionMarkdownFromConverter(
+  editor: Editor,
+  view: any,
+  selectionFrom: number,
+  selectionTo: number,
+): string | null {
+  const toMarkdownText = (editor as any)?.convertor?.toMarkdownText
+  if (typeof toMarkdownText !== 'function') return null
+
+  try {
+    const slice = view.state.doc.slice(selectionFrom, selectionTo)
+    if (!slice?.content || slice.content.size <= 0) return null
+    const markdown = String(toMarkdownText.call((editor as any).convertor, slice.content) ?? '')
+      .replace(/\u200b/g, '')
+      .trim()
+    return markdown.length > 0 ? markdown : null
+  } catch {
+    return null
+  }
+}
+
+function getSelectionMarkdownForAisle(
+  editor: Editor,
+  view: any,
+  selectionFrom: number,
+  selectionTo: number,
+): string {
+  return getSelectionMarkdownFromConverter(editor, view, selectionFrom, selectionTo) ?? getSelectionText(view).trim()
+}
+
 function findTopLevelRange(state: any, from: number, to: number) {
   const docSize = state.doc.content.size
   const safeFrom = Math.max(0, Math.min(docSize, from))
@@ -503,7 +533,7 @@ function extractSelectionForAisle(editor: Editor): EditorNewlineOperationResult 
 
   const selectionFrom = Math.min(from, to)
   const selectionTo = Math.max(from, to)
-  const aisleMarkdown = getSelectionText(view).trim()
+  const aisleMarkdown = getSelectionMarkdownForAisle(editor, view, selectionFrom, selectionTo)
   let tr = state.tr
 
   if (isWholeLineSelection(view)) {

@@ -224,8 +224,8 @@ export function ToolbarSettingsPanel({
             canEditSelectedLayout ? 'is-arrangeable' : '',
             dragging ? 'is-dragging' : '',
           ].filter(Boolean).join(' ')}
-          title={label}
           aria-label={label}
+          data-app-tooltip={label}
           draggable={canEditSelectedLayout}
           onDragStart={(event) => startDrag(event, payload)}
           onDragEnd={finishDrag}
@@ -368,8 +368,8 @@ export function ToolbarSettingsPanel({
                       canEditSelectedLayout ? 'is-arrangeable' : '',
                       dragPayload?.source === 'layout' && dragPayload.itemId === item.id ? 'is-dragging' : '',
                     ].filter(Boolean).join(' ')}
-                    title="spacer"
                     aria-label="spacer"
+                    data-app-tooltip="spacer"
                     draggable={canEditSelectedLayout}
                     disabled={!canEditSelectedLayout}
                     data-toolbar-item-id={item.id}
@@ -416,8 +416,8 @@ export function ToolbarSettingsPanel({
             <button
               type="button"
               className="settings-toolbar-palette-spacer"
-              title="spacer"
               aria-label="spacer"
+              data-app-tooltip="spacer"
               draggable={canEditSelectedLayout}
               disabled={!canEditSelectedLayout}
               onDragStart={(event) => startDrag(event, { source: 'spacer' })}

@@ -58,7 +58,7 @@ function createState(): AppState {
     noteAisleBodies: [{ id: 'aisle-body-1', markdown: '' }],
     hotkeys: {
       shortcuts: {
-        toggleTabTrash: '',
+        toggleTabsTarget: '',
         openDomains: '',
         openSpaces: '',
         newTab: '',
@@ -82,7 +82,7 @@ function createState(): AppState {
     },
     frontmatter: DEFAULT_FRONTMATTER_SETTINGS,
     ui: {
-      showParentHomeTab: true,
+      toggleTabsTarget: 'trash',
       tableAddTargetMode: 'bottom-right',
       tableDeleteTargetMode: 'bottom-right',
       tabButtonScale: 1,
@@ -127,7 +127,7 @@ function renderSettingsPage(
       visualsSection={options.visualsSection ?? state.ui.visualsSettingsSection ?? DEFAULT_VISUALS_SETTINGS_SECTION}
       isMacPlatform={options.isMacPlatform ?? false}
       shortcutDrafts={{
-        toggleTabTrash: '',
+        toggleTabsTarget: '',
         openDomains: '',
         openSpaces: '',
         newTab: '',
@@ -151,10 +151,10 @@ function renderSettingsPage(
       importStatus={options.importStatus ?? ''}
       tabButtonScaleDraft={1}
       noteFontScaleDraft={1}
-      tooltipScaleDraft={1}
+      toolbarButtonScaleDraft={1}
       selectedCustomTheme={state.ui.selectedCustomTheme ?? 'custom1'}
       customThemePaletteDraft={getThemePaletteForTheme(state.theme, state.ui.themePalettes)}
-      showParentHomeTabDraft
+      toggleTabsTargetDraft={state.ui.toggleTabsTarget ?? 'trash'}
       alwaysShowSpacesDraft={state.ui.alwaysShowSpaces ?? false}
       alwaysShowDomainsDraft={state.ui.alwaysShowDomains ?? false}
       tableAddTargetModeDraft={state.ui.tableAddTargetMode}
@@ -213,8 +213,8 @@ function renderSettingsPage(
       onCustomThemePaletteSeedFromCurrentTheme={() => undefined}
       onTabButtonScaleChange={() => undefined}
       onNoteFontScaleChange={() => undefined}
-      onTooltipScaleChange={() => undefined}
-      onShowParentHomeTabChange={() => undefined}
+      onToolbarButtonScaleChange={() => undefined}
+      onToggleTabsTargetChange={() => undefined}
       onAlwaysShowSpacesChange={() => undefined}
       onAlwaysShowDomainsChange={() => undefined}
       onTableAddTargetModeChange={() => undefined}
@@ -289,6 +289,19 @@ describe('frontmatter settings page', () => {
     expect(html.indexOf('table of contents shows for')).toBeLessThan(html.indexOf('add table row or column'))
   })
 
+  it('renders the toggle tabs target dropdown in misc settings', () => {
+    const state = createState()
+    state.ui.toggleTabsTarget = 'messages'
+    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'misc', state })
+
+    expect(html).toContain('toggle tabs /')
+    expect(html).toContain('id="settings-toggle-tabs-target"')
+    expect(html).toContain('<option value="messages" selected="">messages</option>')
+    expect(html).toContain('<option value="filter">filter</option>')
+    expect(html).not.toContain('settings-show-parent-home-tab')
+    expect(html).not.toContain('show the parent&#x27;s home tab with the other sub-tabs')
+  })
+
   it('renders the tab-name Enter behavior setting in misc settings', () => {
     const state = createState()
     state.ui.tabRenameEnterBehavior = 'creates-another-tab'
@@ -341,20 +354,27 @@ describe('frontmatter settings page', () => {
     )
   })
 
-  it('renders the delete-subtab shortcut setting in misc settings after @ confirmation', () => {
+  it('renders the active aisle shortcut setting in misc settings after @ confirmation', () => {
     const state = createState()
-    state.ui.deleteSubtabShortcutEnabled = false
-    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'misc', state })
+    state.ui.deleteActiveAisleShortcutEnabled = false
+    const windowsHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'misc', state })
+    const macHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, {
+      section: 'misc',
+      state,
+      isMacPlatform: true,
+    })
 
-    expect(html).toContain('command/control+w deletes current subtab')
-    expect(html).toContain('aria-label="command/control+w deletes current subtab"')
-    expect(html).not.toContain('role="switch" aria-label="command/control+w deletes current subtab" checked=""')
-    expect(html.indexOf('@ menu requires confirmation for replacing note with synced or independent copy')).toBeLessThan(
-      html.indexOf('command/control+w deletes current subtab'),
+    expect(windowsHtml).toContain('control+w deletes active aisle')
+    expect(windowsHtml).toContain('aria-label="control+w deletes active aisle"')
+    expect(windowsHtml).not.toContain('role="switch" aria-label="control+w deletes active aisle" checked=""')
+    expect(windowsHtml.indexOf('@ menu requires confirmation for replacing note with synced or independent copy')).toBeLessThan(
+      windowsHtml.indexOf('control+w deletes active aisle'),
     )
-    expect(html.indexOf('command/control+w deletes current subtab')).toBeLessThan(
-      html.indexOf('add table row or column'),
+    expect(windowsHtml.indexOf('control+w deletes active aisle')).toBeLessThan(
+      windowsHtml.indexOf('add table row or column'),
     )
+    expect(macHtml).toContain('command+w deletes active aisle')
+    expect(macHtml).toContain('aria-label="command+w deletes active aisle"')
   })
 
   it('renders scratchpad settings with the 8 aisle minimum and 40 aisle maximum', () => {
@@ -366,7 +386,7 @@ describe('frontmatter settings page', () => {
     expect(html).not.toContain('<p class="settings-help">user settings</p>')
     expect(html).toContain('<p class="settings-help settings-subsection-label">scratchpad</p>')
     expect(html).toContain('scratchpad')
-    expect(html).toContain('command/control+w deletes active aisle in scratchpad')
+    expect(html.match(/deletes active aisle/g) ?? []).toHaveLength(2)
     expect(html).toContain('scratchpad aisle limit')
     expect(html).toContain('type="number"')
     expect(html).toContain('min="8"')
@@ -590,7 +610,7 @@ describe('frontmatter settings page', () => {
     )
     expect(html.match(/visuals-preview-toolbar-tool/g)?.length).toBe(5)
     ;['Headings', 'Dash list', 'Task', 'Insert image', 'Insert table'].forEach((label) => {
-      expect(html).toContain(`title="${label}" aria-label="${label}" disabled=""`)
+      expect(html).toContain(`data-app-tooltip="${label}" aria-label="${label}" disabled=""`)
     })
     expect(html).toContain('<h3 class="visuals-preview-heading">header</h3>')
     expect(html).toContain('<p class="visuals-preview-tag-line"><span class="tabs-tag-token">#tag</span></p>')
@@ -723,8 +743,8 @@ describe('frontmatter settings page', () => {
     expect(html).toContain('aria-checked="true" class="settings-segmented-option is-selected">other visuals</button>')
     expect(html).toContain('always show spaces')
     expect(html).toContain('always show domains')
-    expect(html).toContain('tooltip size')
-    expect(html).toContain('id="settings-tooltip-scale"')
+    expect(html).toContain('toolbar button size')
+    expect(html).toContain('id="settings-toolbar-button-scale"')
     expect(html).toContain('id="settings-always-show-spaces"')
     expect(html).toContain('id="settings-always-show-domains"')
     expect(html).not.toContain('aria-label="theme palette"')
@@ -761,9 +781,9 @@ describe('frontmatter settings page', () => {
     expect(html).not.toContain('settings-toolbar-drop-zone')
     expect(html).toContain('aria-label="Make copy"')
     expect(html).toContain('aria-label="Find &amp; replace"')
-    expect(html).toContain('table-of-contents-toolbar-icon')
-    expect(html).toContain('find-replace-toolbar-icon')
-    expect(html).toContain('title="spacer"')
+    expect(html).toContain('toolbar-tool-icon-table-of-contents')
+    expect(html).toContain('toolbar-tool-icon-find-replace')
+    expect(html).toContain('data-app-tooltip="spacer"')
     expect(html).toContain('>spacer</button>')
     expect(html).toContain('show icons with names')
     expect(html).toContain('aria-label="show icons with names"')
@@ -810,9 +830,9 @@ describe('frontmatter settings page', () => {
     expect(html).toContain('aria-label="Italic"')
     expect(html).toContain('aria-label="Make copy"')
     expect(html).toContain('aria-label="Find &amp; replace"')
-    expect(html).toContain('table-of-contents-toolbar-icon')
-    expect(html).toContain('find-replace-toolbar-icon')
-    expect(html).toContain('title="spacer"')
+    expect(html).toContain('toolbar-tool-icon-table-of-contents')
+    expect(html).toContain('toolbar-tool-icon-find-replace')
+    expect(html).toContain('data-app-tooltip="spacer"')
     expect(html).toContain('>spacer</button>')
     expect(html).toContain('show icons with names')
     expect(html).not.toContain('settings-toolbar-visible-tool-name')
@@ -849,7 +869,7 @@ describe('frontmatter settings page', () => {
     expect(html).toContain('aria-label="Make copy"')
     expect(html).toContain('aria-label="Find &amp; replace"')
     expect(html).toContain('aria-label="Clear contents"')
-    expect(html).toContain('title="spacer"')
+    expect(html).toContain('data-app-tooltip="spacer"')
   })
 
   it('renders toolbar customizer labels when icon names are enabled', () => {
@@ -902,9 +922,9 @@ describe('frontmatter settings page', () => {
     expect(html).not.toContain('checked=""')
   })
 
-  it('renders platform-specific delete-subtab shortcut tip text', () => {
+  it('renders platform-specific active aisle shortcut tip text', () => {
     const state = createState()
-    state.ui.seenTipIds = ['delete-subtab-shortcut']
+    state.ui.seenTipIds = ['delete-active-aisle-shortcut']
 
     const macHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, true, {
       section: 'tips',
@@ -913,8 +933,8 @@ describe('frontmatter settings page', () => {
     })
     const windowsHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'tips', state })
 
-    expect(macHtml).toContain('You can enable command+w to delete subtabs in the misc tab of the settings.')
-    expect(windowsHtml).toContain('You can enable control+w to delete subtabs in the misc tab of the settings.')
+    expect(macHtml).toContain('You can enable command+w to delete the active aisle in the misc tab of the settings.')
+    expect(windowsHtml).toContain('You can enable control+w to delete the active aisle in the misc tab of the settings.')
   })
 
   it('renders draft template changes behind explicit save controls', () => {

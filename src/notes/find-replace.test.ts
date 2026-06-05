@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_FRONTMATTER_SETTINGS } from '../frontmatter/frontmatter'
+import { EDITOR_BLANK_LINE_PLACEHOLDER } from '../markdown/markdown-utils'
 import type { AppState, NoteBody, NoteLocation, Space, Tab } from '../types/app'
 import {
   applyFindReplacementToState,
@@ -83,7 +84,7 @@ function createFindReplaceState(): AppState {
     ],
     hotkeys: {
       shortcuts: {
-        toggleTabTrash: '',
+        toggleTabsTarget: '',
         openDomains: '',
         openSpaces: '',
         newTab: '',
@@ -107,7 +108,6 @@ function createFindReplaceState(): AppState {
     },
     frontmatter: DEFAULT_FRONTMATTER_SETTINGS,
     ui: {
-      showParentHomeTab: true,
       tableAddTargetMode: 'bottom-right',
       tableDeleteTargetMode: 'bottom-right',
       tabButtonScale: 1,
@@ -338,6 +338,44 @@ describe('visible markdown matching', () => {
 
     expect(result.replacementCount).toBe(1)
     expect(result.state.noteAisleBodies?.[0]?.markdown).toBe('[Asset](https://example.com/target-url)')
+  })
+
+  it('preserves blank paragraphs around task lists when replacing text with nothing', () => {
+    const state = createFindReplaceState()
+    const markdown = [
+      'Intro',
+      '',
+      EDITOR_BLANK_LINE_PLACEHOLDER,
+      '',
+      '- [ ] icon-one.svg',
+      '- [ ] icon-two.svg',
+      '',
+      EDITOR_BLANK_LINE_PLACEHOLDER,
+      '',
+      'Outro',
+    ].join('\n')
+    state.noteAisleBodies = [{ id: 'aisle-body-home', markdown }]
+    const matches = findVisibleMatches(state, ACTIVE_LOCATION, 'note', '.svg', {
+      caseSensitive: true,
+      wholeWord: false,
+      regex: false,
+    })
+
+    const result = applyFindReplacementToState(state, matches, '')
+
+    expect(result.replacementCount).toBe(2)
+    expect(result.state.noteAisleBodies?.[0]?.markdown).toBe([
+      'Intro',
+      '',
+      EDITOR_BLANK_LINE_PLACEHOLDER,
+      '',
+      '- [ ] icon-one',
+      '- [ ] icon-two',
+      '',
+      EDITOR_BLANK_LINE_PLACEHOLDER,
+      '',
+      'Outro',
+    ].join('\n'))
   })
 
   it('does not search or replace note preview directive tokens', () => {

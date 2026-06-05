@@ -38,7 +38,7 @@ export function ArrangeDestinationPrompt({
         aria-label={message}
         onPointerDown={(event) => event.stopPropagation()}
       >
-        <div className="arrange-destination-title">{message}</div>
+        <h2 className="arrange-destination-title">{message}</h2>
       </section>
     </div>
   )

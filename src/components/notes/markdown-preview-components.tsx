@@ -3,11 +3,12 @@ import {
   cloneElement,
   isValidElement,
   type AnchorHTMLAttributes,
+  type CSSProperties,
   type HTMLAttributes,
   type ReactElement,
   type ReactNode,
 } from 'react'
-import { BLOCK_INDENT_TOKEN } from '../../markdown/markdown-utils'
+import { BLOCK_INDENT_TOKEN, countBlockIndentLevels } from '../../markdown/markdown-utils'
 import { MediaPlayer } from '../../media/MediaPlayer'
 import { getMediaKindFromUrl } from '../../media/media-utils'
 import { extractMarkdownTagRanges, TAG_TOKEN_CLASS_NAME } from '../../tags/tags.js'
@@ -32,23 +33,28 @@ type MarkdownListItemProps = HTMLAttributes<HTMLLIElement> & {
   children?: ReactNode
 }
 
+type BlockIndentStyle = CSSProperties & {
+  '--tabs-block-indent-level'?: number
+}
+
 function mergeClassNames(...classNames: Array<string | undefined>) {
   return classNames.filter(Boolean).join(' ') || undefined
 }
 
 function stripBlockIndentTokenFromPreviewChildren(children: ReactNode): {
-  blockIndented: boolean
+  blockIndentLevel: number
   children: ReactNode
 } {
   const childArray = Children.toArray(children)
   const firstChild = childArray[0]
   if (typeof firstChild !== 'string' || !firstChild.startsWith(BLOCK_INDENT_TOKEN)) {
-    return { blockIndented: false, children }
+    return { blockIndentLevel: 0, children }
   }
+  const blockIndentLevel = countBlockIndentLevels(firstChild)
 
   return {
-    blockIndented: true,
-    children: [firstChild.slice(BLOCK_INDENT_TOKEN.length), ...childArray.slice(1)],
+    blockIndentLevel,
+    children: [firstChild.slice(blockIndentLevel * BLOCK_INDENT_TOKEN.length), ...childArray.slice(1)],
   }
 }
 
@@ -73,7 +79,7 @@ function renderTaggedText(value: string, keyPrefix: string): ReactNode {
         key={`${keyPrefix}-tag-${index}-${range.from}`}
         className={TAG_TOKEN_CLASS_NAME}
         data-tabs-tag={range.tag}
-        title="filter by tag"
+        data-app-tooltip="filter by tag"
       >
         {value.slice(range.from, range.to)}
       </span>,
@@ -114,15 +120,21 @@ function renderMarkdownPreviewTags(children: ReactNode): ReactNode {
 export function MarkdownPreviewParagraph({
   node,
   className,
+  style,
   children,
   ...props
 }: MarkdownParagraphProps) {
   void node
   const previewChildren = stripBlockIndentTokenFromPreviewChildren(children)
+  const blockIndentStyle: BlockIndentStyle | undefined =
+    previewChildren.blockIndentLevel > 0
+      ? { ...style, '--tabs-block-indent-level': previewChildren.blockIndentLevel }
+      : style
   return (
     <p
       {...props}
-      className={mergeClassNames(className, previewChildren.blockIndented ? 'tabs-block-indent' : undefined)}
+      style={blockIndentStyle}
+      className={mergeClassNames(className, previewChildren.blockIndentLevel > 0 ? 'tabs-block-indent' : undefined)}
     >
       {renderMarkdownPreviewTags(previewChildren.children)}
     </p>

@@ -174,7 +174,7 @@
 .toastui-editor .ProseMirror .tabs-block-indent,
 .aisle-editor-preview-fallback .tabs-block-indent,
 .aisle-edit-preview .tabs-block-indent {
-  padding-left: var(--editor-block-indent-offset, 1.75rem) !important;
+  padding-left: calc(var(--editor-block-indent-offset, 1.75rem) * var(--tabs-block-indent-level, 1)) !important;
 }
 
 .toastui-editor-contents .tabs-block-indent-token-hidden,
@@ -280,8 +280,18 @@
   opacity: var(--editor-list-marker-opacity, 1) !important;
 }
 
+.toastui-editor-contents ol,
+.toastui-editor .ProseMirror ol {
+  padding-left: 4ch !important;
+}
+
 .toastui-editor-contents ol > li::before,
 .toastui-editor .ProseMirror ol > li::before {
+  width: 3.5ch !important;
+  margin-left: -4ch !important;
+  white-space: nowrap !important;
+  box-sizing: border-box !important;
+  text-align: right !important;
   color: var(--editor-text) !important;
   opacity: var(--editor-list-marker-opacity, 1) !important;
 }

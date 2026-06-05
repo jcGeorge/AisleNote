@@ -15,6 +15,8 @@ export type CustomThemePaletteSlot =
   | 'success'
   | 'tagText'
   | 'tagBg'
+  | 'tooltipPrimary'
+  | 'tooltipSecondary'
   | 'domainRail'
   | 'spaceRail'
   | 'parentRail'
@@ -24,7 +26,7 @@ export type ThemePaletteOverrides = Partial<Record<AppTheme, CustomThemePalette>
 export type ViewMode = 'main' | 'trash' | 'settings' | 'messages' | 'about'
 export type MessagesSection = 'inbox' | 'toast-history'
 export type ShortcutId =
-  | 'toggleTabTrash'
+  | 'toggleTabsTarget'
   | 'openDomains'
   | 'openSpaces'
   | 'newTab'
@@ -52,7 +54,24 @@ export type TableOfContentsScope = 'all-aisles' | 'focused-aisle'
 export type NewAislePlacement = 'end' | 'left-of-focus' | 'right-of-focus'
 export type ScratchpadNewAisleSide = 'left' | 'right'
 export type TabRenameEnterBehavior = 'goes-to-note' | 'creates-another-tab'
-export type TipId = 'task-undo' | 'delete-subtab-shortcut'
+export type ToggleTabsTarget = 'trash' | 'settings' | 'messages' | 'about' | 'filter'
+export type TipId = 'task-undo' | 'delete-active-aisle-shortcut'
+export type NoteFilterKind = 'tags' | 'synced' | 'frontmatter'
+export type NoteFilterTagSortMode = 'az' | 'occurrences'
+export type NoteFilterSettings = {
+  active: boolean
+  kind: NoteFilterKind
+  tags: {
+    selectedKeys: string[]
+    sortMode: NoteFilterTagSortMode
+  }
+  synced: {
+    selectedKeys: string[]
+  }
+  frontmatter: {
+    selectedKeys: string[]
+  }
+}
 
 export type NewlineOperationId =
   | 'normalNewLine'
@@ -384,29 +403,29 @@ export type AppState = {
   }
   frontmatter: FrontmatterSettings
   ui: {
-    showParentHomeTab: boolean
     alwaysShowSpaces?: boolean
     alwaysShowDomains?: boolean
     lastLinkInsertMode?: LinkInsertMode
     lastNoteCopyMode?: NoteCopyMode
+    toggleTabsTarget?: ToggleTabsTarget
     findCaseSensitive?: boolean
     findWholeWord?: boolean
     findRegex?: boolean
     findReplaceMode?: 'find' | 'replace'
     removeNoteReferencesOnTrash?: boolean
     noteMentionCopyRequiresConfirmation?: boolean
-    deleteSubtabShortcutEnabled?: boolean
-    scratchpadDeleteAisleShortcutEnabled?: boolean
+    deleteActiveAisleShortcutEnabled?: boolean
     scratchpadAisleLimit?: number
     scratchpadNewAisleSide?: ScratchpadNewAisleSide
     tabRenameEnterBehavior?: TabRenameEnterBehavior
     decoupledItemsKeepData?: boolean
+    noteFilter?: NoteFilterSettings
     tableAddTargetMode: TableControlTargetMode
     tableDeleteTargetMode: TableControlTargetMode
     tableOfContentsScope?: TableOfContentsScope
     tabButtonScale: number
     noteFontScale: number
-    tooltipScale?: number
+    toolbarButtonScale?: number
     settingsSection: SettingsSection
     dataSettingsSection?: DataSettingsSection
     visualsSettingsSection?: VisualsSettingsSection
@@ -838,6 +857,8 @@ export type ModalState =
       type: 'confirm-synced-note-paste'
       source: NoteLocation
       destination: NoteLocation
+      destinationAisleId: string
+      sourceAisleId?: string
     }
   | {
       type: 'deduplicate-note'
@@ -852,6 +873,8 @@ export type ModalState =
       aisleId: string
       aisleBodyId: string
       location: NoteLocation
+      keepAisleSlotKeys: string[]
+      keepData: boolean
     }
   | {
       type: 'linked-aisle'
@@ -874,6 +897,7 @@ export type ModalState =
       noteLabelTouched?: boolean
       url: string
       urlLabel: string
+      urlInitialFocus?: 'url' | 'label'
       urlEditRange?: LinkEditRange | null
       internalEdit?: InternalNoteLinkEdit | null
       editingTokenId?: string

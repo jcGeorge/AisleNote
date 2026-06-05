@@ -109,6 +109,42 @@
   background: color-mix(in srgb, var(--toast-text) 10%, transparent);
 }
 
+.app-tooltip-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  pointer-events: none;
+}
+
+.app-tooltip {
+  position: fixed;
+  max-width: min(18rem, calc(100vw - 1rem));
+  padding: 4px 8px;
+  border: 1px solid var(--editor-tooltip-border);
+  border-radius: 0.28rem;
+  background: var(--editor-tooltip-bg);
+  color: var(--editor-tooltip-text);
+  box-shadow: var(--editor-tooltip-shadow);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.2;
+  overflow-wrap: break-word;
+  opacity: 0;
+  text-align: center;
+  transform: translateZ(0);
+  visibility: hidden;
+}
+
+.app-tooltip.is-positioned {
+  opacity: 1;
+  visibility: visible;
+}
+
+.app-shell.tooltips-disabled .app-tooltip-layer,
+body.app-tooltips-disabled .app-tooltip-layer {
+  display: none;
+}
+
 .app-toast-success {
   border-left-color: var(--toast-success);
 }

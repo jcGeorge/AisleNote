@@ -3,6 +3,8 @@
 @media (max-width: 760px) {
   .app-shell {
     --tab-control-height: max(38px, calc(32px * var(--tab-button-scale)));
+    --editor-toolbar-button-size: max(32px, calc(26px * var(--toolbar-button-scale)));
+    --editor-toolbar-min-height: calc(var(--editor-toolbar-button-size) + 6px);
   }
 
   .tabbar,
@@ -57,7 +59,7 @@
   }
 
   .toastui-editor-toolbar {
-    min-height: 38px !important;
+    min-height: var(--editor-toolbar-min-height) !important;
     padding: 0.2rem 0.28rem !important;
   }
 
@@ -71,30 +73,16 @@
 
   .toastui-editor-defaultUI-toolbar button,
   .toastui-editor-toolbar button {
-    width: 32px !important;
-    height: 32px !important;
+    width: var(--editor-toolbar-button-size) !important;
+    height: var(--editor-toolbar-button-size) !important;
   }
 
-  .toastui-editor-defaultUI-toolbar button.clear-note-toolbar-btn,
-  .toastui-editor-toolbar button.clear-note-toolbar-btn,
-  .toastui-editor-defaultUI-toolbar button.note-link-toolbar-btn,
-  .toastui-editor-toolbar button.note-link-toolbar-btn,
-  .toastui-editor-defaultUI-toolbar button.note-copy-toolbar-btn,
-  .toastui-editor-toolbar button.note-copy-toolbar-btn,
-  .toastui-editor-defaultUI-toolbar button.frontmatter-toolbar-btn,
-  .toastui-editor-toolbar button.frontmatter-toolbar-btn,
-  .toastui-editor-defaultUI-toolbar button.table-of-contents-toolbar-btn,
-  .toastui-editor-toolbar button.table-of-contents-toolbar-btn,
-  .toastui-editor-defaultUI-toolbar button.aisles-toolbar-btn,
-  .toastui-editor-toolbar button.aisles-toolbar-btn,
-  .toastui-editor-defaultUI-toolbar button.find-replace-toolbar-btn,
-  .toastui-editor-toolbar button.find-replace-toolbar-btn,
-  .toastui-editor-defaultUI-toolbar button.editor-history-toolbar-btn,
-  .toastui-editor-toolbar button.editor-history-toolbar-btn,
+  .toastui-editor-defaultUI-toolbar button.app-toolbar-tool-btn,
+  .toastui-editor-toolbar button.app-toolbar-tool-btn,
   .image-tool-btn {
-    width: 32px !important;
-    min-width: 32px !important;
-    height: 32px !important;
+    width: var(--editor-toolbar-button-size) !important;
+    min-width: var(--editor-toolbar-button-size) !important;
+    height: var(--editor-toolbar-button-size) !important;
   }
 
   .settings-page-wrap,

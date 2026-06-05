@@ -38,6 +38,8 @@ describe('theme transfer helpers', () => {
       primary: 'abc',
       secondary: '#112233',
       tagBg: '#ddeeff',
+      tooltipPrimary: '#ccddee',
+      tooltipSecondary: '#667788',
     }), DEFAULT_CUSTOM_THEME_PALETTE)
 
     expect(result).toEqual({
@@ -47,8 +49,10 @@ describe('theme transfer helpers', () => {
         primary: '#aabbcc',
         secondary: '#112233',
         tagBg: '#ddeeff',
+        tooltipPrimary: '#ccddee',
+        tooltipSecondary: '#667788',
       },
-      importedSlots: ['primary', 'secondary', 'tagBg'],
+      importedSlots: ['primary', 'secondary', 'tagBg', 'tooltipPrimary', 'tooltipSecondary'],
     })
   })
 

@@ -1,7 +1,9 @@
 .app-shell {
   --tab-button-scale: 1;
-  --tooltip-scale: 1;
+  --toolbar-button-scale: 1;
   --tab-control-height: calc(32px * var(--tab-button-scale));
+  --editor-toolbar-button-size: max(26px, calc(26px * var(--toolbar-button-scale)));
+  --editor-toolbar-min-height: calc(var(--editor-toolbar-button-size) + 6px);
   --app-text-scale: var(--note-font-scale, 1);
   --ui-font-2xs: calc(0.72rem * var(--app-text-scale, 1));
   --ui-font-xs: calc(0.75rem * var(--app-text-scale, 1));
@@ -395,10 +397,8 @@
   --editor-caret: #e9ecef;
   --editor-annotation-text: #c7d5ed;
   --editor-terminal-caret: rgba(134, 168, 232, 0.86);
-  --editor-toolbar-icon-filter: invert(88%) sepia(10%) saturate(327%) hue-rotate(183deg) brightness(94%) contrast(91%);
-  --editor-toolbar-icon-color: #c8d0e1;
-  --editor-toolbar-dash-icon-text: #555555;
-  --editor-clear-note-toolbar-text: var(--editor-toolbar-icon-color);
+  --editor-toolbar-icon-primary: #c8d0e1;
+  --editor-toolbar-icon-secondary: #6f7f98;
   --editor-heading-choice-active-bg: #22406d;
   --editor-heading-choice-active-marker: #6fa0ff;
   --editor-heading-choice-active-text: #f4f8ff;
@@ -494,6 +494,8 @@
   --custom-palette-success: var(--custom-theme-success, #2fb36d);
   --custom-palette-tag-text: var(--custom-theme-tag-text, #06141a);
   --custom-palette-tag-bg: var(--custom-theme-tag-bg, #22d3ee);
+  --custom-palette-tooltip-primary: var(--custom-theme-tooltip-primary, #c8d0e1);
+  --custom-palette-tooltip-secondary: var(--custom-theme-tooltip-secondary, #6f7f98);
   --custom-palette-domain-rail: var(--custom-theme-domain-rail, #a95429);
   --custom-palette-space-rail: var(--custom-theme-space-rail, #997b28);
   --custom-palette-parent-rail: var(--custom-theme-parent-rail, #2f5da8);
@@ -773,8 +775,8 @@
   --editor-caret: var(--custom-palette-text);
   --editor-annotation-text: var(--app-text-muted);
   --editor-terminal-caret: color-mix(in srgb, var(--custom-palette-primary) 74%, transparent);
-  --editor-toolbar-icon-color: var(--custom-palette-text);
-  --editor-clear-note-toolbar-text: var(--editor-toolbar-icon-color);
+  --editor-toolbar-icon-primary: var(--custom-palette-tooltip-primary);
+  --editor-toolbar-icon-secondary: var(--custom-palette-tooltip-secondary);
   --editor-heading-choice-active-bg: color-mix(in srgb, var(--custom-palette-primary) 28%, var(--custom-palette-surface));
   --editor-heading-choice-active-marker: var(--custom-palette-primary);
   --editor-heading-choice-active-text: var(--app-text-bright);

@@ -51,9 +51,23 @@ export const DEFAULT_UI_SETTINGS: AppState['ui'] = {
   ...DEFAULT_SIMPLE_SYNCED_UI_SETTINGS,
   alwaysShowSpaces: false,
   alwaysShowDomains: false,
+  noteFilter: {
+    active: false,
+    kind: 'tags',
+    tags: {
+      selectedKeys: [],
+      sortMode: 'az',
+    },
+    synced: {
+      selectedKeys: [],
+    },
+    frontmatter: {
+      selectedKeys: [],
+    },
+  },
   tabButtonScale: 1,
   noteFontScale: 1,
-  tooltipScale: 1,
+  toolbarButtonScale: 1,
   scratchpadAisleLimit: DEFAULT_SCRATCHPAD_AISLE_LIMIT,
   settingsSection: DEFAULT_SETTINGS_SECTION,
   dataSettingsSection: DEFAULT_DATA_SETTINGS_SECTION,
@@ -82,6 +96,8 @@ export const CUSTOM_THEME_PALETTE_SLOTS: CustomThemePaletteSlot[] = [
   'success',
   'tagText',
   'tagBg',
+  'tooltipPrimary',
+  'tooltipSecondary',
   'domainRail',
   'spaceRail',
   'parentRail',
@@ -103,6 +119,8 @@ export const DEFAULT_CUSTOM_THEME_PALETTE: CustomThemePalette = {
   success: '#2fb36d',
   tagText: '#06141a',
   tagBg: '#22d3ee',
+  tooltipPrimary: '#c8d0e1',
+  tooltipSecondary: '#6f7f98',
   domainRail: '#a95429',
   spaceRail: '#997b28',
   parentRail: '#2f5da8',
@@ -126,6 +144,8 @@ export const BUILT_IN_THEME_PALETTE_SEEDS: Record<BuiltInAppTheme, CustomThemePa
     success: '#2fb36d',
     tagText: '#f8fafc',
     tagBg: '#0f766e',
+    tooltipPrimary: '#555555',
+    tooltipSecondary: '#9aa3b2',
     domainRail: '#a95429',
     spaceRail: '#997b28',
     parentRail: '#2f5da8',
@@ -146,6 +166,8 @@ export const BUILT_IN_THEME_PALETTE_SEEDS: Record<BuiltInAppTheme, CustomThemePa
     success: '#3f6f4f',
     tagText: '#fff7ed',
     tagBg: '#0f766e',
+    tooltipPrimary: '#555555',
+    tooltipSecondary: '#8a744a',
     domainRail: '#a95429',
     spaceRail: '#997b28',
     parentRail: '#2f5da8',
@@ -159,9 +181,9 @@ export const TAB_BUTTON_SCALE_STEP = 0.05
 export const MIN_NOTE_FONT_SCALE = 0.9
 export const MAX_NOTE_FONT_SCALE = 1.8
 export const NOTE_FONT_SCALE_STEP = 0.05
-export const MIN_TOOLTIP_SCALE = 0.8
-export const MAX_TOOLTIP_SCALE = 1.6
-export const TOOLTIP_SCALE_STEP = 0.05
+export const MIN_TOOLBAR_BUTTON_SCALE = 0.8
+export const MAX_TOOLBAR_BUTTON_SCALE = 1.6
+export const TOOLBAR_BUTTON_SCALE_STEP = 0.05
 
 export function clampAutoRemoveDays(value: number): number {
   if (!Number.isFinite(value)) return DEFAULT_AUTO_REMOVE_DAYS
@@ -180,10 +202,10 @@ export function clampNoteFontScale(value: number): number {
   return Math.min(MAX_NOTE_FONT_SCALE, Math.max(MIN_NOTE_FONT_SCALE, Number(rounded.toFixed(2))))
 }
 
-export function clampTooltipScale(value: number): number {
-  if (!Number.isFinite(value)) return DEFAULT_UI_SETTINGS.tooltipScale ?? 1
-  const rounded = Math.round(value / TOOLTIP_SCALE_STEP) * TOOLTIP_SCALE_STEP
-  return Math.min(MAX_TOOLTIP_SCALE, Math.max(MIN_TOOLTIP_SCALE, Number(rounded.toFixed(2))))
+export function clampToolbarButtonScale(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_UI_SETTINGS.toolbarButtonScale ?? 1
+  const rounded = Math.round(value / TOOLBAR_BUTTON_SCALE_STEP) * TOOLBAR_BUTTON_SCALE_STEP
+  return Math.min(MAX_TOOLBAR_BUTTON_SCALE, Math.max(MIN_TOOLBAR_BUTTON_SCALE, Number(rounded.toFixed(2))))
 }
 
 export function normalizeHexColor(value: unknown): string | null {
@@ -333,6 +355,52 @@ export function normalizeFindReplaceMode(value: unknown): AppState['ui']['findRe
   return normalizeRegisteredSyncedUiSetting('findReplaceMode', value)
 }
 
+function normalizeNoteFilterSelectedKeys(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return Array.from(
+    new Set(
+      value
+        .map((item) => (typeof item === 'string' ? item.trim() : ''))
+        .filter(Boolean),
+    ),
+  )
+}
+
+export function normalizeNoteFilterSettings(value: unknown): NonNullable<AppState['ui']['noteFilter']> {
+  const defaults = DEFAULT_UI_SETTINGS.noteFilter
+  if (!defaults) {
+    return {
+      active: false,
+      kind: 'tags',
+      tags: { selectedKeys: [], sortMode: 'az' },
+      synced: { selectedKeys: [] },
+      frontmatter: { selectedKeys: [] },
+    }
+  }
+  if (!value || typeof value !== 'object') return defaults
+  const obj = value as Record<string, unknown>
+  const kind = obj.kind === 'synced' || obj.kind === 'frontmatter' || obj.kind === 'tags' ? obj.kind : defaults.kind
+  const tagSettings = obj.tags && typeof obj.tags === 'object' ? obj.tags as Record<string, unknown> : {}
+  const syncedSettings = obj.synced && typeof obj.synced === 'object' ? obj.synced as Record<string, unknown> : {}
+  const frontmatterSettings = obj.frontmatter && typeof obj.frontmatter === 'object'
+    ? obj.frontmatter as Record<string, unknown>
+    : {}
+  return {
+    active: typeof obj.active === 'boolean' ? obj.active : defaults.active,
+    kind,
+    tags: {
+      selectedKeys: normalizeNoteFilterSelectedKeys(tagSettings.selectedKeys),
+      sortMode: tagSettings.sortMode === 'occurrences' ? 'occurrences' : 'az',
+    },
+    synced: {
+      selectedKeys: normalizeNoteFilterSelectedKeys(syncedSettings.selectedKeys),
+    },
+    frontmatter: {
+      selectedKeys: normalizeNoteFilterSelectedKeys(frontmatterSettings.selectedKeys),
+    },
+  }
+}
+
 export function normalizeUiSettings(raw: unknown): AppState['ui'] {
   if (!raw || typeof raw !== 'object') return DEFAULT_UI_SETTINGS
   const obj = raw as Record<string, unknown>
@@ -356,14 +424,15 @@ export function normalizeUiSettings(raw: unknown): AppState['ui'] {
       typeof obj.noteFontScale === 'number'
         ? clampNoteFontScale(obj.noteFontScale)
         : DEFAULT_UI_SETTINGS.noteFontScale,
-    tooltipScale:
-      typeof obj.tooltipScale === 'number'
-        ? clampTooltipScale(obj.tooltipScale)
-        : DEFAULT_UI_SETTINGS.tooltipScale,
+    toolbarButtonScale:
+      typeof obj.toolbarButtonScale === 'number'
+        ? clampToolbarButtonScale(obj.toolbarButtonScale)
+        : DEFAULT_UI_SETTINGS.toolbarButtonScale,
     scratchpadAisleLimit:
       typeof obj.scratchpadAisleLimit === 'number' || typeof obj.scratchpadAisleLimit === 'string'
         ? clampScratchpadAisleLimit(obj.scratchpadAisleLimit)
         : DEFAULT_SCRATCHPAD_AISLE_LIMIT,
+    noteFilter: normalizeNoteFilterSettings(obj.noteFilter),
     settingsSection: normalizeSettingsSection(obj.settingsSection),
     visualsSettingsSection: normalizeVisualsSettingsSection(
       obj.visualsSettingsSection,

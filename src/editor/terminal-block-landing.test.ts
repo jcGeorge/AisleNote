@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
+import { Schema } from 'prosemirror-model'
+import { EditorState, TextSelection } from 'prosemirror-state'
 import {
+  deleteTerminalBlockBeforeCaret,
   getTerminalBlockLandingTarget,
   handleTerminalLandingZoneClick,
   handleTerminalBlankAreaClick,
@@ -8,6 +11,23 @@ import {
   moveTerminalBlockBoundaryCaretByArrow,
   placeCaretInFinalEmptyTextBlock,
 } from './terminal-block-landing'
+
+const terminalDeleteSchema = new Schema({
+  nodes: {
+    doc: { content: 'block+' },
+    text: { group: 'inline' },
+    paragraph: { group: 'block', content: 'inline*', toDOM: () => ['p', 0] },
+    codeBlock: { group: 'block', content: 'text*', code: true, toDOM: () => ['pre', ['code', 0]] },
+    image: { inline: true, group: 'inline', atom: true, attrs: { src: {} }, toDOM: (node) => ['img', { src: node.attrs.src }] },
+    table: { group: 'block', content: 'paragraph*', toDOM: () => ['table', ['tbody', 0]] },
+  },
+  marks: {
+    link: {
+      attrs: { linkUrl: {} },
+      toDOM: (mark) => ['a', { href: mark.attrs.linkUrl }, 0],
+    },
+  },
+})
 
 type FakePmNode = {
   type: { name: string }
@@ -247,6 +267,141 @@ const terminalBoundaryCases = [
     domPosition: 1,
   },
 ]
+
+function terminalDeleteParagraph(text = '') {
+  return text
+    ? terminalDeleteSchema.nodes.paragraph.create(null, terminalDeleteSchema.text(text))
+    : terminalDeleteSchema.nodes.paragraph.create()
+}
+
+function terminalDeleteCodeBlock(text = 'code') {
+  return terminalDeleteSchema.nodes.codeBlock.create(null, terminalDeleteSchema.text(text))
+}
+
+function terminalDeleteTable() {
+  return terminalDeleteSchema.nodes.table.create(null, [terminalDeleteParagraph('cell')])
+}
+
+function terminalDeletePreview() {
+  return terminalDeleteParagraph(contextToken())
+}
+
+function terminalDeleteMedia() {
+  return terminalDeleteSchema.nodes.paragraph.create(null, [
+    terminalDeleteSchema.text('Song', [
+      terminalDeleteSchema.marks.link.create({ linkUrl: 'tabs-asset:///assets/song.mp3' }),
+    ]),
+  ])
+}
+
+function terminalDeleteImage() {
+  return terminalDeleteSchema.nodes.paragraph.create(null, [
+    terminalDeleteSchema.nodes.image.create({ src: 'tabs-asset:///assets/image.png' }),
+  ])
+}
+
+function createTerminalDeleteState(children: any[], selectionPosition: number, selectionTo = selectionPosition) {
+  const doc = terminalDeleteSchema.nodes.doc.create(null, children)
+  return EditorState.create({
+    doc,
+    selection: TextSelection.create(doc, selectionPosition, selectionTo),
+  })
+}
+
+function applyTerminalDelete(state: EditorState, direction: 'backward' | 'forward') {
+  let nextState = state
+  const handled = deleteTerminalBlockBeforeCaret(state, direction, (tr) => {
+    nextState = state.apply(tr as any)
+  })
+  return { handled, state: nextState }
+}
+
+describe('terminal block delete behavior', () => {
+  it('deletes a code block from Backspace at the start of following text', () => {
+    const codeBlock = terminalDeleteCodeBlock()
+    const state = createTerminalDeleteState([codeBlock, terminalDeleteParagraph('after')], codeBlock.nodeSize + 1)
+    const result = applyTerminalDelete(state, 'backward')
+
+    expect(result.handled).toBe(true)
+    expect(result.state.doc.childCount).toBe(1)
+    expect(result.state.doc.child(0).type.name).toBe('paragraph')
+    expect(result.state.doc.child(0).textContent).toBe('after')
+    expect(result.state.selection.from).toBe(1)
+  })
+
+  it('deletes a table from Backspace at the start of following text', () => {
+    const table = terminalDeleteTable()
+    const state = createTerminalDeleteState([table, terminalDeleteParagraph('after')], table.nodeSize + 1)
+    const result = applyTerminalDelete(state, 'backward')
+
+    expect(result.handled).toBe(true)
+    expect(result.state.doc.childCount).toBe(1)
+    expect(result.state.doc.child(0).textContent).toBe('after')
+    expect(result.state.selection.from).toBe(1)
+  })
+
+  it('deletes a terminal block from forward Delete in an empty spacer without lifting lower text', () => {
+    const codeBlock = terminalDeleteCodeBlock()
+    const empty = terminalDeleteParagraph()
+    const state = createTerminalDeleteState([codeBlock, empty, terminalDeleteParagraph('after')], codeBlock.nodeSize + 1)
+    const result = applyTerminalDelete(state, 'forward')
+
+    expect(result.handled).toBe(true)
+    expect(result.state.doc.childCount).toBe(2)
+    expect(result.state.doc.child(0).textContent).toBe('')
+    expect(result.state.doc.child(1).textContent).toBe('after')
+    expect(result.state.selection.from).toBe(1)
+  })
+
+  it.each([
+    { label: 'code block', node: terminalDeleteCodeBlock },
+    { label: 'table', node: terminalDeleteTable },
+    { label: 'note preview', node: terminalDeletePreview },
+    { label: 'media player', node: terminalDeleteMedia },
+  ])('deletes a $label before an empty blank run', ({ node }) => {
+    const terminal = node()
+    const firstEmpty = terminalDeleteParagraph()
+    const secondEmpty = terminalDeleteParagraph()
+    const selectionPosition = terminal.nodeSize + firstEmpty.nodeSize + 1
+    const state = createTerminalDeleteState(
+      [terminal, firstEmpty, secondEmpty, terminalDeleteParagraph('after')],
+      selectionPosition,
+    )
+    const result = applyTerminalDelete(state, 'backward')
+
+    expect(result.handled).toBe(true)
+    expect(result.state.doc.childCount).toBe(3)
+    expect(result.state.doc.child(0).textContent).toBe('')
+    expect(result.state.doc.child(1).textContent).toBe('')
+    expect(result.state.doc.child(2).textContent).toBe('after')
+    expect(result.state.selection.from).toBe(firstEmpty.nodeSize + 1)
+  })
+
+  it('does not delete image-only paragraphs through terminal block deletion', () => {
+    const image = terminalDeleteImage()
+    const state = createTerminalDeleteState([image, terminalDeleteParagraph(), terminalDeleteParagraph('after')], image.nodeSize + 1)
+
+    expect(deleteTerminalBlockBeforeCaret(state, 'backward', vi.fn())).toBe(false)
+    expect(deleteTerminalBlockBeforeCaret(state, 'forward', vi.fn())).toBe(false)
+  })
+
+  it('leaves normal paragraph boundaries to native delete behavior', () => {
+    const before = terminalDeleteParagraph('before')
+    const state = createTerminalDeleteState([before, terminalDeleteParagraph(), terminalDeleteParagraph('after')], before.nodeSize + 1)
+
+    expect(deleteTerminalBlockBeforeCaret(state, 'backward', vi.fn())).toBe(false)
+    expect(deleteTerminalBlockBeforeCaret(state, 'forward', vi.fn())).toBe(false)
+  })
+
+  it('ignores non-collapsed selections and non-boundary text positions', () => {
+    const codeBlock = terminalDeleteCodeBlock()
+    const selectedText = createTerminalDeleteState([codeBlock, terminalDeleteParagraph('after')], codeBlock.nodeSize + 1, codeBlock.nodeSize + 3)
+    const middleOfText = createTerminalDeleteState([codeBlock, terminalDeleteParagraph('after')], codeBlock.nodeSize + 3)
+
+    expect(deleteTerminalBlockBeforeCaret(selectedText, 'backward', vi.fn())).toBe(false)
+    expect(deleteTerminalBlockBeforeCaret(middleOfText, 'backward', vi.fn())).toBe(false)
+  })
+})
 
 describe('terminal block landing insertion', () => {
   it('inserts typed text into a new paragraph after the terminal block', () => {

@@ -4,7 +4,11 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { TabArrangeDragPreview } from '../../types/app'
-import { getArrangeDragPreviewStyle } from './arrange-drag-preview-style'
+import {
+  ARRANGE_DRAG_PREVIEW_POINTER_OFFSET_PX,
+  ARRANGE_DRAG_PREVIEW_POINTER_OFFSET_REM,
+  getArrangeDragPreviewStyle,
+} from './arrange-drag-preview-style'
 import { TabArrangeDragPreviewOverlay } from './TabArrangeDragPreviewOverlay'
 
 const navigationDir = dirname(fileURLToPath(import.meta.url))
@@ -46,10 +50,12 @@ describe('tab arrange drag preview overlay', () => {
     expect(source).toContain("'--rail-control-radius'")
   })
 
-  it('computes viewport preview position from client coordinates and grab offset', () => {
+  it('centers the preview under the pointer and offsets it downward', () => {
+    expect(ARRANGE_DRAG_PREVIEW_POINTER_OFFSET_REM).toBe(2)
+    expect(ARRANGE_DRAG_PREVIEW_POINTER_OFFSET_PX).toBe(32)
     expect(getArrangeDragPreviewStyle(parentPreview)).toMatchObject({
-      left: '90px',
-      top: '72px',
+      left: '40px',
+      top: '96px',
       width: '120px',
       height: '32px',
     })
@@ -63,8 +69,8 @@ describe('tab arrange drag preview overlay', () => {
     expect(html).toContain(
       'tab-arrange-preview is-parent tab-btn parent-tab-btn is-selected arrange-preview-card arrange-preview-primary',
     )
-    expect(html).toContain('left:90px')
-    expect(html).toContain('top:72px')
+    expect(html).toContain('left:40px')
+    expect(html).toContain('top:96px')
     expect(html).toContain('width:120px')
     expect(html).toContain('height:32px')
     expect(html).not.toContain('--arrange-preview-primary-x')
@@ -79,8 +85,8 @@ describe('tab arrange drag preview overlay', () => {
     expect(html).toContain(
       'tab-arrange-preview is-subtab tab-btn subtab-btn is-selected arrange-preview-card arrange-preview-primary',
     )
-    expect(html).toContain('left:81px')
-    expect(html).toContain('top:63px')
+    expect(html).toContain('left:35px')
+    expect(html).toContain('top:87px')
     expect(html).toContain('Sub A')
   })
 
@@ -101,8 +107,8 @@ describe('tab arrange drag preview overlay', () => {
 
     expect(html).toContain('class="arrange-preview-stack is-stacked"')
     expect(html).toContain('data-drag-count="4"')
-    expect(html).toContain('left:90px')
-    expect(html).toContain('top:72px')
+    expect(html).toContain('left:40px')
+    expect(html).toContain('top:96px')
     expect(html).toContain('width:120px')
     expect(html).toContain('height:32px')
     expect(html).toContain('--arrange-preview-primary-x:0px')

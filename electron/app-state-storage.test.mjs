@@ -114,7 +114,6 @@ function serializedAppState() {
       ],
     },
     ui: {
-      showParentHomeTab: true,
       tabButtonScale: 1,
       noteFontScale: 1,
       settingsSection: 'frontmatter',
@@ -373,7 +372,6 @@ describe('Electron app state storage load result', () => {
       }
       state.ui = {
         ...state.ui,
-        showParentHomeTab: false,
         settingsSection: 'toolbar',
         selectedCustomTheme: 'custom3',
         lastNoteCopyMode: 'linked',
@@ -381,7 +379,7 @@ describe('Electron app state storage load result', () => {
         findReplaceMode: 'replace',
         removeNoteReferencesOnTrash: false,
         noteMentionCopyRequiresConfirmation: false,
-        deleteSubtabShortcutEnabled: true,
+        deleteActiveAisleShortcutEnabled: true,
         decoupledItemsKeepData: false,
         tableAddTargetMode: 'active-cell',
         tableDeleteTargetMode: 'active-cell',
@@ -451,7 +449,7 @@ describe('Electron app state storage load result', () => {
       expect(appSettings.ui.findReplaceMode).toBe('replace')
       expect(appSettings.ui.removeNoteReferencesOnTrash).toBe(false)
       expect(appSettings.ui.noteMentionCopyRequiresConfirmation).toBe(false)
-      expect(appSettings.ui.deleteSubtabShortcutEnabled).toBe(true)
+      expect(appSettings.ui.deleteActiveAisleShortcutEnabled).toBe(true)
       expect(appSettings.ui.tableOfContentsScope).toBe('focused-aisle')
       expect(appSettings.ui.tabRenameEnterBehavior).toBe('creates-another-tab')
       expect(appSettings.ui).not.toHaveProperty('newAislePlacement')
@@ -488,7 +486,7 @@ describe('Electron app state storage load result', () => {
       expect(parsed.ui.findReplaceMode).toBe('replace')
       expect(parsed.ui.removeNoteReferencesOnTrash).toBe(false)
       expect(parsed.ui.noteMentionCopyRequiresConfirmation).toBe(false)
-      expect(parsed.ui.deleteSubtabShortcutEnabled).toBe(true)
+      expect(parsed.ui.deleteActiveAisleShortcutEnabled).toBe(true)
       expect(parsed.ui.tableOfContentsScope).toBe('focused-aisle')
       expect(parsed.ui.tabRenameEnterBehavior).toBe('creates-another-tab')
       expect(parsed.ui).not.toHaveProperty('newAislePlacement')

@@ -79,7 +79,9 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
   if (modal.type === 'confirm-synced-note-paste') {
     return {
       title: 'paste synced note?',
-      body: 'this will replace this note and all of its aisles with the synced note copy. if you meant to keep this note and add one synced aisle, copy and paste a synced aisle instead.',
+      body: modal.sourceAisleId
+        ? 'this will replace this note and all of its aisles with the synced note copy. because the copied note has one aisle, you can paste that synced aisle into the current aisle instead.'
+        : 'this will replace this note and all of its aisles with the synced note copy. if you meant to keep this note and add one synced aisle, copy and paste a synced aisle instead.',
       action: 'paste synced note',
     }
   }
@@ -103,8 +105,8 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
 
     return {
       title: 'linked aisle',
-      body: '',
-      action: 'de-couple aisle',
+      body: 'Select aisles to de-couple.',
+      action: 'apply',
     }
   }
 

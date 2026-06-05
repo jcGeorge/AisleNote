@@ -89,6 +89,19 @@ export function deleteAisleFromDraft(draft: ResolvedNoteAisle[], aisleId: string
   return next.length === draft.length ? draft : next
 }
 
+export function deleteFocusedAisleFromDraft(
+  draft: ResolvedNoteAisle[],
+  activeAisleId: string | null | undefined,
+): { aisles: ResolvedNoteAisle[]; activeAisleId: string } | null {
+  if (!canDeleteAisleFromDraft(draft) || !activeAisleId) return null
+  const activeIndex = draft.findIndex((aisle) => aisle.id === activeAisleId)
+  if (activeIndex < 0) return null
+  const nextAisles = draft.filter((aisle) => aisle.id !== activeAisleId)
+  const nextActiveAisleId = nextAisles[Math.min(activeIndex, nextAisles.length - 1)]?.id ?? nextAisles[0]?.id ?? ''
+  if (!nextActiveAisleId) return null
+  return { aisles: nextAisles, activeAisleId: nextActiveAisleId }
+}
+
 export function reorderAisleDraft(draft: ResolvedNoteAisle[], fromIndex: number, toIndex: number): ResolvedNoteAisle[] {
   if (fromIndex === toIndex) return draft
   if (fromIndex < 0 || fromIndex >= draft.length) return draft

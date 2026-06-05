@@ -35,7 +35,7 @@ export const REQUIRED_ROOT_SPLIT_FILE_KEYS = Object.freeze([
 ])
 
 const DEFAULT_COMMAND_SHORTCUTS = {
-  toggleTabTrash: 'Mod+T',
+  toggleTabsTarget: 'Mod+T',
   openDomains: 'Mod+D',
   openSpaces: 'Mod+S',
   newTab: 'Mod+Shift+N',
@@ -103,6 +103,20 @@ const DEFAULT_SYNCED_UI_SETTINGS = {
   ...DEFAULT_SIMPLE_SYNCED_UI_SETTINGS,
   alwaysShowSpaces: false,
   alwaysShowDomains: false,
+  noteFilter: {
+    active: false,
+    kind: 'tags',
+    tags: {
+      selectedKeys: [],
+      sortMode: 'az',
+    },
+    synced: {
+      selectedKeys: [],
+    },
+    frontmatter: {
+      selectedKeys: [],
+    },
+  },
   selectedCustomTheme: 'custom1',
   themePalettes: {},
   toolbarLayouts: [],
@@ -111,7 +125,7 @@ const DEFAULT_SYNCED_UI_SETTINGS = {
   visualsSettingsSection: 'theming',
   tabButtonScale: 1,
   noteFontScale: 1,
-  tooltipScale: 1,
+  toolbarButtonScale: 1,
   scratchpadAisleLimit: 16,
   noteCursorLocations: {},
   headingCollapseState: {},
@@ -140,6 +154,33 @@ function optionalDataSettingsSection(value, fallback) {
 
 function optionalArray(value, fallback) {
   return Array.isArray(value) ? value : fallback
+}
+
+function normalizeStringList(value) {
+  if (!Array.isArray(value)) return []
+  return Array.from(new Set(value.map((item) => (typeof item === 'string' ? item.trim() : '')).filter(Boolean)))
+}
+
+function normalizeNoteFilterSettings(value) {
+  const fallback = DEFAULT_SYNCED_UI_SETTINGS.noteFilter
+  if (!isRecord(value)) return fallback
+  const tags = isRecord(value.tags) ? value.tags : {}
+  const synced = isRecord(value.synced) ? value.synced : {}
+  const frontmatter = isRecord(value.frontmatter) ? value.frontmatter : {}
+  return {
+    active: typeof value.active === 'boolean' ? value.active : fallback.active,
+    kind: ['tags', 'synced', 'frontmatter'].includes(value.kind) ? value.kind : fallback.kind,
+    tags: {
+      selectedKeys: normalizeStringList(tags.selectedKeys),
+      sortMode: tags.sortMode === 'occurrences' ? 'occurrences' : 'az',
+    },
+    synced: {
+      selectedKeys: normalizeStringList(synced.selectedKeys),
+    },
+    frontmatter: {
+      selectedKeys: normalizeStringList(frontmatter.selectedKeys),
+    },
+  }
 }
 
 function normalizeShortcutValue(raw, fallback) {
@@ -388,6 +429,7 @@ export function extractSyncedUiSettings(rawUi) {
     ...registeredUi,
     alwaysShowSpaces,
     alwaysShowDomains,
+    noteFilter: normalizeNoteFilterSettings(ui.noteFilter),
     dataSettingsSection: optionalDataSettingsSection(ui.dataSettingsSection, DEFAULT_SYNCED_UI_SETTINGS.dataSettingsSection),
     selectedCustomTheme: normalizeSelectedCustomTheme(ui.selectedCustomTheme),
     themePalettes,
@@ -424,10 +466,10 @@ export function extractAppearanceSettings(appState) {
       typeof ui.noteFontScale === 'number'
         ? ui.noteFontScale
         : DEFAULT_SYNCED_UI_SETTINGS.noteFontScale,
-    tooltipScale:
-      typeof ui.tooltipScale === 'number'
-        ? ui.tooltipScale
-        : DEFAULT_SYNCED_UI_SETTINGS.tooltipScale,
+    toolbarButtonScale:
+      typeof ui.toolbarButtonScale === 'number'
+        ? ui.toolbarButtonScale
+        : DEFAULT_SYNCED_UI_SETTINGS.toolbarButtonScale,
     scratchpadAisleLimit: optionalScratchpadAisleLimit(
       ui.scratchpadAisleLimit,
       DEFAULT_SYNCED_UI_SETTINGS.scratchpadAisleLimit,
@@ -450,6 +492,7 @@ export function extractUiPreferences(appState) {
     ...pickRegisteredSyncedUiSettings(syncedUi),
     alwaysShowSpaces: syncedUi.alwaysShowSpaces,
     alwaysShowDomains: syncedUi.alwaysShowDomains,
+    noteFilter: syncedUi.noteFilter,
     dataSettingsSection: syncedUi.dataSettingsSection,
     settingsSection: optionalString(ui.settingsSection, DEFAULT_SYNCED_UI_SETTINGS.settingsSection),
     visualsSettingsSection: optionalString(
@@ -588,10 +631,10 @@ export function buildSyncedSettingsFromSplitFiles(parts) {
       typeof appSettings.noteFontScale === 'number'
         ? appSettings.noteFontScale
         : DEFAULT_SYNCED_UI_SETTINGS.noteFontScale,
-    tooltipScale:
-      typeof appSettings.tooltipScale === 'number'
-        ? appSettings.tooltipScale
-        : DEFAULT_SYNCED_UI_SETTINGS.tooltipScale,
+    toolbarButtonScale:
+      typeof appSettings.toolbarButtonScale === 'number'
+        ? appSettings.toolbarButtonScale
+        : DEFAULT_SYNCED_UI_SETTINGS.toolbarButtonScale,
     dataSettingsSection: optionalDataSettingsSection(
       uiPreferences.dataSettingsSection,
       DEFAULT_SYNCED_UI_SETTINGS.dataSettingsSection,

@@ -43,6 +43,8 @@ const CUSTOM_THEME_SLOT_LABELS: Record<CustomThemePaletteSlot, string> = {
   success: 'success',
   tagText: 'tag font',
   tagBg: 'tag back',
+  tooltipPrimary: 'tooltip primary',
+  tooltipSecondary: 'tooltip secondary',
   domainRail: 'domain',
   spaceRail: 'space',
   parentRail: 'parent tab',

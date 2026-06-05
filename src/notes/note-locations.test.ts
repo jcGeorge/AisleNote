@@ -62,7 +62,7 @@ function createState(): AppState {
     noteBodies: [],
     hotkeys: {
       shortcuts: {
-        toggleTabTrash: '',
+        toggleTabsTarget: '',
         openDomains: '',
         openSpaces: '',
         newTab: '',
@@ -86,7 +86,6 @@ function createState(): AppState {
     },
     frontmatter: { templates: [], settingsTemplateId: '', lastAppliedTemplateId: '' },
     ui: {
-      showParentHomeTab: true,
       lastLinkInsertMode: 'note',
       tableAddTargetMode: 'bottom-right',
       tableDeleteTargetMode: 'bottom-right',

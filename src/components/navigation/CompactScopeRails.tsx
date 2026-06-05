@@ -375,8 +375,8 @@ export function CompactSpaceRail({
                 if (arrangeControlsDisabled) return
                 onOpenSpaceSortModal?.()
               }}
-              title={tooltipsDisabled ? undefined : 'sort spaces'}
               aria-label="sort spaces"
+              data-app-tooltip={tooltipsDisabled ? undefined : 'sort spaces'}
               aria-disabled={arrangeControlsDisabled || !onOpenSpaceSortModal}
               disabled={arrangeControlsDisabled || !onOpenSpaceSortModal}
             >
@@ -393,8 +393,8 @@ export function CompactSpaceRail({
                 event.stopPropagation()
                 onAddSpace()
               }}
-              title={tooltipsDisabled ? undefined : 'Add space'}
               aria-label="add space"
+              data-app-tooltip={tooltipsDisabled ? undefined : 'Add space'}
             >
               +
             </button>
@@ -624,8 +624,8 @@ export function CompactDomainRail({
                 if (arrangeControlsDisabled) return
                 onOpenDomainSortModal?.()
               }}
-              title={tooltipsDisabled ? undefined : 'sort domains'}
               aria-label="sort domains"
+              data-app-tooltip={tooltipsDisabled ? undefined : 'sort domains'}
               aria-disabled={arrangeControlsDisabled || !onOpenDomainSortModal}
               disabled={arrangeControlsDisabled || !onOpenDomainSortModal}
             >
@@ -642,8 +642,8 @@ export function CompactDomainRail({
                 event.stopPropagation()
                 onAddDomain()
               }}
-              title={tooltipsDisabled ? undefined : 'Add domain'}
               aria-label="add domain"
+              data-app-tooltip={tooltipsDisabled ? undefined : 'Add domain'}
             >
               +
             </button>

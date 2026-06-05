@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { Editor } from '@toast-ui/editor'
 import { Fragment, Schema } from 'prosemirror-model'
@@ -29,6 +31,7 @@ import {
   getBlockIndentDecorationRanges,
   getClosedHighlightMarkerShortcut,
   getParagraphSpaceShortcut,
+  getToastUiToolbarTooltipLabelFromClassName,
   getTagDecorationRanges,
   headingSpaceShortcutPlugin,
   highlightPlugin,
@@ -42,6 +45,10 @@ import { getBulletListMarkerFromAttrs } from './list-markers'
 import { BLOCK_INDENT_TOKEN, INDENT_TOKEN } from '../markdown/markdown-utils'
 import { TAG_TOKEN_CLASS_NAME } from '../tags/tags.js'
 
+const editorSetupSource = readFileSync(fileURLToPath(new URL('./editor-setup.ts', import.meta.url)), 'utf8')
+const legacyEditorSource = readFileSync(fileURLToPath(new URL('./useLegacyEditor.ts', import.meta.url)), 'utf8')
+const aisleEditorsSource = readFileSync(fileURLToPath(new URL('./useAisleEditors.ts', import.meta.url)), 'utf8')
+
 function node(typeName: string, textContent = '', contentSize = 0) {
   return {
     type: { name: typeName },
@@ -49,6 +56,33 @@ function node(typeName: string, textContent = '', contentSize = 0) {
     content: { size: contentSize },
   }
 }
+
+describe('imperative editor toolbar tooltips', () => {
+  it('maps Toast UI toolbar icon classes to app tooltip labels', () => {
+    expect(getToastUiToolbarTooltipLabelFromClassName('toastui-editor-toolbar-icons heading')).toBe('Headings')
+    expect(getToastUiToolbarTooltipLabelFromClassName('toastui-editor-toolbar-icons bullet-list')).toBe('Bullet list')
+    expect(getToastUiToolbarTooltipLabelFromClassName('toastui-editor-toolbar-icons codeblock')).toBe('Code block')
+    expect(getToastUiToolbarTooltipLabelFromClassName('toastui-editor-toolbar-icons unknown')).toBeNull()
+  })
+
+  it('uses app tooltip attributes for app-created toolbar buttons', () => {
+    expect(editorSetupSource).toContain('export function installToolbarAppTooltips(root: HTMLElement)')
+    expect(editorSetupSource).toContain("button.setAttribute('data-app-tooltip', tooltipLabel)")
+    expect(editorSetupSource).toContain("button.setAttribute('data-app-tooltip', 'Clear contents')")
+    expect(editorSetupSource).toContain(
+      "createToolbarTextButton('aisles-toolbar-btn', 'aisles', 'A', options.onAisles, 'Aisles')",
+    )
+    expect(editorSetupSource).toContain("button.removeAttribute('title')")
+    expect(legacyEditorSource).toContain('const cleanupToolbarAppTooltips = installToolbarAppTooltips(editorMountRef.current)')
+    expect(aisleEditorsSource).toContain('const cleanupToolbarAppTooltips = installToolbarAppTooltips(root)')
+  })
+
+  it('does not bind app-created toolbar buttons to the Toast UI internal tooltip', () => {
+    expect(editorSetupSource).not.toContain('bindToolbarTooltip')
+    expect(editorSetupSource).not.toContain("querySelector('.toastui-editor-tooltip')")
+    expect(editorSetupSource).not.toContain("tooltip.style.display = 'block'")
+  })
+})
 
 describe('empty paragraph list boundary delete guard', () => {
   it('handles Backspace from an empty paragraph after a list', () => {
@@ -139,7 +173,7 @@ describe('paragraph space shortcuts', () => {
     expect(getParagraphSpaceShortcut('2.')).toEqual({ kind: 'numberedList', order: 2 })
   })
 
-  it('deletes a preview-only paragraph before an empty paragraph on forward Delete', () => {
+  it('deletes a terminal preview before an empty paragraph on forward Delete', () => {
     const bindings = getParagraphSpaceBindings()
     const preview = paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text('![[Linked--123abc]]'))
     const empty = paragraphShortcutSchema.nodes.paragraph.create()
@@ -161,7 +195,7 @@ describe('paragraph space shortcuts', () => {
     expect(nextState.selection.from).toBe(1)
   })
 
-  it('deletes the preview before a run of blank paragraphs on forward Delete', () => {
+  it('deletes the terminal preview before a run of blank paragraphs on forward Delete', () => {
     const bindings = getParagraphSpaceBindings()
     const preview = paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text('![[Linked--123abc]]'))
     const firstEmpty = paragraphShortcutSchema.nodes.paragraph.create()
@@ -182,6 +216,51 @@ describe('paragraph space shortcuts', () => {
     expect(nextState.doc.child(0).textContent).toBe('')
     expect(nextState.doc.child(1).textContent).toBe('')
     expect(nextState.doc.child(2).textContent).toBe('After')
+    expect(nextState.selection.from).toBe(firstEmpty.nodeSize + 1)
+  })
+
+  it('deletes a terminal code block from Backspace at the start of following text', () => {
+    const bindings = getParagraphSpaceBindings()
+    const codeBlock = paragraphShortcutSchema.nodes.codeBlock.create(null, paragraphShortcutSchema.text('code'))
+    const after = paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text('After'))
+    const doc = paragraphShortcutSchema.nodes.doc.create(null, [codeBlock, after])
+    const state = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, codeBlock.nodeSize + 1),
+    })
+    let nextState = state
+
+    expect(bindings.Backspace(state, (tr: unknown) => {
+      nextState = state.apply(tr as any)
+    })).toBe(true)
+
+    expect(nextState.doc.childCount).toBe(1)
+    expect(nextState.doc.child(0).type.name).toBe('paragraph')
+    expect(nextState.doc.child(0).textContent).toBe('After')
+    expect(nextState.selection.from).toBe(1)
+  })
+
+  it('deletes a terminal table from forward Delete in an empty spacer', () => {
+    const bindings = getParagraphSpaceBindings()
+    const table = paragraphShortcutSchema.nodes.table.create(null, [
+      paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text('Cell')),
+    ])
+    const empty = paragraphShortcutSchema.nodes.paragraph.create()
+    const after = paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text('After'))
+    const doc = paragraphShortcutSchema.nodes.doc.create(null, [table, empty, after])
+    const state = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, table.nodeSize + 1),
+    })
+    let nextState = state
+
+    expect(bindings.Delete(state, (tr: unknown) => {
+      nextState = state.apply(tr as any)
+    })).toBe(true)
+
+    expect(nextState.doc.childCount).toBe(2)
+    expect(nextState.doc.child(0).textContent).toBe('')
+    expect(nextState.doc.child(1).textContent).toBe('After')
     expect(nextState.selection.from).toBe(1)
   })
 
@@ -250,6 +329,11 @@ const paragraphShortcutSchema = new Schema({
       marks: '',
       code: true,
       toDOM: () => ['pre', ['code', 0]],
+    },
+    table: {
+      group: 'block',
+      content: 'paragraph*',
+      toDOM: () => ['table', ['tbody', 0]],
     },
     thematicBreak: {
       group: 'block',
@@ -979,14 +1063,15 @@ function getTagDecorationCalls(doc: unknown, jumpMeta?: unknown) {
 
 describe('block indent WYSIWYG decorations', () => {
   it('finds only the block indent marker range and leaves paragraph indents stackable', () => {
-    const ranges = getBlockIndentDecorationRanges(blockIndentDoc(`${BLOCK_INDENT_TOKEN}${INDENT_TOKEN}one`))
+    const ranges = getBlockIndentDecorationRanges(blockIndentDoc(`${BLOCK_INDENT_TOKEN.repeat(2)}${INDENT_TOKEN}one`))
 
     expect(ranges).toEqual([
       {
         nodeFrom: 0,
-        nodeTo: BLOCK_INDENT_TOKEN.length + INDENT_TOKEN.length + 3 + 2,
+        nodeTo: BLOCK_INDENT_TOKEN.length * 2 + INDENT_TOKEN.length + 3 + 2,
         tokenFrom: 1,
-        tokenTo: 1 + BLOCK_INDENT_TOKEN.length,
+        tokenTo: 1 + BLOCK_INDENT_TOKEN.length * 2,
+        level: 2,
       },
     ])
   })
@@ -1002,7 +1087,7 @@ describe('block indent WYSIWYG decorations', () => {
         kind: 'node',
         from: 0,
         to: BLOCK_INDENT_TOKEN.length + 3 + 2,
-        attrs: { class: BLOCK_INDENT_CLASS_NAME },
+        attrs: { class: BLOCK_INDENT_CLASS_NAME, style: '--tabs-block-indent-level: 1;' },
       },
       {
         kind: 'inline',
@@ -1041,7 +1126,7 @@ describe('tag WYSIWYG decorations', () => {
         kind: 'inline',
         from: 4,
         to: 10,
-        attrs: { class: TAG_TOKEN_CLASS_NAME, 'data-tabs-tag': 'Tag-3', title: 'filter by tag' },
+        attrs: { class: TAG_TOKEN_CLASS_NAME, 'data-tabs-tag': 'Tag-3', 'data-app-tooltip': 'filter by tag' },
       },
     ])
   })
@@ -1058,14 +1143,14 @@ describe('tag WYSIWYG decorations', () => {
         attrs: {
           class: `${TAG_TOKEN_CLASS_NAME} ${TAG_JUMP_TARGET_CLASS_NAME}`,
           'data-tabs-tag': 'one',
-          title: 'filter by tag',
+          'data-app-tooltip': 'filter by tag',
         },
       },
       {
         kind: 'inline',
         from: 6,
         to: 10,
-        attrs: { class: TAG_TOKEN_CLASS_NAME, 'data-tabs-tag': 'two', title: 'filter by tag' },
+        attrs: { class: TAG_TOKEN_CLASS_NAME, 'data-tabs-tag': 'two', 'data-app-tooltip': 'filter by tag' },
       },
     ])
     expect(getTagDecorationCalls(doc, [{ from: 1, to: 5, requestId: 1 }, null]).map((call) => call.attrs?.class)).toEqual([

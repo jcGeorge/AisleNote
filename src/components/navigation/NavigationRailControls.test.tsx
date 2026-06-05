@@ -21,6 +21,7 @@ function renderMenu(spaceRailVisible = false, domainRailVisible = false) {
       onOpenMessages={noop}
       onOpenSettings={noop}
       onOpenAbout={noop}
+      onOpenFilter={noop}
     />,
   )
 }
@@ -38,10 +39,11 @@ describe('NavigationRailControls', () => {
     expect(html.indexOf('>show domain<')).toBeLessThan(html.indexOf('>trash<'))
   })
 
-  it('renders utility menu rows in trash messages settings about order', () => {
+  it('renders utility menu rows in trash filter messages settings about order', () => {
     const html = renderMenu()
 
-    expect(html.indexOf('>trash<')).toBeLessThan(html.indexOf('>messages<'))
+    expect(html.indexOf('>trash<')).toBeLessThan(html.indexOf('>filter<'))
+    expect(html.indexOf('>filter<')).toBeLessThan(html.indexOf('>messages<'))
     expect(html.indexOf('>messages<')).toBeLessThan(html.indexOf('>settings<'))
     expect(html.indexOf('>settings<')).toBeLessThan(html.indexOf('>about<'))
   })

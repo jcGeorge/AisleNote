@@ -24,7 +24,7 @@ function TableControlButton({
       type="button"
       className="table-tool-btn"
       aria-label={label}
-      title={label}
+      data-app-tooltip={label}
       onMouseDown={(event) => event.preventDefault()}
       onClick={(event) => {
         event.preventDefault()

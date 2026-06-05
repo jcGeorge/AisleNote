@@ -1,5 +1,6 @@
 import { NOTE_PREVIEW_REFERENCE_RE, parseWikiReferenceToken } from '../notes/note-references'
 import { getMediaKindFromUrl, MEDIA_PLAYER_SELECTOR } from '../media/media-utils'
+import { TextSelection } from 'prosemirror-state'
 
 export const TERMINAL_BLOCK_LANDING_ZONE_ATTR = 'data-tabs-terminal-block-landing-zone'
 export const TERMINAL_BLOCK_LANDING_ZONE_CLASS = 'tabs-terminal-block-landing-zone'
@@ -16,6 +17,7 @@ type TextSelectionFactory = { create: (doc: any, anchor: number, head?: number) 
 type TerminalBlockContext = { node: any; start: number; end: number; index: number }
 type TerminalBlockBoundarySide = 'before' | 'after'
 export type TerminalBlockArrowDirection = 'up' | 'down'
+export type TerminalBlockDeleteDirection = 'backward' | 'forward'
 
 function getDocEnd(doc: any): number {
   if (typeof doc?.content?.size === 'number') return doc.content.size
@@ -208,12 +210,82 @@ function isTerminalBlockContext(context: TerminalBlockContext | null): context i
   )
 }
 
+function isDeletableTerminalBlockContext(context: TerminalBlockContext | null): boolean {
+  if (!context) return false
+  const typeName = context.node?.type?.name
+  return (
+    typeName === 'codeBlock' ||
+    typeName === 'table' ||
+    (typeName === 'paragraph' &&
+      (isNotePreviewOnlyParagraphText(context.node.textContent ?? '') || isMediaOnlyParagraphNode(context.node)))
+  )
+}
+
 function isEmptyTextBlockNode(node: any): boolean {
   return Boolean(node?.isTextblock) && isBlankSentinelText(node.textContent ?? '')
 }
 
 function isEditableSiblingTextBlock(context: TerminalBlockContext): boolean {
   return Boolean(context.node?.isTextblock) && !isTerminalBlockContext(context)
+}
+
+function getCollapsedSelectionTextBlockContext(state: any): (TerminalBlockContext & { parentOffset: number }) | null {
+  const selection = state?.selection
+  if (!selection?.empty) return null
+  const $from = selection.$from
+  if (!$from || typeof $from.depth !== 'number' || $from.depth <= 0) return null
+
+  const blockDepth = $from.depth
+  const currentNode = $from.parent
+  if (!currentNode?.isTextblock || currentNode.type?.name !== 'paragraph') return null
+
+  const parentDepth = blockDepth - 1
+  if ($from.node(parentDepth) !== state.doc) return null
+
+  return {
+    node: currentNode,
+    start: $from.before(blockDepth),
+    end: $from.after(blockDepth),
+    index: $from.index(parentDepth),
+    parentOffset: $from.parentOffset,
+  }
+}
+
+function getDeletableTerminalBeforeBlankRun(doc: any, context: TerminalBlockContext): TerminalBlockContext | null {
+  let index = context.index - 1
+  while (index >= 0) {
+    const candidate = getTopLevelNodeContextByIndex(doc, index)
+    if (isDeletableTerminalBlockContext(candidate)) return candidate
+    if (!candidate || !isEmptyTextBlockNode(candidate.node)) return null
+    index -= 1
+  }
+  return null
+}
+
+export function deleteTerminalBlockBeforeCaret(
+  state: any,
+  direction: TerminalBlockDeleteDirection,
+  dispatch?: (tr: unknown) => void,
+): boolean {
+  const context = getCollapsedSelectionTextBlockContext(state)
+  if (!context || !state?.tr) return false
+
+  const currentIsEmpty = isEmptyTextBlockNode(context.node)
+  const contentSize = typeof context.node?.content?.size === 'number' ? context.node.content.size : 0
+  const atStart = context.parentOffset === 0
+  const atEnd = context.parentOffset === contentSize
+  if (direction === 'backward' ? !atStart && !currentIsEmpty : !currentIsEmpty || (!atStart && !atEnd)) return false
+
+  const terminal = getDeletableTerminalBeforeBlankRun(state.doc, context)
+  if (!terminal) return false
+  if (!dispatch) return true
+
+  let tr = state.tr.delete(terminal.start, terminal.end)
+  const deletedSize = terminal.end - terminal.start
+  const caretPos = Math.max(0, Math.min(tr.doc.content.size, context.start - deletedSize + 1 + context.parentOffset))
+  tr = tr.setSelection(TextSelection.create(tr.doc, caretPos, caretPos)).scrollIntoView()
+  dispatch(tr)
+  return true
 }
 
 export function placeCaretInFinalEmptyTextBlock(

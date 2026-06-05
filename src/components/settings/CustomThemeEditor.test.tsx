@@ -45,6 +45,8 @@ describe('CustomThemeEditor', () => {
         primary: '#8844cc',
         tagText: '#315577',
         tagBg: '#dce6f6',
+        tooltipPrimary: '#ccddee',
+        tooltipSecondary: '#667788',
       },
     })
 
@@ -66,6 +68,10 @@ describe('CustomThemeEditor', () => {
     expect(html).toContain('aria-label="tag font hex value"')
     expect(html).toContain('aria-label="tag back color swatch"')
     expect(html).toContain('aria-label="tag back hex value"')
+    expect(html).toContain('aria-label="tooltip primary color swatch"')
+    expect(html).toContain('aria-label="tooltip primary hex value"')
+    expect(html).toContain('aria-label="tooltip secondary color swatch"')
+    expect(html).toContain('aria-label="tooltip secondary hex value"')
     expect(html).toContain('aria-label="domain color swatch"')
     expect(html).toContain('aria-label="space color swatch"')
     expect(html).toContain('aria-label="parent tab color swatch"')
@@ -74,6 +80,8 @@ describe('CustomThemeEditor', () => {
     expect(html).toContain('value="#8844cc"')
     expect(html).toContain('value="#315577"')
     expect(html).toContain('value="#dce6f6"')
+    expect(html).toContain('value="#ccddee"')
+    expect(html).toContain('value="#667788"')
     expect(html).toContain('value="#a95429"')
     expect(html).toContain('value="#997b28"')
     expect(html).toContain('value="#2f5da8"')

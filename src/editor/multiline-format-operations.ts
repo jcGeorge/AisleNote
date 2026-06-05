@@ -406,7 +406,7 @@ function getBlockIndentTargets(
       if (!range || isCodeBlockTextLineRange(range)) return null
 
       const prefixLength = getBlockIndentPrefixLength(range.text)
-      if (remove ? prefixLength <= 0 : prefixLength > 0) return null
+      if (remove && prefixLength <= 0) return null
       return {
         blockIndex,
         pos: range.start,
@@ -416,12 +416,10 @@ function getBlockIndentTargets(
 }
 
 function createBlockIndentedParagraph(schema: any, childNode: ProseMirrorNode, text: string): ProseMirrorNode {
-  const blockIndentPrefixLength = getBlockIndentPrefixLength(text)
-  const contentWithoutBlockIndent =
-    blockIndentPrefixLength > 0 ? childNode.cut(blockIndentPrefixLength).content : childNode.content
+  void text
   return schema.nodes.paragraph.create(
     null,
-    Fragment.from(schema.text(BLOCK_INDENT_TOKEN)).append(contentWithoutBlockIndent),
+    Fragment.from(schema.text(BLOCK_INDENT_TOKEN)).append(childNode.content),
   )
 }
 
@@ -520,7 +518,7 @@ function buildApplyBlockIndentOperationData(view: any, context: { blockRanges: E
     .map((row) => {
       if (row.kind === 'codeBlockLine' || row.kind === 'blockQuoteChild') return null
       const range = context.blockRanges[row.blockIndex]
-      if (!range || getBlockIndentPrefixLength(range.text) > 0) return null
+      if (!range) return null
       return {
         blockIndex: row.blockIndex,
         pos: range.start,
@@ -693,7 +691,7 @@ function buildTextBlockTargetReplacements(
                   schema.nodes.paragraph.create(
                     null,
                     getBlockIndentPrefixLength(row.text) > 0
-                      ? row.node.cut(BLOCK_INDENT_TOKEN.length).content
+                      ? row.node.cut(getBlockIndentPrefixLength(row.text)).content
                       : row.node.content,
                   ),
                 ),

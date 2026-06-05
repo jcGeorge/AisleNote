@@ -8,6 +8,7 @@ import {
   canDeleteAisleFromDraft,
   createAisleEditDraft,
   deleteAisleFromDraft,
+  deleteFocusedAisleFromDraft,
   findRightmostEmptyAisleIndex,
   getAislesForNewAisle,
   getAislePreviewText,
@@ -102,6 +103,23 @@ describe('aisle edit draft helpers', () => {
     const single = [aisle('a')]
     expect(canDeleteAisleFromDraft(single)).toBe(false)
     expect(deleteAisleFromDraft(single, 'a')).toBe(single)
+  })
+
+  it('deletes the focused aisle and chooses the next active aisle by index fallback', () => {
+    const draft = [aisle('a'), aisle('b'), aisle('c')]
+
+    expect(deleteFocusedAisleFromDraft(draft, 'b')).toMatchObject({
+      aisles: [aisle('a'), aisle('c')],
+      activeAisleId: 'c',
+    })
+
+    expect(deleteFocusedAisleFromDraft(draft, 'c')).toMatchObject({
+      aisles: [aisle('a'), aisle('b')],
+      activeAisleId: 'b',
+    })
+
+    expect(deleteFocusedAisleFromDraft([aisle('a')], 'a')).toBeNull()
+    expect(deleteFocusedAisleFromDraft(draft, 'missing')).toBeNull()
   })
 
   it('moves aisles with buttons and drag reorder indexes', () => {

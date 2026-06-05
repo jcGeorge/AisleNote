@@ -49,7 +49,7 @@ function createModalTextState(): AppState {
     ],
     hotkeys: {
       shortcuts: {
-        toggleTabTrash: '',
+        toggleTabsTarget: '',
         openDomains: '',
         openSpaces: '',
         newTab: '',
@@ -73,7 +73,6 @@ function createModalTextState(): AppState {
     },
     frontmatter: DEFAULT_FRONTMATTER_SETTINGS,
     ui: {
-      showParentHomeTab: true,
       tableAddTargetMode: 'bottom-right',
       tableDeleteTargetMode: 'bottom-right',
       tabButtonScale: 1,
@@ -107,13 +106,29 @@ describe('copy-note modal text', () => {
   })
 
   it('warns before pasting a synced note over aisles', () => {
-    const modal: ModalState = { type: 'confirm-synced-note-paste', source, destination: target }
+    const modal: ModalState = { type: 'confirm-synced-note-paste', source, destination: target, destinationAisleId: 'aisle-2' }
     const text = getModalText(modal, createModalTextState())
 
     expect(text.title).toBe('paste synced note?')
     expect(text.action).toBe('paste synced note')
     expect(text.body).toContain('replace this note and all of its aisles')
     expect(text.body).toContain('synced aisle')
+  })
+
+  it('describes the synced aisle choice for single-aisle note copies', () => {
+    const modal: ModalState = {
+      type: 'confirm-synced-note-paste',
+      source,
+      destination: target,
+      destinationAisleId: 'aisle-2',
+      sourceAisleId: 'aisle-1',
+    }
+    const text = getModalText(modal, createModalTextState())
+
+    expect(text.title).toBe('paste synced note?')
+    expect(text.action).toBe('paste synced note')
+    expect(text.body).toContain('one aisle')
+    expect(text.body).toContain('current aisle instead')
   })
 })
 
@@ -154,7 +169,16 @@ describe('de-couple modal text', () => {
       aisleBodyId: 'aisle-body-1',
       location: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
     }
-    const aisleText = getModalText({ type: 'linked-aisle', reason: 'aisle-body', ...base }, createModalTextState())
+    const aisleText = getModalText(
+      {
+        type: 'linked-aisle',
+        reason: 'aisle-body',
+        ...base,
+        keepAisleSlotKeys: ['body-1::aisle-1'],
+        keepData: true,
+      },
+      createModalTextState(),
+    )
     const noteText = getModalText(
       {
         type: 'linked-aisle',
@@ -166,7 +190,8 @@ describe('de-couple modal text', () => {
       createModalTextState(),
     )
 
-    expect(aisleText).toMatchObject({ title: 'linked aisle', action: 'de-couple aisle' })
+    expect(aisleText).toMatchObject({ title: 'linked aisle', action: 'apply' })
+    expect(aisleText.body).toBe('Select aisles to de-couple.')
     expect(noteText).toMatchObject({ title: 'linked note', action: 'apply' })
     expect(noteText.body).toBe('Select items to de-couple.')
   })

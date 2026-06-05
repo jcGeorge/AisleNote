@@ -6,6 +6,7 @@ import {
   buildDefaultNoteReferenceDraft,
   buildExternalLinkEditDraft,
   buildInternalNoteLinkEditDraft,
+  buildUrlLinkShortcutDraft,
   getNoteReferenceLinkSpec,
   getNoteReferencePreviewSpec,
   getUrlReferenceLinkSpec,
@@ -186,14 +187,75 @@ describe('note reference model', () => {
   })
 
   it('normalizes URL link input once for toolbar and context-menu flows', () => {
+    expect(getUrlReferenceLinkSpec('example.com', '')).toMatchObject({
+      handled: true,
+      url: 'https://example.com/',
+      label: 'example.com',
+    })
     expect(getUrlReferenceLinkSpec('example.com/docs', '')).toMatchObject({
       handled: true,
       url: 'https://example.com/docs',
       label: 'example.com/docs',
     })
+    expect(getUrlReferenceLinkSpec('example.net', '')).toMatchObject({
+      handled: true,
+      url: 'https://example.net/',
+      label: 'example.net',
+    })
+    expect(getUrlReferenceLinkSpec('docs.example.dev/path', '')).toMatchObject({
+      handled: true,
+      url: 'https://docs.example.dev/path',
+      label: 'docs.example.dev/path',
+    })
+    expect(getUrlReferenceLinkSpec('www.example.org/a', '')).toMatchObject({
+      handled: true,
+      url: 'https://www.example.org/a',
+      label: 'www.example.org/a',
+    })
+    expect(getUrlReferenceLinkSpec('ftp://example.com', '')).toMatchObject({
+      handled: false,
+      toast: { message: 'enter a valid web link.', tone: 'warning' },
+    })
     expect(getUrlReferenceLinkSpec('not a url', '')).toMatchObject({
       handled: false,
       toast: { message: 'enter a valid web link.', tone: 'warning' },
+    })
+  })
+
+  it('builds command-k URL drafts from selected text', () => {
+    const state = createReferenceState()
+
+    expect(buildUrlLinkShortcutDraft(state, source, '')).toMatchObject({
+      mode: 'url',
+      insertAs: 'link',
+      url: '',
+      urlLabel: '',
+      urlInitialFocus: 'url',
+    })
+    expect(buildUrlLinkShortcutDraft(state, source, 'The docs')).toMatchObject({
+      mode: 'url',
+      url: '',
+      urlLabel: 'The docs',
+      urlInitialFocus: 'url',
+    })
+    expect(buildUrlLinkShortcutDraft(state, source, 'The docs', 'context-menu')).toMatchObject({
+      mode: 'url',
+      sourceKind: 'context-menu',
+      url: '',
+      urlLabel: 'The docs',
+      urlInitialFocus: 'url',
+    })
+    expect(buildUrlLinkShortcutDraft(state, source, 'example.com/docs')).toMatchObject({
+      mode: 'url',
+      url: 'example.com/docs',
+      urlLabel: '',
+      urlInitialFocus: 'label',
+    })
+    expect(buildUrlLinkShortcutDraft(state, source, 'https://example.com/path')).toMatchObject({
+      mode: 'url',
+      url: 'https://example.com/path',
+      urlLabel: '',
+      urlInitialFocus: 'label',
     })
   })
 

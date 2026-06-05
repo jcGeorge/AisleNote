@@ -146,6 +146,7 @@ function createTopBarElement(
       onOpenMessages={noop}
       onOpenSettings={noop}
       onOpenAbout={noop}
+      onOpenFilter={noop}
       onSettingsSectionChange={noop}
       messagesSection={options.messagesSection}
       messagesCount={options.messagesCount ?? 0}
@@ -184,7 +185,6 @@ function createSubTabRailElement(
       editing={null}
       arrangeMode={{ ...arrangeMode, ...arrangeModeOverride }}
       tooltipsDisabled={tooltipsDisabled}
-      showParentHomeTab
       isNoteWorkspaceView
       selectedTrashTab={null}
       trashSubTabs={[]}
@@ -235,12 +235,12 @@ function renderSubTabRail(
 }
 
 describe('navigation arrange tooltips', () => {
-  it('keeps parent sort labels while omitting title tooltips when disabled', () => {
+  it('keeps parent sort labels while omitting app tooltips when disabled', () => {
     const enabledHtml = renderTopBar(false)
     const disabledHtml = renderTopBar(true)
 
-    expect(enabledHtml).toContain('title="sort parents"')
-    expect(disabledHtml).not.toContain('title="sort parents"')
+    expect(enabledHtml).toContain('data-app-tooltip="sort parents"')
+    expect(disabledHtml).not.toContain('data-app-tooltip="sort parents"')
     expect(disabledHtml).toContain('aria-label="sort parents"')
     expect(enabledHtml.indexOf('Alpha')).toBeLessThan(enabledHtml.indexOf('aria-label="sort parents"'))
   })
@@ -391,14 +391,14 @@ describe('navigation arrange tooltips', () => {
     expect(onOpenContextMenuForSubTab).toHaveBeenCalledWith(expect.anything(), activeTab.id, 'sub-1', undefined)
   })
 
-  it('keeps sub-tab sort labels while omitting title tooltips when disabled', () => {
+  it('keeps sub-tab sort labels while omitting app tooltips when disabled', () => {
     const enabledHtml = renderSubTabRail(false)
     const disabledHtml = renderSubTabRail(true)
 
-    expect(enabledHtml).toContain('title="sort sub-tabs"')
-    expect(enabledHtml).toContain('title="home note"')
-    expect(disabledHtml).not.toContain('title="sort sub-tabs"')
-    expect(disabledHtml).not.toContain('title="home note"')
+    expect(enabledHtml).toContain('data-app-tooltip="sort sub-tabs"')
+    expect(enabledHtml).toContain('data-app-tooltip="home note"')
+    expect(disabledHtml).not.toContain('data-app-tooltip="sort sub-tabs"')
+    expect(disabledHtml).not.toContain('data-app-tooltip="home note"')
     expect(disabledHtml).toContain('aria-label="sort sub-tabs"')
     expect(enabledHtml.indexOf('Sub')).toBeLessThan(enabledHtml.indexOf('aria-label="sort sub-tabs"'))
   })
