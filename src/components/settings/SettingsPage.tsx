@@ -48,7 +48,6 @@ import type {
   TabRenameEnterBehavior,
   TipId,
   ToolbarLayout,
-  ToggleTabsTarget,
   UserSettingsLocationStatus,
   VisualsSettingsSection,
 } from '../../types/app'
@@ -102,14 +101,6 @@ const SCRATCHPAD_NEW_AISLE_SIDE_OPTIONS: Array<{ id: ScratchpadNewAisleSide; lab
   { id: 'right', label: 'right' },
 ]
 
-const TOGGLE_TABS_TARGET_OPTIONS: Array<{ id: ToggleTabsTarget; label: string }> = [
-  { id: 'trash', label: 'trash' },
-  { id: 'settings', label: 'settings' },
-  { id: 'messages', label: 'messages' },
-  { id: 'about', label: 'about' },
-  { id: 'filter', label: 'filter' },
-]
-
 function isFrontmatterBooleanTrue(value: string) {
   const normalized = value.trim().toLowerCase()
   return normalized === 'true' || normalized === 'yes' || normalized === 'on' || normalized === '1'
@@ -132,7 +123,6 @@ type SettingsPageProps = {
   toolbarButtonScaleDraft: number
   selectedCustomTheme: CustomThemeId
   customThemePaletteDraft: CustomThemePalette
-  toggleTabsTargetDraft: ToggleTabsTarget
   alwaysShowSpacesDraft: boolean
   alwaysShowDomainsDraft: boolean
   tableAddTargetModeDraft: TableControlTargetMode
@@ -189,7 +179,6 @@ type SettingsPageProps = {
   onTabButtonScaleChange: (value: string) => void
   onNoteFontScaleChange: (value: string) => void
   onToolbarButtonScaleChange: (value: string) => void
-  onToggleTabsTargetChange: (target: ToggleTabsTarget) => void
   onAlwaysShowSpacesChange: (enabled: boolean) => void
   onAlwaysShowDomainsChange: (enabled: boolean) => void
   onTableAddTargetModeChange: (mode: TableControlTargetMode) => void
@@ -250,7 +239,6 @@ export function SettingsPage({
   toolbarButtonScaleDraft,
   selectedCustomTheme,
   customThemePaletteDraft,
-  toggleTabsTargetDraft,
   alwaysShowSpacesDraft,
   alwaysShowDomainsDraft,
   tableAddTargetModeDraft,
@@ -307,7 +295,6 @@ export function SettingsPage({
   onTabButtonScaleChange,
   onNoteFontScaleChange,
   onToolbarButtonScaleChange,
-  onToggleTabsTargetChange,
   onAlwaysShowSpacesChange,
   onAlwaysShowDomainsChange,
   onTableAddTargetModeChange,
@@ -498,24 +485,6 @@ export function SettingsPage({
       </div>
     )
   }
-
-  const renderToggleTabsTargetSetting = () => (
-    <label className="settings-hotkey-row" htmlFor="settings-toggle-tabs-target">
-      <span className="settings-hotkey-label">toggle tabs /</span>
-      <select
-        id="settings-toggle-tabs-target"
-        className="settings-select-input settings-shortcut-select"
-        value={toggleTabsTargetDraft}
-        onChange={(event) => onToggleTabsTargetChange(event.target.value as ToggleTabsTarget)}
-      >
-        {TOGGLE_TABS_TARGET_OPTIONS.map((option) => (
-          <option key={option.id} value={option.id}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  )
 
   const renderScratchpadAisleLimitSetting = () => (
     <div className="settings-hotkey-row">
@@ -967,7 +936,6 @@ export function SettingsPage({
 
         {section === 'misc' && (
           <div className="settings-section-panel" role="tabpanel">
-            {renderToggleTabsTargetSetting()}
             {renderTableOfContentsScopeSetting()}
             {renderTabRenameEnterBehaviorSetting()}
             {miscSyncedUiBooleanSettings.map((setting) => renderMiscSyncedUiBooleanSetting(setting))}

@@ -230,6 +230,20 @@ function listTexts(listNode: any): string[] {
   return texts
 }
 
+function getTextRange(doc: any, text: string): { from: number; to: number } {
+  let from = 1
+  let to = 1
+  doc.descendants((node: any, pos: number) => {
+    if (node.isText && node.text === text) {
+      from = pos
+      to = pos + text.length
+      return false
+    }
+    return true
+  })
+  return { from, to }
+}
+
 function docChildTypes(doc: any): string[] {
   const types: string[] = []
   for (let index = 0; index < doc.childCount; index += 1) {
@@ -388,6 +402,26 @@ describe('editor newline operations', () => {
     expect(view.dispatch.mock.calls[0]?.[0]?.getMeta('addToHistory')).not.toBe(false)
   })
 
+  it('converts selected paragraph rows to tasks without collapsing the selection', () => {
+    const doc = newlineOperationSchema.nodes.doc.create(null, [
+      paragraphNode('one'),
+      paragraphNode('two'),
+      paragraphNode('closing'),
+    ])
+    const ranges = getEditorTextLineRanges({ state: { doc } })
+    const { editor, view } = createEditorForDoc(doc, ranges[0].start, ranges[1].end)
+
+    expect(applyEditorNewlineOperation(editor as any, 'task')).toEqual({ handled: true })
+
+    expect(docChildTypes(view.state.doc)).toEqual(['bulletList', 'paragraph'])
+    expect(listTexts(view.state.doc.child(0))).toEqual(['one', 'two'])
+    expect(view.state.doc.child(0).child(0).attrs).toMatchObject({ task: true, checked: false })
+    expect(view.state.doc.child(0).child(1).attrs).toMatchObject({ task: true, checked: false })
+    expect(view.state.doc.child(1).textContent).toBe('closing')
+    expect(view.state.selection.from).toBe(getTextRange(view.state.doc, 'one').from)
+    expect(view.state.selection.to).toBe(getTextRange(view.state.doc, 'two').to)
+  })
+
   it('converts selected numbered row text to a task without deleting sibling rows', () => {
     const doc = newlineOperationSchema.nodes.doc.create(null, [
       orderedListNode(['Add parent tab', 'Add sub-tab', 'Each note keeps separate content']),
@@ -455,6 +489,8 @@ describe('editor newline operations', () => {
     expect(view.state.doc.child(1).child(0).attrs).toMatchObject({ task: true, checked: false })
     expect(view.state.doc.child(1).child(1).attrs).toMatchObject({ task: true, checked: false })
     expect(listTexts(view.state.doc.child(2))).toEqual(['four'])
+    expect(view.state.selection.from).toBe(getTextRange(view.state.doc, 'two').from)
+    expect(view.state.selection.to).toBe(getTextRange(view.state.doc, 'three').to)
   })
 
   it('converts an empty selected numbered row to an empty task without deleting sibling rows', () => {

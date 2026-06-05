@@ -62,7 +62,8 @@ function createState(): AppState {
     noteBodies: [],
     hotkeys: {
       shortcuts: {
-        toggleTabsTarget: '',
+        toggleNotesTrash: '',
+        toggleNotesScratchpad: '',
         openDomains: '',
         openSpaces: '',
         newTab: '',

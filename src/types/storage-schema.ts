@@ -25,7 +25,8 @@ export type StorageCustomThemePaletteSlot =
   | 'parentRail'
   | 'subtabRail'
 export type StorageShortcutId =
-  | 'toggleTabsTarget'
+  | 'toggleNotesTrash'
+  | 'toggleNotesScratchpad'
   | 'openDomains'
   | 'openSpaces'
   | 'newTab'
@@ -120,7 +121,6 @@ export type StorageGlobalSettings = {
     alwaysShowDomains?: boolean
     lastLinkInsertMode?: 'note' | 'url'
     lastNoteCopyMode?: 'independent' | 'linked'
-    toggleTabsTarget?: 'trash' | 'settings' | 'messages' | 'about' | 'filter'
     findCaseSensitive?: boolean
     findWholeWord?: boolean
     findRegex?: boolean

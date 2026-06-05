@@ -30,6 +30,7 @@ import {
   type MultiLineCursorMovement,
   type MultiLineEditInput,
 } from './multiline-edit'
+import { getEditorTextLineRanges } from './multiline-ranges'
 import { isInsideReadonlyNotePreview } from './note-preview-dom'
 import {
   deleteTerminalBlockBeforeCaret,
@@ -213,6 +214,55 @@ export function getEditorPageMovementForEvent(event: KeyboardEvent): EditorPageM
   if (event.key === 'ArrowUp' || event.code === 'ArrowUp') return 'page-up'
   if (event.key === 'ArrowDown' || event.code === 'ArrowDown') return 'page-down'
   return null
+}
+
+export function getDocumentBoundarySelectionDirectionForEvent(
+  event: KeyboardEvent,
+  isMacPlatform: boolean,
+): 'start' | 'end' | null {
+  if (!isMacPlatform) return null
+  if (!event.metaKey || !event.shiftKey || event.altKey || event.ctrlKey) return null
+  if (event.key === 'ArrowUp' || event.code === 'ArrowUp') return 'start'
+  if (event.key === 'ArrowDown' || event.code === 'ArrowDown') return 'end'
+  return null
+}
+
+export function moveSelectionHeadToDocumentBoundary(
+  view: any,
+  direction: 'start' | 'end',
+): boolean {
+  const state = view?.state
+  const doc = state?.doc
+  const selection = state?.selection
+  if (!state?.tr || !doc || !selection || typeof view?.dispatch !== 'function') return false
+
+  const docSize = Math.max(0, doc.content?.size ?? 0)
+  const ranges = getEditorTextLineRanges(view)
+  const boundary =
+    direction === 'start'
+      ? (ranges[0]?.start ?? 0)
+      : (ranges[ranges.length - 1]?.end ?? docSize)
+  const anchorSource =
+    typeof selection.anchor === 'number'
+      ? selection.anchor
+      : typeof selection.from === 'number'
+        ? selection.from
+        : boundary
+  const anchor = Math.max(0, Math.min(docSize, anchorSource))
+  const head = Math.max(0, Math.min(docSize, boundary))
+
+  try {
+    view.dispatch(state.tr.setSelection(TextSelection.create(doc, anchor, head)).scrollIntoView())
+    return true
+  } catch {
+    try {
+      const fallbackSelection = Selection.near(doc.resolve(head), direction === 'start' ? -1 : 1)
+      view.dispatch(state.tr.setSelection(fallbackSelection).scrollIntoView())
+      return true
+    } catch {
+      return false
+    }
+  }
 }
 
 export function getTableBoundaryCaretDirectionForEvent(event: KeyboardEvent): TableBoundaryDirection | null {
@@ -1140,6 +1190,9 @@ export function useEditorDomEvents({
       const editorHistoryDirection = getEditorHistoryDirection(keyboardEvent)
       const newlineShortcutId = !isTextInputTarget ? getNewlineShortcutIdForEvent(keyboardEvent, isMacPlatform) : null
       const newlineOperation = newlineShortcutId ? normalizedHotkeys.newlineShortcuts.shortcuts[newlineShortcutId] : null
+      const documentBoundarySelectionDirection = !isTextInputTarget
+        ? getDocumentBoundarySelectionDirectionForEvent(keyboardEvent, isMacPlatform)
+        : null
       const tableBoundaryDirection = isTextInputTarget ? null : getTableBoundaryCaretDirectionForEvent(keyboardEvent)
       const terminalBlockArrowDirection = isTextInputTarget
         ? null
@@ -1160,6 +1213,7 @@ export function useEditorDomEvents({
         toolbarFormatShortcut,
         editorHistoryDirection,
         newlineOperation,
+        documentBoundarySelectionDirection,
         tableBoundaryDirection,
         multiLineSelectionDirection: getMultilineSelectionShortcutDirection(keyboardEvent),
         pageMovement,
@@ -1203,6 +1257,19 @@ export function useEditorDomEvents({
         if (deleteActiveEditorImageNode()) {
           keyboardEvent.preventDefault()
           keyboardEvent.stopPropagation()
+        }
+        return
+      }
+      if (inputIntent.type === 'document-boundary-selection') {
+        if (
+          isActiveWysiwygEditorContentTarget(targetElement, view) &&
+          moveSelectionHeadToDocumentBoundary(view, inputIntent.direction)
+        ) {
+          keyboardEvent.preventDefault()
+          keyboardEvent.stopPropagation()
+          window.setTimeout(syncToolbarFormatState, 0)
+          onEditorSelectionChange()
+          onEditorMentionQueryChange()
         }
         return
       }

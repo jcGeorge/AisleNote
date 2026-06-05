@@ -17,6 +17,8 @@ import {
   getWysiwygView,
   restoreEditorCursorSelection,
 } from './prosemirror-utils'
+import { getEditorTextLineRanges } from './multiline-ranges'
+import { buildMultiLineListOperationPlan, type MultiLineListOperation } from './multiline-list-operations'
 
 export type ToolbarListCommand = 'taskList' | 'bulletList' | 'dashList' | 'orderedList'
 
@@ -489,6 +491,50 @@ function getReorderListKindForToolbarCommand(command: ToolbarListCommand): Reord
   return 'bullet'
 }
 
+function getMultiLineListOperationForToolbarCommand(command: ToolbarListCommand): MultiLineListOperation {
+  if (command === 'taskList') return 'task'
+  if (command === 'dashList') return 'dashList'
+  if (command === 'orderedList') return 'numberedList'
+  return 'bulletList'
+}
+
+function getSelectedTextLineIndices(view: ProseMirrorViewLike): number[] {
+  const selection = view.state?.selection
+  if (!selection || selection.empty) return []
+
+  const selectionFrom = Math.min(selection.from, selection.to)
+  const selectionTo = Math.max(selection.from, selection.to)
+  return getEditorTextLineRanges(view)
+    .map((range, index) => ({ range, index }))
+    .filter(({ range }) =>
+      range.length > 0
+        ? selectionFrom < range.end && selectionTo > range.start
+        : selectionFrom <= range.start && selectionTo >= range.end,
+    )
+    .map(({ index }) => index)
+}
+
+function applySelectedRowsListToolbarCommand(view: ProseMirrorViewLike, command: ToolbarListCommand): boolean {
+  if (typeof view.dispatch !== 'function') return false
+  const selectedIndices = getSelectedTextLineIndices(view)
+  if (selectedIndices.length === 0) return false
+
+  const plan = buildMultiLineListOperationPlan(
+    view,
+    {
+      anchorBlockIndex: selectedIndices[0],
+      headBlockIndex: selectedIndices[selectedIndices.length - 1],
+      columnOffset: 0,
+      cursorBlockIndices: selectedIndices,
+    },
+    getMultiLineListOperationForToolbarCommand(command),
+  )
+  if (!plan) return false
+
+  view.dispatch(plan.transaction.scrollIntoView())
+  return true
+}
+
 function getTopLevelChildStart(doc: { childCount?: number; child?: (index: number) => ProseMirrorNodeLike }, index: number) {
   let position = 0
   for (let currentIndex = 0; currentIndex < index; currentIndex += 1) {
@@ -610,11 +656,18 @@ export function applyListToolbarCommand(editor: Editor, command: ToolbarListComm
     return true
   }
 
+  const previousSelection = view?.state?.selection?.empty ? null : getEditorCursorSelection(editor)
   const shouldRestoreConvertedSelection =
-    command === 'orderedList' || (command === 'taskList' && selectedListKind === 'orderedList')
-  const previousConvertedSelection = shouldRestoreConvertedSelection ? getEditorCursorSelection(editor) : null
+    Boolean(previousSelection) ||
+    command === 'orderedList' ||
+    (command === 'taskList' && selectedListKind === 'orderedList')
+  const previousConvertedSelection = shouldRestoreConvertedSelection
+    ? (previousSelection ?? getEditorCursorSelection(editor))
+    : null
 
-  if (command === 'orderedList' && selectedListKind === 'dashList' && convertSelectedDashListsToOrderedList(view)) {
+  if (previousSelection && applySelectedRowsListToolbarCommand(view, command)) {
+    editor.focus()
+  } else if (command === 'orderedList' && selectedListKind === 'dashList' && convertSelectedDashListsToOrderedList(view)) {
     editor.focus()
   } else if (command === 'taskList' && selectedListKind === 'orderedList' && convertSelectedOrderedListsToTaskList(view)) {
     editor.focus()

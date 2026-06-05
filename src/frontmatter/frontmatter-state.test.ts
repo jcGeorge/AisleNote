@@ -96,7 +96,8 @@ function createFrontmatterState(): AppState {
     }],
     hotkeys: {
       shortcuts: {
-        toggleTabsTarget: '',
+        toggleNotesTrash: '',
+        toggleNotesScratchpad: '',
         openDomains: '',
         openSpaces: '',
         newTab: '',

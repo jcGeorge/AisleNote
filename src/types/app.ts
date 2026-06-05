@@ -26,7 +26,8 @@ export type ThemePaletteOverrides = Partial<Record<AppTheme, CustomThemePalette>
 export type ViewMode = 'main' | 'trash' | 'settings' | 'messages' | 'about'
 export type MessagesSection = 'inbox' | 'toast-history'
 export type ShortcutId =
-  | 'toggleTabsTarget'
+  | 'toggleNotesTrash'
+  | 'toggleNotesScratchpad'
   | 'openDomains'
   | 'openSpaces'
   | 'newTab'
@@ -54,7 +55,6 @@ export type TableOfContentsScope = 'all-aisles' | 'focused-aisle'
 export type NewAislePlacement = 'end' | 'left-of-focus' | 'right-of-focus'
 export type ScratchpadNewAisleSide = 'left' | 'right'
 export type TabRenameEnterBehavior = 'goes-to-note' | 'creates-another-tab'
-export type ToggleTabsTarget = 'trash' | 'settings' | 'messages' | 'about' | 'filter'
 export type TipId = 'task-undo' | 'delete-active-aisle-shortcut'
 export type NoteFilterKind = 'tags' | 'synced' | 'frontmatter'
 export type NoteFilterTagSortMode = 'az' | 'occurrences'
@@ -407,7 +407,6 @@ export type AppState = {
     alwaysShowDomains?: boolean
     lastLinkInsertMode?: LinkInsertMode
     lastNoteCopyMode?: NoteCopyMode
-    toggleTabsTarget?: ToggleTabsTarget
     findCaseSensitive?: boolean
     findWholeWord?: boolean
     findRegex?: boolean

@@ -31,6 +31,8 @@ describe('portable app settings parsing', () => {
       theme: 'dawn',
       hotkeys: {
         shortcuts: {
+          toggleNotesTrash: 'Mod+T',
+          toggleNotesScratchpad: 'Mod+/',
           newTab: 'Mod+Shift+N',
         },
         newlineShortcuts: {
@@ -44,7 +46,6 @@ describe('portable app settings parsing', () => {
         settingsSection: 'hotkeys',
         dataSettingsSection: 'notebook',
         tabRenameEnterBehavior: 'goes-to-note',
-        toggleTabsTarget: 'trash',
         noteFilter: {
           active: false,
           kind: 'tags',
@@ -52,6 +53,7 @@ describe('portable app settings parsing', () => {
         toolbarLayouts: [],
       },
     })
+    expect(createDefaultPortableAppSettings().ui).not.toHaveProperty('toggleTabsTarget')
   })
 
   it('accepts current exported app-settings json for explicit imports', () => {
@@ -159,7 +161,8 @@ describe('portable app settings parsing', () => {
       settings: {
         hotkeys: {
           shortcuts: {
-            toggleTabsTarget: 'Mod+T',
+            toggleNotesTrash: 'Mod+T',
+            toggleNotesScratchpad: 'Mod+/',
             newTab: 'Mod+Shift+N',
           },
           newlineShortcuts: {
@@ -172,6 +175,34 @@ describe('portable app settings parsing', () => {
         },
       },
     })
+  })
+
+  it('migrates legacy toggle tabs shortcut settings to notes/trash', () => {
+    const settings = parsePortableAppSettingsJson(JSON.stringify({
+      theme: 'dawn',
+      hotkeys: {
+        shortcuts: {
+          toggleTabsTarget: 'Ctrl+Alt+T',
+        },
+      },
+      ui: {
+        toggleTabsTarget: 'messages',
+      },
+    }))
+
+    expect(settings).toMatchObject({
+      ok: true,
+      settings: {
+        hotkeys: {
+          shortcuts: {
+            toggleNotesTrash: 'Ctrl+Alt+T',
+          },
+        },
+      },
+    })
+    if (!settings.ok || !settings.settings) throw new Error(settings.error)
+    expect(settings.settings.hotkeys.shortcuts).not.toHaveProperty('toggleTabsTarget')
+    expect(settings.settings.ui).not.toHaveProperty('toggleTabsTarget')
   })
 
   it('normalizes split-file hotkeys before hydrating app state', () => {
@@ -189,7 +220,8 @@ describe('portable app settings parsing', () => {
       },
     })
 
-    expect(syncedSettings.hotkeys.shortcuts.toggleTabsTarget).toBe('Mod+T')
+    expect(syncedSettings.hotkeys.shortcuts.toggleNotesTrash).toBe('Mod+T')
+    expect(syncedSettings.hotkeys.shortcuts.toggleNotesScratchpad).toBe('Mod+/')
     expect(syncedSettings.hotkeys.shortcuts.cycleAisleNext).toBe('Alt+]')
     expect(syncedSettings.hotkeys.newlineShortcuts.menuOperations).toEqual(['blockQuote', 'strikethrough'])
   })

@@ -15,6 +15,7 @@ function keyInput(overrides: Partial<EditorKeyDownIntentInput>): EditorKeyDownIn
     toolbarFormatShortcut: null,
     editorHistoryDirection: null,
     newlineOperation: null,
+    documentBoundarySelectionDirection: null,
     tableBoundaryDirection: null,
     multiLineSelectionDirection: null,
     pageMovement: null,
@@ -71,6 +72,22 @@ describe('editor input intent resolution', () => {
         pageMovement: 'page-down',
       })),
     ).toEqual({ type: 'table-boundary-caret', direction: 'after' })
+  })
+
+  it('routes normal document-boundary selection only outside multiline mode', () => {
+    expect(
+      resolveEditorKeyDownIntent(keyInput({
+        key: 'ArrowUp',
+        documentBoundarySelectionDirection: 'start',
+      })),
+    ).toEqual({ type: 'document-boundary-selection', direction: 'start' })
+    expect(
+      resolveEditorKeyDownIntent(keyInput({
+        key: 'ArrowDown',
+        hasMultiLineEdit: true,
+        documentBoundarySelectionDirection: 'end',
+      })),
+    ).toEqual({ type: 'multiline-move', movement: 'down' })
   })
 
   it('routes table tab navigation before multiline and generic tab indentation', () => {

@@ -13,7 +13,6 @@ describe('synced UI settings registry', () => {
     expect(DEFAULT_SIMPLE_SYNCED_UI_SETTINGS).toMatchObject({
       lastLinkInsertMode: 'note',
       lastNoteCopyMode: 'independent',
-      toggleTabsTarget: 'trash',
       findCaseSensitive: false,
       findWholeWord: false,
       findRegex: false,
@@ -29,6 +28,7 @@ describe('synced UI settings registry', () => {
       toolbarEditorShowNames: false,
     })
     expect(DEFAULT_SIMPLE_SYNCED_UI_SETTINGS).not.toHaveProperty('newAislePlacement')
+    expect(DEFAULT_SIMPLE_SYNCED_UI_SETTINGS).not.toHaveProperty('toggleTabsTarget')
   })
 
   it('normalizes booleans and enum values with invalid-value fallbacks', () => {
@@ -48,7 +48,6 @@ describe('synced UI settings registry', () => {
     })
 
     expect(normalized).toMatchObject({
-      toggleTabsTarget: 'messages',
       findRegex: true,
       findReplaceMode: 'replace',
       lastLinkInsertMode: 'url',
@@ -60,18 +59,24 @@ describe('synced UI settings registry', () => {
       removeNoteReferencesOnTrash: true,
       deleteActiveAisleShortcutEnabled: true,
     })
+    expect(normalized).not.toHaveProperty('toggleTabsTarget')
     expect(normalized).not.toHaveProperty('newAislePlacement')
     expect(normalized).not.toHaveProperty('showParentHomeTab')
     expect(normalizeRegisteredSyncedUiSetting('findReplaceMode', 'bad')).toBe('find')
-    expect(normalizeRegisteredSyncedUiSetting('toggleTabsTarget', 'bad')).toBe('trash')
     expect(normalizeRegisteredSyncedUiSetting('tabRenameEnterBehavior', 'bad')).toBe('goes-to-note')
   })
 
   it('picks registered settings and boolean drafts from a source object', () => {
-    expect(pickRegisteredSyncedUiSettings({ findCaseSensitive: true, alwaysShowSpaces: true })).toMatchObject({
+    const picked = pickRegisteredSyncedUiSettings({
+      findCaseSensitive: true,
+      alwaysShowSpaces: true,
+      toggleTabsTarget: 'messages',
+    })
+    expect(picked).toMatchObject({
       findCaseSensitive: true,
       findWholeWord: false,
     })
+    expect(picked).not.toHaveProperty('toggleTabsTarget')
     expect(getSyncedUiBooleanSettings({ noteMentionCopyRequiresConfirmation: false })).toMatchObject({
       noteMentionCopyRequiresConfirmation: false,
       removeNoteReferencesOnTrash: true,

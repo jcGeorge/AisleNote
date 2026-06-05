@@ -3,7 +3,6 @@ import type { AppState } from '../types/app'
 export type SimpleSyncedUiSettingKey =
   | 'lastLinkInsertMode'
   | 'lastNoteCopyMode'
-  | 'toggleTabsTarget'
   | 'findCaseSensitive'
   | 'findWholeWord'
   | 'findRegex'
@@ -61,10 +60,6 @@ export function normalizeRegisteredSyncedUiSetting(
   key: 'lastNoteCopyMode',
   value: unknown,
 ): NonNullable<AppState['ui']['lastNoteCopyMode']>
-export function normalizeRegisteredSyncedUiSetting(
-  key: 'toggleTabsTarget',
-  value: unknown,
-): NonNullable<AppState['ui']['toggleTabsTarget']>
 export function normalizeRegisteredSyncedUiSetting(key: 'findCaseSensitive', value: unknown): boolean
 export function normalizeRegisteredSyncedUiSetting(key: 'findWholeWord', value: unknown): boolean
 export function normalizeRegisteredSyncedUiSetting(key: 'findRegex', value: unknown): boolean

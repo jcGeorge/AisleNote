@@ -1,7 +1,6 @@
 export const SYNCED_UI_SIMPLE_SETTING_DEFINITIONS = Object.freeze([
   { key: 'lastLinkInsertMode', kind: 'enum', defaultValue: 'note', values: ['note', 'url'] },
   { key: 'lastNoteCopyMode', kind: 'enum', defaultValue: 'independent', values: ['independent', 'linked'] },
-  { key: 'toggleTabsTarget', kind: 'enum', defaultValue: 'trash', values: ['trash', 'settings', 'messages', 'about', 'filter'] },
   { key: 'findCaseSensitive', kind: 'boolean', defaultValue: false },
   { key: 'findWholeWord', kind: 'boolean', defaultValue: false },
   { key: 'findRegex', kind: 'boolean', defaultValue: false },

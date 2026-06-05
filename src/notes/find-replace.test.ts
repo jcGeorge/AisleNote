@@ -84,7 +84,8 @@ function createFindReplaceState(): AppState {
     ],
     hotkeys: {
       shortcuts: {
-        toggleTabsTarget: '',
+        toggleNotesTrash: '',
+        toggleNotesScratchpad: '',
         openDomains: '',
         openSpaces: '',
         newTab: '',

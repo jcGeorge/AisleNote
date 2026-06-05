@@ -74,7 +74,8 @@ function createDecoupleTestState(): AppState {
     ],
     hotkeys: {
       shortcuts: {
-        toggleTabsTarget: '',
+        toggleNotesTrash: '',
+        toggleNotesScratchpad: '',
         openDomains: '',
         openSpaces: '',
         newTab: '',

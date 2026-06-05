@@ -102,7 +102,8 @@ describe('newline shortcut settings', () => {
       },
     })
 
-    expect(normalized.shortcuts.toggleTabsTarget).toBe(DEFAULT_SHORTCUTS.toggleTabsTarget)
+    expect(normalized.shortcuts.toggleNotesTrash).toBe(DEFAULT_SHORTCUTS.toggleNotesTrash)
+    expect(normalized.shortcuts.toggleNotesScratchpad).toBe(DEFAULT_SHORTCUTS.toggleNotesScratchpad)
     expect(normalized.shortcuts.openSpaces).toBe(DEFAULT_SHORTCUTS.openSpaces)
     expect(normalized.newlineShortcuts.shortcuts.controlEnter).toBe('dashList')
     expect(normalized.newlineShortcuts.shortcuts.shiftEnter).toBe('dashList')
@@ -124,6 +125,36 @@ describe('newline shortcut settings', () => {
     expect(normalized.newlineShortcuts.shortcuts.controlEnter).toBe('operationsMenu')
     expect(normalized.newlineShortcuts.shortcuts.shiftEnter).toBe('aisleLeft')
     expect(normalized.newlineShortcuts.menuOperations).toEqual(['task', 'aisleRight', 'aisleLeft', 'strikethrough'])
+  })
+
+  it('migrates the legacy toggle tabs shortcut key to toggle notes/trash', () => {
+    const normalized = normalizeHotkeySettings({
+      shortcuts: {
+        toggleTabsTarget: 'Ctrl+Alt+T',
+      },
+    })
+
+    expect(normalized.shortcuts.toggleNotesTrash).toBe('Ctrl+Alt+T')
+    expect(normalized.shortcuts).not.toHaveProperty('toggleTabsTarget')
+  })
+
+  it('defaults notes/scratchpad to mod slash and matches slash key events', () => {
+    expect(DEFAULT_SHORTCUTS.toggleNotesScratchpad).toBe('Mod+/')
+    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.toggleNotesScratchpad, true)).toBe('cmd+/')
+    expect(
+      eventMatchesShortcut(
+        { key: '/', code: 'Slash', ctrlKey: false, metaKey: true, altKey: false, shiftKey: false } as KeyboardEvent,
+        DEFAULT_SHORTCUTS.toggleNotesScratchpad,
+        true,
+      ),
+    ).toBe(true)
+    expect(
+      eventMatchesShortcut(
+        { key: '/', code: 'Slash', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent,
+        DEFAULT_SHORTCUTS.toggleNotesScratchpad,
+        false,
+      ),
+    ).toBe(true)
   })
 
   it('normalizes persisted block indent menu entries and shortcuts', () => {

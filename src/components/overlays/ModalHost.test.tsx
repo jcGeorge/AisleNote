@@ -48,7 +48,8 @@ function createState(): AppState {
     noteAisleBodies: [{ id: 'aisle-body-1', markdown: '', frontmatterStatus: 'none' }],
     hotkeys: {
       shortcuts: {
-        toggleTabsTarget: '',
+        toggleNotesTrash: '',
+        toggleNotesScratchpad: '',
         openDomains: '',
         openSpaces: '',
         newTab: '',

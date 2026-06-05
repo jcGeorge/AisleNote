@@ -14,6 +14,7 @@ export type EditorInputIntent =
   | { type: 'newline-operation'; operation: NewlineOperationId }
   | { type: 'open-operations-menu' }
   | { type: 'delete-active-image' }
+  | { type: 'document-boundary-selection'; direction: 'start' | 'end' }
   | { type: 'table-boundary-caret'; direction: TableBoundaryDirection }
   | { type: 'table-cell-navigation'; direction: TableCellNavigationDirection }
   | { type: 'multiline-selection'; direction: 'up' | 'down' }
@@ -40,6 +41,7 @@ export type EditorKeyDownIntentInput = {
   toolbarFormatShortcut: ToolbarFormatKey | null
   editorHistoryDirection: 'undo' | 'redo' | null
   newlineOperation: NewlineOperationId | null
+  documentBoundarySelectionDirection: 'start' | 'end' | null
   tableBoundaryDirection: TableBoundaryDirection | null
   multiLineSelectionDirection: 'up' | 'down' | null
   pageMovement: EditorPageMovement | null
@@ -86,6 +88,9 @@ export function resolveEditorKeyDownIntent(input: EditorKeyDownIntentInput): Edi
   }
   if (!input.isTextInputTarget && (input.key === 'Backspace' || input.key === 'Delete') && input.hasActiveImage) {
     return { type: 'delete-active-image' }
+  }
+  if (!input.isTextInputTarget && !input.hasMultiLineEdit && input.documentBoundarySelectionDirection) {
+    return { type: 'document-boundary-selection', direction: input.documentBoundarySelectionDirection }
   }
   if (!input.isTextInputTarget && input.tableBoundaryDirection) {
     return { type: 'table-boundary-caret', direction: input.tableBoundaryDirection }

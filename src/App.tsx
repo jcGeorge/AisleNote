@@ -183,6 +183,8 @@ import {
   type MediaRevealContextMenuDetail,
 } from './media/media-context-menu'
 import { useNavigationHistory } from './navigation/useNavigationHistory'
+import { getNextNotesTrashToggleState } from './navigation/toggle-notes-trash'
+import { getNextNotesScratchpadToggleState } from './navigation/toggle-notes-scratchpad'
 import { useAppNavigationActions } from './navigation/useAppNavigationActions'
 import {
   clearRenameDraftIfMatching,
@@ -355,7 +357,6 @@ import type {
   TipId,
   ToastState,
   ToastTone,
-  ToggleTabsTarget,
   ViewMode,
   WorkspaceData,
 } from './types/app'
@@ -476,6 +477,8 @@ function App() {
   const [scratchpadActive, setScratchpadActive] = useState(() =>
     shouldRestoreScratchpadWorkspace(initialDeviceSettingsRef.current?.lastOpened),
   )
+  const toggleViewModeRef = useRef<ViewMode>(viewMode)
+  const toggleScratchpadActiveRef = useRef(scratchpadActive)
   const [editing, setEditing] = useState<{ type: EditableEntityType; id: string } | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [modal, setModal] = useState<ModalState | null>(null)
@@ -1149,6 +1152,8 @@ function App() {
   activeNoteBodyIdRef.current = activeNoteBodyId
   activeNoteLocationKeyRef.current = activeNoteLocationKey
   isMainViewRef.current = viewMode === 'main'
+  toggleViewModeRef.current = viewMode
+  toggleScratchpadActiveRef.current = scratchpadActive
 
   useEffect(() => {
     saveDeviceLastOpened({
@@ -1920,7 +1925,7 @@ function App() {
   const openScratchpadFromRail = () => {
     if (mainArrangementActive || arrangeDestinationPrompt) {
       pushToast('scratchpad cannot be used in this mode.', 'warning')
-      return
+      return false
     }
     saveActiveCursorBeforeNavigation()
     closeEditorEphemeraRef.current()
@@ -1928,6 +1933,7 @@ function App() {
     setScratchpadActive(true)
     setMenuOpen(false)
     setEditing(null)
+    return true
   }
 
   const openContextMenuForScratchpad = (event: ReactMouseEvent<HTMLButtonElement>) => {
@@ -3490,39 +3496,57 @@ function App() {
     updateNoteFilter((current) => ({ ...current, active: true }))
   }
 
-  const toggleTabsTargetFromShortcut = () => {
-    const target: ToggleTabsTarget = stateRef.current.ui.toggleTabsTarget ?? 'trash'
+  const returnToNotesFromToggleShortcut = () => {
+    const currentViewMode = toggleViewModeRef.current
+    toggleViewModeRef.current = 'main'
+    toggleScratchpadActiveRef.current = false
+    setScratchpadActive(false)
 
-    if (target === 'filter') {
-      if (viewMode === 'main' && (stateRef.current.ui.noteFilter?.active ?? false)) {
-        exitTagFilterMode()
-        return
-      }
-      openNoteFilterFromMenu()
-      return
-    }
-
-    if (viewMode === target) {
-      returnToLastTabLikeView()
-      return
-    }
-
-    if (target === 'trash') {
+    if (currentViewMode === 'trash') {
       toggleTrashView()
       return
     }
 
-    if (target === 'settings') {
-      openSettingsWithoutMentionMenu()
+    closeEditorEphemeraRef.current()
+    setViewMode('main')
+    setMenuOpen(false)
+    setEditing(null)
+  }
+
+  const toggleNotesTrashFromShortcut = () => {
+    const currentToggleState = {
+      viewMode: toggleViewModeRef.current,
+      scratchpadActive: toggleScratchpadActiveRef.current,
+    }
+    const nextToggleState = getNextNotesTrashToggleState(currentToggleState)
+
+    if (nextToggleState.viewMode === 'trash') {
+      toggleViewModeRef.current = nextToggleState.viewMode
+      toggleScratchpadActiveRef.current = nextToggleState.scratchpadActive
+      setScratchpadActive(false)
+      toggleTrashView()
       return
     }
 
-    if (target === 'messages') {
-      openMessagesView()
+    returnToNotesFromToggleShortcut()
+  }
+
+  const toggleNotesScratchpadFromShortcut = () => {
+    const currentToggleState = {
+      viewMode: toggleViewModeRef.current,
+      scratchpadActive: toggleViewModeRef.current === 'main' && toggleScratchpadActiveRef.current,
+    }
+    const nextToggleState = getNextNotesScratchpadToggleState(currentToggleState)
+
+    if (nextToggleState.scratchpadActive) {
+      if (openScratchpadFromRail()) {
+        toggleViewModeRef.current = nextToggleState.viewMode
+        toggleScratchpadActiveRef.current = nextToggleState.scratchpadActive
+      }
       return
     }
 
-    openAboutView()
+    returnToNotesFromToggleShortcut()
   }
 
   const setNoteFilterKind = (kind: NoteFilterKind) => {
@@ -4764,7 +4788,8 @@ function App() {
     openSettings: openSettingsWithoutMentionMenu,
     toggleSpaceRail: toggleSpaceRailVisibility,
     toggleDomainRail: toggleDomainRailVisibility,
-    toggleTabsTarget: toggleTabsTargetFromShortcut,
+    toggleNotesTrash: toggleNotesTrashFromShortcut,
+    toggleNotesScratchpad: toggleNotesScratchpadFromShortcut,
     navigateHistoryBy,
     showTip,
     addTab: () => {
@@ -5285,7 +5310,6 @@ function App() {
           toolbarButtonScaleDraft={settingsController.toolbarButtonScaleDraft}
           selectedCustomTheme={settingsController.selectedCustomTheme}
           customThemePaletteDraft={settingsController.customThemePaletteDraft}
-          toggleTabsTargetDraft={settingsController.toggleTabsTargetDraft}
           alwaysShowSpacesDraft={settingsController.alwaysShowSpacesDraft}
           alwaysShowDomainsDraft={settingsController.alwaysShowDomainsDraft}
           tableAddTargetModeDraft={settingsController.tableAddTargetModeDraft}
@@ -5342,7 +5366,6 @@ function App() {
           onTabButtonScaleChange={settingsController.updateTabButtonScaleSetting}
           onNoteFontScaleChange={settingsController.updateNoteFontScaleSetting}
           onToolbarButtonScaleChange={settingsController.updateToolbarButtonScaleSetting}
-          onToggleTabsTargetChange={settingsController.updateToggleTabsTargetSetting}
           onAlwaysShowSpacesChange={settingsController.updateAlwaysShowSpacesSetting}
           onAlwaysShowDomainsChange={(enabled) => {
             if (!settingsController.updateAlwaysShowDomainsSetting(enabled)) {

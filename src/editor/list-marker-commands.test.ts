@@ -127,6 +127,14 @@ function getTextRange(doc: any, text: string): { from: number; to: number } {
   return { from, to }
 }
 
+function listItemParagraphTexts(listNode: any): string[] {
+  const texts: string[] = []
+  for (let index = 0; index < listNode.childCount; index += 1) {
+    texts.push(listNode.child(index).child(0).textContent)
+  }
+  return texts
+}
+
 function createViewWithSelection(doc: any, from: number, to: number) {
   let state = EditorState.create({
     doc,
@@ -559,6 +567,86 @@ describe('toolbar list command detection', () => {
     expect(view.state.selection.to).toBeLessThan(view.state.doc.content.size)
   })
 
+  it('converts selected paragraphs to tasks without collapsing the selection', () => {
+    const paragraphDoc = listCommandSchema.nodes.doc.create(null, [
+      pmParagraph('one'),
+      pmParagraph('two'),
+      pmParagraph('closing'),
+    ])
+    const oneRange = getTextRange(paragraphDoc, 'one')
+    const twoRange = getTextRange(paragraphDoc, 'two')
+    const view = createViewWithSelection(paragraphDoc, oneRange.from, twoRange.to)
+    const editor = {
+      focus: vi.fn(),
+      exec: vi.fn(),
+      getSelectedText: () => 'one\ntwo',
+      getMarkdown: () => 'one\n\ntwo\n\nclosing',
+      setMarkdown: vi.fn(),
+      wwEditor: {
+        view,
+      },
+    }
+
+    expect(applyListToolbarCommand(editor as any, 'taskList')).toBe(true)
+
+    expect(editor.exec).not.toHaveBeenCalledWith('taskList')
+    expect(view.state.doc.child(0).type.name).toBe('bulletList')
+    expect(listItemParagraphTexts(view.state.doc.child(0))).toEqual(['one', 'two'])
+    expect(view.state.doc.child(0).child(0).attrs).toMatchObject({ task: true, checked: false })
+    expect(view.state.doc.child(0).child(1).attrs).toMatchObject({ task: true, checked: false })
+    expect(view.state.doc.child(1).textContent).toBe('closing')
+    expect(view.state.selection.from).toBe(getTextRange(view.state.doc, 'one').from)
+    expect(view.state.selection.to).toBe(getTextRange(view.state.doc, 'two').to)
+  })
+
+  it.each([
+    [
+      'bullet',
+      () => listCommandSchema.nodes.bulletList.create(null, [pmListItem('one'), pmListItem('two'), pmListItem('closing')]),
+    ],
+    [
+      'dash',
+      () =>
+        listCommandSchema.nodes.bulletList.create(
+          { htmlAttrs: { 'data-tabs-list-marker': 'dash' } },
+          [pmListItem('one'), pmListItem('two'), pmListItem('closing')],
+        ),
+    ],
+    [
+      'numbered',
+      () =>
+        listCommandSchema.nodes.orderedList.create(
+          { order: 1 },
+          [pmListItem('one'), pmListItem('two'), pmListItem('closing')],
+        ),
+    ],
+  ])('converts selected %s rows to tasks without collapsing the selection', (_label, createList) => {
+    const doc = listCommandSchema.nodes.doc.create(null, [createList()])
+    const oneRange = getTextRange(doc, 'one')
+    const twoRange = getTextRange(doc, 'two')
+    const view = createViewWithSelection(doc, oneRange.from, twoRange.to)
+    const editor = {
+      focus: vi.fn(),
+      exec: vi.fn(),
+      getSelectedText: () => 'one\ntwo',
+      getMarkdown: () => '',
+      setMarkdown: vi.fn(),
+      wwEditor: {
+        view,
+      },
+    }
+
+    expect(applyListToolbarCommand(editor as any, 'taskList')).toBe(true)
+
+    expect(editor.exec).not.toHaveBeenCalledWith('taskList')
+    expect(view.state.doc.child(0).type.name).toBe('bulletList')
+    expect(listItemParagraphTexts(view.state.doc.child(0))).toEqual(['one', 'two'])
+    expect(view.state.doc.child(0).child(0).attrs).toMatchObject({ task: true, checked: false })
+    expect(view.state.doc.child(0).child(1).attrs).toMatchObject({ task: true, checked: false })
+    expect(view.state.selection.from).toBe(getTextRange(view.state.doc, 'one').from)
+    expect(view.state.selection.to).toBe(getTextRange(view.state.doc, 'two').to)
+  })
+
   it('restores highlighted text selection after converting paragraphs to an ordered list', () => {
     const paragraphDoc = listCommandSchema.nodes.doc.create(null, [
       pmParagraph('one'),
@@ -590,7 +678,7 @@ describe('toolbar list command detection', () => {
 
     expect(applyListToolbarCommand(editor as any, 'orderedList')).toBe(true)
 
-    expect(editor.exec).toHaveBeenCalledWith('orderedList')
+    expect(editor.exec).not.toHaveBeenCalledWith('orderedList')
     expect(view.state.doc.child(0).type.name).toBe('orderedList')
     expect(view.state.selection.from).toBe(getTextRange(view.state.doc, 'one').from)
     expect(view.state.selection.to).toBe(getTextRange(view.state.doc, 'two').to)

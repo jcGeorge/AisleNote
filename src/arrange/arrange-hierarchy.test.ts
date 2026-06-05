@@ -56,7 +56,8 @@ function appState(domains: Domain[], activeDomainId: string, activeSpaceId: stri
     spaces: activeSpaces,
     hotkeys: {
       shortcuts: {
-        toggleTabsTarget: '',
+        toggleNotesTrash: '',
+        toggleNotesScratchpad: '',
         openDomains: '',
         openSpaces: '',
         newTab: '',

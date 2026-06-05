@@ -58,7 +58,8 @@ function createState(): AppState {
     noteAisleBodies: [{ id: 'aisle-body-1', markdown: '' }],
     hotkeys: {
       shortcuts: {
-        toggleTabsTarget: '',
+        toggleNotesTrash: '',
+        toggleNotesScratchpad: '',
         openDomains: '',
         openSpaces: '',
         newTab: '',
@@ -82,7 +83,6 @@ function createState(): AppState {
     },
     frontmatter: DEFAULT_FRONTMATTER_SETTINGS,
     ui: {
-      toggleTabsTarget: 'trash',
       tableAddTargetMode: 'bottom-right',
       tableDeleteTargetMode: 'bottom-right',
       tabButtonScale: 1,
@@ -127,7 +127,8 @@ function renderSettingsPage(
       visualsSection={options.visualsSection ?? state.ui.visualsSettingsSection ?? DEFAULT_VISUALS_SETTINGS_SECTION}
       isMacPlatform={options.isMacPlatform ?? false}
       shortcutDrafts={{
-        toggleTabsTarget: '',
+        toggleNotesTrash: '',
+        toggleNotesScratchpad: '',
         openDomains: '',
         openSpaces: '',
         newTab: '',
@@ -154,7 +155,6 @@ function renderSettingsPage(
       toolbarButtonScaleDraft={1}
       selectedCustomTheme={state.ui.selectedCustomTheme ?? 'custom1'}
       customThemePaletteDraft={getThemePaletteForTheme(state.theme, state.ui.themePalettes)}
-      toggleTabsTargetDraft={state.ui.toggleTabsTarget ?? 'trash'}
       alwaysShowSpacesDraft={state.ui.alwaysShowSpaces ?? false}
       alwaysShowDomainsDraft={state.ui.alwaysShowDomains ?? false}
       tableAddTargetModeDraft={state.ui.tableAddTargetMode}
@@ -214,7 +214,6 @@ function renderSettingsPage(
       onTabButtonScaleChange={() => undefined}
       onNoteFontScaleChange={() => undefined}
       onToolbarButtonScaleChange={() => undefined}
-      onToggleTabsTargetChange={() => undefined}
       onAlwaysShowSpacesChange={() => undefined}
       onAlwaysShowDomainsChange={() => undefined}
       onTableAddTargetModeChange={() => undefined}
@@ -269,6 +268,8 @@ describe('frontmatter settings page', () => {
   it('renders parent-tab cycle hotkey rows as unbound shortcuts', () => {
     const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'hotkeys' })
 
+    expect(html).toContain('toggle notes / trash')
+    expect(html).toContain('toggle notes / scratchpad')
     expect(html).toContain('next parent tab')
     expect(html).toContain('previous parent tab')
     expect(html).toContain('next aisle')
@@ -289,17 +290,16 @@ describe('frontmatter settings page', () => {
     expect(html.indexOf('table of contents shows for')).toBeLessThan(html.indexOf('add table row or column'))
   })
 
-  it('renders the toggle tabs target dropdown in misc settings', () => {
-    const state = createState()
-    state.ui.toggleTabsTarget = 'messages'
-    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'misc', state })
+  it('does not render the removed toggle target dropdown in settings', () => {
+    const miscHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'misc' })
+    const hotkeysHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'hotkeys' })
 
-    expect(html).toContain('toggle tabs /')
-    expect(html).toContain('id="settings-toggle-tabs-target"')
-    expect(html).toContain('<option value="messages" selected="">messages</option>')
-    expect(html).toContain('<option value="filter">filter</option>')
-    expect(html).not.toContain('settings-show-parent-home-tab')
-    expect(html).not.toContain('show the parent&#x27;s home tab with the other sub-tabs')
+    expect(miscHtml).not.toContain('settings-toggle-tabs-target')
+    expect(miscHtml).not.toContain('toggle tabs /')
+    expect(hotkeysHtml).not.toContain('settings-toggle-tabs-target')
+    expect(hotkeysHtml).toContain('toggle notes / trash')
+    expect(miscHtml).not.toContain('settings-show-parent-home-tab')
+    expect(miscHtml).not.toContain('show the parent&#x27;s home tab with the other sub-tabs')
   })
 
   it('renders the tab-name Enter behavior setting in misc settings', () => {

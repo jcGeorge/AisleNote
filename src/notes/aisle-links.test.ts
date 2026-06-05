@@ -40,7 +40,8 @@ function createAisleLinkTestState(noteBodies: NoteBody[], tabs: Array<{ id: stri
     noteAisleBodies: [{ id: 'shared-body', markdown: 'authoritative shared text' }],
     hotkeys: {
       shortcuts: {
-        toggleTabsTarget: '',
+        toggleNotesTrash: '',
+        toggleNotesScratchpad: '',
         openDomains: '',
         openSpaces: '',
         newTab: '',

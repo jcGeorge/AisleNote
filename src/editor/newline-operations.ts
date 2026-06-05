@@ -10,7 +10,12 @@ import {
 } from './newline-operation-nodes'
 import { getEditorTextLineRanges } from './multiline-ranges'
 import { buildMultiLineListOperationPlan, type MultiLineListOperation } from './multiline-list-operations'
-import { getCommandCapableEditor, getWysiwygView } from './prosemirror-utils'
+import {
+  getCommandCapableEditor,
+  getEditorCursorSelection,
+  getWysiwygView,
+  restoreEditorCursorSelection,
+} from './prosemirror-utils'
 
 type EditorNewlineOperationResult =
   | { handled: false }
@@ -413,9 +418,22 @@ function tryApplyListOperationToSelectedListRows(view: any, operation: NewlineOp
   return true
 }
 
-function insertOperationBelow(view: any, operation: NewlineOperationId, text: string) {
+function tryApplyListOperationToSelectedListRowsPreservingSelection(
+  editor: Editor,
+  view: any,
+  operation: NewlineOperationId,
+): boolean {
+  const previousSelection = getEditorCursorSelection(editor)
+  if (!tryApplyListOperationToSelectedListRows(view, operation)) return false
+  if (previousSelection) {
+    restoreEditorCursorSelection(editor, previousSelection, { focus: false })
+  }
+  return true
+}
+
+function insertOperationBelow(editor: Editor, view: any, operation: NewlineOperationId, text: string) {
   if (isListNewlineOperation(operation)) {
-    if (tryApplyListOperationToSelectedListRows(view, operation)) return
+    if (tryApplyListOperationToSelectedListRowsPreservingSelection(editor, view, operation)) return
     insertListOperationBelow(view, operation, text)
     return
   }
@@ -438,12 +456,13 @@ function insertOperationBelow(view: any, operation: NewlineOperationId, text: st
   view.dispatch(tr.scrollIntoView())
 }
 
-function replaceSelectedLine(view: any, operation: NewlineOperationId, text: string) {
+function replaceSelectedLine(editor: Editor, view: any, operation: NewlineOperationId, text: string) {
   const { state } = view
   const { from, to } = state.selection
   const range = findTopLevelRange(state, Math.min(from, to), Math.max(from, to))
 
   if (isListNewlineOperation(operation)) {
+    const previousSelection = getEditorCursorSelection(editor)
     const selectedLineIndices = getWholeLineSelectionIndices(view)
     if (selectedLineIndices.length >= 1) {
       const plan = buildMultiLineListOperationPlan(
@@ -458,6 +477,9 @@ function replaceSelectedLine(view: any, operation: NewlineOperationId, text: str
       )
       if (plan) {
         view.dispatch(plan.transaction.scrollIntoView())
+        if (previousSelection) {
+          restoreEditorCursorSelection(editor, previousSelection, { focus: false })
+        }
         return
       }
     }
@@ -471,6 +493,9 @@ function replaceSelectedLine(view: any, operation: NewlineOperationId, text: str
         ? setSelectionNearListItems(merged.tr, merged.listStart, merged.insertedItemIndex, merged.insertedItemCount)
         : setSelectionNearInsertedContent(merged.tr, merged.selectionFrom, merged.selectionTo)
     view.dispatch(tr.scrollIntoView())
+    if (previousSelection) {
+      restoreEditorCursorSelection(editor, previousSelection, { focus: false })
+    }
     return
   }
 
@@ -587,13 +612,13 @@ export function applyEditorNewlineOperation(
   const { empty } = view.state.selection
   const text = getCarriedText(view)
   if (!empty && isWholeLineSelection(view)) {
-    replaceSelectedLine(view, operation, text)
+    replaceSelectedLine(editor, view, operation, text)
   } else if (empty) {
     if (!replaceEmptyLineWithOperation(view, operation)) {
-      insertOperationBelow(view, operation, '')
+      insertOperationBelow(editor, view, operation, '')
     }
   } else {
-    insertOperationBelow(view, operation, text)
+    insertOperationBelow(editor, view, operation, text)
   }
 
   editor.focus()

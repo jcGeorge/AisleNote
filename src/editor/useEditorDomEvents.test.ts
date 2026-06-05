@@ -7,6 +7,7 @@ import { EditorState, TextSelection } from 'prosemirror-state'
 import {
   applyTerminalBlockDeleteBeforeInput,
   consumeHandledEmbedCaretClick,
+  getDocumentBoundarySelectionDirectionForEvent,
   getPastedHttpUrl,
   getPastedUrlLink,
   getEditorPageMovementForEvent,
@@ -23,6 +24,7 @@ import {
   isEditorToolbarInteractionTarget,
   isEditorPointerChromeTarget,
   isUrlLinkShortcut,
+  moveSelectionHeadToDocumentBoundary,
   placeCaretAfterMediaPlayer,
   runMediaPlayerKeyboardAction,
   runEditorHistoryEvent,
@@ -124,6 +126,40 @@ function fakeKeyboardMediaPlayer(onClick: (selector: string) => void, volumeSlid
       }
     },
   } as unknown as Element
+}
+
+function previewParagraph(text: string) {
+  return previewDeleteSchema.nodes.paragraph.create(null, text ? previewDeleteSchema.text(text) : undefined)
+}
+
+function getTextRange(doc: any, text: string): { from: number; to: number } {
+  let from = 1
+  let to = 1
+  doc.descendants((node: any, pos: number) => {
+    if (node.isText && node.text === text) {
+      from = pos
+      to = pos + text.length
+      return false
+    }
+    return true
+  })
+  return { from, to }
+}
+
+function createSelectionView(doc: any, anchor: number, head = anchor) {
+  let state = EditorState.create({
+    doc,
+    selection: TextSelection.create(doc, anchor, head),
+  })
+  const view = {
+    get state() {
+      return state
+    },
+    dispatch: vi.fn((transaction) => {
+      state = state.apply(transaction)
+    }),
+  }
+  return view
 }
 
 describe('editor DOM events', () => {
@@ -647,6 +683,84 @@ describe('editor DOM events', () => {
     expect(getEditorPageMovementForEvent(fnUp)).toBe('page-up')
     expect(getEditorPageMovementForEvent(fnDown)).toBe('page-down')
     expect(getEditorPageMovementForEvent(plainUp)).toBeNull()
+  })
+
+  it('recognizes only mac command-shift vertical arrows as document-boundary selection', () => {
+    expect(
+      getDocumentBoundarySelectionDirectionForEvent({
+        key: 'ArrowUp',
+        code: 'ArrowUp',
+        metaKey: true,
+        shiftKey: true,
+      } as KeyboardEvent, true),
+    ).toBe('start')
+    expect(
+      getDocumentBoundarySelectionDirectionForEvent({
+        key: 'ArrowDown',
+        code: 'ArrowDown',
+        metaKey: true,
+        shiftKey: true,
+      } as KeyboardEvent, true),
+    ).toBe('end')
+    expect(
+      getDocumentBoundarySelectionDirectionForEvent({
+        key: 'ArrowDown',
+        code: 'ArrowDown',
+        metaKey: true,
+        shiftKey: true,
+      } as KeyboardEvent, false),
+    ).toBeNull()
+    expect(
+      getDocumentBoundarySelectionDirectionForEvent({
+        key: 'ArrowDown',
+        code: 'ArrowDown',
+        metaKey: true,
+        shiftKey: true,
+        altKey: true,
+      } as KeyboardEvent, true),
+    ).toBeNull()
+  })
+
+  it('moves a collapsed selection head to document boundaries while preserving its anchor', () => {
+    const doc = previewDeleteSchema.nodes.doc.create(null, [
+      previewParagraph('one'),
+      previewParagraph('two'),
+      previewParagraph('three'),
+    ])
+    const oneRange = getTextRange(doc, 'one')
+    const twoRange = getTextRange(doc, 'two')
+    const threeRange = getTextRange(doc, 'three')
+    const upView = createSelectionView(doc, twoRange.to)
+    const downView = createSelectionView(doc, twoRange.from)
+
+    expect(moveSelectionHeadToDocumentBoundary(upView, 'start')).toBe(true)
+    expect(upView.state.selection.anchor).toBe(twoRange.to)
+    expect(upView.state.selection.head).toBe(oneRange.from)
+
+    expect(moveSelectionHeadToDocumentBoundary(downView, 'end')).toBe(true)
+    expect(downView.state.selection.anchor).toBe(twoRange.from)
+    expect(downView.state.selection.head).toBe(threeRange.to)
+  })
+
+  it('moves only the selection head for forward and reverse text selections', () => {
+    const doc = previewDeleteSchema.nodes.doc.create(null, [
+      previewParagraph('one'),
+      previewParagraph('two'),
+      previewParagraph('three'),
+    ])
+    const oneRange = getTextRange(doc, 'one')
+    const twoRange = getTextRange(doc, 'two')
+    const threeRange = getTextRange(doc, 'three')
+    const forwardView = createSelectionView(doc, oneRange.from, twoRange.to)
+    const reverseView = createSelectionView(doc, twoRange.to, oneRange.from)
+
+    expect(moveSelectionHeadToDocumentBoundary(forwardView, 'end')).toBe(true)
+    expect(forwardView.state.selection.anchor).toBe(oneRange.from)
+    expect(forwardView.state.selection.head).toBe(threeRange.to)
+
+    expect(moveSelectionHeadToDocumentBoundary(reverseView, 'end')).toBe(true)
+    expect(reverseView.state.selection.anchor).toBe(twoRange.to)
+    expect(reverseView.state.selection.head).toBe(threeRange.to)
   })
 
   it('maps only plain horizontal arrows to table boundary caret movement', () => {

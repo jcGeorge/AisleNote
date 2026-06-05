@@ -1,7 +1,8 @@
 import type { AppState, NewlineOperationId, NewlineShortcutId, ShortcutId } from '../types/app'
 
 export const DEFAULT_SHORTCUTS: Record<ShortcutId, string> = {
-  toggleTabsTarget: 'Mod+T',
+  toggleNotesTrash: 'Mod+T',
+  toggleNotesScratchpad: 'Mod+/',
   openDomains: 'Mod+D',
   openSpaces: 'Mod+S',
   newTab: 'Mod+Shift+N',
@@ -84,6 +85,13 @@ function normalizeShortcutValue(raw: unknown, fallback: string): string {
   return trimmed.length > 0 ? trimmed : fallback
 }
 
+function getRawShortcutValue(rawShortcuts: Record<string, unknown>, shortcutId: ShortcutId): unknown {
+  if (shortcutId === 'toggleNotesTrash') {
+    return rawShortcuts.toggleNotesTrash ?? rawShortcuts.toggleTabsTarget
+  }
+  return rawShortcuts[shortcutId]
+}
+
 export function normalizeHotkeySettings(raw: unknown): AppState['hotkeys'] {
   const fallback: AppState['hotkeys'] = {
     shortcuts: DEFAULT_SHORTCUTS,
@@ -95,7 +103,7 @@ export function normalizeHotkeySettings(raw: unknown): AppState['hotkeys'] {
 
   const shortcuts = Object.entries(DEFAULT_SHORTCUTS).reduce<Record<ShortcutId, string>>((acc, [key, value]) => {
     const shortcutKey = key as ShortcutId
-    acc[shortcutKey] = normalizeShortcutValue(rawShortcuts[key], value)
+    acc[shortcutKey] = normalizeShortcutValue(getRawShortcutValue(rawShortcuts, shortcutKey), value)
     return acc
   }, {} as Record<ShortcutId, string>)
 

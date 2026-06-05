@@ -35,7 +35,8 @@ export const REQUIRED_ROOT_SPLIT_FILE_KEYS = Object.freeze([
 ])
 
 const DEFAULT_COMMAND_SHORTCUTS = {
-  toggleTabsTarget: 'Mod+T',
+  toggleNotesTrash: 'Mod+T',
+  toggleNotesScratchpad: 'Mod+/',
   openDomains: 'Mod+D',
   openSpaces: 'Mod+S',
   newTab: 'Mod+Shift+N',
@@ -189,6 +190,13 @@ function normalizeShortcutValue(raw, fallback) {
   return trimmed.length > 0 ? trimmed : fallback
 }
 
+function getRawShortcutValue(rawShortcuts, shortcutId) {
+  if (shortcutId === 'toggleNotesTrash') {
+    return rawShortcuts.toggleNotesTrash ?? rawShortcuts.toggleTabsTarget
+  }
+  return rawShortcuts[shortcutId]
+}
+
 function normalizeNewlineOperation(value, fallback) {
   return typeof value === 'string' && NEWLINE_OPERATION_IDS.has(value) ? value : fallback
 }
@@ -236,7 +244,7 @@ function normalizeShortcutSettings(raw) {
   const shortcuts = Object.fromEntries(
     Object.entries(DEFAULT_COMMAND_SHORTCUTS).map(([key, value]) => [
       key,
-      normalizeShortcutValue(rawShortcuts[key], value),
+      normalizeShortcutValue(getRawShortcutValue(rawShortcuts, key), value),
     ]),
   )
 

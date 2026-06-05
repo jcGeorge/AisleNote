@@ -556,7 +556,7 @@ describe('browser hybrid storage', () => {
     expect(getRecord(appSettings.ui).deleteActiveAisleShortcutEnabled).toBe(true)
     expect(getRecord(appSettings.ui).tableOfContentsScope).toBe('focused-aisle')
     expect(getRecord(appSettings.ui).tabRenameEnterBehavior).toBe('creates-another-tab')
-    expect(getRecord(appSettings.ui).toggleTabsTarget).toBe('messages')
+    expect(getRecord(appSettings.ui)).not.toHaveProperty('toggleTabsTarget')
     expect(getRecord(appSettings.ui)).not.toHaveProperty('newAislePlacement')
     expect(getRecord(appSettings.ui)).not.toHaveProperty('showParentHomeTab')
     expect(appSettings.scratchpadAisleLimit).toBe(40)

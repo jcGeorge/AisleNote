@@ -33,7 +33,6 @@ import type {
   TableControlTargetMode,
   TableOfContentsScope,
   TipId,
-  ToggleTabsTarget,
   VisualsSettingsSection,
   ViewMode,
 } from '../types/app'
@@ -62,7 +61,6 @@ import {
 import {
   MISC_SYNCED_UI_BOOLEAN_SETTINGS,
   getSyncedUiBooleanSettings,
-  normalizeRegisteredSyncedUiSetting,
   type SyncedUiBooleanSettingKey,
 } from './synced-ui-settings-registry.js'
 import {
@@ -131,9 +129,6 @@ export function useSettingsController({
   const [syncedUiBooleanDrafts, setSyncedUiBooleanDrafts] = useState(() =>
     getSyncedUiBooleanSettings(DEFAULT_UI_SETTINGS),
   )
-  const [toggleTabsTargetDraft, setToggleTabsTargetDraft] = useState<ToggleTabsTarget>(
-    DEFAULT_UI_SETTINGS.toggleTabsTarget ?? 'trash',
-  )
   const [alwaysShowSpacesDraft, setAlwaysShowSpacesDraft] = useState(DEFAULT_UI_SETTINGS.alwaysShowSpaces ?? false)
   const [alwaysShowDomainsDraft, setAlwaysShowDomainsDraft] = useState(DEFAULT_UI_SETTINGS.alwaysShowDomains ?? false)
   const [tableAddTargetModeDraft, setTableAddTargetModeDraft] = useState(DEFAULT_UI_SETTINGS.tableAddTargetMode)
@@ -177,7 +172,6 @@ export function useSettingsController({
     setNewlineShortcutDrafts(hotkeys.newlineShortcuts.shortcuts)
     setShortcutMenuOperationsDraft(hotkeys.newlineShortcuts.menuOperations)
     setSyncedUiBooleanDrafts(getSyncedUiBooleanSettings(state.ui))
-    setToggleTabsTargetDraft(state.ui.toggleTabsTarget ?? DEFAULT_UI_SETTINGS.toggleTabsTarget ?? 'trash')
     setAlwaysShowSpacesDraft(state.ui.alwaysShowSpaces ?? DEFAULT_UI_SETTINGS.alwaysShowSpaces ?? false)
     setAlwaysShowDomainsDraft(state.ui.alwaysShowDomains ?? DEFAULT_UI_SETTINGS.alwaysShowDomains ?? false)
     setTableAddTargetModeDraft(state.ui.tableAddTargetMode)
@@ -217,7 +211,6 @@ export function useSettingsController({
     activeSpace.settings.autoRemoveDeletedDays,
     state.hotkeys,
     state.theme,
-    state.ui.toggleTabsTarget,
     state.ui.alwaysShowSpaces,
     state.ui.alwaysShowDomains,
     state.ui.tableAddTargetMode,
@@ -355,18 +348,6 @@ export function useSettingsController({
       ui: {
         ...previous.ui,
         [key]: enabled,
-      },
-    }))
-  }
-
-  const updateToggleTabsTargetSetting = (target: ToggleTabsTarget) => {
-    const nextTarget = normalizeRegisteredSyncedUiSetting('toggleTabsTarget', target)
-    setToggleTabsTargetDraft(nextTarget)
-    commitImmediateSettingsState((previous) => ({
-      ...previous,
-      ui: {
-        ...previous.ui,
-        toggleTabsTarget: nextTarget,
       },
     }))
   }
@@ -960,7 +941,6 @@ export function useSettingsController({
     toolbarButtonScaleDraft,
     selectedCustomTheme,
     customThemePaletteDraft,
-    toggleTabsTargetDraft,
     alwaysShowSpacesDraft,
     alwaysShowDomainsDraft,
     tableAddTargetModeDraft,
@@ -988,7 +968,6 @@ export function useSettingsController({
     updateSelectedCustomThemeSetting,
     toggleShortcutEdit,
     updateAutoRemoveDaysSetting,
-    updateToggleTabsTargetSetting,
     updateAlwaysShowSpacesSetting,
     updateAlwaysShowDomainsSetting,
     updateTableAddTargetModeSetting,
