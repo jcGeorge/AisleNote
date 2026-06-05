@@ -87,6 +87,133 @@ export function repairBrokenDataImageMarkdown(markdown: string): string {
   return next
 }
 
+function unescapeMarkdownTableLine(line: string): string {
+  return line.replace(/\\([\\`*_{}\[\]()#+\-.!|<>])/g, '$1')
+}
+
+function isTableGapLine(line: string): boolean {
+  return line.replaceAll(EDITOR_BLANK_LINE_PLACEHOLDER, '').trim().length === 0
+}
+
+function getMarkdownTableCells(line: string): string[] | null {
+  const trimmed = line.trim()
+  if (!trimmed.startsWith('|') || !trimmed.endsWith('|')) return null
+  if ((trimmed.match(/\|/g)?.length ?? 0) < 2) return null
+  return trimmed.slice(1, -1).split('|').map((cell) => cell.trim())
+}
+
+function isMarkdownTableDelimiterLine(line: string): boolean {
+  const cells = getMarkdownTableCells(line)
+  return Boolean(cells?.length && cells.every((cell) => /^:?-{3,}:?$/.test(cell.replace(/\s+/g, ''))))
+}
+
+type MarkdownTableLineInfo = {
+  cells: string[]
+  escaped: boolean
+  isDelimiter: boolean
+  repairedLine: string
+}
+
+function getMarkdownTableLineInfo(line: string): MarkdownTableLineInfo | null {
+  const cells = getMarkdownTableCells(line)
+  if (cells) {
+    return {
+      cells,
+      escaped: false,
+      isDelimiter: isMarkdownTableDelimiterLine(line),
+      repairedLine: line,
+    }
+  }
+
+  if (!line.includes('\\|')) return null
+  const repairedLine = unescapeMarkdownTableLine(line)
+  if (repairedLine === line) return null
+  const repairedCells = getMarkdownTableCells(repairedLine)
+  if (!repairedCells) return null
+
+  return {
+    cells: repairedCells,
+    escaped: true,
+    isDelimiter: isMarkdownTableDelimiterLine(repairedLine),
+    repairedLine,
+  }
+}
+
+function getNextNonTableGapLineIndex(lines: string[], startIndex: number): number {
+  let index = startIndex
+  while (index < lines.length && isTableGapLine(lines[index])) {
+    index += 1
+  }
+  return index
+}
+
+function readMarkdownTableCandidate(
+  lines: string[],
+  startIndex: number,
+): { endIndex: number; lines: string[] } | null {
+  const header = getMarkdownTableLineInfo(lines[startIndex])
+  if (!header || header.isDelimiter) return null
+
+  const delimiterIndex = getNextNonTableGapLineIndex(lines, startIndex + 1)
+  const delimiter = delimiterIndex < lines.length ? getMarkdownTableLineInfo(lines[delimiterIndex]) : null
+  if (!delimiter?.isDelimiter || delimiter.cells.length !== header.cells.length) return null
+
+  const repairedLines = [header.repairedLine, delimiter.repairedLine]
+  let index = delimiterIndex + 1
+
+  while (index < lines.length) {
+    if (isFenceBoundary(lines[index], null) !== null) break
+
+    if (isTableGapLine(lines[index])) {
+      const nextRowIndex = getNextNonTableGapLineIndex(lines, index)
+      const nextRow = nextRowIndex < lines.length ? getMarkdownTableLineInfo(lines[nextRowIndex]) : null
+      if (!nextRow || nextRow.cells.length !== header.cells.length) break
+      index = nextRowIndex
+      continue
+    }
+
+    const row = getMarkdownTableLineInfo(lines[index])
+    if (!row || row.cells.length !== header.cells.length) break
+    repairedLines.push(row.repairedLine)
+    index += 1
+  }
+
+  return { endIndex: index, lines: repairedLines }
+}
+
+export function repairBrokenMarkdownTables(markdown: string): string {
+  const lines = String(markdown ?? '').replace(/\r\n/g, '\n').split('\n')
+  const repairedLines: string[] = []
+  let activeFence: string | null = null
+  let index = 0
+
+  while (index < lines.length) {
+    const line = lines[index]
+    const fenceBeforeLine = activeFence
+    const nextFence = isFenceBoundary(line, activeFence)
+    const isFenceLine = nextFence !== activeFence
+
+    if (fenceBeforeLine || isFenceLine) {
+      activeFence = nextFence
+      repairedLines.push(line)
+      index += 1
+      continue
+    }
+
+    const table = readMarkdownTableCandidate(lines, index)
+    if (table) {
+      repairedLines.push(...table.lines)
+      index = table.endIndex
+      continue
+    }
+
+    repairedLines.push(line)
+    index += 1
+  }
+
+  return repairedLines.join('\n')
+}
+
 function stripBlockIndentTokensFromQuotedLines(markdown: string): string {
   return String(markdown ?? '')
     .split('\n')
@@ -103,7 +230,7 @@ function stripBlockIndentTokensFromQuotedLines(markdown: string): string {
 }
 
 export function normalizeMarkdownForPersistence(markdown: string): string {
-  const repaired = repairBrokenDataImageMarkdown(markdown)
+  const repaired = repairBrokenMarkdownTables(repairBrokenDataImageMarkdown(markdown))
   const highlighted = normalizeHighlightMarkdownForPersistence(repaired)
   return stripBlockIndentTokensFromQuotedLines(highlighted).replace(/(?<!\u2060)\u2003\u2003/g, INDENT_TOKEN)
 }
@@ -292,8 +419,16 @@ function getMarkdownLineBlockKind(line: string): MarkdownLineBlockKind {
 function canSplitPlainParagraphChunk(chunk: MarkdownBlockChunk): boolean {
   return (
     chunk.lines.length > 1 &&
+    !isMarkdownTableChunk(chunk) &&
     chunk.lines.every((line) => getMarkdownLineBlockKind(line) === 'paragraph' && !/^\s*>/.test(line))
   )
+}
+
+function isMarkdownTableChunk(chunk: MarkdownBlockChunk): boolean {
+  if (chunk.lines.length < 2) return false
+  const header = getMarkdownTableLineInfo(chunk.lines[0])
+  const delimiter = getMarkdownTableLineInfo(chunk.lines[1])
+  return Boolean(header && !header.isDelimiter && delimiter?.isDelimiter && header.cells.length === delimiter.cells.length)
 }
 
 function splitPlainParagraphChunksToCount(
@@ -404,7 +539,7 @@ export function isBlankParagraphNode(node: any): boolean {
 }
 
 export function prepareBlankParagraphsForEditorDisplay(markdown: string): BlankParagraphDisplayPlan {
-  const chunks = splitMarkdownTopLevelChunks(markdown)
+  const chunks = splitMarkdownTopLevelChunks(repairBrokenMarkdownTables(markdown))
   const contentChunks: MarkdownBlockChunk[] = []
   const blockKinds = chunks.map((chunk) => {
     if (isStandaloneBlankLinePlaceholderChunk(chunk)) return 'blank' as const

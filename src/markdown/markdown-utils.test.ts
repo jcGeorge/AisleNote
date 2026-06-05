@@ -14,6 +14,7 @@ import {
   prepareMarkdownHighlightsForDisplay,
   preserveBlankParagraphsFromWysiwyg,
   repairBrokenDataImageMarkdown,
+  repairBrokenMarkdownTables,
   stripAllIndentPrefixes,
 } from './markdown-utils'
 
@@ -301,6 +302,108 @@ describe('data image markdown repair', () => {
     expect(repairBrokenDataImageMarkdown('![image.png]\n(data:image/png;base64,abc)')).toBe(
       '![image.png](data:image/png;base64,abc)',
     )
+  })
+})
+
+describe('broken markdown table repair', () => {
+  it('collapses blank paragraph placeholders inside a table block', () => {
+    const source = [
+      'before',
+      '',
+      '| A | B |',
+      '',
+      EDITOR_BLANK_LINE_PLACEHOLDER,
+      '',
+      '| --- | --- |',
+      '',
+      EDITOR_BLANK_LINE_PLACEHOLDER,
+      '',
+      '| one | two |',
+      '',
+      'after',
+    ].join('\n')
+
+    expect(repairBrokenMarkdownTables(source)).toBe([
+      'before',
+      '',
+      '| A | B |',
+      '| --- | --- |',
+      '| one | two |',
+      '',
+      'after',
+    ].join('\n'))
+  })
+
+  it('repairs complete escaped table blocks back to markdown table syntax', () => {
+    const source = [
+      String.raw`\| A \| \<svg class="a\-b"\>x\</svg\> \|`,
+      '',
+      EDITOR_BLANK_LINE_PLACEHOLDER,
+      '',
+      String.raw`\| \-\-\- \| \-\-\- \|`,
+      '',
+      String.raw`\| B \| https://x\.test/a\-b \|`,
+    ].join('\n')
+
+    expect(repairBrokenMarkdownTables(source)).toBe([
+      '| A | <svg class="a-b">x</svg> |',
+      '| --- | --- |',
+      '| B | https://x.test/a-b |',
+    ].join('\n'))
+  })
+
+  it('leaves non-table pipe text unchanged', () => {
+    const source = [
+      'alpha | beta',
+      '',
+      EDITOR_BLANK_LINE_PLACEHOLDER,
+      '',
+      '| maybe | row |',
+      '',
+      'not a delimiter',
+    ].join('\n')
+
+    expect(repairBrokenMarkdownTables(source)).toBe(source)
+  })
+
+  it('leaves fenced code table-like text unchanged', () => {
+    const source = [
+      '```',
+      '| A | B |',
+      '',
+      EDITOR_BLANK_LINE_PLACEHOLDER,
+      '',
+      '| --- | --- |',
+      '```',
+    ].join('\n')
+
+    expect(repairBrokenMarkdownTables(source)).toBe(source)
+  })
+
+  it('preserves intentional blank paragraphs before and after a repaired table', () => {
+    const source = [
+      EDITOR_BLANK_LINE_PLACEHOLDER,
+      '',
+      '| A | B |',
+      '',
+      EDITOR_BLANK_LINE_PLACEHOLDER,
+      '',
+      '| --- | --- |',
+      '',
+      '| C | D |',
+      '',
+      EDITOR_BLANK_LINE_PLACEHOLDER,
+    ].join('\n')
+
+    expect(repairBrokenMarkdownTables(source)).toBe([
+      EDITOR_BLANK_LINE_PLACEHOLDER,
+      '',
+      '| A | B |',
+      '| --- | --- |',
+      '| C | D |',
+      '',
+      EDITOR_BLANK_LINE_PLACEHOLDER,
+    ].join('\n'))
   })
 })
 

@@ -81,6 +81,27 @@ describe('editor markdown display helpers', () => {
     expect(dispatch).toHaveBeenCalled()
   })
 
+  it('repairs broken table markdown before passing it to Toast UI', () => {
+    const { editor } = fakeEditorWithBlocks([textBlock('table')])
+    const brokenTable = [
+      String.raw`\| A \| B \|`,
+      '',
+      EDITOR_BLANK_LINE_PLACEHOLDER,
+      '',
+      String.raw`\| \-\-\- \| \-\-\- \|`,
+      '',
+      String.raw`\| C \| D \|`,
+    ].join('\n')
+
+    setEditorMarkdownForDisplay(editor, brokenTable)
+
+    expect(editor.setMarkdown).toHaveBeenCalledWith([
+      '| A | B |',
+      '| --- | --- |',
+      '| C | D |',
+    ].join('\n'), false)
+  })
+
   it('does not restore blank paragraphs when content block counts do not match', () => {
     const { editor, dispatch } = fakeEditorWithBlocks([textBlock('paragraph', 'one')])
 
