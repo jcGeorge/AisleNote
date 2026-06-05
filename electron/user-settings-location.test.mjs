@@ -4,6 +4,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { getUserSettingsFilePath, writeAppSettingsForState } from './app-state-storage.mjs'
 import {
+  USER_SETTINGS_LOCATION_CONFIG_FILE,
   createUserSettingsLocation,
   recreateMissingUserSettingsLocationFile,
   refreshLocalUserSettingsFromLocation,
@@ -84,23 +85,41 @@ describe('user settings location storage', () => {
       expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('light')
     }))
 
-  it('falls back to local cache when custom settings are missing or invalid', () =>
+  it('detaches missing settings roots and still falls back for invalid reachable settings', () =>
     withTempDir((root) => {
       const userDataPath = path.join(root, 'user-data')
       const missingRoot = path.join(root, 'missing-cloud-settings')
       const invalidRoot = path.join(root, 'invalid-cloud-settings')
       mkdirSync(path.join(invalidRoot, 'settings'), { recursive: true })
       writeFileSync(path.join(invalidRoot, 'settings', 'app-settings.json'), '{"theme":"dawn"}\n', 'utf8')
+      writeUserSettingsLocationConfig(userDataPath, missingRoot)
 
-      expect(refreshLocalUserSettingsFromLocation(userDataPath, createUserSettingsLocation(userDataPath, missingRoot)))
-        .toMatchObject({
-          ok: false,
-          status: {
-            status: 'warning',
-            syncStatus: 'fallback',
-            source: 'local-cache',
-          },
-        })
+      const missingRefresh = refreshLocalUserSettingsFromLocation(userDataPath, resolveUserSettingsLocation(userDataPath))
+
+      expect(missingRefresh).toMatchObject({
+        ok: true,
+        detached: true,
+        location: {
+          settingsRootPath: userDataPath,
+          isDefault: true,
+        },
+        status: {
+          status: 'warning',
+          event: 'settings-folder-unreachable-reset',
+          syncStatus: 'local',
+          source: 'local-cache',
+          isDefault: true,
+          canWrite: true,
+          error: 'Settings folder could not be reached. Switched to local app settings.',
+        },
+      })
+      expect(resolveUserSettingsLocation(userDataPath)).toMatchObject({
+        settingsRootPath: userDataPath,
+        isDefault: true,
+      })
+      expect(existsSync(path.join(userDataPath, USER_SETTINGS_LOCATION_CONFIG_FILE))).toBe(false)
+      expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('dawn')
+
       expect(refreshLocalUserSettingsFromLocation(userDataPath, createUserSettingsLocation(userDataPath, invalidRoot)))
         .toMatchObject({
           ok: false,
@@ -215,20 +234,58 @@ describe('user settings location storage', () => {
       expect(JSON.parse(readFileSync(getUserSettingsFilePath(settingsRootPath), 'utf8')).theme).toBe('dawn')
     }))
 
+  it('detaches a deleted settings root during reset to defaults', () =>
+    withTempDir((root) => {
+      const userDataPath = path.join(root, 'user-data')
+      const settingsRootPath = path.join(root, 'missing-cloud-settings')
+      writeAppSettingsForState(userDataPath, serializedAppState('custom1'))
+      writeUserSettingsLocationConfig(userDataPath, settingsRootPath)
+
+      const result = resetUserSettingsLocationToDefaults(userDataPath, resolveUserSettingsLocation(userDataPath))
+
+      expect(result).toMatchObject({
+        ok: true,
+        detached: true,
+        location: {
+          settingsRootPath: userDataPath,
+          isDefault: true,
+        },
+        status: {
+          status: 'warning',
+          event: 'settings-folder-unreachable-reset',
+          syncStatus: 'local',
+          source: 'local-cache',
+        },
+      })
+      expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('dawn')
+      expect(existsSync(settingsRootPath)).toBe(false)
+      expect(existsSync(path.join(userDataPath, USER_SETTINGS_LOCATION_CONFIG_FILE))).toBe(false)
+    }))
+
   it('does not recreate an unreachable settings root during automatic mirror writes', () =>
     withTempDir((root) => {
       const userDataPath = path.join(root, 'user-data')
       const settingsRootPath = path.join(root, 'missing-cloud-settings')
-      const location = createUserSettingsLocation(userDataPath, settingsRootPath)
+      writeUserSettingsLocationConfig(userDataPath, settingsRootPath)
+      const location = resolveUserSettingsLocation(userDataPath)
 
-      expect(writeUserSettingsLocationFromState(userDataPath, location, serializedAppState('custom1'))).toMatchObject({
-        ok: false,
+      const result = writeUserSettingsLocationFromState(userDataPath, location, serializedAppState('custom1'))
+
+      expect(result).toMatchObject({
+        ok: true,
+        detached: true,
+        location: {
+          settingsRootPath: userDataPath,
+          isDefault: true,
+        },
         status: {
-          event: 'settings-sync-unreachable',
-          syncStatus: 'fallback',
+          event: 'settings-folder-unreachable-reset',
+          syncStatus: 'local',
         },
       })
       expect(existsSync(settingsRootPath)).toBe(false)
+      expect(existsSync(path.join(userDataPath, USER_SETTINGS_LOCATION_CONFIG_FILE))).toBe(false)
+      expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('custom1')
     }))
 
   it('rejects notebook folders as live settings folders', () =>

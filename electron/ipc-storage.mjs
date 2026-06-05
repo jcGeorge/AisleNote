@@ -125,17 +125,26 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
   let profile = { ...resolveStorageProfile(userDataPath), userDataPath }
   let userSettingsLocation = resolveUserSettingsLocation(userDataPath)
   let userSettingsLocationRefresh = refreshLocalUserSettingsFromLocation(userDataPath, userSettingsLocation)
+  if (userSettingsLocationRefresh.location) userSettingsLocation = userSettingsLocationRefresh.location
   let userSettingsLocationStatus = userSettingsLocationRefresh.status
   let notebookBackupStatus = createNotebookBackupStatus(userDataPath, profile.profileRootPath)
   const loadNotebookResult = (profileRootPath) => loadAppStateResult(profileRootPath, { userSettingsRoot: userDataPath })
+  const adoptUserSettingsLocationResult = (result) => {
+    if (result?.location) userSettingsLocation = result.location
+    return result
+  }
   const saveNotebookState = (profileRootPath, serializedState, options = {}) => {
     saveAppState(profileRootPath, serializedState, {
       ...options,
       userDataPath,
       userSettingsRoot: userDataPath,
     })
-    const syncResult = writeUserSettingsLocationFromState(userDataPath, userSettingsLocation, serializedState)
-    if (!userSettingsLocation.isDefault || !syncResult.ok) updateUserSettingsLocationStatus(syncResult.status)
+    const syncResult = adoptUserSettingsLocationResult(
+      writeUserSettingsLocationFromState(userDataPath, userSettingsLocation, serializedState),
+    )
+    if (syncResult.location || !userSettingsLocation.isDefault || !syncResult.ok) {
+      updateUserSettingsLocationStatus(syncResult.status)
+    }
   }
   const coordinator = createAppStateCoordinator({
     userDataPath,
@@ -186,6 +195,12 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     userSettingsLocationStatus = nextStatus
     broadcastUserSettingsLocationStatus()
     return userSettingsLocationStatus
+  }
+
+  const applyUserSettingsLocationResult = (result) => {
+    adoptUserSettingsLocationResult(result)
+    if (result?.status) updateUserSettingsLocationStatus(result.status)
+    return result
   }
 
   const updateNotebookBackupStatus = (nextStatus = createNotebookBackupStatus(userDataPath, profile.profileRootPath)) => {
@@ -548,8 +563,9 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
         return { ok: false, error: message, status: userSettingsLocationStatus }
       }
 
-      const refresh = refreshLocalUserSettingsFromLocation(userDataPath, userSettingsLocation)
-      updateUserSettingsLocationStatus(refresh.status)
+      const refresh = applyUserSettingsLocationResult(
+        refreshLocalUserSettingsFromLocation(userDataPath, userSettingsLocation),
+      )
       if (!refresh.ok) return { ok: false, error: refresh.status.error, status: userSettingsLocationStatus }
       const reload = reloadActiveProfileForSettingsChange('settings-folder-loaded')
       return { ok: reload.ok, status: userSettingsLocationStatus, error: reload.ok ? undefined : reload.error }
@@ -606,8 +622,9 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
 
     const cloudSettings = readUserSettingsFromLocation(userSettingsLocation)
     if (cloudSettings.ok) {
-      const refresh = refreshLocalUserSettingsFromLocation(userDataPath, userSettingsLocation)
-      updateUserSettingsLocationStatus(refresh.status)
+      const refresh = applyUserSettingsLocationResult(
+        refreshLocalUserSettingsFromLocation(userDataPath, userSettingsLocation),
+      )
       if (!refresh.ok) return { ok: false, error: refresh.status.error, status: userSettingsLocationStatus }
       const reload = reloadActiveProfileForSettingsChange('settings-sync-loaded')
       return { ok: reload.ok, status: userSettingsLocationStatus, error: reload.ok ? undefined : reload.error }
@@ -620,7 +637,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
         userSettingsLocation,
         serializedState,
       )
-      updateUserSettingsLocationStatus(recreateResult.status)
+      applyUserSettingsLocationResult(recreateResult)
       return {
         ok: recreateResult.ok,
         status: userSettingsLocationStatus,
@@ -653,7 +670,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
 
   const resetUserSettingsToDefaults = async () => {
     const resetResult = resetUserSettingsLocationToDefaults(userDataPath, userSettingsLocation)
-    updateUserSettingsLocationStatus(resetResult.status)
+    applyUserSettingsLocationResult(resetResult)
     if (!resetResult.ok) {
       return { ok: false, error: resetResult.status.error, status: userSettingsLocationStatus }
     }

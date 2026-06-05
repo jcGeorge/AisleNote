@@ -20,6 +20,8 @@ import {
 export const USER_SETTINGS_LOCATION_CONFIG_FILE = 'user-settings-location.json'
 
 const SETTINGS_LOCATION_NOT_READY_MESSAGE = 'Settings folder could not be reached. Using local app settings.'
+const SETTINGS_LOCATION_DETACHED_MESSAGE =
+  'Settings folder could not be reached. Switched to local app settings.'
 const SETTINGS_LOCATION_MISSING_MESSAGE =
   'Settings folder does not contain settings/app-settings.json. Using local app settings.'
 const SETTINGS_LOCATION_INVALID_MESSAGE =
@@ -169,6 +171,39 @@ export function resetUserSettingsLocationConfig(userDataPath) {
   return resolveUserSettingsLocation(userDataPath)
 }
 
+function detachUnreachableUserSettingsLocation(userDataPath, location, options = {}) {
+  const localSettings = ensureLocalSettingsFile(userDataPath)
+  if (!localSettings.ok) {
+    return {
+      ok: false,
+      status: createUserSettingsLocationStatus(userDataPath, location, {
+        status: 'warning',
+        event: localSettings.invalid ? 'local-settings-invalid' : 'settings-folder-unreachable-reset-error',
+        syncStatus: 'fallback',
+        source: 'local-cache',
+        canWrite: false,
+        error: localSettings.error,
+      }),
+    }
+  }
+
+  const localLocation = resetUserSettingsLocationConfig(userDataPath)
+  return {
+    ok: true,
+    created: localSettings.created,
+    detached: true,
+    location: localLocation,
+    status: createUserSettingsLocationStatus(userDataPath, localLocation, {
+      status: 'warning',
+      event: options.event ?? 'settings-folder-unreachable-reset',
+      syncStatus: 'local',
+      source: 'local-cache',
+      canWrite: true,
+      error: options.error ?? SETTINGS_LOCATION_DETACHED_MESSAGE,
+    }),
+  }
+}
+
 export function validateUserSettingsFolderCandidate(settingsRootPath, activeNotebookRootPath) {
   const finalSettingsRootPath = path.resolve(settingsRootPath)
   if (isSamePath(finalSettingsRootPath, activeNotebookRootPath)) {
@@ -219,17 +254,7 @@ export function refreshLocalUserSettingsFromLocation(userDataPath, location = re
   }
 
   if (!existsSync(location.settingsRootPath)) {
-    return {
-      ok: false,
-      status: createUserSettingsLocationStatus(userDataPath, location, {
-        status: 'warning',
-        event: 'settings-sync-unreachable',
-        syncStatus: 'fallback',
-        source: 'local-cache',
-        canWrite: false,
-        error: SETTINGS_LOCATION_NOT_READY_MESSAGE,
-      }),
-    }
+    return detachUnreachableUserSettingsLocation(userDataPath, location)
   }
 
   const cloudSettings = readSettingsFile(location.settingsPath)
@@ -335,17 +360,22 @@ export function writeUserSettingsLocationFromState(userDataPath, location, seria
   }
 
   if (!existsSync(location.settingsRootPath)) {
-    return {
-      ok: false,
-      status: createUserSettingsLocationStatus(userDataPath, location, {
-        status: 'warning',
-        event: 'settings-sync-unreachable',
-        syncStatus: 'fallback',
-        source: 'local-cache',
-        canWrite: false,
-        error: SETTINGS_LOCATION_NOT_READY_MESSAGE,
-      }),
+    try {
+      writeAppSettingsForState(userDataPath, serializedState)
+    } catch (error) {
+      return {
+        ok: false,
+        status: createUserSettingsLocationStatus(userDataPath, location, {
+          status: 'warning',
+          event: 'settings-sync-write-failed',
+          syncStatus: 'fallback',
+          source: 'local-cache',
+          canWrite: false,
+          error: error instanceof Error ? error.message : SETTINGS_LOCATION_WRITE_FAILED_MESSAGE,
+        }),
+      }
     }
+    return detachUnreachableUserSettingsLocation(userDataPath, location)
   }
 
   try {
@@ -402,17 +432,24 @@ export function initializeUserSettingsLocationFromState(userDataPath, location, 
 
 export function recreateMissingUserSettingsLocationFile(userDataPath, location, serializedState = null) {
   if (!existsSync(location.settingsRootPath)) {
-    return {
-      ok: false,
-      status: createUserSettingsLocationStatus(userDataPath, location, {
-        status: 'warning',
-        event: 'settings-sync-unreachable',
-        syncStatus: 'fallback',
-        source: 'local-cache',
-        canWrite: false,
-        error: SETTINGS_LOCATION_NOT_READY_MESSAGE,
-      }),
+    if (typeof serializedState === 'string') {
+      try {
+        writeAppSettingsForState(userDataPath, serializedState)
+      } catch (error) {
+        return {
+          ok: false,
+          status: createUserSettingsLocationStatus(userDataPath, location, {
+            status: 'warning',
+            event: 'settings-sync-write-failed',
+            syncStatus: 'fallback',
+            source: 'local-cache',
+            canWrite: false,
+            error: error instanceof Error ? error.message : SETTINGS_LOCATION_WRITE_FAILED_MESSAGE,
+          }),
+        }
+      }
     }
+    return detachUnreachableUserSettingsLocation(userDataPath, location)
   }
 
   try {
@@ -482,17 +519,7 @@ export function resetUserSettingsLocationToDefaults(userDataPath, location = res
       }
     }
     if (!existsSync(location.settingsRootPath)) {
-      return {
-        ok: true,
-        status: createUserSettingsLocationStatus(userDataPath, location, {
-          status: 'warning',
-          event: 'settings-reset-defaults',
-          syncStatus: 'fallback',
-          source: 'local-cache',
-          canWrite: false,
-          error: SETTINGS_LOCATION_NOT_READY_MESSAGE,
-        }),
-      }
+      return detachUnreachableUserSettingsLocation(userDataPath, location)
     }
     writeTextFileAtomic(location.settingsPath, defaultSettings)
     return {

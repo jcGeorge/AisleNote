@@ -9,6 +9,10 @@ import { registerStorageIpc } from './ipc-storage.mjs'
 import { registerUpdateIpc } from './ipc-updates.mjs'
 import { buildAppStateExportArchive, loadAppStateResult, saveAppState } from './app-state-storage.mjs'
 import { createNoopUpdateService } from './update-service.mjs'
+import {
+  USER_SETTINGS_LOCATION_CONFIG_FILE,
+  writeUserSettingsLocationConfig,
+} from './user-settings-location.mjs'
 
 function createIpcMain() {
   const handlers = new Map()
@@ -947,6 +951,177 @@ describe('electron ipc boundaries', () => {
             status: 'error',
           },
         })
+      } finally {
+        rmSync(settingsRoot, { recursive: true, force: true })
+      }
+    }))
+
+  it('switches startup to local settings when the configured settings folder was deleted', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const settingsRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-deleted-settings-'))
+      writeUserSettingsLocationConfig(userDataPath, settingsRoot)
+      rmSync(settingsRoot, { recursive: true, force: true })
+
+      const ipcMain = createIpcMain()
+      registerStorageIpc({
+        ipcMain,
+        app: { getPath: () => userDataPath },
+        BrowserWindow: createBrowserWindow(),
+      })
+
+      await expect(ipcMain.handlers.get('get-user-settings-location-status')()).resolves.toMatchObject({
+        status: 'warning',
+        event: 'settings-folder-unreachable-reset',
+        settingsRootPath: userDataPath,
+        isDefault: true,
+        syncStatus: 'local',
+        source: 'local-cache',
+        canWrite: true,
+        error: 'Settings folder could not be reached. Switched to local app settings.',
+      })
+      expect(existsSync(path.join(userDataPath, USER_SETTINGS_LOCATION_CONFIG_FILE))).toBe(false)
+      expect(existsSync(path.join(userDataPath, 'settings', 'app-settings.json'))).toBe(true)
+    }))
+
+  it('does not emit repeated fallback statuses after startup detaches a deleted settings folder', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const settingsRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-deleted-settings-'))
+      writeUserSettingsLocationConfig(userDataPath, settingsRoot)
+      rmSync(settingsRoot, { recursive: true, force: true })
+      const window = {
+        isDestroyed: vi.fn(() => false),
+        webContents: { id: 2, send: vi.fn() },
+      }
+      const ipcMain = createIpcMain()
+      registerStorageIpc({
+        ipcMain,
+        app: { getPath: () => userDataPath },
+        BrowserWindow: createBrowserWindow([window]),
+      })
+      window.webContents.send.mockClear()
+
+      const saveEvent = { sender: { id: 1 }, returnValue: null }
+      ipcMain.listeners.get('save-app-state')(saveEvent, {
+        serializedState: serializedAppState('custom1'),
+        baseRevision: 0,
+      })
+      const secondSaveEvent = { sender: { id: 1 }, returnValue: null }
+      ipcMain.listeners.get('save-app-state')(secondSaveEvent, {
+        serializedState: serializedAppState('light'),
+        baseRevision: saveEvent.returnValue.revision,
+      })
+
+      const userSettingsUpdates = window.webContents.send.mock.calls.filter(
+        ([channel]) => channel === 'user-settings-location-status-updated',
+      )
+      expect(userSettingsUpdates).toHaveLength(0)
+      expect(existsSync(settingsRoot)).toBe(false)
+      expect(JSON.parse(readFileSync(path.join(userDataPath, 'settings', 'app-settings.json'), 'utf8')).theme).toBe(
+        'light',
+      )
+    }))
+
+  it('detaches a deleted live settings folder during save without repeated fallback broadcasts', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const settingsRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-live-settings-'))
+      try {
+        const window = {
+          isDestroyed: vi.fn(() => false),
+          webContents: { id: 2, send: vi.fn() },
+        }
+        const ipcMain = createIpcMain()
+        registerStorageIpc({
+          ipcMain,
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow([window]),
+          dialog: {
+            showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [settingsRoot] })),
+          },
+        })
+        const initialSaveEvent = { sender: { id: 1 }, returnValue: null }
+        ipcMain.listeners.get('save-app-state')(initialSaveEvent, {
+          serializedState: serializedAppState('custom1'),
+          baseRevision: 0,
+        })
+        await ipcMain.handlers.get('choose-user-settings-folder')()
+        window.webContents.send.mockClear()
+        rmSync(settingsRoot, { recursive: true, force: true })
+
+        const detachSaveEvent = { sender: { id: 1 }, returnValue: null }
+        ipcMain.listeners.get('save-app-state')(detachSaveEvent, {
+          serializedState: serializedAppState('custom2'),
+          baseRevision: initialSaveEvent.returnValue.revision,
+        })
+        const localSaveEvent = { sender: { id: 1 }, returnValue: null }
+        ipcMain.listeners.get('save-app-state')(localSaveEvent, {
+          serializedState: serializedAppState('light'),
+          baseRevision: detachSaveEvent.returnValue.revision,
+        })
+
+        const userSettingsUpdates = window.webContents.send.mock.calls.filter(
+          ([channel]) => channel === 'user-settings-location-status-updated',
+        )
+        expect(userSettingsUpdates).toHaveLength(1)
+        expect(userSettingsUpdates[0][1]).toMatchObject({
+          status: 'warning',
+          event: 'settings-folder-unreachable-reset',
+          settingsRootPath: userDataPath,
+          isDefault: true,
+          syncStatus: 'local',
+          source: 'local-cache',
+        })
+        expect(existsSync(settingsRoot)).toBe(false)
+        expect(existsSync(path.join(userDataPath, USER_SETTINGS_LOCATION_CONFIG_FILE))).toBe(false)
+        expect(JSON.parse(readFileSync(path.join(userDataPath, 'settings', 'app-settings.json'), 'utf8')).theme).toBe(
+          'light',
+        )
+      } finally {
+        rmSync(settingsRoot, { recursive: true, force: true })
+      }
+    }))
+
+  it('retries a deleted live user settings folder by switching back to local settings', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const settingsRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-live-settings-'))
+      const shell = { openPath: vi.fn(async () => '') }
+      try {
+        const ipcMain = createIpcMain()
+        registerStorageIpc({
+          ipcMain,
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow(),
+          shell,
+          dialog: {
+            showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [settingsRoot] })),
+          },
+        })
+        const saveEvent = { sender: { id: 1 }, returnValue: null }
+        ipcMain.listeners.get('save-app-state')(saveEvent, {
+          serializedState: serializedAppState('custom1'),
+          baseRevision: 0,
+        })
+        await ipcMain.handlers.get('choose-user-settings-folder')()
+        rmSync(settingsRoot, { recursive: true, force: true })
+
+        await expect(ipcMain.handlers.get('retry-user-settings-sync')()).resolves.toMatchObject({
+          ok: true,
+          status: {
+            status: 'warning',
+            event: 'settings-folder-unreachable-reset',
+            settingsRootPath: userDataPath,
+            isDefault: true,
+            syncStatus: 'local',
+            source: 'local-cache',
+          },
+        })
+        expect(existsSync(settingsRoot)).toBe(false)
+        expect(existsSync(path.join(userDataPath, USER_SETTINGS_LOCATION_CONFIG_FILE))).toBe(false)
+        expect(JSON.parse(readFileSync(path.join(userDataPath, 'settings', 'app-settings.json'), 'utf8')).theme).toBe(
+          'custom1',
+        )
+
+        await expect(ipcMain.handlers.get('reveal-user-settings-folder')()).resolves.toEqual({ ok: true })
+        expect(shell.openPath).toHaveBeenCalledWith(userDataPath)
       } finally {
         rmSync(settingsRoot, { recursive: true, force: true })
       }
