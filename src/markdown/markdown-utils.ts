@@ -88,7 +88,7 @@ export function repairBrokenDataImageMarkdown(markdown: string): string {
 }
 
 function unescapeMarkdownTableLine(line: string): string {
-  return line.replace(/\\([\\`*_{}\[\]()#+\-.!|<>])/g, '$1')
+  return line.replace(/\\([\\`*_{[}\]()#+\-.!|<>])/g, '$1')
 }
 
 function isTableGapLine(line: string): boolean {

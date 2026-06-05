@@ -11,15 +11,15 @@ function readSource(relativePath: string): string {
 
 describe('space and domain placeholder names', () => {
   it('uses lowercase placeholders for compact and full-page creation paths', () => {
-    const appSource = readSource('../App.tsx')
+    const appControllerSource = readSource('../app/useAppController.tsx')
     const domainsSource = readSource('../state/domains.ts')
 
-    expect(appSource).toContain("createSpace('space'")
-    expect(appSource).toContain("createDomain('domain'")
+    expect(appControllerSource).toContain("createSpace('space'")
+    expect(appControllerSource).toContain("createDomain('domain'")
     expect(domainsSource).toContain("createDomain(name = 'domain'")
 
-    expect(appSource).not.toContain('New Space')
-    expect(appSource).not.toContain('New Domain')
+    expect(appControllerSource).not.toContain('New Space')
+    expect(appControllerSource).not.toContain('New Domain')
     expect(domainsSource).not.toContain('New Domain')
   })
 })

@@ -79,7 +79,7 @@ function createState(workspace: WorkspaceData): AppState {
   }
 }
 
-function createRenameHarness(options: {
+function useRenameHarness(options: {
   pendingCreatedEdit?: Extract<PendingCreatedEdit, { type: 'space' | 'domain' }> | null
   requestAnimationFrame?: boolean
 } = {}) {
@@ -194,7 +194,7 @@ describe('app navigation rename actions', () => {
   })
 
   it('focuses the active parent home note after pending-created space and domain Enter commits', () => {
-    const spaceHarness = createRenameHarness({
+    const spaceHarness = useRenameHarness({
       pendingCreatedEdit: {
         type: 'space',
         id: 'space-1',
@@ -212,7 +212,7 @@ describe('app navigation rename actions', () => {
     })
     expect(spaceHarness.editorFocus).not.toHaveBeenCalled()
 
-    const domainHarness = createRenameHarness({
+    const domainHarness = useRenameHarness({
       pendingCreatedEdit: {
         type: 'domain',
         id: 'domain-1',
@@ -232,7 +232,7 @@ describe('app navigation rename actions', () => {
   })
 
   it('does not focus space or domain renames unless an Enter commit finishes a pending-created edit', () => {
-    const pendingBlurHarness = createRenameHarness({
+    const pendingBlurHarness = useRenameHarness({
       pendingCreatedEdit: {
         type: 'space',
         id: 'space-1',
@@ -246,13 +246,13 @@ describe('app navigation rename actions', () => {
     expect(pendingBlurHarness.activateAisleEditor).not.toHaveBeenCalled()
     expect(pendingBlurHarness.editorFocus).not.toHaveBeenCalled()
 
-    const existingSpaceHarness = createRenameHarness({ requestAnimationFrame: true })
+    const existingSpaceHarness = useRenameHarness({ requestAnimationFrame: true })
     existingSpaceHarness.actions.commitRename('space', 'space-1', 'Existing Space', { focusEditor: true })
 
     expect(existingSpaceHarness.activateAisleEditor).not.toHaveBeenCalled()
     expect(existingSpaceHarness.editorFocus).not.toHaveBeenCalled()
 
-    const existingDomainHarness = createRenameHarness({ requestAnimationFrame: true })
+    const existingDomainHarness = useRenameHarness({ requestAnimationFrame: true })
     existingDomainHarness.actions.commitRename('domain', 'domain-1', 'Existing Domain', { focusEditor: true })
 
     expect(existingDomainHarness.activateAisleEditor).not.toHaveBeenCalled()
