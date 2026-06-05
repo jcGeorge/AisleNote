@@ -3,25 +3,15 @@ import { composeMarkdownFrontmatter } from '../frontmatter/frontmatter'
 import { resolveFrontmatterReferencesForState } from '../frontmatter/frontmatter-state'
 import { splitImageResizeMetadataFromUrl } from '../markdown/image-metadata'
 import { parseImageAssetUrl } from '../markdown/image-asset-refs.js'
-import { getRegisteredAssetBytes, getRegisteredImageAssetBytes } from '../markdown/image-asset-registry'
+import { getRegisteredImageAssetBytes } from '../markdown/image-asset-registry'
 import { normalizePreviewReferenceTokensForMarkdown } from '../markdown/note-context-tokens.js'
 import { convertInternalTabsForExport } from '../markdown/markdown-utils'
-import { buildNotebookArchive, toNotebookArchiveArrayBuffer } from '../notebook/notebook-archive'
 import { getAisleBodyId, getAisleMarkdown } from '../notes/note-markdown'
-import { savePortableBinaryFile } from '../platform/portable-file-service'
 import { dataTransferMessages } from '../settings/data-transfer-messages'
 import type { AppState, Space, SpaceSettings } from '../types/app'
 
-export type ExportScope = 'space' | 'all'
-
-type ExportAppDataOptions = {
-  scope: ExportScope
+type ExportSpaceDataOptions = {
   spaceId?: string
-  getLatestState: () => AppState
-  setStatus: (status: string) => void
-}
-
-type ExportNotebookArchiveOptions = {
   getLatestState: () => AppState
   setStatus: (status: string) => void
 }
@@ -111,63 +101,36 @@ function getExportMarkdownForBody(
   )
 }
 
-export async function exportAppData({
-  scope,
+export async function exportSpaceData({
   spaceId,
   getLatestState,
   setStatus,
-}: ExportAppDataOptions) {
+}: ExportSpaceDataOptions) {
   try {
-    setStatus(dataTransferMessages.exportBuilding(scope))
+    setStatus(dataTransferMessages.exportBuilding())
     const latestState = getLatestState()
-    let exportState: AppState
-    let defaultName: string
-    let spacesToExport: Space[]
 
-    if (scope === 'space') {
-      const selectedSpace =
-        latestState.spaces.find((space) => space.id === (spaceId ?? latestState.activeSpaceId)) ??
-        latestState.spaces.find((space) => space.id === latestState.activeSpaceId) ??
-        latestState.spaces[0]
-      if (!selectedSpace) {
-        setStatus(dataTransferMessages.exportFailed(scope))
-        return
-      }
-      exportState = {
-        ...latestState,
-        activeSpaceId: selectedSpace.id,
-        spaces: [selectedSpace],
-      }
-      defaultName = `${sanitizeName(selectedSpace.name)}-export.zip`
-      spacesToExport = [selectedSpace]
-    } else {
-      exportState = latestState
-      defaultName = 'tabs-support-archive.zip'
-      spacesToExport = exportState.spaces
-    }
-
-    if (window.electronAPI?.exportAppState) {
-      const result = await window.electronAPI.exportAppState({
-        defaultPath: defaultName,
-        serializedState: JSON.stringify(exportState),
-      })
-      if (result?.canceled) {
-        setStatus(dataTransferMessages.exportCanceled(scope))
-        return
-      }
-      if (result?.error) {
-        setStatus(dataTransferMessages.exportFailed(scope))
-        return
-      }
-      setStatus(dataTransferMessages.exportSaved(scope))
+    const selectedSpace =
+      latestState.spaces.find((space) => space.id === (spaceId ?? latestState.activeSpaceId)) ??
+      latestState.spaces.find((space) => space.id === latestState.activeSpaceId) ??
+      latestState.spaces[0]
+    if (!selectedSpace) {
+      setStatus(dataTransferMessages.exportFailed())
       return
     }
+    const exportState: AppState = {
+      ...latestState,
+      activeSpaceId: selectedSpace.id,
+      spaces: [selectedSpace],
+    }
+    const defaultName = `${sanitizeName(selectedSpace.name)}-export.zip`
+    const spacesToExport: Space[] = [selectedSpace]
 
     const zip = new JSZip()
     const imageBank = new Map<string, Uint8Array>()
     const manifest = {
       exportedAt: new Date().toISOString(),
-      scope,
+      scope: 'space',
       version: 1,
       theme: exportState.theme,
       spaces: [] as Array<{
@@ -232,10 +195,10 @@ export async function exportAppData({
         data: exportBuffer,
       })
       if (result?.canceled) {
-        setStatus(dataTransferMessages.exportCanceled(scope))
+        setStatus(dataTransferMessages.exportCanceled())
         return
       }
-      setStatus(dataTransferMessages.exportSaved(scope))
+      setStatus(dataTransferMessages.exportSaved())
       return
     }
 
@@ -246,67 +209,8 @@ export async function exportAppData({
     anchor.download = defaultName
     anchor.click()
     URL.revokeObjectURL(url)
-    setStatus(dataTransferMessages.exportSaved(scope))
+    setStatus(dataTransferMessages.exportSaved())
   } catch {
-    setStatus(dataTransferMessages.exportFailed(scope))
-  }
-}
-
-export async function exportNotebookArchive({
-  getLatestState,
-  setStatus,
-}: ExportNotebookArchiveOptions) {
-  try {
-    setStatus(dataTransferMessages.notebookExportBuilding)
-    const latestState = getLatestState()
-    const result = await buildNotebookArchive({
-      state: latestState,
-      readAssetBytes: async (assetPath) => {
-        const fromDesktop = await window.electronAPI?.readAsset?.({ assetPath })
-        if (fromDesktop?.ok && fromDesktop.bytes) return new Uint8Array(fromDesktop.bytes)
-        return getRegisteredAssetBytes(assetPath)
-      },
-    })
-    const data = toNotebookArchiveArrayBuffer(result.bytes)
-    const defaultPath = 'tabs-notebook.zip'
-
-    if (window.electronAPI?.saveFile) {
-      const saveResult = await window.electronAPI.saveFile({ defaultPath, data })
-      if (saveResult?.canceled) {
-        setStatus(dataTransferMessages.notebookExportCanceled)
-        return
-      }
-      if (saveResult?.error) {
-        setStatus(dataTransferMessages.notebookExportFailed())
-        return
-      }
-      setStatus(dataTransferMessages.notebookExportSaved(result.issues.length))
-      return
-    }
-
-    const portableSave = await savePortableBinaryFile({
-      defaultPath,
-      data,
-      title: 'Export notebook archive',
-    })
-    if (portableSave.handled) {
-      if (portableSave.error) {
-        setStatus(dataTransferMessages.notebookExportFailed(portableSave.error))
-        return
-      }
-      setStatus(dataTransferMessages.notebookExportShared(result.issues.length))
-      return
-    }
-
-    const blob = new Blob([data], { type: 'application/zip' })
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = defaultPath
-    anchor.click()
-    URL.revokeObjectURL(url)
-    setStatus(dataTransferMessages.notebookExportSaved(result.issues.length))
-  } catch {
-    setStatus(dataTransferMessages.notebookExportFailed())
+    setStatus(dataTransferMessages.exportFailed())
   }
 }

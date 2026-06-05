@@ -10,7 +10,7 @@ import {
 } from '../notes/note-references'
 import { DEFAULT_UI_SETTINGS } from '../settings/defaults'
 import type { AppState, FrontmatterSettings, NoteLocation } from '../types/app'
-import { mergeImportedBackupState } from './backup-import'
+import { mergeImportedNotebookState } from './notebook-import'
 
 function createIdGenerator() {
   let next = 0
@@ -46,7 +46,7 @@ function createFrontmatterSettings(): FrontmatterSettings {
   }
 }
 
-function createBackupState(markdownByBody: Record<string, string> = {}): AppState {
+function createNotebookState(markdownByBody: Record<string, string> = {}): AppState {
   const space = {
     id: 'space',
     name: 'Space',
@@ -142,14 +142,14 @@ function createBackupState(markdownByBody: Record<string, string> = {}): AppStat
   }
 }
 
-describe('mergeImportedBackupState', () => {
+describe('mergeImportedNotebookState', () => {
   it('appends remapped imported content with identical names and ids without mutating current settings', () => {
-    const current = createBackupState({ 'body-source': 'current source' })
+    const current = createNotebookState({ 'body-source': 'current source' })
     current.frontmatter = DEFAULT_FRONTMATTER_SETTINGS
     current.theme = 'dawn'
-    const imported = createBackupState({ 'body-source': 'imported source' })
+    const imported = createNotebookState({ 'body-source': 'imported source' })
 
-    const { state: merged, summary } = mergeImportedBackupState(current, imported, createIdGenerator())
+    const { state: merged, summary } = mergeImportedNotebookState(current, imported, createIdGenerator())
     const importedDomain = merged.domains[1]
     const importedSpace = importedDomain.spaces[0]
     const importedSource = importedSpace.data.tabs.find((tab) => tab.title === 'Source')
@@ -189,7 +189,7 @@ describe('mergeImportedBackupState', () => {
   })
 
   it('rewrites imported wiki links, previews, aisle anchors, heading anchors, and aliases to remapped targets', () => {
-    const imported = createBackupState()
+    const imported = createNotebookState()
     const heading = getHeadingOutlineFromMarkdown('aisle-target', '# Intro\n\nTarget body')[0]
     const target = noteLocation('target')
     const sourceMarkdown = [
@@ -206,9 +206,9 @@ describe('mergeImportedBackupState', () => {
     imported.noteAisleBodies = imported.noteAisleBodies?.map((body) =>
       body.id === 'aisle-body-source' ? { ...body, markdown: sourceMarkdown } : body,
     )
-    const current = createBackupState()
+    const current = createNotebookState()
 
-    const { state: merged, summary } = mergeImportedBackupState(current, imported, createIdGenerator())
+    const { state: merged, summary } = mergeImportedNotebookState(current, imported, createIdGenerator())
     const importedDomain = merged.domains[1]
     const importedSpace = importedDomain.spaces[0]
     const importedSource = importedSpace.data.tabs.find((tab) => tab.title === 'Source')

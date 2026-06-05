@@ -48,7 +48,7 @@ export type SettingsSection =
   | 'tips'
   | 'toolbar'
   | 'visuals'
-export type DataSettingsSection = 'notebook' | 'settings' | 'storage' | 'trash'
+export type DataSettingsSection = 'transfer' | 'settings' | 'storage' | 'trash'
 export type VisualsSettingsSection = 'theming' | 'otherVisuals'
 export type TableControlTargetMode = 'active-cell' | 'bottom-right'
 export type TableOfContentsScope = 'all-aisles' | 'focused-aisle'
@@ -621,8 +621,6 @@ export type StorageProfileStatus = {
   schemaVersion?: number | null
   conflicts?: string[]
   revision?: number
-  recoverySnapshotCount?: number
-  latestRecoverySnapshotPath?: string
   error?: string
 }
 
@@ -637,23 +635,6 @@ export type UserSettingsLocationStatus = {
   syncStatus: 'local' | 'synced' | 'fallback'
   source: 'local-cache' | 'settings-folder'
   error?: string
-}
-
-export type NotebookBackupStatus = {
-  status: 'disabled' | 'ready' | 'warning' | 'error'
-  event?: string
-  enabled: boolean
-  destinationRootPath: string | null
-  managedFolderPath: string | null
-  intervalMs: number
-  retentionCount: number
-  lastAttemptAt: number | null
-  lastSuccessfulAt: number | null
-  lastBackupPath: string | null
-  nextBackupAt: number | null
-  canWrite: boolean
-  error?: string
-  lastSkippedReason?: string
 }
 
 export type ImageToolsState = {

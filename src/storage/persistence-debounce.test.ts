@@ -28,11 +28,11 @@ describe('createPersistenceDebounceController', () => {
     vi.advanceTimersByTime(1)
 
     expect(serialize).toHaveBeenCalledOnce()
-    expect(save).toHaveBeenCalledWith('{"body":"ab"}', { snapshotMode: 'debounced' })
+    expect(save).toHaveBeenCalledWith('{"body":"ab"}', {})
     expect(controller.hasPending()).toBe(false)
   })
 
-  it('writes without a recovery snapshot at max wait and snapshots after the quiet period', () => {
+  it('writes at max wait and again after the quiet period', () => {
     vi.useFakeTimers()
     const serialize = vi.fn((value: { body: string }) => JSON.stringify(value))
     const save = vi.fn()
@@ -53,13 +53,13 @@ describe('createPersistenceDebounceController', () => {
     vi.advanceTimersByTime(300)
 
     expect(save).toHaveBeenCalledTimes(1)
-    expect(save).toHaveBeenLastCalledWith('{"body":"abcd"}', { snapshotMode: 'skip' })
+    expect(save).toHaveBeenLastCalledWith('{"body":"abcd"}', {})
     expect(controller.hasPending()).toBe(true)
 
     vi.advanceTimersByTime(700)
 
     expect(save).toHaveBeenCalledTimes(2)
-    expect(save).toHaveBeenLastCalledWith('{"body":"abcd"}', { snapshotMode: 'debounced' })
+    expect(save).toHaveBeenLastCalledWith('{"body":"abcd"}', {})
     expect(controller.hasPending()).toBe(false)
   })
 
@@ -78,7 +78,7 @@ describe('createPersistenceDebounceController', () => {
     vi.runAllTimers()
 
     expect(save).toHaveBeenCalledOnce()
-    expect(save).toHaveBeenCalledWith('{"body":"draft"}', { snapshotMode: 'force', preferSync: true })
+    expect(save).toHaveBeenCalledWith('{"body":"draft"}', { preferSync: true })
     expect(controller.hasPending()).toBe(false)
   })
 

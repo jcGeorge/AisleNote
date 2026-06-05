@@ -5,10 +5,6 @@ export const LOAD_FAILED_SAVE_ERROR = 'App state did not load; refusing to overw
 export const RECENT_APP_SAVE_ECHO_TTL_MS = 120_000
 const MAX_RECENT_APP_SAVE_FINGERPRINTS = 20
 
-function getSnapshotMode(payload) {
-  return ['force', 'debounced', 'skip'].includes(payload?.snapshotMode) ? payload.snapshotMode : undefined
-}
-
 function normalizeJsonValue(value) {
   if (Array.isArray(value)) return value.map((item) => normalizeJsonValue(item))
   if (!value || typeof value !== 'object') return value
@@ -120,7 +116,6 @@ export function createAppStateCoordinator({
     try {
       save(activeProfileRootPath, payload.serializedState, {
         userDataPath,
-        ...(getSnapshotMode(payload) ? { snapshotMode: getSnapshotMode(payload) } : {}),
       })
       rememberRecentAppSave(payload.serializedState)
       if (canonicalizeAfterSave) {

@@ -249,7 +249,7 @@ function createWindow(storageSession) {
 
     void (async () => {
       try {
-        const stateSnapshot = await withTimeout(
+        const rendererState = await withTimeout(
           window.webContents.executeJavaScript(
             `(() => {
               const serializedState = window.__tabsGetLatestAppState?.() ?? null
@@ -261,14 +261,14 @@ function createWindow(storageSession) {
           1500,
         )
         if (
-          typeof stateSnapshot?.serializedState === 'string' &&
-          Number.isInteger(stateSnapshot.baseRevision) &&
+          typeof rendererState?.serializedState === 'string' &&
+          Number.isInteger(rendererState.baseRevision) &&
           storageSession.canWriteAppState()
         ) {
-          storageSession.saveAppStateSnapshot(stateSnapshot, window.webContents.id)
+          storageSession.saveRendererAppState(rendererState, window.webContents.id)
         }
       } catch {
-        // Fall through to close even if the renderer snapshot cannot be collected.
+        // Fall through to close even if the renderer state cannot be collected.
       } finally {
         closeFlushInProgress = false
         allowImmediateClose = true

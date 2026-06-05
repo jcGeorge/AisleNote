@@ -1,8 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import {
-  CapacitorFilesystemStorageBackend,
-  createCapacitorRecoveryNotebookArchive,
-} from './capacitor-hybrid-state'
+import { CapacitorFilesystemStorageBackend } from './capacitor-hybrid-state'
 import { BrowserHybridStateAdapter } from './browser-hybrid-state'
 import { DEFAULT_STATE, parseSavedState } from '../state/app-state'
 
@@ -133,31 +130,15 @@ describe('Capacitor filesystem storage backend', () => {
     expect(() => JSON.parse(filesystem.files.get(staleDomainManifest)?.data ?? '')).not.toThrow()
   })
 
-  it('does not prune app-private recovery files during normal notebook saves', async () => {
+  it('does not prune unrelated app-private files during normal notebook saves', async () => {
     const filesystem = createFakeFilesystem()
     const backend = new CapacitorFilesystemStorageBackend(filesystem as never)
     const adapter = new BrowserHybridStateAdapter(backend)
-    filesystem.files.set('recovery/manual-copy.zip', { data: 'existing-recovery' })
+    filesystem.files.set('manual/user-file.txt', { data: 'existing-file' })
 
     await adapter.saveSerializedState(JSON.stringify(DEFAULT_STATE))
     await adapter.saveSerializedState(JSON.stringify(DEFAULT_STATE))
 
-    expect(filesystem.files.has('recovery/manual-copy.zip')).toBe(true)
-  })
-
-  it('creates an app-private notebook archive recovery copy', async () => {
-    const filesystem = createFakeFilesystem()
-    const backend = new CapacitorFilesystemStorageBackend(filesystem as never)
-
-    const result = await createCapacitorRecoveryNotebookArchive(JSON.stringify(DEFAULT_STATE), {
-      backend,
-      now: new Date('2026-05-29T10:11:12.000Z'),
-    })
-
-    expect(result.ok).toBe(true)
-    if (!result.ok) return
-    expect(result.path).toBe('recovery/tabs-recovery-2026-05-29T10-11-12-000Z.zip')
-    expect(result.uri).toBe('capacitor://localhost/recovery/tabs-recovery-2026-05-29T10-11-12-000Z.zip')
-    expect(filesystem.files.has(result.path)).toBe(true)
+    expect(filesystem.files.has('manual/user-file.txt')).toBe(true)
   })
 })

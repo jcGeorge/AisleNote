@@ -1,4 +1,14 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -7,7 +17,7 @@ import { registerClipboardIpc } from './ipc-clipboard.mjs'
 import { registerFileIpc } from './ipc-files.mjs'
 import { registerStorageIpc } from './ipc-storage.mjs'
 import { registerUpdateIpc } from './ipc-updates.mjs'
-import { buildAppStateExportArchive, loadAppStateResult, saveAppState } from './app-state-storage.mjs'
+import { loadAppStateResult, saveAppState, writeAssetToProfile } from './app-state-storage.mjs'
 import { createNoopUpdateService } from './update-service.mjs'
 import {
   USER_SETTINGS_LOCATION_CONFIG_FILE,
@@ -61,6 +71,28 @@ async function writeZipArchive(filePath, entries) {
   writeFileSync(filePath, await zip.generateAsync({ type: 'nodebuffer' }))
 }
 
+async function writeNotebookZipFromFolder(filePath, notebookRootPath) {
+  const zip = new JSZip()
+  const root = path.join(notebookRootPath, 'notes')
+
+  function visit(directoryPath) {
+    for (const entry of readdirSync(directoryPath)) {
+      const absolutePath = path.join(directoryPath, entry)
+      const stats = statSync(absolutePath)
+      if (stats.isDirectory()) {
+        visit(absolutePath)
+        continue
+      }
+      if (!stats.isFile()) continue
+      const relativePath = path.relative(notebookRootPath, absolutePath).split(path.sep).join('/')
+      zip.file(relativePath, readFileSync(absolutePath))
+    }
+  }
+
+  visit(root)
+  writeFileSync(filePath, await zip.generateAsync({ type: 'nodebuffer' }))
+}
+
 function serializedAppState(theme = 'dawn') {
   const space = {
     id: 'space-1',
@@ -94,7 +126,16 @@ function serializedAppState(theme = 'dawn') {
         spaces: [space],
       },
     ],
-    noteBodies: [{ id: 'body-1', aisles: [{ id: 'aisle-1', markdown: 'hello' }] }],
+    noteBodies: [{ id: 'body-1', aisles: [{ id: 'aisle-1', aisleBodyId: 'aisle-body-1' }] }],
+    noteAisleBodies: [
+      {
+        id: 'aisle-body-1',
+        markdown: 'hello',
+        tags: [],
+        frontmatter: null,
+        frontmatterStatus: 'none',
+      },
+    ],
     activeSpaceId: space.id,
     spaces: [space],
   })
@@ -248,19 +289,6 @@ describe('electron ipc boundaries', () => {
       })
     }))
 
-  it('returns canceled when backup import dialog is canceled', async () => {
-    const ipcMain = createIpcMain()
-    registerFileIpc({
-      ipcMain,
-      dialog: {
-        showSaveDialog: vi.fn(),
-        showOpenDialog: vi.fn(async () => ({ canceled: true, filePaths: [] })),
-      },
-    })
-
-    await expect(ipcMain.handlers.get('import-app-state-archive')()).resolves.toEqual({ canceled: true })
-  })
-
   it('returns canceled when notebook import source dialog is canceled', async () => {
     const ipcMain = createIpcMain()
     registerFileIpc({
@@ -274,10 +302,10 @@ describe('electron ipc boundaries', () => {
     await expect(ipcMain.handlers.get('open-notebook-import-source')()).resolves.toEqual({ canceled: true })
   })
 
-  it('opens notebook archive bytes without parsing or mutating storage', async () =>
+  it('opens Markdown ZIP bytes as the notebook ZIP fallback without mutating storage', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
       const archivePath = path.join(userDataPath, 'notebook.zip')
-      writeFileSync(archivePath, Buffer.from([80, 75, 3, 4]))
+      await writeZipArchive(archivePath, { 'Domain/Space/Home.md': '# Home' })
       const ipcMain = createIpcMain()
       registerFileIpc({
         ipcMain,
@@ -289,17 +317,20 @@ describe('electron ipc boundaries', () => {
 
       const result = await ipcMain.handlers.get('open-notebook-import-source')()
       expect(result).toMatchObject({ canceled: false, ok: true, kind: 'zip', filePath: archivePath })
-      expect(Buffer.from(result.bytes)).toEqual(Buffer.from([80, 75, 3, 4]))
+      expect(Buffer.from(result.bytes).byteLength).toBeGreaterThan(0)
+      expect(result.nativeNotebookError).toBeTruthy()
       expect(loadAppStateResult(userDataPath).source).toBe('empty')
     }))
 
   it('classifies unified notebook import sources', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
       const archivePath = path.join(userDataPath, 'notebook.zip')
+      const archiveSourceRoot = path.join(userDataPath, 'source-notebook-zip')
       const notebookRoot = path.join(userDataPath, 'source-notebook')
       const markdownRoot = path.join(userDataPath, 'markdown-import')
       const homePath = path.join(markdownRoot, 'Domain', 'Space', 'Parent', 'home.md')
-      writeFileSync(archivePath, Buffer.from([80, 75, 3, 4]))
+      saveAppState(archiveSourceRoot, serializedAppState('light'), { userDataPath })
+      await writeNotebookZipFromFolder(archivePath, archiveSourceRoot)
       saveAppState(notebookRoot, serializedAppState(), { userDataPath })
       mkdirSync(path.dirname(homePath), { recursive: true })
       writeFileSync(homePath, '# Home', 'utf8')
@@ -316,8 +347,13 @@ describe('electron ipc boundaries', () => {
       const handler = ipcMain.handlers.get('open-notebook-import-source')
 
       const zipResult = await handler()
-      expect(zipResult).toMatchObject({ canceled: false, ok: true, kind: 'zip', filePath: archivePath })
-      expect(Buffer.from(zipResult.bytes)).toEqual(Buffer.from([80, 75, 3, 4]))
+      expect(zipResult).toMatchObject({
+        canceled: false,
+        ok: true,
+        kind: 'notebook-zip',
+        filePath: archivePath,
+        serializedState: expect.stringContaining('"hello"'),
+      })
 
       await expect(handler()).resolves.toMatchObject({
         canceled: false,
@@ -476,7 +512,7 @@ describe('electron ipc boundaries', () => {
       }
     }))
 
-  it('rejects invalid backup import zips', async () =>
+  it('rejects invalid notebook import ZIPs', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
       const archivePath = path.join(userDataPath, 'bad.zip')
       writeFileSync(archivePath, 'not a zip', 'utf8')
@@ -489,14 +525,14 @@ describe('electron ipc boundaries', () => {
         },
       })
 
-      await expect(ipcMain.handlers.get('import-app-state-archive')()).resolves.toMatchObject({
+      await expect(ipcMain.handlers.get('open-notebook-import-source')()).resolves.toMatchObject({
         canceled: false,
         ok: false,
         issues: [expect.objectContaining({ code: 'invalid-archive', severity: 'error' })],
       })
     }))
 
-  it('rejects backup import archives with path traversal entries', async () =>
+  it('rejects native notebook ZIPs with path traversal entries', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
       const archivePath = path.join(userDataPath, 'traversal.zip')
       await writeZipArchive(archivePath, {
@@ -512,34 +548,14 @@ describe('electron ipc boundaries', () => {
         },
       })
 
-      await expect(ipcMain.handlers.get('import-app-state-archive')()).resolves.toMatchObject({
+      await expect(ipcMain.handlers.get('open-notebook-import-source')()).resolves.toMatchObject({
         canceled: false,
         ok: false,
         issues: [expect.objectContaining({ code: 'unsafe-archive-entry', severity: 'error' })],
       })
     }))
 
-  it('rejects backup import archives missing notes/manifest.json', async () =>
-    withTempUserDataPathAsync(async (userDataPath) => {
-      const archivePath = path.join(userDataPath, 'missing-manifest.zip')
-      await writeZipArchive(archivePath, { 'notes/readme.txt': 'missing' })
-      const ipcMain = createIpcMain()
-      registerFileIpc({
-        ipcMain,
-        dialog: {
-          showSaveDialog: vi.fn(),
-          showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [archivePath] })),
-        },
-      })
-
-      await expect(ipcMain.handlers.get('import-app-state-archive')()).resolves.toMatchObject({
-        canceled: false,
-        ok: false,
-        issues: [expect.objectContaining({ code: 'missing-root-manifest', severity: 'error' })],
-      })
-    }))
-
-  it('rejects backup import archives with unsupported schemas', async () =>
+  it('rejects native notebook ZIPs with unsupported schemas', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
       const archivePath = path.join(userDataPath, 'unsupported.zip')
       await writeZipArchive(archivePath, {
@@ -554,21 +570,22 @@ describe('electron ipc boundaries', () => {
         },
       })
 
-      await expect(ipcMain.handlers.get('import-app-state-archive')()).resolves.toMatchObject({
+      await expect(ipcMain.handlers.get('open-notebook-import-source')()).resolves.toMatchObject({
         canceled: false,
         ok: false,
         issues: [expect.objectContaining({ code: 'unsupported-root-manifest', severity: 'error' })],
       })
     }))
 
-  it('loads valid backup import archives without mutating the current profile', async () =>
+  it('loads valid native notebook ZIPs without mutating the current profile', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
-      const archivePath = path.join(userDataPath, 'backup.zip')
-      const archiveBytes = await buildAppStateExportArchive(serializedAppState('light'))
-      const zip = await JSZip.loadAsync(archiveBytes)
-      expect(zip.file('settings/app-settings.json')).not.toBeNull()
-      expect(zip.file('notes/app-settings.json')).toBeNull()
-      writeFileSync(archivePath, archiveBytes)
+      const archivePath = path.join(userDataPath, 'notebook.zip')
+      const sourceRoot = path.join(userDataPath, 'source-notebook')
+      saveAppState(sourceRoot, serializedAppState('light'), { userDataPath })
+      await writeNotebookZipFromFolder(archivePath, sourceRoot)
+      const zip = await JSZip.loadAsync(readFileSync(archivePath))
+      expect(zip.file('notes/manifest.json')).not.toBeNull()
+      expect(zip.file('settings/app-settings.json')).toBeNull()
       const ipcMain = createIpcMain()
       registerFileIpc({
         ipcMain,
@@ -578,10 +595,11 @@ describe('electron ipc boundaries', () => {
         },
       })
 
-      await expect(ipcMain.handlers.get('import-app-state-archive')()).resolves.toMatchObject({
+      await expect(ipcMain.handlers.get('open-notebook-import-source')()).resolves.toMatchObject({
         canceled: false,
         ok: true,
-        serializedState: expect.stringContaining('"light"'),
+        kind: 'notebook-zip',
+        serializedState: expect.stringContaining('"hello"'),
       })
       expect(loadAppStateResult(userDataPath).source).toBe('empty')
     }))
@@ -695,7 +713,7 @@ describe('electron ipc boundaries', () => {
       await expect(
         ipcMain.handlers.get('save-app-state-async')(
           { sender: { id: 1 } },
-          { serializedState: '{"theme":"dawn"}', baseRevision: 0, snapshotMode: 'skip' },
+          { serializedState: '{"theme":"dawn"}', baseRevision: 0 },
         ),
       ).resolves.toEqual({
         ok: true,
@@ -734,94 +752,79 @@ describe('electron ipc boundaries', () => {
         isDefault: true,
         syncStatus: 'local',
       })
-      await expect(ipcMain.handlers.get('get-notebook-backup-status')()).resolves.toMatchObject({
-        status: 'disabled',
-        enabled: false,
-        destinationRootPath: null,
-        managedFolderPath: null,
-      })
     }))
 
-  it('chooses, writes, reveals, and resets notebook backup folders', async () =>
+  it('exports a native notebook folder without settings and copies active assets', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
-      const destinationRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-notebook-backups-'))
-      const shell = { openPath: vi.fn(async () => '') }
+      const destinationRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-notebook-export-'))
       try {
+        const assetBytes = Buffer.from('asset bytes')
+        const asset = writeAssetToProfile(userDataPath, assetBytes, 'pdf')
+        const state = JSON.parse(serializedAppState('light'))
+        state.noteAisleBodies[0].markdown = `[report](${asset.url})`
         const ipcMain = createIpcMain()
-        registerStorageIpc({
+        registerFileIpc({
           ipcMain,
-          app: { getPath: () => userDataPath },
-          BrowserWindow: createBrowserWindow(),
-          shell,
           dialog: {
             showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [destinationRoot] })),
           },
-        })
-
-        await expect(ipcMain.handlers.get('choose-notebook-backup-folder')()).resolves.toMatchObject({
-          ok: true,
-          status: {
-            enabled: true,
-            destinationRootPath: destinationRoot,
+          storageSession: {
+            getProfileRootPath: () => userDataPath,
           },
         })
-        const backupBytes = Buffer.from('notebook zip')
-        await expect(
-          ipcMain.handlers.get('run-notebook-backup-now')(null, {
-            data: backupBytes.buffer.slice(backupBytes.byteOffset, backupBytes.byteOffset + backupBytes.byteLength),
-            trigger: 'manual',
-          }),
-        ).resolves.toMatchObject({
-          ok: true,
-          status: {
-            enabled: true,
-            status: 'ready',
-          },
-        })
-        const backupStatus = await ipcMain.handlers.get('get-notebook-backup-status')()
-        expect(readFileSync(backupStatus.lastBackupPath, 'utf8')).toBe('notebook zip')
 
-        await expect(ipcMain.handlers.get('reveal-notebook-backup-folder')()).resolves.toEqual({ ok: true })
-        expect(shell.openPath).toHaveBeenCalledWith(backupStatus.managedFolderPath)
-
-        await expect(ipcMain.handlers.get('reset-notebook-backup-folder')()).resolves.toMatchObject({
-          ok: true,
-          status: {
-            enabled: false,
-            status: 'disabled',
-          },
+        const result = await ipcMain.handlers.get('export-notebook-folder')(null, {
+          serializedState: JSON.stringify(state),
         })
+        expect(result).toMatchObject({
+          canceled: false,
+          ok: true,
+          profileRootPath: destinationRoot,
+          notesPath: path.join(destinationRoot, 'notes'),
+        })
+        expect(existsSync(path.join(destinationRoot, 'notes', 'manifest.json'))).toBe(true)
+        expect(existsSync(path.join(destinationRoot, 'settings', 'app-settings.json'))).toBe(false)
+        expect(readFileSync(path.join(destinationRoot, 'notes', asset.assetPath))).toEqual(assetBytes)
       } finally {
         rmSync(destinationRoot, { recursive: true, force: true })
       }
     }))
 
-  it('handles canceled and rejected notebook backup folder selection', async () =>
+  it('rejects notebook folder export destinations that are active or already contain notes', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
-      const ipcMain = createIpcMain()
-      const showOpenDialog = vi
-        .fn()
-        .mockResolvedValueOnce({ canceled: true, filePaths: [] })
-        .mockResolvedValueOnce({ canceled: false, filePaths: [userDataPath] })
-        .mockResolvedValueOnce({ canceled: false, filePaths: [path.join(userDataPath, 'notes', 'backups')] })
-      registerStorageIpc({
-        ipcMain,
-        app: { getPath: () => userDataPath },
-        BrowserWindow: createBrowserWindow(),
-        dialog: { showOpenDialog },
-      })
+      const existingNotebookRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-existing-notebook-'))
+      try {
+        mkdirSync(path.join(existingNotebookRoot, 'notes'), { recursive: true })
+        const ipcMain = createIpcMain()
+        const showOpenDialog = vi
+          .fn()
+          .mockResolvedValueOnce({ canceled: true, filePaths: [] })
+          .mockResolvedValueOnce({ canceled: false, filePaths: [userDataPath] })
+          .mockResolvedValueOnce({ canceled: false, filePaths: [existingNotebookRoot] })
+        registerFileIpc({
+          ipcMain,
+          dialog: { showOpenDialog },
+          storageSession: {
+            getProfileRootPath: () => userDataPath,
+          },
+        })
+        const handler = ipcMain.handlers.get('export-notebook-folder')
+        const payload = { serializedState: serializedAppState() }
 
-      await expect(ipcMain.handlers.get('choose-notebook-backup-folder')()).resolves.toMatchObject({
-        canceled: true,
-      })
-      await expect(ipcMain.handlers.get('choose-notebook-backup-folder')()).resolves.toMatchObject({
-        ok: false,
-        error: 'The active notebook folder cannot be used as its backup folder. Choose a different folder.',
-      })
-      await expect(ipcMain.handlers.get('choose-notebook-backup-folder')()).resolves.toMatchObject({
-        ok: false,
-        error: 'Backup folders cannot be inside the active notes folder. Choose a different folder.',
-      })
+        await expect(handler(null, payload)).resolves.toMatchObject({
+          canceled: true,
+        })
+        await expect(handler(null, payload)).resolves.toMatchObject({
+          ok: false,
+          error: 'Choose a folder outside the active notebook folder.',
+        })
+        await expect(handler(null, payload)).resolves.toMatchObject({
+          ok: false,
+          error: 'Destination folder already contains a notebook.',
+        })
+      } finally {
+        rmSync(existingNotebookRoot, { recursive: true, force: true })
+      }
     }))
 
   it('rejects notebook folders as live user settings folders', async () =>
@@ -1630,42 +1633,4 @@ describe('electron ipc boundaries', () => {
       }
     }))
 
-  it('restores the latest recovery snapshot through storage IPC', async () =>
-    withTempUserDataPath(async (userDataPath) => {
-      const window = {
-        isDestroyed: vi.fn(() => false),
-        webContents: { id: 2, send: vi.fn() },
-      }
-      const ipcMain = createIpcMain()
-      registerStorageIpc({
-        ipcMain,
-        app: { getPath: () => userDataPath },
-        BrowserWindow: createBrowserWindow([window]),
-      })
-
-      const firstSaveEvent = { sender: { id: 1 }, returnValue: null }
-      ipcMain.listeners.get('save-app-state')(firstSaveEvent, {
-        serializedState: serializedAppState('dawn'),
-        baseRevision: 0,
-      })
-      const secondSaveEvent = { sender: { id: 1 }, returnValue: null }
-      ipcMain.listeners.get('save-app-state')(secondSaveEvent, {
-        serializedState: serializedAppState('light'),
-        baseRevision: 1,
-      })
-      window.webContents.send.mockClear()
-
-      await expect(ipcMain.handlers.get('restore-storage-recovery-snapshot')()).resolves.toMatchObject({
-        ok: true,
-        status: {
-          status: 'ready',
-          event: 'recovery-restored',
-          recoverySnapshotCount: expect.any(Number),
-        },
-      })
-      expect(window.webContents.send).toHaveBeenCalledWith('app-state-updated', {
-        serializedState: expect.stringContaining('"light"'),
-        revision: 2,
-      })
-    }))
 })

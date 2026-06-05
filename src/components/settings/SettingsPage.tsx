@@ -37,7 +37,6 @@ import type {
   FrontmatterTemplate,
   FrontmatterTemplateField,
   NewlineOperationId,
-  NotebookBackupStatus,
   NewlineShortcutId,
   ScratchpadNewAisleSide,
   SettingsSection,
@@ -61,7 +60,6 @@ import type {
   SyncedUiBooleanSettingKey,
   SyncedUiBooleanSettingView,
 } from '../../settings/synced-ui-settings-registry.js'
-import type { NotebookArchiveSummary } from '../../notebook/notebook-archive'
 import type { DataPlatformCapabilities } from '../../platform/data-platform'
 import {
   DEFAULT_THEME_PREVIEW_RAIL_SELECTION,
@@ -140,36 +138,22 @@ type SettingsPageProps = {
   dataCapabilities: DataPlatformCapabilities
   storageProfileStatus: StorageProfileStatus | null
   userSettingsLocationStatus: UserSettingsLocationStatus | null
-  notebookBackupStatus: NotebookBackupStatus | null
   onDataSectionChange: (section: DataSettingsSection) => void
   onVisualsSectionChange: (section: VisualsSettingsSection) => void
   onToggleShortcutEdit: (shortcutId: ShortcutId) => void
   onNewlineShortcutChange: (shortcutId: NewlineShortcutId, operation: NewlineOperationId) => void
   onOpenShortcutMenuSettings: () => void
   onAutoRemoveDaysChange: (value: string, commit?: boolean) => void
-  onExportAll: () => void
   onExportNotebook: () => void
   onExportUserSettings: () => void
-  onImportBackup: () => void
   onImportNotebook: () => void
   onImportUserSettings: () => void
   onImportUserSettingsFromNotebookFolder: () => void
-  onExportRecoveryCopy: () => void
   onChooseUserSettingsFolder: () => void
   onRevealUserSettingsFolder: () => void
   onRetryUserSettingsSync: () => void
   onResetUserSettingsFolder: () => void
   onResetUserSettingsToDefaults: () => void
-  onChooseNotebookBackupFolder: () => void
-  onRunNotebookBackupNow: () => void
-  onRevealNotebookBackupFolder: () => void
-  onResetNotebookBackupFolder: () => void
-  notebookImportSummary: NotebookArchiveSummary | null
-  notebookImportScratchpadEnabled: boolean
-  notebookImportHasScratchpad: boolean
-  onNotebookImportScratchpadEnabledChange: (enabled: boolean) => void
-  onConfirmNotebookImport: () => void
-  onCancelNotebookImport: () => void
   onThemeChange: (theme: AppTheme) => void
   onSelectedCustomThemeChange: (theme: CustomThemeId) => void
   onCustomThemePaletteChange: (slot: CustomThemePaletteSlot, value: string) => void
@@ -219,7 +203,6 @@ type SettingsPageProps = {
   onMoveStorageProfile: () => void
   onRevealStorageProfile: () => void
   onRetryStorageProfile: () => void
-  onRestoreStorageRecoverySnapshot: () => void
 }
 
 export function SettingsPage({
@@ -256,36 +239,22 @@ export function SettingsPage({
   dataCapabilities,
   storageProfileStatus,
   userSettingsLocationStatus,
-  notebookBackupStatus,
   onDataSectionChange,
   onVisualsSectionChange,
   onToggleShortcutEdit,
   onNewlineShortcutChange,
   onOpenShortcutMenuSettings,
   onAutoRemoveDaysChange,
-  onExportAll,
   onExportNotebook,
   onExportUserSettings,
-  onImportBackup,
   onImportNotebook,
   onImportUserSettings,
   onImportUserSettingsFromNotebookFolder,
-  onExportRecoveryCopy,
   onChooseUserSettingsFolder,
   onRevealUserSettingsFolder,
   onRetryUserSettingsSync,
   onResetUserSettingsFolder,
   onResetUserSettingsToDefaults,
-  onChooseNotebookBackupFolder,
-  onRunNotebookBackupNow,
-  onRevealNotebookBackupFolder,
-  onResetNotebookBackupFolder,
-  notebookImportSummary,
-  notebookImportScratchpadEnabled,
-  notebookImportHasScratchpad,
-  onNotebookImportScratchpadEnabledChange,
-  onConfirmNotebookImport,
-  onCancelNotebookImport,
   onThemeChange,
   onSelectedCustomThemeChange,
   onCustomThemePaletteChange,
@@ -331,7 +300,6 @@ export function SettingsPage({
   onMoveStorageProfile,
   onRevealStorageProfile,
   onRetryStorageProfile,
-  onRestoreStorageRecoverySnapshot,
 }: SettingsPageProps) {
   const [themePreviewRailSelection, setThemePreviewRailSelection] = useState<ThemePreviewRailSelection>(
     DEFAULT_THEME_PREVIEW_RAIL_SELECTION,
@@ -622,38 +590,23 @@ export function SettingsPage({
             dataCapabilities={dataCapabilities}
             storageProfileStatus={storageProfileStatus}
             userSettingsLocationStatus={userSettingsLocationStatus}
-            notebookBackupStatus={notebookBackupStatus}
-            notebookImportSummary={notebookImportSummary}
-            notebookImportScratchpadEnabled={notebookImportScratchpadEnabled}
-            notebookImportHasScratchpad={notebookImportHasScratchpad}
             onDataSectionChange={onDataSectionChange}
             onAutoRemoveDaysChange={onAutoRemoveDaysChange}
-            onExportAll={onExportAll}
             onExportNotebook={onExportNotebook}
             onExportUserSettings={onExportUserSettings}
-            onImportBackup={onImportBackup}
             onImportNotebook={onImportNotebook}
             onImportUserSettings={onImportUserSettings}
             onImportUserSettingsFromNotebookFolder={onImportUserSettingsFromNotebookFolder}
-            onExportRecoveryCopy={onExportRecoveryCopy}
             onChooseUserSettingsFolder={onChooseUserSettingsFolder}
             onRevealUserSettingsFolder={onRevealUserSettingsFolder}
             onRetryUserSettingsSync={onRetryUserSettingsSync}
             onResetUserSettingsFolder={onResetUserSettingsFolder}
             onResetUserSettingsToDefaults={onResetUserSettingsToDefaults}
-            onChooseNotebookBackupFolder={onChooseNotebookBackupFolder}
-            onRunNotebookBackupNow={onRunNotebookBackupNow}
-            onRevealNotebookBackupFolder={onRevealNotebookBackupFolder}
-            onResetNotebookBackupFolder={onResetNotebookBackupFolder}
-            onNotebookImportScratchpadEnabledChange={onNotebookImportScratchpadEnabledChange}
-            onConfirmNotebookImport={onConfirmNotebookImport}
-            onCancelNotebookImport={onCancelNotebookImport}
             onCreateNotebook={onCreateNotebook}
             onSwitchNotebook={onSwitchNotebook}
             onMoveStorageProfile={onMoveStorageProfile}
             onRevealStorageProfile={onRevealStorageProfile}
             onRetryStorageProfile={onRetryStorageProfile}
-            onRestoreStorageRecoverySnapshot={onRestoreStorageRecoverySnapshot}
           />
         )}
 

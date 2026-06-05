@@ -1,12 +1,10 @@
 export {}
 
-import type { NotebookBackupStatus, StorageProfileStatus, UserSettingsLocationStatus } from './app'
-import type { AppStateSnapshotMode } from '../storage/persistence-debounce'
+import type { StorageProfileStatus, UserSettingsLocationStatus } from './app'
 
 type SaveAppStatePayload = {
   serializedState: string
   baseRevision: number
-  snapshotMode?: AppStateSnapshotMode
 }
 
 type SaveAppStateResult =
@@ -55,25 +53,20 @@ type ReadAssetResult =
       error: string
     }
 
-type ImportAppStateArchiveResult =
+type ExportNotebookFolderResult =
   | {
       canceled: true
     }
   | {
       canceled: false
       ok: true
-      serializedState: string | null
-      schemaVersion?: number | null
-      health?: 'healthy' | 'warning' | 'error'
-      issues?: StorageProfileStatus['issues']
+      profileRootPath: string
+      notesPath: string
     }
   | {
       canceled: false
       ok: false
-      serializedState: null
       error: string
-      health?: 'healthy' | 'warning' | 'error'
-      issues?: StorageProfileStatus['issues']
     }
 
 type OpenNotebookImportSourceResult =
@@ -86,6 +79,25 @@ type OpenNotebookImportSourceResult =
       kind: 'zip'
       bytes: ArrayBuffer
       filePath?: string
+      nativeNotebookError?: string
+    }
+  | {
+      canceled: false
+      ok: true
+      kind: 'notebook-zip'
+      filePath?: string
+      serializedState: string | null
+      schemaVersion?: number | null
+      health?: 'healthy' | 'warning' | 'error'
+      issues?: StorageProfileStatus['issues']
+      assets?: Array<{
+        relativePath: string
+        bytes: ArrayBuffer
+        fileName?: string
+        name?: string
+        mimeType?: string
+        extension?: string
+      }>
     }
   | {
       canceled: false
@@ -146,11 +158,6 @@ type OpenUserSettingsFileResult =
       error: string
     }
 
-type NotebookBackupActionResult =
-  | { canceled: true; status: NotebookBackupStatus }
-  | { ok: true; status: NotebookBackupStatus; skipped?: boolean; backupPath?: string; prunedPaths?: string[] }
-  | { ok: false; error?: string; status: NotebookBackupStatus; skipped?: boolean }
-
 declare global {
   interface Window {
     electronAPI?: {
@@ -182,7 +189,6 @@ declare global {
       onAppStateUpdated?: (handler: (payload: { serializedState: string; revision: number }) => void) => () => void
       getStorageProfileStatus?: () => Promise<StorageProfileStatus>
       getUserSettingsLocationStatus?: () => Promise<UserSettingsLocationStatus>
-      getNotebookBackupStatus?: () => Promise<NotebookBackupStatus>
       createNotebook?: (payload: { serializedState: string }) => Promise<
         | { canceled: true; status: StorageProfileStatus }
         | { ok: true; status: StorageProfileStatus }
@@ -217,30 +223,14 @@ declare global {
       retryUserSettingsSync?: () => Promise<
         { ok: true; status: UserSettingsLocationStatus } | { ok: false; error?: string; status: UserSettingsLocationStatus }
       >
-      chooseNotebookBackupFolder?: () => Promise<NotebookBackupActionResult>
-      runNotebookBackupNow?: (payload: {
-        data: ArrayBuffer
-        trigger?: 'manual' | 'automatic'
-      }) => Promise<NotebookBackupActionResult>
-      revealNotebookBackupFolder?: () => Promise<{ ok: true } | { ok: false; error: string }>
-      resetNotebookBackupFolder?: () => Promise<NotebookBackupActionResult>
       revealUserSettingsFolder?: () => Promise<{ ok: true } | { ok: false; error: string }>
       revealStorageProfile?: () => Promise<{ ok: true } | { ok: false; error: string }>
       retryStorageProfile?: () => Promise<
         { ok: true; status: StorageProfileStatus } | { ok: false; error?: string; status: StorageProfileStatus }
       >
-      restoreStorageRecoverySnapshot?: (payload?: { snapshotPath?: string }) => Promise<
-        { ok: true; status: StorageProfileStatus } | { ok: false; error?: string; status: StorageProfileStatus }
-      >
       onStorageProfileStatusUpdated?: (handler: (payload: StorageProfileStatus) => void) => () => void
       onUserSettingsLocationStatusUpdated?: (handler: (payload: UserSettingsLocationStatus) => void) => () => void
-      onNotebookBackupStatusUpdated?: (handler: (payload: NotebookBackupStatus) => void) => () => void
-      exportAppState: (payload: { defaultPath: string; serializedState: string }) => Promise<{
-        canceled: boolean
-        filePath?: string
-        error?: string
-      }>
-      importAppStateArchive?: () => Promise<ImportAppStateArchiveResult>
+      exportNotebookFolder?: (payload: { serializedState: string }) => Promise<ExportNotebookFolderResult>
       openNotebookImportSource?: () => Promise<OpenNotebookImportSourceResult>
       readFolderImportAsset?: (payload: { sourceId: string; relativePath: string }) => Promise<ReadFolderImportAssetResult>
       openUserSettingsFile?: () => Promise<OpenUserSettingsFileResult>

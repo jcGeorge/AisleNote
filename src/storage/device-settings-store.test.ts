@@ -50,8 +50,8 @@ describe('device settings store', () => {
       ...DEFAULT_DEVICE_SETTINGS,
       dataSettingsSection: 'settings',
     })
-    expect(parseDeviceSettings(JSON.stringify({ dataSettingsSection: 'sync' })).dataSettingsSection).toBe('notebook')
-    expect(parseDeviceSettings(JSON.stringify({ dataSettingsSection: 'cloud' })).dataSettingsSection).toBe('notebook')
+    expect(parseDeviceSettings(JSON.stringify({ dataSettingsSection: 'sync' })).dataSettingsSection).toBe('transfer')
+    expect(parseDeviceSettings(JSON.stringify({ dataSettingsSection: 'cloud' })).dataSettingsSection).toBe('transfer')
     expect(parseDeviceSettings(JSON.stringify({ toolbarButtonScale: 9 })).toolbarButtonScale).toBe(1.6)
     expect(parseDeviceSettings(JSON.stringify({ lastFindQuery: 123 })).lastFindQuery).toBe('')
     expect(
@@ -197,7 +197,7 @@ describe('device settings store', () => {
     expect(mergeLoadedSettings(state, { settings: DEFAULT_DEVICE_SETTINGS, hasStoredSettings: false }).ui.dataSettingsSection).toBe('settings')
     expect(mergeLoadedSettings(state, { settings: DEFAULT_DEVICE_SETTINGS, hasStoredSettings: false }).ui.visualsSettingsSection).toBe('otherVisuals')
     expect(mergeLoadedSettings(state, { settings: DEFAULT_DEVICE_SETTINGS, hasStoredSettings: true }).ui.settingsSection).toBe('hotkeys')
-    expect(mergeLoadedSettings(state, { settings: DEFAULT_DEVICE_SETTINGS, hasStoredSettings: true }).ui.dataSettingsSection).toBe('notebook')
+    expect(mergeLoadedSettings(state, { settings: DEFAULT_DEVICE_SETTINGS, hasStoredSettings: true }).ui.dataSettingsSection).toBe('transfer')
     expect(mergeLoadedSettings(state, { settings: DEFAULT_DEVICE_SETTINGS, hasStoredSettings: true }).ui.visualsSettingsSection).toBe('theming')
   })
 

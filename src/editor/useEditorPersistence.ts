@@ -230,7 +230,7 @@ export const useEditorPersistence = ({
 
   const persistStateSnapshot = (
     latestState: AppState,
-    options: AppStateSaveOptions = { snapshotMode: 'force', preferSync: true },
+    options: AppStateSaveOptions = { preferSync: true },
   ) => {
     const serializedState = measureSlowOperation('app-state serialization', () => JSON.stringify(latestState))
     appPersistenceService.saveSerializedState(serializedState, {
@@ -240,7 +240,7 @@ export const useEditorPersistence = ({
     void appPersistenceService.flushPendingSaves?.()
   }
 
-  const persistLatestStateSnapshot = (options: AppStateSaveOptions = { snapshotMode: 'force', preferSync: true }) => {
+  const persistLatestStateSnapshot = (options: AppStateSaveOptions = { preferSync: true }) => {
     persistStateSnapshot(buildStateWithLatestEditorContent(), options)
   }
 
@@ -261,7 +261,7 @@ export const useEditorPersistence = ({
     const latestState = buildStateWithLatestEditorContent()
     pendingContentRef.current.clear()
     setState(latestState)
-    persistStateSnapshot(latestState, { snapshotMode: 'force', preferSync: true })
+    persistStateSnapshot(latestState, { preferSync: true })
   })
 
   const scheduleFocusBoundaryFlush = (eventName: Extract<EditorFocusBoundaryEvent, 'blur' | 'visibilitychange'>) => {

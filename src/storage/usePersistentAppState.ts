@@ -140,14 +140,14 @@ export function usePersistentAppState(): PersistentAppStateController {
     persistenceControllerRef.current.schedule(sanitizedState)
   }, [setState, state, storageHydrated])
 
-  const flushPendingPersistence = async (options: AppStateSaveOptions = { snapshotMode: 'force', preferSync: true }) => {
+  const flushPendingPersistence = async (options: AppStateSaveOptions = { preferSync: true }) => {
     persistenceControllerRef.current.flush(options)
     await appPersistenceService.flushPendingSaves?.()
   }
 
   const commitAppStateNow = async (
     nextState: AppState,
-    options: AppStateCommitOptions = { snapshotMode: 'force', preferSync: true, flushQueue: true },
+    options: AppStateCommitOptions = { preferSync: true, flushQueue: true },
   ) => {
     const sanitizedState = applyAutoPurgeToAppState(nextState)
     stateRef.current = sanitizedState

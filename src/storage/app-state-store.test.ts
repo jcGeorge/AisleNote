@@ -149,18 +149,7 @@ describe('Electron app state store', () => {
 
   it('allows saves after a successful structured load result', () => {
     const saveAppState = vi.fn()
-    const dispatchEvent = vi.fn()
-    class TestCustomEvent {
-      type: string
-      detail: unknown
-
-      constructor(type: string, init?: { detail?: unknown }) {
-        this.type = type
-        this.detail = init?.detail
-      }
-    }
     vi.stubGlobal('window', {
-      dispatchEvent,
       electronAPI: {
         loadAppStateResult: () => ({
           ok: true,
@@ -174,9 +163,7 @@ describe('Electron app state store', () => {
           revision: 2,
         }),
       },
-      CustomEvent: TestCustomEvent,
     })
-    vi.stubGlobal('CustomEvent', TestCustomEvent)
 
     const store = createAppStateStore()
 
@@ -186,13 +173,6 @@ describe('Electron app state store', () => {
       serializedState: '{"theme":"light"}',
       baseRevision: 1,
     })
-    expect(dispatchEvent).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'tabs:app-state-saved',
-      detail: {
-        serializedState: '{"theme":"light"}',
-        snapshotMode: 'force',
-      },
-    }))
   })
 
   it('allows saves after a truly empty profile load result', () => {
@@ -226,23 +206,12 @@ describe('Electron app state store', () => {
   it('uses async Electron saves when available and keeps revisions ordered', async () => {
     let nextRevision = 2
     const saveAppState = vi.fn()
-    const dispatchEvent = vi.fn()
-    class TestCustomEvent {
-      type: string
-      detail: unknown
-
-      constructor(type: string, init?: { detail?: unknown }) {
-        this.type = type
-        this.detail = init?.detail
-      }
-    }
     const saveAppStateAsync = vi.fn(async (payload) => ({
       ok: true,
       serializedState: payload.serializedState,
       revision: nextRevision++,
     }))
     vi.stubGlobal('window', {
-      dispatchEvent,
       electronAPI: {
         loadAppStateResult: () => ({
           ok: true,
@@ -253,15 +222,13 @@ describe('Electron app state store', () => {
         saveAppState,
         saveAppStateAsync,
       },
-      CustomEvent: TestCustomEvent,
     })
-    vi.stubGlobal('CustomEvent', TestCustomEvent)
 
     const store = createAppStateStore()
 
     expect(store.load()).toBe('{"theme":"dawn"}')
-    store.save('{"theme":"light"}', { snapshotMode: 'skip' })
-    store.save('{"theme":"dark"}', { snapshotMode: 'debounced' })
+    store.save('{"theme":"light"}')
+    store.save('{"theme":"dark"}')
     await store.flush?.()
 
     expect(saveAppState).not.toHaveBeenCalled()
@@ -269,20 +236,11 @@ describe('Electron app state store', () => {
     expect(saveAppStateAsync).toHaveBeenNthCalledWith(1, {
       serializedState: '{"theme":"light"}',
       baseRevision: 1,
-      snapshotMode: 'skip',
     })
     expect(saveAppStateAsync).toHaveBeenNthCalledWith(2, {
       serializedState: '{"theme":"dark"}',
       baseRevision: 2,
-      snapshotMode: 'debounced',
     })
-    expect(dispatchEvent).toHaveBeenLastCalledWith(expect.objectContaining({
-      type: 'tabs:app-state-saved',
-      detail: {
-        serializedState: '{"theme":"dark"}',
-        snapshotMode: 'debounced',
-      },
-    }))
   })
 
   it('falls back to sync Electron saves when async save is unavailable or sync is preferred', () => {
@@ -306,12 +264,11 @@ describe('Electron app state store', () => {
     const store = createAppStateStore()
 
     expect(store.load()).toBe('{"theme":"dawn"}')
-    store.save('{"theme":"light"}', { snapshotMode: 'force', preferSync: true })
+    store.save('{"theme":"light"}', { preferSync: true })
 
     expect(saveAppState).toHaveBeenCalledWith({
       serializedState: '{"theme":"light"}',
       baseRevision: 1,
-      snapshotMode: 'force',
     })
   })
 
@@ -344,10 +301,10 @@ describe('Electron app state store', () => {
     const store = createAppStateStore()
 
     expect(store.load()).toBe('{"theme":"dawn"}')
-    store.save('{"theme":"stale"}', { snapshotMode: 'skip' })
+    store.save('{"theme":"stale"}')
     await Promise.resolve()
     await Promise.resolve()
-    store.save('{"theme":"fresh"}', { snapshotMode: 'force', preferSync: true })
+    store.save('{"theme":"fresh"}', { preferSync: true })
     resolveAsyncSave?.({ ok: true, serializedState: '{"theme":"stale"}', revision: 2 })
     await store.flush?.()
 
@@ -355,7 +312,6 @@ describe('Electron app state store', () => {
     expect(saveAppState).toHaveBeenCalledWith({
       serializedState: '{"theme":"fresh"}',
       baseRevision: 1,
-      snapshotMode: 'force',
     })
     expect(window.__tabsGetAppStateRevision?.()).toBe(7)
   })

@@ -356,7 +356,6 @@ import type {
   ViewMode,
   WorkspaceData,
 } from '../types/app'
-import type { AppStateSnapshotMode } from '../storage/persistence-debounce'
 
 type ShortcutMenuState = {
   top: number
@@ -567,9 +566,7 @@ export function useAppController(): AppController {
   const activeEditorAisleIdRef = useRef<string>('')
   const activeNoteLocationKeyRef = useRef<string>('')
   const isMainViewRef = useRef(true)
-  const flushStorageActionStateRef = useRef<
-    (options?: { snapshotMode?: Extract<AppStateSnapshotMode, 'force' | 'skip'> }) => Promise<void> | void
-  >(() => {})
+  const flushStorageActionStateRef = useRef<() => Promise<void> | void>(() => {})
 
   useEffect(() => {
     const closeOverlays = () => {
@@ -1131,10 +1128,9 @@ export function useAppController(): AppController {
   const registerMountedEditorSnapshotProvider = editorPersistence.registerMountedEditorSnapshotProvider
   const persistLatestStateSnapshot = editorPersistence.persistLatestStateSnapshot
 
-  flushStorageActionStateRef.current = async (options = {}) => {
-    const snapshotMode = options.snapshotMode ?? 'force'
-    await flushPendingPersistence({ snapshotMode, preferSync: true })
-    persistLatestStateSnapshot({ snapshotMode })
+  flushStorageActionStateRef.current = async () => {
+    await flushPendingPersistence({ preferSync: true })
+    persistLatestStateSnapshot()
   }
 
   const saveActiveCursorBeforeNavigation = () => {
@@ -4036,10 +4032,9 @@ export function useAppController(): AppController {
   const createNotebook = () => storageProfileController.createNotebook(buildBlankNotebookSerializedState)
 
   const notebookTransferActions = useNotebookTransferActions({
-    dataCapabilities,
     getLatestState: buildStateWithLatestEditorContent,
     commitAppStateNow,
-    flushStorageActionState: (options) => flushStorageActionStateRef.current(options),
+    flushStorageActionState: () => flushStorageActionStateRef.current(),
     setExportStatus: settingsController.setExportStatus,
     setImportStatus: settingsController.setImportStatus,
   })
@@ -4278,7 +4273,7 @@ export function useAppController(): AppController {
     setTrashDomainId,
     setTrashSpaceId,
     insertNoteReference,
-    exportData: notebookTransferActions.exportData,
+    exportSpace: notebookTransferActions.exportSpace,
     pushToast,
   })
   const openContextMenuForTab = overlayActions.openContextMenuForTab
@@ -5228,36 +5223,22 @@ export function useAppController(): AppController {
           dataCapabilities={dataCapabilities}
           storageProfileStatus={storageProfileStatus}
           userSettingsLocationStatus={userSettingsLocationStatus}
-          notebookBackupStatus={notebookTransferActions.notebookBackupStatus}
           onDataSectionChange={settingsController.changeDataSection}
           onVisualsSectionChange={settingsController.changeVisualsSection}
           onToggleShortcutEdit={settingsController.toggleShortcutEdit}
           onNewlineShortcutChange={settingsController.updateNewlineShortcutSetting}
           onOpenShortcutMenuSettings={() => setModal({ type: 'shortcut-menu-settings' })}
           onAutoRemoveDaysChange={settingsController.updateAutoRemoveDaysSetting}
-          onExportAll={() => notebookTransferActions.exportData('all')}
           onExportNotebook={notebookTransferActions.exportNotebook}
           onExportUserSettings={userSettingsTransferActions.exportUserSettings}
-          onImportBackup={notebookTransferActions.importBackup}
           onImportNotebook={notebookTransferActions.importNotebook}
           onImportUserSettings={userSettingsTransferActions.importUserSettings}
           onImportUserSettingsFromNotebookFolder={userSettingsTransferActions.importUserSettingsFromNotebookFolder}
-          onExportRecoveryCopy={notebookTransferActions.exportRecoveryCopy}
           onChooseUserSettingsFolder={userSettingsLocationController.chooseUserSettingsFolder}
           onRevealUserSettingsFolder={userSettingsLocationController.revealUserSettingsFolder}
           onRetryUserSettingsSync={userSettingsLocationController.retryUserSettingsSync}
           onResetUserSettingsFolder={userSettingsLocationController.resetUserSettingsFolder}
           onResetUserSettingsToDefaults={userSettingsTransferActions.resetUserSettingsToDefaults}
-          onChooseNotebookBackupFolder={notebookTransferActions.chooseNotebookBackupFolder}
-          onRunNotebookBackupNow={notebookTransferActions.runNotebookBackupNow}
-          onRevealNotebookBackupFolder={notebookTransferActions.revealNotebookBackupFolder}
-          onResetNotebookBackupFolder={notebookTransferActions.resetNotebookBackupFolder}
-          notebookImportSummary={notebookTransferActions.notebookImportSummary}
-          notebookImportScratchpadEnabled={notebookTransferActions.notebookImportScratchpadEnabled}
-          notebookImportHasScratchpad={notebookTransferActions.notebookImportHasScratchpad}
-          onNotebookImportScratchpadEnabledChange={notebookTransferActions.setNotebookImportScratchpadEnabled}
-          onConfirmNotebookImport={notebookTransferActions.confirmNotebookImport}
-          onCancelNotebookImport={notebookTransferActions.cancelNotebookImport}
           onThemeChange={settingsController.updateThemeSetting}
           onSelectedCustomThemeChange={settingsController.updateSelectedCustomThemeSetting}
           onCustomThemePaletteChange={settingsController.updateCustomThemePaletteSetting}
@@ -5307,7 +5288,6 @@ export function useAppController(): AppController {
           onMoveStorageProfile={storageProfileController.moveStorageProfile}
           onRevealStorageProfile={storageProfileController.revealStorageProfile}
           onRetryStorageProfile={storageProfileController.retryStorageProfile}
-          onRestoreStorageRecoverySnapshot={storageProfileController.restoreStorageRecoverySnapshot}
         />
       ) : (
         <>

@@ -44,7 +44,7 @@ describe('portable app settings parsing', () => {
       },
       ui: {
         settingsSection: 'hotkeys',
-        dataSettingsSection: 'notebook',
+        dataSettingsSection: 'transfer',
         tabRenameEnterBehavior: 'goes-to-note',
         noteFilter: {
           active: false,

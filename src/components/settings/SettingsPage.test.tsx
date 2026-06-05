@@ -16,7 +16,6 @@ import type {
   AppState,
   DataSettingsSection,
   FrontmatterSettings,
-  NotebookBackupStatus,
   SettingsSection,
   Space,
   StorageProfileStatus,
@@ -88,7 +87,7 @@ function createState(): AppState {
       tabButtonScale: 1,
       noteFontScale: 1,
       settingsSection: 'hotkeys',
-      dataSettingsSection: 'notebook',
+      dataSettingsSection: 'transfer',
       visualsSettingsSection: 'theming',
       selectedCustomTheme: 'custom1',
       themePalettes: {},
@@ -110,7 +109,6 @@ function renderSettingsPage(
     state?: AppState
     storageProfileStatus?: StorageProfileStatus | null
     userSettingsLocationStatus?: UserSettingsLocationStatus | null
-    notebookBackupStatus?: NotebookBackupStatus | null
     dataCapabilities?: DataPlatformCapabilities
     toolbarEditorLayoutId?: string
     toolbarEditorShowNames?: boolean
@@ -175,36 +173,22 @@ function renderSettingsPage(
       dataCapabilities={options.dataCapabilities ?? DESKTOP_DATA_CAPABILITIES}
       storageProfileStatus={options.storageProfileStatus ?? null}
       userSettingsLocationStatus={options.userSettingsLocationStatus ?? null}
-      notebookBackupStatus={options.notebookBackupStatus ?? null}
       onDataSectionChange={() => undefined}
       onVisualsSectionChange={() => undefined}
       onToggleShortcutEdit={() => undefined}
       onNewlineShortcutChange={() => undefined}
       onOpenShortcutMenuSettings={() => undefined}
       onAutoRemoveDaysChange={() => undefined}
-      onExportAll={() => undefined}
       onExportNotebook={() => undefined}
       onExportUserSettings={() => undefined}
-      onImportBackup={() => undefined}
       onImportNotebook={() => undefined}
       onImportUserSettings={() => undefined}
       onImportUserSettingsFromNotebookFolder={() => undefined}
-      onExportRecoveryCopy={() => undefined}
       onChooseUserSettingsFolder={() => undefined}
       onRevealUserSettingsFolder={() => undefined}
       onRetryUserSettingsSync={() => undefined}
       onResetUserSettingsFolder={() => undefined}
       onResetUserSettingsToDefaults={() => undefined}
-      onChooseNotebookBackupFolder={() => undefined}
-      onRunNotebookBackupNow={() => undefined}
-      onRevealNotebookBackupFolder={() => undefined}
-      onResetNotebookBackupFolder={() => undefined}
-      notebookImportSummary={null}
-      notebookImportScratchpadEnabled={false}
-      notebookImportHasScratchpad={false}
-      onNotebookImportScratchpadEnabledChange={() => undefined}
-      onConfirmNotebookImport={() => undefined}
-      onCancelNotebookImport={() => undefined}
       onThemeChange={() => undefined}
       onSelectedCustomThemeChange={() => undefined}
       onCustomThemePaletteChange={() => undefined}
@@ -250,7 +234,6 @@ function renderSettingsPage(
       onMoveStorageProfile={() => undefined}
       onRevealStorageProfile={() => undefined}
       onRetryStorageProfile={() => undefined}
-      onRestoreStorageRecoverySnapshot={() => undefined}
     />,
   )
 }
@@ -411,28 +394,19 @@ describe('frontmatter settings page', () => {
     expect(html).not.toContain('<option value="aisle">aisle</option>')
   })
 
-  it('splits data settings into backup, settings, notebook, and trash sub-sections', () => {
-    const notebookHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'data' })
+  it('splits data settings into transfer, settings, notebook, and trash sub-sections', () => {
+    const transferHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'data' })
     const settingsHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'data', dataSection: 'settings' })
     const storageHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'data', dataSection: 'storage' })
     const trashHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'data', dataSection: 'trash' })
 
-    expect(notebookHtml).toContain('role="radiogroup" aria-labelledby="settings-data-section-label"')
-    expect(notebookHtml).toContain('aria-checked="true" class="settings-segmented-option is-selected">backup</button>')
-    expect(notebookHtml).toContain('notebook archives:')
-    expect(notebookHtml).toContain('export notebook archive')
-    expect(notebookHtml).toContain('import notebook')
-    expect(notebookHtml).not.toContain('import notebook archive')
-    expect(notebookHtml).not.toContain('import notebook folder')
-    expect(notebookHtml).not.toContain('import Markdown folder')
-    expect(notebookHtml).toContain('notebook archives are readable markdown ZIPs')
-    expect(notebookHtml).toContain('folders or ZIPs containing a domain/space/parent/subtab markdown hierarchy')
-    expect(notebookHtml).toContain('imports append remapped content and keep user settings separate')
-    expect(notebookHtml).toContain('automatic backups:')
-    expect(notebookHtml).toContain('choose backup folder')
-    expect(notebookHtml).toContain('backup now')
-    expect(notebookHtml).not.toContain('choose notebook folder')
-    expect(notebookHtml).not.toContain('automatically remove deleted items after:')
+    expect(transferHtml).toContain('role="radiogroup" aria-labelledby="settings-data-section-label"')
+    expect(transferHtml).toContain('aria-checked="true" class="settings-segmented-option is-selected">transfer</button>')
+    expect(transferHtml).toContain('notebook transfer:')
+    expect(transferHtml).toContain('export notebook folder')
+    expect(transferHtml).toContain('import notebook/markdown')
+    expect(transferHtml).toContain('export creates a native notebook folder on desktop')
+    expect(transferHtml).not.toContain('automatically remove deleted items after:')
 
     expect(settingsHtml).toContain('aria-checked="true" class="settings-segmented-option is-selected">settings</button>')
     expect(settingsHtml).toContain('user settings:')
@@ -454,13 +428,10 @@ describe('frontmatter settings page', () => {
     expect(storageHtml).toContain('new notebook')
     expect(storageHtml).toContain('switch notebook')
     expect(storageHtml).toContain('move notebook folder')
-    expect(storageHtml).toContain('advanced support:')
-    expect(storageHtml).toContain('export support archive')
-    expect(storageHtml).toContain('import support archive')
-    expect(storageHtml).toContain('support archives are internal Tabs diagnostics')
     expect(storageHtml).toContain('app-settings.json')
     expect(storageHtml).not.toContain('choose sync folder')
-    expect(storageHtml).not.toContain('internal backup')
+    expect(storageHtml).not.toContain('advanced support:')
+    expect(storageHtml).not.toContain('restore latest snapshot')
 
     expect(trashHtml).toContain('aria-checked="true" class="settings-segmented-option is-selected">trash</button>')
     expect(trashHtml).toContain('automatically remove deleted items after:')
@@ -510,15 +481,15 @@ describe('frontmatter settings page', () => {
     expect(html).toContain('Settings folder does not contain settings/app-settings.json. Using local app settings.')
   })
 
-  it('hides desktop-only folder controls on mobile and exposes archive-based recovery', () => {
+  it('hides desktop-only folder controls on mobile', () => {
     const settingsHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, {
       section: 'data',
       dataSection: 'settings',
       dataCapabilities: MOBILE_DATA_CAPABILITIES,
     })
-    const backupHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, {
+    const transferHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, {
       section: 'data',
-      dataSection: 'notebook',
+      dataSection: 'transfer',
       dataCapabilities: MOBILE_DATA_CAPABILITIES,
     })
     const folderHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, {
@@ -533,21 +504,16 @@ describe('frontmatter settings page', () => {
     expect(settingsHtml).not.toContain('choose settings folder')
     expect(settingsHtml).not.toContain('import from notebook folder')
 
-    expect(backupHtml).toContain('import notebook')
-    expect(backupHtml).toContain('folders or ZIPs containing a domain/space/parent/subtab markdown hierarchy')
-    expect(backupHtml).not.toContain('folder imports are desktop only')
-    expect(backupHtml).not.toContain('import notebook folder')
-    expect(backupHtml).not.toContain('import Markdown folder')
+    expect(transferHtml).toContain('export notebook folder')
+    expect(transferHtml).toContain('import notebook/markdown')
+    expect(transferHtml).toContain('notebook folder export is desktop only')
 
     expect(folderHtml).toContain('local app notebook:')
     expect(folderHtml).toContain('app-private local')
-    expect(folderHtml).toContain('export recovery copy')
-    expect(folderHtml).toContain('live notebook folders, live settings folders, backups, and folder switching are desktop features')
+    expect(folderHtml).toContain('live notebook folders, live settings folders, and folder switching are desktop features')
     expect(folderHtml).not.toContain('new notebook')
     expect(folderHtml).not.toContain('switch notebook')
     expect(folderHtml).not.toContain('move notebook folder')
-    expect(folderHtml).not.toContain('export support archive')
-    expect(folderHtml).not.toContain('import support archive')
   })
 
   it('renders custom theme palette controls when a custom theme is selected', () => {
@@ -1004,7 +970,7 @@ describe('frontmatter settings page', () => {
     expect(html).toContain('type="datetime-local" class="settings-text-input frontmatter-default-input" aria-label="frontmatter default value" value=""')
   })
 
-  it('renders warning notebook folder health with recovery actions', () => {
+  it('renders warning notebook folder health without recovery actions', () => {
     const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, {
       section: 'data',
       dataSection: 'storage',
@@ -1026,8 +992,6 @@ describe('frontmatter settings page', () => {
         canWrite: true,
         source: 'hybrid',
         schemaVersion: 2,
-        recoverySnapshotCount: 2,
-        latestRecoverySnapshotPath: '/tmp/tabs/storage-recovery/notes-1',
       },
     })
 
@@ -1035,14 +999,11 @@ describe('frontmatter settings page', () => {
     expect(html).toContain('health</span><span>warning</span>')
     expect(html).toContain('schema</span><span>2</span>')
     expect(html).toContain('writable</span><span>yes</span>')
-    expect(html).toContain('recovery snapshots</span><span>2</span>')
     expect(html).toContain('aria-label="notebook folder health issues"')
     expect(html).toContain('Markdown file is missing; this note was loaded as empty.')
-    expect(html).toContain('export support archive')
-    expect(html).toContain('restore latest snapshot</button>')
   })
 
-  it('renders error notebook folder health with paused writes and disabled restore when no snapshots exist', () => {
+  it('renders error notebook folder health with paused writes and no restore action', () => {
     const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, {
       section: 'data',
       dataSection: 'storage',
@@ -1065,7 +1026,6 @@ describe('frontmatter settings page', () => {
         canWrite: false,
         source: 'hybrid',
         schemaVersion: null,
-        recoverySnapshotCount: 0,
         error: 'Existing app state could not be loaded.',
       },
     })
@@ -1074,7 +1034,6 @@ describe('frontmatter settings page', () => {
     expect(html).toContain('health</span><span>error</span>')
     expect(html).toContain('writable</span><span>paused</span>')
     expect(html).toContain('Root manifest is corrupt.')
-    expect(html).toContain('restore latest snapshot</button>')
-    expect(html).toContain('disabled=""')
+    expect(html).not.toContain('restore latest snapshot')
   })
 })

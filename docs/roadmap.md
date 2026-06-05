@@ -9,7 +9,7 @@ The guiding rule is: data integrity and recovery come before visual polish and p
 Cleaned up on 2026-05-17.
 
 - **Phase 1 is complete.** The stabilization pass covered real-workspace persistence, frontmatter, batch note workflows, rename persistence, trash/restore, export/images, and notebook-folder reload/move behavior.
-- **Phase 2 is complete for the current schema 1 storage model.** The active `domains/` manifest/Markdown/assets format is documented, Electron/browser storage behavior is hardened, notebook-folder health is visible in settings, global user settings are separated from selected notebook folders, and recovery snapshots are available outside the active `notes/` tree.
+- **Phase 2 is complete for the current schema 1 storage model.** The active `domains/` manifest/Markdown/assets format is documented, Electron/browser storage behavior is hardened, notebook-folder health is visible in settings, and global user settings are separated from selected notebook folders.
 - **Phase 3 is complete for this roadmap gate.** The first targeted refactor pass extracted notebook-folder orchestration and cleared the hook-dependency cleanup target. Larger refactor slices are now normal engineering hygiene, not blockers for Phase 4.
 - **Phase 4 is the current active phase.** The first input-polish slice is largely implemented; remaining Phase 4 work is continued bug polish plus the later design-system/UI overhaul.
 
@@ -23,7 +23,7 @@ Completed outcomes:
 - Batch note operations were exercised for frontmatter application, note movement, deletion, restore, and review flows.
 - Rename persistence for domains, spaces, parent tabs, and sub-tabs was validated across app restart/storage reload.
 - Trash restore/delete behavior, export output, image asset handling, image resize/crop/rotation metadata, and notebook-folder move/retry/reload behavior were validated.
-- The manual real-workspace pass used QA-only data and a backup-first workflow.
+- The manual real-workspace pass used QA-only copied data.
 
 Ongoing rule:
 
@@ -36,15 +36,15 @@ Goal: make the manifest/Markdown/assets storage model resilient enough for real 
 Completed outcomes:
 
 - `docs/storage-schema.md` now describes the current schema 1 `notes/domains/...` layout as canonical; the future `topics/` idea remains explicitly deferred.
-- Missing Markdown files, missing/corrupt trash manifests, corrupt branch manifests, corrupt/unsupported root manifests, stale revisions, conflict folders, and paused-write recovery paths are covered by storage behavior and tests.
-- Settings > Data surfaces notebook archive actions, user-settings transfer, notebook create/switch/move actions, notebook-folder health, folder path, schema/writable state, issue details, recovery snapshot count, reveal folder, retry reload, backup, and restore latest snapshot actions.
+- Missing Markdown files, missing/corrupt trash manifests, corrupt branch manifests, corrupt/unsupported root manifests, stale revisions, conflict folders, and paused-write safeguards are covered by storage behavior and tests.
+- Settings > Data surfaces notebook folder transfer, user-settings transfer, notebook create/switch/move actions, notebook-folder health, folder path, schema/writable state, issue details, reveal folder, and retry reload actions.
 - Browser hybrid storage and Electron filesystem storage have parity coverage for the current logical app state.
-- Electron recovery snapshots are created outside synced `notes/` and retention pruning keeps bounded restore points across the latest active days.
+- Automatic save copies have been removed in favor of explicit folder export/import and user-managed copies.
 - Pre-production storage compatibility has been removed before launch.
 
 Remaining storage follow-up:
 
-- Add a richer recovery snapshot browser/timeline after the retention behavior has settled. It should let users choose older restore points instead of only restoring the latest safe snapshot.
+- Keep storage health reporting focused on load-blocking issues and explicit transfer actions.
 
 ## Phase 3: Targeted Refactor — Complete For This Roadmap Gate
 
@@ -157,15 +157,14 @@ Focus areas:
 
 - Choose Electron Builder or Electron Forge and document the packaging workflow.
 - App identity, icons, metadata, installer strategy, Windows packaging, macOS packaging, signing/notarization, and update channels.
-- Crash-safe saves, storage migration guarantees, and recovery behavior suitable for non-developer users.
-- Recovery snapshot browser/timeline if latest-snapshot restore is not enough for desktop release confidence.
-- Export/backup/recovery flows suitable for non-developer users.
+- Crash-safe saves and storage migration guarantees suitable for non-developer users.
+- Explicit notebook folder transfer and user-settings transfer flows suitable for non-developer users.
 - Electron menu behavior and keyboard shortcuts on macOS and Windows.
 
 Exit criteria:
 
 - A clean machine can install, launch, choose storage, create notes, restart, and update without data loss.
-- Notebook folder and backup behavior are understandable from inside the app.
+- Notebook folder and transfer behavior are understandable from inside the app.
 - Release checklist passes on macOS and Windows.
 
 ## Phase 9: PWA And Mobile Deployment Prep

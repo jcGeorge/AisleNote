@@ -8,13 +8,9 @@ type StorageProfileActionResult =
 
 type SerializedStateSource = string | (() => string)
 
-type BeforeStorageActionOptions = {
-  snapshotMode?: 'force' | 'skip'
-}
-
 type UseStorageProfileControllerParams = {
   pushToast: (message: string, tone?: ToastTone, durationMs?: number) => void
-  beforeStorageAction?: (options?: BeforeStorageActionOptions) => Promise<void> | void
+  beforeStorageAction?: () => Promise<void> | void
 }
 
 const STORAGE_ERROR_TOAST_DURATION_MS = 6000
@@ -143,16 +139,6 @@ export function useStorageProfileController({ pushToast, beforeStorageAction }: 
     handleStorageProfileResult(result, 'notebook folder reloaded.')
   }
 
-  const restoreStorageRecoverySnapshot = async () => {
-    await beforeStorageActionRef.current?.({ snapshotMode: 'skip' })
-    const result = await window.electronAPI?.restoreStorageRecoverySnapshot?.()
-    if (!result) {
-      pushToastRef.current('notebook folder recovery is only available in the desktop app.', 'warning')
-      return
-    }
-    handleStorageProfileResult(result, 'latest recovery snapshot restored.')
-  }
-
   return {
     storageProfileStatus,
     chooseStorageFolder,
@@ -161,6 +147,5 @@ export function useStorageProfileController({ pushToast, beforeStorageAction }: 
     moveStorageProfile,
     revealStorageProfile,
     retryStorageProfile,
-    restoreStorageRecoverySnapshot,
   }
 }

@@ -1010,7 +1010,7 @@ describe('app state normalization', () => {
     expect(valid.ui.settingsSection).toBe('visuals')
     expect(data.ui.settingsSection).toBe('data')
     expect(data.ui.dataSettingsSection).toBe('storage')
-    expect(invalidData.ui.dataSettingsSection).toBe('notebook')
+    expect(invalidData.ui.dataSettingsSection).toBe('transfer')
     expect(misc.ui.settingsSection).toBe('misc')
     expect(theming.ui.settingsSection).toBe('hotkeys')
     expect(theming.ui.visualsSettingsSection).toBe('theming')

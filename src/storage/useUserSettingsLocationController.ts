@@ -6,13 +6,9 @@ type UserSettingsLocationActionResult =
   | { ok: true; status: UserSettingsLocationStatus }
   | { ok: false; error?: string; status: UserSettingsLocationStatus }
 
-type BeforeUserSettingsLocationActionOptions = {
-  snapshotMode?: 'force' | 'skip'
-}
-
 type UseUserSettingsLocationControllerParams = {
   pushToast: (message: string, tone?: ToastTone, durationMs?: number) => void
-  beforeUserSettingsLocationAction?: (options?: BeforeUserSettingsLocationActionOptions) => Promise<void> | void
+  beforeUserSettingsLocationAction?: () => Promise<void> | void
 }
 
 const USER_SETTINGS_LOCATION_ERROR_TOAST_DURATION_MS = 6000

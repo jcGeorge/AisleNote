@@ -65,14 +65,6 @@ Readable path segments include a title plus an ID-derived hash. Stable IDs remai
 
 For notes, a single aisle is stored as one Markdown file. A note folder is used only when that note currently has multiple aisles.
 
-Electron recovery snapshots are stored outside the synced `notes/` tree:
-
-```text
-<electron-user-data>/
-  storage-recovery/
-    notes-<timestamp>/
-```
-
 ## Core Rules
 
 ### IDs
@@ -137,8 +129,6 @@ Markdown references assets with relative paths. Runtime/editor layers may inline
 Active asset cleanup uses the same save pass that writes Markdown. Each save rebuilds the expected file list from live notes, aisle bodies, unlinked note bodies, and trash/deleted content, then prunes files in `notes/` that are not in that expected set. Image resize changes only the persisted image metadata fragment and does not create a new image file. Image crop and transform operations can create immediate preview assets, but any unreferenced intermediate assets in the active `notes/assets/` folder are removed by the next save/prune pass.
 
 Video resize, rotate, flip, and crop operations are metadata-only. They keep the original asset file and store display metadata in a `#tabs-media=...` URL fragment on the Markdown link. Crop rectangles use normalized source coordinates, so no resized or transcoded video copy is created by default.
-
-Recovery snapshots are exact historical copies of `notes/`, including the asset files from that moment. They are stored outside the active `notes/` tree and pruned by retention policy rather than sharing the latest active asset versions.
 
 Example:
 
@@ -274,9 +264,9 @@ Use these principles consistently:
 - `schemaVersion`: integer storage format gate
 - `editor-state.json.noteCursorLocations`: optional map keyed by domain/space/parent/sub-tab location
 
-## Validation And Recovery
+## Validation And Health
 
-Current recovery behavior:
+Current health behavior:
 
 - The root manifest `schemaVersion` is the format gate. Schema 1 is the current write format.
 - Missing, corrupt, or unsupported root manifests are load-blocking to avoid silently overwriting real data.
@@ -287,17 +277,16 @@ Current recovery behavior:
 - Missing or corrupt domain manifests skip only that domain where another readable domain remains.
 - If no readable domains remain, loading fails and writes are paused.
 - Cloud-provider conflict folders are load-blocking until resolved.
-- Saves create pre-write recovery snapshots outside the synced `notes/` tree when Electron user-data is available.
+- Saves write through atomic replacement where possible and pause when load-blocking errors are detected.
 
-Recovery UI should surface:
+Storage health UI should surface:
 
 - current notebook folder path
 - schema version
 - writable/paused state
 - notebook folder health (`healthy`, `warning`, or `error`)
 - issue codes/messages/paths
-- recovery snapshot count
-- reveal folder, retry reload, backup, and restore snapshot actions
+- reveal folder and retry reload actions
 
 ## Browser Adapter
 
@@ -315,7 +304,7 @@ Browser storage should remain logically compatible with the Electron filesystem 
 
 ## Legacy Storage
 
-Pre-production notebook folders and old app-state backup archives are not loaded or migrated. A missing `notes/` folder loads as an empty notebook and is recreated on save. Unsupported schema versions are not silently migrated or overwritten.
+Pre-production notebook folders are not loaded or migrated. A missing `notes/` folder loads as an empty notebook and is recreated on save. Unsupported schema versions are not silently migrated or overwritten.
 
 ## Future Topic Layer
 

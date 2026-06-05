@@ -54,7 +54,7 @@ function makeActions(options: {
     setTrashTabId: (options.setTrashTabId ?? vi.fn()) as Dispatch<SetStateAction<string>>,
     setTrashSubTabId: (options.setTrashSubTabId ?? vi.fn()) as Dispatch<SetStateAction<string | null>>,
     insertNoteReference: vi.fn(() => false),
-    exportData: vi.fn(),
+    exportSpace: vi.fn(),
     pushToast: options.pushToast ?? vi.fn(),
   })
 }

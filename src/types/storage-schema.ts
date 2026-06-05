@@ -82,7 +82,7 @@ export type StorageSettingsSection =
   | 'tips'
   | 'toolbar'
   | 'visuals'
-export type StorageDataSettingsSection = 'notebook' | 'settings' | 'storage' | 'trash'
+export type StorageDataSettingsSection = 'transfer' | 'settings' | 'storage' | 'trash'
 export type StorageVisualsSettingsSection = 'theming' | 'otherVisuals'
 export type StorageTableControlTargetMode = 'active-cell' | 'bottom-right'
 export type StorageTableOfContentsScope = 'all-aisles' | 'focused-aisle'

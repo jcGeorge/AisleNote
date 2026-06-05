@@ -1,5 +1,4 @@
 import type { MouseEvent, Dispatch, SetStateAction, MutableRefObject } from 'react'
-import type { ExportScope } from '../export/export-data'
 import { buildFrontmatterDataFromRows, updateAisleFrontmatter } from '../frontmatter/frontmatter-state'
 import {
   buildNoteLocationKey,
@@ -82,7 +81,7 @@ type UseAppOverlayActionsParams = {
   setTrashDomainId?: Dispatch<SetStateAction<string>>
   setTrashSpaceId?: Dispatch<SetStateAction<string>>
   insertNoteReference: (modalState: Extract<ModalState, { type: 'insert-note-reference' }>) => boolean
-  exportData: (scope: ExportScope, spaceId?: string) => void | Promise<unknown>
+  exportSpace: (spaceId?: string) => void | Promise<unknown>
   pushToast: (message: string, tone?: ToastTone, durationMs?: number) => void
 }
 
@@ -107,7 +106,7 @@ export const useAppOverlayActions = ({
   setTrashDomainId,
   setTrashSpaceId,
   insertNoteReference,
-  exportData,
+  exportSpace,
   pushToast,
 }: UseAppOverlayActionsParams) => {
   const activeSpace = state.spaces.find((space) => space.id === activeSpaceId) ?? state.spaces[0]
@@ -834,7 +833,7 @@ export const useAppOverlayActions = ({
     if (modal.type === 'export-space') {
       const spaceId = modal.spaceId
       setModal(null)
-      void exportData('space', spaceId)
+      void exportSpace(spaceId)
       return
     }
 

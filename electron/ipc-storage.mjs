@@ -3,9 +3,7 @@ import path from 'node:path'
 import { createAppStateCoordinator, LOAD_FAILED_SAVE_ERROR } from './app-state-coordinator.mjs'
 import {
   getHybridStorageRoot,
-  listStorageRecoverySnapshots,
   loadAppStateResult,
-  restoreStorageRecoverySnapshot,
   saveAppState,
   writeAssetToProfile,
   writeImageAssetToProfile,
@@ -16,13 +14,6 @@ import {
   writeStorageProfileConfig,
 } from './storage-profile.mjs'
 import { createStorageProfileWatcher } from './storage-watcher.mjs'
-import {
-  configureNotebookBackupDestination,
-  createNotebookBackupStatus,
-  resetNotebookBackupDestination,
-  validateNotebookBackupDestination,
-  writeNotebookBackupArchive,
-} from './notebook-backup-location.mjs'
 import {
   createUserSettingsLocation,
   createUserSettingsLocationStatus,
@@ -42,7 +33,6 @@ import { normalizeImageAssetPath, parseImageAssetUrl } from '../src/markdown/ima
 function createStorageStatus({ profile, coordinator, event = 'ready', error = null }) {
   const loadResult = coordinator.getLoadResult()
   const hasProfile = existsSync(getHybridStorageRoot(profile.profileRootPath))
-  const recoverySnapshots = listStorageRecoverySnapshots(profile.userDataPath ?? profile.profileRootPath)
   return {
     status: loadResult.ok ? 'ready' : 'error',
     health: loadResult.health ?? (loadResult.ok ? 'healthy' : 'error'),
@@ -57,8 +47,6 @@ function createStorageStatus({ profile, coordinator, event = 'ready', error = nu
     schemaVersion: loadResult.schemaVersion,
     conflicts: loadResult.conflicts,
     revision: loadResult.revision,
-    recoverySnapshotCount: recoverySnapshots.length,
-    latestRecoverySnapshotPath: recoverySnapshots[0]?.path,
     error: error ?? (loadResult.ok ? undefined : loadResult.error),
   }
 }
@@ -127,7 +115,6 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
   let userSettingsLocationRefresh = refreshLocalUserSettingsFromLocation(userDataPath, userSettingsLocation)
   if (userSettingsLocationRefresh.location) userSettingsLocation = userSettingsLocationRefresh.location
   let userSettingsLocationStatus = userSettingsLocationRefresh.status
-  let notebookBackupStatus = createNotebookBackupStatus(userDataPath, profile.profileRootPath)
   const loadNotebookResult = (profileRootPath) => loadAppStateResult(profileRootPath, { userSettingsRoot: userDataPath })
   const adoptUserSettingsLocationResult = (result) => {
     if (result?.location) userSettingsLocation = result.location
@@ -178,13 +165,6 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     }
   }
 
-  const broadcastNotebookBackupStatus = () => {
-    for (const window of getAllWindows(BrowserWindow)) {
-      if (!window || window.isDestroyed?.()) continue
-      window.webContents?.send?.('notebook-backup-status-updated', notebookBackupStatus)
-    }
-  }
-
   const updateStatus = (event = 'ready', error = null) => {
     status = createStorageStatus({ profile, coordinator, event, error })
     broadcastStorageStatus()
@@ -201,12 +181,6 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     adoptUserSettingsLocationResult(result)
     if (result?.status) updateUserSettingsLocationStatus(result.status)
     return result
-  }
-
-  const updateNotebookBackupStatus = (nextStatus = createNotebookBackupStatus(userDataPath, profile.profileRootPath)) => {
-    notebookBackupStatus = nextStatus
-    broadcastNotebookBackupStatus()
-    return notebookBackupStatus
   }
 
   const logExternalStorageEvent = (event) => {
@@ -345,7 +319,6 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     }
     profile = { ...writeStorageProfileConfig(userDataPath, profileRootPath), userDataPath }
     updateStatus(result.ok ? event : 'profile-error', result.ok ? null : result.error)
-    updateNotebookBackupStatus()
     startWatcher()
     if (result.ok && typeof result.serializedState === 'string') {
       broadcastAppStateUpdate({
@@ -682,98 +655,6 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     }
   }
 
-  const chooseNotebookBackupFolder = async () => {
-    if (!dialog || typeof dialog.showOpenDialog !== 'function') {
-      return { ok: false, error: 'Backup folder selection is unavailable.', status: notebookBackupStatus }
-    }
-
-    const selection = await dialog.showOpenDialog({
-      title: 'Choose backup folder',
-      properties: ['openDirectory', 'createDirectory'],
-    })
-    if (selection.canceled || !selection.filePaths?.[0]) {
-      return { canceled: true, status: notebookBackupStatus }
-    }
-
-    const destinationRootPath = path.resolve(selection.filePaths[0])
-    const validation = validateNotebookBackupDestination(destinationRootPath, profile.profileRootPath)
-    if (!validation.ok) {
-      const rejectedStatus = createNotebookBackupStatus(userDataPath, profile.profileRootPath, undefined, {
-        event: 'backup-destination-rejected',
-      })
-      updateNotebookBackupStatus({
-        ...rejectedStatus,
-        status: 'warning',
-        enabled: notebookBackupStatus.enabled,
-        destinationRootPath: notebookBackupStatus.destinationRootPath,
-        managedFolderPath: notebookBackupStatus.managedFolderPath,
-        error: validation.error,
-        canWrite: false,
-      })
-      return { ok: false, error: validation.error, status: notebookBackupStatus }
-    }
-
-    try {
-      const config = configureNotebookBackupDestination(userDataPath, destinationRootPath)
-      updateNotebookBackupStatus(
-        createNotebookBackupStatus(userDataPath, profile.profileRootPath, config, {
-          event: 'backup-destination-selected',
-        }),
-      )
-      return { ok: true, status: notebookBackupStatus }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Backup folder could not be saved.'
-      updateNotebookBackupStatus({
-        ...notebookBackupStatus,
-        status: 'warning',
-        event: 'backup-destination-error',
-        error: message,
-        canWrite: false,
-      })
-      return { ok: false, error: message, status: notebookBackupStatus }
-    }
-  }
-
-  const runNotebookBackupNow = async (_event, payload = {}) => {
-    const trigger = payload?.trigger === 'automatic' ? 'automatic' : 'manual'
-    const rawData = payload?.data
-    if (!(rawData instanceof ArrayBuffer) && !ArrayBuffer.isView(rawData)) {
-      updateNotebookBackupStatus({
-        ...notebookBackupStatus,
-        status: 'warning',
-        event: 'backup-write-failed',
-        error: 'Notebook archive payload is invalid.',
-        canWrite: false,
-      })
-      return { ok: false, error: 'Notebook archive payload is invalid.', status: notebookBackupStatus }
-    }
-    const result = writeNotebookBackupArchive(userDataPath, profile.profileRootPath, rawData, { trigger })
-    updateNotebookBackupStatus(result.status)
-    return result
-  }
-
-  const resetNotebookBackupFolder = async () => {
-    try {
-      const config = resetNotebookBackupDestination(userDataPath)
-      updateNotebookBackupStatus(
-        createNotebookBackupStatus(userDataPath, profile.profileRootPath, config, {
-          event: 'backup-destination-reset',
-        }),
-      )
-      return { ok: true, status: notebookBackupStatus }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Backup folder could not be reset.'
-      updateNotebookBackupStatus({
-        ...notebookBackupStatus,
-        status: 'warning',
-        event: 'backup-destination-reset-error',
-        error: message,
-        canWrite: false,
-      })
-      return { ok: false, error: message, status: notebookBackupStatus }
-    }
-  }
-
   startWatcher()
 
   ipcMain.on('load-app-state', (event) => {
@@ -805,7 +686,6 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
 
   ipcMain.handle?.('get-storage-profile-status', async () => status)
   ipcMain.handle?.('get-user-settings-location-status', async () => userSettingsLocationStatus)
-  ipcMain.handle?.('get-notebook-backup-status', async () => notebookBackupStatus)
   ipcMain.handle?.('create-notebook', createNotebook)
   ipcMain.handle?.('switch-notebook', switchNotebook)
   ipcMain.handle?.('choose-storage-folder', async (event) => chooseProfileRoot('choose', event))
@@ -814,21 +694,6 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
   ipcMain.handle?.('reset-user-settings-folder', resetUserSettingsFolder)
   ipcMain.handle?.('reset-user-settings-to-defaults', resetUserSettingsToDefaults)
   ipcMain.handle?.('retry-user-settings-sync', retryUserSettingsSync)
-  ipcMain.handle?.('choose-notebook-backup-folder', chooseNotebookBackupFolder)
-  ipcMain.handle?.('run-notebook-backup-now', runNotebookBackupNow)
-  ipcMain.handle?.('reset-notebook-backup-folder', resetNotebookBackupFolder)
-  ipcMain.handle?.('reveal-notebook-backup-folder', async () => {
-    if (!shell || typeof shell.openPath !== 'function') {
-      return { ok: false, error: 'Reveal is unavailable.' }
-    }
-    const revealPath =
-      notebookBackupStatus.managedFolderPath && existsSync(notebookBackupStatus.managedFolderPath)
-        ? notebookBackupStatus.managedFolderPath
-        : notebookBackupStatus.destinationRootPath
-    if (!revealPath) return { ok: false, error: 'Backup folder is not configured.' }
-    const error = await shell.openPath(revealPath)
-    return error ? { ok: false, error } : { ok: true }
-  })
   ipcMain.handle?.('reveal-user-settings-folder', async () => {
     if (!shell || typeof shell.openPath !== 'function') {
       return { ok: false, error: 'Reveal is unavailable.' }
@@ -858,29 +723,6 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     }
     return { ok: result.ok, status, error: result.ok ? undefined : result.error }
   })
-  ipcMain.handle?.('restore-storage-recovery-snapshot', async (_event, payload = {}) => {
-    const restoreResult = restoreStorageRecoverySnapshot(
-      profile.profileRootPath,
-      userDataPath,
-      typeof payload?.snapshotPath === 'string' ? payload.snapshotPath : null,
-    )
-    if (!restoreResult.ok) {
-      updateStatus('recovery-error', restoreResult.error)
-      return { ok: false, status, error: restoreResult.error }
-    }
-
-    const result = coordinator.reloadProfileRoot(profile.profileRootPath, { detectAppSaveEcho: false })
-    updateStatus(result.ok ? 'recovery-restored' : 'recovery-error', result.ok ? null : result.error)
-    if (result.ok && typeof result.serializedState === 'string') {
-      broadcastAppStateUpdate({
-        serializedState: result.serializedState,
-        revision: result.revision,
-      })
-      watcher?.reset()
-    }
-    return { ok: result.ok, status, error: result.ok ? undefined : result.error }
-  })
-
   ipcMain.handle?.('import-image-asset', async (_event, payload = {}) => {
     try {
       const rawBytes = payload?.bytes
@@ -967,9 +809,8 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     getProfileRootPath: () => profile.profileRootPath,
     getStorageProfileStatus: () => status,
     getUserSettingsLocationStatus: () => userSettingsLocationStatus,
-    getNotebookBackupStatus: () => notebookBackupStatus,
     resetUserSettingsToDefaults,
-    saveAppStateSnapshot: saveRevisionedState,
+    saveRendererAppState: saveRevisionedState,
     scanStorageProfile: () => watcher?.scan(),
     close: () => watcher?.close(),
   }

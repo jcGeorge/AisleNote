@@ -13,29 +13,25 @@ describe('data platform capabilities', () => {
     )
     expect(DESKTOP_DATA_CAPABILITIES.notebookFolders).toBe(true)
     expect(DESKTOP_DATA_CAPABILITIES.settingsFolders).toBe(true)
-    expect(DESKTOP_DATA_CAPABILITIES.backups).toBe(true)
     expect(DESKTOP_DATA_CAPABILITIES.liveFilesystemReload).toBe(true)
   })
 
-  it('treats Capacitor native as app-private archive/share storage', () => {
+  it('treats Capacitor native as app-private storage', () => {
     const capabilities = getDataPlatformCapabilities({ hasElectron: false, isNativeCapacitor: true })
 
     expect(capabilities).toBe(MOBILE_DATA_CAPABILITIES)
     expect(capabilities.appPrivateNotebook).toBe(true)
-    expect(capabilities.notebookArchives).toBe(true)
     expect(capabilities.userSettingsFiles).toBe(true)
     expect(capabilities.notebookFolders).toBe(false)
     expect(capabilities.settingsFolders).toBe(false)
     expect(capabilities.liveFilesystemReload).toBe(false)
   })
 
-  it('treats plain web as local browser storage plus download/upload archives', () => {
+  it('treats plain web as local browser storage', () => {
     const capabilities = getDataPlatformCapabilities({ hasElectron: false, isNativeCapacitor: false })
 
     expect(capabilities).toBe(BROWSER_DATA_CAPABILITIES)
-    expect(capabilities.notebookArchives).toBe(true)
     expect(capabilities.notebookFolders).toBe(false)
     expect(capabilities.settingsFolders).toBe(false)
-    expect(capabilities.backups).toBe(false)
   })
 })

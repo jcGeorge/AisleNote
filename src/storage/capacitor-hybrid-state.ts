@@ -1,6 +1,4 @@
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem'
-import { buildNotebookArchive, toNotebookArchiveArrayBuffer } from '../notebook/notebook-archive'
-import { parseSavedState } from '../state/app-state'
 import {
   storageError,
   storageReadOk,
@@ -17,17 +15,6 @@ type CapacitorFilesystemLike = Pick<
   typeof Filesystem,
   'readFile' | 'writeFile' | 'deleteFile' | 'readdir' | 'stat' | 'getUri'
 >
-
-export type CapacitorRecoveryCopyResult =
-  | {
-      ok: true
-      path: string
-      uri?: string
-    }
-  | {
-      ok: false
-      error: string
-    }
 
 const TEXT_FILE_EXTENSIONS = new Set(['json', 'md', 'txt', 'yaml', 'yml', 'csv'])
 const APP_STATE_ROOTS = ['notes', 'settings'] as const
@@ -235,33 +222,5 @@ export class CapacitorFilesystemStorageBackend implements StorageBackend {
 export class CapacitorHybridStateAdapter extends BrowserHybridStateAdapter {
   constructor(backend: StorageBackend = new CapacitorFilesystemStorageBackend()) {
     super(backend)
-  }
-}
-
-export async function createCapacitorRecoveryNotebookArchive(
-  serializedState: string,
-  options: {
-    backend?: CapacitorFilesystemStorageBackend
-    now?: Date
-  } = {},
-): Promise<CapacitorRecoveryCopyResult> {
-  try {
-    const backend = options.backend ?? new CapacitorFilesystemStorageBackend()
-    const state = parseSavedState(serializedState)
-    const archive = await buildNotebookArchive({ state })
-    const timestamp = (options.now ?? new Date()).toISOString().replace(/[:.]/g, '-')
-    const path = `recovery/tabs-recovery-${timestamp}.zip`
-    const result = await backend.writeBinaryFile(path, toNotebookArchiveArrayBuffer(archive.bytes))
-    if (!result.ok) return { ok: false, error: result.error }
-    return {
-      ok: true,
-      path,
-      uri: await backend.getFileUri(path),
-    }
-  } catch (error) {
-    return {
-      ok: false,
-      error: error instanceof Error ? error.message : 'Recovery copy failed.',
-    }
   }
 }

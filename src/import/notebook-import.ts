@@ -31,7 +31,7 @@ import type {
 } from '../types/app'
 import { repairAppStateEntityIds } from './id-repair'
 
-export type ImportBackupSummary = {
+export type ImportNotebookSummary = {
   domains: number
   spaces: number
   tabs: number
@@ -46,12 +46,12 @@ export type ImportBackupSummary = {
   warnings: string[]
 }
 
-export type ImportBackupMergeResult = {
+export type ImportNotebookMergeResult = {
   state: AppState
-  summary: ImportBackupSummary
+  summary: ImportNotebookSummary
 }
 
-export type ImportBackupMergeOptions = {
+export type ImportNotebookMergeOptions = {
   importScratchpadAsTab?: boolean
 }
 
@@ -453,7 +453,7 @@ function rewriteImportedMarkdownReferences(
   merged: AppState,
   maps: ImportIdMaps,
   headingKeyMaps: Map<string, Map<string, string>>,
-  summary: ImportBackupSummary,
+  summary: ImportNotebookSummary,
 ): string {
   return String(markdown ?? '').replace(WIKI_NOTE_REFERENCE_RE, (token) => {
     const resolved = resolveWikiReferenceToken(imported, token)
@@ -504,24 +504,24 @@ function rewriteImportedMarkdownReferences(
   })
 }
 
-function appendWarning(summary: ImportBackupSummary, warning: string) {
+function appendWarning(summary: ImportNotebookSummary, warning: string) {
   if (summary.warnings.length >= MAX_WARNING_COUNT) return
   summary.warnings.push(warning)
 }
 
-export function mergeImportedBackupState(
+export function mergeImportedNotebookState(
   current: AppState,
   imported: AppState,
   generateId: IdGenerator = createId,
-  options: ImportBackupMergeOptions = {},
-): ImportBackupMergeResult {
+  options: ImportNotebookMergeOptions = {},
+): ImportNotebookMergeResult {
   const importScratchpadAsTab = options.importScratchpadAsTab ?? true
   const currentProjected = projectActiveDomainState(current)
   const repairedImport = repairAppStateEntityIds(imported, generateId)
   const importState = repairedImport.state
   const allocateId = createImportIdAllocator(currentProjected, generateId)
   const maps = createImportIdMaps()
-  const summary: ImportBackupSummary = {
+  const summary: ImportNotebookSummary = {
     domains: importState.domains.length,
     spaces: importState.domains.reduce((count, domain) => count + domain.spaces.length, 0),
     tabs: importState.domains.reduce(

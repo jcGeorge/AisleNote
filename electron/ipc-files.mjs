@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync, lstatSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { buildAppStateExportArchive, getHybridStorageRoot, importAppStateArchive, loadAppStateResult } from './app-state-storage.mjs'
+import {
+  getHybridStorageRoot,
+  importNotebookZipArchive,
+  loadAppStateResult,
+  writeNotebookFolderExport,
+} from './app-state-storage.mjs'
 import { parseStrictPortableAppSettingsJson } from '../src/storage/settings-partition.js'
 
 const USER_SETTINGS_MAX_BYTES = 1024 * 1024
@@ -140,7 +145,7 @@ function walkMarkdownImportFolder(rootPath) {
 export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
   const folderImportSources = new Map()
 
-  function openNotebookArchiveFile(filePath) {
+  function openZipFile(filePath, fallbackError = null) {
     try {
       const bytes = readFileSync(filePath)
       return {
@@ -149,13 +154,42 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
         kind: 'zip',
         bytes: toArrayBuffer(bytes),
         filePath,
+        ...(fallbackError ? { nativeNotebookError: fallbackError } : {}),
       }
     } catch (error) {
       return {
         canceled: false,
         ok: false,
-        error: error instanceof Error ? error.message : 'Notebook archive could not be opened.',
+        error: error instanceof Error ? error.message : 'ZIP file could not be opened.',
       }
+    }
+  }
+
+  async function openNotebookZipImportFile(filePath) {
+    const result = await importNotebookZipArchive(filePath)
+    if (result.ok) {
+      return {
+        canceled: false,
+        ok: true,
+        kind: 'notebook-zip',
+        filePath,
+        serializedState: result.serializedState,
+        schemaVersion: result.schemaVersion,
+        health: result.health,
+        issues: result.issues,
+        assets: result.assets,
+      }
+    }
+    const canTryMarkdownZip = result.issues?.some((issue) =>
+      issue.code === 'missing-root-manifest' || issue.code === 'unexpected-archive-entry'
+    )
+    if (canTryMarkdownZip) return openZipFile(filePath, result.error)
+    return {
+      canceled: false,
+      ok: false,
+      error: result.error ?? 'Notebook ZIP could not be imported.',
+      health: result.health,
+      issues: result.issues,
     }
   }
 
@@ -184,7 +218,7 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
       }
     }
 
-    const result = loadAppStateResult(folderPath)
+    const result = loadAppStateResult(folderPath, { includeUserSettings: false })
     if (!result.ok || typeof result.serializedState !== 'string') {
       return {
         canceled: false,
@@ -270,7 +304,7 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
     if (path.extname(selectedPath).toLowerCase() !== '.zip') {
       return { canceled: false, ok: false, error: 'Notebook import file must be a .zip archive.' }
     }
-    return openNotebookArchiveFile(selectedPath)
+    return openNotebookZipImportFile(selectedPath)
   }
 
   async function chooseNotebookImportSourcePath() {
@@ -287,7 +321,7 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
         cancelId: 2,
         defaultId: 0,
         message: 'Import notebook',
-        detail: 'Choose a notebook archive ZIP, a Tabs notebook folder, or a Markdown folder.',
+        detail: 'Choose a notebook ZIP, a Tabs notebook folder, or a Markdown folder.',
       })
       if (choice.response === 2) return { canceled: true }
       if (choice.response === 0) {
@@ -308,6 +342,44 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
     return openNotebookImportSourcePath(openResult.filePaths[0])
   }
 
+  ipcMain.handle('export-notebook-folder', async (_event, payload = {}) => {
+    const serializedState = typeof payload?.serializedState === 'string' ? payload.serializedState : ''
+    if (!serializedState.trim()) {
+      return { canceled: false, ok: false, error: 'Notebook export payload is invalid.' }
+    }
+    if (!dialog || typeof dialog.showOpenDialog !== 'function') {
+      return { canceled: false, ok: false, error: 'Notebook folder export is unavailable.' }
+    }
+
+    const selection = await dialog.showOpenDialog({
+      title: 'Export notebook folder',
+      properties: ['openDirectory', 'createDirectory'],
+    })
+    if (selection.canceled || !selection.filePaths?.[0]) return { canceled: true }
+
+    const destinationRootPath = path.resolve(selection.filePaths[0])
+    const activeProfileRootPath = storageSession?.getProfileRootPath?.()
+    if (typeof activeProfileRootPath === 'string' && isInsidePath(activeProfileRootPath, destinationRootPath)) {
+      return { canceled: false, ok: false, error: 'Choose a folder outside the active notebook folder.' }
+    }
+    if (existsSync(getHybridStorageRoot(destinationRootPath))) {
+      return { canceled: false, ok: false, error: 'Destination folder already contains a notebook.' }
+    }
+
+    try {
+      const result = writeNotebookFolderExport(destinationRootPath, serializedState, {
+        assetSourceRoot: activeProfileRootPath ? getHybridStorageRoot(activeProfileRootPath) : null,
+      })
+      return { canceled: false, ok: true, ...result }
+    } catch (error) {
+      return {
+        canceled: false,
+        ok: false,
+        error: error instanceof Error ? error.message : 'Notebook folder could not be exported.',
+      }
+    }
+  })
+
   ipcMain.handle('save-file', async (_event, payload) => {
     const { defaultPath, data } = payload ?? {}
     if (!(data instanceof ArrayBuffer)) return { canceled: true, error: 'Invalid payload' }
@@ -322,30 +394,6 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
     const bytes = Buffer.from(new Uint8Array(data))
     writeFileSync(saveResult.filePath, bytes)
     return { canceled: false, filePath: saveResult.filePath }
-  })
-
-  ipcMain.handle('export-app-state', async (_event, payload) => {
-    const { defaultPath, serializedState } = payload ?? {}
-    if (typeof serializedState !== 'string') return { canceled: true, error: 'Invalid payload' }
-
-    const saveResult = await dialog.showSaveDialog({
-      defaultPath: typeof defaultPath === 'string' ? defaultPath : 'notes-export.zip',
-      filters: [{ name: 'Zip Archive', extensions: ['zip'] }],
-    })
-
-    if (saveResult.canceled || !saveResult.filePath) return { canceled: true }
-
-    try {
-      const profileRootPath = storageSession?.getProfileRootPath?.()
-      const bytes = await buildAppStateExportArchive(serializedState, {
-        assetSourceRoot: profileRootPath ? getHybridStorageRoot(profileRootPath) : null,
-      })
-      writeFileSync(saveResult.filePath, bytes)
-      return { canceled: false, filePath: saveResult.filePath }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      return { canceled: false, error: message }
-    }
   })
 
   ipcMain.handle('save-user-settings-file', async (_event, payload) => {
@@ -368,18 +416,6 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
         error: error instanceof Error ? error.message : 'User settings could not be saved.',
       }
     }
-  })
-
-  ipcMain.handle('import-app-state-archive', async () => {
-    const openResult = await dialog.showOpenDialog({
-      filters: [{ name: 'Zip Archive', extensions: ['zip'] }],
-      properties: ['openFile'],
-    })
-
-    if (openResult.canceled || !openResult.filePaths?.[0]) return { canceled: true }
-
-    const result = await importAppStateArchive(openResult.filePaths[0])
-    return { canceled: false, ...result }
   })
 
   ipcMain.handle('open-notebook-import-source', async () => chooseNotebookImportSourcePath())

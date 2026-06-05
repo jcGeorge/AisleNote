@@ -158,23 +158,11 @@ class ElectronAppStateStore implements AppStateStore {
     }
   }
 
-  private dispatchSuccessfulSave(serializedState: string, snapshotMode: AppStateSaveOptions['snapshotMode']): void {
-    if (typeof window.dispatchEvent !== 'function' || typeof CustomEvent !== 'function') return
-    window.dispatchEvent(new CustomEvent('tabs:app-state-saved', {
-      detail: {
-        serializedState,
-        snapshotMode: snapshotMode ?? 'force',
-      },
-    }))
-  }
-
   private applySaveResult(
     result: ReturnType<NonNullable<Window['electronAPI']>['saveAppState']> | undefined,
-    options: AppStateSaveOptions = {},
   ) {
     if (result?.ok) {
       this.revision = result.revision
-      this.dispatchSuccessfulSave(result.serializedState, options.snapshotMode)
       return
     }
     if (result && !result.ok && typeof result.currentRevision === 'number') {
@@ -190,7 +178,6 @@ class ElectronAppStateStore implements AppStateStore {
     const payload = {
       serializedState,
       baseRevision: this.revision,
-      ...(options.snapshotMode ? { snapshotMode: options.snapshotMode } : {}),
     }
 
     if (!options.preferSync && typeof window.electronAPI?.saveAppStateAsync === 'function') {
@@ -206,7 +193,7 @@ class ElectronAppStateStore implements AppStateStore {
             }),
           )
           if (saveEpoch !== this.syncSaveEpoch) return
-          this.applySaveResult(result, options)
+          this.applySaveResult(result)
         })
       return
     }
@@ -214,7 +201,7 @@ class ElectronAppStateStore implements AppStateStore {
     try {
       this.syncSaveEpoch += 1
       const result = measureSlowOperation('electron sync app-state save', () => window.electronAPI?.saveAppState(payload))
-      this.applySaveResult(result, options)
+      this.applySaveResult(result)
     } catch {
       // Keep current behavior non-fatal until a dedicated error surface is added.
     }

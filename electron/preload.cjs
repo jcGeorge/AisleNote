@@ -18,7 +18,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   getStorageProfileStatus: () => ipcRenderer.invoke('get-storage-profile-status'),
   getUserSettingsLocationStatus: () => ipcRenderer.invoke('get-user-settings-location-status'),
-  getNotebookBackupStatus: () => ipcRenderer.invoke('get-notebook-backup-status'),
   createNotebook: (payload) => ipcRenderer.invoke('create-notebook', payload),
   switchNotebook: () => ipcRenderer.invoke('switch-notebook'),
   chooseStorageFolder: () => ipcRenderer.invoke('choose-storage-folder'),
@@ -27,14 +26,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   resetUserSettingsFolder: () => ipcRenderer.invoke('reset-user-settings-folder'),
   resetUserSettingsToDefaults: () => ipcRenderer.invoke('reset-user-settings-to-defaults'),
   retryUserSettingsSync: () => ipcRenderer.invoke('retry-user-settings-sync'),
-  chooseNotebookBackupFolder: () => ipcRenderer.invoke('choose-notebook-backup-folder'),
-  runNotebookBackupNow: (payload) => ipcRenderer.invoke('run-notebook-backup-now', payload),
-  revealNotebookBackupFolder: () => ipcRenderer.invoke('reveal-notebook-backup-folder'),
-  resetNotebookBackupFolder: () => ipcRenderer.invoke('reset-notebook-backup-folder'),
   revealUserSettingsFolder: () => ipcRenderer.invoke('reveal-user-settings-folder'),
   revealStorageProfile: () => ipcRenderer.invoke('reveal-storage-profile'),
   retryStorageProfile: () => ipcRenderer.invoke('retry-storage-profile'),
-  restoreStorageRecoverySnapshot: (payload) => ipcRenderer.invoke('restore-storage-recovery-snapshot', payload),
   onStorageProfileStatusUpdated: (handler) => {
     const listener = (_event, payload) => handler(payload)
     ipcRenderer.on('storage-profile-status-updated', listener)
@@ -45,13 +39,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('user-settings-location-status-updated', listener)
     return () => ipcRenderer.removeListener('user-settings-location-status-updated', listener)
   },
-  onNotebookBackupStatusUpdated: (handler) => {
-    const listener = (_event, payload) => handler(payload)
-    ipcRenderer.on('notebook-backup-status-updated', listener)
-    return () => ipcRenderer.removeListener('notebook-backup-status-updated', listener)
-  },
-  exportAppState: (payload) => ipcRenderer.invoke('export-app-state', payload),
-  importAppStateArchive: () => ipcRenderer.invoke('import-app-state-archive'),
+  exportNotebookFolder: (payload) => ipcRenderer.invoke('export-notebook-folder', payload),
   openNotebookImportSource: () => ipcRenderer.invoke('open-notebook-import-source'),
   readFolderImportAsset: (payload) => ipcRenderer.invoke('read-folder-import-asset', payload),
   openUserSettingsFile: () => ipcRenderer.invoke('open-user-settings-file'),

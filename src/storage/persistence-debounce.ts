@@ -1,7 +1,4 @@
-export type AppStateSnapshotMode = 'force' | 'debounced' | 'skip'
-
 export type AppStateSaveOptions = {
-  snapshotMode?: AppStateSnapshotMode
   preferSync?: boolean
 }
 
@@ -56,7 +53,7 @@ export function createPersistenceDebounceController<T>({
     clearMaxWaitTimer()
   }
 
-  const flush = (options: AppStateSaveOptions = { snapshotMode: 'force', preferSync: true }) => {
+  const flush = (options: AppStateSaveOptions = { preferSync: true }) => {
     savePending(options, true)
   }
 
@@ -64,13 +61,13 @@ export function createPersistenceDebounceController<T>({
     pendingValue = value
     clearQuietTimer()
     quietTimer = setTimeoutFn(() => {
-      savePending({ snapshotMode: 'debounced' }, true)
+      savePending({}, true)
     }, debounceMs)
 
     if (maxWaitTimer === null) {
       maxWaitTimer = setTimeoutFn(() => {
         maxWaitTimer = null
-        savePending({ snapshotMode: 'skip' }, false)
+        savePending({}, false)
       }, maxWaitMs)
     }
   }

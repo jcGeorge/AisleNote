@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto'
 import {
-  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -67,14 +66,6 @@ export const HYBRID_ROOT_DIR = 'notes'
 const SCHEMA_VERSION = 1
 const SUPPORTED_SCHEMA_VERSIONS = new Set([SCHEMA_VERSION])
 const DOMAINS_DIR = 'domains'
-const STORAGE_RECOVERY_DIR = 'storage-recovery'
-export const RECOVERY_SNAPSHOT_MAX_ACTIVE_DAYS = 30
-export const RECOVERY_SNAPSHOT_MAX_PER_DAY = 2
-export const STORAGE_SNAPSHOT_MODES = Object.freeze({
-  FORCE: 'force',
-  DEBOUNCED: 'debounced',
-  SKIP: 'skip',
-})
 const FRONTMATTER_OPEN_RE = /^---[ \t]*(?:\r?\n|$)/
 const FRONTMATTER_CLOSE_RE = /(?:^|\r?\n)---[ \t]*(?:\r?\n|$)/
 const INTERNAL_INDENT_TOKEN = '\u2060\u2003\u2003'
@@ -624,17 +615,6 @@ function pruneStorageRoot(rootPath, expectedRelativeFiles) {
   if (existsSync(rootPath)) pruneDirectory(rootPath)
 }
 
-function createRecoverySnapshot(rootPath, userDataPath) {
-  if (!existsSync(rootPath)) return null
-  const recoveryParent = path.join(userDataPath, STORAGE_RECOVERY_DIR)
-  mkdirSync(recoveryParent, { recursive: true })
-  const snapshotPath = path.join(recoveryParent, `${HYBRID_ROOT_DIR}-${Date.now()}`)
-  measureSlowMainOperation('storage recovery snapshot', () => {
-    cpSync(rootPath, snapshotPath, { recursive: true, force: true })
-  })
-  return snapshotPath
-}
-
 function isMainPerformanceLoggingEnabled() {
   return Boolean(process.env.VITE_DEV_SERVER_URL || process.env.TABS_PERF_LOG === '1')
 }
@@ -649,88 +629,6 @@ function measureSlowMainOperation(label, operation, thresholdMs = 75) {
       console.warn(`[tabs perf] ${label} took ${durationMs.toFixed(1)}ms`)
     }
   }
-}
-
-function getRecoverySnapshotDayKey(snapshot) {
-  const date = new Date(snapshot.createdAt || snapshot.modifiedAt || 0)
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-export function pruneStorageRecoverySnapshots(
-  userDataPath,
-  {
-    maxActiveDays = RECOVERY_SNAPSHOT_MAX_ACTIVE_DAYS,
-    maxPerDay = RECOVERY_SNAPSHOT_MAX_PER_DAY,
-  } = {},
-) {
-  const snapshots = listStorageRecoverySnapshots(userDataPath)
-  if (snapshots.length === 0) return { removed: 0, kept: 0 }
-
-  const snapshotsByDay = new Map()
-  snapshots.forEach((snapshot) => {
-    const dayKey = getRecoverySnapshotDayKey(snapshot)
-    const daySnapshots = snapshotsByDay.get(dayKey) ?? []
-    daySnapshots.push(snapshot)
-    snapshotsByDay.set(dayKey, daySnapshots)
-  })
-
-  const keptPaths = new Set()
-  const activeDayKeys = Array.from(snapshotsByDay.entries())
-    .map(([dayKey, daySnapshots]) => ({
-      dayKey,
-      latestModifiedAt: Math.max(...daySnapshots.map((snapshot) => snapshot.modifiedAt)),
-    }))
-    .sort((left, right) => right.latestModifiedAt - left.latestModifiedAt)
-    .slice(0, Math.max(0, maxActiveDays))
-    .map((entry) => entry.dayKey)
-
-  activeDayKeys.forEach((dayKey) => {
-    const daySnapshots = [...(snapshotsByDay.get(dayKey) ?? [])].sort((left, right) => left.modifiedAt - right.modifiedAt)
-    if (daySnapshots.length <= maxPerDay) {
-      daySnapshots.forEach((snapshot) => keptPaths.add(path.resolve(snapshot.path)))
-      return
-    }
-
-    const earliestSnapshot = daySnapshots[0]
-    const latestSnapshot = daySnapshots[daySnapshots.length - 1]
-    if (maxPerDay >= 1 && earliestSnapshot) keptPaths.add(path.resolve(earliestSnapshot.path))
-    if (maxPerDay >= 2 && latestSnapshot) keptPaths.add(path.resolve(latestSnapshot.path))
-  })
-
-  let removed = 0
-  snapshots.forEach((snapshot) => {
-    if (keptPaths.has(path.resolve(snapshot.path))) return
-    rmSync(snapshot.path, { recursive: true, force: true })
-    removed += 1
-  })
-
-  return { removed, kept: keptPaths.size }
-}
-
-export function listStorageRecoverySnapshots(userDataPath) {
-  const recoveryParent = path.join(userDataPath, STORAGE_RECOVERY_DIR)
-  return listDirectoryEntries(recoveryParent)
-    .filter((entry) => entry.isDirectory() && entry.name.startsWith(`${HYBRID_ROOT_DIR}-`))
-    .map((entry) => {
-      const snapshotPath = path.join(recoveryParent, entry.name)
-      const timestamp = Number(entry.name.slice(`${HYBRID_ROOT_DIR}-`.length))
-      let modifiedAt = Number.isFinite(timestamp) ? timestamp : 0
-      try {
-        modifiedAt = Math.max(modifiedAt, Math.round(statSync(snapshotPath).mtimeMs))
-      } catch {
-        // Keep a stable best-effort timestamp for snapshots with unreadable metadata.
-      }
-      return {
-        name: entry.name,
-        path: snapshotPath,
-        createdAt: Number.isFinite(timestamp) ? timestamp : modifiedAt,
-        modifiedAt,
-      }
-    })
-    .sort((left, right) => right.modifiedAt - left.modifiedAt)
 }
 
 function setStorageTextFile(fileMap, relativeFile, contents) {
@@ -2034,7 +1932,10 @@ function readCurrentRootParts(rootPath, rootManifest, issues = null, profileRoot
     if (!file) return null
     splitFiles[key] = file
   }
-  splitFiles.appSettings = readAppSettingsForProfile(getUserSettingsRoot(profileRootPath, options), issues)
+  splitFiles.appSettings =
+    options.includeUserSettings === false
+      ? {}
+      : readAppSettingsForProfile(getUserSettingsRoot(profileRootPath, options), issues)
   splitFiles.editorState = readRootSplitJsonFile(rootPath, rootManifest, 'editorState', false, issues) ?? {}
   splitFiles.messages = readRootSplitJsonFile(rootPath, rootManifest, 'messages', false, issues) ?? {}
   const noteRegistry = splitFiles.noteRegistry
@@ -2058,19 +1959,6 @@ function readCurrentRootParts(rootPath, rootManifest, issues = null, profileRoot
         ? splitFiles.navigationState.activeDomainId
         : DEFAULT_DOMAIN_ID,
     lastOpened: isRecord(splitFiles.navigationState?.lastOpened) ? splitFiles.navigationState.lastOpened : null,
-  }
-}
-
-function addDirectoryToZip(zip, directoryPath, zipPrefix) {
-  const entries = readdirSync(directoryPath, { withFileTypes: true })
-  for (const entry of entries) {
-    const absolutePath = path.join(directoryPath, entry.name)
-    const relativePath = zipPrefix ? path.posix.join(zipPrefix, entry.name) : entry.name
-    if (entry.isDirectory()) {
-      addDirectoryToZip(zip, absolutePath, relativePath)
-      continue
-    }
-    zip.file(relativePath, readFileSync(absolutePath))
   }
 }
 
@@ -2378,23 +2266,16 @@ export function loadAppStateResult(profileRootPath, options = {}) {
 
 export function saveAppState(profileRootPath, serializedState, options = {}) {
   const finalRoot = getHybridStorageRoot(profileRootPath)
-  const recoveryRoot = typeof options.userDataPath === 'string' ? options.userDataPath : profileRootPath
   const userSettingsRoot =
     typeof options.userSettingsRoot === 'string'
       ? options.userSettingsRoot
       : typeof options.userDataPath === 'string'
         ? options.userDataPath
         : profileRootPath
-  const snapshotMode = Object.values(STORAGE_SNAPSHOT_MODES).includes(options.snapshotMode)
-    ? options.snapshotMode
-    : STORAGE_SNAPSHOT_MODES.FORCE
 
   if (options.replaceExisting === true) {
     removeStorageConflictPaths(profileRootPath, finalRoot)
     rmSync(finalRoot, { recursive: true, force: true })
-  } else if (snapshotMode === STORAGE_SNAPSHOT_MODES.FORCE) {
-    createRecoverySnapshot(finalRoot, recoveryRoot)
-    pruneStorageRecoverySnapshots(recoveryRoot)
   }
 
   measureSlowMainOperation('hybrid app-state write', () =>
@@ -2403,64 +2284,25 @@ export function saveAppState(profileRootPath, serializedState, options = {}) {
       userSettingsRoot,
     }),
   )
-
-  if (options.replaceExisting !== true && snapshotMode === STORAGE_SNAPSHOT_MODES.DEBOUNCED) {
-    createRecoverySnapshot(finalRoot, recoveryRoot)
-    pruneStorageRecoverySnapshots(recoveryRoot)
-  }
 }
 
-export function restoreStorageRecoverySnapshot(profileRootPath, userDataPath, snapshotPath = null) {
-  const snapshots = listStorageRecoverySnapshots(userDataPath)
-  const selectedSnapshot = snapshotPath
-    ? snapshots.find((snapshot) => path.resolve(snapshot.path) === path.resolve(snapshotPath))
-    : snapshots[0]
-
-  if (!selectedSnapshot) {
-    return { ok: false, error: 'No recovery snapshot is available.' }
+export function writeNotebookFolderExport(destinationRootPath, serializedState, options = {}) {
+  if (typeof destinationRootPath !== 'string' || !destinationRootPath.trim()) {
+    throw new Error('Destination folder is invalid.')
   }
-
-  const snapshotResult = readHybridAppStateResultFromRoot(selectedSnapshot.path, selectedSnapshot.path, {
-    userSettingsRoot: userDataPath,
-  })
-  if (snapshotResult.serializedState === null) {
-    return { ok: false, error: 'Recovery snapshot could not be loaded.', snapshot: selectedSnapshot }
-  }
-
+  const profileRootPath = path.resolve(destinationRootPath)
   const finalRoot = getHybridStorageRoot(profileRootPath)
-  createRecoverySnapshot(finalRoot, userDataPath)
-  rmSync(finalRoot, { recursive: true, force: true })
-  cpSync(selectedSnapshot.path, finalRoot, { recursive: true, force: true })
-  rmSync(path.join(finalRoot, USER_SETTINGS_DIR), { recursive: true, force: true })
-  pruneStorageRecoverySnapshots(userDataPath)
-  return { ok: true, snapshot: selectedSnapshot, loadResult: loadAppStateResult(profileRootPath, { userSettingsRoot: userDataPath }) }
-}
-
-export function createPreWriteStorageSnapshot(finalRoot, backupRoot) {
-  if (!existsSync(finalRoot)) return false
-  rmSync(backupRoot, { recursive: true, force: true })
-  renameSync(finalRoot, backupRoot)
-  return true
-}
-
-export async function buildAppStateExportArchive(serializedState, options = {}) {
-  const tempParent = mkdtempSync(path.join(os.tmpdir(), 'tabs-export-'))
-  const exportRoot = path.join(tempParent, HYBRID_ROOT_DIR)
-
-  try {
-    const parsedState = JSON.parse(serializedState)
-    const exportState = normalizeAppStateForExport(parsedState)
-    writeHybridStorage(exportRoot, JSON.stringify(exportState), {
-      assetSourceRoot: typeof options.assetSourceRoot === 'string' ? options.assetSourceRoot : null,
-      userSettingsRoot: tempParent,
-    })
-    const zip = new JSZip()
-    addDirectoryToZip(zip, exportRoot, HYBRID_ROOT_DIR)
-    const settingsRoot = path.join(tempParent, USER_SETTINGS_DIR)
-    if (existsSync(settingsRoot)) addDirectoryToZip(zip, settingsRoot, USER_SETTINGS_DIR)
-    return await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' })
-  } finally {
-    rmSync(tempParent, { recursive: true, force: true })
+  if (existsSync(finalRoot)) {
+    throw new Error('Destination folder already contains a notebook.')
+  }
+  const parsedState = JSON.parse(serializedState)
+  const exportState = normalizeAppStateForExport(parsedState)
+  writeHybridStorage(finalRoot, JSON.stringify(exportState), {
+    assetSourceRoot: typeof options.assetSourceRoot === 'string' ? options.assetSourceRoot : null,
+  })
+  return {
+    profileRootPath,
+    notesPath: finalRoot,
   }
 }
 
@@ -2526,7 +2368,40 @@ function failedImportArchiveResult(error, issues = []) {
   }, issues)
 }
 
-export async function importAppStateArchive(archivePath) {
+function listNotebookImportAssetPayloads(notesRootPath) {
+  const assetsRoot = path.join(notesRootPath, 'assets')
+  const assets = []
+
+  function visit(directoryPath) {
+    for (const entry of listDirectoryEntries(directoryPath)) {
+      const absolutePath = path.join(directoryPath, entry.name)
+      if (entry.isDirectory()) {
+        visit(absolutePath)
+        continue
+      }
+      if (!entry.isFile()) continue
+      const relativePath = normalizeImageAssetPath(
+        path.relative(notesRootPath, absolutePath).split(path.sep).join(path.posix.sep),
+      )
+      if (!relativePath.startsWith('assets/')) continue
+      const bytes = readFileSync(absolutePath)
+      const fileName = path.basename(absolutePath)
+      assets.push({
+        relativePath,
+        bytes: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+        fileName,
+        name: fileName,
+        mimeType: getMimeTypeFromFilePath(absolutePath),
+        extension: path.extname(fileName).slice(1).toLowerCase(),
+      })
+    }
+  }
+
+  visit(assetsRoot)
+  return assets
+}
+
+export async function importNotebookZipArchive(archivePath) {
   if (typeof archivePath !== 'string' || !archivePath.trim()) {
     return failedImportArchiveResult('Invalid archive path.', [
       createStorageIssue('invalid-archive-path', 'error', undefined, 'Archive path is invalid.'),
@@ -2557,6 +2432,7 @@ export async function importAppStateArchive(archivePath) {
         const issue = createStorageIssue('unsafe-archive-entry', 'error', normalized.name, 'Archive contains an invalid directory file.')
         return failedImportArchiveResult(issue.message, [issue])
       }
+      if (normalized.name.startsWith(`${USER_SETTINGS_DIR}/`)) continue
       if (writtenFiles.has(normalized.name)) {
         const issue = createStorageIssue('duplicate-archive-entry', 'error', normalized.name, 'Archive contains duplicate file entries.')
         return failedImportArchiveResult(issue.message, [issue])
@@ -2582,7 +2458,7 @@ export async function importAppStateArchive(archivePath) {
       return failedImportArchiveResult(issue.message, [issue])
     }
 
-    const result = loadAppStateResult(tempParent)
+    const result = loadAppStateResult(tempParent, { includeUserSettings: false })
     if (!result.ok) {
       return failedImportArchiveResult(result.error ?? 'Imported archive could not be loaded.', result.issues ?? [])
     }
@@ -2590,6 +2466,7 @@ export async function importAppStateArchive(archivePath) {
       ok: true,
       serializedState: result.serializedState,
       schemaVersion: result.schemaVersion ?? null,
+      assets: listNotebookImportAssetPayloads(getHybridStorageRoot(tempParent)),
     }, result.issues ?? [])
   } finally {
     rmSync(tempParent, { recursive: true, force: true })

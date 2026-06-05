@@ -122,7 +122,7 @@ const DEFAULT_SYNCED_UI_SETTINGS = {
   themePalettes: {},
   toolbarLayouts: [],
   settingsSection: 'hotkeys',
-  dataSettingsSection: 'notebook',
+  dataSettingsSection: 'transfer',
   visualsSettingsSection: 'theming',
   tabButtonScale: 1,
   noteFontScale: 1,
@@ -138,7 +138,7 @@ const MIN_SCRATCHPAD_AISLE_LIMIT = 8
 const MAX_SCRATCHPAD_AISLE_LIMIT = 40
 const THEME_PALETTE_IDS = ['dark', 'light', 'dawn', 'custom1', 'custom2', 'custom3']
 const CUSTOM_THEME_IDS = ['custom1', 'custom2', 'custom3']
-const DATA_SETTINGS_SECTIONS = ['notebook', 'settings', 'storage', 'trash']
+const DATA_SETTINGS_SECTIONS = ['transfer', 'settings', 'storage', 'trash']
 const CURRENT_APP_SETTING_THEME_IDS = ['dark', 'light', 'dawn', 'custom1', 'custom2', 'custom3']
 
 function optionalBoolean(value, fallback) {
