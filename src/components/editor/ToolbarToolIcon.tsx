@@ -33,14 +33,6 @@ function primaryStroke(className?: string): string {
   return joinClassNames(PRIMARY_STROKE_CLASS, className)
 }
 
-function secondaryStroke(className?: string): string {
-  return joinClassNames(SECONDARY_STROKE_CLASS, className)
-}
-
-function secondaryFill(className?: string): string {
-  return joinClassNames(SECONDARY_FILL_CLASS, className)
-}
-
 function svgIcon(content: ReactNode, viewBox?: string): ToolbarIconDefinition {
   return { type: 'svg', viewBox, content }
 }
@@ -57,179 +49,175 @@ function getToolbarIconClassName(toolId: ToolbarToolId, className = ''): string 
 export const TOOLBAR_ICON_DEFINITIONS = {
   copy: svgIcon(
     <>
-      <path className={secondaryStroke()} d="M8 7.5V5.6c0-1.1.9-2 2-2h7.2c1.1 0 2 .9 2 2v10.1c0 1.1-.9 2-2 2h-1.8" />
-      <path className={primaryStroke()} d="M4.8 8.2c0-1.1.9-2 2-2H14c1.1 0 2 .9 2 2v10.2c0 1.1-.9 2-2 2H6.8c-1.1 0-2-.9-2-2Z" />
-      <path className={primaryStroke()} d="M12.2 6.2v4h3.8" />
+      <path className={primaryStroke()} d="M15 2h-4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8" />
+      <path className={primaryStroke()} d="M16.706 2.706A2.4 2.4 0 0 0 15 2v5a1 1 0 0 0 1 1h5a2.4 2.4 0 0 0-.706-1.706z" />
+      <path className={primaryStroke()} d="M5 7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 1.732-1" />
     </>,
   ),
   frontmatter: textIcon('fm'),
   tableOfContents: svgIcon(
     <>
-      <path className={primaryStroke()} d="M8 6h10.5" />
-      <path className={primaryStroke()} d="M8 10h8.5" />
-      <path className={primaryStroke()} d="M8 14h6.5" />
-      <path className={primaryStroke()} d="M8 18h10.5" />
-      <path className={secondaryStroke()} d="M4.8 6h.1" />
-      <path className={secondaryStroke()} d="M4.8 10h.1" />
-      <path className={secondaryStroke()} d="M4.8 14h.1" />
-      <path className={secondaryStroke()} d="M4.8 18h.1" />
+      <path className={primaryStroke()} d="M16 5H3" />
+      <path className={primaryStroke()} d="M16 12H3" />
+      <path className={primaryStroke()} d="M16 19H3" />
+      <path className={primaryStroke()} d="M21 5h.01" />
+      <path className={primaryStroke()} d="M21 12h.01" />
+      <path className={primaryStroke()} d="M21 19h.01" />
     </>,
   ),
   aisles: svgIcon(
     <>
-      <path className={primaryStroke('toolbar-tool-icon-heavy')} d="M8 5.6 28 2.4v27.2L8 24.4Z" />
-      <path className={primaryStroke()} d="M8 13.2h20" />
-      <path className={primaryStroke()} d="M8 22.1l20 4" />
-      <path className={secondaryStroke('toolbar-tool-icon-heavy')} d="M11.4 9.9h5v3.3h-5z" />
-      <path className={secondaryStroke('toolbar-tool-icon-heavy')} d="M16.4 8.7h6.1v4.5" />
-      <path className={secondaryStroke('toolbar-tool-icon-heavy')} d="M11.4 18.1h4.8v5.2" />
-      <path className={secondaryStroke('toolbar-tool-icon-heavy')} d="M16.2 17.5h5v6.7" />
-      <path className={secondaryStroke('toolbar-tool-icon-heavy')} d="M21.2 17h4.8v8.2" />
+      <path className={primaryStroke()} d="M12 12V9a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3" />
+      <path className={primaryStroke()} d="M16 20v-3a1 1 0 0 0-1-1h-2a1 1 0 0 0-1 1v3" />
+      <path className={primaryStroke()} d="M20 22V2" />
+      <path className={primaryStroke()} d="M4 12h16" />
+      <path className={primaryStroke()} d="M4 20h16" />
+      <path className={primaryStroke()} d="M4 2v20" />
+      <path className={primaryStroke()} d="M4 4h16" />
     </>,
-    '0 0 36 32',
   ),
   findReplace: svgIcon(
     <>
-      <path className={primaryStroke()} d="M10.5 5.3a5.2 5.2 0 1 0 0 10.4 5.2 5.2 0 0 0 0-10.4Z" />
-      <path className={primaryStroke()} d="m14.5 14.5 4.7 4.7" />
-      <path className={secondaryStroke()} d="M15.9 6.8h3.3v3.3" />
-      <path className={secondaryStroke()} d="m19.2 6.8-4.4 4.4" />
+      <path className={primaryStroke()} d="m21 21-4.34-4.34" />
+      <circle className={primaryStroke()} cx="11" cy="11" r="8" />
     </>,
   ),
   undo: svgIcon(
     <>
-      <path className={primaryStroke('toolbar-tool-icon-heavy')} d="M8.5 8.2h6a5.6 5.6 0 1 1-4.2 9.3" />
-      <path className={primaryStroke('toolbar-tool-icon-heavy')} d="M8.5 4.8v3.4h3.4" />
+      <path className={primaryStroke()} d="M3 7v6h6" />
+      <path className={primaryStroke()} d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
     </>,
   ),
   redo: svgIcon(
     <>
-      <path className={primaryStroke('toolbar-tool-icon-heavy')} d="M15.5 8.2h-6a5.6 5.6 0 1 0 4.2 9.3" />
-      <path className={primaryStroke('toolbar-tool-icon-heavy')} d="M15.5 4.8v3.4h-3.4" />
+      <path className={primaryStroke()} d="M21 7v6h-6" />
+      <path className={primaryStroke()} d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7" />
     </>,
   ),
-  heading: textIcon('H'),
-  bold: textIcon('B', 'toolbar-tool-text-bold'),
-  italic: textIcon('I', 'toolbar-tool-text-italic'),
-  highlight: textIcon(
+  heading: svgIcon(
     <>
-      <span className="toolbar-tool-text-primary">H</span>
-      <span className="toolbar-tool-text-accent" />
+      <path className={primaryStroke()} d="M6 12h12" />
+      <path className={primaryStroke()} d="M6 20V4" />
+      <path className={primaryStroke()} d="M18 20V4" />
     </>,
-    'toolbar-tool-text-highlight',
   ),
-  strike: textIcon(
+  bold: svgIcon(<path className={primaryStroke()} d="M6 12h9a4 4 0 0 1 0 8H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h7a4 4 0 0 1 0 8" />),
+  italic: svgIcon(
     <>
-      <span className="toolbar-tool-text-primary">S</span>
-      <span className="toolbar-tool-text-strike-line" />
+      <line className={primaryStroke()} x1="19" x2="10" y1="4" y2="4" />
+      <line className={primaryStroke()} x1="14" x2="5" y1="20" y2="20" />
+      <line className={primaryStroke()} x1="15" x2="9" y1="4" y2="20" />
     </>,
-    'toolbar-tool-text-strike',
+  ),
+  highlight: svgIcon(
+    <>
+      <path className={primaryStroke()} d="m9 11-6 6v3h9l3-3" />
+      <path className={primaryStroke()} d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4" />
+    </>,
+  ),
+  strike: svgIcon(
+    <>
+      <path className={primaryStroke()} d="M16 4H9a3 3 0 0 0-2.83 4" />
+      <path className={primaryStroke()} d="M14 12a4 4 0 0 1 0 8H6" />
+      <line className={primaryStroke()} x1="4" x2="20" y1="12" y2="12" />
+    </>,
   ),
   taskList: svgIcon(
     <>
-      <rect className={secondaryFill()} x="4.4" y="4.9" width="4.6" height="4.6" rx="1" />
-      <path className={primaryStroke()} d="m5.4 7.2 1.1 1.1 2-2" />
-      <path className={primaryStroke()} d="M11.5 7.2h7.4" />
-      <rect className={primaryStroke()} x="4.4" y="14.5" width="4.6" height="4.6" rx="1" />
-      <path className={primaryStroke()} d="M11.5 16.8h7.4" />
+      <path className={primaryStroke()} d="M21 10.656V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12.344" />
+      <path className={primaryStroke()} d="m9 11 3 3L22 4" />
     </>,
   ),
   bulletList: svgIcon(
     <>
-      <path className={primaryStroke('toolbar-tool-icon-dot')} d="M5.5 7h.1" />
-      <path className={primaryStroke('toolbar-tool-icon-dot')} d="M5.5 12h.1" />
-      <path className={primaryStroke('toolbar-tool-icon-dot')} d="M5.5 17h.1" />
-      <path className={primaryStroke()} d="M9.2 7h9.3" />
-      <path className={primaryStroke()} d="M9.2 12h9.3" />
-      <path className={primaryStroke()} d="M9.2 17h9.3" />
+      <path className={primaryStroke()} d="M3 5h.01" />
+      <path className={primaryStroke()} d="M3 12h.01" />
+      <path className={primaryStroke()} d="M3 19h.01" />
+      <path className={primaryStroke()} d="M8 5h13" />
+      <path className={primaryStroke()} d="M8 12h13" />
+      <path className={primaryStroke()} d="M8 19h13" />
     </>,
   ),
   orderedList: svgIcon(
     <>
-      <text className="toolbar-tool-icon-text-primary toolbar-tool-icon-list-number" x="4.3" y="8.6">1</text>
-      <text className="toolbar-tool-icon-text-primary toolbar-tool-icon-list-number" x="4.1" y="17.9">2</text>
-      <path className={primaryStroke()} d="M9.2 7h9.3" />
-      <path className={primaryStroke()} d="M9.2 12h9.3" />
-      <path className={primaryStroke()} d="M9.2 17h9.3" />
+      <path className={primaryStroke()} d="M11 5h10" />
+      <path className={primaryStroke()} d="M11 12h10" />
+      <path className={primaryStroke()} d="M11 19h10" />
+      <path className={primaryStroke()} d="M4 4h1v5" />
+      <path className={primaryStroke()} d="M4 9h2" />
+      <path className={primaryStroke()} d="M6.5 20H3.4c0-1 2.6-1.925 2.6-3.5a1.5 1.5 0 0 0-2.6-1.02" />
     </>,
   ),
   dashList: svgIcon(
     <>
-      <path className={primaryStroke()} d="M4.8 7h2.4" />
-      <path className={primaryStroke()} d="M4.8 12h2.4" />
-      <path className={primaryStroke()} d="M4.8 17h2.4" />
-      <path className={primaryStroke()} d="M10 7h9" />
-      <path className={primaryStroke()} d="M10 12h9" />
-      <path className={primaryStroke()} d="M10 17h9" />
+      <path className={primaryStroke()} d="M3 5h4" />
+      <path className={primaryStroke()} d="M3 12h4" />
+      <path className={primaryStroke()} d="M3 19h4" />
+      <path className={primaryStroke()} d="M11 5h10" />
+      <path className={primaryStroke()} d="M11 12h10" />
+      <path className={primaryStroke()} d="M11 19h10" />
     </>,
   ),
   blockQuote: svgIcon(
     <>
-      <path className={primaryStroke()} d="M7.8 8.2c-1.8.8-2.8 2-2.8 3.9v3.3h4.2v-4.1H7.1c.1-.8.6-1.4 1.5-1.9Z" />
-      <path className={primaryStroke()} d="M15.4 8.2c-1.8.8-2.8 2-2.8 3.9v3.3h4.2v-4.1h-2.1c.1-.8.6-1.4 1.5-1.9Z" />
+      <path className={primaryStroke()} d="M16 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z" />
+      <path className={primaryStroke()} d="M5 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z" />
     </>,
   ),
   blockIndent: svgIcon(
     <>
-      <path className={primaryStroke()} d="M4.6 6h14.8" />
-      <path className={primaryStroke()} d="M12 12h7.4" />
-      <path className={primaryStroke()} d="M4.6 18h14.8" />
-      <path className={secondaryStroke('toolbar-tool-icon-heavy')} d="m5.2 9.4 3 2.6-3 2.6" />
+      <path className={primaryStroke()} d="M21 5H11" />
+      <path className={primaryStroke()} d="M21 12H11" />
+      <path className={primaryStroke()} d="M21 19H11" />
+      <path className={primaryStroke()} d="m3 8 4 4-4 4" />
     </>,
   ),
   removeBlockIndent: svgIcon(
     <>
-      <path className={primaryStroke()} d="M4.6 6h14.8" />
-      <path className={primaryStroke()} d="M12 12h7.4" />
-      <path className={primaryStroke()} d="M4.6 18h14.8" />
-      <path className={secondaryStroke('toolbar-tool-icon-heavy')} d="m8.2 9.4-3 2.6 3 2.6" />
+      <path className={primaryStroke()} d="M21 5H11" />
+      <path className={primaryStroke()} d="M21 12H11" />
+      <path className={primaryStroke()} d="M21 19H11" />
+      <path className={primaryStroke()} d="m7 8-4 4 4 4" />
     </>,
   ),
-  hr: svgIcon(<path className={primaryStroke('toolbar-tool-icon-heavy')} d="M5 12h14" />),
+  hr: svgIcon(<path className={primaryStroke()} d="M5 12h14" />),
   link: svgIcon(
     <>
-      <path className={primaryStroke()} d="M9.8 13.8 8.4 15.2a3.5 3.5 0 0 1-5-5L6 7.6a3.5 3.5 0 0 1 5 0" />
-      <path className={primaryStroke()} d="m14.2 10.2 1.4-1.4a3.5 3.5 0 0 1 5 5L18 16.4a3.5 3.5 0 0 1-5 0" />
-      <path className={secondaryStroke()} d="m8.8 15.2 6.4-6.4" />
+      <path className={primaryStroke()} d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+      <path className={primaryStroke()} d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
     </>,
   ),
   image: svgIcon(
     <>
-      <rect className={primaryStroke()} x="4.3" y="5" width="15.4" height="14" rx="1.8" />
-      <path className={secondaryFill()} d="m5.7 17 4.5-4.6 3.2 3.2 1.8-1.9 3.2 3.3Z" />
-      <path className={secondaryStroke()} d="m5.7 17 4.5-4.6 3.2 3.2 1.8-1.9 3.2 3.3" />
-      <circle className={secondaryFill()} cx="15.5" cy="8.8" r="1.5" />
+      <rect className={primaryStroke()} width="18" height="18" x="3" y="3" rx="2" ry="2" />
+      <circle className={primaryStroke()} cx="9" cy="9" r="2" />
+      <path className={primaryStroke()} d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
     </>,
   ),
   table: svgIcon(
     <>
-      <rect className={secondaryFill()} x="5" y="5" width="14" height="14" rx="1.2" />
-      <rect className={primaryStroke()} x="5" y="5" width="14" height="14" rx="1.2" />
-      <path className={primaryStroke()} d="M5 10h14" />
-      <path className={primaryStroke()} d="M5 14.5h14" />
-      <path className={primaryStroke()} d="M10 5v14" />
-      <path className={primaryStroke()} d="M14.5 5v14" />
+      <path className={primaryStroke()} d="M12 3v17a1 1 0 0 1-1 1H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6a1 1 0 0 1-1 1H3" />
+      <path className={primaryStroke()} d="M16 19h6" />
+      <path className={primaryStroke()} d="M19 22v-6" />
     </>,
   ),
   code: svgIcon(
     <>
-      <path className={primaryStroke('toolbar-tool-icon-heavy')} d="m9.2 8-4 4 4 4" />
-      <path className={primaryStroke('toolbar-tool-icon-heavy')} d="m14.8 8 4 4-4 4" />
-      <path className={secondaryStroke()} d="m12.8 6.8-1.6 10.4" />
+      <path className={primaryStroke()} d="m16 18 6-6-6-6" />
+      <path className={primaryStroke()} d="m8 6-6 6 6 6" />
     </>,
   ),
-  codeBlock: textIcon(
+  codeBlock: svgIcon(
     <>
-      <span className="toolbar-tool-text-primary">&lt;/&gt;</span>
-      <span className="toolbar-tool-text-secondary">CB</span>
+      <path className={primaryStroke()} d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1" />
+      <path className={primaryStroke()} d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1" />
     </>,
-    'toolbar-tool-text-code-block',
   ),
   clear: svgIcon(
     <>
-      <path className={primaryStroke()} d="M9 6.5h10.2c1 0 1.8.8 1.8 1.8v7.4c0 1-.8 1.8-1.8 1.8H9L3.4 12Z" />
-      <path className={secondaryStroke('toolbar-tool-icon-heavy')} d="m12 9.5 5 5" />
-      <path className={secondaryStroke('toolbar-tool-icon-heavy')} d="m17 9.5-5 5" />
+      <path className={primaryStroke()} d="M10 5a2 2 0 0 0-1.344.519l-6.328 5.74a1 1 0 0 0 0 1.481l6.328 5.741A2 2 0 0 0 10 19h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z" />
+      <path className={primaryStroke()} d="m12 9 6 6" />
+      <path className={primaryStroke()} d="m18 9-6 6" />
     </>,
   ),
 } satisfies Record<ToolbarToolId, ToolbarIconDefinition>
