@@ -914,7 +914,7 @@ export function SettingsPage({
 
         {section === 'tips' && (
           <div className="settings-section-panel" role="tabpanel" aria-label="tips settings">
-            <p className="settings-help">Seen tips are this-device settings; disabled tips are user settings.</p>
+            <p className="settings-help">Disabled tips won't appear unless you turn them back on.</p>
             {state.ui.seenTipIds.length === 0 ? (
               <p className="settings-help">Tips you have seen will appear here.</p>
             ) : (

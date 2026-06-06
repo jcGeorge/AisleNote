@@ -918,10 +918,23 @@ describe('frontmatter settings page', () => {
     state.ui.disabledTipIds = ['task-undo']
     const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'tips', state })
 
+    expect(html).toContain("Disabled tips won&#x27;t appear unless you turn them back on.")
     expect(html).toContain('task undo')
     expect(html).toContain('Click &amp; hold')
     expect(html).toContain('aria-label="task undo tip enabled"')
     expect(html).not.toContain('tab creation')
+    expect(html).not.toContain('checked=""')
+  })
+
+  it('renders the auto-disabled trash confirmation tip unchecked after it is seen', () => {
+    const state = createState()
+    state.ui.seenTipIds = ['trash-delete-confirmation-setting']
+    state.ui.disabledTipIds = ['trash-delete-confirmation-setting']
+    const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'tips', state })
+
+    expect(html).toContain('trash delete confirmation setting')
+    expect(html).toContain('turn off delete-for-real confirmations')
+    expect(html).toContain('aria-label="trash delete confirmation setting tip enabled"')
     expect(html).not.toContain('checked=""')
   })
 

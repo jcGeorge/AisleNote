@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AppMessage, ViewMode } from '../types/app'
-import { buildStorageAlerts, shouldShowTipOverlays } from './storage-alerts'
+import { buildStorageAlerts, shouldShowStorageAlerts, shouldShowTipOverlays } from './storage-alerts'
 
 const recoveryMessage: AppMessage = {
   id: 'message-1',
@@ -69,12 +69,22 @@ describe('storage alerts', () => {
 })
 
 describe('tip overlay visibility', () => {
-  it('shows tip overlays only in main mode', () => {
-    const hiddenModes: ViewMode[] = ['settings', 'messages', 'trash', 'about']
+  it('shows tip overlays in primary note workflows', () => {
+    const hiddenModes: ViewMode[] = ['settings', 'messages', 'about']
 
     expect(shouldShowTipOverlays('main')).toBe(true)
+    expect(shouldShowTipOverlays('trash')).toBe(true)
     hiddenModes.forEach((mode) => {
       expect(shouldShowTipOverlays(mode)).toBe(false)
+    })
+  })
+
+  it('keeps storage alerts main-only', () => {
+    const hiddenModes: ViewMode[] = ['settings', 'messages', 'trash', 'about']
+
+    expect(shouldShowStorageAlerts('main')).toBe(true)
+    hiddenModes.forEach((mode) => {
+      expect(shouldShowStorageAlerts(mode)).toBe(false)
     })
   })
 })

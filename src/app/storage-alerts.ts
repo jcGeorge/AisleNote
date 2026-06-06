@@ -5,6 +5,10 @@ export const DUPLICATE_AUTO_DECOUPLED_MESSAGE_TYPE = 'duplicate-auto-decoupled'
 export const STORAGE_NOTEBOOK_RECOVERED_MESSAGE_TYPE = 'storage-notebook-recovered'
 
 export function shouldShowTipOverlays(viewMode: ViewMode) {
+  return viewMode === 'main' || viewMode === 'trash'
+}
+
+export function shouldShowStorageAlerts(viewMode: ViewMode) {
   return viewMode === 'main'
 }
 

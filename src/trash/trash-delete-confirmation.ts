@@ -4,7 +4,7 @@ export const TRASH_DELETE_CONFIRMATION_TIP_ID = 'trash-delete-confirmation-setti
 
 type TrashDeleteConfirmationUi = Pick<
   AppState['ui'],
-  'seenTipIds' | 'trashDeleteForRealRequiresConfirmation'
+  'trashDeleteForRealRequiresConfirmation'
 >
 
 export function shouldConfirmTrashDeleteForReal(
@@ -14,5 +14,5 @@ export function shouldConfirmTrashDeleteForReal(
 }
 
 export function shouldShowTrashDeleteConfirmationTip(ui: TrashDeleteConfirmationUi) {
-  return shouldConfirmTrashDeleteForReal(ui) && !ui.seenTipIds.includes(TRASH_DELETE_CONFIRMATION_TIP_ID)
+  return shouldConfirmTrashDeleteForReal(ui)
 }

@@ -6,6 +6,7 @@ export type TipDefinition = {
   id: TipId
   label: string
   message: string
+  autoDisableAfterShow?: boolean
 }
 
 type TipDefinitionOptions = {
@@ -28,6 +29,7 @@ export const TIP_DEFINITIONS: TipDefinition[] = [
     id: 'trash-delete-confirmation-setting',
     label: 'trash delete confirmation setting',
     message: 'Tip: You can turn off delete-for-real confirmations in settings > data > trash.',
+    autoDisableAfterShow: true,
   },
 ]
 
@@ -60,4 +62,17 @@ export function getTipDefinition(tipId: TipId, options: TipDefinitionOptions = {
     ...tip,
     message: getDeleteActiveAisleShortcutTipMessage(options.isMacPlatform),
   }
+}
+
+export function applyTriggeredTipState(
+  ui: { seenTipIds: TipId[]; disabledTipIds: TipId[] },
+  tipId: TipId,
+): { seenTipIds: TipId[]; disabledTipIds: TipId[] } {
+  const tip = getTipDefinition(tipId)
+  const seenTipIds = ui.seenTipIds.includes(tipId) ? ui.seenTipIds : [...ui.seenTipIds, tipId]
+  const disabledTipIds =
+    tip.autoDisableAfterShow && !ui.disabledTipIds.includes(tipId)
+      ? [...ui.disabledTipIds, tipId]
+      : ui.disabledTipIds
+  return { seenTipIds, disabledTipIds }
 }

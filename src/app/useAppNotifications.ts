@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { appendToastToHistory, appendToastToStack } from '../components/overlays/toast-stack'
-import { getTipDefinition } from '../tips/tips'
+import { applyTriggeredTipState, getTipDefinition, type TipDefinition } from '../tips/tips'
 import type { AppState, TipId, ToastState, ToastTone } from '../types/app'
 
 const DEFAULT_TOAST_DURATION_MS = 6000
@@ -50,6 +50,33 @@ type UseAppNotificationsParams = {
   stateRef: { current: AppState }
   setState: Dispatch<SetStateAction<AppState>>
   isMacPlatform: boolean
+}
+
+export function canTriggerTip(
+  tipId: TipId,
+  ui: Pick<AppState['ui'], 'disabledTipIds'>,
+  dismissedTipIdsThisSession: ReadonlySet<TipId> = new Set(),
+) {
+  return !ui.disabledTipIds.includes(tipId) && !dismissedTipIdsThisSession.has(tipId)
+}
+
+export function shouldRetainVisibleTip(
+  tipId: TipId,
+  disabledTipIds: readonly TipId[],
+  options: { isMacPlatform?: boolean } = {},
+) {
+  const tip = getTipDefinition(tipId, options)
+  return tip.autoDisableAfterShow || !disabledTipIds.includes(tipId)
+}
+
+export function getVisibleTipDefinitions(
+  tipIds: readonly TipId[],
+  disabledTipIds: readonly TipId[],
+  options: { isMacPlatform?: boolean } = {},
+): TipDefinition[] {
+  return tipIds
+    .filter((tipId) => shouldRetainVisibleTip(tipId, disabledTipIds, options))
+    .map((tipId) => getTipDefinition(tipId, options))
 }
 
 export function useAppNotifications({
@@ -139,19 +166,23 @@ export function useAppNotifications({
 
   function showTip(tipId: TipId) {
     const currentState = stateRef.current
-    if (currentState.ui.disabledTipIds.includes(tipId)) return
-    if (dismissedTipIdsThisSessionRef.current.has(tipId)) return
+    if (!canTriggerTip(tipId, currentState.ui, dismissedTipIdsThisSessionRef.current)) return
 
     setVisibleTips((currentTips) => (currentTips.includes(tipId) ? currentTips : [...currentTips, tipId]))
-
-    if (currentState.ui.seenTipIds.includes(tipId)) return
     setState((previous) => {
-      if (previous.ui.seenTipIds.includes(tipId)) return previous
+      const nextTipState = applyTriggeredTipState(previous.ui, tipId)
+      if (
+        nextTipState.seenTipIds === previous.ui.seenTipIds &&
+        nextTipState.disabledTipIds === previous.ui.disabledTipIds
+      ) {
+        return previous
+      }
       return {
         ...previous,
         ui: {
           ...previous.ui,
-          seenTipIds: [...previous.ui.seenTipIds, tipId],
+          seenTipIds: nextTipState.seenTipIds,
+          disabledTipIds: nextTipState.disabledTipIds,
         },
       }
     })
@@ -181,14 +212,14 @@ export function useAppNotifications({
   }, [])
 
   useEffect(() => {
-    setVisibleTips((currentTips) => currentTips.filter((tipId) => !state.ui.disabledTipIds.includes(tipId)))
-  }, [state.ui.disabledTipIds])
+    setVisibleTips((currentTips) =>
+      currentTips.filter((tipId) => shouldRetainVisibleTip(tipId, state.ui.disabledTipIds, { isMacPlatform })),
+    )
+  }, [isMacPlatform, state.ui.disabledTipIds])
 
   const visibleTipDefinitions = useMemo(
     () =>
-      visibleTips
-        .filter((tipId) => !state.ui.disabledTipIds.includes(tipId))
-        .map((tipId) => getTipDefinition(tipId, { isMacPlatform })),
+      getVisibleTipDefinitions(visibleTips, state.ui.disabledTipIds, { isMacPlatform }),
     [isMacPlatform, state.ui.disabledTipIds, visibleTips],
   )
 

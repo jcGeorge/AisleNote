@@ -20,6 +20,7 @@ import {
 import {
   STORAGE_NOTEBOOK_RECOVERED_MESSAGE_TYPE,
   buildStorageAlerts,
+  shouldShowStorageAlerts,
   shouldShowTipOverlays,
 } from './storage-alerts'
 import { useActiveNoteModel } from './useActiveNoteModel'
@@ -5816,6 +5817,7 @@ export function useAppController(): AppController {
     [dismissedStorageAlertSignatures, unreadMessages],
   )
   const tipOverlaysVisible = shouldShowTipOverlays(viewMode)
+  const storageAlertsVisible = shouldShowStorageAlerts(viewMode)
   const dismissStorageAlert = (signature: string) => {
     const message = unreadMessages.find((candidate) => (candidate.signature || candidate.id) === signature)
     if (message?.type === STORAGE_NOTEBOOK_RECOVERED_MESSAGE_TYPE) {
@@ -6846,7 +6848,7 @@ export function useAppController(): AppController {
 
       {tipOverlaysVisible && <TipHost tips={visibleTipDefinitions} onDismissTip={dismissTip} />}
       <AppTooltipLayer disabled={mainArrangementActive} />
-      {tipOverlaysVisible && (
+      {storageAlertsVisible && (
         <StorageAlertHost
           alerts={storageAlerts}
           onDismissAlert={dismissStorageAlert}

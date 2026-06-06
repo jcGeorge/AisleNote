@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createToastTimerManager } from './useAppNotifications'
+import {
+  canTriggerTip,
+  createToastTimerManager,
+  getVisibleTipDefinitions,
+  shouldRetainVisibleTip,
+} from './useAppNotifications'
 
 const timerApi = {
   setTimeout: (handler: () => void, timeout: number) =>
@@ -68,5 +73,32 @@ describe('createToastTimerManager', () => {
     expect(timers.size).toBe(0)
     vi.advanceTimersByTime(600)
     expect(dismissed).toEqual([])
+  })
+})
+
+describe('tip notification helpers', () => {
+  it('blocks disabled and same-session dismissed tips from triggering', () => {
+    expect(canTriggerTip('trash-delete-confirmation-setting', { disabledTipIds: [] })).toBe(true)
+    expect(
+      canTriggerTip('trash-delete-confirmation-setting', {
+        disabledTipIds: ['trash-delete-confirmation-setting'],
+      }),
+    ).toBe(false)
+    expect(
+      canTriggerTip('trash-delete-confirmation-setting', { disabledTipIds: [] }, new Set(['trash-delete-confirmation-setting'])),
+    ).toBe(false)
+  })
+
+  it('keeps auto-disabled visible tips rendered while filtering normal disabled tips', () => {
+    expect(
+      shouldRetainVisibleTip('trash-delete-confirmation-setting', ['trash-delete-confirmation-setting']),
+    ).toBe(true)
+    expect(shouldRetainVisibleTip('task-undo', ['task-undo'])).toBe(false)
+    expect(
+      getVisibleTipDefinitions(['trash-delete-confirmation-setting', 'task-undo'], [
+        'trash-delete-confirmation-setting',
+        'task-undo',
+      ]).map((tip) => tip.id),
+    ).toEqual(['trash-delete-confirmation-setting'])
   })
 })

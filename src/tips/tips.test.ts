@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  applyTriggeredTipState,
   getTipDefinition,
   normalizeTipIds,
 } from './tips'
@@ -13,14 +14,17 @@ describe('tips', () => {
         'task-undo',
         'tab-create-after-rename',
         'delete-active-aisle-shortcut',
+        'trash-delete-confirmation-setting',
         'aisle-shortcut',
       ]),
-    ).toEqual(['task-undo', 'delete-active-aisle-shortcut'])
+    ).toEqual(['task-undo', 'delete-active-aisle-shortcut', 'trash-delete-confirmation-setting'])
     expect(normalizeTipIds('task-undo')).toEqual([])
   })
 
   it('resolves known tip definitions', () => {
     expect(getTipDefinition('task-undo').message).toContain('Click & hold')
+    expect(getTipDefinition('task-undo').autoDisableAfterShow).toBeUndefined()
+    expect(getTipDefinition('trash-delete-confirmation-setting').autoDisableAfterShow).toBe(true)
   })
 
   it('formats the active aisle shortcut tip for the current platform', () => {
@@ -32,4 +36,26 @@ describe('tips', () => {
     )
   })
 
+  it('adds triggered one-time tips to seen and disabled settings', () => {
+    expect(applyTriggeredTipState({ seenTipIds: [], disabledTipIds: [] }, 'trash-delete-confirmation-setting')).toEqual({
+      seenTipIds: ['trash-delete-confirmation-setting'],
+      disabledTipIds: ['trash-delete-confirmation-setting'],
+    })
+    expect(
+      applyTriggeredTipState(
+        {
+          seenTipIds: ['trash-delete-confirmation-setting'],
+          disabledTipIds: [],
+        },
+        'trash-delete-confirmation-setting',
+      ),
+    ).toEqual({
+      seenTipIds: ['trash-delete-confirmation-setting'],
+      disabledTipIds: ['trash-delete-confirmation-setting'],
+    })
+    expect(applyTriggeredTipState({ seenTipIds: [], disabledTipIds: [] }, 'task-undo')).toEqual({
+      seenTipIds: ['task-undo'],
+      disabledTipIds: [],
+    })
+  })
 })
