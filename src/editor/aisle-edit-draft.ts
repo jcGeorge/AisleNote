@@ -3,7 +3,7 @@ import { MAX_NOTE_AISLES } from '../state/workspace'
 import type { NoteAisle, ResolvedNoteAisle } from '../types/app'
 
 export const EMPTY_AISLE_PREVIEW_TEXT = 'empty aisle'
-export const MAX_AISLE_WARNING_MESSAGE = 'only eight aisles are allowed for each note'
+export const MAX_AISLE_WARNING_MESSAGE = 'Only eight aisles are allowed for each note.'
 
 export function createAisleEditDraft(aisles: ResolvedNoteAisle[]): ResolvedNoteAisle[] {
   return aisles.map((aisle) => ({

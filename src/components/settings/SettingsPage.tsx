@@ -144,14 +144,11 @@ type SettingsPageProps = {
   onNewlineShortcutChange: (shortcutId: NewlineShortcutId, operation: NewlineOperationId) => void
   onOpenShortcutMenuSettings: () => void
   onAutoRemoveDaysChange: (value: string, commit?: boolean) => void
-  onExportNotebook: () => void
   onExportUserSettings: () => void
   onImportNotebook: () => void
   onImportUserSettings: () => void
   onImportUserSettingsFromNotebookFolder: () => void
-  onChooseUserSettingsFolder: () => void
   onRevealUserSettingsFolder: () => void
-  onRetryUserSettingsSync: () => void
   onResetUserSettingsFolder: () => void
   onResetUserSettingsToDefaults: () => void
   onThemeChange: (theme: AppTheme) => void
@@ -200,7 +197,9 @@ type SettingsPageProps = {
   onDiscardFrontmatterTemplateChanges: () => void
   onCreateNotebook: () => void
   onRenameNotebook: () => void
-  onSwitchNotebook: () => void
+  onOpenNotebook: () => void
+  onSwitchNotebook: (notebookPath: string) => void
+  onForgetNotebook: (notebookPath: string) => void
   onMoveStorageProfile: () => void
   onRevealStorageProfile: () => void
   onRetryStorageProfile: () => void
@@ -246,14 +245,11 @@ export function SettingsPage({
   onNewlineShortcutChange,
   onOpenShortcutMenuSettings,
   onAutoRemoveDaysChange,
-  onExportNotebook,
   onExportUserSettings,
   onImportNotebook,
   onImportUserSettings,
   onImportUserSettingsFromNotebookFolder,
-  onChooseUserSettingsFolder,
   onRevealUserSettingsFolder,
-  onRetryUserSettingsSync,
   onResetUserSettingsFolder,
   onResetUserSettingsToDefaults,
   onThemeChange,
@@ -298,7 +294,9 @@ export function SettingsPage({
   onDiscardFrontmatterTemplateChanges,
   onCreateNotebook,
   onRenameNotebook,
+  onOpenNotebook,
   onSwitchNotebook,
+  onForgetNotebook,
   onMoveStorageProfile,
   onRevealStorageProfile,
   onRetryStorageProfile,
@@ -543,7 +541,7 @@ export function SettingsPage({
                 </div>
               ))}
             </div>
-            <p className="settings-help">select a hotkey to enter new combination, escape to cancel.</p>
+            <p className="settings-help">Select a hotkey to enter new combination, escape to cancel.</p>
           </div>
         )}
 
@@ -579,7 +577,7 @@ export function SettingsPage({
                 configure
               </button>
             </div>
-            <p className="settings-help">numbered menu entries use 1-9, then 0.</p>
+            <p className="settings-help">Numbered menu entries use 1-9, then 0.</p>
           </div>
         )}
 
@@ -594,19 +592,18 @@ export function SettingsPage({
             userSettingsLocationStatus={userSettingsLocationStatus}
             onDataSectionChange={onDataSectionChange}
             onAutoRemoveDaysChange={onAutoRemoveDaysChange}
-            onExportNotebook={onExportNotebook}
             onExportUserSettings={onExportUserSettings}
             onImportNotebook={onImportNotebook}
             onImportUserSettings={onImportUserSettings}
             onImportUserSettingsFromNotebookFolder={onImportUserSettingsFromNotebookFolder}
-            onChooseUserSettingsFolder={onChooseUserSettingsFolder}
             onRevealUserSettingsFolder={onRevealUserSettingsFolder}
-            onRetryUserSettingsSync={onRetryUserSettingsSync}
             onResetUserSettingsFolder={onResetUserSettingsFolder}
             onResetUserSettingsToDefaults={onResetUserSettingsToDefaults}
             onCreateNotebook={onCreateNotebook}
             onRenameNotebook={onRenameNotebook}
+            onOpenNotebook={onOpenNotebook}
             onSwitchNotebook={onSwitchNotebook}
+            onForgetNotebook={onForgetNotebook}
             onMoveStorageProfile={onMoveStorageProfile}
             onRevealStorageProfile={onRevealStorageProfile}
             onRetryStorageProfile={onRetryStorageProfile}
@@ -785,7 +782,7 @@ export function SettingsPage({
                 save template
               </button>
             </div>
-            <p className="settings-help">template changes apply only after saving.</p>
+            <p className="settings-help">Template changes apply only after saving.</p>
 
             {activeFrontmatterTemplate && (
               <>
@@ -863,8 +860,8 @@ export function SettingsPage({
                       {renderFrontmatterDefaultControl(activeFrontmatterTemplate.id, field)}
                       <span
                         className={`frontmatter-computed-lock ${field.computed !== 'none' ? 'is-visible' : ''}`}
-                        aria-label={field.computed !== 'none' ? 'computed values cannot be manually changed.' : undefined}
-                        data-app-tooltip={field.computed !== 'none' ? 'computed values cannot be manually changed.' : undefined}
+                        aria-label={field.computed !== 'none' ? 'Computed values cannot be manually changed.' : undefined}
+                        data-app-tooltip={field.computed !== 'none' ? 'Computed values cannot be manually changed.' : undefined}
                       >
                         {field.computed !== 'none' ? 'lock' : ''}
                       </span>
@@ -913,9 +910,9 @@ export function SettingsPage({
 
         {section === 'tips' && (
           <div className="settings-section-panel" role="tabpanel" aria-label="tips settings">
-            <p className="settings-help">seen tips are this-device settings; disabled tips are user settings.</p>
+            <p className="settings-help">Seen tips are this-device settings; disabled tips are user settings.</p>
             {state.ui.seenTipIds.length === 0 ? (
-              <p className="settings-help">tips you have seen will appear here.</p>
+              <p className="settings-help">Tips you have seen will appear here.</p>
             ) : (
               <div className="settings-hotkeys-list">
                 {state.ui.seenTipIds.map((tipId) => {
@@ -947,7 +944,7 @@ export function SettingsPage({
 
         {section === 'toolbar' && (
           <div className="settings-section-panel" role="tabpanel" aria-label="toolbar settings">
-            <p className="settings-help">toolbar layouts are user settings; the active toolbar is set per device.</p>
+            <p className="settings-help">Toolbar layouts are user settings; the active toolbar is set per device.</p>
             <ToolbarSettingsPanel
               toolbarLayouts={toolbarLayouts}
               toolbarEditorLayoutId={toolbarEditorLayoutId}

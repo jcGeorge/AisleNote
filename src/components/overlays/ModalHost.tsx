@@ -427,7 +427,7 @@ export function ModalHost({
     const aisleBodyId = getAisleBodyId(aisle)
     const aisleBody = (state.noteAisleBodies ?? []).find((body) => body.id === aisleBodyId) ?? null
     if (aisleBody?.frontmatterStatus === 'invalid') {
-      onWarn('frontmatter YAML is invalid. fix the markdown block before using the frontmatter menu.')
+      onWarn('Frontmatter YAML is invalid. Fix the markdown block before using the frontmatter menu.')
       return
     }
     const draft = buildFrontmatterModalDraftForAisle(state, modal.noteBodyId, aisleBodyId, modal.location)
@@ -476,8 +476,8 @@ export function ModalHost({
   const isDerivedNormalRow = (row: FrontmatterRowDraft) => Boolean(row.derived && row.computed === 'none')
   const getComputedLockedMessage = (row: FrontmatterRowDraft) => (
     row.derived
-      ? 'computed fields that are derived can not be changed here, edit the fm template'
-      : 'computed fields, once set, can not be changed'
+      ? 'Computed fields that are derived can not be changed here. Edit the fm template.'
+      : 'Computed fields, once set, can not be changed.'
   )
 
   const warnComputedLocked = (row: FrontmatterRowDraft) => {
@@ -485,11 +485,11 @@ export function ModalHost({
   }
 
   const warnDerivedComputedBlocked = () => {
-    onError('derived fields can not be made into computed fields, change the fm template to accomodate')
+    onError('Derived fields can not be made into computed fields. Change the fm template to accommodate.')
   }
 
   const warnDerivedKeyLocked = () => {
-    onWarn('derived fields cannot have their names changed')
+    onWarn('Derived fields cannot have their names changed.')
   }
 
   const warnReadOnlyRowName = (row: FrontmatterRowDraft) => {
@@ -729,15 +729,15 @@ export function ModalHost({
         {modalText.body ? <p>{modalText.body}</p> : null}
         {modal.type === 'scratchpad-about' && (
           <div className="scratchpad-about-modal">
-            <p>scratchpad is a quick standalone place to put unsorted notes and spur of the moment thoughts.</p>
+            <p>Scratchpad is a quick standalone place to put unsorted notes and spur of the moment thoughts.</p>
             <p>
-              it is stored with your other notes, but it does not belong to a domain, space, parent, or tab.
+              It is stored with your other notes, but it does not belong to a domain, space, parent, or tab.
             </p>
             <p>
-              scratchpad results appear when searching your entire notebook, or when searching within scratchpad itself.
+              Scratchpad results appear when searching your entire notebook, or when searching within scratchpad itself.
             </p>
             <p>
-              scratchpad allows 16 aisles by default, adjustable up to 40 in the misc settings. new scratchpad aisles
+              Scratchpad allows 16 aisles by default, adjustable up to 40 in the misc settings. New scratchpad aisles
               are added to the left by default, also adjustable in the settings.
             </p>
           </div>

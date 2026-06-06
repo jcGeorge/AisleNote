@@ -163,7 +163,7 @@ describe('navigation context menu suppression', () => {
     expect(setTrashSpaceId).toHaveBeenCalledWith('')
     expect(setTrashTabId).toHaveBeenCalledWith('__trash_home__')
     expect(setTrashSubTabId).toHaveBeenCalledWith(null)
-    expect(pushToast).toHaveBeenCalledWith('space restored from trash.', 'success')
+    expect(pushToast).toHaveBeenCalledWith('Space restored from trash.', 'success')
   })
 
   it('rejects deleting the only live parent tab from normal navigation actions', () => {

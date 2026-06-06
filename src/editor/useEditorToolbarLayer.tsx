@@ -94,14 +94,14 @@ export function useEditorToolbarLayer({
   const executeToolbarCommand = (command: string, payload?: Record<string, unknown>) => {
     dismissEditorEphemera()
     if (!runActiveEditorCommand(command, payload)) {
-      pushToast('open a note before using the toolbar.', 'warning')
+      pushToast('Open a note before using the toolbar.', 'warning')
     }
   }
 
   const executeToolbarHistory = (direction: 'undo' | 'redo') => {
     dismissEditorEphemera()
     if (!runActiveEditorHistory(direction)) {
-      pushToast('open a note before using the toolbar.', 'warning')
+      pushToast('Open a note before using the toolbar.', 'warning')
     }
   }
 
@@ -109,7 +109,7 @@ export function useEditorToolbarLayer({
     dismissEditorEphemera()
     const currentEditor = editorRef.current
     if (!currentEditor) {
-      pushToast('open a note before inserting an image.', 'warning')
+      pushToast('Open a note before inserting an image.', 'warning')
       return
     }
 
@@ -121,7 +121,7 @@ export function useEditorToolbarLayer({
       if (!file) return
       void importImageBlobAsAssetUrl(file, file.name).then(async (assetUrl) => {
         if (!assetUrl) {
-          pushToast('could not import image.', 'warning')
+          pushToast('Could not import image.', 'warning')
           return
         }
         const view = getWysiwygView(currentEditor)
@@ -142,7 +142,7 @@ export function useEditorToolbarLayer({
     dismissEditorEphemera()
     const currentEditor = editorRef.current
     if (!currentEditor) {
-      pushToast('open a note before inserting a link.', 'warning')
+      pushToast('Open a note before inserting a link.', 'warning')
       return
     }
     const selectedText = getCommandCapableEditor(currentEditor).getSelectedText().trim()

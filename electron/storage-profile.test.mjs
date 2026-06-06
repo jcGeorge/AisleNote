@@ -4,6 +4,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME,
+  forgetStorageProfileNotebook,
   getStorageProfileConfigPath,
   resolveStorageProfile,
   validateNotebookName,
@@ -28,6 +29,7 @@ describe('Electron storage profile config', () => {
         notebookPath,
         notebookName: STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME,
         isDefault: true,
+        knownNotebookPaths: [notebookPath],
       })
     }))
 
@@ -42,20 +44,66 @@ describe('Electron storage profile config', () => {
         notebookPath: path.resolve(syncFolder),
         notebookName: 'tabs-sync-folder',
         isDefault: false,
+        knownNotebookPaths: [
+          path.join(userDataPath, STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME),
+          path.resolve(syncFolder),
+        ],
       })
       expect(JSON.parse(readFileSync(getStorageProfileConfigPath(userDataPath), 'utf8'))).toEqual({
         profileRootPath: path.resolve(syncFolder),
+        knownNotebooks: [
+          path.join(userDataPath, STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME),
+          path.resolve(syncFolder),
+        ],
       })
       expect(resolveStorageProfile(userDataPath)).toEqual(profile)
     }))
 
-  it('removes the custom config when reset to the default profile', () =>
+  it('remembers custom notebooks when reset to the default profile', () =>
     withTempUserDataPath((userDataPath) => {
-      writeStorageProfileConfig(userDataPath, path.join(userDataPath, '..', 'tabs-sync-folder'))
+      const syncFolder = path.join(userDataPath, '..', 'tabs-sync-folder')
+      writeStorageProfileConfig(userDataPath, syncFolder)
       const profile = writeStorageProfileConfig(userDataPath, path.join(userDataPath, STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME))
 
       expect(profile.isDefault).toBe(true)
+      expect(profile.knownNotebookPaths).toEqual([
+        path.join(userDataPath, STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME),
+        path.resolve(syncFolder),
+      ])
+      expect(existsSync(getStorageProfileConfigPath(userDataPath))).toBe(true)
+    }))
+
+  it('removes the custom config when only the default notebook is known', () =>
+    withTempUserDataPath((userDataPath) => {
+      const profile = writeStorageProfileConfig(userDataPath, path.join(userDataPath, STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME))
+
+      expect(profile.isDefault).toBe(true)
+      expect(profile.knownNotebookPaths).toEqual([path.join(userDataPath, STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME)])
       expect(existsSync(getStorageProfileConfigPath(userDataPath))).toBe(false)
+    }))
+
+  it('replaces and forgets remembered notebooks without removing the active notebook', () =>
+    withTempUserDataPath((userDataPath) => {
+      const original = path.resolve(userDataPath, '..', 'Original')
+      const renamed = path.resolve(userDataPath, '..', 'Renamed')
+      const other = path.resolve(userDataPath, '..', 'Other')
+
+      let profile = writeStorageProfileConfig(userDataPath, original, { rememberPaths: [other] })
+      expect(profile.knownNotebookPaths).toContain(original)
+      expect(profile.knownNotebookPaths).toContain(other)
+
+      profile = writeStorageProfileConfig(userDataPath, renamed, { replacePaths: [[original, renamed]] })
+      expect(profile.knownNotebookPaths).toContain(renamed)
+      expect(profile.knownNotebookPaths).not.toContain(original)
+      expect(profile.knownNotebookPaths).toContain(other)
+
+      const forgotten = forgetStorageProfileNotebook(userDataPath, other)
+      expect(forgotten.ok).toBe(true)
+      expect(forgotten.profile.knownNotebookPaths).not.toContain(other)
+
+      const activeForget = forgetStorageProfileNotebook(userDataPath, renamed)
+      expect(activeForget.ok).toBe(false)
+      expect(activeForget.profile.knownNotebookPaths).toContain(renamed)
     }))
 
   it('validates notebook folder names', () => {

@@ -959,6 +959,8 @@
   line-height: 1.2;
   text-align: center;
   text-overflow: ellipsis;
+  user-select: text;
+  -webkit-user-select: text;
   white-space: nowrap !important;
 }
 

@@ -48,7 +48,7 @@ export type SettingsSection =
   | 'tips'
   | 'toolbar'
   | 'visuals'
-export type DataSettingsSection = 'transfer' | 'settings' | 'storage' | 'trash'
+export type DataSettingsSection = 'transfer' | 'storage' | 'trash'
 export type VisualsSettingsSection = 'theming' | 'otherVisuals'
 export type TableControlTargetMode = 'active-cell' | 'bottom-right'
 export type TableOfContentsScope = 'all-aisles' | 'focused-aisle'
@@ -629,6 +629,16 @@ export type StorageProfileRecovery = {
   createdAt: string
 }
 
+export type KnownNotebook = {
+  notebookPath: string
+  notebookName: string
+  isActive: boolean
+  isDefault: boolean
+  exists: boolean
+  hasManifest: boolean
+  available: boolean
+}
+
 export type StorageProfileStatus = {
   status: 'ready' | 'error'
   health?: 'healthy' | 'warning' | 'error'
@@ -646,6 +656,7 @@ export type StorageProfileStatus = {
   revision?: number
   error?: string
   recovery?: StorageProfileRecovery
+  knownNotebooks?: KnownNotebook[]
 }
 
 export type UserSettingsLocationStatus = {
@@ -736,6 +747,13 @@ export type EditorTextLineRange = {
   nodeType?: string
 }
 
+export type EditorDictionaryContext = {
+  suggestions: string[]
+  misspelledWord: string
+  selectionText: string
+  canLookUpSelection: boolean
+}
+
 export type ContextMenuState =
   | { x: number; y: number; type: 'tab'; tabId: string }
   | { x: number; y: number; type: 'subtab'; tabId: string; subTabId: string }
@@ -746,6 +764,7 @@ export type ContextMenuState =
       x: number
       y: number
       type: 'editor'
+      dictionary?: EditorDictionaryContext
       link?:
         | { type: 'external'; label: string; href: string; range: LinkEditRange | null }
         | (InternalNoteLinkEdit & { type: 'internal'; range?: LinkEditRange | null })

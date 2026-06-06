@@ -20,13 +20,13 @@ export function getUserSettingsLocationStatusToast(nextStatus: UserSettingsLocat
 } | null {
   if (nextStatus.status === 'warning' || nextStatus.status === 'error') {
     return {
-      message: nextStatus.error ?? 'settings folder could not be synced.',
+      message: nextStatus.error ?? 'Settings folder could not be synced.',
       tone: nextStatus.status === 'error' ? 'error' : 'warning',
       durationMs: USER_SETTINGS_LOCATION_ERROR_TOAST_DURATION_MS,
     }
   }
   if (nextStatus.event === 'settings-sync-loaded') {
-    return { message: 'user settings loaded from settings folder.', tone: 'success' }
+    return { message: 'User settings loaded from settings folder.', tone: 'success' }
   }
   return null
 }
@@ -73,7 +73,7 @@ export function useUserSettingsLocationController({
       return
     }
     pushToastRef.current(
-      'ok' in result ? result.error ?? 'settings folder action failed.' : 'settings folder action failed.',
+      'ok' in result ? result.error ?? 'Settings folder action failed.' : 'Settings folder action failed.',
       'error',
       USER_SETTINGS_LOCATION_ERROR_TOAST_DURATION_MS,
     )
@@ -83,16 +83,16 @@ export function useUserSettingsLocationController({
     await beforeActionRef.current?.()
     const result = await window.electronAPI?.chooseUserSettingsFolder?.()
     if (!result) {
-      pushToastRef.current('settings folder selection is only available in the desktop app.', 'warning')
+      pushToastRef.current('Settings folder selection is only available in the desktop app.', 'warning')
       return
     }
-    handleResult(result, 'settings folder updated.')
+    handleResult(result, 'Settings folder updated.')
   }
 
   const revealUserSettingsFolder = async () => {
     const result = await window.electronAPI?.revealUserSettingsFolder?.()
     if (!result) {
-      pushToastRef.current('reveal settings folder is only available in the desktop app.', 'warning')
+      pushToastRef.current('Reveal settings folder is only available in the desktop app.', 'warning')
       return
     }
     if (!result.ok) pushToastRef.current(result.error, 'error', USER_SETTINGS_LOCATION_ERROR_TOAST_DURATION_MS)
@@ -102,19 +102,19 @@ export function useUserSettingsLocationController({
     await beforeActionRef.current?.()
     const result = await window.electronAPI?.retryUserSettingsSync?.()
     if (!result) {
-      pushToastRef.current('settings sync is only available in the desktop app.', 'warning')
+      pushToastRef.current('Settings sync is only available in the desktop app.', 'warning')
       return
     }
-    handleResult(result, 'settings sync refreshed.')
+    handleResult(result, 'Settings sync refreshed.')
   }
 
   const resetUserSettingsFolder = async () => {
     const result = await window.electronAPI?.resetUserSettingsFolder?.()
     if (!result) {
-      pushToastRef.current('settings folder reset is only available in the desktop app.', 'warning')
+      pushToastRef.current('Settings folder reset is only available in the desktop app.', 'warning')
       return
     }
-    handleResult(result, 'settings folder reset to local.')
+    handleResult(result, 'Settings folder reset to local.')
   }
 
   return {

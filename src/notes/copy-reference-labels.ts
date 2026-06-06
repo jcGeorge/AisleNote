@@ -29,20 +29,20 @@ export function getCopyAsSubjectLabel(scope: CopyAsScope): string {
   return scope === 'aisle' ? 'aisle' : 'note'
 }
 
-function getCopyAsStructuralSubjectLabel(scope: CopyAsScope, action: Extract<CopyAsAction, 'copy' | 'duplicate'>): string {
-  const mode = action === 'duplicate' ? 'synced' : 'independent'
+function getCopyAsStructuralSentenceSubjectLabel(scope: CopyAsScope, action: Extract<CopyAsAction, 'copy' | 'duplicate'>): string {
+  const mode = action === 'duplicate' ? 'Synced' : 'Independent'
   return `${mode} ${getCopyAsSubjectLabel(scope)} copy`
 }
 
 export function getCopyAsCopiedToast(scope: CopyAsScope, action: CopyAsAction): string {
-  const subject = getCopyAsSubjectLabel(scope)
-  if (action === 'copy' || action === 'duplicate') return `${getCopyAsStructuralSubjectLabel(scope, action)} copied.`
+  const subject = scope === 'aisle' ? 'Aisle' : 'Note'
+  if (action === 'copy' || action === 'duplicate') return `${getCopyAsStructuralSentenceSubjectLabel(scope, action)} copied.`
   return `${subject} ${action === 'link' ? 'link' : 'preview'} copied.`
 }
 
 export function getCopyAsPastedToast(scope: CopyAsScope, action: CopyAsAction): string {
-  const subject = getCopyAsSubjectLabel(scope)
-  if (action === 'copy' || action === 'duplicate') return `${getCopyAsStructuralSubjectLabel(scope, action)} created.`
+  const subject = scope === 'aisle' ? 'Aisle' : 'Note'
+  if (action === 'copy' || action === 'duplicate') return `${getCopyAsStructuralSentenceSubjectLabel(scope, action)} created.`
   return `${subject} ${action === 'link' ? 'link' : 'preview'} pasted.`
 }
 
@@ -51,9 +51,9 @@ export function getCopyAsStructuralNoun(action: Extract<CopyAsAction, 'copy' | '
 }
 
 export function getCopyAsStructuralFailureMessage(scope: CopyAsScope, action: Extract<CopyAsAction, 'copy' | 'duplicate'>): string {
-  return `${getCopyAsStructuralSubjectLabel(scope, action)} could not be created.`
+  return `${getCopyAsStructuralSentenceSubjectLabel(scope, action)} could not be created.`
 }
 
 export function getNoteCopyCreatedToast(mode: NoteCopyMode): string {
-  return `${getNoteCopyModeLabel(mode)} copy created.`
+  return `${mode === 'linked' ? 'Synced' : 'Independent'} copy created.`
 }

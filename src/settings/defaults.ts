@@ -23,7 +23,7 @@ import {
 } from './synced-ui-settings-registry.js'
 
 export const DEFAULT_AUTO_REMOVE_DAYS = 7
-export const ALWAYS_SHOW_DOMAINS_WITHOUT_SPACES_MESSAGE = 'you cannot show domains without showing spaces'
+export const ALWAYS_SHOW_DOMAINS_WITHOUT_SPACES_MESSAGE = 'You cannot show domains without showing spaces.'
 export type BuiltInAppTheme = Exclude<AppTheme, CustomThemeId>
 export const BUILT_IN_THEME_IDS: BuiltInAppTheme[] = ['dark', 'light', 'dawn']
 export const CUSTOM_THEME_IDS: CustomThemeId[] = ['custom1', 'custom2', 'custom3']
@@ -41,7 +41,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   'visuals',
 ]
 export const DEFAULT_DATA_SETTINGS_SECTION: DataSettingsSection = 'transfer'
-export const DATA_SETTINGS_SECTIONS: DataSettingsSection[] = ['transfer', 'settings', 'storage', 'trash']
+export const DATA_SETTINGS_SECTIONS: DataSettingsSection[] = ['transfer', 'storage', 'trash']
 export const DEFAULT_VISUALS_SETTINGS_SECTION: VisualsSettingsSection = 'theming'
 export const VISUALS_SETTINGS_SECTIONS: VisualsSettingsSection[] = ['theming', 'otherVisuals']
 export const MIN_AUTO_REMOVE_DAYS = 1

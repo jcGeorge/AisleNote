@@ -269,7 +269,7 @@ describe('sort modal rendering', () => {
       destinationAisleId: 'aisle-1',
     })
 
-    expect(html).toContain('paste synced note?')
+    expect(html).toContain('Paste synced note?')
     expect(html).toContain('synced aisle')
     expect(html).toContain('paste synced note')
     expect(html).not.toContain('paste as synced aisle')
@@ -284,7 +284,7 @@ describe('sort modal rendering', () => {
       sourceAisleId: 'source-aisle',
     })
 
-    expect(html).toContain('paste synced note?')
+    expect(html).toContain('Paste synced note?')
     expect(html).toContain('paste synced note')
     expect(html).toContain('paste as synced aisle')
     expect(html).toContain('current aisle instead')
@@ -1048,8 +1048,8 @@ describe('frontmatter modal rendering', () => {
     expect(html).toContain('>derived</span>')
     expect(html).toContain('>computed</span>')
     expect(html).toContain('data-app-tooltip="template"')
-    expect(html).toContain('computed fields that are derived can not be changed here, edit the fm template')
-    expect(html).not.toContain('computed fields, once set, can not be changed')
+    expect(html).toContain('Computed fields that are derived can not be changed here. Edit the fm template.')
+    expect(html).not.toContain('Computed fields, once set, can not be changed')
   })
 
   it('switches the modal to no template when the last derived row is removed', () => {
@@ -1258,8 +1258,8 @@ describe('frontmatter modal rendering', () => {
       ],
     })
 
-    expect(html).toContain('computed fields, once set, can not be changed')
-    expect(html).not.toContain('computed fields that are derived can not be changed here, edit the fm template')
+    expect(html).toContain('Computed fields, once set, can not be changed.')
+    expect(html).not.toContain('Computed fields that are derived can not be changed here. Edit the fm template.')
   })
 
   it('renders suggested template notice and add action for unsaved template drafts', () => {

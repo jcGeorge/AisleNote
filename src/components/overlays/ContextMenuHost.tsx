@@ -66,6 +66,11 @@ type ContextMenuHostProps = {
   onEditorFindReplace: () => void
   onEditorOpenContextLink: () => void
   onEditorEditContextLink: () => void
+  onEditorReplaceMisspelling: (word: string) => void
+  onEditorAddWordToDictionary: (word: string) => void
+  onEditorLookUpSelection: () => void
+  onRevealNoteLocation: () => void
+  editorNoteRevealLabel?: string | null
   onOpenScratchpadAbout: () => void
   copyAsMenu: CopyAsMenuState | null
   onCopyAs: (scope: CopyAsScope, action: CopyAsAction) => void
@@ -193,6 +198,11 @@ export function ContextMenuHost({
   onEditorFindReplace,
   onEditorOpenContextLink,
   onEditorEditContextLink,
+  onEditorReplaceMisspelling,
+  onEditorAddWordToDictionary,
+  onEditorLookUpSelection,
+  onRevealNoteLocation,
+  editorNoteRevealLabel = null,
   onOpenScratchpadAbout,
   copyAsMenu,
   onCopyAs,
@@ -334,6 +344,27 @@ export function ContextMenuHost({
         <MenuButton onClick={onOpenScratchpadAbout}>about scratchpad</MenuButton>
       ) : contextMenu.type === 'editor' ? (
         <>
+          {contextMenu.dictionary &&
+            (contextMenu.dictionary.suggestions.length > 0 ||
+              contextMenu.dictionary.misspelledWord ||
+              contextMenu.dictionary.canLookUpSelection) && (
+              <>
+                {contextMenu.dictionary.suggestions.map((suggestion) => (
+                  <MenuButton key={suggestion} onClick={() => onEditorReplaceMisspelling(suggestion)}>
+                    {suggestion}
+                  </MenuButton>
+                ))}
+                {contextMenu.dictionary.misspelledWord && (
+                  <MenuButton onClick={() => onEditorAddWordToDictionary(contextMenu.dictionary?.misspelledWord ?? '')}>
+                    Add to Dictionary
+                  </MenuButton>
+                )}
+                {contextMenu.dictionary.canLookUpSelection && (
+                  <MenuButton onClick={onEditorLookUpSelection}>Look Up</MenuButton>
+                )}
+                <MenuSeparator />
+              </>
+            )}
           {contextMenu.link && (
             <>
               <MenuButton onClick={onEditorOpenContextLink}>
@@ -393,6 +424,12 @@ export function ContextMenuHost({
             <MenuSeparator />
             <MenuButton onClick={() => onEditorCommand('codeBlock')}>code block</MenuButton>
           </SubMenu>
+          {editorNoteRevealLabel && (
+            <>
+              <MenuSeparator />
+              <MenuButton onClick={onRevealNoteLocation}>{editorNoteRevealLabel}</MenuButton>
+            </>
+          )}
         </>
       ) : contextMenu.type === 'internal-note-link' ? (
         <>

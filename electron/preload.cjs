@@ -10,7 +10,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   importImageAsset: (payload) => ipcRenderer.invoke('import-image-asset', payload),
   openAsset: (payload) => ipcRenderer.invoke('open-asset', payload),
   revealAsset: (payload) => ipcRenderer.invoke('reveal-asset', payload),
+  revealNoteLocation: (payload) => ipcRenderer.invoke('reveal-note-location', payload),
   readAsset: (payload) => ipcRenderer.invoke('read-asset', payload),
+  getEditorSpellcheckContext: (payload) => ipcRenderer.invoke('get-editor-spellcheck-context', payload),
+  replaceMisspelling: (payload) => ipcRenderer.invoke('replace-misspelling', payload),
+  addWordToSpellCheckerDictionary: (payload) => ipcRenderer.invoke('add-word-to-spellchecker-dictionary', payload),
+  showDefinitionForSelection: () => ipcRenderer.invoke('show-definition-for-selection'),
   onAppStateUpdated: (handler) => {
     const listener = (_event, payload) => handler(payload)
     ipcRenderer.on('app-state-updated', listener)
@@ -21,7 +26,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   chooseNotebookLocation: () => ipcRenderer.invoke('choose-notebook-location'),
   createNotebook: (payload) => ipcRenderer.invoke('create-notebook', payload),
   renameNotebook: (payload) => ipcRenderer.invoke('rename-notebook', payload),
-  switchNotebook: () => ipcRenderer.invoke('switch-notebook'),
+  openNotebook: () => ipcRenderer.invoke('open-notebook'),
+  switchNotebook: (payload) => ipcRenderer.invoke('switch-notebook', payload),
+  forgetNotebook: (payload) => ipcRenderer.invoke('forget-notebook', payload),
   chooseStorageFolder: () => ipcRenderer.invoke('choose-storage-folder'),
   moveStorageProfile: () => ipcRenderer.invoke('move-storage-profile'),
   chooseUserSettingsFolder: () => ipcRenderer.invoke('choose-user-settings-folder'),

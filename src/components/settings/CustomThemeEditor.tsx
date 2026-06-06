@@ -102,9 +102,9 @@ export function CustomThemeEditor({
     try {
       if (!navigator.clipboard?.writeText) throw new Error('Clipboard text writes are unavailable.')
       await navigator.clipboard.writeText(exportedThemeJson)
-      setThemeTransferStatus('theme json copied.')
+      setThemeTransferStatus('Theme JSON copied.')
     } catch {
-      setThemeTransferStatus('could not copy theme json.')
+      setThemeTransferStatus('Could not copy theme JSON.')
     }
   }
 
@@ -117,7 +117,7 @@ export function CustomThemeEditor({
 
     onCustomThemePaletteImport(result.palette)
     setThemeImportJson('')
-    setThemeTransferStatus('theme json imported.')
+    setThemeTransferStatus('Theme JSON imported.')
   }
 
   return (

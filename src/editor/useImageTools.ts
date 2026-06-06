@@ -479,7 +479,7 @@ export function useImageTools({
   const copySelectedToClipboard = async () => {
     const image = activeImageRef.current
     if (!image) {
-      pushToast('no image selected to copy.', 'warning')
+      pushToast('No image selected to copy.', 'warning')
       return false
     }
 
@@ -498,10 +498,10 @@ export function useImageTools({
         throw new Error('clipboard image write unsupported')
       }
 
-      pushToast('image copied', 'success')
+      pushToast('Image copied.', 'success')
       return true
     } catch {
-      pushToast('could not copy image.', 'warning')
+      pushToast('Could not copy image.', 'warning')
       return false
     }
   }
@@ -863,7 +863,7 @@ export function useImageTools({
     if (!cropBlob) return
     const cropAssetUrl = await importImageBlobAsAssetUrl(cropBlob, 'cropped-image.png')
     if (!cropAssetUrl) {
-      pushToast('could not crop image.', 'warning')
+      pushToast('Could not crop image.', 'warning')
       return
     }
     const nextImageUrl = withImageResizeMetadata(cropAssetUrl, { v: 1, w: renderedWidth })
@@ -1041,7 +1041,7 @@ export function useImageTools({
       if (imageRebindTokenRef.current === rebindToken) {
         imageRebindInProgressRef.current = false
       }
-      pushToast('could not transform image.', 'warning')
+      pushToast('Could not transform image.', 'warning')
       return false
     }
   }

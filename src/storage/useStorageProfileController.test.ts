@@ -19,7 +19,7 @@ function storageStatus(event: string, overrides: Partial<StorageProfileStatus> =
 describe('notebook folder status toasts', () => {
   it('shows a toast for true external folder loads', () => {
     expect(getStorageProfileStatusToast(storageStatus('external-loaded'))).toEqual({
-      message: 'external notebook folder changes loaded.',
+      message: 'External notebook folder changes loaded.',
       tone: 'success',
     })
   })

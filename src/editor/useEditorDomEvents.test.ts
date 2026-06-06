@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -7,6 +7,7 @@ import { EditorState, TextSelection } from 'prosemirror-state'
 import {
   applyTerminalBlockDeleteBeforeInput,
   consumeHandledEmbedCaretClick,
+  getEditorDictionaryContextForMenu,
   getDocumentBoundarySelectionDirectionForEvent,
   getPastedHttpUrl,
   getPastedUrlLink,
@@ -37,6 +38,11 @@ const editorDir = dirname(fileURLToPath(import.meta.url))
 function readUseEditorDomEventsSource() {
   return readFileSync(join(editorDir, 'useEditorDomEvents.ts'), 'utf8')
 }
+
+afterEach(() => {
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+})
 
 const previewDeleteSchema = new Schema({
   nodes: {
@@ -254,7 +260,10 @@ describe('editor DOM events', () => {
       type: 'toggle-video',
     })
     expect(getMediaPlayerPointerAction(fakeMediaTarget('video', { title: true }), true)).toMatchObject({
-      type: 'hide-video-tools',
+      type: 'ignore-controls',
+    })
+    expect(getMediaPlayerPointerAction(fakeMediaTarget('audio', { title: true }), true)).toMatchObject({
+      type: 'ignore-controls',
     })
     expect(getMediaPlayerPointerAction(fakeMediaTarget('video', { controls: true }), true)).toMatchObject({
       type: 'hide-video-tools',
@@ -633,6 +642,45 @@ describe('editor DOM events', () => {
     )
     expect(getPastedHttpUrl('example.com')).toBe('https://example.com')
     expect(getPastedHttpUrl('sub.example.org?member=true')).toBe('https://sub.example.org?member=true')
+  })
+
+  it('loads actionable editor dictionary context from Electron', async () => {
+    const getEditorSpellcheckContext = vi.fn(async () => ({
+      suggestions: ['receive'],
+      misspelledWord: 'recieve',
+      selectionText: 'recieve',
+      canLookUpSelection: true,
+    }))
+    vi.stubGlobal('window', {
+      ...(globalThis.window ?? {}),
+      setTimeout: globalThis.setTimeout,
+      electronAPI: { getEditorSpellcheckContext },
+    })
+
+    await expect(getEditorDictionaryContextForMenu(10, 20)).resolves.toEqual({
+      suggestions: ['receive'],
+      misspelledWord: 'recieve',
+      selectionText: 'recieve',
+      canLookUpSelection: true,
+    })
+    expect(getEditorSpellcheckContext).toHaveBeenCalledWith({ x: 10, y: 20 })
+  })
+
+  it('ignores empty editor dictionary context from Electron', async () => {
+    vi.stubGlobal('window', {
+      ...(globalThis.window ?? {}),
+      setTimeout: globalThis.setTimeout,
+      electronAPI: {
+        getEditorSpellcheckContext: vi.fn(async () => ({
+          suggestions: [],
+          misspelledWord: '',
+          selectionText: '',
+          canLookUpSelection: false,
+        })),
+      },
+    })
+
+    await expect(getEditorDictionaryContextForMenu(10, 20)).resolves.toBeUndefined()
   })
 
   it('keeps pasted bare web addresses as the link label while adding an href protocol', () => {

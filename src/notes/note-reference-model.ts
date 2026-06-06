@@ -161,7 +161,7 @@ export function getNoteReferenceLinkSpec(
 export function getUrlReferenceLinkSpec(urlValue: string, labelValue: string): NoteReferenceEditorCommandResult & { url?: string; label?: string } {
   const url = normalizeExternalWebUrl(urlValue)
   if (!url) {
-    return { handled: false, toast: { message: 'enter a valid web link.', tone: 'warning' } }
+    return { handled: false, toast: { message: 'Enter a valid web link.', tone: 'warning' } }
   }
   return {
     handled: true,
@@ -189,7 +189,7 @@ export function getNoteReferencePreviewSpec(
     editingTokenId,
   })
   if (!command.ok) return { ok: false, message: command.message }
-  if (!command.payload) return { ok: false, message: 'choose an existing note.' }
+  if (!command.payload) return { ok: false, message: 'Choose an existing note.' }
   return {
     ok: true,
     payload: command.payload,

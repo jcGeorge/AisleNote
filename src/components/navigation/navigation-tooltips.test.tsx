@@ -402,4 +402,17 @@ describe('navigation arrange tooltips', () => {
     expect(disabledHtml).toContain('aria-label="sort sub-tabs"')
     expect(enabledHtml.indexOf('Sub')).toBeLessThan(enabledHtml.indexOf('aria-label="sort sub-tabs"'))
   })
+
+  it('renders the normalized scratchpad rail svg icon', () => {
+    const html = renderSubTabRail(false)
+
+    expect(html).toContain('aria-label="scratchpad"')
+    expect(html).toContain('class="scratchpad-rail-icon"')
+    expect(html).toContain('viewBox="0 0 100 100"')
+    expect(html).toContain('fill="currentColor"')
+    expect(html).not.toContain('fill="#010101"')
+    expect(html).not.toContain('<?xml')
+    expect(html).not.toContain('<!DOCTYPE')
+    expect(html).not.toContain('xmlns:xlink')
+  })
 })

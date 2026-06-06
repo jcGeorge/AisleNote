@@ -217,7 +217,7 @@ describe('note reference commands', () => {
         target: { ...targetLocation, tabId: 'missing' },
         action: 'link',
       }),
-    ).toEqual({ ok: false, message: 'choose an existing note.' })
+    ).toEqual({ ok: false, message: 'Choose an existing note.' })
     expect(
       buildNoteReferenceCommand({
         appState: state,
@@ -226,7 +226,7 @@ describe('note reference commands', () => {
         action: 'preview',
         activeNoteBodyId: 'body-source',
       }),
-    ).toEqual({ ok: false, message: 'a note cannot preview itself.' })
+    ).toEqual({ ok: false, message: 'A note cannot preview itself.' })
     expect(
       buildNoteReferenceCommand({
         appState: cycleState,
@@ -235,7 +235,7 @@ describe('note reference commands', () => {
         action: 'preview',
         activeNoteBodyId: 'body-target',
       }),
-    ).toEqual({ ok: false, message: 'note preview blocked to prevent recursion.' })
+    ).toEqual({ ok: false, message: 'Note preview blocked to prevent recursion.' })
     expect(
       buildNoteReferenceCommand({
         appState: state,
@@ -245,7 +245,7 @@ describe('note reference commands', () => {
         activeNoteBodyId: 'body-target',
         previewMarkdowns: [duplicate],
       }),
-    ).toEqual({ ok: false, message: 'that note preview already exists in this note.' })
+    ).toEqual({ ok: false, message: 'That note preview already exists in this note.' })
     expect(
       buildCopyAsPasteCommand({
         appState: state,
@@ -255,7 +255,7 @@ describe('note reference commands', () => {
       }),
     ).toEqual({
       status: 'blocked',
-      message: 'copy a specific aisle as preview for notes with multiple aisles.',
+      message: 'Copy a specific aisle as preview for notes with multiple aisles.',
       tone: 'warning',
     })
   })
@@ -291,8 +291,8 @@ describe('note reference commands', () => {
       payload: { version: 1, scope: 'note', action: 'duplicate', source: sourceLocation },
     })
 
-    expect(independent).toMatchObject({ status: 'structural', toast: { message: 'independent note copy created.' } })
-    expect(synced).toMatchObject({ status: 'structural', toast: { message: 'synced note copy created.' } })
+    expect(independent).toMatchObject({ status: 'structural', toast: { message: 'Independent note copy created.' } })
+    expect(synced).toMatchObject({ status: 'structural', toast: { message: 'Synced note copy created.' } })
     if (independent.status !== 'structural' || synced.status !== 'structural') {
       throw new Error('expected structural command results')
     }

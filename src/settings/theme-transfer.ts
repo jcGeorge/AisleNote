@@ -23,18 +23,18 @@ export function parseThemeSettingsImport(raw: string, currentPalette: CustomThem
   try {
     parsed = JSON.parse(raw)
   } catch {
-    return { ok: false, error: 'invalid json.' }
+    return { ok: false, error: 'Invalid JSON.' }
   }
 
-  if (!isRecord(parsed)) return { ok: false, error: 'no theme palette found.' }
+  if (!isRecord(parsed)) return { ok: false, error: 'No theme palette found.' }
   const candidate = parsed
 
   const importedSlots = CUSTOM_THEME_PALETTE_SLOTS.filter((slot) => Object.prototype.hasOwnProperty.call(candidate, slot))
-  if (importedSlots.length === 0) return { ok: false, error: 'no theme colors found.' }
+  if (importedSlots.length === 0) return { ok: false, error: 'No theme colors found.' }
 
   const invalidSlots = importedSlots.filter((slot) => normalizeHexColor(candidate[slot]) === null)
   if (invalidSlots.length > 0) {
-    return { ok: false, error: `missing or invalid colors: ${formatSlotList(invalidSlots)}.` }
+    return { ok: false, error: `Missing or invalid colors: ${formatSlotList(invalidSlots)}.` }
   }
 
   const palette = importedSlots.reduce<CustomThemePalette>((nextPalette, slot) => {

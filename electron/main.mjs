@@ -6,6 +6,7 @@ import { IMAGE_ASSET_PROTOCOL_SCHEME, registerImageAssetProtocol } from './image
 import { registerFileIpc } from './ipc-files.mjs'
 import { registerStorageIpc } from './ipc-storage.mjs'
 import { registerUpdateIpc } from './ipc-updates.mjs'
+import { createEditorContextMenuIpc } from './editor-context-menu.mjs'
 import { finishCloseAfterFlush } from './quit-flow.mjs'
 import { createNoopUpdateService } from './update-service.mjs'
 
@@ -14,6 +15,7 @@ const __dirname = path.dirname(__filename)
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
 let quitRequested = false
 let storageSession = null
+let editorContextMenuIpc = null
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -232,6 +234,7 @@ function createWindow(storageSession) {
     event.preventDefault()
     sendMultilineShortcutToWindow(window, direction)
   })
+  editorContextMenuIpc?.attachToWindow(window)
 
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (isExternalWebUrl(url)) {
@@ -303,6 +306,7 @@ if (!gotSingleInstanceLock) {
   app.whenReady().then(() => {
     const updateService = createNoopUpdateService(app)
     storageSession = registerStorageIpc({ ipcMain, app, BrowserWindow, dialog, shell })
+    editorContextMenuIpc = createEditorContextMenuIpc({ ipcMain, BrowserWindow })
     registerImageAssetProtocol({ protocol, storageSession })
     installApplicationMenu({ onNewWindow: openAppWindow, onResetUserSettings: () => confirmAndResetUserSettings() })
     registerFileIpc({ ipcMain, dialog, storageSession })

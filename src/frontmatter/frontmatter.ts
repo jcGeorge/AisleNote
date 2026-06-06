@@ -134,13 +134,13 @@ export function parseFrontmatterYaml(rawYaml: string): ParseFrontmatterYamlResul
 
   const document = parseDocument(trimmed, { prettyErrors: false })
   if (document.errors.length > 0) {
-    return { ok: false, message: document.errors[0]?.message || 'frontmatter YAML is invalid.' }
+    return { ok: false, message: document.errors[0]?.message || 'Frontmatter YAML is invalid.' }
   }
 
   const parsed = document.toJS() as unknown
   if (parsed == null) return { ok: true, data: null }
   if (!isRecord(parsed)) {
-    return { ok: false, message: 'frontmatter must be a YAML mapping.' }
+    return { ok: false, message: 'Frontmatter must be a YAML mapping.' }
   }
   return { ok: true, data: parsed }
 }
@@ -184,7 +184,7 @@ export function splitMarkdownFrontmatter(markdown: string): MarkdownFrontmatterS
       frontmatter: null,
       markdown,
       rawFrontmatter: remainder,
-      error: 'frontmatter YAML block is missing a closing delimiter.',
+      error: 'Frontmatter YAML block is missing a closing delimiter.',
     }
   }
 

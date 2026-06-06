@@ -351,6 +351,108 @@ export function writeAssetToProfile(profileRootPath, bytes, extension) {
   }
 }
 
+function readStorageJsonFile(rootPath, rootRelativeFile) {
+  if (typeof rootRelativeFile !== 'string' || !rootRelativeFile.trim()) return null
+  return readJsonFileIfExists(path.join(rootPath, ...rootRelativeFile.split('/').filter(Boolean)))
+}
+
+function resolveStorageAbsolutePath(rootPath, rootRelativePath) {
+  if (typeof rootRelativePath !== 'string' || !rootRelativePath.trim()) return null
+  const absolutePath = path.resolve(rootPath, ...rootRelativePath.split('/').filter(Boolean))
+  return absolutePath === rootPath || absolutePath.startsWith(rootPath + path.sep) ? absolutePath : null
+}
+
+function getRootSplitJson(rootPath, rootManifest, key) {
+  const files = isRecord(rootManifest?.files) ? rootManifest.files : null
+  return readStorageJsonFile(rootPath, typeof files?.[key] === 'string' ? files[key] : '')
+}
+
+function getStoredNoteBodyAisleCount(noteRegistry, noteBodyId) {
+  if (typeof noteBodyId !== 'string' || !noteBodyId) return 0
+  const noteBody = ensureArray(noteRegistry?.noteBodies).find((body) => body?.id === noteBodyId)
+  return ensureArray(noteBody?.aisles).length
+}
+
+function getStoredRootParts(rootPath) {
+  const rootManifest = readJsonFileIfExists(path.join(rootPath, 'manifest.json'))
+  if (!isRecord(rootManifest)) return null
+  const workspaceIndex = getRootSplitJson(rootPath, rootManifest, 'workspaceIndex')
+  const noteRegistry = getRootSplitJson(rootPath, rootManifest, 'noteRegistry')
+  if (!isRecord(workspaceIndex) || !isRecord(noteRegistry)) return null
+  return { workspaceIndex, noteRegistry }
+}
+
+function getLiveNoteRevealRelativePath(rootPath, rootParts, location) {
+  if (!isRecord(location)) return null
+  const domainId = typeof location.domainId === 'string' ? location.domainId : ''
+  const spaceId = typeof location.spaceId === 'string' ? location.spaceId : ''
+  const tabId = typeof location.tabId === 'string' ? location.tabId : ''
+  const subTabId = typeof location.subTabId === 'string' ? location.subTabId : null
+  if (!domainId || !spaceId || !tabId) return null
+
+  const domainEntry = ensureArray(rootParts.workspaceIndex.domains).find((entry) => entry?.id === domainId)
+  const domainPath = typeof domainEntry?.path === 'string' ? domainEntry.path : ''
+  if (!domainPath) return null
+  const domainRoot = path.posix.join(DOMAINS_DIR, domainPath)
+  const domainManifest = readStorageJsonFile(rootPath, path.posix.join(domainRoot, 'manifest.json'))
+  const spaceEntry = ensureArray(domainManifest?.spaces).find((entry) => entry?.id === spaceId)
+  const spacePath = typeof spaceEntry?.path === 'string' ? spaceEntry.path : ''
+  if (!spacePath) return null
+  const spaceRoot = path.posix.join(domainRoot, spacePath)
+  const spaceManifest = readStorageJsonFile(rootPath, path.posix.join(spaceRoot, 'manifest.json'))
+  const tab = ensureArray(spaceManifest?.tabs).find((entry) => entry?.id === tabId)
+  if (!tab) return null
+
+  if (subTabId === null) {
+    const homeNoteFile = typeof tab.homeNoteFile === 'string' ? tab.homeNoteFile : ''
+    const noteBodyId = typeof tab.noteBodyId === 'string' ? tab.noteBodyId : ''
+    if (!homeNoteFile) return null
+    return path.posix.join(
+      spaceRoot,
+      getStoredNoteBodyAisleCount(rootParts.noteRegistry, noteBodyId) > 1
+        ? path.posix.dirname(homeNoteFile)
+        : homeNoteFile,
+    )
+  }
+
+  const subTab = ensureArray(tab.subTabs).find((entry) => entry?.id === subTabId)
+  const noteBodyId = typeof subTab?.noteBodyId === 'string' ? subTab.noteBodyId : ''
+  const subTabFile = typeof subTab?.file === 'string' ? subTab.file : ''
+  const subTabPath = typeof subTab?.path === 'string' ? subTab.path : ''
+  if (!subTabFile && !subTabPath) return null
+  return path.posix.join(
+    spaceRoot,
+    getStoredNoteBodyAisleCount(rootParts.noteRegistry, noteBodyId) > 1 ? subTabPath : subTabFile,
+  )
+}
+
+function getScratchpadRevealRelativePath(rootParts) {
+  const scratchpad = isRecord(rootParts.workspaceIndex.scratchpad) ? rootParts.workspaceIndex.scratchpad : null
+  const noteBodyId = typeof scratchpad?.noteBodyId === 'string' ? scratchpad.noteBodyId : ''
+  if (!noteBodyId) return null
+  return getStoredNoteBodyAisleCount(rootParts.noteRegistry, noteBodyId) > 1
+    ? 'scratchpad'
+    : path.posix.join('scratchpad', 'scratchpad.md')
+}
+
+export function resolveNoteLocationRevealPath(profileRootPath, payload = {}) {
+  const rootPath = getHybridStorageRoot(profileRootPath)
+  const rootParts = getStoredRootParts(rootPath)
+  if (!rootParts) return { ok: false, error: 'Notebook data could not be read.' }
+
+  const rootRelativePath =
+    payload?.type === 'scratchpad'
+      ? getScratchpadRevealRelativePath(rootParts)
+      : payload?.type === 'live-note'
+        ? getLiveNoteRevealRelativePath(rootPath, rootParts, payload.location)
+        : null
+  if (!rootRelativePath) return { ok: false, error: 'Note file could not be resolved.' }
+
+  const absolutePath = resolveStorageAbsolutePath(rootPath, rootRelativePath)
+  if (!absolutePath) return { ok: false, error: 'Note file path is invalid.' }
+  return { ok: true, absolutePath, rootRelativePath }
+}
+
 function externalizeMarkdownImages(markdown, noteFileRelative, assetBank) {
   return String(markdown ?? '').replace(MARKDOWN_LINK_PATTERN, (fullMatch, imageBang, label, srcRaw) => {
     const src = String(srcRaw ?? '').trim()
@@ -670,12 +772,12 @@ function parseFrontmatterYaml(rawYaml) {
   if (!trimmed) return { ok: true, data: null }
   const document = parseDocument(trimmed, { prettyErrors: false })
   if (document.errors.length > 0) {
-    return { ok: false, message: document.errors[0]?.message || 'frontmatter YAML is invalid.' }
+    return { ok: false, message: document.errors[0]?.message || 'Frontmatter YAML is invalid.' }
   }
   const parsed = document.toJS()
   if (parsed == null) return { ok: true, data: null }
   if (!isRecord(parsed) || Array.isArray(parsed)) {
-    return { ok: false, message: 'frontmatter must be a YAML mapping.' }
+    return { ok: false, message: 'Frontmatter must be a YAML mapping.' }
   }
   return { ok: true, data: parsed }
 }
@@ -693,7 +795,7 @@ function splitMarkdownFrontmatterForStorage(markdown) {
       markdown,
       frontmatter: null,
       frontmatterStatus: 'invalid',
-      frontmatterParseError: 'frontmatter YAML block is missing a closing delimiter.',
+      frontmatterParseError: 'Frontmatter YAML block is missing a closing delimiter.',
       frontmatterRaw: remainder,
     }
   }

@@ -817,6 +817,14 @@ describe('electron ipc boundaries', () => {
         isDefault: true,
         canWrite: true,
         source: 'empty',
+        knownNotebooks: [
+          expect.objectContaining({
+            notebookPath: defaultNotebookRoot(userDataPath),
+            notebookName: STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME,
+            isActive: true,
+            isDefault: true,
+          }),
+        ],
       })
       await expect(ipcMain.handlers.get('get-user-settings-location-status')()).resolves.toMatchObject({
         status: 'ready',
@@ -1551,6 +1559,34 @@ describe('electron ipc boundaries', () => {
     }
   })
 
+  it('reveals committed note locations through storage ipc', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const activeRoot = defaultNotebookRoot(userDataPath)
+      saveAppState(activeRoot, serializedAppState(), { userSettingsRoot: userDataPath })
+      const ipcMain = createIpcMain()
+      const shell = { openPath: vi.fn(async () => ''), showItemInFolder: vi.fn() }
+      registerStorageIpc({
+        ipcMain,
+        app: { getPath: () => userDataPath },
+        BrowserWindow: createBrowserWindow(),
+        shell,
+      })
+
+      await expect(
+        ipcMain.handlers.get('reveal-note-location')(null, {
+          type: 'live-note',
+          location: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
+        }),
+      ).resolves.toEqual({ ok: true })
+      expect(shell.showItemInFolder).toHaveBeenCalledWith(expect.stringMatching(/\.md$/))
+      await expect(
+        ipcMain.handlers.get('reveal-note-location')(null, {
+          type: 'live-note',
+          location: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'missing-tab', subTabId: null },
+        }),
+      ).resolves.toMatchObject({ ok: false })
+    }))
+
   it('moves current app data into a chosen sync folder without deleting the source profile', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
       const targetRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-sync-target-'))
@@ -1574,6 +1610,10 @@ describe('electron ipc boundaries', () => {
           status: {
             profileRootPath: targetRoot,
             isDefault: false,
+            knownNotebooks: [
+              expect.objectContaining({ notebookPath: defaultNotebookRoot(userDataPath), isActive: false }),
+              expect.objectContaining({ notebookPath: targetRoot, isActive: true }),
+            ],
           },
         })
 
@@ -1617,7 +1657,7 @@ describe('electron ipc boundaries', () => {
       }
     }))
 
-  it('switches notebooks while preserving global user settings', async () =>
+  it('opens notebooks while preserving global user settings and remembering the folder', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
       const targetRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-switch-target-'))
       try {
@@ -1643,11 +1683,15 @@ describe('electron ipc boundaries', () => {
         ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 0 })
         window.webContents.send.mockClear()
 
-        await expect(ipcMain.handlers.get('switch-notebook')()).resolves.toMatchObject({
+        await expect(ipcMain.handlers.get('open-notebook')()).resolves.toMatchObject({
           ok: true,
           status: {
             profileRootPath: targetRoot,
             isDefault: false,
+            knownNotebooks: [
+              expect.objectContaining({ notebookPath: defaultNotebookRoot(userDataPath), isDefault: true }),
+              expect.objectContaining({ notebookPath: targetRoot, isActive: true }),
+            ],
           },
         })
 
@@ -1661,7 +1705,7 @@ describe('electron ipc boundaries', () => {
       }
     }))
 
-  it('rejects switching to a folder without a notebook', async () =>
+  it('rejects opening a folder without a notebook', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
       const targetRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-switch-empty-'))
       try {
@@ -1675,12 +1719,70 @@ describe('electron ipc boundaries', () => {
           },
         })
 
-        await expect(ipcMain.handlers.get('switch-notebook')()).resolves.toMatchObject({
+        await expect(ipcMain.handlers.get('open-notebook')()).resolves.toMatchObject({
           ok: false,
           error: 'This folder does not contain a notebook. Use new notebook to create one.',
         })
       } finally {
         rmSync(targetRoot, { recursive: true, force: true })
+      }
+    }))
+
+  it('switches only to remembered notebooks and forgets inactive notebooks', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const targetRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-remembered-target-'))
+      const unknownRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-unknown-target-'))
+      try {
+        saveAppState(defaultNotebookRoot(userDataPath), serializedAppState('dawn'), { userSettingsRoot: userDataPath })
+        saveAppState(targetRoot, serializedAppState('light'), { userSettingsRoot: userDataPath })
+        saveAppState(unknownRoot, serializedAppState('light'), { userSettingsRoot: userDataPath })
+        writeStorageProfileConfig(userDataPath, defaultNotebookRoot(userDataPath), { rememberPaths: [targetRoot] })
+
+        const ipcMain = createIpcMain()
+        registerStorageIpc({
+          ipcMain,
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow(),
+        })
+
+        await expect(ipcMain.handlers.get('switch-notebook')(null, { notebookPath: unknownRoot })).resolves.toMatchObject({
+          ok: false,
+          error: 'Notebook is not in the remembered notebook list.',
+        })
+
+        await expect(ipcMain.handlers.get('switch-notebook')(null, { notebookPath: targetRoot })).resolves.toMatchObject({
+          ok: true,
+          status: {
+            profileRootPath: targetRoot,
+            knownNotebooks: [
+              expect.objectContaining({ notebookPath: defaultNotebookRoot(userDataPath), isActive: false }),
+              expect.objectContaining({ notebookPath: targetRoot, isActive: true }),
+            ],
+          },
+        })
+
+        await expect(ipcMain.handlers.get('forget-notebook')(null, { notebookPath: targetRoot })).resolves.toMatchObject({
+          ok: false,
+          error: 'The active notebook cannot be removed from the list.',
+        })
+
+        await expect(ipcMain.handlers.get('switch-notebook')(null, { notebookPath: defaultNotebookRoot(userDataPath) })).resolves.toMatchObject({
+          ok: true,
+          status: { profileRootPath: defaultNotebookRoot(userDataPath) },
+        })
+        await expect(ipcMain.handlers.get('forget-notebook')(null, { notebookPath: targetRoot })).resolves.toMatchObject({
+          ok: true,
+          status: {
+            knownNotebooks: [
+              expect.objectContaining({ notebookPath: defaultNotebookRoot(userDataPath) }),
+            ],
+          },
+        })
+        const status = await ipcMain.handlers.get('get-storage-profile-status')()
+        expect(status.knownNotebooks.map((notebook) => notebook.notebookPath)).not.toContain(targetRoot)
+      } finally {
+        rmSync(targetRoot, { recursive: true, force: true })
+        rmSync(unknownRoot, { recursive: true, force: true })
       }
     }))
 
@@ -1713,6 +1815,10 @@ describe('electron ipc boundaries', () => {
             notebookPath: targetRoot,
             notebookName,
             isDefault: false,
+            knownNotebooks: [
+              expect.objectContaining({ notebookPath: defaultNotebookRoot(userDataPath) }),
+              expect.objectContaining({ notebookPath: targetRoot, isActive: true }),
+            ],
           },
         })
         expect(existsSync(path.join(targetRoot, 'manifest.json'))).toBe(true)
@@ -1753,7 +1859,7 @@ describe('electron ipc boundaries', () => {
       }
     }))
 
-  it('handles canceled notebook location and switch dialogs', async () =>
+  it('handles canceled notebook location and open dialogs', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
       const ipcMain = createIpcMain()
       registerStorageIpc({
@@ -1766,7 +1872,7 @@ describe('electron ipc boundaries', () => {
       })
 
       await expect(ipcMain.handlers.get('choose-notebook-location')()).resolves.toMatchObject({ canceled: true })
-      await expect(ipcMain.handlers.get('switch-notebook')()).resolves.toMatchObject({ canceled: true })
+      await expect(ipcMain.handlers.get('open-notebook')()).resolves.toMatchObject({ canceled: true })
     }))
 
   it('uses the renderer app-state snapshot when choosing a folder before storage has current app state', async () =>

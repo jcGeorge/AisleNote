@@ -5,13 +5,16 @@ import {
   getUserSettingsFilePath,
   getHybridStorageRoot,
   loadAppStateResult,
+  resolveNoteLocationRevealPath,
   saveAppState,
   writeAssetToProfile,
   writeImageAssetToProfile,
 } from './app-state-storage.mjs'
 import {
+  forgetStorageProfileNotebook,
   getDefaultStorageProfileRoot,
   getStorageProfileNotebookName,
+  isKnownStorageProfileNotebook,
   resolveStorageProfile,
   validateNotebookName,
   writeStorageProfileConfig,
@@ -39,6 +42,27 @@ import {
 
 const STORAGE_NOTEBOOK_RECOVERED_MESSAGE_TYPE = 'storage-notebook-recovered'
 
+function createKnownNotebookStatus(userDataPath, activeProfileRootPath, notebookPath) {
+  const normalizedNotebookPath = path.resolve(notebookPath)
+  const defaultProfileRootPath = getDefaultStorageProfileRoot(userDataPath)
+  const exists = existsSync(normalizedNotebookPath)
+  const hasManifest = existsSync(path.join(getHybridStorageRoot(normalizedNotebookPath), 'manifest.json'))
+  return {
+    notebookPath: normalizedNotebookPath,
+    notebookName: getStorageProfileNotebookName(normalizedNotebookPath),
+    isActive: path.resolve(activeProfileRootPath) === normalizedNotebookPath,
+    isDefault: normalizedNotebookPath === defaultProfileRootPath,
+    exists,
+    hasManifest,
+    available: exists && hasManifest,
+  }
+}
+
+function createKnownNotebookStatuses(profile) {
+  const paths = Array.isArray(profile.knownNotebookPaths) ? profile.knownNotebookPaths : [profile.profileRootPath]
+  return paths.map((notebookPath) => createKnownNotebookStatus(profile.userDataPath, profile.profileRootPath, notebookPath))
+}
+
 function createStorageStatus({ profile, coordinator, event = 'ready', error = null, recovery = null }) {
   const loadResult = coordinator.getLoadResult()
   const hasProfile = existsSync(getHybridStorageRoot(profile.profileRootPath))
@@ -59,6 +83,7 @@ function createStorageStatus({ profile, coordinator, event = 'ready', error = nu
     conflicts: loadResult.conflicts,
     revision: loadResult.revision,
     error: error ?? (loadResult.ok ? undefined : loadResult.error),
+    knownNotebooks: createKnownNotebookStatuses(profile),
     ...(recovery ? { recovery } : {}),
   }
 }
@@ -165,14 +190,14 @@ function createBlankNotebookState(userDataPath, messages = []) {
   const portableSettings = readPortableAppSettings(userDataPath)
   const space = {
     id: 'space-1',
-    name: 'Space',
+    name: 'space',
     settings: { autoRemoveDeletedDays: 7 },
     data: {
       activeTabId: 'tab-1',
       tabs: [
         {
           id: 'tab-1',
-          title: 'Tab',
+          title: 'tab',
           noteBodyId: 'body-1',
           activeSubTabId: null,
           subTabs: [],
@@ -445,7 +470,12 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
 
   const loadRecoveredDefaultNotebook = (recovery) => {
     const defaultProfileRootPath = getDefaultStorageProfileRoot(userDataPath)
-    profile = { ...writeStorageProfileConfig(userDataPath, defaultProfileRootPath), userDataPath }
+    profile = {
+      ...writeStorageProfileConfig(userDataPath, defaultProfileRootPath, {
+        rememberPaths: [recovery.failedNotebookPath],
+      }),
+      userDataPath,
+    }
     const result = coordinator.reloadProfileRoot(defaultProfileRootPath, {
       requireSerializedState: true,
       detectAppSaveEcho: false,
@@ -657,7 +687,13 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
       updateStatus('profile-error', result.error)
       return { ok: false, status, error: result.error ?? 'Notebook folder could not be loaded.' }
     }
-    profile = { ...writeStorageProfileConfig(userDataPath, profileRootPath), userDataPath }
+    profile = {
+      ...writeStorageProfileConfig(userDataPath, profileRootPath, {
+        rememberPaths: options.rememberPaths ?? [profileRootPath],
+        replacePaths: options.replacePaths,
+      }),
+      userDataPath,
+    }
     updateStatus(result.ok ? event : 'profile-error', result.ok ? null : result.error)
     startWatcher()
     if (result.ok && typeof result.serializedState === 'string') {
@@ -681,7 +717,12 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
       mkdirSync(path.dirname(nextProfileRootPath), { recursive: true })
       watcher?.markAppWrite()
       renameSync(profile.profileRootPath, nextProfileRootPath)
-      profile = { ...writeStorageProfileConfig(userDataPath, nextProfileRootPath), userDataPath }
+      profile = {
+        ...writeStorageProfileConfig(userDataPath, nextProfileRootPath, {
+          replacePaths: [[profile.profileRootPath, nextProfileRootPath]],
+        }),
+        userDataPath,
+      }
       const result = coordinator.reloadProfileRoot(nextProfileRootPath, { requireSerializedState: true })
       updateStatus(result.ok ? 'notebook-renamed' : 'profile-error', result.ok ? null : result.error)
       startWatcher()
@@ -710,7 +751,9 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
         replaceExisting: true,
         assetSourceRoot: getHybridStorageRoot(profile.profileRootPath),
       })
-      return switchToProfileRoot(profileRootPath, 'profile-moved')
+      return switchToProfileRoot(profileRootPath, 'profile-moved', {
+        replacePaths: [[profile.profileRootPath, profileRootPath]],
+      })
     } catch (error) {
       return {
         ok: false,
@@ -798,13 +841,13 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     return replaceProfileWithCurrentData(profileRootPath, event)
   }
 
-  const switchNotebook = async () => {
+  const openNotebook = async () => {
     if (!dialog || typeof dialog.showOpenDialog !== 'function') {
       return { ok: false, error: 'Folder selection is unavailable.', status }
     }
 
     const selection = await dialog.showOpenDialog({
-      title: 'Switch notebook',
+      title: 'Open notebook',
       properties: ['openDirectory'],
     })
     if (selection.canceled || !selection.filePaths?.[0]) return { canceled: true, status }
@@ -814,7 +857,10 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
 
     const targetResult = loadNotebookResult(profileRootPath)
     if (targetResult.ok && typeof targetResult.serializedState === 'string') {
-      return switchToProfileRoot(profileRootPath, 'notebook-switched', { requireSerializedState: true })
+      return switchToProfileRoot(profileRootPath, 'notebook-opened', {
+        requireSerializedState: true,
+        rememberPaths: [profileRootPath],
+      })
     }
     if (targetResult.ok && targetResult.serializedState === null) {
       return {
@@ -828,6 +874,44 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
       error: targetResult.error ?? 'Notebook folder could not be loaded.',
       status,
     }
+  }
+
+  const switchNotebook = async (_event, payload = {}) => {
+    if (typeof payload?.notebookPath !== 'string' || !payload.notebookPath.trim()) {
+      return { ok: false, error: 'Notebook path is required.', status }
+    }
+    const profileRootPath = path.resolve(payload.notebookPath)
+    if (!isKnownStorageProfileNotebook(userDataPath, profileRootPath)) {
+      return { ok: false, error: 'Notebook is not in the remembered notebook list.', status }
+    }
+    if (profileRootPath === profile.profileRootPath) return { ok: true, status }
+
+    const targetResult = loadNotebookResult(profileRootPath)
+    if (targetResult.ok && typeof targetResult.serializedState === 'string') {
+      return switchToProfileRoot(profileRootPath, 'notebook-switched', { requireSerializedState: true })
+    }
+    if (targetResult.ok && targetResult.serializedState === null) {
+      updateStatus('notebook-switch-error', 'This remembered notebook folder does not contain notebook data.')
+      return {
+        ok: false,
+        error: 'This remembered notebook folder does not contain notebook data.',
+        status,
+      }
+    }
+    updateStatus('notebook-switch-error', targetResult.error ?? 'Notebook folder could not be loaded.')
+    return {
+      ok: false,
+      error: targetResult.error ?? 'Notebook folder could not be loaded.',
+      status,
+    }
+  }
+
+  const forgetNotebook = async (_event, payload = {}) => {
+    const result = forgetStorageProfileNotebook(userDataPath, payload?.notebookPath)
+    if (!result.ok) return { ok: false, error: result.error, status }
+    profile = { ...result.profile, userDataPath }
+    updateStatus('notebook-forgotten')
+    return { ok: true, status }
   }
 
   const chooseNotebookLocation = async () => {
@@ -1090,7 +1174,9 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
   ipcMain.handle?.('choose-notebook-location', chooseNotebookLocation)
   ipcMain.handle?.('create-notebook', createNotebook)
   ipcMain.handle?.('rename-notebook', renameNotebook)
+  ipcMain.handle?.('open-notebook', openNotebook)
   ipcMain.handle?.('switch-notebook', switchNotebook)
+  ipcMain.handle?.('forget-notebook', forgetNotebook)
   ipcMain.handle?.('choose-storage-folder', async (event) => chooseProfileRoot('choose', event))
   ipcMain.handle?.('move-storage-profile', async (event) => chooseProfileRoot('move', event))
   ipcMain.handle?.('choose-user-settings-folder', chooseUserSettingsFolder)
@@ -1207,6 +1293,21 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
       return { ok: true }
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : 'Asset could not be revealed.' }
+    }
+  })
+
+  ipcMain.handle?.('reveal-note-location', async (_event, payload = {}) => {
+    if (!shell || typeof shell.showItemInFolder !== 'function') {
+      return { ok: false, error: 'Note reveal is unavailable.' }
+    }
+    try {
+      const resolved = resolveNoteLocationRevealPath(profile.profileRootPath, payload)
+      if (!resolved.ok) return { ok: false, error: resolved.error }
+      if (!existsSync(resolved.absolutePath)) return { ok: false, error: 'Note file does not exist.' }
+      shell.showItemInFolder(resolved.absolutePath)
+      return { ok: true }
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : 'Note file could not be revealed.' }
     }
   })
 

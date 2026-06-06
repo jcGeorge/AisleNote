@@ -20,19 +20,18 @@ type DataSettingsPanelProps = {
   userSettingsLocationStatus: UserSettingsLocationStatus | null
   onDataSectionChange: (section: DataSettingsSection) => void
   onAutoRemoveDaysChange: (value: string, commit?: boolean) => void
-  onExportNotebook: () => void
   onExportUserSettings: () => void
   onImportNotebook: () => void
   onImportUserSettings: () => void
   onImportUserSettingsFromNotebookFolder: () => void
-  onChooseUserSettingsFolder: () => void
   onRevealUserSettingsFolder: () => void
-  onRetryUserSettingsSync: () => void
   onResetUserSettingsFolder: () => void
   onResetUserSettingsToDefaults: () => void
   onCreateNotebook: () => void
   onRenameNotebook: () => void
-  onSwitchNotebook: () => void
+  onOpenNotebook: () => void
+  onSwitchNotebook: (notebookPath: string) => void
+  onForgetNotebook: (notebookPath: string) => void
   onMoveStorageProfile: () => void
   onRevealStorageProfile: () => void
   onRetryStorageProfile: () => void
@@ -42,55 +41,12 @@ function TransferDataSection({
   dataCapabilities,
   exportStatus,
   importStatus,
-  onExportNotebook,
-  onImportNotebook,
-}: Pick<
-  DataSettingsPanelProps,
-  | 'exportStatus'
-  | 'importStatus'
-  | 'dataCapabilities'
-  | 'onExportNotebook'
-  | 'onImportNotebook'
->) {
-  return (
-    <>
-      <p>notebook transfer:</p>
-      <div className="settings-page-actions">
-        <button
-          type="button"
-          className="btn btn-sm settings-action-btn"
-          onClick={onExportNotebook}
-          disabled={!dataCapabilities.notebookFolders}
-        >
-          export notebook folder
-        </button>
-        <button type="button" className="btn btn-sm settings-action-btn" onClick={onImportNotebook}>
-          import notebook/markdown
-        </button>
-      </div>
-      <p className="settings-help">
-        export creates a native notebook folder on desktop. import appends remapped Tabs notebook folders or ZIPs and Markdown folders or ZIPs; user settings stay separate.
-      </p>
-      {!dataCapabilities.notebookFolders && (
-        <p className="settings-help">notebook folder export is desktop only.</p>
-      )}
-      {exportStatus && <p className="settings-help">{exportStatus}</p>}
-      {importStatus && <p className="settings-help">{importStatus}</p>}
-    </>
-  )
-}
-
-function UserSettingsDataSection({
-  dataCapabilities,
-  exportStatus,
-  importStatus,
-  userSettingsLocationStatus,
   onExportUserSettings,
+  onImportNotebook,
   onImportUserSettings,
   onImportUserSettingsFromNotebookFolder,
-  onChooseUserSettingsFolder,
+  userSettingsLocationStatus,
   onRevealUserSettingsFolder,
-  onRetryUserSettingsSync,
   onResetUserSettingsFolder,
   onResetUserSettingsToDefaults,
 }: Pick<
@@ -98,81 +54,29 @@ function UserSettingsDataSection({
   | 'exportStatus'
   | 'importStatus'
   | 'dataCapabilities'
-  | 'userSettingsLocationStatus'
   | 'onExportUserSettings'
+  | 'onImportNotebook'
   | 'onImportUserSettings'
   | 'onImportUserSettingsFromNotebookFolder'
-  | 'onChooseUserSettingsFolder'
+  | 'userSettingsLocationStatus'
   | 'onRevealUserSettingsFolder'
-  | 'onRetryUserSettingsSync'
   | 'onResetUserSettingsFolder'
   | 'onResetUserSettingsToDefaults'
 >) {
-  const settingsLocationClassName = [
-    'storage-profile-card',
-    userSettingsLocationStatus?.status === 'error' ? 'is-error' : '',
-    userSettingsLocationStatus?.status === 'warning' ? 'is-warning' : '',
-  ].filter(Boolean).join(' ')
+  const showCustomSettingsFolder = Boolean(userSettingsLocationStatus && !userSettingsLocationStatus.isDefault)
 
   return (
     <>
-      <p>user settings:</p>
-      {dataCapabilities.settingsFolders ? (
-        <div className={settingsLocationClassName}>
-          <div className="storage-profile-row">
-            <span className="settings-hotkey-label">current settings folder</span>
-            <code className="storage-profile-path">
-              {userSettingsLocationStatus?.settingsRootPath ?? 'desktop settings folder unavailable'}
-            </code>
-          </div>
-          <div className="storage-profile-row">
-            <span className="settings-hotkey-label">status</span>
-            <span>{userSettingsLocationStatus?.status ?? 'browser local'}</span>
-          </div>
-          <div className="storage-profile-row">
-            <span className="settings-hotkey-label">sync</span>
-            <span>{userSettingsLocationStatus?.syncStatus ?? 'local'}</span>
-          </div>
-          <div className="storage-profile-row">
-            <span className="settings-hotkey-label">settings file</span>
-            <code className="storage-profile-path">
-              {userSettingsLocationStatus?.settingsPath ?? 'settings/app-settings.json'}
-            </code>
-          </div>
-          <div className="storage-profile-row">
-            <span className="settings-hotkey-label">local cache</span>
-            <code className="storage-profile-path">
-              {userSettingsLocationStatus?.localSettingsPath ?? 'desktop local cache unavailable'}
-            </code>
-          </div>
-          {userSettingsLocationStatus?.error && (
-            <p className="settings-help storage-profile-error">{userSettingsLocationStatus.error}</p>
-          )}
-          <div className="settings-page-actions">
-            <button type="button" className="btn btn-sm settings-action-btn" onClick={onChooseUserSettingsFolder}>
-              choose settings folder
-            </button>
-            <button type="button" className="btn btn-sm settings-action-btn" onClick={onRevealUserSettingsFolder}>
-              reveal settings folder
-            </button>
-            <button type="button" className="btn btn-sm settings-action-btn" onClick={onRetryUserSettingsSync}>
-              retry settings sync
-            </button>
-            <button type="button" className="btn btn-sm settings-action-btn" onClick={onResetUserSettingsFolder}>
-              reset to local settings
-            </button>
-          </div>
-          <p className="settings-help">
-            choose a cloud-synced settings folder to read and write settings/app-settings.json there. notebook folders cannot be used for live user settings.
-          </p>
-        </div>
-      ) : (
-        <p className="settings-help">
-          {dataCapabilities.runtime === 'mobile'
-            ? 'mobile and tablet store live user settings inside this app. transfer settings by exporting or importing app-settings.json.'
-            : 'browser stores live user settings with local browser data. transfer settings by downloading or uploading app-settings.json.'}
-        </p>
-      )}
+      <p>notebook import:</p>
+      <div className="settings-page-actions">
+        <button type="button" className="btn btn-sm settings-action-btn" onClick={onImportNotebook}>
+          import notebook/markdown
+        </button>
+      </div>
+      <p className="settings-help">
+        Import appends remapped Tabs notebook folders or ZIPs and Markdown folders or ZIPs; user settings stay separate.
+      </p>
+      <p>app settings transfer:</p>
       <div className="settings-page-actions">
         <button type="button" className="btn btn-sm settings-action-btn" onClick={onExportUserSettings}>
           export user settings
@@ -185,11 +89,39 @@ function UserSettingsDataSection({
             import from notebook folder
           </button>
         )}
-        <button type="button" className="btn btn-sm settings-action-btn" onClick={onResetUserSettingsToDefaults}>
-          reset user settings to defaults
-        </button>
       </div>
-      <p className="settings-help">user settings are stored in app-settings.json. importing overwrites current theme, hotkeys, shortcuts, toolbar layouts, and app preferences after confirmation.</p>
+      <p className="settings-help">User settings are stored in app-settings.json. Importing overwrites current theme, hotkeys, shortcuts, toolbar layouts, and app preferences after confirmation.</p>
+      {showCustomSettingsFolder && (
+        <div className="storage-profile-card">
+          <div className="storage-profile-row">
+            <span className="settings-hotkey-label">settings folder</span>
+            <code className="storage-profile-path">{userSettingsLocationStatus?.settingsRootPath}</code>
+          </div>
+          <div className="storage-profile-row">
+            <span className="settings-hotkey-label">status</span>
+            <span>{userSettingsLocationStatus?.syncStatus ?? 'synced'}</span>
+          </div>
+          {userSettingsLocationStatus?.error && (
+            <p className="settings-help storage-profile-error">{userSettingsLocationStatus.error}</p>
+          )}
+          <div className="settings-page-actions">
+            <button type="button" className="btn btn-sm settings-action-btn" onClick={onRevealUserSettingsFolder}>
+              open settings folder
+            </button>
+            <button type="button" className="btn btn-sm settings-action-btn" onClick={onResetUserSettingsFolder}>
+              use local settings
+            </button>
+          </div>
+        </div>
+      )}
+      <details>
+        <summary>advanced</summary>
+        <div className="settings-page-actions">
+          <button type="button" className="btn btn-sm settings-action-btn" onClick={onResetUserSettingsToDefaults}>
+            reset user settings to defaults
+          </button>
+        </div>
+      </details>
       {exportStatus && <p className="settings-help">{exportStatus}</p>}
       {importStatus && <p className="settings-help">{importStatus}</p>}
     </>
@@ -198,24 +130,24 @@ function UserSettingsDataSection({
 
 function StorageDataSection({
   dataCapabilities,
-  exportStatus,
-  importStatus,
   storageProfileStatus,
   onCreateNotebook,
   onRenameNotebook,
+  onOpenNotebook,
   onSwitchNotebook,
+  onForgetNotebook,
   onMoveStorageProfile,
   onRevealStorageProfile,
   onRetryStorageProfile,
 }: Pick<
   DataSettingsPanelProps,
-  | 'exportStatus'
-  | 'importStatus'
   | 'dataCapabilities'
   | 'storageProfileStatus'
   | 'onCreateNotebook'
   | 'onRenameNotebook'
+  | 'onOpenNotebook'
   | 'onSwitchNotebook'
+  | 'onForgetNotebook'
   | 'onMoveStorageProfile'
   | 'onRevealStorageProfile'
   | 'onRetryStorageProfile'
@@ -223,6 +155,9 @@ function StorageDataSection({
   const storageHealth =
     storageProfileStatus?.health ?? (storageProfileStatus?.status === 'error' ? 'error' : 'healthy')
   const storageIssues = storageProfileStatus?.issues ?? []
+  const knownNotebooks = storageProfileStatus?.knownNotebooks ?? []
+  const activeNotebookPath = storageProfileStatus?.notebookPath ?? storageProfileStatus?.profileRootPath ?? ''
+  const showRetry = Boolean(storageProfileStatus && (storageProfileStatus.status === 'error' || storageHealth !== 'healthy'))
   const storageProfileCardClassName = [
     'storage-profile-card',
     storageHealth === 'error' ? 'is-error' : '',
@@ -235,8 +170,8 @@ function StorageDataSection({
         <p>{dataCapabilities.runtime === 'mobile' ? 'local app notebook:' : 'local browser notebook:'}</p>
         <p className="settings-help">
           {dataCapabilities.runtime === 'mobile'
-            ? 'mobile and tablet store notebook content inside this app.'
-            : 'browser stores notebook content in local browser storage.'}
+            ? 'Mobile and tablet store notebook content inside this app.'
+            : 'Browser stores notebook content in local browser storage.'}
         </p>
         <div className="storage-profile-card">
           <div className="storage-profile-row">
@@ -248,11 +183,9 @@ function StorageDataSection({
             <span>desktop only</span>
           </div>
           <p className="settings-help">
-            live notebook folders, live settings folders, and folder switching are desktop features.
+            Live notebook folders, live settings folders, and folder switching are desktop features.
           </p>
         </div>
-        {exportStatus && <p className="settings-help">{exportStatus}</p>}
-        {importStatus && <p className="settings-help">{importStatus}</p>}
       </>
     )
   }
@@ -260,33 +193,37 @@ function StorageDataSection({
   return (
     <>
       <p>notebook:</p>
-      <p className="settings-help">the notebook folder is the named folder that contains this notebook's manifest, notes, and assets. user settings stay with this app and transfer only through app-settings.json import/export.</p>
+      <p className="settings-help">The notebook folder is the named folder that contains this notebook's manifest, notes, and assets.</p>
       <div className={storageProfileCardClassName}>
         <div className="storage-profile-row">
-          <span className="settings-hotkey-label">notebook name</span>
-          <span>{storageProfileStatus?.notebookName ?? 'desktop notebook unavailable'}</span>
-        </div>
-        <div className="storage-profile-row">
-          <span className="settings-hotkey-label">notebook folder</span>
-          <code className="storage-profile-path">
-            {storageProfileStatus?.notebookPath ?? storageProfileStatus?.profileRootPath ?? 'desktop notebook folder unavailable'}
-          </code>
-        </div>
-        <div className="storage-profile-row">
-          <span className="settings-hotkey-label">status</span>
-          <span>{storageProfileStatus ? (storageProfileStatus.status === 'ready' ? 'ready' : 'error') : 'browser local'}</span>
-        </div>
-        <div className="storage-profile-row">
-          <span className="settings-hotkey-label">health</span>
-          <span>{storageProfileStatus ? storageHealth : 'local'}</span>
-        </div>
-        <div className="storage-profile-row">
-          <span className="settings-hotkey-label">schema</span>
-          <span>{storageProfileStatus?.schemaVersion ?? 'n/a'}</span>
-        </div>
-        <div className="storage-profile-row">
-          <span className="settings-hotkey-label">writable</span>
-          <span>{storageProfileStatus ? (storageProfileStatus.canWrite ? 'yes' : 'paused') : 'browser local'}</span>
+          <label className="settings-hotkey-label" htmlFor="settings-notebook-select">current notebook</label>
+          <select
+            id="settings-notebook-select"
+            className="settings-select-input"
+            value={activeNotebookPath}
+            onChange={(event) => {
+              if (event.target.value && event.target.value !== activeNotebookPath) {
+                onSwitchNotebook(event.target.value)
+              }
+            }}
+          >
+            {(knownNotebooks.length > 0
+              ? knownNotebooks
+              : [{
+                  notebookPath: activeNotebookPath,
+                  notebookName: storageProfileStatus?.notebookName ?? 'desktop notebook unavailable',
+                  available: Boolean(activeNotebookPath),
+                }]
+            ).map((notebook) => (
+              <option
+                key={notebook.notebookPath}
+                value={notebook.notebookPath}
+                disabled={!notebook.available}
+              >
+                {notebook.notebookName}{notebook.available ? '' : ' (missing)'}
+              </option>
+            ))}
+          </select>
         </div>
         {storageProfileStatus?.error && <p className="settings-help storage-profile-error">{storageProfileStatus.error}</p>}
         {storageIssues.length > 0 && (
@@ -306,32 +243,77 @@ function StorageDataSection({
           <button type="button" className="btn btn-sm settings-action-btn" onClick={onCreateNotebook}>
             new notebook
           </button>
-          <button type="button" className="btn btn-sm settings-action-btn" onClick={onRenameNotebook}>
-            rename notebook
-          </button>
-          <button type="button" className="btn btn-sm settings-action-btn" onClick={onSwitchNotebook}>
-            switch notebook
-          </button>
-          <button type="button" className="btn btn-sm settings-action-btn" onClick={onMoveStorageProfile}>
-            move notebook folder
-          </button>
-          <button type="button" className="btn btn-sm settings-action-btn" onClick={onRevealStorageProfile}>
-            reveal folder
-          </button>
-          <button
-            type="button"
-            className="btn btn-sm settings-action-btn"
-            onClick={onRetryStorageProfile}
-          >
-            retry
+          <button type="button" className="btn btn-sm settings-action-btn" onClick={onOpenNotebook}>
+            open notebook...
           </button>
         </div>
-        <p className="settings-help">
-          choose a local or cloud-synced notebook folder. Tabs stores notebook content directly inside that folder.
-        </p>
+        <details>
+          <summary>notebook details</summary>
+          <div className="storage-profile-row">
+            <span className="settings-hotkey-label">notebook folder</span>
+            <code className="storage-profile-path">
+              {activeNotebookPath || 'desktop notebook folder unavailable'}
+            </code>
+          </div>
+          <div className="storage-profile-row">
+            <span className="settings-hotkey-label">status</span>
+            <span>{storageProfileStatus ? (storageProfileStatus.status === 'ready' ? 'ready' : 'error') : 'browser local'}</span>
+          </div>
+          <div className="storage-profile-row">
+            <span className="settings-hotkey-label">health</span>
+            <span>{storageProfileStatus ? storageHealth : 'local'}</span>
+          </div>
+          <div className="storage-profile-row">
+            <span className="settings-hotkey-label">schema</span>
+            <span>{storageProfileStatus?.schemaVersion ?? 'n/a'}</span>
+          </div>
+          <div className="storage-profile-row">
+            <span className="settings-hotkey-label">writable</span>
+            <span>{storageProfileStatus ? (storageProfileStatus.canWrite ? 'yes' : 'paused') : 'browser local'}</span>
+          </div>
+          <div className="settings-page-actions">
+            <button type="button" className="btn btn-sm settings-action-btn" onClick={onRenameNotebook}>
+              rename
+            </button>
+            <button type="button" className="btn btn-sm settings-action-btn" onClick={onMoveStorageProfile}>
+              move folder
+            </button>
+            <button type="button" className="btn btn-sm settings-action-btn" onClick={onRevealStorageProfile}>
+              open notebook folder
+            </button>
+            {showRetry && (
+              <button
+                type="button"
+                className="btn btn-sm settings-action-btn"
+                onClick={onRetryStorageProfile}
+              >
+                retry
+              </button>
+            )}
+          </div>
+          {knownNotebooks.length > 0 && (
+            <div className="storage-profile-issues" aria-label="remembered notebooks">
+              {knownNotebooks.map((notebook) => (
+                <div key={notebook.notebookPath} className="storage-profile-row">
+                  <span className="settings-hotkey-label">
+                    {notebook.notebookName}{notebook.isActive ? ' (current)' : notebook.available ? '' : ' (missing)'}
+                  </span>
+                  <code className="storage-profile-path">{notebook.notebookPath}</code>
+                  {!notebook.isActive && !notebook.isDefault && (
+                    <button
+                      type="button"
+                      className="btn btn-sm settings-action-btn"
+                      onClick={() => onForgetNotebook(notebook.notebookPath)}
+                    >
+                      remove from list
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </details>
       </div>
-      {exportStatus && <p className="settings-help">{exportStatus}</p>}
-      {importStatus && <p className="settings-help">{importStatus}</p>}
     </>
   )
 }
@@ -365,7 +347,6 @@ export function DataSettingsPanel(props: DataSettingsPanelProps) {
     <div className="settings-section-panel" role="tabpanel">
       <DataSectionSwitch dataSection={props.dataSection} onDataSectionChange={props.onDataSectionChange} />
       {props.dataSection === 'transfer' && <TransferDataSection {...props} />}
-      {props.dataSection === 'settings' && <UserSettingsDataSection {...props} />}
       {props.dataSection === 'storage' && <StorageDataSection {...props} />}
       {props.dataSection === 'trash' && <TrashDataSection {...props} />}
     </div>

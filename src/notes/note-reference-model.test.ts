@@ -214,11 +214,11 @@ describe('note reference model', () => {
     })
     expect(getUrlReferenceLinkSpec('ftp://example.com', '')).toMatchObject({
       handled: false,
-      toast: { message: 'enter a valid web link.', tone: 'warning' },
+      toast: { message: 'Enter a valid web link.', tone: 'warning' },
     })
     expect(getUrlReferenceLinkSpec('not a url', '')).toMatchObject({
       handled: false,
-      toast: { message: 'enter a valid web link.', tone: 'warning' },
+      toast: { message: 'Enter a valid web link.', tone: 'warning' },
     })
   })
 
@@ -290,7 +290,7 @@ describe('note reference model', () => {
 
     expect(getNoteReferencePreviewSpec(state, 'body-sub-a', source)).toEqual({
       ok: false,
-      message: 'a note cannot preview itself.',
+      message: 'A note cannot preview itself.',
     })
   })
 
@@ -311,7 +311,7 @@ describe('note reference model', () => {
       ),
     ).toEqual({
       ok: false,
-      message: 'note preview blocked to prevent recursion.',
+      message: 'Note preview blocked to prevent recursion.',
     })
   })
 })

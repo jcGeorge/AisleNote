@@ -52,13 +52,13 @@ type NavigationContextMenuOptions = {
 }
 
 export function formatMovedToTrashToast(kind: 'domain' | 'space' | 'parent tab' | 'tab', name: string) {
-  return `${kind} "${name}" has been moved to trash`
+  return `${kind.charAt(0).toUpperCase()}${kind.slice(1)} "${name}" has been moved to trash.`
 }
 
 export const LAST_DOMAIN_TOAST =
-  'at least one domain must remain. To delete this notebook, switch to another notebook first, then delete this notebook folder from your file system.'
-export const LAST_SPACE_TOAST = 'at least one space must remain'
-export const LAST_PARENT_TAB_TOAST = 'at least one parent tab must remain'
+  'At least one domain must remain. To delete this notebook, switch to another notebook first, then delete this notebook folder from your file system.'
+export const LAST_SPACE_TOAST = 'At least one space must remain.'
+export const LAST_PARENT_TAB_TOAST = 'At least one parent tab must remain.'
 
 type UseAppOverlayActionsParams = {
   state: AppState
@@ -558,14 +558,14 @@ export const useAppOverlayActions = ({
       stateRef.current = result.state
       setState(result.state)
       if (!result.changed) {
-        pushToast('that domain is no longer in trash.', 'warning')
+        pushToast('That domain is no longer in trash.', 'warning')
         return
       }
       setTrashDomainId?.('')
       setTrashSpaceId?.('')
       setTrashTabId(TRASH_HOME_ID)
       setTrashSubTabId(null)
-      pushToast('domain restored from trash.', 'success')
+      pushToast('Domain restored from trash.', 'success')
       return
     }
 
@@ -574,7 +574,7 @@ export const useAppOverlayActions = ({
       stateRef.current = result.state
       setState(result.state)
       if (result.reason === 'missing-domain') {
-        pushToast('restore the domain first.', 'warning')
+        pushToast('Restore the domain first.', 'warning')
         return
       }
       if (result.changed) {
@@ -582,10 +582,10 @@ export const useAppOverlayActions = ({
         setTrashSpaceId?.('')
         setTrashTabId(TRASH_HOME_ID)
         setTrashSubTabId(null)
-        pushToast('space restored from trash.', 'success')
+        pushToast('Space restored from trash.', 'success')
         return
       }
-      pushToast('that space is no longer in trash.', 'warning')
+      pushToast('That space is no longer in trash.', 'warning')
       return
     }
 
@@ -601,10 +601,10 @@ export const useAppOverlayActions = ({
         setTrashSpaceId?.('')
         setTrashTabId(TRASH_HOME_ID)
         setTrashSubTabId(null)
-        pushToast('item restored from trash.', 'success')
+        pushToast('Item restored from trash.', 'success')
         return
       }
-      pushToast('that item is no longer in trash.', 'warning')
+      pushToast('That item is no longer in trash.', 'warning')
       return
     }
 
@@ -619,7 +619,7 @@ export const useAppOverlayActions = ({
     } else {
       setTrashSubTabId(null)
     }
-    pushToast('item restored from trash.', 'success')
+    pushToast('Item restored from trash.', 'success')
   }
 
   const getLastNoteCopyMode = (): NoteCopyMode => stateRef.current.ui.lastNoteCopyMode ?? 'independent'
@@ -844,7 +844,7 @@ export const useAppOverlayActions = ({
         : null
       if (!targetInfo.noteBodyId || (modal.mode === 'independent' && !targetBody)) {
         setModal(null)
-        pushToast('choose an existing note.', 'warning')
+        pushToast('Choose an existing note.', 'warning')
         return
       }
 
@@ -857,12 +857,12 @@ export const useAppOverlayActions = ({
       )
       if (result.status === 'self-copy') {
         setModal(null)
-        pushToast('choose a different note to copy.', 'warning')
+        pushToast('Choose a different note to copy.', 'warning')
         return
       }
       if (result.status === 'missing-target') {
         setModal(null)
-        pushToast('choose an existing note.', 'warning')
+        pushToast('Choose an existing note.', 'warning')
         return
       }
       if (result.state !== stateRef.current) {
@@ -883,14 +883,14 @@ export const useAppOverlayActions = ({
       setDecoupledItemsKeepData(modal.keepData)
       const keepKeys = new Set(modal.keepLocationKeys)
       if (keepKeys.size === 0) {
-        pushToast('select at least one note to retain the information', 'error')
+        pushToast('Select at least one note to retain the information.', 'error')
         return
       }
       const appliedState = decoupleNoteLocationsInState(stateRef.current, modal.noteBodyId, keepKeys, modal.keepData)
       stateRef.current = appliedState
       setState(appliedState)
       setModal(null)
-      pushToast('notes de-coupled.', 'success')
+      pushToast('Notes de-coupled.', 'success')
       return
     }
 
@@ -927,7 +927,7 @@ export const useAppOverlayActions = ({
       setState(nextState)
       setModal(null)
       result.warnings.forEach((warning) => pushToast(warning, 'warning'))
-      pushToast((nextState.noteAisleBodies ?? []).find((body) => body.id === modal.aisleBodyId)?.frontmatter ? 'frontmatter saved.' : 'frontmatter removed.', 'success')
+      pushToast((nextState.noteAisleBodies ?? []).find((body) => body.id === modal.aisleBodyId)?.frontmatter ? 'Frontmatter saved.' : 'Frontmatter removed.', 'success')
       return
     }
 

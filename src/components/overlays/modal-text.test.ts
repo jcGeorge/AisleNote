@@ -110,7 +110,7 @@ describe('copy-note modal text', () => {
     const modal: ModalState = { type: 'confirm-synced-note-paste', source, destination: target, destinationAisleId: 'aisle-2' }
     const text = getModalText(modal, createModalTextState())
 
-    expect(text.title).toBe('paste synced note?')
+    expect(text.title).toBe('Paste synced note?')
     expect(text.action).toBe('paste synced note')
     expect(text.body).toContain('replace this note and all of its aisles')
     expect(text.body).toContain('synced aisle')
@@ -126,7 +126,7 @@ describe('copy-note modal text', () => {
     }
     const text = getModalText(modal, createModalTextState())
 
-    expect(text.title).toBe('paste synced note?')
+    expect(text.title).toBe('Paste synced note?')
     expect(text.action).toBe('paste synced note')
     expect(text.body).toContain('one aisle')
     expect(text.body).toContain('current aisle instead')
@@ -139,11 +139,11 @@ describe('delete target modal text', () => {
     const permanentModal: ModalState = { ...modal, permanent: true }
 
     expect(getModalText(modal, createModalTextState())).toMatchObject({
-      title: 'move domain to trash?',
+      title: 'Move domain to trash?',
       action: 'delete domain',
     })
     expect(getModalText(permanentModal, createModalTextState())).toMatchObject({
-      title: 'delete domain for real?',
+      title: 'Delete domain for real?',
       action: 'delete for real',
     })
   })

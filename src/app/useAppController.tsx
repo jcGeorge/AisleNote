@@ -362,6 +362,7 @@ import type {
   ViewMode,
   WorkspaceData,
 } from '../types/app'
+import type { ElectronNoteRevealPayload } from '../types/electron-api'
 
 type ShortcutMenuState = {
   top: number
@@ -690,14 +691,19 @@ export function useAppController(): AppController {
       subTabId: contextMenu.type === 'subtab' ? contextMenu.subTabId : null,
     }
   }, [activeNoteLocation, activeSpace.id, contextMenu, scratchpadWorkspaceActive, state.activeDomainId])
+  const editorNoteRevealLabel = useMemo(() => {
+    if (typeof window === 'undefined') return null
+    if (typeof window.electronAPI?.revealNoteLocation !== 'function') return null
+    return window.electronAPI.platform === 'darwin' ? 'Reveal in Finder' : 'Show in Folder'
+  }, [])
   const copyAsMenu = useMemo<CopyAsMenuState | null>(() => {
     const source = contextMenuNoteLocation
     if (!source) return null
     const info = getLocationInfo(state, source)
     const body = info.noteBodyId ? state.noteBodies.find((candidate) => candidate.id === info.noteBodyId) ?? null : null
     if (!body) return null
-    const missingReason = 'note not found.'
-    const notePreviewReason = 'copy a specific aisle as preview for notes with multiple aisles.'
+    const missingReason = 'Note not found.'
+    const notePreviewReason = 'Copy a specific aisle as preview for notes with multiple aisles.'
     const note = Object.fromEntries(
       COPY_AS_MENU_ACTIONS.map((action) => [
         action,
@@ -1165,7 +1171,7 @@ export function useAppController(): AppController {
     structuralScope: scratchpadWorkspaceActive ? 'scratchpad' : 'note',
     maxAisles: scratchpadWorkspaceActive ? getScratchpadAisleLimit() : MAX_NOTE_AISLES,
     maxAislesWarningMessage: scratchpadWorkspaceActive
-      ? 'scratchpad aisle limit reached. you can raise it to 40 in misc settings.'
+      ? 'Scratchpad aisle limit reached. You can raise it to 40 in misc settings.'
       : MAX_AISLE_WARNING_MESSAGE,
     editorRef,
     pendingScrollToAisleIdRef,
@@ -1221,7 +1227,7 @@ export function useAppController(): AppController {
   }
 
   const showScratchpadAisleLimitToast = () => {
-    pushToast('scratchpad aisle limit reached. you can raise it to 40 in misc settings.', 'warning')
+    pushToast('Scratchpad aisle limit reached. You can raise it to 40 in misc settings.', 'warning')
   }
 
   const addScratchpadAisle = (
@@ -1246,7 +1252,7 @@ export function useAppController(): AppController {
     const body = getScratchpadNoteBody(latestState)
     if (!body) return false
     if (body.aisles.length <= 1) {
-      pushToast('scratchpad must keep at least one aisle.', 'warning')
+      pushToast('Scratchpad must keep at least one aisle.', 'warning')
       return false
     }
     return deleteFocusedAisleFromBody(body, latestState)
@@ -1256,7 +1262,7 @@ export function useAppController(): AppController {
     saveActiveCursorBeforeNavigation()
     const targetInfo = getLocationInfo(stateRef.current, location)
     if (!targetInfo.domain || !targetInfo.space || !targetInfo.tab || (location.subTabId && !targetInfo.subTab)) {
-      pushToast('that note no longer exists.', 'warning')
+      pushToast('That note no longer exists.', 'warning')
       return
     }
     closeEditorEphemeraRef.current()
@@ -1603,7 +1609,7 @@ export function useAppController(): AppController {
   const cancelArrangeDestinationPrompt = () => {
     setArrangeDestinationPrompt(null)
     setGuidedParentRailTarget(null)
-    pushToast('arrangement cancelled', 'warning')
+    pushToast('Arrangement cancelled.', 'warning')
     exitArrangeMode()
   }
   const advanceArrangeHierarchyReveal = arrange.advanceHierarchyReveal
@@ -1848,7 +1854,7 @@ export function useAppController(): AppController {
 
   const openScratchpadFromRail = () => {
     if (mainArrangementActive || arrangeDestinationPrompt) {
-      pushToast('scratchpad cannot be used in this mode.', 'warning')
+      pushToast('Scratchpad cannot be used in this mode.', 'warning')
       return false
     }
     saveActiveCursorBeforeNavigation()
@@ -2068,20 +2074,20 @@ export function useAppController(): AppController {
     mode: NoteCopyMode
   }) => {
     if (viewMode !== 'main') {
-      const message = 'open a note before making a copy.'
+      const message = 'Open a note before making a copy.'
       pushToast(message, 'warning')
       return { handled: false, toast: { message, tone: 'warning' as const } }
     }
     const latestState = buildStateWithLatestEditorContent()
     if (scratchpadWorkspaceActive) {
       if (mode === 'linked') {
-        const message = 'scratchpad cannot receive synced copies.'
+        const message = 'Scratchpad cannot receive synced copies.'
         pushToast(message, 'warning')
         return { handled: false, toast: { message, tone: 'warning' as const } }
       }
       const result = applyIndependentCopyToScratchpad(latestState, target, 'replace', getScratchpadAisleLimit())
       if (result.status !== 'applied') {
-        const message = 'selected note could not be copied.'
+        const message = 'Selected note could not be copied.'
         pushToast(message, 'warning')
         return { handled: false, toast: { message, tone: 'warning' as const } }
       }
@@ -2095,8 +2101,8 @@ export function useAppController(): AppController {
     if (result.status !== 'applied') {
       const message =
         result.status === 'self-copy' || result.status === 'already-linked'
-          ? 'choose a different note to copy from.'
-          : 'selected note could not be copied.'
+          ? 'Choose a different note to copy from.'
+          : 'Selected note could not be copied.'
       pushToast(message, 'warning')
       return { handled: false, toast: { message, tone: 'warning' as const } }
     }
@@ -2245,7 +2251,7 @@ export function useAppController(): AppController {
   const openTableOfContents = () => {
     closeEditorEphemeraRef.current()
     if (!activeNoteBodyId) {
-      pushToast('open a note before using table of contents.', 'warning')
+      pushToast('Open a note before using table of contents.', 'warning')
       return
     }
 
@@ -2622,7 +2628,7 @@ export function useAppController(): AppController {
   const runEditorContextCommand = (command: string, payload?: Record<string, unknown>) => {
     closeEditorEphemeraRef.current()
     if (!runActiveEditorCommand(command, payload)) {
-      pushToast('open a note before using the editor menu.', 'warning')
+      pushToast('Open a note before using the editor menu.', 'warning')
     }
   }
 
@@ -2710,13 +2716,13 @@ export function useAppController(): AppController {
 
   const pasteCopyAsPayload = (payload: CopyAsClipboardPayload): boolean => {
     if (viewMode !== 'main') {
-      pushToast('open a note before pasting.', 'warning')
+      pushToast('Open a note before pasting.', 'warning')
       return true
     }
 
     const latestState = buildStateWithLatestEditorContent()
     if (scratchpadWorkspaceActive && payload.action === 'duplicate') {
-      pushToast('scratchpad cannot receive synced copies.', 'warning')
+      pushToast('Scratchpad cannot receive synced copies.', 'warning')
       return true
     }
     if (replaceFocusedBlankAisleWithStructuralCopy(latestState, payload)) return true
@@ -2735,7 +2741,7 @@ export function useAppController(): AppController {
       const nextAisleCount =
         payload.scope === 'aisle' ? (scratchpadBody?.aisles.length ?? 0) + sourceAisleCount : sourceAisleCount
       if (!sourceBody || sourceAisleCount <= 0) {
-        pushToast(payload.scope === 'aisle' ? 'copied aisle no longer exists.' : 'copied note no longer exists.', 'warning')
+        pushToast(payload.scope === 'aisle' ? 'Copied aisle no longer exists.' : 'Copied note no longer exists.', 'warning')
         return true
       }
       if (nextAisleCount > getScratchpadAisleLimit()) {
@@ -2752,7 +2758,7 @@ export function useAppController(): AppController {
         getScratchpadAisleLimit(),
       )
       if (result.status !== 'applied') {
-        pushToast(payload.scope === 'aisle' ? 'copied aisle no longer exists.' : 'copied note no longer exists.', 'warning')
+        pushToast(payload.scope === 'aisle' ? 'Copied aisle no longer exists.' : 'Copied note no longer exists.', 'warning')
         return true
       }
       stateRef.current = result.state
@@ -2784,7 +2790,7 @@ export function useAppController(): AppController {
     })
 
     if (command.status === 'blocked') {
-      const message = command.message === 'maximum aisle count reached.' ? MAX_AISLE_WARNING_MESSAGE : command.message
+      const message = command.message === 'Maximum aisle count reached.' ? MAX_AISLE_WARNING_MESSAGE : command.message
       pushToast(message, command.tone ?? 'warning')
       return true
     }
@@ -2798,7 +2804,7 @@ export function useAppController(): AppController {
     }
 
     if (!insertEditorTextOperation(editorOperationRuntime, command.text).handled) {
-      pushToast('open a note before pasting.', 'warning')
+      pushToast('Open a note before pasting.', 'warning')
       return true
     }
     closeEditorEphemeraRef.current()
@@ -2810,7 +2816,7 @@ export function useAppController(): AppController {
     const source = contextMenuNoteLocation
     closeEditorEphemeraRef.current()
     if (!source) {
-      pushToast('note not found.', 'warning')
+      pushToast('Note not found.', 'warning')
       return
     }
     const latestState = buildStateWithLatestEditorContent()
@@ -2822,7 +2828,7 @@ export function useAppController(): AppController {
     }
     void writeCopyAsClipboardData(data).then((result) => {
       if (!result.ok) {
-        pushToast('clipboard copy is unavailable here.', 'warning')
+        pushToast('Clipboard copy is unavailable here.', 'warning')
         return
       }
       pushToast(getCopyAsSuccessMessage(scope, action), 'success')
@@ -2854,7 +2860,7 @@ export function useAppController(): AppController {
     const latestState = buildStateWithLatestEditorContent()
     const body = latestState.noteBodies.find((candidate) => candidate.id === beforeSnapshot.noteBodyId)
     if (!body) {
-      pushToast('open a note before pasting.', 'warning')
+      pushToast('Open a note before pasting.', 'warning')
       return false
     }
     const baseAisles = cloneAisles(body.aisles, latestState.noteAisleBodies)
@@ -2890,7 +2896,7 @@ export function useAppController(): AppController {
 
     if (payload.action === 'copy' || payload.action === 'duplicate') {
       if (scratchpadWorkspaceActive && payload.action === 'duplicate') {
-        pushToast('scratchpad cannot receive synced copies.', 'warning')
+        pushToast('Scratchpad cannot receive synced copies.', 'warning')
         return true
       }
       if (replaceFocusedBlankAisleWithStructuralCopy(latestState, payload, beforeSnapshot)) return true
@@ -2923,13 +2929,13 @@ export function useAppController(): AppController {
     })
 
     if (command.status === 'blocked') {
-      const message = command.message === 'maximum aisle count reached.' ? MAX_AISLE_WARNING_MESSAGE : command.message
+      const message = command.message === 'Maximum aisle count reached.' ? MAX_AISLE_WARNING_MESSAGE : command.message
       pushToast(message, command.tone ?? 'warning')
       return true
     }
 
     if (command.status === 'structural') {
-      pushToast('clipboard paste is unavailable here.', 'warning')
+      pushToast('Clipboard paste is unavailable here.', 'warning')
       return true
     }
 
@@ -2957,12 +2963,12 @@ export function useAppController(): AppController {
     })
     if (!result.ok) {
       if (result.reason === 'unavailable') {
-        pushToast('clipboard paste is unavailable here.', 'warning')
+        pushToast('Clipboard paste is unavailable here.', 'warning')
       }
       return
     }
     if (result.text && isCopyAsClipboardTextMarker(result.text)) {
-      pushToast('clipboard copy command is invalid.', 'warning')
+      pushToast('Clipboard copy command is invalid.', 'warning')
       return
     }
     addMarkdownAisleFromClipboardPaste(result.markdown, destination, beforeSnapshot)
@@ -2975,7 +2981,7 @@ export function useAppController(): AppController {
     closeEditorEphemeraRef.current()
     const currentEditor = editorRef.current
     if (!currentEditor) {
-      pushToast('open a note before using the editor menu.', 'warning')
+      pushToast('Open a note before using the editor menu.', 'warning')
       return
     }
     currentEditor.focus()
@@ -2993,7 +2999,7 @@ export function useAppController(): AppController {
         return
       }
       if (isCopyAsClipboardTextMarker(text)) {
-        pushToast('clipboard copy command is invalid.', 'warning')
+        pushToast('Clipboard copy command is invalid.', 'warning')
         return
       }
       insertEditorTextOperation(editorOperationRuntime, text)
@@ -3002,11 +3008,11 @@ export function useAppController(): AppController {
     if (destination !== 'here') {
       const beforeSnapshot = captureActiveAisleStructuralSnapshot()
       if (!beforeSnapshot) {
-        pushToast('open a note before using the editor menu.', 'warning')
+        pushToast('Open a note before using the editor menu.', 'warning')
         return
       }
       void pasteClipboardIntoNewAisle(action, destination, beforeSnapshot)
-        .catch(() => pushToast('clipboard paste is unavailable here.', 'warning'))
+        .catch(() => pushToast('Clipboard paste is unavailable here.', 'warning'))
       return
     }
 
@@ -3021,7 +3027,7 @@ export function useAppController(): AppController {
           }
           void navigator.clipboard?.readText?.()
             .then(pasteText)
-            .catch(() => pushToast('clipboard paste is unavailable here.', 'warning'))
+            .catch(() => pushToast('Clipboard paste is unavailable here.', 'warning'))
         })
         .catch(() => {
           const nativeHandled = document.execCommand('paste')
@@ -3031,14 +3037,14 @@ export function useAppController(): AppController {
           }
           void navigator.clipboard?.readText?.()
             .then(pasteText)
-            .catch(() => pushToast('clipboard paste is unavailable here.', 'warning'))
+            .catch(() => pushToast('Clipboard paste is unavailable here.', 'warning'))
         })
       return
     }
 
     void navigator.clipboard?.readText?.()
       .then(pasteText)
-      .catch(() => pushToast('clipboard paste is unavailable here.', 'warning'))
+      .catch(() => pushToast('Clipboard paste is unavailable here.', 'warning'))
   }
 
   const openEditorContextLinkModal = (mode: LinkInsertMode | null) => {
@@ -3054,7 +3060,7 @@ export function useAppController(): AppController {
     closeEditorEphemeraRef.current()
     const currentEditor = editorRef.current
     if (!currentEditor) {
-      pushToast('open a note before inserting an attachment.', 'warning')
+      pushToast('Open a note before inserting an attachment.', 'warning')
       return
     }
 
@@ -3080,7 +3086,7 @@ export function useAppController(): AppController {
       const insertImageAttachment = async () => {
         const assetUrl = await importImageBlobAsAssetUrl(file, file.name)
         if (!assetUrl) {
-          pushToast('could not import attachment.', 'warning')
+          pushToast('Could not import attachment.', 'warning')
           return
         }
         const view = getWysiwygView(currentEditor)
@@ -3096,7 +3102,7 @@ export function useAppController(): AppController {
       const insertLinkedAttachment = async () => {
         const assetUrl = await importBlobAsAssetUrl(file, file.name)
         if (!assetUrl) {
-          pushToast('could not import attachment.', 'warning')
+          pushToast('Could not import attachment.', 'warning')
           return
         }
         currentEditor.focus()
@@ -3121,8 +3127,50 @@ export function useAppController(): AppController {
     closeEditorEphemeraRef.current()
     void revealAssetUrl(source).then((result) => {
       if (result.ok) return
-      pushToast(result.error || 'could not reveal file.', 'warning')
+      pushToast(result.error || 'Could not reveal file.', 'warning')
     })
+  }
+
+  const getActiveEditorNoteRevealPayload = (): ElectronNoteRevealPayload | null => {
+    if (scratchpadWorkspaceActive) return { type: 'scratchpad' }
+    if (!activeNoteLocation) return null
+    return { type: 'live-note', location: activeNoteLocation }
+  }
+
+  const replaceEditorMisspellingFromContext = (word: string) => {
+    closeEditorEphemeraRef.current()
+    if (!word || typeof window.electronAPI?.replaceMisspelling !== 'function') return
+    void window.electronAPI.replaceMisspelling({ word })
+  }
+
+  const addEditorWordToDictionaryFromContext = (word: string) => {
+    closeEditorEphemeraRef.current()
+    if (!word || typeof window.electronAPI?.addWordToSpellCheckerDictionary !== 'function') return
+    void window.electronAPI.addWordToSpellCheckerDictionary({ word })
+  }
+
+  const lookUpEditorSelectionFromContext = () => {
+    closeEditorEphemeraRef.current()
+    if (typeof window.electronAPI?.showDefinitionForSelection !== 'function') return
+    void window.electronAPI.showDefinitionForSelection()
+  }
+
+  const revealNoteLocationFromEditorContext = () => {
+    if (!contextMenu || contextMenu.type !== 'editor') return
+    const revealNoteLocation = window.electronAPI?.revealNoteLocation
+    const payload = getActiveEditorNoteRevealPayload()
+    closeEditorEphemeraRef.current()
+    if (typeof revealNoteLocation !== 'function' || !payload) {
+      pushToast('Could not reveal note file.', 'warning')
+      return
+    }
+    void Promise.resolve(flushStorageActionStateRef.current())
+      .then(() => revealNoteLocation(payload))
+      .then((result) => {
+        if (result.ok) return
+        pushToast('Could not reveal note file.', 'warning')
+      })
+      .catch(() => pushToast('Could not reveal note file.', 'warning'))
   }
 
   const openEditorContextLink = () => {
@@ -3706,7 +3754,7 @@ export function useAppController(): AppController {
       ...current,
       activeIndex: Math.max(0, Math.min(current.activeIndex, Math.max(0, findReplaceMatches.length - result.replacementCount - 1))),
     }))
-    pushToast(`replaced ${result.replacementCount} ${result.replacementCount === 1 ? 'match' : 'matches'}.`, 'success')
+    pushToast(`Replaced ${result.replacementCount} ${result.replacementCount === 1 ? 'match' : 'matches'}.`, 'success')
   }
 
   useEffect(() => {
@@ -3828,7 +3876,7 @@ export function useAppController(): AppController {
   const insertAisleFromEditorContext = (side: EditorAisleInsertSide = 'right') => {
     closeEditorEphemeraRef.current()
     if (!editorRef.current) {
-      pushToast('open a note before using the editor menu.', 'warning')
+      pushToast('Open a note before using the editor menu.', 'warning')
       return
     }
     runActiveNewlineOperation(side === 'left' ? 'aisleLeft' : 'aisleRight')
@@ -4012,7 +4060,7 @@ export function useAppController(): AppController {
     insertPastedUrlAsLink: (label, url) => insertLinkIntoActiveEditor(label, url),
     onPasteCopyAsPayload: pasteCopyAsPayload,
     onPasteInvalidCopyAsPayload: () => {
-      pushToast('clipboard copy command is invalid.', 'warning')
+      pushToast('Clipboard copy command is invalid.', 'warning')
       return true
     },
     getToolbarFormatShortcut,
@@ -4122,7 +4170,7 @@ export function useAppController(): AppController {
 
   const openFrontmatterModalForAisle = (aisleId: string | null = null) => {
     if (scratchpadWorkspaceActive) {
-      pushToast('scratchpad does not use frontmatter.', 'warning')
+      pushToast('Scratchpad does not use frontmatter.', 'warning')
       return
     }
     if (viewMode !== 'main' || !activeNoteBodyId) return
@@ -4138,7 +4186,7 @@ export function useAppController(): AppController {
     const aisleBodyId = getAisleBodyId(targetAisle)
     const aisleBody = (latestState.noteAisleBodies ?? []).find((body) => body.id === aisleBodyId) ?? null
     if (aisleBody?.frontmatterStatus === 'invalid') {
-      pushToast('frontmatter YAML is invalid. fix the markdown block before using the frontmatter menu.', 'warning')
+      pushToast('Frontmatter YAML is invalid. Fix the markdown block before using the frontmatter menu.', 'warning')
       return
     }
     const draft = buildFrontmatterModalDraftForAisle(latestState, activeNoteBodyId, aisleBodyId, activeNoteLocation)
@@ -4162,7 +4210,7 @@ export function useAppController(): AppController {
 
   const openLinkedAisleModal = (aisleId: string) => {
     if (scratchpadWorkspaceActive) {
-      pushToast('scratchpad aisles cannot be linked copies.', 'warning')
+      pushToast('Scratchpad aisles cannot be linked copies.', 'warning')
       return
     }
     if (viewMode !== 'main' || !activeNoteBodyId) return
@@ -4208,7 +4256,7 @@ export function useAppController(): AppController {
 
   const openFrontmatterFilterForAisle = (aisleId: string) => {
     if (scratchpadWorkspaceActive) {
-      pushToast('scratchpad does not use frontmatter.', 'warning')
+      pushToast('Scratchpad does not use frontmatter.', 'warning')
       return
     }
     if (viewMode !== 'main' || !activeNoteBodyId) return
@@ -4220,7 +4268,7 @@ export function useAppController(): AppController {
     const aisleBody = (latestState.noteAisleBodies ?? []).find((body) => body.id === aisleBodyId) ?? null
     const frontmatter = aisleBody?.frontmatter
     if (aisleBody?.frontmatterStatus !== 'valid' || !frontmatter || typeof frontmatter !== 'object' || Array.isArray(frontmatter)) {
-      pushToast('frontmatter filter needs valid frontmatter.', 'warning')
+      pushToast('Frontmatter filter needs valid frontmatter.', 'warning')
       return
     }
 
@@ -4229,7 +4277,7 @@ export function useAppController(): AppController {
       ? [getFrontmatterTemplateFilterKey(templateId)]
       : Object.keys(frontmatter).map(getFrontmatterPropertyFilterKey).filter(Boolean)
     if (selectedKeys.length === 0) {
-      pushToast('frontmatter filter needs a template or property.', 'warning')
+      pushToast('Frontmatter filter needs a template or property.', 'warning')
       return
     }
 
@@ -4243,7 +4291,7 @@ export function useAppController(): AppController {
 
   const openSyncedFilterForAisle = (aisleId: string) => {
     if (scratchpadWorkspaceActive) {
-      pushToast('scratchpad aisles cannot be synced copies.', 'warning')
+      pushToast('Scratchpad aisles cannot be synced copies.', 'warning')
       return
     }
     if (viewMode !== 'main' || !activeNoteBodyId) return
@@ -4386,7 +4434,7 @@ export function useAppController(): AppController {
   const pasteSyncedNoteAsAisleFromModal = () => {
     if (!modal || modal.type !== 'confirm-synced-note-paste' || !modal.sourceAisleId) return
     if (scratchpadWorkspaceActive) {
-      pushToast('scratchpad cannot receive synced copies.', 'warning')
+      pushToast('Scratchpad cannot receive synced copies.', 'warning')
       return
     }
 
@@ -4396,7 +4444,7 @@ export function useAppController(): AppController {
       ? latestState.noteBodies.find((candidate) => candidate.id === sourceInfo.noteBodyId) ?? null
       : null
     if (!sourceBody || sourceBody.aisles.length !== 1 || sourceBody.aisles[0]?.id !== modal.sourceAisleId) {
-      pushToast('copied note no longer has one aisle.', 'warning')
+      pushToast('Copied note no longer has one aisle.', 'warning')
       return
     }
 
@@ -4405,17 +4453,17 @@ export function useAppController(): AppController {
       ? latestState.noteBodies.find((candidate) => candidate.id === destinationInfo.noteBodyId) ?? null
       : null
     if (!destinationInfo.noteBodyId || !destinationBody) {
-      pushToast('open a note before pasting.', 'warning')
+      pushToast('Open a note before pasting.', 'warning')
       return
     }
     if (!destinationBody.aisles.some((aisle) => aisle.id === modal.destinationAisleId)) {
-      pushToast('destination aisle no longer exists.', 'warning')
+      pushToast('Destination aisle no longer exists.', 'warning')
       return
     }
 
     const beforeSnapshot = captureActiveAisleStructuralSnapshot(latestState)
     if (!beforeSnapshot || beforeSnapshot.noteBodyId !== destinationInfo.noteBodyId) {
-      pushToast('open the destination note before pasting.', 'warning')
+      pushToast('Open the destination note before pasting.', 'warning')
       return
     }
 
@@ -4438,7 +4486,7 @@ export function useAppController(): AppController {
       () => true,
     )
     if (!nextAisles) {
-      pushToast('destination aisle no longer exists.', 'warning')
+      pushToast('Destination aisle no longer exists.', 'warning')
       return
     }
 
@@ -4469,15 +4517,15 @@ export function useAppController(): AppController {
       const result = applyNoteCopyToState(latestState, modal.destination, modal.source, 'linked', 'replace')
       setModal(null)
       if (result.status === 'self-copy') {
-        pushToast('choose a different note to paste this synced copy.', 'warning')
+        pushToast('Choose a different note to paste this synced copy.', 'warning')
         return
       }
       if (result.status === 'already-linked') {
-        pushToast('destination already links to copied note.', 'warning')
+        pushToast('Destination already links to copied note.', 'warning')
         return
       }
       if (result.status !== 'applied') {
-        pushToast('copied note no longer exists.', 'warning')
+        pushToast('Copied note no longer exists.', 'warning')
         return
       }
       stateRef.current = result.state
@@ -4505,21 +4553,21 @@ export function useAppController(): AppController {
         setState(result.state)
       }
       setModal(null)
-      pushToast('aisles de-coupled.', 'success')
+      pushToast('Aisles de-coupled.', 'success')
       return
     }
 
     setDecoupledItemsKeepData(modal.keepData)
     const keepKeys = new Set(modal.keepLocationKeys)
     if (keepKeys.size === 0) {
-      pushToast('select at least one note to retain the information', 'error')
+      pushToast('Select at least one note to retain the information.', 'error')
       return
     }
     const appliedState = decoupleNoteLocationsInState(stateRef.current, modal.noteBodyId, keepKeys, modal.keepData)
     stateRef.current = appliedState
     setState(appliedState)
     setModal(null)
-    pushToast('notes de-coupled.', 'success')
+    pushToast('Notes de-coupled.', 'success')
   }
 
   const deleteActiveAisleFromShortcut = () => {
@@ -4534,7 +4582,7 @@ export function useAppController(): AppController {
 
     const activeSubTabId = activeTab.activeSubTabId
     if (!activeSubTabId) {
-      pushToast('home tabs cannot be deleted', 'warning')
+      pushToast('Home tabs cannot be deleted.', 'warning')
       return
     }
     deleteTarget({ type: 'subtab', tabId: activeTab.id, subTabId: activeSubTabId }, false)
@@ -4676,7 +4724,7 @@ export function useAppController(): AppController {
     openCopyModalForActiveNote: () => {
       closeEditorEphemeraRef.current()
       if (scratchpadWorkspaceActive) {
-        pushToast('scratchpad cannot be used as a copy source.', 'warning')
+        pushToast('Scratchpad cannot be used as a copy source.', 'warning')
         return
       }
       openCopyModalForActiveNote()
@@ -4684,7 +4732,7 @@ export function useAppController(): AppController {
     openDeduplicateModalForActiveNote: () => {
       closeEditorEphemeraRef.current()
       if (scratchpadWorkspaceActive) {
-        pushToast('scratchpad cannot be used as a synced copy.', 'warning')
+        pushToast('Scratchpad cannot be used as a synced copy.', 'warning')
         return
       }
       openDeduplicateModalForActiveNote()
@@ -5320,14 +5368,11 @@ export function useAppController(): AppController {
           onNewlineShortcutChange={settingsController.updateNewlineShortcutSetting}
           onOpenShortcutMenuSettings={() => setModal({ type: 'shortcut-menu-settings' })}
           onAutoRemoveDaysChange={settingsController.updateAutoRemoveDaysSetting}
-          onExportNotebook={notebookTransferActions.exportNotebook}
           onExportUserSettings={userSettingsTransferActions.exportUserSettings}
           onImportNotebook={notebookTransferActions.importNotebook}
           onImportUserSettings={userSettingsTransferActions.importUserSettings}
           onImportUserSettingsFromNotebookFolder={userSettingsTransferActions.importUserSettingsFromNotebookFolder}
-          onChooseUserSettingsFolder={userSettingsLocationController.chooseUserSettingsFolder}
           onRevealUserSettingsFolder={userSettingsLocationController.revealUserSettingsFolder}
-          onRetryUserSettingsSync={userSettingsLocationController.retryUserSettingsSync}
           onResetUserSettingsFolder={userSettingsLocationController.resetUserSettingsFolder}
           onResetUserSettingsToDefaults={userSettingsTransferActions.resetUserSettingsToDefaults}
           onThemeChange={settingsController.updateThemeSetting}
@@ -5364,7 +5409,7 @@ export function useAppController(): AppController {
           onMoveToolbarItem={settingsController.moveToolbarItemSetting}
           onMoveToolbarItemToIndex={settingsController.moveToolbarItemToIndexSetting}
           onToolbarEditorShowNamesChange={settingsController.updateToolbarEditorShowNamesSetting}
-          onReadOnlyToolbarEditAttempt={() => pushToast('duplicate the default or create a new layout to edit')}
+          onReadOnlyToolbarEditAttempt={() => pushToast('Duplicate the default or create a new layout to edit.')}
           onSettingsFrontmatterTemplateChange={settingsController.setSettingsFrontmatterTemplate}
           onCreateFrontmatterTemplate={settingsController.createFrontmatterTemplate}
           onUpdateFrontmatterTemplate={settingsController.updateFrontmatterTemplate}
@@ -5376,7 +5421,9 @@ export function useAppController(): AppController {
           onDiscardFrontmatterTemplateChanges={settingsController.discardFrontmatterTemplateChanges}
           onCreateNotebook={openCreateNotebookModal}
           onRenameNotebook={openRenameNotebookModal}
+          onOpenNotebook={storageProfileController.openNotebook}
           onSwitchNotebook={storageProfileController.switchNotebook}
+          onForgetNotebook={storageProfileController.forgetNotebook}
           onMoveStorageProfile={storageProfileController.moveStorageProfile}
           onRevealStorageProfile={storageProfileController.revealStorageProfile}
           onRetryStorageProfile={storageProfileController.retryStorageProfile}
@@ -5563,7 +5610,7 @@ export function useAppController(): AppController {
 
       {storageProfileStatus?.status === 'error' && (
         <div className="storage-status-banner" role="alert">
-          <span>{storageProfileStatus.error ?? 'notebook folder could not be loaded. saves are paused.'}</span>
+          <span>{storageProfileStatus.error ?? 'Notebook folder could not be loaded. Saves are paused.'}</span>
           <button type="button" className="btn btn-sm settings-action-btn" onClick={storageProfileController.revealStorageProfile}>
             reveal folder
           </button>
@@ -5719,7 +5766,7 @@ export function useAppController(): AppController {
           if (contextMenu?.type === 'editor') {
             closeEditorEphemeraRef.current()
             if (scratchpadWorkspaceActive) {
-              pushToast('scratchpad cannot be used as a copy source.', 'warning')
+              pushToast('Scratchpad cannot be used as a copy source.', 'warning')
               return
             }
             openCopyModalForActiveNote()
@@ -5737,6 +5784,11 @@ export function useAppController(): AppController {
         onEditorFindReplace={openFindReplacePanel}
         onEditorOpenContextLink={openEditorContextLink}
         onEditorEditContextLink={editEditorContextLink}
+        onEditorReplaceMisspelling={replaceEditorMisspellingFromContext}
+        onEditorAddWordToDictionary={addEditorWordToDictionaryFromContext}
+        onEditorLookUpSelection={lookUpEditorSelectionFromContext}
+        onRevealNoteLocation={revealNoteLocationFromEditorContext}
+        editorNoteRevealLabel={editorNoteRevealLabel}
         onOpenScratchpadAbout={openScratchpadAboutModal}
         copyAsMenu={copyAsMenu}
         onCopyAs={copyContextMenuItemAs}
@@ -5774,7 +5826,7 @@ export function useAppController(): AppController {
         maxAisles={scratchpadWorkspaceActive ? getScratchpadAisleLimit() : MAX_NOTE_AISLES}
         maxAislesWarningMessage={
           scratchpadWorkspaceActive
-            ? 'scratchpad aisle limit reached. you can raise it to 40 in misc settings.'
+            ? 'Scratchpad aisle limit reached. You can raise it to 40 in misc settings.'
             : MAX_AISLE_WARNING_MESSAGE
         }
         reclaimEmptyAisleAtLimit={scratchpadWorkspaceActive}

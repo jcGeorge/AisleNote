@@ -38,6 +38,11 @@ function createContextMenuProps(
     onEditorFindReplace: noop,
     onEditorOpenContextLink: noop,
     onEditorEditContextLink: noop,
+    onEditorReplaceMisspelling: noop,
+    onEditorAddWordToDictionary: noop,
+    onEditorLookUpSelection: noop,
+    onRevealNoteLocation: noop,
+    editorNoteRevealLabel: null,
     onOpenScratchpadAbout: noop,
     copyAsMenu: null,
     onCopyAs: noop,
@@ -69,7 +74,7 @@ describe('ContextMenuHost copy actions', () => {
               duplicate: { available: true },
               link: { available: true },
               copy: { available: true },
-              preview: { available: false, reason: 'copy a specific aisle as preview for notes with multiple aisles.' },
+              preview: { available: false, reason: 'Copy a specific aisle as preview for notes with multiple aisles.' },
             },
             aisle: {
               duplicate: { available: true },
@@ -101,7 +106,7 @@ describe('ContextMenuHost copy actions', () => {
               duplicate: { available: true },
               link: { available: true },
               copy: { available: true },
-              preview: { available: false, reason: 'copy a specific aisle as preview for notes with multiple aisles.' },
+              preview: { available: false, reason: 'Copy a specific aisle as preview for notes with multiple aisles.' },
             },
             aisle: {
               duplicate: { available: true },
@@ -299,6 +304,43 @@ describe('ContextMenuHost copy actions', () => {
     expect(html).toMatch(
       /insert[\s\S]*>note link<\/button>[\s\S]*>url link<\/button>[\s\S]*role="separator"[\s\S]*>aisle<span aria-hidden="true">›<\/span><\/button>[\s\S]*>to the left<\/button>[\s\S]*>to the right<\/button>[\s\S]*role="separator"[\s\S]*>attachment<\/button>[\s\S]*>table<\/button>[\s\S]*>horizontal rule<\/button>[\s\S]*role="separator"[\s\S]*>code block<\/button>/,
     )
+  })
+
+  it('shows dictionary actions at the top of editor context menus', () => {
+    const html = renderContextMenu({
+      type: 'editor',
+      x: 0,
+      y: 0,
+      dictionary: {
+        suggestions: ['receive', 'recipe'],
+        misspelledWord: 'recieve',
+        selectionText: 'recieve',
+        canLookUpSelection: true,
+      },
+    })
+
+    expect(html).toMatch(
+      />receive<\/button>[\s\S]*>recipe<\/button>[\s\S]*>Add to Dictionary<\/button>[\s\S]*>Look Up<\/button>[\s\S]*role="separator"[\s\S]*>cut<\/button>/,
+    )
+  })
+
+  it('shows note reveal at the bottom of desktop editor context menus', () => {
+    const html = renderToStaticMarkup(
+      <ContextMenuHost
+        {...createContextMenuProps({ type: 'editor', x: 0, y: 0 }, 1, {
+          editorNoteRevealLabel: 'Reveal in Finder',
+        })}
+      />,
+    )
+
+    expect(html).toMatch(/>code block<\/button>[\s\S]*role="separator"[\s\S]*>Reveal in Finder<\/button>/)
+  })
+
+  it('hides note reveal in browser editor context menus', () => {
+    const html = renderContextMenu({ type: 'editor', x: 0, y: 0 })
+
+    expect(html).not.toContain('Reveal in Finder')
+    expect(html).not.toContain('Show in Folder')
   })
 
   it('shows only about scratchpad for scratchpad context menus', () => {

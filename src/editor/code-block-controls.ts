@@ -220,9 +220,9 @@ async function copyCodeBlockText(text: string, pushToast?: CodeBlockControlsOpti
   try {
     if (!navigator.clipboard?.writeText) throw new Error('Clipboard text writes are unavailable.')
     await navigator.clipboard.writeText(text)
-    pushToast?.('code copied.', 'success')
+    pushToast?.('Code copied.', 'success')
   } catch {
-    pushToast?.('could not copy code.', 'warning')
+    pushToast?.('Could not copy code.', 'warning')
   }
 }
 
@@ -265,7 +265,7 @@ function createControlsElement(
   deleteButton.addEventListener('click', (event) => {
     stopControlEvent(event)
     if (!deleteCodeBlockAtPosition(view, position, TextSelection)) {
-      options.pushToast?.('could not delete code block.', 'warning')
+      options.pushToast?.('Could not delete code block.', 'warning')
     }
   })
 

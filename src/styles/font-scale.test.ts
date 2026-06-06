@@ -597,6 +597,16 @@ describe('compact scope tab scaling styles', () => {
     expect(countRule).not.toContain('0.78rem')
   })
 
+  it('sizes the scratchpad icon from the rail control height', () => {
+    const tabsCss = readStyle('tabs.css')
+    const iconRule = extractRule(tabsCss, '.scratchpad-rail-icon')
+
+    expect(iconRule).toContain('width: calc((var(--tab-control-height) - 4px) * 0.9);')
+    expect(iconRule).toContain('height: calc((var(--tab-control-height) - 4px) * 0.9);')
+    expect(iconRule).toContain('flex: 0 0 auto;')
+    expect(iconRule).not.toContain('20px')
+  })
+
   it('uses one shared nav rail background surface for all note-page rows', () => {
     const baseCss = readStyle('base.css')
     const topbarCss = readStyle('topbar.css')

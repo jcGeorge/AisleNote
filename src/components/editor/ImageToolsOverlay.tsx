@@ -3,6 +3,7 @@ import type { CropRatioPresetId } from '../../editor/crop-ratios'
 import type { ImageTransformOperation } from '../../editor/image-transform'
 import type { ImageToolsState, InlineCropState } from '../../types/app'
 import { CropRatioSelect } from './CropRatioSelect'
+import { ResizeCornerIcon } from './ResizeCornerIcon'
 
 export type InlineCropDragMode = 'move' | 'resize-n' | 'resize-e' | 'resize-s' | 'resize-w' | 'resize-se'
 
@@ -27,12 +28,14 @@ function CropHandle({
   style,
   mode,
   label,
+  children,
   onBeginCropDrag,
 }: {
   className: string
   style: React.CSSProperties
   mode: InlineCropDragMode
   label: string
+  children?: ReactNode
   onBeginCropDrag: (mode: InlineCropDragMode, event: MouseEvent<HTMLElement>) => void
 }) {
   return (
@@ -46,7 +49,9 @@ function CropHandle({
       onMouseDown={(event) => onBeginCropDrag(mode, event)}
       onDragStart={(event) => event.preventDefault()}
       onClick={(event) => event.preventDefault()}
-    />
+    >
+      {children}
+    </button>
   )
 }
 
@@ -227,7 +232,9 @@ export function ImageToolsOverlay({
           onPointerDown={onBeginResize}
           aria-label="Resize image"
           data-app-tooltip="Drag to resize"
-        />
+        >
+          <ResizeCornerIcon />
+        </button>
       )}
 
       {inlineCrop.active && (
@@ -291,7 +298,9 @@ export function ImageToolsOverlay({
             mode="resize-se"
             label="Resize crop area"
             onBeginCropDrag={onBeginCropDrag}
-          />
+          >
+            <ResizeCornerIcon />
+          </CropHandle>
         </>
       )}
     </>

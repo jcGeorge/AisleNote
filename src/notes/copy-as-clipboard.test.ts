@@ -128,14 +128,14 @@ function createCopyAsState(): AppState {
 
 describe('copy-as clipboard helpers', () => {
   it('uses centralized user-facing copy and paste wording', () => {
-    expect(getCopyAsSuccessMessage('note', 'copy')).toBe('independent note copy copied.')
-    expect(getCopyAsSuccessMessage('note', 'duplicate')).toBe('synced note copy copied.')
-    expect(getCopyAsSuccessMessage('aisle', 'link')).toBe('aisle link copied.')
-    expect(getCopyAsSuccessMessage('aisle', 'preview')).toBe('aisle preview copied.')
-    expect(getCopyAsPasteSuccessMessage('note', 'copy')).toBe('independent note copy created.')
-    expect(getCopyAsPasteSuccessMessage('note', 'duplicate')).toBe('synced note copy created.')
-    expect(getCopyAsPasteSuccessMessage('aisle', 'link')).toBe('aisle link pasted.')
-    expect(getCopyAsPasteSuccessMessage('aisle', 'preview')).toBe('aisle preview pasted.')
+    expect(getCopyAsSuccessMessage('note', 'copy')).toBe('Independent note copy copied.')
+    expect(getCopyAsSuccessMessage('note', 'duplicate')).toBe('Synced note copy copied.')
+    expect(getCopyAsSuccessMessage('aisle', 'link')).toBe('Aisle link copied.')
+    expect(getCopyAsSuccessMessage('aisle', 'preview')).toBe('Aisle preview copied.')
+    expect(getCopyAsPasteSuccessMessage('note', 'copy')).toBe('Independent note copy created.')
+    expect(getCopyAsPasteSuccessMessage('note', 'duplicate')).toBe('Synced note copy created.')
+    expect(getCopyAsPasteSuccessMessage('aisle', 'link')).toBe('Aisle link pasted.')
+    expect(getCopyAsPasteSuccessMessage('aisle', 'preview')).toBe('Aisle preview pasted.')
   })
 
   it('serializes and parses structured payloads', () => {
@@ -166,7 +166,7 @@ describe('copy-as clipboard helpers', () => {
     expect(buildCopyAsClipboardData(state, sourceLocation, 'note', 'link')).toMatchObject({ ok: true })
     expect(buildCopyAsClipboardData(state, sourceLocation, 'note', 'preview')).toEqual({
       ok: false,
-      message: 'copy a specific aisle as preview for notes with multiple aisles.',
+      message: 'Copy a specific aisle as preview for notes with multiple aisles.',
     })
   })
 
@@ -426,7 +426,7 @@ describe('copy-as clipboard helpers', () => {
 
     expect(result).toMatchObject({
       status: 'max-aisles',
-      message: 'maximum aisle count reached.',
+      message: 'Maximum aisle count reached.',
     })
   })
 })

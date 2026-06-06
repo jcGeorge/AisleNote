@@ -6,6 +6,7 @@ import type { ToolbarFormatKey } from '../components/editor/toolbar-state'
 import type {
   AppState,
   ContextMenuState,
+  EditorDictionaryContext,
   MultiLineEditState,
   MultiLineInlineFormat,
   NewlineOperationId,
@@ -144,6 +145,34 @@ type UseEditorDomEventsOptions = {
 
 const WWW_ADDRESS_RE = /^www\.[^\s.]+\.[^\s]+$/i
 const BARE_COM_ORG_ADDRESS_RE = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|org)(?::\d{2,5})?(?:[/?#][^\s]*)?$/i
+const EDITOR_SPELLCHECK_CONTEXT_TIMEOUT_MS = 50
+
+function hasEditorDictionaryContext(context: EditorDictionaryContext | null | undefined): context is EditorDictionaryContext {
+  return Boolean(
+    context &&
+      (context.suggestions.length > 0 ||
+        context.misspelledWord ||
+        (context.canLookUpSelection && context.selectionText.trim())),
+  )
+}
+
+export async function getEditorDictionaryContextForMenu(
+  x: number,
+  y: number,
+): Promise<EditorDictionaryContext | undefined> {
+  if (typeof window === 'undefined') return undefined
+  const getSpellcheckContext = window.electronAPI?.getEditorSpellcheckContext
+  if (typeof getSpellcheckContext !== 'function') return undefined
+  const timeout = new Promise<null>((resolve) => {
+    window.setTimeout(() => resolve(null), EDITOR_SPELLCHECK_CONTEXT_TIMEOUT_MS)
+  })
+  try {
+    const context = await Promise.race([getSpellcheckContext({ x, y }), timeout])
+    return hasEditorDictionaryContext(context) ? context : undefined
+  } catch {
+    return undefined
+  }
+}
 
 export function getPastedHttpUrl(value: string): string | null {
   try {
@@ -339,11 +368,12 @@ export function getMediaPlayerPointerAction(
 ): MediaPlayerPointerAction {
   const mediaPlayer = target?.closest(MEDIA_PLAYER_SELECTOR) ?? null
   if (!mediaPlayer) return { type: 'none' }
+  if (target?.closest('.tabs-media-title')) return { type: 'ignore-controls' }
   const isControlTarget = Boolean(target?.closest('button, input, select, textarea'))
   if (!isPrimaryActivation || isControlTarget) return { type: 'ignore-controls' }
   if (mediaPlayer.getAttribute('data-media-kind') !== 'video') return { type: 'close-non-video', mediaPlayer }
   if (target?.closest('.tabs-media-viewport')) return { type: 'toggle-video', mediaPlayer }
-  if (target?.closest('.tabs-media-title, .tabs-media-controls')) return { type: 'hide-video-tools', mediaPlayer }
+  if (target?.closest('.tabs-media-controls')) return { type: 'hide-video-tools', mediaPlayer }
   return { type: 'select-video', mediaPlayer }
 }
 
@@ -601,6 +631,7 @@ export function useEditorDomEvents({
     let terminalBlankAreaHandledOnPointerDown = false
     let embedCaretHandledOnPointerDown = false
     let activeKeyboardMediaPlayer: Element | null = null
+    let editorContextMenuRequestId = 0
     let pendingTableExitRepair: {
       coords: { left: number; top: number }
       range: TableRange
@@ -981,8 +1012,16 @@ export function useEditorDomEvents({
       scheduleTableExitRepair()
     }
 
+    const openEditorContextMenu = (menu: Extract<ContextMenuState, { type: 'editor' }>, requestId: number) => {
+      void getEditorDictionaryContextForMenu(menu.x, menu.y).then((dictionary) => {
+        if (requestId !== editorContextMenuRequestId) return
+        setContextMenu(dictionary ? { ...menu, dictionary } : menu)
+      })
+    }
+
     const handleContextMenu = (event: Event) => {
       const mouseEvent = event as globalThis.MouseEvent
+      const contextMenuRequestId = ++editorContextMenuRequestId
       const target = getElementFromEventTarget(mouseEvent.target)
       if (!target) return
       const mediaContextMenu = getMediaRevealContextMenuDetailFromTarget(target, mouseEvent.clientX, mouseEvent.clientY)
@@ -1033,28 +1072,34 @@ export function useEditorDomEvents({
         if (anchor.dataset.internalNoteLink === 'true') {
           const markdownHit = getInternalLinkWidgetHit(anchor)
           if (!markdownHit) return
-          setContextMenu({
+          openEditorContextMenu(
+            {
+              type: 'editor',
+              x: mouseEvent.clientX,
+              y: mouseEvent.clientY,
+              link: {
+                ...markdownHit,
+                type: 'internal',
+              },
+            },
+            contextMenuRequestId,
+          )
+          return
+        }
+        openEditorContextMenu(
+          {
             type: 'editor',
             x: mouseEvent.clientX,
             y: mouseEvent.clientY,
             link: {
-              ...markdownHit,
-              type: 'internal',
+              type: 'external',
+              href,
+              label: text,
+              range,
             },
-          })
-          return
-        }
-        setContextMenu({
-          type: 'editor',
-          x: mouseEvent.clientX,
-          y: mouseEvent.clientY,
-          link: {
-            type: 'external',
-            href,
-            label: text,
-            range,
           },
-        })
+          contextMenuRequestId,
+        )
         return
       }
 
@@ -1065,11 +1110,14 @@ export function useEditorDomEvents({
         onDismissEditorEphemeraBeforeContextMenu?.()
         closeLinkPrompt()
         setMenuOpen(false)
-        setContextMenu({
-          type: 'editor',
-          x: mouseEvent.clientX,
-          y: mouseEvent.clientY,
-        })
+        openEditorContextMenu(
+          {
+            type: 'editor',
+            x: mouseEvent.clientX,
+            y: mouseEvent.clientY,
+          },
+          contextMenuRequestId,
+        )
         return
       }
     }

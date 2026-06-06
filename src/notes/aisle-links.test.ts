@@ -268,7 +268,7 @@ describe('linked aisle helpers', () => {
 
     expect(decoupleAisleSlotsInState(state, 'shared-body', new Set(), true)).toMatchObject({
       status: 'blocked',
-      message: 'select at least one aisle to retain the information',
+      message: 'Select at least one aisle to retain the information.',
     })
   })
 

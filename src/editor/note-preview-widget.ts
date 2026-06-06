@@ -103,7 +103,7 @@ function schedulePreviewCursorScroll(
 
 function getPreviewStatusText(data: NotePreviewData) {
   if (data.status === 'missing') return 'note preview target is missing.'
-  if (data.status === 'blocked') return 'note preview blocked to prevent recursive rendering.'
+  if (data.status === 'blocked') return 'Note preview blocked to prevent recursive rendering.'
   if (data.status === 'empty') return 'note preview is empty.'
   return ''
 }

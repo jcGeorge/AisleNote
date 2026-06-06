@@ -52,7 +52,7 @@ describe('MessagesView', () => {
 
     expect(html).toContain('utility-page-wrap messages-view')
     expect(html).toContain('utility-page-card messages-view-card')
-    expect(html).toContain('no inbox messages.')
+    expect(html).toContain('No inbox messages.')
     expect(html).not.toContain('<h2>messages</h2>')
   })
 
@@ -68,7 +68,7 @@ describe('MessagesView', () => {
       />,
     )
 
-    expect(html).toContain('no toast history.')
+    expect(html).toContain('No toast history.')
     expect(html).not.toContain('duplicate files de-coupled')
   })
 

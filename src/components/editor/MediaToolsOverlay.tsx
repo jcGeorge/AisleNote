@@ -1,5 +1,6 @@
 import type { MouseEvent, PointerEvent, ReactNode } from 'react'
 import type { ImageTransformOperation } from '../../editor/image-transform'
+import { ResizeCornerIcon } from './ResizeCornerIcon'
 
 export type MediaToolsState = {
   visible: boolean
@@ -152,7 +153,9 @@ export function MediaToolsOverlay({
         onPointerDown={onBeginResize}
         aria-label="Resize video"
         data-app-tooltip="Drag to resize"
-      />
+      >
+        <ResizeCornerIcon />
+      </button>
     </>
   )
 }

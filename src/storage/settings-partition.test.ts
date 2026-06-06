@@ -17,7 +17,7 @@ function currentSettingsJson() {
     },
     ui: {
       settingsSection: 'data',
-      dataSettingsSection: 'settings',
+      dataSettingsSection: 'storage',
       toolbarLayouts: [],
       selectedCustomTheme: 'custom1',
       themePalettes: {},
@@ -70,7 +70,7 @@ describe('portable app settings parsing', () => {
         },
         ui: {
           settingsSection: 'data',
-          dataSettingsSection: 'settings',
+          dataSettingsSection: 'storage',
           tabRenameEnterBehavior: 'goes-to-note',
           noteFilter: {
             active: false,

@@ -129,6 +129,8 @@ describe('MediaPlayer', () => {
     expect(css).toContain("'play loop speed volume back forward'")
     expect(css).toContain('@container tabs-media-player (max-width: 12rem)')
     expect(css).toContain("'slider slider slider slider slider slider'")
+    expect(css).toContain('user-select: text;')
+    expect(css).toContain('-webkit-user-select: text;')
     expect(css).toContain('display: none;')
     expect(css).toContain('height: 1.55rem;')
     expect(css).toContain('height: 1.45rem;')

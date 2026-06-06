@@ -38,7 +38,7 @@ export function MessagesView({
       <div className="utility-page-card messages-view-card">
         {section === 'toast-history' ? (
           toastHistory.length === 0 ? (
-            <p className="messages-empty">no toast history.</p>
+            <p className="messages-empty">No toast history.</p>
           ) : (
             <div className="messages-list toast-history-list">
               {orderToastHistoryForDisplay(toastHistory).map((toast) => (
@@ -60,7 +60,7 @@ export function MessagesView({
             </div>
           )
         ) : visibleMessages.length === 0 ? (
-          <p className="messages-empty">no inbox messages.</p>
+          <p className="messages-empty">No inbox messages.</p>
         ) : (
           <div className="messages-list">
             {visibleMessages.map((message) => (

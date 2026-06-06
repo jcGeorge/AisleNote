@@ -48,7 +48,7 @@ describe('device settings store', () => {
     })
     expect(parseDeviceSettings(JSON.stringify({ dataSettingsSection: 'settings' }))).toEqual({
       ...DEFAULT_DEVICE_SETTINGS,
-      dataSettingsSection: 'settings',
+      dataSettingsSection: 'transfer',
     })
     expect(parseDeviceSettings(JSON.stringify({ dataSettingsSection: 'sync' })).dataSettingsSection).toBe('transfer')
     expect(parseDeviceSettings(JSON.stringify({ dataSettingsSection: 'cloud' })).dataSettingsSection).toBe('transfer')
@@ -194,7 +194,7 @@ describe('device settings store', () => {
     })
 
     expect(mergeLoadedSettings(state, { settings: DEFAULT_DEVICE_SETTINGS, hasStoredSettings: false }).ui.settingsSection).toBe('visuals')
-    expect(mergeLoadedSettings(state, { settings: DEFAULT_DEVICE_SETTINGS, hasStoredSettings: false }).ui.dataSettingsSection).toBe('settings')
+    expect(mergeLoadedSettings(state, { settings: DEFAULT_DEVICE_SETTINGS, hasStoredSettings: false }).ui.dataSettingsSection).toBe('transfer')
     expect(mergeLoadedSettings(state, { settings: DEFAULT_DEVICE_SETTINGS, hasStoredSettings: false }).ui.visualsSettingsSection).toBe('otherVisuals')
     expect(mergeLoadedSettings(state, { settings: DEFAULT_DEVICE_SETTINGS, hasStoredSettings: true }).ui.settingsSection).toBe('hotkeys')
     expect(mergeLoadedSettings(state, { settings: DEFAULT_DEVICE_SETTINGS, hasStoredSettings: true }).ui.dataSettingsSection).toBe('transfer')

@@ -478,8 +478,8 @@ export function buildFrontmatterDataFromRows(
   for (const row of rows) {
     const key = row.key.trim()
     if (!key && !row.value.trim()) continue
-    if (!key) return { ok: false, message: 'frontmatter rows need a key.' }
-    if (seenKeys.has(key)) return { ok: false, message: `frontmatter key "${key}" is duplicated.` }
+    if (!key) return { ok: false, message: 'Frontmatter rows need a key.' }
+    if (seenKeys.has(key)) return { ok: false, message: `Frontmatter key "${key}" is duplicated.` }
     seenKeys.add(key)
 
     const computedEnabled = isComputedEnabled(row)

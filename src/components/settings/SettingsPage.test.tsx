@@ -179,14 +179,11 @@ function renderSettingsPage(
       onNewlineShortcutChange={() => undefined}
       onOpenShortcutMenuSettings={() => undefined}
       onAutoRemoveDaysChange={() => undefined}
-      onExportNotebook={() => undefined}
       onExportUserSettings={() => undefined}
       onImportNotebook={() => undefined}
       onImportUserSettings={() => undefined}
       onImportUserSettingsFromNotebookFolder={() => undefined}
-      onChooseUserSettingsFolder={() => undefined}
       onRevealUserSettingsFolder={() => undefined}
-      onRetryUserSettingsSync={() => undefined}
       onResetUserSettingsFolder={() => undefined}
       onResetUserSettingsToDefaults={() => undefined}
       onThemeChange={() => undefined}
@@ -231,7 +228,9 @@ function renderSettingsPage(
       onDiscardFrontmatterTemplateChanges={() => undefined}
       onCreateNotebook={() => undefined}
       onRenameNotebook={() => undefined}
+      onOpenNotebook={() => undefined}
       onSwitchNotebook={() => undefined}
+      onForgetNotebook={() => undefined}
       onMoveStorageProfile={() => undefined}
       onRevealStorageProfile={() => undefined}
       onRetryStorageProfile={() => undefined}
@@ -395,44 +394,75 @@ describe('frontmatter settings page', () => {
     expect(html).not.toContain('<option value="aisle">aisle</option>')
   })
 
-  it('splits data settings into transfer, settings, notebook, and trash sub-sections', () => {
+  it('splits data settings into transfer, notebook, and trash sub-sections', () => {
     const transferHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'data' })
-    const settingsHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'data', dataSection: 'settings' })
-    const storageHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'data', dataSection: 'storage' })
+    const storageHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, {
+      section: 'data',
+      dataSection: 'storage',
+      storageProfileStatus: {
+        status: 'ready',
+        health: 'healthy',
+        issues: [],
+        profileRootPath: '/tmp/Tabs Notebook',
+        notebookPath: '/tmp/Tabs Notebook',
+        notebookName: 'Tabs Notebook',
+        isDefault: false,
+        hasProfile: true,
+        canWrite: true,
+        source: 'hybrid',
+        schemaVersion: 2,
+        knownNotebooks: [
+          {
+            notebookPath: '/tmp/Tabs Notebook',
+            notebookName: 'Tabs Notebook',
+            isActive: true,
+            isDefault: false,
+            exists: true,
+            hasManifest: true,
+            available: true,
+          },
+          {
+            notebookPath: '/tmp/Missing Notebook',
+            notebookName: 'Missing Notebook',
+            isActive: false,
+            isDefault: false,
+            exists: false,
+            hasManifest: false,
+            available: false,
+          },
+        ],
+      },
+    })
     const trashHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'data', dataSection: 'trash' })
 
     expect(transferHtml).toContain('role="radiogroup" aria-labelledby="settings-data-section-label"')
     expect(transferHtml).toContain('aria-checked="true" class="settings-segmented-option is-selected">transfer</button>')
-    expect(transferHtml).toContain('notebook transfer:')
-    expect(transferHtml).toContain('export notebook folder')
+    expect(transferHtml).not.toContain('>settings</button>')
+    expect(transferHtml).toContain('notebook import:')
+    expect(transferHtml).not.toContain('export notebook folder')
     expect(transferHtml).toContain('import notebook/markdown')
-    expect(transferHtml).toContain('export creates a native notebook folder on desktop')
+    expect(transferHtml).toContain('app settings transfer:')
+    expect(transferHtml).toContain('export user settings')
+    expect(transferHtml).toContain('import user settings')
+    expect(transferHtml).toContain('import from notebook folder')
+    expect(transferHtml).toContain('User settings are stored in app-settings.json')
     expect(transferHtml).not.toContain('automatically remove deleted items after:')
-
-    expect(settingsHtml).toContain('aria-checked="true" class="settings-segmented-option is-selected">settings</button>')
-    expect(settingsHtml).toContain('user settings:')
-    expect(settingsHtml).toContain('export user settings')
-    expect(settingsHtml).toContain('import user settings')
-    expect(settingsHtml).toContain('import from notebook folder')
-    expect(settingsHtml).toContain('reset user settings to defaults')
-    expect(settingsHtml).toContain('choose settings folder')
-    expect(settingsHtml).toContain('reveal settings folder')
-    expect(settingsHtml).toContain('retry settings sync')
-    expect(settingsHtml).toContain('reset to local settings')
-    expect(settingsHtml).toContain('desktop settings folder unavailable')
-    expect(settingsHtml).toContain('app-settings.json')
-    expect(settingsHtml).not.toContain('current user settings will be overwritten')
-    expect(settingsHtml).not.toContain('choose notebook folder')
 
     expect(storageHtml).toContain('aria-checked="true" class="settings-segmented-option is-selected">notebook</button>')
     expect(storageHtml).toContain('notebook:</p>')
-    expect(storageHtml).toContain('notebook name')
-    expect(storageHtml).toContain('notebook folder')
+    expect(storageHtml).toContain('current notebook')
+    expect(storageHtml).toContain('settings-notebook-select')
+    expect(storageHtml).toContain('Tabs Notebook')
+    expect(storageHtml).toContain('Missing Notebook (missing)')
     expect(storageHtml).toContain('new notebook')
-    expect(storageHtml).toContain('rename notebook')
-    expect(storageHtml).toContain('switch notebook')
-    expect(storageHtml).toContain('move notebook folder')
-    expect(storageHtml).toContain('app-settings.json')
+    expect(storageHtml).toContain('open notebook...')
+    expect(storageHtml).toContain('notebook details')
+    expect(storageHtml).toContain('rename')
+    expect(storageHtml).toContain('move folder')
+    expect(storageHtml).toContain('open notebook folder')
+    expect(storageHtml).toContain('remove from list')
+    expect(storageHtml).not.toContain('switch notebook')
+    expect(storageHtml).not.toContain('export notebook folder')
     expect(storageHtml).not.toContain('choose sync folder')
     expect(storageHtml).not.toContain('advanced support:')
     expect(storageHtml).not.toContain('restore latest snapshot')
@@ -446,12 +476,12 @@ describe('frontmatter settings page', () => {
   it('renders persistent user settings import failures', () => {
     const fileHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, {
       section: 'data',
-      dataSection: 'settings',
+      dataSection: 'transfer',
       importStatus: "The file selected doesn't match our app-settings.json structure.",
     })
     const folderHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, {
       section: 'data',
-      dataSection: 'settings',
+      dataSection: 'transfer',
       importStatus: "The folder selected doesn't contain an app-settings.json file that matches this project's structure.",
     })
 
@@ -464,7 +494,7 @@ describe('frontmatter settings page', () => {
   it('renders user settings folder status and warnings', () => {
     const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, {
       section: 'data',
-      dataSection: 'settings',
+      dataSection: 'transfer',
       userSettingsLocationStatus: {
         status: 'warning',
         event: 'settings-sync-missing',
@@ -479,18 +509,15 @@ describe('frontmatter settings page', () => {
       },
     })
 
-    expect(html).toContain('storage-profile-card is-warning')
+    expect(html).toContain('settings folder')
     expect(html).toContain('/Users/me/Cloud/Tabs Settings')
-    expect(html).toContain('sync</span><span>fallback</span>')
+    expect(html).toContain('status</span><span>fallback</span>')
+    expect(html).toContain('open settings folder')
+    expect(html).toContain('use local settings')
     expect(html).toContain('Settings folder does not contain settings/app-settings.json. Using local app settings.')
   })
 
   it('hides desktop-only folder controls on mobile', () => {
-    const settingsHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, {
-      section: 'data',
-      dataSection: 'settings',
-      dataCapabilities: MOBILE_DATA_CAPABILITIES,
-    })
     const transferHtml = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, {
       section: 'data',
       dataSection: 'transfer',
@@ -502,19 +529,18 @@ describe('frontmatter settings page', () => {
       dataCapabilities: MOBILE_DATA_CAPABILITIES,
     })
 
-    expect(settingsHtml).toContain('mobile and tablet store live user settings inside this app')
-    expect(settingsHtml).toContain('export user settings')
-    expect(settingsHtml).toContain('import user settings')
-    expect(settingsHtml).not.toContain('choose settings folder')
-    expect(settingsHtml).not.toContain('import from notebook folder')
-
-    expect(transferHtml).toContain('export notebook folder')
+    expect(transferHtml).not.toContain('>settings</button>')
+    expect(transferHtml).not.toContain('export notebook folder')
     expect(transferHtml).toContain('import notebook/markdown')
-    expect(transferHtml).toContain('notebook folder export is desktop only')
+    expect(transferHtml).toContain('app settings transfer:')
+    expect(transferHtml).toContain('export user settings')
+    expect(transferHtml).toContain('import user settings')
+    expect(transferHtml).not.toContain('import from notebook folder')
+    expect(transferHtml).not.toContain('notebook folder export is desktop only')
 
     expect(folderHtml).toContain('local app notebook:')
     expect(folderHtml).toContain('app-private local')
-    expect(folderHtml).toContain('live notebook folders, live settings folders, and folder switching are desktop features')
+    expect(folderHtml).toContain('Live notebook folders, live settings folders, and folder switching are desktop features')
     expect(folderHtml).not.toContain('new notebook')
     expect(folderHtml).not.toContain('switch notebook')
     expect(folderHtml).not.toContain('move notebook folder')
@@ -875,7 +901,7 @@ describe('frontmatter settings page', () => {
   it('renders an empty tips settings panel before any tips are seen', () => {
     const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'tips' })
 
-    expect(html).toContain('tips you have seen will appear here.')
+    expect(html).toContain('Tips you have seen will appear here.')
     expect(html).not.toContain('task undo')
   })
 
@@ -926,7 +952,7 @@ describe('frontmatter settings page', () => {
     expect(html).toContain('draft template')
     expect(html).toContain('save template')
     expect(html).toContain('discard changes')
-    expect(html).toContain('template changes apply only after saving.')
+    expect(html).toContain('Template changes apply only after saving.')
   })
 
   it('renders boolean template defaults as a switch', () => {

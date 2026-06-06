@@ -2,7 +2,6 @@ import type { DataSettingsSection } from '../../types/app'
 
 const DATA_SECTION_OPTIONS: Array<{ id: DataSettingsSection; label: string }> = [
   { id: 'transfer', label: 'transfer' },
-  { id: 'settings', label: 'settings' },
   { id: 'storage', label: 'notebook' },
   { id: 'trash', label: 'trash' },
 ]

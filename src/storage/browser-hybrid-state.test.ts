@@ -218,7 +218,7 @@ describe('browser hybrid storage', () => {
           {
             id: 1,
             createdAt: '2026-06-01T00:01:00.000Z',
-            message: 'notebook folder updated.',
+            message: 'Notebook folder updated.',
             tone: 'success',
           },
         ],
@@ -334,7 +334,7 @@ describe('browser hybrid storage', () => {
       {
         id: 1,
         createdAt: '2026-06-01T00:01:00.000Z',
-        message: 'notebook folder updated.',
+        message: 'Notebook folder updated.',
         tone: 'success',
       },
     ])
@@ -346,7 +346,7 @@ describe('browser hybrid storage', () => {
       {
         id: 1,
         createdAt: '2026-06-01T00:01:00.000Z',
-        message: 'notebook folder updated.',
+        message: 'Notebook folder updated.',
         tone: 'success',
       },
     ])

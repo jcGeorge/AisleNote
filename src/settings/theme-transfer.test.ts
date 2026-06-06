@@ -30,7 +30,7 @@ describe('theme transfer helpers', () => {
       DEFAULT_CUSTOM_THEME_PALETTE,
     )
 
-    expect(result).toEqual({ ok: false, error: 'no theme colors found.' })
+    expect(result).toEqual({ ok: false, error: 'No theme colors found.' })
   })
 
   it('imports a partial plain palette object into the current palette', () => {
@@ -69,18 +69,18 @@ describe('theme transfer helpers', () => {
       },
     }), DEFAULT_CUSTOM_THEME_PALETTE)
 
-    expect(result).toEqual({ ok: false, error: 'no theme colors found.' })
+    expect(result).toEqual({ ok: false, error: 'No theme colors found.' })
   })
 
   it('rejects invalid palette json', () => {
-    expect(parseThemeSettingsImport('{', DEFAULT_CUSTOM_THEME_PALETTE)).toEqual({ ok: false, error: 'invalid json.' })
+    expect(parseThemeSettingsImport('{', DEFAULT_CUSTOM_THEME_PALETTE)).toEqual({ ok: false, error: 'Invalid JSON.' })
     expect(parseThemeSettingsImport(JSON.stringify({ palette: { primary: '#not-hex' } }), DEFAULT_CUSTOM_THEME_PALETTE)).toEqual({
       ok: false,
-      error: 'no theme colors found.',
+      error: 'No theme colors found.',
     })
     expect(parseThemeSettingsImport(JSON.stringify({ nope: '#123456' }), DEFAULT_CUSTOM_THEME_PALETTE)).toEqual({
       ok: false,
-      error: 'no theme colors found.',
+      error: 'No theme colors found.',
     })
   })
 })

@@ -147,8 +147,8 @@ export const useNoteReferenceActions = ({
     }
     if (!replaceTextRangeInActiveEditor(from, to, command.insertText)) {
       const message = action === 'preview'
-        ? 'open a note before inserting a note preview.'
-        : 'open a note before inserting a note link.'
+        ? 'Open a note before inserting a note preview.'
+        : 'Open a note before inserting a note link.'
       pushToast(message, 'warning')
       return { handled: false, toast: { message, tone: 'warning' } }
     }
@@ -166,17 +166,17 @@ export const useNoteReferenceActions = ({
       }
       if (modalState.urlEditRange) {
         if (!replaceLinkRangeInActiveEditor(modalState.urlEditRange, urlSpec.label, urlSpec.url)) {
-          pushToast('could not update link.', 'warning')
+          pushToast('Could not update link.', 'warning')
           return false
         }
-        pushToast('link updated.', 'success')
+        pushToast('Link updated.', 'success')
         return true
       }
       if (!insertLinkIntoActiveEditor(urlSpec.label, urlSpec.url)) {
-        pushToast('open a note before inserting a link.', 'warning')
+        pushToast('Open a note before inserting a link.', 'warning')
         return false
       }
-      pushToast('link inserted.', 'success')
+      pushToast('Link inserted.', 'success')
       return true
     }
 
@@ -212,7 +212,7 @@ export const useNoteReferenceActions = ({
             return view.state.tr.insertText(nextSyntax, from, to)
           }).handled
           if (updated) {
-            pushToast('note link updated.', 'success')
+            pushToast('Note link updated.', 'success')
             return true
           }
         }
@@ -234,14 +234,14 @@ export const useNoteReferenceActions = ({
             nextSyntax,
           ),
         )
-        pushToast('note link updated.', 'success')
+        pushToast('Note link updated.', 'success')
         return true
       }
       if (!insertTextIntoActiveEditor(command.insertText)) {
-        pushToast('open a note before inserting a link.', 'warning')
+        pushToast('Open a note before inserting a link.', 'warning')
         return false
       }
-      pushToast('note link inserted.', 'success')
+      pushToast('Note link inserted.', 'success')
       return true
     }
 
@@ -266,15 +266,15 @@ export const useNoteReferenceActions = ({
         editorOperationRuntime,
         replacePreviewTokenById(markdown, latestState, modalState.editingTokenId, command.syntax),
       )
-      pushToast('note preview settings updated.', 'success')
+      pushToast('Note preview settings updated.', 'success')
       return true
     }
 
     if (!insertTextIntoActiveEditor(command.insertText)) {
-      pushToast('open a note before inserting a note preview.', 'warning')
+      pushToast('Open a note before inserting a note preview.', 'warning')
       return false
     }
-    pushToast('note preview inserted.', 'success')
+    pushToast('Note preview inserted.', 'success')
     return true
   }
 
@@ -282,11 +282,11 @@ export const useNoteReferenceActions = ({
     const markdown = getActiveEditorMarkdown()
     const nextMarkdown = removePreviewTokenById(markdown, stateRef.current, tokenId)
     if (nextMarkdown === markdown) {
-      pushToast('note preview not found.', 'warning')
+      pushToast('Note preview not found.', 'warning')
       return
     }
     replaceEditorMarkdownOperation(editorOperationRuntime, nextMarkdown)
-    pushToast('note preview deleted.', 'success')
+    pushToast('Note preview deleted.', 'success')
   }
 
   const openNoteReferenceModal = () => {

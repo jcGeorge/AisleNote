@@ -30,7 +30,7 @@ function historyToast(id: number, message = `toast ${id}`): ToastHistoryEntry {
 describe('toast stack', () => {
   it('keeps multiple toasts from the same action', () => {
     const warning = toast(1, 'computed field must have a computed value, status reverted to normal field')
-    const success = { ...toast(2, 'frontmatter saved.'), tone: 'success' as const }
+    const success = { ...toast(2, 'Frontmatter saved.'), tone: 'success' as const }
 
     const toasts = appendToastToStack(appendToastToStack([], warning), success)
 
@@ -58,8 +58,8 @@ describe('toast stack', () => {
   })
 
   it('does not store consecutive toast history entries with identical text', () => {
-    const first = historyToast(1, 'clipboard paste is unavailable here.')
-    const duplicate = historyToast(2, 'clipboard paste is unavailable here.')
+    const first = historyToast(1, 'Clipboard paste is unavailable here.')
+    const duplicate = historyToast(2, 'Clipboard paste is unavailable here.')
 
     const toastHistory = appendToastToHistory(appendToastToHistory([], first), duplicate)
 
@@ -67,9 +67,9 @@ describe('toast stack', () => {
   })
 
   it('stores repeated toast history entries when they are not consecutive', () => {
-    const first = historyToast(1, 'open a note before pasting.')
-    const second = historyToast(2, 'clipboard paste is unavailable here.')
-    const third = historyToast(3, 'open a note before pasting.')
+    const first = historyToast(1, 'Open a note before pasting.')
+    const second = historyToast(2, 'Clipboard paste is unavailable here.')
+    const third = historyToast(3, 'Open a note before pasting.')
 
     const toastHistory = [first, second, third].reduce(
       (history, nextToast) => appendToastToHistory(history, nextToast),

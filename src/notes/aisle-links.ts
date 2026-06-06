@@ -118,10 +118,10 @@ export function decoupleAisleSlotsInState(
 ): DecoupleAisleSlotsResult {
   const linkedSlots = listLinkedAisleSlotsForAisleBody(sourceState, aisleBodyId)
   if (linkedSlots.length <= 0) {
-    return { status: 'blocked', state: sourceState, message: 'linked aisle no longer exists.' }
+    return { status: 'blocked', state: sourceState, message: 'Linked aisle no longer exists.' }
   }
   if (!linkedSlots.some((slot) => keepSlotKeys.has(slot.key))) {
-    return { status: 'blocked', state: sourceState, message: 'select at least one aisle to retain the information' }
+    return { status: 'blocked', state: sourceState, message: 'Select at least one aisle to retain the information.' }
   }
 
   const slotsToDecouple = linkedSlots.filter((slot) => !keepSlotKeys.has(slot.key))

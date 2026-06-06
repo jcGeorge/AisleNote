@@ -48,8 +48,9 @@
 }
 
 .scratchpad-rail-icon {
-  width: calc(20px * var(--tab-button-scale));
-  height: calc(20px * var(--tab-button-scale));
+  width: calc((var(--tab-control-height) - 4px) * 0.9);
+  height: calc((var(--tab-control-height) - 4px) * 0.9);
+  flex: 0 0 auto;
   display: block;
   color: currentColor;
 }

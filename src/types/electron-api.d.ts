@@ -1,6 +1,6 @@
 export {}
 
-import type { StorageProfileStatus, UserSettingsLocationStatus } from './app'
+import type { NoteLocation, StorageProfileStatus, UserSettingsLocationStatus } from './app'
 
 type SaveAppStatePayload = {
   serializedState: string
@@ -29,6 +29,15 @@ type ImportImageAssetPayload = {
 }
 
 type ImportAssetPayload = ImportImageAssetPayload
+export type ElectronNoteRevealPayload =
+  | { type: 'live-note'; location: NoteLocation }
+  | { type: 'scratchpad' }
+export type EditorSpellcheckContext = {
+  suggestions: string[]
+  misspelledWord: string
+  selectionText: string
+  canLookUpSelection: boolean
+}
 
 type ImportAssetResult =
   | {
@@ -186,7 +195,12 @@ declare global {
       importImageAsset?: (payload: ImportImageAssetPayload) => Promise<ImportImageAssetResult>
       openAsset?: (payload: { url?: string; assetPath?: string }) => Promise<{ ok: boolean; error?: string }>
       revealAsset?: (payload: { url?: string; assetPath?: string }) => Promise<{ ok: boolean; error?: string }>
+      revealNoteLocation?: (payload: ElectronNoteRevealPayload) => Promise<{ ok: boolean; error?: string }>
       readAsset?: (payload: { url?: string; assetPath?: string }) => Promise<ReadAssetResult>
+      getEditorSpellcheckContext?: (payload: { x: number; y: number }) => Promise<EditorSpellcheckContext | null>
+      replaceMisspelling?: (payload: { word: string }) => Promise<{ ok: boolean; error?: string }>
+      addWordToSpellCheckerDictionary?: (payload: { word: string }) => Promise<{ ok: boolean; error?: string }>
+      showDefinitionForSelection?: () => Promise<{ ok: boolean; error?: string }>
       onAppStateUpdated?: (handler: (payload: { serializedState: string; revision: number }) => void) => () => void
       getStorageProfileStatus?: () => Promise<StorageProfileStatus>
       getUserSettingsLocationStatus?: () => Promise<UserSettingsLocationStatus>
@@ -204,8 +218,16 @@ declare global {
         | { ok: true; status: StorageProfileStatus }
         | { ok: false; error: string; status: StorageProfileStatus }
       >
-      switchNotebook?: () => Promise<
+      openNotebook?: () => Promise<
         | { canceled: true; status: StorageProfileStatus }
+        | { ok: true; status: StorageProfileStatus }
+        | { ok: false; error: string; status: StorageProfileStatus }
+      >
+      switchNotebook?: (payload: { notebookPath: string }) => Promise<
+        | { ok: true; status: StorageProfileStatus }
+        | { ok: false; error: string; status: StorageProfileStatus }
+      >
+      forgetNotebook?: (payload: { notebookPath: string }) => Promise<
         | { ok: true; status: StorageProfileStatus }
         | { ok: false; error: string; status: StorageProfileStatus }
       >

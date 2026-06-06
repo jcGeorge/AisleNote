@@ -398,19 +398,6 @@
   background: var(--image-tool-btn-hover-bg);
 }
 
-.theme-dawn .image-resize-handle {
-  border-color: var(--image-tool-handle-border);
-  background: var(--image-tool-handle-bg);
-}
-
-.theme-dawn .image-resize-handle::before {
-  background: repeating-linear-gradient(
-    -45deg,
-    transparent 0 2px,
-    var(--image-tool-handle-stripe) 2px 3px
-  );
-}
-
 .theme-dawn .image-resize-handle:hover {
   filter: brightness(0.98);
 }
@@ -419,14 +406,12 @@
   border-color: var(--image-tool-crop-border);
 }
 
-.theme-dawn .inline-crop-edge-handle,
-.theme-dawn .inline-crop-resize-handle {
+.theme-dawn .inline-crop-edge-handle {
   border-color: var(--image-tool-crop-handle-border);
   background: var(--image-tool-crop-handle-bg);
 }
 
-.theme-dawn .inline-crop-edge-handle::before,
-.theme-dawn .inline-crop-resize-handle::before {
+.theme-dawn .inline-crop-edge-handle::before {
   background: repeating-linear-gradient(
     -45deg,
     transparent 0 2px,

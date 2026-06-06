@@ -1,9 +1,10 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   loadAppStateResult,
+  resolveNoteLocationRevealPath,
   saveAppState,
   writeAssetToProfile,
   writeImageAssetToProfile,
@@ -387,7 +388,7 @@ describe('Electron app state storage load result', () => {
         {
           id: 1,
           createdAt: '2026-06-01T00:01:00.000Z',
-          message: 'notebook folder updated.',
+          message: 'Notebook folder updated.',
           tone: 'success',
         },
       ]
@@ -447,7 +448,7 @@ describe('Electron app state storage load result', () => {
         {
           id: 1,
           createdAt: '2026-06-01T00:01:00.000Z',
-          message: 'notebook folder updated.',
+          message: 'Notebook folder updated.',
           tone: 'success',
         },
       ])
@@ -459,7 +460,7 @@ describe('Electron app state storage load result', () => {
         {
           id: 1,
           createdAt: '2026-06-01T00:01:00.000Z',
-          message: 'notebook folder updated.',
+          message: 'Notebook folder updated.',
           tone: 'success',
         },
       ])
@@ -2234,6 +2235,109 @@ describe('Electron app state storage load result', () => {
 
       saveAppState(userDataPath, result.serializedState)
       expect(existsSync(staleDomainRoot)).toBe(false)
+    }))
+
+  it('resolves single-aisle live notes to markdown files for reveal', () =>
+    withTempUserDataPath((userDataPath) => {
+      const state = JSON.parse(serializedAppState())
+      state.domains[0].spaces[0].data.tabs[0].subTabs = [
+        {
+          id: 'subtab-1',
+          title: 'subtab',
+          noteBodyId: 'body-subtab',
+        },
+      ]
+      state.noteBodies.push({ id: 'body-subtab', aisles: [{ id: 'aisle-subtab-1', aisleBodyId: 'aisle-body-subtab-1' }] })
+      state.noteAisleBodies.push({
+        id: 'aisle-body-subtab-1',
+        markdown: 'subtab',
+        tags: [],
+        frontmatter: null,
+        frontmatterStatus: 'none',
+      })
+      saveAppState(userDataPath, JSON.stringify(state))
+
+      const home = resolveNoteLocationRevealPath(userDataPath, {
+        type: 'live-note',
+        location: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
+      })
+      const subtab = resolveNoteLocationRevealPath(userDataPath, {
+        type: 'live-note',
+        location: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: 'subtab-1' },
+      })
+
+      expect(home.ok).toBe(true)
+      expect(home.rootRelativePath.endsWith('.md')).toBe(true)
+      expect(existsSync(home.absolutePath)).toBe(true)
+      expect(statSync(home.absolutePath).isFile()).toBe(true)
+      expect(subtab.ok).toBe(true)
+      expect(subtab.rootRelativePath.endsWith('.md')).toBe(true)
+      expect(existsSync(subtab.absolutePath)).toBe(true)
+      expect(statSync(subtab.absolutePath).isFile()).toBe(true)
+    }))
+
+  it('resolves multi-aisle live notes to folders for reveal', () =>
+    withTempUserDataPath((userDataPath) => {
+      const state = JSON.parse(serializedAppState())
+      state.noteBodies[0].aisles.push({ id: 'aisle-2', aisleBodyId: 'aisle-body-2' })
+      state.noteAisleBodies.push({
+        id: 'aisle-body-2',
+        markdown: 'second aisle',
+        tags: [],
+        frontmatter: null,
+        frontmatterStatus: 'none',
+      })
+      saveAppState(userDataPath, JSON.stringify(state))
+
+      const resolved = resolveNoteLocationRevealPath(userDataPath, {
+        type: 'live-note',
+        location: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
+      })
+
+      expect(resolved.ok).toBe(true)
+      expect(existsSync(resolved.absolutePath)).toBe(true)
+      expect(statSync(resolved.absolutePath).isDirectory()).toBe(true)
+    }))
+
+  it('resolves scratchpad reveal targets by aisle count', () =>
+    withTempUserDataPath((userDataPath) => {
+      const state = JSON.parse(serializedAppState())
+      state.scratchpad = { noteBodyId: 'scratchpad-body' }
+      state.noteBodies.push({
+        id: 'scratchpad-body',
+        aisles: [{ id: 'scratchpad-aisle-1', aisleBodyId: 'scratchpad-aisle-body-1' }],
+      })
+      state.noteAisleBodies.push({
+        id: 'scratchpad-aisle-body-1',
+        markdown: 'scratchpad',
+        tags: [],
+        frontmatter: null,
+        frontmatterStatus: 'none',
+      })
+      saveAppState(userDataPath, JSON.stringify(state))
+
+      const single = resolveNoteLocationRevealPath(userDataPath, { type: 'scratchpad' })
+      expect(single.ok).toBe(true)
+      expect(single.rootRelativePath).toBe('scratchpad/scratchpad.md')
+      expect(statSync(single.absolutePath).isFile()).toBe(true)
+
+      state.noteBodies.find((body) => body.id === 'scratchpad-body').aisles.push({
+        id: 'scratchpad-aisle-2',
+        aisleBodyId: 'scratchpad-aisle-body-2',
+      })
+      state.noteAisleBodies.push({
+        id: 'scratchpad-aisle-body-2',
+        markdown: 'second scratchpad aisle',
+        tags: [],
+        frontmatter: null,
+        frontmatterStatus: 'none',
+      })
+      saveAppState(userDataPath, JSON.stringify(state))
+
+      const multi = resolveNoteLocationRevealPath(userDataPath, { type: 'scratchpad' })
+      expect(multi.ok).toBe(true)
+      expect(multi.rootRelativePath).toBe('scratchpad')
+      expect(statSync(multi.absolutePath).isDirectory()).toBe(true)
     }))
 
 })

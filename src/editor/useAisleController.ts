@@ -343,7 +343,7 @@ export const useAisleController = ({
     const afterAisleIds = draftAisles.map((aisle) => aisle.id)
     if (draftAisles.length <= 0) {
       pushToast(
-        structuralScope === 'scratchpad' ? 'scratchpad must keep at least one aisle.' : 'a note must keep at least one aisle.',
+        structuralScope === 'scratchpad' ? 'Scratchpad must keep at least one aisle.' : 'A note must keep at least one aisle.',
         'warning',
       )
       return
@@ -353,7 +353,7 @@ export const useAisleController = ({
       return
     }
     if (afterAisleIds.some((aisleId) => aisleId.trim().length <= 0) || new Set(afterAisleIds).size !== draftAisles.length) {
-      pushToast('aisle changes could not be applied.', 'error')
+      pushToast('Aisle changes could not be applied.', 'error')
       return
     }
 

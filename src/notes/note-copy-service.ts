@@ -120,7 +120,7 @@ export function materializeStructuralAisleCopiesForInsertion(
     ? workingState.noteBodies.find((candidate) => candidate.id === sourceInfo.noteBodyId) ?? null
     : null
   if (!sourceInfo.noteBodyId || !sourceBody) {
-    return { status: 'blocked', mode, message: 'copied note no longer exists.' }
+    return { status: 'blocked', mode, message: 'Copied note no longer exists.' }
   }
 
   const selectedSourceAisles =
@@ -128,7 +128,7 @@ export function materializeStructuralAisleCopiesForInsertion(
       ? sourceBody.aisles.filter((aisle) => aisle.id === payload.aisleId)
       : sourceBody.aisles
   if (selectedSourceAisles.length <= 0) {
-    return { status: 'blocked', mode, message: 'copied aisle no longer exists.' }
+    return { status: 'blocked', mode, message: 'Copied aisle no longer exists.' }
   }
 
   const resolvedSourceAisles = resolveAisleMarkdowns(workingState, selectedSourceAisles)

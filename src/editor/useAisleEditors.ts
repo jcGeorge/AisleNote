@@ -799,7 +799,7 @@ export function useAisleEditors({
           addImageBlobHook: (blob: Blob | File, callback: (url: string, text?: string) => void) => {
             void importImageBlobAsAssetUrl(blob, blob instanceof File ? blob.name : 'image').then((assetUrl) => {
               if (!assetUrl) {
-                pushToast('could not import image.', 'warning')
+                pushToast('Could not import image.', 'warning')
                 return
               }
               void withDefaultInsertedImageDisplayWidth(assetUrl, blob, root).then((displayUrl) => {

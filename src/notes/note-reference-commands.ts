@@ -130,7 +130,7 @@ export function buildNoteReferenceCommand({
   const normalizedTarget = normalizeNoteReferenceTarget(appState, target)
   const targetInfo = getLocationInfo(appState, normalizedTarget)
   if (!targetInfo.domain || !targetInfo.space || !targetInfo.tab || !targetInfo.noteBodyId) {
-    return { ok: false, message: 'choose an existing note.' }
+    return { ok: false, message: 'Choose an existing note.' }
   }
 
   if (action === 'link') {
@@ -145,7 +145,7 @@ export function buildNoteReferenceCommand({
           : 'top' as const,
     }
     const syntax = buildInternalNoteLinkToken(appState, syntaxTarget, labelOverride)
-    if (!syntax) return { ok: false, message: 'choose an existing note.' }
+    if (!syntax) return { ok: false, message: 'Choose an existing note.' }
     return {
       ok: true,
       action,
@@ -161,10 +161,10 @@ export function buildNoteReferenceCommand({
   }
 
   if (!activeNoteBodyId || targetInfo.noteBodyId === activeNoteBodyId) {
-    return { ok: false, message: 'a note cannot preview itself.' }
+    return { ok: false, message: 'A note cannot preview itself.' }
   }
   if (wouldCreatePreviewCycle(appState, targetInfo.noteBodyId, activeNoteBodyId)) {
-    return { ok: false, message: 'note preview blocked to prevent recursion.' }
+    return { ok: false, message: 'Note preview blocked to prevent recursion.' }
   }
 
   const syntaxTarget = {
@@ -178,7 +178,7 @@ export function buildNoteReferenceCommand({
   }
   const payload = toPreviewPayload(syntaxTarget, editingTokenId)
   const syntax = buildPreviewToken(appState, payload)
-  if (!syntax) return { ok: false, message: 'choose an existing note.' }
+  if (!syntax) return { ok: false, message: 'Choose an existing note.' }
   const resolvedPayload = { ...payload, id: editingTokenId || syntax }
   if (
     previewMarkdowns &&
@@ -189,7 +189,7 @@ export function buildNoteReferenceCommand({
       editingTokenId,
     })
   ) {
-    return { ok: false, message: 'that note preview already exists in this note.' }
+    return { ok: false, message: 'That note preview already exists in this note.' }
   }
   return {
     ok: true,
@@ -238,13 +238,13 @@ export function buildCopyAsPasteCommand({
 
   const { info, body, aisle } = getResolvedCopyAsSource(appState, payload)
   if (!info.domain || !info.space || !info.tab || !body) {
-    return { status: 'blocked', message: 'copied note no longer exists.', tone: 'warning' }
+    return { status: 'blocked', message: 'Copied note no longer exists.', tone: 'warning' }
   }
   if (payload.scope === 'aisle' && (!payload.aisleId || !aisle)) {
-    return { status: 'blocked', message: 'copied aisle no longer exists.', tone: 'warning' }
+    return { status: 'blocked', message: 'Copied aisle no longer exists.', tone: 'warning' }
   }
   if (payload.scope === 'note' && payload.action === 'preview' && body.aisles.length > 1) {
-    return { status: 'blocked', message: 'copy a specific aisle as preview for notes with multiple aisles.', tone: 'warning' }
+    return { status: 'blocked', message: 'Copy a specific aisle as preview for notes with multiple aisles.', tone: 'warning' }
   }
 
   const target = payload.scope === 'aisle' && payload.aisleId

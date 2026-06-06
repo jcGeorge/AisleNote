@@ -250,10 +250,10 @@ export function buildCopyAsClipboardData(
   aisleId?: string,
 ): CopyAsClipboardData {
   const { info, body, aisle } = getResolvedCopySource(appState, source, aisleId)
-  if (!info.domain || !info.space || !info.tab || !body) return { ok: false, message: 'note not found.' }
-  if (scope === 'aisle' && (!aisleId || !aisle)) return { ok: false, message: 'aisle not found.' }
+  if (!info.domain || !info.space || !info.tab || !body) return { ok: false, message: 'Note not found.' }
+  if (scope === 'aisle' && (!aisleId || !aisle)) return { ok: false, message: 'Aisle not found.' }
   if (scope === 'note' && action === 'preview' && body.aisles.length > 1) {
-    return { ok: false, message: 'copy a specific aisle as preview for notes with multiple aisles.' }
+    return { ok: false, message: 'Copy a specific aisle as preview for notes with multiple aisles.' }
   }
 
   const payload: CopyAsClipboardPayload = {
@@ -289,7 +289,7 @@ export function applyCopyAsStructuralPayloadToState(
   maxAisles = MAX_NOTE_AISLES,
 ): ApplyCopyAsStructuralResult {
   if (payload.action !== 'copy' && payload.action !== 'duplicate') {
-    return { status: 'not-structural', state: appState, message: 'clipboard item is not a note copy.' }
+    return { status: 'not-structural', state: appState, message: 'Clipboard item is not a note copy.' }
   }
 
   const structuralAction = payload.action
@@ -298,7 +298,7 @@ export function applyCopyAsStructuralPayloadToState(
   const sourceInfo = getLocationInfo(appState, payload.source)
   const sourceBody = sourceInfo.noteBodyId ? appState.noteBodies.find((body) => body.id === sourceInfo.noteBodyId) ?? null : null
   if (!sourceInfo.noteBodyId || !sourceBody) {
-    return { status: 'missing-source', state: appState, message: 'copied note no longer exists.' }
+    return { status: 'missing-source', state: appState, message: 'Copied note no longer exists.' }
   }
 
   const destinationInfo = getLocationInfo(appState, destination)
@@ -306,19 +306,19 @@ export function applyCopyAsStructuralPayloadToState(
     ? appState.noteBodies.find((body) => body.id === destinationInfo.noteBodyId) ?? null
     : null
   if (!destinationInfo.noteBodyId || !destinationBody) {
-    return { status: 'missing-destination', state: appState, message: `open a note before pasting a ${noun}.` }
+    return { status: 'missing-destination', state: appState, message: `Open a note before pasting a ${noun}.` }
   }
 
   if (payload.scope === 'note' && buildNoteLocationKey(payload.source) === buildNoteLocationKey(destination)) {
-    return { status: 'self-copy', state: appState, message: `choose a different note to paste this ${noun}.` }
+    return { status: 'self-copy', state: appState, message: `Choose a different note to paste this ${noun}.` }
   }
 
   if (payload.scope === 'aisle') {
     if (!payload.aisleId || !sourceBody.aisles.some((aisle) => aisle.id === payload.aisleId)) {
-      return { status: 'missing-source', state: appState, message: 'copied aisle no longer exists.' }
+      return { status: 'missing-source', state: appState, message: 'Copied aisle no longer exists.' }
     }
     if (destinationBody.aisles.length >= maxAisles) {
-      return { status: 'max-aisles', state: appState, message: 'maximum aisle count reached.' }
+      return { status: 'max-aisles', state: appState, message: 'Maximum aisle count reached.' }
     }
     const result = applyNoteCopyToState(appState, destination, { ...payload.source, aisleIds: [payload.aisleId] }, mode, 'append')
     return result.status === 'applied'
@@ -329,10 +329,10 @@ export function applyCopyAsStructuralPayloadToState(
   const result = applyNoteCopyToState(appState, destination, payload.source, mode, 'replace')
   if (result.status === 'applied') return { status: 'applied', state: result.state }
   if (result.status === 'self-copy') {
-    return { status: 'self-copy', state: result.state, message: `choose a different note to paste this ${noun}.` }
+    return { status: 'self-copy', state: result.state, message: `Choose a different note to paste this ${noun}.` }
   }
   if (result.status === 'already-linked') {
-    return { status: 'already-linked', state: result.state, message: 'destination already links to copied note.' }
+    return { status: 'already-linked', state: result.state, message: 'Destination already links to copied note.' }
   }
   return { status: 'missing-source', state: result.state, message: getCopyAsStructuralFailureMessage('note', structuralAction) }
 }

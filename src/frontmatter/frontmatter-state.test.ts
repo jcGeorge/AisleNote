@@ -406,7 +406,7 @@ describe('frontmatter row state', () => {
 
     expect(buildFrontmatterDataFromRows(createFrontmatterState(), 'body-1', location, rows)).toEqual({
       ok: false,
-      message: 'frontmatter key "status" is duplicated.',
+      message: 'Frontmatter key "status" is duplicated.',
     })
   })
 
