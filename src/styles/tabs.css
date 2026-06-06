@@ -31,6 +31,11 @@
   display: block;
 }
 
+.add-tab-icon {
+  width: calc(16px * var(--tab-button-scale));
+  height: calc(16px * var(--tab-button-scale));
+}
+
 .scratchpad-rail-btn {
   margin-left: auto;
   max-width: calc(36px * var(--tab-button-scale));
@@ -392,6 +397,9 @@
   min-width: calc(28px * var(--tab-button-scale));
   font-weight: 700;
   padding: calc(0.15rem * var(--tab-button-scale)) 0 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--add-tab-text) !important;
   background-color: var(--add-tab-bg) !important;
   border-color: var(--add-tab-border) !important;

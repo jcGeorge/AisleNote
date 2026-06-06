@@ -240,6 +240,8 @@ describe('navigation arrange tooltips', () => {
     const disabledHtml = renderTopBar(true)
 
     expect(enabledHtml).toContain('data-app-tooltip="sort parents"')
+    expect(enabledHtml).toContain('app-icon-filter')
+    expect(enabledHtml).toContain('data-app-icon="filter"')
     expect(disabledHtml).not.toContain('data-app-tooltip="sort parents"')
     expect(disabledHtml).toContain('aria-label="sort parents"')
     expect(enabledHtml.indexOf('Alpha')).toBeLessThan(enabledHtml.indexOf('aria-label="sort parents"'))
@@ -396,11 +398,27 @@ describe('navigation arrange tooltips', () => {
     const disabledHtml = renderSubTabRail(true)
 
     expect(enabledHtml).toContain('data-app-tooltip="sort sub-tabs"')
+    expect(enabledHtml).toContain('app-icon-filter')
+    expect(enabledHtml).toContain('data-app-icon="filter"')
     expect(enabledHtml).toContain('data-app-tooltip="home note"')
     expect(disabledHtml).not.toContain('data-app-tooltip="sort sub-tabs"')
     expect(disabledHtml).not.toContain('data-app-tooltip="home note"')
     expect(disabledHtml).toContain('aria-label="sort sub-tabs"')
     expect(enabledHtml.indexOf('Sub')).toBeLessThan(enabledHtml.indexOf('aria-label="sort sub-tabs"'))
+  })
+
+  it('renders app plus icons for parent and sub-tab add buttons', () => {
+    const parentHtml = renderTopBar(false, { active: false })
+    const subTabHtml = renderSubTabRail(false, { active: false })
+
+    expect(parentHtml).toContain('aria-label="Add tab"')
+    expect(parentHtml).toContain('app-icon-plus')
+    expect(parentHtml).toContain('data-app-icon="plus"')
+    expect(parentHtml).not.toContain('>+</button>')
+    expect(subTabHtml).toContain('aria-label="Add note tab"')
+    expect(subTabHtml).toContain('app-icon-plus')
+    expect(subTabHtml).toContain('data-app-icon="plus"')
+    expect(subTabHtml).not.toContain('>+</button>')
   })
 
   it('renders the normalized scratchpad rail svg icon', () => {

@@ -330,29 +330,13 @@ describe('editor annotation styles', () => {
       css,
       '.toastui-editor-contents p.tabs-annotation-line-arrow-up::after,\n.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-up::after,\n.toastui-editor-contents p.tabs-annotation-line-arrow-down::after,\n.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-down::after,\n.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up::after,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up::after,\n.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down::after,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down::after',
     )
-    const turnArrowSizingRule = extractRule(
-      css,
-      '.toastui-editor-contents p.tabs-annotation-line-arrow-up,\n.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-up,\n.toastui-editor-contents p.tabs-annotation-line-arrow-down,\n.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-down,\n.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up,\n.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down',
-    )
-    const inlineTurnSizingRule = extractLastRule(
-      css,
-      '.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up,\n.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down',
-    )
     const upLineCurvePositionRule = extractRule(
       css,
       '.toastui-editor-contents p.tabs-annotation-line-arrow-up::before,\n.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-up::before',
     )
-    const upLineHeadPositionRule = extractRule(
-      css,
-      '.toastui-editor-contents p.tabs-annotation-line-arrow-up::after,\n.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-up::after',
-    )
     const upInlineTailLeftCurveRule = extractRule(
       css,
       '.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-left::before,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-left::before',
-    )
-    const upInlineTailLeftHeadRule = extractRule(
-      css,
-      '.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-left::after,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-up.tabs-annotation-line-tail-left::after',
     )
     const upInlineTailRightCurveRule = extractRule(
       css,
@@ -362,17 +346,9 @@ describe('editor annotation styles', () => {
       css,
       '.toastui-editor-contents p.tabs-annotation-line-arrow-down::before,\n.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-down::before',
     )
-    const downLineHeadPositionRule = extractRule(
-      css,
-      '.toastui-editor-contents p.tabs-annotation-line-arrow-down::after,\n.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-down::after',
-    )
     const downInlineTailLeftCurveRule = extractRule(
       css,
       '.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-left::before,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-left::before',
-    )
-    const downInlineTailLeftHeadRule = extractRule(
-      css,
-      '.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-left::after,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-left::after',
     )
     const downInlineTailRightCurveRule = extractRule(
       css,
@@ -387,9 +363,6 @@ describe('editor annotation styles', () => {
       '.toastui-editor .ProseMirror .tabs-annotation-line-marker.tabs-annotation-inline-arrow::before',
     )
 
-    expect(turnArrowCss).not.toContain('mask-image')
-    expect(turnArrowCss).not.toContain('-webkit-mask-image')
-    expect(turnArrowCss).not.toContain('data:image/svg+xml')
     expect(turnArrowCss).not.toContain("content: '⤴';")
     expect(turnArrowCss).not.toContain("content: '⤵';")
     expect(turnArrowCss).not.toContain('font-weight: 700;')
@@ -397,6 +370,12 @@ describe('editor annotation styles', () => {
     expect(turnArrowCss).not.toContain('display: flex;')
     expect(turnArrowCss).not.toContain('scaleX(-1)')
     expect(turnArrowCss).not.toContain('--annotation-arrow-down-offset')
+    expect(turnArrowCss).not.toContain('--annotation-arrow-stroke')
+    expect(turnArrowCss).not.toContain('--annotation-arrow-head')
+    expect(turnArrowCss).not.toContain('border-bottom: calc(var(--annotation-arrow-head)')
+    expect(turnArrowCss).not.toContain('border-top: calc(var(--annotation-arrow-head)')
+    expect(turnArrowCss).not.toContain('border-right-width: var(--annotation-arrow-stroke)')
+    expect(turnArrowCss).not.toContain('border-left-width: var(--annotation-arrow-stroke)')
     expect(lineArrowRule).toContain('color: var(--editor-text) !important;')
     expect(lineArrowRule).toContain('width: 1.116rem;')
     expect(lineArrowRule).toContain('height: 1.116rem;')
@@ -419,53 +398,32 @@ describe('editor annotation styles', () => {
     expect(lineHorizontalPositionRule).toContain('top: 0.48em;')
     expect(rightArrowMaskRule).toContain('mask-image: url("data:image/svg+xml')
     expect(rightArrowMaskRule).toContain('-webkit-mask-image: url("data:image/svg+xml')
+    expect(rightArrowMaskRule).toContain("viewBox%3D'0%200%2024%2024'")
+    expect(rightArrowMaskRule).toContain('M18%208L22%2012L18%2016')
     expect(leftArrowMaskRule).toContain('mask-image: url("data:image/svg+xml')
     expect(leftArrowMaskRule).toContain('-webkit-mask-image: url("data:image/svg+xml')
-    expect(turnArrowCurveRule).toContain('width: 0.48em;')
-    expect(turnArrowCurveRule).toContain('height: 0.48em;')
-    expect(turnArrowCurveRule).toContain('background: transparent !important;')
-    expect(turnArrowCurveRule).toContain('border-color: currentColor;')
-    expect(turnArrowCurveRule).toContain('border-style: solid;')
-    expect(turnArrowCurveRule).toContain('border-radius: 0.18em;')
+    expect(leftArrowMaskRule).toContain("viewBox%3D'0%200%2024%2024'")
+    expect(leftArrowMaskRule).toContain('M6%208L2%2012L6%2016')
+    expect(turnArrowCurveRule).toContain('width: var(--annotation-arrow-size, 1.116rem);')
+    expect(turnArrowCurveRule).toContain('height: var(--annotation-arrow-size, 1.116rem);')
+    expect(turnArrowCurveRule).toContain('background: currentColor !important;')
+    expect(turnArrowCurveRule).toContain('border: 0;')
+    expect(turnArrowCurveRule).toContain('mask-size: contain;')
+    expect(turnArrowCurveRule).toContain('-webkit-mask-size: contain;')
     expect(turnArrowCurveRule).toContain('color: var(--editor-text) !important;')
     expect(turnArrowCurveRule).toContain('opacity: 1;')
-    expect(turnArrowHeadRule).toContain("content: '';")
-    expect(turnArrowHeadRule).toContain('border-left: var(--annotation-arrow-head) solid transparent;')
-    expect(turnArrowHeadRule).toContain('border-right: var(--annotation-arrow-head) solid transparent;')
-    expect(turnArrowHeadRule).toContain('color: var(--editor-text) !important;')
-    expect(turnArrowHeadRule).toContain('opacity: 1;')
-    expect(turnArrowSizingRule).toContain('--annotation-arrow-stroke: 0.14em;')
-    expect(turnArrowSizingRule).toContain('--annotation-arrow-head: 0.27em;')
-    expect(turnArrowSizingRule).toContain('--annotation-turn-up-shift: 0.08em;')
-    expect(turnArrowSizingRule).toContain('--annotation-turn-down-shift: 0.20em;')
-    expect(inlineTurnSizingRule).toContain('width: 0.95em;')
-    expect(inlineTurnSizingRule).toContain('vertical-align: -0.08em;')
-    expect(upLineCurvePositionRule).toContain('top: calc(0.58em + var(--annotation-turn-up-shift));')
-    expect(upLineHeadPositionRule).toContain('top: calc(0.39em + var(--annotation-turn-up-shift));')
-    expect(upLineHeadPositionRule).toContain('border-bottom: 0.29em solid currentColor;')
-    expect(upInlineTailLeftCurveRule).toContain('top: calc(0.32em + var(--annotation-turn-up-shift));')
-    expect(upInlineTailLeftCurveRule).toContain('border-right-width: var(--annotation-arrow-stroke);')
-    expect(upInlineTailLeftCurveRule).toContain('border-bottom-width: var(--annotation-arrow-stroke);')
-    expect(upInlineTailLeftCurveRule).toContain('transform: none;')
-    expect(upInlineTailLeftHeadRule).toContain('top: calc(0.13em + var(--annotation-turn-up-shift));')
-    expect(upInlineTailLeftHeadRule).toContain(
-      'border-bottom: calc(var(--annotation-arrow-head) * 1.08) solid currentColor;',
-    )
-    expect(upInlineTailRightCurveRule).toContain('right: 0.24em;')
-    expect(upInlineTailRightCurveRule).toContain('border-left-width: var(--annotation-arrow-stroke);')
-    expect(downLineCurvePositionRule).toContain('top: calc(0.38em + var(--annotation-turn-down-shift));')
-    expect(downLineHeadPositionRule).toContain('top: calc(0.77em + var(--annotation-turn-down-shift));')
-    expect(downLineHeadPositionRule).toContain('border-top: 0.29em solid currentColor;')
-    expect(downInlineTailLeftCurveRule).toContain('top: calc(0.16em + var(--annotation-turn-down-shift));')
-    expect(downInlineTailLeftCurveRule).toContain('border-right-width: var(--annotation-arrow-stroke);')
-    expect(downInlineTailLeftCurveRule).toContain('border-top-width: var(--annotation-arrow-stroke);')
-    expect(downInlineTailLeftCurveRule).toContain('transform: none;')
-    expect(downInlineTailLeftHeadRule).toContain('top: calc(0.55em + var(--annotation-turn-down-shift));')
-    expect(downInlineTailLeftHeadRule).toContain(
-      'border-top: calc(var(--annotation-arrow-head) * 1.08) solid currentColor;',
-    )
-    expect(downInlineTailRightCurveRule).toContain('right: 0.24em;')
-    expect(downInlineTailRightCurveRule).toContain('border-left-width: var(--annotation-arrow-stroke);')
+    expect(turnArrowHeadRule).toContain('content: none;')
+    expect(turnArrowHeadRule).toContain('display: none;')
+    expect(upLineCurvePositionRule).toContain('top: 0.34em;')
+    expect(upInlineTailLeftCurveRule).toContain('mask-image: url("data:image/svg+xml')
+    expect(upInlineTailLeftCurveRule).toContain('m10%209%205-5%205%205')
+    expect(upInlineTailRightCurveRule).toContain('mask-image: url("data:image/svg+xml')
+    expect(upInlineTailRightCurveRule).toContain('M14%209%209%204%204%209')
+    expect(downLineCurvePositionRule).toContain('top: 0.34em;')
+    expect(downInlineTailLeftCurveRule).toContain('mask-image: url("data:image/svg+xml')
+    expect(downInlineTailLeftCurveRule).toContain('m10%2015%205%205%205-5')
+    expect(downInlineTailRightCurveRule).toContain('mask-image: url("data:image/svg+xml')
+    expect(downInlineTailRightCurveRule).toContain('m14%2015-5%205-5-5')
     expect(wysiwygMarkerRule).toContain('vertical-align: baseline;')
     expect(wysiwygMarkerPseudoRule).toContain('color: var(--editor-text) !important;')
   })
@@ -605,6 +563,24 @@ describe('compact scope tab scaling styles', () => {
     expect(iconRule).toContain('height: calc((var(--tab-control-height) - 4px) * 0.9);')
     expect(iconRule).toContain('flex: 0 0 auto;')
     expect(iconRule).not.toContain('20px')
+  })
+
+  it('enlarges scratchpad aisle add and delete controls together', () => {
+    const editorShellCss = readStyle('editor-shell.css')
+    const controlsRule = extractRule(editorShellCss, '.note-scratchpad-aisle-controls')
+    const buttonRule = extractRule(editorShellCss, '.note-scratchpad-aisle-control-btn')
+    const addIconRule = extractRule(editorShellCss, '.note-scratchpad-aisle-add-icon')
+    const deleteIconRule = extractRule(editorShellCss, '.note-scratchpad-aisle-delete-icon')
+
+    expect(controlsRule).toContain('--note-scratchpad-aisle-control-size: 3.225rem;')
+    expect(controlsRule).toContain('--note-scratchpad-aisle-add-icon-size: 1.77rem;')
+    expect(controlsRule).toContain('--note-scratchpad-aisle-delete-icon-scale: 1.5;')
+    expect(buttonRule).toContain('width: var(--note-scratchpad-aisle-control-size);')
+    expect(buttonRule).toContain('height: var(--note-scratchpad-aisle-control-size);')
+    expect(addIconRule).toContain('width: var(--note-scratchpad-aisle-add-icon-size);')
+    expect(addIconRule).toContain('height: var(--note-scratchpad-aisle-add-icon-size);')
+    expect(deleteIconRule).toContain('transform: scale(var(--note-scratchpad-aisle-delete-icon-scale));')
+    expect(deleteIconRule).toContain('transform-origin: center;')
   })
 
   it('uses one shared nav rail background surface for all note-page rows', () => {
@@ -1140,6 +1116,9 @@ describe('theme editor selector deduplication', () => {
     expect(editorBaseCss).toContain('.toolbar-tool-icon-primary-fill')
     expect(editorBaseCss).toContain('.toolbar-tool-icon-secondary')
     expect(editorBaseCss).toContain('.toolbar-tool-icon-secondary-stroke')
+    expect(editorBaseCss).toContain('.toolbar-tool-icon-frontmatter')
+    expect(editorBaseCss).toContain('font-size: 14px;')
+    expect(editorBaseCss).toContain('font-weight: 500;')
     expect(editorBaseCss).toContain('stroke: var(--editor-toolbar-icon-primary, #c8d0e1);')
     expect(editorBaseCss).toContain('stroke: var(--editor-toolbar-icon-secondary, #6f7f98);')
     expect(editorBaseCss).toContain('fill: var(--editor-toolbar-icon-primary, #c8d0e1);')

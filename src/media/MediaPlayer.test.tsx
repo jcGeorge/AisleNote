@@ -35,6 +35,8 @@ function expectSharedMediaControls(html: string, title: string) {
   expect(html).toContain('aria-label="Back 10 seconds"')
   expect(html).toContain('aria-label="Forward 10 seconds"')
   expect(html).toContain('tabs-media-icon tabs-media-icon-play')
+  expect(html).toContain('app-icon-play')
+  expect(html).toContain('data-app-icon="play"')
   expect(html).toContain('tabs-media-icon tabs-media-icon-loop')
   expect(html).toContain('tabs-media-back-btn editor-history-toolbar-btn editor-history-toolbar-btn-undo')
   expect(html).toContain('tabs-media-forward-btn editor-history-toolbar-btn editor-history-toolbar-btn-redo')

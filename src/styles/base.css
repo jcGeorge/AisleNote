@@ -479,6 +479,12 @@
   flex-direction: column;
 }
 
+.app-icon {
+  display: block;
+  flex: 0 0 auto;
+  pointer-events: none;
+}
+
 .app-shell.theme-custom-derived {
   --custom-palette-canvas: var(--custom-theme-canvas, #0b1528);
   --custom-palette-page: var(--custom-theme-page, #142642);

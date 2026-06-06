@@ -14,6 +14,7 @@ import type { TableOfContentsLinkItem } from '../../editor/table-of-contents-lin
 import { resolveAssetDisplayUrl } from '../../markdown/image-asset-registry'
 import type { ResolvedNoteAisle } from '../../types/app'
 import { ToolbarToolIcon } from '../editor/ToolbarToolIcon'
+import { AppIcon } from '../icons/AppIcon'
 import { AisleHorizontalScrollbar } from './AisleHorizontalScrollbar'
 import {
   MarkdownPreviewHeading1,
@@ -474,7 +475,7 @@ export function NoteWorkspace({
                       scratchpadAisleControls.onAddAisleLeft()
                     }}
                   >
-                    <span className="note-scratchpad-aisle-plus-icon" aria-hidden="true">+</span>
+                    <AppIcon iconId="aisleRight" className="note-scratchpad-aisle-add-icon" flipHorizontal />
                   </button>
                   {scratchpadAisleControls.canDeleteActiveAisle && (
                     <button
@@ -510,7 +511,7 @@ export function NoteWorkspace({
                       scratchpadAisleControls.onAddAisleRight()
                     }}
                   >
-                    <span className="note-scratchpad-aisle-plus-icon" aria-hidden="true">+</span>
+                    <AppIcon iconId="aisleRight" className="note-scratchpad-aisle-add-icon" />
                   </button>
                 </div>
               )}

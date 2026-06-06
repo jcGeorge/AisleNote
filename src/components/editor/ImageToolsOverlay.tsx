@@ -1,7 +1,9 @@
 import type { MouseEvent, PointerEvent, ReactNode } from 'react'
 import type { CropRatioPresetId } from '../../editor/crop-ratios'
 import type { ImageTransformOperation } from '../../editor/image-transform'
+import type { GeneralIconId } from '../../icons/app-icons'
 import type { ImageToolsState, InlineCropState } from '../../types/app'
+import { AppIcon } from '../icons/AppIcon'
 import { CropRatioSelect } from './CropRatioSelect'
 import { ResizeCornerIcon } from './ResizeCornerIcon'
 
@@ -76,12 +78,12 @@ function CropButton({ children, onClick, label }: { children: ReactNode; onClick
 function ImageTransformButton({
   operation,
   label,
-  iconClassName,
+  iconId,
   onTransformImage,
 }: {
   operation: ImageTransformOperation
   label: string
-  iconClassName: string
+  iconId: GeneralIconId
   onTransformImage: (operation: ImageTransformOperation) => void | Promise<unknown>
 }) {
   return (
@@ -96,7 +98,7 @@ function ImageTransformButton({
       aria-label={label}
       data-app-tooltip={label}
     >
-      <span className={`image-transform-icon ${iconClassName}`} aria-hidden="true" />
+      <AppIcon iconId={iconId} className="image-transform-icon" />
     </button>
   )
 }
@@ -163,25 +165,25 @@ export function ImageToolsOverlay({
               <ImageTransformButton
                 operation="rotate-ccw"
                 label="Rotate counterclockwise"
-                iconClassName="is-rotate-ccw"
+                iconId="rotateCounterClockwise"
                 onTransformImage={onTransformImage}
               />
               <ImageTransformButton
                 operation="rotate-cw"
                 label="Rotate clockwise"
-                iconClassName="is-rotate-cw"
+                iconId="rotateClockwise"
                 onTransformImage={onTransformImage}
               />
               <ImageTransformButton
                 operation="flip-horizontal"
                 label="Flip horizontal"
-                iconClassName="is-flip-horizontal"
+                iconId="flipX"
                 onTransformImage={onTransformImage}
               />
               <ImageTransformButton
                 operation="flip-vertical"
                 label="Flip vertical"
-                iconClassName="is-flip-vertical"
+                iconId="flipY"
                 onTransformImage={onTransformImage}
               />
               <button

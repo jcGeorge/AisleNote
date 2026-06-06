@@ -276,8 +276,14 @@ describe('compact scope rails', () => {
 
     expect(spaceHtml).toContain('compact-scope-add-btn')
     expect(spaceHtml).toContain('aria-label="add space"')
+    expect(spaceHtml).toContain('app-icon-plus')
+    expect(spaceHtml).toContain('data-app-icon="plus"')
+    expect(spaceHtml).not.toContain('>+</button>')
     expect(domainHtml).toContain('compact-scope-add-btn')
     expect(domainHtml).toContain('aria-label="add domain"')
+    expect(domainHtml).toContain('app-icon-plus')
+    expect(domainHtml).toContain('data-app-icon="plus"')
+    expect(domainHtml).not.toContain('>+</button>')
   })
 
   it('runs compact space and domain add callbacks without bubbling tap events to the rail', () => {
@@ -1234,8 +1240,12 @@ describe('compact scope rails', () => {
     )
 
     expect(spaceHtml).toContain('aria-label="sort spaces"')
+    expect(spaceHtml).toContain('app-icon-filter')
+    expect(spaceHtml).toContain('data-app-icon="filter"')
     expect(spaceHtml).toContain('disabled=""')
     expect(domainHtml).toContain('aria-label="sort domains"')
+    expect(domainHtml).toContain('app-icon-filter')
+    expect(domainHtml).toContain('data-app-icon="filter"')
     expect(domainHtml).toContain('disabled=""')
   })
 

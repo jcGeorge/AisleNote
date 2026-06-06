@@ -1,3 +1,5 @@
+import { createAppIconElement, type GeneralIconId } from '../icons/app-icons'
+
 export type MediaControlIconName =
   | 'play'
   | 'pause'
@@ -17,6 +19,7 @@ export type MediaControlIconPath = {
 export type MediaControlIconSpec = {
   className: string
   paths: MediaControlIconPath[]
+  appIconId?: GeneralIconId
   viewBox?: string
   svgClassName?: string
 }
@@ -26,11 +29,13 @@ export const MEDIA_CONTROL_ICON_VIEW_BOX = '0 0 24 24'
 export const MEDIA_CONTROL_ICON_SPECS: Record<MediaControlIconName, MediaControlIconSpec> = {
   play: {
     className: 'tabs-media-icon-play',
-    paths: [{ d: 'M8 5v14l11-7Z', fill: true }],
+    appIconId: 'play',
+    paths: [],
   },
   pause: {
     className: 'tabs-media-icon-pause',
-    paths: [{ d: 'M9 6v12' }, { d: 'M15 6v12' }],
+    appIconId: 'pause',
+    paths: [],
   },
   loop: {
     className: 'tabs-media-icon-loop',
@@ -91,6 +96,8 @@ export function getMediaVolumeIconName(volumePercent: number): MediaControlIconN
 
 export function createMediaControlIconElement(iconName: MediaControlIconName): SVGSVGElement {
   const spec = MEDIA_CONTROL_ICON_SPECS[iconName]
+  if (spec.appIconId) return createAppIconElement(spec.appIconId, { className: `tabs-media-icon ${spec.className}` })
+
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
   svg.setAttribute('class', spec.svgClassName ?? `tabs-media-icon ${spec.className}`)
   svg.setAttribute('viewBox', spec.viewBox ?? MEDIA_CONTROL_ICON_VIEW_BOX)

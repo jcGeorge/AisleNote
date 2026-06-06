@@ -26,6 +26,7 @@ import {
 } from './arrange-rail-events'
 import { NavigationRailControls, type NavigationRailAction } from './NavigationRailControls'
 import { SortIcon } from './SortIcon'
+import { AppIcon } from '../icons/AppIcon'
 
 type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
 type NavigationContextMenuOptions = {
@@ -567,7 +568,7 @@ export function TopBar({
               aria-label="Add tab"
               data-app-tooltip={tooltipsDisabled ? undefined : 'Add tab'}
             >
-              +
+              <AppIcon iconId="plus" className="add-tab-icon" />
             </button>
           ) : null}
         </div>

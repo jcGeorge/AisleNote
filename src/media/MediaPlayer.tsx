@@ -51,6 +51,7 @@ import {
   dispatchMediaRevealContextMenuEvent,
   getMediaRevealContextMenuDetailFromTarget,
 } from './media-context-menu'
+import { AppIcon } from '../components/icons/AppIcon'
 
 type MediaPlayerProps = {
   src: string
@@ -60,6 +61,8 @@ type MediaPlayerProps = {
 
 function MediaControlIcon({ name }: { name: MediaControlIconName }) {
   const spec = MEDIA_CONTROL_ICON_SPECS[name]
+  if (spec.appIconId) return <AppIcon iconId={spec.appIconId} className={`tabs-media-icon ${spec.className}`} />
+
   return (
     <svg
       className={spec.svgClassName ?? `tabs-media-icon ${spec.className}`}

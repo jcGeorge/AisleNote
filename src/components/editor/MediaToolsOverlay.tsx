@@ -1,5 +1,7 @@
 import type { MouseEvent, PointerEvent, ReactNode } from 'react'
 import type { ImageTransformOperation } from '../../editor/image-transform'
+import type { GeneralIconId } from '../../icons/app-icons'
+import { AppIcon } from '../icons/AppIcon'
 import { ResizeCornerIcon } from './ResizeCornerIcon'
 
 export type MediaToolsState = {
@@ -41,12 +43,12 @@ function ToolButton({ children, onClick, label }: { children: ReactNode; onClick
 function TransformButton({
   operation,
   label,
-  iconClassName,
+  iconId,
   onTransformMedia,
 }: {
   operation: ImageTransformOperation
   label: string
-  iconClassName: string
+  iconId: GeneralIconId
   onTransformMedia: (operation: ImageTransformOperation) => unknown
 }) {
   return (
@@ -61,7 +63,7 @@ function TransformButton({
       aria-label={label}
       data-app-tooltip={label}
     >
-      <span className={`image-transform-icon ${iconClassName}`} aria-hidden="true" />
+      <AppIcon iconId={iconId} className="image-transform-icon" />
     </button>
   )
 }
@@ -102,25 +104,25 @@ export function MediaToolsOverlay({
             <TransformButton
               operation="rotate-ccw"
               label="Rotate counterclockwise"
-              iconClassName="is-rotate-ccw"
+              iconId="rotateCounterClockwise"
               onTransformMedia={onTransformMedia}
             />
             <TransformButton
               operation="rotate-cw"
               label="Rotate clockwise"
-              iconClassName="is-rotate-cw"
+              iconId="rotateClockwise"
               onTransformMedia={onTransformMedia}
             />
             <TransformButton
               operation="flip-horizontal"
               label="Flip horizontal"
-              iconClassName="is-flip-horizontal"
+              iconId="flipX"
               onTransformMedia={onTransformMedia}
             />
             <TransformButton
               operation="flip-vertical"
               label="Flip vertical"
-              iconClassName="is-flip-vertical"
+              iconId="flipY"
               onTransformMedia={onTransformMedia}
             />
             <button

@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { buildAisleSlotKey, decoupleAisleSlotsInState } from '../notes/aisle-links'
+import { decoupleNoteLocationsInState } from '../notes/note-decouple-service'
 import { parseSavedState } from '../state/app-state'
 import {
   buildNoteFilterIndex,
@@ -168,6 +170,40 @@ describe('note filter index', () => {
     expect(noteIndex.noteCounts.get('domain-a::space-a::parent-a::sub-b')).toBeUndefined()
     expect(aisleIndex.noteCounts.get('domain-a::space-a::parent-a::sub-b')).toBe(1)
     expect(aisleIndex.noteCounts.get('domain-a::space-a::parent-a::__home__')).toBeUndefined()
+  })
+
+  it('drops a synced whole-note option key after the note copies are de-coupled', () => {
+    const state = createState()
+    const staleKey = getSyncedNoteFilterKey('body-shared-note')
+    const decoupledState = decoupleNoteLocationsInState(
+      state,
+      'body-shared-note',
+      new Set(['domain-a::space-a::parent-a::__home__']),
+      true,
+    )
+    const index = buildNoteFilterIndex(decoupledState, 'synced', [staleKey])
+
+    expect(index.availableOptions.map((option) => option.key)).not.toContain(staleKey)
+    expect(index.selectedOccurrences).toEqual([])
+    expect(index.noteCounts.size).toBe(0)
+  })
+
+  it('drops a synced aisle option key after the aisle copies are de-coupled', () => {
+    const state = createState()
+    const staleKey = getSyncedAisleFilterKey('aisle-body-linked')
+    const result = decoupleAisleSlotsInState(
+      state,
+      'aisle-body-linked',
+      new Set([buildAisleSlotKey('body-linked-aisle', 'aisle-linked')]),
+      true,
+    )
+    expect(result.status).toBe('applied')
+    if (result.status !== 'applied') throw new Error('expected aisle slots to de-couple')
+    const index = buildNoteFilterIndex(result.state, 'synced', [staleKey])
+
+    expect(index.availableOptions.map((option) => option.key)).not.toContain(staleKey)
+    expect(index.selectedOccurrences).toEqual([])
+    expect(index.noteCounts.size).toBe(0)
   })
 
   it('matches frontmatter templates and case-insensitive property names', () => {

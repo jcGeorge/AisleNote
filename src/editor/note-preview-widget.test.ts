@@ -173,6 +173,7 @@ class FakeElement {
 
   setAttribute(name: string, value: string) {
     this.attributes.set(name, value)
+    if (name === 'class') this.className = value
   }
 
   getAttribute(name: string): string | null {
@@ -558,6 +559,9 @@ describe('note preview widget', () => {
 
     expect(findAllByClass(widget, 'context-bar-size-control')).toHaveLength(1)
     expect(findAllByClass(widget, 'context-bar-size-btn')).toHaveLength(2)
+    expect(findAllByClass(widget, 'context-bar-size-icon')).toHaveLength(2)
+    expect(findAllByClass(widget, 'app-icon-minimize')).toHaveLength(1)
+    expect(findAllByClass(widget, 'app-icon-maximize')).toHaveLength(1)
     expect(findAllByClass(widget, 'context-bar-minimize-btn')).toHaveLength(0)
     expect(findAllByClass(widget, 'aisle-edit-delete-icon')).toHaveLength(1)
   })

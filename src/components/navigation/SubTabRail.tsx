@@ -20,6 +20,7 @@ import {
   getSelectionClickModifiers,
 } from './arrange-rail-events'
 import { SortIcon } from './SortIcon'
+import { AppIcon } from '../icons/AppIcon'
 
 type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
 type NavigationContextMenuOptions = {
@@ -498,7 +499,7 @@ export function SubTabRail({
             aria-label="Add note tab"
             data-app-tooltip={tooltipsDisabled ? undefined : 'Add note tab'}
           >
-            +
+            <AppIcon iconId="plus" className="add-tab-icon" />
           </button>
         ) : null}
 

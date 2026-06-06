@@ -1,12 +1,18 @@
 /* eslint-disable react-refresh/only-export-components */
 import type { ReactNode } from 'react'
 import type { ToolbarToolId } from '../../types/app'
+import type { GeneralIconId } from '../../icons/app-icons'
+import { AppIcon } from '../icons/AppIcon'
 
 export type ToolbarIconDefinition =
   | {
       type: 'svg'
       viewBox?: string
       content: ReactNode
+    }
+  | {
+      type: 'appIcon'
+      iconId: GeneralIconId
     }
   | {
       type: 'text'
@@ -38,6 +44,10 @@ function svgIcon(content: ReactNode, viewBox?: string): ToolbarIconDefinition {
   return { type: 'svg', viewBox, content }
 }
 
+function appIcon(iconId: GeneralIconId): ToolbarIconDefinition {
+  return { type: 'appIcon', iconId }
+}
+
 function textIcon(content: ReactNode, className?: string): ToolbarIconDefinition {
   return { type: 'text', className, content }
 }
@@ -66,17 +76,7 @@ export const TOOLBAR_ICON_DEFINITIONS = {
       <path className={primaryStroke()} d="M21 19h.01" />
     </>,
   ),
-  aisles: svgIcon(
-    <>
-      <path className={primaryStroke()} d="M12 12V9a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3" />
-      <path className={primaryStroke()} d="M16 20v-3a1 1 0 0 0-1-1h-2a1 1 0 0 0-1 1v3" />
-      <path className={primaryStroke()} d="M20 22V2" />
-      <path className={primaryStroke()} d="M4 12h16" />
-      <path className={primaryStroke()} d="M4 20h16" />
-      <path className={primaryStroke()} d="M4 2v20" />
-      <path className={primaryStroke()} d="M4 4h16" />
-    </>,
-  ),
+  aisles: appIcon('aisleRight'),
   findReplace: svgIcon(
     <>
       <path className={primaryStroke()} d="m21 21-4.34-4.34" />
@@ -241,6 +241,10 @@ export function ToolbarToolIcon({ toolId, className = '' }: ToolbarToolIconProps
         {definition.content}
       </span>
     )
+  }
+
+  if (definition.type === 'appIcon') {
+    return <AppIcon iconId={definition.iconId} className={getToolbarIconClassName(toolId, className)} />
   }
 
   return (

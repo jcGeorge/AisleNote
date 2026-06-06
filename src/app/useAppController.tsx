@@ -297,14 +297,20 @@ import {
 } from '../state/workspace'
 import { collectAppNavigationEntityIds, createReservedIdAllocator } from '../state/navigation-ids'
 import {
-  appendNoteFilterCount,
+  appendVisibleNoteFilterCount,
+  getVisibleNoteFilterCountLabel,
+} from './note-filter-display'
+import {
+  getNoteFilterNavigationTarget,
+  reconcileActiveNoteFilterSettings,
+} from './note-filter-state'
+import {
   buildNoteFilterIndex,
   getFirstMatchingNoteFilterLocationForDomain,
   getFirstMatchingNoteFilterLocationForParent,
   getFirstMatchingNoteFilterLocationForSpace,
   getFrontmatterPropertyFilterKey,
   getFrontmatterTemplateFilterKey,
-  getNoteFilterCountLabel,
   getNoteFilterOccurrencesForLocation,
   getNoteFilterParentKey,
   getNoteFilterSpaceKey,
@@ -3632,6 +3638,29 @@ export function useAppController(): AppController {
     openTagLocation(SCRATCHPAD_FIND_LOCATION)
   }
 
+  useEffect(() => {
+    if (!tagFilterActive) return
+
+    const reconciliation = reconcileActiveNoteFilterSettings(noteFilter, noteFilterIndex)
+    if (reconciliation.changed) {
+      pendingTagOccurrenceRef.current = null
+      setNoteFilterCycleByLocation({})
+      if (!reconciliation.filter.active) setNoteFilterMenuOpen(false)
+      updateNoteFilter(() => reconciliation.filter)
+      return
+    }
+
+    const currentLocation = scratchpadWorkspaceActive ? SCRATCHPAD_FIND_LOCATION : activeNoteLocation
+    const navigationTarget = getNoteFilterNavigationTarget(noteFilterIndex, currentLocation)
+    if (navigationTarget) openTagLocation(navigationTarget)
+  }, [
+    activeNoteLocation,
+    noteFilter,
+    noteFilterIndex,
+    scratchpadWorkspaceActive,
+    tagFilterActive,
+  ])
+
   const openFindReplacePanel = useCallback(() => {
     closeEditorEphemeraRef.current()
     flushPendingContent()
@@ -5092,7 +5121,9 @@ export function useAppController(): AppController {
           tooltipsDisabled={mainArrangementActive}
           arrangeControlsDisabled={arrangeControlsDisabled}
           tagFilterActive={tagFilterActive}
-          getDomainLabel={(domain) => appendNoteFilterCount(domain.name, noteFilterIndex.domainCounts.get(domain.id) ?? 0)}
+          getDomainLabel={(domain) =>
+            appendVisibleNoteFilterCount(tagFilterActive, domain.name, noteFilterIndex.domainCounts.get(domain.id) ?? 0)
+          }
           onOpenDomain={tagFilterActive ? openDomainFromTagFilter : openDomainFromCompactRail}
           onHandleArrangeDomainSelectionClick={handleArrangeDomainSelectionClick}
           onClearArrangeSelection={clearArrangeSelection}
@@ -5136,7 +5167,11 @@ export function useAppController(): AppController {
           arrangeControlsDisabled={arrangeControlsDisabled}
           tagFilterActive={tagFilterActive}
           getSpaceLabel={(space) =>
-            appendNoteFilterCount(space.name, noteFilterIndex.spaceCounts.get(getNoteFilterSpaceKey(state.activeDomainId, space.id)) ?? 0)
+            appendVisibleNoteFilterCount(
+              tagFilterActive,
+              space.name,
+              noteFilterIndex.spaceCounts.get(getNoteFilterSpaceKey(state.activeDomainId, space.id)) ?? 0,
+            )
           }
           onOpenSpace={tagFilterActive ? openSpaceFromTagFilter : openSpaceFromCompactRail}
           onHandleArrangeSpaceSelectionClick={handleArrangeSpaceSelectionClick}
@@ -5223,7 +5258,8 @@ export function useAppController(): AppController {
         tagFilterActive={tagFilterActive}
         tagFilterControl={topVisibleMainRail === 'parents' ? tagFilterControl : null}
         getTabLabel={(tab) =>
-          appendNoteFilterCount(
+          appendVisibleNoteFilterCount(
+            tagFilterActive,
             tab.title,
             noteFilterIndex.parentCounts.get(getNoteFilterParentKey(state.activeDomainId, activeSpace.id, tab.id)) ?? 0,
           )
@@ -5438,7 +5474,7 @@ export function useAppController(): AppController {
             arrangeMode={arrangeMode}
             tooltipsDisabled={mainArrangementActive}
             tagFilterActive={tagFilterActive}
-            getHomeLabel={() => appendNoteFilterCount('home', activeHomeTagCount)}
+            getHomeLabel={() => appendVisibleNoteFilterCount(tagFilterActive, 'home', activeHomeTagCount)}
             getSubTabLabel={(subTab) => {
               const location: NoteLocation = {
                 domainId: state.activeDomainId,
@@ -5446,14 +5482,13 @@ export function useAppController(): AppController {
                 tabId: activeTab.id,
                 subTabId: subTab.id,
               }
-              return appendNoteFilterCount(
+              return appendVisibleNoteFilterCount(
+                tagFilterActive,
                 subTab.title,
                 noteFilterIndex.noteCounts.get(buildNoteLocationKey(location)) ?? 0,
               )
             }}
-            scratchpadTagCountLabel={
-              noteFilterIndex.scratchpadCount > 0 ? getNoteFilterCountLabel(noteFilterIndex.scratchpadCount) : ''
-            }
+            scratchpadTagCountLabel={getVisibleNoteFilterCountLabel(tagFilterActive, noteFilterIndex.scratchpadCount)}
             isNoteWorkspaceView={isNoteWorkspaceView}
             selectedTrashTab={selectedTrashTab}
             trashSubTabs={trashSubTabs}

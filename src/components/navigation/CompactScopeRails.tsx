@@ -13,6 +13,7 @@ import type {
 import { getPlacementNeighborId } from '../../arrange/arrange-utils'
 import { getRenameInputKeyAction } from '../../navigation/rename-draft'
 import { SortIcon } from './SortIcon'
+import { AppIcon } from '../icons/AppIcon'
 import { ArrangeDragPreviewPortal } from './ArrangeDragPreviewPortal'
 import { ArrangePreviewStack } from './ArrangePreviewStack'
 import { getArrangeDragPreviewRect, getArrangeDragPreviewStyleFromRect } from './arrange-drag-preview-style'
@@ -396,7 +397,7 @@ export function CompactSpaceRail({
               aria-label="add space"
               data-app-tooltip={tooltipsDisabled ? undefined : 'Add space'}
             >
-              +
+              <AppIcon iconId="plus" className="add-tab-icon" />
             </button>
           ) : null}
         </div>
@@ -645,7 +646,7 @@ export function CompactDomainRail({
               aria-label="add domain"
               data-app-tooltip={tooltipsDisabled ? undefined : 'Add domain'}
             >
-              +
+              <AppIcon iconId="plus" className="add-tab-icon" />
             </button>
           ) : null}
         </div>

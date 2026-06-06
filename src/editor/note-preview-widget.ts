@@ -28,6 +28,7 @@ import {
 import { MEDIA_PLAYER_SELECTOR } from '../media/media-utils'
 import type { NotePreviewData } from '../notes/note-preview-data'
 import type { NoteNavigationTarget, ResolvedNoteAisle } from '../types/app'
+import { createAppIconElement } from '../icons/app-icons'
 
 type NotePreviewSize = 'minimized' | 'small' | 'large'
 
@@ -660,9 +661,11 @@ export function createNotePreviewWidgetElement(
   const shrinkButton = document.createElement('button')
   shrinkButton.type = 'button'
   shrinkButton.className = 'context-bar-icon-btn context-bar-size-btn context-bar-size-up-btn'
+  shrinkButton.append(createAppIconElement('minimize', { className: 'context-bar-size-icon' }))
   const growButton = document.createElement('button')
   growButton.type = 'button'
   growButton.className = 'context-bar-icon-btn context-bar-size-btn context-bar-size-down-btn'
+  growButton.append(createAppIconElement('maximize', { className: 'context-bar-size-icon' }))
   const deleteButton = document.createElement('button')
   deleteButton.type = 'button'
   deleteButton.className = 'context-bar-icon-btn context-bar-delete-btn'
