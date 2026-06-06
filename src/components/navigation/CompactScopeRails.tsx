@@ -703,9 +703,9 @@ export function TrashDomainRail({
                 aria-selected={domain.id === selectedDomainId}
                 className={`compact-scope-btn compact-domain-btn trash-domain-btn ${
                   domain.id === selectedDomainId ? 'is-active' : ''
-                } ${domain.source === 'deleted-domain' ? 'is-deleted' : ''} ${
-                  selectable ? 'is-trash-selectable' : ''
-                } ${trashSelectedDomainIds?.has(domain.id) ? 'is-trash-selected' : ''}`}
+                } ${selectable ? 'is-trash-selectable' : ''} ${
+                  trashSelectedDomainIds?.has(domain.id) ? 'is-trash-selected' : ''
+                }`}
                 onClick={(event) => {
                   if (selectable && onSelectDeletedDomain?.(event, domain, selectableDomainIds)) {
                     return
@@ -777,9 +777,9 @@ export function TrashSpaceRail({
                 aria-selected={space.id === selectedSpaceId}
                 className={`compact-scope-btn compact-space-btn trash-space-btn ${
                   space.id === selectedSpaceId ? 'is-active' : ''
-                } ${space.source !== 'live' ? 'is-deleted' : ''} ${
-                  selectable ? 'is-trash-selectable' : ''
-                } ${trashSelectedSpaceIds?.has(space.id) ? 'is-trash-selected' : ''}`}
+                } ${selectable ? 'is-trash-selectable' : ''} ${
+                  trashSelectedSpaceIds?.has(space.id) ? 'is-trash-selected' : ''
+                }`}
                 onClick={(event) => {
                   if (selectable && onSelectDeletedSpace?.(event, space, selectableSpaceIds)) return
                   onSelectSpace(space.id)

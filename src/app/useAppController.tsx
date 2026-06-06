@@ -926,7 +926,7 @@ export function useAppController(): AppController {
   const editorNoteRevealLabel = useMemo(() => {
     if (typeof window === 'undefined') return null
     if (typeof window.electronAPI?.revealNoteLocation !== 'function') return null
-    return window.electronAPI.platform === 'darwin' ? 'Reveal in Finder' : 'Show in Folder'
+    return window.electronAPI.platform === 'darwin' ? 'reveal in finder' : 'show in folder'
   }, [])
   const copyAsMenu = useMemo<CopyAsMenuState | null>(() => {
     const source = contextMenuNoteLocation

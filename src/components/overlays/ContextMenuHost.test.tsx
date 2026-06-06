@@ -376,19 +376,19 @@ describe('ContextMenuHost copy actions', () => {
     const html = renderToStaticMarkup(
       <ContextMenuHost
         {...createContextMenuProps({ type: 'editor', x: 0, y: 0 }, 1, {
-          editorNoteRevealLabel: 'Reveal in Finder',
+          editorNoteRevealLabel: 'reveal in finder',
         })}
       />,
     )
 
-    expect(html).toMatch(/>code block<\/button>[\s\S]*role="separator"[\s\S]*>Reveal in Finder<\/button>/)
+    expect(html).toMatch(/>code block<\/button>[\s\S]*role="separator"[\s\S]*>reveal in finder<\/button>/)
   })
 
   it('hides note reveal in browser editor context menus', () => {
     const html = renderContextMenu({ type: 'editor', x: 0, y: 0 })
 
-    expect(html).not.toContain('Reveal in Finder')
-    expect(html).not.toContain('Show in Folder')
+    expect(html).not.toContain('reveal in finder')
+    expect(html).not.toContain('show in folder')
   })
 
   it('shows only about scratchpad for scratchpad context menus', () => {

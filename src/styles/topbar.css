@@ -194,11 +194,6 @@
   text-overflow: ellipsis;
 }
 
-.trash-domain-btn.is-deleted,
-.trash-space-btn.is-deleted {
-  border-style: dashed;
-}
-
 .view-trash .trash-domain-btn,
 .view-trash .trash-space-btn {
   user-select: none;

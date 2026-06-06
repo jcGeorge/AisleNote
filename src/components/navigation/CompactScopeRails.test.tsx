@@ -139,11 +139,15 @@ describe('compact scope rails', () => {
 
     expect(domainHtml).toContain('data-trash-domain-id="live-domain:empty"')
     expect(domainHtml).toContain('data-trash-domain-id="live-domain:with-trash"')
-    expect(domainHtml).toContain('live-domain:with-trash" aria-selected="true" class="compact-scope-btn compact-domain-btn trash-domain-btn is-active  is-trash-selectable is-trash-selected"')
+    expect(domainHtml).toContain(
+      'live-domain:with-trash" aria-selected="true" class="compact-scope-btn compact-domain-btn trash-domain-btn is-active is-trash-selectable is-trash-selected"',
+    )
     expect(domainHtml).toContain('data-trash-domain-id="deleted-domain:deleted"')
     expect(spaceHtml).toContain('data-trash-space-id="live-space:domain-a:empty"')
     expect(spaceHtml).toContain('data-trash-space-id="live-space:domain-a:with-trash"')
-    expect(spaceHtml).toContain('live-space:domain-a:with-trash" aria-selected="true" class="compact-scope-btn compact-space-btn trash-space-btn is-active  is-trash-selectable is-trash-selected"')
+    expect(spaceHtml).toContain(
+      'live-space:domain-a:with-trash" aria-selected="true" class="compact-scope-btn compact-space-btn trash-space-btn is-active is-trash-selectable is-trash-selected"',
+    )
     expect(spaceHtml).toContain('data-trash-space-id="deleted-space:deleted"')
   })
 
