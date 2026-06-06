@@ -45,6 +45,7 @@ import {
 } from './task-behavior'
 import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
 import { measureSlowOperation } from '../performance/performance-logging'
+import { recordDiagnosticEvent } from '../diagnostics/diagnostic-logger'
 import {
   importImageBlobAsAssetUrl,
 } from '../markdown/image-asset-registry'
@@ -288,13 +289,58 @@ export function useAisleEditors({
     editorKey: string,
     options: ActivateAisleEditorOptions = {},
   ) => {
+    const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
+    const previousAisleId = activeAisleIdRef.current
+    const requestedAisleId = getAisleIdFromAisleEditorKey(editorKey)
+    const shouldLogActivation = Boolean(
+      options.source ||
+      options.focus ||
+      options.flushPrevious ||
+      (requestedAisleId && requestedAisleId !== previousAisleId),
+    )
+    if (shouldLogActivation) {
+      recordDiagnosticEvent('aisle-editor', 'activation-start', {
+        details: {
+          editorKey,
+          requestedAisleId,
+          previousAisleId,
+          source: options.source ?? 'programmatic',
+          focus: options.focus === true,
+          flushPrevious: options.flushPrevious === true,
+          pendingFocusToAisleId: pendingFocusToAisleIdRef.current,
+          hasPendingCursorRestore: Boolean(pendingCursorRestoreRef.current),
+        },
+      })
+    }
     if (isPendingCreatedRenameActive() && !options.allowDuringPendingRename) {
+      if (shouldLogActivation) {
+        recordDiagnosticEvent('aisle-editor', 'activation-blocked', {
+          level: 'warning',
+          durationMs: (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt,
+          details: {
+            editorKey,
+            requestedAisleId,
+            reason: 'pending-created-rename',
+          },
+        })
+      }
       return false
     }
     const meta = aisleEditorMetaRef.current.get(editorKey)
     if (!meta) {
       const aisleId = getAisleIdFromAisleEditorKey(editorKey)
       if (!activeAisleIds.includes(aisleId)) {
+        if (shouldLogActivation) {
+          recordDiagnosticEvent('aisle-editor', 'activation-blocked', {
+            level: 'warning',
+            durationMs: (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt,
+            details: {
+              editorKey,
+              requestedAisleId: aisleId,
+              reason: 'unknown-aisle',
+            },
+          })
+        }
         return false
       }
       if (shouldClearPendingCursorRestoreForAisleActivation(options.source)) {
@@ -313,6 +359,17 @@ export function useAisleEditors({
       retainRecentAisleId(aisleId)
       setRetainedAisleIds((currentIds) => new Set([...currentIds, aisleId]))
       if (options.focus) pendingFocusAfterMountAisleIdRef.current = aisleId
+      if (shouldLogActivation) {
+        recordDiagnosticEvent('aisle-editor', 'activation-deferred-mount', {
+          durationMs: (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt,
+          details: {
+            editorKey,
+            aisleId,
+            requestedFocusAfterMount: options.focus === true,
+            mountedEditorCount: aisleEditorMetaRef.current.size,
+          },
+        })
+      }
       return false
     }
 
@@ -333,6 +390,18 @@ export function useAisleEditors({
       activeEditorAisleIdRef.current = meta.aisleId
       if (options.focus) {
         meta.editor.focus()
+      }
+      if (shouldLogActivation) {
+        recordDiagnosticEvent('aisle-editor', 'activation-end', {
+          durationMs: (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt,
+          details: {
+            editorKey,
+            aisleId: meta.aisleId,
+            result: 'fast-same-aisle',
+            previousAisleId,
+            mountedEditorCount: aisleEditorMetaRef.current.size,
+          },
+        })
       }
       return true
     }
@@ -359,6 +428,18 @@ export function useAisleEditors({
       meta.editor.focus()
     }
     scheduleToolbarFormatStateSync()
+    if (shouldLogActivation) {
+      recordDiagnosticEvent('aisle-editor', 'activation-end', {
+        durationMs: (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt,
+        details: {
+          editorKey,
+          aisleId: meta.aisleId,
+          result: switchingAisle ? 'switched-aisle' : 'activated-mounted',
+          previousAisleId,
+          mountedEditorCount: aisleEditorMetaRef.current.size,
+        },
+      })
+    }
     return true
   }
 
@@ -622,6 +703,15 @@ export function useAisleEditors({
   const destroyAisleEditor = (editorKey: string, options: { captureContent?: boolean } = {}) => {
     const meta = aisleEditorMetaRef.current.get(editorKey)
     if (!meta) return
+    recordDiagnosticEvent('aisle-editor', 'unmount', {
+      details: {
+        editorKey,
+        aisleId: meta.aisleId,
+        captureContent: options.captureContent === true,
+        activeEditorAisleId: activeEditorAisleIdRef.current,
+        mountedEditorCount: aisleEditorMetaRef.current.size,
+      },
+    })
     if (options.captureContent) {
       captureAisleEditorContent(meta)
     }
@@ -858,6 +948,15 @@ export function useAisleEditors({
           if (root.dataset.aisleHostMode === 'editor') {
             root.innerHTML = ''
           }
+        },
+      })
+      recordDiagnosticEvent('aisle-editor', 'mount', {
+        details: {
+          editorKey,
+          aisleId: aisle.id,
+          noteBodyId: activeNoteBodyId,
+          mountedEditorCount: aisleEditorMetaRef.current.size,
+          pendingFocusAfterMount: pendingFocusAfterMountAisleIdRef.current === aisle.id,
         },
       })
       restoreEditorBlankParagraphs(editor, initialMarkdown)

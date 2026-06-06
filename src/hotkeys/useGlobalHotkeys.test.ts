@@ -313,6 +313,16 @@ describe('rail visibility hotkeys', () => {
   })
 })
 
+describe('notes/filter hotkey wiring', () => {
+  it('dispatches the assignable notes/filter shortcut through the global hotkey hook', () => {
+    const source = readUseGlobalHotkeysSource()
+
+    expect(source).toContain('toggleNotesFilter: () => void')
+    expect(source).toContain('normalizedHotkeys.shortcuts.toggleNotesFilter')
+    expect(source).toContain('actions.toggleNotesFilter()')
+  })
+})
+
 describe('settings hotkey', () => {
   it('matches platform primary comma shortcuts', () => {
     expect(isSettingsShortcut(keyboardEvent(',', { metaKey: true }), true)).toBe(true)

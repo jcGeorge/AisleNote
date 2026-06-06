@@ -8,6 +8,14 @@ export type NoteFilterReconciliationResult = {
   removedKeys: string[]
 }
 
+export type NoteFilterRailVisibility = {
+  scratchpadOnlyFilterActive: boolean
+  renderCompactDomainRail: boolean
+  renderCompactSpaceRail: boolean
+  renderParentRail: boolean
+  showNoteWorkspaceTabs: boolean
+}
+
 function withCurrentKindSelectedKeys(filter: NoteFilterSettings, selectedKeys: string[]): NoteFilterSettings {
   const kind = filter.kind
   return {
@@ -59,4 +67,29 @@ export function getNoteFilterNavigationTarget(
 ): NoteLocation | null {
   if (isNoteFilterLocationMatch(index, currentLocation)) return null
   return getFirstSelectedNoteFilterLocation(index)
+}
+
+export function isScratchpadOnlyNoteFilterActive(filterActive: boolean, index: NoteFilterIndex): boolean {
+  return filterActive && index.scratchpadCount > 0 && index.domainCounts.size <= 0
+}
+
+export function getNoteFilterRailVisibility({
+  filterActive,
+  index,
+  showCompactDomains,
+  showCompactSpaces,
+}: {
+  filterActive: boolean
+  index: NoteFilterIndex
+  showCompactDomains: boolean
+  showCompactSpaces: boolean
+}): NoteFilterRailVisibility {
+  const scratchpadOnlyFilterActive = isScratchpadOnlyNoteFilterActive(filterActive, index)
+  return {
+    scratchpadOnlyFilterActive,
+    renderCompactDomainRail: showCompactDomains,
+    renderCompactSpaceRail: showCompactSpaces && (!scratchpadOnlyFilterActive || !showCompactDomains),
+    renderParentRail: !scratchpadOnlyFilterActive || (!showCompactDomains && !showCompactSpaces),
+    showNoteWorkspaceTabs: !scratchpadOnlyFilterActive,
+  }
 }

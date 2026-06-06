@@ -2,6 +2,7 @@ import { createRef, isValidElement, type ReactElement, type ReactNode } from 're
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import type { ArrangeModeState, MessagesSection, SettingsSection, Tab, ViewMode, WorkspaceData } from '../../types/app'
+import type { DiagnosticLogDisplayLimit, DiagnosticLogLevelFilter } from '../../diagnostics/diagnostic-log'
 import { SubTabRail } from './SubTabRail'
 import { TopBar } from './TopBar'
 
@@ -48,12 +49,19 @@ const noop = () => undefined
 type TestElement = ReactElement<Record<string, unknown> & { children?: ReactNode }>
 type TestHandler = (event: Record<string, unknown>) => void
 type TopBarTestCallbacks = Partial<
-  Pick<Parameters<typeof TopBar>[0], 'onExitArrangeMode' | 'onOpenContextMenuForTab' | 'onStartArrangeDragSeed'>
+  Pick<
+    Parameters<typeof TopBar>[0],
+    'onBeginEdit' | 'onExitArrangeMode' | 'onOpenContextMenuForTab' | 'onStartArrangeDragSeed'
+  >
 >
 type SubTabRailTestCallbacks = Partial<
   Pick<
     Parameters<typeof SubTabRail>[0],
-    'onExitArrangeMode' | 'onOpenContextMenuForHomeTab' | 'onOpenContextMenuForSubTab' | 'onStartArrangeDragSeed'
+    | 'onBeginEdit'
+    | 'onExitArrangeMode'
+    | 'onOpenContextMenuForHomeTab'
+    | 'onOpenContextMenuForSubTab'
+    | 'onStartArrangeDragSeed'
   >
 >
 
@@ -85,6 +93,10 @@ function createTopBarElement(
     messagesSection?: MessagesSection
     messagesCount?: number
     toastHistoryCount?: number
+    diagnosticLogCount?: number
+    diagnosticLevelFilter?: DiagnosticLogLevelFilter
+    diagnosticDisplayLimit?: DiagnosticLogDisplayLimit
+    tagFilterActive?: boolean
   } = {},
   callbacks: TopBarTestCallbacks = {},
 ) {
@@ -97,6 +109,7 @@ function createTopBarElement(
       editing={null}
       arrangeMode={{ ...arrangeMode, ...arrangeModeOverride }}
       tooltipsDisabled={tooltipsDisabled}
+      tagFilterActive={options.tagFilterActive}
       settingsSection={options.settingsSection ?? 'hotkeys'}
       primaryTabRailRef={createRef<HTMLDivElement>()}
       isNoteWorkspaceView={viewMode === 'main'}
@@ -122,7 +135,7 @@ function createTopBarElement(
       onClearArrangeSelection={noop}
       onConsumeArrangeClickSuppression={() => false}
       onSelectTab={noop}
-      onBeginEdit={noop}
+      onBeginEdit={callbacks.onBeginEdit ?? noop}
       onOpenContextMenuForTab={callbacks.onOpenContextMenuForTab ?? noop}
       onStartArrangeDragSeed={callbacks.onStartArrangeDragSeed ?? noop}
       onStartArrangeTapCandidate={noop}
@@ -151,6 +164,9 @@ function createTopBarElement(
       messagesSection={options.messagesSection}
       messagesCount={options.messagesCount ?? 0}
       toastHistoryCount={options.toastHistoryCount ?? 0}
+      diagnosticLogCount={options.diagnosticLogCount ?? 0}
+      diagnosticLevelFilter={options.diagnosticLevelFilter}
+      diagnosticDisplayLimit={options.diagnosticDisplayLimit}
       onMessagesSectionChange={noop}
     />
   )
@@ -166,6 +182,9 @@ function renderTopBar(
     messagesSection?: MessagesSection
     messagesCount?: number
     toastHistoryCount?: number
+    diagnosticLogCount?: number
+    diagnosticLevelFilter?: DiagnosticLogLevelFilter
+    diagnosticDisplayLimit?: DiagnosticLogDisplayLimit
   } = {},
 ) {
   return renderToStaticMarkup(createTopBarElement(tooltipsDisabled, arrangeModeOverride, arrangeControlsDisabled, options))
@@ -176,6 +195,13 @@ function createSubTabRailElement(
   arrangeModeOverride: Partial<ArrangeModeState> = {},
   arrangeControlsDisabled = false,
   callbacks: SubTabRailTestCallbacks = {},
+  options: {
+    showNoteWorkspaceTabs?: boolean
+    showHomeTab?: boolean
+    tagFilterActive?: boolean
+    scratchpadActive?: boolean
+    scratchpadTagCountLabel?: string
+  } = {},
 ) {
   return (
     <SubTabRail
@@ -185,6 +211,9 @@ function createSubTabRailElement(
       editing={null}
       arrangeMode={{ ...arrangeMode, ...arrangeModeOverride }}
       tooltipsDisabled={tooltipsDisabled}
+      tagFilterActive={options.tagFilterActive}
+      showNoteWorkspaceTabs={options.showNoteWorkspaceTabs}
+      showHomeTab={options.showHomeTab}
       isNoteWorkspaceView
       selectedTrashTab={null}
       trashSubTabs={[]}
@@ -205,7 +234,7 @@ function createSubTabRailElement(
       onConsumeArrangeClickSuppression={() => false}
       onSelectParentHomeTab={noop}
       onSelectSubTab={noop}
-      onBeginEdit={noop}
+      onBeginEdit={callbacks.onBeginEdit ?? noop}
       onOpenContextMenuForHomeTab={callbacks.onOpenContextMenuForHomeTab ?? noop}
       onOpenContextMenuForSubTab={callbacks.onOpenContextMenuForSubTab ?? noop}
       onExitArrangeMode={callbacks.onExitArrangeMode ?? noop}
@@ -222,6 +251,8 @@ function createSubTabRailElement(
       onOpenContextMenuForTrashSubTab={noop}
       onAddSubTab={noop}
       onOpenSubTabSortModal={vi.fn()}
+      scratchpadActive={options.scratchpadActive}
+      scratchpadTagCountLabel={options.scratchpadTagCountLabel}
     />
   )
 }
@@ -273,14 +304,32 @@ describe('navigation arrange tooltips', () => {
       messagesSection: 'toast-history',
       messagesCount: 2,
       toastHistoryCount: 3,
+      diagnosticLogCount: 4,
+    })
+    const diagnosticsHtml = renderTopBar(false, { active: false }, false, {
+      viewMode: 'messages',
+      messagesSection: 'diagnostics',
+      messagesCount: 2,
+      toastHistoryCount: 3,
+      diagnosticLogCount: 4,
+      diagnosticLevelFilter: 'warning',
+      diagnosticDisplayLimit: 1000,
     })
     const aboutHtml = renderTopBar(false, { active: false }, false, { viewMode: 'about' })
 
     expect(messagesHtml).toContain('aria-label="utility pages"')
     expect(messagesHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn parent-tab-btn utility-view-rail-btn">inbox (2)</button>')
     expect(messagesHtml).toContain('aria-selected="false" class="btn btn-sm btn-outline-secondary tab-btn parent-tab-btn utility-view-rail-btn">toast history (3)</button>')
+    expect(messagesHtml).toContain('aria-selected="false" class="btn btn-sm btn-outline-secondary tab-btn parent-tab-btn utility-view-rail-btn">diagnostics</button>')
     expect(toastHistoryHtml).toContain('aria-selected="false" class="btn btn-sm btn-outline-secondary tab-btn parent-tab-btn utility-view-rail-btn">inbox (2)</button>')
     expect(toastHistoryHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn parent-tab-btn utility-view-rail-btn">toast history (3)</button>')
+    expect(toastHistoryHtml).toContain('aria-selected="false" class="btn btn-sm btn-outline-secondary tab-btn parent-tab-btn utility-view-rail-btn">diagnostics (4)</button>')
+    expect(diagnosticsHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn parent-tab-btn utility-view-rail-btn">diagnostics (4)</button>')
+    expect(diagnosticsHtml).toContain('aria-label="diagnostic filters"')
+    expect(diagnosticsHtml).toContain('aria-label="diagnostic message type"')
+    expect(diagnosticsHtml).toContain('<option value="warning" selected="">warning</option>')
+    expect(diagnosticsHtml).toContain('aria-label="diagnostic message count"')
+    expect(diagnosticsHtml).toContain('<option value="1000" selected="">1,000</option>')
     expect(messagesHtml).toMatch(/topbar-context-btn[^"]*">messages \(2\)<\/button>/)
     expect(aboutHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn parent-tab-btn utility-view-rail-btn">about</button>')
     expect(aboutHtml).toMatch(/topbar-context-btn[^"]*">about<\/button>/)
@@ -400,11 +449,44 @@ describe('navigation arrange tooltips', () => {
     expect(enabledHtml).toContain('data-app-tooltip="sort sub-tabs"')
     expect(enabledHtml).toContain('app-icon-filter')
     expect(enabledHtml).toContain('data-app-icon="filter"')
-    expect(enabledHtml).toContain('data-app-tooltip="home note"')
+    expect(enabledHtml).not.toContain('data-app-tooltip="home note"')
     expect(disabledHtml).not.toContain('data-app-tooltip="sort sub-tabs"')
     expect(disabledHtml).not.toContain('data-app-tooltip="home note"')
     expect(disabledHtml).toContain('aria-label="sort sub-tabs"')
     expect(enabledHtml.indexOf('Sub')).toBeLessThan(enabledHtml.indexOf('aria-label="sort sub-tabs"'))
+  })
+
+  it('blocks parent and sub-tab double-click rename while filtering', () => {
+    const onBeginParentEdit = vi.fn()
+    const onBeginSubTabEdit = vi.fn()
+    const parentTree = renderFunctionComponent(
+      createTopBarElement(false, { active: false }, false, { tagFilterActive: true }, { onBeginEdit: onBeginParentEdit }),
+    )
+    const subTabTree = renderFunctionComponent(
+      createSubTabRailElement(false, { active: false }, false, { onBeginEdit: onBeginSubTabEdit }, { tagFilterActive: true }),
+    )
+    const parentButton = findElementByProp(parentTree, 'aria-selected', true)
+    const subTabButton = findElementByProp(subTabTree, 'aria-selected', true)
+
+    expect(parentButton).not.toBeNull()
+    expect(subTabButton).not.toBeNull()
+    ;(parentButton?.props.onDoubleClick as TestHandler)({})
+    ;(subTabButton?.props.onDoubleClick as TestHandler)({})
+
+    expect(onBeginParentEdit).not.toHaveBeenCalled()
+    expect(onBeginSubTabEdit).not.toHaveBeenCalled()
+  })
+
+  it('can hide the home button independently while keeping live sub-tabs', () => {
+    const html = renderToStaticMarkup(
+      createSubTabRailElement(false, { active: false }, false, {}, {
+        showHomeTab: false,
+      }),
+    )
+
+    expect(html).not.toContain('home-subtab-btn')
+    expect(html).toContain('data-arrange-subtab-id="sub-1"')
+    expect(html).toContain('aria-label="scratchpad"')
   })
 
   it('renders app plus icons for parent and sub-tab add buttons', () => {
@@ -432,5 +514,23 @@ describe('navigation arrange tooltips', () => {
     expect(html).not.toContain('<?xml')
     expect(html).not.toContain('<!DOCTYPE')
     expect(html).not.toContain('xmlns:xlink')
+  })
+
+  it('can hide live note tabs while keeping the scratchpad filter match button', () => {
+    const html = renderToStaticMarkup(
+      createSubTabRailElement(false, { active: false }, false, {}, {
+        showNoteWorkspaceTabs: false,
+        scratchpadActive: true,
+        scratchpadTagCountLabel: '1',
+      }),
+    )
+
+    expect(html).not.toContain('home-subtab-btn')
+    expect(html).not.toContain('data-arrange-subtab-id="sub-1"')
+    expect(html).not.toContain('aria-label="Add note tab"')
+    expect(html).toContain('aria-label="scratchpad"')
+    expect(html).toContain('aria-selected="true"')
+    expect(html).toContain('scratchpad-rail-tag-count')
+    expect(html).toContain('(1)')
   })
 })

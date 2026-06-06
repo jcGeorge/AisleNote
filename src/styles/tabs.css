@@ -367,6 +367,14 @@
   border-color: var(--parent-rail-selected-border) !important;
 }
 
+.trash-parent-tab.is-trash-selected {
+  color: var(--parent-tab-selected-text) !important;
+  background: var(--parent-tab-selected-bg) !important;
+  background-color: var(--parent-tab-selected-bg) !important;
+  border-color: var(--parent-tab-selected-border) !important;
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--parent-tab-selected-border) 72%, transparent) !important;
+}
+
 .trash-subtab-btn {
   color: var(--subtab-rail-text) !important;
   background: var(--subtab-rail-bg) !important;
@@ -383,6 +391,14 @@
   color: var(--subtab-rail-selected-text) !important;
   background: var(--subtab-rail-selected-bg) !important;
   border-color: var(--subtab-rail-selected-border) !important;
+}
+
+.trash-subtab-btn.is-trash-selected {
+  color: var(--subtab-selected-text) !important;
+  background: var(--subtab-selected-bg) !important;
+  background-color: var(--subtab-selected-bg) !important;
+  border-color: var(--subtab-selected-border) !important;
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--subtab-selected-border) 72%, transparent) !important;
 }
 
 .view-trash .trash-home-tab,

@@ -104,6 +104,7 @@ describe('newline shortcut settings', () => {
 
     expect(normalized.shortcuts.toggleNotesTrash).toBe(DEFAULT_SHORTCUTS.toggleNotesTrash)
     expect(normalized.shortcuts.toggleNotesScratchpad).toBe(DEFAULT_SHORTCUTS.toggleNotesScratchpad)
+    expect(normalized.shortcuts.toggleNotesFilter).toBe(DEFAULT_SHORTCUTS.toggleNotesFilter)
     expect(normalized.shortcuts.openSpaces).toBe(DEFAULT_SHORTCUTS.openSpaces)
     expect(normalized.newlineShortcuts.shortcuts.controlEnter).toBe('dashList')
     expect(normalized.newlineShortcuts.shortcuts.shiftEnter).toBe('dashList')
@@ -155,6 +156,17 @@ describe('newline shortcut settings', () => {
         false,
       ),
     ).toBe(true)
+  })
+
+  it('keeps notes/filter assignable but unbound by default', () => {
+    expect(DEFAULT_SHORTCUTS.toggleNotesFilter).toBe('')
+    expect(
+      eventMatchesShortcut(
+        { key: 'f', code: 'KeyF', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent,
+        DEFAULT_SHORTCUTS.toggleNotesFilter,
+        false,
+      ),
+    ).toBe(false)
   })
 
   it('normalizes persisted block indent menu entries and shortcuts', () => {
@@ -221,5 +233,6 @@ describe('newline shortcut settings', () => {
     expect(normalized.shortcuts.cycleAislePrev).toBe('Alt+[')
     expect(normalized.shortcuts.cycleAisleNext).toBe('Alt+]')
     expect(normalized.shortcuts.formatStrikethrough).toBe('')
+    expect(normalized.shortcuts.toggleNotesFilter).toBe('')
   })
 })

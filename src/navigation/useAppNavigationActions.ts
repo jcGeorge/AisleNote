@@ -16,7 +16,6 @@ import {
   selectPrimeTabWithMemory,
   selectSubTabWithMemory,
 } from '../state/navigation-memory'
-import { TRASH_HOME_ID } from '../trash/trash-model'
 import {
   clearRenameDraftIfMatching,
   getRenameDraftCommitRequest,
@@ -81,8 +80,6 @@ type UseAppNavigationActionsParams = {
   exitArrangeMode: () => void
   saveActiveCursorBeforeNavigation: () => void
   updateActiveSpaceData: (updater: (data: WorkspaceData) => WorkspaceData) => void
-  setTrashTabId: Dispatch<SetStateAction<string>>
-  setTrashSubTabId: Dispatch<SetStateAction<string | null>>
 }
 
 export const useAppNavigationActions = ({
@@ -110,8 +107,6 @@ export const useAppNavigationActions = ({
   exitArrangeMode,
   saveActiveCursorBeforeNavigation,
   updateActiveSpaceData,
-  setTrashTabId,
-  setTrashSubTabId,
 }: UseAppNavigationActionsParams) => {
   const clearRenameDraft = (type: RenameEntityType, id: string) => {
     renameDraftRef.current = clearRenameDraftIfMatching(renameDraftRef.current, type, id)
@@ -393,8 +388,6 @@ export const useAppNavigationActions = ({
 
     setViewMode((previous) => {
       if (previous === 'trash') return 'main'
-      setTrashTabId(TRASH_HOME_ID)
-      setTrashSubTabId(null)
       return 'trash'
     })
   }

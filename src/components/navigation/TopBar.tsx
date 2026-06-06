@@ -27,6 +27,12 @@ import {
 import { NavigationRailControls, type NavigationRailAction } from './NavigationRailControls'
 import { SortIcon } from './SortIcon'
 import { AppIcon } from '../icons/AppIcon'
+import {
+  DIAGNOSTIC_LOG_DISPLAY_LIMITS,
+  DIAGNOSTIC_LOG_LEVEL_FILTERS,
+  type DiagnosticLogDisplayLimit,
+  type DiagnosticLogLevelFilter,
+} from '../../diagnostics/diagnostic-log'
 
 type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
 type NavigationContextMenuOptions = {
@@ -68,7 +74,14 @@ type TopBarProps = {
   onRenameDraftChange: (type: EditableEntityType, id: string, value: string) => void
   onClearRenameDraft: (type: EditableEntityType, id: string) => void
   arrangeSelectedParentIds: ReadonlySet<string>
+  trashSelectedParentIds?: ReadonlySet<string>
   onHandleArrangeParentSelectionClick: (tabId: string, modifiers: SelectionClickModifiers) => boolean
+  onHandleTrashParentSelectionClick?: (
+    event: MouseEvent<HTMLButtonElement>,
+    trashParent: TrashParentBucket,
+    orderedIds: readonly string[],
+  ) => boolean
+  onConsumeTrashClickSuppression?: () => boolean
   onClearArrangeSelection: () => void
   onConsumeArrangeClickSuppression: (key: string) => boolean
   onSelectTab: (tabId: string, event?: MouseEvent<HTMLButtonElement> | ReactPointerEvent<HTMLButtonElement>) => void
@@ -103,6 +116,10 @@ type TopBarProps = {
   onSetTrashTabId: (tabId: string) => void
   onSetTrashSubTabId: (subTabId: string | null) => void
   onOpenContextMenuForTrashTab: (event: MouseEvent<HTMLButtonElement>, trashParent: TrashParentBucket) => void
+  onTrashParentPointerDown?: (event: ReactPointerEvent<HTMLButtonElement>, trashParent: TrashParentBucket) => void
+  onTrashParentPointerMove?: (event: ReactPointerEvent<HTMLButtonElement>) => void
+  onTrashParentPointerUp?: (event: ReactPointerEvent<HTMLButtonElement>) => void
+  onTrashParentPointerCancel?: () => void
   onAddTab: () => void
   tabRenameEnterBehavior?: TabRenameEnterBehavior
   onOpenParentSortModal: () => void
@@ -122,7 +139,16 @@ type TopBarProps = {
   messagesSection?: MessagesSection
   messagesCount?: number
   toastHistoryCount?: number
+  diagnosticLogCount?: number
+  diagnosticLevelFilter?: DiagnosticLogLevelFilter
+  diagnosticDisplayLimit?: DiagnosticLogDisplayLimit
   onMessagesSectionChange?: (section: MessagesSection) => void
+  onDiagnosticLevelFilterChange?: (filter: DiagnosticLogLevelFilter) => void
+  onDiagnosticDisplayLimitChange?: (limit: DiagnosticLogDisplayLimit) => void
+}
+
+function parseDiagnosticDisplayLimit(value: string): DiagnosticLogDisplayLimit {
+  return value === 'all' ? 'all' : Number(value) as DiagnosticLogDisplayLimit
 }
 
 export function TopBar({
@@ -159,7 +185,10 @@ export function TopBar({
   onRenameDraftChange,
   onClearRenameDraft,
   arrangeSelectedParentIds,
+  trashSelectedParentIds,
   onHandleArrangeParentSelectionClick,
+  onHandleTrashParentSelectionClick,
+  onConsumeTrashClickSuppression = () => false,
   onClearArrangeSelection,
   onConsumeArrangeClickSuppression,
   onSelectTab,
@@ -177,6 +206,10 @@ export function TopBar({
   onSetTrashTabId,
   onSetTrashSubTabId,
   onOpenContextMenuForTrashTab,
+  onTrashParentPointerDown = () => undefined,
+  onTrashParentPointerMove = () => undefined,
+  onTrashParentPointerUp = () => undefined,
+  onTrashParentPointerCancel = () => undefined,
   onAddTab,
   tabRenameEnterBehavior = 'goes-to-note',
   onOpenParentSortModal,
@@ -196,7 +229,12 @@ export function TopBar({
   messagesSection = 'inbox',
   messagesCount = 0,
   toastHistoryCount = 0,
+  diagnosticLogCount = 0,
+  diagnosticLevelFilter = 'all',
+  diagnosticDisplayLimit = 500,
   onMessagesSectionChange = () => undefined,
+  onDiagnosticLevelFilterChange = () => undefined,
+  onDiagnosticDisplayLimitChange = () => undefined,
 }: TopBarProps) {
   const primaryTablistProps =
     viewMode === 'settings'
@@ -221,7 +259,7 @@ export function TopBar({
             key: 'trash-home',
             label: 'trash',
             selected: trashTabId === TRASH_HOME_ID,
-            className: 'btn btn-sm tab-btn trash-home-tab topbar-action-btn',
+            className: 'btn btn-sm tab-btn trash-home-tab topbar-action-btn topbar-context-btn topbar-arrange-trash-btn',
             onClick: () => {
               onSetTrashTabId(TRASH_HOME_ID)
               onSetTrashSubTabId(null)
@@ -343,6 +381,51 @@ export function TopBar({
               >
                 toast history{toastHistoryCount > 0 ? ` (${toastHistoryCount})` : ''}
               </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={messagesSection === 'diagnostics'}
+                className={`btn btn-sm ${messagesSection === 'diagnostics' ? 'btn-primary' : 'btn-outline-secondary'} tab-btn parent-tab-btn utility-view-rail-btn`}
+                onClick={() => onMessagesSectionChange('diagnostics')}
+              >
+                diagnostics{diagnosticLogCount > 0 ? ` (${diagnosticLogCount})` : ''}
+              </button>
+              {messagesSection === 'diagnostics' ? (
+                <div className="diagnostic-topbar-controls" role="group" aria-label="diagnostic filters">
+                  <label className="diagnostic-topbar-field">
+                    <span>type</span>
+                    <select
+                      className="diagnostic-topbar-select"
+                      aria-label="diagnostic message type"
+                      value={diagnosticLevelFilter}
+                      onChange={(event) =>
+                        onDiagnosticLevelFilterChange(event.target.value as DiagnosticLogLevelFilter)
+                      }
+                    >
+                      {DIAGNOSTIC_LOG_LEVEL_FILTERS.map((filter) => (
+                        <option key={filter} value={filter}>
+                          {filter === 'all' ? 'all types' : filter}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="diagnostic-topbar-field">
+                    <span>show</span>
+                    <select
+                      className="diagnostic-topbar-select"
+                      aria-label="diagnostic message count"
+                      value={String(diagnosticDisplayLimit)}
+                      onChange={(event) => onDiagnosticDisplayLimitChange(parseDiagnosticDisplayLimit(event.target.value))}
+                    >
+                      {DIAGNOSTIC_LOG_DISPLAY_LIMITS.map((limit) => (
+                        <option key={String(limit)} value={String(limit)}>
+                          {limit === 'all' ? 'all' : limit.toLocaleString()}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              ) : null}
             </>
           )}
 
@@ -453,7 +536,7 @@ export function TopBar({
                         onSelectTab(tab.id, event)
                       }}
                       onDoubleClick={() => {
-                        if (viewMode !== 'main' || arrangeMode.active) return
+                        if (viewMode !== 'main' || arrangeMode.active || tagFilterActive) return
                         onBeginEdit({ type: 'tab', id: tab.id })
                       }}
                       onContextMenu={(event) => {
@@ -531,13 +614,24 @@ export function TopBar({
                   key={entry.id}
                   type="button"
                   role="tab"
+                  data-trash-parent-id={entry.id}
                   aria-selected={trashTabId === entry.id}
-                  className={`btn btn-sm tab-btn trash-parent-tab ${trashTabId === entry.id ? 'is-selected' : ''}`}
-                  onClick={() => {
+                  className={`btn btn-sm tab-btn trash-parent-tab ${trashTabId === entry.id ? 'is-selected' : ''} ${
+                    trashSelectedParentIds?.has(entry.id) ? 'is-trash-selected' : ''
+                  }`}
+                  onClick={(event) => {
+                    if (onConsumeTrashClickSuppression()) return
+                    if (onHandleTrashParentSelectionClick?.(event, entry, trashParentTabs.map((parent) => parent.id))) {
+                      return
+                    }
                     onSetTrashTabId(entry.id)
                     onSetTrashSubTabId(null)
                   }}
                   onContextMenu={(event) => onOpenContextMenuForTrashTab(event, entry)}
+                  onPointerDown={(event) => onTrashParentPointerDown(event, entry)}
+                  onPointerMove={onTrashParentPointerMove}
+                  onPointerUp={onTrashParentPointerUp}
+                  onPointerCancel={onTrashParentPointerCancel}
                 >
                   {entry.title}
                 </button>

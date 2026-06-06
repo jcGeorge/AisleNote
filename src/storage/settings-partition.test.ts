@@ -33,6 +33,7 @@ describe('portable app settings parsing', () => {
         shortcuts: {
           toggleNotesTrash: 'Mod+T',
           toggleNotesScratchpad: 'Mod+/',
+          toggleNotesFilter: '',
           newTab: 'Mod+Shift+N',
         },
         newlineShortcuts: {
@@ -92,6 +93,7 @@ describe('portable app settings parsing', () => {
           tags: { selectedKeys: ['tag'], sortMode: 'occurrences' },
           synced: { selectedKeys: ['synced-note:body-1'] },
           frontmatter: { selectedKeys: ['fm-property:status'] },
+          media: { selectedKeys: ['media:image:tabs-asset:///assets/photo.png'] },
         },
       },
     }))
@@ -106,6 +108,7 @@ describe('portable app settings parsing', () => {
             tags: { selectedKeys: ['tag'], sortMode: 'occurrences' },
             synced: { selectedKeys: ['synced-note:body-1'] },
             frontmatter: { selectedKeys: ['fm-property:status'] },
+            media: { selectedKeys: ['media:image:tabs-asset:///assets/photo.png'] },
           },
         },
       },
@@ -163,6 +166,7 @@ describe('portable app settings parsing', () => {
           shortcuts: {
             toggleNotesTrash: 'Mod+T',
             toggleNotesScratchpad: 'Mod+/',
+            toggleNotesFilter: '',
             newTab: 'Mod+Shift+N',
           },
           newlineShortcuts: {
@@ -222,6 +226,7 @@ describe('portable app settings parsing', () => {
 
     expect(syncedSettings.hotkeys.shortcuts.toggleNotesTrash).toBe('Mod+T')
     expect(syncedSettings.hotkeys.shortcuts.toggleNotesScratchpad).toBe('Mod+/')
+    expect(syncedSettings.hotkeys.shortcuts.toggleNotesFilter).toBe('')
     expect(syncedSettings.hotkeys.shortcuts.cycleAisleNext).toBe('Alt+]')
     expect(syncedSettings.hotkeys.newlineShortcuts.menuOperations).toEqual(['blockQuote', 'strikethrough'])
   })

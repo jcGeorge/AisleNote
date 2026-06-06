@@ -1,7 +1,12 @@
 import { SCRATCHPAD_FIND_LOCATION } from '../notes/find-replace'
-import { getAisleBodyId } from '../notes/note-markdown'
+import { MARKDOWN_LINK_PATTERN } from '../markdown/image-asset-refs.js'
+import { splitAssetMetadataFromUrl } from '../markdown/asset-metadata.js'
+import { resolveAssetDisplayUrl } from '../markdown/image-asset-registry'
+import { getMediaDisplayTitle, getMediaKindFromUrl, type MediaKind } from '../media/media-utils'
+import { getAisleBodyId, getAisleMarkdown } from '../notes/note-markdown'
 import { buildNoteLocationKey, listSearchableNoteLocations } from '../notes/note-locations'
-import type { AppState, NoteLocation, NoteFilterKind } from '../types/app'
+import { getScratchpadNoteBody } from '../state/scratchpad'
+import type { AppState, NoteBody, NoteLocation, NoteFilterKind } from '../types/app'
 import {
   buildTagFilterIndex,
   getTagFilterCountLabel,
@@ -19,12 +24,20 @@ export type NoteFilterOptionType =
   | 'synced-aisle'
   | 'frontmatter-template'
   | 'frontmatter-property'
+  | 'media-image'
+  | 'media-audio'
+  | 'media-video'
+
+export type NoteFilterMediaKind = 'image' | MediaKind
 
 export type NoteFilterOption = {
   key: string
   label: string
   count: number
   type: NoteFilterOptionType
+  mediaKind?: NoteFilterMediaKind
+  source?: string
+  previewUrl?: string
 }
 
 export type NoteFilterOccurrence = {
@@ -37,6 +50,9 @@ export type NoteFilterOccurrence = {
   aisleId: string
   aisleBodyId: string
   tagOccurrence?: TagFilterOccurrence
+  mediaKind?: NoteFilterMediaKind
+  source?: string
+  previewUrl?: string
 }
 
 export type NoteFilterIndex = {
@@ -64,6 +80,7 @@ const SYNCED_NOTE_PREFIX = 'synced-note:'
 const SYNCED_AISLE_PREFIX = 'synced-aisle:'
 const FRONTMATTER_TEMPLATE_PREFIX = 'fm-template:'
 const FRONTMATTER_PROPERTY_PREFIX = 'fm-property:'
+const MEDIA_FILTER_PREFIX = 'media:'
 
 export function getSyncedNoteFilterKey(noteBodyId: string): string {
   return `${SYNCED_NOTE_PREFIX}${noteBodyId}`
@@ -83,6 +100,10 @@ export function normalizeFrontmatterPropertyFilterName(propertyName: string): st
 
 export function getFrontmatterPropertyFilterKey(propertyName: string): string {
   return `${FRONTMATTER_PROPERTY_PREFIX}${normalizeFrontmatterPropertyFilterName(propertyName)}`
+}
+
+export function getMediaFilterKey(kind: NoteFilterMediaKind, source: string): string {
+  return `${MEDIA_FILTER_PREFIX}${kind}:${source}`
 }
 
 export function getNoteFilterCountLabel(count: number): string {
@@ -234,6 +255,15 @@ function buildOptionLabel(locations: NormalLocation[], fallback: string): string
 
 function getBodyAisles(state: AppState, noteBodyId: string) {
   return state.noteBodies.find((body) => body.id === noteBodyId)?.aisles ?? []
+}
+
+function getNoteLocationFromEntry(entry: NormalLocation): NoteLocation {
+  return {
+    domainId: entry.domainId,
+    spaceId: entry.spaceId,
+    tabId: entry.tabId,
+    subTabId: entry.subTabId,
+  }
 }
 
 function buildSyncedNoteFilterIndex(state: AppState, selectedKeys: string[]): NoteFilterIndex {
@@ -407,6 +437,146 @@ function buildFrontmatterNoteFilterIndex(state: AppState, selectedKeys: string[]
   )
 }
 
+export type ExtractedMediaFilterReference = {
+  key: string
+  label: string
+  kind: NoteFilterMediaKind
+  source: string
+  previewUrl?: string
+}
+
+function unescapeMarkdownLabel(value: string): string {
+  return value.replace(/\\([\\[\]])/g, '$1').trim()
+}
+
+function normalizeMarkdownLinkSource(value: string): string {
+  const trimmed = String(value ?? '').trim()
+  return trimmed.startsWith('<') && trimmed.endsWith('>') ? trimmed.slice(1, -1).trim() : trimmed
+}
+
+function normalizeMediaFilterSource(value: string): string {
+  return splitAssetMetadataFromUrl(normalizeMarkdownLinkSource(value)).assetUrl.trim()
+}
+
+function getSourceFileName(source: string): string {
+  const normalized = normalizeMediaFilterSource(source)
+  if (!normalized || normalized.startsWith('data:')) return ''
+
+  try {
+    const parsed = new URL(normalized, 'https://tabs.local')
+    const segment = parsed.pathname.split('/').pop() ?? ''
+    return decodeURIComponent(segment).trim()
+  } catch {
+    const withoutFragment = normalized.split('#')[0] ?? ''
+    const withoutQuery = withoutFragment.split('?')[0] ?? ''
+    const segment = withoutQuery.split('/').pop() ?? ''
+    try {
+      return decodeURIComponent(segment).trim()
+    } catch {
+      return segment.trim()
+    }
+  }
+}
+
+function getMediaFallbackLabel(source: string, kind: NoteFilterMediaKind): string {
+  const fileName = getSourceFileName(source)
+  if (fileName) return kind === 'image' ? fileName : getMediaDisplayTitle(fileName, kind)
+  return kind
+}
+
+export function extractMediaFilterReferences(markdown: string): ExtractedMediaFilterReference[] {
+  const references: ExtractedMediaFilterReference[] = []
+  const pattern = new RegExp(MARKDOWN_LINK_PATTERN.source, MARKDOWN_LINK_PATTERN.flags)
+
+  for (const match of String(markdown ?? '').matchAll(pattern)) {
+    const image = match[1] === '!'
+    const label = unescapeMarkdownLabel(match[2] ?? '')
+    const source = normalizeMediaFilterSource(match[3] ?? '')
+    if (!source) continue
+
+    if (image) {
+      const kind: NoteFilterMediaKind = 'image'
+      references.push({
+        key: getMediaFilterKey(kind, source),
+        label: label || getMediaFallbackLabel(source, kind),
+        kind,
+        source,
+        previewUrl: resolveAssetDisplayUrl(source),
+      })
+      continue
+    }
+
+    const mediaKind = getMediaKindFromUrl(source)
+    if (!mediaKind) continue
+    references.push({
+      key: getMediaFilterKey(mediaKind, source),
+      label: getMediaDisplayTitle(label || getMediaFallbackLabel(source, mediaKind), mediaKind),
+      kind: mediaKind,
+      source,
+    })
+  }
+
+  return references
+}
+
+function buildMediaNoteFilterIndex(state: AppState, selectedKeys: string[]): NoteFilterIndex {
+  const locations = listSearchableNoteLocations(state)
+  const noteBodiesById = new Map(state.noteBodies.map((body) => [body.id, body]))
+  const optionsByKey = new Map<string, NoteFilterOption>()
+  const occurrences: NoteFilterOccurrence[] = []
+
+  const pushLocationMedia = (location: NoteLocation, body: NoteBody | null | undefined) => {
+    if (!body) return
+    body.aisles.forEach((aisle) => {
+      const aisleBodyId = getAisleBodyId(aisle)
+      const references = extractMediaFilterReferences(getAisleMarkdown(aisle, state.noteAisleBodies))
+      references.forEach((reference) => {
+        const current = optionsByKey.get(reference.key)
+        if (current) {
+          optionsByKey.set(reference.key, { ...current, count: current.count + 1 })
+        } else {
+          optionsByKey.set(reference.key, {
+            key: reference.key,
+            label: reference.label,
+            count: 1,
+            type: `media-${reference.kind}` as NoteFilterOptionType,
+            mediaKind: reference.kind,
+            source: reference.source,
+            previewUrl: reference.previewUrl,
+          })
+        }
+        occurrences.push({
+          kind: 'media',
+          key: reference.key,
+          label: reference.label,
+          optionType: `media-${reference.kind}` as NoteFilterOptionType,
+          location,
+          noteBodyId: body.id,
+          aisleId: aisle.id,
+          aisleBodyId,
+          mediaKind: reference.kind,
+          source: reference.source,
+          previewUrl: reference.previewUrl,
+        })
+      })
+    })
+  }
+
+  locations.forEach((entry) => {
+    pushLocationMedia(getNoteLocationFromEntry(entry), noteBodiesById.get(entry.noteBodyId))
+  })
+
+  pushLocationMedia(SCRATCHPAD_FIND_LOCATION, getScratchpadNoteBody(state))
+
+  return finalizeIndex(
+    'media',
+    selectedKeys,
+    Array.from(optionsByKey.values()),
+    occurrences,
+    locations.map(getNoteLocationFromEntry),
+  )
+}
+
 export function buildNoteFilterIndex(
   state: AppState,
   kind: NoteFilterKind,
@@ -414,7 +584,8 @@ export function buildNoteFilterIndex(
 ): NoteFilterIndex {
   if (kind === 'tags') return buildTagNoteFilterIndex(state, selectedKeys)
   if (kind === 'synced') return buildSyncedNoteFilterIndex(state, selectedKeys)
-  return buildFrontmatterNoteFilterIndex(state, selectedKeys)
+  if (kind === 'frontmatter') return buildFrontmatterNoteFilterIndex(state, selectedKeys)
+  return buildMediaNoteFilterIndex(state, selectedKeys)
 }
 
 export function getFirstMatchingNoteFilterLocationForDomain(index: NoteFilterIndex, domainId: string): NoteLocation | null {

@@ -163,8 +163,8 @@ describe('SharedEditorToolbar block quote and block indent controls', () => {
       />,
     )
 
-    expect(html.indexOf('aria-label="Bold"')).toBeLessThan(html.indexOf('aria-label="Make copy"'))
-    expect(html.indexOf('aria-label="Make copy"')).toBeLessThan(html.indexOf('aria-label="Headings"'))
+    expect(html.indexOf('aria-label="Bold"')).toBeLessThan(html.indexOf('aria-label="Make this a copy of"'))
+    expect(html.indexOf('aria-label="Make this a copy of"')).toBeLessThan(html.indexOf('aria-label="Headings"'))
     expect(html).toContain('aria-label="Bold"')
     expect(html).toContain('app-toolbar-tool-btn app-toolbar-tool-btn-bold active')
     expect(html).toContain('toolbar-tool-icon-bold')

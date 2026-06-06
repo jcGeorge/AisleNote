@@ -1263,7 +1263,7 @@ describe('compact scope rails', () => {
     expect(source).toContain('onHandleArrangeSpaceSelectionClick?.(space.id, modifiers)')
     expect(source).toContain('onHandleArrangeDomainSelectionClick?.(domain.id, modifiers)')
     expect(source).toContain('onClearArrangeSelection?.()')
-    expect(source).toContain('if (arrangeMode.active) return')
+    expect(source).toContain('if (arrangeMode.active || tagFilterActive) return')
     expect(appSource).not.toContain("arrangeMode.scope === 'spaces' &&")
     expect(appSource).not.toContain("arrangeMode.scope === 'domains' &&")
   })

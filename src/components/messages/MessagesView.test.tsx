@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import { MessagesView } from './MessagesView'
+import type { DiagnosticLogEntry } from '../../diagnostics/diagnostic-log'
 import type { AppMessage, ToastHistoryEntry } from '../../types/app'
 
 const message: AppMessage = {
@@ -34,6 +35,31 @@ const toastHistory: ToastHistoryEntry[] = [
     createdAt: '2026-06-01T00:01:00.000Z',
     message: 'second success',
     tone: 'success',
+  },
+]
+
+const diagnosticEntries: DiagnosticLogEntry[] = [
+  {
+    id: 'diagnostic-1',
+    createdAt: '2026-06-01T00:00:00.000Z',
+    dayKey: '2026-06-01',
+    sessionId: 'session-1',
+    level: 'info',
+    area: 'runtime',
+    event: 'session-start',
+    details: { viewMode: 'main' },
+  },
+  {
+    id: 'diagnostic-2',
+    createdAt: '2026-06-01T00:01:00.000Z',
+    dayKey: '2026-06-01',
+    sessionId: 'session-1',
+    level: 'warning',
+    area: 'performance',
+    event: 'slow-operation',
+    durationMs: 75.4,
+    message: 'editor pending content flush',
+    details: { thresholdMs: 50 },
   },
 ]
 
@@ -171,5 +197,117 @@ describe('MessagesView', () => {
     expect(html).toContain('toast-history-card-warning')
     expect(html).toContain('2026-06-01T00:01:00.000Z')
     expect(html).not.toContain('open de-coupled')
+  })
+
+  it('renders empty diagnostic state', () => {
+    const html = renderToStaticMarkup(
+      <MessagesView
+        section="diagnostics"
+        messages={[message]}
+        toastHistory={toastHistory}
+        diagnosticDays={[]}
+        diagnosticEntries={[]}
+        onDismissMessage={vi.fn()}
+        onOpenRecoveredNotebookLocation={vi.fn()}
+        onOpenLocation={vi.fn()}
+      />,
+    )
+
+    expect(html).toContain('No diagnostic logs.')
+    expect(html).not.toContain('toast history')
+    expect(html).not.toContain('duplicate files de-coupled')
+  })
+
+  it('renders diagnostic logs newest first with day selector', () => {
+    const html = renderToStaticMarkup(
+      <MessagesView
+        section="diagnostics"
+        messages={[]}
+        toastHistory={[]}
+        diagnosticDays={['2026-06-02', '2026-06-01']}
+        selectedDiagnosticDay="2026-06-01"
+        diagnosticEntries={diagnosticEntries}
+        onDiagnosticDayChange={vi.fn()}
+        onDismissMessage={vi.fn()}
+        onOpenRecoveredNotebookLocation={vi.fn()}
+        onOpenLocation={vi.fn()}
+      />,
+    )
+
+    expect(html).toContain('diagnostic-log-day-select')
+    expect(html).toContain('performance: slow-operation')
+    expect(html).toContain('warning - 75.4ms')
+    expect(html.indexOf('performance: slow-operation')).toBeLessThan(html.indexOf('runtime: session-start'))
+    expect(html).toContain('{&quot;thresholdMs&quot;:50}')
+    expect(html).toContain('showing 2 of 2 diagnostics')
+  })
+
+  it('filters diagnostic logs by type', () => {
+    const html = renderToStaticMarkup(
+      <MessagesView
+        section="diagnostics"
+        messages={[]}
+        toastHistory={[]}
+        diagnosticDays={['2026-06-01']}
+        selectedDiagnosticDay="2026-06-01"
+        diagnosticEntries={diagnosticEntries}
+        diagnosticLevelFilter="warning"
+        onDiagnosticDayChange={vi.fn()}
+        onDismissMessage={vi.fn()}
+        onOpenRecoveredNotebookLocation={vi.fn()}
+        onOpenLocation={vi.fn()}
+      />,
+    )
+
+    expect(html).toContain('performance: slow-operation')
+    expect(html).not.toContain('runtime: session-start')
+    expect(html).toContain('showing 1 of 1 warning diagnostics')
+  })
+
+  it('caps diagnostic logs to 500 by default and supports the all display limit', () => {
+    const manyEntries: DiagnosticLogEntry[] = Array.from({ length: 501 }, (_, index) => ({
+      id: `diagnostic-many-${index}`,
+      createdAt: new Date(Date.UTC(2026, 5, 1, 0, 0, index)).toISOString(),
+      dayKey: '2026-06-01',
+      sessionId: 'session-1',
+      level: 'info',
+      area: 'runtime',
+      event: index === 0 ? 'oldest-hidden' : `event-${index}`,
+    }))
+
+    const cappedHtml = renderToStaticMarkup(
+      <MessagesView
+        section="diagnostics"
+        messages={[]}
+        toastHistory={[]}
+        diagnosticDays={['2026-06-01']}
+        selectedDiagnosticDay="2026-06-01"
+        diagnosticEntries={manyEntries}
+        onDiagnosticDayChange={vi.fn()}
+        onDismissMessage={vi.fn()}
+        onOpenRecoveredNotebookLocation={vi.fn()}
+        onOpenLocation={vi.fn()}
+      />,
+    )
+    const allHtml = renderToStaticMarkup(
+      <MessagesView
+        section="diagnostics"
+        messages={[]}
+        toastHistory={[]}
+        diagnosticDays={['2026-06-01']}
+        selectedDiagnosticDay="2026-06-01"
+        diagnosticEntries={manyEntries}
+        diagnosticDisplayLimit="all"
+        onDiagnosticDayChange={vi.fn()}
+        onDismissMessage={vi.fn()}
+        onOpenRecoveredNotebookLocation={vi.fn()}
+        onOpenLocation={vi.fn()}
+      />,
+    )
+
+    expect(cappedHtml).toContain('showing 500 of 501 diagnostics')
+    expect(cappedHtml).not.toContain('runtime: oldest-hidden')
+    expect(allHtml).toContain('showing 501 of 501 diagnostics')
+    expect(allHtml).toContain('runtime: oldest-hidden')
   })
 })

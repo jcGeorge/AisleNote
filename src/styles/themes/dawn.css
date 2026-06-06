@@ -389,13 +389,13 @@
 }
 
 .theme-dawn .image-tool-btn {
-  border-color: var(--image-tool-btn-border);
-  background: var(--image-tool-btn-bg);
-  color: var(--image-tool-btn-text);
+  border-color: var(--image-tool-crop-handle-border);
+  background: var(--image-tool-crop-handle-bg);
+  color: var(--image-tool-crop-border);
 }
 
 .theme-dawn .image-tool-btn:hover {
-  background: var(--image-tool-btn-hover-bg);
+  background: color-mix(in srgb, var(--image-tool-crop-handle-bg) 78%, var(--image-tool-crop-border));
 }
 
 .theme-dawn .image-resize-handle:hover {

@@ -11,6 +11,7 @@ export type AppCommandDefinition = {
 export const APP_COMMANDS: AppCommandDefinition[] = [
   { id: 'toggleNotesTrash', label: 'toggle notes / trash', defaultShortcut: 'Mod+T' },
   { id: 'toggleNotesScratchpad', label: 'toggle notes / scratchpad', defaultShortcut: 'Mod+/' },
+  { id: 'toggleNotesFilter', label: 'toggle notes / filter', defaultShortcut: '' },
   { id: 'openDomains', label: 'show/hide domain', defaultShortcut: 'Mod+D' },
   { id: 'openSpaces', label: 'show/hide space', defaultShortcut: 'Mod+S' },
   { id: 'newTab', label: 'new parent tab', defaultShortcut: 'Mod+Shift+N' },

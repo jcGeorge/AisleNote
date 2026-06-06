@@ -59,6 +59,7 @@ function createState(): AppState {
       shortcuts: {
         toggleNotesTrash: '',
         toggleNotesScratchpad: '',
+        toggleNotesFilter: '',
         openDomains: '',
         openSpaces: '',
         newTab: '',
@@ -127,6 +128,7 @@ function renderSettingsPage(
       shortcutDrafts={{
         toggleNotesTrash: '',
         toggleNotesScratchpad: '',
+        toggleNotesFilter: '',
         openDomains: '',
         openSpaces: '',
         newTab: '',
@@ -253,6 +255,7 @@ describe('frontmatter settings page', () => {
 
     expect(html).toContain('toggle notes / trash')
     expect(html).toContain('toggle notes / scratchpad')
+    expect(html).toContain('toggle notes / filter')
     expect(html).toContain('next parent tab')
     expect(html).toContain('previous parent tab')
     expect(html).toContain('next aisle')
@@ -775,7 +778,7 @@ describe('frontmatter settings page', () => {
     expect(html).not.toContain('settings-toolbar-preview note-shared-toolbar')
     expect(html).not.toContain('settings-toolbar-icon-box note-shared-toolbar')
     expect(html).not.toContain('settings-toolbar-drop-zone')
-    expect(html).toContain('aria-label="Make copy"')
+    expect(html).toContain('aria-label="Make this a copy of"')
     expect(html).toContain('aria-label="Find &amp; replace"')
     expect(html).toContain('toolbar-tool-icon-table-of-contents')
     expect(html).toContain('toolbar-tool-icon-find-replace')
@@ -824,7 +827,7 @@ describe('frontmatter settings page', () => {
     expect(html).not.toContain('settings-toolbar-drop-zone')
     expect(html).toContain('aria-label="Bold"')
     expect(html).toContain('aria-label="Italic"')
-    expect(html).toContain('aria-label="Make copy"')
+    expect(html).toContain('aria-label="Make this a copy of"')
     expect(html).toContain('aria-label="Find &amp; replace"')
     expect(html).toContain('toolbar-tool-icon-table-of-contents')
     expect(html).toContain('toolbar-tool-icon-find-replace')
@@ -862,7 +865,7 @@ describe('frontmatter settings page', () => {
     expect(html).not.toContain('settings-toolbar-editable-icon')
     expect(html).not.toContain('settings-toolbar-editable-spacer')
     expect(html).toContain('settings-toolbar-icon-box is-editable')
-    expect(html).toContain('aria-label="Make copy"')
+    expect(html).toContain('aria-label="Make this a copy of"')
     expect(html).toContain('aria-label="Find &amp; replace"')
     expect(html).toContain('aria-label="Clear contents"')
     expect(html).toContain('data-app-tooltip="spacer"')
@@ -894,7 +897,7 @@ describe('frontmatter settings page', () => {
     expect(html).toContain('settings-toolbar-named-tool settings-toolbar-palette-icon')
     expect(html).toContain('settings-toolbar-visible-tool-name">Bold</span>')
     expect(html).toContain('settings-toolbar-visible-tool-name">Italic</span>')
-    expect(html).toContain('settings-toolbar-visible-tool-name">Make copy</span>')
+    expect(html).toContain('settings-toolbar-visible-tool-name">Make this a copy of</span>')
     expect(html).toContain('>spacer</button>')
   })
 

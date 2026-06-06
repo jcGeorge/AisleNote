@@ -659,6 +659,14 @@ describe('compact scope tab scaling styles', () => {
     const addTabRule = extractLastRule(tabsCss, '.add-tab-btn')
     const addTabHoverRule = extractRule(tabsCss, '.add-tab-btn:hover')
     const trashActiveRule = extractRule(topbarCss, '.trash-domain-btn.is-active,\n.trash-space-btn.is-active')
+    const trashHomeActionRule = extractRule(
+      topbarCss,
+      '.topbar-action-wrap-trash-home .topbar-arrange-trash-btn:not(.is-trash-mode):not(.is-trash-drop-target)',
+    )
+    const trashHomeActionHoverRule = extractRule(
+      topbarCss,
+      '.topbar-action-wrap-trash-home .topbar-arrange-trash-btn:not(.is-trash-mode):not(.is-trash-drop-target):hover',
+    )
 
     expect(baseCss).toContain('--domain-rail-accent: #a95429;')
     expect(baseCss).toContain('--space-rail-accent: #997b28;')
@@ -750,6 +758,12 @@ describe('compact scope tab scaling styles', () => {
     expect(arrangeDraggingScopeRule).toContain('background: var(--rail-control-selected-bg) !important;')
     expect(arrangeDraggingScopeRule).toContain('border-color: var(--rail-control-selected-border) !important;')
     expect(arrangeDraggingScopeRule).toContain('var(--compact-scope-dragging-shadow)')
+    expect(trashHomeActionRule).toContain('color: var(--topbar-action-text) !important;')
+    expect(trashHomeActionRule).toContain('background: var(--topbar-action-bg) !important;')
+    expect(trashHomeActionRule).toContain('border-color: var(--topbar-action-border) !important;')
+    expect(trashHomeActionHoverRule).toContain('color: var(--topbar-action-hover-text) !important;')
+    expect(trashHomeActionHoverRule).toContain('background: var(--topbar-action-hover-bg) !important;')
+    expect(trashHomeActionHoverRule).toContain('border-color: var(--topbar-action-hover-border) !important;')
 
     expect(spaceRule).toContain('--rail-control-text: var(--space-rail-text);')
     expect(spaceRule).toContain('--rail-control-bg: var(--space-rail-bg);')

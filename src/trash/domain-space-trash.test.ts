@@ -75,6 +75,7 @@ function appState(domains: Domain[]): AppState {
       shortcuts: {
         toggleNotesTrash: '',
         toggleNotesScratchpad: '',
+        toggleNotesFilter: '',
         openDomains: '',
         openSpaces: '',
         newTab: '',

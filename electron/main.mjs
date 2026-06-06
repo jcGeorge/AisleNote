@@ -6,6 +6,7 @@ import { IMAGE_ASSET_PROTOCOL_SCHEME, registerImageAssetProtocol } from './image
 import { registerFileIpc } from './ipc-files.mjs'
 import { registerStorageIpc } from './ipc-storage.mjs'
 import { registerUpdateIpc } from './ipc-updates.mjs'
+import { registerDiagnosticIpc } from './ipc-diagnostics.mjs'
 import { createEditorContextMenuIpc } from './editor-context-menu.mjs'
 import { finishCloseAfterFlush } from './quit-flow.mjs'
 import { createNoopUpdateService } from './update-service.mjs'
@@ -312,6 +313,7 @@ if (!gotSingleInstanceLock) {
     registerFileIpc({ ipcMain, dialog, storageSession })
     registerClipboardIpc({ ipcMain, clipboard, nativeImage })
     registerUpdateIpc({ ipcMain, updateService })
+    registerDiagnosticIpc({ ipcMain, app })
     ipcMain.handle('open-external-url', async (_event, url) => {
       if (typeof url !== 'string' || !isExternalWebUrl(url)) {
         return { ok: false, error: 'invalid-url' }

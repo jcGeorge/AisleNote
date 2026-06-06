@@ -1,3 +1,5 @@
+import { recordDiagnosticEvent } from '../diagnostics/diagnostic-logger'
+
 const DEFAULT_SLOW_OPERATION_THRESHOLD_MS = 50
 
 function isPerformanceLoggingEnabled(): boolean {
@@ -11,8 +13,19 @@ function nowMs(): number {
 }
 
 export function logSlowOperation(label: string, durationMs: number, thresholdMs = DEFAULT_SLOW_OPERATION_THRESHOLD_MS) {
-  if (!isPerformanceLoggingEnabled() || durationMs < thresholdMs) return
-  console.warn(`[tabs perf] ${label} took ${durationMs.toFixed(1)}ms`)
+  if (durationMs < thresholdMs) return
+  if (isPerformanceLoggingEnabled()) {
+    console.warn(`[tabs perf] ${label} took ${durationMs.toFixed(1)}ms`)
+  }
+  recordDiagnosticEvent('performance', 'slow-operation', {
+    level: 'warning',
+    durationMs,
+    message: label,
+    details: {
+      label,
+      thresholdMs,
+    },
+  })
 }
 
 export function measureSlowOperation<T>(label: string, operation: () => T, thresholdMs = DEFAULT_SLOW_OPERATION_THRESHOLD_MS): T {

@@ -48,20 +48,16 @@ export const MEDIA_CONTROL_ICON_SPECS: Record<MediaControlIconName, MediaControl
   },
   undo: {
     className: 'tabs-media-icon-history-undo',
-    viewBox: '0 0 32 32',
-    svgClassName: 'editor-history-toolbar-icon',
     paths: [
-      { className: 'editor-history-toolbar-arc', d: 'M9.8 16.2A9.9 9.9 0 1 1 16.8 27.3' },
-      { className: 'editor-history-toolbar-head', d: 'M9.8 9.5v6.7h6.7' },
+      { d: 'M3 7v6h6' },
+      { d: 'M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13' },
     ],
   },
   redo: {
     className: 'tabs-media-icon-history-redo',
-    viewBox: '0 0 32 32',
-    svgClassName: 'editor-history-toolbar-icon',
     paths: [
-      { className: 'editor-history-toolbar-arc', d: 'M9.8 16.2A9.9 9.9 0 1 1 16.8 27.3' },
-      { className: 'editor-history-toolbar-head', d: 'M9.8 9.5v6.7h6.7' },
+      { d: 'M21 7v6h-6' },
+      { d: 'M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7' },
     ],
   },
   'volume-muted': {

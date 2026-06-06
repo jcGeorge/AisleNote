@@ -4,11 +4,13 @@ import { decoupleNoteLocationsInState } from '../notes/note-decouple-service'
 import { parseSavedState } from '../state/app-state'
 import {
   buildNoteFilterIndex,
+  extractMediaFilterReferences,
   getFirstMatchingNoteFilterLocationForDomain,
   getFirstMatchingNoteFilterLocationForParent,
   getFirstMatchingNoteFilterLocationForSpace,
   getFrontmatterPropertyFilterKey,
   getFrontmatterTemplateFilterKey,
+  getMediaFilterKey,
   getNoteFilterParentKey,
   getNoteFilterSpaceKey,
   getSyncedAisleFilterKey,
@@ -122,7 +124,17 @@ function createState() {
     ],
     scratchpad: { noteBodyId: 'body-scratch', activeAisleId: 'aisle-scratch' },
     noteAisleBodies: [
-      { id: 'aisle-body-note', markdown: '#Tag' },
+      {
+        id: 'aisle-body-note',
+        markdown: [
+          '#Tag',
+          '![Hero](tabs-asset:///assets/photo.png#tabs-image=width=320)',
+          '[Theme Song](tabs-asset:///assets/song.mp3#tabs-media=volume=50)',
+          '[Clip](https://cdn.example.com/clip.mp4)',
+          '![Hero copy](tabs-asset:///assets/photo.png#tabs-image=width=640)',
+          '[Not an image filter](https://cdn.example.com/photo.png)',
+        ].join('\n'),
+      },
       {
         id: 'aisle-body-template',
         markdown: 'template',
@@ -147,6 +159,120 @@ function createState() {
 }
 
 describe('note filter index', () => {
+  it('extracts markdown image references and audio/video links for the media filter', () => {
+    const references = extractMediaFilterReferences([
+      '![Hero](tabs-asset:///assets/photo.png#tabs-image=width=320)',
+      '[Theme Song](tabs-asset:///assets/song.mp3#tabs-media=volume=50)',
+      '[Clip File](https://cdn.example.com/clip.webm)',
+      '[Plain Image Link](https://cdn.example.com/photo.png)',
+    ].join('\n'))
+
+    expect(references.map((reference) => ({
+      key: reference.key,
+      label: reference.label,
+      kind: reference.kind,
+      source: reference.source,
+    }))).toEqual([
+      {
+        key: getMediaFilterKey('image', 'tabs-asset:///assets/photo.png'),
+        label: 'Hero',
+        kind: 'image',
+        source: 'tabs-asset:///assets/photo.png',
+      },
+      {
+        key: getMediaFilterKey('audio', 'tabs-asset:///assets/song.mp3'),
+        label: 'Theme Song',
+        kind: 'audio',
+        source: 'tabs-asset:///assets/song.mp3',
+      },
+      {
+        key: getMediaFilterKey('video', 'https://cdn.example.com/clip.webm'),
+        label: 'Clip File',
+        kind: 'video',
+        source: 'https://cdn.example.com/clip.webm',
+      },
+    ])
+  })
+
+  it('builds media options grouped by stripped source URL with ordered occurrences', () => {
+    const state = createState()
+    const imageKey = getMediaFilterKey('image', 'tabs-asset:///assets/photo.png')
+    const audioKey = getMediaFilterKey('audio', 'tabs-asset:///assets/song.mp3')
+    const videoKey = getMediaFilterKey('video', 'https://cdn.example.com/clip.mp4')
+    const index = buildNoteFilterIndex(state, 'media', [imageKey])
+
+    expect(index.availableOptions.map((option) => ({
+      key: option.key,
+      label: option.label,
+      count: option.count,
+      type: option.type,
+      mediaKind: option.mediaKind,
+      source: option.source,
+      previewUrl: option.previewUrl,
+    })).sort((left, right) => left.key.localeCompare(right.key))).toEqual([
+      {
+        key: audioKey,
+        label: 'Theme Song',
+        count: 2,
+        type: 'media-audio',
+        mediaKind: 'audio',
+        source: 'tabs-asset:///assets/song.mp3',
+        previewUrl: undefined,
+      },
+      {
+        key: imageKey,
+        label: 'Hero',
+        count: 4,
+        type: 'media-image',
+        mediaKind: 'image',
+        source: 'tabs-asset:///assets/photo.png',
+        previewUrl: 'tabs-asset:///assets/photo.png',
+      },
+      {
+        key: videoKey,
+        label: 'Clip',
+        count: 2,
+        type: 'media-video',
+        mediaKind: 'video',
+        source: 'https://cdn.example.com/clip.mp4',
+        previewUrl: undefined,
+      },
+    ].sort((left, right) => left.key.localeCompare(right.key)))
+    expect(index.selectedOccurrences.map((occurrence) => ({
+      key: occurrence.key,
+      label: occurrence.label,
+      locationKey: [
+        occurrence.location.domainId,
+        occurrence.location.spaceId,
+        occurrence.location.tabId,
+        occurrence.location.subTabId ?? '__home__',
+      ].join('::'),
+    }))).toEqual([
+      {
+        key: imageKey,
+        label: 'Hero',
+        locationKey: 'domain-a::space-a::parent-a::__home__',
+      },
+      {
+        key: imageKey,
+        label: 'Hero copy',
+        locationKey: 'domain-a::space-a::parent-a::__home__',
+      },
+      {
+        key: imageKey,
+        label: 'Hero',
+        locationKey: 'domain-a::space-a::parent-a::sub-copy',
+      },
+      {
+        key: imageKey,
+        label: 'Hero copy',
+        locationKey: 'domain-a::space-a::parent-a::sub-copy',
+      },
+    ])
+    expect(index.noteCounts.get('domain-a::space-a::parent-a::__home__')).toBe(2)
+    expect(index.noteCounts.get('domain-a::space-a::parent-a::sub-copy')).toBe(2)
+  })
+
   it('includes synced whole-note and synced aisle groups together', () => {
     const state = createState()
     const index = buildNoteFilterIndex(state, 'synced', [])

@@ -1,9 +1,14 @@
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import {
   cancelScheduledAisleFocusScroll,
   scheduleFocusedAisleScroll,
   type ScheduledAisleFocusScroll,
 } from './focused-aisle-scroll'
+
+const appControllerSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), './useAppController.tsx'), 'utf8')
 
 function createFrameScheduler() {
   let nextFrameId = 1
@@ -125,5 +130,10 @@ describe('focused aisle scroll scheduling', () => {
     expect(frames.frameCount).toBe(0)
     expect(scheduled.firstFrameId).toBeNull()
     expect(scheduled.followupFrameId).toBeNull()
+  })
+
+  it('routes same-note filter occurrence aisle switches through focused aisle scroll scheduling', () => {
+    expect(appControllerSource.match(/scheduleAisleFocusScroll\(occurrence\.aisleId\)/g) ?? []).toHaveLength(4)
+    expect(appControllerSource).toContain('scheduleAisleFocusScroll(pending.aisleId)')
   })
 })

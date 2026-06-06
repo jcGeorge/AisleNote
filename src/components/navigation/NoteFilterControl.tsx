@@ -20,12 +20,14 @@ const FILTER_KIND_LABELS: Record<NoteFilterKind, string> = {
   tags: 'tag filter',
   synced: 'synced filter',
   frontmatter: 'fm filter',
+  media: 'media filter',
 }
 
 const FILTER_MENU_KIND_LABELS: Record<NoteFilterKind, string> = {
   tags: 'tags',
   synced: 'synced copies',
   frontmatter: 'frontmatter',
+  media: 'media',
 }
 
 function getOptionLabel(kind: NoteFilterKind, option: NoteFilterOption) {
@@ -35,6 +37,39 @@ function getOptionLabel(kind: NoteFilterKind, option: NoteFilterOption) {
 
 function getOptionTitle(option: NoteFilterOption) {
   return `${option.count} ${option.count === 1 ? 'match' : 'matches'}`
+}
+
+function getOptionCountLabel(option: NoteFilterOption) {
+  return option.count === 1 ? '1 match' : `${option.count} matches`
+}
+
+function renderOptionContent(kind: NoteFilterKind, option: NoteFilterOption) {
+  if (kind !== 'media') return getOptionLabel(kind, option)
+
+  const countLabel = getOptionCountLabel(option)
+  if (option.mediaKind === 'image') {
+    return (
+      <>
+        <span className="note-filter-media-preview" aria-hidden="true">
+          {option.previewUrl ? <img src={option.previewUrl} alt="" loading="lazy" /> : null}
+        </span>
+        <span className="note-filter-media-copy">
+          <span className="note-filter-media-label">{option.label}</span>
+          <span className="note-filter-media-count">{countLabel}</span>
+        </span>
+      </>
+    )
+  }
+
+  return (
+    <>
+      <span className="note-filter-media-kind">{option.mediaKind ?? 'media'}</span>
+      <span className="note-filter-media-copy">
+        <span className="note-filter-media-label">{option.label}</span>
+        <span className="note-filter-media-count">{countLabel}</span>
+      </span>
+    </>
+  )
 }
 
 export function NoteFilterControl({
@@ -127,7 +162,11 @@ export function NoteFilterControl({
               </>
             )}
           </div>
-          <div className="tag-filter-tag-grid note-filter-option-grid">
+          <div className={[
+            'tag-filter-tag-grid note-filter-option-grid',
+            kind === 'media' ? 'note-filter-media-grid' : '',
+          ].filter(Boolean).join(' ')}
+          >
             {options.map((option) => {
               const selected = selectedKeySet.has(option.key)
               return (
@@ -136,13 +175,17 @@ export function NoteFilterControl({
                   type="button"
                   role="menuitemcheckbox"
                   aria-checked={selected}
-                  className={`tag-filter-tag-btn note-filter-option-btn ${
-                    kind === 'tags' ? 'tabs-tag-token' : ''
-                  } ${selected ? 'is-selected' : ''}`}
+                  className={[
+                    'tag-filter-tag-btn note-filter-option-btn',
+                    kind === 'tags' ? 'tabs-tag-token' : '',
+                    kind === 'media' ? 'note-filter-media-option-btn' : '',
+                    option.mediaKind === 'image' ? 'is-media-image' : '',
+                    selected ? 'is-selected' : '',
+                  ].filter(Boolean).join(' ')}
                   data-app-tooltip={getOptionTitle(option)}
                   onClick={() => onToggleOption(option.key)}
                 >
-                  {getOptionLabel(kind, option)}
+                  {renderOptionContent(kind, option)}
                 </button>
               )
             })}

@@ -34,6 +34,7 @@ describe('MediaToolsOverlay', () => {
     expect(html).toContain('Resize video')
     expect(html).toContain('class="resize-corner-icon"')
     expect(html).toContain('class="resize-corner-icon-background"')
+    expect(html).toContain('x="0" y="0" width="24" height="24" rx="3.5"')
     expect(html).toContain('stroke-width="2"')
     expect(html).toContain('transform="translate(0 24) scale(1 -1)"')
     expect(html).not.toContain('crop')

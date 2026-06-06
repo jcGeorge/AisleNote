@@ -62,4 +62,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getUpdateStatus: () => ipcRenderer.invoke('get-update-status'),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   installUpdate: () => ipcRenderer.invoke('install-update'),
+  appendDiagnosticLogEntry: (payload) => ipcRenderer.invoke('append-diagnostic-log-entry', payload),
+  listDiagnosticLogDays: () => ipcRenderer.invoke('list-diagnostic-log-days'),
+  readDiagnosticLogEntries: (payload) => ipcRenderer.invoke('read-diagnostic-log-entries', payload),
 })

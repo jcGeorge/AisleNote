@@ -90,6 +90,7 @@ function createCopyAsState(): AppState {
       shortcuts: {
         toggleNotesTrash: '',
         toggleNotesScratchpad: '',
+        toggleNotesFilter: '',
         openDomains: '',
         openSpaces: '',
         newTab: '',

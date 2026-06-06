@@ -37,6 +37,7 @@ export const REQUIRED_ROOT_SPLIT_FILE_KEYS = Object.freeze([
 const DEFAULT_COMMAND_SHORTCUTS = {
   toggleNotesTrash: 'Mod+T',
   toggleNotesScratchpad: 'Mod+/',
+  toggleNotesFilter: '',
   openDomains: 'Mod+D',
   openSpaces: 'Mod+S',
   newTab: 'Mod+Shift+N',
@@ -117,6 +118,9 @@ const DEFAULT_SYNCED_UI_SETTINGS = {
     frontmatter: {
       selectedKeys: [],
     },
+    media: {
+      selectedKeys: [],
+    },
   },
   selectedCustomTheme: 'custom1',
   themePalettes: {},
@@ -168,9 +172,10 @@ function normalizeNoteFilterSettings(value) {
   const tags = isRecord(value.tags) ? value.tags : {}
   const synced = isRecord(value.synced) ? value.synced : {}
   const frontmatter = isRecord(value.frontmatter) ? value.frontmatter : {}
+  const media = isRecord(value.media) ? value.media : {}
   return {
     active: typeof value.active === 'boolean' ? value.active : fallback.active,
-    kind: ['tags', 'synced', 'frontmatter'].includes(value.kind) ? value.kind : fallback.kind,
+    kind: ['tags', 'synced', 'frontmatter', 'media'].includes(value.kind) ? value.kind : fallback.kind,
     tags: {
       selectedKeys: normalizeStringList(tags.selectedKeys),
       sortMode: tags.sortMode === 'occurrences' ? 'occurrences' : 'az',
@@ -180,6 +185,9 @@ function normalizeNoteFilterSettings(value) {
     },
     frontmatter: {
       selectedKeys: normalizeStringList(frontmatter.selectedKeys),
+    },
+    media: {
+      selectedKeys: normalizeStringList(media.selectedKeys),
     },
   }
 }

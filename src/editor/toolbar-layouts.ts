@@ -39,7 +39,7 @@ export const TOOLBAR_TOOL_IDS = [
 ] as const satisfies readonly ToolbarToolId[]
 
 export const TOOLBAR_TOOL_LABELS: Record<ToolbarToolId, string> = {
-  copy: 'Make copy',
+  copy: 'Make this a copy of',
   frontmatter: 'Frontmatter',
   tableOfContents: 'Table of contents',
   aisles: 'Aisles',

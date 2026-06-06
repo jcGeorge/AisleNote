@@ -38,6 +38,8 @@ type SubTabRailProps = {
   getHomeLabel?: () => ReactNode
   getSubTabLabel?: (subTab: SubTab) => ReactNode
   scratchpadTagCountLabel?: string
+  showNoteWorkspaceTabs?: boolean
+  showHomeTab?: boolean
   isNoteWorkspaceView: boolean
   selectedTrashTab: TrashParentBucket | null
   trashSubTabs: TrashParentBucket['subTabs']
@@ -54,10 +56,17 @@ type SubTabRailProps = {
   onRenameDraftChange: (type: EditableEntityType, id: string, value: string) => void
   onClearRenameDraft: (type: EditableEntityType, id: string) => void
   arrangeSelectedSubTabIds: ReadonlySet<string>
+  trashSelectedSubTabIds?: ReadonlySet<string>
   onHandleArrangeSubTabSelectionClick: (
     parentTabId: string,
     subTabId: string,
     modifiers: SelectionClickModifiers,
+  ) => boolean
+  onHandleTrashSubTabSelectionClick?: (
+    event: MouseEvent<HTMLButtonElement>,
+    trashParent: TrashParentBucket,
+    subTabId: string,
+    orderedIds: readonly string[],
   ) => boolean
   onClearArrangeSelection: () => void
   onConsumeArrangeClickSuppression: (key: string) => boolean
@@ -102,12 +111,21 @@ type SubTabRailProps = {
   onClearArrangePressTimer: () => void
   onClearArrangeTapCandidate: () => void
   onCancelArrangeTabPointerDrag: () => void
-  onSetTrashSubTabId: (subTabId: string) => void
+  onSetTrashSubTabId: (subTabId: string | null) => void
+  onOpenContextMenuForTrashTab?: (event: MouseEvent<HTMLButtonElement>, trashParent: TrashParentBucket) => void
   onOpenContextMenuForTrashSubTab: (
     event: MouseEvent<HTMLButtonElement>,
     trashParent: TrashParentBucket,
     currentSubTabId: string,
   ) => void
+  onTrashSubTabPointerDown?: (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    trashParent: TrashParentBucket,
+    currentSubTabId: string,
+  ) => void
+  onTrashSubTabPointerMove?: (event: ReactPointerEvent<HTMLButtonElement>) => void
+  onTrashSubTabPointerUp?: (event: ReactPointerEvent<HTMLButtonElement>) => void
+  onTrashSubTabPointerCancel?: () => void
   onAddSubTab: () => void
   tabRenameEnterBehavior?: TabRenameEnterBehavior
   onOpenSubTabSortModal: () => void
@@ -140,6 +158,8 @@ export function SubTabRail({
   getHomeLabel = () => 'home',
   getSubTabLabel = (subTab) => subTab.title,
   scratchpadTagCountLabel = '',
+  showNoteWorkspaceTabs = true,
+  showHomeTab = true,
   isNoteWorkspaceView,
   selectedTrashTab,
   trashSubTabs,
@@ -156,7 +176,9 @@ export function SubTabRail({
   onRenameDraftChange,
   onClearRenameDraft,
   arrangeSelectedSubTabIds,
+  trashSelectedSubTabIds,
   onHandleArrangeSubTabSelectionClick,
+  onHandleTrashSubTabSelectionClick,
   onClearArrangeSelection,
   onConsumeArrangeClickSuppression,
   onSelectParentHomeTab,
@@ -175,7 +197,12 @@ export function SubTabRail({
   onClearArrangeTapCandidate,
   onCancelArrangeTabPointerDrag,
   onSetTrashSubTabId,
+  onOpenContextMenuForTrashTab = () => undefined,
   onOpenContextMenuForTrashSubTab,
+  onTrashSubTabPointerDown = () => undefined,
+  onTrashSubTabPointerMove = () => undefined,
+  onTrashSubTabPointerUp = () => undefined,
+  onTrashSubTabPointerCancel = () => undefined,
   onAddSubTab,
   tabRenameEnterBehavior = 'goes-to-note',
   onOpenSubTabSortModal,
@@ -204,7 +231,7 @@ export function SubTabRail({
       aria-label="Nested note tabs"
     >
       <div ref={subTabRailRef} className="tabbar-scroll">
-        {isNoteWorkspaceView && (
+        {isNoteWorkspaceView && showNoteWorkspaceTabs && showHomeTab && (
           <button
             type="button"
             role="tab"
@@ -224,8 +251,11 @@ export function SubTabRail({
               onClearArrangeSelection()
               onSelectParentHomeTab()
             }}
-            data-app-tooltip={tooltipsDisabled ? undefined : 'home note'}
             onContextMenu={(event) => {
+              if (tagFilterActive) {
+                event.preventDefault()
+                return
+              }
               const contextPolicy = getArrangeRailContextMenuPolicy({
                 disabled: viewMode !== 'main',
                 arrangeActive: arrangeMode.active,
@@ -284,6 +314,7 @@ export function SubTabRail({
         )}
 
         {isNoteWorkspaceView &&
+          showNoteWorkspaceTabs &&
           activeTab.subTabs.map((subTab) =>
             editing?.type === 'subtab' && editing.id === subTab.id ? (
               <input
@@ -379,7 +410,7 @@ export function SubTabRail({
                       onSelectSubTab(subTab.id)
                     }}
                     onDoubleClick={() => {
-                      if (viewMode !== 'main' || arrangeMode.active) return
+                      if (viewMode !== 'main' || arrangeMode.active || tagFilterActive) return
                       onBeginEdit({ type: 'subtab', id: subTab.id })
                     }}
                     onContextMenu={(event) => {
@@ -458,25 +489,58 @@ export function SubTabRail({
             ),
           )}
 
-        {viewMode === 'trash' &&
-          trashSubTabs.map((subTab) => (
+        {viewMode === 'trash' && selectedTrashTab && (
+          <>
             <button
-              key={subTab.id}
               type="button"
               role="tab"
-              aria-selected={subTab.id === selectedTrashSubTabId}
-              className={`btn btn-sm tab-btn trash-subtab-btn ${subTab.id === selectedTrashSubTabId ? 'is-selected' : ''}`}
-              onClick={() => onSetTrashSubTabId(subTab.id)}
-              onContextMenu={(event) => {
-                if (!selectedTrashTab) return
-                onOpenContextMenuForTrashSubTab(event, selectedTrashTab, subTab.id)
-              }}
+              aria-selected={selectedTrashSubTabId === null}
+              className={`btn btn-sm tab-btn trash-subtab-btn trash-parent-home-subtab-btn ${
+                selectedTrashSubTabId === null ? 'is-selected' : ''
+              }`}
+              onClick={() => onSetTrashSubTabId(null)}
+              onContextMenu={(event) => onOpenContextMenuForTrashTab(event, selectedTrashTab)}
             >
-              {subTab.title}
+              home
             </button>
-          ))}
+            {trashSubTabs.map((subTab) => (
+              <button
+                key={subTab.id}
+                type="button"
+                role="tab"
+                data-trash-subtab-id={subTab.id}
+                aria-selected={subTab.id === selectedTrashSubTabId}
+                className={`btn btn-sm tab-btn trash-subtab-btn ${
+                  subTab.id === selectedTrashSubTabId ? 'is-selected' : ''
+                } ${trashSelectedSubTabIds?.has(subTab.id) ? 'is-trash-selected' : ''}`}
+                onClick={(event) => {
+                  if (
+                    onHandleTrashSubTabSelectionClick?.(
+                      event,
+                      selectedTrashTab,
+                      subTab.id,
+                      trashSubTabs.map((candidate) => candidate.id),
+                    )
+                  ) {
+                    return
+                  }
+                  onSetTrashSubTabId(subTab.id)
+                }}
+                onContextMenu={(event) => {
+                  onOpenContextMenuForTrashSubTab(event, selectedTrashTab, subTab.id)
+                }}
+                onPointerDown={(event) => onTrashSubTabPointerDown(event, selectedTrashTab, subTab.id)}
+                onPointerMove={onTrashSubTabPointerMove}
+                onPointerUp={onTrashSubTabPointerUp}
+                onPointerCancel={onTrashSubTabPointerCancel}
+              >
+                {subTab.title}
+              </button>
+            ))}
+          </>
+        )}
 
-        {!tagFilterActive && viewMode === 'main' && arrangeMode.active ? (
+        {showNoteWorkspaceTabs && !tagFilterActive && viewMode === 'main' && arrangeMode.active ? (
           <button
             type="button"
             className="tab-sort-btn"
@@ -491,7 +555,7 @@ export function SubTabRail({
           >
             <SortIcon />
           </button>
-        ) : !tagFilterActive && viewMode === 'main' && !arrangeMode.active ? (
+        ) : showNoteWorkspaceTabs && !tagFilterActive && viewMode === 'main' && !arrangeMode.active ? (
           <button
             type="button"
             className="btn btn-sm btn-outline-light add-tab-btn"

@@ -24,10 +24,11 @@ export type CustomThemePaletteSlot =
 export type CustomThemePalette = Record<CustomThemePaletteSlot, string>
 export type ThemePaletteOverrides = Partial<Record<AppTheme, CustomThemePalette>>
 export type ViewMode = 'main' | 'trash' | 'settings' | 'messages' | 'about'
-export type MessagesSection = 'inbox' | 'toast-history'
+export type MessagesSection = 'inbox' | 'toast-history' | 'diagnostics'
 export type ShortcutId =
   | 'toggleNotesTrash'
   | 'toggleNotesScratchpad'
+  | 'toggleNotesFilter'
   | 'openDomains'
   | 'openSpaces'
   | 'newTab'
@@ -56,7 +57,7 @@ export type NewAislePlacement = 'end' | 'left-of-focus' | 'right-of-focus'
 export type ScratchpadNewAisleSide = 'left' | 'right'
 export type TabRenameEnterBehavior = 'goes-to-note' | 'creates-another-tab'
 export type TipId = 'task-undo' | 'delete-active-aisle-shortcut'
-export type NoteFilterKind = 'tags' | 'synced' | 'frontmatter'
+export type NoteFilterKind = 'tags' | 'synced' | 'frontmatter' | 'media'
 export type NoteFilterTagSortMode = 'az' | 'occurrences'
 export type NoteFilterSettings = {
   active: boolean
@@ -69,6 +70,9 @@ export type NoteFilterSettings = {
     selectedKeys: string[]
   }
   frontmatter: {
+    selectedKeys: string[]
+  }
+  media: {
     selectedKeys: string[]
   }
 }
@@ -865,6 +869,7 @@ export type LinkedAisleReason = 'aisle-body' | 'note-body'
 
 export type ModalState =
   | { type: 'delete-target'; target: DeleteTarget; permanent: boolean }
+  | { type: 'delete-trash-targets'; targets: DeleteTarget[] }
   | { type: 'trash-delete-all' }
   | { type: 'trash-restore-all' }
   | { type: 'export-space'; spaceId: string }

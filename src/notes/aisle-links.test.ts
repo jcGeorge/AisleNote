@@ -42,6 +42,7 @@ function createAisleLinkTestState(noteBodies: NoteBody[], tabs: Array<{ id: stri
       shortcuts: {
         toggleNotesTrash: '',
         toggleNotesScratchpad: '',
+        toggleNotesFilter: '',
         openDomains: '',
         openSpaces: '',
         newTab: '',

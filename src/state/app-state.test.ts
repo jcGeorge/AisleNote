@@ -347,6 +347,7 @@ describe('app state normalization', () => {
 
     expect(state.hotkeys.shortcuts.toggleNotesTrash).toBe(DEFAULT_SHORTCUTS.toggleNotesTrash)
     expect(state.hotkeys.shortcuts.toggleNotesScratchpad).toBe(DEFAULT_SHORTCUTS.toggleNotesScratchpad)
+    expect(state.hotkeys.shortcuts.toggleNotesFilter).toBe(DEFAULT_SHORTCUTS.toggleNotesFilter)
     expect(state.hotkeys.shortcuts.openSpaces).toBe(DEFAULT_SHORTCUTS.openSpaces)
     expect(state.hotkeys.newlineShortcuts.shortcuts.controlEnter).toBe('blockQuote')
     expect(state.hotkeys.newlineShortcuts.shortcuts.shiftEnter).toBe(
@@ -1319,6 +1320,7 @@ describe('app state normalization', () => {
           tags: { selectedKeys: [' Tag ', 'tag'], sortMode: 'occurrences' },
           synced: { selectedKeys: ['synced-note:body-1'] },
           frontmatter: { selectedKeys: ['fm-property:Status', 'fm-property:Status'] },
+          media: { selectedKeys: ['media:image:tabs-asset:///assets/photo.png', 'media:image:tabs-asset:///assets/photo.png'] },
         },
       },
     })
@@ -1330,6 +1332,7 @@ describe('app state normalization', () => {
           tags: { selectedKeys: ['tag'], sortMode: 'count' },
           synced: { selectedKeys: [1] },
           frontmatter: null,
+          media: { selectedKeys: [1] },
         },
       },
     })
@@ -1341,6 +1344,7 @@ describe('app state normalization', () => {
       tags: { selectedKeys: ['Tag', 'tag'], sortMode: 'occurrences' },
       synced: { selectedKeys: ['synced-note:body-1'] },
       frontmatter: { selectedKeys: ['fm-property:Status'] },
+      media: { selectedKeys: ['media:image:tabs-asset:///assets/photo.png'] },
     })
     expect(invalid.ui.noteFilter).toEqual({
       active: false,
@@ -1348,6 +1352,7 @@ describe('app state normalization', () => {
       tags: { selectedKeys: ['tag'], sortMode: 'az' },
       synced: { selectedKeys: [] },
       frontmatter: { selectedKeys: [] },
+      media: { selectedKeys: [] },
     })
     expect(missing.ui.noteFilter).toEqual(DEFAULT_UI_SETTINGS.noteFilter)
   })

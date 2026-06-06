@@ -64,6 +64,9 @@ export const DEFAULT_UI_SETTINGS: AppState['ui'] = {
     frontmatter: {
       selectedKeys: [],
     },
+    media: {
+      selectedKeys: [],
+    },
   },
   tabButtonScale: 1,
   noteFontScale: 1,
@@ -375,16 +378,20 @@ export function normalizeNoteFilterSettings(value: unknown): NonNullable<AppStat
       tags: { selectedKeys: [], sortMode: 'az' },
       synced: { selectedKeys: [] },
       frontmatter: { selectedKeys: [] },
+      media: { selectedKeys: [] },
     }
   }
   if (!value || typeof value !== 'object') return defaults
   const obj = value as Record<string, unknown>
-  const kind = obj.kind === 'synced' || obj.kind === 'frontmatter' || obj.kind === 'tags' ? obj.kind : defaults.kind
+  const kind = obj.kind === 'synced' || obj.kind === 'frontmatter' || obj.kind === 'media' || obj.kind === 'tags'
+    ? obj.kind
+    : defaults.kind
   const tagSettings = obj.tags && typeof obj.tags === 'object' ? obj.tags as Record<string, unknown> : {}
   const syncedSettings = obj.synced && typeof obj.synced === 'object' ? obj.synced as Record<string, unknown> : {}
   const frontmatterSettings = obj.frontmatter && typeof obj.frontmatter === 'object'
     ? obj.frontmatter as Record<string, unknown>
     : {}
+  const mediaSettings = obj.media && typeof obj.media === 'object' ? obj.media as Record<string, unknown> : {}
   return {
     active: typeof obj.active === 'boolean' ? obj.active : defaults.active,
     kind,
@@ -397,6 +404,9 @@ export function normalizeNoteFilterSettings(value: unknown): NonNullable<AppStat
     },
     frontmatter: {
       selectedKeys: normalizeNoteFilterSelectedKeys(frontmatterSettings.selectedKeys),
+    },
+    media: {
+      selectedKeys: normalizeNoteFilterSelectedKeys(mediaSettings.selectedKeys),
     },
   }
 }

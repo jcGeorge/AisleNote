@@ -58,6 +58,7 @@ function appState(domains: Domain[], activeDomainId: string, activeSpaceId: stri
       shortcuts: {
         toggleNotesTrash: '',
         toggleNotesScratchpad: '',
+        toggleNotesFilter: '',
         openDomains: '',
         openSpaces: '',
         newTab: '',

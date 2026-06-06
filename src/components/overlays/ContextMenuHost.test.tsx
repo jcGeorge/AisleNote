@@ -56,10 +56,10 @@ function renderContextMenu(contextMenu: ContextMenuState, duplicateCount = 1) {
 }
 
 describe('ContextMenuHost copy actions', () => {
-  it('shows make copy for normal tabs', () => {
+  it('shows make this a copy of for normal tabs', () => {
     const html = renderContextMenu({ type: 'tab', tabId: 'tab-1', x: 0, y: 0 })
 
-    expect(html).toContain('make copy')
+    expect(html).toContain('make this a copy of')
     expect(html).toContain('trash it')
     expect(html).not.toContain('move to trash')
     expect(html).not.toContain('delete now')
@@ -119,7 +119,7 @@ describe('ContextMenuHost copy actions', () => {
       />,
     )
 
-    expect(html).toContain('make copy')
+    expect(html).toContain('make this a copy of')
     expect(html).toContain('copy note as')
     expect(html).toContain('copy aisle as')
   })
@@ -198,14 +198,14 @@ describe('ContextMenuHost copy actions', () => {
   it('keeps de-couple available for already linked notes', () => {
     const html = renderContextMenu({ type: 'subtab', tabId: 'tab-1', subTabId: 'sub-1', x: 0, y: 0 }, 2)
 
-    expect(html).toContain('make copy')
+    expect(html).toContain('make this a copy of')
     expect(html).toContain('de-couple')
   })
 
   it('keeps home subtab context menus limited to copy actions', () => {
     const html = renderContextMenu({ type: 'home-tab', tabId: 'tab-1', x: 0, y: 0 })
 
-    expect(html).toContain('make copy')
+    expect(html).toContain('make this a copy of')
     expect(html).not.toContain('arrange')
     expect(html).not.toContain('move to trash')
     expect(html).not.toContain('trash it')
@@ -246,6 +246,54 @@ describe('ContextMenuHost copy actions', () => {
     expect(html).not.toContain('disabled=""')
   })
 
+  it('removes rename from filter navigation context menus while keeping non-home trash actions', () => {
+    const domainHtml = renderToStaticMarkup(
+      <ContextMenuHost
+        {...createContextMenuProps({ type: 'domain', domainId: 'domain-1', x: 0, y: 0 }, 1, {
+          tagFilterActive: true,
+        })}
+      />,
+    )
+    const spaceHtml = renderToStaticMarkup(
+      <ContextMenuHost
+        {...createContextMenuProps({ type: 'space', spaceId: 'space-1', x: 0, y: 0 }, 1, {
+          tagFilterActive: true,
+        })}
+      />,
+    )
+    const parentHtml = renderToStaticMarkup(
+      <ContextMenuHost
+        {...createContextMenuProps({ type: 'tab', tabId: 'tab-1', x: 0, y: 0 }, 1, {
+          tagFilterActive: true,
+        })}
+      />,
+    )
+    const subTabHtml = renderToStaticMarkup(
+      <ContextMenuHost
+        {...createContextMenuProps({ type: 'subtab', tabId: 'tab-1', subTabId: 'sub-1', x: 0, y: 0 }, 1, {
+          tagFilterActive: true,
+        })}
+      />,
+    )
+
+    for (const html of [domainHtml, spaceHtml, parentHtml, subTabHtml]) {
+      expect(html).toContain('trash it')
+      expect(html).not.toContain('rename')
+    }
+  })
+
+  it('does not render an empty home context menu in filter mode', () => {
+    const html = renderToStaticMarkup(
+      <ContextMenuHost
+        {...createContextMenuProps({ type: 'home-tab', tabId: 'tab-1', x: 0, y: 0 }, 1, {
+          tagFilterActive: true,
+        })}
+      />,
+    )
+
+    expect(html).toBe('')
+  })
+
   it('keeps domain trash action clickable when it is the only domain', () => {
     const html = renderToStaticMarkup(
       <ContextMenuHost
@@ -274,7 +322,7 @@ describe('ContextMenuHost copy actions', () => {
     expect(html).not.toContain('copy image')
   })
 
-  it('shows editor clipboard actions, root make copy, and expandable command groups', () => {
+  it('shows editor clipboard actions, root make this a copy of, and expandable command groups', () => {
     const html = renderContextMenu({ type: 'editor', x: 0, y: 0 })
 
     expect(html).toContain('cut')
@@ -285,7 +333,7 @@ describe('ContextMenuHost copy actions', () => {
     expect(html).toContain('here')
     expect(html).toContain('add link')
     expect(html).toContain('find &amp; replace')
-    expect(html).toContain('make copy')
+    expect(html).toContain('make this a copy of')
     expect(html).toContain('format')
     expect(html).toContain('paragraph')
     expect(html).toContain('insert')
@@ -347,7 +395,7 @@ describe('ContextMenuHost copy actions', () => {
     const html = renderContextMenu({ type: 'scratchpad', x: 0, y: 0 })
 
     expect(html).toContain('about scratchpad')
-    expect(html).not.toContain('make copy')
+    expect(html).not.toContain('make this a copy of')
     expect(html).not.toContain('move to trash')
     expect(html).not.toContain('trash it')
     expect(html).not.toContain('arrange')
@@ -371,7 +419,7 @@ describe('ContextMenuHost copy actions', () => {
     expect(html).toContain('find &amp; replace')
   })
 
-  it('shows restore without permanent delete actions for trash items', () => {
+  it('shows restore and permanent delete actions for trash items', () => {
     const html = renderContextMenu({
       type: 'trash-subtab',
       source: 'subtabs-only',
@@ -383,7 +431,7 @@ describe('ContextMenuHost copy actions', () => {
     })
 
     expect(html).toContain('restore')
-    expect(html).not.toContain('delete for real')
+    expect(html).toContain('delete for real')
     expect(html).not.toContain('delete now')
   })
 })

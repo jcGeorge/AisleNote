@@ -28,6 +28,7 @@ import {
   withImageDisplayWidthPreservingTransformMetadata,
   withImageTransformAssetDisplayWidth,
 } from './image-transform'
+import { recordDiagnosticEvent } from '../diagnostics/diagnostic-logger'
 import { isInsideReadonlyNotePreview } from './note-preview-dom'
 import { getWysiwygView } from './prosemirror-utils'
 import {
@@ -56,6 +57,14 @@ export const CLOSED_INLINE_CROP_STATE: InlineCropState = {
   left: 0,
   width: 0,
   height: 0,
+}
+
+const INLINE_CROP_OPEN_MARKER_MS = 30_000
+
+function nowMs(): number {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now()
 }
 
 export function shouldSkipImageToolsClose({
@@ -118,6 +127,8 @@ export function useImageTools({
     startRelWidth: number
     startRelHeight: number
   }>({ mode: null, startX: 0, startY: 0, startRelX: 0, startRelY: 0, startRelWidth: 1, startRelHeight: 1 })
+  const inlineCropOpenedAtRef = useRef<number | null>(null)
+  const inlineCropOpenMarkerTimerRef = useRef<number | null>(null)
 
   const syncEditorImageDisplayMetadata = () => {
     syncImageDisplayMetadataInRoot(editorEventRootRef.current)
@@ -155,6 +166,51 @@ export function useImageTools({
       startRelWidth: 1,
       startRelHeight: 1,
     }
+  }
+
+  const clearInlineCropOpenMarker = () => {
+    if (inlineCropOpenMarkerTimerRef.current === null) return
+    window.clearTimeout(inlineCropOpenMarkerTimerRef.current)
+    inlineCropOpenMarkerTimerRef.current = null
+  }
+
+  const getInlineCropOpenDurationMs = () =>
+    inlineCropOpenedAtRef.current === null ? null : nowMs() - inlineCropOpenedAtRef.current
+
+  const finishInlineCropDiagnostics = (event: string) => {
+    const durationMs = getInlineCropOpenDurationMs()
+    clearInlineCropOpenMarker()
+    inlineCropOpenedAtRef.current = null
+    if (durationMs === null) return
+    recordDiagnosticEvent('image-tools', event, {
+      durationMs,
+      details: {
+        activeImageConnected: Boolean(activeImageRef.current?.isConnected),
+      },
+    })
+  }
+
+  const startInlineCropDiagnostics = (image: HTMLImageElement, rect: DOMRect) => {
+    clearInlineCropOpenMarker()
+    inlineCropOpenedAtRef.current = nowMs()
+    recordDiagnosticEvent('image-tools', 'crop-start', {
+      details: {
+        renderedWidth: Math.round(rect.width),
+        renderedHeight: Math.round(rect.height),
+        naturalWidth: image.naturalWidth,
+        naturalHeight: image.naturalHeight,
+      },
+    })
+    inlineCropOpenMarkerTimerRef.current = window.setTimeout(() => {
+      if (!inlineCropRef.current.active || inlineCropOpenedAtRef.current === null) return
+      recordDiagnosticEvent('image-tools', 'crop-open-30s', {
+        level: 'warning',
+        durationMs: getInlineCropOpenDurationMs() ?? INLINE_CROP_OPEN_MARKER_MS,
+        details: {
+          activeImageConnected: Boolean(activeImageRef.current?.isConnected),
+        },
+      })
+    }, INLINE_CROP_OPEN_MARKER_MS)
   }
 
   const getSelectedImageRatioBounds = (image: HTMLImageElement, rect: DOMRect | { width: number; height: number }) => ({
@@ -259,6 +315,12 @@ export function useImageTools({
     activeImageRef.current = null
     activeImageLookupRef.current = null
     imageResizeRef.current = null
+    if (inlineCropRef.current.active) {
+      finishInlineCropDiagnostics('crop-close')
+    } else {
+      clearInlineCropOpenMarker()
+      inlineCropOpenedAtRef.current = null
+    }
     resetInlineCropDrag()
     updateInlineCrop(CLOSED_INLINE_CROP_STATE)
     updateImageTools(CLOSED_IMAGE_TOOLS_STATE)
@@ -279,6 +341,8 @@ export function useImageTools({
       document.removeEventListener('keydown', handleKeyDown, true)
     }
   }, [])
+
+  useEffect(() => () => clearInlineCropOpenMarker(), [])
 
   useEffect(() => {
     let observer: MutationObserver | null = null
@@ -334,6 +398,14 @@ export function useImageTools({
       image = recoverActiveImage()
       if (image?.isConnected && (!editorRoot || editorRoot.contains(image))) return
       if (imageRebindInProgressRef.current) return
+      recordDiagnosticEvent('image-tools', 'selected-image-missing-close', {
+        level: 'warning',
+        details: {
+          hadEditorRoot: Boolean(editorRoot),
+          rebindInProgress: imageRebindInProgressRef.current,
+          hadLookup: Boolean(activeImageLookupRef.current),
+        },
+      })
       close()
     }
   }
@@ -406,6 +478,17 @@ export function useImageTools({
       close()
       return
     }
+    const imageRect = image.getBoundingClientRect()
+    recordDiagnosticEvent('image-tools', 'select-image', {
+      details: {
+        connected: image.isConnected,
+        complete: image.complete,
+        renderedWidth: Math.round(imageRect.width),
+        renderedHeight: Math.round(imageRect.height),
+        naturalWidth: image.naturalWidth,
+        naturalHeight: image.naturalHeight,
+      },
+    })
     const scrollSnapshot = captureScrollSnapshot(image)
     const sourceUrl = image.getAttribute('src') ?? image.src
     const altText = image.alt || null
@@ -573,6 +656,13 @@ export function useImageTools({
     let attempts = 0
     const minAttempts = 3
     const maxAttempts = 6
+    recordDiagnosticEvent('image-tools', 'image-rebind-scheduled', {
+      details: {
+        token,
+        hasPosition: typeof options.position === 'number',
+        menuMode: options.menuMode,
+      },
+    })
 
     const attemptRefresh = () => {
       if (imageRebindTokenRef.current !== token) return
@@ -595,6 +685,14 @@ export function useImageTools({
       }
       if ((refreshed && attempts >= minAttempts) || attempts >= maxAttempts) {
         imageRebindInProgressRef.current = false
+        recordDiagnosticEvent('image-tools', refreshed ? 'image-rebind-complete' : 'image-rebind-failed', {
+          level: refreshed ? 'info' : 'warning',
+          details: {
+            token,
+            attempts,
+            refreshed,
+          },
+        })
         return
       }
       window.requestAnimationFrame(attemptRefresh)
@@ -738,6 +836,11 @@ export function useImageTools({
       startX: event.clientX,
       startWidth: image.getBoundingClientRect().width || image.width || image.naturalWidth || 160,
     }
+    recordDiagnosticEvent('image-tools', 'resize-start', {
+      details: {
+        startWidth: imageResizeRef.current.startWidth,
+      },
+    })
   }
 
   const continueResize = (clientX: number) => {
@@ -756,6 +859,7 @@ export function useImageTools({
     const image = activeImageRef.current
     if (!image || !image.isConnected) return
     const rect = image.getBoundingClientRect()
+    startInlineCropDiagnostics(image, rect)
     const width = Math.max(24, rect.width * 0.8)
     const height = Math.max(24, rect.height * 0.8)
     const left = rect.left + (rect.width - width) / 2
@@ -785,6 +889,7 @@ export function useImageTools({
 
   const cancelCrop = () => {
     resetInlineCropDrag()
+    finishInlineCropDiagnostics('crop-cancel')
     updateInlineCrop((previous) => ({ ...previous, active: false, top: 0, left: 0, width: 0, height: 0 }))
   }
 
@@ -813,9 +918,20 @@ export function useImageTools({
   }
 
   const applyCrop = async () => {
+    const cropApplyStartedAt = nowMs()
     const image = activeImageRef.current?.isConnected ? activeImageRef.current : recoverActiveImage()
     const crop = inlineCropRef.current
     if (!image || !crop.active || !image.src) return
+    recordDiagnosticEvent('image-tools', 'crop-apply-start', {
+      details: {
+        cropWidth: Math.round(crop.width),
+        cropHeight: Math.round(crop.height),
+        relX: crop.relX,
+        relY: crop.relY,
+        relWidth: crop.relWidth,
+        relHeight: crop.relHeight,
+      },
+    })
 
     const sourceImage = new Image()
     sourceImage.src = stripImageResizeMetadataFromUrl(image.getAttribute('src') ?? image.src)
@@ -893,13 +1009,24 @@ export function useImageTools({
     selectedImage.setAttribute('width', String(renderedWidth))
     selectedImage.setAttribute('height', String(renderedHeight))
     selectedImage.style.maxWidth = 'none'
-    cancelCrop()
+    resetInlineCropDrag()
+    finishInlineCropDiagnostics('crop-apply')
+    updateInlineCrop((previous) => ({ ...previous, active: false, top: 0, left: 0, width: 0, height: 0 }))
     restoreScrollSnapshot(scrollSnapshot)
     refreshPosition({ closeOnMissing: false })
     restoreScrollSnapshot(scrollSnapshot)
     scheduleImageRebindAndRefresh(nextImageUrl, selectedImage, selectedImage.alt || null, rebindToken, {
       position: updateResult.position,
       scrollSnapshot,
+    })
+    recordDiagnosticEvent('image-tools', 'crop-apply-end', {
+      durationMs: nowMs() - cropApplyStartedAt,
+      details: {
+        renderedWidth,
+        renderedHeight,
+        sourceWidth,
+        sourceHeight,
+      },
     })
   }
 
@@ -963,8 +1090,16 @@ export function useImageTools({
     })
 
   const transformSelectedImage = async (operation: ImageTransformOperation) => {
+    const transformStartedAt = nowMs()
     const image = activeImageRef.current?.isConnected ? activeImageRef.current : recoverActiveImage()
     if (!image || !image.isConnected || !image.src || inlineCropRef.current.active) return false
+    recordDiagnosticEvent('image-tools', 'transform-start', {
+      details: {
+        operation,
+        renderedWidth: Math.round(image.getBoundingClientRect().width),
+        renderedHeight: Math.round(image.getBoundingClientRect().height),
+      },
+    })
 
     const rebindToken = imageRebindTokenRef.current + 1
     imageRebindTokenRef.current = rebindToken
@@ -1036,11 +1171,28 @@ export function useImageTools({
         position: updateResult.position,
         scrollSnapshot,
       })
+      recordDiagnosticEvent('image-tools', 'transform-end', {
+        durationMs: nowMs() - transformStartedAt,
+        details: {
+          operation,
+          renderedWidth,
+          displayWidth,
+          transformedWidth: transformed.width,
+          transformedHeight: transformed.height,
+        },
+      })
       return true
     } catch {
       if (imageRebindTokenRef.current === rebindToken) {
         imageRebindInProgressRef.current = false
       }
+      recordDiagnosticEvent('image-tools', 'transform-failed', {
+        level: 'warning',
+        durationMs: nowMs() - transformStartedAt,
+        details: {
+          operation,
+        },
+      })
       pushToast('Could not transform image.', 'warning')
       return false
     }
@@ -1135,6 +1287,14 @@ export function useImageTools({
 
     const handlePointerUp = () => {
       if (imageResizeRef.current) {
+        const image = activeImageRef.current?.isConnected ? activeImageRef.current : recoverActiveImage()
+        const rect = image?.getBoundingClientRect()
+        recordDiagnosticEvent('image-tools', 'resize-end', {
+          details: {
+            renderedWidth: rect ? Math.round(rect.width) : null,
+            renderedHeight: rect ? Math.round(rect.height) : null,
+          },
+        })
         imageResizeRef.current = null
         void commitResizedImage()
       }

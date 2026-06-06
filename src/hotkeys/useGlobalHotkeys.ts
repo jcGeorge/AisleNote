@@ -21,6 +21,7 @@ type UseGlobalHotkeysParams = {
   toggleDomainRail: () => void
   toggleNotesTrash: () => void
   toggleNotesScratchpad: () => void
+  toggleNotesFilter: () => void
   navigateHistoryBy: (delta: number) => void
   showTip: (tipId: TipId) => void
   addTab: () => void
@@ -301,6 +302,7 @@ export function useGlobalHotkeys({
   toggleDomainRail,
   toggleNotesTrash,
   toggleNotesScratchpad,
+  toggleNotesFilter,
   navigateHistoryBy,
   showTip,
   addTab,
@@ -326,6 +328,7 @@ export function useGlobalHotkeys({
     toggleDomainRail,
     toggleNotesTrash,
     toggleNotesScratchpad,
+    toggleNotesFilter,
     navigateHistoryBy,
     showTip,
     addTab,
@@ -348,6 +351,7 @@ export function useGlobalHotkeys({
     toggleDomainRail,
     toggleNotesTrash,
     toggleNotesScratchpad,
+    toggleNotesFilter,
     navigateHistoryBy,
     showTip,
     addTab,
@@ -468,6 +472,17 @@ export function useGlobalHotkeys({
       if (isToggleNotesScratchpadShortcut) {
         event.preventDefault()
         actions.toggleNotesScratchpad()
+        return
+      }
+
+      const isToggleNotesFilterShortcut = eventMatchesShortcut(
+        event,
+        normalizedHotkeys.shortcuts.toggleNotesFilter,
+        isMacPlatform,
+      )
+      if (isToggleNotesFilterShortcut) {
+        event.preventDefault()
+        actions.toggleNotesFilter()
         return
       }
 

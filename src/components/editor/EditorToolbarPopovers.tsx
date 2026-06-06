@@ -36,7 +36,7 @@ export function CopyToolbarMenu({
           onOpenCopyModal()
         }}
       >
-        make copy
+        make this a copy of
       </button>
       <button
         type="button"

@@ -3,6 +3,7 @@ import type { AppState, NewlineOperationId, NewlineShortcutId, ShortcutId } from
 export const DEFAULT_SHORTCUTS: Record<ShortcutId, string> = {
   toggleNotesTrash: 'Mod+T',
   toggleNotesScratchpad: 'Mod+/',
+  toggleNotesFilter: '',
   openDomains: 'Mod+D',
   openSpaces: 'Mod+S',
   newTab: 'Mod+Shift+N',

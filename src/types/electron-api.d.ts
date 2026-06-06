@@ -1,5 +1,6 @@
 export {}
 
+import type { DiagnosticLogEntry } from '../diagnostics/diagnostic-log'
 import type { NoteLocation, StorageProfileStatus, UserSettingsLocationStatus } from './app'
 
 type SaveAppStatePayload = {
@@ -168,6 +169,37 @@ type OpenUserSettingsFileResult =
       error: string
     }
 
+type DiagnosticLogWriteResult =
+  | {
+      ok: true
+    }
+  | {
+      ok: false
+      error: string
+    }
+
+type DiagnosticLogDaysResult =
+  | {
+      ok: true
+      days: string[]
+    }
+  | {
+      ok: false
+      error: string
+      days: string[]
+    }
+
+type DiagnosticLogEntriesResult =
+  | {
+      ok: true
+      entries: DiagnosticLogEntry[]
+    }
+  | {
+      ok: false
+      error: string
+      entries: DiagnosticLogEntry[]
+    }
+
 declare global {
   interface Window {
     electronAPI?: {
@@ -302,6 +334,9 @@ declare global {
         ok: boolean
         error?: string
       }>
+      appendDiagnosticLogEntry?: (payload: DiagnosticLogEntry) => Promise<DiagnosticLogWriteResult>
+      listDiagnosticLogDays?: () => Promise<DiagnosticLogDaysResult>
+      readDiagnosticLogEntries?: (payload: { dayKey: string }) => Promise<DiagnosticLogEntriesResult>
     }
     __tabsGetLatestAppState?: () => string
     __tabsGetAppStateRevision?: () => number

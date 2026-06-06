@@ -51,7 +51,7 @@ import {
 } from '../arrange/arrange-hierarchy'
 import { formatArrangeCrossDomainMoveToast, type ArrangeCrossDomainMoveKind } from '../arrange/arrange-move-toast'
 import { sortNamedItems, sortSubTabs, sortTabs } from '../arrange/tab-sort'
-import { useArrangeMode } from '../arrange/useArrangeMode'
+import { getArrangePreviewGhostItems, useArrangeMode } from '../arrange/useArrangeMode'
 import { getToggledRailVisibilitySettings, type RailVisibilityTarget } from '../navigation/rail-visibility'
 import { ImageToolsOverlay } from '../components/editor/ImageToolsOverlay'
 import { MediaToolsOverlay } from '../components/editor/MediaToolsOverlay'
@@ -84,6 +84,14 @@ import {
   GuidedTabArrangeCarryPreview,
   TabArrangeDragPreviewOverlay,
 } from '../components/navigation/TabArrangeDragPreviewOverlay'
+import {
+  TrashRailDragPreviewOverlay,
+  type TrashRailDragPreview,
+} from '../components/navigation/TrashRailDragPreviewOverlay'
+import {
+  getArrangeDragPreviewBelowPointerTop,
+  getArrangeDragPreviewCenteredLeft,
+} from '../components/navigation/arrange-drag-preview-style'
 import { TopBar } from '../components/navigation/TopBar'
 import { ArrangeDestinationPrompt } from '../components/overlays/ArrangeDestinationPrompt'
 import { AppTooltipLayer } from '../components/overlays/AppTooltipLayer'
@@ -168,6 +176,24 @@ import { useMediaTools } from '../editor/useMediaTools'
 import { useTableControls } from '../editor/useTableControls'
 import { selectFirstTableCellAfterPosition } from '../editor/table-editing'
 import { clearEditorMarkdownForDisplay, getEditorMarkdownForPersistence, setEditorMarkdownForDisplay } from '../editor/editor-markdown-display'
+import {
+  configureDiagnosticLogging,
+  createMainThreadHeartbeat,
+  getDiagnosticSessionId,
+  recordDiagnosticEvent,
+} from '../diagnostics/diagnostic-logger'
+import {
+  listDiagnosticLogDays,
+  readDiagnosticLogEntries,
+  subscribeDiagnosticLogChanges,
+} from '../diagnostics/diagnostic-log-store'
+import {
+  DIAGNOSTIC_LOG_MAX_ENTRIES_PER_DAY,
+  type DiagnosticLogDisplayLimit,
+  type DiagnosticLogEntry,
+  type DiagnosticLogLevelFilter,
+  orderDiagnosticDaysForDisplay,
+} from '../diagnostics/diagnostic-log'
 import { withDefaultInsertedImageDisplayWidth } from '../editor/image-insertion'
 import { buildMediaMarkdownLink, insertAssetLinksIntoWysiwygView } from '../editor/media-file-insertion'
 import type { MultiLineHeadingLevel } from '../editor/multiline-format-operations'
@@ -188,6 +214,7 @@ import {
   type MediaRevealContextMenuDetail,
 } from '../media/media-context-menu'
 import { useNavigationHistory } from '../navigation/useNavigationHistory'
+import { getNotesFilterToggleIntent, isNotesFilterModeActive } from '../navigation/toggle-notes-filter'
 import { getNextNotesTrashToggleState } from '../navigation/toggle-notes-trash'
 import { getNextNotesScratchpadToggleState } from '../navigation/toggle-notes-scratchpad'
 import { useAppNavigationActions } from '../navigation/useAppNavigationActions'
@@ -301,6 +328,7 @@ import {
   getVisibleNoteFilterCountLabel,
 } from './note-filter-display'
 import {
+  getNoteFilterRailVisibility,
   getNoteFilterNavigationTarget,
   reconcileActiveNoteFilterSettings,
 } from './note-filter-state'
@@ -339,12 +367,29 @@ import { useStorageProfileController } from '../storage/useStorageProfileControl
 import { useUserSettingsLocationController } from '../storage/useUserSettingsLocationController'
 import { TRASH_HOME_ID } from '../trash/trash-model'
 import { useTrashSelection } from '../trash/useTrashSelection'
+import {
+  EMPTY_TRASH_SELECTION,
+  getEffectiveTrashContextTargets,
+  getTrashDomainTarget,
+  getTrashParentTarget,
+  getTrashSelectionActiveReplacementId,
+  getTrashSpaceTarget,
+  getTrashSubTabTarget,
+  getTrashTargetFromContextMenu,
+  getTrashTargetsForSelection,
+  hasTrashSelectionModifier,
+  updateTrashSelectionForClick,
+  type TrashSelectionClickModifiers,
+  type TrashSelectionKind,
+  type TrashSelectionState,
+} from '../trash/trash-selection'
 import type {
   AppMessage,
   AppState,
   ArrangeHierarchyDropRequest,
   ArrangeInsertPosition,
   ContextMenuState,
+  DeleteTarget,
   InternalNoteLinkEdit,
   LinkEditRange,
   LinkInsertMode,
@@ -504,6 +549,7 @@ export function useAppController(): AppController {
   })
   const [noteFilterMenuOpen, setNoteFilterMenuOpen] = useState(false)
   const [noteFilterCycleByLocation, setNoteFilterCycleByLocation] = useState<Record<string, number>>({})
+  const [noteFilterCycleByOption, setNoteFilterCycleByOption] = useState<Record<string, number>>({})
   const [tagAutocompleteRecentKeys, setTagAutocompleteRecentKeys] = useState<string[]>(() =>
     normalizeTagAutocompleteRecentKeys(initialDeviceSettingsRef.current?.tagAutocompleteRecentKeys),
   )
@@ -514,10 +560,19 @@ export function useAppController(): AppController {
   const isMacPlatform = typeof navigator !== 'undefined' ? /mac/i.test(navigator.platform) : false
   const [menuOpen, setMenuOpen] = useState(false)
   const [messagesSection, setMessagesSection] = useState<MessagesSection>('inbox')
+  const [diagnosticLogDays, setDiagnosticLogDays] = useState<string[]>([])
+  const [selectedDiagnosticDay, setSelectedDiagnosticDay] = useState<string>('')
+  const [diagnosticLogEntries, setDiagnosticLogEntries] = useState<DiagnosticLogEntry[]>([])
+  const [diagnosticLevelFilter, setDiagnosticLevelFilter] = useState<DiagnosticLogLevelFilter>('all')
+  const [diagnosticDisplayLimit, setDiagnosticDisplayLimit] = useState<DiagnosticLogDisplayLimit>(500)
   const [trashDomainId, setTrashDomainId] = useState<string>('')
   const [trashSpaceId, setTrashSpaceId] = useState<string>('')
   const [trashTabId, setTrashTabId] = useState<string>(TRASH_HOME_ID)
   const [trashSubTabId, setTrashSubTabId] = useState<string | null>(null)
+  const [trashSelection, setTrashSelection] = useState<TrashSelectionState>(EMPTY_TRASH_SELECTION)
+  const [trashDragTargets, setTrashDragTargets] = useState<DeleteTarget[]>([])
+  const [trashDragPreview, setTrashDragPreviewState] = useState<TrashRailDragPreview | null>(null)
+  const [isDraggingOverTrashDrop, setIsDraggingOverTrashDrop] = useState(false)
   const [activeAisleId, setActiveAisleId] = useState<string>('')
   const [activeToolbarLayoutId, setActiveToolbarLayoutIdState] = useState<string>(
     () => initialDeviceSettingsRef.current?.activeToolbarLayoutId ?? DEFAULT_TOOLBAR_LAYOUT_ID,
@@ -534,6 +589,22 @@ export function useAppController(): AppController {
     followupFrameId: null,
   })
   const pendingFocusToAisleIdRef = useRef<string | null>(null)
+  const trashDragCandidateRef = useRef<{
+    pointerId: number
+    startX: number
+    startY: number
+    kind: TrashRailDragPreview['kind']
+    draggedId: string
+    selectedIds: string[]
+    targets: DeleteTarget[]
+    label: string
+    rail: HTMLElement | null
+    selector: string
+    attributeName: string
+    getLabel: (id: string) => string | undefined
+  } | null>(null)
+  const trashDragPreviewRef = useRef<TrashRailDragPreview | null>(null)
+  const suppressTrashClickRef = useRef(false)
   const pendingMouseAisleActivationRef = useRef<{ aisleId: string; settled: boolean } | null>(null)
   const pendingMouseAisleCycleFrameRef = useRef<number | null>(null)
   const pendingNavigationHeadingRef = useRef<NonNullable<NoteNavigationTarget['heading']> | null>(null)
@@ -579,6 +650,8 @@ export function useAppController(): AppController {
   const activeNoteLocationKeyRef = useRef<string>('')
   const isMainViewRef = useRef(true)
   const flushStorageActionStateRef = useRef<() => Promise<void> | void>(() => {})
+  const messagesSectionRef = useRef<MessagesSection>(messagesSection)
+  const selectedDiagnosticDayRef = useRef(selectedDiagnosticDay)
 
   useEffect(() => {
     const closeOverlays = () => {
@@ -642,6 +715,137 @@ export function useAppController(): AppController {
     if (tagJumpClearTimerRef.current !== null) {
       window.clearTimeout(tagJumpClearTimerRef.current)
       tagJumpClearTimerRef.current = null
+    }
+  }, [])
+
+  const loadDiagnosticEntriesForDay = useCallback(async (dayKey: string) => {
+    const entries = dayKey ? await readDiagnosticLogEntries(dayKey) : []
+    setDiagnosticLogEntries(entries)
+  }, [])
+
+  const refreshDiagnosticLogs = useCallback(async (preferredDay = selectedDiagnosticDayRef.current) => {
+    const days = await listDiagnosticLogDays()
+    const nextDay = preferredDay && days.includes(preferredDay) ? preferredDay : days[0] ?? ''
+    selectedDiagnosticDayRef.current = nextDay
+    setDiagnosticLogDays(days)
+    setSelectedDiagnosticDay(nextDay)
+    await loadDiagnosticEntriesForDay(nextDay)
+  }, [loadDiagnosticEntriesForDay])
+
+  const changeDiagnosticDay = useCallback((dayKey: string) => {
+    selectedDiagnosticDayRef.current = dayKey
+    setSelectedDiagnosticDay(dayKey)
+    void loadDiagnosticEntriesForDay(dayKey)
+  }, [loadDiagnosticEntriesForDay])
+
+  useEffect(() => {
+    messagesSectionRef.current = messagesSection
+    if (messagesSection === 'diagnostics') {
+      void refreshDiagnosticLogs()
+    }
+  }, [messagesSection, refreshDiagnosticLogs])
+
+  useEffect(() => {
+    selectedDiagnosticDayRef.current = selectedDiagnosticDay
+  }, [selectedDiagnosticDay])
+
+  useEffect(
+    () =>
+      subscribeDiagnosticLogChanges((entry) => {
+        if (messagesSectionRef.current !== 'diagnostics') return
+        setDiagnosticLogDays((currentDays) => orderDiagnosticDaysForDisplay([entry.dayKey, ...currentDays]))
+        const selectedDay = selectedDiagnosticDayRef.current
+        if (!selectedDay) {
+          selectedDiagnosticDayRef.current = entry.dayKey
+          setSelectedDiagnosticDay(entry.dayKey)
+          setDiagnosticLogEntries([entry])
+          return
+        }
+        if (selectedDay === entry.dayKey) {
+          setDiagnosticLogEntries((currentEntries) =>
+            [...currentEntries, entry].slice(-DIAGNOSTIC_LOG_MAX_ENTRIES_PER_DAY),
+          )
+        }
+      }),
+    [],
+  )
+
+  useEffect(
+    () =>
+      configureDiagnosticLogging(() => ({
+        viewMode: toggleViewModeRef.current,
+        scratchpadActive: toggleScratchpadActiveRef.current,
+        activeDomainId: activeDomainIdRef.current,
+        activeSpaceId: activeSpaceIdRef.current,
+        activeTabId: activeTabIdRef.current,
+        activeSubTabId: activeSubTabIdRef.current,
+        activeNoteBodyId: activeNoteBodyIdRef.current,
+        activeAisleId: activeAisleIdRef.current,
+        activeEditorAisleId: activeEditorAisleIdRef.current,
+        activeAisleCount: activeAisleIdsRef.current.length,
+        pendingScrollToAisleId: pendingScrollToAisleIdRef.current,
+        pendingFocusToAisleId: pendingFocusToAisleIdRef.current,
+        pendingMouseAisleActivation: pendingMouseAisleActivationRef.current?.aisleId ?? null,
+        pendingMouseAisleActivationSettled: pendingMouseAisleActivationRef.current?.settled ?? null,
+        visibilityState: typeof document === 'undefined' ? 'unknown' : document.visibilityState,
+        windowFocused: typeof document !== 'undefined' && typeof document.hasFocus === 'function'
+          ? document.hasFocus()
+          : null,
+      })),
+    [],
+  )
+
+  useEffect(() => {
+    recordDiagnosticEvent('runtime', 'session-start', {
+      details: {
+        sessionId: getDiagnosticSessionId(),
+        platform: typeof navigator === 'undefined' ? 'unknown' : navigator.platform,
+        userAgent: typeof navigator === 'undefined' ? 'unknown' : navigator.userAgent,
+      },
+    })
+
+    const heartbeat = createMainThreadHeartbeat()
+    heartbeat.start()
+
+    const recordWindowFocus = () => recordDiagnosticEvent('runtime', 'window-focus')
+    const recordWindowBlur = () => recordDiagnosticEvent('runtime', 'window-blur')
+    const recordVisibilityChange = () => recordDiagnosticEvent('runtime', 'visibility-change')
+    const recordUnhandledError = (event: ErrorEvent) => {
+      recordDiagnosticEvent('runtime', 'unhandled-error', {
+        level: 'error',
+        message: event.message,
+        details: {
+          filename: event.filename,
+          lineno: event.lineno,
+          colno: event.colno,
+          stack: event.error instanceof Error ? event.error.stack : undefined,
+        },
+      })
+    }
+    const recordUnhandledRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason
+      recordDiagnosticEvent('runtime', 'unhandled-rejection', {
+        level: 'error',
+        message: reason instanceof Error ? reason.message : String(reason ?? 'unknown rejection'),
+        details: {
+          stack: reason instanceof Error ? reason.stack : undefined,
+        },
+      })
+    }
+
+    window.addEventListener('focus', recordWindowFocus)
+    window.addEventListener('blur', recordWindowBlur)
+    document.addEventListener('visibilitychange', recordVisibilityChange)
+    window.addEventListener('error', recordUnhandledError)
+    window.addEventListener('unhandledrejection', recordUnhandledRejection)
+
+    return () => {
+      heartbeat.stop()
+      window.removeEventListener('focus', recordWindowFocus)
+      window.removeEventListener('blur', recordWindowBlur)
+      document.removeEventListener('visibilitychange', recordVisibilityChange)
+      window.removeEventListener('error', recordUnhandledError)
+      window.removeEventListener('unhandledrejection', recordUnhandledRejection)
     }
   }, [])
 
@@ -779,7 +983,9 @@ export function useAppController(): AppController {
       ? noteFilter.synced.selectedKeys
       : noteFilterKind === 'frontmatter'
         ? noteFilter.frontmatter.selectedKeys
-        : noteFilter.tags.selectedKeys
+        : noteFilterKind === 'media'
+          ? noteFilter.media.selectedKeys
+          : noteFilter.tags.selectedKeys
   const tagFilterActive = noteFilter.active
   const noteFilterSelectedKey = noteFilterSelectedKeys.join('\u0000')
   const noteFilterIndex = useMemo(
@@ -899,6 +1105,29 @@ export function useAppController(): AppController {
   })
   const userSettingsLocationStatus = userSettingsLocationController.userSettingsLocationStatus
 
+  useEffect(() => {
+    if (!storageProfileStatus) return
+    recordDiagnosticEvent('storage', 'profile-status', {
+      level:
+        storageProfileStatus.status === 'error'
+          ? 'error'
+          : storageProfileStatus.health === 'warning'
+            ? 'warning'
+            : 'info',
+      details: {
+        status: storageProfileStatus.status,
+        health: storageProfileStatus.health,
+        event: storageProfileStatus.event,
+        source: storageProfileStatus.source,
+        schemaVersion: storageProfileStatus.schemaVersion,
+        canWrite: storageProfileStatus.canWrite,
+        isDefault: storageProfileStatus.isDefault,
+        revision: storageProfileStatus.revision,
+        issueCount: storageProfileStatus.issues?.length ?? 0,
+      },
+    })
+  }, [storageProfileStatus])
+
   const trackCompletedTaskQuickDelete = (beforeMarkdown: string) => {
     completedTaskDeleteUndoCandidateRef.current = {
       beforeMarkdown: normalizeMarkdownForPersistence(beforeMarkdown),
@@ -982,19 +1211,53 @@ export function useAppController(): AppController {
 
   const scrollAisleIntoHorizontalView = useCallback((aisleId: string) => {
     const scrollNode = aisleScrollRef.current
-    if (!scrollNode || !activeNoteBodyId) return false
-    if (!scrollAislePaneIntoHorizontalView(scrollNode, aisleId)) return false
+    if (!scrollNode || !activeNoteBodyId) {
+      recordDiagnosticEvent('aisle', 'horizontal-scroll-missing-root', {
+        level: 'warning',
+        details: { aisleId, hasScrollNode: Boolean(scrollNode), activeNoteBodyId },
+      })
+      return false
+    }
+    const beforeScrollLeft = scrollNode.scrollLeft
+    if (!scrollAislePaneIntoHorizontalView(scrollNode, aisleId)) {
+      recordDiagnosticEvent('aisle', 'horizontal-scroll-missing-aisle', {
+        level: 'warning',
+        details: { aisleId, activeNoteBodyId },
+      })
+      return false
+    }
     aisleHorizontalScrollByBodyRef.current.set(activeNoteBodyId, scrollNode.scrollLeft)
     if (pendingScrollToAisleIdRef.current === aisleId) {
       pendingScrollToAisleIdRef.current = null
     }
+    recordDiagnosticEvent('aisle', 'horizontal-scroll-attempt', {
+      details: {
+        aisleId,
+        activeNoteBodyId,
+        beforeScrollLeft,
+        afterScrollLeft: scrollNode.scrollLeft,
+      },
+    })
     return true
   }, [activeNoteBodyId])
 
   const scheduleAisleFocusScroll = useCallback((aisleId: string, options?: { onInvalidAisle?: (aisleId: string) => void }) => {
     const scheduledNoteBodyId = activeNoteBodyIdRef.current || activeNoteBodyId
-    if (!scheduledNoteBodyId) return
+    if (!scheduledNoteBodyId) {
+      recordDiagnosticEvent('aisle', 'focus-scroll-schedule-skipped', {
+        level: 'warning',
+        details: { aisleId, reason: 'missing-note-body' },
+      })
+      return
+    }
     pendingScrollToAisleIdRef.current = aisleId
+    recordDiagnosticEvent('aisle', 'focus-scroll-scheduled', {
+      details: {
+        aisleId,
+        noteBodyId: scheduledNoteBodyId,
+        activeAisleId: activeAisleIdRef.current,
+      },
+    })
     scheduleFocusedAisleScroll({
       scheduled: pendingAisleFocusScrollRef.current,
       aisleId,
@@ -1053,6 +1316,117 @@ export function useAppController(): AppController {
     trashSubTabId,
     setTrashSubTabId,
   })
+
+  const trashSelectedDomainIds = useMemo(
+    () => (trashSelection.kind === 'domain' ? new Set(trashSelection.ids) : new Set<string>()),
+    [trashSelection],
+  )
+  const trashSelectedSpaceIds = useMemo(
+    () => (trashSelection.kind === 'space' ? new Set(trashSelection.ids) : new Set<string>()),
+    [trashSelection],
+  )
+  const trashSelectedParentIds = useMemo(
+    () => (trashSelection.kind === 'parent' ? new Set(trashSelection.ids) : new Set<string>()),
+    [trashSelection],
+  )
+  const trashSelectedSubTabIds = useMemo(
+    () =>
+      trashSelection.kind === 'subtab' && selectedTrashTab && trashSelection.scopeId === selectedTrashTab.id
+        ? new Set(trashSelection.ids)
+        : new Set<string>(),
+    [selectedTrashTab, trashSelection],
+  )
+  const selectedTrashTargets = useMemo(
+    () =>
+      getTrashTargetsForSelection({
+        selection: trashSelection,
+        domains: trashDomains,
+        spaces: trashSpaces,
+        parents: trashParentTabs,
+        selectedParent: selectedTrashTab,
+      }),
+    [selectedTrashTab, trashDomains, trashParentTabs, trashSelection, trashSpaces],
+  )
+  const trashContextTarget = useMemo(() => getTrashTargetFromContextMenu(contextMenu), [contextMenu])
+  const trashContextTargets = useMemo(
+    () => getEffectiveTrashContextTargets(trashContextTarget, selectedTrashTargets, trashSelection),
+    [selectedTrashTargets, trashContextTarget, trashSelection],
+  )
+
+  const clearTrashSelection = useCallback(() => {
+    setTrashSelection(EMPTY_TRASH_SELECTION)
+  }, [])
+
+  const getTrashSelectionClickModifiers = (
+    event: ReactMouseEvent<HTMLButtonElement> | ReactPointerEvent<HTMLButtonElement>,
+  ): TrashSelectionClickModifiers => ({
+    shiftKey: event.shiftKey,
+    ctrlKey: event.ctrlKey,
+    metaKey: event.metaKey,
+  })
+
+  const handleTrashSelectionClick = (
+    kind: TrashSelectionKind,
+    itemId: string,
+    orderedIds: readonly string[],
+    scopeId: string | null,
+    currentId: string | null,
+    modifiers: TrashSelectionClickModifiers,
+    onReplacement?: (replacementId: string) => void,
+  ) => {
+    if (!hasTrashSelectionModifier(modifiers)) return false
+    const nextSelection = updateTrashSelectionForClick({
+      selection: trashSelection,
+      kind,
+      itemId,
+      orderedIds,
+      currentId,
+      scopeId,
+      modifiers,
+    })
+    const replacementId = getTrashSelectionActiveReplacementId({
+      previousSelection: trashSelection,
+      nextSelection,
+      kind,
+      itemId,
+      currentId,
+      scopeId,
+      modifiers,
+    })
+    setTrashSelection(nextSelection)
+    if (replacementId) onReplacement?.(replacementId)
+    return true
+  }
+
+  useEffect(() => {
+    if (trashSelection.kind === null) return
+    const validIds =
+      trashSelection.kind === 'domain'
+        ? trashDomains.filter((domain) => domain.source === 'deleted-domain').map((domain) => domain.id)
+        : trashSelection.kind === 'space'
+          ? selectedTrashDomain && trashSelection.scopeId === selectedTrashDomain.id
+            ? trashSpaces.filter((space) => space.source !== 'live').map((space) => space.id)
+            : []
+        : trashSelection.kind === 'parent'
+          ? selectedTrashSpace && trashSelection.scopeId === selectedTrashSpace.id
+            ? trashParentTabs.map((parent) => parent.id)
+            : []
+        : selectedTrashTab && trashSelection.scopeId === selectedTrashTab.id
+          ? selectedTrashTab.subTabs.map((subTab) => subTab.id)
+          : []
+    const validIdSet = new Set(validIds)
+    const ids = trashSelection.ids.filter((id) => validIdSet.has(id))
+    if (ids.length === trashSelection.ids.length) return
+    setTrashSelection(
+      ids.length > 0
+        ? {
+            ...trashSelection,
+            ids,
+            anchorId: ids.includes(trashSelection.anchorId) ? trashSelection.anchorId : ids[0],
+          }
+        : EMPTY_TRASH_SELECTION,
+    )
+  }, [selectedTrashDomain, selectedTrashSpace, selectedTrashTab, trashDomains, trashParentTabs, trashSelection, trashSpaces])
 
   const displayContent = viewMode === 'trash' ? trashDisplay.markdown : activeContent
 
@@ -1315,6 +1689,7 @@ export function useAppController(): AppController {
     pendingTagOccurrenceRef.current = null
     setNoteFilterMenuOpen(false)
     setNoteFilterCycleByLocation({})
+    setNoteFilterCycleByOption({})
     updateNoteFilter((current) => ({ ...current, active: false }))
   }
 
@@ -1575,6 +1950,7 @@ export function useAppController(): AppController {
   const spacesGridRef = arrange.spacesGridRef
   const arrangeTrashDropRef = arrange.trashDropRef
   const isDraggingOverArrangeTrashDrop = arrange.isDraggingOverTrashDrop
+  const isTrashDropTargetActive = isDraggingOverArrangeTrashDrop || isDraggingOverTrashDrop
   const arrangeSelection = arrange.selection
   const clearArrangePressTimer = arrange.clearPressTimer
   const clearArrangeTapCandidate = arrange.clearTapCandidate
@@ -1582,6 +1958,139 @@ export function useAppController(): AppController {
   const consumeArrangeClickSuppression = arrange.consumeClickSuppression
   const enterArrangeModeFromContext = arrange.enterFromContext
   const exitArrangeMode = arrange.exit
+  const setTrashDragPreview = (preview: TrashRailDragPreview | null) => {
+    trashDragPreviewRef.current = preview
+    setTrashDragPreviewState(preview)
+  }
+
+  const finishTrashDrag = () => {
+    trashDragCandidateRef.current = null
+    setTrashDragTargets([])
+    setTrashDragPreview(null)
+    setIsDraggingOverTrashDrop(false)
+  }
+
+  const updateTrashDropTargetFromPointer = (clientX: number, clientY: number) => {
+    const rect = arrangeTrashDropRef.current?.getBoundingClientRect()
+    const overTrash = Boolean(
+      rect && clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom,
+    )
+    setIsDraggingOverTrashDrop(overTrash)
+    return overTrash
+  }
+
+  const startTrashDragCandidate = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    options: {
+      kind: TrashRailDragPreview['kind']
+      draggedId: string
+      selectedIds: string[]
+      targets: readonly DeleteTarget[]
+      label: string
+      rail: HTMLElement | null
+      selector: string
+      attributeName: string
+      getLabel: (id: string) => string | undefined
+    },
+  ) => {
+    const { targets } = options
+    if (event.button !== 0 || targets.length === 0) return
+    trashDragCandidateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      kind: options.kind,
+      draggedId: options.draggedId,
+      selectedIds: [...options.selectedIds],
+      targets: [...targets],
+      label: options.label,
+      rail: options.rail,
+      selector: options.selector,
+      attributeName: options.attributeName,
+      getLabel: options.getLabel,
+    }
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+  }
+
+  const handleTrashDragPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const candidate = trashDragCandidateRef.current
+    if (!candidate || candidate.pointerId !== event.pointerId) return
+    const distance = Math.hypot(event.clientX - candidate.startX, event.clientY - candidate.startY)
+    const currentPreview = trashDragPreviewRef.current
+    if (distance < 5 && !currentPreview) return
+    suppressTrashClickRef.current = true
+    if (!currentPreview) {
+      const rect = event.currentTarget.getBoundingClientRect()
+      const previewLeft = getArrangeDragPreviewCenteredLeft(event.clientX, rect.width)
+      const previewTop = getArrangeDragPreviewBelowPointerTop(event.clientY, rect.height)
+      const nextPreview: TrashRailDragPreview = {
+        kind: candidate.kind,
+        draggedId: candidate.draggedId,
+        selectedIds: candidate.selectedIds,
+        targets: candidate.targets,
+        label: candidate.label,
+        dragCount: candidate.selectedIds.length,
+        ghostItems: getArrangePreviewGhostItems({
+          rail: candidate.rail,
+          selector: candidate.selector,
+          attributeName: candidate.attributeName,
+          selectedIds: candidate.selectedIds,
+          draggedId: candidate.draggedId,
+          getLabel: candidate.getLabel,
+          previewLeft,
+          previewTop,
+          fallbackWidth: rect.width,
+          fallbackHeight: rect.height,
+        }),
+        currentX: event.clientX,
+        currentY: event.clientY,
+        offsetX: event.clientX - rect.left,
+        offsetY: event.clientY - rect.top,
+        width: rect.width,
+        height: rect.height,
+      }
+      setTrashDragTargets(candidate.targets)
+      setTrashDragPreview(nextPreview)
+    } else {
+      setTrashDragPreview({
+        ...currentPreview,
+        currentX: event.clientX,
+        currentY: event.clientY,
+      })
+    }
+    updateTrashDropTargetFromPointer(event.clientX, event.clientY)
+  }
+
+  const handleTrashDragPointerUp = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const candidate = trashDragCandidateRef.current
+    if (!candidate || candidate.pointerId !== event.pointerId) return
+    const currentPreview = trashDragPreviewRef.current
+    const targets = currentPreview?.targets ?? candidate.targets
+    const droppedOnTrash = Boolean(currentPreview) && updateTrashDropTargetFromPointer(event.clientX, event.clientY)
+    finishTrashDrag()
+    if (droppedOnTrash && targets.length > 0) {
+      setModal({ type: 'delete-trash-targets', targets })
+    }
+  }
+
+  const handleTrashDragPointerCancel = () => {
+    finishTrashDrag()
+  }
+
+  const consumeTrashClickSuppression = () => {
+    if (!suppressTrashClickRef.current) return false
+    suppressTrashClickRef.current = false
+    return true
+  }
+
+  const openTrashHomeNote = () => {
+    clearTrashSelection()
+    setTrashDomainId('')
+    setTrashSpaceId('')
+    setTrashTabId(TRASH_HOME_ID)
+    setTrashSubTabId(null)
+  }
+
   const moveGuidedArrangeCarryToTrash = () => {
     const prompt = arrangeDestinationPrompt
     if (!prompt) return
@@ -1673,8 +2182,6 @@ export function useAppController(): AppController {
     exitArrangeMode,
     saveActiveCursorBeforeNavigation,
     updateActiveSpaceData,
-    setTrashTabId,
-    setTrashSubTabId,
   })
   const commitRename = navigationActions.commitRename
   const shouldSkipRenameBlur = navigationActions.shouldSkipRenameBlur
@@ -3304,7 +3811,7 @@ export function useAppController(): AppController {
       if (!activeAisleIdsRef.current.includes(pending.aisleId)) return false
       activeAisleIdRef.current = pending.aisleId
       setActiveAisleId(pending.aisleId)
-      pendingScrollToAisleIdRef.current = pending.aisleId
+      scheduleAisleFocusScroll(pending.aisleId)
       if (scratchpadWorkspaceActive) {
         setState((previous) => setScratchpadActiveAisleId(previous, pending.aisleId))
       }
@@ -3313,7 +3820,14 @@ export function useAppController(): AppController {
     if (!glowActiveEditorTagOccurrence(pending)) return false
     pendingTagOccurrenceRef.current = null
     return true
-  }, [getCurrentTagFilterLocationKey, glowActiveEditorTagOccurrence, scratchpadWorkspaceActive, setState, viewMode])
+  }, [
+    getCurrentTagFilterLocationKey,
+    glowActiveEditorTagOccurrence,
+    scheduleAisleFocusScroll,
+    scratchpadWorkspaceActive,
+    setState,
+    viewMode,
+  ])
 
   const schedulePendingTagOccurrenceSelection = useCallback(() => {
     window.setTimeout(() => {
@@ -3344,7 +3858,11 @@ export function useAppController(): AppController {
       setScratchpadActive(true)
       setActiveAisleId(occurrence.aisleId)
       activeAisleIdRef.current = occurrence.aisleId
-      pendingScrollToAisleIdRef.current = occurrence.aisleId
+      if (scratchpadWorkspaceActive) {
+        scheduleAisleFocusScroll(occurrence.aisleId)
+      } else {
+        pendingScrollToAisleIdRef.current = occurrence.aisleId
+      }
       setState((previous) => setScratchpadActiveAisleId(previous, occurrence.aisleId))
       schedulePendingTagOccurrenceSelection()
       return
@@ -3362,7 +3880,7 @@ export function useAppController(): AppController {
     if (occurrence.aisleId !== activeAisleIdRef.current) {
       setActiveAisleId(occurrence.aisleId)
       activeAisleIdRef.current = occurrence.aisleId
-      pendingScrollToAisleIdRef.current = occurrence.aisleId
+      scheduleAisleFocusScroll(occurrence.aisleId)
       schedulePendingTagOccurrenceSelection()
       return
     }
@@ -3382,6 +3900,22 @@ export function useAppController(): AppController {
     setMenuOpen(false)
     setEditing(null)
 
+    if (buildNoteLocationKey(occurrence.location) === buildNoteLocationKey(SCRATCHPAD_FIND_LOCATION)) {
+      saveActiveCursorBeforeNavigation()
+      if (arrangeMode.active) exitArrangeMode()
+      setViewMode('main')
+      setScratchpadActive(true)
+      setActiveAisleId(occurrence.aisleId)
+      activeAisleIdRef.current = occurrence.aisleId
+      if (scratchpadWorkspaceActive) {
+        scheduleAisleFocusScroll(occurrence.aisleId)
+      } else {
+        pendingScrollToAisleIdRef.current = occurrence.aisleId
+      }
+      setState((previous) => setScratchpadActiveAisleId(previous, occurrence.aisleId))
+      return
+    }
+
     if (
       scratchpadWorkspaceActive ||
       buildNoteLocationKey(occurrence.location) !== activeNoteLocationKey
@@ -3393,7 +3927,7 @@ export function useAppController(): AppController {
     if (occurrence.aisleId !== activeAisleIdRef.current) {
       setActiveAisleId(occurrence.aisleId)
       activeAisleIdRef.current = occurrence.aisleId
-      pendingScrollToAisleIdRef.current = occurrence.aisleId
+      scheduleAisleFocusScroll(occurrence.aisleId)
     }
   }
 
@@ -3430,6 +3964,7 @@ export function useAppController(): AppController {
     pendingTagOccurrenceRef.current = null
     setNoteFilterMenuOpen(false)
     setNoteFilterCycleByLocation({})
+    setNoteFilterCycleByOption({})
     updateNoteFilter((current) => ({
       ...current,
       active: true,
@@ -3470,8 +4005,21 @@ export function useAppController(): AppController {
     setMenuOpen(false)
     setEditing(null)
     setNoteFilterCycleByLocation({})
+    setNoteFilterCycleByOption({})
     setNoteFilterMenuOpen(true)
     updateNoteFilter((current) => ({ ...current, active: true }))
+  }
+
+  const getCurrentNotesFilterModeState = () => ({
+    viewMode: toggleViewModeRef.current,
+    filterActive: tagFilterActive,
+    filterMenuOpen: noteFilterMenuOpen,
+  })
+
+  const exitNotesFilterFromToggleShortcut = () => {
+    if (!isNotesFilterModeActive(getCurrentNotesFilterModeState())) return false
+    exitTagFilterMode()
+    return true
   }
 
   const returnToNotesFromToggleShortcut = () => {
@@ -3492,11 +4040,20 @@ export function useAppController(): AppController {
   }
 
   const toggleNotesTrashFromShortcut = () => {
+    if (exitNotesFilterFromToggleShortcut()) return
+
     const currentToggleState = {
       viewMode: toggleViewModeRef.current,
       scratchpadActive: toggleScratchpadActiveRef.current,
     }
     const nextToggleState = getNextNotesTrashToggleState(currentToggleState)
+
+    if (
+      nextToggleState.viewMode === currentToggleState.viewMode &&
+      nextToggleState.scratchpadActive === currentToggleState.scratchpadActive
+    ) {
+      return
+    }
 
     if (nextToggleState.viewMode === 'trash') {
       toggleViewModeRef.current = nextToggleState.viewMode
@@ -3510,6 +4067,8 @@ export function useAppController(): AppController {
   }
 
   const toggleNotesScratchpadFromShortcut = () => {
+    if (exitNotesFilterFromToggleShortcut()) return
+
     const currentToggleState = {
       viewMode: toggleViewModeRef.current,
       scratchpadActive: toggleViewModeRef.current === 'main' && toggleScratchpadActiveRef.current,
@@ -3527,14 +4086,25 @@ export function useAppController(): AppController {
     returnToNotesFromToggleShortcut()
   }
 
+  const toggleNotesFilterFromShortcut = () => {
+    if (getNotesFilterToggleIntent(getCurrentNotesFilterModeState()) === 'exit-filter') {
+      exitTagFilterMode()
+      return
+    }
+
+    openNoteFilterFromMenu()
+  }
+
   const setNoteFilterKind = (kind: NoteFilterKind) => {
     setNoteFilterCycleByLocation({})
+    setNoteFilterCycleByOption({})
     updateNoteFilter((current) => ({ ...current, active: true, kind }))
   }
 
   const clearCurrentNoteFilter = () => {
     pendingTagOccurrenceRef.current = null
     setNoteFilterCycleByLocation({})
+    setNoteFilterCycleByOption({})
     updateNoteFilter((current) => ({
       ...current,
       active: true,
@@ -3547,6 +4117,28 @@ export function useAppController(): AppController {
 
   const toggleNoteFilterOption = (key: string) => {
     setNoteFilterCycleByLocation({})
+    if (noteFilterKind === 'media') {
+      const matchingOccurrences = noteFilterIndex.allOccurrences.filter((occurrence) => occurrence.key === key)
+      const selected = noteFilter.media.selectedKeys[0] === key
+      const occurrenceIndex = selected && matchingOccurrences.length > 0
+        ? (noteFilterCycleByOption[key] ?? 0) % matchingOccurrences.length
+        : 0
+      const occurrence = matchingOccurrences[occurrenceIndex]
+      const nextIndex = matchingOccurrences.length > 0 ? (occurrenceIndex + 1) % matchingOccurrences.length : 0
+      setNoteFilterCycleByOption(matchingOccurrences.length > 0 ? { [key]: nextIndex } : {})
+      updateNoteFilter((current) => ({
+        ...current,
+        active: true,
+        kind: 'media',
+        media: {
+          ...current.media,
+          selectedKeys: [key],
+        },
+      }))
+      if (occurrence) openNoteFilterOccurrence(occurrence)
+      return
+    }
+    setNoteFilterCycleByOption({})
     updateNoteFilter((current) => {
       const currentKind = current.kind
       const selectedKeys = current[currentKind].selectedKeys
@@ -3645,6 +4237,7 @@ export function useAppController(): AppController {
     if (reconciliation.changed) {
       pendingTagOccurrenceRef.current = null
       setNoteFilterCycleByLocation({})
+      setNoteFilterCycleByOption({})
       if (!reconciliation.filter.active) setNoteFilterMenuOpen(false)
       updateNoteFilter(() => reconciliation.filter)
       return
@@ -4438,6 +5031,7 @@ export function useAppController(): AppController {
   const deleteFromContext = overlayActions.deleteFromContext
   const deleteTarget = overlayActions.deleteTarget
   const restoreFromContext = overlayActions.restoreFromContext
+  const restoreTrashTargets = overlayActions.restoreTrashTargets
   const openCopyModalFromContext = overlayActions.openCopyModalFromContext
   const openCopyModalForActiveNote = overlayActions.openCopyModalForActiveNote
   const openDeduplicateModalForActiveNote = overlayActions.openDeduplicateModalForActiveNote
@@ -4447,17 +5041,21 @@ export function useAppController(): AppController {
   const getCurrentDuplicateCount = overlayActions.getCurrentDuplicateCount
   const beginRenameSpaceFromContext = overlayActions.beginRenameSpaceFromContext
   const beginRenameDomainFromContext = overlayActions.beginRenameDomainFromContext
-  const beginRenameNavigationItemFromContext = () => {
-    if (!contextMenu) return
-    if (contextMenu.type === 'tab' || contextMenu.type === 'home-tab') {
-      setEditing({ type: 'tab', id: contextMenu.tabId })
-      setContextMenu(null)
+
+  const restoreTrashTargetsFromContext = () => {
+    if (trashContextTargets.length === 0) {
+      restoreFromContext()
       return
     }
-    if (contextMenu.type === 'subtab') {
-      setEditing({ type: 'subtab', id: contextMenu.subTabId })
-      setContextMenu(null)
-    }
+    setContextMenu(null)
+    restoreTrashTargets(trashContextTargets)
+    clearTrashSelection()
+  }
+
+  const deleteTrashTargetsFromContext = () => {
+    if (trashContextTargets.length === 0) return
+    setContextMenu(null)
+    setModal({ type: 'delete-trash-targets', targets: trashContextTargets })
   }
 
   const pasteSyncedNoteAsAisleFromModal = () => {
@@ -4561,6 +5159,12 @@ export function useAppController(): AppController {
       setState(result.state)
       closeEditorEphemeraRef.current()
       pushToast(getCopyAsPasteSuccessMessage('note', 'duplicate'), 'success')
+      return
+    }
+
+    if (modal.type === 'delete-trash-targets') {
+      overlayActions.confirmModal()
+      clearTrashSelection()
       return
     }
 
@@ -4848,6 +5452,7 @@ export function useAppController(): AppController {
     toggleDomainRail: toggleDomainRailVisibility,
     toggleNotesTrash: toggleNotesTrashFromShortcut,
     toggleNotesScratchpad: toggleNotesScratchpadFromShortcut,
+    toggleNotesFilter: toggleNotesFilterFromShortcut,
     navigateHistoryBy,
     showTip,
     addTab: () => {
@@ -4943,14 +5548,22 @@ export function useAppController(): AppController {
   const draggingSpaceId =
     arrangeMode.active && arrangeDraggingItem?.type === 'space' ? arrangeDraggingItem.spaceId : null
   const topVisibleMainRail = showCompactDomains ? 'domains' : showCompactSpaces ? 'spaces' : 'parents'
+  const noteFilterRailVisibility = getNoteFilterRailVisibility({
+    filterActive: tagFilterActive,
+    index: noteFilterIndex,
+    showCompactDomains,
+    showCompactSpaces,
+  })
   const tagFilteredDomains = tagFilterActive
     ? state.domains.filter((domain) => (noteFilterIndex.domainCounts.get(domain.id) ?? 0) > 0)
     : state.domains
+  const visibleTagFilteredDomains = noteFilterRailVisibility.scratchpadOnlyFilterActive ? [] : tagFilteredDomains
   const tagFilteredSpaces = tagFilterActive
     ? state.spaces.filter(
         (space) => (noteFilterIndex.spaceCounts.get(getNoteFilterSpaceKey(state.activeDomainId, space.id)) ?? 0) > 0,
       )
     : state.spaces
+  const visibleTagFilteredSpaces = noteFilterRailVisibility.scratchpadOnlyFilterActive ? [] : tagFilteredSpaces
   const tagFilteredWorkspace = tagFilterActive
     ? {
         ...workspace,
@@ -4960,6 +5573,9 @@ export function useAppController(): AppController {
         ),
       }
     : workspace
+  const visibleTagFilteredWorkspace = noteFilterRailVisibility.scratchpadOnlyFilterActive
+    ? { ...tagFilteredWorkspace, tabs: [] }
+    : tagFilteredWorkspace
   const activeHomeTagLocation: NoteLocation = {
     domainId: state.activeDomainId,
     spaceId: activeSpace.id,
@@ -5021,7 +5637,22 @@ export function useAppController(): AppController {
     : []
   const renderTopRailControls = (viewForMenu: ViewMode = viewMode) => (
     <NavigationRailControls
-      actions={mainTopRailActions}
+      actions={
+        viewForMenu === 'trash'
+          ? [
+              {
+                key: 'trash-home',
+                label: 'trash',
+                selected: trashTabId === TRASH_HOME_ID,
+                className: `btn btn-sm tab-btn topbar-action-btn topbar-context-btn topbar-arrange-trash-btn ${
+                  trashDragTargets.length > 0 ? 'is-trash-mode' : ''
+                } ${isTrashDropTargetActive ? 'is-trash-drop-target' : ''}`,
+                buttonRef: arrangeTrashDropRef,
+                onClick: openTrashHomeNote,
+              },
+            ]
+          : mainTopRailActions
+      }
       menuOpen={menuOpen}
       showCloseControl={mainArrangementActive || (viewForMenu === 'main' && tagFilterActive)}
       viewMode={viewForMenu}
@@ -5106,9 +5737,9 @@ export function useAppController(): AppController {
         } as CSSProperties
       }
     >
-      {viewMode === 'main' && showCompactDomains && (
+      {viewMode === 'main' && noteFilterRailVisibility.renderCompactDomainRail && (
         <CompactDomainRail
-          domains={tagFilteredDomains}
+          domains={visibleTagFilteredDomains}
           activeDomainId={state.activeDomainId}
           editing={editing}
           arrangeMode={arrangeMode}
@@ -5149,9 +5780,9 @@ export function useAppController(): AppController {
         />
       )}
 
-      {viewMode === 'main' && showCompactSpaces && (
+      {viewMode === 'main' && noteFilterRailVisibility.renderCompactSpaceRail && (
         <CompactSpaceRail
-          spaces={tagFilteredSpaces}
+          spaces={visibleTagFilteredSpaces}
           activeSpaceId={state.activeSpaceId}
           editing={editing}
           arrangeMode={arrangeMode}
@@ -5203,8 +5834,12 @@ export function useAppController(): AppController {
           <TrashDomainRail
             domains={trashDomains}
             selectedDomainId={selectedTrashDomain?.id ?? null}
+            trashSelectedDomainIds={trashSelectedDomainIds}
+            domainsGridRef={domainsGridRef}
             controlsSlot={renderTopRailControls('trash')}
             onSelectDomain={(domainBucketId) => {
+              if (consumeTrashClickSuppression()) return
+              clearTrashSelection()
               const domain = trashDomains.find((candidate) => candidate.id === domainBucketId)
               if (domain?.source === 'live') {
                 setState((previous) => setActiveDomain(previous, domain.domainId))
@@ -5214,16 +5849,59 @@ export function useAppController(): AppController {
               setTrashTabId(TRASH_HOME_ID)
               setTrashSubTabId(null)
             }}
+            onSelectDeletedDomain={(event, domain, orderedIds) =>
+              handleTrashSelectionClick(
+                'domain',
+                domain.id,
+                orderedIds,
+                null,
+                selectedTrashDomain?.id ?? null,
+                getTrashSelectionClickModifiers(event),
+                (replacementId) => {
+                  setTrashDomainId(replacementId)
+                  setTrashSpaceId('')
+                  setTrashTabId(TRASH_HOME_ID)
+                  setTrashSubTabId(null)
+                },
+              )
+            }
             onOpenDeletedDomainContextMenu={(event, domain) => {
               if (!domain.deletedDomainEntryId) return
               openContextMenuForTrashDomain(event, domain.deletedDomainEntryId, domain.domainId)
             }}
+            onDeletedDomainPointerDown={(event, domain) => {
+              if (!trashSelectedDomainIds.has(domain.id)) return
+              const target = getTrashDomainTarget(domain)
+              if (!target) return
+              const selectedIds =
+                trashSelection.kind === 'domain' && trashSelection.ids.includes(domain.id)
+                  ? trashSelection.ids
+                  : [domain.id]
+              startTrashDragCandidate(event, {
+                kind: 'domain',
+                draggedId: domain.id,
+                selectedIds,
+                targets: selectedTrashTargets.length > 0 ? selectedTrashTargets : [target],
+                label: domain.title,
+                rail: domainsGridRef.current,
+                selector: '[data-trash-domain-id]',
+                attributeName: 'data-trash-domain-id',
+                getLabel: (id) => trashDomains.find((entry) => entry.id === id)?.title,
+              })
+            }}
+            onDeletedDomainPointerMove={handleTrashDragPointerMove}
+            onDeletedDomainPointerUp={handleTrashDragPointerUp}
+            onDeletedDomainPointerCancel={handleTrashDragPointerCancel}
           />
           {selectedTrashDomain && (
             <TrashSpaceRail
               spaces={trashSpaces}
               selectedSpaceId={selectedTrashSpace?.id ?? null}
+              trashSelectedSpaceIds={trashSelectedSpaceIds}
+              spacesGridRef={spacesGridRef}
               onSelectSpace={(spaceBucketId) => {
+                if (consumeTrashClickSuppression()) return
+                clearTrashSelection()
                 const space = trashSpaces.find((candidate) => candidate.id === spaceBucketId)
                 if (space?.source === 'live') {
                   setState((previous) => setActiveSpaceInActiveDomain(setActiveDomain(previous, space.domainId), space.spaceId))
@@ -5232,6 +5910,21 @@ export function useAppController(): AppController {
                 setTrashTabId(TRASH_HOME_ID)
                 setTrashSubTabId(null)
               }}
+              onSelectDeletedSpace={(event, space, orderedIds) =>
+                handleTrashSelectionClick(
+                  'space',
+                  space.id,
+                  orderedIds,
+                  selectedTrashDomain.id,
+                  selectedTrashSpace?.id ?? null,
+                  getTrashSelectionClickModifiers(event),
+                  (replacementId) => {
+                    setTrashSpaceId(replacementId)
+                    setTrashTabId(TRASH_HOME_ID)
+                    setTrashSubTabId(null)
+                  },
+                )
+              }
               onOpenDeletedSpaceContextMenu={(event, space) => {
                 if (space.source === 'live') return
                 if (space.source === 'deleted-space' && !space.deletedSpaceEntryId) return
@@ -5243,105 +5936,181 @@ export function useAppController(): AppController {
                   spaceId: space.spaceId,
                 })
               }}
+              onDeletedSpacePointerDown={(event, space) => {
+                if (!trashSelectedSpaceIds.has(space.id)) return
+                const target = getTrashSpaceTarget(space)
+                if (!target) return
+                const selectedIds =
+                  trashSelection.kind === 'space' && trashSelection.ids.includes(space.id)
+                    ? trashSelection.ids
+                    : [space.id]
+                startTrashDragCandidate(event, {
+                  kind: 'space',
+                  draggedId: space.id,
+                  selectedIds,
+                  targets: selectedTrashTargets.length > 0 ? selectedTrashTargets : [target],
+                  label: space.title,
+                  rail: spacesGridRef.current,
+                  selector: '[data-trash-space-id]',
+                  attributeName: 'data-trash-space-id',
+                  getLabel: (id) => trashSpaces.find((entry) => entry.id === id)?.title,
+                })
+              }}
+              onDeletedSpacePointerMove={handleTrashDragPointerMove}
+              onDeletedSpacePointerUp={handleTrashDragPointerUp}
+              onDeletedSpacePointerCancel={handleTrashDragPointerCancel}
             />
           )}
         </>
       )}
 
-      <TopBar
-        viewMode={viewMode}
-        workspace={tagFilteredWorkspace}
-        activeTab={activeTab}
-        editing={editing}
-        arrangeMode={arrangeMode}
-        tooltipsDisabled={mainArrangementActive}
-        tagFilterActive={tagFilterActive}
-        tagFilterControl={topVisibleMainRail === 'parents' ? tagFilterControl : null}
-        getTabLabel={(tab) =>
-          appendVisibleNoteFilterCount(
-            tagFilterActive,
-            tab.title,
-            noteFilterIndex.parentCounts.get(getNoteFilterParentKey(state.activeDomainId, activeSpace.id, tab.id)) ?? 0,
-          )
-        }
-        showGlobalControls={
-          viewMode === 'main'
-            ? topVisibleMainRail === 'parents'
-            : viewMode === 'trash'
-              ? false
-              : true
-        }
-        isDraggingArrangeItem={isDraggingArrangeItem}
-        primaryTabRailRef={primaryTabRailRef}
-        isNoteWorkspaceView={isNoteWorkspaceView}
-        arrangeableParentTabClassName={arrangeableParentTabClassName}
-        guidedParentRailTarget={guidedParentRailTarget}
-        arrangeControlsDisabled={arrangeControlsDisabled}
-        draggingParentTabId={draggingParentTabId}
-        draggingSubTabId={draggingSubTabId}
-        arrangeTrashDropRef={arrangeTrashDropRef}
-        isArrangeTrashDropTarget={isDraggingOverArrangeTrashDrop}
-        trashParentTabs={trashParentTabs}
-        trashTabId={trashTabId}
-        menuOpen={menuOpen}
-        spaceRailVisible={state.ui.alwaysShowSpaces ?? false}
-        domainRailVisible={state.ui.alwaysShowDomains ?? false}
-        onAutoSizeRenameInput={autoSizeRenameInput}
-        onShouldSkipRenameBlur={shouldSkipRenameBlur}
-        onIsPendingCreatedRename={isPendingCreatedRename}
-        onCommitRename={commitRename}
-        onCancelRename={cancelRename}
-        onRenameDraftChange={trackRenameDraft}
-        onClearRenameDraft={clearRenameDraft}
-        arrangeSelectedParentIds={arrangeSelectedParentIds}
-        onHandleArrangeParentSelectionClick={handleArrangeParentSelectionClick}
-        onClearArrangeSelection={clearArrangeSelection}
-        onConsumeArrangeClickSuppression={consumeArrangeClickSuppression}
-        onSelectTab={(tabId, event) => {
-          if (tagFilterActive) {
-            openParentFromTagFilter(tabId)
-            return
+      {(viewMode !== 'main' || noteFilterRailVisibility.renderParentRail) && (
+        <TopBar
+          viewMode={viewMode}
+          workspace={visibleTagFilteredWorkspace}
+          activeTab={activeTab}
+          editing={editing}
+          arrangeMode={arrangeMode}
+          tooltipsDisabled={mainArrangementActive}
+          tagFilterActive={tagFilterActive}
+          tagFilterControl={topVisibleMainRail === 'parents' ? tagFilterControl : null}
+          getTabLabel={(tab) =>
+            appendVisibleNoteFilterCount(
+              tagFilterActive,
+              tab.title,
+              noteFilterIndex.parentCounts.get(getNoteFilterParentKey(state.activeDomainId, activeSpace.id, tab.id)) ?? 0,
+            )
           }
-          selectParentTabFromTopBar(tabId, event)
-        }}
-        onBeginEdit={setEditing}
-        onOpenContextMenuForTab={openContextMenuForTab}
-        onStartArrangeDragSeed={startArrangeDragSeed}
-        onStartArrangeTapCandidate={startArrangeTapCandidate}
-        onStartArrangePress={startArrangePress}
-        onHandleArrangeTabPointerMove={handleArrangeTabPointerMove}
-        onGuidedParentPointerMove={updateGuidedParentRailTarget}
-        onGuidedParentPointerLeave={clearGuidedParentRailTarget}
-        onHandleArrangeTabPointerUp={handleArrangeTabPointerUp}
-        onClearArrangePressTimer={clearArrangePressTimer}
-        onCancelArrangeTabPointerDrag={cancelArrangeTabPointerDrag}
-        onSetTrashTabId={setTrashTabId}
-        onSetTrashSubTabId={setTrashSubTabId}
-        onOpenContextMenuForTrashTab={openContextMenuForTrashTab}
-        onAddTab={tagFilterActive ? () => undefined : addTab}
-        tabRenameEnterBehavior={tabRenameEnterBehavior}
-        onOpenParentSortModal={() => setModal({ type: 'sort-tabs', target: 'parents' })}
-        onExitArrangeMode={exitArrangeMode}
-        onAdvanceArrangeHierarchyReveal={advanceArrangeHierarchyReveal}
-        onCloseSettingsView={closeSettingsView}
-        onSetMenuOpen={setMenuOpen}
-        onToggleSpaceRail={toggleSpaceRailVisibility}
-        onToggleDomainRail={toggleDomainRailVisibility}
-        onToggleTrash={toggleTrashView}
-        onOpenMessages={openMessagesView}
-        onOpenSettings={openSettingsWithoutMentionMenu}
-        onOpenAbout={openAboutView}
-        onOpenFilter={openNoteFilterFromMenu}
-        settingsSection={settingsController.section}
-        onSettingsSectionChange={settingsController.changeSection}
-        onExitTagFilterMode={exitTagFilterMode}
-        messagesSection={messagesSection}
-        messagesCount={unresolvedMessageCount}
-        toastHistoryCount={toastHistoryCount}
-        onMessagesSectionChange={setMessagesSection}
-      />
+          showGlobalControls={
+            viewMode === 'main'
+              ? topVisibleMainRail === 'parents'
+              : viewMode === 'trash'
+                ? false
+                : true
+          }
+          isDraggingArrangeItem={isDraggingArrangeItem}
+          primaryTabRailRef={primaryTabRailRef}
+          isNoteWorkspaceView={isNoteWorkspaceView}
+          arrangeableParentTabClassName={arrangeableParentTabClassName}
+          guidedParentRailTarget={guidedParentRailTarget}
+          arrangeControlsDisabled={arrangeControlsDisabled}
+          draggingParentTabId={draggingParentTabId}
+          draggingSubTabId={draggingSubTabId}
+          arrangeTrashDropRef={arrangeTrashDropRef}
+          isArrangeTrashDropTarget={isDraggingOverArrangeTrashDrop}
+          trashParentTabs={trashParentTabs}
+          trashTabId={trashTabId}
+          menuOpen={menuOpen}
+          spaceRailVisible={state.ui.alwaysShowSpaces ?? false}
+          domainRailVisible={state.ui.alwaysShowDomains ?? false}
+          onAutoSizeRenameInput={autoSizeRenameInput}
+          onShouldSkipRenameBlur={shouldSkipRenameBlur}
+          onIsPendingCreatedRename={isPendingCreatedRename}
+          onCommitRename={commitRename}
+          onCancelRename={cancelRename}
+          onRenameDraftChange={trackRenameDraft}
+          onClearRenameDraft={clearRenameDraft}
+          arrangeSelectedParentIds={arrangeSelectedParentIds}
+          trashSelectedParentIds={trashSelectedParentIds}
+          onHandleArrangeParentSelectionClick={handleArrangeParentSelectionClick}
+          onHandleTrashParentSelectionClick={(event, trashParent, orderedIds) =>
+            handleTrashSelectionClick(
+              'parent',
+              trashParent.id,
+              orderedIds,
+              selectedTrashSpace?.id ?? null,
+              selectedTrashTab?.id ?? null,
+              getTrashSelectionClickModifiers(event),
+              (replacementId) => {
+                setTrashTabId(replacementId)
+                setTrashSubTabId(null)
+              },
+            )
+          }
+          onConsumeTrashClickSuppression={consumeTrashClickSuppression}
+          onClearArrangeSelection={clearArrangeSelection}
+          onConsumeArrangeClickSuppression={consumeArrangeClickSuppression}
+          onSelectTab={(tabId, event) => {
+            if (tagFilterActive) {
+              openParentFromTagFilter(tabId)
+              return
+            }
+            selectParentTabFromTopBar(tabId, event)
+          }}
+          onBeginEdit={setEditing}
+          onOpenContextMenuForTab={openContextMenuForTab}
+          onStartArrangeDragSeed={startArrangeDragSeed}
+          onStartArrangeTapCandidate={startArrangeTapCandidate}
+          onStartArrangePress={startArrangePress}
+          onHandleArrangeTabPointerMove={handleArrangeTabPointerMove}
+          onGuidedParentPointerMove={updateGuidedParentRailTarget}
+          onGuidedParentPointerLeave={clearGuidedParentRailTarget}
+          onHandleArrangeTabPointerUp={handleArrangeTabPointerUp}
+          onClearArrangePressTimer={clearArrangePressTimer}
+          onCancelArrangeTabPointerDrag={cancelArrangeTabPointerDrag}
+          onSetTrashTabId={(tabId) => {
+            clearTrashSelection()
+            setTrashTabId(tabId)
+          }}
+          onSetTrashSubTabId={(subTabId) => {
+            clearTrashSelection()
+            setTrashSubTabId(subTabId)
+          }}
+          onOpenContextMenuForTrashTab={openContextMenuForTrashTab}
+          onTrashParentPointerDown={(event, trashParent) => {
+            if (!trashSelectedParentIds.has(trashParent.id)) return
+            const target = getTrashParentTarget(trashParent)
+            const selectedIds =
+              trashSelection.kind === 'parent' && trashSelection.ids.includes(trashParent.id)
+                ? trashSelection.ids
+                : [trashParent.id]
+            startTrashDragCandidate(event, {
+              kind: 'parent',
+              draggedId: trashParent.id,
+              selectedIds,
+              targets: selectedTrashTargets.length > 0 ? selectedTrashTargets : [target],
+              label: trashParent.title,
+              rail: primaryTabRailRef.current,
+              selector: '[data-trash-parent-id]',
+              attributeName: 'data-trash-parent-id',
+              getLabel: (id) => trashParentTabs.find((entry) => entry.id === id)?.title,
+            })
+          }}
+          onTrashParentPointerMove={handleTrashDragPointerMove}
+          onTrashParentPointerUp={handleTrashDragPointerUp}
+          onTrashParentPointerCancel={handleTrashDragPointerCancel}
+          onAddTab={tagFilterActive ? () => undefined : addTab}
+          tabRenameEnterBehavior={tabRenameEnterBehavior}
+          onOpenParentSortModal={() => setModal({ type: 'sort-tabs', target: 'parents' })}
+          onExitArrangeMode={exitArrangeMode}
+          onAdvanceArrangeHierarchyReveal={advanceArrangeHierarchyReveal}
+          onCloseSettingsView={closeSettingsView}
+          onSetMenuOpen={setMenuOpen}
+          onToggleSpaceRail={toggleSpaceRailVisibility}
+          onToggleDomainRail={toggleDomainRailVisibility}
+          onToggleTrash={toggleTrashView}
+          onOpenMessages={openMessagesView}
+          onOpenSettings={openSettingsWithoutMentionMenu}
+          onOpenAbout={openAboutView}
+          onOpenFilter={openNoteFilterFromMenu}
+          settingsSection={settingsController.section}
+          onSettingsSectionChange={settingsController.changeSection}
+          onExitTagFilterMode={exitTagFilterMode}
+          messagesSection={messagesSection}
+          messagesCount={unresolvedMessageCount}
+          toastHistoryCount={toastHistoryCount}
+          diagnosticLogCount={diagnosticLogEntries.length}
+          diagnosticLevelFilter={diagnosticLevelFilter}
+          diagnosticDisplayLimit={diagnosticDisplayLimit}
+          onMessagesSectionChange={setMessagesSection}
+          onDiagnosticLevelFilterChange={setDiagnosticLevelFilter}
+          onDiagnosticDisplayLimitChange={setDiagnosticDisplayLimit}
+        />
+      )}
 
       {tabArrangeDragPreview && <TabArrangeDragPreviewOverlay preview={tabArrangeDragPreview} />}
+
+      {trashDragPreview && <TrashRailDragPreviewOverlay preview={trashDragPreview} />}
 
       {arrangeDestinationPrompt && (
         <GuidedTabArrangeCarryPreview preview={arrangeDestinationPrompt.carriedPreview} />
@@ -5474,6 +6243,8 @@ export function useAppController(): AppController {
             arrangeMode={arrangeMode}
             tooltipsDisabled={mainArrangementActive}
             tagFilterActive={tagFilterActive}
+            showNoteWorkspaceTabs={noteFilterRailVisibility.showNoteWorkspaceTabs}
+            showHomeTab={!(tagFilterActive && activeHomeTagCount <= 0)}
             getHomeLabel={() => appendVisibleNoteFilterCount(tagFilterActive, 'home', activeHomeTagCount)}
             getSubTabLabel={(subTab) => {
               const location: NoteLocation = {
@@ -5505,7 +6276,19 @@ export function useAppController(): AppController {
             onRenameDraftChange={trackRenameDraft}
             onClearRenameDraft={clearRenameDraft}
             arrangeSelectedSubTabIds={arrangeSelectedSubTabIds}
+            trashSelectedSubTabIds={trashSelectedSubTabIds}
             onHandleArrangeSubTabSelectionClick={handleArrangeSubTabSelectionClick}
+            onHandleTrashSubTabSelectionClick={(event, trashParent, subTabId, orderedIds) =>
+              handleTrashSelectionClick(
+                'subtab',
+                subTabId,
+                orderedIds,
+                trashParent.id,
+                selectedTrashSubTab?.id ?? null,
+                getTrashSelectionClickModifiers(event),
+                (replacementId) => setTrashSubTabId(replacementId),
+              )
+            }
             onClearArrangeSelection={clearArrangeSelection}
             onConsumeArrangeClickSuppression={consumeArrangeClickSuppression}
             onSelectParentHomeTab={tagFilterActive ? selectParentHomeFromTagFilter : selectParentHomeTabFromRail}
@@ -5523,8 +6306,35 @@ export function useAppController(): AppController {
             onClearArrangePressTimer={clearArrangePressTimer}
             onClearArrangeTapCandidate={clearArrangeTapCandidate}
             onCancelArrangeTabPointerDrag={cancelArrangeTabPointerDrag}
-            onSetTrashSubTabId={setTrashSubTabId}
+            onSetTrashSubTabId={(subTabId) => {
+              if (consumeTrashClickSuppression()) return
+              clearTrashSelection()
+              setTrashSubTabId(subTabId)
+            }}
+            onOpenContextMenuForTrashTab={openContextMenuForTrashTab}
             onOpenContextMenuForTrashSubTab={openContextMenuForTrashSubTab}
+            onTrashSubTabPointerDown={(event, trashParent, subTabId) => {
+              if (!trashSelectedSubTabIds.has(subTabId)) return
+              const target = getTrashSubTabTarget(trashParent, subTabId)
+              const selectedIds =
+                trashSelection.kind === 'subtab' && trashSelection.ids.includes(subTabId)
+                  ? trashSelection.ids
+                  : [subTabId]
+              startTrashDragCandidate(event, {
+                kind: 'subtab',
+                draggedId: subTabId,
+                selectedIds,
+                targets: selectedTrashTargets.length > 0 ? selectedTrashTargets : [target],
+                label: trashParent.subTabs.find((subTab) => subTab.id === subTabId)?.title ?? 'tab',
+                rail: subTabRailRef.current,
+                selector: '[data-trash-subtab-id]',
+                attributeName: 'data-trash-subtab-id',
+                getLabel: (id) => trashParent.subTabs.find((subTab) => subTab.id === id)?.title,
+              })
+            }}
+            onTrashSubTabPointerMove={handleTrashDragPointerMove}
+            onTrashSubTabPointerUp={handleTrashDragPointerUp}
+            onTrashSubTabPointerCancel={handleTrashDragPointerCancel}
             onAddSubTab={() => {
               if (tagFilterActive) return
               setScratchpadActive(false)
@@ -5547,6 +6357,12 @@ export function useAppController(): AppController {
               section={messagesSection}
               messages={state.messages ?? []}
               toastHistory={state.toastHistory ?? []}
+              diagnosticDays={diagnosticLogDays}
+              selectedDiagnosticDay={selectedDiagnosticDay}
+              diagnosticEntries={diagnosticLogEntries}
+              diagnosticLevelFilter={diagnosticLevelFilter}
+              diagnosticDisplayLimit={diagnosticDisplayLimit}
+              onDiagnosticDayChange={changeDiagnosticDay}
               onDismissMessage={dismissMessage}
               onOpenRecoveredNotebookLocation={openRecoveredNotebookLocationFromMessage}
               onOpenLocation={openMessageLocation}
@@ -5609,12 +6425,29 @@ export function useAppController(): AppController {
               onActivateAisle={(editorKey) => {
                 const targetAisleId = getAisleIdFromAisleEditorKey(editorKey)
                 if (!targetAisleId || !activeAisleIdsRef.current.includes(targetAisleId) || isPendingCreatedRenameActive()) {
+                  recordDiagnosticEvent('aisle', 'pointer-activation-blocked', {
+                    level: 'warning',
+                    details: {
+                      editorKey,
+                      targetAisleId,
+                      activeAisleIds: activeAisleIdsRef.current,
+                      pendingCreatedRename: isPendingCreatedRenameActive(),
+                    },
+                  })
                   return
                 }
                 pendingMouseAisleActivationRef.current = { aisleId: targetAisleId, settled: false }
                 const shouldFocus = shouldFocusAislePointerActivation(activeAisleIdRef.current, targetAisleId)
                 pendingFocusToAisleIdRef.current = null
                 pendingCursorRestoreRef.current = null
+                recordDiagnosticEvent('aisle', 'pointer-activation', {
+                  details: {
+                    editorKey,
+                    targetAisleId,
+                    previousAisleId: activeAisleIdRef.current,
+                    shouldFocus,
+                  },
+                })
                 activateAisleEditor(editorKey, {
                   flushPrevious: true,
                   focus: shouldFocus,
@@ -5788,7 +6621,6 @@ export function useAppController(): AppController {
         onDuplicateSpace={duplicateSpaceFromContext}
         onRenameSpace={beginRenameSpaceFromContext}
         onRenameDomain={beginRenameDomainFromContext}
-        onRenameNavigationItem={beginRenameNavigationItemFromContext}
         onCopyImage={() => {
           setContextMenu(null)
           void copySelectedImageToClipboard()
@@ -5810,7 +6642,9 @@ export function useAppController(): AppController {
           openCopyModalFromContext()
         }}
         onMoveToTrash={deleteFromContext}
-        onRestoreFromTrash={restoreFromContext}
+        onRestoreFromTrash={restoreTrashTargetsFromContext}
+        onDeleteFromTrash={deleteTrashTargetsFromContext}
+        trashContextTargetCount={Math.max(1, trashContextTargets.length)}
         onEditorClipboard={runEditorContextClipboardAction}
         onEditorCommand={runEditorContextCommand}
         onEditorInsertLink={openEditorContextLinkModal}

@@ -1293,7 +1293,9 @@ export function ModalHost({
             <button
               type="button"
               className={`btn btn-sm ${
-                modal.type === 'delete-target' || modal.type === 'trash-delete-all' ? 'app-danger-btn' : 'modal-primary-btn'
+                modal.type === 'delete-target' || modal.type === 'delete-trash-targets' || modal.type === 'trash-delete-all'
+                  ? 'app-danger-btn'
+                  : 'modal-primary-btn'
               }`}
               onClick={runPrimaryModalAction}
             >

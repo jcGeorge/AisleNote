@@ -321,7 +321,7 @@ export function CompactSpaceRail({
                   onOpenContextMenu(event, space.id, contextPolicy.forceMenu ? { force: true } : undefined)
                 }}
                 onDoubleClick={(event) => {
-                  if (arrangeMode.active) return
+                  if (arrangeMode.active || tagFilterActive) return
                   event.preventDefault()
                   event.stopPropagation()
                   onBeginEdit({ type: 'space', id: space.id })
@@ -570,7 +570,7 @@ export function CompactDomainRail({
                   onOpenContextMenu(event, domain.id, contextPolicy.forceMenu ? { force: true } : undefined)
                 }}
                 onDoubleClick={(event) => {
-                  if (arrangeMode.active) return
+                  if (arrangeMode.active || tagFilterActive) return
                   event.preventDefault()
                   event.stopPropagation()
                   onBeginEdit({ type: 'domain', id: domain.id })
@@ -659,32 +659,70 @@ export function CompactDomainRail({
 export function TrashDomainRail({
   domains,
   selectedDomainId,
+  trashSelectedDomainIds,
+  domainsGridRef,
   controlsSlot,
   onSelectDomain,
+  onSelectDeletedDomain,
   onOpenDeletedDomainContextMenu,
+  onDeletedDomainPointerDown,
+  onDeletedDomainPointerMove,
+  onDeletedDomainPointerUp,
+  onDeletedDomainPointerCancel,
 }: {
   domains: TrashDomainBucket[]
   selectedDomainId: string | null
+  trashSelectedDomainIds?: ReadonlySet<string>
+  domainsGridRef?: RefObject<HTMLDivElement | null>
   controlsSlot?: ReactNode
   onSelectDomain: (domainBucketId: string) => void
+  onSelectDeletedDomain?: (
+    event: MouseEvent<HTMLButtonElement>,
+    domain: TrashDomainBucket,
+    orderedIds: readonly string[],
+  ) => boolean
   onOpenDeletedDomainContextMenu: (event: MouseEvent<HTMLButtonElement>, domain: TrashDomainBucket) => void
+  onDeletedDomainPointerDown?: (event: ReactPointerEvent<HTMLButtonElement>, domain: TrashDomainBucket) => void
+  onDeletedDomainPointerMove?: (event: ReactPointerEvent<HTMLButtonElement>) => void
+  onDeletedDomainPointerUp?: (event: ReactPointerEvent<HTMLButtonElement>) => void
+  onDeletedDomainPointerCancel?: () => void
 }) {
+  const selectableDomainIds = domains
+    .filter((domain) => domain.source === 'deleted-domain')
+    .map((domain) => domain.id)
   return (
     <header className="compact-scope-rail compact-domain-rail trash-domain-rail">
       <div className="tabbar-row compact-scope-row">
-        <div className="compact-scope-scroll" role="tablist" aria-label="Trash domains">
+        <div ref={domainsGridRef} className="compact-scope-scroll" role="tablist" aria-label="Trash domains">
           {domains.map((domain) => (
             <button
               key={domain.id}
               type="button"
+              data-trash-domain-id={domain.id}
               aria-selected={domain.id === selectedDomainId}
               className={`compact-scope-btn compact-domain-btn trash-domain-btn ${
                 domain.id === selectedDomainId ? 'is-active' : ''
-              } ${domain.source === 'deleted-domain' ? 'is-deleted' : ''}`}
-              onClick={() => onSelectDomain(domain.id)}
+              } ${domain.source === 'deleted-domain' ? 'is-deleted' : ''} ${
+                trashSelectedDomainIds?.has(domain.id) ? 'is-trash-selected' : ''
+              }`}
+              onClick={(event) => {
+                if (
+                  domain.source === 'deleted-domain' &&
+                  onSelectDeletedDomain?.(event, domain, selectableDomainIds)
+                ) {
+                  return
+                }
+                onSelectDomain(domain.id)
+              }}
               onContextMenu={(event) => {
                 if (domain.source === 'deleted-domain') onOpenDeletedDomainContextMenu(event, domain)
               }}
+              onPointerDown={(event) => {
+                if (domain.source === 'deleted-domain') onDeletedDomainPointerDown?.(event, domain)
+              }}
+              onPointerMove={onDeletedDomainPointerMove}
+              onPointerUp={onDeletedDomainPointerUp}
+              onPointerCancel={onDeletedDomainPointerCancel}
             >
               {domain.title}
             </button>
@@ -699,30 +737,61 @@ export function TrashDomainRail({
 export function TrashSpaceRail({
   spaces,
   selectedSpaceId,
+  trashSelectedSpaceIds,
+  spacesGridRef,
   onSelectSpace,
+  onSelectDeletedSpace,
   onOpenDeletedSpaceContextMenu,
+  onDeletedSpacePointerDown,
+  onDeletedSpacePointerMove,
+  onDeletedSpacePointerUp,
+  onDeletedSpacePointerCancel,
 }: {
   spaces: TrashSpaceBucket[]
   selectedSpaceId: string | null
+  trashSelectedSpaceIds?: ReadonlySet<string>
+  spacesGridRef?: RefObject<HTMLDivElement | null>
   onSelectSpace: (spaceBucketId: string) => void
+  onSelectDeletedSpace?: (
+    event: MouseEvent<HTMLButtonElement>,
+    space: TrashSpaceBucket,
+    orderedIds: readonly string[],
+  ) => boolean
   onOpenDeletedSpaceContextMenu: (event: MouseEvent<HTMLButtonElement>, space: TrashSpaceBucket) => void
+  onDeletedSpacePointerDown?: (event: ReactPointerEvent<HTMLButtonElement>, space: TrashSpaceBucket) => void
+  onDeletedSpacePointerMove?: (event: ReactPointerEvent<HTMLButtonElement>) => void
+  onDeletedSpacePointerUp?: (event: ReactPointerEvent<HTMLButtonElement>) => void
+  onDeletedSpacePointerCancel?: () => void
 }) {
+  const selectableSpaceIds = spaces.filter((space) => space.source !== 'live').map((space) => space.id)
   return (
     <header className="compact-scope-rail compact-space-rail trash-space-rail">
       <div className="tabbar-row compact-scope-row">
-        <div className="compact-scope-scroll" role="tablist" aria-label="Trash spaces">
+        <div ref={spacesGridRef} className="compact-scope-scroll" role="tablist" aria-label="Trash spaces">
           {spaces.map((space) => (
             <button
               key={space.id}
               type="button"
+              data-trash-space-id={space.id}
               aria-selected={space.id === selectedSpaceId}
               className={`compact-scope-btn compact-space-btn trash-space-btn ${
                 space.id === selectedSpaceId ? 'is-active' : ''
-              } ${space.source !== 'live' ? 'is-deleted' : ''}`}
-              onClick={() => onSelectSpace(space.id)}
+              } ${space.source !== 'live' ? 'is-deleted' : ''} ${
+                trashSelectedSpaceIds?.has(space.id) ? 'is-trash-selected' : ''
+              }`}
+              onClick={(event) => {
+                if (space.source !== 'live' && onSelectDeletedSpace?.(event, space, selectableSpaceIds)) return
+                onSelectSpace(space.id)
+              }}
               onContextMenu={(event) => {
                 if (space.source !== 'live') onOpenDeletedSpaceContextMenu(event, space)
               }}
+              onPointerDown={(event) => {
+                if (space.source !== 'live') onDeletedSpacePointerDown?.(event, space)
+              }}
+              onPointerMove={onDeletedSpacePointerMove}
+              onPointerUp={onDeletedSpacePointerUp}
+              onPointerCancel={onDeletedSpacePointerCancel}
             >
               {space.title}
             </button>

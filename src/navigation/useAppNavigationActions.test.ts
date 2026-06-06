@@ -131,8 +131,6 @@ function useRenameHarness(options: {
     exitArrangeMode: noop,
     saveActiveCursorBeforeNavigation: noop,
     updateActiveSpaceData: noop,
-    setTrashTabId: vi.fn(),
-    setTrashSubTabId: vi.fn(),
   })
 
   return {
@@ -181,8 +179,6 @@ describe('app navigation rename actions', () => {
         calls.push('update-workspace')
         latestWorkspace = updater(latestWorkspace)
       },
-      setTrashTabId: vi.fn(),
-      setTrashSubTabId: vi.fn(),
     })
 
     actions.commitRename('subtab', 'sub-1', 'help! 🥺', { focusEditor: false })

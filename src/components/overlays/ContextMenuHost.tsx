@@ -49,7 +49,6 @@ type ContextMenuHostProps = {
   onDuplicateSpace: () => void
   onRenameSpace: () => void
   onRenameDomain: () => void
-  onRenameNavigationItem?: () => void
   onCopyImage: () => void
   onRevealMediaFile: () => void
   onOpenInternalNoteLink: () => void
@@ -58,6 +57,8 @@ type ContextMenuHostProps = {
   onOpenCopyModal: () => void
   onMoveToTrash: () => void
   onRestoreFromTrash: () => void
+  onDeleteFromTrash?: () => void
+  trashContextTargetCount?: number
   onEditorClipboard: (action: EditorClipboardAction, destination?: EditorPasteDestination) => void
   onEditorCommand: (command: string, payload?: Record<string, unknown>) => void
   onEditorInsertLink: (mode: LinkInsertMode | null) => void
@@ -181,7 +182,6 @@ export function ContextMenuHost({
   onDuplicateSpace,
   onRenameSpace,
   onRenameDomain,
-  onRenameNavigationItem = () => undefined,
   onCopyImage,
   onRevealMediaFile,
   onOpenInternalNoteLink,
@@ -190,6 +190,8 @@ export function ContextMenuHost({
   onOpenCopyModal,
   onMoveToTrash,
   onRestoreFromTrash,
+  onDeleteFromTrash = () => undefined,
+  trashContextTargetCount = 1,
   onEditorClipboard,
   onEditorCommand,
   onEditorInsertLink,
@@ -277,6 +279,7 @@ export function ContextMenuHost({
     </SubMenu>
   )
   const aisleCopyAsMenu = contextMenu.type === 'subtab' ? undefined : copyAsMenu?.aisle
+  if (tagFilterNavigationMenu && contextMenu.type === 'home-tab') return null
 
   return (
     <div
@@ -288,19 +291,6 @@ export function ContextMenuHost({
     >
       {tagFilterNavigationMenu ? (
         <>
-          {contextMenu.type === 'space' ? (
-            <button type="button" className="tab-context-delete" onClick={onRenameSpace}>
-              rename
-            </button>
-          ) : contextMenu.type === 'domain' ? (
-            <button type="button" className="tab-context-delete" onClick={onRenameDomain}>
-              rename
-            </button>
-          ) : (
-            <button type="button" className="tab-context-delete" onClick={onRenameNavigationItem}>
-              rename
-            </button>
-          )}
           {contextMenu.type !== 'home-tab' && (
             <button type="button" className="tab-context-delete" onClick={onMoveToTrash}>
               trash it
@@ -381,7 +371,7 @@ export function ContextMenuHost({
           <MenuButton onClick={() => onEditorInsertLink(null)}>add link</MenuButton>
           <MenuSeparator />
           <MenuButton onClick={onEditorFindReplace}>find & replace</MenuButton>
-          <MenuButton onClick={onOpenCopyModal}>make copy</MenuButton>
+          <MenuButton onClick={onOpenCopyModal}>make this a copy of</MenuButton>
           {renderCopyAsSubmenu('note', copyAsMenu?.note)}
           {renderCopyAsSubmenu('aisle', aisleCopyAsMenu)}
           <MenuSeparator />
@@ -446,13 +436,16 @@ export function ContextMenuHost({
         contextMenu.type === 'trash-space' ? (
         <>
           <button type="button" className="tab-context-delete" onClick={onRestoreFromTrash}>
-            restore
+            {trashContextTargetCount > 1 ? 'restore selected' : 'restore'}
+          </button>
+          <button type="button" className="tab-context-delete" onClick={onDeleteFromTrash}>
+            {trashContextTargetCount > 1 ? 'delete selected for real' : 'delete for real'}
           </button>
         </>
       ) : contextMenu.type === 'home-tab' ? (
         <>
           <button type="button" className="tab-context-delete" onClick={onOpenCopyModal}>
-            make copy
+            make this a copy of
           </button>
           {renderCopyAsSubmenu('note', copyAsMenu?.note)}
           {renderCopyAsSubmenu('aisle', aisleCopyAsMenu)}
@@ -463,7 +456,7 @@ export function ContextMenuHost({
             arrange
           </button>
           <button type="button" className="tab-context-delete" onClick={onOpenCopyModal}>
-            make copy
+            make this a copy of
           </button>
           {renderCopyAsSubmenu('note', copyAsMenu?.note)}
           {renderCopyAsSubmenu('aisle', aisleCopyAsMenu)}

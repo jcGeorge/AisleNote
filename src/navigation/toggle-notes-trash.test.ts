@@ -33,10 +33,10 @@ describe('notes/trash toggle intent', () => {
     expect(state).toEqual({ viewMode: 'trash', scratchpadActive: false })
   })
 
-  it('clears scratchpad when opening trash from scratchpad', () => {
+  it('keeps scratchpad active when toggling notes/trash from scratchpad', () => {
     expect(getNextNotesTrashToggleState({ viewMode: 'main', scratchpadActive: true })).toEqual({
-      viewMode: 'trash',
-      scratchpadActive: false,
+      viewMode: 'main',
+      scratchpadActive: true,
     })
   })
 })

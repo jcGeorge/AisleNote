@@ -29,6 +29,7 @@ describe('NoteFilterControl', () => {
     expect(html).toContain('tags')
     expect(html).toContain('synced copies')
     expect(html).toContain('frontmatter')
+    expect(html).toContain('media')
     expect(html).toContain('clear filter')
     expect(html).toContain('A-Z')
     expect(html).toContain('occurrences')
@@ -75,5 +76,63 @@ describe('NoteFilterControl', () => {
     expect(syncedHtml).toContain('synced filter')
     expect(frontmatterHtml).toContain('fm filter')
     expect(syncedHtml).not.toContain('note-filter-dropdown')
+  })
+
+  it('renders media filter rows with image previews and text-only audio/video options', () => {
+    const html = renderToStaticMarkup(
+      <NoteFilterControl
+        open
+        kind="media"
+        options={[
+          {
+            key: 'media:image:tabs-asset:///assets/photo.png',
+            label: 'Hero',
+            count: 2,
+            type: 'media-image',
+            mediaKind: 'image',
+            source: 'tabs-asset:///assets/photo.png',
+            previewUrl: 'tabs-asset:///assets/photo.png',
+          },
+          {
+            key: 'media:audio:tabs-asset:///assets/song.mp3',
+            label: 'Theme Song',
+            count: 1,
+            type: 'media-audio',
+            mediaKind: 'audio',
+            source: 'tabs-asset:///assets/song.mp3',
+          },
+          {
+            key: 'media:video:https://cdn.example.com/clip.mp4',
+            label: 'Clip',
+            count: 3,
+            type: 'media-video',
+            mediaKind: 'video',
+            source: 'https://cdn.example.com/clip.mp4',
+          },
+        ]}
+        selectedKeys={['media:image:tabs-asset:///assets/photo.png']}
+        sortMode="az"
+        onToggleOpen={noop}
+        onClose={noop}
+        onKindChange={noop}
+        onClear={noop}
+        onToggleOption={noop}
+        onSortModeChange={noop}
+      />,
+    )
+
+    expect(html).toContain('media filter')
+    expect(html).toContain('note-filter-media-grid')
+    expect(html).toContain('<img src="tabs-asset:///assets/photo.png"')
+    expect(html).toContain('Hero')
+    expect(html).toContain('2 matches')
+    expect(html).toContain('audio')
+    expect(html).toContain('Theme Song')
+    expect(html).toContain('1 match')
+    expect(html).toContain('video')
+    expect(html).toContain('Clip')
+    expect(html).toContain('3 matches')
+    expect(html).not.toContain('<audio')
+    expect(html).not.toContain('<video')
   })
 })

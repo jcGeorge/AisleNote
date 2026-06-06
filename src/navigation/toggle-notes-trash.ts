@@ -10,7 +10,12 @@ export function getNotesTrashToggleIntent(viewMode: ViewMode): NotesTrashToggleI
   return viewMode === 'main' ? 'open-trash' : 'open-main'
 }
 
-export function getNextNotesTrashToggleState({ viewMode }: NotesTrashToggleState): NotesTrashToggleState {
+export function getNextNotesTrashToggleState({
+  viewMode,
+  scratchpadActive,
+}: NotesTrashToggleState): NotesTrashToggleState {
+  if (viewMode === 'main' && scratchpadActive) return { viewMode: 'main', scratchpadActive: true }
+
   return getNotesTrashToggleIntent(viewMode) === 'open-trash'
     ? { viewMode: 'trash', scratchpadActive: false }
     : { viewMode: 'main', scratchpadActive: false }

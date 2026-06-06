@@ -51,6 +51,7 @@ function createModalTextState(): AppState {
       shortcuts: {
         toggleNotesTrash: '',
         toggleNotesScratchpad: '',
+        toggleNotesFilter: '',
         openDomains: '',
         openSpaces: '',
         newTab: '',
@@ -92,8 +93,8 @@ describe('copy-note modal text', () => {
     const modal: ModalState = { type: 'copy-note', mode: 'independent', destinationMode: 'replace', source, target }
     const text = getModalText(modal, createModalTextState())
 
-    expect(text.title).toBe('make copy')
-    expect(text.action).toBe('make copy')
+    expect(text.title).toBe('make this a copy of')
+    expect(text.action).toBe('make this a copy of')
     expect(text.body).toContain('independent copy')
   })
 
@@ -101,8 +102,8 @@ describe('copy-note modal text', () => {
     const modal: ModalState = { type: 'copy-note', mode: 'linked', destinationMode: 'replace', source, target }
     const text = getModalText(modal, createModalTextState())
 
-    expect(text.title).toBe('make copy')
-    expect(text.action).toBe('make copy')
+    expect(text.title).toBe('make this a copy of')
+    expect(text.action).toBe('make this a copy of')
     expect(text.body).toContain('synced copy')
   })
 

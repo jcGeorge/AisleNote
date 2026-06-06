@@ -533,6 +533,26 @@ export const useAppOverlayActions = ({
     removeNoteReferencesForLocations(referenceCleanupTargets, cleanupResolverState)
   }
 
+  const isTrashTarget = (
+    target: DeleteTarget,
+  ): target is Extract<DeleteTarget, { type: 'trash-domain' | 'trash-space' | 'trash-tab' | 'trash-subtab' }> =>
+    target.type === 'trash-domain' ||
+    target.type === 'trash-space' ||
+    target.type === 'trash-tab' ||
+    target.type === 'trash-subtab'
+
+  const deleteTrashTargetsForReal = (targets: readonly DeleteTarget[]) => {
+    const trashTargets = targets.filter(isTrashTarget)
+    if (trashTargets.length === 0) return
+    for (const target of trashTargets) {
+      deleteTarget(target, true)
+    }
+    pushToast(
+      trashTargets.length === 1 ? 'Item deleted for real.' : `${trashTargets.length} items deleted for real.`,
+      'success',
+    )
+  }
+
   const deleteFromContext = () => {
     const target = buildDeleteTargetFromContextMenu()
     if (!target) return
@@ -540,8 +560,7 @@ export const useAppOverlayActions = ({
     deleteTarget(target, false)
   }
 
-  const restoreFromContext = () => {
-    const target = buildDeleteTargetFromContextMenu()
+  const restoreTrashTargetFromTarget = (target: DeleteTarget, options: { silent?: boolean } = {}) => {
     if (
       !target ||
       (target.type !== 'trash-tab' &&
@@ -549,24 +568,23 @@ export const useAppOverlayActions = ({
         target.type !== 'trash-domain' &&
         target.type !== 'trash-space')
     ) {
-      return
+      return false
     }
-    setContextMenu(null)
 
     if (target.type === 'trash-domain') {
       const result = restoreTrashDomain(stateRef.current, target.deletedDomainEntryId)
       stateRef.current = result.state
       setState(result.state)
       if (!result.changed) {
-        pushToast('That domain is no longer in trash.', 'warning')
-        return
+        if (!options.silent) pushToast('That domain is no longer in trash.', 'warning')
+        return false
       }
       setTrashDomainId?.('')
       setTrashSpaceId?.('')
       setTrashTabId(TRASH_HOME_ID)
       setTrashSubTabId(null)
-      pushToast('Domain restored from trash.', 'success')
-      return
+      if (!options.silent) pushToast('Domain restored from trash.', 'success')
+      return true
     }
 
     if (target.type === 'trash-space') {
@@ -574,19 +592,19 @@ export const useAppOverlayActions = ({
       stateRef.current = result.state
       setState(result.state)
       if (result.reason === 'missing-domain') {
-        pushToast('Restore the domain first.', 'warning')
-        return
+        if (!options.silent) pushToast('Restore the domain first.', 'warning')
+        return false
       }
       if (result.changed) {
         setTrashDomainId?.('')
         setTrashSpaceId?.('')
         setTrashTabId(TRASH_HOME_ID)
         setTrashSubTabId(null)
-        pushToast('Space restored from trash.', 'success')
-        return
+        if (!options.silent) pushToast('Space restored from trash.', 'success')
+        return true
       }
-      pushToast('That space is no longer in trash.', 'warning')
-      return
+      if (!options.silent) pushToast('That space is no longer in trash.', 'warning')
+      return false
     }
 
     if (
@@ -601,11 +619,11 @@ export const useAppOverlayActions = ({
         setTrashSpaceId?.('')
         setTrashTabId(TRASH_HOME_ID)
         setTrashSubTabId(null)
-        pushToast('Item restored from trash.', 'success')
-        return
+        if (!options.silent) pushToast('Item restored from trash.', 'success')
+        return true
       }
-      pushToast('That item is no longer in trash.', 'warning')
-      return
+      if (!options.silent) pushToast('That item is no longer in trash.', 'warning')
+      return false
     }
 
     updateActiveSpaceData((data) =>
@@ -619,7 +637,34 @@ export const useAppOverlayActions = ({
     } else {
       setTrashSubTabId(null)
     }
-    pushToast('Item restored from trash.', 'success')
+    if (!options.silent) pushToast('Item restored from trash.', 'success')
+    return true
+  }
+
+  const restoreTrashTargets = (targets: readonly DeleteTarget[]) => {
+    const trashTargets = targets.filter(isTrashTarget)
+    if (trashTargets.length === 0) return
+    let restoredCount = 0
+    for (const target of trashTargets) {
+      if (restoreTrashTargetFromTarget(target, { silent: true })) {
+        restoredCount += 1
+      }
+    }
+    if (restoredCount <= 0) {
+      pushToast('Selected trash items are no longer available.', 'warning')
+      return
+    }
+    pushToast(
+      restoredCount === 1 ? 'Item restored from trash.' : `${restoredCount} items restored from trash.`,
+      'success',
+    )
+  }
+
+  const restoreFromContext = () => {
+    const target = buildDeleteTargetFromContextMenu()
+    if (!target) return
+    setContextMenu(null)
+    restoreTrashTargetFromTarget(target)
   }
 
   const getLastNoteCopyMode = (): NoteCopyMode => stateRef.current.ui.lastNoteCopyMode ?? 'independent'
@@ -935,6 +980,7 @@ export const useAppOverlayActions = ({
       deleteTarget(modal.target, modal.permanent)
     }
 
+    if (modal.type === 'delete-trash-targets') deleteTrashTargetsForReal(modal.targets)
     if (modal.type === 'trash-restore-all') restoreAllTrash()
     if (modal.type === 'trash-delete-all') deleteAllTrash()
 
@@ -954,6 +1000,7 @@ export const useAppOverlayActions = ({
     openDeleteModalFromContext,
     deleteFromContext,
     restoreFromContext,
+    restoreTrashTargets,
     openCopyModalFromContext,
     openCopyModalForActiveNote,
     openDeduplicateModalFromContext,
@@ -964,6 +1011,7 @@ export const useAppOverlayActions = ({
     beginRenameSpaceFromContext,
     beginRenameDomainFromContext,
     deleteTarget,
+    deleteTrashTargetsForReal,
     restoreAllTrash,
     deleteAllTrash,
     confirmModal,

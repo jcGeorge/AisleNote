@@ -27,6 +27,18 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
     }
   }
 
+  if (modal.type === 'delete-trash-targets') {
+    const count = modal.targets.length
+    return {
+      title: 'Delete selected items for real?',
+      body:
+        count === 1
+          ? 'This permanently deletes the selected trashed item.'
+          : `This permanently deletes ${count} selected trashed items.`,
+      action: 'delete for real',
+    }
+  }
+
   if (modal.type === 'export-space') {
     return {
       title: 'export space',
@@ -67,7 +79,7 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
       const linkedAisleCopy = selectedAisles || appendAisles
       const copyModeLabel = getNoteCopyModeLabel(modal.mode)
       return {
-        title: 'make copy',
+        title: 'make this a copy of',
         body: linkedAisleCopy
           ? appendAisles
             ? `This note will receive ${copyModeLabel} copies of the target aisles. Edits in any ${copyModeLabel} aisle will affect each copy.`
@@ -75,12 +87,12 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
           : hasExistingContent
             ? `This note will be replaced with a ${copyModeLabel} copy of the target note. Edits in either location will affect both.`
             : `This note will become a ${copyModeLabel} copy of the target note. Edits in either location will affect both.`,
-        action: 'make copy',
+        action: 'make this a copy of',
       }
     }
 
     return {
-      title: 'make copy',
+      title: 'make this a copy of',
       body: appendAisles
         ? 'This note will receive independent text copies of the target aisles.'
         : selectedAisles
@@ -88,7 +100,7 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
         : hasExistingContent
           ? 'This note will be replaced with an independent copy of the target note, including all aisles.'
           : 'This note will receive an independent copy of the target note, including all aisles.',
-      action: 'make copy',
+      action: 'make this a copy of',
     }
   }
 

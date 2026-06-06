@@ -46,7 +46,7 @@ describe('EditorToolbarPopovers', () => {
 })
 
 describe('CopyToolbarMenu', () => {
-  it('renders make copy and de-couple choices', () => {
+  it('renders make this a copy of and de-couple choices', () => {
     const html = renderToStaticMarkup(
       <CopyToolbarMenu
         onOpenCopyModal={() => undefined}
@@ -54,7 +54,7 @@ describe('CopyToolbarMenu', () => {
       />,
     )
 
-    expect(html).toContain('make copy')
+    expect(html).toContain('make this a copy of')
     expect(html).toContain('de-couple')
   })
 })

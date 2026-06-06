@@ -27,6 +27,7 @@ export type StorageCustomThemePaletteSlot =
 export type StorageShortcutId =
   | 'toggleNotesTrash'
   | 'toggleNotesScratchpad'
+  | 'toggleNotesFilter'
   | 'openDomains'
   | 'openSpaces'
   | 'newTab'
@@ -90,7 +91,7 @@ export type StorageScratchpadNewAisleSide = 'left' | 'right'
 export type StorageTabRenameEnterBehavior = 'goes-to-note' | 'creates-another-tab'
 export type StorageFindReplaceMode = 'find' | 'replace'
 export type StorageTipId = 'task-undo' | 'delete-active-aisle-shortcut'
-export type StorageNoteFilterKind = 'tags' | 'synced' | 'frontmatter'
+export type StorageNoteFilterKind = 'tags' | 'synced' | 'frontmatter' | 'media'
 export type StorageNoteFilterSettings = {
   active?: boolean
   kind?: StorageNoteFilterKind
@@ -102,6 +103,9 @@ export type StorageNoteFilterSettings = {
     selectedKeys?: string[]
   }
   frontmatter?: {
+    selectedKeys?: string[]
+  }
+  media?: {
     selectedKeys?: string[]
   }
 }
