@@ -1,5 +1,7 @@
 export type AppStateSaveOptions = {
   preferSync?: boolean
+  trigger?: string
+  pendingEditorCount?: number
 }
 
 export type AppStateCommitOptions = AppStateSaveOptions & {

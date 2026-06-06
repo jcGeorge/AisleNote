@@ -8,6 +8,7 @@ import type {
   UserSettingsLocationStatus,
 } from '../../types/app'
 import type { DataPlatformCapabilities } from '../../platform/data-platform'
+import type { SyncedUiBooleanSettingKey } from '../../settings/synced-ui-settings-registry.js'
 import { DataSectionSwitch } from './DataSectionSwitch'
 
 type DataSettingsPanelProps = {
@@ -18,8 +19,10 @@ type DataSettingsPanelProps = {
   dataCapabilities: DataPlatformCapabilities
   storageProfileStatus: StorageProfileStatus | null
   userSettingsLocationStatus: UserSettingsLocationStatus | null
+  trashDeleteForRealRequiresConfirmation: boolean
   onDataSectionChange: (section: DataSettingsSection) => void
   onAutoRemoveDaysChange: (value: string, commit?: boolean) => void
+  onSyncedUiBooleanSettingChange: (key: SyncedUiBooleanSettingKey, enabled: boolean) => void
   onExportUserSettings: () => void
   onImportNotebook: () => void
   onImportUserSettings: () => void
@@ -320,8 +323,13 @@ function StorageDataSection({
 
 function TrashDataSection({
   settingsDaysDraft,
+  trashDeleteForRealRequiresConfirmation,
   onAutoRemoveDaysChange,
-}: Pick<DataSettingsPanelProps, 'settingsDaysDraft' | 'onAutoRemoveDaysChange'>) {
+  onSyncedUiBooleanSettingChange,
+}: Pick<
+  DataSettingsPanelProps,
+  'settingsDaysDraft' | 'trashDeleteForRealRequiresConfirmation' | 'onAutoRemoveDaysChange' | 'onSyncedUiBooleanSettingChange'
+>) {
   return (
     <>
       <p>automatically remove deleted items after:</p>
@@ -337,6 +345,23 @@ function TrashDataSection({
           onBlur={() => onAutoRemoveDaysChange(settingsDaysDraft, true)}
         />
         <span className="settings-field-suffix">days</span>
+      </div>
+      <div className="settings-hotkey-row">
+        <label className="settings-hotkey-label" htmlFor="settings-trash-delete-confirmation">
+          confirm delete for real
+        </label>
+        <div className="form-check form-switch settings-switch">
+          <input
+            id="settings-trash-delete-confirmation"
+            className="form-check-input"
+            type="checkbox"
+            role="switch"
+            checked={trashDeleteForRealRequiresConfirmation}
+            onChange={(event) =>
+              onSyncedUiBooleanSettingChange('trashDeleteForRealRequiresConfirmation', event.target.checked)
+            }
+          />
+        </div>
       </div>
     </>
   )

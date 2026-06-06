@@ -163,6 +163,7 @@ function renderSettingsPage(
       scratchpadAisleLimitDraft={String(state.ui.scratchpadAisleLimit ?? 16)}
       scratchpadNewAisleSideDraft={state.ui.scratchpadNewAisleSide ?? 'left'}
       tabRenameEnterBehaviorDraft={state.ui.tabRenameEnterBehavior ?? 'goes-to-note'}
+      trashDeleteForRealRequiresConfirmation={state.ui.trashDeleteForRealRequiresConfirmation ?? true}
       miscSyncedUiBooleanSettings={MISC_SYNCED_UI_BOOLEAN_SETTINGS.map((setting) => ({
         ...setting,
         checked: getSyncedUiBooleanSettings(state.ui)[setting.key],
@@ -473,6 +474,9 @@ describe('frontmatter settings page', () => {
     expect(trashHtml).toContain('aria-checked="true" class="settings-segmented-option is-selected">trash</button>')
     expect(trashHtml).toContain('automatically remove deleted items after:')
     expect(trashHtml).toContain('class="settings-number-input settings-number-input-half"')
+    expect(trashHtml).toContain('confirm delete for real')
+    expect(trashHtml).toContain('id="settings-trash-delete-confirmation"')
+    expect(trashHtml).toContain('role="switch" checked=""')
     expect(trashHtml).not.toContain('choose notebook folder')
   })
 

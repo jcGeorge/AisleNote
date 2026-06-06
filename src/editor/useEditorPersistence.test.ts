@@ -5,6 +5,7 @@ import type { AppState, NoteAisle, Space } from '../types/app'
 import {
   applyEditorContentSnapshotsToState,
   applyFreshEditorSnapshotToState,
+  getEditorFocusBoundarySaveOptions,
   getSnapshotEditorMarkdown,
   isEditorContentTargetCurrent,
   pendingContentMatchesTarget,
@@ -240,5 +241,28 @@ describe('editor persistence snapshot helpers', () => {
     expect(resolveEditorFocusBoundaryFlushAction('visibilitychange', 12, 'hidden')).toBe('ignore')
     expect(resolveEditorFocusBoundaryFlushAction('pagehide', 12, 'hidden')).toBe('force')
     expect(resolveEditorFocusBoundaryFlushAction('beforeunload', 12)).toBe('force')
+  })
+
+  it('uses async persistence for blur and visibility boundaries but sync persistence for exit boundaries', () => {
+    expect(getEditorFocusBoundarySaveOptions('blur', 2)).toEqual({
+      preferSync: false,
+      trigger: 'editor-focus-boundary:blur',
+      pendingEditorCount: 2,
+    })
+    expect(getEditorFocusBoundarySaveOptions('visibilitychange', 1)).toEqual({
+      preferSync: false,
+      trigger: 'editor-focus-boundary:visibilitychange',
+      pendingEditorCount: 1,
+    })
+    expect(getEditorFocusBoundarySaveOptions('beforeunload', 3)).toEqual({
+      preferSync: true,
+      trigger: 'editor-focus-boundary:beforeunload',
+      pendingEditorCount: 3,
+    })
+    expect(getEditorFocusBoundarySaveOptions('pagehide', 4)).toEqual({
+      preferSync: true,
+      trigger: 'editor-focus-boundary:pagehide',
+      pendingEditorCount: 4,
+    })
   })
 })

@@ -226,6 +226,7 @@ export function useSettingsController({
     state.ui.noteMentionCopyRequiresConfirmation,
     state.ui.deleteActiveAisleShortcutEnabled,
     state.ui.decoupledItemsKeepData,
+    state.ui.trashDeleteForRealRequiresConfirmation,
     state.ui.toolbarEditorShowNames,
     state.ui.tabButtonScale,
     state.ui.noteFontScale,
@@ -949,6 +950,7 @@ export function useSettingsController({
     scratchpadAisleLimitDraft,
     scratchpadNewAisleSideDraft,
     tabRenameEnterBehaviorDraft,
+    trashDeleteForRealRequiresConfirmation: syncedUiBooleanDrafts.trashDeleteForRealRequiresConfirmation,
     miscSyncedUiBooleanSettings: MISC_SYNCED_UI_BOOLEAN_SETTINGS.map((setting) => ({
       ...setting,
       checked: syncedUiBooleanDrafts[setting.key],

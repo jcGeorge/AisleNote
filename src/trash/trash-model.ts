@@ -133,8 +133,8 @@ export function buildTrashDomainBuckets(appState: AppState): TrashDomainBucket[]
       ...(appState.deletedSpaces ?? [])
         .filter((entry) => entry.domainId === domain.id)
         .map((entry) => buildDeletedSpaceBucket(appState, entry, 'deleted-space', null)),
-    ],
-  }))
+    ].filter((space) => space.source !== 'live' || space.parentTabs.length > 0),
+  })).filter((domain) => domain.spaces.length > 0)
 
   const deletedDomains = (appState.deletedDomains ?? []).map((entry) => ({
     id: `deleted-domain:${entry.id}`,

@@ -1,4 +1,4 @@
-export const TIP_IDS = ['task-undo', 'delete-active-aisle-shortcut'] as const
+export const TIP_IDS = ['task-undo', 'delete-active-aisle-shortcut', 'trash-delete-confirmation-setting'] as const
 
 export type TipId = (typeof TIP_IDS)[number]
 
@@ -23,6 +23,11 @@ export const TIP_DEFINITIONS: TipDefinition[] = [
     id: 'delete-active-aisle-shortcut',
     label: 'delete active aisle shortcut',
     message: 'Tip: You can enable the active aisle delete shortcut in the misc tab of the settings.',
+  },
+  {
+    id: 'trash-delete-confirmation-setting',
+    label: 'trash delete confirmation setting',
+    message: 'Tip: You can turn off delete-for-real confirmations in settings > data > trash.',
   },
 ]
 

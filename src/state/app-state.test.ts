@@ -1099,14 +1099,33 @@ describe('app state normalization', () => {
   it('normalizes persisted tip settings', () => {
     const valid = parseModernState({
       ui: {
-        seenTipIds: ['task-undo', 'bad-tip', 'task-undo', 'tab-create-after-rename', 'delete-active-aisle-shortcut'],
-        disabledTipIds: ['tab-create-after-rename', 'delete-active-aisle-shortcut', 'unknown'],
+        seenTipIds: [
+          'task-undo',
+          'bad-tip',
+          'task-undo',
+          'tab-create-after-rename',
+          'delete-active-aisle-shortcut',
+          'trash-delete-confirmation-setting',
+        ],
+        disabledTipIds: [
+          'tab-create-after-rename',
+          'delete-active-aisle-shortcut',
+          'trash-delete-confirmation-setting',
+          'unknown',
+        ],
       },
     })
     const missing = parseModernState({ ui: {} })
 
-    expect(valid.ui.seenTipIds).toEqual(['task-undo', 'delete-active-aisle-shortcut'])
-    expect(valid.ui.disabledTipIds).toEqual(['delete-active-aisle-shortcut'])
+    expect(valid.ui.seenTipIds).toEqual([
+      'task-undo',
+      'delete-active-aisle-shortcut',
+      'trash-delete-confirmation-setting',
+    ])
+    expect(valid.ui.disabledTipIds).toEqual([
+      'delete-active-aisle-shortcut',
+      'trash-delete-confirmation-setting',
+    ])
     expect(missing.ui.seenTipIds).toEqual([])
     expect(missing.ui.disabledTipIds).toEqual([])
   })
@@ -1309,6 +1328,18 @@ describe('app state normalization', () => {
     expect(clear.ui.decoupledItemsKeepData).toBe(false)
     expect(invalid.ui.decoupledItemsKeepData).toBe(true)
     expect(missing.ui.decoupledItemsKeepData).toBe(true)
+  })
+
+  it('normalizes persisted trash delete confirmation setting', () => {
+    const enabled = parseModernState({ ui: { trashDeleteForRealRequiresConfirmation: true } })
+    const disabled = parseModernState({ ui: { trashDeleteForRealRequiresConfirmation: false } })
+    const invalid = parseModernState({ ui: { trashDeleteForRealRequiresConfirmation: 'no' } })
+    const missing = parseModernState({ ui: {} })
+
+    expect(enabled.ui.trashDeleteForRealRequiresConfirmation).toBe(true)
+    expect(disabled.ui.trashDeleteForRealRequiresConfirmation).toBe(false)
+    expect(invalid.ui.trashDeleteForRealRequiresConfirmation).toBe(true)
+    expect(missing.ui.trashDeleteForRealRequiresConfirmation).toBe(true)
   })
 
   it('normalizes persisted note filter settings', () => {

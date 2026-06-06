@@ -659,9 +659,18 @@ describe('compact scope tab scaling styles', () => {
     const addTabRule = extractLastRule(tabsCss, '.add-tab-btn')
     const addTabHoverRule = extractRule(tabsCss, '.add-tab-btn:hover')
     const trashActiveRule = extractRule(topbarCss, '.trash-domain-btn.is-active,\n.trash-space-btn.is-active')
+    const trashScopeTextRule = extractRule(topbarCss, '.view-trash .trash-domain-btn,\n.view-trash .trash-space-btn')
+    const trashTabTextRule = extractRule(
+      tabsCss,
+      '.view-trash .trash-home-tab,\n.view-trash .trash-parent-tab,\n.view-trash .trash-subtab-btn',
+    )
     const trashHomeActionRule = extractRule(
       topbarCss,
       '.topbar-action-wrap-trash-home .topbar-arrange-trash-btn:not(.is-trash-mode):not(.is-trash-drop-target)',
+    )
+    const trashHomeActionPaddingRule = extractRule(
+      topbarCss,
+      '.topbar-action-wrap-trash-home .topbar-arrange-trash-btn',
     )
     const trashHomeActionHoverRule = extractRule(
       topbarCss,
@@ -761,9 +770,14 @@ describe('compact scope tab scaling styles', () => {
     expect(trashHomeActionRule).toContain('color: var(--topbar-action-text) !important;')
     expect(trashHomeActionRule).toContain('background: var(--topbar-action-bg) !important;')
     expect(trashHomeActionRule).toContain('border-color: var(--topbar-action-border) !important;')
+    expect(trashHomeActionPaddingRule).toContain('padding-inline: 0.68rem !important;')
     expect(trashHomeActionHoverRule).toContain('color: var(--topbar-action-hover-text) !important;')
     expect(trashHomeActionHoverRule).toContain('background: var(--topbar-action-hover-bg) !important;')
     expect(trashHomeActionHoverRule).toContain('border-color: var(--topbar-action-hover-border) !important;')
+    expect(trashScopeTextRule).toContain('user-select: none;')
+    expect(trashScopeTextRule).toContain('touch-action: none;')
+    expect(trashTabTextRule).toContain('user-select: none;')
+    expect(trashTabTextRule).toContain('touch-action: none;')
 
     expect(spaceRule).toContain('--rail-control-text: var(--space-rail-text);')
     expect(spaceRule).toContain('--rail-control-bg: var(--space-rail-bg);')

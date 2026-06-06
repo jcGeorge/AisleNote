@@ -18,6 +18,7 @@ import { ArrangeDragPreviewPortal } from './ArrangeDragPreviewPortal'
 import { ArrangePreviewStack } from './ArrangePreviewStack'
 import { getArrangeDragPreviewRect, getArrangeDragPreviewStyleFromRect } from './arrange-drag-preview-style'
 import { getArrangeRailContextMenuPolicy, getArrangeRailPointerDownAction } from './arrange-rail-events'
+import { isTrashDomainSelectable, isTrashSpaceSelectable } from '../../trash/trash-selection'
 
 type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
 type CommitRenameOptions = {
@@ -687,46 +688,44 @@ export function TrashDomainRail({
   onDeletedDomainPointerUp?: (event: ReactPointerEvent<HTMLButtonElement>) => void
   onDeletedDomainPointerCancel?: () => void
 }) {
-  const selectableDomainIds = domains
-    .filter((domain) => domain.source === 'deleted-domain')
-    .map((domain) => domain.id)
+  const selectableDomainIds = domains.filter(isTrashDomainSelectable).map((domain) => domain.id)
   return (
     <header className="compact-scope-rail compact-domain-rail trash-domain-rail">
       <div className="tabbar-row compact-scope-row">
         <div ref={domainsGridRef} className="compact-scope-scroll" role="tablist" aria-label="Trash domains">
-          {domains.map((domain) => (
-            <button
-              key={domain.id}
-              type="button"
-              data-trash-domain-id={domain.id}
-              aria-selected={domain.id === selectedDomainId}
-              className={`compact-scope-btn compact-domain-btn trash-domain-btn ${
-                domain.id === selectedDomainId ? 'is-active' : ''
-              } ${domain.source === 'deleted-domain' ? 'is-deleted' : ''} ${
-                trashSelectedDomainIds?.has(domain.id) ? 'is-trash-selected' : ''
-              }`}
-              onClick={(event) => {
-                if (
-                  domain.source === 'deleted-domain' &&
-                  onSelectDeletedDomain?.(event, domain, selectableDomainIds)
-                ) {
-                  return
-                }
-                onSelectDomain(domain.id)
-              }}
-              onContextMenu={(event) => {
-                if (domain.source === 'deleted-domain') onOpenDeletedDomainContextMenu(event, domain)
-              }}
-              onPointerDown={(event) => {
-                if (domain.source === 'deleted-domain') onDeletedDomainPointerDown?.(event, domain)
-              }}
-              onPointerMove={onDeletedDomainPointerMove}
-              onPointerUp={onDeletedDomainPointerUp}
-              onPointerCancel={onDeletedDomainPointerCancel}
-            >
-              {domain.title}
-            </button>
-          ))}
+          {domains.map((domain) => {
+            const selectable = isTrashDomainSelectable(domain)
+            return (
+              <button
+                key={domain.id}
+                type="button"
+                data-trash-domain-id={domain.id}
+                aria-selected={domain.id === selectedDomainId}
+                className={`compact-scope-btn compact-domain-btn trash-domain-btn ${
+                  domain.id === selectedDomainId ? 'is-active' : ''
+                } ${domain.source === 'deleted-domain' ? 'is-deleted' : ''} ${
+                  selectable ? 'is-trash-selectable' : ''
+                } ${trashSelectedDomainIds?.has(domain.id) ? 'is-trash-selected' : ''}`}
+                onClick={(event) => {
+                  if (selectable && onSelectDeletedDomain?.(event, domain, selectableDomainIds)) {
+                    return
+                  }
+                  onSelectDomain(domain.id)
+                }}
+                onContextMenu={(event) => {
+                  if (selectable) onOpenDeletedDomainContextMenu(event, domain)
+                }}
+                onPointerDown={(event) => {
+                  if (selectable) onDeletedDomainPointerDown?.(event, domain)
+                }}
+                onPointerMove={onDeletedDomainPointerMove}
+                onPointerUp={onDeletedDomainPointerUp}
+                onPointerCancel={onDeletedDomainPointerCancel}
+              >
+                {domain.title}
+              </button>
+            )
+          })}
         </div>
         {controlsSlot}
       </div>
@@ -763,39 +762,42 @@ export function TrashSpaceRail({
   onDeletedSpacePointerUp?: (event: ReactPointerEvent<HTMLButtonElement>) => void
   onDeletedSpacePointerCancel?: () => void
 }) {
-  const selectableSpaceIds = spaces.filter((space) => space.source !== 'live').map((space) => space.id)
+  const selectableSpaceIds = spaces.filter(isTrashSpaceSelectable).map((space) => space.id)
   return (
     <header className="compact-scope-rail compact-space-rail trash-space-rail">
       <div className="tabbar-row compact-scope-row">
         <div ref={spacesGridRef} className="compact-scope-scroll" role="tablist" aria-label="Trash spaces">
-          {spaces.map((space) => (
-            <button
-              key={space.id}
-              type="button"
-              data-trash-space-id={space.id}
-              aria-selected={space.id === selectedSpaceId}
-              className={`compact-scope-btn compact-space-btn trash-space-btn ${
-                space.id === selectedSpaceId ? 'is-active' : ''
-              } ${space.source !== 'live' ? 'is-deleted' : ''} ${
-                trashSelectedSpaceIds?.has(space.id) ? 'is-trash-selected' : ''
-              }`}
-              onClick={(event) => {
-                if (space.source !== 'live' && onSelectDeletedSpace?.(event, space, selectableSpaceIds)) return
-                onSelectSpace(space.id)
-              }}
-              onContextMenu={(event) => {
-                if (space.source !== 'live') onOpenDeletedSpaceContextMenu(event, space)
-              }}
-              onPointerDown={(event) => {
-                if (space.source !== 'live') onDeletedSpacePointerDown?.(event, space)
-              }}
-              onPointerMove={onDeletedSpacePointerMove}
-              onPointerUp={onDeletedSpacePointerUp}
-              onPointerCancel={onDeletedSpacePointerCancel}
-            >
-              {space.title}
-            </button>
-          ))}
+          {spaces.map((space) => {
+            const selectable = isTrashSpaceSelectable(space)
+            return (
+              <button
+                key={space.id}
+                type="button"
+                data-trash-space-id={space.id}
+                aria-selected={space.id === selectedSpaceId}
+                className={`compact-scope-btn compact-space-btn trash-space-btn ${
+                  space.id === selectedSpaceId ? 'is-active' : ''
+                } ${space.source !== 'live' ? 'is-deleted' : ''} ${
+                  selectable ? 'is-trash-selectable' : ''
+                } ${trashSelectedSpaceIds?.has(space.id) ? 'is-trash-selected' : ''}`}
+                onClick={(event) => {
+                  if (selectable && onSelectDeletedSpace?.(event, space, selectableSpaceIds)) return
+                  onSelectSpace(space.id)
+                }}
+                onContextMenu={(event) => {
+                  if (selectable) onOpenDeletedSpaceContextMenu(event, space)
+                }}
+                onPointerDown={(event) => {
+                  if (selectable) onDeletedSpacePointerDown?.(event, space)
+                }}
+                onPointerMove={onDeletedSpacePointerMove}
+                onPointerUp={onDeletedSpacePointerUp}
+                onPointerCancel={onDeletedSpacePointerCancel}
+              >
+                {space.title}
+              </button>
+            )
+          })}
         </div>
       </div>
     </header>

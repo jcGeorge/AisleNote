@@ -433,7 +433,8 @@ export function ContextMenuHost({
       ) : contextMenu.type === 'trash-tab' ||
         contextMenu.type === 'trash-subtab' ||
         contextMenu.type === 'trash-domain' ||
-        contextMenu.type === 'trash-space' ? (
+        contextMenu.type === 'trash-space' ||
+        contextMenu.type === 'trash-selection' ? (
         <>
           <button type="button" className="tab-context-delete" onClick={onRestoreFromTrash}>
             {trashContextTargetCount > 1 ? 'restore selected' : 'restore'}

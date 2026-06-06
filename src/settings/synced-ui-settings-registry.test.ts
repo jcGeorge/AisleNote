@@ -22,6 +22,7 @@ describe('synced UI settings registry', () => {
       deleteActiveAisleShortcutEnabled: false,
       tabRenameEnterBehavior: 'goes-to-note',
       decoupledItemsKeepData: true,
+      trashDeleteForRealRequiresConfirmation: true,
       tableAddTargetMode: 'bottom-right',
       tableDeleteTargetMode: 'bottom-right',
       tableOfContentsScope: 'all-aisles',
@@ -45,6 +46,7 @@ describe('synced UI settings registry', () => {
       newAislePlacement: 'left-of-focus',
       removeNoteReferencesOnTrash: 'false',
       deleteActiveAisleShortcutEnabled: true,
+      trashDeleteForRealRequiresConfirmation: false,
     })
 
     expect(normalized).toMatchObject({
@@ -58,12 +60,14 @@ describe('synced UI settings registry', () => {
       tabRenameEnterBehavior: 'creates-another-tab',
       removeNoteReferencesOnTrash: true,
       deleteActiveAisleShortcutEnabled: true,
+      trashDeleteForRealRequiresConfirmation: false,
     })
     expect(normalized).not.toHaveProperty('toggleTabsTarget')
     expect(normalized).not.toHaveProperty('newAislePlacement')
     expect(normalized).not.toHaveProperty('showParentHomeTab')
     expect(normalizeRegisteredSyncedUiSetting('findReplaceMode', 'bad')).toBe('find')
     expect(normalizeRegisteredSyncedUiSetting('tabRenameEnterBehavior', 'bad')).toBe('goes-to-note')
+    expect(normalizeRegisteredSyncedUiSetting('trashDeleteForRealRequiresConfirmation', 'bad')).toBe(true)
   })
 
   it('picks registered settings and boolean drafts from a source object', () => {
@@ -81,6 +85,7 @@ describe('synced UI settings registry', () => {
       noteMentionCopyRequiresConfirmation: false,
       removeNoteReferencesOnTrash: true,
       deleteActiveAisleShortcutEnabled: false,
+      trashDeleteForRealRequiresConfirmation: true,
     })
   })
 

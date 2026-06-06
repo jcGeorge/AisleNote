@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  AISLE_ACTIVATION_WARNING_THRESHOLD_MS,
+  createAisleActivationDiagnosticSummary,
   getActiveAisleRefSyncValue,
+  mergeAisleActivationDiagnosticSummary,
   resolveProgrammaticAisleRewriteMarkdown,
   shouldClearPendingCursorRestoreForAisleActivation,
   shouldDeferAisleCycleForMouseActivation,
@@ -94,6 +97,40 @@ describe('aisle editor activation', () => {
     expect(shouldDeferAisleCycleForMouseActivation({ aisleId: 'aisle-7', settled: true }, 'aisle-7')).toBe(false)
     expect(shouldDeferAisleCycleForMouseActivation({ aisleId: 'aisle-7', settled: false }, 'aisle-8')).toBe(false)
     expect(shouldDeferAisleCycleForMouseActivation(null, 'aisle-7')).toBe(false)
+  })
+
+  it('merges same-frame activation diagnostics into one summary', () => {
+    const summary = createAisleActivationDiagnosticSummary({
+      requestedAisleId: 'aisle-2',
+      previousAisleId: 'aisle-1',
+      source: 'pointer',
+      result: 'switched-aisle',
+      durationMs: 18,
+      focus: false,
+      flushPrevious: true,
+      mountedEditorCount: 3,
+    })
+
+    expect(mergeAisleActivationDiagnosticSummary(summary, {
+      requestedAisleId: 'aisle-2',
+      previousAisleId: 'aisle-1',
+      source: 'focus',
+      result: 'fast-same-aisle',
+      durationMs: AISLE_ACTIVATION_WARNING_THRESHOLD_MS + 1,
+      focus: true,
+      flushPrevious: true,
+      mountedEditorCount: 4,
+    })).toEqual({
+      requestedAisleId: 'aisle-2',
+      previousAisleId: 'aisle-1',
+      count: 2,
+      sources: ['pointer', 'focus'],
+      results: ['switched-aisle', 'fast-same-aisle'],
+      maxDurationMs: AISLE_ACTIVATION_WARNING_THRESHOLD_MS + 1,
+      focusRequested: true,
+      flushPreviousRequested: true,
+      mountedEditorCount: 4,
+    })
   })
 })
 

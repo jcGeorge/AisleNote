@@ -406,6 +406,18 @@
 .view-trash .trash-subtab-btn {
   font-size: calc(1rem * var(--note-font-scale, 1)) !important;
   line-height: 1.1 !important;
+  user-select: none;
+  touch-action: none;
+}
+
+.view-trash .trash-parent-tab.is-trash-selectable,
+.view-trash .trash-subtab-btn.is-trash-selectable {
+  cursor: grab;
+}
+
+.view-trash .trash-parent-tab.is-trash-selectable:active,
+.view-trash .trash-subtab-btn.is-trash-selectable:active {
+  cursor: grabbing;
 }
 
 .add-tab-btn {

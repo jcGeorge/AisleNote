@@ -84,7 +84,13 @@ export function useTrashSelection({
   useEffect(() => {
     if (viewMode !== 'trash') return
 
-    if (!selectedTrashDomain) return
+    if (!selectedTrashDomain) {
+      if (trashDomainId !== '') setTrashDomainId('')
+      if (trashSpaceId !== '') setTrashSpaceId('')
+      if (trashTabId !== TRASH_HOME_ID) setTrashTabId(TRASH_HOME_ID)
+      if (trashSubTabId !== null) setTrashSubTabId(null)
+      return
+    }
 
     if (trashDomainId !== selectedTrashDomain.id) {
       setTrashDomainId(selectedTrashDomain.id)
@@ -93,6 +99,13 @@ export function useTrashSelection({
 
     if (selectedTrashSpace && trashSpaceId !== selectedTrashSpace.id) {
       setTrashSpaceId(selectedTrashSpace.id)
+      return
+    }
+
+    if (!selectedTrashSpace && trashSpaceId !== '') {
+      setTrashSpaceId('')
+      if (trashTabId !== TRASH_HOME_ID) setTrashTabId(TRASH_HOME_ID)
+      if (trashSubTabId !== null) setTrashSubTabId(null)
       return
     }
 

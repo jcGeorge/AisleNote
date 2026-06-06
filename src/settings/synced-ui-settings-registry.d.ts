@@ -13,6 +13,7 @@ export type SimpleSyncedUiSettingKey =
   | 'scratchpadNewAisleSide'
   | 'tabRenameEnterBehavior'
   | 'decoupledItemsKeepData'
+  | 'trashDeleteForRealRequiresConfirmation'
   | 'tableAddTargetMode'
   | 'tableDeleteTargetMode'
   | 'tableOfContentsScope'
@@ -26,6 +27,7 @@ export type SyncedUiBooleanSettingKey =
   | 'noteMentionCopyRequiresConfirmation'
   | 'deleteActiveAisleShortcutEnabled'
   | 'decoupledItemsKeepData'
+  | 'trashDeleteForRealRequiresConfirmation'
   | 'toolbarEditorShowNames'
 
 export type SimpleSyncedUiSettings = Pick<AppState['ui'], SimpleSyncedUiSettingKey>
@@ -79,6 +81,10 @@ export function normalizeRegisteredSyncedUiSetting(
   value: unknown,
 ): NonNullable<AppState['ui']['tabRenameEnterBehavior']>
 export function normalizeRegisteredSyncedUiSetting(key: 'decoupledItemsKeepData', value: unknown): boolean
+export function normalizeRegisteredSyncedUiSetting(
+  key: 'trashDeleteForRealRequiresConfirmation',
+  value: unknown,
+): boolean
 export function normalizeRegisteredSyncedUiSetting(
   key: 'tableAddTargetMode',
   value: unknown,

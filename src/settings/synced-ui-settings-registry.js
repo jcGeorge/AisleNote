@@ -16,6 +16,7 @@ export const SYNCED_UI_SIMPLE_SETTING_DEFINITIONS = Object.freeze([
     values: ['goes-to-note', 'creates-another-tab'],
   },
   { key: 'decoupledItemsKeepData', kind: 'boolean', defaultValue: true },
+  { key: 'trashDeleteForRealRequiresConfirmation', kind: 'boolean', defaultValue: true },
   { key: 'tableAddTargetMode', kind: 'enum', defaultValue: 'bottom-right', values: ['bottom-right', 'active-cell'] },
   { key: 'tableDeleteTargetMode', kind: 'enum', defaultValue: 'bottom-right', values: ['bottom-right', 'active-cell'] },
   { key: 'tableOfContentsScope', kind: 'enum', defaultValue: 'all-aisles', values: ['all-aisles', 'focused-aisle'] },

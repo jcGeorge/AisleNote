@@ -199,6 +199,22 @@
   border-style: dashed;
 }
 
+.view-trash .trash-domain-btn,
+.view-trash .trash-space-btn {
+  user-select: none;
+  touch-action: none;
+}
+
+.view-trash .trash-domain-btn.is-trash-selectable,
+.view-trash .trash-space-btn.is-trash-selectable {
+  cursor: grab;
+}
+
+.view-trash .trash-domain-btn.is-trash-selectable:active,
+.view-trash .trash-space-btn.is-trash-selectable:active {
+  cursor: grabbing;
+}
+
 .tabbar.is-arranging,
 .subtabbar.is-arranging {
   box-shadow: inset 0 0 0 1px rgba(122, 151, 203, 0.08);
@@ -330,6 +346,10 @@
 .topbar-arrange-trash-btn {
   position: relative;
   overflow: hidden;
+}
+
+.topbar-action-wrap-trash-home .topbar-arrange-trash-btn {
+  padding-inline: 0.68rem !important;
 }
 
 .topbar-action-wrap-trash-home .topbar-arrange-trash-btn:not(.is-trash-mode):not(.is-trash-drop-target) {

@@ -1,5 +1,6 @@
 import { BrowserHybridStateAdapter } from './browser-hybrid-state'
 import { CapacitorHybridStateAdapter } from './capacitor-hybrid-state'
+import { recordDiagnosticEvent } from '../diagnostics/diagnostic-logger'
 import { measureSlowAsyncOperation, measureSlowOperation } from '../performance/performance-logging'
 import { isNativeCapacitorRuntime } from '../platform/data-platform'
 import type { AppStateSaveOptions } from './persistence-debounce'
@@ -128,6 +129,9 @@ class ElectronAppStateStore implements AppStateStore {
   private revision = 0
   private saveQueue: Promise<void> = Promise.resolve()
   private syncSaveEpoch = 0
+  private asyncSaveActive = false
+  private pendingAsyncSerializedState: string | null = null
+  private lastSavedSerializedState: string | null = null
 
   constructor() {
     window.__tabsGetAppStateRevision = () => this.revision
@@ -146,12 +150,14 @@ class ElectronAppStateStore implements AppStateStore {
       if (loadResult) {
         this.savesBlockedByLoadFailure = !loadResult.ok
         this.revision = loadResult.revision
+        this.lastSavedSerializedState = loadResult.ok ? loadResult.serializedState : null
         return loadResult.ok ? loadResult.serializedState : null
       }
 
       this.savesBlockedByLoadFailure = false
       this.revision = 0
-      return window.electronAPI?.loadAppState() ?? null
+      this.lastSavedSerializedState = window.electronAPI?.loadAppState() ?? null
+      return this.lastSavedSerializedState
     } catch {
       this.savesBlockedByLoadFailure = true
       return null
@@ -163,43 +169,112 @@ class ElectronAppStateStore implements AppStateStore {
   ) {
     if (result?.ok) {
       this.revision = result.revision
+      if (typeof result.serializedState === 'string') {
+        this.lastSavedSerializedState = result.serializedState
+      }
       return
     }
     if (result && !result.ok && typeof result.currentRevision === 'number') {
       this.revision = result.currentRevision
     }
     if (typeof result?.serializedState === 'string') {
+      this.lastSavedSerializedState = result.serializedState
       this.notifySubscribers(result.serializedState)
     }
   }
 
+  private getSaveDiagnosticsDetails(
+    serializedState: string,
+    mode: 'async' | 'sync' | 'skip',
+    trigger: string,
+    pendingEditorCount: number | undefined,
+    queueDepth = 0,
+  ) {
+    return {
+      trigger,
+      mode,
+      payloadBytes: serializedState.length,
+      queueDepth,
+      pendingEditorCount: pendingEditorCount ?? null,
+      revision: this.revision,
+    }
+  }
+
+  private recordSaveDiagnostic(
+    event: string,
+    serializedState: string,
+    mode: 'async' | 'sync' | 'skip',
+    trigger: string,
+    pendingEditorCount: number | undefined,
+    queueDepth = 0,
+  ) {
+    recordDiagnosticEvent('storage', event, {
+      details: this.getSaveDiagnosticsDetails(serializedState, mode, trigger, pendingEditorCount, queueDepth),
+    })
+  }
+
+  private runAsyncSaveQueue(): void {
+    if (this.asyncSaveActive) return
+    this.asyncSaveActive = true
+    const saveEpoch = this.syncSaveEpoch
+    this.saveQueue = this.saveQueue
+      .catch(() => undefined)
+      .then(async () => {
+        try {
+          while (this.pendingAsyncSerializedState !== null) {
+            if (saveEpoch !== this.syncSaveEpoch) {
+              this.pendingAsyncSerializedState = null
+              return
+            }
+            const serializedState = this.pendingAsyncSerializedState
+            this.pendingAsyncSerializedState = null
+            const payload = {
+              serializedState,
+              baseRevision: this.revision,
+            }
+            const result = await measureSlowAsyncOperation('electron async app-state save', () =>
+              window.electronAPI!.saveAppStateAsync!(payload),
+            )
+            if (saveEpoch !== this.syncSaveEpoch) return
+            this.applySaveResult(result)
+          }
+        } finally {
+          this.asyncSaveActive = false
+          if (this.pendingAsyncSerializedState !== null) this.runAsyncSaveQueue()
+        }
+      })
+  }
+
   save(serializedState: string, options: AppStateSaveOptions = {}): void {
     if (this.savesBlockedByLoadFailure) return
+    const trigger = options.trigger ?? 'unknown'
+    if (serializedState === this.lastSavedSerializedState && this.pendingAsyncSerializedState === null) {
+      this.recordSaveDiagnostic('app-state-save-skipped', serializedState, 'skip', trigger, options.pendingEditorCount)
+      return
+    }
     const payload = {
       serializedState,
       baseRevision: this.revision,
     }
 
     if (!options.preferSync && typeof window.electronAPI?.saveAppStateAsync === 'function') {
-      const saveEpoch = this.syncSaveEpoch
-      this.saveQueue = this.saveQueue
-        .catch(() => undefined)
-        .then(async () => {
-          if (saveEpoch !== this.syncSaveEpoch) return
-          const result = await measureSlowAsyncOperation('electron async app-state save', () =>
-            window.electronAPI!.saveAppStateAsync!({
-              ...payload,
-              baseRevision: this.revision,
-            }),
-          )
-          if (saveEpoch !== this.syncSaveEpoch) return
-          this.applySaveResult(result)
-        })
+      this.pendingAsyncSerializedState = serializedState
+      this.recordSaveDiagnostic(
+        'app-state-save-queued',
+        serializedState,
+        'async',
+        trigger,
+        options.pendingEditorCount,
+        this.asyncSaveActive ? 1 : 0,
+      )
+      this.runAsyncSaveQueue()
       return
     }
 
     try {
       this.syncSaveEpoch += 1
+      this.pendingAsyncSerializedState = null
+      this.recordSaveDiagnostic('app-state-save-start', serializedState, 'sync', trigger, options.pendingEditorCount)
       const result = measureSlowOperation('electron sync app-state save', () => window.electronAPI?.saveAppState(payload))
       this.applySaveResult(result)
     } catch {

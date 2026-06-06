@@ -192,6 +192,7 @@ import {
   type DiagnosticLogDisplayLimit,
   type DiagnosticLogEntry,
   type DiagnosticLogLevelFilter,
+  type DiagnosticLogMode,
   orderDiagnosticDaysForDisplay,
 } from '../diagnostics/diagnostic-log'
 import { withDefaultInsertedImageDisplayWidth } from '../editor/image-insertion'
@@ -365,19 +366,26 @@ import {
 } from '../storage/device-settings-store'
 import { useStorageProfileController } from '../storage/useStorageProfileController'
 import { useUserSettingsLocationController } from '../storage/useUserSettingsLocationController'
+import {
+  TRASH_DELETE_CONFIRMATION_TIP_ID,
+  shouldConfirmTrashDeleteForReal,
+  shouldShowTrashDeleteConfirmationTip,
+} from '../trash/trash-delete-confirmation'
 import { TRASH_HOME_ID } from '../trash/trash-model'
 import { useTrashSelection } from '../trash/useTrashSelection'
 import {
   EMPTY_TRASH_SELECTION,
   getEffectiveTrashContextTargets,
-  getTrashDomainTarget,
+  getTrashDomainTargets,
   getTrashParentTarget,
   getTrashSelectionActiveReplacementId,
-  getTrashSpaceTarget,
+  getTrashSpaceTargets,
   getTrashSubTabTarget,
   getTrashTargetFromContextMenu,
   getTrashTargetsForSelection,
   hasTrashSelectionModifier,
+  isTrashDomainSelectable,
+  isTrashSpaceSelectable,
   updateTrashSelectionForClick,
   type TrashSelectionClickModifiers,
   type TrashSelectionKind,
@@ -565,6 +573,7 @@ export function useAppController(): AppController {
   const [diagnosticLogEntries, setDiagnosticLogEntries] = useState<DiagnosticLogEntry[]>([])
   const [diagnosticLevelFilter, setDiagnosticLevelFilter] = useState<DiagnosticLogLevelFilter>('all')
   const [diagnosticDisplayLimit, setDiagnosticDisplayLimit] = useState<DiagnosticLogDisplayLimit>(500)
+  const [diagnosticMode, setDiagnosticMode] = useState<DiagnosticLogMode>('actionable')
   const [trashDomainId, setTrashDomainId] = useState<string>('')
   const [trashSpaceId, setTrashSpaceId] = useState<string>('')
   const [trashTabId, setTrashTabId] = useState<string>(TRASH_HOME_ID)
@@ -594,6 +603,7 @@ export function useAppController(): AppController {
     startX: number
     startY: number
     kind: TrashRailDragPreview['kind']
+    scopeId: string | null
     draggedId: string
     selectedIds: string[]
     targets: DeleteTarget[]
@@ -602,8 +612,19 @@ export function useAppController(): AppController {
     selector: string
     attributeName: string
     getLabel: (id: string) => string | undefined
+    sourceRect: {
+      left: number
+      top: number
+      width: number
+      height: number
+    }
   } | null>(null)
   const trashDragPreviewRef = useRef<TrashRailDragPreview | null>(null)
+  const trashDragWindowCleanupRef = useRef<(() => void) | null>(null)
+  const requestDeleteTrashTargetsForRealRef = useRef<(targets: readonly DeleteTarget[]) => void>((targets) => {
+    if (targets.length === 0) return
+    setModal({ type: 'delete-trash-targets', targets: [...targets] })
+  })
   const suppressTrashClickRef = useRef(false)
   const pendingMouseAisleActivationRef = useRef<{ aisleId: string; settled: boolean } | null>(null)
   const pendingMouseAisleCycleFrameRef = useRef<number | null>(null)
@@ -1349,8 +1370,11 @@ export function useAppController(): AppController {
   )
   const trashContextTarget = useMemo(() => getTrashTargetFromContextMenu(contextMenu), [contextMenu])
   const trashContextTargets = useMemo(
-    () => getEffectiveTrashContextTargets(trashContextTarget, selectedTrashTargets, trashSelection),
-    [selectedTrashTargets, trashContextTarget, trashSelection],
+    () =>
+      contextMenu?.type === 'trash-selection'
+        ? selectedTrashTargets
+        : getEffectiveTrashContextTargets(trashContextTarget, selectedTrashTargets, trashSelection),
+    [contextMenu?.type, selectedTrashTargets, trashContextTarget, trashSelection],
   )
 
   const clearTrashSelection = useCallback(() => {
@@ -1402,10 +1426,10 @@ export function useAppController(): AppController {
     if (trashSelection.kind === null) return
     const validIds =
       trashSelection.kind === 'domain'
-        ? trashDomains.filter((domain) => domain.source === 'deleted-domain').map((domain) => domain.id)
+        ? trashDomains.filter(isTrashDomainSelectable).map((domain) => domain.id)
         : trashSelection.kind === 'space'
           ? selectedTrashDomain && trashSelection.scopeId === selectedTrashDomain.id
-            ? trashSpaces.filter((space) => space.source !== 'live').map((space) => space.id)
+            ? trashSpaces.filter(isTrashSpaceSelectable).map((space) => space.id)
             : []
         : trashSelection.kind === 'parent'
           ? selectedTrashSpace && trashSelection.scopeId === selectedTrashSpace.id
@@ -1963,7 +1987,13 @@ export function useAppController(): AppController {
     setTrashDragPreviewState(preview)
   }
 
+  const detachTrashDragWindowListeners = () => {
+    trashDragWindowCleanupRef.current?.()
+    trashDragWindowCleanupRef.current = null
+  }
+
   const finishTrashDrag = () => {
+    detachTrashDragWindowListeners()
     trashDragCandidateRef.current = null
     setTrashDragTargets([])
     setTrashDragPreview(null)
@@ -1983,6 +2013,7 @@ export function useAppController(): AppController {
     event: ReactPointerEvent<HTMLButtonElement>,
     options: {
       kind: TrashRailDragPreview['kind']
+      scopeId: string | null
       draggedId: string
       selectedIds: string[]
       targets: readonly DeleteTarget[]
@@ -1995,11 +2026,14 @@ export function useAppController(): AppController {
   ) => {
     const { targets } = options
     if (event.button !== 0 || targets.length === 0) return
+    detachTrashDragWindowListeners()
+    const rect = event.currentTarget.getBoundingClientRect()
     trashDragCandidateRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
       kind: options.kind,
+      scopeId: options.scopeId,
       draggedId: options.draggedId,
       selectedIds: [...options.selectedIds],
       targets: [...targets],
@@ -2008,21 +2042,51 @@ export function useAppController(): AppController {
       selector: options.selector,
       attributeName: options.attributeName,
       getLabel: options.getLabel,
+      sourceRect: {
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+      },
+    }
+    const handleWindowPointerMove = (pointerEvent: PointerEvent) => {
+      updateTrashDragPointerMove(pointerEvent.pointerId, pointerEvent.clientX, pointerEvent.clientY)
+    }
+    const handleWindowPointerUp = (pointerEvent: PointerEvent) => {
+      finishTrashDragPointer(pointerEvent.pointerId, pointerEvent.clientX, pointerEvent.clientY)
+    }
+    const handleWindowPointerCancel = (pointerEvent: PointerEvent) => {
+      if (trashDragCandidateRef.current?.pointerId !== pointerEvent.pointerId) return
+      finishTrashDrag()
+    }
+    window.addEventListener('pointermove', handleWindowPointerMove, true)
+    window.addEventListener('pointerup', handleWindowPointerUp, true)
+    window.addEventListener('pointercancel', handleWindowPointerCancel, true)
+    trashDragWindowCleanupRef.current = () => {
+      window.removeEventListener('pointermove', handleWindowPointerMove, true)
+      window.removeEventListener('pointerup', handleWindowPointerUp, true)
+      window.removeEventListener('pointercancel', handleWindowPointerCancel, true)
     }
     event.currentTarget.setPointerCapture?.(event.pointerId)
   }
 
-  const handleTrashDragPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const updateTrashDragPointerMove = (pointerId: number, clientX: number, clientY: number) => {
     const candidate = trashDragCandidateRef.current
-    if (!candidate || candidate.pointerId !== event.pointerId) return
-    const distance = Math.hypot(event.clientX - candidate.startX, event.clientY - candidate.startY)
+    if (!candidate || candidate.pointerId !== pointerId) return
+    const distance = Math.hypot(clientX - candidate.startX, clientY - candidate.startY)
     const currentPreview = trashDragPreviewRef.current
     if (distance < 5 && !currentPreview) return
     suppressTrashClickRef.current = true
     if (!currentPreview) {
-      const rect = event.currentTarget.getBoundingClientRect()
-      const previewLeft = getArrangeDragPreviewCenteredLeft(event.clientX, rect.width)
-      const previewTop = getArrangeDragPreviewBelowPointerTop(event.clientY, rect.height)
+      const rect = candidate.sourceRect
+      const previewLeft = getArrangeDragPreviewCenteredLeft(clientX, rect.width)
+      const previewTop = getArrangeDragPreviewBelowPointerTop(clientY, rect.height)
+      setTrashSelection({
+        kind: candidate.kind,
+        ids: candidate.selectedIds,
+        anchorId: candidate.draggedId,
+        scopeId: candidate.scopeId,
+      })
       const nextPreview: TrashRailDragPreview = {
         kind: candidate.kind,
         draggedId: candidate.draggedId,
@@ -2042,10 +2106,10 @@ export function useAppController(): AppController {
           fallbackWidth: rect.width,
           fallbackHeight: rect.height,
         }),
-        currentX: event.clientX,
-        currentY: event.clientY,
-        offsetX: event.clientX - rect.left,
-        offsetY: event.clientY - rect.top,
+        currentX: clientX,
+        currentY: clientY,
+        offsetX: clientX - rect.left,
+        offsetY: clientY - rect.top,
         width: rect.width,
         height: rect.height,
       }
@@ -2054,33 +2118,64 @@ export function useAppController(): AppController {
     } else {
       setTrashDragPreview({
         ...currentPreview,
-        currentX: event.clientX,
-        currentY: event.clientY,
+        currentX: clientX,
+        currentY: clientY,
       })
     }
-    updateTrashDropTargetFromPointer(event.clientX, event.clientY)
+    updateTrashDropTargetFromPointer(clientX, clientY)
+  }
+
+  const finishTrashDragPointer = (pointerId: number, clientX: number, clientY: number) => {
+    const candidate = trashDragCandidateRef.current
+    if (!candidate || candidate.pointerId !== pointerId) return
+    const currentPreview = trashDragPreviewRef.current
+    const targets = currentPreview?.targets ?? candidate.targets
+    const droppedOnTrash = Boolean(currentPreview) && updateTrashDropTargetFromPointer(clientX, clientY)
+    finishTrashDrag()
+    if (droppedOnTrash && targets.length > 0) {
+      requestDeleteTrashTargetsForRealRef.current(targets)
+    }
+  }
+
+  const handleTrashDragPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    updateTrashDragPointerMove(event.pointerId, event.clientX, event.clientY)
   }
 
   const handleTrashDragPointerUp = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    const candidate = trashDragCandidateRef.current
-    if (!candidate || candidate.pointerId !== event.pointerId) return
-    const currentPreview = trashDragPreviewRef.current
-    const targets = currentPreview?.targets ?? candidate.targets
-    const droppedOnTrash = Boolean(currentPreview) && updateTrashDropTargetFromPointer(event.clientX, event.clientY)
-    finishTrashDrag()
-    if (droppedOnTrash && targets.length > 0) {
-      setModal({ type: 'delete-trash-targets', targets })
-    }
+    finishTrashDragPointer(event.pointerId, event.clientX, event.clientY)
   }
 
   const handleTrashDragPointerCancel = () => {
     finishTrashDrag()
   }
 
+  useEffect(() => () => detachTrashDragWindowListeners(), [])
+
   const consumeTrashClickSuppression = () => {
     if (!suppressTrashClickRef.current) return false
     suppressTrashClickRef.current = false
     return true
+  }
+
+  const openTrashSelectionContextMenu = (
+    event: ReactMouseEvent<HTMLButtonElement>,
+    kind: TrashSelectionKind,
+    itemId: string,
+    scopeId: string | null,
+  ) => {
+    event.preventDefault()
+    setMenuOpen(false)
+    const itemAlreadySelected =
+      trashSelection.kind === kind && trashSelection.scopeId === scopeId && trashSelection.ids.includes(itemId)
+    if (!itemAlreadySelected) {
+      setTrashSelection({
+        kind,
+        ids: [itemId],
+        anchorId: itemId,
+        scopeId,
+      })
+    }
+    setContextMenu({ type: 'trash-selection', x: event.clientX, y: event.clientY })
   }
 
   const openTrashHomeNote = () => {
@@ -5042,6 +5137,30 @@ export function useAppController(): AppController {
   const beginRenameSpaceFromContext = overlayActions.beginRenameSpaceFromContext
   const beginRenameDomainFromContext = overlayActions.beginRenameDomainFromContext
 
+  const maybeShowTrashDeleteConfirmationTip = () => {
+    if (!shouldShowTrashDeleteConfirmationTip(stateRef.current.ui)) return
+    showTip(TRASH_DELETE_CONFIRMATION_TIP_ID)
+  }
+
+  const deleteTrashTargetsForRealNow = (targets: readonly DeleteTarget[]) => {
+    if (targets.length === 0) return
+    overlayActions.deleteTrashTargetsForReal(targets)
+    clearTrashSelection()
+    maybeShowTrashDeleteConfirmationTip()
+  }
+
+  const requestDeleteTrashTargetsForReal = (targets: readonly DeleteTarget[]) => {
+    if (targets.length === 0) return
+    const nextTargets = [...targets]
+    if (shouldConfirmTrashDeleteForReal(stateRef.current.ui)) {
+      setModal({ type: 'delete-trash-targets', targets: nextTargets })
+      return
+    }
+    deleteTrashTargetsForRealNow(nextTargets)
+  }
+
+  requestDeleteTrashTargetsForRealRef.current = requestDeleteTrashTargetsForReal
+
   const restoreTrashTargetsFromContext = () => {
     if (trashContextTargets.length === 0) {
       restoreFromContext()
@@ -5055,7 +5174,7 @@ export function useAppController(): AppController {
   const deleteTrashTargetsFromContext = () => {
     if (trashContextTargets.length === 0) return
     setContextMenu(null)
-    setModal({ type: 'delete-trash-targets', targets: trashContextTargets })
+    requestDeleteTrashTargetsForReal(trashContextTargets)
   }
 
   const pasteSyncedNoteAsAisleFromModal = () => {
@@ -5163,8 +5282,9 @@ export function useAppController(): AppController {
     }
 
     if (modal.type === 'delete-trash-targets') {
-      overlayActions.confirmModal()
-      clearTrashSelection()
+      const targets = modal.targets
+      setModal(null)
+      deleteTrashTargetsForRealNow(targets)
       return
     }
 
@@ -5643,6 +5763,9 @@ export function useAppController(): AppController {
               {
                 key: 'trash-home',
                 label: 'trash',
+                ariaLabel: trashDragTargets.length > 0 ? 'delete' : 'trash',
+                visibleLabel: trashDragTargets.length > 0 ? 'delete' : 'trash',
+                sizeLabel: 'delete',
                 selected: trashTabId === TRASH_HOME_ID,
                 className: `btn btn-sm tab-btn topbar-action-btn topbar-context-btn topbar-arrange-trash-btn ${
                   trashDragTargets.length > 0 ? 'is-trash-mode' : ''
@@ -5866,22 +5989,24 @@ export function useAppController(): AppController {
               )
             }
             onOpenDeletedDomainContextMenu={(event, domain) => {
-              if (!domain.deletedDomainEntryId) return
-              openContextMenuForTrashDomain(event, domain.deletedDomainEntryId, domain.domainId)
+              if (domain.deletedDomainEntryId) {
+                openContextMenuForTrashDomain(event, domain.deletedDomainEntryId, domain.domainId)
+                return
+              }
+              openTrashSelectionContextMenu(event, 'domain', domain.id, null)
             }}
             onDeletedDomainPointerDown={(event, domain) => {
-              if (!trashSelectedDomainIds.has(domain.id)) return
-              const target = getTrashDomainTarget(domain)
-              if (!target) return
-              const selectedIds =
-                trashSelection.kind === 'domain' && trashSelection.ids.includes(domain.id)
-                  ? trashSelection.ids
-                  : [domain.id]
+              const itemTargets = getTrashDomainTargets(domain)
+              if (itemTargets.length === 0) return
+              const selected = trashSelection.kind === 'domain' && trashSelection.ids.includes(domain.id)
+              const selectedIds = selected ? trashSelection.ids : [domain.id]
+              const targets = selected && selectedTrashTargets.length > 0 ? selectedTrashTargets : itemTargets
               startTrashDragCandidate(event, {
                 kind: 'domain',
+                scopeId: null,
                 draggedId: domain.id,
                 selectedIds,
-                targets: selectedTrashTargets.length > 0 ? selectedTrashTargets : [target],
+                targets,
                 label: domain.title,
                 rail: domainsGridRef.current,
                 selector: '[data-trash-domain-id]',
@@ -5926,7 +6051,10 @@ export function useAppController(): AppController {
                 )
               }
               onOpenDeletedSpaceContextMenu={(event, space) => {
-                if (space.source === 'live') return
+                if (space.source === 'live') {
+                  openTrashSelectionContextMenu(event, 'space', space.id, selectedTrashDomain.id)
+                  return
+                }
                 if (space.source === 'deleted-space' && !space.deletedSpaceEntryId) return
                 openContextMenuForTrashSpace(event, {
                   source: space.source,
@@ -5937,18 +6065,20 @@ export function useAppController(): AppController {
                 })
               }}
               onDeletedSpacePointerDown={(event, space) => {
-                if (!trashSelectedSpaceIds.has(space.id)) return
-                const target = getTrashSpaceTarget(space)
-                if (!target) return
-                const selectedIds =
-                  trashSelection.kind === 'space' && trashSelection.ids.includes(space.id)
-                    ? trashSelection.ids
-                    : [space.id]
+                const itemTargets = getTrashSpaceTargets(space)
+                if (itemTargets.length === 0) return
+                const selected =
+                  trashSelection.kind === 'space' &&
+                  trashSelection.scopeId === selectedTrashDomain.id &&
+                  trashSelection.ids.includes(space.id)
+                const selectedIds = selected ? trashSelection.ids : [space.id]
+                const targets = selected && selectedTrashTargets.length > 0 ? selectedTrashTargets : itemTargets
                 startTrashDragCandidate(event, {
                   kind: 'space',
+                  scopeId: selectedTrashDomain.id,
                   draggedId: space.id,
                   selectedIds,
-                  targets: selectedTrashTargets.length > 0 ? selectedTrashTargets : [target],
+                  targets,
                   label: space.title,
                   rail: spacesGridRef.current,
                   selector: '[data-trash-space-id]',
@@ -6058,17 +6188,20 @@ export function useAppController(): AppController {
           }}
           onOpenContextMenuForTrashTab={openContextMenuForTrashTab}
           onTrashParentPointerDown={(event, trashParent) => {
-            if (!trashSelectedParentIds.has(trashParent.id)) return
             const target = getTrashParentTarget(trashParent)
+            const selected =
+              trashSelection.kind === 'parent' &&
+              trashSelection.scopeId === (selectedTrashSpace?.id ?? null) &&
+              trashSelection.ids.includes(trashParent.id)
             const selectedIds =
-              trashSelection.kind === 'parent' && trashSelection.ids.includes(trashParent.id)
-                ? trashSelection.ids
-                : [trashParent.id]
+              selected ? trashSelection.ids : [trashParent.id]
+            const targets = selected && selectedTrashTargets.length > 0 ? selectedTrashTargets : [target]
             startTrashDragCandidate(event, {
               kind: 'parent',
+              scopeId: selectedTrashSpace?.id ?? null,
               draggedId: trashParent.id,
               selectedIds,
-              targets: selectedTrashTargets.length > 0 ? selectedTrashTargets : [target],
+              targets,
               label: trashParent.title,
               rail: primaryTabRailRef.current,
               selector: '[data-trash-parent-id]',
@@ -6102,9 +6235,11 @@ export function useAppController(): AppController {
           diagnosticLogCount={diagnosticLogEntries.length}
           diagnosticLevelFilter={diagnosticLevelFilter}
           diagnosticDisplayLimit={diagnosticDisplayLimit}
+          diagnosticMode={diagnosticMode}
           onMessagesSectionChange={setMessagesSection}
           onDiagnosticLevelFilterChange={setDiagnosticLevelFilter}
           onDiagnosticDisplayLimitChange={setDiagnosticDisplayLimit}
+          onDiagnosticModeChange={setDiagnosticMode}
         />
       )}
 
@@ -6158,6 +6293,7 @@ export function useAppController(): AppController {
           scratchpadAisleLimitDraft={settingsController.scratchpadAisleLimitDraft}
           scratchpadNewAisleSideDraft={settingsController.scratchpadNewAisleSideDraft}
           tabRenameEnterBehaviorDraft={settingsController.tabRenameEnterBehaviorDraft}
+          trashDeleteForRealRequiresConfirmation={settingsController.trashDeleteForRealRequiresConfirmation}
           miscSyncedUiBooleanSettings={settingsController.miscSyncedUiBooleanSettings}
           frontmatterDraft={settingsController.frontmatterDraft}
           frontmatterDraftDirty={settingsController.frontmatterDraftDirty}
@@ -6314,17 +6450,20 @@ export function useAppController(): AppController {
             onOpenContextMenuForTrashTab={openContextMenuForTrashTab}
             onOpenContextMenuForTrashSubTab={openContextMenuForTrashSubTab}
             onTrashSubTabPointerDown={(event, trashParent, subTabId) => {
-              if (!trashSelectedSubTabIds.has(subTabId)) return
               const target = getTrashSubTabTarget(trashParent, subTabId)
+              const selected =
+                trashSelection.kind === 'subtab' &&
+                trashSelection.scopeId === trashParent.id &&
+                trashSelection.ids.includes(subTabId)
               const selectedIds =
-                trashSelection.kind === 'subtab' && trashSelection.ids.includes(subTabId)
-                  ? trashSelection.ids
-                  : [subTabId]
+                selected ? trashSelection.ids : [subTabId]
+              const targets = selected && selectedTrashTargets.length > 0 ? selectedTrashTargets : [target]
               startTrashDragCandidate(event, {
                 kind: 'subtab',
+                scopeId: trashParent.id,
                 draggedId: subTabId,
                 selectedIds,
-                targets: selectedTrashTargets.length > 0 ? selectedTrashTargets : [target],
+                targets,
                 label: trashParent.subTabs.find((subTab) => subTab.id === subTabId)?.title ?? 'tab',
                 rail: subTabRailRef.current,
                 selector: '[data-trash-subtab-id]',
@@ -6362,6 +6501,7 @@ export function useAppController(): AppController {
               diagnosticEntries={diagnosticLogEntries}
               diagnosticLevelFilter={diagnosticLevelFilter}
               diagnosticDisplayLimit={diagnosticDisplayLimit}
+              diagnosticMode={diagnosticMode}
               onDiagnosticDayChange={changeDiagnosticDay}
               onDismissMessage={dismissMessage}
               onOpenRecoveredNotebookLocation={openRecoveredNotebookLocationFromMessage}

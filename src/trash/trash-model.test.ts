@@ -106,6 +106,90 @@ describe('trash model', () => {
     })
   })
 
+  it('hides empty live containers and keeps live containers with deleted descendants', () => {
+    const state = {
+      activeDomainId: 'domain-empty',
+      activeSpaceId: 'space-empty',
+      spaces: [],
+      deletedDomains: [],
+      deletedSpaces: [
+        {
+          id: 'deleted-space-entry',
+          domainId: 'domain-trash',
+          domainName: 'Domain Trash',
+          deletedAt: 3,
+          space: {
+            id: 'space-deleted',
+            name: 'Deleted Space',
+            settings: { autoRemoveDeletedDays: 7 },
+            data: { activeTabId: '', tabs: [], deletedTabs: [], deletedSubTabs: [] },
+          },
+        },
+      ],
+      domains: [
+        {
+          id: 'domain-empty',
+          name: 'Domain Empty',
+          activeSpaceId: 'space-empty',
+          spaces: [
+            {
+              id: 'space-empty',
+              name: 'Empty Space',
+              settings: { autoRemoveDeletedDays: 7 },
+              data: { activeTabId: '', tabs: [], deletedTabs: [], deletedSubTabs: [] },
+            },
+          ],
+        },
+        {
+          id: 'domain-trash',
+          name: 'Domain Trash',
+          activeSpaceId: 'space-live-trash',
+          spaces: [
+            {
+              id: 'space-live-empty',
+              name: 'Live Empty',
+              settings: { autoRemoveDeletedDays: 7 },
+              data: { activeTabId: '', tabs: [], deletedTabs: [], deletedSubTabs: [] },
+            },
+            {
+              id: 'space-live-trash',
+              name: 'Live Trash',
+              settings: { autoRemoveDeletedDays: 7 },
+              data: {
+                activeTabId: '',
+                tabs: [],
+                deletedTabs: [
+                  {
+                    id: 'deleted-tab-entry',
+                    deletedAt: 4,
+                    tab: {
+                      id: 'parent-a',
+                      title: 'Parent A',
+                      noteBodyId: 'body-a',
+                      activeSubTabId: null,
+                      subTabs: [],
+                    },
+                  },
+                ],
+                deletedSubTabs: [],
+              },
+            },
+          ],
+        },
+      ],
+      noteBodies: [{ id: 'body-a', aisles: [{ id: 'aisle-a', aisleBodyId: 'aisle-body-a' }] }],
+      noteAisleBodies: [{ id: 'aisle-body-a', markdown: 'deleted parent' }],
+    } as unknown as AppState
+
+    const buckets = buildTrashDomainBuckets(state)
+
+    expect(buckets.map((bucket) => bucket.id)).toEqual(['live-domain:domain-trash'])
+    expect(buckets[0].spaces.map((space) => space.id)).toEqual([
+      'live-space:domain-trash:space-live-trash',
+      'deleted-space:deleted-space-entry',
+    ])
+  })
+
   it('keeps deleted-domain space restore targets separate from deleted-space entries', () => {
     const state = {
       activeDomainId: 'domain-live',

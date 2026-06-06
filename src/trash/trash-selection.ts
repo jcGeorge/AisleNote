@@ -158,6 +158,38 @@ export function getTrashSpaceTarget(space: TrashSpaceBucket): DeleteTarget | nul
   }
 }
 
+function dedupeTrashTargets(targets: readonly DeleteTarget[]) {
+  const seen = new Set<string>()
+  const deduped: DeleteTarget[] = []
+  for (const target of targets) {
+    const key = getTrashTargetSelectionId(target) ?? JSON.stringify(target)
+    if (seen.has(key)) continue
+    seen.add(key)
+    deduped.push(target)
+  }
+  return deduped
+}
+
+export function getTrashSpaceTargets(space: TrashSpaceBucket): DeleteTarget[] {
+  const spaceTarget = getTrashSpaceTarget(space)
+  if (spaceTarget) return [spaceTarget]
+  return dedupeTrashTargets(space.parentTabs.map(getTrashParentTarget))
+}
+
+export function getTrashDomainTargets(domain: TrashDomainBucket): DeleteTarget[] {
+  const domainTarget = getTrashDomainTarget(domain)
+  if (domainTarget) return [domainTarget]
+  return dedupeTrashTargets(domain.spaces.flatMap(getTrashSpaceTargets))
+}
+
+export function isTrashSpaceSelectable(space: TrashSpaceBucket) {
+  return getTrashSpaceTargets(space).length > 0
+}
+
+export function isTrashDomainSelectable(domain: TrashDomainBucket) {
+  return getTrashDomainTargets(domain).length > 0
+}
+
 export function getTrashParentTarget(parent: TrashParentBucket): DeleteTarget {
   return {
     type: 'trash-tab',
@@ -234,27 +266,23 @@ export function getTrashTargetsForSelection({
   const selectedIds = new Set(selection.ids)
 
   if (selection.kind === 'domain') {
-    return domains
-      .filter((domain) => selectedIds.has(domain.id))
-      .map(getTrashDomainTarget)
-      .filter((target): target is DeleteTarget => Boolean(target))
+    return dedupeTrashTargets(domains.filter((domain) => selectedIds.has(domain.id)).flatMap(getTrashDomainTargets))
   }
 
   if (selection.kind === 'space') {
-    return spaces
-      .filter((space) => selectedIds.has(space.id))
-      .map(getTrashSpaceTarget)
-      .filter((target): target is DeleteTarget => Boolean(target))
+    return dedupeTrashTargets(spaces.filter((space) => selectedIds.has(space.id)).flatMap(getTrashSpaceTargets))
   }
 
   if (selection.kind === 'parent') {
-    return parents.filter((parent) => selectedIds.has(parent.id)).map(getTrashParentTarget)
+    return dedupeTrashTargets(parents.filter((parent) => selectedIds.has(parent.id)).map(getTrashParentTarget))
   }
 
   if (!selectedParent || selection.scopeId !== selectedParent.id) return []
-  return selectedParent.subTabs
-    .filter((subTab) => selectedIds.has(subTab.id))
-    .map((subTab) => getTrashSubTabTarget(selectedParent, subTab.id))
+  return dedupeTrashTargets(
+    selectedParent.subTabs
+      .filter((subTab) => selectedIds.has(subTab.id))
+      .map((subTab) => getTrashSubTabTarget(selectedParent, subTab.id)),
+  )
 }
 
 export function getTrashTargetFromContextMenu(contextMenu: ContextMenuState | null): DeleteTarget | null {
@@ -311,8 +339,11 @@ export function getEffectiveTrashContextTargets(
 ) {
   if (!contextTarget) return []
   const contextId = getTrashTargetSelectionId(contextTarget)
+  if (contextId && selectedTargets.some((target) => getTrashTargetSelectionId(target) === contextId)) {
+    return selectedTargets.length > 0 ? dedupeTrashTargets(selectedTargets) : [contextTarget]
+  }
   if (!contextId || selection.kind === null || !selection.ids.includes(contextId)) return [contextTarget]
   const contextScopeId = getTrashTargetScopeId(contextTarget)
   if (contextScopeId !== null && selection.scopeId !== contextScopeId) return [contextTarget]
-  return selectedTargets.length > 0 ? [...selectedTargets] : [contextTarget]
+  return selectedTargets.length > 0 ? dedupeTrashTargets(selectedTargets) : [contextTarget]
 }

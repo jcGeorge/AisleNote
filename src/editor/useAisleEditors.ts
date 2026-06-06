@@ -4,9 +4,14 @@ import { Editor } from '@toast-ui/editor'
 import { TextSelection } from 'prosemirror-state'
 import { buildAisleEditorKey, getAisleIdFromAisleEditorKey, type AisleEditorMeta } from './aisle-editor'
 import {
+  AISLE_ACTIVATION_WARNING_THRESHOLD_MS,
+  createAisleActivationDiagnosticSummary,
+  mergeAisleActivationDiagnosticSummary,
   resolveProgrammaticAisleRewriteMarkdown,
   shouldClearPendingCursorRestoreForAisleActivation,
   shouldUseFastSameAisleActivation,
+  type AisleActivationDiagnosticInput,
+  type AisleActivationDiagnosticSummary,
   type AisleActivationSource,
 } from './aisle-activation'
 import { createCodeBlockControlsPlugin } from './code-block-controls'
@@ -199,6 +204,9 @@ export function useAisleEditors({
   const [recentAisleIds, setRecentAisleIds] = useState<string[]>([])
   const [retainedAisleIds, setRetainedAisleIds] = useState<Set<string>>(() => new Set())
   const idleUnmountTimerRef = useRef<number | null>(null)
+  const activationDiagnosticFrameRef = useRef<number | null>(null)
+  const activationDiagnosticSummariesRef = useRef<Map<string, AisleActivationDiagnosticSummary>>(new Map())
+  const recentPointerActivationRef = useRef<{ editorKey: string; at: number } | null>(null)
   const pendingFocusAfterMountAisleIdRef = useRef<string | null>(null)
   const pendingHeadingScrollRef = useRef<PendingHeadingScroll | null>(null)
   const pendingLinkScrollRef = useRef<PendingLinkScroll | null>(null)
@@ -252,6 +260,52 @@ export function useAisleEditors({
     lastEditorMarkdownByAisleRef.current.set(getAisleBodyIdForAisleId(aisleId), markdown)
   }
 
+  const flushActivationDiagnostics = () => {
+    activationDiagnosticFrameRef.current = null
+    const summaries = Array.from(activationDiagnosticSummariesRef.current.values())
+    activationDiagnosticSummariesRef.current.clear()
+    summaries.forEach((summary) => {
+      recordDiagnosticEvent('aisle-editor', 'activation-summary', {
+        level: summary.maxDurationMs >= AISLE_ACTIVATION_WARNING_THRESHOLD_MS ? 'warning' : 'info',
+        durationMs: summary.maxDurationMs,
+        details: summary,
+      })
+    })
+  }
+
+  const queueActivationDiagnostic = (input: AisleActivationDiagnosticInput) => {
+    const key = `${input.requestedAisleId}:${input.previousAisleId}`
+    const current = activationDiagnosticSummariesRef.current.get(key)
+    activationDiagnosticSummariesRef.current.set(
+      key,
+      current
+        ? mergeAisleActivationDiagnosticSummary(current, input)
+        : createAisleActivationDiagnosticSummary(input),
+    )
+    if (activationDiagnosticFrameRef.current !== null) return
+    activationDiagnosticFrameRef.current = window.requestAnimationFrame(flushActivationDiagnostics)
+  }
+
+  const shouldSkipFocusActivationAfterPointer = (editorKey: string) => {
+    const recent = recentPointerActivationRef.current
+    if (!recent || recent.editorKey !== editorKey) return false
+    const current = typeof performance !== 'undefined' ? performance.now() : Date.now()
+    return current - recent.at <= 250
+  }
+
+  const activateEditorFromFocus = (editorKey: string) => {
+    if (shouldSkipFocusActivationAfterPointer(editorKey)) return false
+    return activateAisleEditor(editorKey, { flushPrevious: true, source: 'focus' })
+  }
+
+  const activateEditorFromPointer = (editorKey: string) => {
+    recentPointerActivationRef.current = {
+      editorKey,
+      at: typeof performance !== 'undefined' ? performance.now() : Date.now(),
+    }
+    return activateAisleEditor(editorKey, { flushPrevious: true, source: 'pointer' })
+  }
+
   const getPendingContentForAisle = (aisle: ResolvedNoteAisle) => {
     const aisleBodyId = getAisleBodyId(aisle)
     const pending = pendingContentRef.current.get(aisleBodyId)
@@ -292,24 +346,24 @@ export function useAisleEditors({
     const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
     const previousAisleId = activeAisleIdRef.current
     const requestedAisleId = getAisleIdFromAisleEditorKey(editorKey)
+    const source = options.source ?? 'programmatic'
     const shouldLogActivation = Boolean(
       options.source ||
       options.focus ||
       options.flushPrevious ||
       (requestedAisleId && requestedAisleId !== previousAisleId),
     )
-    if (shouldLogActivation) {
-      recordDiagnosticEvent('aisle-editor', 'activation-start', {
-        details: {
-          editorKey,
-          requestedAisleId,
-          previousAisleId,
-          source: options.source ?? 'programmatic',
-          focus: options.focus === true,
-          flushPrevious: options.flushPrevious === true,
-          pendingFocusToAisleId: pendingFocusToAisleIdRef.current,
-          hasPendingCursorRestore: Boolean(pendingCursorRestoreRef.current),
-        },
+    const queueActivationResult = (result: string, aisleId = requestedAisleId) => {
+      if (!shouldLogActivation) return
+      queueActivationDiagnostic({
+        requestedAisleId: aisleId,
+        previousAisleId,
+        source,
+        result,
+        durationMs: (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt,
+        focus: options.focus === true,
+        flushPrevious: options.flushPrevious === true,
+        mountedEditorCount: aisleEditorMetaRef.current.size,
       })
     }
     if (isPendingCreatedRenameActive() && !options.allowDuringPendingRename) {
@@ -320,6 +374,7 @@ export function useAisleEditors({
           details: {
             editorKey,
             requestedAisleId,
+            source,
             reason: 'pending-created-rename',
           },
         })
@@ -337,6 +392,7 @@ export function useAisleEditors({
             details: {
               editorKey,
               requestedAisleId: aisleId,
+              source,
               reason: 'unknown-aisle',
             },
           })
@@ -359,17 +415,7 @@ export function useAisleEditors({
       retainRecentAisleId(aisleId)
       setRetainedAisleIds((currentIds) => new Set([...currentIds, aisleId]))
       if (options.focus) pendingFocusAfterMountAisleIdRef.current = aisleId
-      if (shouldLogActivation) {
-        recordDiagnosticEvent('aisle-editor', 'activation-deferred-mount', {
-          durationMs: (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt,
-          details: {
-            editorKey,
-            aisleId,
-            requestedFocusAfterMount: options.focus === true,
-            mountedEditorCount: aisleEditorMetaRef.current.size,
-          },
-        })
-      }
+      queueActivationResult('deferred-mount', aisleId)
       return false
     }
 
@@ -391,18 +437,7 @@ export function useAisleEditors({
       if (options.focus) {
         meta.editor.focus()
       }
-      if (shouldLogActivation) {
-        recordDiagnosticEvent('aisle-editor', 'activation-end', {
-          durationMs: (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt,
-          details: {
-            editorKey,
-            aisleId: meta.aisleId,
-            result: 'fast-same-aisle',
-            previousAisleId,
-            mountedEditorCount: aisleEditorMetaRef.current.size,
-          },
-        })
-      }
+      queueActivationResult('fast-same-aisle', meta.aisleId)
       return true
     }
 
@@ -428,18 +463,7 @@ export function useAisleEditors({
       meta.editor.focus()
     }
     scheduleToolbarFormatStateSync()
-    if (shouldLogActivation) {
-      recordDiagnosticEvent('aisle-editor', 'activation-end', {
-        durationMs: (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt,
-        details: {
-          editorKey,
-          aisleId: meta.aisleId,
-          result: switchingAisle ? 'switched-aisle' : 'activated-mounted',
-          previousAisleId,
-          mountedEditorCount: aisleEditorMetaRef.current.size,
-        },
-      })
-    }
+    queueActivationResult(switchingAisle ? 'switched-aisle' : 'activated-mounted', meta.aisleId)
     return true
   }
 
@@ -734,6 +758,14 @@ export function useAisleEditors({
     [registerMountedEditorSnapshotProvider],
   )
 
+  useEffect(() => () => {
+    if (activationDiagnosticFrameRef.current !== null) {
+      window.cancelAnimationFrame(activationDiagnosticFrameRef.current)
+      activationDiagnosticFrameRef.current = null
+    }
+    activationDiagnosticSummariesRef.current.clear()
+  }, [])
+
   useEffect(() => {
     if (idleUnmountTimerRef.current !== null) {
       window.clearTimeout(idleUnmountTimerRef.current)
@@ -901,11 +933,11 @@ export function useAisleEditors({
         },
         events: {
           change: () => handleAisleEditorChange(editorKey, aisle.id, editor),
-          focus: () => activateAisleEditor(editorKey, { flushPrevious: true, source: 'focus' }),
+          focus: () => activateEditorFromFocus(editorKey),
         },
       })
-      const activateFromFocus = () => activateAisleEditor(editorKey, { flushPrevious: true, source: 'focus' })
-      const activateFromPointer = () => activateAisleEditor(editorKey, { flushPrevious: true, source: 'pointer' })
+      const activateFromFocus = () => activateEditorFromFocus(editorKey)
+      const activateFromPointer = () => activateEditorFromPointer(editorKey)
       root.addEventListener('focusin', activateFromFocus)
       root.addEventListener('pointerdown', activateFromPointer, true)
       const cleanupImageDisplayMetadataSync = installImageDisplayMetadataSync(root)

@@ -510,7 +510,7 @@ export function SubTabRail({
                 role="tab"
                 data-trash-subtab-id={subTab.id}
                 aria-selected={subTab.id === selectedTrashSubTabId}
-                className={`btn btn-sm tab-btn trash-subtab-btn ${
+                className={`btn btn-sm tab-btn trash-subtab-btn is-trash-selectable ${
                   subTab.id === selectedTrashSubTabId ? 'is-selected' : ''
                 } ${trashSelectedSubTabIds?.has(subTab.id) ? 'is-trash-selected' : ''}`}
                 onClick={(event) => {

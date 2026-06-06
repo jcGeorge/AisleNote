@@ -2,6 +2,7 @@ import type {
   DiagnosticLogDisplayLimit,
   DiagnosticLogEntry,
   DiagnosticLogLevelFilter,
+  DiagnosticLogMode,
 } from '../../diagnostics/diagnostic-log'
 import { orderDiagnosticEntriesForDisplay } from '../../diagnostics/diagnostic-log'
 import type { AppMessage, MessagesSection, NoteLocation, ToastHistoryEntry } from '../../types/app'
@@ -16,6 +17,7 @@ type MessagesViewProps = {
   diagnosticEntries?: DiagnosticLogEntry[]
   diagnosticLevelFilter?: DiagnosticLogLevelFilter
   diagnosticDisplayLimit?: DiagnosticLogDisplayLimit
+  diagnosticMode?: DiagnosticLogMode
   onDiagnosticDayChange?: (dayKey: string) => void
   onDismissMessage: (messageId: string) => void
   onOpenRecoveredNotebookLocation: (message: AppMessage) => void
@@ -45,6 +47,31 @@ function getDiagnosticDisplayLimitCount(limit: DiagnosticLogDisplayLimit): numbe
   return limit === 'all' ? null : limit
 }
 
+function isHealthyStorageStatusInfo(entry: DiagnosticLogEntry) {
+  return (
+    entry.level === 'info' &&
+    entry.area === 'storage' &&
+    entry.event === 'profile-status' &&
+    entry.details?.status === 'ready' &&
+    entry.details?.health === 'healthy'
+  )
+}
+
+function filterActionableDiagnosticEntries(entries: DiagnosticLogEntry[]) {
+  const anchors = entries
+    .filter((entry) => entry.level === 'warning' || entry.level === 'error')
+    .map((entry) => new Date(entry.createdAt).getTime())
+    .filter((timestamp) => Number.isFinite(timestamp))
+  if (anchors.length === 0) return []
+  return entries.filter((entry) => {
+    if (entry.level === 'warning' || entry.level === 'error') return true
+    if (isHealthyStorageStatusInfo(entry)) return false
+    const timestamp = new Date(entry.createdAt).getTime()
+    if (!Number.isFinite(timestamp)) return false
+    return anchors.some((anchor) => Math.abs(timestamp - anchor) <= 5000)
+  })
+}
+
 function getRecoveryFolderActionLabel(message: AppMessage) {
   const localNotebookWasTheFailedFolder =
     message.recoveryMode === 'reset-default' &&
@@ -62,6 +89,7 @@ export function MessagesView({
   diagnosticEntries = [],
   diagnosticLevelFilter = 'all',
   diagnosticDisplayLimit = 500,
+  diagnosticMode = 'actionable',
   onDiagnosticDayChange = () => undefined,
   onDismissMessage,
   onOpenRecoveredNotebookLocation,
@@ -69,10 +97,14 @@ export function MessagesView({
 }: MessagesViewProps) {
   const visibleMessages = messages.filter((message) => message.status !== 'dismissed')
   const orderedDiagnosticEntries = orderDiagnosticEntriesForDisplay(diagnosticEntries)
+  const modeFilteredDiagnosticEntries =
+    diagnosticMode === 'actionable'
+      ? filterActionableDiagnosticEntries(orderedDiagnosticEntries)
+      : orderedDiagnosticEntries
   const filteredDiagnosticEntries =
     diagnosticLevelFilter === 'all'
-      ? orderedDiagnosticEntries
-      : orderedDiagnosticEntries.filter((entry) => entry.level === diagnosticLevelFilter)
+      ? modeFilteredDiagnosticEntries
+      : modeFilteredDiagnosticEntries.filter((entry) => entry.level === diagnosticLevelFilter)
   const diagnosticLimitCount = getDiagnosticDisplayLimitCount(diagnosticDisplayLimit)
   const displayedDiagnosticEntries =
     diagnosticLimitCount === null
@@ -107,13 +139,18 @@ export function MessagesView({
               {orderedDiagnosticEntries.length === 0 ? (
                 <p className="messages-empty">No diagnostic logs for this day.</p>
               ) : filteredDiagnosticEntries.length === 0 ? (
-                <p className="messages-empty">No diagnostic logs for this type.</p>
+                <p className="messages-empty">
+                  {diagnosticMode === 'actionable'
+                    ? 'No actionable diagnostic logs for this day.'
+                    : 'No diagnostic logs for this type.'}
+                </p>
               ) : (
                 <>
                   <p className="diagnostic-log-summary">
                     showing {displayedDiagnosticEntries.length.toLocaleString()} of{' '}
                     {filteredDiagnosticEntries.length.toLocaleString()}
                     {diagnosticLevelFilter === 'all' ? ' diagnostics' : ` ${diagnosticLevelFilter} diagnostics`}
+                    {diagnosticMode === 'actionable' ? ' in actionable mode' : ''}
                   </p>
                   <div className="messages-list diagnostic-log-list">
                     {displayedDiagnosticEntries.map((entry) => {

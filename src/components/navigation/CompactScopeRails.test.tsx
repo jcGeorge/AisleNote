@@ -4,8 +4,14 @@ import { fileURLToPath } from 'node:url'
 import { createRef, isValidElement, type ReactElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import type { ArrangeModeState, Domain, Space } from '../../types/app'
-import { CompactDomainRail, CompactScopeDragPreview, CompactSpaceRail } from './CompactScopeRails'
+import type { ArrangeModeState, Domain, Space, TrashDomainBucket, TrashParentBucket, TrashSpaceBucket } from '../../types/app'
+import {
+  CompactDomainRail,
+  CompactScopeDragPreview,
+  CompactSpaceRail,
+  TrashDomainRail,
+  TrashSpaceRail,
+} from './CompactScopeRails'
 
 const componentDir = dirname(fileURLToPath(import.meta.url))
 
@@ -43,6 +49,43 @@ const domain = (id: string): Domain => ({
   spaces: [],
 })
 
+const trashParent = (id: string): TrashParentBucket => ({
+  id,
+  title: id,
+  source: 'deleted-tab',
+  deletedTabEntryId: id,
+  parentTabId: `parent-${id}`,
+  homeContent: '',
+  subTabs: [],
+})
+
+const trashSpace = (
+  id: string,
+  options: { source?: TrashSpaceBucket['source']; parentTabs?: TrashParentBucket[] } = {},
+): TrashSpaceBucket => ({
+  id: options.source === 'deleted-space' ? `deleted-space:${id}` : `live-space:domain-a:${id}`,
+  title: id,
+  source: options.source ?? 'live',
+  domainId: 'domain-a',
+  spaceId: id,
+  deletedSpaceEntryId: options.source === 'deleted-space' ? id : null,
+  deletedDomainEntryId: null,
+  space: space(id),
+  parentTabs: options.parentTabs ?? [],
+})
+
+const trashDomain = (
+  id: string,
+  options: { source?: TrashDomainBucket['source']; spaces?: TrashSpaceBucket[] } = {},
+): TrashDomainBucket => ({
+  id: options.source === 'deleted-domain' ? `deleted-domain:${id}` : `live-domain:${id}`,
+  title: id,
+  source: options.source ?? 'live',
+  domainId: id,
+  deletedDomainEntryId: options.source === 'deleted-domain' ? id : null,
+  spaces: options.spaces ?? [],
+})
+
 const noop = () => undefined
 const autoSizeNoop = () => undefined
 
@@ -64,6 +107,46 @@ function findElementByProp(node: ReactNode, propName: string, propValue: string)
 }
 
 describe('compact scope rails', () => {
+  it('marks live trash containers with descendant trash as selectable in visible rail order', () => {
+    const parent = trashParent('parent-a')
+    const emptyLiveSpace = trashSpace('empty')
+    const liveSpaceWithTrash = trashSpace('with-trash', { parentTabs: [parent] })
+    const deletedSpace = trashSpace('deleted', { source: 'deleted-space' })
+    const domainHtml = renderToStaticMarkup(
+      <TrashDomainRail
+        domains={[
+          trashDomain('empty', { spaces: [emptyLiveSpace] }),
+          trashDomain('with-trash', { spaces: [liveSpaceWithTrash] }),
+          trashDomain('deleted', { source: 'deleted-domain' }),
+        ]}
+        selectedDomainId="live-domain:with-trash"
+        trashSelectedDomainIds={new Set(['live-domain:with-trash'])}
+        domainsGridRef={createRef<HTMLDivElement>()}
+        onSelectDomain={noop}
+        onOpenDeletedDomainContextMenu={noop}
+      />,
+    )
+    const spaceHtml = renderToStaticMarkup(
+      <TrashSpaceRail
+        spaces={[emptyLiveSpace, liveSpaceWithTrash, deletedSpace]}
+        selectedSpaceId="live-space:domain-a:with-trash"
+        trashSelectedSpaceIds={new Set(['live-space:domain-a:with-trash'])}
+        spacesGridRef={createRef<HTMLDivElement>()}
+        onSelectSpace={noop}
+        onOpenDeletedSpaceContextMenu={noop}
+      />,
+    )
+
+    expect(domainHtml).toContain('data-trash-domain-id="live-domain:empty"')
+    expect(domainHtml).toContain('data-trash-domain-id="live-domain:with-trash"')
+    expect(domainHtml).toContain('live-domain:with-trash" aria-selected="true" class="compact-scope-btn compact-domain-btn trash-domain-btn is-active  is-trash-selectable is-trash-selected"')
+    expect(domainHtml).toContain('data-trash-domain-id="deleted-domain:deleted"')
+    expect(spaceHtml).toContain('data-trash-space-id="live-space:domain-a:empty"')
+    expect(spaceHtml).toContain('data-trash-space-id="live-space:domain-a:with-trash"')
+    expect(spaceHtml).toContain('live-space:domain-a:with-trash" aria-selected="true" class="compact-scope-btn compact-space-btn trash-space-btn is-active  is-trash-selectable is-trash-selected"')
+    expect(spaceHtml).toContain('data-trash-space-id="deleted-space:deleted"')
+  })
+
   it('renders compact space buttons with active and drop target classes', () => {
     const html = renderToStaticMarkup(
       <CompactSpaceRail

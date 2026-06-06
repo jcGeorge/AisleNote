@@ -129,6 +129,7 @@ type SettingsPageProps = {
   scratchpadAisleLimitDraft: string
   scratchpadNewAisleSideDraft: ScratchpadNewAisleSide
   tabRenameEnterBehaviorDraft: TabRenameEnterBehavior
+  trashDeleteForRealRequiresConfirmation: boolean
   miscSyncedUiBooleanSettings: SyncedUiBooleanSettingView[]
   frontmatterDraft: FrontmatterSettings
   frontmatterDraftDirty: boolean
@@ -230,6 +231,7 @@ export function SettingsPage({
   scratchpadAisleLimitDraft,
   scratchpadNewAisleSideDraft,
   tabRenameEnterBehaviorDraft,
+  trashDeleteForRealRequiresConfirmation,
   miscSyncedUiBooleanSettings,
   frontmatterDraft,
   frontmatterDraftDirty,
@@ -590,8 +592,10 @@ export function SettingsPage({
             dataCapabilities={dataCapabilities}
             storageProfileStatus={storageProfileStatus}
             userSettingsLocationStatus={userSettingsLocationStatus}
+            trashDeleteForRealRequiresConfirmation={trashDeleteForRealRequiresConfirmation}
             onDataSectionChange={onDataSectionChange}
             onAutoRemoveDaysChange={onAutoRemoveDaysChange}
+            onSyncedUiBooleanSettingChange={onSyncedUiBooleanSettingChange}
             onExportUserSettings={onExportUserSettings}
             onImportNotebook={onImportNotebook}
             onImportUserSettings={onImportUserSettings}

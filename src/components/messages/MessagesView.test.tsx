@@ -227,6 +227,7 @@ describe('MessagesView', () => {
         diagnosticDays={['2026-06-02', '2026-06-01']}
         selectedDiagnosticDay="2026-06-01"
         diagnosticEntries={diagnosticEntries}
+        diagnosticMode="all"
         onDiagnosticDayChange={vi.fn()}
         onDismissMessage={vi.fn()}
         onOpenRecoveredNotebookLocation={vi.fn()}
@@ -261,7 +262,70 @@ describe('MessagesView', () => {
 
     expect(html).toContain('performance: slow-operation')
     expect(html).not.toContain('runtime: session-start')
-    expect(html).toContain('showing 1 of 1 warning diagnostics')
+    expect(html).toContain('showing 1 of 1 warning diagnostics in actionable mode')
+  })
+
+  it('defaults diagnostic logs to actionable mode with nearby breadcrumbs and healthy storage hidden', () => {
+    const entries: DiagnosticLogEntry[] = [
+      {
+        id: 'storage-healthy',
+        createdAt: '2026-06-01T00:01:02.000Z',
+        dayKey: '2026-06-01',
+        sessionId: 'session-1',
+        level: 'info',
+        area: 'storage',
+        event: 'profile-status',
+        details: { status: 'ready', health: 'healthy' },
+      },
+      {
+        id: 'nearby-info',
+        createdAt: '2026-06-01T00:01:01.000Z',
+        dayKey: '2026-06-01',
+        sessionId: 'session-1',
+        level: 'info',
+        area: 'aisle-editor',
+        event: 'activation-summary',
+      },
+      {
+        id: 'warning',
+        createdAt: '2026-06-01T00:01:00.000Z',
+        dayKey: '2026-06-01',
+        sessionId: 'session-1',
+        level: 'warning',
+        area: 'performance',
+        event: 'slow-operation',
+      },
+      {
+        id: 'far-info',
+        createdAt: '2026-06-01T00:00:00.000Z',
+        dayKey: '2026-06-01',
+        sessionId: 'session-1',
+        level: 'info',
+        area: 'runtime',
+        event: 'session-start',
+      },
+    ]
+
+    const html = renderToStaticMarkup(
+      <MessagesView
+        section="diagnostics"
+        messages={[]}
+        toastHistory={[]}
+        diagnosticDays={['2026-06-01']}
+        selectedDiagnosticDay="2026-06-01"
+        diagnosticEntries={entries}
+        onDiagnosticDayChange={vi.fn()}
+        onDismissMessage={vi.fn()}
+        onOpenRecoveredNotebookLocation={vi.fn()}
+        onOpenLocation={vi.fn()}
+      />,
+    )
+
+    expect(html).toContain('performance: slow-operation')
+    expect(html).toContain('aisle-editor: activation-summary')
+    expect(html).not.toContain('storage: profile-status')
+    expect(html).not.toContain('runtime: session-start')
+    expect(html).toContain('showing 2 of 2 diagnostics in actionable mode')
   })
 
   it('caps diagnostic logs to 500 by default and supports the all display limit', () => {
@@ -283,6 +347,7 @@ describe('MessagesView', () => {
         diagnosticDays={['2026-06-01']}
         selectedDiagnosticDay="2026-06-01"
         diagnosticEntries={manyEntries}
+        diagnosticMode="all"
         onDiagnosticDayChange={vi.fn()}
         onDismissMessage={vi.fn()}
         onOpenRecoveredNotebookLocation={vi.fn()}
@@ -298,6 +363,7 @@ describe('MessagesView', () => {
         selectedDiagnosticDay="2026-06-01"
         diagnosticEntries={manyEntries}
         diagnosticDisplayLimit="all"
+        diagnosticMode="all"
         onDiagnosticDayChange={vi.fn()}
         onDismissMessage={vi.fn()}
         onOpenRecoveredNotebookLocation={vi.fn()}

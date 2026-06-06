@@ -4,11 +4,15 @@ import type { TrashSelectionState } from './trash-selection'
 import {
   EMPTY_TRASH_SELECTION,
   getEffectiveTrashContextTargets,
+  getTrashDomainTargets,
   getTrashSelectionActiveReplacementId,
   getTrashParentTarget,
+  getTrashSpaceTargets,
   getTrashSpaceTarget,
   getTrashTargetSelectionId,
   getTrashTargetsForSelection,
+  isTrashDomainSelectable,
+  isTrashSpaceSelectable,
   updateTrashSelectionForClick,
 } from './trash-selection'
 
@@ -34,6 +38,25 @@ function liveDomain(id: string): TrashDomainBucket {
   }
 }
 
+function liveSpace(id: string, parentTabs: TrashParentBucket[] = []): TrashSpaceBucket {
+  return {
+    id: `live-space:domain-a:space-${id}`,
+    title: id,
+    source: 'live',
+    domainId: 'domain-a',
+    spaceId: `space-${id}`,
+    deletedSpaceEntryId: null,
+    deletedDomainEntryId: null,
+    space: {
+      id: `space-${id}`,
+      name: id,
+      settings: { autoRemoveDeletedDays: 7 },
+      data: { activeTabId: 'tab-a', tabs: [], deletedTabs: [], deletedSubTabs: [] },
+    },
+    parentTabs,
+  }
+}
+
 function deletedSpace(id: string): TrashSpaceBucket {
   return {
     id: `deleted-space:${id}`,
@@ -43,6 +66,25 @@ function deletedSpace(id: string): TrashSpaceBucket {
     spaceId: `space-${id}`,
     deletedSpaceEntryId: id,
     deletedDomainEntryId: null,
+    space: {
+      id: `space-${id}`,
+      name: id,
+      settings: { autoRemoveDeletedDays: 7 },
+      data: { activeTabId: 'tab-a', tabs: [], deletedTabs: [], deletedSubTabs: [] },
+    },
+    parentTabs: [],
+  }
+}
+
+function deletedDomainSpace(id: string): TrashSpaceBucket {
+  return {
+    id: `deleted-domain-live-space:deleted-domain-a:space-${id}`,
+    title: id,
+    source: 'deleted-domain-space',
+    domainId: 'domain-a',
+    spaceId: `space-${id}`,
+    deletedSpaceEntryId: null,
+    deletedDomainEntryId: 'deleted-domain-a',
     space: {
       id: `space-${id}`,
       name: id,
@@ -100,6 +142,31 @@ describe('trash selection helpers', () => {
 
     expect(selected.ids).toEqual(['deleted-domain:a', 'deleted-domain:b', 'deleted-domain:c'])
     expect(selected.anchorId).toBe('deleted-domain:a')
+  })
+
+  it('selects shift ranges across mixed visible trash space buckets in both directions', () => {
+    const orderedIds = ['live-space:domain-a:space-a', 'deleted-space:b', 'live-space:domain-a:space-c']
+    const leftToRight = updateTrashSelectionForClick({
+      selection: EMPTY_TRASH_SELECTION,
+      kind: 'space',
+      itemId: 'live-space:domain-a:space-c',
+      currentId: 'live-space:domain-a:space-a',
+      orderedIds,
+      scopeId: 'live-domain:domain-a',
+      modifiers: { shiftKey: true, ctrlKey: false, metaKey: false },
+    })
+    const rightToLeft = updateTrashSelectionForClick({
+      selection: EMPTY_TRASH_SELECTION,
+      kind: 'space',
+      itemId: 'live-space:domain-a:space-a',
+      currentId: 'live-space:domain-a:space-c',
+      orderedIds,
+      scopeId: 'live-domain:domain-a',
+      modifiers: { shiftKey: true, ctrlKey: false, metaKey: false },
+    })
+
+    expect(leftToRight.ids).toEqual(orderedIds)
+    expect(rightToLeft.ids).toEqual(orderedIds)
   })
 
   it('seeds command selection with the current active item', () => {
@@ -170,9 +237,17 @@ describe('trash selection helpers', () => {
     expect(selected).toBe(EMPTY_TRASH_SELECTION)
   })
 
-  it('resolves only selectable deleted bucket targets', () => {
-    const domains = [liveDomain('a'), deletedDomain('b')]
-    const spaces = [deletedSpace('space-a')]
+  it('expands selectable live trash containers to concrete descendant targets', () => {
+    const deletedParent = parent('parent-a')
+    const emptyLiveSpace = liveSpace('empty')
+    const liveSpaceWithTrash = liveSpace('with-trash', [deletedParent])
+    const standaloneDeletedSpace = deletedSpace('space-a')
+    const liveDomainWithTrash: TrashDomainBucket = {
+      ...liveDomain('a'),
+      spaces: [emptyLiveSpace, liveSpaceWithTrash, standaloneDeletedSpace],
+    }
+    const domains = [liveDomainWithTrash, deletedDomain('b')]
+    const spaces = [emptyLiveSpace, liveSpaceWithTrash, standaloneDeletedSpace]
     const parents = [parent('parent-a')]
 
     expect(
@@ -183,10 +258,38 @@ describe('trash selection helpers', () => {
         parents,
         selectedParent: parents[0],
       }),
-    ).toEqual([{ type: 'trash-domain', deletedDomainEntryId: 'b', domainId: 'domain-b' }])
+    ).toEqual([
+      getTrashParentTarget(deletedParent),
+      { type: 'trash-space', source: 'deleted-space', deletedSpaceEntryId: 'space-a', deletedDomainEntryId: undefined, domainId: 'domain-a', spaceId: 'space-space-a' },
+      { type: 'trash-domain', deletedDomainEntryId: 'b', domainId: 'domain-b' },
+    ])
 
-    expect(getTrashSpaceTarget(spaces[0])).toMatchObject({ type: 'trash-space', deletedSpaceEntryId: 'space-a' })
+    expect(isTrashSpaceSelectable(emptyLiveSpace)).toBe(false)
+    expect(isTrashSpaceSelectable(liveSpaceWithTrash)).toBe(true)
+    expect(isTrashDomainSelectable(liveDomainWithTrash)).toBe(true)
+    expect(getTrashSpaceTargets(liveSpaceWithTrash)).toEqual([getTrashParentTarget(deletedParent)])
+    expect(getTrashDomainTargets(liveDomainWithTrash)).toEqual([
+      getTrashParentTarget(deletedParent),
+      { type: 'trash-space', source: 'deleted-space', deletedSpaceEntryId: 'space-a', deletedDomainEntryId: undefined, domainId: 'domain-a', spaceId: 'space-space-a' },
+    ])
+    expect(getTrashSpaceTarget(standaloneDeletedSpace)).toMatchObject({ type: 'trash-space', deletedSpaceEntryId: 'space-a' })
     expect(getTrashParentTarget(parents[0])).toMatchObject({ type: 'trash-tab', deletedTabEntryId: 'parent-a' })
+  })
+
+  it('treats deleted-domain child spaces without deleted-space entries as concrete targets', () => {
+    const space = deletedDomainSpace('a')
+    const target = getTrashSpaceTarget(space)
+
+    expect(isTrashSpaceSelectable(space)).toBe(true)
+    expect(target).toEqual({
+      type: 'trash-space',
+      source: 'deleted-domain-space',
+      deletedSpaceEntryId: undefined,
+      deletedDomainEntryId: 'deleted-domain-a',
+      domainId: 'domain-a',
+      spaceId: 'space-a',
+    })
+    expect(getTrashTargetSelectionId(target!)).toBe('deleted-domain-live-space:deleted-domain-a:space-a')
   })
 
   it('uses the active trash selection when the context target is selected', () => {

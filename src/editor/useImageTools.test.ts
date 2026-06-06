@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   CLOSED_IMAGE_TOOLS_STATE,
   CLOSED_INLINE_CROP_STATE,
+  getInlineCropCloseDiagnosticDetails,
   shouldSkipImageToolsClose,
 } from './useImageTools'
 
@@ -57,5 +58,17 @@ describe('image tools close behavior', () => {
     expect(shouldSkipImageToolsClose({ ...base, hasActiveImageLookup: true })).toBe(false)
     expect(shouldSkipImageToolsClose({ ...base, hasImageResize: true })).toBe(false)
     expect(shouldSkipImageToolsClose({ ...base, imageRebindInProgress: true })).toBe(false)
+  })
+})
+
+describe('image crop diagnostics', () => {
+  it('includes close reasons in crop diagnostic details', () => {
+    expect(getInlineCropCloseDiagnosticDetails('selected-image-missing', false, {
+      hadLookup: true,
+    })).toEqual({
+      reason: 'selected-image-missing',
+      activeImageConnected: false,
+      hadLookup: true,
+    })
   })
 })

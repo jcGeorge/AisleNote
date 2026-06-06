@@ -1,6 +1,7 @@
 export type DiagnosticLogLevel = 'debug' | 'info' | 'warning' | 'error'
 export type DiagnosticLogLevelFilter = DiagnosticLogLevel | 'all'
 export type DiagnosticLogDisplayLimit = 500 | 1000 | 1500 | 2000 | 'all'
+export type DiagnosticLogMode = 'actionable' | 'all'
 
 export type DiagnosticLogDetails = Record<string, unknown>
 
@@ -40,6 +41,7 @@ export const DIAGNOSTIC_LOG_DISPLAY_LIMITS: readonly DiagnosticLogDisplayLimit[]
   2000,
   'all',
 ]
+export const DIAGNOSTIC_LOG_MODES: readonly DiagnosticLogMode[] = ['actionable', 'all']
 
 const MAX_STRING_LENGTH = 240
 const MAX_OBJECT_KEYS = 32

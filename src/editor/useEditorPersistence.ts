@@ -70,6 +70,17 @@ export function resolveEditorFocusBoundaryFlushAction(
   return scheduledTimerId === null ? 'schedule' : 'ignore'
 }
 
+export function getEditorFocusBoundarySaveOptions(
+  eventName: EditorFocusBoundaryEvent,
+  pendingEditorCount = 0,
+): AppStateSaveOptions {
+  return {
+    preferSync: eventName === 'beforeunload' || eventName === 'pagehide',
+    trigger: `editor-focus-boundary:${eventName}`,
+    pendingEditorCount,
+  }
+}
+
 export function pendingContentMatchesTarget(pending: PendingContent, target: EditorContentTarget): boolean {
   if (pending.noteBodyId && target.noteBodyId && pending.noteBodyId !== target.noteBodyId) return false
   return (
@@ -235,7 +246,7 @@ export const useEditorPersistence = ({
     const serializedState = measureSlowOperation('app-state serialization', () => JSON.stringify(latestState))
     appPersistenceService.saveSerializedState(serializedState, {
       ...options,
-      preferSync: true,
+      trigger: options.trigger ?? 'editor-state-snapshot',
     })
     void appPersistenceService.flushPendingSaves?.()
   }
@@ -256,12 +267,13 @@ export const useEditorPersistence = ({
     focusBoundaryFlushTimerRef.current = null
   }
 
-  const flushAndPersistFocusBoundarySnapshot = () => measureSlowOperation('editor focus-boundary persistence flush', () => {
+  const flushAndPersistFocusBoundarySnapshot = (eventName: EditorFocusBoundaryEvent) => measureSlowOperation('editor focus-boundary persistence flush', () => {
     clearPendingSaveTimer()
+    const pendingEditorCount = pendingContentRef.current.size
     const latestState = buildStateWithLatestEditorContent()
     pendingContentRef.current.clear()
     setState(latestState)
-    persistStateSnapshot(latestState, { preferSync: true })
+    persistStateSnapshot(latestState, getEditorFocusBoundarySaveOptions(eventName, pendingEditorCount))
   })
 
   const scheduleFocusBoundaryFlush = (eventName: Extract<EditorFocusBoundaryEvent, 'blur' | 'visibilitychange'>) => {
@@ -273,7 +285,7 @@ export const useEditorPersistence = ({
     if (action !== 'schedule') return
     focusBoundaryFlushTimerRef.current = window.setTimeout(() => {
       focusBoundaryFlushTimerRef.current = null
-      flushAndPersistFocusBoundarySnapshot()
+      flushAndPersistFocusBoundarySnapshot(eventName)
     }, EDITOR_FOCUS_BOUNDARY_FLUSH_DELAY_MS)
   }
 
@@ -411,10 +423,12 @@ export const useEditorPersistence = ({
   }, [])
 
   useEffect(() => {
-    const flushOnExit = () => {
+    const flushOnExit = (event: PageTransitionEvent | Event) => {
       cancelFocusBoundaryFlush()
       clearPendingSaveTimer()
-      persistLatestStateSnapshot()
+      const eventName: Extract<EditorFocusBoundaryEvent, 'beforeunload' | 'pagehide'> =
+        event.type === 'pagehide' ? 'pagehide' : 'beforeunload'
+      persistLatestStateSnapshot(getEditorFocusBoundarySaveOptions(eventName, pendingContentRef.current.size))
     }
 
     window.addEventListener('beforeunload', flushOnExit)

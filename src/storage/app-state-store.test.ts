@@ -205,7 +205,7 @@ describe('Electron app state store', () => {
     })
   })
 
-  it('uses async Electron saves when available and keeps revisions ordered', async () => {
+  it('coalesces queued async Electron saves to the latest payload', async () => {
     let nextRevision = 2
     const saveAppState = vi.fn()
     const saveAppStateAsync = vi.fn(async (payload) => ({
@@ -234,15 +234,38 @@ describe('Electron app state store', () => {
     await store.flush?.()
 
     expect(saveAppState).not.toHaveBeenCalled()
-    expect(saveAppStateAsync).toHaveBeenCalledTimes(2)
-    expect(saveAppStateAsync).toHaveBeenNthCalledWith(1, {
-      serializedState: '{"theme":"light"}',
+    expect(saveAppStateAsync).toHaveBeenCalledOnce()
+    expect(saveAppStateAsync).toHaveBeenCalledWith({
+      serializedState: '{"theme":"dark"}',
       baseRevision: 1,
     })
-    expect(saveAppStateAsync).toHaveBeenNthCalledWith(2, {
-      serializedState: '{"theme":"dark"}',
-      baseRevision: 2,
+  })
+
+  it('skips saves when the serialized state is unchanged and no async payload is pending', async () => {
+    const saveAppState = vi.fn()
+    const saveAppStateAsync = vi.fn()
+    vi.stubGlobal('window', {
+      electronAPI: {
+        loadAppStateResult: () => ({
+          ok: true,
+          serializedState: '{"theme":"dawn"}',
+          source: 'hybrid',
+          revision: 1,
+        }),
+        saveAppState,
+        saveAppStateAsync,
+      },
     })
+
+    const store = createAppStateStore()
+
+    expect(store.load()).toBe('{"theme":"dawn"}')
+    store.save('{"theme":"dawn"}')
+    store.save('{"theme":"dawn"}', { preferSync: true })
+    await store.flush?.()
+
+    expect(saveAppState).not.toHaveBeenCalled()
+    expect(saveAppStateAsync).not.toHaveBeenCalled()
   })
 
   it('falls back to sync Electron saves when async save is unavailable or sync is preferred', () => {

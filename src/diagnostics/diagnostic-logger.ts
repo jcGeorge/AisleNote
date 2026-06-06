@@ -62,8 +62,9 @@ type HeartbeatTimerApi = {
 
 export function createMainThreadHeartbeat({
   record = recordDiagnosticEvent,
-  intervalMs = 1000,
-  stallThresholdMs = 1500,
+  intervalMs = 250,
+  stallThresholdMs = 750,
+  throttleMs = 60_000,
   timerApi = {
     setInterval: (handler, timeoutMs) => globalThis.setInterval(handler, timeoutMs),
     clearInterval: (timerId) => globalThis.clearInterval(timerId as ReturnType<typeof globalThis.setInterval>),
@@ -73,11 +74,13 @@ export function createMainThreadHeartbeat({
   record?: typeof recordDiagnosticEvent
   intervalMs?: number
   stallThresholdMs?: number
+  throttleMs?: number
   timerApi?: HeartbeatTimerApi
   now?: () => number
 } = {}): MainThreadHeartbeat {
   let timerId: unknown | null = null
   let expectedAt = 0
+  let lastRecordedAt = Number.NEGATIVE_INFINITY
 
   const start = () => {
     if (timerId !== null) return
@@ -85,13 +88,15 @@ export function createMainThreadHeartbeat({
     timerId = timerApi.setInterval(() => {
       const current = now()
       const delayMs = current - expectedAt
-      if (delayMs >= stallThresholdMs) {
+      if (delayMs >= stallThresholdMs && current - lastRecordedAt >= throttleMs) {
+        lastRecordedAt = current
         record('runtime', 'main-thread-stall', {
           level: 'warning',
           durationMs: delayMs,
           details: {
             intervalMs,
             stallThresholdMs,
+            throttleMs,
           },
         })
       }

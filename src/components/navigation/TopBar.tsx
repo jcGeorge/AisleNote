@@ -30,8 +30,10 @@ import { AppIcon } from '../icons/AppIcon'
 import {
   DIAGNOSTIC_LOG_DISPLAY_LIMITS,
   DIAGNOSTIC_LOG_LEVEL_FILTERS,
+  DIAGNOSTIC_LOG_MODES,
   type DiagnosticLogDisplayLimit,
   type DiagnosticLogLevelFilter,
+  type DiagnosticLogMode,
 } from '../../diagnostics/diagnostic-log'
 
 type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
@@ -142,9 +144,11 @@ type TopBarProps = {
   diagnosticLogCount?: number
   diagnosticLevelFilter?: DiagnosticLogLevelFilter
   diagnosticDisplayLimit?: DiagnosticLogDisplayLimit
+  diagnosticMode?: DiagnosticLogMode
   onMessagesSectionChange?: (section: MessagesSection) => void
   onDiagnosticLevelFilterChange?: (filter: DiagnosticLogLevelFilter) => void
   onDiagnosticDisplayLimitChange?: (limit: DiagnosticLogDisplayLimit) => void
+  onDiagnosticModeChange?: (mode: DiagnosticLogMode) => void
 }
 
 function parseDiagnosticDisplayLimit(value: string): DiagnosticLogDisplayLimit {
@@ -232,9 +236,11 @@ export function TopBar({
   diagnosticLogCount = 0,
   diagnosticLevelFilter = 'all',
   diagnosticDisplayLimit = 500,
+  diagnosticMode = 'actionable',
   onMessagesSectionChange = () => undefined,
   onDiagnosticLevelFilterChange = () => undefined,
   onDiagnosticDisplayLimitChange = () => undefined,
+  onDiagnosticModeChange = () => undefined,
 }: TopBarProps) {
   const primaryTablistProps =
     viewMode === 'settings'
@@ -392,6 +398,21 @@ export function TopBar({
               </button>
               {messagesSection === 'diagnostics' ? (
                 <div className="diagnostic-topbar-controls" role="group" aria-label="diagnostic filters">
+                  <label className="diagnostic-topbar-field">
+                    <span>mode</span>
+                    <select
+                      className="diagnostic-topbar-select"
+                      aria-label="diagnostic mode"
+                      value={diagnosticMode}
+                      onChange={(event) => onDiagnosticModeChange(event.target.value as DiagnosticLogMode)}
+                    >
+                      {DIAGNOSTIC_LOG_MODES.map((mode) => (
+                        <option key={mode} value={mode}>
+                          {mode === 'all' ? 'all logs' : mode}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   <label className="diagnostic-topbar-field">
                     <span>type</span>
                     <select
@@ -616,7 +637,9 @@ export function TopBar({
                   role="tab"
                   data-trash-parent-id={entry.id}
                   aria-selected={trashTabId === entry.id}
-                  className={`btn btn-sm tab-btn trash-parent-tab ${trashTabId === entry.id ? 'is-selected' : ''} ${
+                  className={`btn btn-sm tab-btn trash-parent-tab is-trash-selectable ${
+                    trashTabId === entry.id ? 'is-selected' : ''
+                  } ${
                     trashSelectedParentIds?.has(entry.id) ? 'is-trash-selected' : ''
                   }`}
                   onClick={(event) => {

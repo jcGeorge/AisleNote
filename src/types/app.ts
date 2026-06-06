@@ -56,7 +56,7 @@ export type TableOfContentsScope = 'all-aisles' | 'focused-aisle'
 export type NewAislePlacement = 'end' | 'left-of-focus' | 'right-of-focus'
 export type ScratchpadNewAisleSide = 'left' | 'right'
 export type TabRenameEnterBehavior = 'goes-to-note' | 'creates-another-tab'
-export type TipId = 'task-undo' | 'delete-active-aisle-shortcut'
+export type TipId = 'task-undo' | 'delete-active-aisle-shortcut' | 'trash-delete-confirmation-setting'
 export type NoteFilterKind = 'tags' | 'synced' | 'frontmatter' | 'media'
 export type NoteFilterTagSortMode = 'az' | 'occurrences'
 export type NoteFilterSettings = {
@@ -428,6 +428,7 @@ export type AppState = {
     scratchpadNewAisleSide?: ScratchpadNewAisleSide
     tabRenameEnterBehavior?: TabRenameEnterBehavior
     decoupledItemsKeepData?: boolean
+    trashDeleteForRealRequiresConfirmation?: boolean
     noteFilter?: NoteFilterSettings
     tableAddTargetMode: TableControlTargetMode
     tableDeleteTargetMode: TableControlTargetMode
@@ -813,6 +814,7 @@ export type ContextMenuState =
       subTabId: string
     }
   | { x: number; y: number; type: 'trash-domain'; deletedDomainEntryId: string; domainId: string }
+  | { x: number; y: number; type: 'trash-selection' }
   | {
       x: number
       y: number

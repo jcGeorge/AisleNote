@@ -1,4 +1,5 @@
 export type AisleActivationSource = 'pointer' | 'focus' | 'programmatic'
+export const AISLE_ACTIVATION_WARNING_THRESHOLD_MS = 25
 
 export function shouldUseFastSameAisleActivation({
   switchingAisle,
@@ -56,4 +57,64 @@ export function resolveProgrammaticAisleRewriteMarkdown({
 }): string | null {
   if (!isProgrammaticRewrite) return null
   return expectedMarkdown ?? currentMarkdown
+}
+
+export type AisleActivationDiagnosticInput = {
+  requestedAisleId: string
+  previousAisleId: string
+  source: AisleActivationSource
+  result: string
+  durationMs: number
+  focus: boolean
+  flushPrevious: boolean
+  mountedEditorCount: number
+}
+
+export type AisleActivationDiagnosticSummary = {
+  requestedAisleId: string
+  previousAisleId: string
+  count: number
+  sources: AisleActivationSource[]
+  results: string[]
+  maxDurationMs: number
+  focusRequested: boolean
+  flushPreviousRequested: boolean
+  mountedEditorCount: number
+}
+
+export function createAisleActivationDiagnosticSummary(
+  input: AisleActivationDiagnosticInput,
+): AisleActivationDiagnosticSummary {
+  return {
+    requestedAisleId: input.requestedAisleId,
+    previousAisleId: input.previousAisleId,
+    count: 1,
+    sources: [input.source],
+    results: [input.result],
+    maxDurationMs: input.durationMs,
+    focusRequested: input.focus,
+    flushPreviousRequested: input.flushPrevious,
+    mountedEditorCount: input.mountedEditorCount,
+  }
+}
+
+function appendUnique<T>(values: T[], value: T): T[] {
+  return values.includes(value) ? values : [...values, value]
+}
+
+export function mergeAisleActivationDiagnosticSummary(
+  summary: AisleActivationDiagnosticSummary,
+  input: AisleActivationDiagnosticInput,
+): AisleActivationDiagnosticSummary {
+  return {
+    requestedAisleId: summary.requestedAisleId,
+    previousAisleId: summary.previousAisleId,
+    count: summary.count + 1,
+    sources: appendUnique(summary.sources, input.source),
+    results: appendUnique(summary.results, input.result),
+    maxDurationMs: Math.max(summary.maxDurationMs, input.durationMs),
+    focusRequested: summary.focusRequested || input.focus,
+    flushPreviousRequested: summary.flushPreviousRequested || input.flushPrevious,
+    mountedEditorCount: Math.max(summary.mountedEditorCount, input.mountedEditorCount),
+  }
 }

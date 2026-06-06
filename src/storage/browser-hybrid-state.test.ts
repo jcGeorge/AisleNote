@@ -509,6 +509,7 @@ describe('browser hybrid storage', () => {
           noteMentionCopyRequiresConfirmation: false,
           deleteActiveAisleShortcutEnabled: true,
           decoupledItemsKeepData: false,
+          trashDeleteForRealRequiresConfirmation: false,
           tableAddTargetMode: 'active-cell',
           tableDeleteTargetMode: 'active-cell',
           tableOfContentsScope: 'focused-aisle',
@@ -553,6 +554,7 @@ describe('browser hybrid storage', () => {
     expect(getRecord(appSettings.ui).findReplaceMode).toBe('replace')
     expect(getRecord(appSettings.ui).removeNoteReferencesOnTrash).toBe(false)
     expect(getRecord(appSettings.ui).noteMentionCopyRequiresConfirmation).toBe(false)
+    expect(getRecord(appSettings.ui).trashDeleteForRealRequiresConfirmation).toBe(false)
     expect(getRecord(appSettings.ui).deleteActiveAisleShortcutEnabled).toBe(true)
     expect(getRecord(appSettings.ui).tableOfContentsScope).toBe('focused-aisle')
     expect(getRecord(appSettings.ui).tabRenameEnterBehavior).toBe('creates-another-tab')
@@ -585,6 +587,7 @@ describe('browser hybrid storage', () => {
     expect(roundTripped.ui.removeNoteReferencesOnTrash).toBe(false)
     expect(roundTripped.ui.noteMentionCopyRequiresConfirmation).toBe(false)
     expect(roundTripped.ui.deleteActiveAisleShortcutEnabled).toBe(true)
+    expect(roundTripped.ui.trashDeleteForRealRequiresConfirmation).toBe(false)
     expect(roundTripped.ui.tableOfContentsScope).toBe('focused-aisle')
     expect(roundTripped.ui.tabRenameEnterBehavior).toBe('creates-another-tab')
     expect(roundTripped.ui).not.toHaveProperty('newAislePlacement')
