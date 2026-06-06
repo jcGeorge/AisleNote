@@ -134,10 +134,13 @@ const DEFAULT_SYNCED_UI_SETTINGS = {
   scratchpadAisleLimit: 16,
   noteCursorLocations: {},
   headingCollapseState: {},
+  aisleWidths: {},
   seenTipIds: [],
   disabledTipIds: [],
 }
 
+const MIN_AISLE_WIDTH_PX = 160
+const MAX_AISLE_WIDTH_PX = 1200
 const MIN_SCRATCHPAD_AISLE_LIMIT = 8
 const MAX_SCRATCHPAD_AISLE_LIMIT = 40
 const THEME_PALETTE_IDS = ['dark', 'light', 'dawn', 'custom1', 'custom2', 'custom3']
@@ -276,6 +279,30 @@ function normalizeTimestamp(value) {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0
 }
 
+function clampAisleWidth(value) {
+  const parsed = typeof value === 'number' ? value : Number.parseFloat(String(value ?? ''))
+  if (!Number.isFinite(parsed)) return null
+  return Math.min(MAX_AISLE_WIDTH_PX, Math.max(MIN_AISLE_WIDTH_PX, Math.round(parsed)))
+}
+
+function normalizeAisleWidths(raw) {
+  if (!isRecord(raw)) return {}
+  const normalized = {}
+  Object.entries(raw).forEach(([locationKey, rawAisles]) => {
+    const trimmedLocationKey = typeof locationKey === 'string' ? locationKey.trim() : ''
+    if (!trimmedLocationKey || !isRecord(rawAisles)) return
+    const aisleWidths = {}
+    Object.entries(rawAisles).forEach(([aisleId, rawWidth]) => {
+      const trimmedAisleId = typeof aisleId === 'string' ? aisleId.trim() : ''
+      const width = clampAisleWidth(rawWidth)
+      if (!trimmedAisleId || width === null) return
+      aisleWidths[trimmedAisleId] = width
+    })
+    if (Object.keys(aisleWidths).length > 0) normalized[trimmedLocationKey] = aisleWidths
+  })
+  return normalized
+}
+
 function buildNoteCursorLocationKey(domainId, spaceId, tabId, subTabId = null) {
   return [domainId, spaceId, tabId, subTabId ?? '__home__'].join('::')
 }
@@ -352,6 +379,80 @@ export function pruneNoteCursorLocationsForLiveNotes(noteCursorLocations, appSta
   return Object.fromEntries(prunedEntries)
 }
 
+function getNoteBodyMap(appState) {
+  return new Map(
+    getNoteBodiesFromAppState(isRecord(appState) ? appState : {}).map((body) => [
+      typeof body.id === 'string' ? body.id : '',
+      body,
+    ]),
+  )
+}
+
+function addAisleWidthLocation(result, locationKey, body) {
+  const aisles = ensureArray(body?.aisles).filter(isRecord)
+  if (!locationKey || aisles.length <= 1) return
+  const aisleIds = new Set()
+  aisles.forEach((aisle) => {
+    if (typeof aisle.id === 'string' && aisle.id) aisleIds.add(aisle.id)
+  })
+  if (aisleIds.size > 1) result.set(locationKey, aisleIds)
+}
+
+function buildLiveAisleWidthLocationMap(appState) {
+  const result = new Map()
+  const bodiesById = getNoteBodyMap(appState)
+  getProjectedDomainsForStorage(appState).forEach((domain) => {
+    const domainId = typeof domain.id === 'string' && domain.id ? domain.id : DEFAULT_DOMAIN_ID
+    ensureArray(domain.spaces)
+      .filter(isRecord)
+      .forEach((space) => {
+        const spaceId = typeof space.id === 'string' ? space.id : ''
+        if (!spaceId) return
+        const data = isRecord(space.data) ? space.data : {}
+        ensureArray(data.tabs)
+          .filter(isRecord)
+          .forEach((tab) => {
+            const tabId = typeof tab.id === 'string' ? tab.id : ''
+            if (!tabId) return
+            const tabBodyId = typeof tab.noteBodyId === 'string' ? tab.noteBodyId : ''
+            addAisleWidthLocation(result, buildNoteCursorLocationKey(domainId, spaceId, tabId), bodiesById.get(tabBodyId))
+            ensureArray(tab.subTabs)
+              .filter(isRecord)
+              .forEach((subTab) => {
+                const subTabId = typeof subTab.id === 'string' ? subTab.id : ''
+                if (!subTabId) return
+                const subTabBodyId = typeof subTab.noteBodyId === 'string' ? subTab.noteBodyId : ''
+                addAisleWidthLocation(
+                  result,
+                  buildNoteCursorLocationKey(domainId, spaceId, tabId, subTabId),
+                  bodiesById.get(subTabBodyId),
+                )
+              })
+          })
+      })
+  })
+  if (isRecord(appState?.scratchpad) && typeof appState.scratchpad.noteBodyId === 'string') {
+    addAisleWidthLocation(result, 'scratchpad', bodiesById.get(appState.scratchpad.noteBodyId))
+  }
+  return result
+}
+
+export function pruneAisleWidthsForLiveNotes(aisleWidths, appState) {
+  const normalized = normalizeAisleWidths(aisleWidths)
+  const liveLocations = buildLiveAisleWidthLocationMap(appState)
+  const pruned = {}
+  Object.entries(normalized).forEach(([locationKey, widthsByAisle]) => {
+    const liveAisleIds = liveLocations.get(locationKey)
+    if (!liveAisleIds) return
+    const nextAisleWidths = {}
+    Object.entries(widthsByAisle).forEach(([aisleId, width]) => {
+      if (liveAisleIds.has(aisleId)) nextAisleWidths[aisleId] = width
+    })
+    if (Object.keys(nextAisleWidths).length > 0) pruned[locationKey] = nextAisleWidths
+  })
+  return pruned
+}
+
 function normalizeHeadingId(value) {
   return typeof value === 'string' ? value.trim() : ''
 }
@@ -414,6 +515,7 @@ export function pruneAppStateEditorLocations(appState) {
       ...ui,
       noteCursorLocations: pruneNoteCursorLocationsForLiveNotes(ui.noteCursorLocations, appState),
       headingCollapseState: pruneHeadingCollapseStateForReferencedNotes(ui.headingCollapseState, appState),
+      aisleWidths: pruneAisleWidthsForLiveNotes(ui.aisleWidths, appState),
     },
   }
 }
@@ -614,6 +716,9 @@ export function applyPortableAppSettings(appState, rawSettings) {
       headingCollapseState: isRecord(currentUi.headingCollapseState)
         ? currentUi.headingCollapseState
         : DEFAULT_SYNCED_UI_SETTINGS.headingCollapseState,
+      aisleWidths: isRecord(currentUi.aisleWidths)
+        ? normalizeAisleWidths(currentUi.aisleWidths)
+        : DEFAULT_SYNCED_UI_SETTINGS.aisleWidths,
     },
   }
 }
@@ -623,6 +728,7 @@ export function extractEditorState(appState) {
   return {
     noteCursorLocations: pruneNoteCursorLocationsForLiveNotes(ui.noteCursorLocations, appState),
     headingCollapseState: pruneHeadingCollapseStateForReferencedNotes(ui.headingCollapseState, appState),
+    aisleWidths: pruneAisleWidthsForLiveNotes(ui.aisleWidths, appState),
   }
 }
 
@@ -666,6 +772,7 @@ export function buildSyncedSettingsFromSplitFiles(parts) {
     headingCollapseState: isRecord(editorState.headingCollapseState)
       ? editorState.headingCollapseState
       : DEFAULT_SYNCED_UI_SETTINGS.headingCollapseState,
+    aisleWidths: normalizeAisleWidths(editorState.aisleWidths),
     seenTipIds: optionalArray(uiPreferences.seenTipIds, DEFAULT_SYNCED_UI_SETTINGS.seenTipIds),
   }
 

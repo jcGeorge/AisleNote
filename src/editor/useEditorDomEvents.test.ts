@@ -25,6 +25,7 @@ import {
   isEditorToolbarInteractionTarget,
   isEditorPointerChromeTarget,
   isUrlLinkShortcut,
+  mergeEditorDictionaryContextMenu,
   moveSelectionHeadToDocumentBoundary,
   placeCaretAfterMediaPlayer,
   runMediaPlayerKeyboardAction,
@@ -666,10 +667,51 @@ describe('editor DOM events', () => {
     expect(getEditorSpellcheckContext).toHaveBeenCalledWith({ x: 10, y: 20 })
   })
 
-  it('ignores empty editor dictionary context from Electron', async () => {
+  it('retries briefly until Electron returns actionable editor dictionary context', async () => {
+    vi.useFakeTimers()
+    let calls = 0
+    const getEditorSpellcheckContext = vi.fn(async () => {
+      calls += 1
+      if (calls < 3) {
+        return {
+          suggestions: [],
+          misspelledWord: '',
+          selectionText: '',
+          canLookUpSelection: false,
+        }
+      }
+      return {
+        suggestions: ['receive'],
+        misspelledWord: 'recieve',
+        selectionText: 'recieve',
+        canLookUpSelection: false,
+      }
+    })
     vi.stubGlobal('window', {
       ...(globalThis.window ?? {}),
       setTimeout: globalThis.setTimeout,
+      clearTimeout: globalThis.clearTimeout,
+      electronAPI: { getEditorSpellcheckContext },
+    })
+
+    const result = getEditorDictionaryContextForMenu(10, 20)
+    await vi.advanceTimersByTimeAsync(100)
+
+    await expect(result).resolves.toEqual({
+      suggestions: ['receive'],
+      misspelledWord: 'recieve',
+      selectionText: 'recieve',
+      canLookUpSelection: false,
+    })
+    expect(getEditorSpellcheckContext).toHaveBeenCalledTimes(3)
+  })
+
+  it('ignores empty editor dictionary context from Electron', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('window', {
+      ...(globalThis.window ?? {}),
+      setTimeout: globalThis.setTimeout,
+      clearTimeout: globalThis.clearTimeout,
       electronAPI: {
         getEditorSpellcheckContext: vi.fn(async () => ({
           suggestions: [],
@@ -680,7 +722,39 @@ describe('editor DOM events', () => {
       },
     })
 
-    await expect(getEditorDictionaryContextForMenu(10, 20)).resolves.toBeUndefined()
+    const result = getEditorDictionaryContextForMenu(10, 20)
+    await vi.advanceTimersByTimeAsync(400)
+
+    await expect(result).resolves.toBeUndefined()
+  })
+
+  it('only merges delayed dictionary context into the same open editor menu', () => {
+    const sourceMenu = { type: 'editor' as const, x: 10, y: 20 }
+    const dictionary = {
+      suggestions: ['receive'],
+      misspelledWord: 'recieve',
+      selectionText: 'recieve',
+      canLookUpSelection: false,
+    }
+
+    expect(mergeEditorDictionaryContextMenu({ ...sourceMenu, link: undefined }, sourceMenu, dictionary)).toEqual({
+      ...sourceMenu,
+      link: undefined,
+      dictionary,
+    })
+    expect(mergeEditorDictionaryContextMenu(null, sourceMenu, dictionary)).toBeNull()
+    expect(mergeEditorDictionaryContextMenu({ type: 'editor', x: 11, y: 20 }, sourceMenu, dictionary)).toEqual({
+      type: 'editor',
+      x: 11,
+      y: 20,
+    })
+  })
+
+  it('opens the editor context menu before waiting for native spellcheck context', () => {
+    const source = readUseEditorDomEventsSource()
+    expect(source).toContain('setContextMenu(menu)')
+    expect(source).toContain('mergeEditorDictionaryContextMenu(current, menu, dictionary)')
+    expect(source).toContain('if (!dictionary || requestId !== editorContextMenuRequestId) return')
   })
 
   it('keeps pasted bare web addresses as the link label while adding an href protocol', () => {

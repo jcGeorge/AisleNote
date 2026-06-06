@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { Editor } from '@toast-ui/editor'
 import { Fragment, Schema } from 'prosemirror-model'
 import { EditorState, Plugin, Selection, TextSelection } from 'prosemirror-state'
@@ -33,8 +33,10 @@ import {
   getParagraphSpaceShortcut,
   getToastUiToolbarTooltipLabelFromClassName,
   getTagDecorationRanges,
+  EDITOR_SPELLCHECK_ROOT_SELECTOR,
   headingSpaceShortcutPlugin,
   highlightPlugin,
+  installEditorSpellcheck,
   TAG_JUMP_HIGHLIGHT_META,
   TAG_JUMP_TARGET_CLASS_NAME,
   thematicBreakShortcutPlugin,
@@ -81,6 +83,31 @@ describe('imperative editor toolbar tooltips', () => {
     expect(editorSetupSource).not.toContain('bindToolbarTooltip')
     expect(editorSetupSource).not.toContain("querySelector('.toastui-editor-tooltip')")
     expect(editorSetupSource).not.toContain("tooltip.style.display = 'block'")
+  })
+
+  it('enables native spellcheck on editable Toast UI ProseMirror roots', () => {
+    const editableRoot = { setAttribute: vi.fn() }
+    const root = {
+      querySelectorAll: vi.fn((selector: string) => {
+        expect(selector).toBe(EDITOR_SPELLCHECK_ROOT_SELECTOR)
+        return [editableRoot]
+      }),
+    } as unknown as HTMLElement
+
+    const cleanup = installEditorSpellcheck(root)
+
+    expect(editableRoot.setAttribute).toHaveBeenCalledWith('spellcheck', 'true')
+    cleanup()
+  })
+
+  it('installs editor spellcheck for legacy and aisle editors only', () => {
+    expect(editorSetupSource).toContain(
+      "export const EDITOR_SPELLCHECK_ROOT_SELECTOR = '.toastui-editor .ProseMirror[contenteditable=\"true\"]'",
+    )
+    expect(legacyEditorSource).toContain('const cleanupEditorSpellcheck = installEditorSpellcheck(editorMountRef.current)')
+    expect(legacyEditorSource).toContain('cleanupEditorSpellcheck()')
+    expect(aisleEditorsSource).toContain('const cleanupEditorSpellcheck = installEditorSpellcheck(root)')
+    expect(aisleEditorsSource).toContain('cleanupEditorSpellcheck()')
   })
 })
 

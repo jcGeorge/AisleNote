@@ -54,10 +54,10 @@ type UseAppNotificationsParams = {
 
 export function canTriggerTip(
   tipId: TipId,
-  ui: Pick<AppState['ui'], 'disabledTipIds'>,
+  ui: Pick<AppState['ui'], 'disabledTipIds' | 'seenTipIds'>,
   dismissedTipIdsThisSession: ReadonlySet<TipId> = new Set(),
 ) {
-  return !ui.disabledTipIds.includes(tipId) && !dismissedTipIdsThisSession.has(tipId)
+  return !ui.disabledTipIds.includes(tipId) && !ui.seenTipIds.includes(tipId) && !dismissedTipIdsThisSession.has(tipId)
 }
 
 export function shouldRetainVisibleTip(
@@ -212,9 +212,12 @@ export function useAppNotifications({
   }, [])
 
   useEffect(() => {
-    setVisibleTips((currentTips) =>
-      currentTips.filter((tipId) => shouldRetainVisibleTip(tipId, state.ui.disabledTipIds, { isMacPlatform })),
-    )
+    setVisibleTips((currentTips) => {
+      const nextTips = currentTips.filter((tipId) =>
+        shouldRetainVisibleTip(tipId, state.ui.disabledTipIds, { isMacPlatform }),
+      )
+      return nextTips.length === currentTips.length ? currentTips : nextTips
+    })
   }, [isMacPlatform, state.ui.disabledTipIds])
 
   const visibleTipDefinitions = useMemo(

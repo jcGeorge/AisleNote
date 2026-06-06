@@ -940,6 +940,29 @@ describe('app state normalization', () => {
     expect(missing.ui.headingCollapseState).toEqual({})
   })
 
+  it('normalizes persisted aisle widths', () => {
+    const state = parseModernState({
+      ui: {
+        aisleWidths: {
+          'domain::space::tab::__home__': {
+            'aisle-1': 240,
+            'aisle-2': 720,
+            broken: 'wide',
+          },
+        },
+      },
+    })
+    const missing = parseModernState({ ui: {} })
+
+    expect(state.ui.aisleWidths).toEqual({
+      'domain::space::tab::__home__': {
+        'aisle-1': 240,
+        'aisle-2': 720,
+      },
+    })
+    expect(missing.ui.aisleWidths).toEqual({})
+  })
+
   it('normalizes persisted custom theme palettes', () => {
     const valid = parseModernState({
       theme: 'custom',
@@ -1106,11 +1129,13 @@ describe('app state normalization', () => {
           'tab-create-after-rename',
           'delete-active-aisle-shortcut',
           'trash-delete-confirmation-setting',
+          'aisle-width-reset',
         ],
         disabledTipIds: [
           'tab-create-after-rename',
           'delete-active-aisle-shortcut',
           'trash-delete-confirmation-setting',
+          'aisle-width-reset',
           'unknown',
         ],
       },
@@ -1121,10 +1146,12 @@ describe('app state normalization', () => {
       'task-undo',
       'delete-active-aisle-shortcut',
       'trash-delete-confirmation-setting',
+      'aisle-width-reset',
     ])
     expect(valid.ui.disabledTipIds).toEqual([
       'delete-active-aisle-shortcut',
       'trash-delete-confirmation-setting',
+      'aisle-width-reset',
     ])
     expect(missing.ui.seenTipIds).toEqual([])
     expect(missing.ui.disabledTipIds).toEqual([])
@@ -1394,6 +1421,10 @@ describe('app state trash auto purge', () => {
     const state = appStateWithSpaces([space('space-1', 7, workspace())])
 
     expect(getNextAutoPurgeTimeForAppState(state, Date.UTC(2026, 4, 20))).toBeNull()
+  })
+
+  it('preserves state identity when auto-purge and aisle-width pruning have no work', () => {
+    expect(applyAutoPurgeToAppState(DEFAULT_STATE, Date.UTC(2026, 4, 20))).toBe(DEFAULT_STATE)
   })
 
   it('uses the nearest expiration across all spaces', () => {

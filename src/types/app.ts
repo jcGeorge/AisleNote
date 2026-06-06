@@ -56,7 +56,7 @@ export type TableOfContentsScope = 'all-aisles' | 'focused-aisle'
 export type NewAislePlacement = 'end' | 'left-of-focus' | 'right-of-focus'
 export type ScratchpadNewAisleSide = 'left' | 'right'
 export type TabRenameEnterBehavior = 'goes-to-note' | 'creates-another-tab'
-export type TipId = 'task-undo' | 'delete-active-aisle-shortcut' | 'trash-delete-confirmation-setting'
+export type TipId = 'task-undo' | 'delete-active-aisle-shortcut' | 'trash-delete-confirmation-setting' | 'aisle-width-reset'
 export type NoteFilterKind = 'tags' | 'synced' | 'frontmatter' | 'media'
 export type NoteFilterTagSortMode = 'az' | 'occurrences'
 export type NoteFilterSettings = {
@@ -443,6 +443,7 @@ export type AppState = {
     themePalettes?: ThemePaletteOverrides
     noteCursorLocations: Record<string, NoteCursorLocation>
     headingCollapseState: HeadingCollapseState
+    aisleWidths?: Record<string, Record<string, number>>
     toolbarLayouts?: ToolbarLayout[]
     toolbarEditorShowNames?: boolean
     seenTipIds: TipId[]

@@ -77,15 +77,26 @@ describe('createToastTimerManager', () => {
 })
 
 describe('tip notification helpers', () => {
-  it('blocks disabled and same-session dismissed tips from triggering', () => {
-    expect(canTriggerTip('trash-delete-confirmation-setting', { disabledTipIds: [] })).toBe(true)
+  it('blocks already-seen, disabled, and same-session dismissed tips from triggering', () => {
+    expect(canTriggerTip('trash-delete-confirmation-setting', { disabledTipIds: [], seenTipIds: [] })).toBe(true)
     expect(
       canTriggerTip('trash-delete-confirmation-setting', {
         disabledTipIds: ['trash-delete-confirmation-setting'],
+        seenTipIds: [],
       }),
     ).toBe(false)
     expect(
-      canTriggerTip('trash-delete-confirmation-setting', { disabledTipIds: [] }, new Set(['trash-delete-confirmation-setting'])),
+      canTriggerTip('trash-delete-confirmation-setting', {
+        disabledTipIds: [],
+        seenTipIds: ['trash-delete-confirmation-setting'],
+      }),
+    ).toBe(false)
+    expect(
+      canTriggerTip(
+        'trash-delete-confirmation-setting',
+        { disabledTipIds: [], seenTipIds: [] },
+        new Set(['trash-delete-confirmation-setting']),
+      ),
     ).toBe(false)
   })
 

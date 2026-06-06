@@ -54,6 +54,9 @@ describe('device settings store', () => {
     expect(parseDeviceSettings(JSON.stringify({ dataSettingsSection: 'cloud' })).dataSettingsSection).toBe('transfer')
     expect(parseDeviceSettings(JSON.stringify({ toolbarButtonScale: 9 })).toolbarButtonScale).toBe(1.6)
     expect(parseDeviceSettings(JSON.stringify({ lastFindQuery: 123 })).lastFindQuery).toBe('')
+    expect(parseDeviceSettings(JSON.stringify({ aisleWidths: { loc: { aisle: 99, other: 640 } } })).aisleWidths).toEqual({
+      loc: { aisle: 160, other: 640 },
+    })
     expect(
       parseDeviceSettings(JSON.stringify({ tagAutocompleteRecentKeys: ['Tag', '#tag', 'nested/Tag', '', 44] }))
         .tagAutocompleteRecentKeys,
@@ -171,6 +174,7 @@ describe('device settings store', () => {
       settingsSection: 'visuals',
       dataSettingsSection: 'storage',
       visualsSettingsSection: 'otherVisuals',
+      aisleWidths: { 'domain-a::space-a::tab-b::sub-b': { 'aisle-b': 720 } },
       seenTipIds: ['task-undo'],
       tabButtonScale: 1.3,
       noteFontScale: 1.2,
@@ -182,6 +186,7 @@ describe('device settings store', () => {
     expect(merged.ui.settingsSection).toBe('visuals')
     expect(merged.ui.dataSettingsSection).toBe('storage')
     expect(merged.ui.visualsSettingsSection).toBe('otherVisuals')
+    expect(merged.ui.aisleWidths).toEqual({ 'domain-a::space-a::tab-b::sub-b': { 'aisle-b': 720 } })
     expect(merged.ui.seenTipIds).toEqual(['task-undo'])
     expect(merged.ui.tabButtonScale).toBe(1.3)
     expect(merged.ui.noteFontScale).toBe(1.2)
@@ -207,6 +212,7 @@ describe('device settings store', () => {
           settingsSection: 'tips',
           dataSettingsSection: 'trash',
           visualsSettingsSection: 'otherVisuals',
+          aisleWidths: { 'domain-a::space-a::tab-a::__home__': { 'aisle-a': 680 } },
           seenTipIds: ['task-undo'],
           disabledTipIds: ['delete-active-aisle-shortcut'],
           tabButtonScale: 1.1,
@@ -218,6 +224,9 @@ describe('device settings store', () => {
     expect(extractDeviceSettingsFromAppState(state).settingsSection).toBe('tips')
     expect(extractDeviceSettingsFromAppState(state).dataSettingsSection).toBe('trash')
     expect(extractDeviceSettingsFromAppState(state).visualsSettingsSection).toBe('otherVisuals')
+    expect(extractDeviceSettingsFromAppState(state).aisleWidths).toEqual({
+      'domain-a::space-a::tab-a::__home__': { 'aisle-a': 680 },
+    })
     expect(extractDeviceSettingsFromAppState(state).seenTipIds).toEqual(['task-undo'])
     expect(extractDeviceSettingsFromAppState(state).toolbarButtonScale).toBe(1.2)
     expect(extractDeviceSettingsFromAppState(state, { ...DEFAULT_DEVICE_SETTINGS, lastFindQuery: 'bear' }).lastFindQuery).toBe(

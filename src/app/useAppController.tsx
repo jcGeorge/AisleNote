@@ -264,6 +264,7 @@ import {
 } from '../notes/note-copy-service'
 import { getAisleBodyId } from '../notes/note-markdown'
 import { cloneAisles, getAisleMarkdown } from '../notes/aisle-body-state'
+import { resetAisleWidthForLocation, setAisleWidthForLocation } from '../notes/aisle-widths'
 import {
   applyFindReplacementToState,
   SCRATCHPAD_FIND_LOCATION,
@@ -911,6 +912,7 @@ export function useAppController(): AppController {
     [activeNoteBodyId, state],
   )
   const activeAisleIds = useMemo(() => activeNoteAisles.map((aisle) => aisle.id), [activeNoteAisles])
+  const activeAisleWidths = state.ui.aisleWidths?.[activeNoteLocationKey] ?? {}
   const activeNoteDuplicateCount = activeNoteLocations.length
   const contextMenuNoteLocation = useMemo<NoteLocation | null>(() => {
     if (!contextMenu) return null
@@ -1115,6 +1117,46 @@ export function useAppController(): AppController {
     const message = formatArrangeCrossDomainMoveToast(kind, itemNames, targetDomainName)
     if (message) pushToast(message, 'success')
   }
+
+  const resizeAisleWidth = useCallback(
+    (aisleId: string, width: number) => {
+      const locationKey = activeNoteLocationKey
+      if (!locationKey || !aisleId) return
+      setState((previous) => {
+        const previousAisleWidths = previous.ui.aisleWidths ?? {}
+        const aisleWidths = setAisleWidthForLocation(previousAisleWidths, locationKey, aisleId, width)
+        if (aisleWidths === previousAisleWidths) return previous
+        return {
+          ...previous,
+          ui: {
+            ...previous.ui,
+            aisleWidths,
+          },
+        }
+      })
+    },
+    [activeNoteLocationKey, setState],
+  )
+
+  const resetAisleWidth = useCallback(
+    (aisleId: string) => {
+      const locationKey = activeNoteLocationKey
+      if (!locationKey || !aisleId) return
+      setState((previous) => {
+        const previousAisleWidths = previous.ui.aisleWidths ?? {}
+        const aisleWidths = resetAisleWidthForLocation(previousAisleWidths, locationKey, aisleId)
+        if (aisleWidths === previousAisleWidths) return previous
+        return {
+          ...previous,
+          ui: {
+            ...previous.ui,
+            aisleWidths,
+          },
+        }
+      })
+    },
+    [activeNoteLocationKey, setState],
+  )
 
   const storageProfileController = useStorageProfileController({
     pushToast,
@@ -6556,6 +6598,7 @@ export function useAppController(): AppController {
               tableOfContentsHeadingsByAisle={activeTableOfContentsPanels?.headingsByAisle ?? {}}
               tableOfContentsLinksByAisle={activeTableOfContentsPanels?.linksByAisle ?? {}}
               openTableOfContentsAisleIds={activeTableOfContentsPanels?.openAisleIds ?? new Set<string>()}
+              aisleWidths={activeAisleWidths}
               onRootChange={(node) => {
                 editorEventRootRef.current = node
               }}
@@ -6598,6 +6641,9 @@ export function useAppController(): AppController {
                 syncActiveAisleSelection(targetAisleId)
                 scheduleAisleFocusScroll(targetAisleId)
               }}
+              onResizeAisleWidth={resizeAisleWidth}
+              onResetAisleWidth={resetAisleWidth}
+              onAisleWidthDragCommitted={() => showTip('aisle-width-reset')}
               mountedAisleIds={mountedAisleIds}
               getPreviewMarkdownForAisle={getPreviewMarkdownForAisle}
               onCloseTableOfContentsAisle={closeTableOfContentsAisle}

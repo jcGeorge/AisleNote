@@ -646,9 +646,8 @@
 .note-aisle-scroll {
   flex: 1 1 auto;
   min-height: 0;
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(30rem, 1fr);
+  display: flex;
+  align-items: stretch;
   gap: 0;
   overflow-x: auto;
   overflow-y: hidden;
@@ -725,6 +724,7 @@
 
 .note-aisle-pane {
   position: relative;
+  flex: 1 0 30rem;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -732,6 +732,12 @@
   border: 0;
   border-right: 1px solid var(--app-border);
   background: var(--app-surface);
+}
+
+.note-aisle-pane.has-custom-width {
+  flex: 0 0 var(--note-aisle-width);
+  width: var(--note-aisle-width);
+  min-width: var(--note-aisle-width);
 }
 
 .note-aisles-shell.is-single .note-aisle-pane {
@@ -749,6 +755,50 @@
 
 .note-aisle-editor-shell .toastui-editor-toolbar {
   display: none !important;
+}
+
+.note-aisle-resize-btn {
+  position: absolute;
+  top: 70%;
+  right: 0;
+  z-index: 35;
+  width: 1.4rem;
+  height: 4.4rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--app-muted-text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform: translate(50%, -50%);
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.note-aisle-resize-capsule {
+  width: 0.34rem;
+  height: 3rem;
+  border: 1px solid color-mix(in srgb, var(--app-surface) 35%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--app-border) 78%, var(--app-surface));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--app-bg) 28%, transparent),
+    0 0.12rem 0.35rem color-mix(in srgb, var(--app-bg) 30%, transparent);
+  pointer-events: none;
+}
+
+.note-aisle-resize-btn:hover .note-aisle-resize-capsule,
+.note-aisle-resize-btn:focus-visible .note-aisle-resize-capsule,
+.note-aisle-resize-btn:active .note-aisle-resize-capsule {
+  background: var(--app-primary-border);
+  border-color: color-mix(in srgb, var(--app-primary-border) 35%, var(--app-surface));
+}
+
+.note-aisle-resize-btn:focus-visible {
+  outline: 2px solid var(--app-primary-border);
+  outline-offset: 0.08rem;
 }
 
 .note-aisle-action-layer {

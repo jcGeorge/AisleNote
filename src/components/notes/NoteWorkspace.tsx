@@ -1,14 +1,17 @@
 import {
   useCallback,
+  useRef,
   useState,
   type CSSProperties,
   type MutableRefObject,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type Ref,
 } from 'react'
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { buildAisleEditorKey } from '../../editor/aisle-editor'
+import { clampAisleWidth } from '../../notes/aisle-widths'
 import type { HeadingOutlineItem } from '../../editor/heading-outline'
 import type { TableOfContentsLinkItem } from '../../editor/table-of-contents-links'
 import { resolveAssetDisplayUrl } from '../../markdown/image-asset-registry'
@@ -89,10 +92,14 @@ type NoteWorkspaceProps = {
   tableOfContentsHeadingsByAisle?: Record<string, HeadingOutlineItem[]>
   tableOfContentsLinksByAisle?: Record<string, TableOfContentsLinkItem[]>
   openTableOfContentsAisleIds?: Set<string>
+  aisleWidths?: Record<string, number>
   onExitArrangeMode?: () => void
   onRootChange: (node: HTMLElement | null) => void
   onAisleScroll: (scrollLeft: number) => void
   onActivateAisle: (editorKey: string) => void
+  onResizeAisleWidth?: (aisleId: string, width: number) => void
+  onResetAisleWidth?: (aisleId: string) => void
+  onAisleWidthDragCommitted?: () => void
   mountedAisleIds: Set<string>
   getPreviewMarkdownForAisle: (aisle: ResolvedNoteAisle) => string
   onCloseTableOfContentsAisle?: (aisleId: string) => void
@@ -232,10 +239,14 @@ export function NoteWorkspace({
   tableOfContentsHeadingsByAisle = {},
   tableOfContentsLinksByAisle = {},
   openTableOfContentsAisleIds = new Set(),
+  aisleWidths = {},
   onExitArrangeMode,
   onRootChange,
   onAisleScroll,
   onActivateAisle,
+  onResizeAisleWidth = () => undefined,
+  onResetAisleWidth = () => undefined,
+  onAisleWidthDragCommitted = () => undefined,
   mountedAisleIds,
   getPreviewMarkdownForAisle,
   onCloseTableOfContentsAisle = () => undefined,
@@ -253,6 +264,13 @@ export function NoteWorkspace({
 }: NoteWorkspaceProps) {
   const [aisleScrollNode, setAisleScrollNode] = useState<HTMLDivElement | null>(null)
   const [actionMenu, setActionMenu] = useState<{ type: 'frontmatter' | 'link'; aisleId: string } | null>(null)
+  const aisleResizeDragRef = useRef<{
+    pointerId: number
+    aisleId: string
+    startClientX: number
+    startWidth: number
+    moved: boolean
+  } | null>(null)
   const isSplitWorkspace = aisles.length > 1
   const setAisleScrollRef = useCallback(
     (node: HTMLDivElement | null) => {
@@ -260,6 +278,60 @@ export function NoteWorkspace({
       assignRef(aisleScrollRef, node)
     },
     [aisleScrollRef],
+  )
+
+  const startAisleWidthDrag = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>, aisleId: string) => {
+      if (event.button !== 0) return
+      const pane = event.currentTarget.closest<HTMLElement>('.note-aisle-pane')
+      const startWidth = pane?.getBoundingClientRect().width || aisleWidths[aisleId] || 0
+      const clampedStartWidth = clampAisleWidth(startWidth)
+      if (clampedStartWidth === null) return
+      event.preventDefault()
+      event.stopPropagation()
+      aisleResizeDragRef.current = {
+        pointerId: event.pointerId,
+        aisleId,
+        startClientX: event.clientX,
+        startWidth: clampedStartWidth,
+        moved: false,
+      }
+      event.currentTarget.setPointerCapture(event.pointerId)
+    },
+    [aisleWidths],
+  )
+
+  const updateAisleWidthDrag = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      const drag = aisleResizeDragRef.current
+      if (!drag || drag.pointerId !== event.pointerId) return
+      const nextWidth = clampAisleWidth(drag.startWidth + event.clientX - drag.startClientX)
+      if (nextWidth === null) return
+      event.preventDefault()
+      event.stopPropagation()
+      if (nextWidth !== drag.startWidth) {
+        drag.moved = true
+        onResizeAisleWidth(drag.aisleId, nextWidth)
+      }
+    },
+    [onResizeAisleWidth],
+  )
+
+  const finishAisleWidthDrag = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      const drag = aisleResizeDragRef.current
+      if (!drag || drag.pointerId !== event.pointerId) return
+      aisleResizeDragRef.current = null
+      event.preventDefault()
+      event.stopPropagation()
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId)
+      }
+      if (drag.moved) {
+        onAisleWidthDragCommitted()
+      }
+    },
+    [onAisleWidthDragCommitted],
   )
 
   return (
@@ -311,15 +383,43 @@ export function NoteWorkspace({
           const showLinkButton = wholeNoteLinked || linkedAisleIds.has(aisle.id)
           const showFrontmatterButton = frontmatterAisleIds.has(aisle.id)
           const showScratchpadAisleControls = Boolean(scratchpadAisleControls && aisle.id === activeAisleId)
+          const customAisleWidth = isSplitWorkspace ? aisleWidths[aisle.id] : undefined
+          const aislePaneStyle =
+            typeof customAisleWidth === 'number'
+              ? ({ '--note-aisle-width': `${customAisleWidth}px` } as CSSProperties)
+              : undefined
           return (
             <section
               key={aisle.id}
               ref={(node) => onRegisterAislePaneRoot(aisle.id, node)}
-              className={`note-aisle-pane ${aisle.id === activeAisleId ? 'is-active' : ''}`}
+              className={`note-aisle-pane ${aisle.id === activeAisleId ? 'is-active' : ''} ${
+                customAisleWidth ? 'has-custom-width' : ''
+              }`}
+              style={aislePaneStyle}
               aria-label={`Aisle ${index + 1}`}
               data-aisle-id={aisle.id}
               data-aisle-editor-key={editorKey}
             >
+              {isSplitWorkspace && (
+                <button
+                  type="button"
+                  className="note-aisle-resize-btn"
+                  aria-label={`Resize aisle ${index + 1}`}
+                  data-app-tooltip="Drag to resize. Double click to reset."
+                  data-note-workspace-skip-aisle-activation="true"
+                  onPointerDown={(event) => startAisleWidthDrag(event, aisle.id)}
+                  onPointerMove={updateAisleWidthDrag}
+                  onPointerUp={finishAisleWidthDrag}
+                  onPointerCancel={finishAisleWidthDrag}
+                  onDoubleClick={(event) => {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    onResetAisleWidth(aisle.id)
+                  }}
+                >
+                  <span className="note-aisle-resize-capsule" aria-hidden="true" />
+                </button>
+              )}
               {(showLinkButton || showFrontmatterButton) && (
                 <div className="note-aisle-action-layer" aria-label={`Aisle ${index + 1} actions`}>
                   {showLinkButton && (

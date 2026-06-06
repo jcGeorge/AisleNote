@@ -1,5 +1,6 @@
 import { DEFAULT_TOOLBAR_LAYOUT_ID } from '../editor/toolbar-layouts'
 import { normalizeHeadingCollapseState } from '../editor/heading-collapse-state'
+import { normalizeAisleWidths } from '../notes/aisle-widths'
 import { normalizeNoteCursorLocations } from '../notes/note-cursors'
 import { normalizeTagAutocompleteRecentKeys } from '../tags/tag-autocomplete'
 import {
@@ -35,6 +36,7 @@ export type DeviceSettings = {
   lastOpened: DeviceLastOpened | null
   noteCursorLocations: AppState['ui']['noteCursorLocations']
   headingCollapseState: AppState['ui']['headingCollapseState']
+  aisleWidths: NonNullable<AppState['ui']['aisleWidths']>
   settingsSection: AppState['ui']['settingsSection']
   dataSettingsSection: DataSettingsSection
   visualsSettingsSection: VisualsSettingsSection
@@ -51,6 +53,7 @@ export const DEFAULT_DEVICE_SETTINGS: DeviceSettings = {
   lastOpened: null,
   noteCursorLocations: DEFAULT_UI_SETTINGS.noteCursorLocations,
   headingCollapseState: DEFAULT_UI_SETTINGS.headingCollapseState,
+  aisleWidths: DEFAULT_UI_SETTINGS.aisleWidths ?? {},
   settingsSection: DEFAULT_UI_SETTINGS.settingsSection,
   dataSettingsSection: DEFAULT_DATA_SETTINGS_SECTION,
   visualsSettingsSection: DEFAULT_VISUALS_SETTINGS_SECTION,
@@ -102,6 +105,7 @@ function normalizeDeviceSettingsValue(raw: unknown): DeviceSettings {
     lastOpened: normalizeDeviceLastOpened(obj.lastOpened),
     noteCursorLocations: normalizeNoteCursorLocations(obj.noteCursorLocations),
     headingCollapseState: normalizeHeadingCollapseState(obj.headingCollapseState),
+    aisleWidths: normalizeAisleWidths(obj.aisleWidths),
     settingsSection: normalizeSettingsSection(obj.settingsSection),
     dataSettingsSection: normalizeDataSettingsSection(obj.dataSettingsSection),
     visualsSettingsSection: normalizeVisualsSettingsSection(
@@ -217,6 +221,7 @@ export function extractDeviceSettingsFromAppState(
     lastOpened: getDeviceLastOpenedFromAppState(appState, viewMode, scratchpadActive),
     noteCursorLocations: appState.ui.noteCursorLocations,
     headingCollapseState: appState.ui.headingCollapseState,
+    aisleWidths: appState.ui.aisleWidths ?? DEFAULT_UI_SETTINGS.aisleWidths ?? {},
     settingsSection: appState.ui.settingsSection,
     dataSettingsSection: appState.ui.dataSettingsSection ?? DEFAULT_DATA_SETTINGS_SECTION,
     visualsSettingsSection: appState.ui.visualsSettingsSection ?? DEFAULT_VISUALS_SETTINGS_SECTION,
@@ -287,6 +292,7 @@ export function applyDeviceSettingsToAppState(appState: AppState, settings: Devi
         ...appState.ui,
         noteCursorLocations: settings.noteCursorLocations,
         headingCollapseState: settings.headingCollapseState,
+        aisleWidths: settings.aisleWidths,
         settingsSection: settings.settingsSection,
         dataSettingsSection: settings.dataSettingsSection,
         visualsSettingsSection: settings.visualsSettingsSection,

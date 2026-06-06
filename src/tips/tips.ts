@@ -1,4 +1,9 @@
-export const TIP_IDS = ['task-undo', 'delete-active-aisle-shortcut', 'trash-delete-confirmation-setting'] as const
+export const TIP_IDS = [
+  'task-undo',
+  'delete-active-aisle-shortcut',
+  'trash-delete-confirmation-setting',
+  'aisle-width-reset',
+] as const
 
 export type TipId = (typeof TIP_IDS)[number]
 
@@ -30,6 +35,11 @@ export const TIP_DEFINITIONS: TipDefinition[] = [
     label: 'trash delete confirmation setting',
     message: 'Tip: You can turn off delete-for-real confirmations in settings > data > trash.',
     autoDisableAfterShow: true,
+  },
+  {
+    id: 'aisle-width-reset',
+    label: 'aisle width reset',
+    message: 'To reset an aisle back to dynamic sizing, simply double click the aisle drag button',
   },
 ]
 

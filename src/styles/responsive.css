@@ -208,6 +208,10 @@
     overflow-x: hidden !important;
   }
 
+  .note-aisle-resize-btn {
+    display: none !important;
+  }
+
   .toastui-editor .ProseMirror p,
   .toastui-editor .ProseMirror li,
   .toastui-editor-contents p,

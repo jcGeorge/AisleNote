@@ -12,6 +12,7 @@ import type {
   VisualsSettingsSection,
 } from '../types/app'
 import { normalizeNoteCursorLocations } from '../notes/note-cursors'
+import { normalizeAisleWidths } from '../notes/aisle-widths'
 import { normalizeTipIds } from '../tips/tips'
 import { normalizeHeadingCollapseState } from '../editor/heading-collapse-state'
 import { normalizeToolbarLayouts } from '../editor/toolbar-layouts'
@@ -79,6 +80,7 @@ export const DEFAULT_UI_SETTINGS: AppState['ui'] = {
   themePalettes: {},
   noteCursorLocations: {},
   headingCollapseState: {},
+  aisleWidths: {},
   toolbarLayouts: [],
   seenTipIds: [],
   disabledTipIds: [],
@@ -453,6 +455,7 @@ export function normalizeUiSettings(raw: unknown): AppState['ui'] {
     themePalettes,
     noteCursorLocations: normalizeNoteCursorLocations(obj.noteCursorLocations),
     headingCollapseState: normalizeHeadingCollapseState(obj.headingCollapseState),
+    aisleWidths: normalizeAisleWidths(obj.aisleWidths),
     toolbarLayouts: normalizeToolbarLayouts(obj.toolbarLayouts),
     seenTipIds: normalizeTipIds(obj.seenTipIds),
     disabledTipIds: normalizeTipIds(obj.disabledTipIds),

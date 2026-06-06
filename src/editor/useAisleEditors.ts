@@ -26,6 +26,7 @@ import {
   EDITOR_TOOLBAR_ITEMS,
   headingSpaceShortcutPlugin,
   highlightPlugin,
+  installEditorSpellcheck,
   installHeadingPopupActiveState,
   installToolbarAppTooltips,
   listMarkerPlugin,
@@ -941,6 +942,7 @@ export function useAisleEditors({
       root.addEventListener('focusin', activateFromFocus)
       root.addEventListener('pointerdown', activateFromPointer, true)
       const cleanupImageDisplayMetadataSync = installImageDisplayMetadataSync(root)
+      const cleanupEditorSpellcheck = installEditorSpellcheck(root)
       const cleanupToolbarAppTooltips = installToolbarAppTooltips(root)
       const cleanupHeadingPopupActiveState = installHeadingPopupActiveState(root, () => editor)
       const cleanupCompletedTaskCheckboxBehavior = installCompletedTaskCheckboxBehavior(
@@ -963,6 +965,7 @@ export function useAisleEditors({
         pluginKey,
         cleanup: () => {
           cleanupImageDisplayMetadataSync()
+          cleanupEditorSpellcheck()
           cleanupToolbarAppTooltips()
           cleanupTaskTextReorderBehavior()
           cleanupCompletedTaskCheckboxBehavior()

@@ -199,7 +199,7 @@ All root split files live directly under the notebook root, beside `manifest.jso
 - `workspace-index.json`: domain order, domain titles, and domain paths.
 - `navigation-state.json`: `activeDomainId` and optional `lastOpened`.
 - `frontmatter-settings.json`: frontmatter templates, selected settings template, and last applied template.
-- `editor-state.json`: note cursor locations and heading collapse state.
+- `editor-state.json`: note cursor locations, heading collapse state, and per-location aisle widths.
 - `deleted-workspace.json`: deleted domains and deleted spaces.
 - `note-registry.json`: note body records and shared aisle body records, including unlinked preservation records marked with `storageStatus: "unlinked"`.
 
@@ -262,6 +262,7 @@ Use these principles consistently:
 - `createdAt` / `updatedAt`: ISO strings on note bodies where available
 - `schemaVersion`: integer storage format gate
 - `editor-state.json.noteCursorLocations`: optional map keyed by domain/space/parent/sub-tab location
+- `editor-state.json.aisleWidths`: optional map keyed by the same location keys, with fixed aisle widths by aisle ID
 
 ## Validation And Health
 

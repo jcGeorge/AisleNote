@@ -22,6 +22,7 @@ function renderWorkspace(
     frontmatterAisleIds?: Set<string>
     linkedAisleIds?: Set<string>
     wholeNoteLinked?: boolean
+    aisleWidths?: Record<string, number>
     scratchpadAisleControls?: {
       canDeleteActiveAisle: boolean
       onAddAisleLeft: () => void
@@ -39,6 +40,7 @@ function renderWorkspace(
       frontmatterAisleIds={options.frontmatterAisleIds}
       linkedAisleIds={options.linkedAisleIds}
       wholeNoteLinked={options.wholeNoteLinked}
+      aisleWidths={options.aisleWidths}
       scratchpadAisleControls={options.scratchpadAisleControls}
       aisleScrollRef={{ current: null }}
       toolbar={null}
@@ -92,6 +94,33 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html).toContain('note-aisle-horizontal-scrollbar-thumb')
     expect(html).toContain('role="scrollbar"')
     expect(html).toContain('aria-label="Scroll aisles horizontally"')
+  })
+
+  it('renders resize handles for split aisles', () => {
+    const html = renderWorkspace(new Set(['a']))
+
+    expect(html.match(/note-aisle-resize-btn/g) ?? []).toHaveLength(3)
+    expect(html).toContain('Resize aisle 1')
+    expect(html).toContain('Drag to resize. Double click to reset.')
+    expect(html.match(/data-note-workspace-skip-aisle-activation="true"/g) ?? []).toHaveLength(3)
+    expect(html.match(/note-aisle-resize-capsule/g) ?? []).toHaveLength(3)
+  })
+
+  it('applies persisted custom aisle widths to split panes', () => {
+    const html = renderWorkspace(new Set(['a']), { aisleWidths: { b: 700 } })
+
+    expect(html).toContain('has-custom-width')
+    expect(html).toContain('--note-aisle-width:700px')
+  })
+
+  it('does not render resize handles for single-aisle notes', () => {
+    const html = renderWorkspace(new Set(['solo']), {
+      aisles: [{ id: 'solo', aisleBodyId: 'solo', markdown: 'single' }],
+      activeAisleId: 'solo',
+    })
+
+    expect(html).not.toContain('note-aisle-resize-btn')
+    expect(html).not.toContain('has-custom-width')
   })
 
   it('renders data image previews without stripping the image URL', () => {

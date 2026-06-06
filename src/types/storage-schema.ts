@@ -90,7 +90,11 @@ export type StorageTableOfContentsScope = 'all-aisles' | 'focused-aisle'
 export type StorageScratchpadNewAisleSide = 'left' | 'right'
 export type StorageTabRenameEnterBehavior = 'goes-to-note' | 'creates-another-tab'
 export type StorageFindReplaceMode = 'find' | 'replace'
-export type StorageTipId = 'task-undo' | 'delete-active-aisle-shortcut' | 'trash-delete-confirmation-setting'
+export type StorageTipId =
+  | 'task-undo'
+  | 'delete-active-aisle-shortcut'
+  | 'trash-delete-confirmation-setting'
+  | 'aisle-width-reset'
 export type StorageNoteFilterKind = 'tags' | 'synced' | 'frontmatter' | 'media'
 export type StorageNoteFilterSettings = {
   active?: boolean
@@ -172,6 +176,7 @@ export type StorageGlobalSettings = {
       }
     >
     headingCollapseState?: Record<StorageEntityId, Record<StorageEntityId, string[]>>
+    aisleWidths?: Record<string, Record<StorageEntityId, number>>
     seenTipIds?: StorageTipId[]
     disabledTipIds?: StorageTipId[]
   }

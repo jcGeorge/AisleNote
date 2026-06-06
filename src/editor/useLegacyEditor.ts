@@ -10,6 +10,7 @@ import {
   headingSpaceShortcutPlugin,
   highlightPlugin,
   installClearToolbarButton,
+  installEditorSpellcheck,
   installHeadingPopupActiveState,
   installToolbarAppTooltips,
   listMarkerPlugin,
@@ -192,6 +193,7 @@ export function useLegacyEditor({
     restoreEditorBlankParagraphs(editorRef.current, displayContent)
     markWysiwygLoadedUndoBoundary(editorRef.current)
     installClearToolbarButton(editorMountRef.current, clearActiveNoteContent)
+    const cleanupEditorSpellcheck = installEditorSpellcheck(editorMountRef.current)
     const cleanupToolbarAppTooltips = installToolbarAppTooltips(editorMountRef.current)
     const cleanupHeadingPopupActiveState = installHeadingPopupActiveState(editorMountRef.current, () => editorRef.current)
     const cleanupCompletedTaskCheckboxBehavior = installCompletedTaskCheckboxBehavior(
@@ -205,6 +207,7 @@ export function useLegacyEditor({
     })
 
     return () => {
+      cleanupEditorSpellcheck()
       cleanupToolbarAppTooltips()
       cleanupTaskTextReorderBehavior()
       cleanupCompletedTaskCheckboxBehavior()

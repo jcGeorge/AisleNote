@@ -145,7 +145,8 @@ type UseEditorDomEventsOptions = {
 
 const WWW_ADDRESS_RE = /^www\.[^\s.]+\.[^\s]+$/i
 const BARE_COM_ORG_ADDRESS_RE = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|org)(?::\d{2,5})?(?:[/?#][^\s]*)?$/i
-const EDITOR_SPELLCHECK_CONTEXT_TIMEOUT_MS = 50
+const EDITOR_SPELLCHECK_CONTEXT_RETRY_WINDOW_MS = 300
+const EDITOR_SPELLCHECK_CONTEXT_POLL_MS = 25
 
 function hasEditorDictionaryContext(context: EditorDictionaryContext | null | undefined): context is EditorDictionaryContext {
   return Boolean(
@@ -163,15 +164,54 @@ export async function getEditorDictionaryContextForMenu(
   if (typeof window === 'undefined') return undefined
   const getSpellcheckContext = window.electronAPI?.getEditorSpellcheckContext
   if (typeof getSpellcheckContext !== 'function') return undefined
+  const maxAttempts = Math.max(1, Math.ceil(EDITOR_SPELLCHECK_CONTEXT_RETRY_WINDOW_MS / EDITOR_SPELLCHECK_CONTEXT_POLL_MS))
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const { context, timedOut } = await getEditorSpellcheckContextAttempt(getSpellcheckContext, x, y)
+    if (hasEditorDictionaryContext(context)) return context
+    if (attempt < maxAttempts - 1 && !timedOut) {
+      await waitForEditorSpellcheckPoll()
+    }
+  }
+  return undefined
+}
+
+async function getEditorSpellcheckContextAttempt(
+  getSpellcheckContext: NonNullable<NonNullable<typeof window.electronAPI>['getEditorSpellcheckContext']>,
+  x: number,
+  y: number,
+): Promise<{ context: EditorDictionaryContext | null; timedOut: boolean }> {
+  let timedOut = false
+  let timeoutId: number | undefined
   const timeout = new Promise<null>((resolve) => {
-    window.setTimeout(() => resolve(null), EDITOR_SPELLCHECK_CONTEXT_TIMEOUT_MS)
+    timeoutId = window.setTimeout(() => {
+      timedOut = true
+      resolve(null)
+    }, EDITOR_SPELLCHECK_CONTEXT_POLL_MS)
   })
   try {
     const context = await Promise.race([getSpellcheckContext({ x, y }), timeout])
-    return hasEditorDictionaryContext(context) ? context : undefined
+    return { context, timedOut }
   } catch {
-    return undefined
+    return { context: null, timedOut: false }
+  } finally {
+    if (timeoutId !== undefined && typeof window.clearTimeout === 'function') window.clearTimeout(timeoutId)
   }
+}
+
+function waitForEditorSpellcheckPoll(): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, EDITOR_SPELLCHECK_CONTEXT_POLL_MS)
+  })
+}
+
+export function mergeEditorDictionaryContextMenu(
+  current: ContextMenuState | null,
+  sourceMenu: Extract<ContextMenuState, { type: 'editor' }>,
+  dictionary: EditorDictionaryContext,
+): ContextMenuState | null {
+  if (!current || current.type !== 'editor') return current
+  if (current.x !== sourceMenu.x || current.y !== sourceMenu.y) return current
+  return { ...current, dictionary }
 }
 
 export function getPastedHttpUrl(value: string): string | null {
@@ -1013,9 +1053,10 @@ export function useEditorDomEvents({
     }
 
     const openEditorContextMenu = (menu: Extract<ContextMenuState, { type: 'editor' }>, requestId: number) => {
+      setContextMenu(menu)
       void getEditorDictionaryContextForMenu(menu.x, menu.y).then((dictionary) => {
-        if (requestId !== editorContextMenuRequestId) return
-        setContextMenu(dictionary ? { ...menu, dictionary } : menu)
+        if (!dictionary || requestId !== editorContextMenuRequestId) return
+        setContextMenu((current) => mergeEditorDictionaryContextMenu(current, menu, dictionary))
       })
     }
 

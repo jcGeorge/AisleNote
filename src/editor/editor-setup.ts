@@ -1470,6 +1470,23 @@ export function installToolbarAppTooltips(root: HTMLElement): () => void {
   return () => observer.disconnect()
 }
 
+export const EDITOR_SPELLCHECK_ROOT_SELECTOR = '.toastui-editor .ProseMirror[contenteditable="true"]'
+
+export function installEditorSpellcheck(root: HTMLElement): () => void {
+  const enableSpellcheck = () => {
+    root.querySelectorAll<HTMLElement>(EDITOR_SPELLCHECK_ROOT_SELECTOR).forEach((element) => {
+      element.setAttribute('spellcheck', 'true')
+    })
+  }
+
+  enableSpellcheck()
+  if (typeof MutationObserver === 'undefined') return () => undefined
+
+  const observer = new MutationObserver(enableSpellcheck)
+  observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['contenteditable'] })
+  return () => observer.disconnect()
+}
+
 function createToolbarTextButton(
   className: string,
   label: string,

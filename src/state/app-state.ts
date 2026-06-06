@@ -44,6 +44,7 @@ import {
   syncNoteAisleBodyMarkdownInState,
   syncNoteBodyAislesInState,
 } from '../notes/aisle-body-state'
+import { pruneAisleWidthsForAppState } from '../notes/aisle-widths'
 import {
   createDefaultDomain,
   normalizeDomain,
@@ -872,22 +873,31 @@ export function applyAutoPurgeToAppState(appState: AppState, now = Date.now()): 
   const deletedDomains = applyAutoPurgeToDeletedDomainEntries(projectedDeletedDomains, now)
   const deletedSpaces = applyAutoPurgeToDeletedSpaceEntries(projectedDeletedSpaces, now)
 
-  if (
-    !spacesChanged &&
-    !domainsChanged &&
-    deletedDomains === projectedDeletedDomains &&
-    deletedSpaces === projectedDeletedSpaces &&
-    projected === appState
-  ) {
-    return appState
+  const hasWorkspaceChanges =
+    spacesChanged ||
+    domainsChanged ||
+    deletedDomains !== projectedDeletedDomains ||
+    deletedSpaces !== projectedDeletedSpaces ||
+    projected !== appState
+  const nextState = hasWorkspaceChanges
+    ? projectActiveDomainState({
+        ...projected,
+        spaces,
+        domains,
+        deletedDomains,
+        deletedSpaces,
+      })
+    : appState
+  const previousAisleWidths = nextState.ui.aisleWidths ?? {}
+  const aisleWidths = pruneAisleWidthsForAppState(previousAisleWidths, nextState)
+  if (aisleWidths === previousAisleWidths) return nextState
+  return {
+    ...nextState,
+    ui: {
+      ...nextState.ui,
+      aisleWidths,
+    },
   }
-  return projectActiveDomainState({
-    ...projected,
-    spaces,
-    domains,
-    deletedDomains,
-    deletedSpaces,
-  })
 }
 
 export function parseSavedState(raw: string | null): AppState {

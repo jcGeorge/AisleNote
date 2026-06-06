@@ -417,6 +417,40 @@ describe('browser hybrid storage', () => {
     })
   })
 
+  it('stores aisle widths in editor state and prunes stale widths', () => {
+    const state = createBrowserStorageState()
+    state.noteBodies[0]?.aisles.push({ id: 'aisle-2', aisleBodyId: 'aisle-body-2' })
+    state.noteAisleBodies?.push({ id: 'aisle-body-2', markdown: 'second aisle' })
+    state.ui.aisleWidths = {
+      'domain-1::space-1::tab-1::__home__': {
+        'aisle-1': 700,
+        'aisle-2': 860,
+        stale: 900,
+      },
+      missing: {
+        'aisle-1': 640,
+      },
+    }
+
+    const fileMap = buildHybridFileMapFromSerializedState(JSON.stringify(state))
+    const rootManifest = getTextFileJson(fileMap, 'notes/manifest.json')
+    const editorState = getRootSplitFileJson(fileMap, rootManifest, 'editorState', 'editor-state.json')
+    const roundTripped = parseSavedState(readSerializedStateFromHybridFileMap(fileMap) ?? '')
+
+    expect(editorState.aisleWidths).toEqual({
+      'domain-1::space-1::tab-1::__home__': {
+        'aisle-1': 700,
+        'aisle-2': 860,
+      },
+    })
+    expect(roundTripped.ui.aisleWidths).toEqual({
+      'domain-1::space-1::tab-1::__home__': {
+        'aisle-1': 700,
+        'aisle-2': 860,
+      },
+    })
+  })
+
   it('stores scratchpad markdown under the scratchpad folder and reads it back', () => {
     const state = createBrowserStorageState()
     const scratchpadBody = state.noteBodies.find((body) => body.id === state.scratchpad?.noteBodyId)

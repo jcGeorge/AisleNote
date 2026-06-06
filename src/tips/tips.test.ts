@@ -15,9 +15,10 @@ describe('tips', () => {
         'tab-create-after-rename',
         'delete-active-aisle-shortcut',
         'trash-delete-confirmation-setting',
+        'aisle-width-reset',
         'aisle-shortcut',
       ]),
-    ).toEqual(['task-undo', 'delete-active-aisle-shortcut', 'trash-delete-confirmation-setting'])
+    ).toEqual(['task-undo', 'delete-active-aisle-shortcut', 'trash-delete-confirmation-setting', 'aisle-width-reset'])
     expect(normalizeTipIds('task-undo')).toEqual([])
   })
 
@@ -25,6 +26,9 @@ describe('tips', () => {
     expect(getTipDefinition('task-undo').message).toContain('Click & hold')
     expect(getTipDefinition('task-undo').autoDisableAfterShow).toBeUndefined()
     expect(getTipDefinition('trash-delete-confirmation-setting').autoDisableAfterShow).toBe(true)
+    expect(getTipDefinition('aisle-width-reset').message).toBe(
+      'To reset an aisle back to dynamic sizing, simply double click the aisle drag button',
+    )
   })
 
   it('formats the active aisle shortcut tip for the current platform', () => {
