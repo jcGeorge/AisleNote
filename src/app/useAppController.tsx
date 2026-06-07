@@ -57,7 +57,6 @@ import { getToggledRailVisibilitySettings, type RailVisibilityTarget } from '../
 import { ImageToolsOverlay } from '../components/editor/ImageToolsOverlay'
 import { MediaToolsOverlay } from '../components/editor/MediaToolsOverlay'
 import { FindReplacePanel } from '../components/editor/FindReplacePanel'
-import { LegacyEditorShell } from '../components/editor/LegacyEditorShell'
 import { NoteMentionMenu } from '../components/editor/NoteMentionMenu'
 import { ShortcutMenu } from '../components/editor/ShortcutMenu'
 import { TagAutocompleteMenu } from '../components/editor/TagAutocompleteMenu'
@@ -112,6 +111,7 @@ import {
 } from '../components/overlays/context-menu-dismissal'
 import { SettingsPage } from '../components/settings/SettingsPage'
 import { TrashHomeNote } from '../components/trash/TrashHomeNote'
+import { TrashMarkdownPreview } from '../components/trash/TrashMarkdownPreview'
 import { AboutView } from '../components/about/AboutView'
 import { applyListToolbarCommand, type ToolbarListCommand } from '../editor/list-marker-commands'
 import {
@@ -373,7 +373,7 @@ import {
   shouldConfirmTrashDeleteForReal,
   shouldShowTrashDeleteConfirmationTip,
 } from '../trash/trash-delete-confirmation'
-import { TRASH_HOME_ID } from '../trash/trash-model'
+import { getDefaultTrashSubTabIdForParent, TRASH_HOME_ID } from '../trash/trash-model'
 import { useTrashSelection } from '../trash/useTrashSelection'
 import {
   EMPTY_TRASH_SELECTION,
@@ -551,7 +551,7 @@ export function useAppController(): AppController {
     focusRequestId: 0,
     query: initialDeviceSettingsRef.current?.lastFindQuery ?? '',
     replacement: '',
-    scope: 'note',
+    scope: state.ui.findReplaceScope ?? 'note',
     caseSensitive: state.ui.findCaseSensitive ?? false,
     wholeWord: state.ui.findWholeWord ?? false,
     regex: state.ui.findRegex ?? false,
@@ -1043,14 +1043,22 @@ export function useAppController(): AppController {
       const wholeWord = state.ui.findWholeWord ?? false
       const regex = state.ui.findRegex ?? false
       const replaceMode = state.ui.findReplaceMode === 'replace'
+      const scope = state.ui.findReplaceScope ?? 'note'
       return current.caseSensitive === caseSensitive &&
         current.wholeWord === wholeWord &&
         current.regex === regex &&
-        current.replaceMode === replaceMode
+        current.replaceMode === replaceMode &&
+        current.scope === scope
         ? current
-        : { ...current, caseSensitive, wholeWord, regex, replaceMode }
+        : { ...current, caseSensitive, wholeWord, regex, replaceMode, scope }
     })
-  }, [state.ui.findCaseSensitive, state.ui.findRegex, state.ui.findReplaceMode, state.ui.findWholeWord])
+  }, [
+    state.ui.findCaseSensitive,
+    state.ui.findRegex,
+    state.ui.findReplaceMode,
+    state.ui.findReplaceScope,
+    state.ui.findWholeWord,
+  ])
 
   useEffect(() => {
     setFindReplacePanel((current) => {
@@ -1495,7 +1503,7 @@ export function useAppController(): AppController {
     )
   }, [selectedTrashDomain, selectedTrashSpace, selectedTrashTab, trashDomains, trashParentTabs, trashSelection, trashSpaces])
 
-  const displayContent = viewMode === 'trash' ? trashDisplay.markdown : activeContent
+  const displayContent = activeContent
 
   activeDomainIdRef.current = state.activeDomainId
   activeSpaceIdRef.current = scratchpadWorkspaceActive ? SCRATCHPAD_CONTENT_TARGET_ID : activeSpace.id
@@ -2551,7 +2559,7 @@ export function useAppController(): AppController {
   })
 
   const isTrashHomeSelected = viewMode === 'trash' && trashDisplay.mode === 'home'
-  const isEditorView = viewMode === 'main' || (viewMode === 'trash' && !isTrashHomeSelected)
+  const isEditorView = viewMode === 'main'
 
   const focusEditorAtDocumentStart = () => {
     const currentEditor = editorRef.current
@@ -4398,16 +4406,18 @@ export function useAppController(): AppController {
     const selectedText = getActiveEditorSelectedText()
     const lastFindQuery = loadDeviceSettings().lastFindQuery
     const replaceMode = state.ui.findReplaceMode === 'replace'
+    const scope = state.ui.findReplaceScope ?? 'note'
     if (!lastFindQuery && selectedText.trim()) savePartialDeviceSettings({ lastFindQuery: selectedText })
     setFindReplacePanel((current) => ({
       ...current,
       open: true,
       replaceMode,
+      scope,
       focusRequestId: current.focusRequestId + 1,
       query: lastFindQuery || current.query || selectedText,
       activeIndex: 0,
     }))
-  }, [flushPendingContent, getActiveEditorSelectedText, state.ui.findReplaceMode])
+  }, [flushPendingContent, getActiveEditorSelectedText, state.ui.findReplaceMode, state.ui.findReplaceScope])
 
   const setFindReplaceActiveIndex = (index: number) => {
     const safeIndex = Math.max(0, Math.min(Math.max(0, findReplaceMatches.length - 1), index))
@@ -5584,15 +5594,6 @@ export function useAppController(): AppController {
     />
   )
 
-  const renderEditorShell = () => (
-    <LegacyEditorShell
-      editorReadOnly={editorReadOnly}
-      editorMountRef={editorMountRef}
-      imageToolsOverlay={renderImageToolsOverlay()}
-      tableControlsOverlay={renderTableControlsOverlay()}
-    />
-  )
-
   const canDeleteSpace = state.spaces.length > 1
   const canDeleteDomain = state.domains.length > 1
 
@@ -6196,8 +6197,9 @@ export function useAppController(): AppController {
               selectedTrashTab?.id ?? null,
               getTrashSelectionClickModifiers(event),
               (replacementId) => {
+                const replacementParent = trashParentTabs.find((parent) => parent.id === replacementId) ?? null
                 setTrashTabId(replacementId)
-                setTrashSubTabId(null)
+                setTrashSubTabId(getDefaultTrashSubTabIdForParent(replacementParent))
               },
             )
           }
@@ -6224,7 +6226,9 @@ export function useAppController(): AppController {
           onCancelArrangeTabPointerDrag={cancelArrangeTabPointerDrag}
           onSetTrashTabId={(tabId) => {
             clearTrashSelection()
+            const trashParent = trashParentTabs.find((parent) => parent.id === tabId) ?? null
             setTrashTabId(tabId)
+            setTrashSubTabId(getDefaultTrashSubTabIdForParent(trashParent))
           }}
           onSetTrashSubTabId={(subTabId) => {
             clearTrashSelection()
@@ -6658,8 +6662,10 @@ export function useAppController(): AppController {
               onRegisterAislePaneRoot={registerAislePaneRoot}
               onRegisterAisleEditorRoot={registerAisleEditorRoot}
             />
+          ) : viewMode === 'trash' ? (
+            <TrashMarkdownPreview markdown={trashDisplay.markdown} />
           ) : (
-            renderEditorShell()
+            null
           )}
         </>
       )}
@@ -6758,7 +6764,16 @@ export function useAppController(): AppController {
             if (query.trim()) savePartialDeviceSettings({ lastFindQuery: query })
           }}
           onReplacementChange={(replacement) => setFindReplacePanel((current) => ({ ...current, replacement }))}
-          onScopeChange={(scope) => setFindReplacePanel((current) => ({ ...current, scope, activeIndex: 0 }))}
+          onScopeChange={(scope) => {
+            setFindReplacePanel((current) => ({ ...current, scope, activeIndex: 0 }))
+            setState((previous) => ({
+              ...previous,
+              ui: {
+                ...previous.ui,
+                findReplaceScope: scope,
+              },
+            }))
+          }}
           onCaseSensitiveChange={(caseSensitive) => {
             setFindReplacePanel((current) => ({ ...current, caseSensitive, activeIndex: 0 }))
             setState((previous) => ({

@@ -90,6 +90,7 @@ export type StorageTableOfContentsScope = 'all-aisles' | 'focused-aisle'
 export type StorageScratchpadNewAisleSide = 'left' | 'right'
 export type StorageTabRenameEnterBehavior = 'goes-to-note' | 'creates-another-tab'
 export type StorageFindReplaceMode = 'find' | 'replace'
+export type StorageFindReplaceScope = 'note' | 'parent' | 'space' | 'domain' | 'notebook'
 export type StorageTipId =
   | 'task-undo'
   | 'delete-active-aisle-shortcut'
@@ -133,6 +134,7 @@ export type StorageGlobalSettings = {
     findWholeWord?: boolean
     findRegex?: boolean
     findReplaceMode?: StorageFindReplaceMode
+    findReplaceScope?: StorageFindReplaceScope
     removeNoteReferencesOnTrash?: boolean
     noteMentionCopyRequiresConfirmation?: boolean
     deleteActiveAisleShortcutEnabled?: boolean

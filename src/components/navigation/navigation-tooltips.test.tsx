@@ -1,7 +1,7 @@
 import { createRef, isValidElement, type ReactElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import type { ArrangeModeState, MessagesSection, SettingsSection, Tab, ViewMode, WorkspaceData } from '../../types/app'
+import type { ArrangeModeState, MessagesSection, SettingsSection, Tab, TrashParentBucket, ViewMode, WorkspaceData } from '../../types/app'
 import type { DiagnosticLogDisplayLimit, DiagnosticLogLevelFilter, DiagnosticLogMode } from '../../diagnostics/diagnostic-log'
 import { SubTabRail } from './SubTabRail'
 import { TopBar } from './TopBar'
@@ -199,16 +199,21 @@ function createSubTabRailElement(
   arrangeControlsDisabled = false,
   callbacks: SubTabRailTestCallbacks = {},
   options: {
+    viewMode?: ViewMode
     showNoteWorkspaceTabs?: boolean
     showHomeTab?: boolean
+    isNoteWorkspaceView?: boolean
     tagFilterActive?: boolean
     scratchpadActive?: boolean
     scratchpadTagCountLabel?: string
+    selectedTrashTab?: TrashParentBucket | null
+    trashSubTabs?: TrashParentBucket['subTabs']
+    selectedTrashSubTabId?: string | null
   } = {},
 ) {
   return (
     <SubTabRail
-      viewMode="main"
+      viewMode={options.viewMode ?? 'main'}
       activeTab={activeTab}
       activeSubTabId="sub-1"
       editing={null}
@@ -217,10 +222,10 @@ function createSubTabRailElement(
       tagFilterActive={options.tagFilterActive}
       showNoteWorkspaceTabs={options.showNoteWorkspaceTabs}
       showHomeTab={options.showHomeTab}
-      isNoteWorkspaceView
-      selectedTrashTab={null}
-      trashSubTabs={[]}
-      selectedTrashSubTabId={null}
+      isNoteWorkspaceView={options.isNoteWorkspaceView ?? true}
+      selectedTrashTab={options.selectedTrashTab ?? null}
+      trashSubTabs={options.trashSubTabs ?? []}
+      selectedTrashSubTabId={options.selectedTrashSubTabId ?? null}
       subTabRailRef={createRef<HTMLDivElement>()}
       arrangeableSubTabClassName="is-arrangeable"
       arrangeControlsDisabled={arrangeControlsDisabled}
@@ -493,6 +498,50 @@ describe('navigation arrange tooltips', () => {
     expect(html).not.toContain('home-subtab-btn')
     expect(html).toContain('data-arrange-subtab-id="sub-1"')
     expect(html).toContain('aria-label="scratchpad"')
+  })
+
+  it('shows trash home only when the deleted parent home is in trash', () => {
+    const deletedParent: TrashParentBucket = {
+      id: 'deleted-parent-entry',
+      title: 'Deleted Parent',
+      source: 'deleted-tab',
+      deletedTabEntryId: 'deleted-parent-entry',
+      parentTabId: 'deleted-parent',
+      homeContent: 'deleted parent home',
+      subTabs: [{ id: 'deleted-sub-entry', title: 'Deleted Sub', noteBodyId: 'body-sub', content: 'deleted sub' }],
+    }
+    const subtabOnlyParent: TrashParentBucket = {
+      ...deletedParent,
+      id: 'subtabs-only-parent',
+      source: 'subtabs-only',
+      deletedTabEntryId: null,
+      homeContent: '',
+    }
+
+    const deletedParentHtml = renderToStaticMarkup(
+      createSubTabRailElement(false, { active: false }, false, {}, {
+        viewMode: 'trash',
+        isNoteWorkspaceView: false,
+        selectedTrashTab: deletedParent,
+        trashSubTabs: deletedParent.subTabs,
+        selectedTrashSubTabId: null,
+      }),
+    )
+    const subtabOnlyHtml = renderToStaticMarkup(
+      createSubTabRailElement(false, { active: false }, false, {}, {
+        viewMode: 'trash',
+        isNoteWorkspaceView: false,
+        selectedTrashTab: subtabOnlyParent,
+        trashSubTabs: subtabOnlyParent.subTabs,
+        selectedTrashSubTabId: 'deleted-sub-entry',
+      }),
+    )
+
+    expect(deletedParentHtml).toContain('trash-parent-home-subtab-btn')
+    expect(deletedParentHtml).toContain('>home</button>')
+    expect(subtabOnlyHtml).not.toContain('trash-parent-home-subtab-btn')
+    expect(subtabOnlyHtml).not.toContain('>home</button>')
+    expect(subtabOnlyHtml).toContain('data-trash-subtab-id="deleted-sub-entry"')
   })
 
   it('renders app plus icons for parent and sub-tab add buttons', () => {

@@ -40,6 +40,12 @@
   margin-bottom: 0;
 }
 
+.trash-markdown-preview {
+  flex: 1 1 auto;
+  min-height: 0;
+  font-size: calc(1rem * var(--note-font-scale, 1));
+}
+
 .note-reference-btn {
   --note-reference-btn-bg: var(--action-chip-bg);
   position: absolute;

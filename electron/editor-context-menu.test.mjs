@@ -60,7 +60,7 @@ describe('editor context menu spellcheck bridge', () => {
     })
   })
 
-  it('returns stored spellcheck context only for matching recent coordinates', async () => {
+  it('returns stored spellcheck context for matching coordinates or a fresh native event', async () => {
     let now = 1000
     const ipcMain = createIpcMain()
     const webContents = createWebContents(7)
@@ -89,6 +89,15 @@ describe('editor context menu spellcheck bridge', () => {
       selectionText: 'recieve',
       canLookUpSelection: false,
     })
+    await expect(
+      ipcMain.handlers.get('get-editor-spellcheck-context')({ sender: webContents }, { x: 100, y: 60 }),
+    ).resolves.toEqual({
+      suggestions: ['receive'],
+      misspelledWord: 'recieve',
+      selectionText: 'recieve',
+      canLookUpSelection: false,
+    })
+    now = 1601
     await expect(
       ipcMain.handlers.get('get-editor-spellcheck-context')({ sender: webContents }, { x: 100, y: 60 }),
     ).resolves.toBeNull()

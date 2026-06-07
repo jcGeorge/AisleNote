@@ -1,7 +1,12 @@
 import { useEffect, useMemo, type Dispatch, type SetStateAction } from 'react'
 import { projectActiveDomainState } from '../state/domains'
 import type { AppState } from '../types/app'
-import { buildTrashDomainBuckets, resolveTrashContentDisplay, TRASH_HOME_ID } from './trash-model'
+import {
+  buildTrashDomainBuckets,
+  getDefaultTrashSubTabIdForParent,
+  resolveTrashContentDisplay,
+  TRASH_HOME_ID,
+} from './trash-model'
 
 type UseTrashSelectionParams = {
   state: AppState
@@ -117,6 +122,19 @@ export function useTrashSelection({
     if (!selectedTrashTab) {
       setTrashTabId(TRASH_HOME_ID)
       setTrashSubTabId(null)
+      return
+    }
+
+    if (selectedTrashTab.source === 'subtabs-only') {
+      const defaultSubTabId = getDefaultTrashSubTabIdForParent(selectedTrashTab)
+      if (!defaultSubTabId) {
+        setTrashTabId(TRASH_HOME_ID)
+        setTrashSubTabId(null)
+        return
+      }
+      if (!trashSubTabId || !selectedTrashSubTab) {
+        setTrashSubTabId(defaultSubTabId)
+      }
       return
     }
 

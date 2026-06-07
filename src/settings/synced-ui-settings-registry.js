@@ -5,6 +5,7 @@ export const SYNCED_UI_SIMPLE_SETTING_DEFINITIONS = Object.freeze([
   { key: 'findWholeWord', kind: 'boolean', defaultValue: false },
   { key: 'findRegex', kind: 'boolean', defaultValue: false },
   { key: 'findReplaceMode', kind: 'enum', defaultValue: 'find', values: ['find', 'replace'] },
+  { key: 'findReplaceScope', kind: 'enum', defaultValue: 'note', values: ['note', 'parent', 'space', 'domain', 'notebook'] },
   { key: 'removeNoteReferencesOnTrash', kind: 'boolean', defaultValue: true },
   { key: 'noteMentionCopyRequiresConfirmation', kind: 'boolean', defaultValue: true },
   { key: 'deleteActiveAisleShortcutEnabled', kind: 'boolean', defaultValue: false },

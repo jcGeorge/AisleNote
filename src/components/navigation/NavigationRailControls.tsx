@@ -54,6 +54,10 @@ export function NavigationRailControls({
   messagesCount = 0,
   tagFilterControl,
 }: NavigationRailControlsProps) {
+  const trashExitControlActive = viewMode === 'trash' && !showCloseControl
+  const closeControlActive = showCloseControl || trashExitControlActive
+  const menuButtonLabel = showCloseControl ? 'Close' : trashExitControlActive ? 'tabs' : 'Menu'
+
   return (
     <div className="tabbar-controls">
       {(actions.length > 0 || tagFilterControl) && (
@@ -92,21 +96,25 @@ export function NavigationRailControls({
       <div className="menu-wrap" onClick={(event) => event.stopPropagation()}>
         <button
           type="button"
-          className={`menu-btn ${showCloseControl ? 'is-close' : ''}`}
+          className={`menu-btn ${closeControlActive ? 'is-close' : ''}`}
           onClick={() => {
             if (showCloseControl) {
               onCloseAction()
               return
             }
+            if (trashExitControlActive) {
+              onToggleTrash()
+              return
+            }
             onSetMenuOpen((open) => !open)
           }}
-          aria-label={showCloseControl ? 'Close' : 'Menu'}
-          data-app-tooltip={showCloseControl ? 'Close' : 'Menu'}
+          aria-label={menuButtonLabel}
+          data-app-tooltip={menuButtonLabel}
         >
           <span className="menu-btn-line" />
           <span className="menu-btn-line" />
         </button>
-        {!showCloseControl && menuOpen && (
+        {!closeControlActive && menuOpen && (
           <div className="menu-dropdown">
             <button type="button" className="menu-item" onClick={onToggleSpaceRail}>
               {spaceRailVisible ? 'hide' : 'show'} space

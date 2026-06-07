@@ -360,6 +360,10 @@ export function normalizeFindReplaceMode(value: unknown): AppState['ui']['findRe
   return normalizeRegisteredSyncedUiSetting('findReplaceMode', value)
 }
 
+export function normalizeFindReplaceScope(value: unknown): AppState['ui']['findReplaceScope'] {
+  return normalizeRegisteredSyncedUiSetting('findReplaceScope', value)
+}
+
 function normalizeNoteFilterSelectedKeys(value: unknown): string[] {
   if (!Array.isArray(value)) return []
   return Array.from(

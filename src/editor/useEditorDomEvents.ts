@@ -204,6 +204,16 @@ function waitForEditorSpellcheckPoll(): Promise<void> {
   })
 }
 
+export function shouldPreventDefaultEditorContextMenu(): boolean {
+  if (typeof window === 'undefined') return true
+  return typeof window.electronAPI?.getEditorSpellcheckContext !== 'function'
+}
+
+function prepareEditorContextMenuEvent(event: globalThis.MouseEvent) {
+  if (shouldPreventDefaultEditorContextMenu()) event.preventDefault()
+  event.stopPropagation()
+}
+
 export function mergeEditorDictionaryContextMenu(
   current: ContextMenuState | null,
   sourceMenu: Extract<ContextMenuState, { type: 'editor' }>,
@@ -1105,8 +1115,7 @@ export function useEditorDomEvents({
         const href = anchor.getAttribute('href') || anchor.href
         const text = anchor.textContent ?? ''
         const range = getExternalLinkEditRange(mouseEvent, href)
-        mouseEvent.preventDefault()
-        mouseEvent.stopPropagation()
+        prepareEditorContextMenuEvent(mouseEvent)
         onDismissEditorEphemeraBeforeContextMenu?.()
         closeLinkPrompt()
         setMenuOpen(false)
@@ -1146,8 +1155,7 @@ export function useEditorDomEvents({
 
       const view = getWysiwygView(editorRef.current)
       if (isActiveWysiwygEditorContentTarget(target, view)) {
-        mouseEvent.preventDefault()
-        mouseEvent.stopPropagation()
+        prepareEditorContextMenuEvent(mouseEvent)
         onDismissEditorEphemeraBeforeContextMenu?.()
         closeLinkPrompt()
         setMenuOpen(false)

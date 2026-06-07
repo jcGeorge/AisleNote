@@ -57,6 +57,7 @@ export type NewAislePlacement = 'end' | 'left-of-focus' | 'right-of-focus'
 export type ScratchpadNewAisleSide = 'left' | 'right'
 export type TabRenameEnterBehavior = 'goes-to-note' | 'creates-another-tab'
 export type TipId = 'task-undo' | 'delete-active-aisle-shortcut' | 'trash-delete-confirmation-setting' | 'aisle-width-reset'
+export type FindReplaceScope = 'note' | 'parent' | 'space' | 'domain' | 'notebook'
 export type NoteFilterKind = 'tags' | 'synced' | 'frontmatter' | 'media'
 export type NoteFilterTagSortMode = 'az' | 'occurrences'
 export type NoteFilterSettings = {
@@ -421,6 +422,7 @@ export type AppState = {
     findWholeWord?: boolean
     findRegex?: boolean
     findReplaceMode?: 'find' | 'replace'
+    findReplaceScope?: FindReplaceScope
     removeNoteReferencesOnTrash?: boolean
     noteMentionCopyRequiresConfirmation?: boolean
     deleteActiveAisleShortcutEnabled?: boolean

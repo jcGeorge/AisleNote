@@ -17,6 +17,7 @@ describe('synced UI settings registry', () => {
       findWholeWord: false,
       findRegex: false,
       findReplaceMode: 'find',
+      findReplaceScope: 'note',
       removeNoteReferencesOnTrash: true,
       noteMentionCopyRequiresConfirmation: true,
       deleteActiveAisleShortcutEnabled: false,
@@ -37,6 +38,7 @@ describe('synced UI settings registry', () => {
       toggleTabsTarget: 'messages',
       findRegex: true,
       findReplaceMode: 'replace',
+      findReplaceScope: 'domain',
       lastLinkInsertMode: 'url',
       lastNoteCopyMode: 'linked',
       tableAddTargetMode: 'active-cell',
@@ -52,6 +54,7 @@ describe('synced UI settings registry', () => {
     expect(normalized).toMatchObject({
       findRegex: true,
       findReplaceMode: 'replace',
+      findReplaceScope: 'domain',
       lastLinkInsertMode: 'url',
       lastNoteCopyMode: 'linked',
       tableAddTargetMode: 'active-cell',
@@ -66,6 +69,8 @@ describe('synced UI settings registry', () => {
     expect(normalized).not.toHaveProperty('newAislePlacement')
     expect(normalized).not.toHaveProperty('showParentHomeTab')
     expect(normalizeRegisteredSyncedUiSetting('findReplaceMode', 'bad')).toBe('find')
+    expect(normalizeRegisteredSyncedUiSetting('findReplaceScope', 'bad')).toBe('note')
+    expect(normalizeRegisteredSyncedUiSetting('findReplaceScope', 'notebook')).toBe('notebook')
     expect(normalizeRegisteredSyncedUiSetting('tabRenameEnterBehavior', 'bad')).toBe('goes-to-note')
     expect(normalizeRegisteredSyncedUiSetting('trashDeleteForRealRequiresConfirmation', 'bad')).toBe(true)
   })

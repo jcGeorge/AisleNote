@@ -359,7 +359,10 @@ describe('Electron app state storage load result', () => {
         selectedCustomTheme: 'custom3',
         lastNoteCopyMode: 'linked',
         findCaseSensitive: true,
+        findWholeWord: true,
+        findRegex: true,
         findReplaceMode: 'replace',
+        findReplaceScope: 'parent',
         removeNoteReferencesOnTrash: false,
         noteMentionCopyRequiresConfirmation: false,
         deleteActiveAisleShortcutEnabled: true,
@@ -429,7 +432,10 @@ describe('Electron app state storage load result', () => {
       expect(appSettings.ui.settingsSection).toBe('toolbar')
       expect(appSettings.ui.lastNoteCopyMode).toBe('linked')
       expect(appSettings.ui.findCaseSensitive).toBe(true)
+      expect(appSettings.ui.findWholeWord).toBe(true)
+      expect(appSettings.ui.findRegex).toBe(true)
       expect(appSettings.ui.findReplaceMode).toBe('replace')
+      expect(appSettings.ui.findReplaceScope).toBe('parent')
       expect(appSettings.ui.removeNoteReferencesOnTrash).toBe(false)
       expect(appSettings.ui.noteMentionCopyRequiresConfirmation).toBe(false)
       expect(appSettings.ui.deleteActiveAisleShortcutEnabled).toBe(true)
@@ -466,7 +472,10 @@ describe('Electron app state storage load result', () => {
       ])
       expect(parsed.ui.settingsSection).toBe('toolbar')
       expect(parsed.ui.findCaseSensitive).toBe(true)
+      expect(parsed.ui.findWholeWord).toBe(true)
+      expect(parsed.ui.findRegex).toBe(true)
       expect(parsed.ui.findReplaceMode).toBe('replace')
+      expect(parsed.ui.findReplaceScope).toBe('parent')
       expect(parsed.ui.removeNoteReferencesOnTrash).toBe(false)
       expect(parsed.ui.noteMentionCopyRequiresConfirmation).toBe(false)
       expect(parsed.ui.deleteActiveAisleShortcutEnabled).toBe(true)
@@ -640,6 +649,9 @@ describe('Electron app state storage load result', () => {
               ...appSettings.ui,
               settingsSection: 'visuals',
               findCaseSensitive: true,
+              findWholeWord: true,
+              findRegex: true,
+              findReplaceScope: 'domain',
             },
           },
           null,
@@ -655,6 +667,9 @@ describe('Electron app state storage load result', () => {
       expect(parsed.hotkeys.shortcuts.newTab).toBe('Ctrl+Alt+N')
       expect(parsed.ui.settingsSection).toBe('visuals')
       expect(parsed.ui.findCaseSensitive).toBe(true)
+      expect(parsed.ui.findWholeWord).toBe(true)
+      expect(parsed.ui.findRegex).toBe(true)
+      expect(parsed.ui.findReplaceScope).toBe('domain')
       expect(parsed.frontmatter.settingsTemplateId).toBe('template-1')
       expect(parsed.noteAisleBodies[0].markdown).toBe('hello')
       expect(parsed.domains[0].spaces[0].data.tabs[0].title).toBe('Tab')

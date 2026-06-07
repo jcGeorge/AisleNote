@@ -211,6 +211,7 @@ export function SubTabRail({
   onOpenContextMenuForScratchpad = () => undefined,
 }: SubTabRailProps) {
   if (!isNoteWorkspaceView && !(viewMode === 'trash' && selectedTrashTab)) return null
+  const showTrashParentHomeTab = viewMode === 'trash' && selectedTrashTab && selectedTrashTab.source !== 'subtabs-only'
   const subTabPlacementPosition =
     arrangeMode.active &&
     arrangeMode.dragItem?.type === 'subtab' &&
@@ -491,18 +492,20 @@ export function SubTabRail({
 
         {viewMode === 'trash' && selectedTrashTab && (
           <>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={selectedTrashSubTabId === null}
-              className={`btn btn-sm tab-btn trash-subtab-btn trash-parent-home-subtab-btn ${
-                selectedTrashSubTabId === null ? 'is-selected' : ''
-              }`}
-              onClick={() => onSetTrashSubTabId(null)}
-              onContextMenu={(event) => onOpenContextMenuForTrashTab(event, selectedTrashTab)}
-            >
-              home
-            </button>
+            {showTrashParentHomeTab && (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={selectedTrashSubTabId === null}
+                className={`btn btn-sm tab-btn trash-subtab-btn trash-parent-home-subtab-btn ${
+                  selectedTrashSubTabId === null ? 'is-selected' : ''
+                }`}
+                onClick={() => onSetTrashSubTabId(null)}
+                onContextMenu={(event) => onOpenContextMenuForTrashTab(event, selectedTrashTab)}
+              >
+                home
+              </button>
+            )}
             {trashSubTabs.map((subTab) => (
               <button
                 key={subTab.id}

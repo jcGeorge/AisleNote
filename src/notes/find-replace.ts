@@ -4,9 +4,8 @@ import { getAisleBodyId, getAisleMarkdown } from './note-markdown'
 import { getLocationInfo, getNoteLocationBreadcrumbLabel, listSearchableNoteLocations } from './note-locations'
 import { getPreviewReferenceTokenLengthAt, getWikiReferenceDisplayText, parseWikiReferenceToken } from './note-references'
 import { SCRATCHPAD_CONTENT_TARGET_ID, getScratchpadNoteBody, normalizeScratchpadState } from '../state/scratchpad'
-import type { AppState, NoteLocation } from '../types/app'
-
-export type FindReplaceScope = 'note' | 'parent' | 'space' | 'domain' | 'notebook'
+import type { AppState, FindReplaceScope, NoteLocation } from '../types/app'
+export type { FindReplaceScope } from '../types/app'
 
 export type FindReplaceOptions = {
   caseSensitive: boolean

@@ -539,6 +539,7 @@ describe('browser hybrid storage', () => {
           findWholeWord: true,
           findRegex: true,
           findReplaceMode: 'replace',
+          findReplaceScope: 'notebook',
           removeNoteReferencesOnTrash: false,
           noteMentionCopyRequiresConfirmation: false,
           deleteActiveAisleShortcutEnabled: true,
@@ -586,6 +587,7 @@ describe('browser hybrid storage', () => {
     expect(getRecord(appSettings.ui).findWholeWord).toBe(true)
     expect(getRecord(appSettings.ui).findRegex).toBe(true)
     expect(getRecord(appSettings.ui).findReplaceMode).toBe('replace')
+    expect(getRecord(appSettings.ui).findReplaceScope).toBe('notebook')
     expect(getRecord(appSettings.ui).removeNoteReferencesOnTrash).toBe(false)
     expect(getRecord(appSettings.ui).noteMentionCopyRequiresConfirmation).toBe(false)
     expect(getRecord(appSettings.ui).trashDeleteForRealRequiresConfirmation).toBe(false)
@@ -618,6 +620,7 @@ describe('browser hybrid storage', () => {
     expect(roundTripped.ui.findWholeWord).toBe(true)
     expect(roundTripped.ui.findRegex).toBe(true)
     expect(roundTripped.ui.findReplaceMode).toBe('replace')
+    expect(roundTripped.ui.findReplaceScope).toBe('notebook')
     expect(roundTripped.ui.removeNoteReferencesOnTrash).toBe(false)
     expect(roundTripped.ui.noteMentionCopyRequiresConfirmation).toBe(false)
     expect(roundTripped.ui.deleteActiveAisleShortcutEnabled).toBe(true)

@@ -1,5 +1,6 @@
 const SPELLCHECK_CONTEXT_MAX_AGE_MS = 1500
 const SPELLCHECK_CONTEXT_COORDINATE_TOLERANCE_PX = 24
+const SPELLCHECK_CONTEXT_FRESH_FALLBACK_MS = 500
 
 function normalizeString(value) {
   return typeof value === 'string' ? value : ''
@@ -24,6 +25,10 @@ function pointsAreNear(left, right) {
     Math.abs(left.x - right.x) <= SPELLCHECK_CONTEXT_COORDINATE_TOLERANCE_PX &&
     Math.abs(left.y - right.y) <= SPELLCHECK_CONTEXT_COORDINATE_TOLERANCE_PX
   )
+}
+
+function contextMatchesRequest(context, requestPoint, ageMs) {
+  return pointsAreNear(context, requestPoint) || ageMs <= SPELLCHECK_CONTEXT_FRESH_FALLBACK_MS
 }
 
 function getWebContentsId(webContents) {
@@ -89,8 +94,9 @@ export function createEditorContextMenuIpc({
   ipcMain?.handle?.('get-editor-spellcheck-context', async (event, payload = {}) => {
     const webContentsId = getWebContentsId(event?.sender)
     const context = webContentsId === null ? null : contextsByWebContentsId.get(webContentsId) ?? null
-    if (!context || now() - context.createdAt > SPELLCHECK_CONTEXT_MAX_AGE_MS) return null
-    if (!pointsAreNear(context, normalizeContextMenuPoint(payload))) return null
+    const ageMs = context ? now() - context.createdAt : 0
+    if (!context || ageMs > SPELLCHECK_CONTEXT_MAX_AGE_MS) return null
+    if (!contextMatchesRequest(context, normalizeContextMenuPoint(payload), ageMs)) return null
     if (!context.hasItems) return null
     return {
       suggestions: context.isEditable && context.spellcheckEnabled ? context.suggestions : [],

@@ -1164,6 +1164,7 @@ describe('app state normalization', () => {
         findWholeWord: true,
         findRegex: true,
         findReplaceMode: 'replace',
+        findReplaceScope: 'space',
       },
     })
     const invalid = parseModernState({
@@ -1172,6 +1173,7 @@ describe('app state normalization', () => {
         findWholeWord: 1,
         findRegex: null,
         findReplaceMode: 'both',
+        findReplaceScope: 'everywhere',
       },
     })
     const missing = parseModernState({ ui: {} })
@@ -1180,14 +1182,17 @@ describe('app state normalization', () => {
     expect(enabled.ui.findWholeWord).toBe(true)
     expect(enabled.ui.findRegex).toBe(true)
     expect(enabled.ui.findReplaceMode).toBe('replace')
+    expect(enabled.ui.findReplaceScope).toBe('space')
     expect(invalid.ui.findCaseSensitive).toBe(false)
     expect(invalid.ui.findWholeWord).toBe(false)
     expect(invalid.ui.findRegex).toBe(false)
     expect(invalid.ui.findReplaceMode).toBe('find')
+    expect(invalid.ui.findReplaceScope).toBe('note')
     expect(missing.ui.findCaseSensitive).toBe(false)
     expect(missing.ui.findWholeWord).toBe(false)
     expect(missing.ui.findRegex).toBe(false)
     expect(missing.ui.findReplaceMode).toBe('find')
+    expect(missing.ui.findReplaceScope).toBe('note')
   })
 
   it('normalizes remove-note-references-on-trash setting', () => {

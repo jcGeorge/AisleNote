@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { AppState, WorkspaceData } from '../types/app'
-import { buildTrashDomainBuckets, buildTrashParentBuckets, resolveTrashContentDisplay, TRASH_HOME_ID } from './trash-model'
+import {
+  buildTrashDomainBuckets,
+  buildTrashParentBuckets,
+  getDefaultTrashSubTabIdForParent,
+  resolveTrashContentDisplay,
+  TRASH_HOME_ID,
+} from './trash-model'
 
 const workspace: WorkspaceData = {
   activeTabId: 'live',
@@ -48,6 +54,16 @@ describe('trash model', () => {
 
     expect(buckets.map((bucket) => bucket.source)).toEqual(['deleted-tab', 'subtabs-only'])
     expect(buckets[1].subTabs[0].content).toBe('orphan content')
+    expect(buckets[1].homeContent).toBe('')
+  })
+
+  it('defaults subtab-only parents to the first deleted subtab', () => {
+    const buckets = buildTrashParentBuckets(state, workspace)
+    const deletedParent = buckets[0]
+    const subtabOnlyParent = buckets[1]
+
+    expect(getDefaultTrashSubTabIdForParent(deletedParent)).toBeNull()
+    expect(getDefaultTrashSubTabIdForParent(subtabOnlyParent)).toBe('orphan-sub-entry')
   })
 
   it('exposes parent tabs inside deleted-domain spaces', () => {
@@ -276,5 +292,15 @@ describe('trash model', () => {
         selectedTrashSubTab: parent.subTabs[0],
       }).markdown,
     ).toBe('deleted sub')
+
+    const subtabOnlyParent = buckets[1]
+    expect(
+      resolveTrashContentDisplay({
+        trashTabId: subtabOnlyParent.id,
+        trashHomeContent: 'home',
+        selectedTrashTab: subtabOnlyParent,
+        selectedTrashSubTab: null,
+      }),
+    ).toEqual({ mode: 'deleted-subtab', markdown: 'orphan content' })
   })
 })

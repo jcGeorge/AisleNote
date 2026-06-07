@@ -4,7 +4,7 @@ import { getNoteBodyMarkdown } from '../notes/aisle-body-state'
 export const TRASH_HOME_ID = '__trash_home__'
 
 export type TrashContentDisplay = {
-  mode: 'home' | 'deleted-parent' | 'deleted-subtab' | 'subtabs-only-parent'
+  mode: 'home' | 'deleted-parent' | 'deleted-subtab'
   markdown: string
 }
 
@@ -44,7 +44,7 @@ export function buildTrashParentBuckets(appState: AppState, workspace: Workspace
       source: 'subtabs-only',
       deletedTabEntryId: null,
       parentTabId,
-      homeContent: `# ${group.title}\n\ndeleted sub-tabs from this tab are shown below.`,
+      homeContent: '',
       subTabs: group.entries.map((entry) => ({
         id: entry.id,
         title: entry.subTab.title,
@@ -161,6 +161,11 @@ export function buildTrashDomainBuckets(appState: AppState): TrashDomainBucket[]
   return [...liveDomains, ...deletedDomains]
 }
 
+export function getDefaultTrashSubTabIdForParent(parent: TrashParentBucket | null | undefined): string | null {
+  if (!parent || parent.source !== 'subtabs-only') return null
+  return parent.subTabs[0]?.id ?? null
+}
+
 export function resolveTrashContentDisplay({
   trashTabId,
   trashHomeContent,
@@ -196,8 +201,15 @@ export function resolveTrashContentDisplay({
     return { mode: 'deleted-subtab', markdown: selectedTrashSubTab.content }
   }
 
+  if (selectedTrashTab.source === 'subtabs-only') {
+    const firstSubTab = selectedTrashTab.subTabs[0] ?? null
+    return firstSubTab
+      ? { mode: 'deleted-subtab', markdown: firstSubTab.content }
+      : { mode: 'home', markdown: trashHomeContent }
+  }
+
   return {
-    mode: selectedTrashTab.source === 'subtabs-only' ? 'subtabs-only-parent' : 'deleted-parent',
+    mode: 'deleted-parent',
     markdown: selectedTrashTab.homeContent,
   }
 }

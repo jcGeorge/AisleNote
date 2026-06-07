@@ -7,6 +7,7 @@ export type SimpleSyncedUiSettingKey =
   | 'findWholeWord'
   | 'findRegex'
   | 'findReplaceMode'
+  | 'findReplaceScope'
   | 'removeNoteReferencesOnTrash'
   | 'noteMentionCopyRequiresConfirmation'
   | 'deleteActiveAisleShortcutEnabled'
@@ -69,6 +70,10 @@ export function normalizeRegisteredSyncedUiSetting(
   key: 'findReplaceMode',
   value: unknown,
 ): NonNullable<AppState['ui']['findReplaceMode']>
+export function normalizeRegisteredSyncedUiSetting(
+  key: 'findReplaceScope',
+  value: unknown,
+): NonNullable<AppState['ui']['findReplaceScope']>
 export function normalizeRegisteredSyncedUiSetting(key: 'removeNoteReferencesOnTrash', value: unknown): boolean
 export function normalizeRegisteredSyncedUiSetting(key: 'noteMentionCopyRequiresConfirmation', value: unknown): boolean
 export function normalizeRegisteredSyncedUiSetting(key: 'deleteActiveAisleShortcutEnabled', value: unknown): boolean

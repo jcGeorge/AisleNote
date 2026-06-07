@@ -30,6 +30,7 @@ import {
   placeCaretAfterMediaPlayer,
   runMediaPlayerKeyboardAction,
   runEditorHistoryEvent,
+  shouldPreventDefaultEditorContextMenu,
   shouldSkipTableExitRepairTarget,
 } from './useEditorDomEvents'
 import { runEditorHistoryCommand } from './editor-command'
@@ -755,6 +756,23 @@ describe('editor DOM events', () => {
     expect(source).toContain('setContextMenu(menu)')
     expect(source).toContain('mergeEditorDictionaryContextMenu(current, menu, dictionary)')
     expect(source).toContain('if (!dictionary || requestId !== editorContextMenuRequestId) return')
+    expect(source).toContain('prepareEditorContextMenuEvent(mouseEvent)')
+  })
+
+  it('allows Electron editor context menus to reach native spellcheck metadata', () => {
+    vi.stubGlobal('window', {
+      ...(globalThis.window ?? {}),
+      electronAPI: { getEditorSpellcheckContext: vi.fn() },
+    })
+
+    expect(shouldPreventDefaultEditorContextMenu()).toBe(false)
+
+    vi.stubGlobal('window', {
+      ...(globalThis.window ?? {}),
+      electronAPI: {},
+    })
+
+    expect(shouldPreventDefaultEditorContextMenu()).toBe(true)
   })
 
   it('keeps pasted bare web addresses as the link label while adding an href protocol', () => {
