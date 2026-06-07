@@ -1,6 +1,19 @@
-import { existsSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
-import { getHybridStorageRoot } from './app-state-storage.mjs'
+import { createStorageFilesSnapshot, getHybridStorageRoot } from './app-state-storage.mjs'
+
+function isTemporaryAtomicWriteFile(fileName) {
+  return /^\..+\.\d+\.\d+\.tmp$/.test(fileName)
+}
+
+function isIgnoredStorageMetadataFile(fileName) {
+  return (
+    fileName.startsWith('.') ||
+    fileName === 'desktop.ini' ||
+    fileName === 'Thumbs.db' ||
+    fileName.endsWith('~')
+  )
+}
 
 function listFileSignatures(rootPath, currentPath = rootPath, signatures = []) {
   let entries
@@ -17,7 +30,7 @@ function listFileSignatures(rootPath, currentPath = rootPath, signatures = []) {
       listFileSignatures(rootPath, absolutePath, signatures)
       continue
     }
-    if (!entry.isFile()) continue
+    if (!entry.isFile() || isTemporaryAtomicWriteFile(entry.name) || isIgnoredStorageMetadataFile(entry.name)) continue
     try {
       const stat = statSync(absolutePath)
       signatures.push(`${relativePath}:${stat.size}:${Math.round(stat.mtimeMs)}`)
@@ -32,6 +45,44 @@ export function computeStorageSignature(profileRootPath) {
   const rootPath = getHybridStorageRoot(profileRootPath)
   if (!existsSync(rootPath)) return 'missing'
   return listFileSignatures(rootPath).sort().join('|')
+}
+
+function listFileContents(rootPath, currentPath = rootPath, entries = []) {
+  let directoryEntries
+  try {
+    directoryEntries = readdirSync(currentPath, { withFileTypes: true })
+  } catch {
+    return null
+  }
+
+  for (const entry of directoryEntries) {
+    const absolutePath = path.join(currentPath, entry.name)
+    if (entry.isDirectory()) {
+      const nextEntries = listFileContents(rootPath, absolutePath, entries)
+      if (nextEntries === null) return null
+      continue
+    }
+    if (!entry.isFile() || isTemporaryAtomicWriteFile(entry.name) || isIgnoredStorageMetadataFile(entry.name)) continue
+    try {
+      entries.push([path.relative(rootPath, absolutePath), readFileSync(absolutePath)])
+    } catch {
+      return null
+    }
+  }
+  return entries
+}
+
+export function computeStorageContentFingerprint(profileRootPath) {
+  const snapshot = computeStorageContentSnapshot(profileRootPath)
+  return typeof snapshot === 'string' || snapshot === null ? snapshot : snapshot.fingerprint
+}
+
+export function computeStorageContentSnapshot(profileRootPath) {
+  const rootPath = getHybridStorageRoot(profileRootPath)
+  if (!existsSync(rootPath)) return 'missing'
+  const entries = listFileContents(rootPath)
+  if (entries === null) return null
+  return createStorageFilesSnapshot(entries)
 }
 
 export function createStorageProfileWatcher({

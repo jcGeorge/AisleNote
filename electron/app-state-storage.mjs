@@ -72,6 +72,8 @@ const INTERNAL_INDENT_TOKEN = '\u2060\u2003\u2003'
 const EDITOR_BLANK_LINE_PLACEHOLDER = '\u200b'
 const EXPORT_TAB_SPACES = '    '
 const LINKED_AISLE_MIRROR_AUTO_DECOUPLED_CODE = 'linked-aisle-mirror-auto-decoupled'
+const MAX_ATOMIC_WRITE_CACHE_ENTRIES = 5000
+const atomicWriteCache = new Map()
 
 function createStorageIssue(code, severity, pathValue, message, details = undefined) {
   return {
@@ -618,10 +620,95 @@ function readJsonFileIfExists(filePath, issues = null, issueOptions = {}) {
   }
 }
 
+function normalizeStorageFingerprintPath(relativeFile) {
+  return String(relativeFile ?? '').split(path.sep).join('/')
+}
+
+function getStorageFingerprintBuffer(entry) {
+  const contents = isRecord(entry) && 'contents' in entry ? entry.contents : entry
+  if (Buffer.isBuffer(contents)) return contents
+  if (contents instanceof Uint8Array) return Buffer.from(contents)
+  return Buffer.from(String(contents ?? ''), 'utf8')
+}
+
+function createRawContentHash(contents) {
+  return createHash('sha256').update(getStorageFingerprintBuffer(contents)).digest('hex')
+}
+
+export function createStorageFilesFingerprint(entries) {
+  return createStorageFilesSnapshot(entries).fingerprint
+}
+
+export function createStorageFilesSnapshot(entries) {
+  const hash = createHash('sha256')
+  hash.update('tabs-storage-files-v1\n')
+  const files = Array.from(entries ?? [])
+    .map(([relativeFile, entry]) => {
+      const contents = getStorageFingerprintBuffer(entry)
+      return {
+        path: normalizeStorageFingerprintPath(relativeFile),
+        contentHash: createHash('sha256').update(contents).digest('hex'),
+        byteLength: contents.length,
+      }
+    })
+    .sort((left, right) => left.path.localeCompare(right.path))
+  for (const file of files) {
+    hash.update(file.path)
+    hash.update('\0')
+    hash.update(String(file.byteLength))
+    hash.update('\0')
+    hash.update(file.contentHash)
+    hash.update('\n')
+  }
+  return {
+    fingerprint: `tabs-storage-files-v1:${hash.digest('hex')}`,
+    files,
+  }
+}
+
+function getAtomicWriteSignature(absolutePath) {
+  try {
+    const stat = statSync(absolutePath)
+    return `${stat.size}:${stat.mtimeMs}`
+  } catch {
+    return null
+  }
+}
+
+function rememberAtomicWriteCache(absolutePath, contentHash) {
+  const signature = getAtomicWriteSignature(absolutePath)
+  if (!signature) return
+  const cacheKey = path.resolve(absolutePath)
+  atomicWriteCache.delete(cacheKey)
+  atomicWriteCache.set(cacheKey, { contentHash, signature })
+  if (atomicWriteCache.size > MAX_ATOMIC_WRITE_CACHE_ENTRIES) {
+    const oldestKey = atomicWriteCache.keys().next().value
+    if (oldestKey) atomicWriteCache.delete(oldestKey)
+  }
+}
+
+function getAtomicWriteCacheHit(absolutePath, contentHash) {
+  const cacheKey = path.resolve(absolutePath)
+  const cached = atomicWriteCache.get(cacheKey)
+  if (!cached || cached.contentHash !== contentHash) return false
+  if (getAtomicWriteSignature(absolutePath) !== cached.signature) {
+    atomicWriteCache.delete(cacheKey)
+    return false
+  }
+  return true
+}
+
 function writeTextFileAtomic(rootPath, relativeFile, contents) {
   const absolutePath = path.join(rootPath, relativeFile)
+  const contentHash = createRawContentHash(contents)
+  if (getAtomicWriteCacheHit(absolutePath, contentHash)) {
+    return { changed: false, skippedByCache: true, contentHash }
+  }
   try {
-    if (readFileSync(absolutePath, 'utf8') === contents) return
+    if (readFileSync(absolutePath, 'utf8') === contents) {
+      rememberAtomicWriteCache(absolutePath, contentHash)
+      return { changed: false, contentHash }
+    }
   } catch {
     // Missing or unreadable files are rewritten below.
   }
@@ -632,13 +719,23 @@ function writeTextFileAtomic(rootPath, relativeFile, contents) {
   )
   writeFileSync(tempPath, contents, 'utf8')
   renameSync(tempPath, absolutePath)
+  rememberAtomicWriteCache(absolutePath, contentHash)
+  return { changed: true, contentHash }
 }
 
 function writeBinaryFileAtomic(rootPath, relativeFile, contents) {
   const absolutePath = path.join(rootPath, relativeFile)
+  const contentBuffer = Buffer.from(contents)
+  const contentHash = createRawContentHash(contentBuffer)
+  if (getAtomicWriteCacheHit(absolutePath, contentHash)) {
+    return { changed: false, skippedByCache: true, contentHash }
+  }
   try {
     const existing = readFileSync(absolutePath)
-    if (existing.length === contents.length && existing.equals(Buffer.from(contents))) return
+    if (existing.length === contentBuffer.length && existing.equals(contentBuffer)) {
+      rememberAtomicWriteCache(absolutePath, contentHash)
+      return { changed: false, contentHash }
+    }
   } catch {
     // Missing or unreadable files are rewritten below.
   }
@@ -647,17 +744,19 @@ function writeBinaryFileAtomic(rootPath, relativeFile, contents) {
     path.dirname(absolutePath),
     `.${path.basename(absolutePath)}.${process.pid}.${Date.now()}.tmp`,
   )
-  writeFileSync(tempPath, contents)
+  writeFileSync(tempPath, contentBuffer)
   renameSync(tempPath, absolutePath)
+  rememberAtomicWriteCache(absolutePath, contentHash)
+  return { changed: true, contentHash }
+}
+
+function buildAppSettingsFileContents(serializedState) {
+  const parsedState = JSON.parse(serializedState)
+  return `${JSON.stringify(extractAppSettings(parsedState), null, 2)}\n`
 }
 
 export function writeAppSettingsForState(userSettingsRoot, serializedState) {
-  const parsedState = JSON.parse(serializedState)
-  writeTextFileAtomic(
-    userSettingsRoot,
-    USER_SETTINGS_FILE_PATH,
-    `${JSON.stringify(extractAppSettings(parsedState), null, 2)}\n`,
-  )
+  return writeTextFileAtomic(userSettingsRoot, USER_SETTINGS_FILE_PATH, buildAppSettingsFileContents(serializedState))
 }
 
 function readMarkdownFile(baseDirectory, relativeFile, issues = null, issueRootPath = null) {
@@ -729,7 +828,7 @@ function isMainPerformanceLoggingEnabled() {
   return Boolean(process.env.VITE_DEV_SERVER_URL || process.env.TABS_PERF_LOG === '1')
 }
 
-function measureSlowMainOperation(label, operation, thresholdMs = 75) {
+export function measureSlowMainOperation(label, operation, thresholdMs = 75) {
   const startedAt = Date.now()
   try {
     return operation()
@@ -1351,6 +1450,18 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
   setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.noteRegistry, { noteBodies: noteBodyEntries, aisleBodies: aisleBodyEntries })
   setStorageJsonFile(fileMap, 'manifest.json', buildRootManifest())
 
+  const fingerprintEntries = new Map(fileMap)
+  const appSettingsRoot =
+    typeof options.userSettingsRoot === 'string' ? path.resolve(options.userSettingsRoot) : null
+  const storageRoot = path.resolve(tempRoot)
+  const appSettingsContents = appSettingsRoot ? buildAppSettingsFileContents(serializedState) : null
+  if (appSettingsRoot === storageRoot && appSettingsContents !== null) {
+    fingerprintEntries.set(USER_SETTINGS_FILE_PATH, { kind: 'text', contents: appSettingsContents })
+  }
+  const storageSnapshot = measureSlowMainOperation('hybrid storage fingerprint', () =>
+    createStorageFilesSnapshot(fingerprintEntries),
+  )
+
   mkdirSync(tempRoot, { recursive: true })
   for (const [relativeFile, entry] of fileMap.entries()) {
     if (relativeFile === 'manifest.json') continue
@@ -1365,8 +1476,9 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
   }
   pruneStorageRoot(tempRoot, expectedFiles)
   if (typeof options.userSettingsRoot === 'string') {
-    writeAppSettingsForState(options.userSettingsRoot, serializedState)
+    writeTextFileAtomic(options.userSettingsRoot, USER_SETTINGS_FILE_PATH, appSettingsContents)
   }
+  return { storageFingerprint: storageSnapshot.fingerprint, storageFiles: storageSnapshot.files }
 }
 
 function readNoteBodiesFromRoot(rootManifest) {
@@ -2392,7 +2504,7 @@ export function saveAppState(profileRootPath, serializedState, options = {}) {
     rmSync(finalRoot, { recursive: true, force: true })
   }
 
-  measureSlowMainOperation('hybrid app-state write', () =>
+  return measureSlowMainOperation('hybrid app-state write', () =>
     writeHybridStorage(finalRoot, serializedState, {
       assetSourceRoot: typeof options.assetSourceRoot === 'string' ? options.assetSourceRoot : finalRoot,
       userSettingsRoot,

@@ -423,6 +423,7 @@ import type {
   NotePreviewEdit,
   PendingCreatedEdit,
   ResolvedNoteAisle,
+  StorageProfileStatus,
   TabSortMode,
   TabSortTarget,
   TabArrangeDragPreview,
@@ -529,6 +530,17 @@ function scrollProseMirrorTagRangeIntoView(view: unknown, from: number): void {
   } catch {
     // The glow is still useful even when a transient editor remount prevents range scrolling.
   }
+}
+
+function shouldRecordStorageProfileDiagnostic(status: StorageProfileStatus): boolean {
+  if (status.status === 'error' || status.health === 'error') return true
+  const event = status.event ?? 'ready'
+  if (event === 'external-loaded' || event === 'external-error') return true
+  if (event.startsWith('notebook-auto-recovered') || event === 'notebook-recovery-error') return true
+  if (status.health === 'warning') {
+    return event !== 'ready' && event !== 'saved' && event !== 'external-echo-ignored'
+  }
+  return false
 }
 
 export function useAppController(): AppController {
@@ -1207,6 +1219,7 @@ export function useAppController(): AppController {
 
   useEffect(() => {
     if (!storageProfileStatus) return
+    if (!shouldRecordStorageProfileDiagnostic(storageProfileStatus)) return
     recordDiagnosticEvent('storage', 'profile-status', {
       level:
         storageProfileStatus.status === 'error'

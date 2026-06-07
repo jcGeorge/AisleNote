@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createStorageProfileWatcher } from './storage-watcher.mjs'
+import { computeStorageContentFingerprint, createStorageProfileWatcher } from './storage-watcher.mjs'
 
 function withTempProfile(run) {
   const profileRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-storage-watcher-'))
@@ -19,6 +19,37 @@ afterEach(() => {
 })
 
 describe('storage profile watcher', () => {
+  it('computes content fingerprints independent of mtime-only changes', () =>
+    withTempProfile((profileRoot) => {
+      writeFileSync(path.join(profileRoot, 'manifest.json'), '{"schemaVersion":1}', 'utf8')
+      const firstFingerprint = computeStorageContentFingerprint(profileRoot)
+
+      utimesSync(path.join(profileRoot, 'manifest.json'), new Date(2_000), new Date(2_000))
+
+      expect(computeStorageContentFingerprint(profileRoot)).toBe(firstFingerprint)
+    }))
+
+  it('changes content fingerprints when storage file contents change', () =>
+    withTempProfile((profileRoot) => {
+      writeFileSync(path.join(profileRoot, 'manifest.json'), '{"schemaVersion":1}', 'utf8')
+      const firstFingerprint = computeStorageContentFingerprint(profileRoot)
+
+      writeFileSync(path.join(profileRoot, 'manifest.json'), '{"schemaVersion":2}', 'utf8')
+
+      expect(computeStorageContentFingerprint(profileRoot)).not.toBe(firstFingerprint)
+    }))
+
+  it('ignores hidden metadata files in content fingerprints', () =>
+    withTempProfile((profileRoot) => {
+      writeFileSync(path.join(profileRoot, 'manifest.json'), '{"schemaVersion":1}', 'utf8')
+      const firstFingerprint = computeStorageContentFingerprint(profileRoot)
+
+      writeFileSync(path.join(profileRoot, '.DS_Store'), 'metadata', 'utf8')
+      writeFileSync(path.join(profileRoot, 'desktop.ini'), 'metadata', 'utf8')
+
+      expect(computeStorageContentFingerprint(profileRoot)).toBe(firstFingerprint)
+    }))
+
   it('defers quiet-window changes and reports them after rechecking', () =>
     withTempProfile((profileRoot) => {
       vi.useFakeTimers()

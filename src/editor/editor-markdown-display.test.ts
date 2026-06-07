@@ -49,6 +49,12 @@ function fakeEditorWithBlocks(blocks: any[]) {
           doc: {
             content: { size: blocks.length },
             forEach: (visitor: (node: any) => void) => blocks.forEach(visitor),
+            nodesBetween: (_from: number, _to: number, visitor: (node: any, position: number) => void) => {
+              blocks.forEach((node, index) => visitor(node, index))
+            },
+            descendants: (visitor: (node: any, position: number) => void) => {
+              blocks.forEach((node, index) => visitor(node, index))
+            },
           },
         },
       },
@@ -73,6 +79,34 @@ describe('editor markdown display helpers', () => {
     } as unknown as Editor
 
     expect(getEditorMarkdownForPersistence(editor)).toBe('one\n\n\ntwo')
+  })
+
+  it('persists leading visual blank rows from the ProseMirror document', () => {
+    const { editor } = fakeEditorWithBlocks([
+      textBlock('paragraph'),
+      textBlock('paragraph', 'okay'),
+      textBlock('paragraph', 'so'),
+      textBlock('paragraph', 'these are together.'),
+    ])
+    Object.assign(editor, {
+      getMarkdown: vi.fn(() => 'okay\n\nso\n\nthese are together.'),
+    })
+
+    expect(getEditorMarkdownForPersistence(editor)).toBe('\nokay\nso\nthese are together.')
+  })
+
+  it('persists trailing visual blank rows from the ProseMirror document', () => {
+    const { editor } = fakeEditorWithBlocks([
+      textBlock('paragraph', 'okay'),
+      textBlock('paragraph', 'so'),
+      textBlock('paragraph'),
+      textBlock('paragraph'),
+    ])
+    Object.assign(editor, {
+      getMarkdown: vi.fn(() => 'okay\n\nso'),
+    })
+
+    expect(getEditorMarkdownForPersistence(editor)).toBe('okay\nso\n\n')
   })
 
   it('passes markdown without blank sentinels to Toast UI and restores blank paragraphs in ProseMirror', () => {

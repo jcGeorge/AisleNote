@@ -5,6 +5,7 @@ import {
   getUserSettingsFilePath,
   getHybridStorageRoot,
   loadAppStateResult,
+  measureSlowMainOperation,
   resolveNoteLocationRevealPath,
   saveAppState,
   writeAssetToProfile,
@@ -19,7 +20,7 @@ import {
   validateNotebookName,
   writeStorageProfileConfig,
 } from './storage-profile.mjs'
-import { createStorageProfileWatcher } from './storage-watcher.mjs'
+import { computeStorageContentSnapshot, createStorageProfileWatcher } from './storage-watcher.mjs'
 import {
   createUserSettingsLocation,
   createUserSettingsLocationStatus,
@@ -322,7 +323,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     return result
   }
   const saveNotebookState = (profileRootPath, serializedState, options = {}) => {
-    saveAppState(profileRootPath, serializedState, {
+    const saveResult = saveAppState(profileRootPath, serializedState, {
       ...options,
       userDataPath,
       userSettingsRoot: userDataPath,
@@ -333,13 +334,13 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     if (syncResult.location || !userSettingsLocation.isDefault || !syncResult.ok) {
       updateUserSettingsLocationStatus(syncResult.status)
     }
+    return saveResult
   }
   const coordinator = createAppStateCoordinator({
     userDataPath,
     profileRootPath: profile.profileRootPath,
     load: loadNotebookResult,
     save: saveNotebookState,
-    canonicalizeAfterSave: true,
   })
   let watcher = null
   let latestRecovery = null
@@ -562,10 +563,20 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     watcher = createStorageProfileWatcher({
       getProfileRootPath: () => profile.profileRootPath,
       onExternalChange: () => {
+        const storageSnapshot = measureSlowMainOperation('storage content fingerprint read', () =>
+          computeStorageContentSnapshot(profile.profileRootPath),
+        )
+        if (coordinator.isRecentAppSaveStorageEcho(storageSnapshot)) {
+          logExternalStorageEvent('external-echo-ignored')
+          watcher?.reset()
+          return
+        }
         const previousSerializedState = coordinator.getSerializedState()
-        const result = coordinator.reloadProfileRoot(profile.profileRootPath, {
-          requireSerializedState: previousSerializedState !== null,
-        })
+        const result = measureSlowMainOperation('external storage reload', () =>
+          coordinator.reloadProfileRoot(profile.profileRootPath, {
+            requireSerializedState: previousSerializedState !== null,
+          }),
+        )
         if (result.ok && typeof result.serializedState === 'string') {
           if (result.unchanged) {
             if (result.externalEchoIgnored) {
@@ -1217,10 +1228,20 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     return error ? { ok: false, error } : { ok: true }
   })
   ipcMain.handle?.('retry-storage-profile', async () => {
-    const result = coordinator.reloadProfileRoot(profile.profileRootPath, {
-      requireSerializedState: coordinator.getSerializedState() !== null,
-      detectAppSaveEcho: false,
-    })
+    const storageSnapshot = measureSlowMainOperation('storage content fingerprint read', () =>
+      computeStorageContentSnapshot(profile.profileRootPath),
+    )
+    if (coordinator.isRecentAppSaveStorageEcho(storageSnapshot)) {
+      updateStatus('retry-loaded')
+      watcher?.reset()
+      return { ok: true, status }
+    }
+    const result = measureSlowMainOperation('external storage reload', () =>
+      coordinator.reloadProfileRoot(profile.profileRootPath, {
+        requireSerializedState: coordinator.getSerializedState() !== null,
+        detectAppSaveEcho: false,
+      }),
+    )
     updateStatus(result.ok ? 'retry-loaded' : 'retry-error', result.ok ? null : result.error)
     if (result.ok && typeof result.serializedState === 'string' && !result.unchanged) {
       broadcastAppStateUpdate({

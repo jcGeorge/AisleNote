@@ -52,15 +52,13 @@ describe('Electron app state coordinator', () => {
     expect(coordinator.getLoadResult().revision).toBe(2)
   })
 
-  it('remembers canonical post-save state when disk normalization changes the renderer payload', () => {
-    let loadedSerializedState = '{"theme":"dawn"}'
+  it('remembers post-save storage fingerprints without reloading the saved notebook', () => {
+    const load = vi.fn(() => ({ ok: true, serializedState: '{"theme":"dawn"}', source: 'hybrid' }))
+    const save = vi.fn(() => ({ storageFingerprint: 'storage-fingerprint-1' }))
     const coordinator = createAppStateCoordinator({
       userDataPath: '/tmp/tabs',
-      load: () => ({ ok: true, serializedState: loadedSerializedState, source: 'hybrid' }),
-      save: vi.fn((_profileRootPath, _serializedState) => {
-        loadedSerializedState = '{"theme":"light","normalized":true}'
-      }),
-      canonicalizeAfterSave: true,
+      load,
+      save,
     })
 
     expect(coordinator.saveRevisionedState({ serializedState: '{"theme":"light"}', baseRevision: 1 })).toEqual({
@@ -69,14 +67,10 @@ describe('Electron app state coordinator', () => {
       revision: 2,
     })
 
-    expect(coordinator.reloadProfileRoot('/tmp/tabs')).toEqual({
-      ok: true,
-      serializedState: '{"theme":"light","normalized":true}',
-      source: 'hybrid',
-      revision: 2,
-      unchanged: true,
-      externalEchoIgnored: true,
-    })
+    expect(load).toHaveBeenCalledTimes(1)
+    expect(save).toHaveBeenCalledWith('/tmp/tabs', '{"theme":"light"}', { userDataPath: '/tmp/tabs' })
+    expect(coordinator.isRecentAppSaveStorageEcho('storage-fingerprint-1')).toBe(true)
+    expect(coordinator.isRecentAppSaveStorageEcho('storage-fingerprint-2')).toBe(false)
   })
 
   it('rejects stale revision saves without persisting', () => {

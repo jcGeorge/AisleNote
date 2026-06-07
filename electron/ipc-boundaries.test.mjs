@@ -2125,30 +2125,32 @@ describe('electron ipc boundaries', () => {
       })
 
       try {
+        const withDomainName = (theme, name) => {
+          const state = JSON.parse(serializedAppState(theme))
+          state.domains[0].name = name
+          return JSON.stringify(state)
+        }
+        const firstSerializedState = withDomainName('dawn', 'Domain One')
+        const secondSerializedState = withDomainName('light', 'Domain Two')
         const firstSave = { sender: { id: 1 }, returnValue: null }
         ipcMain.listeners.get('save-app-state')(firstSave, {
-          serializedState: serializedAppState('dawn'),
+          serializedState: firstSerializedState,
           baseRevision: 0,
         })
         const secondSave = { sender: { id: 1 }, returnValue: null }
         ipcMain.listeners.get('save-app-state')(secondSave, {
-          serializedState: serializedAppState('light'),
+          serializedState: secondSerializedState,
           baseRevision: 1,
         })
         window.webContents.send.mockClear()
 
         vi.setSystemTime(10_000)
-        saveAppState(defaultNotebookRoot(userDataPath), serializedAppState('dawn'))
+        saveAppState(defaultNotebookRoot(userDataPath), firstSerializedState, { userDataPath })
+        writeFileSync(path.join(defaultNotebookRoot(userDataPath), '.DS_Store'), 'metadata', 'utf8')
         storageSession.scanStorageProfile()
         vi.advanceTimersByTime(400)
 
-        expect(window.webContents.send).toHaveBeenCalledWith(
-          'storage-profile-status-updated',
-          expect.objectContaining({
-            event: 'external-echo-ignored',
-            revision: 2,
-          }),
-        )
+        expect(window.webContents.send).not.toHaveBeenCalledWith('storage-profile-status-updated', expect.anything())
         expect(window.webContents.send).not.toHaveBeenCalledWith('app-state-updated', expect.anything())
         expect(consoleInfoSpy).toHaveBeenCalledWith('[tabs:storage] external-echo-ignored')
       } finally {

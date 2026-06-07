@@ -4,6 +4,7 @@ import { loadAppStateResult, saveAppState } from './app-state-storage.mjs'
 export const LOAD_FAILED_SAVE_ERROR = 'App state did not load; refusing to overwrite existing data.'
 export const RECENT_APP_SAVE_ECHO_TTL_MS = 120_000
 const MAX_RECENT_APP_SAVE_FINGERPRINTS = 20
+const MAX_RECENT_APP_SAVE_STORAGE_FINGERPRINTS = 20
 
 function normalizeJsonValue(value) {
   if (Array.isArray(value)) return value.map((item) => normalizeJsonValue(item))
@@ -33,7 +34,6 @@ export function createAppStateCoordinator({
   profileRootPath = userDataPath,
   load = loadAppStateResult,
   save = saveAppState,
-  canonicalizeAfterSave = save === saveAppState,
   now = () => Date.now(),
   recentAppSaveEchoTtlMs = RECENT_APP_SAVE_ECHO_TTL_MS,
 }) {
@@ -41,11 +41,12 @@ export function createAppStateCoordinator({
   let loadResult = load(activeProfileRootPath)
   let serializedState = loadResult.ok ? loadResult.serializedState : null
   let revision = loadResult.ok && serializedState !== null ? 1 : 0
-  let lastSavedCanonicalState = null
   let recentAppSaveFingerprints = []
+  let recentAppSaveStorageFingerprints = []
 
   const pruneRecentAppSaveFingerprints = (timestamp = now()) => {
     recentAppSaveFingerprints = recentAppSaveFingerprints.filter((entry) => entry.expiresAt > timestamp)
+    recentAppSaveStorageFingerprints = recentAppSaveStorageFingerprints.filter((entry) => entry.expiresAt > timestamp)
   }
 
   const rememberRecentAppSave = (nextSerializedState) => {
@@ -68,6 +69,40 @@ export function createAppStateCoordinator({
     if (!fingerprint) return false
     pruneRecentAppSaveFingerprints()
     return recentAppSaveFingerprints.some((entry) => entry.fingerprint === fingerprint)
+  }
+
+  const getStorageFingerprintValue = (storageSnapshot) => {
+    if (typeof storageSnapshot === 'string') return storageSnapshot
+    if (storageSnapshot && typeof storageSnapshot === 'object' && typeof storageSnapshot.fingerprint === 'string') {
+      return storageSnapshot.fingerprint
+    }
+    return null
+  }
+
+  const rememberRecentAppSaveStorageFingerprint = (storageSnapshot) => {
+    const storageFingerprint = getStorageFingerprintValue(storageSnapshot)
+    if (typeof storageFingerprint !== 'string' || storageFingerprint.length === 0) return
+    const timestamp = now()
+    pruneRecentAppSaveFingerprints(timestamp)
+    recentAppSaveStorageFingerprints = recentAppSaveStorageFingerprints.filter(
+      (entry) => entry.fingerprint !== storageFingerprint,
+    )
+    recentAppSaveStorageFingerprints.push({
+      fingerprint: storageFingerprint,
+      expiresAt: timestamp + recentAppSaveEchoTtlMs,
+    })
+    if (recentAppSaveStorageFingerprints.length > MAX_RECENT_APP_SAVE_STORAGE_FINGERPRINTS) {
+      recentAppSaveStorageFingerprints = recentAppSaveStorageFingerprints.slice(
+        -MAX_RECENT_APP_SAVE_STORAGE_FINGERPRINTS,
+      )
+    }
+  }
+
+  const isRecentAppSaveStorageEcho = (storageSnapshot) => {
+    const storageFingerprint = getStorageFingerprintValue(storageSnapshot)
+    if (typeof storageFingerprint !== 'string' || storageFingerprint.length === 0) return false
+    pruneRecentAppSaveFingerprints()
+    return recentAppSaveStorageFingerprints.some((entry) => entry.fingerprint === storageFingerprint)
   }
 
   const getLoadResult = () =>
@@ -114,20 +149,15 @@ export function createAppStateCoordinator({
     }
 
     try {
-      save(activeProfileRootPath, payload.serializedState, {
+      const saveResult = save(activeProfileRootPath, payload.serializedState, {
         userDataPath,
       })
       rememberRecentAppSave(payload.serializedState)
-      if (canonicalizeAfterSave) {
-        const persistedLoadResult = load(activeProfileRootPath)
-        lastSavedCanonicalState =
-          persistedLoadResult.ok && typeof persistedLoadResult.serializedState === 'string'
-            ? persistedLoadResult.serializedState
-            : null
-        rememberRecentAppSave(lastSavedCanonicalState)
-      } else {
-        lastSavedCanonicalState = null
-      }
+      rememberRecentAppSaveStorageFingerprint(
+        saveResult?.storageFingerprint
+          ? { fingerprint: saveResult.storageFingerprint, files: saveResult.storageFiles }
+          : null,
+      )
       serializedState = payload.serializedState
       revision += 1
       loadResult = {
@@ -171,22 +201,14 @@ export function createAppStateCoordinator({
     const nextSerializedState = nextLoadResult.serializedState
     const nextFingerprint = createSerializedStateFingerprint(nextSerializedState)
     const currentFingerprint = createSerializedStateFingerprint(serializedState)
-    const lastSavedCanonicalFingerprint = createSerializedStateFingerprint(lastSavedCanonicalState)
     const isSemanticallyUnchanged =
       nextSerializedState === serializedState ||
       (nextFingerprint !== null && currentFingerprint !== null && nextFingerprint === currentFingerprint)
-    const isCanonicalAppSaveEcho =
-      typeof nextSerializedState === 'string' &&
-      (nextSerializedState === lastSavedCanonicalState ||
-        (nextFingerprint !== null &&
-          lastSavedCanonicalFingerprint !== null &&
-          nextFingerprint === lastSavedCanonicalFingerprint))
 
     if (
       isSameProfileRoot &&
       options.detectAppSaveEcho !== false &&
       !isSemanticallyUnchanged &&
-      !isCanonicalAppSaveEcho &&
       isRecentAppSaveEcho(nextSerializedState)
     ) {
       return {
@@ -198,13 +220,11 @@ export function createAppStateCoordinator({
 
     activeProfileRootPath = nextProfileRootPath
     loadResult = nextLoadResult
-    if (isSemanticallyUnchanged || isCanonicalAppSaveEcho) {
+    if (isSemanticallyUnchanged) {
       serializedState = nextSerializedState
-      lastSavedCanonicalState = null
       return {
         ...getLoadResult(),
         unchanged: true,
-        ...(isCanonicalAppSaveEcho && !isSemanticallyUnchanged ? { externalEchoIgnored: true } : {}),
       }
     }
 
@@ -220,5 +240,6 @@ export function createAppStateCoordinator({
     canWriteAppState: () => loadResult.ok,
     reloadProfileRoot,
     saveRevisionedState,
+    isRecentAppSaveStorageEcho,
   }
 }

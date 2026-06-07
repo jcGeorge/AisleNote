@@ -559,7 +559,7 @@ describe('toolbar list command detection', () => {
 
     expect(applyListToolbarCommand(editor as any, 'bulletList')).toBe(true)
 
-    expect(editor.setMarkdown).toHaveBeenCalledWith('one\ntwo\n\nclosing', false)
+    expect(editor.setMarkdown).toHaveBeenCalledWith('one\n\ntwo\n\nclosing', false)
     expect(view.state.doc.child(0).textContent).toBe('one')
     expect(view.state.doc.child(1).textContent).toBe('two')
     expect(view.state.selection.from).toBe(getTextRange(view.state.doc, 'one').from)

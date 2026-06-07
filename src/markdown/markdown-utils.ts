@@ -470,7 +470,9 @@ function canSplitPlainParagraphChunk(chunk: MarkdownBlockChunk): boolean {
   return (
     chunk.lines.length > 1 &&
     !isMarkdownTableChunk(chunk) &&
-    chunk.lines.every((line) => getMarkdownLineBlockKind(line) === 'paragraph' && !/^\s*>/.test(line))
+    chunk.lines.every((line) =>
+      getMarkdownLineBlockKind(line) === 'paragraph' && !/^\s*>/.test(line) && !isFenceBoundary(line, null),
+    )
   )
 }
 
@@ -495,6 +497,37 @@ function splitPlainParagraphChunksToCount(
       { lines: [chunk.lines[0]] },
       { lines: chunk.lines.slice(1) },
       ...next.slice(chunkIndex + 1),
+    ]
+  }
+  return next
+}
+
+function expandPlainParagraphChunks(chunks: MarkdownBlockChunk[]): MarkdownBlockChunk[] {
+  return chunks.flatMap((chunk) => {
+    if (!canSplitPlainParagraphChunk(chunk)) return [chunk]
+    return chunk.lines.map((line) => ({ lines: [line] }))
+  })
+}
+
+function canMergePlainParagraphChunks(left: MarkdownBlockChunk, right: MarkdownBlockChunk): boolean {
+  return canSplitPlainParagraphChunk({ lines: [...left.lines, ...right.lines] })
+}
+
+function mergePlainParagraphChunksToCount(
+  chunks: MarkdownBlockChunk[],
+  targetContentBlockCount: number,
+): MarkdownBlockChunk[] {
+  let next = chunks
+  while (next.length > targetContentBlockCount) {
+    const chunkIndex = next.findIndex((chunk, index) => {
+      const following = next[index + 1]
+      return Boolean(following && canMergePlainParagraphChunks(chunk, following))
+    })
+    if (chunkIndex < 0) return next
+    next = [
+      ...next.slice(0, chunkIndex),
+      { lines: [...next[chunkIndex].lines, ...next[chunkIndex + 1].lines] },
+      ...next.slice(chunkIndex + 2),
     ]
   }
   return next
@@ -584,7 +617,7 @@ export function isBlankParagraphNode(node: any): boolean {
 }
 
 export function prepareBlankParagraphsForEditorDisplay(markdown: string): BlankParagraphDisplayPlan {
-  const chunks = splitMarkdownTopLevelChunks(repairBrokenMarkdownTables(markdown))
+  const chunks = expandPlainParagraphChunks(splitMarkdownTopLevelChunks(repairBrokenMarkdownTables(markdown)))
   const contentChunks: MarkdownBlockChunk[] = []
   const blockKinds = chunks.map((chunk) => {
     if (isStandaloneBlankLineChunk(chunk)) return 'blank' as const
@@ -604,23 +637,17 @@ function serializeCleanMarkdownBlocks(
 ): string {
   const lines: string[] = []
   let contentIndex = 0
-  let previousKind: 'blank' | 'content' | null = null
 
   blockKinds.forEach((kind) => {
     if (kind === 'blank') {
       lines.push('')
-      previousKind = 'blank'
       return
     }
 
     const chunk = contentChunks[contentIndex]
     contentIndex += 1
     if (!chunk) return
-    if (lines.length > 0 && previousKind === 'content') {
-      lines.push('')
-    }
     lines.push(...chunk.lines)
-    previousKind = 'content'
   })
 
   return lines.join('\n')
@@ -635,14 +662,17 @@ export function preserveBlankParagraphsFromWysiwyg(editor: Editor | null, markdo
     blockKinds.push(isBlankParagraphNode(node) ? 'blank' : 'content')
   })
 
-  const markdownChunks = splitMarkdownTopLevelChunks(markdown)
+  const markdownChunks = expandPlainParagraphChunks(splitMarkdownTopLevelChunks(markdown))
   let contentChunks = markdownChunks.filter((chunk) => !isStandaloneBlankLineChunk(chunk))
   const hasBlankChunks = contentChunks.length !== markdownChunks.length
   const hasBlankBlocks = blockKinds.includes('blank')
 
   const contentBlockCount = blockKinds.filter((kind) => kind === 'content').length
-  if (contentBlockCount !== contentChunks.length && (hasBlankBlocks || hasBlankChunks)) {
+  if (contentBlockCount > contentChunks.length && (hasBlankBlocks || hasBlankChunks)) {
     contentChunks = splitPlainParagraphChunksToCount(contentChunks, contentBlockCount)
+  }
+  if (contentBlockCount < contentChunks.length) {
+    contentChunks = mergePlainParagraphChunksToCount(contentChunks, contentBlockCount)
   }
   if (contentBlockCount !== contentChunks.length) {
     if (!hasBlankBlocks && !hasBlankChunks) return normalizeBlankLineRuns(markdown)

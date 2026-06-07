@@ -116,10 +116,58 @@ describe('markdown WYSIWYG blank line preservation', () => {
     expect(markdown).toBe('one\n\ntwo')
   })
 
+  it('keeps adjacent visible lines as adjacent markdown lines after editor serialization', () => {
+    const markdown = preserveBlankParagraphsFromWysiwyg(
+      editorForBlocks([
+        block('paragraph', "hey here's a line"),
+        block('paragraph', "here's another line"),
+        block('paragraph', "here's a third"),
+      ]),
+      "hey here's a line\n\nhere's another line\n\nhere's a third",
+    )
+
+    expect(markdown).toBe("hey here's a line\nhere's another line\nhere's a third")
+  })
+
+  it('preserves a leading visual blank row before adjacent visible lines', () => {
+    const markdown = preserveBlankParagraphsFromWysiwyg(
+      editorForBlocks([
+        emptyParagraph(),
+        block('paragraph', 'okay'),
+        block('paragraph', 'so'),
+        block('paragraph', 'these are together.'),
+      ]),
+      'okay\n\nso\n\nthese are together.',
+    )
+
+    expect(markdown).toBe('\nokay\nso\nthese are together.')
+  })
+
+  it('preserves trailing visual blank rows after adjacent visible lines', () => {
+    const markdown = preserveBlankParagraphsFromWysiwyg(
+      editorForBlocks([
+        block('paragraph', 'okay'),
+        block('paragraph', 'so'),
+        emptyParagraph(),
+        emptyParagraph(),
+      ]),
+      'okay\n\nso',
+    )
+
+    expect(markdown).toBe('okay\nso\n\n')
+  })
+
   it('strips persisted blank placeholders before markdown is passed to the editor', () => {
     expect(prepareBlankParagraphsForEditorDisplay(`one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`)).toEqual({
       markdown: 'one\n\ntwo',
       blockKinds: ['content', 'blank', 'content'],
+    })
+  })
+
+  it('plans leading blank rows separately from parser spacing for adjacent visible lines', () => {
+    expect(prepareBlankParagraphsForEditorDisplay('\nokay\nso\nthese are together.')).toEqual({
+      markdown: 'okay\n\nso\n\nthese are together.',
+      blockKinds: ['blank', 'content', 'content', 'content'],
     })
   })
 
@@ -213,9 +261,7 @@ describe('markdown WYSIWYG blank line preservation', () => {
 
     expect(markdown).toBe([
       '![link that remains](<link that remains--14eeb9>)',
-      '',
       '[link that remains](<link that remains--14eeb9>)',
-      '',
       'asdfasdf',
       '',
       'bannanaa ',
@@ -238,7 +284,7 @@ describe('markdown WYSIWYG blank line preservation', () => {
       `one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`,
     )
 
-    expect(markdown).toBe('one\n\ntwo')
+    expect(markdown).toBe('one\ntwo')
   })
 
   it('persists one visible blank paragraph after a horizontal rule', () => {
@@ -252,7 +298,7 @@ describe('markdown WYSIWYG blank line preservation', () => {
       source,
     )
 
-    expect(markdown).toBe('one\n\n---\n')
+    expect(markdown).toBe('one\n---\n')
   })
 
   it('preserves empty paragraphs around headings and lists', () => {
@@ -282,7 +328,7 @@ describe('markdown WYSIWYG blank line preservation', () => {
     )
 
     expect(markdown).toBe(
-      '### Hat Trick!\n\nhmm interesting\n\n- [ ] one\n- [ ] two\n    - [ ] three',
+      '### Hat Trick!\n\nhmm interesting\n- [ ] one\n- [ ] two\n    - [ ] three',
     )
   })
 
@@ -300,7 +346,7 @@ describe('markdown WYSIWYG blank line preservation', () => {
     )
 
     expect(markdown).toBe(
-      '##My second header.\n\n---\n\nLive from a workshop in Ohio!\n\nAnd now for a task\n\n---',
+      '##My second header.\n\n---\nLive from a workshop in Ohio!\nAnd now for a task\n---',
     )
   })
 
@@ -314,7 +360,7 @@ describe('markdown WYSIWYG blank line preservation', () => {
       '### Hat Trick!\nhmm interesting\n- [ ] one\n- [ ] two\n    - [ ] three',
     )
 
-    expect(markdown).toBe('### Hat Trick!\n\nhmm interesting\n\n- [ ] one\n- [ ] two\n    - [ ] three')
+    expect(markdown).toBe('### Hat Trick!\nhmm interesting\n- [ ] one\n- [ ] two\n    - [ ] three')
   })
 
   it('splits adjacent heading, paragraph, and task list blocks before editor display', () => {

@@ -199,7 +199,18 @@ function expectRelativePathWithinSegmentLimit(relativePath) {
 describe('Electron app state storage load result', () => {
   it('returns serialized state for a valid hybrid profile', () =>
     withTempUserDataPath((userDataPath) => {
-      saveAppState(userDataPath, serializedAppState())
+      const saveResult = saveAppState(userDataPath, serializedAppState())
+
+      expect(saveResult).toMatchObject({
+        storageFingerprint: expect.stringMatching(/^tabs-storage-files-v1:/),
+        storageFiles: expect.arrayContaining([
+          expect.objectContaining({
+            path: 'manifest.json',
+            contentHash: expect.any(String),
+            byteLength: expect.any(Number),
+          }),
+        ]),
+      })
 
       const result = loadAppStateResult(userDataPath)
 
@@ -231,6 +242,14 @@ describe('Electron app state storage load result', () => {
       expect(parsed.ui).not.toHaveProperty('customThemePalette')
       expect(parsed.ui.themePalettes.custom1.primary).toBe('#8844cc')
       expect(parsed.ui.themePalettes.dawn.primary).toBe('#123456')
+    }))
+
+  it('returns the same storage fingerprint for unchanged repeated saves', () =>
+    withTempUserDataPath((userDataPath) => {
+      const firstSave = saveAppState(userDataPath, serializedAppState())
+      const secondSave = saveAppState(userDataPath, serializedAppState())
+
+      expect(secondSave.storageFingerprint).toBe(firstSave.storageFingerprint)
     }))
 
   it('round-trips the custom theme through hybrid storage', () =>

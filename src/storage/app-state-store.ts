@@ -249,7 +249,6 @@ class ElectronAppStateStore implements AppStateStore {
     if (this.savesBlockedByLoadFailure) return
     const trigger = options.trigger ?? 'unknown'
     if (serializedState === this.lastSavedSerializedState && this.pendingAsyncSerializedState === null) {
-      this.recordSaveDiagnostic('app-state-save-skipped', serializedState, 'skip', trigger, options.pendingEditorCount)
       return
     }
     const payload = {
