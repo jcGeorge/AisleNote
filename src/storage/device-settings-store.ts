@@ -44,6 +44,7 @@ export type DeviceSettings = {
   tabButtonScale: number
   noteFontScale: number
   toolbarButtonScale: number
+  captureDiagnostics: boolean
   lastFindQuery: string
   tagAutocompleteRecentKeys: string[]
 }
@@ -61,6 +62,7 @@ export const DEFAULT_DEVICE_SETTINGS: DeviceSettings = {
   tabButtonScale: DEFAULT_UI_SETTINGS.tabButtonScale,
   noteFontScale: DEFAULT_UI_SETTINGS.noteFontScale,
   toolbarButtonScale: DEFAULT_UI_SETTINGS.toolbarButtonScale ?? 1,
+  captureDiagnostics: true,
   lastFindQuery: '',
   tagAutocompleteRecentKeys: [],
 }
@@ -125,6 +127,10 @@ function normalizeDeviceSettingsValue(raw: unknown): DeviceSettings {
       typeof obj.toolbarButtonScale === 'number'
         ? clampToolbarButtonScale(obj.toolbarButtonScale)
         : DEFAULT_DEVICE_SETTINGS.toolbarButtonScale,
+    captureDiagnostics:
+      typeof obj.captureDiagnostics === 'boolean'
+        ? obj.captureDiagnostics
+        : DEFAULT_DEVICE_SETTINGS.captureDiagnostics,
     lastFindQuery: typeof obj.lastFindQuery === 'string' ? obj.lastFindQuery : DEFAULT_DEVICE_SETTINGS.lastFindQuery,
     tagAutocompleteRecentKeys: normalizeTagAutocompleteRecentKeys(obj.tagAutocompleteRecentKeys),
   }

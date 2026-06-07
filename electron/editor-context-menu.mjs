@@ -46,9 +46,7 @@ function normalizeLanguageCode(value) {
 export function getPreferredSpellCheckerLanguages({
   app,
   session,
-  platform = process.platform,
 } = {}) {
-  if (platform === 'darwin') return []
   if (!session || typeof session.setSpellCheckerLanguages !== 'function') return []
   const available = Array.isArray(session.availableSpellCheckerLanguages)
     ? new Set(session.availableSpellCheckerLanguages.map(normalizeLanguageCode).filter(Boolean))
@@ -77,10 +75,9 @@ export function getPreferredSpellCheckerLanguages({
 
 export function configureEditorSpellcheckerForWindow(window, {
   app,
-  platform = process.platform,
 } = {}) {
   const session = window?.webContents?.session
-  const languages = getPreferredSpellCheckerLanguages({ app, session, platform })
+  const languages = getPreferredSpellCheckerLanguages({ app, session })
   if (languages.length > 0) {
     session.setSpellCheckerLanguages(languages)
   }

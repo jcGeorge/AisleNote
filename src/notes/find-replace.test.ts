@@ -369,12 +369,8 @@ describe('visible markdown matching', () => {
     expect(result.state.noteAisleBodies?.[0]?.markdown).toBe([
       'Intro',
       '',
-      EDITOR_BLANK_LINE_PLACEHOLDER,
-      '',
       '- [ ] icon-one',
       '- [ ] icon-two',
-      '',
-      EDITOR_BLANK_LINE_PLACEHOLDER,
       '',
       'Outro',
     ].join('\n'))

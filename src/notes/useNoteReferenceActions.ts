@@ -304,15 +304,12 @@ export const useNoteReferenceActions = ({
     }
 
     const markdown = getActiveEditorMarkdown()
-    const requestedLabel =
-      modalState.noteLabelTouched || modalState.internalEdit || modalState.previewEdit ? modalState.noteLabel : ''
     const command = buildNoteReferenceCommand({
       appState: latestState,
       source: modalState.source,
       target,
       action: 'preview',
       activeNoteBodyId,
-      labelOverride: requestedLabel,
       editingTokenId: modalState.previewEdit?.tokenId ?? modalState.editingTokenId,
       previewMarkdowns: getActivePreviewMarkdowns(latestState),
       insertPlacement: modalState.editingTokenId || modalState.previewEdit || modalState.internalEdit ? 'inline' : 'block',

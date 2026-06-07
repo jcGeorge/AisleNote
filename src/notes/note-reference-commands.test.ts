@@ -204,7 +204,7 @@ describe('note reference commands', () => {
     expect(anchored.syntax).toMatch(/^!\[Details\]\(Source--[0-9a-f]{6}#Details--[0-9a-f]{6}\)$/)
   })
 
-  it('preserves custom labels for markdown note previews', () => {
+  it('ignores custom labels for markdown note previews', () => {
     const state = createCommandState()
     const command = buildNoteReferenceCommand({
       appState: state,
@@ -217,7 +217,7 @@ describe('note reference commands', () => {
 
     expect(command).toMatchObject({ ok: true })
     if (!command.ok) throw new Error('expected preview command result')
-    expect(command.syntax).toMatch(/^!\[Custom source\]\(Source--[0-9a-f]{6}\)$/)
+    expect(command.syntax).toMatch(/^!\[Source\]\(Source--[0-9a-f]{6}\)$/)
   })
 
   it('blocks stale, recursive, self, duplicate, and invalid whole-note preview commands', () => {

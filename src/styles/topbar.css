@@ -272,47 +272,6 @@
   height: var(--tab-control-height);
 }
 
-.diagnostic-topbar-controls {
-  display: inline-flex;
-  flex: 0 0 auto;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.35rem;
-  margin-left: 0.45rem;
-  padding-left: 0.5rem;
-  border-left: 1px solid var(--nav-rail-border);
-}
-
-.diagnostic-topbar-field {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.28rem;
-  margin: 0;
-  color: var(--topbar-action-text);
-  font-size: 0.86em;
-}
-
-.diagnostic-topbar-field span {
-  text-transform: lowercase;
-}
-
-.diagnostic-topbar-select {
-  height: var(--tab-control-height);
-  width: auto;
-  min-width: 5.8rem;
-  border: 1px solid var(--topbar-action-border);
-  border-radius: 0.42rem;
-  background: var(--topbar-action-bg);
-  color: var(--topbar-action-text);
-  padding: 0 0.48rem;
-  font: inherit;
-}
-
-.diagnostic-topbar-select:focus {
-  outline: none;
-  border-color: var(--topbar-action-hover-border);
-}
-
 .topbar-icon-btn {
   width: var(--tab-control-height);
   padding-inline: 0 !important;

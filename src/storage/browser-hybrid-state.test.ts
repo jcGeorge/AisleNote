@@ -912,7 +912,8 @@ describe('browser hybrid storage', () => {
   })
 
   it('uses shared aisle body markdown instead of stale linked aisle mirrors', () => {
-    const currentMarkdown = 'Hat Trick!\n\n---\n\n\u200b'
+    const currentMarkdown = 'Hat Trick!\n\n---\n'
+    const legacyCurrentMarkdown = 'Hat Trick!\n\n---\n\n\u200b'
     const staleMarkdown = 'Hat Trick!\n\n\u200b\n\n\n\n\u200b\n\n---\n\n\u200b'
     const state = parseModernBrowserState({
         theme: 'dawn',
@@ -943,7 +944,7 @@ describe('browser hybrid storage', () => {
             },
           },
         ],
-        noteAisleBodies: [{ id: 'shared-aisle-body', markdown: currentMarkdown }],
+        noteAisleBodies: [{ id: 'shared-aisle-body', markdown: legacyCurrentMarkdown }],
         noteBodies: [
           {
             id: 'body-1',

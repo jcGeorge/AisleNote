@@ -671,7 +671,7 @@ describe('editor DOM events', () => {
     expect(getEditorSpellcheckContext).toHaveBeenCalledTimes(3)
   })
 
-  it('waits for spelling suggestions before falling back to lookup-only context', async () => {
+  it('waits for spelling suggestions and does not use lookup-only context as a misspelling fallback', async () => {
     vi.useFakeTimers()
     let calls = 0
     const getEditorSpellcheckContext = vi.fn(async () => {
@@ -708,6 +708,28 @@ describe('editor DOM events', () => {
       canLookUpSelection: true,
     })
     expect(getEditorSpellcheckContext).toHaveBeenCalledTimes(2)
+  })
+
+  it('ignores lookup-only editor dictionary context without spelling suggestions', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('window', {
+      ...(globalThis.window ?? {}),
+      setTimeout: globalThis.setTimeout,
+      clearTimeout: globalThis.clearTimeout,
+      electronAPI: {
+        getEditorSpellcheckContext: vi.fn(async () => ({
+          suggestions: [],
+          misspelledWord: '',
+          selectionText: 'recieve',
+          canLookUpSelection: true,
+        })),
+      },
+    })
+
+    const result = getEditorDictionaryContextForMenu(10, 20)
+    await vi.advanceTimersByTimeAsync(400)
+
+    await expect(result).resolves.toBeUndefined()
   })
 
   it('ignores empty editor dictionary context from Electron', async () => {

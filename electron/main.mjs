@@ -315,7 +315,7 @@ if (!gotSingleInstanceLock) {
     registerFileIpc({ ipcMain, dialog, storageSession })
     registerClipboardIpc({ ipcMain, clipboard, nativeImage })
     registerUpdateIpc({ ipcMain, updateService })
-    registerDiagnosticIpc({ ipcMain, app })
+    registerDiagnosticIpc({ ipcMain, app, shell })
     ipcMain.handle('open-external-url', async (_event, url) => {
       if (typeof url !== 'string' || !isExternalWebUrl(url)) {
         return { ok: false, error: 'invalid-url' }

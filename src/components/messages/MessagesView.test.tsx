@@ -213,9 +213,19 @@ describe('MessagesView', () => {
       />,
     )
 
+    expect(html).toContain('aria-label="diagnostic controls"')
+    expect(html).toContain('diagnostic-log-day-select')
+    expect(html).toContain('disabled=""')
+    expect(html).toContain('aria-label="diagnostic mode"')
+    expect(html).toContain('aria-label="diagnostic message type"')
+    expect(html).toContain('aria-label="diagnostic message count"')
+    expect(html).toContain('aria-label="capture diagnostics"')
+    expect(html).toContain('diagnostic-log-capture-field')
+    expect(html).toContain('form-check form-switch settings-switch diagnostic-log-capture-switch')
     expect(html).toContain('No diagnostic logs.')
     expect(html).not.toContain('toast history')
     expect(html).not.toContain('duplicate files de-coupled')
+    expect(html).not.toContain('open diagnostics folder')
   })
 
   it('renders diagnostic logs newest first with day selector', () => {
@@ -236,11 +246,40 @@ describe('MessagesView', () => {
     )
 
     expect(html).toContain('diagnostic-log-day-select')
+    expect(html).toContain('aria-label="diagnostic controls"')
+    expect(html).toContain('aria-label="diagnostic mode"')
+    expect(html).toContain('<option value="all" selected="">all logs</option>')
+    expect(html).toContain('aria-label="diagnostic message type"')
+    expect(html).toContain('aria-label="diagnostic message count"')
     expect(html).toContain('performance: slow-operation')
     expect(html).toContain('warning - 75.4ms')
     expect(html.indexOf('performance: slow-operation')).toBeLessThan(html.indexOf('runtime: session-start'))
     expect(html).toContain('{&quot;thresholdMs&quot;:50}')
     expect(html).toContain('showing 2 of 2 diagnostics')
+  })
+
+  it('renders diagnostic capture and desktop folder controls', () => {
+    const html = renderToStaticMarkup(
+      <MessagesView
+        section="diagnostics"
+        messages={[]}
+        toastHistory={[]}
+        diagnosticDays={['2026-06-01']}
+        selectedDiagnosticDay="2026-06-01"
+        diagnosticEntries={diagnosticEntries}
+        diagnosticCaptureEnabled={false}
+        onOpenDiagnosticsFolder={vi.fn()}
+        onDiagnosticDayChange={vi.fn()}
+        onDismissMessage={vi.fn()}
+        onOpenRecoveredNotebookLocation={vi.fn()}
+        onOpenLocation={vi.fn()}
+      />,
+    )
+
+    expect(html).toContain('aria-label="capture diagnostics"')
+    expect(html).not.toContain('checked=""')
+    expect(html).toContain('open diagnostics folder')
+    expect(html).toContain('performance: slow-operation')
   })
 
   it('filters diagnostic logs by type', () => {

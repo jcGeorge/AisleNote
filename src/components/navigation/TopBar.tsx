@@ -27,14 +27,6 @@ import {
 import { NavigationRailControls, type NavigationRailAction } from './NavigationRailControls'
 import { SortIcon } from './SortIcon'
 import { AppIcon } from '../icons/AppIcon'
-import {
-  DIAGNOSTIC_LOG_DISPLAY_LIMITS,
-  DIAGNOSTIC_LOG_LEVEL_FILTERS,
-  DIAGNOSTIC_LOG_MODES,
-  type DiagnosticLogDisplayLimit,
-  type DiagnosticLogLevelFilter,
-  type DiagnosticLogMode,
-} from '../../diagnostics/diagnostic-log'
 
 type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
 type NavigationContextMenuOptions = {
@@ -142,17 +134,7 @@ type TopBarProps = {
   messagesCount?: number
   toastHistoryCount?: number
   diagnosticLogCount?: number
-  diagnosticLevelFilter?: DiagnosticLogLevelFilter
-  diagnosticDisplayLimit?: DiagnosticLogDisplayLimit
-  diagnosticMode?: DiagnosticLogMode
   onMessagesSectionChange?: (section: MessagesSection) => void
-  onDiagnosticLevelFilterChange?: (filter: DiagnosticLogLevelFilter) => void
-  onDiagnosticDisplayLimitChange?: (limit: DiagnosticLogDisplayLimit) => void
-  onDiagnosticModeChange?: (mode: DiagnosticLogMode) => void
-}
-
-function parseDiagnosticDisplayLimit(value: string): DiagnosticLogDisplayLimit {
-  return value === 'all' ? 'all' : Number(value) as DiagnosticLogDisplayLimit
 }
 
 export function TopBar({
@@ -234,13 +216,7 @@ export function TopBar({
   messagesCount = 0,
   toastHistoryCount = 0,
   diagnosticLogCount = 0,
-  diagnosticLevelFilter = 'all',
-  diagnosticDisplayLimit = 500,
-  diagnosticMode = 'actionable',
   onMessagesSectionChange = () => undefined,
-  onDiagnosticLevelFilterChange = () => undefined,
-  onDiagnosticDisplayLimitChange = () => undefined,
-  onDiagnosticModeChange = () => undefined,
 }: TopBarProps) {
   const primaryTablistProps =
     viewMode === 'settings'
@@ -396,57 +372,6 @@ export function TopBar({
               >
                 diagnostics{diagnosticLogCount > 0 ? ` (${diagnosticLogCount})` : ''}
               </button>
-              {messagesSection === 'diagnostics' ? (
-                <div className="diagnostic-topbar-controls" role="group" aria-label="diagnostic filters">
-                  <label className="diagnostic-topbar-field">
-                    <span>mode</span>
-                    <select
-                      className="diagnostic-topbar-select"
-                      aria-label="diagnostic mode"
-                      value={diagnosticMode}
-                      onChange={(event) => onDiagnosticModeChange(event.target.value as DiagnosticLogMode)}
-                    >
-                      {DIAGNOSTIC_LOG_MODES.map((mode) => (
-                        <option key={mode} value={mode}>
-                          {mode === 'all' ? 'all logs' : mode}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="diagnostic-topbar-field">
-                    <span>type</span>
-                    <select
-                      className="diagnostic-topbar-select"
-                      aria-label="diagnostic message type"
-                      value={diagnosticLevelFilter}
-                      onChange={(event) =>
-                        onDiagnosticLevelFilterChange(event.target.value as DiagnosticLogLevelFilter)
-                      }
-                    >
-                      {DIAGNOSTIC_LOG_LEVEL_FILTERS.map((filter) => (
-                        <option key={filter} value={filter}>
-                          {filter === 'all' ? 'all types' : filter}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="diagnostic-topbar-field">
-                    <span>show</span>
-                    <select
-                      className="diagnostic-topbar-select"
-                      aria-label="diagnostic message count"
-                      value={String(diagnosticDisplayLimit)}
-                      onChange={(event) => onDiagnosticDisplayLimitChange(parseDiagnosticDisplayLimit(event.target.value))}
-                    >
-                      {DIAGNOSTIC_LOG_DISPLAY_LIMITS.map((limit) => (
-                        <option key={String(limit)} value={String(limit)}>
-                          {limit === 'all' ? 'all' : limit.toLocaleString()}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-              ) : null}
             </>
           )}
 

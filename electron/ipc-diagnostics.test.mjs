@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -116,5 +116,30 @@ describe('diagnostic ipc', () => {
       expect(result.days).toHaveLength(DIAGNOSTIC_LOG_RETENTION_DAYS)
       expect(result.days[0]).toBe('2026-06-16')
       expect(result.days).not.toContain('2026-06-01')
+    }))
+
+  it('creates and opens the diagnostics folder', async () =>
+    withTempUserDataPath(async (userDataPath) => {
+      const ipcMain = createIpcMain()
+      const shell = { openPath: vi.fn(() => Promise.resolve('')) }
+      registerDiagnosticIpc({ ipcMain, app: appWithUserDataPath(userDataPath), shell })
+
+      await expect(ipcMain.handlers.get('open-diagnostics-folder')()).resolves.toEqual({ ok: true })
+
+      const diagnosticsPath = path.join(userDataPath, 'diagnostics')
+      expect(existsSync(diagnosticsPath)).toBe(true)
+      expect(shell.openPath).toHaveBeenCalledWith(diagnosticsPath)
+    }))
+
+  it('reports diagnostics folder open failures', async () =>
+    withTempUserDataPath(async (userDataPath) => {
+      const ipcMain = createIpcMain()
+      const shell = { openPath: vi.fn(() => Promise.resolve('permission denied')) }
+      registerDiagnosticIpc({ ipcMain, app: appWithUserDataPath(userDataPath), shell })
+
+      await expect(ipcMain.handlers.get('open-diagnostics-folder')()).resolves.toEqual({
+        ok: false,
+        error: 'permission denied',
+      })
     }))
 })

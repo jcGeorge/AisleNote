@@ -10,7 +10,6 @@ import { getLocationInfo } from './note-locations'
 import { getAisleMarkdown } from './note-markdown'
 import {
   buildInternalNoteLinkToken,
-  buildMarkdownNoteReferenceToken,
   formatEditorMarkdownNoteReferenceHref,
   buildPreviewToken,
   getPreviewReferenceSignature,
@@ -187,16 +186,7 @@ export function buildNoteReferenceCommand({
   }
   const payload = toPreviewPayload(syntaxTarget, editingTokenId)
   const defaultSyntax = buildPreviewToken(appState, payload)
-  const defaultResolved = defaultSyntax ? resolveMarkdownNoteReferenceToken(appState, defaultSyntax) : null
-  const normalizedLabel = labelOverride.trim()
-  const syntax =
-    normalizedLabel && defaultResolved?.canonicalTarget
-      ? buildMarkdownNoteReferenceToken({
-          embed: true,
-          target: defaultResolved.canonicalTarget,
-          label: normalizedLabel,
-        })
-      : defaultSyntax
+  const syntax = defaultSyntax
   if (!syntax) return { ok: false, message: 'Choose an existing note.' }
   const resolvedPayload = { ...payload, id: editingTokenId || syntax }
   if (

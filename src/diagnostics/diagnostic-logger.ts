@@ -9,8 +9,10 @@ import { appendDiagnosticLogEntry } from './diagnostic-log-store'
 
 type DiagnosticContext = DiagnosticLogDetails
 type DiagnosticContextProvider = () => DiagnosticContext
+type DiagnosticCaptureProvider = () => boolean
 
 let contextProvider: DiagnosticContextProvider | null = null
+let captureProvider: DiagnosticCaptureProvider | null = null
 const diagnosticSessionId = createDiagnosticSessionId()
 
 function getDiagnosticContext(): DiagnosticContext {
@@ -25,14 +27,33 @@ export function getDiagnosticSessionId(): string {
   return diagnosticSessionId
 }
 
-export function configureDiagnosticLogging(provider: DiagnosticContextProvider): () => void {
-  contextProvider = provider
-  return () => {
-    if (contextProvider === provider) contextProvider = null
+function isDiagnosticCaptureEnabled(): boolean {
+  try {
+    return captureProvider?.() !== false
+  } catch {
+    return true
   }
 }
 
-export function recordDiagnosticEvent(area: string, event: string, input: DiagnosticLogInput = {}): DiagnosticLogEntry {
+export function configureDiagnosticLogging(
+  provider: DiagnosticContextProvider,
+  captureEnabledProvider?: DiagnosticCaptureProvider,
+): () => void {
+  const nextCaptureProvider = captureEnabledProvider ?? null
+  contextProvider = provider
+  captureProvider = nextCaptureProvider
+  return () => {
+    if (contextProvider === provider) contextProvider = null
+    if (captureProvider === nextCaptureProvider) captureProvider = null
+  }
+}
+
+export function recordDiagnosticEvent(
+  area: string,
+  event: string,
+  input: DiagnosticLogInput = {},
+): DiagnosticLogEntry | null {
+  if (!isDiagnosticCaptureEnabled()) return null
   const context = getDiagnosticContext()
   const entry = createDiagnosticEntry({
     sessionId: diagnosticSessionId,

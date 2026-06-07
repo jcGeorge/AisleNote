@@ -2611,15 +2611,30 @@
   width: min(100%, 76rem);
 }
 
-.diagnostic-log-day-field {
+.diagnostic-log-toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.6rem;
   align-items: center;
+  gap: 0.65rem;
+}
+
+.diagnostic-log-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.diagnostic-log-capture-switch {
+  display: inline-flex;
+}
+
+.diagnostic-log-select {
+  width: auto;
+  min-width: 7.2rem;
 }
 
 .diagnostic-log-day-select {
-  width: auto;
   min-width: 10rem;
 }
 

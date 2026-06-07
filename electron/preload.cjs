@@ -65,4 +65,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   appendDiagnosticLogEntry: (payload) => ipcRenderer.invoke('append-diagnostic-log-entry', payload),
   listDiagnosticLogDays: () => ipcRenderer.invoke('list-diagnostic-log-days'),
   readDiagnosticLogEntries: (payload) => ipcRenderer.invoke('read-diagnostic-log-entries', payload),
+  openDiagnosticsFolder: () => ipcRenderer.invoke('open-diagnostics-folder'),
 })

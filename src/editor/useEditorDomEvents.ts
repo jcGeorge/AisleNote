@@ -153,15 +153,6 @@ const BARE_COM_ORG_ADDRESS_RE = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:
 const EDITOR_SPELLCHECK_CONTEXT_RETRY_WINDOW_MS = 300
 const EDITOR_SPELLCHECK_CONTEXT_POLL_MS = 25
 
-function hasEditorDictionaryContext(context: EditorDictionaryContext | null | undefined): context is EditorDictionaryContext {
-  return Boolean(
-    context &&
-      (context.suggestions.length > 0 ||
-        context.misspelledWord ||
-        (context.canLookUpSelection && context.selectionText.trim())),
-  )
-}
-
 function hasEditorSpellingContext(context: EditorDictionaryContext | null | undefined): context is EditorDictionaryContext {
   return Boolean(context && (context.suggestions.length > 0 || context.misspelledWord))
 }
@@ -174,16 +165,14 @@ export async function getEditorDictionaryContextForMenu(
   const getSpellcheckContext = window.electronAPI?.getEditorSpellcheckContext
   if (typeof getSpellcheckContext !== 'function') return undefined
   const maxAttempts = Math.max(1, Math.ceil(EDITOR_SPELLCHECK_CONTEXT_RETRY_WINDOW_MS / EDITOR_SPELLCHECK_CONTEXT_POLL_MS))
-  let lookupOnlyContext: EditorDictionaryContext | undefined
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const { context, timedOut } = await getEditorSpellcheckContextAttempt(getSpellcheckContext, x, y)
     if (hasEditorSpellingContext(context)) return context
-    if (hasEditorDictionaryContext(context) && !lookupOnlyContext) lookupOnlyContext = context
     if (attempt < maxAttempts - 1 && !timedOut) {
       await waitForEditorSpellcheckPoll()
     }
   }
-  return lookupOnlyContext
+  return undefined
 }
 
 async function getEditorSpellcheckContextAttempt(

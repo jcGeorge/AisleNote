@@ -75,7 +75,7 @@ function editorForBlocks(blocks: FakeNode[]): Editor {
 }
 
 describe('markdown WYSIWYG blank line preservation', () => {
-  it('stores an intentional empty paragraph between two paragraphs', () => {
+  it('stores an intentional empty paragraph between two paragraphs as plain markdown', () => {
     const markdown = preserveBlankParagraphsFromWysiwyg(
       editorForBlocks([
         block('paragraph', 'one'),
@@ -85,10 +85,10 @@ describe('markdown WYSIWYG blank line preservation', () => {
       'one\n\ntwo',
     )
 
-    expect(markdown).toBe(`one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`)
+    expect(markdown).toBe('one\n\ntwo')
   })
 
-  it('stores adjacent empty paragraphs as separate placeholder chunks', () => {
+  it('stores adjacent empty paragraphs as adjacent plain markdown blank lines', () => {
     const markdown = preserveBlankParagraphsFromWysiwyg(
       editorForBlocks([
         block('paragraph', 'one'),
@@ -99,10 +99,10 @@ describe('markdown WYSIWYG blank line preservation', () => {
       'one\n\ntwo',
     )
 
-    expect(markdown).toBe(`one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`)
+    expect(markdown).toBe('one\n\n\ntwo')
   })
 
-  it('round-trips existing blank paragraph placeholders without multiplying them', () => {
+  it('normalizes existing blank paragraph placeholders without multiplying them', () => {
     const source = `one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`
     const markdown = preserveBlankParagraphsFromWysiwyg(
       editorForBlocks([
@@ -113,7 +113,7 @@ describe('markdown WYSIWYG blank line preservation', () => {
       source,
     )
 
-    expect(markdown).toBe(source)
+    expect(markdown).toBe('one\n\ntwo')
   })
 
   it('strips persisted blank placeholders before markdown is passed to the editor', () => {
@@ -124,7 +124,7 @@ describe('markdown WYSIWYG blank line preservation', () => {
   })
 
   it('keeps the blank paragraph display plan stable across repeated load-save cycles', () => {
-    let markdown = `one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`
+    let markdown = 'one\n\n\ntwo'
     for (let index = 0; index < 5; index += 1) {
       const display = prepareBlankParagraphsForEditorDisplay(markdown)
       expect(display).toEqual({
@@ -142,7 +142,7 @@ describe('markdown WYSIWYG blank line preservation', () => {
       )
     }
 
-    expect(markdown).toBe(`one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`)
+    expect(markdown).toBe('one\n\n\ntwo')
   })
 
   it('strips blank placeholders around headings and horizontal rules while preserving their positions', () => {
@@ -164,7 +164,69 @@ describe('markdown WYSIWYG blank line preservation', () => {
       `one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\n\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`,
     )
 
-    expect(markdown).toBe(`one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`)
+    expect(markdown).toBe('one\n\ntwo')
+  })
+
+  it('normalizes standalone html break spacer lines but keeps inline and fenced breaks', () => {
+    expect(normalizeMarkdownForPersistence('one\n\n<br>\n\ntwo')).toBe('one\n\ntwo')
+    expect(normalizeMarkdownForPersistence('one <br> two')).toBe('one <br> two')
+    expect(normalizeMarkdownForPersistence('```\none\n<br>\ntwo\n```')).toBe('```\none\n<br>\ntwo\n```')
+  })
+
+  it('cleans reported note preview and link spacing without hidden placeholders or standalone breaks', () => {
+    const messy = [
+      '![link that remains](<link that remains--14eeb9>)',
+      '[link that remains](<link that remains--14eeb9>)',
+      '',
+      '<br>',
+      'asdfasdf',
+      '',
+      EDITOR_BLANK_LINE_PLACEHOLDER,
+      '',
+      EDITOR_BLANK_LINE_PLACEHOLDER,
+      'bannanaa ',
+      '',
+      EDITOR_BLANK_LINE_PLACEHOLDER,
+      '<br>',
+      'asdf',
+      '',
+      EDITOR_BLANK_LINE_PLACEHOLDER,
+      '',
+      EDITOR_BLANK_LINE_PLACEHOLDER,
+      '<br>',
+    ].join('\n')
+    const markdown = preserveBlankParagraphsFromWysiwyg(
+      editorForBlocks([
+        block('paragraph', '![link that remains](<link that remains--14eeb9>)'),
+        block('paragraph', '[link that remains](<link that remains--14eeb9>)'),
+        block('paragraph', 'asdfasdf'),
+        emptyParagraph(),
+        block('paragraph', 'bannanaa '),
+        emptyParagraph(),
+        emptyParagraph(),
+        block('paragraph', 'asdf'),
+        emptyParagraph(),
+        emptyParagraph(),
+      ]),
+      messy,
+    )
+
+    expect(markdown).toBe([
+      '![link that remains](<link that remains--14eeb9>)',
+      '',
+      '[link that remains](<link that remains--14eeb9>)',
+      '',
+      'asdfasdf',
+      '',
+      'bannanaa ',
+      '',
+      '',
+      'asdf',
+      '',
+      '',
+    ].join('\n'))
+    expect(markdown).not.toContain(EDITOR_BLANK_LINE_PLACEHOLDER)
+    expect(markdown).not.toMatch(/^<br\s*\/?>$/im)
   })
 
   it('removes stale placeholder chunks after blank paragraphs are deleted', () => {
@@ -190,7 +252,7 @@ describe('markdown WYSIWYG blank line preservation', () => {
       source,
     )
 
-    expect(markdown).toBe(source)
+    expect(markdown).toBe('one\n\n---\n')
   })
 
   it('preserves empty paragraphs around headings and lists', () => {
@@ -205,7 +267,7 @@ describe('markdown WYSIWYG blank line preservation', () => {
       '## Head\n\n* one',
     )
 
-    expect(markdown).toBe(`${EDITOR_BLANK_LINE_PLACEHOLDER}\n\n## Head\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\n* one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}`)
+    expect(markdown).toBe('\n## Head\n\n* one\n')
   })
 
   it('keeps a blank paragraph after a heading when task indentation serializes adjacent blocks', () => {
@@ -220,7 +282,7 @@ describe('markdown WYSIWYG blank line preservation', () => {
     )
 
     expect(markdown).toBe(
-      `### Hat Trick!\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\nhmm interesting\n\n- [ ] one\n- [ ] two\n    - [ ] three`,
+      '### Hat Trick!\n\nhmm interesting\n\n- [ ] one\n- [ ] two\n    - [ ] three',
     )
   })
 
@@ -238,7 +300,7 @@ describe('markdown WYSIWYG blank line preservation', () => {
     )
 
     expect(markdown).toBe(
-      `##My second header.\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\n---\n\nLive from a workshop in Ohio!\n\nAnd now for a task\n\n---`,
+      '##My second header.\n\n---\n\nLive from a workshop in Ohio!\n\nAnd now for a task\n\n---',
     )
   })
 
@@ -271,7 +333,7 @@ describe('markdown WYSIWYG blank line preservation', () => {
   })
 
   it('strips standalone blank-line placeholders from export markdown', () => {
-    expect(convertInternalTabsForExport(`one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`)).toBe('one\n\n\n\ntwo')
+    expect(convertInternalTabsForExport(`one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`)).toBe('one\n\ntwo')
   })
 
   it('exports block indent and paragraph indent tokens as spaces', () => {

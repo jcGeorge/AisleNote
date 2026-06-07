@@ -171,7 +171,7 @@ function compactDiagnosticDayFile(userDataPath, dayKey) {
   writeFileSync(getDiagnosticDayFile(userDataPath, dayKey), entries.map((entry) => JSON.stringify(entry)).join('\n') + '\n')
 }
 
-export function registerDiagnosticIpc({ ipcMain, app }) {
+export function registerDiagnosticIpc({ ipcMain, app, shell = null }) {
   const userDataPath = app.getPath('userData')
   const writesSinceCompactByDay = new Map()
 
@@ -209,6 +209,17 @@ export function registerDiagnosticIpc({ ipcMain, app }) {
       return { ok: true, entries: readDiagnosticEntries(userDataPath, payload.dayKey) }
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : 'read-failed', entries: [] }
+    }
+  })
+
+  ipcMain.handle('open-diagnostics-folder', async () => {
+    if (!shell || typeof shell.openPath !== 'function') return { ok: false, error: 'unavailable' }
+    try {
+      ensureDiagnosticsRoot(userDataPath)
+      const error = await shell.openPath(getDiagnosticsRoot(userDataPath))
+      return error ? { ok: false, error } : { ok: true }
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : 'open-failed' }
     }
   })
 }

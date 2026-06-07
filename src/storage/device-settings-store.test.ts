@@ -53,6 +53,8 @@ describe('device settings store', () => {
     expect(parseDeviceSettings(JSON.stringify({ dataSettingsSection: 'sync' })).dataSettingsSection).toBe('transfer')
     expect(parseDeviceSettings(JSON.stringify({ dataSettingsSection: 'cloud' })).dataSettingsSection).toBe('transfer')
     expect(parseDeviceSettings(JSON.stringify({ toolbarButtonScale: 9 })).toolbarButtonScale).toBe(1.6)
+    expect(parseDeviceSettings(JSON.stringify({ captureDiagnostics: 'no' })).captureDiagnostics).toBe(true)
+    expect(parseDeviceSettings(JSON.stringify({ captureDiagnostics: false })).captureDiagnostics).toBe(false)
     expect(parseDeviceSettings(JSON.stringify({ lastFindQuery: 123 })).lastFindQuery).toBe('')
     expect(parseDeviceSettings(JSON.stringify({ aisleWidths: { loc: { aisle: 99, other: 640 } } })).aisleWidths).toEqual({
       loc: { aisle: 160, other: 640 },
@@ -125,6 +127,23 @@ describe('device settings store', () => {
     )
     expect(loadDeviceSettings(storage)).toEqual({ ...DEFAULT_DEVICE_SETTINGS, activeToolbarLayoutId: 'tablet' })
     expect(values.has('tabs:app-state-cache:v1')).toBe(false)
+  })
+
+  it('loads and saves the device-local diagnostics capture switch', () => {
+    const values = new Map<string, string>()
+    const storage = {
+      getItem: vi.fn((key: string) => values.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => {
+        values.set(key, value)
+      }),
+    }
+
+    saveDeviceSettings({ ...DEFAULT_DEVICE_SETTINGS, captureDiagnostics: false }, storage)
+
+    expect(loadDeviceSettings(storage).captureDiagnostics).toBe(false)
+    expect(JSON.parse(values.get(DEVICE_SETTINGS_STORAGE_KEY) ?? '{}')).toMatchObject({
+      captureDiagnostics: false,
+    })
   })
 
   it('applies device-local settings after synced state is parsed', () => {

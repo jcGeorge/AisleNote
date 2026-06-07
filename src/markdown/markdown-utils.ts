@@ -92,7 +92,7 @@ function unescapeMarkdownTableLine(line: string): string {
 }
 
 function isTableGapLine(line: string): boolean {
-  return line.replaceAll(EDITOR_BLANK_LINE_PLACEHOLDER, '').trim().length === 0
+  return isStandaloneBlankLineRunLine(line)
 }
 
 function getMarkdownTableCells(line: string): string[] | null {
@@ -230,9 +230,12 @@ function stripBlockIndentTokensFromQuotedLines(markdown: string): string {
 }
 
 export function normalizeMarkdownForPersistence(markdown: string): string {
-  const repaired = repairBrokenMarkdownTables(repairBrokenDataImageMarkdown(markdown))
+  const blankNormalized = normalizeBlankLineRuns(markdown)
+  const repaired = repairBrokenMarkdownTables(repairBrokenDataImageMarkdown(blankNormalized))
   const highlighted = normalizeHighlightMarkdownForPersistence(repaired)
-  return stripBlockIndentTokensFromQuotedLines(highlighted).replace(/(?<!\u2060)\u2003\u2003/g, INDENT_TOKEN)
+  return normalizeBlankLineRuns(
+    stripBlockIndentTokensFromQuotedLines(highlighted).replace(/(?<!\u2060)\u2003\u2003/g, INDENT_TOKEN),
+  )
 }
 
 function escapeHtmlText(value: string): string {
@@ -360,13 +363,7 @@ export function normalizeHighlightMarkdownForPersistence(markdown: string): stri
 }
 
 function stripStandaloneBlankLinePlaceholders(markdown: string): string {
-  return String(markdown ?? '')
-    .split('\n')
-    .map((line) => {
-      const withoutPlaceholder = line.replaceAll(EDITOR_BLANK_LINE_PLACEHOLDER, '')
-      return withoutPlaceholder.trim().length === 0 && line.includes(EDITOR_BLANK_LINE_PLACEHOLDER) ? '' : line
-    })
-    .join('\n')
+  return normalizeBlankLineRuns(markdown)
 }
 
 export function convertInternalTabsForExport(markdown: string): string {
@@ -388,16 +385,69 @@ export type BlankParagraphDisplayPlan = {
 
 type MarkdownLineBlockKind = 'atomic' | 'list' | 'paragraph'
 
-function isStandaloneBlankLinePlaceholderChunk(chunk: MarkdownBlockChunk): boolean {
-  return chunk.lines.every((line) => {
-    const withoutPlaceholder = line.replaceAll(EDITOR_BLANK_LINE_PLACEHOLDER, '')
-    return line.includes(EDITOR_BLANK_LINE_PLACEHOLDER) && withoutPlaceholder.trim().length === 0
-  })
+function isStandaloneHtmlBreakLine(line: string): boolean {
+  return /^<br\s*\/?>$/i.test(line.replaceAll(EDITOR_BLANK_LINE_PLACEHOLDER, '').trim())
 }
 
-function isStandaloneBlankLinePlaceholderLine(line: string): boolean {
+function isStandaloneBlankLineRunLine(line: string): boolean {
   const withoutPlaceholder = line.replaceAll(EDITOR_BLANK_LINE_PLACEHOLDER, '')
-  return line.includes(EDITOR_BLANK_LINE_PLACEHOLDER) && withoutPlaceholder.trim().length === 0
+  return withoutPlaceholder.trim().length === 0 || isStandaloneHtmlBreakLine(line)
+}
+
+function isBlankLineArtifactLine(line: string): boolean {
+  return line.includes(EDITOR_BLANK_LINE_PLACEHOLDER) || isStandaloneHtmlBreakLine(line)
+}
+
+function isStandaloneBlankLineChunk(chunk: MarkdownBlockChunk): boolean {
+  return chunk.lines.every(isStandaloneBlankLineRunLine)
+}
+
+function normalizeBlankLineRuns(markdown: string): string {
+  const outputLines: string[] = []
+  let blankRun: string[] = []
+  let activeFence: string | null = null
+
+  const flushBlankRun = () => {
+    if (blankRun.length === 0) return
+    const artifactCount = blankRun.filter(isBlankLineArtifactLine).length
+    const blankLineCount = artifactCount > 0 ? artifactCount : blankRun.length
+    for (let index = 0; index < blankLineCount; index += 1) {
+      outputLines.push('')
+    }
+    blankRun = []
+  }
+
+  String(markdown ?? '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .forEach((line) => {
+      if (activeFence) {
+        flushBlankRun()
+        outputLines.push(line)
+        activeFence = isFenceBoundary(line, activeFence)
+        return
+      }
+
+      const nextFence = isFenceBoundary(line, null)
+      if (nextFence) {
+        flushBlankRun()
+        outputLines.push(line)
+        activeFence = nextFence
+        return
+      }
+
+      if (isStandaloneBlankLineRunLine(line)) {
+        blankRun.push(line)
+        return
+      }
+
+      flushBlankRun()
+      outputLines.push(line)
+    })
+
+  flushBlankRun()
+  return outputLines.join('\n')
 }
 
 function isFenceBoundary(line: string, activeFence: string | null): string | null {
@@ -451,7 +501,7 @@ function splitPlainParagraphChunksToCount(
 }
 
 function splitMarkdownTopLevelChunks(markdown: string): MarkdownBlockChunk[] {
-  const lines = String(markdown ?? '').replace(/\r\n/g, '\n').split('\n')
+  const lines = normalizeBlankLineRuns(markdown).split('\n')
   const chunks: MarkdownBlockChunk[] = []
   let current: string[] = []
   let activeFence: string | null = null
@@ -472,14 +522,9 @@ function splitMarkdownTopLevelChunks(markdown: string): MarkdownBlockChunk[] {
       return
     }
 
-    if (line.trim().length === 0) {
+    if (isStandaloneBlankLineRunLine(line)) {
       pushCurrent()
-      return
-    }
-
-    if (isStandaloneBlankLinePlaceholderLine(line)) {
-      pushCurrent()
-      chunks.push({ lines: [line] })
+      chunks.push({ lines: [''] })
       return
     }
 
@@ -542,7 +587,7 @@ export function prepareBlankParagraphsForEditorDisplay(markdown: string): BlankP
   const chunks = splitMarkdownTopLevelChunks(repairBrokenMarkdownTables(markdown))
   const contentChunks: MarkdownBlockChunk[] = []
   const blockKinds = chunks.map((chunk) => {
-    if (isStandaloneBlankLinePlaceholderChunk(chunk)) return 'blank' as const
+    if (isStandaloneBlankLineChunk(chunk)) return 'blank' as const
     contentChunks.push(chunk)
     return 'content' as const
   })
@@ -551,6 +596,34 @@ export function prepareBlankParagraphsForEditorDisplay(markdown: string): BlankP
     markdown: contentChunks.map((chunk) => chunk.lines.join('\n')).join('\n\n'),
     blockKinds,
   }
+}
+
+function serializeCleanMarkdownBlocks(
+  blockKinds: Array<'blank' | 'content'>,
+  contentChunks: MarkdownBlockChunk[],
+): string {
+  const lines: string[] = []
+  let contentIndex = 0
+  let previousKind: 'blank' | 'content' | null = null
+
+  blockKinds.forEach((kind) => {
+    if (kind === 'blank') {
+      lines.push('')
+      previousKind = 'blank'
+      return
+    }
+
+    const chunk = contentChunks[contentIndex]
+    contentIndex += 1
+    if (!chunk) return
+    if (lines.length > 0 && previousKind === 'content') {
+      lines.push('')
+    }
+    lines.push(...chunk.lines)
+    previousKind = 'content'
+  })
+
+  return lines.join('\n')
 }
 
 export function preserveBlankParagraphsFromWysiwyg(editor: Editor | null, markdown: string): string {
@@ -563,32 +636,24 @@ export function preserveBlankParagraphsFromWysiwyg(editor: Editor | null, markdo
   })
 
   const markdownChunks = splitMarkdownTopLevelChunks(markdown)
-  let contentChunks = markdownChunks.filter((chunk) => !isStandaloneBlankLinePlaceholderChunk(chunk))
-  const hasPlaceholderChunks = contentChunks.length !== markdownChunks.length
+  let contentChunks = markdownChunks.filter((chunk) => !isStandaloneBlankLineChunk(chunk))
+  const hasBlankChunks = contentChunks.length !== markdownChunks.length
   const hasBlankBlocks = blockKinds.includes('blank')
 
   const contentBlockCount = blockKinds.filter((kind) => kind === 'content').length
-  if (contentBlockCount !== contentChunks.length && (hasBlankBlocks || hasPlaceholderChunks)) {
+  if (contentBlockCount !== contentChunks.length && (hasBlankBlocks || hasBlankChunks)) {
     contentChunks = splitPlainParagraphChunksToCount(contentChunks, contentBlockCount)
   }
   if (contentBlockCount !== contentChunks.length) {
-    if (!hasBlankBlocks && !hasPlaceholderChunks) return markdown
+    if (!hasBlankBlocks && !hasBlankChunks) return normalizeBlankLineRuns(markdown)
     return contentBlockCount === 0
-      ? blockKinds.map(() => EDITOR_BLANK_LINE_PLACEHOLDER).join('\n\n')
-      : markdown
+      ? serializeCleanMarkdownBlocks(blockKinds, [])
+      : normalizeBlankLineRuns(markdown)
   }
 
-  if (!hasBlankBlocks && !hasPlaceholderChunks && contentChunks.length <= 1) return markdown
+  if (!hasBlankBlocks && !hasBlankChunks && contentChunks.length <= 1) return normalizeBlankLineRuns(markdown)
 
-  let nextChunkIndex = 0
-  return blockKinds
-    .map((kind) => {
-      if (kind === 'blank') return EDITOR_BLANK_LINE_PLACEHOLDER
-      const chunk = contentChunks[nextChunkIndex]
-      nextChunkIndex += 1
-      return chunk?.lines.join('\n') ?? ''
-    })
-    .join('\n\n')
+  return serializeCleanMarkdownBlocks(blockKinds, contentChunks)
 }
 
 export function mergeLeadingIndentsFromWysiwyg(editor: Editor | null, markdown: string): string {

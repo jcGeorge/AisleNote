@@ -2,7 +2,6 @@ import { createRef, isValidElement, type ReactElement, type ReactNode } from 're
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import type { ArrangeModeState, MessagesSection, SettingsSection, Tab, TrashParentBucket, ViewMode, WorkspaceData } from '../../types/app'
-import type { DiagnosticLogDisplayLimit, DiagnosticLogLevelFilter, DiagnosticLogMode } from '../../diagnostics/diagnostic-log'
 import { SubTabRail } from './SubTabRail'
 import { TopBar } from './TopBar'
 
@@ -94,9 +93,6 @@ function createTopBarElement(
     messagesCount?: number
     toastHistoryCount?: number
     diagnosticLogCount?: number
-    diagnosticLevelFilter?: DiagnosticLogLevelFilter
-    diagnosticDisplayLimit?: DiagnosticLogDisplayLimit
-    diagnosticMode?: DiagnosticLogMode
     tagFilterActive?: boolean
   } = {},
   callbacks: TopBarTestCallbacks = {},
@@ -166,9 +162,6 @@ function createTopBarElement(
       messagesCount={options.messagesCount ?? 0}
       toastHistoryCount={options.toastHistoryCount ?? 0}
       diagnosticLogCount={options.diagnosticLogCount ?? 0}
-      diagnosticLevelFilter={options.diagnosticLevelFilter}
-      diagnosticDisplayLimit={options.diagnosticDisplayLimit}
-      diagnosticMode={options.diagnosticMode}
       onMessagesSectionChange={noop}
     />
   )
@@ -185,9 +178,6 @@ function renderTopBar(
     messagesCount?: number
     toastHistoryCount?: number
     diagnosticLogCount?: number
-    diagnosticLevelFilter?: DiagnosticLogLevelFilter
-    diagnosticDisplayLimit?: DiagnosticLogDisplayLimit
-    diagnosticMode?: DiagnosticLogMode
   } = {},
 ) {
   return renderToStaticMarkup(createTopBarElement(tooltipsDisabled, arrangeModeOverride, arrangeControlsDisabled, options))
@@ -320,9 +310,6 @@ describe('navigation arrange tooltips', () => {
       messagesCount: 2,
       toastHistoryCount: 3,
       diagnosticLogCount: 4,
-      diagnosticLevelFilter: 'warning',
-      diagnosticDisplayLimit: 1000,
-      diagnosticMode: 'all',
     })
     const aboutHtml = renderTopBar(false, { active: false }, false, { viewMode: 'about' })
 
@@ -334,13 +321,11 @@ describe('navigation arrange tooltips', () => {
     expect(toastHistoryHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn parent-tab-btn utility-view-rail-btn">toast history (3)</button>')
     expect(toastHistoryHtml).toContain('aria-selected="false" class="btn btn-sm btn-outline-secondary tab-btn parent-tab-btn utility-view-rail-btn">diagnostics (4)</button>')
     expect(diagnosticsHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn parent-tab-btn utility-view-rail-btn">diagnostics (4)</button>')
-    expect(diagnosticsHtml).toContain('aria-label="diagnostic filters"')
-    expect(diagnosticsHtml).toContain('aria-label="diagnostic mode"')
-    expect(diagnosticsHtml).toContain('<option value="all" selected="">all logs</option>')
-    expect(diagnosticsHtml).toContain('aria-label="diagnostic message type"')
-    expect(diagnosticsHtml).toContain('<option value="warning" selected="">warning</option>')
-    expect(diagnosticsHtml).toContain('aria-label="diagnostic message count"')
-    expect(diagnosticsHtml).toContain('<option value="1000" selected="">1,000</option>')
+    expect(diagnosticsHtml).not.toContain('aria-label="diagnostic controls"')
+    expect(diagnosticsHtml).not.toContain('aria-label="diagnostic filters"')
+    expect(diagnosticsHtml).not.toContain('aria-label="diagnostic mode"')
+    expect(diagnosticsHtml).not.toContain('aria-label="diagnostic message type"')
+    expect(diagnosticsHtml).not.toContain('aria-label="diagnostic message count"')
     expect(messagesHtml).toMatch(/topbar-context-btn[^"]*">messages \(2\)<\/button>/)
     expect(aboutHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn parent-tab-btn utility-view-rail-btn">about</button>')
     expect(aboutHtml).toMatch(/topbar-context-btn[^"]*">about<\/button>/)

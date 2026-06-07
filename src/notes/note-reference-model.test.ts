@@ -205,8 +205,8 @@ describe('note reference model', () => {
       mode: 'note',
       modeLocked: true,
       insertAs: 'preview',
-      noteLabel: 'Linked preview',
-      noteLabelTouched: true,
+      noteLabel: 'Beta prime',
+      noteLabelTouched: false,
       internalEdit: null,
       editingTokenId: 'markdown-preview:Beta prime--123abc',
     })

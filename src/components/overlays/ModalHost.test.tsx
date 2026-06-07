@@ -520,7 +520,8 @@ describe('link modal rendering', () => {
     })
 
     expect(html).toContain('edit link')
-    expect(html).toContain('value="Existing preview"')
+    expect(html).not.toContain('value="Existing preview"')
+    expect(html).not.toContain('<span>label</span>')
     expect(html).not.toContain('aria-label="Link type"')
     expect(html).toContain('aria-label="Note reference type"')
     expect(html).toContain('>link</button>')

@@ -335,11 +335,17 @@ export function ModalHost({
 
   const setNoteReferenceInsertKind = (insertAs: Extract<ModalState, { type: 'insert-note-reference' }>['insertAs']) => {
     if (modal.type !== 'insert-note-reference') return
+    const normalizedTarget = normalizeNoteReferenceTarget(state, modal.target)
+    const nextNoteLabel =
+      insertAs === 'link' && modal.previewEdit && !modal.noteLabelTouched && !modal.internalEdit
+        ? getDefaultMarkdownNoteReferenceLabel(state, normalizedTarget)
+        : modal.noteLabel
     onModalChange({
       ...modal,
       insertAs,
       editingTokenId: insertAs === 'link' ? undefined : modal.editingTokenId,
-      target: normalizeNoteReferenceTarget(state, modal.target),
+      target: normalizedTarget,
+      noteLabel: nextNoteLabel,
     })
   }
 
@@ -373,7 +379,7 @@ export function ModalHost({
       ...modal,
       target: normalizedTarget,
       noteLabel:
-        modal.internalEdit || modal.noteLabelTouched || modal.insertAs !== 'link'
+        modal.insertAs === 'link' && (modal.internalEdit || modal.noteLabelTouched)
           ? modal.noteLabel
           : getDefaultMarkdownNoteReferenceLabel(state, normalizedTarget),
     })
@@ -972,21 +978,23 @@ export function ModalHost({
                   aisleSelectionMode="single"
                   onChange={updateLinkModalTarget}
                 />
-                <label className="settings-modal-field">
-                  <span>label</span>
-                  <input
-                    type="text"
-                    className="settings-text-input"
-                    value={modal.noteLabel}
-                    onChange={(event) =>
-                      onModalChange({
-                        ...modal,
-                        noteLabel: event.target.value,
-                        noteLabelTouched: true,
-                      })
-                    }
-                  />
-                </label>
+                {modal.insertAs === 'link' && (
+                  <label className="settings-modal-field">
+                    <span>label</span>
+                    <input
+                      type="text"
+                      className="settings-text-input"
+                      value={modal.noteLabel}
+                      onChange={(event) =>
+                        onModalChange({
+                          ...modal,
+                          noteLabel: event.target.value,
+                          noteLabelTouched: true,
+                        })
+                      }
+                    />
+                  </label>
+                )}
                 <div className="note-reference-mode" role="group" aria-label="Note reference type">
                   <button
                     type="button"

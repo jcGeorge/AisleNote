@@ -138,7 +138,7 @@ describe('editor context menu spellcheck bridge', () => {
     expect(webContents.showDefinitionForSelection).toHaveBeenCalledTimes(1)
   })
 
-  it('uses OS-preferred spellchecker languages on platforms that need Electron dictionaries', () => {
+  it('uses OS-preferred Electron spellchecker languages on every desktop platform with session support', () => {
     const session = {
       availableSpellCheckerLanguages: ['en-US', 'fr', 'de-DE'],
       setSpellCheckerLanguages: vi.fn(),
@@ -157,18 +157,21 @@ describe('editor context menu spellcheck bridge', () => {
     expect(session.setSpellCheckerLanguages).toHaveBeenCalledWith(['en-US', 'fr', 'de-DE'])
   })
 
-  it('leaves macOS spellchecker language selection to the operating system', () => {
+  it('does not skip Electron spellchecker language setup on macOS', () => {
     const session = {
-      availableSpellCheckerLanguages: ['en-US'],
+      availableSpellCheckerLanguages: ['en-US', 'fr'],
       setSpellCheckerLanguages: vi.fn(),
     }
     const app = {
-      getPreferredSystemLanguages: vi.fn(() => ['en-US']),
+      getPreferredSystemLanguages: vi.fn(() => ['fr', 'en-US']),
       getLocale: vi.fn(() => 'en-US'),
     }
 
-    expect(getPreferredSpellCheckerLanguages({ app, session, platform: 'darwin' })).toEqual([])
-    expect(configureEditorSpellcheckerForWindow({ webContents: { session } }, { app, platform: 'darwin' })).toEqual([])
-    expect(session.setSpellCheckerLanguages).not.toHaveBeenCalled()
+    expect(getPreferredSpellCheckerLanguages({ app, session, platform: 'darwin' })).toEqual(['fr', 'en-US'])
+    expect(configureEditorSpellcheckerForWindow({ webContents: { session } }, { app, platform: 'darwin' })).toEqual([
+      'fr',
+      'en-US',
+    ])
+    expect(session.setSpellCheckerLanguages).toHaveBeenCalledWith(['fr', 'en-US'])
   })
 })

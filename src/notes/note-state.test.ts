@@ -183,10 +183,11 @@ describe('note-state helpers', () => {
   })
 
   it('deletes linked aisle slots without reintroducing stale shared whitespace', () => {
-    const currentMarkdown = 'Hat Trick!\n\n---\n\n\u200b'
+    const currentMarkdown = 'Hat Trick!\n\n---\n'
+    const legacyCurrentMarkdown = 'Hat Trick!\n\n---\n\n\u200b'
     const state = {
       ...createTestState(),
-      noteAisleBodies: [{ id: 'shared-aisle-body', markdown: currentMarkdown }],
+      noteAisleBodies: [{ id: 'shared-aisle-body', markdown: legacyCurrentMarkdown }],
       noteBodies: [
         {
           id: 'body-1',

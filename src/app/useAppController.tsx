@@ -582,6 +582,10 @@ export function useAppController(): AppController {
   const [diagnosticLevelFilter, setDiagnosticLevelFilter] = useState<DiagnosticLogLevelFilter>('all')
   const [diagnosticDisplayLimit, setDiagnosticDisplayLimit] = useState<DiagnosticLogDisplayLimit>(500)
   const [diagnosticMode, setDiagnosticMode] = useState<DiagnosticLogMode>('actionable')
+  const [diagnosticCaptureEnabled, setDiagnosticCaptureEnabledState] = useState(
+    () => initialDeviceSettingsRef.current?.captureDiagnostics ?? true,
+  )
+  const diagnosticCaptureEnabledRef = useRef(diagnosticCaptureEnabled)
   const [trashDomainId, setTrashDomainId] = useState<string>('')
   const [trashSpaceId, setTrashSpaceId] = useState<string>('')
   const [trashTabId, setTrashTabId] = useState<string>(TRASH_HOME_ID)
@@ -820,7 +824,7 @@ export function useAppController(): AppController {
         windowFocused: typeof document !== 'undefined' && typeof document.hasFocus === 'function'
           ? document.hasFocus()
           : null,
-      })),
+      }), () => diagnosticCaptureEnabledRef.current),
     [],
   )
 
@@ -1122,6 +1126,24 @@ export function useAppController(): AppController {
     setState,
     isMacPlatform,
   })
+
+  const setDiagnosticCaptureEnabled = useCallback((enabled: boolean) => {
+    diagnosticCaptureEnabledRef.current = enabled
+    setDiagnosticCaptureEnabledState(enabled)
+    savePartialDeviceSettings({ captureDiagnostics: enabled })
+  }, [])
+
+  const openDiagnosticsFolder = useCallback(async () => {
+    try {
+      const result = await window.electronAPI?.openDiagnosticsFolder?.()
+      if (!result?.ok) pushToast('Could not open diagnostics folder.', 'warning')
+    } catch {
+      pushToast('Could not open diagnostics folder.', 'warning')
+    }
+  }, [pushToast])
+
+  const diagnosticsFolderAvailable =
+    typeof window !== 'undefined' && typeof window.electronAPI?.openDiagnosticsFolder === 'function'
 
   const pushArrangeCrossDomainMoveToast = (
     kind: ArrangeCrossDomainMoveKind,
@@ -6300,13 +6322,7 @@ export function useAppController(): AppController {
           messagesCount={unresolvedMessageCount}
           toastHistoryCount={toastHistoryCount}
           diagnosticLogCount={diagnosticLogEntries.length}
-          diagnosticLevelFilter={diagnosticLevelFilter}
-          diagnosticDisplayLimit={diagnosticDisplayLimit}
-          diagnosticMode={diagnosticMode}
           onMessagesSectionChange={setMessagesSection}
-          onDiagnosticLevelFilterChange={setDiagnosticLevelFilter}
-          onDiagnosticDisplayLimitChange={setDiagnosticDisplayLimit}
-          onDiagnosticModeChange={setDiagnosticMode}
         />
       )}
 
@@ -6569,7 +6585,13 @@ export function useAppController(): AppController {
               diagnosticLevelFilter={diagnosticLevelFilter}
               diagnosticDisplayLimit={diagnosticDisplayLimit}
               diagnosticMode={diagnosticMode}
+              diagnosticCaptureEnabled={diagnosticCaptureEnabled}
               onDiagnosticDayChange={changeDiagnosticDay}
+              onDiagnosticLevelFilterChange={setDiagnosticLevelFilter}
+              onDiagnosticDisplayLimitChange={setDiagnosticDisplayLimit}
+              onDiagnosticModeChange={setDiagnosticMode}
+              onDiagnosticCaptureEnabledChange={setDiagnosticCaptureEnabled}
+              onOpenDiagnosticsFolder={diagnosticsFolderAvailable ? openDiagnosticsFolder : undefined}
               onDismissMessage={dismissMessage}
               onOpenRecoveredNotebookLocation={openRecoveredNotebookLocationFromMessage}
               onOpenLocation={openMessageLocation}

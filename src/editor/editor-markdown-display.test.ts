@@ -67,6 +67,14 @@ describe('editor markdown display helpers', () => {
     expect(getEditorMarkdownForPersistence(editor)).toBe('==text==\n\nplain\u2060\u2003\u2003indent')
   })
 
+  it('strips editor blank artifacts from persisted markdown', () => {
+    const editor = {
+      getMarkdown: vi.fn(() => `one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\n<br>\n\ntwo`),
+    } as unknown as Editor
+
+    expect(getEditorMarkdownForPersistence(editor)).toBe('one\n\n\ntwo')
+  })
+
   it('passes markdown without blank sentinels to Toast UI and restores blank paragraphs in ProseMirror', () => {
     const { editor, tr, dispatch } = fakeEditorWithBlocks([
       textBlock('paragraph', 'one'),

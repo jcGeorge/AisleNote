@@ -200,6 +200,15 @@ type DiagnosticLogEntriesResult =
       entries: DiagnosticLogEntry[]
     }
 
+type OpenDiagnosticsFolderResult =
+  | {
+      ok: true
+    }
+  | {
+      ok: false
+      error?: string
+    }
+
 declare global {
   interface Window {
     electronAPI?: {
@@ -337,6 +346,7 @@ declare global {
       appendDiagnosticLogEntry?: (payload: DiagnosticLogEntry) => Promise<DiagnosticLogWriteResult>
       listDiagnosticLogDays?: () => Promise<DiagnosticLogDaysResult>
       readDiagnosticLogEntries?: (payload: { dayKey: string }) => Promise<DiagnosticLogEntriesResult>
+      openDiagnosticsFolder?: () => Promise<OpenDiagnosticsFolderResult>
     }
     __tabsGetLatestAppState?: () => string
     __tabsGetAppStateRevision?: () => number
